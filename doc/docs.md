@@ -113,17 +113,27 @@ embedded in your `v`).
 To help close the remaining gaps, a successful fallback (V3 fails to build a
 program that the established compiler then builds) normally submits the V
 version, target OS/arch, and build options to `https://bugs.vlang.io`. When a
-source excerpt is included it is always a **bounded strict subset** of the failing
-file — a window around the failure, or a head+tail window — and the whole file is
-never uploaded.
-An internal V3 compiler error on a short program (and any directory build such as
-`v .`) submits metadata only. If the input selected for a source excerpt changes
-after V3 parses it, that report also submits metadata only rather than source V3
-did not parse. Before submitting any report, the stable compiler also verifies
-that it parsed the same bytes for every captured project input; if it did not, no
-fallback report is submitted. An unchanged input mapped from a generated-C error
-can still upload a strict-subset excerpt of that file plus a few lines of context
-around the failing line, even when the file is short. Inline-assembly fallbacks
+generated-C diagnostic maps to a verified V source, the **full mapped source
+file** is included so the report is reproducible; a failure without such a
+mapping submits metadata only. The source is bounded to a window around the
+failure only when the file is larger than the upload byte budget.
+This full-file selection applies only to verified V3 fallback reports. When the
+established compiler is used directly, its automatic C-error reports retain a
+bounded strict subset of mapped source and omit source when no strict subset is
+possible.
+A single-file build that hits an **internal V3 compiler error** uploads the
+complete captured input when it fits the 64 KiB source and process-environment
+transport budgets. Larger snapshots are truncated to a bounded head-and-tail
+window, and source is omitted when the transport cannot safely carry an excerpt.
+A directory build (such as `v .`) submits metadata only for this failure type
+because it has no single input snapshot. A **generated-C compilation error** is
+instead mapped back to the specific failing file through the staged C's `#line`
+directives, so even a directory build can upload that one failing file (still
+only when its current bytes match what V3 parsed). If the input selected for the
+source changes after V3 parses it, that report submits metadata only rather than
+source V3 did not parse. Before submitting any report, the stable
+compiler also verifies that it parsed the same bytes for every captured project
+input; if it did not, no fallback report is submitted. Inline-assembly fallbacks
 and reports that cannot fit safely through the retry's process environment are
 notice-only and do not submit a report. Reporting is also skipped for test
 compilations and to the default endpoint in GitHub CI. A custom fallback endpoint
@@ -6191,6 +6201,10 @@ It's recommended to set up your editor, so that `v fmt -w` runs on every save.
 A vfmt run is usually pretty cheap (takes <30ms).
 
 Always run `v fmt -w file.v` before pushing your code.
+
+During the transition to the V3 formatter, `v fmt -verify` and `v fmt -c` accept
+files matching either V3 or legacy vfmt output. `v fmt -w` uses V3 formatting,
+so it may rewrite a file accepted by either check mode.
 
 #### Disabling the formatting locally
 

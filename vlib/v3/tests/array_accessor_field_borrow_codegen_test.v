@@ -1,0 +1,170 @@
+import os
+
+const array_accessor_borrow_vexe = @VEXE
+const array_accessor_borrow_tests_dir = os.dir(@FILE)
+const array_accessor_borrow_v3_dir = os.dir(array_accessor_borrow_tests_dir)
+const array_accessor_borrow_vlib_dir = os.dir(array_accessor_borrow_v3_dir)
+const array_accessor_borrow_v3_src = os.join_path(array_accessor_borrow_v3_dir, 'v3.v')
+
+fn tmp_array_accessor_borrow_path(name string) string {
+	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
+}
+
+fn build_v3_array_accessor_borrow() string {
+	v3_bin := tmp_array_accessor_borrow_path('array_accessor_borrow')
+	build :=
+		os.execute('${os.quoted_path(array_accessor_borrow_vexe)} -gc none -path "${array_accessor_borrow_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(array_accessor_borrow_v3_src)}')
+	assert build.exit_code == 0, build.output
+	return v3_bin
+}
+
+fn assert_clean_borrow_build(compile os.Result) {
+	assert compile.exit_code == 0, compile.output
+	// The regressed transform lowered `arr.last().field` to an empty placeholder that
+	// the C backend printed as `(0)`, so the borrow read reached cc as `(0).field`
+	// ("member reference base type 'int' is not a structure or union"). In a directly
+	// compiled module the ownership checker instead rejected the accessor outright.
+	assert !compile.output.contains('unsupported node kind'), compile.output
+	assert !compile.output.contains('cannot return an independent array element'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+}
+
+fn run_v3_array_accessor_borrow_program(v3_bin string, name string, src string) string {
+	src_path := '${tmp_array_accessor_borrow_path(name)}.v'
+	bin_path := tmp_array_accessor_borrow_path('${name}_bin')
+	os.write_file(src_path, src) or { panic(err) }
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(src_path)} -b c -o ${os.quoted_path(bin_path)}')
+	assert_clean_borrow_build(compile)
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	return run.output.trim_space()
+}
+
+fn run_v3_array_accessor_borrow_module(name string, module_src string, main_src string) string {
+	proj_dir := tmp_array_accessor_borrow_path(name)
+	mod_dir := os.join_path(proj_dir, 'mymod')
+	os.mkdir_all(mod_dir) or { panic(err) }
+	os.write_file(os.join_path(mod_dir, 'mymod.v'), module_src) or { panic(err) }
+	os.write_file(os.join_path(proj_dir, 'main.v'), main_src) or { panic(err) }
+	bin_path := tmp_array_accessor_borrow_path('${name}_bin')
+	v3_bin := build_v3_array_accessor_borrow()
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(proj_dir)} -b c -o ${os.quoted_path(bin_path)}')
+	assert_clean_borrow_build(compile)
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	return run.output.trim_space()
+}
+
+// Reading a field of `arr.first()`/`arr.last()` is a borrow of the stored element,
+// not an independent copy, so it must lower to an in-place `arr[..]` access even when
+// the element type owns heap data and has no `clone()` method. This mirrors the HPACK
+// dynamic table (`net.http` / `net.quic`) that `v new --web` pulls in via `veb`.
+fn test_first_last_field_borrow_on_owned_elements() {
+	v3_bin := build_v3_array_accessor_borrow()
+
+	// The exact evict-loop shape: read the last element's scalar field, then remove it.
+	last_field := run_v3_array_accessor_borrow_program(v3_bin, 'last_field',
+		"struct Entry {\n\tname  string\n\tvalue string\n\tsize  int\n}\n\nstruct Tbl {\nmut:\n\tentries []Entry\n\ttotal   int\n}\n\nfn (mut t Tbl) shrink() {\n\tfor t.entries.len > 0 {\n\t\tt.total -= t.entries.last().size\n\t\tt.entries.delete_last()\n\t}\n}\n\nfn main() {\n\tmut t := Tbl{}\n\tt.entries << Entry{ name: 'a', value: 'b', size: 5 }\n\tt.entries << Entry{ name: 'c', value: 'd', size: 7 }\n\tt.total = 12\n\tt.shrink()\n\tprintln(int_str(t.total))\n}\n")
+	assert last_field == '0'
+
+	// first()/last() field reads through both value and ref receivers, incl. a chained
+	// field access (`last().name.len`).
+	mixed := run_v3_array_accessor_borrow_program(v3_bin, 'mixed_field',
+		"struct Entry {\n\tname string\n\tn    int\n}\n\nstruct Box {\nmut:\n\tentries []Entry\n}\n\nfn (b &Box) probe() int {\n\treturn b.entries.first().n + b.entries.last().n + b.entries.last().name.len\n}\n\nfn main() {\n\tmut b := Box{}\n\tb.entries << Entry{ name: 'ab', n: 10 }\n\tb.entries << Entry{ name: 'cdef', n: 20 }\n\tprintln(int_str(b.probe()))\n}\n")
+	assert mixed == '34'
+}
+
+// The same borrow read inside an imported module: the ownership checker does not
+// diagnose non-user modules, so the regressed transform silently produced `(0)` there,
+// which is precisely why `v .` on a fresh `--web` project failed to compile.
+fn test_first_last_field_borrow_in_imported_module() {
+	out := run_v3_array_accessor_borrow_module('borrow_mod',
+		'module mymod\n\nstruct Entry {\n\tname  string\n\tvalue string\n\tsize  int\n}\n\npub struct Tbl {\nmut:\n\tentries []Entry\n\ttotal   int\n}\n\npub fn (mut t Tbl) add(name string, value string) {\n\tsz := name.len + value.len + 32\n\tfor t.entries.len > 0 && t.total + sz > 100 {\n\t\tt.total -= t.entries.last().size\n\t\tt.entries.delete_last()\n\t}\n\tt.entries.insert(0, Entry{ name: name, value: value, size: sz })\n\tt.total += sz\n}\n\npub fn (t &Tbl) total() int {\n\treturn t.total\n}\n',
+		"module main\n\nimport mymod\n\nfn main() {\n\tmut t := mymod.Tbl{}\n\tt.add('a', 'b')\n\tt.add('c', 'd')\n\tprintln(int_str(t.total()))\n}\n")
+	assert out == '68'
+}
+
+// The in-place borrow only fires with the ownership checker (`-d ownership`); it is where
+// the accessor would otherwise take its independent-clone path. These cases exercise that
+// path directly. The build compiler must itself embed the ownership checker.
+fn build_v3_array_accessor_borrow_ownership() ?string {
+	v3_bin := tmp_array_accessor_borrow_path('array_accessor_borrow_ownership')
+	build :=
+		os.execute('${os.quoted_path(array_accessor_borrow_vexe)} -gc none -d ownership -path "${array_accessor_borrow_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(array_accessor_borrow_v3_src)}')
+	if build.output.contains('ownership support is not compiled into this v3 executable') {
+		// The bootstrap compiler running this test lacks the ownership checker, so it
+		// cannot build an ownership-enabled v3. Skip rather than fail on such a host.
+		return none
+	}
+	assert build.exit_code == 0, build.output
+	return v3_bin
+}
+
+fn compile_v3_ownership_program(v3_bin string, name string, src string, extra_args string) os.Result {
+	src_path := '${tmp_array_accessor_borrow_path(name)}.v'
+	bin_path := tmp_array_accessor_borrow_path('${name}_bin')
+	os.write_file(src_path, src) or { panic(err) }
+	return os.execute('${os.quoted_path(v3_bin)} -ownership -d ownership -no-parallel ${extra_args} -o ${os.quoted_path(bin_path)} ${os.quoted_path(src_path)}')
+}
+
+// Concern: `last()` reads its receiver twice (`arr[arr.len - 1]`), so a non-lvalue receiver
+// such as `make_entries()` must be evaluated exactly once. The borrow lowering binds it to a
+// temp instead of duplicating the call.
+fn test_owned_first_last_receiver_evaluated_once() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_eval_once',
+		"struct E {\n\tname string\n\tsize int\n}\n\n__global (\n\tmake_calls = 0\n)\n\nfn make_entries() []E {\n\tmake_calls++\n\treturn [E{ name: 'a', size: 5 }, E{ name: 'b', size: 9 }]\n}\n\nfn main() {\n\ts := make_entries().last().size\n\tprintln(int_str(s) + ':' + int_str(make_calls))\n}\n",
+		'-enable-globals')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('unsupported node kind'), compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_eval_once_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	// size == 9 (last element), make_entries() invoked once (not twice).
+	assert run.output.trim_space() == '9:1', run.output
+}
+
+// Concern: `(arr.last()).field` must lower to the same in-place borrow as `arr.last().field`.
+// The checker's borrowed-field predicate sees through transparent parentheses to suppress the
+// diagnostic, so the transformer must unwrap them too; otherwise the accessor follows its
+// independent-copy path and emits an empty `(0)` placeholder that fails C compilation.
+fn test_owned_parenthesized_field_borrow() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_paren_borrow',
+		"struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n\ttotal   int\n}\n\nfn (mut t T) shrink() {\n\tfor t.entries.len > 0 {\n\t\tt.total -= (t.entries.last()).size\n\t\tt.entries.delete_last()\n\t}\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'a', size: 5 }\n\tt.entries << E{ name: 'b', size: 7 }\n\tt.total = 12\n\tt.shrink()\n\tprintln(int_str(t.total))\n}\n", '')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('unsupported node kind'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_paren_borrow_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '0', run.output
+}
+
+// Concern: a bound method value (`arr.last().method`) is not a field read. Closure
+// generation shallow-copies the receiver, so it must keep the copying accessor semantics
+// instead of borrowing the array element. For an owned element with no `clone()` method the
+// accessor is genuinely impossible, so this must be rejected rather than silently miscompiled.
+fn test_owned_method_value_receiver_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_method_value',
+		"struct E {\n\tname string\n\tsize int\n}\n\nfn (e E) describe() string {\n\treturn e.name\n}\n\nfn main() {\n\tarr := [E{ name: 'a', size: 1 }, E{ name: 'b', size: 2 }]\n\tf := arr.last().describe\n\tprintln(f())\n}\n", '')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
+// A method value whose element type does provide `clone()` keeps working: the receiver is
+// cloned (an independent copy), never an alias of the live array element.
+fn test_owned_method_value_with_clone_runs() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_method_value_clone',
+		"struct E {\n\tname string\n\tsize int\n}\n\nfn (e E) clone() E {\n\treturn E{ name: e.name.clone(), size: e.size }\n}\n\nfn (e E) describe() string {\n\treturn e.name\n}\n\nfn main() {\n\tarr := [E{ name: 'a', size: 1 }, E{ name: 'bb', size: 2 }]\n\tf := arr.last().describe\n\tprintln(f())\n}\n", '')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('unsupported node kind'), compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_method_value_clone_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'bb', run.output
+}

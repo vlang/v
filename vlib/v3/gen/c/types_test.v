@@ -6,6 +6,17 @@ import v3.parser
 import v3.pref
 import v3.types
 
+fn test_json_helper_scan_requires_legacy_json_module() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+	assert !g.has_legacy_json_module()
+	tc.file_modules['json_primitives.c.v'] = 'json'
+	assert g.has_legacy_json_module()
+}
+
 fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
 	mut ast := &flat.FlatAst{}
 	ast.nodes = [flat.Node{
@@ -24,12 +35,57 @@ fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
 	assert g.needed_optional_types.len == 1
 }
 
+fn test_json_pointer_sum_variants_use_direct_owned_payloads() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.sum_types['main.Payload'] = ['&main.Node', 'string']
+	tc.structs['main.Node'] = [
+		types.StructField{
+			name: 'name'
+			typ:  types.Type(types.String{})
+		},
+	]
+	mut encode_gen := FlatGen.new()
+	encode_gen.a = &ast
+	encode_gen.tc = &tc
+	payload_type := types.Type(types.SumType{
+		name: 'main.Payload'
+	})
+	pointer_field := encode_gen.sum_field_name('&main.Node')
+	encoded := encode_gen.json_encode_value_c_expr_inner(payload_type, 'value', []string{}) or {
+		assert false, 'pointer sum encoder was not generated'
+		return
+	}
+	assert encoded.contains('(value).${pointer_field}'), encoded
+	assert !encoded.contains('(*(value).${pointer_field})'), encoded
+	equal := encode_gen.json_encode_equal_c_expr(payload_type, 'left', 'right', []string{}) or {
+		assert false, 'pointer sum equality was not generated'
+		return
+	}
+	assert equal.contains('(left).${pointer_field}'), equal
+	assert equal.contains('(right).${pointer_field}'), equal
+	assert !equal.contains('(*(left).${pointer_field})'), equal
+	assert !equal.contains('(*(right).${pointer_field})'), equal
+
+	mut decode_gen := FlatGen.new()
+	decode_gen.a = &ast
+	decode_gen.tc = &tc
+	decode_gen.gen_json_decode_sum_variant_expr('item', 'main.Payload', '&main.Node')
+	decoded := decode_gen.sb.str()
+	assert decoded.contains('v3_json_decode_ptr_'), decoded
+	assert decoded.contains('._pointer_variant_is_owned = true'), decoded
+}
+
 fn test_optional_payload_qualifies_concrete_generic_struct() {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)
 	tc.structs['json2.StructKeyDecodeResult_TestEchoArgs'] = []types.StructField{}
+	tc.structs['AnyStruct[json2.Any]'] = []types.StructField{}
+	tc.struct_modules['AnyStruct[json2.Any]'] = 'main'
 	tc.structs['async.Task_mcp__Response'] = []types.StructField{}
 	tc.structs['types.Array'] = []types.StructField{}
+	tc.file_imports['main.v\njson'] = 'json2'
+	tc.cur_file = 'main.v'
 	mut g := FlatGen.new()
 	g.a = ast
 	g.tc = &tc
@@ -44,6 +100,10 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 	})
 	assert g.optional_payload_c_type(value_type) == 'json2__StructKeyDecodeResult_TestEchoArgs'
 	assert g.optional_payload_c_type(pointer_type) == 'async__Task_mcp__Response*'
+	alias_payload := g.optional_payload_c_type(types.Type(types.Struct{
+		name: 'main.AnyStruct[json.Any]'
+	}))
+	assert alias_payload == 'AnyStruct_json2__Any'
 	assert g.optional_payload_c_type(types.Type(types.Array{
 		elem_type: types.Type(types.int_)
 	})) == 'Array'
@@ -52,6 +112,25 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 	})
 	assert g.concrete_optional_type_name(result_type) == 'Optional_json2__StructKeyDecodeResult_TestEchoArgs'
 	assert g.needed_optional_types['Optional_json2__StructKeyDecodeResult_TestEchoArgs'] == 'json2__StructKeyDecodeResult_TestEchoArgs'
+}
+
+fn test_optional_payload_ignores_import_aliases_from_other_files() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.cur_file = 'json/any.v'
+	tc.structs['json.Any'] = []types.StructField{}
+	tc.structs['json2.Any'] = []types.StructField{}
+	tc.structs['AnyStruct[json.Any]'] = []types.StructField{}
+	tc.structs['AnyStruct[json2.Any]'] = []types.StructField{}
+	tc.file_imports['unrelated.v\njson'] = 'json2'
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	alias_payload := g.optional_payload_c_type(types.Type(types.Struct{
+		name: 'main.AnyStruct[json.Any]'
+	}))
+	assert alias_payload == 'main__AnyStruct_json__Any'
 }
 
 fn test_optional_payload_qualifies_interface() {
@@ -140,6 +219,30 @@ fn test_declaration_signature_scan_collects_specialized_fn_nodes() {
 
 	g.collect_declaration_signature_types()
 	assert 'Optional_Data' in g.needed_optional_types
+}
+
+fn test_specialized_signature_scan_uses_declaration_module() {
+	mut ast := flat.FlatAst.new()
+	fn_id := ast.add_node(flat.Node{
+		kind:  .fn_decl
+		value: 'QueryBuilder_Entity_update'
+		typ:   '!&QueryBuilder[Entity]'
+	})
+	ast.specialized_fn_nodes[int(fn_id)] = true
+	ast.specialized_fn_modules[int(fn_id)] = 'orm'
+	mut tc := types.TypeChecker.new(&ast)
+	tc.structs['Entity'] = []types.StructField{}
+	tc.structs['orm.QueryBuilder[Entity]'] = []types.StructField{}
+	tc.struct_modules['orm.QueryBuilder'] = 'orm'
+	tc.struct_modules['orm.QueryBuilder[Entity]'] = 'orm'
+	tc.struct_generic_params['orm.QueryBuilder'] = ['T']
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+
+	g.collect_declaration_signature_types()
+	assert 'Optional_orm__QueryBuilder_Entityptr' in g.needed_optional_types
+	assert 'Optional_QueryBuilder_Entityptr' !in g.needed_optional_types
 }
 
 fn test_optional_value_info_preserves_pointer_payload_abi() {

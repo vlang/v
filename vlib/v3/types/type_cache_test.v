@@ -78,6 +78,79 @@ fn test_parse_resolution_fn_type_preserves_nested_main_type_lock() {
 	}
 }
 
+fn test_parse_resolution_main_alias_uses_alias_declaration_scope() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.structs['Context'] = []StructField{}
+	tc.struct_modules['Context'] = 'main'
+	tc.structs['veb.Context'] = []StructField{}
+	tc.struct_modules['veb.Context'] = 'veb'
+	tc.type_aliases['AliasContext'] = 'Context'
+	tc.type_alias_modules['AliasContext'] = 'main'
+	tc.cur_file = 'veb/veb.v'
+	tc.cur_module = 'veb'
+
+	locked := tc.parse_resolution_type('main.AliasContext')
+	if locked is Alias {
+		assert locked.name == 'AliasContext'
+		assert locked.base_type is Struct
+		assert locked.base_type.name() == 'Context'
+	} else {
+		assert false, locked.name()
+	}
+	assert tc.c_type(locked) == 'main__Context'
+}
+
+fn test_embedded_field_type_trusts_collected_embed_metadata() {
+	field := StructField{
+		name:     'Middleware[Context]'
+		typ:      Type(Struct{
+			name: 'veb.Middleware[veb.Context]'
+		})
+		is_embed: true
+	}
+	embedded := embedded_field_type(field) or { panic('missing embedded field type') }
+	assert embedded.name() == 'veb.Middleware[veb.Context]'
+}
+
+fn test_receiver_embeds_through_alias() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.structs['Context'] = [
+		StructField{
+			name:     'Context'
+			typ:      Type(Struct{
+				name: 'veb.Context'
+			})
+			is_embed: true
+		},
+	]
+	actual := Type(Alias{
+		name:      'AliasContext'
+		base_type: Type(Struct{
+			name: 'Context'
+		})
+	})
+	expected := Type(Pointer{
+		base_type: Type(Struct{
+			name: 'veb.Context'
+		})
+	})
+	assert tc.receiver_embeds(actual, expected)
+}
+
+fn test_parse_resolution_type_handles_locked_main_generic_application() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.struct_generic_params['StructType'] = ['T']
+	tc.cur_file = 'decode.v'
+	tc.cur_module = 'json2'
+
+	assert tc.parse_resolution_type('main.StructType[string]').name() == 'StructType[string]'
+	assert tc.parse_resolution_type('main.StructType[main.string]').name() == 'StructType[string]'
+	assert tc.parse_type('main.StructType[string]').name() == 'StructType[string]'
+}
+
 fn test_type_cache_overlay_rebinds_resolution_type_views() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
@@ -228,6 +301,8 @@ fn test_fn_param_mutability_participates_in_type_identity() {
 	immutable_id, _ := tc.intern_type(immutable)
 	mutable_id, _ := tc.intern_type(mutable)
 	assert immutable_id != mutable_id
+	assert tc.c_type(immutable) == 'fn_ptr:void|int'
+	assert tc.c_type(mutable) == 'fn_ptr:void|int*'
 
 	cloned := clone_owned_type(mutable)
 	assert cloned is FnType
@@ -332,6 +407,14 @@ fn test_generic_text_substitution_recurses_through_wrappers() {
 	assert subst_generic_text('thread T', ['string'], ['T']) == 'thread string'
 	assert subst_generic_text('atomic T', ['u64'], ['T']) == 'atomic u64'
 	assert subst_generic_text('chan ?[]T', ['i16'], ['T']) == 'chan ?[]i16'
+}
+
+fn test_concrete_generic_method_signature_candidates_flatten_nested_pointer_args() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	candidates := tc.concrete_generic_method_signature_candidates('SimpleCache[string, &CacheItem[string, int]]',
+		'set')
+	assert 'SimpleCache[string, ptr_CacheItem_string_int].set' in candidates
 }
 
 fn test_resolved_symbols_have_stable_ids_and_storage() {

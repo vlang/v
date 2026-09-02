@@ -3,6 +3,25 @@ module transform
 import v3.flat
 import v3.types
 
+fn test_comptime_loop_type_metadata_survives_generic_specialization() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cloning_comptime_for_depth = 1
+	t.cloning_comptime_for_vars = ['field']
+
+	assert t.subst_comptime_type_operand('field.typ', ['Address']) == 'field.typ'
+	assert t.subst_comptime_type_operand('field.unaliased_typ', ['Address']) == 'field.unaliased_typ'
+	assert t.subst_comptime_type_operand('field.unaliased_typ.payload_type', [
+		'Address',
+	]) == 'field.unaliased_typ.payload_type'
+	t.cur_module = 'veb'
+	assert t.subst_comptime_type_operand("'Middleware'", ['App']) == "'Middleware'"
+	assert t.subst_comptime_type_condition("field.name == 'Middleware'", [
+		'App',
+	]) == "field.name == 'Middleware'"
+}
+
 fn test_generic_unresolved_type_detects_multi_return_placeholders() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -113,6 +132,42 @@ fn test_materialized_generic_struct_fields_preserve_plain_alias_arguments() {
 	assert fields[1].typ.name() == '[]int'
 }
 
+fn test_materialized_imported_generic_struct_preserves_locked_main_generic_argument() {
+	mut a := flat.FlatAst.new()
+	value_field := a.add_node(flat.Node{
+		kind:  .field_decl
+		value: 'value'
+		typ:   'T'
+	})
+	children_start := a.children.len
+	a.children << value_field
+	mut result_decl := flat.Node{
+		kind:           .struct_decl
+		value:          'StructKeyDecodeResult'
+		children_start: children_start
+		children_count: 1
+	}
+	result_decl.set_generic_params(['T'])
+	result_id := a.add_node(result_decl)
+
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['StructType'] = ['T']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.materialize_generic_struct_spec('json2.StructKeyDecodeResult[main.StructType[main.string]]',
+		GenericStructDecl{
+			id:     result_id
+			node:   result_decl
+			module: 'json2'
+			key:    'json2.StructKeyDecodeResult'
+		})
+
+	fields := tc.structs['json2.StructKeyDecodeResult[main.StructType[main.string]]'] or {
+		assert false, 'missing materialized result fields'
+		return
+	}
+	assert fields[0].typ.name() == 'StructType[string]'
+}
+
 fn test_flattened_generic_struct_types_materialize_from_recorded_args() {
 	mut a := flat.FlatAst.new()
 	mut arc_decl := flat.Node{
@@ -154,6 +209,8 @@ fn test_flattened_generic_struct_arg_canonicalizes_to_source_application() {
 	])
 	assert t.generic_specialized_source_type_name('StructType_int') or { '' } == 'StructType[int]'
 	assert t.canonical_generic_specialization_arg('StructType_int') == 'StructType[int]'
+	assert t.generic_specialized_source_type_name('&StructType_int') or { '' } == '&StructType[int]'
+	assert t.canonical_generic_specialization_arg('&StructType[int]') == '&StructType[int]'
 
 	t.record_generic_specialization_args_in_module('StructType', 'main', ['time.Time'])
 	assert c_name('StructType[time.Time]') == 'StructType_time__Time'
@@ -173,6 +230,88 @@ fn test_short_fixed_array_generic_arg_canonicalizes_to_source_type() {
 	assert t.canonical_generic_specialization_arg('int_3_2') == '[2][3]int'
 	tc.type_aliases['int_2'] = 'int'
 	assert t.canonical_generic_specialization_arg('int_2') == 'int_2'
+}
+
+fn test_composite_generic_inference_preserves_nested_alias() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['Distance'] = 'int'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.build_generic_alias_name_index()
+
+	assert t.generic_composite_inference_alias_type('datatypes.LinkedList[Distance]', 'datatypes') == 'datatypes.LinkedList[Distance]'
+}
+
+fn test_composite_generic_inference_still_expands_direct_alias() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['Distances'] = '[]int'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.build_generic_alias_name_index()
+
+	assert t.generic_composite_inference_alias_type('Distances', 'main') == '[]int'
+}
+
+fn test_concrete_generic_fn_alias_call_expands_multi_return_signature() {
+	mut a := flat.FlatAst.new()
+	callee_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'make_splitter'
+	})
+	children_start := a.children.len
+	a.children << callee_id
+	call_id := a.add_node(flat.Node{
+		kind:           .call
+		typ:            'fn(I) (O, R)[string, string, string]'
+		children_start: children_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['FnMultiReturn'] = 'fn (I) (O, R)'
+	tc.type_alias_generic_params['FnMultiReturn'] = ['I', 'O', 'R']
+	tc.fn_ret_types['make_splitter'] = types.Type(types.Alias{
+		name:      'FnMultiReturn[string, string, string]'
+		base_type: types.Type(types.void_)
+	})
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+
+	concrete := t.concrete_fn_alias_call_return_type(int(call_id), a.nodes[int(call_id)]) or {
+		assert false, 'generic function type alias was not expanded'
+		return
+	}
+	assert concrete == 'fn(string) (string, string)'
+}
+
+fn test_concrete_generic_fn_alias_call_expands_result_signature() {
+	mut a := flat.FlatAst.new()
+	callee_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'literal'
+	})
+	children_start := a.children.len
+	a.children << callee_id
+	call_id := a.add_node(flat.Node{
+		kind:           .call
+		typ:            'fn(string) !ParseResult[T][string]'
+		children_start: children_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['ParseFunction'] = 'fn (string) !ParseResult[T]'
+	tc.type_alias_generic_params['ParseFunction'] = ['T']
+	tc.fn_ret_types['literal'] = types.Type(types.Alias{
+		name:      'ParseFunction[string]'
+		base_type: types.Type(types.void_)
+	})
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+
+	concrete := t.concrete_fn_alias_call_return_type(int(call_id), a.nodes[int(call_id)]) or {
+		assert false, 'generic result function type alias was not expanded'
+		return
+	}
+	assert concrete == 'fn(string) !ParseResult[string]'
 }
 
 fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base() {
@@ -226,10 +365,23 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	t.active_specialization_main_types['Context'] = true
 	assert t.lock_colliding_main_substitution_type_text('fn (mut T) bool', 'fn (mut Context) bool',
 		'callee', ['T']) == 'fn (mut main.Context) bool'
+	t.structs['Unique'] = StructInfo{}
+	assert t.lock_colliding_main_generic_type_text('Unique', 'callee') == 'Unique'
 	assert t.canonical_generic_specialization_arg('[]main.Event') == '[]Event'
+	assert t.canonical_generic_specialization_arg('main.Box[main.Event]') == 'Box[Event]'
+	assert t.canonical_generic_specialization_arg('[main.string]Box') == 'Box[string]'
+	assert t.canonical_generic_specialization_arg('u8_3') == '[3]u8'
+	assert strip_main_type_locks('domain.Type[main.Event]') == 'domain.Type[Event]'
 	assert t.specialization_main_type_closure(['map[string]Event']) == {
 		'Event': true
 	}
+	tc.type_aliases['AliasContext'] = 'Context'
+	assert t.specialization_main_type_closure(['AliasContext']) == {
+		'AliasContext': true
+		'Context':      true
+	}
+	t.active_specialization_main_types['AliasContext'] = true
+	assert t.lock_colliding_main_generic_type_text('AliasContext', 'callee') == 'main.AliasContext'
 }
 
 fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
@@ -255,6 +407,12 @@ fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
 	t.active_specialization_main_types['Context'] = true
 	assert t.lock_colliding_main_substitution_type_text('other.Box[map[other.Key]T]',
 		'other.Box[map[other.Key]Context]', 'arc', ['T']) == 'other.Box[map[other.Key]main.Context]'
+}
+
+fn test_generic_fn_type_param_mode_payload_preserves_mutability() {
+	assert generic_fn_type_param_mode_payload('mut Item') == 'mut Item'
+	assert generic_fn_type_param_mode_payload('mut item Item') == 'mut Item'
+	assert generic_fn_type_param_mode_payload('item Item') == 'Item'
 }
 
 fn test_resolve_substituted_type_text_qualifies_local_generic_base() {
@@ -346,6 +504,56 @@ fn test_generic_method_decl_matches_embedded_receiver() {
 	}
 	mut seen := map[string]bool{}
 	assert t.generic_decl_matches_embedded_receiver('Outer', decl, 'main', mut seen)
+}
+
+fn test_escaped_generic_method_indexes_unescaped_call_spelling() {
+	mut a := flat.FlatAst.new()
+	receiver_id := a.add_node(flat.Node{
+		kind: .param
+		typ:  '&Box[T]'
+	})
+	children_start := a.children.len
+	a.children << receiver_id
+	mut fn_decl := flat.Node{
+		kind:           .fn_decl
+		value:          'Box[T].@union'
+		children_start: children_start
+		children_count: 1
+	}
+	fn_decl.set_generic_params(['T'])
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.generic_fn_decls_cache['Box.@union'] = GenericFnDecl{
+		node: fn_decl
+		key:  'Box.@union'
+	}
+	t.build_generic_receiver_method_index()
+
+	assert t.generic_fn_call_names['union']
+	assert t.generic_receiver_methods_by_name['union'] == ['Box.@union']
+	assert t.generic_receiver_decl_key('Box', 'union', t.generic_fn_decls_cache) == 'Box.@union'
+	assert t.generic_plain_call_candidates('type', 'main') == ['type', '@type']
+}
+
+fn test_synthetic_generic_call_with_exact_identity_is_scannable() {
+	mut a := flat.FlatAst.new()
+	callee_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'datatypes.LinkedList[map[string]int].str'
+	})
+	children_start := a.children.len
+	a.children << callee_id
+	call := flat.Node{
+		kind:           .call
+		children_start: children_start
+		children_count: 1
+	}
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.synthetic_generic_call_has_exact_identity(call)
+	a.nodes[int(callee_id)].value = 'orm.v_sql_create_table_T_Demo'
+	assert t.synthetic_generic_call_has_exact_identity(call)
 }
 
 fn test_specialized_plain_generic_call_args_decode_top_level_array_suffix() {

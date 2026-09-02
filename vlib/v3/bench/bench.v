@@ -5,10 +5,12 @@ import runtime
 import sync
 import time
 
-const default_memory_limit_kb = i64(10) * 1024 * 1024
-const self_host_memory_limit_kb = i64(10) * 1024 * 1024
-const compiler_tree_memory_limit_kb = i64(10) * 1024 * 1024
-const memory_monitor_interval = 100 * time.millisecond
+// Leave 256 MiB below the externally visible 4 GiB ceiling so an allocation
+// between watchdog samples cannot make the process cross that ceiling first.
+const default_memory_limit_kb = i64(3840) * 1024
+const self_host_memory_limit_kb = i64(3840) * 1024
+const compiler_tree_memory_limit_kb = i64(3840) * 1024
+const memory_monitor_interval = 10 * time.millisecond
 
 // Step represents step data used by bench.
 pub struct Step {

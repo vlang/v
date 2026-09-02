@@ -388,6 +388,63 @@ fn main() {
 		'expected `&&Item`')
 }
 
+fn test_fn_literal_mut_pointer_param_reassigns_caller_slot() {
+	v3_bin := mut_param_reassign_build_v3()
+	out := mut_param_reassign_run_good(v3_bin, 'fn_literal_mut_pointer_param_reassign', 'struct Item {
+	value int
+}
+
+fn main() {
+	mut first := Item{
+		value: 1
+	}
+	second := Item{
+		value: 9
+	}
+	mut current := &first
+	replace := fn (mut current &Item, replacement &Item) {
+		current = replacement
+	}
+	replace(mut current, &second)
+	assert current == &second
+	assert first.value == 1
+	println(int_str(current.value))
+}
+')
+	assert out == '9'
+}
+
+fn test_fn_literal_value_param_shadow_preserves_outer_pointer_flags() {
+	v3_bin := mut_param_reassign_build_v3()
+	out := mut_param_reassign_run_good(v3_bin, 'fn_literal_value_param_shadow', 'struct Item {
+	value int
+}
+
+fn replace_after_shadow(mut current &Item, replacement &Item) {
+	read := fn (current int) int {
+		return current
+	}
+	assert read(7) == 7
+	current = replacement
+}
+
+fn main() {
+	mut first := Item{
+		value: 1
+	}
+	second := Item{
+		value: 9
+	}
+	mut current := &first
+	replace_after_shadow(mut current, &second)
+	assert current == &second
+	assert first.value == 1
+	println(int_str(current.value))
+}
+')
+	assert out == '9'
+}
+
 fn test_mut_pointer_param_signature_and_expression_conversions() {
 	v3_bin := mut_param_reassign_build_v3()
 	out, c_source := mut_param_reassign_run_good_with_c(v3_bin,
@@ -469,6 +526,41 @@ fn main() {
 	assert c_source.contains('return (*(*item));'), 'missing source dereference after slot dereference'
 	assert c_source.contains('copied_value = (*(*item));'), 'missing standalone assignment dereference'
 	assert c_source.contains('((*(*value)))++;'), 'missing standalone postfix dereference'
+}
+
+fn test_generic_mut_sum_parameter_forwards_existing_pointer() {
+	v3_bin := mut_param_reassign_build_v3()
+	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'generic_mut_sum_forward', 'struct Cat {
+	name string
+}
+
+struct Dog {
+	name string
+}
+
+type Animal = Cat | Dog
+
+fn replace[T](mut value T, replacement T) {
+	value = replacement
+}
+
+fn decode[T](mut value T, replacement T) {
+	replace(mut value, replacement)
+}
+
+fn main() {
+	mut animal := Animal(Dog{
+		name: "Rex"
+	})
+	decode(mut animal, Animal(Cat{
+		name: "Tom"
+	}))
+	println(animal)
+}
+')
+	assert out == "Animal(Cat{\n    name: 'Tom'\n})"
+	assert c_source.contains('replace_T_Animal(value, replacement);')
+	assert !c_source.contains('replace_T_Animal(&value, replacement);')
 }
 
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {

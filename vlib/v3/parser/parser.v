@@ -173,14 +173,14 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		unsupported_inline_asm_guards: map[int]bool{}
 		sql_query_data_aliases:        map[string]bool{}
 		a:                             &flat.FlatAst{
-			nodes:                  []flat.Node{cap: 256}
-			children:               []flat.NodeId{cap: 512}
-			disabled_fns:           map[string]bool{}
-			export_fn_names:        map[string]string{}
-			source_files:           map[int]&token.File{}
-			template_call_sites:    map[int]token.Pos{}
-			template_actions:       map[int]string{}
-			missing_imports:        map[int]string{}
+			nodes:                    []flat.Node{cap: 256}
+			children:                 []flat.NodeId{cap: 512}
+			disabled_fns:             map[string]bool{}
+			export_fn_names:          map[string]string{}
+			source_files:             map[int]&token.File{}
+			template_call_sites:      map[int]token.Pos{}
+			template_actions:         map[int]string{}
+			missing_imports:          map[int]string{}
 			formatter_sources:        map[int]string{}
 			formatter_file_sources:   map[int]string{}
 			formatter_node_ends:      map[int]int{}
@@ -189,10 +189,10 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			formatter_param_list_end: map[int]int{}
 			formatter_for_in_mut:     map[int]u8{}
 			formatter_local_sels:     map[int]bool{}
-			text_ids:               map[string]flat.TextId{}
-			specialized_fn_nodes:   map[int]bool{}
-			specialized_fn_modules: map[int]string{}
-			specialized_fn_files:   map[int]string{}
+			text_ids:                 map[string]flat.TextId{}
+			specialized_fn_nodes:     map[int]bool{}
+			specialized_fn_modules:   map[int]string{}
+			specialized_fn_files:     map[int]string{}
 		}
 	}
 }
@@ -313,7 +313,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.has_veb_template = false
 	p.may_have_local_types = stable_src.contains('struct') || stable_src.contains('union')
 	p.unsupported_inline_asm_guards.clear()
-	if !p.prefs.supports_inline_asm {
+	if !p.prefs.supports_inline_asm && !p.supports_c_inline_asm_lowering() {
 		p.precollect_unsupported_inline_asm_guards(stable_src, p.prefs.target.arch)
 	}
 	if path.ends_with('.v') || path.ends_with('.vv') {
@@ -1641,7 +1641,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		is_mut = true
 		p.next()
 	}
-	if p.tok == .key_shared {
+	if p.tok == .key_shared && !p.shared_parameter_token_is_identifier() {
 		is_shared = true
 		p.next()
 	}
@@ -1965,8 +1965,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 						typ:   embedded_type
 						pos:   p.span_to(field_start)
 					})
-					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global,
-						pending_attrs)
+					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, pending_attrs)
 					pending_attrs = []string{}
 					ids << fid
 					if p.tok == .semicolon {
@@ -5575,25 +5574,18 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	}
 	match p.tok {
 		.key_typeof {
-			p.record_diagnostic('`$typeof` is not supported; use `typeof(...)` instead', dollar_pos)
 			return p.typeof_expr()
 		}
 		.key_sizeof {
-			p.record_diagnostic('`$sizeof` is not supported; use `sizeof(...)` instead', dollar_pos)
 			return p.sizeof_expr()
 		}
 		.key_isreftype {
-			p.record_diagnostic('`$isreftype` is not supported; use `isreftype(...)` instead',
-				dollar_pos)
 			return p.isreftype_expr()
 		}
 		.key_offsetof {
-			p.record_diagnostic('`$__offsetof` is not supported; use `__offsetof(...)` instead',
-				dollar_pos)
 			return p.offsetof_expr()
 		}
 		.key_dump {
-			p.record_diagnostic('`$dump` is not supported; use `dump(...)` instead', dollar_pos)
 			return p.dump_expr()
 		}
 		else {}
@@ -6288,6 +6280,9 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return stmt_id
 		}
 		.key_shared {
+			if p.shared_token_is_identifier(false) {
+				return p.assign_or_expr_stmt()
+			}
 			p.next()
 			stmt_id := p.assign_or_expr_stmt()
 			p.mark_node_shared(stmt_id)
@@ -8224,16 +8219,20 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 		p.next()
 	}
 	// V assembly blocks name their instruction set before `{` (`asm arm64 { ... }`).
-	// The C backend intentionally ignores the block and uses the source fallback, so the
-	// architecture token must be consumed with the block instead of becoming stray statements.
+	mut asm_arch := ''
 	for p.tok == .name {
+		if asm_arch.len == 0 {
+			asm_arch = p.lit
+		}
 		p.next()
 	}
-	// Consume the asm block. A truly empty block has no backend work and is a
-	// portable no-op. A `memory` clobber is not empty: it is a compiler barrier,
-	// so keep diagnosing it until the selected V3 backend can emit that barrier.
+	// Consume the asm block while retaining its exact source. Inline assembly uses
+	// a line-sensitive syntax that cannot be reconstructed from the normal token
+	// stream after comments and automatic semicolons have been discarded.
 	mut has_memory_clobber := false
 	mut has_unsupported_content := false
+	mut section := 0
+	mut io_exprs := []flat.NodeId{}
 	if p.tok == .lcbr {
 		mut depth := 1
 		p.next()
@@ -8246,6 +8245,19 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 					p.next()
 					break
 				}
+			} else if depth == 1 && p.tok == .semicolon && p.tok_pos >= 0 && p.tok_pos < p.s.src.len
+				&& p.s.src[p.tok_pos] == `;` {
+				section++
+				p.next()
+				continue
+			} else if depth == 1 && section in [1, 2] && p.tok == .lpar {
+				has_unsupported_content = true
+				p.next()
+				if p.tok != .rpar && p.tok != .eof {
+					io_exprs << p.expr(.lowest)
+				}
+				p.check(.rpar)
+				continue
 			} else if depth == 1 && p.tok != .semicolon {
 				if p.tok == .name && p.lit == 'memory' {
 					has_memory_clobber = true
@@ -8259,19 +8271,32 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	if p.tok == .semicolon {
 		p.next()
 	}
-	if !p.prefs.supports_inline_asm && (has_memory_clobber || has_unsupported_content) {
+	asm_end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
+	raw_source := if asm_pos >= 0 && asm_pos < asm_end { p.s.src[asm_pos..asm_end] } else { '' }
+	// An empty template with only a memory clobber is architecture independent;
+	// it lowers to a compiler barrier even when the block names another ISA.
+	can_lower := (!has_unsupported_content && has_memory_clobber)
+		|| (p.supports_c_inline_asm_lowering()
+		&& comptime_flag_is_target_arch(asm_arch, p.prefs.target.arch))
+	if !p.prefs.supports_inline_asm && !can_lower && (has_memory_clobber || has_unsupported_content) {
 		p.record_diagnostic('inline assembly is not supported by the selected V3 backend', asm_pos)
 	}
 	id := p.add_node(flat.Node{
-		kind:  .asm_stmt
-		value: if has_memory_clobber { 'memory' } else { '' }
-		pos:   p.span_to(asm_pos)
+		kind:           .asm_stmt
+		value:          raw_source
+		children_start: p.add_children(io_exprs)
+		children_count: flat.child_count(io_exprs.len)
+		pos:            p.span_to(asm_pos)
 	})
 	if p.prefs.is_fmt {
 		end := int_min(p.a.node(id).pos.end, p.s.src.len)
 		p.a.formatter_sources[int(id)] = p.s.src[asm_pos..end]
 	}
 	return id
+}
+
+fn (p &Parser) supports_c_inline_asm_lowering() bool {
+	return p.prefs.backend == 'c' && p.prefs.target.arch in ['amd64', 'arm64', 'x86']
 }
 
 // ==================== expressions (Pratt parser) ====================
@@ -8286,7 +8311,7 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 }
 
 fn (mut p Parser) stmt_expr() flat.NodeId {
-	is_stmt_ident := p.tok == .name
+	is_stmt_ident := p.tok_can_be_decl_name()
 	lhs := p.prefix_expr()
 	return p.expr_with_lhs_context(lhs, .lowest, is_stmt_ident, false)
 }
@@ -8323,11 +8348,11 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			p.next()
 			or_body := p.block_stmt()
 			ostart := p.add_children2(lhs, or_body)
-			lhs = p.add_node(flat.Node{
+			lhs = p.add_node_from(flat.Node{
 				kind:           .or_expr
 				children_start: ostart
 				children_count: 2
-			})
+			}, lhs)
 			continue
 		}
 		// selector / method call
@@ -9345,6 +9370,16 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return id
 		}
 		.key_shared {
+			if p.shared_token_is_identifier(false) {
+				name_pos := p.tok_pos
+				name_end := p.tok_end
+				p.next()
+				return p.add_node(flat.Node{
+					kind:  .ident
+					value: 'shared'
+					pos:   token.new_span(p.cur_file_id, name_pos, name_end)
+				})
+			}
 			p.next()
 			return p.prefix_expr()
 		}
@@ -10330,7 +10365,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 		mut arg_is_shared := false
 		mut arg_is_mut := false
-		if p.tok == .key_shared {
+		if p.tok == .key_shared && !p.shared_token_is_identifier(true) {
 			arg_is_shared = true
 			p.next()
 		} else if p.tok == .key_mut {
@@ -10415,6 +10450,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 			}
 		}
 	}
+	p.annotate_short_struct_call_arg(ids)
 	cstart := p.add_children(ids)
 	// Anchor the completed call at its callee (fn_expr) so unknown-function and
 	// argument diagnostics point at the call, not the token after `)`.
@@ -10431,6 +10467,45 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 	}
 	return id
+}
+
+// annotate_short_struct_call_arg records the aggregate type of a trailing
+// `field: value` call argument on its first field. The flat call shape keeps the
+// fields as separate children for contextual struct parameters; a bare generic
+// parameter still needs the single anonymous aggregate type that V assigns to
+// the short struct literal.
+fn (mut p Parser) annotate_short_struct_call_arg(ids []flat.NodeId) {
+	mut first_field := -1
+	mut field_names := []string{}
+	mut field_types := []string{}
+	mut field_positions := []token.Pos{}
+	for i in 1 .. ids.len {
+		field := p.a.node(ids[i])
+		if field.kind != .field_init {
+			if first_field >= 0 {
+				return
+			}
+			continue
+		}
+		if first_field < 0 {
+			first_field = i
+		}
+		if field.value.len == 0 || field.value in field_names || field.children_count != 1 {
+			return
+		}
+		value_id := p.a.child(field, 0)
+		field_type := p.anonymous_struct_literal_field_type(value_id) or { return }
+		field_names << field.value
+		field_types << field_type
+		field_positions << field.pos
+	}
+	if first_field < 0 {
+		return
+	}
+	aggregate := p.register_anonymous_struct_type(field_names, field_types, field_positions, false) or {
+		return
+	}
+	p.a.nodes[int(ids[first_field])].typ = aggregate
 }
 
 fn (mut p Parser) lambda_expr_no_args() flat.NodeId {
@@ -10574,7 +10649,13 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 }
 
 fn (mut p Parser) index_part_expr() flat.NodeId {
-	if p.tok in [.question, .not, .key_atomic, .key_shared] {
+	// A generic call is initially parsed through the same bracket path as an index.
+	// Preserve type-only heads as a single type expression so `f[fn (int) int]()`
+	// does not turn the function signature into a body-less anonymous function.
+	is_type_only_head := p.tok in [.question, .not, .amp, .and, .key_fn, .key_shared, .key_atomic]
+	shared_starts_type := p.tok != .key_shared || !p.shared_token_is_identifier(false)
+	reference_starts_type := p.tok !in [.not, .amp, .and] || p.isreftype_prefix_arg_starts_type()
+	if is_type_only_head && shared_starts_type && reference_starts_type {
 		start := p.span_start()
 		type_name := p.parse_type_name()
 		return p.add_node(flat.Node{
@@ -10684,6 +10765,9 @@ fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
 }
 
 fn (p &Parser) generic_struct_init_type_name(id flat.NodeId) ?string {
+	if !p.generic_type_target_has_static_path(id) {
+		return none
+	}
 	type_name := p.resolve_local_type_name(p.type_expr_name(id))
 	if !generic_type_name_can_init(type_name) {
 		if p.index_expr_is_lifetime_erased_type_name(id) && type_name_can_init(type_name) {
@@ -10692,6 +10776,41 @@ fn (p &Parser) generic_struct_init_type_name(id flat.NodeId) ?string {
 		return none
 	}
 	return type_name
+}
+
+// generic_type_target_has_static_path distinguishes `Type[T]` from a generic
+// call on a runtime receiver. The latter can otherwise look like a type after
+// type_expr_name reconstructs `Type[T]{}.method[U]` through its selectors.
+fn (p &Parser) generic_type_target_has_static_path(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	target := p.a.nodes[int(id)]
+	if target.kind != .index || target.children_count < 2 || target.value == 'range' {
+		return false
+	}
+	mut path_id := p.a.child(&target, 0)
+	for _ in 0 .. 64 {
+		if int(path_id) < 0 {
+			return false
+		}
+		path := p.a.nodes[int(path_id)]
+		match path.kind {
+			.ident {
+				return true
+			}
+			.selector {
+				if path.children_count != 1 {
+					return false
+				}
+				path_id = p.a.child(&path, 0)
+			}
+			else {
+				return false
+			}
+		}
+	}
+	return false
 }
 
 fn (p &Parser) index_expr_is_lifetime_erased_type_name(id flat.NodeId) bool {
@@ -11479,7 +11598,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 				is_mut_capture = true
 				p.next()
 			}
-			if p.tok == .key_shared || p.tok == .key_atomic {
+			if (p.tok == .key_shared && !p.shared_token_is_identifier(true)) || p.tok == .key_atomic {
 				capture_modifier = p.lit
 				p.next()
 			}
@@ -11846,7 +11965,11 @@ fn (mut p Parser) isreftype_expr() flat.NodeId {
 	start := p.add_children([callee, arg])
 	return p.a.add_node(flat.Node{
 		kind:           .call
-		value:          if p.prefs.is_fmt { '__v3_formatter_isreftype:${formatter_form}' } else { '' }
+		value:          if p.prefs.is_fmt {
+			'__v3_formatter_isreftype:${formatter_form}'
+		} else {
+			''
+		}
 		children_start: start
 		children_count: 2
 		typ:            'bool'
@@ -11865,7 +11988,10 @@ fn (mut p Parser) isreftype_paren_arg_starts_type() bool {
 		.lsbr {
 			return p.current_lbr_starts_array_type()
 		}
-		.key_fn, .ellipsis, .key_mut, .key_shared, .key_atomic, .key_struct, .key_union {
+		.key_shared {
+			return !p.shared_token_is_identifier(false)
+		}
+		.key_fn, .ellipsis, .key_mut, .key_atomic, .key_struct, .key_union {
 			return true
 		}
 		else {
@@ -12305,6 +12431,114 @@ fn (p &Parser) can_start_type_name() bool {
 	return token_can_start_type_name(p.tok)
 }
 
+fn (mut p Parser) shared_token_is_identifier(allow_multiline_modifier bool) bool {
+	next := p.peek()
+	if !allow_multiline_modifier && p.shared_token_gap_has_line_boundary() {
+		return true
+	}
+	if next.is_keyword() && next !in [.key_or, .key_in, .key_as, .key_is] {
+		return false
+	}
+	if !token_can_start_type_name(next) && next != .key_union {
+		return true
+	}
+	if next == .amp {
+		return true
+	}
+	// Calls and indexes attach directly to an identifier. A shared modifier is
+	// separated from the value it qualifies (`shared value`).
+	return p.tok_end == p.peek_pos && next in [.lpar, .lsbr, .question, .not]
+}
+
+fn (mut p Parser) shared_parameter_token_is_identifier() bool {
+	if p.tok != .key_shared {
+		return false
+	}
+	first := p.peek()
+	if first == .comma {
+		return true
+	}
+	if first in [.semicolon, .rpar, .eof] {
+		return false
+	}
+	start := p.peek_pos
+	mut end := p.peek_end
+	mut lookahead := p.s
+	mut tok := first
+	mut paren_depth := 0
+	mut bracket_depth := 0
+	mut brace_depth := 0
+	for tok != .eof {
+		if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0
+			&& tok in [.comma, .semicolon, .rpar] {
+			break
+		}
+		end = if tok == first { p.peek_end } else { lookahead.offset }
+		match tok {
+			.lpar { paren_depth++ }
+			.rpar {
+				if paren_depth > 0 {
+					paren_depth--
+				}
+			}
+			.lsbr { bracket_depth++ }
+			.rsbr {
+				if bracket_depth > 0 {
+					bracket_depth--
+				}
+			}
+			.lcbr { brace_depth++ }
+			.rcbr {
+				if brace_depth > 0 {
+					brace_depth--
+				}
+			}
+			else {}
+		}
+		tok = lookahead.scan()
+	}
+	if start < 0 || end <= start || end > p.s.src.len {
+		return false
+	}
+	return generic_struct_init_suffix_arg_can_be_type(p.s.src[start..end])
+}
+
+fn (p &Parser) shared_token_gap_has_line_boundary() bool {
+	mut offset := p.tok_end
+	for offset < p.peek_pos {
+		if p.s.src[offset] in [`\r`, `\n`] {
+			return true
+		}
+		if offset + 1 >= p.peek_pos || p.s.src[offset] != `/` {
+			offset++
+			continue
+		}
+		if p.s.src[offset + 1] == `/` {
+			return true
+		}
+		if p.s.src[offset + 1] != `*` {
+			offset++
+			continue
+		}
+		offset += 2
+		mut depth := 1
+		for offset + 1 < p.peek_pos && depth > 0 {
+			if p.s.src[offset] == `/` && p.s.src[offset + 1] == `*` && (offset + 2 >= p.peek_pos || p.s.src[offset + 2] != `/`) {
+				depth++
+				offset += 2
+				continue
+			}
+			if p.s.src[offset] == `*` && p.s.src[offset + 1] == `/` {
+				depth--
+				offset += 2
+				continue
+			}
+			offset++
+		}
+	}
+	return false
+}
+
 fn token_can_start_type_name(tok token.Token) bool {
 	return tok == .name || tok == .amp || tok == .question || tok == .not || tok == .lsbr
 		|| tok == .lpar || tok == .key_fn || tok == .key_struct || tok == .ellipsis
@@ -12715,6 +12949,7 @@ fn (mut p Parser) anonymous_struct_type_for_literal(init flat.Node) ?string {
 fn (mut p Parser) create_anonymous_struct_type_for_literal(init flat.Node) ?string {
 	mut field_names := []string{cap: int(init.children_count)}
 	mut field_types := []string{cap: int(init.children_count)}
+	mut field_positions := []token.Pos{cap: int(init.children_count)}
 	for i in 0 .. init.children_count {
 		field := p.a.child_node(&init, i)
 		if field.kind != .field_init || field.value.len == 0 || field.children_count == 0 {
@@ -12724,11 +12959,12 @@ fn (mut p Parser) create_anonymous_struct_type_for_literal(init flat.Node) ?stri
 		field_type := p.infer_anonymous_struct_literal_type(value) or { return none }
 		field_names << field.value
 		field_types << field_type
+		field_positions << field.pos
 	}
 	if p.anonymous_struct_literal_has_contextual_candidate(init, field_names) {
 		return none
 	}
-	return p.register_anonymous_struct_type(field_names, field_types, false)
+	return p.register_anonymous_struct_type(field_names, field_types, field_positions, false)
 }
 
 fn (p &Parser) anonymous_struct_literal_has_contextual_candidate(init flat.Node, field_names []string) bool {
@@ -12806,15 +13042,17 @@ fn (mut p Parser) create_anonymous_struct_type_from_type_init(init flat.Node) ?s
 	}
 	mut field_names := []string{cap: int(init.children_count) / 2}
 	mut field_types := []string{cap: int(init.children_count) / 2}
+	mut field_positions := []token.Pos{cap: int(init.children_count) / 2}
 	mut i := 0
 	for i < init.children_count {
 		field_name_node := p.anonymous_type_init_positional_ident(init, i) or { return none }
 		field_type_node := p.anonymous_type_init_positional_ident(init, i + 1) or { return none }
 		field_names << field_name_node.value
 		field_types << p.resolve_local_type_name(field_type_node.value)
+		field_positions << field_name_node.pos
 		i += 2
 	}
-	return p.register_anonymous_struct_type(field_names, field_types, true)
+	return p.register_anonymous_struct_type(field_names, field_types, field_positions, true)
 }
 
 fn (p &Parser) anonymous_type_init_positional_ident(init flat.Node, idx int) ?flat.Node {
@@ -12829,8 +13067,9 @@ fn (p &Parser) anonymous_type_init_positional_ident(init flat.Node, idx int) ?fl
 	return *child
 }
 
-fn (mut p Parser) register_anonymous_struct_type(field_names []string, field_types []string, allow_name_shape bool) ?string {
-	if field_names.len == 0 || field_names.len != field_types.len {
+fn (mut p Parser) register_anonymous_struct_type(field_names []string, field_types []string, field_positions []token.Pos, allow_name_shape bool) ?string {
+	if field_names.len == 0 || field_names.len != field_types.len
+		|| field_names.len != field_positions.len {
 		return none
 	}
 	for name in field_names {
@@ -12850,6 +13089,7 @@ fn (mut p Parser) register_anonymous_struct_type(field_names []string, field_typ
 			kind:  .field_decl
 			value: field_name
 			typ:   field_types[i]
+			pos:   field_positions[i]
 		})
 	}
 	return p.register_anonymous_aggregate_type(ids, field_names, field_types, !allow_name_shape,
@@ -13099,11 +13339,11 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) string {
 			if field_is_volatile {
 				attrs << '__v3_volatile_field'
 			}
-			p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global,
-				attrs)
+			p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global, attrs)
 		} else {
-			p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global,
-				if field_is_volatile { ['__v3_volatile_field'] } else { []string{} })
+			p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global, if field_is_volatile { [
+					'__v3_volatile_field',
+				] } else { []string{} })
 		}
 		ids << fid
 		field_names << field_name

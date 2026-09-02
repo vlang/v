@@ -37,7 +37,7 @@ fn test_aes_known_answer_vectors() {
 		key := hex.decode(tc.key) or { panic(err) }
 		plaintext := hex.decode(tc.plaintext) or { panic(err) }
 		expected_ciphertext := hex.decode(tc.ciphertext) or { panic(err) }
-		block := new_cipher(key)
+		block := new_cipher(key) or { panic(err) }
 		mut ciphertext := []u8{len: block_size}
 		block.encrypt(mut ciphertext, plaintext)
 		assert ciphertext == expected_ciphertext

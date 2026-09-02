@@ -116,6 +116,50 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_array_method_on_imported_global_keeps_global_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_method_on_imported_global', 'import os
+
+fn main() {
+	println(os.args.last().len > 0)
+}
+')
+	assert out == 'true'
+}
+
+fn test_explicit_generic_call_keeps_container_and_imported_struct_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'explicit_generic_call_result_context', 'import time
+
+fn identity[T](value T) T {
+	return value
+}
+
+fn generic_map[M]() map[string]M {
+	return map[string]M{}
+}
+
+struct Box[T] {
+	value T
+}
+
+fn main() {
+	values := identity[map[string]string]({
+		"answer": "yes"
+	})
+	moment := identity[time.Time](time.Time{
+		year: 2024
+	})
+	box := Box[int]{}
+	println(values["answer"])
+	println(moment.year)
+	println(typeof(box.value).name)
+	println(typeof(generic_map[string]()).name)
+}
+')
+	assert out == 'yes\n2024\nint\nmap[string]string'
+}
+
 fn test_sum_equality_uses_canonical_struct_field_types() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_with_flags(v3_bin, 'sum_equality_canonical_struct_field_types', '-building-v', 'import v.token
@@ -717,6 +761,8 @@ fn compile_good_project(v3_bin string, name string, flags string, files map[stri
 	compile := os.execute('${v3_bin} ${flags} ${input_path} -b c -o ${good_bin}')
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
+	assert !compile.output.contains('gen_node: unsupported node kind'),
+		'${name}: unsupported node reached C generation\n${compile.output}'
 	return good_bin
 }
 
@@ -1017,6 +1063,36 @@ fn main() {
 	assert out == '7'
 }
 
+fn test_imported_struct_zero_fields_use_declaration_module_aliases() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'imported_struct_field_alias_scope', {
+		'v.mod':       "Module { name: 'imported_struct_field_alias_scope' }\n"
+		'other/mod.v': 'module other
+
+pub type Type = u32
+
+pub struct Holder {
+pub:
+	typ Type
+}
+'
+		'main.v':      'module main
+
+import other
+
+struct Type {
+	sym &int @[required]
+}
+
+fn main() {
+	holder := other.Holder{}
+	println(holder.typ)
+}
+'
+	}, 'main.v')
+	assert out == '0'
+}
+
 fn test_for_in_smartcast_interface_field_keeps_interface_element_type() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'for_in_smartcast_interface_field',
@@ -1275,6 +1351,62 @@ fn test_shared_field_without_sync_import_compiles_and_locks() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'shared_field_without_sync_import',
 		'struct S {\nmut:\n\ta shared int\n}\n\nfn main() {\n\tmut s := S{}\n\tlock s.a {\n\t\ts.a = 7\n\t\tprintln(int_str(s.a))\n\t}\n}\n')
+	assert out == '7'
+}
+
+fn test_direct_shared_field_lock_allows_mut_receiver_and_branch_tail_append() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'direct_shared_lock_mut_receiver_and_append', 'struct State {
+mut:
+	values shared []string
+	count int
+}
+
+fn (mut state State) touch() {
+	state.count++
+}
+
+fn main() {
+	mut state := State{}
+	lock state.values {
+		state.touch()
+		if true {
+			state.values << "ok"
+		}
+	}
+	mut len := 0
+	rlock state.values {
+		len = state.values.len
+	}
+	println(int_str(state.count))
+	println(int_str(len))
+}
+')
+	assert out == '1\n1'
+}
+
+fn test_unsafe_block_tail_keeps_lexical_smartcast() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'unsafe_block_tail_lexical_smartcast', 'struct LambdaNode {
+mut:
+	value int
+}
+
+struct OtherNode {}
+
+type Expr = LambdaNode | OtherNode
+
+fn main() {
+	expr := Expr(LambdaNode{
+		value: 6
+	})
+	if expr is LambdaNode {
+		mut node := unsafe { expr }
+		node.value++
+		println(int_str(node.value))
+	}
+}
+')
 	assert out == '7'
 }
 
@@ -2806,6 +2938,343 @@ fn main() {
 	assert out == '1249975000'
 }
 
+fn test_immediately_invoked_bound_method_keeps_escaped_receiver_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Registry {
+mut:
+	callbacks []fn () int
+}
+
+struct State {
+	value int
+}
+
+fn (state &State) install(registry &Registry) {
+	unsafe {
+		registry.callbacks << fn [state] () int {
+			return state.value
+		}
+	}
+}
+
+fn main() {
+	registry := &Registry{}
+	(State{
+		value: 42
+	}.install)(registry)
+	println(int_str(registry.callbacks[0]()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_bound_method_escaped_receiver_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	call_pos := main_body.index('println(int__str') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert call_pos >= 0, main_body
+	assert destroy_pos > call_pos, main_body
+	out := run_good(v3_bin, 'immediate_bound_method_escaped_receiver', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_pointer_result_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	x := 41
+	p := (fn [x] () &int {
+		return unsafe { &x }
+	})()
+	println(int_str(unsafe { *p + 1 }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_pointer_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	deref_pos := main_body.index('*p') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert deref_pos >= 0, main_body
+	assert destroy_pos > deref_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_aliased_pointer', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_integer_encoded_capture_address_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut value := 41
+	address := (fn [mut value] () usize {
+		return usize(voidptr(&value))
+	})()
+	p := unsafe { &int(voidptr(address)) }
+	println(int_str(unsafe { *p + 1 }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_integer_capture_address_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	deref_pos := main_body.index('*p') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert deref_pos >= 0, main_body
+	assert destroy_pos > deref_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_integer_capture_address', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_integer_capture_address_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut value := 41
+	address := (fn [mut value] () usize {
+		encoded := usize(voidptr(&value))
+		return encoded
+	})()
+	p := unsafe { &int(voidptr(address)) }
+	println(int_str(unsafe { *p + 1 }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_integer_capture_address_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	deref_pos := main_body.index('*p') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert deref_pos >= 0, main_body
+	assert destroy_pos > deref_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_aliased_integer_capture_address', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_result_error_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct CaptureError {
+	ptr &int
+}
+
+fn (err CaptureError) msg() string {
+	return "capture error"
+}
+
+fn main() {
+	x := 41
+	value := (fn [x] () !int {
+		return CaptureError{
+			ptr: unsafe { &x }
+		}
+	})() or {
+		if err is CaptureError {
+			println(int_str(unsafe { *err.ptr + 1 }))
+		}
+		return
+	}
+	println(int_str(value))
+}
+'
+	out := run_good(v3_bin, 'immediate_closure_aliased_result_error', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_slice_result_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	fixed := [3]int{41, 42, 43}
+	slice := (fn [fixed] () []int {
+		return fixed[..]
+	})()
+	println(slice)
+}
+'
+	out := run_good(v3_bin, 'immediate_closure_aliased_slice', source)
+	assert out == '[41, 42, 43]'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_string_result_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut bytes := [2]u8{}
+	bytes[0] = `O`
+	bytes[1] = `K`
+	text := (fn [bytes] () string {
+		return unsafe { tos(&bytes[0], bytes.len) }
+	})()
+	println(text)
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_string_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_aliased_string', source)
+	assert out == 'OK'
+}
+
+fn test_immediately_invoked_closure_keeps_spawned_nested_capture_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut value := 41
+	worker := (fn [mut value] () thread int {
+		return spawn fn [mut value] () int {
+			return value + 1
+		}()
+	})()
+	println(int_str(worker.wait()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_spawned_capture_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	wait_pos := main_body.index('__v_thread_join') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert wait_pos >= 0, main_body
+	assert destroy_pos > wait_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_spawned_capture', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_spawn_capture_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut value := 42
+	worker := (fn [value] () thread int {
+		p := unsafe { &value }
+		return spawn fn [p] () int {
+			return unsafe { *p }
+		}()
+	})()
+	println(int_str(worker.wait()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_spawn_capture_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	wait_pos := main_body.index('__v_thread_join') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert wait_pos >= 0, main_body
+	assert destroy_pos > wait_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_aliased_spawn_capture', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_side_effect_capture_escape_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Registry {
+mut:
+	callbacks []fn () int
+}
+
+fn install(mut registry Registry, callback fn () int) {
+	registry.callbacks << callback
+}
+
+fn main() {
+	mut registry := &Registry{}
+	mut value := 42
+	(fn [mut registry, mut value] () {
+		install(mut registry, fn [mut value] () int {
+			return value
+		})
+	})()
+	println(int_str(registry.callbacks[0]()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_side_effect_escape_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_side_effect_escape', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_factory_closure_keeps_side_effect_capture_escape_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Registry {
+mut:
+	callbacks []fn () int
+}
+
+fn install(mut registry Registry, callback fn () int) {
+	registry.callbacks << callback
+}
+
+fn make_callback(mut registry Registry) fn () {
+	mut value := 42
+	return fn [mut registry, mut value] () {
+		install(mut registry, fn [mut value] () int {
+			return value
+		})
+	}
+}
+
+fn main() {
+	mut registry := Registry{}
+	make_callback(mut registry)()
+	println(int_str(registry.callbacks[0]()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_factory_closure_side_effect_escape_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_factory_closure_side_effect_escape', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_projected_capture_escapes_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct PointerHolder {
+mut:
+	value &int
+}
+
+fn main() {
+	external := 0
+	mut holder := &PointerHolder{
+		value: unsafe { &external }
+	}
+	mut selector_value := 40
+	(fn [mut holder, mut selector_value] () {
+		holder.value = unsafe { &selector_value }
+	})()
+
+	mut pointers := [unsafe { &external }]!
+	mut index_value := 41
+	(fn [mut pointers, mut index_value] () {
+		pointers[0] = unsafe { &index_value }
+	})()
+
+	println(int_str(unsafe { *holder.value }))
+	println(int_str(unsafe { *pointers[0] }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_projected_escapes_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.last_index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_projected_escapes', source)
+	assert out == '40\n41'
+}
+
+fn test_immediately_invoked_closure_keeps_channel_sent_capture_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	ch := chan &int{cap: 1}
+	mut value := 42
+	(fn [ch, mut value] () {
+		ch <- unsafe { &value }
+	})()
+	p := <-ch
+	println(int_str(unsafe { *p }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_channel_escape_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_channel_escape', source)
+	assert out == '42'
+}
+
 fn test_disjoint_same_name_closure_bindings_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := '@[heap]
@@ -3574,6 +4043,68 @@ fn test_heap_escaping_amp_alias_keeps_heap_pointer() {
 	out := run_good(v3_bin, 'heap_escaping_amp_alias',
 		'struct S {\n\tn int\n}\n\nfn leak() &S {\n\tmut s := S{\n\t\tn: 1\n\t}\n\tp := &s\n\ts = S{\n\t\tn: 2\n\t}\n\treturn p\n}\n\nfn main() {\n\tp := leak()\n\tprintln(int_str(p.n))\n}\n')
 	assert out == '2'
+}
+
+fn test_scalar_return_call_does_not_heap_promote_address_argument() {
+	v3_bin := build_v3_review_transform()
+	c_source := gen_c_from_source(v3_bin, 'scalar_return_address_arg', 'struct Item {
+	value int
+}
+
+fn inspect(item &Item) int {
+	return item.value
+}
+
+fn forward() int {
+	item := Item{
+		value: 7
+	}
+	return inspect(&item)
+}
+
+fn main() {
+	println(int_str(forward()))
+}
+')
+	body := c_fn_body(c_source, 'int forward(void) {')
+	assert body.contains('main__Item item ='), body
+	assert !body.contains('main__Item* item ='), body
+	assert !body.contains('memdup(&__esc'), body
+}
+
+fn test_smartcast_selector_return_keeps_existing_sum_box() {
+	v3_bin := build_v3_review_transform()
+	c_source := gen_c_from_source(v3_bin, 'smartcast_selector_sum_return', 'struct First {
+	value int
+}
+
+struct Second {
+	value int
+}
+
+type Value = First | Second
+
+struct Holder {
+	value Value
+}
+
+fn selected(holder &Holder) Value {
+	if holder.value is First {
+		return holder.value
+	}
+	return holder.value
+}
+
+fn main() {
+	holder := Holder{
+		value: First{value: 7}
+	}
+	println(selected(&holder))
+}
+')
+	body := c_fn_body(c_source, 'Value selected(main__Holder* holder) {')
+	assert body.contains('return holder->value;'), body
+	assert !body.contains('memdup('), body
 }
 
 fn test_returned_closure_alias_heap_promotes_captured_pointer_source() {
@@ -4842,6 +5373,13 @@ fn test_late_inferred_generic_call_emits_specialization() {
 	assert out == '42'
 }
 
+fn test_late_reachable_body_generic_call_emits_specialization() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'late_reachable_body_generic_call_emits_specialization',
+		'fn identity[T](value T) T {\n\treturn value\n}\n\nfn late_helper() int {\n\treturn identity[int](42)\n}\n\nfn outer[T]() int {\n\treturn late_helper()\n}\n\nfn main() {\n\tprintln(int_str(outer[int]()))\n}\n')
+	assert out == '42'
+}
+
 fn test_module_qualified_panic_keeps_module_symbol() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'module_qualified_panic_symbol', {
@@ -5187,6 +5725,55 @@ fn main() {
 }
 ')
 	assert out == 'value\ntrue\ntrue\nmain_attr'
+}
+
+fn test_comptime_generic_embedded_field_uses_short_reflected_name() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'comptime_generic_embedded_field_name', 'struct Embedded[T] {
+	value T
+}
+
+struct Container {
+	Embedded[int]
+}
+
+fn main() {
+	$for field in Container.fields {
+		$if field.is_embed {
+			println(field.name)
+		}
+	}
+}
+')
+	assert out == 'Embedded'
+}
+
+fn test_comptime_main_enum_field_matches_enum_type_group() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'comptime_main_enum_field_type_group', 'enum State {
+	idle
+	running
+}
+
+struct Job {
+	state State
+}
+
+fn enum_fields[T]() int {
+	mut count := 0
+	$for field in T.fields {
+		$if field.unaliased_typ is $enum {
+			count++
+		}
+	}
+	return count
+}
+
+fn main() {
+	println(enum_fields[Job]())
+}
+')
+	assert out == '1'
 }
 
 fn test_json2_encode_keeps_independent_array_element_specializations() {
@@ -6235,6 +6822,82 @@ fn main() {
 	assert out == '7\n4\n1'
 }
 
+fn test_parallel_transform_defers_large_const_map_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut entries := []string{cap: 512}
+	for i in 0 .. 512 {
+		entries << "\t\t'key_${i}': ${i}"
+	}
+	source := "const large_lookup = {\n\t'group': {\n${entries.join('\n')}\n\t}\n}\n\nfn read_large_lookup(key string) int {\n\treturn large_lookup['group'][key]\n}\n\nfn main() {\n\tprintln(read_large_lookup('key_511'))\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_large_const_map', 'VJOBS=4', source)
+	assert out == '511'
+}
+
+fn test_parallel_transform_defers_external_const_collection_clone_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform_ownership()
+	mut fields := []string{cap: 256}
+	for i in 0 .. 256 {
+		fields << '\tfield_${i} string'
+	}
+	mut readers := []string{cap: 64}
+	mut calls := []string{cap: 64}
+	for i in 0 .. 64 {
+		readers << "fn read_${i}() int {\n\treturn if clone_lookup.len == 1 { ${i} } else { -10000 }\n}"
+		calls << '\ttotal += read_${i}()'
+	}
+	source := "struct Wide implements IClone {\n${fields.join('\n')}\n}\n\nfn make_items() []Wide {\n\treturn [Wide{\n\t\tfield_255: 'ok'\n\t}]\n}\n\nconst clone_lookup = {\n\t'items': make_items().clone()\n}\n\n${readers.join('\n\n')}\n\nfn main() {\n\tmut total := 0\n${calls.join('\n')}\n\tprintln(total)\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_const_collection_clone', 'VJOBS=4', source)
+	assert out == '2016'
+}
+
+fn test_parallel_transform_defers_large_const_map_membership_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut entries := []string{cap: 512}
+	for i in 0 .. 512 {
+		entries << "\t'key_${i}': ${i}"
+	}
+	source := "const large_lookup = {\n${entries.join('\n')}\n}\n\nfn has_key(key string) bool {\n\treturn key in large_lookup\n}\n\nfn lacks_key(key string) bool {\n\treturn key !in large_lookup\n}\n\nfn main() {\n\tprintln(has_key('key_511'))\n\tprintln(lacks_key('missing'))\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_large_const_map_membership', 'VJOBS=4', source)
+	assert out == 'true\ntrue'
+}
+
+fn test_parallel_transform_defers_external_const_map_conditional_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut conditionals := []string{cap: 300}
+	for i in 0 .. 300 {
+		conditionals << 'if false { 0 } else { ${i} }'
+	}
+	source := "const conditional_lookup = {\n\t'value': [${conditionals.join(',\n\t\t')}]\n}\n\nfn read_conditional_lookup() int {\n\treturn conditional_lookup['value'][299]\n}\n\nfn main() {\n\tprintln(read_conditional_lookup())\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_const_map_conditional', 'VJOBS=4', source)
+	assert out == '299'
+}
+
+fn test_parallel_transform_defers_external_const_map_match_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut arms := []string{cap: 300}
+	for i in 0 .. 300 {
+		arms << '${i} { ${i} }'
+	}
+	source := "const match_lookup = {\n\t'value': [match 299 {\n\t\t${arms.join('\n\t\t')}\n\t\telse { -1 }\n\t}]\n}\n\nfn read_match_lookup() int {\n\treturn match_lookup['value'][0]\n}\n\nfn main() {\n\tprintln(read_match_lookup())\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_const_map_match', 'VJOBS=4', source)
+	assert out == '299'
+}
+
 fn test_parallel_transform_merges_generic_call_metadata() {
 	v3_bin := build_v3_review_transform()
 	mut source := 'fn identity[T](value T) T {\n\treturn value\n}\n\n'
@@ -6250,4 +6913,211 @@ fn test_parallel_transform_merges_generic_call_metadata() {
 	source += '\tprintln(total)\n}\n'
 	out := run_good_with_env(v3_bin, 'parallel_transform_generic_calls', 'VJOBS=4', source)
 	assert out == expected.str()
+}
+
+fn test_struct_stringification_evaluates_dereferenced_pointer_call_once() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'struct_str_dereferenced_call_once', 'struct Node {
+	value int
+}
+
+struct Counter {
+mut:
+	calls int
+}
+
+fn next_node(mut counter Counter) &Node {
+	counter.calls++
+	return &Node{
+		value: counter.calls
+	}
+}
+
+fn main() {
+	mut counter := Counter{}
+	println("\${*next_node(mut counter)}")
+	println(int_str(counter.calls))
+}
+')
+	assert out == 'Node{\n    value: 1\n}\n1'
+}
+
+fn test_specialized_generic_match_expression_ignores_unresolved_branch_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'specialized_generic_match_expression_type', "type Value = []u8 | i64 | string
+
+struct Reader {}
+
+fn (Reader) load[T]() !map[string]T {
+	\$if T is string {
+		return {
+			'answer': 'ready'
+		}
+	}
+	return map[string]T{}
+}
+
+fn normalize[T](value Value) T {
+	\$if T is string {
+		result := match value {
+			[]u8 { value.bytestr() }
+			string { value }
+			i64 { value.str() }
+		}
+		return result
+	}
+	return T{}
+}
+
+fn main() {
+	println(normalize[string](Value('ready')))
+	result := Reader{}.load[string]() or { panic(err) }
+	println(result['answer'])
+}
+")
+	assert out == 'ready\nready'
+}
+
+fn test_comptime_reflected_enum_field_accepts_integer_decoder_result() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'comptime_reflected_enum_integer_assignment', 'enum Role {
+	worker
+	manager
+}
+
+struct Config {
+	role Role
+}
+
+fn decoded_number() int {
+	return 1
+}
+
+fn decode[T]() T {
+	mut value := T{}
+	$for field in T.fields {
+		$if field.is_enum {
+			value.$(field.name) = decoded_number()
+		}
+	}
+	return value
+}
+
+fn main() {
+	println(decode[Config]().role)
+}
+')
+	assert out == 'manager'
+}
+
+fn test_imported_generic_default_uses_main_struct_defaults_after_short_name_collision() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'generic_main_default_short_name_collision', {
+		'v.mod':       "Module { name: 'generic_main_default_short_name_collision' }\n"
+		'factory/x.v': 'module factory\n\nstruct Doc {\n\tast &int\n}\n\npub fn make[T]() T {\n\treturn T{}\n}\n'
+		'main.v':      'module main\n\nimport factory\n\nstruct Doc {\n\titems []int\n}\n\nfn main() {\n\tvalue := factory.make[Doc]()\n\tprintln(value.items.len)\n}\n'
+	}, 'main.v')
+	assert out == '0'
+}
+
+fn test_address_of_nil_pointer_cast_provides_pointer_value_storage() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'address_of_nil_pointer_cast_storage', 'struct Holder {
+	ptr voidptr
+}
+
+fn main() {
+	value := Holder{
+		ptr: unsafe { &voidptr(nil) }
+	}
+	println(value.ptr == unsafe { nil })
+}
+')
+	assert out == 'true'
+}
+
+fn test_later_block_call_arg_does_not_capture_earlier_sum_temporary() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'call_arg_sum_temp_before_block', 'struct Item {}
+
+type Node = Item
+
+fn inspect(node &Node, data voidptr) {
+	println(node is Item)
+	println(data == unsafe { nil })
+}
+
+fn main() {
+	item := &Item{}
+	inspect(item, unsafe { nil })
+}
+')
+	assert out == 'true\ntrue'
+}
+
+fn test_test_command_skips_incompatible_single_file() {
+	v3_bin := build_v3_review_transform()
+	test_dir := os.join_path(os.temp_dir(), 'v3_incompatible_test_${os.getpid()}')
+	os.rmdir_all(test_dir) or {}
+	os.mkdir_all(test_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	test_src := os.join_path(test_dir, 'v3_incompatible_windows_test.v')
+	os.write_file(test_src, 'module main\n\nfn test_never_checked() {\n\tmissing_symbol()\n}\n') or {
+		panic(err)
+	}
+	result := os.execute('${v3_bin} -nocache -os linux test ${test_src}')
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('SKIP ${test_src}'), result.output
+
+	backend_test_src := os.join_path(test_dir, 'v3_incompatible_backend_test.js.v')
+	os.write_file(backend_test_src,
+		'module main\n\nfn test_never_checked() {\n\tmissing_symbol()\n}\n') or { panic(err) }
+	backend_result := os.execute('${v3_bin} -nocache test ${backend_test_src}')
+	assert backend_result.exit_code == 0, backend_result.output
+	assert backend_result.output.contains('SKIP ${backend_test_src}'), backend_result.output
+
+	compatible_test_src := os.join_path(test_dir, 'v3_compatible_backend_test.c.v')
+	os.write_file(compatible_test_src,
+		"module main\n\nfn test_test_command_skips_incompatible_single_file() {\n\tprintln('compatible backend test')\n}\n") or {
+		panic(err)
+	}
+	compatible_result := os.execute('${v3_bin} -nocache test ${compatible_test_src}')
+	assert compatible_result.exit_code == 0, compatible_result.output
+	assert !compatible_result.output.contains('SKIP ${compatible_test_src}'), compatible_result.output
+	assert compatible_result.output.contains('compatible backend test'), compatible_result.output
+}
+
+fn test_test_command_honors_vtest_build_constraint() {
+	v3_bin := build_v3_review_transform()
+	test_src := os.join_path(os.temp_dir(), 'v3_constrained_test.v')
+	os.write_file(test_src,
+		'// vtest build: windows\nmodule main\n\nfn test_never_checked() {\n\tmissing_symbol()\n}\n') or {
+		panic(err)
+	}
+	result := os.execute('${v3_bin} -nocache -os linux test ${test_src}')
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('SKIP ${test_src}'), result.output
+}
+
+fn test_module_can_import_package_with_its_own_short_name() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'same_named_import', {
+		'v.mod':                        "Module { name: 'same_named_import' }\n"
+		'nested/time/same_name_test.v': 'module time
+
+import time
+
+struct Time {
+	local int
+}
+
+fn test_imported_time_type_is_available() {
+	assert time.Time{}.year == 0
+	assert Time{}.local == 0
+}
+'
+	}, 'nested/time/same_name_test.v')
+	assert out == ''
 }

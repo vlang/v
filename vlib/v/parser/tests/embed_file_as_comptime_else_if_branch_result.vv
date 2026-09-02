@@ -1,0 +1,19 @@
+fn yes() bool {
+	return true
+}
+
+fn main() {
+	fallback := $embed_file(@FILE)
+	embedded := if yes() {
+		$if false {
+			fallback
+		} $else $if true {
+			$embed_file(@FILE)
+		} $else {
+			fallback
+		}
+	} else {
+		fallback
+	}
+	assert embedded.len > 0
+}

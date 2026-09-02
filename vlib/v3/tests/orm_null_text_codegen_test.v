@@ -18,10 +18,15 @@ fn orm_null_text_build_v3() string {
 }
 
 fn orm_null_text_gen_c(v3_bin string, name string, src string) string {
-	src_path := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+	root := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src_path := os.join_path(root, 'main.v')
 	os.write_file(src_path, src) or { panic(err) }
-	c_path := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.c')
-	os.rm(c_path) or {}
+	c_path := os.join_path(root, 'main.c')
 	result := os.execute('${v3_bin} ${src_path} -o ${c_path}')
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_path) or { panic(err) }

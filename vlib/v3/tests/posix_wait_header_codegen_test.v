@@ -205,6 +205,7 @@ fn main() {
 	assert with_os.c_code.contains('struct rusage { struct timeval ru_utime; struct timeval ru_stime; long ru_maxrss; long ru_ixrss; long ru_idrss;'), with_os.c_code
 	assert with_os.c_code.contains('#if !defined(_STRUCT_TIMESPEC) && !defined(_TIMESPEC_DEFINED) && !defined(_TIMESPEC_DECLARED) && !defined(__timespec_defined)'), with_os.c_code
 	assert with_os.c_code.contains('typedef struct timespec timespec;'), with_os.c_code
+	assert with_os.c_code.contains('int clock_gettime(int clock_id, struct timespec* tp);'), with_os.c_code
 	assert !with_os.c_code.contains('typedef struct stat stat;'), with_os.c_code
 	assert !with_os.c_code.contains('typedef struct sigset_t sigset_t;'), with_os.c_code
 	assert !with_os.c_code.contains('struct winsize {\n\tws_row'), with_os.c_code
@@ -269,6 +270,8 @@ fn main() {
 	assert with_os.c_code.contains('#define TCP_DEFER_ACCEPT 9'), with_os.c_code
 	assert with_os.c_code.contains('#define TCP_FASTOPEN 23'), with_os.c_code
 	assert with_os.c_code.contains('#define SOMAXCONN 4096'), with_os.c_code
+	assert with_os.c_code.contains('#define SOMAXCONN 128'), with_os.c_code
+	assert with_os.c_code.contains('#define SOMAXCONN 0x7fffffff'), with_os.c_code
 	assert with_os.c_code.contains('#define MEM_COMMIT 0x00001000U'), with_os.c_code
 	assert with_os.c_code.contains('#define MEM_RESERVE 0x00002000U'), with_os.c_code
 	assert with_os.c_code.contains('#define PAGE_READWRITE 0x04U'), with_os.c_code
@@ -796,6 +799,7 @@ fn main() {
 	assert program.c_code.contains('#define SOCK_STREAM 1'), program.c_code
 	assert program.c_code.contains('#define AF_INET 2'), program.c_code
 	assert program.c_code.contains('#define SOL_SOCKET'), program.c_code
+	assert program.c_code.contains('#define SOMAXCONN 128'), program.c_code
 	assert program.c_code.contains('#define EV_SET(kevp, a, b, c, d, e, f) do'), program.c_code
 	assert program.c_code.contains('#define EVFILT_READ (-1)'), program.c_code
 	assert program.c_code.contains('#define EVFILT_MACHPORT (-8)'), program.c_code
