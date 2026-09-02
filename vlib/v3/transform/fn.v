@@ -2231,6 +2231,30 @@ fn (t &Transformer) selector_is_lexical_module_call(base_id flat.NodeId, method 
 	return call_name == '${module_name}.${method}'
 }
 
+// call_selector_base_is_namespace reports whether the base of a selector callee names a
+// compile-time namespace rather than a runtime value: the `C` pseudo-module, an imported module
+// (`os.abs_path(...)`, `flat.node_payload(...)`), or a type in a static associated call
+// (`Type.make(...)`). Such a base has no storage, so the call-operand ordering guards must not
+// stabilize or snapshot it — spilling it emits a declaration of an undeclared identifier at an
+// `unknown` type (`unknown __order_snapshot_0 = os;`) — and treat only the arguments as operands.
+fn (t &Transformer) call_selector_base_is_namespace(base_id flat.NodeId, method string, call_name string) bool {
+	if int(base_id) < 0 || int(base_id) >= t.a.nodes.len {
+		return false
+	}
+	base := t.a.nodes[int(base_id)]
+	if base.kind != .ident {
+		return false
+	}
+	if base.value == 'C' || t.selector_is_lexical_module_call(base_id, method, call_name)
+		|| t.is_import_alias_ident(base_id) {
+		return true
+	}
+	if _ := t.static_assoc_fn_name(base_id, method) {
+		return true
+	}
+	return false
+}
+
 fn (t &Transformer) is_import_alias_ident(id flat.NodeId) bool {
 	if int(id) < 0 || isnil(t.tc) {
 		return false
