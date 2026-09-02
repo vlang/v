@@ -822,30 +822,36 @@ fn fastc_wait_type_declarations(mut pending FastcPendingTypeDeclarations) !Fastc
 	return result
 }
 
-// FastcPendingFieldLookup is the by-name index of struct fields, built on a
-// worker while the constant and global phases run.
-struct FastcPendingFieldLookup {
+// FastcPendingFieldDefaults is the struct field default rendering running on
+// a worker while the constants are pre-parsed.
+struct FastcPendingFieldDefaults {
 mut:
-	workers []thread map[string]map[string]FastcStructField
-	lookup  map[string]map[string]FastcStructField
+	workers []thread FastcFieldDefaultsResult
+	result  FastcFieldDefaultsResult
 }
 
-fn fastc_start_struct_field_lookup(struct_field_info map[string][]FastcStructField, prefs &pref.Preferences) FastcPendingFieldLookup {
-	if fastc_parallel_job_count(fastc_source_load_chunk_size, prefs) <= 1 {
-		return FastcPendingFieldLookup{
-			lookup: fastc_build_struct_field_lookup(struct_field_info)
+fn fastc_start_field_defaults(source_imports map[string]map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string, sum_types map[string]bool) FastcPendingFieldDefaults {
+	if fastc_parallel_worker_limit(prefs) <= 1 {
+		return FastcPendingFieldDefaults{
+			result: fastc_run_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, sum_types)
 		}
 	}
-	return FastcPendingFieldLookup{
-		workers: [spawn fastc_build_struct_field_lookup(struct_field_info)]
+	return FastcPendingFieldDefaults{
+		workers: [
+			spawn fastc_run_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, sum_types),
+		]
 	}
 }
 
-fn fastc_wait_struct_field_lookup(mut pending FastcPendingFieldLookup) map[string]map[string]FastcStructField {
-	if pending.workers.len == 0 {
-		return pending.lookup
+fn fastc_wait_field_defaults(mut pending FastcPendingFieldDefaults) !FastcFieldDefaultsResult {
+	mut result := pending.result
+	if pending.workers.len > 0 {
+		result = pending.workers[0].wait()
 	}
-	return pending.workers[0].wait()
+	if result.failed {
+		return error(result.error_message)
+	}
+	return result
 }
 
 // FastcPendingFragments is the fragmentation of the sources for parallel

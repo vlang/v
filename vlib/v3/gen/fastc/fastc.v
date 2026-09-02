@@ -909,6 +909,17 @@ struct FastcConstantDeclarations {
 	compile_time_values map[string]string
 	composite_types     map[string]bool
 	fixed_array_types   map[string]string
+	// The struct fields with their defaults rendered, and their by-name index:
+	// the defaults are rendered on a worker while the constants are pre-parsed.
+	struct_field_info   map[string][]FastcStructField
+	struct_field_lookup map[string]map[string]FastcStructField
+}
+
+// fastc_note_field_defaults_use records that the parser consulted rendered
+// struct field defaults.
+fn fastc_note_field_defaults_use(g &Parser) {
+	mut w := unsafe { &Parser(g) }
+	w.used_field_defaults = true
 }
 
 struct FastcConstantValue {
@@ -1110,8 +1121,11 @@ mut:
 	method_key_memo map[string]map[string]string
 	// Struct field lookups memoized per receiver type and field name (a field
 	// with an empty name records a miss); reset with the other memos.
-	field_memo      map[string]map[string]FastcStructField
-	has_c_functions bool
+	field_memo map[string]map[string]FastcStructField
+	// used_field_defaults records that a rendered struct field default was
+	// consulted (see fastc_note_field_defaults_use).
+	used_field_defaults bool
+	has_c_functions     bool
 	// Spawn lowering registrations (see spawn.v): thread struct typedefs,
 	// creator/run/waiter helper definitions, and thread type -> value type.
 	spawn_typedefs     map[string]string
@@ -1503,12 +1517,11 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	for source_file in sources {
 		source_imports[source_file.path] = source_file.header.imports.clone()
 	}
-	fastc_render_struct_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, mut struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, type_output.sum_types)!
-	timer.mark('field_defaults')
-	// The field lists are final; index them by name for generation while the
-	// constant and global phases run.
-	mut pending_field_lookup := fastc_start_struct_field_lookup(struct_field_info, prefs)
-	constant_output := fastc_generate_constant_declarations(ordered_sources, constant_sources, constant_spans, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, globals, public_globals, mut constant_types)!
+	// The struct field defaults render on a worker while the constants are
+	// pre-parsed; a constant file that consulted them is re-parsed after.
+	mut pending_defaults := fastc_start_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, type_output.sum_types)
+	constant_output := fastc_generate_constant_declarations(ordered_sources, constant_sources, constant_spans, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, mut pending_defaults, functions, constants, public_constants, globals, public_globals, mut constant_types)!
+	struct_field_info = constant_output.struct_field_info.clone()
 	timer.mark('constant_declarations')
 	for name, _ in constant_output.composite_types {
 		composite_types[name] = true
@@ -1529,7 +1542,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	used_function_names := fastc_wait_referenced_function_names(mut pending_references)
 	timer.mark('wait_references')
 	mut pending_interface_dispatches := fastc_start_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, prefs.building_v, prefs)
-	struct_field_lookup := fastc_wait_struct_field_lookup(mut pending_field_lookup)
+	struct_field_lookup := constant_output.struct_field_lookup.clone()
 	// The per-file prototype blocks are emitted as pieces too, so they are
 	// never concatenated into one buffer.
 	mut prototype_pieces := []string{cap: sources.len + 16}

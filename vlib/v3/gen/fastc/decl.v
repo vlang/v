@@ -830,6 +830,31 @@ fn fastc_map_field_default(typ string, pointer_bits int) string {
 	return '(builtin__new_map(sizeof(${fastc_runtime_c_type(key_type)}), sizeof(${fastc_runtime_c_type(value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn}))'
 }
 
+// FastcFieldDefaultsResult is the struct field table with its defaults
+// rendered and its by-name index, or the first error rendering them.
+struct FastcFieldDefaultsResult {
+	struct_field_info map[string][]FastcStructField
+	lookup            map[string]map[string]FastcStructField
+	failed            bool
+	error_message     string
+}
+
+// fastc_run_field_defaults renders the field defaults into a copy of the
+// field table (the renderer replaces each type's entry) and indexes it.
+fn fastc_run_field_defaults(source_imports map[string]map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string, sum_types map[string]bool) FastcFieldDefaultsResult {
+	mut rendered := struct_field_info.clone()
+	fastc_render_struct_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, alias_base_types, struct_fields, mut rendered, functions, constants, public_constants, constant_types, globals, public_globals, global_types, sum_types) or {
+		return FastcFieldDefaultsResult{
+			failed:        true
+			error_message: err.msg()
+		}
+	}
+	return FastcFieldDefaultsResult{
+		struct_field_info: rendered
+		lookup:            fastc_build_struct_field_lookup(rendered)
+	}
+}
+
 fn fastc_render_struct_field_defaults(source_imports map[string]map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string, sum_types map[string]bool) ! {
 	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	helper_has_c_functions := fastc_functions_declare_c(functions)
@@ -966,7 +991,10 @@ struct FastcConstantGenContext {
 // FastcConstantFileResult is one file's parsed constant initializers.
 struct FastcConstantFileResult {
 mut:
-	values            []FastcConstantValue
+	// used_field_defaults: the parse consulted rendered struct field defaults,
+	// which the parallel pre-pass does not have yet.
+	used_field_defaults bool
+	values              []FastcConstantValue
 	constant_types    map[string]string
 	composite_types   map[string]bool
 	fixed_array_types map[string]string
@@ -1045,10 +1073,11 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 		}
 	}
 	return FastcConstantFileResult{
-		values:            values
-		constant_types:    gen.constant_types.move()
-		composite_types:   gen.composite_types
-		fixed_array_types: gen.fixed_array_types
+		used_field_defaults: gen.used_field_defaults
+		values:              values
+		constant_types:      gen.constant_types.move()
+		composite_types:     gen.composite_types
+		fixed_array_types:   gen.fixed_array_types
 	}
 }
 
@@ -1131,7 +1160,7 @@ fn fastc_constant_file_is_independent(result FastcConstantFileResult) bool {
 // declarations are parsed as separate parallel candidates.
 const fastc_constant_split_size = 16 * 1024
 
-fn fastc_generate_constant_declarations(ordered_sources []FastcSourceFile, constant_sources map[string]string, constant_spans map[string][]int, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, mut constant_types map[string]string) !FastcConstantDeclarations {
+fn fastc_generate_constant_declarations(ordered_sources []FastcSourceFile, constant_sources map[string]string, constant_spans map[string][]int, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, mut pending_defaults FastcPendingFieldDefaults, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, mut constant_types map[string]string) !FastcConstantDeclarations {
 	mut values := []FastcConstantValue{}
 	mut composite_types := map[string]bool{}
 	mut fixed_array_types := map[string]string{}
@@ -1183,11 +1212,33 @@ fn fastc_generate_constant_declarations(ordered_sources []FastcSourceFile, const
 	sw := time.new_stopwatch()
 	parallel_results := fastc_parse_constant_files_parallel(&ctx, candidates, constant_types)
 	parallel_us := sw.elapsed().microseconds()
+	// The rendered defaults are needed from here on: for the in-order parse of
+	// the files that consulted them, and by the phases after this one.
+	defaults := fastc_wait_field_defaults(mut pending_defaults)!
+	merge_ctx := FastcConstantGenContext{
+		prefs:                     unsafe { prefs }
+		declared_types:            declared_types
+		declared_type_c_names:     declared_type_c_names
+		declared_type_key_by_name: ctx.declared_type_key_by_name
+		fastc_prefixed_c_names:    fastc_prefixed_c_names
+		has_c_functions:           ctx.has_c_functions
+		declared_kinds:            declared_kinds
+		enum_flags:                enum_flags
+		enum_field_types:          enum_field_types
+		alias_base_types:          alias_base_types
+		struct_fields:             struct_fields
+		struct_field_info:         defaults.struct_field_info
+		functions:                 functions
+		constants:                 constants
+		public_constants:          public_constants
+		globals:                   globals
+		public_globals:            public_globals
+	}
 	mut serial_count := 0
 	for index, candidate in candidates {
 		if index < parallel_results.len {
 			result := parallel_results[index]
-			if !result.failed && fastc_constant_file_is_independent(result) {
+			if !result.failed && !result.used_field_defaults && fastc_constant_file_is_independent(result) {
 				for value in result.values {
 					constant_types[value.key] = value.typ
 				}
@@ -1202,7 +1253,7 @@ fn fastc_generate_constant_declarations(ordered_sources []FastcSourceFile, const
 			}
 		}
 		serial_count++
-		mut serial := fastc_parse_constant_file(&ctx, candidate, constant_types)
+		mut serial := fastc_parse_constant_file(&merge_ctx, candidate, constant_types)
 		if serial.failed {
 			return error(serial.error_message)
 		}
@@ -1284,6 +1335,8 @@ fn fastc_generate_constant_declarations(ordered_sources []FastcSourceFile, const
 		compile_time_values: compile_time_values
 		composite_types:     composite_types
 		fixed_array_types:   fixed_array_types
+		struct_field_info:   defaults.struct_field_info
+		struct_field_lookup: defaults.lookup
 	}
 }
 

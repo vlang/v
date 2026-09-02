@@ -316,6 +316,9 @@ fn (g &Parser) render_empty_struct_initializer(c_type string) string {
 	layout_type := fastc_trim_pointer_suffix(c_type)
 	mut rendered_fields := []string{}
 	mut rendered_fields_by_name := map[string]string{}
+	// The struct's rendered defaults are consulted; the constants phase
+	// re-parses a file that did so after they are ready.
+	fastc_note_field_defaults_use(g)
 	for field in g.struct_field_info[layout_type] {
 		if field.default_value == '' {
 			continue
