@@ -612,6 +612,20 @@ fn test_fastc_source_scan_flags_detect_declaration_keywords() {
 	assert !fastc_source_scan_flags('module main\nfn plain(values []int) int { return values[0] }\n').has_generic_fn_syntax
 }
 
+fn test_fastc_source_scan_flags_skip_comments_between_tokens() {
+	// The scanner treats comments as whitespace, so the byte probes must not
+	// let one hide a `$if` or a generic declaration.
+	dollar := '$'
+	assert fastc_source_scan_flags('module main\n' + dollar + '/* c */if linux {\nfn only_linux() {}\n}\n').has_comptime_if
+	assert fastc_source_scan_flags('module main\n' + dollar + '// c\nif linux {\nfn only_linux() {}\n}\n').has_comptime_if
+	assert fastc_source_scan_flags('module main\n' + dollar + '/* outer /* nested */ */ if linux {\n}\n').has_comptime_if
+	assert fastc_source_scan_flags('module main\nfn /* c */ pick[T](x T) T { return x }\n').has_generic_fn_syntax
+	assert fastc_source_scan_flags('module main\nfn pick /* c */ [T](x T) T { return x }\n').has_generic_fn_syntax
+	assert fastc_source_scan_flags('module main\nfn (s /* ) */ Stack) push[T](v T) {}\n').has_generic_fn_syntax
+	assert fastc_source_scan_flags('module main\nfn (s Stack) // c\n push[T](v T) {}\n').has_generic_fn_syntax
+	assert !fastc_source_scan_flags('module main\nfn plain() { x := 1 // [T]\n }\n').has_generic_fn_syntax
+}
+
 fn test_fastc_generic_source_collection_matches_serial_scan() {
 	mut prefs := pref.new_preferences()
 	sources := [

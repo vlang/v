@@ -640,14 +640,47 @@ fn fastc_source_space_byte(c u8) bool {
 	return c == ` ` || c == `\t` || c == `\r` || c == `\n`
 }
 
+// fastc_source_skip_blank returns the offset of the first byte at or after
+// `start` that is neither whitespace nor part of a comment. The scanner treats
+// comments as whitespace between tokens, so the byte probes must too, or a
+// comment between two tokens would turn a superset test into a false negative.
+@[direct_array_access]
+fn fastc_source_skip_blank(source string, start int) int {
+	mut j := start
+	for j < source.len {
+		c := source[j]
+		if fastc_source_space_byte(c) {
+			j++
+		} else if c == `/` && j + 1 < source.len && source[j + 1] == `/` {
+			for j < source.len && source[j] != `\n` {
+				j++
+			}
+		} else if c == `/` && j + 1 < source.len && source[j + 1] == `*` {
+			// Block comments nest, as in the scanner.
+			mut depth := 1
+			j += 2
+			for j < source.len && depth > 0 {
+				if source[j] == `/` && j + 1 < source.len && source[j + 1] == `*` {
+					depth++
+					j += 2
+				} else if source[j] == `*` && j + 1 < source.len && source[j + 1] == `/` {
+					depth--
+					j += 2
+				} else {
+					j++
+				}
+			}
+		} else {
+			break
+		}
+	}
+	return j
+}
+
 // fastc_source_comptime_if_at reports whether `$` at `i` starts a `$if`.
 @[direct_array_access]
 fn fastc_source_comptime_if_at(source string, i int) bool {
-	mut j := i + 1
-	for j < source.len && fastc_source_space_byte(source[j]) {
-		j++
-	}
-	return fastc_source_word_at(source, j, 'if')
+	return fastc_source_word_at(source, fastc_source_skip_blank(source, i + 1), 'if')
 }
 
 // fastc_source_generic_fn_at reports whether the `fn` keyword ending at `i`
@@ -655,18 +688,20 @@ fn fastc_source_comptime_if_at(source string, i int) bool {
 // followed by an optional receiver clause and a name that a `[` follows.
 @[direct_array_access]
 fn fastc_source_generic_fn_at(source string, i int) bool {
-	mut j := i
-	for j < source.len && fastc_source_space_byte(source[j]) {
-		j++
-	}
+	mut j := fastc_source_skip_blank(source, i)
 	if j < source.len && source[j] == `(` {
-		for j < source.len && source[j] != `)` {
-			j++
-		}
 		j++
-		for j < source.len && fastc_source_space_byte(source[j]) {
+		for {
+			j = fastc_source_skip_blank(source, j)
+			if j >= source.len {
+				return false
+			}
+			if source[j] == `)` {
+				break
+			}
 			j++
 		}
+		j = fastc_source_skip_blank(source, j + 1)
 	}
 	name_start := j
 	for j < source.len && (fastc_identifier_byte(source[j]) || source[j] == `.`) {
@@ -675,9 +710,7 @@ fn fastc_source_generic_fn_at(source string, i int) bool {
 	if j == name_start {
 		return false
 	}
-	for j < source.len && fastc_source_space_byte(source[j]) {
-		j++
-	}
+	j = fastc_source_skip_blank(source, j)
 	return j < source.len && source[j] == `[`
 }
 

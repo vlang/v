@@ -407,11 +407,10 @@ static void *v_fastc_interface_box(const void *value, usize size) {
 static const u64 _wyp[4] = {0x2d358dccaa6c78a5ull, 0x8bb84b93962eacc9ull, 0x4b33a62ed433d4a3ull, 0x4d5a2da51de1aa47ull};
 static inline u64 _wymix(u64 a, u64 b) { u64 ha = a >> 32, hb = b >> 32, la = (u32)a, lb = (u32)b, hi, lo; u64 rh = ha * hb, rm0 = ha * lb, rm1 = hb * la, rl = la * lb, t = rl + (rm0 << 32), c = t < rl; lo = t + (rm1 << 32); c += lo < t; hi = rh + (rm0 >> 32) + (rm1 >> 32) + c; return lo ^ hi; }
 static inline u64 wyhash64(u64 a, u64 b) { a ^= _wyp[0]; b ^= _wyp[1]; a *= 0xa0761d6478bd642full; b *= 0xe7037ed1a0b428dbull; return (a ^ (a >> 32)) ^ (b ^ (b >> 32)); }
-#if defined(__aarch64__) || defined(__x86_64__) || defined(__i386__)
-#define V_FASTC_LOAD_U64(p) (*(const u64 *)(p))
-#else
-#define V_FASTC_LOAD_U64(p) ({ u64 __v_fastc_word; memcpy(&__v_fastc_word, (p), 8); __v_fastc_word; })
-#endif
+/* Assembling the word from its bytes is defined for any alignment and any
+   effective type of the key storage; optimizing compilers fold it into one
+   load, and the hash stays identical across byte orders. */
+#define V_FASTC_LOAD_U64(p) ((u64)(p)[0] | ((u64)(p)[1] << 8) | ((u64)(p)[2] << 16) | ((u64)(p)[3] << 24) | ((u64)(p)[4] << 32) | ((u64)(p)[5] << 40) | ((u64)(p)[6] << 48) | ((u64)(p)[7] << 56))
 /* Map keys are hashed by this function on every lookup. It mixes one 64-bit
    word per step and has no helper calls, since TinyCC does not inline. */
 static inline u64 wyhash(const void *key, size_t len, u64 seed, const u64 *secret) {

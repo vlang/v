@@ -59,6 +59,16 @@ fn fastc_is_json2_voidptr_element_check(req FastcMonoRequest, src FastcGenericMe
 	return req.concrete == 'voidptr' && src.name == 'check_element_type_valid' && (src.receiver_type == 'json2__Decoder' || src.receiver_type.ends_with('__json2__Decoder')) && normalized_path.ends_with('/vlib/json2/decode_sumtype.v')
 }
 
+// reset_lookup_memos discards the per-file name lookup memos. They are keyed
+// by the bare name only, so they are valid for exactly one module and import
+// context and must be reset whenever the parser switches to another one.
+fn (mut g Parser) reset_lookup_memos() {
+	g.unqualified_key_memo = map[string]string{}
+	g.nonlocal_name_type_memo = map[string]string{}
+	g.resolved_name_memo = map[string]string{}
+	g.declared_type_key_memo = map[string]FastcMemoEntry{}
+}
+
 // parse_mono_instance re-parses one concrete instance in its defining module, so its body
 // (including any `$for`/`$if`) resolves unqualified functions and imported types correctly.
 fn (mut g Parser) parse_mono_instance(instance string, source FastcGenericMethodSource) ! {
@@ -66,6 +76,9 @@ fn (mut g Parser) parse_mono_instance(instance string, source FastcGenericMethod
 	g.path = source.path
 	g.module_name = source.module_name
 	g.imports = source.imports.clone()
+	// The lookup memos are keyed by bare name and answer for the current
+	// module and imports, so they must not carry over into another module.
+	g.reset_lookup_memos()
 	g.s = scanner.new_scanner(g.prefs, .normal)
 	g.s.init(file, instance)
 	g.next()
