@@ -1,17 +1,9 @@
-@[has_globals]
 module fastc
 
 import strings
 import v3.pref
 import v3.scanner
 import v3.token
-
-// fastc_platform_int_c_type is the C spelling FastC emits for V's platform-width
-// `int`: `i64` on 64-bit targets, `i32` on 32-bit ones. It mirrors the main C
-// backend's `types.platform_int_c_type`; FastC keeps its own copy so it stays
-// free of a `v3.types` dependency. `generate_source_files` pins it from the
-// target width before any file is emitted.
-__global fastc_platform_int_c_type = 'i64'
 
 // FastC parses scanner tokens and emits C immediately. It deliberately has no
 // AST, semantic-checker, transformer, mark-used, or conventional cgen path.
@@ -1167,9 +1159,6 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 }
 
 fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[string]string, prefs &pref.Preferences) !(string, bool, []string) {
-	// V's platform `int` is 64-bit on 64-bit targets and 32-bit on 32-bit ones;
-	// pin the C spelling from the target width before emitting any C.
-	fastc_platform_int_c_type = if prefs.target.pointer_bits == 32 { 'i32' } else { 'i64' }
 	// Source-level generic monomorphization runs first; it is a no-op when the
 	// program has no generic function definitions (so the self-host is untouched).
 	sources := fastc_monomorphize_sources(input_sources, prefs)!
