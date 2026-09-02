@@ -84,7 +84,7 @@ fn (mut g Parser) parse_if() !bool {
 	// `if local is Variant { ... }` on a boxed sum-type/interface local smart-casts
 	// `local` to the concrete variant inside the then-branch, so its fields and
 	// methods resolve. Only the exact `local is Variant` form (no `&&`/`||`) binds.
-	cond_tokens := g.last_expression.clone()
+	cond_tokens := g.last_expression
 	mut smartcast_name := ''
 	mut smartcast_type := ''
 	mut smartcast_tmp := ''

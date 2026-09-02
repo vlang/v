@@ -1124,61 +1124,6 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 	}
 }
 
-// fastc_parse_constant_file_worker parses candidate files until the shared
-// counter runs past the end of `order` (largest files first).
-fn fastc_parse_constant_file_worker(ctx &FastcConstantGenContext, candidates []FastcSourceFile, seed map[string]string, order []int, queue &FastcGenQueue) []FastcIndexedConstantFileResult {
-	mut results := []FastcIndexedConstantFileResult{}
-	bench_files := os.getenv('FASTC_BENCH_FILES') != ''
-	for {
-		slot := fastc_atomic_fetch_add_u32(&queue.next, 1)
-		if slot >= u32(order.len) {
-			break
-		}
-		index := order[slot]
-		file_sw := time.new_stopwatch()
-		results << FastcIndexedConstantFileResult{
-			index:  index
-			result: fastc_parse_constant_file(ctx, candidates[index], seed.clone())
-		}
-		if bench_files {
-			eprintln('fastc-constants-file ${file_sw.elapsed().microseconds()}us ${candidates[index].source.len} bytes ${candidates[index].path}')
-		}
-	}
-	return results
-}
-
-// fastc_parse_constant_files_parallel parses every candidate file's constants
-// on parallel workers, each starting from the phase's initial constant types.
-// It returns an empty list when the phase runs serially.
-fn fastc_parse_constant_files_parallel(ctx &FastcConstantGenContext, candidates []FastcSourceFile, seed map[string]string) []FastcConstantFileResult {
-	jobs := fastc_parallel_job_count(candidates.len, ctx.prefs)
-	if jobs <= 1 {
-		return []FastcConstantFileResult{}
-	}
-	order := fastc_file_generation_order(candidates)
-	mut queue := &FastcGenQueue{
-		next: 0
-	}
-	second_thread := spawn fastc_parse_constant_file_worker(ctx, candidates, seed, order, queue)
-	mut chunk_threads := [second_thread]
-	for _ in 2 .. jobs {
-		chunk_thread := spawn fastc_parse_constant_file_worker(ctx, candidates, seed, order, queue)
-		chunk_threads << chunk_thread
-	}
-	mut results := []FastcConstantFileResult{len: candidates.len}
-	first_results := fastc_parse_constant_file_worker(ctx, candidates, seed, order, queue)
-	for indexed in first_results {
-		results[indexed.index] = indexed.result
-	}
-	for chunk_thread in chunk_threads {
-		chunk_results := chunk_thread.wait()
-		for indexed in chunk_results {
-			results[indexed.index] = indexed.result
-		}
-	}
-	return results
-}
-
 // fastc_constant_file_is_independent reports whether every constant that the
 // file's initializers depend on is declared in that same file. Type inference
 // of an initializer consults only the types of the constants it references, so

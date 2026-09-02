@@ -183,14 +183,20 @@ the previous resolution of the same entry touched, so the next run lists every d
 up every module and stats every file in one batch instead of level by level along the import
 chain; a file's content is taken from the memo's blob only when its size, mtime, ctime and inode
 still match and it was last modified at least two seconds before the memo was written, and it is
-read again otherwise. The ordering walk itself is unchanged and replays over that data, so the
+read again otherwise. The memo also keeps each listed directory's file list and the entry
+module's file list together with the directory's own stamp, so an unchanged directory is stat'ed
+instead of listed again (adding, removing or renaming an entry changes that stamp, and the same
+two-second rule applies); module lookups are recorded once per cache key, the memo's blob is read
+in ranges by the same probe workers, and the memo of the current run is written on a worker while
+the program is generated. The ordering walk itself is unchanged and replays over that data, so the
 output is identical with and without the memo (`V3_FASTC_NO_RESOLVE_MEMO=1` disables it). The
 type declarations are rendered on a worker while the signatures are collected, the generic-method
 scan and the declaration index share one pass, the split of oversized files into generation
 fragments and the by-name struct field index are built on workers while the declaration phases
 run, and the generated C is returned as ordered pieces (whole per-file bodies are shared rather
 than copied into one buffer; only bodies cut around C directive lines are copied) that the drivers
-write directly. The declaration index records the text spans of each file's constant and global
+write directly. Function bodies are pre-scanned for channel `select` statements only in files
+whose bytes contain the word `select`. The declaration index records the text spans of each file's constant and global
 declarations: a large file's constants are parsed as separate parallel candidates (merged in
 source order), and the global phase parses only the recorded global declarations instead of
 whole files.

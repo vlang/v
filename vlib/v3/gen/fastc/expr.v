@@ -1918,14 +1918,59 @@ fn (g &Parser) render_constant_references(tokens []FastcExpressionToken, source 
 	return rendered
 }
 
+// fastc_index_of returns the first index of `needle` in `text` at or after
+// `start`, or -1. The builtin search builds a KMP table per call for needles
+// longer than two bytes; the needles here are short identifiers and call
+// prefixes, for which a plain scan is cheaper.
+@[direct_array_access]
+fn fastc_index_of(text string, needle string, start int) int {
+	if needle.len == 0 || needle.len > text.len {
+		return -1
+	}
+	first := needle[0]
+	last := text.len - needle.len
+	mut i := if start < 0 { 0 } else { start }
+	for i <= last {
+		if text[i] == first && unsafe { vmemcmp(text.str + i, needle.str, needle.len) } == 0 {
+			return i
+		}
+		i++
+	}
+	return -1
+}
+
+fn fastc_contains(text string, needle string) bool {
+	return fastc_index_of(text, needle, 0) >= 0
+}
+
+// fastc_replace replaces every occurrence of `needle` in `text` with
+// `replacement`, scanning left to right; `text` itself is returned when it
+// holds no occurrence.
+fn fastc_replace(text string, needle string, replacement string) string {
+	mut index := fastc_index_of(text, needle, 0)
+	if index < 0 {
+		return text
+	}
+	mut out := strings.new_builder(text.len + replacement.len)
+	mut start := 0
+	for index >= 0 {
+		unsafe { out.write_ptr(text.str + start, index - start) }
+		out.write_string(replacement)
+		start = index + needle.len
+		index = fastc_index_of(text, needle, start)
+	}
+	unsafe { out.write_ptr(text.str + start, text.len - start) }
+	return out.str()
+}
+
 fn fastc_replace_c_call_identifier(source string, identifier string, replacement string) string {
-	if identifier == '' || identifier == replacement || !source.contains(identifier) {
+	if identifier == '' || identifier == replacement || !fastc_contains(source, identifier) {
 		return source
 	}
 	mut out := strings.new_builder(source.len + replacement.len)
 	mut start := 0
 	for start < source.len {
-		index := source.index_after_(identifier, start)
+		index := fastc_index_of(source, identifier, start)
 		if index < 0 {
 			unsafe { out.write_ptr(source.str + start, source.len - start) }
 			break
@@ -1951,13 +1996,13 @@ fn fastc_replace_c_call_identifier(source string, identifier string, replacement
 }
 
 fn fastc_replace_c_root_identifier(source string, identifier string, replacement string) string {
-	if identifier == '' || identifier == replacement || !source.contains(identifier) {
+	if identifier == '' || identifier == replacement || !fastc_contains(source, identifier) {
 		return source
 	}
 	mut out := strings.new_builder(source.len + replacement.len)
 	mut start := 0
 	for start < source.len {
-		index := source.index_after_(identifier, start)
+		index := fastc_index_of(source, identifier, start)
 		if index < 0 {
 			unsafe { out.write_ptr(source.str + start, source.len - start) }
 			break
@@ -1978,13 +2023,13 @@ fn fastc_replace_c_root_identifier(source string, identifier string, replacement
 }
 
 fn fastc_replace_c_identifier(source string, identifier string, replacement string) string {
-	if identifier == '' || identifier == replacement || !source.contains(identifier) {
+	if identifier == '' || identifier == replacement || !fastc_contains(source, identifier) {
 		return source
 	}
 	mut out := strings.new_builder(source.len + replacement.len)
 	mut start := 0
 	for start < source.len {
-		index := source.index_after_(identifier, start)
+		index := fastc_index_of(source, identifier, start)
 		if index < 0 {
 			unsafe { out.write_ptr(source.str + start, source.len - start) }
 			break
