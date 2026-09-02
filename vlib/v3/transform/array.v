@@ -3,6 +3,19 @@ module transform
 import v3.flat
 import v3.types
 
+struct ArrayMapLoopPointerExit {
+	origins     map[string]bool
+	label       string
+	defer_count int
+	is_continue bool
+	is_goto     bool
+}
+
+struct ArrayMapReturnPointerExit {
+	origins     map[string]bool
+	defer_count int
+}
+
 // make_array_new_call builds make array new call data for transform.
 fn (mut t Transformer) make_array_new_call(elem_type string, len_expr flat.NodeId, cap_expr flat.NodeId) flat.NodeId {
 	// `[]shared T` stores pointers to lock wrappers, not inline T values.
@@ -2598,13 +2611,17 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	}
 	mut map_fn_name := ''
 	elem_name := if lambda_param.len > 0 { lambda_param } else { t.new_temp('map_it') }
-	old_elem := t.var_type(elem_name)
-	t.set_var_type(elem_name, elem_type)
 	mapped_source := if lambda_param.len > 0 {
 		map_source_id
 	} else {
 		t.substitute_ident(map_source_id, 'it', elem_name)
 	}
+	// The implicit `it` binding denotes the source slot when its address is taken.
+	// Binding a copied value here would return pointers to a loop-local temporary.
+	mapper_takes_elem_address := lambda_param.len == 0 && (t.array_map_expr_takes_address_of_ident(mapped_source, elem_name) || t.array_map_expr_implicit_reference_can_escape(map_source_id, 'it'))
+	elem_var_type := if mapper_takes_elem_address { '&${elem_type}' } else { elem_type }
+	old_elem := t.var_type(elem_name)
+	t.set_var_type(elem_name, elem_var_type)
 	checker_result_elem_type := t.checker_expr_type_name(map_expr_id) or { '' }
 	checker_result_elem_type_is_usable := decl_type_is_usable(checker_result_elem_type)
 		&& checker_result_elem_type != 'void'
@@ -2661,6 +2678,12 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	saved_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	mut callback_setup := []flat.NodeId{}
+	had_pointer_value_lvalue := t.pointer_value_lvalues[elem_name] or { false }
+	had_pointer_value_rvalue := t.pointer_value_rvalues[elem_name] or { false }
+	if mapper_takes_elem_address {
+		t.pointer_value_lvalues[elem_name] = true
+		t.pointer_value_rvalues[elem_name] = true
+	}
 	mapped_expr := if map_fn_name.len > 0 {
 		t.make_call_typed(map_fn_name, [t.make_ident(elem_name)], result_elem_type)
 	} else if map_expr_is_fn_value || map_callback_allocates_closure {
@@ -2684,6 +2707,18 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		t.transform_expr_for_type(mapped_source, result_elem_type)
 	} else {
 		t.transform_expr(mapped_source)
+	}
+	if mapper_takes_elem_address {
+		if had_pointer_value_lvalue {
+			t.pointer_value_lvalues[elem_name] = true
+		} else {
+			t.pointer_value_lvalues.delete(elem_name)
+		}
+		if had_pointer_value_rvalue {
+			t.pointer_value_rvalues[elem_name] = true
+		} else {
+			t.pointer_value_rvalues.delete(elem_name)
+		}
 	}
 	mapped_pending := t.pending_stmts.clone()
 	t.pending_stmts = saved_pending
@@ -2728,8 +2763,9 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	}
 	out_type := '[]${result_elem_type}'
 	base_id := t.a.child(&fn_node, 0)
-	source_needs_drop := !t.expr_can_take_address(base_id) && !isnil(t.tc)
-		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(base_type))
+	map_result_retains_elem_address := mapper_takes_elem_address && t.array_map_result_can_retain_element_address(result_elem_type) && t.array_map_expr_result_retains_element_address(map_source_id, 'it')
+	map_side_effect_retains_elem_address := mapper_takes_elem_address && t.array_map_expr_side_effect_retains_element_address(map_source_id, 'it')
+	source_needs_drop := !map_result_retains_elem_address && !map_side_effect_retains_elem_address && !t.expr_can_take_address(base_id) && !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(base_type))
 	base := t.stable_transformed_expr_for_reuse(t.transform_expr(base_id), base_type, 'map_source')
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
@@ -2763,8 +2799,12 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(base, 'len', 'int'))
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
-	elem_expr := t.array_get_value(base, t.make_ident(idx_name), elem_type)
-	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_type)
+	elem_expr := if mapper_takes_elem_address {
+		t.array_get_ptr(base, t.make_ident(idx_name), elem_type)
+	} else {
+		t.array_get_value(base, t.make_ident(idx_name), elem_type)
+	}
+	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_var_type)
 	mut loop_body := []flat.NodeId{}
 	loop_body << elem_decl
 	for stmt in mapped_pending {
@@ -2832,6 +2872,2426 @@ fn (t &Transformer) array_map_expr_references_ident(id flat.NodeId, name string)
 		}
 	}
 	return false
+}
+
+fn (t &Transformer) array_map_expr_takes_address_of_ident(id flat.NodeId, name string) bool {
+	if int(id) < 0 || name.len == 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .prefix && node.op == .amp && node.children_count == 1
+		&& t.array_map_lvalue_is_rooted_at_ident(t.a.child(&node, 0), name) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.array_map_expr_takes_address_of_ident(t.a.child(&node, i), name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) array_map_call_implicitly_borrows_ident(id flat.NodeId, node flat.Node, name string) bool {
+	if node.kind != .call || node.children_count == 0 || name.len == 0 || isnil(t.tc) {
+		return false
+	}
+	call_name := t.call_name_for_node(id, node)
+	params := t.call_param_types_for_node(call_name, node)
+	param_offset := t.call_param_offset_for_node(call_name, node, params)
+	callee := t.a.child_node(&node, 0)
+	if param_offset == 1 && params.len > 0 && types.unalias_type(params[0]) is types.Pointer
+		&& callee.kind == .selector && callee.children_count > 0
+		&& t.array_map_lvalue_is_rooted_at_ident(t.a.child(callee, 0), name) {
+		return true
+	}
+	for i in 1 .. node.children_count {
+		param_idx := i - 1 + param_offset
+		if param_idx < params.len && types.unalias_type(params[param_idx]) is types.Pointer && t.array_map_lvalue_is_rooted_at_ident(t.a.child(&node, i), name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) array_map_expr_implicit_reference_can_escape(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len || name.len == 0 || isnil(t.tc) {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		return false
+	}
+	if node.kind == .call && t.array_map_call_implicitly_borrows_ident(id, node, name) {
+		result_type := t.checker_expr_type_name(id) or { t.node_type(id) }
+		if t.array_map_result_can_retain_element_address(result_type) || t.tc.resolved_call_may_store_globally(id) {
+			return true
+		}
+		if resolved_name := t.tc.resolved_call_name(id) {
+			if resolved_name.starts_with('C.') {
+				return true
+			}
+		} else {
+			return true
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.array_map_expr_implicit_reference_can_escape(t.a.child(&node, i), name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) array_map_lvalue_is_rooted_at_ident(id flat.NodeId, name string) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident {
+		return node.value == name
+	}
+	if node.kind in [.selector, .index, .paren] && node.children_count > 0 {
+		return t.array_map_lvalue_is_rooted_at_ident(t.a.child(&node, 0), name)
+	}
+	return false
+}
+
+fn (mut t Transformer) array_map_expr_result_retains_element_address(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len || name.len == 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+		return t.array_map_lvalue_is_rooted_at_ident(t.a.child(&node, 0), name)
+	}
+	match node.kind {
+		.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt, .field_init {
+			return node.children_count > 0
+				&& t.array_map_expr_result_retains_element_address(t.a.child(&node, 0), name)
+		}
+		.block, .match_branch {
+			return t.array_map_block_result_retains_element_address(node, name)
+		}
+		.if_expr, .match_stmt {
+			for i in 1 .. node.children_count {
+				if t.array_map_expr_result_retains_element_address(t.a.child(&node, i), name) {
+					return true
+				}
+			}
+			return false
+		}
+		.comptime_if {
+			if take_then := t.comptime_type_condition_value(node.value) {
+				branch_idx := if take_then { 0 } else { 1 }
+				return branch_idx < node.children_count && t.array_map_expr_result_retains_element_address(t.a.child(&node, branch_idx), name)
+			}
+			for i in 0 .. node.children_count {
+				if t.array_map_expr_result_retains_element_address(t.a.child(&node, i), name) {
+					return true
+				}
+			}
+			return false
+		}
+		.or_expr {
+			for i in 0 .. node.children_count {
+				if t.array_map_expr_result_retains_element_address(t.a.child(&node, i), name) {
+					return true
+				}
+			}
+			return false
+		}
+		.selector {
+			if node.children_count == 0 {
+				return false
+			}
+			for source_arg in t.tc.ownership_call_result_source_args(id) {
+				if t.array_map_expr_result_retains_element_address(source_arg, name) {
+					return true
+				}
+			}
+			if t.array_map_expr_is_call_projection(id) {
+				return false
+			}
+			return t.array_map_selector_result_retains_element_address(t.a.child(&node, 0),
+				node.value, name)
+		}
+		.index {
+			return t.array_map_index_result_retains_element_address(node, name)
+		}
+		.call {
+			call_type := t.checker_expr_type_name(id) or { t.node_type(id) }
+			if !t.array_map_result_can_retain_element_address(call_type) {
+				return false
+			}
+			if t.array_map_call_implicitly_borrows_ident(id, node, name) {
+				return true
+			}
+			for source_arg in t.tc.ownership_call_result_source_args(id) {
+				if t.array_map_expr_result_retains_element_address(source_arg, name) {
+					return true
+				}
+			}
+			return false
+		}
+		.fn_literal {
+			return t.fn_literal_captures_name(id, name)
+		}
+		.struct_init, .array_literal, .array_init, .map_init, .assoc {
+			for i in 0 .. node.children_count {
+				if t.array_map_expr_result_retains_element_address(t.a.child(&node, i), name) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (t &Transformer) array_map_lvalue_root_ident(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident {
+		return node.value
+	}
+	if node.kind in [.selector, .index, .paren, .cast_expr, .as_expr, .prefix] && node.children_count > 0 {
+		return t.array_map_lvalue_root_ident(t.a.child(&node, 0))
+	}
+	return none
+}
+
+fn (t &Transformer) array_map_lvalue_local_path(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident {
+		return node.value
+	}
+	if node.kind in [.paren, .cast_expr, .as_expr, .prefix] && node.children_count > 0 {
+		return t.array_map_lvalue_local_path(t.a.child(&node, 0))
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := t.array_map_lvalue_local_path(t.a.child(&node, 0)) or { return none }
+		return '${base}.${node.value}'
+	}
+	if node.kind == .index && node.children_count > 1 {
+		base := t.array_map_lvalue_local_path(t.a.child(&node, 0)) or { return none }
+		index := t.a.child_node(&node, 1)
+		return array_map_local_index_path(base, index)
+	}
+	return none
+}
+
+fn array_map_local_index_path(base string, index &flat.Node) string {
+	if index.kind in [.int_literal, .string_literal, .char_literal, .bool_literal] {
+		return '${base}[${array_map_local_index_component(index.kind, index.value)}]'
+	}
+	return '${base}[*]'
+}
+
+fn array_map_local_index_component(kind flat.NodeKind, value string) string {
+	hex_digits := '0123456789abcdef'
+	mut encoded := []u8{cap: value.len * 2}
+	for byte in value.bytes() {
+		encoded << hex_digits[byte >> 4]
+		encoded << hex_digits[byte & 0x0f]
+	}
+	return '${kind}:${encoded.bytestr()}'
+}
+
+const array_map_local_pointer_pointee_prefix = '@pointee:'
+
+fn array_map_local_pointer_pointee_marker(owner string, target string) string {
+	return '${array_map_local_pointer_pointee_prefix}${owner}=>${target}'
+}
+
+fn array_map_local_pointer_pointee_owner(marker string) ?string {
+	if !marker.starts_with(array_map_local_pointer_pointee_prefix) {
+		return none
+	}
+	body := marker[array_map_local_pointer_pointee_prefix.len..]
+	separator := body.index('=>') or { return none }
+	return body[..separator]
+}
+
+fn array_map_local_pointer_pointee_target(marker string) ?string {
+	if !marker.starts_with(array_map_local_pointer_pointee_prefix) {
+		return none
+	}
+	body := marker[array_map_local_pointer_pointee_prefix.len..]
+	separator := body.index('=>') or { return none }
+	return body[separator + 2..]
+}
+
+fn array_map_local_pointer_pointee_targets(owner string, locals map[string]bool) []string {
+	mut targets := []string{}
+	for marker, _ in locals {
+		marker_owner := array_map_local_pointer_pointee_owner(marker) or { continue }
+		if marker_owner != owner {
+			continue
+		}
+		target := array_map_local_pointer_pointee_target(marker) or { continue }
+		if target !in targets {
+			targets << target
+		}
+	}
+	return targets
+}
+
+fn (t &Transformer) array_map_lvalue_local_paths(id flat.NodeId, locals map[string]bool) []string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return []
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident {
+		return [node.value]
+	}
+	if node.kind in [.paren, .cast_expr, .as_expr, .prefix] && node.children_count > 0 {
+		base_paths := t.array_map_lvalue_local_paths(t.a.child(&node, 0), locals)
+		if node.kind != .prefix || node.op != .mul {
+			return base_paths
+		}
+		mut pointee_paths := []string{}
+		for base_path in base_paths {
+			for target in array_map_local_pointer_pointee_targets(base_path, locals) {
+				if target !in pointee_paths {
+					pointee_paths << target
+				}
+			}
+		}
+		return if pointee_paths.len > 0 { pointee_paths } else { base_paths }
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		mut paths := []string{}
+		for base in t.array_map_lvalue_local_paths(t.a.child(&node, 0), locals) {
+			paths << '${base}.${node.value}'
+		}
+		return paths
+	}
+	if node.kind == .index && node.children_count > 1 {
+		index := t.a.child_node(&node, 1)
+		mut paths := []string{}
+		for base in t.array_map_lvalue_local_paths(t.a.child(&node, 0), locals) {
+			paths << array_map_local_index_path(base, index)
+		}
+		return paths
+	}
+	return []
+}
+
+fn array_map_local_path_is_projection(path string, base string) bool {
+	return path == base || path.starts_with('${base}.') || path.starts_with('${base}[')
+}
+
+fn array_map_local_path_is_possible_projection(path string, base string) bool {
+	if array_map_local_path_is_projection(path, base) {
+		return true
+	}
+	mut path_pos := 0
+	mut base_pos := 0
+	for path_pos < path.len && base_pos < base.len {
+		if path[path_pos] == `[` && base[base_pos] == `[` {
+			path_end_offset := path[path_pos..].index(']') or { return false }
+			base_end_offset := base[base_pos..].index(']') or { return false }
+			path_end := path_pos + path_end_offset
+			base_end := base_pos + base_end_offset
+			path_index := path[path_pos + 1..path_end]
+			base_index := base[base_pos + 1..base_end]
+			if path_index != '*' && base_index != '*' && path_index != base_index {
+				return false
+			}
+			path_pos = path_end + 1
+			base_pos = base_end + 1
+			continue
+		}
+		if path[path_pos] != base[base_pos] {
+			return false
+		}
+		path_pos++
+		base_pos++
+	}
+	return base_pos == base.len && (path_pos == path.len || path[path_pos] == `.` || path[path_pos] == `[`)
+}
+
+fn array_map_local_pointer_path(path string, root string, locals map[string]bool) string {
+	mut pointer_path := root
+	for local_path, external in locals {
+		if local_path.starts_with(array_map_local_pointer_pointee_prefix) {
+			continue
+		}
+		if !array_map_local_path_is_possible_projection(path, local_path) {
+			continue
+		}
+		if local_path.len > pointer_path.len {
+			pointer_path = local_path
+		} else if local_path.len == pointer_path.len && external && !locals[pointer_path] {
+			// A dynamic index read may resolve to any equally-specific element, so merge
+			// their origins by keeping an external alias over a first-seen local one; that
+			// stops a borrowed source from being freed while another slot still points at it.
+			pointer_path = local_path
+		}
+	}
+	return pointer_path
+}
+
+// `locals[path]` records whether a mapper-local pointer projection currently aliases
+// storage rooted outside the mapper. A bare assignment to that pointer slot itself stays
+// local; deeper selector/index writes and mutating calls follow the alias.
+fn array_map_local_target_path_is_external(path string, elem_name string, locals map[string]bool, follow_local_pointer bool, mut seen map[string]bool) bool {
+	root := array_map_local_path_root(path)
+	if root == elem_name {
+		return false
+	}
+	if root !in locals {
+		return true
+	}
+	pointer_path := array_map_local_pointer_path(path, root, locals)
+	if locals[pointer_path] && (follow_local_pointer || path != pointer_path) {
+		return true
+	}
+	if !follow_local_pointer || pointer_path in seen {
+		return false
+	}
+	seen[pointer_path] = true
+	for target in array_map_local_pointer_pointee_targets(pointer_path, locals) {
+		mut target_seen := seen.clone()
+		if array_map_local_target_path_is_external(target, elem_name, locals, true, mut target_seen) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) array_map_side_effect_target_is_external(id flat.NodeId, elem_name string, locals map[string]bool, follow_local_pointer bool) bool {
+	for path in t.array_map_lvalue_local_paths(id, locals) {
+		mut seen := map[string]bool{}
+		if array_map_local_target_path_is_external(path, elem_name, locals, follow_local_pointer, mut seen) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) array_map_pointer_alias_origin_is_external(id flat.NodeId, elem_name string, locals map[string]bool) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
+		return t.array_map_side_effect_target_is_external(t.a.child(&node, 0), elem_name, locals, false)
+	}
+	if node.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt] && node.children_count > 0 {
+		return t.array_map_pointer_alias_origin_is_external(t.a.child(&node, 0), elem_name, locals)
+	}
+	if node.kind == .block && node.children_count > 0 {
+		return t.array_map_pointer_alias_origin_is_external(t.a.child(&node, node.children_count - 1), elem_name, locals)
+	}
+	typ := t.checker_expr_type_name(id) or { t.node_type(id) }
+	clean_type := t.normalize_type_alias(typ)
+	if !clean_type.starts_with('&') && !clean_type.starts_with('chan ') {
+		return false
+	}
+	if path := t.array_map_lvalue_local_path(id) {
+		if root := t.array_map_lvalue_root_ident(id) {
+			if root in locals {
+				return locals[array_map_local_pointer_path(path, root, locals)]
+			}
+		}
+	}
+	root := t.array_map_lvalue_root_ident(id) or { return true }
+	return root != elem_name && (root !in locals || locals[root])
+}
+
+fn (mut t Transformer) array_map_slice_backing_origin_is_external(id flat.NodeId, elem_name string, origins map[string]bool) ?bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt, .field_init] && node.children_count > 0 {
+		return t.array_map_slice_backing_origin_is_external(t.a.child(&node, 0), elem_name, origins)
+	}
+	if node.kind in [.block, .match_branch] && node.children_count > 0 {
+		return t.array_map_slice_backing_origin_is_external(t.a.child(&node, node.children_count - 1), elem_name, origins)
+	}
+	if node.kind != .index || node.value != 'range' || node.children_count < 2 {
+		return none
+	}
+	result_type := t.normalize_type_alias(t.checker_expr_type_name(id) or { t.node_type(id) })
+	if !result_type.starts_with('[]') {
+		return none
+	}
+	base_id := t.a.child(&node, 0)
+	root := t.array_map_lvalue_root_ident(base_id) or { return true }
+	if root == elem_name {
+		return false
+	}
+	if root !in origins {
+		return true
+	}
+	base_path := t.array_map_lvalue_local_path(base_id) or { return origins[root] }
+	backing_path := '${base_path}[*]'
+	return origins[array_map_local_pointer_path(backing_path, root, origins)]
+}
+
+fn array_map_local_path_with_assignment_wildcards(path string, assignment_path string) string {
+	mut wildcard_indexes := []int{}
+	mut assignment_pos := 0
+	mut assignment_index := 0
+	for assignment_pos < assignment_path.len {
+		if assignment_path[assignment_pos] != `[` {
+			assignment_pos++
+			continue
+		}
+		end_offset := assignment_path[assignment_pos..].index(']') or { break }
+		end := assignment_pos + end_offset
+		if assignment_path[assignment_pos + 1..end] == '*' {
+			wildcard_indexes << assignment_index
+		}
+		assignment_index++
+		assignment_pos = end + 1
+	}
+	if wildcard_indexes.len == 0 {
+		return path
+	}
+	mut result := ''
+	mut path_pos := 0
+	mut path_index := 0
+	for path_pos < path.len {
+		if path[path_pos] != `[` {
+			result += path[path_pos].ascii_str()
+			path_pos++
+			continue
+		}
+		end_offset := path[path_pos..].index(']') or {
+			result += path[path_pos..]
+			break
+		}
+		end := path_pos + end_offset
+		if path_index in wildcard_indexes {
+			result += '[*]'
+		} else {
+			result += path[path_pos..end + 1]
+		}
+		path_index++
+		path_pos = end + 1
+	}
+	return result
+}
+
+fn array_map_clear_local_pointer_origins(path string, mut locals map[string]bool) map[string]bool {
+	mut stale := []string{}
+	mut overlapping := map[string]bool{}
+	has_wildcard := path.contains('[*]')
+	for local_path, external in locals {
+		marker_owner := array_map_local_pointer_pointee_owner(local_path) or { local_path }
+		if array_map_local_path_is_projection(marker_owner, path) || (has_wildcard && array_map_local_path_is_possible_projection(marker_owner, path)) {
+			stale << local_path
+			if has_wildcard && marker_owner == local_path {
+				merged_path := array_map_local_path_with_assignment_wildcards(local_path, path)
+				overlapping[merged_path] = overlapping[merged_path] || external
+			}
+		}
+	}
+	for local_path in stale {
+		locals.delete(local_path)
+	}
+	return overlapping
+}
+
+fn array_map_merge_overlapping_pointer_origins(overlapping map[string]bool, mut locals map[string]bool) {
+	for path, external in overlapping {
+		locals[path] = locals[path] || external
+	}
+}
+
+fn array_map_local_path_root(path string) string {
+	if owner := array_map_local_pointer_pointee_owner(path) {
+		return array_map_local_path_root(owner)
+	}
+	for i, ch in path {
+		if ch in [`.`, `[`] {
+			return path[..i]
+		}
+	}
+	return path
+}
+
+fn array_map_merge_local_pointer_origins(mut target map[string]bool, source map[string]bool, baseline map[string]bool) {
+	for path, external in source {
+		if array_map_local_path_root(path) in baseline {
+			target[path] = target[path] || external
+		}
+	}
+}
+
+fn array_map_local_pointer_origins_equal(left map[string]bool, right map[string]bool) bool {
+	if left.len != right.len {
+		return false
+	}
+	for path, external in left {
+		if path !in right || right[path] != external {
+			return false
+		}
+	}
+	return true
+}
+
+fn array_map_join_local_pointer_origin_states(mut target map[string]bool, source map[string]bool) bool {
+	mut changed := false
+	for path, external in source {
+		if path !in target {
+			target[path] = external
+			changed = true
+		} else if external && !target[path] {
+			target[path] = true
+			changed = true
+		}
+	}
+	return changed
+}
+
+fn array_map_call_result_relative_source_suffix(target_suffix string, source_target_suffix string) ?string {
+	if source_target_suffix.len == 0 {
+		return target_suffix
+	}
+	if target_suffix == source_target_suffix || (target_suffix.len == source_target_suffix.len && array_map_local_path_is_possible_projection(target_suffix, source_target_suffix)) {
+		return ''
+	}
+	if array_map_local_path_is_possible_projection(target_suffix, source_target_suffix) {
+		return target_suffix[source_target_suffix.len..]
+	}
+	if array_map_local_path_is_possible_projection(source_target_suffix, target_suffix) {
+		// A conservative aggregate target contains the mapped descendant.
+		return ''
+	}
+	return none
+}
+
+fn (mut t Transformer) array_map_call_result_path_origin_is_external(source types.OwnershipCallResultSource, target_suffix string, elem_name string, origins map[string]bool) bool {
+	relative_suffix := array_map_call_result_relative_source_suffix(target_suffix, source.target_suffix) or { return false }
+	source_path := t.array_map_lvalue_local_path(source.arg_id) or {
+		return t.array_map_pointer_alias_origin_is_external(source.arg_id, elem_name, origins)
+	}
+	root := t.array_map_lvalue_root_ident(source.arg_id) or { return true }
+	if root == elem_name {
+		return false
+	}
+	if root !in origins {
+		return true
+	}
+	effective_path := source_path + source.source_suffix + relative_suffix
+	return origins[array_map_local_pointer_path(effective_path, root, origins)]
+}
+
+fn (mut t Transformer) array_map_record_call_result_pointer_type_paths(path string, target_suffix string, typ types.Type, sources []types.OwnershipCallResultSource, elem_name string, origins map[string]bool, mut locals map[string]bool, mut seen map[string]bool) {
+	match typ {
+		types.Pointer, types.Channel, types.FnType, types.Interface {
+			locals[path] = sources.len == 0 || sources.any(t.array_map_call_result_path_origin_is_external(it, target_suffix, elem_name, origins))
+		}
+		types.Alias, types.OptionType, types.ResultType {
+			t.array_map_record_call_result_pointer_type_paths(path, target_suffix, typ.base_type, sources, elem_name, origins, mut locals, mut seen)
+		}
+		types.Array, types.ArrayFixed {
+			t.array_map_record_call_result_pointer_type_paths('${path}[*]', '${target_suffix}[*]', typ.elem_type, sources, elem_name, origins, mut locals, mut seen)
+		}
+		types.Map {
+			t.array_map_record_call_result_pointer_type_paths('${path}[*]', '${target_suffix}[*]', typ.value_type, sources, elem_name, origins, mut locals, mut seen)
+		}
+		types.Struct {
+			if typ.name !in seen {
+				seen[typ.name] = true
+				for field in t.tc.struct_fields_for_type(typ.name) {
+					t.array_map_record_call_result_pointer_type_paths('${path}.${field.name}', '${target_suffix}.${field.name}', field.typ, sources, elem_name, origins, mut locals, mut seen)
+				}
+				seen.delete(typ.name)
+			}
+		}
+		types.SumType, types.MultiReturn {
+			// The active variant/slot is runtime-dependent, so retain a conservative
+			// aggregate root when ownership says an external argument reaches it.
+			locals[path] = sources.len == 0 || sources.any(t.array_map_call_result_path_origin_is_external(it, target_suffix, elem_name, origins))
+		}
+		else {}
+	}
+}
+
+fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id flat.NodeId, elem_name string, origins map[string]bool, mut locals map[string]bool) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt, .field_init] && node.children_count > 0 {
+		t.array_map_record_local_pointer_origins(path, t.a.child(&node, 0), elem_name, origins, mut locals)
+		return
+	}
+	if node.kind in [.block, .match_branch] && node.children_count > 0 {
+		t.array_map_record_local_pointer_origins(path, t.a.child(&node, node.children_count - 1), elem_name, origins, mut locals)
+		return
+	}
+	if node.kind == .comptime_if {
+		if take_then := t.comptime_type_condition_value(node.value) {
+			branch_idx := if take_then { 0 } else { 1 }
+			if branch_idx < node.children_count {
+				t.array_map_record_local_pointer_origins(path, t.a.child(&node, branch_idx), elem_name, origins, mut locals)
+			} else {
+				locals[path] = false
+			}
+			return
+		}
+	}
+	if node.kind in [.if_expr, .match_stmt, .or_expr, .comptime_if] {
+		locals[path] = false
+		branch_start := if node.kind in [.if_expr, .match_stmt] { 1 } else { 0 }
+		for i in branch_start .. node.children_count {
+			mut branch_origins := map[string]bool{}
+			t.array_map_record_local_pointer_origins(path, t.a.child(&node, i), elem_name, origins, mut branch_origins)
+			for branch_path, external in branch_origins {
+				locals[branch_path] = locals[branch_path] || external
+			}
+		}
+		return
+	}
+	typ := t.checker_expr_type_name(id) or { t.node_type(id) }
+	clean_type := t.normalize_type_alias(typ)
+	if clean_type.starts_with('&') || clean_type.starts_with('chan ') {
+		locals[path] = t.array_map_pointer_alias_origin_is_external(id, elem_name, origins)
+		t.array_map_record_local_pointer_pointees(path, id, origins, mut locals)
+		return
+	}
+	locals[path] = false
+	if external := t.array_map_slice_backing_origin_is_external(id, elem_name, origins) {
+		// A range-index view keeps the source array's backing allocation. Track the
+		// wildcard storage path so writes through a local slice still reach external
+		// storage without treating a later reassignment of the slice itself as external.
+		locals['${path}[*]'] = external
+	}
+	if node.kind == .call {
+		sources := t.tc.ownership_call_result_sources(id)
+		mut seen := map[string]bool{}
+		t.array_map_record_call_result_pointer_type_paths(path, '', t.tc.resolve_type(id), sources, elem_name, origins, mut locals, mut seen)
+		return
+	}
+	if node.kind == .assoc && node.children_count > 0 {
+		t.array_map_record_local_pointer_origins(path, t.a.child(&node, 0), elem_name, origins, mut locals)
+		for i in 1 .. node.children_count {
+			field := t.a.child_node(&node, i)
+			if field.kind == .field_init && field.value.len > 0 && field.children_count > 0 {
+				field_path := '${path}.${field.value}'
+				array_map_clear_local_pointer_origins(field_path, mut locals)
+				t.array_map_record_local_pointer_origins(field_path, t.a.child(field, 0), elem_name, origins, mut locals)
+			}
+		}
+		return
+	}
+	if node.kind == .struct_init {
+		for i in 0 .. node.children_count {
+			field := t.a.child_node(&node, i)
+			if field.kind == .field_init && field.value.len > 0 && field.children_count > 0 {
+				t.array_map_record_local_pointer_origins('${path}.${field.value}', t.a.child(field, 0), elem_name, origins, mut locals)
+			}
+		}
+		return
+	}
+	if node.kind == .array_literal {
+		for i in 0 .. node.children_count {
+			index_path := array_map_local_index_component(.int_literal, i.str())
+			t.array_map_record_local_pointer_origins('${path}[${index_path}]', t.a.child(&node, i), elem_name, origins, mut locals)
+		}
+		return
+	}
+	if node.kind == .array_init {
+		for i in 0 .. node.children_count {
+			field := t.a.child_node(&node, i)
+			if field.kind == .field_init && field.value == 'init' && field.children_count > 0 {
+				t.array_map_record_local_pointer_origins('${path}[*]', t.a.child(field, 0), elem_name, origins, mut locals)
+			}
+		}
+		return
+	}
+	if node.kind == .map_init {
+		for i := 0; i + 1 < int(node.children_count); i += 2 {
+			key := t.a.child_node(&node, i)
+			entry_path := array_map_local_index_path(path, key)
+			t.array_map_record_local_pointer_origins(entry_path, t.a.child(&node, i + 1), elem_name, origins, mut locals)
+		}
+		return
+	}
+	if source_path := t.array_map_lvalue_local_path(id) {
+		for local_path, external in origins {
+			if local_path != source_path && array_map_local_path_is_projection(local_path, source_path) {
+				suffix := local_path[source_path.len..]
+				locals['${path}${suffix}'] = external
+			}
+		}
+	}
+}
+
+fn (mut t Transformer) array_map_record_local_pointer_pointees(path string, id flat.NodeId, origins map[string]bool, mut locals map[string]bool) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt, .field_init] && node.children_count > 0 {
+		t.array_map_record_local_pointer_pointees(path, t.a.child(&node, 0), origins, mut locals)
+		return
+	}
+	if node.kind in [.block, .match_branch] && node.children_count > 0 {
+		t.array_map_record_local_pointer_pointees(path, t.a.child(&node, node.children_count - 1), origins, mut locals)
+		return
+	}
+	if node.kind == .comptime_if {
+		if take_then := t.comptime_type_condition_value(node.value) {
+			branch_idx := if take_then { 0 } else { 1 }
+			if branch_idx < node.children_count {
+				t.array_map_record_local_pointer_pointees(path, t.a.child(&node, branch_idx), origins, mut locals)
+			}
+			return
+		}
+	}
+	if node.kind in [.if_expr, .match_stmt, .or_expr, .comptime_if] {
+		branch_start := if node.kind in [.if_expr, .match_stmt] { 1 } else { 0 }
+		for i in branch_start .. node.children_count {
+			t.array_map_record_local_pointer_pointees(path, t.a.child(&node, i), origins, mut locals)
+		}
+		return
+	}
+	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
+		for target in t.array_map_lvalue_local_paths(t.a.child(&node, 0), origins) {
+			locals[array_map_local_pointer_pointee_marker(path, target)] = false
+		}
+		return
+	}
+	for source_path in t.array_map_lvalue_local_paths(id, origins) {
+		for target in array_map_local_pointer_pointee_targets(source_path, origins) {
+			locals[array_map_local_pointer_pointee_marker(path, target)] = false
+		}
+	}
+}
+
+fn (mut t Transformer) array_map_update_local_pointer_origins(stmt_id flat.NodeId, elem_name string, mut locals map[string]bool) {
+	mut loop_exits := []ArrayMapLoopPointerExit{}
+	mut return_exits := []ArrayMapReturnPointerExit{}
+	t.array_map_update_local_pointer_origins_flow(stmt_id, elem_name, mut locals, mut loop_exits, mut return_exits, '', 0)
+}
+
+fn (mut t Transformer) array_map_block_goto_label_origins(stmt flat.Node, elem_name string, initial map[string]bool, active_defer_count int) map[string]map[string]bool {
+	mut labels := map[string]bool{}
+	for i in 0 .. stmt.children_count {
+		child := t.a.child_node(&stmt, i)
+		if child.kind == .label_stmt && child.value.len > 0 {
+			labels[child.value] = true
+		}
+	}
+	if labels.len == 0 {
+		return map[string]map[string]bool{}
+	}
+	mut incoming := map[string]map[string]bool{}
+	for {
+		mut scoped := initial.clone()
+		mut continues := true
+		mut pass_exits := []ArrayMapLoopPointerExit{}
+		mut pass_returns := []ArrayMapReturnPointerExit{}
+		for i in 0 .. stmt.children_count {
+			child_id := t.a.child(&stmt, i)
+			child := t.a.nodes[int(child_id)]
+			if child.kind == .label_stmt {
+				if label_origins := incoming[child.value] {
+					if continues {
+						array_map_join_local_pointer_origin_states(mut scoped, label_origins)
+					} else {
+						scoped = label_origins.clone()
+					}
+					continues = true
+				}
+			}
+			if !continues {
+				continue
+			}
+			mut child_loop_label := ''
+			if child.kind in [.for_stmt, .for_in_stmt] && i > 0 {
+				previous := t.a.child_node(&stmt, i - 1)
+				if previous.kind == .label_stmt {
+					child_loop_label = previous.value
+				}
+			}
+			continues = t.array_map_update_local_pointer_origins_flow(child_id, elem_name, mut scoped, mut pass_exits, mut pass_returns, child_loop_label, active_defer_count)
+		}
+		mut changed := false
+		for exit in pass_exits {
+			if !exit.is_goto || exit.label !in labels {
+				continue
+			}
+			mut merged := map[string]bool{}
+			if existing := incoming[exit.label] {
+				merged = existing.clone()
+			}
+			if array_map_join_local_pointer_origin_states(mut merged, exit.origins) {
+				changed = true
+			}
+			incoming[exit.label] = merged.clone()
+		}
+		if !changed {
+			return incoming
+		}
+	}
+	return incoming
+}
+
+fn array_map_loop_iteration_child_indices(stmt flat.Node) []int {
+	if stmt.kind != .for_stmt || stmt.children_count < 3 {
+		mut indices := []int{cap: int(stmt.children_count)}
+		for i in 0 .. stmt.children_count {
+			indices << int(i)
+		}
+		return indices
+	}
+	mut indices := []int{cap: int(stmt.children_count) - 1}
+	indices << 1
+	for i in 3 .. stmt.children_count {
+		indices << int(i)
+	}
+	indices << 2
+	return indices
+}
+
+fn (mut t Transformer) array_map_loop_pointer_origin_fixed_point(stmt flat.Node, elem_name string, initial map[string]bool, loop_label string, active_defer_count int) map[string]bool {
+	mut loop_origins := initial.clone()
+	for {
+		mut next_origins := loop_origins.clone()
+		mut pass_origins := loop_origins.clone()
+		mut pass_exits := []ArrayMapLoopPointerExit{}
+		mut pass_returns := []ArrayMapReturnPointerExit{}
+		mut continues := true
+		for i in array_map_loop_iteration_child_indices(stmt) {
+			if !continues {
+				break
+			}
+			continues = t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut pass_origins, mut pass_exits, mut pass_returns, '', active_defer_count)
+		}
+		if continues {
+			array_map_merge_local_pointer_origins(mut next_origins, pass_origins, loop_origins)
+		}
+		for exit in pass_exits {
+			if exit.is_continue && (exit.label.len == 0 || exit.label == loop_label) {
+				mut continue_origins := exit.origins.clone()
+				if stmt.kind == .for_stmt && stmt.children_count >= 3 {
+					mut post_exits := []ArrayMapLoopPointerExit{}
+					mut post_returns := []ArrayMapReturnPointerExit{}
+					t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, 2), elem_name, mut continue_origins, mut post_exits, mut post_returns, '', active_defer_count)
+				}
+				array_map_merge_local_pointer_origins(mut next_origins, continue_origins, loop_origins)
+			}
+		}
+		if array_map_local_pointer_origins_equal(loop_origins, next_origins) {
+			return loop_origins
+		}
+		loop_origins = next_origins.move()
+	}
+	return loop_origins
+}
+
+fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.NodeId, elem_name string, mut locals map[string]bool, mut loop_exits []ArrayMapLoopPointerExit, mut return_exits []ArrayMapReturnPointerExit, loop_label string, active_defer_count int) bool {
+	if int(stmt_id) < 0 || int(stmt_id) >= t.a.nodes.len {
+		return true
+	}
+	stmt := t.a.nodes[int(stmt_id)]
+	if stmt.kind in [.break_stmt, .continue_stmt] {
+		loop_exits << ArrayMapLoopPointerExit{
+			origins:     locals.clone()
+			label:       stmt.value
+			defer_count: active_defer_count
+			is_continue: stmt.kind == .continue_stmt
+		}
+		return false
+	}
+	if stmt.kind == .goto_stmt {
+		loop_exits << ArrayMapLoopPointerExit{
+			origins: locals.clone()
+			label: stmt.value
+			defer_count: active_defer_count
+			is_goto: true
+		}
+		return false
+	}
+	if stmt.kind == .return_stmt {
+		for i in 0 .. stmt.children_count {
+			if !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut locals, mut loop_exits, mut return_exits, loop_label, active_defer_count) {
+				return false
+			}
+		}
+		return_exits << ArrayMapReturnPointerExit{
+			origins: locals.clone()
+			defer_count: active_defer_count
+		}
+		return false
+	}
+	if stmt.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt] && stmt.children_count > 0 {
+		return t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, 0), elem_name, mut locals, mut loop_exits, mut return_exits, loop_label, active_defer_count)
+	}
+	if stmt.kind in [.block, .match_branch, .select_branch] {
+		label_origins := t.array_map_block_goto_label_origins(stmt, elem_name, locals, active_defer_count)
+		mut scoped := locals.clone()
+		mut declared := map[string]bool{}
+		mut continues := true
+		mut block_exits := []ArrayMapLoopPointerExit{}
+		for i in 0 .. stmt.children_count {
+			child_id := t.a.child(&stmt, i)
+			child := t.a.nodes[int(child_id)]
+			if child.kind == .label_stmt {
+				if incoming := label_origins[child.value] {
+					if continues {
+						array_map_join_local_pointer_origin_states(mut scoped, incoming)
+					} else {
+						scoped = incoming.clone()
+					}
+					continues = true
+				}
+			}
+			if !continues {
+				continue
+			}
+			if child.kind == .decl_assign {
+				for j := 0; j + 1 < int(child.children_count); j += 2 {
+					lhs := t.a.child_node(&child, j)
+					if lhs.kind == .ident {
+						declared[lhs.value] = true
+					}
+				}
+			}
+			mut child_loop_label := ''
+			if child.kind in [.for_stmt, .for_in_stmt] && i > 0 {
+				previous := t.a.child_node(&stmt, i - 1)
+				if previous.kind == .label_stmt {
+					child_loop_label = previous.value
+				}
+			}
+			continues = t.array_map_update_local_pointer_origins_flow(child_id, elem_name, mut scoped, mut block_exits, mut return_exits, child_loop_label, active_defer_count)
+		}
+		for exit in block_exits {
+			if !exit.is_goto || exit.label !in label_origins {
+				loop_exits << exit
+			}
+		}
+		if continues {
+			for path, external in scoped {
+				root := array_map_local_path_root(path)
+				if root in locals && root !in declared {
+					locals[path] = external
+				}
+			}
+		}
+		return continues
+	}
+	if stmt.kind == .comptime_if {
+		if take_then := t.comptime_type_condition_value(stmt.value) {
+			branch_idx := if take_then { 0 } else { 1 }
+			if branch_idx < stmt.children_count {
+				return t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, branch_idx), elem_name, mut locals, mut loop_exits, mut return_exits, '', active_defer_count)
+			}
+			return true
+		}
+		// An unresolved comptime condition compiles exactly one branch, but which one is
+		// unknown here. Conservatively union both branches so a pointer rebind to external
+		// storage in either branch is preserved instead of dropped.
+		before := locals.clone()
+		mut merged := map[string]bool{}
+		mut continues := stmt.children_count <= 1
+		for name, origin in before {
+			merged[name] = if stmt.children_count > 1 { false } else { origin }
+		}
+		for i in 0 .. stmt.children_count {
+			mut branch := before.clone()
+			if t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut branch, mut loop_exits, mut return_exits, '', active_defer_count) {
+				continues = true
+				array_map_merge_local_pointer_origins(mut merged, branch, before)
+			}
+		}
+		if continues {
+			locals = merged.move()
+		}
+		return continues
+	}
+	if stmt.kind == .or_expr {
+		if stmt.children_count == 0 {
+			return true
+		}
+		// The source is evaluated on both paths. A continuing fallback is conditional, so
+		// preserve every pointer origin possible after either success or fallback execution.
+		if !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, 0), elem_name, mut locals, mut loop_exits, mut return_exits, '', active_defer_count) {
+			return false
+		}
+		before := locals.clone()
+		mut merged := before.clone()
+		for i in 1 .. stmt.children_count {
+			mut fallback := before.clone()
+			if t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut fallback, mut loop_exits, mut return_exits, '', active_defer_count) {
+				array_map_merge_local_pointer_origins(mut merged, fallback, before)
+			}
+		}
+		locals = merged.move()
+		return true
+	}
+	if stmt.kind == .infix && stmt.children_count > 0 {
+		if stmt.op in [.logical_and, .logical_or] {
+			// The left operand is always evaluated, while every later operand is
+			// conditional. Preserve pointer origins from both the short-circuit path
+			// and the path that evaluates the remaining operands.
+			if !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, 0), elem_name, mut locals, mut loop_exits, mut return_exits, '', active_defer_count) {
+				return false
+			}
+			for i in 1 .. stmt.children_count {
+				before := locals.clone()
+				mut evaluated := before.clone()
+				if t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut evaluated, mut loop_exits, mut return_exits, '', active_defer_count) {
+					array_map_merge_local_pointer_origins(mut locals, evaluated, before)
+				}
+			}
+			return true
+		}
+		for i in 0 .. stmt.children_count {
+			if !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut locals, mut loop_exits, mut return_exits, '', active_defer_count) {
+				return false
+			}
+		}
+		return true
+	}
+	if stmt.kind == .if_expr {
+		if stmt.children_count > 0 && !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, 0), elem_name, mut locals, mut loop_exits, mut return_exits, '', active_defer_count) {
+			return false
+		}
+		before := locals.clone()
+		mut merged := map[string]bool{}
+		mut continues := stmt.children_count <= 2
+		for name, origin in before {
+			merged[name] = if stmt.children_count > 2 { false } else { origin }
+		}
+		for i in 1 .. stmt.children_count {
+			mut branch := before.clone()
+			if t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut branch, mut loop_exits, mut return_exits, '', active_defer_count) {
+				continues = true
+				array_map_merge_local_pointer_origins(mut merged, branch, before)
+			}
+		}
+		if continues {
+			locals = merged.move()
+		}
+		return continues
+	}
+	if stmt.kind == .match_stmt {
+		if stmt.children_count > 0 && !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, 0), elem_name, mut locals, mut loop_exits, mut return_exits, '', active_defer_count) {
+			return false
+		}
+		before := locals.clone()
+		mut merged := map[string]bool{}
+		mut continues := false
+		for name, _ in before {
+			merged[name] = false
+		}
+		for i in 1 .. stmt.children_count {
+			mut branch := before.clone()
+			if t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut branch, mut loop_exits, mut return_exits, '', active_defer_count) {
+				continues = true
+				array_map_merge_local_pointer_origins(mut merged, branch, before)
+			}
+		}
+		if continues {
+			locals = merged.move()
+		}
+		return continues
+	}
+	if stmt.kind == .select_stmt {
+		before := locals.clone()
+		mut merged := map[string]bool{}
+		mut continues := false
+		for name, _ in before {
+			merged[name] = false
+		}
+		for i in 0 .. stmt.children_count {
+			mut branch := before.clone()
+			if t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut branch, mut loop_exits, mut return_exits, '', active_defer_count) {
+				continues = true
+				array_map_merge_local_pointer_origins(mut merged, branch, before)
+			}
+		}
+		if continues {
+			locals = merged.move()
+		}
+		return continues
+	}
+	if stmt.kind in [.for_stmt, .for_in_stmt] {
+		before := locals.clone()
+		mut exits := []ArrayMapLoopPointerExit{}
+		mut continues := true
+		mut loop_entry := before.clone()
+		if stmt.kind == .for_stmt && stmt.children_count > 0 {
+			continues = t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, 0), elem_name, mut loop_entry, mut exits, mut return_exits, '', active_defer_count)
+		}
+		mut loop_origins := t.array_map_loop_pointer_origin_fixed_point(stmt, elem_name, loop_entry, loop_label, active_defer_count)
+		for i in array_map_loop_iteration_child_indices(stmt) {
+			if !continues {
+				break
+			}
+			continues = t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut loop_origins, mut exits, mut return_exits, '', active_defer_count)
+		}
+		locals = loop_entry.clone()
+		for name, origin in loop_entry {
+			locals[name] = origin || (continues && loop_origins[name])
+		}
+		if continues {
+			array_map_merge_local_pointer_origins(mut locals, loop_origins, loop_entry)
+		}
+		for exit in exits {
+			if exit.is_goto {
+				loop_exits << exit
+			} else if exit.label.len == 0 || exit.label == loop_label {
+				mut exit_origins := exit.origins.clone()
+				if exit.is_continue && stmt.kind == .for_stmt && stmt.children_count >= 3 {
+					mut post_exits := []ArrayMapLoopPointerExit{}
+					mut post_returns := []ArrayMapReturnPointerExit{}
+					t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, 2), elem_name, mut exit_origins, mut post_exits, mut post_returns, '', active_defer_count)
+				}
+				array_map_merge_local_pointer_origins(mut locals, exit_origins, loop_entry)
+			} else {
+				loop_exits << exit
+			}
+		}
+		return true
+	}
+	if stmt.kind == .call && stmt.children_count > 0 {
+		// Evaluate the callee and physical arguments first. Nested calls can rebind a
+		// pointer that the outer call or a later statement observes.
+		mut argument_origins := map[int]map[string]bool{}
+		for i in 0 .. stmt.children_count {
+			if !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut locals, mut loop_exits, mut return_exits, loop_label, active_defer_count) {
+				return false
+			}
+			// Argument values and mut lvalues are captured left-to-right. Keep their
+			// origins before a later argument can rebind the same local pointer.
+			argument_origins[i] = locals.clone()
+		}
+		call_name := t.call_name_for_node(stmt_id, stmt)
+		params := t.call_param_types_for_node(call_name, stmt)
+		param_offset := t.call_param_offset_for_node(call_name, stmt, params)
+		callee := t.a.child_node(&stmt, 0)
+		for i in 1 .. stmt.children_count {
+			target_id := t.a.child(&stmt, i)
+			target := t.a.nodes[int(target_id)]
+			if !target.is_mut || types.unalias_type(t.tc.resolve_type(target_id)) !is types.Pointer {
+				continue
+			}
+			target_param_idx := i - 1 + param_offset
+			source_param_idxs := t.tc.call_param_storage_source_params(stmt_id, target_param_idx)
+			if source_param_idxs.len == 0 {
+				continue
+			}
+			target_snapshot := if i in argument_origins {
+				argument_origins[i].clone()
+			} else {
+				locals.clone()
+			}
+			for target_path in t.array_map_lvalue_local_paths(target_id, target_snapshot) {
+				target_root := array_map_local_path_root(target_path)
+				if target_root !in locals {
+					continue
+				}
+				overlapping := array_map_clear_local_pointer_origins(target_path, mut locals)
+				mut replacement_origins := map[string]bool{}
+				for source_param_idx in source_param_idxs {
+					mut source_id := flat.empty_node
+					mut source_child_idx := -1
+					if param_offset == 1 && source_param_idx == 0 && callee.kind == .selector && callee.children_count > 0 {
+						source_id = t.a.child(callee, 0)
+						source_child_idx = 0
+					} else {
+						child_idx := source_param_idx - param_offset + 1
+						if child_idx >= 1 && child_idx < stmt.children_count {
+							source_id = t.a.child(&stmt, child_idx)
+							source_child_idx = child_idx
+						}
+					}
+					if int(source_id) >= 0 {
+						source_origins := if source_child_idx in argument_origins {
+							argument_origins[source_child_idx].clone()
+						} else {
+							locals.clone()
+						}
+						t.array_map_record_local_pointer_origins(target_path, source_id, elem_name, source_origins, mut replacement_origins)
+					}
+				}
+				for path, external in replacement_origins {
+					locals[path] = locals[path] || external
+				}
+				array_map_merge_overlapping_pointer_origins(overlapping, mut locals)
+			}
+		}
+		return true
+	}
+	if stmt.kind == .decl_assign {
+		mut rhs_ids := []flat.NodeId{cap: int(stmt.children_count) / 2}
+		mut rhs_origins := map[int]map[string]bool{}
+		for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+			rhs_id := t.a.child(&stmt, i + 1)
+			if !t.array_map_update_local_pointer_origins_flow(rhs_id, elem_name, mut locals, mut loop_exits, mut return_exits, loop_label, active_defer_count) {
+				return false
+			}
+			pair_idx := rhs_ids.len
+			rhs_ids << rhs_id
+			rhs_origins[pair_idx] = locals.clone()
+		}
+		for pair_idx, rhs_id in rhs_ids {
+			i := pair_idx * 2
+			lhs := t.a.child_node(&stmt, i)
+			if lhs.kind == .ident && lhs.value.len > 0 {
+				overlapping := array_map_clear_local_pointer_origins(lhs.value, mut locals)
+				t.array_map_record_local_pointer_origins(lhs.value, rhs_id, elem_name, rhs_origins[pair_idx], mut locals)
+				array_map_merge_overlapping_pointer_origins(overlapping, mut locals)
+			}
+		}
+		return true
+	}
+	if stmt.kind in [.assign, .selector_assign, .index_assign] {
+		mut rhs_ids := []flat.NodeId{cap: int(stmt.children_count) / 2}
+		mut rhs_origins := map[int]map[string]bool{}
+		for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+			rhs_id := t.a.child(&stmt, i + 1)
+			if !t.array_map_update_local_pointer_origins_flow(rhs_id, elem_name, mut locals, mut loop_exits, mut return_exits, loop_label, active_defer_count) {
+				return false
+			}
+			pair_idx := rhs_ids.len
+			rhs_ids << rhs_id
+			rhs_origins[pair_idx] = locals.clone()
+		}
+		for pair_idx, rhs_id in rhs_ids {
+			i := pair_idx * 2
+			lhs_id := t.a.child(&stmt, i)
+			for path in t.array_map_lvalue_local_paths(lhs_id, locals) {
+				root := array_map_local_path_root(path)
+				if root in locals {
+					overlapping := array_map_clear_local_pointer_origins(path, mut locals)
+					t.array_map_record_local_pointer_origins(path, rhs_id, elem_name, rhs_origins[pair_idx], mut locals)
+					array_map_merge_overlapping_pointer_origins(overlapping, mut locals)
+				}
+			}
+		}
+	}
+	return true
+}
+
+fn (mut t Transformer) array_map_side_effect_source_retains_element_address(id flat.NodeId, elem_name string, block flat.Node, before_idx int) bool {
+	if before_idx >= 0 {
+		mut seen := map[string]bool{}
+		return t.array_map_block_value_retains_element_address(block, before_idx, id, elem_name, mut seen)
+	}
+	return t.array_map_expr_result_retains_element_address(id, elem_name)
+}
+
+fn (mut t Transformer) array_map_call_side_effect_retains_element_address(id flat.NodeId, node flat.Node, elem_name string, locals map[string]bool, block flat.Node, before_idx int) bool {
+	if node.kind != .call || node.children_count == 0 || isnil(t.tc) {
+		return false
+	}
+	call_name := t.call_name_for_node(id, node)
+	params := t.call_param_types_for_node(call_name, node)
+	param_offset := t.call_param_offset_for_node(call_name, node, params)
+	callee := t.a.child_node(&node, 0)
+	implicitly_borrows_elem := t.array_map_call_implicitly_borrows_ident(id, node, elem_name)
+	if t.tc.resolved_call_may_store_globally(id) {
+		if implicitly_borrows_elem {
+			return true
+		}
+		if param_offset == 1 && callee.kind == .selector && callee.children_count > 0 && t.array_map_side_effect_source_retains_element_address(t.a.child(callee, 0), elem_name, block, before_idx) {
+			return true
+		}
+		for i in 1 .. node.children_count {
+			if t.array_map_side_effect_source_retains_element_address(t.a.child(&node, i), elem_name, block, before_idx) {
+				return true
+			}
+		}
+	}
+	mut call_has_opaque_body := true
+	if resolved_name := t.tc.resolved_call_name(id) {
+		call_has_opaque_body = resolved_name.starts_with('C.')
+	}
+	if call_has_opaque_body {
+		// A function value or external C function has no visible body or attributes
+		// at this call site. Any pointer-bearing argument or captured callee state may
+		// therefore escape even when it is not `mut`.
+		if implicitly_borrows_elem {
+			return true
+		}
+		for i in 0 .. node.children_count {
+			if t.array_map_side_effect_source_retains_element_address(t.a.child(&node, i), elem_name, block, before_idx) {
+				return true
+			}
+		}
+	}
+	if !call_has_opaque_body {
+		// A resolved wrapper can invoke or store a callback without exposing where the
+		// callback's captured pointers flow, so treat capture-bearing callbacks as sinks.
+		mut globally_storing_callback_params := []int{}
+		for i in 1 .. node.children_count {
+			arg_id := t.a.child(&node, i)
+			if types.unalias_type(t.tc.resolve_type(arg_id)) !is types.FnType {
+				continue
+			}
+			if t.array_map_side_effect_source_retains_element_address(arg_id, elem_name, block, before_idx) {
+				return true
+			}
+			if t.tc.fn_value_may_store_globally(arg_id) {
+				globally_storing_callback_params << i - 1 + param_offset
+			}
+		}
+		if globally_storing_callback_params.len > 0 {
+			// A callback can receive a mapped pointer through another wrapper parameter,
+			// even when the callback expression itself captures no mapper state.
+			for i in 1 .. node.children_count {
+				arg_id := t.a.child(&node, i)
+				if types.unalias_type(t.tc.resolve_type(arg_id)) !is types.FnType && t.array_map_side_effect_source_retains_element_address(arg_id, elem_name, block, before_idx) {
+					source_param_idx := i - 1 + param_offset
+					for callback_param_idx in globally_storing_callback_params {
+						if t.tc.call_param_flows_to_callback(id, callback_param_idx, source_param_idx) {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	// Mut lvalues are captured after each preceding physical argument has been
+	// evaluated. Preserve that origin state so an earlier rebind is visible when
+	// classifying a later target.
+	mut argument_origins := map[int]map[string]bool{}
+	mut evaluation_locals := locals.clone()
+	for i in 0 .. node.children_count {
+		t.array_map_update_local_pointer_origins(t.a.child(&node, i), elem_name, mut evaluation_locals)
+		argument_origins[i] = evaluation_locals.clone()
+	}
+	mut target_param_idxs := []int{}
+	mut target_ids := []flat.NodeId{}
+	mut target_origins := []map[string]bool{}
+	if param_offset == 1 && callee.kind == .selector && callee.children_count > 0 && t.tc.mut_receiver_methods[call_name] {
+		target_param_idxs << 0
+		target_ids << t.a.child(callee, 0)
+		target_origins << (argument_origins[0] or { locals }).clone()
+	}
+	for i in 1 .. node.children_count {
+		arg_id := t.a.child(&node, i)
+		if t.a.nodes[int(arg_id)].is_mut {
+			target_param_idxs << i - 1 + param_offset
+			target_ids << arg_id
+			target_origins << (argument_origins[i] or { locals }).clone()
+		}
+	}
+	for target_i, target_param_idx in target_param_idxs {
+		if !t.array_map_side_effect_target_is_external(target_ids[target_i], elem_name, target_origins[target_i], true) {
+			continue
+		}
+		for source_param_idx in t.tc.call_param_storage_source_params(id, target_param_idx) {
+			mut source_id := flat.empty_node
+			if param_offset == 1 && source_param_idx == 0 && callee.kind == .selector && callee.children_count > 0 {
+				source_id = t.a.child(callee, 0)
+			} else {
+				child_idx := source_param_idx - param_offset + 1
+				if child_idx >= 1 && child_idx < node.children_count {
+					source_id = t.a.child(&node, child_idx)
+				}
+			}
+			if int(source_id) >= 0 && t.array_map_side_effect_source_retains_element_address(source_id, elem_name, block, before_idx) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) array_map_expr_side_effect_retains_element_address(id flat.NodeId, elem_name string) bool {
+	locals := map[string]bool{}
+	return t.array_map_expr_side_effect_retains_element_address_in_scope(id, elem_name, locals, flat.Node{}, -1)
+}
+
+fn (mut t Transformer) array_map_deferred_side_effect_retains_element_address(deferred []flat.NodeId, elem_name string, mut locals map[string]bool) bool {
+	for i := deferred.len - 1; i >= 0; i-- {
+		body_id := deferred[i]
+		if t.array_map_expr_side_effect_retains_element_address_in_scope(body_id, elem_name, locals, flat.Node{}, -1) {
+			return true
+		}
+		t.array_map_update_local_pointer_origins(body_id, elem_name, mut locals)
+	}
+	return false
+}
+
+fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_scope(id flat.NodeId, elem_name string, locals map[string]bool, block flat.Node, before_idx int) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		return false
+	}
+	if node.kind in [.block, .match_branch, .select_branch, .for_stmt, .for_in_stmt] {
+		mut scoped := locals.clone()
+		mut child_indices := array_map_loop_iteration_child_indices(node)
+		if node.kind in [.for_stmt, .for_in_stmt] {
+			mut loop_label := ''
+			if before_idx > 0 && before_idx < block.children_count {
+				previous := t.a.child_node(&block, before_idx - 1)
+				if previous.kind == .label_stmt {
+					loop_label = previous.value
+				}
+			}
+			if node.kind == .for_stmt && node.children_count > 0 {
+				init_id := t.a.child(&node, 0)
+				if t.array_map_expr_side_effect_retains_element_address_in_scope(init_id, elem_name, scoped, node, 0) {
+					return true
+				}
+				mut init_exits := []ArrayMapLoopPointerExit{}
+				mut init_returns := []ArrayMapReturnPointerExit{}
+				t.array_map_update_local_pointer_origins_flow(init_id, elem_name, mut scoped, mut init_exits, mut init_returns, '', 0)
+			}
+			scoped = t.array_map_loop_pointer_origin_fixed_point(node, elem_name, scoped, loop_label,
+				0)
+			child_indices = array_map_loop_iteration_child_indices(node)
+		}
+		label_origins := if node.kind in [.block, .match_branch, .select_branch] {
+			t.array_map_block_goto_label_origins(node, elem_name, scoped, 0)
+		} else {
+			map[string]map[string]bool{}
+		}
+		mut deferred := []flat.NodeId{}
+		mut loop_exits := []ArrayMapLoopPointerExit{}
+		mut return_exits := []ArrayMapReturnPointerExit{}
+		mut continues := true
+		for i in child_indices {
+			stmt_id := t.a.child(&node, i)
+			if int(stmt_id) < 0 || int(stmt_id) >= t.a.nodes.len {
+				continue
+			}
+			stmt := t.a.nodes[int(stmt_id)]
+			if stmt.kind == .label_stmt {
+				if incoming := label_origins[stmt.value] {
+					if continues {
+						array_map_join_local_pointer_origin_states(mut scoped, incoming)
+					} else {
+						scoped = incoming.clone()
+					}
+					continues = true
+				}
+			}
+			if !continues {
+				continue
+			}
+			if stmt.kind == .defer_stmt && stmt.children_count > 0 {
+				deferred << t.a.child(&stmt, 0)
+				continue
+			}
+			if t.array_map_expr_side_effect_retains_element_address_in_scope(stmt_id, elem_name, scoped, node, int(i)) {
+				return true
+			}
+			continues = t.array_map_update_local_pointer_origins_flow(stmt_id, elem_name, mut scoped, mut loop_exits, mut return_exits, '', deferred.len)
+		}
+		for exit in loop_exits {
+			if exit.is_goto && exit.label in label_origins {
+				continue
+			}
+			mut exit_state := exit.origins.clone()
+			if t.array_map_deferred_side_effect_retains_element_address(deferred[..exit.defer_count], elem_name, mut exit_state) {
+				return true
+			}
+		}
+		for exit in return_exits {
+			mut exit_state := exit.origins.clone()
+			if t.array_map_deferred_side_effect_retains_element_address(deferred[..exit.defer_count], elem_name, mut exit_state) {
+				return true
+			}
+		}
+		if continues {
+			return t.array_map_deferred_side_effect_retains_element_address(deferred, elem_name, mut scoped)
+		}
+		return false
+	}
+	if node.kind == .comptime_if {
+		if take_then := t.comptime_type_condition_value(node.value) {
+			branch_idx := if take_then { 0 } else { 1 }
+			return branch_idx < node.children_count && t.array_map_expr_side_effect_retains_element_address_in_scope(t.a.child(&node, branch_idx), elem_name, locals, block, before_idx)
+		}
+	}
+	if node.kind in [.if_expr, .match_stmt] && node.children_count > 0 {
+		condition_id := t.a.child(&node, 0)
+		if t.array_map_expr_side_effect_retains_element_address_in_scope(condition_id, elem_name, locals, block, before_idx) {
+			return true
+		}
+		mut branch_locals := locals.clone()
+		t.array_map_update_local_pointer_origins(condition_id, elem_name, mut branch_locals)
+		for i in 1 .. node.children_count {
+			if t.array_map_expr_side_effect_retains_element_address_in_scope(t.a.child(&node, i), elem_name, branch_locals, block, before_idx) {
+				return true
+			}
+		}
+		return false
+	}
+	if t.array_map_call_side_effect_retains_element_address(id, node, elem_name, locals, block, before_idx) {
+		return true
+	}
+	if node.kind == .return_stmt {
+		for i in 0 .. node.children_count {
+			if t.array_map_side_effect_source_retains_element_address(t.a.child(&node, i), elem_name,
+				block, before_idx) {
+				return true
+			}
+		}
+	}
+	if node.kind == .spawn_expr && node.children_count > 0 {
+		call := t.a.child_node(&node, 0)
+		if call.kind == .call {
+			for i in 0 .. call.children_count {
+				if t.array_map_side_effect_source_retains_element_address(t.a.child(call, i), elem_name, block, before_idx) {
+					return true
+				}
+			}
+		}
+	}
+	if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
+		array_id := t.a.child(&node, 0)
+		value_id := t.a.child(&node, 1)
+		if t.array_map_side_effect_target_is_external(array_id, elem_name, locals, false) && t.array_map_side_effect_source_retains_element_address(value_id, elem_name, block, before_idx) {
+			return true
+		}
+	}
+	if node.kind == .infix && node.op == .arrow && node.children_count >= 2 {
+		channel_id := t.a.child(&node, 0)
+		value_id := t.a.child(&node, 1)
+		if t.array_map_side_effect_target_is_external(channel_id, elem_name, locals, true) && t.array_map_side_effect_source_retains_element_address(value_id, elem_name, block, before_idx) {
+			return true
+		}
+	}
+	if node.kind == .assign && node.op == .assign && node.children_count >= 4 {
+		lhs_count := t.multi_assign_lhs_count(node)
+		rhs_count := t.multi_assign_rhs_count(node)
+		if lhs_count == rhs_count && rhs_count > 1 {
+			// Plain multi-assignment stages every RHS before applying any LHS. Snapshot
+			// those effects first so a rebind in an early RHS is visible to every target.
+			mut assignment_locals := locals.clone()
+			mut rhs_origins := []map[string]bool{cap: rhs_count}
+			for i in 0 .. rhs_count {
+				rhs_id := t.multi_assign_rhs_id(node, i)
+				if t.array_map_expr_side_effect_retains_element_address_in_scope(rhs_id, elem_name, assignment_locals, block, before_idx) {
+					return true
+				}
+				t.array_map_update_local_pointer_origins(rhs_id, elem_name, mut assignment_locals)
+				rhs_origins << assignment_locals.clone()
+			}
+			for i in 0 .. lhs_count {
+				lhs_id := t.multi_assign_lhs_id(node, i)
+				rhs_id := t.multi_assign_rhs_id(node, i)
+				if t.array_map_expr_side_effect_retains_element_address_in_scope(lhs_id, elem_name, assignment_locals, block, before_idx) {
+					return true
+				}
+				t.array_map_update_local_pointer_origins(lhs_id, elem_name, mut assignment_locals)
+				if t.array_map_side_effect_target_is_external(lhs_id, elem_name, assignment_locals, false) && t.array_map_side_effect_source_retains_element_address(rhs_id, elem_name, block, before_idx) {
+					return true
+				}
+				for path in t.array_map_lvalue_local_paths(lhs_id, assignment_locals) {
+					root := array_map_local_path_root(path)
+					if root in assignment_locals {
+						overlapping := array_map_clear_local_pointer_origins(path, mut assignment_locals)
+						t.array_map_record_local_pointer_origins(path, rhs_id, elem_name, rhs_origins[i], mut assignment_locals)
+						array_map_merge_overlapping_pointer_origins(overlapping, mut assignment_locals)
+					}
+				}
+			}
+			return false
+		}
+	}
+	if node.kind in [.assign, .selector_assign, .index_assign] {
+		for i := 0; i + 1 < int(node.children_count); i += 2 {
+			lhs_id := t.a.child(&node, i)
+			if t.array_map_side_effect_target_is_external(lhs_id, elem_name, locals, false) && t.array_map_side_effect_source_retains_element_address(t.a.child(&node, i + 1), elem_name, block, before_idx) {
+				return true
+			}
+		}
+	}
+	mut child_locals := locals.clone()
+	for i in 0 .. node.children_count {
+		child_id := t.a.child(&node, i)
+		if t.array_map_expr_side_effect_retains_element_address_in_scope(child_id, elem_name, child_locals, block, before_idx) {
+			return true
+		}
+		t.array_map_update_local_pointer_origins(child_id, elem_name, mut child_locals)
+	}
+	return false
+}
+
+fn (t &Transformer) array_map_expr_is_call_projection(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt, .selector, .index] && node.children_count > 0 {
+		return t.array_map_expr_is_call_projection(t.a.child(&node, 0))
+	}
+	return node.kind == .call
+}
+
+fn (mut t Transformer) array_map_block_result_retains_element_address(node flat.Node, name string) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	mut seen := map[string]bool{}
+	return t.array_map_block_value_retains_element_address(node, int(node.children_count) - 1,
+		t.a.child(&node, node.children_count - 1), name, mut seen)
+}
+
+fn (mut t Transformer) array_map_block_expr_result_retains_element_address(block flat.Node, before_idx int, id flat.NodeId, name string, mut seen map[string]bool) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt, .field_init {
+			return node.children_count > 0 && t.array_map_block_expr_result_retains_element_address(block, before_idx, t.a.child(&node, 0), name, mut seen)
+		}
+		.selector {
+			return node.children_count > 0 && t.array_map_block_selector_result_retains_element_address(block, before_idx, t.a.child(&node, 0), node.value, name, mut seen)
+		}
+		.index {
+			return node.children_count > 0 && t.array_map_block_index_result_retains_element_address(block, before_idx, node, name, mut seen)
+		}
+		.comptime_if {
+			if take_then := t.comptime_type_condition_value(node.value) {
+				branch_idx := if take_then { 0 } else { 1 }
+				return branch_idx < node.children_count && t.array_map_block_expr_result_retains_element_address(block, before_idx, t.a.child(&node, branch_idx), name, mut seen)
+			}
+			for i in 0 .. node.children_count {
+				mut child_seen := seen.clone()
+				if t.array_map_block_expr_result_retains_element_address(block, before_idx, t.a.child(&node, i), name, mut child_seen) {
+					return true
+				}
+			}
+			return false
+		}
+		.fn_literal {
+			for i in 0 .. node.children_count {
+				capture_id := t.a.child(&node, i)
+				capture := t.a.nodes[int(capture_id)]
+				if capture.kind != .ident || capture.value.len == 0 || capture.value in t.active_generic_params {
+					continue
+				}
+				if capture.value == name {
+					return true
+				}
+				mut capture_seen := seen.clone()
+				if t.array_map_block_value_retains_element_address(block, before_idx, capture_id, name, mut capture_seen) {
+					return true
+				}
+			}
+			return false
+		}
+		.struct_init, .array_literal, .array_init, .map_init, .assoc {
+			for i in 0 .. node.children_count {
+				mut child_seen := seen.clone()
+				if t.array_map_block_expr_result_retains_element_address(block, before_idx, t.a.child(&node, i), name, mut child_seen) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return t.array_map_expr_result_retains_element_address(id, name)
+		}
+	}
+}
+
+fn (mut t Transformer) array_map_block_value_retains_element_address(node flat.Node, before_idx int, id flat.NodeId, name string, mut seen map[string]bool) bool {
+	mut result_id := id
+	mut result := t.a.nodes[int(result_id)]
+	for result.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt, .field_init] {
+		if result.children_count == 0 {
+			break
+		}
+		result_id = t.a.child(&result, 0)
+		result = t.a.nodes[int(result_id)]
+	}
+	if result.kind == .selector && result.children_count > 0 {
+		return t.array_map_block_selector_result_retains_element_address(node, before_idx, t.a.child(&result, 0), result.value, name, mut seen)
+	}
+	if result.kind == .index && result.children_count > 0 {
+		return t.array_map_block_index_result_retains_element_address(node, before_idx, result, name, mut seen)
+	}
+	if result.kind != .ident || result.value.len == 0 {
+		return t.array_map_block_expr_result_retains_element_address(node, before_idx, result_id, name, mut seen)
+	}
+	if result.value in seen {
+		return false
+	}
+	seen[result.value] = true
+	for offset in 1 .. before_idx + 1 {
+		stmt_idx := before_idx - offset
+		stmt_id := t.a.child(&node, stmt_idx)
+		stmt := t.a.nodes[int(stmt_id)]
+		if stmt.kind == .decl_assign && stmt.children_count == 2 {
+			lhs := t.a.child_node(stmt, 0)
+			if lhs.kind == .ident && lhs.value == result.value {
+				return t.array_map_block_value_retains_element_address(node, stmt_idx,
+					t.a.child(stmt, 1), name, mut seen)
+			}
+		}
+		if stmt.kind == .assign {
+			for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+				lhs := t.a.child_node(stmt, i)
+				if lhs.kind == .ident && lhs.value == result.value {
+					return t.array_map_block_value_retains_element_address(node, stmt_idx,
+						t.a.child(stmt, i + 1), name, mut seen)
+				}
+			}
+		}
+		if t.array_map_nested_assignment_retains_element_address(stmt_id, result.value, node, stmt_idx, name, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) array_map_block_stmt_declares_name(stmt flat.Node, name string) bool {
+	if stmt.kind != .decl_assign {
+		return false
+	}
+	for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+		lhs := t.a.child_node(&stmt, i)
+		if lhs.kind == .ident && lhs.value == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) array_map_block_scope_limit(node flat.Node, name string) int {
+	for stmt_idx in 0 .. node.children_count {
+		if t.array_map_block_stmt_declares_name(t.a.child_node(&node, stmt_idx), name) {
+			return int(stmt_idx)
+		}
+	}
+	return int(node.children_count)
+}
+
+fn (mut t Transformer) array_map_mutating_call_retains_element_address(id flat.NodeId, node flat.Node, target string, block flat.Node, before_idx int, name string, seen map[string]bool) bool {
+	if node.kind != .call || node.children_count == 0 || isnil(t.tc) {
+		return false
+	}
+	call_name := t.call_name_for_node(id, node)
+	params := t.call_param_types_for_node(call_name, node)
+	param_offset := t.call_param_offset_for_node(call_name, node, params)
+	mut target_param_idxs := []int{}
+	callee := t.a.child_node(&node, 0)
+	if param_offset == 1 && callee.kind == .selector && callee.children_count > 0 {
+		receiver_id := t.a.child(callee, 0)
+		if t.array_map_lvalue_is_rooted_at_ident(receiver_id, target) && t.tc.mut_receiver_methods[call_name] {
+			target_param_idxs << 0
+		}
+	}
+	for i in 1 .. node.children_count {
+		arg_id := t.a.child(&node, i)
+		arg := t.a.nodes[int(arg_id)]
+		if arg.is_mut && t.array_map_lvalue_is_rooted_at_ident(arg_id, target) {
+			target_param_idx := i - 1 + param_offset
+			if target_param_idx !in target_param_idxs {
+				target_param_idxs << target_param_idx
+			}
+		}
+	}
+	if target_param_idxs.len == 0 {
+		return false
+	}
+	for target_param_idx in target_param_idxs {
+		for source_param_idx in t.tc.call_param_storage_source_params(id, target_param_idx) {
+			i := source_param_idx - param_offset + 1
+			if i < 1 || i >= node.children_count {
+				continue
+			}
+			mut arg_seen := seen.clone()
+			if t.array_map_block_value_retains_element_address(block, before_idx, t.a.child(&node, i), name, mut arg_seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) array_map_nested_assignment_retains_element_address(id flat.NodeId, target string, block flat.Node, before_idx int, name string, seen map[string]bool) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return false
+	}
+	if t.array_map_mutating_call_retains_element_address(id, node, target, block, before_idx, name, seen) {
+		return true
+	}
+	if node.kind in [.block, .match_branch] {
+		scope_limit := t.array_map_block_scope_limit(node, target)
+		for offset in 0 .. scope_limit {
+			stmt_idx := scope_limit - 1 - offset
+			stmt_id := t.a.child(&node, stmt_idx)
+			stmt := t.a.nodes[int(stmt_id)]
+			if stmt.kind == .assign {
+				for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+					lhs := t.a.child_node(stmt, i)
+					if lhs.kind == .ident && lhs.value == target {
+						mut branch_seen := seen.clone()
+						return t.array_map_block_value_retains_element_address(node, stmt_idx, t.a.child(stmt, i + 1), name, mut branch_seen)
+					}
+				}
+			}
+			if t.array_map_nested_assignment_retains_element_address(stmt_id, target, node, stmt_idx, name, seen) {
+				return true
+			}
+		}
+		return false
+	}
+	if node.kind == .assign {
+		for i := 0; i + 1 < int(node.children_count); i += 2 {
+			lhs := t.a.child_node(&node, i)
+			if lhs.kind == .ident && lhs.value == target {
+				mut branch_seen := seen.clone()
+				if t.array_map_block_value_retains_element_address(block, before_idx, t.a.child(&node, i + 1), name, mut branch_seen) {
+					return true
+				}
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.array_map_nested_assignment_retains_element_address(t.a.child(&node, i), target, block, before_idx, name, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) array_map_selector_lhs_targets_field(lhs flat.Node, target string, field_name string) bool {
+	if lhs.kind != .selector || lhs.value != field_name || lhs.children_count == 0 {
+		return false
+	}
+	mut base := t.a.child_node(&lhs, 0)
+	for base.kind in [.paren, .cast_expr, .as_expr] {
+		if base.children_count == 0 {
+			return false
+		}
+		base = t.a.child_node(base, 0)
+	}
+	return base.kind == .ident && base.value == target
+}
+
+fn (t &Transformer) array_map_selector_lhs_targets_path(lhs flat.Node, target string, field_path []string) bool {
+	if field_path.len == 0 {
+		return false
+	}
+	mut current := lhs
+	mut path_idx := field_path.len
+	for path_idx > 0 {
+		for current.kind in [.paren, .cast_expr, .as_expr] {
+			if current.children_count == 0 {
+				return false
+			}
+			current = t.a.nodes[int(t.a.child(&current, 0))]
+		}
+		if current.kind != .selector || current.children_count == 0 {
+			return false
+		}
+		path_idx--
+		if current.value != field_path[path_idx] {
+			return false
+		}
+		current = t.a.nodes[int(t.a.child(&current, 0))]
+	}
+	for current.kind in [.paren, .cast_expr, .as_expr] {
+		if current.children_count == 0 {
+			return false
+		}
+		current = t.a.nodes[int(t.a.child(&current, 0))]
+	}
+	return current.kind == .ident && current.value == target
+}
+
+fn (mut t Transformer) array_map_block_selector_path_retains_element_address(block flat.Node, before_idx int, base_id flat.NodeId, field_path []string, elem_name string, mut seen map[string]bool) bool {
+	if int(base_id) < 0 || int(base_id) >= t.a.nodes.len || field_path.len == 0 {
+		return false
+	}
+	mut source_id := base_id
+	mut source := t.a.nodes[int(source_id)]
+	mut resolved_path := field_path.clone()
+	for {
+		if source.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt] && source.children_count > 0 {
+			source_id = t.a.child(&source, 0)
+			source = t.a.nodes[int(source_id)]
+			continue
+		}
+		if source.kind == .selector && source.children_count > 0 {
+			resolved_path.prepend(source.value)
+			source_id = t.a.child(&source, 0)
+			source = t.a.nodes[int(source_id)]
+			continue
+		}
+		break
+	}
+	if source.kind == .ident && source.value.len > 0 {
+		if source.value in seen {
+			return false
+		}
+		seen[source.value] = true
+		for offset in 1 .. before_idx + 1 {
+			stmt_idx := before_idx - offset
+			stmt := t.a.child_node(&block, stmt_idx)
+			if stmt.kind == .decl_assign && stmt.children_count == 2 {
+				lhs := t.a.child_node(stmt, 0)
+				if lhs.kind == .ident && lhs.value == source.value {
+					return t.array_map_block_selector_path_retains_element_address(block, stmt_idx, t.a.child(stmt, 1), resolved_path, elem_name, mut seen)
+				}
+			}
+			if stmt.kind in [.assign, .selector_assign] {
+				for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+					lhs := t.a.child_node(stmt, i)
+					if lhs.kind == .ident && lhs.value == source.value {
+						return t.array_map_block_selector_path_retains_element_address(block, stmt_idx, t.a.child(stmt, i + 1), resolved_path, elem_name, mut seen)
+					}
+					if t.array_map_selector_lhs_targets_path(lhs, source.value, resolved_path) {
+						return t.array_map_block_value_retains_element_address(block, stmt_idx, t.a.child(stmt, i + 1), elem_name, mut seen)
+					}
+				}
+			}
+		}
+	}
+	return t.array_map_selector_path_retains_element_address(source_id, resolved_path, 0, elem_name)
+}
+
+fn (mut t Transformer) array_map_selector_path_retains_element_address(base_id flat.NodeId, field_path []string, field_idx int, elem_name string) bool {
+	if int(base_id) < 0 || int(base_id) >= t.a.nodes.len {
+		return false
+	}
+	if field_idx >= field_path.len {
+		return t.array_map_expr_result_retains_element_address(base_id, elem_name)
+	}
+	mut source_id := base_id
+	mut source := t.a.nodes[int(source_id)]
+	for source.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt] {
+		if source.children_count == 0 {
+			break
+		}
+		source_id = t.a.child(&source, 0)
+		source = t.a.nodes[int(source_id)]
+	}
+	if source.kind in [.struct_init, .assoc] {
+		for i in 0 .. source.children_count {
+			field_id := t.a.child(&source, i)
+			field := t.a.nodes[int(field_id)]
+			if field.kind == .field_init && field.value == field_path[field_idx] && field.children_count > 0 {
+				return t.array_map_selector_path_retains_element_address(t.a.child(&field, 0), field_path, field_idx + 1, elem_name)
+			}
+		}
+		if source.kind == .assoc && source.children_count > 0 {
+			return t.array_map_selector_path_retains_element_address(t.a.child(&source, 0), field_path, field_idx, elem_name)
+		}
+		return false
+	}
+	return t.array_map_expr_result_retains_element_address(source_id, elem_name)
+}
+
+fn (mut t Transformer) array_map_block_selector_result_retains_element_address(block flat.Node, before_idx int, base_id flat.NodeId, field_name string, elem_name string, mut seen map[string]bool) bool {
+	if int(base_id) < 0 || int(base_id) >= t.a.nodes.len {
+		return false
+	}
+	mut source_id := base_id
+	mut source := t.a.nodes[int(source_id)]
+	for source.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt] {
+		if source.children_count == 0 {
+			break
+		}
+		source_id = t.a.child(&source, 0)
+		source = t.a.nodes[int(source_id)]
+	}
+	if source.kind == .selector && source.children_count > 0 {
+		return t.array_map_block_selector_path_retains_element_address(block, before_idx, source_id, [
+			field_name,
+		], elem_name, mut seen)
+	}
+	if source.kind == .ident && source.value.len > 0 {
+		if source.value in seen {
+			return false
+		}
+		seen[source.value] = true
+		for offset in 1 .. before_idx + 1 {
+			stmt_idx := before_idx - offset
+			stmt_id := t.a.child(&block, stmt_idx)
+			stmt := t.a.nodes[int(stmt_id)]
+			if stmt.kind == .decl_assign && stmt.children_count == 2 {
+				lhs := t.a.child_node(stmt, 0)
+				if lhs.kind == .ident && lhs.value == source.value {
+					return t.array_map_block_selector_result_retains_element_address(block, stmt_idx, t.a.child(stmt, 1), field_name, elem_name, mut seen)
+				}
+			}
+			if stmt.kind in [.assign, .selector_assign] {
+				for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+					lhs := t.a.child_node(stmt, i)
+					if lhs.kind == .ident && lhs.value == source.value {
+						return t.array_map_block_selector_result_retains_element_address(block, stmt_idx, t.a.child(stmt, i + 1), field_name, elem_name, mut seen)
+					}
+					if t.array_map_selector_lhs_targets_field(lhs, source.value, field_name) {
+						return t.array_map_block_value_retains_element_address(block, stmt_idx, t.a.child(stmt, i + 1), elem_name, mut seen)
+					}
+				}
+			}
+			if t.array_map_nested_selector_assignment_retains_element_address(stmt_id, source.value, block, stmt_idx, field_name, elem_name, seen) {
+				return true
+			}
+		}
+	}
+	return t.array_map_selector_result_retains_element_address(source_id, field_name, elem_name)
+}
+
+fn (mut t Transformer) array_map_nested_selector_assignment_retains_element_address(id flat.NodeId, target string, block flat.Node, before_idx int, field_name string, elem_name string, seen map[string]bool) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return false
+	}
+	if t.array_map_mutating_call_retains_element_address(id, node, target, block, before_idx, elem_name, seen) {
+		return true
+	}
+	if node.kind in [.block, .match_branch] {
+		scope_limit := t.array_map_block_scope_limit(node, target)
+		for offset in 0 .. scope_limit {
+			stmt_idx := scope_limit - 1 - offset
+			stmt_id := t.a.child(&node, stmt_idx)
+			stmt := t.a.nodes[int(stmt_id)]
+			if stmt.kind in [.assign, .selector_assign] {
+				for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+					lhs := t.a.child_node(stmt, i)
+					if lhs.kind == .ident && lhs.value == target {
+						mut branch_seen := seen.clone()
+						return t.array_map_block_selector_result_retains_element_address(node, stmt_idx, t.a.child(stmt, i + 1), field_name, elem_name, mut branch_seen)
+					}
+					if t.array_map_selector_lhs_targets_field(lhs, target, field_name) {
+						mut branch_seen := seen.clone()
+						return t.array_map_block_value_retains_element_address(node, stmt_idx, t.a.child(stmt, i + 1), elem_name, mut branch_seen)
+					}
+				}
+			}
+			if t.array_map_nested_selector_assignment_retains_element_address(stmt_id, target, node, stmt_idx, field_name, elem_name, seen) {
+				return true
+			}
+		}
+		return false
+	}
+	if node.kind in [.assign, .selector_assign] {
+		for i := 0; i + 1 < int(node.children_count); i += 2 {
+			lhs := t.a.child_node(&node, i)
+			if lhs.kind == .ident && lhs.value == target {
+				mut branch_seen := seen.clone()
+				if t.array_map_block_selector_result_retains_element_address(block, before_idx, t.a.child(&node, i + 1), field_name, elem_name, mut branch_seen) {
+					return true
+				}
+			}
+			if t.array_map_selector_lhs_targets_field(lhs, target, field_name) {
+				mut branch_seen := seen.clone()
+				if t.array_map_block_value_retains_element_address(block, before_idx,
+					t.a.child(&node, i + 1), elem_name, mut branch_seen) {
+					return true
+				}
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.array_map_nested_selector_assignment_retains_element_address(t.a.child(&node, i), target, block, before_idx, field_name, elem_name, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) array_map_block_index_result_retains_element_address(block flat.Node, before_idx int, index_node flat.Node, elem_name string, mut seen map[string]bool) bool {
+	base_id := t.a.child(&index_node, 0)
+	index_id := if index_node.children_count > 1 {
+		t.a.child(&index_node, 1)
+	} else {
+		flat.empty_node
+	}
+	return t.array_map_block_index_base_retains_element_address(block, before_idx, base_id, index_id, elem_name, mut seen)
+}
+
+fn (t &Transformer) array_map_index_lhs_targets_index(lhs flat.Node, target string, index_id flat.NodeId) bool {
+	if lhs.kind != .index || lhs.children_count < 2 {
+		return false
+	}
+	mut base := t.a.child_node(&lhs, 0)
+	for base.kind in [.paren, .cast_expr, .as_expr] {
+		if base.children_count == 0 {
+			return false
+		}
+		base = t.a.child_node(base, 0)
+	}
+	if base.kind != .ident || base.value != target {
+		return false
+	}
+	if int(index_id) < 0 || int(index_id) >= t.a.nodes.len {
+		return true
+	}
+	lhs_index := t.a.child_node(&lhs, 1)
+	result_index := t.a.nodes[int(index_id)]
+	if lhs_index.kind == .int_literal && result_index.kind == .int_literal && is_decimal_text(lhs_index.value) && is_decimal_text(result_index.value) {
+		return lhs_index.value.int() == result_index.value.int()
+	}
+	// Dynamic indices can select the same slot at runtime.
+	return true
+}
+
+fn (mut t Transformer) array_map_block_index_base_retains_element_address(block flat.Node, before_idx int, base_id flat.NodeId, index_id flat.NodeId, elem_name string, mut seen map[string]bool) bool {
+	if int(base_id) < 0 || int(base_id) >= t.a.nodes.len {
+		return false
+	}
+	mut source_id := base_id
+	mut source := t.a.nodes[int(source_id)]
+	for source.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt, .postfix] {
+		if source.children_count == 0 {
+			break
+		}
+		source_id = t.a.child(&source, 0)
+		source = t.a.nodes[int(source_id)]
+	}
+	if source.kind == .ident && source.value.len > 0 {
+		if source.value in seen {
+			return false
+		}
+		seen[source.value] = true
+		for offset in 1 .. before_idx + 1 {
+			stmt_idx := before_idx - offset
+			stmt_id := t.a.child(&block, stmt_idx)
+			stmt := t.a.nodes[int(stmt_id)]
+			if stmt.kind == .decl_assign && stmt.children_count == 2 {
+				lhs := t.a.child_node(stmt, 0)
+				if lhs.kind == .ident && lhs.value == source.value {
+					return t.array_map_block_index_base_retains_element_address(block, stmt_idx, t.a.child(stmt, 1), index_id, elem_name, mut seen)
+				}
+			}
+			if stmt.kind in [.assign, .index_assign] {
+				for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+					lhs := t.a.child_node(stmt, i)
+					if lhs.kind == .ident && lhs.value == source.value {
+						return t.array_map_block_index_base_retains_element_address(block, stmt_idx, t.a.child(stmt, i + 1), index_id, elem_name, mut seen)
+					}
+					if t.array_map_index_lhs_targets_index(lhs, source.value, index_id) {
+						return t.array_map_block_value_retains_element_address(block, stmt_idx, t.a.child(stmt, i + 1), elem_name, mut seen)
+					}
+				}
+			}
+			if t.array_map_nested_index_assignment_retains_element_address(stmt_id, source.value, block, stmt_idx, index_id, elem_name, seen) {
+				return true
+			}
+		}
+	}
+	if source.kind == .array_literal && int(index_id) >= 0 {
+		index := t.a.nodes[int(index_id)]
+		if index.kind == .int_literal {
+			selected := index.value.int()
+			if selected >= 0 && selected < int(source.children_count) {
+				return t.array_map_expr_result_retains_element_address(t.a.child(&source, selected), elem_name)
+			}
+		}
+	}
+	return t.array_map_expr_result_retains_element_address(source_id, elem_name)
+}
+
+fn (mut t Transformer) array_map_nested_index_assignment_retains_element_address(id flat.NodeId, target string, block flat.Node, before_idx int, index_id flat.NodeId, elem_name string, seen map[string]bool) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return false
+	}
+	if t.array_map_mutating_call_retains_element_address(id, node, target, block, before_idx, elem_name, seen) {
+		return true
+	}
+	if node.kind in [.block, .match_branch] {
+		scope_limit := t.array_map_block_scope_limit(node, target)
+		for offset in 0 .. scope_limit {
+			stmt_idx := scope_limit - 1 - offset
+			stmt_id := t.a.child(&node, stmt_idx)
+			stmt := t.a.nodes[int(stmt_id)]
+			if stmt.kind in [.assign, .index_assign] {
+				for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+					lhs := t.a.child_node(stmt, i)
+					if lhs.kind == .ident && lhs.value == target {
+						mut branch_seen := seen.clone()
+						return t.array_map_block_index_base_retains_element_address(node, stmt_idx, t.a.child(stmt, i + 1), index_id, elem_name, mut branch_seen)
+					}
+					if t.array_map_index_lhs_targets_index(lhs, target, index_id) {
+						mut branch_seen := seen.clone()
+						return t.array_map_block_value_retains_element_address(node, stmt_idx, t.a.child(stmt, i + 1), elem_name, mut branch_seen)
+					}
+				}
+			}
+			if t.array_map_nested_index_assignment_retains_element_address(stmt_id, target, node, stmt_idx, index_id, elem_name, seen) {
+				return true
+			}
+		}
+		return false
+	}
+	if node.kind in [.assign, .index_assign] {
+		for i := 0; i + 1 < int(node.children_count); i += 2 {
+			lhs := t.a.child_node(&node, i)
+			if lhs.kind == .ident && lhs.value == target {
+				mut branch_seen := seen.clone()
+				if t.array_map_block_index_base_retains_element_address(block, before_idx, t.a.child(&node, i + 1), index_id, elem_name, mut branch_seen) {
+					return true
+				}
+			}
+			if t.array_map_index_lhs_targets_index(lhs, target, index_id) {
+				mut branch_seen := seen.clone()
+				if t.array_map_block_value_retains_element_address(block, before_idx, t.a.child(&node, i + 1), elem_name, mut branch_seen) {
+					return true
+				}
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.array_map_nested_index_assignment_retains_element_address(t.a.child(&node, i), target, block, before_idx, index_id, elem_name, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) array_map_index_result_retains_element_address(node flat.Node, name string) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	base_id := t.a.child(&node, 0)
+	if node.children_count > 1 {
+		base := t.a.nodes[int(base_id)]
+		index := t.a.child_node(&node, 1)
+		if base.kind == .array_literal && index.kind == .int_literal {
+			selected := index.value.int()
+			if selected >= 0 && selected < int(base.children_count) {
+				return t.array_map_expr_result_retains_element_address(t.a.child(&base, selected),
+					name)
+			}
+		}
+	}
+	return t.array_map_expr_result_retains_element_address(base_id, name)
+}
+
+fn (mut t Transformer) array_map_selector_result_retains_element_address(base_id flat.NodeId, field_name string, elem_name string) bool {
+	if int(base_id) < 0 || int(base_id) >= t.a.nodes.len {
+		return false
+	}
+	base := t.a.nodes[int(base_id)]
+	if base.kind in [.paren, .cast_expr, .as_expr, .expr_stmt] && base.children_count > 0 {
+		return t.array_map_selector_result_retains_element_address(t.a.child(&base, 0),
+			field_name, elem_name)
+	}
+	if base.kind in [.struct_init, .assoc] {
+		for i in 0 .. base.children_count {
+			field_id := t.a.child(&base, i)
+			field := t.a.nodes[int(field_id)]
+			if field.kind == .field_init && field.value == field_name && field.children_count > 0 {
+				return t.array_map_expr_result_retains_element_address(t.a.child(&field, 0),
+					elem_name)
+			}
+		}
+		if base.kind == .assoc && base.children_count > 0 {
+			return t.array_map_selector_result_retains_element_address(t.a.child(&base, 0),
+				field_name, elem_name)
+		}
+		return false
+	}
+	return t.array_map_expr_result_retains_element_address(base_id, elem_name)
+}
+
+fn (t &Transformer) array_map_result_can_retain_element_address(type_name string) bool {
+	if type_name.len == 0 {
+		return false
+	}
+	if isnil(t.tc) {
+		clean := t.normalize_type_alias(type_name)
+		return clean.starts_with('&') || clean in ['voidptr', 'byteptr', 'charptr']
+	}
+	mut seen := map[string]bool{}
+	return t.array_map_type_can_hold_pointer(t.tc.parse_type(type_name), mut seen)
+}
+
+fn (t &Transformer) array_map_type_can_hold_pointer(typ types.Type, mut seen map[string]bool) bool {
+	return match typ {
+		types.Pointer { true }
+		types.Alias {
+			t.array_map_type_can_hold_pointer(typ.base_type, mut seen)
+		}
+		types.OptionType {
+			t.array_map_type_can_hold_pointer(typ.base_type, mut seen)
+		}
+		types.ResultType {
+			t.array_map_type_can_hold_pointer(typ.base_type, mut seen)
+		}
+		types.Array {
+			t.array_map_type_can_hold_pointer(typ.elem_type, mut seen)
+		}
+		types.ArrayFixed {
+			t.array_map_type_can_hold_pointer(typ.elem_type, mut seen)
+		}
+		types.Channel {
+			t.array_map_type_can_hold_pointer(typ.elem_type, mut seen)
+		}
+		types.Map {
+			t.array_map_type_can_hold_pointer(typ.key_type, mut seen)
+				|| t.array_map_type_can_hold_pointer(typ.value_type, mut seen)
+		}
+		types.Struct {
+			if typ.name in seen {
+				false
+			} else {
+				seen[typ.name] = true
+				mut has_pointer := false
+				for field in t.tc.struct_fields_for_type(typ.name) {
+					if t.array_map_type_can_hold_pointer(field.typ, mut seen) {
+						has_pointer = true
+						break
+					}
+				}
+				has_pointer
+			}
+		}
+		types.SumType {
+			if typ.name in seen {
+				false
+			} else {
+				seen[typ.name] = true
+				mut has_pointer := false
+				for variant in t.concrete_sum_variants_for_candidate(typ.name) {
+					if t.array_map_type_can_hold_pointer(t.tc.parse_type(variant), mut seen) {
+						has_pointer = true
+						break
+					}
+				}
+				has_pointer
+			}
+		}
+		types.MultiReturn {
+			mut has_pointer := false
+			for item in typ.types {
+				if t.array_map_type_can_hold_pointer(item, mut seen) {
+					has_pointer = true
+					break
+				}
+			}
+			has_pointer
+		}
+		types.FnType, types.Interface { true }
+		else { false }
+	}
 }
 
 fn (t &Transformer) resolve_fn_value_expr(id flat.NodeId, node flat.Node) ?string {
@@ -3451,9 +5911,29 @@ fn (mut t Transformer) stable_array_compare_fn(cmp_id flat.NodeId, elem_type str
 	if int(cmp_id) >= 0 && t.a.nodes[int(cmp_id)].kind == .lambda_expr {
 		return cmp_id
 	}
+	cmp_type := t.array_compare_fn_type(cmp_id, elem_type)
 	cmp := t.transform_expr(cmp_id)
-	cmp_type := 'fn (&${elem_type}, &${elem_type}) int'
 	return t.stable_transformed_expr_for_reuse(cmp, cmp_type, 'sort_cmp')
+}
+
+fn (t &Transformer) array_compare_fn_type(cmp_id flat.NodeId, elem_type string) string {
+	default_type := 'fn (&${elem_type}, &${elem_type}) int'
+	if isnil(t.tc) || int(cmp_id) < 0 || int(cmp_id) >= t.a.nodes.len {
+		return default_type
+	}
+	cmp_node := t.a.nodes[int(cmp_id)]
+	raw_type := if cmp_node.kind == .ident {
+		t.raw_var_type(cmp_node.value)
+	} else {
+		t.raw_checker_node_type(cmp_id)
+	}
+	if raw_type.len == 0 {
+		return default_type
+	}
+	if types.unalias_type(t.tc.parse_type(raw_type)) is types.FnType {
+		return raw_type
+	}
+	return default_type
 }
 
 // make_array_default_sort_stmt builds make array default sort stmt data for transform.
@@ -3535,7 +6015,7 @@ fn (mut t Transformer) array_sort_less_expr(base flat.NodeId, elem_type string, 
 	if int(cmp_id) >= 0 {
 		cmp_node := t.a.nodes[int(cmp_id)]
 		if cmp_node.kind == .lambda_expr && cmp_node.children_count >= 3 {
-			if cmp := t.array_sort_lambda_expr(cmp_node, cur, prev, elem_type) {
+			if cmp := t.array_sort_lambda_expr(cmp_node, cur, prev, elem_type, elem_type) {
 				return cmp
 			}
 		}
@@ -3620,13 +6100,15 @@ fn (mut t Transformer) array_sort_compare_less_expr(base flat.NodeId, elem_type 
 	cur := t.make_index(base, t.make_ident(idx_name), elem_type)
 	prev := t.make_index(base, t.make_infix(.minus, t.make_ident(idx_name), t.make_int_literal(1)),
 		elem_type)
-	cmp_elem_type := if elem_type.starts_with('&') { elem_type } else { '&${elem_type}' }
-	cur_arg := if elem_type.starts_with('&') { cur } else { t.make_prefix(.amp, cur) }
-	prev_arg := if elem_type.starts_with('&') { prev } else { t.make_prefix(.amp, prev) }
+	cmp_cur_type, cmp_prev_type := t.array_sort_compare_arg_types(cmp, elem_type)
+	cur_arg := if cmp_cur_type == elem_type { cur } else { t.make_prefix(.amp, cur) }
+	prev_arg := if cmp_prev_type == elem_type { prev } else { t.make_prefix(.amp, prev) }
 	if int(cmp) >= 0 {
 		cmp_node := t.a.nodes[int(cmp)]
 		if cmp_node.kind == .lambda_expr && cmp_node.children_count >= 3 {
-			if call_value := t.array_sort_lambda_expr(cmp_node, cur_arg, prev_arg, cmp_elem_type) {
+			if call_value := t.array_sort_lambda_expr(cmp_node, cur_arg, prev_arg, cmp_cur_type,
+				cmp_prev_type)
+			{
 				return t.make_infix(.lt, call_value, t.make_int_literal(0))
 			}
 		}
@@ -3635,7 +6117,42 @@ fn (mut t Transformer) array_sort_compare_less_expr(base flat.NodeId, elem_type 
 	return t.make_infix(.lt, call, t.make_int_literal(0))
 }
 
-fn (mut t Transformer) array_sort_lambda_expr(node flat.Node, a_expr flat.NodeId, b_expr flat.NodeId, elem_type string) ?flat.NodeId {
+fn (t &Transformer) array_sort_compare_arg_types(cmp flat.NodeId, elem_type string) (string, string) {
+	default_type := '&${elem_type}'
+	if isnil(t.tc) || int(cmp) < 0 {
+		return default_type, default_type
+	}
+	resolved_elem := types.unalias_type(t.tc.parse_type(elem_type))
+	if resolved_elem !is types.Pointer {
+		return default_type, default_type
+	}
+	cmp_node := t.a.nodes[int(cmp)]
+	raw_type := if cmp_node.kind == .ident {
+		t.raw_var_type(cmp_node.value)
+	} else {
+		t.raw_checker_node_type(cmp)
+	}
+	if raw_type.len == 0 {
+		return default_type, default_type
+	}
+	cmp_type := types.unalias_type(t.tc.parse_type(raw_type))
+	if cmp_type is types.FnType && cmp_type.params.len >= 2 {
+		first_type := if types.unalias_type(cmp_type.params[0]).name() == resolved_elem.name() {
+			elem_type
+		} else {
+			default_type
+		}
+		second_type := if types.unalias_type(cmp_type.params[1]).name() == resolved_elem.name() {
+			elem_type
+		} else {
+			default_type
+		}
+		return first_type, second_type
+	}
+	return default_type, default_type
+}
+
+fn (mut t Transformer) array_sort_lambda_expr(node flat.Node, a_expr flat.NodeId, b_expr flat.NodeId, a_type string, b_type string) ?flat.NodeId {
 	if node.kind != .lambda_expr || node.children_count < 3 {
 		return none
 	}
@@ -3648,8 +6165,8 @@ fn (mut t Transformer) array_sort_lambda_expr(node flat.Node, a_expr flat.NodeId
 	body_id := t.a.child(&node, node.children_count - 1)
 	old_a := t.var_type(first.value)
 	old_b := t.var_type(second.value)
-	t.set_var_type(first.value, elem_type)
-	t.set_var_type(second.value, elem_type)
+	t.set_var_type(first.value, a_type)
+	t.set_var_type(second.value, b_type)
 	raw_cmp := t.substitute_array_sort_vars_named(body_id, first.value, second.value, a_expr,
 		b_expr)
 	cmp := t.transform_expr(raw_cmp)

@@ -6543,7 +6543,7 @@ fn (tc &TypeChecker) sizeof_is_comptime_reflection_var(id flat.NodeId, name stri
 	return false
 }
 
-fn (mut tc TypeChecker) comptime_type_condition_value(cond string) ?bool {
+fn (tc &TypeChecker) comptime_type_condition_value(cond string) ?bool {
 	clean := comptime_condition_strip_outer_parens(cond)
 	if clean == 'threads' {
 		return tc.threads_condition_value()
@@ -6590,7 +6590,7 @@ fn (mut tc TypeChecker) comptime_type_condition_value(cond string) ?bool {
 	return none
 }
 
-fn (mut tc TypeChecker) comptime_type_matches(actual string, expected string) ?bool {
+fn (tc &TypeChecker) comptime_type_matches(actual string, expected string) ?bool {
 	clean_actual := trimmed_space(actual)
 	clean_expected := trimmed_space(expected)
 	if clean_actual.len == 0 || clean_expected.len == 0
@@ -6684,7 +6684,7 @@ fn (tc &TypeChecker) comptime_type_text_is_shared(type_text string) bool {
 	return false
 }
 
-fn (mut tc TypeChecker) comptime_type_match_type(type_text string) Type {
+fn (tc &TypeChecker) comptime_type_match_type(type_text string) Type {
 	typ := tc.parse_type(type_text)
 	if typ is Alias {
 		return typ.base_type
