@@ -164,6 +164,12 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	}
 	index_source := g.render_membership_candidate(tokens[open + 1..close], 'int') or { return none }
 	if base_layout_type == 'string' {
+		if g.direct_array_access && !base_type.ends_with('*') {
+			return FastcRenderedExpression{
+				source: '((${base_source}).str[${index_source}])'
+				typ: element_type
+			}
+		}
 		return FastcRenderedExpression{
 			source: 'builtin__string_at(${base_source}, ${index_source})'
 			typ: element_type
@@ -197,6 +203,12 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		}
 	}
 	array_value := if base_type.ends_with('*') { '*(${base_source})' } else { base_source }
+	if g.direct_array_access {
+		return FastcRenderedExpression{
+			source: '(((${element_type} *)(${array_value}).data)[${index_source}])'
+			typ: element_type
+		}
+	}
 	return FastcRenderedExpression{
 		source: '(*(${element_type} *)builtin__array_get(${array_value}, ${index_source}))'
 		typ: element_type

@@ -46,10 +46,24 @@ struct FastcGenericMethodSource {
 // fastc_collect_generic_method_source_chunk indexes the generic methods and free
 // functions in one contiguous source range. The parallel wrapper merges ranges in
 // source order so duplicate keys retain the serial scan's last-definition behavior.
-fn fastc_collect_generic_method_source_chunk(sources []FastcSourceFile, prefs &pref.Preferences, start int, end int) map[string]FastcGenericMethodSource {
+// FastcGenericScanPartial is one chunk's generic method index plus the
+// declaration keyword flags of every file in the chunk, in chunk order.
+struct FastcGenericScanPartial {
+mut:
+	sources map[string]FastcGenericMethodSource
+	flags   []FastcSourceScanFlags
+}
+
+fn fastc_collect_generic_method_source_chunk(sources []FastcSourceFile, prefs &pref.Preferences, start int, end int) FastcGenericScanPartial {
 	mut result := map[string]FastcGenericMethodSource{}
+	mut flags := []FastcSourceScanFlags{cap: end - start}
 	for i in start .. end {
 		source_file := sources[i]
+		file_flags := fastc_source_scan_flags(source_file.source)
+		flags << file_flags
+		if !file_flags.has_generic_fn_syntax {
+			continue
+		}
 		module_name := source_file.header.module_name
 		for generic in fastc_scan_generic_fns(source_file.source, source_file.path, prefs, i) {
 			receiver_type := if generic.receiver_type != '' {
@@ -76,7 +90,10 @@ fn fastc_collect_generic_method_source_chunk(sources []FastcSourceFile, prefs &p
 			}
 		}
 	}
-	return result
+	return FastcGenericScanPartial{
+		sources: result
+		flags: flags
+	}
 }
 
 // mono_argument_type infers the first argument's concrete type for an on-demand
@@ -437,9 +454,7 @@ fn fastc_generic_type_source_uses_parameter(source string, type_params string, p
 	for type_param in type_params.split(',') {
 		parameters[type_param] = true
 	}
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('generic_return_type', source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed('generic_return_type', source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut tok := scan.scan()
@@ -470,9 +485,7 @@ fn (g &Parser) render_mono_method(src FastcGenericMethodSource, concrete string)
 // before expression parsing, otherwise `Result[Concrete]{...}` is mistaken for an array
 // access followed by an ordinary block.
 fn (g &Parser) erase_mono_generic_type_arguments(source string, src FastcGenericMethodSource) string {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(src.path, source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed(src.path, source.len)
 	mut scan := scanner.new_scanner(g.prefs, .normal)
 	scan.init(file, source)
 	mut edits := []FastcSourceEdit{}
@@ -839,9 +852,7 @@ fn fastc_render_generic_instance_with_call_rewrites(source string, generic Fastc
 			}
 		}
 	}
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('mono', definition.len)
-	file.index_lines_without_digest(definition)
+	file := token.File.unindexed('mono', definition.len)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, definition)
 	bracket_low := generic.bracket_start - base
@@ -878,9 +889,7 @@ fn fastc_render_generic_instance_with_call_rewrites(source string, generic Fastc
 // so it never misclassifies ordinary code.
 fn fastc_scan_generic_fns(source string, path string, prefs &pref.Preferences, source_index int) []FastcGenericFn {
 	mut result := []FastcGenericFn{}
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed(path, source.len)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, source)
 	mut previous := token.Token.unknown
@@ -1024,9 +1033,7 @@ fn fastc_params_type_param_index(params_source string, type_param string, prefs 
 		type_params[name] = true
 	}
 	no_imports := map[string]string{}
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('params', params_source.len)
-	file.index_lines_without_digest(params_source)
+	file := token.File.unindexed('params', params_source.len)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, params_source)
 	mut tok := s.scan()
@@ -1102,9 +1109,7 @@ fn fastc_infer_literal_type(tok token.Token, lit string) string {
 // resolved at source level (a non-literal implicit argument, a bare function
 // reference, or a malformed explicit type argument).
 fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences, source_index int, by_name map[string]FastcGenericFn, mut calls []FastcGenericCall, mut unresolvable map[string]bool, mut pairs []FastcConcretePair, mut seen_pair map[string]bool, mut has_concrete map[string]bool) {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed(path, source.len)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, source)
 	// A call inside a generic body may resolve its argument to the ENCLOSING generic's
@@ -1587,9 +1592,7 @@ fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences
 // type parameter and no nested generic type reference in the body.
 fn fastc_scan_generic_structs(source string, path string, prefs &pref.Preferences, source_index int) []FastcGenericFn {
 	mut result := []FastcGenericFn{}
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed(path, source.len)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, source)
 	mut previous := token.Token.unknown
@@ -1673,9 +1676,7 @@ fn fastc_scan_generic_structs(source string, path string, prefs &pref.Preference
 // generic type reference (`Foo[X]`). Plain arrays (`[]T`, `[N]T`) and maps
 // (`map[K]V`) are allowed; only a `Name[...]` with non-empty brackets counts.
 fn fastc_body_has_nested_generic(body string, prefs &pref.Preferences) bool {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('body', body.len)
-	file.index_lines_without_digest(body)
+	file := token.File.unindexed('body', body.len)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, body)
 	mut previous := token.Token.unknown
@@ -1731,9 +1732,7 @@ fn fastc_is_concrete_type_arg(name string) bool {
 // a plain concrete instantiation (a type-parameter argument, a complex type
 // argument, or a bare reference).
 fn fastc_scan_generic_struct_instances(source string, path string, prefs &pref.Preferences, source_index int, by_name map[string]FastcGenericFn, receiver_skip map[string]bool, mut refs []FastcGenericCall, mut unresolvable map[string]bool, mut pairs []FastcConcretePair, mut seen_pair map[string]bool, mut has_concrete map[string]bool) {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed(path, source.len)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, source)
 	mut previous := token.Token.unknown
@@ -1797,9 +1796,7 @@ fn fastc_scan_generic_struct_instances(source string, path string, prefs &pref.P
 // beyond its receiver, or carries its own type parameters, cannot be handled by
 // simple substitution and marks its struct problematic (later unresolvable).
 fn fastc_scan_generic_methods(source string, path string, prefs &pref.Preferences, source_index int, by_name map[string]FastcGenericFn, mut methods []FastcGenericMethod, mut receiver_skip map[string]bool, mut method_problematic map[string]bool) {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed(path, source.len)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, source)
 	mut previous := token.Token.unknown
@@ -1952,9 +1949,7 @@ fn fastc_render_generic_method(source string, method FastcGenericMethod, concret
 		end: receiver_high
 		replacement: fastc_monomorphized_name(method.struct_name, concrete)
 	}
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('method', definition.len)
-	file.index_lines_without_digest(definition)
+	file := token.File.unindexed('method', definition.len)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, definition)
 	substitutions := fastc_type_param_substitutions(method.type_param, concrete)

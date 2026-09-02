@@ -16727,6 +16727,11 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 	if cfn in ['va_arg', 'va_start', 'va_end', 'va_copy'] {
 		return false
 	}
+	// Compiler builtins (`__atomic_fetch_add`, `__builtin_expect`, `__sync_*`)
+	// are provided by the C compiler itself; clang rejects a prototype for them.
+	if cfn.starts_with('__atomic_') || cfn.starts_with('__builtin_') || cfn.starts_with('__sync_') {
+		return false
+	}
 	if cfn in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait', 'sem_wait']
 		&& g.target.os in ['linux', 'android', 'termux'] && g.c_directives_use_system_libc() {
 		return false

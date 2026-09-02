@@ -319,6 +319,40 @@ fn fastc_typeof_generic_field_type(tokens []FastcExpressionToken, start int, end
 	}
 }
 
+// nonlocal_name_type infers the type of a bare name that is not a local from
+// the constant and global tables. File generation parsers see fixed tables, so
+// the answer is memoized per name there; declaration initializer parsers
+// extend those tables while parsing, so they always recompute.
+fn (g &Parser) nonlocal_name_type(name string) string {
+	if !g.declaration_initializer_mode {
+		if cached := g.nonlocal_name_type_memo[name] {
+			return cached
+		}
+	}
+	typ := if constant_type := g.constant_types[fastc_constant_key(g.module_name, name)] {
+		constant_type
+	} else if constant_type := g.constant_types[fastc_constant_key('builtin', name)] {
+		constant_type
+	} else if fastc_constant_key(g.module_name, name) in g.constants {
+		'integer literal'
+	} else if fastc_constant_key('builtin', name) in g.constants {
+		'integer literal'
+	} else if global_type := g.global_types[fastc_global_key(g.module_name, name)] {
+		global_type
+	} else if global_type := g.global_types[fastc_global_key('builtin', name)] {
+		global_type
+	} else if g.selfhost {
+		'int'
+	} else {
+		''
+	}
+	if !g.declaration_initializer_mode {
+		mut w := unsafe { &Parser(g) }
+		w.nonlocal_name_type_memo[name] = typ
+	}
+	return typ
+}
+
 fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 	return g.infer_expression_type_range(tokens, 0, tokens.len)
 }
@@ -349,22 +383,8 @@ fn (g &Parser) infer_expression_type_range(tokens []FastcExpressionToken, expres
 			.name {
 				if local := g.locals[item.lit] {
 					local.typ
-				} else if constant_type := g.constant_types[fastc_constant_key(g.module_name, item.lit)] {
-					constant_type
-				} else if constant_type := g.constant_types[fastc_constant_key('builtin', item.lit)] {
-					constant_type
-				} else if fastc_constant_key(g.module_name, item.lit) in g.constants {
-					'integer literal'
-				} else if fastc_constant_key('builtin', item.lit) in g.constants {
-					'integer literal'
-				} else if global_type := g.global_types[fastc_global_key(g.module_name, item.lit)] {
-					global_type
-				} else if global_type := g.global_types[fastc_global_key('builtin', item.lit)] {
-					global_type
-				} else if g.selfhost {
-					'int'
 				} else {
-					''
+					g.nonlocal_name_type(item.lit)
 				}
 			}
 			.number {

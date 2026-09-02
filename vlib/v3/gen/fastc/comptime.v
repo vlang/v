@@ -187,9 +187,7 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 }
 
 fn fastc_collect_selected_comptime_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut brace_depth := 0
@@ -419,9 +417,7 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 		// `x.$(<var>.name)`) at the source level, then re-scan the result as
 		// ordinary V — no comptime awareness is needed in the renderer.
 		substituted := g.substitute_comptime_field(body_source, loop_var, field)
-		mut file_set := token.FileSet.new()
-		mut file := file_set.add_file('comptime_for', substituted.len)
-		file.index_lines_without_digest(substituted)
+		file := token.File.unindexed('comptime_for', substituted.len)
 		g.s = scanner.new_scanner(g.prefs, .normal)
 		g.s.init(file, substituted)
 		g.next()
@@ -457,9 +453,7 @@ fn fastc_comptime_loop_var_token(tok token.Token) bool {
 
 fn (g &Parser) substitute_comptime_field(body string, loop_var string, field FastcStructField) string {
 	field_name := field.name
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('cf', body.len)
-	file.index_lines_without_digest(body)
+	file := token.File.unindexed('cf', body.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
 	s.init(file, body)
 	mut edits := []FastcSourceEdit{}

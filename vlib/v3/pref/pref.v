@@ -508,6 +508,50 @@ pub fn file_has_incompatible_os_suffix(file string, current_os string) bool {
 
 // file_has_incompatible_target_suffix reports whether an OS or architecture suffix excludes
 // file from target.
+// file_name_has_marker reports whether `file` contains `marker`. File names
+// are short, so a direct scan beats the general substring search, and it
+// allocates nothing.
+@[direct_array_access]
+fn file_name_has_marker(file string, marker string) bool {
+	if marker.len == 0 || marker.len > file.len {
+		return false
+	}
+	first := marker[0]
+	for i := 0; i + marker.len <= file.len; i++ {
+		if file[i] != first {
+			continue
+		}
+		mut j := 1
+		for j < marker.len && file[i + j] == marker[j] {
+			j++
+		}
+		if j == marker.len {
+			return true
+		}
+	}
+	return false
+}
+
+// file_name_has_arch_marker reports whether `file` contains `.arch.` or
+// `_arch.` without building those marker strings.
+@[direct_array_access]
+fn file_name_has_arch_marker(file string, arch string) bool {
+	for i := 0; i + arch.len + 2 <= file.len; i++ {
+		c := file[i]
+		if (c != `.` && c != `_`) || file[i + arch.len + 1] != `.` {
+			continue
+		}
+		mut j := 0
+		for j < arch.len && file[i + 1 + j] == arch[j] {
+			j++
+		}
+		if j == arch.len {
+			return true
+		}
+	}
+	return false
+}
+
 pub fn file_has_incompatible_target_suffix(file string, target Target) bool {
 	if file_has_incompatible_os_only_suffix(file, target.os) {
 		return true
@@ -515,8 +559,7 @@ pub fn file_has_incompatible_target_suffix(file string, target Target) bool {
 	for arch in ['amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'i386', 'i486', 'i586', 'i686',
 		'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'rv64', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
 		's390x', 'loongarch64', 'wasm32'] {
-		if normalized_arch(arch) != target.arch
-			&& (file.contains('.${arch}.') || file.contains('_${arch}.')) {
+		if normalized_arch(arch) != target.arch && file_name_has_arch_marker(file, arch) {
 			return true
 		}
 	}
@@ -525,57 +568,57 @@ pub fn file_has_incompatible_target_suffix(file string, target Target) bool {
 
 fn file_has_incompatible_os_only_suffix(file string, current_os string) bool {
 	os_name := normalized_os(current_os)
-	if os_name == 'windows' && file.contains('_nix.') {
+	if os_name == 'windows' && file_name_has_marker(file, '_nix.') {
 		return true
 	}
-	if os_name != 'windows' && file.contains('_windows.') {
+	if os_name != 'windows' && file_name_has_marker(file, '_windows.') {
 		return true
 	}
-	if os_name != 'linux' && file.contains('_linux.') {
+	if os_name != 'linux' && file_name_has_marker(file, '_linux.') {
 		return true
 	}
-	if os_name != 'macos' && (file.contains('_macos.') || file.contains('_darwin.')) {
+	if os_name != 'macos' && (file_name_has_marker(file, '_macos.') || file_name_has_marker(file, '_darwin.')) {
 		return true
 	}
 	if os_name != 'macos' && os_name != 'freebsd' && os_name != 'openbsd' && os_name != 'netbsd'
-		&& os_name != 'dragonfly' && file.contains('_bsd.') {
+		&& os_name != 'dragonfly' && file_name_has_marker(file, '_bsd.') {
 		return true
 	}
-	if file.contains('_android_outside_termux.') {
+	if file_name_has_marker(file, '_android_outside_termux.') {
 		if os_name != 'android' {
 			return true
 		}
-	} else if file.contains('_termux.') {
+	} else if file_name_has_marker(file, '_termux.') {
 		if os_name != 'termux' {
 			return true
 		}
-	} else if file.contains('_android.') && os_name !in ['android', 'termux'] {
+	} else if file_name_has_marker(file, '_android.') && os_name !in ['android', 'termux'] {
 		return true
 	}
-	if os_name != 'ios' && file.contains('_ios.') {
+	if os_name != 'ios' && file_name_has_marker(file, '_ios.') {
 		return true
 	}
-	if os_name != 'freebsd' && file.contains('_freebsd.') {
+	if os_name != 'freebsd' && file_name_has_marker(file, '_freebsd.') {
 		return true
 	}
-	if os_name != 'openbsd' && file.contains('_openbsd.') {
+	if os_name != 'openbsd' && file_name_has_marker(file, '_openbsd.') {
 		return true
 	}
-	if os_name != 'netbsd' && file.contains('_netbsd.') {
+	if os_name != 'netbsd' && file_name_has_marker(file, '_netbsd.') {
 		return true
 	}
-	if os_name != 'dragonfly' && file.contains('_dragonfly.') {
+	if os_name != 'dragonfly' && file_name_has_marker(file, '_dragonfly.') {
 		return true
 	}
-	if os_name != 'solaris' && file.contains('_solaris.') {
+	if os_name != 'solaris' && file_name_has_marker(file, '_solaris.') {
 		return true
 	}
 	for target_os in ['qnx', 'haiku', 'serenity', 'vinix'] {
-		if os_name != target_os && file.contains('_${target_os}.') {
+		if os_name != target_os && file_name_has_marker(file, '_${target_os}.') {
 			return true
 		}
 	}
-	if os_name != 'wasm32_emscripten' && file.contains('_wasm32_emscripten.') {
+	if os_name != 'wasm32_emscripten' && file_name_has_marker(file, '_wasm32_emscripten.') {
 		return true
 	}
 	return false
@@ -599,8 +642,8 @@ pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target
 	mut has_os_specific := map[string]bool{}
 	for file in sorted_files {
 		if !file.ends_with('.v') || file.ends_with('.js.v')
-			|| (file.contains('_test.') && !file.contains('_d_test.')
-			&& !file.contains('_notd_test.')) {
+			|| (file_name_has_marker(file, '_test.') && !file_name_has_marker(file, '_d_test.')
+			&& !file_name_has_marker(file, '_notd_test.')) {
 			continue
 		}
 		if file_has_incompatible_target_suffix(file, target) {
@@ -617,8 +660,8 @@ pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target
 				continue
 			}
 			if !file.ends_with('.v') || file.ends_with('.js.v')
-				|| (file.contains('_test.') && !file.contains('_d_test.')
-				&& !file.contains('_notd_test.')) {
+				|| (file_name_has_marker(file, '_test.') && !file_name_has_marker(file, '_d_test.')
+				&& !file_name_has_marker(file, '_notd_test.')) {
 				continue
 			}
 			if file_has_incompatible_target_suffix(file, target) {
@@ -629,12 +672,12 @@ pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target
 					continue
 				}
 			}
-			if file.contains('_notd_') {
+			if file_name_has_marker(file, '_notd_') {
 				feature := extract_define_feature(file, '_notd_')
 				if feature.len > 0 && feature in user_defines {
 					continue
 				}
-			} else if file.contains('_d_') {
+			} else if file_name_has_marker(file, '_d_') {
 				feature := extract_define_feature(file, '_d_')
 				if feature.len == 0 || feature !in user_defines {
 					continue

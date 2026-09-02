@@ -80,6 +80,7 @@ fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
 }
 
 fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]FastcSourceFile, map[string]string) {
+	mut timer := fastc_new_phase_timer()
 	mut queue := []FastcQueuedSource{}
 	if prefs.building_v {
 		builtin_dir := os.real_path(prefs.get_vlib_module_path('builtin'))
@@ -89,6 +90,7 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 					path: builtin_file
 					module_name: 'builtin'
 					is_canonical: true
+					listed: true
 				}
 			}
 		}
@@ -111,11 +113,13 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 					queue << FastcQueuedSource{
 						path: module_file
 						is_canonical: true
+						listed: true
 					}
 				}
 			}
 		}
 	}
+	timer.mark('resolve.queue_init')
 	mut seen := map[string]bool{}
 	mut sources := []FastcSourceFile{}
 	// path -> the module_name a file was first loaded under, and the resulting alias map:
@@ -165,7 +169,7 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 				}
 				continue
 			}
-			if !os.is_file(path) {
+			if !queued.listed && !os.is_file(path) {
 				return error('fastc source file `${path}` does not exist')
 			}
 			seen[path] = true
@@ -173,7 +177,9 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 			wave_paths << path
 			wave_modules << queued.module_name
 		}
+		timer.mark('resolve.wave_scan')
 		loaded_sources := fastc_load_source_headers(wave_paths, prefs)
+		timer.mark('resolve.wave_load(${wave_paths.len})')
 		wave_source_start := sources.len
 		for i, loaded_source in loaded_sources {
 			if loaded_source.failed {
@@ -195,6 +201,10 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 					has_globals: header.has_globals
 					has_constants: header.has_constants
 					has_global_declarations: header.has_global_declarations
+					has_interfaces: header.has_interfaces
+					has_comptime_if: header.has_comptime_if
+					has_type_keywords: header.has_type_keywords
+					has_generic_fn_syntax: header.has_generic_fn_syntax
 				}
 			}
 			sources << FastcSourceFile{
@@ -279,11 +289,13 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 						path: module_file_real
 						module_name: imported_module
 						is_canonical: prefs.building_v
+						listed: true
 					}
 				}
 			}
 		}
 	}
+	timer.mark('resolve.imports')
 	return sources, module_aliases
 }
 
@@ -357,16 +369,17 @@ fn fastc_sources_in_dependency_order(sources []FastcSourceFile) ![]FastcSourceFi
 	return ordered
 }
 
-fn fastc_module_init_calls(sources []FastcSourceFile, functions map[string]FastcFunctionSignature) ![]string {
-	return fastc_module_lifecycle_calls(sources, functions, 'init', false)
+// fastc_module_init_calls lists the `init` hooks of `ordered_sources`, which
+// must already be in module dependency order.
+fn fastc_module_init_calls(ordered_sources []FastcSourceFile, functions map[string]FastcFunctionSignature) ![]string {
+	return fastc_module_lifecycle_calls(ordered_sources, functions, 'init', false)
 }
 
-fn fastc_module_cleanup_calls(sources []FastcSourceFile, functions map[string]FastcFunctionSignature) ![]string {
-	return fastc_module_lifecycle_calls(sources, functions, 'cleanup', true)
+fn fastc_module_cleanup_calls(ordered_sources []FastcSourceFile, functions map[string]FastcFunctionSignature) ![]string {
+	return fastc_module_lifecycle_calls(ordered_sources, functions, 'cleanup', true)
 }
 
-fn fastc_module_lifecycle_calls(sources []FastcSourceFile, functions map[string]FastcFunctionSignature, hook_name string, reverse bool) ![]string {
-	ordered_sources := fastc_sources_in_dependency_order(sources)!
+fn fastc_module_lifecycle_calls(ordered_sources []FastcSourceFile, functions map[string]FastcFunctionSignature, hook_name string, reverse bool) ![]string {
 	mut seen_modules := map[string]bool{}
 	mut ordered_modules := []string{}
 	for source_file in ordered_sources {
@@ -391,8 +404,7 @@ fn fastc_module_lifecycle_calls(sources []FastcSourceFile, functions map[string]
 	return calls
 }
 
-fn fastc_generate_startup_initializers(sources []FastcSourceFile, constant_initializers map[string]string, global_initializers map[string]string, module_init_calls []string) !string {
-	ordered_sources := fastc_sources_in_dependency_order(sources)!
+fn fastc_generate_startup_initializers(ordered_sources []FastcSourceFile, constant_initializers map[string]string, global_initializers map[string]string, module_init_calls []string) !string {
 	mut seen_modules := map[string]bool{}
 	mut out := strings.new_builder(1024)
 	for source_file in ordered_sources {
@@ -449,9 +461,7 @@ fn fastc_source_file_matches_backend(path string) bool {
 }
 
 fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences) !FastcSourceHeader {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut module_name := ''
@@ -549,7 +559,10 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	// Mirror that so the ORM lowering resolves `orm.Table`/`orm.QueryData`/... and the
 	// `orm` module is pulled into the source set. Only the real-builtin path has the
 	// runtime the ORM needs; the toy runtime cannot compile `orm`.
-	if prefs.building_v && module_name != 'orm' && 'orm' !in imports && fastc_source_uses_sql(source, prefs) {
+	// The compiler's own sources never use the ORM, and the probe rescans every
+	// file that mentions `sql` anywhere (FastC's ORM lowering does), so self-host
+	// builds skip it.
+	if prefs.building_v && !prefs.selfhost && module_name != 'orm' && 'orm' !in imports && fastc_source_uses_sql(source, prefs) {
 		imports['orm'] = 'orm'
 		if 'orm' !in import_order {
 			import_order << 'orm'
@@ -564,32 +577,163 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 			}
 		}
 	}
-	has_constants, has_global_declarations := fastc_source_declaration_flags(source)
+	// The declaration keyword flags are filled in by fastc_collect_generic_method_sources,
+	// the first parallel pass, so discovery waves only scan imports.
 	return FastcSourceHeader{
 		module_name: module_name
 		imports: imports
 		import_order: import_order
 		blank_imports: blank_imports
 		has_globals: has_globals
-		has_constants: has_constants
-		has_global_declarations: has_global_declarations
 	}
 }
 
-fn fastc_source_declaration_flags(source string) (bool, bool) {
-	return fastc_source_has_declaration(source, 'const'), fastc_source_has_declaration(source, '__global')
+// fastc_header_with_scan_flags copies a header with the declaration keyword
+// flags of its source filled in.
+fn fastc_header_with_scan_flags(header FastcSourceHeader, flags FastcSourceScanFlags) FastcSourceHeader {
+	return FastcSourceHeader{
+		module_name: header.module_name
+		imports: header.imports
+		import_order: header.import_order
+		blank_imports: header.blank_imports
+		has_globals: header.has_globals
+		has_constants: flags.has_constants
+		has_global_declarations: flags.has_global_declarations
+		has_interfaces: flags.has_interfaces
+		has_comptime_if: flags.has_comptime_if
+		has_type_keywords: flags.has_type_keywords
+		has_generic_fn_syntax: flags.has_generic_fn_syntax
+	}
 }
 
-fn fastc_source_has_declaration(source string, keyword string) bool {
-	mut search_start := 0
-	for {
-		index := source.index_after(keyword, search_start) or { return false }
-		if (index == 0 || !fastc_identifier_byte(source[index - 1])) && (index + keyword.len == source.len || !fastc_identifier_byte(source[index + keyword.len])) {
-			return true
+// FastcSourceScanFlags records which declaration keywords a source mentions
+// anywhere in its bytes (comments and strings included), so later collection
+// passes can skip files that cannot contain the declarations they look for.
+struct FastcSourceScanFlags {
+mut:
+	has_constants           bool
+	has_global_declarations bool
+	has_interfaces          bool
+	has_comptime_if         bool
+	has_type_keywords       bool
+	has_generic_fn_syntax   bool
+}
+
+@[direct_array_access]
+fn fastc_source_word_at(source string, i int, word string) bool {
+	if i + word.len > source.len {
+		return false
+	}
+	for j := 0; j < word.len; j++ {
+		if source[i + j] != word[j] {
+			return false
 		}
-		search_start = index + keyword.len
 	}
-	return false
+	if i > 0 && fastc_identifier_byte(source[i - 1]) {
+		return false
+	}
+	return i + word.len == source.len || !fastc_identifier_byte(source[i + word.len])
+}
+
+@[direct_array_access]
+fn fastc_source_space_byte(c u8) bool {
+	return c == ` ` || c == `\t` || c == `\r` || c == `\n`
+}
+
+// fastc_source_comptime_if_at reports whether `$` at `i` starts a `$if`.
+@[direct_array_access]
+fn fastc_source_comptime_if_at(source string, i int) bool {
+	mut j := i + 1
+	for j < source.len && fastc_source_space_byte(source[j]) {
+		j++
+	}
+	return fastc_source_word_at(source, j, 'if')
+}
+
+// fastc_source_generic_fn_at reports whether the `fn` keyword ending at `i`
+// could declare a function or method with its own type parameter, i.e. is
+// followed by an optional receiver clause and a name that a `[` follows.
+@[direct_array_access]
+fn fastc_source_generic_fn_at(source string, i int) bool {
+	mut j := i
+	for j < source.len && fastc_source_space_byte(source[j]) {
+		j++
+	}
+	if j < source.len && source[j] == `(` {
+		for j < source.len && source[j] != `)` {
+			j++
+		}
+		j++
+		for j < source.len && fastc_source_space_byte(source[j]) {
+			j++
+		}
+	}
+	name_start := j
+	for j < source.len && (fastc_identifier_byte(source[j]) || source[j] == `.`) {
+		j++
+	}
+	if j == name_start {
+		return false
+	}
+	for j < source.len && fastc_source_space_byte(source[j]) {
+		j++
+	}
+	return j < source.len && source[j] == `[`
+}
+
+// fastc_source_scan_flags computes every header flag in one pass over the
+// bytes. It runs on every file of every discovery wave, so it must stay cheap
+// for large files.
+@[direct_array_access]
+fn fastc_source_scan_flags(source string) FastcSourceScanFlags {
+	mut flags := FastcSourceScanFlags{}
+	for i := 0; i < source.len; i++ {
+		c := source[i]
+		// Only a word start can begin a keyword; most bytes are rejected here.
+		if i > 0 && fastc_identifier_byte(source[i - 1]) {
+			continue
+		}
+		if c == `c` {
+			if !flags.has_constants && fastc_source_word_at(source, i, 'const') {
+				flags.has_constants = true
+			}
+		} else if c == `_` {
+			if !flags.has_global_declarations && fastc_source_word_at(source, i, '__global') {
+				flags.has_global_declarations = true
+			}
+		} else if c == `i` {
+			if !flags.has_interfaces && fastc_source_word_at(source, i, 'interface') {
+				flags.has_interfaces = true
+				flags.has_type_keywords = true
+			}
+		} else if c == `$` {
+			if !flags.has_comptime_if && fastc_source_comptime_if_at(source, i) {
+				flags.has_comptime_if = true
+			}
+		} else if c == `s` {
+			if !flags.has_type_keywords && fastc_source_word_at(source, i, 'struct') {
+				flags.has_type_keywords = true
+			}
+		} else if c == `e` {
+			if !flags.has_type_keywords && fastc_source_word_at(source, i, 'enum') {
+				flags.has_type_keywords = true
+			}
+		} else if c == `t` {
+			if !flags.has_type_keywords && fastc_source_word_at(source, i, 'type') {
+				flags.has_type_keywords = true
+			}
+		} else if c == `u` {
+			if !flags.has_type_keywords && fastc_source_word_at(source, i, 'union') {
+				flags.has_type_keywords = true
+			}
+		} else if c == `f` {
+			if !flags.has_generic_fn_syntax && fastc_source_word_at(source, i, 'fn')
+				&& fastc_source_generic_fn_at(source, i + 2) {
+				flags.has_generic_fn_syntax = true
+			}
+		}
+	}
+	return flags
 }
 
 fn fastc_identifier_byte(value u8) bool {
@@ -603,9 +747,7 @@ fn fastc_source_uses_sql(source string, prefs &pref.Preferences) bool {
 	if !source.contains('sql') {
 		return false
 	}
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_sql_probe', source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed('orm_sql_probe', source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut previous := token.Token.eof

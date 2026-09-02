@@ -447,6 +447,13 @@ pub fn run(args []string) {
 		loc_per_s := f64(warm.lines) * 1_000_000.0 / f64(best_us)
 		eprintln('fastc-bench: files=${warm.files} lines=${warm.lines} best_gen=${gen_ms:.2f}ms loc/s=${loc_per_s:.0f} (repeat=${repeat})')
 	}
+	loop := os.getenv('FASTC_BENCH_LOOP').int()
+	if bench && loop > 0 {
+		// Repeat generation in-process so an external sampler can profile it.
+		for _ in 0 .. loop {
+			fastc.generate_files_with_source_paths([real_input], prefs) or { fail(err.msg()) }
+		}
+	}
 	mut sw := time.new_stopwatch()
 	generation := fastc.generate_files_with_source_paths([real_input], prefs) or { fail(err.msg()) }
 	if bench && repeat == 1 {

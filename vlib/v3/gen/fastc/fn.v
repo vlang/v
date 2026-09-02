@@ -62,9 +62,7 @@ fn fastc_is_json2_voidptr_element_check(req FastcMonoRequest, src FastcGenericMe
 // parse_mono_instance re-parses one concrete instance in its defining module, so its body
 // (including any `$for`/`$if`) resolves unqualified functions and imported types correctly.
 fn (mut g Parser) parse_mono_instance(instance string, source FastcGenericMethodSource) ! {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(source.path, instance.len)
-	file.index_lines_without_digest(instance)
+	file := token.File.unindexed(source.path, instance.len)
 	g.path = source.path
 	g.module_name = source.module_name
 	g.imports = source.imports.clone()
@@ -98,6 +96,7 @@ fn (mut g Parser) parse_top_level_items(stop_at_block_end bool) ! {
 			continue
 		}
 		mut item_enabled := true
+		g.pending_direct_array_access = false
 		for g.tok == .attribute {
 			item_enabled = g.skip_attribute()! && item_enabled
 			g.skip_semicolons()
@@ -374,6 +373,9 @@ fn (mut g Parser) skip_attribute() !bool {
 			}
 			continue
 		}
+		if depth == 1 && g.tok == .name && g.lit == 'direct_array_access' {
+			g.pending_direct_array_access = true
+		}
 		if depth == 1 && g.tok == .semicolon {
 			at_item_start = true
 		} else if depth == 1 {
@@ -477,6 +479,12 @@ fn (g &Parser) temporary_namespace(kind string) string {
 fn fastc_reserved_temporary_c_names(functions map[string]FastcFunctionSignature, globals map[string]string) []string {
 	mut names := []string{}
 	for function_key in functions.keys() {
+		// Only an unqualified key can collide with a C keyword or libc name and
+		// so be renamed into the `__v_fastc_` namespace: a module-qualified key
+		// keeps its `module__name` spelling, and `C.` keys are emitted verbatim.
+		if function_key.contains('.') {
+			continue
+		}
 		function_c_name := fastc_c_function_name_for_key(function_key)
 		if function_c_name.starts_with('__v_fastc_') {
 			names << function_c_name
@@ -559,6 +567,8 @@ fn (mut g Parser) skip_import() ! {
 fn (mut g Parser) parse_function(enabled bool) ! {
 	g.locals = map[string]FastcLocal{}
 	g.temp_id = 0
+	g.direct_array_access = g.pending_direct_array_access
+	g.pending_direct_array_access = false
 	g.next()
 	mut receiver_type := ''
 	mut receiver_key := ''

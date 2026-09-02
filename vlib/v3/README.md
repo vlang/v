@@ -154,6 +154,25 @@ compiler uses the small `v3.fastcdriver` entry point and can build further FastC
 the flat AST or conventional C backend. Set `V_MACOS_V3_NO_FALLBACK=1` while validating a chain to
 turn any attempted compatibility fallback into a hard failure.
 
+Set `FASTC_BENCH=1` when running a FastC self-host compiler to print the generation time and
+`loc/s` for its input (`FASTC_BENCH_REPEAT=N` reports the best of N child runs). `FASTC_BENCH_PHASES=1`
+prints the time of every generation phase, `FASTC_BENCH_FILES=1` the generation time of every source
+file, and `FASTC_BENCH=1 FASTC_BENCH_LOOP=N` repeats generation N times in-process so an external
+sampler can profile it. The compiler's own C preamble and runtime (hashing, option boxing, tuple
+slots) are emitted by the generator that built it, so such changes take effect one generation later:
+measure the compiler built by the modified compiler, not the modified compiler itself.
+
+Self-host generations box `?`/`!` payloads out of a per-thread bump chunk rather than `malloc`, keep
+one file record per scanner pass, and honor `@[direct_array_access]` for string and array indexing.
+Multi-return components larger than 32 bytes are boxed instead of copied into the tuple slot, so a
+returned `map` or large struct can no longer overflow it.
+
+Per-file generation, constant parsing, and the declaration and signature collection passes claim
+their work items from a shared atomic counter (largest files first) instead of a static split, so
+workers on faster cores take more files; the serial merge and output order is restored by index. The first parallel pass also records which declaration
+keywords (`interface`, `$if`, type keywords, generic `fn` syntax) each file mentions, and the later
+collection passes skip files that cannot contain what they scan for.
+
 The standalone compiler supports `self` directly and defaults that command to FastC. For example,
 `./v self x5` replaces the compiler through five descendant FastC generations, with each installed
 generation compiling the next one. `-b fastc`, `-gc none`, `-cc tinyc|tcc`, `-keepc`, `-silent`,

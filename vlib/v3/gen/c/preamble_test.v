@@ -139,6 +139,9 @@ fn test_headerless_libc_preamble_suppresses_its_mach_timebase_declaration() {
 	mut g := FlatGen.new()
 	g.headerless_libc_preamble()
 	assert !g.should_emit_c_extern_decl('mach_timebase_info')
+	// Compiler builtins never get a prototype; clang rejects redeclaring them.
+	assert !g.should_emit_c_extern_decl('__atomic_fetch_add')
+	assert !g.should_emit_c_extern_decl('__builtin_expect')
 }
 
 fn test_headerless_platform_constants_include_process_errno_values() {

@@ -1,6 +1,8 @@
 module fastc
 
+import os
 import strings
+import time
 import v3.pref
 import v3.scanner
 import v3.token
@@ -40,9 +42,13 @@ typedef void *chan;
 typedef struct { void *data; int offset; int len; int cap; int flags; } array;
 typedef struct { void *data; int len; } map;
 typedef struct { void *data; void *err; unsigned char state; } Option;
-typedef union { uintptr_t word; long double alignment; unsigned char data[64]; } MultiReturnValue;
+/* One multi-return component. Values up to 32 bytes are stored inline; larger
+   ones are boxed and referenced through `ptr`, so no component size can
+   overflow the slot. */
+typedef union { uintptr_t word; long double alignment; void *ptr; unsigned char data[32]; } MultiReturnValue;
 typedef struct { MultiReturnValue values[8]; } MultiReturn;
-#define V_FASTC_MULTI_VALUE(expression) ({ __typeof__(expression) __v_fastc_multi_value = (expression); MultiReturnValue __v_fastc_multi_result = {0}; memcpy(__v_fastc_multi_result.data, &__v_fastc_multi_value, sizeof(__v_fastc_multi_value)); __v_fastc_multi_result; })
+#define V_FASTC_MULTI_VALUE(expression) ({ __typeof__(expression) __v_fastc_multi_value = (expression); MultiReturnValue __v_fastc_multi_result; if (sizeof(__v_fastc_multi_value) <= sizeof(__v_fastc_multi_result.data)) memcpy(__v_fastc_multi_result.data, &__v_fastc_multi_value, sizeof(__v_fastc_multi_value)); else __v_fastc_multi_result.ptr = v_fastc_interface_box(&__v_fastc_multi_value, sizeof(__v_fastc_multi_value)); __v_fastc_multi_result; })
+#define V_FASTC_MULTI_SOURCE(slot, size) (((size) <= sizeof((slot).data)) ? (const void *)(slot).data : (const void *)(slot).ptr)
 
 static void v_fastc_print_string(const char *value) { fputs(value ? value : "", stdout); }
 static void v_fastc_print_bool(bool value) { fputs(value ? "true" : "false", stdout); }
@@ -323,6 +329,9 @@ typedef _Bool bool;
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
+#include <pthread.h>
+#endif
 
 typedef int8_t i8;
 typedef int16_t i16;
@@ -342,23 +351,99 @@ typedef void *voidptr;
 typedef unsigned char *byteptr;
 typedef char *charptr;
 typedef void *chan;
-typedef union { uintptr_t word; long double alignment; unsigned char data[64]; } MultiReturnValue;
+/* One multi-return component. Values up to 32 bytes are stored inline; larger
+   ones are boxed and referenced through `ptr`, so no component size can
+   overflow the slot. */
+typedef union { uintptr_t word; long double alignment; void *ptr; unsigned char data[32]; } MultiReturnValue;
 typedef struct { MultiReturnValue values[8]; } MultiReturn;
-#define V_FASTC_MULTI_VALUE(expression) ({ __typeof__(expression) __v_fastc_multi_value = (expression); MultiReturnValue __v_fastc_multi_result = {0}; memcpy(__v_fastc_multi_result.data, &__v_fastc_multi_value, sizeof(__v_fastc_multi_value)); __v_fastc_multi_result; })
+#define V_FASTC_MULTI_VALUE(expression) ({ __typeof__(expression) __v_fastc_multi_value = (expression); MultiReturnValue __v_fastc_multi_result; if (sizeof(__v_fastc_multi_value) <= sizeof(__v_fastc_multi_result.data)) memcpy(__v_fastc_multi_result.data, &__v_fastc_multi_value, sizeof(__v_fastc_multi_value)); else __v_fastc_multi_result.ptr = v_fastc_interface_box(&__v_fastc_multi_value, sizeof(__v_fastc_multi_value)); __v_fastc_multi_result; })
+#define V_FASTC_MULTI_SOURCE(slot, size) (((size) <= sizeof((slot).data)) ? (const void *)(slot).data : (const void *)(slot).ptr)
 
 #define _S(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
 #define _SLIT0 _S("")
 
+/* Option, result, and interface payloads are boxed on the heap and never
+   freed. Boxing through malloc made every option-returning call pay for a
+   locked, zero-filling allocation, so each thread bumps its boxes out of a
+   private chunk instead; only oversized payloads still go through malloc. */
+#ifndef _WIN32
+typedef struct { unsigned char *cursor; unsigned char *end; } v_fastc_box_arena;
+static pthread_key_t v_fastc_box_arena_key;
+static pthread_once_t v_fastc_box_arena_once = PTHREAD_ONCE_INIT;
+static void v_fastc_box_arena_create_key(void) { pthread_key_create(&v_fastc_box_arena_key, NULL); }
+static void *v_fastc_interface_box(const void *value, usize size) {
+	usize aligned = (size + 15) & ~(usize)15;
+	usize chunk = 262144;
+	v_fastc_box_arena *arena;
+	void *copy;
+	if (aligned > 65536) {
+		copy = malloc(size);
+		if (copy != NULL) memcpy(copy, value, size);
+		return copy;
+	}
+	pthread_once(&v_fastc_box_arena_once, v_fastc_box_arena_create_key);
+	arena = (v_fastc_box_arena *)pthread_getspecific(v_fastc_box_arena_key);
+	if (arena == NULL || (usize)(arena->end - arena->cursor) < aligned) {
+		unsigned char *block = (unsigned char *)malloc(sizeof(v_fastc_box_arena) + chunk);
+		if (block == NULL) return NULL;
+		arena = (v_fastc_box_arena *)block;
+		arena->cursor = block + sizeof(v_fastc_box_arena);
+		arena->end = arena->cursor + chunk;
+		pthread_setspecific(v_fastc_box_arena_key, arena);
+	}
+	copy = arena->cursor;
+	arena->cursor += aligned;
+	memcpy(copy, value, size);
+	return copy;
+}
+#else
 static void *v_fastc_interface_box(const void *value, usize size) {
 	void *copy = malloc(size);
 	if (copy != NULL) memcpy(copy, value, size);
 	return copy;
 }
+#endif
 
 static const u64 _wyp[4] = {0x2d358dccaa6c78a5ull, 0x8bb84b93962eacc9ull, 0x4b33a62ed433d4a3ull, 0x4d5a2da51de1aa47ull};
 static inline u64 _wymix(u64 a, u64 b) { u64 ha = a >> 32, hb = b >> 32, la = (u32)a, lb = (u32)b, hi, lo; u64 rh = ha * hb, rm0 = ha * lb, rm1 = hb * la, rl = la * lb, t = rl + (rm0 << 32), c = t < rl; lo = t + (rm1 << 32); c += lo < t; hi = rh + (rm0 >> 32) + (rm1 >> 32) + c; return lo ^ hi; }
 static inline u64 wyhash64(u64 a, u64 b) { a ^= _wyp[0]; b ^= _wyp[1]; a *= 0xa0761d6478bd642full; b *= 0xe7037ed1a0b428dbull; return (a ^ (a >> 32)) ^ (b ^ (b >> 32)); }
-static inline u64 wyhash(const void *key, size_t len, u64 seed, const u64 *secret) { const unsigned char *p = (const unsigned char *)key; u64 h = seed ^ secret[0] ^ (u64)len; for (size_t i = 0; i < len; i++) h = wyhash64(h ^ (u64)p[i], secret[(i + 1) & 3]); return h; }
+#if defined(__aarch64__) || defined(__x86_64__) || defined(__i386__)
+#define V_FASTC_LOAD_U64(p) (*(const u64 *)(p))
+#else
+#define V_FASTC_LOAD_U64(p) ({ u64 __v_fastc_word; memcpy(&__v_fastc_word, (p), 8); __v_fastc_word; })
+#endif
+/* Map keys are hashed by this function on every lookup. It mixes one 64-bit
+   word per step and has no helper calls, since TinyCC does not inline. */
+static inline u64 wyhash(const void *key, size_t len, u64 seed, const u64 *secret) {
+	const unsigned char *p = (const unsigned char *)key;
+	size_t n = len;
+	u64 h = seed ^ secret[0] ^ ((u64)len * 0x9e3779b97f4a7c15ull);
+	while (n >= 8) {
+		h = (h ^ V_FASTC_LOAD_U64(p)) * 0xa0761d6478bd642full;
+		h ^= h >> 29;
+		p += 8;
+		n -= 8;
+	}
+	if (n > 0) {
+		u64 v = 0;
+		switch (n) {
+			case 7: v |= (u64)p[6] << 48;
+			case 6: v |= (u64)p[5] << 40;
+			case 5: v |= (u64)p[4] << 32;
+			case 4: v |= (u64)p[3] << 24;
+			case 3: v |= (u64)p[2] << 16;
+			case 2: v |= (u64)p[1] << 8;
+			default: v |= (u64)p[0];
+		}
+		h = (h ^ v) * 0xe7037ed1a0b428dbull;
+		h ^= h >> 29;
+	}
+	h *= 0x8ebc6af09c88c6e3ull;
+	h ^= h >> 32;
+	h *= 0x589965cc75374cc3ull;
+	h ^= h >> 29;
+	return h;
+}
 
 '
 
@@ -576,6 +661,19 @@ struct FastcFunctionSignature {
 	path                     string
 }
 
+// fastc_multi_return_literal packs already-boxed components into a MultiReturn.
+// Filling an uninitialized local slot by slot avoids the zero-fill a partially
+// designated compound literal would perform on the whole aggregate.
+fn fastc_multi_return_literal(packed_values []string) string {
+	mut out := strings.new_builder(64)
+	out.write_string('({ MultiReturn __v_fastc_multi; ')
+	for i, value in packed_values {
+		out.write_string('__v_fastc_multi.values[${i}] = ${value}; ')
+	}
+	out.write_string('__v_fastc_multi; })')
+	return out.str()
+}
+
 fn fastc_string_types_equal(left []string, right []string) bool {
 	if left.len != right.len {
 		return false
@@ -640,6 +738,12 @@ struct FastcRenderedExpression {
 	typ    string
 }
 
+// FastcMemoEntry caches an optional lookup result, including a negative one.
+struct FastcMemoEntry {
+	found bool
+	value string
+}
+
 struct FastcInterpolationWidth {
 	width      int
 	left_align bool
@@ -691,6 +795,13 @@ struct FastcSourceHeader {
 	has_globals             bool
 	has_constants           bool
 	has_global_declarations bool
+	// Byte-level superset tests over the whole file (see fastc_source_scan_flags):
+	// a false flag proves the file cannot hold that kind of declaration, so the
+	// matching collection pass skips its scan.
+	has_interfaces        bool
+	has_comptime_if       bool
+	has_type_keywords     bool
+	has_generic_fn_syntax bool
 }
 
 struct FastcSourceFile {
@@ -704,6 +815,9 @@ struct FastcQueuedSource {
 	path         string
 	module_name  string
 	is_canonical bool
+	// listed sources came from a directory listing moments ago, so their
+	// existence check is skipped.
+	listed bool
 }
 
 struct FastcLoadedSource {
@@ -860,20 +974,31 @@ struct Parser {
 	has_startup_inits   bool
 	has_cleanup_hooks   bool
 mut:
-	path                     string
-	source_offset            int
-	module_name              string
-	imports                  map[string]string
-	s                        scanner.Scanner
-	tok                      token.Token
-	lit                      string
-	out                      strings.Builder
-	protos                   strings.Builder
-	indent                   int
-	in_main                  bool
-	has_main                 bool
-	unsafe_depth             int
-	temp_id                  int
+	path          string
+	source_offset int
+	module_name   string
+	imports       map[string]string
+	s             scanner.Scanner
+	tok           token.Token
+	lit           string
+	out           strings.Builder
+	protos        strings.Builder
+	indent        int
+	in_main       bool
+	has_main      bool
+	unsafe_depth  int
+	// Set while generating a `@[direct_array_access]` function body, so string
+	// and array indexing skip the bounds-checked runtime accessors.
+	direct_array_access         bool
+	pending_direct_array_access bool
+	temp_id                     int
+	// Per-file memos for name lookups whose answers depend only on file-level
+	// tables (module, imports, functions, constants, globals, declared types)
+	// and are asked again for the same short name many times per file.
+	unqualified_key_memo     map[string]string
+	nonlocal_name_type_memo  map[string]string
+	resolved_name_memo       map[string]string
+	declared_type_key_memo   map[string]FastcMemoEntry
 	locals                   map[string]FastcLocal
 	local_scope_changes      []FastcLocalScopeChange
 	local_scope_depth        int
@@ -997,13 +1122,41 @@ pub fn generate_files(paths []string, prefs &pref.Preferences) !string {
 }
 
 // generate_files_with_source_paths emits C and reports every source read during import discovery.
+// FastcPhaseTimer reports per-phase generation timings to stderr when
+// FASTC_BENCH_PHASES is set; it is a no-op otherwise.
+struct FastcPhaseTimer {
+mut:
+	enabled bool
+	sw      time.StopWatch
+	last_us i64
+}
+
+fn fastc_new_phase_timer() FastcPhaseTimer {
+	return FastcPhaseTimer{
+		enabled: os.getenv('FASTC_BENCH_PHASES') != ''
+		sw: time.new_stopwatch()
+	}
+}
+
+fn (mut timer FastcPhaseTimer) mark(name string) {
+	if !timer.enabled {
+		return
+	}
+	now_us := timer.sw.elapsed().microseconds()
+	eprintln('fastc-phase ${name} ${now_us - timer.last_us}us')
+	timer.last_us = now_us
+}
+
 pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences) !GenerationResult {
+	mut timer := fastc_new_phase_timer()
 	sources, module_aliases := fastc_resolve_source_files(paths, prefs)!
+	timer.mark('resolve')
 	mut source_paths := []string{cap: sources.len}
 	for source_file in sources {
 		source_paths << source_file.path
 	}
 	c_source, uses_threads, c_flags := generate_source_files(sources, module_aliases, prefs)!
+	timer.mark('generate_total')
 	return GenerationResult{
 		c_source: c_source
 		source_paths: source_paths
@@ -1069,12 +1222,14 @@ mut:
 }
 
 fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceFile) FastcFileGenOutput {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(source_file.path, source_file.source.len)
-	file.index_lines_without_digest(source_file.source)
+	file := token.File.unindexed(source_file.path, source_file.source.len)
 	prefs := ctx.prefs
 	mut gen := Parser{
 		prefs: unsafe { prefs }
+		unqualified_key_memo: map[string]string{}
+		nonlocal_name_type_memo: map[string]string{}
+		resolved_name_memo: map[string]string{}
+		declared_type_key_memo: map[string]FastcMemoEntry{}
 		path: source_file.path
 		source_offset: source_file.source_offset
 		module_name: source_file.header.module_name
@@ -1161,8 +1316,11 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[string]string, prefs &pref.Preferences) !(string, bool, []string) {
 	// Source-level generic monomorphization runs first; it is a no-op when the
 	// program has no generic function definitions (so the self-host is untouched).
-	sources := fastc_monomorphize_sources(input_sources, prefs)!
-	generic_method_sources := fastc_collect_generic_method_sources(sources, prefs)
+	mut timer := fastc_new_phase_timer()
+	mut sources := fastc_monomorphize_sources(input_sources, prefs)!
+	timer.mark('monomorphize')
+	generic_method_sources := fastc_collect_generic_method_sources(mut sources, prefs)
+	timer.mark('generic_method_sources')
 	mut declared_types := map[string]bool{}
 	mut declared_kinds := map[string]FastcDeclaredTypeKind{}
 	mut enum_flags := map[string]bool{}
@@ -1177,6 +1335,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	mut type_sources := map[string]string{}
 	mut constant_sources := map[string]string{}
 	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut globals, mut public_globals)!
+	timer.mark('declaration_indexes')
 	declared_type_c_names := fastc_declared_type_c_names(declared_types)
 	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	mut functions := map[string]FastcFunctionSignature{}
@@ -1187,6 +1346,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	mut embed_embedders := []string{}
 	mut embed_embeddeds := []string{}
 	fastc_collect_signatures(sources, prefs, declared_types, declared_type_c_names, params_structs, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
+	timer.mark('signatures')
 	// An interface that embeds another (`interface B { A; ... }`) inherits A's
 	// methods. Copy them onto B (with the receiver re-keyed to B) so calls on a B
 	// value resolve and B gets its own dispatch table entries.
@@ -1194,8 +1354,12 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	mut pending_references := fastc_start_referenced_function_names(sources, prefs, functions)
 	has_c_functions := fastc_functions_declare_c(functions)
 	fastc_prefixed_c_names := fastc_reserved_temporary_c_names(functions, globals)
-	module_init_calls := fastc_module_init_calls(sources, functions)!
-	module_cleanup_calls := fastc_module_cleanup_calls(sources, functions)!
+	// Module dependency order is shared by the lifecycle, constant, global, and
+	// startup-initializer passes below.
+	ordered_sources := fastc_sources_in_dependency_order(sources)!
+	module_init_calls := fastc_module_init_calls(ordered_sources, functions)!
+	module_cleanup_calls := fastc_module_cleanup_calls(ordered_sources, functions)!
+	timer.mark('lifecycle_calls')
 	mut composite_types := map[string]bool{}
 	if prefs.building_v {
 		// The OS exec helpers build their native argv arrays locally, so this
@@ -1209,17 +1373,21 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		}
 	}
 	type_output := fastc_generate_type_declarations(sources, type_sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types)!
+	timer.mark('type_declarations')
 	declared_composite_types := composite_types.clone()
 	type_declarations := type_output.declarations
 	enum_field_types := type_output.enum_field_types.clone()
 	mut constant_types := map[string]string{}
 	mut global_types := map[string]string{}
 	fastc_render_struct_field_defaults(prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, mut struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, type_output.sum_types)!
-	constant_output := fastc_generate_constant_declarations(sources, constant_sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, globals, public_globals, mut constant_types)!
+	timer.mark('field_defaults')
+	constant_output := fastc_generate_constant_declarations(ordered_sources, constant_sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, globals, public_globals, mut constant_types)!
+	timer.mark('constant_declarations')
 	for name, _ in constant_output.composite_types {
 		composite_types[name] = true
 	}
-	global_output := fastc_generate_global_declarations(sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, constant_output.compile_time_values, public_constants, constant_types, globals, public_globals, mut global_types)!
+	global_output := fastc_generate_global_declarations(ordered_sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, constant_output.compile_time_values, public_constants, constant_types, globals, public_globals, mut global_types)!
+	timer.mark('global_declarations')
 	for name, _ in global_output.composite_types {
 		composite_types[name] = true
 	}
@@ -1229,8 +1397,10 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	for global_type in global_types.values() {
 		fastc_register_composite_type(global_type, mut composite_types)
 	}
-	startup_initializers := fastc_generate_startup_initializers(sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls)!
+	startup_initializers := fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls)!
+	timer.mark('startup_initializers')
 	used_function_names := fastc_wait_referenced_function_names(mut pending_references)
+	timer.mark('wait_references')
 	mut pending_interface_dispatches := fastc_start_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, prefs.building_v, prefs)
 	mut struct_field_lookup := map[string]map[string]FastcStructField{}
 	for layout_type, fields in struct_field_info {
@@ -1293,6 +1463,18 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	mut mono_definitions := map[string]string{}
 	mut c_flags := []string{}
 	outputs := fastc_generate_file_outputs(&ctx, sources)
+	timer.mark('file_outputs')
+	// Size the stitch buffers up front: the per-file bodies add up to several
+	// megabytes, and growing the builders by doubling would copy that text
+	// several times over.
+	mut prototypes_size := 0
+	mut body_size := 0
+	for output in outputs {
+		prototypes_size += output.prototypes.len
+		body_size += output.body.len
+	}
+	prototypes.ensure_cap(prototypes_size + 1024)
+	body.ensure_cap(body_size + 4096)
 	for output in outputs {
 		if output.failed {
 			return error(output.error_message)
@@ -1333,6 +1515,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	}
 	mut mono_names := mono_definitions.keys()
 	mono_names.sort()
+	timer.mark('stitch')
 	for mono_name in mono_names {
 		body.write_string(mono_definitions[mono_name])
 	}
@@ -1363,9 +1546,11 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		late_composite_declarations.writeln('')
 	}
 	interface_dispatches := fastc_wait_interface_dispatches(mut pending_interface_dispatches)
+	timer.mark('wait_interface_dispatches')
 	fixed_array_declarations := fastc_generate_fixed_array_declarations(fixed_array_types)
 	preamble := if prefs.building_v { c_selfhost_preamble } else { c_preamble }
 	hoisted_body := fastc_partition_c_directive_lines(body.str(), body_directive_lines)
+	timer.mark('partition_directives')
 	mut result := strings.new_builder(preamble.len + c_integer_comparison_helpers.len + type_declarations.len + type_output.enum_string_helpers.len + constant_output.macros.len + constant_output.declarations.len + global_output.declarations.len + prototypes.len + body.len + startup_initializers.len + 96)
 	result.write_string(preamble)
 	result.write_string(c_integer_comparison_helpers)
@@ -1444,6 +1629,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	if hoisted_body.final_kind == 0 {
 		result.write_u8(`\n`)
 	}
+	timer.mark('assemble')
 	return result.str(), spawn_typedefs.len > 0, c_flags
 }
 

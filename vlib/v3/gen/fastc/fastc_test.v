@@ -580,13 +580,36 @@ fn test_fastc_overlap_workers_honor_serial_preferences() {
 	assert fastc_wait_interface_dispatches(mut pending_dispatches) == ''
 }
 
-fn test_fastc_source_declaration_flags_respect_identifier_boundaries() {
-	has_constants, has_global_declarations := fastc_source_declaration_flags('module main\nconst answer = 42\n__global count int\n')
-	assert has_constants
-	assert has_global_declarations
-	identifier_constants, identifier_globals := fastc_source_declaration_flags('module main\nfn key_const() {}\nfn use__global_value() {}\n')
-	assert !identifier_constants
-	assert !identifier_globals
+fn test_fastc_source_scan_flags_respect_identifier_boundaries() {
+	flags := fastc_source_scan_flags('module main\nconst answer = 42\n__global count int\n')
+	assert flags.has_constants
+	assert flags.has_global_declarations
+	assert !flags.has_interfaces
+	assert !flags.has_comptime_if
+	assert !flags.has_type_keywords
+	assert !flags.has_generic_fn_syntax
+	identifier_flags := fastc_source_scan_flags('module main\nfn key_const() {}\nfn use__global_value() {}\nfn interfaces() {}\nfn structure() {}\n')
+	assert !identifier_flags.has_constants
+	assert !identifier_flags.has_global_declarations
+	assert !identifier_flags.has_interfaces
+	assert !identifier_flags.has_type_keywords
+}
+
+fn test_fastc_source_scan_flags_detect_declaration_keywords() {
+	assert fastc_source_scan_flags('module main\ninterface Shape { area() int }\n').has_interfaces
+	assert fastc_source_scan_flags('module main\ninterface Shape {}\n').has_type_keywords
+	assert fastc_source_scan_flags('module main\nstruct Point { x int }\n').has_type_keywords
+	assert fastc_source_scan_flags('module main\nenum Color { red }\n').has_type_keywords
+	assert fastc_source_scan_flags('module main\ntype Id = int\n').has_type_keywords
+	assert fastc_source_scan_flags('module main\nunion Bits { a int }\n').has_type_keywords
+	dollar := '$'
+	assert fastc_source_scan_flags('module main\n' + dollar + 'if linux {\nfn only_linux() {}\n}\n').has_comptime_if
+	assert fastc_source_scan_flags('module main\n' + dollar + ' if linux {\nfn only_linux() {}\n}\n').has_comptime_if
+	assert !fastc_source_scan_flags('module main\nfn main() { println("' + dollar + '{1}") }\n').has_comptime_if
+	assert fastc_source_scan_flags('module main\nfn pick[T](value T) T { return value }\n').has_generic_fn_syntax
+	assert fastc_source_scan_flags('module main\nfn (s Stack) push[T](value T) {}\n').has_generic_fn_syntax
+	assert fastc_source_scan_flags('module main\nfn Stack.make[T]() Stack {}\n').has_generic_fn_syntax
+	assert !fastc_source_scan_flags('module main\nfn plain(values []int) int { return values[0] }\n').has_generic_fn_syntax
 }
 
 fn test_fastc_generic_source_collection_matches_serial_scan() {
@@ -621,8 +644,9 @@ fn test_fastc_generic_source_collection_matches_serial_scan() {
 			}
 		},
 	]
-	serial := fastc_collect_generic_method_source_chunk(sources, prefs, 0, sources.len)
-	collected := fastc_collect_generic_method_sources(sources, prefs)
+	serial := fastc_collect_generic_method_source_chunk(sources, prefs, 0, sources.len).sources
+	mut flagged_sources := sources.clone()
+	collected := fastc_collect_generic_method_sources(mut flagged_sources, prefs)
 	assert collected.keys().len == serial.keys().len
 	for key, expected in serial {
 		assert key in collected
@@ -8960,8 +8984,8 @@ fn main() {
 	// `if a, b := opt_fn() { ... }` unwraps an option whose value is a multi-return
 	// tuple: on success the boxed MultiReturn is copied out and each component bound.
 	assert c_source.contains('MultiReturn'), c_source
-	assert c_source.contains('.values[0].data'), c_source
-	assert c_source.contains('.values[1].data'), c_source
+	assert c_source.contains('.values[0], sizeof('), c_source
+	assert c_source.contains('.values[1], sizeof('), c_source
 }
 
 fn test_selfhost_if_multi_return_option_guard_with_shared_bindings() {
@@ -9665,7 +9689,7 @@ fn main() {
 	// failure state assign the fallback tuple, else unbox the MultiReturn component.
 	assert c_source.contains('.state) {'), c_source
 	assert c_source.contains('MultiReturn'), c_source
-	assert c_source.contains('.values[1].data'), c_source
+	assert c_source.contains('.values[1], sizeof('), c_source
 }
 
 fn test_selfhost_assign_concrete_value_to_option_local() {
