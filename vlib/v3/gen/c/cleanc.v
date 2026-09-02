@@ -547,6 +547,11 @@ mut:
 	lazy_param_abi_merge            bool
 	usable_expr_type_memo           &UsableExprTypeMemo = unsafe { nil }
 	needed_optional_types           map[string]string
+	// cabi_int_out_args maps a C-call argument node to the C spelling to emit in its
+	// place (the address of a temporary C `int`), while a `&int` out-parameter is
+	// bridged by a temporary + copy-back around the wrapped call. Keyed by node id so
+	// nested calls never collide.
+	cabi_int_out_args               map[flat.NodeId]string
 	emitted_optional_types          map[string]bool
 	emitted_fns                     map[string]bool
 	array_method_cache              map[string]string
@@ -1171,6 +1176,7 @@ pub fn FlatGen.new() FlatGen {
 		goto_label_lock_scopes: map[string][]int{}
 		ownership_seen_return_sources: map[string]bool{}
 		needed_optional_types: map[string]string{}
+		cabi_int_out_args: map[flat.NodeId]string{}
 		emitted_optional_types: map[string]bool{}
 		emitted_fns: map[string]bool{}
 		array_method_cache: map[string]string{}

@@ -86,7 +86,12 @@ fn main() {
 	assert generated.contains('printf("plain\\n");'), generated
 	assert generated.contains('printf("name=%s count=%d\\n", "ok", 7);'), generated
 	assert generated.contains('fprintf(stderr, "err=%d\\n", 9);'), generated
-	assert generated.contains('sscanf("12 34", "%d %d", &a, &b);'), generated
+	// `&a`/`&b` are addresses of V `int`s (i64). Passing them straight to scanf's
+	// `%d` (which writes only 4 bytes) would leave the high bytes stale, so each is
+	// bridged through a temporary C `int` with copy-back; scanf receives the temp's
+	// address rather than `&a`/`&b` directly.
+	assert generated.contains('sscanf("12 34", "%d %d", &_cabi_out_val_'), generated
+	assert !generated.contains('sscanf("12 34", "%d %d", &a, &b);'), generated
 	assert generated.contains('__varargs_'), generated
 }
 

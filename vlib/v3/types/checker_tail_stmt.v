@@ -8945,10 +8945,28 @@ fn (tc &TypeChecker) fn_param_compatible(actual Type, expected Type) bool {
 			return true
 		}
 	}
+	// V's platform `int` and a fixed-width integer such as `i64`/`i32` may share an
+	// emitted C spelling on a given target, but they remain distinct, target-
+	// independent source types. Function-parameter identity must not depend on the C
+	// width, so never let the c_type shortcut below collapse `int` with `i64`/`i32`
+	// (on 64-bit both spell `i64`; on 32-bit `int`/`i32` both spell `i32`).
+	if fn_param_is_platform_int(actual) != fn_param_is_platform_int(expected)
+		&& fn_param_unalias_type(actual) is Primitive
+		&& fn_param_unalias_type(expected) is Primitive {
+		return false
+	}
 	if tc.c_type(actual) == tc.c_type(expected) {
 		return true
 	}
 	return fn_param_can_cast_userdata_param(actual, expected)
+}
+
+fn fn_param_is_platform_int(typ Type) bool {
+	clean := fn_param_unalias_type(typ)
+	if clean is Primitive {
+		return clean.size == 0 && clean.props.has(.integer) && !clean.props.has(.unsigned)
+	}
+	return false
 }
 
 fn (tc &TypeChecker) fn_return_compatible(actual Type, expected Type) bool {

@@ -5728,6 +5728,142 @@ fn (mut g FlatGen) gen_traced_call(id flat.NodeId, trace_name string) bool {
 	return true
 }
 
+// gen_c_call_int_out_wrap wraps a C call that passes the address of a V `int`
+// (`&someint`) into a fixed `&int` parameter or a C-variadic slot. A V `int` is
+// 64-bit while the C ABI expects a 32-bit `int*`, so casting the pointer would let C
+// write only the low 4 bytes and leave the high bytes stale (e.g. `sscanf("%d", &a)`
+// or `fonsGetAtlasSize(&w, &h)`). Instead it emits a statement-expression that copies
+// the value into a temporary C `int`, passes its address, and copies the
+// (sign-extended) result back after the call:
+//   ({ i64* _a = &x; int _v = (int)(*_a); C_fn(&_v); *_a = _v; })
+// It only rewrites `&<lvalue>` arguments (a bare pointer value may be null and must
+// not be dereferenced before the call). Returns false — falling through to normal
+// emission — when there is nothing to wrap, including the re-entrant emission where
+// the out-arguments are already scheduled.
+fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	fn_node := g.a.child_node(&node, 0)
+	callee_name := g.call_target_name(g.a.child(&node, 0))
+	is_c_call := callee_name.starts_with('C.') || fn_node.value.starts_with('C.')
+	if !is_c_call {
+		return false
+	}
+	param_types := g.param_types_for(callee_name, callee_name.all_after_last('.'))
+	is_c_variadic_fn := (g.tc.c_variadic_fns[callee_name] or { false })
+		|| (g.tc.c_variadic_fns[fn_node.value] or { false })
+	is_variadic_fn := is_c_variadic_fn || (g.tc.fn_variadic[callee_name] or { false })
+		|| g.fn_decl_is_variadic(callee_name, fn_node.value)
+	is_untyped_variadic := is_variadic_fn && param_types.len > 0
+		&& variadic_array_is_native(param_types[param_types.len - 1])
+	is_native_variadic := is_c_variadic_fn || is_untyped_variadic
+	typed_param_count := if is_native_variadic && param_types.len > 0
+		&& param_types[param_types.len - 1] is types.Array {
+		param_types.len - 1
+	} else {
+		param_types.len
+	}
+	mut out_args := []flat.NodeId{}
+	for i in 1 .. node.children_count {
+		arg_id := g.a.child(&node, i)
+		if arg_id in g.cabi_int_out_args {
+			continue
+		}
+		if g.c_call_is_int_out_arg(arg_id, i - 1, param_types, typed_param_count, is_native_variadic) {
+			out_args << arg_id
+		}
+	}
+	if out_args.len == 0 {
+		return false
+	}
+	mut ret_type := g.declared_call_return_type(id)
+	if ret_type is types.Unknown {
+		ret_type = g.usable_expr_type(id)
+	}
+	if ret_type is types.Unknown {
+		return false
+	}
+	if _ := array_fixed_type(ret_type) {
+		return false
+	}
+	g.write('({ ')
+	mut copybacks := []string{}
+	for arg_id in out_args {
+		n := g.tmp_count
+		g.tmp_count++
+		addr_tmp := '_cabi_out_addr_${n}'
+		val_tmp := '_cabi_out_val_${n}'
+		ptr_ct := g.value_c_type(g.usable_expr_type(arg_id))
+		arg_node := g.a.nodes[int(arg_id)]
+		// The address of a variable (`&x`) is provably non-null, so no guard is
+		// needed. A forwarded pointer value (e.g. a `mut x int` param passed on to C)
+		// may be null; keep the null through to the callee and skip the copy-back so
+		// its semantics are unchanged.
+		non_null := arg_node.kind == .prefix && arg_node.op == .amp
+		g.write('${ptr_ct} ${addr_tmp} = ')
+		g.gen_expr(arg_id)
+		if non_null {
+			g.write('; int ${val_tmp} = (int)(*${addr_tmp}); ')
+			g.cabi_int_out_args[arg_id] = '&${val_tmp}'
+			copybacks << '*${addr_tmp} = ${val_tmp};'
+		} else {
+			g.write('; int ${val_tmp} = ${addr_tmp} ? (int)(*${addr_tmp}) : 0; ')
+			g.cabi_int_out_args[arg_id] = '(${addr_tmp} ? &${val_tmp} : (int*)0)'
+			copybacks << 'if (${addr_tmp}) { *${addr_tmp} = ${val_tmp}; }'
+		}
+	}
+	if ret_type is types.Void {
+		g.gen_call(id, node)
+		g.write('; ')
+		for cb in copybacks {
+			g.write('${cb} ')
+		}
+	} else {
+		rt := g.tmp_count
+		g.tmp_count++
+		ret_ct := g.value_c_type(ret_type)
+		g.write('${ret_ct} _cabi_out_ret_${rt} = ')
+		g.gen_call(id, node)
+		g.write('; ')
+		for cb in copybacks {
+			g.write('${cb} ')
+		}
+		g.write('_cabi_out_ret_${rt}; ')
+	}
+	g.write('})')
+	for arg_id in out_args {
+		g.cabi_int_out_args.delete(arg_id)
+	}
+	return true
+}
+
+// c_call_is_int_out_arg reports whether the `&int`-typed argument `arg_id` targets a
+// C `int` out-parameter: a fixed `&int` parameter, or (for a C-variadic function) a
+// variadic-tail `&int` address such as scanf's `&a`. It matches both `&x` and a
+// forwarded pointer value (e.g. a `mut x int` parameter passed on to C); the wrap
+// guards possibly-null pointer values.
+fn (mut g FlatGen) c_call_is_int_out_arg(arg_id flat.NodeId, arg_idx int, param_types []types.Type, typed_param_count int, is_native_variadic bool) bool {
+	if !c_type_is_pointer_to_platform_int(cgen_unalias_type(g.usable_expr_type(arg_id))) {
+		return false
+	}
+	if arg_idx < typed_param_count {
+		return arg_idx < param_types.len
+			&& c_type_is_pointer_to_platform_int(cgen_unalias_type(param_types[arg_idx]))
+	}
+	return is_native_variadic
+}
+
+fn c_type_is_pointer_to_platform_int(t types.Type) bool {
+	if t is types.Pointer {
+		base := cgen_unalias_type(t.base_type)
+		if base is types.Primitive {
+			return base.size == 0 && base.props.has(.integer) && !base.props.has(.unsigned)
+		}
+	}
+	return false
+}
+
 // gen_call emits call output for c.
 @[direct_array_access]
 fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
@@ -5747,6 +5883,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		if g.gen_traced_call(id, trace_name) {
 			return
 		}
+	}
+	if g.gen_c_call_int_out_wrap(id, node) {
+		return
 	}
 	if fn_node.kind == .ident && fn_name == 'v3_heap_array' && node.children_count == 2 {
 		arg_id := g.a.child(&node, 1)
@@ -12555,6 +12694,25 @@ fn (mut g FlatGen) gen_callback_fn_value_for_expected_c_abi(arg_id flat.NodeId, 
 	return true
 }
 
+// c_call_callback_abi_thunk returns the name of an ABI-adapter thunk for a V
+// function passed directly as a C callback argument, when the callback's C ABI
+// differs from the V function's emitted ABI (e.g. C `int` params vs V i64), or none
+// when no adapter is needed (widths already match) or the argument is not a directly
+// resolvable V function (a forwarded/dynamic fn-pointer value falls through to the
+// plain C-ABI cast).
+fn (mut g FlatGen) c_call_callback_abi_thunk(arg_id flat.NodeId, expected_fn types.FnType) ?string {
+	expected := types.Type(expected_fn)
+	actual_name := g.callback_fn_value_name(arg_id, expected) or {
+		g.direct_callback_ident_name(arg_id) or { return none }
+	}
+	if actual_name.len == 0 {
+		return none
+	}
+	actual_fn := g.callback_fn_value_type(actual_name) or { return none }
+	encoded := g.c_extern_fn_ptr_encoded(expected_fn)
+	return g.ensure_callback_userdata_wrapper(actual_name, actual_fn, expected_fn, encoded)
+}
+
 fn (mut g FlatGen) gen_callback_fn_value_for_field_c_abi(arg_id flat.NodeId, expected types.Type, expected_c_abi string) bool {
 	if expected_c_abi.len == 0 {
 		return false
@@ -12805,6 +12963,15 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 			needs_wrapper = true
 			continue
 		}
+		if callback_can_cast_scalar_int_param(actual_ct, expected_ct) {
+			// The C caller passes this argument in the C-ABI width (e.g. a 32-bit
+			// `int`) while the V function was generated with V's width (i64). Receive
+			// the C-ABI value and convert it before forwarding, so a callback invoked
+			// by C with `-1` reaches the V body as -1 (not 0xffffffff).
+			call_args << '(${actual_ct})arg${i}'
+			needs_wrapper = true
+			continue
+		}
 		return none
 	}
 	if !needs_wrapper {
@@ -12885,6 +13052,20 @@ fn callback_mut_pointer_slot_value_c_type(actual_ct string, expected_ct string) 
 		return none
 	}
 	return value_ct
+}
+
+// callback_can_cast_scalar_int_param reports whether a callback parameter can bridge
+// the C ABI to the V ABI with a scalar integer cast. This handles V's platform `int`
+// (emitted as i64) received through a C callback slot declared with C `int` (or the
+// reverse). Only reached after the checker has accepted the two function types as
+// compatible, so both spellings originate from the same V parameter type.
+fn callback_can_cast_scalar_int_param(actual_ct string, expected_ct string) bool {
+	return callback_is_scalar_int_c_type(actual_ct) && callback_is_scalar_int_c_type(expected_ct)
+}
+
+fn callback_is_scalar_int_c_type(ct string) bool {
+	return trimmed_space(ct) in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
+		'char', 'bool', 'isize', 'usize', 'ptrdiff_t', 'size_t']
 }
 
 fn (mut g FlatGen) callback_c_type(typ types.Type) string {
@@ -14894,10 +15075,31 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		} else {
 			types.Type(types.void_)
 		}
+		if is_c_call {
+			// A `&int` out-argument has been rewritten to the address of a temporary C
+			// `int` by gen_c_call_int_out_wrap; emit that in the argument's place.
+			if sub := g.cabi_int_out_args[arg_id] {
+				g.write(sub)
+				continue
+			}
+		}
 		if is_c_call && g.gen_special_c_callback_arg(fn_name, arg_idx, arg_id, cb_param) {
 			continue
 		}
 		if is_c_call {
+			// A V function passed as a C callback whose C-ABI parameter/return widths
+			// differ from V's (notably C `int` vs V's i64 for platform `int`) needs an
+			// ABI thunk, not a bare function-pointer cast: casting the pointer does not
+			// convert the arguments the C library passes. Emit the adapter when one is
+			// required; otherwise fall through to the plain C-ABI cast below.
+			if arg_idx >= 0 && arg_idx < typed_param_count {
+				if cb_fn := fn_type_from(param_types[arg_idx]) {
+					if thunk := g.c_call_callback_abi_thunk(arg_id, cb_fn) {
+						g.write(thunk)
+						continue
+					}
+				}
+			}
 			if g.gen_c_va_list_macro_arg_direct(arg_idx, arg_id, fn_name, callee_name, '', '') {
 				continue
 			}
@@ -17261,20 +17463,28 @@ fn (mut g FlatGen) c_extern_interop_type_name(t types.Type) ?string {
 // fn_ptr_type_key's encoding so the C-ABI variant is a distinct typedef from the
 // ordinary (i64) one.
 fn (mut g FlatGen) c_extern_fn_ptr_type_name(t types.FnType) string {
+	return g.resolve_fn_ptr_type(g.c_extern_fn_ptr_encoded(t))
+}
+
+// c_extern_fn_ptr_encoded builds the `fn_ptr:ret|params` key for a function-pointer
+// type as it appears in a C ABI signature, with platform `int` kept as C `int`
+// throughout. This is the C-ABI counterpart of fn_ptr_type_key (which lowers `int`
+// to i64), and doubles as the `expected_c_abi` string for callback-thunk generation.
+fn (mut g FlatGen) c_extern_fn_ptr_encoded(t types.FnType) string {
 	ret := if t.return_type is types.Void {
 		'void'
 	} else {
 		g.c_extern_interop_type_name(t.return_type) or { g.tc.c_type(t.return_type) }
 	}
 	if t.params.len == 0 {
-		return g.resolve_fn_ptr_type('fn_ptr:${ret}|void')
+		return 'fn_ptr:${ret}|void'
 	}
 	mut params := []string{}
 	for i in 0 .. t.params.len {
 		pt := fn_type_effective_param(t, i)
 		params << (g.c_extern_interop_type_name(pt) or { g.tc.c_type(pt) })
 	}
-	return g.resolve_fn_ptr_type('fn_ptr:${ret}|${params.join(', ')}')
+	return 'fn_ptr:${ret}|${params.join(', ')}'
 }
 
 // c_call_arg_cabi_cast returns the C spelling to cast a C-call argument to so it
