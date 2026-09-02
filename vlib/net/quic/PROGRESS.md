@@ -1146,7 +1146,9 @@ next:
   (`request.v`/`http.v`), not silently left as a surprise. Likewise,
   `req.validate` (skip-verification) and `req.cert`/`req.cert_key`
   (mutual TLS) are not honorable on the h3 path in v1, both also
-  documented there.
+  documented there. **Also needs `-d http3` to build at all** (added by
+  PR #28286, 2026-09-01, after 12d itself landed) — see "Scope decisions
+  in effect" below for the full requirement and why it exists.
 
 **Phase A adversarial-verification pass (done)**: a multi-agent Workflow (5
 independent finder lenses — rfc/concurrency/pool-lifecycle/error-edges/
@@ -1396,7 +1398,10 @@ stacked-PR convention as Phase 12's 12a-12d.
       Retry's own one-time SCID, permanently discarding every subsequent real
       server packet — found via this phase's own real dial()-through-Retry-
       through-accept()-through-established-handshake integration test.
-- [x] **13e** — `h3_server.v` (net.http): a caller-driven `H3Server` bridging
+- [x] **13e** — `h3_server_d_http3.v` (net.http, renamed from `h3_server.v`
+      2026-09-02 to close a gap #28286 left open — see "Scope decisions in
+      effect" below for the full `-d http3` requirement): a caller-driven
+      `H3Server` bridging
       one real UDP socket to `quic.QuicListener`/`quic.H3Conn`'s poll()-based
       surface, mirroring `h2_server.v`'s Handler dispatch and request/
       response construction (pseudo-header validation, content-length
@@ -1503,7 +1508,7 @@ independent of server support existing at all).
 ## Phase 14: Connection migration (RFC 9000 §5.1, §9) — SCOPED, not started
 
 Opened following a scoping pass over every deferred/TODO/"out of scope"
-comment left across `vlib/net/quic/*.v` and `h3_server.v` (13a-13e's own
+comment left across `vlib/net/quic/*.v` and `h3_server_d_http3.v` (13a-13e's own
 scope-limit notes plus everything predating them), same convention as
 Phase 13's own opening. Migration is the one item this scoping pass singled
 out to bundle into a phase of its own — it is the single largest remaining
@@ -1591,7 +1596,7 @@ own later follow-up):
 - The preferred_address transport parameter (RFC 9000 §9.6) — a distinct,
   optional migration-*adjacent* feature; a candidate follow-up to Phase 14,
   not part of it.
-- `h3_server.v`'s three documented v1 limits (request trailers not
+- `h3_server_d_http3.v`'s three documented v1 limits (request trailers not
   delivered to the Handler, no per-stream RST/STOP_SENDING, no graceful
   GOAWAY-on-shutdown) — HTTP/3-layer hardening, orthogonal to transport-layer
   migration.
@@ -1618,6 +1623,30 @@ ever picked up, takes a later number (15+) rather than reclaiming this one.
 - Single-threaded, caller-driven event loop (`poll()`/`process_timeouts()`),
   not a background thread per connection — matches V's lack of native
   async I/O and QUIC's one-socket-many-connections-by-CID model.
+- **Building anything HTTP/3 requires `-d http3`.** `net.quic`'s TLS 1.3
+  stack pulls in `crypto.ecdsa`, which hard-requires the OpenSSL development
+  headers (`<openssl/ecdsa.h>`) — see `vlib/crypto/ecdsa/ecdsa.c.v`'s own
+  `#flag`/`#include` lines. Importing `net.quic` unconditionally from
+  `net.http` would force OpenSSL onto every `net.http`/`veb` user, even
+  plain HTTP/1.1/2 callers who never touch QUIC. PR #28286 (2026-09-01)
+  fixed this for the client side by renaming every `net.quic`-importing
+  `net.http` file to `*_d_http3.v` (V's real `-d <flag>` file-selection
+  convention — compiled only when the flag is passed) plus a
+  `transport_h3_notd_http3.v` stub for the flag-off case. `h3_server.v`
+  (Phase 13e) landed on this branch **after** #28286 merged and was missed
+  by it (it didn't exist yet); fixed the same way 2026-09-02, renamed to
+  `h3_server_d_http3.v`, no `_notd_http3.v` stub needed since nothing else
+  in `module http` calls into `H3Server`/`H3ServerParams`/`new_h3_server`
+  (confirmed via a full-module grep). **Any future new file that imports
+  `net.quic`/`crypto.ecdsa` from `module http` needs the same `_d_http3.v`
+  suffix, or this gap reopens** — there's no compiler-enforced guard
+  against it, just this note. Test files stay unrenamed but need both
+  `// vtest build: present_openssl?` and `// vtest vflags: -d http3`
+  directives (see any `h3_*_test.v` file for the pattern) so the vtest
+  runner skips them cleanly without OpenSSL and passes the flag when it's
+  present. Building with `-d http3` needs the OpenSSL dev headers
+  available — see the tracking issue / this repo's CI config for
+  per-platform install steps.
 
 ## Validation workflow (apply to every new phase)
 
