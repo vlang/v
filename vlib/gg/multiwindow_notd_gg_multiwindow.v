@@ -53,6 +53,10 @@ pub enum WindowCursorShape {
 	nwse_resize
 	grab
 	grabbing
+	text
+	crosshair
+	not_allowed
+	resize_all
 }
 
 // WindowId identifies a window managed by gg.App.
@@ -66,16 +70,19 @@ pub fn (id WindowId) str() string {
 	return '<gg.WindowId disabled: compile with `-d gg_multiwindow`>'
 }
 
-// AppConfig configures a multi-window gg application facade.
+// AppConfig configures a multi-window gg application facade. app_id supplies
+// the native application identity where supported (currently Wayland xdg-shell).
 @[params]
 pub struct AppConfig {
 pub:
 	backend          MultiWindowBackend = .auto
 	queue_size       int                = 128
 	require_renderer bool
+	app_id           string
 }
 
-// WindowConfig describes one window at creation time.
+// WindowConfig describes one window at creation time. A modal window must name
+// a live same-app owner; ownerless modal configurations are rejected pre-allocation.
 @[params]
 pub struct WindowConfig {
 pub:
@@ -97,6 +104,8 @@ pub:
 	init_fn      WindowInitFn     = unsafe { nil }
 	frame_fn     WindowFrameFn    = unsafe { nil }
 	cleanup_fn   WindowCleanupFn  = unsafe { nil }
+	owner        ?WindowId
+	modal        bool
 }
 
 // WindowInfo is a snapshot of a live gg.App window.
@@ -116,7 +125,8 @@ pub:
 	native_decorations bool
 }
 
-// Capabilities reports the active gg.App backend contract.
+// Capabilities reports the active gg.App backend-wide contract. Optional
+// per-window service/readback queries remain authoritative for runtime state.
 pub struct Capabilities {
 pub:
 	backend                 MultiWindowBackend
@@ -179,14 +189,18 @@ pub type AppInputFn = fn (event WindowInputEvent, mut app App) !
 // WindowDrawFn records drawing commands for one WindowContext.
 pub type WindowDrawFn = fn (mut window WindowContext) !
 
-// RunConfig configures the gg.App loop. Use event_fn without frame_fn for
-// lifecycle-only loops that do not require a renderer.
+// RunConfig configures the gg.App loop. event_fn, input_fn, window_service_fn,
+// and readback_fn receive the four canonical queue families in global order.
+// An error from any of those callbacks reinserts the current event and untouched
+// suffix in the same order, so all four handlers must be idempotent.
+// Use event_fn without frame_fn for lifecycle-only loops without a renderer.
 @[params]
 pub struct RunConfig {
 pub:
 	frame_fn                AppFrameFn           = unsafe { nil }
 	event_fn                AppEventFn           = unsafe { nil }
 	input_fn                AppInputFn           = unsafe { nil }
+	window_service_fn       WindowServiceFn      = unsafe { nil }
 	app_resource_init_fn    AppResourceInitFn    = unsafe { nil }
 	app_resource_frame_fn   AppResourceFrameFn   = unsafe { nil }
 	app_resource_cleanup_fn AppResourceCleanupFn = unsafe { nil }
@@ -288,7 +302,8 @@ pub fn (app &App) window_infos() ![]WindowInfo {
 	return error(err_multiwindow_not_enabled)
 }
 
-// destroy_window destroys a live window.
+// destroy_window destroys a live window and its owned descendants child-first.
+// Destroying the final window does not stop the app; call stop explicitly.
 pub fn (mut app App) destroy_window(id WindowId) ! {
 	_ = app
 	_ = id
@@ -309,19 +324,224 @@ pub fn (app &App) capabilities() Capabilities {
 	}
 }
 
-// drain_events returns and clears pending window lifecycle events.
+// drain_events consumes only the contiguous lifecycle prefix of the ordered queue.
 pub fn (mut app App) drain_events() ![]WindowEvent {
 	_ = app
 	return error(err_multiwindow_not_enabled)
 }
 
-// drain_input_events returns and clears pending window-scoped input events.
+// drain_input_events consumes only the contiguous input prefix of the ordered queue.
 pub fn (mut app App) drain_input_events() ![]WindowInputEvent {
 	_ = app
 	return error(err_multiwindow_not_enabled)
 }
 
-// poll_events lets the backend route native lifecycle/input events into the gg.App queue.
+// window_state returns the latest native state observed for a live window.
+// Unknown fields were not reported by the running backend.
+pub fn (app &App) window_state(id WindowId) !WindowState {
+	_ = app
+	_ = id
+	return error(err_multiwindow_not_enabled)
+}
+
+// monitor_ids returns generation-checked ids for currently available monitors.
+pub fn (app &App) monitor_ids() ![]WindowMonitorId {
+	_ = app
+	return error(err_multiwindow_not_enabled)
+}
+
+// monitor_info returns the latest snapshot for a monitor generation. Names are
+// descriptive; the generation-checked id is the identity.
+pub fn (app &App) monitor_info(id WindowMonitorId) !WindowMonitorInfo {
+	_ = app
+	_ = id
+	return error(err_multiwindow_not_enabled)
+}
+
+// window_operation_capability reports authoritative runtime support for one
+// operation on one live window. Query it immediately before optional operations.
+pub fn (app &App) window_operation_capability(id WindowId, operation WindowOperation) !WindowOperationCapability {
+	_ = app
+	_ = id
+	_ = operation
+	return error(err_multiwindow_not_enabled)
+}
+
+// supports_window_cursor reports support for one native cursor shape.
+pub fn (app &App) supports_window_cursor(id WindowId, shape WindowCursorShape) !WindowSupportLevel {
+	_ = app
+	_ = id
+	_ = shape
+	return error(err_multiwindow_not_enabled)
+}
+
+// with_native_window borrows a live native window only for the callback. The
+// lease and nested backend handles must not escape or be retained.
+pub fn (mut app App) with_native_window(id WindowId, f NativeWindowBorrowFn) ! {
+	_ = app
+	_ = id
+	_ = f
+	return error(err_multiwindow_not_enabled)
+}
+
+// show_window requests that a live window become mapped and visible.
+pub fn (mut app App) show_window(id WindowId) ! {
+	_ = app
+	_ = id
+	return error(err_multiwindow_not_enabled)
+}
+
+// hide_window requests that a live window become hidden or unmapped.
+pub fn (mut app App) hide_window(id WindowId) ! {
+	_ = app
+	_ = id
+	return error(err_multiwindow_not_enabled)
+}
+
+// request_window_focus asks the platform to focus a live window.
+pub fn (mut app App) request_window_focus(id WindowId) ! {
+	_ = app
+	_ = id
+	return error(err_multiwindow_not_enabled)
+}
+
+// raise_window asks the platform to raise a live window.
+pub fn (mut app App) raise_window(id WindowId) ! {
+	_ = app
+	_ = id
+	return error(err_multiwindow_not_enabled)
+}
+
+// set_window_position requests a native top-level position when supported.
+pub fn (mut app App) set_window_position(id WindowId, x int, y int) ! {
+	_ = app
+	_ = id
+	_ = x
+	_ = y
+	return error(err_multiwindow_not_enabled)
+}
+
+// minimize_window requests native minimization.
+pub fn (mut app App) minimize_window(id WindowId) ! {
+	_ = app
+	_ = id
+	return error(err_multiwindow_not_enabled)
+}
+
+// maximize_window requests native maximization.
+pub fn (mut app App) maximize_window(id WindowId) ! {
+	_ = app
+	_ = id
+	return error(err_multiwindow_not_enabled)
+}
+
+// restore_window leaves the supported minimized, maximized, or fullscreen state.
+pub fn (mut app App) restore_window(id WindowId) ! {
+	_ = app
+	_ = id
+	return error(err_multiwindow_not_enabled)
+}
+
+// set_window_fullscreen requests or leaves native fullscreen state.
+pub fn (mut app App) set_window_fullscreen(id WindowId, enabled bool) ! {
+	_ = app
+	_ = id
+	_ = enabled
+	return error(err_multiwindow_not_enabled)
+}
+
+// request_clipboard_text starts an asynchronous clipboard read. Match the id
+// with a terminal clipboard WindowServiceEvent.
+pub fn (mut app App) request_clipboard_text(id WindowId) !ClipboardRequestId {
+	_ = app
+	_ = id
+	return error(err_multiwindow_not_enabled)
+}
+
+// set_clipboard_text starts an asynchronous clipboard write. Match the id with
+// a terminal clipboard WindowServiceEvent.
+pub fn (mut app App) set_clipboard_text(id WindowId, text string) !ClipboardRequestId {
+	_ = app
+	_ = id
+	_ = text
+	return error(err_multiwindow_not_enabled)
+}
+
+// request_portal_parent starts an asynchronous native-parent export. A ready
+// event owns a lease that must be released explicitly.
+pub fn (mut app App) request_portal_parent(id WindowId) !PortalParentRequestId {
+	_ = app
+	_ = id
+	return error(err_multiwindow_not_enabled)
+}
+
+// release_portal_parent releases a ready portal-parent export lease.
+pub fn (mut app App) release_portal_parent(id PortalParentLeaseId) ! {
+	_ = app
+	_ = id
+	return error(err_multiwindow_not_enabled)
+}
+
+// set_window_mouse_lock requests or releases relative pointer confinement.
+pub fn (mut app App) set_window_mouse_lock(id WindowId, enabled bool) ! {
+	_ = app
+	_ = id
+	_ = enabled
+	return error(err_multiwindow_not_enabled)
+}
+
+// set_window_titlebar_appearance requests a supported native titlebar theme.
+pub fn (mut app App) set_window_titlebar_appearance(id WindowId, appearance WindowTitlebarAppearance) ! {
+	_ = app
+	_ = id
+	_ = appearance
+	return error(err_multiwindow_not_enabled)
+}
+
+// drain_window_service_events consumes only the contiguous service prefix of
+// the ordered queue. It never skips lifecycle, input, or readback events.
+pub fn (mut app App) drain_window_service_events() ![]WindowServiceEvent {
+	_ = app
+	return error(err_multiwindow_not_enabled)
+}
+
+// drain_window_queued_events consumes lifecycle, input, service, and readback
+// events in exact global admission order.
+pub fn (mut app App) drain_window_queued_events() ![]WindowQueuedEvent {
+	_ = app
+	return error(err_multiwindow_not_enabled)
+}
+
+// with_win32 exposes the borrowed HWND only during f.
+pub fn (mut lease NativeWindowLease) with_win32(f Win32NativeWindowFn) ! {
+	_ = lease
+	_ = f
+	return error(err_multiwindow_not_enabled)
+}
+
+// with_appkit exposes the borrowed NSWindow pointer only during f.
+pub fn (mut lease NativeWindowLease) with_appkit(f AppKitNativeWindowFn) ! {
+	_ = lease
+	_ = f
+	return error(err_multiwindow_not_enabled)
+}
+
+// with_x11 exposes borrowed Display and Window handles only during f.
+pub fn (mut lease NativeWindowLease) with_x11(f X11NativeWindowFn) ! {
+	_ = lease
+	_ = f
+	return error(err_multiwindow_not_enabled)
+}
+
+// with_wayland exposes borrowed wl_display and wl_surface pointers only during f.
+pub fn (mut lease NativeWindowLease) with_wayland(f WaylandNativeWindowFn) ! {
+	_ = lease
+	_ = f
+	return error(err_multiwindow_not_enabled)
+}
+
+// poll_events routes native lifecycle, input, service, and readback events into
+// the gg.App canonical queue.
 pub fn (mut app App) poll_events() !int {
 	_ = app
 	return error(err_multiwindow_not_enabled)
@@ -348,8 +568,10 @@ pub fn (mut app App) drain_pending(max_jobs int) !int {
 	return error(err_multiwindow_not_enabled)
 }
 
-// run starts the multi-window owner loop. event_fn can drive lifecycle-only
-// apps without a renderer; frame_fn/draw_window require explicit swapchains.
+// run starts the owner loop and dispatches lifecycle, input, service, and
+// readback callbacks in canonical order. Rendering callbacks require swapchains.
+// A queue-callback error reinserts the current event and untouched suffix, so
+// event, input, service, and readback handlers must be idempotent.
 pub fn (mut app App) run(config RunConfig) ! {
 	_ = app
 	_ = config

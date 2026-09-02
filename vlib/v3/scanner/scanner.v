@@ -27,6 +27,7 @@ pub struct Scanner {
 mut:
 	file        &token.File = unsafe { nil }
 	insert_semi bool
+	after_dot   bool
 pub mut:
 	src                 string
 	offset              int
@@ -67,6 +68,7 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.pos = 0
 	s.lit = ''
 	s.insert_semi = false
+	s.after_dot = false
 	s.in_str_incomplete = false
 	s.in_str_inter = false
 	s.in_str_inter_format = false
@@ -153,6 +155,8 @@ pub fn (mut s Scanner) scan() token.Token {
 		s.lit = s.source_lit(s.pos, s.offset)
 		return .string
 	}
+	follows_dot := s.after_dot
+	s.after_dot = false
 	start:
 	s.whitespace()
 	if s.offset >= s.src.len {
@@ -233,9 +237,21 @@ pub fn (mut s Scanner) scan() token.Token {
 			s.insert_semi = true
 			return .string
 		}
+		if s.lit == 'js' && s.offset < s.src.len
+			&& (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
+			quote := s.src[s.offset]
+			s.offset++
+			if !s.in_str_inter {
+				s.str_quote = quote
+			}
+			s.string_literal(false, quote)
+			s.lit = s.source_lit(s.pos, s.offset)
+			s.insert_semi = true
+			return .string
+		}
 		tok := token.Token.from_string_tinyv(s.lit)
-		if tok in [.key_break, .key_continue, .key_nil, .key_none, .key_return, .key_false, .key_true,
-			.name] {
+		if tok in [.key_break, .key_continue, .key_nil, .key_none, .key_return, .key_false, .key_true, .name]
+			|| (follows_dot && tok.is_keyword()) {
 			s.insert_semi = true
 		}
 		return tok
@@ -268,6 +284,7 @@ pub fn (mut s Scanner) scan() token.Token {
 				}
 				return .dotdot
 			}
+			s.after_dot = true
 			return .dot
 		}
 		`:` {
@@ -847,7 +864,15 @@ fn (mut s Scanner) consume_digits(base int) int {
 	mut previous_underscore := false
 	for s.offset < s.src.len {
 		c := s.src[s.offset]
-		if digit_value(c) < base {
+		// Decimal digits are by far the most common case, so test them inline
+		// instead of paying a digit_value call per byte.
+		mut is_digit := false
+		if c >= `0` && c <= `9` {
+			is_digit = int(c - `0`) < base
+		} else if base == 16 {
+			is_digit = (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
+		}
+		if is_digit {
 			digits++
 			previous_underscore = false
 			s.offset++

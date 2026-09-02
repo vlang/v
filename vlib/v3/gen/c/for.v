@@ -272,7 +272,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			if clean_container_type is types.Map {
 				c_key := g.map_key_temp_c_type(clean_container_type.key_type)
 				c_val := g.value_c_type(clean_container_type.value_type)
-				map_value_by_ref := node.op == .amp || container_type is types.Pointer
+				map_value_by_ref := node.op == .amp
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				storage_container_type := g.usable_expr_type(g.a.child(&node, 2))
 				container_storage_is_pointer := storage_container_type is types.Pointer
@@ -686,25 +686,25 @@ fn (g &FlatGen) for_in_map_storage_key(id flat.NodeId) string {
 
 fn (g &FlatGen) c_loop_local_name(name string) string {
 	if name.contains('.') {
-		return g.cname(name.all_after_last('.'))
+		return g.local_decl_cname(name.all_after_last('.'))
 	}
 	if name.contains('__') {
 		prefix := name.all_before_last('__')
 		suffix := name.all_after_last('__')
 		if suffix == 'index' {
-			return g.cname(suffix)
+			return g.local_decl_cname(suffix)
 		}
 		if g.has_import_alias(prefix) {
-			return g.cname(suffix)
+			return g.local_decl_cname(suffix)
 		}
 		for _, mod_name in g.modules {
 			short_mod := if mod_name.contains('.') { mod_name.all_after_last('.') } else { mod_name }
 			if prefix == short_mod {
-				return g.cname(suffix)
+				return g.local_decl_cname(suffix)
 			}
 		}
 	}
-	return g.cname(name)
+	return g.local_decl_cname(name)
 }
 
 // gen_node_inline emits node inline output for c.

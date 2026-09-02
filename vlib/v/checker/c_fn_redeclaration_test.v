@@ -1,6 +1,6 @@
 import os
 
-const c_fn_redeclaration_vexe = os.quoted_path(@VEXE)
+const c_fn_redeclaration_vexe = '${os.quoted_path(@VEXE)} -old-compiler'
 
 fn write_c_fn_redeclaration_project(name string, files map[string]string) !string {
 	root := os.join_path(os.vtmp_dir(), '${name}_${os.getpid()}')

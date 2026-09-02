@@ -1,4 +1,4 @@
-FROM thevlang/vlang:buster-build
+FROM thevlang/vlang:debian-build
 
 
 COPY ./ /src/

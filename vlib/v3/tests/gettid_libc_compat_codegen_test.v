@@ -9,8 +9,10 @@ const gettid_compat_v3_src = os.join_path(gettid_compat_v3_dir, 'v3.v')
 fn gettid_compat_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_gettid_compat_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
+	// -prealloc enables the parallel declaration worker that must emit the helper
+	// before function bodies can call it.
 	build :=
-		os.execute('${gettid_compat_vexe} -gc none -path "${gettid_compat_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${gettid_compat_v3_src}')
+		os.execute('${gettid_compat_vexe} -prealloc -path "${gettid_compat_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${gettid_compat_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -42,6 +44,8 @@ fn main() {
 	assert generated.contains('#elif defined(__arm__)'), generated
 	assert generated.contains('#elif defined(__riscv) && __riscv_xlen == 64'), generated
 	assert generated.contains('#elif defined(__loongarch_lp64)'), generated
+	assert generated.contains('#elif defined(__s390x__)'), generated
+	assert generated.contains('#define SYS_gettid 236'), generated
 	assert generated.contains('#error unsupported Linux gettid syscall number for this architecture'), generated
 	assert generated.contains('long syscall(long number, ...);'), generated
 	assert generated.contains('syscall(SYS_gettid)'), generated

@@ -92,3 +92,10 @@ fn test_values_copied_from_temporary_map_remain_valid() {
 		"fn entries(lang string) map[string]string {\n\treturn {'message': lang.repeat(64)}\n}\n\nfn main() {\n\tmut translations := map[string]map[string]string{}\n\tfor lang in ['en', 'fr', 'de', 'es'] {\n\t\tfor key, value in entries(lang) {\n\t\t\ttranslations[lang][key] = value\n\t\t}\n\t}\n\tprintln(translations['en']['message'] == 'en'.repeat(64))\n}\n")
 	assert out == 'true'
 }
+
+fn test_custom_iterator_pointer_for_in_uses_single_indirection() {
+	v3_bin := build_v3_for_in_review()
+	out := for_in_review_run_good(v3_bin, 'custom_iterator_pointer',
+		'struct Counter {\nmut:\n\tn int\n}\n\nfn (mut c Counter) next() ?int {\n\tif c.n >= 3 {\n\t\treturn none\n\t}\n\tc.n++\n\treturn c.n\n}\n\nfn main() {\n\tmut c := Counter{}\n\tfor x in &c {\n\t\tprintln(x)\n\t}\n\tprintln("count: \${c.n}")\n}\n')
+	assert out == '1\n2\n3\ncount: 3'
+}

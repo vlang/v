@@ -1,7 +1,7 @@
 module quic
 
 import time
-import rand
+import crypto.rand
 
 // RFC 9000/9001 — QuicConn is the top-level connection struct wiring
 // together every independently-built piece from Phases 0-8: packet/header

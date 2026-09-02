@@ -1,0 +1,6 @@
+fn main() {
+	cond := true
+	if cond {
+		$embed_file(@FILE)
+	}
+}

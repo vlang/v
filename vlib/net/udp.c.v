@@ -118,7 +118,7 @@ pub fn (c &UdpConn) read_ptr(buf_ptr &u8, len int) !(int, Addr) {
 			Ip6: Ip6{}
 		}
 	}
-	addr_len := sizeof(Addr)
+	addr_len := u32(sizeof(Addr))
 	mut res := 0
 	if c.is_blocking {
 		// Honor read deadlines/timeouts before entering a blocking recvfrom call.

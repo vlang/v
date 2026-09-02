@@ -1,0 +1,17 @@
+struct State {
+	value int
+}
+
+fn main() {
+	shared s := State{
+		value: 1
+	}
+	embedded := rlock s {
+		$embed_file(@FILE)
+	}
+
+	(rlock s {
+		$embed_file(@FILE)
+	}).to_string()
+	assert embedded.len > 0
+}

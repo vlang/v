@@ -147,6 +147,17 @@ fn test_launcher_leaves_flags_after_a_known_external_command_for_the_tool() {
 	assert prefs.eval_argument == ''
 }
 
+fn test_launcher_reports_external_command_index() {
+	_, command, command_idx := pref.parse_args_for_launcher_with_command_index([
+		'self',
+	], ['-exclude', 'x2', 'self', '-o', 'vnew'], false)
+	assert command == 'self'
+	assert command_idx == 2
+	assert pref.option_may_consume_value('-exclude')
+	assert pref.option_may_consume_value('-profile')
+	assert !pref.option_may_consume_value('-g')
+}
+
 fn test_non_launcher_parse_keeps_v_flags_after_the_command() {
 	// vfmt and similar tools recognize their own command name (`fmt`), but still rely on the
 	// general V preference flags that follow it. The default parser (non-launcher mode) must
@@ -410,15 +421,44 @@ fn test_prealloc_defaults_to_no_gc() {
 	assert prefs.gc_mode == .no_gc
 }
 
-fn test_macos_v_compiler_target_defaults_to_prealloc() {
+fn test_macos_and_linux_v_compiler_target_defaults_to_prealloc() {
+	if pref.get_host_os() !in [.macos, .linux] {
+		return
+	}
+	for target in [os.join_path(vroot, 'cmd', 'v'), os.join_path(vroot, 'vlib', 'v3', 'v3.v')] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', target], false)
+		assert prefs.building_v
+		assert prefs.prealloc
+		assert prefs.gc_mode == .no_gc
+	}
+}
+
+fn test_linux_explicit_tinyc_v_compiler_target_skips_prealloc() {
+	if pref.get_host_os() != .linux {
+		return
+	}
+	target := os.join_path(vroot, 'cmd', 'v')
+	for compiler in ['tcc', 'tinyc'] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', '-cc', compiler, target], false)
+		assert prefs.building_v
+		assert prefs.ccompiler_type == .tinyc
+		assert !prefs.prealloc
+		assert '-prealloc' !in prefs.build_options
+	}
+}
+
+fn test_macos_explicit_tinyc_v_compiler_target_keeps_prealloc() {
 	if pref.get_host_os() != .macos {
 		return
 	}
 	target := os.join_path(vroot, 'cmd', 'v')
-	prefs, _ := pref.parse_args_and_show_errors([], ['', target], false)
-	assert prefs.building_v
-	assert prefs.prealloc
-	assert prefs.gc_mode == .no_gc
+	for compiler in ['tcc', 'tinyc'] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', '-cc', compiler, target], false)
+		assert prefs.building_v
+		assert prefs.ccompiler_type == .tinyc
+		assert prefs.prealloc
+		assert '-prealloc' in prefs.build_options
+	}
 }
 
 fn test_prealloc_overrides_explicit_gc_selection() {
@@ -551,6 +591,54 @@ fn test_new_compiler_flag_is_accepted() {
 	assert prefs.new_compiler
 	assert !prefs.old_compiler
 	assert '-new-compiler' !in prefs.build_options
+}
+
+fn test_fastc_backend_selects_v3_driver() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'fastc', target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert prefs.backend_set_by_flag
+	assert prefs.is_fastc
+	assert prefs.new_compiler
+	assert prefs.build_options.contains('-b fastc')
+}
+
+fn test_later_backend_overrides_fastc_v3_selection() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'fastc', '-b', 'c', target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert !prefs.is_fastc
+	assert !prefs.new_compiler
+}
+
+fn test_final_fastc_backend_selects_v3_driver() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'c', '-b', 'fastc', target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert prefs.is_fastc
+	assert prefs.new_compiler
+}
+
+fn test_explicit_new_compiler_survives_backend_override() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-new-compiler', '-b', 'fastc', '-b',
+		'c', target], false)
+	assert command == target
+	assert !prefs.is_fastc
+	assert prefs.new_compiler
+}
+
+fn test_repeated_backend_flags_preserve_final_fastc_selection() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'fastc', '-b', 'c', '-b', 'fastc',
+		target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert prefs.is_fastc
+	assert prefs.new_compiler
 }
 
 fn test_v3_checker_fixture_flag_is_accepted() {

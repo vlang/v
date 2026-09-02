@@ -34,10 +34,27 @@ fn loop_sum(n int) int {
 	return total
 }
 
+struct Index {
+mut:
+	files map[string]int
+}
+
+struct State {
+mut:
+	index Index
+}
+
+fn add_file(mut index Index) {
+	index.files["main.v"] = 7
+}
+
 fn main() {
 	println(int_str(choose(true)))
 	println(int_str(choose(false)))
 	println(int_str(loop_sum(10)))
+	mut state := State{}
+	add_file(mut state.index)
+	println(int_str(state.index.files["main.v"]))
 }
 ') or {
 			panic(err)
@@ -47,7 +64,7 @@ fn main() {
 		assert compile.exit_code == 0, compile.output
 		run := cmdexec.run(output, [])
 		assert run.exit_code == 0, run.output
-		assert run.output.trim_space() == '10\n20\n-5'
+		assert run.output.trim_space() == '10\n20\n-5\n7'
 	} $else {
 		assert true
 	}

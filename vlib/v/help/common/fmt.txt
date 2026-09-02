@@ -16,6 +16,10 @@ pure V `json2` module (`import json` -> `import json2`,
 vfmt fixtures (`.vv`) are left untouched, since they exercise the legacy module
 on purpose. Use `-no-migrate-json2` to disable the rewrite.
 
+During the transition to the V3 formatter, the `-verify` and `-c` check modes
+accept files matching either V3 or legacy vfmt output. Output and write modes
+use V3 formatting, so `v fmt -w` may rewrite a file accepted by a check mode.
+
 Options:
   -c             Check if a file is already formatted. If not, print the
                  filepath and exit with code 2. Compared to -verify it is
@@ -56,4 +60,3 @@ Environment Variables:
   VDIFF_CMD      A custom tool and options that will be used for viewing the
                  differences between the original and the temporarily formatted
                  files, e.g.: `VDIFF_CMD="diff -y -W 100" v fmt -diff path/file.v`
-

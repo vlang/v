@@ -145,6 +145,33 @@ fn main() {
 	assert run.output.trim_space() == 'struct'
 }
 
+fn test_late_generic_reachability_runs_to_fixpoint() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3()
+	mut source := ''
+	for i in 1 .. 41 {
+		source += 'struct Reach${i}[T] {\n\tmarker T\n\tvalue int\n}\n\n'
+		source += 'fn (_ Reach${i}[T]) + (_ Reach${i}[T]) Reach${i}[T] {\n\treturn Reach${i}[T]{\n\t\tvalue: helper_${i}()\n\t}\n}\n\n'
+		if i < 40 {
+			source += 'fn helper_${i}() int {\n\tif never() {\n\t\t_ = Reach${i + 1}[string]{} + Reach${
+				i + 1}[string]{}\n\t}\n\tvalue := Reach${i + 1}[int]{} + Reach${i + 1}[int]{}\n\treturn value.value + 1\n}\n\n'
+		} else {
+			source += 'fn helper_${i}() int {\n\treturn 1\n}\n\n'
+		}
+	}
+	source += 'fn never() bool {\n\treturn false\n}\n\nfn main() {\n\tif never() {\n\t\t_ = Reach1[string]{} + Reach1[string]{}\n\t}\n\tvalue := Reach1[int]{} + Reach1[int]{}\n\tprintln(value.value)\n}\n'
+	src_file := os.join_path(os.temp_dir(), 'v3_gen_late_generic_reachability_fixpoint.v')
+	os.write_file(src_file, source) or { panic(err) }
+	bin_file := os.join_path(os.temp_dir(), 'v3_gen_late_generic_reachability_fixpoint')
+	compile := os.execute('VJOBS=4 ${v3_bin} ${src_file} -b c -o ${bin_file}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin_file)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '40'
+}
+
 // test_generics_rejected_when_building_v validates this v3 regression case.
 fn test_generics_rejected_when_building_v() {
 	v3_bin := build_v3()

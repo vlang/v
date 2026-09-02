@@ -1,6 +1,7 @@
 name: Periodic CI
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '0 */6 * * *'
   push:
@@ -42,5 +43,22 @@ jobs:
       - name: Build V (Windows)
         if: runner.os == 'Windows'
         run: ./makev.bat -msvc && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
+      - name: Install OpenSSL (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $opensslBin = 'C:\Program Files\OpenSSL\bin'
+          $libDir = 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
+          $cryptoLib = Join-Path $libDir 'libcrypto.lib'
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib)) {
+            choco install openssl --version=3.5.4 --allow-downgrade -y --no-progress
+            if ($LASTEXITCODE -ne 0) {
+              throw "Chocolatey failed to install OpenSSL 3.5.4 (exit $LASTEXITCODE)"
+            }
+          }
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib)) {
+            throw "OpenSSL installation is incomplete under C:\Program Files\OpenSSL"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
+          Copy-Item -Path $cryptoLib -Destination (Join-Path $libDir 'crypto.lib') -Force
       - name: Test
         run: ./v -d network -silent test-self vlib/net

@@ -856,6 +856,11 @@ fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ s
 // chain) into an if-statement whose branch tails are `return` statements.
 fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string, extra_return_vals []flat.NodeId, source_return_id flat.NodeId) flat.NodeId {
 	if_node := t.a.nodes[int(if_id)]
+	if expanded := t.build_return_map_index_if_guard_chain(if_node, ret_typ, extra_return_vals,
+		source_return_id)
+	{
+		return expanded
+	}
 	cond_id := t.a.child(&if_node, 0)
 	cond_smartcasts := t.extract_all_is_exprs(cond_id)
 	new_cond := t.transform_and_chain_smartcasts(cond_id)
@@ -888,6 +893,75 @@ fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string, 
 	}
 	cond_prelude << new_if
 	return t.make_block(cond_prelude)
+}
+
+// build_return_map_index_if_guard_chain preserves the presence check while lowering a map
+// lookup guard whose branches become returns. Transforming the guard condition as an ordinary
+// index expression would replace it with `map__get` before C generation and lose the lookup's
+// optional state.
+fn (mut t Transformer) build_return_map_index_if_guard_chain(if_node flat.Node, ret_typ string, extra_return_vals []flat.NodeId, source_return_id flat.NodeId) ?flat.NodeId {
+	if if_node.kind != .if_expr || if_node.children_count < 2 {
+		return none
+	}
+	cond_id := t.a.child(&if_node, 0)
+	cond := t.a.nodes[int(cond_id)]
+	if cond.kind != .decl_assign || cond.children_count < 2 {
+		return none
+	}
+	lhs_ids := t.multi_assign_lhs_ids(cond)
+	if lhs_ids.len != 1 {
+		return none
+	}
+	lhs_id := lhs_ids[0]
+	lhs := t.a.nodes[int(lhs_id)]
+	if lhs.kind != .ident || lhs.value.len == 0 {
+		return none
+	}
+	rhs_id := t.a.child(&cond, 1)
+	info := t.map_index_info(rhs_id) or { return none }
+
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	map_expr := t.stable_expr_for_reuse(info.base_id)
+	key_name := t.new_temp('map_key')
+	ptr_name := t.new_temp('map_ptr')
+	key_expr := t.transform_expr_for_type(info.key_id, info.key_type)
+	mut result := []flat.NodeId{}
+	t.drain_pending(mut result)
+	result << t.make_decl_assign_typed(key_name, key_expr, info.key_storage_type)
+	result << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr,
+		info.base_type, key_name), 'voidptr')
+	found_cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
+
+	saved_var_types := t.var_types.clone()
+	mut then_children := []flat.NodeId{}
+	if lhs.value != '_' {
+		ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type}', t.make_ident(ptr_name),
+			'&${info.value_type}'))
+		then_children << t.make_decl_assign_typed(lhs.value, ptr_value, info.value_type)
+		t.set_var_type(lhs.value, info.value_type)
+	}
+	then_id := t.a.child(&if_node, 1)
+	then_block0 := t.return_block_from_branch(then_id, ret_typ, extra_return_vals, source_return_id)
+	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
+	then_block := t.make_block_prefix_scope_drops(then_children)
+	t.restore_var_types(saved_var_types)
+
+	mut else_block := flat.empty_node
+	if if_node.children_count >= 3 {
+		else_id := t.a.child(&if_node, 2)
+		else_node := t.a.nodes[int(else_id)]
+		else_block = if else_node.kind == .if_expr {
+			t.make_block([
+				t.build_return_if_chain(else_id, ret_typ, extra_return_vals, source_return_id),
+			])
+		} else {
+			t.return_block_from_branch(else_id, ret_typ, extra_return_vals, source_return_id)
+		}
+	}
+	t.pending_stmts = outer_pending
+	result << t.make_if(found_cond, then_block, else_block)
+	return t.make_block(result)
 }
 
 // try_expand_return_if detects a `return if cond { a } else { b }` pattern

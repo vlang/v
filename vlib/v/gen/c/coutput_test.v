@@ -214,6 +214,37 @@ fn test_c_must_have_files() {
 	assert total_errors == 0
 }
 
+fn test_fontstash_boehm_prealloc_copy_uses_atomic_allocator() {
+	old_wd := os.getwd()
+	os.chdir(vroot) or { panic(err) }
+	defer {
+		os.chdir(old_wd) or { panic(err) }
+	}
+	path := os.join_path(testdata_folder, 'fontstash_boehm_prealloc_copy.vv')
+	file_options := get_file_options(path)
+	alloptions := '-o - ${file_options.vflags}'
+	cmd := '${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert !generated_c_uses_v3_codegen(compilation.output)
+	allocator_call := 'GC_MALLOC_ATOMIC('
+	mut matching_lines := []string{}
+	for raw_line in compilation.output.split_into_lines() {
+		line := raw_line.trim_space()
+		if line.starts_with('owned =') && line.contains(allocator_call)
+			&& line.all_after(allocator_call).contains('data_len') {
+			matching_lines << line
+		}
+	}
+	assert matching_lines.len == 1, 'expected 1 fontstash atomic ownership line, got ${matching_lines.len}'
+	matching_line := matching_lines[0]
+	allocator_count := matching_line.count(allocator_call)
+	data_len_count := matching_line.count('data_len')
+	assert allocator_count == 1, 'expected 1 allocator call, got ${allocator_count}'
+	assert data_len_count == 1, 'expected 1 data_len argument, got ${data_len_count}'
+	assert matching_line.ends_with(';'), 'fontstash atomic ownership line must end with semicolon'
+}
+
 fn generated_c_uses_v3_codegen(generated_c string) bool {
 	return !generated_c.contains('#define VV_LOC')
 }
@@ -470,6 +501,36 @@ fn main() {
 	assert compilation.output.contains('thirdparty/stdatomic/win/atomic.h')
 	assert compilation.output.contains('InterlockedExchangeAdd')
 	assert !compilation.output.contains('__atomic_fetch_add')
+}
+
+fn test_windows_closure_virtualprotect_uses_native_dword_pointer() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_windows_closure_virtualprotect.vv')
+	os.write_file(test_source, 'module main
+
+fn main() {
+	value := 41
+	add := fn [value] (delta int) int {
+		return value + delta
+	}
+	println(add(1))
+}
+')!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -old-compiler -o - -os windows ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert compilation.output.contains('#define C__DWORD DWORD')
+	assert compilation.output.contains('C__DWORD tmp = ((C__DWORD)(0));')
+	assert !compilation.output.contains('u32 tmp = ((u32)(0));')
+	assert compilation.output.contains('C__DWORD chars_written = ((C__DWORD)(0));')
+	assert !compilation.output.contains('u32 chars_written = ((u32)(0));')
+	assert compilation.output.contains('WriteConsoleW(console_handle, wide_ptr, ((C__DWORD)(remaining_chars)), &chars_written, ((void*)0))')
+	assert !compilation.output.contains('WriteConsoleW(console_handle, wide_ptr, ((u32)(remaining_chars)), &chars_written, ((void*)0))')
+	assert compilation.output.contains('VirtualProtect(ptr, size, PAGE_EXECUTE_READ, &tmp);')
+	assert compilation.output.contains('VirtualProtect(ptr, size, PAGE_READWRITE, &tmp);')
 }
 
 fn test_windows_tcc_boehm_prod_does_not_emit_gc_remove_roots() {

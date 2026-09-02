@@ -451,7 +451,15 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	source_is_owned_temporary := !raw_iter_type.starts_with('&')
 		&& !t.expr_can_take_address(container_id)
 		&& !t.for_in_container_is_borrowed_lock_value(container_id)
-	mut new_container := if map_iter_type.starts_with('map[') && source_is_owned_temporary {
+	// Route a value `match`/`if` for-in container through value lowering (e.g.
+	// `for value in (match node { First { get_values(node)! } ... })`); otherwise the
+	// propagating arm tail is lowered in a value-less statement context and emits an
+	// empty expression. `transform_value_operand` materializes it into a value temp
+	// (stable for the loop's repeated use); non-branch containers keep the existing
+	// `stable_expr_for_reuse` / `transform_expr` lowering.
+	mut new_container := if t.is_value_match_or_if_operand(container_id) {
+		t.transform_value_operand(container_id)
+	} else if map_iter_type.starts_with('map[') && source_is_owned_temporary {
 		t.stable_expr_for_reuse(container_id)
 	} else {
 		t.transform_expr(container_id)
@@ -835,8 +843,27 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 		return [id]
 	}
 	range_type := t.range_loop_var_type_name(low_id)
-	low := t.stable_expr_for_reuse(low_id)
-	high := t.stable_expr_for_reuse(high_id)
+	// Route value `match`/`if` range bounds through value lowering (e.g.
+	// `for i in (match node { First { lower_first(node)! } ... }) .. 10`); otherwise a
+	// propagating branch tail is lowered in a value-less statement context and emits an
+	// empty expression. `transform_value_operand` materializes such a bound into a value
+	// temp (stable for reuse in the loop condition); non-branch bounds keep
+	// `stable_expr_for_reuse`. The low bound is evaluated before the high bound: if the high
+	// bound hoists a value branch whose prelude can mutate a syntactically stable low bound
+	// (`for i in low .. (match node { First { change_low(mut low)! } ... })`), snapshot the
+	// low bound's source-order value so the loop initializer reads it before that prelude.
+	low := if t.is_value_match_or_if_operand(low_id) {
+		t.transform_value_operand(low_id)
+	} else if t.operand_hoists_value_branch(high_id) && t.operand_needs_ordering_snapshot(low_id) {
+		t.snapshot_expr_for_reuse(low_id)
+	} else {
+		t.stable_expr_for_reuse(low_id)
+	}
+	high := if t.is_value_match_or_if_operand(high_id) {
+		t.transform_value_operand(high_id)
+	} else {
+		t.stable_expr_for_reuse(high_id)
+	}
 	loop_name := if key.value == '_' {
 		'__discard_${key.pos.id}_${key.pos.offset}_${key.pos.end}'
 	} else {
@@ -886,7 +913,9 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	}
 	iter_name := t.new_temp('iter')
 	next_name := t.new_temp('iter_next')
-	iter_expr := t.transform_expr(container_id)
+	// Route a value `match`/`if` iterator container through value lowering so a
+	// propagating arm tail is materialized as a value (no-op for non-branch containers).
+	iter_expr := t.transform_value_operand(container_id)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
 	prefix << t.make_decl_assign_typed(iter_name, iter_expr, iter_type)
@@ -900,8 +929,13 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	elem_type := info.elem_type
 	t.set_var_type(elem_name, elem_type)
 	t.mark_fn_used_name(info.next_method)
+	next_receiver := if iter_type.trim_space().starts_with('&') {
+		t.make_ident(iter_name)
+	} else {
+		t.make_prefix(.amp, t.make_ident(iter_name))
+	}
 	next_call := t.make_call_typed(info.next_method, [
-		t.make_prefix(.amp, t.make_ident(iter_name)),
+		next_receiver,
 	], '?${elem_type}')
 	next_decl := t.make_decl_assign_typed(next_name, next_call, '?${elem_type}')
 	no_value := t.make_prefix(.not, t.make_selector(t.make_ident(next_name), 'ok', 'bool'))
@@ -947,11 +981,21 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	} else {
 		iter_type
 	}
+	// `for x in &arr` requests by-reference elements via a `&` on the container
+	// expression itself, distinct from `node.op == .amp` (`for mut x in arr`). A
+	// `mut` parameter is stored as a pointer by the C ABI even without an explicit
+	// `&`, so only a genuine address-of/reference expression counts here.
+	container_is_explicit_reference := container_node.kind == .prefix && container_node.op == .amp
 	source_is_owned_temporary := !source_container_type.starts_with('&')
 		&& !t.expr_can_take_address(container_id)
 	direct_map_index_container := node.op == .amp && container_node.kind == .index
 	mut container := if direct_map_index_container {
 		container_id
+	} else if t.is_value_match_or_if_operand(container_id) {
+		// Route a value `match`/`if` container through value lowering so a propagating
+		// arm tail is materialized into a value temp (stable for the loop's repeated use);
+		// non-branch containers keep `stable_expr_for_reuse`.
+		t.transform_value_operand(container_id)
 	} else if t.expr_has_smartcast(container_id) {
 		// The checker-facing iterator type is already the narrowed collection, but
 		// taking the original expression as an lvalue would bypass the active sum
@@ -1029,7 +1073,8 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		elem_name = val.value
 	}
 	t.set_var_type(idx_name, 'int')
-	elem_is_mut := node.op == .amp && actual_iter_type != 'string'
+	elem_is_mut := (node.op == .amp || container_is_explicit_reference)
+		&& actual_iter_type != 'string'
 	elem_needs_ref := elem_is_mut
 	elem_var_type := if elem_needs_ref { '&${elem_type}' } else { elem_type }
 	t.set_var_type(elem_name, elem_var_type)

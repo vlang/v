@@ -1,0 +1,11 @@
+import v.embed_file
+
+fn maybe_file() ?embed_file.EmbedFileData {
+	return none
+}
+
+fn consume(_ embed_file.EmbedFileData) {}
+
+fn main() {
+	(consume(maybe_file() or { $embed_file(@FILE) }))
+}

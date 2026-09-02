@@ -57,6 +57,279 @@ fn test_preserved_header_trees_scan_shared_files_once() {
 	assert g.preserved_header_files_seen.len == 3
 }
 
+fn test_postinclude_header_does_not_suppress_earlier_c_prototype() {
+	root := os.join_path(os.vtmp_dir(), 'v3_postinclude_prototype_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'api.h')
+	source := os.join_path(root, 'main.v')
+	os.write_file(header, 'int postinclude_api(void);\n')!
+	os.write_file(source, 'fn main() {}\n')!
+
+	mut postinclude_g := FlatGen.new()
+	postinclude_g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'postinclude'
+		typ:   '"${header}"'
+	}, source, false)
+	assert 'postinclude_api' !in postinclude_g.inlined_c_declared_fns
+	assert '#include "${header}"' in postinclude_g.postinclude_directives
+	assert postinclude_g.should_emit_c_extern_decl_from_file('postinclude_api', source)
+
+	mut preinclude_g := FlatGen.new()
+	preinclude_g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'preinclude'
+		typ:   '"${header}"'
+	}, source, false)
+	assert 'postinclude_api' in preinclude_g.inlined_c_declared_fns
+}
+
+fn test_unscanned_preserved_header_only_suppresses_known_symbols() {
+	root := os.join_path(os.vtmp_dir(), 'v3_unscanned_header_${os.getpid()}')
+	source := os.join_path(root, 'main.v')
+	missing_header := os.join_path(root, 'compiler-search-only', 'api.h')
+
+	mut g := FlatGen.new()
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${missing_header}"'
+	}, source, false)
+
+	assert g.should_emit_c_extern_decl_from_file('unrelated_api', source)
+	g.collect_preserved_c_fns(['header_api'])
+	assert !g.should_emit_c_extern_decl_from_file('header_api', source)
+	assert g.should_emit_c_extern_decl_from_file('unrelated_api', os.join_path(root, 'other.v'))
+}
+
+fn test_preinclude_carries_macro_state_to_later_preincludes() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preinclude_macro_state_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	config_header := os.join_path(root, 'config.h')
+	api_header := os.join_path(root, 'api.h')
+	source := os.join_path(root, 'main.v')
+	os.write_file(config_header, '#define ENABLE_CHAINED_API 1\n')!
+	os.write_file(api_header,
+		'#ifdef ENABLE_CHAINED_API\n#define chained_api(x) ((x) + 1)\n#endif\n')!
+	os.write_file(source, 'fn main() {}\n')!
+
+	mut g := FlatGen.new()
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'preinclude'
+		typ:   '"${config_header}"'
+	}, source, false)
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'preinclude'
+		typ:   '"${api_header}"'
+	}, source, false)
+
+	assert 'chained_api' in g.inlined_c_active_macros
+	assert g.preinclude_directives == ['#include "${config_header}"', '#include "${api_header}"']
+}
+
+fn test_preserved_header_collects_only_definitely_active_declarations() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_inactive_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	inactive_header := os.join_path(root, 'inactive.h')
+	macro_header := os.join_path(root, 'macro.h')
+	header := os.join_path(root, 'top.h')
+	os.write_file(inactive_header, 'int nested_inactive_fn(void);\n')!
+	os.write_file(macro_header,
+		'#if defined(PARENT_HEADER_FEATURE)\nint parent_enabled_fn(void);\n#endif\n#define PRESERVED_HEADER_FEATURE 1\n')!
+	os.write_file(header,
+		'#ifdef OPTIONAL_API\nint optional_fn(void);\n#endif\n#if 0\nint inactive_fn(void);\n#include "inactive.h"\n#else\nint active_fn(void);\n#endif\n#define PARENT_HEADER_FEATURE 1\n#include "macro.h"\n#if defined(PRESERVED_HEADER_FEATURE)\nint include_enabled_fn(void);\n#endif\n')!
+
+	mut g := FlatGen.new()
+	g.collect_preserved_header_file(header, [root])
+
+	assert 'inactive_fn' !in g.inlined_c_declared_fns
+	assert 'nested_inactive_fn' !in g.inlined_c_declared_fns
+	assert 'active_fn' in g.inlined_c_declared_fns
+	assert 'optional_fn' !in g.inlined_c_declared_fns
+	assert 'include_enabled_fn' in g.inlined_c_declared_fns
+	assert 'parent_enabled_fn' in g.inlined_c_declared_fns
+	assert os.real_path(inactive_header) !in g.preserved_header_files_seen
+	assert os.real_path(macro_header) in g.preserved_header_files_seen
+
+	mut enabled_g := FlatGen.new()
+	enabled_g.c_flags << '-DOPTIONAL_API'
+	enabled_g.collect_preserved_header_file(header, [root])
+	assert 'optional_fn' in enabled_g.inlined_c_declared_fns
+}
+
+fn test_preserved_header_carries_child_macros_into_parent_remainder() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_child_macro_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	child := os.join_path(root, 'config.h')
+	parent := os.join_path(root, 'parent.h')
+	os.write_file(child, '#define ENABLE_API 1\n')!
+	os.write_file(parent,
+		'#include "config.h"\n#ifdef ENABLE_API\n#define enabled_api(x) ((x) + 1)\n#endif\n')!
+
+	mut g := FlatGen.new()
+	g.collect_preserved_header_file(parent, [root])
+
+	assert 'enabled_api' in g.inlined_c_active_macros
+}
+
+fn test_preserved_unguarded_header_is_rescanned_under_new_macro_state() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_unguarded_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	child := os.join_path(root, 'api.h')
+	parent := os.join_path(root, 'parent.h')
+	os.write_file(child, '#ifdef ENABLE_API\n#define enabled_api(x) ((x) + 1)\n#endif\n')!
+	os.write_file(parent, '#include "api.h"\n#define ENABLE_API 1\n#include "api.h"\n')!
+
+	mut g := FlatGen.new()
+	g.collect_preserved_header_file(parent, [root])
+
+	assert 'enabled_api' in g.inlined_c_active_macros
+	child_prefix := os.real_path(child) + '\n'
+	assert g.preserved_header_scan_results.keys().filter(it.starts_with(child_prefix)).len >= 2
+}
+
+fn test_preserved_header_passes_definite_parent_macro_state_to_children() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_parent_macro_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	child := os.join_path(root, 'child.h')
+	parent := os.join_path(root, 'parent.h')
+	os.write_file(child,
+		'#ifdef ENABLE_API\n#define enabled_api(x) ((x) + 1)\n#endif\n#ifndef OMIT_API\nint omitted_api(void);\n#endif\n')!
+	os.write_file(parent, '#define ENABLE_API 1\n#define OMIT_API 1\n#include "child.h"\n')!
+
+	mut g := FlatGen.new()
+	g.collect_preserved_header_file(parent, [root])
+
+	assert 'enabled_api' in g.inlined_c_active_macros
+	assert 'omitted_api' !in g.inlined_c_declared_fns
+}
+
+fn test_preserved_header_keeps_conditional_macro_mutations_uncertain() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_conditional_macro_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'conditional.h')
+	os.write_file(header,
+		'#if FEATURE == 2\n#define HAS_FOO\n#endif\n#ifndef HAS_FOO\nint foo(void);\n#endif\n#define HAS_BAR\n#if FEATURE == 2\n#undef HAS_BAR\n#endif\n#ifndef HAS_BAR\nint bar(void);\n#endif\nint always_active(void);\n')!
+
+	mut g := FlatGen.new()
+	// Macro values from C flags are not evaluated by this lightweight scanner, so
+	// both mutations are possible rather than definitely active or inactive.
+	g.c_flags << '-DFEATURE=2'
+	g.collect_preserved_header_file(header, [root])
+
+	assert 'foo' !in g.inlined_c_declared_fns
+	assert 'bar' !in g.inlined_c_declared_fns
+	assert 'always_active' in g.inlined_c_declared_fns
+}
+
+fn test_preserved_header_guards_externs_for_possibly_active_function_macros() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_possible_macro_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'api.h')
+	os.write_file(header,
+		'#ifdef __MSVC_ONLY__\n#define compiler_api(x) ((x) + 1)\n#endif\n#if 0\n#define inactive_api(x) (x)\n#endif\n')!
+
+	mut g := FlatGen.new()
+	g.collect_preserved_header_file_with_state(header, [root], CHeaderMacroState{
+		defined:                  map[string]bool{}
+		undefined:                map[string]bool{}
+		uncertain:                map[string]bool{}
+		external_macros_possible: true
+	})
+
+	assert 'compiler_api' !in g.inlined_c_declared_fns
+	assert 'compiler_api' in g.possibly_active_c_macros
+	assert g.should_emit_c_extern_decl('compiler_api')
+	assert g.c_possibly_active_macro_extern_decl('compiler_api', 'int compiler_api(int x);') == '#ifndef compiler_api\nint compiler_api(int x);\n#endif'
+	assert 'inactive_api' !in g.inlined_c_declared_fns
+	assert 'inactive_api' !in g.possibly_active_c_macros
+}
+
+fn test_preserved_headers_track_final_macro_state_for_externs() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_final_macro_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	first := os.join_path(root, 'first.h')
+	second := os.join_path(root, 'second.h')
+	os.write_file(first,
+		'#define same_header_api(x) ((x) + 1)\n#undef same_header_api\n#define declared_api(x) ((x) + 2)\n#undef declared_api\nint declared_api(void);\n#define later_header_api(x) ((x) + 3)\n')!
+	os.write_file(second, '#undef later_header_api\n')!
+
+	mut g := FlatGen.new()
+	state := g.collect_preserved_header_file_with_state(first, [root], CHeaderMacroState{})
+	assert 'same_header_api' !in g.inlined_c_active_macros
+	assert 'later_header_api' in g.inlined_c_active_macros
+	assert 'declared_api' in g.inlined_c_declared_fns
+	assert g.should_emit_c_extern_decl('same_header_api')
+	assert !g.should_emit_c_extern_decl('later_header_api')
+	assert !g.should_emit_c_extern_decl('declared_api')
+	g.collect_preserved_header_file_with_state(second, [root], state)
+	assert 'later_header_api' !in g.inlined_c_active_macros
+	assert g.should_emit_c_extern_decl('later_header_api')
+	assert !g.should_emit_c_extern_decl('declared_api')
+}
+
+fn test_preserved_header_scans_includes_in_possibly_active_branches_for_macros() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_possible_include_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	child := os.join_path(root, 'compiler_api.h')
+	parent := os.join_path(root, 'parent.h')
+	os.write_file(child,
+		'#define compiler_api(x) ((x) + 1)\nint conditionally_declared_api(void);\n')!
+	os.write_file(parent,
+		'#ifdef __GNUC__\n#include "compiler_api.h"\n#endif\nint always_declared_api(void);\n')!
+
+	mut g := FlatGen.new()
+	g.collect_preserved_header_file(parent, [root])
+
+	assert 'compiler_api' !in g.inlined_c_declared_fns
+	assert 'compiler_api' in g.possibly_active_c_macros
+	assert 'conditionally_declared_api' !in g.inlined_c_declared_fns
+	assert 'always_declared_api' in g.inlined_c_declared_fns
+	assert os.real_path(child) in g.preserved_header_files_seen
+}
+
 fn collect_external_input_tree_status(root string, entry string, ambient_ambiguous bool) (bool, []string) {
 	mut active_paths := map[string]bool{}
 	mut collected_paths := map[string]bool{}
@@ -64,13 +337,16 @@ fn collect_external_input_tree_status(root string, entry string, ambient_ambiguo
 	mut files := []string{}
 	mut include_macros := map[string][]string{}
 	mut dynamic_include_macros := map[string]bool{}
+	mut literal_include_macros := map[string][]string{}
 	mut resolution_dirs := map[string]bool{}
 	mut missing_resolution_paths := map[string]bool{}
 	mut active_static_storage_paths := map[string]bool{}
+	mut captured_input_digests := map[string]string{}
 	untracked := c_collect_external_input_tree(entry, '', [root], mut active_paths, mut
 		collected_paths, mut ambiguous_collected_paths, mut files, mut include_macros, mut
-		dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths, mut
-		active_static_storage_paths, 'main', ambient_ambiguous, false)
+		dynamic_include_macros, mut literal_include_macros, mut resolution_dirs, mut
+		missing_resolution_paths, mut active_static_storage_paths, mut captured_input_digests,
+		'main', ambient_ambiguous, false)
 	return untracked, files
 }
 
@@ -375,11 +651,13 @@ fn test_headerless_preamble_keeps_explicit_puts_declaration() {
 	mut headerless := FlatGen.new()
 	assert !headerless.c_directives_use_system_libc()
 	assert headerless.should_emit_c_extern_decl('puts')
+	assert headerless.should_emit_c_extern_decl('sendfile')
 
 	mut system_libc := FlatGen.new()
 	system_libc.add_c_directive('main', '#include <stdio.h>', false)
 	assert system_libc.c_directives_use_system_libc()
 	assert !system_libc.should_emit_c_extern_decl('puts')
+	assert !system_libc.should_emit_c_extern_decl('sendfile')
 }
 
 fn test_builtin_boehm_directives_use_system_libc() {

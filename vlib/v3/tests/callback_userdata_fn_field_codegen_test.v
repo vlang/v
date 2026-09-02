@@ -63,6 +63,7 @@ struct Event {
 	value int
 }
 
+@[heap]
 struct App {
 mut:
 	value int
@@ -209,7 +210,7 @@ fn main() {
 }
 ')
 	good_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_good_${os.getpid()}')
-	good_compile := os.execute('${v3_bin} ${good_src} -b c -o ${good_out}')
+	good_compile := os.execute('${v3_bin} -enable-globals ${good_src} -b c -o ${good_out}')
 	assert good_compile.exit_code == 0, good_compile.output
 	run := os.execute(good_out)
 	assert run.exit_code == 0, run.output
@@ -243,7 +244,8 @@ fn main() {
 	assert !generated.contains('direct_callback_adapter'), generated
 
 	autofree_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_autofree_${os.getpid()}')
-	autofree_compile := os.execute('${v3_bin} -autofree ${good_src} -b c -o ${autofree_out}')
+	autofree_compile :=
+		os.execute('${v3_bin} -enable-globals -autofree ${good_src} -b c -o ${autofree_out}')
 	assert autofree_compile.exit_code == 0, autofree_compile.output
 	autofree_run := os.execute(autofree_out)
 	assert autofree_run.exit_code == 0, autofree_run.output

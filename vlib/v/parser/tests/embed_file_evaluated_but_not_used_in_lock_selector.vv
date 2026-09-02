@@ -1,0 +1,15 @@
+import v.embed_file
+
+struct State {
+	value int
+}
+
+fn main() {
+	shared s := State{
+		value: 1
+	}
+
+	(rlock s {
+		$embed_file(@FILE)
+	}).path
+}

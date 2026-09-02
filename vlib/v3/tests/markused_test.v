@@ -938,6 +938,62 @@ fn main() {
 	assert used['Builder.main_module_name']
 }
 
+fn test_nested_field_receiver_method_does_not_root_same_suffix_methods() {
+	used := mark_used_source('nested_field_receiver_method', '
+struct Flags {}
+
+fn (mut flags Flags) set() {}
+
+struct Holder {
+mut:
+	flags Flags
+}
+
+struct Unrelated {}
+
+fn (mut item Unrelated) set() {}
+
+fn (mut holder Holder) update() {
+	holder.flags.set()
+}
+
+fn main() {
+	mut holder := Holder{}
+	holder.update()
+}
+')
+	assert used['Flags.set']
+	assert !used['Unrelated.set']
+}
+
+fn test_nested_flag_enum_intrinsic_does_not_root_same_suffix_methods() {
+	used := mark_used_source('nested_flag_enum_intrinsic', '
+@[flag]
+enum Flags {
+	active
+}
+
+struct Holder {
+mut:
+	flags Flags
+}
+
+struct Unrelated {}
+
+fn (mut item Unrelated) set(flag Flags) {}
+
+fn (mut holder Holder) update() {
+	holder.flags.set(.active)
+}
+
+fn main() {
+	mut holder := Holder{}
+	holder.update()
+}
+')
+	assert !used['Unrelated.set']
+}
+
 fn test_unreachable_interface_implementer_method_is_not_rooted() {
 	used := mark_used_source('unreachable_interface_implementer', '
 interface Reader {

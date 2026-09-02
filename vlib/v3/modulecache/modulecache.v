@@ -1,6 +1,7 @@
 module modulecache
 
 import os
+import crypto.sha256
 import strings
 import v3.flat
 import v3.pref
@@ -11,7 +12,7 @@ import v3.util
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-51'
+const cache_format = 'v3-module-cache-52'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -22,7 +23,7 @@ const c_source_directives_end = '/* V3CACHE_SOURCE_DIRECTIVES_END */'
 const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
-const source_signature_cache_format = 'v3-source-signature-cache-3'
+const source_signature_cache_format = 'v3-source-signature-cache-4'
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
@@ -39,11 +40,12 @@ pub struct Entry {
 	source_bodies       bool
 	source_bodies_known bool
 pub:
-	header       string
-	object       string
-	header_stamp string
-	object_stamp string
-	c_source     string
+	header         string
+	object         string
+	header_stamp   string
+	object_stamp   string
+	c_source       string
+	source_digests map[string]string
 }
 
 // CgenEntry contains the persistent whole-program C generation artifacts.
@@ -235,8 +237,9 @@ pub fn source_files_use_build_time_pseudo(source_files []string) bool {
 }
 
 struct SourceSignatureDetails {
-	signature  string
-	validation []string
+	signature      string
+	validation     []string
+	source_digests []string
 }
 
 fn source_signature_details(source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
@@ -248,11 +251,14 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 	mut uses_build_pseudo := false
 	mut uses_version_pseudo := false
 	mut validation := []string{}
+	mut source_digests := []string{cap: files.len}
 	for file in files {
 		path := os.real_path(file)
 		hash = hash_bytes(hash, path.bytes())
 		hash = hash_bytes(hash, [u8(0)])
 		content := os.read_bytes(file) or { return SourceSignatureDetails{} }
+		digest := sha256.sum(content)
+		source_digests << digest[..].hex()
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
@@ -339,8 +345,9 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 		hash = hash_bytes(hash, [u8(0xff)])
 	}
 	return SourceSignatureDetails{
-		signature:  hash.hex()
-		validation: validation
+		signature:      hash.hex()
+		validation:     validation
+		source_digests: source_digests
 	}
 }
 
@@ -558,17 +565,22 @@ fn quoted_text_mentions_pseudo(source string, from int, to int, names []string) 
 }
 
 fn (m &Manager) source_signature(source_files []string) string {
-	return cached_source_signature_with_build_values(m.dir, 'module', source_files,
+	return m.source_signature_details(source_files).signature
+}
+
+fn (m &Manager) source_signature_details(source_files []string) SourceSignatureDetails {
+	return cached_source_signature_details_with_build_values(m.dir, 'module', source_files,
 		m.build_pseudo_values, m.version_pseudo_values)
 }
 
 // cached_source_signature returns a content signature while using precise file
 // metadata to avoid rereading unchanged inputs on subsequent compiler runs.
 pub fn cached_source_signature(cache_dir string, namespace string, source_files []string) string {
-	return cached_source_signature_with_build_values(cache_dir, namespace, source_files, '', '')
+	return cached_source_signature_details_with_build_values(cache_dir, namespace, source_files,
+		'', '').signature
 }
 
-fn cached_source_signature_with_build_values(cache_dir string, namespace string, source_files []string, build_pseudo_values string, version_pseudo_values string) string {
+fn cached_source_signature_details_with_build_values(cache_dir string, namespace string, source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
 	mut paths := source_files.map(os.real_path(it))
 	paths.sort()
 	cache_key := hash_text(namespace + '\n' + paths.join('\n'))
@@ -576,15 +588,15 @@ fn cached_source_signature_with_build_values(cache_dir string, namespace string,
 	metadata := source_files_metadata_signature(paths)
 	if metadata.len > 0 {
 		cached := os.read_file(cache_path) or { '' }
-		if signature := valid_cached_source_signature(cached, metadata, build_pseudo_values,
-			version_pseudo_values)
+		if details := valid_cached_source_signature(cached, metadata, build_pseudo_values,
+			version_pseudo_values, paths.len)
 		{
-			return signature
+			return details
 		}
 	}
 	details := source_signature_details(paths, build_pseudo_values, version_pseudo_values)
 	if details.signature.len == 0 {
-		return ''
+		return details
 	}
 	fresh_metadata := source_files_metadata_signature(paths)
 	if content := source_signature_cache_content(metadata, fresh_metadata, details) {
@@ -593,18 +605,22 @@ fn cached_source_signature_with_build_values(cache_dir string, namespace string,
 			write_atomic(cache_path, content) or {}
 		}
 	}
-	return details.signature
+	return details
 }
 
 fn source_signature_cache_content(metadata string, fresh_metadata string, details SourceSignatureDetails) ?string {
 	if metadata.len == 0 || fresh_metadata != metadata {
 		return none
 	}
-	mut out := strings.new_builder(192 + details.validation.len * 96)
+	mut out := strings.new_builder(192 + details.validation.len * 96 +
+		details.source_digests.len * 72)
 	out.writeln('format=${source_signature_cache_format}')
 	out.writeln('metadata=${metadata}')
 	for input in details.validation {
 		out.writeln(input)
+	}
+	for digest in details.source_digests {
+		out.writeln('digest=${digest}')
 	}
 	out.writeln('source=${details.signature}')
 	out.writeln('complete=1')
@@ -626,19 +642,28 @@ fn source_files_metadata_signature(paths []string) string {
 	return hash.hex()
 }
 
-fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string, version_pseudo_values string) ?string {
+fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string, version_pseudo_values string, source_count int) ?SourceSignatureDetails {
 	lines := content.split_into_lines()
 	if lines.len < 4 || lines[0] != 'format=${source_signature_cache_format}'
 		|| lines[1] != 'metadata=${metadata}' || lines.last() != 'complete=1' {
 		return none
 	}
 	mut signature := ''
+	mut source_digests := []string{cap: source_count}
 	for line in lines[2..lines.len - 1] {
 		if line.starts_with('source=') {
 			if signature.len > 0 {
 				return none
 			}
 			signature = line.all_after('source=')
+			continue
+		}
+		if line.starts_with('digest=') {
+			digest := line.all_after('digest=')
+			if !is_sha256_hex_digest(digest) {
+				return none
+			}
+			source_digests << digest
 			continue
 		}
 		if line.starts_with('build=') {
@@ -706,10 +731,38 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 		}
 		return none
 	}
-	if signature.len == 0 {
+	if signature.len == 0 || source_digests.len != source_count {
 		return none
 	}
-	return signature
+	return SourceSignatureDetails{
+		signature:      signature
+		source_digests: source_digests
+	}
+}
+
+fn is_sha256_hex_digest(digest string) bool {
+	if digest.len != sha256.size * 2 {
+		return false
+	}
+	for c in digest.bytes() {
+		if !(c >= `0` && c <= `9`) && !(c >= `a` && c <= `f`) {
+			return false
+		}
+	}
+	return true
+}
+
+fn source_digest_map(source_files []string, digests []string) map[string]string {
+	if source_files.len != digests.len {
+		return {}
+	}
+	mut paths := source_files.map(os.real_path(it))
+	paths.sort()
+	mut result := map[string]string{}
+	for i, path in paths {
+		result[path] = digests[i]
+	}
+	return result
 }
 
 fn signature_vmod_root(source_file string) (string, string) {
@@ -947,7 +1000,8 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 		cache_trace_module_miss(module_name, 'header stamp is missing')
 		return none
 	}
-	expected := entry_stamp(m.salt, m.source_signature(source_files))
+	source_details := m.source_signature_details(source_files)
+	expected := entry_stamp(m.salt, source_details.signature)
 	source_bodies := header_stamp_source_bodies(stamp, expected) or {
 		cache_trace_module_miss(module_name, 'source signature changed')
 		return none
@@ -964,6 +1018,7 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 		...entry
 		source_bodies:       source_bodies
 		source_bodies_known: true
+		source_digests:      source_digest_map(source_files, source_details.source_digests)
 	}
 }
 
@@ -983,12 +1038,14 @@ pub fn (m &Manager) valid_header(module_name string, source_files []string) ?Ent
 		return none
 	}
 	stamp := os.read_file(entry.header_stamp) or { return none }
-	expected := entry_stamp(m.salt, m.source_signature(source_files))
+	source_details := m.source_signature_details(source_files)
+	expected := entry_stamp(m.salt, source_details.signature)
 	source_bodies := header_stamp_source_bodies(stamp, expected) or { return none }
 	return Entry{
 		...entry
 		source_bodies:       source_bodies
 		source_bodies_known: true
+		source_digests:      source_digest_map(source_files, source_details.source_digests)
 	}
 }
 
@@ -3029,7 +3086,7 @@ pub fn c_source_typedef_identifiers(source string) map[string]bool {
 				bracket_depth--
 			}
 			`{` {
-				if function_depth == 0 && typedef_start < 0 {
+				if function_depth == 0 && brace_depth == 0 && typedef_start < 0 {
 					head := trim_leading_c_comments(source[item_start..i].trim_space())
 					if c_static_declaration_head_is_function(head) {
 						function_depth = 1
@@ -3048,6 +3105,11 @@ pub fn c_source_typedef_identifiers(source string) map[string]bool {
 					if function_depth == 0 {
 						item_start = i + 1
 					}
+				} else if brace_depth == 0 && typedef_start < 0 {
+					// Macro-decorated function heads are not always recognizable. Once
+					// their outer block closes, do not rescan that whole body as the
+					// prefix of every following declaration.
+					item_start = i + 1
 				}
 			}
 			`;` {
@@ -4249,6 +4311,85 @@ fn c_line_braces(line string, initial_block_comment bool) (int, bool, bool, u8, 
 
 // module_header serializes the declaration-only interface for one flat-AST module.
 pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string, vroot string, import_paths map[string]string) string {
+	return module_header_with_const_order(a, tc, module_name, vroot, import_paths, []string{})
+}
+
+struct ModuleHeaderConstDecl {
+	id      flat.NodeId
+	rank    int
+	ordinal int
+}
+
+fn module_header_const_storage_name(module_name string, name string) string {
+	if module_name.len > 0 && module_name !in ['main', 'builtin'] && !name.contains('.') {
+		return '${module_name}.${name}'
+	}
+	return name
+}
+
+fn module_header_const_replacements(a &flat.FlatAst, module_name string, const_order []string) (map[int]flat.NodeId, map[int]string) {
+	mut replacements := map[int]flat.NodeId{}
+	mut files := map[int]string{}
+	if const_order.len == 0 {
+		return replacements, files
+	}
+	mut ranks := map[string]int{}
+	for i, name in const_order {
+		ranks[name] = i
+	}
+	mut declarations := []ModuleHeaderConstDecl{}
+	for file_node in a.nodes {
+		if file_node.kind != .file || file_node.children_count == 0
+			|| file_module_name(a, file_node) != module_name {
+			continue
+		}
+		for i in 0 .. file_node.children_count {
+			mut decl_ids := []flat.NodeId{}
+			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			for id in decl_ids {
+				node := a.nodes[int(id)]
+				if node.kind != .const_decl {
+					continue
+				}
+				mut rank := const_order.len + declarations.len
+				for j in 0 .. node.children_count {
+					field := a.child_node(&node, j)
+					name := module_header_const_storage_name(module_name, field.value)
+					if field_rank := ranks[name] {
+						if field_rank < rank {
+							rank = field_rank
+						}
+					}
+				}
+				files[int(id)] = file_node.value
+				declarations << ModuleHeaderConstDecl{
+					id:      id
+					rank:    rank
+					ordinal: declarations.len
+				}
+			}
+		}
+	}
+	mut ordered := declarations.clone()
+	for i := 1; i < ordered.len; i++ {
+		current := ordered[i]
+		mut j := i
+		for j > 0 && (current.rank < ordered[j - 1].rank
+			|| (current.rank == ordered[j - 1].rank && current.ordinal < ordered[j - 1].ordinal)) {
+			ordered[j] = ordered[j - 1]
+			j--
+		}
+		ordered[j] = current
+	}
+	for i, declaration in declarations {
+		replacements[int(declaration.id)] = ordered[i].id
+	}
+	return replacements, files
+}
+
+// module_header_with_const_order preserves dependency ordering for runtime
+// constants whose helper bodies are intentionally omitted from warm headers.
+pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, module_name string, vroot string, import_paths map[string]string, const_order []string) string {
 	mut out := strings.new_builder(4096)
 	out.writeln('module ${module_name.all_after_last('.')}')
 	generic_specialization_callees := generic_specialization_callee_names(tc)
@@ -4280,6 +4421,7 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 	}
 	mut seen := map[string]bool{}
 	declaration_attrs := cached_declaration_attrs(a)
+	const_replacements, const_files := module_header_const_replacements(a, module_name, const_order)
 	for file_node in a.nodes {
 		if file_node.kind != .file || file_node.children_count == 0 {
 			continue
@@ -4292,7 +4434,9 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 			mut decl_ids := []flat.NodeId{}
 			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
 			for id in decl_ids {
-				node := a.nodes[int(id)]
+				effective_id := const_replacements[int(id)] or { id }
+				node := a.nodes[int(effective_id)]
+				source_file := const_files[int(effective_id)] or { file_node.value }
 				if node.kind == .module_decl {
 					continue
 				}
@@ -4300,14 +4444,14 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 				if key.len > 0 && seen[key] {
 					continue
 				}
-				attrs := declaration_attrs[int(id)] or { CachedDeclarationAttrs{} }
-				needs_declaration_source := declaration_node_needs_source(a, id)
-					|| node_creates_generic_specialization(a, tc, id, generic_specialization_callees)
+				attrs := declaration_attrs[int(effective_id)] or { CachedDeclarationAttrs{} }
+				needs_declaration_source := declaration_node_needs_source(a, effective_id)
+					|| node_creates_generic_specialization(a, tc, effective_id, generic_specialization_callees)
 				source_embedded := embed_source_bodies && needs_declaration_source
-					&& declaration_node_source_is_embeddable(a, id)
-				source_attrs_text := declaration_source_attrs_text(a, node, file_node.value, mut
+					&& declaration_node_source_is_embeddable(a, effective_id)
+				source_attrs_text := declaration_source_attrs_text(a, node, source_file, mut
 					source_cache)
-				source_is_public := declaration_source_is_public(a, node, file_node.value, mut
+				source_is_public := declaration_source_is_public(a, node, source_file, mut
 					source_cache)
 				mut effective_attrs := attrs.attrs.clone()
 				for source_attr in declaration_source_attr_values(source_attrs_text) {
@@ -4316,12 +4460,12 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 					}
 				}
 				mut text := if source_embedded {
-					raw_source := declaration_source_with_line(a, node, file_node.value, mut
+					raw_source := declaration_source_with_line(a, node, source_file, mut
 						source_cache) or { CachedDeclarationSource{} }
-					cached_embedded_declaration_source(raw_source.text, vroot, file_node.value,
+					cached_embedded_declaration_source(raw_source.text, vroot, source_file,
 						raw_source.line)
 				} else {
-					decl_text(a, tc, module_name, node, vroot, file_node.value, import_paths,
+					decl_text(a, tc, module_name, node, vroot, source_file, import_paths,
 						effective_attrs, source_is_public)
 				}
 				if text.len == 0 {
@@ -6012,7 +6156,9 @@ fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, sour
 		field := a.node(field_id)
 		field_params := field.generic_params()
 		flags := if field_params.len > 0 { field_params[0] } else { '' }
-		wanted := if flags.contains('p') && flags.contains('m') {
+		wanted := if flags.contains('g') {
+			'__global'
+		} else if flags.contains('p') && flags.contains('m') {
 			'pub mut'
 		} else if flags.contains('p') {
 			'pub'

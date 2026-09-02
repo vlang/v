@@ -1,6 +1,7 @@
 module c
 
 import v3.flat
+import v3.pref
 import v3.types
 
 fn parallel_worker_test_gen(scoped bool) (&FlatGen, &types.TypeChecker) {
@@ -52,6 +53,38 @@ fn test_scoped_parallel_worker_reuses_preselected_functions_and_c_extern_refs() 
 		'puts': true
 	}
 	assert w.c_extern_refs_ready
+}
+
+fn test_parallel_worker_shares_precomputed_const_short_index() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.const_vals = {
+		'moda.only':   flat.NodeId(0)
+		'moda.answer': flat.NodeId(1)
+		'modb.answer': flat.NodeId(2)
+	}
+	g.precompute_const_short_index()
+	assert g.const_short_index.built
+	assert g.const_short_index.entries['only'] == 'moda.only'
+	assert g.const_short_index.entries['answer'] == ''
+
+	w := g.new_parallel_worker(1)
+	assert w.const_short_index == g.const_short_index
+	assert w.unique_const_ref_name('only') or { '' } == 'moda.only'
+	assert w.unique_const_ref_name('answer') == none
+}
+
+fn test_parallel_worker_preserves_test_assertion_stats_mode() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.show_test_stats = true
+	w := g.new_parallel_worker(1)
+	assert w.show_test_stats
+}
+
+fn test_parallel_worker_preserves_target() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.target = pref.target_from('linux', 'x86') or { panic(err) }
+	w := g.new_parallel_worker(1)
+	assert w.target == g.target
 }
 
 fn test_windows_filelock_method_preseeds_parallel_compat_helpers() {
@@ -224,6 +257,16 @@ fn test_fused_parallel_prep_interns_body_string_literals() {
 	g.fn_item_cost_and_prep(0, mut stack, mut type_text_cache)
 	assert g.str_lits == ['worker literal']
 	assert g.str_lit_ids['worker literal'] == 0
+}
+
+fn test_serial_prep_interns_ast_string_literals_in_source_order() {
+	mut g, _ := parallel_worker_test_gen(false)
+	g.ast_string_literals = ['first', 'second']
+	g.ast_string_literals_ready = true
+	g.prepare_serial_fn_tables()
+	assert g.str_lits == ['first', 'second']
+	assert g.str_lit_ids['first'] == 0
+	assert g.str_lit_ids['second'] == 1
 }
 
 fn test_scoped_pre_dispatch_preserves_direct_array_access_flag() {

@@ -3346,7 +3346,9 @@ pub fn (mut g Gen) write_array_fixed_return_types() {
 			g.type_definitions.writeln('\t${field_decl};')
 		} else {
 			mut fixed_elem_name := g.styp(resolved_elem_type.set_nr_muls(0))
-			if resolved_elem_type.is_ptr() {
+			if resolved_elem_type.has_option_or_result() {
+				fixed_elem_name = g.styp(resolved_elem_type)
+			} else if resolved_elem_type.is_ptr() {
 				fixed_elem_name += '*'.repeat(resolved_elem_type.nr_muls())
 			}
 			g.type_definitions.writeln('\t${fixed_elem_name} ret_arr[${info.size}];')
@@ -12771,7 +12773,9 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					fixed_elem_type := g.unalias_type_keep_muls(sym.info.elem_type)
 					resolved_elem_sym := g.table.sym(fixed_elem_type)
 					mut fixed_elem_name := g.styp(fixed_elem_type.set_nr_muls(0))
-					if fixed_elem_type.is_ptr() {
+					if fixed_elem_type.has_option_or_result() {
+						fixed_elem_name = g.styp(fixed_elem_type)
+					} else if fixed_elem_type.is_ptr() {
 						fixed_elem_name += '*'.repeat(fixed_elem_type.nr_muls())
 					}
 					len := sym.info.size

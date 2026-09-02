@@ -180,6 +180,8 @@ fn main() {
 	assert with_os.c_code.contains('struct utsname { char sysname[65]; char nodename[65]; char release[65]; char version[65]; char machine[65]; char domainname[65]; };'), with_os.c_code
 	assert with_os.c_code.contains('#if defined(__x86_64__) && !defined(__ILP32__)'), with_os.c_code
 	assert with_os.c_code.contains('struct stat { u64 st_dev; u64 st_ino; u64 st_nlink; u32 st_mode; u32 st_uid; u32 st_gid; int __pad0; u64 st_rdev; i64 st_size; i64 st_blksize; i64 st_blocks; i64 st_atime; i64 st_atimensec; i64 st_mtime; i64 st_mtimensec; i64 st_ctime; i64 st_ctimensec; i64 __glibc_reserved[3]; };'), with_os.c_code
+	assert with_os.c_code.contains('#elif defined(__s390x__)'), with_os.c_code
+	assert with_os.c_code.contains('struct stat { u64 st_dev; u64 st_ino; u64 st_nlink; u32 st_mode; u32 st_uid; u32 st_gid; int __glibc_reserved0; u64 st_rdev; i64 st_size; i64 st_atime; unsigned long st_atimensec; i64 st_mtime; unsigned long st_mtimensec; i64 st_ctime; unsigned long st_ctimensec; i64 st_blksize; i64 st_blocks; i64 __glibc_reserved[3]; };'), with_os.c_code
 	assert with_os.c_code.contains('#elif defined(__aarch64__) || (defined(__riscv) && __riscv_xlen == 64) || defined(__loongarch_lp64)'), with_os.c_code
 	assert with_os.c_code.contains('#elif defined(__i386__) || defined(__arm__)'), with_os.c_code
 	assert with_os.c_code.contains('struct stat { u64 st_dev; unsigned short __pad1; unsigned long st_ino; u32 st_mode; unsigned long st_nlink;'), with_os.c_code
@@ -203,6 +205,7 @@ fn main() {
 	assert with_os.c_code.contains('struct rusage { struct timeval ru_utime; struct timeval ru_stime; long ru_maxrss; long ru_ixrss; long ru_idrss;'), with_os.c_code
 	assert with_os.c_code.contains('#if !defined(_STRUCT_TIMESPEC) && !defined(_TIMESPEC_DEFINED) && !defined(_TIMESPEC_DECLARED) && !defined(__timespec_defined)'), with_os.c_code
 	assert with_os.c_code.contains('typedef struct timespec timespec;'), with_os.c_code
+	assert with_os.c_code.contains('int clock_gettime(int clock_id, struct timespec* tp);'), with_os.c_code
 	assert !with_os.c_code.contains('typedef struct stat stat;'), with_os.c_code
 	assert !with_os.c_code.contains('typedef struct sigset_t sigset_t;'), with_os.c_code
 	assert !with_os.c_code.contains('struct winsize {\n\tws_row'), with_os.c_code
@@ -267,6 +270,8 @@ fn main() {
 	assert with_os.c_code.contains('#define TCP_DEFER_ACCEPT 9'), with_os.c_code
 	assert with_os.c_code.contains('#define TCP_FASTOPEN 23'), with_os.c_code
 	assert with_os.c_code.contains('#define SOMAXCONN 4096'), with_os.c_code
+	assert with_os.c_code.contains('#define SOMAXCONN 128'), with_os.c_code
+	assert with_os.c_code.contains('#define SOMAXCONN 0x7fffffff'), with_os.c_code
 	assert with_os.c_code.contains('#define MEM_COMMIT 0x00001000U'), with_os.c_code
 	assert with_os.c_code.contains('#define MEM_RESERVE 0x00002000U'), with_os.c_code
 	assert with_os.c_code.contains('#define PAGE_READWRITE 0x04U'), with_os.c_code
@@ -285,6 +290,22 @@ fn main() {
 }
 ")
 	assert !wait_header_has_include_directive(hello.c_code), hello.c_code
+}
+
+fn test_linux_system_preamble_provides_syscall_constants() {
+	$if !linux {
+		return
+	}
+	v3_bin := wait_header_build_v3()
+	with_rand := wait_header_compile(v3_bin, 'with_crypto_rand', 'module main
+
+import crypto.rand
+
+fn main() {
+	assert rand.bytes(1)!.len == 1
+}
+')
+	assert with_rand.c_code.contains('#include <sys/syscall.h>'), with_rand.c_code
 }
 
 fn test_user_c_decl_emits_extern_prototype_without_headers() {
@@ -778,6 +799,7 @@ fn main() {
 	assert program.c_code.contains('#define SOCK_STREAM 1'), program.c_code
 	assert program.c_code.contains('#define AF_INET 2'), program.c_code
 	assert program.c_code.contains('#define SOL_SOCKET'), program.c_code
+	assert program.c_code.contains('#define SOMAXCONN 128'), program.c_code
 	assert program.c_code.contains('#define EV_SET(kevp, a, b, c, d, e, f) do'), program.c_code
 	assert program.c_code.contains('#define EVFILT_READ (-1)'), program.c_code
 	assert program.c_code.contains('#define EVFILT_MACHPORT (-8)'), program.c_code

@@ -125,6 +125,25 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	return run_good_project_with_flags(v3_bin, name, '', files, input)
 }
 
+fn run_good_cached_project(v3_bin string, name string, files map[string]string, input string) string {
+	root := '${tmp_test_path(name)}_project'
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
+	good_bin := tmp_test_path(name)
+	compile := os.execute('${v3_bin} ${input_path} -o ${good_bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(good_bin)
+	assert run.exit_code == 0, run.output
+	return run.output.trim_space()
+}
+
 struct GoodProjectRun {
 	run_output     string
 	compile_output string
@@ -208,6 +227,15 @@ fn test_compiler_vexe_env_uses_running_executable() {
 	assert c_source.contains('const char* v3_vexe = "')
 	assert c_source.contains('_putenv_s("VEXE", v3_vexe);')
 	assert c_source.contains('setenv("VEXE", v3_vexe, 1);')
+}
+
+fn test_c_bool_parameter_accepts_integer_argument() {
+	check_good('c_bool_integer_argument', 'fn C.bool_probe(bool) int
+
+fn main() {
+	_ = C.bool_probe(0)
+}
+')
 }
 
 fn test_filelock_helpers_are_inlined_in_generated_c() {
@@ -2264,15 +2292,15 @@ fn test_context_dependent_if_branches_infer_wrapper_types() {
 	run_bad(v3_bin, 'if_none_branch_rejected_for_result_without_context',
 		'fn fallible() !int {\n\treturn 2\n}\n\nfn main() {\n\tflag := true\n\tx := if flag { none } else { fallible() }\n\tprintln(int_str(x or { -1 }))\n}\n',
 		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'if_error_branch_rejected_for_option_payload',
-		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := f(false) or { 0 }\n}\n",
-		'if-expression branch type mismatch')
+	option_error_out := run_good(v3_bin, 'if_error_branch_infers_option',
+		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(f(false) or { -1 }))\n\t_ := f(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
+	assert option_error_out == '1\nbad'
 	run_bad(v3_bin, 'if_none_branch_rejected_for_result_payload',
 		'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n',
 		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'match_error_branch_rejected_for_option_payload',
-		"fn f(n int) ?int {\n\treturn match n {\n\t\t0 { error('bad') }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := f(1) or { 0 }\n}\n",
-		'cannot return')
+	match_option_error_out := run_good(v3_bin, 'match_error_branch_infers_option',
+		"fn f(n int) ?int {\n\treturn match n {\n\t\t0 { error('bad') }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(1) or { -1 }))\n\t_ := f(0) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
+	assert match_option_error_out == '1\nbad'
 	run_bad(v3_bin, 'match_none_branch_rejected_for_result_payload',
 		'fn g(n int) !int {\n\treturn match n {\n\t\t0 { none }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := g(1) or { 0 }\n}\n',
 		'cannot return')
@@ -2427,6 +2455,7 @@ fn main() {
 	mut pointer_items := [first]
 	for mut pointer_item in pointer_items {
 		pointer_item.bump()
+		bump_item(mut pointer_item)
 	}
 	{
 		mut item := Counter{}
@@ -2444,7 +2473,7 @@ fn main() {
 }
 '
 	out := run_good(v3_bin, 'for_mut_item_receiver_run', item_src)
-	assert out == '3\n4\n4\n2'
+	assert out == '3\n4\n5\n2'
 	item_c := gen_c(v3_bin, 'for_mut_item_receiver_c', item_src)
 	item_main := c_fn_body(item_c, 'int main(')
 	assert item_main.len > 0, item_c
@@ -2455,6 +2484,8 @@ fn main() {
 	assert !item_main.contains('bump_item(&item);'), item_main
 	assert item_main.contains('Item** pointer_item ='), item_main
 	assert item_main.contains('__bump(*pointer_item);'), item_main
+	assert item_main.contains('bump_item(*pointer_item);'), item_main
+	assert !item_main.contains('bump_item(pointer_item);'), item_main
 	assert !item_main.contains('__bump(pointer_item);'), item_main
 	assert item_main.contains('inc_counter(&item);'), item_main
 	assert !item_main.contains('inc_counter(item);'), item_main
@@ -3222,12 +3253,12 @@ fn main() {
 	println(json.encode(data))
 }
 ')
-	assert out == '{"embed":2.0,"inner":[1.0,2.0],"test":1.0}'
+	assert out == '{"embed":2,"inner":[1,2],"test":1}'
 	qualified := run_good_project(v3_bin, 'json_qualified_embedded_struct_flattening', {
 		'other/other.v': 'module other\n\npub struct Inner {\npub:\n\tembed f64\n\tname string\n}\n'
 		'main.v':        'module main\n\nimport json\nimport other\n\nstruct Outer {\n\tother.Inner\n\tn int\n}\n\nfn main() {\n\tdata := Outer{\n\t\tother.Inner{\n\t\t\tembed: 2.0\n\t\t\tname:  "Ada"\n\t\t}\n\t\tn: 3\n\t}\n\tprintln(json.encode(data))\n\tdecoded := json.decode(Outer, "{\\"embed\\":4.0,\\"name\\":\\"Bea\\",\\"n\\":5}")!\n\tprintln(decoded.name)\n\tprintln(int_str(int(decoded.embed)) + ":" + int_str(decoded.n))\n}\n'
 	}, 'main.v')
-	assert qualified == '{"embed":2.0,"name":"Ada","n":3}\nBea\n4:5'
+	assert qualified == '{"embed":2,"name":"Ada","n":3}\nBea\n4:5'
 }
 
 fn test_json_encode_omitempty_field_attr_preserves_omission() {
@@ -3300,7 +3331,7 @@ fn main() {
 	}))
 }
 ')
-	assert out == '{}\n{"values":[1.0,2.0],"lookup":{"kind":"line"},"style":{"width":4.0,"dash":"solid"}}\n[{"values":[1.0,2.0],"lookup":{"kind":"line"},"style":{"width":4.0,"dash":"solid"}},"trace"]\n{"items":[{"values":[1.0,2.0],"lookup":{"kind":"line"},"style":{"width":4.0,"dash":"solid"}},"trace"],"lookup":{"trace":{"values":[1.0,2.0],"lookup":{"kind":"line"},"style":{"width":4.0,"dash":"solid"}}}}\n{}\n{"value":{"values":[1.0,2.0],"lookup":{"kind":"line"},"style":{"width":4.0,"dash":"solid"}}}'
+	assert out == '{}\n{"values":[1,2],"lookup":{"kind":"line"},"style":{"width":4,"dash":"solid"}}\n[{"values":[1,2],"lookup":{"kind":"line"},"style":{"width":4,"dash":"solid"},"_type":"Payload"},"trace"]\n{"items":[{"values":[1,2],"lookup":{"kind":"line"},"style":{"width":4,"dash":"solid"},"_type":"Payload"},"trace"],"lookup":{"trace":{"values":[1,2],"lookup":{"kind":"line"},"style":{"width":4,"dash":"solid"},"_type":"Payload"}}}\n{}\n{"value":{"values":[1,2],"lookup":{"kind":"line"},"style":{"width":4,"dash":"solid"},"_type":"Payload"}}'
 }
 
 fn test_json_encode_json_dash_label_skips_fast_path_field() {
@@ -3685,6 +3716,20 @@ fn test_formatted_interpolation_integer_alias_character_code() {
 	out := run_good(v3_bin, 'formatted_interpolation_integer_alias_character_code',
 		"type Code = u8\ntype SignedCode = i16\ntype NestedCode = Code\n\nfn main() {\n\tprintln('\${Code(65):c}\${SignedCode(66):c}\${NestedCode(67):c}')\n}\n")
 	assert out == 'ABC'
+}
+
+fn test_formatted_interpolation_alias_uses_string_representation() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'formatted_interpolation_alias_string',
+		'import time\n\nfn main() {\n\tduration := time.Duration(10)\n\tprintln("|\${duration:10s}|")\n}\n')
+	assert out == '|      10ns|'
+}
+
+fn test_callback_pointer_return_is_compatible_with_voidptr_return() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'callback_pointer_return_to_voidptr',
+		'struct Item {\n\tvalue int\n}\n\nstruct Config {\n\tcallback fn () voidptr\n}\n\nfn make_item() &Item {\n\treturn &Item{value: 42}\n}\n\nfn main() {\n\tconfig := Config{callback: make_item}\n\titem := unsafe { &Item(config.callback()) }\n\tprintln(item.value)\n}\n')
+	assert out == '42'
 }
 
 fn test_stats_reports_failed_test_status_and_passed_total() {
@@ -4381,11 +4426,11 @@ fn main() {
 	assert out == '2'
 }
 
-fn test_empty_interface_box_preserves_alias_type_id() {
+fn test_empty_interface_is_matches_alias_equivalent_type_ids() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'empty_interface_alias_type_id',
 		'interface Any {}\n\ntype MyInt = int\n\nfn main() {\n\tvalue := MyInt(1)\n\ta := Any(value)\n\tprintln((a is MyInt).str())\n\tprintln((a is int).str())\n\tplain := int(2)\n\tb := Any(plain)\n\tprintln((b is MyInt).str())\n\tprintln((b is int).str())\n}\n')
-	assert out == 'true\nfalse\nfalse\ntrue'
+	assert out == 'true\ntrue\ntrue\ntrue'
 }
 
 fn test_empty_interface_box_preserves_enum_type_id() {
@@ -4412,6 +4457,9 @@ fn test_interface_cast_rejects_pointer_shape_mismatch() {
 	nil_out := run_good(v3_bin, 'interface_pointer_nil_cast',
 		"interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nfn main() {\n\t_ := Sink(nil)\n\t_ := &Sink(nil)\n\t_ := &SinkAlias(nil)\n\tprintln('ok')\n}\n")
 	assert nil_out == 'ok'
+	nil_arg_out := run_good(v3_bin, 'interface_pointer_nil_argument',
+		"interface Item {\n\tname string\n}\n\nfn take(item &Item) {\n\tassert item == unsafe { nil }\n}\n\nfn main() {\n\tvalue := unsafe { nil }\n\ttake(value)\n\ttake(unsafe { nil })\n\tprintln('ok')\n}\n")
+	assert nil_arg_out == 'ok'
 }
 
 fn test_interface_is_unqualified_local_uses_exact_impl_id() {
@@ -6509,7 +6557,7 @@ fn main() {
 		'disabled.mm':    '#error disabled Objective-C++ source must not be compiled\n'
 		'defs.h':         'typedef int v3_intervening_header_type;\n'
 		'macro_value.mm': '#ifndef V3_OBJECTIVE_CPP_VALUE\n#error missing include macro context\n#endif\nextern "C" int answer_from_macro_objective_cpp(void) { auto answer = []() { return V3_OBJECTIVE_CPP_VALUE; }; return answer(); }\n'
-		'main.v':         'module main\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.mm"\n#endif\n\n#define V3_OBJECTIVE_CPP_VALUE 47\n#include "defs.h"\n#include "macro_value.mm"\n#undef V3_OBJECTIVE_CPP_VALUE\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.m"\n#endif\n\n#ifdef __OBJC__\n#error generated V translation unit must remain C\n#endif\n\nfn C.answer_from_macro_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_macro_objective_cpp()))\n}\n'
+		'main.v':         'module main\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.mm"\n#endif\n\n#define V3_OBJECTIVE_CPP_VALUE 47\n#include "defs.h"\n#include "macro_value.mm"\n#undef V3_OBJECTIVE_CPP_VALUE\n\n#undef V3_NEVER_DEFINED\n#ifdef V3_NEVER_DEFINED\n#include "disabled.m"\n#endif\n\n#ifdef __OBJC__\n#error generated V translation unit must remain C\n#endif\n\nfn C.answer_from_macro_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_macro_objective_cpp()))\n}\n'
 	}, 'main.v')
 	assert guarded_objective_cpp_out == '47'
 	inactive_objective_c_out := run_good_project(v3_bin, 'inactive_objective_c_source', {
@@ -6618,6 +6666,54 @@ fn test_imported_objective_cpp_wrapper_context() {
 		'main.v':                  'module main\n\nimport consumer\n\nfn main() {\n\tprintln(int_str(consumer.answer()))\n}\n'
 	}, 'main.v')
 	assert out == '68'
+}
+
+fn test_cached_native_root_preserves_preceding_header_macro_mutations() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'cached_native_header_macro_mutation', {
+		'v.mod':                         "Module { name: 'cached_native_header_macro_mutation' }\n"
+		'nativeanswer/config.h':         '#undef V3_NATIVE_FEATURE\n#define V3_NATIVE_HEADER_VALUE 73\n'
+		'nativeanswer/implementation.h': '#ifdef V3_NATIVE_FEATURE\nint v3_native_header_answer(void) { return 1; }\n#else\nint v3_native_header_answer(void) { return V3_NATIVE_HEADER_VALUE; }\n#endif\n'
+		'nativeanswer/nativeanswer.v':   'module nativeanswer\n\n#define V3_NATIVE_FEATURE 1\n#include "config.h"\n#insert "implementation.h"\n\nfn C.v3_native_header_answer() int\n\npub fn answer() int {\n\treturn C.v3_native_header_answer()\n}\n'
+		'main.v':                        'module main\n\nimport nativeanswer\n\nfn main() {\n\tprintln(int_str(nativeanswer.answer()))\n}\n'
+	}, 'main.v')
+	assert out == '73'
+}
+
+fn test_cached_native_public_replay_does_not_repeat_preceding_header() {
+	v3_bin := build_v3()
+	out := run_good_cached_project(v3_bin, 'cached_native_single_preceding_header', {
+		'v.mod':                         "Module { name: 'cached_native_single_preceding_header' }\n"
+		'nativeanswer/context.h':        '#pragma once\nstruct V3CacheContextType { int value; };\n#define V3_CACHE_CONTEXT_VALUE 76\n'
+		'nativeanswer/implementation.h': '#ifdef V3_CACHE_CONTEXT_IMPLEMENTATION\nint v3_cache_context_answer(void) { struct V3CacheContextType value = { V3_CACHE_CONTEXT_VALUE }; return value.value; }\n#else\nint v3_cache_context_answer(void);\n#endif\n'
+		'nativeanswer/nativeanswer.v':   'module nativeanswer\n\n#define V3_CACHE_CONTEXT_IMPLEMENTATION\n#include "context.h"\n#insert "implementation.h"\n#undef V3_CACHE_CONTEXT_IMPLEMENTATION\n\nfn C.v3_cache_context_answer() int\n\npub fn answer() int {\n\treturn C.v3_cache_context_answer()\n}\n'
+		'main.v':                        'module main\n\nimport nativeanswer\n\nfn main() {\n\tprintln(int_str(nativeanswer.answer()))\n}\n'
+	}, 'main.v')
+	assert out == '76'
+}
+
+fn test_cached_native_root_uses_generated_pre_and_postinclude_order() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'cached_native_placed_includes', {
+		'v.mod':                         "Module { name: 'cached_native_placed_includes' }\n"
+		'nativeanswer/pre.h':            '#define V3_NATIVE_PRE_READY 1\n'
+		'nativeanswer/post.h':           '#define V3_NATIVE_POST_LATE 1\n'
+		'nativeanswer/implementation.h': '#ifndef V3_NATIVE_PRE_READY\n#error missing generated preinclude context\n#endif\n#ifdef V3_NATIVE_POST_LATE\n#error postinclude replayed before native root\n#endif\nint v3_placed_include_answer(void) { return 74; }\n'
+		'nativeanswer/nativeanswer.v':   'module nativeanswer\n\n#postinclude "@DIR/post.h"\n#insert "@DIR/implementation.h"\n#preinclude "@DIR/pre.h"\n\nfn C.v3_placed_include_answer() int\n\npub fn answer() int {\n\treturn C.v3_placed_include_answer()\n}\n'
+		'main.v':                        'module main\n\nimport nativeanswer\n\nfn main() {\n\tprintln(int_str(nativeanswer.answer()))\n}\n'
+	}, 'main.v')
+	assert out == '74'
+}
+
+fn test_cached_native_parameter_name_does_not_suppress_c_type() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'cached_native_parameter_type_name', {
+		'v.mod':                       "Module { name: 'cached_native_parameter_type_name' }\n"
+		'nativeanswer/native.h':       'int v3_parameter_name_only(int Unrelated);\n'
+		'nativeanswer/nativeanswer.v': 'module nativeanswer\n\n#insert "native.h"\n\nstruct C.Unrelated {}\n\nfn accepts_unrelated(value &C.Unrelated) int {\n\treturn if isnil(value) { 75 } else { 0 }\n}\n\npub fn answer() int {\n\treturn accepts_unrelated(unsafe { nil })\n}\n'
+		'main.v':                      'module main\n\nimport nativeanswer\n\nfn main() {\n\tprintln(int_str(nativeanswer.answer()))\n}\n'
+	}, 'main.v')
+	assert out == '75'
 }
 
 fn test_bare_macro_objective_c_guards_stay_inactive() {
@@ -8425,6 +8521,39 @@ fn unrelated() {
 	assert inference_errors.len == 1, tc.errors.str()
 	unrelated_start := source.index('fn unrelated') or { panic('missing unrelated function') }
 	assert inference_errors[0].pos.offset > unrelated_start, tc.errors.str()
+}
+
+fn test_nested_generic_receiver_call_waits_for_receiver_type() {
+	check_good('nested_generic_receiver_inference', 'struct Empty {}
+
+struct Node[T] {
+	value T
+	left  Tree[T]
+	right Tree[T]
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn (tree Tree[T]) min[T]() T {
+	return match tree {
+		Empty { panic("empty tree") }
+		Node[T] { tree.value }
+	}
+}
+
+fn (tree Tree[T]) delete[T](value T) Tree[T] {
+	return match tree {
+		Empty { tree }
+		Node[T] {
+			Node[T]{
+				...tree
+				value: tree.right.min()
+				right: tree.right.delete(tree.right.min())
+			}
+		}
+	}
+}
+')
 }
 
 fn test_template_include_diagnostics_use_partial_source() {
@@ -10413,6 +10542,20 @@ fn test_comptime_define_field_default_is_not_fixed_array_initializer() {
 		'cannot initialize a fixed size array field that uses `$d()` as size quantifier')
 }
 
+fn test_comptime_define_call_is_not_parenthesized_condition_warning() {
+	v3_bin := build_v3()
+	out := run_good_with_flags(v3_bin, 'comptime_define_if_warning', '-W',
+		'fn main() {\n\tif \$d("enabled", true) {\n\t\tprintln("ok")\n\t}\n}\n')
+	assert out == 'ok'
+}
+
+fn test_pointer_map_assignment_does_not_require_or_block() {
+	v3_bin := build_v3()
+	out := run_good_with_flags(v3_bin, 'pointer_map_assignment_warning', '-W',
+		'struct Item {}\n\nfn main() {\n\tmut items := map[string]&Item{}\n\titems["one"] = &Item{}\n\tprintln(items.len)\n}\n')
+	assert out == '1'
+}
+
 fn test_params_struct_fields_use_callback_and_userdata_compatibility() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'params_struct_callback_userdata_compatibility', 'type Callback = fn (voidptr)
@@ -10509,4 +10652,50 @@ fn test_imported_generic_preserves_main_embedded_context_type() {
 		'main.v':                'module main\n\nimport ctxhelper\n\nstruct Context {\n\tctxhelper.Context\n}\n\nfn main() {\n\tprintln(ctxhelper.read[Context]())\n}\n'
 	}, 'main.v')
 	assert out == '14'
+}
+
+fn test_imported_generic_closure_preserves_main_embedded_context_type() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'imported_generic_closure_main_embedded_context', {
+		'v.mod':                 "Module { name: 'imported_generic_closure_main_embedded_context' }\n"
+		'ctxhelper/ctxhelper.v': 'module ctxhelper
+
+pub struct Context {
+pub:
+	value int
+}
+
+pub struct Options[T] {
+pub:
+	handler fn (mut T) bool
+}
+
+pub fn make[T]() Options[T] {
+	return Options[T]{
+		handler: fn [T](mut ctx T) bool {
+			return ctx.Context.value == 7
+		}
+	}
+}
+'
+		'main.v':                'module main
+
+import ctxhelper
+
+struct Context {
+	ctxhelper.Context
+}
+
+fn main() {
+	mut ctx := Context{
+		Context: ctxhelper.Context{
+			value: 7
+		}
+	}
+	options := ctxhelper.make[Context]()
+	println(options.handler(mut ctx))
+}
+'
+	}, 'main.v')
+	assert out == 'true'
 }

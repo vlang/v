@@ -22,7 +22,8 @@ fn test_usecache_interface_index_is_real_symbol() {
 	os.write_file(source_path, "fn main() {\n\tprintln('hello world')\n}\n") or { panic(err) }
 
 	// -o - dumps the generated C of the main program to stdout.
-	res := os.execute('${os.quoted_path(vexe)} -usecache -o - ${os.quoted_path(source_path)}')
+	res :=
+		os.execute('${os.quoted_path(vexe)} -old-compiler -usecache -o - ${os.quoted_path(source_path)}')
 	if res.exit_code != 0 {
 		panic(res.output)
 	}
@@ -35,14 +36,14 @@ fn test_usecache_interface_index_is_real_symbol() {
 
 	// Sanity check: without -usecache the compile-time enum form is kept (it is
 	// the tcc-friendly form and needs no external symbol in a single build).
-	res2 := os.execute('${os.quoted_path(vexe)} -o - ${os.quoted_path(source_path)}')
+	res2 := os.execute('${os.quoted_path(vexe)} -old-compiler -o - ${os.quoted_path(source_path)}')
 	if res2.exit_code != 0 {
 		panic(res2.output)
 	}
 	assert res2.output.contains('enum { _IError_None___index =')
 }
 
-fn test_usecache_builtin_fixed_array_globals_are_extern_only() {
+fn test_usecache_builtin_autostr_globals_are_extern_only() {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v_issue_27592')
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	defer {
@@ -51,13 +52,15 @@ fn test_usecache_builtin_fixed_array_globals_are_extern_only() {
 	source_path := os.join_path(tmp_dir, 'issue_27592.v')
 	os.write_file(source_path, "fn main() {\n\tprintln('hello world')\n}\n") or { panic(err) }
 
-	res := os.execute('${os.quoted_path(vexe)} -usecache -o - ${os.quoted_path(source_path)}')
+	res :=
+		os.execute('${os.quoted_path(vexe)} -old-compiler -usecache -o - ${os.quoted_path(source_path)}')
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('extern Array_fixed_int_64 g_autostr_type_stack;'), res.output
-	assert res.output.contains('extern Array_fixed_voidptr_64 g_autostr_addr_stack;'), res.output
+	assert res.output.contains('extern AutostrAddrStackState g_autostr_addr_state;'), res.output
 	assert !res.output.contains('extern Array_fixed_int_64 g_autostr_type_stack = {0};'), res.output
+	assert !res.output.contains('extern AutostrAddrStackState g_autostr_addr_state ='), res.output
 	assert !res.output.contains('g_autostr_type_stack = {0}; // global 3'), res.output
-	assert !res.output.contains('g_autostr_addr_stack = {0}; // global 3'), res.output
+	assert !res.output.contains('g_autostr_addr_state = {0}; // global'), res.output
 }
 
 fn test_usecache_shared_interface_lock_uses_enum_index_in_case_labels() {
@@ -101,7 +104,8 @@ fn main() {
 		panic(err)
 	}
 
-	res := os.execute('${os.quoted_path(vexe)} -usecache -o - ${os.quoted_path(source_path)}')
+	res :=
+		os.execute('${os.quoted_path(vexe)} -old-compiler -usecache -o - ${os.quoted_path(source_path)}')
 	if res.exit_code != 0 {
 		panic(res.output)
 	}
@@ -177,7 +181,7 @@ pub fn exercise() {
 	}
 	mut p := os.new_process(vexe)
 	p.set_work_folder(root)
-	p.set_args(['-keepc', 'build-module', 'maker'])
+	p.set_args(['-old-compiler', '-keepc', 'build-module', 'maker'])
 	p.set_redirect_stdio()
 	p.wait()
 	stdout := p.stdout_slurp()

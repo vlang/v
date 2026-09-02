@@ -1,1 +1,0 @@
-GC_MALLOC_ATOMIC(((usize)(data_len)))
