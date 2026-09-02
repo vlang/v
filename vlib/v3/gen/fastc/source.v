@@ -87,10 +87,7 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 	mut timer := fastc_new_phase_timer()
 	memo_path := fastc_resolve_memo_path(paths, prefs)
 	memo_text := if memo_path != '' { os.read_file(memo_path) or { '' } } else { '' }
-	mut memo := fastc_parse_resolve_memo(memo_text)
-	if memo.files.len > 0 {
-		memo.blob = fastc_read_memo_blob(memo_path, memo)
-	}
+	memo := fastc_parse_resolve_memo(memo_text)
 	builtin_dir := if prefs.building_v {
 		os.real_path(prefs.get_vlib_module_path('builtin'))
 	} else {
@@ -109,7 +106,7 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 	if memo.files.len > 0 {
 		// A memo from an earlier run names everything this entry touched, so
 		// all of it is listed, read and looked up in one parallel batch.
-		preloaded = fastc_preload_memo(memo, prefs, canonical_vlib, mut module_path_cache, mut module_dir_files)
+		preloaded = fastc_preload_memo(memo_path, memo, prefs, canonical_vlib, mut module_path_cache, mut module_dir_files)
 		timer.mark('resolve.memo_preload')
 	}
 	mut queue := []FastcQueuedSource{}
@@ -324,9 +321,6 @@ mut:
 	// are trusted only for files modified at least two seconds before it.
 	written i64
 	blob_token string
-	// blob holds every memoized file's content, each followed by a NUL, when
-	// the companion blob file matched the memo; empty otherwise.
-	blob string
 }
 
 // FastcFileStamp identifies a file version: a cached content is reused only
@@ -386,11 +380,12 @@ struct FastcMemoTask {
 	source      string
 	dir         string
 	files       []string
-	// For read tasks: the memoized stamps and blob offsets of `files`, and
-	// the memo they came from (its blob and trust window).
-	stamps  []FastcFileStamp
-	offsets []int
-	blob    string
+	// For read tasks: the memoized and the current stamps of `files`, the
+	// blob offsets, and the memo's blob and trust window.
+	stamps         []FastcFileStamp
+	current_stamps []FastcFileStamp
+	offsets        []int
+	blob           string
 	trusted_before i64
 }
 
@@ -469,15 +464,19 @@ fn fastc_parse_resolve_memo(text string) FastcResolveMemo {
 	return memo
 }
 
-// fastc_memo_tasks turns a memo into preload tasks: lookups and listings
-// first, then the file reads in chunks.
-fn fastc_memo_tasks(memo FastcResolveMemo) []FastcMemoTask {
-	mut tasks := []FastcMemoTask{cap: memo.dirs.len + memo.lookup_modules.len + memo.files.len / fastc_source_load_chunk_size + 1}
+// fastc_memo_stat_chunk_size is the number of files one probe task stats.
+const fastc_memo_stat_chunk_size = 12
+
+// fastc_memo_probe_tasks turns a memo into the first batch of preload tasks:
+// the module lookups, the directory listings and the file stats. They need
+// no file content, so they overlap with reading the memo's content blob.
+fn fastc_memo_probe_tasks(memo FastcResolveMemo) []FastcMemoTask {
+	mut tasks := []FastcMemoTask{cap: memo.dirs.len + memo.lookup_modules.len + memo.files.len / fastc_memo_stat_chunk_size + 1}
 	for i, module_name in memo.lookup_modules {
 		tasks << FastcMemoTask{
-			kind:   0
+			kind:        0
 			module_name: module_name
-			source: memo.lookup_sources[i]
+			source:      memo.lookup_sources[i]
 		}
 	}
 	for dir in memo.dirs {
@@ -486,9 +485,27 @@ fn fastc_memo_tasks(memo FastcResolveMemo) []FastcMemoTask {
 			dir:  dir
 		}
 	}
-	with_blob := memo.blob.len > 0
-	// Files whose content is in the blob only need a stat each, so those
-	// chunks are larger.
+	mut start := 0
+	for start < memo.files.len {
+		mut end := start + fastc_memo_stat_chunk_size
+		if end > memo.files.len {
+			end = memo.files.len
+		}
+		tasks << FastcMemoTask{
+			kind:  3
+			files: memo.files[start..end]
+		}
+		start = end
+	}
+	return tasks
+}
+
+// fastc_memo_read_tasks turns the stat results into the second batch: each
+// chunk materializes its files, from the blob when a file's stamp still
+// matches the memo's and is old enough to trust, by reading it otherwise.
+fn fastc_memo_read_tasks(memo FastcResolveMemo, current_stamps []FastcFileStamp, blob string) []FastcMemoTask {
+	mut tasks := []FastcMemoTask{cap: memo.files.len / fastc_source_load_chunk_size + 1}
+	with_blob := blob.len > 0 && current_stamps.len == memo.files.len
 	chunk := if with_blob { fastc_source_load_chunk_size * 2 } else { fastc_source_load_chunk_size }
 	mut start := 0
 	for start < memo.files.len {
@@ -505,8 +522,9 @@ fn fastc_memo_tasks(memo FastcResolveMemo) []FastcMemoTask {
 				kind:           2
 				files:          memo.files[start..end]
 				stamps:         memo.stamps[start..end]
+				current_stamps: current_stamps[start..end]
 				offsets:        memo.offsets[start..end]
-				blob:           memo.blob
+				blob:           blob
 				trusted_before: memo.written - 1
 			}
 		}
@@ -534,21 +552,28 @@ fn fastc_run_memo_task(task FastcMemoTask, index int, prefs &pref.Preferences, c
 			files: fastc_list_module_sources(task.dir, prefs)
 		}
 	}
-	mut sources := []FastcLoadedSource{cap: task.files.len}
-	mut stamps := []FastcFileStamp{cap: task.files.len}
-	for i, path in task.files {
-		stamp := fastc_file_stamp(path) or {
-			sources << fastc_load_source(path, prefs)
-			stamps << FastcFileStamp{}
-			continue
+	if task.kind == 3 {
+		mut stamps := []FastcFileStamp{cap: task.files.len}
+		for path in task.files {
+			stamps << fastc_file_stamp(path) or { FastcFileStamp{} }
 		}
-		stamps << stamp
-		if task.blob.len > 0 && fastc_same_stamp(stamp, task.stamps[i]) && stamp.mtime < task.trusted_before {
-			// The file is the memoized version: its content is in the blob.
-			offset := task.offsets[i]
-			text := unsafe { tos(task.blob.str + offset, int(stamp.size)) }.clone()
-			sources << fastc_load_source_text(path, text, prefs)
-			continue
+		return FastcMemoResult{
+			index:  index
+			files:  task.files
+			stamps: stamps
+		}
+	}
+	mut sources := []FastcLoadedSource{cap: task.files.len}
+	for i, path in task.files {
+		if task.blob.len > 0 {
+			stamp := task.current_stamps[i]
+			if stamp.size != 0 && fastc_same_stamp(stamp, task.stamps[i]) && stamp.mtime < task.trusted_before {
+				// The file is the memoized version: its content is in the blob.
+				offset := task.offsets[i]
+				text := unsafe { tos(task.blob.str + offset, int(stamp.size)) }.clone()
+				sources << fastc_load_source_text(path, text, prefs)
+				continue
+			}
 		}
 		sources << fastc_load_source(path, prefs)
 	}
@@ -556,7 +581,7 @@ fn fastc_run_memo_task(task FastcMemoTask, index int, prefs &pref.Preferences, c
 		index:   index
 		files:   task.files
 		sources: sources
-		stamps:  stamps
+		stamps:  task.current_stamps
 	}
 }
 
@@ -586,7 +611,7 @@ fn fastc_apply_memo_results(tasks []FastcMemoTask, results []FastcMemoResult, pr
 			module_path_cache[fastc_module_cache_key(prefs, task.source, task.module_name)] = result.dir
 		} else if task.kind == 1 {
 			module_dir_files[task.dir] = result.files
-		} else {
+		} else if task.kind == 2 {
 			for i, source in result.sources {
 				stamp := if i < result.stamps.len { result.stamps[i] } else { FastcFileStamp{} }
 				loaded[task.files[i]] = FastcLoadedSource{
@@ -601,6 +626,22 @@ fn fastc_apply_memo_results(tasks []FastcMemoTask, results []FastcMemoResult, pr
 		}
 	}
 	return loaded
+}
+
+// fastc_memo_current_stamps gathers the stats of the probe batch in memo
+// file order (a zero stamp where a stat failed).
+fn fastc_memo_current_stamps(tasks []FastcMemoTask, results []FastcMemoResult, file_count int) []FastcFileStamp {
+	mut stamps := []FastcFileStamp{cap: file_count}
+	for index, task in tasks {
+		if task.kind != 3 {
+			continue
+		}
+		result := results[index]
+		for i, _ in task.files {
+			stamps << if i < result.stamps.len { result.stamps[i] } else { FastcFileStamp{} }
+		}
+	}
+	return stamps
 }
 
 // fastc_store_resolve_memo writes the memo of this resolution when it differs

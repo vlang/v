@@ -30,13 +30,24 @@ fn fastc_wait_interface_dispatches(mut pending FastcPendingInterfaceDispatches) 
 	return pending.dispatches
 }
 
-fn fastc_preload_memo(memo FastcResolveMemo, prefs &pref.Preferences, canonical_vlib string, mut module_path_cache map[string]string, mut module_dir_files map[string][]string) map[string]FastcLoadedSource {
-	tasks := fastc_memo_tasks(memo)
-	mut results := []FastcMemoResult{len: tasks.len}
-	for index, task in tasks {
-		results[index] = fastc_run_memo_task(task, index, prefs, canonical_vlib)
+fn fastc_preload_memo(memo_path string, memo FastcResolveMemo, prefs &pref.Preferences, canonical_vlib string, mut module_path_cache map[string]string, mut module_dir_files map[string][]string) map[string]FastcLoadedSource {
+	probe_tasks := fastc_memo_probe_tasks(memo)
+	mut probe_results := []FastcMemoResult{len: probe_tasks.len}
+	for index, task in probe_tasks {
+		probe_results[index] = fastc_run_memo_task(task, index, prefs, canonical_vlib)
 	}
-	return fastc_apply_memo_results(tasks, results, prefs, mut module_path_cache, mut module_dir_files)
+	mut loaded := fastc_apply_memo_results(probe_tasks, probe_results, prefs, mut module_path_cache, mut module_dir_files)
+	blob := fastc_read_memo_blob(memo_path, memo)
+	current_stamps := fastc_memo_current_stamps(probe_tasks, probe_results, memo.files.len)
+	read_tasks := fastc_memo_read_tasks(memo, current_stamps, blob)
+	mut read_results := []FastcMemoResult{len: read_tasks.len}
+	for index, task in read_tasks {
+		read_results[index] = fastc_run_memo_task(task, index, prefs, canonical_vlib)
+	}
+	for path, source in fastc_apply_memo_results(read_tasks, read_results, prefs, mut module_path_cache, mut module_dir_files) {
+		loaded[path] = source
+	}
+	return loaded
 }
 
 // fastc_preload_sources is a no-op without threads: the ordering walk loads

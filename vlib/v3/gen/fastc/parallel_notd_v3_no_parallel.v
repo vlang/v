@@ -119,10 +119,9 @@ fn fastc_memo_worker(tasks []FastcMemoTask, prefs &pref.Preferences, canonical_v
 	return results
 }
 
-// fastc_preload_memo lists, reads and looks up everything a resolve memo
-// names in one parallel batch bounded by the worker limit.
-fn fastc_preload_memo(memo FastcResolveMemo, prefs &pref.Preferences, canonical_vlib string, mut module_path_cache map[string]string, mut module_dir_files map[string][]string) map[string]FastcLoadedSource {
-	tasks := fastc_memo_tasks(memo)
+// fastc_run_memo_tasks runs a batch of memo tasks on at most the memo worker
+// limit of threads and returns the results in task order.
+fn fastc_run_memo_tasks(tasks []FastcMemoTask, prefs &pref.Preferences, canonical_vlib string) []FastcMemoResult {
 	mut jobs := fastc_parallel_job_count(tasks.len, prefs)
 	// Small-file reads and stats stop scaling after a few concurrent callers
 	// (the kernel serializes them), and extra workers only land on slower
@@ -135,7 +134,7 @@ fn fastc_preload_memo(memo FastcResolveMemo, prefs &pref.Preferences, canonical_
 		for index, task in tasks {
 			results[index] = fastc_run_memo_task(task, index, prefs, canonical_vlib)
 		}
-		return fastc_apply_memo_results(tasks, results, prefs, mut module_path_cache, mut module_dir_files)
+		return results
 	}
 	mut queue := &FastcGenQueue{
 		next: 0
@@ -156,7 +155,54 @@ fn fastc_preload_memo(memo FastcResolveMemo, prefs &pref.Preferences, canonical_
 			results[result.index] = result
 		}
 	}
-	return fastc_apply_memo_results(tasks, results, prefs, mut module_path_cache, mut module_dir_files)
+	return results
+}
+
+// fastc_preload_memo lists, looks up and stats everything a resolve memo
+// names in one bounded parallel batch while the main thread reads the memo's
+// content blob, then materializes the files in a second batch: from the blob
+// when a file's stamp still matches, by reading it otherwise.
+fn fastc_preload_memo(memo_path string, memo FastcResolveMemo, prefs &pref.Preferences, canonical_vlib string, mut module_path_cache map[string]string, mut module_dir_files map[string][]string) map[string]FastcLoadedSource {
+	probe_tasks := fastc_memo_probe_tasks(memo)
+	mut jobs := fastc_parallel_job_count(probe_tasks.len, prefs)
+	if jobs > fastc_memo_reader_limit {
+		jobs = fastc_memo_reader_limit
+	}
+	mut probe_results := []FastcMemoResult{len: probe_tasks.len}
+	mut blob := ''
+	if jobs <= 1 {
+		probe_results = fastc_run_memo_tasks(probe_tasks, prefs, canonical_vlib)
+		blob = fastc_read_memo_blob(memo_path, memo)
+	} else {
+		mut queue := &FastcGenQueue{
+			next: 0
+		}
+		mut workers := [
+			spawn fastc_memo_worker(probe_tasks, prefs, canonical_vlib, queue),
+		]
+		for _ in 2 .. jobs {
+			workers << spawn fastc_memo_worker(probe_tasks, prefs, canonical_vlib, queue)
+		}
+		blob = fastc_read_memo_blob(memo_path, memo)
+		first := fastc_memo_worker(probe_tasks, prefs, canonical_vlib, queue)
+		for result in first {
+			probe_results[result.index] = result
+		}
+		for worker in workers {
+			worker_results := worker.wait()
+			for result in worker_results {
+				probe_results[result.index] = result
+			}
+		}
+	}
+	mut loaded := fastc_apply_memo_results(probe_tasks, probe_results, prefs, mut module_path_cache, mut module_dir_files)
+	current_stamps := fastc_memo_current_stamps(probe_tasks, probe_results, memo.files.len)
+	read_tasks := fastc_memo_read_tasks(memo, current_stamps, blob)
+	read_results := fastc_run_memo_tasks(read_tasks, prefs, canonical_vlib)
+	for path, source in fastc_apply_memo_results(read_tasks, read_results, prefs, mut module_path_cache, mut module_dir_files) {
+		loaded[path] = source
+	}
+	return loaded
 }
 
 // FastcModuleListing is one module directory listed on a worker thread.
