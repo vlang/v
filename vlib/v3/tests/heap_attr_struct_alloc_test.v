@@ -17,26 +17,30 @@ const heap_attr_v3_dir = os.dir(heap_attr_tests_dir)
 const heap_attr_vlib_dir = os.dir(heap_attr_v3_dir)
 const heap_attr_v3_src = os.join_path(heap_attr_v3_dir, 'v3.v')
 
+// heap_attr_v3_bin_path is process-unique (pid-qualified) so a concurrent
+// invocation of this same file (a different `v test` process, e.g. two
+// overlapping CI jobs on one machine) can never race this one for the same
+// output path, on top of testsuite_begin building it exactly once before any
+// test_* function in THIS process runs.
 fn heap_attr_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_heap_attr_struct_alloc_test')
+	return os.join_path(os.temp_dir(), 'v3_heap_attr_struct_alloc_test_${os.getpid()}')
 }
 
 fn testsuite_begin() {
 	v3_bin := heap_attr_v3_bin_path()
-	if os.exists(v3_bin) {
-		os.rm(v3_bin) or {}
-	}
-}
-
-fn build_v3_for_heap_attr() string {
-	v3_bin := heap_attr_v3_bin_path()
-	if os.exists(v3_bin) {
-		return v3_bin
-	}
+	os.rm(v3_bin) or {}
 	build := cmdexec.run(heap_attr_vexe, ['-old-compiler', '-gc', 'none', '-path',
 		'${heap_attr_vlib_dir}|@vlib|@vmodules', '-o', v3_bin, heap_attr_v3_src])
 	assert build.exit_code == 0, build.output
-	return v3_bin
+}
+
+fn testsuite_end() {
+	os.rm(heap_attr_v3_bin_path()) or {}
+}
+
+// build_v3_for_heap_attr returns the v3 binary testsuite_begin already built.
+fn build_v3_for_heap_attr() string {
+	return heap_attr_v3_bin_path()
 }
 
 fn heap_attr_temp_path(name string) string {
