@@ -163,8 +163,8 @@ fn test_keyword_enum_selector_inserts_semicolon() {
 	mut scanner := new_scanner(preferences, .normal)
 	scanner.init(file, source)
 
-	for expected in [.key_assert, .name, .eq, .dot, .key_fn, .semicolon, .key_assert, .name,
-		.eq, .dot, .key_struct, .semicolon, .eof] {
+	for expected in [.key_assert, .name, .eq, .dot, .key_fn, .semicolon, .key_assert, .name, .eq,
+		.dot, .key_struct, .semicolon, .eof] {
 		assert scanner.scan() == expected
 	}
 }

@@ -239,8 +239,7 @@ fn (g &Gen) collect_json_migration_declarations(ids []flat.NodeId, mut declared_
 			}
 		} else if n.kind == .fn_decl && !n.value.contains('.') {
 			declared_names[n.value] = true
-		} else if n.kind == .c_fn_decl && n.value.starts_with('V:')
-			&& !n.value[2..].contains('.') {
+		} else if n.kind == .c_fn_decl && n.value.starts_with('V:') && !n.value[2..].contains('.') {
 			declared_names[n.value[2..]] = true
 		} else if n.kind in [.block, .comptime_if] {
 			g.collect_json_migration_declarations(g.a.children_of(n), mut declared_names)
@@ -437,8 +436,7 @@ fn (mut g Gen) top_level(ids []flat.NodeId) {
 		}
 		if wrote_any {
 			adjacent_consts := prev == .const_decl && kind == .const_decl && int(previous) >= 0
-				&& !g.source_has_blank_line_between(g.a.node(previous).pos.end,
-					g.a.node(id).pos.offset)
+				&& !g.source_has_blank_line_between(g.a.node(previous).pos.end, g.a.node(id).pos.offset)
 			if !injected_now && !(prev == .import_decl && kind == .import_decl) && !(prev == kind
 				&& kind in [.expr_stmt, .global_decl]) && !adjacent_consts {
 				g.writeln('')
@@ -563,12 +561,10 @@ fn (mut g Gen) stmt_list_ids(ids []flat.NodeId) {
 		}
 		g.indent++
 		mut next_i := i
-		for next_i < ids.len
-			&& (int(ids[next_i]) < 0 || g.a.node(ids[next_i]).kind == .empty) {
+		for next_i < ids.len && (int(ids[next_i]) < 0 || g.a.node(ids[next_i]).kind == .empty) {
 			next_i++
 		}
-		if g.a.node(id).kind == .label_stmt && next_i < ids.len
-			&& g.is_loop_statement(ids[next_i]) {
+		if g.a.node(id).kind == .label_stmt && next_i < ids.len && g.is_loop_statement(ids[next_i]) {
 			label := g.a.node(id)
 			loop := g.a.node(ids[next_i])
 			_, label_end := g.stmt_source_span(label)
@@ -1016,8 +1012,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.write('/* ${n.kind} */')
 		}
 	}
-	if (n.kind == .sql_expr || n.typ == '__v3_formatter_raw')
-		&& int(id) in g.a.formatter_sources {
+	if (n.kind == .sql_expr || n.typ == '__v3_formatter_raw') && int(id) in g.a.formatter_sources {
 		g.skip_comments_before(n.pos.end + 1)
 	} else {
 		g.emit_trailing_comments(n.pos.end)
@@ -1110,8 +1105,7 @@ fn (mut g Gen) array_literal(id flat.NodeId) {
 		first := g.a.node(children[0])
 		first_width := g.array_expr_width(children[0])
 		g.array_breaks << g.source_line(first.pos.offset) > g.source_line(n.pos.offset)
-			|| (first_width > 0
-			&& g.output_line_len() + first_width > formatter_array_first_break)
+			|| (first_width > 0 && g.output_line_len() + first_width > formatter_array_first_break)
 	}
 	line_break := g.array_breaks[g.array_depth - 1]
 	mut indented := false
@@ -1637,8 +1631,12 @@ fn (g &Gen) map_key_width(id flat.NodeId) int {
 		.char_literal {
 			if n.value.starts_with('c:') { "c'${n.value[2..]}'" } else { g.rune_literal(n) }
 		}
-		.enum_val { '.${n.value}' }
-		.int_literal, .float_literal, .bool_literal, .ident { n.value }
+		.enum_val {
+			'.${n.value}'
+		}
+		.int_literal, .float_literal, .bool_literal, .ident {
+			n.value
+		}
 		else {
 			if source := g.source_span(n.pos.offset, n.pos.end) {
 				source.trim_space()
@@ -2040,7 +2038,7 @@ fn (mut g Gen) assign_stmt(id flat.NodeId) {
 			}
 		}
 		for i, lhs_id in lhs {
-			if is_decl && !n.is_mut && g.a.node(lhs_id).is_mut && !g.suppress_mut {
+			if is_decl && g.a.node(lhs_id).is_mut && (!n.is_mut || i > 0) && !g.suppress_mut {
 				g.write('mut ')
 			}
 			g.expr(lhs_id)
@@ -2268,8 +2266,8 @@ fn (g &Gen) if_expr_is_compact(n &flat.Node, children []flat.NodeId, start_line_
 	if g.compact_block_expr_ids(children[1]) == none {
 		return false
 	}
-	return children.len == 2 || (g.a.node(children[2]).kind == .block
-		&& g.compact_block_expr_ids(children[2]) != none)
+	return children.len == 2
+		|| (g.a.node(children[2]).kind == .block && g.compact_block_expr_ids(children[2]) != none)
 }
 
 fn (g &Gen) compact_block_expr_ids(id flat.NodeId) ?[]flat.NodeId {
@@ -3209,8 +3207,7 @@ fn (g &Gen) aggregate_field_alignments(fields []flat.NodeId, is_interface bool) 
 			previous = flat.empty_node
 			continue
 		}
-		if group.len > 0
-			&& (section != group_access || g.field_alignment_break(previous, fid)) {
+		if group.len > 0 && (section != group_access || g.field_alignment_break(previous, fid)) {
 			g.store_field_alignment(mut alignments, group)
 			group.clear()
 		}
@@ -4016,8 +4013,7 @@ fn (mut g Gen) skip_comments_in_source(start int, end int) {
 }
 
 fn is_type_ident_char(c u8) bool {
-	return c == `_` || (c >= `0` && c <= `9`) || (c >= `A` && c <= `Z`)
-		|| (c >= `a` && c <= `z`)
+	return c == `_` || (c >= `0` && c <= `9`) || (c >= `A` && c <= `Z`) || (c >= `a` && c <= `z`)
 }
 
 fn type_ident_is_qualified(typ string, start int) bool {

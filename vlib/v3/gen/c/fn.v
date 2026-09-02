@@ -1651,7 +1651,6 @@ fn (g &FlatGen) fn_decl_c_attribute(node_id flat.NodeId) string {
 		match raw_attr.all_before(':').trim_space() {
 			'_constructor' { c_attrs << 'constructor' }
 			'_destructor' { c_attrs << 'destructor' }
-			'noinline' { c_attrs << 'noinline' }
 			else {}
 		}
 	}
@@ -1659,6 +1658,18 @@ fn (g &FlatGen) fn_decl_c_attribute(node_id flat.NodeId) string {
 		return ''
 	}
 	return ' __attribute__((${c_attrs.join(', ')}))'
+}
+
+fn (g &FlatGen) fn_decl_c_noinline_prefix(node_id flat.NodeId) string {
+	if g.ccompiler == 'msvc' {
+		return ''
+	}
+	for raw_attr in g.fn_decl_attributes(node_id) {
+		if raw_attr.all_before(':').trim_space() == 'noinline' {
+			return '__attribute__((noinline)) '
+		}
+	}
+	return ''
 }
 
 fn (g &FlatGen) fn_decl_msvc_noinline_prefix(node_id flat.NodeId) string {
@@ -4471,6 +4482,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		ret_type := g.fn_node_return_type(node, module_name)
 		g.set_cur_fn_ret(ret_type)
 		g.write(g.fn_decl_msvc_noinline_prefix(node_id))
+		g.write(g.fn_decl_c_noinline_prefix(node_id))
 		if export_name := g.export_fn_name_in_module(module_name, node.value) {
 			if export_name == generated_fn_name {
 				g.write(g.exported_symbol_attribute())

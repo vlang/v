@@ -620,7 +620,7 @@ $if !windows {
 					w.check_scoped_batches(chunk, dynamic_batch_limit)
 				} else {
 					w.check_fn_items_serial(chunk)
-			}
+				}
 				a.processed << chunk
 			}
 		} else if a.scope_enabled {
@@ -1226,7 +1226,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		}
 		tc.timing_profile('  [ttime]   ck forks         ${f64(rpsw.elapsed().microseconds()) / 1000.0:7.2f} ms (workers: ${worker_count})')
 		mut args := []CheckChunkArgs{cap: chunk_count}
-		mut dynamic_items_ptr := voidptr(0)
+		mut dynamic_items_ptr := unsafe { nil }
 		if dynamic_dispatch {
 			dynamic_items_ptr = unsafe { voidptr(&dynamic_chunks) }
 		}

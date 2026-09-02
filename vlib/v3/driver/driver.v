@@ -8131,8 +8131,7 @@ pub fn run(args []string) {
 	}
 	for requested in compile_backends {
 		for name in requested.split(',') {
-			if name.trim_space() !in ['c', 'fastc', 'arm64', 'aarch64', 'wasm', 'wasm32',
-				'eval'] {
+			if name.trim_space() !in ['c', 'fastc', 'arm64', 'aarch64', 'wasm', 'wasm32', 'eval'] {
 				eprintln('unknown compile backend `${name.trim_space()}`')
 				exit(1)
 			}
@@ -8485,8 +8484,8 @@ pub fn run(args []string) {
 			if warn_impure_v {
 				unsupported_modes << '`-Wimpure-v`'
 			}
-			if print_fn_names.len > 0 || print_v_files || print_watched_files || dump_c_flags.len > 0
-				|| generate_c_project.len > 0 {
+			if print_fn_names.len > 0 || print_v_files || print_watched_files
+				|| dump_c_flags.len > 0 || generate_c_project.len > 0 {
 				unsupported_modes << 'compiler inspection output'
 			}
 			if c99_explicit || is_strict || check_overflow {
@@ -8515,7 +8514,8 @@ pub fn run(args []string) {
 				// Same-target FastC output is compiled by bundled TinyCC regardless of
 				// the host default, so compile-time compiler branches must see TinyCC.
 				prefs.ccompiler = 'tinyc'
-				add_v3_tcc_compat_defines(mut prefs.user_defines, target.os, target.arch, false, true)
+				add_v3_tcc_compat_defines(mut prefs.user_defines, target.os, target.arch, false,
+					true)
 			}
 			fastc_generation := fastc.generate_files_with_source_paths([input_file], prefs) or {
 				eprintln(err.msg())

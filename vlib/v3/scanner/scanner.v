@@ -250,8 +250,8 @@ pub fn (mut s Scanner) scan() token.Token {
 			return .string
 		}
 		tok := token.Token.from_string_tinyv(s.lit)
-		if tok in [.key_break, .key_continue, .key_nil, .key_none, .key_return, .key_false, .key_true,
-			.name] || (follows_dot && tok.is_keyword()) {
+		if tok in [.key_break, .key_continue, .key_nil, .key_none, .key_return, .key_false, .key_true, .name]
+			|| (follows_dot && tok.is_keyword()) {
 			s.insert_semi = true
 		}
 		return tok
