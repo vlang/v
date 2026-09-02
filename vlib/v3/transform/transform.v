@@ -17065,6 +17065,27 @@ fn (mut t Transformer) transform_value_operand(id flat.NodeId) flat.NodeId {
 	return t.transform_expr(id)
 }
 
+// materialize_value_branch_operand is transform_value_operand for a caller that rebuilds its
+// node over the materialized operands and re-dispatches over the rebuilt node. That protocol
+// needs the rewrite to make progress: `transform_value_operand` only materializes a branch when
+// it has a usable value type, and otherwise falls back to plain `transform_expr`, which rebuilds
+// the branch with the same shape under a fresh id (e.g. `f(a, b, c, if cond { .arrow } else {
+// .dot })`, whose enum-shorthand arms leave the `if` untyped). The caller would then see a
+// changed operand that is still a branch and re-dispatch forever, overflowing the stack. Detect
+// that, drop the prelude the failed attempt queued, and return the operand unchanged so the
+// caller leaves it to its ordinary operand lowering.
+fn (mut t Transformer) materialize_value_branch_operand(id flat.NodeId) flat.NodeId {
+	pending_mark := t.pending_stmts.len
+	value := t.transform_value_operand(id)
+	if value != id && t.operand_hoists_value_branch(value) {
+		if t.pending_stmts.len > pending_mark {
+			t.pending_stmts = t.pending_stmts[..pending_mark].clone()
+		}
+		return id
+	}
+	return value
+}
+
 // transform_infix_expr transforms transform infix expr data for transform.
 fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
@@ -17241,7 +17262,7 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		// (idents/literals) are left untouched for the re-dispatch to transform once.
 		pending_start := t.pending_stmts.len
 		new_lhs := if lhs_is_value_branch {
-			t.transform_value_operand(infix_lhs_id)
+			t.materialize_value_branch_operand(infix_lhs_id)
 		} else if rhs_is_value_branch && t.operand_needs_ordering_snapshot(infix_lhs_id) {
 			t.snapshot_expr_for_reuse(infix_lhs_id)
 		} else {
@@ -17253,7 +17274,7 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 			t.pending_stmts = t.pending_stmts[..pending_start].clone()
 		}
 		new_rhs := if rhs_is_value_branch {
-			t.transform_value_operand(infix_rhs_id)
+			t.materialize_value_branch_operand(infix_rhs_id)
 		} else if lhs_is_value_branch && !t.is_stable_expr_for_reuse(infix_rhs_id) {
 			t.stable_expr_for_reuse(infix_rhs_id)
 		} else {
@@ -17393,13 +17414,18 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 		} else {
 			flat.empty_node
 		}
+		// A module/type-qualified callee (`os.abs_path(...)`, `Type.make(...)`) is a selector
+		// whose base names a compile-time namespace, not a value: it has no runtime storage to
+		// stabilize or snapshot, so only its arguments take ordering treatment.
+		is_namespace_call := is_selector_call
+			&& t.call_selector_base_is_namespace(recv_sel_base_id, recv_fn.value, node.value)
 		// A function-valued field callee (`p.callback(...)`) is a selector but not a method call:
 		// the field holds a function value that an argument prelude can replace (via a
 		// reference-backed holder), so it must be snapshotted whole like any other runtime callee
 		// rather than treated as a method that only stabilizes its receiver.
-		is_fn_field_callee := is_selector_call
+		is_fn_field_callee := is_selector_call && !is_namespace_call
 			&& t.receiver_selector_is_fn_field(t.normalize_type_alias(t.trim_pointer_type(t.lvalue_type(recv_sel_base_id))), recv_fn.value)
-		is_method := is_selector_call && !is_fn_field_callee
+		is_method := is_selector_call && !is_fn_field_callee && !is_namespace_call
 		recv_id := if is_method { recv_sel_base_id } else { flat.empty_node }
 		// A plain (non-method) call whose callee is itself a value branch —
 		// `(match node { ... make_cb(node)! ... })()` — must materialize operand 0 too;
@@ -17435,7 +17461,7 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 			mut new_fn_id := recv_fn_id
 			if is_method {
 				new_recv := if t.is_value_match_or_if_operand(recv_id) {
-					r := t.transform_value_operand(recv_id)
+					r := t.materialize_value_branch_operand(recv_id)
 					if r != recv_id {
 						changed = true
 					}
@@ -17478,12 +17504,13 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 					pos:            recv_fn.pos
 				})
 			} else if callee_is_value_branch {
-				r := t.transform_value_operand(recv_fn_id)
+				r := t.materialize_value_branch_operand(recv_fn_id)
 				if r != recv_fn_id {
 					new_fn_id = r
 					changed = true
 				}
-			} else if last_branch > 0 && t.callee_needs_ordering_snapshot(recv_fn_id) {
+			} else if last_branch > 0 && !is_namespace_call
+				&& t.callee_needs_ordering_snapshot(recv_fn_id) {
 				// A non-method runtime callee (make_cb(mut trace)(match ...), or a function-valued
 				// variable a branch could reassign) must evaluate before a later branch argument's
 				// hoisted prelude, so snapshot it in source order.
@@ -17497,7 +17524,7 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 			for i in 1 .. node.children_count {
 				arg_id := t.a.child(&node, i)
 				na := if t.is_value_match_or_if_operand(arg_id) {
-					t.transform_value_operand(arg_id)
+					t.materialize_value_branch_operand(arg_id)
 				} else if i < last_branch && t.operand_needs_ordering_snapshot(arg_id) {
 					// A `mut` argument keeps its lvalue identity (only its dynamic base/index
 					// components are spilled) so it still mutates through. An ordinary argument is
@@ -20322,7 +20349,7 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 	if node.children_count == 1 {
 		match_cast_child := t.a.child(&node, 0)
 		if t.is_value_match_or_if_operand(match_cast_child) {
-			value := t.transform_value_operand(match_cast_child)
+			value := t.materialize_value_branch_operand(match_cast_child)
 			if value != match_cast_child {
 				start := t.a.children.len
 				t.a.children << value
