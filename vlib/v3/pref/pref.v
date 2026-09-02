@@ -168,11 +168,20 @@ pub fn target_from(os_name string, arch_name string) !Target {
 // new_preferences supports new preferences handling for pref.
 pub fn new_preferences() &Preferences {
 	build_time := target_build_time()
+	// Formatted by hand: the first C strftime call of a process initializes
+	// the timezone data, which costs about half a millisecond per compile.
 	return &Preferences{
-		build_date:      build_time.strftime('%Y-%m-%d')
-		build_time:      build_time.strftime('%H:%M:%S')
+		build_date:      '${build_time.year}-${two_digits(build_time.month)}-${two_digits(build_time.day)}'
+		build_time:      '${two_digits(build_time.hour)}:${two_digits(build_time.minute)}:${two_digits(build_time.second)}'
 		build_timestamp: build_time.unix().str()
 	}
+}
+
+fn two_digits(value int) string {
+	if value < 10 {
+		return '0' + value.str()
+	}
+	return value.str()
 }
 
 // has_macos_v3_caller_environment reports whether the macOS driver transported

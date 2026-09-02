@@ -8365,6 +8365,9 @@ pub fn run(args []string) {
 
 	// Parse directly to flat AST
 	mut prefs := pref.new_preferences()
+	if os.getenv('FASTC_BENCH_PHASES') != '' {
+		eprintln('fastc-phase driver.prefs ${driver_sw.elapsed().microseconds()}us')
+	}
 	prefs.target = target
 	prefs.thread_stack_size = if thread_stack_size_set {
 		thread_stack_size
@@ -8397,6 +8400,9 @@ pub fn run(args []string) {
 	}
 	explicit_tcc = c_compiler_explicit && effective_c_compiler == 'tinyc'
 	add_v3_tcc_compat_defines(mut user_defines, target.os, target.arch, is_shared, explicit_tcc)
+	if os.getenv('FASTC_BENCH_PHASES') != '' {
+		eprintln('fastc-phase driver.defines ${driver_sw.elapsed().microseconds()}us')
+	}
 	prefs.ccompiler = effective_c_compiler
 	prefs.no_parallel = current_no_parallel
 	prefs.c99 = c99
@@ -8454,6 +8460,9 @@ pub fn run(args []string) {
 				&& canonical_v3_fastc_output_path(fastc_artifact_file) == os.real_path(input_file) {
 				eprintln('fastc output path `${fastc_artifact_file}` aliases input source `${input_file}`')
 				exit(1)
+			}
+			if os.getenv('FASTC_BENCH_PHASES') != '' {
+				eprintln('fastc-phase driver.entry_checks ${driver_sw.elapsed().microseconds()}us')
 			}
 			fastc_host := pref.host_target()
 			fastc_cross_target := target.os != fastc_host.os || target.arch != fastc_host.arch

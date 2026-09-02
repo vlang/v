@@ -1398,7 +1398,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut type_source_paths := map[string]bool{}
 	mut type_sources := map[string]string{}
 	mut constant_sources := map[string]string{}
-	generic_method_sources := fastc_collect_generic_and_declaration_indexes(mut sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut globals, mut public_globals)!
+	mut constant_spans := map[string][]int{}
+	generic_method_sources := fastc_collect_generic_and_declaration_indexes(mut sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut constant_spans, mut globals, mut public_globals)!
 	timer.mark('declaration_indexes')
 	// The type declarations depend only on the declaration index, so they are
 	// rendered on a worker while the signatures are collected below; the
@@ -1466,7 +1467,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// The field lists are final; index them by name for generation while the
 	// constant and global phases run.
 	mut pending_field_lookup := fastc_start_struct_field_lookup(struct_field_info, prefs)
-	constant_output := fastc_generate_constant_declarations(ordered_sources, constant_sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, globals, public_globals, mut constant_types)!
+	constant_output := fastc_generate_constant_declarations(ordered_sources, constant_sources, constant_spans, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, globals, public_globals, mut constant_types)!
 	timer.mark('constant_declarations')
 	for name, _ in constant_output.composite_types {
 		composite_types[name] = true
