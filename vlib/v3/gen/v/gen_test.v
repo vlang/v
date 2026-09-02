@@ -1389,3 +1389,123 @@ fn test_formatter_demangles_function_local_aggregate_types() {
 	assert !out.contains('@local@'), out
 	assert vfmt('function_local_aggregate_types_twice', out) == out
 }
+
+fn test_formatter_keeps_comma_expression_branches_unbraced() {
+	source := "fn pick(var1 string, var2 string) (int, int) {
+	shorter, longer := if var1.len <= var2.len {
+		var1.len, var2.len
+	} else {
+		var2.len, var1.len
+	}
+	return shorter, longer
+}
+"
+	out := vfmt('comma_expression_branches', source)
+	assert out == source, out
+	assert vfmt('comma_expression_branches_twice', out) == out
+}
+
+fn test_formatter_keeps_comma_expressions_in_or_block() {
+	source := "fn split(attr string) (string, string) {
+	name, value := attr.split_once(':') or { '', '' }
+	return name, value
+}
+"
+	out := vfmt('comma_expressions_or_block', source)
+	assert out == source, out
+}
+
+fn test_formatter_keeps_multiline_interpolated_string() {
+	source := "fn query(table string) string {
+	return '
+		SELECT
+			*
+		FROM
+			\${table}
+		;
+	'
+}
+"
+	out := vfmt('multiline_interpolated_string', source)
+	assert out == source, out
+	assert vfmt('multiline_interpolated_string_twice', out) == out
+}
+
+fn test_formatter_reflows_interpolation_wrapped_across_lines() {
+	source := "fn log(a string, b string, c string) {
+	println('prefix \${join(a,
+		b, c)}')
+}
+"
+	expected := "fn log(a string, b string, c string) {
+	println('prefix \${join(a, b, c)}')
+}
+"
+	out := vfmt('interpolation_wrapped_across_lines', source)
+	assert out == expected, out
+}
+
+fn test_formatter_keeps_blank_line_after_leading_comment() {
+	source := '// Copyright header
+
+module abc
+
+const answer = 42
+'
+	out := vfmt_with_options('blank_line_after_leading_comment', source, FormatOptions{})
+	assert out == source, out
+}
+
+fn test_formatter_keeps_doc_comments_below_access_specifiers() {
+	source := 'pub struct Foo {
+	a int
+	// section comment before the specifier
+
+pub:
+	// docs for b
+	b int
+	c int
+	// docs for d
+mut:
+	d int
+}
+'
+	out := vfmt('doc_comments_below_access_specifiers', source)
+	assert out == source, out
+	assert vfmt('doc_comments_below_access_specifiers_twice', out) == out
+}
+
+fn test_formatter_keeps_logical_operator_line_breaks() {
+	source := 'fn check(found Rec, actual Rec) {
+	assert found.some_long_field_name_lalalala1 == actual.some_long_field_name_lalalala1
+		&& found.some_long_field_name_lalalala2 == actual.some_long_field_name_lalalala2
+}
+'
+	out := vfmt('logical_operator_line_breaks', source)
+	assert out == source, out
+	assert vfmt('logical_operator_line_breaks_twice', out) == out
+}
+
+fn test_formatter_keeps_logical_chain_joined_when_source_is_one_line() {
+	source := "fn check(name string, sel bool) bool {
+	return sel && name !in [
+		'main',
+		'init',
+	] && name.len > 0
+}
+"
+	out := vfmt('logical_chain_joined', source)
+	assert out == source, out
+}
+
+fn test_formatter_keeps_assignment_value_on_its_own_line() {
+	source := 'fn build(a []int) []int {
+	expected :=
+		a.map(it * 2).filter(it > 3).map(it + 1).filter(it < 100).map(it * 3).filter(it != 7)
+	return expected
+}
+'
+	out := vfmt('assignment_value_on_own_line', source)
+	assert out == source, out
+	assert vfmt('assignment_value_on_own_line_twice', out) == out
+}
