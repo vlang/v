@@ -9637,7 +9637,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		}
 		if node.value in ['idx', 'typ', 'key_type', 'value_type', 'element_type', 'payload_type', 'pointee_type', 'indirections']
 			&& t.selector_base_is_comptime_type_value(base_id) {
-			if concrete := t.generic_comptime_type_expr(base_id, args) {
+			if concrete := t.generic_comptime_type_expr_for_member(base_id, node.value, args) {
 				if node.value == 'indirections' {
 					return t.make_int_literal(generic_type_indirections(concrete))
 				}
@@ -10169,6 +10169,20 @@ fn (t &Transformer) generic_comptime_base_type(id flat.NodeId, args []string) ?s
 		}
 	}
 	return none
+}
+
+fn (mut t Transformer) generic_comptime_type_expr_for_member(id flat.NodeId, member string, args []string) ?string {
+	if member in ['idx', 'typ'] && int(id) >= 0 && int(id) < t.a.nodes.len {
+		node := t.a.nodes[int(id)]
+		if node.kind == .typeof_expr && node.children_count > 0 {
+			child_id := t.a.child(&node, 0)
+			child := t.a.nodes[int(child_id)]
+			if child.kind == .ident && t.mut_param_values[child.value] {
+				return t.generic_comptime_base_type(child_id, args)
+			}
+		}
+	}
+	return t.generic_comptime_type_expr(id, args)
 }
 
 fn (mut t Transformer) generic_comptime_type_expr(id flat.NodeId, args []string) ?string {
