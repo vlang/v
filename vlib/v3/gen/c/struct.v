@@ -3283,16 +3283,22 @@ fn (mut g FlatGen) gen_shared_field_storage_selector(base_id flat.NodeId, base_t
 }
 
 fn (mut g FlatGen) gen_shared_field_value_selector(base_id flat.NodeId, base_type0 types.Type, field string, op flat.Op) bool {
-	mut base_type := types.unwrap_pointer(base_type0)
-	if base_type is types.Alias {
-		base_type = types.unwrap_pointer(base_type.base_type)
+	if g.gen_shared_field_storage_selector(base_id, base_type0, field, op) {
+		g.write('->val')
+		return true
 	}
-	if base_type !is types.Struct {
+	if int(base_id) < 0 || int(base_id) >= g.a.nodes.len {
 		return false
 	}
-	struct_type := base_type as types.Struct
-	_ = g.shared_field_info(struct_type.name, field) or { return false }
-	if !g.gen_shared_field_storage_selector(base_id, base_type0, field, op) {
+	base := g.a.nodes[int(base_id)]
+	if base.typ.len == 0 {
+		return false
+	}
+	// Synthetic string methods can retain a stale short-name scope type while the
+	// exact qualified receiver type remains on the selector's base node.
+	annotated_base_type := g.parse_node_type(&base)
+	if annotated_base_type is types.Unknown || annotated_base_type is types.Void
+		|| !g.gen_shared_field_storage_selector(base_id, annotated_base_type, field, op) {
 		return false
 	}
 	g.write('->val')
