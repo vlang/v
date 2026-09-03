@@ -9260,7 +9260,7 @@ pub fn run(args []string) {
 	native_inputs_done := chan bool{cap: 1}
 	native_inputs_args := PrepareV3CheckerNativeInputsArgs{
 		state:         voidptr(&cache_state)
-		a:             &a
+		a:             a
 		prefs:         prefs
 		user_files:    user_files
 		user_c_flags:  cache_c_flags

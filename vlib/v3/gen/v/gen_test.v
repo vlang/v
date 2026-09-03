@@ -127,7 +127,7 @@ fn test_formatter_keeps_anon_fn_body_statements_expanded_inside_init() {
 	// `in_init` flag set while emitting its body, collapsing the body statements
 	// (and any nested `or {}` block) onto a single line, e.g.
 	// `c := codem := msg_ = c_ = m}`, which broke compilation.
-	source := "struct Events {\n\ton_error fn(code int, msg string)\n\ton_close fn(id int)\n}\n\nstruct Registry {\nmut:\n\tclosed bool\n}\n\nfn (r &Registry) find(id int) ?int {\n\treturn id\n}\n\nfn handlers() {\n\tmut reg := Registry{}\n\te := Events{\n\t\ton_error: fn (code int, msg string) {\n\t\t\tc := code\n\t\t\tm := msg\n\t\t\t_ = c\n\t\t\t_ = m\n\t\t}\n\t\ton_close: fn (id int) {\n\t\t\tn := reg.find(id) or { return }\n\t\t\t_ = n\n\t\t}\n\t}\n\t_ = e\n\t_ = reg\n}\n"
+	source := "struct Events {\n\ton_error fn (code int, msg string)\n\ton_close fn (id int)\n}\n\nstruct Registry {\nmut:\n\tclosed bool\n}\n\nfn (r &Registry) find(id int) ?int {\n\treturn id\n}\n\nfn handlers() {\n\tmut reg := Registry{}\n\te := Events{\n\t\ton_error: fn (code int, msg string) {\n\t\t\tc := code\n\t\t\tm := msg\n\t\t\t_ = c\n\t\t\t_ = m\n\t\t}\n\t\ton_close: fn (id int) {\n\t\t\tn := reg.find(id) or { return }\n\t\t\t_ = n\n\t\t}\n\t}\n\t_ = e\n\t_ = reg\n}\n"
 	out := vfmt('anon_fn_body_inside_init', source)
 	assert out == source, out
 	assert vfmt('anon_fn_body_inside_init_twice', out) == out
@@ -1590,4 +1590,172 @@ fn test_formatter_keeps_rows_of_small_nested_arrays_on_one_line() {
 '
 	out := vfmt('rows_of_small_nested_arrays', source)
 	assert out == source, out
+}
+
+// A block comment's continuation lines already carry their own leading whitespace, so the
+// formatter must write them through as they are. Indenting them again added one level per run:
+// `v fmt` was not a fixed point, and each further run pushed the body one tab deeper.
+fn test_formatter_keeps_block_comment_body_indentation_stable() {
+	source := "fn probe() {\n\t/*\n\tfirst line\n\tsecond line\n\t*/\n\tprintln('x')\n}\n"
+	out := vfmt('block_comment_indent', source)
+	assert out == source, out
+	twice := vfmt('block_comment_indent_twice', out)
+	assert twice == out, twice
+	thrice := vfmt('block_comment_indent_thrice', twice)
+	assert thrice == out, thrice
+}
+
+// A comment after a match branch's closing brace belongs to that branch. Emitting it as the next
+// branch's leading comment moved it onto its own line, and the following run then read it as a
+// commented branch and inserted a blank line before it — so formatting twice differed from once.
+fn test_formatter_keeps_a_trailing_comment_on_a_match_branch() {
+	source := "fn pick(n int) string {\n\tmatch n {\n\t\t1 {\n\t\t\treturn 'a'\n\t\t} // leave it blank\n\t\telse {\n\t\t\treturn ''\n\t\t}\n\t}\n}\n"
+	out := vfmt('match_branch_trailing_comment', source)
+	assert out == source, out
+	assert vfmt('match_branch_trailing_comment_twice', out) == out
+}
+
+// A blank separator line must carry no indentation. Writing it left a line of whitespace, which
+// V source never carries and which the next run read back differently, so the formatter was not a
+// fixed point.
+fn test_formatter_writes_blank_lines_without_indentation() {
+	source := "fn probe() {\n\tassert 1 == 1 // first\n\tassert 2 == 2\n}\n"
+	out := vfmt('blank_line_indentation', source)
+	for line in out.split('\n') {
+		assert line.trim_space() != '' || line == '', 'a blank line must carry no whitespace, got `${line}`'
+	}
+	assert vfmt('blank_line_indentation_twice', out) == out
+}
+
+// An `assert` whose condition carries the statement's trailing comment is already terminated by
+// that comment, so terminating it again left a stray separator line after every commented
+// `assert`. Every other statement kind already guarded this.
+fn test_formatter_does_not_separate_a_commented_assert_from_the_next_statement() {
+	source := "fn p() {\n\tassert 1 == 1 // c\n\tassert 2 == 2\n}\n"
+	out := vfmt('commented_assert', source)
+	assert out == source, out
+	assert vfmt('commented_assert_twice', out) == out
+
+	// a blank line the source did have is still kept
+	spaced := "fn p() {\n\tassert 1 == 1 // c\n\n\tassert 2 == 2\n}\n"
+	spaced_out := vfmt('commented_assert_spaced', spaced)
+	assert spaced_out == spaced, spaced_out
+}
+
+// A `match` range pattern took the parser's position when its node was built, which by then was
+// already past the branch's `{`. The formatter then read a comment written after that brace as
+// directly following the pattern and pulled it above the brace — and the next run re-split the
+// pattern list around it.
+fn test_formatter_keeps_a_trailing_comment_on_a_range_match_branch() {
+	source := "fn f(n int) string {\n\tmatch n {\n\t\t48...57, 97...122 { // 0-9a-z\n\t\t\treturn 'alnum'\n\t\t}\n\t\telse {\n\t\t\treturn ''\n\t\t}\n\t}\n}\n"
+	out := vfmt('range_branch_comment', source)
+	assert out == source, out
+	assert vfmt('range_branch_comment_twice', out) == out
+}
+
+// A bare `return` closing an inline block took the parser's position when its node was built,
+// which by then was past that block's `}`. The formatter read the statement's trailing comment as
+// directly following the `return` and moved it inside the braces, leaving the `}` inside the
+// comment and the file unparseable.
+fn test_formatter_keeps_a_trailing_comment_outside_an_inline_or_block() {
+	source := "fn get(k string) !bool {\n\treturn k != ''\n}\n\nfn probe() {\n\thelp_enabled := get('help') or { return } // ignore the error\n\tif help_enabled {\n\t\tprintln('yes')\n\t}\n}\n"
+	out := vfmt('inline_or_trailing_comment', source)
+	assert out == source, out
+	assert !out.contains('return // ignore the error }'), out
+	assert vfmt('inline_or_trailing_comment_twice', out) == out
+}
+
+// V spells a closure `fn [captures] [T](params)`. The formatter wrote the generic list first,
+// producing `fn[T] [captures] (params)`, which does not parse; the run after that read the
+// captures as the generic list and dropped whatever the two disagreed on, so a `mut` capture was
+// silently lost.
+fn test_formatter_keeps_closure_capture_and_generic_list_order() {
+	source := "fn run[T](items []T) {\n\tch := chan T{}\n\tmut total := 0\n\tspawn fn [ch, mut total] [T]() {\n\t\tfor _ in ch {\n\t\t\ttotal++\n\t\t}\n\t}()\n\tfor item in items {\n\t\tch <- item\n\t}\n}\n"
+	out := vfmt('closure_capture_generics', source)
+	assert out == source, out
+	assert !out.contains('fn[T]'), out
+	assert out.contains('mut total'), out
+	assert vfmt('closure_capture_generics_twice', out) == out
+}
+
+// `break` and `continue` had the same wrong span as `return`: the node took the parser's position,
+// already past the `}` of an inline block, so the statement's trailing comment was moved inside
+// the braces and the `}` ended up commented out.
+fn test_formatter_keeps_a_trailing_comment_outside_an_inline_break_or_continue() {
+	source := "fn f(items []int) int {\n\tmut n := 0\n\tfor i in items {\n\t\tw := pick(i) or { continue } // only numeric\n\t\tif w == 0 {\n\t\t\tbreak\n\t\t}\n\t\tn += w\n\t}\n\treturn n\n}\n\nfn pick(i int) ?int {\n\treturn i\n}\n"
+	out := vfmt('inline_continue_comment', source)
+	assert out == source, out
+	assert !out.contains('continue // only numeric }'), out
+	assert vfmt('inline_continue_comment_twice', out) == out
+}
+
+// Implied imports matched the module directory through `os.is_dir`, which answers the filesystem.
+// On a case-insensitive one (macOS, Windows) `vlib/Time` is the `time` module, so a static call on
+// a type named `Time` implied `import Time` — and the formatter wrote that bogus import into the
+// file, breaking the build. On a case-sensitive filesystem this never fired, so the assert below
+// only bites where the bug lived.
+fn test_formatter_does_not_imply_an_import_from_a_type_named_like_a_module() {
+	source := "module time\n\npub struct Time {\n\tunix i64\n}\n\npub fn Time.new(unix i64) Time {\n\treturn Time{\n\t\tunix: unix\n\t}\n}\n\npub fn now() Time {\n\treturn Time.new(0)\n}\n"
+	out := vfmt('implied_import_type_name', source)
+	assert !out.contains('import Time'), out
+	assert out == source, out
+}
+
+// A struct embed and a field whose name matches its type (`thread thread`) are stored the same
+// way — `value == typ` — so the formatter collapsed the second into the first and wrote a bare
+// `thread` embed, which no longer compiles. The parser now records which one it is.
+fn test_formatter_keeps_a_field_named_like_its_type() {
+	source := 'struct Base {\n\tid int\n}\n\nstruct Child {\n\tBase\n\tname string\n}\n\nstruct Named {\n\tthread thread\n}\n'
+	out := vfmt('field_named_like_type', source)
+	assert out == source, out
+	assert vfmt('field_named_like_type_twice', out) == out
+}
+
+// V spells a function type with a space before the parameter list. The type system stores it
+// without one (`fn(int) int`), so a type rendered straight from the internal name reformatted
+// every function type in the file — in declarations, fields, parameters and return positions
+// alike.
+fn test_formatter_keeps_the_space_in_a_function_type() {
+	source := 'pub type Cb = fn (a int, b string) !
+
+struct Holder {
+	cb     fn (int) int = unsafe { nil }
+	cbs    []fn (int)
+	m      map[string]fn (int) int
+	opt    ?fn (int)
+	nested fn (cb fn (int) int) fn (int) int
+}
+
+fn takes(cb fn (int) int) fn (int) int {
+	return cb
+}
+'
+	out := vfmt('fn_type_space', source)
+	assert out == source, out
+	assert !out.contains('fn('), out
+}
+
+// The optional-flag marker of a `$if` is written detached (`$if flag ? {`). The condition is
+// stored without that space so flag lookups match on it, so the formatter has to put it back.
+fn test_formatter_keeps_the_space_before_a_comptime_flag_marker() {
+	source := "fn probe() {\n\t\$if !v3_no_parallel ? {\n\t\tprintln('a')\n\t}\n\t\$if linux {\n\t\tprintln('b')\n\t}\n}\n"
+	out := vfmt('comptime_flag_marker', source)
+	assert out == source, out
+	assert !out.contains('parallel?'), out
+	assert vfmt('comptime_flag_marker_twice', out) == out
+}
+
+// A NUL byte must be written as `\x00`, not `\0`. V's octal escape absorbs the digits that
+// follow, so `\0` before an octal digit re-parses as a single escape and the formatter would
+// silently rewrite the string's bytes: `'x\x0041y'` (x, NUL, `4`, `1`, y) came back as
+// `'x\041y'`, which is `x!y`.
+fn test_formatter_keeps_nul_escape_unambiguous() {
+	source := "fn main() {\n\ta := 'x\\x0041y'\n\tb := 'p\\x00q'\n\tc := `\\x00`\n\tprintln(a + b + c.str())\n}\n"
+	out := vfmt('nul_escape', source)
+	assert out.contains("'x\\x0041y'"), out
+	assert !out.contains('\\041'), out
+	assert out.contains("'p\\x00q'"), out
+	assert !out.contains("'p\\0q'"), out
+	assert out.contains('`\\x00`'), out
+	assert vfmt('nul_escape_twice', out) == out
 }

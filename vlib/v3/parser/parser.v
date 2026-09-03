@@ -1939,7 +1939,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					typ:   field_type
 					pos:   p.span_to(field_start)
 				})
-				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, pending_attrs)
+				mut embed_attrs_1 := pending_attrs.clone()
+				embed_attrs_1 << embedded_field_attr
+				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, embed_attrs_1)
 				pending_attrs = []string{}
 				ids << fid
 				if p.tok == .semicolon {
@@ -1965,7 +1967,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 						typ:   embedded_type
 						pos:   p.span_to(field_start)
 					})
-					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, pending_attrs)
+					mut embed_attrs_2 := pending_attrs.clone()
+					embed_attrs_2 << embedded_field_attr
+					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, embed_attrs_2)
 					pending_attrs = []string{}
 					ids << fid
 					if p.tok == .semicolon {
@@ -1991,7 +1995,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					typ:   embedded_type
 					pos:   p.span_to(field_start)
 				})
-				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, pending_attrs)
+				mut embed_attrs_3 := pending_attrs.clone()
+				embed_attrs_3 << embedded_field_attr
+				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, embed_attrs_3)
 				pending_attrs = []string{}
 				ids << fid
 				if p.tok == .semicolon {
@@ -2872,17 +2878,20 @@ fn (mut p Parser) parse_attribute_comptime_cond() string {
 // attributes) - the node's own `kind_id`/`is_mut` are load-bearing (kind dispatch) and must not
 // be repurposed. A default field (private, immutable, no attrs) is left untouched so it costs no
 // allocation and reads back as the default.
+// embedded_field_attr marks a `field_decl` that is a struct embed rather than a named field.
+const embedded_field_attr = '__v3_embedded_field'
+
 fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, is_global bool, attrs []string) {
 	if int(id) < 0 || int(id) >= p.a.nodes.len {
 		return
 	}
 	is_volatile := '__v3_volatile_field' in attrs
-	stored_attrs := if is_volatile {
-		attrs.filter(it != '__v3_volatile_field')
-	} else {
-		attrs
-	}
-	if !is_mut && !is_pub && !is_global && !is_volatile && stored_attrs.len == 0 {
+	// An embed and a field whose name happens to match its type (`thread thread`) are both
+	// stored with `value == typ`, so the node alone cannot tell them apart. Record which this
+	// is; without it the formatter rewrote a `thread thread` field to a bare `thread` embed.
+	is_embedded := embedded_field_attr in attrs
+	stored_attrs := attrs.filter(it != '__v3_volatile_field' && it != embedded_field_attr)
+	if !is_mut && !is_pub && !is_global && !is_volatile && !is_embedded && stored_attrs.len == 0 {
 		return
 	}
 	mut flags := ''
@@ -2897,6 +2906,9 @@ fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, is_
 	}
 	if is_volatile {
 		flags += 'v'
+	}
+	if is_embedded {
+		flags += 'e'
 	}
 	mut gp := []string{cap: stored_attrs.len + 1}
 	gp << flags
@@ -3817,7 +3829,12 @@ fn (mut p Parser) parse_comptime_cond() string {
 		} else {
 			raw_tok_str
 		}
-		if cond.len > 0 && comptime_cond_needs_space(prev_tok_str, tok_str) {
+		// Source style writes the optional-flag marker detached (`$if flag ? {`), but the
+		// condition is otherwise stored without that space so flag lookups can match on it.
+		// Keep it only when formatting, as parse_attribute_comptime_cond does for `@[if flag ?]`.
+		needs_space := comptime_cond_needs_space(prev_tok_str, tok_str)
+			|| (p.prefs.is_fmt && tok_str == '?')
+		if cond.len > 0 && needs_space {
 			cond.write_string(' ')
 		}
 		cond.write_string(tok_str)
@@ -6232,6 +6249,7 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.match_stmt()
 		}
 		.key_break {
+			kw_pos := p.tok_pos
 			p.next()
 			mut label := ''
 			if p.tok == .name {
@@ -6241,9 +6259,16 @@ fn (mut p Parser) stmt() flat.NodeId {
 			if p.tok == .semicolon {
 				p.next()
 			}
-			return p.add_val(.break_stmt, label)
+			// Span the statement itself, as `return` does: the parser's current position is
+			// already past the `}` of an inline block (`x := f() or { break } // note`), and the
+			// formatter would then move the note inside the braces and comment the `}` out.
+			return p.add_node(flat.Node{
+				kind:  .break_stmt
+				value: label
+			}.with_pos(p.span_to(kw_pos)))
 		}
 		.key_continue {
+			kw_pos := p.tok_pos
 			p.next()
 			mut label := ''
 			if p.tok == .name {
@@ -6253,7 +6278,13 @@ fn (mut p Parser) stmt() flat.NodeId {
 			if p.tok == .semicolon {
 				p.next()
 			}
-			return p.add_val(.continue_stmt, label)
+			// Span the statement itself, as `return` does: the parser's current position is
+			// already past the `}` of an inline block (`x := f() or { continue } // note`), and the
+			// formatter would then move the note inside the braces and comment the `}` out.
+			return p.add_node(flat.Node{
+				kind:  .continue_stmt
+				value: label
+			}.with_pos(p.span_to(kw_pos)))
 		}
 		.key_mut {
 			p.next()
@@ -6617,11 +6648,16 @@ fn (mut p Parser) return_stmt() flat.NodeId {
 		p.next()
 	}
 	start := p.add_children(ids)
+	// Span the statement from `return` to the last token it consumed. Left to `add_node` it
+	// would take the parser's current position, which for a bare `return` closing an inline
+	// block (`x := f() or { return } // note`) is already past that block's `}` — the formatter
+	// then reads the note as directly following the `return` and moves it inside the braces,
+	// leaving the `}` commented out and the file unparseable.
 	return p.add_node(flat.Node{
 		kind:           .return_stmt
 		children_start: start
 		children_count: flat.child_count(ids.len)
-	})
+	}.with_pos(p.span_to(return_pos)))
 }
 
 fn (mut p Parser) if_stmt() flat.NodeId {
@@ -7338,12 +7374,16 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		p.next()
 		rhs := p.expr(.lowest)
 		rstart := p.add_children2(cond, rhs)
-		return p.add_node(flat.Node{
+		// Span the range from its low bound to its high bound. Left to `add_node` the node
+		// would take the parser's current position, which is already past the branch's `{`,
+		// and the formatter would then read a comment written after that brace as directly
+		// following the pattern and pull it above the brace.
+		return p.add_node_from(flat.Node{
 			kind:           .range
 			value:          if p.prefs.is_fmt { '...' } else { '' }
 			children_start: rstart
 			children_count: 2
-		})
+		}, cond)
 	}
 	return cond
 }
