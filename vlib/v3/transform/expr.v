@@ -3663,11 +3663,14 @@ fn (mut t Transformer) snapshot_expr_for_reuse(id flat.NodeId) flat.NodeId {
 	if t.is_pure_constant_expr(expr) || t.is_ordering_snapshot_temp(expr) {
 		return expr
 	}
-	tmp_name := t.new_temp('order_snapshot')
 	mut tmp_typ := t.node_type(expr)
 	if tmp_typ.len == 0 {
 		tmp_typ = t.node_type(id)
 	}
+	if !ordering_snapshot_type_is_usable(tmp_typ) {
+		return expr
+	}
+	tmp_name := t.new_temp('order_snapshot')
 	decl := t.make_decl_assign(tmp_name, expr)
 	if tmp_typ.len > 0 {
 		t.set_node_typ(int(decl), tmp_typ)
@@ -3684,10 +3687,27 @@ fn (mut t Transformer) snapshot_transformed_expr_for_reuse(expr flat.NodeId, typ
 	if t.is_pure_constant_expr(expr) || t.is_ordering_snapshot_temp(expr) {
 		return expr
 	}
+	if !ordering_snapshot_type_is_usable(typ) {
+		return expr
+	}
 	tmp_name := t.new_temp(prefix)
 	t.ordering_snapshot_names[tmp_name] = true
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, expr, typ)
 	return t.make_ident(tmp_name)
+}
+
+// ordering_snapshot_type_is_usable reports whether `typ` can back a temp declared by an ordering
+// guard. A name that denotes a compile-time namespace rather than a value has no usable type —
+// the checker records `unknown` for a module identifier and `void` for a type name — so spilling
+// it emits uncompilable C (`unknown __order_snapshot_0 = os;`,
+// `void __order_snapshot_0 = shapes__Box;`). call_selector_base_is_namespace keeps such bases out
+// of the guards for every callee spelling it recognizes; this is the backstop for the rest, where
+// leaving the operand inline only forfeits the source-order guarantee instead of breaking the
+// build. An empty type stays allowed: the temp is then declared without one and C generation
+// infers it from the initializer.
+fn ordering_snapshot_type_is_usable(typ string) bool {
+	name := trimmed_transform_text(typ)
+	return name != 'unknown' && name != 'void'
 }
 
 // is_ordering_snapshot_temp reports whether `id` is an identifier naming a temp already created
