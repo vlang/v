@@ -455,3 +455,28 @@ fn main() {
 	assert c_code.contains('\t__shared__Optional_string* b;'), c_code
 	assert !c_code.contains('struct __shared__Optional {\n\tsync__RwMutex mtx;\n\tOptional_string val;'), c_code
 }
+
+fn test_shared_map_field_stringification_reads_payload() {
+	c_code := lock_codegen_gen_c_sources('shared_map_field_stringification', {
+		'main.v':         'module main
+
+import binary
+
+struct SharedFieldStruct {
+	other int
+}
+
+fn main() {
+	println(binary.SharedFieldStruct{})
+}
+'
+		'binary/types.v': 'module binary
+
+pub struct SharedFieldStruct {
+pub mut:
+	values shared map[string]string
+}
+'
+	})
+	assert c_code.contains('.values->val, 1, 1, 0)'), c_code
+}
