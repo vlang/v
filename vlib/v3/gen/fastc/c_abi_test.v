@@ -72,6 +72,9 @@ fn fastc_c_abi_check_source(host_os string, prelude string) string {
 	out << '#include <sys/wait.h>'
 	out << '#include <errno.h>'
 	out << '#include <dirent.h>'
+	if macos {
+		out << '#include <CommonCrypto/CommonDigest.h>'
+	}
 	out << '#include <unistd.h>'
 	out << '#include <fcntl.h>'
 	out << '#include <time.h>'
@@ -93,6 +96,9 @@ fn fastc_c_abi_check_source(host_os string, prelude string) string {
 	out << '#define CHECK_FN(f) _Static_assert(__builtin_types_compatible_p(__typeof__(v_abi_##f), __typeof__(f)), "prototype " #f)'
 	mut macros := ['O_RDONLY', 'O_WRONLY', 'O_RDWR', 'O_APPEND', 'O_CREAT', 'O_TRUNC', 'O_EXCL',
 		'O_CLOEXEC', 'S_IRUSR', 'S_IWUSR', 'S_IXUSR', 'S_IRGRP', 'S_IWGRP', 'S_IXGRP', 'S_IROTH',
+		'O_SYNC', 'S_IRUSR', 'S_IWUSR', 'S_IXUSR', 'S_IRGRP', 'S_IWGRP', 'S_IXGRP', 'S_IROTH',
+		'O_NONBLOCK', 'S_IRUSR', 'S_IWUSR', 'S_IXUSR', 'S_IRGRP', 'S_IWGRP', 'S_IXGRP', 'S_IROTH',
+		'O_NOCTTY', 'S_IRUSR', 'S_IWUSR', 'S_IXUSR', 'S_IRGRP', 'S_IWGRP', 'S_IXGRP', 'S_IROTH',
 		'S_IWOTH', 'S_IXOTH', 'S_IFMT', 'S_IFDIR', 'S_IFREG', 'S_IFLNK', 'S_IFSOCK', 'S_IFIFO',
 		'S_IFCHR', 'S_IFBLK', 'F_GETFD', 'F_SETFD', 'FD_CLOEXEC', 'EINTR', 'EAGAIN', 'ENOENT',
 		'EEXIST', 'SEEK_SET', 'SEEK_CUR', 'SEEK_END', 'EOF', '_IOFBF', '_IOLBF', '_IONBF', 'BUFSIZ',

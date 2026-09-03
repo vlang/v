@@ -69,6 +69,7 @@ fn fastc_c_abi_functions(target_os string, target_arch string) []FastcCAbiFuncti
 		fastc_c_abi_fn('strerror', 'char *@(int);', ''),
 		fastc_c_abi_fn('bzero', 'void @(void *, size_t);', ''),
 		fastc_c_abi_fn('fopen', 'FILE *@(const char *, const char *);', ''),
+		fastc_c_abi_fn('fdopen', 'FILE *@(int, const char *);', ''),
 		fastc_c_abi_fn('fclose', 'int @(FILE *);', ''),
 		fastc_c_abi_fn('fread', 'size_t @(void *, size_t, size_t, FILE *);', ''),
 		fastc_c_abi_fn('fwrite', 'size_t @(const void *, size_t, size_t, FILE *);', ''),
@@ -96,6 +97,8 @@ fn fastc_c_abi_functions(target_os string, target_arch string) []FastcCAbiFuncti
 		fastc_c_abi_fn('read', 'ssize_t @(int, void *, size_t);', ''),
 		fastc_c_abi_fn('write', 'ssize_t @(int, const void *, size_t);', ''),
 		fastc_c_abi_fn('lseek', 'off_t @(int, off_t, int);', ''),
+		fastc_c_abi_fn('ftruncate', 'int @(int, off_t);', ''),
+		fastc_c_abi_fn('symlink', 'int @(const char *, const char *);', ''),
 		fastc_c_abi_fn('fcntl', 'int @(int, int, ...);', ''),
 		fastc_c_abi_fn('ioctl', 'int @(int, unsigned long, ...);', ''),
 		fastc_c_abi_fn('isatty', 'int @(int);', ''),
@@ -156,6 +159,7 @@ fn fastc_c_abi_functions(target_os string, target_arch string) []FastcCAbiFuncti
 	]
 	if macos {
 		fns << fastc_c_abi_fn('__error', 'int *@(void);', '')
+		fns << fastc_c_abi_fn('CC_SHA256', 'unsigned char *@(const void *, unsigned int, unsigned char *);', '')
 		fns << fastc_c_abi_fn('mach_absolute_time', 'uint64_t @(void);', '')
 		fns << fastc_c_abi_fn('mach_timebase_info', 'int @(mach_timebase_info_data_t *);', '')
 		fns << fastc_c_abi_fn('clock_gettime_nsec_np', 'uint64_t @(clockid_t);', '')
@@ -226,6 +230,9 @@ fn fastc_c_abi_prelude(target_os string, target_arch string, p string) string {
 		b.writeln('#define ${p}O_TRUNC 0x400')
 		b.writeln('#define ${p}O_EXCL 0x800')
 		b.writeln('#define ${p}O_CLOEXEC 0x1000000')
+		b.writeln('#define ${p}O_SYNC 0x80')
+		b.writeln('#define ${p}O_NONBLOCK 0x4')
+		b.writeln('#define ${p}O_NOCTTY 0x20000')
 		b.writeln('#define ${p}EAGAIN 35')
 		b.writeln('#define ${p}BUFSIZ 1024')
 		b.writeln('#define ${p}MAP_ANONYMOUS 0x1000')
@@ -286,6 +293,9 @@ fn fastc_c_abi_prelude(target_os string, target_arch string, p string) string {
 		b.writeln('#define ${p}O_TRUNC 01000')
 		b.writeln('#define ${p}O_EXCL 0200')
 		b.writeln('#define ${p}O_CLOEXEC 02000000')
+		b.writeln('#define ${p}O_SYNC 04010000')
+		b.writeln('#define ${p}O_NONBLOCK 04000')
+		b.writeln('#define ${p}O_NOCTTY 0400')
 		b.writeln('#define ${p}EAGAIN 11')
 		b.writeln('#define ${p}BUFSIZ 8192')
 		b.writeln('#define ${p}MAP_ANONYMOUS 0x20')

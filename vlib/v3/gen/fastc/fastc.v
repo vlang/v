@@ -874,6 +874,27 @@ pub:
 	source_paths []string
 	uses_threads bool
 	c_flags      []string
+	// units describes how c_pieces split into translation units that the
+	// drivers can compile in parallel (see fastc_write_c_units).
+	units FastcUnitLayout
+}
+
+// FastcUnitLayout locates, in a generation's pieces, the shared head (types,
+// constants, globals, prototypes, runtime), the pieces that belong to one
+// unit only (the startup initializer, the cleanup hook and the synthesized
+// main) and the per-file body units. extern_indexes name the head pieces
+// whose definitions must become declarations in every unit but the first
+// (the globals), with extern_texts holding those declarations.
+pub struct FastcUnitLayout {
+pub mut:
+	head_end       int
+	solo_end       int
+	unit_starts    []int
+	extern_indexes []int
+	extern_texts   []string
+	// define_texts are the same pieces with `static` dropped, for the first
+	// unit: a static definition would not satisfy the other units' externs.
+	define_texts []string
 }
 
 // c_source joins the generated C pieces into one string.
@@ -1286,7 +1307,11 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	for source_file in sources {
 		source_paths << source_file.path
 	}
-	c_pieces, uses_threads, c_flags := generate_source_pieces(sources, module_aliases, prefs)!
+	// The layout comes back through a parameter: a struct of arrays as a
+	// multi-return component is not carried correctly by the self-hosted
+	// generator yet.
+	mut units := FastcUnitLayout{}
+	c_pieces, uses_threads, c_flags := generate_source_pieces(sources, module_aliases, prefs, mut units)!
 	fastc_wait_memo_store(mut pending_memo_store)
 	timer.mark('generate_total')
 	return GenerationResult{
@@ -1294,6 +1319,7 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 		source_paths: source_paths
 		uses_threads: uses_threads
 		c_flags: c_flags
+		units: units
 	}
 }
 
@@ -1531,14 +1557,15 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 // generate_source_files emits the program as one C string; tests and the
 // single-source API use it. The driver takes the pieces directly.
 fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[string]string, prefs &pref.Preferences) !(string, bool, []string) {
-	pieces, uses_threads, c_flags := generate_source_pieces(input_sources, module_aliases, prefs)!
+	mut units := FastcUnitLayout{}
+	pieces, uses_threads, c_flags := generate_source_pieces(input_sources, module_aliases, prefs, mut units)!
 	return fastc_join_c_pieces(pieces), uses_threads, c_flags
 }
 
 // generate_source_pieces emits the program as C pieces in output order; the
 // per-file bodies are referenced, not copied, so the multi-megabyte output is
 // never assembled into one buffer here.
-fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[string]string, prefs &pref.Preferences) !([]string, bool, []string) {
+fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[string]string, prefs &pref.Preferences, mut units FastcUnitLayout) !([]string, bool, []string) {
 	// The `int` C spelling is fixed before any source is generated, so the
 	// generation workers below all read the same width.
 	fastc_set_platform_int_bits(prefs.target.pointer_bits)
@@ -1955,7 +1982,16 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 		pieces << '\n'
 	}
+	mut extern_indexes := []int{}
+	mut extern_texts := []string{}
+	mut define_texts := []string{}
+	extern_indexes << pieces.len
+	extern_texts << fastc_extern_declarations(constant_output.declarations, true)
+	define_texts << fastc_extern_declarations(constant_output.declarations, false)
 	pieces << fastc_piece(constant_output.declarations)
+	extern_indexes << pieces.len
+	extern_texts << fastc_extern_declarations(global_output.declarations, true)
+	define_texts << fastc_extern_declarations(global_output.declarations, false)
 	pieces << fastc_piece(global_output.declarations)
 	fastc_collect_c_piece_ranges(mut pieces, prototype_pieces, kept_proto_ranges)
 	if startup_initializers.len > 0 {
@@ -1980,6 +2016,10 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			pieces << '\n'
 		}
 	}
+	// The interface dispatch functions are definitions, so they belong to
+	// one unit; every unit sees their prototypes.
+	pieces << fastc_definition_prototypes(interface_dispatches)
+	head_end := pieces.len
 	pieces << fastc_piece(interface_dispatches)
 	if startup_initializers.len > 0 {
 		pieces << 'static void v_fastc_init_globals(void) {'
@@ -2001,6 +2041,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		pieces << '\n'
 	}
 	pieces << fastc_piece(synthesized_main)
+	solo_end := pieces.len
 	timer.mark('assemble.head')
 	fastc_collect_c_piece_ranges(mut pieces, body_pieces, kept_conditional_ranges)
 	timer.mark('assemble.conditional')
@@ -2010,10 +2051,31 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	if hoisted_body.conditional_ranges.len > 0 {
 		pieces << '\n'
 	}
-	fastc_collect_c_piece_ranges(mut pieces, body_pieces, kept_body_ranges)
+	// The bodies are appended file by file, so each file's pieces form a
+	// unit; the generic instances (after the last file) join the last unit.
+	// Conditional blocks would be body text shared by every unit, so a
+	// program with any keeps a single unit.
+	mut unit_starts := []int{cap: outputs.len + 2}
+	if kept_conditional_ranges.len == 0 && outputs.len > 0 {
+		for i, output in outputs {
+			window_start := output_body_offsets[i]
+			window_end := if i + 1 < outputs.len { output_body_offsets[i + 1] } else { body_len }
+			unit_starts << pieces.len
+			fastc_collect_c_piece_ranges(mut pieces, body_pieces, fastc_window_ranges(kept_body_ranges, window_start, window_end, output.body.len == 0))
+		}
+	} else {
+		fastc_collect_c_piece_ranges(mut pieces, body_pieces, kept_body_ranges)
+	}
 	if hoisted_body.final_kind == 0 {
 		pieces << '\n'
 	}
+	unit_starts << pieces.len
+	units.head_end = head_end
+	units.solo_end = solo_end
+	units.unit_starts = unit_starts
+	units.extern_indexes = extern_indexes
+	units.extern_texts = extern_texts
+	units.define_texts = define_texts
 	timer.mark('assemble')
 	if header_free {
 		// A C function without a prototype in the ABI table must fail the
@@ -2021,6 +2083,203 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		c_flags << '-Werror=implicit-function-declaration'
 	}
 	return pieces, spawn_typedefs.len > 0, c_flags
+}
+
+// fastc_definition_prototypes returns a prototype for every function
+// definition of `text` (a definition starts a line and ends it with `) {`).
+fn fastc_definition_prototypes(text string) string {
+	if text.len == 0 {
+		return ''
+	}
+	mut out := strings.new_builder(text.len / 8 + 64)
+	for line in text.split_into_lines() {
+		if line.len > 4 && !line[0].is_space() && line.ends_with(') {') && !line.starts_with('static ')
+			&& !line.starts_with('#') {
+			out.writeln(line[..line.len - 2] + ';')
+		}
+	}
+	return out.str()
+}
+
+// fastc_window_ranges returns the parts of the ascending [start, end)
+// `ranges` inside [window_start, window_end). An empty body contributes
+// nothing; `empty` short-circuits the search for it.
+fn fastc_window_ranges(ranges []int, window_start int, window_end int, empty bool) []int {
+	mut out := []int{}
+	if empty {
+		return out
+	}
+	for i := 0; i + 1 < ranges.len; i += 2 {
+		start := ranges[i]
+		end := ranges[i + 1]
+		if end <= window_start {
+			continue
+		}
+		if start >= window_end {
+			break
+		}
+		out << if start < window_start { window_start } else { start }
+		out << if end > window_end { window_end } else { end }
+	}
+	return out
+}
+
+// fastc_extern_declarations rewrites the `static` variable definitions of a
+// declaration block for a split build: as `extern` declarations (`as_extern`)
+// for the units that share the globals, or as external definitions (without
+// `static`) for the unit that holds them. Static functions and multi-line
+// initializers are left as they are (they stay per unit).
+fn fastc_extern_declarations(text string, as_extern bool) string {
+	if !fastc_contains(text, 'static ') {
+		return text
+	}
+	mut out := strings.new_builder(text.len)
+	for line in text.split_into_lines() {
+		if line.starts_with('static ') && !fastc_contains(line, '(') && line.ends_with(';') {
+			mut declaration := line['static '.len..]
+			if as_extern {
+				if assign := declaration.index(' = ') {
+					declaration = declaration[..assign] + ';'
+				}
+				out.writeln('extern ' + declaration)
+			} else {
+				out.writeln(declaration)
+			}
+			continue
+		}
+		out.writeln(line)
+	}
+	return out.str()
+}
+
+// fastc_tcc_job_count is the number of TinyCC processes a driver compiles a
+// program's translation units with.
+pub fn fastc_tcc_job_count(prefs &pref.Preferences) int {
+	mut jobs := fastc_nr_cpus()
+	vjobs := os.getenv('VJOBS').int()
+	if vjobs > 0 {
+		jobs = vjobs
+	}
+	if jobs > 8 {
+		jobs = 8
+	}
+	if jobs < 1 {
+		jobs = 1
+	}
+	return jobs
+}
+
+// fastc_write_c_units writes the translation units of a generation for
+// `jobs` parallel TinyCC processes: `prefix.unit<k>.c` files, each with the
+// shared head (the globals as extern declarations after the first), the
+// first also with the startup, cleanup and main pieces, and consecutive body
+// units grouped to balance their sizes. It returns the paths, or none when
+// the program does not split.
+pub fn fastc_write_c_units(prefix string, pieces []string, units FastcUnitLayout, jobs int) ![]string {
+	unit_count := units.unit_starts.len - 1
+	if jobs < 2 || unit_count < 2 || units.head_end <= 0 || units.solo_end > pieces.len {
+		return []string{}
+	}
+	mut total := 0
+	mut unit_sizes := []int{cap: unit_count}
+	for u in 0 .. unit_count {
+		mut size := 0
+		for k in units.unit_starts[u] .. units.unit_starts[u + 1] {
+			size += pieces[k].len
+		}
+		unit_sizes << size
+		total += size
+	}
+	groups := if jobs < unit_count { jobs } else { unit_count }
+	mut paths := []string{cap: groups}
+	mut first_units := []int{cap: groups + 1}
+	mut u := 0
+	mut remaining := total
+	for g in 0 .. groups {
+		// Every group aims at an equal share of what is left, so the last
+		// one does not end up with the remainder of the rounding.
+		target := (remaining + groups - g - 1) / (groups - g)
+		paths << '${prefix}.unit${g}.c'
+		first_units << u
+		mut size := 0
+		remaining_groups := groups - g - 1
+		for u < unit_count {
+			// Leave one unit for every later group; the last group takes the
+			// rest, the others stop at the size target.
+			if unit_count - u <= remaining_groups {
+				break
+			}
+			if size > 0 && remaining_groups > 0 && size + unit_sizes[u] > target {
+				break
+			}
+			size += unit_sizes[u]
+			remaining -= unit_sizes[u]
+			u++
+		}
+	}
+	first_units << unit_count
+	// The files are written concurrently; they add up to several megabytes.
+	mut writers := [
+		spawn fastc_write_c_unit(paths[0], pieces, &units, 0, first_units[0], first_units[1]),
+	]
+	for g in 1 .. groups {
+		writers << spawn fastc_write_c_unit(paths[g], pieces, &units, g, first_units[g], first_units[g + 1])
+	}
+	mut failure := ''
+	for writer in writers {
+		message := writer.wait()
+		if message != '' && failure == '' {
+			failure = message
+		}
+	}
+	if failure != '' {
+		return error(failure)
+	}
+	return paths
+}
+
+// fastc_write_c_unit writes one translation unit: the head (with the shared
+// globals as definitions in the first unit and as externs elsewhere), the
+// pieces every program has once in the first unit, and the bodies of the
+// units `first_unit` to `end_unit`. It returns an error message or ''.
+fn fastc_write_c_unit(path string, pieces []string, units &FastcUnitLayout, g int, first_unit int, end_unit int) string {
+	mut file := os.create(path) or { return 'could not create ${path}: ${err.msg()}' }
+	// One buffered write per unit: piecewise writes cost several times more.
+	mut out := strings.new_builder(1024 * 1024)
+	for k in 0 .. units.head_end {
+		mut text := pieces[k]
+		for e, index in units.extern_indexes {
+			if index == k {
+				text = if g > 0 { units.extern_texts[e] } else { units.define_texts[e] }
+			}
+		}
+		out.write_string(text)
+	}
+	if g == 0 {
+		for k in units.head_end .. units.solo_end {
+			out.write_string(pieces[k])
+		}
+	}
+	out.write_string('\n')
+	for k in units.unit_starts[first_unit] .. units.unit_starts[end_unit] {
+		out.write_string(pieces[k])
+	}
+	file.write(out) or {
+		file.close()
+		return 'could not write ${path}: ${err.msg()}'
+	}
+	file.close()
+	return ''
+}
+
+// FastcUnitCompile is one TinyCC process compiling a translation unit.
+// fastc_remove_c_units deletes the translation unit sources and their
+// objects.
+pub fn fastc_remove_c_units(unit_paths []string) {
+	for unit_path in unit_paths {
+		os.rm(unit_path) or {}
+		os.rm(unit_path[..unit_path.len - 2] + '.o') or {}
+	}
 }
 
 // fastc_generic_method_names collects the bare method and function names of
