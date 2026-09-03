@@ -437,7 +437,7 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 	mut previous_module_separator := false
 	for i, item in tokens {
 		mut piece := item.lit
-		module_separator := g.expression_dot_is_module_separator(tokens, i)
+		module_separator := item.tok == .dot && g.expression_dot_is_module_separator(tokens, i)
 		is_direct_pointer_cast := item.tok in [.amp, .and] && fastc_token_is_prefix_operator(tokens, i) && i + 2 < tokens.len && tokens[i + 1].tok == .name && tokens[i + 2].tok == .lpar && (fastc_primitive_c_type(tokens[i + 1].lit) != none || g.resolve_declared_type_key(tokens[i + 1].lit) != none)
 		is_c_pointer_cast := item.tok in [.amp, .and] && fastc_token_is_prefix_operator(tokens, i) && i + 4 < tokens.len && tokens[i + 1].tok == .name && tokens[i + 1].lit == 'C' && tokens[i + 2].tok == .dot && tokens[i + 3].tok == .name && tokens[i + 4].tok == .lpar
 		if item.source != '' {
@@ -529,7 +529,7 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 			previous := if i == 0 { token.Token.unknown } else { tokens[i - 1].tok }
 			piece = if previous == .dot && i + 1 < tokens.len && tokens[i + 1].tok == .lpar {
 				item.lit
-			} else if previous == .dot && g.expression_dot_is_module_separator(tokens, i - 1) {
+			} else if previous == .dot && previous_module_separator {
 				// The module prefix already makes a qualified keyword-named constant safe
 				// (`orm.float` -> `orm__float`), so do not sanitize the member by itself.
 				item.lit

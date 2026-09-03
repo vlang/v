@@ -1202,6 +1202,12 @@ mut:
 	// Struct field lookups memoized per receiver type and field name (a field
 	// with an empty name records a miss); reset with the other memos.
 	field_memo map[string]map[string]FastcStructField
+	// The render and inference passes commonly ask for the same field several
+	// times in succession. Keep that entry outside the nested maps.
+	last_field_receiver string
+	last_field_name     string
+	last_field          FastcStructField
+	last_field_known    bool
 	// used_field_defaults records that a rendered struct field default was
 	// consulted (see fastc_note_field_defaults_use).
 	used_field_defaults bool
