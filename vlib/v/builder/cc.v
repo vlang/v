@@ -1551,6 +1551,16 @@ fn rewrite_windows_path_arg(arg string, resolver WindowsPathResolver) string {
 	return arg
 }
 
+// cc_uses_short_windows_paths reports whether the given C compiler needs the
+// Windows paths passed to it to be rewritten to their ASCII 8.3 short forms
+// first. Both tcc and the MinGW gcc toolchain read response file contents
+// with the ANSI C runtime: non-ASCII characters in paths get mangled on
+// Windows setups, whose active code page can not represent them (or whose
+// compiler expects UTF-8), so V passes them only as pure ASCII short paths.
+fn cc_uses_short_windows_paths(cc CC) bool {
+	return cc in [.gcc, .tcc]
+}
+
 fn short_windows_path(path string) string {
 	$if windows {
 		return os.short_path(path)
@@ -1560,7 +1570,7 @@ fn short_windows_path(path string) string {
 
 fn (v &Builder) tcc_windows_path(p string) string {
 	$if windows {
-		if v.ccoptions.cc == .tcc {
+		if cc_uses_short_windows_paths(v.ccoptions.cc) {
 			return short_windows_path(p)
 		}
 	}
@@ -1569,7 +1579,7 @@ fn (v &Builder) tcc_windows_path(p string) string {
 
 fn (v &Builder) tcc_windows_path_arg(arg string) string {
 	$if windows {
-		if v.ccoptions.cc == .tcc {
+		if cc_uses_short_windows_paths(v.ccoptions.cc) {
 			return rewrite_windows_path_arg(arg, short_windows_path)
 		}
 	}

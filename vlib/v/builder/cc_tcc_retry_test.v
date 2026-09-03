@@ -258,3 +258,18 @@ fn test_rewrite_windows_path_arg_leaves_non_paths_alone() {
 		assert rewrite_windows_path_arg(arg, fake_windows_short_path) == arg
 	}
 }
+
+fn test_cc_uses_short_windows_paths() {
+	// tcc and the MinGW gcc toolchain both read response files with the ANSI
+	// C runtime, so both need ASCII 8.3 short paths on Windows (see issue #28126).
+	assert cc_uses_short_windows_paths(.tcc)
+	assert cc_uses_short_windows_paths(.gcc)
+	// clang, msvc, icc, emcc and unknown compilers are excluded:
+	// msvc uses the wide CreateProcessW command line directly, while the
+	// clang/LLVM toolchain handles Unicode paths on its own.
+	assert !cc_uses_short_windows_paths(.clang)
+	assert !cc_uses_short_windows_paths(.msvc)
+	assert !cc_uses_short_windows_paths(.icc)
+	assert !cc_uses_short_windows_paths(.emcc)
+	assert !cc_uses_short_windows_paths(.unknown)
+}
