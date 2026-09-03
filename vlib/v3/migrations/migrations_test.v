@@ -25,6 +25,8 @@ mut:
 	sqlite_version            string = '3.46.0'
 	fail_sqlite_lock          bool
 	fail_sqlite_commit        bool
+	postgresql_lock_owned     bool = true
+	mysql_lock_owned          bool = true
 }
 
 fn (mut conn RecordingConnection) select(_ orm.SelectConfig, _ orm.QueryData, _ orm.QueryData) ![][]orm.Primitive {
@@ -107,6 +109,16 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	if query == 'SET search_path TO other_schema;' {
 		conn.schema = 'other_schema'
 	}
+	if query == 'SELECT pg_catalog.pg_advisory_unlock_all();' {
+		conn.postgresql_lock_owned = false
+		return []
+	}
+	if query == 'SELECT RELEASE_ALL_LOCKS();' {
+		conn.mysql_lock_owned = false
+		return [orm.Row{
+			vals: ['1']
+		}]
+	}
 	probe_prefix := "SELECT pg_catalog.set_config('${postgresql_transaction_probe_setting}', '"
 	if query.starts_with(probe_prefix) {
 		value := query.all_after(probe_prefix).all_before("', true);")
@@ -177,10 +189,38 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 			vals: [conn.sqlite_version]
 		}]
 	}
-	if query.starts_with('SELECT GET_LOCK(') || query.starts_with('SELECT RELEASE_LOCK(')
-		|| query.starts_with('SELECT pg_advisory_unlock(') {
+	if query.starts_with('SELECT pg_advisory_lock(') {
+		conn.postgresql_lock_owned = true
+		return []
+	}
+	if query.starts_with('SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_locks ') {
+		return [orm.Row{
+			vals: [if conn.postgresql_lock_owned { 't' } else { 'f' }]
+		}]
+	}
+	if query.starts_with('SELECT pg_advisory_unlock(') {
+		owned := conn.postgresql_lock_owned
+		conn.postgresql_lock_owned = false
+		return [orm.Row{
+			vals: [if owned { 't' } else { 'f' }]
+		}]
+	}
+	if query.starts_with('SELECT GET_LOCK(') {
+		conn.mysql_lock_owned = true
 		return [orm.Row{
 			vals: ['1']
+		}]
+	}
+	if query.starts_with('SELECT IS_USED_LOCK(') {
+		return [orm.Row{
+			vals: [if conn.mysql_lock_owned { '1' } else { '0' }]
+		}]
+	}
+	if query.starts_with('SELECT RELEASE_LOCK(') {
+		owned := conn.mysql_lock_owned
+		conn.mysql_lock_owned = false
+		return [orm.Row{
+			vals: [if owned { '1' } else { '0' }]
 		}]
 	}
 	return []
@@ -399,6 +439,18 @@ fn rollback_callback_transaction(mut ctx Context) ! {
 	ctx.execute('ROLLBACK;')!
 }
 
+fn no_op_migration(mut ctx Context) ! {
+	_ = ctx.dialect
+}
+
+fn release_postgresql_migration_lock(mut ctx Context) ! {
+	ctx.execute('SELECT pg_catalog.pg_advisory_unlock_all();')!
+}
+
+fn release_mysql_migration_lock(mut ctx Context) ! {
+	ctx.execute('SELECT RELEASE_ALL_LOCKS();')!
+}
+
 fn create_sqlite_table_then_rollback(mut ctx Context) ! {
 	ctx.create_table(Table{
 		name: 'rolled_back_callback_table'
@@ -427,6 +479,7 @@ fn assert_postgresql_transaction_probe(queries []string) {
 
 fn test_migrate_rollback_redo_and_status() {
 	mut db := sqlite.connect(':memory:')!
+	db.exec('PRAGMA foreign_keys = ON;')!
 	defer {
 		db.close() or {}
 	}
@@ -443,7 +496,7 @@ fn test_migrate_rollback_redo_and_status() {
 			up:      add_account_name
 			down:    remove_account_name
 		},
-	], Config{})!
+	], Config{ dialect: .sqlite })!
 
 	assert runner.pending()!.map(it.version) == [i64(202608160001), 202608160002]
 	applied := runner.migrate()!
@@ -451,6 +504,12 @@ fn test_migrate_rollback_redo_and_status() {
 	assert runner.current_version()! == 202608160002
 	assert db.q_int("SELECT count(*) FROM pragma_table_info('accounts') WHERE name = 'name';")! == 1
 	assert db.q_int("SELECT count(*) FROM pragma_foreign_key_list('accounts') WHERE `from` = 'organization_id';")! == 1
+	mut foreign_key_error := ''
+	db.exec("INSERT INTO accounts (email, organization_id) VALUES ('orphan@example.com', 999);") or {
+		foreign_key_error = err.msg()
+	}
+	assert foreign_key_error.to_upper().contains('FOREIGN KEY'), foreign_key_error
+	assert db.q_int('SELECT count(*) FROM accounts;')! == 0
 	assert db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'index_accounts_on_name';")! == 1
 	assert runner.migrate()!.len == 0
 
@@ -469,7 +528,7 @@ fn test_migrate_rollback_redo_and_status() {
 	runner.migrate_to(0)!
 	assert db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'accounts';")! == 0
 	assert runner.current_version()! == 0
-	db.exec("INSERT INTO schema_migrations (version, name, applied_at) VALUES (99, 'missing_file', '2026-08-16T00:00:00.000Z');")!
+	db.exec("INSERT INTO schema_migrations (version) VALUES ('99');")!
 	missing := runner.status()!.filter(it.state == .missing)
 	assert missing.len == 1
 	assert missing[0].version == 99
@@ -479,7 +538,6 @@ fn test_migrate_rollback_redo_and_status() {
 	}
 	assert false
 }
-
 fn test_failed_migration_rolls_back_schema_and_history() {
 	mut db := sqlite.connect(':memory:')!
 	defer {
@@ -492,7 +550,7 @@ fn test_failed_migration_rolls_back_schema_and_history() {
 			up:      fail_after_create
 			down:    drop_should_rollback
 		},
-	], Config{})!
+	], Config{ dialect: .sqlite })!
 
 	runner.migrate() or {
 		assert err.msg().contains('forced migration failure')
@@ -515,7 +573,7 @@ fn test_context_supports_v3_orm_sql_blocks() {
 			up:      create_widget_with_orm_dsl
 			down:    drop_widget_with_orm_dsl
 		},
-	], Config{})!
+	], Config{ dialect: .sqlite })!
 
 	runner.migrate()!
 	assert db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'migrationwidget';")! == 1
@@ -1097,7 +1155,7 @@ fn test_sqlite_history_table_is_pinned_to_main() {
 		assert runner.migrate()!.map(it.version) == [i64(1)]
 		assert runner.applied()!.map(it.name) == ['persistent_history']
 		assert db.q_int("SELECT count(*) FROM main.sqlite_master WHERE type = 'table' AND name = 'persistent_from_migration';")! == 1
-		assert db.q_string('SELECT name FROM main.schema_migrations WHERE version = 1;')! == 'persistent_history'
+		assert db.q_int("SELECT count(*) FROM main.schema_migrations WHERE version = '1';")! == 1
 		if temp_table_exists {
 			assert db.q_string('SELECT name FROM temp.schema_migrations WHERE version = 1;')! == 'shadow'
 		} else {
@@ -1116,7 +1174,7 @@ fn test_migration_names_reject_nul_bytes_before_database_access() {
 			up:      record_locked_migration
 			down:    record_locked_migration
 		},
-	], Config{}) or {
+	], Config{ dialect: .sqlite }) or {
 		assert err.msg() == 'migration 1 name must not contain NUL bytes'
 		assert recorder.queries.len == 0
 		return
@@ -1461,55 +1519,34 @@ fn test_postgresql_change_column_rejects_explicit_constraint_removals() {
 	assert false
 }
 
-fn test_mysql_change_column_requires_complete_definition() {
+fn test_mysql_change_column_rejects_lossy_redefinitions() {
 	mut recorder := &RecordingConnection{}
 	mut ctx := new_context(recorder, .mysql)
 	mut error_message := ''
-	ctx.change_column('accounts', Column{
-		name: 'score'
-		kind: .bigint
-	}) or { error_message = err.msg() }
-	assert error_message == 'MySQL change_column requires a complete column definition; missing options: nullable, default_sql, auto_increment'
-	assert recorder.queries.len == 0
-
-	error_message = ''
-	ctx.change_column('accounts', Column{
-		name:           'score'
-		kind:           .bigint
-		nullable:       true
-		default_sql:    ''
-		unique:         false
-		primary_key:    false
-		auto_increment: false
-	}) or { error_message = err.msg() }
-	assert error_message == 'MySQL change_column cannot remove key constraints; unsupported false options: unique, primary_key; use remove_index() or ctx.execute()'
-	assert recorder.queries.len == 0
-
 	ctx.change_column('accounts', Column{
 		name:           'score'
 		kind:           .bigint
 		nullable:       false
 		default_sql:    '0'
 		auto_increment: false
-	})!
-	assert recorder.queries == [
-		'ALTER TABLE `accounts` MODIFY COLUMN `score` BIGINT NOT NULL DEFAULT 0;',
-	]
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL change_column cannot safely preserve attributes outside Column; use ctx.execute() with a complete MODIFY COLUMN definition'
+	assert recorder.queries.len == 0
 }
 
-fn test_mysql_change_column_preserves_omitted_auto_increment_key() {
+fn test_mysql_change_column_rejects_auto_increment_redefinitions() {
 	mut recorder := &RecordingConnection{}
 	mut ctx := new_context(recorder, .mysql)
+	mut error_message := ''
 	ctx.change_column('accounts', Column{
 		name:           'id'
 		kind:           .bigint
 		nullable:       false
 		default_sql:    ''
 		auto_increment: true
-	})!
-	assert recorder.queries == [
-		'ALTER TABLE `accounts` MODIFY COLUMN `id` BIGINT AUTO_INCREMENT NOT NULL;',
-	]
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL change_column cannot safely preserve attributes outside Column; use ctx.execute() with a complete MODIFY COLUMN definition'
+	assert recorder.queries.len == 0
 }
 
 fn test_mysql_auto_increment_requires_a_key() {
@@ -2271,7 +2308,7 @@ fn test_validation_and_portable_sql_generation() {
 			up:      create_accounts
 			down:    drop_accounts
 		},
-	], Config{}) or {
+	], Config{ dialect: .sqlite }) or {
 		assert err.msg() == 'duplicate migration version 7'
 		assert column_type_sql(.pg, Column{ name: 'payload', kind: .jsonb })! == 'JSONB'
 		assert column_type_sql(.mysql, Column{ name: 'amount', kind: .double_precision })! == 'DOUBLE'
@@ -2579,4 +2616,184 @@ fn test_caller_supplied_identifiers_respect_dialect_limits() {
 	}) or { error_message = err.msg() }
 	assert error_message == 'MySQL migration history table name `application.archive.schema_migrations` must not exceed 2 components'
 	assert history_recorder.queries.len == 0
+}
+
+fn assert_callback_lock_release_is_rejected(dialect Dialect, mode TransactionMode, callback MigrationFn) {
+	migration := Migration{
+		version:          1
+		name:             'release_lock'
+		up:               callback
+		down:             callback
+		transaction_mode: mode
+	}
+	mut up_recorder := &RecordingConnection{}
+	mut up_runner := new(mut up_recorder, [migration], Config{ dialect: dialect })!
+	mut error_message := ''
+	up_runner.migrate() or { error_message = err.msg() }
+	assert error_message.contains('no longer owns'), error_message
+	assert up_recorder.queries.filter(it.starts_with('INSERT INTO ')).len == 0
+
+	mut down_recorder := &RecordingConnection{
+		history_rows: [orm.Row{
+			vals: ['1', migration.name, '2026-08-16T00:00:00Z']
+		}]
+	}
+	mut down_runner := new(mut down_recorder, [migration], Config{ dialect: dialect })!
+	error_message = ''
+	down_runner.rollback(1) or { error_message = err.msg() }
+	assert error_message.contains('no longer owns'), error_message
+	assert down_recorder.queries.filter(it.starts_with('DELETE FROM ')).len == 0
+}
+
+fn test_callbacks_cannot_release_database_migration_locks() {
+	for mode in [TransactionMode.always, .never] {
+		assert_callback_lock_release_is_rejected(.pg, mode, release_postgresql_migration_lock)
+		assert_callback_lock_release_is_rejected(.mysql, mode, release_mysql_migration_lock)
+	}
+}
+
+fn test_postgresql_inspection_rejects_an_active_transaction() {
+	mut recorder := &RecordingConnection{
+		in_transaction: true
+	}
+	mut runner := new(mut recorder, []Migration{}, Config{ dialect: .pg })!
+	mut error_message := ''
+	runner.applied() or { error_message = err.msg() }
+	assert error_message == 'PostgreSQL migrations require a connection without an already-open transaction; pg.Tx and transactional pg.Conn values are not supported'
+	assert runner.resolved_history_namespace == ''
+	assert recorder.queries.len == 2
+}
+
+fn test_rails_and_v_history_tables_are_interoperable() {
+	mut rails_db := sqlite.connect(':memory:')!
+	defer {
+		rails_db.close() or {}
+	}
+	rails_db.exec('CREATE TABLE schema_migrations (version VARCHAR(255) PRIMARY KEY);')!
+	rails_db.exec("INSERT INTO schema_migrations (version) VALUES ('1');")!
+	mut rails_runner := new(mut rails_db, [
+		Migration{
+			version: 1
+			name:    'already_applied'
+			up:      no_op_migration
+			down:    no_op_migration
+		},
+		Migration{
+			version: 2
+			name:    'pending'
+			up:      no_op_migration
+			down:    no_op_migration
+		},
+	], Config{ dialect: .sqlite })!
+	assert rails_runner.applied()!.map(it.name) == ['already_applied']
+	assert rails_runner.migrate()!.map(it.version) == [i64(2)]
+	assert rails_db.q_int('SELECT count(*) FROM schema_migrations;')! == 2
+	rails_runner.rollback_last()!
+	assert rails_db.q_int('SELECT count(*) FROM schema_migrations;')! == 1
+
+	mut v_db := sqlite.connect(':memory:')!
+	defer {
+		v_db.close() or {}
+	}
+	mut v_runner := new(mut v_db, []Migration{}, Config{ dialect: .sqlite })!
+	assert v_runner.applied()!.len == 0
+	v_db.exec("INSERT INTO schema_migrations (version) VALUES (99);")!
+	assert v_runner.applied()!.map(it.version) == [i64(99)]
+}
+
+
+fn test_legacy_v_history_tables_keep_metadata_writes() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	db.exec('CREATE TABLE schema_migrations (version BIGINT PRIMARY KEY, name VARCHAR(255) NOT NULL, applied_at VARCHAR(32) NOT NULL);')!
+	mut runner := new(mut db, [
+		Migration{
+			version: 1
+			name:    'legacy_metadata'
+			up:      no_op_migration
+			down:    no_op_migration
+		},
+	], Config{ dialect: .sqlite })!
+	runner.migrate()!
+	assert db.q_string('SELECT name FROM schema_migrations WHERE version = 1;')! == 'legacy_metadata'
+	assert db.q_string('SELECT applied_at FROM schema_migrations WHERE version = 1;')! != ''
+	runner.rollback_last()!
+	assert db.q_int('SELECT count(*) FROM schema_migrations;')! == 0
+}
+
+fn test_migrate_to_requires_an_exact_registered_target() {
+	mut recorder := &RecordingConnection{}
+	mut runner := new(mut recorder, [
+		Migration{
+			version: 10
+			name:    'ten'
+			up:      no_op_migration
+			down:    no_op_migration
+		},
+	], Config{ dialect: .sqlite })!
+	mut error_message := ''
+	runner.migrate_to(5) or { error_message = err.msg() }
+	assert error_message == 'unknown migration target version 5'
+	assert recorder.queries.len == 0
+}
+
+fn test_migration_transaction_mode_overrides_config() {
+	mut always_recorder := &RecordingConnection{}
+	mut always_runner := new(mut always_recorder, [
+		Migration{
+			version:          1
+			name:             'always'
+			up:               no_op_migration
+			down:             no_op_migration
+			transaction_mode: .always
+		},
+	], Config{
+		dialect:          .pg
+		transaction_mode: .never
+	})!
+	always_runner.migrate()!
+	assert 'ORM BEGIN' in always_recorder.queries
+	assert 'ORM COMMIT' in always_recorder.queries
+
+	mut never_recorder := &RecordingConnection{}
+	mut never_runner := new(mut never_recorder, [
+		Migration{
+			version:          1
+			name:             'never'
+			up:               no_op_migration
+			down:             no_op_migration
+			transaction_mode: .never
+		},
+	], Config{
+		dialect:          .pg
+		transaction_mode: .always
+	})!
+	never_runner.migrate()!
+	assert 'ORM BEGIN' !in never_recorder.queries
+	assert 'ORM COMMIT' !in never_recorder.queries
+}
+
+fn test_duplicate_migration_names_are_rejected() {
+	mut recorder := &RecordingConnection{}
+	new(mut recorder, [
+		Migration{
+			version: 1
+			name:    'duplicate'
+			up:      no_op_migration
+			down:    no_op_migration
+		},
+		Migration{
+			version: 2
+			name:    'duplicate'
+			up:      no_op_migration
+			down:    no_op_migration
+		},
+	], Config{ dialect: .sqlite }) or {
+		assert err.msg() == 'duplicate migration name `duplicate`'
+		assert recorder.queries.len == 0
+		return
+	}
+	assert false
 }

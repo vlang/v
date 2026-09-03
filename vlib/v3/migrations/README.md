@@ -2,7 +2,9 @@
 
 `v3.migrations` provides ordered, reversible ORM migrations for the V3 compiler. It records
 applied versions in `schema_migrations`, uses transactions when the database supports transactional
-DDL, and supports migrate, rollback, redo, reset, target-version, and status workflows.
+DDL, and supports migrate, rollback, redo, reset, exact target-version, and status workflows.
+New history tables use Rails' version-only schema_migrations shape. Existing V history tables
+that contain name and applied_at metadata remain readable and writable.
 
 Mutating workflows hold a database-level lock from before the applied-version snapshot through all
 callbacks and history updates. PostgreSQL uses an advisory lock, MySQL uses a named lock, and
@@ -37,6 +39,7 @@ fn drop_users(mut ctx migrations.Context) ! {
 }
 
 mut db := sqlite.connect('app.db')!
+db.exec('PRAGMA foreign_keys = ON;')!
 mut migrator := migrations.new(mut db, [
     migrations.Migration{
         version: 20260816143000
@@ -82,9 +85,9 @@ explicit constraint DDL. PostgreSQL serial columns reject
 explicit defaults, and index removal derives the index schema from a qualified table; PostgreSQL
 index names are unqualified when adding them.
 SQLite non-integer primary keys are explicitly non-nullable. Decimal scale requires a positive
-precision. MySQL `change_column` requires nullable, default, and auto-increment attributes; omitted
-key options, including those on auto-increment columns, are preserved, additions use `true`, and
-removals must use `remove_index()` or raw SQL.
+precision. MySQL `change_column` is rejected because `MODIFY COLUMN` replaces attributes that the portable
+`Column` type cannot represent safely, including unsigned state, collation, comments, and generated
+expressions. Use trusted `ctx.execute()` with an explicit complete definition instead.
 MySQL auto-increment columns must be primary keys or unique, MySQL index names must be unqualified
 when adding or removing them, and tables cannot contain more than one auto-increment column. MySQL
 foreign keys reject `SET DEFAULT`. Column-level identifiers must be unqualified. Generated
@@ -98,8 +101,9 @@ PostgreSQL and SQLite table rename targets must also be unqualified; MySQL keeps
 qualified table targets. MySQL migrations default to non-transactional execution because MySQL DDL
 implicitly commits. MySQL history strings use hex literals, while PostgreSQL uses explicit escape
 strings with doubled backslashes, avoiding session-mode-sensitive escaping.
-The migrator accepts `orm.TransactionalConnection` implementations, and `Config.transaction_mode`
-can override whether per-migration transaction methods are used for DDL. SQLite's immediate lock
+The migrator accepts `orm.TransactionalConnection` implementations. `Config.transaction_mode`
+sets the default, while `Migration.transaction_mode` can override it for one migration. SQLite's
+immediate lock
 transaction still covers each mutating workflow; failed acquisition and commit paths roll back and
 remove their temporary transaction probes. Migration names containing NUL bytes are rejected before
 any database access. PostgreSQL migrations reject `orm.DB` decorators without probing their
@@ -119,3 +123,13 @@ session autocommit, using a unique savepoint name for each transaction-state pro
 MySQL history table is resolved and retained on first use, so later database changes on the same
 connection cannot redirect history operations or lock namespacing. Callback-created MySQL
 transaction state is rolled back and rejected before the named migration lock is released.
+
+PostgreSQL and MySQL verify that callbacks still own the database migration lock before every
+history write. PostgreSQL inspection methods reject caller-owned transactions so transaction-local
+namespace settings cannot become retained migration state. `migrate_to(version)` accepts zero or an
+exactly registered version; use `migrate()` for every pending migration. Duplicate migration names
+and versions are rejected, and `Config.dialect` and `Column.kind` are required fields.
+
+SQLite foreign-key declarations are enforced only when each connection enables
+`PRAGMA foreign_keys = ON`; applications should set it immediately after opening the connection,
+before migrations and normal queries.
