@@ -878,7 +878,7 @@ fn test_array_sort_with_compare_uses_stable_sort_adapters() {
 
 fn test_array_sort_expression_key_avoids_sanitized_name_collisions() {
 	os.chdir(vroot) or {}
-	test_dir := os.join_path(os.vtmp_dir(), 'coutput_array_sort_expr_collision_${os.getpid()}')
+	test_dir := os.join_path(os.temp_dir(), 'coutput_array_sort_expr_collision_${os.getpid()}')
 	os.mkdir_all(test_dir)!
 	defer {
 		os.rmdir_all(test_dir) or {}
