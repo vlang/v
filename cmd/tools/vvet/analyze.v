@@ -32,10 +32,10 @@ mut:
 	repeated_expr_cutoff     shared map[string]int // repeated code cutoff	
 	repeated_expr            shared map[string]map[string]map[string][]token.Pos // repeated exprs in fn scope
 	potential_non_inlined    shared map[string]map[string]token.Pos              // fns might be inlined
-	call_counter             shared map[string]int // fn call counter
-	unqualified_call_counter shared map[string]int // calls keyed by `<caller module>.<bare name>`
+	call_counter             shared map[string]int  // fn call counter
+	unqualified_call_counter shared map[string]int  // calls keyed by `<caller module>.<bare name>`
 	declared_fns             shared map[string]bool // all function declarations, keyed by fkey
-	cur_fn                   ast.FnDecl            // current fn declaration
+	cur_fn                   ast.FnDecl             // current fn declaration
 }
 
 // stmt checks for repeated code in statements
