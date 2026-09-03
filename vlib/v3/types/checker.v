@@ -4048,10 +4048,30 @@ fn c_fn_decl_signatures_compatible(a CFnDeclSignature, b CFnDeclSignature) bool 
 	if !c_fn_decl_abi_types_compatible(a.return_type, b.return_type) {
 		return false
 	}
-	if a.is_variadic != b.is_variadic || a.params.len != b.params.len {
+	if a.is_variadic != b.is_variadic {
+		variadic := if a.is_variadic { a } else { b }
+		fixed := if a.is_variadic { b } else { a }
+		if fixed.params.len < variadic.params.len
+			|| !c_fn_decl_param_prefix_compatible(fixed.params, variadic.params, variadic.params.len) {
+			return false
+		}
+		for i in variadic.params.len .. fixed.params.len {
+			if !c_fn_fixed_param_is_compatible_with_variadic(fixed.params[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	if a.params.len != b.params.len {
 		return false
 	}
 	return c_fn_decl_param_prefix_compatible(a.params, b.params, a.params.len)
+}
+
+fn c_fn_fixed_param_is_compatible_with_variadic(typ string) bool {
+	// These types are changed by C's default argument promotions. A fixed
+	// declaration would therefore not describe the same argument ABI.
+	return typ !in ['i8', 'i16', 'u8', 'u16', 'float', 'char', 'bool']
 }
 
 fn c_fn_decl_param_prefix_compatible(a []string, b []string, count int) bool {
