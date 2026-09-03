@@ -690,6 +690,7 @@ pub mut:
 	c_fn_module_ret_types            map[string]Type
 	c_fn_module_param_types          map[string][]Type
 	c_fn_module_variadic             map[string]bool
+	c_fn_abi_variadic_prefixes       map[string]int
 	fn_shared_params                 map[string][]bool
 	mut_receiver_methods             map[string]bool
 	source_no_body_fns               map[string]bool
@@ -1008,6 +1009,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		c_fn_module_ret_types:                 map[string]Type{}
 		c_fn_module_param_types:               map[string][]Type{}
 		c_fn_module_variadic:                  map[string]bool{}
+		c_fn_abi_variadic_prefixes:            map[string]int{}
 		fn_shared_params:                      map[string][]bool{}
 		mut_receiver_methods:                  map[string]bool{}
 		source_no_body_fns:                    map[string]bool{}
@@ -1169,6 +1171,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		c_fn_module_ret_types:              tc.c_fn_module_ret_types
 		c_fn_module_param_types:            tc.c_fn_module_param_types
 		c_fn_module_variadic:               tc.c_fn_module_variadic
+		c_fn_abi_variadic_prefixes:         tc.c_fn_abi_variadic_prefixes
 		fn_shared_params:                   tc.fn_shared_params
 		mut_receiver_methods:               tc.mut_receiver_methods
 		source_no_body_fns:                 tc.source_no_body_fns
@@ -3581,6 +3584,11 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 						false)
 				}
 				if is_variadic {
+					tc.c_fn_abi_variadic_prefixes[c_name] = if ptypes.len > 0 {
+						ptypes.len - 1
+					} else {
+						0
+					}
 					tc.register_c_variadic_fn(node.value)
 				}
 				if !node.value.starts_with('C.') {
@@ -4048,10 +4056,30 @@ fn c_fn_decl_signatures_compatible(a CFnDeclSignature, b CFnDeclSignature) bool 
 	if !c_fn_decl_abi_types_compatible(a.return_type, b.return_type) {
 		return false
 	}
-	if a.is_variadic != b.is_variadic || a.params.len != b.params.len {
+	if a.is_variadic != b.is_variadic {
+		variadic := if a.is_variadic { a } else { b }
+		fixed := if a.is_variadic { b } else { a }
+		if fixed.params.len < variadic.params.len
+			|| !c_fn_decl_param_prefix_compatible(fixed.params, variadic.params, variadic.params.len) {
+			return false
+		}
+		for i in variadic.params.len .. fixed.params.len {
+			if !c_fn_fixed_param_is_compatible_with_variadic(fixed.params[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	if a.params.len != b.params.len {
 		return false
 	}
 	return c_fn_decl_param_prefix_compatible(a.params, b.params, a.params.len)
+}
+
+fn c_fn_fixed_param_is_compatible_with_variadic(typ string) bool {
+	// These types are changed by C's default argument promotions. A fixed
+	// declaration would therefore not describe the same argument ABI.
+	return typ !in ['i8', 'i16', 'u8', 'u16', 'float', 'char', 'bool']
 }
 
 fn c_fn_decl_param_prefix_compatible(a []string, b []string, count int) bool {
