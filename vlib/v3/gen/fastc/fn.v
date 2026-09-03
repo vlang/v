@@ -1284,7 +1284,7 @@ const fastc_boxed_primitive_types = ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u1
 fn fastc_output_c_type(t string) string {
 	base := t.trim_right('*')
 	if base == 'int' {
-		return fastc_platform_int_c_type() + t[base.len..]
+		return fastc_platform_int_c_type + t[base.len..]
 	}
 	return t
 }
