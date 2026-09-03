@@ -85,9 +85,41 @@ pub fn merge[T](a []T, b []T) []T {
 	mut ia := 0
 	mut ib := 0
 	mut j := 0
-	// TODO: efficient approach to merge_desc where: a[ia] >= b[ib]
 	for ia < a.len && ib < b.len {
 		if a[ia] <= b[ib] {
+			m[j] = a[ia]
+			ia++
+		} else {
+			m[j] = b[ib]
+			ib++
+		}
+		j++
+	}
+	// a leftovers
+	for ia < a.len {
+		m[j] = a[ia]
+		ia++
+		j++
+	}
+	// b leftovers
+	for ib < b.len {
+		m[j] = b[ib]
+		ib++
+		j++
+	}
+	return m
+}
+
+// merge_desc merges two sorted arrays (descending) and maintains sorted order.
+// Example: arrays.merge_desc([7, 5, 3, 1], [8, 6, 4, 2]) // => [8, 7, 6, 5, 4, 3, 2, 1]
+@[direct_array_access]
+pub fn merge_desc[T](a []T, b []T) []T {
+	mut m := []T{len: a.len + b.len}
+	mut ia := 0
+	mut ib := 0
+	mut j := 0
+	for ia < a.len && ib < b.len {
+		if a[ia] >= b[ib] {
 			m[j] = a[ia]
 			ia++
 		} else {
