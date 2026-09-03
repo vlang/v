@@ -27,19 +27,54 @@ pub fn (mut b Builder) rebuild_modules() {
 	$if trace_invalidations ? {
 		eprintln('> rebuild_modules all_files: ${all_files}')
 	}
-	invalidations := b.find_invalidated_modules_by_files(all_files)
+	invalidations, snew_hashes := b.find_invalidated_modules_by_files(all_files)
 	$if trace_invalidations ? {
 		eprintln('> rebuild_modules invalidations: ${invalidations}')
 	}
+	mut stale_object_might_survive := false
 	if invalidations.len > 0 {
 		vexe := pref.vexe_path()
 		for imp in invalidations {
-			b.v_build_module(vexe, imp)
+			rc := b.v_build_module(vexe, imp)
+			if rc != 0 {
+				// CACHE-POISONING GUARD: a failed module rebuild used to be
+				// silently ignored while the new source hashes were ALREADY saved —
+				// every later build then saw "hashes unchanged", skipped invalidation,
+				// and linked the STALE cached object forever (until a manual cache
+				// wipe). Observed as a permanent all-tests link failure
+				// (_builtin__init_consts unresolved); an ABI-compatible variant would
+				// be a silently WRONG binary. Aborting outright is too strict — the
+				// invalidator sometimes names paths that are not real buildable
+				// modules (e.g. a folder of standalone _test.v files) whose rebuild
+				// has always failed harmlessly and which have no cached object to go
+				// stale. The precise guard: a failure is only dangerous if a stale
+				// object could still be SERVED — so remove the module's cached object;
+				// once nothing stale can be linked, recording the new source hashes is
+				// safe. Only if the stale object cannot be removed do we skip the hash
+				// save (forcing re-detection + retry on the next run). A genuinely
+				// needed-but-missing object is rebuilt on demand by
+				// rebuild_cached_module, which fails loudly.
+				stale_o := b.pref.cache_manager.mod_postfix_with_key2cpath(imp, '.o', imp)
+				if os.exists(stale_o) {
+					os.rm(stale_o) or { stale_object_might_survive = true }
+					eprintln('warning: `v build-module ${imp}` failed (exit code ${rc}); removed its cached object so nothing stale can be linked.')
+				} else {
+					vcache.dlog('| Builder.' + @FN,
+						'build-module failed for ${imp} (rc=${rc}); no cached object under this key — harmless (not a servable module)')
+				}
+			}
 		}
+	}
+	if !stale_object_might_survive {
+		// Persist the new source hashes only now — after every invalidated module was
+		// rebuilt (or its stale object provably removed) — so a failed rebuild can
+		// never poison the cache state.
+		mut cm := vcache.new_cache_manager(all_files)
+		cm.save('.hashes', 'all_files', snew_hashes) or {}
 	}
 }
 
-pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []string {
+pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) ([]string, string) {
 	util.timing_start('${@METHOD} source_hashing')
 	mut new_hashes := map[string]string{}
 	mut old_hashes := map[string]string{}
@@ -72,7 +107,9 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 	// eprintln('new_hashes: ${new_hashes}')
 	// eprintln('> new_hashes != old_hashes: ' + ( old_hashes != new_hashes ).str())
 	// eprintln(snew_hashes)
-	cm.save('.hashes', 'all_files', snew_hashes) or {}
+	// NOTE: the new hashes are deliberately NOT saved here. The caller
+	// saves them only after every invalidated module has been rebuilt
+	// successfully; saving eagerly poisoned the cache on any rebuild failure.
 	util.timing_measure('${@METHOD} source_hashing')
 
 	mut invalidations := []string{}
@@ -182,10 +219,10 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 		}
 		util.timing_measure('${@METHOD} rebuilding')
 	}
-	return invalidations
+	return invalidations, snew_hashes
 }
 
-fn (mut b Builder) v_build_module(vexe string, imp_path string) {
+fn (mut b Builder) v_build_module(vexe string, imp_path string) int {
 	pwd := os.getwd()
 	defer {
 		os.chdir(pwd) or {}
@@ -200,22 +237,103 @@ fn (mut b Builder) v_build_module(vexe string, imp_path string) {
 	$if trace_v_build_module ? {
 		eprintln('> Builder.v_build_module: ${rebuild_cmd}')
 	}
-	// eprintln('> Builder.v_build_module: ${rebuild_cmd}')
-	os.system(rebuild_cmd)
+	// The child must reconstruct EXACTLY the parent's build configuration from
+	// the relayed b.pref.build_options — the parent already folded VFLAGS into
+	// those while parsing its own args. Letting the child re-apply VFLAGS on
+	// top duplicates its values (e.g. `-cflags x` becomes `x x`), so the child
+	// derives a DIFFERENT vcache key than the one the parent looks up, and the
+	// freshly built module object is never found ('could not rebuild cache
+	// module ... does not exist yet' — hit by any -usecache build running
+	// under a VFLAGS environment, e.g. the sanitized CI jobs).
+	old_vflags := os.getenv('VFLAGS')
+	if old_vflags != '' {
+		os.setenv('VFLAGS', '', true)
+	}
+	// The exit status is the caller's problem now: ignoring it while
+	// the hashes were saved eagerly permanently poisoned the module cache.
+	rc := os.system(rebuild_cmd)
+	if old_vflags != '' {
+		os.setenv('VFLAGS', old_vflags, true)
+	}
+	return rc
+}
+
+// embed_file_content_hash returns the invalidation hash for one embedded-asset
+// path; an unreadable file hashes to a constant that can never match a real
+// content hash, so it always invalidates.
+fn embed_file_content_hash(apath string) string {
+	econtent := util.read_file(apath) or { return 'unreadable' }
+	return hash.sum64_string(econtent, 7).hex_full()
+}
+
+// embeds_manifest serialises every checker-resolved $embed_file target of
+// `parsed_files` as `<content-hash> <absolute-path>` lines. Saved next to a
+// cached module object (see setup_output_name); verified by
+// cached_module_embeds_fresh before a cached object is served.
+fn embeds_manifest(parsed_files []&ast.File) string {
+	mut seen := map[string]bool{}
+	mut lines := []string{}
+	for pf in parsed_files {
+		for ea in pf.embedded_apaths {
+			if seen[ea] {
+				continue
+			}
+			seen[ea] = true
+			lines << '${embed_file_content_hash(ea)} ${ea}'
+		}
+	}
+	lines.sort()
+	return lines.join('\n')
+}
+
+// cached_module_embeds_fresh reports whether every embedded asset recorded in
+// the module's .embeds.txt manifest still has the content it was built with.
+// The .v source hashes cannot see $embed_file targets, so without this check a
+// cached object silently keeps serving stale embedded data after the asset
+// changes. A missing manifest means the object was built by this compiler
+// build with no embeds recorded (the compiler-identity salt namespaces away
+// pre-manifest objects), so it is trivially fresh.
+fn (mut b Builder) cached_module_embeds_fresh(imp_path string) bool {
+	manifest := b.pref.cache_manager.mod_load(imp_path, '.embeds.txt', imp_path) or { return true }
+	for line in manifest.split_into_lines() {
+		if line == '' {
+			continue
+		}
+		recorded := line.all_before(' ')
+		apath := line.all_after(' ')
+		if embed_file_content_hash(apath) != recorded {
+			vcache.dlog('| Builder.' + @FN, 'stale embedded asset: ${apath} (module ${imp_path})')
+			return false
+		}
+	}
+	return true
 }
 
 fn (mut b Builder) rebuild_cached_module(vexe string, imp_path string) string {
-	res := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
-		if b.pref.is_verbose {
-			println('Cached ${imp_path} .o file not found... Building .o file for ${imp_path}')
-		}
-		b.v_build_module(vexe, imp_path)
-		rebuilt_o := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
-			panic('could not rebuild cache module for ${imp_path}, error: ${err.msg()}')
-		}
-		return rebuilt_o
+	mut existing := ''
+	if res := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) {
+		existing = res
 	}
-	return res
+	if existing != '' && b.cached_module_embeds_fresh(imp_path) {
+		return existing
+	}
+	if b.pref.is_verbose {
+		if existing == '' {
+			println('Cached ${imp_path} .o file not found... Building .o file for ${imp_path}')
+		} else {
+			println('Cached ${imp_path} .o file has stale embedded assets... Rebuilding .o file for ${imp_path}')
+		}
+	}
+	rc := b.v_build_module(vexe, imp_path)
+	if rc != 0 && existing != '' {
+		// A failed rebuild must not keep serving the stale object (the same
+		// poisoning class as the eager-hash-save bug, cx #151).
+		os.rm(existing) or {}
+	}
+	rebuilt_o := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
+		panic('could not rebuild cache module for ${imp_path}, error: ${err.msg()}')
+	}
+	return rebuilt_o
 }
 
 fn (mut b Builder) handle_usecache(vexe string) {
@@ -227,7 +345,15 @@ fn (mut b Builder) handle_usecache(vexe string) {
 	builtin_obj_path := b.rebuild_cached_module(vexe, 'vlib/builtin')
 	libs << builtin_obj_path
 	for ast_file in b.parsed_files {
-		if b.pref.is_test && ast_file.mod.name != 'main' {
+		// Cache the test's own non-main modules. Apply the same guards as the import
+		// loop below: builtin (and its parts: strconv/strings/math.bits/...) are already
+		// inside builtin.o, and a module already queued must not be built again — without
+		// these guards a test build caches builtin a SECOND time via its absolute path
+		// (a086..module.builtin.o AND 7c16..module.<abspath>.builtin.o), linking both and
+		// duplicating every builtin symbol (~9000 "duplicate symbol" errors at link).
+		if b.pref.is_test && ast_file.mod.name != 'main' && ast_file.mod.name != 'help'
+			&& !util.module_is_builtin(ast_file.mod.name) && ast_file.mod.name !in built_modules
+			&& !util.should_bundle_module(ast_file.mod.name) {
 			imp_path := b.find_module_path(ast_file.mod.name, ast_file.path) or {
 				verror('cannot import module "${ast_file.mod.name}" (not found)')
 				break
