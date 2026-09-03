@@ -79,7 +79,7 @@ pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 			}
 			packets << CoalescedPacket{
 				bytes: remaining
-				form:  .short
+				form: .short
 			}
 			break
 		}
@@ -113,7 +113,7 @@ pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 			// apply to them), which is why this check runs first.
 			packets << CoalescedPacket{
 				bytes: remaining
-				form:  .long
+				form: .long
 			}
 			break
 		}
@@ -161,7 +161,7 @@ pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 			// resolves, not this one.
 			packets << CoalescedPacket{
 				bytes: remaining
-				form:  .long
+				form: .long
 			}
 			break
 		}
@@ -212,7 +212,7 @@ pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 		}
 		packets << CoalescedPacket{
 			bytes: remaining[..int(total_len)]
-			form:  .long
+			form: .long
 		}
 		offset += int(total_len)
 	}

@@ -201,7 +201,7 @@ pub fn (mut r StreamReassembler) add(offset u64, data []u8) ! {
 		}
 		r.pending << StreamDataFragment{
 			offset: offset
-			data:   data.clone()
+			data: data.clone()
 		}
 	}
 	r.promote_ready()!

@@ -403,8 +403,8 @@ pub fn (mut c QuicConn) close(error_code u64, reason string) {
 		return
 	}
 	c.pending_close = PendingClose{
-		error_code:           error_code
-		reason:               reason
+		error_code: error_code
+		reason: reason
 		is_application_error: true
 	}
 }
@@ -428,11 +428,11 @@ pub fn dial(params DialParams, now u64) !(&QuicConn, QuicDatagram) {
 	own_params.initial_source_connection_id = scid.clone()
 
 	handshake, client_hello := Tls13ClientHandshake.start(ClientHandshakeParams{
-		random:               client_random
-		server_name:          params.server_name
+		random: client_random
+		server_name: params.server_name
 		transport_parameters: own_params
-		ca_bundle_pem:        params.ca_bundle_pem
-		alpn_protocols:       params.alpn_protocols
+		ca_bundle_pem: params.ca_bundle_pem
+		alpn_protocols: params.alpn_protocols
 	})!
 
 	initial_secrets := derive_initial_secrets(original_dcid)!
@@ -442,32 +442,32 @@ pub fn dial(params DialParams, now u64) !(&QuicConn, QuicDatagram) {
 	own_max_idle_timeout_ms := own_params.max_idle_timeout or { u64(0) }
 
 	mut c := &QuicConn{
-		role:                     .client
-		state:                    .handshaking
-		original_dcid:            original_dcid
-		dcid:                     original_dcid.clone()
-		scid:                     scid
-		peer_scid:                []u8{}
-		token:                    []u8{}
-		handshake:                handshake
-		handshake_completion:     new_handshake_completion_state()
-		pn_spaces:                new_packet_number_spaces()
-		initial_keys_client:      initial_keys_client
-		initial_keys_server:      initial_keys_server
-		initial_crypto:           new_crypto_stream_reassembler()
-		handshake_crypto:         new_crypto_stream_reassembler()
-		client_hello:             client_hello
-		loss_detection:           new_quic_loss_detection_timer()
-		congestion_control:       new_newreno_congestion_control()
-		own_max_idle_timeout_ms:  own_max_idle_timeout_ms
-		stateless_reset:          new_stateless_reset_tracker()
-		connection_start:         now
+		role: .client
+		state: .handshaking
+		original_dcid: original_dcid
+		dcid: original_dcid.clone()
+		scid: scid
+		peer_scid: []u8{}
+		token: []u8{}
+		handshake: handshake
+		handshake_completion: new_handshake_completion_state()
+		pn_spaces: new_packet_number_spaces()
+		initial_keys_client: initial_keys_client
+		initial_keys_server: initial_keys_server
+		initial_crypto: new_crypto_stream_reassembler()
+		handshake_crypto: new_crypto_stream_reassembler()
+		client_hello: client_hello
+		loss_detection: new_quic_loss_detection_timer()
+		congestion_control: new_newreno_congestion_control()
+		own_max_idle_timeout_ms: own_max_idle_timeout_ms
+		stateless_reset: new_stateless_reset_tracker()
+		connection_start: now
 		own_transport_parameters: own_params
-		streams:                  new_quic_stream_set(.client)
-		conn_send_window:         new_flow_control_window(0)
-		conn_recv_window:         new_receive_window(own_params.initial_max_data or { u64(0) })
-		local_max_streams_bidi:   own_params.initial_max_streams_bidi or { u64(0) }
-		local_max_streams_uni:    own_params.initial_max_streams_uni or { u64(0) }
+		streams: new_quic_stream_set(.client)
+		conn_send_window: new_flow_control_window(0)
+		conn_recv_window: new_receive_window(own_params.initial_max_data or { u64(0) })
+		local_max_streams_bidi: own_params.initial_max_streams_bidi or { u64(0) }
+		local_max_streams_uni: own_params.initial_max_streams_uni or { u64(0) }
 	}
 
 	crypto_frame := encode_crypto_frame(0, client_hello)!
@@ -529,7 +529,7 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 		if now >= deadline {
 			c.state = .closed
 			result.events << QuicEvent{
-				kind:   .connection_closed
+				kind: .connection_closed
 				reason: 'idle timeout'
 			}
 			return result
@@ -540,7 +540,7 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 			if now >= deadline {
 				c.state = .closed
 				result.events << QuicEvent{
-					kind:   .connection_closed
+					kind: .connection_closed
 					reason: 'closing/draining period elapsed'
 				}
 				return result
@@ -552,11 +552,14 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 	if c.state == .handshaking || c.state == .established {
 		handshake_confirmed := c.handshake_completion.is_confirmed()
 		max_ack_delay := c.effective_max_ack_delay()
-		timeout_result := c.loss_detection.on_loss_detection_timeout(now, handshake_confirmed,
-			max_ack_delay)
+		timeout_result := c.loss_detection.on_loss_detection_timeout(now, handshake_confirmed, max_ack_delay)
 		if timeout_result.pto_fired {
 			c.send_pto_probe(timeout_result.pto_space, now, mut result) or {
-				code := if err.code() != 0 { u64(err.code()) } else { quic_error_protocol_violation }
+				code := if err.code() != 0 {
+					u64(err.code())
+				} else {
+					quic_error_protocol_violation
+				}
 				c.close_with_error(code, err.msg(), false, now, mut result)
 			}
 		} else if timeout_result.lost.len > 0 {
@@ -787,7 +790,7 @@ fn (mut c QuicConn) note_one_rtt_processing_failed(raw []u8, now u64, mut result
 	if c.stateless_reset.is_stateless_reset(c.peer_scid, raw) {
 		c.enter_draining(now)
 		result.events << QuicEvent{
-			kind:   .connection_closed
+			kind: .connection_closed
 			reason: 'stateless reset received'
 		}
 	}
@@ -839,8 +842,7 @@ fn (mut c QuicConn) process_one_rtt_packet(raw []u8, now u64, mut result PollRes
 	for i in 0 .. pn_length {
 		truncated = (truncated << 8) | u64(packet[offset + i])
 	}
-	full_pn := decode_packet_number(truncated, pn_length,
-		c.pn_spaces.application_data.largest_received) or {
+	full_pn := decode_packet_number(truncated, pn_length, c.pn_spaces.application_data.largest_received) or {
 		c.note_one_rtt_processing_failed(raw, now, mut result)
 		return
 	}
@@ -1068,7 +1070,7 @@ fn (mut c QuicConn) note_peer_stream_discovered(stream_id u64, mut result PollRe
 	if stream_id !in c.announced_peer_streams {
 		c.announced_peer_streams[stream_id] = true
 		result.events << QuicEvent{
-			kind:      .peer_stream_opened
+			kind: .peer_stream_opened
 			stream_id: stream_id
 		}
 	}
@@ -1111,7 +1113,7 @@ pub fn (c &QuicConn) stream_recv_status(stream_id u64) ?StreamRecvStatus {
 	match stream.recv.state {
 		.reset_recvd, .reset_read {
 			return StreamRecvStatus{
-				state:       .reset_received
+				state: .reset_received
 				reset_error: stream.recv.error_code
 			}
 		}
@@ -1222,8 +1224,7 @@ fn (mut c QuicConn) handle_ack_frame(space QuicPacketNumberSpace, frame AckFrame
 		default_ack_delay_exponent
 	}
 
-	result := c.loss_detection.on_ack_received(space, frame, peer_ack_delay_exponent,
-		max_ack_delay, handshake_confirmed, now)
+	result := c.loss_detection.on_ack_received(space, frame, peer_ack_delay_exponent, max_ack_delay, handshake_confirmed, now)
 	c.congestion_control.on_packets_acked(result.newly_acked)
 	if result.lost.len > 0 {
 		c.congestion_control.on_packets_lost(result.lost, result.persistent_congestion, now)
@@ -1246,9 +1247,9 @@ fn (mut c QuicConn) handle_crypto_frame(space QuicPacketNumberSpace, frame Crypt
 fn (mut c QuicConn) handle_peer_connection_close(frame ConnectionCloseFrame, now u64, mut result PollResult) {
 	c.enter_draining(now)
 	result.events << QuicEvent{
-		kind:       .connection_closed
+		kind: .connection_closed
 		error_code: frame.error_code
-		reason:     frame.reason
+		reason: frame.reason
 	}
 }
 
@@ -1294,8 +1295,7 @@ fn (mut c QuicConn) dispatch_handshake_message(msg HandshakeMessage, framed []u8
 			c.handshake_keys_server = derive_packet_protection_keys(hs.server_secret)!
 		}
 		.wait_encrypted_extensions {
-			c.handshake.process_encrypted_extensions(msg, framed, c.peer_scid, c.original_dcid,
-				c.retry_scid)!
+			c.handshake.process_encrypted_extensions(msg, framed, c.peer_scid, c.original_dcid, c.retry_scid)!
 			peer_params := c.handshake.peer_transport_parameters
 			c.conn_send_window.raise_limit(peer_params.initial_max_data or { u64(0) })
 			c.peer_max_streams_bidi = peer_params.initial_max_streams_bidi or { u64(0) }
@@ -1544,7 +1544,7 @@ fn ranges_from_received_pns(pns []u64) []AckRange {
 		}
 		ranges << AckRange{
 			smallest: smallest
-			largest:  largest
+			largest: largest
 		}
 		i--
 	}
@@ -1561,23 +1561,23 @@ fn (mut c QuicConn) build_initial_packet(payload []u8, is_ack_eliciting bool, no
 	pn_bytes, pn_length := encode_packet_number(pn, c.pn_spaces.initial.largest_acked_by_peer)!
 
 	h_probe := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    c.dcid
-		scid:    c.scid
-		token:   c.token
-		length:  u64(pn_length) + u64(payload.len) + aead_tag_len
+		dcid: c.dcid
+		scid: c.scid
+		token: c.token
+		length: u64(pn_length) + u64(payload.len) + aead_tag_len
 	}
 	header_probe := encode_long_header(h_probe, 0, u8(pn_length - 1))!
 	padded_payload := pad_initial_payload(payload, header_probe.len + pn_length, aead_tag_len)
 
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    c.dcid
-		scid:    c.scid
-		token:   c.token
-		length:  u64(pn_length) + u64(padded_payload.len) + aead_tag_len
+		dcid: c.dcid
+		scid: c.scid
+		token: c.token
+		length: u64(pn_length) + u64(padded_payload.len) + aead_tag_len
 	}
 	mut header := encode_long_header(h, 0, u8(pn_length - 1))!
 	header << pn_bytes
@@ -1602,12 +1602,12 @@ fn (mut c QuicConn) build_handshake_packet(payload []u8, is_ack_eliciting bool, 
 	pn_bytes, pn_length := encode_packet_number(pn, c.pn_spaces.handshake.largest_acked_by_peer)!
 
 	h := QuicLongHeader{
-		typ:     .handshake
+		typ: .handshake
 		version: quic_v1
-		dcid:    c.dcid
-		scid:    c.scid
-		token:   []u8{}
-		length:  u64(pn_length) + u64(payload.len) + aead_tag_len
+		dcid: c.dcid
+		scid: c.scid
+		token: []u8{}
+		length: u64(pn_length) + u64(payload.len) + aead_tag_len
 	}
 	mut header := encode_long_header(h, 0, u8(pn_length - 1))!
 	header << pn_bytes
@@ -1615,8 +1615,7 @@ fn (mut c QuicConn) build_handshake_packet(payload []u8, is_ack_eliciting bool, 
 	protected := protect_packet(header, .long, pn, pn_length, payload, keys)!
 
 	in_flight := is_ack_eliciting
-	c.loss_detection.on_packet_sent(.handshake, pn, u64(protected.len), is_ack_eliciting,
-		in_flight, now)
+	c.loss_detection.on_packet_sent(.handshake, pn, u64(protected.len), is_ack_eliciting, in_flight, now)
 	if in_flight {
 		c.congestion_control.on_packet_sent_cc(u64(protected.len))
 	}
@@ -1639,8 +1638,7 @@ fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, no
 	}
 
 	pn := c.pn_spaces.application_data.next_packet_number()!
-	pn_bytes, pn_length := encode_packet_number(pn,
-		c.pn_spaces.application_data.largest_acked_by_peer)!
+	pn_bytes, pn_length := encode_packet_number(pn, c.pn_spaces.application_data.largest_acked_by_peer)!
 
 	// key_phase reflects app_write_generation's parity -- generation 0 is
 	// phase false (RFC 9000 §17.3.1's own initial value), toggling each
@@ -1656,8 +1654,7 @@ fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, no
 	protected := protect_packet(header, .short, pn, pn_length, payload, write_keys)!
 
 	in_flight := is_ack_eliciting
-	c.loss_detection.on_packet_sent(.application_data, pn, u64(protected.len), is_ack_eliciting,
-		in_flight, now)
+	c.loss_detection.on_packet_sent(.application_data, pn, u64(protected.len), is_ack_eliciting, in_flight, now)
 	if in_flight {
 		c.congestion_control.on_packet_sent_cc(u64(protected.len))
 	}
@@ -1777,26 +1774,26 @@ fn (mut c QuicConn) close_with_error(error_code u64, reason string, is_applicati
 	}
 	frame := encode_connection_close_frame(wire_is_application_error, error_code, 0, wire_reason) or {
 		result.events << QuicEvent{
-			kind:       .connection_closed
+			kind: .connection_closed
 			error_code: error_code
-			reason:     reason
+			reason: reason
 		}
 		return
 	}
 	datagram := c.build_best_effort_close_packet(frame, now) or {
 		result.events << QuicEvent{
-			kind:       .connection_closed
+			kind: .connection_closed
 			error_code: error_code
-			reason:     reason
+			reason: reason
 		}
 		return
 	}
 	c.sent_close_payload = frame
 	result.outgoing << datagram
 	result.events << QuicEvent{
-		kind:       .connection_closed
+		kind: .connection_closed
 		error_code: error_code
-		reason:     reason
+		reason: reason
 	}
 }
 
@@ -1852,9 +1849,7 @@ fn (mut c QuicConn) compute_next_timeout() ?u64 {
 	handshake_confirmed := c.handshake_completion.is_confirmed()
 	max_ack_delay := c.effective_max_ack_delay()
 	mut deadline := ?u64(none)
-	if t, _ := c.loss_detection.next_timeout(handshake_confirmed, max_ack_delay,
-		c.congestion_control.bytes_in_flight)
-	{
+	if t, _ := c.loss_detection.next_timeout(handshake_confirmed, max_ack_delay, c.congestion_control.bytes_in_flight) {
 		deadline = t
 	}
 	if idle_deadline := c.idle_timeout_deadline() {

@@ -186,7 +186,10 @@ fn test_dynamic_table_can_set_capacity_forbids_evicting_unacknowledged_entry() {
 	// here makes it doubly so. Shrinking to 10 can't fit the 34-byte entry.
 	assert !t.can_set_capacity(10, 0)
 	assert t.can_set_capacity(100, 0) // no shrink needed -- always safe
+	
+
 	assert t.can_set_capacity(1000, 0) // growth -- always safe
+	
 }
 
 fn test_dynamic_table_can_set_capacity_allows_evicting_acknowledged_unreferenced_entry() {

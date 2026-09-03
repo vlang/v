@@ -18,8 +18,7 @@ fn (mut h H3Conn) drive_peer_control_stream(stream_id u64, mut result H3PollResu
 	new_bytes := h.qc.read_stream(stream_id)!
 	total_pending := u64(h.peer_control_decoder.pending_len()) + u64(new_bytes.len)
 	if total_pending > max_h3_control_plane_buffered_bytes {
-		return error_with_code('h3: control stream ${stream_id} exceeded the ${max_h3_control_plane_buffered_bytes}-byte control-plane buffering limit without completing a frame',
-			int(H3ErrorCode.excessive_load))
+		return error_with_code('h3: control stream ${stream_id} exceeded the ${max_h3_control_plane_buffered_bytes}-byte control-plane buffering limit without completing a frame', int(H3ErrorCode.excessive_load))
 	}
 	if new_bytes.len > 0 {
 		h.peer_control_decoder.push(new_bytes)
@@ -47,11 +46,10 @@ fn (mut h H3Conn) apply_control_frame(frame H3Frame, mut result H3PollResult) ! 
 		}
 		GoawayFrame {
 			if !goaway_id_is_valid_client_initiated_bidi_stream_id(frame.id) {
-				return error_with_code('h3: GOAWAY id ${frame.id} is not a valid client-initiated bidirectional stream id',
-					int(H3ErrorCode.id_error))
+				return error_with_code('h3: GOAWAY id ${frame.id} is not a valid client-initiated bidirectional stream id', int(H3ErrorCode.id_error))
 			}
 			result.events << H3Event{
-				kind:      .goaway
+				kind: .goaway
 				goaway_id: frame.id
 			}
 		}
@@ -62,8 +60,7 @@ fn (mut h H3Conn) apply_control_frame(frame H3Frame, mut result H3PollResult) ! 
 			// §7.2.7 "A client MUST treat the receipt of a MAX_PUSH_ID frame
 			// as a connection error of type H3_FRAME_UNEXPECTED" (a SERVER
 			// is the only endpoint that should ever see one FROM a client).
-			return error_with_code('h3: received a push-related frame on the control stream, but this client never authorizes push',
-				int(H3ErrorCode.id_error))
+			return error_with_code('h3: received a push-related frame on the control stream, but this client never authorizes push', int(H3ErrorCode.id_error))
 		}
 		DataFrame, HeadersFrame {
 			// drive_peer_control_stream calls require_valid_frame_for_role
@@ -72,8 +69,7 @@ fn (mut h H3Conn) apply_control_frame(frame H3Frame, mut result H3PollResult) ! 
 			// in practice, but matched explicitly (V's sum-type match must be
 			// exhaustive over every H3Frame variant) rather than folded into
 			// a catch-all that could silently swallow a real future case.
-			return error_with_code('h3: DATA/HEADERS is not valid on the control stream',
-				int(H3ErrorCode.frame_unexpected))
+			return error_with_code('h3: DATA/HEADERS is not valid on the control stream', int(H3ErrorCode.frame_unexpected))
 		}
 		H3RawFrame {
 			// Grease/genuinely-unknown -- RFC 9114 §9: MUST be ignored.

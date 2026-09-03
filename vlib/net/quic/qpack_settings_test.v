@@ -8,7 +8,7 @@ fn test_qpack_max_table_capacity_from_settings_present() {
 	settings := [
 		H3Setting{
 			identifier: qpack_settings_max_table_capacity_id
-			value:      4096
+			value: 4096
 		},
 	]
 	assert qpack_max_table_capacity_from_settings(settings) == 4096
@@ -22,7 +22,7 @@ fn test_qpack_blocked_streams_from_settings_present() {
 	settings := [
 		H3Setting{
 			identifier: qpack_settings_blocked_streams_id
-			value:      16
+			value: 16
 		},
 	]
 	assert qpack_blocked_streams_from_settings(settings) == 16

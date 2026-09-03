@@ -48,6 +48,7 @@ fn test_appendix_b2_dynamic_table() {
 
 	assert dec.dynamic_table.insert_count() == 2
 	assert dec.dynamic_table.size() == 106 // RFC's own shown running total
+	
 
 	field_section := [u8(0x03), 0x81, 0x10, 0x11]
 	result := dec.decode_field_section(4, field_section) or { panic('${err}') }
@@ -92,8 +93,7 @@ fn test_appendix_b4_duplicate_and_stream_cancellation() {
 	dec.apply_encoder_instruction(encode_qpack_insert_with_name_ref(true, 1, '/sample/path')) or {
 		panic('${err}')
 	}
-	dec.apply_encoder_instruction(encode_qpack_insert_with_literal_name('custom-key',
-		'custom-value')) or { panic('${err}') }
+	dec.apply_encoder_instruction(encode_qpack_insert_with_literal_name('custom-key', 'custom-value')) or { panic('${err}') }
 
 	dup := encode_qpack_duplicate(2)
 	assert dup == [u8(0x02)]
@@ -131,8 +131,7 @@ fn test_appendix_b5_dynamic_table_insert_eviction() {
 	dec.apply_encoder_instruction(encode_qpack_insert_with_name_ref(true, 1, '/sample/path')) or {
 		panic('${err}')
 	}
-	dec.apply_encoder_instruction(encode_qpack_insert_with_literal_name('custom-key',
-		'custom-value')) or { panic('${err}') }
+	dec.apply_encoder_instruction(encode_qpack_insert_with_literal_name('custom-key', 'custom-value')) or { panic('${err}') }
 	dec.apply_encoder_instruction(encode_qpack_duplicate(2)) or { panic('${err}') }
 
 	// This is the RFC's own literal wire bytes for this instruction, used as

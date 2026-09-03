@@ -82,7 +82,10 @@ fn test_crypto_stream_reassembler_merges_partially_overlapping_pending_fragments
 		r.add(u64(100 + i), []u8{len: 100, init: 0x41})!
 	}
 	assert r.pending.len == 1 // all merged into one entry, never hit the cap
+	
+
 	assert r.consumed_len() == 0 // gap before offset 100 still open
+	
 
 	r.add(0, []u8{len: 100})! // close the gap
 	// merged pending range is [100, 200+count-1) -- union of every
@@ -154,6 +157,8 @@ fn test_crypto_stream_reassembler_deduplicates_retransmitted_pending_fragment() 
 		r.add(100, 'retransmitted'.bytes())!
 	}
 	assert r.consumed_len() == 0 // gap before offset 100 still open
+	
+
 	r.add(0, []u8{len: 100})! // close the gap
 	assert r.data()[100..].bytestr() == 'retransmitted'
 }
@@ -163,6 +168,8 @@ fn test_crypto_stream_reassembler_three_way_out_of_order() {
 	r.add(7, 'World!'.bytes())! // 'Hello'(5) + ', '(2) = offset 7
 	r.add(5, ', '.bytes())!
 	assert r.consumed_len() == 0 // still a gap before offset 5
+	
+
 	r.add(0, 'Hello'.bytes())!
 	assert r.data().bytestr() == 'Hello, World!'
 }

@@ -53,8 +53,7 @@ pub fn parse_certificate(body []u8) !ParsedCertificate {
 		if end - cursor < 3 {
 			return error('quic: truncated CertificateEntry: missing cert_data length')
 		}
-		cert_len := int((u32(body[cursor]) << 16) | (u32(body[cursor + 1]) << 8) | u32(body[
-			cursor + 2]))
+		cert_len := int((u32(body[cursor]) << 16) | (u32(body[cursor + 1]) << 8) | u32(body[cursor + 2]))
 		cursor += 3
 		if cert_len == 0 {
 			return error('quic: CertificateEntry cert_data must not be empty (opaque cert_data<1..2^24-1>)')
@@ -93,12 +92,11 @@ pub fn parse_certificate(body []u8) !ParsedCertificate {
 		// parsed and stored unconditionally, never checked against
 		// anything).
 		if extensions.len != 0 {
-			return error_with_code('quic: CertificateEntry contains extension 0x${extensions[0].typ:04x}, which this client did not offer (RFC 8446 §4.2 permits only status_request/signed_certificate_timestamp in a CertificateEntry, and this client offers neither)',
-				int(tls_alert_to_quic_error(.unsupported_extension)))
+			return error_with_code('quic: CertificateEntry contains extension 0x${extensions[0].typ:04x}, which this client did not offer (RFC 8446 §4.2 permits only status_request/signed_certificate_timestamp in a CertificateEntry, and this client offers neither)', int(tls_alert_to_quic_error(.unsupported_extension)))
 		}
 
 		entries << CertificateEntry{
-			cert_data:  cert_data
+			cert_data: cert_data
 			extensions: extensions
 		}
 	}
@@ -109,7 +107,7 @@ pub fn parse_certificate(body []u8) !ParsedCertificate {
 
 	return ParsedCertificate{
 		certificate_request_context: certificate_request_context
-		certificate_list:            entries
+		certificate_list: entries
 	}
 }
 
@@ -157,8 +155,7 @@ pub fn parse_certificate_verify(body []u8) !ParsedCertificateVerify {
 		// the identical class of violation (a peer selecting a value from a
 		// closed set this client didn't offer) -- extended here for
 		// consistency (Codex P2, vlang/v#27680 pullrequestreview-4806500473).
-		return error_with_code('quic: CertificateVerify algorithm 0x${algorithm:04x} was not offered in signature_algorithms',
-			int(tls_alert_to_quic_error(.illegal_parameter)))
+		return error_with_code('quic: CertificateVerify algorithm 0x${algorithm:04x} was not offered in signature_algorithms', int(tls_alert_to_quic_error(.illegal_parameter)))
 	}
 	return ParsedCertificateVerify{
 		algorithm: algorithm

@@ -24,10 +24,12 @@ fn test_handshake_completion_requires_both_finished_events() {
 	mut s := new_handshake_completion_state()
 	s.mark_own_finished_sent()
 	assert s.is_complete() == false // only one of the two conditions met
+	
 
 	mut s2 := new_handshake_completion_state()
 	s2.mark_peer_finished_verified()
 	assert s2.is_complete() == false // only the other condition met
+	
 
 	mut s3 := new_handshake_completion_state()
 	s3.mark_own_finished_sent()
@@ -56,6 +58,7 @@ fn test_handshake_completion_confirmed_after_normal_ordering() {
 	s.mark_own_finished_sent()
 	s.mark_peer_finished_verified()
 	assert s.is_confirmed() == false // complete, but HANDSHAKE_DONE not yet seen
+	
 
 	s.mark_handshake_done_received()
 	assert s.is_confirmed() == true

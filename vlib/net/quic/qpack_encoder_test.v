@@ -18,8 +18,8 @@ fn test_encoder_never_index_line_matching_static_entry_uses_literal_with_name_re
 	e.set_capacity(1000, 1000) or { panic('${err}') }
 	result := e.encode_field_section(0, [
 		QpackFieldLine{
-			name:        ':method'
-			value:       'GET'
+			name: ':method'
+			value: 'GET'
 			never_index: true
 		},
 	]) or { panic('${err}') }
@@ -41,8 +41,8 @@ fn test_encoder_never_index_line_is_not_inserted_into_dynamic_table() {
 	e.set_capacity(1000, 1000) or { panic('${err}') }
 	result := e.encode_field_section(0, [
 		QpackFieldLine{
-			name:        'authorization'
-			value:       'Bearer secret-token'
+			name: 'authorization'
+			value: 'Bearer secret-token'
 			never_index: true
 		},
 	]) or { panic('${err}') }
@@ -59,7 +59,7 @@ fn test_encoder_sensitive_field_never_inserted_even_without_caller_flag() {
 	e.set_capacity(1000, 1000) or { panic('${err}') }
 	result := e.encode_field_section(0, [
 		QpackFieldLine{
-			name:  'cookie'
+			name: 'cookie'
 			value: 'session=super-secret-value'
 			// never_index deliberately left false here.
 		},
@@ -79,7 +79,7 @@ fn test_encoder_exact_static_match_never_touches_dynamic_table() {
 	e.set_capacity(1000, 1000) or { panic('${err}') }
 	result := e.encode_field_section(0, [
 		QpackFieldLine{
-			name:  ':method'
+			name: ':method'
 			value: 'GET'
 		},
 	]) or { panic('${err}') }
@@ -97,7 +97,7 @@ fn test_encoder_zero_capacity_never_inserts_or_emits_instructions() {
 	// peer_max_table_capacity defaults to 0 (never called set_capacity).
 	result := e.encode_field_section(0, [
 		QpackFieldLine{
-			name:  'x-custom'
+			name: 'x-custom'
 			value: 'value'
 		},
 	]) or { panic('${err}') }
@@ -132,12 +132,13 @@ fn test_encoder_full_round_trip_through_decoder_with_insertion() {
 
 	lines := [
 		QpackFieldLine{
-			name:  'x-custom-header'
+			name: 'x-custom-header'
 			value: 'custom-value'
 		},
 	]
 	result := e.encode_field_section(5, lines) or { panic('${err}') }
 	assert result.encoder_instructions.len > 0 // new name+value -> should insert
+	
 
 	applied := dec.apply_encoder_instruction(result.encoder_instructions) or { panic('${err}') }
 	assert applied.applied
@@ -154,7 +155,7 @@ fn test_encoder_note_section_acknowledged_releases_references_and_advances_known
 	e.set_capacity(1000, 1000) or { panic('${err}') }
 	result := e.encode_field_section(1, [
 		QpackFieldLine{
-			name:  'x-a'
+			name: 'x-a'
 			value: '1'
 		},
 	]) or { panic('${err}') }
@@ -179,7 +180,7 @@ fn test_encoder_note_stream_cancelled_releases_without_advancing_known_received_
 	e.set_capacity(1000, 1000) or { panic('${err}') }
 	e.encode_field_section(2, [
 		QpackFieldLine{
-			name:  'x-b'
+			name: 'x-b'
 			value: '2'
 		},
 	]) or { panic('${err}') }
@@ -216,11 +217,13 @@ fn test_phase_r_dynamic_name_reference_without_insertion_tracks_required_insert_
 
 	first := e.encode_field_section(1, [
 		QpackFieldLine{
-			name:  'x-custom'
+			name: 'x-custom'
 			value: 'original'
 		},
 	]) or { panic('${err}') }
 	assert first.encoder_instructions.len > 0 // confirms it actually got inserted
+	
+
 	e.note_section_acknowledged(1) or { panic('${err}') }
 
 	// Same NAME, a value long enough that entry_size exceeds the 1-entry
@@ -232,7 +235,7 @@ fn test_phase_r_dynamic_name_reference_without_insertion_tracks_required_insert_
 
 	second := e.encode_field_section(2, [
 		QpackFieldLine{
-			name:  'x-custom'
+			name: 'x-custom'
 			value: long_value
 		},
 	]) or { panic('${err}') }
@@ -257,7 +260,7 @@ fn test_phase_r_set_capacity_rejects_reducing_below_a_referenced_entry() {
 	e.set_capacity(100, 100) or { panic('${err}') }
 	e.encode_field_section(1, [
 		QpackFieldLine{
-			name:  'x'
+			name: 'x'
 			value: '1'
 		},
 	]) or { panic('${err}') }
@@ -275,4 +278,5 @@ fn test_phase_r_set_capacity_rejects_reducing_below_a_referenced_entry() {
 	assert got.name == 'x'
 	assert got.value == '1'
 	assert e.dynamic_table.capacity() == 100 // the resize itself must not have taken effect
+	
 }

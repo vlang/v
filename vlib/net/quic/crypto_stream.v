@@ -206,7 +206,7 @@ fn (mut r CryptoStreamReassembler) merge_or_add_pending(offset u64, data []u8) !
 	}
 	r.pending << CryptoFragment{
 		offset: merged_offset
-		data:   merged_data
+		data: merged_data
 	}
 }
 
