@@ -207,8 +207,8 @@ fn test_type_size_reuses_module_layout_cache() {
 	i32_type := m.type_store.get_int(32)
 	array_type := m.type_store.get_array(i32_type, 5)
 	struct_type := m.type_store.register(Type{
-		kind:        .struct_t
-		fields:      [i32_type, array_type]
+		kind: .struct_t
+		fields: [i32_type, array_type]
 		field_names: ['number', 'items']
 	})
 	assert m.type_size(array_type) == 20
@@ -224,16 +224,50 @@ fn test_type_size_reuses_module_layout_cache() {
 	assert m.type_size_cache.cap == cache_capacity
 }
 
+fn test_packed_and_aligned_struct_layout() {
+	mut m := Module.new()
+	u8_type := m.type_store.get_uint(8)
+	u64_type := m.type_store.get_uint(64)
+	packed_type := m.type_store.register(Type{
+		kind: .struct_t
+		fields: [u8_type, u64_type]
+		is_packed: true
+	})
+	aligned_type := m.type_store.register(Type{
+		kind: .struct_t
+		fields: [u8_type, u64_type]
+		alignment: 32
+	})
+	small_type := m.type_store.register(Type{
+		kind: .struct_t
+		fields: [u8_type, u8_type]
+	})
+	outer_type := m.type_store.register(Type{
+		kind: .struct_t
+		fields: [u8_type, small_type, u8_type]
+	})
+	assert m.struct_field_offset(packed_type, 1) == 1
+	assert m.type_size(packed_type) == 9
+	assert m.type_align(packed_type) == 1
+	assert m.struct_field_offset(aligned_type, 1) == 8
+	assert m.type_size(aligned_type) == 32
+	assert m.type_align(aligned_type) == 32
+	assert m.type_align(small_type) == 1
+	assert m.struct_field_offset(outer_type, 1) == 1
+	assert m.struct_field_offset(outer_type, 2) == 3
+	assert m.type_size(outer_type) == 4
+}
+
 fn test_used_function_alias_lookups_are_precomputed() {
 	mut b := Builder{
-		used_fns:           {
+		used_fns: {
 			'alpha.beta.gamma':      true
 			'delta__Thing__run':     true
 			'leaf':                  true
 			'outer.inner.operation': true
 		}
 		used_fn_normalized: map[string]bool{}
-		used_fn_suffixes:   map[string]bool{}
+		used_fn_suffixes: map[string]bool{}
 	}
 	b.prepare_used_fn_lookups()
 	for name in ['gamma', 'beta.gamma', 'Thing.run', 'run', 'pkg.leaf', 'scope.outer.inner.operation'] {

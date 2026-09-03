@@ -172,7 +172,7 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 		pointer_suffix += '*'
 	}
 	// Specialized generic bodies can retain a stale bare concrete type spelling.
-	if is_bare_struct_type(clean_type) {
+	if optional_payload_is_bare_struct(clean_type) {
 		if qualified := g.unique_qualified_struct_c_type(bare_ct) {
 			return qualified + pointer_suffix
 		}
@@ -361,12 +361,23 @@ fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
 		ct = ct[..ct.len - 1]
 		pointer_suffix += '*'
 	}
+	if source_name := optional_payload_struct_name(t) {
+		canonical_name := g.canonical_import_alias_type_text(source_name)
+		lookup_name := if canonical_name.starts_with('main.') {
+			canonical_name['main.'.len..]
+		} else {
+			canonical_name
+		}
+		if canonical_name != source_name && lookup_name in g.tc.structs {
+			return g.struct_cname(canonical_name) + pointer_suffix
+		}
+	}
 	// A concrete generic type can reach this collector through a stale bare
 	// specialization spelling while its declaration is module-qualified
 	// (`StructKeyDecodeResult_T` vs `json2__StructKeyDecodeResult_T`). Resolve
 	// the unique declaration here so we neither emit an unusable phantom
 	// Optional typedef nor duplicate the correctly qualified one.
-	if is_bare_struct_type(t) {
+	if optional_payload_is_bare_struct(t) {
 		if qualified := g.unique_qualified_struct_c_type(ct) {
 			return qualified + pointer_suffix
 		}
@@ -391,7 +402,58 @@ fn optional_payload_may_have_stale_interface_spelling(t types.Type) bool {
 	return clean is types.Interface || (clean is types.Struct && !clean.name.contains('.'))
 }
 
-fn is_bare_struct_type(t types.Type) bool {
+fn optional_payload_struct_name(t types.Type) ?string {
+	mut clean := t
+	for clean is types.Pointer {
+		clean = clean.base_type
+	}
+	if clean is types.Struct {
+		return clean.name
+	}
+	return none
+}
+
+fn (g &FlatGen) canonical_import_alias_type_text(typ string) string {
+	clean := typ.trim_space()
+	for prefix in ['&', '?', '!', '[]'] {
+		if clean.starts_with(prefix) {
+			return prefix + g.canonical_import_alias_type_text(clean[prefix.len..])
+		}
+	}
+	if clean.starts_with('map[') {
+		bracket_end := shared_generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len - 1 {
+			key := g.canonical_import_alias_type_text(clean[4..bracket_end])
+			value := g.canonical_import_alias_type_text(clean[bracket_end + 1..])
+			return 'map[${key}]${value}'
+		}
+	}
+	base, args, ok := parse_shared_generic_app_parts(clean)
+	if ok {
+		mut canonical_args := []string{cap: args.len}
+		for arg in args {
+			canonical_args << g.canonical_import_alias_type_text(arg)
+		}
+		canonical_base := g.canonical_import_alias_type_text(base)
+		return '${canonical_base}[${canonical_args.join(', ')}]'
+	}
+	if clean.contains('.') {
+		alias := clean.all_before('.')
+		if module_name := g.current_file_import_alias_module(alias) {
+			return module_name + clean[alias.len..]
+		}
+	}
+	return clean
+}
+
+fn (g &FlatGen) current_file_import_alias_module(alias string) ?string {
+	if g.tc.cur_file.len == 0 {
+		return none
+	}
+	return g.tc.file_imports['${g.tc.cur_file}\n${alias}'] or { none }
+}
+
+fn optional_payload_is_bare_struct(t types.Type) bool {
 	mut clean := t
 	for clean is types.Pointer {
 		clean = clean.base_type
@@ -491,11 +553,47 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 	if g.decl_types_ready {
 		return
 	}
+	// Specialized generic-interface wrappers are synthesized from the interface
+	// declaration instead of appearing as standalone AST declarations. Discover
+	// their applications here as well so tuple and option return ABIs are defined
+	// before the wrapper forward declarations use them.
+	g.register_specialized_interface_applications()
+	for iface_name, methods in g.interfaces {
+		_, _, is_specialized := parse_shared_generic_app_parts(iface_name)
+		if !is_specialized {
+			continue
+		}
+		for method in methods {
+			decl_key := g.interface_method_signature_key(iface_name, method) or { continue }
+			params, ret := g.tc.specialized_interface_method_signature(iface_name, decl_key)
+			g.collect_declaration_signature_type_for_context(ret, true)
+			for param in params {
+				g.collect_declaration_signature_type_for_context(param, true)
+			}
+		}
+	}
+	old_module := g.tc.cur_module
+	old_file := g.tc.cur_file
+	defer {
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+	}
 	// Parallel monomorph workers can append concrete declarations before their
 	// checker signature maps are merged. Read declaration nodes directly too, so
 	// an option/result used only by a worker specialization still gets a typedef.
+	mut cur_module := ''
+	mut cur_file := ''
 	for idx in g.top_level_nodes() {
 		node := g.a.nodes[idx]
+		if node.kind == .file {
+			cur_file = node.value
+			cur_module = g.tc.file_modules[cur_file] or { '' }
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
 		if node.kind != .fn_decl {
 			continue
 		}
@@ -503,6 +601,10 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 			|| g.name_uses_specialized_generic_abi(node.value)
 		if !concrete_optional {
 			continue
+		}
+		g.tc.cur_module = g.a.specialized_fn_modules[idx] or { cur_module }
+		g.tc.cur_file = g.a.specialized_fn_files[idx] or {
+			g.tc.fn_type_files[node.value] or { cur_file }
 		}
 		if node.typ.len > 0 {
 			g.collect_declaration_signature_type_for_context(g.tc.parse_type(node.typ),
@@ -878,10 +980,31 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 		g.emitted_optional_types[opt_name] = true
 		return false
 	}
+	// A `?fn (...)` payload names a `_fn_ptr_<hash>` typedef. That typedef may only
+	// have been registered (name reserved) without being emitted — e.g. discovered
+	// via an unused declaration whose param resolves to a different C spelling than a
+	// resolved use (`fn (int)` keyed as `fn_ptr:void|int` vs the emitted
+	// `fn_ptr:void|i64` once `int` widens to i64). Emit the referenced fn-ptr typedef
+	// now so this wrapper never references an undefined type.
+	if bare_val_type.starts_with('_fn_ptr_') {
+		g.ensure_fn_ptr_typedef_by_name(bare_val_type)
+	}
 	err_field := if g.has_ierror_interface() { 'IError err; ' } else { '' }
 	g.writeln('typedef struct ${opt_name} { bool ok; ${err_field}${val_type} value; } ${opt_name};')
 	g.emitted_optional_types[opt_name] = true
 	return true
+}
+
+// ensure_fn_ptr_typedef_by_name emits the `_fn_ptr_<hash>` typedef registered under
+// `name` when it has not been emitted yet. Used when an emitted type references a
+// fn-ptr typedef that was only registered (name reserved) but never resolved/used.
+fn (mut g FlatGen) ensure_fn_ptr_typedef_by_name(name string) {
+	for encoded, registered_name in g.fn_ptr_types {
+		if registered_name == name {
+			g.emit_fn_ptr_typedef(encoded, name, mut g.emitted_fn_ptr_typedefs)
+			return
+		}
+	}
 }
 
 // enum_decls supports enum decls handling for FlatGen.
@@ -896,6 +1019,7 @@ fn (mut g FlatGen) enum_decls() {
 	mut emitted := map[string]bool{}
 	for node_idx in g.top_level_nodes() {
 		node := g.a.nodes[node_idx]
+		node_ref := g.a.node(flat.NodeId(node_idx))
 		match node.kind {
 			.file {
 				cur_module = g.tc.file_modules[node.value] or { '' }
@@ -920,7 +1044,7 @@ fn (mut g FlatGen) enum_decls() {
 					if is_flag {
 						mut val := 0
 						for i in 0 .. node.children_count {
-							f := g.a.child_node(&node, i)
+							f := g.a.child_node(node_ref, i)
 							if f.children_count > 0 {
 								if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
 									val = enum_val
@@ -934,7 +1058,7 @@ fn (mut g FlatGen) enum_decls() {
 						mut field_names := map[string]bool{}
 						mut field_exprs := map[string]flat.NodeId{}
 						for i in 0 .. node.children_count {
-							f := g.a.child_node(&node, i)
+							f := g.a.child_node(node_ref, i)
 							field_names[f.value] = true
 							if f.children_count > 0 {
 								field_exprs[f.value] = g.a.child(f, 0)
@@ -945,7 +1069,7 @@ fn (mut g FlatGen) enum_decls() {
 						mut next_value_known := true
 						mut next_value_expr := '0'
 						for i in 0 .. node.children_count {
-							f := g.a.child_node(&node, i)
+							f := g.a.child_node(node_ref, i)
 							mut value := next_value
 							mut value_known := next_value_known
 							mut value_expr := if next_value_known {
@@ -996,7 +1120,7 @@ fn (mut g FlatGen) enum_decls() {
 				mut field_exprs := map[string]flat.NodeId{}
 				mut field_names := map[string]bool{}
 				for i in 0 .. node.children_count {
-					f := g.a.child_node(&node, i)
+					f := g.a.child_node(node_ref, i)
 					field_names[f.value] = true
 					if f.children_count > 0 {
 						field_exprs[f.value] = g.a.child(f, 0)
@@ -1005,7 +1129,7 @@ fn (mut g FlatGen) enum_decls() {
 				if is_flag {
 					mut val := 0
 					for i in 0 .. node.children_count {
-						f := g.a.child_node(&node, i)
+						f := g.a.child_node(node_ref, i)
 						if f.children_count > 0 {
 							mut resolving := map[string]bool{}
 							if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0),
@@ -1025,7 +1149,7 @@ fn (mut g FlatGen) enum_decls() {
 					mut next_value_known := true
 					mut next_value_expr := '0'
 					for i in 0 .. node.children_count {
-						f := g.a.child_node(&node, i)
+						f := g.a.child_node(node_ref, i)
 						mut value := next_value
 						mut value_known := next_value_known
 						mut value_expr := if next_value_known {

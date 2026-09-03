@@ -1,12 +1,99 @@
 module fastc
 
+import os
+import v3.cmdexec
+import v3.gen.c.naming
 import v3.pref
 import v3.token
+import v3.scanner
 
 fn (mut g Parser) run() !string {
 	g.next()
 	g.parse_top_level_items(false)!
-	return g.out.str()
+	generated := fastc_take_string(mut g.out)
+	g.drain_pending_mono()!
+	return generated
+}
+
+// drain_pending_mono generates every on-demand generic instance queued during the main
+// parse (and any nested instances their own bodies queue via the `$for` unroll), appending
+// each one's C to `g.out` / `g.protos` by re-parsing it as an ordinary function or method.
+fn (mut g Parser) drain_pending_mono() ! {
+	for g.pending_mono.len > 0 {
+		req := g.pending_mono[0]
+		g.pending_mono = g.pending_mono[1..].clone()
+		src := g.generic_method_sources[req.source_key] or { continue }
+		mut instance := g.render_mono_method(src, req.concrete)
+		if instance == '' {
+			continue
+		}
+		instance = g.erase_mono_generic_type_arguments(instance, src)
+		if fastc_is_json2_voidptr_element_check(req, src) {
+			if body_open := instance.index('{') {
+				instance = instance[..body_open + 1] + '\nreturn false\n}'
+			}
+		}
+		start := g.out.len
+		g.parse_mono_instance(instance, src) or {
+			return error('generic instance `${req.source_key}[${req.concrete}]`: ${err.msg()}')
+		}
+		definition := g.out.after(start)
+		if definition != '' {
+			mono_name := fastc_monomorphized_name(src.name, req.concrete)
+			c_name := if src.receiver_type == '' {
+				g.c_function_name_for_key(fastc_function_key(src.module_name, mono_name))
+			} else {
+				fastc_method_c_name(src.module_name, src.receiver_type, mono_name)
+			}
+			g.generated_mono[c_name] = true
+			g.mono_definitions[c_name] = definition
+		}
+	}
+}
+
+// fastc_is_json2_voidptr_element_check scopes the erased-placeholder fallback to
+// json2's internal decoder helper. A user method with the same ordinary name must
+// retain its specialized body.
+fn fastc_is_json2_voidptr_element_check(req FastcMonoRequest, src FastcGenericMethodSource) bool {
+	normalized_path := src.path.replace('\\', '/')
+	return req.concrete == 'voidptr' && src.name == 'check_element_type_valid' && (src.receiver_type == 'json2__Decoder' || src.receiver_type.ends_with('__json2__Decoder')) && normalized_path.ends_with('/vlib/json2/decode_sumtype.v')
+}
+
+// reset_lookup_memos discards the per-file name lookup memos. They are keyed
+// by the bare name only, so they are valid for exactly one module and import
+// context and must be reset whenever the parser switches to another one.
+fn (mut g Parser) reset_lookup_memos() {
+	g.unqualified_key_memo = map[string]string{}
+	g.nonlocal_name_type_memo = map[string]string{}
+	g.resolved_name_memo = map[string]string{}
+	g.declared_type_key_memo = map[string]FastcMemoEntry{}
+	g.type_memo = map[i64]string{}
+	g.method_key_memo = map[string]map[string]string{}
+	g.field_memo = map[string]map[string]FastcStructField{}
+}
+
+// parse_mono_instance re-parses one concrete instance in its defining module, so its body
+// (including any `$for`/`$if`) resolves unqualified functions and imported types correctly.
+fn (mut g Parser) parse_mono_instance(instance string, source FastcGenericMethodSource) ! {
+	file := token.File.unindexed(source.path, instance.len)
+	g.path = source.path
+	g.module_name = source.module_name
+	g.imports = source.imports.clone()
+	// The lookup memos are keyed by bare name and answer for the current
+	// module and imports, so they must not carry over into another module.
+	g.reset_lookup_memos()
+	g.s = scanner.new_scanner(g.prefs, .normal)
+	g.s.init(file, instance)
+	g.next()
+	if g.tok in [.key_pub, .key_static] {
+		g.next()
+	}
+	if g.tok == .key_fn {
+		previous_drain := g.in_mono_drain
+		g.in_mono_drain = true
+		g.parse_function(true)!
+		g.in_mono_drain = previous_drain
+	}
 }
 
 fn (mut g Parser) parse_top_level_items(stop_at_block_end bool) ! {
@@ -25,6 +112,7 @@ fn (mut g Parser) parse_top_level_items(stop_at_block_end bool) ! {
 			continue
 		}
 		mut item_enabled := true
+		g.pending_direct_array_access = false
 		for g.tok == .attribute {
 			item_enabled = g.skip_attribute()! && item_enabled
 			g.skip_semicolons()
@@ -74,11 +162,48 @@ fn (mut g Parser) parse_top_level_items(stop_at_block_end bool) ! {
 fn (mut g Parser) parse_c_directive() ! {
 	directive := g.lit.trim_space()
 	g.next()
-	if directive == 'flag' || directive.starts_with('flag ') || directive == 'pkgconfig'
-		|| directive.starts_with('pkgconfig ') {
+	if directive == 'flag' || directive.starts_with('flag ') || directive == 'pkgconfig' || directive.starts_with('pkgconfig ') {
 		// FastC's compiler invocation supplies its own target flags. The bootstrap
 		// dependency set only uses these directives for optional libraries.
 		if g.prefs.selfhost {
+			return
+		}
+		if directive.starts_with('flag ') {
+			mut rest := directive['flag '.len..].trim_space()
+			// A platform-qualified `#flag <os> ...` that names a different target is
+			// inert for this build; skip it instead of rejecting the whole program,
+			// mirroring the `#include <os>` target filtering below.
+			qualifier := rest.all_before(' ')
+			if qualifier in ['windows', 'macos', 'darwin', 'ios', 'mac', 'linux', 'freebsd', 'openbsd',
+				'netbsd', 'dragonfly', 'solaris', 'android'] {
+				if !pref.comptime_flag_value(g.prefs, qualifier) {
+					return
+				}
+				rest = rest.all_after(qualifier).trim_space()
+			}
+			// FastC drives its own tcc link line (it already links pthread, libm and
+			// the host system libraries), so a bare `#flag -lfoo`/`-L`/`-framework`
+			// only names extra link libraries, and `-I<path>` only adds a header search
+			// path (FastC's bundled tcc already resolves the system headers these C
+			// files include). Skip such flags instead of rejecting the whole program.
+			if fastc_flag_is_skippable(rest) {
+				g.c_flags << fastc_c_flag_args(rest, g.prefs.vroot, g.path)!
+				return
+			}
+			// A `#flag -DNAME` / `-DNAME=value` preprocessor define affects the C that
+			// follows (e.g. the sqlite3 header/binding); emit it as a `#define` so the
+			// definition is in effect, skipping any link/header flags mixed alongside.
+			if defines := fastc_flag_defines(rest) {
+				g.c_flags << fastc_c_flag_args(rest, g.prefs.vroot, g.path)!
+				for define in defines {
+					g.out.writeln('#define ${define}')
+				}
+				return
+			}
+		}
+		if directive == 'pkgconfig' || directive.starts_with('pkgconfig ') {
+			packages := directive.all_after('pkgconfig').trim_space()
+			g.c_flags << fastc_pkgconfig_flags(packages)!
 			return
 		}
 		return g.unsupported('C build directive `#${directive}`')
@@ -102,6 +227,141 @@ fn (mut g Parser) parse_c_directive() ! {
 		return g.unsupported('empty C directive')
 	}
 	g.out.writeln('#${c_directive}')
+}
+
+fn fastc_c_flag_args(raw string, vroot string, source_file string) ![]string {
+	expanded := fastc_resolve_c_pseudo_paths(raw, vroot, source_file)
+	mut args := cmdexec.split_args(expanded) or {
+		return error('fastc parser cannot split C build flag `${raw}`')
+	}
+	base_dir := if source_file.len > 0 { os.real_path(os.dir(source_file)) } else { os.getwd() }
+	mut resolve_next_path := false
+	for i, arg in args {
+		if resolve_next_path {
+			if !os.is_abs_path(arg) {
+				args[i] = os.join_path(base_dir, arg)
+			}
+			resolve_next_path = false
+			continue
+		}
+		if arg in ['-I', '-L', '-F', '-isystem', '-iquote', '-idirafter'] {
+			resolve_next_path = true
+			continue
+		}
+		for prefix in ['-I', '-L', '-F'] {
+			if arg.starts_with(prefix) && arg.len > prefix.len {
+				path := arg[prefix.len..]
+				if !os.is_abs_path(path) {
+					args[i] = prefix + os.join_path(base_dir, path)
+				}
+				break
+			}
+		}
+		if (arg.ends_with('.o') || arg.ends_with('.a') || arg.ends_with('.obj') || arg.ends_with('.lib')) && !os.is_abs_path(arg) {
+			args[i] = os.join_path(base_dir, arg)
+		}
+		resolved_arg := args[i]
+		if resolved_arg.ends_with('.o') && !os.is_file(resolved_arg) {
+			c_source := resolved_arg[..resolved_arg.len - 2] + '.c'
+			if os.is_file(c_source) {
+				args[i] = c_source
+			}
+		}
+	}
+	return args
+}
+
+fn fastc_pkgconfig_flags(raw string) ![]string {
+	packages := cmdexec.split_args(raw) or {
+		return error('fastc parser cannot split `#pkgconfig ${raw}`')
+	}
+	if packages.len == 0 {
+		return error('fastc parser requires a package name after `#pkgconfig`')
+	}
+	mut args := ['--cflags', '--libs']
+	args << packages
+	result := cmdexec.run('pkg-config', args)
+	if result.exit_code != 0 {
+		return error('fastc parser cannot resolve `#pkgconfig ${raw}`: ${result.output.trim_space()}')
+	}
+	return cmdexec.split_args(result.output.trim_space()) or {
+		return error('fastc parser cannot split flags for `#pkgconfig ${raw}`')
+	}
+}
+
+// fastc_flag_is_skippable reports whether a `#flag` payload only names link
+// libraries/search paths/frameworks or header include paths. Such flags affect
+// linking or header lookup, not C generation, so FastC can safely skip them (it
+// manages its own tcc link line and ships the system headers these C files include).
+// Anything else (`-D`, `-std=...`) still reaches the unsupported path.
+fn fastc_flag_is_skippable(flag string) bool {
+	tokens := flag.fields()
+	if tokens.len == 0 {
+		return false
+	}
+	mut i := 0
+	for i < tokens.len {
+		part := tokens[i]
+		// Search-path / include flags whose operand can be a SEPARATE token
+		// (`-I <path>`): skip the flag and its path operand.
+		if part in ['-I', '-L', '-F', '-rpath', '-isystem', '-iquote', '-idirafter'] {
+			i += 2
+			continue
+		}
+		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-Wl') || part.starts_with('-rpath') || part.starts_with('-I') || part.starts_with('-F') || part == '-pthread' {
+			i++
+			continue
+		}
+		if part in ['-framework', '-weak_framework', '-weak_library', '-Xlinker'] {
+			// Skip the operand that names the framework/library too.
+			i += 2
+			continue
+		}
+		// A bare object / static-library link input (`@VEXEROOT/.../cJSON.o`): FastC drives
+		// its own tcc link line and does not add these, so skip it. If a live reference to
+		// its symbols survives reachability, the link fails explicitly instead.
+		if part.ends_with('.o') || part.ends_with('.a') || part.ends_with('.obj') || part.ends_with('.lib') {
+			i++
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// fastc_flag_defines returns the `#define` bodies for a `#flag` payload made up of
+// `-DNAME` / `-DNAME=value` preprocessor defines (link/header flags mixed in are
+// skipped). Returns none if the payload has no define or contains anything else.
+fn fastc_flag_defines(flag string) ?[]string {
+	tokens := flag.fields()
+	if tokens.len == 0 {
+		return none
+	}
+	mut defines := []string{}
+	mut has_define := false
+	for part in tokens {
+		if part.starts_with('-D') {
+			body := part[2..]
+			if body == '' {
+				return none
+			}
+			has_define = true
+			if body.contains('=') {
+				defines << '${body.all_before('=')} ${body.all_after('=')}'
+			} else {
+				defines << '${body} 1'
+			}
+			continue
+		}
+		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-I') || part.starts_with('-Wl') || part.starts_with('-rpath') || part == '-pthread' {
+			continue
+		}
+		return none
+	}
+	if !has_define {
+		return none
+	}
+	return defines
 }
 
 fn (mut g Parser) skip_attribute() !bool {
@@ -128,6 +388,9 @@ fn (mut g Parser) skip_attribute() !bool {
 				return g.unsupported('conditional attribute expression near `${g.token_source()}`')
 			}
 			continue
+		}
+		if depth == 1 && g.tok == .name && g.lit == 'direct_array_access' {
+			g.pending_direct_array_access = true
 		}
 		if depth == 1 && g.tok == .semicolon {
 			at_item_start = true
@@ -232,6 +495,12 @@ fn (g &Parser) temporary_namespace(kind string) string {
 fn fastc_reserved_temporary_c_names(functions map[string]FastcFunctionSignature, globals map[string]string) []string {
 	mut names := []string{}
 	for function_key in functions.keys() {
+		// Only an unqualified key can collide with a C keyword or libc name and
+		// so be renamed into the `__v_fastc_` namespace: a module-qualified key
+		// keeps its `module__name` spelling, and `C.` keys are emitted verbatim.
+		if function_key.contains('.') {
+			continue
+		}
 		function_c_name := fastc_c_function_name_for_key(function_key)
 		if function_c_name.starts_with('__v_fastc_') {
 			names << function_c_name
@@ -252,7 +521,7 @@ fn (mut g Parser) skip_semicolons() {
 }
 
 fn (g &Parser) unsupported(feature string) IError {
-	return error('fastc parser does not support ${feature} at byte ${g.s.pos} in ${g.path}')
+	return error('fastc parser does not support ${feature} at byte ${g.s.pos + g.source_offset} in ${g.path}')
 }
 
 fn (mut g Parser) expect(expected token.Token) ! {
@@ -312,14 +581,44 @@ fn (mut g Parser) skip_import() ! {
 }
 
 fn (mut g Parser) parse_function(enabled bool) ! {
+	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
+	g.temp_id = 0
+	g.direct_array_access = g.pending_direct_array_access
+	g.pending_direct_array_access = false
 	g.next()
 	mut receiver_type := ''
 	mut receiver_key := ''
 	mut receiver_name := ''
 	mut receiver_is_mut := false
 	mut params := []string{}
+	mut is_generic := false
+	mut type_params := []string{}
 	if g.tok == .lpar {
+		// Detect a generic method receiver (`(x Foo[T])`): a `[` inside the receiver
+		// clause names type parameters. Such a body is generated with `T` as a
+		// `voidptr` placeholder, but if that lowering fails it is stubbed (below).
+		mut receiver_look := g.s
+		mut receiver_depth := 1
+		mut in_type_args := false
+		for receiver_depth > 0 {
+			receiver_tok := receiver_look.scan()
+			if receiver_tok == .eof {
+				break
+			}
+			if receiver_tok == .lpar {
+				receiver_depth++
+			} else if receiver_tok == .rpar {
+				receiver_depth--
+			} else if receiver_tok == .lsbr && receiver_depth == 1 {
+				is_generic = true
+				in_type_args = true
+			} else if receiver_tok == .rsbr && receiver_depth == 1 {
+				in_type_args = false
+			} else if receiver_tok == .name && in_type_args {
+				type_params << receiver_look.lit
+			}
+		}
 		g.next()
 		if g.tok == .key_mut {
 			receiver_is_mut = true
@@ -346,14 +645,15 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		} else {
 			receiver_type
 		}
-		params << '${receiver_parameter_type} ${fastc_c_identifier(receiver_name)}'
+		params << '${fastc_output_c_type(receiver_parameter_type)} ${fastc_c_identifier(receiver_name)}'
+		g.type_memo.clear()
 		g.locals[receiver_name] = FastcLocal{
-			is_mut:       receiver_is_mut
+			is_mut: receiver_is_mut
 			is_reference: receiver_is_reference
-			typ:          receiver_parameter_type
+			typ: receiver_parameter_type
 		}
 	}
-	if g.tok != .name && !(receiver_type != '' && (g.tok.is_overloadable() || g.tok.is_keyword())) {
+	if g.tok != .name && !(g.tok.is_overloadable() || g.tok.is_keyword()) {
 		return g.unsupported('function declaration')
 	}
 	mut name := if g.tok == .name || g.tok.is_keyword() { g.lit } else { g.tok.str() }
@@ -377,14 +677,25 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		receiver_key = type_key
 		is_static_method = true
 		g.next()
-		if g.tok != .name {
+		if g.tok != .name && !g.tok.is_keyword() {
 			return g.unsupported('static method declaration')
 		}
 		name = g.lit
 		g.next()
 	}
 	if g.tok == .lsbr {
-		g.skip_balanced(.lsbr, .rsbr)!
+		// Type parameters on a free function (`fn f[T](...)`): also generic. Emitted
+		// with each `T` as a `voidptr` placeholder; `typeof(T).name`/`$if T is`
+		// resolve against that. If the placeholder lowering fails the body is stubbed.
+		is_generic = true
+		g.next()
+		for g.tok != .rsbr && g.tok != .eof {
+			if g.tok == .name {
+				type_params << g.lit
+			}
+			g.next()
+		}
+		g.expect(.rsbr)!
 	}
 	if is_c_function {
 		g.skip_c_function_declaration()!
@@ -419,8 +730,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	} else {
 		'${receiver_key}.${name}'
 	}
-	is_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main']
-		&& name == 'main'
+	is_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main'] && name == 'main'
 	is_module_init := !is_static_method && receiver_type == '' && name == 'init'
 	is_module_cleanup := !is_static_method && receiver_type == '' && name == 'cleanup'
 	if is_main {
@@ -438,17 +748,17 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.next()
 		return
 	}
-	is_fastc_source := name.starts_with('fastc_') || g.path.ends_with('/fastc/fastc.v')
-		|| g.module_name.ends_with('fastc')
-	if g.selfhost && name != 'fastc_collect_referenced_function_names' && !is_fastc_source
-		&& name !in ['main', 'init', 'cleanup'] && name !in g.used_function_names && name.len > 0
-		&& (name[0].is_letter() || name[0] == `_`) {
+	is_fastc_source := name.starts_with('fastc_') || g.path.ends_with('/fastc/fastc.v') || g.module_name.ends_with('fastc')
+	if g.selfhost && name != 'fastc_collect_referenced_function_names' && !is_fastc_source && name !in [
+		'main',
+		'init',
+		'cleanup',
+	] && name !in g.used_function_names && name.len > 0 && (name[0].is_letter() || name[0] == `_`) && !g.in_mono_drain {
 		g.skip_balanced(.lcbr, .rcbr)!
 		return
 	}
 	if signature := g.functions[function_key] {
-		if signature.path != g.path && name != 'fastc_collect_referenced_function_names'
-			&& !is_fastc_source {
+		if signature.path != g.path && name != 'fastc_collect_referenced_function_names' && !is_fastc_source {
 			g.skip_balanced(.lcbr, .rcbr)!
 			return
 		}
@@ -461,12 +771,20 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.skip_balanced(.lcbr, .rcbr)!
 		return
 	}
+	if g.selfhost && !is_fastc_source && receiver_type != '' && g.method_uses_undefined_receiver() {
+		// A method reaching an undefined identifier as a method-call receiver is broken
+		// dead code, kept only because its name collides with a genuinely-used method on
+		// another type (name-grouped reachability). The mainline compiler drops it via
+		// `-skip-unused`; do the same. A live reference would fail C validation instead.
+		g.skip_balanced(.lcbr, .rcbr)!
+		return
+	}
 	c_name := if receiver_type == '' {
 		fastc_c_function_name(g.module_name, name)
 	} else {
 		fastc_method_c_name(g.module_name, fastc_c_declared_type_name(receiver_key), name)
 	}
-	c_return_type := if is_main { 'int' } else { return_type }
+	c_return_type := if is_main { 'int' } else { fastc_output_c_type(return_type) }
 	c_params := if is_main && g.selfhost {
 		'int argc, char **argv'
 	} else if params.len == 0 {
@@ -479,7 +797,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.write_line('${c_return_type} ${c_name}(${c_params}) {')
 		g.indent++
 		if return_type != 'void' {
-			g.write_line('return (${return_type}){0};')
+			g.write_line('return (${fastc_output_c_type(return_type)}){0};')
 		}
 		g.indent--
 		g.write_line('}')
@@ -530,7 +848,58 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.loop_defer_block_starts.clear()
 	g.loop_has_breaks.clear()
 	g.statement_reachable = true
-	terminates := g.parse_block_body()!
+	mut terminates := false
+	if is_generic {
+		// Locate the end of the body (the matching `}`) so a failed placeholder
+		// lowering can skip past it, then try to generate the body.
+		out_checkpoint := g.out.len
+		saved_indent := g.indent
+		mut body_end := g.s
+		mut body_depth := 1
+		// A generic instantiation `Name[T]` on an unbound type parameter (as in orm's
+		// `new_query[T]` → `struct_meta[T]()`/`QueryBuilder[T]{}`) leaks `T` into the C
+		// without raising an error, so detect a type-parameter token right after `[`
+		// and force the body to be stubbed.
+		mut force_stub := false
+		mut prev_was_lsbr := false
+		mut prev_was_type_param := false
+		if g.tok == .lcbr {
+			body_depth++
+		} else if g.tok == .rcbr {
+			body_depth--
+		}
+		for body_depth > 0 {
+			body_tok := body_end.scan()
+			if body_tok == .eof {
+				break
+			}
+			if body_tok == .lcbr {
+				body_depth++
+			} else if body_tok == .rcbr {
+				body_depth--
+			}
+			if prev_was_lsbr && body_tok == .name && body_end.lit in type_params {
+				force_stub = true
+			}
+			// A struct literal on an unbound type parameter (`T{...}`, as in orm's
+			// `map_row`'s `mut instance := T{}`): the placeholder lowering can miscount
+			// the literal's `}` and end the body early, leaking a stray statement to the
+			// top level. Type-parameter reflection (`T.name`, `T.fields`, ...) likewise
+			// has no valid C spelling until this function is monomorphized. Force the
+			// whole placeholder body to stub in either case.
+			if prev_was_type_param && body_tok in [.lcbr, .dot] {
+				force_stub = true
+			}
+			prev_was_lsbr = body_tok == .lsbr
+			prev_was_type_param = body_tok == .name && body_end.lit in type_params
+		}
+		previous_placeholder := g.in_generic_placeholder
+		g.in_generic_placeholder = true
+		terminates = g.parse_generic_body_or_stub(return_type, out_checkpoint, saved_indent, body_end, force_stub)
+		g.in_generic_placeholder = previous_placeholder
+	} else {
+		terminates = g.parse_block_body()!
+	}
 	g.in_main = previous_in_main
 	g.return_type = previous_return_type
 	g.return_types = previous_return_types.clone()
@@ -550,7 +919,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		// Self-host input was already accepted by the bootstrap compiler. Keep C's
 		// control-flow rules satisfied when the streaming parser cannot prove that
 		// every nested source branch terminates.
-		g.write_line('return (${return_type}){0};')
+		g.write_line('return (${fastc_output_c_type(return_type)}){0};')
 	}
 	if is_main {
 		g.write_line('return 0;')
@@ -560,25 +929,92 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.out.writeln('')
 }
 
+// parse_generic_body_or_stub emits a generic (un-monomorphized) function body with
+// each `T` treated as a `voidptr` placeholder. Most generic bodies lower fine that
+// way (e.g. `typeof(T).name` reflection). When one cannot (e.g. orm's
+// `QueryBuilder[T]`, which interpolates a `T`-typed struct), the partial output is
+// discarded and a trivial stub is emitted instead — a generic body is never called
+// un-monomorphized, so a stub is safe and keeps the surrounding module compiling.
+// `body_end` is a scanner positioned just past the body's closing `}`, used to
+// resume after a discarded body. Returns whether the emitted body terminates.
+fn (mut g Parser) parse_generic_body_or_stub(return_type string, out_checkpoint int, saved_indent int, body_end scanner.Scanner, force_stub bool) bool {
+	if force_stub {
+		g.emit_generic_body_stub(out_checkpoint, saved_indent, body_end, return_type)
+		return true
+	}
+	local_scope_start := g.local_scope_changes.len
+	local_scope_depth := g.local_scope_depth
+	statement_reachable := g.statement_reachable
+	terminates := g.parse_block_body() or {
+		g.restore_local_scope(local_scope_start)
+		g.local_scope_depth = local_scope_depth
+		g.statement_reachable = statement_reachable
+		g.emit_generic_body_stub(out_checkpoint, saved_indent, body_end, return_type)
+		return true
+	}
+	return terminates
+}
+
+// emit_generic_body_stub discards any partially-generated body, repositions the
+// scanner just past the body, and emits a trivial `return (T){0};` stub.
+fn (mut g Parser) emit_generic_body_stub(out_checkpoint int, saved_indent int, body_end scanner.Scanner, return_type string) {
+	discard := g.out.len - out_checkpoint
+	if discard > 0 {
+		g.out.go_back(discard)
+	}
+	g.indent = saved_indent
+	g.capturing_defer = false
+	g.s = body_end
+	g.next()
+	if return_type != 'void' {
+		g.write_line('return (${fastc_output_c_type(return_type)}){0};')
+	}
+}
+
 fn fastc_method_c_name(module_name string, receiver_type string, name string) string {
 	module_prefix := if module_name in ['', 'main'] {
 		''
 	} else {
 		module_name.replace('.', '__') + '__'
 	}
-	receiver := receiver_type.trim_right('*').all_after_last('__')
+	// A composite receiver (`[]Any`/`map[string]Any` → `Array_json2__Any`/`Map_..._Any`)
+	// must keep its `Array_`/`Map_` prefix, otherwise `all_after_last('__')` collapses it to
+	// the element type (`Any`) and its method C name collides with the element type's own
+	// method (`json2__Any_str` defined for both `Any` and `[]Any` → C redefinition).
+	mut receiver_base := receiver_type.trim_right('*')
+	mut composite_prefix := ''
+	for {
+		if receiver_base.starts_with('Array_') {
+			composite_prefix += 'Array_'
+			receiver_base = receiver_base['Array_'.len..]
+		} else if receiver_base.starts_with('Map_') {
+			composite_prefix += 'Map_'
+			receiver_base = receiver_base['Map_'.len..]
+		} else {
+			break
+		}
+	}
+	receiver := composite_prefix + receiver_base.all_after_last('__')
 	method := match name {
 		'+' { 'plus' }
 		'-' { 'minus' }
 		'*' { 'mul' }
 		'/' { 'div' }
+		'%' { 'mod' }
+		'&' { 'and' }
+		'|' { 'or' }
+		'^' { 'xor' }
+		'<<' { 'left_shift' }
+		'>>' { 'right_shift' }
+		'[]' { 'op_index' }
+		'[]=' { 'op_index_set' }
 		'==' { 'eq' }
 		'!=' { 'ne' }
 		'<' { 'lt' }
 		'<=' { 'le' }
 		'>' { 'gt' }
 		'>=' { 'ge' }
-		else { name }
+		else { naming.sanitize(name) }
 	}
 	return '${module_prefix}${receiver}_${method}'
 }
@@ -624,6 +1060,7 @@ fn (mut g Parser) skip_c_function_declaration() ! {
 }
 
 fn (mut g Parser) parse_script() ! {
+	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
 	g.has_main = true
 	g.protos.writeln('int main(void);')
@@ -656,11 +1093,11 @@ fn (mut g Parser) parse_parameters() ![]string {
 	g.skip_semicolons()
 	for g.tok != .rpar {
 		mut is_mut := false
-		if g.tok in [.key_mut, .key_shared] {
+		if g.tok == .key_mut || (g.tok == .key_shared && !fastc_shared_parameter_is_name(g.s, g.path, g.module_name, g.imports, g.declared_types, g.prefs.building_v)) {
 			is_mut = true
 			g.next()
 		}
-		if g.tok != .name {
+		if g.tok !in [.name, .key_shared] {
 			return g.unsupported('function parameters')
 		}
 		name := g.lit
@@ -668,23 +1105,43 @@ fn (mut g Parser) parse_parameters() ![]string {
 		mut names := [name]
 		for g.tok == .comma {
 			g.next()
-			if g.tok != .name && !g.tok.is_keyword() {
+			if !fastc_token_can_be_decl_name(g.tok) {
 				return g.unsupported('grouped parameter names')
 			}
 			names << g.lit
 			g.next()
 		}
 		mut type_name := g.parse_type()!
+		option_value_type := g.pending_option_value_type
+		is_fn_pointer := g.pending_fn_pointer
+		fn_return_type := g.pending_fn_return_type
+		fn_option_value_type := g.pending_fn_option_value_type
 		is_reference := is_mut && !type_name.ends_with('*')
 		if is_reference {
 			type_name += '*'
 		}
 		for parameter_name in names {
-			params << '${type_name} ${fastc_c_identifier(parameter_name)}'
-			g.locals[parameter_name] = FastcLocal{
-				is_mut:       is_mut
-				is_reference: is_reference
-				typ:          type_name
+			c_name := fastc_c_identifier(parameter_name)
+			if is_fn_pointer {
+				// Declare a real function pointer with unspecified args so `f(x)`
+				// compiles as a direct call; the return C type is recovered above.
+				params << '${fastc_output_c_type(fn_return_type)} (*${c_name})()'
+				g.type_memo.clear()
+				g.locals[parameter_name] = FastcLocal{
+					is_mut: is_mut
+					typ: type_name
+					fn_return_type: fn_return_type
+					fn_option_value_type: fn_option_value_type
+				}
+			} else {
+				params << '${fastc_output_c_type(type_name)} ${c_name}'
+				g.type_memo.clear()
+				g.locals[parameter_name] = FastcLocal{
+					is_mut: is_mut
+					is_reference: is_reference
+					typ: type_name
+					option_value_type: option_value_type
+				}
 			}
 		}
 		if g.tok == .comma {
@@ -702,14 +1159,76 @@ fn (mut g Parser) parse_parameters() ![]string {
 
 fn (mut g Parser) parse_type() !string {
 	first_lit := g.lit
-	type_name, next_token := fastc_scan_type(mut g.s, g.tok, g.path, g.module_name, g.imports,
-		g.declared_types, g.selfhost) or { return g.unsupported(err.msg()) }
+	g.pending_option_value_type = ''
+	g.pending_fn_pointer = false
+	g.pending_fn_return_type = ''
+	g.pending_fn_option_value_type = ''
+	if g.tok == .question {
+		// Peek the wrapped value type of an option type `?T` before the main scan
+		// erases it to `Option`, so a caller can record it on the declared local.
+		mut look := g.s
+		value_tok := look.scan()
+		if value_tok !in [.lcbr, .eof] {
+			g.pending_option_value_type = g.peek_option_value_type(mut look, value_tok)
+		}
+	}
+	if g.tok == .key_fn {
+		// Peek a function type's return (`fn (params) R`) before the main scan erases
+		// it to `voidptr`, so a fn-typed parameter can be declared as a real function
+		// pointer and its call results inferred. Parameters are skipped (the pointer is
+		// declared with unspecified args), so only the return type is recovered.
+		g.peek_fn_pointer_signature()
+	}
+	type_name, next_token := fastc_scan_type(mut g.s, g.tok, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return g.unsupported(err.msg()) }
 	g.tok = next_token
 	g.lit = g.s.lit
 	if !g.selfhost && (first_lit in ['charptr', 'rune'] || type_name == 'char*') {
 		return g.unsupported('type `${first_lit}`')
 	}
 	return type_name
+}
+
+// peek_option_value_type scans an option type's wrapped value type from a lookahead
+// scanner, returning '' if it cannot be determined.
+fn (g &Parser) peek_option_value_type(mut look scanner.Scanner, first token.Token) string {
+	value_type, _ := fastc_scan_type(mut look, first, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return '' }
+	return value_type
+}
+
+// peek_fn_pointer_signature records a function type's C return type (and, for an
+// `!`/`?R` return, its wrapped value type) into the `pending_fn_*` fields. Called with
+// `g.tok == .key_fn`; it works on a scanner copy and does not consume the real stream.
+fn (mut g Parser) peek_fn_pointer_signature() {
+	mut look := g.s
+	mut tok := look.scan()
+	if tok != .lpar {
+		return
+	}
+	mut depth := 1
+	for depth > 0 {
+		tok = look.scan()
+		if tok == .eof {
+			return
+		} else if tok == .lpar {
+			depth++
+		} else if tok == .rpar {
+			depth--
+		}
+	}
+	tok = look.scan()
+	mut return_type := 'void'
+	if tok in [.not, .question] {
+		return_type = 'Option'
+		value_tok := look.scan()
+		if value_tok !in [.lcbr, .semicolon, .comma, .rpar, .eof] {
+			g.pending_fn_option_value_type = g.peek_option_value_type(mut look, value_tok)
+		}
+	} else if tok !in [.lcbr, .semicolon, .comma, .rpar, .eof] {
+		scanned, _ := fastc_scan_type(mut look, tok, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return }
+		return_type = scanned
+	}
+	g.pending_fn_pointer = true
+	g.pending_fn_return_type = return_type
 }
 
 fn (mut g Parser) parse_multi_return_types() ![]string {
@@ -729,6 +1248,27 @@ fn (mut g Parser) parse_multi_return_types() ![]string {
 	}
 	g.expect(.rpar)!
 	return types
+}
+
+// Primitive scalar spellings that may appear as sum-type variants and therefore
+// need a stable `__v_typeid_<name>`. `string` is intentionally excluded: in the
+// self-host runtime it is a declared struct and already gets a type id. The C
+// spelling equals the V spelling for each of these, so it doubles as the smart-
+// cast type in a `match` branch.
+const fastc_boxed_primitive_types = ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
+	'f32', 'f64', 'bool', 'rune', 'isize', 'usize', 'char', 'voidptr']
+
+// fastc_output_c_type maps a semantic FastC type string to the C spelling that
+// is physically written into a declaration or cast. Only the platform-width
+// `int` differs from its semantic key: it is emitted as `i64`/`i32` per the
+// target, while staying `int` for method-name mangling and type inference (so
+// `int` and `i64` keep distinct methods). Pointer suffixes are preserved.
+fn fastc_output_c_type(t string) string {
+	base := t.trim_right('*')
+	if base == 'int' {
+		return fastc_platform_int_c_type + t[base.len..]
+	}
+	return t
 }
 
 fn fastc_primitive_c_type(raw_type string) ?string {

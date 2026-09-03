@@ -83,8 +83,8 @@ fn helper_unused() int {
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
 	// Imported module bodies and export wrappers live in the module-cache unit. Their
 	// declarations and the successful calls above prove they were rooted and linked.
-	assert c_code.contains('int expmod__exported_answer(void);'), c_code
-	assert c_code.contains('int raw_exported_answer(void);'), c_code
+	assert c_code.contains('i64 expmod__exported_answer(void);'), c_code
+	assert c_code.contains('i64 raw_exported_answer(void);'), c_code
 	assert c_code.contains('raw_exported_answer()'), c_code
 	assert c_code.contains('take_callback(expmod__exported_answer)'), c_code
 }
@@ -137,7 +137,7 @@ fn main() {
 	assert run.output.trim_space() == '7', run.output
 
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
-	assert c_code.contains('int raw_enabled_export(void) {'), c_code
+	assert c_code.contains('i64 raw_enabled_export(void) {'), c_code
 	assert !c_code.contains('raw_disabled_export'), c_code
 }
 
@@ -174,7 +174,7 @@ fn main() {}
 	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
-	assert c_code.count('int natural_name(void) {') == 1, c_code
+	assert c_code.count('i64 natural_name(void) {') == 1, c_code
 }
 
 fn test_export_name_collision_with_libc_remapped_natural_symbol_is_rejected() {
@@ -441,12 +441,12 @@ fn main() {}
 	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
-	assert c_code.contains('_v_ret_Array_fixed_int_3 numbers(void);'), c_code
-	assert c_code.contains('_v_ret_Array_fixed_int_3 raw_numbers(void);'), c_code
-	assert c_code.contains('_v_ret_Array_fixed_int_3 numbers(void) {'), c_code
-	assert c_code.contains('_v_ret_Array_fixed_int_3 raw_numbers(void) {'), c_code
+	assert c_code.contains('_v_ret_Array_fixed_i64_3 numbers(void);'), c_code
+	assert c_code.contains('_v_ret_Array_fixed_i64_3 raw_numbers(void);'), c_code
+	assert c_code.contains('_v_ret_Array_fixed_i64_3 numbers(void) {'), c_code
+	assert c_code.contains('_v_ret_Array_fixed_i64_3 raw_numbers(void) {'), c_code
 	assert c_code.contains('return numbers();'), c_code
-	assert !c_code.contains('\nArray_fixed_int_3 raw_numbers(void)'), c_code
+	assert !c_code.contains('\nArray_fixed_i64_3 raw_numbers(void)'), c_code
 }
 
 fn test_export_wrapper_fn_pointer_return_uses_fn_pointer_typedef() {
@@ -472,7 +472,7 @@ fn main() {}
 	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
-	assert c_code.contains('typedef int (*_fn_ptr_'), c_code
+	assert c_code.contains('typedef i64 (*_fn_ptr_'), c_code
 	assert c_code.contains(' callback(void);'), c_code
 	assert c_code.contains(' raw_callback(void);'), c_code
 	assert c_code.contains(' raw_callback(void) {'), c_code
@@ -507,8 +507,8 @@ fn main() {}
 		c_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_path) or { panic(err) }
-	assert c_code.contains('veb__Result raw_show(main__App* app, main__Context* ctx, int id);'), c_code
-	assert c_code.contains('veb__Result raw_show(main__App* app, main__Context* ctx, int id) {'), c_code
+	assert c_code.contains('veb__Result raw_show(main__App* app, main__Context* ctx, i64 id);'), c_code
+	assert c_code.contains('veb__Result raw_show(main__App* app, main__Context* ctx, i64 id) {'), c_code
 	assert c_code.contains('return App__show(app, ctx, id);'), c_code
 }
 
@@ -538,8 +538,8 @@ fn main() {}
 		c_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_path) or { panic(err) }
-	assert c_code.contains('veb__Result raw_show_underscore(main__App* app, main__Context* ctx, int _2);'), c_code
-	assert c_code.contains('veb__Result raw_show_underscore(main__App* app, main__Context* ctx, int _2) {'), c_code
+	assert c_code.contains('veb__Result raw_show_underscore(main__App* app, main__Context* ctx, i64 _2);'), c_code
+	assert c_code.contains('veb__Result raw_show_underscore(main__App* app, main__Context* ctx, i64 _2) {'), c_code
 	assert c_code.contains('return App__show(app, ctx, _2);'), c_code
 	assert !c_code.contains('return App__show(app, ctx, _1);'), c_code
 }

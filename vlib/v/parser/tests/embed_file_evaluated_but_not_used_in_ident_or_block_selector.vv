@@ -1,0 +1,6 @@
+import v.embed_file
+
+fn main() {
+	maybe := ?embed_file.EmbedFileData(none)
+	'' == (maybe or { $embed_file(@FILE) }).path
+}

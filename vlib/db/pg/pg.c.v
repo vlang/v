@@ -260,8 +260,8 @@ fn C.PQftablecol(const_res &C.PGresult, i32) i32
 // const char *const *paramValues
 // const int *paramLengths
 // const int *paramFormats
-fn C.PQexecParams(conn &C.PGconn, const_command &char, nParams i32, const_paramTypes &int, const_paramValues voidptr,
-	const_paramLengths &int, const_paramFormats &int, resultFormat i32) &C.PGresult
+fn C.PQexecParams(conn &C.PGconn, const_command &char, nParams i32, const_paramTypes &u32, const_paramValues voidptr,
+	const_paramLengths &i32, const_paramFormats &i32, resultFormat i32) &C.PGresult
 
 fn C.PQputCopyData(conn &C.PGconn, const_buffer &char, nbytes i32) i32
 
@@ -272,7 +272,7 @@ fn C.PQgetCopyData(conn &C.PGconn, buffer &&char, async i32) i32
 fn C.PQprepare(conn &C.PGconn, const_stmtName &char, const_query &char, nParams i32, const_param_types &&char) &C.PGresult
 
 fn C.PQexecPrepared(conn &C.PGconn, const_stmtName &char, nParams i32, const_paramValues voidptr,
-	const_paramLengths &int, const_paramFormats &int, resultFormat i32) &C.PGresult
+	const_paramLengths &i32, const_paramFormats &i32, resultFormat i32) &C.PGresult
 
 // cleanup
 
@@ -386,12 +386,9 @@ fn connect_slot(conninfo string) !IdleSlot {
 	}
 	status := unsafe { ConnStatusType(C.PQstatus(conn)) }
 	if status != .ok {
-		// We force the construction of a new string as the
-		// error message will be freed by the next `PQfinish` call
-		c_error_msg := unsafe { C.PQerrorMessage(conn).vstring() }
-		error_msg := '${c_error_msg}'
+		c_error_msg := unsafe { cstring_to_vstring(C.PQerrorMessage(conn)) }
 		C.PQfinish(conn)
-		return error('Connection to a PG database failed: ${error_msg}')
+		return error('Connection to a PG database failed: ${c_error_msg}')
 	}
 	return IdleSlot{
 		handle:     conn
@@ -852,8 +849,10 @@ pub fn (c &Conn) copy_expert(query string, mut file io.ReaderWriter) !int {
 fn pg_stmt_worker(c &Conn, query string, data orm.QueryData, where orm.QueryData) ![]Row {
 	mut param_types := []u32{}
 	mut param_vals := []&char{}
-	mut param_lens := []int{}
-	mut param_formats := []int{}
+	// C's PQexecParams reads these as `const int *` (4-byte C ints); back them with
+	// i32 so `.data` matches the C ABI (a V `[]int` is now 64-bit per element).
+	mut param_lens := []i32{}
+	mut param_formats := []i32{}
 
 	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats, data)
 	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats, where)

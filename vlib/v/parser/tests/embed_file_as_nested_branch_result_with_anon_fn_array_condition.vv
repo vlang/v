@@ -1,0 +1,24 @@
+fn accepts(_ []fn () bool) bool {
+	return true
+}
+
+fn main() {
+	mut sink := 0
+	ok := true
+	fallback := $embed_file(@FILE)
+	data := if ok {
+		if accepts([fn () bool {
+			return true
+		}])
+		{
+			$embed_file(@FILE)
+		} else {
+			fallback
+		}
+	} else {
+		fallback
+	}
+	assert data.path.len > 0
+	assert sink == 0
+	sink = missing_symbol
+}

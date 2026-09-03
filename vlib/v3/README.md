@@ -88,9 +88,12 @@ currently supported collector mode. Directory builds read `subdirs` through the 
 Native C compilation uses `-fwrapv` on supported targets so signed integer overflow retains V's
 two's-complement semantics. On macOS, `-cg` links executables with exported symbols for symbolic
 backtraces while plain `-g` retains its V-source debug behavior.
-The driver monitors compiler memory throughout the build and exits when it reaches 10 GiB.
+The driver monitors compiler memory throughout the build and exits when it reaches 3840 MiB,
+leaving sampling headroom below a 4 GiB process ceiling.
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
+On macOS and Linux, `make` and the default `v self` build the compiler with `-prealloc`, enabling
+the disposable stage arenas that keep compiler self-hosting within that ceiling.
 Stage rows recorded at pipeline boundaries report sampled peak RSS and the process peak. Timing
 breakdowns reconstructed after a stage omit the sampled peak. On macOS each row also prints
 physical footprint immediately after RSS.
@@ -133,8 +136,9 @@ float printing, C-string and embedded-NUL string literals, runes, assertions, `s
 division, modulo, indexing, parallel assignment, mixed-precedence expressions, oversized decimal
 literals, and high-bit hexadecimal or binary literals. These restrictions avoid emitting C that
 cannot provide the required runtime behavior.
-`#flag` and `#pkgconfig` are rejected because FastC does not yet transport source build options to
-its fixed TinyCC invocation.
+FastC transports header paths, link inputs, frameworks, and preprocessor defines from `#flag`, and
+resolves `#pkgconfig` options into its fixed TinyCC invocation. Other compile options remain
+unsupported.
 
 FastC requires exactly one `.v` entry file. Executables are host-target only; `-o file.c` also
 permits an explicit cross target and publishes its generated C without host TinyCC validation.
@@ -142,15 +146,72 @@ Production, test, shared/live, ownership/autofree, object-file, profiling/covera
 custom compiler, custom-builtin, `no_main`, `-Wimpure-v`, translated, and REPL modes are currently
 rejected.
 
+A conventional C-backend self-host prunes FastC along with the other optional backends. Pass
+`-compile-backend fastc` or `-all-backends` when the generated compiler should retain `-b fastc`.
+
 `-selfhost -b fastc -o v4 vlib/v3/v3.v` builds V3 using only the scanner-to-C path. The generated
 compiler uses the small `v3.fastcdriver` entry point and can build further FastC generations without
 the flat AST or conventional C backend. Set `V_MACOS_V3_NO_FALLBACK=1` while validating a chain to
 turn any attempted compatibility fallback into a hard failure.
 
+Set `FASTC_BENCH=1` when running a FastC self-host compiler to print the generation time and
+`loc/s` for its input (`FASTC_BENCH_REPEAT=N` reports the best of N child runs).
+`FASTC_BENCH_PHASES=1` prints the time of every generation phase, `FASTC_BENCH_FILES=1` the
+generation time of every source file, and `FASTC_BENCH=1 FASTC_BENCH_LOOP=N` repeats generation N
+times in-process so an external sampler can profile it. The compiler's own C preamble and runtime
+(hashing, option boxing, tuple slots) are emitted by the generator that built it, so such changes
+take effect one generation later: measure the compiler built by the modified compiler, not the
+modified compiler itself.
+
+Self-host generations box `?`/`!` payloads out of a per-thread bump chunk rather than `malloc`, keep
+one file record per scanner pass, and honor `@[direct_array_access]` for string and array indexing.
+Multi-return components larger than 32 bytes are boxed instead of copied into the tuple slot, so a
+returned `map` or large struct can no longer overflow it.
+
+Per-file generation, constant parsing, and the declaration and signature collection passes claim
+their work items from a shared atomic counter (largest files first) instead of a static split, so
+workers on faster cores take more files; the serial merge and output order is restored by index.
+The first parallel pass also records which declaration keywords (`interface`, `$if`, type keywords,
+generic `fn` syntax) each file mentions, and the later collection passes skip files that cannot
+contain what they scan for.
+
+Source resolution reads the program on worker threads before the ordering walk runs: each
+imported module directory is listed on a thread and its files are read in chunks on further
+threads, never more than the worker limit (CPU count or `VJOBS`) at once. The main thread joins
+listings first and then the chunks in start order, resolving the imports of each chunk as it
+lands, so reading one module overlaps with discovering the next. A resolve memo in `os.vtmp_dir()`
+(`fastc_resolve_<hash>.memo`, keyed by the entry files, vroot, target and defines) records what
+the previous resolution of the same entry touched, so the next run lists every directory, looks
+up every module and stats every file in one batch instead of level by level along the import
+chain; a file's content is taken from the memo's blob only when its size, mtime, ctime and inode
+still match and it was last modified at least two seconds before the memo was written, and it is
+read again otherwise. The memo also keeps each listed directory's file list and the entry
+module's file list together with the directory's own stamp, so an unchanged directory is stat'ed
+instead of listed again (adding, removing or renaming an entry changes that stamp, and the same
+two-second rule applies); module lookups are recorded once per cache key, the memo's blob is read
+in ranges by the same probe workers. The ordering walk itself is unchanged and replays over that
+data, so the output is identical with and without the memo (`V3_FASTC_NO_RESOLVE_MEMO=1` disables
+it). The type declarations are rendered on a worker while the signatures are collected, the
+generic-method scan and the declaration index share one pass, while workers split oversized files
+into generation fragments and build the by-name struct field index as the declaration phases
+run, and the generated C is returned as ordered pieces (whole per-file bodies are shared rather
+than copied into one buffer; only bodies cut around C directive lines are copied) that the drivers
+write directly. Function bodies are pre-scanned for channel `select` statements only in files
+whose bytes contain the word `select`. The declaration index records the text spans of each file's
+constant and global declarations: a large file's constants are parsed as separate parallel
+candidates (merged in source order), and the global phase parses only the recorded global
+declarations instead of whole files.
+
 The standalone compiler supports `self` directly and defaults that command to FastC. For example,
 `./v self x5` replaces the compiler through five descendant FastC generations, with each installed
 generation compiling the next one. `-b fastc`, `-gc none`, `-cc tinyc|tcc`, `-keepc`, `-silent`,
 and a single-generation `-o` destination are accepted.
+
+Building the FastC self-host compiler with `-d arm64` selects its scanner-direct native path. That
+path resolves sources with FastC's scanner passes, emits SSA while consuming parser tokens, and
+passes the result to `v3.gen.arm64` for Mach-O output. It creates neither Flat AST nor C source and
+does not run TinyCC. The native parser lives in `gen/fastc/arm64_d_arm64.v`; without the define,
+that file and the ARM64/SSA imports are excluded and FastC retains its lightweight C path.
 
 In selfhost mode, `t := spawn f(args)` and `t.wait()` lower to a generated pthread creator, run
 wrapper, and join helper per spawned function: `thread` values are a typed wrapper around
