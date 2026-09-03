@@ -60,13 +60,21 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 		}
 	}
 	mut w := unsafe { &Parser(g) }
-	fastc_register_composite_type(receiver_type, mut w.composite_types)
+	collection_type := receiver_type.trim_right('*')
+	fastc_register_composite_type(collection_type, mut w.composite_types)
 	receiver := g.render_method_receiver_expression(receiver_tokens) or { return none }
 	receiver_source := receiver.source
+	collection_source := if receiver_type.ends_with('*') {
+		'*(${receiver_source})'
+	} else {
+		receiver_source
+	}
 	had_it := it_name in g.locals
 	saved_it := g.locals[it_name] or { FastcLocal{} }
+	it_c_name := fastc_c_identifier(it_name)
 	w.locals[it_name] = FastcLocal{
 		typ: element_type
+		c_name: it_c_name
 	}
 	// A closure with a flow-sensitive `&&` narrowing (`it.expr is AnonFn && it.expr.decl.…`) must
 	// render through the narrowing renderer so the later conjunct reads the smart-cast member;
@@ -106,7 +114,7 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 			else {}
 		}
 	}
-	closure_type := if closure_or > 0 {
+	mut closure_type := if closure_or > 0 {
 		vt := g.option_value_type_for_expression(closure_tokens[..closure_or])
 		fastc_normalize_inferred_type(if vt != '' {
 			vt
@@ -115,6 +123,15 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 		})
 	} else {
 		fastc_normalize_inferred_type(g.infer_expression_type(closure_tokens) or { '' })
+	}
+	// A bare function is applied to each element (`items.map(convert)`).
+	if closure_tokens.len == 1 && closure_tokens[0].tok == .name
+		&& closure_tokens[0].lit != it_name {
+		function_key := w.unqualified_function_key(closure_tokens[0].lit)
+		if signature := w.functions[function_key] {
+			closure = '${closure}(${it_c_name})'
+			closure_type = signature.return_type
+		}
 	}
 	if had_it {
 		w.locals[it_name] = saved_it
@@ -129,22 +146,22 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 	idx := w.temporary_name('index')
 	elem := w.temporary_name('element')
 	mut lowered := ''
-	mut result_type := receiver_type
+	mut result_type := collection_type
 	if method == 'map' {
 		result_type = fastc_array_c_type(closure_type)
 		fastc_register_composite_type(result_type, mut w.composite_types)
-		lowered = '({ ${receiver_type} ${src} = (${receiver_source}); ${result_type} ${dst} = (${result_type})builtin____new_array(0, ${src}.len, sizeof(${closure_type})); for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_name} = ((${element_type} *)${src}.data)[${idx}]; ${closure_type} ${elem} = (${closure}); builtin__array_push((array *)&${dst}, &${elem}); } ${dst}; })'
+		lowered = '({ ${collection_type} ${src} = (${collection_source}); ${result_type} ${dst} = (${result_type})builtin____new_array(0, ${src}.len, sizeof(${closure_type})); for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_c_name} = ((${element_type} *)${src}.data)[${idx}]; ${closure_type} ${elem} = (${closure}); builtin__array_push((array *)&${dst}, &${elem}); } ${dst}; })'
 	} else if method == 'filter' {
-		lowered = '({ ${receiver_type} ${src} = (${receiver_source}); ${receiver_type} ${dst} = (${receiver_type})builtin____new_array(0, ${src}.len, sizeof(${element_type})); for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_name} = ((${element_type} *)${src}.data)[${idx}]; if (${closure}) { builtin__array_push((array *)&${dst}, &${it_name}); } } ${dst}; })'
+		lowered = '({ ${collection_type} ${src} = (${collection_source}); ${collection_type} ${dst} = (${collection_type})builtin____new_array(0, ${src}.len, sizeof(${element_type})); for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_c_name} = ((${element_type} *)${src}.data)[${idx}]; if (${closure}) { builtin__array_push((array *)&${dst}, &${it_c_name}); } } ${dst}; })'
 	} else if method == 'count' {
 		result_type = 'int'
-		lowered = '({ ${receiver_type} ${src} = (${receiver_source}); int ${dst} = 0; for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_name} = ((${element_type} *)${src}.data)[${idx}]; if (${closure}) { ${dst}++; } } ${dst}; })'
+		lowered = '({ ${collection_type} ${src} = (${collection_source}); int ${dst} = 0; for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_c_name} = ((${element_type} *)${src}.data)[${idx}]; if (${closure}) { ${dst}++; } } ${dst}; })'
 	} else {
 		result_type = 'bool'
 		initial := if method == 'all' { 'true' } else { 'false' }
 		condition := if method == 'all' { '!(${closure})' } else { closure }
 		matched := if method == 'all' { 'false' } else { 'true' }
-		lowered = '({ ${receiver_type} ${src} = (${receiver_source}); bool ${dst} = ${initial}; for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_name} = ((${element_type} *)${src}.data)[${idx}]; if (${condition}) { ${dst} = ${matched}; break; } } ${dst}; })'
+		lowered = '({ ${collection_type} ${src} = (${collection_source}); bool ${dst} = ${initial}; for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_c_name} = ((${element_type} *)${src}.data)[${idx}]; if (${condition}) { ${dst} = ${matched}; break; } } ${dst}; })'
 	}
 	return FastcRenderedExpression{
 		source: lowered

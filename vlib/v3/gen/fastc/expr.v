@@ -337,9 +337,11 @@ fn (mut g Parser) lower_higher_order_expression(mut result strings.Builder, mut 
 			}
 			had_it := it_name in g.locals
 			saved_it := g.locals[it_name] or { FastcLocal{} }
+			it_c_name := fastc_c_identifier(it_name)
 			g.type_memo.clear()
 			g.locals[it_name] = FastcLocal{
 				typ: element_type
+				c_name: it_c_name
 			}
 			// The closure type is independent of the surrounding assignment type.
 			saved_closure_expected := g.expected_expression_type
@@ -352,7 +354,7 @@ fn (mut g Parser) lower_higher_order_expression(mut result strings.Builder, mut 
 				&& g.last_expression[0].lit != it_name {
 				function_key := g.unqualified_function_key(g.last_expression[0].lit)
 				if signature := g.functions[function_key] {
-					closure = '${closure}(${it_name})'
+					closure = '${closure}(${it_c_name})'
 					closure_type = signature.return_type
 				}
 			}
@@ -383,12 +385,12 @@ fn (mut g Parser) lower_higher_order_expression(mut result strings.Builder, mut 
 			if higher_order_method == 'map' {
 				result_type = fastc_array_c_type(closure_type)
 				fastc_register_composite_type(result_type, mut g.composite_types)
-				lowered = '({ ${collection_type} ${src} = (${collection_source}); ${result_type} ${dst} = (${result_type})builtin____new_array(0, ${src}.len, sizeof(${closure_type})); for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_name} = ((${element_type} *)${src}.data)[${idx}]; ${closure_type} ${elem} = (${closure}); builtin__array_push((array *)&${dst}, &${elem}); } ${dst}; })'
+				lowered = '({ ${collection_type} ${src} = (${collection_source}); ${result_type} ${dst} = (${result_type})builtin____new_array(0, ${src}.len, sizeof(${closure_type})); for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_c_name} = ((${element_type} *)${src}.data)[${idx}]; ${closure_type} ${elem} = (${closure}); builtin__array_push((array *)&${dst}, &${elem}); } ${dst}; })'
 			} else if higher_order_method == 'filter' {
-				lowered = '({ ${collection_type} ${src} = (${collection_source}); ${collection_type} ${dst} = (${collection_type})builtin____new_array(0, ${src}.len, sizeof(${element_type})); for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_name} = ((${element_type} *)${src}.data)[${idx}]; if (${closure}) { builtin__array_push((array *)&${dst}, &${it_name}); } } ${dst}; })'
+				lowered = '({ ${collection_type} ${src} = (${collection_source}); ${collection_type} ${dst} = (${collection_type})builtin____new_array(0, ${src}.len, sizeof(${element_type})); for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_c_name} = ((${element_type} *)${src}.data)[${idx}]; if (${closure}) { builtin__array_push((array *)&${dst}, &${it_c_name}); } } ${dst}; })'
 			} else if higher_order_method == 'count' {
 				result_type = 'int'
-				lowered = '({ ${collection_type} ${src} = (${collection_source}); int ${dst} = 0; for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_name} = ((${element_type} *)${src}.data)[${idx}]; if (${closure}) { ${dst}++; } } ${dst}; })'
+				lowered = '({ ${collection_type} ${src} = (${collection_source}); int ${dst} = 0; for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_c_name} = ((${element_type} *)${src}.data)[${idx}]; if (${closure}) { ${dst}++; } } ${dst}; })'
 			} else {
 				result_type = 'bool'
 				initial := if higher_order_method == 'all' { 'true' } else { 'false' }
@@ -398,7 +400,7 @@ fn (mut g Parser) lower_higher_order_expression(mut result strings.Builder, mut 
 					closure
 				}
 				matched := if higher_order_method == 'all' { 'false' } else { 'true' }
-				lowered = '({ ${collection_type} ${src} = (${collection_source}); bool ${dst} = ${initial}; for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_name} = ((${element_type} *)${src}.data)[${idx}]; if (${condition}) { ${dst} = ${matched}; break; } } ${dst}; })'
+				lowered = '({ ${collection_type} ${src} = (${collection_source}); bool ${dst} = ${initial}; for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_c_name} = ((${element_type} *)${src}.data)[${idx}]; if (${condition}) { ${dst} = ${matched}; break; } } ${dst}; })'
 			}
 			result.write_string(lowered)
 			expression_tokens = expression_tokens[..receiver_start].clone()

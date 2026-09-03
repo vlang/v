@@ -2501,6 +2501,39 @@ fn main() {
 	assert plain_enum_array_source.contains('typedef array Array_Space;'), plain_enum_array_source
 }
 
+fn test_higher_order_lowering_handles_pointer_receivers_callbacks_and_keyword_parameters() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn convert(value int) int {
+	return value + 1
+}
+
+fn consume(values []int) int {
+	return values.len
+}
+
+fn apply(mut values []int) int {
+	streamed := values.map(|short| short + 1)
+	return streamed.len + consume(values.map(convert)) + consume(values.map(|short| short + 2))
+}
+
+fn main() {
+	mut values := [1, 2]
+	_ := apply(mut values)
+}
+', 'higher_order_nested_regressions.v', prefs) or { panic(err) }
+	// Mutable array receivers are pointers in C. Both lowerers iterate a value copy of the
+	// header, nested bare callbacks are invoked, and legal V names are escaped for C.
+	assert c_source.contains('Array_int __v_fastc_collection_'), c_source
+	assert c_source.contains('= (*(values));'), c_source
+	assert !c_source.contains('Array_int* __v_fastc_collection_'), c_source
+	assert c_source.contains('convert(it)'), c_source
+	assert c_source.count('int __v_fastc_keyword_short =') == 2, c_source
+	assert !c_source.contains('int short ='), c_source
+}
+
 fn test_real_builtin_path_keyword_identifiers_enum_casts_and_dollar_d() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -5844,8 +5877,39 @@ fn main() {
 ', 'valid_parallel_assignment.v', prefs) or { panic(err) }
 	assert c_source.contains('first = __v_fastc_parallel_'), c_source
 	assert c_source.contains('second = __v_fastc_parallel_'), c_source
-	assert c_source.contains('memcpy(&first, __v_fastc_multi_return_'), c_source
-	assert c_source.contains('memcpy(&second, __v_fastc_multi_return_'), c_source
+	assert c_source.contains('memcpy(&first, V_FASTC_MULTI_SOURCE(__v_fastc_multi_return_'), c_source
+	assert c_source.contains('memcpy(&second, V_FASTC_MULTI_SOURCE(__v_fastc_multi_return_'), c_source
+}
+
+fn test_parallel_member_assignment_uses_pointer_backed_multi_return_storage() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Large {
+	bytes [40]u8
+}
+
+struct Holder {
+mut:
+	value Large
+}
+
+fn pair() (int, Large) {
+	return 1, Large{}
+}
+
+fn assign(mut holder Holder) {
+	_, holder.value = pair()
+}
+
+fn main() {
+	mut holder := Holder{}
+	assign(mut holder)
+}
+', 'parallel_member_large_multi_return.v', prefs) or { panic(err) }
+	assert c_source.contains('memcpy(&holder->value, V_FASTC_MULTI_SOURCE(__v_fastc_multi_return_'), c_source
+	assert !c_source.contains('.values[1].data, sizeof(holder->value)'), c_source
 }
 
 fn test_selfhost_parallel_assignment_accepts_aggregate_targets() {
@@ -8086,6 +8150,40 @@ fn main() {}
 	assert c_source.contains('->value=2'), c_source
 }
 
+fn test_condition_loop_smartcast_subject_is_evaluated_once() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct CallExpr {}
+struct NameExpr {}
+type Expr = CallExpr | NameExpr
+
+struct Argument {
+	expr Expr
+}
+
+fn next_index() int {
+	return 0
+}
+
+fn scan(args []Argument) {
+	for args[next_index()].expr is CallExpr {
+		break
+	}
+}
+
+fn main() {
+	scan([Argument{ expr: CallExpr{} }])
+}
+', 'condition_loop_smartcast_once.v', prefs) or { panic(err) }
+	// The rewritten type-test conjunct owns evaluation of the subject. Its temporary must not
+	// evaluate the indexed expression again in the per-iteration prelude.
+	assert c_source.contains('Expr __v_fastc_smartcast_subject_'), c_source
+	assert c_source.contains('= (Expr){0};'), c_source
+	assert c_source.count('next_index()') == 1, c_source
+}
+
 fn test_mut_sum_type_smartcast_passes_original_box_to_mut_sum_type_parameter() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -9830,6 +9928,38 @@ fn main() {
 	assert c_source.contains('MultiReturn'), c_source
 	assert c_source.contains('.values[0], sizeof('), c_source
 	assert c_source.contains('.values[1], sizeof('), c_source
+}
+
+fn test_if_expression_multi_return_guard_uses_pointer_backed_storage() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Large {
+	bytes [40]u8
+}
+
+fn pair(ok bool) ?(Large, int) {
+	if !ok {
+		return none
+	}
+	return Large{}, 1
+}
+
+fn choose(ok bool) Large {
+	return if value, _ := pair(ok) {
+		value
+	} else {
+		Large{}
+	}
+}
+
+fn main() {
+	_ := choose(true)
+}
+', 'if_expression_large_multi_return_guard.v', prefs) or { panic(err) }
+	assert c_source.contains('memcpy(&value, V_FASTC_MULTI_SOURCE(__v_fastc_multi_return_'), c_source
+	assert !c_source.contains('.values[0].data, sizeof(value)'), c_source
 }
 
 fn test_selfhost_if_multi_return_option_guard_with_shared_bindings() {

@@ -366,7 +366,12 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 	g.write_line('while (1) {')
 	g.indent++
 	for plan in plans {
-		g.write_line('${plan.boxed_type} ${plan.boxed_tmp} = ${plan.source};')
+		boxed_zero := if plan.boxed_type.ends_with('*') {
+			'NULL'
+		} else {
+			'(${plan.boxed_type}){0}'
+		}
+		g.write_line('${plan.boxed_type} ${plan.boxed_tmp} = ${boxed_zero};')
 	}
 	g.write_line('if (!(${loop_condition})) { break; }')
 	mut previous_member_smartcasts := map[string]FastcMemberSmartcast{}

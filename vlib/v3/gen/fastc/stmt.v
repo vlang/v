@@ -1663,7 +1663,7 @@ fn (mut g Parser) finish_parallel_member_assignment(names []string, member_targe
 		if target.source == '' {
 			continue
 		}
-		g.write_line('memcpy(&${target.source}, ${temporary}.values[${i}].data, sizeof(${target.source}));')
+		g.write_line('memcpy(&${target.source}, V_FASTC_MULTI_SOURCE(${temporary}.values[${i}], sizeof(${target.source})), sizeof(${target.source}));')
 	}
 }
 

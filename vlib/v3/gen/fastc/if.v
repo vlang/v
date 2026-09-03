@@ -1386,7 +1386,7 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 		}
 		component_type := fastc_normalize_inferred_type(component_types[i])
 		c_name := fastc_c_identifier(name)
-		binds += '${component_type} ${c_name} = (${component_type}){0}; memcpy(&${c_name}, ${multi_return}.values[${i}].data, sizeof(${c_name})); '
+		binds += '${component_type} ${c_name} = (${component_type}){0}; memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${multi_return}.values[${i}], sizeof(${c_name})), sizeof(${c_name})); '
 		g.locals[name] = FastcLocal{
 			typ: component_type
 		}
