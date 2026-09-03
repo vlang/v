@@ -1718,9 +1718,10 @@ fn test_formatter_does_not_imply_an_import_from_a_type_named_like_a_module() {
 
 // A struct embed and a field whose name matches its type (`thread thread`) are stored the same
 // way — `value == typ` — so the formatter collapsed the second into the first and wrote a bare
-// `thread` embed, which no longer compiles. The parser now records which one it is.
+// `thread` embed, which no longer compiles. A user attribute must not be mistaken for that parser
+// metadata either.
 fn test_formatter_keeps_a_field_named_like_its_type() {
-	source := 'struct Base {\n\tid int\n}\n\nstruct Child {\n\tBase\n\tname string\n}\n\nstruct Named {\n\tthread thread\n}\n'
+	source := 'struct Base {\n\tid int\n}\n\nstruct Child {\n\tBase\n\tname string\n}\n\nstruct Named {\n\tthread thread\n}\n\nstruct AttributedNamed {\n\tthread thread @[__v3_embedded_field]\n}\n'
 	out := vfmt('field_named_like_type', source)
 	assert out == source, out
 	assert vfmt('field_named_like_type_twice', out) == out
