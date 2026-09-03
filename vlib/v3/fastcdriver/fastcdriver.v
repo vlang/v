@@ -393,7 +393,7 @@ pub fn run(args []string) {
 	prefs.ccompiler = 'tinyc'
 	prefs.building_v = real_input.ends_with('/vlib/v3/v3.v')
 	prefs.selfhost = prefs.building_v
-	$if arm64? {
+	$if arm64 ? {
 		prefs.target = pref.Target{
 			os: 'macos'
 			arch: 'arm64'

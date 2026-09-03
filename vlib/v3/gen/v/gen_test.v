@@ -127,7 +127,7 @@ fn test_formatter_keeps_anon_fn_body_statements_expanded_inside_init() {
 	// `in_init` flag set while emitting its body, collapsing the body statements
 	// (and any nested `or {}` block) onto a single line, e.g.
 	// `c := codem := msg_ = c_ = m}`, which broke compilation.
-	source := "struct Events {\n\ton_error fn(code int, msg string)\n\ton_close fn(id int)\n}\n\nstruct Registry {\nmut:\n\tclosed bool\n}\n\nfn (r &Registry) find(id int) ?int {\n\treturn id\n}\n\nfn handlers() {\n\tmut reg := Registry{}\n\te := Events{\n\t\ton_error: fn (code int, msg string) {\n\t\t\tc := code\n\t\t\tm := msg\n\t\t\t_ = c\n\t\t\t_ = m\n\t\t}\n\t\ton_close: fn (id int) {\n\t\t\tn := reg.find(id) or { return }\n\t\t\t_ = n\n\t\t}\n\t}\n\t_ = e\n\t_ = reg\n}\n"
+	source := "struct Events {\n\ton_error fn (code int, msg string)\n\ton_close fn (id int)\n}\n\nstruct Registry {\nmut:\n\tclosed bool\n}\n\nfn (r &Registry) find(id int) ?int {\n\treturn id\n}\n\nfn handlers() {\n\tmut reg := Registry{}\n\te := Events{\n\t\ton_error: fn (code int, msg string) {\n\t\t\tc := code\n\t\t\tm := msg\n\t\t\t_ = c\n\t\t\t_ = m\n\t\t}\n\t\ton_close: fn (id int) {\n\t\t\tn := reg.find(id) or { return }\n\t\t\t_ = n\n\t\t}\n\t}\n\t_ = e\n\t_ = reg\n}\n"
 	out := vfmt('anon_fn_body_inside_init', source)
 	assert out == source, out
 	assert vfmt('anon_fn_body_inside_init_twice', out) == out
@@ -1590,6 +1590,40 @@ fn test_formatter_keeps_rows_of_small_nested_arrays_on_one_line() {
 '
 	out := vfmt('rows_of_small_nested_arrays', source)
 	assert out == source, out
+}
+
+// V spells a function type with a space before the parameter list. The type system stores it
+// without one (`fn(int) int`), so a type rendered straight from the internal name reformatted
+// every function type in the file — in declarations, fields, parameters and return positions
+// alike.
+fn test_formatter_keeps_the_space_in_a_function_type() {
+	source := 'pub type Cb = fn (a int, b string) !
+
+struct Holder {
+	cb     fn (int) int = unsafe { nil }
+	cbs    []fn (int)
+	m      map[string]fn (int) int
+	opt    ?fn (int)
+	nested fn (cb fn (int) int) fn (int) int
+}
+
+fn takes(cb fn (int) int) fn (int) int {
+	return cb
+}
+'
+	out := vfmt('fn_type_space', source)
+	assert out == source, out
+	assert !out.contains('fn('), out
+}
+
+// The optional-flag marker of a `$if` is written detached (`$if flag ? {`). The condition is
+// stored without that space so flag lookups match on it, so the formatter has to put it back.
+fn test_formatter_keeps_the_space_before_a_comptime_flag_marker() {
+	source := "fn probe() {\n\t\$if !v3_no_parallel ? {\n\t\tprintln('a')\n\t}\n\t\$if linux {\n\t\tprintln('b')\n\t}\n}\n"
+	out := vfmt('comptime_flag_marker', source)
+	assert out == source, out
+	assert !out.contains('parallel?'), out
+	assert vfmt('comptime_flag_marker_twice', out) == out
 }
 
 // A NUL byte must be written as `\x00`, not `\0`. V's octal escape absorbs the digits that
