@@ -1677,3 +1677,26 @@ fn test_formatter_keeps_closure_capture_and_generic_list_order() {
 	assert out.contains('mut total'), out
 	assert vfmt('closure_capture_generics_twice', out) == out
 }
+
+// `break` and `continue` had the same wrong span as `return`: the node took the parser's position,
+// already past the `}` of an inline block, so the statement's trailing comment was moved inside
+// the braces and the `}` ended up commented out.
+fn test_formatter_keeps_a_trailing_comment_outside_an_inline_break_or_continue() {
+	source := "fn f(items []int) int {\n\tmut n := 0\n\tfor i in items {\n\t\tw := pick(i) or { continue } // only numeric\n\t\tif w == 0 {\n\t\t\tbreak\n\t\t}\n\t\tn += w\n\t}\n\treturn n\n}\n\nfn pick(i int) ?int {\n\treturn i\n}\n"
+	out := vfmt('inline_continue_comment', source)
+	assert out == source, out
+	assert !out.contains('continue // only numeric }'), out
+	assert vfmt('inline_continue_comment_twice', out) == out
+}
+
+// Implied imports matched the module directory through `os.is_dir`, which answers the filesystem.
+// On a case-insensitive one (macOS, Windows) `vlib/Time` is the `time` module, so a static call on
+// a type named `Time` implied `import Time` — and the formatter wrote that bogus import into the
+// file, breaking the build. On a case-sensitive filesystem this never fired, so the assert below
+// only bites where the bug lived.
+fn test_formatter_does_not_imply_an_import_from_a_type_named_like_a_module() {
+	source := "module time\n\npub struct Time {\n\tunix i64\n}\n\npub fn Time.new(unix i64) Time {\n\treturn Time{\n\t\tunix: unix\n\t}\n}\n\npub fn now() Time {\n\treturn Time.new(0)\n}\n"
+	out := vfmt('implied_import_type_name', source)
+	assert !out.contains('import Time'), out
+	assert out == source, out
+}

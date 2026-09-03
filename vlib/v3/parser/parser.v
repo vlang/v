@@ -6232,6 +6232,7 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.match_stmt()
 		}
 		.key_break {
+			kw_pos := p.tok_pos
 			p.next()
 			mut label := ''
 			if p.tok == .name {
@@ -6241,9 +6242,16 @@ fn (mut p Parser) stmt() flat.NodeId {
 			if p.tok == .semicolon {
 				p.next()
 			}
-			return p.add_val(.break_stmt, label)
+			// Span the statement itself, as `return` does: the parser's current position is
+			// already past the `}` of an inline block (`x := f() or { break } // note`), and the
+			// formatter would then move the note inside the braces and comment the `}` out.
+			return p.add_node(flat.Node{
+				kind:  .break_stmt
+				value: label
+			}.with_pos(p.span_to(kw_pos)))
 		}
 		.key_continue {
+			kw_pos := p.tok_pos
 			p.next()
 			mut label := ''
 			if p.tok == .name {
@@ -6253,7 +6261,13 @@ fn (mut p Parser) stmt() flat.NodeId {
 			if p.tok == .semicolon {
 				p.next()
 			}
-			return p.add_val(.continue_stmt, label)
+			// Span the statement itself, as `return` does: the parser's current position is
+			// already past the `}` of an inline block (`x := f() or { continue } // note`), and the
+			// formatter would then move the note inside the braces and comment the `}` out.
+			return p.add_node(flat.Node{
+				kind:  .continue_stmt
+				value: label
+			}.with_pos(p.span_to(kw_pos)))
 		}
 		.key_mut {
 			p.next()

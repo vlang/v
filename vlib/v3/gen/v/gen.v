@@ -486,6 +486,8 @@ fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
 		}
 	}
 	mut implied := map[string]bool{}
+	mut vlib_dirs := map[string]bool{}
+	mut vlib_listed := false
 	for id, n in g.a.nodes {
 		if n.pos.id != g.file_id || n.kind != .selector || n.children_count == 0 {
 			continue
@@ -493,9 +495,20 @@ fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
 		receiver := g.a.child_node(n, 0)
 		name := receiver.value
 		if receiver.kind == .ident && name.len > 0 && name !in ['C', 'JS'] && !imported[name]
-			&& !declared[name] && !g.a.formatter_local_sels[id]
-			&& os.is_dir(os.join_path(@VEXEROOT, 'vlib', name)) {
-			implied[name] = true
+			&& !declared[name] && !g.a.formatter_local_sels[id] {
+			// Match the module directory case-sensitively. `os.is_dir` answers the filesystem,
+			// and on a case-insensitive one (macOS, Windows) `vlib/Time` is the `time` module —
+			// so a static call on a type named `Time` implied a bogus `import Time`, which the
+			// formatter then wrote into the file and broke the build.
+			if !vlib_listed {
+				vlib_listed = true
+				for entry in os.ls(os.join_path(@VEXEROOT, 'vlib')) or { []string{} } {
+					vlib_dirs[entry] = true
+				}
+			}
+			if vlib_dirs[name] && os.is_dir(os.join_path(@VEXEROOT, 'vlib', name)) {
+				implied[name] = true
+			}
 		}
 	}
 	g.implied_imports = implied.keys()
