@@ -41,7 +41,7 @@ jobs:
       # intentionally compiled by V1; the canary below verifies V3 dispatch itself.
       V_MACOS_V3_NO_FALLBACK: 1
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
         # `make` runs bootstrap helpers before the V3 canary: detect_tcc.v may need the
@@ -129,7 +129,7 @@ jobs:
       # intentionally compiled by V1; the canary below verifies V3 dispatch itself.
       V_MACOS_V3_NO_FALLBACK: 1
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         # `make` runs bootstrap helpers before the V3 canary: detect_tcc.v may need the
@@ -686,7 +686,7 @@ jobs:
       # intentionally compiled by V1; the canary below verifies V3 dispatch itself.
       V_MACOS_V3_NO_FALLBACK: 1
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         # `make` runs bootstrap helpers before the V3 canary: detect_tcc.v may need the
@@ -775,7 +775,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
