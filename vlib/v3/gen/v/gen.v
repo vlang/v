@@ -4272,7 +4272,7 @@ fn (mut g Gen) type_text(typ string) string {
 		expanded = out.str()
 	}
 	if !g.is_new_int || (!g.is_translated && !g.in_c_function) || !expanded.contains('int') {
-		return expanded
+		return restore_fn_type_space(expanded)
 	}
 	mut out := strings.new_builder(expanded.len)
 	mut i := 0
@@ -4286,6 +4286,30 @@ fn (mut g Gen) type_text(typ string) string {
 			continue
 		}
 		out.write_u8(expanded[i])
+		i++
+	}
+	return restore_fn_type_space(out.str())
+}
+
+// restore_fn_type_space rewrites `fn(` back to `fn (`. The type system spells a function type
+// without the space internally, but V source style keeps it — `type Cb = fn (int) int`, and the
+// same in field, parameter and return positions — so a type rendered straight from the internal
+// name would reformat every function type in the file.
+fn restore_fn_type_space(typ string) string {
+	if !typ.contains('fn(') {
+		return typ
+	}
+	mut out := strings.new_builder(typ.len + 4)
+	mut i := 0
+	for i < typ.len {
+		// Only a standalone `fn` introduces a function type; `myfn(` is an ordinary name.
+		if typ[i] == `f` && i + 3 <= typ.len && typ[i + 1] == `n` && typ[i + 2] == `(`
+			&& (i == 0 || !is_type_ident_char(typ[i - 1])) {
+			out.write_string('fn (')
+			i += 3
+			continue
+		}
+		out.write_u8(typ[i])
 		i++
 	}
 	return out.str()
