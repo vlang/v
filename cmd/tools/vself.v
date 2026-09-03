@@ -32,6 +32,7 @@ fn main() {
 	repeat_count, mut args := extract_repeat_count(args_[1..], command_index)
 	mut effective_args := effective_self_build_args(args)
 	fastc_self_build := uses_fastc_backend(effective_args)
+	default_v3_fastc_build := should_use_default_v3_fastc_build(effective_args)
 	if fastc_self_build && '-prod' in effective_args {
 		eprintln('`v self -b fastc` does not support `-prod`; remove `-prod`.')
 		exit(1)
@@ -40,7 +41,17 @@ fn main() {
 		args = normalize_fastc_backend_args(args)
 		effective_args = effective_self_build_args(args)
 	}
-	if !fastc_self_build && !has_self_build_configuration_arg(effective_args) {
+	if default_v3_fastc_build {
+		// Build the regular cmd/v CLI through V3's scanner-direct FastC path. The
+		// real builtin keeps the resulting executable compatible with the full CLI.
+		if '-new-compiler' !in effective_args {
+			args << '-new-compiler'
+		}
+		args << ['-b', 'fastc', '-d', 'fastc_real_builtin']
+		effective_args = effective_self_build_args(args)
+	}
+	if !fastc_self_build && !default_v3_fastc_build
+		&& !has_self_build_configuration_arg(effective_args) {
 		// compiling by default, i.e. `v self`:
 		uos := os.user_os()
 		uname := os.uname()
@@ -85,7 +96,13 @@ fn main() {
 	}
 	final_binary := if obinary != '' { obinary } else { 'v2' }
 	pgo_cc_kind := if fastc_self_build { '' } else { pgo_compiler_kind(args) }
-	compilation_source := if fastc_self_build { 'vlib/v3/v3.v' } else { 'cmd/v' }
+	compilation_source := if fastc_self_build {
+		'vlib/v3/v3.v'
+	} else if default_v3_fastc_build {
+		'cmd/v/v.v'
+	} else {
+		'cmd/v'
+	}
 	for run_idx in 0 .. repeat_count {
 		run_label := if repeat_count > 1 { ' [${run_idx + 1}/${repeat_count}]' } else { '' }
 		options := if args.len > 0 { '(${compile_args.join(' ')})' } else { '' }
@@ -157,6 +174,61 @@ fn uses_fastc_backend(args []string) bool {
 		}
 	}
 	return backend == 'fastc'
+}
+
+fn has_backend_arg(args []string) bool {
+	for i, arg in args {
+		if arg in ['-b', '-backend'] && i + 1 < args.len {
+			return true
+		}
+		if arg.starts_with('-b=') || arg.starts_with('-backend=') {
+			return true
+		}
+	}
+	return false
+}
+
+fn should_use_default_v3_fastc_build(args []string) bool {
+	if os.user_os() !in ['linux', 'macos'] || '-old-compiler' in args {
+		return false
+	}
+	if has_backend_arg(args) || has_self_build_configuration_arg(args) {
+		return false
+	}
+	if os.getenv('CC') != '' {
+		return false
+	}
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg in ['-o', '-output'] {
+			if i + 1 >= args.len {
+				return false
+			}
+			i += 2
+			continue
+		}
+		if arg == '-gc' {
+			if i + 1 >= args.len || args[i + 1] != 'none' {
+				return false
+			}
+			i += 2
+			continue
+		}
+		if arg.starts_with('-gc=') {
+			if arg.all_after('=') != 'none' {
+				return false
+			}
+			i++
+			continue
+		}
+		if arg !in ['-new-compiler', '-silent', '-v', '-verbose', '-keepc', '-prealloc',
+			'-no-prealloc', '-retry-compilation', '-no-retry-compilation'] {
+			return false
+		}
+		i++
+	}
+	return true
 }
 
 fn normalize_fastc_backend_args(args []string) []string {
