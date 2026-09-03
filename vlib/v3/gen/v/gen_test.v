@@ -1604,3 +1604,27 @@ fn test_formatter_keeps_block_comment_body_indentation_stable() {
 	thrice := vfmt('block_comment_indent_thrice', twice)
 	assert thrice == out, thrice
 }
+
+// A comment after a match branch's closing brace belongs to that branch. Emitting it as the next
+// branch's leading comment moved it onto its own line, and the following run then read it as a
+// commented branch and inserted a blank line before it — so formatting twice differed from once.
+fn test_formatter_keeps_a_trailing_comment_on_a_match_branch() {
+	source := "fn pick(n int) string {\n\tmatch n {\n\t\t1 {\n\t\t\treturn 'a'\n\t\t} // leave it blank\n\t\telse {\n\t\t\treturn ''\n\t\t}\n\t}\n}\n"
+	out := vfmt('match_branch_trailing_comment', source)
+	assert out == source, out
+	assert vfmt('match_branch_trailing_comment_twice', out) == out
+}
+
+// A blank separator line must carry no indentation. Writing it left a line of whitespace, which
+// V source never carries and which the next run read back differently, so the formatter was not a
+// fixed point. Note the separator itself is emitted by a separate, still-open bug: a statement
+// with a trailing comment gains one. This pins only that whatever blank lines are produced are
+// empty and stable.
+fn test_formatter_writes_blank_lines_without_indentation() {
+	source := "fn probe() {\n\tassert 1 == 1 // first\n\tassert 2 == 2\n}\n"
+	out := vfmt('blank_line_indentation', source)
+	for line in out.split('\n') {
+		assert line.trim_space() != '' || line == '', 'a blank line must carry no whitespace, got `${line}`'
+	}
+	assert vfmt('blank_line_indentation_twice', out) == out
+}

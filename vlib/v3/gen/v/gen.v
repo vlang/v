@@ -2578,7 +2578,15 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 				g.advance_source_end_before_pending_comment(b.pos.end)
 				g.emit_comments_before(b.pos.end)
 				g.indent--
-				g.writeln('}')
+				g.write('}')
+				// A comment sitting after the branch's closing brace belongs to that branch.
+				// Left for the next branch's leading-comment pass it would be re-emitted on its
+				// own line, and the following run would then read it as a commented branch and
+				// insert a blank line before it, so formatting twice differed from once.
+				g.emit_trailing_comments(b.pos.end)
+				if !g.on_newline {
+					g.writeln('')
+				}
 			}
 		} else {
 			ncond := b.value.int()
@@ -2601,7 +2609,15 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 				g.advance_source_end_before_pending_comment(b.pos.end)
 				g.emit_comments_before(b.pos.end)
 				g.indent--
-				g.writeln('}')
+				g.write('}')
+				// A comment sitting after the branch's closing brace belongs to that branch.
+				// Left for the next branch's leading-comment pass it would be re-emitted on its
+				// own line, and the following run would then read it as a commented branch and
+				// insert a blank line before it, so formatting twice differed from once.
+				g.emit_trailing_comments(b.pos.end)
+				if !g.on_newline {
+					g.writeln('')
+				}
 			}
 		}
 	}
@@ -4081,7 +4097,10 @@ fn (mut g Gen) writeln_verbatim(str string) {
 
 @[inline]
 fn (mut g Gen) writeln(str string) {
-	if g.on_newline && g.indent > 0 {
+	// A blank separator line gets no indentation: writing it would leave a line of whitespace,
+	// which V source never carries and which the next run reads back differently, so formatting
+	// twice differed from once.
+	if g.on_newline && g.indent > 0 && str.len > 0 {
 		for _ in 0 .. g.indent {
 			g.out.write_u8(`\t`)
 		}
