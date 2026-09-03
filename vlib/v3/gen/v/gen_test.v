@@ -87,6 +87,13 @@ fn test_formatter_preserves_blank_lines_between_statements() {
 	assert vfmt('statement_blank_lines_twice', out) == out
 }
 
+fn test_formatter_preserves_gated_slices() {
+	source := 'fn slices(body string, items []int, start int, end int) {\n\t_ := body#[start..end]\n\t_ := items#[..end]\n\t_ := items#[start..]\n\t_ := items#[..]\n}\n'
+	out := vfmt('gated_slices', source)
+	assert out == source, out
+	assert vfmt('gated_slices_twice', out) == out
+}
+
 fn test_formatter_preserves_mutability_for_each_multi_decl_target() {
 	source := 'fn pairs() {\n\tmut first, mut second := 1, 2\n\t_ = first\n\t_ = second\n}\n'
 	out := vfmt('multi_decl_mutability', source)
