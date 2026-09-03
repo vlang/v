@@ -2726,7 +2726,9 @@ fn (mut g Gen) assert_stmt(id flat.NodeId) {
 		g.write(', ')
 		g.expr(children[1])
 	}
-	if !g.in_init {
+	// The condition can carry the statement's trailing comment, which ends the line itself.
+	// Terminating again would leave a stray separator after every commented `assert`.
+	if !g.in_init && !g.on_newline {
 		g.writeln('')
 	}
 }

@@ -1617,9 +1617,7 @@ fn test_formatter_keeps_a_trailing_comment_on_a_match_branch() {
 
 // A blank separator line must carry no indentation. Writing it left a line of whitespace, which
 // V source never carries and which the next run read back differently, so the formatter was not a
-// fixed point. Note the separator itself is emitted by a separate, still-open bug: a statement
-// with a trailing comment gains one. This pins only that whatever blank lines are produced are
-// empty and stable.
+// fixed point.
 fn test_formatter_writes_blank_lines_without_indentation() {
 	source := "fn probe() {\n\tassert 1 == 1 // first\n\tassert 2 == 2\n}\n"
 	out := vfmt('blank_line_indentation', source)
@@ -1627,4 +1625,19 @@ fn test_formatter_writes_blank_lines_without_indentation() {
 		assert line.trim_space() != '' || line == '', 'a blank line must carry no whitespace, got `${line}`'
 	}
 	assert vfmt('blank_line_indentation_twice', out) == out
+}
+
+// An `assert` whose condition carries the statement's trailing comment is already terminated by
+// that comment, so terminating it again left a stray separator line after every commented
+// `assert`. Every other statement kind already guarded this.
+fn test_formatter_does_not_separate_a_commented_assert_from_the_next_statement() {
+	source := "fn p() {\n\tassert 1 == 1 // c\n\tassert 2 == 2\n}\n"
+	out := vfmt('commented_assert', source)
+	assert out == source, out
+	assert vfmt('commented_assert_twice', out) == out
+
+	// a blank line the source did have is still kept
+	spaced := "fn p() {\n\tassert 1 == 1 // c\n\n\tassert 2 == 2\n}\n"
+	spaced_out := vfmt('commented_assert_spaced', spaced)
+	assert spaced_out == spaced, spaced_out
 }
