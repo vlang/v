@@ -78,8 +78,7 @@ fn retry_macos_v3_at_exit() {
 	if state == unsafe { nil } {
 		return
 	}
-	retry_macos_v3_with_old_compiler(state.caller_environment, state.fallback_file,
-		state.c_error_dir, state.retry_args, state.is_verbose, state.input_snapshot)
+	retry_macos_v3_with_old_compiler(state.caller_environment, state.fallback_file, state.c_error_dir, state.retry_args, state.is_verbose, state.input_snapshot)
 }
 
 fn macos_v3_compiler_error_message(stage string) string {
@@ -279,11 +278,11 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3
 	retry_args := os.args[1..].clone()
 	retry_state := &MacosV3RetryState{
 		caller_environment: caller_environment
-		fallback_file:      fallback_file
-		c_error_dir:        c_error_dir
-		retry_args:         retry_args
-		is_verbose:         is_verbose
-		input_snapshot:     input_snapshot
+		fallback_file: fallback_file
+		c_error_dir: c_error_dir
+		retry_args: retry_args
+		is_verbose: is_verbose
+		input_snapshot: input_snapshot
 	}
 	unsafe { macos_v3_retry_state(retry_state) }
 	at_exit(retry_macos_v3_at_exit) or {
@@ -303,14 +302,10 @@ fn launch_macos_v3_fastc_compiler(prefs &pref.Preferences, raw_args []string) {
 	if prefs.is_verbose {
 		println('Running macOS V3 compiler in process: ${util.args_quote_paths(forwarded_args)}')
 	}
-	preserve_macos_v3_caller_process_value('VEXE', macos_v3_caller_vexe_env,
-		macos_v3_caller_vexe_present_env)
-	preserve_macos_v3_caller_process_value('VCHILD', macos_v3_caller_vchild_env,
-		macos_v3_caller_vchild_present_env)
-	preserve_macos_v3_caller_process_value(macos_v3_no_fallback_env,
-		macos_v3_caller_no_fallback_env, macos_v3_caller_no_fallback_present_env)
-	for private_name in [macos_v3_fallback_file_env, macos_v3_c_error_dir_env,
-		macos_v3_retry_env] {
+	preserve_macos_v3_caller_process_value('VEXE', macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
+	preserve_macos_v3_caller_process_value('VCHILD', macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
+	preserve_macos_v3_caller_process_value(macos_v3_no_fallback_env, macos_v3_caller_no_fallback_env, macos_v3_caller_no_fallback_present_env)
+	for private_name in [macos_v3_fallback_file_env, macos_v3_c_error_dir_env, macos_v3_retry_env] {
 		os.unsetenv(private_name)
 	}
 	os.setenv('VCHILD', 'true', true)
@@ -383,8 +378,7 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 			eprintln('V3 requested a C-error fallback, but its diagnostics could not be read')
 			return
 		}
-		export_macos_v3_report_content(report.kind, report.ccompiler, report.c_output,
-			report.c_file, report.v_sources, true)
+		export_macos_v3_report_content(report.kind, report.ccompiler, report.c_output, report.c_file, report.v_sources, true)
 		os.rmdir_all(c_error_dir) or {}
 		if should_report {
 			eprintln('V3 C compilation failed; retrying with `-old-compiler`.')
@@ -404,9 +398,7 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 		input_digests := read_macos_v3_source_digests(c_error_dir) or {
 			map[string]string{}
 		}
-		export_macos_v3_bounded_report_content(macos_v3_compiler_error_fallback, 'v3',
-			macos_v3_compiler_error_message(fallback_stage), v_file, v_source, v_source_focus,
-			v_source_truncated, input_digests, input_digests.len > 0)
+		export_macos_v3_bounded_report_content(macos_v3_compiler_error_fallback, 'v3', macos_v3_compiler_error_message(fallback_stage), v_file, v_source, v_source_focus, v_source_truncated, input_digests, input_digests.len > 0)
 		os.rmdir_all(c_error_dir) or {}
 		if should_report {
 			eprintln('V3 compilation failed; retrying with `-old-compiler`.')
@@ -416,8 +408,7 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 		// filing a report. Still forward a notice-only marker so that once the stable
 		// build succeeds the user sees the documented fallback notice (doc/docs.md) rather
 		// than a silent switch that is indistinguishable from a direct V3 success.
-		export_macos_v3_report_content(macos_v3_inline_asm_fallback, 'v3', '', '',
-			map[string]string{}, false)
+		export_macos_v3_report_content(macos_v3_inline_asm_fallback, 'v3', '', '', map[string]string{}, false)
 		os.rmdir_all(c_error_dir) or {}
 		if should_report {
 			eprintln('V3 requested the compatibility compiler for inline assembly')
@@ -442,14 +433,14 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 fn take_macos_v3_report_content() ?MacosV3CErrorReport {
 	report := builder.take_external_v3_report_from_env()?
 	return MacosV3CErrorReport{
-		kind:                   report.kind
-		ccompiler:              report.ccompiler
-		c_output:               report.c_output
-		v_file:                 report.v_file
-		v_source:               report.v_source
-		v_source_truncated:     report.v_source_truncated
-		v_source_focus:         report.v_source_focus
-		input_digests:          report.input_digests
+		kind: report.kind
+		ccompiler: report.ccompiler
+		c_output: report.c_output
+		v_file: report.v_file
+		v_source: report.v_source
+		v_source_truncated: report.v_source_truncated
+		v_source_focus: report.v_source_focus
+		input_digests: report.input_digests
 		input_digests_complete: report.input_digests_complete
 	}
 }
@@ -458,25 +449,23 @@ fn take_macos_v3_report_content() ?MacosV3CErrorReport {
 // the report and therefore trusts `c_file` — and forwards only that content to the V1
 // retry through the environment.
 fn export_macos_v3_report_content(kind string, ccompiler string, c_output string, c_file string, v_sources map[string]string, input_digests_complete bool) {
-	v_file, v_source, v_source_focus := builder.bounded_v3_fallback_source(kind, c_output, c_file,
-		v_sources)
-	export_macos_v3_bounded_report_content(kind, ccompiler, c_output, v_file, v_source,
-		v_source_focus, false, v_sources, input_digests_complete)
+	v_file, v_source, v_source_focus := builder.bounded_v3_fallback_source(kind, c_output, c_file, v_sources)
+	export_macos_v3_bounded_report_content(kind, ccompiler, c_output, v_file, v_source, v_source_focus, false, v_sources, input_digests_complete)
 }
 
 fn export_macos_v3_bounded_report_content(kind string, ccompiler string, c_output string, v_file string, v_source string, v_source_focus int, v_source_truncated bool, input_digests map[string]string, input_digests_complete bool) {
 	builder.export_external_v3_report_to_env(builder.ExternalCErrorBugReport{
-		kind:                   kind
-		ccompiler:              ccompiler
-		c_output:               c_output
-		v_file:                 v_file
-		v_source:               v_source
-		v_source_focus:         v_source_focus
-		v_source_truncated:     v_source_truncated
-		source_inline:          true
-		input_digests:          input_digests
+		kind: kind
+		ccompiler: ccompiler
+		c_output: c_output
+		v_file: v_file
+		v_source: v_source
+		v_source_focus: v_source_focus
+		v_source_truncated: v_source_truncated
+		source_inline: true
+		input_digests: input_digests
 		input_digests_complete: input_digests_complete
-		tag:                    'V3'
+		tag: 'V3'
 	})
 }
 
@@ -491,12 +480,12 @@ fn macos_v3_compiler_error_input_snapshot(input_path string) MacosV3InputSnapsho
 	source := os.read_file(v_path) or { return MacosV3InputSnapshot{} }
 	v_file, v_source, v_source_focus := builder.bounded_v3_internal_fallback_source(v_path, source)
 	return MacosV3InputSnapshot{
-		path:               v_path
-		digest:             sha256.hexhash(source)
-		v_file:             v_file
-		v_source:           v_source
+		path: v_path
+		digest: sha256.hexhash(source)
+		v_file: v_file
+		v_source: v_source
 		v_source_truncated: v_source.len < source.len
-		focus:              v_source_focus
+		focus: v_source_focus
 	}
 }
 
@@ -517,7 +506,7 @@ fn (snapshot MacosV3InputSnapshot) current_report_source() (string, string, int,
 fn macos_v3_compiler_error_input_source(input_path string) string {
 	if input_path != '' && os.is_file(input_path)
 		&& (input_path.ends_with('.v') || input_path.ends_with('.vsh')
-		|| input_path.ends_with('.vv')) {
+			|| input_path.ends_with('.vv')) {
 		return input_path
 	}
 	return ''
@@ -577,11 +566,11 @@ fn read_macos_v3_c_error_report(report_dir string) ?MacosV3StagedReport {
 	}
 	v_sources := read_macos_v3_source_digests(report_dir)?
 	return MacosV3StagedReport{
-		kind:       kind
-		ccompiler:  ccompiler.trim_space()
-		c_output:   c_output
-		c_file:     c_file
-		v_sources:  v_sources
+		kind: kind
+		ccompiler: ccompiler.trim_space()
+		c_output: c_output
+		c_file: c_file
+		v_sources: v_sources
 		report_dir: report_dir
 	}
 }
@@ -590,8 +579,7 @@ fn read_macos_v3_source_digests(report_dir string) ?map[string]string {
 	v_sources_text := os.read_file(os.join_path(report_dir, macos_v3_c_error_v_sources_file)) or {
 		return none
 	}
-	v_source_digests_text := os.read_file(os.join_path(report_dir,
-		macos_v3_c_error_v_source_digests_file)) or { return none }
+	v_source_digests_text := os.read_file(os.join_path(report_dir, macos_v3_c_error_v_source_digests_file)) or { return none }
 	v_source_paths := v_sources_text.split('\x00').filter(it != '')
 	v_source_digests := v_source_digests_text.split('\x00').filter(it != '')
 	if v_source_paths.len != v_source_digests.len {
@@ -610,13 +598,9 @@ fn read_macos_v3_source_digests(report_dir string) ?map[string]string {
 
 fn macos_v3_child_environment(vexe string, fallback_file string, caller_environment map[string]string) map[string]string {
 	mut environment := caller_environment.clone()
-	preserve_macos_v3_caller_environment_value(mut environment, caller_environment, 'VEXE',
-		macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
-	preserve_macos_v3_caller_environment_value(mut environment, caller_environment, 'VCHILD',
-		macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
-	preserve_macos_v3_caller_environment_value(mut environment, caller_environment,
-		macos_v3_no_fallback_env, macos_v3_caller_no_fallback_env,
-		macos_v3_caller_no_fallback_present_env)
+	preserve_macos_v3_caller_environment_value(mut environment, caller_environment, 'VEXE', macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
+	preserve_macos_v3_caller_environment_value(mut environment, caller_environment, 'VCHILD', macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
+	preserve_macos_v3_caller_environment_value(mut environment, caller_environment, macos_v3_no_fallback_env, macos_v3_caller_no_fallback_env, macos_v3_caller_no_fallback_present_env)
 	for private_name in ['V_MACOS_V3_FALLBACK_FILE', 'V_MACOS_V3_C_ERROR_DIR', 'V_MACOS_V3_RETRY'] {
 		environment.delete(private_name)
 	}
@@ -655,16 +639,12 @@ fn macos_v3_original_caller_environment(dispatch_environment map[string]string) 
 	vexe_present := dispatch_environment[macos_v3_caller_vexe_present_env] or { '' }
 	vchild_present := dispatch_environment[macos_v3_caller_vchild_present_env] or { '' }
 	if vexe_present in ['0', '1'] && vchild_present in ['0', '1'] {
-		restore_macos_v3_caller_environment_value(mut caller_environment, dispatch_environment,
-			'VEXE', macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
-		restore_macos_v3_caller_environment_value(mut caller_environment, dispatch_environment,
-			'VCHILD', macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
+		restore_macos_v3_caller_environment_value(mut caller_environment, dispatch_environment, 'VEXE', macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
+		restore_macos_v3_caller_environment_value(mut caller_environment, dispatch_environment, 'VCHILD', macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
 	}
 	no_fallback_present := dispatch_environment[macos_v3_caller_no_fallback_present_env] or { '' }
 	if no_fallback_present in ['0', '1'] {
-		restore_macos_v3_caller_environment_value(mut caller_environment, dispatch_environment,
-			macos_v3_no_fallback_env, macos_v3_caller_no_fallback_env,
-			macos_v3_caller_no_fallback_present_env)
+		restore_macos_v3_caller_environment_value(mut caller_environment, dispatch_environment, macos_v3_no_fallback_env, macos_v3_caller_no_fallback_env, macos_v3_caller_no_fallback_present_env)
 	}
 	for private_name in [macos_v3_fallback_file_env, macos_v3_c_error_dir_env, macos_v3_vhash_env,
 		macos_v3_vcurrent_hash_env, macos_v3_embedded_env, macos_v3_retry_env,
