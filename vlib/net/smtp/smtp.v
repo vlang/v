@@ -15,6 +15,8 @@ import rand
 
 const recv_size = 128
 
+const recipient_separator = ';'
+
 enum ReplyCode {
 	ready      = 220
 	close      = 221
@@ -138,7 +140,13 @@ pub fn (mut c Client) send(config Mail) ! {
 		return error('Sending mailfrom failed: ${err}')
 	}
 	c.send_mailto(config.to) or {
-		return error('Sending mailto failed: ${err}')
+		return error('Sending mailto (to) failed: ${err}')
+	}
+	c.send_mailto(config.cc) or {
+		return error('Sending mailto (cc) failed: ${err}')
+	}
+	c.send_mailto(config.bcc) or {
+		return error('Sending mailto (bcc) failed: ${err}')
 	}
 	c.send_data() or {
 		return error('Sending mail data failed: ${err}')
@@ -260,45 +268,88 @@ fn envelope_addr(s string) string {
 }
 
 // split_mailbox splits an RFC 5322 mailbox into a (display_name, addr_spec) pair.
+// An angle-addr `<addr>` NOT inside a quoted string is the separator.
 //
-// Only an angle-addr `<addr>` that is NOT inside a quoted string is treated as
-// the separator, so a quoted local-part like `"a<b"@example.com` stays a
-// single addr-spec. The display name is returned without surrounding quotes.
-// When the input has no angle-addr pair, display_name == '' and addr_spec is
-// the whole trimmed input.
-//
-//   'User <a@ex.com>'            ->  'User', 'a@ex.com'
-//   'a@ex.com'                   ->  '', 'a@ex.com'
-//   '"a<b"@example.com'          ->  '', '"a<b"@example.com'
-//   'John "The Boss" <j@ex.com>' ->  'John "The Boss"', 'j@ex.com'
-fn split_mailbox(s string) (string, string) {
+//   'User <a@ex.com>'            ->  Option('User'), 'a@ex.com'
+//   'a@ex.com'                   ->  Option(none), 'a@ex.com'
+//   '"a<b"@example.com'          ->  Option(none), '"a<b"@example.com'
+//   'John "The Boss" <j@ex.com>' ->  Option('John "The Boss"'), 'j@ex.com'
+fn split_mailbox(s string) (?string, string) {
 	trimmed := s.trim_space()
-	mut in_quote := false
-	mut i := 0
-	for i < trimmed.len {
-		c := trimmed[i]
-		if c == `"` {
-			in_quote = !in_quote
-		} else if in_quote && c == `\\` && i + 1 < trimmed.len {
-			i++
-		} else if c == `<` && !in_quote {
-			close_idx := trimmed.index_after('>', i + 1) or { break }
-			name := trimmed[..i].trim_space()
-			return strip_quotes(name), trimmed[i + 1..close_idx].trim_space()
-		}
-		i++
+	open_at := index_unquoted(trimmed, `<`, 0) or {
+		return none, trimmed
 	}
-	return '', trimmed
+	close_at := index_unquoted(trimmed, `>`, open_at + 1) or {
+		return none, trimmed
+	}
+	addr := strip_crlf(trimmed[open_at + 1..close_at].trim_space())
+	name := strip_crlf(unquote_name(trimmed[..open_at]))
+	display_name := if name == '' { none } else { name }
+	return display_name, addr
 }
 
-fn strip_quotes(s string) string {
-	if s.len < 2 {
-		return s
+// strip_crlf removes CR and LF characters from s, preventing header or
+// protocol injection when the value is later placed into SMTP DATA.
+fn strip_crlf(s string) string {
+	return s.replace('\r', '').replace('\n', '')
+}
+
+// index_unquoted returns the index of the first byte `what` not inside a
+// quoted-string, starting from `start`. Returns none if not found.
+fn index_unquoted(s string, what u8, start int) ?int {
+	mut i := start
+	for i < s.len {
+		if s[i] == `"` {
+			i = skip_quoted_string(s, i)
+		} else if s[i] == what {
+			return i
+		} else {
+			i++
+		}
 	}
-	if s.starts_with('"') && s.ends_with('"') && s[s.len - 2] != `\\` {
-		return s[1..s.len - 1]
+	return none
+}
+
+// unquote_name decodes a display name that is a single quoted-string,
+// removing the surrounding quotes and decoding quoted-pairs (RFC 5322 #3.2.1).
+// Non-quoted or malformed names are returned unchanged.
+fn unquote_name(name string) string {
+	trimmed := name.trim_space()
+	if trimmed.len < 2 || trimmed[0] != `"` {
+		return trimmed
 	}
-	return s
+	end := skip_quoted_string(trimmed, 0)
+	if end != trimmed.len || trimmed[end - 1] != `"` {
+		return trimmed // not a single, well-formed quoted-string
+	}
+	mut sb := strings.new_builder(trimmed.len)
+	mut i := 1
+	for i < end - 1 {
+		if trimmed[i] == `\\` && i + 1 < trimmed.len {
+			sb.write_u8(trimmed[i + 1])
+			i += 2
+		} else {
+			sb.write_u8(trimmed[i])
+			i++
+		}
+	}
+	return sb.str()
+}
+
+// skip_quoted_string returns the index just past the quoted-string starting
+// at s[start], honoring quoted-pairs (`\\X`). Returns s.len if unterminated.
+fn skip_quoted_string(s string, start int) int {
+	mut i := start + 1
+	for i < s.len {
+		if s[i] == `\\` && i + 1 < s.len {
+			i += 2
+		} else if s[i] == `"` {
+			return i + 1
+		} else {
+			i++
+		}
+	}
+	return s.len
 }
 
 fn (mut c Client) send_mailfrom(from string) ! {
@@ -307,12 +358,12 @@ fn (mut c Client) send_mailfrom(from string) ! {
 }
 
 fn (mut c Client) send_mailto(to string) ! {
-	for raw_rcpt in to.split(';') {
-		rcpt := raw_rcpt.trim_space()
-		if rcpt == '' {
+	for rcpt in to.split(recipient_separator) {
+		addr := envelope_addr(rcpt)
+		if addr == '' {
 			continue
 		}
-		c.send_str('RCPT TO:<${envelope_addr(rcpt)}>\r\n')!
+		c.send_str('RCPT TO:<${addr}>\r\n')!
 		c.expect_reply(.action_ok)!
 	}
 }
@@ -337,14 +388,10 @@ fn (cfg &Mail) message_data() string {
 	sb.write_string('From: ${format_addr(cfg.from)}\r\n')
 	sb.write_string('To: ${format_addr_list(cfg.to)}\r\n')
 
+	// Bcc addresses are not added here. They are delivered as envelope recipients.
 	cc := format_addr_list(cfg.cc)
 	if cc != '' {
 		sb.write_string('Cc: ${cc}\r\n')
-	}
-
-	bcc := format_addr_list(cfg.bcc)
-	if bcc != '' {
-		sb.write_string('Bcc: ${bcc}\r\n')
 	}
 
 	date := cfg.date.custom_format('ddd, D MMM YYYY HH:mm ZZ')
@@ -400,7 +447,7 @@ fn format_addr_list(raw string) string {
 	if raw.trim_space() == '' {
 		return ''
 	}
-	parts := raw.split(';')
+	parts := raw.split(recipient_separator)
 	mut result := []string{}
 	for part in parts {
 		formatted := format_addr(part)
@@ -423,15 +470,15 @@ fn format_addr(addr string) string {
 	}
 
 	display_name, addr_spec := split_mailbox(trimmed)
-	if display_name == '' {
+	name := display_name or {
 		return '<${addr_spec}>'
 	}
 
-	if !display_name.is_ascii() {
-		return '${encode_rfc2047(display_name)} <${addr_spec}>'
+	if !name.is_ascii() {
+		return '${encode_rfc2047(name)} <${addr_spec}>'
 	}
 
-	escaped := display_name.replace('\\', '\\\\').replace('"', '\\"')
+	escaped := name.replace('\\', '\\\\').replace('"', '\\"')
 	return '"${escaped}" <${addr_spec}>'
 }
 
