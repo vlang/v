@@ -1,0 +1,37 @@
+{
+   "title":"EdDSA-02: EdDSA - 448",
+   "input":{
+      "plaintext":"This is the content.",
+      "sign":{
+         "signers":[
+            {
+               "key":{
+                  "kty":"OKP",
+                  "kid":"ed448",
+                  "crv":"Ed448",
+                  "x_hex":"5fd7449b59b461fd2ce787ec616ad46a1da1342485a70e1f8a0ea75d80e96778edf124769b46c7061bd6783df1e50f6cd1fa1abeafe8256180",
+                  "d_hex":"6c82a562cb808d10d632be89c8513ebf6c929f34ddfa8c9f63c9960ef6e348a3528c8a3fcc2f044e39a3fc5b94492f8f032e7549a20098f95b"
+               },
+               "unprotected":{
+                  "kid":"ed448"
+               },
+               "protected":{
+                  "alg":"EdDSA"
+               }
+            }
+         ]
+      },
+      "rng_description":"seed for signature"
+   },
+   "intermediates":{
+      "signers":[
+         {
+            "ToBeSign_hex":"85695369676E61747572654043A101274054546869732069732074686520636F6E74656E742E"
+         }
+      ]
+   },
+   "output":{
+      "cbor_diag":"98([h'', {}, h'546869732069732074686520636F6E74656E742E', [[h'A10127', {4: h'6564343438'}, h'ABF04F4BC7DFACF70C20C34A3CFBD27719911DC8518B2D67BF6AF62895D0FA1E6A1CB8B47AD1297C0E9C34BEB34E50DFFEF14350EBD57842807D54914111150F698543B0A5E1DA1DB79632C6415CE18EF74EDAEA680B0C8881439D869171481D78E2F7D26340C293C2ECDED8DE1425851900']]])",
+      "cbor":"D8628440A054546869732069732074686520636F6E74656E742E818343A10127A1044565643434385872ABF04F4BC7DFACF70C20C34A3CFBD27719911DC8518B2D67BF6AF62895D0FA1E6A1CB8B47AD1297C0E9C34BEB34E50DFFEF14350EBD57842807D54914111150F698543B0A5E1DA1DB79632C6415CE18EF74EDAEA680B0C8881439D869171481D78E2F7D26340C293C2ECDED8DE1425851900"
+   }
+}
