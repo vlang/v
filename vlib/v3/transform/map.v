@@ -2233,7 +2233,7 @@ fn (mut t Transformer) try_lower_map_index_assign(id flat.NodeId, node flat.Node
 			t.transform_expr_for_type(rhs_id, info.value_type)
 		}
 		mut assignment_is_valid := true
-		value, assignment_is_valid = t.clone_map_assignment_rhs_if_overlapping(value, rhs_id,
+		value, assignment_is_valid = t.clone_map_assignment_rhs_if_needed(value, rhs_id,
 			t.a.child(&node, 0), info.value_type)
 		t.drain_pending(mut result)
 		if !assignment_is_valid {
@@ -2242,8 +2242,12 @@ fn (mut t Transformer) try_lower_map_index_assign(id flat.NodeId, node flat.Node
 		result << t.make_decl_assign_typed(value_name, value, info.value_type)
 		cleanup_key, existing_key_name := t.prepare_owned_map_set_key_cleanup(key_is_owned,
 			info.key_type, map_expr, info.base_type, key_name, mut result)
-		t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut
-			result)
+		// A map-derived or possibly aliasing replacement was cloned above. The old slot can now
+		// be destroyed normally; only a true move/reinitialization suppresses this drop.
+		if isnil(t.tc) || !t.tc.ownership_assignment_reinitializes_moved_value(id) {
+			t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut
+				result)
+		}
 		result << t.make_map_set_stmt(map_expr, info.base_type, key_name, value_name)
 		if int(id) in t.local_closure_field_cleanups {
 			result << t.make_local_closure_cleanup_defer(value_name)
@@ -2349,11 +2353,16 @@ fn (t &Transformer) map_literal_key_expr_creates_owned_value(id flat.NodeId, key
 	return false
 }
 
-// clone_map_assignment_rhs_if_overlapping makes a map-derived replacement independent
-// before the stored owner is destroyed. The checker rejects an overlapping move that cannot
-// be cloned, and the false result prevents unsafe lowering of that invalid assignment.
-fn (mut t Transformer) clone_map_assignment_rhs_if_overlapping(value flat.NodeId, rhs_id flat.NodeId, lhs_id flat.NodeId, value_type_name string) (flat.NodeId, bool) {
-	if isnil(t.tc) || !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id) {
+// clone_map_assignment_rhs_if_needed makes a borrowed or map-derived replacement independent
+// before the stored owner is destroyed. The checker rejects a required clone that cannot be
+// made, and the false result prevents unsafe lowering of that invalid assignment.
+fn (mut t Transformer) clone_map_assignment_rhs_if_needed(value flat.NodeId, rhs_id flat.NodeId, lhs_id flat.NodeId, value_type_name string) (flat.NodeId, bool) {
+	cloned := t.clone_borrowed_projection(rhs_id, value, value_type_name)
+	if cloned != value {
+		return cloned, true
+	}
+	if isnil(t.tc) || (!t.tc.ownership_expr_moves_storage(rhs_id, lhs_id)
+		&& !t.tc.ownership_expr_clones_borrowed_storage(rhs_id)) {
 		return value, true
 	}
 	value_type := t.tc.parse_type(value_type_name)
@@ -2363,7 +2372,7 @@ fn (mut t Transformer) clone_map_assignment_rhs_if_overlapping(value flat.NodeId
 	if _ := t.tc.ownership_default_clone_missing_method(value_type) {
 		return value, false
 	}
-	return t.make_compiler_default_clone_value(value, value_type_name, true), true
+	return t.make_compiler_default_borrowed_clone_value(value, value_type_name, true), true
 }
 
 // append_map_value_drop_before_set destroys an existing owned map value before
@@ -2472,7 +2481,7 @@ fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat
 			t.transform_expr_for_type(rhs_id, inner_value_type)
 		}
 		mut assignment_is_valid := true
-		inner_value, assignment_is_valid = t.clone_map_assignment_rhs_if_overlapping(inner_value,
+		inner_value, assignment_is_valid = t.clone_map_assignment_rhs_if_needed(inner_value,
 			rhs_id, lhs_id, inner_value_type)
 		t.drain_pending(mut result)
 		if !assignment_is_valid {
@@ -2643,7 +2652,8 @@ fn (mut t Transformer) try_lower_map_index_fixed_array_assign(node flat.Node) ?[
 		cur_type = elem_type
 	}
 	rhs_id := t.a.child(&node, 1)
-	result << t.make_assign(target, t.transform_expr_for_type(rhs_id, path.elem_type))
+	rhs := t.transform_expr_for_type(rhs_id, path.elem_type)
+	result << t.make_assign(target, t.clone_borrowed_assignment_value(rhs_id, rhs, path.elem_type))
 	result << t.make_map_set_stmt(map_expr, path.map_info.base_type, key_name, current_name)
 	return result
 }
@@ -2748,8 +2758,7 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	rhs_id := t.a.child(&node, 1)
 	mut rhs := t.transform_expr_for_type(rhs_id, field_type)
 	mut assignment_is_valid := true
-	rhs, assignment_is_valid = t.clone_map_assignment_rhs_if_overlapping(rhs, rhs_id, lhs_id,
-		field_type)
+	rhs, assignment_is_valid = t.clone_map_assignment_rhs_if_needed(rhs, rhs_id, lhs_id, field_type)
 	t.drain_pending(mut result)
 	if !assignment_is_valid {
 		return []flat.NodeId{}
@@ -3057,10 +3066,12 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		key_id := t.a.child(&node, i)
 		key_name := t.new_temp('map_key')
 		value_name := t.new_temp('map_val')
-		key_expr := t.transform_map_entry_expr_for_type(key_id, key_type)
+		mut key_expr := t.transform_map_entry_expr_for_type(key_id, key_type)
+		key_expr = t.clone_borrowed_projection(key_id, key_expr, key_type)
 		t.pending_stmts << t.make_decl_assign_typed(key_name, key_expr, key_storage_type)
 		value_id := t.a.child(&node, i + 1)
-		value := t.transform_map_entry_expr_for_type(value_id, value_type)
+		mut value := t.transform_map_entry_expr_for_type(value_id, value_type)
+		value = t.clone_borrowed_projection(value_id, value, value_type)
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, value_type)
 		mut cleanup_key := false
 		mut existing_key_name := ''

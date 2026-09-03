@@ -199,6 +199,50 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 	assert t.auto_str_types['v.token.Pos'].helper_module == 'token'
 }
 
+fn test_default_clone_helper_drops_owned_rvalue_after_saving_clone() {
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{
+		a: &a
+	}
+	source := t.make_call_typed('make_entry', []flat.NodeId{}, 'Entry')
+	result := t.request_default_clone_helper(source, 'Entry')
+
+	assert a.node(result).kind == .ident
+	assert t.pending_stmts.len == 3
+
+	source_decl := a.node(t.pending_stmts[0])
+	assert source_decl.kind == .decl_assign
+	assert a.child(source_decl, 1) == source
+
+	clone_decl := a.node(t.pending_stmts[1])
+	assert clone_decl.kind == .decl_assign
+	clone_call := a.child_node(clone_decl, 1)
+	assert clone_call.kind == .call
+	assert a.child_node(clone_call, 0).value == '__v3_default_clone_Entry'
+
+	drop_stmt := a.node(t.pending_stmts[2])
+	assert drop_stmt.kind == .expr_stmt
+	drop_call := a.child_node(drop_stmt, 0)
+	assert drop_call.kind == .call
+	assert a.child_node(drop_call, 0).value == 'drop_owned'
+}
+
+fn test_borrowed_clone_stabilizes_nonaddressable_sources() {
+	for typ in ['Payload', '[]Payload'] {
+		mut a := flat.FlatAst.new()
+		mut t := Transformer{
+			a: &a
+		}
+		source := t.make_call_typed('borrowed_projection', []flat.NodeId{}, typ)
+		t.make_compiler_default_borrowed_clone_value(source, typ, true)
+
+		assert t.pending_stmts.len > 0
+		source_decl := a.node(t.pending_stmts[0])
+		assert source_decl.kind == .decl_assign
+		assert a.child(source_decl, 1) == source
+	}
+}
+
 fn test_program_sum_equality_helper_does_not_collide_with_cached_module_helper() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

@@ -308,6 +308,16 @@ fn (mut t Transformer) make_array_insert_many_call(lhs_addr flat.NodeId, index f
 		t.make_selector(rhs_value, 'data', 'voidptr'), t.make_selector(rhs_value, 'len', 'int')], 'void')
 }
 
+fn (mut t Transformer) finish_borrowed_array_insert_many_call(call flat.NodeId, rhs flat.NodeId, rhs_type string, cloned bool) flat.NodeId {
+	if !cloned || t.is_fixed_array_type(rhs_type) {
+		return call
+	}
+	// insert_many transfers the cloned element bytes. Run the insertion before freeing only
+	// the temporary array's backing buffer; the destination now owns its elements.
+	t.pending_stmts << t.make_expr_stmt(call)
+	return t.make_method_call(rhs, 'free', []flat.NodeId{})
+}
+
 fn (mut t Transformer) transform_array_many_rhs(id flat.NodeId, node flat.Node, array_type string) flat.NodeId {
 	if node.kind == .array_literal {
 		return t.transform_array_literal_for_type(id, node, array_type) or { t.transform_expr(id) }
@@ -532,6 +542,10 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 		indexed_init := t.substitute_ident_expr(init_expr_id, 'index', t.make_ident(idx_name))
 		// Typed value lowering so a value `match`/`if` init field is materialized as a value.
 		init_expr = t.transform_expr_for_type(indexed_init, elem_type)
+		// The source-level initializer is evaluated once for every generated element.
+		// Keep a borrowed projection owned by its source by cloning it inside this loop,
+		// so each element also receives independent owned storage.
+		init_expr = t.clone_borrowed_projection(init_expr_id, init_expr, elem_type)
 		init_pending := t.pending_stmts.clone()
 		t.pending_stmts = saved_pending
 		for stmt in init_pending {
@@ -659,6 +673,15 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 	})
 }
 
+fn (mut t Transformer) transform_owned_array_literal_element(elem_id flat.NodeId, elem_type string) flat.NodeId {
+	value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
+		t.wrap_sum_value(elem_id, elem_type)
+	} else {
+		t.transform_expr_for_type(elem_id, elem_type)
+	}
+	return t.clone_borrowed_projection(elem_id, value, elem_type)
+}
+
 // lower_array_literal_to_runtime converts lower array literal to runtime data for transform.
 fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.Node) flat.NodeId {
 	if t.in_const_init {
@@ -691,11 +714,7 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 			continue
 		}
 		value_name := t.new_temp('arr_val')
-		value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
-			t.wrap_sum_value(elem_id, elem_type)
-		} else {
-			t.transform_expr_for_type(elem_id, elem_type)
-		}
+		value := t.transform_owned_array_literal_element(elem_id, elem_type)
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
 		call := t.make_call_typed('array_push', [
 			t.make_prefix(.amp, t.make_ident(tmp_name)),
@@ -942,11 +961,7 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 		mut values := []flat.NodeId{cap: int(node.children_count)}
 		for i in 0 .. node.children_count {
 			elem_id := t.a.child(&node, i)
-			values << if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
-				t.wrap_sum_value(elem_id, elem_type)
-			} else {
-				t.transform_expr_for_type(elem_id, elem_type)
-			}
+			values << t.transform_owned_array_literal_element(elem_id, elem_type)
 		}
 		return t.make_array_literal_typed(values, array_type)
 	}
@@ -960,11 +975,7 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 			continue
 		}
 		value_name := t.new_temp('arr_val')
-		value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
-			t.wrap_sum_value(elem_id, elem_type)
-		} else {
-			t.transform_expr_for_type(elem_id, elem_type)
-		}
+		value := t.transform_owned_array_literal_element(elem_id, elem_type)
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
 		call := t.make_call_typed('array_push', [
 			t.make_prefix(.amp, t.make_ident(tmp_name)),
@@ -987,7 +998,8 @@ fn (mut t Transformer) transform_fixed_array_literal_for_type(_id flat.NodeId, n
 	mut values := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		elem_id := t.a.child(&node, i)
-		value := t.transform_expr_for_type(elem_id, elem_type)
+		transformed := t.transform_expr_for_type(elem_id, elem_type)
+		value := t.clone_borrowed_projection(elem_id, transformed, elem_type)
 		if ordered_temps {
 			tmp_name := t.new_temp('fixed_arr_val')
 			t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, elem_type)
@@ -1056,7 +1068,8 @@ fn (mut t Transformer) transform_fixed_array_init_expr(node flat.Node) ?flat.Nod
 	mut values := []flat.NodeId{cap: len}
 	for i in 0 .. len {
 		indexed_init := t.substitute_ident_expr(init_id, 'index', t.make_int_literal(i))
-		values << t.transform_expr_for_type(indexed_init, elem_type)
+		value := t.transform_expr_for_type(indexed_init, elem_type)
+		values << t.clone_borrowed_projection(init_id, value, elem_type)
 	}
 	return t.make_array_literal_typed(values, fixed_type)
 }
@@ -1361,7 +1374,18 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	}
 	if !push_many {
 		rhs = t.coerce_transformed_expr_to_type(rhs, rhs_id, elem_type)
-		rhs = t.clone_borrowed_array_append_value(rhs_id, rhs, elem_type)
+		cloned_append := t.clone_borrowed_array_append_value(rhs_id, rhs, elem_type)
+		rhs = if cloned_append == rhs {
+			t.clone_borrowed_projection(rhs_id, rhs, elem_type)
+		} else {
+			cloned_append
+		}
+	}
+	mut borrowed_push_many_clone := false
+	if push_many {
+		cloned_rhs, cloned := t.clone_borrowed_array_append_many_value(rhs_id, rhs, rhs_type, elem_type)
+		rhs = cloned_rhs
+		borrowed_push_many_clone = cloned
 	}
 	t.drain_pending(mut result)
 	if rhs_type.len == 0 {
@@ -1393,6 +1417,11 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 			base := t.make_ident(bulk_cleanup_name)
 			t.set_node_typ(int(base), bulk_cleanup_type)
 			t.append_local_closure_initializer_cleanups_for_value(base, rhs_id, bulk_cleanup_type, mut result)
+		}
+		if borrowed_push_many_clone && !t.is_fixed_array_type(rhs_type) {
+			// push_many transfers the cloned element bytes. Free only the temporary array's
+			// backing buffer; the destination now owns its elements.
+			result << t.make_expr_stmt(t.make_method_call(rhs, 'free', []flat.NodeId{}))
 		}
 		return result
 	}
@@ -1584,7 +1613,18 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	}
 	if !push_many {
 		rhs = t.coerce_transformed_expr_to_type(rhs, rhs_id, elem_type)
-		rhs = t.clone_borrowed_array_append_value(rhs_id, rhs, elem_type)
+		cloned_append := t.clone_borrowed_array_append_value(rhs_id, rhs, elem_type)
+		rhs = if cloned_append == rhs {
+			t.clone_borrowed_projection(rhs_id, rhs, elem_type)
+		} else {
+			cloned_append
+		}
+	}
+	mut borrowed_push_many_clone := false
+	if push_many {
+		cloned_rhs, cloned := t.clone_borrowed_array_append_many_value(rhs_id, rhs, rhs_type, elem_type)
+		rhs = cloned_rhs
+		borrowed_push_many_clone = cloned
 	}
 	t.drain_pending(mut result)
 	if rhs_type.len == 0 {
@@ -1606,6 +1646,9 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 		}
 		t.drain_pending(mut result)
 		result << t.make_expr_stmt(call)
+		if borrowed_push_many_clone && !t.is_fixed_array_type(rhs_type) {
+			result << t.make_expr_stmt(t.make_method_call(rhs, 'free', []flat.NodeId{}))
+		}
 		return result
 	}
 	value_name := t.new_temp('arr_val')
@@ -1630,7 +1673,106 @@ fn (mut t Transformer) clone_borrowed_array_append_value(source_id flat.NodeId, 
 	if !t.compiler_default_clone_type_needs_work(elem_type) {
 		return value
 	}
-	return t.make_compiler_default_clone_value(value, elem_type, true)
+	return t.make_compiler_default_borrowed_clone_value(value, elem_type, true)
+}
+
+fn (mut t Transformer) clone_borrowed_array_append_many_value(source_id flat.NodeId, value flat.NodeId, array_type string, elem_type string) (flat.NodeId, bool) {
+	if !t.compiler_default_clone_type_needs_work(elem_type) {
+		return value, false
+	}
+	cloned := t.clone_borrowed_projection(source_id, value, array_type)
+	return cloned, cloned != value
+}
+
+// clone_borrowed_projection clones `value` when ownership analysis decided the read at
+// `source_id` copies borrowed storage (a field or slice read) rather than moving it. The
+// decision is made in the checker so its move/drop bookkeeping stays consistent with the
+// clone emitted here; this only materializes it.
+fn (mut t Transformer) clone_borrowed_projection(source_id flat.NodeId, value flat.NodeId, typ string) flat.NodeId {
+	if !t.borrowed_projection_clone_required(source_id, typ) {
+		return value
+	}
+	if source_base_id := t.owned_rvalue_slice_source(source_id) {
+		if cloned := t.clone_owned_rvalue_slice_projection(value, source_base_id, typ) {
+			return cloned
+		}
+	}
+	return t.make_compiler_default_borrowed_clone_value(value, typ, true)
+}
+
+// owned_rvalue_slice_source reports the base temporary of a slice that has no retained owner.
+// Its transformed slice still needs the normal implicit clone, but the base must be destroyed
+// explicitly once that clone is safe.
+fn (t &Transformer) owned_rvalue_slice_source(id flat.NodeId) ?flat.NodeId {
+	mut clean_id := id
+	for int(clean_id) >= 0 && int(clean_id) < t.a.nodes.len {
+		node := t.a.nodes[int(clean_id)]
+		if node.kind in [.paren, .cast_expr, .expr_stmt] && node.children_count > 0 {
+			clean_id = t.a.child(&node, 0)
+			continue
+		}
+		if node.kind != .index || node.value != 'range' || node.children_count == 0 {
+			return none
+		}
+		base_id := t.a.child(&node, 0)
+		base_type := t.node_type(base_id)
+		if base_type.starts_with('&') || t.expr_can_take_address(base_id) {
+			return none
+		}
+		return base_id
+	}
+	return none
+}
+
+// clone_owned_rvalue_slice_projection clones a slice of an owned temporary, then destroys the
+// materialized base. The ordinary borrowed-clone path intentionally omits source cleanup because
+// named slice sources remain owned elsewhere; using it here abandons the rvalue's backing.
+fn (mut t Transformer) clone_owned_rvalue_slice_projection(value flat.NodeId, source_base_id flat.NodeId, typ string) ?flat.NodeId {
+	mut slice_id := value
+	for int(slice_id) >= 0 && int(slice_id) < t.a.nodes.len {
+		node := t.a.nodes[int(slice_id)]
+		if node.kind in [.paren, .cast_expr, .expr_stmt] && node.children_count > 0 {
+			slice_id = t.a.child(&node, 0)
+			continue
+		}
+		break
+	}
+	if int(slice_id) < 0 || int(slice_id) >= t.a.nodes.len {
+		return none
+	}
+	slice_node := t.a.nodes[int(slice_id)]
+	if slice_node.kind != .index || slice_node.value != 'range' || slice_node.children_count == 0 {
+		return none
+	}
+	base_type := t.node_type(source_base_id)
+	transformed_base_id := t.a.child(&slice_node, 0)
+	stable_base := t.stable_transformed_expr_for_reuse(transformed_base_id, base_type, 'owned_slice_source')
+	mut children := []flat.NodeId{cap: int(slice_node.children_count)}
+	children << stable_base
+	for i in 1 .. slice_node.children_count {
+		children << t.a.child(&slice_node, i)
+	}
+	stable_slice := t.copy_node_with_children(slice_node, children)
+	cloned := t.make_compiler_default_borrowed_clone_value(stable_slice, typ, true)
+	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [stable_base], 'void'))
+	return cloned
+}
+
+fn (t &Transformer) borrowed_projection_clone_required(source_id flat.NodeId, typ string) bool {
+	return !isnil(t.tc) && t.tc.ownership_expr_is_borrowed_projection(source_id)
+		&& t.compiler_default_clone_type_needs_work(typ)
+}
+
+// clone_borrowed_assignment_value also handles a local pointer alias that may refer to the
+// assignment target's indexed storage. Such replacements must be independent before the old
+// target is destroyed.
+fn (mut t Transformer) clone_borrowed_assignment_value(source_id flat.NodeId, value flat.NodeId, typ string) flat.NodeId {
+	cloned := t.clone_borrowed_projection(source_id, value, typ)
+	if cloned != value || isnil(t.tc) || !t.tc.ownership_expr_clones_borrowed_storage(source_id)
+		|| !t.compiler_default_clone_type_needs_work(typ) {
+		return cloned
+	}
+	return t.make_compiler_default_borrowed_clone_value(value, typ, true)
 }
 
 // clean_array_append_lhs_type transforms clean array append lhs type data for transform.
@@ -1717,13 +1859,23 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	}
 	base := t.transform_lvalue(base_id)
 	if prepend_many {
-		value := t.transform_array_many_rhs(value_id, value_node, base_type)
-		return t.make_array_insert_many_call(t.runtime_addr(base, base_type), t.make_int_literal(0), value, rhs_type)
+		mut value := t.transform_array_many_rhs(value_id, value_node, base_type)
+		cloned_value, cloned := t.clone_borrowed_array_append_many_value(value_id, value, rhs_type, elem_type)
+		value = cloned_value
+		call := t.make_array_insert_many_call(t.runtime_addr(base, base_type), t.make_int_literal(0), value, rhs_type)
+		return t.finish_borrowed_array_insert_many_call(call, value, rhs_type, cloned)
 	}
-	value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
+	mut value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
 		t.wrap_sum_value(value_id, elem_type)
 	} else {
 		t.transform_expr_for_type(value_id, elem_type)
+	}
+	value = t.coerce_transformed_expr_to_type(value, value_id, elem_type)
+	cloned_value := t.clone_borrowed_array_append_value(value_id, value, elem_type)
+	value = if cloned_value == value {
+		t.clone_borrowed_projection(value_id, value, elem_type)
+	} else {
+		cloned_value
 	}
 	value_name := t.new_temp('arr_val')
 	t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
@@ -1769,13 +1921,23 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	base := t.transform_lvalue(base_id)
 	index := t.transform_expr_for_type(index_id, 'int')
 	if insert_many {
-		value := t.transform_array_many_rhs(value_id, value_node, base_type)
-		return t.make_array_insert_many_call(t.runtime_addr(base, base_type), index, value, rhs_type)
+		mut value := t.transform_array_many_rhs(value_id, value_node, base_type)
+		cloned_value, cloned := t.clone_borrowed_array_append_many_value(value_id, value, rhs_type, elem_type)
+		value = cloned_value
+		call := t.make_array_insert_many_call(t.runtime_addr(base, base_type), index, value, rhs_type)
+		return t.finish_borrowed_array_insert_many_call(call, value, rhs_type, cloned)
 	}
-	value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
+	mut value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
 		t.wrap_sum_value(value_id, elem_type)
 	} else {
 		t.transform_expr_for_type(value_id, elem_type)
+	}
+	value = t.coerce_transformed_expr_to_type(value, value_id, elem_type)
+	cloned_value := t.clone_borrowed_array_append_value(value_id, value, elem_type)
+	value = if cloned_value == value {
+		t.clone_borrowed_projection(value_id, value, elem_type)
+	} else {
+		cloned_value
 	}
 	value_name := t.new_temp('arr_val')
 	t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)

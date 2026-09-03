@@ -10477,12 +10477,20 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 			return t.transform_expr_for_type(return_child_id, target_type)
 		}
 		if resolved_payload_type in t.sum_types {
-			return t.wrap_sum_value(return_child_id, resolved_payload_type)
+			return t.clone_borrowed_projection(return_child_id, t.wrap_sum_value(return_child_id,
+				resolved_payload_type), resolved_payload_type)
 		}
-		return t.transform_expr_for_type(return_child_id, payload_type)
+		return t.clone_borrowed_projection(return_child_id, t.transform_expr_for_type(return_child_id,
+			payload_type), payload_type)
 	}
-	if target_type.len > 0 && target_type !in t.sum_types && !t.is_optional_type_name(target_type) {
-		return t.transform_expr_for_type(return_child_id, target_type)
+	resolved_target_type := t.resolve_sum_name(target_type)
+	if target_type.len > 0 && resolved_target_type in t.sum_types {
+		return t.clone_borrowed_projection(return_child_id, t.transform_sum_value_for_type(return_child_id,
+			resolved_target_type), resolved_target_type)
+	}
+	if target_type.len > 0 && !t.is_optional_type_name(target_type) {
+		return t.clone_borrowed_projection(return_child_id, t.transform_expr_for_type(return_child_id,
+			target_type), target_type)
 	}
 	return t.wrap_sum_return_expr(return_child_id)
 }
@@ -10822,7 +10830,7 @@ fn (mut t Transformer) fixed_array_value_to_dynamic(value_id flat.NodeId, target
 		t.set_node_typ(int(data), '&${child_type}')
 		return t.fixed_array_data_to_array(data, child_type, array_type)
 	}
-	return t.fixed_array_value_to_array(value_id, child_type, array_type)
+	return t.fixed_array_value_to_owned_array(value_id, child_type, array_type)
 }
 
 fn (mut t Transformer) const_array_literal_storage_type_name_for_expr(id flat.NodeId) ?string {
@@ -11275,11 +11283,17 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			}
 			sum_target := t.assignment_sum_target(lhs_id, child_id, lhs_type)
 			if node.op == .assign && sum_target.len > 0 {
-				new_children << t.transform_sum_value_for_type(child_id, sum_target)
+				new_children << t.clone_borrowed_assignment_value(child_id, t.transform_sum_value_for_type(child_id,
+					sum_target), sum_target)
 			} else if node.op in [.plus_assign, .minus_assign] && lhs_type.starts_with('&') {
 				new_children << t.transform_expr(child_id)
 			} else {
-				new_children << t.transform_expr_for_type(child_id, lhs_type)
+				value := t.transform_expr_for_type(child_id, lhs_type)
+				new_children << if node.op == .assign {
+					t.clone_borrowed_assignment_value(child_id, value, lhs_type)
+				} else {
+					value
+				}
 			}
 		}
 	}
@@ -11894,10 +11908,14 @@ fn (mut t Transformer) try_lower_optional_selector_lvalue_assign(node flat.Node)
 	result << t.make_if(not_ok, t.make_or_else_block(guard_mode, guard_stmts), t.make_empty())
 	lhs_type := t.lvalue_type(lhs_id)
 	sum_target := t.assignment_sum_target(lhs_id, rhs_id, lhs_type)
-	rhs := if node.op == .assign && sum_target.len > 0 {
+	mut rhs := if node.op == .assign && sum_target.len > 0 {
 		t.wrap_sum_value(rhs_id, sum_target)
 	} else {
 		t.transform_expr_for_type(rhs_id, lhs_type)
+	}
+	if node.op == .assign {
+		clone_type := if sum_target.len > 0 { sum_target } else { lhs_type }
+		rhs = t.clone_borrowed_assignment_value(rhs_id, rhs, clone_type)
 	}
 	t.drain_pending(mut result)
 	if node.op == .assign && lhs_type.len > 0 && !isnil(t.tc) {
@@ -12217,7 +12235,8 @@ fn (mut t Transformer) try_lower_sum_shared_field_assign(node flat.Node) ?[]flat
 		sum_type = ptr_type
 	}
 	mut rhs := if node.op == .assign {
-		t.transform_expr_for_type(rhs_id, field_type)
+		value := t.transform_expr_for_type(rhs_id, field_type)
+		t.clone_borrowed_assignment_value(rhs_id, value, field_type)
 	} else {
 		t.transform_expr(rhs_id)
 	}
@@ -12294,7 +12313,8 @@ fn (mut t Transformer) try_lower_interface_field_assign(node flat.Node) ?[]flat.
 		base_ptr = t.make_ident(tmp_name)
 	}
 	mut rhs := if node.op == .assign {
-		t.transform_expr_for_type(rhs_id, field_type)
+		value := t.transform_expr_for_type(rhs_id, field_type)
+		t.clone_borrowed_assignment_value(rhs_id, value, field_type)
 	} else {
 		t.transform_expr(rhs_id)
 	}
@@ -12649,8 +12669,10 @@ fn (mut t Transformer) try_lower_pointer_value_assign(node flat.Node) ?[]flat.No
 	}
 	if lhs.value in t.heaped_amp_locals {
 		new_lhs := t.make_prefix(.mul, t.make_ident(lhs.value))
+		value := t.transform_expr_for_type(rhs_id, lhs_value_type_raw)
 		return [
-			t.make_assign(new_lhs, t.transform_expr_for_type(rhs_id, lhs_value_type_raw)),
+			t.make_assign(new_lhs, t.clone_borrowed_assignment_value(rhs_id, value,
+				lhs_value_type_raw)),
 		]
 	}
 	rhs_node := t.a.nodes[int(rhs_id)]
@@ -12675,8 +12697,9 @@ fn (mut t Transformer) try_lower_pointer_value_assign(node flat.Node) ?[]flat.No
 		return none
 	}
 	new_lhs := t.make_prefix(.mul, t.make_ident(lhs.value))
+	value := t.transform_expr_for_type(rhs_id, lhs_value_type_raw)
 	return [
-		t.make_assign(new_lhs, t.transform_expr_for_type(rhs_id, lhs_value_type_raw)),
+		t.make_assign(new_lhs, t.clone_borrowed_assignment_value(rhs_id, value, lhs_value_type_raw)),
 	]
 }
 
@@ -13994,9 +14017,15 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			}
 			sum_target := t.assignment_sum_target(lhs_id, child_id, lhs_type)
 			if sum_target.len > 0 && !t.expr_has_smartcast(child_id) {
-				new_children << t.transform_sum_value_for_type(child_id, sum_target)
+				new_children << t.clone_borrowed_projection(child_id, t.transform_sum_value_for_type(child_id,
+					sum_target), sum_target)
 			} else {
-				new_children << t.transform_expr_for_type(child_id, lhs_type)
+				mut clone_type := lhs_type
+				if clone_type.len == 0 {
+					clone_type = t.original_expr_type(child_id)
+				}
+				new_children << t.clone_borrowed_projection(child_id, t.transform_expr_for_type(child_id,
+					lhs_type), clone_type)
 			}
 		}
 	}
@@ -14529,10 +14558,13 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 		if lhs.kind == .ident && t.pointer_value_lvalues[lhs.value] && lhs_type.starts_with('&') {
 			lhs_type = lhs_type[1..]
 		}
-		rhs := if lhs_type.len > 0 {
+		mut rhs := if lhs_type.len > 0 {
 			t.transform_expr_for_type(rhs_id, lhs_type)
 		} else {
 			t.transform_expr(rhs_id)
+		}
+		if lhs_type.len > 0 {
+			rhs = t.clone_borrowed_assignment_value(rhs_id, rhs, lhs_type)
 		}
 		t.drain_pending(mut result)
 		if lhs.kind == .ident && lhs.value == '_' {
@@ -15293,7 +15325,7 @@ fn (mut t Transformer) multi_if_assign_stmts(parts TupleBlockParts, lhs_ids []fl
 		}
 		target_type := if i < lhs_ids.len && !is_blank { t.lvalue_type(lhs_ids[i]) } else { '' }
 		value := if target_type.len > 0 {
-			t.transform_expr_for_type(value_id, target_type)
+			t.transform_if_branch_value(value_id, target_type)
 		} else {
 			t.transform_expr(value_id)
 		}
@@ -17050,6 +17082,15 @@ fn (mut t Transformer) transform_children_expr(id flat.NodeId, node flat.Node) f
 	})
 }
 
+fn (mut t Transformer) transform_channel_send_value(value_id flat.NodeId) flat.NodeId {
+	value := t.transform_value_operand(value_id)
+	mut value_type := t.node_type(value_id)
+	if value_type.len == 0 {
+		value_type = t.checker_node_type(value_id)
+	}
+	return t.clone_borrowed_projection(value_id, value, value_type)
+}
+
 // transform_value_operand transforms an operand of an infix/prefix expression,
 // routing a value `match`/`if` operand (e.g. `1 + (match x { ... })` or
 // `-(match x { ... })`) through `transform_expr_for_type` so its (possibly
@@ -17123,8 +17164,8 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 			// Route a value `match`/`if` sent value through value lowering so its propagating
 			// arm tail is materialized as a value, e.g.
 			// `ch <- (match node { First { get_first(node)! } ... }) or { return }`.
-			// `transform_value_operand` is a no-op for the common non-branch sent values.
-			value := t.transform_value_operand(sent_value_id)
+			// `transform_channel_send_value` is a no-op for ordinary ownership-free values.
+			value := t.transform_channel_send_value(sent_value_id)
 			// Detach the channel target + sent value materialization prelude so transforming the
 			// `or {}` handler below does not capture it into the handler body; re-queue it
 			// afterwards so it is emitted before the channel send (target index before value).
@@ -17346,7 +17387,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		lhs_pending = t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	}
-	new_rhs := if t.is_value_match_or_if_operand(rhs_id) {
+	new_rhs := if node.op == .arrow {
+		t.transform_channel_send_value(rhs_id)
+	} else if t.is_value_match_or_if_operand(rhs_id) {
 		t.transform_value_operand(rhs_id)
 	} else if preserve_pointer_values && t.infix_operand_is_language_pointer(rhs_id) {
 		t.transform_expr_preserving_pointer_value(rhs_id)
@@ -20681,7 +20724,7 @@ fn (mut t Transformer) transform_array_literal(id flat.NodeId, node flat.Node) f
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		new_children << if elem_type.len > 0 {
-			t.transform_expr_for_type(child_id, elem_type)
+			t.transform_owned_array_literal_element(child_id, elem_type)
 		} else {
 			t.transform_expr(child_id)
 		}
