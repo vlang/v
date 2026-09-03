@@ -220,10 +220,10 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			return g.unsupported('ORM `sql` select is only supported as `x := sql db { select ... }`')
 		}
 	}
-	mut result := strings.new_builder(64)
+	mut result := strings.new_builder(32)
 	// Most expressions are a handful of tokens; start with room for them so
 	// the token buffer is not regrown several times per expression.
-	mut expression_tokens := []FastcExpressionToken{cap: 16}
+	mut expression_tokens := []FastcExpressionToken{cap: 8}
 	if prefix.len > 0 {
 		result.write_string(g.resolved_expression_name(prefix, .unknown))
 		expression_tokens << FastcExpressionToken{
@@ -621,9 +621,11 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			} else {
 				g.reference_local_value_piece(g.lit, g.lit, previous_token, expression_tokens, stops)
 			}
-			if mono := g.queue_expression_monomorphization(expression_tokens) {
-				piece = mono
-				expression_tokens[expression_tokens.len - 1].lit = mono
+			if g.selfhost && g.lit in g.generic_method_names {
+				if mono := g.queue_expression_monomorphization(expression_tokens) {
+					piece = mono
+					expression_tokens[expression_tokens.len - 1].lit = mono
+				}
 			}
 			result.write_string(piece)
 			previous_token = .name
@@ -1352,28 +1354,50 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			is_mut_argument: next_token_is_mut_argument
 		}
 		next_token_is_mut_argument = false
-		module_separator := g.expression_dot_is_module_separator(expression_tokens, expression_tokens.len - 1)
-		qualified_name_owner := if g.tok == .name && previous_token == .dot && expression_tokens.len >= 3 && g.expression_dot_is_module_separator(expression_tokens, expression_tokens.len - 2) {
+		module_separator := g.tok == .dot
+			&& g.expression_dot_is_module_separator(expression_tokens, expression_tokens.len - 1)
+		qualified_name_owner := if g.tok == .name && previous_token == .dot
+			&& expression_tokens.len >= 3 && previous_module_separator {
 			expression_tokens[expression_tokens.len - 3].lit
 		} else {
 			''
 		}
-		mut piece := g.expression_token(previous_token, previous_lit, qualified_name_owner, module_separator)!
-		if g.tok == .name {
+		selfhost_bare_name := g.selfhost && g.tok == .name && previous_token != .dot
+		mut piece := if selfhost_bare_name {
+			fastc_c_identifier(g.lit)
+		} else {
+			g.expression_token(previous_token, previous_lit, qualified_name_owner, module_separator)!
+		}
+		mut monomorphized_name := false
+		if g.selfhost && g.tok == .name && g.lit in g.generic_method_names {
 			if mono := g.queue_expression_monomorphization(expression_tokens) {
 				piece = mono
 				expression_tokens[expression_tokens.len - 1].lit = mono
+				monomorphized_name = true
 			}
 		}
 		if g.tok == .name && previous_token != .dot {
 			// A name after `.` is a field or method: never substitute a local
 			// (a mut parameter's deref form) that happens to share its name.
-			piece = g.reference_local_value_piece(g.lit, piece, previous_token, expression_tokens, stops)
+			if selfhost_bare_name {
+				if local := g.locals[g.lit] {
+					piece = g.reference_local_value_piece_for_local(local, piece, previous_token, expression_tokens, stops)
+				} else if !monomorphized_name {
+					piece = if g.lit == 'C' {
+						''
+					} else {
+						g.resolved_nonlocal_expression_name_cached(g.lit)
+					}
+				}
+			} else {
+				piece = g.reference_local_value_piece(g.lit, piece, previous_token, expression_tokens, stops)
+			}
 		}
 		if module_separator && piece == '.' {
 			piece = '__'
 		}
-		if previous_token == .dot && (g.tok == .name || g.tok.is_keyword()) && expression_tokens.len >= 3 && g.expression_dot_is_module_separator(expression_tokens, expression_tokens.len - 2) {
+		if previous_token == .dot && (g.tok == .name || g.tok.is_keyword())
+			&& expression_tokens.len >= 3 && previous_module_separator {
 			// A module or enum prefix makes a keyword-named symbol C-safe
 			// (`TokenKind.float` -> `TokenKind__float`).
 			piece = g.lit
@@ -1748,6 +1772,10 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 
 fn (g &Parser) reference_local_value_piece(name string, piece string, previous_token token.Token, expression_tokens []FastcExpressionToken, stops []token.Token) string {
 	local := g.locals[name] or { return piece }
+	return g.reference_local_value_piece_for_local(local, piece, previous_token, expression_tokens, stops)
+}
+
+fn (g &Parser) reference_local_value_piece_for_local(local FastcLocal, piece string, previous_token token.Token, expression_tokens []FastcExpressionToken, stops []token.Token) string {
 	mut lookahead := g.s
 	next_token := lookahead.scan()
 	is_single_value := expression_tokens.len == 1 && (next_token in stops || next_token == .eof)
