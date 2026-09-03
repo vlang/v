@@ -15,7 +15,6 @@ module quic
 // The maximum representable value is 2^62 - 1.
 pub const max_varint = u64(0x3FFF_FFFF_FFFF_FFFF) // 2^62 - 1
 
-
 // varint_len returns the number of bytes `encode_varint` would use to encode
 // `value`, without actually encoding it.
 pub fn varint_len(value u64) !int {

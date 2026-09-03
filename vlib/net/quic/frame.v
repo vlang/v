@@ -236,7 +236,6 @@ const frame_type_stop_sending = u64(0x05)
 const frame_type_crypto = u64(0x06)
 const frame_type_stream_base = u64(0x08) // 0x08-0x0f, OFF/LEN/FIN bits in the low 3 bits
 
-
 const frame_type_max_data = u64(0x10)
 const frame_type_max_stream_data = u64(0x11)
 const frame_type_max_streams_bidi = u64(0x12)

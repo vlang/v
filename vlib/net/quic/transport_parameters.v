@@ -32,7 +32,6 @@ const param_retry_source_connection_id = u64(0x10)
 const max_ack_delay_exponent = u64(20)
 const max_ack_delay_upper_bound = u64(0x4000) // 2^14; values >= this are invalid
 
-
 const min_active_connection_id_limit = u64(2)
 const min_max_udp_payload_size = u64(1200)
 

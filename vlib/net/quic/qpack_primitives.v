@@ -15,7 +15,6 @@ module quic
 // picking an unrelated arbitrary bound.
 pub const qpack_max_prefixed_int = u64(0x3fff_ffff_ffff_ffff) // 2^62 - 1
 
-
 // qpack_max_string_literal_len bounds a single decoded QPACK string
 // literal's on-wire (encoded) length (RFC 9204 §7.4). 1 MiB is far larger
 // than any real HTTP field value while still being a small, fixed cost for
