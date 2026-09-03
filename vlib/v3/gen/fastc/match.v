@@ -29,24 +29,44 @@ fn (mut g Parser) read_match_expression() !string {
 	outer_expected_type := g.expected_expression_type
 	g.expect(.key_match)!
 	g.expected_expression_type = ''
+	// `read_expression` consumes the `mut` modifier and keeps only the referenced
+	// name in `last_expression`, so remember it before parsing the subject.
+	subject_is_mut := g.tok == .key_mut
 	subject := g.read_expression([token.Token.lcbr])!
 	subject_type := g.last_expression_type
 	if subject == '' || subject_type == '' {
 		return g.unsupported('unverifiable match expression subject')
 	}
 	subject_tokens := g.last_expression.clone()
+	smartcast_is_reference := subject_is_mut || subject_type.ends_with('*')
 	// A sum-type / interface subject dispatches on the boxed `_typ` tag; each branch
 	// names a variant type and (for a plain-local subject) is smart-cast inside its
 	// value expression.
 	is_boxed := g.is_boxed_type(fastc_normalize_inferred_type(subject_type))
 	boxed_access := if subject_type.ends_with('*') { '->' } else { '.' }
 	mut subject_local := ''
-	if is_boxed && subject_tokens.len == 1 && subject_tokens[0].tok == .name
-		&& subject_tokens[0].lit in g.locals {
+	if is_boxed && subject_tokens.len == 1 && subject_tokens[0].tok == .name && subject_tokens[0].lit in g.locals {
 		subject_local = subject_tokens[0].lit
-	} else if is_boxed && subject_tokens.len == 2 && subject_tokens[0].tok in [.key_mut, .amp]
-		&& subject_tokens[1].tok == .name && subject_tokens[1].lit in g.locals {
+	} else if is_boxed && subject_tokens.len == 2 && subject_tokens[0].tok in [
+		.key_mut,
+		.amp,
+	] && subject_tokens[1].tok == .name && subject_tokens[1].lit in g.locals {
 		subject_local = subject_tokens[1].lit
+	}
+	// A boxed member subject (`match sym.info { ast.Struct { sym.info.name } }`, or
+	// `match mut sym.info { … }`) cannot be shadowed like a plain local, so each branch
+	// narrows the member path through the same branch-scoped rewrite the `if x.f is T`
+	// smart-casts use. A leading `mut`/`&` renders away, so skip it before the chain scan.
+	member_start := if subject_tokens.len > 0 && subject_tokens[0].tok in [.key_mut, .amp] {
+		1
+	} else {
+		0
+	}
+	mut subject_member_path := ''
+	if is_boxed && subject_local == '' {
+		if path := fastc_member_chain_path(subject_tokens, member_start, subject_tokens.len) {
+			subject_member_path = path
+		}
 	}
 	g.expect(.lcbr)!
 	temporary := g.temporary_name('match')
@@ -103,8 +123,7 @@ fn (mut g Parser) read_match_expression() !string {
 					g.next()
 					finish := g.read_expression([token.Token.comma, token.Token.lcbr])!
 					finish_tokens := g.last_expression.clone()
-					case_key = 'range:${case_key}..${g.normalized_match_case_key(finish_tokens,
-						finish)}'
+					case_key = 'range:${case_key}..${g.normalized_match_case_key(finish_tokens, finish)}'
 					case_source = '${start}..${finish}'
 					branch_conditions << '((${temporary}) >= (${start}) && (${temporary}) <= (${finish}))'
 				} else {
@@ -137,32 +156,76 @@ fn (mut g Parser) read_match_expression() !string {
 			'array'
 		} else if common_numeric_type != '' {
 			common_numeric_type
+		} else if branch_variants.len > 0 {
+			// Several struct variants in one arm (`SizeOf, IsRefType { x.is_type }`) may
+			// only touch fields common to every variant, which V lays out compatibly, so
+			// reading them through the first variant is correct.
+			branch_variants[0]
 		} else {
 			''
 		}
+		multi_struct_smartcast := branch_variants.len > 1 && !branch_all_arrays && common_numeric_type == ''
 		mut smartcast_saved := FastcLocal{}
-		smartcast_active := is_boxed && !is_else && smartcast_type != '' && subject_local != ''
+		smartcast_active := is_boxed && !is_else && smartcast_type != '' && subject_local != '' && !multi_struct_smartcast
 		if smartcast_active {
 			smartcast_saved = g.locals[subject_local] or { FastcLocal{} }
 			g.locals[subject_local] = FastcLocal{
 				is_mut: smartcast_saved.is_mut
-				typ:    smartcast_type
+				is_reference: smartcast_is_reference
+				typ: if smartcast_is_reference {
+					smartcast_type + '*'} else {
+					smartcast_type}
+			}
+		}
+		projection_path := if subject_member_path != '' {
+			subject_member_path
+		} else if multi_struct_smartcast {
+			subject_local
+		} else {
+			''
+		}
+		member_smartcast_active := is_boxed && !is_else && smartcast_type != '' && projection_path != ''
+		mut member_smartcast_saved := FastcMemberSmartcast{}
+		mut member_smartcast_present := false
+		if member_smartcast_active {
+			member_smartcast_present = projection_path in g.member_smartcasts
+			member_smartcast_saved = g.member_smartcasts[projection_path] or {
+				FastcMemberSmartcast{}
+			}
+			g.member_smartcasts[projection_path] = FastcMemberSmartcast{
+				typ: smartcast_type + '*'
+				source: '((${smartcast_type} *)${temporary}${boxed_access}_object)'
+				variants: if multi_struct_smartcast { branch_variants.clone() } else { [] }
+				tag_source: '${temporary}${boxed_access}_typ'
+				object_source: '${temporary}${boxed_access}_object'
 			}
 		}
 		mut value := g.read_match_block_expression_value()!
 		mut value_type := g.last_expression_type
+		if member_smartcast_active {
+			if member_smartcast_present {
+				g.member_smartcasts[projection_path] = member_smartcast_saved
+			} else {
+				g.member_smartcasts.delete(projection_path)
+			}
+		}
 		if smartcast_active {
 			g.locals[subject_local] = smartcast_saved
-			smartcast_value := if common_numeric_type != '' {
-				fastc_match_multi_variant_value(temporary, boxed_access, branch_variants,
-					common_numeric_type)
+			smartcast_value := if smartcast_is_reference {
+				'(${smartcast_type} *)${temporary}${boxed_access}_object'
+			} else if common_numeric_type != '' {
+				fastc_match_multi_variant_value(temporary, boxed_access, branch_variants, common_numeric_type)
 			} else {
 				'*(${smartcast_type} *)${temporary}${boxed_access}_object'
 			}
-			value = '({ ${smartcast_type} ${fastc_c_identifier(subject_local)} = ${smartcast_value}; (${value}); })'
+			declaration_type := if smartcast_is_reference {
+				smartcast_type + '*'
+			} else {
+				smartcast_type
+			}
+			value = '({ ${declaration_type} ${fastc_c_identifier(subject_local)} = ${smartcast_value}; (${value}); })'
 		}
-		if g.selfhost && value_type != '' && outer_expected_type != ''
-			&& g.should_box_variant(outer_expected_type, value_type) {
+		if g.selfhost && value_type != '' && outer_expected_type != '' && g.should_box_variant(outer_expected_type, value_type) {
 			// A branch value whose type is a variant of the match's (boxed) expected
 			// type must be boxed, so every branch shares the ternary's result type
 			// (e.g. a `[]Primitive` branch returning the smart-cast array as a `Primitive`).
@@ -198,12 +261,15 @@ fn (mut g Parser) read_match_expression() !string {
 			}
 			result_type = 'Option'
 		}
-		if g.selfhost && value_type == '' && result_type != '' {
+		if g.selfhost && value_type in ['', 'void'] && result_type != '' {
+			// A diverging arm (a `@[noreturn]` call such as `eprintln_exit(...)`) yields no
+			// usable value; run it, then fall through to a zeroed result so the branch still
+			// matches the ternary's result type.
 			zero_type := fastc_normalize_inferred_type(result_type)
 			value = '({ (void)(${value}); (${zero_type}){0}; })'
 			value_type = result_type
 		}
-		if result_type == '' && value_type != '' {
+		if result_type == '' && value_type !in ['', 'void'] {
 			if g.selfhost {
 				zero_type := fastc_normalize_inferred_type(value_type)
 				for i, previous_value in values {
@@ -258,6 +324,11 @@ fn (g &Parser) normalized_match_case_key(tokens []FastcExpressionToken, rendered
 }
 
 fn (mut g Parser) read_match_block_expression_value() !string {
+	if g.tok == .dollar && g.dollar_keyword_is('if') {
+		// A `$if … { value } $else { value }` arm is a compile-time expression: select
+		// the taken branch's value rather than executing it as a statement.
+		return g.read_comptime_if_expression()!
+	}
 	if g.tok == .key_if || g.or_block_has_statements() {
 		return g.read_block_expression_value()!
 	}
@@ -287,6 +358,11 @@ fn (mut g Parser) read_match_block_expression_value() !string {
 
 fn (mut g Parser) read_block_expression_value() !string {
 	g.skip_semicolons()
+	if g.tok == .dollar && g.dollar_keyword_is('if') {
+		// `$if … { value } $else { value }` as the block's value: select the taken
+		// branch's value rather than executing it as a statement.
+		return g.read_comptime_if_expression()!
+	}
 	if g.tok == .key_if && g.if_starts_final_block_expression() {
 		return g.read_if_expression()!
 	}
@@ -315,16 +391,23 @@ fn (mut g Parser) read_block_expression_value() !string {
 	previous_lines := g.captured_defer_lines.clone()
 	g.capturing_defer = true
 	g.captured_defer_lines = []string{}
+	// Restore through a defer so a `parse_statement` error that a speculative caller
+	// swallows cannot leave `capturing_defer` set for the rest of the function.
+	defer {
+		g.capturing_defer = previous_capture
+		g.captured_defer_lines = previous_lines.clone()
+	}
 	for g.or_block_has_statements() {
 		if g.tok == .key_if && g.if_starts_final_block_expression() {
+			break
+		}
+		if g.tok == .key_match && g.match_starts_final_block_expression() {
 			break
 		}
 		_ = g.parse_statement()!
 		g.skip_semicolons()
 	}
 	statements := g.captured_defer_lines.clone()
-	g.capturing_defer = previous_capture
-	g.captured_defer_lines = previous_lines
 	if g.tok == .rcbr {
 		g.last_expression_type = ''
 		g.last_expression = []FastcExpressionToken{}
@@ -334,8 +417,8 @@ fn (mut g Parser) read_block_expression_value() !string {
 	mut value := if g.tok == .name {
 		prefix := g.lit
 		g.next()
-		g.read_expression_with_prefix(prefix,
-			[token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
+		g.read_expression_with_prefix(prefix, [token.Token.comma, token.Token.semicolon,
+			token.Token.rcbr])!
 	} else {
 		g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 	}
@@ -370,8 +453,8 @@ fn (mut g Parser) read_block_expression_value() !string {
 	if g.tok == .name {
 		prefix := g.lit
 		g.next()
-		final_value := g.read_expression_with_prefix(prefix,
-			[token.Token.semicolon, token.Token.rcbr])!
+		final_value := g.read_expression_with_prefix(prefix, [token.Token.semicolon,
+			token.Token.rcbr])!
 		value = if value.trim_space() in ['', ';'] {
 			final_value
 		} else {

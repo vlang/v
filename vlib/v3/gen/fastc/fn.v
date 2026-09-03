@@ -114,6 +114,7 @@ fn (mut g Parser) parse_top_level_items(stop_at_block_end bool) ! {
 		}
 		mut item_enabled := true
 		g.pending_direct_array_access = false
+		g.next_declaration_is_unsafe = false
 		for g.tok == .attribute {
 			item_enabled = g.skip_attribute()! && item_enabled
 			g.skip_semicolons()
@@ -395,6 +396,10 @@ fn (mut g Parser) skip_attribute() !bool {
 		}
 		if depth == 1 && g.tok == .name && g.lit == 'direct_array_access' {
 			g.pending_direct_array_access = true
+		}
+		if depth == 1 && at_item_start && g.tok == .key_unsafe {
+			// `@[unsafe]` marks the whole function body as an unsafe region.
+			g.next_declaration_is_unsafe = true
 		}
 		if depth == 1 && g.tok == .semicolon {
 			at_item_start = true
@@ -768,14 +773,6 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			return
 		}
 	}
-	if g.selfhost && g.open_block_contains_select_statement() {
-		// The self-host reachability prepass deliberately groups overloaded methods
-		// by name. Omit an unsupported overload that only became reachable through
-		// that conservative grouping. A real reference remains undefined and makes
-		// C validation fail instead of emitting select with changed semantics.
-		g.skip_balanced(.lcbr, .rcbr)!
-		return
-	}
 	if g.selfhost && !is_fastc_source && receiver_type != '' && g.method_uses_undefined_receiver() {
 		// A method reaching an undefined identifier as a method-call receiver is broken
 		// dead code, kept only because its name collides with a genuinely-used method on
@@ -799,6 +796,22 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		params.join(', ')
 	}
 	g.protos.writeln('${c_return_type} ${c_name}(${c_params});')
+	if g.selfhost && g.open_block_contains_select_statement() {
+		// `select { … }` (channel multiplexing) has no C lowering. Emit a trivial stub rather
+		// than skipping the function, so a genuinely referenced select-using function (the
+		// parallel `Pool.run`) still links. FastC channels are erased, so the select path is
+		// dead and a caller reaching this falls back to its synchronous branch.
+		g.write_line('${c_return_type} ${c_name}(${c_params}) {')
+		g.indent++
+		if return_type != 'void' {
+			g.write_line('return (${return_type}){0};')
+		}
+		g.indent--
+		g.write_line('}')
+		g.out.writeln('')
+		g.skip_balanced(.lcbr, .rcbr)!
+		return
+	}
 	if !enabled {
 		g.write_line('${c_return_type} ${c_name}(${c_params}) {')
 		g.indent++
@@ -839,9 +852,23 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	previous_method_is_static := g.current_method_is_static
 	previous_deferred_lines := g.deferred_lines.clone()
 	previous_deferred_block_starts := g.deferred_block_starts.clone()
+	previous_function_defer_blocks := g.function_defer_blocks.clone()
+	previous_function_defer_declarations := g.function_defer_declarations.clone()
 	previous_loop_defer_block_starts := g.loop_defer_block_starts.clone()
 	previous_loop_has_breaks := g.loop_has_breaks.clone()
 	previous_statement_reachable := g.statement_reachable
+	previous_unsafe_depth := g.unsafe_depth
+	// Defer-capture state must never span function boundaries; a render path that reads a
+	// block value speculatively (and swallows an error) can otherwise leave
+	// `capturing_defer` set, which would misroute a later function's statements.
+	previous_capturing_defer := g.capturing_defer
+	previous_captured_defer_lines := g.captured_defer_lines.clone()
+	previous_defer_depth := g.defer_depth
+	if g.next_declaration_is_unsafe {
+		// `@[unsafe]` makes the entire body an unsafe region (`nil`, pointer
+		// arithmetic, ...), matching V's semantics for the attribute.
+		g.unsafe_depth = 1
+	}
 	g.in_main = is_main
 	g.return_type = return_type
 	g.return_types = return_types.clone()
@@ -851,9 +878,15 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.current_method_is_static = is_static_method
 	g.deferred_lines.clear()
 	g.deferred_block_starts.clear()
+	g.function_defer_blocks.clear()
+	g.function_defer_declarations.clear()
 	g.loop_defer_block_starts.clear()
 	g.loop_has_breaks.clear()
+	g.capturing_defer = false
+	g.captured_defer_lines.clear()
+	g.defer_depth = 0
 	g.statement_reachable = true
+	function_body_start := g.out.len
 	mut terminates := false
 	if is_generic {
 		// Locate the end of the body (the matching `}`) so a failed placeholder
@@ -890,10 +923,11 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			// A struct literal on an unbound type parameter (`T{...}`, as in orm's
 			// `map_row`'s `mut instance := T{}`): the placeholder lowering can miscount
 			// the literal's `}` and end the body early, leaking a stray statement to the
-			// top level. Type-parameter reflection (`T.name`, `T.fields`, ...) likewise
-			// has no valid C spelling until this function is monomorphized. Force the
-			// whole placeholder body to stub in either case.
-			if prev_was_type_param && body_tok in [.lcbr, .dot] {
+			// top level. Type-parameter reflection (`T.name`, `T.fields`, ...) and a cast
+			// or construction on the type parameter (`T(x)`, as in sync.pool's
+			// `*(&T(items[idx]))`) likewise have no valid C spelling until this function is
+			// monomorphized. Force the whole placeholder body to stub in every case.
+			if prev_was_type_param && body_tok in [.lcbr, .dot, .lpar] {
 				force_stub = true
 			}
 			prev_was_lsbr = body_tok == .lsbr
@@ -906,18 +940,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	} else {
 		terminates = g.parse_block_body()!
 	}
-	g.in_main = previous_in_main
-	g.return_type = previous_return_type
-	g.return_types = previous_return_types.clone()
-	g.option_return_type = previous_option_return_type
-	g.current_function = previous_function
-	g.current_receiver = previous_receiver
-	g.current_method_is_static = previous_method_is_static
-	g.deferred_lines = previous_deferred_lines.clone()
-	g.deferred_block_starts = previous_deferred_block_starts.clone()
-	g.loop_defer_block_starts = previous_loop_defer_block_starts.clone()
-	g.loop_has_breaks = previous_loop_has_breaks.clone()
-	g.statement_reachable = previous_statement_reachable
+	if !terminates {
+		g.write_function_deferred_blocks()
+	}
 	if return_type != 'void' && !terminates {
 		if !g.selfhost {
 			return g.unsupported('non-void function `${name}` that can fall through')
@@ -930,6 +955,29 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	if is_main {
 		g.write_line('return 0;')
 	}
+	function_body := g.out.cut_to(function_body_start)
+	for declaration in g.function_defer_declarations {
+		g.write_line(declaration)
+	}
+	g.out.write_string(function_body)
+	g.in_main = previous_in_main
+	g.return_type = previous_return_type
+	g.return_types = previous_return_types.clone()
+	g.option_return_type = previous_option_return_type
+	g.current_function = previous_function
+	g.current_receiver = previous_receiver
+	g.current_method_is_static = previous_method_is_static
+	g.deferred_lines = previous_deferred_lines.clone()
+	g.deferred_block_starts = previous_deferred_block_starts.clone()
+	g.function_defer_blocks = previous_function_defer_blocks.clone()
+	g.function_defer_declarations = previous_function_defer_declarations.clone()
+	g.loop_defer_block_starts = previous_loop_defer_block_starts.clone()
+	g.loop_has_breaks = previous_loop_has_breaks.clone()
+	g.capturing_defer = previous_capturing_defer
+	g.captured_defer_lines = previous_captured_defer_lines.clone()
+	g.defer_depth = previous_defer_depth
+	g.statement_reachable = previous_statement_reachable
+	g.unsafe_depth = previous_unsafe_depth
 	g.indent--
 	g.write_line('}')
 	g.out.writeln('')
@@ -970,6 +1018,8 @@ fn (mut g Parser) emit_generic_body_stub(out_checkpoint int, saved_indent int, b
 	}
 	g.indent = saved_indent
 	g.capturing_defer = false
+	g.function_defer_blocks.clear()
+	g.function_defer_declarations.clear()
 	g.s = body_end
 	g.next()
 	if return_type != 'void' {
@@ -1109,6 +1159,7 @@ fn (mut g Parser) parse_script() ! {
 
 fn (mut g Parser) parse_parameters() ![]string {
 	mut params := []string{}
+	mut blank_index := 0
 	g.skip_semicolons()
 	for g.tok != .rpar {
 		mut is_mut := false
@@ -1140,7 +1191,15 @@ fn (mut g Parser) parse_parameters() ![]string {
 			type_name += '*'
 		}
 		for parameter_name in names {
-			c_name := fastc_c_identifier(parameter_name)
+			// Two blank `_` parameters (`fn f(_ A, _ B)`) would both render as the C name
+			// `_`, which C rejects as a redeclaration. `_` is never referenced in the body,
+			// so give each a distinct throwaway name.
+			c_name := if parameter_name == '_' {
+				blank_index++
+				'_fastc_unused_${blank_index}'
+			} else {
+				fastc_c_identifier(parameter_name)
+			}
 			if is_fn_pointer {
 				// Declare a real function pointer with unspecified args so `f(x)`
 				// compiles as a direct call; the return C type is recovered above.

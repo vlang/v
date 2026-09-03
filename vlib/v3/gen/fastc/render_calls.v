@@ -147,7 +147,14 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 	type_start := if is_option_cast { 1 } else { 0 }
 	mut open := -1
 	mut c_type := ''
-	type_qualifier_start := if tokens.len > 0 && tokens[0].tok in [.amp, .and] { 1 } else { 0 }
+	// The qualified-type check below reads the token where the type name begins; skip a leading
+	// `&`/`&&` pointer prefix or a `?` option-cast prefix (`?flat.NodeId(none)`) so a module
+	// qualifier (`flat.`) is recognized rather than mistaken for a `receiver.method(` call.
+	type_qualifier_start := if tokens.len > 0 && tokens[0].tok in [.amp, .and, .question] {
+		1
+	} else {
+		0
+	}
 	for i, item in tokens {
 		if item.tok != .lpar || i <= type_start {
 			continue
@@ -205,7 +212,43 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 			typ: 'Option'
 		}
 	}
-	inner := g.render_call_argument_expression(inner_tokens, c_type) or { return none }
+	// A conversion into a boxed sum type (`Expr(EmptyExpr(0))`) is a box, not a C cast: the
+	// concrete variant value is stored behind `_object` with its own type id. Casting the
+	// variant straight to the `{_object,_typ,_methods}` struct is invalid C, and matters for
+	// primitive-alias variants (`type EmptyExpr = u8`) that cannot be reinterpret-cast at all.
+	if g.selfhost && !fastc_is_pointer_type(c_type) && fastc_trim_pointer_suffix(c_type) in g.sum_types {
+		inner_type := g.infer_expression_type(inner_tokens) or { '' }
+		variant := fastc_trim_pointer_suffix(fastc_normalize_inferred_type(inner_type))
+		if variant != '' && variant != fastc_trim_pointer_suffix(c_type) && g.sumtype_has_variant(c_type, variant) {
+			// A member/local chain must render through render_member_receiver so a live member
+			// smart-cast (`if left is CS { Expr(left) }`) supplies the concrete variant pointer
+			// (`((CS *)left->_object)`) rather than the boxed subject itself.
+			boxed_inner := if member := g.render_member_receiver(inner_tokens) {
+				member
+			} else {
+				g.render_call_argument_expression(inner_tokens, inner_type) or { return none }
+			}
+			object := if fastc_is_pointer_type(inner_type) {
+				'(void*)(${boxed_inner})'
+			} else {
+				fastc_box_expression(variant, boxed_inner)
+			}
+			return FastcRenderedExpression{
+				source: '(${c_type}){._object=${object}, ._typ=__v_typeid_${variant}, ._methods=NULL}'
+				typ: c_type
+			}
+		}
+	}
+	inner_type := g.infer_expression_type(inner_tokens) or { '' }
+	// `voidptr(callback)` is a pointer reinterpretation, not a generic-value box.
+	// Rendering its function-alias operand against `voidptr` would allocate storage
+	// for the callback pointer and return that storage address, which is not callable.
+	inner_expected_type := if c_type == 'voidptr' && inner_type in g.fn_alias_return_types {
+		inner_type
+	} else {
+		c_type
+	}
+	inner := g.render_call_argument_expression(inner_tokens, inner_expected_type) or { return none }
 	return FastcRenderedExpression{
 		source: '((${fastc_output_c_type(c_type)})(${inner}))'
 		typ: c_type
@@ -281,7 +324,10 @@ fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rend
 		mut argument_index := i + 2
 		for argument_index < call_end {
 			if tokens[argument_index].tok == .dot && argument_index + 1 < call_end && tokens[argument_index + 1].tok == .name {
-				raw_argument.write_string('.${tokens[argument_index + 1].lit}')
+				// The raw renderer mangles a `.member` shorthand whose name is a C keyword
+				// (`.unsigned` -> `.__v_fastc_keyword_unsigned`); match that spelling so the
+				// needle still finds the call. The enum constant itself keeps the raw name.
+				raw_argument.write_string('.${fastc_c_identifier(tokens[argument_index + 1].lit)}')
 				c_argument.write_string('${fastc_c_declared_type_name(receiver_key)}__${tokens[argument_index + 1].lit}')
 				argument_index += 2
 				continue
@@ -310,6 +356,16 @@ fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rend
 			'has' { '((${receiver_source} & ${c_argument_source}) != 0)' }
 			'set' { '((${receiver_source}) |= (${c_argument_source}))' }
 			else { '((${receiver_source}) &= ~(${c_argument_source}))' }
+		}
+		if receiver_start == 0 && call_end == tokens.len - 1 {
+			// A standalone flag-method call (`t.a.nodes.flags.set(.nogrow)` as a whole expression):
+			// return the reconstructed operation directly. render_raw's buffer can spell a pointer
+			// FIELD receiver inconsistently (`t->a.nodes` not `t->a->nodes`) so no needle matches;
+			// render_member_receiver spells it correctly.
+			return FastcRenderedExpression{
+				source: replacement
+				typ: if method == 'has' { 'bool' } else { 'void' }
+			}
 		}
 		if !rendered.contains(needle) {
 			continue
@@ -608,11 +664,45 @@ fn (g &Parser) render_interface_cast_expression(tokens []FastcExpressionToken, r
 		struct_literal.source
 	} else if actual_base.starts_with('Array_') || actual_base.starts_with('Map_') {
 		g.render_call_argument_expression(inner_tokens, actual_type) or { return none }
+	} else if g.selfhost && g.expression_uses_member_smartcast(inner_tokens) {
+		// A narrowed subject (`Expr(left)` where `left is CS`) must box the concrete-variant
+		// pointer the smart-cast supplies, not the boxed subject's raw streamed text.
+		g.render_member_receiver(inner_tokens) or {
+			rendered_expression[prefix.len..rendered_expression.len - 2]
+		}
+	} else if g.selfhost && fastc_bare_as_cast_index(inner_tokens, 0, inner_tokens.len) != none {
+		// An `as`-cast operand (`AsmArg(x as AsmRegister)`): the raw streamed text keeps the V
+		// `as` keyword, which is not valid C, so lower it through the as-cast renderer.
+		if as_expr := g.render_as_cast_expression(inner_tokens) {
+			as_expr.source
+		} else {
+			g.render_call_argument_expression(inner_tokens, actual_type) or {
+				rendered_expression[prefix.len..rendered_expression.len - 2]
+			}
+		}
+	} else if g.selfhost && fastc_expression_tokens_contain(inner_tokens, .lpar) {
+		// A call operand (`Stmt(f(node.arr[0]))`): the raw streamed text leaves the call's
+		// arguments un-lowered (e.g. an array index on a match-cast member stays an invalid C
+		// `[0]` on the array header), so render it through the argument path.
+		g.render_call_argument_expression(inner_tokens, actual_type) or {
+			rendered_expression[prefix.len..rendered_expression.len - 2]
+		}
 	} else {
 		rendered_expression[prefix.len..rendered_expression.len - 2]
 	}
+	mut box_type := actual_type
+	if fastc_is_pointer_type(actual_type) && inner_tokens.len == 1 && inner_tokens[0].tok == .name {
+		if local := g.locals[inner_tokens[0].lit] {
+			// `Expr(node)` where `node` is a `mut T` parameter (a C `T*`): the streamed operand
+			// is auto-dereferenced to the pointee value (`*(node)`), so box that value rather than
+			// letting interface_value_expression's pointer branch cast a struct value to `void*`.
+			if local.is_reference && local.typ == actual_type {
+				box_type = fastc_trim_pointer_suffix(actual_type)
+			}
+		}
+	}
 	return FastcRenderedExpression{
-		source: g.interface_value_expression(interface_type, actual_type, inner_source)
+		source: g.interface_value_expression(interface_type, box_type, inner_source)
 		typ: interface_type
 	}
 }
