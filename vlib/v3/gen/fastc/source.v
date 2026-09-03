@@ -1066,12 +1066,6 @@ fn fastc_write_memo_dir_line(mut out strings.Builder, dir string, module_dir_fil
 	out.write_u8(`\n`)
 }
 
-// fastc_store_resolve_memo_job runs fastc_store_resolve_memo on a worker.
-fn fastc_store_resolve_memo_job(memo_path string, previous_text string, sources []FastcSourceFile, builtin_dir string, lookup_modules []string, lookup_sources []string, prefs &pref.Preferences, module_path_cache map[string]string, module_dir_files map[string][]string, entry_paths []string, real_path_cache map[string]string, entry_files map[string][]string, preloaded map[string]FastcLoadedSource) bool {
-	fastc_store_resolve_memo(memo_path, previous_text, sources, builtin_dir, lookup_modules, lookup_sources, prefs, module_path_cache, module_dir_files, entry_paths, real_path_cache, entry_files, preloaded)
-	return true
-}
-
 // fastc_memo_body strips the write time and token lines from a memo text, so
 // two memos of the same program compare equal.
 fn fastc_memo_body(text string) string {

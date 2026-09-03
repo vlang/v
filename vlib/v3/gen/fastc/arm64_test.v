@@ -2060,6 +2060,39 @@ fn test_fastc_arm64_remaining_pseudo_values() {
 	}
 }
 
+fn test_fastc_arm64_c_style_for_assigning_existing_local() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_c_for_assign_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, 'fn count_down(n int) int {
+	mut i := 0
+	mut total := 0
+	for i = n - 1; i >= 0; i-- {
+		total += i
+	}
+	return total + i
+}
+
+fn main() {
+	println(count_down(5))
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == '9\n'
+	}
+}
+
 fn test_fastc_arm64_module_lifecycle_hooks() {
 	$if arm64? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_lifecycle_${os.getpid()}')

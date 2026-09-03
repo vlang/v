@@ -210,7 +210,13 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	input_sources, _ := fastc_resolve_source_files(paths, prefs)!
 	fast_arm64_validate_output_source_paths(output, input_sources)!
 	fast_arm64_validate_unsupported_calls(input_sources, prefs)!
-	sources := fastc_monomorphize_sources(input_sources, prefs)!
+	mut sources := fastc_monomorphize_sources(input_sources, prefs)!
+	// The declaration and signature passes only scan files whose byte-level
+	// flags (type keywords, interfaces, generic fn syntax) allow the
+	// declaration they look for; the generic-method scan computes those flags,
+	// so run it first as the C path does.
+	flags_partial := fastc_collect_generic_method_source_chunk(sources, prefs, 0, sources.len)
+	fastc_apply_scan_flags(mut sources, flags_partial.flags, 0)
 	mut declared_types := map[string]bool{}
 	mut declared_kinds := map[string]FastcDeclaredTypeKind{}
 	mut enum_flags := map[string]bool{}
@@ -220,7 +226,13 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	mut public_constants := map[string]bool{}
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
-	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants, mut globals, mut public_globals)!
+	// The C path's per-file declaration texts and spans are not used here: the
+	// native path collects its type and constant declarations itself below.
+	mut index_type_sources := map[string]string{}
+	mut index_constant_sources := map[string]string{}
+	mut index_constant_spans := map[string][]int{}
+	mut index_global_sources := map[string]string{}
+	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut index_type_sources, mut constants, mut public_constants, mut index_constant_sources, mut index_constant_spans, mut index_global_sources, mut globals, mut public_globals)!
 	// Non-selfhost programs do not resolve builtin source files, but imported module
 	// signatures can still use V's intrinsic error interface.
 	declared_types['IError'] = true
@@ -244,8 +256,11 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 
 	mut program := FastArm64Program.new(prefs, declared_types, functions, type_decls, constant_sources, enum_values)
 	program.register_functions()
-	module_init_calls := fastc_module_init_calls(sources, functions)!
-	module_cleanup_calls := fastc_module_cleanup_calls(sources, functions)!
+	// The lifecycle hooks run in module dependency order; the resolver returns
+	// discovery order.
+	lifecycle_sources := fastc_sources_in_dependency_order(sources)!
+	module_init_calls := fastc_module_init_calls(lifecycle_sources, functions)!
+	module_cleanup_calls := fastc_module_cleanup_calls(lifecycle_sources, functions)!
 	module_init_function_keys := fast_arm64_lifecycle_function_keys(module_init_calls, 'init', functions)
 	module_cleanup_function_keys := fast_arm64_lifecycle_function_keys(module_cleanup_calls, 'cleanup', functions)
 	program.register_module_lifecycle(module_init_function_keys, module_cleanup_function_keys)
@@ -4433,7 +4448,7 @@ fn (mut p FastArm64Parser) parse_statement() ! {
 			}
 		}
 		else {
-			_ = p.parse_expression(0)!
+			p.parse_expression_statement()!
 		}
 	}
 	if p.tok == .semicolon {
@@ -4769,6 +4784,13 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 	if after_mut {
 		return p.unsupported('mutable declaration without `:=`')
 	}
+	p.parse_expression_statement()!
+}
+
+// parse_expression_statement parses an expression statement, storing into
+// the expression when an assignment follows it (a field of a cast pointer,
+// `(&T(p)).field = v`, an indexed element, a map entry, ...).
+fn (mut p FastArm64Parser) parse_expression_statement() ! {
 	left := p.parse_expression(0)!
 	if p.tok in [.assign, .plus_assign, .minus_assign, .mul_assign, .div_assign, .mod_assign,
 		.left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign, .and_assign,
@@ -5290,6 +5312,10 @@ fn (mut p FastArm64Parser) parse_for_inner() ! {
 			p.parse_c_for()!
 			return
 		}
+		if next_token == .assign {
+			p.parse_c_for_assigning()!
+			return
+		}
 	}
 	preheader := p.cur_block
 	condition_block := p.program.m.add_block(p.func_id, 'for_condition')
@@ -5701,6 +5727,28 @@ fn (mut p FastArm64Parser) parse_c_for() ! {
 		typ_name: initial.typ_name
 	})
 	p.expect(.semicolon)!
+	p.parse_c_for_rest(name, address, initial.typ, initial.typ_name)!
+}
+
+// parse_c_for_assigning lowers `for name = initial; condition; step { ... }`,
+// whose initializer assigns an existing local instead of declaring one.
+fn (mut p FastArm64Parser) parse_c_for_assigning() ! {
+	name := p.lit
+	local := p.locals[name] or { return p.unsupported('C-style loop assigning to unknown `${name}`') }
+	p.next()
+	p.expect(.assign)!
+	mut initial := p.parse_expression(0)!
+	if initial.typ != local.typ {
+		initial = p.convert_value(initial, local.typ, local.typ_name)
+	}
+	p.program.instr2(.store, p.cur_block, p.program.void_type, initial.id, local.addr)
+	p.expect(.semicolon)!
+	p.parse_c_for_rest(name, local.addr, local.typ, local.typ_name)!
+}
+
+// parse_c_for_rest lowers the condition, step and body of a C-style loop whose
+// counter `name` lives at `address`.
+fn (mut p FastArm64Parser) parse_c_for_rest(name string, address ssa.ValueID, typ ssa.TypeID, typ_name string) ! {
 	condition_block := p.program.m.add_block(p.func_id, 'c_for_condition')
 	body_block := p.program.m.add_block(p.func_id, 'c_for_body')
 	increment_block := p.program.m.add_block(p.func_id, 'c_for_increment')
@@ -5722,10 +5770,10 @@ fn (mut p FastArm64Parser) parse_c_for() ! {
 		}
 		p.next()
 		if p.tok in [.inc, .dec] {
-			current := p.program.instr1(.load, increment_block, initial.typ, address)
-			one := p.program.m.get_or_add_const(initial.typ, '1')
+			current := p.program.instr1(.load, increment_block, typ, address)
+			one := p.program.m.get_or_add_const(typ, '1')
 			op := if p.tok == .inc { ssa.OpCode.add } else { ssa.OpCode.sub }
-			next := p.program.instr2(op, increment_block, initial.typ, current, one)
+			next := p.program.instr2(op, increment_block, typ, current, one)
 			p.program.instr2(.store, increment_block, p.program.void_type, next, address)
 			p.next()
 		} else if p.tok in [.plus_assign, .minus_assign, .mul_assign, .div_assign, .mod_assign,
@@ -5734,11 +5782,11 @@ fn (mut p FastArm64Parser) parse_c_for() ! {
 			op := p.tok
 			p.next()
 			mut step := p.parse_expression(0)!
-			if step.typ != initial.typ {
-				step = p.convert_value(step, initial.typ, initial.typ_name)
+			if step.typ != typ {
+				step = p.convert_value(step, typ, typ_name)
 			}
-			current := p.program.instr1(.load, increment_block, initial.typ, address)
-			next := p.program.instr2(fast_arm64_compound_opcode(op, p.program.m.type_store.types[initial.typ].is_unsigned), increment_block, initial.typ, current, step.id)
+			current := p.program.instr1(.load, increment_block, typ, address)
+			next := p.program.instr2(fast_arm64_compound_opcode(op, p.program.m.type_store.types[typ].is_unsigned), increment_block, typ, current, step.id)
 			p.program.instr2(.store, increment_block, p.program.void_type, next, address)
 		} else {
 			return p.unsupported('C-style loop increment operator')
@@ -6103,6 +6151,33 @@ fn (mut p FastArm64Parser) parse_prefix() !FastArm64Value {
 					id: p.program.instr1(.bitcast, p.cur_block, target, value.id)
 					typ: target
 					typ_name: '&C.${c_type_name}'
+				}
+			}
+		}
+		if p.tok == .lsbr {
+			// `&[]T(value)` reinterprets a pointer as a pointer to an array; every
+			// V array shares the runtime array layout, so this is a bitcast.
+			mut array_look := p.s
+			if array_look.scan() == .rsbr && array_look.scan() == .name && array_look.scan() == .lpar {
+				p.next()
+				p.expect(.rsbr)!
+				type_name := '[]' + p.lit
+				p.next()
+				p.expect(.lpar)!
+				value := p.parse_expression(0)!
+				p.expect(.rpar)!
+				target := p.program.m.type_store.get_ptr(p.program.type_id(type_name))
+				// A pointer operand is reinterpreted; an addressable value (such as
+				// a `mut` receiver) contributes its address.
+				mut operand := value.id
+				if p.program.m.type_store.types[value.typ].kind != .ptr_t
+					&& value.address != ssa.ValueID(0) {
+					operand = value.address
+				}
+				return FastArm64Value{
+					id: p.program.instr1(.bitcast, p.cur_block, target, operand)
+					typ: target
+					typ_name: '&${type_name}'
 				}
 			}
 		}
@@ -9265,6 +9340,15 @@ fn (p &FastArm64Program) resolved_type_name(type_name string) string {
 
 fn (mut p FastArm64Parser) resolve_method_key(value FastArm64Value, method string) ?string {
 	receiver_name := value.typ_name.trim_right('*')
+	// An array-typed receiver (`[]T`, `&[]T`) takes the builtin array method:
+	// an alias of `[]T` shares the array layout, so its own methods would
+	// otherwise match a plain array receiver by type.
+	if receiver_name.trim_left('&').starts_with('[]') {
+		array_key := 'array.${method}'
+		if array_key in p.program.functions {
+			return array_key
+		}
+	}
 	for semantic_receiver in [receiver_name, receiver_name.replace('__', '.')] {
 		key := '${semantic_receiver}.${method}'
 		if key in p.program.functions {
