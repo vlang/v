@@ -457,6 +457,21 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 }
 
 fn (g &Parser) method_function_key(receiver_type string, name string) string {
+	if by_name := g.method_key_memo[receiver_type] {
+		if cached := by_name[name] {
+			return cached
+		}
+	}
+	key := g.method_function_key_impl(receiver_type, name)
+	mut w := unsafe { &Parser(g) }
+	if receiver_type !in w.method_key_memo {
+		w.method_key_memo[receiver_type] = map[string]string{}
+	}
+	w.method_key_memo[receiver_type][name] = key
+	return key
+}
+
+fn (g &Parser) method_function_key_impl(receiver_type string, name string) string {
 	direct_key := '${g.semantic_type_key(receiver_type)}.${name}'
 	if direct_key in g.functions {
 		return direct_key

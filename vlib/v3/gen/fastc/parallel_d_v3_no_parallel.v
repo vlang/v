@@ -30,13 +30,13 @@ fn fastc_wait_interface_dispatches(mut pending FastcPendingInterfaceDispatches) 
 	return pending.dispatches
 }
 
-fn fastc_preload_memo(memo_path string, memo FastcResolveMemo, prefs &pref.Preferences, canonical_vlib string, mut module_path_cache map[string]string, mut module_dir_files map[string][]string) map[string]FastcLoadedSource {
-	probe_tasks := fastc_memo_probe_tasks(memo)
+fn fastc_preload_memo(memo_path string, memo FastcResolveMemo, prefs &pref.Preferences, canonical_vlib string, entry_paths []string, entry_real_paths []string, mut module_path_cache map[string]string, mut module_dir_files map[string][]string, mut entry_files map[string][]string, mut real_path_cache map[string]string, mut loaded map[string]FastcLoadedSource) {
+	probe_tasks := fastc_memo_probe_tasks(memo, entry_paths, entry_real_paths, prefs)
 	mut probe_results := []FastcMemoResult{len: probe_tasks.len}
 	for index, task in probe_tasks {
 		probe_results[index] = fastc_run_memo_task(task, index, prefs, canonical_vlib)
 	}
-	mut loaded := fastc_apply_memo_results(probe_tasks, probe_results, prefs, mut module_path_cache, mut module_dir_files)
+	fastc_apply_memo_results(probe_tasks, probe_results, prefs, mut module_path_cache, mut module_dir_files, mut entry_files, mut real_path_cache, mut loaded)
 	blob := fastc_read_memo_blob(memo_path, memo)
 	current_stamps := fastc_memo_current_stamps(probe_tasks, probe_results, memo.files.len)
 	read_tasks := fastc_memo_read_tasks(memo, current_stamps, blob)
@@ -44,10 +44,25 @@ fn fastc_preload_memo(memo_path string, memo FastcResolveMemo, prefs &pref.Prefe
 	for index, task in read_tasks {
 		read_results[index] = fastc_run_memo_task(task, index, prefs, canonical_vlib)
 	}
-	for path, source in fastc_apply_memo_results(read_tasks, read_results, prefs, mut module_path_cache, mut module_dir_files) {
-		loaded[path] = source
+	fastc_apply_memo_results(read_tasks, read_results, prefs, mut module_path_cache, mut module_dir_files, mut entry_files, mut real_path_cache, mut loaded)
+}
+
+// FastcPendingMemoStore is a written resolve memo: without threads the memo
+// is stored before the resolution returns.
+struct FastcPendingMemoStore {
+mut:
+	stored bool
+}
+
+fn fastc_start_memo_store(memo_path string, previous_text string, sources []FastcSourceFile, builtin_dir string, lookup_modules []string, lookup_sources []string, prefs &pref.Preferences, module_path_cache map[string]string, module_dir_files map[string][]string, entry_paths []string, real_path_cache map[string]string, entry_files map[string][]string, preloaded map[string]FastcLoadedSource) FastcPendingMemoStore {
+	fastc_store_resolve_memo(memo_path, previous_text, sources, builtin_dir, lookup_modules, lookup_sources, prefs, module_path_cache, module_dir_files, entry_paths, real_path_cache, entry_files, preloaded)
+	return FastcPendingMemoStore{
+		stored: true
 	}
-	return loaded
+}
+
+fn fastc_wait_memo_store(mut pending FastcPendingMemoStore) {
+	pending.stored = true
 }
 
 // fastc_preload_sources is a no-op without threads: the ordering walk loads
@@ -89,19 +104,22 @@ fn fastc_wait_type_declarations(mut pending FastcPendingTypeDeclarations) !Fastc
 	return pending.result
 }
 
-struct FastcPendingFieldLookup {
+struct FastcPendingFieldDefaults {
 mut:
-	lookup map[string]map[string]FastcStructField
+	result FastcFieldDefaultsResult
 }
 
-fn fastc_start_struct_field_lookup(struct_field_info map[string][]FastcStructField, prefs &pref.Preferences) FastcPendingFieldLookup {
-	return FastcPendingFieldLookup{
-		lookup: fastc_build_struct_field_lookup(struct_field_info)
+fn fastc_start_field_defaults(source_imports map[string]map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string, sum_types map[string]bool) FastcPendingFieldDefaults {
+	return FastcPendingFieldDefaults{
+		result: fastc_run_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, sum_types)
 	}
 }
 
-fn fastc_wait_struct_field_lookup(mut pending FastcPendingFieldLookup) map[string]map[string]FastcStructField {
-	return pending.lookup
+fn fastc_wait_field_defaults(mut pending FastcPendingFieldDefaults) !FastcFieldDefaultsResult {
+	if pending.result.failed {
+		return error(pending.result.error_message)
+	}
+	return pending.result
 }
 
 struct FastcPendingFragments {
@@ -141,4 +159,10 @@ fn fastc_collect_declaration_indexes(sources []FastcSourceFile, prefs &pref.Pref
 fn fastc_collect_signatures(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut embed_embedders []string, mut embed_embeddeds []string) ! {
 	partial := fastc_collect_signature_chunk(sources, prefs, declared_types, declared_type_c_names, params_structs, 0, sources.len)
 	fastc_merge_signature_partial(partial, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
+}
+
+// fastc_parse_constant_files_parallel returns no results: without threads the
+// constants phase parses every file serially.
+fn fastc_parse_constant_files_parallel(ctx &FastcConstantGenContext, candidates []FastcSourceFile, seed map[string]string) []FastcConstantFileResult {
+	return []FastcConstantFileResult{}
 }

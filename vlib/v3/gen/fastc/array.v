@@ -563,7 +563,7 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 		result.write_string(piece)
 		previous_module_separator = module_separator
 	}
-	return g.render_enum_alias_member_references(tokens, result.str())
+	return g.render_enum_alias_member_references(tokens, fastc_take_string(mut result))
 }
 
 fn (g &Parser) expression_dot_is_module_separator(tokens []FastcExpressionToken, index int) bool {
@@ -746,7 +746,7 @@ fn fastc_generate_fixed_array_declarations(fixed_array_types map[string]string) 
 	if out.len > 0 {
 		out.writeln('')
 	}
-	return out.str()
+	return fastc_take_string(mut out)
 }
 
 fn fastc_expression_list_items(tokens []FastcExpressionToken, start int, end int) ![][]FastcExpressionToken {

@@ -185,8 +185,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 				continue
 			}
-			if rendered.contains(raw_call) {
-				rendered = rendered.replace(raw_call, call_source)
+			if fastc_contains(rendered, raw_call) {
+				rendered = fastc_replace(rendered, raw_call, call_source)
 				changed = true
 			}
 			continue
@@ -207,15 +207,15 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			// A wait nested in a larger expression replaces its raw call form,
 			// exactly like ordinary method calls.
 			mut wait_needle := '${receiver.source}.wait()'
-			if !rendered.contains(wait_needle) {
+			if !fastc_contains(rendered, wait_needle) {
 				raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { '' }
 				raw_needle := '${raw_receiver}.wait()'
-				if raw_receiver != '' && rendered.contains(raw_needle) {
+				if raw_receiver != '' && fastc_contains(rendered, raw_needle) {
 					wait_needle = raw_needle
 				}
 			}
-			if rendered.contains(wait_needle) {
-				rendered = rendered.replace(wait_needle, wait_call)
+			if fastc_contains(rendered, wait_needle) {
+				rendered = fastc_replace(rendered, wait_needle, wait_call)
 				changed = true
 			}
 			continue
@@ -247,8 +247,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 					continue
 				}
-				if rendered.contains(raw_call) {
-					rendered = rendered.replace(raw_call, call_source)
+				if fastc_contains(rendered, raw_call) {
+					rendered = fastc_replace(rendered, raw_call, call_source)
 					changed = true
 				}
 				continue
@@ -287,16 +287,16 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 					raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 						continue
 					}
-					if rendered.contains(raw_call) {
-						rendered = rendered.replace(raw_call, call_source)
+					if fastc_contains(rendered, raw_call) {
+						rendered = fastc_replace(rendered, raw_call, call_source)
 						changed = true
 					}
 					continue
 				}
 				for separator in ['->', '.'] {
 					marker := '${receiver.source}${separator}${tokens[i].lit}('
-					if rendered.contains(marker) {
-						rendered = rendered.replace(marker, '(${receiver.source}${separator}${tokens[i].lit})(')
+					if fastc_contains(rendered, marker) {
+						rendered = fastc_replace(rendered, marker, '(${receiver.source}${separator}${tokens[i].lit})(')
 						changed = true
 						break
 					}
@@ -324,8 +324,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 				continue
 			}
-			if rendered.contains(raw_call) {
-				rendered = rendered.replace(raw_call, disabled_call)
+			if fastc_contains(rendered, raw_call) {
+				rendered = fastc_replace(rendered, raw_call, disabled_call)
 				changed = true
 			}
 			continue
@@ -340,12 +340,12 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		mut method_marker := '${separator}${tokens[i].lit}('
 		if receiver_start == 0 {
 			raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { receiver_source }
-			if receiver_source == raw_receiver && rendered.contains(method_marker) {
+			if receiver_source == raw_receiver && fastc_contains(rendered, method_marker) {
 				receiver_source = rendered.all_before_last(method_marker)
 			} else {
 				alternate_separator := if separator == '.' { '->' } else { '.' }
 				alternate_marker := '${alternate_separator}${tokens[i].lit}('
-				if rendered.contains(alternate_marker) {
+				if fastc_contains(rendered, alternate_marker) {
 					separator = alternate_separator
 					method_marker = alternate_marker
 					receiver_source = rendered.all_before_last(method_marker)
@@ -353,10 +353,10 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 		}
 		mut needle := '${receiver_source}${separator}${tokens[i].lit}('
-		if !rendered.contains(needle) {
+		if !fastc_contains(rendered, needle) {
 			raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { '' }
 			raw_needle := '${raw_receiver}${separator}${tokens[i].lit}('
-			if raw_receiver != '' && rendered.contains(raw_needle) {
+			if raw_receiver != '' && fastc_contains(rendered, raw_needle) {
 				needle = raw_needle
 			}
 		}
@@ -460,9 +460,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				'pop',
 				'pop_left',
 			]
-			if !is_pointer_result_method && !has_arguments && direct_arguments.len == 0 && rendered.contains(needle) {
+			if !is_pointer_result_method && !has_arguments && direct_arguments.len == 0 && fastc_contains(rendered, needle) {
 				return FastcRenderedExpression{
-					source: rendered.replace(needle, replacement)
+					source: fastc_replace(rendered, needle, replacement)
 					typ: result_type
 				}
 			}
@@ -487,8 +487,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 				continue
 			}
-			if rendered.contains(raw_call) {
-				rendered = rendered.replace(raw_call, direct_call)
+			if fastc_contains(rendered, raw_call) {
+				rendered = fastc_replace(rendered, raw_call, direct_call)
 				changed = true
 				continue
 			}
@@ -503,8 +503,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			call_needle = '${needle})'
 			call_replacement = '(*(((${element_type} *)${replacement}))))'
 		}
-		if rendered.contains(call_needle) {
-			rendered = rendered.replace(call_needle, call_replacement)
+		if fastc_contains(rendered, call_needle) {
+			rendered = fastc_replace(rendered, call_needle, call_replacement)
 			changed = true
 		}
 	}

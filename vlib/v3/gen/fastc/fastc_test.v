@@ -7,6 +7,65 @@ import v3.pref
 import v3.scanner
 import v3.token
 
+fn test_parse_resolve_memo_round_trip() {
+	text := 'D\t/vlib/builtin\t100\t200\t300\t400\t2\t/vlib/builtin/a.v\t/vlib/builtin/b.v\n' +
+		'D\t/vlib/plain\n' + 'E\tmain.v\t/abs/main.v\t10\t20\t30\t40\t/abs\t1\t/abs/other.v\n' +
+		'F\t/vlib/builtin/a.v\t5\t6\t7\t8\t41\n' + 'M\tos\t/abs/main.v\n' + 'T\t1234\n' + 'B\ttoken\n'
+	memo := fastc_parse_resolve_memo(text)
+	assert memo.dirs == ['/vlib/builtin', '/vlib/plain']
+	assert memo.dir_stamps.len == 2
+	assert memo.dir_stamps[0] == FastcFileStamp{
+		size:  100
+		mtime: 200
+		ctime: 300
+		inode: 400
+	}
+	assert memo.dir_files[0] == ['/vlib/builtin/a.v', '/vlib/builtin/b.v']
+	assert memo.dir_stamps[1].mtime == 0
+	assert memo.dir_files[1].len == 0
+	assert memo.entry_paths == ['main.v']
+	assert memo.entry_real_paths == ['/abs/main.v']
+	assert memo.entry_stamps[0].inode == 40
+	assert memo.entry_vmod_roots == ['/abs']
+	assert memo.entry_files[0] == ['/abs/other.v']
+	assert memo.files == ['/vlib/builtin/a.v']
+	assert memo.stamps[0] == FastcFileStamp{
+		size:  5
+		mtime: 6
+		ctime: 7
+		inode: 8
+	}
+	assert memo.offsets == [41]
+	assert memo.lookup_modules == ['os']
+	assert memo.lookup_sources == ['/abs/main.v']
+	assert memo.written == 1234
+	assert memo.blob_token == 'token'
+}
+
+fn test_parse_resolve_memo_rejects_short_listings() {
+	// A directory line whose file count does not match its fields records no
+	// listing, so the directory is listed again.
+	memo := fastc_parse_resolve_memo('D\t/vlib/x\t1\t2\t3\t4\t3\t/vlib/x/a.v\n')
+	assert memo.dirs == ['/vlib/x']
+	assert memo.dir_stamps[0].mtime == 0
+	assert memo.dir_files[0].len == 0
+}
+
+fn test_fastc_index_of_and_replace() {
+	text := 'abc_call(x) + abc_call(y) - ab'
+	assert fastc_index_of(text, 'abc_call(', 0) == text.index_after_('abc_call(', 0)
+	assert fastc_index_of(text, 'abc_call(', 1) == text.index_after_('abc_call(', 1)
+	assert fastc_index_of(text, 'zzz', 0) == -1
+	assert fastc_index_of(text, '', 0) == -1
+	assert fastc_index_of(text, 'ab', text.len - 2) == text.len - 2
+	assert fastc_index_of(text, 'abx', text.len - 2) == -1
+	assert fastc_contains(text, '- ab')
+	assert !fastc_contains(text, 'abcd')
+	assert fastc_replace(text, 'abc_call(', 'f(') == text.replace('abc_call(', 'f(')
+	assert fastc_replace('aaa', 'aa', 'b') == 'aaa'.replace('aa', 'b')
+	assert fastc_replace(text, 'zzz', 'q') == text
+}
+
 fn test_contains_method_marker() {
 	// A leading occurrence of the name is not a call; the scan must go on to
 	// a later `.name(` or `->name(`.
@@ -218,7 +277,7 @@ fn test_selfhost_grouped_keyword_parameter_names_are_collected() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	mut functions := map[string]FastcFunctionSignature{}
-	collect_function_signatures('fn pair(shared, type int) int {}', 'grouped_keyword_parameter_names.v', FastcSourceHeader{ module_name: 'main' }, prefs, map[string]bool{}, map[string]string{}, map[string]bool{}, mut functions) or { panic(err) }
+	collect_function_signatures('fn pair(shared, type int) int {}', 'grouped_keyword_parameter_names.v', FastcSourceHeader{ module_name: 'main' }, prefs, []int{}, map[string]bool{}, map[string]string{}, map[string]bool{}, mut functions) or { panic(err) }
 	signature := functions['pair'] or { panic('missing pair signature') }
 	assert signature.parameter_types == ['int', 'int']
 }

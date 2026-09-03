@@ -808,6 +808,27 @@ fn (g &Parser) struct_member_type(receiver_type string, field_name string) strin
 }
 
 fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?FastcStructField {
+	if by_name := g.field_memo[receiver_type] {
+		if cached := by_name[field_name] {
+			if cached.name == '' {
+				return none
+			}
+			return cached
+		}
+	}
+	mut w := unsafe { &Parser(g) }
+	if receiver_type !in w.field_memo {
+		w.field_memo[receiver_type] = map[string]FastcStructField{}
+	}
+	if field := g.struct_field_metadata_impl(receiver_type, field_name) {
+		w.field_memo[receiver_type][field_name] = field
+		return field
+	}
+	w.field_memo[receiver_type][field_name] = FastcStructField{}
+	return none
+}
+
+fn (g &Parser) struct_field_metadata_impl(receiver_type string, field_name string) ?FastcStructField {
 	mut layout_type := fastc_trim_pointer_suffix(receiver_type)
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'

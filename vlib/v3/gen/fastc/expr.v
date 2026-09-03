@@ -175,11 +175,16 @@ fn (mut g Parser) read_expression_with_prefix_mode(prefix string, stops []token.
 		g.last_option_value_type = ''
 	}
 	g.expression_depth++
-	if g.expression_depth == 1 && g.comparison_memo.len > 0 {
-		// Memoized comparison renders are only valid while the expression's
-		// token buffers and locals are live and unchanged; a new top-level
-		// expression starts a fresh generation.
-		g.comparison_memo.clear()
+	if g.expression_depth == 1 {
+		// Memoized comparison renders and inferred types are only valid while
+		// the expression's token buffers and locals are live and unchanged; a
+		// new top-level expression starts a fresh generation.
+		if g.comparison_memo.len > 0 {
+			g.comparison_memo.clear()
+		}
+		if g.type_memo.len > 0 {
+			g.type_memo.clear()
+		}
 	}
 	defer {
 		g.expression_depth--
@@ -355,12 +360,14 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 						g.next() // `(`
 						had_it := 'it' in g.locals
 						saved_it := g.locals['it'] or { FastcLocal{} }
+						g.type_memo.clear()
 						g.locals['it'] = FastcLocal{
 							typ: element_type
 						}
 						closure := g.read_expression([token.Token.rpar])!
 						closure_type := g.last_expression_type
 						if had_it {
+							g.type_memo.clear()
 							g.locals['it'] = saved_it
 						} else {
 							g.locals.delete('it')
@@ -440,19 +447,23 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 						saved_a := g.locals['a'] or { FastcLocal{} }
 						had_b := 'b' in g.locals
 						saved_b := g.locals['b'] or { FastcLocal{} }
+						g.type_memo.clear()
 						g.locals['a'] = FastcLocal{
 							typ: element_type
 						}
+						g.type_memo.clear()
 						g.locals['b'] = FastcLocal{
 							typ: element_type
 						}
 						condition := g.read_expression([token.Token.rpar])!
 						if had_a {
+							g.type_memo.clear()
 							g.locals['a'] = saved_a
 						} else {
 							g.locals.delete('a')
 						}
 						if had_b {
+							g.type_memo.clear()
 							g.locals['b'] = saved_b
 						} else {
 							g.locals.delete('b')
@@ -738,7 +749,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			for wrapper_parens < expression_tokens.len && expression_tokens[wrapper_parens].tok == .lpar {
 				wrapper_parens++
 			}
-			raw_option_buffer := result.str()
+			raw_option_buffer := fastc_take_string(mut result)
 			mut option_expression := raw_option_buffer.trim_space()
 			mut value_type := g.expected_expression_type
 			mut option_tokens := expression_tokens.clone()
@@ -924,6 +935,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				previous_lines := g.captured_defer_lines.clone()
 				previous_err := g.locals['err'] or { FastcLocal{} }
 				had_err := 'err' in g.locals
+				g.type_memo.clear()
 				g.locals['err'] = FastcLocal{
 					typ: 'IError'
 				}
@@ -947,6 +959,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				g.capturing_defer = previous_capture
 				g.captured_defer_lines = previous_lines.clone()
 				if had_err {
+					g.type_memo.clear()
 					g.locals['err'] = previous_err
 				} else {
 					g.locals.delete('err')
@@ -1070,10 +1083,11 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 					continue
 				}
 				g.expected_expression_type = saved_expected_expression_type
-				return result.str().trim_space()
+				return fastc_take_trimmed(mut result)
 			}
 			previous_err := g.locals['err'] or { FastcLocal{} }
 			had_err := 'err' in g.locals
+			g.type_memo.clear()
 			g.locals['err'] = FastcLocal{
 				typ: 'IError'
 			}
@@ -1092,6 +1106,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				fallback = '(builtin__new_map(sizeof(${fastc_runtime_c_type(key_type)}), sizeof(${fastc_runtime_c_type(map_value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn}))'
 			}
 			if had_err {
+				g.type_memo.clear()
 				g.locals['err'] = previous_err
 			} else {
 				g.locals.delete('err')
@@ -1709,7 +1724,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		g.validate_expression_field_visibility(expression_tokens)!
 		g.validate_expression_calls(expression_tokens)!
 	}
-	mut rendered_expression := result.str().trim_space()
+	mut rendered_expression := fastc_take_trimmed(mut result)
 	rendered_expression = g.render_enum_alias_member_references(expression_tokens, rendered_expression)
 	rendered_expression = g.render_constant_references(expression_tokens, rendered_expression)
 	if special := g.render_special_expression(expression_tokens, rendered_expression) {
@@ -1903,14 +1918,59 @@ fn (g &Parser) render_constant_references(tokens []FastcExpressionToken, source 
 	return rendered
 }
 
+// fastc_index_of returns the first index of `needle` in `text` at or after
+// `start`, or -1. The builtin search builds a KMP table per call for needles
+// longer than two bytes; the needles here are short identifiers and call
+// prefixes, for which a plain scan is cheaper.
+@[direct_array_access]
+fn fastc_index_of(text string, needle string, start int) int {
+	if needle.len == 0 || needle.len > text.len {
+		return -1
+	}
+	first := needle[0]
+	last := text.len - needle.len
+	mut i := if start < 0 { 0 } else { start }
+	for i <= last {
+		if text[i] == first && unsafe { vmemcmp(text.str + i, needle.str, needle.len) } == 0 {
+			return i
+		}
+		i++
+	}
+	return -1
+}
+
+fn fastc_contains(text string, needle string) bool {
+	return fastc_index_of(text, needle, 0) >= 0
+}
+
+// fastc_replace replaces every occurrence of `needle` in `text` with
+// `replacement`, scanning left to right; `text` itself is returned when it
+// holds no occurrence.
+fn fastc_replace(text string, needle string, replacement string) string {
+	mut index := fastc_index_of(text, needle, 0)
+	if index < 0 {
+		return text
+	}
+	mut out := strings.new_builder(text.len + replacement.len)
+	mut start := 0
+	for index >= 0 {
+		unsafe { out.write_ptr(text.str + start, index - start) }
+		out.write_string(replacement)
+		start = index + needle.len
+		index = fastc_index_of(text, needle, start)
+	}
+	unsafe { out.write_ptr(text.str + start, text.len - start) }
+	return out.str()
+}
+
 fn fastc_replace_c_call_identifier(source string, identifier string, replacement string) string {
-	if identifier == '' || identifier == replacement || !source.contains(identifier) {
+	if identifier == '' || identifier == replacement || !fastc_contains(source, identifier) {
 		return source
 	}
 	mut out := strings.new_builder(source.len + replacement.len)
 	mut start := 0
 	for start < source.len {
-		index := source.index_after_(identifier, start)
+		index := fastc_index_of(source, identifier, start)
 		if index < 0 {
 			unsafe { out.write_ptr(source.str + start, source.len - start) }
 			break
@@ -1936,13 +1996,13 @@ fn fastc_replace_c_call_identifier(source string, identifier string, replacement
 }
 
 fn fastc_replace_c_root_identifier(source string, identifier string, replacement string) string {
-	if identifier == '' || identifier == replacement || !source.contains(identifier) {
+	if identifier == '' || identifier == replacement || !fastc_contains(source, identifier) {
 		return source
 	}
 	mut out := strings.new_builder(source.len + replacement.len)
 	mut start := 0
 	for start < source.len {
-		index := source.index_after_(identifier, start)
+		index := fastc_index_of(source, identifier, start)
 		if index < 0 {
 			unsafe { out.write_ptr(source.str + start, source.len - start) }
 			break
@@ -1963,13 +2023,13 @@ fn fastc_replace_c_root_identifier(source string, identifier string, replacement
 }
 
 fn fastc_replace_c_identifier(source string, identifier string, replacement string) string {
-	if identifier == '' || identifier == replacement || !source.contains(identifier) {
+	if identifier == '' || identifier == replacement || !fastc_contains(source, identifier) {
 		return source
 	}
 	mut out := strings.new_builder(source.len + replacement.len)
 	mut start := 0
 	for start < source.len {
-		index := source.index_after_(identifier, start)
+		index := fastc_index_of(source, identifier, start)
 		if index < 0 {
 			unsafe { out.write_ptr(source.str + start, source.len - start) }
 			break

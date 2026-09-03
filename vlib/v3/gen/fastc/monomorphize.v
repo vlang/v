@@ -205,6 +205,7 @@ fn (mut g Parser) queue_mono_method(receiver_type string, method string, concret
 		if return_source == '' {
 			return_type = 'void'
 		}
+		g.type_memo.clear()
 		g.mono_functions[key] = FastcFunctionSignature{
 			parameter_types: parameter_types
 			parameter_mutability: base.parameter_mutability.clone()
@@ -381,6 +382,7 @@ fn (mut g Parser) queue_mono_function(function_key string, concrete string) ?str
 			return_types = fastc_specialized_generic_result_types(return_types, concrete)
 			option_type = fastc_specialized_generic_result_type(option_type, concrete)
 		}
+		g.type_memo.clear()
 		g.mono_functions[mono_key] = FastcFunctionSignature{
 			parameter_types: parameter_types
 			parameter_mutability: base.parameter_mutability.clone()

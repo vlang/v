@@ -316,6 +316,9 @@ fn (g &Parser) render_empty_struct_initializer(c_type string) string {
 	layout_type := fastc_trim_pointer_suffix(c_type)
 	mut rendered_fields := []string{}
 	mut rendered_fields_by_name := map[string]string{}
+	// The struct's rendered defaults are consulted; the constants phase
+	// re-parses a file that did so after they are ready.
+	fastc_note_field_defaults_use(g)
 	for field in g.struct_field_info[layout_type] {
 		if field.default_value == '' {
 			continue
@@ -1058,8 +1061,8 @@ fn (g &Parser) render_chained_array_access_expression(tokens []FastcExpressionTo
 			lookup_tokens := tokens[start..close + 1]
 			lookup := g.render_map_expression(lookup_tokens) or { continue }
 			raw_lookup := g.render_raw_expression_tokens(lookup_tokens) or { continue }
-			if rendered.contains(raw_lookup) {
-				rendered = rendered.replace(raw_lookup, lookup.source)
+			if fastc_contains(rendered, raw_lookup) {
+				rendered = fastc_replace(rendered, raw_lookup, lookup.source)
 				changed = true
 			}
 			continue
@@ -1096,11 +1099,11 @@ fn (g &Parser) render_chained_array_access_expression(tokens []FastcExpressionTo
 			'(*(${element_type} *)builtin__array_get(${array_value}, ${index_source}))'
 		}
 		mut needle := '${base_source}[${index_source}]'
-		if !rendered.contains(needle) {
+		if !fastc_contains(rendered, needle) {
 			needle = '${raw_base}[${index_source}]'
 		}
-		if rendered.contains(needle) {
-			rendered = rendered.replace(needle, replacement)
+		if fastc_contains(rendered, needle) {
+			rendered = fastc_replace(rendered, needle, replacement)
 			changed = true
 		}
 	}

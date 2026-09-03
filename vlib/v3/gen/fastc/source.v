@@ -83,16 +83,38 @@ fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
 	}
 }
 
+// fastc_resolve_source_files resolves the sources of `paths` and writes the
+// resolve memo before returning.
 fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]FastcSourceFile, map[string]string) {
+	mut pending_memo_store := FastcPendingMemoStore{}
+	sources, module_aliases := fastc_resolve_source_files_deferring_memo(paths, prefs, mut pending_memo_store)!
+	fastc_wait_memo_store(mut pending_memo_store)
+	return sources, module_aliases
+}
+
+// fastc_resolve_source_files_deferring_memo resolves the sources of `paths`;
+// the memo of the resolution is written in the background and the caller
+// joins it through `pending_memo_store` (fastc_wait_memo_store) once its own
+// work is done.
+fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Preferences, mut pending_memo_store FastcPendingMemoStore) !([]FastcSourceFile, map[string]string) {
 	mut timer := fastc_new_phase_timer()
-	memo_path := fastc_resolve_memo_path(paths, prefs)
+	// The entries' canonical paths key the memo and seed the walk's cache.
+	mut entry_real_paths := []string{cap: paths.len}
+	for path in paths {
+		entry_real_paths << os.real_path(path)
+	}
+	memo_path := fastc_resolve_memo_path_of_real(entry_real_paths, prefs)
+	timer.mark('resolve.memo_path')
 	memo_text := if memo_path != '' { os.read_file(memo_path) or { '' } } else { '' }
+	timer.mark('resolve.memo_read')
 	memo := fastc_parse_resolve_memo(memo_text)
+	timer.mark('resolve.memo_parse')
 	builtin_dir := if prefs.building_v {
 		os.real_path(prefs.get_vlib_module_path('builtin'))
 	} else {
 		''
 	}
+	timer.mark('resolve.builtin_dir')
 	// vroot is canonical, so a module directory found below its vlib is too and
 	// needs no realpath call of its own.
 	canonical_vlib := if prefs.building_v { os.dir(builtin_dir) } else { '' }
@@ -103,10 +125,19 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 	mut module_dir_files := map[string][]string{}
 	mut module_path_cache := map[string]string{}
 	mut preloaded := map[string]FastcLoadedSource{}
+	mut entry_files := map[string][]string{}
+	if prefs.building_v {
+		for i, path in paths {
+			real_path_cache[path] = entry_real_paths[i]
+		}
+	}
 	if memo.files.len > 0 {
 		// A memo from an earlier run names everything this entry touched, so
-		// all of it is listed, read and looked up in one parallel batch.
-		preloaded = fastc_preload_memo(memo_path, memo, prefs, canonical_vlib, mut module_path_cache, mut module_dir_files)
+		// all of it is listed, read and looked up in one parallel batch, along
+		// with the entry module's own file list.
+		entry_paths := if prefs.building_v { paths } else { []string{} }
+		entry_reals := if prefs.building_v { entry_real_paths } else { []string{} }
+		fastc_preload_memo(memo_path, memo, prefs, canonical_vlib, entry_paths, entry_reals, mut module_path_cache, mut module_dir_files, mut entry_files, mut real_path_cache, mut preloaded)
 		timer.mark('resolve.memo_preload')
 	}
 	mut queue := []FastcQueuedSource{}
@@ -121,7 +152,11 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 		}
 	}
 	for path in paths {
-		entry_path := if prefs.building_v { os.real_path(path) } else { path }
+		entry_path := if prefs.building_v {
+			real_path_cache[path] or { os.real_path(path) }
+		} else {
+			path
+		}
 		queue << FastcQueuedSource{
 			path: entry_path
 			is_canonical: prefs.building_v
@@ -133,7 +168,11 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 		// path does this: the bootstrap runtime compiles single entry files, and its
 		// tests place several independent programs in one scratch directory.
 		if prefs.building_v {
-			for module_file in fastc_entry_module_files(entry_path, prefs) {
+			entry_module_files := entry_files[entry_path] or {
+				fastc_entry_module_files(entry_path, prefs)
+			}
+			entry_files[entry_path] = entry_module_files
+			for module_file in entry_module_files {
 				if fastc_source_file_matches_backend(module_file) {
 					queue << FastcQueuedSource{
 						path: module_file
@@ -233,6 +272,7 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 					has_global_declarations: header.has_global_declarations
 					has_interfaces: header.has_interfaces
 					has_comptime_if: header.has_comptime_if
+					has_select: header.has_select
 					has_type_keywords: header.has_type_keywords
 					has_generic_fn_syntax: header.has_generic_fn_syntax
 				}
@@ -296,7 +336,8 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 	}
 	timer.mark('resolve.imports')
 	if memo_path != '' {
-		fastc_store_resolve_memo(memo_path, memo_text, sources, builtin_dir, memo_lookup_modules, memo_lookup_sources, prefs, module_path_cache, preloaded)
+		memo_entry_paths := if prefs.building_v { paths } else { []string{} }
+		pending_memo_store = fastc_start_memo_store(memo_path, memo_text, sources, builtin_dir, memo_lookup_modules, memo_lookup_sources, prefs, module_path_cache, module_dir_files, memo_entry_paths, real_path_cache, entry_files, preloaded)
 		timer.mark('resolve.memo_store')
 	}
 	return sources, module_aliases
@@ -311,8 +352,20 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 // the memo (anything it needs that the memo missed is loaded on demand).
 struct FastcResolveMemo {
 mut:
-	dirs           []string
-	files          []string
+	dirs []string
+	// dir_stamps and dir_files are the stamps and the listings of `dirs`
+	// (parallel to it; a zero stamp means the listing was not recorded).
+	dir_stamps []FastcFileStamp
+	dir_files  [][]string
+	// The entry modules' file lists (parallel arrays): the entry path as
+	// given, its canonical path, the stamp of its directory, the v.mod root
+	// found for it and the files.
+	entry_paths      []string
+	entry_real_paths []string
+	entry_stamps     []FastcFileStamp
+	entry_vmod_roots []string
+	entry_files      [][]string
+	files            []string
 	stamps         []FastcFileStamp
 	offsets        []int
 	lookup_modules []string
@@ -387,6 +440,8 @@ struct FastcMemoTask {
 	offsets        []int
 	blob           string
 	trusted_before i64
+	// For entry tasks: the v.mod root the memoized listing was made under.
+	vmod_root string
 }
 
 struct FastcMemoResult {
@@ -411,6 +466,16 @@ fn fastc_fnv_hash(seed u64, text string) u64 {
 // fastc_resolve_memo_path names the memo file of an entry set and build
 // configuration; it is empty when the memo is disabled.
 fn fastc_resolve_memo_path(paths []string, prefs &pref.Preferences) string {
+	mut real_paths := []string{cap: paths.len}
+	for path in paths {
+		real_paths << os.real_path(path)
+	}
+	return fastc_resolve_memo_path_of_real(real_paths, prefs)
+}
+
+// fastc_resolve_memo_path_of_real names the memo of the entries `real_paths`
+// (canonical) under the preferences that shape a resolution.
+fn fastc_resolve_memo_path_of_real(real_paths []string, prefs &pref.Preferences) string {
 	if os.getenv('V3_FASTC_NO_RESOLVE_MEMO') != '' {
 		return ''
 	}
@@ -425,41 +490,123 @@ fn fastc_resolve_memo_path(paths []string, prefs &pref.Preferences) string {
 	for define in prefs.user_defines {
 		hash = fastc_fnv_hash(hash, define)
 	}
-	for path in paths {
-		hash = fastc_fnv_hash(hash, os.real_path(path))
+	for path in real_paths {
+		hash = fastc_fnv_hash(hash, path)
 	}
 	return os.join_path_single(os.vtmp_dir(), 'fastc_resolve_${hash.hex()}.memo')
 }
 
+// fastc_memo_field_u64 parses the decimal digits of text[start..end], or 0.
+@[direct_array_access]
+fn fastc_memo_field_u64(text string, start int, end int) u64 {
+	mut value := u64(0)
+	for i in start .. end {
+		c := text[i]
+		if c < `0` || c > `9` {
+			return 0
+		}
+		value = value * 10 + u64(c - `0`)
+	}
+	return value
+}
+
+// fastc_memo_field_start returns where field `k` of a memo line starts:
+// `first` for the first field, after the preceding tab otherwise.
+@[direct_array_access]
+fn fastc_memo_field_start(tabs []int, k int, first int) int {
+	if k == 0 {
+		return first
+	}
+	return tabs[k - 1] + 1
+}
+
+// fastc_memo_field_end returns where field `k` of a memo line ends: at its
+// tab, or at the line end for the last field.
+@[direct_array_access]
+fn fastc_memo_field_end(tabs []int, k int, line_end int) int {
+	if k < tabs.len {
+		return tabs[k]
+	}
+	return line_end
+}
+
+fn fastc_memo_stamp_fields(text string, tabs []int, first int, line_end int, k int) FastcFileStamp {
+	return FastcFileStamp{
+		size:  i64(fastc_memo_field_u64(text, fastc_memo_field_start(tabs, k, first), fastc_memo_field_end(tabs, k, line_end)))
+		mtime: i64(fastc_memo_field_u64(text, fastc_memo_field_start(tabs, k + 1, first), fastc_memo_field_end(tabs, k + 1, line_end)))
+		ctime: i64(fastc_memo_field_u64(text, fastc_memo_field_start(tabs, k + 2, first), fastc_memo_field_end(tabs, k + 2, line_end)))
+		inode: fastc_memo_field_u64(text, fastc_memo_field_start(tabs, k + 3, first), fastc_memo_field_end(tabs, k + 3, line_end))
+	}
+}
+
+// fastc_parse_resolve_memo reads a memo: one line per record, `<kind>\t`
+// followed by tab-separated fields. The text is scanned in place; only the
+// paths and names become strings.
+@[direct_array_access]
 fn fastc_parse_resolve_memo(text string) FastcResolveMemo {
 	mut memo := FastcResolveMemo{}
-	for line in text.split_into_lines() {
-		if line.len < 3 {
-			continue
+	mut tabs := []int{cap: 64}
+	mut pos := 0
+	for pos < text.len {
+		mut line_end := pos
+		for line_end < text.len && text[line_end] != `\n` {
+			line_end++
 		}
-		fields := line[2..].split('\t')
-		kind := line[0]
-		if kind == `D` {
-			memo.dirs << fields[0]
-		} else if kind == `F` {
-			memo.files << fields[0]
-			if fields.len == 6 {
-				memo.stamps << FastcFileStamp{
-					size:  fields[1].i64()
-					mtime: fields[2].i64()
-					ctime: fields[3].i64()
-					inode: fields[4].u64()
+		if line_end - pos >= 3 && text[pos + 1] == `\t` {
+			kind := text[pos]
+			first := pos + 2
+			tabs.clear()
+			for i in first .. line_end {
+				if text[i] == `\t` {
+					tabs << i
 				}
-				memo.offsets << fields[5].int()
 			}
-		} else if kind == `M` && fields.len == 2 {
-			memo.lookup_modules << fields[0]
-			memo.lookup_sources << fields[1]
-		} else if kind == `T` {
-			memo.written = fields[0].i64()
-		} else if kind == `B` {
-			memo.blob_token = fields[0]
+			field_count := tabs.len + 1
+			if kind == `D` {
+				memo.dirs << text[first..fastc_memo_field_end(tabs, 0, line_end)]
+				mut dir_stamp := FastcFileStamp{}
+				mut dir_files := []string{}
+				if field_count >= 6 {
+					count := int(fastc_memo_field_u64(text, fastc_memo_field_start(tabs, 5, first), fastc_memo_field_end(tabs, 5, line_end)))
+					if field_count == 6 + count {
+						dir_stamp = fastc_memo_stamp_fields(text, tabs, first, line_end, 1)
+						dir_files = []string{cap: count}
+						for k in 6 .. field_count {
+							dir_files << text[fastc_memo_field_start(tabs, k, first)..fastc_memo_field_end(tabs, k, line_end)]
+						}
+					}
+				}
+				memo.dir_stamps << dir_stamp
+				memo.dir_files << dir_files
+			} else if kind == `F` {
+				memo.files << text[first..fastc_memo_field_end(tabs, 0, line_end)]
+				if field_count == 6 {
+					memo.stamps << fastc_memo_stamp_fields(text, tabs, first, line_end, 1)
+					memo.offsets << int(fastc_memo_field_u64(text, fastc_memo_field_start(tabs, 5, first), line_end))
+				}
+			} else if kind == `E` && field_count >= 8 {
+				count := int(fastc_memo_field_u64(text, fastc_memo_field_start(tabs, 7, first), fastc_memo_field_end(tabs, 7, line_end)))
+				if field_count == 8 + count {
+					memo.entry_paths << text[first..tabs[0]]
+					memo.entry_real_paths << text[tabs[0] + 1..tabs[1]]
+					memo.entry_stamps << fastc_memo_stamp_fields(text, tabs, first, line_end, 2)
+					memo.entry_vmod_roots << text[tabs[5] + 1..tabs[6]]
+					mut entry_files := []string{cap: count}
+					for k in 8 .. field_count {
+						entry_files << text[fastc_memo_field_start(tabs, k, first)..fastc_memo_field_end(tabs, k, line_end)]
+					}
+					memo.entry_files << entry_files
+				}
+			} else if kind == `M` && field_count == 2 {
+				memo.lookup_modules << text[first..tabs[0]]
+				memo.lookup_sources << text[tabs[0] + 1..line_end]
+			} else if kind == `T` {
+				memo.written = i64(fastc_memo_field_u64(text, first, fastc_memo_field_end(tabs, 0, line_end)))
+			} else if kind == `B` {
+				memo.blob_token = text[first..fastc_memo_field_end(tabs, 0, line_end)]
+			}
 		}
+		pos = line_end + 1
 	}
 	return memo
 }
@@ -470,20 +617,60 @@ const fastc_memo_stat_chunk_size = 12
 // fastc_memo_probe_tasks turns a memo into the first batch of preload tasks:
 // the module lookups, the directory listings and the file stats. They need
 // no file content, so they overlap with reading the memo's content blob.
-fn fastc_memo_probe_tasks(memo FastcResolveMemo) []FastcMemoTask {
-	mut tasks := []FastcMemoTask{cap: memo.dirs.len + memo.lookup_modules.len + memo.files.len / fastc_memo_stat_chunk_size + 1}
+fn fastc_memo_probe_tasks(memo FastcResolveMemo, entry_paths []string, entry_real_paths []string, prefs &pref.Preferences) []FastcMemoTask {
+	mut tasks := []FastcMemoTask{cap: memo.dirs.len + memo.lookup_modules.len + memo.files.len / fastc_memo_stat_chunk_size + entry_paths.len + 1}
+	for index, path in entry_paths {
+		real_path := entry_real_paths[index]
+		mut task := FastcMemoTask{
+			kind:   4
+			source: path
+			dir:    real_path
+		}
+		for i, memo_entry in memo.entry_paths {
+			if memo_entry == path && memo.entry_real_paths[i] == real_path && memo.entry_stamps[i].mtime != 0 {
+				task = FastcMemoTask{
+					kind:           4
+					source:         path
+					dir:            real_path
+					files:          memo.entry_files[i]
+					stamps:         [memo.entry_stamps[i]]
+					trusted_before: memo.written - 1
+					vmod_root:      memo.entry_vmod_roots[i]
+				}
+				break
+			}
+		}
+		tasks << task
+	}
+	mut seen_lookups := map[string]bool{}
 	for i, module_name in memo.lookup_modules {
+		lookup_key := fastc_module_cache_key(prefs, memo.lookup_sources[i], module_name)
+		if seen_lookups[lookup_key] {
+			continue
+		}
+		seen_lookups[lookup_key] = true
 		tasks << FastcMemoTask{
 			kind:        0
 			module_name: module_name
 			source:      memo.lookup_sources[i]
 		}
 	}
-	for dir in memo.dirs {
-		tasks << FastcMemoTask{
+	with_listings := memo.dir_stamps.len == memo.dirs.len && memo.dir_files.len == memo.dirs.len
+	for i, dir in memo.dirs {
+		mut task := FastcMemoTask{
 			kind: 1
 			dir:  dir
 		}
+		if with_listings && memo.dir_stamps[i].mtime != 0 {
+			task = FastcMemoTask{
+				kind:           1
+				dir:            dir
+				files:          memo.dir_files[i]
+				stamps:         [memo.dir_stamps[i]]
+				trusted_before: memo.written - 1
+			}
+		}
+		tasks << task
 	}
 	mut start := 0
 	for start < memo.files.len {
@@ -498,6 +685,68 @@ fn fastc_memo_probe_tasks(memo FastcResolveMemo) []FastcMemoTask {
 		start = end
 	}
 	return tasks
+}
+
+// fastc_memo_blob_chunk_count is the number of ranges a memo blob is read in
+// when the probe batch has workers to spare.
+const fastc_memo_blob_chunk_count = 4
+
+// fastc_memo_blob_tasks prepares reading the memo blob in ranges beside the
+// probes: it returns the range tasks and the buffer they fill, as a string of
+// the blob's expected size (empty when the blob cannot be the memo's).
+fn fastc_memo_blob_tasks(memo_path string, memo FastcResolveMemo) ([]FastcMemoTask, string) {
+	if memo.blob_token == '' || memo.stamps.len != memo.files.len || memo.offsets.len != memo.files.len {
+		return []FastcMemoTask{}, ''
+	}
+	mut expected := fastc_memo_token_width + 1
+	for stamp in memo.stamps {
+		expected += int(stamp.size) + 1
+	}
+	blob_path := fastc_memo_blob_path(memo_path)
+	if os.file_size(blob_path) != u64(expected) {
+		return []FastcMemoTask{}, ''
+	}
+	// The buffer is filled by the range reads, so it is not zeroed here.
+	blob := unsafe { (&u8(malloc_noscan(expected + 1))).vstring_with_len(expected) }
+	mut tasks := []FastcMemoTask{cap: fastc_memo_blob_chunk_count}
+	chunk := (expected + fastc_memo_blob_chunk_count - 1) / fastc_memo_blob_chunk_count
+	mut start := 0
+	for start < expected {
+		mut end := start + chunk
+		if end > expected {
+			end = expected
+		}
+		tasks << FastcMemoTask{
+			kind:    5
+			dir:     blob_path
+			offsets: [start, end - start]
+			blob:    blob
+		}
+		start = end
+	}
+	return tasks, blob
+}
+
+// fastc_memo_blob_from_results returns the blob read by the range tasks when
+// every range was read and the token line is the memo's, or '' otherwise.
+fn fastc_memo_blob_from_results(tasks []FastcMemoTask, results []FastcMemoResult, memo FastcResolveMemo, blob string) string {
+	if blob.len == 0 {
+		return ''
+	}
+	mut ranges := 0
+	for index, task in tasks {
+		if task.kind != 5 {
+			continue
+		}
+		if results[index].dir != 'ok' {
+			return ''
+		}
+		ranges++
+	}
+	if ranges == 0 || !blob.starts_with(memo.blob_token) || blob[fastc_memo_token_width] != `\n` {
+		return ''
+	}
+	return blob
 }
 
 // fastc_memo_read_tasks turns the stat results into the second batch: each
@@ -546,10 +795,66 @@ fn fastc_run_memo_task(task FastcMemoTask, index int, prefs &pref.Preferences, c
 		}
 	}
 	if task.kind == 1 {
+		if task.stamps.len == 1 {
+			// The memoized listing stands while the directory's own stamp is
+			// unchanged (adding, removing or renaming an entry updates it) and
+			// old enough to trust.
+			stamp := fastc_file_stamp(task.dir) or { FastcFileStamp{} }
+			if stamp.mtime != 0 && fastc_same_stamp(stamp, task.stamps[0]) && stamp.mtime < task.trusted_before {
+				return FastcMemoResult{
+					index: index
+					dir:   task.dir
+					files: task.files
+				}
+			}
+		}
 		return FastcMemoResult{
 			index: index
 			dir:   task.dir
 			files: fastc_list_module_sources(task.dir, prefs)
+		}
+	}
+	if task.kind == 5 {
+		// One range of the memo blob, read into the shared buffer.
+		mut blob_file := os.open(task.dir) or {
+			return FastcMemoResult{
+				index: index
+			}
+		}
+		range_start := task.offsets[0]
+		range_len := task.offsets[1]
+		blob_file.seek(i64(range_start), .start) or {
+			blob_file.close()
+			return FastcMemoResult{
+				index: index
+			}
+		}
+		read := blob_file.read_into_ptr(unsafe { task.blob.str + range_start }, range_len) or { -1 }
+		blob_file.close()
+		return FastcMemoResult{
+			index: index
+			dir:   if read == range_len { 'ok' } else { '' }
+		}
+	}
+	if task.kind == 4 {
+		// The entry module's file list, keyed by the entry's canonical path.
+		entry_path := task.dir
+		if task.stamps.len == 1 {
+			// The memoized listing stands while the entry directory's stamp
+			// is unchanged and the same v.mod root applies.
+			stamp := fastc_file_stamp(os.dir(entry_path)) or { FastcFileStamp{} }
+			if stamp.mtime != 0 && fastc_same_stamp(stamp, task.stamps[0]) && stamp.mtime < task.trusted_before && fastc_vmod_root_matches(entry_path, task.vmod_root) {
+				return FastcMemoResult{
+					index: index
+					dir:   entry_path
+					files: task.files
+				}
+			}
+		}
+		return FastcMemoResult{
+			index: index
+			dir:   entry_path
+			files: fastc_entry_module_files(entry_path, prefs)
 		}
 	}
 	if task.kind == 3 {
@@ -602,15 +907,17 @@ fn fastc_load_source_text(path string, source string, prefs &pref.Preferences) F
 }
 
 // fastc_apply_memo_results stores the preload results in the walk's caches
-// and returns the loaded files keyed by path.
-fn fastc_apply_memo_results(tasks []FastcMemoTask, results []FastcMemoResult, prefs &pref.Preferences, mut module_path_cache map[string]string, mut module_dir_files map[string][]string) map[string]FastcLoadedSource {
-	mut loaded := map[string]FastcLoadedSource{}
+// and adds the loaded files to `loaded`, keyed by path.
+fn fastc_apply_memo_results(tasks []FastcMemoTask, results []FastcMemoResult, prefs &pref.Preferences, mut module_path_cache map[string]string, mut module_dir_files map[string][]string, mut entry_files map[string][]string, mut real_path_cache map[string]string, mut loaded map[string]FastcLoadedSource) {
 	for index, task in tasks {
 		result := results[index]
 		if task.kind == 0 {
 			module_path_cache[fastc_module_cache_key(prefs, task.source, task.module_name)] = result.dir
 		} else if task.kind == 1 {
 			module_dir_files[task.dir] = result.files
+		} else if task.kind == 4 {
+			real_path_cache[task.source] = result.dir
+			entry_files[result.dir] = result.files
 		} else if task.kind == 2 {
 			for i, source in result.sources {
 				stamp := if i < result.stamps.len { result.stamps[i] } else { FastcFileStamp{} }
@@ -625,7 +932,6 @@ fn fastc_apply_memo_results(tasks []FastcMemoTask, results []FastcMemoResult, pr
 			}
 		}
 	}
-	return loaded
 }
 
 // fastc_memo_current_stamps gathers the stats of the probe batch in memo
@@ -647,12 +953,15 @@ fn fastc_memo_current_stamps(tasks []FastcMemoTask, results []FastcMemoResult, f
 // fastc_store_resolve_memo writes the memo of this resolution when it differs
 // from the one read at the start, atomically, so a concurrent compiler sees
 // either version.
-fn fastc_store_resolve_memo(memo_path string, previous_text string, sources []FastcSourceFile, builtin_dir string, lookup_modules []string, lookup_sources []string, prefs &pref.Preferences, module_path_cache map[string]string, preloaded map[string]FastcLoadedSource) {
+fn fastc_store_resolve_memo(memo_path string, previous_text string, sources []FastcSourceFile, builtin_dir string, lookup_modules []string, lookup_sources []string, prefs &pref.Preferences, module_path_cache map[string]string, module_dir_files map[string][]string, entry_paths []string, real_path_cache map[string]string, entry_files map[string][]string, preloaded map[string]FastcLoadedSource) {
 	mut out := strings.new_builder(4096)
+	for path in entry_paths {
+		fastc_write_memo_entry_line(mut out, path, real_path_cache, entry_files)
+	}
 	mut seen_dirs := map[string]bool{}
 	if builtin_dir != '' {
 		seen_dirs[builtin_dir] = true
-		out.writeln('D\t' + builtin_dir)
+		fastc_write_memo_dir_line(mut out, builtin_dir, module_dir_files)
 	}
 	for i, module_name in lookup_modules {
 		dir := module_path_cache[fastc_module_cache_key(prefs, lookup_sources[i], module_name)] or { '' }
@@ -660,7 +969,7 @@ fn fastc_store_resolve_memo(memo_path string, previous_text string, sources []Fa
 			continue
 		}
 		seen_dirs[dir] = true
-		out.writeln('D\t' + dir)
+		fastc_write_memo_dir_line(mut out, dir, module_dir_files)
 	}
 	// The stamps and the blob layout: the previous memo's token and time are
 	// not part of the comparison, so an unchanged program rewrites nothing.
@@ -680,7 +989,14 @@ fn fastc_store_resolve_memo(memo_path string, previous_text string, sources []Fa
 		blob_size += source_file.source.len + 1
 	}
 	out.write_string(stamp_lines.str())
+	// One lookup per cache key: the walk resolves a module once per key too.
+	mut seen_lookups := map[string]bool{}
 	for i, module_name in lookup_modules {
+		lookup_key := fastc_module_cache_key(prefs, lookup_sources[i], module_name)
+		if seen_lookups[lookup_key] {
+			continue
+		}
+		seen_lookups[lookup_key] = true
 		out.writeln('M\t' + module_name + '\t' + lookup_sources[i])
 	}
 	body := out.str()
@@ -712,6 +1028,48 @@ fn fastc_store_resolve_memo(memo_path string, previous_text string, sources []Fa
 		os.rm(staged) or {}
 		return
 	}
+}
+
+// fastc_write_memo_entry_line records an entry module's file list with the
+// stamp of the entry directory and the v.mod root it was found under. An
+// entry whose v.mod declares subdirs is not recorded: its list spans other
+// directories.
+fn fastc_write_memo_entry_line(mut out strings.Builder, path string, real_path_cache map[string]string, entry_files map[string][]string) {
+	entry_path := real_path_cache[path] or { return }
+	files := entry_files[entry_path] or { return }
+	entry_dir := os.dir(entry_path)
+	vmod_root := fastc_vmod_root_for_file(entry_path)
+	if vmod_root != '' && os.real_path(vmod_root) == entry_dir {
+		return
+	}
+	stamp := fastc_file_stamp(entry_dir) or { return }
+	out.write_string('E\t' + path + '\t' + entry_path)
+	out.write_string('\t${stamp.size}\t${stamp.mtime}\t${stamp.ctime}\t${stamp.inode}\t' + vmod_root + '\t${files.len}')
+	for file in files {
+		out.write_string('\t' + file)
+	}
+	out.write_u8(`\n`)
+}
+
+// fastc_write_memo_dir_line records a listed module directory: its path, its
+// stamp and the listing it had, so a later run reuses the listing while the
+// directory is unchanged.
+fn fastc_write_memo_dir_line(mut out strings.Builder, dir string, module_dir_files map[string][]string) {
+	out.write_string('D\t' + dir)
+	if files := module_dir_files[dir] {
+		stamp := fastc_file_stamp(dir) or { FastcFileStamp{} }
+		out.write_string('\t${stamp.size}\t${stamp.mtime}\t${stamp.ctime}\t${stamp.inode}\t${files.len}')
+		for file in files {
+			out.write_string('\t' + file)
+		}
+	}
+	out.write_u8(`\n`)
+}
+
+// fastc_store_resolve_memo_job runs fastc_store_resolve_memo on a worker.
+fn fastc_store_resolve_memo_job(memo_path string, previous_text string, sources []FastcSourceFile, builtin_dir string, lookup_modules []string, lookup_sources []string, prefs &pref.Preferences, module_path_cache map[string]string, module_dir_files map[string][]string, entry_paths []string, real_path_cache map[string]string, entry_files map[string][]string, preloaded map[string]FastcLoadedSource) bool {
+	fastc_store_resolve_memo(memo_path, previous_text, sources, builtin_dir, lookup_modules, lookup_sources, prefs, module_path_cache, module_dir_files, entry_paths, real_path_cache, entry_files, preloaded)
+	return true
 }
 
 // fastc_memo_body strips the write time and token lines from a memo text, so
@@ -847,6 +1205,28 @@ fn fastc_vmod_subdirs(vmod_root string) []string {
 		}
 	}
 	return subdirs
+}
+
+// fastc_vmod_root_matches reports whether fastc_vmod_root_for_file would find
+// `expected_root` for the canonical `entry_path`: the parents of a canonical
+// path are canonical, so they compare as strings.
+fn fastc_vmod_root_matches(entry_path string, expected_root string) bool {
+	mut dir := os.dir(entry_path)
+	if dir.len == 0 {
+		return false
+	}
+	original_dir := dir
+	for {
+		if os.exists(os.join_path(dir, 'v.mod')) {
+			return dir == expected_root
+		}
+		parent := os.dir(dir)
+		if parent == dir || parent.len == 0 {
+			return original_dir == expected_root
+		}
+		dir = parent
+	}
+	return false
 }
 
 fn fastc_header_imported_modules(header FastcSourceHeader) []string {
@@ -1121,9 +1501,47 @@ fn fastc_header_with_scan_flags(header FastcSourceHeader, flags FastcSourceScanF
 		has_global_declarations: flags.has_global_declarations
 		has_interfaces: flags.has_interfaces
 		has_comptime_if: flags.has_comptime_if
+		has_select: flags.has_select
 		has_type_keywords: flags.has_type_keywords
 		has_generic_fn_syntax: flags.has_generic_fn_syntax
+		body_spans: header.body_spans
 	}
+}
+
+// fastc_header_with_body_spans returns `header` with the recorded function
+// body spans.
+fn fastc_header_with_body_spans(header FastcSourceHeader, body_spans []int) FastcSourceHeader {
+	return FastcSourceHeader{
+		module_name: header.module_name
+		imports: header.imports
+		import_order: header.import_order
+		blank_imports: header.blank_imports
+		has_globals: header.has_globals
+		has_constants: header.has_constants
+		has_global_declarations: header.has_global_declarations
+		has_interfaces: header.has_interfaces
+		has_comptime_if: header.has_comptime_if
+		has_select: header.has_select
+		has_type_keywords: header.has_type_keywords
+		has_generic_fn_syntax: header.has_generic_fn_syntax
+		body_spans: body_spans
+	}
+}
+
+// fastc_skip_recorded_body jumps the scanner over a recorded top-level
+// function body when one starts at the current `{`. It returns whether it
+// did and the position in `skips` (source-ordered [start, end) pairs) to
+// continue from.
+fn fastc_skip_recorded_body(mut scan scanner.Scanner, skips []int, skip_index int) (bool, int) {
+	mut index := skip_index
+	for index + 1 < skips.len && skips[index] < scan.pos {
+		index += 2
+	}
+	if index + 1 < skips.len && skips[index] == scan.pos {
+		scan.skip_block_to(skips[index + 1])
+		return true, index + 2
+	}
+	return false, index
 }
 
 // FastcSourceScanFlags records which declaration keywords a source mentions
@@ -1137,6 +1555,7 @@ mut:
 	has_comptime_if         bool
 	has_type_keywords       bool
 	has_generic_fn_syntax   bool
+	has_select              bool
 }
 
 @[direct_array_access]
@@ -1251,7 +1670,7 @@ fn fastc_source_scan_flags(source string) FastcSourceScanFlags {
 				end++
 			}
 			if !flags.has_constants || !flags.has_type_keywords || !flags.has_global_declarations
-				|| !flags.has_interfaces || !flags.has_generic_fn_syntax {
+				|| !flags.has_interfaces || !flags.has_generic_fn_syntax || !flags.has_select {
 				fastc_source_scan_word_flags(source, i, c, mut flags)
 			}
 			i = end
@@ -1286,6 +1705,9 @@ fn fastc_source_scan_word_flags(source string, i int, c u8, mut flags FastcSourc
 	} else if c == `s` {
 		if !flags.has_type_keywords && fastc_source_word_at(source, i, 'struct') {
 			flags.has_type_keywords = true
+		}
+		if !flags.has_select && fastc_source_word_at(source, i, 'select') {
+			flags.has_select = true
 		}
 	} else if c == `e` {
 		if !flags.has_type_keywords && fastc_source_word_at(source, i, 'enum') {
