@@ -486,6 +486,8 @@ fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
 		}
 	}
 	mut implied := map[string]bool{}
+	mut vlib_dirs := map[string]bool{}
+	mut vlib_listed := false
 	for id, n in g.a.nodes {
 		if n.pos.id != g.file_id || n.kind != .selector || n.children_count == 0 {
 			continue
@@ -493,9 +495,20 @@ fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
 		receiver := g.a.child_node(n, 0)
 		name := receiver.value
 		if receiver.kind == .ident && name.len > 0 && name !in ['C', 'JS'] && !imported[name]
-			&& !declared[name] && !g.a.formatter_local_sels[id]
-			&& os.is_dir(os.join_path(@VEXEROOT, 'vlib', name)) {
-			implied[name] = true
+			&& !declared[name] && !g.a.formatter_local_sels[id] {
+			// Match the module directory case-sensitively. `os.is_dir` answers the filesystem,
+			// and on a case-insensitive one (macOS, Windows) `vlib/Time` is the `time` module —
+			// so a static call on a type named `Time` implied a bogus `import Time`, which the
+			// formatter then wrote into the file and broke the build.
+			if !vlib_listed {
+				vlib_listed = true
+				for entry in os.ls(os.join_path(@VEXEROOT, 'vlib')) or { []string{} } {
+					vlib_dirs[entry] = true
+				}
+			}
+			if vlib_dirs[name] && os.is_dir(os.join_path(@VEXEROOT, 'vlib', name)) {
+				implied[name] = true
+			}
 		}
 	}
 	g.implied_imports = implied.keys()
@@ -1783,9 +1796,6 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 	body := children[i..]
 	g.write('fn')
 	gp := n.generic_params()
-	if gp.len > 0 {
-		g.write('[${gp.join(', ')}]')
-	}
 	if captures.len > 0 {
 		g.write(' [')
 		for capture_i, capture_id in captures {
@@ -1803,7 +1813,15 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 		}
 		g.write(']')
 	}
-	g.write(' ')
+	// V spells a closure `fn [captures] [T](params)`: the capture list comes first, and the
+	// generic list binds straight to the parameters with no space. Writing the generic list
+	// first produced `fn[T] [captures] (params)`, which does not parse, and the run after that
+	// read the captures as the generic list and dropped everything the two lists disagreed on.
+	if gp.len > 0 {
+		g.write(' [${gp.join(', ')}]')
+	} else {
+		g.write(' ')
+	}
 	g.params(id, params)
 	if n.typ.len > 0 && n.typ != 'void' {
 		g.write(' ${g.type_text(n.typ)}')
@@ -2578,7 +2596,15 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 				g.advance_source_end_before_pending_comment(b.pos.end)
 				g.emit_comments_before(b.pos.end)
 				g.indent--
-				g.writeln('}')
+				g.write('}')
+				// A comment sitting after the branch's closing brace belongs to that branch.
+				// Left for the next branch's leading-comment pass it would be re-emitted on its
+				// own line, and the following run would then read it as a commented branch and
+				// insert a blank line before it, so formatting twice differed from once.
+				g.emit_trailing_comments(b.pos.end)
+				if !g.on_newline {
+					g.writeln('')
+				}
 			}
 		} else {
 			ncond := b.value.int()
@@ -2601,7 +2627,15 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 				g.advance_source_end_before_pending_comment(b.pos.end)
 				g.emit_comments_before(b.pos.end)
 				g.indent--
-				g.writeln('}')
+				g.write('}')
+				// A comment sitting after the branch's closing brace belongs to that branch.
+				// Left for the next branch's leading-comment pass it would be re-emitted on its
+				// own line, and the following run would then read it as a commented branch and
+				// insert a blank line before it, so formatting twice differed from once.
+				g.emit_trailing_comments(b.pos.end)
+				if !g.on_newline {
+					g.writeln('')
+				}
 			}
 		}
 	}
@@ -2710,7 +2744,9 @@ fn (mut g Gen) assert_stmt(id flat.NodeId) {
 		g.write(', ')
 		g.expr(children[1])
 	}
-	if !g.in_init {
+	// The condition can carry the statement's trailing comment, which ends the line itself.
+	// Terminating again would leave a stray separator after every commented `assert`.
+	if !g.in_init && !g.on_newline {
 		g.writeln('')
 	}
 }
@@ -3167,7 +3203,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int) {
 		}
 		g.emit_comments_before(f.pos.offset)
 		g.source_end = int_max(g.source_end, f.pos.offset)
-		is_embed := f.value == f.typ && f.children_count == 0
+		is_embed := flags.contains('e')
 		if is_embed {
 			g.write(g.type_text(f.value))
 		} else {
@@ -3493,7 +3529,7 @@ fn (g &Gen) aggregate_field_alignments(fields []flat.NodeId, is_interface bool) 
 			gp := f.generic_params()
 			flags := if gp.len > 0 { gp[0] } else { '' }
 			section = access_label(flags)
-			alignable = !(f.value == f.typ && f.children_count == 0)
+			alignable = !flags.contains('e')
 		}
 		if !alignable {
 			g.store_field_alignment(mut alignments, group)
@@ -3920,7 +3956,14 @@ fn (mut g Gen) write_comment(text string) {
 		if i == lines.len - 1 && line == '' {
 			continue
 		}
-		g.writeln(line)
+		if i == 0 {
+			g.writeln(line)
+			continue
+		}
+		// A block comment's continuation lines already carry their own leading whitespace from
+		// the source, so they are written through verbatim. Indenting them again would add a
+		// level on every run and the formatter would never reach a fixed point.
+		g.writeln_verbatim(line)
 	}
 }
 
@@ -4065,9 +4108,19 @@ fn (mut g Gen) write(str string) {
 	g.on_newline = false
 }
 
+// writeln_verbatim writes a line without the current indentation, for text that already carries
+// its own.
+fn (mut g Gen) writeln_verbatim(str string) {
+	g.out.writeln(str)
+	g.on_newline = true
+}
+
 @[inline]
 fn (mut g Gen) writeln(str string) {
-	if g.on_newline && g.indent > 0 {
+	// A blank separator line gets no indentation: writing it would leave a line of whitespace,
+	// which V source never carries and which the next run reads back differently, so formatting
+	// twice differed from once.
+	if g.on_newline && g.indent > 0 && str.len > 0 {
 		for _ in 0 .. g.indent {
 			g.out.write_u8(`\t`)
 		}
