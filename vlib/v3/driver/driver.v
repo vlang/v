@@ -1934,28 +1934,8 @@ fn v3_tcc_host_system_flags(target_os string, macos_sdk_root string) []string {
 	return flags
 }
 
-// macos_sdk_root finds the selected macOS SDK. SDKROOT and xcrun are
-// authoritative; the conventional locations are fallbacks for an unavailable
-// or broken xcrun.
 fn macos_sdk_root() string {
-	env_root := os.getenv('SDKROOT')
-	if os.is_dir(env_root) {
-		return env_root
-	}
-	result := cmdexec.run('xcrun', ['--show-sdk-path'])
-	if result.exit_code == 0 {
-		found := result.output.trim_space()
-		if os.is_dir(found) {
-			return found
-		}
-	}
-	for candidate in ['/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk',
-		'/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk'] {
-		if os.is_dir(candidate) {
-			return candidate
-		}
-	}
-	return ''
+	return cmdexec.macos_sdk_root()
 }
 
 // V3MacosSdkRootCache avoids repeating xcrun when a TinyCC build constructs
@@ -7474,18 +7454,21 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 	if is_debug {
 		cc_args << '-g'
 	}
-	// TinyCC signs the linked executable through `codesign` on macOS; the
-	// shim makes that call a no-op and the executable is signed below.
-	shim_dir := fastc.fastc_codesign_shim_dir()
+	mut shim_dir := fastc.FastcCodesignShim{}
 	defer {
 		fastc.fastc_remove_codesign_shim_dir(shim_dir)
 	}
 	mut result := os.Result{}
 	mut command := ''
+	mut sign_in_process := false
 	if unit_paths.len > 1 {
 		mut compile_args := cc_args.clone()
 		compile_args << user_c_flags
+		link_worker := spawn fastc.fastc_prepare_link(tcc_path,
+			os.join_path_single(tcc_dir, 'lib'), cc_args)
 		unit_objects := fastc.fastc_compile_c_units(tcc_path, compile_args, unit_paths) or {
+			mut prepared_link := link_worker.wait()
+			fastc.fastc_discard_link(mut prepared_link)
 			fastc.write_c_pieces(source_file, pieces) or {}
 			return V3FastCCompileResult{
 				command: cmdexec.display(tcc_path, compile_args)
@@ -7495,16 +7478,27 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 		if bench_phases {
 			eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
 		}
-		cc_args << ['-o', staged_binary]
-		cc_args << unit_objects
-		cc_args << user_c_flags
+		link_inputs := unit_objects.clone()
+		mut final_args := user_c_flags.clone()
 		if uses_threads {
-			cc_args << '-lpthread'
+			final_args << '-lpthread'
 		}
-		cc_args << '-lm'
-		cc_args << environment_ld_flags
-		command = cmdexec.display(tcc_path, cc_args)
-		result = fastc.fastc_run_command(tcc_path, cc_args)
+		final_args << '-lm'
+		final_args << environment_ld_flags
+		mut display_args := cc_args.clone()
+		display_args << ['-o', staged_binary]
+		display_args << link_inputs
+		display_args << final_args
+		command = cmdexec.display(tcc_path, display_args)
+		mut prepared_link := link_worker.wait()
+		sign_in_process = fastc.fastc_prepared_link_skips_codesign(&prepared_link)
+		if !sign_in_process {
+			// The executable-based linker still needs the PATH shim; the prepared
+			// libtcc linker suppresses its codesign call without a subprocess.
+			shim_dir = fastc.fastc_codesign_shim_dir()
+			sign_in_process = shim_dir.dir != ''
+		}
+		result = fastc.fastc_finish_link(mut prepared_link, link_inputs, final_args, staged_binary)
 		if bench_phases {
 			eprintln('fastc-phase tcc.linked ${cc_sw.elapsed().microseconds()}us')
 		}
@@ -7519,6 +7513,8 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 		cc_args << '-lm'
 		cc_args << environment_ld_flags
 		command = cmdexec.display(tcc_path, cc_args)
+		shim_dir = fastc.fastc_codesign_shim_dir()
+		sign_in_process = shim_dir.dir != ''
 		result = cmdexec.run_in(tcc_path, cc_args, build_dir)
 	}
 	if result.exit_code != 0 || !os.is_file(staged_binary) {
@@ -7532,7 +7528,7 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 			output:  result.output
 		}
 	}
-	if shim_dir.dir != '' {
+	if sign_in_process {
 		fastc.fastc_sign_macho_adhoc(staged_binary) or {
 			return V3FastCCompileResult{
 				command: command
