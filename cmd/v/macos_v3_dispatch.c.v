@@ -247,6 +247,10 @@ fn is_macos_v3_internal_tool_bootstrap(normalized_path string, is_vchild bool) b
 }
 
 fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3CErrorReport {
+	if prefs.is_fastc {
+		launch_macos_v3_fastc_compiler(prefs, raw_args)
+		return none
+	}
 	dispatch_environment := os.environ()
 	caller_environment := macos_v3_original_caller_environment(dispatch_environment)
 	vexe := pref.vexe_path()
@@ -290,6 +294,45 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3
 	os.rm(fallback_file) or {}
 	os.rmdir_all(c_error_dir) or {}
 	exit(0)
+}
+
+fn launch_macos_v3_fastc_compiler(prefs &pref.Preferences, raw_args []string) {
+	vexe := pref.vexe_path()
+	util.set_vroot_folder(os.dir(vexe))
+	forwarded_args := macos_v3_forwarded_args(prefs, raw_args)
+	if prefs.is_verbose {
+		println('Running macOS V3 compiler in process: ${util.args_quote_paths(forwarded_args)}')
+	}
+	preserve_macos_v3_caller_process_value('VEXE', macos_v3_caller_vexe_env,
+		macos_v3_caller_vexe_present_env)
+	preserve_macos_v3_caller_process_value('VCHILD', macos_v3_caller_vchild_env,
+		macos_v3_caller_vchild_present_env)
+	preserve_macos_v3_caller_process_value(macos_v3_no_fallback_env,
+		macos_v3_caller_no_fallback_env, macos_v3_caller_no_fallback_present_env)
+	for private_name in [macos_v3_fallback_file_env, macos_v3_c_error_dir_env,
+		macos_v3_retry_env] {
+		os.unsetenv(private_name)
+	}
+	os.setenv('VCHILD', 'true', true)
+	os.setenv('VEXE', os.real_path(vexe), true)
+	os.setenv(macos_v3_vhash_env, @VHASH, true)
+	os.setenv(macos_v3_vcurrent_hash_env, @VCURRENTHASH, true)
+	os.setenv(macos_v3_embedded_env, '1', true)
+	macos_v3_driver_run(forwarded_args)
+	exit(0)
+}
+
+fn preserve_macos_v3_caller_process_value(name string, value_name string, present_name string) {
+	if os.getenv(present_name) in ['0', '1'] {
+		return
+	}
+	if value := os.getenv_opt(name) {
+		os.setenv(value_name, value, true)
+		os.setenv(present_name, '1', true)
+	} else {
+		os.setenv(value_name, '', true)
+		os.setenv(present_name, '0', true)
+	}
 }
 
 fn replace_macos_v3_process_environment(environment map[string]string) {

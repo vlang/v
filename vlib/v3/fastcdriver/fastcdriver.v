@@ -306,28 +306,8 @@ fn tcc_host_system_flags(target_os string) []string {
 	return flags
 }
 
-// macos_sdk_root finds the selected macOS SDK. SDKROOT and xcrun are
-// authoritative; the conventional locations are fallbacks for an unavailable
-// or broken xcrun.
 fn macos_sdk_root() string {
-	env_root := os.getenv('SDKROOT')
-	if os.is_dir(env_root) {
-		return env_root
-	}
-	result := cmdexec.run('xcrun', ['--show-sdk-path'])
-	if result.exit_code == 0 {
-		found := result.output.trim_space()
-		if os.is_dir(found) {
-			return found
-		}
-	}
-	for candidate in ['/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk',
-		'/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk'] {
-		if os.is_dir(candidate) {
-			return candidate
-		}
-	}
-	return ''
+	return cmdexec.macos_sdk_root()
 }
 
 struct FastcBenchSample {
@@ -513,13 +493,14 @@ pub fn run(args []string) {
 	if bench_phases {
 		eprintln('fastc-phase tcc.units_written ${cc_sw.elapsed().microseconds()}us units=${unit_paths.len}')
 	}
-	// TinyCC signs the linked executable through `codesign` on macOS; the
-	// shim makes that call a no-op and the executable is signed below.
-	shim_dir := fastc.fastc_codesign_shim_dir()
+	mut shim_dir := fastc.FastcCodesignShim{}
 	mut result := os.Result{}
-	mut unit_objects := []string{}
+	mut sign_in_process := false
 	if unit_paths.len > 1 {
-		unit_objects = fastc.fastc_compile_c_units(tcc, cc_args, unit_paths) or {
+		link_worker := spawn fastc.fastc_prepare_link(tcc, tcc_lib, cc_args)
+		unit_objects := fastc.fastc_compile_c_units(tcc, cc_args, unit_paths) or {
+			mut prepared_link := link_worker.wait()
+			fastc.fastc_discard_link(mut prepared_link)
 			fastc.fastc_remove_codesign_shim_dir(shim_dir)
 			fastc.fastc_remove_c_units(unit_paths)
 			// The whole program is kept as one file for the error message.
@@ -529,11 +510,14 @@ pub fn run(args []string) {
 		if bench_phases {
 			eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
 		}
-		mut link_args := cc_args.clone()
-		link_args << ['-o', staged_output]
-		link_args << unit_objects
-		link_args << link_libs
-		result = fastc.fastc_run_command(tcc, link_args)
+		link_inputs := unit_objects.clone()
+		mut prepared_link := link_worker.wait()
+		sign_in_process = fastc.fastc_prepared_link_skips_codesign(&prepared_link)
+		if !sign_in_process {
+			shim_dir = fastc.fastc_codesign_shim_dir()
+			sign_in_process = shim_dir.dir != ''
+		}
+		result = fastc.fastc_finish_link(mut prepared_link, link_inputs, link_libs, staged_output)
 		if bench_phases {
 			eprintln('fastc-phase tcc.linked ${cc_sw.elapsed().microseconds()}us')
 		}
@@ -545,6 +529,8 @@ pub fn run(args []string) {
 		mut single_args := cc_args.clone()
 		single_args << ['-o', staged_output, c_path]
 		single_args << link_libs
+		shim_dir = fastc.fastc_codesign_shim_dir()
+		sign_in_process = shim_dir.dir != ''
 		result = fastc.fastc_run_command(tcc, single_args)
 	}
 	fastc.fastc_remove_codesign_shim_dir(shim_dir)
@@ -552,7 +538,7 @@ pub fn run(args []string) {
 	if result.exit_code != 0 {
 		fail(result.output)
 	}
-	if shim_dir.dir != '' {
+	if sign_in_process {
 		fastc.fastc_sign_macho_adhoc(staged_output) or {
 			fail('could not sign ${staged_output}: ${err.msg()}')
 		}
