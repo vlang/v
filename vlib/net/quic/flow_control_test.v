@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_flow_control_window_available_and_consume() {

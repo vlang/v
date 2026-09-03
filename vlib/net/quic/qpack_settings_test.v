@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_qpack_max_table_capacity_from_settings_default_zero() {

@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_handle_version_negotiation_discards_list_including_v1() {

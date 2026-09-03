@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_parse_frame_padding_collapses_run() {

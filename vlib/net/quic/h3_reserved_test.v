@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_is_h3_reserved_codepoint_matches_known_grease_values() {

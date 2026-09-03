@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 // test_ecn_state_parses_counts_without_erroring_and_never_validates is the

@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_qpack_entry_size_formula() {

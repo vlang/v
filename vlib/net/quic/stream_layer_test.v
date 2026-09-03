@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 // test_multi_stream_interleaved_reassembly_and_flow_control is Phase 6's

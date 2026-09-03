@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 // This file replays RFC 9204 Appendix B's worked examples byte-for-byte:

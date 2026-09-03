@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_qpack_is_sensitive_matches_known_fields() {

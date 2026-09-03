@@ -1,4 +1,4 @@
-// vtest build: present_openssl? && !sanitize-memory-clang
+// vtest build: !sanitize-memory-clang
 module quic
 
 import net.mbedtls

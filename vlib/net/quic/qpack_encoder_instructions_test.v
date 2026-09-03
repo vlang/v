@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_encode_decode_set_dynamic_table_capacity_roundtrip() {
