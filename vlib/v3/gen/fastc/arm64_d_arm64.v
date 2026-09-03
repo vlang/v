@@ -242,6 +242,10 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	// instantiated on demand. Treat their parameters as opaque while indexing the
 	// otherwise unreachable signatures in the imported module.
 	for source_index, source_file in sources {
+		// The first pass flags the files that can hold `fn name[T]` syntax.
+		if !source_file.header.has_generic_fn_syntax {
+			continue
+		}
 		for generic in fastc_scan_generic_fns(source_file.source, source_file.path, prefs, source_index) {
 			declared_types[generic.type_param] = true
 		}
