@@ -2473,6 +2473,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		generic_fn_key_ordinal:         g.generic_fn_key_ordinal
 		struct_decl_infos:              g.struct_decl_infos
 		struct_decl_short_infos:        g.struct_decl_short_infos
+		header_owned_c_typedefs:        g.header_owned_c_typedefs
 		decl_attrs:                     g.decl_attrs
 		decl_attrs_by_source_position:  g.decl_attrs_by_source_position
 		shared_type_names:              g.shared_type_names
@@ -2491,6 +2492,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		compiler_vexe:                  g.compiler_vexe
 		compiler_vexe_env_setup:        g.compiler_vexe_env_setup
 		ccompiler:                      g.ccompiler
+		macro_probe_c_flags:             g.macro_probe_c_flags
 		target:                         g.target
 		suppress_main:                  g.suppress_main
 		cur_param_names:                if result_only {

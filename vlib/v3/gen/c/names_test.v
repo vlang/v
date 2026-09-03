@@ -617,7 +617,762 @@ fn test_x11_system_headers_preserve_external_structs() {
 }
 
 fn test_apple_framework_typedef_names_are_preserved() {
-	assert 'BOOL' in c_preserved_system_include_typedef_names('<Cocoa/Cocoa.h>')
+	names := c_preserved_system_include_typedef_names('<Cocoa/Cocoa.h>')
+	assert 'BOOL' in names
+	assert 'NSRange' in names
+	assert 'NSRect' in names
+}
+
+fn test_header_owned_macro_flags_preserve_values() {
+	state := c_header_macro_state_for_flags(['-DFEATURE=7', '-D', 'HEADER="types.h"', '-UOLD_FEATURE'])
+	assert state.defined['FEATURE']
+	assert state.macro_values['FEATURE'] == '7'
+	assert state.macro_values['HEADER'] == '"types.h"'
+	assert state.undefined['OLD_FEATURE']
+}
+
+fn test_header_owned_source_condition_merges_equal_branch_macros() {
+	mut g := FlatGen.new()
+	g.collect_header_owned_source_macro_directive('#if UNKNOWN_FEATURE')
+	g.collect_header_owned_source_macro_directive('#define HAS_ALIAS 3')
+	g.collect_header_owned_source_macro_directive('#else')
+	g.collect_header_owned_source_macro_directive('#define HAS_ALIAS 3')
+	g.collect_header_owned_source_macro_directive('#endif')
+	state := g.header_owned_macro_context.state
+	assert state.defined['HAS_ALIAS']
+	assert state.macro_values['HAS_ALIAS'] == '3'
+}
+
+fn test_header_owned_include_aliases_expand_lazily() {
+	state := CHeaderMacroState{
+		defined: {
+			'A': true
+			'B': true
+		}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: {
+			'A': 'B'
+			'B': '"two.h"'
+		}
+	}
+	assert c_header_owned_include_args('A', state, '', '/tmp/source.h') == ['"two.h"']
+}
+
+fn test_header_owned_typedef_scan_ignores_non_declarations_and_declarator_attributes() {
+	clean := c_header_owned_typedef_scan_text('// typedef struct Wrong CommentAlias;\n#define MAKE_ALIAS typedef struct Wrong MacroAlias;\nconst char *example = "typedef struct Wrong StringAlias;";\ntypedef struct Impl RealAlias __attribute__((deprecated));\ntypedef struct Impl __attribute__((deprecated, aligned(8))) PrefixAlias;\ntypedef struct Impl keep__attribute__Alias;\ntypedef struct Impl __attribute__Alias;\ntypedef struct __attribute__((packed)) { int value; } PackedAlias;\ntypedef struct Tagged __attribute__((aligned(8))) { int value; } TaggedAlias;\nstatic inline void helper(void) {\n\ttypedef struct Hidden HiddenAlias;\n\ttypedef int HiddenPlain;\n}\nextern "C" {\n\ttypedef struct External ExternalAlias;\n\ttypedef int ExternalPlain;\n\tstatic inline void linked_helper(void) { typedef int LinkedHidden; }\n}\ntypedef int VisiblePlain;\n')
+	aliases := c_typedef_all_aggregate_aliases(clean)
+	assert aliases == ['RealAlias', 'PrefixAlias', 'keep__attribute__Alias', '__attribute__Alias',
+		'PackedAlias', 'TaggedAlias', 'ExternalAlias']
+	assert c_typedef_plain_aliases(clean) == ['ExternalPlain', 'VisiblePlain']
+}
+
+fn test_top_level_include_deduplication_resets_after_macro_changes() {
+	directives := dedupe_top_level_c_includes(['#include <types.h>', '#include <types.h>',
+		'#define FEATURE 1', '#include <types.h>'])
+	assert directives == ['#include <types.h>', '#define FEATURE 1', '#include <types.h>']
+}
+
+fn test_header_owned_compiler_state_includes_clang_guards() {
+	mut g := FlatGen.new()
+	g.ccompiler = 'clang'
+	state := g.header_owned_initial_macro_state()
+	assert state.defined['__clang__']
+	assert state.defined['__GNUC__']
+}
+
+fn test_header_owned_compiler_macro_probe_uses_effective_compile_context() {
+	args := c_header_compiler_predefined_macro_args(['-fopenmp', '-std=c17', '-m32', '-target',
+		'riscv64-linux-gnu', '-D', 'FEATURE=1', '-fobjc-arc', '-x', 'none', '-L', '/tmp/lib', '-lssl',
+		'-include', 'types.h', '-imacros', 'macros.h', '/tmp/native.c'], false, pref.Target{}, '/tmp/probe.c')
+	assert '-fopenmp' in args
+	assert '-std=c17' in args
+	assert '-m32' in args
+	assert args.contains('-target')
+	assert args.contains('riscv64-linux-gnu')
+	assert args.contains('-D')
+	assert args.contains('FEATURE=1')
+	assert args.contains('objective-c')
+	assert '-L' !in args
+	assert '-lssl' !in args
+	assert '-include' !in args
+	assert 'types.h' !in args
+	assert '-imacros' in args
+	assert 'macros.h' in args
+	assert '/tmp/native.c' !in args
+	assert args.last() == '/tmp/probe.c'
+
+	mac_target := pref.Target{
+		os: 'macos'
+		arch: 'arm64'
+	}
+	mac_host := pref.Target{
+		os: 'macos'
+		arch: 'amd64'
+	}
+	assert c_header_compiler_predefined_target_args(mac_target, mac_host) == ['-arch', 'arm64']
+}
+
+fn test_header_owned_scan_resolves_ambient_include_dirs() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_header_ambient_include_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source_dir := os.join_path(dir, 'source')
+	os.mkdir_all(source_dir)!
+	os.write_file(os.join_path(dir, 'types.h'), 'typedef struct Ambient AmbientAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.AmbientAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.macro_probe_c_flags = ['-I', dir]
+	g.collect_header_owned_c_typedefs('"types.h"', os.join_path(source_dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['AmbientAlias']
+}
+
+fn test_header_owned_scan_resolves_quote_only_include_dirs() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_header_quote_include_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source_dir := os.join_path(dir, 'source')
+	quote_dir := os.join_path(dir, 'quote')
+	os.mkdir_all(source_dir)!
+	os.mkdir_all(quote_dir)!
+	os.write_file(os.join_path(quote_dir, 'types.h'), 'typedef struct QuoteOnly QuoteOnlyAlias;\n')!
+	os.write_file(os.join_path(quote_dir, 'angle.h'), 'typedef struct AngleOnly AngleOnlyAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.QuoteOnlyAlias'] = true
+	tc.c_typedef_structs['C.AngleOnlyAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.c_flags = ['-iquote', quote_dir]
+	g.collect_header_owned_c_typedefs('"types.h"', os.join_path(source_dir, 'sample.v'))
+	g.collect_header_owned_c_typedefs('<angle.h>', os.join_path(source_dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['QuoteOnlyAlias']
+	assert !g.header_owned_c_typedefs['AngleOnlyAlias']
+}
+
+fn test_header_owned_scan_resolves_after_include_dirs_in_order() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_header_after_include_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source_dir := os.join_path(dir, 'source')
+	ordinary_dir := os.join_path(dir, 'ordinary')
+	after_dir := os.join_path(dir, 'after')
+	os.mkdir_all(source_dir)!
+	os.mkdir_all(ordinary_dir)!
+	os.mkdir_all(after_dir)!
+	os.write_file(os.join_path(ordinary_dir, 'types.h'), 'typedef struct Ordinary OrdinaryAlias;\n')!
+	os.write_file(os.join_path(after_dir, 'types.h'), 'typedef struct WrongAfter WrongAfterAlias;\n')!
+	os.write_file(os.join_path(after_dir, 'after_only.h'), 'typedef struct AfterOnly AfterOnlyAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.OrdinaryAlias'] = true
+	tc.c_typedef_structs['C.WrongAfterAlias'] = true
+	tc.c_typedef_structs['C.AfterOnlyAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.c_flags = ['-idirafter', after_dir, '-I', ordinary_dir]
+	g.collect_header_owned_c_typedefs('"types.h"', os.join_path(source_dir, 'sample.v'))
+	g.collect_header_owned_c_typedefs('"after_only.h"', os.join_path(source_dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['OrdinaryAlias']
+	assert !g.header_owned_c_typedefs['WrongAfterAlias']
+	assert g.header_owned_c_typedefs['AfterOnlyAlias']
+}
+
+fn test_header_owned_scan_resolves_framework_include_dirs() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_header_framework_include_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	headers_dir := os.join_path(dir, 'FrameworkRoot', 'Foo.framework', 'Headers')
+	os.mkdir_all(headers_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(headers_dir, 'Foo.h'), 'typedef struct FrameworkImpl FrameworkAlias;\n')!
+	framework_root := os.join_path(dir, 'FrameworkRoot')
+	assert c_flag_framework_include_dirs(['-F', framework_root, '-iframework=${framework_root}']) == [
+		framework_root,
+	]
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.FrameworkAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.c_flags = ['-F', framework_root]
+	g.collect_header_owned_c_typedefs('<Foo/Foo.h>', os.join_path(dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['FrameworkAlias']
+}
+
+fn test_header_owned_compiler_state_preserves_version_values() {
+	values := c_header_compiler_predefined_macro_values_from_output('#define unrelated 9\n#define __GNUC__ 12\n#define __GNUC_MINOR__ 2\n#define __clang_major__ 18\n#define __x86_64__ 1\n#define __aarch64__ 1\n#define __STDC_VERSION__ 201710L\n#define __has_builtin(x) __builtin_has_attribute(x)\n')
+	assert values == {
+		'unrelated':        '9'
+		'__GNUC__':         '12'
+		'__GNUC_MINOR__':   '2'
+		'__clang_major__':  '18'
+		'__x86_64__':       '1'
+		'__aarch64__':      '1'
+		'__STDC_VERSION__': '201710L'
+		'__has_builtin':    ''
+	}
+	mut defined := map[string]bool{}
+	for name, _ in values {
+		defined[name] = true
+	}
+	known, active := c_header_objective_c_condition_state('defined(__x86_64__) && __GNUC__ >= 4', defined, map[string]bool{}, map[string]bool{}, values, false, pref.Target{
+		os: 'linux'
+	})
+	assert known
+	assert active
+	known_function, active_function := c_header_objective_c_condition_state('defined(__has_builtin)', defined, map[string]bool{}, map[string]bool{}, values, false, pref.Target{
+		os: 'linux'
+	})
+	assert known_function
+	assert active_function
+}
+
+fn test_header_owned_scan_expands_only_invoked_typedef_macros() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define UNUSED typedef struct Wrong UnusedAlias;\n#define DECLARE_ALIAS typedef struct Impl Alias;\nDECLARE_ALIAS\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert !scan.typedef_macro_expansions.contains('UnusedAlias')
+	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
+}
+
+fn test_header_owned_scan_expands_invoked_function_typedef_macros() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define UNUSED(name) typedef struct Wrong name;\n#define DECLARE(name) typedef struct Impl name;\nDECLARE(Alias)\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert !scan.typedef_macro_expansions.contains('Wrong')
+	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
+}
+
+fn test_header_owned_scan_accumulates_multiline_function_typedef_macros() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define DECLARE(name) typedef struct Impl name;\nDECLARE(\nMultilineAlias\n)\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl MultilineAlias;'
+}
+
+fn test_header_owned_scan_expands_nested_invoked_function_typedef_macros() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define DECLARE_IMPL(name) typedef struct Impl name;\n#define DECLARE(name) DECLARE_IMPL(name)\nDECLARE(Alias)\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
+}
+
+fn test_header_owned_scan_expands_function_macros_in_conditions() {
+	state := CHeaderMacroState{
+		defined: {
+			'__GNUC__': true
+		}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: {
+			'__GNUC__': '12'
+		}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define VERSION_AT_LEAST(n) (__GNUC__ >= (n))\n#if VERSION_AT_LEAST(4)\ntypedef struct Active ActiveAlias;\n#else\ntypedef struct Inactive InactiveAlias;\n#endif\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert c_header_owned_typedef_aliases(scan.text) == ['ActiveAlias'], scan.text
+}
+
+fn test_header_owned_scan_expands_macros_inside_typedef_replacements() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define NAME Alias\n#define DECL typedef struct Impl NAME;\nDECL\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
+}
+
+fn test_header_owned_scan_expands_pasting_macros_inside_typedef_replacements() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define CAT(x) x##_t\n#define DECL(name) typedef struct Impl CAT(name);\nDECL(Alias)\n',
+		state, false, pref.Target{
+		os: 'linux'
+	})
+	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias_t;'
+	assert c_header_owned_typedef_aliases(scan.typedef_macro_expansions) == ['Alias_t'], scan.typedef_macro_expansions
+}
+
+fn test_header_owned_scan_evaluates_logical_object_macro_conditions() {
+	state := CHeaderMacroState{
+		defined: {
+			'__GNUC__':       true
+			'__GNUC_MINOR__': true
+		}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: {
+			'__GNUC__':       '4'
+			'__GNUC_MINOR__': '1'
+		}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define SUPPORTED (__GNUC__ >= 4 && __GNUC_MINOR__ >= 1)\n#if SUPPORTED\ntypedef struct Active SupportedAlias;\n#else\ntypedef struct Inactive InactiveAlias;\n#endif\n',
+		state, false, pref.Target{
+		os: 'linux'
+	})
+	assert c_header_owned_typedef_aliases(scan.text) == ['SupportedAlias'], scan.text
+}
+
+fn test_header_owned_scan_evaluates_logical_or_object_macro_conditions() {
+	state := CHeaderMacroState{
+		defined: {
+			'__GNUC__':       true
+			'__GNUC_MINOR__': true
+		}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: {
+			'__GNUC__':       '3'
+			'__GNUC_MINOR__': '9'
+		}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define SUPPORTED (__GNUC__ >= 4 || __GNUC_MINOR__ >= 5)\n#if SUPPORTED\ntypedef struct Active SupportedAlias;\n#else\ntypedef struct Inactive InactiveAlias;\n#endif\n',
+		state, false, pref.Target{
+		os: 'linux'
+	})
+	assert c_header_owned_typedef_aliases(scan.text) == ['SupportedAlias'], scan.text
+}
+
+fn test_header_owned_scan_excludes_function_scoped_typedef_macro_invocations() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define DECLARE(name) typedef struct Impl name;\nvoid helper(void) {\nDECLARE(LocalAlias)\n}\nDECLARE(GlobalAlias)\n',
+		state, false, pref.Target{
+		os: 'linux'
+	})
+	assert !scan.typedef_macro_expansions.contains('LocalAlias')
+	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl GlobalAlias;'
+}
+
+fn test_header_owned_scan_excludes_conditional_function_scoped_typedefs() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+		external_macros_possible: true
+	}
+	scan := c_header_definitely_active_scan('void helper(void) {\n#if EXTERNAL_LAYOUT\ntypedef struct First LocalAlias;\n#else\ntypedef struct Second LocalAlias;\n#endif\n}\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert 'LocalAlias' !in c_header_owned_typedef_aliases(scan.typedef_macro_expansions), scan.typedef_macro_expansions
+}
+
+fn test_header_owned_scan_keeps_nested_include_typedefs_function_scoped() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_local_include_typedef_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'local.h'), 'typedef struct LocalImpl LocalAlias;\n')!
+	os.write_file(os.join_path(dir, 'wrapper.h'), 'static inline void helper(void) {\n#include "local.h"\nLocalAlias value;\n}\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.LocalAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.collect_header_owned_c_typedefs('"wrapper.h"', os.join_path(dir, 'sample.v'))
+	assert !g.header_owned_c_typedefs['LocalAlias']
+}
+
+fn test_header_owned_scan_restores_pushed_macro_definition() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define SELECT 1\n#pragma push_macro("SELECT")\n#undef SELECT\n#pragma pop_macro("SELECT")\n#if SELECT\ntypedef struct Active RestoredAlias;\n#else\ntypedef struct Wrong WrongAlias;\n#endif\n',
+		state, false, pref.Target{
+		os: 'linux'
+	})
+	assert c_header_owned_typedef_aliases(scan.text) == ['RestoredAlias'], scan.text
+}
+
+fn test_header_owned_scan_resolves_compiler_feature_predicates() {
+	text := '#if __has_builtin(__builtin_expect)\ntypedef struct Builtin BuiltinAlias;\n#endif\n#if __has_feature(v3_missing_feature) || __has_extension(v3_missing_extension)\ntypedef struct Wrong WrongAlias;\n#endif\n'
+	values := c_header_compiler_feature_predicate_values('cc', []string{}, false, pref.Target{},
+		text)
+	assert values['__has_builtin(__builtin_expect)'] == 1
+	assert values['__has_feature(v3_missing_feature)'] == -1
+	assert values['__has_extension(v3_missing_extension)'] == -1
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan_in_file(text, state, false, pref.Target{
+		os: 'linux'
+	}, CHeaderIncludeContext{
+		feature_predicates: values
+	})
+	assert c_header_owned_typedef_aliases(scan.text) == ['BuiltinAlias'], scan.text
+}
+
+fn test_header_owned_feature_predicate_invocations_probe_macro_wrappers() {
+	text := '#define HAS_BUILTIN(x) __has_builtin(x)\n#if HAS_BUILTIN(__builtin_expect)\ntypedef struct Builtin BuiltinAlias;\n#endif\n'
+	invocations := c_header_feature_predicate_invocations(text)
+	assert '__has_builtin(__builtin_expect)' in invocations, invocations.str()
+}
+
+fn test_header_owned_scan_resolves_wrapped_feature_predicates() {
+	text := '#define HAS_BUILTIN(x) __has_builtin(x)\n#if HAS_BUILTIN(__builtin_expect)\ntypedef struct Builtin BuiltinAlias;\n#else\ntypedef struct Wrong WrongAlias;\n#endif\n'
+	values := c_header_compiler_feature_predicate_values('cc', []string{}, false, pref.Target{},
+		text)
+	assert values['__has_builtin(__builtin_expect)'] == 1
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan_in_file(text, state, false, pref.Target{
+		os: 'linux'
+	}, CHeaderIncludeContext{
+		feature_predicates: values
+	})
+	assert c_header_owned_typedef_aliases(scan.text) == ['BuiltinAlias'], scan.text
+}
+
+fn test_header_owned_compiler_implicit_include_dirs_parser() {
+	base := os.join_path(os.vtmp_dir(), 'v3_implicit_incdirs_${os.getpid()}')
+	real_a := os.join_path(base, 'a')
+	real_b := os.join_path(base, 'b')
+	framework := os.join_path(base, 'frameworks')
+	after := os.join_path(base, 'after')
+	os.mkdir_all(real_a) or { panic(err) }
+	os.mkdir_all(real_b) or { panic(err) }
+	os.mkdir_all(framework) or { panic(err) }
+	os.mkdir_all(after) or { panic(err) }
+	defer {
+		os.rmdir_all(base) or {}
+	}
+	missing := os.join_path(base, 'missing')
+	output := 'ignored preamble\n#include "..." search starts here:\n ${real_a}\n#include <...> search starts here:\n ${real_b}\n ${framework} (framework directory)\n ${missing}\nEnd of search list.\n ${after}\n'
+	dirs := c_header_compiler_implicit_include_dirs_from_output(output)
+	// Only existing, non-framework directories inside the search block survive.
+	assert os.real_path(real_a) in dirs, dirs.str()
+	assert os.real_path(real_b) in dirs, dirs.str()
+	assert os.real_path(missing) !in dirs, dirs.str()
+	assert os.real_path(framework) !in dirs, dirs.str()
+	assert os.real_path(after) !in dirs, dirs.str()
+	assert dirs.len == 2, dirs.str()
+}
+
+fn test_header_owned_compiler_implicit_include_dirs_are_real() {
+	// Live discovery via the platform C compiler; every reported root must exist.
+	dirs := c_header_compiler_implicit_include_dirs('cc', []string{}, false, pref.Target{})
+	for dir in dirs {
+		assert os.is_dir(dir), dir
+	}
+}
+
+fn test_header_owned_msvc_predefined_macro_values_parser() {
+	candidates := c_header_msvc_predefined_macro_candidates()
+	// Emulates `cl /EP` output: defined numeric macros expanded, others untouched.
+	output := 'V3_MSVC_MACRO_0 1930\nV3_MSVC_MACRO_1 193030705\nV3_MSVC_MACRO_5 1\nV3_MSVC_MACRO_13 __STDC_VERSION__\n'
+	values := c_header_msvc_predefined_macro_values_from_output(output, candidates)
+	assert values['_MSC_VER'] == '1930', values.str()
+	assert values['_MSC_FULL_VER'] == '193030705', values.str()
+	assert values['_WIN32'] == '1', values.str()
+	// Unexpanded (still-textual) macros are not recorded as numeric values.
+	assert '__STDC_VERSION__' !in values, values.str()
+}
+
+fn test_header_owned_msvc_predefined_macro_marker_indices_do_not_collide() {
+	// Marker 1 must not swallow marker 10..13 despite the shared textual prefix.
+	candidates := c_header_msvc_predefined_macro_candidates()
+	output := 'V3_MSVC_MACRO_11 42\n'
+	values := c_header_msvc_predefined_macro_values_from_output(output, candidates)
+	assert values[candidates[11]] == '42', values.str()
+	assert candidates[1] !in values, values.str()
+}
+
+fn test_header_owned_scan_resolves_msvc_version_guard() {
+	// _MSC_VER is defined with a numeric value, so the version guard resolves and
+	// only the active-branch typedef is owned.
+	state := CHeaderMacroState{
+		defined: {
+			'_MSC_VER': true
+		}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: {
+			'_MSC_VER': '1930'
+		}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#if _MSC_VER >= 1900\ntypedef struct Modern ModernAlias;\n#else\ntypedef struct Legacy LegacyAlias;\n#endif\n',
+		state, false, pref.Target{
+		os: 'windows'
+	})
+	assert c_header_owned_typedef_aliases(scan.text) == ['ModernAlias'], scan.text
+}
+
+fn test_header_owned_scan_expands_variadic_typedef_macros() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define DECLARE(name, ...) typedef struct Impl name;\n#define DECLARE_ARGS(...) typedef struct Impl __VA_ARGS__;\n#define DECLARE_NAMED(tag, aliases...) typedef struct tag aliases;\nDECLARE(FirstAlias, ignored)\nDECLARE_ARGS(SecondAlias)\nDECLARE_NAMED(Impl, ThirdAlias)\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert c_header_owned_typedef_aliases(scan.typedef_macro_expansions) == [
+		'FirstAlias',
+		'SecondAlias',
+		'ThirdAlias',
+	], scan.typedef_macro_expansions
+}
+
+fn test_header_owned_scan_retains_typedef_alias_common_to_all_possible_arms() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+		external_macros_possible: true
+	}
+	scan := c_header_definitely_active_scan('#if EXTERNAL_LAYOUT\ntypedef struct First CommonAlias;\n#else\ntypedef struct Second CommonAlias;\n#endif\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert c_header_owned_typedef_aliases(scan.typedef_macro_expansions) == [
+		'CommonAlias',
+	], scan.typedef_macro_expansions
+}
+
+fn test_header_owned_scan_retains_alias_from_conditional_child_headers() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_conditional_header_aliases_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'first.h'), 'typedef struct First CommonAlias;\n')!
+	os.write_file(os.join_path(dir, 'second.h'), 'typedef struct Second CommonAlias;\n')!
+	os.write_file(os.join_path(dir, 'parent.h'), '#if EXTERNAL_LAYOUT\n#include "first.h"\n#else\n#include "second.h"\n#endif\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.CommonAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.ensure_header_owned_macro_context()
+	g.header_owned_macro_context.state.external_macros_possible = true
+	g.collect_header_owned_c_typedefs('"parent.h"', os.join_path(dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['CommonAlias']
+}
+
+fn test_header_owned_scan_resolves_include_next_and_has_include_paths() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_header_include_next_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	first_dir := os.join_path(dir, 'first')
+	second_dir := os.join_path(dir, 'second')
+	os.mkdir_all(os.join_path(first_dir, 'api'))!
+	os.mkdir_all(os.join_path(second_dir, 'api'))!
+	os.write_file(os.join_path(first_dir, 'api', 'wrapper.h'), '#if __has_include("impl.h")
+#include "impl.h"
+#endif
+#if __has_include_next("api/wrapper.h")
+typedef struct GuardedNext GuardedNextAlias;
+#endif
+#if __has_include("missing.h")
+typedef struct Missing MissingAlias;
+#endif
+#include_next "api/wrapper.h"
+')!
+	os.write_file(os.join_path(second_dir, 'impl.h'), 'typedef struct IncludedImpl IncludedImplAlias;\n')!
+	os.write_file(os.join_path(second_dir, 'api', 'wrapper.h'), 'typedef struct NextWrapper NextWrapperAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	for alias in ['GuardedNextAlias', 'IncludedImplAlias', 'MissingAlias', 'NextWrapperAlias'] {
+		tc.c_typedef_structs['C.${alias}'] = true
+	}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.c_flags = ['-I', first_dir, '-I', second_dir]
+	g.collect_header_owned_c_typedefs('"api/wrapper.h"', os.join_path(dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['GuardedNextAlias']
+	assert g.header_owned_c_typedefs['IncludedImplAlias']
+	assert g.header_owned_c_typedefs['NextWrapperAlias']
+	assert !g.header_owned_c_typedefs['MissingAlias']
+}
+
+fn test_header_owned_scan_expands_function_macro_include_operand() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_header_function_include_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'wrapper.h'), '#define INCLUDE_FILE(path) path\n#include INCLUDE_FILE("types.h")\n')!
+	os.write_file(os.join_path(dir, 'types.h'), 'typedef struct Impl FunctionIncludeAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.FunctionIncludeAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.collect_header_owned_c_typedefs('"wrapper.h"', os.join_path(dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['FunctionIncludeAlias']
+}
+
+fn test_header_owned_include_next_uses_exact_overlapping_search_dir() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_header_include_next_overlap_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	root_dir := os.join_path(dir, 'root')
+	nested_dir := os.join_path(root_dir, 'sub')
+	third_dir := os.join_path(dir, 'third')
+	os.mkdir_all(nested_dir)!
+	os.mkdir_all(third_dir)!
+	os.write_file(os.join_path(nested_dir, 'wrapper.h'), '#include_next <next.h>\n')!
+	os.write_file(os.join_path(nested_dir, 'next.h'), 'typedef struct Wrong WrongAlias;\n')!
+	os.write_file(os.join_path(third_dir, 'next.h'), 'typedef struct Exact ExactAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	for alias in ['WrongAlias', 'ExactAlias'] {
+		tc.c_typedef_structs['C.${alias}'] = true
+	}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.c_flags = ['-I', root_dir, '-I', nested_dir, '-I', third_dir]
+	g.collect_header_owned_c_typedefs('"wrapper.h"', os.join_path(dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['ExactAlias']
+	assert !g.header_owned_c_typedefs['WrongAlias']
+}
+
+fn test_header_owned_scan_retains_alias_from_source_conditional_includes() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_source_conditional_header_aliases_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'first.h'), 'typedef struct First CommonAlias;\ntypedef struct FirstOnly FirstOnlyAlias;\n')!
+	os.write_file(os.join_path(dir, 'second.h'), 'typedef struct Second CommonAlias;\ntypedef struct SecondOnly SecondOnlyAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	for alias in ['CommonAlias', 'FirstOnlyAlias', 'SecondOnlyAlias'] {
+		tc.c_typedef_structs['C.${alias}'] = true
+	}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.ensure_header_owned_macro_context()
+	g.header_owned_macro_context.state.external_macros_possible = true
+	g.collect_header_owned_source_macro_directive('#if EXTERNAL_LAYOUT')
+	g.collect_header_owned_c_typedefs('"first.h"', os.join_path(dir, 'sample.v'))
+	g.collect_header_owned_source_macro_directive('#else')
+	g.collect_header_owned_c_typedefs('"second.h"', os.join_path(dir, 'sample.v'))
+	g.collect_header_owned_source_macro_directive('#endif')
+	assert g.header_owned_c_typedefs['CommonAlias']
+	assert !g.header_owned_c_typedefs['FirstOnlyAlias']
+	assert !g.header_owned_c_typedefs['SecondOnlyAlias']
+}
+
+fn test_header_owned_scan_collects_forced_include_typedefs() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_forced_header_aliases_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'types.h'), '#ifndef TYPES_H\n#define TYPES_H\ntypedef struct ForcedType ForcedAlias;\n#endif\n')!
+	os.write_file(os.join_path(dir, 'macros.h'), 'typedef struct MacrosOnly MacrosOnlyAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.ForcedAlias'] = true
+	tc.c_typedef_structs['C.MacrosOnlyAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.c_flags = ['-I', dir, '-include', 'types.h', '-imacros', 'macros.h']
+	g.rebuild_header_owned_c_typedefs()
+	assert g.header_owned_c_typedefs['ForcedAlias']
+	assert !g.header_owned_c_typedefs['MacrosOnlyAlias']
 }
 
 fn test_large_transitive_header_tree_is_preserved() {
