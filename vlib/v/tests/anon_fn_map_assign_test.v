@@ -2,7 +2,7 @@
 // leak `cur_indexexpr`, so that any later non-scalar map/array assignment in the
 // same compilation unit was generated without the `= ` operator (broken C).
 // See https://github.com/vlang/v/issues (map assignment of fn literal leaks cgen state)
-type AnonFnMapAssignCb = fn(int) int
+type AnonFnMapAssignCb = fn (int) int
 
 struct AnonFnMapAssignPoint {
 	x int

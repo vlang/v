@@ -3829,7 +3829,12 @@ fn (mut p Parser) parse_comptime_cond() string {
 		} else {
 			raw_tok_str
 		}
-		if cond.len > 0 && comptime_cond_needs_space(prev_tok_str, tok_str) {
+		// Source style writes the optional-flag marker detached (`$if flag ? {`), but the
+		// condition is otherwise stored without that space so flag lookups can match on it.
+		// Keep it only when formatting, as parse_attribute_comptime_cond does for `@[if flag ?]`.
+		needs_space := comptime_cond_needs_space(prev_tok_str, tok_str)
+			|| (p.prefs.is_fmt && tok_str == '?')
+		if cond.len > 0 && needs_space {
 			cond.write_string(' ')
 		}
 		cond.write_string(tok_str)

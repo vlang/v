@@ -78,7 +78,7 @@ fn test_local_function_shadows_builtin_inline_calls() {
 		calls << '\tprintln(my_helper(1, 1))'
 	}
 	os.write_file(os.join_path(tmp, 'caller.v'),
-		"module main\n\n@[inline]\nfn my_helper(a int, b int) int {\n\treturn a + b\n}\n\nfn main() {\n${calls.join('\n')}\n}\n")!
+		'module main\n\n@[inline]\nfn my_helper(a int, b int) int {\n\treturn a + b\n}\n\nfn main() {\n${calls.join('\n')}\n}\n')!
 	res := os.execute('${os.quoted_path(vexe)} vet -nocolor -I ${os.quoted_path(tmp)}')
 	assert res.exit_code >= 0, res.output
 	assert !res.output.contains('my_helper fn might be inlined'), res.output

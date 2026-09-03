@@ -4,7 +4,7 @@ import os
 import v3.pref
 
 fn test_fastc_parser_emits_arm64_without_c() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -30,7 +30,7 @@ fn test_fastc_parser_emits_arm64_without_c() {
 }
 
 fn test_fastc_arm64_lexical_scopes_and_array_mutation() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_scopes_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -581,7 +581,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_map_storage_and_numeric_conversions() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_map_numeric_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -943,7 +943,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_c_variadic_default_promotions() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_c_variadic_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -972,7 +972,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_spawn_for_general_programs() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_spawn_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1014,7 +1014,7 @@ fn test_fastc_arm64_spawn_for_general_programs() {
 }
 
 fn test_fastc_arm64_binds_c_externs_beyond_the_linker_allowlist() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_cextern_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1041,7 +1041,7 @@ fn test_fastc_arm64_binds_c_externs_beyond_the_linker_allowlist() {
 }
 
 fn test_fastc_arm64_array_index_bounds() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_bounds_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1084,7 +1084,7 @@ fn test_fastc_arm64_array_index_bounds() {
 }
 
 fn test_fastc_arm64_sizeof_is_unevaluated_and_array_shrinks_detach() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_sizeof_shrink_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1164,7 +1164,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_array_aggregate_defaults_and_nested_clones_are_independent() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_array_clone_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1228,7 +1228,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_cleared_array_growth_and_pointer_index_metadata() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_array_metadata_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1267,7 +1267,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_array_many_insert_and_slice_byte_offsets() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_insert_slice_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1304,7 +1304,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_struct_layout_attributes() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_struct_layout_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1383,7 +1383,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_overaligned_local_stack_storage() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_overaligned_local_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1421,7 +1421,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_zero_capacity_array_data_is_nil() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_empty_array_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1459,7 +1459,7 @@ fn test_fastc_arm64_zero_capacity_array_data_is_nil() {
 }
 
 fn test_fastc_arm64_execute_output_is_nul_terminated() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_execute_terminated_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1492,7 +1492,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_empty_multi_append_preserves_slice_storage() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_empty_append_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1524,7 +1524,7 @@ fn test_fastc_arm64_empty_multi_append_preserves_slice_storage() {
 }
 
 fn test_fastc_arm64_trim_noop_preserves_slice_storage() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_trim_noop_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1556,7 +1556,7 @@ fn test_fastc_arm64_trim_noop_preserves_slice_storage() {
 }
 
 fn test_fastc_arm64_nonpositive_raw_push_many_is_noop() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_push_many_noop_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1586,7 +1586,7 @@ fn test_fastc_arm64_nonpositive_raw_push_many_is_noop() {
 }
 
 fn test_fastc_arm64_string_slice_owns_terminated_storage() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_string_slice_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1620,7 +1620,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_replays_imported_initializers_in_declaring_module() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_imported_initializers_${os.getpid()}')
 		dependency_dir := os.join_path_single(test_dir, 'dependency')
 		os.rmdir_all(test_dir) or {}
@@ -1670,7 +1670,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_typed_pointer_arithmetic_scales_offsets() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_pointer_arithmetic_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1702,7 +1702,7 @@ fn test_fastc_arm64_typed_pointer_arithmetic_scales_offsets() {
 }
 
 fn test_fastc_arm64_ownership_returning_collection_methods_deep_clone() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_collection_ownership_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1759,7 +1759,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_path_overrides_match_os_normalization() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_paths_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1797,7 +1797,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_join_path_trim_keeps_owned_base_pointer() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_join_owned_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1831,7 +1831,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_integer_strings_keep_owned_base_pointers() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_integer_owned_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1867,7 +1867,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_map_rehash_frees_superseded_buckets() {
-	$if arm64? {
+	$if arm64 ? {
 		mut prefs := pref.new_preferences()
 		mut program := FastArm64Program.new(prefs, map[string]bool{}, map[string]FastcFunctionSignature{}, map[string]FastArm64TypeDecl{}, map[string]FastArm64ConstantDecl{}, map[string]FastArm64ConstantDecl{})
 		program.register_functions()
@@ -1894,7 +1894,7 @@ fn test_fastc_arm64_map_rehash_frees_superseded_buckets() {
 }
 
 fn test_fastc_arm64_rejects_fixed_arity_call_mismatches() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_call_arity_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1945,7 +1945,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_map_move_transfers_state() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_map_move_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -1968,7 +1968,7 @@ fn test_fastc_arm64_map_move_transfers_state() {
 }
 
 fn test_fastc_arm64_source_location_pseudo_values() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_location_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -2009,7 +2009,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_remaining_pseudo_values() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_pseudo_${os.getpid()}')
 		git_dir := os.join_path_single(test_dir, '.git')
 		os.rmdir_all(test_dir) or {}
@@ -2061,7 +2061,7 @@ fn test_fastc_arm64_remaining_pseudo_values() {
 }
 
 fn test_fastc_arm64_c_style_for_assigning_existing_local() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_c_for_assign_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
@@ -2094,7 +2094,7 @@ fn main() {
 }
 
 fn test_fastc_arm64_module_lifecycle_hooks() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_lifecycle_${os.getpid()}')
 		dependency_dir := os.join_path_single(test_dir, 'dependency')
 		os.rmdir_all(test_dir) or {}
@@ -2142,7 +2142,7 @@ fn cleanup() {
 }
 
 fn test_fastc_arm64_rejects_imported_source_output() {
-	$if arm64? {
+	$if arm64 ? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_output_alias_${os.getpid()}')
 		dependency_dir := os.join_path_single(test_dir, 'dependency')
 		os.rmdir_all(test_dir) or {}
