@@ -202,6 +202,34 @@ constant and global declarations: a large file's constants are parsed as separat
 candidates (merged in source order), and the global phase parses only the recorded global
 declarations instead of whole files.
 
+A self-host build (`-selfhost`) for 64-bit macOS or glibc Linux emits C with no `#include`
+at all: `gen/fastc/c_abi.v` holds, per target, the C library types, struct layouts, macros,
+globals and function prototypes the emitted code uses, and that prelude replaces the header block
+of the preamble; V's own C helper headers (`vlib/os/execute_capture_nix.h`, ...) are inlined
+after it, and `#include` lines from V sources are left out. TinyCC then parses about 42K lines
+instead of the 110K that the system headers expanded to. The build passes
+`-Werror=implicit-function-declaration` (and no `-w`, which would silence it), so a C function
+missing from the table fails the build instead of being called through an implicit `int`
+prototype that truncates pointer results; `c_abi_test.v` compiles the table
+against the host headers and checks every layout, size, value and prototype. The stitch also
+drops the indexed functions (and enum `str`/print helpers) that nothing reachable from `main`,
+the lifecycle hooks or the non-body pieces refers to, which the source-level name-grouped
+reachability keeps: each worker records its definitions and the mangled names they mention, and
+the assembly cuts the unreachable spans out of the pieces (about 9% of the self-host C).
+
+The TinyCC step itself is split: `fastc_write_c_units` cuts the pieces into up to 8
+translation units (the shared head of typedefs, prototypes and runtime in every unit, the
+dispatch tables, lifecycle functions and `main` only in the first, the file bodies grouped by
+size; the globals are definitions in the first unit and `extern` declarations in the others),
+`fastc_compile_c_units` compiles them with concurrent `tcc -c` processes started through
+`posix_spawn` (forking the large compiler process costs more), and one `tcc` call links the
+objects (`VJOBS=1`, `V3_FASTC_NO_PARALLEL=1`, or `-no-parallel` keeps the single-file build; both
+give the same C with `-keepc`). On macOS TinyCC runs Apple's `codesign` after linking, which costs
+~50 ms per build: the drivers put a no-op `codesign` first on its PATH and ad-hoc sign the
+executable themselves (`gen/fastc/macho_sign.v`, SHA-256 page hashes through CommonCrypto,
+patched into the file in place). The SDK path is taken from `SDKROOT` or the toolchain selected by
+`xcrun`; conventional SDK locations are used only as a fallback.
+
 The standalone compiler supports `self` directly and defaults that command to FastC. For example,
 `./v self x5` replaces the compiler through five descendant FastC generations, with each installed
 generation compiling the next one. `-b fastc`, `-gc none`, `-cc tinyc|tcc`, `-keepc`, `-silent`,

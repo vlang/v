@@ -614,7 +614,7 @@ fn fastc_merge_declaration_partial(partial FastcDeclarationPartial, mut declared
 	}
 }
 
-fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_sources map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, constant_values map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, mut global_types map[string]string) !FastcGlobalDeclarations {
+fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_sources map[string]string, prefs &pref.Preferences, header_free bool, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, constant_values map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, mut global_types map[string]string) !FastcGlobalDeclarations {
 	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	mut out := strings.new_builder(1024)
 	mut module_initializers := map[string]string{}
@@ -660,6 +660,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			globals:                      globals
 			public_globals:               public_globals
 			selfhost:                     prefs.building_v
+			header_free:                  header_free
 			s:                            scanner.new_scanner(prefs, .normal)
 			out:                          strings.new_builder(0)
 			protos:                       strings.new_builder(0)
@@ -777,9 +778,12 @@ fn fastc_prealloc_enabled(prefs &pref.Preferences) bool {
 // mirrors gen/c's `write_prealloc_tls_global`: bundled TinyCC on macOS has no
 // working thread-local storage, so there the identifier is redirected to a
 // pthread-key slot; every other target uses `_Thread_local`.
-fn fastc_write_prealloc_tls_global(mut out strings.Builder, styp string, c_name string) {
+fn fastc_write_prealloc_tls_global(mut out strings.Builder, styp string, c_name string, header_free bool) {
 	out.writeln('#if defined(__TINYC__) && defined(__APPLE__)')
-	out.writeln('#include <pthread.h>')
+	if !header_free {
+		// A header-free build declares the pthread API in its prelude.
+		out.writeln('#include <pthread.h>')
+	}
 	out.writeln('static pthread_key_t v_prealloc_tls_key;')
 	out.writeln('static pthread_once_t v_prealloc_tls_once = PTHREAD_ONCE_INIT;')
 	out.writeln('static void v_prealloc_tls_slot_free(void *slot) { free(slot); }')
@@ -795,9 +799,9 @@ fn fastc_write_prealloc_tls_global(mut out strings.Builder, styp string, c_name 
 	out.writeln('}')
 	out.writeln('#define ${c_name} (*(${styp} *)v_prealloc_tls_slot())')
 	out.writeln('#elif defined(__cplusplus)')
-	out.writeln('thread_local ${styp} ${c_name};')
+	out.writeln('static thread_local ${styp} ${c_name};')
 	out.writeln('#else')
-	out.writeln('_Thread_local ${styp} ${c_name};')
+	out.writeln('static _Thread_local ${styp} ${c_name};')
 	out.writeln('#endif')
 }
 
@@ -850,7 +854,7 @@ fn (mut g Parser) parse_global_declaration(mut out strings.Builder, mut initiali
 	if g.selfhost && name == 'g_memory_block' && fastc_prealloc_enabled(g.prefs) {
 		// The prealloc arena root must be per-thread; a shared global would be
 		// corrupted by the parallel per-file generator's concurrent bump-allocations.
-		fastc_write_prealloc_tls_global(mut out, typ, c_name)
+		fastc_write_prealloc_tls_global(mut out, typ, c_name, g.header_free)
 	} else {
 		out.writeln('static ${typ} ${c_name};')
 	}
@@ -1667,12 +1671,13 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 			}
 		}
 	}
-	enum_string_helpers := fastc_generate_enum_string_helpers(enum_infos)
+	enum_helper_names, enum_helper_texts := fastc_generate_enum_string_helpers(enum_infos)
 	timer.mark('type_declarations.enum_helpers')
 	return FastcTypeDeclarations{
 		declarations_head:   declarations_head
 		declarations:        out.str()
-		enum_string_helpers: enum_string_helpers
+		enum_helper_names: enum_helper_names
+		enum_helper_texts: enum_helper_texts
 		alias_base_types:    alias_base_types
 		enum_field_types:    enum_field_types
 		sum_types:           sum_types
@@ -2469,8 +2474,6 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 		fields:  field_names.clone()
 		is_flag: is_flag
 	}
-	fastc_emit_enum_print_function(c_name, name, field_names, is_flag, mut out)
-	out.writeln('')
 	return scan.scan()
 }
 
@@ -2665,9 +2668,14 @@ fn fastc_emit_enum_print_function(c_name string, name string, fields []string, i
 	out.writeln('}')
 }
 
-fn fastc_generate_enum_string_helpers(infos []FastcEnumInfo) string {
-	mut out := strings.new_builder(infos.len * 256)
+// fastc_generate_enum_string_helpers renders the `str` and print helper of
+// every enum as separate pieces (parallel name and text lists), so the
+// stitch can leave out the helpers nothing reachable calls.
+fn fastc_generate_enum_string_helpers(infos []FastcEnumInfo) ([]string, []string) {
+	mut names := []string{cap: infos.len * 2}
+	mut texts := []string{cap: infos.len * 2}
 	for info in infos {
+		mut out := strings.new_builder(256)
 		out.writeln('static string v_fastc_enum_str_${info.c_name}(${info.c_name} value) {')
 		if info.is_flag {
 			out.writeln('\tstring parts[${info.fields.len * 2 + 2}] = {0};')
@@ -2691,8 +2699,15 @@ fn fastc_generate_enum_string_helpers(infos []FastcEnumInfo) string {
 		}
 		out.writeln('}')
 		out.writeln('')
+		names << 'v_fastc_enum_str_${info.c_name}'
+		texts << out.str()
+		mut print_out := strings.new_builder(256)
+		fastc_emit_enum_print_function(info.c_name, info.name, info.fields, info.is_flag, mut print_out)
+		print_out.writeln('')
+		names << 'v_fastc_print_enum_${info.c_name}'
+		texts << print_out.str()
 	}
-	return out.str()
+	return names, texts
 }
 
 fn fastc_emit_interface_declaration(mut scan scanner.Scanner, source_file FastcSourceFile, mut out strings.Builder) !token.Token {

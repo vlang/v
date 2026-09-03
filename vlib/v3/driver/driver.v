@@ -1809,6 +1809,7 @@ struct V3CCompilerFlagOptions {
 	vroot                string
 	target_os            string
 	target_arch          string
+	macos_sdk_root       string
 	pic_flag             string
 	is_prod              bool
 	no_prod_options      bool
@@ -1917,7 +1918,7 @@ fn v3_tcc_resource_flags(vroot string) V3TccResourceFlags {
 	}
 }
 
-fn v3_tcc_host_system_flags(target_os string) []string {
+fn v3_tcc_host_system_flags(target_os string, macos_sdk_root string) []string {
 	if target_os != os.user_os() || target_os == 'windows' {
 		return []
 	}
@@ -1925,19 +1926,52 @@ fn v3_tcc_host_system_flags(target_os string) []string {
 	// the standard local prefix used by native packages such as wkhtmltox.
 	mut flags := ['-I/usr/local/include', '-L/usr/local/lib']
 	if target_os == 'macos' {
-		mut sdk_root := os.getenv('SDKROOT')
-		if !os.is_dir(sdk_root) {
-			result := cmdexec.run('xcrun', ['--show-sdk-path'])
-			if result.exit_code == 0 {
-				sdk_root = result.output.trim_space()
-			}
-		}
-		if os.is_dir(sdk_root) {
-			flags << '-I${os.join_path(sdk_root, 'usr', 'include')}'
-			flags << '-L${os.join_path(sdk_root, 'usr', 'lib')}'
+		if macos_sdk_root != '' {
+			flags << '-I${os.join_path(macos_sdk_root, 'usr', 'include')}'
+			flags << '-L${os.join_path(macos_sdk_root, 'usr', 'lib')}'
 		}
 	}
 	return flags
+}
+
+// macos_sdk_root finds the selected macOS SDK. SDKROOT and xcrun are
+// authoritative; the conventional locations are fallbacks for an unavailable
+// or broken xcrun.
+fn macos_sdk_root() string {
+	env_root := os.getenv('SDKROOT')
+	if os.is_dir(env_root) {
+		return env_root
+	}
+	result := cmdexec.run('xcrun', ['--show-sdk-path'])
+	if result.exit_code == 0 {
+		found := result.output.trim_space()
+		if os.is_dir(found) {
+			return found
+		}
+	}
+	for candidate in ['/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk',
+		'/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk'] {
+		if os.is_dir(candidate) {
+			return candidate
+		}
+	}
+	return ''
+}
+
+// V3MacosSdkRootCache avoids repeating xcrun when a TinyCC build constructs
+// both its general flag plan and its final link command.
+struct V3MacosSdkRootCache {
+mut:
+	resolved bool
+	root     string
+}
+
+fn (mut cache V3MacosSdkRootCache) get() string {
+	if !cache.resolved {
+		cache.root = macos_sdk_root()
+		cache.resolved = true
+	}
+	return cache.root
 }
 
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
@@ -1956,7 +1990,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 		tcc_resources := v3_tcc_resource_flags(options.vroot)
 		tcc_includes = tcc_resources.include_arg
 		before_inputs << [tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
-		before_inputs << v3_tcc_host_system_flags(options.target_os)
+		before_inputs << v3_tcc_host_system_flags(options.target_os, options.macos_sdk_root)
 		if v3_tcc_backtrace_enabled(options.target_os, options.target_arch, options.is_shared) {
 			before_inputs << '-bt25'
 		}
@@ -7396,7 +7430,9 @@ fn canonical_v3_fastc_output_path(path string) string {
 	return os.join_path_single(canonical_parent, os.file_name(absolute_path))
 }
 
-fn compile_v3_fastc_source(pieces []string, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, environment_ld_flags []string, is_debug bool, uses_threads bool) V3FastCCompileResult {
+fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, environment_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool) V3FastCCompileResult {
+	bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
+	cc_sw := time.new_stopwatch()
 	tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 	tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
 	if !os.is_executable(tcc_path) {
@@ -7410,30 +7446,81 @@ fn compile_v3_fastc_source(pieces []string, bin_file string, prefs &pref.Prefere
 	}
 	source_file := os.join_path_single(build_dir, 'src.c')
 	staged_binary := os.join_path_single(build_dir, 'out')
-	fastc.write_c_pieces(source_file, pieces) or { return V3FastCCompileResult{} }
+	// The program's translation units are compiled by concurrent TinyCC
+	// processes and linked; a program that does not split is compiled as
+	// one file.
+	if bench_phases {
+		eprintln('fastc-phase tcc.setup ${cc_sw.elapsed().microseconds()}us')
+	}
+	unit_paths := fastc.fastc_write_c_units(os.join_path_single(build_dir, 'src'), pieces, units,
+		fastc.fastc_tcc_job_count(prefs)) or { return V3FastCCompileResult{} }
+	if unit_paths.len < 2 {
+		fastc.write_c_pieces(source_file, pieces) or { return V3FastCCompileResult{} }
+	}
+	if bench_phases {
+		eprintln('fastc-phase tcc.units_written ${cc_sw.elapsed().microseconds()}us units=${unit_paths.len}')
+	}
 	tcc_resources := v3_tcc_resource_flags(prefs.vroot)
 	mut cc_args := environment_c_flags.clone()
 	cc_args << ['-std=gnu11', tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
-	cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os())
+	cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), macos_sdk_root)
 	cc_args << source_c_flags
-	cc_args << '-w'
+	// A call without a prototype would silently truncate a pointer result
+	// (the C carries no headers): it is an error, not a warning.
+	cc_args << '-Werror=implicit-function-declaration'
 	if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), false) {
 		cc_args << '-bt25'
 	}
 	if is_debug {
 		cc_args << '-g'
 	}
-	cc_args << ['-o', 'out', 'src.c']
-	cc_args << user_c_flags
-	if uses_threads {
-		// The emitted spawn runtime calls pthread functions, which live
-		// outside libc on Linux with glibc before 2.34 and on the BSDs.
-		cc_args << '-lpthread'
+	// TinyCC signs the linked executable through `codesign` on macOS; the
+	// shim makes that call a no-op and the executable is signed below.
+	shim_dir := fastc.fastc_codesign_shim_dir()
+	defer {
+		fastc.fastc_remove_codesign_shim_dir(shim_dir)
 	}
-	cc_args << '-lm'
-	cc_args << environment_ld_flags
-	command := cmdexec.display(tcc_path, cc_args)
-	result := cmdexec.run_in(tcc_path, cc_args, build_dir)
+	mut result := os.Result{}
+	mut command := ''
+	if unit_paths.len > 1 {
+		mut compile_args := cc_args.clone()
+		compile_args << user_c_flags
+		unit_objects := fastc.fastc_compile_c_units(tcc_path, compile_args, unit_paths) or {
+			fastc.write_c_pieces(source_file, pieces) or {}
+			return V3FastCCompileResult{
+				command: cmdexec.display(tcc_path, compile_args)
+				output:  err.msg()
+			}
+		}
+		if bench_phases {
+			eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
+		}
+		cc_args << ['-o', staged_binary]
+		cc_args << unit_objects
+		cc_args << user_c_flags
+		if uses_threads {
+			cc_args << '-lpthread'
+		}
+		cc_args << '-lm'
+		cc_args << environment_ld_flags
+		command = cmdexec.display(tcc_path, cc_args)
+		result = fastc.fastc_run_command(tcc_path, cc_args)
+		if bench_phases {
+			eprintln('fastc-phase tcc.linked ${cc_sw.elapsed().microseconds()}us')
+		}
+	} else {
+		cc_args << ['-o', 'out', 'src.c']
+		cc_args << user_c_flags
+		if uses_threads {
+			// The emitted spawn runtime calls pthread functions, which live
+			// outside libc on Linux with glibc before 2.34 and on the BSDs.
+			cc_args << '-lpthread'
+		}
+		cc_args << '-lm'
+		cc_args << environment_ld_flags
+		command = cmdexec.display(tcc_path, cc_args)
+		result = cmdexec.run_in(tcc_path, cc_args, build_dir)
+	}
 	if result.exit_code != 0 || !os.is_file(staged_binary) {
 		if keep_dir := os.getenv_opt('V3_FASTC_KEEP_FAILED_C') {
 			if keep_dir.len > 0 {
@@ -7444,6 +7531,17 @@ fn compile_v3_fastc_source(pieces []string, bin_file string, prefs &pref.Prefere
 			command: command
 			output:  result.output
 		}
+	}
+	if shim_dir.dir != '' {
+		fastc.fastc_sign_macho_adhoc(staged_binary) or {
+			return V3FastCCompileResult{
+				command: command
+				output:  'could not sign ${staged_binary}: ${err.msg()}'
+			}
+		}
+	}
+	if bench_phases {
+		eprintln('fastc-phase tcc.signed ${cc_sw.elapsed().microseconds()}us')
 	}
 	os.mv(staged_binary, bin_file) or {
 		return V3FastCCompileResult{
@@ -7585,6 +7683,7 @@ pub fn run(args []string) {
 	mut profile_no_inline := false
 	mut profile_fns := []string{}
 	mut command_seen := false
+	mut macos_sdk_root_cache := V3MacosSdkRootCache{}
 	environment_c_flags := parse_v3_environment_flags('CFLAGS')
 	environment_ld_flags := parse_v3_environment_flags('LDFLAGS')
 	if environment_c_flags.len > 0 || environment_ld_flags.len > 0 {
@@ -8581,9 +8680,14 @@ pub fn run(args []string) {
 			} else {
 				bin_file
 			}
-			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_bin_file, prefs,
-				environment_c_flags, fastc_generation.c_flags, user_c_flags, environment_ld_flags,
-				is_debug, fastc_generation.uses_threads)
+			fastc_sdk_root := if prefs.normalized_target_os() == 'macos' {
+				macos_sdk_root_cache.get()
+			} else {
+				''
+			}
+			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_generation.units,
+				fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags,
+				environment_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads)
 			if (!silent || show_cc) && fastc_result.command.len > 0 {
 				if c_to_stdout {
 					eprintln('  > ${fastc_result.command}')
@@ -10625,6 +10729,11 @@ pub fn run(args []string) {
 			}
 			b.step('C object cache')
 		}
+		flag_plan_sdk_root := if explicit_tcc && prefs.normalized_target_os() == 'macos' {
+			macos_sdk_root_cache.get()
+		} else {
+			''
+		}
 		c_flag_plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
 			environment_c_flags:  environment_c_flags
 			environment_ld_flags: environment_ld_flags
@@ -10635,6 +10744,7 @@ pub fn run(args []string) {
 			vroot:                prefs.vroot
 			target_os:            prefs.normalized_target_os()
 			target_arch:          prefs.normalized_target_arch()
+			macos_sdk_root:       flag_plan_sdk_root
 			pic_flag:             pic_flag
 			is_prod:              is_prod
 			no_prod_options:      no_prod_options
@@ -11148,7 +11258,12 @@ pub fn run(args []string) {
 			tcc_resources := v3_tcc_resource_flags(prefs.vroot)
 			mut tcc_args := [c_standard, tcc_resources.base_arg, tcc_resources.include_arg,
 				tcc_resources.library_arg, '-w', '-Werror=implicit-function-declaration']
-			tcc_args << v3_tcc_host_system_flags(prefs.normalized_target_os())
+			tcc_sdk_root := if prefs.normalized_target_os() == 'macos' {
+				macos_sdk_root_cache.get()
+			} else {
+				''
+			}
+			tcc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), tcc_sdk_root)
 			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(),
 				prefs.normalized_target_arch(), is_shared)
 			{
@@ -11226,7 +11341,12 @@ pub fn run(args []string) {
 				tcc_args << pic_flag
 			}
 			tcc_args << [tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
-			tcc_args << v3_tcc_host_system_flags(prefs.normalized_target_os())
+			tcc_sdk_root := if prefs.normalized_target_os() == 'macos' {
+				macos_sdk_root_cache.get()
+			} else {
+				''
+			}
+			tcc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), tcc_sdk_root)
 			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(),
 				prefs.normalized_target_arch(), is_shared)
 			{
