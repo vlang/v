@@ -215,11 +215,14 @@ fn main() {
 	assert run.output.trim_space().split_into_lines() == ['3-6', '7-14']
 }
 
-// `strings.new_builder(if cond { a } else { b })` — the shape `strconv.format_es_old` uses —
-// is a module-qualified call whose argument is a value `if`. The ordering guards used to
-// snapshot the `strings` base into a temp typed by whatever the checker recorded for a module
-// identifier, emitting `strconv__unknown __order_snapshot_1 = strings;`. A base that names a
-// namespace has no usable type, so no ordering temp may be declared for it.
+// `strings.new_builder(if cond { a } else { b })` — the shape `strconv.format_es_old` uses — is a
+// module-qualified call whose argument is a value `if`. The ordering guards used to snapshot the
+// `strings` base into a temp typed by whatever the checker recorded for a module identifier,
+// emitting `strconv__unknown __order_snapshot_1 = strings;`.
+//
+// This pins the reported program against a regression in the namespace classifier, which is what
+// resolves this shape. The backstop behind the classifier is covered directly by
+// vlib/v3/transform/ordering_guard_test.v.
 fn test_module_qualified_call_with_branch_argument_in_imported_module() {
 	out := selfhost_regression_run('module_qualified_branch_arg_imported', 'import strconv
 

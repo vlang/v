@@ -3663,14 +3663,11 @@ fn (mut t Transformer) snapshot_expr_for_reuse(id flat.NodeId) flat.NodeId {
 	if t.is_pure_constant_expr(expr) || t.is_ordering_snapshot_temp(expr) {
 		return expr
 	}
+	tmp_name := t.new_temp('order_snapshot')
 	mut tmp_typ := t.node_type(expr)
 	if tmp_typ.len == 0 {
 		tmp_typ = t.node_type(id)
 	}
-	if !ordering_snapshot_type_is_usable(tmp_typ) {
-		return expr
-	}
-	tmp_name := t.new_temp('order_snapshot')
 	decl := t.make_decl_assign(tmp_name, expr)
 	if tmp_typ.len > 0 {
 		t.set_node_typ(int(decl), tmp_typ)
@@ -3687,27 +3684,41 @@ fn (mut t Transformer) snapshot_transformed_expr_for_reuse(expr flat.NodeId, typ
 	if t.is_pure_constant_expr(expr) || t.is_ordering_snapshot_temp(expr) {
 		return expr
 	}
-	if !ordering_snapshot_type_is_usable(typ) {
-		return expr
-	}
 	tmp_name := t.new_temp(prefix)
 	t.ordering_snapshot_names[tmp_name] = true
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, expr, typ)
 	return t.make_ident(tmp_name)
 }
 
-// ordering_snapshot_type_is_usable reports whether `typ` can back a temp declared by an ordering
-// guard. A name that denotes a compile-time namespace rather than a value has no usable type —
-// the checker records `unknown` for a module identifier and `void` for a type name — so spilling
-// it emits uncompilable C (`unknown __order_snapshot_0 = os;`,
-// `void __order_snapshot_0 = shapes__Box;`). call_selector_base_is_namespace keeps such bases out
-// of the guards for every callee spelling it recognizes; this is the backstop for the rest, where
-// leaving the operand inline only forfeits the source-order guarantee instead of breaking the
-// build. An empty type stays allowed: the temp is then declared without one and C generation
-// infers it from the initializer.
-fn ordering_snapshot_type_is_usable(typ string) bool {
-	name := trimmed_transform_text(typ)
-	return name != 'unknown' && name != 'void'
+// callee_base_is_not_a_runtime_value reports whether the base of a selector callee provably does
+// not denote a value, which means it names a compile-time namespace that
+// call_selector_base_is_namespace failed to recognize (`os.abs_path(...)`,
+// `shapes.Box.make(...)`). Such a base has no storage, so a later branch prelude cannot change
+// what it observes and leaving it inline forfeits no ordering guarantee — whereas spilling it
+// declares a temp at a name no C declaration can use (`unknown __order_snapshot_0 = os;`,
+// `void __order_snapshot_0 = shapes__Box;`).
+//
+// The test is deliberately positive rather than "the type text looks unusable". `node_type`
+// answers `unknown` for anything it cannot resolve, an ordinary runtime operand included, so that
+// spelling alone would silently drop the source-order guarantee the guards exist to provide.
+// `void` is conclusive by itself because no value carries it. `unknown` counts only for a bare
+// identifier that names nothing in scope: a runtime receiver is always a binding, and a generic
+// clone still records one even where it has lost the expression type.
+//
+// Restricted to the callee-base position, the only operand a namespace can occupy.
+fn (t &Transformer) callee_base_is_not_a_runtime_value(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	typ := trimmed_transform_text(t.node_type(id))
+	if typ == 'void' {
+		return true
+	}
+	if typ != 'unknown' {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	return node.kind == .ident && t.raw_var_type(node.value).len == 0
 }
 
 // is_ordering_snapshot_temp reports whether `id` is an identifier naming a temp already created
