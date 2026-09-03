@@ -3555,8 +3555,7 @@ fn (mut g FlatGen) write_type_declaration_block() {
 }
 
 fn (mut g FlatGen) gen_vinit() {
-	needs_closure_init := g.used_fn_contains('closure.closure_init')
-		|| g.used_fn_contains('closure__closure_init')
+	needs_closure_init := g.needs_closure_runtime_init()
 	if g.const_runtime_inits.len == 0 && g.runtime_inits.len == 0 && g.module_init_fns.len == 0
 		&& g.global_inits.len == 0 && !needs_closure_init {
 		return
