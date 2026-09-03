@@ -207,16 +207,13 @@ struct FastArm64Generation {
 // generate_arm64_files parses FastC source tokens directly into SSA and emits a Mach-O binary.
 // It deliberately does not create Flat AST nodes or C source.
 pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output string) !FastArm64Generation {
+	mut timer := fastc_new_phase_timer()
 	input_sources, _ := fastc_resolve_source_files(paths, prefs)!
+	timer.mark('arm64.resolve')
 	fast_arm64_validate_output_source_paths(output, input_sources)!
 	fast_arm64_validate_unsupported_calls(input_sources, prefs)!
 	mut sources := fastc_monomorphize_sources(input_sources, prefs)!
-	// The declaration and signature passes only scan files whose byte-level
-	// flags (type keywords, interfaces, generic fn syntax) allow the
-	// declaration they look for; the generic-method scan computes those flags,
-	// so run it first as the C path does.
-	flags_partial := fastc_collect_generic_method_source_chunk(sources, prefs, 0, sources.len)
-	fastc_apply_scan_flags(mut sources, flags_partial.flags, 0)
+	timer.mark('arm64.monomorphize')
 	mut declared_types := map[string]bool{}
 	mut declared_kinds := map[string]FastcDeclaredTypeKind{}
 	mut enum_flags := map[string]bool{}
@@ -226,13 +223,17 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	mut public_constants := map[string]bool{}
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
-	// The C path's per-file declaration texts and spans are not used here: the
-	// native path collects its type and constant declarations itself below.
+	// The same parallel first pass as the C path: it records the per-file scan
+	// flags and function body spans that the declaration and signature passes
+	// rely on, and indexes the declarations. The generic-method sources and
+	// the per-file declaration texts and spans are not used here: the native
+	// path collects its type and constant declarations itself below.
 	mut index_type_sources := map[string]string{}
 	mut index_constant_sources := map[string]string{}
 	mut index_constant_spans := map[string][]int{}
 	mut index_global_sources := map[string]string{}
-	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut index_type_sources, mut constants, mut public_constants, mut index_constant_sources, mut index_constant_spans, mut index_global_sources, mut globals, mut public_globals)!
+	_ = fastc_collect_generic_and_declaration_indexes(mut sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut index_type_sources, mut constants, mut public_constants, mut index_constant_sources, mut index_constant_spans, mut index_global_sources, mut globals, mut public_globals)!
+	timer.mark('arm64.declaration_indexes')
 	// Non-selfhost programs do not resolve builtin source files, but imported module
 	// signatures can still use V's intrinsic error interface.
 	declared_types['IError'] = true
@@ -252,7 +253,9 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	mut embed_embedders := []string{}
 	mut embed_embeddeds := []string{}
 	fastc_collect_signatures(sources, prefs, declared_types, declared_type_c_names, params_structs, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
+	timer.mark('arm64.signatures')
 	type_decls, constant_sources, enum_values := fast_arm64_collect_declarations(sources, prefs, declared_types, enum_flags, type_source_paths)!
+	timer.mark('arm64.declarations')
 
 	mut program := FastArm64Program.new(prefs, declared_types, functions, type_decls, constant_sources, enum_values)
 	program.register_functions()
@@ -265,6 +268,7 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	module_cleanup_function_keys := fast_arm64_lifecycle_function_keys(module_cleanup_calls, 'cleanup', functions)
 	program.register_module_lifecycle(module_init_function_keys, module_cleanup_function_keys)
 	program.register_print_runtime()
+	timer.mark('arm64.register')
 	reachable_modules := fast_arm64_reachable_modules(sources)
 	mut pending_paths := fast_arm64_entry_source_paths(functions)
 	for {
@@ -295,10 +299,13 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	if 'main' !in program.fn_ids || program.m.funcs[program.fn_ids['main']].blocks.len == 0 {
 		return error('fastc arm64 parser did not find a `main` function')
 	}
+	timer.mark('arm64.parse')
 	fast_arm64_hide_unused_prototypes(mut program.m)
 	mut gen := arm64.Gen.new(program.m)
 	gen.gen()
+	timer.mark('arm64.codegen')
 	gen.write_and_link(output)
+	timer.mark('arm64.link')
 	mut source_paths := []string{cap: sources.len}
 	for source_file in sources {
 		source_paths << source_file.path
