@@ -56,24 +56,6 @@ fn fastc_wait_interface_dispatches(mut pending FastcPendingInterfaceDispatches) 
 	return pending.workers[0].wait()
 }
 
-// fastc_parallel_worker_limit is the number of worker threads a parallel
-// phase may run at once: the CPU count, overridden by VJOBS, and 1 when
-// parallelism is disabled.
-fn fastc_parallel_worker_limit(prefs &pref.Preferences) int {
-	if prefs.no_parallel {
-		return 1
-	}
-	mut jobs := fastc_nr_cpus()
-	vjobs := os.getenv('VJOBS').int()
-	if vjobs > 0 {
-		jobs = vjobs
-	}
-	if os.getenv('V3_FASTC_NO_PARALLEL') != '' {
-		jobs = 1
-	}
-	return jobs
-}
-
 fn fastc_parallel_job_count(item_count int, prefs &pref.Preferences) int {
 	mut jobs := fastc_parallel_worker_limit(prefs)
 	if jobs > item_count {

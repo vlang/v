@@ -1,5 +1,6 @@
 module fastc
 
+import os
 import strings
 
 // The self-host C is emitted without a single `#include`: everything it takes
@@ -13,14 +14,35 @@ import strings
 // table fails the build instead of being compiled with an implicit `int`
 // signature. c_abi_test.v checks the table against the host headers.
 
+// fastc_host_uses_glibc reports whether this Linux process has positively
+// identifiable glibc objects loaded. A static process or an unavailable procfs
+// deliberately returns false: retaining the system headers is the safe fallback.
+fn fastc_host_uses_glibc() bool {
+	if os.user_os() != 'linux' {
+		return false
+	}
+	maps := os.read_file('/proc/self/maps') or { return false }
+	for line in maps.split_into_lines() {
+		base := os.file_name(line.all_after_last(' '))
+		if base == 'libc.so.6' || base.starts_with('ld-linux-') {
+			return true
+		}
+		if base.starts_with('libc-') && base.ends_with('.so') && base.len > 'libc-.so'.len
+			&& base['libc-'.len].is_digit() {
+			return true
+		}
+	}
+	return false
+}
+
 // fastc_c_abi_supported reports whether the header-free prelude is available
 // for a target (the tables cover 64-bit macOS and glibc Linux).
-fn fastc_c_abi_supported(target_os string, target_arch string) bool {
+fn fastc_c_abi_supported(target_os string, target_arch string, host_uses_glibc bool) bool {
 	if target_os == 'macos' {
 		return target_arch in ['arm64', 'amd64']
 	}
 	if target_os == 'linux' {
-		return target_arch in ['arm64', 'amd64']
+		return host_uses_glibc && target_arch in ['arm64', 'amd64']
 	}
 	return false
 }

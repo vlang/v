@@ -216,18 +216,19 @@ drops the indexed functions (and enum `str`/print helpers) that nothing reachabl
 the lifecycle hooks or the non-body pieces refers to, which the source-level name-grouped
 reachability keeps: each worker records its definitions and the mangled names they mention, and
 the assembly cuts the unreachable spans out of the pieces (about 9% of the self-host C).
+
 The TinyCC step itself is split: `fastc_write_c_units` cuts the pieces into up to 8
 translation units (the shared head of typedefs, prototypes and runtime in every unit, the
 dispatch tables, lifecycle functions and `main` only in the first, the file bodies grouped by
 size; the globals are definitions in the first unit and `extern` declarations in the others),
 `fastc_compile_c_units` compiles them with concurrent `tcc -c` processes started through
 `posix_spawn` (forking the large compiler process costs more), and one `tcc` call links the
-objects (`VJOBS=1` keeps the single-file build; both give the same C with `-keepc`). On macOS
-TinyCC runs Apple's `codesign` after linking, which costs ~50 ms per build: the drivers put a
-no-op `codesign` first on its PATH and ad-hoc sign the executable themselves
-(`gen/fastc/macho_sign.v`, SHA-256 page hashes through CommonCrypto, patched into the file in
-place). The SDK path is taken from `SDKROOT` or the known SDK locations before `xcrun` is
-asked (~8 ms per call).
+objects (`VJOBS=1`, `V3_FASTC_NO_PARALLEL=1`, or `-no-parallel` keeps the single-file build; both
+give the same C with `-keepc`). On macOS TinyCC runs Apple's `codesign` after linking, which costs
+~50 ms per build: the drivers put a no-op `codesign` first on its PATH and ad-hoc sign the
+executable themselves (`gen/fastc/macho_sign.v`, SHA-256 page hashes through CommonCrypto,
+patched into the file in place). The SDK path is taken from `SDKROOT` or the toolchain selected by
+`xcrun`; conventional SDK locations are used only as a fallback.
 
 The standalone compiler supports `self` directly and defaults that command to FastC. For example,
 `./v self x5` replaces the compiler through five descendant FastC generations, with each installed

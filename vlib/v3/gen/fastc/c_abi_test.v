@@ -9,7 +9,7 @@ import os
 fn test_c_abi_prelude_matches_host_headers() {
 	host_os := os.user_os()
 	host_arch := $if arm64 { 'arm64' } $else $if amd64 { 'amd64' } $else { '' }
-	if !fastc_c_abi_supported(host_os, host_arch) {
+	if !fastc_c_abi_supported(host_os, host_arch, fastc_host_uses_glibc()) {
 		return
 	}
 	tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
@@ -49,6 +49,15 @@ fn test_c_abi_prelude_matches_host_headers() {
 	run := os.execute(exe_path)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
+}
+
+fn test_c_abi_prelude_requires_glibc_on_linux() {
+	for arch in ['amd64', 'arm64'] {
+		assert fastc_c_abi_supported('linux', arch, true)
+		assert !fastc_c_abi_supported('linux', arch, false)
+	}
+	assert fastc_c_abi_supported('macos', 'amd64', false)
+	assert !fastc_c_abi_supported('linux', 'x86', true)
 }
 
 // fastc_c_abi_check_source renders the C program that compares the prefixed

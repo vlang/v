@@ -554,8 +554,40 @@ fn test_fastc_prealloc_arena_root_is_per_thread() {
 	// never be emitted as a plain shared global.
 	assert rendered.contains('#define g_memory_block (*(VMemoryBlock* *)v_prealloc_tls_slot())')
 	assert rendered.contains('pthread_getspecific(v_prealloc_tls_key)')
-	assert rendered.contains('_Thread_local VMemoryBlock* g_memory_block;')
+	assert rendered.contains('static _Thread_local VMemoryBlock* g_memory_block;')
 	assert !rendered.contains('static VMemoryBlock* g_memory_block;')
+}
+
+fn test_fastc_split_rewrites_prealloc_tls_global_linkage() {
+	definition := 'static _Thread_local VMemoryBlock* g_memory_block;\n'
+	assert fastc_extern_declarations(definition, false) == '_Thread_local VMemoryBlock* g_memory_block;\n'
+	assert fastc_extern_declarations(definition, true) == 'extern _Thread_local VMemoryBlock* g_memory_block;\n'
+}
+
+fn test_fastc_tcc_job_count_respects_parallel_controls() {
+	old_vjobs := os.getenv_opt('VJOBS')
+	old_disabled := os.getenv_opt('V3_FASTC_NO_PARALLEL')
+	defer {
+		if value := old_vjobs {
+			os.setenv('VJOBS', value, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+		if value := old_disabled {
+			os.setenv('V3_FASTC_NO_PARALLEL', value, true)
+		} else {
+			os.unsetenv('V3_FASTC_NO_PARALLEL')
+		}
+	}
+	os.setenv('VJOBS', '4', true)
+	os.unsetenv('V3_FASTC_NO_PARALLEL')
+	mut prefs := pref.new_preferences()
+	assert fastc_tcc_job_count(prefs) == 4
+	prefs.no_parallel = true
+	assert fastc_tcc_job_count(prefs) == 1
+	prefs.no_parallel = false
+	os.setenv('V3_FASTC_NO_PARALLEL', '1', true)
+	assert fastc_tcc_job_count(prefs) == 1
 }
 
 fn test_fastc_fragmented_generation_matches_serial_output() {

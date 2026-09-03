@@ -1096,6 +1096,7 @@ struct Parser {
 	public_globals      map[string]bool
 	used_function_names map[string]bool
 	selfhost            bool
+	header_free         bool
 	// source_has_select is false only when the file provably holds no `select`
 	// word (see fastc_source_scan_flags), so block pre-scans for channel
 	// select statements can be skipped.
@@ -1659,7 +1660,9 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	for name, _ in constant_output.composite_types {
 		composite_types[name] = true
 	}
-	global_output := fastc_generate_global_declarations(ordered_sources, global_sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, constant_output.compile_time_values, public_constants, constant_types, globals, public_globals, mut global_types)!
+	header_free := prefs.building_v
+		&& fastc_c_abi_supported(prefs.target.os, prefs.target.arch, fastc_host_uses_glibc())
+	global_output := fastc_generate_global_declarations(ordered_sources, global_sources, prefs, header_free, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, constant_output.compile_time_values, public_constants, constant_types, globals, public_globals, mut global_types)!
 	timer.mark('global_declarations')
 	for name, _ in global_output.composite_types {
 		composite_types[name] = true
@@ -1681,7 +1684,6 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// A self-host build for a target with a C ABI table takes no header:
 	// the prelude declares what the emitted C uses, and `#include` lines are
 	// left out of the output.
-	header_free := prefs.building_v && fastc_c_abi_supported(prefs.target.os, prefs.target.arch)
 	mut inlined_header_paths := []string{}
 	mut prototype_pieces := []string{cap: sources.len + 16}
 	// The per-file bodies are stitched by reference: the directive partition
@@ -2152,14 +2154,28 @@ fn fastc_extern_declarations(text string, as_extern bool) string {
 	return out.str()
 }
 
-// fastc_tcc_job_count is the number of TinyCC processes a driver compiles a
-// program's translation units with.
-pub fn fastc_tcc_job_count(prefs &pref.Preferences) int {
+// fastc_parallel_worker_limit is the number of worker threads or compiler
+// processes a parallel phase may run at once: the CPU count, overridden by
+// VJOBS, and 1 when parallelism is disabled.
+fn fastc_parallel_worker_limit(prefs &pref.Preferences) int {
+	if prefs.no_parallel {
+		return 1
+	}
 	mut jobs := fastc_nr_cpus()
 	vjobs := os.getenv('VJOBS').int()
 	if vjobs > 0 {
 		jobs = vjobs
 	}
+	if os.getenv('V3_FASTC_NO_PARALLEL') != '' {
+		jobs = 1
+	}
+	return jobs
+}
+
+// fastc_tcc_job_count is the number of TinyCC processes a driver compiles a
+// program's translation units with.
+pub fn fastc_tcc_job_count(prefs &pref.Preferences) int {
+	mut jobs := fastc_parallel_worker_limit(prefs)
 	if jobs > 8 {
 		jobs = 8
 	}

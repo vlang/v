@@ -614,7 +614,7 @@ fn fastc_merge_declaration_partial(partial FastcDeclarationPartial, mut declared
 	}
 }
 
-fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_sources map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, constant_values map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, mut global_types map[string]string) !FastcGlobalDeclarations {
+fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_sources map[string]string, prefs &pref.Preferences, header_free bool, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, constant_values map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, mut global_types map[string]string) !FastcGlobalDeclarations {
 	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	mut out := strings.new_builder(1024)
 	mut module_initializers := map[string]string{}
@@ -660,6 +660,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			globals:                      globals
 			public_globals:               public_globals
 			selfhost:                     prefs.building_v
+			header_free:                  header_free
 			s:                            scanner.new_scanner(prefs, .normal)
 			out:                          strings.new_builder(0)
 			protos:                       strings.new_builder(0)
@@ -798,9 +799,9 @@ fn fastc_write_prealloc_tls_global(mut out strings.Builder, styp string, c_name 
 	out.writeln('}')
 	out.writeln('#define ${c_name} (*(${styp} *)v_prealloc_tls_slot())')
 	out.writeln('#elif defined(__cplusplus)')
-	out.writeln('thread_local ${styp} ${c_name};')
+	out.writeln('static thread_local ${styp} ${c_name};')
 	out.writeln('#else')
-	out.writeln('_Thread_local ${styp} ${c_name};')
+	out.writeln('static _Thread_local ${styp} ${c_name};')
 	out.writeln('#endif')
 }
 
@@ -853,8 +854,7 @@ fn (mut g Parser) parse_global_declaration(mut out strings.Builder, mut initiali
 	if g.selfhost && name == 'g_memory_block' && fastc_prealloc_enabled(g.prefs) {
 		// The prealloc arena root must be per-thread; a shared global would be
 		// corrupted by the parallel per-file generator's concurrent bump-allocations.
-		header_free := g.selfhost && fastc_c_abi_supported(g.prefs.target.os, g.prefs.target.arch)
-		fastc_write_prealloc_tls_global(mut out, typ, c_name, header_free)
+		fastc_write_prealloc_tls_global(mut out, typ, c_name, g.header_free)
 	} else {
 		out.writeln('static ${typ} ${c_name};')
 	}

@@ -28,36 +28,54 @@ const cs_blob_wrapper_magic = u32(0xfade0b01)
 // fastc_codesign_shim_name is the command name TinyCC runs after linking.
 const fastc_codesign_shim_name = 'codesign'
 
+// FastcCodesignShim owns the temporary codesign shim and the PATH value that
+// must be restored when its use ends.
+pub struct FastcCodesignShim {
+pub:
+	dir string
+mut:
+	previous_path     string
+	previous_path_set bool
+}
+
 // fastc_codesign_shim_dir prepares a directory whose `codesign` is a link to
 // `/usr/bin/true` and puts it first on PATH, so TinyCC's post-link `codesign`
 // call (Apple's tool takes tens of milliseconds) does nothing; the driver
-// then signs the executable itself with fastc_sign_macho_adhoc. It returns
-// the directory (to remove afterwards) or '' when the shim is not used (not
-// macOS, or the link cannot be made), in which case TinyCC's own signing
-// stands.
-pub fn fastc_codesign_shim_dir() string {
+// then signs the executable itself with fastc_sign_macho_adhoc.
+pub fn fastc_codesign_shim_dir() FastcCodesignShim {
 	if os.user_os() != 'macos' || !os.is_executable(fastc_codesign_noop_command) {
-		return ''
+		return FastcCodesignShim{}
 	}
 	dir := os.join_path_single(os.vtmp_dir(), 'fastc_codesign_shim_${os.getpid()}')
-	os.mkdir_all(dir) or { return '' }
+	os.mkdir_all(dir) or { return FastcCodesignShim{} }
 	link := os.join_path_single(dir, fastc_codesign_shim_name)
 	os.rm(link) or {}
 	os.symlink(fastc_codesign_noop_command, link) or {
 		os.rmdir_all(dir) or {}
-		return ''
+		return FastcCodesignShim{}
 	}
-	os.setenv('PATH', dir + ':' + os.getenv('PATH'), true)
-	return dir
+	previous_path := os.getenv_opt('PATH')
+	path := previous_path or { '' }
+	os.setenv('PATH', dir + ':' + path, true)
+	return FastcCodesignShim{
+		dir: dir
+		previous_path: path
+		previous_path_set: previous_path != none
+	}
 }
 
 // fastc_codesign_noop_command stands in for `codesign` while TinyCC links.
 const fastc_codesign_noop_command = '/usr/bin/true'
 
-// fastc_remove_codesign_shim_dir removes the shim directory again.
-pub fn fastc_remove_codesign_shim_dir(dir string) {
-	if dir != '' {
-		os.rmdir_all(dir) or {}
+// fastc_remove_codesign_shim_dir restores PATH and removes the shim directory.
+pub fn fastc_remove_codesign_shim_dir(shim FastcCodesignShim) {
+	if shim.dir != '' {
+		if shim.previous_path_set {
+			os.setenv('PATH', shim.previous_path, true)
+		} else {
+			os.unsetenv('PATH')
+		}
+		os.rmdir_all(shim.dir) or {}
 	}
 }
 

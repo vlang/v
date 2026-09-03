@@ -2,6 +2,21 @@ module fastc
 
 import os
 
+fn test_fastc_codesign_shim_restores_path() {
+	if os.user_os() != 'macos' {
+		return
+	}
+	previous_path := os.getenv_opt('PATH')
+	shim := fastc_codesign_shim_dir()
+	if shim.dir == '' {
+		return
+	}
+	assert os.getenv('PATH').starts_with(shim.dir + ':')
+	fastc_remove_codesign_shim_dir(shim)
+	assert os.getenv_opt('PATH') == previous_path
+	assert !os.exists(shim.dir)
+}
+
 // A TinyCC-linked executable signed in process must run and pass Apple's
 // signature verification.
 fn test_fastc_sign_macho_adhoc_matches_codesign() {
