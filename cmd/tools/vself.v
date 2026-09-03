@@ -24,8 +24,7 @@ fn main() {
 	vexe_name := os.file_name(vexe)
 	short_v_name := vexe_name.all_before('.')
 
-	recompilation.must_be_enabled(vroot,
-		'Please install V from source, to use `${vexe_name} self` .')
+	recompilation.must_be_enabled(vroot, 'Please install V from source, to use `${vexe_name} self` .')
 	os.chdir(vroot)!
 	os.setenv('VCOLORS', 'always', true)
 	command_index := os.getenv('VSELF_COMMAND_INDEX').int()
@@ -46,10 +45,11 @@ fn main() {
 		uos := os.user_os()
 		uname := os.uname()
 		if uos == 'macos' {
-			// V3 relies on native thread-local preallocation scopes to keep
-			// compiler self-builds below the memory limit. TCC does not support
-			// that implementation on macOS, so use the system compiler.
-			args << ['-cc', os.getenv_opt('CC') or { 'cc' }]
+			// Apple Silicon's bundled TCC is much faster for compiler rebuilds. The
+			// generated compiler uses pthread-backed allocator state because native
+			// TinyCC TLS is not reliable on macOS.
+			default_cc := if uname.machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
+			args << ['-cc', os.getenv_opt('CC') or { default_cc }]
 		} else if uos == 'linux' && uname.machine in ['arm64', 'aarch64'] {
 			// Bundled TCC can hang while bootstrapping V on Linux ARM64, so
 			// prefer the system compiler for self-builds there.
@@ -327,13 +327,14 @@ fn self_build_supports_prealloc(args []string) bool {
 		i++
 	}
 	return target_os in ['linux', 'macos'] && gc == 'none'
-		&& self_ccompiler_supports_prealloc(ccompiler)
+		&& self_ccompiler_supports_prealloc(ccompiler, target_os)
 }
 
-fn self_ccompiler_supports_prealloc(ccompiler string) bool {
+fn self_ccompiler_supports_prealloc(ccompiler string, target_os string) bool {
 	cc := os.file_name(ccompiler.trim_space()).to_lower_ascii()
-	return !cc.contains('tcc') && !cc.contains('tinyc') && !cc.contains('tinygcc')
-		&& !cc.contains('tiny_gcc') && !cc.contains('tiny-gcc')
+	is_tinyc := cc.contains('tcc') || cc.contains('tinyc') || cc.contains('tinygcc')
+		|| cc.contains('tiny_gcc') || cc.contains('tiny-gcc')
+	return !is_tinyc || target_os == 'macos'
 }
 
 fn has_profile_cflag(args []string) bool {
@@ -551,8 +552,7 @@ fn bootstrap_self_build(vroot string, args []string, final_binary string) ! {
 		os.rm(bootstrap_v1) or {}
 		os.rm(bootstrap_v2) or {}
 	}
-	vc_source := os.join_path(vroot, 'vc',
-		if os.user_os() == 'windows' { 'v_win.c' } else { 'v.c' })
+	vc_source := os.join_path(vroot, 'vc', if os.user_os() == 'windows' { 'v_win.c' } else { 'v.c' })
 	if !os.exists(vc_source) {
 		return error('bootstrap fallback failed: `${vc_source}` is missing')
 	}
@@ -585,8 +585,8 @@ fn bootstrap_c_cmd(cc string, out_binary string, vc_source string) string {
 		parts << ['-std=c99', '-municode', '-w', '-o', os.quoted_path(out_binary),
 			os.quoted_path(vc_source), '-lws2_32']
 	} else {
-		parts << ['-std=c99', '-w', '-o', os.quoted_path(out_binary),
-			os.quoted_path(vc_source), '-lm', '-lpthread']
+		parts << ['-std=c99', '-w', '-o', os.quoted_path(out_binary), os.quoted_path(vc_source),
+			'-lm', '-lpthread']
 	}
 	return parts.join(' ')
 }
@@ -608,7 +608,11 @@ fn list_folder(short_v_name string, bmessage string, message string) {
 
 fn backup_old_version_and_rename_newer(short_v_name string) !bool {
 	mut errors := []string{}
-	short_v_file := if os.user_os() == 'windows' { '${short_v_name}.exe' } else { '${short_v_name}' }
+	short_v_file := if os.user_os() == 'windows' {
+		'${short_v_name}.exe'
+	} else {
+		'${short_v_name}'
+	}
 	short_v2_file := if os.user_os() == 'windows' { 'v2.exe' } else { 'v2' }
 	short_bak_file := if os.user_os() == 'windows' { 'v_old.exe' } else { 'v_old' }
 	v_file := os.real_path(short_v_file)

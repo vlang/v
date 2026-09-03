@@ -17,7 +17,7 @@ fn test_fastc_codesign_shim_restores_path() {
 	assert !os.exists(shim.dir)
 }
 
-fn test_fastc_prepared_libtcc_link() {
+fn test_fastc_prepared_link() {
 	if os.user_os() != 'macos' {
 		return
 	}
@@ -43,10 +43,16 @@ fn test_fastc_prepared_libtcc_link() {
 	compile := os.execute('${tcc} ${base_args.join(' ')} -c -o ${object_path} ${source_path}')
 	assert compile.exit_code == 0, compile.output
 	mut prepared := fastc_prepare_link(tcc, tcc_lib, base_args)
-	skipped_codesigns := C.v_fastc_tcc_skipped_codesign_count()
-	link_result := fastc_finish_link(mut prepared, [object_path], [], exe_path)
-	assert link_result.exit_code == 0, link_result.output
-	assert C.v_fastc_tcc_skipped_codesign_count() == skipped_codesigns + 1
+	$if tinyc {
+		link_result := fastc_finish_link(mut prepared, [object_path], [], exe_path)
+		assert link_result.exit_code == 0, link_result.output
+		assert !fastc_prepared_link_skips_codesign(&prepared)
+	} $else {
+		skipped_codesigns := C.v_fastc_tcc_skipped_codesign_count()
+		link_result := fastc_finish_link(mut prepared, [object_path], [], exe_path)
+		assert link_result.exit_code == 0, link_result.output
+		assert C.v_fastc_tcc_skipped_codesign_count() == skipped_codesigns + 1
+	}
 	fastc_sign_macho_adhoc(exe_path) or { panic(err) }
 	assert os.execute(exe_path).output.trim_space() == 'linked'
 	assert os.system('/usr/bin/true') == 0

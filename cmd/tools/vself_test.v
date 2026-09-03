@@ -12,8 +12,7 @@ fn test_linux_tinyc_self_build_does_not_enable_prealloc() {
 	defer {
 		os.rm(tool) or {}
 	}
-	build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(tool)} ${os.quoted_path(os.join_path(vroot,
-		'cmd', 'tools', 'vself.v'))}')
+	build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
 	assert build.exit_code == 0, build.output
 	for compiler in ['tcc', 'tinyc'] {
 		result :=
@@ -38,7 +37,7 @@ fn test_linux_tinyc_self_build_does_not_enable_prealloc() {
 	assert clang_override_result.output.contains('-prealloc'), clang_override_result.output
 }
 
-fn test_macos_default_self_build_uses_prealloc_capable_compiler() {
+fn test_macos_default_self_build_compiler_selection() {
 	$if !macos {
 		return
 	}
@@ -47,12 +46,17 @@ fn test_macos_default_self_build_uses_prealloc_capable_compiler() {
 	defer {
 		os.rm(tool) or {}
 	}
-	build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(tool)} ${os.quoted_path(os.join_path(vroot,
-		'cmd', 'tools', 'vself.v'))}')
+	build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
 	assert build.exit_code == 0, build.output
-	result :=
+	default_result :=
+		os.execute('env -u CC VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -o /tmp/vself_macos_prealloc_test')
+	assert default_result.exit_code == 0, default_result.output
+	default_cc := if os.uname().machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
+	assert default_result.output.contains('-cc ${default_cc}'), default_result.output
+	assert default_result.output.contains('-prealloc'), default_result.output
+	override_result :=
 		os.execute('CC=cc VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -o /tmp/vself_macos_prealloc_test')
-	assert result.exit_code == 0, result.output
-	assert result.output.contains('-cc cc'), result.output
-	assert result.output.contains('-prealloc'), result.output
+	assert override_result.exit_code == 0, override_result.output
+	assert override_result.output.contains('-cc cc'), override_result.output
+	assert override_result.output.contains('-prealloc'), override_result.output
 }
