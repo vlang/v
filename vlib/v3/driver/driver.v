@@ -13391,13 +13391,23 @@ fn same_dir_module_source_files(test_file string, module_name string, prefs &pre
 	}
 	// V permits a small project fixture to put an imported module beside its
 	// main/test files. Include those directly imported, differently-declared
-	// files in the initial parse so resolving `import localmod` sees the same
-	// sources as the regular compiler.
+	// files in the initial parse when normal module lookup cannot find them.
+	// Resolvable same-directory modules (notably tests under vlib/os that import
+	// os) must remain imports, or their sources are parsed and emitted twice.
+	real_dir := os.real_path(dir)
+	mut normally_resolved_here := map[string]bool{}
+	for imported in imported_modules.keys() {
+		resolved := prefs.get_module_path(imported, test_file)
+		if resolved.len > 0 && os.is_dir(resolved) && os.real_path(resolved) == real_dir {
+			normally_resolved_here[imported] = true
+		}
+	}
 	for file in all_files {
 		if file in files {
 			continue
 		}
-		if imported_modules[declared_module_in_file(file)] {
+		declared_module := declared_module_in_file(file)
+		if imported_modules[declared_module] && !normally_resolved_here[declared_module] {
 			files << file
 		}
 	}

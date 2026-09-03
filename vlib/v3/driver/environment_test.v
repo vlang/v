@@ -55,6 +55,39 @@ fn test_v3_environment_show_test_stats_reads_vtest_show_asserts() {
 	assert v3_environment_show_test_stats()
 }
 
+fn test_single_moduleless_test_does_not_duplicate_a_resolvable_same_dir_module() {
+	root := os.join_path(os.temp_dir(), 'v3_same_dir_test_import_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	module_dir := os.join_path(root, 'vlib', 'sample')
+	os.mkdir_all(module_dir)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	test_file := os.join_path(module_dir, 'sample_test.v')
+	module_file := os.join_path(module_dir, 'sample.v')
+	os.write_file(test_file, 'import sample\n\nfn test_sample() {}\n')!
+	os.write_file(module_file, 'module sample\n\npub fn value() int { return 1 }\n')!
+	mut prefs := pref.new_preferences()
+	prefs.vroot = root
+	assert same_dir_module_source_files(test_file, '', prefs) == []
+}
+
+fn test_single_moduleless_test_keeps_an_unresolvable_same_dir_fixture_module() {
+	root := os.join_path(os.temp_dir(), 'v3_same_dir_test_fixture_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	test_file := os.join_path(root, 'fixture_test.v')
+	module_file := os.join_path(root, 'helper.v')
+	os.write_file(test_file, 'import helper\n\nfn test_helper() {}\n')!
+	os.write_file(module_file, 'module helper\n\npub fn value() int { return 1 }\n')!
+	mut prefs := pref.new_preferences()
+	prefs.vroot = os.join_path(root, 'toolchain')
+	assert same_dir_module_source_files(test_file, '', prefs) == [module_file]
+}
+
 fn test_v3_diagnostic_color_option() {
 	defer {
 		apply_v3_diagnostic_color_option('-color')
