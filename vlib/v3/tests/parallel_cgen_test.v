@@ -297,7 +297,7 @@ fn test_parallel_cgen_worker_resolves_generic_struct_method_signature() {
 	assert run.output.trim_space() == '550740'
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
 	assert c_code.contains('Box_int__accept'), c_code
-	assert c_code.contains('Optional_int x'), c_code
+	assert c_code.contains('Optional_i64 x'), c_code
 	assert !c_code.contains('?T'), c_code
 }
 
@@ -312,9 +312,9 @@ fn test_parallel_cgen_generic_optional_method_uses_concrete_optional_abi_in_call
 
 	c_code := os.read_file(c_out) or { panic(err) }
 	assert c_code.contains('Box_int__accept'), c_code
-	assert c_code.contains('Optional_int x'), c_code
-	assert c_code.contains('Box_int__accept(b, (Optional_int){.ok = true, .value = 7})'), c_code
-	assert c_code.contains('Box_int__accept(b, (Optional_int){.ok = true, .value = 8})'), c_code
+	assert c_code.contains('Optional_i64 x'), c_code
+	assert c_code.contains('Box_int__accept(b, (Optional_i64){.ok = true, .value = 7})'), c_code
+	assert c_code.contains('Box_int__accept(b, (Optional_i64){.ok = true, .value = 8})'), c_code
 	assert !c_code.contains('Box_int__accept(b, (Optional){.ok = true, .value = 7})'), c_code
 	assert !c_code.contains('Box_int__accept(b, (Optional){.ok = true, .value = 8})'), c_code
 }

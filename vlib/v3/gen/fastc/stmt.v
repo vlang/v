@@ -5,7 +5,8 @@ import v3.pref
 import v3.token
 
 fn (mut g Parser) parse_block_body() !bool {
-	outer_locals := g.locals.clone()
+	local_scope_start := g.local_scope_changes.len
+	g.local_scope_depth++
 	outer_statement_reachable := g.statement_reachable
 	deferred_line_start := g.deferred_lines.len
 	deferred_block_start := g.deferred_block_starts.len
@@ -36,9 +37,39 @@ fn (mut g Parser) parse_block_body() !bool {
 	g.write_deferred_blocks_from(deferred_block_start)
 	g.deferred_lines.trim(deferred_line_start)
 	g.deferred_block_starts.trim(deferred_block_start)
-	g.locals = outer_locals.clone()
+	g.restore_local_scope(local_scope_start)
+	g.local_scope_depth--
 	g.statement_reachable = outer_statement_reachable
 	return terminates
+}
+
+fn (mut g Parser) set_scoped_local(name string, local FastcLocal) {
+	if g.local_scope_depth > 0 {
+		if previous := g.locals[name] {
+			g.local_scope_changes << FastcLocalScopeChange{
+				name: name
+				previous: previous
+				had_previous: true
+			}
+		} else {
+			g.local_scope_changes << FastcLocalScopeChange{
+				name: name
+			}
+		}
+	}
+	g.locals[name] = local
+}
+
+fn (mut g Parser) restore_local_scope(start int) {
+	for i := g.local_scope_changes.len - 1; i >= start; i-- {
+		change := g.local_scope_changes[i]
+		if change.had_previous {
+			g.locals[change.name] = change.previous
+		} else {
+			g.locals.delete(change.name)
+		}
+	}
+	g.local_scope_changes.trim(start)
 }
 
 fn (mut g Parser) parse_statement() !bool {
@@ -161,7 +192,7 @@ fn (mut g Parser) parse_select_statement() !bool {
 }
 
 fn (g &Parser) open_block_contains_select_statement() bool {
-	if g.tok != .lcbr {
+	if g.tok != .lcbr || !g.source_has_select {
 		return false
 	}
 	mut lookahead := scanner.new_scanner(g.prefs, .normal)
@@ -366,7 +397,7 @@ fn (mut g Parser) parse_loop_block_body() !FastcLoopBlockResult {
 	g.loop_has_breaks.delete_last()
 	g.loop_defer_block_starts.delete_last()
 	return FastcLoopBlockResult{
-		terminates:          terminates
+		terminates: terminates
 		has_reachable_break: has_reachable_break
 	}
 }
@@ -389,16 +420,16 @@ fn (mut g Parser) parse_match_statement() !bool {
 	is_boxed := g.is_boxed_type(subject_type)
 	boxed_access := if subject_type.ends_with('*') { '->' } else { '.' }
 	mut subject_local := ''
-	if is_boxed && subject_tokens.len == 1 && subject_tokens[0].tok == .name
-		&& subject_tokens[0].lit in g.locals {
+	if is_boxed && subject_tokens.len == 1 && subject_tokens[0].tok == .name && subject_tokens[0].lit in g.locals {
 		subject_local = subject_tokens[0].lit
-	} else if is_boxed && subject_tokens.len == 2 && subject_tokens[0].tok in [.key_mut, .amp]
-		&& subject_tokens[1].tok == .name && subject_tokens[1].lit in g.locals {
+	} else if is_boxed && subject_tokens.len == 2 && subject_tokens[0].tok in [
+		.key_mut,
+		.amp,
+	] && subject_tokens[1].tok == .name && subject_tokens[1].lit in g.locals {
 		subject_local = subject_tokens[1].lit
 	}
 	mut subject_member_path := ''
-	if is_boxed && subject_tokens.len >= 3 && subject_tokens.len % 2 == 1
-		&& subject_tokens[0].tok == .name && subject_tokens[0].lit in g.locals {
+	if is_boxed && subject_tokens.len >= 3 && subject_tokens.len % 2 == 1 && subject_tokens[0].tok == .name && subject_tokens[0].lit in g.locals {
 		mut is_member_chain := true
 		mut path := subject_tokens[0].lit
 		for i := 1; i + 1 < subject_tokens.len; i += 2 {
@@ -459,8 +490,8 @@ fn (mut g Parser) parse_match_statement() !bool {
 					value = '${subject_type.trim_right('*')}__${g.lit}'
 					g.next()
 				} else {
-					value = g.read_expression([token.Token.comma, token.Token.lcbr, token.Token.dotdot,
-						token.Token.ellipsis])!
+					value = g.read_expression([token.Token.comma, token.Token.lcbr,
+						token.Token.dotdot, token.Token.ellipsis])!
 					if value == '' {
 						return g.unsupported('empty match branch value')
 					}
@@ -471,8 +502,7 @@ fn (mut g Parser) parse_match_statement() !bool {
 						g.next()
 						finish := g.read_expression([token.Token.comma, token.Token.lcbr])!
 						finish_tokens := g.last_expression.clone()
-						case_key = 'range:${start_key}..${g.normalized_match_case_key(finish_tokens,
-							finish)}'
+						case_key = 'range:${start_key}..${g.normalized_match_case_key(finish_tokens, finish)}'
 						value = '((${subject_name}) >= (${start}) && (${subject_name}) <= (${finish}))'
 						value_is_condition = true
 					}
@@ -498,8 +528,7 @@ fn (mut g Parser) parse_match_statement() !bool {
 		} else {
 			mut conditions := []string{}
 			for value_index, value in values {
-				if is_boxed || (value_index < values_are_conditions.len
-					&& values_are_conditions[value_index]) {
+				if is_boxed || (value_index < values_are_conditions.len && values_are_conditions[value_index]) {
 					conditions << '(${value})'
 				} else if is_string {
 					conditions << 'builtin__string_eq(${subject_name}, ${value})'
@@ -516,8 +545,7 @@ fn (mut g Parser) parse_match_statement() !bool {
 		mut had_member_smartcast := false
 		mut member_smartcast_active := false
 		common_numeric_type := fastc_match_common_numeric_variant(variant_types)
-		smartcast_active := is_boxed && !is_else
-			&& (variant_types.len == 1 || common_numeric_type != '') && subject_local != ''
+		smartcast_active := is_boxed && !is_else && (variant_types.len == 1 || common_numeric_type != '') && subject_local != ''
 		if smartcast_active {
 			variant_cname := if common_numeric_type != '' {
 				common_numeric_type
@@ -525,8 +553,7 @@ fn (mut g Parser) parse_match_statement() !bool {
 				variant_types[0]
 			}
 			smartcast_value := if common_numeric_type != '' {
-				fastc_match_multi_variant_value(subject_name, boxed_access, variant_types,
-					common_numeric_type)
+				fastc_match_multi_variant_value(subject_name, boxed_access, variant_types, common_numeric_type)
 			} else {
 				'*(${variant_cname} *)${subject_name}${boxed_access}_object'
 			}
@@ -534,7 +561,7 @@ fn (mut g Parser) parse_match_statement() !bool {
 			smartcast_saved = g.locals[subject_local] or { FastcLocal{} }
 			g.locals[subject_local] = FastcLocal{
 				is_mut: smartcast_saved.is_mut
-				typ:    variant_cname
+				typ: variant_cname
 			}
 		}
 		if is_boxed && !is_else && variant_types.len == 1 && subject_member_path != '' {
@@ -546,7 +573,7 @@ fn (mut g Parser) parse_match_statement() !bool {
 			}
 			had_member_smartcast = subject_member_path in g.member_smartcasts
 			g.member_smartcasts[subject_member_path] = FastcMemberSmartcast{
-				typ:    variant_cname + '*'
+				typ: variant_cname + '*'
 				source: member_smartcast_name
 			}
 			member_smartcast_active = true
@@ -606,8 +633,7 @@ fn (mut g Parser) read_match_type_key() ?string {
 		}
 		g.next()
 		value_key := g.read_match_type_key() or { return none }
-		map_c := fastc_map_c_type(fastc_c_declared_type_name(key_key),
-			fastc_c_declared_type_name(value_key))
+		map_c := fastc_map_c_type(fastc_c_declared_type_name(key_key), fastc_c_declared_type_name(value_key))
 		fastc_register_composite_type(map_c, mut g.composite_types)
 		return map_c
 	}
@@ -658,13 +684,11 @@ fn (mut g Parser) parse_return() !bool {
 		})
 		return true
 	}
-	if g.selfhost && (g.return_type.trim_right('*') == 'MultiReturn'
-		|| (g.return_type == 'Option' && g.option_return_type == 'MultiReturn')) {
+	if g.selfhost && (g.return_type.trim_right('*') == 'MultiReturn' || (g.return_type == 'Option' && g.option_return_type == 'MultiReturn')) {
 		mut values := []string{}
 		mut value_types := []string{}
 		for {
-			value :=
-				g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
+			value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 			if value == '' {
 				return g.unsupported('empty multi-return value')
 			}
@@ -691,8 +715,7 @@ fn (mut g Parser) parse_return() !bool {
 			g.write_line('return ${evaluated_values[0]};')
 			return true
 		}
-		if g.return_type == 'Option' && values.len == 1
-			&& value_types[0].trim_right('*') == 'IError' {
+		if g.return_type == 'Option' && values.len == 1 && value_types[0].trim_right('*') == 'IError' {
 			g.write_line('return (Option){.err=${evaluated_values[0]}, .state=1};')
 			return true
 		}
@@ -703,7 +726,7 @@ fn (mut g Parser) parse_return() !bool {
 			for value in evaluated_values {
 				packed_values << 'V_FASTC_MULTI_VALUE((${value}))'
 			}
-			'(MultiReturn){.values={${packed_values.join(', ')}}}'
+			'${fastc_multi_return_literal(packed_values)}'
 		}
 		if g.return_type == 'Option' {
 			g.write_line('return (Option){.data=v_fastc_interface_box(&${multi_value}, sizeof(MultiReturn)), .state=0};')
@@ -714,8 +737,8 @@ fn (mut g Parser) parse_return() !bool {
 	}
 	previous_expected_type := g.expected_expression_type
 	if g.selfhost {
-		g.expected_expression_type = if g.return_type == 'Option'
-			&& g.option_return_type !in ['', 'MultiReturn'] {
+		g.expected_expression_type = if g.return_type == 'Option' && g.option_return_type !in ['',
+			'MultiReturn'] {
 			g.option_return_type
 		} else {
 			g.return_type
@@ -734,20 +757,14 @@ fn (mut g Parser) parse_return() !bool {
 	} else {
 		g.return_type
 	}
-	if g.selfhost && actual_type == '' && g.last_expression.len == 2
-		&& g.last_expression[0].tok == .dot && g.last_expression[1].tok == .name
-		&& g.declared_kinds[g.semantic_type_key(contextual_return_type)] == .enum_ {
+	if g.selfhost && actual_type == '' && g.last_expression.len == 2 && g.last_expression[0].tok == .dot && g.last_expression[1].tok == .name && g.declared_kinds[g.semantic_type_key(contextual_return_type)] == .enum_ {
 		expression = '${contextual_return_type.trim_right('*')}__${g.last_expression[1].lit}'
 		actual_type = contextual_return_type
 	}
-	if g.selfhost && g.return_type !in ['Option', 'MultiReturn']
-		&& g.declared_kinds[g.semantic_type_key(g.return_type)] != .interface_
-		&& !fastc_types_share_lowering_representation(actual_type, g.return_type)
-		&& !g.selfhost_types_share_lowering_representation(actual_type, g.return_type) {
+	if g.selfhost && g.return_type !in ['Option', 'MultiReturn'] && g.declared_kinds[g.semantic_type_key(g.return_type)] != .interface_ && !fastc_types_share_lowering_representation(actual_type, g.return_type) && !g.selfhost_types_share_lowering_representation(actual_type, g.return_type) {
 		actual_type = g.return_type
 	}
-	if g.selfhost && g.declared_kinds[g.semantic_type_key(g.return_type)] == .interface_
-		&& g.declared_kinds[g.semantic_type_key(actual_type)] != .interface_ {
+	if g.selfhost && g.declared_kinds[g.semantic_type_key(g.return_type)] == .interface_ && g.declared_kinds[g.semantic_type_key(actual_type)] != .interface_ {
 		expression = g.interface_value_expression(g.return_type, actual_type, expression)
 		actual_type = g.return_type
 	}
@@ -870,13 +887,18 @@ fn (mut g Parser) parse_simple_statement() ! {
 			if !local.is_mut {
 				return g.unsupported('append to immutable name `${name}`')
 			}
-			_ := g.array_element_type(local.typ) or {
+			element_type := g.array_element_type(local.typ) or {
 				return g.unsupported('append to non-array `${name}` of type `${local.typ}`')
 			}
 			g.next()
 			value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
 			value_type := fastc_normalize_inferred_type(g.last_expression_type)
-			is_array_append := value_type == local.typ
+			// `[]T << []T` is push-many, unless the element type is a sum type that lists
+			// `[]T` as a variant (a recursive sum type such as `type Value = []Value | int`),
+			// in which case the array is boxed as one element. Mirrors the main C backend's
+			// `sumtype_has_variant` guard (see vlib/v/gen/c/infix.v).
+			boxes_array_variant := value_type == local.typ && g.sumtype_has_variant(element_type, value_type)
+			is_array_append := value_type == local.typ && !boxes_array_variant
 			g.consume_statement_end()
 			c_name := fastc_c_identifier(name)
 			array_target := if local.typ.ends_with('*') {
@@ -885,22 +907,29 @@ fn (mut g Parser) parse_simple_statement() ! {
 				'(array *)&${c_name}'
 			}
 			value_name := g.temporary_name('push_value')
-			g.write_line('__typeof__((${value})) ${value_name} = (${value});')
-			if is_array_append {
-				g.write_line('builtin__array_push_many(${array_target}, ${value_name}.data, ${value_name}.len);')
-			} else {
+			if boxes_array_variant {
+				boxed := g.render_call_argument_expression(g.last_expression, element_type) or {
+					value
+				}
+				g.write_line('${element_type} ${value_name} = (${boxed});')
 				g.write_line('builtin__array_push(${array_target}, &${value_name});')
+			} else {
+				g.write_line('__typeof__((${value})) ${value_name} = (${value});')
+				if is_array_append {
+					g.write_line('builtin__array_push_many(${array_target}, ${value_name}.data, ${value_name}.len);')
+				} else {
+					g.write_line('builtin__array_push(${array_target}, &${value_name});')
+				}
 			}
 			return
 		}
-		if !g.selfhost && (g.tok.is_assignment() || g.tok in [.inc, .dec]) && !is_global
-			&& (!is_known_local || !statement_local.is_mut) {
+		if !g.selfhost && (g.tok.is_assignment() || g.tok in [.inc, .dec]) && !is_global && (!is_known_local || !statement_local.is_mut) {
 			return g.unsupported('mutation of immutable or unknown name `${name}`')
 		}
 		g.validate_expression_name(name, .unknown)!
 		if g.tok.is_assignment() {
-			if !g.selfhost
-				&& g.tok in [.left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign] {
+			if !g.selfhost && g.tok in [.left_shift_assign, .right_shift_assign,
+				.right_shift_unsigned_assign] {
 				return g.unsupported('shift expressions')
 			}
 			if !g.selfhost && g.tok in [.div_assign, .mod_assign] {
@@ -947,14 +976,13 @@ fn (mut g Parser) parse_simple_statement() ! {
 			} else {
 				expected_type
 			}
-			if g.selfhost && resolved_expected_type == 'int'
-				&& !fastc_is_numeric_expression_type(actual_type) && name in g.locals {
+			if g.selfhost && resolved_expected_type == 'int' && !fastc_is_numeric_expression_type(actual_type) && name in g.locals {
 				resolved_expected_type = actual_type
-				g.locals[name] = FastcLocal{
-					is_mut:       statement_local.is_mut
+				g.set_scoped_local(name, FastcLocal{
+					is_mut: statement_local.is_mut
 					is_reference: statement_local.is_reference
-					typ:          actual_type
-				}
+					typ: actual_type
+				})
 			}
 			expected_layout_type := g.underlying_alias_type(resolved_expected_type)
 			actual_layout_type := g.underlying_alias_type(actual_type)
@@ -964,8 +992,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 				// make the placeholder parser fall back to its inert stub.
 				return g.unsupported('compound assignment on an erased generic type')
 			}
-			if operator == .plus_assign && expected_layout_type == 'string'
-				&& actual_layout_type == 'string' {
+			if operator == .plus_assign && expected_layout_type == 'string' && actual_layout_type == 'string' {
 				g.consume_statement_end()
 				concatenation := if g.selfhost {
 					'builtin__string_plus(${c_target},${value})'
@@ -975,25 +1002,21 @@ fn (mut g Parser) parse_simple_statement() ! {
 				g.write_line('${c_target}=${concatenation};')
 				return
 			}
-			if overloaded := g.render_overloaded_assignment(c_target, value,
-				resolved_expected_type, operator)
-			{
+			if overloaded := g.render_overloaded_assignment(c_target, value, resolved_expected_type, operator) {
 				g.consume_statement_end()
 				g.write_line('${overloaded};')
 				return
 			}
 			g.consume_statement_end()
 			if operator == .right_shift_unsigned_assign {
-				shift := g.render_unsigned_right_shift_assignment(c_target, value,
-					resolved_expected_type) or {
+				shift := g.render_unsigned_right_shift_assignment(c_target, value, resolved_expected_type) or {
 					return g.unsupported('unsigned right shift assignment on type `${resolved_expected_type}`')
 				}
 				g.write_line('${shift};')
 				return
 			}
 			mut assigned_value := value
-			if g.selfhost && operator == .assign && resolved_expected_type == 'Option'
-				&& actual_type != 'Option' {
+			if g.selfhost && operator == .assign && resolved_expected_type == 'Option' && actual_type != 'Option' {
 				if actual_type.trim_right('*') == 'IError' {
 					assigned_value = '(Option){.err=${value}, .state=1}'
 				} else {
@@ -1002,36 +1025,31 @@ fn (mut g Parser) parse_simple_statement() ! {
 					} else {
 						fastc_normalize_inferred_type(actual_type)
 					}
-					payload_value := g.render_call_argument_expression(g.last_expression,
-						payload_type) or { value }
+					payload_value := g.render_call_argument_expression(g.last_expression, payload_type) or { value }
 					assigned_value = fastc_option_success_expression(payload_type, payload_value)
 				}
-			} else if g.selfhost && operator == .assign
-				&& g.should_box_variant(resolved_expected_type, actual_type) {
+			} else if g.selfhost && operator == .assign && g.should_box_variant(resolved_expected_type, actual_type) {
 				// A concrete struct assigned to an interface variable is boxed with its
 				// type id so the dispatch functions can recover the receiver.
-				assigned_value = g.interface_value_expression(resolved_expected_type, actual_type,
-					value)
-			} else if g.selfhost && operator == .assign && resolved_expected_type == 'voidptr'
-				&& actual_type !in ['', 'voidptr', 'nil']
-				&& !fastc_expression_is_zero(g.last_expression)
-				&& !fastc_is_pointer_type(actual_type) {
+				assigned_value = g.interface_value_expression(resolved_expected_type, actual_type, value)
+			} else if g.selfhost && operator == .assign && resolved_expected_type == 'voidptr' && actual_type !in ['',
+				'voidptr', 'nil'] && !fastc_expression_is_zero(g.last_expression) && !fastc_is_pointer_type(actual_type) {
 				// An unmonomorphized imported generic stores `T` as `voidptr`. Preserve a
 				// concrete value assigned through that slot by copying it into boxed storage.
 				box_value := g.temporary_name('generic_box')
 				assigned_value = '({ ${actual_type} ${box_value} = (${value}); v_fastc_interface_box(&${box_value}, sizeof(${actual_type})); })'
-			} else if g.selfhost && operator == .assign && actual_type == 'voidptr'
-				&& (resolved_expected_type.trim_right('*') in g.struct_fields
-				|| resolved_expected_type.trim_right('*').starts_with('Array_')
-				|| resolved_expected_type.trim_right('*').starts_with('Map_')
-				|| resolved_expected_type.trim_right('*').starts_with('FixedArray_')) {
+			} else if g.selfhost && operator == .assign && actual_type == 'voidptr' && (resolved_expected_type.trim_right('*') in g.struct_fields || resolved_expected_type.trim_right('*').starts_with('Array_') || resolved_expected_type.trim_right('*').starts_with('Map_') || resolved_expected_type.trim_right('*').starts_with('FixedArray_')) {
 				assigned_value = '*((${resolved_expected_type} *)(${value}))'
 			}
 			g.write_line('${c_target}${operator.str()}${assigned_value};')
 			return
 		}
-		expression := g.read_statement_expression_with_prefix(name, [token.Token.comma,
-			token.Token.semicolon, token.Token.rcbr, token.Token.arrow])!
+		expression := g.read_statement_expression_with_prefix(name, [
+			token.Token.comma,
+			token.Token.semicolon,
+			token.Token.rcbr,
+			token.Token.arrow,
+		])!
 		if g.selfhost && g.tok == .arrow {
 			// Channel send `<chan> <- <value>`: push the value through the channel.
 			// Channels are the type-erased `void*` stub, so this compiles to a
@@ -1047,8 +1065,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 			return
 		}
 		if g.selfhost && g.tok == .comma {
-			g.parse_parallel_expression_assignment(expression, g.last_expression.clone(),
-				g.last_expression_type)!
+			g.parse_parallel_expression_assignment(expression, g.last_expression.clone(), g.last_expression_type)!
 			return
 		}
 		if !g.last_expression_is_statement() {
@@ -1118,9 +1135,7 @@ fn (mut g Parser) parse_assert_statement() ! {
 fn (mut g Parser) capture_or_value(expression string) {
 	mut value := expression
 	if g.or_value_expected_type != '' && g.last_expression.len > 0 {
-		if contextual := g.render_call_argument_expression(g.last_expression,
-			g.or_value_expected_type)
-		{
+		if contextual := g.render_call_argument_expression(g.last_expression, g.or_value_expected_type) {
 			value = contextual
 		}
 	}
@@ -1201,10 +1216,10 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 					fastc_normalize_inferred_type(value_types[i])
 				}
 				g.write_line('${value_type} ${fastc_c_identifier(name)} = ${temporaries[i]};')
-				g.locals[name] = FastcLocal{
+				g.set_scoped_local(name, FastcLocal{
 					is_mut: mutability[i]
-					typ:    value_type
-				}
+					typ: value_type
+				})
 			}
 		} else {
 			for i, name in names {
@@ -1235,14 +1250,14 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 			component_type := if i < component_types.len { component_types[i] } else { 'usize' }
 			c_name := fastc_c_identifier(name)
 			g.write_line('${component_type} ${c_name} = (${component_type}){0};')
-			g.write_line('memcpy(&${c_name}, ${temporary}.values[${i}].data, sizeof(${c_name}));')
-			g.locals[name] = FastcLocal{
+			g.write_line('memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${temporary}.values[${i}], sizeof(${c_name})), sizeof(${c_name}));')
+			g.set_scoped_local(name, FastcLocal{
 				is_mut: mutability[i]
-				typ:    component_type
-			}
+				typ: component_type
+			})
 		} else {
 			c_name := assignment_targets[i].source
-			g.write_line('memcpy(&${c_name}, ${temporary}.values[${i}].data, sizeof(${c_name}));')
+			g.write_line('memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${temporary}.values[${i}], sizeof(${c_name})), sizeof(${c_name}));')
 		}
 	}
 }
@@ -1367,10 +1382,10 @@ fn (mut g Parser) parse_parallel_option_tuple(names []string, mutability []bool,
 			}
 			component_type := fastc_normalize_inferred_type(component_types[i])
 			g.write_line('${component_type} ${fastc_c_identifier(name)} = (${component_type}){0};')
-			g.locals[name] = FastcLocal{
+			g.set_scoped_local(name, FastcLocal{
 				is_mut: mutability[i]
-				typ:    component_type
-			}
+				typ: component_type
+			})
 		}
 	}
 	g.write_line('Option ${guard} = (${option_expr});')
@@ -1401,7 +1416,7 @@ fn (mut g Parser) parse_parallel_option_tuple(names []string, mutability []bool,
 		} else {
 			assignment_targets[i].source
 		}
-		g.write_line('memcpy(&${target}, ${multi_return}.values[${i}].data, sizeof(${target}));')
+		g.write_line('memcpy(&${target}, V_FASTC_MULTI_SOURCE(${multi_return}.values[${i}], sizeof(${target})), sizeof(${target}));')
 	}
 	g.indent--
 	g.write_line('}')
@@ -1425,7 +1440,7 @@ fn (g &Parser) validate_parallel_assignment_targets(names []string) ![]FastcRend
 				} else {
 					fastc_c_identifier(name)
 				}
-				typ:    if local.is_reference { local.typ.trim_right('*') } else { local.typ }
+				typ: if local.is_reference { local.typ.trim_right('*') } else { local.typ }
 			}
 		} else {
 			global_key := fastc_global_key(g.module_name, name)
@@ -1434,7 +1449,7 @@ fn (g &Parser) validate_parallel_assignment_targets(names []string) ![]FastcRend
 			}
 			target = FastcRenderedExpression{
 				source: global_name
-				typ:    g.global_types[global_key]
+				typ: g.global_types[global_key]
 			}
 		}
 		targets << target
@@ -1444,16 +1459,14 @@ fn (g &Parser) validate_parallel_assignment_targets(names []string) ![]FastcRend
 
 fn (mut g Parser) parse_parallel_expression_assignment(first_source string, first_tokens []FastcExpressionToken, first_type string) ! {
 	mut targets := []FastcRenderedExpression{}
-	targets << g.validate_parallel_expression_assignment_target(first_source, first_tokens,
-		first_type)!
+	targets << g.validate_parallel_expression_assignment_target(first_source, first_tokens, first_type)!
 	for g.tok == .comma {
 		g.next()
 		target_source := g.read_expression([token.Token.comma, token.Token.assign])!
 		if target_source == '' {
 			return g.unsupported('empty parallel assignment target')
 		}
-		targets << g.validate_parallel_expression_assignment_target(target_source,
-			g.last_expression.clone(), g.last_expression_type)!
+		targets << g.validate_parallel_expression_assignment_target(target_source, g.last_expression.clone(), g.last_expression_type)!
 	}
 	if g.tok != .assign {
 		return g.unsupported('parallel assignment operator `${g.token_source()}`')
@@ -1496,7 +1509,7 @@ fn (mut g Parser) parse_parallel_expression_assignment(first_source string, firs
 		if target.source == '' {
 			continue
 		}
-		g.write_line('memcpy(&${target.source}, ${temporary}.values[${i}].data, sizeof(${target.source}));')
+		g.write_line('memcpy(&${target.source}, V_FASTC_MULTI_SOURCE(${temporary}.values[${i}], sizeof(${target.source})), sizeof(${target.source}));')
 	}
 }
 
@@ -1515,7 +1528,7 @@ fn (g &Parser) validate_parallel_expression_assignment_target(source string, tok
 	g.validate_expression_mutation_lvalue(mutation_tokens)!
 	return FastcRenderedExpression{
 		source: source
-		typ:    typ
+		typ: typ
 	}
 }
 
@@ -1533,8 +1546,7 @@ fn (g &Parser) multi_return_types_for_expression(tokens []FastcExpressionToken) 
 	}
 	if expression_tokens.len >= 5 && expression_tokens.last().tok == .rpar {
 		for i := expression_tokens.len - 2; i >= 2; i-- {
-			if expression_tokens[i].tok != .name || expression_tokens[i - 1].tok != .dot
-				|| expression_tokens[i + 1].tok != .lpar {
+			if expression_tokens[i].tok != .name || expression_tokens[i - 1].tok != .dot || expression_tokens[i + 1].tok != .lpar {
 				continue
 			}
 			method_close := fastc_matching_rpar(expression_tokens, i + 1) or { continue }
@@ -1562,21 +1574,18 @@ fn (g &Parser) multi_return_types_for_expression(tokens []FastcExpressionToken) 
 	}
 	mut name_index := 0
 	mut open_index := 1
-	if expression_tokens.len >= 4 && expression_tokens[0].tok == .name
-		&& expression_tokens[1].tok == .dot && expression_tokens[2].tok == .name {
+	if expression_tokens.len >= 4 && expression_tokens[0].tok == .name && expression_tokens[1].tok == .dot && expression_tokens[2].tok == .name {
 		name_index = 2
 		open_index = 3
 	}
-	if expression_tokens[name_index].tok !in [.name, .key_select]
-		|| expression_tokens[open_index].tok != .lpar {
+	if expression_tokens[name_index].tok !in [.name, .key_select] || expression_tokens[open_index].tok != .lpar {
 		return []string{}
 	}
 	close := fastc_matching_rpar(expression_tokens, open_index) or { return []string{} }
 	if close != expression_tokens.len - 1 {
 		return []string{}
 	}
-	function_key := if name_index == 2 && expression_tokens[0].lit !in g.imports
-		&& expression_tokens[0].lit != 'C' {
+	function_key := if name_index == 2 && expression_tokens[0].lit !in g.imports && expression_tokens[0].lit != 'C' {
 		receiver_type := g.infer_expression_type(expression_tokens[..1]) or { return []string{} }
 		g.method_function_key(receiver_type, expression_tokens[name_index].lit)
 	} else {
@@ -1732,8 +1741,7 @@ fn (g &Parser) erased_generic_option_value_type_for_expression(tokens []FastcExp
 		}
 		receiver_start := fastc_method_receiver_start(tokens, i - 1)
 		receiver_tokens := tokens[receiver_start..i - 1]
-		if receiver_tokens.len < 3 || receiver_tokens.last().tok != .name
-			|| receiver_tokens[receiver_tokens.len - 2].tok != .dot {
+		if receiver_tokens.len < 3 || receiver_tokens.last().tok != .name || receiver_tokens[receiver_tokens.len - 2].tok != .dot {
 			return none
 		}
 		owner_type := g.infer_expression_type(receiver_tokens[..receiver_tokens.len - 2]) or {
@@ -1809,8 +1817,7 @@ fn (g &Parser) expression_tokens_are_statement(expression_tokens []FastcExpressi
 				return true
 			}
 			resolved_method_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
-			if resolved_method_key in g.functions || resolved_method_key in g.mono_functions
-				|| g.struct_member_type(receiver_type, tokens[i].lit) != '' {
+			if resolved_method_key in g.functions || resolved_method_key in g.mono_functions || g.struct_member_type(receiver_type, tokens[i].lit) != '' {
 				return true
 			}
 		}
@@ -1820,13 +1827,11 @@ fn (g &Parser) expression_tokens_are_statement(expression_tokens []FastcExpressi
 	}
 	mut name_index := 0
 	mut open_index := 1
-	if tokens.len >= 4 && tokens[0].tok == .name && tokens[1].tok == .dot && tokens[2].tok == .name
-		&& (tokens[0].lit in g.imports || (tokens[0].lit == 'C' && g.has_declared_c_function())) {
+	if tokens.len >= 4 && tokens[0].tok == .name && tokens[1].tok == .dot && tokens[2].tok == .name && (tokens[0].lit in g.imports || (tokens[0].lit == 'C' && g.has_declared_c_function())) {
 		name_index = 2
 		open_index = 3
 	}
-	if tokens.len <= open_index + 1 || tokens[name_index].tok !in [.name, .key_select]
-		|| tokens[open_index].tok != .lpar {
+	if tokens.len <= open_index + 1 || tokens[name_index].tok !in [.name, .key_select] || tokens[open_index].tok != .lpar {
 		return false
 	}
 	call_close := fastc_matching_rpar(tokens, open_index) or { return false }
@@ -1873,26 +1878,33 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool) ! {
 	// GNU typeof is unevaluated and is supported by bundled TinyCC. It lets the
 	// direct path preserve V's `:=` without running any inference or type checker.
 	c_name := fastc_c_identifier(name)
+	normalized_type := fastc_normalize_inferred_type(g.last_expression_type)
 	if expression.starts_with('"') {
 		// C's typeof preserves a literal's array type instead of applying the usual
 		// pointer decay. The spelling alone is enough to lower this case.
 		g.write_line('string ${c_name} = (${expression});')
+	} else if normalized_type == 'int' {
+		// V's platform `int` is i64 (on 64-bit targets); `__typeof__` of an integer
+		// literal or C-`int` expression would give C `int` (32-bit), silently
+		// truncating `int` arithmetic. Spell the platform int type explicitly so the
+		// local matches the width used for `int` params, fields, and the C backend.
+		g.write_line('${fastc_platform_int_c_type} ${c_name} = (${expression});')
 	} else {
 		g.write_line('__typeof__((${expression})) ${c_name} = (${expression});')
 	}
 	local_type := if g.selfhost && g.last_expression_type == '' {
 		'int'
 	} else {
-		fastc_normalize_inferred_type(g.last_expression_type)
+		normalized_type
 	}
 	function_alias := g.functions[local_type] or { FastcFunctionSignature{} }
-	g.locals[name] = FastcLocal{
-		is_mut:               is_mut
-		typ:                  local_type
-		option_value_type:    option_value_type
-		fn_return_type:       function_alias.return_type
+	g.set_scoped_local(name, FastcLocal{
+		is_mut: is_mut
+		typ: local_type
+		option_value_type: option_value_type
+		fn_return_type: function_alias.return_type
 		fn_option_value_type: function_alias.option_type
-	}
+	})
 }
 
 fn fastc_normalize_inferred_type(typ string) string {
@@ -1953,9 +1965,7 @@ fn (mut g Parser) parse_orm_sql_statement() ! {
 	saved_tok := g.tok
 	saved_lit := g.lit
 	saved_s := g.s
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_sql', lowering.len)
-	file.index_lines_without_digest(lowering)
+	file := token.File.unindexed('orm_sql', lowering.len)
 	g.s = scanner.new_scanner(g.prefs, .normal)
 	g.s.init(file, lowering)
 	g.next()
@@ -2026,9 +2036,7 @@ fn (mut g Parser) capture_orm_sql_block() !(string, string, string) {
 // build_orm_lowering parses one ORM query block and returns the V source it lowers
 // to. Only `insert` is handled so far; other operations report as unsupported.
 fn (g &Parser) build_orm_lowering(db_source string, block_source string, trailing string) !string {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_query', block_source.len)
-	file.index_lines_without_digest(block_source)
+	file := token.File.unindexed('orm_query', block_source.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
 	s.init(file, block_source)
 	mut tok := s.scan()
@@ -2094,9 +2102,7 @@ fn fastc_orm_where_op(tok token.Token) string {
 // (Primitive value + OperationKind + is_and joiners), then it calls the connection's
 // `update`. Values are captured as source spans and boxed via `orm.Primitive(<expr>)`.
 fn (g &Parser) build_orm_update(db_source string, block_source string, trailing string) !string {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_update', block_source.len)
-	file.index_lines_without_digest(block_source)
+	file := token.File.unindexed('orm_update', block_source.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
 	s.init(file, block_source)
 	mut tok := s.scan()
@@ -2287,9 +2293,7 @@ fn (g &Parser) build_orm_where_lines(mut s scanner.Scanner, block_source string,
 // builds the where QueryData (shared with `update`) and calls the connection's
 // `delete`.
 fn (g &Parser) build_orm_delete(db_source string, block_source string, trailing string) !string {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_delete', block_source.len)
-	file.index_lines_without_digest(block_source)
+	file := token.File.unindexed('orm_delete', block_source.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
 	s.init(file, block_source)
 	mut tok := s.scan()
@@ -2355,9 +2359,7 @@ fn (g &Parser) build_orm_insert(db_source string, value_source string, table_nam
 // fastc_orm_parse_table_op scans `<op> table <Table>` and returns the row type name.
 // Shared by `create` and `drop`.
 fn (g &Parser) fastc_orm_parse_table_op(block_source string, op string) !string {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_${op}', block_source.len)
-	file.index_lines_without_digest(block_source)
+	file := token.File.unindexed('orm_${op}', block_source.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
 	s.init(file, block_source)
 	mut tok := s.scan()
@@ -2476,9 +2478,7 @@ fn (g &Parser) build_orm_select_lowering(db_source string, block_source string, 
 	if trailing != '!' && or_source == '' {
 		return g.unsupported('ORM `sql`: `select` must be unwrapped with `!` or `or { ... }`')
 	}
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_select', block_source.len)
-	file.index_lines_without_digest(block_source)
+	file := token.File.unindexed('orm_select', block_source.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
 	s.init(file, block_source)
 	mut tok := s.scan()
@@ -2699,9 +2699,7 @@ fn (g &Parser) build_orm_select_lowering(db_source string, block_source string, 
 }
 
 fn fastc_orm_or_source_starts_with_exit(source string, prefs &pref.Preferences) bool {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_or', source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed('orm_or', source.len)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, source)
 	return s.scan() in [.key_return, .key_break, .key_continue]
@@ -2750,9 +2748,7 @@ fn (mut g Parser) emit_orm_lowering_statements(lowering string) ! {
 	saved_lit := g.lit
 	saved_s := g.s
 	outer_locals := g.locals.clone()
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_lowering', lowering.len)
-	file.index_lines_without_digest(lowering)
+	file := token.File.unindexed('orm_lowering', lowering.len)
 	g.s = scanner.new_scanner(g.prefs, .normal)
 	g.s.init(file, lowering)
 	g.next()
@@ -2779,8 +2775,7 @@ fn (mut g Parser) parse_orm_sql_select_declaration(name string, is_mut bool) ! {
 	g.next()
 	db_source, block_source, trailing := g.capture_orm_sql_block()!
 	or_source := g.capture_orm_or_block()!
-	lowering, result_type := g.build_orm_select_lowering(db_source, block_source, trailing,
-		or_source)!
+	lowering, result_type := g.build_orm_select_lowering(db_source, block_source, trailing, or_source)!
 	g.consume_statement_end()
 	// The `[]<Table>` result array is often not otherwise constructed in the program,
 	// so register it as a composite type to force its `Array_<Table>` typedef.
@@ -2793,10 +2788,10 @@ fn (mut g Parser) parse_orm_sql_select_declaration(name string, is_mut bool) ! {
 	g.write_line('${c_name} = __orm_result;')
 	g.indent--
 	g.write_line('}')
-	g.locals[name] = FastcLocal{
+	g.set_scoped_local(name, FastcLocal{
 		is_mut: is_mut
-		typ:    result_type
-	}
+		typ: result_type
+	})
 }
 
 // parse_orm_sql_select_assignment lowers `<name> = sql db { select ... } <unwrap>`
@@ -2809,8 +2804,7 @@ fn (mut g Parser) parse_orm_sql_select_assignment(name string) ! {
 	g.next() // consume `sql`
 	db_source, block_source, trailing := g.capture_orm_sql_block()!
 	or_source := g.capture_orm_or_block()!
-	lowering, result_type := g.build_orm_select_lowering(db_source, block_source, trailing,
-		or_source)!
+	lowering, result_type := g.build_orm_select_lowering(db_source, block_source, trailing, or_source)!
 	g.consume_statement_end()
 	fastc_register_composite_type(result_type, mut g.composite_types)
 	c_name := fastc_c_identifier(name)
@@ -2831,8 +2825,7 @@ fn (mut g Parser) parse_orm_sql_select_return() !bool {
 	g.next() // consume `sql`
 	db_source, block_source, trailing := g.capture_orm_sql_block()!
 	or_source := g.capture_orm_or_block()!
-	lowering, result_type := g.build_orm_select_lowering(db_source, block_source, trailing,
-		or_source)!
+	lowering, result_type := g.build_orm_select_lowering(db_source, block_source, trailing, or_source)!
 	g.consume_statement_end()
 	g.write_line('{')
 	g.indent++

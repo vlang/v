@@ -132,6 +132,8 @@ pub:
 	ret_type    TypeID
 	is_c_struct bool // True for C interop structs (raw field names, typedef to C struct)
 	is_union    bool // True for union types (all fields overlap at offset 0)
+	is_packed   bool // True when struct fields have byte alignment
+	alignment   int  // Explicit aggregate alignment in bytes; 0 uses the natural alignment
 }
 
 // TypeStore represents type store data used by ssa.
@@ -373,15 +375,17 @@ pub enum Linkage {
 // Function represents function data used by ssa.
 pub struct Function {
 pub mut:
-	id           int
-	name         string
-	typ          TypeID
-	blocks       []BlockID
-	params       []ValueID
-	is_c_extern  bool // C-language extern function (no V body)
-	is_prototype bool // Registered declaration/signature whose body is not materialized yet
-	linkage      Linkage
-	call_conv    CallConv
+	id             int
+	name           string
+	typ            TypeID
+	blocks         []BlockID
+	params         []ValueID
+	is_c_extern    bool // C-language extern function (no V body)
+	is_variadic    bool
+	variadic_start int
+	is_prototype   bool // Registered declaration/signature whose body is not materialized yet
+	linkage        Linkage
+	call_conv      CallConv
 }
 
 // GlobalVar represents global var data used by ssa.
@@ -628,6 +632,49 @@ pub fn (mut m Module) detach_instruction_uses(value_id ValueID) {
 	}
 }
 
+// discard_emission_since removes transient SSA emitted after the supplied
+// module sizes while retaining type registrations performed during parsing.
+pub fn (mut m Module) discard_emission_since(value_count int, instruction_count int, block_count int) {
+	for value_index in value_count .. m.values.len {
+		if m.values[value_index].kind == .instruction {
+			m.detach_instruction_uses(ValueID(value_index))
+		}
+	}
+	old_block_count := if block_count < m.blocks.len { block_count } else { m.blocks.len }
+	for block_index in 0 .. old_block_count {
+		mut block := m.blocks[block_index]
+		for block.instrs.len > 0 && int(block.instrs[block.instrs.len - 1]) >= value_count {
+			block.instrs.delete_last()
+		}
+		m.blocks[block_index] = block
+	}
+	if block_count < m.blocks.len {
+		m.blocks.trim(block_count)
+	}
+	for function_index in 0 .. m.funcs.len {
+		mut function := m.funcs[function_index]
+		for function.blocks.len > 0 && int(function.blocks[function.blocks.len - 1]) >= block_count {
+			function.blocks.delete_last()
+		}
+		m.funcs[function_index] = function
+	}
+	mut stale_constants := []string{}
+	for key, value_id in m.const_cache {
+		if int(value_id) >= value_count {
+			stale_constants << key
+		}
+	}
+	for key in stale_constants {
+		m.const_cache.delete(key)
+	}
+	if instruction_count < m.instrs.len {
+		m.instrs.trim(instruction_count)
+	}
+	if value_count < m.values.len {
+		m.values.trim(value_count)
+	}
+}
+
 // add_block updates add block state for Module.
 pub fn (mut m Module) add_block(func_id int, name string) BlockID {
 	id := BlockID(m.blocks.len)
@@ -837,13 +884,14 @@ fn (m &Module) type_size_inner(typ_id TypeID, depth int, mut visiting []bool, mu
 			if s > max_size {
 				max_size = s
 			}
-			a := m.type_align_for_layout(field_typ)
+			a := if typ.is_packed { 1 } else { m.type_align_for_layout(field_typ) }
 			if a > max_align {
 				max_align = a
 			}
 		}
-		total = if max_align > 1 && max_size % max_align != 0 {
-			(max_size + max_align - 1) & ~(max_align - 1)
+		aggregate_align := if typ.alignment > max_align { typ.alignment } else { max_align }
+		total = if aggregate_align > 1 && max_size % aggregate_align != 0 {
+			(max_size + aggregate_align - 1) & ~(aggregate_align - 1)
 		} else {
 			max_size
 		}
@@ -852,7 +900,7 @@ fn (m &Module) type_size_inner(typ_id TypeID, depth int, mut visiting []bool, mu
 		mut max_align := 1
 		for i in 0 .. typ.fields.len {
 			field_typ := typ.fields[i]
-			align := m.type_align_for_layout(field_typ)
+			align := if typ.is_packed { 1 } else { m.type_align_for_layout(field_typ) }
 			if align > max_align {
 				max_align = align
 			}
@@ -861,8 +909,9 @@ fn (m &Module) type_size_inner(typ_id TypeID, depth int, mut visiting []bool, mu
 			}
 			offset += m.type_size_inner(field_typ, depth + 1, mut visiting, mut cache)
 		}
-		total = if max_align > 1 && offset % max_align != 0 {
-			(offset + max_align - 1) & ~(max_align - 1)
+		aggregate_align := if typ.alignment > max_align { typ.alignment } else { max_align }
+		total = if aggregate_align > 1 && offset % aggregate_align != 0 {
+			(offset + aggregate_align - 1) & ~(aggregate_align - 1)
 		} else {
 			offset
 		}
@@ -894,6 +943,12 @@ fn (m &Module) type_align_for_layout_inner(typ_id TypeID, depth int) int {
 		return 8
 	}
 	typ := m.type_store.types[typ_id]
+	if typ.alignment > 0 {
+		return typ.alignment
+	}
+	if typ.is_packed {
+		return 1
+	}
 	if typ.width > 0 {
 		size := (typ.width + 7) / 8
 		if size >= 8 {
@@ -911,7 +966,14 @@ fn (m &Module) type_align_for_layout_inner(typ_id TypeID, depth int) int {
 		return 8
 	}
 	if typ.fields.len > 0 {
-		return 8
+		mut max_align := 1
+		for field_typ in typ.fields {
+			field_align := m.type_align_for_layout_inner(field_typ, depth + 1)
+			if field_align > max_align {
+				max_align = field_align
+			}
+		}
+		return max_align
 	}
 	if typ.params.len > 0 || typ.ret_type > 0 {
 		return 8
@@ -976,7 +1038,7 @@ pub fn (m &Module) struct_field_offset(typ_id TypeID, field_idx int) int {
 		if i >= typ.fields.len {
 			break
 		}
-		align := m.type_align_for_layout(typ.fields[i])
+		align := if typ.is_packed { 1 } else { m.type_align_for_layout(typ.fields[i]) }
 		if align > 1 && offset % align != 0 {
 			offset = (offset + align - 1) & ~(align - 1)
 		}
@@ -984,7 +1046,7 @@ pub fn (m &Module) struct_field_offset(typ_id TypeID, field_idx int) int {
 			mm.type_size_cache)
 	}
 	if field_idx < typ.fields.len {
-		align := m.type_align_for_layout(typ.fields[field_idx])
+		align := if typ.is_packed { 1 } else { m.type_align_for_layout(typ.fields[field_idx]) }
 		if align > 1 && offset % align != 0 {
 			offset = (offset + align - 1) & ~(align - 1)
 		}

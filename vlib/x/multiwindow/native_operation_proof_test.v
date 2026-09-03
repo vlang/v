@@ -406,7 +406,7 @@ struct NativePhaseABackendOwnershipSnapshot {
 	native_operations_identity    u64
 	x11_screen                    int
 	x11_xdnd_version              i64
-	x11_keycodes                  [256]int
+	x11_keycodes                  [256]i32
 	data_offer_has_uri_list       bool
 	data_offer_source_actions     u32
 	data_offer_selected_action    u32

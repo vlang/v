@@ -54,7 +54,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		named_initializer := g.render_named_struct_initializer(parameter_type, call_args[named_start..]) or { return none }
 		rendered_arguments << named_initializer
 		return FastcRenderedExpression{
-			source: '${fastc_c_function_name_for_key(function_key)}(${rendered_arguments.join(',')})'
+			source: '${g.c_function_name_for_key(function_key)}(${rendered_arguments.join(',')})'
 			typ: signature.return_type
 		}
 	}
@@ -73,7 +73,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 			named_initializer := g.render_named_struct_initializer(element_type, call_args[named_start..]) or { return none }
 			c_arguments << '((${variadic_type})builtin__new_array_from_c_array(1, 1, sizeof(${element_type}), (${element_type}[]){${named_initializer}}))'
 			return FastcRenderedExpression{
-				source: '${fastc_c_function_name_for_key(function_key)}(${c_arguments.join(',')})'
+				source: '${g.c_function_name_for_key(function_key)}(${c_arguments.join(',')})'
 				typ: signature.return_type
 			}
 		}
@@ -92,16 +92,17 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		if fixed_arguments < 0 || fixed_arguments > rendered_arguments.len {
 			return none
 		}
-		variadic_arguments := unsafe { rendered_arguments[fixed_arguments..] }
-		packed := if variadic_arguments.len == 0 {
+		variadic_count := rendered_arguments.len - fixed_arguments
+		variadic_values := rendered_arguments[fixed_arguments..].join(',')
+		packed := if variadic_count == 0 {
 			'(${variadic_type}){0}'
 		} else {
-			'((${variadic_type})builtin__new_array_from_c_array(${variadic_arguments.len}, ${variadic_arguments.len}, sizeof(${element_type}), (${element_type}[]){${variadic_arguments.join(',')}}))'
+			'((${variadic_type})builtin__new_array_from_c_array(${variadic_count}, ${variadic_count}, sizeof(${element_type}), (${element_type}[]){${variadic_values}}))'
 		}
-		mut c_arguments := rendered_arguments[..fixed_arguments].clone()
-		c_arguments << packed
+		rendered_arguments.trim(fixed_arguments)
+		rendered_arguments << packed
 		return FastcRenderedExpression{
-			source: '${fastc_c_function_name_for_key(function_key)}(${c_arguments.join(',')})'
+			source: '${g.c_function_name_for_key(function_key)}(${rendered_arguments.join(',')})'
 			typ: signature.return_type
 		}
 	}
@@ -129,7 +130,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 	call_name := if function_key.starts_with('C.') {
 		function_key.all_after_last('.')
 	} else {
-		fastc_c_function_name_for_key(function_key)
+		g.c_function_name_for_key(function_key)
 	}
 	return FastcRenderedExpression{
 		source: '${call_name}(${rendered_arguments.join(',')})'
@@ -157,7 +158,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		receiver_start := fastc_method_receiver_start(tokens, i - 1)
 		receiver_tokens := tokens[receiver_start..i - 1]
 		receiver_type := g.infer_expression_type(receiver_tokens) or { continue }
-		if tokens[i].lit == 'contains' && fastc_normalize_inferred_type(receiver_type).trim_right('*').starts_with('Array_') {
+		if tokens[i].lit == 'contains' && fastc_trim_pointer_suffix(fastc_normalize_inferred_type(receiver_type)).starts_with('Array_') {
 			call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 			call_args := fastc_call_arguments(tokens, i + 1, call_end) or { continue }
 			if call_args.len != 1 {
@@ -169,7 +170,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				continue
 			}
 			access := if receiver_type.ends_with('*') { '->' } else { '.' }
-			comparison := if g.underlying_alias_type(element_type).trim_right('*') == 'string' {
+			comparison := if fastc_trim_pointer_suffix(g.underlying_alias_type(element_type)) == 'string' {
 				'builtin__string_eq(__v_fastc_contains_item, ((${element_type} *)__v_fastc_contains_collection${access}data)[__v_fastc_contains_index])'
 			} else {
 				'(__v_fastc_contains_item == ((${element_type} *)__v_fastc_contains_collection${access}data)[__v_fastc_contains_index])'
@@ -184,8 +185,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 				continue
 			}
-			if rendered.contains(raw_call) {
-				rendered = rendered.replace(raw_call, call_source)
+			if fastc_contains(rendered, raw_call) {
+				rendered = fastc_replace(rendered, raw_call, call_source)
 				changed = true
 			}
 			continue
@@ -206,15 +207,15 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			// A wait nested in a larger expression replaces its raw call form,
 			// exactly like ordinary method calls.
 			mut wait_needle := '${receiver.source}.wait()'
-			if !rendered.contains(wait_needle) {
+			if !fastc_contains(rendered, wait_needle) {
 				raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { '' }
 				raw_needle := '${raw_receiver}.wait()'
-				if raw_receiver != '' && rendered.contains(raw_needle) {
+				if raw_receiver != '' && fastc_contains(rendered, raw_needle) {
 					wait_needle = raw_needle
 				}
 			}
-			if rendered.contains(wait_needle) {
-				rendered = rendered.replace(wait_needle, wait_call)
+			if fastc_contains(rendered, wait_needle) {
+				rendered = fastc_replace(rendered, wait_needle, wait_call)
 				changed = true
 			}
 			continue
@@ -246,8 +247,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 					continue
 				}
-				if rendered.contains(raw_call) {
-					rendered = rendered.replace(raw_call, call_source)
+				if fastc_contains(rendered, raw_call) {
+					rendered = fastc_replace(rendered, raw_call, call_source)
 					changed = true
 				}
 				continue
@@ -286,16 +287,16 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 					raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 						continue
 					}
-					if rendered.contains(raw_call) {
-						rendered = rendered.replace(raw_call, call_source)
+					if fastc_contains(rendered, raw_call) {
+						rendered = fastc_replace(rendered, raw_call, call_source)
 						changed = true
 					}
 					continue
 				}
 				for separator in ['->', '.'] {
 					marker := '${receiver.source}${separator}${tokens[i].lit}('
-					if rendered.contains(marker) {
-						rendered = rendered.replace(marker, '(${receiver.source}${separator}${tokens[i].lit})(')
+					if fastc_contains(rendered, marker) {
+						rendered = fastc_replace(rendered, marker, '(${receiver.source}${separator}${tokens[i].lit})(')
 						changed = true
 						break
 					}
@@ -323,8 +324,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 				continue
 			}
-			if rendered.contains(raw_call) {
-				rendered = rendered.replace(raw_call, disabled_call)
+			if fastc_contains(rendered, raw_call) {
+				rendered = fastc_replace(rendered, raw_call, disabled_call)
 				changed = true
 			}
 			continue
@@ -339,12 +340,12 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		mut method_marker := '${separator}${tokens[i].lit}('
 		if receiver_start == 0 {
 			raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { receiver_source }
-			if receiver_source == raw_receiver && rendered.contains(method_marker) {
+			if receiver_source == raw_receiver && fastc_contains(rendered, method_marker) {
 				receiver_source = rendered.all_before_last(method_marker)
 			} else {
 				alternate_separator := if separator == '.' { '->' } else { '.' }
 				alternate_marker := '${alternate_separator}${tokens[i].lit}('
-				if rendered.contains(alternate_marker) {
+				if fastc_contains(rendered, alternate_marker) {
 					separator = alternate_separator
 					method_marker = alternate_marker
 					receiver_source = rendered.all_before_last(method_marker)
@@ -352,10 +353,10 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 		}
 		mut needle := '${receiver_source}${separator}${tokens[i].lit}('
-		if !rendered.contains(needle) {
+		if !fastc_contains(rendered, needle) {
 			raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { '' }
 			raw_needle := '${raw_receiver}${separator}${tokens[i].lit}('
-			if raw_receiver != '' && rendered.contains(raw_needle) {
+			if raw_receiver != '' && fastc_contains(rendered, raw_needle) {
 				needle = raw_needle
 			}
 		}
@@ -431,13 +432,14 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 			variadic_type := signature.parameter_types.last()
 			element_type := g.array_element_type(variadic_type) or { continue }
-			variadic_arguments := unsafe { direct_arguments[fixed_arguments..] }
-			packed := if variadic_arguments.len == 0 {
+			variadic_count := direct_arguments.len - fixed_arguments
+			variadic_values := direct_arguments[fixed_arguments..].join(',')
+			packed := if variadic_count == 0 {
 				'(${variadic_type}){0}'
 			} else {
-				'((${variadic_type})builtin__new_array_from_c_array(${variadic_arguments.len}, ${variadic_arguments.len}, sizeof(${element_type}), (${element_type}[]){${variadic_arguments.join(',')}}))'
+				'((${variadic_type})builtin__new_array_from_c_array(${variadic_count}, ${variadic_count}, sizeof(${element_type}), (${element_type}[]){${variadic_values}}))'
 			}
-			direct_arguments = direct_arguments[..fixed_arguments].clone()
+			direct_arguments.trim(fixed_arguments)
 			direct_arguments << packed
 		}
 		if signature.last_parameter_is_params && direct_arguments.len + 1 == signature.parameter_types.len - 1 {
@@ -458,9 +460,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				'pop',
 				'pop_left',
 			]
-			if !is_pointer_result_method && !has_arguments && direct_arguments.len == 0 && rendered.contains(needle) {
+			if !is_pointer_result_method && !has_arguments && direct_arguments.len == 0 && fastc_contains(rendered, needle) {
 				return FastcRenderedExpression{
-					source: rendered.replace(needle, replacement)
+					source: fastc_replace(rendered, needle, replacement)
 					typ: result_type
 				}
 			}
@@ -485,8 +487,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 				continue
 			}
-			if rendered.contains(raw_call) {
-				rendered = rendered.replace(raw_call, direct_call)
+			if fastc_contains(rendered, raw_call) {
+				rendered = fastc_replace(rendered, raw_call, direct_call)
 				changed = true
 				continue
 			}
@@ -501,8 +503,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			call_needle = '${needle})'
 			call_replacement = '(*(((${element_type} *)${replacement}))))'
 		}
-		if rendered.contains(call_needle) {
-			rendered = rendered.replace(call_needle, call_replacement)
+		if fastc_contains(rendered, call_needle) {
+			rendered = fastc_replace(rendered, call_needle, call_replacement)
 			changed = true
 		}
 	}

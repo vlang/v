@@ -37,6 +37,7 @@ fn (g &Parser) expression_token(previous token.Token, previous_lit string, quali
 				g.unsupported('rune or C character literals')
 			}
 		}
+
 		// stdbool's true/false macros have C type int. Cast them so _Generic
 		// dispatch preserves V's bool type when no operator requires promotion.
 		.key_true {
@@ -78,6 +79,9 @@ fn (g &Parser) nil_expression() !string {
 }
 
 fn (g &Parser) expression_name(previous token.Token, qualified_name_owner string) !string {
+	if g.selfhost {
+		return g.resolved_expression_name(g.lit, previous)
+	}
 	if previous == .dot {
 		if imported_module := g.imports[qualified_name_owner] {
 			type_key := fastc_type_key(imported_module, g.lit)
@@ -107,62 +111,94 @@ fn (g &Parser) resolved_expression_name(name string, previous token.Token) strin
 		return ''
 	}
 	if previous != .dot && name !in g.locals {
-		if imported_module := g.imports[name] {
-			return imported_module.replace('.', '__')
+		if cached := g.resolved_name_memo[name] {
+			return cached
 		}
-		function_key := g.unqualified_function_key(name)
-		if function_key in g.functions {
-			return fastc_c_function_name_for_key(function_key)
-		}
-		if type_key := g.resolve_declared_type_key(name)
-		{
-			return fastc_c_declared_type_name(type_key)
-		}
-		if primitive := fastc_primitive_c_type(name) {
-			return primitive
-		}
-		constant_key := fastc_constant_key(g.module_name, name)
-		if c_name := g.constants[constant_key] {
-			return c_name
-		}
-		if c_name := g.constants[fastc_constant_key('builtin', name)] {
-			return c_name
-		}
-		global_key := fastc_global_key(g.module_name, name)
-		if c_name := g.globals[global_key] {
-			return c_name
-		}
-		if c_name := g.globals[fastc_global_key('builtin', name)] {
-			return c_name
-		}
+		resolved := g.resolved_nonlocal_expression_name(name)
+		mut w := unsafe { &Parser(g) }
+		w.resolved_name_memo[name] = resolved
+		return resolved
+	}
+	return fastc_c_identifier(name)
+}
+
+// resolved_nonlocal_expression_name renders a bare name that is not a local:
+// an import, function, type, primitive, constant, or global, else the plain
+// C identifier. Every table it consults is fixed for the file, so
+// resolved_expression_name memoizes the answer per name.
+fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
+	if imported_module := g.imports[name] {
+		return imported_module.replace('.', '__')
+	}
+	function_key := g.unqualified_function_key(name)
+	if function_key in g.functions {
+		return g.c_function_name_for_key(function_key)
+	}
+	if type_key := g.resolve_declared_type_key(name) {
+		return fastc_c_declared_type_name(type_key)
+	}
+	if primitive := fastc_primitive_c_type(name) {
+		return primitive
+	}
+	constant_key := fastc_constant_key(g.module_name, name)
+	if c_name := g.constants[constant_key] {
+		return c_name
+	}
+	if c_name := g.constants[fastc_constant_key('builtin', name)] {
+		return c_name
+	}
+	global_key := fastc_global_key(g.module_name, name)
+	if c_name := g.globals[global_key] {
+		return c_name
+	}
+	if c_name := g.globals[fastc_global_key('builtin', name)] {
+		return c_name
 	}
 	return fastc_c_identifier(name)
 }
 
 fn (g &Parser) validate_expression_name(name string, previous token.Token) ! {
-	if g.selfhost && previous in [.lcbr, .comma, .semicolon] {
+	// Self-host sources have already passed the bootstrap compiler. Their unresolved
+	// names are deliberately left for C to diagnose, so none of the lookup work below
+	// can change the result.
+	if g.selfhost {
 		return
 	}
-	if !g.selfhost && name == 'charptr' {
+	if name == 'charptr' {
 		return g.unsupported('charptr expressions')
 	}
-	if !g.selfhost && name == 'rune' {
+	if name == 'rune' {
 		return g.unsupported('rune expressions')
 	}
 	function_key := g.unqualified_function_key(name)
 	constant_key := fastc_constant_key(g.module_name, name)
 	global_key := fastc_global_key(g.module_name, name)
-	if previous == .dot || (name == 'C' && g.has_declared_c_function())
-		|| name in g.locals || name in g.imports || function_key in g.functions
-		|| constant_key in g.constants || global_key in g.globals
-		|| g.resolve_declared_type_key(name) != none
-		|| name in ['print', 'println', 'bool', 'byte', 'char', 'f32', 'f64', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'rune', 'string', 'u8', 'u16', 'u32', 'u64', 'uint', 'usize', 'voidptr', 'byteptr', 'charptr'] {
-		return
-	}
-	if g.selfhost {
-		// Self-host sources have already passed the bootstrap compiler. Preserve
-		// streaming progress for names introduced by syntax whose scope is not yet
-		// represented in the direct parser; C still diagnoses a missing declaration.
+	if previous == .dot || (name == 'C' && g.has_declared_c_function()) || name in g.locals || name in g.imports || function_key in g.functions || constant_key in g.constants || global_key in g.globals || g.resolve_declared_type_key(name) != none || name in [
+		'print',
+		'println',
+		'bool',
+		'byte',
+		'char',
+		'f32',
+		'f64',
+		'i8',
+		'i16',
+		'i32',
+		'i64',
+		'int',
+		'isize',
+		'rune',
+		'string',
+		'u8',
+		'u16',
+		'u32',
+		'u64',
+		'uint',
+		'usize',
+		'voidptr',
+		'byteptr',
+		'charptr',
+	] {
 		return
 	}
 	return g.unsupported('unresolved name `${name}` (locals: ${g.locals.keys().join(', ')})')
@@ -185,16 +221,15 @@ fn fastc_functions_declare_c(functions map[string]FastcFunctionSignature) bool {
 }
 
 fn (g &Parser) function_key_for_call(tokens []FastcExpressionToken, name_index int) string {
-	if static_key := g.static_function_key_for_call(tokens, name_index) {
-		return static_key
-	}
 	if name_index >= 2 && tokens[name_index - 1].tok == .dot && tokens[name_index - 2].tok == .name {
+		if static_key := g.static_function_key_for_call(tokens, name_index) {
+			return static_key
+		}
 		if tokens[name_index - 2].lit == 'C' {
 			return 'C.${tokens[name_index].lit}'
 		}
 		if imported_module := g.imports[tokens[name_index - 2].lit] {
-			return fastc_function_key(g.resolve_module_alias(imported_module),
-				tokens[name_index].lit)
+			return fastc_function_key(g.resolve_module_alias(imported_module), tokens[name_index].lit)
 		}
 	}
 	return g.unqualified_function_key(tokens[name_index].lit)
@@ -213,6 +248,9 @@ fn (g &Parser) static_function_key_for_call(tokens []FastcExpressionToken, name_
 		return none
 	}
 	owner_name := tokens[name_index - 2].lit
+	if owner_name.len == 0 || !owner_name[0].is_capital() {
+		return none
+	}
 	mut type_key := ''
 	if name_index >= 4 && tokens[name_index - 3].tok == .dot && tokens[name_index - 4].tok == .name {
 		module_name := g.imports[tokens[name_index - 4].lit] or { return none }
@@ -230,19 +268,8 @@ fn (g &Parser) local_is_pointer(name string) bool {
 }
 
 fn (g &Parser) is_enum_type_name(name string) bool {
-	if cached := g.enum_type_name_memo[name] {
-		return cached
-	}
-	mut result := false
-	if type_key := g.resolve_declared_type_key(name) {
-		result = g.underlying_enum_type_key(type_key) != none
-	}
-	mut parser := unsafe { &Parser(g) }
-	if parser.enum_type_name_memo.len == 0 {
-		parser.enum_type_name_memo = map[string]bool{}
-	}
-	parser.enum_type_name_memo[name] = result
-	return result
+	type_key := g.resolve_declared_type_key(name) or { return false }
+	return g.underlying_enum_type_key(type_key) != none
 }
 
 fn (g &Parser) underlying_enum_type_key(type_key string) ?string {
@@ -261,13 +288,11 @@ fn (g &Parser) flag_enum_type_key(c_type string) ?string {
 }
 
 fn (g &Parser) enum_member_owner_type_key(tokens []FastcExpressionToken, owner_index int) ?string {
-	if owner_index < 0 || owner_index + 2 >= tokens.len || tokens[owner_index].tok != .name
-		|| tokens[owner_index + 1].tok != .dot || tokens[owner_index + 2].tok != .name {
+	if owner_index < 0 || owner_index + 2 >= tokens.len || tokens[owner_index].tok != .name || tokens[owner_index + 1].tok != .dot || tokens[owner_index + 2].tok != .name {
 		return none
 	}
 	mut type_key := ''
-	if owner_index >= 2 && tokens[owner_index - 1].tok == .dot
-		&& tokens[owner_index - 2].tok == .name {
+	if owner_index >= 2 && tokens[owner_index - 1].tok == .dot && tokens[owner_index - 2].tok == .name {
 		imported_module := g.imports[tokens[owner_index - 2].lit] or { return none }
 		type_key = fastc_type_key(imported_module, tokens[owner_index].lit)
 	} else if owner_index > 0 && tokens[owner_index - 1].tok == .dot {
@@ -337,9 +362,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 		// e.g. `c.ssl.set_read_timeout()` where `ssl` is both a field and `import net.ssl`)
 		// is a real method call, so the import exclusion must not apply when the name is
 		// itself preceded by a `.` (a member access).
-		name_is_module_ref := i >= 2 && tokens[i - 2].tok == .name
-			&& (tokens[i - 2].lit in g.imports || tokens[i - 2].lit == 'C')
-			&& (i < 3 || tokens[i - 3].tok != .dot)
+		name_is_module_ref := i >= 2 && tokens[i - 2].tok == .name && (tokens[i - 2].lit in g.imports || tokens[i - 2].lit == 'C') && (i < 3 || tokens[i - 3].tok != .dot)
 		if !is_static_call && i >= 2 && tokens[i - 1].tok == .dot && !name_is_module_ref {
 			receiver_start := fastc_method_receiver_start(tokens, i - 1)
 			receiver_type = g.infer_expression_type(tokens[receiver_start..i - 1])!
@@ -358,8 +381,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 		}
 		// A primitive type name applied to a single argument is a cast (`u32(1)`),
 		// never a call — even when a same-named function exists (e.g. `rand.u32()`).
-		if call_args.len == 1 && !is_method_call && !is_static_call
-			&& (i == 0 || tokens[i - 1].tok != .dot) && fastc_primitive_c_type(name) != none {
+		if call_args.len == 1 && !is_method_call && !is_static_call && (i == 0 || tokens[i - 1].tok != .dot) && fastc_primitive_c_type(name) != none {
 			i = call_end + 1
 			continue
 		}
@@ -384,9 +406,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			} else {
 				g.mono_functions[function_key]
 			}
-			if !signature.is_public && signature.module_name != ''
-				&& signature.module_name != g.module_name && signature.module_name != 'builtin'
-				&& signature.module_name in g.imports.values() {
+			if !signature.is_public && signature.module_name != '' && signature.module_name != g.module_name && signature.module_name != 'builtin' && signature.module_name in g.imports.values() {
 				return g.unsupported('private function `${name}` from imported module `${signature.module_name}`')
 			}
 			argument_offset := if is_method_call { 1 } else { 0 }
@@ -396,8 +416,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			} else {
 				0
 			}
-			omits_params_struct := signature.last_parameter_is_params && expected_arguments > 0
-				&& call_args.len == expected_arguments - 1
+			omits_params_struct := signature.last_parameter_is_params && expected_arguments > 0 && call_args.len == expected_arguments - 1
 			// Trailing named arguments (`name: value`) at the last params-struct
 			// position collapse into one struct initializer, so they read as one arg.
 			mut named_argument_start := -1
@@ -409,27 +428,20 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			}
 			// Trailing named args collapse into the callee's last struct parameter — V allows
 			// this for any struct last-parameter (`time.new(year: ...)`), not just `@[params]`.
-			provides_params_struct := expected_arguments > 0
-				&& named_argument_start == expected_arguments - 1
-				&& (signature.last_parameter_is_params
-				|| g.fastc_type_is_declared_struct(signature.parameter_types[named_argument_start + argument_offset]))
+			provides_params_struct := expected_arguments > 0 && named_argument_start == expected_arguments - 1 && (signature.last_parameter_is_params || g.fastc_type_is_declared_struct(signature.parameter_types[named_argument_start + argument_offset]))
 			uses_default_array_sort := function_key == 'array.sort' && call_args.len == 0
-			if (!is_variadic && call_args.len != expected_arguments && !omits_params_struct
-				&& !provides_params_struct && !uses_default_array_sort)
-				|| (is_variadic && call_args.len < expected_arguments) {
+			if (!is_variadic && call_args.len != expected_arguments && !omits_params_struct && !provides_params_struct && !uses_default_array_sort) || (is_variadic && call_args.len < expected_arguments) {
 				return g.unsupported('function `${name}` call with ${call_args.len} arguments instead of ${expected_arguments}')
 			}
 			if is_method_call && signature.parameter_types.len > 0 {
-				receiver_is_mut := signature.parameter_mutability.len > 0
-					&& signature.parameter_mutability[0]
+				receiver_is_mut := signature.parameter_mutability.len > 0 && signature.parameter_mutability[0]
 				if receiver_is_mut {
 					receiver_start := fastc_method_receiver_start(tokens, i - 1)
 					g.validate_mutating_method_receiver(tokens[receiver_start..i - 1], name)!
 				}
 			}
 			for argument_index, argument in call_args {
-				if is_variadic && argument_index >= expected_arguments
-					&& function_key.starts_with('C.') {
+				if is_variadic && argument_index >= expected_arguments && function_key.starts_with('C.') {
 					continue
 				}
 				is_variadic_argument := is_variadic && argument_index >= expected_arguments
@@ -438,8 +450,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				} else {
 					argument_index + argument_offset
 				}
-				parameter_is_mut := parameter_index < signature.parameter_mutability.len
-					&& signature.parameter_mutability[parameter_index]
+				parameter_is_mut := parameter_index < signature.parameter_mutability.len && signature.parameter_mutability[parameter_index]
 				argument_is_mut := fastc_argument_is_marked_mut(argument)
 				if parameter_is_mut && !argument_is_mut {
 					return g.unsupported('function `${name}` parameter ${argument_index + 1} requires a mutable argument written with `mut`')
@@ -457,8 +468,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 					g.validate_mutable_argument_fields(argument, name, argument_index)!
 				}
 			}
-		} else if has_method_receiver && name in ['has', 'set', 'clear'] && call_args.len == 1
-			&& g.flag_enum_type_key(receiver_type) != none {
+		} else if has_method_receiver && name in ['has', 'set', 'clear'] && call_args.len == 1 && g.flag_enum_type_key(receiver_type) != none {
 			if name in ['set', 'clear'] {
 				receiver_start := fastc_method_receiver_start(tokens, i - 1)
 				g.validate_mutating_method_receiver(tokens[receiver_start..i - 1], name)!
@@ -474,8 +484,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				return g.unsupported('printing value of type `${argument_type}`')
 			}
 		} else {
-			if g.selfhost && i >= 2 && tokens[i - 2].tok == .name && tokens[i - 2].lit == 'C'
-				&& tokens[i - 1].tok == .dot {
+			if g.selfhost && i >= 2 && tokens[i - 2].tok == .name && tokens[i - 2].lit == 'C' && tokens[i - 1].tok == .dot {
 				i = call_end + 1
 				continue
 			}
@@ -508,8 +517,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				i = call_end + 1
 				continue
 			}
-			if g.selfhost && has_method_receiver && name == 'str' && call_args.len == 0
-				&& g.can_generate_default_struct_str(receiver_type) {
+			if g.selfhost && has_method_receiver && name == 'str' && call_args.len == 0 && g.can_generate_default_struct_str(receiver_type) {
 				i = call_end + 1
 				continue
 			}
@@ -587,8 +595,7 @@ fn (g &Parser) validate_mutating_method_receiver(receiver []FastcExpressionToken
 			}
 			else {}
 		}
-		if selector_depth != 0 || item.tok != .dot || i == 0 || i + 1 >= receiver.len
-			|| receiver[i + 1].tok != .name || g.expression_dot_is_module_separator(receiver, i) {
+		if selector_depth != 0 || item.tok != .dot || i == 0 || i + 1 >= receiver.len || receiver[i + 1].tok != .name || g.expression_dot_is_module_separator(receiver, i) {
 			continue
 		}
 		receiver_start := fastc_method_receiver_start(receiver, i)
@@ -615,8 +622,7 @@ fn (g &Parser) validate_mutable_argument_fields(argument []FastcExpressionToken,
 			}
 			else {}
 		}
-		if selector_depth != 0 || item.tok != .dot || i == 0 || i + 1 >= argument.len
-			|| argument[i + 1].tok != .name || g.expression_dot_is_module_separator(argument, i) {
+		if selector_depth != 0 || item.tok != .dot || i == 0 || i + 1 >= argument.len || argument[i + 1].tok != .name || g.expression_dot_is_module_separator(argument, i) {
 			continue
 		}
 		receiver_start := fastc_method_receiver_start(argument, i)
@@ -624,8 +630,7 @@ fn (g &Parser) validate_mutable_argument_fields(argument []FastcExpressionToken,
 		field := g.struct_field_metadata(receiver_type, argument[i + 1].lit) or { continue }
 		if field.module_name !in ['', g.module_name] && !field.is_mutable {
 			type_name := g.semantic_type_key(receiver_type).all_after_last('.')
-			return g.unsupported('mutable argument field `${type_name}.${field.name}` to function `${function_name}` parameter ${
-				argument_index + 1} is not `pub mut` in imported module `${field.module_name}`')
+			return g.unsupported('mutable argument field `${type_name}.${field.name}` to function `${function_name}` parameter ${argument_index + 1} is not `pub mut` in imported module `${field.module_name}`')
 		}
 	}
 }
@@ -648,8 +653,7 @@ fn (g &Parser) validate_interface_cast_shape(interface_key string, operand []Fas
 			continue
 		}
 		interface_signature := g.functions[interface_method_key]
-		if interface_signature.parameter_types.len == 0
-			|| interface_signature.parameter_types[0] != interface_type {
+		if interface_signature.parameter_types.len == 0 || interface_signature.parameter_types[0] != interface_type {
 			continue
 		}
 		method_name := interface_method_key.all_after_last('.')
@@ -663,13 +667,10 @@ fn (g &Parser) validate_interface_cast_shape(interface_key string, operand []Fas
 			return g.unsupported('type `${actual_type}` has an incompatible parameter count for interface `${interface_type}` method `${method_name}`')
 		}
 		for i in 0 .. interface_signature.parameter_types.len {
-			interface_parameter_is_mut := i < interface_signature.parameter_mutability.len
-				&& interface_signature.parameter_mutability[i]
-			candidate_parameter_is_mut := i < candidate_signature.parameter_mutability.len
-				&& candidate_signature.parameter_mutability[i]
+			interface_parameter_is_mut := i < interface_signature.parameter_mutability.len && interface_signature.parameter_mutability[i]
+			candidate_parameter_is_mut := i < candidate_signature.parameter_mutability.len && candidate_signature.parameter_mutability[i]
 			if candidate_parameter_is_mut != interface_parameter_is_mut {
-				return g.unsupported('type `${actual_type}` has incompatible mutability for interface `${interface_type}` method `${method_name}` parameter ${
-					i + 1}')
+				return g.unsupported('type `${actual_type}` has incompatible mutability for interface `${interface_type}` method `${method_name}` parameter ${i + 1}')
 			}
 		}
 	}
@@ -683,8 +684,7 @@ fn (g &Parser) validate_interface_cast_shape(interface_key string, operand []Fas
 			continue
 		}
 		required_field := g.interface_fields[field_key]
-		actual_field := g.interface_implementation_field(actual_type, actual_key,
-			required_field.name) or {
+		actual_field := g.interface_implementation_field(actual_type, actual_key, required_field.name) or {
 			return g.unsupported('type `${actual_type}` does not implement interface `${interface_type}` field `${required_field.name}`')
 		}
 		if required_field.is_mutable && !actual_field.is_mutable {
@@ -699,20 +699,18 @@ fn (g &Parser) interface_implementation_field(actual_type string, actual_key str
 	}
 	field := g.struct_field_metadata(actual_type, field_name) or { return none }
 	return FastcInterfaceField{
-		name:       field.name
-		typ:        field.typ
+		name: field.name
+		typ: field.typ
 		is_mutable: field.is_mutable
 	}
 }
 
 fn fastc_expression_is_zero(tokens []FastcExpressionToken) bool {
-	return tokens.len == 1 && tokens[0].tok == .number
-		&& tokens[0].lit.replace('_', '').trim_left('0') == ''
+	return tokens.len == 1 && tokens[0].tok == .number && tokens[0].lit.replace('_', '').trim_left('0') == ''
 }
 
 fn fastc_expression_is_c_qualified_name(tokens []FastcExpressionToken) bool {
-	return tokens.len == 3 && tokens[0].tok == .name && tokens[0].lit == 'C'
-		&& tokens[1].tok == .dot && tokens[2].tok == .name
+	return tokens.len == 3 && tokens[0].tok == .name && tokens[0].lit == 'C' && tokens[1].tok == .dot && tokens[2].tok == .name
 }
 
 fn fastc_expression_is_enum_shorthand(tokens []FastcExpressionToken) bool {
@@ -773,8 +771,7 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 			}
 			else {}
 		}
-		if selector_depth != 0 || item.tok != .dot || i == 0 || i + 1 >= lvalue.len
-			|| lvalue[i + 1].tok != .name || g.expression_dot_is_module_separator(lvalue, i) {
+		if selector_depth != 0 || item.tok != .dot || i == 0 || i + 1 >= lvalue.len || lvalue[i + 1].tok != .name || g.expression_dot_is_module_separator(lvalue, i) {
 			continue
 		}
 		receiver_start := fastc_method_receiver_start(lvalue, i)
@@ -793,7 +790,7 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 }
 
 fn (g &Parser) struct_direct_member_type(receiver_type string, field_name string) string {
-	mut layout_type := receiver_type.trim_right('*')
+	mut layout_type := fastc_trim_pointer_suffix(receiver_type)
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
 	} else if layout_type.starts_with('Map_') {
@@ -811,7 +808,28 @@ fn (g &Parser) struct_member_type(receiver_type string, field_name string) strin
 }
 
 fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?FastcStructField {
-	mut layout_type := receiver_type.trim_right('*')
+	if by_name := g.field_memo[receiver_type] {
+		if cached := by_name[field_name] {
+			if cached.name == '' {
+				return none
+			}
+			return cached
+		}
+	}
+	mut w := unsafe { &Parser(g) }
+	if receiver_type !in w.field_memo {
+		w.field_memo[receiver_type] = map[string]FastcStructField{}
+	}
+	if field := g.struct_field_metadata_impl(receiver_type, field_name) {
+		w.field_memo[receiver_type][field_name] = field
+		return field
+	}
+	w.field_memo[receiver_type][field_name] = FastcStructField{}
+	return none
+}
+
+fn (g &Parser) struct_field_metadata_impl(receiver_type string, field_name string) ?FastcStructField {
+	mut layout_type := fastc_trim_pointer_suffix(receiver_type)
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
 	} else if layout_type.starts_with('Map_') {
@@ -830,9 +848,9 @@ fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?F
 	direct_type := g.struct_direct_member_type(receiver_type, field_name)
 	if direct_type != '' {
 		return FastcStructField{
-			name:       field_name
-			typ:        direct_type
-			is_public:  true
+			name: field_name
+			typ: direct_type
+			is_public: true
 			is_mutable: true
 		}
 	}
@@ -927,14 +945,12 @@ fn (g &Parser) validate_expression_field_visibility(tokens []FastcExpressionToke
 		if item.tok == .lcbr {
 			g.validate_struct_literal_field_visibility(tokens, i)!
 		}
-		if item.tok != .dot || i == 0 || i + 1 >= tokens.len || tokens[i + 1].tok != .name
-			|| g.expression_dot_is_module_separator(tokens, i) {
+		if item.tok != .dot || i == 0 || i + 1 >= tokens.len || tokens[i + 1].tok != .name || g.expression_dot_is_module_separator(tokens, i) {
 			continue
 		}
 		receiver_start := fastc_method_receiver_start(tokens, i)
 		receiver_type := g.infer_expression_type(tokens[receiver_start..i]) or { continue }
-		if i + 2 < tokens.len && tokens[i + 2].tok == .lpar
-			&& g.method_function_key(receiver_type, tokens[i + 1].lit) in g.functions {
+		if i + 2 < tokens.len && tokens[i + 2].tok == .lpar && g.method_function_key(receiver_type, tokens[i + 1].lit) in g.functions {
 			continue
 		}
 		field := g.struct_field_metadata(receiver_type, tokens[i + 1].lit) or { continue }
@@ -947,15 +963,14 @@ fn (g &Parser) validate_expression_field_visibility(tokens []FastcExpressionToke
 
 fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpressionToken, open int) ! {
 	mut type_start := open - 1
-	if open >= 3 && tokens[open - 3].tok == .name && tokens[open - 2].tok == .dot
-		&& tokens[open - 1].tok == .name {
+	if open >= 3 && tokens[open - 3].tok == .name && tokens[open - 2].tok == .dot && tokens[open - 1].tok == .name {
 		type_start = open - 3
 	}
 	if type_start < 0 {
 		return
 	}
 	c_type := g.type_from_expression_tokens(tokens[type_start..open]) or { return }
-	layout_type := c_type.trim_right('*')
+	layout_type := fastc_trim_pointer_suffix(c_type)
 	if layout_type !in g.struct_field_info {
 		return
 	}
@@ -1086,7 +1101,7 @@ fn (g &Parser) validate_fixed_array_struct_field_length(c_type string, field Fas
 		for item in items {
 			nested_field := FastcStructField{
 				name: field.name
-				typ:  element_type
+				typ: element_type
 			}
 			g.validate_fixed_array_struct_field_length(c_type, nested_field, item)!
 		}

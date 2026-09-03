@@ -59,6 +59,7 @@ const stack_value_decl_marker = '__v3_stack_value_decl'
 // generated functions and helpers must stay in the main cache segment.
 pub struct SumEqRequest {
 pub:
+	sum_name      string
 	module        string
 	file          string
 	helper_module string
@@ -183,6 +184,7 @@ mut:
 	mut_param_values                map[string]bool
 	fixed_array_param_values        map[string]bool
 	mut_value_ident_nodes           map[int]bool
+	ordering_snapshot_names         map[string]bool
 	pointer_value_lvalues           map[string]bool
 	pointer_value_rvalues           map[string]bool
 	addr_lvalue_pointer_locals      map[string]bool
@@ -250,7 +252,7 @@ mut:
 	used_fns_root                 &map[string]bool = unsafe { nil }
 	comptime_reflected_params     map[string][]ParamMeta
 	// sum_eq_types records sum types whose deep-equality helper fn
-	// (__v3_sum_eq_<name>) is called somewhere, keyed by sum name with the
+	// (__v3_sum_eq_<name>) is called somewhere, keyed by the concrete helper name with the
 	// module/file context of the requesting call site (type resolution inside
 	// the helper body needs that context). The helpers are synthesized
 	// serially after the (possibly parallel) transform completes.
@@ -389,8 +391,8 @@ mut:
 	stringify_depth_cap                int = max_stringify_nesting_depth
 	struct_autostr_recurse_types       map[string]bool
 	str_expansion_memo                 map[string]int
-	deferred_str_items                 []FnWorkItem
-	deferred_str_count                 int
+	deferred_expansion_items           []FnWorkItem
+	deferred_expansion_count           int
 	node_module_map_cache              []string
 	node_file_map_cache                []string
 	node_module_map_nodes              int = -1
@@ -3168,14 +3170,16 @@ fn (mut t Transformer) append_transformed_top_level_stmts(mut out []flat.NodeId,
 // the file/module context active at its declaration and a rough cost estimate
 // (subtree node count) used to balance work across parallel workers.
 struct FnWorkItem {
-	fn_idx             int
-	range_lo           int // first node id of this fn's subtree (fn subtree = [range_lo, fn_idx])
-	file               string
-	module             string
-	cost               int
-	rank               i64
-	escape_scan_known  bool
-	escape_scan_needed bool
+	fn_idx                    int
+	range_lo                  int // first node id of this fn's subtree (fn subtree = [range_lo, fn_idx])
+	file                      string
+	module                    string
+	cost                      int
+	rank                      i64
+	map_expansion_estimate    int
+	interp_expansion_estimate int
+	escape_scan_known         bool
+	escape_scan_needed        bool
 }
 
 // DeferredBaseWrite is an in-place base-node write recorded by the master
@@ -3231,7 +3235,7 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 				pure_items := t.transform_serial_then_collect_pure(literal_decls)
 				t.prepare_parallel_call_param_types()
 				t.transform_scoped_helper_batches(pure_items, scoped_transform_batches)
-				t.transform_deferred_str_items()
+				t.transform_deferred_expansion_items()
 				if !has_entry_main {
 					t.transform_top_level_user_stmts()
 				}
@@ -3264,11 +3268,10 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	was_parallel := t.run_parallel_transform(pure_items, base_nodes, base_children)
 	t.timing_profile('  [ttime] parallel run       ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ttsw.restart()
-	// Aggregate-interpolating functions were held back from the parallel regions
-	// (their inline autostr expansion overflows cost-proportional worker slots);
-	// lower them now against the freely growable master arena.
-	t.transform_deferred_str_items()
-	t.timing_profile('  [ttime] deferred str       ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${t.deferred_str_count})')
+	// Functions with oversized auto-str or const-map expansion were held back
+	// from cost-proportional worker slots; lower them against the growable arena.
+	t.transform_deferred_expansion_items()
+	t.timing_profile('  [ttime] deferred expansion ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${t.deferred_expansion_count})')
 	ttsw.restart()
 	if !has_entry_main {
 		t.transform_top_level_user_stmts()
@@ -3389,30 +3392,31 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				t.item_range_lo = old_range_lo
 				t.item_range_hi = old_range_hi
 			} else {
-				// Interpolating an auto-str struct/sum expands inline to node counts
-				// wildly out of proportion to parse cost. Estimate that expansion:
-				// a large one would overflow a cost-proportional worker append region
-				// in the shared parallel transform, so defer such functions to a
-				// serial pass over the freely growable master arena; a small one just
-				// folds into this item's cost so its region is sized to fit. The
-				// estimate is 0 for every type v3 self-host interpolates, so its work
-				// items and node numbering are untouched.
-				str_est := if t.building_v && t.parallel_enabled {
+				// Some lowering expands far beyond the parsed subtree cost. Aggregate
+				// interpolation emits inline autostr trees, while a const map reference
+				// can point outside this function's range at a map with thousands of
+				// entries. Fold bounded expansion into the worker cost, but defer an
+				// unbounded item to the growable master arena: the shared workers use
+				// fixed .nogrow regions, and even the complete reserved pool can be
+				// smaller than one expanded constant map.
+				if sc_profile {
+					scsw.restart()
+				}
+				mut str_est := 0
+				mut str_needs_deferred_lowering := false
+				if t.building_v && t.parallel_enabled {
 					// The compiler's interpolated types are all bounded primitives and
 					// metadata names; none can trigger aggregate auto-str expansion.
-					0
+					str_est = 0
 				} else {
-					if sc_profile {
-						scsw.restart()
-					}
-					estimate := t.fn_span_interp_estimate(range_lo, i)
-					if sc_profile {
-						est_ms += f64(scsw.elapsed().microseconds()) / 1000.0
-					}
-					estimate
+					str_est, str_needs_deferred_lowering = t.fn_span_interp_estimate(range_lo, i)
 				}
-				if str_est > deferred_str_expansion_threshold {
-					t.deferred_str_items << FnWorkItem{
+				map_est := t.fn_span_map_expansion_estimate(range_lo, i)
+				if sc_profile {
+					est_ms += f64(scsw.elapsed().microseconds()) / 1000.0
+				}
+				if str_needs_deferred_lowering || map_est > deferred_map_expansion_threshold {
+					t.deferred_expansion_items << FnWorkItem{
 						fn_idx:             i
 						range_lo:           range_lo
 						file:               t.cur_file
@@ -3423,16 +3427,18 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 						escape_scan_needed: escape_scan_flags & 2 != 0
 					}
 				} else {
-					adj_cost := cost + str_est
+					adj_cost := cost + str_est + map_est
 					pure << FnWorkItem{
-						fn_idx:             i
-						range_lo:           range_lo
-						file:               t.cur_file
-						module:             t.cur_module
-						cost:               adj_cost
-						rank:               i64(adj_cost) * 1_000_000_000 - i64(i)
-						escape_scan_known:  escape_scan_flags & 1 != 0
-						escape_scan_needed: escape_scan_flags & 2 != 0
+						fn_idx:                    i
+						range_lo:                  range_lo
+						file:                      t.cur_file
+						module:                    t.cur_module
+						cost:                      adj_cost
+						rank:                      i64(adj_cost) * 1_000_000_000 - i64(i)
+						map_expansion_estimate:    map_est
+						interp_expansion_estimate: str_est
+						escape_scan_known:         escape_scan_flags & 1 != 0
+						escape_scan_needed:        escape_scan_flags & 2 != 0
 					}
 				}
 			}
@@ -3448,7 +3454,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 	}
 	t.fn_scan_costs = []int{}
 	t.fn_escape_scan_flags = []u8{}
-	t.timing_profile('  [ttime]   sc consts ${const_ms:.2f} ms, closures ${lit_ms:.2f} ms, interp est ${est_ms:.2f} ms')
+	t.timing_profile('  [ttime]   sc consts ${const_ms:.2f} ms, closures ${lit_ms:.2f} ms, expansion est ${est_ms:.2f} ms')
 	return pure
 }
 
@@ -3555,19 +3561,16 @@ fn (mut t Transformer) transform_pure_items_serial(items []FnWorkItem) {
 	t.item_escape_scan_needed = false
 }
 
-// transform_deferred_str_items lowers the functions held back from the parallel
-// regions because they interpolate struct/sum values (see
-// transform_serial_then_collect_pure). They run serially against the master
-// arena, which grows freely, so their large inline autostr expansion cannot
-// overflow a bounded worker append region. The list is empty unless the program
-// actually interpolates aggregates, so common builds (v3 self-host) skip it.
-fn (mut t Transformer) transform_deferred_str_items() {
-	t.deferred_str_count = t.deferred_str_items.len
-	if t.deferred_str_items.len == 0 {
+// transform_deferred_expansion_items lowers functions whose auto-str or const-map
+// expansion cannot fit safely in a bounded parallel worker region. They run
+// serially against the growable master arena after the workers finish.
+fn (mut t Transformer) transform_deferred_expansion_items() {
+	t.deferred_expansion_count = t.deferred_expansion_items.len
+	if t.deferred_expansion_items.len == 0 {
 		return
 	}
-	items := t.deferred_str_items
-	t.deferred_str_items = []FnWorkItem{}
+	items := t.deferred_expansion_items
+	t.deferred_expansion_items = []FnWorkItem{}
 	t.transform_pure_items_serial(items)
 }
 
@@ -4014,6 +4017,7 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 		if name !in t.sum_eq_types {
 			if scoped {
 				t.sum_eq_types[name.clone()] = SumEqRequest{
+					sum_name:      req.sum_name.clone()
 					module:        req.module.clone()
 					file:          req.file.clone()
 					helper_module: req.helper_module.clone()
@@ -4173,6 +4177,7 @@ fn (mut t Transformer) clone_sum_eq_types_owned() {
 	mut cloned := map[string]SumEqRequest{}
 	for name, req in t.sum_eq_types {
 		cloned[name.clone()] = SumEqRequest{
+			sum_name:      req.sum_name.clone()
 			module:        req.module.clone()
 			file:          req.file.clone()
 			helper_module: req.helper_module.clone()
@@ -5573,7 +5578,9 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 	t.mark_string_interp_call_part_used(expr_id)
 	saved_in_string_interp_part := t.in_string_interp_part
 	t.in_string_interp_part = true
-	mut transformed := t.transform_expr(expr_id)
+	// route a value `match`/`if` interpolation operand (e.g. `'${match x { ... }}'`)
+	// through its target type so its propagating arms are lowered as values.
+	mut transformed := t.transform_value_operand(expr_id)
 	t.in_string_interp_part = saved_in_string_interp_part
 	// The source annotation remains `?T` inside `if value != none`, but the
 	// transformed expression is the narrowed `.value` selector. Prefer that
@@ -5654,7 +5661,29 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 	if typ.len == 0 {
 		typ = 'string'
 	}
+	if format.len > 0 && t.normalize_type_alias(typ) == 'string'
+		&& t.string_interp_borrows_array_accessor_field(expr_id) {
+		// Formatting may return its input unchanged when no padding is needed. Give it
+		// independent storage so a returned formatted value cannot retain the array field.
+		transformed = t.make_compiler_default_clone_value(transformed, 'string', false)
+	}
 	return t.wrap_formatted_string_conversion(transformed, typ, format)
+}
+
+fn (t &Transformer) string_interp_borrows_array_accessor_field(id flat.NodeId) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	mut current := id
+	for int(current) >= 0 && int(current) < t.a.nodes.len {
+		node := t.a.nodes[int(current)]
+		if node.kind in [.paren, .selector] && node.children_count > 0 {
+			current = t.a.child(&node, 0)
+			continue
+		}
+		return node.kind == .call && t.tc.array_accessor_result_is_borrowed(current)
+	}
+	return false
 }
 
 fn (t &Transformer) string_interp_interface_smartcast_ref_type(expr_id flat.NodeId) ?string {
@@ -7662,6 +7691,26 @@ fn (t &Transformer) method_value_has_pointer_receiver(id flat.NodeId) bool {
 	return t.tc.mut_receiver_methods[method_name]
 }
 
+// method_receiver_is_reference reports whether the method `method` resolved on `base_id`
+// takes its receiver by reference (a `mut` or `&` receiver). Such a receiver must keep its
+// lvalue identity when stabilized (only its dynamic base/index components spilled) so the
+// call still mutates through the lvalue; an ordinary by-value receiver is spilled by value so
+// its value is read in source order — a later branch prelude that mutates its container cannot
+// then change the observed receiver value.
+fn (t &Transformer) method_receiver_is_reference(base_id flat.NodeId, method string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	method_name := t.resolve_receiver_method_name(base_id, method)
+	if method_name.len == 0 {
+		return false
+	}
+	if params := t.tc.fn_param_types[method_name] {
+		return params.len > 0 && params[0] is types.Pointer
+	}
+	return t.tc.mut_receiver_methods[method_name]
+}
+
 fn (mut t Transformer) mark_callback_method_value_receiver_escape(id flat.NodeId, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
@@ -8618,6 +8667,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		} else {
 			''
 		}
+		if child.is_mut && child.op == .amp && typ.starts_with('&') {
+			typ = '&${typ}'
+		}
 		if child.is_mut {
 			typ = mut_optional_param_value_type(typ)
 			raw_source_typ = mut_optional_param_value_type(raw_source_typ)
@@ -9093,6 +9145,14 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 	if kind_id == 56 {
 		return t.transform_select_stmt(id, node)
 	}
+	if kind_id == 22 {
+		transformed := t.transform_or_expr(id, node)
+		transformed_node := t.a.nodes[int(transformed)]
+		if t.is_stmt_kind_id(int(transformed_node.kind)) {
+			return [transformed]
+		}
+		return [t.make_expr_stmt(transformed)]
+	}
 	match node.kind {
 		.return_stmt {
 			return t.transform_return_stmt(id, node)
@@ -9135,6 +9195,14 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 		}
 		.select_stmt {
 			return t.transform_select_stmt(id, node)
+		}
+		.or_expr {
+			transformed := t.transform_or_expr(id, node)
+			transformed_node := t.a.nodes[int(transformed)]
+			if t.is_stmt_kind_id(int(transformed_node.kind)) {
+				return [transformed]
+			}
+			return [t.make_expr_stmt(transformed)]
 		}
 		else {
 			return [id]
@@ -9478,7 +9546,13 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 			typ = value_type
 		}
 	}
-	child := t.transform_expr(child_id)
+	// route a value `match`/`if` dumped operand (e.g. `dump(match x { ... })`)
+	// through value lowering so its propagating arms are lowered as values.
+	child := if t.is_value_match_or_if_operand(child_id) {
+		t.transform_value_operand(child_id)
+	} else {
+		t.transform_expr(child_id)
+	}
 	temp_name := t.new_temp('dump')
 	t.pending_stmts << t.make_decl_assign_typed(temp_name, child, typ)
 	if isnil(t.tc) || !t.tc.suppress_dump_output {
@@ -11196,7 +11270,7 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			// A `mut val T` value param resolves to `&T`; cgen writes assignments
 			// through the pointer (`*val = ...`), so coerce the RHS to `T`, not `&T`.
 			if lhs.kind == .ident && lhs_type.starts_with('&') && t.mut_param_values[lhs.value]
-				&& !lhs_type.starts_with('&&') {
+				&& !t.pointer_value_rvalues[lhs.value] && !lhs_type.starts_with('&&') {
 				lhs_type = lhs_type[1..]
 			}
 			sum_target := t.assignment_sum_target(lhs_id, child_id, lhs_type)
@@ -11674,7 +11748,114 @@ fn (mut t Transformer) rebuild_transformed_lvalue(node flat.Node, children []fla
 		pos:            node.pos
 		value:          node.value
 		typ:            node.typ
+		is_mut:         node.is_mut
 	})
+}
+
+// stabilize_original_lvalue_receiver spills the non-stable dynamic index/base components of
+// an *untransformed* lvalue receiver into temps while preserving the lvalue shape and its
+// untransformed base, so the caller's re-dispatch transforms the receiver exactly once and a
+// mutable receiver keeps its identity (e.g. `items[next()].update(...)` still mutates
+// `items[next()]`). Returns none for a non-lvalue (rvalue) receiver, which the caller spills
+// by value instead.
+fn (mut t Transformer) stabilize_original_lvalue_receiver(id flat.NodeId) ?flat.NodeId {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	// A receiver/argument whose value is a pointer reaches its target through that pointer; a
+	// later branch prelude can reassign the pointer (`holder.ptr.update(match ... {
+	// retarget(mut holder)! } ...)`) before the rebuilt lvalue is read, retargeting the
+	// mutation. A pointer is a reference handle that needs no lvalue identity, so capture its
+	// value in source order.
+	if t.lvalue_type(id).starts_with('&') {
+		return t.snapshot_expr_for_reuse(id)
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return id
+		}
+		.paren {
+			if node.children_count == 0 {
+				return none
+			}
+			inner := t.stabilize_original_lvalue_receiver(t.a.child(&node, 0))?
+			return t.rebuild_transformed_lvalue(node, [inner])
+		}
+		.prefix {
+			if node.op != .mul || node.children_count == 0 {
+				return none
+			}
+			child_id := t.a.child(&node, 0)
+			new_child := if t.is_pure_constant_expr(child_id) {
+				child_id
+			} else {
+				t.spill_original_lvalue_component(child_id, 'recv_deref')
+			}
+			return t.rebuild_transformed_lvalue(node, [new_child])
+		}
+		.selector {
+			if node.children_count == 0 {
+				return none
+			}
+			base := t.stabilize_original_lvalue_receiver(t.a.child(&node, 0))?
+			mut children := [base]
+			for i in 1 .. node.children_count {
+				children << t.a.child(&node, i)
+			}
+			return t.rebuild_transformed_lvalue(node, children)
+		}
+		.index {
+			if node.children_count == 0 {
+				return none
+			}
+			base_child := t.a.child(&node, 0)
+			// If the container base is a reassignable array/map, snapshot it so a later branch
+			// prelude that replaces the container (`items[i].update(match ... { replace(mut
+			// items)! } ...)`) cannot retarget the in-place mutation — the snapshot shares the
+			// original backing storage, so the element mutation still reaches the source-order
+			// container. (A pointer base is captured by the top-level check above.)
+			base_type := t.normalize_type_alias(t.trim_pointer_type(t.lvalue_type(base_child)))
+			base := if (base_type.starts_with('[]') || base_type.starts_with('map['))
+				&& !t.is_pure_constant_expr(base_child) {
+				t.snapshot_expr_for_reuse(base_child)
+			} else {
+				t.stabilize_original_lvalue_receiver(base_child)?
+			}
+			mut children := [base]
+			for i in 1 .. node.children_count {
+				comp_id := t.a.child(&node, i)
+				// Snapshot a value-bearing index component (an ident/selector a later branch
+				// prelude could mutate) into a temp while keeping the surrounding lvalue shape,
+				// so `items[idx].update(match ... { change(mut idx)! } ...)` mutates the element
+				// at the source-order index. A pure constant index needs no snapshot.
+				children << if t.is_pure_constant_expr(comp_id) {
+					comp_id
+				} else {
+					t.spill_original_lvalue_component(comp_id, 'recv_index')
+				}
+			}
+			return t.rebuild_transformed_lvalue(node, children)
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (mut t Transformer) spill_original_lvalue_component(id flat.NodeId, prefix string) flat.NodeId {
+	transformed := t.transform_expr(id)
+	tmp_name := t.new_temp(prefix)
+	mut typ := t.node_type(transformed)
+	if typ.len == 0 {
+		typ = t.node_type(id)
+	}
+	if typ.len > 0 {
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, transformed, typ)
+	} else {
+		t.pending_stmts << t.make_decl_assign(tmp_name, transformed)
+	}
+	return t.make_ident(tmp_name)
 }
 
 fn (mut t Transformer) invalidate_smartcast_for_lvalue(id flat.NodeId) {
@@ -12902,7 +13083,11 @@ fn (mut t Transformer) transform_block_expr_for_type(_id flat.NodeId, node flat.
 	last := t.a.nodes[int(last_id)]
 	tail_expr_id := if last.kind == .expr_stmt && last.children_count > 0 {
 		t.a.child(&last, 0)
-	} else if last.kind == .block && t.stmt_value_type(last_id).len > 0 {
+	} else if last.kind in [.block, .match_stmt, .if_expr] && t.stmt_value_type(last_id).len > 0 {
+		// A block whose value tail is a bare `match`/`if` expression, e.g.
+		// `unsafe { match x { ... } }`. Treat the statement-shaped tail as the
+		// value expression so the target type reaches its (possibly propagating)
+		// branch tails instead of lowering them in a value-less statement context.
 		last_id
 	} else if !t.is_stmt_kind(last.kind) {
 		last_id
@@ -13148,6 +13333,10 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 			return addr
 		}
 		return expr
+	}
+	// `voidptr` receives the pointer value itself, even when its pointee is also `voidptr`.
+	if target == 'voidptr' && expr_type.starts_with('&') {
+		return t.make_cast(target, expr, target)
 	}
 	if expr_type.starts_with('&') {
 		expr_value_type := t.normalize_type_alias(expr_type[1..])
@@ -13697,9 +13886,9 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 					t.set_node_typ(int(rhs_id), typ)
 				}
 			}
-			if amp_vt := t.mut_param_amp_decl_type(rhs_id) {
-				// `mut t := &table` where table is a `mut` value param: the RHS
-				// IS the caller's pointer, so the local is single-`&`, not `&&`.
+			if amp_vt := t.pointer_storage_amp_decl_type(rhs_id) {
+				// Mut parameters, mutable captures, and heap-promoted value locals use
+				// pointer storage. Their source-level address is that pointer itself.
 				typ = amp_vt
 			}
 			if typ.len > 0 {
@@ -15497,6 +15686,16 @@ fn (t &Transformer) local_decl_is_shared_before(name string, before flat.NodeId)
 	if t.source_parent_ids.len > 0 && !t.shared_local_decl_names[name] {
 		return false
 	}
+	return t.local_binding_before(name, before) or { false }
+}
+
+// local_binding_before reports whether `name` resolves to a visible parameter or local at
+// `before`; the returned bool records whether that binding is shared. It follows the use's
+// ancestor path so declarations in sibling blocks do not leak into the lookup.
+fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool {
+	if name.len == 0 || int(before) < 0 || int(before) >= t.a.nodes.len {
+		return none
+	}
 	// Follow the mutation's ancestor path and inspect only declarations preceding that
 	// path in each enclosing scope; bindings inside sibling blocks must not leak out.
 	mut path := [int(before)]
@@ -15516,23 +15715,45 @@ fn (t &Transformer) local_decl_is_shared_before(name string, before flat.NodeId)
 		cursor = parent_id
 	}
 	if !found_fn_scope {
-		return false
+		return none
 	}
 	mut found := false
 	mut is_shared := false
 	for path_idx := path.len - 1; path_idx > 0; path_idx-- {
 		parent := t.a.nodes[path[path_idx]]
 		next_id := path[path_idx - 1]
+		mut inside_for_in_body := false
+		if parent.kind == .for_in_stmt {
+			header_count := parent.value.int()
+			if header_count >= 3 && header_count < parent.children_count {
+				for i in header_count .. parent.children_count {
+					if int(t.a.child(&parent, i)) == next_id {
+						inside_for_in_body = true
+						break
+					}
+				}
+			}
+		}
 		for i in 0 .. parent.children_count {
 			child_id := int(t.a.child(&parent, i))
 			if child_id == next_id {
 				break
+			}
+			// An if-guard declaration is visible only in the guarded (then) branch.
+			// Do not let it shadow a constant while resolving an else-branch use.
+			if parent.kind == .if_expr && i == 0 && parent.children_count > 1
+				&& next_id != int(t.a.child(&parent, 1)) {
+				continue
 			}
 			if child_id < 0 || child_id >= t.a.nodes.len {
 				continue
 			}
 			child := t.a.nodes[child_id]
 			if child.kind == .param && child.value == name {
+				found = true
+				is_shared = child.typ.trim_space().starts_with('shared ')
+			} else if parent.kind == .for_in_stmt && inside_for_in_body && i < 2
+				&& child.kind == .ident && child.value == name {
 				found = true
 				is_shared = false
 			} else if child.kind == .decl_assign {
@@ -15543,7 +15764,10 @@ fn (t &Transformer) local_decl_is_shared_before(name string, before flat.NodeId)
 			}
 		}
 	}
-	return found && is_shared
+	if !found {
+		return none
+	}
+	return is_shared
 }
 
 fn (mut t Transformer) build_source_parent_index() {
@@ -16400,10 +16624,23 @@ fn (mut t Transformer) transform_select_expr(id flat.NodeId, node flat.Node) fla
 			return t.make_block(body)
 		}
 	}
+	// A later send case whose value hoists a value branch materializes its prelude into
+	// pending_stmts, which is drained before the whole select while gen_select evaluates
+	// earlier case values during select setup — so `second` would run before `first` (and the
+	// prelude could mutate an earlier case's channel first). When any case hoists, capture each
+	// case's channel and send value into temps in case order so the preludes land in
+	// pending_stmts in source order.
+	mut order_cases := false
+	for i in 0 .. node.children_count {
+		if t.select_case_hoists_value_branch(t.a.child(&node, i)) {
+			order_cases = true
+			break
+		}
+	}
 	mut branches := []flat.NodeId{cap: int(node.children_count)}
 	if t.smartcast_stack.len == 0 {
 		for i in 0 .. node.children_count {
-			branches << t.transform_select_branch(t.a.child(&node, i))
+			branches << t.transform_select_branch(t.a.child(&node, i), order_cases)
 		}
 	} else {
 		base_smartcasts := t.smartcast_stack.clone()
@@ -16412,7 +16649,7 @@ fn (mut t Transformer) transform_select_expr(id flat.NodeId, node flat.Node) fla
 		for i in 0 .. node.children_count {
 			t.smartcast_stack = base_smartcasts.clone()
 			t.invalidated_smartcasts = base_invalidated.clone()
-			branches << t.transform_select_branch(t.a.child(&node, i))
+			branches << t.transform_select_branch(t.a.child(&node, i), order_cases)
 			for key, invalidated in t.invalidated_smartcasts {
 				if invalidated {
 					merged_invalidated[key] = true
@@ -16436,7 +16673,7 @@ fn (mut t Transformer) transform_select_expr(id flat.NodeId, node flat.Node) fla
 	})
 }
 
-fn (mut t Transformer) transform_select_branch(id flat.NodeId) flat.NodeId {
+fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool) flat.NodeId {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return id
 	}
@@ -16474,10 +16711,19 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId) flat.NodeId {
 	mut children := []flat.NodeId{cap: int(branch.children_count)}
 	for i in 0 .. body_start {
 		child_id := t.a.child(&branch, i)
+		child := t.a.nodes[int(child_id)]
 		children << if branch.value == 'recv_assign' && body_start == 2 && i == 0 {
 			t.transform_lvalue_without_smartcast(child_id)
 		} else if body_start == 2 && i == 0 {
 			t.transform_lvalue(child_id)
+		} else if order_cases && child.kind == .infix && child.op == .arrow
+			&& child.children_count >= 2 {
+			// Send case `ch <- value`: capture channel and value in source order.
+			t.transform_select_send_ordered(child)
+		} else if order_cases && child.kind == .prefix && child.op == .arrow
+			&& child.children_count > 0 {
+			// Receive case `<-ch`: capture the channel in source order.
+			t.transform_select_recv_ordered(child)
 		} else {
 			t.transform_expr(child_id)
 		}
@@ -16546,6 +16792,89 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId) flat.NodeId {
 		pos:            branch.pos
 		value:          branch.value
 		typ:            branch.typ
+	})
+}
+
+// select_case_hoists_value_branch reports whether a select case's channel or send value hoists
+// a value `match`/`if` whose materialization prelude would otherwise be drained before the whole
+// select. It covers a send case's channel and value, and a receive case's channel.
+fn (t &Transformer) select_case_hoists_value_branch(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	branch := t.a.nodes[int(id)]
+	if branch.kind != .select_branch || branch.children_count == 0 {
+		return false
+	}
+	first := t.a.nodes[int(t.a.child(&branch, 0))]
+	// Send case `ch <- value`: either the channel or the value can hoist a branch.
+	if first.kind == .infix && first.op == .arrow && first.children_count >= 2 {
+		return t.operand_hoists_value_branch(t.a.child(&first, 0))
+			|| t.operand_hoists_value_branch(t.a.child(&first, 1))
+	}
+	// Receive case `<-ch`: the channel can hoist a branch.
+	if first.kind == .prefix && first.op == .arrow && first.children_count > 0 {
+		return t.operand_hoists_value_branch(t.a.child(&first, 0))
+	}
+	// Receive-assign case `x := <-ch`: child 1 is the receive prefix.
+	if branch.children_count >= 2 {
+		second := t.a.nodes[int(t.a.child(&branch, 1))]
+		if second.kind == .prefix && second.op == .arrow && second.children_count > 0 {
+			return t.operand_hoists_value_branch(t.a.child(&second, 0))
+		}
+	}
+	return false
+}
+
+// snapshot_select_operand lowers a select-case channel or send value in source order. A value
+// `match`/`if` operand (directly or nested) is materialized through the value-aware path; a
+// nonconstant (value-bearing) operand is snapshotted into a temp so a later case's hoisted
+// prelude cannot mutate a stable identifier before select setup reads it; a pure constant is
+// left inline.
+fn (mut t Transformer) snapshot_select_operand(id flat.NodeId, prefix string) flat.NodeId {
+	val := t.transform_value_operand(id)
+	if t.is_value_match_or_if_operand(id) {
+		// Already materialized into a value temp above.
+		return val
+	}
+	if t.operand_needs_ordering_snapshot(val) {
+		return t.snapshot_transformed_expr_for_reuse(val, t.node_type(val), prefix)
+	}
+	return val
+}
+
+// transform_select_send_ordered lowers a select send case `ch <- value` capturing the channel
+// and the send value into temps (in source order) so their evaluation lands in pending_stmts
+// before a later case's hoisted prelude, matching gen_select's per-case setup order.
+fn (mut t Transformer) transform_select_send_ordered(infix flat.Node) flat.NodeId {
+	chan_expr := t.snapshot_select_operand(t.a.child(&infix, 0), 'select_chan')
+	val_expr := t.snapshot_select_operand(t.a.child(&infix, 1), 'select_send_val')
+	start := t.a.children.len
+	t.a.children << chan_expr
+	t.a.children << val_expr
+	return t.a.add_node(flat.Node{
+		kind:           .infix
+		op:             .arrow
+		children_start: start
+		children_count: 2
+		pos:            infix.pos
+		typ:            infix.typ
+	})
+}
+
+// transform_select_recv_ordered lowers a select receive case `<-ch` capturing the channel into a
+// temp so a later case's hoisted prelude cannot change the channel before it is read.
+fn (mut t Transformer) transform_select_recv_ordered(prefix flat.Node) flat.NodeId {
+	chan_expr := t.snapshot_select_operand(t.a.child(&prefix, 0), 'select_chan')
+	start := t.a.children.len
+	t.a.children << chan_expr
+	return t.a.add_node(flat.Node{
+		kind:           .prefix
+		op:             .arrow
+		children_start: start
+		children_count: 1
+		pos:            prefix.pos
+		typ:            prefix.typ
 	})
 }
 
@@ -16721,6 +17050,45 @@ fn (mut t Transformer) transform_children_expr(id flat.NodeId, node flat.Node) f
 	})
 }
 
+// transform_value_operand transforms an operand of an infix/prefix expression,
+// routing a value `match`/`if` operand (e.g. `1 + (match x { ... })` or
+// `-(match x { ... })`) through `transform_expr_for_type` so its (possibly
+// propagating) branch tails are lowered as values instead of in a value-less
+// statement context.
+fn (mut t Transformer) transform_value_operand(id flat.NodeId) flat.NodeId {
+	if t.is_value_match_or_if_operand(id) {
+		mut typ := t.node_type(id)
+		if typ.len == 0 {
+			typ = t.resolve_expr_type(id)
+		}
+		if typ.len > 0 && typ != 'void' {
+			return t.transform_expr_for_type(id, typ)
+		}
+	}
+	return t.transform_expr(id)
+}
+
+// materialize_value_branch_operand is transform_value_operand for a caller that rebuilds its
+// node over the materialized operands and re-dispatches over the rebuilt node. That protocol
+// needs the rewrite to make progress: `transform_value_operand` only materializes a branch when
+// it has a usable value type, and otherwise falls back to plain `transform_expr`, which rebuilds
+// the branch with the same shape under a fresh id (e.g. `f(a, b, c, if cond { .arrow } else {
+// .dot })`, whose enum-shorthand arms leave the `if` untyped). The caller would then see a
+// changed operand that is still a branch and re-dispatch forever, overflowing the stack. Detect
+// that, drop the prelude the failed attempt queued, and return the operand unchanged so the
+// caller leaves it to its ordinary operand lowering.
+fn (mut t Transformer) materialize_value_branch_operand(id flat.NodeId) flat.NodeId {
+	pending_mark := t.pending_stmts.len
+	value := t.transform_value_operand(id)
+	if value != id && t.operand_hoists_value_branch(value) {
+		if t.pending_stmts.len > pending_mark {
+			t.pending_stmts = t.pending_stmts[..pending_mark].clone()
+		}
+		return id
+	}
+	return value
+}
+
 // transform_infix_expr transforms transform infix expr data for transform.
 fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
@@ -16732,12 +17100,46 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		if rhs.kind == .or_expr && rhs.children_count >= 2 {
 			t.mark_fn_used('sync__Channel__try_push_priv')
 			t.mark_fn_used('sync__Channel__closed_error')
-			lhs := t.transform_expr(t.a.child(&node, 0))
-			value := t.transform_expr(t.a.child(&rhs, 0))
+			send_prelude_start := t.pending_stmts.len
+			target_id := t.a.child(&node, 0)
+			// Route a value `match`/`if` channel target through value lowering so its propagating
+			// arm tail is materialized as a value temp, e.g.
+			// `(match node { First { channel_first(node)! } ... }) <- 1 or { return }`; otherwise
+			// it is lowered in a value-less statement context and emits an empty channel
+			// expression. `transform_value_operand` is a no-op for the common non-branch targets.
+			mut lhs := t.transform_value_operand(target_id)
+			sent_value_id := t.a.child(&rhs, 0)
+			// A send target is a channel reference handle, not an lvalue that must be written
+			// through, so when the sent value hoists a value branch, snapshot the target's channel
+			// value before that branch's prelude. This captures the source-order channel even if
+			// the prelude reassigns a stable target
+			// (`target <- (match ... { retarget(mut target)! } ...)`) or mutates a side-effecting
+			// target's components (`channels[next()] <- (match ...)`). A value-branch target is
+			// already materialized into a temp above.
+			if t.operand_hoists_value_branch(sent_value_id)
+				&& !t.is_value_match_or_if_operand(target_id) {
+				lhs = t.snapshot_transformed_expr_for_reuse(lhs, t.node_type(lhs), 'chan_target')
+			}
+			// Route a value `match`/`if` sent value through value lowering so its propagating
+			// arm tail is materialized as a value, e.g.
+			// `ch <- (match node { First { get_first(node)! } ... }) or { return }`.
+			// `transform_value_operand` is a no-op for the common non-branch sent values.
+			value := t.transform_value_operand(sent_value_id)
+			// Detach the channel target + sent value materialization prelude so transforming the
+			// `or {}` handler below does not capture it into the handler body; re-queue it
+			// afterwards so it is emitted before the channel send (target index before value).
+			mut send_prelude := []flat.NodeId{}
+			if t.pending_stmts.len > send_prelude_start {
+				send_prelude = t.pending_stmts[send_prelude_start..].clone()
+				t.pending_stmts = t.pending_stmts[..send_prelude_start].clone()
+			}
 			saved_var_types := t.var_types.clone()
 			t.set_implicit_err_var_type()
 			body := t.transform_expr(t.a.child(&rhs, 1))
 			t.restore_var_types(saved_var_types)
+			for stmt in send_prelude {
+				t.pending_stmts << stmt
+			}
 			or_start := t.a.children.len
 			t.a.children << value
 			t.a.children << body
@@ -16782,11 +17184,38 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 				rhs_target_type = elem_type
 			}
 		}
-		new_lhs := t.transform_expr(lhs_id)
+		// Route `match`/`if` value operands through value lowering: a numeric shift
+		// such as `1 << (match x { First { get_a()! } else { get_b()! } })` leaves
+		// `rhs_target_type` empty, so a propagating branch tail would otherwise be
+		// lowered with plain `transform_expr` in a value-less statement context and
+		// emit an empty expression. `transform_value_operand` is a no-op for the
+		// common non-branch operands.
+		// Preserve LHS-before-RHS evaluation order: for a numeric shift whose RHS hoists a
+		// value branch — directly or nested inside a compound RHS (`mark_lhs() << (1 +
+		// (match ...))`) — its materialization below queues prelude statements, so stabilize a
+		// side-effecting LHS first so it runs before that prelude, e.g.
+		// `mark_lhs() << (match x { ... mark_rhs()! ... })`. An array-append LHS
+		// (`rhs_target_type` set) is a mutated lvalue and must not be spilled; a value-branch
+		// LHS is already materialized in order by `transform_value_operand`.
+		rhs_is_value_branch := t.operand_hoists_value_branch(rhs_id)
+		mut new_lhs := if rhs_target_type.len == 0 && rhs_is_value_branch
+			&& !t.is_value_match_or_if_operand(lhs_id) && t.operand_needs_ordering_snapshot(lhs_id) {
+			t.snapshot_expr_for_reuse(lhs_id)
+		} else {
+			t.transform_value_operand(lhs_id)
+		}
+		// For an array append (`rhs_target_type` set) whose RHS is a value branch that
+		// hoists a prelude, stabilize the LHS lvalue's dynamic base/index components into
+		// temps first — without spilling the mutated array value — so a side-effecting
+		// index (e.g. `arrays[next(mut trace)] << (match ...)`) evaluates before the RHS
+		// prelude, preserving source order.
+		if rhs_target_type.len > 0 && rhs_is_value_branch {
+			new_lhs = t.stabilize_transformed_lvalue_for_reuse(new_lhs)
+		}
 		new_rhs := if rhs_target_type.len > 0 {
 			t.transform_expr_for_type(rhs_id, rhs_target_type)
 		} else {
-			t.transform_expr(rhs_id)
+			t.transform_value_operand(rhs_id)
 		}
 		if t.rewrite_two_children_in_place(id, new_lhs, new_rhs) {
 			t.annotate_left_shift(id)
@@ -16806,6 +17235,79 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		})
 		t.annotate_left_shift(new_id)
 		return new_id
+	}
+	// A value-context `match`/`if` operand (e.g. `(match x { First { get_a()! }
+	// else { get_b()! } }) + suffix`) must be materialized as a value before the
+	// type-specialized handlers below dispatch on operand type. Those handlers
+	// (string/array/map/interface/sum/struct ops) lower their operands with plain
+	// `transform_expr`, which would lower the (possibly propagating) branch tails
+	// in a value-less statement context and emit an empty expression. Materialize
+	// only the value-branch operand(s) into value temps here, then re-dispatch over
+	// the rewritten node so every handler sees a plain, typed operand. The other
+	// operand is left as its original node so it is transformed exactly once.
+	infix_lhs_id := t.a.children[node.children_start]
+	infix_rhs_id := t.a.children[node.children_start + 1]
+	// Detect a value branch that either side hoists — directly or nested inside a compound
+	// operand (`trace_left() + (1 + (match ...))`) — so the other, side-effecting operand is
+	// stabilized before that operand's materialization prelude, preserving left-to-right order.
+	// A directly-branch operand is materialized in order by `transform_value_operand` below; a
+	// nested one is materialized by its `transform_expr` recursion.
+	lhs_is_value_branch := t.operand_hoists_value_branch(infix_lhs_id)
+	rhs_is_value_branch := t.operand_hoists_value_branch(infix_rhs_id)
+	if lhs_is_value_branch || rhs_is_value_branch {
+		// Evaluate operands left-to-right so their materialization statements land in
+		// `pending_stmts` in source order (LHS before RHS). Materializing only one side
+		// would emit its prelude before the other operand is evaluated — e.g.
+		// `mark('L') + (match x { ... mark_result('R')! ... })` would run the RHS prelude
+		// before the LHS call, reversing observable evaluation order. When one side is a
+		// value branch, spill a non-stable (side-effecting) other operand to a temp first
+		// so its evaluation still precedes the branch's prelude; stable operands
+		// (idents/literals) are left untouched for the re-dispatch to transform once.
+		pending_start := t.pending_stmts.len
+		new_lhs := if lhs_is_value_branch {
+			t.materialize_value_branch_operand(infix_lhs_id)
+		} else if rhs_is_value_branch && t.operand_needs_ordering_snapshot(infix_lhs_id) {
+			t.snapshot_expr_for_reuse(infix_lhs_id)
+		} else {
+			infix_lhs_id
+		}
+		mut lhs_pending := []flat.NodeId{}
+		if t.pending_stmts.len > pending_start {
+			lhs_pending = t.pending_stmts[pending_start..].clone()
+			t.pending_stmts = t.pending_stmts[..pending_start].clone()
+		}
+		new_rhs := if rhs_is_value_branch {
+			t.materialize_value_branch_operand(infix_rhs_id)
+		} else if lhs_is_value_branch && !t.is_stable_expr_for_reuse(infix_rhs_id) {
+			t.stable_expr_for_reuse(infix_rhs_id)
+		} else {
+			infix_rhs_id
+		}
+		if lhs_pending.len > 0 {
+			rhs_pending := t.pending_stmts[pending_start..].clone()
+			t.pending_stmts = t.pending_stmts[..pending_start].clone()
+			for stmt in lhs_pending {
+				t.pending_stmts << stmt
+			}
+			for stmt in rhs_pending {
+				t.pending_stmts << stmt
+			}
+		}
+		if new_lhs != infix_lhs_id || new_rhs != infix_rhs_id {
+			start := t.a.children.len
+			t.a.children << new_lhs
+			t.a.children << new_rhs
+			new_id := t.a.add_node(flat.Node{
+				kind:           .infix
+				op:             node.op
+				children_start: start
+				children_count: 2
+				pos:            node.pos
+				value:          node.value
+				typ:            node.typ
+			})
+			return t.transform_infix_expr(new_id, t.a.nodes[int(new_id)])
+		}
 	}
 	if str_result := t.transform_infix_string_ops(id, node) {
 		return str_result
@@ -16832,7 +17334,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 	rhs_id := t.a.children[node.children_start + 1]
 	pending_start := t.pending_stmts.len
 	preserve_pointer_values := node.op in [.eq, .ne]
-	new_lhs := if preserve_pointer_values && t.infix_operand_is_language_pointer(lhs_id) {
+	new_lhs := if t.is_value_match_or_if_operand(lhs_id) {
+		t.transform_value_operand(lhs_id)
+	} else if preserve_pointer_values && t.infix_operand_is_language_pointer(lhs_id) {
 		t.transform_expr_preserving_pointer_value(lhs_id)
 	} else {
 		t.transform_expr(lhs_id)
@@ -16842,7 +17346,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		lhs_pending = t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	}
-	new_rhs := if preserve_pointer_values && t.infix_operand_is_language_pointer(rhs_id) {
+	new_rhs := if t.is_value_match_or_if_operand(rhs_id) {
+		t.transform_value_operand(rhs_id)
+	} else if preserve_pointer_values && t.infix_operand_is_language_pointer(rhs_id) {
 		t.transform_expr_preserving_pointer_value(rhs_id)
 	} else {
 		t.transform_expr(rhs_id)
@@ -16894,6 +17400,175 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	}
 	if node.value.len > 0 && node.value == '__v_compile_error' {
 		t.record_selected_compile_error_call(node)
+	}
+	// Materialize value `match`/`if` method receivers and arguments before builtin/method
+	// dispatch, so builtin lowerings (e.g. `(match ...).clone()` -> make_array_clone_call, or
+	// `values.index(match ...)` -> lower_array_index_expr, which lower the receiver/needle with
+	// plain `transform_expr` / `stable_expr_for_reuse`) receive plain value temps rather than
+	// lowering the propagating arm tail in a value-less statement context. Rebuild the
+	// selector/call over the materialized operands and re-dispatch; a no-op for the common
+	// non-branch receivers/arguments.
+	if node.children_count > 0 {
+		recv_fn_id := t.a.children[node.children_start]
+		recv_fn := t.a.nodes[int(recv_fn_id)]
+		is_selector_call := recv_fn.kind == .selector && recv_fn.children_count > 0
+		recv_sel_base_id := if is_selector_call {
+			t.a.children[recv_fn.children_start]
+		} else {
+			flat.empty_node
+		}
+		// A module/type-qualified callee (`os.abs_path(...)`, `Type.make(...)`) is a selector
+		// whose base names a compile-time namespace, not a value: it has no runtime storage to
+		// stabilize or snapshot, so only its arguments take ordering treatment.
+		is_namespace_call := is_selector_call
+			&& t.call_selector_base_is_namespace(recv_sel_base_id, recv_fn.value, node.value)
+		// A function-valued field callee (`p.callback(...)`) is a selector but not a method call:
+		// the field holds a function value that an argument prelude can replace (via a
+		// reference-backed holder), so it must be snapshotted whole like any other runtime callee
+		// rather than treated as a method that only stabilizes its receiver.
+		is_fn_field_callee := is_selector_call && !is_namespace_call
+			&& t.receiver_selector_is_fn_field(t.normalize_type_alias(t.trim_pointer_type(t.lvalue_type(recv_sel_base_id))), recv_fn.value)
+		is_method := is_selector_call && !is_fn_field_callee && !is_namespace_call
+		recv_id := if is_method { recv_sel_base_id } else { flat.empty_node }
+		// A plain (non-method) call whose callee is itself a value branch —
+		// `(match node { ... make_cb(node)! ... })()` — must materialize operand 0 too;
+		// otherwise transform_call_args lowers child 0 with plain transform_expr and leaves the
+		// propagating branch tail in a value-less statement context, emitting an empty callee.
+		callee_is_value_branch := !is_method && t.is_value_match_or_if_operand(recv_fn_id)
+		// Position of the last operand that hoists a value branch (0 = method receiver or a
+		// branch callee, 1.. = arguments). An argument counts even when the branch is nested
+		// inside a compound expression (`1 + (match ...)`, `i64(match ...)`): lowering it still
+		// materializes the inner branch into pending_stmts, so an earlier operand must be
+		// stabilized to keep source order.
+		mut last_branch := if (is_method && t.is_value_match_or_if_operand(recv_id))
+			|| callee_is_value_branch {
+			0
+		} else {
+			-1
+		}
+		for i in 1 .. node.children_count {
+			if t.operand_hoists_value_branch(t.a.child(&node, i)) {
+				last_branch = i
+			}
+		}
+		if last_branch >= 0 {
+			// Evaluate operands in source order (method receiver, then arguments). A value branch
+			// is materialized into a value temp; a non-stable operand that precedes a later branch
+			// is stabilized first so its side effects run before that branch's hoisted prelude.
+			// Stabilization preserves an lvalue's identity (spilling only its dynamic base/index
+			// components, so `mut`/mutable operands still mutate through, e.g.
+			// `items[next()].update(match ...)` or `apply(mut items[next()], match ...)`); an rvalue
+			// is spilled by value. Applies to method calls and plain function calls alike. Stable
+			// operands are left for the re-dispatch to transform once.
+			mut changed := false
+			mut new_fn_id := recv_fn_id
+			if is_method {
+				new_recv := if t.is_value_match_or_if_operand(recv_id) {
+					r := t.materialize_value_branch_operand(recv_id)
+					if r != recv_id {
+						changed = true
+					}
+					r
+				} else if last_branch > 0 && t.operand_needs_ordering_snapshot(recv_id)
+					&& !t.callee_base_is_not_a_runtime_value(recv_id) {
+					// A `mut`/reference receiver keeps its lvalue identity (only its dynamic
+					// base/index components are spilled) so the call still mutates through the
+					// lvalue. An ordinary by-value receiver is spilled by value, so its value is
+					// read in source order — a later branch prelude that mutates its container
+					// (e.g. `items[next()].read(match ... { mutate(mut items)! } ...)`) cannot
+					// then change the observed receiver value.
+					r := if t.method_receiver_is_reference(recv_id, recv_fn.value) {
+						if stabilized := t.stabilize_original_lvalue_receiver(recv_id) {
+							stabilized
+						} else {
+							t.snapshot_expr_for_reuse(recv_id)
+						}
+					} else {
+						t.snapshot_expr_for_reuse(recv_id)
+					}
+					if r != recv_id {
+						changed = true
+					}
+					r
+				} else {
+					recv_id
+				}
+				sel_start := t.a.children.len
+				t.a.children << new_recv
+				for i in 1 .. recv_fn.children_count {
+					t.a.children << t.a.child(&recv_fn, i)
+				}
+				new_fn_id = t.a.add_node(flat.Node{
+					kind:           .selector
+					op:             recv_fn.op
+					value:          recv_fn.value
+					typ:            recv_fn.typ
+					children_start: sel_start
+					children_count: recv_fn.children_count
+					pos:            recv_fn.pos
+				})
+			} else if callee_is_value_branch {
+				r := t.materialize_value_branch_operand(recv_fn_id)
+				if r != recv_fn_id {
+					new_fn_id = r
+					changed = true
+				}
+			} else if last_branch > 0 && !is_namespace_call
+				&& t.callee_needs_ordering_snapshot(recv_fn_id) {
+				// A non-method runtime callee (make_cb(mut trace)(match ...), or a function-valued
+				// variable a branch could reassign) must evaluate before a later branch argument's
+				// hoisted prelude, so snapshot it in source order.
+				r := t.snapshot_expr_for_reuse(recv_fn_id)
+				if r != recv_fn_id {
+					new_fn_id = r
+					changed = true
+				}
+			}
+			mut new_args := []flat.NodeId{cap: int(node.children_count)}
+			for i in 1 .. node.children_count {
+				arg_id := t.a.child(&node, i)
+				na := if t.is_value_match_or_if_operand(arg_id) {
+					t.materialize_value_branch_operand(arg_id)
+				} else if i < last_branch && t.operand_needs_ordering_snapshot(arg_id) {
+					// A `mut` argument keeps its lvalue identity (only its dynamic base/index
+					// components are spilled) so it still mutates through. An ordinary argument is
+					// spilled by value, so its value is read in source order — a later branch
+					// prelude that mutates its container cannot change the observed value.
+					if t.a.nodes[int(arg_id)].is_mut {
+						if stabilized := t.stabilize_original_lvalue_receiver(arg_id) {
+							stabilized
+						} else {
+							t.snapshot_expr_for_reuse(arg_id)
+						}
+					} else {
+						t.snapshot_expr_for_reuse(arg_id)
+					}
+				} else {
+					arg_id
+				}
+				if na != arg_id {
+					changed = true
+				}
+				new_args << na
+			}
+			if changed {
+				call_start := t.a.children.len
+				t.a.children << new_fn_id
+				for a in new_args {
+					t.a.children << a
+				}
+				new_call_id := t.a.add_node(flat.Node{
+					kind:           .call
+					op:             node.op
+					value:          node.value
+					typ:            node.typ
+					children_start: call_start
+					children_count: node.children_count
+					pos:            node.pos
+				})
+				return t.transform_call_expr(new_call_id, t.a.nodes[int(new_call_id)])
+			}
+		}
 	}
 	if lowered := t.try_lower_bound_method_array_call(node) {
 		return lowered
@@ -17280,8 +17955,30 @@ fn (mut t Transformer) lower_gated_scalar_index(node flat.Node) ?flat.NodeId {
 		return none
 	}
 	base_child := t.a.child(&node, 0)
-	base := t.stable_expr_for_reuse(base_child)
-	idx := t.stable_expr_for_reuse(t.a.child(&node, 1))
+	idx_child := t.a.child(&node, 1)
+	// Route value `match`/`if` operands through value lowering: `stable_expr_for_reuse`
+	// lowers via plain `transform_expr`, which would lower a propagating branch tail in a
+	// value-less statement context and emit an empty expression, e.g.
+	// `values#[match n { First { get_index()! } else { other_index()! } }]`.
+	// `transform_value_operand` materializes such an operand into a value temp (already
+	// stable for the multiple uses below); non-branch operands keep `stable_expr_for_reuse`.
+	// The base is evaluated before the index: if the index hoists a value branch whose prelude
+	// can reassign a syntactically stable base (`values#[match n { First { replace(mut values)!
+	// } ... }]`), snapshot the base's source-order value so the gated access reads it before
+	// that prelude.
+	base := if t.is_value_match_or_if_operand(base_child) {
+		t.transform_value_operand(base_child)
+	} else if t.operand_hoists_value_branch(idx_child)
+		&& t.operand_needs_ordering_snapshot(base_child) {
+		t.snapshot_expr_for_reuse(base_child)
+	} else {
+		t.stable_expr_for_reuse(base_child)
+	}
+	idx := if t.is_value_match_or_if_operand(idx_child) {
+		t.transform_value_operand(idx_child)
+	} else {
+		t.stable_expr_for_reuse(idx_child)
+	}
 	mut base_type := t.node_type(base)
 	if base_type.len == 0 {
 		base_type = t.node_type(base_child)
@@ -17338,14 +18035,34 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 	if lowered := t.lower_gated_scalar_index(node) {
 		return t.lower_owned_array_index_move(id, lowered)
 	}
+	// A later child (index / slice bound) that hoists a value `match`/`if` — directly or
+	// nested inside a compound child (`make_values(mut tr)[1 + (match n { ... })]`) — lifts
+	// its propagation prelude into `pending_stmts`; a preceding side-effecting child left
+	// inline would then run after that prelude. Find the last hoisting child so earlier
+	// children can be stabilized first, preserving left-to-right evaluation order, e.g.
+	// `make_values(mut tr)[match n { ... tr.index_result()! ... }]`. Index reads only
+	// reach here (`.index`); lvalue targets are the separate `.index_assign` kind.
+	mut last_value_branch := -1
+	for i in 0 .. node.children_count {
+		if t.operand_hoists_value_branch(t.a.child(&node, i)) {
+			last_value_branch = i
+		}
+	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	mut changed := false
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
+		// route a value `match`/`if` operand (e.g. `values[match x { ... }]`)
+		// through value lowering so its propagating arms are lowered as values;
+		// stabilize an earlier side-effecting operand before a later hoisting one.
+		// The index base (`i == 0`) keeps master's dedicated base lowering.
 		mut new_child := if i == 0 {
 			t.transform_index_base_expr(child_id)
+		} else if i < last_value_branch && !t.is_value_match_or_if_operand(child_id)
+			&& t.operand_needs_ordering_snapshot(child_id) {
+			t.snapshot_expr_for_reuse(child_id)
 		} else {
-			t.transform_expr(child_id)
+			t.transform_value_operand(child_id)
 		}
 		if i == 0 {
 			base := t.a.nodes[int(new_child)]
@@ -17875,25 +18592,22 @@ fn stringify_type_has_generic_placeholder(typ string) bool {
 // `arr[0]` / `arr[len - 1]`. The stored element stays owned by the array, so this avoids
 // the independent-clone path `first()`/`last()` otherwise takes for ownership-bearing
 // element types — a path that has no valid lowering when the element has no `clone()`
-// method and would otherwise emit an empty placeholder (`(0)`). Restricted to that owned
-// case so non-owned elements keep their existing accessor lowering. Applied for every owned
-// field read so it stays in lock-step with the checker, which likewise treats such a read as
-// a borrow — but NOT for a bound-method-value receiver (`suppress_first_last_accessor_borrow`):
-// there closure generation shallow-copies the receiver, so an aliased array element would
-// share heap fields with the array and double-free. Returns none when the base is not such
-// an accessor.
+// method and would otherwise emit an empty placeholder (`(0)`). Restricted to owned elements
+// so non-owned elements keep their existing accessor lowering, and gated on the checker's
+// `array_accessor_result_is_borrowed` predicate so the two stay in lock-step: a bound method
+// value or a selector chain whose final value owns data is not borrowed here, matching the
+// checker's suppressed diagnostic. Returns none when the base is not such an accessor.
 fn (mut t Transformer) borrow_first_last_accessor(call_id flat.NodeId) ?flat.NodeId {
-	if int(call_id) < 0 || int(call_id) >= t.a.nodes.len || isnil(t.tc)
-		|| t.suppress_first_last_accessor_borrow {
+	if int(call_id) < 0 || int(call_id) >= t.a.nodes.len || isnil(t.tc) {
 		return none
 	}
+	mut node_id := call_id
 	mut node := t.a.nodes[int(call_id)]
-	// `(arr.last()).field` is the same borrow as `arr.last().field`; the checker's
-	// borrowed-field predicate (array_accessor_result_is_borrowed) looks through
-	// transparent parentheses, so this must too — otherwise the suppressed diagnostic
-	// leaks an empty `(0)` placeholder and the C compilation fails.
+	// `(arr.last()).field` is the same borrow as `arr.last().field`; unwrap transparent
+	// parentheses so the accessor is matched (the checker's predicate does the same).
 	for node.kind == .paren && node.children_count > 0 {
-		node = t.a.nodes[int(t.a.child(&node, 0))]
+		node_id = t.a.child(&node, 0)
+		node = t.a.nodes[int(node_id)]
 	}
 	if node.kind != .call || node.children_count == 0 {
 		return none
@@ -17910,6 +18624,14 @@ fn (mut t Transformer) borrow_first_last_accessor(call_id flat.NodeId) ?flat.Nod
 	}
 	elem_type := clean_base_type[2..]
 	if !t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) {
+		return none
+	}
+	// Defer to the checker's borrowed-field predicate so the two stay in lock-step: a bound
+	// method value (`arr.last().method`) or a chain whose final value owns data
+	// (`arr.last().name`) must keep the copying accessor semantics rather than borrow the
+	// live array element in place — otherwise an owned field could escape aliasing freed
+	// storage. Only reached for owned elements, so the walk stays off the default path.
+	if !t.tc.array_accessor_result_is_borrowed(node_id) {
 		return none
 	}
 	mut base := t.transform_lvalue(base_id)
@@ -17947,7 +18669,9 @@ fn (mut t Transformer) transform_selector_base_expr(id flat.NodeId) flat.NodeId 
 	// transparent parentheses (`(x).field`, `((x)).field`), where `x` is still the
 	// direct receiver.
 	if !t.selector_base_is_ident_receiver(id) {
-		return t.transform_expr(id)
+		// route a value `match`/`if` receiver (e.g. `(match x { ... }).field`)
+		// through its target type so its propagating arms are lowered as values.
+		return t.transform_value_operand(id)
 	}
 	old_in_selector_base := t.in_selector_base
 	t.in_selector_base = true
@@ -18302,16 +19026,9 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		new_base := t.selector_base_for_field(transformed_base, base_type0)
 		return t.lower_sum_shared_field_selector(new_base, base_type0, node.value, shared_typ)
 	}
-	// A bound method value keeps the copying `first()`/`last()` accessor semantics for its
-	// receiver; only a field read borrows the element in place. The field-specific branches
-	// above never reach here for a method value, so gating this one call site suffices.
-	is_method_value := !isnil(t.tc) && t.tc.expr_is_method_value(id)
-	old_suppress_borrow := t.suppress_first_last_accessor_borrow
-	t.suppress_first_last_accessor_borrow = is_method_value
 	mut new_base := t.transform_selector_base_expr(base_id)
-	t.suppress_first_last_accessor_borrow = old_suppress_borrow
 	mut selector_generic_params := node.generic_params().clone()
-	if is_method_value {
+	if !isnil(t.tc) && t.tc.expr_is_method_value(id) {
 		method_value_name := t.resolve_receiver_method_name(new_base, node.value)
 		method_params := t.call_param_types(method_value_name)
 		if method_params.len > 0 && method_params[0] !is types.Pointer {
@@ -18727,9 +19444,9 @@ fn (mut t Transformer) transform_match_trailing_or_expr(_id flat.NodeId, node fl
 }
 
 // transform_prefix_expr transforms transform prefix expr data for transform.
-// mut_param_amp_decl_type detects `&param` (possibly as an unsafe-block tail)
-// over a `mut` value param and returns the param's pointer type for the decl.
-fn (t &Transformer) mut_param_amp_decl_type(rhs_id flat.NodeId) ?string {
+// pointer_storage_amp_decl_type detects `&value` (possibly as an unsafe-block tail)
+// when `value` is a source-level value backed by pointer storage.
+fn (t &Transformer) pointer_storage_amp_decl_type(rhs_id flat.NodeId) ?string {
 	if int(rhs_id) < 0 {
 		return none
 	}
@@ -18753,7 +19470,8 @@ fn (t &Transformer) mut_param_amp_decl_type(rhs_id flat.NodeId) ?string {
 		return none
 	}
 	child := t.a.child_node(&node, 0)
-	if child.kind != .ident || !t.mut_param_values[child.value] {
+	if child.kind != .ident
+		|| (!t.mut_param_values[child.value] && !t.pointer_value_rvalues[child.value]) {
 		return none
 	}
 	mut vt := t.var_type(child.value)
@@ -18856,22 +19574,12 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 				return expr
 			}
 		}
-		// `&param` where `param` is a `mut` value param IS the pointer the
-		// caller passed; adding another `&` would take the address of the
-		// parameter slot (`map** t = table` + `*t = ...` clobbers the caller).
-		if child.kind == .ident && t.mut_param_values[child.value] {
-			mut vt := t.var_type(child.value)
-			if vt.starts_with('mut ') {
-				vt = '&' + vt[4..].trim_space()
-			}
-			if !vt.starts_with('&') && vt.len > 0 {
-				vt = '&${vt}'
-			}
-			if vt.starts_with('&') {
-				new_id := t.transform_expr(child_id)
-				t.set_node_typ(int(new_id), vt)
-				return new_id
-			}
+		// Pointer-backed values already name their storage address. Preserve that
+		// pointer instead of taking the address of the pointer slot and forming `&&T`.
+		if vt := t.pointer_storage_amp_decl_type(id) {
+			new_id := t.transform_expr_preserving_pointer_value(child_id)
+			t.set_node_typ(int(new_id), vt)
+			return new_id
 		}
 		if child.kind == .struct_init {
 			// `&T{...}` (address of a struct literal) is ALWAYS a heap allocation in V,
@@ -19048,7 +19756,11 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 			t.set_node_typ(int(addr), node.typ)
 			return addr
 		}
-		value := t.transform_expr(child_id)
+		// Route a value-context `match`/`if` operand (e.g. `&(match x { First { get_a()!
+		// } else { get_b()! } })`) through value lowering so a propagating branch tail is
+		// materialized as a value here instead of in a value-less statement context.
+		// `transform_value_operand` is a no-op for the common non-branch operands.
+		value := t.transform_value_operand(child_id)
 		if !t.expr_can_take_address(value) {
 			mut value_type := t.node_type(child_id)
 			if value_type.len == 0 {
@@ -19068,7 +19780,9 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		mut new_child := if node.op == .not {
 			t.transform_expr_for_type(child_id, 'bool')
 		} else {
-			t.transform_expr(child_id)
+			// route a value `match`/`if` operand (e.g. `-(match x { ... })`)
+			// through its target type so its propagating arms are lowered as values.
+			t.transform_value_operand(child_id)
 		}
 		if node.op == .not {
 			child := t.a.nodes[int(new_child)]
@@ -19571,6 +20285,57 @@ fn (mut t Transformer) transform_postfix_expr(id flat.NodeId, node flat.Node) fl
 	})
 }
 
+// is_value_match_or_if_operand reports whether the node is a `match`/`if`
+// expression used as a value, e.g. a cast operand like `i64(match x { ... })`.
+// It looks through transparent wrappers: `(...)` parens, `unsafe { }` (a `.block`
+// whose value tail is the expression), and a trailing `expr_stmt` — including
+// compositions like `i64(unsafe { match ... })`. Such an operand must be
+// transformed with its target type so its (possibly propagating) branch tails
+// are lowered as values.
+@[direct_array_access]
+fn (t &Transformer) is_value_match_or_if_operand(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return t.is_value_match_or_if_operand(t.a.child(&node, 0))
+	}
+	if node.kind == .block && node.children_count > 0 {
+		return t.is_value_match_or_if_operand(t.a.child(&node, node.children_count - 1))
+	}
+	return node.kind in [.match_stmt, .if_expr]
+}
+
+// operand_hoists_value_branch reports whether lowering `id` as a call operand (receiver or
+// argument) can materialize a value `match`/`if` into pending_stmts — either directly, or
+// nested inside a compound expression such as an infix, cast, index, prefix, nested call or
+// composite literal (`1 + (match ...)`, `i64(match ...)`, `arr[match ...]`). The `last_branch`
+// scan uses this to detect an operand that hoists a prelude so preceding operands can be
+// stabilized for source order; `is_value_match_or_if_operand` alone stops at the outer
+// wrapper and misses a branch buried inside such a compound operand. Recursion stops at
+// constructs that lower into their own scope — a nested closure/lambda/spawn body materializes
+// into that body, not the current pending. Over-detection is safe here: it only spills an
+// extra preceding operand to a temp, which is always order-preserving.
+fn (t &Transformer) operand_hoists_value_branch(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.match_stmt, .if_expr] {
+		return true
+	}
+	if node.kind in [.fn_literal, .lambda_expr, .spawn_expr] {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if t.operand_hoists_value_branch(t.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
 // transform_cast_expr transforms transform cast expr data for transform.
 @[direct_array_access]
 fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.NodeId {
@@ -19578,6 +20343,34 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		return id
 	}
 	target_type := t.normalize_type_alias(node.value)
+	// Materialize a value-context `match`/`if` cast operand into a value temp before
+	// the type-specific dispatch below. Several cast paths return early into helpers
+	// that lower the operand with plain `transform_expr` — the optional-sum branch
+	// (`?Shape(match ...)`), interface boxing (`Animal(match ...)`), the pointer-to-sum
+	// branch (`&Shape(match ...)`) and the sum branch (`Shape(match ...)`) — which would
+	// lower a propagating branch tail in a value-less statement context and emit an
+	// empty expression. Re-dispatch over the rewritten temp so every path sees a plain,
+	// typed operand. `transform_value_operand` is a no-op for the common non-branch operands.
+	if node.children_count == 1 {
+		match_cast_child := t.a.child(&node, 0)
+		if t.is_value_match_or_if_operand(match_cast_child) {
+			value := t.materialize_value_branch_operand(match_cast_child)
+			if value != match_cast_child {
+				start := t.a.children.len
+				t.a.children << value
+				new_id := t.a.add_node(flat.Node{
+					kind:           .cast_expr
+					op:             node.op
+					children_start: start
+					children_count: 1
+					pos:            node.pos
+					value:          node.value
+					typ:            node.typ
+				})
+				return t.transform_cast_expr(new_id, t.a.nodes[int(new_id)])
+			}
+		}
+	}
 	if target_type.starts_with('&') && t.is_interface_type(target_type) {
 		child := t.a.child_node(&node, 0)
 		if child.kind == .call && child.children_count > 0 {
@@ -19704,6 +20497,8 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		return t.make_optional_some(expr, optional_target)
 	}
 	if t.is_sum_type_name(target_type) {
+		// A value `match`/`if` operand here has already been materialized into a value
+		// temp by the pre-dispatch guard above, so `wrap_sum_value` sees a plain operand.
 		return t.wrap_sum_value(t.a.child(&node, 0), target_type)
 	}
 	// An explicit cast to an interface (`Animal(dog)`, `&PRNG(rng)`) boxes the
@@ -22650,6 +23445,28 @@ fn (t &Transformer) is_local_fn_value_call(node flat.Node) bool {
 	}
 	local_type := t.var_type(fn_node.value)
 	return local_type.starts_with('fn ') || t.is_fn_pointer_type_name(local_type)
+}
+
+// callee_needs_ordering_snapshot reports whether a plain-call callee (operand 0) must be
+// snapshotted to keep callee-before-argument order before a later branch argument's hoisted
+// prelude. A runtime callee expression (`make_cb(mut trace)(match ...)`) must evaluate once,
+// in source order; a function-valued local variable can be reassigned by the prelude, so it is
+// snapshotted too. A plain top-level function-name ident is a constant reference that
+// name-based call dispatch relies on, so it is left inline. Already-snapshotted temps are not
+// re-snapshotted.
+fn (t &Transformer) callee_needs_ordering_snapshot(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident {
+		if t.is_ordering_snapshot_temp(id) {
+			return false
+		}
+		local_type := t.var_type(node.value)
+		return local_type.starts_with('fn ') || t.is_fn_pointer_type_name(local_type)
+	}
+	return t.operand_needs_ordering_snapshot(id)
 }
 
 // const_type_name supports const type name handling for Transformer.

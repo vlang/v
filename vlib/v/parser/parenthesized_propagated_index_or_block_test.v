@@ -3,6 +3,16 @@ module parser
 import v.ast
 import v.checker
 import v.pref
+import v.token
+
+fn test_or_block_token_is_value_continuation() {
+	p := Parser{
+		tok: token.Token{
+			kind: .key_orelse
+		}
+	}
+	assert p.result_token_is_value_continuation(0)
+}
 
 fn test_parenthesized_propagated_index_can_be_followed_by_or_block() {
 	source_text := "

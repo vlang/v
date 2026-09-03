@@ -1573,6 +1573,80 @@ fn main() {
 	}
 }
 
+fn test_macos_v3_cached_generic_keeps_main_type_homonym() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()),
+			'macos_v3_generic_main_type_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(os.join_path(root, 'mid')) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		main_file := os.join_path(root, 'main.v')
+		os.write_file(os.join_path(root, 'mid', 'mid.v'), 'module mid
+
+pub struct Context {
+pub:
+	name string
+}
+
+pub struct Middleware[T] {
+pub:
+	handler fn (mut T) string
+}
+
+pub fn make[T]() Middleware[T] {
+	return Middleware[T]{
+		handler: fn [T](mut ctx T) string {
+			return ctx.Context.name
+		}
+	}
+}
+')!
+		os.write_file(main_file, 'module main
+
+import mid
+
+struct Context {
+	mid.Context
+}
+
+fn main() {
+	mut context := Context{
+		Context: mid.Context{
+			name: "main context"
+		}
+	}
+	middleware := mid.make[Context]()
+	println(middleware.handler(mut context))
+}
+')!
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		environment['V3CACHE'] = os.join_path(root, 'cache')
+		environment['V_MACOS_V3_NO_FALLBACK'] = '1'
+		for name in ['first', 'second'] {
+			output := os.join_path(root, name)
+			mut process := os.new_process(@VEXE)
+			process.set_args(['-gc', 'none', '-o', output, main_file])
+			process.set_environment(environment)
+			process.set_redirect_stdio()
+			process.run()
+			process.wait()
+			compiler_output := process.stdout_slurp() + process.stderr_slurp()
+			exit_code := process.code
+			process.close()
+			assert exit_code == 0, compiler_output
+			run := os.execute(os.quoted_path(output))
+			assert run.exit_code == 0, run.output
+			assert run.output.trim_space() == 'main context'
+		}
+	}
+}
+
 fn test_macos_v3_reads_c_error_fallback_report() {
 	$if macos {
 		root := os.join_path(os.vtmp_dir(), 'macos_v3_c_error_report_${os.getpid()}')
@@ -1663,7 +1737,8 @@ exec "\$REAL_CC" "\$@"
 		exit_code := process.code
 		process.close()
 		assert exit_code == 0, compiler_output
-		assert compiler_output.contains('source inputs changed'), compiler_output
+		// The unverified V3 fallback report is dropped silently, without any user-facing note.
+		assert !compiler_output.contains('source inputs changed'), compiler_output
 		assert !compiler_output.contains('V3 could not build this program'), compiler_output
 		assert os.is_executable(output)
 		run := os.execute(os.quoted_path(output))

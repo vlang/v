@@ -34,7 +34,7 @@ jobs:
         - ${{github.workspace}}:/opt/vlang
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@v7
       - name: Add Alpine build dependencies
         run: apk add libc6-compat gcompat gc gc-dev binutils diffutils elfutils
       - name: Build V

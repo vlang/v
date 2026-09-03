@@ -187,9 +187,7 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 }
 
 fn fastc_collect_selected_comptime_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut brace_depth := 0
@@ -200,7 +198,7 @@ fn fastc_collect_selected_comptime_function_signatures(source string, path strin
 			if lookahead.scan() == .key_if {
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
-					collect_function_signatures(selected.source, path, header, prefs,
+					collect_function_signatures(selected.source, path, header, prefs, []int{},
 						declared_types, declared_type_c_names, params_structs, mut functions)!
 				}
 				tok = selected.tok
@@ -419,9 +417,7 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 		// `x.$(<var>.name)`) at the source level, then re-scan the result as
 		// ordinary V — no comptime awareness is needed in the renderer.
 		substituted := g.substitute_comptime_field(body_source, loop_var, field)
-		mut file_set := token.FileSet.new()
-		mut file := file_set.add_file('comptime_for', substituted.len)
-		file.index_lines_without_digest(substituted)
+		file := token.File.unindexed('comptime_for', substituted.len)
 		g.s = scanner.new_scanner(g.prefs, .normal)
 		g.s.init(file, substituted)
 		g.next()
@@ -434,6 +430,7 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 			g.parse_statement()!
 			g.skip_semicolons()
 		}
+		g.type_memo.clear()
 		g.locals = outer_locals.clone()
 		g.indent--
 		g.write_line('}')
@@ -457,9 +454,7 @@ fn fastc_comptime_loop_var_token(tok token.Token) bool {
 
 fn (g &Parser) substitute_comptime_field(body string, loop_var string, field FastcStructField) string {
 	field_name := field.name
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('cf', body.len)
-	file.index_lines_without_digest(body)
+	file := token.File.unindexed('cf', body.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
 	s.init(file, body)
 	mut edits := []FastcSourceEdit{}
@@ -470,8 +465,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 			mut probe := s
 			if probe.scan() == .name && probe.lit == 'attr' && probe.scan() == .key_in
 				&& fastc_comptime_loop_var_token(probe.scan()) && probe.lit == loop_var
-				&& probe.scan() == .dot
-				&& probe.scan() == .name && probe.lit == 'attrs' && probe.scan() == .lcbr {
+				&& probe.scan() == .dot && probe.scan() == .name && probe.lit == 'attrs'
+				&& probe.scan() == .lcbr {
 				loop_start := s.pos
 				mut depth := 0
 				mut part := s.scan()
@@ -707,9 +702,7 @@ fn (g &Parser) resolve_type_name_c(name string) string {
 	if fastc_primitive_c_type(name) != none {
 		return name
 	}
-	key := g.resolve_declared_type_key(name) or {
-		return name
-	}
+	key := g.resolve_declared_type_key(name) or { return name }
 	return fastc_c_declared_type_name(key)
 }
 

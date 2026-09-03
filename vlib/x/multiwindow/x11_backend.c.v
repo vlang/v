@@ -321,8 +321,8 @@ $if linux && x_multiwindow_x11 ? {
 	fn C.v_multiwindow_x11_destroy_ic(ic voidptr)
 	fn C.v_multiwindow_x11_set_ic_focus(ic voidptr)
 	fn C.v_multiwindow_x11_unset_ic_focus(ic voidptr)
-	fn C.v_multiwindow_x11_init_keycodes(display &C.Display, keycodes &int, keycodes_len int)
-	fn C.v_multiwindow_x11_key_code(event &C.XEvent, keycodes &int, keycodes_len int) int
+	fn C.v_multiwindow_x11_init_keycodes(display &C.Display, keycodes &i32, keycodes_len int)
+	fn C.v_multiwindow_x11_key_code(event &C.XEvent, keycodes &i32, keycodes_len int) int
 	fn C.v_multiwindow_x11_char_codes(ic voidptr, event &C.XEvent, codes &u32, codes_len int, required_codes &int) int
 	fn C.v_multiwindow_x11_create_cursor_for_shape(display &C.Display, shape int) X11NativeCursor
 	fn C.v_multiwindow_x11_apply_config_hints(display &C.Display, window X11NativeWindow, width int, height int, min_width int, min_height int, resizable int, borderless int, fullscreen int) int
@@ -554,7 +554,7 @@ mut:
 	started                                      bool
 	pending_window                               X11WindowRecord
 	windows                                      []X11WindowRecord
-	keycodes                                     [256]int
+	keycodes                                     [256]i32
 }
 
 fn new_x11_backend() X11Backend {

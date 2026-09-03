@@ -11,29 +11,30 @@ const postgresql_transaction_probe_setting = 'v3_migrations.transaction_probe'
 // MigrationFn changes the schema through a migration Context.
 pub type MigrationFn = fn (mut Context) !
 
-// Migration is one reversible, versioned database schema change.
-//
-// Versions are positive integers. Timestamp-shaped versions such as
-// `20260816143000` make migrations naturally sortable, like Rails migrations.
-pub struct Migration {
-pub:
-	version i64
-	name    string
-	up      MigrationFn @[required]
-	down    MigrationFn @[required]
-}
-
-// TransactionMode controls whether each migration is wrapped in a transaction.
+// TransactionMode controls whether a migration is wrapped in a transaction.
 pub enum TransactionMode {
 	automatic
 	always
 	never
 }
 
+// Migration is one reversible, versioned database schema change.
+//
+// Versions are positive integers. Timestamp-shaped versions such as
+// `20260816143000` make migrations naturally sortable, like Rails migrations.
+pub struct Migration {
+pub:
+	version          i64
+	name             string
+	up               MigrationFn @[required]
+	down             MigrationFn @[required]
+	transaction_mode ?TransactionMode
+}
+
 // Config configures a Migrator.
 pub struct Config {
 pub:
-	dialect          Dialect
+	dialect          Dialect @[required]
 	table            string          = 'schema_migrations'
 	transaction_mode TransactionMode = .automatic
 }
@@ -82,6 +83,8 @@ mut:
 	sqlite_transaction_probe   string
 	resolved_history_namespace string
 	resolved_history_table_sql string
+	history_shape_resolved     bool
+	history_has_metadata       bool
 }
 
 // new creates and validates a migrator. It does not access the database until
@@ -96,6 +99,7 @@ pub fn new(mut conn orm.TransactionalConnection, registered []Migration, config 
 	mut ordered := registered.clone()
 	ordered.sort_with_compare(compare_migrations)
 	mut previous := i64(0)
+	mut migration_names := map[string]bool{}
 	for i, migration in ordered {
 		if migration.version <= 0 {
 			return error('migration `${migration.name}` has invalid version ${migration.version}; versions must be positive')
@@ -109,6 +113,10 @@ pub fn new(mut conn orm.TransactionalConnection, registered []Migration, config 
 		if migration.name.len > 255 {
 			return error('migration ${migration.version} name must not exceed 255 bytes')
 		}
+		if migration.name in migration_names {
+			return error('duplicate migration name `${migration.name}`')
+		}
+		migration_names[migration.name] = true
 		if i > 0 && migration.version == previous {
 			return error('duplicate migration version ${migration.version}')
 		}
@@ -141,16 +149,30 @@ fn compare_applied_desc(a &AppliedMigration, b &AppliedMigration) int {
 	return 0
 }
 
-// migrate applies every pending migration in ascending version order.
-pub fn (mut m Migrator) migrate() ![]AppliedMigration {
-	return m.migrate_to(max_i64)
+fn compare_applied_asc(a &AppliedMigration, b &AppliedMigration) int {
+	if a.version < b.version {
+		return -1
+	}
+	if a.version > b.version {
+		return 1
+	}
+	return 0
 }
 
-// migrate_to moves the schema to target_version. Pending migrations at or
-// below the target are applied; applied migrations above it are rolled back.
+// migrate applies every pending migration in ascending version order.
+pub fn (mut m Migrator) migrate() ![]AppliedMigration {
+	return m.run_locked(.migrate_to, max_i64)
+}
+
+// migrate_to moves the schema to an exact registered target version. Pending
+// migrations at or below the target are applied; applied migrations above it
+// are rolled back. Zero rolls the schema back completely.
 pub fn (mut m Migrator) migrate_to(target_version i64) ![]AppliedMigration {
 	if target_version < 0 {
 		return error('migration target version must not be negative')
+	}
+	if target_version != 0 && m.find_migration(target_version) == none {
+		return error('unknown migration target version ${target_version}')
 	}
 	return m.run_locked(.migrate_to, target_version)
 }
@@ -298,25 +320,75 @@ fn (mut m Migrator) run_unlocked(operation MigrationOperation, argument i64) ![]
 	}
 }
 
+fn missing_history_metadata_columns_error(dialect Dialect, message string) bool {
+	lower := message.to_lower_ascii()
+	if !lower.contains('name') && !lower.contains('applied_at') {
+		return false
+	}
+	return match dialect {
+		.sqlite { lower.contains('no such column') }
+		.pg { lower.contains('column') && lower.contains('does not exist') }
+		.mysql { lower.contains('unknown column') }
+	}
+}
+
 // applied returns the migrations recorded in the database, oldest first.
+// Rails-compatible version-only schema_migrations tables are supported alongside
+// legacy V history tables that include name and applied_at metadata.
 pub fn (mut m Migrator) applied() ![]AppliedMigration {
 	m.ensure_history_table()!
 	table := m.history_table_sql()
-	rows := m.conn.execute('SELECT version, name, applied_at FROM ${table} ORDER BY version ASC;')!
+	mut rows := []orm.Row{}
+	if m.history_shape_resolved && !m.history_has_metadata {
+		rows = m.conn.execute('SELECT version FROM ${table} ORDER BY version ASC;')!
+	} else {
+		rows = m.conn.execute('SELECT version, name, applied_at FROM ${table} ORDER BY version ASC;') or {
+			if !missing_history_metadata_columns_error(m.config.dialect, err.msg()) {
+				return err
+			}
+			version_rows := m.conn.execute('SELECT version FROM ${table} ORDER BY version ASC;')!
+			m.history_shape_resolved = true
+			m.history_has_metadata = false
+			version_rows
+		}
+		if !m.history_shape_resolved {
+			m.history_shape_resolved = true
+			m.history_has_metadata = true
+		}
+	}
+	minimum_columns := if m.history_has_metadata { 3 } else { 1 }
 	mut result := []AppliedMigration{cap: rows.len}
+	mut versions := map[i64]bool{}
 	for row in rows {
-		if row.vals.len < 3 {
-			return error('migration history query returned ${row.vals.len} columns; expected 3')
+		if row.vals.len < minimum_columns {
+			return error('migration history query returned ${row.vals.len} columns; expected ${minimum_columns}')
 		}
 		version := strconv.parse_int(row.vals[0], 10, 64) or {
 			return error('migration history contains invalid version `${row.vals[0]}`')
 		}
+		if version <= 0 {
+			return error('migration history version `${row.vals[0]}` must be positive')
+		}
+		if !m.history_has_metadata && row.vals[0] != version.str() {
+			return error('migration history contains noncanonical version `${row.vals[0]}`')
+		}
+		if version in versions {
+			return error('migration history contains duplicate version ${version}')
+		}
+		versions[version] = true
+		mut name := if m.history_has_metadata { row.vals[1] } else { '' }
+		if name == '' {
+			if migration := m.find_migration(version) {
+				name = migration.name
+			}
+		}
 		result << AppliedMigration{
 			version:    version
-			name:       row.vals[1]
-			applied_at: row.vals[2]
+			name:       name
+			applied_at: if m.history_has_metadata { row.vals[2] } else { '' }
 		}
 	}
+	result.sort_with_compare(compare_applied_asc)
 	return result
 }
 
@@ -420,7 +492,9 @@ fn (mut m Migrator) ensure_history_table() ! {
 		.sqlite {}
 	}
 	table := m.history_table_sql()
-	m.conn.execute('CREATE TABLE IF NOT EXISTS ${table} (version BIGINT PRIMARY KEY, name VARCHAR(255) NOT NULL, applied_at VARCHAR(32) NOT NULL);')!
+	// Match Rails' version-only schema_migrations shape. Existing V history
+	// tables with name/applied_at metadata remain supported.
+	m.conn.execute('CREATE TABLE IF NOT EXISTS ${table} (version VARCHAR(255) PRIMARY KEY);')!
 }
 
 fn (m &Migrator) history_table_sql() string {
@@ -830,8 +904,9 @@ fn sqlite_transaction_probe_count(rows []orm.Row) !int {
 	}
 }
 
-fn (m &Migrator) uses_transactions() bool {
-	return match m.config.transaction_mode {
+fn (m &Migrator) uses_transactions(migration Migration) bool {
+	mode := migration.transaction_mode or { m.config.transaction_mode }
+	return match mode {
 		.always { true }
 		.never { false }
 		.automatic { m.config.dialect != .mysql }
@@ -841,7 +916,7 @@ fn (m &Migrator) uses_transactions() bool {
 fn (mut m Migrator) run_up(migration Migration) !AppliedMigration {
 	m.ensure_history_table()!
 	applied_at := time.utc().format_rfc3339()
-	if m.config.dialect != .sqlite && m.uses_transactions() {
+	if m.config.dialect != .sqlite && m.uses_transactions(migration) {
 		mut tx := orm.begin(mut m.conn)!
 		mut ctx := new_context(tx, m.config.dialect)
 		mut postgresql_transaction_token := ''
@@ -958,7 +1033,7 @@ fn (mut m Migrator) run_up(migration Migration) !AppliedMigration {
 }
 
 fn (mut m Migrator) run_down(migration Migration) ! {
-	if m.config.dialect != .sqlite && m.uses_transactions() {
+	if m.config.dialect != .sqlite && m.uses_transactions(migration) {
 		mut tx := orm.begin(mut m.conn)!
 		mut ctx := new_context(tx, m.config.dialect)
 		mut postgresql_transaction_token := ''
@@ -1095,6 +1170,10 @@ fn (mut m Migrator) validate_session_after_callback() ! {
 
 fn (m &Migrator) history_insert_sql(migration Migration, applied_at string) string {
 	table := m.history_table_sql()
+	if m.history_shape_resolved && !m.history_has_metadata {
+		version := string_literal_sql(m.config.dialect, migration.version.str())
+		return 'INSERT INTO ${table} (version) VALUES (${version});'
+	}
 	name := string_literal_sql(m.config.dialect, migration.name)
 	timestamp := string_literal_sql(m.config.dialect, applied_at)
 	return 'INSERT INTO ${table} (version, name, applied_at) VALUES (${migration.version}, ${name}, ${timestamp});'
@@ -1102,5 +1181,9 @@ fn (m &Migrator) history_insert_sql(migration Migration, applied_at string) stri
 
 fn (m &Migrator) history_delete_sql(version i64) string {
 	table := m.history_table_sql()
+	if m.history_shape_resolved && !m.history_has_metadata {
+		value := string_literal_sql(m.config.dialect, version.str())
+		return 'DELETE FROM ${table} WHERE version = ${value};'
+	}
 	return 'DELETE FROM ${table} WHERE version = ${version};'
 }

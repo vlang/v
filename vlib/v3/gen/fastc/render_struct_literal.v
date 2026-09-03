@@ -1,5 +1,72 @@
 module fastc
 
+struct FastcStructLiteralFieldValue {
+	explicit_initializers []string
+	rendered_field        string
+	field_value           string
+	fixed_array_copy      string
+	is_fixed_array        bool
+}
+
+fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionToken, expected_type string, c_field_name string, temporary_start int) ?FastcStructLiteralFieldValue {
+	if fixed_element_type := fastc_fixed_array_element_type(expected_type) {
+		array_end := if value_tokens.len > 0 && value_tokens.last().tok == .not {
+			value_tokens.len - 1
+		} else {
+			value_tokens.len
+		}
+		if array_end >= 2 && value_tokens[0].tok == .lsbr && value_tokens[array_end - 1].tok == .rsbr {
+			items := fastc_expression_list_items(value_tokens, 1, array_end - 1) or {
+				return none
+			}
+			mut values := []string{cap: items.len}
+			mut initializers := []string{cap: items.len}
+			for item in items {
+				rendered_item := g.render_call_argument_expression(item, fixed_element_type) or {
+					return none
+				}
+				temporary := '__v_fastc_struct_field_${temporary_start + initializers.len}'
+				initializers << '__typeof__((${rendered_item})) ${temporary} = (${rendered_item});'
+				values << temporary
+			}
+			joined_values := values.join(',')
+			return FastcStructLiteralFieldValue{
+				explicit_initializers: initializers
+				rendered_field: '.${c_field_name}={${joined_values}}'
+				field_value: '{${joined_values}}'
+				is_fixed_array: true
+			}
+		}
+		value := g.render_call_argument_expression(value_tokens, expected_type) or { return none }
+		is_raw_fixed_array := value_tokens.len > 1 || (value_tokens.len == 1 && value_tokens[0].tok == .name && fastc_global_key(g.module_name, value_tokens[0].lit) in g.globals)
+		copy_source := if is_raw_fixed_array {
+			value
+		} else if expected_type.ends_with('*') {
+			'(${value})->data'
+		} else {
+			'(${value}).data'
+		}
+		return FastcStructLiteralFieldValue{
+			field_value: value
+			fixed_array_copy: 'memcpy(__v_fastc_struct_fixed.${c_field_name}, ${copy_source}, sizeof(__v_fastc_struct_fixed.${c_field_name}));'
+			is_fixed_array: true
+		}
+	}
+	value := if value_tokens.len == 1 && value_tokens[0].source != '' {
+		// A field value carried as a pre-rendered `({ ... })` (e.g. an `or`-unwrap) is used
+		// directly so its internal temporaries stay self-contained.
+		value_tokens[0].source
+	} else {
+		g.render_call_argument_expression(value_tokens, expected_type) or { return none }
+	}
+	temporary := '__v_fastc_struct_field_${temporary_start}'
+	return FastcStructLiteralFieldValue{
+		explicit_initializers: ['__typeof__((${value})) ${temporary} = (${value});']
+		rendered_field: '.${c_field_name}=(${temporary})'
+		field_value: temporary
+	}
+}
+
 fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
 	mut open := -1
 	mut delimiter_depth := 0
@@ -43,8 +110,6 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	]) {
 		return none
 	}
-	// This is a read-only view of program metadata owned by the generation context.
-	fields := unsafe { g.struct_fields[layout_type] }
 	if open + 1 < close {
 		items := fastc_expression_list_items(tokens, open + 1, close) or { return none }
 		mut is_positional := false
@@ -53,7 +118,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				if item.len == 0 {
 					continue
 				}
-				if !(item.len >= 2 && item[0].tok == .name && item[1].tok == .colon) && !(item.len == 1 && item[0].tok == .name && item[0].lit in fields) {
+				if !(item.len >= 2 && item[0].tok == .name && item[1].tok == .colon) && !(item.len == 1 && item[0].tok == .name && g.struct_direct_member_type(c_type, item[0].lit) != '') {
 					is_positional = true
 					break
 				}
@@ -114,10 +179,11 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		}
 		field_name := tokens[index].lit
 		index++
-		mut value_tokens := []FastcExpressionToken{}
+		mut value_start := -1
+		mut value_end := -1
 		if index < close && tokens[index].tok == .colon {
 			index++
-			value_start := index
+			value_start = index
 			mut parens := 0
 			mut brackets := 0
 			mut braces := 0
@@ -153,15 +219,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			if value_start == index {
 				return none
 			}
-			// The enclosing token array outlives this render pass and is never mutated here.
-			value_tokens = unsafe { tokens[value_start..index] }
-		} else {
-			value_tokens = [
-				FastcExpressionToken{
-					tok: .name
-					lit: field_name
-				},
-			]
+			value_end = index
 		}
 		mut c_field_name := if is_c_struct_literal {
 			field_name
@@ -171,7 +229,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		mut expected_type := if layout_type == 'array' && field_name == 'init' {
 			g.array_element_type(c_type) or { '' }
 		} else {
-			fields[field_name] or { '' }
+			g.struct_direct_member_type(c_type, field_name)
 		}
 		if expected_type == '' && !is_c_struct_literal {
 			if field := g.struct_field_metadata(c_type, field_name) {
@@ -195,61 +253,33 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				}
 			}
 		}
-		if fixed_element_type := fastc_fixed_array_element_type(expected_type) {
-			array_end := if value_tokens.len > 0 && value_tokens.last().tok == .not {
-				value_tokens.len - 1
-			} else {
-				value_tokens.len
-			}
-			if array_end >= 2 && value_tokens[0].tok == .lsbr && value_tokens[array_end - 1].tok == .rsbr {
-				items := fastc_expression_list_items(value_tokens, 1, array_end - 1) or {
-					return none
-				}
-				mut values := []string{}
-				for item in items {
-					rendered_item := g.render_call_argument_expression(item, fixed_element_type) or {
-						return none
-					}
-					temporary := '__v_fastc_struct_field_${explicit_initializers.len}'
-					explicit_initializers << '__typeof__((${rendered_item})) ${temporary} = (${rendered_item});'
-					values << temporary
-				}
-				rendered_field := '.${c_field_name}={${values.join(',')}}'
-				rendered_fields << rendered_field
-				rendered_fields_by_name[field_name] = rendered_field
-				field_values[field_name] = '{${values.join(',')}}'
-				continue
-			}
-			value := g.render_call_argument_expression(value_tokens, expected_type) or {
-				return none
-			}
-			is_raw_fixed_array := value_tokens.len > 1 || (value_tokens.len == 1 && value_tokens[0].tok == .name && fastc_global_key(g.module_name, value_tokens[0].lit) in g.globals)
-			copy_source := if is_raw_fixed_array {
-				value
-			} else if expected_type.ends_with('*') {
-				'(${value})->data'
-			} else {
-				'(${value}).data'
-			}
-			fixed_array_copies << 'memcpy(__v_fastc_struct_fixed.${c_field_name}, ${copy_source}, sizeof(__v_fastc_struct_fixed.${c_field_name}));'
-			field_values[field_name] = value
+		field_value := if value_start >= 0 {
+			g.render_struct_literal_field_value(tokens[value_start..value_end], expected_type, c_field_name, explicit_initializers.len) or { return none }
+		} else {
+			g.render_struct_literal_field_value([
+				FastcExpressionToken{
+					tok: .name
+					lit: field_name
+				},
+			], expected_type, c_field_name, explicit_initializers.len) or { return none }
+		}
+		explicit_initializers << field_value.explicit_initializers
+		if field_value.rendered_field != '' {
+			rendered_fields << field_value.rendered_field
+			rendered_fields_by_name[field_name] = field_value.rendered_field
+		}
+		field_values[field_name] = field_value.field_value
+		if field_value.fixed_array_copy != '' {
+			fixed_array_copies << field_value.fixed_array_copy
+		}
+		if field_value.is_fixed_array {
 			continue
 		}
-		value := if value_tokens.len == 1 && value_tokens[0].source != '' {
-			// A field value carried as a pre-rendered `({ ... })` (e.g. an `or`-unwrap) is used
-			// directly so its internal temporaries stay self-contained.
-			value_tokens[0].source
-		} else {
-			g.render_call_argument_expression(value_tokens, expected_type) or { return none }
-		}
-		temporary := '__v_fastc_struct_field_${explicit_initializers.len}'
-		explicit_initializers << '__typeof__((${value})) ${temporary} = (${value});'
-		rendered_field := '.${c_field_name}=(${temporary})'
-		rendered_fields << rendered_field
-		rendered_fields_by_name[field_name] = rendered_field
-		field_values[field_name] = temporary
 	}
 	if update_source == '' {
+		// The struct's rendered defaults are consulted; the constants phase
+		// re-parses a file that did so after they are ready.
+		fastc_note_field_defaults_use(g)
 		for field in g.struct_field_info[layout_type] {
 			if field.default_value == '' || field.name in field_values {
 				continue
@@ -283,10 +313,21 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		element_type := g.array_element_type(array_type) or { return none }
 		length := field_values['len'] or { '0' }
 		capacity := field_values['cap'] or { '0' }
+		inner_array_element_type := if element_type.starts_with('Array_') {
+			g.array_element_type(element_type) or { '' }
+		} else {
+			''
+		}
 		base := '((${array_type})builtin____new_array(${length},${capacity},sizeof(${element_type})))'
 		mut value_source := base
 		if initial := field_values['init'] {
 			value_source = '({ ${explicit_initializers.join(' ')} ${array_type} __v_fastc_array_init = ${base}; ${element_type} __v_fastc_array_default = (${initial}); for (int __v_fastc_array_index = 0; __v_fastc_array_index < __v_fastc_array_init.len; __v_fastc_array_index++) { ((${element_type} *)__v_fastc_array_init.data)[__v_fastc_array_index] = __v_fastc_array_default; } __v_fastc_array_init; })'
+		} else if inner_array_element_type != '' {
+			// A zeroed inner dynamic array has element_size == 0, so appending to an
+			// element of `[][]T{len: n}` copies no data. Construct a valid empty inner
+			// array for every outer element, as the main C backend does.
+			inner_default := '((${element_type})builtin____new_array(0,0,sizeof(${inner_array_element_type})))'
+			value_source = '({ ${explicit_initializers.join(' ')} ${array_type} __v_fastc_array_init = ${base}; for (int __v_fastc_array_index = 0; __v_fastc_array_index < __v_fastc_array_init.len; __v_fastc_array_index++) { ((${element_type} *)__v_fastc_array_init.data)[__v_fastc_array_index] = ${inner_default}; } __v_fastc_array_init; })'
 		} else if explicit_initializers.len > 0 {
 			value_source = '({ ${explicit_initializers.join(' ')} ${base}; })'
 		}

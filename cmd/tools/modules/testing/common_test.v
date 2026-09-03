@@ -95,7 +95,8 @@ fn test_cgroup_v1_memory_limit_is_used() {
 		os.rmdir_all(mount_point) or {}
 	}
 	os.mkdir_all(os.join_path(mount_point, 'docker', 'container'))!
-	os.write_file(os.join_path(mount_point, 'docker', 'container', 'memory.limit_in_bytes'), '8589934592')!
+	os.write_file(os.join_path(mount_point, 'docker', 'container', 'memory.limit_in_bytes'),
+		'8589934592')!
 	cgroups := '5:memory:/docker/container'
 	mountinfo := '29 23 0:26 / ${mount_point} rw,relatime - cgroup cgroup rw,memory'
 	assert cgroup_memory_limit_from_contents(cgroups, mountinfo)! == u64(8) * 1024 * 1024 * 1024
@@ -112,7 +113,9 @@ fn test_cgroup_v1_memory_limit_is_preferred_on_hybrid_hosts() {
 	os.mkdir_all(os.join_path(v2_mount_point, 'container'))!
 	os.write_file(os.join_path(v1_mount_point, 'container', 'memory.limit_in_bytes'), '8589934592')!
 	cgroups := '0::/container\n5:memory:/container'
-	mountinfo := '36 25 0:32 / ${v2_mount_point} rw,nosuid,nodev,noexec,relatime - cgroup2 cgroup rw\n' + '29 23 0:26 / ${v1_mount_point} rw,relatime - cgroup cgroup rw,memory'
+	v2_mount := '36 25 0:32 / ${v2_mount_point} rw,nosuid,nodev,noexec,relatime'
+	v1_mount := '29 23 0:26 / ${v1_mount_point} rw,relatime'
+	mountinfo := '${v2_mount} - cgroup2 cgroup rw\n${v1_mount} - cgroup cgroup rw,memory'
 	assert cgroup_memory_limit_from_contents(cgroups, mountinfo)! == u64(8) * 1024 * 1024 * 1024
 }
 

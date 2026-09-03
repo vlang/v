@@ -139,6 +139,18 @@ fn test_receiver_embeds_through_alias() {
 	assert tc.receiver_embeds(actual, expected)
 }
 
+fn test_parse_resolution_type_handles_locked_main_generic_application() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.struct_generic_params['StructType'] = ['T']
+	tc.cur_file = 'decode.v'
+	tc.cur_module = 'json2'
+
+	assert tc.parse_resolution_type('main.StructType[string]').name() == 'StructType[string]'
+	assert tc.parse_resolution_type('main.StructType[main.string]').name() == 'StructType[string]'
+	assert tc.parse_type('main.StructType[string]').name() == 'StructType[string]'
+}
+
 fn test_type_cache_overlay_rebinds_resolution_type_views() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
@@ -289,8 +301,8 @@ fn test_fn_param_mutability_participates_in_type_identity() {
 	immutable_id, _ := tc.intern_type(immutable)
 	mutable_id, _ := tc.intern_type(mutable)
 	assert immutable_id != mutable_id
-	assert tc.c_type(immutable) == 'fn_ptr:void|int'
-	assert tc.c_type(mutable) == 'fn_ptr:void|int*'
+	assert tc.c_type(immutable) == 'fn_ptr:void|i64'
+	assert tc.c_type(mutable) == 'fn_ptr:void|i64*'
 
 	cloned := clone_owned_type(mutable)
 	assert cloned is FnType

@@ -6202,6 +6202,10 @@ A vfmt run is usually pretty cheap (takes <30ms).
 
 Always run `v fmt -w file.v` before pushing your code.
 
+During the transition to the V3 formatter, `v fmt -verify` and `v fmt -c` accept
+files matching either V3 or legacy vfmt output. `v fmt -w` uses V3 formatting,
+so it may rewrite a file accepted by either check mode.
+
 #### Disabling the formatting locally
 
 To disable formatting for a block of code, wrap it with `// vfmt off` and

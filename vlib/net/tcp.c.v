@@ -634,7 +634,8 @@ pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
 }
 
 fn (mut s TcpSocket) set_option(level int, opt int, value int) ! {
-	socket_error(C.setsockopt(s.handle, level, opt, &value, sizeof(int)))!
+	v := i32(value) // C socket options are 4-byte `int`; pass i32 storage (sizeof 4)
+	socket_error(C.setsockopt(s.handle, level, opt, &v, sizeof(v)))!
 }
 
 pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {
@@ -721,7 +722,7 @@ fn (mut s TcpSocket) connect(a Addr) ! {
 			// unsuccessfully (SO_ERROR is one of the usual error codes  listed  here,
 			// ex‐ plaining the reason for the failure).
 			write_result := select(s.handle, .write, connect_timeout)!
-			err := 0
+			err := i32(0) // SO_ERROR is a C `int`; i32 storage keeps &err int* and sizeof 4
 			len := sizeof(err)
 			xyz := C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
 			if xyz == 0 && err == 0 {

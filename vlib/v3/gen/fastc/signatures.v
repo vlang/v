@@ -121,15 +121,14 @@ fn fastc_parameter_is_params_struct(parameter_type string, params_structs map[st
 	return params_structs[parameter_type.trim_right('*')]
 }
 
-fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, source.len)
-	file.index_lines_without_digest(source)
+fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
+	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut brace_depth := 0
 	mut next_declaration_is_enabled := true
 	mut previous_tok := token.Token.unknown
+	mut skip_index := 0
 	mut tok := scan.scan()
 	for tok != .eof {
 		if brace_depth == 0 && tok == .attribute {
@@ -143,10 +142,8 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 			if alias_scan.scan() == .name {
 				alias_name := alias_scan.lit
 				if alias_scan.scan() == .assign && alias_scan.scan() == .key_fn {
-					alias_key := fastc_c_declared_type_name(fastc_type_key(header.module_name,
-						alias_name))
-					functions[alias_key] = fastc_scan_function_alias_signature(mut alias_scan,
-						path, header, prefs, declared_types)!
+					alias_key := fastc_c_declared_type_name(fastc_type_key(header.module_name, alias_name))
+					functions[alias_key] = fastc_scan_function_alias_signature(mut alias_scan, path, header, prefs, declared_types)!
 				}
 			}
 		}
@@ -173,13 +170,11 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 				} else if tok == .key_none {
 					receiver_key = 'none'
 				}
-				receiver_type, tok = fastc_scan_type(mut scan, tok, path, header.module_name,
-					header.imports, declared_types, prefs.building_v) or {
+				receiver_type, tok = fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v) or {
 					return error('fastc method receiver: ${err.msg()}')
 				}
 				if receiver_key == '' {
-					receiver_key = fastc_semantic_declared_type_key(receiver_type,
-						declared_type_c_names)
+					receiver_key = fastc_semantic_declared_type_key(receiver_type, declared_type_c_names)
 				}
 				if receiver_is_mut && !receiver_type.ends_with('*') {
 					receiver_type += '*'
@@ -247,14 +242,21 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 			tok = scan.scan()
 			mut is_variadic := false
 			for tok != .rpar {
+				if is_c_function && tok == .ellipsis {
+					mut look := scan
+					if look.scan() == .rpar {
+						is_variadic = true
+						tok = scan.scan()
+						break
+					}
+				}
 				mut parameter_is_mut := false
 				if tok == .key_mut || (tok == .key_shared && !fastc_shared_parameter_is_name(scan, path, header.module_name, header.imports, declared_types, prefs.building_v)) {
 					parameter_is_mut = true
 					tok = scan.scan()
 				}
 				if is_c_function && tok != .name {
-					parameter_type, next_token := fastc_scan_type(mut scan, tok, path,
-						header.module_name, header.imports, declared_types, prefs.building_v) or {
+					parameter_type, next_token := fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v) or {
 						return error('fastc C function `${name}` parameter: ${err.msg()}')
 					}
 					parameter_types << parameter_type
@@ -347,20 +349,16 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 					if tok in [.lcbr, .semicolon] {
 						option_type = 'void'
 					} else if tok == .lpar {
-						return_types, tok = fastc_scan_multi_return_types(mut scan, path,
-							header.module_name, header.imports, declared_types, prefs.building_v)!
+						return_types, tok = fastc_scan_multi_return_types(mut scan, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 						option_type = 'MultiReturn'
 					} else {
-						option_type, tok = fastc_scan_type(mut scan, tok, path, header.module_name,
-							header.imports, declared_types, prefs.building_v)!
+						option_type, tok = fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 					}
 				} else if tok == .lpar {
-					return_types, tok = fastc_scan_multi_return_types(mut scan, path,
-						header.module_name, header.imports, declared_types, prefs.building_v)!
+					return_types, tok = fastc_scan_multi_return_types(mut scan, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 					return_type = 'MultiReturn'
 				} else {
-					return_type, tok = fastc_scan_type(mut scan, tok, path, header.module_name,
-						header.imports, declared_types, prefs.building_v) or {
+					return_type, tok = fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v) or {
 						return error('fastc function `${name}` return: ${err.msg()}')
 					}
 				}
@@ -370,27 +368,22 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 			}
 			fixed_parameter_count := parameter_types.len - if receiver_type == '' { 0 } else { 1 }
 			signature := FastcFunctionSignature{
-				parameter_types:          parameter_types
-				parameter_mutability:     parameter_mutability
-				return_type:              return_type
-				return_types:             return_types
-				option_type:              option_type
-				is_variadic:              is_variadic
-				last_parameter_is_params: fixed_parameter_count > 0
-					&& fastc_parameter_is_params_struct(parameter_types.last(), params_structs)
-				is_public:                is_public || is_c_function
-				is_disabled:              !next_declaration_is_enabled
-				module_name:              header.module_name
-				path:                     path
+				parameter_types: parameter_types
+				parameter_mutability: parameter_mutability
+				return_type: return_type
+				return_types: return_types
+				option_type: option_type
+				is_variadic: is_variadic
+				last_parameter_is_params: fixed_parameter_count > 0 && fastc_parameter_is_params_struct(parameter_types.last(), params_structs)
+				is_public: is_public || is_c_function
+				is_disabled: !next_declaration_is_enabled
+				module_name: header.module_name
+				path: path
 			}
 			if previous := functions[function_key] {
 				if !is_c_function {
 					is_c_override := previous.path.ends_with('.c.v') || path.ends_with('.c.v')
-					if previous.path == path || !is_c_override
-						|| !fastc_string_types_equal(previous.parameter_types, signature.parameter_types)
-						|| !fastc_bool_types_equal(previous.parameter_mutability, signature.parameter_mutability)
-						|| previous.last_parameter_is_params != signature.last_parameter_is_params
-						|| previous.return_type != signature.return_type {
+					if previous.path == path || !is_c_override || !fastc_string_types_equal(previous.parameter_types, signature.parameter_types) || !fastc_bool_types_equal(previous.parameter_mutability, signature.parameter_mutability) || previous.last_parameter_is_params != signature.last_parameter_is_params || previous.return_type != signature.return_type {
 						return error('fastc parser does not support duplicate function `${name}` in ${path}')
 					}
 					if previous.path.ends_with('.c.v') {
@@ -403,9 +396,18 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 			next_declaration_is_enabled = true
 			continue
 		}
-		if brace_depth == 0
-			&& tok in [.key_struct, .key_enum, .key_interface, .key_type, .key_union, .key_const, .key_global] {
+		if brace_depth == 0 && tok in [.key_struct, .key_enum, .key_interface, .key_type, .key_union,
+			.key_const, .key_global] {
 			next_declaration_is_enabled = true
+		}
+		if tok == .lcbr && brace_depth == 0 {
+			skipped, next_skip := fastc_skip_recorded_body(mut scan, skips, skip_index)
+			skip_index = next_skip
+			if skipped {
+				previous_tok = .rcbr
+				tok = scan.scan()
+				continue
+			}
 		}
 		if tok == .lcbr {
 			brace_depth++
@@ -415,8 +417,9 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 		previous_tok = tok
 		tok = scan.scan()
 	}
-	fastc_collect_selected_comptime_function_signatures(source, path, header, prefs,
-		declared_types, declared_type_c_names, params_structs, mut functions)!
+	if header.has_comptime_if {
+		fastc_collect_selected_comptime_function_signatures(source, path, header, prefs, declared_types, declared_type_c_names, params_structs, mut functions)!
+	}
 }
 
 // fastc_scan_function_alias_signature scans the signature after `type Name = fn`
@@ -450,8 +453,7 @@ fn fastc_scan_function_alias_signature(mut scan scanner.Scanner, path string, he
 				tok = scan.scan()
 			}
 		}
-		parameter_type, next_token := fastc_scan_type(mut scan, tok, path, header.module_name,
-			header.imports, declared_types, prefs.building_v)!
+		parameter_type, next_token := fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 		parameter_types << if parameter_is_mut && !parameter_type.ends_with('*') {
 			parameter_type + '*'
 		} else {
@@ -471,31 +473,27 @@ fn fastc_scan_function_alias_signature(mut scan scanner.Scanner, path string, he
 			if tok in [.semicolon, .eof] {
 				option_type = 'void'
 			} else if tok == .lpar {
-				return_types, tok = fastc_scan_multi_return_types(mut scan, path,
-					header.module_name, header.imports, declared_types, prefs.building_v)!
+				return_types, tok = fastc_scan_multi_return_types(mut scan, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 				option_type = 'MultiReturn'
 			} else {
-				option_type, tok = fastc_scan_type(mut scan, tok, path, header.module_name,
-					header.imports, declared_types, prefs.building_v)!
+				option_type, tok = fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 			}
 		} else if tok == .lpar {
-			return_types, tok = fastc_scan_multi_return_types(mut scan, path, header.module_name,
-				header.imports, declared_types, prefs.building_v)!
+			return_types, tok = fastc_scan_multi_return_types(mut scan, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 			return_type = 'MultiReturn'
 		} else {
-			return_type, tok = fastc_scan_type(mut scan, tok, path, header.module_name,
-				header.imports, declared_types, prefs.building_v)!
+			return_type, tok = fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 		}
 	}
 	return FastcFunctionSignature{
-		parameter_types:      parameter_types
+		parameter_types: parameter_types
 		parameter_mutability: parameter_mutability
-		return_type:          return_type
-		return_types:         return_types
-		option_type:          option_type
-		is_public:            true
-		module_name:          header.module_name
-		path:                 path
+		return_type: return_type
+		return_types: return_types
+		option_type: option_type
+		is_public: true
+		module_name: header.module_name
+		path: path
 	}
 }
 
@@ -506,8 +504,7 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 	}
 	mut references := map[string]map[string]bool{}
 	mut top_level_references := map[string]bool{}
-	fastc_collect_reference_partials(sources, prefs, available_names, mut references, mut
-		top_level_references)
+	fastc_collect_reference_partials(sources, prefs, available_names, mut references, mut top_level_references)
 	mut used := {
 		'main':                   true
 		'run':                    true
@@ -618,14 +615,13 @@ fn fastc_collect_type_default_references(mut scan scanner.Scanner, first token.T
 	return tok
 }
 
-fn collect_interface_method_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut interface_field_paths map[string]string, mut embed_embedders []string, mut embed_embeddeds []string) ! {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, source.len)
-	file.index_lines_without_digest(source)
+fn collect_interface_method_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut interface_field_paths map[string]string, mut embed_embedders []string, mut embed_embeddeds []string) ! {
+	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut tok := scan.scan()
 	mut depth := 0
+	mut skip_index := 0
 	mut next_declaration_is_enabled := true
 	for tok != .eof {
 		if depth == 0 && tok == .dollar {
@@ -633,9 +629,7 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 			if lookahead.scan() == .key_if {
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
-					collect_interface_method_signatures(selected.source, path, header, prefs,
-						declared_types, mut functions, mut interface_methods, mut interface_fields, mut
-						interface_field_paths, mut embed_embedders, mut embed_embeddeds)!
+					collect_interface_method_signatures(selected.source, path, header, prefs, []int{}, declared_types, mut functions, mut interface_methods, mut interface_fields, mut interface_field_paths, mut embed_embedders, mut embed_embeddeds)!
 				}
 				tok = selected.tok
 				continue
@@ -653,9 +647,17 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 			continue
 		}
 		if depth != 0 || tok != .key_interface {
-			if depth == 0
-				&& tok in [.key_fn, .key_struct, .key_enum, .key_type, .key_union, .key_const, .key_global] {
+			if depth == 0 && tok in [.key_fn, .key_struct, .key_enum, .key_type, .key_union,
+				.key_const, .key_global] {
 				next_declaration_is_enabled = true
+			}
+			if tok == .lcbr && depth == 0 {
+				skipped, next_skip := fastc_skip_recorded_body(mut scan, skips, skip_index)
+				skip_index = next_skip
+				if skipped {
+					tok = scan.scan()
+					continue
+				}
 			}
 			if tok == .lcbr {
 				depth++
@@ -727,9 +729,7 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 					// interface (`interface B { A }`). Record it so A's methods can be
 					// promoted onto B once every interface has been collected.
 					if member_names.len == 1 {
-						if embedded_key := fastc_resolve_declared_type_key(header.module_name,
-							member_names[0], header.imports, declared_types)
-						{
+						if embedded_key := fastc_resolve_declared_type_key(header.module_name, member_names[0], header.imports, declared_types) {
 							embed_embedders << interface_key
 							embed_embeddeds << embedded_key
 						}
@@ -739,16 +739,15 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 					}
 					continue
 				}
-				field_type, next_token := fastc_scan_type(mut scan, tok, path, header.module_name,
-					header.imports, declared_types, prefs.building_v)!
+				field_type, next_token := fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 				for field_name in member_names {
 					field_key := '${interface_key}.${field_name}'
 					if field_key in interface_fields {
 						return error('fastc parser does not support duplicate interface field `${field_name}` in ${path}')
 					}
 					interface_fields[field_key] = FastcInterfaceField{
-						name:       field_name
-						typ:        field_type
+						name: field_name
+						typ: field_type
 						is_mutable: members_are_mutable
 					}
 					interface_field_paths[field_key] = path
@@ -785,8 +784,7 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 						tok = scan.scan()
 					}
 				}
-				parameter_type, next_token := fastc_scan_type(mut scan, tok, path,
-					header.module_name, header.imports, declared_types, prefs.building_v)!
+				parameter_type, next_token := fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 				parameter_types << if parameter_is_mut && !parameter_type.ends_with('*') {
 					parameter_type + '*'
 				} else {
@@ -809,28 +807,25 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 					if tok in [.semicolon, .rcbr] {
 						option_type = 'void'
 					} else {
-						option_type, tok = fastc_scan_type(mut scan, tok, path, header.module_name,
-							header.imports, declared_types, prefs.building_v)!
+						option_type, tok = fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 					}
 				} else if tok == .lpar {
-					return_types, tok = fastc_scan_multi_return_types(mut scan, path,
-						header.module_name, header.imports, declared_types, prefs.building_v)!
+					return_types, tok = fastc_scan_multi_return_types(mut scan, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 					return_type = 'MultiReturn'
 				} else {
-					return_type, tok = fastc_scan_type(mut scan, tok, path, header.module_name,
-						header.imports, declared_types, prefs.building_v)!
+					return_type, tok = fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 				}
 			}
 			interface_method_key := '${interface_key}.${method_name}'
 			functions[interface_method_key] = FastcFunctionSignature{
-				parameter_types:      parameter_types
+				parameter_types: parameter_types
 				parameter_mutability: parameter_mutability
-				return_type:          return_type
-				return_types:         return_types
-				option_type:          option_type
-				is_public:            true
-				module_name:          header.module_name
-				path:                 path
+				return_type: return_type
+				return_types: return_types
+				option_type: option_type
+				is_public: true
+				module_name: header.module_name
+				path: path
 			}
 			interface_methods[interface_method_key] = true
 		}
@@ -855,26 +850,24 @@ mut:
 
 fn fastc_collect_signature_chunk(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, start int, end int) FastcSignaturePartial {
 	mut partial := FastcSignaturePartial{
-		functions:             map[string]FastcFunctionSignature{}
-		interface_methods:     map[string]bool{}
-		interface_fields:      map[string]FastcInterfaceField{}
+		functions: map[string]FastcFunctionSignature{}
+		interface_methods: map[string]bool{}
+		interface_fields: map[string]FastcInterfaceField{}
 		interface_field_paths: map[string]string{}
-		embed_embedders:       []string{}
-		embed_embeddeds:       []string{}
+		embed_embedders: []string{}
+		embed_embeddeds: []string{}
 	}
 	for idx in start .. end {
 		source_file := sources[idx]
-		collect_function_signatures(source_file.source, source_file.path, source_file.header,
-			prefs, declared_types, declared_type_c_names, params_structs, mut partial.functions) or {
+		collect_function_signatures(source_file.source, source_file.path, source_file.header, prefs, source_file.header.body_spans, declared_types, declared_type_c_names, params_structs, mut partial.functions) or {
 			partial.failed = true
 			partial.error_message = err.msg()
 			return partial
 		}
-		collect_interface_method_signatures(source_file.source, source_file.path,
-			source_file.header, prefs, declared_types, mut partial.functions, mut
-			partial.interface_methods, mut partial.interface_fields, mut
-			partial.interface_field_paths, mut partial.embed_embedders, mut
-			partial.embed_embeddeds) or {
+		if !source_file.header.has_interfaces {
+			continue
+		}
+		collect_interface_method_signatures(source_file.source, source_file.path, source_file.header, prefs, source_file.header.body_spans, declared_types, mut partial.functions, mut partial.interface_methods, mut partial.interface_fields, mut partial.interface_field_paths, mut partial.embed_embedders, mut partial.embed_embeddeds) or {
 			partial.failed = true
 			partial.error_message = err.msg()
 			return partial
@@ -883,27 +876,31 @@ fn fastc_collect_signature_chunk(sources []FastcSourceFile, prefs &pref.Preferen
 	return partial
 }
 
+// fastc_signature_partial_count sums the function signatures of `partials`.
+fn fastc_signature_partial_count(partials []FastcSignaturePartial) int {
+	mut count := 0
+	for partial in partials {
+		count += partial.functions.len
+	}
+	return count
+}
+
 fn fastc_merge_signature_partial(partial FastcSignaturePartial, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut embed_embedders []string, mut embed_embeddeds []string) ! {
 	if partial.failed {
 		return error(partial.error_message)
 	}
 	for key, signature in partial.functions {
-		if key !in partial.interface_methods {
-			if previous := functions[key] {
-				if !key.starts_with('C.') {
-					is_c_override := previous.path.ends_with('.c.v') || signature.path.ends_with('.c.v')
-					if previous.path == signature.path || !is_c_override
-						|| !fastc_string_types_equal(previous.parameter_types,
-							signature.parameter_types)
-						|| !fastc_bool_types_equal(previous.parameter_mutability,
-							signature.parameter_mutability)
-						|| previous.last_parameter_is_params != signature.last_parameter_is_params
-						|| previous.return_type != signature.return_type {
-						return error('fastc parser does not support duplicate function `${key.all_after_last('.')}` in ${signature.path}')
-					}
-					if previous.path.ends_with('.c.v') {
-						continue
-					}
+		// Duplicates are rare, so test membership first and only then copy
+		// the previous signature out for the override checks.
+		if key !in partial.interface_methods && key in functions {
+			previous := functions[key]
+			if !key.starts_with('C.') {
+				is_c_override := previous.path.ends_with('.c.v') || signature.path.ends_with('.c.v')
+				if previous.path == signature.path || !is_c_override || !fastc_string_types_equal(previous.parameter_types, signature.parameter_types) || !fastc_bool_types_equal(previous.parameter_mutability, signature.parameter_mutability) || previous.last_parameter_is_params != signature.last_parameter_is_params || previous.return_type != signature.return_type {
+					return error('fastc parser does not support duplicate function `${key.all_after_last('.')}` in ${signature.path}')
+				}
+				if previous.path.ends_with('.c.v') {
+					continue
 				}
 			}
 		}
@@ -934,8 +931,7 @@ fn fastc_scan_multi_return_types(mut scan scanner.Scanner, path string, module_n
 			tok = scan.scan()
 			continue
 		}
-		component_type, next_token := fastc_scan_type(mut scan, tok, path, module_name, imports,
-			declared_types, allow_short_placeholders)!
+		component_type, next_token := fastc_scan_type(mut scan, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
 		types << component_type
 		tok = next_token
 		if tok == .comma {
@@ -957,8 +953,7 @@ fn fastc_peek_chan_element(scan scanner.Scanner, path string, module_name string
 	if elem_tok in [token.Token.comma, .rpar, .lcbr, .semicolon, .assign, .rcbr, .attribute, .eof] {
 		return ''
 	}
-	elem_c, _ := fastc_scan_type(mut probe, elem_tok, path, module_name, imports, declared_types,
-		allow_short_placeholders) or { return '' }
+	elem_c, _ := fastc_scan_type(mut probe, elem_tok, path, module_name, imports, declared_types, allow_short_placeholders) or { return '' }
 	return elem_c
 }
 
@@ -971,8 +966,7 @@ fn fastc_peek_option_element(scan scanner.Scanner, path string, module_name stri
 	if elem_tok in [token.Token.comma, .rpar, .lcbr, .semicolon, .assign, .rcbr, .attribute, .eof] {
 		return ''
 	}
-	elem_c, _ := fastc_scan_type(mut probe, elem_tok, path, module_name, imports, declared_types,
-		allow_short_placeholders) or { return '' }
+	elem_c, _ := fastc_scan_type(mut probe, elem_tok, path, module_name, imports, declared_types, allow_short_placeholders) or { return '' }
 	return elem_c
 }
 
@@ -998,8 +992,7 @@ fn fastc_peek_generic_type_argument(first token.Token, scan scanner.Scanner, pat
 	if arg_tok == .rsbr {
 		return ''
 	}
-	argument_type, next_token := fastc_scan_type(mut probe, arg_tok, path, module_name, imports,
-		declared_types, allow_short_placeholders) or { return '' }
+	argument_type, next_token := fastc_scan_type(mut probe, arg_tok, path, module_name, imports, declared_types, allow_short_placeholders) or { return '' }
 	if next_token !in [.comma, .rsbr] {
 		return ''
 	}
@@ -1042,8 +1035,7 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 		if has_parameter_name {
 			tok = look.scan()
 		}
-		parameter_type, next_token := fastc_scan_type(mut look, tok, path, module_name, imports,
-			declared_types, allow_short_placeholders)!
+		parameter_type, next_token := fastc_scan_type(mut look, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
 		parameter_types << if parameter_is_mut && !parameter_type.ends_with('*') {
 			parameter_type + '*'
 		} else {
@@ -1058,16 +1050,14 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 		return_type = 'Option'
 		value_tok := look.scan()
 		if value_tok !in [.semicolon, .comma, .rpar, .lcbr, .assign, .attribute, .rcbr, .eof] {
-			option_value_type, _ = fastc_scan_type(mut look, value_tok, path, module_name, imports,
-				declared_types, allow_short_placeholders)!
+			option_value_type, _ = fastc_scan_type(mut look, value_tok, path, module_name, imports, declared_types, allow_short_placeholders)!
 		}
 	} else if tok !in [.semicolon, .comma, .rpar, .lcbr, .assign, .attribute, .rcbr, .eof] {
-		return_type, _ = fastc_scan_type(mut look, tok, path, module_name, imports, declared_types,
-			allow_short_placeholders)!
+		return_type, _ = fastc_scan_type(mut look, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
 	}
 	return FastcFunctionTypeInfo{
-		parameter_types:   parameter_types
-		return_type:       return_type
+		parameter_types: parameter_types
+		return_type: return_type
 		option_value_type: option_value_type
 	}
 }
@@ -1089,8 +1079,7 @@ fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, mod
 	}
 	if tok == .ellipsis {
 		tok = scan.scan()
-		element_type, next_token := fastc_scan_type(mut scan, tok, path, module_name, imports,
-			declared_types, allow_short_placeholders)!
+		element_type, next_token := fastc_scan_type(mut scan, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
 		tok = next_token
 		return fastc_array_c_type(element_type) + '*'.repeat(pointers), tok
 	}
@@ -1164,8 +1153,7 @@ fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, mod
 				tok = scan.scan()
 			}
 		}
-		element_type, next_token := fastc_scan_type(mut scan, tok, path, module_name, imports,
-			declared_types, allow_short_placeholders)!
+		element_type, next_token := fastc_scan_type(mut scan, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
 		tok = next_token
 		array_type := if optional {
 			'Option'
@@ -1194,10 +1182,8 @@ fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, mod
 				return error('fastc parser does not support unfinished function type in ${path}')
 			}
 		}
-		if tok == .name || tok == .amp || tok == .and || tok == .mul || tok == .question
-			|| tok == .not || tok == .lsbr || tok == .lpar || tok == .key_fn {
-			_, tok = fastc_scan_type(mut scan, tok, path, module_name, imports, declared_types,
-				allow_short_placeholders)!
+		if tok == .name || tok == .amp || tok == .and || tok == .mul || tok == .question || tok == .not || tok == .lsbr || tok == .lpar || tok == .key_fn {
+			_, tok = fastc_scan_type(mut scan, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
 		}
 		return 'voidptr' + '*'.repeat(pointers), tok
 	}
@@ -1212,8 +1198,7 @@ fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, mod
 	tok = scan.scan()
 	if raw_type == 'chan' {
 		if tok !in [.comma, .rpar, .lcbr, .semicolon, .assign] {
-			_, tok = fastc_scan_type(mut scan, tok, path, module_name, imports, declared_types,
-				allow_short_placeholders)!
+			_, tok = fastc_scan_type(mut scan, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
 		}
 		channel_type := if optional { 'Option' } else { 'chan' + '*'.repeat(pointers) }
 		return channel_type, tok
@@ -1227,8 +1212,7 @@ fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, mod
 			value_type = 'Option'
 			tok = scan.scan()
 		} else if tok !in [.comma, .rpar, .lcbr, .semicolon, .assign] {
-			value_type, tok = fastc_scan_type(mut scan, tok, path, module_name, imports,
-				declared_types, allow_short_placeholders)!
+			value_type, tok = fastc_scan_type(mut scan, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
 		}
 		thread_type := if optional {
 			'Option'
@@ -1239,15 +1223,13 @@ fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, mod
 	}
 	if raw_type == 'map' && tok == .lsbr {
 		tok = scan.scan()
-		key_type, next_key_token := fastc_scan_type(mut scan, tok, path, module_name, imports,
-			declared_types, allow_short_placeholders)!
+		key_type, next_key_token := fastc_scan_type(mut scan, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
 		tok = next_key_token
 		if tok != .rsbr {
 			return error('fastc parser does not support unfinished map key type in ${path}')
 		}
 		tok = scan.scan()
-		value_type, next_value_token := fastc_scan_type(mut scan, tok, path, module_name, imports,
-			declared_types, allow_short_placeholders)!
+		value_type, next_value_token := fastc_scan_type(mut scan, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
 		tok = next_value_token
 		base := if optional { 'Option' } else { fastc_map_c_type(key_type, value_type) }
 		return base + '*'.repeat(pointers), tok
@@ -1274,13 +1256,16 @@ fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, mod
 		is_imported_type = type_module != module_name
 	}
 	type_key := fastc_type_key(type_module, raw_type)
-	if is_imported_type && type_module != 'builtin' && type_key in declared_types
-		&& !declared_types[type_key] {
+	if is_imported_type && type_module != 'builtin' && type_key in declared_types && !declared_types[type_key] {
 		return error('fastc parser does not support private type `${raw_type}` from imported module `${type_module}` in ${path}')
 	}
 	mut base := ''
 	if type_module == 'C' {
-		base = if '#Cstruct#${raw_type}' in declared_types { 'struct ${raw_type}' } else { raw_type }
+		base = if '#Cstruct#${raw_type}' in declared_types {
+			'struct ${raw_type}'
+		} else {
+			raw_type
+		}
 	} else if type_key in declared_types {
 		base = fastc_c_declared_type_name(type_key)
 	} else if raw_type in declared_types {
@@ -1290,8 +1275,7 @@ fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, mod
 		// Cross-module monomorphization substitutes an already-resolved C spelling
 		// (`config__Config`) into the defining module's generic source.
 		base = raw_type
-	} else if raw_type.starts_with('Array_') || raw_type.starts_with('Map_')
-		|| raw_type.starts_with('FixedArray_') {
+	} else if raw_type.starts_with('Array_') || raw_type.starts_with('Map_') || raw_type.starts_with('FixedArray_') {
 		// On-demand monomorphization likewise substitutes FastC's already-resolved
 		// composite spelling (`Array_string`, `Map_string_int`, ...). Keep it as the
 		// concrete C type when the generated instance is scanned again.
@@ -1423,8 +1407,7 @@ fn fastc_decode_map_value_type(encoded string) string {
 	// A trailing `_ptr` on a composite value can belong to its nested element
 	// type (`map[string][]&T` -> `Map_string_Array_T_ptr`), not to the map
 	// value itself. Preserve composite names so their own decoder handles it.
-	if encoded.ends_with('_ptr') && !encoded.starts_with('Array_') && !encoded.starts_with('Map_')
-		&& !encoded.starts_with('FixedArray_') {
+	if encoded.ends_with('_ptr') && !encoded.starts_with('Array_') && !encoded.starts_with('Map_') && !encoded.starts_with('FixedArray_') {
 		return encoded[..encoded.len - '_ptr'.len] + '*'
 	}
 	return encoded
@@ -1466,9 +1449,7 @@ fn fastc_register_composite_type(typ string, mut composite_types map[string]bool
 }
 
 fn fastc_collect_generated_template_references(source string, path string, prefs &pref.Preferences, available_names map[string]bool, mut references map[string]bool) {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut tok := scan.scan()
@@ -1514,37 +1495,31 @@ fn fastc_referenced_veb_template_path(source_path string, function_name string, 
 // otherwise see methods used only inside the HTML template.
 fn fastc_collect_veb_template_references(source_file FastcSourceFile, function_name string, scan_after_dollar scanner.Scanner, prefs &pref.Preferences, available_names map[string]bool, mut references map[string]bool) {
 	mut lookahead := scan_after_dollar
-	if lookahead.scan() != .name || lookahead.lit != 'veb' || lookahead.scan() != .dot
-		|| lookahead.scan() != .name || lookahead.lit != 'html' || lookahead.scan() != .lpar {
+	if lookahead.scan() != .name || lookahead.lit != 'veb' || lookahead.scan() != .dot || lookahead.scan() != .name || lookahead.lit != 'html' || lookahead.scan() != .lpar {
 		return
 	}
 	mut explicit_path := ''
 	if lookahead.scan() == .string {
 		explicit_path = lookahead.lit.trim('\'"')
 	}
-	template_path := fastc_referenced_veb_template_path(source_file.path, function_name,
-		explicit_path) or { return }
+	template_path := fastc_referenced_veb_template_path(source_file.path, function_name, explicit_path) or { return }
 	generated := fastc_veb_compile_template(template_path, '__v_fastc_reachability_template', 'ctx') or {
 		return
 	}
-	fastc_collect_generated_template_references(generated, template_path, prefs, available_names, mut
-		references)
+	fastc_collect_generated_template_references(generated, template_path, prefs, available_names, mut references)
 }
 
 // fastc_collect_file_references scans one source file's function bodies,
 // generated veb templates, and top-level initializers for collected function names.
 fn fastc_collect_file_references(source_file FastcSourceFile, prefs &pref.Preferences, available_names map[string]bool, mut references map[string]map[string]bool, mut top_level_references map[string]bool) {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(source_file.path, source_file.source.len)
-	file.index_lines_without_digest(source_file.source)
+	file := token.File.unindexed(source_file.path, source_file.source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source_file.source)
 	mut previous := token.Token.unknown
 	mut tok := scan.scan()
 	for tok != .eof {
 		if tok in [.key_struct, .key_union, .key_interface, .key_enum] {
-			tok = fastc_collect_type_default_references(mut scan, tok, available_names, mut
-				top_level_references)
+			tok = fastc_collect_type_default_references(mut scan, tok, available_names, mut top_level_references)
 			previous = .rcbr
 			continue
 		}
@@ -1594,8 +1569,7 @@ fn fastc_collect_file_references(source_file FastcSourceFile, prefs &pref.Prefer
 			} else if tok == .rcbr {
 				depth--
 			} else if tok == .dollar {
-				fastc_collect_veb_template_references(source_file, function_name, scan, prefs,
-					available_names, mut function_references)
+				fastc_collect_veb_template_references(source_file, function_name, scan, prefs, available_names, mut function_references)
 			} else if (tok == .name || tok.is_keyword()) && scan.lit in available_names {
 				function_references[scan.lit] = true
 			}

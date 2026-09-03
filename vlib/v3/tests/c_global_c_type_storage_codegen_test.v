@@ -428,9 +428,9 @@ fn main() {
 	_ := sum_entries({1: 2})
 }
 ')
-	assert c_code.contains('int id__local = *(int*)'), c_code
+	assert c_code.contains('i64 id__local = *(i64*)'), c_code
 	assert c_code.contains('total += id__local + value;'), c_code
-	assert !c_code.contains('int id = *(int*)'), c_code
+	assert !c_code.contains('i64 id = *(i64*)'), c_code
 }
 
 fn test_mut_pointer_cast_uses_c_typedef_safe_parameter_name() {
@@ -477,7 +477,7 @@ fn main() {
 	_ := copy_buffer(mut values)
 }
 ')
-	assert c_code.contains('int copy_buffer(Array* buf__local)'), c_code
+	assert c_code.contains('i64 copy_buffer(Array* buf__local)'), c_code
 	assert c_code.contains('return copy(buf__local, '), c_code
 	assert !c_code.contains('return copy(buf, '), c_code
 }
@@ -500,7 +500,7 @@ fn main() {
 }
 ')
 	assert c_code.contains('u8 buf__local[1024]'), c_code
-	assert c_code.contains('return (int)(sizeof(buf__local));'), c_code
+	assert c_code.contains('return (i64)(sizeof(buf__local));'), c_code
 	assert !c_code.contains('return (int)(sizeof(buf));'), c_code
 }
 

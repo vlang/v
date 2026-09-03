@@ -5381,6 +5381,19 @@ fn (tc &TypeChecker) implicit_int_literal_overflows(id flat.NodeId) bool {
 	if magnitude.len == 0 {
 		return false
 	}
+	if platform_int_bits() >= 64 {
+		value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+		if parse_error == -3 {
+			return true
+		}
+		if parse_error != 0 {
+			return false
+		}
+		if is_negative {
+			return value > u64(9_223_372_036_854_775_808)
+		}
+		return value > u64(9_223_372_036_854_775_807)
+	}
 	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 32)
 	if parse_error == -3 {
 		return true
@@ -5407,7 +5420,7 @@ fn integer_type_range(typ Type) ?IntegerTypeRange {
 			return none
 		}
 		return IntegerTypeRange{
-			bits:        if clean.size == 0 { 32 } else { int(clean.size) }
+			bits:        if clean.size == 0 { platform_int_bits() } else { int(clean.size) }
 			is_unsigned: clean.props.has(.unsigned)
 			name:        typ.name()
 		}
@@ -6543,7 +6556,7 @@ fn (tc &TypeChecker) sizeof_is_comptime_reflection_var(id flat.NodeId, name stri
 	return false
 }
 
-fn (mut tc TypeChecker) comptime_type_condition_value(cond string) ?bool {
+fn (tc &TypeChecker) comptime_type_condition_value(cond string) ?bool {
 	clean := comptime_condition_strip_outer_parens(cond)
 	if clean == 'threads' {
 		return tc.threads_condition_value()
@@ -6590,7 +6603,7 @@ fn (mut tc TypeChecker) comptime_type_condition_value(cond string) ?bool {
 	return none
 }
 
-fn (mut tc TypeChecker) comptime_type_matches(actual string, expected string) ?bool {
+fn (tc &TypeChecker) comptime_type_matches(actual string, expected string) ?bool {
 	clean_actual := trimmed_space(actual)
 	clean_expected := trimmed_space(expected)
 	if clean_actual.len == 0 || clean_expected.len == 0
@@ -6684,7 +6697,7 @@ fn (tc &TypeChecker) comptime_type_text_is_shared(type_text string) bool {
 	return false
 }
 
-fn (mut tc TypeChecker) comptime_type_match_type(type_text string) Type {
+fn (tc &TypeChecker) comptime_type_match_type(type_text string) Type {
 	typ := tc.parse_type(type_text)
 	if typ is Alias {
 		return typ.base_type

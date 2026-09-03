@@ -239,8 +239,7 @@ fn (g &Gen) collect_json_migration_declarations(ids []flat.NodeId, mut declared_
 			}
 		} else if n.kind == .fn_decl && !n.value.contains('.') {
 			declared_names[n.value] = true
-		} else if n.kind == .c_fn_decl && n.value.starts_with('V:')
-			&& !n.value[2..].contains('.') {
+		} else if n.kind == .c_fn_decl && n.value.starts_with('V:') && !n.value[2..].contains('.') {
 			declared_names[n.value[2..]] = true
 		} else if n.kind in [.block, .comptime_if] {
 			g.collect_json_migration_declarations(g.a.children_of(n), mut declared_names)
@@ -437,8 +436,7 @@ fn (mut g Gen) top_level(ids []flat.NodeId) {
 		}
 		if wrote_any {
 			adjacent_consts := prev == .const_decl && kind == .const_decl && int(previous) >= 0
-				&& !g.source_has_blank_line_between(g.a.node(previous).pos.end,
-					g.a.node(id).pos.offset)
+				&& !g.source_has_blank_line_between(g.a.node(previous).pos.end, g.a.node(id).pos.offset)
 			if !injected_now && !(prev == .import_decl && kind == .import_decl) && !(prev == kind
 				&& kind in [.expr_stmt, .global_decl]) && !adjacent_consts {
 				g.writeln('')
@@ -488,6 +486,8 @@ fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
 		}
 	}
 	mut implied := map[string]bool{}
+	mut vlib_dirs := map[string]bool{}
+	mut vlib_listed := false
 	for id, n in g.a.nodes {
 		if n.pos.id != g.file_id || n.kind != .selector || n.children_count == 0 {
 			continue
@@ -495,9 +495,20 @@ fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
 		receiver := g.a.child_node(n, 0)
 		name := receiver.value
 		if receiver.kind == .ident && name.len > 0 && name !in ['C', 'JS'] && !imported[name]
-			&& !declared[name] && !g.a.formatter_local_sels[id]
-			&& os.is_dir(os.join_path(@VEXEROOT, 'vlib', name)) {
-			implied[name] = true
+			&& !declared[name] && !g.a.formatter_local_sels[id] {
+			// Match the module directory case-sensitively. `os.is_dir` answers the filesystem,
+			// and on a case-insensitive one (macOS, Windows) `vlib/Time` is the `time` module —
+			// so a static call on a type named `Time` implied a bogus `import Time`, which the
+			// formatter then wrote into the file and broke the build.
+			if !vlib_listed {
+				vlib_listed = true
+				for entry in os.ls(os.join_path(@VEXEROOT, 'vlib')) or { []string{} } {
+					vlib_dirs[entry] = true
+				}
+			}
+			if vlib_dirs[name] && os.is_dir(os.join_path(@VEXEROOT, 'vlib', name)) {
+				implied[name] = true
+			}
 		}
 	}
 	g.implied_imports = implied.keys()
@@ -526,6 +537,17 @@ fn (mut g Gen) collect_top_level(ids []flat.NodeId, mut out []flat.NodeId) {
 
 // stmt_list_ids renders a list of statements, one indentation level deeper.
 fn (mut g Gen) stmt_list_ids(ids []flat.NodeId) {
+	// A statement list is always emitted as a multi-line braced body, so it opens
+	// a fresh statement scope where every statement must terminate with a newline.
+	// Compact/inline renderings never reach this function; they emit statements
+	// directly with `in_init` set. Reset `in_init` here so that a body nested
+	// inside an initializer (e.g. an anonymous fn used as a struct field value)
+	// does not have its statements collapsed onto a single line.
+	saved_in_init := g.in_init
+	g.in_init = false
+	defer {
+		g.in_init = saved_in_init
+	}
 	mut previous := flat.empty_node
 	mut i := 0
 	for i < ids.len {
@@ -552,12 +574,10 @@ fn (mut g Gen) stmt_list_ids(ids []flat.NodeId) {
 		}
 		g.indent++
 		mut next_i := i
-		for next_i < ids.len
-			&& (int(ids[next_i]) < 0 || g.a.node(ids[next_i]).kind == .empty) {
+		for next_i < ids.len && (int(ids[next_i]) < 0 || g.a.node(ids[next_i]).kind == .empty) {
 			next_i++
 		}
-		if g.a.node(id).kind == .label_stmt && next_i < ids.len
-			&& g.is_loop_statement(ids[next_i]) {
+		if g.a.node(id).kind == .label_stmt && next_i < ids.len && g.is_loop_statement(ids[next_i]) {
 			label := g.a.node(id)
 			loop := g.a.node(ids[next_i])
 			_, label_end := g.stmt_source_span(label)
@@ -604,10 +624,47 @@ fn (mut g Gen) emit_blank_line_between(previous flat.NodeId, current flat.NodeId
 	}
 	prev := g.a.node(previous)
 	cur := g.a.node(current)
-	if !prev.pos.is_valid() || !cur.pos.is_valid()
-		|| !g.source_has_blank_line_between(prev.pos.end, cur.pos.offset) {
+	if !prev.pos.is_valid() || !cur.pos.is_valid() {
 		return
 	}
+	mut limit := cur.pos.offset
+	if g.comment_i < g.comments.len {
+		// a comment in the gap keeps the blank lines that follow it, so only the
+		// part of the gap before that comment decides the separator here
+		comment_start := g.comments[g.comment_i].pos.offset
+		if comment_start >= prev.pos.end && comment_start < limit {
+			limit = comment_start
+		}
+	}
+	if !g.source_has_blank_line_between(prev.pos.end, limit) {
+		return
+	}
+	g.write_blank_line()
+}
+
+// emit_blank_line_after_comment writes a blank line when the source kept one
+// between the comment that was just emitted and the code starting at `limit`.
+fn (mut g Gen) emit_blank_line_after_comment(limit int) {
+	gap := g.source_span(g.source_end, limit) or { return }
+	// Only the blank run directly after the comment counts: `limit` is a node
+	// position, which for some statements starts past their first token.
+	mut newlines := 0
+	for c in gap {
+		if c == `\n` {
+			newlines++
+		} else if c !in [` `, `\t`, `\r`] {
+			break
+		}
+	}
+	if newlines < 2 {
+		return
+	}
+	g.write_blank_line()
+}
+
+// write_blank_line ends the current line and adds an empty one, unless the
+// output already ends with a blank line.
+fn (mut g Gen) write_blank_line() {
 	if !g.on_newline {
 		g.writeln('')
 	}
@@ -633,7 +690,13 @@ fn (mut g Gen) stmt(id flat.NodeId) {
 		eprintln('stmt ${n.kind} | pos: ${n.pos.offset}')
 	}
 	stmt_start, stmt_end := g.stmt_source_span(n)
+	comment_i := g.comment_i
 	g.emit_comments_before(stmt_start)
+	if g.comment_i > comment_i {
+		// keep a blank line the source had between the last comment and this
+		// statement (e.g. a file header comment above `module`)
+		g.emit_blank_line_after_comment(stmt_start)
+	}
 	g.source_end = int_max(g.source_end, stmt_start)
 	match n.kind {
 		.module_decl {
@@ -797,7 +860,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		}
 		.char_literal {
 			if n.value.starts_with('c:') {
-				g.write("c'${n.value[2..]}'")
+				g.write(c_string_literal_text(n.value))
 			} else {
 				g.write(g.rune_literal(n))
 			}
@@ -826,9 +889,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.write('.${n.value}')
 		}
 		.infix {
-			g.expr(g.a.child(n, 0))
-			g.write(' ${op_str(n.op)} ')
-			g.expr(g.a.child(n, 1))
+			g.infix_expr(id)
 		}
 		.prefix {
 			g.prefix_expr(id)
@@ -1005,13 +1066,83 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.write('/* ${n.kind} */')
 		}
 	}
-	if (n.kind == .sql_expr || n.typ == '__v3_formatter_raw')
-		&& int(id) in g.a.formatter_sources {
+	if (n.kind == .sql_expr || n.typ == '__v3_formatter_raw') && int(id) in g.a.formatter_sources {
 		g.skip_comments_before(n.pos.end + 1)
 	} else {
 		g.emit_trailing_comments(n.pos.end)
 	}
 	g.source_end = int_max(g.source_end, n.pos.end)
+}
+
+// infix_expr prints a binary expression, keeping the line break the source had
+// before a `&&`/`||` continuation instead of joining the operands into one long
+// line.
+fn (mut g Gen) infix_expr(id flat.NodeId) {
+	n := g.a.node(id)
+	lhs := g.a.child(n, 0)
+	rhs := g.a.child(n, 1)
+	g.expr(lhs)
+	if g.infix_continues_on_next_line(n, lhs, rhs) {
+		g.indent++
+		g.writeln('')
+		g.write('${op_str(n.op)} ')
+		g.expr(rhs)
+		g.indent--
+		return
+	}
+	g.write(' ${op_str(n.op)} ')
+	g.expr(rhs)
+}
+
+fn (g &Gen) infix_continues_on_next_line(n &flat.Node, lhs flat.NodeId, rhs flat.NodeId) bool {
+	if n.op !in [.logical_and, .logical_or] {
+		return false
+	}
+	lhs_end := g.rightmost_source_end(lhs)
+	rhs_start := g.leftmost_source_start(rhs)
+	if lhs_end < 0 || rhs_start < lhs_end || g.has_comment_between(lhs_end, rhs_start) {
+		return false
+	}
+	return g.source_has_line_break_between(lhs_end, rhs_start)
+}
+
+// leftmost_source_start returns the first source offset covered by `id`, walking
+// down its leading operands. A few nodes are synthesized around their operand
+// (`!in` wraps `in` in a `!`, for instance) and carry the position of a later
+// token, so the node's own span alone is not enough.
+fn (g &Gen) leftmost_source_start(id flat.NodeId) int {
+	mut current := id
+	mut start := -1
+	for int(current) >= 0 {
+		n := g.a.node(current)
+		if n.pos.is_valid() && (start < 0 || n.pos.offset < start) {
+			start = n.pos.offset
+		}
+		if n.children_count == 0 {
+			break
+		}
+		current = g.a.child(n, 0)
+	}
+	return start
+}
+
+// rightmost_source_end returns the last source offset covered by `id`, walking
+// down its trailing operands. See [leftmost_source_start] for why the node's own
+// span is not enough.
+fn (g &Gen) rightmost_source_end(id flat.NodeId) int {
+	mut current := id
+	mut end := -1
+	for int(current) >= 0 {
+		n := g.a.node(current)
+		if n.pos.is_valid() && n.pos.end > end {
+			end = n.pos.end
+		}
+		if n.children_count == 0 {
+			break
+		}
+		current = g.a.child(n, int(n.children_count) - 1)
+	}
+	return end
 }
 
 fn (g &Gen) innermost_parenthesized_expr(id flat.NodeId) flat.NodeId {
@@ -1095,14 +1226,19 @@ fn (mut g Gen) array_literal(id flat.NodeId) {
 		return
 	}
 	g.array_depth++
+	first := g.a.node(children[0])
+	// An array whose source starts on the line below `[` keeps that layout even
+	// when an earlier array at this nesting depth was written on one line.
+	source_break := g.source_line(first.pos.offset) > g.source_line(n.pos.offset)
 	if g.array_depth > g.array_breaks.len {
-		first := g.a.node(children[0])
+		// The width heuristic is decided once per nesting depth, so a row of
+		// small nested arrays stays uniform instead of breaking at whichever
+		// element happens to cross the limit.
 		first_width := g.array_expr_width(children[0])
-		g.array_breaks << g.source_line(first.pos.offset) > g.source_line(n.pos.offset)
-			|| (first_width > 0
-			&& g.output_line_len() + first_width > formatter_array_first_break)
+		g.array_breaks << source_break
+			|| (first_width > 0 && g.output_line_len() + first_width > formatter_array_first_break)
 	}
-	line_break := g.array_breaks[g.array_depth - 1]
+	line_break := source_break || g.array_breaks[g.array_depth - 1]
 	mut indented := false
 	for i, child in children {
 		if i == 0 {
@@ -1413,8 +1549,9 @@ fn (mut g Gen) index_expr(id flat.NodeId) {
 		return
 	}
 	g.expr(children[0])
+	gate := if n.op == .gated_index { '#' } else { '' }
 	if n.value == 'range' {
-		g.write('[')
+		g.write('${gate}[')
 		if children.len > 1 && int(children[1]) >= 0 {
 			g.expr(children[1])
 		}
@@ -1425,7 +1562,6 @@ fn (mut g Gen) index_expr(id flat.NodeId) {
 		g.write(']')
 		return
 	}
-	gate := if n.op == .gated_index { '#' } else { '' }
 	g.write('${gate}[')
 	g.expr_list(children[1..], ', ')
 	g.write(']')
@@ -1624,10 +1760,18 @@ fn (g &Gen) map_key_width(id flat.NodeId) int {
 			g.string_literal_text(n)
 		}
 		.char_literal {
-			if n.value.starts_with('c:') { "c'${n.value[2..]}'" } else { g.rune_literal(n) }
+			if n.value.starts_with('c:') {
+				c_string_literal_text(n.value)
+			} else {
+				g.rune_literal(n)
+			}
 		}
-		.enum_val { '.${n.value}' }
-		.int_literal, .float_literal, .bool_literal, .ident { n.value }
+		.enum_val {
+			'.${n.value}'
+		}
+		.int_literal, .float_literal, .bool_literal, .ident {
+			n.value
+		}
 		else {
 			if source := g.source_span(n.pos.offset, n.pos.end) {
 				source.trim_space()
@@ -1656,9 +1800,6 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 	body := children[i..]
 	g.write('fn')
 	gp := n.generic_params()
-	if gp.len > 0 {
-		g.write('[${gp.join(', ')}]')
-	}
 	if captures.len > 0 {
 		g.write(' [')
 		for capture_i, capture_id in captures {
@@ -1676,7 +1817,15 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 		}
 		g.write(']')
 	}
-	g.write(' ')
+	// V spells a closure `fn [captures] [T](params)`: the capture list comes first, and the
+	// generic list binds straight to the parameters with no space. Writing the generic list
+	// first produced `fn[T] [captures] (params)`, which does not parse, and the run after that
+	// read the captures as the generic list and dropped everything the two lists disagreed on.
+	if gp.len > 0 {
+		g.write(' [${gp.join(', ')}]')
+	} else {
+		g.write(' ')
+	}
 	g.params(id, params)
 	if n.typ.len > 0 && n.typ != 'void' {
 		g.write(' ${g.type_text(n.typ)}')
@@ -1776,6 +1925,11 @@ fn (mut g Gen) compact_stmt(id flat.NodeId) {
 fn (mut g Gen) block_expr(id flat.NodeId) {
 	n := g.a.node(id)
 	stmts := g.a.children_of(n)
+	if n.value == 'comma_exprs' {
+		// `a, b` in expression position is a comma group, not a `{}` block.
+		g.comma_exprs(n)
+		return
+	}
 	prefix := if n.value == 'unsafe' { 'unsafe ' } else { '' }
 	is_compact := if n.value == 'unsafe' {
 		stmts.len <= 1 && g.source_block_is_compact(n)
@@ -1810,6 +1964,27 @@ fn (mut g Gen) block_expr(id flat.NodeId) {
 	}
 }
 
+// comma_exprs prints the children of a synthetic `comma_exprs` block as the
+// comma separated expression list they were parsed from.
+fn (mut g Gen) comma_exprs(n &flat.Node) {
+	mut first := true
+	for stmt_id in g.a.children_of(n) {
+		stmt := g.a.node(stmt_id)
+		if !first {
+			g.write(', ')
+		}
+		first = false
+		if stmt.kind == .expr_stmt && stmt.children_count == 1 {
+			g.expr(g.a.child(stmt, 0))
+		} else {
+			in_init := g.in_init
+			g.in_init = true
+			g.stmt(stmt_id)
+			g.in_init = in_init
+		}
+	}
+}
+
 fn (g &Gen) source_block_is_compact(n &flat.Node) bool {
 	if source := g.source_span(n.pos.offset, n.pos.end) {
 		return !source.contains('\n') && !source.contains('\r')
@@ -1829,6 +2004,15 @@ fn (mut g Gen) block_stmt(id flat.NodeId) {
 			g.for_stmt_with_init(stmts[1], stmts[0])
 			return
 		}
+	}
+	if n.value == 'comma_exprs' {
+		// The parser groups `a, b` statements (e.g. the value of an `if`
+		// expression branch) in a synthetic block; print the original commas.
+		g.comma_exprs(n)
+		if !g.in_init {
+			g.writeln('')
+		}
+		return
 	}
 	prefix := if n.value == 'unsafe' { 'unsafe ' } else { '' }
 	if n.value == 'unsafe' && stmts.len <= 1 && g.source_block_is_compact(n)
@@ -1939,8 +2123,79 @@ fn (mut g Gen) sql_expr(id flat.NodeId) {
 	g.write('}')
 }
 
+// interp_text_spans_lines reports whether the literal text of the interpolated
+// string written as `source` contains a physical line break. Segment values are
+// stored decoded, so this has to work on the source: a `\n` escape is not a
+// physical break. Everything inside `${...}` is skipped too, since a break there
+// only wraps the embedded expression.
+fn interp_text_spans_lines(source string) bool {
+	mut i := 0
+	mut depth := 0
+	for i < source.len {
+		c := source[i]
+		if c == `\\` {
+			i += 2
+			continue
+		}
+		if depth == 0 {
+			if c == `\n` || c == `\r` {
+				return true
+			}
+			if c == `$` && i + 1 < source.len && source[i + 1] == `{` {
+				depth = 1
+				i += 2
+				continue
+			}
+			i++
+			continue
+		}
+		// inside `${...}`: step over nested literals so that a brace of their
+		// own does not throw off the depth count
+		if c in [`'`, `"`, `\``] {
+			i = interp_skip_nested_literal(source, i)
+			continue
+		}
+		if c == `{` {
+			depth++
+		} else if c == `}` {
+			depth--
+		}
+		i++
+	}
+	return false
+}
+
+// interp_skip_nested_literal returns the offset just past the string or rune
+// literal opening at `start` inside an interpolated expression.
+fn interp_skip_nested_literal(source string, start int) int {
+	quote := source[start]
+	mut i := start + 1
+	for i < source.len {
+		if source[i] == `\\` {
+			i += 2
+			continue
+		}
+		if source[i] == quote {
+			return i + 1
+		}
+		i++
+	}
+	return source.len
+}
+
 fn (mut g Gen) string_interp(id flat.NodeId) {
 	n := g.a.node(id)
+	if source := g.source_span(n.pos.offset, n.pos.end) {
+		// Physical newlines are part of a multiline literal's value and layout,
+		// so keep such a literal exactly as written instead of re-escaping them
+		// to `\n`. The comments of any embedded expression are copied along with
+		// it, so they must not be emitted a second time later on.
+		if interp_text_spans_lines(source) {
+			g.write(source)
+			g.skip_comments_before(n.pos.end)
+			return
+		}
+	}
 	children := g.a.children_of(n)
 	// prefer single quotes unless a literal segment contains `'` but no `"`
 	mut has_single := false
@@ -2010,8 +2265,7 @@ fn (mut g Gen) assign_stmt(id flat.NodeId) {
 			g.write('mut ')
 		}
 		g.expr(children[0])
-		g.write(' ${opstr} ')
-		g.expr_list(children[1..], ', ')
+		g.assign_rhs(opstr, [children[0]], children[1..])
 	} else {
 		mut lhs := []flat.NodeId{}
 		mut rhs := []flat.NodeId{}
@@ -2029,7 +2283,7 @@ fn (mut g Gen) assign_stmt(id flat.NodeId) {
 			}
 		}
 		for i, lhs_id in lhs {
-			if is_decl && !n.is_mut && g.a.node(lhs_id).is_mut && !g.suppress_mut {
+			if is_decl && g.a.node(lhs_id).is_mut && (!n.is_mut || i > 0) && !g.suppress_mut {
 				g.write('mut ')
 			}
 			g.expr(lhs_id)
@@ -2037,8 +2291,7 @@ fn (mut g Gen) assign_stmt(id flat.NodeId) {
 				g.write(', ')
 			}
 		}
-		g.write(' ${opstr} ')
-		g.expr_list(rhs, ', ')
+		g.assign_rhs(opstr, lhs, rhs)
 	}
 	if attr := g.a.formatter_sources[int(id)] {
 		g.write(' ${attr.trim_space()}')
@@ -2046,6 +2299,33 @@ fn (mut g Gen) assign_stmt(id flat.NodeId) {
 	if !g.in_init && !g.on_newline {
 		g.writeln('')
 	}
+}
+
+// assign_rhs prints the assignment operator and the right hand side, keeping the
+// right hand side on its own line when the source wrapped it there.
+fn (mut g Gen) assign_rhs(opstr string, lhs []flat.NodeId, rhs []flat.NodeId) {
+	if g.assign_rhs_on_next_line(lhs, rhs) {
+		g.write(' ${opstr}')
+		g.indent++
+		g.writeln('')
+		g.expr_list(rhs, ', ')
+		g.indent--
+		return
+	}
+	g.write(' ${opstr} ')
+	g.expr_list(rhs, ', ')
+}
+
+fn (g &Gen) assign_rhs_on_next_line(lhs []flat.NodeId, rhs []flat.NodeId) bool {
+	if g.in_init || lhs.len == 0 || rhs.len == 0 {
+		return false
+	}
+	lhs_end := g.rightmost_source_end(lhs.last())
+	rhs_start := g.leftmost_source_start(rhs[0])
+	if lhs_end < 0 || rhs_start < lhs_end || g.has_comment_between(lhs_end, rhs_start) {
+		return false
+	}
+	return g.source_has_line_break_between(lhs_end, rhs_start)
 }
 
 fn (mut g Gen) flow_control(kw string, label string) {
@@ -2257,8 +2537,8 @@ fn (g &Gen) if_expr_is_compact(n &flat.Node, children []flat.NodeId, start_line_
 	if g.compact_block_expr_ids(children[1]) == none {
 		return false
 	}
-	return children.len == 2 || (g.a.node(children[2]).kind == .block
-		&& g.compact_block_expr_ids(children[2]) != none)
+	return children.len == 2
+		|| (g.a.node(children[2]).kind == .block && g.compact_block_expr_ids(children[2]) != none)
 }
 
 fn (g &Gen) compact_block_expr_ids(id flat.NodeId) ?[]flat.NodeId {
@@ -2320,7 +2600,15 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 				g.advance_source_end_before_pending_comment(b.pos.end)
 				g.emit_comments_before(b.pos.end)
 				g.indent--
-				g.writeln('}')
+				g.write('}')
+				// A comment sitting after the branch's closing brace belongs to that branch.
+				// Left for the next branch's leading-comment pass it would be re-emitted on its
+				// own line, and the following run would then read it as a commented branch and
+				// insert a blank line before it, so formatting twice differed from once.
+				g.emit_trailing_comments(b.pos.end)
+				if !g.on_newline {
+					g.writeln('')
+				}
 			}
 		} else {
 			ncond := b.value.int()
@@ -2343,7 +2631,15 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 				g.advance_source_end_before_pending_comment(b.pos.end)
 				g.emit_comments_before(b.pos.end)
 				g.indent--
-				g.writeln('}')
+				g.write('}')
+				// A comment sitting after the branch's closing brace belongs to that branch.
+				// Left for the next branch's leading-comment pass it would be re-emitted on its
+				// own line, and the following run would then read it as a commented branch and
+				// insert a blank line before it, so formatting twice differed from once.
+				g.emit_trailing_comments(b.pos.end)
+				if !g.on_newline {
+					g.writeln('')
+				}
 			}
 		}
 	}
@@ -2452,7 +2748,9 @@ fn (mut g Gen) assert_stmt(id flat.NodeId) {
 		g.write(', ')
 		g.expr(children[1])
 	}
-	if !g.in_init {
+	// The condition can carry the statement's trailing comment, which ends the line itself.
+	// Terminating again would leave a stray separator after every commented `assert`.
+	if !g.in_init && !g.on_newline {
 		g.writeln('')
 	}
 }
@@ -2873,10 +3171,10 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int) {
 	for fid in fields {
 		f := g.a.node(fid)
 		g.emit_blank_line_between(previous, fid)
-		g.emit_comments_before(f.pos.offset)
-		g.source_end = int_max(g.source_end, f.pos.offset)
 		if f.kind != .field_decl {
 			// e.g. a `$if` block inside the struct body
+			g.emit_comments_before(f.pos.offset)
+			g.source_end = int_max(g.source_end, f.pos.offset)
 			g.stmt(fid)
 			previous = fid
 			continue
@@ -2885,6 +3183,16 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int) {
 		flags := if gp.len > 0 { gp[0] } else { '' }
 		access := access_label(flags)
 		if access != cur_access {
+			// Doc comments written below `pub:` belong to the field, so only the
+			// comments before the specifier itself are emitted ahead of it.
+			if spec_end := g.access_specifier_end(g.source_end, f.pos.offset) {
+				comment_i := g.comment_i
+				g.emit_comments_before(spec_end)
+				if g.comment_i > comment_i {
+					g.emit_blank_line_after_comment(spec_end)
+				}
+				g.source_end = int_max(g.source_end, spec_end)
+			}
 			// access specifiers sit one level out from the fields they head
 			g.indent--
 			match access {
@@ -2897,7 +3205,9 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int) {
 			g.indent++
 			cur_access = access
 		}
-		is_embed := f.value == f.typ && f.children_count == 0
+		g.emit_comments_before(f.pos.offset)
+		g.source_end = int_max(g.source_end, f.pos.offset)
+		is_embed := flags.contains('e')
 		if is_embed {
 			g.write(g.type_text(f.value))
 		} else {
@@ -3170,6 +3480,40 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 	g.writeln('}')
 }
 
+// access_specifier_end returns the offset just past the `:` of the access
+// specifier (`pub:`, `mut:`, ...) that sits between `start` and `end`, ignoring
+// any comments in that gap. Returns none when no specifier is found.
+fn (g &Gen) access_specifier_end(start int, end int) ?int {
+	gap := g.source_span(start, end) or { return none }
+	mut i := 0
+	mut result := -1
+	for i < gap.len {
+		c := gap[i]
+		if c == `/` && i + 1 < gap.len && gap[i + 1] == `/` {
+			for i < gap.len && gap[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if c == `/` && i + 1 < gap.len && gap[i + 1] == `*` {
+			i += 2
+			for i + 1 < gap.len && !(gap[i] == `*` && gap[i + 1] == `/`) {
+				i++
+			}
+			i += 2
+			continue
+		}
+		if c == `:` {
+			result = i + 1
+		}
+		i++
+	}
+	if result < 0 {
+		return none
+	}
+	return start + result
+}
+
 // aggregate_field_alignments returns the widest field name in each adjacent
 // access section. Blank lines and standalone comments start a fresh alignment
 // group, matching the established formatter layout.
@@ -3189,7 +3533,7 @@ fn (g &Gen) aggregate_field_alignments(fields []flat.NodeId, is_interface bool) 
 			gp := f.generic_params()
 			flags := if gp.len > 0 { gp[0] } else { '' }
 			section = access_label(flags)
-			alignable = !(f.value == f.typ && f.children_count == 0)
+			alignable = !flags.contains('e')
 		}
 		if !alignable {
 			g.store_field_alignment(mut alignments, group)
@@ -3198,8 +3542,7 @@ fn (g &Gen) aggregate_field_alignments(fields []flat.NodeId, is_interface bool) 
 			previous = flat.empty_node
 			continue
 		}
-		if group.len > 0
-			&& (section != group_access || g.field_alignment_break(previous, fid)) {
+		if group.len > 0 && (section != group_access || g.field_alignment_break(previous, fid)) {
 			g.store_field_alignment(mut alignments, group)
 			group.clear()
 		}
@@ -3257,34 +3600,28 @@ fn (mut g Gen) const_decl(id flat.NodeId) {
 	n := g.a.node(id)
 	g.emit_attrs(id)
 	pub_prefix := if n.op == .arrow { 'pub ' } else { '' }
-	fields := g.a.children_of(n)
-	if fields.len == 1 {
-		f := g.a.node(fields[0])
-		g.emit_comments_before(f.pos.offset)
-		g.write('${pub_prefix}const ${f.value}')
-		if f.children_count > 0 {
-			g.write(' = ')
-			g.expr(g.a.child(f, 0))
-		} else if f.typ.len > 0 {
-			g.write(' ${g.type_text(f.typ)}')
-		}
-		g.writeln('')
-		g.source_end = int_max(g.source_end, f.pos.end)
-		return
+	for fid in g.a.children_of(n) {
+		g.const_field(fid, pub_prefix)
 	}
-	for fid in fields {
-		f := g.a.node(fid)
-		g.emit_comments_before(f.pos.offset)
-		g.write('${pub_prefix}const ${f.value}')
-		if f.children_count > 0 {
-			g.write(' = ')
-			g.expr(g.a.child(f, 0))
-		} else if f.typ.len > 0 {
-			g.write(' ${g.type_text(f.typ)}')
-		}
-		g.writeln('')
-		g.source_end = int_max(g.source_end, f.pos.end)
+}
+
+fn (mut g Gen) const_field(fid flat.NodeId, pub_prefix string) {
+	f := g.a.node(fid)
+	g.emit_comments_before(f.pos.offset)
+	g.write('${pub_prefix}const ${f.value}')
+	if f.children_count > 0 {
+		g.write(' = ')
+		g.expr(g.a.child(f, 0))
+	} else if f.typ.len > 0 {
+		g.write(' ${g.type_text(f.typ)}')
 	}
+	// `g.expr` already terminated the line when it flushed a trailing `//`
+	// comment; a second newline here would add a blank line on every `vfmt`
+	// pass.
+	if !g.on_newline {
+		g.writeln('')
+	}
+	g.source_end = int_max(g.source_end, f.pos.end)
 }
 
 fn (mut g Gen) global_decl(id flat.NodeId) {
@@ -3623,7 +3960,14 @@ fn (mut g Gen) write_comment(text string) {
 		if i == lines.len - 1 && line == '' {
 			continue
 		}
-		g.writeln(line)
+		if i == 0 {
+			g.writeln(line)
+			continue
+		}
+		// A block comment's continuation lines already carry their own leading whitespace from
+		// the source, so they are written through verbatim. Indenting them again would add a
+		// level on every run and the formatter would never reach a fixed point.
+		g.writeln_verbatim(line)
 	}
 }
 
@@ -3768,9 +4112,19 @@ fn (mut g Gen) write(str string) {
 	g.on_newline = false
 }
 
+// writeln_verbatim writes a line without the current indentation, for text that already carries
+// its own.
+fn (mut g Gen) writeln_verbatim(str string) {
+	g.out.writeln(str)
+	g.on_newline = true
+}
+
 @[inline]
 fn (mut g Gen) writeln(str string) {
-	if g.on_newline && g.indent > 0 {
+	// A blank separator line gets no indentation: writing it would leave a line of whitespace,
+	// which V source never carries and which the next run reads back differently, so formatting
+	// twice differed from once.
+	if g.on_newline && g.indent > 0 && str.len > 0 {
 		for _ in 0 .. g.indent {
 			g.out.write_u8(`\t`)
 		}
@@ -3854,6 +4208,16 @@ fn quote_string(s string) string {
 	return "'${escape_string(s, `'`)}'"
 }
 
+fn c_string_literal_text(value string) string {
+	raw := value.all_after('c:')
+	// C-string nodes retain source escapes rather than a fully decoded value. Normalize quote
+	// escapes before choosing a delimiter, while protecting literal doubled backslashes.
+	unescaped := raw.replace('\\\\', '\x01').replace_each(["\\'", "'", '\\"', '"'])
+	quote := if unescaped.contains("'") && !unescaped.contains('"') { '"' } else { "'" }
+	escaped := unescaped.replace_each(['\x01', '\\\\', quote, '\\${quote}'])
+	return 'c${quote}${escaped}${quote}'
+}
+
 // escape_string re-escapes a decoded string/char value for emission inside a
 // literal delimited by `quote`. `$` is always escaped so a literal dollar is
 // never reinterpreted as interpolation.
@@ -3888,10 +4252,11 @@ fn escape_string(s string, quote u8) string {
 			12 {
 				b.write_string('\\f')
 			}
-			0 {
-				b.write_string('\\0')
-			}
 			else {
+				// NUL is written as `\\x00`, never `\\0`: `u8.hex()` always emits two digits, so
+				// the escape cannot absorb a following character, whereas `\\0` before an octal
+				// digit re-parses as one octal escape and silently changes the string's bytes
+				// (`'x\\x0041y'` would come back as `'x\\041y'`, i.e. `x!y`).
 				if c < 32 || c == 127 {
 					b.write_string('\\x${c.hex()}')
 				} else if c == quote {
@@ -3975,7 +4340,7 @@ fn (mut g Gen) type_text(typ string) string {
 		expanded = out.str()
 	}
 	if !g.is_new_int || (!g.is_translated && !g.in_c_function) || !expanded.contains('int') {
-		return expanded
+		return restore_fn_type_space(expanded)
 	}
 	mut out := strings.new_builder(expanded.len)
 	mut i := 0
@@ -3989,6 +4354,30 @@ fn (mut g Gen) type_text(typ string) string {
 			continue
 		}
 		out.write_u8(expanded[i])
+		i++
+	}
+	return restore_fn_type_space(out.str())
+}
+
+// restore_fn_type_space rewrites `fn(` back to `fn (`. The type system spells a function type
+// without the space internally, but V source style keeps it — `type Cb = fn (int) int`, and the
+// same in field, parameter and return positions — so a type rendered straight from the internal
+// name would reformat every function type in the file.
+fn restore_fn_type_space(typ string) string {
+	if !typ.contains('fn(') {
+		return typ
+	}
+	mut out := strings.new_builder(typ.len + 4)
+	mut i := 0
+	for i < typ.len {
+		// Only a standalone `fn` introduces a function type; `myfn(` is an ordinary name.
+		if typ[i] == `f` && i + 3 <= typ.len && typ[i + 1] == `n` && typ[i + 2] == `(`
+			&& (i == 0 || !is_type_ident_char(typ[i - 1])) {
+			out.write_string('fn (')
+			i += 3
+			continue
+		}
+		out.write_u8(typ[i])
 		i++
 	}
 	return out.str()
@@ -4005,8 +4394,7 @@ fn (mut g Gen) skip_comments_in_source(start int, end int) {
 }
 
 fn is_type_ident_char(c u8) bool {
-	return c == `_` || (c >= `0` && c <= `9`) || (c >= `A` && c <= `Z`)
-		|| (c >= `a` && c <= `z`)
+	return c == `_` || (c >= `0` && c <= `9`) || (c >= `A` && c <= `Z`) || (c >= `a` && c <= `z`)
 }
 
 fn type_ident_is_qualified(typ string, start int) bool {

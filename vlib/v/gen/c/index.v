@@ -554,7 +554,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		// do not clone inside `opt_ok(opt_ok(&(string[]) {..})` before returns
 		needs_clone := info.elem_type == ast.string_type_idx && g.is_autofree && !(g.inside_return
 			&& g.fn_decl != unsafe { nil } && g.fn_decl.return_type.has_flag(.option))
-			&& !g.is_assign_lhs
+			&& !g.is_assign_lhs && !g.is_amp
 		is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 		cur_line := if is_gen_or_and_assign_rhs {
 			line := g.go_before_last_stmt()

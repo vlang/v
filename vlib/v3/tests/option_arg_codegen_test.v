@@ -168,14 +168,17 @@ fn test_optional_abi_distinguishes_plain_t_name_from_specialized_generic() {
 	v3_bin := build_v3()
 	c_code := generated_c(v3_bin, 'optional_plain_t_name_abi',
 		'fn plain[T](x T) T {\n\treturn x\n}\n\nfn plain_t_name(x ?int) int {\n\treturn x or { 0 }\n}\n\nfn maybe() ?int {\n\treturn 3\n}\n\nfn use_fn(f fn (?int) int) int {\n\treturn f(maybe())\n}\n\nfn take[T](x ?T, fallback T) T {\n\treturn x or { fallback }\n}\n\nfn main() {\n\tprintln(plain_t_name(maybe()) + use_fn(plain_t_name) + take[int](7, 0) + plain[int](4))\n}\n')
-	assert c_code.contains('int plain_t_name(Optional x)'), c_code
-	assert !c_code.contains('int plain_t_name(Optional_int x)'), c_code
-	assert c_code.contains(')(struct Optional);'), c_code
-	assert !c_code.contains(')(Optional_int);'), c_code
+	// With platform `int` lowered to `i64`, `?int` and `?i64` share the
+	// `Optional_i64` representation, so plain and generic-specialized `?int` uses
+	// converge on it (the fn-pointer ABI stays consistent because every `?int`
+	// site now spells the same optional type).
+	assert c_code.contains('i64 plain_t_name(Optional_i64 x)'), c_code
+	assert !c_code.contains('Optional_int'), c_code
+	assert c_code.contains(')(struct Optional_i64);'), c_code
 	assert c_code.contains('plain_T_v_int(') || c_code.contains('plain_T_int('), c_code
-	assert c_code.contains('int take_T_v_int(Optional_int x, int fallback)')
-		|| c_code.contains('int take_T_int(Optional_int x, int fallback)'), c_code
-	assert c_code.contains('(Optional_int){.ok = true, .value = 7}'), c_code
+	assert c_code.contains('i64 take_T_v_int(Optional_i64 x, i64 fallback)')
+		|| c_code.contains('i64 take_T_int(Optional_i64 x, i64 fallback)'), c_code
+	assert c_code.contains('(Optional_i64){.ok = true, .value = 7}'), c_code
 }
 
 fn test_optional_generic_concrete_abi_converts_optional_args() {
@@ -184,14 +187,15 @@ fn test_optional_generic_concrete_abi_converts_optional_args() {
 	out := run_good(v3_bin, 'optional_generic_concrete_abi_run', source)
 	assert out == 'ok'
 	c_code := generated_c(v3_bin, 'optional_generic_concrete_abi_c', source)
-	assert c_code.contains('int take_T_v_int(Optional_int x, int fallback)')
-		|| c_code.contains('int take_T_int(Optional_int x, int fallback)'), c_code
-	assert c_code.contains('Optional _opt'), c_code
-	assert c_code.contains('(Optional_int){.ok = true, .value = _opt'), c_code
-	assert !c_code.contains('take_T_v_int(maybe(), 0)'), c_code
-	assert !c_code.contains('take_T_int(maybe(), 0)'), c_code
-	assert !c_code.contains('take_T_v_int(x, 0)'), c_code
-	assert !c_code.contains('take_T_int(x, 0)'), c_code
+	assert c_code.contains('i64 take_T_v_int(Optional_i64 x, i64 fallback)')
+		|| c_code.contains('i64 take_T_int(Optional_i64 x, i64 fallback)'), c_code
+	// `int` lowers to `i64`, so a plain `?int` value and the specialized `?T`
+	// (T = int) share `Optional_i64`. The optional arg then passes straight
+	// through, without the generic-`Optional` conversion temp the mismatched
+	// representations used to require.
+	assert !c_code.contains('Optional_int'), c_code
+	assert c_code.contains('take_T_v_int(maybe(), 0)') || c_code.contains('take_T_int(maybe(), 0)'), c_code
+	assert c_code.contains('take_T_v_int(x, 0)') || c_code.contains('take_T_int(x, 0)'), c_code
 }
 
 // test_optional_if_expr_codegen_initializes_optional_temp validates this v3 regression case.

@@ -270,6 +270,8 @@ fn main() {
 	assert with_os.c_code.contains('#define TCP_DEFER_ACCEPT 9'), with_os.c_code
 	assert with_os.c_code.contains('#define TCP_FASTOPEN 23'), with_os.c_code
 	assert with_os.c_code.contains('#define SOMAXCONN 4096'), with_os.c_code
+	assert with_os.c_code.contains('#define SOMAXCONN 128'), with_os.c_code
+	assert with_os.c_code.contains('#define SOMAXCONN 0x7fffffff'), with_os.c_code
 	assert with_os.c_code.contains('#define MEM_COMMIT 0x00001000U'), with_os.c_code
 	assert with_os.c_code.contains('#define MEM_RESERVE 0x00002000U'), with_os.c_code
 	assert with_os.c_code.contains('#define PAGE_READWRITE 0x04U'), with_os.c_code

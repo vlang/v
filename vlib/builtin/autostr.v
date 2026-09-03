@@ -38,13 +38,24 @@ fn autostr_type_pop() {
 // (same instance reached again) without false positives from same-type
 // different instances.
 
-__global g_autostr_addr_stack = [autostr_type_stack_max_depth]voidptr{}
-__global g_autostr_addr_stack_len = 0
+struct AutostrAddrStackState {
+mut:
+	addrs          [autostr_type_stack_max_depth]voidptr
+	types          [autostr_type_stack_max_depth]int
+	len            int
+	overflow_depth int
+}
+
+// V3 cgen emits this recursion state as thread-local storage.
+__global g_autostr_addr_state = AutostrAddrStackState{}
 
 @[markused]
 fn autostr_addr_in_stack(addr voidptr) bool {
-	for i := 0; i < g_autostr_addr_stack_len; i++ {
-		if g_autostr_addr_stack[i] == addr {
+	if g_autostr_addr_state.len >= autostr_type_stack_max_depth {
+		return true
+	}
+	for i := 0; i < g_autostr_addr_state.len; i++ {
+		if g_autostr_addr_state.addrs[i] == addr {
 			return true
 		}
 	}
@@ -53,17 +64,45 @@ fn autostr_addr_in_stack(addr voidptr) bool {
 
 @[markused]
 fn autostr_addr_push(addr voidptr) {
-	if g_autostr_addr_stack_len >= autostr_type_stack_max_depth {
+	if g_autostr_addr_state.len >= autostr_type_stack_max_depth {
+		g_autostr_addr_state.overflow_depth++
 		return
 	}
-	g_autostr_addr_stack[g_autostr_addr_stack_len] = addr
-	g_autostr_addr_stack_len++
+	g_autostr_addr_state.addrs[g_autostr_addr_state.len] = addr
+	g_autostr_addr_state.types[g_autostr_addr_state.len] = 0
+	g_autostr_addr_state.len++
+}
+
+@[markused]
+fn autostr_addr_type_in_stack(addr voidptr, typ int) bool {
+	if g_autostr_addr_state.len >= autostr_type_stack_max_depth {
+		return true
+	}
+	for i := 0; i < g_autostr_addr_state.len; i++ {
+		if g_autostr_addr_state.addrs[i] == addr && g_autostr_addr_state.types[i] == typ {
+			return true
+		}
+	}
+	return false
+}
+
+@[markused]
+fn autostr_addr_type_push(addr voidptr, typ int) {
+	if g_autostr_addr_state.len >= autostr_type_stack_max_depth {
+		g_autostr_addr_state.overflow_depth++
+		return
+	}
+	g_autostr_addr_state.addrs[g_autostr_addr_state.len] = addr
+	g_autostr_addr_state.types[g_autostr_addr_state.len] = typ
+	g_autostr_addr_state.len++
 }
 
 @[markused]
 fn autostr_addr_pop() {
-	if g_autostr_addr_stack_len > 0 {
-		g_autostr_addr_stack_len--
+	if g_autostr_addr_state.overflow_depth > 0 {
+		g_autostr_addr_state.overflow_depth--
+	} else if g_autostr_addr_state.len > 0 {
+		g_autostr_addr_state.len--
 	}
 }
 

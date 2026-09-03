@@ -1,0 +1,29 @@
+import v.embed_file
+
+struct Wrapper {
+	file ?embed_file.EmbedFileData
+}
+
+fn maybe_wrapper() ?Wrapper {
+	return none
+}
+
+fn load(ok bool) ?embed_file.EmbedFileData {
+	return if ok {
+		maybe_wrapper() or {
+			Wrapper{
+				file: ?embed_file.EmbedFileData($embed_file(@FILE))
+			}
+		}.file?
+	} else {
+		$embed_file(@FILE)
+	}
+}
+
+fn main() {
+	data := load(true) or { panic(err) }
+	mut sink := 0
+	assert data.path.len > 0
+	assert sink == 0
+	sink = missing_symbol
+}

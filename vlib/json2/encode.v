@@ -806,8 +806,8 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 						write_field = struct_field_should_encode(field_info, field_value)
 
 						if write_field {
-							is_first = encoder.encode_struct_field_key(mut used_keys, old_used_keys,
-								prefix, field_info, is_first)
+							is_first = encoder.encode_struct_field_key(mut used_keys,
+								old_used_keys, prefix, field_info, is_first)
 							encoder.encode_struct_field_value(field_value)
 						}
 					}
