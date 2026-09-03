@@ -142,7 +142,10 @@ fn (mut g Parser) parse_top_level_items(stop_at_block_end bool) ! {
 			continue
 		}
 		if g.tok == .key_fn {
+			out_start := g.out.len
+			proto_start := g.protos.len
 			g.parse_function(item_enabled)!
+			g.record_function_span(out_start, proto_start)
 			continue
 		}
 		if g.has_main {
@@ -581,6 +584,7 @@ fn (mut g Parser) skip_import() ! {
 }
 
 fn (mut g Parser) parse_function(enabled bool) ! {
+	g.last_function_c_name = ''
 	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
 	g.temp_id = 0
@@ -784,6 +788,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	} else {
 		fastc_method_c_name(g.module_name, fastc_c_declared_type_name(receiver_key), name)
 	}
+	g.last_function_c_name = c_name
 	c_return_type := if is_main { 'int' } else { fastc_output_c_type(return_type) }
 	c_params := if is_main && g.selfhost {
 		'int argc, char **argv'
@@ -969,6 +974,19 @@ fn (mut g Parser) emit_generic_body_stub(out_checkpoint int, saved_indent int, b
 	if return_type != 'void' {
 		g.write_line('return (${fastc_output_c_type(return_type)}){0};')
 	}
+}
+
+// record_function_span notes the C definition the last parse_function wrote
+// to `out` (and its prototype in `protos`) for the reachability prune.
+fn (mut g Parser) record_function_span(out_start int, proto_start int) {
+	if g.last_function_c_name == '' || g.in_mono_drain {
+		return
+	}
+	g.function_ids << g.function_id_table[g.last_function_c_name] or { -1 }
+	g.function_spans << out_start
+	g.function_spans << g.out.len
+	g.proto_spans << proto_start
+	g.proto_spans << g.protos.len
 }
 
 fn fastc_method_c_name(module_name string, receiver_type string, name string) string {
@@ -1266,7 +1284,7 @@ const fastc_boxed_primitive_types = ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u1
 fn fastc_output_c_type(t string) string {
 	base := t.trim_right('*')
 	if base == 'int' {
-		return fastc_platform_int_c_type + t[base.len..]
+		return fastc_platform_int_c_type() + t[base.len..]
 	}
 	return t
 }

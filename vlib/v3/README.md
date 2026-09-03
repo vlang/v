@@ -202,6 +202,20 @@ constant and global declarations: a large file's constants are parsed as separat
 candidates (merged in source order), and the global phase parses only the recorded global
 declarations instead of whole files.
 
+A self-host build (`-selfhost`) for 64-bit macOS or glibc Linux emits C with no `#include`
+at all: `gen/fastc/c_abi.v` holds, per target, the C library types, struct layouts, macros,
+globals and function prototypes the emitted code uses, and that prelude replaces the header block
+of the preamble; V's own C helper headers (`vlib/os/execute_capture_nix.h`, ...) are inlined
+after it, and `#include` lines from V sources are left out. TinyCC then parses about 42K lines
+instead of the 110K that the system headers expanded to. The build passes
+`-Werror=implicit-function-declaration`, so a C function missing from the table fails the build
+instead of being called through an implicit `int` prototype; `c_abi_test.v` compiles the table
+against the host headers and checks every layout, size, value and prototype. The stitch also
+drops the indexed functions (and enum `str`/print helpers) that nothing reachable from `main`,
+the lifecycle hooks or the non-body pieces refers to, which the source-level name-grouped
+reachability keeps: each worker records its definitions and the mangled names they mention, and
+the assembly cuts the unreachable spans out of the pieces (about 9% of the self-host C).
+
 The standalone compiler supports `self` directly and defaults that command to FastC. For example,
 `./v self x5` replaces the compiler through five descendant FastC generations, with each installed
 generation compiling the next one. `-b fastc`, `-gc none`, `-cc tinyc|tcc`, `-keepc`, `-silent`,

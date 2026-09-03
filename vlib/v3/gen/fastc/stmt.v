@@ -1888,7 +1888,7 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool) ! {
 		// literal or C-`int` expression would give C `int` (32-bit), silently
 		// truncating `int` arithmetic. Spell the platform int type explicitly so the
 		// local matches the width used for `int` params, fields, and the C backend.
-		g.write_line('${fastc_platform_int_c_type} ${c_name} = (${expression});')
+		g.write_line('${fastc_platform_int_c_type()} ${c_name} = (${expression});')
 	} else {
 		g.write_line('__typeof__((${expression})) ${c_name} = (${expression});')
 	}

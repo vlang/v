@@ -546,7 +546,7 @@ fn test_fastc_prealloc_enabled_reads_user_defines() {
 
 fn test_fastc_prealloc_arena_root_is_per_thread() {
 	mut out := strings.new_builder(256)
-	fastc_write_prealloc_tls_global(mut out, 'VMemoryBlock*', 'g_memory_block')
+	fastc_write_prealloc_tls_global(mut out, 'VMemoryBlock*', 'g_memory_block', false)
 	rendered := out.str()
 	// The arena root must be per-thread so the parallel per-file generator's
 	// workers never share it: a pthread-key slot under bundled TinyCC on macOS
