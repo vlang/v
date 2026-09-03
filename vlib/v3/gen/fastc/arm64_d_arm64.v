@@ -212,6 +212,7 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	timer.mark('arm64.resolve')
 	fast_arm64_validate_output_source_paths(output, input_sources)!
 	fast_arm64_validate_unsupported_calls(input_sources, prefs)!
+	timer.mark('arm64.validate')
 	mut sources := fastc_monomorphize_sources(input_sources, prefs)!
 	timer.mark('arm64.monomorphize')
 	mut declared_types := map[string]bool{}
