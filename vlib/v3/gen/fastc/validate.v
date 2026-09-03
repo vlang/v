@@ -111,33 +111,48 @@ fn (g &Parser) resolved_expression_name(name string, previous token.Token) strin
 		return ''
 	}
 	if previous != .dot && name !in g.locals {
-		if imported_module := g.imports[name] {
-			return imported_module.replace('.', '__')
+		if cached := g.resolved_name_memo[name] {
+			return cached
 		}
-		function_key := g.unqualified_function_key(name)
-		if function_key in g.functions {
-			return fastc_c_function_name_for_key(function_key)
-		}
-		if type_key := g.resolve_declared_type_key(name) {
-			return fastc_c_declared_type_name(type_key)
-		}
-		if primitive := fastc_primitive_c_type(name) {
-			return primitive
-		}
-		constant_key := fastc_constant_key(g.module_name, name)
-		if c_name := g.constants[constant_key] {
-			return c_name
-		}
-		if c_name := g.constants[fastc_constant_key('builtin', name)] {
-			return c_name
-		}
-		global_key := fastc_global_key(g.module_name, name)
-		if c_name := g.globals[global_key] {
-			return c_name
-		}
-		if c_name := g.globals[fastc_global_key('builtin', name)] {
-			return c_name
-		}
+		resolved := g.resolved_nonlocal_expression_name(name)
+		mut w := unsafe { &Parser(g) }
+		w.resolved_name_memo[name] = resolved
+		return resolved
+	}
+	return fastc_c_identifier(name)
+}
+
+// resolved_nonlocal_expression_name renders a bare name that is not a local:
+// an import, function, type, primitive, constant, or global, else the plain
+// C identifier. Every table it consults is fixed for the file, so
+// resolved_expression_name memoizes the answer per name.
+fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
+	if imported_module := g.imports[name] {
+		return imported_module.replace('.', '__')
+	}
+	function_key := g.unqualified_function_key(name)
+	if function_key in g.functions {
+		return g.c_function_name_for_key(function_key)
+	}
+	if type_key := g.resolve_declared_type_key(name) {
+		return fastc_c_declared_type_name(type_key)
+	}
+	if primitive := fastc_primitive_c_type(name) {
+		return primitive
+	}
+	constant_key := fastc_constant_key(g.module_name, name)
+	if c_name := g.constants[constant_key] {
+		return c_name
+	}
+	if c_name := g.constants[fastc_constant_key('builtin', name)] {
+		return c_name
+	}
+	global_key := fastc_global_key(g.module_name, name)
+	if c_name := g.globals[global_key] {
+		return c_name
+	}
+	if c_name := g.globals[fastc_global_key('builtin', name)] {
+		return c_name
 	}
 	return fastc_c_identifier(name)
 }
@@ -793,6 +808,27 @@ fn (g &Parser) struct_member_type(receiver_type string, field_name string) strin
 }
 
 fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?FastcStructField {
+	if by_name := g.field_memo[receiver_type] {
+		if cached := by_name[field_name] {
+			if cached.name == '' {
+				return none
+			}
+			return cached
+		}
+	}
+	mut w := unsafe { &Parser(g) }
+	if receiver_type !in w.field_memo {
+		w.field_memo[receiver_type] = map[string]FastcStructField{}
+	}
+	if field := g.struct_field_metadata_impl(receiver_type, field_name) {
+		w.field_memo[receiver_type][field_name] = field
+		return field
+	}
+	w.field_memo[receiver_type][field_name] = FastcStructField{}
+	return none
+}
+
+fn (g &Parser) struct_field_metadata_impl(receiver_type string, field_name string) ?FastcStructField {
 	mut layout_type := fastc_trim_pointer_suffix(receiver_type)
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'

@@ -321,6 +321,10 @@ fn main() {
 ')
 	primitive_param_compile := callback_compile(v3_bin, wrong_primitive_param,
 		'wrong_primitive_param')
+	// `fn (int)` and `fn (i64)` are distinct source types even though platform `int`
+	// currently shares i64's C width on 64-bit targets; assigning one to the other
+	// stays a type error (function-type identity is independent of the emitted C
+	// spelling and target width).
 	assert primitive_param_compile.exit_code != 0, primitive_param_compile.output
 
 	homonym_root := os.join_path(os.temp_dir(), 'v3_callback_userdata_homonym_${os.getpid()}')

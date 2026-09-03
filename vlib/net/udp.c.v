@@ -471,7 +471,8 @@ fn (mut s UdpSocket) set_option_raw(level int, opt int, value voidptr, value_len
 }
 
 fn (mut s UdpSocket) set_option_int(level int, opt int, value int) ! {
-	s.set_option_raw(level, opt, &value, sizeof(int))!
+	v := i32(value) // C socket options are 4-byte `int`; pass i32 storage (sizeof 4)
+	s.set_option_raw(level, opt, &v, sizeof(v))!
 }
 
 // set_option_bool sets a boolean socket option on the UDP socket.

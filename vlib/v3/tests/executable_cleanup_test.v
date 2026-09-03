@@ -148,7 +148,7 @@ pub fn answer() int {
 	assert generate_no_main.exit_code == 0, generate_no_main.output
 	no_main_c := os.read_file(no_main_c_path)!
 	assert no_main_c.contains('static void _vno_main_init_caller(void) {'), no_main_c
-	assert no_main_c.contains('int exported_answer(void)'), no_main_c
+	assert no_main_c.contains('i64 exported_answer(void)'), no_main_c
 	assert_cleanup_registered_after_init(no_main_c)
 
 	// A natural-name export (export name equal to the C symbol) is emitted directly

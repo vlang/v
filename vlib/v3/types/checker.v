@@ -237,6 +237,14 @@ pub:
 	arg_offset           int
 }
 
+// OwnershipCallResultSource records how a call argument can flow into a result projection.
+pub struct OwnershipCallResultSource {
+pub:
+	arg_id        flat.NodeId
+	source_suffix string
+	target_suffix string
+}
+
 // LocalBinding represents local binding data used by types.
 struct LocalBinding {
 	name   string
@@ -4003,11 +4011,11 @@ fn (mut tc TypeChecker) check_c_fn_redeclarations(a &flat.FlatAst) {
 					if child.typ.starts_with('...') {
 						is_variadic = true
 					} else {
-						params << tc.c_type(tc.parse_type(child.typ))
+						params << tc.c_extern_abi_type(tc.parse_type(child.typ))
 					}
 				}
 				signature := CFnDeclSignature{
-					return_type: tc.c_type(tc.parse_type(node.typ))
+					return_type: tc.c_extern_abi_type(tc.parse_type(node.typ))
 					params:      params
 					is_variadic: is_variadic
 				}
@@ -7884,6 +7892,82 @@ fn (tc &TypeChecker) cached_resolved_call(id flat.NodeId) ?string {
 // resolved_call_name returns the checker-resolved function name for a call node.
 pub fn (tc &TypeChecker) resolved_call_name(id flat.NodeId) ?string {
 	return tc.cached_resolved_call(id)
+}
+
+// resolved_call_may_store_globally reports whether the resolved callee or one of its
+// transitive callees belongs to a source file annotated with `@[has_globals]`.
+pub fn (tc &TypeChecker) resolved_call_may_store_globally(id flat.NodeId) bool {
+	name := tc.cached_resolved_call(id) or { return false }
+	mut visiting := map[string]bool{}
+	return tc.fn_may_store_globally(name, mut visiting)
+}
+
+// fn_value_may_store_globally reports whether invoking a function value can reach a
+// declaration from a source file annotated with `@[has_globals]`. An unresolved function
+// value is conservative because its body is opaque at this call site.
+pub fn (tc &TypeChecker) fn_value_may_store_globally(id flat.NodeId) bool {
+	name := tc.resolved_fn_value_name(id) or { return true }
+	mut visiting := map[string]bool{}
+	return tc.fn_may_store_globally(name, mut visiting)
+}
+
+fn (tc &TypeChecker) fn_may_store_globally(name string, mut visiting map[string]bool) bool {
+	if visiting[name] {
+		return false
+	}
+	visiting[name] = true
+	file := tc.fn_type_files[name] or { return false }
+	if tc.has_globals_files[file] {
+		return true
+	}
+	decl_module := tc.fn_type_modules[name] or { '' }
+	decl := tc.visible_mutation_fn_decl(name, decl_module) or { return false }
+	for dependency in tc.direct_dependency_ids(decl.idx) {
+		dependency_name := tc.frozen_symbol_name(dependency)
+		if dependency_name.len > 0 && tc.fn_may_store_globally(dependency_name, mut visiting) {
+			return true
+		}
+	}
+	fn_node := tc.a.nodes[decl.idx]
+	for i in 0 .. fn_node.children_count {
+		if tc.node_calls_fn_that_may_store_globally(tc.a.child(&fn_node, i), decl.mod, mut visiting) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) node_calls_fn_that_may_store_globally(id flat.NodeId, caller_mod string, mut visiting map[string]bool) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		return false
+	}
+	if node.kind == .call {
+		if name := tc.cached_resolved_call(id) {
+			if tc.fn_may_store_globally(name, mut visiting) {
+				return true
+			}
+		}
+		if node.children_count > 0 {
+			callee := tc.a.child_node(&node, 0)
+			if callee.kind == .ident {
+				if tc.fn_may_store_globally(checker_qualified_fn_name(caller_mod, callee.value), mut
+					visiting)
+				{
+					return true
+				}
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if tc.node_calls_fn_that_may_store_globally(tc.a.child(&node, i), caller_mod, mut visiting) {
+			return true
+		}
+	}
+	return false
 }
 
 // resolved_call_is_builtin reports whether `id` resolved to the named builtin function.

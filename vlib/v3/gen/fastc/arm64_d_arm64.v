@@ -207,10 +207,14 @@ struct FastArm64Generation {
 // generate_arm64_files parses FastC source tokens directly into SSA and emits a Mach-O binary.
 // It deliberately does not create Flat AST nodes or C source.
 pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output string) !FastArm64Generation {
+	mut timer := fastc_new_phase_timer()
 	input_sources, _ := fastc_resolve_source_files(paths, prefs)!
+	timer.mark('arm64.resolve')
 	fast_arm64_validate_output_source_paths(output, input_sources)!
 	fast_arm64_validate_unsupported_calls(input_sources, prefs)!
-	sources := fastc_monomorphize_sources(input_sources, prefs)!
+	timer.mark('arm64.validate')
+	mut sources := fastc_monomorphize_sources(input_sources, prefs)!
+	timer.mark('arm64.monomorphize')
 	mut declared_types := map[string]bool{}
 	mut declared_kinds := map[string]FastcDeclaredTypeKind{}
 	mut enum_flags := map[string]bool{}
@@ -220,7 +224,17 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	mut public_constants := map[string]bool{}
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
-	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants, mut globals, mut public_globals)!
+	// The same parallel first pass as the C path: it records the per-file scan
+	// flags and function body spans that the declaration and signature passes
+	// rely on, and indexes the declarations. The generic-method sources and
+	// the per-file declaration texts and spans are not used here: the native
+	// path collects its type and constant declarations itself below.
+	mut index_type_sources := map[string]string{}
+	mut index_constant_sources := map[string]string{}
+	mut index_constant_spans := map[string][]int{}
+	mut index_global_sources := map[string]string{}
+	_ = fastc_collect_generic_and_declaration_indexes(mut sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut index_type_sources, mut constants, mut public_constants, mut index_constant_sources, mut index_constant_spans, mut index_global_sources, mut globals, mut public_globals)!
+	timer.mark('arm64.declaration_indexes')
 	// Non-selfhost programs do not resolve builtin source files, but imported module
 	// signatures can still use V's intrinsic error interface.
 	declared_types['IError'] = true
@@ -229,6 +243,10 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	// instantiated on demand. Treat their parameters as opaque while indexing the
 	// otherwise unreachable signatures in the imported module.
 	for source_index, source_file in sources {
+		// The first pass flags the files that can hold `fn name[T]` syntax.
+		if !source_file.header.has_generic_fn_syntax {
+			continue
+		}
 		for generic in fastc_scan_generic_fns(source_file.source, source_file.path, prefs, source_index) {
 			declared_types[generic.type_param] = true
 		}
@@ -240,16 +258,22 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	mut embed_embedders := []string{}
 	mut embed_embeddeds := []string{}
 	fastc_collect_signatures(sources, prefs, declared_types, declared_type_c_names, params_structs, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
+	timer.mark('arm64.signatures')
 	type_decls, constant_sources, enum_values := fast_arm64_collect_declarations(sources, prefs, declared_types, enum_flags, type_source_paths)!
+	timer.mark('arm64.declarations')
 
 	mut program := FastArm64Program.new(prefs, declared_types, functions, type_decls, constant_sources, enum_values)
 	program.register_functions()
-	module_init_calls := fastc_module_init_calls(sources, functions)!
-	module_cleanup_calls := fastc_module_cleanup_calls(sources, functions)!
+	// The lifecycle hooks run in module dependency order; the resolver returns
+	// discovery order.
+	lifecycle_sources := fastc_sources_in_dependency_order(sources)!
+	module_init_calls := fastc_module_init_calls(lifecycle_sources, functions)!
+	module_cleanup_calls := fastc_module_cleanup_calls(lifecycle_sources, functions)!
 	module_init_function_keys := fast_arm64_lifecycle_function_keys(module_init_calls, 'init', functions)
 	module_cleanup_function_keys := fast_arm64_lifecycle_function_keys(module_cleanup_calls, 'cleanup', functions)
 	program.register_module_lifecycle(module_init_function_keys, module_cleanup_function_keys)
 	program.register_print_runtime()
+	timer.mark('arm64.register')
 	reachable_modules := fast_arm64_reachable_modules(sources)
 	mut pending_paths := fast_arm64_entry_source_paths(functions)
 	for {
@@ -280,10 +304,13 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	if 'main' !in program.fn_ids || program.m.funcs[program.fn_ids['main']].blocks.len == 0 {
 		return error('fastc arm64 parser did not find a `main` function')
 	}
+	timer.mark('arm64.parse')
 	fast_arm64_hide_unused_prototypes(mut program.m)
 	mut gen := arm64.Gen.new(program.m)
 	gen.gen()
+	timer.mark('arm64.codegen')
 	gen.write_and_link(output)
+	timer.mark('arm64.link')
 	mut source_paths := []string{cap: sources.len}
 	for source_file in sources {
 		source_paths << source_file.path
@@ -298,9 +325,7 @@ fn fast_arm64_validate_unsupported_calls(sources []FastcSourceFile, prefs &pref.
 		if source_file.header.module_name == 'os' {
 			continue
 		}
-		mut file_set := token.FileSet.new()
-		mut file := file_set.add_file(source_file.path, source_file.source.len)
-		file.index_lines_without_digest(source_file.source)
+		file := token.File.unindexed(source_file.path, source_file.source.len)
 		mut scan := scanner.new_scanner(prefs, .normal)
 		scan.init(file, source_file.source)
 		mut previous_3 := token.Token.unknown
@@ -526,9 +551,7 @@ fn fast_arm64_collect_constant_sources(sources []FastcSourceFile, prefs &pref.Pr
 		if !source_file.header.has_constants {
 			continue
 		}
-		mut file_set := token.FileSet.new()
-		mut file := file_set.add_file(source_file.path, source_file.source.len)
-		file.index_lines_without_digest(source_file.source)
+		file := token.File.unindexed(source_file.path, source_file.source.len)
 		mut scan := scanner.new_scanner(prefs, .normal)
 		scan.init(file, source_file.source)
 		mut tok := scan.scan()
@@ -555,9 +578,7 @@ fn fast_arm64_collect_enum_values(sources []FastcSourceFile, prefs &pref.Prefere
 		if source_file.path !in type_source_paths {
 			continue
 		}
-		mut file_set := token.FileSet.new()
-		mut file := file_set.add_file(source_file.path, source_file.source.len)
-		file.index_lines_without_digest(source_file.source)
+		file := token.File.unindexed(source_file.path, source_file.source.len)
 		mut scan := scanner.new_scanner(prefs, .normal)
 		scan.init(file, source_file.source)
 		mut tok := scan.scan()
@@ -770,9 +791,7 @@ fn fast_arm64_scan_layout_attribute(mut scan scanner.Scanner, path string, prefs
 }
 
 fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, enum_flags map[string]bool, mut declarations map[string]FastArm64TypeDecl, mut constants map[string]FastArm64ConstantDecl, mut enum_values map[string]FastArm64ConstantDecl) ! {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(source_file.path, source_file.source.len)
-	file.index_lines_without_digest(source_file.source)
+	file := token.File.unindexed(source_file.path, source_file.source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source_file.source)
 	mut tok := scan.scan()
@@ -3779,9 +3798,7 @@ fn (mut p FastArm64Program) register_string_sort_runtime() {
 }
 
 fn FastArm64Parser.new(mut program FastArm64Program, source_file FastcSourceFile) &FastArm64Parser {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(source_file.path, source_file.source.len)
-	file.index_lines_without_digest(source_file.source)
+	file := token.File.unindexed(source_file.path, source_file.source.len)
 	mut scan := scanner.new_scanner(program.prefs, .normal)
 	scan.init(file, source_file.source)
 	return &FastArm64Parser{
@@ -3907,9 +3924,7 @@ fn (mut p FastArm64Parser) skip_value_declaration() {
 }
 
 fn (mut p FastArm64Parser) enter_source(source string) {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(p.source_file.path, source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed(p.source_file.path, source.len)
 	mut scan := scanner.new_scanner(p.program.prefs, .normal)
 	scan.init(file, source)
 	p.s = scan
@@ -4445,7 +4460,7 @@ fn (mut p FastArm64Parser) parse_statement() ! {
 			}
 		}
 		else {
-			_ = p.parse_expression(0)!
+			p.parse_expression_statement()!
 		}
 	}
 	if p.tok == .semicolon {
@@ -4781,6 +4796,13 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 	if after_mut {
 		return p.unsupported('mutable declaration without `:=`')
 	}
+	p.parse_expression_statement()!
+}
+
+// parse_expression_statement parses an expression statement, storing into
+// the expression when an assignment follows it (a field of a cast pointer,
+// `(&T(p)).field = v`, an indexed element, a map entry, ...).
+fn (mut p FastArm64Parser) parse_expression_statement() ! {
 	left := p.parse_expression(0)!
 	if p.tok in [.assign, .plus_assign, .minus_assign, .mul_assign, .div_assign, .mod_assign,
 		.left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign, .and_assign,
@@ -5302,6 +5324,10 @@ fn (mut p FastArm64Parser) parse_for_inner() ! {
 			p.parse_c_for()!
 			return
 		}
+		if next_token == .assign {
+			p.parse_c_for_assigning()!
+			return
+		}
 	}
 	preheader := p.cur_block
 	condition_block := p.program.m.add_block(p.func_id, 'for_condition')
@@ -5713,6 +5739,28 @@ fn (mut p FastArm64Parser) parse_c_for() ! {
 		typ_name: initial.typ_name
 	})
 	p.expect(.semicolon)!
+	p.parse_c_for_rest(name, address, initial.typ, initial.typ_name)!
+}
+
+// parse_c_for_assigning lowers `for name = initial; condition; step { ... }`,
+// whose initializer assigns an existing local instead of declaring one.
+fn (mut p FastArm64Parser) parse_c_for_assigning() ! {
+	name := p.lit
+	local := p.locals[name] or { return p.unsupported('C-style loop assigning to unknown `${name}`') }
+	p.next()
+	p.expect(.assign)!
+	mut initial := p.parse_expression(0)!
+	if initial.typ != local.typ {
+		initial = p.convert_value(initial, local.typ, local.typ_name)
+	}
+	p.program.instr2(.store, p.cur_block, p.program.void_type, initial.id, local.addr)
+	p.expect(.semicolon)!
+	p.parse_c_for_rest(name, local.addr, local.typ, local.typ_name)!
+}
+
+// parse_c_for_rest lowers the condition, step and body of a C-style loop whose
+// counter `name` lives at `address`.
+fn (mut p FastArm64Parser) parse_c_for_rest(name string, address ssa.ValueID, typ ssa.TypeID, typ_name string) ! {
 	condition_block := p.program.m.add_block(p.func_id, 'c_for_condition')
 	body_block := p.program.m.add_block(p.func_id, 'c_for_body')
 	increment_block := p.program.m.add_block(p.func_id, 'c_for_increment')
@@ -5734,10 +5782,10 @@ fn (mut p FastArm64Parser) parse_c_for() ! {
 		}
 		p.next()
 		if p.tok in [.inc, .dec] {
-			current := p.program.instr1(.load, increment_block, initial.typ, address)
-			one := p.program.m.get_or_add_const(initial.typ, '1')
+			current := p.program.instr1(.load, increment_block, typ, address)
+			one := p.program.m.get_or_add_const(typ, '1')
 			op := if p.tok == .inc { ssa.OpCode.add } else { ssa.OpCode.sub }
-			next := p.program.instr2(op, increment_block, initial.typ, current, one)
+			next := p.program.instr2(op, increment_block, typ, current, one)
 			p.program.instr2(.store, increment_block, p.program.void_type, next, address)
 			p.next()
 		} else if p.tok in [.plus_assign, .minus_assign, .mul_assign, .div_assign, .mod_assign,
@@ -5746,11 +5794,11 @@ fn (mut p FastArm64Parser) parse_c_for() ! {
 			op := p.tok
 			p.next()
 			mut step := p.parse_expression(0)!
-			if step.typ != initial.typ {
-				step = p.convert_value(step, initial.typ, initial.typ_name)
+			if step.typ != typ {
+				step = p.convert_value(step, typ, typ_name)
 			}
-			current := p.program.instr1(.load, increment_block, initial.typ, address)
-			next := p.program.instr2(fast_arm64_compound_opcode(op, p.program.m.type_store.types[initial.typ].is_unsigned), increment_block, initial.typ, current, step.id)
+			current := p.program.instr1(.load, increment_block, typ, address)
+			next := p.program.instr2(fast_arm64_compound_opcode(op, p.program.m.type_store.types[typ].is_unsigned), increment_block, typ, current, step.id)
 			p.program.instr2(.store, increment_block, p.program.void_type, next, address)
 		} else {
 			return p.unsupported('C-style loop increment operator')
@@ -6118,6 +6166,33 @@ fn (mut p FastArm64Parser) parse_prefix() !FastArm64Value {
 				}
 			}
 		}
+		if p.tok == .lsbr {
+			// `&[]T(value)` reinterprets a pointer as a pointer to an array; every
+			// V array shares the runtime array layout, so this is a bitcast.
+			mut array_look := p.s
+			if array_look.scan() == .rsbr && array_look.scan() == .name && array_look.scan() == .lpar {
+				p.next()
+				p.expect(.rsbr)!
+				type_name := '[]' + p.lit
+				p.next()
+				p.expect(.lpar)!
+				value := p.parse_expression(0)!
+				p.expect(.rpar)!
+				target := p.program.m.type_store.get_ptr(p.program.type_id(type_name))
+				// A pointer operand is reinterpreted; an addressable value (such as
+				// a `mut` receiver) contributes its address.
+				mut operand := value.id
+				if p.program.m.type_store.types[value.typ].kind != .ptr_t
+					&& value.address != ssa.ValueID(0) {
+					operand = value.address
+				}
+				return FastArm64Value{
+					id: p.program.instr1(.bitcast, p.cur_block, target, operand)
+					typ: target
+					typ_name: '&${type_name}'
+				}
+			}
+		}
 		if p.tok == .name && (p.lit in ['bool', 'i8', 'char', 'i16', 'int', 'i32', 'rune', 'i64',
 			'u8', 'byte', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32', 'f64', 'voidptr', 'byteptr',
 			'charptr'] || p.lit in p.program.type_ids || p.lit in p.program.type_aliases) {
@@ -6432,7 +6507,9 @@ fn (p &FastArm64Parser) option_handler_expression_is_final() bool {
 					return next == .rcbr
 				}
 			}
-			.eof { return false }
+			.eof {
+				return false
+			}
 			else {}
 		}
 	}
@@ -6774,17 +6851,25 @@ fn (mut p FastArm64Parser) parse_match_expression() !FastArm64Value {
 		typ_name: result_name
 		tuple_types: result_tuple_types
 		option_failed: if has_option_metadata {
-			p.program.instr1(.load, merge_block, p.program.i1_type, option_failed_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, merge_block, p.program.i1_type, option_failed_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 		option_error_type: if has_option_metadata {
-			p.program.instr1(.load, merge_block, p.program.u64_type, option_error_type_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, merge_block, p.program.u64_type, option_error_type_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 		option_error_code: if has_option_metadata {
-			p.program.instr1(.load, merge_block, p.program.i32_type, option_error_code_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, merge_block, p.program.i32_type, option_error_code_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 		option_error_message: if has_option_metadata {
-			p.program.instr1(.load, merge_block, p.program.str_type, option_error_message_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, merge_block, p.program.str_type, option_error_message_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 	}
 }
 
@@ -7044,8 +7129,10 @@ fn fast_arm64_interpolation_format(source string) FastArm64InterpolationFormat {
 	return FastArm64InterpolationFormat{
 		width: if width_source.len > 0 { width_source.int() } else { 0 }
 		precision: if dot >= 0 {
-			if precision_source.len > 0 { precision_source.int() } else { 0 }} else {
-			-1}
+			if precision_source.len > 0 { precision_source.int() } else { 0 }
+		} else {
+			-1
+		}
 		specifier: specifier
 		left: left
 		zero_pad: zero_pad
@@ -7395,17 +7482,25 @@ fn (mut p FastArm64Parser) parse_if_expression(expected_type_name string) !FastA
 		typ: then_value.typ
 		typ_name: then_value.typ_name
 		option_failed: if has_option_metadata {
-			p.program.instr1(.load, p.cur_block, p.program.i1_type, option_failed_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, p.cur_block, p.program.i1_type, option_failed_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 		option_error_type: if has_option_metadata {
-			p.program.instr1(.load, p.cur_block, p.program.u64_type, option_error_type_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, p.cur_block, p.program.u64_type, option_error_type_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 		option_error_code: if has_option_metadata {
-			p.program.instr1(.load, p.cur_block, p.program.i32_type, option_error_code_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, p.cur_block, p.program.i32_type, option_error_code_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 		option_error_message: if has_option_metadata {
-			p.program.instr1(.load, p.cur_block, p.program.str_type, option_error_message_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, p.cur_block, p.program.str_type, option_error_message_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 	}
 }
 
@@ -8402,8 +8497,7 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 			if value.address != ssa.ValueID(0) {
 				state_type := p.program.m.type_store.get_ptr(p.program.map_state_type)
 				zero_state := p.program.m.get_or_add_const(state_type, '0')
-				state_address := p.program.struct_field_ptr(p.cur_block, value.address, p.program.map_type,
-					0)
+				state_address := p.program.struct_field_ptr(p.cur_block, value.address, p.program.map_type, 0)
 				p.program.instr2(.store, p.cur_block, p.program.void_type, zero_state, state_address)
 			}
 			return FastArm64Value{
@@ -9277,6 +9371,15 @@ fn (p &FastArm64Program) resolved_type_name(type_name string) string {
 
 fn (mut p FastArm64Parser) resolve_method_key(value FastArm64Value, method string) ?string {
 	receiver_name := value.typ_name.trim_right('*')
+	// An array-typed receiver (`[]T`, `&[]T`) takes the builtin array method:
+	// an alias of `[]T` shares the array layout, so its own methods would
+	// otherwise match a plain array receiver by type.
+	if receiver_name.trim_left('&').starts_with('[]') {
+		array_key := 'array.${method}'
+		if array_key in p.program.functions {
+			return array_key
+		}
+	}
 	for semantic_receiver in [receiver_name, receiver_name.replace('__', '.')] {
 		key := '${semantic_receiver}.${method}'
 		if key in p.program.functions {
@@ -9506,8 +9609,10 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 		option_error_message: option_error_message
 		option_error_code: option_error_code
 		typ_name: if signature.return_type == 'Option' {
-			signature.option_type} else {
-			signature.return_type}
+			signature.option_type
+		} else {
+			signature.return_type
+		}
 		tuple_types: signature.return_types
 	}
 }
@@ -10248,8 +10353,10 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 		option_error_message: option_error_message
 		option_error_code: option_error_code
 		typ_name: if signature.return_type == 'Option' {
-			signature.option_type} else {
-			signature.return_type}
+			signature.option_type
+		} else {
+			signature.return_type
+		}
 		tuple_types: signature.return_types
 	}
 }

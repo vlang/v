@@ -10,7 +10,7 @@ import v3.scanner
 fn (mut g Parser) run() !string {
 	g.next()
 	g.parse_top_level_items(false)!
-	generated := g.out.str()
+	generated := fastc_take_string(mut g.out)
 	g.drain_pending_mono()!
 	return generated
 }
@@ -41,7 +41,7 @@ fn (mut g Parser) drain_pending_mono() ! {
 		if definition != '' {
 			mono_name := fastc_monomorphized_name(src.name, req.concrete)
 			c_name := if src.receiver_type == '' {
-				fastc_c_function_name_for_key(fastc_function_key(src.module_name, mono_name))
+				g.c_function_name_for_key(fastc_function_key(src.module_name, mono_name))
 			} else {
 				fastc_method_c_name(src.module_name, src.receiver_type, mono_name)
 			}
@@ -59,15 +59,29 @@ fn fastc_is_json2_voidptr_element_check(req FastcMonoRequest, src FastcGenericMe
 	return req.concrete == 'voidptr' && src.name == 'check_element_type_valid' && (src.receiver_type == 'json2__Decoder' || src.receiver_type.ends_with('__json2__Decoder')) && normalized_path.ends_with('/vlib/json2/decode_sumtype.v')
 }
 
+// reset_lookup_memos discards the per-file name lookup memos. They are keyed
+// by the bare name only, so they are valid for exactly one module and import
+// context and must be reset whenever the parser switches to another one.
+fn (mut g Parser) reset_lookup_memos() {
+	g.unqualified_key_memo = map[string]string{}
+	g.nonlocal_name_type_memo = map[string]string{}
+	g.resolved_name_memo = map[string]string{}
+	g.declared_type_key_memo = map[string]FastcMemoEntry{}
+	g.type_memo = map[i64]string{}
+	g.method_key_memo = map[string]map[string]string{}
+	g.field_memo = map[string]map[string]FastcStructField{}
+}
+
 // parse_mono_instance re-parses one concrete instance in its defining module, so its body
 // (including any `$for`/`$if`) resolves unqualified functions and imported types correctly.
 fn (mut g Parser) parse_mono_instance(instance string, source FastcGenericMethodSource) ! {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(source.path, instance.len)
-	file.index_lines_without_digest(instance)
+	file := token.File.unindexed(source.path, instance.len)
 	g.path = source.path
 	g.module_name = source.module_name
 	g.imports = source.imports.clone()
+	// The lookup memos are keyed by bare name and answer for the current
+	// module and imports, so they must not carry over into another module.
+	g.reset_lookup_memos()
 	g.s = scanner.new_scanner(g.prefs, .normal)
 	g.s.init(file, instance)
 	g.next()
@@ -98,6 +112,7 @@ fn (mut g Parser) parse_top_level_items(stop_at_block_end bool) ! {
 			continue
 		}
 		mut item_enabled := true
+		g.pending_direct_array_access = false
 		for g.tok == .attribute {
 			item_enabled = g.skip_attribute()! && item_enabled
 			g.skip_semicolons()
@@ -374,6 +389,9 @@ fn (mut g Parser) skip_attribute() !bool {
 			}
 			continue
 		}
+		if depth == 1 && g.tok == .name && g.lit == 'direct_array_access' {
+			g.pending_direct_array_access = true
+		}
 		if depth == 1 && g.tok == .semicolon {
 			at_item_start = true
 		} else if depth == 1 {
@@ -477,6 +495,12 @@ fn (g &Parser) temporary_namespace(kind string) string {
 fn fastc_reserved_temporary_c_names(functions map[string]FastcFunctionSignature, globals map[string]string) []string {
 	mut names := []string{}
 	for function_key in functions.keys() {
+		// Only an unqualified key can collide with a C keyword or libc name and
+		// so be renamed into the `__v_fastc_` namespace: a module-qualified key
+		// keeps its `module__name` spelling, and `C.` keys are emitted verbatim.
+		if function_key.contains('.') {
+			continue
+		}
 		function_c_name := fastc_c_function_name_for_key(function_key)
 		if function_c_name.starts_with('__v_fastc_') {
 			names << function_c_name
@@ -557,8 +581,11 @@ fn (mut g Parser) skip_import() ! {
 }
 
 fn (mut g Parser) parse_function(enabled bool) ! {
+	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
 	g.temp_id = 0
+	g.direct_array_access = g.pending_direct_array_access
+	g.pending_direct_array_access = false
 	g.next()
 	mut receiver_type := ''
 	mut receiver_key := ''
@@ -618,7 +645,8 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		} else {
 			receiver_type
 		}
-		params << '${receiver_parameter_type} ${fastc_c_identifier(receiver_name)}'
+		params << '${fastc_output_c_type(receiver_parameter_type)} ${fastc_c_identifier(receiver_name)}'
+		g.type_memo.clear()
 		g.locals[receiver_name] = FastcLocal{
 			is_mut: receiver_is_mut
 			is_reference: receiver_is_reference
@@ -756,7 +784,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	} else {
 		fastc_method_c_name(g.module_name, fastc_c_declared_type_name(receiver_key), name)
 	}
-	c_return_type := if is_main { 'int' } else { return_type }
+	c_return_type := if is_main { 'int' } else { fastc_output_c_type(return_type) }
 	c_params := if is_main && g.selfhost {
 		'int argc, char **argv'
 	} else if params.len == 0 {
@@ -769,7 +797,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.write_line('${c_return_type} ${c_name}(${c_params}) {')
 		g.indent++
 		if return_type != 'void' {
-			g.write_line('return (${return_type}){0};')
+			g.write_line('return (${fastc_output_c_type(return_type)}){0};')
 		}
 		g.indent--
 		g.write_line('}')
@@ -891,7 +919,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		// Self-host input was already accepted by the bootstrap compiler. Keep C's
 		// control-flow rules satisfied when the streaming parser cannot prove that
 		// every nested source branch terminates.
-		g.write_line('return (${return_type}){0};')
+		g.write_line('return (${fastc_output_c_type(return_type)}){0};')
 	}
 	if is_main {
 		g.write_line('return 0;')
@@ -939,7 +967,7 @@ fn (mut g Parser) emit_generic_body_stub(out_checkpoint int, saved_indent int, b
 	g.s = body_end
 	g.next()
 	if return_type != 'void' {
-		g.write_line('return (${return_type}){0};')
+		g.write_line('return (${fastc_output_c_type(return_type)}){0};')
 	}
 }
 
@@ -1032,6 +1060,7 @@ fn (mut g Parser) skip_c_function_declaration() ! {
 }
 
 fn (mut g Parser) parse_script() ! {
+	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
 	g.has_main = true
 	g.protos.writeln('int main(void);')
@@ -1096,7 +1125,8 @@ fn (mut g Parser) parse_parameters() ![]string {
 			if is_fn_pointer {
 				// Declare a real function pointer with unspecified args so `f(x)`
 				// compiles as a direct call; the return C type is recovered above.
-				params << '${fn_return_type} (*${c_name})()'
+				params << '${fastc_output_c_type(fn_return_type)} (*${c_name})()'
+				g.type_memo.clear()
 				g.locals[parameter_name] = FastcLocal{
 					is_mut: is_mut
 					typ: type_name
@@ -1104,7 +1134,8 @@ fn (mut g Parser) parse_parameters() ![]string {
 					fn_option_value_type: fn_option_value_type
 				}
 			} else {
-				params << '${type_name} ${c_name}'
+				params << '${fastc_output_c_type(type_name)} ${c_name}'
+				g.type_memo.clear()
 				g.locals[parameter_name] = FastcLocal{
 					is_mut: is_mut
 					is_reference: is_reference
@@ -1226,6 +1257,19 @@ fn (mut g Parser) parse_multi_return_types() ![]string {
 // cast type in a `match` branch.
 const fastc_boxed_primitive_types = ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
 	'f32', 'f64', 'bool', 'rune', 'isize', 'usize', 'char', 'voidptr']
+
+// fastc_output_c_type maps a semantic FastC type string to the C spelling that
+// is physically written into a declaration or cast. Only the platform-width
+// `int` differs from its semantic key: it is emitted as `i64`/`i32` per the
+// target, while staying `int` for method-name mangling and type inference (so
+// `int` and `i64` keep distinct methods). Pointer suffixes are preserved.
+fn fastc_output_c_type(t string) string {
+	base := t.trim_right('*')
+	if base == 'int' {
+		return fastc_platform_int_c_type + t[base.len..]
+	}
+	return t
+}
 
 fn fastc_primitive_c_type(raw_type string) ?string {
 	return match raw_type {

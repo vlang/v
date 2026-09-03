@@ -43,22 +43,17 @@ const csslot_requirements = u32(2)
 const csslot_cms_signature = u32(0x10000)
 const cs_adhoc = u32(0x2) // Ad-hoc signing flag
 
-
 const cs_hashtype_sha256 = u8(2)
 const cs_hash_size = 32 // SHA256 = 32 bytes
 
-
 const cs_page_size_arm64 = 16384 // Code signing page size for ARM64 macOS
 
-
 const cs_page_shift_arm64 = 14 // log2(16384)
-
 
 const o_wronly_creat_trunc = $if linux { 0x241 } $else { 0x601 }
 
 // ARM64 page size on macOS
 const page_size = 0x4000 // 16KB
-
 
 // Base address for executables
 const base_addr = u64(0x100000000)

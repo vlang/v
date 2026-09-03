@@ -324,6 +324,7 @@ fn (g &Parser) generated_name_is_claimed(candidate string) bool {
 // first packed field, so the per-type waiter reads it without knowing which
 // call site produced the thread.
 fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string, value_type string, parameter_types []string, start_name string, target_c_name string) {
+	g.type_memo.clear()
 	g.thread_value_types[thread_type] = value_type
 	if thread_type !in g.spawn_typedefs {
 		g.spawn_typedefs[thread_type] = 'typedef struct { pthread_t handle; void *packed; } ${thread_type};'
@@ -364,7 +365,7 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 	target := if target_c_name != '' {
 		target_c_name
 	} else {
-		fastc_c_function_name_for_key(function_key)
+		g.c_function_name_for_key(function_key)
 	}
 	target_stem := fastc_spawn_target_stem(function_key)
 	args_struct := g.fastc_unclaimed_generated_name('__v_fastc_spawn_args_${target_stem}')

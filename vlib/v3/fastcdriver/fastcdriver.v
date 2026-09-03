@@ -393,7 +393,7 @@ pub fn run(args []string) {
 	prefs.ccompiler = 'tinyc'
 	prefs.building_v = real_input.ends_with('/vlib/v3/v3.v')
 	prefs.selfhost = prefs.building_v
-	$if arm64? {
+	$if arm64 ? {
 		prefs.target = pref.Target{
 			os: 'macos'
 			arch: 'arm64'
@@ -447,6 +447,13 @@ pub fn run(args []string) {
 		loc_per_s := f64(warm.lines) * 1_000_000.0 / f64(best_us)
 		eprintln('fastc-bench: files=${warm.files} lines=${warm.lines} best_gen=${gen_ms:.2f}ms loc/s=${loc_per_s:.0f} (repeat=${repeat})')
 	}
+	loop := os.getenv('FASTC_BENCH_LOOP').int()
+	if bench && loop > 0 {
+		// Repeat generation in-process so an external sampler can profile it.
+		for _ in 0 .. loop {
+			fastc.generate_files_with_source_paths([real_input], prefs) or { fail(err.msg()) }
+		}
+	}
 	mut sw := time.new_stopwatch()
 	generation := fastc.generate_files_with_source_paths([real_input], prefs) or { fail(err.msg()) }
 	if bench && repeat == 1 {
@@ -457,11 +464,10 @@ pub fn run(args []string) {
 		eprintln('fastc-bench: files=${generation.source_paths.len} lines=${total_lines} gen=${gen_ms:.2f}ms loc/s=${loc_per_s:.0f}')
 	}
 	validate_output_source_paths(output, real_input, generation.source_paths) or { fail(err.msg()) }
-	c_source := generation.c_source
 	build_prefix := '${output}.fastc-build-${os.getpid()}'
 	c_path := build_prefix + '.c'
 	staged_output := build_prefix + '.out'
-	os.write_file(c_path, c_source) or { fail(err.msg()) }
+	fastc.write_c_pieces(c_path, generation.c_pieces) or { fail(err.msg()) }
 	tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 	tcc := os.join_path_single(tcc_dir, 'tcc.exe')
 	tcc_lib := os.join_path_single(tcc_dir, 'lib')

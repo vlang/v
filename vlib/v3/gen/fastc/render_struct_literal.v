@@ -277,6 +277,9 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		}
 	}
 	if update_source == '' {
+		// The struct's rendered defaults are consulted; the constants phase
+		// re-parses a file that did so after they are ready.
+		fastc_note_field_defaults_use(g)
 		for field in g.struct_field_info[layout_type] {
 			if field.default_value == '' || field.name in field_values {
 				continue

@@ -81,15 +81,34 @@ fn fastc_c_function_name(module_name string, name string) string {
 }
 
 fn (g &Parser) unqualified_function_key(name string) string {
+	if cached := g.unqualified_key_memo[name] {
+		return cached
+	}
 	local_key := fastc_function_key(g.module_name, name)
-	if local_key in g.functions {
-		return local_key
+	mut key := local_key
+	if local_key !in g.functions {
+		builtin_key := fastc_function_key('builtin', name)
+		if builtin_key in g.functions {
+			key = builtin_key
+		}
 	}
-	builtin_key := fastc_function_key('builtin', name)
-	if builtin_key in g.functions {
-		return builtin_key
+	mut w := unsafe { &Parser(g) }
+	w.unqualified_key_memo[name] = key
+	return key
+}
+
+// c_function_name_for_key memoizes fastc_c_function_name_for_key, which
+// sanitizes its key twice and is asked for the same keys at every call
+// site. The mapping does not depend on the parser's context, so the memo
+// is never reset.
+fn (g &Parser) c_function_name_for_key(key string) string {
+	if cached := g.c_function_name_memo[key] {
+		return cached
 	}
-	return local_key
+	c_name := fastc_c_function_name_for_key(key)
+	mut w := unsafe { &Parser(g) }
+	w.c_function_name_memo[key] = c_name
+	return c_name
 }
 
 fn fastc_c_function_name_for_key(key string) string {

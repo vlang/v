@@ -13,8 +13,8 @@ fn new_test_text_context() (&Context, &fontstash.Context) {
 
 fn new_test_text_context_with_atlas(width int, height int) (&Context, &fontstash.Context) {
 	mut fons := fontstash.create_internal(&C.FONSparams{
-		width:  width
-		height: height
+		width:  i32(width)
+		height: i32(height)
 		flags:  0
 	})
 	assert fons != unsafe { nil }
@@ -36,6 +36,28 @@ fn text_advance_and_bounds_width(fons &fontstash.Context, text string) (f32, f32
 	mut bounds := [4]f32{}
 	advance := fons.text_bounds(0, 0, text, &bounds[0])
 	return advance, bounds[2] - bounds[0]
+}
+
+fn test_fontstash_c_int_output_buffers() {
+	_, fons := new_test_text_context_with_atlas(64, 64)
+	defer {
+		fontstash.delete_internal(fons)
+	}
+	mut width := -1
+	mut height := -1
+	data := fons.get_texture_data(&width, &height)
+	assert data != unsafe { nil }
+	assert width == 64
+	assert height == 64
+
+	// Rasterizing a glyph dirties the atlas, so fonsValidateTexture must write all
+	// four C `int` rectangle entries. The wrapper copies them back to V `int`s.
+	_ = fons.draw_text(0, 0, 'x')
+	mut dirty := [-1, -1, -1, -1]!
+	assert fons.validate_texture(&dirty[0]) == 1
+	for value in dirty {
+		assert value >= 0
+	}
 }
 
 fn test_text_width_uses_font_advance_for_monospaced_fonts() {

@@ -282,7 +282,7 @@ fn (mut g Parser) read_match_block_expression_value() !string {
 	g.last_expression_type = 'MultiReturn'
 	g.last_expression = []FastcExpressionToken{}
 	g.last_multi_return_types = value_types.clone()
-	return '(MultiReturn){.values={${packed_values.join(', ')}}}'
+	return fastc_multi_return_literal(packed_values)
 }
 
 fn (mut g Parser) read_block_expression_value() !string {
@@ -309,7 +309,7 @@ fn (mut g Parser) read_block_expression_value() !string {
 		g.last_expression_type = 'MultiReturn'
 		g.last_expression = []FastcExpressionToken{}
 		g.last_multi_return_types = value_types.clone()
-		return '(MultiReturn){.values={${packed_values.join(', ')}}}'
+		return fastc_multi_return_literal(packed_values)
 	}
 	previous_capture := g.capturing_defer
 	previous_lines := g.captured_defer_lines.clone()
@@ -365,7 +365,7 @@ fn (mut g Parser) read_block_expression_value() !string {
 		g.last_expression_type = 'MultiReturn'
 		g.last_expression = []FastcExpressionToken{}
 		g.last_multi_return_types = value_types.clone()
-		return '({ ${statements.join(' ')} (MultiReturn){.values={${packed_values.join(', ')}}}; })'
+		return '({ ${statements.join(' ')} ${fastc_multi_return_literal(packed_values)}; })'
 	}
 	if g.tok == .name {
 		prefix := g.lit

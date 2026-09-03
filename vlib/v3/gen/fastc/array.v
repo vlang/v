@@ -164,6 +164,12 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	}
 	index_source := g.render_membership_candidate(tokens[open + 1..close], 'int') or { return none }
 	if base_layout_type == 'string' {
+		if g.direct_array_access && !base_type.ends_with('*') {
+			return FastcRenderedExpression{
+				source: '((${base_source}).str[${index_source}])'
+				typ: element_type
+			}
+		}
 		return FastcRenderedExpression{
 			source: 'builtin__string_at(${base_source}, ${index_source})'
 			typ: element_type
@@ -197,6 +203,12 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		}
 	}
 	array_value := if base_type.ends_with('*') { '*(${base_source})' } else { base_source }
+	if g.direct_array_access {
+		return FastcRenderedExpression{
+			source: '(((${element_type} *)(${array_value}).data)[${index_source}])'
+			typ: element_type
+		}
+	}
 	return FastcRenderedExpression{
 		source: '(*(${element_type} *)builtin__array_get(${array_value}, ${index_source}))'
 		typ: element_type
@@ -340,7 +352,7 @@ fn (g &Parser) render_membership_candidate(tokens []FastcExpressionToken, expect
 			close := fastc_matching_rpar(tokens, 1) or { return none }
 			if close == tokens.len - 1 {
 				inner := g.render_membership_candidate(tokens[2..close], '') or { return none }
-				return '((${cast_type})(${inner}))'
+				return '((${fastc_output_c_type(cast_type)})(${inner}))'
 			}
 		}
 	}
@@ -551,7 +563,7 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 		result.write_string(piece)
 		previous_module_separator = module_separator
 	}
-	return g.render_enum_alias_member_references(tokens, result.str())
+	return g.render_enum_alias_member_references(tokens, fastc_take_string(mut result))
 }
 
 fn (g &Parser) expression_dot_is_module_separator(tokens []FastcExpressionToken, index int) bool {
@@ -734,7 +746,7 @@ fn fastc_generate_fixed_array_declarations(fixed_array_types map[string]string) 
 	if out.len > 0 {
 		out.writeln('')
 	}
-	return out.str()
+	return fastc_take_string(mut out)
 }
 
 fn fastc_expression_list_items(tokens []FastcExpressionToken, start int, end int) ![][]FastcExpressionToken {

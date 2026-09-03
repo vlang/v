@@ -7,6 +7,80 @@ import v3.pref
 import v3.scanner
 import v3.token
 
+fn test_parse_resolve_memo_round_trip() {
+	text := 'D\t/vlib/builtin\t100\t200\t300\t400\t2\t/vlib/builtin/a.v\t/vlib/builtin/b.v\n' + 'D\t/vlib/plain\n' + 'E\tmain.v\t/abs/main.v\t10\t20\t30\t40\t/abs\t1\t/abs/other.v\n' + 'F\t/vlib/builtin/a.v\t5\t6\t7\t8\t41\n' + 'M\tos\t/abs/main.v\n' + 'T\t1234\n' + 'B\ttoken\n'
+	memo := fastc_parse_resolve_memo(text)
+	assert memo.dirs == ['/vlib/builtin', '/vlib/plain']
+	assert memo.dir_stamps.len == 2
+	assert memo.dir_stamps[0] == FastcFileStamp{
+		size: 100
+		mtime: 200
+		ctime: 300
+		inode: 400
+	}
+	assert memo.dir_files[0] == ['/vlib/builtin/a.v', '/vlib/builtin/b.v']
+	assert memo.dir_stamps[1].mtime == 0
+	assert memo.dir_files[1].len == 0
+	assert memo.entry_paths == ['main.v']
+	assert memo.entry_real_paths == ['/abs/main.v']
+	assert memo.entry_stamps[0].inode == 40
+	assert memo.entry_vmod_roots == ['/abs']
+	assert memo.entry_files[0] == ['/abs/other.v']
+	assert memo.files == ['/vlib/builtin/a.v']
+	assert memo.stamps[0] == FastcFileStamp{
+		size: 5
+		mtime: 6
+		ctime: 7
+		inode: 8
+	}
+	assert memo.offsets == [41]
+	assert memo.lookup_modules == ['os']
+	assert memo.lookup_sources == ['/abs/main.v']
+	assert memo.written == 1234
+	assert memo.blob_token == 'token'
+}
+
+fn test_parse_resolve_memo_rejects_short_listings() {
+	// A directory line whose file count does not match its fields records no
+	// listing, so the directory is listed again.
+	memo := fastc_parse_resolve_memo('D\t/vlib/x\t1\t2\t3\t4\t3\t/vlib/x/a.v\n')
+	assert memo.dirs == ['/vlib/x']
+	assert memo.dir_stamps[0].mtime == 0
+	assert memo.dir_files[0].len == 0
+}
+
+fn test_fastc_index_of_and_replace() {
+	text := 'abc_call(x) + abc_call(y) - ab'
+	assert fastc_index_of(text, 'abc_call(', 0) == text.index_after_('abc_call(', 0)
+	assert fastc_index_of(text, 'abc_call(', 1) == text.index_after_('abc_call(', 1)
+	assert fastc_index_of(text, 'zzz', 0) == -1
+	assert fastc_index_of(text, '', 0) == -1
+	assert fastc_index_of(text, 'ab', text.len - 2) == text.len - 2
+	assert fastc_index_of(text, 'abx', text.len - 2) == -1
+	assert fastc_contains(text, '- ab')
+	assert !fastc_contains(text, 'abcd')
+	assert fastc_replace(text, 'abc_call(', 'f(') == text.replace('abc_call(', 'f(')
+	assert fastc_replace('aaa', 'aa', 'b') == 'aaa'.replace('aa', 'b')
+	assert fastc_replace(text, 'zzz', 'q') == text
+}
+
+fn test_contains_method_marker() {
+	// A leading occurrence of the name is not a call; the scan must go on to
+	// a later `.name(` or `->name(`.
+	assert fastc_contains_method_marker('foo + ptr.foo(1)', 'foo')
+	assert fastc_contains_method_marker('foo + ptr->foo(1)', 'foo')
+	assert fastc_contains_method_marker('foo(1) + x.foo(2)', 'foo')
+	assert fastc_contains_method_marker('bar.foo()', 'foo')
+	assert fastc_contains_method_marker('a->foo()', 'foo')
+	assert !fastc_contains_method_marker('foo(1)', 'foo')
+	assert !fastc_contains_method_marker('foo + foo', 'foo')
+	assert !fastc_contains_method_marker('x.foobar(1)', 'foo')
+	assert !fastc_contains_method_marker('x.foo', 'foo')
+	assert !fastc_contains_method_marker('xfoo(1)', 'foo')
+	assert !fastc_contains_method_marker('', 'foo')
+	assert !fastc_contains_method_marker('x.foo(1)', '')
+}
+
 fn test_selfhost_shared_keyword_local_is_preserved() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -146,8 +220,8 @@ fn main() {
 }
 ', 'shared_keyword_local.v', prefs) or { panic(err) }
 	assert c_source.contains('shared.value=1;'), c_source
-	assert c_source.contains('int id(int shared);'), c_source
-	assert c_source.contains('int id(int shared) {'), c_source
+	assert c_source.contains('i64 id(i64 shared);'), c_source
+	assert c_source.contains('i64 id(i64 shared) {'), c_source
 	assert c_source.contains('println(shared.value)'), c_source
 	assert c_source.contains('consume(&(shared));'), c_source
 	assert c_source.contains('consume(&((shared)));'), c_source
@@ -157,7 +231,7 @@ fn main() {
 	assert c_source.contains('consume(&(type));'), c_source
 	assert c_source.contains('__typeof__(((Box){})) shared = ((Box){});'), c_source
 	assert c_source.contains('return shared;'), c_source
-	assert c_source.contains('int pair(int shared, int other)'), c_source
+	assert c_source.contains('i64 pair(i64 shared, i64 other)'), c_source
 	assert c_source.contains('return shared+other;'), c_source
 	assert c_source.contains('return shared^2;'), c_source
 	assert !c_source.contains('return &shared'), c_source
@@ -201,7 +275,7 @@ fn test_selfhost_grouped_keyword_parameter_names_are_collected() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	mut functions := map[string]FastcFunctionSignature{}
-	collect_function_signatures('fn pair(shared, type int) int {}', 'grouped_keyword_parameter_names.v', FastcSourceHeader{ module_name: 'main' }, prefs, map[string]bool{}, map[string]string{}, map[string]bool{}, mut functions) or { panic(err) }
+	collect_function_signatures('fn pair(shared, type int) int {}', 'grouped_keyword_parameter_names.v', FastcSourceHeader{ module_name: 'main' }, prefs, []int{}, map[string]bool{}, map[string]string{}, map[string]bool{}, mut functions) or { panic(err) }
 	signature := functions['pair'] or { panic('missing pair signature') }
 	assert signature.parameter_types == ['int', 'int']
 }
@@ -349,7 +423,7 @@ fn main() {
 	println(shared)
 }
 ', 'selfhost_static_shared_local.v', prefs) or { panic(err) }
-	assert c_source.contains('__typeof__((1)) shared = (1);'), c_source
+	assert c_source.contains('i64 shared = (1);'), c_source
 	assert c_source.contains('println(shared)'), c_source
 }
 
@@ -580,13 +654,50 @@ fn test_fastc_overlap_workers_honor_serial_preferences() {
 	assert fastc_wait_interface_dispatches(mut pending_dispatches) == ''
 }
 
-fn test_fastc_source_declaration_flags_respect_identifier_boundaries() {
-	has_constants, has_global_declarations := fastc_source_declaration_flags('module main\nconst answer = 42\n__global count int\n')
-	assert has_constants
-	assert has_global_declarations
-	identifier_constants, identifier_globals := fastc_source_declaration_flags('module main\nfn key_const() {}\nfn use__global_value() {}\n')
-	assert !identifier_constants
-	assert !identifier_globals
+fn test_fastc_source_scan_flags_respect_identifier_boundaries() {
+	flags := fastc_source_scan_flags('module main\nconst answer = 42\n__global count int\n')
+	assert flags.has_constants
+	assert flags.has_global_declarations
+	assert !flags.has_interfaces
+	assert !flags.has_comptime_if
+	assert !flags.has_type_keywords
+	assert !flags.has_generic_fn_syntax
+	identifier_flags := fastc_source_scan_flags('module main\nfn key_const() {}\nfn use__global_value() {}\nfn interfaces() {}\nfn structure() {}\n')
+	assert !identifier_flags.has_constants
+	assert !identifier_flags.has_global_declarations
+	assert !identifier_flags.has_interfaces
+	assert !identifier_flags.has_type_keywords
+}
+
+fn test_fastc_source_scan_flags_detect_declaration_keywords() {
+	assert fastc_source_scan_flags('module main\ninterface Shape { area() int }\n').has_interfaces
+	assert fastc_source_scan_flags('module main\ninterface Shape {}\n').has_type_keywords
+	assert fastc_source_scan_flags('module main\nstruct Point { x int }\n').has_type_keywords
+	assert fastc_source_scan_flags('module main\nenum Color { red }\n').has_type_keywords
+	assert fastc_source_scan_flags('module main\ntype Id = int\n').has_type_keywords
+	assert fastc_source_scan_flags('module main\nunion Bits { a int }\n').has_type_keywords
+	dollar := '\$'
+	assert fastc_source_scan_flags('module main\n' + dollar + 'if linux {\nfn only_linux() {}\n}\n').has_comptime_if
+	assert fastc_source_scan_flags('module main\n' + dollar + ' if linux {\nfn only_linux() {}\n}\n').has_comptime_if
+	assert !fastc_source_scan_flags('module main\nfn main() { println("' + dollar + '{1}") }\n').has_comptime_if
+	assert fastc_source_scan_flags('module main\nfn pick[T](value T) T { return value }\n').has_generic_fn_syntax
+	assert fastc_source_scan_flags('module main\nfn (s Stack) push[T](value T) {}\n').has_generic_fn_syntax
+	assert fastc_source_scan_flags('module main\nfn Stack.make[T]() Stack {}\n').has_generic_fn_syntax
+	assert !fastc_source_scan_flags('module main\nfn plain(values []int) int { return values[0] }\n').has_generic_fn_syntax
+}
+
+fn test_fastc_source_scan_flags_skip_comments_between_tokens() {
+	// The scanner treats comments as whitespace, so the byte probes must not
+	// let one hide a `$if` or a generic declaration.
+	dollar := '\$'
+	assert fastc_source_scan_flags('module main\n' + dollar + '/* c */if linux {\nfn only_linux() {}\n}\n').has_comptime_if
+	assert fastc_source_scan_flags('module main\n' + dollar + '// c\nif linux {\nfn only_linux() {}\n}\n').has_comptime_if
+	assert fastc_source_scan_flags('module main\n' + dollar + '/* outer /* nested */ */ if linux {\n}\n').has_comptime_if
+	assert fastc_source_scan_flags('module main\nfn /* c */ pick[T](x T) T { return x }\n').has_generic_fn_syntax
+	assert fastc_source_scan_flags('module main\nfn pick /* c */ [T](x T) T { return x }\n').has_generic_fn_syntax
+	assert fastc_source_scan_flags('module main\nfn (s /* ) */ Stack) push[T](v T) {}\n').has_generic_fn_syntax
+	assert fastc_source_scan_flags('module main\nfn (s Stack) // c\n push[T](v T) {}\n').has_generic_fn_syntax
+	assert !fastc_source_scan_flags('module main\nfn plain() { x := 1 // [T]\n }\n').has_generic_fn_syntax
 }
 
 fn test_fastc_generic_source_collection_matches_serial_scan() {
@@ -621,8 +732,9 @@ fn test_fastc_generic_source_collection_matches_serial_scan() {
 			}
 		},
 	]
-	serial := fastc_collect_generic_method_source_chunk(sources, prefs, 0, sources.len)
-	collected := fastc_collect_generic_method_sources(sources, prefs)
+	serial := fastc_collect_generic_method_source_chunk(sources, prefs, 0, sources.len).sources
+	mut flagged_sources := sources.clone()
+	collected := fastc_collect_generic_method_sources(mut flagged_sources, prefs)
 	assert collected.keys().len == serial.keys().len
 	for key, expected in serial {
 		assert key in collected
@@ -776,11 +888,11 @@ fn twice(value int) int {
 '
 	prefs := pref.new_preferences()
 	c_source := generate(source, 'fastc_test.v', prefs) or { panic(err) }
-	assert c_source.contains('__typeof__((0)) total = (0);')
+	assert c_source.contains('i64 total = (0);')
 	assert c_source.contains('string label = ("total=");')
 	assert c_source.contains('__v_fastc_range_start_0 = (0);')
 	assert c_source.contains('__v_fastc_range_end_1 = (3);')
-	assert c_source.contains('int twice(int value);')
+	assert c_source.contains('i64 twice(i64 value);')
 	assert c_source.contains('setvbuf(stdout, NULL, _IONBF, 0);')
 	assert !c_source.contains('v3.flat')
 
@@ -994,7 +1106,7 @@ fn main() {
 ', 'conditional_scope.c.v', prefs) or { panic(err) }
 	type_index := c_source.index('struct Holder {') or { -1 }
 	if_index := c_source.index('#if 1') or { -1 }
-	definition_index := c_source.index('int optional(Holder value) {') or { -1 }
+	definition_index := c_source.index('i64 optional(Holder value) {') or { -1 }
 	endif_index := c_source.index_after('#endif', definition_index) or { -1 }
 	assert type_index >= 0
 	assert if_index > type_index
@@ -1477,7 +1589,7 @@ fn test_generate_files_resolves_modules_without_an_ast() {
 	mut prefs := pref.new_preferences()
 	prefs.module_search_paths = [root]
 	c_source := generate_files([main_file], prefs) or { panic(err) }
-	assert c_source.contains('int mathutil__twice(int value);')
+	assert c_source.contains('i64 mathutil__twice(i64 value);')
 	assert c_source.contains('println(mathutil__twice(21));'), c_source
 
 	c_file := os.join_path(root, 'program.c')
@@ -1710,7 +1822,8 @@ pub struct Conn {}
 			path: 'transport.v'
 			source: transport_source
 			header: fastc_scan_source_header(transport_source, 'transport.v', prefs) or {
-				panic(err)}
+				panic(err)
+			}
 		},
 	], map[string]string{}, prefs) or { panic(err) }
 	assert c_source.contains('return ((transport__Conn*)(pointer));'), c_source
@@ -1775,7 +1888,7 @@ fn main() {
 	_ := Worker.shared()
 }
 ', 'selfhost_static_method_shared.v', prefs) or { panic(err) }
-	assert c_source.contains('int Worker_shared(void)'), c_source
+	assert c_source.contains('i64 Worker_shared(void)'), c_source
 	assert c_source.contains('Worker_shared()'), c_source
 }
 
@@ -2532,7 +2645,8 @@ pub fn make() Settings {
 				path: module_file
 				source: module_source
 				header: fastc_scan_source_header(module_source, module_file, prefs) or {
-					panic(err)}
+					panic(err)
+				}
 			},
 		], map[string]string{}, prefs) {
 			assert false, 'private field access unexpectedly compiled'
@@ -3940,7 +4054,8 @@ fn main() {
 			path: 'immutable_flag_field.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'immutable_flag_field.v', prefs) or {
-				panic(err)}
+				panic(err)
+			}
 		},
 		FastcSourceFile{
 			path: 'settings.v'
@@ -8960,8 +9075,8 @@ fn main() {
 	// `if a, b := opt_fn() { ... }` unwraps an option whose value is a multi-return
 	// tuple: on success the boxed MultiReturn is copied out and each component bound.
 	assert c_source.contains('MultiReturn'), c_source
-	assert c_source.contains('.values[0].data'), c_source
-	assert c_source.contains('.values[1].data'), c_source
+	assert c_source.contains('.values[0], sizeof('), c_source
+	assert c_source.contains('.values[1], sizeof('), c_source
 }
 
 fn test_selfhost_if_multi_return_option_guard_with_shared_bindings() {
@@ -9276,7 +9391,8 @@ pub type Conn = Base
 			path: 'transport/transport.v'
 			source: transport_source
 			header: fastc_scan_source_header(transport_source, 'transport/transport.v', prefs) or {
-				panic(err)}
+				panic(err)
+			}
 		},
 	], map[string]string{}, prefs) or { panic(err) }
 	assert c_source.contains('(main__Reader){._object=(void*)(conn), ._typ=__v_typeid_transport__Base'), c_source
@@ -9432,7 +9548,8 @@ pub fn (d Dog) sound() int {
 			path: 'animals/animals.v'
 			source: animals_source
 			header: fastc_scan_source_header(animals_source, 'animals/animals.v', prefs) or {
-				panic(err)}
+				panic(err)
+			}
 		},
 	], map[string]string{}, prefs) or { panic(err) }
 	assert c_source.contains('*((animals__Dog *)__v_fastc_as_src'), c_source
@@ -9665,7 +9782,7 @@ fn main() {
 	// failure state assign the fallback tuple, else unbox the MultiReturn component.
 	assert c_source.contains('.state) {'), c_source
 	assert c_source.contains('MultiReturn'), c_source
-	assert c_source.contains('.values[1].data'), c_source
+	assert c_source.contains('.values[1], sizeof('), c_source
 }
 
 fn test_selfhost_assign_concrete_value_to_option_local() {

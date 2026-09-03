@@ -8945,10 +8945,28 @@ fn (tc &TypeChecker) fn_param_compatible(actual Type, expected Type) bool {
 			return true
 		}
 	}
+	// V's platform `int` and a fixed-width integer such as `i64`/`i32` may share an
+	// emitted C spelling on a given target, but they remain distinct, target-
+	// independent source types. Function-parameter identity must not depend on the C
+	// width, so never let the c_type shortcut below collapse `int` with `i64`/`i32`
+	// (on 64-bit both spell `i64`; on 32-bit `int`/`i32` both spell `i32`).
+	if fn_param_is_platform_int(actual) != fn_param_is_platform_int(expected)
+		&& fn_param_unalias_type(actual) is Primitive
+		&& fn_param_unalias_type(expected) is Primitive {
+		return false
+	}
 	if tc.c_type(actual) == tc.c_type(expected) {
 		return true
 	}
 	return fn_param_can_cast_userdata_param(actual, expected)
+}
+
+fn fn_param_is_platform_int(typ Type) bool {
+	clean := fn_param_unalias_type(typ)
+	if clean is Primitive {
+		return clean.size == 0 && clean.props.has(.integer) && !clean.props.has(.unsigned)
+	}
+	return false
 }
 
 fn (tc &TypeChecker) fn_return_compatible(actual Type, expected Type) bool {
@@ -16437,6 +16455,45 @@ fn (tc &TypeChecker) resolve_index_base_value_type(base_type Type) Type {
 }
 
 // c_type supports c type handling for TypeChecker.
+// c_extern_abi_type spells `t` the way a C extern declaration lowers it for ABI
+// comparison: V's platform `int` stays C `int` (via prim_c_type) instead of
+// widening to its value spelling (`i64` on 64-bit). This mirrors the codegen
+// rule that C extern declarations keep C `int`, so two decls of the same C
+// function that mix `int` and `i32` remain ABI-compatible (both are 32-bit C
+// int), while a genuine `int` vs `i64` mismatch is still rejected. It recurses
+// through pointers, aliases, and function types so `int` is treated as C `int`
+// anywhere inside a C ABI signature. For every non-int shape it produces exactly
+// what c_type would, so it never widens the set of "compatible" signatures.
+fn (tc &TypeChecker) c_extern_abi_type(t Type) string {
+	if t is Primitive {
+		return prim_c_type(t)
+	}
+	if t is Pointer {
+		return tc.c_extern_abi_type(t.base_type) + '*'
+	}
+	if t is Alias {
+		return tc.c_extern_abi_type(t.base_type)
+	}
+	if t is FnType {
+		ret := tc.c_extern_abi_type(t.return_type)
+		if t.params.len == 0 {
+			return 'fn_ptr:${ret}|void'
+		}
+		mut params := []string{}
+		for i in 0 .. t.params.len {
+			mut param_type := fn_param_type(t, i)
+			if fn_param_is_mut(t, i) && param_type !is Pointer {
+				param_type = Type(Pointer{
+					base_type: param_type
+				})
+			}
+			params << tc.c_extern_abi_type(param_type)
+		}
+		return 'fn_ptr:${ret}|${params.join(', ')}'
+	}
+	return tc.c_type(t)
+}
+
 pub fn (tc &TypeChecker) c_type(t Type) string {
 	if tc.type_cache == unsafe { nil } || isnil(tc.type_interner) {
 		return tc.c_type_uncached(t)
@@ -16504,6 +16561,14 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return 'size_t'
 	}
 	if t is Primitive {
+		// V's platform `int` (a signed integer of unset size) lowers to the
+		// target-width C spelling: `i64` on 64-bit targets, `i32` on 32-bit.
+		// Only the emitted C type changes; `int` stays named `int` for
+		// diagnostics and keeps distinct methods from `i64` (prim_c_type is
+		// still `int`, so method-name mangling never collapses the two).
+		if t.size == 0 && t.props.has(.integer) && !t.props.has(.unsigned) {
+			return platform_int_c_type
+		}
 		return prim_c_type(t)
 	}
 	if t is Array {
