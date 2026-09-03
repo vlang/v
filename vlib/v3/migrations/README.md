@@ -85,9 +85,9 @@ explicit constraint DDL. PostgreSQL serial columns reject
 explicit defaults, and index removal derives the index schema from a qualified table; PostgreSQL
 index names are unqualified when adding them.
 SQLite non-integer primary keys are explicitly non-nullable. Decimal scale requires a positive
-precision. MySQL `change_column` is rejected because `MODIFY COLUMN` replaces attributes that the portable
-`Column` type cannot represent safely, including unsigned state, collation, comments, and generated
-expressions. Use trusted `ctx.execute()` with an explicit complete definition instead.
+precision. MySQL `change_column` is rejected because `MODIFY COLUMN` replaces attributes that the
+portable `Column` type cannot represent safely, including unsigned state, collation, comments, and
+generated expressions. Use trusted `ctx.execute()` with an explicit complete definition instead.
 MySQL auto-increment columns must be primary keys or unique, MySQL index names must be unqualified
 when adding or removing them, and tables cannot contain more than one auto-increment column. MySQL
 foreign keys reject `SET DEFAULT`. Column-level identifiers must be unqualified. Generated

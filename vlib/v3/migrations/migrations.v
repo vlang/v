@@ -320,6 +320,18 @@ fn (mut m Migrator) run_unlocked(operation MigrationOperation, argument i64) ![]
 	}
 }
 
+fn missing_history_metadata_columns_error(dialect Dialect, message string) bool {
+	lower := message.to_lower_ascii()
+	if !lower.contains('name') && !lower.contains('applied_at') {
+		return false
+	}
+	return match dialect {
+		.sqlite { lower.contains('no such column') }
+		.pg { lower.contains('column') && lower.contains('does not exist') }
+		.mysql { lower.contains('unknown column') }
+	}
+}
+
 // applied returns the migrations recorded in the database, oldest first.
 // Rails-compatible version-only schema_migrations tables are supported alongside
 // legacy V history tables that include name and applied_at metadata.
@@ -331,9 +343,13 @@ pub fn (mut m Migrator) applied() ![]AppliedMigration {
 		rows = m.conn.execute('SELECT version FROM ${table} ORDER BY version ASC;')!
 	} else {
 		rows = m.conn.execute('SELECT version, name, applied_at FROM ${table} ORDER BY version ASC;') or {
+			if !missing_history_metadata_columns_error(m.config.dialect, err.msg()) {
+				return err
+			}
+			version_rows := m.conn.execute('SELECT version FROM ${table} ORDER BY version ASC;')!
 			m.history_shape_resolved = true
 			m.history_has_metadata = false
-			m.conn.execute('SELECT version FROM ${table} ORDER BY version ASC;')!
+			version_rows
 		}
 		if !m.history_shape_resolved {
 			m.history_shape_resolved = true
@@ -342,6 +358,7 @@ pub fn (mut m Migrator) applied() ![]AppliedMigration {
 	}
 	minimum_columns := if m.history_has_metadata { 3 } else { 1 }
 	mut result := []AppliedMigration{cap: rows.len}
+	mut versions := map[i64]bool{}
 	for row in rows {
 		if row.vals.len < minimum_columns {
 			return error('migration history query returned ${row.vals.len} columns; expected ${minimum_columns}')
@@ -349,6 +366,16 @@ pub fn (mut m Migrator) applied() ![]AppliedMigration {
 		version := strconv.parse_int(row.vals[0], 10, 64) or {
 			return error('migration history contains invalid version `${row.vals[0]}`')
 		}
+		if version <= 0 {
+			return error('migration history version `${row.vals[0]}` must be positive')
+		}
+		if !m.history_has_metadata && row.vals[0] != version.str() {
+			return error('migration history contains noncanonical version `${row.vals[0]}`')
+		}
+		if version in versions {
+			return error('migration history contains duplicate version ${version}')
+		}
+		versions[version] = true
 		mut name := if m.history_has_metadata { row.vals[1] } else { '' }
 		if name == '' {
 			if migration := m.find_migration(version) {

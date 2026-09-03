@@ -24,6 +24,8 @@ mut:
 	postgresql_lock_held      bool
 	postgresql_xact_lock_held bool
 	mysql_lock_held           bool
+	history_metadata_error    string
+	history_version_error     string
 	sqlite_table_schema       string = 'main'
 	sqlite_version            string = '3.46.0'
 	fail_sqlite_lock          bool
@@ -141,6 +143,15 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 		}]
 	}
 	if query.starts_with('SELECT version, name, applied_at FROM ') {
+		if conn.history_metadata_error != '' {
+			return error(conn.history_metadata_error)
+		}
+		return conn.history_rows.clone()
+	}
+	if query.starts_with('SELECT version FROM ') {
+		if conn.history_version_error != '' {
+			return error(conn.history_version_error)
+		}
 		return conn.history_rows.clone()
 	}
 	if query == 'SELECT DATABASE();' {
@@ -526,11 +537,8 @@ fn test_migrate_rollback_redo_and_status() {
 	assert runner.current_version()! == 202608160002
 	assert db.q_int("SELECT count(*) FROM pragma_table_info('accounts') WHERE name = 'name';")! == 1
 	assert db.q_int("SELECT count(*) FROM pragma_foreign_key_list('accounts') WHERE `from` = 'organization_id';")! == 1
-	mut foreign_key_error := ''
-	db.exec("INSERT INTO accounts (email, organization_id) VALUES ('orphan@example.com', 999);") or {
-		foreign_key_error = err.msg()
-	}
-	assert foreign_key_error.to_upper().contains('FOREIGN KEY'), foreign_key_error
+	foreign_key_code := db.exec_none("INSERT INTO accounts (email, organization_id) VALUES ('orphan@example.com', 999);")
+	assert foreign_key_code == int(sqlite.Result.constraint)
 	assert db.q_int('SELECT count(*) FROM accounts;')! == 0
 	assert db.q_int("SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'index_accounts_on_name';")! == 1
 	assert runner.migrate()!.len == 0
@@ -2895,6 +2903,94 @@ fn test_rails_and_v_history_tables_are_interoperable() {
 	assert v_runner.applied()!.map(it.version) == [i64(99)]
 }
 
+fn test_rails_history_rejects_aliased_and_nonpositive_versions() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	db.exec('CREATE TABLE schema_migrations (version VARCHAR(255) PRIMARY KEY);')!
+	db.exec("INSERT INTO schema_migrations (version) VALUES ('1'), ('01');")!
+	mut runner := new(mut db, [
+		Migration{
+			version: 1
+			name:    'one'
+			up:      no_op_migration
+			down:    no_op_migration
+		},
+	], Config{ dialect: .sqlite })!
+	mut error_message := ''
+	runner.rollback(2) or { error_message = err.msg() }
+	assert error_message == 'migration history contains noncanonical version `01`'
+	assert db.q_int('SELECT count(*) FROM schema_migrations;')! == 2
+
+	db.exec('DELETE FROM schema_migrations;')!
+	db.exec("INSERT INTO schema_migrations (version) VALUES ('0');")!
+	error_message = ''
+	runner.applied() or { error_message = err.msg() }
+	assert error_message == 'migration history version `0` must be positive'
+}
+
+fn test_history_shape_fallback_does_not_cache_unrelated_errors() {
+	mut recorder := &RecordingConnection{
+		history_rows: [orm.Row{
+			vals: ['1', 'one', '2026-08-16T00:00:00Z']
+		}]
+		history_metadata_error: 'database connection timed out'
+	}
+	mut runner := new(mut recorder, []Migration{}, Config{ dialect: .sqlite })!
+	mut error_message := ''
+	runner.applied() or { error_message = err.msg() }
+	assert error_message == 'database connection timed out'
+	assert !runner.history_shape_resolved
+
+	recorder.history_metadata_error = ''
+	assert runner.applied()!.map(it.name) == ['one']
+	assert runner.history_shape_resolved
+	assert runner.history_has_metadata
+
+	mut fallback_recorder := &RecordingConnection{
+		history_rows: [orm.Row{
+			vals: ['1']
+		}]
+		history_metadata_error: 'no such column: name'
+		history_version_error:  'database connection timed out'
+	}
+	mut fallback_runner := new(mut fallback_recorder, []Migration{}, Config{ dialect: .sqlite })!
+	error_message = ''
+	fallback_runner.applied() or { error_message = err.msg() }
+	assert error_message == 'database connection timed out'
+	assert !fallback_runner.history_shape_resolved
+	fallback_recorder.history_version_error = ''
+	assert fallback_runner.applied()!.map(it.version) == [i64(1)]
+	assert fallback_runner.history_shape_resolved
+	assert !fallback_runner.history_has_metadata
+}
+
+fn test_missing_history_metadata_errors_are_dialect_specific() {
+	assert missing_history_metadata_columns_error(.sqlite, 'no such column: name')
+	assert missing_history_metadata_columns_error(.pg, 'column "applied_at" does not exist')
+	assert missing_history_metadata_columns_error(.mysql, "Unknown column 'name' in 'field list'")
+	assert !missing_history_metadata_columns_error(.sqlite, 'database connection timed out')
+	assert !missing_history_metadata_columns_error(.pg, 'permission denied for table name')
+	assert !missing_history_metadata_columns_error(.mysql, 'connection reset')
+}
+
+fn test_history_rejects_duplicate_numeric_versions() {
+	mut recorder := &RecordingConnection{
+		history_rows: [
+			orm.Row{
+				vals: ['1', 'one', '2026-08-16T00:00:00Z']
+			},
+			orm.Row{
+				vals: ['1', 'duplicate', '2026-08-17T00:00:00Z']
+			},
+		]
+	}
+	mut runner := new(mut recorder, []Migration{}, Config{ dialect: .sqlite })!
+	mut error_message := ''
+	runner.applied() or { error_message = err.msg() }
+	assert error_message == 'migration history contains duplicate version 1'
+}
 
 fn test_legacy_v_history_tables_keep_metadata_writes() {
 	mut db := sqlite.connect(':memory:')!
