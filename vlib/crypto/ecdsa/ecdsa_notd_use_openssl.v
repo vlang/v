@@ -114,7 +114,13 @@ enum KeyFlag {
 // If you want another curve, use `pubkey, pivkey := ecdsa.generate_key(nid: .secp384r1)!` instead.
 pub fn generate_key(opt CurveOptions) !(PublicKey, PrivateKey) {
 	pv := PrivateKey.new(opt)!
-	pb := pv.public_key()!
+	pb := pv.public_key() or {
+		// pv was never returned to a caller who could free it -- free it here
+		// before propagating the error, or its mbedTLS-allocated group/scalar/
+		// point buffers leak.
+		pv.free()
+		return err
+	}
 	return pb, pv
 }
 
@@ -315,10 +321,16 @@ pub fn (pv PrivateKey) derive_shared_secret(peer PublicKey) ![]u8 {
 // components' equality, matching OpenSSL's own EVP_PKEY_eq semantics of
 // comparing public (not raw private-scalar) material.
 pub fn (priv_key PrivateKey) equal(other PrivateKey) bool {
+	// Each defer is registered immediately after its own allocation succeeds,
+	// not after both -- registering both together after the second fallible
+	// call would leak pa's mbedTLS context if other.public_key() then failed
+	// (defer only arms once the defer statement itself is reached).
 	mut pa := priv_key.public_key() or { return false }
-	mut pb := other.public_key() or { return false }
 	defer {
 		pa.free()
+	}
+	mut pb := other.public_key() or { return false }
+	defer {
 		pb.free()
 	}
 	return pa.equal(pb)
