@@ -1,5 +1,3 @@
-// vtest build: present_openssl?
-// vtest vflags: -d http3
 module http
 
 import net.quic
@@ -93,18 +91,18 @@ fn test_to_h3_request_authority_from_host_header() {
 
 fn test_h3_response_to_http() {
 	h3resp := H3ClientResponse{
-		status:  200
+		status: 200
 		headers: [
 			quic.QpackFieldLine{
-				name:  'content-type'
+				name: 'content-type'
 				value: 'text/plain'
 			},
 			quic.QpackFieldLine{
-				name:  'x-foo'
+				name: 'x-foo'
 				value: 'bar'
 			},
 		]
-		body:    'hi'.bytes()
+		body: 'hi'.bytes()
 	}
 	resp := h3_response_to_http(h3resp)
 	assert resp.status_code == 200

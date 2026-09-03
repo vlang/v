@@ -1,5 +1,3 @@
-// vtest build: present_openssl?
-// vtest vflags: -d http3
 module http
 
 import sync
@@ -42,7 +40,7 @@ fn test_h3_round_trip_rejects_client_certificate() {
 	mut t := new_transport()
 	req := &Request{
 		enable_http3: true
-		cert:         'client.pem'
+		cert: 'client.pem'
 	}
 	t.h3_round_trip(req, 'key', .get, 'example.com', 443, '/', '', new_header()) or {
 		assert err.msg().contains('client certificates')
@@ -55,7 +53,7 @@ fn test_h3_round_trip_rejects_client_certificate_key() {
 	mut t := new_transport()
 	req := &Request{
 		enable_http3: true
-		cert_key:     'client.key'
+		cert_key: 'client.key'
 	}
 	t.h3_round_trip(req, 'key', .get, 'example.com', 443, '/', '', new_header()) or {
 		assert err.msg().contains('client certificates')
@@ -74,8 +72,8 @@ fn test_h3_round_trip_rejects_client_certificate_key() {
 // header).
 fn new_test_h3_mux_conn_for_pool_test() &H3MuxConn {
 	return &H3MuxConn{
-		transport:  unsafe { nil }
-		qmu:        sync.new_mutex()
+		transport: unsafe { nil }
+		qmu: sync.new_mutex()
 		idle_since: time.now()
 	}
 }
