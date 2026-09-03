@@ -9008,12 +9008,12 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 			}
 		}
 		cloned_err := t.make_call_typed('__v3_clone_owned_ierror', [source_err], 'IError')
-		else_branch := t.make_block([
+		else_branch := t.make_block_skip_scope_drops([
 			t.make_assign_without_ownership_drop(t.make_ident(out_name), t.make_optional_none_with_err(clean,
 				cloned_err)),
 		])
-		t.pending_stmts << t.make_if(t.make_selector(stable_source, 'ok', 'bool'),
-			t.make_block(body), else_branch)
+		t.pending_stmts << t.make_if_with_skip_ownership_drops(t.make_selector(stable_source,
+			'ok', 'bool'), t.make_block_skip_scope_drops(body), else_branch)
 		if source_is_owned_temporary {
 			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
 				stable_source,
@@ -9142,7 +9142,8 @@ fn (mut t Transformer) make_compiler_default_sum_clone_value(source flat.NodeId,
 		wrapped := t.make_sum_literal(resolved_sum, qvariant, cloned_payload)
 		body << t.make_assign_without_ownership_drop(t.make_ident(out_name), wrapped)
 		cond := t.make_sum_is_check(stable_source, sum_type, resolved_sum, qvariant)
-		t.pending_stmts << t.make_if(cond, t.make_block(body), t.make_empty())
+		t.pending_stmts << t.make_if_with_skip_ownership_drops(cond,
+			t.make_block_skip_scope_drops(body), t.make_empty())
 	}
 	if source_is_owned_temporary {
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
@@ -14531,12 +14532,10 @@ fn (mut t Transformer) clone_checker_marked_receiver_alias_arg(arg_id flat.NodeI
 	if param_type.len == 0 || param_type.starts_with('&') {
 		return value
 	}
-	// transform_call_arg_for_param already clones borrowed projections and extracts index
-	// moves into an owned temporary. Cloning either transformed result again would leak the
-	// first independent value.
-	if (!isnil(t.tc) && (t.tc.ownership_expr_is_borrowed_projection(arg_id)
-		|| t.tc.ownership_index_read_moves_value(arg_id)))
-		|| t.expr_reads_owned_const(arg_id) {
+	// transform_call_arg_for_param already materializes checker-marked borrowed clones
+	// and extracts index moves into an owned temporary. Do not clone either result again.
+	if !isnil(t.tc) && (t.tc.ownership_expr_is_borrowed_projection(arg_id)
+		|| t.tc.ownership_index_read_moves_value(arg_id)) {
 		return value
 	}
 	if isnil(t.tc) || !t.tc.ownership_receiver_alias_arg_is_cloned(arg_id) {

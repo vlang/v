@@ -1383,8 +1383,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	}
 	mut borrowed_push_many_clone := false
 	if push_many {
-		cloned_rhs, cloned := t.clone_borrowed_array_append_many_value(rhs_id, rhs, rhs_type,
-			elem_type)
+		cloned_rhs, cloned := t.clone_borrowed_array_append_many_value(rhs_id, rhs, rhs_type, elem_type)
 		rhs = cloned_rhs
 		borrowed_push_many_clone = cloned
 	}
@@ -1623,8 +1622,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	}
 	mut borrowed_push_many_clone := false
 	if push_many {
-		cloned_rhs, cloned := t.clone_borrowed_array_append_many_value(rhs_id, rhs, rhs_type,
-			elem_type)
+		cloned_rhs, cloned := t.clone_borrowed_array_append_many_value(rhs_id, rhs, rhs_type, elem_type)
 		rhs = cloned_rhs
 		borrowed_push_many_clone = cloned
 	}
@@ -1748,8 +1746,7 @@ fn (mut t Transformer) clone_owned_rvalue_slice_projection(value flat.NodeId, so
 	}
 	base_type := t.node_type(source_base_id)
 	transformed_base_id := t.a.child(&slice_node, 0)
-	stable_base := t.stable_transformed_expr_for_reuse(transformed_base_id, base_type,
-		'owned_slice_source')
+	stable_base := t.stable_transformed_expr_for_reuse(transformed_base_id, base_type, 'owned_slice_source')
 	mut children := []flat.NodeId{cap: int(slice_node.children_count)}
 	children << stable_base
 	for i in 1 .. slice_node.children_count {
@@ -1762,36 +1759,8 @@ fn (mut t Transformer) clone_owned_rvalue_slice_projection(value flat.NodeId, so
 }
 
 fn (t &Transformer) borrowed_projection_clone_required(source_id flat.NodeId, typ string) bool {
-	if isnil(t.tc) {
-		return false
-	}
-	// The checker resolves a bare identifier against its lexical scope before constants.
-	// Preserve that decision after checking, when its active scope is no longer available.
-	if t.expr_is_local_ident_read(source_id) {
-		return false
-	}
-	// The checker resolves the field/slice/cast shapes from node-annotated types alone, so it
-	// and the transformer agree without a shared map. A `const` read is resolved separately in
-	// transformer contexts that need the suffix fallback, so exclude active locals before using
-	// that module-independent resolver.
-	if !t.tc.ownership_expr_is_borrowed_projection(source_id)
-		&& !t.expr_reads_owned_const(source_id) {
-		return false
-	}
-	return t.compiler_default_clone_type_needs_work(typ)
-}
-
-fn (t &Transformer) expr_is_local_ident_read(id flat.NodeId) bool {
-	mut cur := id
-	for int(cur) >= 0 && int(cur) < t.a.nodes.len {
-		node := t.a.nodes[int(cur)]
-		if node.kind in [.paren, .cast_expr, .expr_stmt] && node.children_count > 0 {
-			cur = t.a.child(&node, 0)
-			continue
-		}
-		return node.kind == .ident && t.var_type_index(node.value) >= 0
-	}
-	return false
+	return !isnil(t.tc) && t.tc.ownership_expr_is_borrowed_projection(source_id)
+		&& t.compiler_default_clone_type_needs_work(typ)
 }
 
 // clone_borrowed_assignment_value also handles a local pointer alias that may refer to the
@@ -1804,31 +1773,6 @@ fn (mut t Transformer) clone_borrowed_assignment_value(source_id flat.NodeId, va
 		return cloned
 	}
 	return t.make_compiler_default_borrowed_clone_value(value, typ, true)
-}
-
-// expr_reads_owned_const reports whether `id` (after peeling parentheses/casts) is a bare
-// reference to a module constant, which holds shared immutable storage that must be cloned
-// rather than aliased when copied into an owned binding.
-fn (t &Transformer) expr_reads_owned_const(id flat.NodeId) bool {
-	mut cur := id
-	for int(cur) >= 0 && int(cur) < t.a.nodes.len {
-		node := t.a.nodes[int(cur)]
-		if node.kind in [.paren, .cast_expr, .expr_stmt] && node.children_count > 0 {
-			cur = t.a.child(&node, 0)
-			continue
-		}
-		if node.kind == .ident {
-			if t.expr_is_local_ident_read(cur) {
-				return false
-			}
-			if _ := t.const_type_key(node.value) {
-				return true
-			}
-			return false
-		}
-		return false
-	}
-	return false
 }
 
 // clean_array_append_lhs_type transforms clean array append lhs type data for transform.
@@ -1916,11 +1860,9 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	base := t.transform_lvalue(base_id)
 	if prepend_many {
 		mut value := t.transform_array_many_rhs(value_id, value_node, base_type)
-		cloned_value, cloned := t.clone_borrowed_array_append_many_value(value_id, value, rhs_type,
-			elem_type)
+		cloned_value, cloned := t.clone_borrowed_array_append_many_value(value_id, value, rhs_type, elem_type)
 		value = cloned_value
-		call := t.make_array_insert_many_call(t.runtime_addr(base, base_type),
-			t.make_int_literal(0), value, rhs_type)
+		call := t.make_array_insert_many_call(t.runtime_addr(base, base_type), t.make_int_literal(0), value, rhs_type)
 		return t.finish_borrowed_array_insert_many_call(call, value, rhs_type, cloned)
 	}
 	mut value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
@@ -1980,11 +1922,9 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	index := t.transform_expr_for_type(index_id, 'int')
 	if insert_many {
 		mut value := t.transform_array_many_rhs(value_id, value_node, base_type)
-		cloned_value, cloned := t.clone_borrowed_array_append_many_value(value_id, value, rhs_type,
-			elem_type)
+		cloned_value, cloned := t.clone_borrowed_array_append_many_value(value_id, value, rhs_type, elem_type)
 		value = cloned_value
-		call := t.make_array_insert_many_call(t.runtime_addr(base, base_type), index, value,
-			rhs_type)
+		call := t.make_array_insert_many_call(t.runtime_addr(base, base_type), index, value, rhs_type)
 		return t.finish_borrowed_array_insert_many_call(call, value, rhs_type, cloned)
 	}
 	mut value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
