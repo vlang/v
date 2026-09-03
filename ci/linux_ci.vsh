@@ -20,17 +20,30 @@ fn test_pure_v_math_module() {
 	exec('v -exclude @vlib/math/*.c.v test vlib/math/')
 }
 
+fn use_established_compiler_for_self_tests() {
+	current_vflags := os.getenv('VFLAGS')
+	if '-old-compiler' !in current_vflags.fields() {
+		os.setenv('VFLAGS', '${current_vflags} -old-compiler'.trim_space(), true)
+	}
+}
+
 fn self_tests() {
+	// The dedicated V3 workflow owns strict V3 coverage. Keep the full vlib suite
+	// and its nested compiler invocations on V1 so the compatibility compiler
+	// shipped by this rollout remains tested.
+	use_established_compiler_for_self_tests()
 	if common.is_github_job {
-		exec('v -W -silent test-self vlib')
+		exec('v -old-compiler -W -silent test-self vlib')
 	} else {
-		exec('v -progress test-self vlib')
+		exec('v -old-compiler -progress test-self vlib')
 	}
 }
 
 fn build_examples() {
 	if common.is_github_job {
-		exec('v -W build-examples')
+		// The exhaustive CI matrix includes a few deliberately large examples.
+		// Keep the user-facing V3 memory guard while allowing CI to validate them.
+		exec('v -no-memory-limit -W build-examples')
 	} else {
 		exec('v -progress build-examples')
 	}
@@ -58,7 +71,7 @@ fn install_dependencies_for_examples_and_tools_tcc() {
 	}
 	exec('v retry -- sudo apt update')
 	exec('v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind')
-	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev')
+	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev libx11-xcb-dev')
 	// Wayland development libraries for sokol Wayland support
 	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev')
 	// The following is needed for examples/wkhtmltopdf.v
@@ -186,7 +199,7 @@ fn install_dependencies_for_examples_and_tools_gcc() {
 	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
 	// Wayland development libraries for sokol Wayland support
 	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev wayland-protocols libegl-dev')
-	exec('v retry -- sudo apt install --quiet -y libx11-dev libgl1-mesa-dri xauth xvfb')
+	exec('v retry -- sudo apt install --quiet -y libx11-dev libx11-xcb-dev libgl1-mesa-dri xauth xvfb')
 }
 
 fn recompile_v_with_cstrict_gcc() {
@@ -242,12 +255,14 @@ fn self_tests_gcc() {
 }
 
 fn self_tests_prod_gcc() {
+	use_established_compiler_for_self_tests()
 	exec('v -o vprod -prod cmd/v')
-	exec('./vprod -silent test-self vlib')
+	exec('./vprod -old-compiler -silent test-self vlib')
 }
 
 fn self_tests_cstrict_gcc() {
-	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 v -cc gcc -cstrict -silent test-self vlib')
+	use_established_compiler_for_self_tests()
+	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 v -old-compiler -cc gcc -cstrict -silent test-self vlib')
 }
 
 fn build_examples_gcc() {
@@ -311,7 +326,7 @@ fn install_dependencies_for_examples_and_tools_clang() {
 	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
 	// Wayland development libraries for sokol Wayland support
 	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev wayland-protocols libegl-dev')
-	exec('v retry -- sudo apt install --quiet -y clang')
+	exec('v retry -- sudo apt install --quiet -y clang libx11-xcb-dev')
 }
 
 fn recompile_v_with_cstrict_clang() {
@@ -366,12 +381,14 @@ fn self_tests_clang() {
 }
 
 fn self_tests_vprod_clang() {
+	use_established_compiler_for_self_tests()
 	exec('v -o vprod -prod cmd/v')
-	exec('./vprod -silent test-self vlib')
+	exec('./vprod -old-compiler -silent test-self vlib')
 }
 
 fn self_tests_cstrict_clang() {
-	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./vprod -cstrict -silent test-self vlib')
+	use_established_compiler_for_self_tests()
+	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./vprod -old-compiler -cstrict -silent test-self vlib')
 }
 
 fn build_examples_clang() {
@@ -400,7 +417,10 @@ fn build_modules_clang() {
 }
 
 fn test_inline_assembly() {
-	exec('v test vlib/v/slow_tests/assembly')
+	// V3 does not lower inline assembly yet. Select V1 explicitly so this task
+	// remains transparent and never exercises the compatibility retry path (which
+	// is disabled below via V_MACOS_V3_NO_FALLBACK).
+	exec('v -old-compiler test vlib/v/slow_tests/assembly')
 }
 
 // Collect all tasks
@@ -468,4 +488,11 @@ const all_tasks = {
 	'test_inline_assembly':                              Task{test_inline_assembly, 'Test inline assembly'}
 }
 
+// V3 is the default compiler on Linux as well as macOS. A supported V3
+// compilation must fail directly in CI: never let the compatibility retry turn a
+// V3 regression into a passing V1 build. The workflow job also exports this in its
+// `env:`, so it already covers this runner script's own compilation (`v run
+// ci/linux_ci.vsh ...`); setting it here as well applies it when the tasks are run
+// outside that job (e.g. locally).
+os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 common.run(all_tasks)

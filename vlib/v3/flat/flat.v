@@ -166,6 +166,13 @@ pub:
 	generic_params []string
 }
 
+// Comment retains source comments for syntax-preserving tools such as vfmt.
+pub struct Comment {
+pub:
+	text string
+	pos  token.Pos
+}
+
 // node_payload creates an uncommon node payload, or nil for an empty list.
 pub fn node_payload(generic_params []string) &NodePayload {
 	if generic_params.len == 0 {
@@ -231,6 +238,27 @@ pub mut:
 	export_fn_names map[string]string
 	noreturn_fns    map[string]bool
 	source_files    map[int]&token.File
+	comments        []Comment
+	// formatter_sources retains exact source spans or prefixes for constructs whose
+	// source syntax is intentionally opaque to compiler backends.
+	formatter_sources      map[int]string
+	formatter_file_sources map[int]string
+	// formatter_node_ends retains the full source end for nodes whose compiler-facing
+	// position deliberately covers only their name or another diagnostic token.
+	formatter_node_ends map[int]int
+	// formatter_expanded_calls records calls whose arguments started on the next line
+	// and ended with a trailing comma.
+	formatter_expanded_calls map[int]bool
+	// formatter_assignment_ops retains compound operator spellings that share one flat op.
+	formatter_assignment_ops map[int]string
+	// formatter_param_list_end retains the closing-parenthesis offset for parameter lists.
+	formatter_param_list_end map[int]int
+	// formatter_for_in_mut retains which for-in binder carried `mut`:
+	// bit 0 is the first binder and bit 1 is the second binder.
+	formatter_for_in_mut map[int]u8
+	// formatter_local_sels records selectors whose direct receiver is a lexical binding.
+	formatter_local_sels    map[int]bool
+	formatter_migrate_json2 bool
 	// Template-generated nodes keep their original template source location while
 	// retaining the comptime call site used for v1-compatible diagnostic stacks.
 	template_call_sites map[int]token.Pos
@@ -317,19 +345,27 @@ pub fn (mut a FlatAst) set_node_is_mut(id NodeId, is_mut bool) {
 // new creates a FlatAst value for flat.
 pub fn FlatAst.new() FlatAst {
 	return FlatAst{
-		nodes:                  []Node{cap: 256}
-		children:               []NodeId{cap: 512}
-		disabled_fns:           map[string]bool{}
-		export_fn_names:        map[string]string{}
-		noreturn_fns:           map[string]bool{}
-		source_files:           map[int]&token.File{}
-		template_call_sites:    map[int]token.Pos{}
-		template_actions:       map[int]string{}
-		missing_imports:        map[int]string{}
-		text_ids:               map[string]TextId{}
-		specialized_fn_nodes:   map[int]bool{}
-		specialized_fn_modules: map[int]string{}
-		specialized_fn_files:   map[int]string{}
+		nodes:                    []Node{cap: 256}
+		children:                 []NodeId{cap: 512}
+		disabled_fns:             map[string]bool{}
+		export_fn_names:          map[string]string{}
+		noreturn_fns:             map[string]bool{}
+		source_files:             map[int]&token.File{}
+		template_call_sites:      map[int]token.Pos{}
+		template_actions:         map[int]string{}
+		missing_imports:          map[int]string{}
+		formatter_sources:        map[int]string{}
+		formatter_file_sources:   map[int]string{}
+		formatter_node_ends:      map[int]int{}
+		formatter_expanded_calls: map[int]bool{}
+		formatter_assignment_ops: map[int]string{}
+		formatter_param_list_end: map[int]int{}
+		formatter_for_in_mut:     map[int]u8{}
+		formatter_local_sels:     map[int]bool{}
+		text_ids:                 map[string]TextId{}
+		specialized_fn_nodes:     map[int]bool{}
+		specialized_fn_modules:   map[int]string{}
+		specialized_fn_files:     map[int]string{}
 	}
 }
 
@@ -741,6 +777,14 @@ pub fn (mut a FlatAst) add_node(node Node) NodeId {
 	id := NodeId(a.nodes.len)
 	mut stored := node
 	stored.set_type_text_id(a.node_type_text_id(stored.typ, stored.type_text_id()))
+	if a.nodes.len < a.nodes.cap {
+		unsafe {
+			mut slot := &Node(&u8(a.nodes.data) + usize(a.nodes.len) * sizeof(Node))
+			*slot = stored
+			a.nodes.len++
+		}
+		return id
+	}
 	a.nodes << stored
 	return id
 }
@@ -760,6 +804,14 @@ pub fn (mut a FlatAst) begin_children() int {
 
 // add_child updates add child state for FlatAst.
 pub fn (mut a FlatAst) add_child(id NodeId) {
+	if a.children.len < a.children.cap {
+		unsafe {
+			mut slot := &NodeId(&u8(a.children.data) + usize(a.children.len) * sizeof(NodeId))
+			*slot = id
+			a.children.len++
+		}
+		return
+	}
 	a.children << id
 }
 

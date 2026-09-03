@@ -1120,6 +1120,7 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 		return p.add_val_id(5, '')
 	}
 	path := p.resolve_veb_template_path(is_html, arg)
+	p.has_veb_template = true
 	return p.add_node(flat.Node{
 		kind:  .veb_template
 		value: path
@@ -1580,6 +1581,9 @@ fn template_interpolation_expr_span(line string, at int) ?(int, int) {
 // `mut <b> := ''; <writes>; return <context>.html(<b>)`, and `x := $tmpl(p)` becomes
 // `mut <b> := ''; <writes>; x := <b>`. Returns none for any other statement.
 fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
+	if !p.has_veb_template {
+		return none
+	}
 	if int(stmt_id) < 0 || int(stmt_id) >= p.a.nodes.len {
 		return none
 	}

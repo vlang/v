@@ -47,7 +47,7 @@ pub fn delete_internal(s &Context) {
 // set_error_callback sets `callback` as a function to be called if fontstash
 // encounter any errors. `uptr` can be used to pass custom userdata.
 @[inline]
-pub fn (s &Context) set_error_callback(callback fn (voidptr, int, int), uptr voidptr) {
+pub fn (s &Context) set_error_callback(callback fn (voidptr, i32, i32), uptr voidptr) {
 	C.fonsSetErrorCallback(s, callback, uptr)
 }
 
@@ -55,10 +55,10 @@ pub fn (s &Context) set_error_callback(callback fn (voidptr, int, int), uptr voi
 // the font is rendered to.
 @[inline]
 pub fn (s &Context) get_atlas_size() (int, int) {
-	mut width := 0
-	mut height := 0
+	mut width := i32(0)
+	mut height := i32(0)
 	C.fonsGetAtlasSize(s, &width, &height)
-	return width, height
+	return int(width), int(height)
 }
 
 // expand_atlas expands the font texture atlas size to `width` x `height`.
@@ -276,7 +276,14 @@ pub fn (s &Context) text_iter_next(iter &C.FONStextIter, quad &C.FONSquad) int {
 // `width` and `height` is assigned the size of the texture dimensions.
 @[inline]
 pub fn (s &Context) get_texture_data(width &int, height &int) &u8 {
-	return &u8(C.fonsGetTextureData(s, width, height))
+	mut c_width := i32(unsafe { *width })
+	mut c_height := i32(unsafe { *height })
+	data := C.fonsGetTextureData(s, &c_width, &c_height)
+	unsafe {
+		*width = int(c_width)
+		*height = int(c_height)
+	}
+	return &u8(data)
 }
 
 // validate_texture fills the `dirty` argument with the pixel dimensions
@@ -287,7 +294,19 @@ pub fn (s &Context) get_texture_data(width &int, height &int) &u8 {
 // The function returns `1` if the texture has a dirty rectangle, `0` otherwise.
 @[inline]
 pub fn (s &Context) validate_texture(dirty &int) int {
-	return C.fonsValidateTexture(s, dirty)
+	mut c_dirty := [4]i32{}
+	unsafe {
+		for i in 0 .. 4 {
+			c_dirty[i] = i32(dirty[i])
+		}
+	}
+	result := C.fonsValidateTexture(s, &c_dirty[0])
+	unsafe {
+		for i in 0 .. 4 {
+			dirty[i] = int(c_dirty[i])
+		}
+	}
+	return result
 }
 
 // draw_debug draws the stash texture for debugging.

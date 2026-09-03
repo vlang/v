@@ -6,7 +6,8 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'vlib/v3/**'
+      # vlib/v3/** is intentionally NOT ignored: V3 is the default compiler on
+      # Linux, so changes to it must run this suite (with the fallback disabled).
       - '**.md'
       - '**.yml'
       - '!**/linux_ci.yml'
@@ -14,7 +15,8 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
-      - 'vlib/v3/**'
+      # vlib/v3/** is intentionally NOT ignored: V3 is the default compiler on
+      # Linux, so changes to it must run this suite (with the fallback disabled).
       - '**.md'
       - '**.yml'
       - '!**/linux_ci.yml'
@@ -34,11 +36,33 @@ jobs:
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+      # V3 is the default compiler on Linux; disable the V3->V1 fallback for every
+      # eligible V3 build so a regression fails CI directly. The `.vsh` runner is
+      # intentionally compiled by V1; the canary below verifies V3 dispatch itself.
+      V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
+        # `make` runs bootstrap helpers before the V3 canary: detect_tcc.v may need the
+        # compatibility fallback, while register_all.vsh intentionally uses V1. Clear the
+        # guard for this bootstrap step; later eligible builds and the canary retain it.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 0
         run: make -j4 && ./v symlink
+      - name: Assert V3 is the default compiler (fail if V1 is silently used)
+        run: |
+          set -uo pipefail
+          # A monumental default-compiler change should be provable, not assumed:
+          # this canary fails loudly if V3 is NOT actually dispatched on Linux
+          # (i.e. the build silently used V1), or if V3 silently fell back to V1.
+          printf 'fn main() { println(6 * 7) }\n' > "$RUNNER_TEMP/v3_canary.v"
+          V_MACOS_V3_NO_FALLBACK=1 ./v -v run "$RUNNER_TEMP/v3_canary.v" > "$RUNNER_TEMP/v3_canary.out" 2>&1 || true
+          cat "$RUNNER_TEMP/v3_canary.out"
+          grep -q 'V3 compiler in process' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::V3 was NOT dispatched on Linux — the program was compiled by V1, so the default-compiler change is a no-op'; exit 1; }
+          grep -qx '42' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::the V3-compiled canary did not build/run correctly'; exit 1; }
+          if grep -qiE 'retrying with .-old-compiler|compatibility fallback|used the stable compiler' "$RUNNER_TEMP/v3_canary.out"; then echo '::error::V3 silently fell back to V1'; exit 1; fi
+          echo 'OK: V3 compiled and ran this program in-process on Linux, with the fallback disabled'
       - name: Pkg-config regression (TCC dynamic isolation)
         run: ./v -cc tcc -no-retry-compilation test vlib/v/checker/pkgconfig_static_mode_test.v
       - name: Build v with -prealloc
@@ -62,6 +86,11 @@ jobs:
       - name: Self tests
         run: v run ci/linux_ci.vsh self_tests_tcc
       - name: Build examples
+        # The examples corpus includes deliberate inline-assembly compatibility
+        # cases, so exercise the documented V3-to-V1 fallback in this lane. The
+        # canary and dedicated V3 suites above remain strict.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 0
         run: v run ci/linux_ci.vsh build_examples_tcc
       - name: Run the submodule example, using a relative path
         run: v run ci/linux_ci.vsh run_submodule_example_tcc
@@ -95,11 +124,30 @@ jobs:
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+      # V3 is the default compiler on Linux; disable the V3->V1 fallback for every
+      # eligible V3 build so a regression fails CI directly. The `.vsh` runner is
+      # intentionally compiled by V1; the canary below verifies V3 dispatch itself.
+      V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
+        # `make` runs bootstrap helpers before the V3 canary: detect_tcc.v may need the
+        # compatibility fallback, while register_all.vsh intentionally uses V1. Clear the
+        # guard for this bootstrap step; later eligible builds and the canary retain it.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 0
         run: make -j4 && ./v symlink
+      - name: Assert V3 is the default compiler (fail if V1 is silently used)
+        run: |
+          set -uo pipefail
+          printf 'fn main() { println(6 * 7) }\n' > "$RUNNER_TEMP/v3_canary.v"
+          V_MACOS_V3_NO_FALLBACK=1 ./v -v run "$RUNNER_TEMP/v3_canary.v" > "$RUNNER_TEMP/v3_canary.out" 2>&1 || true
+          cat "$RUNNER_TEMP/v3_canary.out"
+          grep -q 'V3 compiler in process' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::V3 was NOT dispatched on Linux — the program was compiled by V1, so the default-compiler change is a no-op'; exit 1; }
+          grep -qx '42' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::the V3-compiled canary did not build/run correctly'; exit 1; }
+          if grep -qiE 'retrying with .-old-compiler|compatibility fallback|used the stable compiler' "$RUNNER_TEMP/v3_canary.out"; then echo '::error::V3 silently fell back to V1'; exit 1; fi
+          echo 'OK: V3 compiled and ran this program in-process on Linux, with the fallback disabled'
       - name: Pkg-config regressions (GCC)
         run: |
           set -euo pipefail
@@ -442,6 +490,11 @@ jobs:
           EOF
           chmod +x "$RUNNER_TEMP/multiwindow_weston_command.sh"
       - name: Multiwindow portable and mock regressions
+        # These regressions intentionally cover compatibility paths that V3 does not
+        # support yet. Keep the direct canary and ordinary compiler suite strict, while
+        # allowing this lane to verify that the stable-compiler fallback still works.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 0
         run: |
           set -euo pipefail
 
@@ -483,6 +536,7 @@ jobs:
               /tmp/gg_multiwindow_default
       - name: Multiwindow X11 native regressions
         env:
+          V_MACOS_V3_NO_FALLBACK: 0
           VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
           VGG_MULTIWINDOW_RUNTIME_BACKEND: x11
           VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: x11
@@ -532,6 +586,7 @@ jobs:
             /tmp/gg_multiwindow_x11
       - name: Multiwindow Wayland native regressions
         env:
+          V_MACOS_V3_NO_FALLBACK: 0
           VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
           VGG_MULTIWINDOW_RUNTIME_BACKEND: wayland
           VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: wayland
@@ -564,7 +619,7 @@ jobs:
           for test in "${tests[@]}"; do
             "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
               "$RUNNER_TEMP/multiwindow_weston_command.sh" \
-              ./v -cc gcc -d gg_multiwindow -d sokol_wayland test "$test"
+              ./v -no-memory-limit -cc gcc -d gg_multiwindow -d sokol_wayland test "$test"
           done
 
           "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
@@ -597,6 +652,11 @@ jobs:
       - name: Self tests (-cstrict)
         run: v run ci/linux_ci.vsh self_tests_cstrict_gcc
       - name: Build examples
+        # The examples corpus includes deliberate inline-assembly compatibility
+        # cases, so exercise the documented V3-to-V1 fallback in this lane. The
+        # canary and dedicated V3 suites above remain strict.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 0
         run: v run ci/linux_ci.vsh build_examples_gcc
       - name: Build tetris with -autofree
         run: v run ci/linux_ci.vsh build_tetris_autofree_gcc
@@ -621,11 +681,30 @@ jobs:
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+      # V3 is the default compiler on Linux; disable the V3->V1 fallback for every
+      # eligible V3 build so a regression fails CI directly. The `.vsh` runner is
+      # intentionally compiled by V1; the canary below verifies V3 dispatch itself.
+      V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
+        # `make` runs bootstrap helpers before the V3 canary: detect_tcc.v may need the
+        # compatibility fallback, while register_all.vsh intentionally uses V1. Clear the
+        # guard for this bootstrap step; later eligible builds and the canary retain it.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 0
         run: make -j4 && ./v symlink
+      - name: Assert V3 is the default compiler (fail if V1 is silently used)
+        run: |
+          set -uo pipefail
+          printf 'fn main() { println(6 * 7) }\n' > "$RUNNER_TEMP/v3_canary.v"
+          V_MACOS_V3_NO_FALLBACK=1 ./v -v run "$RUNNER_TEMP/v3_canary.v" > "$RUNNER_TEMP/v3_canary.out" 2>&1 || true
+          cat "$RUNNER_TEMP/v3_canary.out"
+          grep -q 'V3 compiler in process' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::V3 was NOT dispatched on Linux — the program was compiled by V1, so the default-compiler change is a no-op'; exit 1; }
+          grep -qx '42' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::the V3-compiled canary did not build/run correctly'; exit 1; }
+          if grep -qiE 'retrying with .-old-compiler|compatibility fallback|used the stable compiler' "$RUNNER_TEMP/v3_canary.out"; then echo '::error::V3 silently fell back to V1'; exit 1; fi
+          echo 'OK: V3 compiled and ran this program in-process on Linux, with the fallback disabled'
       - name: Pkg-config regressions (Clang)
         run: |
           set -euo pipefail
@@ -662,8 +741,520 @@ jobs:
       - name: Self tests (-cstrict)
         run: v run ci/linux_ci.vsh self_tests_cstrict_clang
       - name: Build examples
+        # The examples corpus includes deliberate inline-assembly compatibility
+        # cases, so exercise the documented V3-to-V1 fallback in this lane. The
+        # canary and dedicated V3 suites above remain strict.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 0
         run: v run ci/linux_ci.vsh build_examples_clang
       - name: Build examples with -autofree
         run: v run ci/linux_ci.vsh build_examples_autofree_clang
       - name: Build modules
         run: v run ci/linux_ci.vsh build_modules_clang
+
+  package2-linux:
+    name: Linux ${{ matrix.compiler }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            vflags: '-cc gcc'
+            dependency_target: install_dependencies_for_examples_and_tools_gcc
+          - compiler: clang
+            vflags: '-cc clang'
+            dependency_target: install_dependencies_for_examples_and_tools_clang
+          - compiler: tcc
+            vflags: '-cc tcc -no-retry-compilation'
+            dependency_target: install_dependencies_for_examples_and_tools_tcc
+    runs-on: ubuntu-24.04
+    timeout-minutes: 121
+    env:
+      VFLAGS: ${{ matrix.vflags }}
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/cache-apt-packages-action
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: Install Package 2 native dependencies
+        run: |
+          ./v run ci/linux_ci.vsh ${{ matrix.dependency_target }}
+          ./v retry -- sudo apt install --quiet -y weston
+      - name: Prepare multiwindow process-tree watchdog
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/multiwindow_ci_watchdog.v" <<'EOF'
+          module main
+
+          import gg.testdata.multiwindow_probe_watchdog
+          import os
+          import time
+
+          fn main() {
+              run_ci_watchdog() or {
+                  eprintln(err.msg())
+                  exit(1)
+              }
+          }
+
+          fn run_ci_watchdog() ! {
+              if os.args.len < 4 {
+                  return error('usage: multiwindow_ci_watchdog timeout-seconds expected-final-line executable [args...]')
+              }
+              timeout_seconds := os.args[1].int()
+              if timeout_seconds <= 0 {
+                  return error('multiwindow CI watchdog timeout must be positive')
+              }
+              expected_final_line := os.args[2]
+              gate_path := os.join_path(os.temp_dir(), 'multiwindow_ci_gate_${os.getpid()}_${time.now().unix_nano()}')
+              defer {
+                  os.rm(gate_path) or {}
+              }
+              result := multiwindow_probe_watchdog.run(
+                  executable: os.args[3]
+                  args:       os.args[4..]
+                  timeout:    timeout_seconds * time.second
+                  start_file: gate_path
+              )!
+              if result.stdout != '' {
+                  print(result.stdout)
+              }
+              if result.stderr != '' {
+                  eprint(result.stderr)
+              }
+              if result.timed_out {
+                  return error('multiwindow CI child timed out after ${timeout_seconds} seconds')
+              }
+              if !result.reaped {
+                  return error('multiwindow CI child leader was not reaped')
+              }
+              if !result.confinement_empty {
+                  return error('multiwindow CI child process confinement is not empty')
+              }
+              if result.forced_cleanup {
+                  return error('multiwindow CI child required forced cleanup')
+              }
+              if result.exit_code != 0 {
+                  return error('multiwindow CI child exited with ${result.exit_code}')
+              }
+              if expected_final_line == '-' {
+                  return
+              }
+              mut actual_final_line := ''
+              for line in result.stdout.split_into_lines() {
+                  if line.trim_space() != '' {
+                      actual_final_line = line.trim_space()
+                  }
+              }
+              if actual_final_line != expected_final_line {
+                  return error('multiwindow CI final record mismatch: expected `${expected_final_line}`, got `${actual_final_line}`')
+              }
+          }
+          EOF
+          ./v -cc "${{ matrix.compiler }}" -o "$RUNNER_TEMP/multiwindow_ci_watchdog" \
+            "$RUNNER_TEMP/multiwindow_ci_watchdog.v"
+
+          cat > "$RUNNER_TEMP/multiwindow_x11_command.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          gate_path="${V_MULTIWINDOW_PROBE_WATCHDOG_GATE:?missing watchdog start gate}"
+          for _ in {1..400}; do
+            if [ -f "$gate_path" ]; then
+              break
+            fi
+            sleep 0.01
+          done
+          if [ ! -f "$gate_path" ]; then
+            echo "parent watchdog did not release $gate_path" >&2
+            exit 1
+          fi
+
+          runtime_dir="$(mktemp -d)"
+          xvfb_pid=''
+          xvfb_log="$runtime_dir/xvfb.log"
+          display_file="$runtime_dir/xvfb-display"
+          cleanup_done=0
+
+          stop_xvfb() {
+            local pid="$1"
+            if [ -z "$pid" ]; then
+              return 0
+            fi
+            if kill -0 "$pid" 2>/dev/null; then
+              kill -TERM "$pid" 2>/dev/null || true
+              for _ in {1..500}; do
+                if ! kill -0 "$pid" 2>/dev/null; then
+                  break
+                fi
+                sleep 0.01
+              done
+            fi
+            if kill -0 "$pid" 2>/dev/null; then
+              kill -KILL "$pid" 2>/dev/null || true
+            fi
+            wait "$pid" 2>/dev/null || true
+            if kill -0 "$pid" 2>/dev/null; then
+              echo "Xvfb process $pid remains alive after cleanup" >&2
+              return 1
+            fi
+          }
+
+          cleanup_x11() {
+            local status="$1"
+            trap - EXIT INT TERM
+            if [ "$cleanup_done" -eq 1 ]; then
+              return 0
+            fi
+            cleanup_done=1
+            local cleanup_failed=0
+            stop_xvfb "$xvfb_pid" || cleanup_failed=1
+            if [ "$status" -ne 0 ] || [ "$cleanup_failed" -ne 0 ]; then
+              echo '----- Xvfb log -----' >&2
+              cat "$xvfb_log" >&2 || true
+            fi
+            if ! rm -rf "$runtime_dir"; then
+              cleanup_failed=1
+            fi
+            return "$cleanup_failed"
+          }
+
+          on_exit() {
+            local status="$?"
+            local cleanup_status=0
+            cleanup_x11 "$status" || cleanup_status=$?
+            if [ "$status" -eq 0 ] && [ "$cleanup_status" -ne 0 ]; then
+              status="$cleanup_status"
+            fi
+            exit "$status"
+          }
+
+          on_int() {
+            cleanup_x11 130 || true
+            exit 130
+          }
+
+          on_term() {
+            cleanup_x11 143 || true
+            exit 143
+          }
+
+          trap on_exit EXIT
+          trap on_int INT
+          trap on_term TERM
+
+          chmod 700 "$runtime_dir"
+          Xvfb -displayfd 1 -screen 0 1280x1024x24 -nolisten tcp -noreset >"$display_file" 2>"$xvfb_log" &
+          xvfb_pid=$!
+
+          display_ready=0
+          x_display=''
+          for _ in {1..1000}; do
+            if [ -s "$display_file" ]; then
+              display_number="$(tr -d '\r\n' <"$display_file")"
+              case "$display_number" in
+                ''|*[!0-9]*) ;;
+                *)
+                  x_display=":$display_number"
+                  display_ready=1
+                  break
+                  ;;
+              esac
+            fi
+            if ! kill -0 "$xvfb_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 0.01
+          done
+          if [ "$display_ready" -ne 1 ]; then
+            echo 'Xvfb did not publish a display number' >&2
+            exit 1
+          fi
+
+          set +e
+          DISPLAY="$x_display" "$@"
+          command_status=$?
+          set -e
+          if ! kill -0 "$xvfb_pid" 2>/dev/null; then
+            echo 'Xvfb exited before the X11 command completed' >&2
+            if [ "$command_status" -eq 0 ]; then
+              command_status=1
+            fi
+          fi
+          exit "$command_status"
+          EOF
+          chmod +x "$RUNNER_TEMP/multiwindow_x11_command.sh"
+
+          cat > "$RUNNER_TEMP/multiwindow_weston_command.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          gate_path="${V_MULTIWINDOW_PROBE_WATCHDOG_GATE:?missing watchdog start gate}"
+          for _ in {1..400}; do
+            if [ -f "$gate_path" ]; then
+              break
+            fi
+            sleep 0.01
+          done
+          if [ ! -f "$gate_path" ]; then
+            echo "parent watchdog did not release $gate_path" >&2
+            exit 1
+          fi
+
+          runtime_dir="$(mktemp -d)"
+          xvfb_pid=''
+          weston_pid=''
+          xvfb_log="$runtime_dir/xvfb.log"
+          weston_log="$runtime_dir/weston.log"
+          display_file="$runtime_dir/xvfb-display"
+          wayland_display=wayland-multiwindow-ci
+
+          stop_child() {
+            local pid="$1"
+            if [ -z "$pid" ]; then
+              return
+            fi
+            if kill -0 "$pid" 2>/dev/null; then
+              kill -TERM "$pid" 2>/dev/null || true
+              for _ in {1..500}; do
+                if ! kill -0 "$pid" 2>/dev/null; then
+                  break
+                fi
+                sleep 0.01
+              done
+            fi
+            if kill -0 "$pid" 2>/dev/null; then
+              kill -KILL "$pid" 2>/dev/null || true
+            fi
+            wait "$pid" 2>/dev/null || true
+          }
+
+          cleanup_display_servers() {
+            local status="$1"
+            trap - EXIT INT TERM
+            stop_child "$weston_pid"
+            stop_child "$xvfb_pid"
+            if [ "$status" -ne 0 ]; then
+              echo '----- Xvfb log -----' >&2
+              cat "$xvfb_log" >&2 || true
+              echo '----- Weston log -----' >&2
+              cat "$weston_log" >&2 || true
+            fi
+            rm -rf "$runtime_dir" || true
+            exit "$status"
+          }
+          trap 'cleanup_display_servers $?' EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+
+          chmod 700 "$runtime_dir"
+          Xvfb -displayfd 1 -screen 0 1280x1024x24 >"$display_file" 2>"$xvfb_log" &
+          xvfb_pid=$!
+
+          display_ready=0
+          x_display=''
+          for _ in {1..1000}; do
+            if [ -s "$display_file" ]; then
+              display_number="$(tr -d '\r\n' <"$display_file")"
+              case "$display_number" in
+                ''|*[!0-9]*) ;;
+                *)
+                  x_display=":$display_number"
+                  display_ready=1
+                  break
+                  ;;
+              esac
+            fi
+            if ! kill -0 "$xvfb_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 0.01
+          done
+          if [ "$display_ready" -ne 1 ]; then
+            echo 'Xvfb did not publish a display number' >&2
+            exit 1
+          fi
+
+          XDG_RUNTIME_DIR="$runtime_dir" DISPLAY="$x_display" LIBGL_ALWAYS_SOFTWARE=true \
+            weston --backend=x11-backend.so --renderer=gl \
+              --socket="$wayland_display" --idle-time=0 >"$weston_log" 2>&1 &
+          weston_pid=$!
+
+          ready=0
+          for _ in {1..1000}; do
+            if [ -S "$runtime_dir/$wayland_display" ]; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$weston_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 0.01
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Weston X11 did not publish $runtime_dir/$wayland_display" >&2
+            exit 1
+          fi
+
+          env -u DISPLAY \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            WAYLAND_DISPLAY="$wayland_display" \
+            XDG_SESSION_TYPE=wayland \
+            LIBGL_ALWAYS_SOFTWARE=true \
+            "$@"
+          EOF
+          chmod +x "$RUNNER_TEMP/multiwindow_weston_command.sh"
+      - name: Multiwindow portable and mock regressions
+        run: |
+          set -euo pipefail
+
+          compiler="${{ matrix.compiler }}"
+          env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+            ./v -cc "$compiler" test vlib/gg/legacy_import_multiwindow_isolation_test.v
+
+          "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
+            env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+            ./v -cc "$compiler" test vlib/gg/multiwindow_services_contract_test.v
+
+          tests=(
+            vlib/x/multiwindow/event_sequence_exhaustion_test.v
+            vlib/x/multiwindow/event_terminal_delivery_test.v
+            vlib/x/multiwindow/internal_fault_matrix_test.v
+            vlib/x/multiwindow/multiwindow_test.v
+            vlib/x/multiwindow/native_operation_proof_test.v
+            vlib/x/multiwindow/render_scheduler_test.v
+            vlib/x/multiwindow/render_target_lease_test.v
+            vlib/x/multiwindow/service_mock_test.v
+            vlib/x/multiwindow/teardown_contract_test.v
+            vlib/gg/multiwindow_api_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_buffer_cleanup_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_fault_matrix_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_runtime_contract_test.v
+            vlib/gg/multiwindow_services_d_gg_multiwindow_test.v
+            vlib/gg/frame_pacing_test.v
+            vlib/gg/draw_fns_api_test.v
+            vlib/gg/draw_rect_empty_test.v
+          )
+          for test in "${tests[@]}"; do
+            "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
+              env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+              ./v -cc "$compiler" -d gg_multiwindow test "$test"
+          done
+
+          ./v -cc "$compiler" -d gg_multiwindow \
+            -o "/tmp/gg_multiwindow_default_$compiler" examples/gg/multiwindow.v
+          ./v -cc "$compiler" -d gg_multiwindow \
+            -o "/tmp/gg_multiwindow_render_runtime_default_$compiler" \
+            examples/gg/multiwindow_render_runtime.v
+
+          env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+            VGG_MULTIWINDOW_EXAMPLE_UNATTENDED=mock \
+            "$RUNNER_TEMP/multiwindow_ci_watchdog" 60 \
+              '{"example":"multiwindow","status":"PASS","cleanup":"complete"}' \
+              "/tmp/gg_multiwindow_default_$compiler"
+      - name: Multiwindow X11 native regressions
+        env:
+          VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
+          VGG_MULTIWINDOW_RUNTIME_BACKEND: x11
+          VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: x11
+          V_MULTIWINDOW_PROBE_BACKEND: x11
+        run: |
+          set -euo pipefail
+
+          compiler="${{ matrix.compiler }}"
+          ./v -cc "$compiler" -d gg_multiwindow -d x_multiwindow_x11 \
+            -o "/tmp/gg_multiwindow_x11_$compiler" examples/gg/multiwindow.v
+          ./v -cc "$compiler" -d gg_multiwindow -d x_multiwindow_x11 \
+            -o "/tmp/gg_multiwindow_render_runtime_x11_$compiler" \
+            examples/gg/multiwindow_render_runtime.v
+
+          tests=(
+            vlib/x/multiwindow/event_sequence_exhaustion_test.v
+            vlib/x/multiwindow/event_terminal_delivery_test.v
+            vlib/x/multiwindow/internal_fault_matrix_test.v
+            vlib/x/multiwindow/multiwindow_test.v
+            vlib/x/multiwindow/native_operation_proof_test.v
+            vlib/x/multiwindow/render_scheduler_test.v
+            vlib/x/multiwindow/render_target_lease_test.v
+            vlib/x/multiwindow/service_native_linux_test.v
+            vlib/x/multiwindow/teardown_contract_test.v
+            vlib/gg/multiwindow_api_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_buffer_cleanup_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_fault_matrix_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_runtime_contract_test.v
+            vlib/gg/frame_pacing_test.v
+            vlib/gg/draw_fns_api_test.v
+            vlib/gg/draw_rect_empty_test.v
+          )
+          for test in "${tests[@]}"; do
+            "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
+              "$RUNNER_TEMP/multiwindow_x11_command.sh" \
+              env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true \
+              ./v -cc "$compiler" -d gg_multiwindow -d x_multiwindow_x11 test "$test"
+          done
+
+          "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
+            '{"example":"multiwindow_render_runtime","status":"PASS","cleanup":"complete"}' \
+            "$RUNNER_TEMP/multiwindow_x11_command.sh" \
+            env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true \
+            "/tmp/gg_multiwindow_render_runtime_x11_$compiler"
+
+          "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
+            '{"example":"multiwindow","status":"PASS","cleanup":"complete"}' \
+            "$RUNNER_TEMP/multiwindow_x11_command.sh" \
+            env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true \
+            "/tmp/gg_multiwindow_x11_$compiler"
+      - name: Multiwindow Wayland native regressions
+        env:
+          VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
+          VGG_MULTIWINDOW_RUNTIME_BACKEND: wayland
+          VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: wayland
+          V_MULTIWINDOW_PROBE_BACKEND: wayland
+        run: |
+          set -euo pipefail
+
+          compiler="${{ matrix.compiler }}"
+          ./v -cc "$compiler" -d gg_multiwindow -d sokol_wayland \
+            -o "/tmp/gg_multiwindow_wayland_$compiler" examples/gg/multiwindow.v
+          ./v -cc "$compiler" -d gg_multiwindow -d sokol_wayland \
+            -o "/tmp/gg_multiwindow_render_runtime_wayland_$compiler" \
+            examples/gg/multiwindow_render_runtime.v
+
+          tests=(
+            vlib/x/multiwindow/event_sequence_exhaustion_test.v
+            vlib/x/multiwindow/event_terminal_delivery_test.v
+            vlib/x/multiwindow/internal_fault_matrix_test.v
+            vlib/x/multiwindow/multiwindow_test.v
+            vlib/x/multiwindow/native_operation_proof_test.v
+            vlib/x/multiwindow/render_scheduler_test.v
+            vlib/x/multiwindow/render_target_lease_test.v
+            vlib/x/multiwindow/service_native_wayland_test.v
+            vlib/x/multiwindow/teardown_contract_test.v
+            vlib/gg/multiwindow_api_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_buffer_cleanup_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_fault_matrix_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_runtime_contract_test.v
+            vlib/gg/multiwindow_wayland_services_d_gg_multiwindow_test.v
+            vlib/gg/frame_pacing_test.v
+            vlib/gg/draw_fns_api_test.v
+            vlib/gg/draw_rect_empty_test.v
+          )
+          for test in "${tests[@]}"; do
+            "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
+              "$RUNNER_TEMP/multiwindow_weston_command.sh" \
+              ./v -no-memory-limit -cc "$compiler" -d gg_multiwindow -d sokol_wayland test "$test"
+          done
+
+          "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
+            '{"example":"multiwindow_render_runtime","status":"PASS","cleanup":"complete"}' \
+            "$RUNNER_TEMP/multiwindow_weston_command.sh" \
+            "/tmp/gg_multiwindow_render_runtime_wayland_$compiler"
+
+          "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
+            '{"example":"multiwindow","status":"PASS","cleanup":"complete"}' \
+            "$RUNNER_TEMP/multiwindow_weston_command.sh" \
+            "/tmp/gg_multiwindow_wayland_$compiler"

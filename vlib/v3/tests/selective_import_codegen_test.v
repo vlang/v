@@ -18,7 +18,9 @@ fn selective_import_setup_v3_cache() {
 fn selective_import_build_v3() string {
 	selective_import_setup_v3_cache()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_selective_import_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${selective_import_vexe} -gc none -path "${selective_import_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${selective_import_v3_src}')
 	assert build.exit_code == 0, build.output
@@ -511,12 +513,12 @@ pub:
 '
 	})
 	assert output == '10'
-	assert generated.contains('geometry__Point worker__make_point_T_v_int(int x)'), generated
-	assert generated.contains('int worker__take_point_T_v_int(geometry__Point p, int x)'), generated
-	assert !generated.contains('\nPoint worker__make_point_T_v_int(int x)'), generated
-	assert !generated.contains('\npixels__Point worker__make_point_T_v_int(int x)'), generated
-	assert !generated.contains('\nint worker__take_point_T_v_int(Point p, int x)'), generated
-	assert !generated.contains('\nint worker__take_point_T_v_int(pixels__Point p, int x)'), generated
+	assert generated.contains('geometry__Point worker__make_point_T_v_int(i64 x)'), generated
+	assert generated.contains('i64 worker__take_point_T_v_int(geometry__Point p, i64 x)'), generated
+	assert !generated.contains('\nPoint worker__make_point_T_v_int(i64 x)'), generated
+	assert !generated.contains('\npixels__Point worker__make_point_T_v_int(i64 x)'), generated
+	assert !generated.contains('\ni64 worker__take_point_T_v_int(Point p, i64 x)'), generated
+	assert !generated.contains('\ni64 worker__take_point_T_v_int(pixels__Point p, i64 x)'), generated
 }
 
 fn test_selective_import_symbol_can_be_used_as_function_value() {
@@ -533,7 +535,7 @@ fn main() {
 	assert output == '5'
 	assert generated.contains('mymodules__add_xy'), generated
 	assert generated.contains('f(2, 3)'), generated
-	assert !generated.contains('int f = mymodules__add_xy'), generated
+	assert !generated.contains('i64 f = mymodules__add_xy'), generated
 }
 
 fn test_selective_import_function_value_roots_exact_symbol_with_imported_homonym() {
@@ -681,7 +683,7 @@ fn main() {
 }
 ')
 	assert output == '6'
-	assert generated.contains('int add_xy(int x, int y)'), generated
+	assert generated.contains('i64 add_xy(i64 x, i64 y)'), generated
 	assert generated.contains('int__str(add_xy(2, 3))'), generated
 	assert !generated.contains('int__str(mymodules__add_xy(2, 3))'), generated
 }
@@ -710,10 +712,10 @@ pub fn value() string {
 '
 	})
 	assert output == '7\nfoo'
-	assert generated.contains('int value(void);'), generated
+	assert generated.contains('i64 value(void);'), generated
 	assert generated.contains('string foo__value(void);'), generated
 	assert generated.contains('string foo__value(void) {'), generated
-	assert !generated.contains('int foo__value(void);'), generated
+	assert !generated.contains('i64 foo__value(void);'), generated
 }
 
 fn test_module_local_error_method_signature_uses_module_key() {
@@ -904,9 +906,9 @@ fn main() {
 ',
 		extra)
 	assert output == '7'
-	assert generated.contains('int box__Box_int__combine(box__Box_int b, types__Thing thing)'), generated
-	assert !generated.contains('int box__Box_int__combine(box__Box_int b, box__Thing thing)'), generated
-	assert !generated.contains('int box__Box_int__combine(box__Box_int b, other__Thing thing)'), generated
+	assert generated.contains('i64 box__Box_int__combine(box__Box_int b, types__Thing thing)'), generated
+	assert !generated.contains('i64 box__Box_int__combine(box__Box_int b, box__Thing thing)'), generated
+	assert !generated.contains('i64 box__Box_int__combine(box__Box_int b, other__Thing thing)'), generated
 }
 
 fn test_selective_import_resolves_alias_collision() {
@@ -1036,8 +1038,8 @@ fn main() {
 ',
 		selective_import_type_collision_modules())
 	assert output == '3'
-	assert generated.contains('int m = 1 | 2;'), generated
-	assert !generated.contains('int m = 1 | 4;'), generated
+	assert generated.contains('i64 m = 1 | 2;'), generated
+	assert !generated.contains('i64 m = 1 | 4;'), generated
 	assert !generated.contains('Perm.a'), generated
 }
 

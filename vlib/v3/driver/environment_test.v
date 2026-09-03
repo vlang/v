@@ -1,6 +1,7 @@
 module driver
 
 import os
+import crypto.sha256
 import v3.ansi
 import v3.flat
 import v3.parser
@@ -78,6 +79,147 @@ fn test_v3_default_diagnostic_color_uses_environment() {
 	os.setenv(name, 'always', true)
 	apply_v3_default_diagnostic_color()
 	assert ansi.red('error') == '\x1b[31merror\x1b[39m'
+}
+
+fn test_macos_v3_fallback_payload_validation() {
+	assert macos_v3_fallback_payload_is_valid('compiler_error\nsemantic checking')
+	assert macos_v3_fallback_payload_is_valid('compiler_error')
+	assert macos_v3_fallback_payload_is_valid('inline_asm')
+	assert macos_v3_fallback_payload_is_valid('c_compilation_error')
+	assert !macos_v3_fallback_payload_is_valid('')
+	assert !macos_v3_fallback_payload_is_valid('compiler')
+	assert !macos_v3_fallback_payload_is_valid('compiler_error_partial')
+}
+
+fn test_macos_v3_fallback_report_sources_keep_parser_digests() {
+	root := os.join_path(os.temp_dir(), 'v3_fallback_source_digest_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	path := os.join_path(root, 'main.v')
+	backend_builtin_path := os.join_path(root, 'vlib', 'builtin',
+		'ownership_interface_d_v3_backend.v')
+	shared_builtin_path := os.join_path(root, 'vlib', 'builtin', 'internal.v')
+	prealloc_builtin_path := os.join_path(root, 'vlib', 'builtin', 'prealloc.c.v')
+	shared_vlib_path := os.join_path(root, 'vlib', 'os', 'shared.v')
+	os.mkdir_all(os.dir(backend_builtin_path))!
+	os.mkdir_all(os.dir(shared_vlib_path))!
+	parsed_source := 'module main\nfn main() { println(42) }\n'
+	shared_builtin_source := 'module builtin\nfn shared_builtin_input() {}\n'
+	shared_vlib_source := 'module os\nfn shared_input() {}\n'
+	os.write_file(path, parsed_source)!
+	os.write_file(backend_builtin_path, 'module builtin\nfn v3_backend_only() {}\n')!
+	os.write_file(prealloc_builtin_path, 'module builtin\nfn prealloc_only() {}\n')!
+	os.write_file(shared_builtin_path, shared_builtin_source)!
+	os.write_file(shared_vlib_path, shared_vlib_source)!
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	p.parse_into(path)
+	p.parse_into(backend_builtin_path)
+	p.parse_into(prealloc_builtin_path)
+	p.parse_into(shared_builtin_path)
+	p.parse_into(shared_vlib_path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	// Replacing the file after parsing must not change the staged digest.
+	os.write_file(path, parsed_source.replace('42', 'private_value'))!
+	cached_source := os.join_path(root, 'cached', 'module.v')
+	warmup_source := os.join_path(root, 'cached', 'warmup.v')
+	os.mkdir_all(os.dir(cached_source))!
+	cached_source_text := 'module cached\npub fn cached_input() {}\n'
+	warmup_source_text := 'module warmup\npub fn unused_warmup() {}\n'
+	os.write_file(cached_source, cached_source_text)!
+	os.write_file(warmup_source, warmup_source_text)!
+	sources := macos_v3_fallback_report_sources(p.a, root, {
+		os.real_path(cached_source): sha256.hexhash(cached_source_text)
+		os.real_path(warmup_source): sha256.hexhash(warmup_source_text)
+	}, {
+		os.real_path(warmup_source): true
+	})
+	real_path := os.real_path(path)
+	assert sources[real_path] == sha256.hexhash(parsed_source)
+	assert sources[real_path] != sha256.hexhash(os.read_file(path)!)
+	// Only the opposite v3_backend compiler-support variants are excluded. Shared
+	// builtin and other bundled vlib inputs remain protected by their parser digests.
+	assert os.real_path(backend_builtin_path) !in sources
+	assert os.real_path(prealloc_builtin_path) !in sources
+	assert sources[os.real_path(shared_builtin_path)] == sha256.hexhash(shared_builtin_source)
+	assert sources[os.real_path(shared_vlib_path)] == sha256.hexhash(shared_vlib_source)
+	assert sources[os.real_path(cached_source)] == sha256.hexhash(cached_source_text)
+	assert os.real_path(warmup_source) !in sources
+	report_dir := os.join_path(root, 'report')
+	assert stage_macos_v3_fallback_source_digests(report_dir, sources)
+	staged_paths := os.read_file(os.join_path(report_dir, macos_v3_c_error_v_sources_file))!
+	staged_digests :=
+		os.read_file(os.join_path(report_dir, macos_v3_c_error_v_source_digests_file))!
+	assert staged_paths == [os.real_path(cached_source), real_path, os.real_path(shared_builtin_path),
+		os.real_path(shared_vlib_path)].join('\x00')
+	assert staged_digests == [sha256.hexhash(cached_source_text),
+		sha256.hexhash(parsed_source), sha256.hexhash(shared_builtin_source),
+		sha256.hexhash(shared_vlib_source)].join('\x00')
+}
+
+fn test_macos_v3_fallback_report_inputs_snapshot_native_dependencies() {
+	root := os.join_path(os.temp_dir(), 'v3_fallback_native_digest_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header_candidate := os.join_path(root, 'project.h')
+	source_candidate := os.join_path(root, 'project.c')
+	header_source := '#define PROJECT_VALUE 41\n'
+	native_source := '#include "project.h"\nint project_value(void) { return PROJECT_VALUE; }\n'
+	os.write_file(header_candidate, header_source)!
+	os.write_file(source_candidate, native_source)!
+	header_path := os.real_path(header_candidate)
+	source_path := os.real_path(source_candidate)
+	header_digest := sha256.hexhash(header_source)
+	source_digest := sha256.hexhash(native_source)
+	state := V3ModuleCacheState{
+		module_external_inputs:   {
+			'main': [header_path, source_path]
+		}
+		module_native_roots:      {
+			'main': [source_path]
+		}
+		external_input_digests:   {
+			header_path: header_digest
+			source_path: source_digest
+		}
+		external_inputs_ready:    true
+		external_inputs_complete: true
+	}
+	// A watcher can replace a root after traversal. The fallback manifest must retain
+	// the digest captured from the bytes that selected the original dependency tree.
+	os.write_file(header_path, '#include "late.h"\n#define PROJECT_VALUE 42\n')!
+	inputs := macos_v3_fallback_report_inputs({
+		'/project/main.v': sha256.hexhash('module main')
+	}, &state)
+	assert inputs['/project/main.v'] == sha256.hexhash('module main')
+	assert inputs[v3_fallback_native_manifest_key] == sha256.hexhash(v3_fallback_native_manifest_value)
+	assert inputs['${v3_fallback_native_input_prefix}${header_path}'] == header_digest
+	assert inputs['${v3_fallback_native_input_prefix}${source_path}'] == source_digest
+	assert inputs['${v3_fallback_native_input_prefix}${header_path}'] != sha256.hexhash(os.read_file(header_path)!)
+}
+
+fn test_v3_fallback_ignores_only_warmup_only_module_sources() {
+	hash_source := os.real_path(os.join_path(os.vtmp_dir(), 'v3_fallback_hash.v'))
+	mut state := V3ModuleCacheState{
+		module_sources:            {
+			'hash': [hash_source]
+		}
+		fallback_required_modules: map[string]bool{}
+		fallback_warmup_modules:   {
+			'hash': true
+		}
+	}
+	assert v3_fallback_ignored_warmup_source_paths(state)[hash_source]
+	// A later real/transitive import of a module first seen through the synthetic
+	// warm-up makes its source set part of the shared V3/V1 manifest again.
+	record_v3_fallback_module_use(mut state, 'hash', false)
+	assert hash_source !in v3_fallback_ignored_warmup_source_paths(state)
 }
 
 fn test_parallel_cc_external_definition_precheck_uses_active_ast_directives() {
@@ -166,6 +308,14 @@ fn test_wayland_gg_precheck_inspects_parsed_imports_in_every_user_file() {
 	assert parsed_files_import_linux_gg(a, [sapp_file])
 }
 
+fn test_linux_wayland_only_session_matches_established_compiler_detection() {
+	assert is_linux_wayland_only_session('linux', '', 'wayland-0', '')
+	assert is_linux_wayland_only_session('linux', '', '', 'Wayland')
+	assert !is_linux_wayland_only_session('linux', ':0', 'wayland-0', 'wayland')
+	assert !is_linux_wayland_only_session('macos', '', 'wayland-0', 'wayland')
+	assert !is_linux_wayland_only_session('linux', '', '', 'x11')
+}
+
 fn test_v3_run_only_cache_identity_distinguishes_patterns() {
 	assert v3_run_only_cache_identity([]) == ''
 	first := v3_run_only_cache_identity(['test_one'])
@@ -181,6 +331,91 @@ fn test_v3_effective_warns_are_errors_includes_prod() {
 	assert v3_effective_warns_are_errors(true, false)
 	assert v3_effective_warns_are_errors(false, true)
 	assert v3_effective_warns_are_errors(true, true)
+}
+
+fn test_v3_test_openssl_probe_matches_windows_ci_suppression() {
+	assert !v3_test_openssl_probe_allowed('windows-test', 'windows')
+	assert v3_test_openssl_probe_allowed('', 'windows')
+	assert v3_test_openssl_probe_allowed('linux-test', 'linux')
+}
+
+fn test_v3_test_openssl_probe_uses_version_subcommand() {
+	probe := v3_test_openssl_dependency_probe('openssl', 'openssl')
+	assert probe.command == 'openssl'
+	assert probe.args == ['version']
+	assert probe.pkgconfig_name == 'openssl'
+}
+
+fn test_v3_test_standard_dependency_probes_match_test_runner() {
+	node := v3_test_standard_dependency_probe('present_node') or { panic('missing Node probe') }
+	assert node.command == 'node'
+	assert node.args == ['--version']
+	assert node.pkgconfig_name == ''
+
+	python := v3_test_standard_dependency_probe('present_python') or {
+		panic('missing Python probe')
+	}
+	assert python.command == 'python'
+	assert python.args == ['--version']
+	assert python.pkgconfig_name == 'python3'
+
+	ruby := v3_test_standard_dependency_probe('present_ruby') or { panic('missing Ruby probe') }
+	assert ruby.command == 'ruby'
+	assert ruby.args == ['--version']
+	assert ruby.pkgconfig_name == 'ruby'
+
+	go_probe := v3_test_standard_dependency_probe('present_go') or { panic('missing Go probe') }
+	assert go_probe.command == 'go'
+	assert go_probe.args == ['version']
+	assert go_probe.pkgconfig_name == ''
+}
+
+fn test_v3_test_build_defines_populates_referenced_standard_dependencies() {
+	name := 'VBUILD_DEFINES'
+	old_value := os.getenv(name)
+	was_set := name in os.environ()
+	defer {
+		restore_driver_environment(name, old_value, was_set)
+	}
+	os.unsetenv(name)
+	for define in ['present_node', 'present_python', 'present_ruby', 'present_go'] {
+		probe := v3_test_standard_dependency_probe(define) or {
+			assert false, 'missing dependency probe for ${define}'
+			continue
+		}
+		defines := v3_test_build_defines('${define}?', [])
+		assert (define in defines) == v3_test_dependency_probe_present(probe)
+	}
+}
+
+fn test_v3_build_constraints_are_evaluated_only_for_direct_tests() {
+	root := os.join_path(os.temp_dir(), 'v3_test_constraint_routing_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	malformed_file := os.join_path(root, 'ordinary.v')
+	false_test_file := os.join_path(root, 'false_test.v')
+	os.write_file(malformed_file, '// vtest build: ((malformed\nmodule main\n')!
+	os.write_file(false_test_file, '// vtest build: windows && linux\nmodule main\n')!
+	target := pref.host_target()
+	assert !v3_direct_test_input_is_incompatible(false, malformed_file, 'c', target, 'clang',
+		false, [])
+	assert v3_direct_test_input_is_incompatible(true, false_test_file, 'c', target, 'clang', false,
+		[])
+}
+
+fn test_v3_test_sqlite_present_uses_bundled_windows_source() {
+	root := os.join_path(os.temp_dir(), 'v3_test_sqlite_present_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'thirdparty', 'sqlite'))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	assert !v3_test_sqlite_present('windows', root)
+	os.write_file(os.join_path(root, 'thirdparty', 'sqlite', 'sqlite3.c'), '')!
+	assert v3_test_sqlite_present('windows', root)
 }
 
 fn test_v3_prod_c_optimization_flags_skip_lto_for_tcc() {

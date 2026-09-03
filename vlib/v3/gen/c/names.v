@@ -30,6 +30,60 @@ fn c_name_recent_slot(name string) int {
 	return int(((u64(voidptr(name.str)) >> 4) ^ u64(name.len)) & 1023)
 }
 
+// c_name_is_pre_sanitized reports names that are already unambiguously in V's
+// module-qualified C spelling. C keywords, libc collisions and special builtin
+// rewrites never contain `__`, so these names can bypass the map-backed slow
+// path after their direct-cache miss.
+@[direct_array_access; inline]
+fn c_name_is_pre_sanitized(name string) bool {
+	mut previous_underscore := false
+	mut has_double_underscore := false
+	for i in 0 .. name.len {
+		c := name[i]
+		if (c < `a` || c > `z`) && (c < `A` || c > `Z`) && (c < `0` || c > `9`) && c != `_` {
+			return false
+		}
+		if c == `_` {
+			if previous_underscore {
+				has_double_underscore = true
+			}
+			previous_underscore = true
+		} else {
+			previous_underscore = false
+		}
+	}
+	return has_double_underscore
+}
+
+@[direct_array_access; inline]
+fn c_name_is_plain_dotted(name string) bool {
+	mut has_dot := false
+	for i in 0 .. name.len {
+		c := name[i]
+		if c == `.` {
+			has_dot = true
+			continue
+		}
+		if (c < `a` || c > `z`) && (c < `A` || c > `Z`) && (c < `0` || c > `9`) && c != `_` {
+			return false
+		}
+	}
+	return has_dot
+}
+
+@[direct_array_access; inline]
+fn c_name_is_string_literal_symbol(name string) bool {
+	if name.len <= 5 || !name.starts_with('_str_') {
+		return false
+	}
+	for i in 5 .. name.len {
+		if name[i] < `0` || name[i] > `9` {
+			return false
+		}
+	}
+	return true
+}
+
 @[inline]
 fn (c &CNameCache) recent(name string) ?string {
 	if name.len > 65535 {
@@ -56,7 +110,8 @@ fn (mut c CNameCache) remember(name string, value string) {
 }
 
 // ConstShortIndex maps a const short name to its unique primary const name
-// ('' marks an ambiguous short name); built lazily on first query.
+// ('' marks an ambiguous short name). Full generation freezes it before
+// parallel workers start; focused helpers may still build it lazily.
 @[heap]
 struct ConstShortIndex {
 mut:
@@ -229,6 +284,20 @@ fn (g &FlatGen) cname(name string) string {
 		cache.last_value = cached
 		return cached
 	}
+	if c_name_is_pre_sanitized(name) {
+		cache.last_name = name
+		cache.last_value = name
+		cache.remember(name, name)
+		return name
+	}
+	if naming.is_plain_identifier(name) && name != 'malloc' && name != 'int_str' && name != 'exit'
+		&& !c_name_is_string_literal_symbol(name) && !naming.is_reserved_word(name)
+		&& !naming.is_libc_collision(name) {
+		cache.last_name = name
+		cache.last_value = name
+		cache.remember(name, name)
+		return name
+	}
 	if cached := cache.entries[name] {
 		cache.last_name = name
 		cache.last_value = cached
@@ -248,6 +317,14 @@ fn (g &FlatGen) cname(name string) string {
 			cache.remember(name, cached)
 			return cached
 		}
+	}
+	if !name.starts_with('C.') && c_name_is_plain_dotted(name) {
+		result := naming.sanitize(name)
+		cache.entries[name] = result
+		cache.last_name = name
+		cache.last_value = result
+		cache.remember(name, result)
+		return result
 	}
 	result := naming.c_name(name)
 	cache.entries[name] = result

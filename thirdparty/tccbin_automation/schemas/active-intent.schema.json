@@ -1,0 +1,367 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "active-intent.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "intent_id",
+    "intent_type",
+    "stage",
+    "run_id",
+    "run_attempt",
+    "ordinal",
+    "input_fingerprint",
+    "resolved_inputs",
+    "expected_canonical_head",
+    "candidate_ref",
+    "generation",
+    "expected_check_sources",
+    "gate_runs",
+    "gate_trigger_refs",
+    "deadlines",
+    "infra_retry_count",
+    "source_retry_count",
+    "candidate_binding",
+    "validation_subject",
+    "previous_last_known_good",
+    "bad_provisional",
+    "rollback_diff_fingerprint",
+    "rollback_provisional"
+  ],
+  "properties": {
+    "intent_id": {"$ref": "common.schema.json#/$defs/sha256"},
+    "intent_type": {
+      "type": "string",
+      "enum": ["publish", "rollback", "adopt-current", "initial_adopt_current"]
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "intent_reserved",
+        "building",
+        "build_waiting_source",
+        "ref_unknown",
+        "candidate_bound",
+        "checks_running",
+        "checks_waiting_source",
+        "checks_green",
+        "promotion_unknown",
+        "post_checks_running",
+        "post_checks_waiting_source",
+        "completed",
+        "aborted",
+        "superseded",
+        "blocked"
+      ]
+    },
+    "run_id": {"$ref": "common.schema.json#/$defs/run_id"},
+    "run_attempt": {"type": "integer", "minimum": 1},
+    "ordinal": {"type": "integer", "minimum": 0},
+    "input_fingerprint": {"$ref": "common.schema.json#/$defs/sha256"},
+    "resolved_inputs": {"$ref": "common.schema.json#/$defs/resolved_inputs"},
+    "expected_canonical_head": {"$ref": "common.schema.json#/$defs/sha40"},
+    "candidate_ref": {
+      "type": "string",
+      "pattern": "^tccbin-candidate/((freebsd-amd64)|(linux-amd64)|(macos-amd64)|(macos-arm64)|(openbsd-amd64)|(windows-amd64))/[0-9a-f]{64}$"
+    },
+    "generation": {"$ref": "common.schema.json#/$defs/generation"},
+    "expected_check_sources": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/check_source"},
+      "allOf": [
+        {
+          "contains": {
+            "properties": {"name": {"const": "tccbin-candidate-gate"}},
+            "required": ["name"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {"name": {"const": "v-candidate-smoke"}},
+            "required": ["name"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    },
+    "gate_runs": {
+      "type": "array",
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/gate_run"}
+    },
+    "gate_trigger_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^tccbin-gate-trigger/((freebsd-amd64)|(linux-amd64)|(macos-amd64)|(macos-arm64)|(openbsd-amd64)|(windows-amd64))/[0-9a-f]{64}/[0-9a-f]{64}$"
+      }
+    },
+    "deadlines": {"$ref": "common.schema.json#/$defs/intent_deadlines"},
+    "infra_retry_count": {"type": "integer", "minimum": 0, "maximum": 1},
+    "source_retry_count": {"type": "integer", "minimum": 0},
+    "candidate_binding": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "common.schema.json#/$defs/candidate_binding"}
+      ]
+    },
+    "validation_subject": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "common.schema.json#/$defs/validation_subject"}
+      ]
+    },
+    "previous_last_known_good": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "common.schema.json#/$defs/artifact_tuple"}
+      ]
+    },
+    "bad_provisional": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "common.schema.json#/$defs/artifact_tuple"}
+      ]
+    },
+    "rollback_diff_fingerprint": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+    "rollback_provisional": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "common.schema.json#/$defs/candidate_binding"}
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"intent_type": {"enum": ["adopt-current", "initial_adopt_current"]}},
+        "required": ["intent_type"]
+      },
+      "then": {
+        "properties": {
+          "candidate_binding": {"type": "null"},
+          "validation_subject": {"$ref": "common.schema.json#/$defs/validation_subject"},
+          "stage": {
+            "not": {
+              "enum": [
+                "building",
+                "build_waiting_source",
+                "promotion_unknown",
+                "post_checks_running",
+                "post_checks_waiting_source"
+              ]
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {"validation_subject": {"type": "null"}}
+      }
+    },
+    {
+      "if": {
+        "properties": {"intent_type": {"const": "initial_adopt_current"}},
+        "required": ["intent_type"]
+      },
+      "then": {"properties": {"previous_last_known_good": {"type": "null"}}},
+      "else": {
+        "properties": {"previous_last_known_good": {"$ref": "common.schema.json#/$defs/artifact_tuple"}}
+      }
+    },
+    {
+      "if": {
+        "properties": {"intent_type": {"const": "rollback"}},
+        "required": ["intent_type"]
+      },
+      "then": {
+        "properties": {
+          "bad_provisional": {"$ref": "common.schema.json#/$defs/artifact_tuple"},
+          "rollback_diff_fingerprint": {"$ref": "common.schema.json#/$defs/sha256"}
+        }
+      },
+      "else": {
+        "properties": {
+          "bad_provisional": {"type": "null"},
+          "rollback_diff_fingerprint": {"type": "null"},
+          "rollback_provisional": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "intent_type": {"enum": ["publish", "rollback"]},
+          "stage": {
+            "enum": [
+              "candidate_bound",
+              "checks_running",
+              "checks_waiting_source",
+              "checks_green",
+              "promotion_unknown",
+              "post_checks_running",
+              "post_checks_waiting_source",
+              "completed",
+              "blocked"
+            ]
+          }
+        },
+        "required": ["intent_type", "stage"]
+      },
+      "then": {"properties": {"candidate_binding": {"$ref": "common.schema.json#/$defs/candidate_binding"}}}
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "enum": ["intent_reserved", "building", "build_waiting_source", "ref_unknown", "aborted", "superseded"]
+          }
+        },
+        "required": ["stage"]
+      },
+      "then": {"properties": {"candidate_binding": {"type": "null"}}}
+    },
+    {
+      "if": {
+        "properties": {"stage": {"enum": ["intent_reserved", "building", "build_waiting_source", "ref_unknown", "candidate_bound"]}},
+        "required": ["stage"]
+      },
+      "then": {"properties": {"gate_runs": {"maxItems": 0}}}
+    },
+    {
+      "if": {
+        "properties": {"stage": {"enum": ["checks_running", "checks_waiting_source", "aborted", "superseded"]}},
+        "required": ["stage"]
+      },
+      "then": {
+        "properties": {
+          "gate_runs": {
+            "maxItems": 2,
+            "allOf": [
+              {
+                "contains": {
+                  "properties": {"check_name": {"const": "tccbin-candidate-gate"}},
+                  "required": ["check_name"]
+                },
+                "minContains": 0,
+                "maxContains": 1
+              },
+              {
+                "contains": {
+                  "properties": {"check_name": {"const": "v-candidate-smoke"}},
+                  "required": ["check_name"]
+                },
+                "minContains": 0,
+                "maxContains": 1
+              },
+              {
+                "if": {"minItems": 2},
+                "then": {
+                  "prefixItems": [
+                    {
+                      "properties": {"check_name": {"const": "tccbin-candidate-gate"}},
+                      "required": ["check_name"]
+                    },
+                    {
+                      "properties": {"check_name": {"const": "v-candidate-smoke"}},
+                      "required": ["check_name"]
+                    }
+                  ],
+                  "items": false
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"stage": {"enum": ["checks_green", "promotion_unknown", "post_checks_running", "post_checks_waiting_source", "completed", "blocked"]}},
+        "required": ["stage"]
+      },
+      "then": {
+        "properties": {
+          "gate_runs": {
+            "minItems": 2,
+            "maxItems": 2,
+            "prefixItems": [
+              {
+                "properties": {"check_name": {"const": "tccbin-candidate-gate"}},
+                "required": ["check_name"]
+              },
+              {
+                "properties": {"check_name": {"const": "v-candidate-smoke"}},
+                "required": ["check_name"]
+              }
+            ],
+            "items": false,
+            "allOf": [
+              {
+                "contains": {
+                  "properties": {"check_name": {"const": "tccbin-candidate-gate"}},
+                  "required": ["check_name"]
+                },
+                "minContains": 1,
+                "maxContains": 1
+              },
+              {
+                "contains": {
+                  "properties": {"check_name": {"const": "v-candidate-smoke"}},
+                  "required": ["check_name"]
+                },
+                "minContains": 1,
+                "maxContains": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "intent_type": {"const": "rollback"},
+          "stage": {"enum": ["post_checks_running", "post_checks_waiting_source", "completed"]}
+        },
+        "required": ["intent_type", "stage"]
+      },
+      "then": {
+        "properties": {
+          "rollback_provisional": {"$ref": "common.schema.json#/$defs/candidate_binding"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "intent_type": {"const": "rollback"},
+          "stage": {
+            "enum": [
+              "intent_reserved",
+              "building",
+              "build_waiting_source",
+              "ref_unknown",
+              "candidate_bound",
+              "checks_running",
+              "checks_waiting_source",
+              "checks_green",
+              "promotion_unknown",
+              "aborted",
+              "superseded"
+            ]
+          }
+        },
+        "required": ["intent_type", "stage"]
+      },
+      "then": {"properties": {"rollback_provisional": {"type": "null"}}}
+    }
+  ]
+}

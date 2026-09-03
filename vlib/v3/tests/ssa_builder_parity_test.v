@@ -219,6 +219,19 @@ fn main() {
 	assert f.blocks.len > 0
 }
 
+// test_scalar_array_sort_helper_builds_for_ssa validates this v3 regression case.
+fn test_scalar_array_sort_helper_builds_for_ssa() {
+	m := build_transformed_source('scalar_array_sort_helper', '
+fn main() {
+	mut values := [3, 1, 2]
+	values.sort()
+}
+')
+	assert has_call_to(m, 'main', 'v3_array_sort_int')
+	f := find_func(m, 'v3_array_sort_int')
+	assert f.blocks.len > 1
+}
+
 // test_u8_array_bytestr_alias_builds_for_ssa validates this v3 regression case.
 fn test_u8_array_bytestr_alias_builds_for_ssa() {
 	m := build_source('u8_array_bytestr_alias', '
@@ -318,6 +331,109 @@ fn apply(f fn (int, int) int, x int, y int) int {
 		}
 	}
 	assert found_indirect
+}
+
+// test_function_alias_field_call_lowers_to_call_indirect validates this v3 regression case.
+fn test_function_alias_field_call_lowers_to_call_indirect() {
+	m := build_source('call_indirect_alias_field', '
+type Callback = fn (int, int) int
+
+struct Holder {
+	callback Callback
+}
+
+fn apply(holder Holder, x int, y int) int {
+	return holder.callback(x, y)
+}
+')
+	assert has_instr_op(m, 'apply', .call_indirect)
+}
+
+// test_embed_file_decoder_dispatch_stub_builds_for_ssa validates this v3 regression case.
+fn test_embed_file_decoder_dispatch_stub_builds_for_ssa() {
+	m := build_source('embed_file_decoder_stub', 'fn main() {}')
+	f := find_func(m, 'embed_file.Decoder.decompress')
+	assert f.blocks.len == 1
+}
+
+// test_closure_once_stub_builds_for_ssa validates this v3 regression case.
+fn test_closure_once_stub_builds_for_ssa() {
+	m := build_source('closure_once_stub', 'fn main() {}')
+	f := find_func(m, 'v_closure_init_once')
+	assert f.blocks.len == 3
+	assert has_instr_op(m, 'v_closure_init_once', .call_indirect)
+	zero_fn := find_func(m, 'v3_pthread_zero')
+	assert zero_fn.blocks.len == 1
+}
+
+// test_fixed_array_return_keeps_value_type validates this v3 regression case.
+fn test_fixed_array_return_keeps_value_type() {
+	m := build_source('fixed_array_return', '
+struct Digest {
+	bytes [32]u8
+}
+
+fn get_bytes(d &Digest) [32]u8 {
+	return d.bytes
+}
+')
+	f := find_func(m, 'get_bytes')
+	typ := m.type_store.types[f.typ]
+	assert typ.kind == .array_t
+	assert typ.len == 32
+}
+
+// test_c_environ_loads_external_global validates this v3 regression case.
+fn test_c_environ_loads_external_global() {
+	m := build_source('c_environ_external_global', '
+fn read_environ() voidptr {
+	return voidptr(C.environ)
+}
+')
+	mut found := false
+	for global in m.globals {
+		if global.name == 'environ' {
+			assert global.linkage == .external
+			found = true
+		}
+	}
+	assert found
+}
+
+// test_dereference_struct_assignment_emits_store validates this v3 regression case.
+fn test_dereference_struct_assignment_emits_store() {
+	m := build_source('dereference_struct_assignment', '
+struct Big {
+	a int
+	b int
+	c int
+}
+
+fn copy_into(dst &Big, value Big) {
+	unsafe {
+		*dst = value
+	}
+}
+')
+	f := find_func(m, 'copy_into')
+	mut struct_stores := 0
+	for block_id in f.blocks {
+		for value_id in m.blocks[block_id].instrs {
+			value := m.values[value_id]
+			if value.kind != .instruction {
+				continue
+			}
+			instr := m.instrs[value.index]
+			if instr.op != .store || instr.operands.len < 2 {
+				continue
+			}
+			src_type := m.values[instr.operands[0]].typ
+			if src_type > 0 && m.type_store.types[src_type].kind == .struct_t {
+				struct_stores++
+			}
+		}
+	}
+	assert struct_stores >= 2
 }
 
 // test_label_and_goto_lower_to_jump_blocks validates this v3 regression case.

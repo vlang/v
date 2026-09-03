@@ -196,6 +196,7 @@ pub fn (r Response) version() Version {
 		'1.0' { .v1_0 }
 		'1.1' { .v1_1 }
 		'2.0' { .v2_0 }
+		'3.0' { .v3_0 }
 		else { .unknown }
 	}
 }

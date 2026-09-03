@@ -244,7 +244,9 @@ fn test_read_handles_eof_with_unread_data() {
 }
 
 fn test_read_line_handles_eof_with_unread_data() {
-	b := rand.bytes(8)!
+	// Keep the payload delimiter-free; random bytes can contain `\n` and make
+	// read_line correctly return a shorter first line.
+	b := 'abcdefgh'.bytes()
 	data := arrays.concat(b, `\n`)
 	mut br := new_one_byte_buffered_reader(data, 16)
 	mut p := br.peek(10)!

@@ -26,7 +26,7 @@ fn comptime_decl_count(c_code string, needle string) int {
 }
 
 fn comptime_decl_struct_body(c_code string, name string) string {
-	start := c_code.index('struct ${name} {') or { return '' }
+	start := c_code.index('struct main__${name} {') or { return '' }
 	rest := c_code[start..]
 	end := rest.index('\n};') or { return rest }
 	return rest[..end]
@@ -108,18 +108,18 @@ fn test_top_level_decls_inside_active_comptime_branch_are_codegen_visible() {
 	v3_bin := comptime_decl_build_v3()
 	else_c := comptime_decl_gen_c(v3_bin, 'else_branch', false)
 	else_choice := comptime_decl_struct_body(else_c, 'Choice')
-	assert comptime_decl_count(else_c, 'struct Choice {') == 1, else_c
+	assert comptime_decl_count(else_c, 'struct main__Choice {') == 1, else_c
 	assert else_choice.contains('_dummy'), else_c
-	assert !else_choice.contains('int x;'), else_c
+	assert !else_choice.contains('i64 x;'), else_c
 
 	feature_c := comptime_decl_gen_c(v3_bin, 'feature_branch', true)
 	feature_choice := comptime_decl_struct_body(feature_c, 'Choice')
-	assert comptime_decl_count(feature_c, 'struct Choice {') == 1, feature_c
-	assert feature_choice.contains('int x;'), feature_c
+	assert comptime_decl_count(feature_c, 'struct main__Choice {') == 1, feature_c
+	assert feature_choice.contains('i64 x;'), feature_c
 	assert !feature_choice.contains('_dummy'), feature_c
 }
 
-fn test_declaration_only_top_level_comptime_block_does_not_synthesize_main() {
+fn test_declaration_only_top_level_comptime_block_synthesizes_executable_main() {
 	v3_bin := comptime_decl_build_v3()
 	c_code := comptime_decl_gen_c_source(v3_bin, 'decl_only_no_main', 'module main
 
@@ -132,7 +132,7 @@ $if some_feature ? {
 }
 ',
 		'-d some_feature')
-	assert !c_code.contains('int main('), c_code
+	assert c_code.contains('int main('), c_code
 }
 
 fn test_top_level_comptime_block_with_statement_still_synthesizes_main() {

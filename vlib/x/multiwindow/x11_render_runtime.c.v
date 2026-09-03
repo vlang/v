@@ -6,7 +6,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 
 $if gg_multiwindow ? || x_multiwindow_render ? {
 	$if linux && x_multiwindow_x11 ? {
-		fn C.v_multiwindow_x11_render_snapshot(display &C.Display, window X11NativeWindow, out_width &int, out_height &int, out_viewable &int) int
+		fn C.v_multiwindow_x11_render_snapshot(connection voidptr, window X11NativeWindow, out_width &int, out_height &int, out_viewable &int) int
 	}
 }
 
@@ -591,8 +591,8 @@ fn (mut backend X11Backend) collect_render_updates() ![]BackendRenderUpdate {
 				mut width := 0
 				mut height := 0
 				mut viewable := 0
-				available := C.v_multiwindow_x11_render_snapshot(backend.display, record.window,
-					&width, &height, &viewable) != 0
+				available := C.v_multiwindow_x11_render_snapshot(backend.checked_connection,
+					record.window, &width, &height, &viewable) != 0
 				backend.render_sequence = next_backend_render_sequence(backend.render_sequence)!
 				if available && (record.width != width || record.height != height) {
 					record.width = width

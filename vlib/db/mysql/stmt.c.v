@@ -1,5 +1,8 @@
 module mysql
 
+type C.v_mysql_ulong = usize
+type C.v_mysql_bool = i8
+
 @[typedef]
 pub struct C.MYSQL_STMT {
 	mysql   &C.MYSQL
@@ -11,9 +14,9 @@ pub struct C.MYSQL_BIND {
 mut:
 	buffer_type   int
 	buffer        voidptr
-	buffer_length u32
-	length        &u32
-	is_null       &bool
+	buffer_length C.v_mysql_ulong
+	length        &C.v_mysql_ulong
+	is_null       &C.v_mysql_bool
 }
 
 const mysql_type_decimal = C.MYSQL_TYPE_DECIMAL
@@ -69,8 +72,11 @@ pub struct Stmt {
 mut:
 	binds            []C.MYSQL_BIND
 	res              []C.MYSQL_BIND
-	auto_res_lengths []u32
-	auto_res_is_null []bool
+	auto_res_lengths []C.v_mysql_ulong
+	auto_res_is_null []C.v_mysql_bool
+	compat_lengths   &u32  = unsafe { nil }
+	compat_is_null   &bool = unsafe { nil }
+	compat_res_count int
 }
 
 // str returns a text representation of the given mysql statement `s`.
@@ -145,12 +151,22 @@ pub fn (stmt Stmt) fetch_fields(res &C.MYSQL_RES) &C.MYSQL_FIELD {
 // See https://dev.mysql.com/doc/c-api/5.7/en/mysql-stmt-fetch.html
 pub fn (stmt Stmt) fetch_stmt() !int {
 	result := C.mysql_stmt_fetch(stmt.stmt)
+	stmt.copy_compat_result_values()
 
 	if result !in [0, 100] && stmt.get_error_msg() != '' {
 		return stmt.error(result)
 	}
 
 	return result
+}
+
+fn (stmt &Stmt) copy_compat_result_values() {
+	for i in 0 .. stmt.compat_res_count {
+		unsafe {
+			stmt.compat_lengths[i] = u32(stmt.auto_res_lengths[i])
+			stmt.compat_is_null[i] = stmt.auto_res_is_null[i] != 0
+		}
+	}
 }
 
 // close disposes the prepared `stmt`. The statement becomes invalid, and should not be used anymore after this call.
@@ -227,7 +243,11 @@ pub fn (mut stmt Stmt) bind_u16(b &u16) {
 
 // bind_int binds a single int value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_int(b &int) {
-	stmt.bind(mysql_type_long, b, 0)
+	$if new_int ? && x64 {
+		stmt.bind(mysql_type_longlong, b, 0)
+	} $else {
+		stmt.bind(mysql_type_long, b, 0)
+	}
 }
 
 // bind_u32 binds a single u32 value to the statement `stmt`
@@ -275,7 +295,7 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 	stmt.binds << C.MYSQL_BIND{
 		buffer_type:   typ
 		buffer:        buffer
-		buffer_length: buf_len
+		buffer_length: usize(buf_len)
 		length:        0
 		is_null:       0
 	}
@@ -283,8 +303,30 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 
 // bind_res will store one result in the statement `stmt`
 pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []u32, is_null []bool, num_fields int) {
-	stmt.auto_res_lengths = []u32{}
-	stmt.auto_res_is_null = []bool{}
+	count := if num_fields > 0 { num_fields } else { 0 }
+	stmt.auto_res_lengths = []C.v_mysql_ulong{len: count}
+	stmt.auto_res_is_null = []C.v_mysql_bool{len: count}
+	stmt.compat_res_count = int_min(count, int_min(lengths.len, is_null.len))
+	stmt.compat_lengths = unsafe { nil }
+	stmt.compat_is_null = unsafe { nil }
+	if stmt.compat_res_count > 0 {
+		stmt.compat_lengths = unsafe { &lengths[0] }
+		stmt.compat_is_null = unsafe { &is_null[0] }
+	}
+	stmt.bind_res_abi_arrays(fields, dataptr, stmt.auto_res_lengths, stmt.auto_res_is_null,
+		num_fields)
+}
+
+fn (mut stmt Stmt) bind_res_abi(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []C.v_mysql_ulong, is_null []C.v_mysql_bool, num_fields int) {
+	stmt.auto_res_lengths = []C.v_mysql_ulong{}
+	stmt.auto_res_is_null = []C.v_mysql_bool{}
+	stmt.compat_lengths = unsafe { nil }
+	stmt.compat_is_null = unsafe { nil }
+	stmt.compat_res_count = 0
+	stmt.bind_res_abi_arrays(fields, dataptr, lengths, is_null, num_fields)
+}
+
+fn (mut stmt Stmt) bind_res_abi_arrays(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []C.v_mysql_ulong, is_null []C.v_mysql_bool, num_fields int) {
 	if num_fields <= 0 {
 		stmt.res = []C.MYSQL_BIND{}
 		return
@@ -308,8 +350,8 @@ fn (mut stmt Stmt) ensure_default_result_binds() {
 	if num_fields <= 0 {
 		return
 	}
-	stmt.auto_res_lengths = []u32{len: num_fields}
-	stmt.auto_res_is_null = []bool{len: num_fields}
+	stmt.auto_res_lengths = []C.v_mysql_ulong{len: num_fields}
+	stmt.auto_res_is_null = []C.v_mysql_bool{len: num_fields}
 	stmt.res = []C.MYSQL_BIND{cap: num_fields}
 	for i in 0 .. num_fields {
 		stmt.res << C.MYSQL_BIND{

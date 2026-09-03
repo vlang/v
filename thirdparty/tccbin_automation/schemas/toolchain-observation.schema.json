@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "toolchain-observation.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "target_id",
+    "profile_id",
+    "profile_sha256",
+    "phase",
+    "roles",
+    "observation_digest"
+  ],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "target_id": {"$ref": "common.schema.json#/$defs/target_id"},
+    "profile_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._\\-]{2,127}$"
+    },
+    "profile_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "phase": {"type": "string", "enum": ["producer", "validator"]},
+    "roles": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/observed_role"}
+    },
+    "observation_digest": {"$ref": "common.schema.json#/$defs/sha256"}
+  },
+  "$defs": {
+    "observed_role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role_id",
+        "identity_strategy",
+        "resolved_identity",
+        "resolution_digest",
+        "evidence_sha256"
+      ],
+      "properties": {
+        "role_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._\\-]{2,63}$"
+        },
+        "identity_strategy": {
+          "type": "string",
+          "enum": ["github-hosted", "cpa-host", "cpa-guest", "github-hosted-msys2"]
+        },
+        "resolved_identity": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identity_fact"}
+        },
+        "resolution_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+        "evidence_sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "identity_fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._\\-]{1,63}$"
+        },
+        "value": {"type": "string", "maxLength": 512}
+      }
+    }
+  }
+}

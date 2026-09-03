@@ -786,6 +786,11 @@ fn table_from_struct[T](meta []TableField) Table {
 		}
 	}
 	if !has_custom_table_name {
+		// Strip the module prefix, e.g. `models.SendSMSRequest` -> `SendSMSRequest`, so the table
+		// name matches the one the compiler generates for `sql db { create table ... }` (which uses
+		// util.strip_mod_name). Otherwise inserts/selects would target `models.sendsmsrequest`, while
+		// the table was created as `sendsmsrequest` (see vlang/v#28106, vlang/v#28107).
+		table_name = table_name.all_after_last('.')
 		// Keep default ORM table names aligned with unquoted SQL identifiers across DB drivers.
 		table_name = table_name.to_lower()
 	}

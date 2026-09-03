@@ -979,14 +979,258 @@ received error code to H3_NO_ERROR. **N/A for this v1 client role**
 assumed): MAX_PUSH_ID's must-not-decrease check (binds a server receiving
 it from a client); a server receiving a client-initiated push stream.
 
-## Phases 11-14 (NOT STARTED)
+## Phase 11: QPACK (RFC 9204) — CODE COMPLETE, not yet wired to conn.v
 
-See the tracking issue for full detail on each. In order:
+Started and finished 2026-08-16, same session as Phase 10's merge — user
+asked to "Start Phase 11 and be very careful on RFC compliance and edge
+details... provide confidence score." New worktree
+`S:\repo\vlang-http3-qpack`, branch `http3-quic-qpack`, cut off
+`upstream/master` (all of 0-10 merged, no stacking needed). Same
+methodology as Phase 10: fetched RFC 9204's full text
+(`rfc-texts/rfc9204.txt`), read all of §1-§8 + Appendix A (static table) +
+Appendix B (worked examples) + Appendix C (sample encoding algorithm) in
+full BEFORE writing any code, built the `quic_conformance_matrix.md`
+"QPACK" section from that reading, THEN implemented against it.
 
-11. QPACK (RFC 9204) — absolute indexing, encoder/decoder streams, blocked-
-    stream handling. Not HPACK — don't reuse `h2_hpack_static.v`.
-12. HTTP/3 client wiring into `Request`/`Response`/`Transport` — also where
-    Phase 10's deferred-state items above actually get wired up.
+**Scope boundary, mirroring Phase 10's own precedent exactly:** QPACK's
+tables, wire codecs, and the encoder/decoder state machines are all
+self-contained (like Phase 10's `H3ControlStreamState`, they only need to
+be *fed* bytes/events by whatever eventually owns a real QUIC stream) — so
+that whole layer is Phase 11 scope, including the FULL encoder/decoder
+driver state machines (dynamic table with eviction/reference-counting,
+Known Received Count, blocked-stream tracking), not just the wire codecs.
+Deferred to Phase 12: writing encoder-stream bytes onto a real QUIC
+unidirectional stream under real flow control (§2.1.3); blocking/
+unblocking a live HTTP/3 request stream's read progress (§2.2.1 — needs
+Phase 12's request/response objects); applying a peer's actual SETTINGS
+values to a real connection (Phase 11 only provides the pure extraction
+helper, `qpack_settings.v`).
+
+**12 new files**, each with a paired `_test.v` except the trivially small
+`qpack_error.v`: `qpack_primitives.v` (prefixed integer + string literal
+codec, generalized to QPACK's variable prefix widths, algorithm verified
+against the already-shipped, tested `h2_hpack.v` before being written),
+`qpack_huffman_table.v` + `qpack_huffman.v` (verbatim copies of
+`h2_hpack_huffman_table.v`/`h2_hpack_huffman.v` — RFC 9204 §4.1.2 mandates
+byte-identical reuse of RFC 7541 Appendix B's table, so copying a proven
+implementation is strictly safer than a second hand-transcription; the
+copy was verified byte-for-byte identical via a numeric diff before
+trusting it), `qpack_static_table.v` (all 99 entries transcribed from the
+fetched RFC text, indexed from 0 unlike HPACK's 61-entry table indexed
+from 1), `qpack_dynamic_table.v` (insert/evict/duplicate/capacity,
+absolute/relative-from-insert-count/relative-from-Base/post-Base indexing
+as 4 DISTINCT resolution functions — conflating the encoder-instruction
+and field-line relative-index contexts was the most likely transcription
+error here — reference counting for eviction protection),
+`qpack_error.v` (mirrors `h3_error.v`'s shape exactly), `qpack_stream_type.v`
+(0x02/0x03 recognition + a `QpackStreamRegistry` at-most-one-of-each
+tracker, a from-scratch sibling comparison against `H3ControlStreamState`
+done before writing it), `qpack_settings.v` (pure extraction of the 2
+QPACK SETTINGS from an already-decoded `[]H3Setting`),
+`qpack_encoder_instructions.v` + `qpack_decoder_instructions.v` (wire
+codecs for the 4 encoder-stream and 3 decoder-stream instruction types),
+`qpack_field_line.v` (Required Insert Count wraparound math + Base sign/
+delta math, transcribed directly from the RFC's own pseudocode, plus the 6
+field line representation types), `qpack_encoder.v` (the `QpackEncoder`
+driver — chose the RFC-offered "only reference acknowledged entries"
+policy, so it never risks blocking a stream at all; a documented scope
+decision, not an oversight), `qpack_decoder.v` (the `QpackDecoder` driver
+— blocked-field-section detection, invalid-reference rejection, emits
+Insert Count Increment after every insertion as its acknowledgment
+policy).
+
+**Verification, in order of how much confidence each step actually buys:**
+(1) hand-derived every byte of RFC 9204 Appendix B's 5 worked examples
+against my own algorithms WHILE transcribing them (not after) — this
+independently reproduced the RFC's own shown intermediate values (Set
+Dynamic Table Capacity's 3-byte encoding of 220, the running dynamic-table
+Size totals of 106/160/217/215) before a single test ran; (2) then wrote
+those exact byte sequences as `qpack_appendix_b_test.v`, an end-to-end
+test exercising the encoder-instruction codec, dynamic table, field-line
+codec, and decoder driver together against official ground truth — passed
+outright on B.1-B.4, and B.5's one failure was correctly diagnosed as a
+test-design issue (asserting my own encoder reproduce the RFC's
+illustrative, deliberately-non-optimal raw-string choice, when this
+implementation's `encode_prefixed_string` correctly picks the shorter
+Huffman encoding instead) rather than patched around; (3) three more real
+bugs were caught by writing per-file edge-case tests and RE-DERIVING the
+encoder's indexing math by hand before trusting it, not by running code
+and hoping: `encode_field_section` mixed up relative-vs-post-Base indexing
+context for a newly-inserted entry (a field-line reference to an entry
+just inserted during the same call has absolute index >= Base and MUST
+use post-Base indexing, not relative-to-Base), used post-insert
+`insert_count()` instead of pre-insert for an Insert-With-Name-Reference
+instruction's own relative index (an off-by-one, since a decoder resolves
+that index against table state as it stood BEFORE this instruction's own
+insert takes effect), and passed an absolute index directly where a
+Base-relative index was required for a literal-with-existing-dynamic-name
+reference — all three caught and fixed by re-deriving the function's
+contract from scratch before ever compiling it, the same discipline this
+project's own postmortems establish as the highest-yield check available;
+(4) three ordinary test-authoring mistakes (unrealistic RIC/total_inserts
+test combinations outside the protocol's actual usage pattern, a missing
+`u8+u8` concatenation, a test decoder that never received the Set
+Dynamic Table Capacity instruction its paired encoder sent) were found and
+fixed the normal way, by running the suite and reading the failure.
+Full `net.quic` suite green throughout, 52/52 files, zero regressions in
+Phases 0-10.
+
+## Phase 12: HTTP/3 client wiring — COMPLETE (12a/12b/12c/12d all done)
+
+Sub-scoped into 4 sequential sub-phases within one PR (mirroring Phase 2's
+2a/2b/2c and Phase 9's 9a/9b precedent), each a hard dependency of the
+next:
+
+- **12a** (done) — surgical additions to already-merged Phase 9 code
+  (`conn.v`/`tls13_handshake.v`): a negotiated-ALPN accessor (computed
+  during the handshake but previously discarded), a `peer_stream_opened`
+  event for peer-initiated stream discovery (careful to avoid a silent
+  false-negative under UDP reordering caused by `get_or_create`'s
+  RFC 9000 §2.1 sibling-auto-creation behavior), and a
+  `stream_recv_status` query. No new files.
+- **12b** (done) — HTTP/3 + QPACK connection wiring, pure `module quic`:
+  `H3Conn` wraps `QuicConn` with control-stream/QPACK-stream driving, the
+  request-stream message-framing state machine (RFC 9114 §4.1), and the
+  previously-entirely-missing blocked-HEADERS retry/re-queue mechanism.
+  Fixture-testable with no socket, same style as Phase 9's `conn_test.v`.
+- **12c** (done) — UDP transport + `H3MuxConn` threading, `module http`
+  (`h3_udp_dial.v`, `h3_mux_conn.v`): the repo's first UDP socket code and
+  first background-thread-drives-a-non-thread-safe-`poll()`-state-machine
+  code. This does NOT contradict the "single-threaded, caller-driven event
+  loop" scope decision below -- `net.quic`'s own `QuicConn`/`H3Conn` stay
+  exactly that; `H3MuxConn`'s driver thread is simply THE caller, on the
+  `net.http` side, the same relationship `H2MuxConn`'s own background
+  reader thread already has to the (blocking-transport-shaped) `H2Conn`
+  layer. Needs only ONE lock (`qmu`), not `H2MuxConn`'s wmu/fmu/smu split,
+  because there is exactly one thread that ever touches `h3`/the
+  transport -- request threads queue via `do()`/`PendingH3Request` and
+  block on their own condition variable, mirroring `H2MuxConn.wait_
+  response`'s shape for the response half only; the driver thread alone
+  opens streams and sends. `H3UdpTransport` (mirrors `H2Transport`)
+  decouples the driver from a concrete `net.UdpConn`, letting
+  `h3_mux_conn_test.v` drive a REAL driver thread against an in-memory
+  fake and directly regression-test this sub-phase's own top risk: a
+  request queued by `do()` between one driver loop iteration and the next
+  must not be stranded on `cv.wait()` forever if the connection dies in
+  that exact window (`fail_conn` drains `c.pending`, not just
+  `c.streams`). `Transport` (`transport.v`) gained a third pool
+  (`h3_conns`/`h3_dial_id`) folded into the existing shared idle-eviction
+  scan (`evict_oldest_idle_locked`, `close_idle`) alongside h1/h2 -- the
+  actual h3 dial-and-register call site (which would populate them) is
+  12d's job.
+  Deliberately NOT built: a genuinely reactive fake QUIC server for
+  request/response-level testing -- would mean re-deriving a second
+  QUIC/TLS 1.3 server-role implementation from scratch, since `conn_
+  test.v`'s own fixture-handshake bytes are private, test-file-only
+  helpers with no cross-module export. A manual/documented run against a
+  real `quiche`/`ngtcp2` container (non-CI-blocking) remains the
+  recommended pre-merge check for full wire-level behavior; a shared,
+  exported cross-module fixture helper in `net.quic` is a scoped,
+  worthwhile follow-up, not built inline here.
+- **12d** (done) — `Transport`/`Request`/`Response` integration:
+  `req.enable_http3` opt-in (default `false`, no automatic h2/h1
+  fallback), `h3_client.v` (`H3ClientRequest`/`H3ClientResponse`
+  conversion -- the concrete types themselves already exist, defined in
+  12c's `h3_mux_conn.v` since that is what first needed them to compile),
+  `transport_h3.v` (`h3_round_trip`, `H3DialCall` singleflight dial,
+  mirroring `transport_h2.v`'s own shape minus every ALPN-probe-outcome
+  branch h2 needs and h3 doesn't). `Version` gained a `v3_0` case
+  (`version.v`/`response.v`) so `resp.version()` reports something
+  meaningful for an h3 response instead of `.unknown`.
+  **Known v1 limitation, discovered and documented during `/vreview`**:
+  `net.quic`'s TLS 1.3 stack has no OS/default trust-store fallback at
+  all (unlike the h1/h2 `ssl.SSLConn` path) -- `req.verify` is therefore
+  effectively REQUIRED for HTTP/3 today; leaving it unset means every h3
+  request fails certificate verification against every real server. This
+  is documented prominently on `enable_http3`'s own doc comment
+  (`request.v`/`http.v`), not silently left as a surprise. Likewise,
+  `req.validate` (skip-verification) and `req.cert`/`req.cert_key`
+  (mutual TLS) are not honorable on the h3 path in v1, both also
+  documented there.
+
+**Phase A adversarial-verification pass (done)**: a multi-agent Workflow (5
+independent finder lenses — rfc/concurrency/pool-lifecycle/error-edges/
+holistic — each adversarially verified by independent skeptics) reviewed
+the combined 12a-12d diff and surfaced 7 confirmed, real bugs missed by
+each sub-phase's own `/vreview` pass (all were cross-sub-phase interaction
+gaps, invisible to any single sub-phase's own diff-scoped review). All 7
+fixed, tested, and re-reviewed:
+1. **Fresh-dial first-request race** — `driver_loop` drains `c.pending`
+   (opening the first queued request's stream) before that same iteration
+   ever reads/polls the wire, so the very first request on a brand-new
+   connection could hit QUIC's own `STREAM_LIMIT` (peer transport
+   parameters not yet learned) or "QPACK encoder stream not open yet" —
+   and neither `h3_dial_and_do`'s nor `h3_await_dial`'s final call retried
+   on `h3_err_retryable_code`, making `enable_http3` fail on essentially
+   every first request to a fresh origin. Fixed with `h3_do_on_fresh_conn`
+   (`transport_h3.v`), a bounded same-connection retry distinct from
+   `h3_round_trip`'s own different-connection retry.
+2. **RFC 9114 §5.2 GOAWAY draining never implemented** — `dispatch_h3_
+   event`'s `.goaway` case only blocked new admission; it never read
+   `ev.goaway_id` or failed any already-open stream at/above the boundary
+   (unlike `h2_mux_conn.v`'s identical `H2GoawayFrame` handler), so an
+   in-flight request above the boundary could hang indefinitely or later
+   be marked non-retryable by `fail_conn`'s `!sent_headers` heuristic.
+   Fixed: the `.goaway` handler now walks `c.streams` and fails every
+   stream `id >= boundary` retryable, mirroring H2 exactly; `start_request`
+   also gained its own `goaway_received` check to close the narrow
+   admission-race window (a request queued just before GOAWAY, drained
+   just after).
+3. **`H3_REQUEST_REJECTED` (RFC 9114 §8.1) not retryable** — `dispatch_h3_
+   event`'s `.request_error` case hardcoded `retryable = false` for every
+   error code, unlike H2's `REFUSED_STREAM` parity check. Fixed.
+4. **Orphaned pooled connection leak** — `h3_dial_and_do`'s superseded-
+   connection cleanup called only `orphan.release()`, never `orphan.
+   shutdown_when_idle()`; unlike `H2MuxConn.release()`, `H3MuxConn.
+   release()` is a documented no-op for teardown, so the orphan's driver
+   thread + UDP socket leaked for the process's remaining lifetime. Fixed.
+5. **Self-terminated connection never removed from the pool** — unlike
+   `H2MuxConn` (a mandatory `close_transport` self-removal callback),
+   `H3MuxConn` had no way to tell `Transport` it died on its own (idle
+   timeout, fatal UDP error) — the dead entry stayed in `t.h3_conns`,
+   where `evict_oldest_idle_locked`'s h3 scan (checking only `active_
+   streams == 0`, not `can_take_new_request()`) could mistake it for a
+   genuinely idle connection and evict it instead of a real one elsewhere.
+   Fixed with an optional `on_retired` callback on `H3MuxConn`, mirroring
+   H2's pattern but nil-tolerant (H3's teardown doesn't depend on it the
+   way H2's blocked reader does).
+6. **Peer-controlled error code could collide with the retryable
+   sentinel** — a QUIC RESET_STREAM error code is a full peer-controlled
+   62-bit varint; narrowing it to `int` for `error_with_code` could
+   produce `h3_err_retryable_code` itself, causing a non-idempotent
+   request the server explicitly rejected to be silently replayed. Fixed:
+   only a positive `int()` result is trusted as a real error code.
+7. **Unbounded per-connection memory growth** — `H3Conn.request_streams`/
+   `request_decoders` were never pruned once a request finished, growing
+   with the total number of requests ever served by a long-lived pooled
+   connection rather than the number in flight. Fixed: both maps are
+   pruned in `finalize_request_stream_if_done`'s success path and in
+   `fail_request_stream`'s failure path.
+
+Two additional bugs found via this project's own follow-up review of the
+same code (not the Workflow, which hit its session limit before every
+verifier finished): a genuine RFC 9110 §15.2 gap where the request-stream
+message-framing state machine had no concept of 1xx informational
+responses at all, so a `103`-then-`200` sequence delivered the 103 as the
+final status and misdelivered the real 200 response's fields as trailers
+(fixed in `h3_request_stream.v`/`h3_conn.v`: the `.awaiting_response_
+headers` → `.in_body` phase transition is now deferred until the decoded
+`:status` is known non-1xx); and a `:status` pseudo-header validation gap
+in `wait_response` (no length/duplicate/ordering/unknown-pseudo-header
+checks, unlike `h2_mux_conn.v`'s equivalent), now fixed to match.
+
+Two scope decisions made without a response after being flagged for
+sign-off, proceeding with the lower-risk default in each case (revisitable
+during review): server push is permanently disabled for v1 (never sending
+MAX_PUSH_ID means no push is ever authorized per RFC 9114 §7.2.7, so any
+received PUSH_PROMISE/CANCEL_PUSH is unconditionally rejected
+`H3_ID_ERROR` — avoids building real max-push-id/seen-push-id cross-frame
+state for a feature v1 never uses); `enable_http3` has no automatic
+h2/h1 fallback if the h3 attempt fails (UDP has no fast-fail signal the
+way a closed TCP port does, so auto-racing every `https://` request
+against h3 would regress the common case; real happy-eyeballs-style
+fallback is deferred as a separate follow-up feature).
+
 13. Server support — explicitly out of committed scope, but Phases 1-9 are
     designed to need no rework for it (`role` field already present).
 14. 0-RTT — explicitly out of committed scope.

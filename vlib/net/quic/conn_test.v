@@ -1326,7 +1326,12 @@ fn test_write_stream_on_auto_created_sibling_stream_is_not_stuck() {
 	stream_frame := encode_stream_frame(9, 0, 'from server on stream 9'.bytes(), true, true)!
 	incoming := build_fake_one_rtt_packet(c.scid, 0, stream_frame, server_app_keys, false)!
 	result1 := c.poll(incoming.bytes, now)!
-	assert result1.events.len == 0
+	// Stream 9 was named directly by this frame, so it fires
+	// peer_stream_opened (Phase 12a) -- but its auto-created siblings 1/5
+	// were never themselves named by any frame, so they must NOT.
+	assert result1.events.len == 1, result1.events.str()
+	assert result1.events[0].kind == .peer_stream_opened
+	assert result1.events[0].stream_id? == u64(9)
 	now += 10
 
 	// Stream 1 (an auto-created sibling, never itself named in any frame)
@@ -1349,4 +1354,177 @@ fn test_write_stream_on_auto_created_sibling_stream_is_not_stuck() {
 		}
 	}
 	assert found_sibling_stream_frame
+}
+
+// -----------------------------------------------------------------------
+// Phase 12a: negotiated_alpn(), peer_stream_opened, stream_recv_status()
+// -----------------------------------------------------------------------
+
+// test_negotiated_alpn_is_none_before_established_and_selected_value_after
+// checks negotiated_alpn()'s own two-state contract directly: none before
+// EncryptedExtensions is processed (a freshly dialed connection, still
+// .handshaking), the actual selected value once .established.
+// drive_to_established's fake server hardcodes selecting "h3" from the
+// offered ["h3"] list (conn_test_build_fake_encrypted_extensions), so the
+// post-established value asserted here is exactly what a real Phase 12
+// caller would check to confirm h3 was actually negotiated.
+fn test_negotiated_alpn_is_none_before_established_and_selected_value_after() {
+	mut fresh, _ := dial(DialParams{
+		server_name:          'example.com'
+		ca_bundle_pem:        conn_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: QuicTransportParameters{}
+	}, u64(0))!
+	defer {
+		fresh.handshake.free()
+	}
+	assert fresh.state() == .handshaking
+	assert fresh.negotiated_alpn() == none
+
+	mut c, _, _ := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	assert c.negotiated_alpn()? == 'h3'
+}
+
+// test_peer_stream_opened_never_fires_for_a_locally_opened_stream is the
+// regression case for the bug this project's own /vreview process caught
+// while first writing note_peer_stream_discovered: get_or_create's fast
+// path (`if existing := s.streams[raw_id] { return existing }`) returns
+// early for ANY already-known ID with no re-check of who initiated it, so
+// naively firing the event after every successful get_or_create call wrongly
+// reported a peer's ORDINARY REPLY on a stream this endpoint itself opened
+// as a newly "peer-opened" stream. The fix (checking
+// StreamId.is_locally_initiated before ever firing) is what this test
+// pins down.
+fn test_peer_stream_opened_never_fires_for_a_locally_opened_stream() {
+	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(),
+		generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	stream_id := c.open_stream(true)!
+	c.write_stream(stream_id, 'hello from client'.bytes(), true)!
+	opened := c.poll(none, now)!
+	assert opened.events.len == 0, opened.events.str()
+	now += 10
+
+	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	server_app_keys := read_keys.current_keys
+	reply_frame := encode_stream_frame(stream_id, 0, 'hello from server'.bytes(), true, true)!
+	reply_datagram := build_fake_one_rtt_packet(c.scid, 0, reply_frame, server_app_keys, false)!
+	replied := c.poll(reply_datagram.bytes, now)!
+	assert replied.events.len == 0, replied.events.str()
+	_ = server_initial_scid
+}
+
+// test_peer_stream_opened_survives_reordering_past_an_auto_created_filler
+// is the standout regression case this sub-phase's plan specifically calls
+// for: get_or_create auto-creates every LOWER-numbered same-category
+// stream as an empty filler when a higher one is referenced directly (RFC
+// 9000 §2.1). If discovery were keyed off "was this ID newly inserted into
+// c.streams" instead of "was this ID directly named by a frame," a stream
+// arriving out of order (ordinary over UDP -- e.g. a QPACK decoder stream
+// reaching this client before its encoder stream) would have its lower ID
+// silently pre-created as a filler by the HIGHER stream's frame, and its
+// own later, real STREAM frame would then hit get_or_create's fast
+// already-exists path and never be announced at all.
+fn test_peer_stream_opened_survives_reordering_past_an_auto_created_filler() {
+	mut c, _, mut now := drive_to_established(generous_transport_params(),
+		generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	server_app_keys := read_keys.current_keys
+
+	// Server-initiated bidi ids are 1, 5, 9, ...; referencing 9 first
+	// silently auto-creates fillers for 1 and 5 with no frame ever having
+	// named them directly.
+	high_frame := encode_stream_frame(9, 0, 'high'.bytes(), true, true)!
+	high_datagram := build_fake_one_rtt_packet(c.scid, 0, high_frame, server_app_keys, false)!
+	high_result := c.poll(high_datagram.bytes, now)!
+	assert high_result.events.len == 1, high_result.events.str()
+	assert high_result.events[0].stream_id? == u64(9)
+	now += 10
+
+	// Stream 1 (an auto-created filler above) now gets its OWN, real frame
+	// -- must still be announced, exactly once, not silently skipped
+	// because it already technically existed in c.streams.
+	low_frame := encode_stream_frame(1, 0, 'low'.bytes(), true, true)!
+	low_datagram := build_fake_one_rtt_packet(c.scid, 0, low_frame, server_app_keys, false)!
+	low_result := c.poll(low_datagram.bytes, now)!
+	assert low_result.events.len == 1, low_result.events.str()
+	assert low_result.events[0].kind == .peer_stream_opened
+	assert low_result.events[0].stream_id? == u64(1)
+}
+
+// test_peer_stream_opened_fires_from_a_bare_reset_stream_frame confirms
+// discovery isn't STREAM-frame-specific: a RESET_STREAM can legitimately be
+// the very first frame this connection ever sees for a given stream ID
+// (RFC 9000 §3.2's Receive Stream State Machine allows Recv -> Reset Recvd
+// directly), and handle_reset_stream_frame must announce it exactly like
+// handle_stream_frame does.
+fn test_peer_stream_opened_fires_from_a_bare_reset_stream_frame() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	server_app_keys := read_keys.current_keys
+
+	reset_frame := encode_reset_stream_frame(1, 42, 0)!
+	reset_datagram := build_fake_one_rtt_packet(c.scid, 0, reset_frame, server_app_keys, false)!
+	result := c.poll(reset_datagram.bytes, now)!
+	assert result.events.len == 1, result.events.str()
+	assert result.events[0].kind == .peer_stream_opened
+	assert result.events[0].stream_id? == u64(1)
+}
+
+// test_stream_recv_status_reports_all_three_terminal_states drives one
+// stream through open (a non-FIN STREAM frame) -> fin_received (a later
+// FIN-carrying STREAM frame) and a second, independent stream through
+// open -> reset_received (a bare RESET_STREAM), and confirms
+// stream_recv_status returns none for a stream ID this connection has
+// never seen and for a locally-initiated UNI stream (send-only on this
+// endpoint -- has_recv() is false).
+fn test_stream_recv_status_reports_all_three_terminal_states() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	assert c.stream_recv_status(1) == none // never seen at all
+
+	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
+	server_app_keys := read_keys.current_keys
+
+	// Stream 1: open (a non-FIN STREAM frame -- data arrived, no terminal
+	// condition yet) -> fin_received via a later FIN-carrying STREAM frame.
+	mid_frame := encode_stream_frame(1, 0, 'partial'.bytes(), false, true)!
+	mid_datagram := build_fake_one_rtt_packet(c.scid, 0, mid_frame, server_app_keys, false)!
+	c.poll(mid_datagram.bytes, now)!
+	open_status := c.stream_recv_status(1) or { panic('expected a status for a known stream') }
+	assert open_status.state == .open
+	assert open_status.reset_error == none
+
+	fin_frame := encode_stream_frame(1, u64('partial'.len), 'complete'.bytes(), true, true)!
+	fin_datagram := build_fake_one_rtt_packet(c.scid, 0, fin_frame, server_app_keys, false)!
+	c.poll(fin_datagram.bytes, now)!
+	fin_status := c.stream_recv_status(1) or { panic('expected a status for a known stream') }
+	assert fin_status.state == .fin_received
+	assert fin_status.reset_error == none
+
+	// Stream 5: open -> reset_received via a bare RESET_STREAM, no prior
+	// STREAM frame at all.
+	reset_frame := encode_reset_stream_frame(5, 99, 0)!
+	reset_datagram := build_fake_one_rtt_packet(c.scid, 0, reset_frame, server_app_keys, false)!
+	c.poll(reset_datagram.bytes, now)!
+	reset_status := c.stream_recv_status(5) or { panic('expected a status for a known stream') }
+	assert reset_status.state == .reset_received
+	assert reset_status.reset_error? == u64(99)
+
+	// A locally-opened UNI stream has no receive side on this endpoint.
+	uni_id := c.open_stream(false)!
+	assert c.stream_recv_status(uni_id) == none
 }

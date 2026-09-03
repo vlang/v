@@ -19,7 +19,8 @@ pub fn exec(command string) {
 // not a potentially different V found via PATH.
 fn resolve_v_command(command string) string {
 	if command.starts_with('v ') {
-		return os.quoted_path(os.join_path_single(@VEXEROOT, 'v')) + command[1..]
+		vexe := os.getenv_opt('V_CI_VEXE') or { os.join_path_single(@VEXEROOT, 'v') }
+		return os.quoted_path(vexe) + command[1..]
 	}
 	return command
 }
@@ -47,7 +48,10 @@ pub fn file_size_greater_than(fpath string, min_fsize u64) {
 	}
 }
 
-const self_command = os.quoted_path(os.join_path_single(@VEXEROOT, 'v')) + ' ' +
+const self_command =
+	os.quoted_path(os.getenv_opt('V_CI_VEXE') or {
+	os.join_path_single(@VEXEROOT, 'v')
+}) + ' ' +
 	os.real_path(os.executable()).replace_once(os.real_path(@VEXEROOT), '').trim_left('/\\') +
 	'.vsh'
 

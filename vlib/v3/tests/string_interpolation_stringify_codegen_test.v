@@ -8,7 +8,9 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 
 fn string_interp_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_string_interpolation_stringify_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
@@ -254,6 +256,44 @@ fn main() {
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'x\n7\ntrue'
+}
+
+fn test_generic_fn_alias_custom_str_survives_call_return_and_struct_field_lowering() {
+	v3_bin := string_interp_build_v3()
+	src := "type Parser[T] = fn (string) T
+
+struct ParserHolder {
+	parser Parser[int] @[required]
+}
+
+fn (parser Parser[T]) str[T]() string {
+	_ = parser
+	return 'parser'
+}
+
+fn new_parser() Parser[int] {
+	return fn (text string) int {
+		return text.int()
+	}
+}
+
+fn main() {
+	parser := new_parser()
+	assert '\${parser}' == 'parser'
+	holder := ParserHolder{
+		parser: parser
+	}
+	assert '\${holder}'.contains('parser: parser')
+	println('ok')
+}
+"
+	bin := os.join_path(os.temp_dir(), 'v3_generic_fn_alias_custom_str_${os.getpid()}')
+	compile := compile_v3_input(v3_bin, 'v3_generic_fn_alias_custom_str', src, bin)
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
 }
 
 fn test_string_plus_does_not_stringify_non_strings() {

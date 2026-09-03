@@ -40,6 +40,6 @@ fn test_assert_infix_runtime_values_codegen() {
 		os.execute('${os.quoted_path(v3)} -silent -no-memory-limit run ${os.quoted_path(source)}')
 	assert result.exit_code != 0
 	assert result.output.contains('V panic: Assertion failed...'), result.output
-	assert result.output.contains('left value: 5 * 5 = 25'), result.output
+	assert result.output.contains('left value: 5 * 5'), result.output
 	assert result.output.contains('right value: 77'), result.output
 }

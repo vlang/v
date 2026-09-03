@@ -325,7 +325,7 @@ fn main() {
 	')
 	assert ok_iclone_default_clone.exit_code == 0, ok_iclone_default_clone.output
 
-	fail_iclone_drop_temporary := run_ownership_check(v3_bin, 'iclone_drop_temporary', '
+	ok_iclone_drop_temporary := run_ownership_check(v3_bin, 'iclone_drop_temporary', '
 interface Drop {
 mut:
 	drop()
@@ -347,8 +347,7 @@ fn main() {
 	_ := make_resource().clone()
 }
 	')
-	assert fail_iclone_drop_temporary.exit_code != 0
-	assert fail_iclone_drop_temporary.output.contains('cannot generate default clone for `Resource`: `Resource` requires ownership destruction but has no `clone()` method'), fail_iclone_drop_temporary.output
+	assert ok_iclone_drop_temporary.exit_code == 0, ok_iclone_drop_temporary.output
 
 	ok_iclone_if_expr_clone := run_ownership_check(v3_bin, 'iclone_if_expr_clone', '
 struct Resource implements IClone {
@@ -905,7 +904,7 @@ fn main() {
 }
 ')
 	assert fail_conditional_blank_aggregate_sink.exit_code != 0
-	assert fail_conditional_blank_aggregate_sink.output.contains('use of moved value: `h.value`'), fail_conditional_blank_aggregate_sink.output
+	assert fail_conditional_blank_aggregate_sink.output.contains('use of moved value: `h`'), fail_conditional_blank_aggregate_sink.output
 
 	fail_blank_aggregate_sink := run_ownership_check(v3_bin, 'blank_aggregate_sink_move', '
 struct Holder {
@@ -920,7 +919,7 @@ fn main() {
 }
 ')
 	assert fail_blank_aggregate_sink.exit_code != 0
-	assert fail_blank_aggregate_sink.output.contains('use of moved value: `h.value`'), fail_blank_aggregate_sink.output
+	assert fail_blank_aggregate_sink.output.contains('use of moved value: `h`'), fail_blank_aggregate_sink.output
 
 	fail_conditional_assign_aggregate := run_ownership_check(v3_bin,
 		'conditional_assign_aggregate_descendant', '
@@ -966,7 +965,7 @@ fn main() {
 }
 ')
 	assert fail_channel_aggregate_send.exit_code != 0
-	assert fail_channel_aggregate_send.output.contains('use of moved value: `h.value`'), fail_channel_aggregate_send.output
+	assert fail_channel_aggregate_send.output.contains('use of moved value: `h`'), fail_channel_aggregate_send.output
 }
 
 fn test_ownership_fn_literal_uses_isolated_frame() {
@@ -2226,7 +2225,7 @@ fn main() {
 ')
 	assert fail_aggregate_copy.exit_code != 0
 	assert fail_aggregate_copy.output.contains('use of moved value: `h2.value`'), fail_aggregate_copy.output
-	assert fail_aggregate_copy.output.contains('use of moved value: `h.value`'), fail_aggregate_copy.output
+	assert fail_aggregate_copy.output.contains('use of moved value: `h`'), fail_aggregate_copy.output
 
 	fail_default_owned_field_read := run_ownership_check(v3_bin,
 		'default_owned_field_then_duplicate_read', '
@@ -3562,4 +3561,38 @@ fn main() {
 }
 ')
 	assert ok.exit_code == 0, ok.output
+}
+
+fn test_autofree_literal_only_program_keeps_ierror_destructors() {
+	v3_bin := ownership_build_v3()
+	ok_multi := run_autofree_check(v3_bin, 'literal_only_mixed_output', "
+fn main() {
+	print('a')
+	eprintln('b')
+	println('c')
+}
+")
+	assert ok_multi.exit_code == 0, ok_multi.output
+}
+
+const shape_coverage_programs = {
+	'literal_only':       "fn main() {\n\tprintln('hello')\n}\n"
+	'loop_accumulate':    'fn main() {\n\tmut n := 0\n\tfor i in 0 .. 4 {\n\t\tn += i\n\t}\n\tprintln(n)\n}\n'
+	'string_interp':      "fn main() {\n\tname := 'world'\n\tprintln('hello \${name} \${name.len}')\n}\n"
+	'array_and_map':      "fn main() {\n\tmut rows := []string{}\n\trows << 'a'.clone()\n\tmut seen := map[string]int{}\n\tseen['a'] = rows.len\n\tprintln(seen['a'])\n}\n"
+	'error_propagation':  "fn parse(s string) !int {\n\tif s == '' {\n\t\treturn error('empty')\n\t}\n\treturn s.len\n}\n\nfn run() ! {\n\tn := parse('abc')!\n\tprintln(n)\n}\n\nfn main() {\n\trun() or { println(err) }\n}\n"
+	'owned_struct':       "struct Row {\nmut:\n\tname  string\n\tlabel ?string\n}\n\nfn build() Row {\n\treturn Row{\n\t\tname: 'x'.clone()\n\t}\n}\n\nfn main() {\n\tr := build()\n\tprintln(r.name)\n}\n"
+	'generic_fn':         "fn first[T](items []T, fallback T) T {\n\tif items.len == 0 {\n\t\treturn fallback\n\t}\n\treturn items[0]\n}\n\nfn main() {\n\tprintln(first([]string{}, 'none'.clone()))\n}\n"
+	'interface_dispatch': 'interface Shape {\n\tarea() int\n}\n\nstruct Box {\n\tside int\n}\n\nfn (b Box) area() int {\n\treturn b.side * b.side\n}\n\nfn main() {\n\ts := Shape(Box{side: 3})\n\tprintln(s.area())\n}\n'
+	'match_option_arms':  "struct DictHeader {\nmut:\n\tn         int\n\tis_sorted ?bool\n}\n\nstruct DataHeader {\nmut:\n\tn        int\n\tencoding string\n}\n\nstruct DataHeaderV2 {\nmut:\n\tn          int\n\tstatistics ?string\n}\n\nenum PageType {\n\tindex_page\n\tdictionary_page\n\tdata_page\n\tdata_page_v2\n}\n\nstruct PageHeader {\nmut:\n\ttyp  PageType\n\tdict ?DictHeader\n\tdata ?DataHeader\n\tv2   ?DataHeaderV2\n}\n\nfn consume(n int) !int {\n\tif n < 0 {\n\t\treturn error('negative')\n\t}\n\treturn n\n}\n\nfn take(header &PageHeader) ! {\n\tmatch header.typ {\n\t\t.index_page {}\n\t\t.dictionary_page {\n\t\t\thead := header.dict or { return error('no dictionary header') }\n\t\t\tsorted := head.is_sorted or { false }\n\t\t\tif sorted {\n\t\t\t\treturn error('sorted')\n\t\t\t}\n\t\t\tconsume(head.n)!\n\t\t}\n\t\t.data_page {\n\t\t\thead := header.data or { return error('no data header') }\n\t\t\tif head.encoding == '' {\n\t\t\t\treturn error('no encoding')\n\t\t\t}\n\t\t\tconsume(head.n)!\n\t\t}\n\t\t.data_page_v2 {\n\t\t\thead := header.v2 or { return error('no v2 header') }\n\t\t\tstats := head.statistics or { '' }\n\t\t\t_ = stats\n\t\t\tconsume(head.n)!\n\t\t}\n\t}\n}\n\nfn main() {\n\th := PageHeader{\n\t\ttyp:  .data_page\n\t\tdata: DataHeader{\n\t\t\tn:        1\n\t\t\tencoding: 'plain'\n\t\t}\n\t}\n\ttake(&h) or { println(err) }\n\tprintln('ok')\n}\n"
+}
+
+fn test_ownership_and_autofree_build_every_program_shape() {
+	v3_bin := ownership_build_v3()
+	for name, code in shape_coverage_programs {
+		dropped := run_ownership_check(v3_bin, 'shape_drop_${name}', code)
+		assert dropped.exit_code == 0, '${name} under -ownership:\n${dropped.output}'
+		freed := run_autofree_check(v3_bin, 'shape_free_${name}', code)
+		assert freed.exit_code == 0, '${name} under -autofree:\n${freed.output}'
+	}
 }

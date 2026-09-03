@@ -1,0 +1,13 @@
+fn maybe_int() ?int {
+	return none
+}
+
+fn main() {
+	value := maybe_int() or {
+		{
+			$embed_file(@FILE)
+		}
+		0
+	}
+	_ = value
+}

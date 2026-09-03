@@ -430,6 +430,44 @@ fn main() {
 	assert used['new_map']
 }
 
+fn test_prepared_markused_combines_exact_and_lowered_dependencies() {
+	src := os.join_path(os.temp_dir(), 'v3_markused_prepared_exact_edges.v')
+	os.write_file(src, '
+fn direct_target() {}
+fn callback_target() {}
+fn take_callback(callback fn ()) { callback() }
+fn default_target() int { return 1 }
+
+struct Config {
+	value int = default_target()
+}
+
+fn main() {
+	direct_target()
+	take_callback(callback_target)
+	_ := Config{}
+}
+') or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(src)
+	mut tc := types.TypeChecker.new(a)
+	tc.enable_globals = true
+	tc.collect(a)
+	tc.diagnostic_files[src] = true
+	prepared_thread := spawn markused.prepare_markused_declarations(a, &tc, true)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	mut prepared := prepared_thread.wait()
+	used := markused.mark_used_without_generic_detection_prepared(a, &tc, mut prepared)
+	prepared.release()
+	assert used['direct_target']
+	assert used['callback_target']
+	assert used['default_target']
+}
+
 fn test_self_typed_default_collects_explicit_initializer_calls() {
 	used := mark_used_source('self_typed_default_explicit_call', '
 interface Value {}
@@ -900,6 +938,62 @@ fn main() {
 	assert used['Builder.main_module_name']
 }
 
+fn test_nested_field_receiver_method_does_not_root_same_suffix_methods() {
+	used := mark_used_source('nested_field_receiver_method', '
+struct Flags {}
+
+fn (mut flags Flags) set() {}
+
+struct Holder {
+mut:
+	flags Flags
+}
+
+struct Unrelated {}
+
+fn (mut item Unrelated) set() {}
+
+fn (mut holder Holder) update() {
+	holder.flags.set()
+}
+
+fn main() {
+	mut holder := Holder{}
+	holder.update()
+}
+')
+	assert used['Flags.set']
+	assert !used['Unrelated.set']
+}
+
+fn test_nested_flag_enum_intrinsic_does_not_root_same_suffix_methods() {
+	used := mark_used_source('nested_flag_enum_intrinsic', '
+@[flag]
+enum Flags {
+	active
+}
+
+struct Holder {
+mut:
+	flags Flags
+}
+
+struct Unrelated {}
+
+fn (mut item Unrelated) set(flag Flags) {}
+
+fn (mut holder Holder) update() {
+	holder.flags.set(.active)
+}
+
+fn main() {
+	mut holder := Holder{}
+	holder.update()
+}
+')
+	assert !used['Unrelated.set']
+}
+
 fn test_unreachable_interface_implementer_method_is_not_rooted() {
 	used := mark_used_source('unreachable_interface_implementer', '
 interface Reader {
@@ -1340,7 +1434,7 @@ fn test_reachable_main_fn_literal_is_emitted_after_used_filter_transform() {
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('int __anon_fn_')
+	assert c_code.contains('i64 __anon_fn_')
 	assert c_code.contains('callback_value(__anon_fn_')
 }
 
@@ -1667,7 +1761,7 @@ fn main() {
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('new_map(sizeof(string), sizeof(int)')
+	assert c_code.contains('new_map(sizeof(string), sizeof(i64)')
 }
 
 // test_optional_map_or_lowers_to_new_map_after_used_filter_transform
@@ -1691,7 +1785,7 @@ fn main() {
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('new_map(sizeof(string), sizeof(int)')
+	assert c_code.contains('new_map(sizeof(string), sizeof(i64)')
 }
 
 // test_string_membership_lowers_to_contains_after_used_filter_transform

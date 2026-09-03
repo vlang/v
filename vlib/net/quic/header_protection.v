@@ -38,7 +38,7 @@ fn header_protection_mask(hp_key []u8, sample []u8) ![]u8 {
 	if sample.len != header_protection_sample_size {
 		return error('quic: header protection sample must be ${header_protection_sample_size} bytes, got ${sample.len}')
 	}
-	block := aes.new_cipher(hp_key)
+	block := aes.new_cipher(hp_key)!
 	mut mask := []u8{len: header_protection_sample_size}
 	block.encrypt(mut mask, sample)
 	return mask

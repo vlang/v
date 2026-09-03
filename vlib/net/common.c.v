@@ -48,7 +48,7 @@ pub fn shutdown(handle int, config ShutdownConfig) int {
 			write_result := select_deadline(handle, .write, time.now().add(connect_timeout)) or {
 				false
 			}
-			err := 0
+			err := i32(0) // SO_ERROR is a C `int`; use i32 storage so &err is int* and sizeof is 4
 			len := sizeof(err)
 			xyz := C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
 			if xyz == 0 && err == 0 {
@@ -86,7 +86,7 @@ pub fn close(handle int) ! {
 		if (is_windows && ecode == int(error_ewouldblock)) || (!is_windows && res == -1
 			&& ecode in [int(error_einprogress), int(error_eagain), C.EINTR]) {
 			write_result := select_deadline(handle, .write, time.now().add(connect_timeout))!
-			err := 0
+			err := i32(0) // SO_ERROR is a C `int`; use i32 storage so &err is int* and sizeof is 4
 			len := sizeof(err)
 			xyz := C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
 			if xyz == 0 && err == 0 {

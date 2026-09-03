@@ -67,10 +67,18 @@ const external_tools = [
 ]
 
 struct MacosV3CErrorReport {
-	ccompiler  string
-	c_output   string
-	c_file     string
-	report_dir string
+	kind      string // '' = generated-C compilation error; 'compiler_error' = V3 internal compiler error
+	ccompiler string
+	c_output  string
+	// Content only. The process that owned the staged report already bounded the source
+	// and deleted the directory, so the retry never reads a path or deletes a directory
+	// named by the (inheritable, forgeable) environment.
+	v_file                 string // informational base filename (no directory)
+	v_source               string // the full failing file (bounded only when larger than the byte budget)
+	v_source_truncated     bool   // true when v_source is a bounded excerpt rather than the whole file
+	v_source_focus         int    // failing line's 1-based position within v_source (0 = none)
+	input_digests          map[string]string
+	input_digests_complete bool
 }
 
 @[unsafe]
@@ -115,14 +123,15 @@ fn main() {
 			if os.is_atty(0) == 0 {
 				mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
 				args_and_flags << ['run', '-']
-				pref.parse_args_and_show_errors(external_tools, args_and_flags, true)
+				pref.parse_args_for_launcher(external_tools, args_and_flags, true)
 			}
 		}
 		util.launch_tool(false, 'vrepl', os.args[1..])
 		return
 	}
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
-	prefs, command := pref.parse_args_and_show_errors(external_tools, args_and_flags, true)
+	prefs, command, command_idx := pref.parse_args_for_launcher_with_command_index(external_tools,
+		args_and_flags, true)
 	maybe_delegate_to_vvmrc(command, prefs)
 	maybe_delegate_to_ownership(command, prefs, args_and_flags)
 	macos_v3_c_error_report := maybe_delegate_to_macos_v3(command, prefs)
@@ -138,7 +147,18 @@ fn main() {
 	// Note for future contributors: Please add new subcommands in the `match` block below.
 	if command in external_tools {
 		// External tools
-		util.launch_tool(prefs.is_verbose, 'v' + command, os.args[1..])
+		mut tool_args := os.args[1..].clone()
+		if command == 'self' {
+			// vself forwards compiler flags to the compiler it builds. Pass merged
+			// VFLAGS once as arguments, then keep them out of vself's own recompilation.
+			// Preserve the parser's authoritative command boundary so vself never
+			// interprets a flag value as one of its positional arguments.
+			tool_args = args_and_flags.clone()
+			os.setenv('VSELF_COMMAND_INDEX', command_idx.str(), true)
+			os.unsetenv('VFLAGS')
+			os.unsetenv('VOSARGS')
+		}
+		util.launch_tool(prefs.is_verbose, 'v' + command, tool_args)
 		return
 	}
 	match command {
@@ -219,8 +239,18 @@ fn invoke_help_and_exit(remaining []string) {
 fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_args []string) {
 	is_ownership := '-ownership' in merged_args
 	is_autofree := prefs.autofree
+	if prefs.is_fastc {
+		// FastC owns its whole invocation and must never launch the AST-based
+		// ownership compiler. Its direct parser reports unsupported modes.
+		return
+	}
+	$if macos {
+		if macos_v3_test_ownership_uses_v1(prefs, merged_args) {
+			return
+		}
+	}
 	if !ownership_delegation_is_requested(is_ownership, is_autofree, prefs.old_compiler,
-		os.user_os()) {
+		prefs.new_compiler, os.user_os()) {
 		return
 	}
 	if is_autofree && !is_ownership && (autofree_requires_standard_compiler(prefs)
@@ -282,20 +312,22 @@ fn autofree_requires_standard_compiler(prefs &pref.Preferences) bool {
 fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 	if prefs.cmain.len > 0 || prefs.custom_prelude.len > 0 || prefs.is_check_return
 		|| prefs.div_by_zero_is_zero || prefs.obfuscate_removed || prefs.no_std
-		|| prefs.is_vls || prefs.new_transform || prefs.show_asserts
-		|| prefs.show_callgraph || prefs.show_depgraph || prefs.hide_auto_str
-		|| prefs.no_rsp || prefs.message_limit != 200 || prefs.warn_about_allocs
+		|| prefs.is_vls || prefs.new_transform || prefs.is_livemain
+		|| prefs.is_liveshared || prefs.show_asserts || prefs.show_callgraph
+		|| prefs.show_depgraph || prefs.hide_auto_str || prefs.no_rsp
+		|| prefs.message_limit != 200 || prefs.warn_about_allocs
 		|| prefs.c_error_bug_report_url.len > 0 || prefs.wasm_validate
 		|| prefs.wasm_stack_top != 1024 + (16 * 1024) || prefs.line_info.len > 0
 		|| prefs.use_coroutines || prefs.checker_match_exhaustive_cutoff_limit != 12
-		|| (prefs.backend == .c && prefs.os !in [._auto, .macos])
+		|| (prefs.backend == .c && !prefs.is_fastc && prefs.os != ._auto
+		&& prefs.os != pref.get_host_os())
 		|| prefs.build_options.any(it.starts_with('-debug-tcc')) || prefs.is_musl
 		|| prefs.build_options.any(it in ['-musl', '-glibc']) || !prefs.relaxed_gcc14 {
 		return true
 	}
-	return prefs.sanitize || prefs.is_livemain || prefs.is_liveshared
-		|| prefs.output_cross_c || prefs.experimental || prefs.use_os_system_to_run
-		|| prefs.is_apk || prefs.json_errors || prefs.no_preludes || prefs.is_quiet
+	return prefs.sanitize || prefs.output_cross_c || prefs.experimental
+		|| prefs.use_os_system_to_run || prefs.is_apk || prefs.is_vsh
+		|| prefs.json_errors || prefs.no_preludes || prefs.is_quiet
 		|| prefs.skip_warnings || prefs.skip_notes || prefs.fatal_errors
 		|| prefs.print_watched_files || prefs.dump_modules.len > 0
 		|| prefs.dump_files.len > 0 || prefs.dump_defines.len > 0
@@ -309,12 +341,17 @@ fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 		|| (prefs.backend == .wasm && prefs.is_run) || prefs.path.ends_with('.vv')
 }
 
-fn ownership_delegation_is_requested(is_ownership bool, is_autofree bool, old_compiler bool, host_os string) bool {
+fn ownership_delegation_is_requested(is_ownership bool, is_autofree bool, old_compiler bool, new_compiler bool, host_os string) bool {
 	if old_compiler {
 		return false
 	}
 	if is_ownership {
 		return true
+	}
+	// Let the embedded dispatcher reject the unsupported explicit combination;
+	// ownership delegation would otherwise strip -new-compiler before it can do so.
+	if new_compiler {
+		return false
 	}
 	return is_autofree && host_os == 'macos'
 }
@@ -341,7 +378,7 @@ fn launch_v3_ownership_compiler(is_verbose bool, args []string) {
 		exit(1)
 	}
 	if util.should_recompile_tool(vexe, v3_src_dir, tool_name, v3_exe) {
-		compilation_command := '${os.quoted_path(vexe)} -nocache -gc none -d ownership -o ${os.quoted_path(v3_exe)} ${os.quoted_path(v3_main_source)}'
+		compilation_command := '${os.quoted_path(vexe)} -no-parallel -nocache -gc none -d ownership -o ${os.quoted_path(v3_exe)} ${os.quoted_path(v3_main_source)}'
 		if is_verbose {
 			println('Compiling ${tool_name} with: "${compilation_command}"')
 		}
@@ -402,17 +439,26 @@ fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport
 			}
 			if failed := macos_v3_c_error_report {
 				builder.compile_with_external_c_error_report('build', prefs, cbuilder.compile_c, builder.ExternalCErrorBugReport{
-					ccompiler:   failed.ccompiler
-					c_output:    failed.c_output
-					c_file:      failed.c_file
-					tag:         'V3'
-					cleanup_dir: failed.report_dir
+					kind:                   failed.kind
+					ccompiler:              failed.ccompiler
+					c_output:               failed.c_output
+					v_file:                 failed.v_file
+					v_source:               failed.v_source
+					v_source_truncated:     failed.v_source_truncated
+					v_source_focus:         failed.v_source_focus
+					source_inline:          true
+					input_digests:          failed.input_digests
+					input_digests_complete: failed.input_digests_complete
+					tag:                    'V3'
 				})
 			} else {
 				builder.compile('build', prefs, cbuilder.compile_c)
 			}
 		}
 		.js_node, .js_freestanding, .js_browser {
+			// The js backends are V1-only and never receive a V3 fallback report; the
+			// content-only report (if any inherited one is present) names no directory to
+			// clean, so there is nothing to do here but hand off.
 			util.launch_tool(prefs.is_verbose, 'builders/js_builder', os.args[1..])
 		}
 		.interpret {
@@ -420,6 +466,27 @@ fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport
 			exit(1)
 		}
 		.wasm {
+			if failed := macos_v3_c_error_report {
+				// The wasm builder runs as an external tool via os.execvp, which replaces
+				// this process, so this process cannot submit the V3->V1 fallback report or
+				// print the notice after the retry. Forward the already-bounded content
+				// through the environment; the builder submits/notifies on its own build
+				// success without ever reading a path or deleting a directory named by the
+				// (inheritable, forgeable) environment.
+				builder.export_external_v3_report_to_env(builder.ExternalCErrorBugReport{
+					kind:                   failed.kind
+					ccompiler:              failed.ccompiler
+					c_output:               failed.c_output
+					v_file:                 failed.v_file
+					v_source:               failed.v_source
+					v_source_truncated:     failed.v_source_truncated
+					v_source_focus:         failed.v_source_focus
+					source_inline:          true
+					input_digests:          failed.input_digests
+					input_digests_complete: failed.input_digests_complete
+					tag:                    'V3'
+				})
+			}
 			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])
 		}
 	}

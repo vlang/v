@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "artifact-projection.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["target_id", "outputs"],
+  "properties": {
+    "target_id": {"$ref": "common.schema.json#/$defs/target_id"},
+    "outputs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "kind", "git_mode", "sha256", "symlink_target"],
+        "properties": {
+          "path": {"$ref": "common.schema.json#/$defs/relative_path"},
+          "kind": {"type": "string", "enum": ["file", "executable", "symlink"]},
+          "git_mode": {"$ref": "common.schema.json#/$defs/git_mode"},
+          "sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+          "symlink_target": {
+            "oneOf": [
+              {"type": "null"},
+              {"$ref": "common.schema.json#/$defs/symlink_target"}
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"kind": {"const": "symlink"}}, "required": ["kind"]},
+            "then": {
+              "properties": {
+                "git_mode": {"const": "120000"},
+                "symlink_target": {"$ref": "common.schema.json#/$defs/symlink_target"}
+              }
+            },
+            "else": {"properties": {"symlink_target": {"type": "null"}}}
+          }
+        ]
+      }
+    }
+  }
+}

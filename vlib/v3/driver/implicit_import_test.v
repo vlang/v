@@ -10,6 +10,26 @@ fn test_default_bin_file_strips_backend_source_extension() {
 	assert default_bin_file_for_input('foo.js.v') == 'foo'
 	assert default_bin_file_for_input('foo.wasm.v') == 'foo'
 	assert default_bin_file_for_input('foo.v') == 'foo'
+	assert default_bin_file_for_input('foo.vv') == 'foo'
+}
+
+fn test_default_bin_file_for_directory_is_source_adjacent() {
+	root := os.join_path(os.temp_dir(), 'v3_default_bin_directory_${os.getpid()}')
+	source_dir := os.join_path(root, 'app')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(source_dir)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	real_source_dir := os.real_path(source_dir)
+	assert default_bin_file_for_input(source_dir) == os.join_path_single(real_source_dir, 'app')
+}
+
+fn test_profile_optional_arg_recognizes_vv_source() {
+	value, consumed := v3_profile_optional_arg_value(['-profile', 'fixture.vv', '-o', 'out'], 0,
+		false)
+	assert value == '-'
+	assert !consumed
 }
 
 fn test_default_bin_file_uses_safe_hidden_source_name() {

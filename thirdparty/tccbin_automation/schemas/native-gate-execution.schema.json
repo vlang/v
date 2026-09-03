@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "native-gate-execution.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "subject",
+    "subject_hash",
+    "subject_sha",
+    "subject_generation",
+    "repository",
+    "workflow_id",
+    "workflow_path",
+    "original_actor",
+    "original_actor_integration_id",
+    "rerun_triggering_actor",
+    "rerun_triggering_integration_id",
+    "expected_ledger_generation",
+    "active_gate_epoch",
+    "gate_epochs",
+    "gate_runs",
+    "ack_operation_ids",
+    "completion_operation_ids",
+    "epoch_close_operation_ids",
+    "selected_run_id",
+    "selected_run_attempt",
+    "selected_check_suite_id",
+    "selected_conclusion",
+    "infra_retry_count",
+    "source_recovery_operation_id"
+  ],
+  "properties": {
+    "subject": {"$ref": "native-gate-subject.schema.json"},
+    "subject_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+    "subject_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+    "subject_generation": {"$ref": "common.schema.json#/$defs/generation"},
+    "repository": {"type": "string", "const": "vlang/tccbin"},
+    "workflow_id": {"$ref": "common.schema.json#/$defs/run_id"},
+    "workflow_path": {"type": "string", "const": ".github/workflows/build-and-test.yml"},
+    "original_actor": {"type": "string", "minLength": 1, "maxLength": 128},
+    "original_actor_integration_id": {"$ref": "common.schema.json#/$defs/run_id"},
+    "rerun_triggering_actor": {"type": "string", "minLength": 1, "maxLength": 128},
+    "rerun_triggering_integration_id": {"$ref": "common.schema.json#/$defs/run_id"},
+    "expected_ledger_generation": {"$ref": "common.schema.json#/$defs/generation"},
+    "active_gate_epoch": {"type": "integer", "minimum": 0},
+    "gate_epochs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "epoch",
+          "reason",
+          "expected_ref",
+          "trigger_id",
+          "state",
+          "selected_run_id",
+          "selected_run_attempt",
+          "selected_check_suite_id",
+          "conclusion",
+          "opened_at",
+          "closed_at",
+          "source_recovery_operation_id"
+        ],
+        "properties": {
+          "epoch": {"type": "integer", "minimum": 0},
+          "reason": {
+            "type": "string",
+            "enum": ["original_push", "initial-v-remediation", "missing-run-retry", "source-recovery"]
+          },
+          "expected_ref": {"$ref": "common.schema.json#/$defs/branch"},
+          "trigger_id": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+          "state": {
+            "type": "string",
+            "enum": ["open_unselected", "selected", "closed_timed_out", "closed_not_rerunnable", "completed"]
+          },
+          "selected_run_id": {"$ref": "common.schema.json#/$defs/nullable_run_id"},
+          "selected_run_attempt": {
+            "oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]
+          },
+          "selected_check_suite_id": {"$ref": "common.schema.json#/$defs/nullable_run_id"},
+          "conclusion": {
+            "oneOf": [
+              {"type": "null"},
+              {"type": "string", "enum": ["pending", "success", "failure", "cancelled", "timed_out", "neutral", "skipped"]}
+            ]
+          },
+          "opened_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+          "closed_at": {"$ref": "common.schema.json#/$defs/nullable_timestamp"},
+          "source_recovery_operation_id": {"$ref": "common.schema.json#/$defs/nullable_sha256"}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"reason": {"const": "source-recovery"}}, "required": ["reason"]},
+            "then": {"properties": {"source_recovery_operation_id": {"$ref": "common.schema.json#/$defs/sha256"}}},
+            "else": {"properties": {"source_recovery_operation_id": {"type": "null"}}}
+          },
+          {
+            "if": {"properties": {"reason": {"const": "original_push"}}, "required": ["reason"]},
+            "then": {"properties": {"trigger_id": {"type": "null"}}},
+            "else": {"properties": {"trigger_id": {"$ref": "common.schema.json#/$defs/sha256"}}}
+          },
+          {
+            "if": {"properties": {"state": {"const": "open_unselected"}}, "required": ["state"]},
+            "then": {
+              "properties": {
+                "selected_run_id": {"type": "null"},
+                "selected_run_attempt": {"type": "null"},
+                "selected_check_suite_id": {"type": "null"},
+                "conclusion": {"type": "null"},
+                "closed_at": {"type": "null"}
+              }
+            }
+          },
+          {
+            "if": {"properties": {"state": {"enum": ["selected", "completed"]}}, "required": ["state"]},
+            "then": {
+              "properties": {
+                "selected_run_id": {"$ref": "common.schema.json#/$defs/run_id"},
+                "selected_run_attempt": {"type": "integer", "minimum": 1},
+                "selected_check_suite_id": {"$ref": "common.schema.json#/$defs/run_id"},
+                "conclusion": {
+                  "type": "string",
+                  "enum": ["pending", "success", "failure", "cancelled", "timed_out", "neutral", "skipped"]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {"state": {"enum": ["closed_timed_out", "closed_not_rerunnable", "completed"]}},
+              "required": ["state"]
+            },
+            "then": {"properties": {"closed_at": {"$ref": "common.schema.json#/$defs/timestamp"}}}
+          }
+        ]
+      }
+    },
+    "gate_runs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "gate_epoch",
+          "run_id",
+          "run_attempt",
+          "repository",
+          "ref",
+          "sha",
+          "event",
+          "actor",
+          "actor_integration_id",
+          "triggering_actor",
+          "triggering_actor_integration_id",
+          "check_suite_id",
+          "workflow_id",
+          "workflow_path",
+          "created_at",
+          "conclusion"
+        ],
+        "properties": {
+          "gate_epoch": {"type": "integer", "minimum": 0},
+          "run_id": {"$ref": "common.schema.json#/$defs/run_id"},
+          "run_attempt": {"type": "integer", "minimum": 1},
+          "repository": {"type": "string", "const": "vlang/tccbin"},
+          "ref": {"$ref": "common.schema.json#/$defs/branch"},
+          "sha": {"$ref": "common.schema.json#/$defs/sha40"},
+          "event": {"type": "string", "const": "push"},
+          "actor": {"type": "string", "minLength": 1, "maxLength": 128},
+          "actor_integration_id": {"$ref": "common.schema.json#/$defs/run_id"},
+          "triggering_actor": {"type": "string", "minLength": 1, "maxLength": 128},
+          "triggering_actor_integration_id": {"$ref": "common.schema.json#/$defs/run_id"},
+          "check_suite_id": {"$ref": "common.schema.json#/$defs/run_id"},
+          "workflow_id": {"$ref": "common.schema.json#/$defs/run_id"},
+          "workflow_path": {"type": "string", "const": ".github/workflows/build-and-test.yml"},
+          "created_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+          "conclusion": {
+            "type": "string",
+            "enum": ["pending", "success", "failure", "cancelled", "timed_out", "neutral", "skipped"]
+          }
+        }
+      }
+    },
+    "ack_operation_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/sha256"}
+    },
+    "completion_operation_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/sha256"}
+    },
+    "epoch_close_operation_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/sha256"}
+    },
+    "selected_run_id": {"$ref": "common.schema.json#/$defs/nullable_run_id"},
+    "selected_run_attempt": {
+      "oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]
+    },
+    "selected_check_suite_id": {"$ref": "common.schema.json#/$defs/nullable_run_id"},
+    "selected_conclusion": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "enum": ["pending", "success", "failure", "cancelled", "timed_out", "neutral", "skipped"]}
+      ]
+    },
+    "infra_retry_count": {"type": "integer", "minimum": 0, "maximum": 1},
+    "source_recovery_operation_id": {"$ref": "common.schema.json#/$defs/nullable_sha256"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"selected_run_id": {"type": "null"}}, "required": ["selected_run_id"]},
+      "then": {
+        "properties": {
+          "selected_run_attempt": {"type": "null"},
+          "selected_check_suite_id": {"type": "null"},
+          "selected_conclusion": {"type": "null"}
+        }
+      },
+      "else": {
+        "properties": {
+          "selected_run_attempt": {"type": "integer", "minimum": 1},
+          "selected_check_suite_id": {"$ref": "common.schema.json#/$defs/run_id"},
+          "selected_conclusion": {
+            "type": "string",
+            "enum": ["pending", "success", "failure", "cancelled", "timed_out", "neutral", "skipped"]
+          }
+        }
+      }
+    }
+  ]
+}

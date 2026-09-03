@@ -4032,7 +4032,7 @@ fn main() {
 			os.write_file(global_src, '${declarations}\n\nfn main() {\n\t${global_use}\n}\n') or {
 				panic(err)
 			}
-			global_result := os.execute('${v3_bin} -b ${backend} ${global_src}')
+			global_result := os.execute('${v3_bin} -enable-globals -b ${backend} ${global_src}')
 			assert global_result.exit_code != 0, global_result.output
 			assert global_result.output.contains('operator `**` is not supported by the V3 ${backend} backend'), global_result.output
 		}

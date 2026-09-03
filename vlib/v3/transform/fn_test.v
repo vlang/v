@@ -24,6 +24,128 @@ fn test_normalize_function_type_preserves_mut_parameter() {
 	assert t.normalize_type_in_module('fn (mut item Item) bool', 'main') == 'fn (&Item) bool'
 }
 
+fn test_or_payload_type_qualifies_imported_generic_base() {
+	mut t := Transformer{
+		cur_module: 'main'
+	}
+	info := StructInfo{
+		name:   'QueryBuilder'
+		module: 'orm'
+	}
+	t.structs['QueryBuilder'] = info
+	t.structs['orm.QueryBuilder'] = info
+	t.qualified_types['QueryBuilder'] = 'orm.QueryBuilder'
+	assert t.normalize_or_expr_value_type('&QueryBuilder[AggregateEntry]') == '&orm.QueryBuilder[AggregateEntry]'
+}
+
+fn test_or_payload_type_qualifies_generic_base_in_own_module() {
+	mut t := Transformer{
+		cur_module: 'orm'
+	}
+	info := StructInfo{
+		name:   'QueryBuilder'
+		module: 'orm'
+	}
+	t.structs['QueryBuilder'] = info
+	t.structs['orm.QueryBuilder'] = info
+	assert t.normalize_or_expr_value_type('&QueryBuilder[AggregateEntry]') == '&orm.QueryBuilder[AggregateEntry]'
+	expr_type, value_type := t.specialized_or_expr_types('!QueryBuilder[sapp.Event]')
+	assert expr_type == '!orm.QueryBuilder[sapp.Event]'
+	assert value_type == 'orm.QueryBuilder[sapp.Event]'
+}
+
+fn test_specialized_receiver_method_qualifies_imported_generic_base() {
+	mut t := Transformer{
+		cur_module: 'main'
+	}
+	info := StructInfo{
+		name:   'QueryBuilder'
+		module: 'orm'
+	}
+	t.structs['QueryBuilder'] = info
+	t.structs['orm.QueryBuilder'] = info
+	t.qualified_types['QueryBuilder'] = 'orm.QueryBuilder'
+	t.fn_ret_types['orm.QueryBuilder_Foo.v_sql_insert'] = '!int'
+	assert t.resolve_specialized_generic_receiver_method('QueryBuilder[Foo]', 'v_sql_insert') or {
+		''
+	} == 'orm.QueryBuilder_Foo.v_sql_insert'
+	assert t.resolve_receiver_method_for_type('QueryBuilder_Foo', 'v_sql_insert') or { '' } == 'orm.QueryBuilder_Foo.v_sql_insert'
+}
+
+fn test_receiver_method_resolution_follows_main_locked_struct_alias() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['AliasApp'] = 'App'
+	tc.type_aliases['AliasContext'] = 'Context'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'veb'
+	t.structs['App'] = StructInfo{}
+	t.structs['Context'] = StructInfo{
+		name:   'Context'
+		fields: [
+			FieldInfo{
+				name:        'Context'
+				typ:         'veb.Context'
+				raw_typ:     'veb.Context'
+				is_embedded: true
+			},
+		]
+	}
+	t.structs['veb.Context'] = StructInfo{
+		name:   'Context'
+		module: 'veb'
+		fields: [
+			FieldInfo{
+				name:    'req'
+				typ:     'http.Request'
+				raw_typ: 'http.Request'
+			},
+		]
+	}
+	t.embedded_fields['Context'] = [
+		FieldInfo{
+			name:    'Context'
+			typ:     'veb.Context'
+			raw_typ: 'veb.Context'
+		},
+	]
+	t.fn_ret_types['App.before_accept_loop'] = 'void'
+	t.fn_ret_types['veb.Context.before_request'] = 'void'
+
+	assert t.alias_target_type_preserving_main_lock('main.AliasApp') or { '' } == 'main.App'
+	assert t.resolve_receiver_method_for_type('main.AliasApp', 'before_accept_loop') or { '' } == 'App.before_accept_loop'
+	assert t.resolve_embedded_receiver_method('main.AliasContext', 'before_request') or { '' } == 'veb.Context.before_request'
+	assert t.receiver_method_matches_type_name('App.before_accept_loop', 'main.AliasApp')
+	path := t.embedded_receiver_path('main.AliasContext', 'veb.Context') or {
+		assert false, 'expected the embedded veb.Context path through AliasContext'
+		return
+	}
+	assert path.len == 1
+	assert path[0].name == 'Context'
+	promoted_path := t.struct_field_path_for_field('main.AliasContext', 'req') or {
+		assert false, 'expected the promoted req path through AliasContext'
+		return
+	}
+	assert promoted_path.len == 1
+	assert promoted_path[0].name == 'Context'
+}
+
+fn test_sql_table_name_substitutes_active_generic_parameter() {
+	t := Transformer{
+		active_generic_params:      ['T']
+		active_specialization_args: ['User']
+	}
+	assert t.sql_resolved_table_name('T') == 'User'
+	assert t.sql_table_type_names_match('main.User', 'User')
+}
+
+fn test_sql_table_name_keeps_main_lock_outside_main_module() {
+	t := Transformer{
+		cur_module: 'orm'
+	}
+	assert !t.sql_table_type_names_match('main.User', 'User')
+}
+
 fn test_normalize_type_in_module_cache_tracks_current_file() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -69,11 +191,94 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 		cur_file:   'token.v'
 	}
 	value := t.make_ident('pos')
+	t.stringify_stack << 'Wrapper'
 	call := t.request_auto_str_helper(value, 'v.token.Pos')
 	callee := a.child_node(a.node(call), 0)
 
 	assert callee.value == '__v3_autostr_v__token__Pos'
 	assert t.auto_str_types['v.token.Pos'].helper_module == 'token'
+}
+
+fn test_program_sum_equality_helper_does_not_collide_with_cached_module_helper() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.sum_types['orm.Primitive'] = ['orm.Null', 'bool']
+	t.cur_module = 'orm'
+	t.cur_file = 'orm.v'
+	lhs := t.make_ident('lhs')
+	rhs := t.make_ident('rhs')
+	t.set_node_typ(int(lhs), 'orm.Primitive')
+	t.set_node_typ(int(rhs), 'orm.Primitive')
+	t.make_sum_semantic_eq_expr(lhs, rhs, 'orm.Primitive', []string{})
+
+	t.sum_eq_helper_module = 'main'
+	t.make_sum_semantic_eq_expr(lhs, rhs, 'orm.Primitive', []string{})
+
+	module_helper := sum_eq_helper_name('orm.Primitive')
+	program_helper := '${module_helper}__v3_program'
+	assert module_helper in t.sum_eq_types
+	assert program_helper in t.sum_eq_types
+	assert t.sum_eq_types[module_helper].helper_module == 'orm'
+	assert t.sum_eq_types[program_helper].helper_module == 'main'
+}
+
+fn test_large_recursive_pointer_auto_str_stops_before_expanding_back_edge() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	mut large_fields := []FieldInfo{cap: 65}
+	for i in 0 .. 64 {
+		large_fields << FieldInfo{
+			name: 'value_${i}'
+			typ:  'int'
+		}
+	}
+	large_fields << FieldInfo{
+		name:    'root'
+		typ:     '&Root'
+		raw_typ: '&Root'
+	}
+	t.structs['Root'] = StructInfo{
+		name:   'Root'
+		fields: [
+			FieldInfo{
+				name:    'large'
+				typ:     '&Large'
+				raw_typ: '&Large'
+			},
+		]
+	}
+	t.structs['Large'] = StructInfo{
+		name:   'Large'
+		fields: large_fields
+	}
+	t.structs['Small'] = StructInfo{
+		name:   'Small'
+		fields: [
+			FieldInfo{
+				name:    'root'
+				typ:     '&SmallRoot'
+				raw_typ: '&SmallRoot'
+			},
+		]
+	}
+	t.structs['SmallRoot'] = StructInfo{
+		name:   'SmallRoot'
+		fields: [
+			FieldInfo{
+				name:    'small'
+				typ:     '&Small'
+				raw_typ: '&Small'
+			},
+		]
+	}
+	t.stringify_stack << 'Root'
+
+	assert t.ref_value_str_reaches_large_circular_graph('Large')
+	t.stringify_stack.clear()
+	t.stringify_stack << 'SmallRoot'
+	assert !t.ref_value_str_reaches_large_circular_graph('Small')
 }
 
 fn test_if_type_merge_ignores_unresolved_branch_fallbacks() {
@@ -145,6 +350,33 @@ fn test_lowered_generic_operator_call_records_operator_use() {
 		lowered_operator_uses)
 	assert t.used_struct_operator_fns['Box[int].+']
 	assert t.used_struct_operator_fns['Box_int__plus']
+}
+
+fn test_specialized_zero_arg_method_is_not_lowered_as_generic_cast() {
+	mut a := flat.FlatAst.new()
+	callee_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'Tree_f64.min'
+	})
+	receiver_id := a.add_node(flat.Node{
+		kind: .ident
+		typ:  'Tree[f64]'
+	})
+	children_start := a.children.len
+	a.children << callee_id
+	a.children << receiver_id
+	call := flat.Node{
+		kind:           .call
+		children_start: children_start
+		children_count: 2
+		value:          'f64'
+	}
+	mut tc := types.TypeChecker.new(&a)
+	tc.specialized_generic_fns['Tree_f64.min'] = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.try_lower_generic_sum_constructor_call(call) == none
+	assert t.try_lower_generic_named_type_cast_call(call) == none
 }
 
 fn test_typeof_display_canonicalizes_fixed_array_map_values() {
@@ -261,6 +493,8 @@ fn test_frozen_interface_boxed_types_are_read_only_in_skip_generics_workers() {
 	worker.mark_interface_boxed_type('main.Reader', 'main.Other')
 	assert 'main.Reader\nmain.Other' !in master.interface_boxed_types
 	assert 'main.Reader\nmain.Other' !in worker.interface_boxed_types
+	assert worker.interface_boxed_types_late['main.Reader\nmain.Other']
+	assert worker.interface_boxed_type_marked('main.Reader', 'main.Other')
 
 	master.interface_boxed_types_frozen = false
 	master.mark_interface_boxed_type('main.Reader', 'main.Other')
@@ -312,4 +546,88 @@ fn test_multi_return_selector_suffix_does_not_match_free_fn() {
 		return
 	}
 	assert items.len == 2
+}
+
+fn test_qualify_or_storage_type_resolves_imported_generic_base_only() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['orm.QueryBuilder'] = []types.StructField{}
+	tc.struct_generic_params['orm.QueryBuilder'] = ['T']
+	tc.struct_generic_params['QueryBuilder'] = ['T']
+	tc.struct_modules['orm.QueryBuilder'] = 'orm'
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.qualify_or_storage_type('&QueryBuilder[main.User]') == '&orm.QueryBuilder[main.User]'
+	assert t.qualify_or_storage_type('(string, []string)') == '(string, []string)'
+}
+
+fn test_immediate_closure_generic_sum_pointer_result_may_alias_capture() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.sum_types['Maybe'] = ['T', 'IError']
+	tc.sum_generic_params['Maybe'] = ['T']
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.immediate_closure_result_may_alias_capture('Maybe[&int]')
+}
+
+fn test_immediate_closure_generic_struct_pointer_result_may_alias_capture() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Box'] = [types.StructField{
+		name: 'value'
+		typ:  tc.parse_type('T')
+	}]
+	tc.struct_generic_params['Box'] = ['T']
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.immediate_closure_result_may_alias_capture('Box[&int]')
+}
+
+fn test_immediate_closure_result_error_may_alias_capture() {
+	fallback := Transformer{}
+	assert fallback.immediate_closure_result_may_alias_capture('!int')
+	assert fallback.immediate_closure_result_may_alias_capture('[]int')
+	assert fallback.immediate_closure_result_may_alias_capture('map[string]int')
+	assert fallback.immediate_closure_result_may_alias_capture('chan int')
+	assert fallback.immediate_closure_result_may_alias_capture('string')
+	assert fallback.immediate_closure_result_may_alias_capture('?string')
+
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['TextBox'] = [
+		types.StructField{
+			name: 'text'
+			typ:  types.Type(types.String{})
+		},
+	]
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.immediate_closure_result_may_alias_capture('!int')
+	assert t.immediate_closure_result_may_alias_capture('[]int')
+	assert t.immediate_closure_result_may_alias_capture('map[string]int')
+	assert t.immediate_closure_result_may_alias_capture('chan int')
+	assert t.immediate_closure_result_may_alias_capture('string')
+	assert t.immediate_closure_result_may_alias_capture('?string')
+	assert t.immediate_closure_result_may_alias_capture('TextBox')
+}
+
+fn test_immediate_closure_thread_result_may_alias_capture() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Worker'] = [
+		types.StructField{
+			name: 'handle'
+			typ:  tc.parse_type('thread int')
+		},
+	]
+	with_checker := Transformer{
+		a:  &a
+		tc: &tc
+	}
+	assert with_checker.immediate_closure_result_may_alias_capture('thread int')
+	assert with_checker.immediate_closure_result_may_alias_capture('Worker')
+
+	without_checker := Transformer{}
+	assert without_checker.immediate_closure_result_may_alias_capture('thread int')
 }

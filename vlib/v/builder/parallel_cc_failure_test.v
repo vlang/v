@@ -33,7 +33,9 @@ fn run_parallel_cc_case_with_args(case_name string, args []string, files map[str
 	}
 	mut p := os.new_process(parallel_cc_vexe)
 	p.set_work_folder(case_dir)
-	p.set_args(args)
+	mut child_args := ['-old-compiler']
+	child_args << args
+	p.set_args(child_args)
 	p.set_environment(env)
 	p.set_redirect_stdio()
 	p.wait()

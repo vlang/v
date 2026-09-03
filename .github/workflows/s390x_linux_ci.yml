@@ -6,7 +6,8 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'vlib/v3/**'
+      # vlib/v3/** is intentionally NOT ignored: V3 is the default compiler on
+      # Linux, including this s390x runner.
       - '**.md'
       - '**.yml'
       - '!**/s390x_linux_ci.yml'
@@ -31,6 +32,7 @@ on:
       - 'vlib/strings/**'
       - 'vlib/sync/**'
       - 'vlib/v/**'
+      - 'vlib/v3/**'
       - 'thirdparty/**'
       - 'vc/**'
       - 'v.mod'
@@ -49,7 +51,8 @@ jobs:
   s390x_linux:
     # The host should always be Linux
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    # Embedding the Linux-default V3 compiler makes both bootstrap stages slow under QEMU.
+    timeout-minutes: 120
     name: Build on ubuntu-22.04 s390x
     steps:
       - uses: actions/checkout@v7
@@ -75,5 +78,8 @@ jobs:
             make
             file ./v
             ls -la ./v
+            # V3 is the default compiler on Linux. Keep bootstrap fallback-compatible,
+            # then make ordinary test compilation fail instead of silently retrying V1.
+            export V_MACOS_V3_NO_FALLBACK=1
             ./v test vlib/builtin vlib/os vlib/encoding/binary
             ./v test vlib/v/tests/fns/closure_test.v

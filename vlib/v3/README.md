@@ -3,11 +3,15 @@
 Clean rewrite of the V compiler. Reuses v2's scanner, uses a flat AST parser
 with Pratt parsing, a structured type system with sum-type variants, lexical
 scoping, a transformer for AST simplification, a shared type-checking phase, a
-markused pass for dead-code elimination, recursive import resolution, and three
-backends: a direct flat-AST-to-C backend, a native ARM64 backend via SSA IR with
-a built-in linker, and a direct flat-AST-to-WebAssembly backend. With `-prod`,
-the ARM64 backend runs SSA optimization, MIR lowering, and instruction
-selection.
+markused pass for dead-code elimination, recursive import resolution, and
+backends: a direct flat-AST-to-C backend, a scanner-to-C fast path, a native
+ARM64 backend via SSA IR with a built-in linker, and a direct
+flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
+optimization, MIR lowering, and instruction selection.
+
+The `v fmt` command uses `v3.parser` and `v3.gen.v`. Formatter-mode parsing retains comments,
+compile-time branches, inline assembly, SQL bodies, and literal prefixes so they round-trip
+without a legacy formatter path.
 
 Imports all `vlib/builtin/` V source files, both pure V (`.v`) and C-interop
 (`.c.v`), for struct, enum, type alias, interface, C function declarations, and
@@ -27,18 +31,34 @@ can compile the full builtin map.v.
 
 ## macOS V3 dispatch
 
-On macOS, V3 is the default compiler for user source and test builds. The top-level `v` command
-runs the V3 driver linked into `cmd/v`; it does not build or launch a second compiler process.
-This includes direct file and directory builds, `run`, `build`, and test-file compilation, plus
-production and shared builds and supported cross targets and backends. The `test` command itself
-continues to use the established test dispatcher, while each discovered test file is compiled by
-V3.
+On macOS and Linux, V3 is the default compiler for user source and test builds. The top-level
+`v` command runs the V3 driver linked into `cmd/v`; it does not build or launch a second compiler
+process. This includes direct file and directory builds, `run`, `build`, and test-file compilation,
+plus production and shared builds and supported cross targets and backends. The `test` command
+itself continues to use the established test dispatcher, while each discovered test file is
+compiled by V3.
 
 `cmd/v` remains the CLI and compatibility dispatcher. Its own build, its internal command-tool
 bootstrap, and the `vlib/v3/v3.v` compiler bootstrap retain the compatibility compiler. Explicit
-non-none garbage collectors, sanitizer builds, live reload, and `-autofree run` also stay on that
-path until V3 supports their runtime behavior. Pass `-old-compiler` to explicitly select the
-compatibility compiler for another user build. Other operating systems are unchanged.
+non-none garbage collectors, sanitizer builds, live reload, and autofree also stay off the default
+V3 path until V3 supports their runtime behavior. Debug builds selected with `-g`/`-debug` also use
+the established compiler; `-cg`/`-cdebug` remains eligible for V3. Pass `-old-compiler` to
+explicitly select the compatibility compiler for another user build. On Windows and the BSDs,
+where the V3 driver is not embedded, `v` uses the established compiler by default.
+
+Pass `-new-compiler` for the opposite: it runs the embedded V3 driver (`vlib/v3`) in the SAME
+process, exactly like the default macOS and Linux path — it never launches a separate `v3`
+executable. Because only macOS and Linux embed the V3 driver, `-new-compiler` applies there: it
+forces V3 for a `run`/`build` target even when the default heuristic would defer to V1, and
+disables the automatic V1 fallback so a V3 failure is reported instead of silently retried with
+V1. It never forces V3 onto options V3 cannot honor yet (those error asking you to drop the flag),
+leaves the `test` command to the test dispatcher, and errors on builds that do not embed the V3
+compiler — Windows, the BSDs, and the portable cross-VC bootstrap — rather than opting them into
+V3. `-old-compiler` takes precedence when both are given.
+
+To make this possible the V3 driver (`vlib/v3`) is linked into `cmd/v` on macOS and Linux, so `v`
+compiles in-process there by default and `v -new-compiler` does so wherever V3 is embedded. Windows
+and the BSDs get a stub instead, so `-new-compiler` there reports that the build does not embed V3.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.
@@ -68,18 +88,142 @@ currently supported collector mode. Directory builds read `subdirs` through the 
 Native C compilation uses `-fwrapv` on supported targets so signed integer overflow retains V's
 two's-complement semantics. On macOS, `-cg` links executables with exported symbols for symbolic
 backtraces while plain `-g` retains its V-source debug behavior.
-The driver monitors compiler memory throughout the build and exits when it reaches 2.25 GiB
-(4 GiB for compiler self-host builds).
+The driver monitors compiler memory throughout the build and exits when it reaches 3840 MiB,
+leaving sampling headroom below a 4 GiB process ceiling.
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
-On macOS, each stage benchmark prints physical footprint immediately after RSS.
+On macOS and Linux, `make` and the default `v self` build the compiler with `-prealloc`, enabling
+the disposable stage arenas that keep compiler self-hosting within that ceiling.
+Stage rows recorded at pipeline boundaries report sampled peak RSS and the process peak. Timing
+breakdowns reconstructed after a stage omit the sampled peak. On macOS each row also prints
+physical footprint immediately after RSS.
 
-Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` and
-detached standard-library workers use the target's default thread stack (8 MiB on 64-bit targets
-and 2 MiB on 32-bit targets); `-thread-stack-size <bytes>` overrides it. Thread allocation,
+## Parallel jobs
+
+`VJOBS` selects V3's desired parallel job count. On Linux, an executable of the V3 compiler that
+was itself built with `-prealloc` caps ordinary user builds at four total compiler jobs whenever
+the effective job count is greater than four. The caller thread counts as one job, so V3 creates
+at most three worker threads. `VJOBS` values from 1 through 4 are unchanged; values greater than
+4 cannot override this cap.
+
+The cap does not apply to compiler/self-host inputs or to V3 executables built without
+preallocation. It depends on how the V3 compiler executable was built, so passing `-no-prealloc`
+for the user program being compiled does not disable the compiler's own job cap.
+
+## Fast C backend
+
+`-b fastc` selects the embedded V3 driver and its AST-free parser for the shortest edit-run cycle.
+FastC resolves the entry file and imported modules, then emits GNU C while consuming scanner tokens.
+It never invokes the flat parser, semantic checker, transformer, mark-used pass, or conventional C
+generator. For same-target builds, bundled TinyCC validates the emitted translation unit before any
+C file or executable is published. This validates C syntax and linkage, not V type semantics.
+Unsupported V syntax and same-target TinyCC errors are reported directly; FastC never retries
+through an AST-based backend.
+
+FastC currently emits primitive functions and parameters, inferred local declarations, ordinary
+expressions including comparison and logical operators, string interpolation for strings and
+non-floating primitive values, `if`/`else`, and condition, C-style, infinite, and range `for` loops.
+GNU `typeof` carries `:=` declarations into C. FastC infers representation metadata only when it is
+needed to select a C spelling or runtime helper; it does not validate V type compatibility for
+calls, returns, assignments, conditions, casts, operators, matches, ranges, or literal elements.
+TinyCC may therefore accept source that the regular V checker rejects through C implicit
+conversions. Use the regular backend when semantic type validation is required. Range bounds are
+evaluated once, from left to right. The parser still rejects mutation of immutable or unknown local
+names instead of relying on C's weaker assignment rules.
+
+Syntax without a direct FastC lowering is rejected. In ordinary non-selfhost builds this includes
+float printing, C-string and embedded-NUL string literals, runes, assertions, `sizeof`, shift,
+division, modulo, indexing, parallel assignment, mixed-precedence expressions, oversized decimal
+literals, and high-bit hexadecimal or binary literals. These restrictions avoid emitting C that
+cannot provide the required runtime behavior.
+FastC transports header paths, link inputs, frameworks, and preprocessor defines from `#flag`, and
+resolves `#pkgconfig` options into its fixed TinyCC invocation. Other compile options remain
+unsupported.
+
+FastC requires exactly one `.v` entry file. Executables are host-target only; `-o file.c` also
+permits an explicit cross target and publishes its generated C without host TinyCC validation.
+Production, test, shared/live, ownership/autofree, object-file, profiling/coverage, strict C,
+custom compiler, custom-builtin, `no_main`, `-Wimpure-v`, translated, and REPL modes are currently
+rejected.
+
+A conventional C-backend self-host prunes FastC along with the other optional backends. Pass
+`-compile-backend fastc` or `-all-backends` when the generated compiler should retain `-b fastc`.
+
+`-selfhost -b fastc -o v4 vlib/v3/v3.v` builds V3 using only the scanner-to-C path. The generated
+compiler uses the small `v3.fastcdriver` entry point and can build further FastC generations without
+the flat AST or conventional C backend. Set `V_MACOS_V3_NO_FALLBACK=1` while validating a chain to
+turn any attempted compatibility fallback into a hard failure.
+
+Set `FASTC_BENCH=1` when running a FastC self-host compiler to print the generation time and
+`loc/s` for its input (`FASTC_BENCH_REPEAT=N` reports the best of N child runs).
+`FASTC_BENCH_PHASES=1` prints the time of every generation phase, `FASTC_BENCH_FILES=1` the
+generation time of every source file, and `FASTC_BENCH=1 FASTC_BENCH_LOOP=N` repeats generation N
+times in-process so an external sampler can profile it. The compiler's own C preamble and runtime
+(hashing, option boxing, tuple slots) are emitted by the generator that built it, so such changes
+take effect one generation later: measure the compiler built by the modified compiler, not the
+modified compiler itself.
+
+Self-host generations box `?`/`!` payloads out of a per-thread bump chunk rather than `malloc`, keep
+one file record per scanner pass, and honor `@[direct_array_access]` for string and array indexing.
+Multi-return components larger than 32 bytes are boxed instead of copied into the tuple slot, so a
+returned `map` or large struct can no longer overflow it.
+
+Per-file generation, constant parsing, and the declaration and signature collection passes claim
+their work items from a shared atomic counter (largest files first) instead of a static split, so
+workers on faster cores take more files; the serial merge and output order is restored by index.
+The first parallel pass also records which declaration keywords (`interface`, `$if`, type keywords,
+generic `fn` syntax) each file mentions, and the later collection passes skip files that cannot
+contain what they scan for.
+
+Source resolution reads the program on worker threads before the ordering walk runs: each
+imported module directory is listed on a thread and its files are read in chunks on further
+threads, never more than the worker limit (CPU count or `VJOBS`) at once. The main thread joins
+listings first and then the chunks in start order, resolving the imports of each chunk as it
+lands, so reading one module overlaps with discovering the next. A resolve memo in `os.vtmp_dir()`
+(`fastc_resolve_<hash>.memo`, keyed by the entry files, vroot, target and defines) records what
+the previous resolution of the same entry touched, so the next run lists every directory, looks
+up every module and stats every file in one batch instead of level by level along the import
+chain; a file's content is taken from the memo's blob only when its size, mtime, ctime and inode
+still match and it was last modified at least two seconds before the memo was written, and it is
+read again otherwise. The memo also keeps each listed directory's file list and the entry
+module's file list together with the directory's own stamp, so an unchanged directory is stat'ed
+instead of listed again (adding, removing or renaming an entry changes that stamp, and the same
+two-second rule applies); module lookups are recorded once per cache key, the memo's blob is read
+in ranges by the same probe workers. The ordering walk itself is unchanged and replays over that
+data, so the output is identical with and without the memo (`V3_FASTC_NO_RESOLVE_MEMO=1` disables
+it). The type declarations are rendered on a worker while the signatures are collected, the
+generic-method scan and the declaration index share one pass, while workers split oversized files
+into generation fragments and build the by-name struct field index as the declaration phases
+run, and the generated C is returned as ordered pieces (whole per-file bodies are shared rather
+than copied into one buffer; only bodies cut around C directive lines are copied) that the drivers
+write directly. Function bodies are pre-scanned for channel `select` statements only in files
+whose bytes contain the word `select`. The declaration index records the text spans of each file's
+constant and global declarations: a large file's constants are parsed as separate parallel
+candidates (merged in source order), and the global phase parses only the recorded global
+declarations instead of whole files.
+
+The standalone compiler supports `self` directly and defaults that command to FastC. For example,
+`./v self x5` replaces the compiler through five descendant FastC generations, with each installed
+generation compiling the next one. `-b fastc`, `-gc none`, `-cc tinyc|tcc`, `-keepc`, `-silent`,
+and a single-generation `-o` destination are accepted.
+
+Building the FastC self-host compiler with `-d arm64` selects its scanner-direct native path. That
+path resolves sources with FastC's scanner passes, emits SSA while consuming parser tokens, and
+passes the result to `v3.gen.arm64` for Mach-O output. It creates neither Flat AST nor C source and
+does not run TinyCC. The native parser lives in `gen/fastc/arm64_d_arm64.v`; without the define,
+that file and the ARM64/SSA imports are excluded and FastC retains its lightweight C path.
+
+In selfhost mode, `t := spawn f(args)` and `t.wait()` lower to a generated pthread creator, run
+wrapper, and join helper per spawned function: `thread` values are a typed wrapper around
+`pthread_t` plus a heap block that packs the arguments and receives the result. Spawned threads
+use an 8 MiB stack; `-thread-stack-size` is not yet supported by FastC. Thread allocation,
 creation, and join failures are checked. Since V's `spawn` expression has no error return, these
 runtime failures print a diagnostic and abort; packed arguments are released if thread creation
-fails.
+fails. Variadic, option/result, multi-return, and `mut`-argument callees, Windows targets, and
+non-selfhost mode are rejected. Because bundled TinyCC has no thread-local storage, FastC compiler
+generations build without the `prealloc` bump arena and use plain thread-safe `malloc`; the
+FastC generation pipeline itself runs its per-file and reference-scan phases on spawned threads
+in every generation.
 
 The type system (`types/`) uses a `Type` sum type with 20 variants instead of
 string-based type checks. Primitive types use a `Properties` flag enum with
@@ -155,6 +299,8 @@ the plan and run the complete diagnostic and generation pipeline normally.
 ## Architecture
 
 ```
+source -> scanner -> fastc parser/C emitter -> TinyCC
+
 source + vlib/builtin -> scanner -> flat parser -> flat AST -> imports
   -> check -> transform -> annotate types -> markused -> gen C -> cc
                                           \-> SSA build -> ARM64 gen -> link

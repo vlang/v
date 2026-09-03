@@ -1,0 +1,47 @@
+// An interface-typed local or struct field named after a C/C++ reserved word is
+// declared as `__v_<name>`. The interface-to-interface smartcast paths (ident and
+// selector_expr) must reference that escaped name, not the raw identifier, or the
+// generated C references a nonexistent local/member.
+interface Base {
+	name string
+}
+
+interface Extended {
+	Base
+	extra() string
+}
+
+struct Thing {
+	name string
+}
+
+fn (t Thing) extra() string {
+	return 'e'
+}
+
+fn use_ext(e Extended) string {
+	return e.name + e.extra()
+}
+
+struct Holder {
+	explicit Base
+}
+
+fn main() {
+	// ident form: interface-typed local named after a reserved word
+	operator := Base(Thing{
+		name: 'op'
+	})
+	if operator is Extended {
+		println(use_ext(operator))
+	}
+	// selector_expr form: interface-typed struct field named after a reserved word
+	h := Holder{
+		explicit: Base(Thing{
+			name: 'ex'
+		})
+	}
+	if h.explicit is Extended {
+		println(use_ext(h.explicit))
+	}
+}

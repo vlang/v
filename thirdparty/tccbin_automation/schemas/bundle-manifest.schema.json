@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bundle-manifest.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "contract_version",
+    "contract_repository",
+    "contract_sha",
+    "contract_mode",
+    "v_source_sha",
+    "target_id",
+    "branch",
+    "sources",
+    "recipe",
+    "toolchain",
+    "patches",
+    "transforms",
+    "header_effects",
+    "integrations",
+    "overlays",
+    "inventory",
+    "outputs",
+    "probes",
+    "provenance_status",
+    "affected_targets"
+  ],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "contract_version": {"$ref": "common.schema.json#/$defs/contract_version"},
+    "contract_repository": {"$ref": "common.schema.json#/$defs/repository"},
+    "contract_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+    "contract_mode": {"$ref": "common.schema.json#/$defs/contract_mode"},
+    "v_source_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+    "target_id": {"$ref": "common.schema.json#/$defs/target_id"},
+    "branch": {"$ref": "common.schema.json#/$defs/branch"},
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "repository", "ref", "sha", "tree"],
+        "properties": {
+          "id": {"type": "string", "enum": ["tinycc", "v-libgc", "bdwgc", "libatomic_ops"]},
+          "repository": {"type": "string", "minLength": 3, "maxLength": 256},
+          "ref": {"$ref": "common.schema.json#/$defs/branch"},
+          "sha": {
+            "oneOf": [
+              {"type": "null"},
+              {"$ref": "common.schema.json#/$defs/sha40"}
+            ]
+          },
+          "tree": {
+            "oneOf": [
+              {"type": "null"},
+              {"$ref": "common.schema.json#/$defs/sha40"}
+            ]
+          }
+        }
+      }
+    },
+    "recipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "version", "sha256"],
+      "properties": {
+        "path": {"$ref": "common.schema.json#/$defs/relative_path"},
+        "version": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "profile_sha256", "producer_observation"],
+      "properties": {
+        "profile_id": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._\\-]{2,127}$"
+            }
+          ]
+        },
+        "profile_sha256": {"$ref": "common.schema.json#/$defs/nullable_sha256"},
+        "producer_observation": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "toolchain-observation.schema.json"}
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "profile_id": {"const": null},
+            "profile_sha256": {"const": null},
+            "producer_observation": {"const": null}
+          }
+        },
+        {
+          "properties": {
+            "profile_id": {"type": "string"},
+            "profile_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+            "producer_observation": {
+              "oneOf": [
+                {"type": "null"},
+                {"$ref": "toolchain-observation.schema.json"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "patches": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "path",
+          "sha256",
+          "order",
+          "category",
+          "auto_deprecatable",
+          "state",
+          "effects"
+        ],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._\\-]+$"},
+          "path": {"$ref": "common.schema.json#/$defs/relative_path"},
+          "sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+          "order": {"type": "integer", "minimum": 1},
+          "category": {"type": "string", "enum": ["upstream-candidate", "v-integration"]},
+          "auto_deprecatable": {"type": "boolean"},
+          "state": {
+            "type": "string",
+            "enum": [
+              "active-required",
+              "auto-retirement-candidate",
+              "deprecated-upstream-validated",
+              "human-review-required"
+            ]
+          },
+          "effects": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"$ref": "patch-effect.schema.json"}
+          }
+        }
+      }
+    },
+    "transforms": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path", "sha256", "owner", "order", "apply_stage", "effect_ids"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._\\-]+$"},
+          "path": {"$ref": "common.schema.json#/$defs/relative_path"},
+          "sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+          "owner": {"type": "string", "enum": ["bundle-overlay", "v-libgc"]},
+          "order": {"type": "integer", "minimum": 1},
+          "apply_stage": {
+            "type": "string",
+            "enum": ["bundle-payload-post-copy", "v-libgc-source-prebuild"]
+          },
+          "effect_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._\\-]+$"}
+          }
+        }
+      }
+    },
+    "header_effects": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "patch-effect.schema.json"}
+    },
+    "integrations": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "patch-effect.schema.json"}
+    },
+    "overlays": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "inventory-entry.schema.json"}
+    },
+    "inventory": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "inventory-entry.schema.json"}
+    },
+    "outputs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "inventory-entry.schema.json"}
+    },
+    "probes": {
+      "type": "array",
+      "minItems": 9,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "required", "expected_lanes", "oracle"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._\\-]+$"},
+          "required": {"type": "boolean"},
+          "expected_lanes": {
+            "type": "array",
+            "maxItems": 1024,
+            "uniqueItems": true,
+            "items": {"$ref": "common.schema.json#/$defs/normal_lane_id"}
+          },
+          "oracle": {"type": "string", "minLength": 1, "maxLength": 1024}
+        }
+      }
+    },
+    "provenance_status": {"$ref": "common.schema.json#/$defs/provenance_status"},
+    "affected_targets": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/target_id"}
+    }
+  }
+}

@@ -8,7 +8,9 @@ const for_multi_init_v3_src = os.join_path(for_multi_init_v3_dir, 'v3.v')
 
 fn for_multi_init_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${for_multi_init_vexe} -gc none -path "${for_multi_init_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${for_multi_init_v3_src}')
 	assert build.exit_code == 0, build.output

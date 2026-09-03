@@ -1,0 +1,34 @@
+name: TCC issue projection reconciliation
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7 4 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tccbin-issue-reconcile
+  cancel-in-progress: false
+
+jobs:
+  projection-dark-mode:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Reject untrusted refs
+        if: github.event_name == 'schedule' && github.ref != 'refs/heads/master'
+        run: exit 1
+      - name: Checkout the trusted workflow revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Project the persisted issue ledger and validate aggregation without issue access
+        run: |
+          make
+          ./v -o ./vnew cmd/v
+          ./vnew run thirdparty/tccbin_automation/bin/cmd issue-dry-run thirdparty/tccbin_automation/tests/fixtures/issue-ledger.dark.json
+          ./vnew -silent test thirdparty/tccbin_automation/tests/reporter_hygiene_test.v
+      - name: Confirm that Phase A cannot write issues
+        run: test -z "${TCCBIN_ISSUE_WRITE_TOKEN:-}"

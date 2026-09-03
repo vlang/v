@@ -615,6 +615,31 @@ fn main() {
 	assert if_count == 1
 }
 
+fn test_statement_match_trailing_or_lowers_before_codegen() {
+	a := parse_checked_transform_source('
+fn result_int() !int {
+	return 1
+}
+
+fn main() {
+	match result_int() {
+		0, 1 {}
+		else {}
+	} or { 0 }
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut or_count := 0
+	mut if_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		or_count += count_kind(a, child_id, .or_expr)
+		if_count += count_kind(a, child_id, .if_expr)
+	}
+	assert or_count == 0
+	assert if_count > 0
+}
+
 // test_map_index_or_lowers_to_get_check validates this v3 regression case.
 fn test_map_index_or_lowers_to_get_check() {
 	a := parse_transform_source('
@@ -857,7 +882,7 @@ fn main() {
 	mut selector_count := 0
 	for i in 0 .. main_fn.children_count {
 		child_id := a.child(&main_fn, i)
-		direct_count += count_call_name(a, child_id, 'array.pointers')
+		direct_count += count_call_name(a, child_id, '__v3_fixed_array_pointers')
 		copy_count += count_call_name(a, child_id, 'new_array_from_c_array')
 		selector_count += count_selector_value(a, child_id, 'pointers')
 	}

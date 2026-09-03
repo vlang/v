@@ -21,12 +21,13 @@ mut:
 	postgresql_table_schema   string = 'public'
 	postgresql_probe_value    string
 	postgresql_aborted        bool
+	postgresql_lock_held      bool
+	postgresql_xact_lock_held bool
+	mysql_lock_held           bool
 	sqlite_table_schema       string = 'main'
 	sqlite_version            string = '3.46.0'
 	fail_sqlite_lock          bool
 	fail_sqlite_commit        bool
-	postgresql_lock_owned     bool = true
-	mysql_lock_owned          bool = true
 }
 
 fn (mut conn RecordingConnection) select(_ orm.SelectConfig, _ orm.QueryData, _ orm.QueryData) ![][]orm.Primitive {
@@ -73,6 +74,7 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 		conn.in_transaction = false
 		conn.postgresql_probe_value = ''
 		conn.postgresql_aborted = false
+		conn.postgresql_xact_lock_held = false
 		conn.sqlite_probe_rows = 0
 		conn.clear_savepoints()
 	}
@@ -109,16 +111,6 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	if query == 'SET search_path TO other_schema;' {
 		conn.schema = 'other_schema'
 	}
-	if query == 'SELECT pg_catalog.pg_advisory_unlock_all();' {
-		conn.postgresql_lock_owned = false
-		return []
-	}
-	if query == 'SELECT RELEASE_ALL_LOCKS();' {
-		conn.mysql_lock_owned = false
-		return [orm.Row{
-			vals: ['1']
-		}]
-	}
 	probe_prefix := "SELECT pg_catalog.set_config('${postgresql_transaction_probe_setting}', '"
 	if query.starts_with(probe_prefix) {
 		value := query.all_after(probe_prefix).all_before("', true);")
@@ -132,6 +124,20 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 	if query == postgresql_transaction_probe_read_query() {
 		return [orm.Row{
 			vals: [conn.postgresql_probe_value]
+		}]
+	}
+	if query.starts_with('SELECT pg_advisory_lock(') {
+		conn.postgresql_lock_held = true
+	}
+	if query.starts_with('SELECT pg_advisory_xact_lock(') && conn.in_transaction {
+		conn.postgresql_xact_lock_held = true
+	}
+	if query == 'SELECT pg_advisory_unlock_all();' {
+		conn.postgresql_lock_held = false
+	}
+	if query.starts_with('WITH transaction_guard AS (SELECT pg_catalog.pg_try_advisory_xact_lock(') {
+		return [orm.Row{
+			vals: [if conn.postgresql_lock_held { 't' } else { 'f' }]
 		}]
 	}
 	if query.starts_with('SELECT version, name, applied_at FROM ') {
@@ -189,38 +195,36 @@ fn (mut conn RecordingConnection) execute(query string) ![]orm.Row {
 			vals: [conn.sqlite_version]
 		}]
 	}
-	if query.starts_with('SELECT pg_advisory_lock(') {
-		conn.postgresql_lock_owned = true
-		return []
-	}
-	if query.starts_with('SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_locks ') {
-		return [orm.Row{
-			vals: [if conn.postgresql_lock_owned { 't' } else { 'f' }]
-		}]
-	}
 	if query.starts_with('SELECT pg_advisory_unlock(') {
-		owned := conn.postgresql_lock_owned
-		conn.postgresql_lock_owned = false
+		was_held := conn.postgresql_lock_held
+		conn.postgresql_lock_held = false
 		return [orm.Row{
-			vals: [if owned { 't' } else { 'f' }]
+			vals: [if was_held { 't' } else { 'f' }]
 		}]
 	}
 	if query.starts_with('SELECT GET_LOCK(') {
-		conn.mysql_lock_owned = true
+		conn.mysql_lock_held = true
 		return [orm.Row{
 			vals: ['1']
 		}]
 	}
-	if query.starts_with('SELECT IS_USED_LOCK(') {
+	if query == 'SELECT RELEASE_ALL_LOCKS();' {
+		was_held := conn.mysql_lock_held
+		conn.mysql_lock_held = false
 		return [orm.Row{
-			vals: [if conn.mysql_lock_owned { '1' } else { '0' }]
+			vals: [if was_held { '1' } else { '0' }]
+		}]
+	}
+	if query.starts_with('SELECT COALESCE(IS_USED_LOCK(') {
+		return [orm.Row{
+			vals: [if conn.mysql_lock_held { '1' } else { '0' }]
 		}]
 	}
 	if query.starts_with('SELECT RELEASE_LOCK(') {
-		owned := conn.mysql_lock_owned
-		conn.mysql_lock_owned = false
+		was_held := conn.mysql_lock_held
+		conn.mysql_lock_held = false
 		return [orm.Row{
-			vals: [if owned { '1' } else { '0' }]
+			vals: [if was_held { '1' } else { '0' }]
 		}]
 	}
 	return []
@@ -240,6 +244,7 @@ fn (mut conn RecordingConnection) orm_commit() ! {
 	conn.in_transaction = false
 	conn.postgresql_probe_value = ''
 	conn.postgresql_aborted = false
+	conn.postgresql_xact_lock_held = false
 	conn.clear_savepoints()
 }
 
@@ -248,6 +253,7 @@ fn (mut conn RecordingConnection) orm_rollback() ! {
 	conn.in_transaction = false
 	conn.postgresql_probe_value = ''
 	conn.postgresql_aborted = false
+	conn.postgresql_xact_lock_held = false
 	conn.sqlite_probe_rows = 0
 	conn.clear_savepoints()
 }
@@ -425,6 +431,15 @@ fn start_mysql_transaction(mut ctx Context) ! {
 	ctx.execute('START TRANSACTION;')!
 }
 
+fn unlock_all_mysql_named_locks(mut ctx Context) ! {
+	ctx.execute('SELECT RELEASE_ALL_LOCKS();')!
+}
+
+fn unlock_mysql_migration_lock(mut ctx Context) ! {
+	name := mysql_migration_lock_name('test_database', 'schema_migrations', 0)
+	ctx.execute("SELECT RELEASE_LOCK('${name}');")!
+}
+
 fn start_postgresql_transaction(mut ctx Context) ! {
 	ctx.execute('BEGIN;')!
 }
@@ -443,12 +458,19 @@ fn no_op_migration(mut ctx Context) ! {
 	_ = ctx.dialect
 }
 
-fn release_postgresql_migration_lock(mut ctx Context) ! {
-	ctx.execute('SELECT pg_catalog.pg_advisory_unlock_all();')!
+fn unlock_all_postgresql_advisory_locks(mut ctx Context) ! {
+	ctx.execute('SELECT pg_advisory_unlock_all();')!
 }
 
-fn release_mysql_migration_lock(mut ctx Context) ! {
-	ctx.execute('SELECT RELEASE_ALL_LOCKS();')!
+fn unlock_postgresql_migration_lock(mut ctx Context) ! {
+	key := postgresql_migration_lock_key('public', 'schema_migrations')
+	ctx.execute('SELECT pg_advisory_unlock(${key});')!
+}
+
+fn replace_postgresql_migration_lock_with_transaction_lock(mut ctx Context) ! {
+	key := postgresql_migration_lock_key('public', 'schema_migrations')
+	ctx.execute('SELECT pg_advisory_unlock(${key});')!
+	ctx.execute('SELECT pg_advisory_xact_lock(${key});')!
 }
 
 fn create_sqlite_table_then_rollback(mut ctx Context) ! {
@@ -881,7 +903,7 @@ fn test_postgresql_callback_transactions_are_rolled_back_before_unlocking() {
 	assert down_recorder.queries.last() == 'SELECT pg_advisory_unlock(${key});'
 }
 
-fn test_postgresql_history_write_errors_rollback_callback_transaction_state() {
+fn test_postgresql_lock_verification_errors_rollback_callback_transaction_state() {
 	migration := Migration{
 		version: 1
 		name:    'aborted_transaction'
@@ -895,15 +917,17 @@ fn test_postgresql_history_write_errors_rollback_callback_transaction_state() {
 	})!
 	mut error_message := ''
 	up_runner.migrate() or { error_message = err.msg() }
-	assert error_message.contains('could not record migration 1: current PostgreSQL transaction is aborted')
+	assert error_message.contains('current PostgreSQL transaction is aborted')
+	assert error_message.contains('PostgreSQL migration callback left unsafe session state')
 	assert !up_recorder.in_transaction
 	assert !up_recorder.postgresql_aborted
 	up_inserts := up_recorder.queries.filter(it.starts_with('INSERT INTO '))
-	assert up_inserts.len == 1
-	up_insert_index := up_recorder.queries.index(up_inserts[0])
-	assert up_insert_index > up_recorder.queries.index('force PostgreSQL statement error;')
-	assert up_recorder.queries.index('ORM ROLLBACK') > up_insert_index
+	assert up_inserts.len == 0
 	key := postgresql_migration_lock_key('public', 'schema_migrations')
+	lock_check := postgresql_migration_lock_owned_query(key)
+	lock_check_index := up_recorder.queries.index(lock_check)
+	assert lock_check_index > up_recorder.queries.index('force PostgreSQL statement error;')
+	assert up_recorder.queries.index('ORM ROLLBACK') > lock_check_index
 	assert up_recorder.queries.last() == 'SELECT pg_advisory_unlock(${key});'
 
 	mut down_recorder := &RecordingConnection{
@@ -919,14 +943,15 @@ fn test_postgresql_history_write_errors_rollback_callback_transaction_state() {
 	})!
 	error_message = ''
 	down_runner.rollback(1) or { error_message = err.msg() }
-	assert error_message.contains('could not remove migration 1 from history: current PostgreSQL transaction is aborted')
+	assert error_message.contains('current PostgreSQL transaction is aborted')
+	assert error_message.contains('PostgreSQL migration callback left unsafe session state')
 	assert !down_recorder.in_transaction
 	assert !down_recorder.postgresql_aborted
 	down_deletes := down_recorder.queries.filter(it.starts_with('DELETE FROM '))
-	assert down_deletes.len == 1
-	down_delete_index := down_recorder.queries.index(down_deletes[0])
-	assert down_delete_index > down_recorder.queries.index('force PostgreSQL statement error;')
-	assert down_recorder.queries.index('ORM ROLLBACK') > down_delete_index
+	assert down_deletes.len == 0
+	down_lock_check_index := down_recorder.queries.index(lock_check)
+	assert down_lock_check_index > down_recorder.queries.index('force PostgreSQL statement error;')
+	assert down_recorder.queries.index('ORM ROLLBACK') > down_lock_check_index
 	assert down_recorder.queries.last() == 'SELECT pg_advisory_unlock(${key});'
 }
 
@@ -971,6 +996,115 @@ fn test_postgresql_owned_transaction_is_verified_before_history_writes() {
 	}
 }
 
+fn test_postgresql_advisory_lock_is_verified_before_history_writes() {
+	migrations := [
+		Migration{
+			version: 1
+			name:    'unlock_all'
+			up:      unlock_all_postgresql_advisory_locks
+			down:    unlock_all_postgresql_advisory_locks
+		},
+		Migration{
+			version: 1
+			name:    'unlock_migration_lock'
+			up:      unlock_postgresql_migration_lock
+			down:    unlock_postgresql_migration_lock
+		},
+	]
+	for migration in migrations {
+		for mode in [TransactionMode.automatic, .always, .never] {
+			mut up_recorder := &RecordingConnection{}
+			mut up_runner := new(mut up_recorder, [migration], Config{
+				dialect:          .pg
+				transaction_mode: mode
+			})!
+			mut error_message := ''
+			up_runner.migrate() or { error_message = err.msg() }
+			assert error_message.contains('PostgreSQL migration callback released the migration advisory lock before history was recorded')
+			assert up_recorder.queries.filter(it.starts_with('INSERT INTO ')).len == 0
+			key := postgresql_migration_lock_key('public', 'schema_migrations')
+			lock_check := postgresql_migration_lock_owned_query(key)
+			callback_index := up_recorder.queries.index(if migration.name == 'unlock_all' {
+				'SELECT pg_advisory_unlock_all();'
+			} else {
+				'SELECT pg_advisory_unlock(${key});'
+			})
+			assert callback_index >= 0
+			assert up_recorder.queries.index(lock_check) > callback_index
+
+			mut down_recorder := &RecordingConnection{
+				history_rows: [
+					orm.Row{
+						vals: ['1', migration.name, '2026-08-16T00:00:00Z']
+					},
+				]
+			}
+			mut down_runner := new(mut down_recorder, [migration], Config{
+				dialect:          .pg
+				transaction_mode: mode
+			})!
+			error_message = ''
+			down_runner.rollback(1) or { error_message = err.msg() }
+			assert error_message.contains('PostgreSQL migration callback released the migration advisory lock before history was recorded')
+			assert down_recorder.queries.filter(it.starts_with('DELETE FROM ')).len == 0
+			down_callback_index := down_recorder.queries.index(if migration.name == 'unlock_all' {
+				'SELECT pg_advisory_unlock_all();'
+			} else {
+				'SELECT pg_advisory_unlock(${key});'
+			})
+			assert down_callback_index >= 0
+			assert down_recorder.queries.index(lock_check) > down_callback_index
+		}
+	}
+}
+
+fn test_postgresql_transaction_lock_cannot_replace_session_lock_before_history_writes() {
+	migration := Migration{
+		version: 1
+		name:    'replace_session_lock'
+		up:      replace_postgresql_migration_lock_with_transaction_lock
+		down:    replace_postgresql_migration_lock_with_transaction_lock
+	}
+	key := postgresql_migration_lock_key('public', 'schema_migrations')
+	lock_check := postgresql_migration_lock_owned_query(key)
+	for mode in [TransactionMode.automatic, .always] {
+		mut up_recorder := &RecordingConnection{}
+		mut up_runner := new(mut up_recorder, [migration], Config{
+			dialect:          .pg
+			transaction_mode: mode
+		})!
+		mut error_message := ''
+		up_runner.migrate() or { error_message = err.msg() }
+		assert error_message.contains('PostgreSQL migration callback released the migration advisory lock before history was recorded')
+		assert up_recorder.queries.filter(it.starts_with('INSERT INTO ')).len == 0
+		transaction_lock_index := up_recorder.queries.index('SELECT pg_advisory_xact_lock(${key});')
+		assert transaction_lock_index >= 0
+		assert up_recorder.queries.index(lock_check) > transaction_lock_index
+		assert !up_recorder.postgresql_xact_lock_held
+
+		mut down_recorder := &RecordingConnection{
+			history_rows: [
+				orm.Row{
+					vals: ['1', migration.name, '2026-08-16T00:00:00Z']
+				},
+			]
+		}
+		mut down_runner := new(mut down_recorder, [migration], Config{
+			dialect:          .pg
+			transaction_mode: mode
+		})!
+		error_message = ''
+		down_runner.rollback(1) or { error_message = err.msg() }
+		assert error_message.contains('PostgreSQL migration callback released the migration advisory lock before history was recorded')
+		assert down_recorder.queries.filter(it.starts_with('DELETE FROM ')).len == 0
+		down_transaction_lock_index :=
+			down_recorder.queries.index('SELECT pg_advisory_xact_lock(${key});')
+		assert down_transaction_lock_index >= 0
+		assert down_recorder.queries.index(lock_check) > down_transaction_lock_index
+		assert !down_recorder.postgresql_xact_lock_held
+	}
+}
+
 fn test_mysql_owned_transaction_is_verified_before_history_writes() {
 	migration := Migration{
 		version: 1
@@ -1007,6 +1141,65 @@ fn test_mysql_owned_transaction_is_verified_before_history_writes() {
 	assert !down_recorder.in_transaction
 	assert down_recorder.queries.filter(it.starts_with('DELETE FROM ')).len == 0
 	assert down_recorder.queries.last().starts_with('SELECT RELEASE_LOCK(')
+}
+
+fn test_mysql_named_lock_is_verified_before_history_writes() {
+	migrations := [
+		Migration{
+			version: 1
+			name:    'unlock_all'
+			up:      unlock_all_mysql_named_locks
+			down:    unlock_all_mysql_named_locks
+		},
+		Migration{
+			version: 1
+			name:    'unlock_migration_lock'
+			up:      unlock_mysql_migration_lock
+			down:    unlock_mysql_migration_lock
+		},
+	]
+	for migration in migrations {
+		for mode in [TransactionMode.automatic, .always, .never] {
+			mut up_recorder := &RecordingConnection{}
+			mut up_runner := new(mut up_recorder, [migration], Config{
+				dialect:          .mysql
+				transaction_mode: mode
+			})!
+			mut error_message := ''
+			up_runner.migrate() or { error_message = err.msg() }
+			assert error_message.contains('MySQL migration callback released the named migration lock before history was recorded')
+			assert up_recorder.queries.filter(it.starts_with('INSERT INTO ')).len == 0
+			name := mysql_migration_lock_name('test_database', 'schema_migrations', 0)
+			lock_check := mysql_migration_lock_owned_query(name)
+			callback_query := if migration.name == 'unlock_all' {
+				'SELECT RELEASE_ALL_LOCKS();'
+			} else {
+				"SELECT RELEASE_LOCK('${name}');"
+			}
+			callback_index := up_recorder.queries.index(callback_query)
+			assert callback_index >= 0
+			assert up_recorder.queries.index(lock_check) > callback_index
+
+			mut down_recorder := &RecordingConnection{
+				history_rows: [
+					orm.Row{
+						vals: ['1', migration.name, '2026-08-16T00:00:00Z']
+					},
+				]
+			}
+			mut down_runner := new(mut down_recorder, [migration], Config{
+				dialect:          .mysql
+				transaction_mode: mode
+			})!
+			error_message = ''
+			down_runner.rollback(1) or { error_message = err.msg() }
+			assert error_message.contains('MySQL migration callback released the named migration lock before history was recorded')
+			assert down_recorder.queries.filter(it.starts_with('DELETE FROM ')).len == 0
+			down_callback_index := down_recorder.queries.index(callback_query)
+			assert down_callback_index >= 0
+			assert down_recorder.queries.index(lock_check) > down_callback_index
+		}
+	}
 }
 
 fn test_sqlite_callback_cannot_end_lock_transaction_before_history_writes() {
@@ -1400,6 +1593,41 @@ fn test_postgresql_inspection_resolves_and_retains_existing_history_schema() {
 	query := postgresql_history_schema_query('schema_migrations')
 	assert query.contains('current_schemas(false)')
 	assert query.contains('n.oid <> pg_catalog.pg_my_temp_schema()')
+}
+
+fn test_postgresql_inspection_rejects_active_transaction_without_retaining_schema() {
+	mut recorder := &RecordingConnection{
+		schema:         'transaction_schema'
+		in_transaction: true
+	}
+	mut runner := new(mut recorder, []Migration{}, Config{
+		dialect: .pg
+	})!
+	expected_error := 'PostgreSQL migrations require a connection without an already-open transaction; pg.Tx and transactional pg.Conn values are not supported'
+
+	mut error_message := ''
+	runner.applied() or { error_message = err.msg() }
+	assert error_message == expected_error
+	error_message = ''
+	runner.pending() or { error_message = err.msg() }
+	assert error_message == expected_error
+	error_message = ''
+	runner.current_version() or { error_message = err.msg() }
+	assert error_message == expected_error
+	error_message = ''
+	runner.status() or { error_message = err.msg() }
+	assert error_message == expected_error
+	assert runner.resolved_history_namespace == ''
+	assert recorder.queries.filter(it == postgresql_history_schema_query('schema_migrations')).len == 0
+	assert recorder.queries.filter(it.starts_with('CREATE TABLE IF NOT EXISTS ')).len == 0
+	assert recorder.queries.filter(it == postgresql_transaction_probe_read_query()).len == 4
+
+	recorder.execute('ROLLBACK;')!
+	recorder.schema = 'public'
+	assert runner.migrate()!.len == 0
+	assert runner.resolved_history_namespace == 'public'
+	key := postgresql_migration_lock_key('public', 'schema_migrations')
+	assert 'SELECT pg_advisory_lock(${key});' in recorder.queries
 }
 
 fn test_mysql_inspection_resolves_and_retains_history_database() {
@@ -2616,40 +2844,6 @@ fn test_caller_supplied_identifiers_respect_dialect_limits() {
 	}) or { error_message = err.msg() }
 	assert error_message == 'MySQL migration history table name `application.archive.schema_migrations` must not exceed 2 components'
 	assert history_recorder.queries.len == 0
-}
-
-fn assert_callback_lock_release_is_rejected(dialect Dialect, mode TransactionMode, callback MigrationFn) {
-	migration := Migration{
-		version:          1
-		name:             'release_lock'
-		up:               callback
-		down:             callback
-		transaction_mode: mode
-	}
-	mut up_recorder := &RecordingConnection{}
-	mut up_runner := new(mut up_recorder, [migration], Config{ dialect: dialect })!
-	mut error_message := ''
-	up_runner.migrate() or { error_message = err.msg() }
-	assert error_message.contains('no longer owns'), error_message
-	assert up_recorder.queries.filter(it.starts_with('INSERT INTO ')).len == 0
-
-	mut down_recorder := &RecordingConnection{
-		history_rows: [orm.Row{
-			vals: ['1', migration.name, '2026-08-16T00:00:00Z']
-		}]
-	}
-	mut down_runner := new(mut down_recorder, [migration], Config{ dialect: dialect })!
-	error_message = ''
-	down_runner.rollback(1) or { error_message = err.msg() }
-	assert error_message.contains('no longer owns'), error_message
-	assert down_recorder.queries.filter(it.starts_with('DELETE FROM ')).len == 0
-}
-
-fn test_callbacks_cannot_release_database_migration_locks() {
-	for mode in [TransactionMode.always, .never] {
-		assert_callback_lock_release_is_rejected(.pg, mode, release_postgresql_migration_lock)
-		assert_callback_lock_release_is_rejected(.mysql, mode, release_mysql_migration_lock)
-	}
 }
 
 fn test_postgresql_inspection_rejects_an_active_transaction() {

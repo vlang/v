@@ -451,8 +451,7 @@ fn (m &Migrator) find_migration(version i64) ?Migration {
 fn (mut m Migrator) ensure_history_table() ! {
 	match m.config.dialect {
 		.pg {
-			if _ := m.pg_lock_key {
-			} else {
+			if m.pg_lock_key == none {
 				m.reject_existing_postgresql_transaction()!
 			}
 			m.resolve_postgresql_history_schema()!
@@ -787,42 +786,36 @@ fn migration_lock_result(rows []orm.Row) bool {
 	return rows.len == 1 && rows[0].vals.len > 0 && rows[0].vals[0] in ['1', 't', 'true']
 }
 
-
 fn postgresql_migration_lock_owned_query(key i64) string {
-	unsigned_key := if key < 0 {
-		'${key}::numeric + 18446744073709551616'
-	} else {
-		'${key}::numeric'
+	// pg_locks merges session- and transaction-level ownership for the same tag.
+	// The transaction guard keeps exclusion while the session lock is probed and restored.
+	return 'WITH transaction_guard AS (SELECT pg_catalog.pg_try_advisory_xact_lock(${key}) AS acquired), session_unlock AS (SELECT pg_catalog.pg_advisory_unlock(${key}) AS held FROM transaction_guard WHERE acquired), session_relock AS (SELECT pg_catalog.pg_advisory_lock(${key}) FROM session_unlock WHERE held) SELECT COALESCE((SELECT session_unlock.held FROM session_unlock LEFT JOIN session_relock ON true), false);'
+}
+
+fn (m &Migrator) verify_postgresql_migration_lock(mut ctx Context) ! {
+	key := m.pg_lock_key or {
+		return error('cannot verify PostgreSQL migration lock before it is acquired')
 	}
-	return "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_locks WHERE locktype = 'advisory' AND pid = pg_catalog.pg_backend_pid() AND granted AND objsubid = 1 AND classid::numeric * 4294967296 + objid::numeric = ${unsigned_key});"
+
+	rows := ctx.execute(postgresql_migration_lock_owned_query(key))!
+	if !migration_lock_result(rows) {
+		return error('PostgreSQL migration callback released the migration advisory lock before history was recorded')
+	}
 }
 
 fn mysql_migration_lock_owned_query(name string) string {
-	return "SELECT IS_USED_LOCK('${name}') = CONNECTION_ID();"
+	return "SELECT COALESCE(IS_USED_LOCK('${name}') = CONNECTION_ID(), 0);"
 }
 
-fn (mut m Migrator) verify_migration_lock_ownership() ! {
-	match m.config.dialect {
-		.sqlite {}
-		.pg {
-			key := m.pg_lock_key or {
-				return error('cannot verify PostgreSQL migration lock before it is acquired')
-			}
-			rows := m.conn.execute(postgresql_migration_lock_owned_query(key))!
-			if !migration_lock_result(rows) {
-				return error('migration callback no longer owns PostgreSQL migration lock ${key}')
-			}
-		}
-		.mysql {
-			name := m.mysql_lock_name
-			if name == '' {
-				return error('cannot verify MySQL migration lock before it is acquired')
-			}
-			rows := m.conn.execute(mysql_migration_lock_owned_query(name))!
-			if !migration_lock_result(rows) {
-				return error('migration callback no longer owns MySQL migration lock `${name}`')
-			}
-		}
+fn (m &Migrator) verify_mysql_migration_lock(mut ctx Context) ! {
+	name := m.mysql_lock_name
+	if name == '' {
+		return error('cannot verify MySQL migration lock before it is acquired')
+	}
+
+	rows := ctx.execute(mysql_migration_lock_owned_query(name))!
+	if !migration_lock_result(rows) {
+		return error('MySQL migration callback released the named migration lock before history was recorded')
 	}
 }
 
@@ -933,6 +926,13 @@ fn (mut m Migrator) run_up(migration Migration) !AppliedMigration {
 				}
 				return transaction_err
 			}
+			m.verify_postgresql_migration_lock(mut ctx) or {
+				lock_err := err
+				tx.rollback() or {
+					return error('${lock_err.msg()}; rollback failed: ${err.msg()}')
+				}
+				return lock_err
+			}
 		} else if m.config.dialect == .mysql {
 			m.verify_mysql_owned_transaction(mysql_transaction_savepoint) or {
 				transaction_err := err
@@ -941,13 +941,13 @@ fn (mut m Migrator) run_up(migration Migration) !AppliedMigration {
 				}
 				return transaction_err
 			}
-		}
-		m.verify_migration_lock_ownership() or {
-			lock_err := err
-			tx.rollback() or {
-				return error('${lock_err.msg()}; rollback failed: ${err.msg()}')
+			m.verify_mysql_migration_lock(mut ctx) or {
+				lock_err := err
+				tx.rollback() or {
+					return error('${lock_err.msg()}; rollback failed: ${err.msg()}')
+				}
+				return lock_err
 			}
-			return lock_err
 		}
 		ctx.execute(m.history_insert_sql(migration, applied_at)) or {
 			history_err := err
@@ -966,15 +966,28 @@ fn (mut m Migrator) run_up(migration Migration) !AppliedMigration {
 			}
 			return migration_err
 		}
-		if m.config.dialect == .sqlite {
-			m.verify_sqlite_lock_transaction()!
-		}
-		m.verify_migration_lock_ownership() or {
-			lock_err := err
-			m.validate_session_after_callback() or {
-				return error('${lock_err.msg()}; ${err.msg()}')
+		match m.config.dialect {
+			.sqlite {
+				m.verify_sqlite_lock_transaction()!
 			}
-			return lock_err
+			.pg {
+				m.verify_postgresql_migration_lock(mut ctx) or {
+					lock_err := err
+					m.validate_session_after_callback() or {
+						return error('${lock_err.msg()}; ${err.msg()}')
+					}
+					return lock_err
+				}
+			}
+			.mysql {
+				m.verify_mysql_migration_lock(mut ctx) or {
+					lock_err := err
+					m.validate_session_after_callback() or {
+						return error('${lock_err.msg()}; ${err.msg()}')
+					}
+					return lock_err
+				}
+			}
 		}
 		ctx.execute(m.history_insert_sql(migration, applied_at)) or {
 			history_err := err
@@ -1030,6 +1043,13 @@ fn (mut m Migrator) run_down(migration Migration) ! {
 				}
 				return transaction_err
 			}
+			m.verify_postgresql_migration_lock(mut ctx) or {
+				lock_err := err
+				tx.rollback() or {
+					return error('${lock_err.msg()}; transaction rollback failed: ${err.msg()}')
+				}
+				return lock_err
+			}
 		} else if m.config.dialect == .mysql {
 			m.verify_mysql_owned_transaction(mysql_transaction_savepoint) or {
 				transaction_err := err
@@ -1038,13 +1058,13 @@ fn (mut m Migrator) run_down(migration Migration) ! {
 				}
 				return transaction_err
 			}
-		}
-		m.verify_migration_lock_ownership() or {
-			lock_err := err
-			tx.rollback() or {
-				return error('${lock_err.msg()}; transaction rollback failed: ${err.msg()}')
+			m.verify_mysql_migration_lock(mut ctx) or {
+				lock_err := err
+				tx.rollback() or {
+					return error('${lock_err.msg()}; transaction rollback failed: ${err.msg()}')
+				}
+				return lock_err
 			}
-			return lock_err
 		}
 		ctx.execute(m.history_delete_sql(migration.version)) or {
 			history_err := err
@@ -1063,15 +1083,28 @@ fn (mut m Migrator) run_down(migration Migration) ! {
 			}
 			return migration_err
 		}
-		if m.config.dialect == .sqlite {
-			m.verify_sqlite_lock_transaction()!
-		}
-		m.verify_migration_lock_ownership() or {
-			lock_err := err
-			m.validate_session_after_callback() or {
-				return error('${lock_err.msg()}; ${err.msg()}')
+		match m.config.dialect {
+			.sqlite {
+				m.verify_sqlite_lock_transaction()!
 			}
-			return lock_err
+			.pg {
+				m.verify_postgresql_migration_lock(mut ctx) or {
+					lock_err := err
+					m.validate_session_after_callback() or {
+						return error('${lock_err.msg()}; ${err.msg()}')
+					}
+					return lock_err
+				}
+			}
+			.mysql {
+				m.verify_mysql_migration_lock(mut ctx) or {
+					lock_err := err
+					m.validate_session_after_callback() or {
+						return error('${lock_err.msg()}; ${err.msg()}')
+					}
+					return lock_err
+				}
+			}
 		}
 		ctx.execute(m.history_delete_sql(migration.version)) or {
 			history_err := err

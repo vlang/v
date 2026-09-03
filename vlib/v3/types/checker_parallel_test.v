@@ -41,9 +41,11 @@ fn test_parallel_checker_dependencies_are_private_and_merged() {
 	master_dependency, _ := tc.intern_symbol('main.master_dependency')
 	worker_dependency, _ := tc.intern_symbol('main.worker_dependency')
 	tc.direct_dependencies_by_fn[10] = [master_dependency]
+	tc.visible_mutation_cache.rebind_results[1] = true
 
 	mut worker := tc.fork_for_parallel_check()
 	assert voidptr(worker.visible_mutation_cache) != voidptr(tc.visible_mutation_cache)
+	assert 1 !in worker.visible_mutation_cache.rebind_results
 	assert worker.direct_dependencies_by_fn.len == 0
 	worker.direct_dependencies_by_fn[10] = [worker_dependency]
 	worker.direct_dependencies_by_fn[20] = [master_dependency]
@@ -62,6 +64,63 @@ fn test_parallel_checker_dependencies_are_private_and_merged() {
 	assert transform_worker.direct_dependencies_by_fn[10] == [master_dependency, worker_dependency]
 	assert transform_worker.symbol_name(master_dependency) == 'main.master_dependency'
 	transform_worker.free_parallel_transform_caches()
+}
+
+fn test_nested_parallel_checker_merge_keeps_out_of_range_caches_sparse() {
+	mut a := flat.FlatAst.new()
+	for _ in 0 .. 4 {
+		a.add(.ident)
+	}
+	mut tc := TypeChecker.new(&a)
+	tc.extend_node_caches(a.nodes.len)
+	tc.parallel_check_sparse = true
+	mut worker := tc.fork_for_parallel_check()
+	worker.sparse_resolved_call_names[2] = 'main.answer'
+	worker.sparse_resolved_fn_values[2] = 'main.callback'
+	worker.sparse_statement_nodes[2] = true
+	worker.sparse_expr_type_values[2] = Type(bool_)
+
+	tc.merge_parallel_check_worker_scoped(worker, true)
+	assert tc.sparse_resolved_call_names[2] == 'main.answer'
+	assert tc.sparse_resolved_fn_values[2] == 'main.callback'
+	assert tc.sparse_statement_nodes[2]
+	if typ := tc.sparse_expr_type_values[2] {
+		assert typ is Primitive
+	} else {
+		assert false
+	}
+	assert !tc.resolved_call_set[2]
+	assert !tc.resolved_fn_value_set[2]
+	assert !tc.statement_nodes[2]
+	assert !tc.expr_type_set[2]
+
+	tc.parallel_check_sparse = false
+	tc.merge_own_sparse_caches()
+	assert tc.resolved_call_names[2] == 'main.answer'
+	assert tc.resolved_fn_value_names[2] == 'main.callback'
+	assert tc.statement_nodes[2]
+	assert tc.expr_type_values[2] is Primitive
+	worker.free_parallel_check_worker_cache()
+}
+
+fn test_scoped_checker_merge_deep_clones_diagnostic_details() {
+	$if prealloc {
+		a := flat.FlatAst.new()
+		mut tc := TypeChecker.new(&a)
+		scope := unsafe { prealloc_scope_begin() }
+		mut worker := tc.fork_for_parallel_check()
+		worker.notices << TypeError{
+			msg:     'scoped notice'.clone()
+			details: ['scoped detail'.clone()]
+		}
+		unsafe { prealloc_scope_leave(scope) }
+		tc.merge_parallel_check_worker_scoped(worker, true)
+		unsafe { prealloc_scope_free_after(scope) }
+
+		assert tc.notices.len == 1
+		assert tc.notices[0].msg == 'scoped notice'
+		assert tc.notices[0].details == ['scoped detail']
+	}
 }
 
 fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes() {
@@ -156,6 +215,30 @@ fn test_generated_fn_params_update_method_suffix_index() {
 	assert tc.fn_param_types_for_name('open') == params
 }
 
+fn test_generic_receiver_pattern_index_survives_rebuild_and_worker_fork() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	structured_key := 'Box[[]T].flatten'
+	tc.fn_ret_types[structured_key] = Type(int_)
+	tc.register_generated_fn_param_types(structured_key, []Type{})
+	for i in 0 .. 256 {
+		tc.fn_ret_types['irrelevant_${i}'] = Type(int_)
+	}
+
+	matched := tc.generic_receiver_method_pattern_match('Box', ['[]int'], 'flatten') or {
+		assert false
+		return
+	}
+	assert matched.key == structured_key
+	assert matched.params == ['T']
+	assert matched.args == ['int']
+
+	tc.rebuild_fn_param_suffix_index()
+	assert tc.generic_receiver_method_index['flatten'] == [structured_key]
+	worker := tc.fork_for_parallel_check()
+	assert worker.generic_receiver_method_index['flatten'] == [structured_key]
+}
+
 fn test_enclosing_generic_param_uses_the_owning_top_level_declaration() {
 	mut a := flat.FlatAst.new()
 	generic_child := a.add_val(.ident, 'T')
@@ -212,6 +295,8 @@ fn test_parallel_checker_preserves_all_dependency_edges() {
 		mut a := p.parse_file(path)
 		assert p.diagnostics.len == 0, p.diagnostics.str()
 		mut tc := TypeChecker.new(a)
+		tc.building_v_fast = true
+		tc.enable_scoped_parallel_workers()
 		tc.collect(a)
 		assert tc.check_semantics_opt(true)
 		assert tc.errors.len == 0, tc.errors.str()

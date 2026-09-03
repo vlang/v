@@ -24,37 +24,72 @@ struct Win32NativeQueuedEvent {
 struct Win32WindowRecord {
 	id WindowId
 mut:
-	hwnd                      voidptr
-	config                    WindowConfig
-	width                     int
-	height                    int
-	framebuffer_width         int
-	framebuffer_height        int
-	destroyed                 bool
-	render_resize_pending     bool
-	suppress_resize_event     bool
-	queued_events             []Win32NativeQueuedEvent
-	mouse_x                   f32
-	mouse_y                   f32
-	mouse_dx                  f32
-	mouse_dy                  f32
-	mouse_pos_valid           bool
-	iconified                 bool
-	pending_dropped_files     []string
-	pending_drop_modifiers    u32
-	pending_high_surrogate    u32
-	suppress_control_char     u32
-	swapchain                 voidptr
-	swapchain_ticket          u64
-	pending_backbuffer        voidptr
-	pending_backbuffer_ticket u64
-	render_view               voidptr
-	render_view_ticket        u64
-	depth_texture             voidptr
-	depth_texture_ticket      u64
-	depth_stencil_view        voidptr
-	depth_stencil_view_ticket u64
-	render_target_generation  u64 = 1
+	hwnd                         voidptr
+	service_state                voidptr
+	config                       WindowConfig
+	width                        int
+	height                       int
+	framebuffer_width            int
+	framebuffer_height           int
+	destroyed                    bool
+	modal_active                 bool
+	modal_child_count            int
+	modal_restore_enabled        bool
+	render_resize_pending        bool
+	suppress_resize_event        bool
+	queued_events                []Win32NativeQueuedEvent
+	mouse_x                      f32
+	mouse_y                      f32
+	mouse_dx                     f32
+	mouse_dy                     f32
+	mouse_pos_valid              bool
+	mouse_lock_generation        u64
+	mouse_raw_generation         u64
+	mouse_raw_x                  int
+	mouse_raw_y                  int
+	mouse_tail_generation        u64
+	iconified                    bool
+	pending_dropped_files        []string
+	pending_drop_modifiers       u32
+	pending_high_surrogate       u32
+	suppress_control_char        u32
+	raw_input_failed             bool
+	mouse_focus_cleanup_pending  bool
+	mouse_focus_cleanup_reported bool
+	service_monitor_ids          []ServiceMonitorId
+	service_dpi                  u32
+	service_refresh_sequence     u64
+	pending_display_refresh      bool
+	pending_dpi_refresh          bool
+	pending_membership_refresh   bool
+	swapchain                    voidptr
+	swapchain_ticket             u64
+	pending_backbuffer           voidptr
+	pending_backbuffer_ticket    u64
+	render_view                  voidptr
+	render_view_ticket           u64
+	depth_texture                voidptr
+	depth_texture_ticket         u64
+	depth_stencil_view           voidptr
+	depth_stencil_view_ticket    u64
+	render_target_generation     u64 = 1
+}
+
+@[markused]
+fn (mut record Win32WindowRecord) clear_mouse_lock_legacy_tail() {
+	record.mouse_raw_generation = 0
+	record.mouse_raw_x = 0
+	record.mouse_raw_y = 0
+	record.mouse_tail_generation = 0
+}
+
+fn (mut record Win32WindowRecord) begin_mouse_lock_generation() {
+	record.mouse_lock_generation = if record.mouse_lock_generation == max_u64 {
+		u64(1)
+	} else {
+		record.mouse_lock_generation + 1
+	}
+	record.clear_mouse_lock_legacy_tail()
 }
 
 struct Win32Backend {
@@ -85,8 +120,20 @@ mut:
 	render_health                    NativeRendererHealth
 	poll_error                       string
 	lifetime_release_error           string
+	native_input_release_error       string
+	native_input_release_states      []voidptr
 	event_sequence_terminal          string
 	windows                          []&Win32WindowRecord
+	service_monitors                 []Win32ServiceMonitorRecord
+	service_monitor_raw              []Win32ServiceRawMonitor
+	service_monitor_pending          []ServiceMonitorInfo
+	service_monitor_pending_records  []Win32ServiceMonitorRecord
+	service_monitor_pending_raw      []Win32ServiceRawMonitor
+	service_monitor_pending_sequence u64
+	service_monitor_poll_dirty       bool
+	clipboard_pending                []Win32ClipboardPending
+	clipboard_retained               []Win32ClipboardRetainedCharge
+	clipboard_pending_bytes          usize
 }
 
 struct Win32D3DDeviceLaneAttempt {
@@ -178,25 +225,75 @@ fn (mut backend Win32Backend) finish_renderer_shutdown_health() {
 	backend.render_health = .abandoned
 }
 
+fn (mut backend Win32Backend) record_native_input_release_error(state voidptr, message string) {
+	if state == unsafe { nil } {
+		return
+	}
+	for failed_state in backend.native_input_release_states {
+		if failed_state == state {
+			return
+		}
+	}
+	backend.native_input_release_states << state
+	if backend.native_input_release_error == '' {
+		backend.native_input_release_error = if message != '' {
+			message
+		} else {
+			err_capability_unsupported
+		}
+	}
+}
+
+fn (mut backend Win32Backend) resolve_native_input_release_error(state voidptr) {
+	if state == unsafe { nil } {
+		return
+	}
+	for i, failed_state in backend.native_input_release_states {
+		if failed_state == state {
+			backend.native_input_release_states.delete(i)
+			break
+		}
+	}
+	if backend.native_input_release_states.len == 0 {
+		backend.native_input_release_error = ''
+	}
+}
+
+fn (backend &Win32Backend) native_input_release_terminal() string {
+	if backend.native_input_release_error != '' {
+		return backend.native_input_release_error
+	}
+	if backend.native_input_release_states.len > 0 {
+		return err_capability_unsupported
+	}
+	return ''
+}
+
 fn (mut backend Win32Backend) retained_stop_error(operation_error string) string {
-	return merge_backend_errors(operation_error, merge_backend_errors(backend.lifetime_release_error,
-		backend.event_sequence_terminal_error()))
+	return merge_backend_errors(operation_error, merge_backend_errors(backend.native_input_release_terminal(), merge_backend_errors(backend.lifetime_release_error,
+		backend.event_sequence_terminal_error())))
 }
 
 fn (backend &Win32Backend) renderer_probe_error(operation_error string) string {
-	return merge_backend_errors(operation_error, backend.lifetime_release_error)
+	return merge_backend_errors(operation_error, merge_backend_errors(backend.native_input_release_terminal(),
+		backend.lifetime_release_error))
 }
 
 $if windows {
 	fn C.v_multiwindow_win32_register_class() int
-	fn C.v_multiwindow_win32_create_window(title &u16, width int, height int, min_width int, min_height int, resizable int, borderless int, fullscreen int, visible int, data voidptr) voidptr
+	fn C.v_multiwindow_win32_create_window(title &u16, width int, height int, min_width int, min_height int, resizable int, high_dpi int, borderless int, fullscreen int, visible int, owner voidptr, data voidptr) voidptr
+	fn C.v_multiwindow_win32_show_created_window(hwnd voidptr, fullscreen int) int
 	fn C.v_multiwindow_win32_destroy_window(hwnd voidptr) int
+	fn C.v_multiwindow_win32_owner_matches(hwnd voidptr, owner voidptr) int
+	fn C.v_multiwindow_win32_is_window_enabled(hwnd voidptr) int
+	fn C.v_multiwindow_win32_set_window_enabled(hwnd voidptr, enabled int) int
 	fn C.v_multiwindow_win32_set_window_text(hwnd voidptr, title &u16) int
 	fn C.v_multiwindow_win32_set_cursor_shape(hwnd voidptr, shape int) int
 	fn C.v_multiwindow_win32_set_client_size(hwnd voidptr, width int, height int, min_width int, min_height int, resizable int, borderless int, fullscreen int) int
 	fn C.v_multiwindow_win32_client_width(hwnd voidptr) int
 	fn C.v_multiwindow_win32_client_height(hwnd voidptr) int
 	fn C.v_multiwindow_win32_pump_messages() int
+	fn C.v_multiwindow_win32_next_event_sequence() u64
 	fn C.v_multiwindow_win32_event_sequence_exhausted() int
 	fn C.v_multiwindow_win32_render_snapshot(hwnd voidptr, out_visible &int, out_minimized &int, out_logical_width &int, out_logical_height &int, out_framebuffer_width &int, out_framebuffer_height &int, out_scale &f32, out_conversion_available &int) int
 	fn C.v_multiwindow_win32_logical_to_pixel_rect(hwnd voidptr, x f32, y f32, width f32, height f32, out_x &int, out_y &int, out_width &int, out_height &int) int
@@ -224,6 +321,7 @@ $if windows {
 			return
 		}
 		mut record := unsafe { &Win32WindowRecord(data) }
+		record.clear_mouse_lock_legacy_tail()
 		record.destroyed = true
 		record.hwnd = unsafe { nil }
 		record.enqueue_native_event(sequence, queued_lifecycle_event(Event{
@@ -257,6 +355,24 @@ $if windows {
 			height:    height
 		}))
 		record.enqueue_native_event(sequence, queued_input_event(record.input_event(.resized)))
+	}
+
+	@[export: 'v_multiwindow_win32_window_service_refresh']
+	@[markused]
+	fn win32_window_service_refresh(data voidptr, sequence u64, reason int) {
+		if data == unsafe { nil } || sequence == 0 {
+			return
+		}
+		mut record := unsafe { &Win32WindowRecord(data) }
+		if record.service_refresh_sequence == 0 || sequence < record.service_refresh_sequence {
+			record.service_refresh_sequence = sequence
+		}
+		match reason {
+			1 { record.pending_display_refresh = true }
+			2 { record.pending_dpi_refresh = true }
+			3 { record.pending_membership_refresh = true }
+			else {}
+		}
 	}
 
 	@[export: 'v_multiwindow_win32_window_input_event']
@@ -418,6 +534,116 @@ $if windows {
 		}
 	}
 
+	@[export: 'v_multiwindow_win32_window_mouse_lock_active']
+	@[markused]
+	fn win32_window_mouse_lock_active(data voidptr) int {
+		if data == unsafe { nil } {
+			return 0
+		}
+		record := unsafe { &Win32WindowRecord(data) }
+		if record.service_state == unsafe { nil } {
+			return 0
+		}
+		return C.v_multiwindow_win32_service_mouse_delivery_active(record.service_state)
+	}
+
+	@[export: 'v_multiwindow_win32_window_focus_lost']
+	@[markused]
+	fn win32_window_focus_lost(data voidptr) {
+		if data == unsafe { nil } {
+			return
+		}
+		mut record := unsafe { &Win32WindowRecord(data) }
+		if record.service_state == unsafe { nil } || record.mouse_focus_cleanup_pending
+			|| record.mouse_focus_cleanup_reported {
+			return
+		}
+		result := C.v_multiwindow_win32_service_focus_lost(record.service_state)
+		if result == win32_service_ok {
+			record.clear_mouse_lock_legacy_tail()
+			record.mouse_dx = 0
+			record.mouse_dy = 0
+			record.mouse_pos_valid = false
+			record.mouse_focus_cleanup_pending = false
+			record.mouse_focus_cleanup_reported = false
+			return
+		}
+		record.mouse_focus_cleanup_pending = true
+		record.mouse_focus_cleanup_reported = false
+	}
+
+	@[export: 'v_multiwindow_win32_window_raw_mouse_event']
+	@[markused]
+	fn win32_window_raw_mouse_event(data voidptr, sequence u64, mouse_x int, mouse_y int, mouse_dx int, mouse_dy int, modifiers u32) {
+		if data == unsafe { nil } || sequence == 0 || (mouse_dx == 0 && mouse_dy == 0) {
+			return
+		}
+		mut record := unsafe { &Win32WindowRecord(data) }
+		if record.service_state == unsafe { nil } {
+			return
+		}
+		record.mouse_x = f32(mouse_x)
+		record.mouse_y = f32(mouse_y)
+		record.mouse_dx = f32(mouse_dx)
+		record.mouse_dy = f32(mouse_dy)
+		record.mouse_pos_valid = true
+		record.enqueue_native_event(sequence, queued_input_event(InputEvent{
+			kind:               .mouse_move
+			window_id:          record.id
+			modifiers:          modifiers
+			mouse_x:            record.mouse_x
+			mouse_y:            record.mouse_y
+			mouse_dx:           record.mouse_dx
+			mouse_dy:           record.mouse_dy
+			window_width:       record.width
+			window_height:      record.height
+			framebuffer_width:  record.width
+			framebuffer_height: record.height
+			mouse_button:       256
+		}))
+		record.mouse_raw_generation = record.mouse_lock_generation
+		record.mouse_raw_x = mouse_x
+		record.mouse_raw_y = mouse_y
+	}
+
+	@[export: 'v_multiwindow_win32_window_suppress_legacy_mouse_tail']
+	@[markused]
+	fn win32_window_suppress_legacy_mouse_tail(data voidptr, mouse_x int, mouse_y int) int {
+		if data == unsafe { nil } {
+			return 0
+		}
+		mut record := unsafe { &Win32WindowRecord(data) }
+		if record.mouse_tail_generation == 0
+			|| record.mouse_tail_generation != record.mouse_lock_generation
+			|| record.mouse_raw_generation != record.mouse_lock_generation {
+			record.clear_mouse_lock_legacy_tail()
+			return 0
+		}
+		if record.mouse_raw_x == mouse_x && record.mouse_raw_y == mouse_y {
+			record.clear_mouse_lock_legacy_tail()
+			return 1
+		}
+		record.clear_mouse_lock_legacy_tail()
+		return 0
+	}
+
+	@[export: 'v_multiwindow_win32_window_raw_input_error']
+	@[markused]
+	fn win32_window_raw_input_error(data voidptr) {
+		if data == unsafe { nil } {
+			return
+		}
+		mut record := unsafe { &Win32WindowRecord(data) }
+		record.clear_mouse_lock_legacy_tail()
+		if record.service_state != unsafe { nil } {
+			_ = C.v_multiwindow_win32_service_disable_mouse_delivery(record.service_state)
+		}
+		record.mouse_dx = 0
+		record.mouse_dy = 0
+		record.mouse_pos_valid = false
+		record.raw_input_failed = true
+	}
+
 	@[export: 'v_multiwindow_win32_window_drop_begin']
 	@[markused]
 	fn win32_window_drop_begin(data voidptr, sequence u64, mouse_x int, mouse_y int, modifiers u32) {
@@ -545,6 +771,7 @@ fn (record &Win32WindowRecord) input_event(kind InputEventKind) InputEvent {
 
 @[markused]
 fn (mut record Win32WindowRecord) update_mouse_position(x int, y int, clear_delta bool) {
+	record.clear_mouse_lock_legacy_tail()
 	new_x := f32(x)
 	new_y := f32(y)
 	if clear_delta || !record.mouse_pos_valid {
@@ -663,6 +890,12 @@ fn new_win32_backend() Win32Backend {
 	return Win32Backend{}
 }
 
+fn (backend &Win32Backend) cursor_support(shape CursorShape) ServiceSupportLevel {
+	_ = backend
+	_ = shape
+	return .available
+}
+
 fn (backend &Win32Backend) ensure_supported() ! {
 	$if windows {
 		return
@@ -711,6 +944,9 @@ fn (mut backend Win32Backend) close_start_attempt() string {
 
 fn (mut backend Win32Backend) probe_renderer_capabilities() !Capabilities {
 	$if windows {
+		if backend.native_input_release_terminal() != '' {
+			return error(backend.renderer_probe_error(''))
+		}
 		if !backend.start_attempt_closed() {
 			return error(backend.renderer_probe_error(err_render_native_renderer_unavailable))
 		}
@@ -798,6 +1034,20 @@ fn (mut backend Win32Backend) create_window(id WindowId, config WindowConfig) !W
 		if !backend.started {
 			return error(err_backend_unsupported)
 		}
+		if backend.windows.len == 0 {
+			backend.refresh_service_monitors_before_first_window()!
+		}
+		mut owner_hwnd := unsafe { nil }
+		if owner := config.owner {
+			owner_index := backend.window_record_index(owner) or {
+				return error(err_owner_relation_invalid)
+			}
+			owner_record := backend.windows[owner_index]
+			if owner_record.destroyed || owner_record.hwnd == unsafe { nil } {
+				return error(err_owner_relation_invalid)
+			}
+			owner_hwnd = owner_record.hwnd
+		}
 		backend.windows << &Win32WindowRecord{
 			id:     id
 			config: config
@@ -808,15 +1058,51 @@ fn (mut backend Win32Backend) create_window(id WindowId, config WindowConfig) !W
 		mut record := backend.windows[index]
 		title := config.title.to_wide()
 		record_data := unsafe { voidptr(record) }
+		show_after_modal_activation := config.modal && config.visible
+		record.suppress_resize_event = true
 		hwnd := C.v_multiwindow_win32_create_window(title, config.width, config.height,
 			config.min_width, config.min_height, win32_bool_to_int(config.resizable),
-			win32_bool_to_int(config.borderless), win32_bool_to_int(config.fullscreen),
-			win32_bool_to_int(config.visible), record_data)
+			win32_bool_to_int(config.high_dpi), win32_bool_to_int(config.borderless),
+			win32_bool_to_int(config.fullscreen), win32_bool_to_int(config.visible
+			&& !show_after_modal_activation), owner_hwnd, record_data)
+		record.suppress_resize_event = false
 		if hwnd == unsafe { nil } {
 			backend.windows.delete(index)
 			return error(err_win32_create_window_failed)
 		}
 		record.hwnd = hwnd
+		record.service_state = C.v_multiwindow_win32_service_create(hwnd, record_data,
+			win32_bool_to_int(config.fullscreen), config.width, config.height,
+			win32_bool_to_int(config.resizable), win32_bool_to_int(config.borderless))
+		if record.service_state == unsafe { nil } {
+			if C.v_multiwindow_win32_destroy_window(hwnd) == 0 {
+				return error(err_win32_destroy_window_failed)
+			}
+			record.hwnd = unsafe { nil }
+			backend.windows.delete(index)
+			return error(err_win32_create_window_failed)
+		}
+		if show_after_modal_activation {
+			backend.activate_modal(index) or {
+				activate_error := err.msg()
+				backend.finish_window_teardown(id) or {
+					return error(merge_backend_errors(activate_error, err.msg()))
+				}
+				return error(activate_error)
+			}
+			if C.v_multiwindow_win32_show_created_window(hwnd, win32_bool_to_int(config.fullscreen)) == 0 {
+				show_error := err_win32_create_window_failed
+				mut rollback_error := ''
+				backend.release_modal(index) or {
+					rollback_error = 'modal rollback failed: ${err.msg()}'
+				}
+				backend.finish_window_teardown(id) or {
+					return error(merge_backend_errors(show_error, merge_backend_errors(rollback_error,
+						err.msg())))
+				}
+				return error(merge_backend_errors(show_error, rollback_error))
+			}
+		}
 		actual_width := C.v_multiwindow_win32_client_width(hwnd)
 		actual_height := C.v_multiwindow_win32_client_height(hwnd)
 		if actual_width > 0 {
@@ -827,6 +1113,34 @@ fn (mut backend Win32Backend) create_window(id WindowId, config WindowConfig) !W
 		}
 		record.config = window_config_with_size(record.config, record.width, record.height)
 		record.render_resize_pending = false
+		app_instance := if backend.native_operations == unsafe { nil } {
+			u64(0)
+		} else {
+			backend.native_operations.app_identity
+		}
+		native_monitor := C.v_multiwindow_win32_service_window_monitor(record.hwnd)
+		record.service_monitor_ids = win32_service_monitor_ids_for_native(backend.service_monitors,
+			native_monitor, app_instance)
+		record.service_dpi = C.v_multiwindow_win32_service_window_dpi(record.hwnd)
+		staged_monitor_ids := if backend.service_monitor_pending_sequence != 0 {
+			win32_service_monitor_ids_for_native(backend.service_monitor_pending_records,
+				native_monitor, app_instance)
+		} else {
+			[]ServiceMonitorId{}
+		}
+		if native_monitor != 0 && record.service_monitor_ids.len == 0 && staged_monitor_ids.len == 0 {
+			record.pending_display_refresh = true
+			if record.service_refresh_sequence == 0 {
+				record.service_refresh_sequence = C.v_multiwindow_win32_next_event_sequence()
+			}
+		}
+		terminal_error := backend.event_sequence_terminal_error()
+		if terminal_error != '' {
+			backend.finish_window_teardown(id) or {
+				return error(merge_backend_errors(terminal_error, err.msg()))
+			}
+			return error(terminal_error)
+		}
 		return WindowSize{
 			width:  record.width
 			height: record.height
@@ -846,6 +1160,18 @@ fn (mut backend Win32Backend) finish_window_teardown(id WindowId) ! {
 	$if windows {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
 		mut record := backend.windows[index]
+		backend.purge_clipboard_window(id)
+		record.clear_mouse_lock_legacy_tail()
+		if record.service_state != unsafe { nil } {
+			record.mouse_dx = 0
+			record.mouse_dy = 0
+			record.mouse_pos_valid = false
+			win32_service_prepare_window_teardown(record.service_state) or {
+				prepare_error := err.msg()
+				backend.record_native_input_release_error(record.service_state, prepare_error)
+				return error(prepare_error)
+			}
+		}
 		if !backend.release_window_render_resources(index, win32_window_operation_seed(record.id,
 			record.render_target_generation, .shutdown_release)) {
 			backend.render_health = renderer_health_latch_unavailable(backend.render_health)
@@ -855,11 +1181,21 @@ fn (mut backend Win32Backend) finish_window_teardown(id WindowId) ! {
 			backend.render_health = renderer_health_latch_unavailable(backend.render_health)
 			return error(err_render_native_renderer_unavailable)
 		}
+		backend.release_modal(index)!
+		if backend.has_retained_child(id) {
+			return error(err_owner_relation_invalid)
+		}
 		if record.hwnd != unsafe { nil } {
 			if C.v_multiwindow_win32_destroy_window(record.hwnd) == 0 {
 				return error(err_win32_destroy_window_failed)
 			}
 			record.hwnd = unsafe { nil }
+		}
+		if record.service_state != unsafe { nil } {
+			released_state := record.service_state
+			win32_service_result(C.v_multiwindow_win32_service_release(released_state))!
+			backend.resolve_native_input_release_error(released_state)
+			record.service_state = unsafe { nil }
 		}
 		backend.windows.delete(index)
 		return
@@ -957,14 +1293,48 @@ fn (mut backend Win32Backend) poll_queued_events() ![]QueuedEvent {
 			return []QueuedEvent{}
 		}
 		C.v_multiwindow_win32_pump_messages()
+		mut cleanup_index := 0
+		for cleanup_index < backend.windows.len {
+			mut record := backend.windows[cleanup_index]
+			if record.mouse_focus_cleanup_pending && record.service_state != unsafe { nil } {
+				result := C.v_multiwindow_win32_service_focus_lost(record.service_state)
+				if result == win32_service_ok {
+					record.clear_mouse_lock_legacy_tail()
+					record.mouse_dx = 0
+					record.mouse_dy = 0
+					record.mouse_pos_valid = false
+					record.mouse_focus_cleanup_pending = false
+					record.mouse_focus_cleanup_reported = false
+					backend.resolve_native_input_release_error(record.service_state)
+				} else if !record.mouse_focus_cleanup_reported {
+					backend.record_native_input_release_error(record.service_state,
+						err_capability_unsupported)
+					backend.poll_error = merge_backend_errors(backend.poll_error,
+						err_capability_unsupported)
+					record.mouse_focus_cleanup_reported = true
+				}
+			}
+			cleanup_index++
+		}
+		for event in backend.collect_service_refresh_events()! {
+			native_events << event
+		}
 		mut i := 0
 		for i < backend.windows.len {
 			mut record := backend.windows[i]
+			if record.raw_input_failed {
+				backend.poll_error = merge_backend_errors(backend.poll_error,
+					err_capability_unsupported)
+				record.raw_input_failed = false
+			}
 			for event in record.queued_events {
 				native_events << event
 			}
 			record.queued_events.clear()
 			i++
+		}
+		for event in backend.collect_clipboard_events() {
+			native_events << event
 		}
 	}
 	win32_sort_native_events(mut native_events)
@@ -994,6 +1364,7 @@ fn (mut backend Win32Backend) event_sequence_terminal_error() string {
 
 fn (mut backend Win32Backend) stop() ! {
 	$if windows {
+		backend.purge_all_clipboard_requests()
 		if !backend.started && !backend.retains_native_ownership() {
 			terminal_error := backend.retained_stop_error('')
 			if terminal_error != '' {
@@ -1002,8 +1373,19 @@ fn (mut backend Win32Backend) stop() ! {
 			return
 		}
 		for backend.windows.len > 0 {
-			mut record := backend.windows[0]
-			if !backend.release_window_render_resources(0, win32_window_operation_seed(record.id,
+			index := backend.windows.len - 1
+			mut record := backend.windows[index]
+			record.clear_mouse_lock_legacy_tail()
+			if record.service_state != unsafe { nil } {
+				record.mouse_dx = 0
+				record.mouse_dy = 0
+				record.mouse_pos_valid = false
+				win32_service_prepare_window_teardown(record.service_state) or {
+					backend.record_native_input_release_error(record.service_state, err.msg())
+					return error(backend.retained_stop_error(''))
+				}
+			}
+			if !backend.release_window_render_resources(index, win32_window_operation_seed(record.id,
 				record.render_target_generation, .shutdown_release)) {
 				backend.render_health = renderer_health_latch_unavailable(backend.render_health)
 				return error(backend.retained_stop_error(err_render_native_renderer_unavailable))
@@ -1012,13 +1394,23 @@ fn (mut backend Win32Backend) stop() ! {
 				backend.render_health = renderer_health_latch_unavailable(backend.render_health)
 				return error(backend.retained_stop_error(err_render_native_renderer_unavailable))
 			}
+			backend.release_modal(index) or { return error(backend.retained_stop_error(err.msg())) }
 			if record.hwnd != unsafe { nil } {
 				if C.v_multiwindow_win32_destroy_window(record.hwnd) == 0 {
 					return error(backend.retained_stop_error(err_win32_destroy_window_failed))
 				}
 				record.hwnd = unsafe { nil }
 			}
-			backend.windows.delete(0)
+			if record.service_state != unsafe { nil } {
+				released_state := record.service_state
+				service_result := C.v_multiwindow_win32_service_release(released_state)
+				win32_service_result(service_result) or {
+					return error(backend.retained_stop_error(err.msg()))
+				}
+				backend.resolve_native_input_release_error(released_state)
+				record.service_state = unsafe { nil }
+			}
+			backend.windows.delete(index)
 		}
 		backend.shutdown_renderer()
 		if backend.retains_native_ownership() {
@@ -1026,6 +1418,13 @@ fn (mut backend Win32Backend) stop() ! {
 			return error(backend.retained_stop_error(err_render_native_renderer_unavailable))
 		}
 		backend.started = false
+		backend.service_monitors.clear()
+		backend.service_monitor_raw.clear()
+		backend.service_monitor_pending.clear()
+		backend.service_monitor_pending_records.clear()
+		backend.service_monitor_pending_raw.clear()
+		backend.service_monitor_pending_sequence = 0
+		backend.service_monitor_poll_dirty = false
 		poll_error := backend.poll_error
 		backend.poll_error = ''
 		terminal_error := backend.retained_stop_error(poll_error)
@@ -1045,6 +1444,93 @@ fn (backend &Win32Backend) window_record_index(id WindowId) ?int {
 		}
 	}
 	return none
+}
+
+fn (backend &Win32Backend) has_retained_child(owner WindowId) bool {
+	for record in backend.windows {
+		if configured_owner := record.config.owner {
+			if configured_owner == owner {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (mut backend Win32Backend) activate_modal(index int) ! {
+	$if windows {
+		if index < 0 || index >= backend.windows.len {
+			return error(err_window_not_found)
+		}
+		mut record := backend.windows[index]
+		if !record.config.modal || record.modal_active {
+			return
+		}
+		owner := record.config.owner or { return error(err_owner_relation_invalid) }
+		owner_index := backend.window_record_index(owner) or {
+			return error(err_owner_relation_invalid)
+		}
+		if owner_index == index {
+			return error(err_owner_relation_invalid)
+		}
+		mut owner_record := backend.windows[owner_index]
+		if record.hwnd == unsafe { nil } || owner_record.destroyed
+			|| owner_record.hwnd == unsafe { nil }
+			|| C.v_multiwindow_win32_owner_matches(record.hwnd, owner_record.hwnd) == 0 {
+			return error(err_owner_relation_invalid)
+		}
+		if owner_record.modal_child_count == 0 {
+			owner_record.modal_restore_enabled = C.v_multiwindow_win32_is_window_enabled(owner_record.hwnd) != 0
+		}
+		if C.v_multiwindow_win32_is_window_enabled(owner_record.hwnd) != 0
+			&& C.v_multiwindow_win32_set_window_enabled(owner_record.hwnd, 0) == 0 {
+			return error(err_capability_unsupported)
+		}
+		owner_record.modal_child_count++
+		record.modal_active = true
+		return
+	} $else {
+		_ = index
+		return error(err_backend_unsupported)
+	}
+}
+
+fn (mut backend Win32Backend) release_modal(index int) ! {
+	$if windows {
+		if index < 0 || index >= backend.windows.len {
+			return error(err_window_not_found)
+		}
+		mut record := backend.windows[index]
+		if !record.modal_active {
+			return
+		}
+		owner := record.config.owner or { return error(err_owner_relation_invalid) }
+		owner_index := backend.window_record_index(owner) or {
+			return error(err_owner_relation_invalid)
+		}
+		if owner_index == index {
+			return error(err_owner_relation_invalid)
+		}
+		mut owner_record := backend.windows[owner_index]
+		if owner_record.modal_child_count <= 0 {
+			return error(err_owner_relation_invalid)
+		}
+		if owner_record.modal_child_count == 1 && owner_record.modal_restore_enabled {
+			if owner_record.hwnd == unsafe { nil }
+				|| C.v_multiwindow_win32_set_window_enabled(owner_record.hwnd, 1) == 0 {
+				return error(err_capability_unsupported)
+			}
+		}
+		owner_record.modal_child_count--
+		if owner_record.modal_child_count == 0 {
+			owner_record.modal_restore_enabled = false
+		}
+		record.modal_active = false
+		return
+	} $else {
+		_ = index
+		return error(err_backend_unsupported)
+	}
 }
 
 $if gg_multiwindow ? || x_multiwindow_render ? {
@@ -2408,5 +2894,6 @@ fn (mut backend Win32Backend) abandon_renderer_ownership() {
 
 fn (mut backend Win32Backend) accept_native_render_window_loss(id WindowId) {
 	index := backend.window_record_index(id) or { return }
+	backend.windows[index].clear_mouse_lock_legacy_tail()
 	backend.windows[index].destroyed = true
 }

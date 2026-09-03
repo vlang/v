@@ -1,6 +1,42 @@
 module multiwindow
 
 $if test {
+	pub fn (mut app App) set_render_window_snapshot_for_gg_test(id WindowId, reason RenderBlockReason, metrics_available bool, framebuffer_width int, framebuffer_height int, sample_count int, submitted_frame u64) ! {
+		app.assert_owner_thread()!
+		app.state_mutex.lock()
+		defer {
+			app.state_mutex.unlock()
+		}
+		index := app.render_window_index_locked(id)!
+		mut window := &app.render_runtime.windows[index]
+		window.block_reason = reason
+		window.metrics = RenderMetricsSnapshot{
+			logical_width:        f32(framebuffer_width)
+			logical_height:       f32(framebuffer_height)
+			framebuffer_width:    framebuffer_width
+			framebuffer_height:   framebuffer_height
+			dpi_scale:            if metrics_available { f32(1) } else { f32(0) }
+			metrics_sequence:     if metrics_available { u64(1) } else { u64(0) }
+			metrics_available:    metrics_available
+			conversion_available: metrics_available
+		}
+		window.target = RenderTargetSnapshot{
+			target_identity: if sample_count > 0 { u64(1) } else { u64(0) }
+			sample_count:    sample_count
+		}
+		window.submitted_frame = submitted_frame
+	}
+
+	pub fn (mut app App) swap_event_delivery_token_for_gg_test(token u64) u64 {
+		app.state_mutex.lock()
+		defer {
+			app.state_mutex.unlock()
+		}
+		previous := app.next_event_delivery_token
+		app.next_event_delivery_token = token
+		return previous
+	}
+
 	pub struct GgEglNativeWindowProofTicket {
 		app_identity           u64
 		renderer_attempt_token u64

@@ -17,7 +17,7 @@ struct UnsignedInclusiveForPost {
 // transform_for_body transforms transform for body data for transform.
 fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count < 3 {
-		return arr1(id)
+		return [id]
 	}
 	// child 0: init statement
 	init_id := t.a.child(&node, 0)
@@ -112,7 +112,7 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 			guarded_body << stmt
 		}
 		not_cond := t.make_prefix(.not, t.make_paren(new_cond))
-		break_block := t.make_block(arr1(t.a.add(.break_stmt)))
+		break_block := t.make_block([t.a.add(.break_stmt)])
 		guarded_body << t.make_if(not_cond, break_block, t.make_block([]flat.NodeId{}))
 		for stmt in new_body {
 			guarded_body << stmt
@@ -147,7 +147,7 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 			new_id,
 		]
 	}
-	return arr1(new_id)
+	return [new_id]
 }
 
 fn (mut t Transformer) unsigned_inclusive_for_post_body(cond_id flat.NodeId, post_id flat.NodeId) ?UnsignedInclusiveForPost {
@@ -188,7 +188,7 @@ fn (mut t Transformer) unsigned_inclusive_for_post_body(cond_id flat.NodeId, pos
 	done := t.unsigned_loop_post_would_overflow(loop_node.value, loop_type, post_expr.op)
 	t.set_node_typ(int(done), 'bool')
 	break_stmt := t.a.add(.break_stmt)
-	post_body << t.make_if(done, t.make_block(arr1(break_stmt)), t.make_empty())
+	post_body << t.make_if(done, t.make_block([break_stmt]), t.make_empty())
 	post_body << t.transform_stmt(post_id)
 	return UnsignedInclusiveForPost{
 		cond:        new_cond
@@ -335,7 +335,7 @@ fn (mut t Transformer) rewrite_continue_to_for_post_label_in_children(id flat.No
 fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []flat.NodeId {
 	header_count := node.value.int()
 	if header_count < 3 || node.children_count < 3 {
-		return arr1(id)
+		return [id]
 	}
 	key_id := t.a.child(&node, 0) // loop var ident — pass through (do not transform a binding)
 	val_id := t.a.child(&node, 1) // may be flat.empty_node (-1)
@@ -451,7 +451,15 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	source_is_owned_temporary := !raw_iter_type.starts_with('&')
 		&& !t.expr_can_take_address(container_id)
 		&& !t.for_in_container_is_borrowed_lock_value(container_id)
-	mut new_container := if map_iter_type.starts_with('map[') && source_is_owned_temporary {
+	// Route a value `match`/`if` for-in container through value lowering (e.g.
+	// `for value in (match node { First { get_values(node)! } ... })`); otherwise the
+	// propagating arm tail is lowered in a value-less statement context and emits an
+	// empty expression. `transform_value_operand` materializes it into a value temp
+	// (stable for the loop's repeated use); non-branch containers keep the existing
+	// `stable_expr_for_reuse` / `transform_expr` lowering.
+	mut new_container := if t.is_value_match_or_if_operand(container_id) {
+		t.transform_value_operand(container_id)
+	} else if map_iter_type.starts_with('map[') && source_is_owned_temporary {
 		t.stable_expr_for_reuse(container_id)
 	} else {
 		t.transform_expr(container_id)
@@ -533,7 +541,12 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 				t.infer_for_in_elem_type(iter_type, node)
 			}
 			if elem_type.len > 0 {
-				val_type := if node.op == .amp || iter_type.starts_with('&map[') {
+				// Only `for k, mut v in m` (`.amp`) binds the value by reference, and C
+				// generation declares the binding by reference on that same condition. A
+				// container that is merely a map *reference* (`m &map[string]bool`) still binds
+				// a plain value copy, so typing it `&V` here makes every use of the binding
+				// emit a dereference of a non-pointer local.
+				val_type := if node.op == .amp {
 					'&${elem_type}'
 				} else {
 					elem_type
@@ -552,7 +565,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 					t.infer_for_in_elem_type(iter_type, node)
 				}
 				if elem_type.len > 0 {
-					value_type := if node.op == .amp || iter_type.starts_with('&map[') {
+					value_type := if node.op == .amp {
 						'&${elem_type}'
 					} else {
 						elem_type
@@ -647,11 +660,13 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	if cleanup_owned_container {
 		cleanup_guard_name = t.new_temp('for_map_container_live')
 		prefix << t.make_decl_assign_typed(cleanup_guard_name, t.make_bool_literal(true), 'bool')
-		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(new_container),
-			'void'))
-		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name),
-			t.make_block(arr1(deferred_drop)), t.make_empty())
-		defer_body := t.make_block(arr1(guarded_drop))
+		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', [
+			new_container,
+		], 'void'))
+		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name), t.make_block([
+			deferred_drop,
+		]), t.make_empty())
+		defer_body := t.make_block([guarded_drop])
 		defer_start := t.a.children.len
 		t.a.children << defer_body
 		prefix << t.a.add_node(flat.Node{
@@ -671,7 +686,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		skip_ownership_drops: node.skip_ownership_drops
 	})
 	if cleanup_owned_container {
-		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(new_container), 'void'))
+		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', [new_container], 'void'))
 		prefix << t.make_assign(t.make_ident(cleanup_guard_name), t.make_bool_literal(false))
 	}
 	return prefix
@@ -826,15 +841,34 @@ fn (t &Transformer) iterator_for_in_elem_type_from_next_return(ret types.Type) ?
 // lower_range_for_in builds lower range for in data for transform.
 fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, low_id flat.NodeId, high_id flat.NodeId, body_ids []flat.NodeId) []flat.NodeId {
 	if int(key_id) < 0 {
-		return arr1(id)
+		return [id]
 	}
 	key := t.a.nodes[int(key_id)]
 	if key.kind != .ident || key.value.len == 0 {
-		return arr1(id)
+		return [id]
 	}
 	range_type := t.range_loop_var_type_name(low_id)
-	low := t.stable_expr_for_reuse(low_id)
-	high := t.stable_expr_for_reuse(high_id)
+	// Route value `match`/`if` range bounds through value lowering (e.g.
+	// `for i in (match node { First { lower_first(node)! } ... }) .. 10`); otherwise a
+	// propagating branch tail is lowered in a value-less statement context and emits an
+	// empty expression. `transform_value_operand` materializes such a bound into a value
+	// temp (stable for reuse in the loop condition); non-branch bounds keep
+	// `stable_expr_for_reuse`. The low bound is evaluated before the high bound: if the high
+	// bound hoists a value branch whose prelude can mutate a syntactically stable low bound
+	// (`for i in low .. (match node { First { change_low(mut low)! } ... })`), snapshot the
+	// low bound's source-order value so the loop initializer reads it before that prelude.
+	low := if t.is_value_match_or_if_operand(low_id) {
+		t.transform_value_operand(low_id)
+	} else if t.operand_hoists_value_branch(high_id) && t.operand_needs_ordering_snapshot(low_id) {
+		t.snapshot_expr_for_reuse(low_id)
+	} else {
+		t.stable_expr_for_reuse(low_id)
+	}
+	high := if t.is_value_match_or_if_operand(high_id) {
+		t.transform_value_operand(high_id)
+	} else {
+		t.stable_expr_for_reuse(high_id)
+	}
 	loop_name := if key.value == '_' {
 		'__discard_${key.pos.id}_${key.pos.offset}_${key.pos.end}'
 	} else {
@@ -865,26 +899,28 @@ fn (t &Transformer) range_loop_var_type_name(low_id flat.NodeId) string {
 
 fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, iter_type string, info IteratorForInInfo, has_index bool, body_ids []flat.NodeId) []flat.NodeId {
 	if int(key_id) < 0 {
-		return arr1(id)
+		return [id]
 	}
 	key := t.a.nodes[int(key_id)]
 	if key.kind != .ident || key.value.len == 0 {
-		return arr1(id)
+		return [id]
 	}
 	mut elem_name := key.value
 	if has_index {
 		if int(val_id) < 0 {
-			return arr1(id)
+			return [id]
 		}
 		val := t.a.nodes[int(val_id)]
 		if val.kind != .ident || val.value.len == 0 {
-			return arr1(id)
+			return [id]
 		}
 		elem_name = val.value
 	}
 	iter_name := t.new_temp('iter')
 	next_name := t.new_temp('iter_next')
-	iter_expr := t.transform_expr(container_id)
+	// Route a value `match`/`if` iterator container through value lowering so a
+	// propagating arm tail is materialized as a value (no-op for non-branch containers).
+	iter_expr := t.transform_value_operand(container_id)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
 	prefix << t.make_decl_assign_typed(iter_name, iter_expr, iter_type)
@@ -898,11 +934,17 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	elem_type := info.elem_type
 	t.set_var_type(elem_name, elem_type)
 	t.mark_fn_used_name(info.next_method)
-	next_call := t.make_call_typed(info.next_method, arr1(t.make_prefix(.amp,
-		t.make_ident(iter_name))), '?${elem_type}')
+	next_receiver := if iter_type.trim_space().starts_with('&') {
+		t.make_ident(iter_name)
+	} else {
+		t.make_prefix(.amp, t.make_ident(iter_name))
+	}
+	next_call := t.make_call_typed(info.next_method, [
+		next_receiver,
+	], '?${elem_type}')
 	next_decl := t.make_decl_assign_typed(next_name, next_call, '?${elem_type}')
 	no_value := t.make_prefix(.not, t.make_selector(t.make_ident(next_name), 'ok', 'bool'))
-	break_if_done := t.make_if(no_value, t.make_block(arr1(t.a.add(.break_stmt))), t.make_empty())
+	break_if_done := t.make_if(no_value, t.make_block([t.a.add(.break_stmt)]), t.make_empty())
 	elem_decl := t.make_decl_assign_typed(elem_name, t.make_selector(t.make_ident(next_name),
 		'value', elem_type), elem_type)
 	mut loop_body := []flat.NodeId{}
@@ -923,11 +965,11 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 @[direct_array_access]
 fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, iter_type string, has_index bool, body_ids []flat.NodeId) []flat.NodeId {
 	if int(key_id) < 0 {
-		return arr1(id)
+		return [id]
 	}
 	key := t.a.nodes[int(key_id)]
 	if key.kind != .ident || key.value.len == 0 {
-		return arr1(id)
+		return [id]
 	}
 	container_node := if int(container_id) >= 0 { t.a.nodes[int(container_id)] } else { flat.Node{} }
 	checker_container_type := t.raw_checker_node_type(container_id)
@@ -944,11 +986,21 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	} else {
 		iter_type
 	}
+	// `for x in &arr` requests by-reference elements via a `&` on the container
+	// expression itself, distinct from `node.op == .amp` (`for mut x in arr`). A
+	// `mut` parameter is stored as a pointer by the C ABI even without an explicit
+	// `&`, so only a genuine address-of/reference expression counts here.
+	container_is_explicit_reference := container_node.kind == .prefix && container_node.op == .amp
 	source_is_owned_temporary := !source_container_type.starts_with('&')
 		&& !t.expr_can_take_address(container_id)
 	direct_map_index_container := node.op == .amp && container_node.kind == .index
 	mut container := if direct_map_index_container {
 		container_id
+	} else if t.is_value_match_or_if_operand(container_id) {
+		// Route a value `match`/`if` container through value lowering so a propagating
+		// arm tail is materialized into a value temp (stable for the loop's repeated use);
+		// non-branch containers keep `stable_expr_for_reuse`.
+		t.transform_value_operand(container_id)
 	} else if t.expr_has_smartcast(container_id) {
 		// The checker-facing iterator type is already the narrowed collection, but
 		// taking the original expression as an lvalue would bypass the active sum
@@ -1008,7 +1060,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	}
 	elem_type := t.infer_for_in_elem_type(actual_iter_type, node)
 	if elem_type.len == 0 {
-		return arr1(id)
+		return [id]
 	}
 	mut idx_name := key.value
 	if !has_index || key.value == '_' {
@@ -1017,16 +1069,17 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	mut elem_name := key.value
 	if has_index {
 		if int(val_id) < 0 {
-			return arr1(id)
+			return [id]
 		}
 		val := t.a.nodes[int(val_id)]
 		if val.kind != .ident || val.value.len == 0 {
-			return arr1(id)
+			return [id]
 		}
 		elem_name = val.value
 	}
 	t.set_var_type(idx_name, 'int')
-	elem_is_mut := node.op == .amp && actual_iter_type != 'string'
+	elem_is_mut := (node.op == .amp || container_is_explicit_reference)
+		&& actual_iter_type != 'string'
 	elem_needs_ref := elem_is_mut
 	elem_var_type := if elem_needs_ref { '&${elem_type}' } else { elem_type }
 	t.set_var_type(elem_name, elem_var_type)
@@ -1093,11 +1146,13 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	if cleanup_temporary {
 		cleanup_guard_name = t.new_temp('for_container_live')
 		prefix << t.make_decl_assign_typed(cleanup_guard_name, t.make_bool_literal(true), 'bool')
-		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(cleanup_target),
-			'void'))
-		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name),
-			t.make_block(arr1(deferred_drop)), t.make_empty())
-		defer_body := t.make_block(arr1(guarded_drop))
+		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', [
+			cleanup_target,
+		], 'void'))
+		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name), t.make_block([
+			deferred_drop,
+		]), t.make_empty())
+		defer_body := t.make_block([guarded_drop])
 		defer_start := t.a.children.len
 		t.a.children << defer_body
 		prefix << t.a.add_node(flat.Node{
@@ -1109,12 +1164,12 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	for_stmt := t.make_for_stmt(init, cond, post, new_body, node)
 	if int(optional_container) >= 0 {
 		ok_cond := t.make_selector(optional_container, 'ok', 'bool')
-		prefix << t.make_if(ok_cond, t.make_block(arr1(for_stmt)), t.make_empty())
+		prefix << t.make_if(ok_cond, t.make_block([for_stmt]), t.make_empty())
 	} else {
 		prefix << for_stmt
 	}
 	if cleanup_temporary {
-		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(cleanup_target), 'void'))
+		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', [cleanup_target], 'void'))
 		prefix << t.make_assign(t.make_ident(cleanup_guard_name), t.make_bool_literal(false))
 	}
 	return prefix

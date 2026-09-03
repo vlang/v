@@ -55,9 +55,9 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 		}
 	}
 
-	mut lengths := []u32{len: int(num_fields), init: 0}
-	mut is_null := []bool{len: int(num_fields)}
-	stmt.bind_res(fields, data_pointers, lengths, is_null, num_fields)
+	mut lengths := []C.v_mysql_ulong{len: int(num_fields), init: 0}
+	mut is_null := []C.v_mysql_bool{len: int(num_fields)}
+	stmt.bind_res_abi(fields, data_pointers, lengths, is_null, num_fields)
 
 	mut types := config.types.clone()
 	mut field_types := []FieldType{}
@@ -88,7 +88,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 			.type_time, .type_date, .type_datetime, .type_timestamp {
 				// FIXME: Allocate memory for blobs dynamically.
 				mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
-				mysql_bind.buffer_length = FieldType.type_blob.get_len()
+				mysql_bind.buffer_length = usize(FieldType.type_blob.get_len())
 			}
 			else {}
 		}
@@ -385,12 +385,12 @@ fn stmt_bind_primitive(mut stmt Stmt, data orm.Primitive) {
 
 // data_pointers_to_primitives returns an array of `Primitive`
 // cast from `data_pointers` using `types`.
-fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int, field_types []FieldType) ![]orm.Primitive {
+fn data_pointers_to_primitives(is_null []C.v_mysql_bool, data_pointers []&u8, types []int, field_types []FieldType) ![]orm.Primitive {
 	mut result := []orm.Primitive{}
 
 	for i, data in data_pointers {
 		mut primitive := orm.Primitive(0)
-		if !is_null[i] {
+		if is_null[i] == 0 {
 			if field_types[i] in [.type_decimal, .type_newdecimal] {
 				decimal_value := unsafe { cstring_to_vstring(&char(data)) }
 				primitive = decimal_string_to_primitive(decimal_value, types[i])!
@@ -404,7 +404,18 @@ fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int,
 				orm.type_idx['i16'] {
 					primitive = *(unsafe { &i16(data) })
 				}
-				orm.type_idx['int'], orm.serial {
+				orm.type_idx['int'] {
+					$if new_int ? && x64 {
+						primitive = match field_types[i] {
+							.type_long { orm.Primitive(int(*(unsafe { &i32(data) }))) }
+							.type_longlong { orm.Primitive(int(*(unsafe { &i64(data) }))) }
+							else { return error('Unsupported MySQL field type ${field_types[i]} for V int') }
+						}
+					} $else {
+						primitive = *(unsafe { &int(data) })
+					}
+				}
+				orm.serial {
 					primitive = *(unsafe { &int(data) })
 				}
 				orm.type_idx['i64'] {
@@ -437,7 +448,7 @@ fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int,
 				orm.time_ {
 					match field_types[i] {
 						.type_long {
-							timestamp := *(unsafe { &int(data) })
+							timestamp := int(*(unsafe { &i32(data) }))
 							primitive = time.unix(timestamp)
 						}
 						.type_datetime, .type_timestamp {
@@ -509,7 +520,14 @@ fn mysql_type_from_v(typ int) !string {
 		orm.type_idx['i16'], orm.type_idx['u16'] {
 			'SMALLINT'
 		}
-		orm.type_idx['int'], orm.type_idx['u32'], orm.time_ {
+		orm.type_idx['int'] {
+			$if new_int ? && x64 {
+				'BIGINT'
+			} $else {
+				'INT'
+			}
+		}
+		orm.type_idx['u32'], orm.time_ {
 			'INT'
 		}
 		orm.type_idx['i64'], orm.type_idx['u64'], orm.enum_ {

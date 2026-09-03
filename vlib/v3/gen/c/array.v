@@ -842,7 +842,7 @@ fn (mut g FlatGen) gen_array_method_call_fallback(node flat.Node, mname string, 
 // gen_array_pointers_expr emits `array.pointers()` without compiling the erased
 // raw `array` builtin body, which has no concrete element type in v3 Cgen.
 fn (mut g FlatGen) gen_array_pointers_expr(base_id flat.NodeId, is_ptr bool) {
-	base_type := types.unwrap_pointer(g.tc.resolve_type(base_id))
+	base_type := types.unwrap_pointer(g.usable_expr_type(base_id))
 	if fixed := array_fixed_type(base_type) {
 		g.gen_fixed_array_pointers_expr(base_id, is_ptr, fixed)
 		return
@@ -1754,9 +1754,6 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 		if base_type is types.Pointer {
 			ptr_type := base_type
 			mut expected_type := ptr_type.base_type
-			base_node := g.a.node(base_id)
-			explicit_mut_pointer_param := base_node.kind == .ident
-				&& g.current_param_is_mut_pointer(base_node.value)
 			if fixed := array_fixed_type(ptr_type.base_type) {
 				g.write('(*')
 				g.gen_expr(base_id)
@@ -1765,10 +1762,6 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			} else if ptr_type.base_type is types.Void {
 				g.write('((u8*)')
 				g.gen_expr(base_id)
-				g.write(')')
-			} else if explicit_mut_pointer_param {
-				g.write('(*')
-				g.gen_mut_pointer_slot_expr(base_id)
 				g.write(')')
 			} else {
 				g.write('(')

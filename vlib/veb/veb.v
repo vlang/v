@@ -103,6 +103,10 @@ fn startup_host(params RunParams) string {
 	if params.host == '' {
 		return 'localhost'
 	}
+	// Bracket a bare IPv6 literal so the startup URL is valid (e.g. `[::1]`).
+	if params.host.contains(':') && !params.host.starts_with('[') {
+		return '[${params.host}]'
+	}
 	return params.host
 }
 

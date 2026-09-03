@@ -1,6 +1,6 @@
 module openssl
 
-#define OPENSSL_API_COMPAT 0x30000000L
+#define OPENSSL_API_COMPAT 0x10100000L
 
 // On Linux, prefer a locally built openssl, because it is
 // much more likely for it to be newer, than the system

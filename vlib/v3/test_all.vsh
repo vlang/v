@@ -6,6 +6,10 @@ import time
 const total_steps = 8
 const temp_prefix = 'v3_test_all'
 const unit_test_batch_size = 16
+const unit_wrapper_mode_env = 'V3_TEST_UNIT_WRAPPER_MODE'
+const unit_wrapper_real_vexe_env = 'V3_TEST_UNIT_REAL_VEXE'
+const unit_wrapper_shared_v3_env = 'V3_TEST_UNIT_SHARED_V3'
+const unit_wrapper_v3_src_env = 'V3_TEST_UNIT_V3_SRC'
 const requested_vlib_tests = [
 	'vlib/builtin/string_test.v',
 	'vlib/math/math_test.v',
@@ -18,6 +22,7 @@ const requested_vlib_tests = [
 	'vlib/os/process_test.v',
 	'vlib/os/file_test.v',
 	'vlib/arrays/arrays_test.v',
+	'vlib/v3/tests/testdata/multiple_generic_struct_fields.v',
 ]
 
 struct Config {
@@ -55,7 +60,12 @@ enum ExampleRunMode {
 }
 
 fn main() {
+	if os.getenv(unit_wrapper_mode_env) == '1' {
+		run_unit_vexe_wrapper()
+		return
+	}
 	self_check_gui_smoke_timeout_status()
+	self_check_unit_shared_compiler_request()
 	isolated_vtmp := setup_isolated_vtmp()
 	defer {
 		os.rmdir_all(isolated_vtmp) or {}
@@ -64,6 +74,7 @@ fn main() {
 	os.chdir(cfg.repo_root) or { fail('failed to enter ${cfg.repo_root}: ${err}') }
 
 	v3_bin := temp_path(cfg, 'v3')
+	v3_ownership_bin := temp_path(cfg, 'v3_ownership')
 	hello_c_bin := temp_path(cfg, 'hello_c')
 	hello_arm_bin := temp_path(cfg, 'hello_arm64')
 	v4_arm_bin := temp_path(cfg, 'v4_arm64')
@@ -73,6 +84,7 @@ fn main() {
 	v6_bin := temp_path(cfg, 'v6_chain')
 	cleanup_files([
 		v3_bin,
+		v3_ownership_bin,
 		hello_c_bin,
 		hello_c_bin + '.c',
 		hello_arm_bin,
@@ -92,6 +104,9 @@ fn main() {
 
 	section(2, 'Build v3')
 	run('${host_v_cmd(cfg)} -o ${q(v3_bin)} ${q(cfg.v3_src)}')
+	// The unlocked example oracle includes an `-autofree` case. Keep its optional
+	// ownership checker out of the compiler used by ordinary compatibility cases.
+	run('${host_v_cmd(cfg)} -d ownership -o ${q(v3_ownership_bin)} ${q(cfg.v3_src)}')
 
 	section(3, 'Requested vlib tests')
 	for rel_path in requested_vlib_tests {
@@ -109,7 +124,7 @@ fn main() {
 	cleanup_files([hello_c_bin, hello_c_bin + '.c'])
 
 	section(5, 'Unlocked examples C oracle')
-	run_unlocked_examples(cfg, v3_bin)
+	run_unlocked_examples(cfg, v3_bin, v3_ownership_bin)
 
 	section(6, 'ARM64 self-host hello world')
 	if cfg.c99 {
@@ -130,6 +145,9 @@ fn main() {
 	run('${q(v4_bin)} ${cfg.c99_flag} -selfhost -o ${q(v5_bin)} ${q(cfg.v3_src)}')
 	println('  Building v6 from v5...')
 	run('${q(v5_bin)} ${cfg.c99_flag} -selfhost -o ${q(v6_bin)} ${q(cfg.v3_src)}')
+	println('  Comparing generated C output from v4 and v5...')
+	run('${q(v4_bin)} ${cfg.c99_flag} -selfhost -b c -o ${q(v5_bin + '.c')} ${q(cfg.v3_src)}')
+	run('${q(v5_bin)} ${cfg.c99_flag} -selfhost -b c -o ${q(v6_bin + '.c')} ${q(cfg.v3_src)}')
 	converged_size := assert_same_file_bytes('v5/v6 generated C output', v5_bin + '.c', v6_bin +
 		'.c')
 	println('  v5.c=v6.c (${converged_size} bytes) - chain converged')
@@ -144,7 +162,7 @@ fn main() {
 	assert_same_text('language feature output', v3_c_out, expected_out)
 	println('  v3 C OK (${v3_c_out.split_into_lines().len} lines)')
 	println('  ARM64 coverage is the one-generation macOS self-host smoke test in the ARM64 step')
-	cleanup_files([v3_bin, v3_lang_bin, v3_lang_bin + '.c'])
+	cleanup_files([v3_bin, v3_ownership_bin, v3_lang_bin, v3_lang_bin + '.c'])
 
 	println('')
 	println('=== ALL TESTS PASSED ===')
@@ -154,7 +172,25 @@ fn run_v3_unit_tests(cfg Config) {
 	old_vflags := os.getenv('VFLAGS')
 	old_vjobs := os.getenv('VJOBS')
 	old_v3cache := os.getenv_opt('V3CACHE')
+	old_vexe := os.getenv_opt('VEXE')
+	old_wrapper_mode := os.getenv_opt(unit_wrapper_mode_env)
+	old_wrapper_real_vexe := os.getenv_opt(unit_wrapper_real_vexe_env)
+	old_wrapper_shared_v3 := os.getenv_opt(unit_wrapper_shared_v3_env)
+	old_wrapper_v3_src := os.getenv_opt(unit_wrapper_v3_src_env)
 	unit_cache := temp_path(cfg, 'unit_cache')
+	shared_v3 := temp_path(cfg, 'unit_shared_v3')
+	wrapper_vexe := os.join_path(cfg.repo_root, '.v3_test_unit_wrapper_${os.getpid()}')
+	cleanup_files([shared_v3, wrapper_vexe])
+	println('  Building shared V3 test compiler...')
+	run('${host_v_cmd(cfg)} -o ${q(shared_v3)} ${q(cfg.v3_src)}')
+	os.link(os.executable(), wrapper_vexe) or {
+		os.cp(os.executable(), wrapper_vexe) or {
+			fail('failed to create unit-test V wrapper ${wrapper_vexe}: ${err}')
+		}
+		os.chmod(wrapper_vexe, 0o755) or {
+			fail('failed to make unit-test V wrapper executable: ${err}')
+		}
+	}
 	os.setenv('VFLAGS', '${old_vflags} -gc none'.trim_space(), true)
 	// Many V3 tests build compilers that share V3CACHE. Keep the outer test runner
 	// serial so two nested compilers cannot publish overlapping cache generations.
@@ -164,6 +200,11 @@ fn run_v3_unit_tests(cfg Config) {
 	// programs. Run bounded batches and reset only this suite-owned cache between them.
 	// Cache regression tests use their own roots and still exercise reuse within a test.
 	os.setenv('V3CACHE', unit_cache, true)
+	os.setenv(unit_wrapper_mode_env, '1', true)
+	os.setenv(unit_wrapper_real_vexe_env, cfg.vexe, true)
+	os.setenv(unit_wrapper_shared_v3_env, shared_v3, true)
+	os.setenv(unit_wrapper_v3_src_env, cfg.v3_src, true)
+	os.setenv('VEXE', wrapper_vexe, true)
 	test_files := os.walk_ext(cfg.script_dir, '_test.v').sorted()
 	for start := 0; start < test_files.len; start += unit_test_batch_size {
 		end := if start + unit_test_batch_size < test_files.len {
@@ -176,7 +217,7 @@ fn run_v3_unit_tests(cfg Config) {
 		for path in test_files[start..end] {
 			quoted_files << q(path)
 		}
-		run('${host_v_cmd(cfg)} -enable-globals -silent test ${quoted_files.join(' ')}')
+		run('${q(wrapper_vexe)} -old-compiler -gc none -path ${q(cfg.vlib_dir)} -enable-globals -silent test ${quoted_files.join(' ')}')
 		if os.exists(unit_cache) {
 			os.rmdir_all(unit_cache) or {
 				fail('failed to reset V3 unit-test cache ${unit_cache}: ${err}')
@@ -197,6 +238,107 @@ fn run_v3_unit_tests(cfg Config) {
 		os.setenv('V3CACHE', value, true)
 	} else {
 		os.unsetenv('V3CACHE')
+	}
+	restore_env('VEXE', old_vexe)
+	restore_env(unit_wrapper_mode_env, old_wrapper_mode)
+	restore_env(unit_wrapper_real_vexe_env, old_wrapper_real_vexe)
+	restore_env(unit_wrapper_shared_v3_env, old_wrapper_shared_v3)
+	restore_env(unit_wrapper_v3_src_env, old_wrapper_v3_src)
+	cleanup_files([shared_v3, wrapper_vexe])
+}
+
+fn run_unit_vexe_wrapper() {
+	real_vexe := os.getenv(unit_wrapper_real_vexe_env)
+	shared_v3 := os.getenv(unit_wrapper_shared_v3_env)
+	v3_src := os.getenv(unit_wrapper_v3_src_env)
+	if !os.is_executable(real_vexe) {
+		fail('unit-test V wrapper cannot find real compiler: ${real_vexe}')
+	}
+	args := os.args[1..]
+	if output := unit_shared_compiler_request(args, v3_src) {
+		if !os.is_executable(shared_v3) {
+			fail('unit-test V wrapper cannot find shared V3 compiler: ${shared_v3}')
+		}
+		if os.exists(output) {
+			os.rm(output) or { fail('failed to replace unit-test V3 compiler ${output}: ${err}') }
+		}
+		os.link(shared_v3, output) or {
+			os.cp(shared_v3, output) or {
+				fail('failed to reuse unit-test V3 compiler at ${output}: ${err}')
+			}
+			os.chmod(output, 0o755) or {
+				fail('failed to make reused unit-test V3 compiler executable: ${err}')
+			}
+		}
+		exit(0)
+	}
+	// On macOS `os.executable()` resolves a hard link back to this script's
+	// original temporary binary. Preserve the repo-root wrapper path used to
+	// invoke us so nested test runners derive the correct V root.
+	os.setenv('VEXE', absolute_path(os.args[0]), true)
+	os.execvp(real_vexe, args) or { fail('failed to run real V compiler ${real_vexe}: ${err}') }
+}
+
+fn unit_shared_compiler_request(args []string, v3_src string) ?string {
+	if v3_src.len == 0 {
+		return none
+	}
+	mut output := ''
+	mut saw_source := false
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg == v3_src {
+			saw_source = true
+			i++
+			continue
+		}
+		if arg in ['-o', '-path', '-gc'] {
+			if i + 1 >= args.len {
+				return none
+			}
+			if arg == '-gc' && args[i + 1] != 'none' {
+				return none
+			}
+			if arg == '-o' {
+				output = args[i + 1]
+			}
+			i += 2
+			continue
+		}
+		if arg == '-old-compiler' {
+			i++
+			continue
+		}
+		// Compiler-build flags can change compiled-in behavior. Those requests
+		// must keep building their own dedicated V3 binary.
+		if arg.starts_with('-') {
+			return none
+		}
+		return none
+	}
+	if saw_source && output.len > 0 {
+		return output
+	}
+	return none
+}
+
+fn self_check_unit_shared_compiler_request() {
+	source := '/repo/vlib/v3/v3.v'
+	assert unit_shared_compiler_request(['-gc', 'none', '-path', '/repo/vlib', '-o', '/tmp/plain-v3',
+		source], source) or { '' } == '/tmp/plain-v3'
+	assert unit_shared_compiler_request(['-gc', 'boehm', '-o', '/tmp/boehm-v3', source], source) == none
+	assert unit_shared_compiler_request(['-gc', 'none', '-prealloc', '-o', '/tmp/prealloc-v3',
+		source], source) == none
+	assert unit_shared_compiler_request(['-gc', 'none', '-d', 'ownership', '-o', '/tmp/ownership-v3',
+		source], source) == none
+}
+
+fn restore_env(name string, old_value ?string) {
+	if value := old_value {
+		os.setenv(name, value, true)
+	} else {
+		os.unsetenv(name)
 	}
 }
 
@@ -391,11 +533,12 @@ fn example_gui(path string, timeout_seconds int) ExampleCase {
 	}
 }
 
-fn run_unlocked_examples(cfg Config, v3_bin string) {
+fn run_unlocked_examples(cfg Config, v3_bin string, v3_ownership_bin string) {
 	examples := unlocked_examples()
 	mut ran := 0
 	for i, example_case in examples {
-		if run_unlocked_example(cfg, v3_bin, example_case, i) {
+		compiler := if '-autofree' in example_case.compile_flags { v3_ownership_bin } else { v3_bin }
+		if run_unlocked_example(cfg, compiler, example_case, i) {
 			ran++
 		}
 	}
