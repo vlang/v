@@ -10,7 +10,7 @@ import v3.scanner
 fn (mut g Parser) run() !string {
 	g.next()
 	g.parse_top_level_items(false)!
-	generated := g.out.str()
+	generated := fastc_take_string(mut g.out)
 	g.drain_pending_mono()!
 	return generated
 }
@@ -67,6 +67,9 @@ fn (mut g Parser) reset_lookup_memos() {
 	g.nonlocal_name_type_memo = map[string]string{}
 	g.resolved_name_memo = map[string]string{}
 	g.declared_type_key_memo = map[string]FastcMemoEntry{}
+	g.type_memo = map[i64]string{}
+	g.method_key_memo = map[string]map[string]string{}
+	g.field_memo = map[string]map[string]FastcStructField{}
 }
 
 // parse_mono_instance re-parses one concrete instance in its defining module, so its body
@@ -578,6 +581,7 @@ fn (mut g Parser) skip_import() ! {
 }
 
 fn (mut g Parser) parse_function(enabled bool) ! {
+	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
 	g.temp_id = 0
 	g.direct_array_access = g.pending_direct_array_access
@@ -642,6 +646,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			receiver_type
 		}
 		params << '${fastc_output_c_type(receiver_parameter_type)} ${fastc_c_identifier(receiver_name)}'
+		g.type_memo.clear()
 		g.locals[receiver_name] = FastcLocal{
 			is_mut: receiver_is_mut
 			is_reference: receiver_is_reference
@@ -1055,6 +1060,7 @@ fn (mut g Parser) skip_c_function_declaration() ! {
 }
 
 fn (mut g Parser) parse_script() ! {
+	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
 	g.has_main = true
 	g.protos.writeln('int main(void);')
@@ -1120,6 +1126,7 @@ fn (mut g Parser) parse_parameters() ![]string {
 				// Declare a real function pointer with unspecified args so `f(x)`
 				// compiles as a direct call; the return C type is recovered above.
 				params << '${fastc_output_c_type(fn_return_type)} (*${c_name})()'
+				g.type_memo.clear()
 				g.locals[parameter_name] = FastcLocal{
 					is_mut: is_mut
 					typ: type_name
@@ -1128,6 +1135,7 @@ fn (mut g Parser) parse_parameters() ![]string {
 				}
 			} else {
 				params << '${fastc_output_c_type(type_name)} ${c_name}'
+				g.type_memo.clear()
 				g.locals[parameter_name] = FastcLocal{
 					is_mut: is_mut
 					is_reference: is_reference
