@@ -3560,34 +3560,28 @@ fn (mut g Gen) const_decl(id flat.NodeId) {
 	n := g.a.node(id)
 	g.emit_attrs(id)
 	pub_prefix := if n.op == .arrow { 'pub ' } else { '' }
-	fields := g.a.children_of(n)
-	if fields.len == 1 {
-		f := g.a.node(fields[0])
-		g.emit_comments_before(f.pos.offset)
-		g.write('${pub_prefix}const ${f.value}')
-		if f.children_count > 0 {
-			g.write(' = ')
-			g.expr(g.a.child(f, 0))
-		} else if f.typ.len > 0 {
-			g.write(' ${g.type_text(f.typ)}')
-		}
-		g.writeln('')
-		g.source_end = int_max(g.source_end, f.pos.end)
-		return
+	for fid in g.a.children_of(n) {
+		g.const_field(fid, pub_prefix)
 	}
-	for fid in fields {
-		f := g.a.node(fid)
-		g.emit_comments_before(f.pos.offset)
-		g.write('${pub_prefix}const ${f.value}')
-		if f.children_count > 0 {
-			g.write(' = ')
-			g.expr(g.a.child(f, 0))
-		} else if f.typ.len > 0 {
-			g.write(' ${g.type_text(f.typ)}')
-		}
-		g.writeln('')
-		g.source_end = int_max(g.source_end, f.pos.end)
+}
+
+fn (mut g Gen) const_field(fid flat.NodeId, pub_prefix string) {
+	f := g.a.node(fid)
+	g.emit_comments_before(f.pos.offset)
+	g.write('${pub_prefix}const ${f.value}')
+	if f.children_count > 0 {
+		g.write(' = ')
+		g.expr(g.a.child(f, 0))
+	} else if f.typ.len > 0 {
+		g.write(' ${g.type_text(f.typ)}')
 	}
+	// `g.expr` already terminated the line when it flushed a trailing `//`
+	// comment; a second newline here would add a blank line on every `vfmt`
+	// pass.
+	if !g.on_newline {
+		g.writeln('')
+	}
+	g.source_end = int_max(g.source_end, f.pos.end)
 }
 
 fn (mut g Gen) global_decl(id flat.NodeId) {
