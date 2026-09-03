@@ -1625,3 +1625,18 @@ fn test_formatter_keeps_the_space_before_a_comptime_flag_marker() {
 	assert !out.contains('parallel?'), out
 	assert vfmt('comptime_flag_marker_twice', out) == out
 }
+
+// A NUL byte must be written as `\x00`, not `\0`. V's octal escape absorbs the digits that
+// follow, so `\0` before an octal digit re-parses as a single escape and the formatter would
+// silently rewrite the string's bytes: `'x\x0041y'` (x, NUL, `4`, `1`, y) came back as
+// `'x\041y'`, which is `x!y`.
+fn test_formatter_keeps_nul_escape_unambiguous() {
+	source := "fn main() {\n\ta := 'x\\x0041y'\n\tb := 'p\\x00q'\n\tc := `\\x00`\n\tprintln(a + b + c.str())\n}\n"
+	out := vfmt('nul_escape', source)
+	assert out.contains("'x\\x0041y'"), out
+	assert !out.contains('\\041'), out
+	assert out.contains("'p\\x00q'"), out
+	assert !out.contains("'p\\0q'"), out
+	assert out.contains('`\\x00`'), out
+	assert vfmt('nul_escape_twice', out) == out
+}

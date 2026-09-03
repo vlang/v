@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
       - name: Build V
         run: make -j4
       - name: Install Objective-C compiler

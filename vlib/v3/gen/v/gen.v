@@ -4185,10 +4185,11 @@ fn escape_string(s string, quote u8) string {
 			12 {
 				b.write_string('\\f')
 			}
-			0 {
-				b.write_string('\\0')
-			}
 			else {
+				// NUL is written as `\\x00`, never `\\0`: `u8.hex()` always emits two digits, so
+				// the escape cannot absorb a following character, whereas `\\0` before an octal
+				// digit re-parses as one octal escape and silently changes the string's bytes
+				// (`'x\\x0041y'` would come back as `'x\\041y'`, i.e. `x!y`).
 				if c < 32 || c == 127 {
 					b.write_string('\\x${c.hex()}')
 				} else if c == quote {
