@@ -27,6 +27,13 @@ fn formatted_u8_interp_c_expr(format string) string {
 	return g.sb.str()
 }
 
+fn test_string_literal_table_has_internal_const_linkage() {
+	mut g := FlatGen.new()
+	g.intern_string('literal')
+	g.string_literals()
+	assert g.sb.str() == 'static const string _str_0 = {"literal", 7, 1};\n\n'
+}
+
 fn test_character_interpolation_uses_rune_text() {
 	assert formatted_u8_interp_c_expr('1c') == 'rune__str((u32)(102))'
 	assert formatted_u8_interp_c_expr('3c') == 'v3_string_pad(rune__str((u32)(102)), 3, 0)'

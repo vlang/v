@@ -3912,11 +3912,34 @@ fn (mut tc TypeChecker) resolve_inferred_global_types(a &flat.FlatAst) {
 					}
 					qname := tc.qualify_name(f.value)
 					existing := tc.file_scope.lookup(qname) or { Type(void_) }
-					if existing !is Unknown && existing !is Void {
+					if existing !is Unknown && existing !is Void
+						&& !type_contains_unknown(existing)
+						&& !generic_semantic_type_has_placeholder(existing)
+						&& !tc.type_text_has_generic_placeholder(existing.name()) {
 						continue
 					}
-					ft := tc.resolve_type(a.child(f, 0))
-					if ft is Unknown || ft is Void {
+					initializer_id := a.child(f, 0)
+					initializer := a.node(initializer_id)
+					mut ft := tc.resolve_type(initializer_id)
+					// Function bodies are checked after globals are collected. Infer an
+					// implicit generic call here so methods used on the global receiver see
+					// its concrete type during body checking (`new_atomic(0)` is a common
+					// example).
+					if initializer.kind == .call {
+						if call_info := tc.resolve_call_info(initializer_id, initializer) {
+							specialized := tc.specialized_plain_generic_call_info(initializer, call_info)
+							if specialized.return_type !is Unknown
+								&& specialized.return_type !is Void
+								&& !generic_semantic_type_has_placeholder(specialized.return_type)
+								&& !tc.type_text_has_generic_placeholder(specialized.return_type.name()) {
+								ft = specialized.return_type
+								tc.remember_expr_type(initializer_id, ft)
+							}
+						}
+					}
+					if ft is Unknown || ft is Void || type_contains_unknown(ft)
+						|| generic_semantic_type_has_placeholder(ft)
+						|| tc.type_text_has_generic_placeholder(ft.name()) {
 						continue
 					}
 					tc.file_scope.insert(f.value, ft)
@@ -10180,6 +10203,7 @@ fn (mut tc TypeChecker) check_export_attrs() {
 		return
 	}
 	mut natural_symbols := map[string]string{}
+	mut natural_symbol_modules := map[string]string{}
 	synthetic_main_reserved := tc.has_synthetic_c_entry_main()
 	mut cur_module := ''
 	for i in tc.top_level_idx {
@@ -10197,6 +10221,7 @@ fn (mut tc TypeChecker) check_export_attrs() {
 				qname := export_qualified_fn_name(cur_module, node.value)
 				natural_symbol := export_natural_c_symbol(cur_module, node.value)
 				natural_symbols[natural_symbol] = qname
+				natural_symbol_modules[natural_symbol] = cur_module
 			}
 			else {}
 		}
@@ -10337,7 +10362,9 @@ fn (mut tc TypeChecker) check_export_attrs() {
 					export_symbols[export_name] = qname
 				}
 				if existing := natural_symbols[export_name] {
-					if existing != qname {
+					// A main-module function can be prefixed in C when an explicit export
+					// owns its otherwise natural symbol, matching the established backend.
+					if existing != qname && natural_symbol_modules[export_name] !in ['', 'main'] {
 						tc.record_error_unfiltered(.unsupported_generic,
 							'export name `${export_name}` for `${qname}` collides with `${existing}`',
 							flat.NodeId(i))

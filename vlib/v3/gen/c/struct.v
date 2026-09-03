@@ -721,16 +721,7 @@ fn (g &FlatGen) unique_qualified_struct_c_type(short_ct string) ?string {
 			return cached
 		}
 	}
-	mut matches := []string{}
-	for type_name, _ in g.tc.structs {
-		candidate_ct := g.struct_cname(type_name)
-		if candidate_ct != short_ct && !candidate_ct.ends_with('__${short_ct}') {
-			continue
-		}
-		if candidate_ct !in matches {
-			matches << candidate_ct
-		}
-	}
+	matches := g.qualified_struct_c_types(short_ct)
 	if matches.len == 1 && matches[0] != short_ct {
 		if !isnil(g.unique_struct_ct_cache) {
 			mut cache := g.unique_struct_ct_cache
@@ -743,6 +734,37 @@ fn (g &FlatGen) unique_qualified_struct_c_type(short_ct string) ?string {
 		cache.put(short_ct, '')
 	}
 	return none
+}
+
+fn (g &FlatGen) qualified_struct_c_types(short_ct string) []string {
+	if short_ct.len == 0 {
+		return []string{}
+	}
+	mut matches := []string{}
+	for type_name, _ in g.tc.structs {
+		candidate_ct := g.struct_cname(type_name)
+		if candidate_ct != short_ct && !candidate_ct.ends_with('__${short_ct}') {
+			continue
+		}
+		if candidate_ct !in matches {
+			matches << candidate_ct
+		}
+	}
+	return matches
+}
+
+fn (g &FlatGen) stale_ambiguous_qualified_struct_c_type(short_ct string) bool {
+	matches := g.qualified_struct_c_types(short_ct)
+	return matches.len > 1 && short_ct !in matches
+}
+
+fn (g &FlatGen) stale_missing_qualified_struct_c_type(ct string) bool {
+	if !ct.contains('__') {
+		return false
+	}
+	short_ct := ct.all_after_last('__')
+	matches := g.qualified_struct_c_types(short_ct)
+	return matches.len > 0 && ct !in matches
 }
 
 fn (g &FlatGen) unique_qualified_interface_c_type(short_ct string) ?string {

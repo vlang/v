@@ -130,6 +130,8 @@ mut:
 	embedded_fields               map[string][]FieldInfo
 	struct_short_name_index       map[string]string
 	struct_short_name_index_ready bool
+	non_main_type_short_names     map[string]bool
+	non_main_type_index_ready     bool
 	unique_fields                 map[string]string
 	alias_methods                 map[string]string
 	globals                       map[string]string
@@ -168,6 +170,8 @@ mut:
 	cur_file                        string
 	cur_module                      string
 	cur_fn_name                     string
+	cur_fn_source_file              string
+	cur_fn_source_module            string
 	cur_fn_receiver_name            string
 	cur_fn_ret_type                 string
 	cur_fn_is_generic               bool
@@ -1125,20 +1129,20 @@ pub fn reserve_parallel_transform_cache_ast(mut a flat.FlatAst, skip_generics bo
 fn reserve_parallel_transform_ast_with_cache_mode(mut a flat.FlatAst, skip_generics bool, cache_mode bool) {
 	// The shared-base parallel path partitions this headroom between workers.
 	// Generic lowering needs more headroom than self-host transform because worker
-	// regions cannot grow while their disposable arenas are active.
-	// Self-host growth currently lands at ~1.87x nodes / ~2.24x children of the
-	// parsed size, and the per-chunk cost-proportional slices amplify any local
-	// growth-per-cost outlier, so the 2x / 7:3 factors used to sit within a few
-	// percent of a loud nogrow overflow — one added source file could trip them.
+	// regions cannot grow while their disposable arenas are active. The shared path
+	// admits at most half of this pool's estimated growth, leaving the other half for
+	// uneven per-chunk expansion without retaining a 3x/4x slab for large programs.
+	// Per-chunk cost-proportional slices amplify local growth outliers, so the
+	// capacities still stay well above the observed whole-program growth.
 	nodes_factor_num, nodes_factor_den := if skip_generics {
 		if cache_mode { 5, 2 } else { 9, 4 }
 	} else {
-		3, 1
+		9, 4
 	}
 	children_factor_num, children_factor_den := if skip_generics {
 		if cache_mode { 3, 1 } else { 8, 3 }
 	} else {
-		4, 1
+		3, 1
 	}
 	nodes_cap := a.nodes.len * nodes_factor_num / nodes_factor_den
 	children_cap := a.children.len * children_factor_num / children_factor_den
@@ -1483,7 +1487,10 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 			remaining_match_log_end, base_node_count)
 		late_log_start = t.used_fns_log.len
 		t.monomorph_profile('mono wrapper late matches: ${time.ticks() - debug_started} ms')
-		if t.used_fn_count() == used_after_pass {
+		// Late-body transformation requests concrete generic work immediately. If
+		// reachability grew but queued no specialization, another whole-AST pass
+		// cannot materialize anything new.
+		if t.used_fn_count() == used_after_pass || t.pending_generic_fn_specs.len == 0 {
 			break
 		}
 	}
@@ -1686,6 +1693,7 @@ fn (mut t Transformer) prepare() {
 	t.rebuild_embedded_fields_index()
 	t.prepare_runtime_type_indexes()
 	t.rebuild_struct_short_name_index()
+	t.rebuild_non_main_type_short_names()
 	if !t.defer_pre_scan_indexes {
 		t.collect_multi_return_fn_ret_types()
 	}
@@ -1982,6 +1990,27 @@ fn (mut t Transformer) rebuild_struct_short_name_index() {
 		}
 	}
 	t.struct_short_name_index_ready = true
+}
+
+fn (mut t Transformer) rebuild_non_main_type_short_names() {
+	t.non_main_type_short_names = map[string]bool{}
+	for candidate, info in t.structs {
+		owner := if info.module.len > 0 { info.module } else { candidate.all_before_last('.') }
+		if candidate.contains('.') && owner !in ['', 'main', 'builtin'] {
+			t.non_main_type_short_names[candidate.all_after_last('.')] = true
+		}
+	}
+	for candidate, _ in t.sum_types {
+		if candidate.contains('.') && candidate.all_before_last('.') !in ['', 'main', 'builtin'] {
+			t.non_main_type_short_names[candidate.all_after_last('.')] = true
+		}
+	}
+	for candidate, _ in t.enum_types {
+		if candidate.contains('.') && candidate.all_before_last('.') !in ['', 'main', 'builtin'] {
+			t.non_main_type_short_names[candidate.all_after_last('.')] = true
+		}
+	}
+	t.non_main_type_index_ready = true
 }
 
 // base_write_allowed reports whether an in-place write to node slot `idx` is
@@ -3750,6 +3779,8 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.cur_file = ''
 	w.cur_module = ''
 	w.cur_fn_name = ''
+	w.cur_fn_source_file = ''
+	w.cur_fn_source_module = ''
 	w.cur_fn_ret_type = ''
 	w.in_call_callee = false
 	w.in_const_init = false
@@ -3863,6 +3894,8 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		embedded_fields:                 t.embedded_fields
 		struct_short_name_index:         t.struct_short_name_index
 		struct_short_name_index_ready:   t.struct_short_name_index_ready
+		non_main_type_short_names:       t.non_main_type_short_names
+		non_main_type_index_ready:       t.non_main_type_index_ready
 		unique_fields:                   t.unique_fields
 		alias_methods:                   t.alias_methods
 		globals:                         t.globals
@@ -8597,6 +8630,10 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		t.transformed_fns[fn_idx] = true
 	}
 	t.cur_fn_name = fn_node.value
+	old_source_file := t.cur_fn_source_file
+	old_source_module := t.cur_fn_source_module
+	t.cur_fn_source_file = t.node_file_or(fn_idx, t.cur_file)
+	t.cur_fn_source_module = t.node_module_or(fn_idx, t.cur_module)
 	old_receiver_name := t.cur_fn_receiver_name
 	t.cur_fn_receiver_name = ''
 	old_is_generic := t.cur_fn_is_generic
@@ -8779,6 +8816,8 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.cur_fn_is_generic = old_is_generic
 	t.cur_fn_manualfree = old_manualfree
 	t.cur_fn_receiver_name = old_receiver_name
+	t.cur_fn_source_file = old_source_file
+	t.cur_fn_source_module = old_source_module
 	t.temp_counter = outer_temp_counter
 }
 
@@ -23772,6 +23811,19 @@ fn (t &Transformer) expr_value_type(id flat.NodeId) string {
 		return ''
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind == .or_expr && node.children_count > 0 {
+		source_id := t.a.child(&node, 0)
+		source_node := t.a.nodes[int(source_id)]
+		source_type := t.json_decode_or_expr_type(source_id, source_node) or {
+			t.node_type(source_id)
+		}
+		if t.is_optional_type_name(source_type) {
+			value_type := t.optional_base_type(source_type)
+			if value_type.len > 0 && value_type !in ['unknown', 'void'] {
+				return value_type
+			}
+		}
+	}
 	if node.kind == .call {
 		if ret := t.ierror_call_return_type(node) {
 			return ret

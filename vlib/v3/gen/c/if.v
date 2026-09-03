@@ -732,12 +732,34 @@ fn (mut g FlatGen) if_expr_block_tail_type(block &flat.Node) types.Type {
 	}
 	last := g.a.child_node(block, block.children_count - 1)
 	ret := if last.kind == .expr_stmt {
-		g.usable_expr_type(g.a.child(last, 0))
+		g.if_expr_tail_value_type(g.a.child(last, 0))
 	} else {
-		g.usable_expr_type(g.a.child(block, block.children_count - 1))
+		g.if_expr_tail_value_type(g.a.child(block, block.children_count - 1))
 	}
 	g.pop_scope()
 	return ret
+}
+
+fn (mut g FlatGen) if_expr_tail_value_type(id flat.NodeId) types.Type {
+	t := g.usable_expr_type(id)
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return t
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind != .or_expr || node.children_count == 0 {
+		return t
+	}
+	source_id := g.a.child(&node, 0)
+	source_node := g.a.nodes[int(source_id)]
+	source_type := g.optional_source_type_for_expr(source_id,
+		g.or_expr_source_type(source_id, source_node))
+	if source_type is types.OptionType {
+		return source_type.base_type
+	}
+	if source_type is types.ResultType {
+		return source_type.base_type
+	}
+	return t
 }
 
 // if_expr_type supports if expr type handling for FlatGen.
@@ -769,8 +791,14 @@ fn (mut g FlatGen) if_expr_type(node &flat.Node) types.Type {
 
 // gen_if_expr_stmt emits if expr stmt output for c.
 fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
+	inferred_type := g.if_expr_type(&node)
 	ret_type := if node.typ.len > 0 {
-		g.parse_node_type(&node)
+		annotated_type := g.parse_node_type(&node)
+		if annotated_type is types.Primitive && inferred_type !is types.Primitive {
+			inferred_type
+		} else {
+			annotated_type
+		}
 	} else if g.expected_expr_type !is types.Void {
 		g.expected_expr_type
 	} else {

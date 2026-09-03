@@ -77,9 +77,9 @@ fn configure_selfhost_parallelism(building_v bool) {
 }
 
 const embedded_parallel_transform_node_limit = 10_000_000
-const scoped_serial_user_check_node_threshold = 400_000
-const scoped_serial_user_transform_node_threshold = 400_000
-const scoped_serial_user_cgen_node_threshold = 500_000
+const scoped_serial_user_check_node_threshold = 1_000_000
+const scoped_serial_user_transform_node_threshold = 1_000_000
+const scoped_serial_user_cgen_node_threshold = 2_000_000
 const scoped_linux_user_job_limit = 4
 const scoped_transform_signature_headroom = 2048
 const v3_vvmrc_file_name = '.vvmrc'
@@ -290,7 +290,7 @@ fn add_c_language_runtime_link_flags(mut prepared []string, original []string, l
 	}
 }
 
-fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) ![]string {
+fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimization_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) ![]string {
 	// Nothing to cache: without object-file or native-source flags the link
 	// plan adds no value, and preparing it costs a compiler-identity probe
 	// (subprocess) plus plan-file signatures on every build.
@@ -313,6 +313,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, c99 bo
 		return passthrough
 	}
 	mut support_flags := environment_c_flags.clone()
+	support_flags << optimization_flags
 	support_flags << c_object_compile_support_flags(flags)
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
@@ -1815,6 +1816,8 @@ struct V3CCompilerFlagOptions {
 	no_prod_options      bool
 	is_shared            bool
 	parallel_cc          bool
+	large_c_unit         bool
+	limit_inlining       bool
 	explicit_tcc         bool
 	is_c_debug           bool
 	is_o                 bool
@@ -1961,7 +1964,8 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 		before_inputs << options.link_c_standard
 	}
 	before_inputs << v3_prod_c_optimization_flags(options.is_prod, options.no_prod_options,
-		options.is_shared, options.parallel_cc, options.explicit_tcc)
+		options.is_shared, options.parallel_cc, options.large_c_unit, options.limit_inlining,
+		options.explicit_tcc)
 	if options.pic_flag.len > 0 {
 		before_inputs << options.pic_flag
 	}
@@ -2351,7 +2355,7 @@ fn cli_usage() string {
 		'  -profile [file]              write V1-compatible function profile data\n' +
 		'  -profile-fns <names>         profile only named functions and their callees\n' +
 		'  -profile-no-inline           omit @[inline] functions from the profile\n' +
-		'  -no-memory-limit             disable the 3840 MiB memory safety limit\n' +
+		'  -no-memory-limit             disable the 4032 MiB user-build memory safety limit\n' +
 		'  -d <name>                    compile-time define'
 }
 
@@ -7285,15 +7289,36 @@ fn v3_effective_warns_are_errors(explicit bool, is_prod bool) bool {
 	return explicit || is_prod
 }
 
-fn v3_prod_c_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool, explicit_tcc bool) []string {
+const v3_large_prod_c_unit_threshold = u64(8 * 1024 * 1024)
+
+fn v3_is_large_prod_c_unit(source_size u64) bool {
+	return source_size >= v3_large_prod_c_unit_threshold
+}
+
+fn v3_prod_c_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool, large_c_unit bool, limit_inlining bool, explicit_tcc bool) []string {
 	if !is_prod || no_prod_options {
 		return []
 	}
-	mut flags := ['-O3']
+	// Clang's -O3 compile cost grows sharply on very large generated translation
+	// units. -O2 retains whole-program LTO while avoiding those costly passes.
+	mut flags := [if large_c_unit { '-O2' } else { '-O3' }]
 	if !is_shared && !parallel_cc && !explicit_tcc {
 		flags << '-flto'
 	}
+	if large_c_unit && limit_inlining {
+		// Large V translation units expose many mechanically generated candidates.
+		// Bound Clang's inliner search without disabling profitable inlining.
+		flags << ['-mllvm', '-inline-threshold=75']
+	}
 	return flags
+}
+
+fn v3_prod_c_object_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool, explicit_tcc bool) []string {
+	// Native support sources are cached as independently compiled objects. Emitting
+	// LLVM bitcode here makes every program link optimize those unchanged sources
+	// again; keep the per-object -O3 work in the cache instead.
+	return v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, false,
+		false, explicit_tcc).filter(it != '-flto')
 }
 
 fn append_v3_c_compile_mode_flags(mut args []string, c_standard string, opt_flags string, pic_flag string) {
@@ -7375,183 +7400,185 @@ fn add_v3_profile_used_fns(mut used_fns map[string]bool) {
 	}
 }
 
-struct V3FastCCompileResult {
-	success bool
-	command string
-	output  string
-}
+$if !skip_fastc ? {
+	struct V3FastCCompileResult {
+		success bool
+		command string
+		output  string
+	}
 
-fn publish_v3_fastc_c_source(pieces []string, output_file string, c_to_stdout bool) ! {
-	if c_to_stdout {
-		for piece in pieces {
-			print(piece)
+	fn publish_v3_fastc_c_source(pieces []string, output_file string, c_to_stdout bool) ! {
+		if c_to_stdout {
+			for piece in pieces {
+				print(piece)
+			}
+			return
 		}
-		return
+		staged_output := '${output_file}.stage.${tempname.unique_token()}'
+		fastc.write_c_pieces(staged_output, pieces) or {
+			return error('error writing fastc output ${output_file}: ${err.msg()}')
+		}
+		os.mv(staged_output, output_file) or {
+			os.rm(staged_output) or {}
+			return error('error finalizing fastc output ${output_file}: ${err.msg()}')
+		}
 	}
-	staged_output := '${output_file}.stage.${tempname.unique_token()}'
-	fastc.write_c_pieces(staged_output, pieces) or {
-		return error('error writing fastc output ${output_file}: ${err.msg()}')
-	}
-	os.mv(staged_output, output_file) or {
-		os.rm(staged_output) or {}
-		return error('error finalizing fastc output ${output_file}: ${err.msg()}')
-	}
-}
 
-fn canonical_v3_fastc_output_path(path string) string {
-	if path == '' {
-		return ''
+	fn canonical_v3_fastc_output_path(path string) string {
+		if path == '' {
+			return ''
+		}
+		if os.exists(path) {
+			return os.real_path(path)
+		}
+		absolute_path := os.abs_path(path)
+		canonical_parent := os.real_path(os.dir(absolute_path))
+		return os.join_path_single(canonical_parent, os.file_name(absolute_path))
 	}
-	if os.exists(path) {
-		return os.real_path(path)
-	}
-	absolute_path := os.abs_path(path)
-	canonical_parent := os.real_path(os.dir(absolute_path))
-	return os.join_path_single(canonical_parent, os.file_name(absolute_path))
-}
 
-fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, environment_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool) V3FastCCompileResult {
-	bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
-	cc_sw := time.new_stopwatch()
-	tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
-	tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
-	if !os.is_executable(tcc_path) {
-		return V3FastCCompileResult{}
-	}
-	build_dir := os.join_path_single(os.dir(os.real_path(bin_file)),
-		'.${os.file_name(bin_file)}.fastc.${tempname.unique_token()}')
-	os.mkdir_all(build_dir) or { return V3FastCCompileResult{} }
-	defer {
-		cleanup_c_build_dir(build_dir)
-	}
-	source_file := os.join_path_single(build_dir, 'src.c')
-	staged_binary := os.join_path_single(build_dir, 'out')
-	// The program's translation units are compiled by concurrent TinyCC
-	// processes and linked; a program that does not split is compiled as
-	// one file.
-	if bench_phases {
-		eprintln('fastc-phase tcc.setup ${cc_sw.elapsed().microseconds()}us')
-	}
-	unit_paths := fastc.fastc_write_c_units(os.join_path_single(build_dir, 'src'), pieces, units,
-		fastc.fastc_tcc_job_count(prefs)) or { return V3FastCCompileResult{} }
-	if unit_paths.len < 2 {
-		fastc.write_c_pieces(source_file, pieces) or { return V3FastCCompileResult{} }
-	}
-	if bench_phases {
-		eprintln('fastc-phase tcc.units_written ${cc_sw.elapsed().microseconds()}us units=${unit_paths.len}')
-	}
-	tcc_resources := v3_tcc_resource_flags(prefs.vroot)
-	mut cc_args := environment_c_flags.clone()
-	cc_args << ['-std=gnu11', tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
-	cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), macos_sdk_root)
-	cc_args << source_c_flags
-	// A call without a prototype would silently truncate a pointer result
-	// (the C carries no headers): it is an error, not a warning.
-	cc_args << '-Werror=implicit-function-declaration'
-	if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), false) {
-		cc_args << '-bt25'
-	}
-	if is_debug {
-		cc_args << '-g'
-	}
-	// Keep archives and other link-only source directives after the generated
-	// object inputs. Only their state-affecting options are applied while
-	// preparing libtcc; static archives remain order-sensitive link operands.
-	compile_base_args := c_object_compile_flags(cc_args)
-	base_link_args := c_dylib_link_flags(cc_args)
-	user_compile_args := c_object_compile_flags(user_c_flags)
-	user_link_args := c_dylib_link_flags(user_c_flags)
-	mut final_args := base_link_args.clone()
-	final_args << user_link_args
-	if uses_threads {
-		final_args << '-lpthread'
-	}
-	final_args << '-lm'
-	final_args << environment_ld_flags
-	mut shim_dir := fastc.FastcCodesignShim{}
-	defer {
-		fastc.fastc_remove_codesign_shim_dir(shim_dir)
-	}
-	mut result := os.Result{}
-	mut command := ''
-	mut sign_in_process := false
-	if unit_paths.len > 1 {
-		mut compile_args := compile_base_args.clone()
-		compile_args << user_compile_args
-		link_worker := spawn fastc.fastc_prepare_link(tcc_path,
-			os.join_path_single(tcc_dir, 'lib'), compile_base_args, final_args)
-		unit_objects := fastc.fastc_compile_c_units(tcc_path, compile_args, unit_paths) or {
+	fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, environment_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool) V3FastCCompileResult {
+		bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
+		cc_sw := time.new_stopwatch()
+		tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
+		tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
+		if !os.is_executable(tcc_path) {
+			return V3FastCCompileResult{}
+		}
+		build_dir := os.join_path_single(os.dir(os.real_path(bin_file)),
+			'.${os.file_name(bin_file)}.fastc.${tempname.unique_token()}')
+		os.mkdir_all(build_dir) or { return V3FastCCompileResult{} }
+		defer {
+			cleanup_c_build_dir(build_dir)
+		}
+		source_file := os.join_path_single(build_dir, 'src.c')
+		staged_binary := os.join_path_single(build_dir, 'out')
+		// The program's translation units are compiled by concurrent TinyCC
+		// processes and linked; a program that does not split is compiled as
+		// one file.
+		if bench_phases {
+			eprintln('fastc-phase tcc.setup ${cc_sw.elapsed().microseconds()}us')
+		}
+		unit_paths := fastc.fastc_write_c_units(os.join_path_single(build_dir, 'src'), pieces, units,
+			fastc.fastc_tcc_job_count(prefs)) or { return V3FastCCompileResult{} }
+		if unit_paths.len < 2 {
+			fastc.write_c_pieces(source_file, pieces) or { return V3FastCCompileResult{} }
+		}
+		if bench_phases {
+			eprintln('fastc-phase tcc.units_written ${cc_sw.elapsed().microseconds()}us units=${unit_paths.len}')
+		}
+		tcc_resources := v3_tcc_resource_flags(prefs.vroot)
+		mut cc_args := environment_c_flags.clone()
+		cc_args << ['-std=gnu11', tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
+		cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), macos_sdk_root)
+		cc_args << source_c_flags
+		// A call without a prototype would silently truncate a pointer result
+		// (the C carries no headers): it is an error, not a warning.
+		cc_args << '-Werror=implicit-function-declaration'
+		if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), false) {
+			cc_args << '-bt25'
+		}
+		if is_debug {
+			cc_args << '-g'
+		}
+		// Keep archives and other link-only source directives after the generated
+		// object inputs. Only their state-affecting options are applied while
+		// preparing libtcc; static archives remain order-sensitive link operands.
+		compile_base_args := c_object_compile_flags(cc_args)
+		base_link_args := c_dylib_link_flags(cc_args)
+		user_compile_args := c_object_compile_flags(user_c_flags)
+		user_link_args := c_dylib_link_flags(user_c_flags)
+		mut final_args := base_link_args.clone()
+		final_args << user_link_args
+		if uses_threads {
+			final_args << '-lpthread'
+		}
+		final_args << '-lm'
+		final_args << environment_ld_flags
+		mut shim_dir := fastc.FastcCodesignShim{}
+		defer {
+			fastc.fastc_remove_codesign_shim_dir(shim_dir)
+		}
+		mut result := os.Result{}
+		mut command := ''
+		mut sign_in_process := false
+		if unit_paths.len > 1 {
+			mut compile_args := compile_base_args.clone()
+			compile_args << user_compile_args
+			link_worker := spawn fastc.fastc_prepare_link(tcc_path,
+				os.join_path_single(tcc_dir, 'lib'), compile_base_args, final_args)
+			unit_objects := fastc.fastc_compile_c_units(tcc_path, compile_args, unit_paths) or {
+				mut prepared_link := link_worker.wait()
+				fastc.fastc_discard_link(mut prepared_link)
+				fastc.write_c_pieces(source_file, pieces) or {}
+				return V3FastCCompileResult{
+					command: cmdexec.display(tcc_path, compile_args)
+					output:  err.msg()
+				}
+			}
+			if bench_phases {
+				eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
+			}
+			link_inputs := unit_objects.clone()
+			mut display_args := compile_base_args.clone()
+			display_args << ['-o', staged_binary]
+			display_args << link_inputs
+			display_args << final_args
+			command = cmdexec.display(tcc_path, display_args)
 			mut prepared_link := link_worker.wait()
-			fastc.fastc_discard_link(mut prepared_link)
-			fastc.write_c_pieces(source_file, pieces) or {}
+			sign_in_process = fastc.fastc_prepared_link_skips_codesign(&prepared_link)
+			if !sign_in_process {
+				// The executable-based linker still needs the PATH shim; the prepared
+				// libtcc linker suppresses its codesign call without a subprocess.
+				shim_dir = fastc.fastc_codesign_shim_dir()
+				sign_in_process = shim_dir.dir != ''
+			}
+			result = fastc.fastc_finish_link(mut prepared_link, link_inputs, final_args, staged_binary)
+			if bench_phases {
+				eprintln('fastc-phase tcc.linked ${cc_sw.elapsed().microseconds()}us')
+			}
+		} else {
+			cc_args = compile_base_args.clone()
+			cc_args << user_compile_args
+			cc_args << ['-o', 'out', 'src.c']
+			cc_args << final_args
+			command = cmdexec.display(tcc_path, cc_args)
+			shim_dir = fastc.fastc_codesign_shim_dir()
+			sign_in_process = shim_dir.dir != ''
+			result = cmdexec.run_in(tcc_path, cc_args, build_dir)
+		}
+		if result.exit_code != 0 || !os.is_file(staged_binary) {
+			if keep_dir := os.getenv_opt('V3_FASTC_KEEP_FAILED_C') {
+				if keep_dir.len > 0 {
+					os.cp(source_file, keep_dir) or {}
+				}
+			}
 			return V3FastCCompileResult{
-				command: cmdexec.display(tcc_path, compile_args)
+				command: command
+				output:  result.output
+			}
+		}
+		if sign_in_process {
+			fastc.fastc_sign_macho_adhoc(staged_binary) or {
+				return V3FastCCompileResult{
+					command: command
+					output:  'could not sign ${staged_binary}: ${err.msg()}'
+				}
+			}
+		}
+		if bench_phases {
+			eprintln('fastc-phase tcc.signed ${cc_sw.elapsed().microseconds()}us')
+		}
+		os.mv(staged_binary, bin_file) or {
+			return V3FastCCompileResult{
+				command: command
 				output:  err.msg()
 			}
 		}
-		if bench_phases {
-			eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
-		}
-		link_inputs := unit_objects.clone()
-		mut display_args := compile_base_args.clone()
-		display_args << ['-o', staged_binary]
-		display_args << link_inputs
-		display_args << final_args
-		command = cmdexec.display(tcc_path, display_args)
-		mut prepared_link := link_worker.wait()
-		sign_in_process = fastc.fastc_prepared_link_skips_codesign(&prepared_link)
-		if !sign_in_process {
-			// The executable-based linker still needs the PATH shim; the prepared
-			// libtcc linker suppresses its codesign call without a subprocess.
-			shim_dir = fastc.fastc_codesign_shim_dir()
-			sign_in_process = shim_dir.dir != ''
-		}
-		result = fastc.fastc_finish_link(mut prepared_link, link_inputs, final_args, staged_binary)
-		if bench_phases {
-			eprintln('fastc-phase tcc.linked ${cc_sw.elapsed().microseconds()}us')
-		}
-	} else {
-		cc_args = compile_base_args.clone()
-		cc_args << user_compile_args
-		cc_args << ['-o', 'out', 'src.c']
-		cc_args << final_args
-		command = cmdexec.display(tcc_path, cc_args)
-		shim_dir = fastc.fastc_codesign_shim_dir()
-		sign_in_process = shim_dir.dir != ''
-		result = cmdexec.run_in(tcc_path, cc_args, build_dir)
-	}
-	if result.exit_code != 0 || !os.is_file(staged_binary) {
-		if keep_dir := os.getenv_opt('V3_FASTC_KEEP_FAILED_C') {
-			if keep_dir.len > 0 {
-				os.cp(source_file, keep_dir) or {}
-			}
-		}
 		return V3FastCCompileResult{
+			success: true
 			command: command
 			output:  result.output
 		}
-	}
-	if sign_in_process {
-		fastc.fastc_sign_macho_adhoc(staged_binary) or {
-			return V3FastCCompileResult{
-				command: command
-				output:  'could not sign ${staged_binary}: ${err.msg()}'
-			}
-		}
-	}
-	if bench_phases {
-		eprintln('fastc-phase tcc.signed ${cc_sw.elapsed().microseconds()}us')
-	}
-	os.mv(staged_binary, bin_file) or {
-		return V3FastCCompileResult{
-			command: command
-			output:  err.msg()
-		}
-	}
-	return V3FastCCompileResult{
-		success: true
-		command: command
-		output:  result.output
 	}
 }
 
@@ -9419,6 +9446,7 @@ pub fn run(args []string) {
 	mut uses_generics := false
 	mut skip_transform_generics := true
 	mut transform_texts_canonical := cgen_cache_hit
+	mut texts_canonical_after_annotation := cgen_cache_hit
 	mut retained_transform_scope := unsafe { nil }
 	mut retained_transform_prepare_scope := unsafe { nil }
 	mut trivial_literal_output := false
@@ -9506,7 +9534,7 @@ pub fn run(args []string) {
 			pre_tc.check_semantics_selected(incremental_changed_names)
 		} else {
 			ck_stage_sw.restart()
-			// On large user import graphs, scoped serial batches use less memory than
+			// On very large user import graphs, serial checking uses less memory than
 			// retaining one semantic-check accumulator per worker.
 			parallel_semantic_check := !current_no_parallel && a.missing_imports.len == 0
 				&& (building_v || !scope_prealloc_check
@@ -9764,6 +9792,13 @@ pub fn run(args []string) {
 		b.step('markused')
 		b.metric('reachable symbols', used_fns.len, 'symbols')
 		mut tfpre_sw := time.new_stopwatch()
+		// Formatting unused-declaration diagnostics allocates source excerpts and
+		// rendered messages that are dead before transform starts. Keep that scratch
+		// out of the compilation arena on cache-disabled prealloc builds.
+		mut unused_diag_scope := voidptr(unsafe { nil })
+		if scope_prealloc_stages && !cache_state.manager.enabled {
+			unused_diag_scope = prealloc_scope_begin_for_v3()
+		}
 		if !is_repl && !pre_tc.valid_diagnostic_fast {
 			pre_tc.diagnose_unused_private_declarations(used_fns)
 		}
@@ -9773,7 +9808,9 @@ pub fn run(args []string) {
 		}
 		if pre_tc.notices.len > 0 {
 			checker_sql_warnings_only := is_checker_fixture && ast_contains_sql_expr(a)
-			cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
+			if cache_state.manager.enabled {
+				cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
+			}
 			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture)
 			for notice in pre_tc.notices {
 				if notice.severity == 'warning:' {
@@ -9786,6 +9823,10 @@ pub fn run(args []string) {
 			if checker_sql_warnings_only {
 				exit(0)
 			}
+		}
+		if unused_diag_scope != unsafe { nil } {
+			prealloc_scope_leave_for_v3(unused_diag_scope)
+			prealloc_scope_free_for_v3(unused_diag_scope)
 		}
 		if backend == 'wasm' {
 			// Validate source-level operations before transform lowers aggregate
@@ -10277,12 +10318,8 @@ pub fn run(args []string) {
 				&pre_tc, monomorph_input_used, !current_no_parallel
 				&& should_parallel_monomorphize(), monomorph_scope, cached_monomorph_specs)
 			prealloc_scope_leave_for_v3(monomorph_scope)
-			// Specialization can rewrite payload text on pre-existing nodes as
-			// well as append new nodes. Publish every string still owned by the
-			// disposable monomorph arena before it is released.
-			for idx in 0 .. a.nodes.len {
-				canonicalize_scoped_node(mut a, idx, monomorph_scope)
-			}
+			// The monomorphizer publishes rewritten and appended node text after
+			// its final worker merge while all worker arenas are still live.
 			if verbose {
 				eprintln('mono AST after pass: ${a.nodes.len}/${a.nodes.cap} nodes, ${a.children.len}/${a.children.cap} children')
 			}
@@ -10321,6 +10358,7 @@ pub fn run(args []string) {
 				&& should_parallel_monomorphize() && !incremental_cache_hit, unsafe { nil },
 				cached_monomorph_specs)
 		}
+		texts_canonical_after_annotation = true
 		// Monomorphization publishes every synthesized or rewritten AST string
 		// after its final worker merge, including the serial/no-worker path.
 		transform_texts_canonical = true
@@ -10338,7 +10376,9 @@ pub fn run(args []string) {
 			pre_tc.notices.clear()
 		}
 		if pre_tc.notices.len > 0 || pre_tc.errors.len > 0 {
-			cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
+			if cache_state.manager.enabled {
+				cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
+			}
 			if pre_tc.errors.len == 0
 				|| !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
@@ -10376,7 +10416,7 @@ pub fn run(args []string) {
 	// annotation only runs outside -building-v builds. Self-host builds skip
 	// it, and their transform-canonical texts are already final, so this
 	// full-AST walk would be a no-op there.
-	annotation_can_rewrite_texts := !building_v
+	annotation_can_rewrite_texts := !building_v && !texts_canonical_after_annotation
 	if (scope_prealloc_stages && annotation_can_rewrite_texts) || !transform_texts_canonical {
 		a.intern_node_texts_from(0)
 	}
@@ -10699,6 +10739,9 @@ pub fn run(args []string) {
 		mut all_compile_c_flags := environment_c_flags.clone()
 		all_compile_c_flags << generated_c_flags
 		needs_objective_c := c_flags_need_objective_c(all_compile_c_flags)
+		large_prod_c_unit := os.is_file(published_c_source)
+			&& v3_is_large_prod_c_unit(os.file_size(published_c_source))
+		limit_large_unit_inlining := large_prod_c_unit && effective_c_compiler == 'clang'
 		link_uses_non_c_language := c_link_flags_use_non_c_language(all_compile_c_flags)
 		link_c_standard := if link_uses_non_c_language {
 			''
@@ -10711,9 +10754,11 @@ pub fn run(args []string) {
 			generated_c_flags.clone()
 		}
 		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
+			object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod, no_prod_options,
+				is_shared, parallel_cc, explicit_tcc)
 			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, environment_c_flags,
-				prefs.c99, pic_flag, target_args, prefs.target, c_compiler, cc_dir, mut
-				c_object_cache_stats) or {
+				object_optimization_flags, prefs.c99, pic_flag, target_args, prefs.target, c_compiler,
+				cc_dir, mut c_object_cache_stats) or {
 				message := err.msg()
 				if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
 					macos_v3_c_error_dir, c_compiler, message, [published_c_source, cache_plan_file,
@@ -10749,6 +10794,8 @@ pub fn run(args []string) {
 			no_prod_options:      no_prod_options
 			is_shared:            is_shared
 			parallel_cc:          parallel_cc
+			large_c_unit:         large_prod_c_unit
+			limit_inlining:       limit_large_unit_inlining
 			explicit_tcc:         explicit_tcc
 			is_c_debug:           is_c_debug
 			is_o:                 is_o
@@ -10829,7 +10876,7 @@ pub fn run(args []string) {
 				interface_impl_signature = pre_tc.interface_impl_set_signature()
 			}
 			opt_flag := v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared,
-				parallel_cc, explicit_tcc).join(' ')
+				parallel_cc, large_prod_c_unit, limit_large_unit_inlining, explicit_tcc).join(' ')
 			warning_flags := warn_args.join(' ')
 			mut compile_signature := v3_cached_object_compile_signature(c_standard, opt_flag,
 				pic_flag, warning_flags, resolved_c_flags, needs_objective_c,

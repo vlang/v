@@ -231,3 +231,10 @@ fn main() {
 ")
 	assert out == 'ready\nshared-ready\nstring:\nstring:'
 }
+
+fn test_inferred_generic_atomic_globals_keep_concrete_types() {
+	v3_bin := global_decl_build_v3()
+	out := global_decl_run_good(v3_bin, 'inferred_generic_atomic_globals',
+		"import sync.stdatomic\n\n__global flag = stdatomic.new_atomic(false)\n__global number = stdatomic.new_atomic(7)\n\nfn main() {\n\tprintln(int_str(number.load()))\n\tprintln(flag.load())\n}\n")
+	assert out == '7\nfalse'
+}

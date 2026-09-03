@@ -658,6 +658,10 @@ fn (t &Transformer) if_expr_branch_type_overrides(branch_typ string, stale_typ s
 	if stale_typ in ['array', 'map', 'unknown'] {
 		return true
 	}
+	if stale_typ == 'int' && (branch_typ in t.structs
+		|| '${t.cur_module}.${branch_typ}' in t.structs) {
+		return true
+	}
 	if t.is_optional_type_name(stale_typ) && !t.is_optional_type_name(branch_typ) {
 		stale_payload := t.optional_base_type(stale_typ)
 		return t.normalize_type_alias(stale_payload) == t.normalize_type_alias(branch_typ)
@@ -760,6 +764,22 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
+		.or_expr {
+			if node.children_count > 0 {
+				source_id := t.a.child(&node, 0)
+				source_node := t.a.nodes[int(source_id)]
+				source_type := t.json_decode_or_expr_type(source_id, source_node) or {
+					t.node_type_with_smartcasts(source_id, contexts)
+				}
+				if t.is_optional_type_name(source_type) {
+					value_type := t.optional_base_type(source_type)
+					if value_type.len > 0 && value_type !in ['unknown', 'void'] {
+						return value_type
+					}
+				}
+			}
+			return t.node_type(id)
+		}
 		.call {
 			if node.children_count > 0 {
 				callee := t.a.child_node(&node, 0)

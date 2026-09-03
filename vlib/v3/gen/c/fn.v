@@ -786,6 +786,10 @@ fn (mut g FlatGen) should_emit_fn_node_in_module_known(node flat.Node, module_na
 	if g.should_emit_ierror_method(node.value, qfn) {
 		return true
 	}
+	if is_program_specialization
+		&& g.specialization_signature_has_missing_nominal(node, module_name) {
+		return false
+	}
 	if g.fn_node_is_open_generic_template(node, module_name) {
 		return false
 	}
@@ -806,6 +810,83 @@ fn (mut g FlatGen) should_emit_fn_node_in_module_known(node flat.Node, module_na
 			|| g.interface_dispatch_method_is_required(qfn)
 	}
 	return true
+}
+
+fn (mut g FlatGen) specialization_signature_has_missing_nominal(node flat.Node, module_name string) bool {
+	if g.type_has_missing_qualified_nominal(g.fn_node_return_type(node, module_name)) {
+		return true
+	}
+	for param_type in g.fn_node_param_types(node, module_name) {
+		if g.type_has_missing_qualified_nominal(param_type) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &FlatGen) type_has_missing_qualified_nominal(t types.Type) bool {
+	return match t {
+		types.Array {
+			g.type_has_missing_qualified_nominal(t.elem_type)
+		}
+		types.ArrayFixed {
+			g.type_has_missing_qualified_nominal(t.elem_type)
+		}
+		types.Channel {
+			g.type_has_missing_qualified_nominal(t.elem_type)
+		}
+		types.Map {
+			g.type_has_missing_qualified_nominal(t.key_type)
+				|| g.type_has_missing_qualified_nominal(t.value_type)
+		}
+		types.Pointer {
+			g.type_has_missing_qualified_nominal(t.base_type)
+		}
+		types.FnType {
+			if g.type_has_missing_qualified_nominal(t.return_type) {
+				return true
+			}
+			for param in t.params {
+				if g.type_has_missing_qualified_nominal(param) {
+					return true
+				}
+			}
+			false
+		}
+		types.OptionType {
+			g.type_has_missing_qualified_nominal(t.base_type)
+		}
+		types.ResultType {
+			g.type_has_missing_qualified_nominal(t.base_type)
+		}
+		types.Struct {
+			t.name.contains('.') && !t.name.starts_with('C.') && !t.name.contains('[')
+				&& t.name !in g.tc.structs
+		}
+		types.Interface {
+			t.name.contains('.') && !t.name.contains('[') && t.name !in g.tc.interface_names
+		}
+		types.Enum {
+			t.name.contains('.') && !t.name.contains('[') && t.name !in g.tc.enum_names
+		}
+		types.SumType {
+			t.name.contains('.') && !t.name.contains('[') && t.name !in g.tc.sum_types
+		}
+		types.Alias {
+			g.type_has_missing_qualified_nominal(t.base_type)
+		}
+		types.MultiReturn {
+			for part in t.types {
+				if g.type_has_missing_qualified_nominal(part) {
+					return true
+				}
+			}
+			false
+		}
+		else {
+			false
+		}
+	}
 }
 
 fn (g &FlatGen) fn_node_is_open_generic_template(node flat.Node, module_name string) bool {
@@ -970,6 +1051,72 @@ fn (g &FlatGen) export_fn_name_in_module(module_name string, name string) ?strin
 	return none
 }
 
+fn (g &FlatGen) export_fn_c_abi_key(module_name string, name string) ?string {
+	export_name := g.export_fn_name_in_module(module_name, name) or { return none }
+	mut owners := [module_name]
+	if module_name == 'main' {
+		owners << ''
+	} else if module_name == '' {
+		owners << 'main'
+	}
+	for owner in owners {
+		key := '${owner}\x01C.${export_name}'
+		if key in g.tc.c_fn_module_ret_types {
+			return key
+		}
+	}
+	suffix := '\x01C.${export_name}'
+	for key, _ in g.tc.c_fn_module_ret_types {
+		if key.ends_with(suffix) {
+			return key
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) export_fn_c_abi_decl(module_name string, name string) ?flat.Node {
+	export_name := g.export_fn_name_in_module(module_name, name) or { return none }
+	mut cur_module := ''
+	for idx in g.top_level_nodes() {
+		node := g.a.nodes[idx]
+		if node.kind == .file {
+			cur_module = ''
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .c_fn_decl || node.value.trim_string_left('C.') != export_name {
+			continue
+		}
+		if cur_module == module_name
+			|| (cur_module in ['', 'main'] && module_name in ['', 'main']) {
+			return node
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) export_fn_uses_c_abi(module_name string, name string) bool {
+	if _ := g.export_fn_c_abi_decl(module_name, name) {
+		return true
+	}
+	if _ := g.export_fn_c_abi_key(module_name, name) {
+		return true
+	}
+	export_name := g.export_fn_name_in_module(module_name, name) or { return false }
+	return export_name in g.inlined_c_declared_fns
+}
+
+fn (g &FlatGen) main_export_needs_internal_name(module_name string, name string) bool {
+	if module_name !in ['', 'main'] || !g.export_fn_uses_c_abi(module_name, name) {
+		return false
+	}
+	export_name := g.export_fn_name_in_module(module_name, name) or { return false }
+	return export_name == g.cname(name.trim_string_left('main.'))
+}
+
 // qualified_fn_name_in_module supports qualified fn name in module handling for c.
 // qualified_fn_name_in_module_c is the memoizing FlatGen variant of
 // qualified_fn_name_in_module (the c_name cache absorbs the sanitize cost;
@@ -1054,6 +1201,9 @@ fn (g &FlatGen) fn_c_name_in_module(module_name string, name string) string {
 	if g.should_rename_user_main_for_tests(module_name, name) {
 		return g.test_user_main_c_name()
 	}
+	if g.main_export_needs_internal_name(module_name, name) {
+		return g.cname('main.${name}')
+	}
 	if shadow_name := g.main_runtime_shadow_fn_c_name(module_name, name) {
 		return shadow_name
 	}
@@ -1067,15 +1217,34 @@ const c_main_runtime_shadow_fn_names = {
 }
 
 fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?string {
+	if name.starts_with('C.') {
+		return none
+	}
 	c_type_name := !isnil(g.tc)
 		&& ('C.${name}' in g.tc.structs || 'C.${name}' in g.tc.c_typedef_structs)
-	if !c_main_runtime_shadow_fn_names[name] && !g.inlined_c_typedef_names[name] && !c_type_name {
+	needs_export_wrapper := g.main_export_needs_internal_name(module_name, name)
+	export_name_owned := g.main_export_name_owned_by_other_fn(module_name, name)
+	if !c_main_runtime_shadow_fn_names[name] && !g.inlined_c_typedef_names[name] && !c_type_name
+		&& !needs_export_wrapper && !export_name_owned {
 		return none
 	}
 	if module_name.len == 0 || module_name == 'main' {
 		return g.cname('main.${name}')
 	}
 	return none
+}
+
+fn (g &FlatGen) main_export_name_owned_by_other_fn(module_name string, name string) bool {
+	if module_name !in ['', 'main'] {
+		return false
+	}
+	natural_name := g.cname(name.trim_string_left('main.'))
+	for qname, export_name in g.a.export_fn_names {
+		if export_name == natural_name && qname != name && qname != 'main.${name}' {
+			return true
+		}
+	}
+	return false
 }
 
 fn (g &FlatGen) test_user_main_c_name() string {
@@ -1150,6 +1319,9 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 		// `-d no_main` renames the entry `main` to `main__main`; a call to it must use
 		// the renamed symbol rather than the bare `main`.
 		return g.cname('main.main')
+	}
+	if shadow_name := g.main_runtime_shadow_fn_c_name(g.tc.cur_module, name) {
+		return shadow_name
 	}
 	if name == 'free' {
 		return 'v_free'
@@ -4561,13 +4733,13 @@ fn (mut g FlatGen) gen_export_wrapper_for_fn(node flat.Node, module_name string)
 		return
 	}
 	ret_type := g.fn_node_return_type(node, module_name)
-	ret_ct := g.fn_return_type_name(ret_type)
+	ret_ct := g.export_wrapper_return_c_type(node, module_name, ret_type)
 	g.write(g.exported_symbol_attribute())
 	g.write(ret_ct)
 	g.write(' ')
 	g.write(export_name)
 	g.write('(')
-	g.write_fn_node_params(node)
+	g.write_export_wrapper_params(node, module_name)
 	g.writeln(') {')
 	g.indent++
 	args := g.export_wrapper_arg_names(node)
@@ -4597,11 +4769,11 @@ fn (mut g FlatGen) emit_object_file_export_wrappers() {
 				g.tc.cur_module = item.module
 				ret_type := g.fn_node_return_type(node, item.module)
 				g.write(g.exported_symbol_attribute())
-				g.write(g.fn_return_type_name(ret_type))
+				g.write(g.export_wrapper_return_c_type(node, item.module, ret_type))
 				g.write(' ')
 				g.write(export_name)
 				g.write('(')
-				g.write_fn_node_params(node)
+				g.write_export_wrapper_params(node, item.module)
 				g.writeln(') {')
 				g.indent++
 				if g.needs_no_main_runtime_init_caller() {
@@ -4686,6 +4858,147 @@ fn (mut g FlatGen) export_wrapper_arg_names(node flat.Node) []string {
 		args << 'ctx'
 	}
 	return args
+}
+
+fn (mut g FlatGen) export_wrapper_return_c_type(node flat.Node, module_name string, fallback types.Type) string {
+	if abi_decl := g.export_fn_c_abi_decl(module_name, node.value) {
+		abi_type := g.parse_node_type(&abi_decl)
+		return g.c_extern_interop_type_name(abi_type) or { g.fn_return_type_name(abi_type) }
+	}
+	if key := g.export_fn_c_abi_key(module_name, node.value) {
+		if abi_type := g.tc.c_fn_module_ret_types[key] {
+			return g.c_extern_interop_type_name(abi_type) or {
+				g.fn_return_type_name(abi_type)
+			}
+		}
+	}
+	return g.c_extern_interop_type_name(fallback) or { g.fn_return_type_name(fallback) }
+}
+
+fn (mut g FlatGen) write_export_wrapper_params(node flat.Node, module_name string) {
+	if abi_decl := g.export_fn_c_abi_decl(module_name, node.value) {
+		g.write_export_wrapper_c_abi_params(node, abi_decl)
+		return
+	}
+	key := g.export_fn_c_abi_key(module_name, node.value) or {
+		g.write_export_wrapper_v_c_abi_params(node, module_name)
+		return
+	}
+	params := g.tc.c_fn_module_param_types[key] or {
+		g.write_export_wrapper_v_c_abi_params(node, module_name)
+		return
+	}
+	is_variadic := g.tc.c_fn_module_variadic[key] or { false }
+	if params.len == 0 && !is_variadic {
+		g.write('void')
+		return
+	}
+	names := g.export_wrapper_arg_names(node)
+	for i, param in params {
+		mut ct := g.tc.c_type(param)
+		if ct.starts_with('fn_ptr:') {
+			ct = g.resolve_fn_ptr_type(ct)
+		}
+		g.write(ct)
+		g.write(' ')
+		if i < names.len {
+			g.write(names[i])
+		} else {
+			g.write('_${i}')
+		}
+		if i + 1 < params.len || is_variadic {
+			g.write(', ')
+		}
+	}
+	if is_variadic {
+		g.write('...')
+	}
+}
+
+fn (mut g FlatGen) write_export_wrapper_v_c_abi_params(node flat.Node, module_name string) {
+	typed_params := g.fn_node_param_types(node, module_name)
+	mut param_idx := 0
+	mut written := 0
+	for i in 0 .. node.children_count {
+		param := g.a.child_node(&node, i)
+		if param.kind != .param {
+			continue
+		}
+		if param.typ == '...' {
+			if written > 0 {
+				g.write(', ')
+			}
+			g.write('...')
+			written++
+			continue
+		}
+		raw_type := if param_idx < typed_params.len {
+			typed_params[param_idx]
+		} else {
+			g.tc.parse_resolution_type(param.typ)
+		}
+		param_type := g.fn_node_effective_param_type(param, raw_type)
+		param_idx++
+		mut ct := g.c_extern_interop_type_name(param_type) or {
+			g.c_extern_param_c_type(param_type)
+		}
+		if ct.starts_with('fn_ptr:') {
+			ct = g.resolve_fn_ptr_type(ct)
+		}
+		if written > 0 {
+			g.write(', ')
+		}
+		g.write(ct)
+		if param.value.len > 0 {
+			g.write(' ')
+			g.write(if param.value == '_' { '_${written}' } else { g.cname(param.value) })
+		}
+		written++
+	}
+	if written == 0 {
+		g.write('void')
+	}
+}
+
+fn (mut g FlatGen) write_export_wrapper_c_abi_params(node flat.Node, abi_decl flat.Node) {
+	names := g.export_wrapper_arg_names(node)
+	mut written := 0
+	for i in 0 .. abi_decl.children_count {
+		param := g.a.child_node(&abi_decl, i)
+		if param.kind != .param {
+			continue
+		}
+		raw_type := if param.typ.len > 0 { param.typ } else { param.value }
+		if raw_type.starts_with('...') {
+			if written > 0 {
+				g.write(', ')
+			}
+			g.write('...')
+			written++
+			continue
+		}
+		param_type := g.tc.parse_type(raw_type)
+		mut ct := g.c_extern_interop_type_name(param_type) or {
+			g.c_extern_param_c_type(param_type)
+		}
+		if ct.starts_with('fn_ptr:') {
+			ct = g.resolve_fn_ptr_type(ct)
+		}
+		if written > 0 {
+			g.write(', ')
+		}
+		g.write(ct)
+		g.write(' ')
+		if written < names.len {
+			g.write(names[written])
+		} else {
+			g.write('_${written}')
+		}
+		written++
+	}
+	if written == 0 {
+		g.write('void')
+	}
 }
 
 fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
@@ -11779,6 +12092,19 @@ fn (mut g FlatGen) precompute_concrete_optional_abi_fns() {
 		}
 		params := g.fn_node_param_types_or_decl(node, cur_module)
 		ret_type := g.fn_node_return_type(node, cur_module)
+		if g.type_has_missing_qualified_nominal(ret_type) {
+			continue
+		}
+		mut has_missing_param_type := false
+		for param in params {
+			if g.type_has_missing_qualified_nominal(param) {
+				has_missing_param_type = true
+				break
+			}
+		}
+		if has_missing_param_type {
+			continue
+		}
 		if !params_have_optional_result(params) && !type_is_optional_result(ret_type) {
 			continue
 		}
@@ -16694,11 +17020,11 @@ fn (mut g FlatGen) forward_decl_items(items []FlatFnGenItem, mut forwarded_expor
 				if export_name != qfn && export_name !in forwarded_exports {
 					forwarded_exports << export_name
 					g.write(g.exported_symbol_attribute())
-					g.write(g.fn_return_type_name_for_context(ret_type, concrete_optional))
+					g.write(g.export_wrapper_return_c_type(node, item.module, ret_type))
 					g.write(' ')
 					g.write(export_name)
 					g.write('(')
-					g.write_fn_node_params(node)
+					g.write_export_wrapper_params(node, item.module)
 					g.writeln(');')
 				}
 			}
@@ -17276,6 +17602,7 @@ const c_system_libc_preamble_declared_fns = {
 	'cosf':                          true
 	'_dyld_get_image_header':        true
 	'execve':                        true
+	'execl':                         true
 	'exit':                          true
 	'fdopen':                        true
 	'feof':                          true

@@ -13609,3 +13609,78 @@ fn main() {
 	out := run_good_with_flags(v3_bin, 'array_map_aggregate_join_origins', '-ownership', source)
 	assert out == 'sourcesource'
 }
+
+fn test_nested_string_interpolation_restores_outer_scanner_state() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'nested_string_interpolation', "fn main() {\n\tvalue := 'ok'\n\tprintln('outer \${if value.len > 0 { 'inner \${value}' } else { 'empty' }} done')\n}\n")
+	assert out == 'outer inner ok done'
+}
+
+fn test_json_result_or_tail_keeps_if_expression_struct_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'json_result_or_if_struct', 'import x.json2
+
+struct Review {
+	id int
+}
+
+fn main() {
+	review := if true {
+		json2.decode[Review]("{\\"id\\":7}") or { Review{id: 1} }
+	} else {
+		Review{id: 2}
+	}
+	println(review.id)
+}
+')
+	assert out == '7'
+}
+
+fn test_unsafe_postfix_and_pointer_to_pointer_type_parse() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'unsafe_postfix_pointer_to_pointer', 'struct Item {
+	value int
+}
+
+struct PointerState {
+mut:
+	list &&char
+}
+
+type RawHandle = voidptr
+
+fn (item &Item) read() int {
+	return item.value
+}
+
+fn main() {
+	item := &Item{value: 9}
+	state := PointerState{
+		list: unsafe { &&char(nil) }
+	}
+	handle := RawHandle(unsafe { nil })
+	println(unsafe { item }.read())
+	println(state.list == unsafe { &&char(nil) })
+	println(handle == RawHandle(unsafe { nil }))
+}
+')
+	assert out == '9\ntrue\ntrue'
+}
+
+fn test_export_wrapper_uses_declared_header_c_abi() {
+	v3_bin := build_v3_review_transform()
+	header := os.join_path(os.temp_dir(), 'v3_export_wrapper_c_abi.h')
+	os.write_file(header, 'extern int v3_exported_int(int value);\n') or { panic(err) }
+	out := run_good(v3_bin, 'export_wrapper_c_abi', '#include "${header}"
+
+@[export: "v3_exported_int"]
+fn exported_int(value int) int {
+	return value + 1
+}
+
+fn main() {
+	println(exported_int(6))
+}
+')
+	assert out == '7'
+}

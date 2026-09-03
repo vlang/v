@@ -407,6 +407,17 @@ fn test_system_libc_preamble_identifies_glibc_before_manual_stdio_declarations()
 }
 
 fn test_preserved_system_include_declarations_are_header_specific() {
+	assert c_preserved_system_include_skips_tree_scan('<Cocoa/Cocoa.h>')
+	assert c_preserved_system_include_skips_tree_scan('<Foundation/Foundation.h>')
+	assert !c_preserved_system_include_skips_tree_scan('<stdio.h>')
+	assert c_header_owned_system_include_skips_tree_scan('<Metal/Metal.h>')
+	assert c_header_owned_system_include_skips_tree_scan(' <QuartzCore/CAMetalLayer.h> ')
+	assert c_header_owned_system_include_skips_tree_scan('<mbedtls/ssl.h>')
+	assert 'mbedtls_ssl_context' in c_preserved_system_include_typedef_names('<mbedtls/ssl.h>')
+	assert c_header_owned_uses_single_scan('/vroot/thirdparty/sokol/sokol_app.h', '/vroot')
+	assert c_header_owned_uses_single_scan('/vroot/thirdparty/sokol/sokol_gfx.h', '/vroot')
+	assert c_header_owned_uses_single_scan('/vroot/thirdparty/stb_image/stb_image.h', '/vroot')
+	assert !c_header_owned_uses_single_scan('/project/sokol_app.h', '/vroot')
 	assert c_preserved_system_include_declared_fns('<stdio.h>').len == 0
 	assert 'sqlite3_bind_text' in c_preserved_system_include_declared_fns('"sqlite3.h"')
 	assert 'sqlite3_column_name' in c_preserved_system_include_declared_fns('<sqlite3.h>')
@@ -420,8 +431,27 @@ fn test_preserved_system_include_declarations_are_header_specific() {
 	assert 'OPENSSL_free' in c_preserved_system_include_declared_fns('<openssl/ec.h>')
 	assert c_preserved_system_include_declared_fns('<objc/message.h>') == [
 		'objc_msgSend',
+		'objc_msgSendSuper',
 	]
 	assert c_preserved_system_include_struct_names('<poll.h>') == ['pollfd']
+}
+
+fn test_compiler_header_to_preserve_is_anchored_to_vroot() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserve_header_${os.getpid()}')
+	header_dir := os.join_path(root, 'thirdparty', 'sokol')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(header_dir)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header_path := os.join_path(header_dir, 'sokol_app.h')
+	os.write_file(header_path, 'typedef int sapp_test;\n')!
+	resolved := c_compiler_header_to_preserve('"sokol_app.h"', root, '', [header_dir]) or {
+		assert false
+		return
+	}
+	assert os.real_path(resolved) == os.real_path(header_path)
+	assert c_compiler_header_to_preserve('"sokol_app.h"', '/different/vroot', '', [header_dir]) == none
 }
 
 fn test_unresolved_openssl_headers_are_preserved() {
