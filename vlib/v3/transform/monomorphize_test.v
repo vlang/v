@@ -153,13 +153,12 @@ fn test_materialized_imported_generic_struct_preserves_locked_main_generic_argum
 	mut tc := types.TypeChecker.new(&a)
 	tc.struct_generic_params['StructType'] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.materialize_generic_struct_spec('json2.StructKeyDecodeResult[main.StructType[main.string]]',
-		GenericStructDecl{
-			id:     result_id
-			node:   result_decl
-			module: 'json2'
-			key:    'json2.StructKeyDecodeResult'
-		})
+	t.materialize_generic_struct_spec('json2.StructKeyDecodeResult[main.StructType[main.string]]', GenericStructDecl{
+		id:     result_id
+		node:   result_decl
+		module: 'json2'
+		key:    'json2.StructKeyDecodeResult'
+	})
 
 	fields := tc.structs['json2.StructKeyDecodeResult[main.StructType[main.string]]'] or {
 		assert false, 'missing materialized result fields'

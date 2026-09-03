@@ -10589,8 +10589,7 @@ pub fn (mut tc TypeChecker) ownership_call_result_source_args(id flat.NodeId) []
 		}
 	}
 	for desc in tc.ownership_state().ownership_fn_return_param_descs[call_name] {
-		if projection.suffix.len > 0
-			&& (desc.slot_idx != 0
+		if projection.suffix.len > 0 && (desc.slot_idx != 0
 			|| (desc.target_suffix.len > 0
 			&& !ownership_storage_keys_overlap(desc.target_suffix, projection.suffix))) {
 			continue
@@ -10646,7 +10645,7 @@ pub fn (mut tc TypeChecker) ownership_call_result_sources(id flat.NodeId) []Owne
 	for slot in tc.ownership_state().ownership_fn_return_params[call_name] {
 		if arg_id := tc.ownership_call_arg_for_return_param_info(node, info, slot.param_idx) {
 			candidate := OwnershipCallResultSource{
-				arg_id: arg_id
+				arg_id:        arg_id
 				target_suffix: if is_multi_return { '[${slot.slot_idx}]' } else { '' }
 			}
 			if candidate !in result {
@@ -10655,10 +10654,11 @@ pub fn (mut tc TypeChecker) ownership_call_result_sources(id flat.NodeId) []Owne
 		}
 	}
 	for desc in tc.ownership_state().ownership_fn_return_param_descs[call_name] {
-		source := tc.ownership_call_arg_for_return_param_source_info(node, info, desc.param_idx, desc.source_suffix) or { continue }
+		source := tc.ownership_call_arg_for_return_param_source_info(node, info, desc.param_idx,
+			desc.source_suffix) or { continue }
 		slot_prefix := if is_multi_return { '[${desc.slot_idx}]' } else { '' }
 		candidate := OwnershipCallResultSource{
-			arg_id: source.arg_id
+			arg_id:        source.arg_id
 			source_suffix: source.source_suffix
 			target_suffix: slot_prefix + desc.target_suffix
 		}

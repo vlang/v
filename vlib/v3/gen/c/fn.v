@@ -564,9 +564,21 @@ fn (g &FlatGen) needs_no_main_runtime_init_caller() bool {
 		&& (g.a.export_fn_names.len > 0 || g.is_shared)
 }
 
+fn (g &FlatGen) needs_closure_runtime_init() bool {
+	if !g.used_fn_contains('closure.closure_init') && !g.used_fn_contains('closure__closure_init') {
+		return false
+	}
+	for _, module_name in g.tc.file_modules {
+		if module_name == 'closure' {
+			return true
+		}
+	}
+	return false
+}
+
 fn (g &FlatGen) runtime_init_is_needed() bool {
 	return g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
-		|| g.global_inits.len > 0
+		|| g.global_inits.len > 0 || g.needs_closure_runtime_init()
 }
 
 fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
@@ -4472,8 +4484,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		g.gen_compiler_vexe_env_setup()
 		g.gen_coverage_registration()
 		g.gen_profile_startup_enable()
-		if g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
-			|| g.global_inits.len > 0 {
+		if g.runtime_init_is_needed() {
 			g.writeln('\t_vinit();')
 		}
 		g.gen_profile_registration()
@@ -4841,8 +4852,7 @@ fn (mut g FlatGen) gen_test_main() {
 	g.gen_compiler_vexe_env_setup()
 	g.gen_coverage_registration()
 	g.gen_profile_startup_enable()
-	if g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
-		|| g.global_inits.len > 0 {
+	if g.runtime_init_is_needed() {
 		g.writeln('\t_vinit();')
 	}
 	g.gen_profile_registration()
@@ -5751,8 +5761,9 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 		return false
 	}
 	param_types := g.param_types_for(callee_name, callee_name.all_after_last('.'))
-	is_c_variadic_fn := (g.tc.c_variadic_fns[callee_name] or { false })
-		|| (g.tc.c_variadic_fns[fn_node.value] or { false })
+	is_c_variadic_fn := (g.tc.c_variadic_fns[callee_name] or { false }) || (g.tc.c_variadic_fns[fn_node.value] or {
+		false
+	})
 	is_variadic_fn := is_c_variadic_fn || (g.tc.fn_variadic[callee_name] or { false })
 		|| g.fn_decl_is_variadic(callee_name, fn_node.value)
 	is_untyped_variadic := is_variadic_fn && param_types.len > 0
@@ -5770,7 +5781,9 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 		if arg_id in g.cabi_int_out_args {
 			continue
 		}
-		if g.c_call_is_int_out_arg(arg_id, i - 1, param_types, typed_param_count, is_native_variadic) {
+		if g.c_call_is_int_out_arg(arg_id, i - 1, param_types, typed_param_count,
+			is_native_variadic)
+		{
 			out_args << arg_id
 		}
 	}
@@ -13063,8 +13076,8 @@ fn callback_can_cast_scalar_int_param(actual_ct string, expected_ct string) bool
 }
 
 fn callback_is_scalar_int_c_type(ct string) bool {
-	return trimmed_space(ct) in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
-		'char', 'bool', 'isize', 'usize', 'ptrdiff_t', 'size_t']
+	return trimmed_space(ct) in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'char',
+		'bool', 'isize', 'usize', 'ptrdiff_t', 'size_t']
 }
 
 fn (mut g FlatGen) callback_c_type(typ types.Type) string {
@@ -16874,7 +16887,8 @@ fn (mut g FlatGen) preseed_c_extern_fn_ptr_types_with_filter(referenced map[stri
 		// Register the C-ABI fn-pointer variants (int kept as C int) that the extern
 		// declaration will reference, so parallel workers see the same typedefs; fall
 		// back to the ordinary preseed for non-interop types.
-		if _ := g.c_extern_interop_type_name(ret_type) {} else {
+		if _ := g.c_extern_interop_type_name(ret_type) {
+		} else {
 			g.preseed_fn_ptr_type(ret_type)
 		}
 		for j in 0 .. node.children_count {
@@ -16888,7 +16902,8 @@ fn (mut g FlatGen) preseed_c_extern_fn_ptr_types_with_filter(referenced map[stri
 				continue
 			}
 			pt := g.tc.parse_type(raw_typ)
-			if _ := g.c_extern_interop_type_name(pt) {} else {
+			if _ := g.c_extern_interop_type_name(pt) {
+			} else {
 				g.preseed_fn_ptr_type(pt)
 			}
 		}

@@ -90,8 +90,7 @@ fn test_parser_and_parallel_remap_keep_file_ids_beyond_u16() {
 	assert wide_file_id in a.source_files
 	assert a.nodes.any(it.pos.id == wide_file_id)
 
-	remapped := remap_worker_pos(token.new_span(wide_file_id, 1, 2), wide_file_id,
-		wide_file_id + 1, 1)
+	remapped := remap_worker_pos(token.new_span(wide_file_id, 1, 2), wide_file_id, wide_file_id + 1, 1)
 	assert remapped.id == wide_file_id + 1
 }
 

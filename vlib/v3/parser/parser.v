@@ -1939,9 +1939,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					typ:   field_type
 					pos:   p.span_to(field_start)
 				})
-				mut embed_attrs_1 := pending_attrs.clone()
-				embed_attrs_1 << embedded_field_attr
-				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, embed_attrs_1)
+				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, pending_attrs,
+					true)
 				pending_attrs = []string{}
 				ids << fid
 				if p.tok == .semicolon {
@@ -1967,9 +1966,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 						typ:   embedded_type
 						pos:   p.span_to(field_start)
 					})
-					mut embed_attrs_2 := pending_attrs.clone()
-					embed_attrs_2 << embedded_field_attr
-					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, embed_attrs_2)
+					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, pending_attrs,
+						true)
 					pending_attrs = []string{}
 					ids << fid
 					if p.tok == .semicolon {
@@ -1995,9 +1993,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					typ:   embedded_type
 					pos:   p.span_to(field_start)
 				})
-				mut embed_attrs_3 := pending_attrs.clone()
-				embed_attrs_3 << embedded_field_attr
-				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, embed_attrs_3)
+				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, pending_attrs,
+					true)
 				pending_attrs = []string{}
 				ids << fid
 				if p.tok == .semicolon {
@@ -2026,7 +2023,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 						typ:   field_type
 						pos:   p.span_to(field_start)
 					})
-					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, group_attrs)
+					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, group_attrs,
+						false)
 					ids << fid
 				}
 				if p.tok == .semicolon {
@@ -2063,7 +2061,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				children_count: flat.child_count(children_count)
 				pos:            p.span_to(field_start)
 			})
-			p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, fattrs)
+			p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, fattrs, false)
 			ids << fid
 			if p.tok == .semicolon {
 				p.next()
@@ -2878,19 +2876,13 @@ fn (mut p Parser) parse_attribute_comptime_cond() string {
 // attributes) - the node's own `kind_id`/`is_mut` are load-bearing (kind dispatch) and must not
 // be repurposed. A default field (private, immutable, no attrs) is left untouched so it costs no
 // allocation and reads back as the default.
-// embedded_field_attr marks a `field_decl` that is a struct embed rather than a named field.
-const embedded_field_attr = '__v3_embedded_field'
-
-fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, is_global bool, attrs []string) {
+// Embed state is passed separately because attribute names are an unrestricted user namespace.
+fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, is_global bool, attrs []string, is_embedded bool) {
 	if int(id) < 0 || int(id) >= p.a.nodes.len {
 		return
 	}
 	is_volatile := '__v3_volatile_field' in attrs
-	// An embed and a field whose name happens to match its type (`thread thread`) are both
-	// stored with `value == typ`, so the node alone cannot tell them apart. Record which this
-	// is; without it the formatter rewrote a `thread thread` field to a bare `thread` embed.
-	is_embedded := embedded_field_attr in attrs
-	stored_attrs := attrs.filter(it != '__v3_volatile_field' && it != embedded_field_attr)
+	stored_attrs := attrs.filter(it != '__v3_volatile_field')
 	if !is_mut && !is_pub && !is_global && !is_volatile && !is_embedded && stored_attrs.len == 0 {
 		return
 	}
@@ -12515,19 +12507,25 @@ fn (mut p Parser) shared_parameter_token_is_identifier() bool {
 		}
 		end = if tok == first { p.peek_end } else { lookahead.offset }
 		match tok {
-			.lpar { paren_depth++ }
+			.lpar {
+				paren_depth++
+			}
 			.rpar {
 				if paren_depth > 0 {
 					paren_depth--
 				}
 			}
-			.lsbr { bracket_depth++ }
+			.lsbr {
+				bracket_depth++
+			}
 			.rsbr {
 				if bracket_depth > 0 {
 					bracket_depth--
 				}
 			}
-			.lcbr { brace_depth++ }
+			.lcbr {
+				brace_depth++
+			}
 			.rcbr {
 				if brace_depth > 0 {
 					brace_depth--
@@ -12563,7 +12561,8 @@ fn (p &Parser) shared_token_gap_has_line_boundary() bool {
 		offset += 2
 		mut depth := 1
 		for offset + 1 < p.peek_pos && depth > 0 {
-			if p.s.src[offset] == `/` && p.s.src[offset + 1] == `*` && (offset + 2 >= p.peek_pos || p.s.src[offset + 2] != `/`) {
+			if p.s.src[offset] == `/` && p.s.src[offset + 1] == `*`
+				&& (offset + 2 >= p.peek_pos || p.s.src[offset + 2] != `/`) {
 				depth++
 				offset += 2
 				continue
@@ -13344,7 +13343,7 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) string {
 					pos:   p.span_to(name_starts[index])
 				})
 				p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global,
-					attrs)
+					attrs, false)
 				ids << fid
 				field_names << name
 				field_types << field_type
@@ -13379,11 +13378,12 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) string {
 			if field_is_volatile {
 				attrs << '__v3_volatile_field'
 			}
-			p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global, attrs)
+			p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global, attrs,
+				false)
 		} else {
 			p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global, if field_is_volatile { [
 					'__v3_volatile_field',
-				] } else { []string{} })
+				] } else { []string{} }, false)
 		}
 		ids << fid
 		field_names << field_name

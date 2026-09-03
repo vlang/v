@@ -165,6 +165,18 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 	if ct.starts_with('fn_ptr:') {
 		ct = g.resolve_fn_ptr_type(ct)
 	}
+	mut bare_ct := ct
+	mut pointer_suffix := ''
+	for bare_ct.ends_with('*') {
+		bare_ct = bare_ct[..bare_ct.len - 1]
+		pointer_suffix += '*'
+	}
+	// Specialized generic bodies can retain a stale bare concrete type spelling.
+	if optional_payload_is_bare_struct(clean_type) {
+		if qualified := g.unique_qualified_struct_c_type(bare_ct) {
+			return qualified + pointer_suffix
+		}
+	}
 	for candidate in [ct, 'main.${ct}'] {
 		if target := g.tc.type_aliases[candidate] {
 			return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))

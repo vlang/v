@@ -155,12 +155,13 @@ the flat AST or conventional C backend. Set `V_MACOS_V3_NO_FALLBACK=1` while val
 turn any attempted compatibility fallback into a hard failure.
 
 Set `FASTC_BENCH=1` when running a FastC self-host compiler to print the generation time and
-`loc/s` for its input (`FASTC_BENCH_REPEAT=N` reports the best of N child runs). `FASTC_BENCH_PHASES=1`
-prints the time of every generation phase, `FASTC_BENCH_FILES=1` the generation time of every source
-file, and `FASTC_BENCH=1 FASTC_BENCH_LOOP=N` repeats generation N times in-process so an external
-sampler can profile it. The compiler's own C preamble and runtime (hashing, option boxing, tuple
-slots) are emitted by the generator that built it, so such changes take effect one generation later:
-measure the compiler built by the modified compiler, not the modified compiler itself.
+`loc/s` for its input (`FASTC_BENCH_REPEAT=N` reports the best of N child runs).
+`FASTC_BENCH_PHASES=1` prints the time of every generation phase, `FASTC_BENCH_FILES=1` the
+generation time of every source file, and `FASTC_BENCH=1 FASTC_BENCH_LOOP=N` repeats generation N
+times in-process so an external sampler can profile it. The compiler's own C preamble and runtime
+(hashing, option boxing, tuple slots) are emitted by the generator that built it, so such changes
+take effect one generation later: measure the compiler built by the modified compiler, not the
+modified compiler itself.
 
 Self-host generations box `?`/`!` payloads out of a per-thread bump chunk rather than `malloc`, keep
 one file record per scanner pass, and honor `@[direct_array_access]` for string and array indexing.
@@ -169,9 +170,10 @@ returned `map` or large struct can no longer overflow it.
 
 Per-file generation, constant parsing, and the declaration and signature collection passes claim
 their work items from a shared atomic counter (largest files first) instead of a static split, so
-workers on faster cores take more files; the serial merge and output order is restored by index. The first parallel pass also records which declaration
-keywords (`interface`, `$if`, type keywords, generic `fn` syntax) each file mentions, and the later
-collection passes skip files that cannot contain what they scan for.
+workers on faster cores take more files; the serial merge and output order is restored by index.
+The first parallel pass also records which declaration keywords (`interface`, `$if`, type keywords,
+generic `fn` syntax) each file mentions, and the later collection passes skip files that cannot
+contain what they scan for.
 
 Source resolution reads the program on worker threads before the ordering walk runs: each
 imported module directory is listed on a thread and its files are read in chunks on further
@@ -187,18 +189,18 @@ read again otherwise. The memo also keeps each listed directory's file list and 
 module's file list together with the directory's own stamp, so an unchanged directory is stat'ed
 instead of listed again (adding, removing or renaming an entry changes that stamp, and the same
 two-second rule applies); module lookups are recorded once per cache key, the memo's blob is read
-in ranges by the same probe workers. The ordering walk itself is unchanged and replays over that data, so the
-output is identical with and without the memo (`V3_FASTC_NO_RESOLVE_MEMO=1` disables it). The
-type declarations are rendered on a worker while the signatures are collected, the generic-method
-scan and the declaration index share one pass, the split of oversized files into generation
-fragments and the by-name struct field index are built on workers while the declaration phases
+in ranges by the same probe workers. The ordering walk itself is unchanged and replays over that
+data, so the output is identical with and without the memo (`V3_FASTC_NO_RESOLVE_MEMO=1` disables
+it). The type declarations are rendered on a worker while the signatures are collected, the
+generic-method scan and the declaration index share one pass, while workers split oversized files
+into generation fragments and build the by-name struct field index as the declaration phases
 run, and the generated C is returned as ordered pieces (whole per-file bodies are shared rather
 than copied into one buffer; only bodies cut around C directive lines are copied) that the drivers
 write directly. Function bodies are pre-scanned for channel `select` statements only in files
-whose bytes contain the word `select`. The declaration index records the text spans of each file's constant and global
-declarations: a large file's constants are parsed as separate parallel candidates (merged in
-source order), and the global phase parses only the recorded global declarations instead of
-whole files.
+whose bytes contain the word `select`. The declaration index records the text spans of each file's
+constant and global declarations: a large file's constants are parsed as separate parallel
+candidates (merged in source order), and the global phase parses only the recorded global
+declarations instead of whole files.
 
 The standalone compiler supports `self` directly and defaults that command to FastC. For example,
 `./v self x5` replaces the compiler through five descendant FastC generations, with each installed

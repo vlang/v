@@ -586,7 +586,8 @@ fn file_has_incompatible_os_only_suffix(file string, current_os string) bool {
 	if os_name != 'linux' && file_name_has_marker(file, '_linux.') {
 		return true
 	}
-	if os_name != 'macos' && (file_name_has_marker(file, '_macos.') || file_name_has_marker(file, '_darwin.')) {
+	if os_name != 'macos' && (file_name_has_marker(file, '_macos.')
+		|| file_name_has_marker(file, '_darwin.')) {
 		return true
 	}
 	if os_name != 'macos' && os_name != 'freebsd' && os_name != 'openbsd' && os_name != 'netbsd'
