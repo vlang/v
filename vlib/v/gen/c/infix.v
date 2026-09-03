@@ -61,7 +61,8 @@ fn (mut g Gen) option_comparison_operand_names(node ast.InfixExpr, left_type ast
 	left_tmp := g.new_ctemp_var(node.left, left_type)
 	right_tmp := g.new_ctemp_var(node.right, right_type)
 	for tmp in [left_tmp, right_tmp] {
-		if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] && g.contains_ptr(tmp.typ) {
+		if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt]
+			&& g.contains_ptr(tmp.typ) {
 			g.write('volatile ')
 		}
 		g.writeln('${g.styp(tmp.typ)} ${tmp.name} = {0};')

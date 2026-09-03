@@ -595,10 +595,12 @@ fn test_immediate_closure_result_error_may_alias_capture() {
 
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['TextBox'] = [types.StructField{
-		name: 'text'
-		typ:  types.Type(types.String{})
-	}]
+	tc.structs['TextBox'] = [
+		types.StructField{
+			name: 'text'
+			typ:  types.Type(types.String{})
+		},
+	]
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.immediate_closure_result_may_alias_capture('!int')
@@ -613,12 +615,14 @@ fn test_immediate_closure_result_error_may_alias_capture() {
 fn test_immediate_closure_thread_result_may_alias_capture() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Worker'] = [types.StructField{
-		name: 'handle'
-		typ: tc.parse_type('thread int')
-	}]
+	tc.structs['Worker'] = [
+		types.StructField{
+			name: 'handle'
+			typ:  tc.parse_type('thread int')
+		},
+	]
 	with_checker := Transformer{
-		a: &a
+		a:  &a
 		tc: &tc
 	}
 	assert with_checker.immediate_closure_result_may_alias_capture('thread int')

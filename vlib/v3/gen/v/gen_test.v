@@ -127,7 +127,7 @@ fn test_formatter_keeps_anon_fn_body_statements_expanded_inside_init() {
 	// `in_init` flag set while emitting its body, collapsing the body statements
 	// (and any nested `or {}` block) onto a single line, e.g.
 	// `c := codem := msg_ = c_ = m}`, which broke compilation.
-	source := "struct Events {\n\ton_error fn (code int, msg string)\n\ton_close fn (id int)\n}\n\nstruct Registry {\nmut:\n\tclosed bool\n}\n\nfn (r &Registry) find(id int) ?int {\n\treturn id\n}\n\nfn handlers() {\n\tmut reg := Registry{}\n\te := Events{\n\t\ton_error: fn (code int, msg string) {\n\t\t\tc := code\n\t\t\tm := msg\n\t\t\t_ = c\n\t\t\t_ = m\n\t\t}\n\t\ton_close: fn (id int) {\n\t\t\tn := reg.find(id) or { return }\n\t\t\t_ = n\n\t\t}\n\t}\n\t_ = e\n\t_ = reg\n}\n"
+	source := 'struct Events {\n\ton_error fn (code int, msg string)\n\ton_close fn (id int)\n}\n\nstruct Registry {\nmut:\n\tclosed bool\n}\n\nfn (r &Registry) find(id int) ?int {\n\treturn id\n}\n\nfn handlers() {\n\tmut reg := Registry{}\n\te := Events{\n\t\ton_error: fn (code int, msg string) {\n\t\t\tc := code\n\t\t\tm := msg\n\t\t\t_ = c\n\t\t\t_ = m\n\t\t}\n\t\ton_close: fn (id int) {\n\t\t\tn := reg.find(id) or { return }\n\t\t\t_ = n\n\t\t}\n\t}\n\t_ = e\n\t_ = reg\n}\n'
 	out := vfmt('anon_fn_body_inside_init', source)
 	assert out == source, out
 	assert vfmt('anon_fn_body_inside_init_twice', out) == out
@@ -514,6 +514,14 @@ fn test_string_escaping() {
 	out := vfmt('stresc', "fn f() {\n\ta := 'price: \$5'\n\tb := '\${x}y'\n}\n")
 	assert out.contains("'price: \\\$5'")
 	assert out.contains("'\${x}y'")
+}
+
+fn test_c_string_escaping() {
+	source := 'fn f() {\n\tmessage := c"Unknown game version \'%s\'"\n\tquoted := c\'He said "it\\\'s done"\'\n}\n'
+	out := vfmt('c_string_escaping', source)
+	assert out.contains('message := c"Unknown game version \'%s\'"'), out
+	assert out.contains('quoted := c\'He said "it\\\'s done"\''), out
+	assert vfmt('c_string_escaping_twice', out) == out
 }
 
 fn test_rune_literal_escaping() {
@@ -1400,7 +1408,7 @@ fn test_formatter_demangles_function_local_aggregate_types() {
 }
 
 fn test_formatter_keeps_comma_expression_branches_unbraced() {
-	source := "fn pick(var1 string, var2 string) (int, int) {
+	source := 'fn pick(var1 string, var2 string) (int, int) {
 	shorter, longer := if var1.len <= var2.len {
 		var1.len, var2.len
 	} else {
@@ -1408,7 +1416,7 @@ fn test_formatter_keeps_comma_expression_branches_unbraced() {
 	}
 	return shorter, longer
 }
-"
+'
 	out := vfmt('comma_expression_branches', source)
 	assert out == source, out
 	assert vfmt('comma_expression_branches_twice', out) == out
@@ -1619,7 +1627,7 @@ fn test_formatter_keeps_a_trailing_comment_on_a_match_branch() {
 // V source never carries and which the next run read back differently, so the formatter was not a
 // fixed point.
 fn test_formatter_writes_blank_lines_without_indentation() {
-	source := "fn probe() {\n\tassert 1 == 1 // first\n\tassert 2 == 2\n}\n"
+	source := 'fn probe() {\n\tassert 1 == 1 // first\n\tassert 2 == 2\n}\n'
 	out := vfmt('blank_line_indentation', source)
 	for line in out.split('\n') {
 		assert line.trim_space() != '' || line == '', 'a blank line must carry no whitespace, got `${line}`'
@@ -1631,13 +1639,13 @@ fn test_formatter_writes_blank_lines_without_indentation() {
 // that comment, so terminating it again left a stray separator line after every commented
 // `assert`. Every other statement kind already guarded this.
 fn test_formatter_does_not_separate_a_commented_assert_from_the_next_statement() {
-	source := "fn p() {\n\tassert 1 == 1 // c\n\tassert 2 == 2\n}\n"
+	source := 'fn p() {\n\tassert 1 == 1 // c\n\tassert 2 == 2\n}\n'
 	out := vfmt('commented_assert', source)
 	assert out == source, out
 	assert vfmt('commented_assert_twice', out) == out
 
 	// a blank line the source did have is still kept
-	spaced := "fn p() {\n\tassert 1 == 1 // c\n\n\tassert 2 == 2\n}\n"
+	spaced := 'fn p() {\n\tassert 1 == 1 // c\n\n\tassert 2 == 2\n}\n'
 	spaced_out := vfmt('commented_assert_spaced', spaced)
 	assert spaced_out == spaced, spaced_out
 }
@@ -1670,7 +1678,7 @@ fn test_formatter_keeps_a_trailing_comment_outside_an_inline_or_block() {
 // captures as the generic list and dropped whatever the two disagreed on, so a `mut` capture was
 // silently lost.
 fn test_formatter_keeps_closure_capture_and_generic_list_order() {
-	source := "fn run[T](items []T) {\n\tch := chan T{}\n\tmut total := 0\n\tspawn fn [ch, mut total] [T]() {\n\t\tfor _ in ch {\n\t\t\ttotal++\n\t\t}\n\t}()\n\tfor item in items {\n\t\tch <- item\n\t}\n}\n"
+	source := 'fn run[T](items []T) {\n\tch := chan T{}\n\tmut total := 0\n\tspawn fn [ch, mut total] [T]() {\n\t\tfor _ in ch {\n\t\t\ttotal++\n\t\t}\n\t}()\n\tfor item in items {\n\t\tch <- item\n\t}\n}\n'
 	out := vfmt('closure_capture_generics', source)
 	assert out == source, out
 	assert !out.contains('fn[T]'), out
@@ -1682,7 +1690,7 @@ fn test_formatter_keeps_closure_capture_and_generic_list_order() {
 // already past the `}` of an inline block, so the statement's trailing comment was moved inside
 // the braces and the `}` ended up commented out.
 fn test_formatter_keeps_a_trailing_comment_outside_an_inline_break_or_continue() {
-	source := "fn f(items []int) int {\n\tmut n := 0\n\tfor i in items {\n\t\tw := pick(i) or { continue } // only numeric\n\t\tif w == 0 {\n\t\t\tbreak\n\t\t}\n\t\tn += w\n\t}\n\treturn n\n}\n\nfn pick(i int) ?int {\n\treturn i\n}\n"
+	source := 'fn f(items []int) int {\n\tmut n := 0\n\tfor i in items {\n\t\tw := pick(i) or { continue } // only numeric\n\t\tif w == 0 {\n\t\t\tbreak\n\t\t}\n\t\tn += w\n\t}\n\treturn n\n}\n\nfn pick(i int) ?int {\n\treturn i\n}\n'
 	out := vfmt('inline_continue_comment', source)
 	assert out == source, out
 	assert !out.contains('continue // only numeric }'), out
@@ -1695,7 +1703,7 @@ fn test_formatter_keeps_a_trailing_comment_outside_an_inline_break_or_continue()
 // file, breaking the build. On a case-sensitive filesystem this never fired, so the assert below
 // only bites where the bug lived.
 fn test_formatter_does_not_imply_an_import_from_a_type_named_like_a_module() {
-	source := "module time\n\npub struct Time {\n\tunix i64\n}\n\npub fn Time.new(unix i64) Time {\n\treturn Time{\n\t\tunix: unix\n\t}\n}\n\npub fn now() Time {\n\treturn Time.new(0)\n}\n"
+	source := 'module time\n\npub struct Time {\n\tunix i64\n}\n\npub fn Time.new(unix i64) Time {\n\treturn Time{\n\t\tunix: unix\n\t}\n}\n\npub fn now() Time {\n\treturn Time.new(0)\n}\n'
 	out := vfmt('implied_import_type_name', source)
 	assert !out.contains('import Time'), out
 	assert out == source, out

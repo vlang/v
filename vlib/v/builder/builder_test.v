@@ -289,7 +289,8 @@ struct Context {}
 ')!
 	}
 
-	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace, 'fixture_test.v'))}')
+	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace,
+		'fixture_test.v'))}')
 	assert res.exit_code == 0, res.output
 }
 
@@ -312,7 +313,8 @@ fn helper() int {
 }
 ')!
 
-	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace, 'fixture_test.v'))}')
+	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace,
+		'fixture_test.v'))}')
 	assert res.exit_code == 0, res.output
 }
 
@@ -338,7 +340,8 @@ fn helper() int {
 }
 ')!
 
-	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace, 'fixture_test.v'))}')
+	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace,
+		'fixture_test.v'))}')
 	assert res.exit_code == 0, res.output
 }
 

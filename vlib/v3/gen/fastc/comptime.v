@@ -198,8 +198,8 @@ fn fastc_collect_selected_comptime_function_signatures(source string, path strin
 			if lookahead.scan() == .key_if {
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
-					collect_function_signatures(selected.source, path, header, prefs,
-						[]int{}, declared_types, declared_type_c_names, params_structs, mut functions)!
+					collect_function_signatures(selected.source, path, header, prefs, []int{},
+						declared_types, declared_type_c_names, params_structs, mut functions)!
 				}
 				tok = selected.tok
 				continue
@@ -465,8 +465,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 			mut probe := s
 			if probe.scan() == .name && probe.lit == 'attr' && probe.scan() == .key_in
 				&& fastc_comptime_loop_var_token(probe.scan()) && probe.lit == loop_var
-				&& probe.scan() == .dot
-				&& probe.scan() == .name && probe.lit == 'attrs' && probe.scan() == .lcbr {
+				&& probe.scan() == .dot && probe.scan() == .name && probe.lit == 'attrs'
+				&& probe.scan() == .lcbr {
 				loop_start := s.pos
 				mut depth := 0
 				mut part := s.scan()
@@ -702,9 +702,7 @@ fn (g &Parser) resolve_type_name_c(name string) string {
 	if fastc_primitive_c_type(name) != none {
 		return name
 	}
-	key := g.resolve_declared_type_key(name) or {
-		return name
-	}
+	key := g.resolve_declared_type_key(name) or { return name }
 	return fastc_c_declared_type_name(key)
 }
 

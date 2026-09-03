@@ -223,8 +223,10 @@ fn (g &Parser) render_enum_print_expression(tokens []FastcExpressionToken) ?Fast
 	argument := g.render_call_argument_expression(call_arguments[0], c_type) or { return none }
 	return FastcRenderedExpression{
 		source: 'v_fastc_print_enum_${c_type}(${argument}, ${if tokens[0].lit == 'println' {
-			'true'} else {
-			'false'}})'
+			'true'
+		} else {
+			'false'
+		}})'
 		typ: 'void'
 	}
 }

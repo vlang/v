@@ -8,14 +8,12 @@ import v3.scanner
 import v3.token
 
 fn test_parse_resolve_memo_round_trip() {
-	text := 'D\t/vlib/builtin\t100\t200\t300\t400\t2\t/vlib/builtin/a.v\t/vlib/builtin/b.v\n' +
-		'D\t/vlib/plain\n' + 'E\tmain.v\t/abs/main.v\t10\t20\t30\t40\t/abs\t1\t/abs/other.v\n' +
-		'F\t/vlib/builtin/a.v\t5\t6\t7\t8\t41\n' + 'M\tos\t/abs/main.v\n' + 'T\t1234\n' + 'B\ttoken\n'
+	text := 'D\t/vlib/builtin\t100\t200\t300\t400\t2\t/vlib/builtin/a.v\t/vlib/builtin/b.v\n' + 'D\t/vlib/plain\n' + 'E\tmain.v\t/abs/main.v\t10\t20\t30\t40\t/abs\t1\t/abs/other.v\n' + 'F\t/vlib/builtin/a.v\t5\t6\t7\t8\t41\n' + 'M\tos\t/abs/main.v\n' + 'T\t1234\n' + 'B\ttoken\n'
 	memo := fastc_parse_resolve_memo(text)
 	assert memo.dirs == ['/vlib/builtin', '/vlib/plain']
 	assert memo.dir_stamps.len == 2
 	assert memo.dir_stamps[0] == FastcFileStamp{
-		size:  100
+		size: 100
 		mtime: 200
 		ctime: 300
 		inode: 400
@@ -30,7 +28,7 @@ fn test_parse_resolve_memo_round_trip() {
 	assert memo.entry_files[0] == ['/abs/other.v']
 	assert memo.files == ['/vlib/builtin/a.v']
 	assert memo.stamps[0] == FastcFileStamp{
-		size:  5
+		size: 5
 		mtime: 6
 		ctime: 7
 		inode: 8
@@ -678,7 +676,7 @@ fn test_fastc_source_scan_flags_detect_declaration_keywords() {
 	assert fastc_source_scan_flags('module main\nenum Color { red }\n').has_type_keywords
 	assert fastc_source_scan_flags('module main\ntype Id = int\n').has_type_keywords
 	assert fastc_source_scan_flags('module main\nunion Bits { a int }\n').has_type_keywords
-	dollar := '$'
+	dollar := '\$'
 	assert fastc_source_scan_flags('module main\n' + dollar + 'if linux {\nfn only_linux() {}\n}\n').has_comptime_if
 	assert fastc_source_scan_flags('module main\n' + dollar + ' if linux {\nfn only_linux() {}\n}\n').has_comptime_if
 	assert !fastc_source_scan_flags('module main\nfn main() { println("' + dollar + '{1}") }\n').has_comptime_if
@@ -691,7 +689,7 @@ fn test_fastc_source_scan_flags_detect_declaration_keywords() {
 fn test_fastc_source_scan_flags_skip_comments_between_tokens() {
 	// The scanner treats comments as whitespace, so the byte probes must not
 	// let one hide a `$if` or a generic declaration.
-	dollar := '$'
+	dollar := '\$'
 	assert fastc_source_scan_flags('module main\n' + dollar + '/* c */if linux {\nfn only_linux() {}\n}\n').has_comptime_if
 	assert fastc_source_scan_flags('module main\n' + dollar + '// c\nif linux {\nfn only_linux() {}\n}\n').has_comptime_if
 	assert fastc_source_scan_flags('module main\n' + dollar + '/* outer /* nested */ */ if linux {\n}\n').has_comptime_if
@@ -1824,7 +1822,8 @@ pub struct Conn {}
 			path: 'transport.v'
 			source: transport_source
 			header: fastc_scan_source_header(transport_source, 'transport.v', prefs) or {
-				panic(err)}
+				panic(err)
+			}
 		},
 	], map[string]string{}, prefs) or { panic(err) }
 	assert c_source.contains('return ((transport__Conn*)(pointer));'), c_source
@@ -2646,7 +2645,8 @@ pub fn make() Settings {
 				path: module_file
 				source: module_source
 				header: fastc_scan_source_header(module_source, module_file, prefs) or {
-					panic(err)}
+					panic(err)
+				}
 			},
 		], map[string]string{}, prefs) {
 			assert false, 'private field access unexpectedly compiled'
@@ -4054,7 +4054,8 @@ fn main() {
 			path: 'immutable_flag_field.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'immutable_flag_field.v', prefs) or {
-				panic(err)}
+				panic(err)
+			}
 		},
 		FastcSourceFile{
 			path: 'settings.v'
@@ -9390,7 +9391,8 @@ pub type Conn = Base
 			path: 'transport/transport.v'
 			source: transport_source
 			header: fastc_scan_source_header(transport_source, 'transport/transport.v', prefs) or {
-				panic(err)}
+				panic(err)
+			}
 		},
 	], map[string]string{}, prefs) or { panic(err) }
 	assert c_source.contains('(main__Reader){._object=(void*)(conn), ._typ=__v_typeid_transport__Base'), c_source
@@ -9546,7 +9548,8 @@ pub fn (d Dog) sound() int {
 			path: 'animals/animals.v'
 			source: animals_source
 			header: fastc_scan_source_header(animals_source, 'animals/animals.v', prefs) or {
-				panic(err)}
+				panic(err)
+			}
 		},
 	], map[string]string{}, prefs) or { panic(err) }
 	assert c_source.contains('*((animals__Dog *)__v_fastc_as_src'), c_source

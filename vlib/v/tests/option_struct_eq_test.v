@@ -30,24 +30,24 @@ fn test_option_struct_eq() {
 fn test_option_struct_ne_with_strings() {
 	assert ?Person(Person{
 		name: 'Alice'
-		age:  30
+		age: 30
 	}) != ?Person(Person{
 		name: 'Bob'
-		age:  25
+		age: 25
 	})
 	assert ?Person(Person{
 		name: 'Alice'
-		age:  30
+		age: 30
 	}) != ?Person(none)
 }
 
 fn test_option_struct_eq_with_strings() {
 	assert ?Person(Person{
 		name: 'Alice'
-		age:  30
+		age: 30
 	}) == ?Person(Person{
 		name: 'Alice'
-		age:  30
+		age: 30
 	})
 	assert ?Person(none) == ?Person(none)
 }

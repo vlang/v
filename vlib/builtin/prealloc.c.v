@@ -115,13 +115,13 @@ mut:
 @[heap]
 struct VPreallocScope {
 mut:
-	previous       &VMemoryBlock = 0
-	first          &VMemoryBlock = 0
-	min_address    usize
-	max_address    usize
-	ranges         &VPreallocRange = 0
-	ranges_len     int
-	ranges_cap     int
+	previous    &VMemoryBlock = 0
+	first       &VMemoryBlock = 0
+	min_address usize
+	max_address usize
+	ranges      &VPreallocRange = 0
+	ranges_len  int
+	ranges_cap  int
 	// Accessed through the C `_i32` atomics (`&scope.refs` etc.) as 4-byte ints; keep
 	// them i32 so the pointer passed to the atomic matches the C `int32_t*` and the
 	// atomic operates on the real shared field (not a bridged temporary).

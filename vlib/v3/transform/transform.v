@@ -3170,16 +3170,16 @@ fn (mut t Transformer) append_transformed_top_level_stmts(mut out []flat.NodeId,
 // the file/module context active at its declaration and a rough cost estimate
 // (subtree node count) used to balance work across parallel workers.
 struct FnWorkItem {
-	fn_idx                 int
-	range_lo               int // first node id of this fn's subtree (fn subtree = [range_lo, fn_idx])
-	file                   string
-	module                 string
-	cost                   int
-	rank                   i64
+	fn_idx                    int
+	range_lo                  int // first node id of this fn's subtree (fn subtree = [range_lo, fn_idx])
+	file                      string
+	module                    string
+	cost                      int
+	rank                      i64
 	map_expansion_estimate    int
 	interp_expansion_estimate int
-	escape_scan_known      bool
-	escape_scan_needed     bool
+	escape_scan_known         bool
+	escape_scan_needed        bool
 }
 
 // DeferredBaseWrite is an in-place base-node write recorded by the master
@@ -3429,16 +3429,16 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				} else {
 					adj_cost := cost + str_est + map_est
 					pure << FnWorkItem{
-						fn_idx: i
-						range_lo: range_lo
-						file: t.cur_file
-						module: t.cur_module
-						cost: adj_cost
-						rank: i64(adj_cost) * 1_000_000_000 - i64(i)
+						fn_idx:                    i
+						range_lo:                  range_lo
+						file:                      t.cur_file
+						module:                    t.cur_module
+						cost:                      adj_cost
+						rank:                      i64(adj_cost) * 1_000_000_000 - i64(i)
 						map_expansion_estimate:    map_est
 						interp_expansion_estimate: str_est
-						escape_scan_known: escape_scan_flags & 1 != 0
-						escape_scan_needed: escape_scan_flags & 2 != 0
+						escape_scan_known:         escape_scan_flags & 1 != 0
+						escape_scan_needed:        escape_scan_flags & 2 != 0
 					}
 				}
 			}
@@ -5661,7 +5661,8 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 	if typ.len == 0 {
 		typ = 'string'
 	}
-	if format.len > 0 && t.normalize_type_alias(typ) == 'string' && t.string_interp_borrows_array_accessor_field(expr_id) {
+	if format.len > 0 && t.normalize_type_alias(typ) == 'string'
+		&& t.string_interp_borrows_array_accessor_field(expr_id) {
 		// Formatting may return its input unchanged when no padding is needed. Give it
 		// independent storage so a returned formatted value cannot retain the array field.
 		transformed = t.make_compiler_default_clone_value(transformed, 'string', false)
@@ -15740,7 +15741,8 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 			}
 			// An if-guard declaration is visible only in the guarded (then) branch.
 			// Do not let it shadow a constant while resolving an else-branch use.
-			if parent.kind == .if_expr && i == 0 && parent.children_count > 1 && next_id != int(t.a.child(&parent, 1)) {
+			if parent.kind == .if_expr && i == 0 && parent.children_count > 1
+				&& next_id != int(t.a.child(&parent, 1)) {
 				continue
 			}
 			if child_id < 0 || child_id >= t.a.nodes.len {
@@ -15750,7 +15752,8 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 			if child.kind == .param && child.value == name {
 				found = true
 				is_shared = child.typ.trim_space().starts_with('shared ')
-			} else if parent.kind == .for_in_stmt && inside_for_in_body && i < 2 && child.kind == .ident && child.value == name {
+			} else if parent.kind == .for_in_stmt && inside_for_in_body && i < 2
+				&& child.kind == .ident && child.value == name {
 				found = true
 				is_shared = false
 			} else if child.kind == .decl_assign {
@@ -19467,7 +19470,8 @@ fn (t &Transformer) pointer_storage_amp_decl_type(rhs_id flat.NodeId) ?string {
 		return none
 	}
 	child := t.a.child_node(&node, 0)
-	if child.kind != .ident || (!t.mut_param_values[child.value] && !t.pointer_value_rvalues[child.value]) {
+	if child.kind != .ident
+		|| (!t.mut_param_values[child.value] && !t.pointer_value_rvalues[child.value]) {
 		return none
 	}
 	mut vt := t.var_type(child.value)
