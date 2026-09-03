@@ -1783,9 +1783,6 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 	body := children[i..]
 	g.write('fn')
 	gp := n.generic_params()
-	if gp.len > 0 {
-		g.write('[${gp.join(', ')}]')
-	}
 	if captures.len > 0 {
 		g.write(' [')
 		for capture_i, capture_id in captures {
@@ -1803,7 +1800,15 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 		}
 		g.write(']')
 	}
-	g.write(' ')
+	// V spells a closure `fn [captures] [T](params)`: the capture list comes first, and the
+	// generic list binds straight to the parameters with no space. Writing the generic list
+	// first produced `fn[T] [captures] (params)`, which does not parse, and the run after that
+	// read the captures as the generic list and dropped everything the two lists disagreed on.
+	if gp.len > 0 {
+		g.write(' [${gp.join(', ')}]')
+	} else {
+		g.write(' ')
+	}
 	g.params(id, params)
 	if n.typ.len > 0 && n.typ != 'void' {
 		g.write(' ${g.type_text(n.typ)}')

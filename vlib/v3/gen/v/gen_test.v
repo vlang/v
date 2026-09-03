@@ -1664,3 +1664,16 @@ fn test_formatter_keeps_a_trailing_comment_outside_an_inline_or_block() {
 	assert !out.contains('return // ignore the error }'), out
 	assert vfmt('inline_or_trailing_comment_twice', out) == out
 }
+
+// V spells a closure `fn [captures] [T](params)`. The formatter wrote the generic list first,
+// producing `fn[T] [captures] (params)`, which does not parse; the run after that read the
+// captures as the generic list and dropped whatever the two disagreed on, so a `mut` capture was
+// silently lost.
+fn test_formatter_keeps_closure_capture_and_generic_list_order() {
+	source := "fn run[T](items []T) {\n\tch := chan T{}\n\tmut total := 0\n\tspawn fn [ch, mut total] [T]() {\n\t\tfor _ in ch {\n\t\t\ttotal++\n\t\t}\n\t}()\n\tfor item in items {\n\t\tch <- item\n\t}\n}\n"
+	out := vfmt('closure_capture_generics', source)
+	assert out == source, out
+	assert !out.contains('fn[T]'), out
+	assert out.contains('mut total'), out
+	assert vfmt('closure_capture_generics_twice', out) == out
+}
