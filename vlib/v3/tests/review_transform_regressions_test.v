@@ -765,8 +765,8 @@ fn compile_good_project(v3_bin string, name string, flags string, files map[stri
 	compile := os.execute('${v3_bin} ${flags} ${input_path} -b c -o ${good_bin}')
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
-	assert !compile.output.contains('gen_node: unsupported node kind'),
-		'${name}: unsupported node reached C generation\n${compile.output}'
+	assert !compile.output.contains('gen_node: unsupported node kind'), '${name}: unsupported node reached C generation\n${compile.output}'
+
 	return good_bin
 }
 
@@ -2941,6 +2941,10 @@ fn main() {
 }
 '
 	c_source := gen_c_from_source(v3_bin, 'immediate_bound_method_hot_loop_c', source)
+	init_body := c_fn_body(c_source, 'void _vinit() {')
+	assert init_body.contains('closure__closure_init();'), init_body
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.contains('_vinit();'), main_body
 	assert c_source.contains('closure__closure_try_destroy(__immediate_closure_'), c_source
 	out := run_good(v3_bin, 'immediate_bound_method_hot_loop', source)
 	assert out == '1249975000'
@@ -3036,7 +3040,8 @@ fn test_immediately_invoked_closure_keeps_aliased_integer_capture_address_alive(
 	println(int_str(unsafe { *p + 1 }))
 }
 '
-	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_integer_capture_address_c', source)
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_integer_capture_address_c',
+		source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	deref_pos := main_body.index('*p') or { -1 }
 	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
@@ -6069,10 +6074,12 @@ fn main() {
 	println(items[0] == items[1])
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_implicit_reference_receiver_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_implicit_reference_receiver_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	assert !main_body.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_implicit_reference_receiver', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_implicit_reference_receiver', '-ownership',
+		source)
 	assert out == '1\n2\nfalse'
 }
 
@@ -6136,8 +6143,7 @@ fn main() {
 		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	assert !main_body.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_generic_sum_pointer_result', '-ownership',
-		source)
+	out := run_good_with_flags(v3_bin, 'array_map_generic_sum_pointer_result', '-ownership', source)
 	assert out == 'four'
 }
 
@@ -6268,7 +6274,8 @@ fn main() {
 	println(values[0].text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_conditional_pointer_alias_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_conditional_pointer_alias_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -6314,8 +6321,7 @@ fn main() {
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_branch_local_pointer_alias', '-ownership',
-		source)
+	out := run_good_with_flags(v3_bin, 'array_map_branch_local_pointer_alias', '-ownership', source)
 	assert out == 'source'
 }
 
@@ -6410,8 +6416,8 @@ fn main() {
 	println(indexed[0].text)
 }
 '
-	selected_c := gen_c_from_source_with_flags(v3_bin, 'array_map_local_aggregate_selector_alias_c',
-		'-ownership', source)
+	selected_c := gen_c_from_source_with_flags(v3_bin,
+		'array_map_local_aggregate_selector_alias_c', '-ownership', source)
 	main_body := c_fn_body(selected_c, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -6519,7 +6525,8 @@ fn main() {
 	println(selected[0].text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_direct_selector_write_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_direct_selector_write_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -6557,7 +6564,8 @@ fn main() {
 	println(selected[0].text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_direct_index_write_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_direct_index_write_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -6607,7 +6615,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_dyn_index_write_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_dyn_index_write_c', '-ownership',
+		source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -6688,11 +6697,13 @@ fn main() {
 	println(index_saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_projected_aggregate_origins_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_projected_aggregate_origins_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_projected_aggregate_origins', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_projected_aggregate_origins', '-ownership',
+		source)
 	assert out == '0\nsource\n0\nsource'
 }
 
@@ -6742,7 +6753,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_forward_goto_origin_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_forward_goto_origin_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -6850,11 +6862,13 @@ fn main() {
 	println(selected[0].text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_local_selector_chain_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_local_selector_chain_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_nested_local_selector_chain', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_nested_local_selector_chain', '-ownership',
+		source)
 	assert out == 'source'
 }
 
@@ -6902,7 +6916,8 @@ fn main() {
 	println(selected[0].text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_selector_write_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_selector_write_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -6953,7 +6968,8 @@ fn main() {
 	println(selected[0].value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutating_method_write_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutating_method_write_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -7004,7 +7020,8 @@ fn main() {
 	println(selected[0].value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutating_function_write_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutating_function_write_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -7053,11 +7070,13 @@ fn main() {
 	println(selected[0].text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutating_method_selector_result_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutating_method_selector_result_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_mutating_method_selector_result', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_mutating_method_selector_result', '-ownership',
+		source)
 	assert out == 'source'
 }
 
@@ -7096,11 +7115,13 @@ fn main() {
 	println(selected[0].text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutating_function_index_result_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutating_function_index_result_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_mutating_function_index_result', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_mutating_function_index_result', '-ownership',
+		source)
 	assert out == 'source'
 }
 
@@ -7151,7 +7172,8 @@ fn main() {
 	println(selected[0].value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_mutating_call_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_mutating_call_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -7203,7 +7225,8 @@ fn main() {
 	println(selected[0].value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_local_alias_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_local_alias_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -7256,7 +7279,8 @@ fn main() {
 	println(selected[0].value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_alias_overwrite_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_alias_overwrite_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	source_drop_pos := main_body.index('array__free(&(') or { -1 }
 	result_move_pos := main_body.index('Array selected = ') or { -1 }
@@ -7306,7 +7330,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_mutator_escape_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_mutator_escape_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -7341,7 +7366,8 @@ fn main() {
 	println(saved[0].text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_append_escape_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_append_escape_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -7387,7 +7413,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_pointer_alias_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_pointer_alias_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -7440,11 +7467,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_pointer_in_local_aggregate_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_external_pointer_in_local_aggregate_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_external_pointer_in_local_aggregate', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_external_pointer_in_local_aggregate',
+		'-ownership', source)
 	assert out == '0\nsource'
 }
 
@@ -7532,11 +7561,13 @@ fn main() {
 	println(saved_match.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_conditional_local_aggregate_initializers_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_conditional_local_aggregate_initializers_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_conditional_local_aggregate_initializers', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_conditional_local_aggregate_initializers',
+		'-ownership', source)
 	assert out == '0\nsource\n0\nsource'
 }
 
@@ -7614,11 +7645,13 @@ fn main() {
 	println(saved_overridden.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_struct_update_pointer_origins_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_struct_update_pointer_origins_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert compact_main.count('array__free(&(__map_source_') == 1, main_body
-	out := run_good_with_flags(v3_bin, 'array_map_struct_update_pointer_origins', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_struct_update_pointer_origins', '-ownership',
+		source)
 	assert out == '0\nsource\n0\nexternal'
 }
 
@@ -7683,7 +7716,8 @@ fn main() {
 	println(selected_match[0])
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_local_conditional_pointer_initializers_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_local_conditional_pointer_initializers_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	if_result_pos := compact_main.index('Arrayselected_if=') or { -1 }
@@ -7699,7 +7733,8 @@ fn main() {
 	}
 	assert if_source_drop_pos >= 0 && if_source_drop_pos < if_result_pos, main_body
 	assert match_source_drop_pos > if_result_pos && match_source_drop_pos < match_result_pos, main_body
-	out := run_good_with_flags(v3_bin, 'array_map_local_conditional_pointer_initializers', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_local_conditional_pointer_initializers',
+		'-ownership', source)
 	assert out == '0\n0'
 }
 
@@ -7755,11 +7790,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_pointer_in_call_result_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_pointer_in_call_result_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_external_pointer_in_call_result', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_external_pointer_in_call_result', '-ownership',
+		source)
 	assert out == '0\nsource'
 }
 
@@ -7818,11 +7855,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_call_result_per_field_origin_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_call_result_per_field_origin_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_call_result_per_field_origin', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_call_result_per_field_origin', '-ownership',
+		source)
 	assert out == '0\nexternal'
 }
 
@@ -7881,7 +7920,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_global_pointer_call_result_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_global_pointer_call_result_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -7936,7 +7976,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mut_call_pointer_origin_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mut_call_pointer_origin_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -8034,11 +8075,13 @@ fn main() {
 	println(direct_saved.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_call_and_dereference_pointer_origin_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_nested_call_and_dereference_pointer_origin_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_nested_call_and_dereference_pointer_origin', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_nested_call_and_dereference_pointer_origin',
+		'-ownership', source)
 	assert out == '0\nsource\n0\n0\nsource'
 }
 
@@ -8097,7 +8140,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_call_argument_snapshot_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_call_argument_snapshot_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -8163,11 +8207,13 @@ fn main() {
 }
 '
 	}
-	callback_c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_callback_alias_scope_c', '-ownership', files, 'main.v')
+	callback_c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_callback_alias_scope_c',
+		'-ownership', files, 'main.v')
 	callback_main_body := c_fn_body(callback_c_source, 'int main(int argc, char** argv) {')
 	compact_callback_main := callback_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_callback_main.contains('array__free(&(__map_source_'), callback_main_body
-	callback_out := run_good_project_with_flags(v3_bin, 'array_map_callback_alias_scope', '-ownership', files, 'main.v')
+	callback_out := run_good_project_with_flags(v3_bin, 'array_map_callback_alias_scope',
+		'-ownership', files, 'main.v')
 	assert callback_out == '0\nsource'
 }
 
@@ -8222,11 +8268,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_earlier_argument_target_effect_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_earlier_argument_target_effect_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_earlier_argument_target_effect', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_earlier_argument_target_effect', '-ownership',
+		source)
 	assert out == '0\nsource'
 }
 
@@ -8282,11 +8330,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_expression_child_origin_effect_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_expression_child_origin_effect_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_expression_child_origin_effect', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_expression_child_origin_effect', '-ownership',
+		source)
 	assert out == '0\nsource'
 }
 
@@ -8339,11 +8389,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_decl_initializer_pointer_origin_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_decl_initializer_pointer_origin_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_decl_initializer_pointer_origin', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_decl_initializer_pointer_origin', '-ownership',
+		source)
 	assert out == '0\nsource'
 }
 
@@ -8397,11 +8449,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_assignment_rhs_pointer_origin_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_assignment_rhs_pointer_origin_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_assignment_rhs_pointer_origin', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_assignment_rhs_pointer_origin', '-ownership',
+		source)
 	assert out == '0\nsource'
 }
 
@@ -8449,11 +8503,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_multi_assign_pointer_origin_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_multi_assign_pointer_origin_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_multi_assign_pointer_origin', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_multi_assign_pointer_origin', '-ownership',
+		source)
 	assert out == '0\nsource'
 }
 
@@ -8505,7 +8561,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_multi_assign_rhs_effects_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_multi_assign_rhs_effects_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -8561,11 +8618,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_condition_pointer_alias_update_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_condition_pointer_alias_update_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_condition_pointer_alias_update', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_condition_pointer_alias_update', '-ownership',
+		source)
 	assert out == '0\nsource'
 }
 
@@ -8618,11 +8677,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_condition_pointer_alias_update_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_nested_condition_pointer_alias_update_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_nested_condition_pointer_alias_update', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_nested_condition_pointer_alias_update',
+		'-ownership', source)
 	assert out == '0\nsource'
 }
 
@@ -8674,11 +8735,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_infix_operand_pointer_alias_update_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_infix_operand_pointer_alias_update_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_infix_operand_pointer_alias_update', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_infix_operand_pointer_alias_update',
+		'-ownership', source)
 	assert out == '0\nsource'
 }
 
@@ -8776,7 +8839,8 @@ fn main() {
 	println(retained.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_global_call_sink_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_global_call_sink_c', '-ownership',
+		source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -8903,11 +8967,13 @@ fn main() {
 }
 '
 	}
-	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_callback_wrapper_sink_c', '-ownership', files, 'main.v')
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_callback_wrapper_sink_c',
+		'-ownership', files, 'main.v')
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_project_with_flags(v3_bin, 'array_map_callback_wrapper_sink', '-ownership', files, 'main.v')
+	out := run_good_project_with_flags(v3_bin, 'array_map_callback_wrapper_sink', '-ownership',
+		files, 'main.v')
 	assert out == '0\nsource'
 }
 
@@ -9029,8 +9095,8 @@ fn main() {
 }
 '
 	}
-	c_source := gen_c_from_project_with_flags(v3_bin,
-		'array_map_aliased_callback_wrapper_sink_c', '-ownership', files, 'main.v')
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_aliased_callback_wrapper_sink_c',
+		'-ownership', files, 'main.v')
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -9101,11 +9167,13 @@ fn main() {
 }
 '
 	}
-	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_helper_rebound_callback_alias_c', '-ownership', files, 'main.v')
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_helper_rebound_callback_alias_c',
+		'-ownership', files, 'main.v')
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_project_with_flags(v3_bin, 'array_map_helper_rebound_callback_alias', '-ownership', files, 'main.v')
+	out := run_good_project_with_flags(v3_bin, 'array_map_helper_rebound_callback_alias',
+		'-ownership', files, 'main.v')
 	assert out == '0\nsource'
 }
 
@@ -9222,11 +9290,13 @@ fn main() {
 	println(target.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_explicit_deref_helper_storage_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_explicit_deref_helper_storage_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_explicit_deref_helper_storage', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_explicit_deref_helper_storage', '-ownership',
+		source)
 	assert out == '0\nsource'
 }
 
@@ -9290,11 +9360,13 @@ fn main() {
 }
 '
 	}
-	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_conditional_callback_alias_c', '-ownership', files, 'main.v')
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_conditional_callback_alias_c',
+		'-ownership', files, 'main.v')
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_project_with_flags(v3_bin, 'array_map_conditional_callback_alias', '-ownership', files, 'main.v')
+	out := run_good_project_with_flags(v3_bin, 'array_map_conditional_callback_alias',
+		'-ownership', files, 'main.v')
 	assert out == '0\nsource'
 }
 
@@ -9415,8 +9487,8 @@ fn main() {
 }
 '
 	}
-	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_branch_callback_alias_c', '-ownership',
-		files, 'main.v')
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_branch_callback_alias_c',
+		'-ownership', files, 'main.v')
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -9482,11 +9554,13 @@ fn main() {
 }
 '
 	}
-	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_nested_callback_wrapper_sink_c', '-ownership', files, 'main.v')
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_nested_callback_wrapper_sink_c',
+		'-ownership', files, 'main.v')
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_project_with_flags(v3_bin, 'array_map_nested_callback_wrapper_sink', '-ownership', files, 'main.v')
+	out := run_good_project_with_flags(v3_bin, 'array_map_nested_callback_wrapper_sink',
+		'-ownership', files, 'main.v')
 	assert out == '0\nsource'
 }
 
@@ -9529,7 +9603,8 @@ fn main() {
 	println(retained.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_indirect_call_sink_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_indirect_call_sink_c',
+		'-ownership', source)
 	map_body := c_fn_body(c_source, 'Array main__map_with(')
 	compact_map := map_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_map.contains('array__free(&(__map_source_'), map_body
@@ -9581,11 +9656,13 @@ fn main() {
 }
 '
 	}
-	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_external_c_call_sink_c', '-ownership', files, 'main.v')
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_external_c_call_sink_c',
+		'-ownership', files, 'main.v')
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_project_with_flags(v3_bin, 'array_map_external_c_call_sink', '-ownership', files, 'main.v')
+	out := run_good_project_with_flags(v3_bin, 'array_map_external_c_call_sink', '-ownership',
+		files, 'main.v')
 	assert out == '0\nsource'
 }
 
@@ -9689,7 +9766,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_return_before_late_defer_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_return_before_late_defer_c',
+		'-ownership', source)
 	map_body := c_fn_body(c_source, 'Array map_or_return(main__PointerBox* saved, bool early) {')
 	compact_map := map_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert compact_map.contains('array__free(&(__map_source_'), map_body
@@ -9839,11 +9917,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_pointer_in_local_map_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_pointer_in_local_map_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_external_pointer_in_local_map', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_external_pointer_in_local_map', '-ownership',
+		source)
 	assert out == '0\nsource'
 }
 
@@ -9887,7 +9967,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_dynamic_local_array_index_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_dynamic_local_array_index_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -9936,7 +10017,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_delimiter_map_key_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_delimiter_map_key_c', '-ownership',
+		source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -9988,11 +10070,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_dynamic_assignment_replaces_exact_origin_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_dynamic_assignment_replaces_exact_origin_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_dynamic_assignment_replaces_exact_origin', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_dynamic_assignment_replaces_exact_origin',
+		'-ownership', source)
 	assert out == '0\nsource'
 }
 
@@ -10034,8 +10118,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_repeated_local_array_initializer_c',
-		'-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_repeated_local_array_initializer_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -10214,8 +10298,7 @@ fn main() {
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_loop_break_pointer_origins', '-ownership',
-		source)
+	out := run_good_with_flags(v3_bin, 'array_map_loop_break_pointer_origins', '-ownership', source)
 	assert out == '0\nsource'
 }
 
@@ -10267,11 +10350,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_labeled_outer_loop_pointer_origin_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_labeled_outer_loop_pointer_origin_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_labeled_outer_loop_pointer_origin', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_labeled_outer_loop_pointer_origin', '-ownership',
+		source)
 	assert out == '0\nsource'
 }
 
@@ -10324,12 +10409,14 @@ fn main() {
 	println(selected[0])
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_unrelated_local_aggregate_pointer_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_unrelated_local_aggregate_pointer_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	source_drop_pos := main_body.index('array__free(&(') or { -1 }
 	result_move_pos := main_body.index('Array selected = ') or { -1 }
 	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
-	out := run_good_with_flags(v3_bin, 'array_map_unrelated_local_aggregate_pointer', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_unrelated_local_aggregate_pointer', '-ownership',
+		source)
 	assert out == '0'
 }
 
@@ -10378,13 +10465,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_conditional_external_pointer_alias_c',
-		'-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_conditional_external_pointer_alias_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_conditional_external_pointer_alias', '-ownership',
-		source)
+	out := run_good_with_flags(v3_bin, 'array_map_conditional_external_pointer_alias',
+		'-ownership', source)
 	assert out == '0\nsource'
 
 	match_source := source.replace('if flag {\n\t\t\t\talias = &saved\n\t\t\t}',
@@ -10415,13 +10502,16 @@ fn main() {
 	return error('failed')
 }
 
-fn make_items() []Item {").replace('if flag {\n\t\t\t\talias = &saved\n\t\t\t}', 'may_fail() or {\n\t\t\t\talias = &saved\n\t\t\t}')
+fn make_items() []Item {").replace('if flag {\n\t\t\t\talias = &saved\n\t\t\t}',
+		'may_fail() or {\n\t\t\t\talias = &saved\n\t\t\t}')
 	assert or_source != source
-	or_c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_or_external_pointer_alias_c', '-ownership', or_source)
+	or_c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_or_external_pointer_alias_c',
+		'-ownership', or_source)
 	or_main_body := c_fn_body(or_c_source, 'int main(int argc, char** argv) {')
 	compact_or_main := or_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_or_main.contains('array__free(&(__map_source_'), or_main_body
-	or_out := run_good_with_flags(v3_bin, 'array_map_or_external_pointer_alias', '-ownership', or_source)
+	or_out := run_good_with_flags(v3_bin, 'array_map_or_external_pointer_alias', '-ownership',
+		or_source)
 	assert or_out == '0\nsource'
 }
 
@@ -10469,20 +10559,24 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source_true := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_external_pointer_alias_true_c', '-ownership', source_true)
+	c_source_true := gen_c_from_source_with_flags(v3_bin,
+		'array_map_comptime_external_pointer_alias_true_c', '-ownership', source_true)
 	main_body_true := c_fn_body(c_source_true, 'int main(int argc, char** argv) {')
 	compact_main_true := main_body_true.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main_true.contains('array__free(&(__map_source_'), main_body_true
-	out_true := run_good_with_flags(v3_bin, 'array_map_comptime_external_pointer_alias_true', '-ownership', source_true)
+	out_true := run_good_with_flags(v3_bin, 'array_map_comptime_external_pointer_alias_true',
+		'-ownership', source_true)
 	assert out_true == '0\nsource'
 
 	source_false := source_true.replace('\$if true {', '\$if false {')
-	c_source_false := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_external_pointer_alias_false_c', '-ownership', source_false)
+	c_source_false := gen_c_from_source_with_flags(v3_bin,
+		'array_map_comptime_external_pointer_alias_false_c', '-ownership', source_false)
 	main_body_false := c_fn_body(c_source_false, 'int main(int argc, char** argv) {')
 	source_drop_pos := main_body_false.index('array__free(&(') or { -1 }
 	result_move_pos := main_body_false.index('Array selected = ') or { -1 }
 	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body_false
-	out_false := run_good_with_flags(v3_bin, 'array_map_comptime_external_pointer_alias_false', '-ownership', source_false)
+	out_false := run_good_with_flags(v3_bin, 'array_map_comptime_external_pointer_alias_false',
+		'-ownership', source_false)
 	assert out_false == '0\nexternal'
 }
 
@@ -10533,7 +10627,8 @@ fn main() {
 	apply(store)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_indirect_mutator_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_indirect_mutator_c', '-ownership',
+		source)
 	apply_body := c_fn_body(c_source, 'void main__apply(main__Setter setter) {')
 	compact_apply := apply_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_apply.contains('array__free(&(__map_source_'), apply_body
@@ -10607,7 +10702,8 @@ fn main() {
 	println(retained.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_local_channel_alias_sink_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_local_channel_alias_sink_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -10650,7 +10746,8 @@ fn main() {
 	println(<-saved)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_spawn_pointer_sink_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_spawn_pointer_sink_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -10745,12 +10842,14 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_pointer_alias_overwrite_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_external_pointer_alias_overwrite_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	source_drop_pos := main_body.index('array__free(&(') or { -1 }
 	result_move_pos := main_body.index('Array selected = ') or { -1 }
 	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
-	out := run_good_with_flags(v3_bin, 'array_map_external_pointer_alias_overwrite', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_external_pointer_alias_overwrite', '-ownership',
+		source)
 	assert out == '0\nexternal'
 }
 
@@ -10797,7 +10896,8 @@ fn main() {
 	println(selected[0].value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_storage_overwrite_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_storage_overwrite_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	source_drop_pos := main_body.index('array__free(&(') or { -1 }
 	result_move_pos := main_body.index('Array selected = ') or { -1 }
@@ -10810,12 +10910,11 @@ fn main() {
 	assert early_return_source != source
 	early_return_c_source := gen_c_from_source_with_flags(v3_bin,
 		'array_map_mutator_storage_early_return_c', '-ownership', early_return_source)
-	early_return_main_body := c_fn_body(early_return_c_source,
-		'int main(int argc, char** argv) {')
-	compact_early_return_main := early_return_main_body.replace(' ', '').replace('\t', '').replace('\n',
-		'')
-	assert !compact_early_return_main.contains('array__free(&(__map_source_'),
-		early_return_main_body
+	early_return_main_body := c_fn_body(early_return_c_source, 'int main(int argc, char** argv) {')
+	compact_early_return_main :=
+		early_return_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_early_return_main.contains('array__free(&(__map_source_'), early_return_main_body
+
 	early_return_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_early_return',
 		'-ownership', early_return_source)
 	assert early_return_out == 'source'
@@ -10828,8 +10927,8 @@ fn main() {
 	delegated_main_body := c_fn_body(delegated_c_source, 'int main(int argc, char** argv) {')
 	delegated_source_drop_pos := delegated_main_body.index('array__free(&(') or { -1 }
 	delegated_result_move_pos := delegated_main_body.index('Array selected = ') or { -1 }
-	assert delegated_source_drop_pos >= 0 && delegated_source_drop_pos < delegated_result_move_pos,
-		delegated_main_body
+	assert delegated_source_drop_pos >= 0 && delegated_source_drop_pos < delegated_result_move_pos, delegated_main_body
+
 	delegated_out := run_good_with_flags(v3_bin, 'array_map_delegated_mutator_storage_overwrite',
 		'-ownership', delegated_source)
 	assert delegated_out == 'external'
@@ -10849,8 +10948,8 @@ fn main() {
 		-1
 	}
 	assert reverse_delegated_source_drop_pos >= 0
-		&& reverse_delegated_source_drop_pos < reverse_delegated_result_move_pos,
-		reverse_delegated_main_body
+		&& reverse_delegated_source_drop_pos < reverse_delegated_result_move_pos, reverse_delegated_main_body
+
 	reverse_delegated_out := run_good_with_flags(v3_bin,
 		'array_map_reverse_delegated_mutator_storage_overwrite', '-ownership',
 		reverse_delegated_source)
@@ -10874,45 +10973,59 @@ fn main() {
 	deferred_c_source := gen_c_from_source_with_flags(v3_bin,
 		'array_map_mutator_storage_deferred_c', '-ownership', deferred_source)
 	deferred_main_body := c_fn_body(deferred_c_source, 'int main(int argc, char** argv) {')
-	compact_deferred_main := deferred_main_body.replace(' ', '').replace('\t', '').replace('\n',
-		'')
+	compact_deferred_main := deferred_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_deferred_main.contains('array__free(&(__map_source_'), deferred_main_body
-	deferred_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_deferred',
-		'-ownership', deferred_source)
+	deferred_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_deferred', '-ownership',
+		deferred_source)
 	assert deferred_out == 'source'
 
-	deferred_exit_alias_source := source.replace('box.value = value\n\tbox.value = replacement', 'mut alias := unsafe { value }\n\tdefer {\n\t\tbox.value = alias\n\t}\n\tif true {\n\t\treturn\n\t}\n\talias = unsafe { replacement }')
+	deferred_exit_alias_source := source.replace('box.value = value\n\tbox.value = replacement',
+		'mut alias := unsafe { value }\n\tdefer {\n\t\tbox.value = alias\n\t}\n\tif true {\n\t\treturn\n\t}\n\talias = unsafe { replacement }')
 	assert deferred_exit_alias_source != source
-	deferred_exit_alias_c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_storage_deferred_exit_alias_c', '-ownership', deferred_exit_alias_source)
-	deferred_exit_alias_main := c_fn_body(deferred_exit_alias_c_source, 'int main(int argc, char** argv) {')
-	compact_deferred_exit_alias_main := deferred_exit_alias_main.replace(' ', '').replace('\t', '').replace('\n', '')
+	deferred_exit_alias_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_mutator_storage_deferred_exit_alias_c', '-ownership', deferred_exit_alias_source)
+	deferred_exit_alias_main := c_fn_body(deferred_exit_alias_c_source,
+		'int main(int argc, char** argv) {')
+	compact_deferred_exit_alias_main :=
+		deferred_exit_alias_main.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_deferred_exit_alias_main.contains('array__free(&(__map_source_'), deferred_exit_alias_main
-	deferred_exit_alias_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_deferred_exit_alias', '-ownership', deferred_exit_alias_source)
+	deferred_exit_alias_out := run_good_with_flags(v3_bin,
+		'array_map_mutator_storage_deferred_exit_alias', '-ownership', deferred_exit_alias_source)
 	assert deferred_exit_alias_out == 'source'
 
-	nested_deferred_exit_alias_source := source.replace('box.value = value\n\tbox.value = replacement', 'if true {\n\t\tmut local := PointerBox{\n\t\t\tvalue: unsafe { replacement }\n\t\t}\n\t\tmut alias := &local\n\t\tdefer {\n\t\t\talias.value = value\n\t\t}\n\t\talias = &box\n\t}')
+	nested_deferred_exit_alias_source := source.replace('box.value = value\n\tbox.value = replacement',
+		'if true {\n\t\tmut local := PointerBox{\n\t\t\tvalue: unsafe { replacement }\n\t\t}\n\t\tmut alias := &local\n\t\tdefer {\n\t\t\talias.value = value\n\t\t}\n\t\talias = &box\n\t}')
 	assert nested_deferred_exit_alias_source != source
-	nested_deferred_exit_alias_c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_storage_nested_deferred_exit_alias_c', '-ownership', nested_deferred_exit_alias_source)
-	nested_deferred_exit_alias_main := c_fn_body(nested_deferred_exit_alias_c_source, 'int main(int argc, char** argv) {')
-	compact_nested_deferred_exit_alias_main := nested_deferred_exit_alias_main.replace(' ', '').replace('\t', '').replace('\n', '')
+	nested_deferred_exit_alias_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_mutator_storage_nested_deferred_exit_alias_c', '-ownership',
+		nested_deferred_exit_alias_source)
+	nested_deferred_exit_alias_main := c_fn_body(nested_deferred_exit_alias_c_source,
+		'int main(int argc, char** argv) {')
+	compact_nested_deferred_exit_alias_main :=
+		nested_deferred_exit_alias_main.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_nested_deferred_exit_alias_main.contains('array__free(&(__map_source_'), nested_deferred_exit_alias_main
-	nested_deferred_exit_alias_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_nested_deferred_exit_alias', '-ownership', nested_deferred_exit_alias_source)
+	nested_deferred_exit_alias_out := run_good_with_flags(v3_bin,
+		'array_map_mutator_storage_nested_deferred_exit_alias', '-ownership',
+		nested_deferred_exit_alias_source)
 	assert nested_deferred_exit_alias_out == 'source'
 
-	late_defer_source := source.replace('box.value = value\n\tbox.value = replacement', 'box.value = value\n\tif value.text.len > 0 {\n\t\treturn\n\t}\n\tdefer {\n\t\tbox.value = replacement\n\t}')
+	late_defer_source := source.replace('box.value = value\n\tbox.value = replacement',
+		'box.value = value\n\tif value.text.len > 0 {\n\t\treturn\n\t}\n\tdefer {\n\t\tbox.value = replacement\n\t}')
 	assert late_defer_source != source
-	late_defer_c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_storage_late_defer_c', '-ownership', late_defer_source)
+	late_defer_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_mutator_storage_late_defer_c', '-ownership', late_defer_source)
 	late_defer_main := c_fn_body(late_defer_c_source, 'int main(int argc, char** argv) {')
 	compact_late_defer_main := late_defer_main.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_late_defer_main.contains('array__free(&(__map_source_'), late_defer_main
-	late_defer_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_late_defer', '-ownership', late_defer_source)
+	late_defer_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_late_defer',
+		'-ownership', late_defer_source)
 	assert late_defer_out == 'source'
 
 	select_source := source.replace('box.value = value\n\tbox.value = replacement',
 		'signal := chan bool{cap: 1}\n\tsignal <- true\n\tselect {\n\t\t<-signal {\n\t\t\tbox.value = value\n\t\t}\n\t\telse {\n\t\t\tbox.value = replacement\n\t\t}\n\t}')
 	assert select_source != source
-	select_c_source := gen_c_from_source_with_flags(v3_bin,
-		'array_map_mutator_storage_select_c', '-ownership', select_source)
+	select_c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_storage_select_c',
+		'-ownership', select_source)
 	select_main_body := c_fn_body(select_c_source, 'int main(int argc, char** argv) {')
 	compact_select_main := select_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_select_main.contains('array__free(&(__map_source_'), select_main_body
@@ -10969,7 +11082,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	direct_exit_out := run_good_with_flags(v3_bin, 'array_map_deferred_direct_exit_alias', '-ownership', direct_exit_source)
+	direct_exit_out := run_good_with_flags(v3_bin, 'array_map_deferred_direct_exit_alias',
+		'-ownership', direct_exit_source)
 	assert direct_exit_out == '7\nsource'
 }
 
@@ -11026,10 +11140,12 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_return_expr_deferred_origin_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_return_expr_deferred_origin_c',
+		'-ownership', source)
 	compact_c := c_source.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_c.contains('array__free(&(__map_source_'), c_source
-	out := run_good_with_flags(v3_bin, 'array_map_return_expr_deferred_origin', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_return_expr_deferred_origin', '-ownership',
+		source)
 	assert out == '7\nsource'
 }
 
@@ -11084,7 +11200,8 @@ fn main() {
 	println(selected[0].value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_or_success_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_or_success_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -11135,7 +11252,8 @@ fn main() {
 	println(selected[0].value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_target_alias_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_target_alias_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -11148,8 +11266,8 @@ fn main() {
 	aggregate_c_source := gen_c_from_source_with_flags(v3_bin,
 		'array_map_mutator_aggregate_source_c', '-ownership', aggregate_source)
 	aggregate_main_body := c_fn_body(aggregate_c_source, 'int main(int argc, char** argv) {')
-	compact_aggregate_main := aggregate_main_body.replace(' ', '').replace('\t', '').replace('\n',
-		'')
+	compact_aggregate_main :=
+		aggregate_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_aggregate_main.contains('array__free(&(__map_source_'), aggregate_main_body
 	aggregate_out := run_good_with_flags(v3_bin, 'array_map_mutator_aggregate_source',
 		'-ownership', aggregate_source)
@@ -11234,7 +11352,8 @@ fn main() {
 	println(indexed[0].values[0].text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_all_mutator_targets_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_all_mutator_targets_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -11288,20 +11407,24 @@ fn main() {
 	println(selected[0].value.text)
 }
 '
-	c_source_true := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_mutator_true_c', '-ownership', source_true)
+	c_source_true := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_mutator_true_c',
+		'-ownership', source_true)
 	main_body_true := c_fn_body(c_source_true, 'int main(int argc, char** argv) {')
 	compact_main_true := main_body_true.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main_true.contains('array__free(&(__map_source_'), main_body_true
-	out_true := run_good_with_flags(v3_bin, 'array_map_comptime_mutator_true', '-ownership', source_true)
+	out_true := run_good_with_flags(v3_bin, 'array_map_comptime_mutator_true', '-ownership',
+		source_true)
 	assert out_true == 'source'
 
 	source_false := source_true.replace('\$if true {', '\$if false {')
-	c_source_false := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_mutator_false_c', '-ownership', source_false)
+	c_source_false := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_mutator_false_c',
+		'-ownership', source_false)
 	main_body_false := c_fn_body(c_source_false, 'int main(int argc, char** argv) {')
 	source_drop_pos := main_body_false.index('array__free(&(') or { -1 }
 	result_move_pos := main_body_false.index('Array selected = ') or { -1 }
 	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body_false
-	out_false := run_good_with_flags(v3_bin, 'array_map_comptime_mutator_false', '-ownership', source_false)
+	out_false := run_good_with_flags(v3_bin, 'array_map_comptime_mutator_false', '-ownership',
+		source_false)
 	assert out_false == 'external'
 }
 
@@ -11329,7 +11452,8 @@ fn main() {
 	println(selected[0].text)
 }
 '
-	c_source_true := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_if_true_c', '-ownership', source_true)
+	c_source_true := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_if_true_c',
+		'-ownership', source_true)
 	main_body_true := c_fn_body(c_source_true, 'int main(int argc, char** argv) {')
 	compact_main_true := main_body_true.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main_true.contains('array__free(&(__map_source_'), main_body_true
@@ -11337,12 +11461,14 @@ fn main() {
 	assert out_true == 'source'
 
 	source_false := source_true.replace('\$if true {', '\$if false {')
-	c_source_false := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_if_false_c', '-ownership', source_false)
+	c_source_false := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_if_false_c',
+		'-ownership', source_false)
 	main_body_false := c_fn_body(c_source_false, 'int main(int argc, char** argv) {')
 	source_drop_pos := main_body_false.index('array__free(&(') or { -1 }
 	result_move_pos := main_body_false.index('Array selected = ') or { -1 }
 	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body_false
-	out_false := run_good_with_flags(v3_bin, 'array_map_comptime_if_false', '-ownership', source_false)
+	out_false := run_good_with_flags(v3_bin, 'array_map_comptime_if_false', '-ownership',
+		source_false)
 	assert out_false == 'external'
 }
 
@@ -11388,12 +11514,14 @@ fn main() {
 	println(selected[0].value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_transient_mutating_method_arg_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_transient_mutating_method_arg_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	source_drop_pos := main_body.index('array__free(&(') or { -1 }
 	result_move_pos := main_body.index('Array selected = ') or { -1 }
 	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
-	out := run_good_with_flags(v3_bin, 'array_map_transient_mutating_method_arg', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_transient_mutating_method_arg', '-ownership',
+		source)
 	assert out == 'external'
 }
 
@@ -11447,7 +11575,8 @@ fn main() {
 	println(selected[0].run())
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_returned_closure_capture_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_returned_closure_capture_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -11495,7 +11624,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_invoked_closure_capture_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_invoked_closure_capture_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -11535,12 +11665,14 @@ fn main() {
 	println(selected[0].text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_projected_passthrough_parameter_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_projected_passthrough_parameter_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	source_drop_pos := main_body.index('array__free(&(') or { -1 }
 	result_move_pos := main_body.index('Array selected = ') or { -1 }
 	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
-	out := run_good_with_flags(v3_bin, 'array_map_projected_passthrough_parameter', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_projected_passthrough_parameter', '-ownership',
+		source)
 	assert out == 'external'
 }
 
@@ -11577,7 +11709,8 @@ fn main() {
 	println(selected[0].text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_alias_overwrite_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_alias_overwrite_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	source_drop_pos := main_body.index('array__free(&(') or { -1 }
 	result_move_pos := main_body.index('Array selected = ') or { -1 }
@@ -11708,6 +11841,57 @@ fn main() {
 	assert out == '1,2,3'
 }
 
+fn test_array_sort_pointer_value_comparator_expression_shapes() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Thing {
+	value int
+}
+
+fn compare_thing_values(a &Thing, b &Thing) int {
+	return a.value - b.value
+}
+
+fn get_thing_comparator() fn (&Thing, &Thing) int {
+	return compare_thing_values
+}
+
+struct ThingComparators {
+	compare fn (&Thing, &Thing) int
+}
+
+type ThingCompare = fn (&Thing, &Thing) int
+
+fn sorted_values(items []&Thing) string {
+	return items.map(it.value.str()).join(",")
+}
+
+fn main() {
+	mut local_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
+	local_compare := compare_thing_values
+	local_items.sort_with_compare(local_compare)
+	println(sorted_values(local_items))
+
+	mut call_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
+	call_items.sort_with_compare(get_thing_comparator())
+	println(sorted_values(call_items))
+
+	mut selector_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
+	comparators := ThingComparators{
+		compare: compare_thing_values
+	}
+	selector_items.sort_with_compare(comparators.compare)
+	println(sorted_values(selector_items))
+
+	mut alias_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
+	alias_compare := ThingCompare(compare_thing_values)
+	alias_items.sort_with_compare(alias_compare)
+	println(sorted_values(alias_items))
+}
+'
+	out := run_good(v3_bin, 'array_sort_pointer_value_comparator_expression_shapes', source)
+	assert out == '1,2,3\n1,2,3\n1,2,3\n1,2,3'
+}
+
 fn test_array_map_drops_source_for_unrelated_pointer_result() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
@@ -11775,8 +11959,7 @@ fn main() {
 	source_drop_pos := main_body.index('array__free(&(') or { -1 }
 	result_move_pos := main_body.index('Array selected = ') or { -1 }
 	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
-	out := run_good_with_flags(v3_bin, 'array_map_selected_external_pointer', '-ownership',
-		source)
+	out := run_good_with_flags(v3_bin, 'array_map_selected_external_pointer', '-ownership', source)
 	assert out == 'external'
 }
 
@@ -12560,7 +12743,7 @@ fn main() {
 		assert body.contains('int* local ='), body
 	}
 	builtin_body := c_fn_body(c_source, 'int* make_builtin_memdup(void) {')
-	assert builtin_body.contains('int local = 44;'), builtin_body
+	assert builtin_body.contains('i64 local = 44;'), builtin_body
 	assert builtin_body.contains('memdup(&local, sizeof(int))'), builtin_body
 }
 
@@ -12623,7 +12806,7 @@ fn test_parallel_transform_defers_external_const_collection_clone_expansion() {
 	mut readers := []string{cap: 64}
 	mut calls := []string{cap: 64}
 	for i in 0 .. 64 {
-		readers << "fn read_${i}() int {\n\treturn if clone_lookup.len == 1 { ${i} } else { -10000 }\n}"
+		readers << 'fn read_${i}() int {\n\treturn if clone_lookup.len == 1 { ${i} } else { -10000 }\n}'
 		calls << '\ttotal += read_${i}()'
 	}
 	source := "struct Wide implements IClone {\n${fields.join('\n')}\n}\n\nfn make_items() []Wide {\n\treturn [Wide{\n\t\tfield_255: 'ok'\n\t}]\n}\n\nconst clone_lookup = {\n\t'items': make_items().clone()\n}\n\n${readers.join('\n\n')}\n\nfn main() {\n\tmut total := 0\n${calls.join('\n')}\n\tprintln(total)\n}\n"
@@ -12734,11 +12917,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_loop_carried_pointer_origin_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_loop_carried_pointer_origin_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_loop_carried_pointer_origin', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_loop_carried_pointer_origin', '-ownership',
+		source)
 	assert out == '0\nsource'
 }
 
@@ -12790,7 +12975,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_loop_carried_helper_origin_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_loop_carried_helper_origin_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -12850,11 +13036,13 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_conditional_continue_helper_origin_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_conditional_continue_helper_origin_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_conditional_continue_helper_origin', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_conditional_continue_helper_origin',
+		'-ownership', source)
 	assert out == '0\nsource'
 }
 
@@ -12908,7 +13096,8 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_break_helper_origin_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_break_helper_origin_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -12964,12 +13153,14 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_labeled_continue_inner_fixed_point_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_labeled_continue_inner_fixed_point_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	source_drop_pos := main_body.index('array__free(&(') or { -1 }
 	result_move_pos := main_body.index('Array selected = ') or { -1 }
 	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
-	out := run_good_with_flags(v3_bin, 'array_map_labeled_continue_inner_fixed_point', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_labeled_continue_inner_fixed_point',
+		'-ownership', source)
 	assert out == '0\nexternal'
 }
 
@@ -13005,7 +13196,8 @@ fn main() {
 	println(saved[0].text)
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_slice_backing_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_slice_backing_c',
+		'-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
@@ -13323,11 +13515,13 @@ fn main() {
 	println(selected[0])
 }
 '
-	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_c_for_continue_post_pointer_origin_c', '-ownership', source)
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_c_for_continue_post_pointer_origin_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_c_for_continue_post_pointer_origin', '-ownership', source)
+	out := run_good_with_flags(v3_bin, 'array_map_c_for_continue_post_pointer_origin',
+		'-ownership', source)
 	assert out == '0'
 }
 
@@ -13399,8 +13593,6 @@ fn main() {
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	out := run_good_with_flags(v3_bin, 'array_map_aggregate_join_origins', '-ownership',
-		source)
-	assert out == 'source\
-source'
+	out := run_good_with_flags(v3_bin, 'array_map_aggregate_join_origins', '-ownership', source)
+	assert out == 'sourcesource'
 }

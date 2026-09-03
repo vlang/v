@@ -10,7 +10,7 @@ import v3.scanner
 fn (mut g Parser) run() !string {
 	g.next()
 	g.parse_top_level_items(false)!
-	generated := g.out.str()
+	generated := fastc_take_string(mut g.out)
 	g.drain_pending_mono()!
 	return generated
 }
@@ -41,7 +41,7 @@ fn (mut g Parser) drain_pending_mono() ! {
 		if definition != '' {
 			mono_name := fastc_monomorphized_name(src.name, req.concrete)
 			c_name := if src.receiver_type == '' {
-				fastc_c_function_name_for_key(fastc_function_key(src.module_name, mono_name))
+				g.c_function_name_for_key(fastc_function_key(src.module_name, mono_name))
 			} else {
 				fastc_method_c_name(src.module_name, src.receiver_type, mono_name)
 			}
@@ -67,6 +67,9 @@ fn (mut g Parser) reset_lookup_memos() {
 	g.nonlocal_name_type_memo = map[string]string{}
 	g.resolved_name_memo = map[string]string{}
 	g.declared_type_key_memo = map[string]FastcMemoEntry{}
+	g.type_memo = map[i64]string{}
+	g.method_key_memo = map[string]map[string]string{}
+	g.field_memo = map[string]map[string]FastcStructField{}
 }
 
 // parse_mono_instance re-parses one concrete instance in its defining module, so its body
@@ -139,7 +142,10 @@ fn (mut g Parser) parse_top_level_items(stop_at_block_end bool) ! {
 			continue
 		}
 		if g.tok == .key_fn {
+			out_start := g.out.len
+			proto_start := g.protos.len
 			g.parse_function(item_enabled)!
+			g.record_function_span(out_start, proto_start)
 			continue
 		}
 		if g.has_main {
@@ -578,6 +584,8 @@ fn (mut g Parser) skip_import() ! {
 }
 
 fn (mut g Parser) parse_function(enabled bool) ! {
+	g.last_function_c_name = ''
+	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
 	g.temp_id = 0
 	g.direct_array_access = g.pending_direct_array_access
@@ -641,7 +649,8 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		} else {
 			receiver_type
 		}
-		params << '${receiver_parameter_type} ${fastc_c_identifier(receiver_name)}'
+		params << '${fastc_output_c_type(receiver_parameter_type)} ${fastc_c_identifier(receiver_name)}'
+		g.type_memo.clear()
 		g.locals[receiver_name] = FastcLocal{
 			is_mut: receiver_is_mut
 			is_reference: receiver_is_reference
@@ -779,7 +788,8 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	} else {
 		fastc_method_c_name(g.module_name, fastc_c_declared_type_name(receiver_key), name)
 	}
-	c_return_type := if is_main { 'int' } else { return_type }
+	g.last_function_c_name = c_name
+	c_return_type := if is_main { 'int' } else { fastc_output_c_type(return_type) }
 	c_params := if is_main && g.selfhost {
 		'int argc, char **argv'
 	} else if params.len == 0 {
@@ -792,7 +802,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.write_line('${c_return_type} ${c_name}(${c_params}) {')
 		g.indent++
 		if return_type != 'void' {
-			g.write_line('return (${return_type}){0};')
+			g.write_line('return (${fastc_output_c_type(return_type)}){0};')
 		}
 		g.indent--
 		g.write_line('}')
@@ -914,7 +924,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		// Self-host input was already accepted by the bootstrap compiler. Keep C's
 		// control-flow rules satisfied when the streaming parser cannot prove that
 		// every nested source branch terminates.
-		g.write_line('return (${return_type}){0};')
+		g.write_line('return (${fastc_output_c_type(return_type)}){0};')
 	}
 	if is_main {
 		g.write_line('return 0;')
@@ -962,8 +972,21 @@ fn (mut g Parser) emit_generic_body_stub(out_checkpoint int, saved_indent int, b
 	g.s = body_end
 	g.next()
 	if return_type != 'void' {
-		g.write_line('return (${return_type}){0};')
+		g.write_line('return (${fastc_output_c_type(return_type)}){0};')
 	}
+}
+
+// record_function_span notes the C definition the last parse_function wrote
+// to `out` (and its prototype in `protos`) for the reachability prune.
+fn (mut g Parser) record_function_span(out_start int, proto_start int) {
+	if g.last_function_c_name == '' || g.in_mono_drain {
+		return
+	}
+	g.function_ids << g.function_id_table[g.last_function_c_name] or { -1 }
+	g.function_spans << out_start
+	g.function_spans << g.out.len
+	g.proto_spans << proto_start
+	g.proto_spans << g.protos.len
 }
 
 fn fastc_method_c_name(module_name string, receiver_type string, name string) string {
@@ -1055,6 +1078,7 @@ fn (mut g Parser) skip_c_function_declaration() ! {
 }
 
 fn (mut g Parser) parse_script() ! {
+	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
 	g.has_main = true
 	g.protos.writeln('int main(void);')
@@ -1119,7 +1143,8 @@ fn (mut g Parser) parse_parameters() ![]string {
 			if is_fn_pointer {
 				// Declare a real function pointer with unspecified args so `f(x)`
 				// compiles as a direct call; the return C type is recovered above.
-				params << '${fn_return_type} (*${c_name})()'
+				params << '${fastc_output_c_type(fn_return_type)} (*${c_name})()'
+				g.type_memo.clear()
 				g.locals[parameter_name] = FastcLocal{
 					is_mut: is_mut
 					typ: type_name
@@ -1127,7 +1152,8 @@ fn (mut g Parser) parse_parameters() ![]string {
 					fn_option_value_type: fn_option_value_type
 				}
 			} else {
-				params << '${type_name} ${c_name}'
+				params << '${fastc_output_c_type(type_name)} ${c_name}'
+				g.type_memo.clear()
 				g.locals[parameter_name] = FastcLocal{
 					is_mut: is_mut
 					is_reference: is_reference
@@ -1249,6 +1275,19 @@ fn (mut g Parser) parse_multi_return_types() ![]string {
 // cast type in a `match` branch.
 const fastc_boxed_primitive_types = ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
 	'f32', 'f64', 'bool', 'rune', 'isize', 'usize', 'char', 'voidptr']
+
+// fastc_output_c_type maps a semantic FastC type string to the C spelling that
+// is physically written into a declaration or cast. Only the platform-width
+// `int` differs from its semantic key: it is emitted as `i64`/`i32` per the
+// target, while staying `int` for method-name mangling and type inference (so
+// `int` and `i64` keep distinct methods). Pointer suffixes are preserved.
+fn fastc_output_c_type(t string) string {
+	base := t.trim_right('*')
+	if base == 'int' {
+		return fastc_platform_int_c_type + t[base.len..]
+	}
+	return t
+}
 
 fn fastc_primitive_c_type(raw_type string) ?string {
 	return match raw_type {

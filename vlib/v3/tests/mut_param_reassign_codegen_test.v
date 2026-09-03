@@ -520,8 +520,8 @@ fn main() {
 }
 ')
 	assert out == '62'
-	assert c_source.contains('int read_field(main__Item** item) {'), 'missing main__Item** signature'
-	assert !c_source.contains('int read_field(main__Item*** item) {'), 'found over-indirected main__Item*** signature'
+	assert c_source.contains('i64 read_field(main__Item** item) {'), 'missing main__Item** signature'
+	assert !c_source.contains('i64 read_field(main__Item*** item) {'), 'found over-indirected main__Item*** signature'
 	assert c_source.contains('return ((*item))->value;'), 'missing single slot dereference'
 	assert c_source.contains('return (*(*item));'), 'missing source dereference after slot dereference'
 	assert c_source.contains('copied_value = (*(*item));'), 'missing standalone assignment dereference'

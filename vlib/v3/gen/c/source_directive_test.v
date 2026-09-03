@@ -230,7 +230,7 @@ fn test_preserved_header_passes_definite_parent_macro_state_to_children() {
 	assert 'omitted_api' !in g.inlined_c_declared_fns
 }
 
-fn test_preserved_header_keeps_conditional_macro_mutations_uncertain() {
+fn test_preserved_header_applies_valued_flag_macro_to_conditionals() {
 	root := os.join_path(os.vtmp_dir(), 'v3_preserved_conditional_macro_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -242,13 +242,13 @@ fn test_preserved_header_keeps_conditional_macro_mutations_uncertain() {
 		'#if FEATURE == 2\n#define HAS_FOO\n#endif\n#ifndef HAS_FOO\nint foo(void);\n#endif\n#define HAS_BAR\n#if FEATURE == 2\n#undef HAS_BAR\n#endif\n#ifndef HAS_BAR\nint bar(void);\n#endif\nint always_active(void);\n')!
 
 	mut g := FlatGen.new()
-	// Macro values from C flags are not evaluated by this lightweight scanner, so
-	// both mutations are possible rather than definitely active or inactive.
+	// The scanner should match the real preprocessor: FEATURE is 2, so HAS_FOO is
+	// defined and HAS_BAR is undefined.
 	g.c_flags << '-DFEATURE=2'
 	g.collect_preserved_header_file(header, [root])
 
 	assert 'foo' !in g.inlined_c_declared_fns
-	assert 'bar' !in g.inlined_c_declared_fns
+	assert 'bar' in g.inlined_c_declared_fns
 	assert 'always_active' in g.inlined_c_declared_fns
 }
 

@@ -1,0 +1,190 @@
+fn test_borrowed_array_push_many_is_cloned() ? {
+	holder := &DynamicHolder{
+		items: [Payload{
+			values: ["original"]
+		}]
+	}
+	mut items := []Payload{}
+	items << holder.items
+	items[0].values[0] = "ordinary push many"
+	assert holder.items[0].values[0] == "original"
+
+	mut optional := OptionalPayloads{}
+	optional.items = []
+	optional.items? << holder.items
+	mut optional_items := optional.items or { panic(err) }
+	optional_items[0].values[0] = "optional push many"
+	assert holder.items[0].values[0] == "original"
+}
+
+fn test_borrowed_append_is_cloned_once(holder &Holder) ? {
+	mut items := []Payload{}
+	items << (*holder).left
+	items[0].values[0] = "ordinary append"
+	assert holder.left.values[0] == "left"
+
+	mut optional := OptionalPayloads{}
+	optional.items = []
+	optional.items? << (*holder).left
+	optional_items := optional.items or { panic(err) }
+	assert optional_items[0].values[0] == "left"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_borrowed_prepend_and_insert_are_cloned(holder &Holder) {
+	mut items := []Payload{}
+	items.prepend(holder.left)
+	items[0].values[0] = "prepended"
+	assert holder.left.values[0] == "left"
+
+	items.insert(0, holder.right)
+	items[0].values[0] = "inserted"
+	assert holder.right.values[0] == "right"
+}
+
+fn test_borrowed_bulk_prepend_and_insert_are_cloned() {
+	holder := &DynamicHolder{
+		items: [Payload{
+			values: ["original"]
+		}]
+	}
+	mut prepended := []Payload{}
+	prepended.prepend(holder.items)
+	prepended[0].values[0] = "bulk prepended"
+	assert holder.items[0].values[0] == "original"
+
+	mut inserted := []Payload{}
+	inserted.insert(0, holder.items)
+	inserted[0].values[0] = "bulk inserted"
+	assert holder.items[0].values[0] == "original"
+}
+
+fn test_borrowed_array_initializer_is_cloned_per_element(holder &Holder) {
+	mut items := []Payload{len: 2, init: holder.left}
+	items[0].values[0] = "first"
+	assert items[1].values[0] == "left"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_borrowed_array_literal_element_is_cloned(holder &Holder) {
+	mut items := [holder.left]
+	items[0].values[0] = "literal copy"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_borrowed_fixed_array_literal_element_is_cloned(holder &Holder) {
+	mut items := [holder.left]!
+	items[0].values[0] = "fixed literal copy"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_borrowed_fixed_array_initializer_is_cloned_per_element(holder &Holder) {
+	mut items := [2]Payload{init: holder.left}
+	items[0].values[0] = "fixed first"
+	assert items[1].values[0] == "left"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_borrowed_optional_struct_field_is_cloned(holder &Holder) {
+	optional_copy := OptionalCopy{
+		value: holder.left
+	}
+	mut value := optional_copy.value or { panic(err) }
+	value.values[0] = "optional copy"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_borrowed_optional_wrapper_is_not_dropped() {
+	mut drops := 0
+	holder := &DropObservedHolder{
+		value: DropObservedPayload{
+			values: ["owned"]
+			drops:  &drops
+		}
+	}
+	optional_copy := DropObservedOptionalCopy{
+		value: holder.value
+	}
+	assert optional_copy.value != none
+	assert drops == 0
+}
+
+fn test_borrowed_map_literal_entries_are_cloned(holder &Holder) {
+	mut items := {"payload": holder.left}
+	mut item := items["payload"]
+	item.values[0] = "map copy"
+	assert holder.left.values[0] == "left"
+
+	key_holder := &KeyHolder{
+		key: ["borrowed", "key"].join("-")
+	}
+	{
+		keyed := {key_holder.key: 1}
+		assert keyed[key_holder.key] == 1
+	}
+	assert key_holder.key == "borrowed-key"
+}
+
+fn test_borrowed_map_assignment_is_cloned(holder &Holder) {
+	mut items := map[string]Payload{}
+	key := "payload"
+	items[key] = holder.left
+	mut item := items[key]
+	item.values[0] = "map assignment copy"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_map_fixed_array_assignment_clones_borrowed_rhs(holder &Holder) {
+	key := "payload"
+	mut items := map[string][1]Payload{}
+	items[key] = [Payload{
+		values: ["old"]
+	}]!
+	items[key][0] = holder.left
+	items[key][0].values[0] = "map copy"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_borrowed_assoc_overrides_are_cloned(holder &Holder) {
+	base := AssocCopy{
+		left: Payload{
+			values: ["base"]
+		}
+		entry: 0
+	}
+	mut copied := AssocCopy{
+		...base
+		left:  holder.left
+		entry: holder.right
+	}
+	copied.left.values[0] = "assoc copy"
+	mut entry := &(copied.entry as Payload)
+	entry.values[0] = "assoc sum copy"
+	assert holder.left.values[0] == "left"
+	assert holder.right.values[0] == "right"
+}
+
+fn main() {
+	holder := &Holder{
+		left: Payload{
+			values: ["left"]
+		}
+		right: Payload{
+			values: ["right"]
+		}
+	}
+	test_borrowed_array_push_many_is_cloned() or { panic(err) }
+	test_borrowed_append_is_cloned_once(holder) or { panic(err) }
+	test_borrowed_prepend_and_insert_are_cloned(holder)
+	test_borrowed_bulk_prepend_and_insert_are_cloned()
+	test_borrowed_array_initializer_is_cloned_per_element(holder)
+	test_borrowed_array_literal_element_is_cloned(holder)
+	test_borrowed_fixed_array_literal_element_is_cloned(holder)
+	test_borrowed_fixed_array_initializer_is_cloned_per_element(holder)
+	test_borrowed_optional_struct_field_is_cloned(holder)
+	test_borrowed_optional_wrapper_is_not_dropped()
+	test_borrowed_map_literal_entries_are_cloned(holder)
+	test_borrowed_map_assignment_is_cloned(holder)
+	test_map_fixed_array_assignment_clones_borrowed_rhs(holder)
+	test_borrowed_assoc_overrides_are_cloned(holder)
+}

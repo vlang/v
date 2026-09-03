@@ -4011,11 +4011,11 @@ fn (mut tc TypeChecker) check_c_fn_redeclarations(a &flat.FlatAst) {
 					if child.typ.starts_with('...') {
 						is_variadic = true
 					} else {
-						params << tc.c_type(tc.parse_type(child.typ))
+						params << tc.c_extern_abi_type(tc.parse_type(child.typ))
 					}
 				}
 				signature := CFnDeclSignature{
-					return_type: tc.c_type(tc.parse_type(node.typ))
+					return_type: tc.c_extern_abi_type(tc.parse_type(node.typ))
 					params:      params
 					is_variadic: is_variadic
 				}
@@ -7930,8 +7930,7 @@ fn (tc &TypeChecker) fn_may_store_globally(name string, mut visiting map[string]
 	}
 	fn_node := tc.a.nodes[decl.idx]
 	for i in 0 .. fn_node.children_count {
-		if tc.node_calls_fn_that_may_store_globally(tc.a.child(&fn_node, i), decl.mod,
-			mut visiting) {
+		if tc.node_calls_fn_that_may_store_globally(tc.a.child(&fn_node, i), decl.mod, mut visiting) {
 			return true
 		}
 	}
@@ -7955,16 +7954,16 @@ fn (tc &TypeChecker) node_calls_fn_that_may_store_globally(id flat.NodeId, calle
 		if node.children_count > 0 {
 			callee := tc.a.child_node(&node, 0)
 			if callee.kind == .ident {
-				if tc.fn_may_store_globally(checker_qualified_fn_name(caller_mod, callee.value),
-					mut visiting) {
+				if tc.fn_may_store_globally(checker_qualified_fn_name(caller_mod, callee.value), mut
+					visiting)
+				{
 					return true
 				}
 			}
 		}
 	}
 	for i in 0 .. node.children_count {
-		if tc.node_calls_fn_that_may_store_globally(tc.a.child(&node, i), caller_mod,
-			mut visiting) {
+		if tc.node_calls_fn_that_may_store_globally(tc.a.child(&node, i), caller_mod, mut visiting) {
 			return true
 		}
 	}

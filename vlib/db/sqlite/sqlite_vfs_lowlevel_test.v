@@ -44,7 +44,7 @@ fn test_verify_vfs_is_actually_used() {
 	}
 	mut vfs_descr := &sqlite.Sqlite3_vfs{
 		iVersion:          2
-		szOsFile:          int(sizeof(ExampleVfsOpenedFile))
+		szOsFile:          i32(sizeof(ExampleVfsOpenedFile))
 		mxPathname:        max_file_name_len
 		zName:             vfs_name.str
 		pAppData:          vfs_state
@@ -105,7 +105,7 @@ fn to_vfsopenedfile(t &sqlite.Sqlite3_file) &ExampleVfsOpenedFile {
 	}
 }
 
-fn example_vfs_fullpathname(vfs &sqlite.Sqlite3_vfs, input &char, size_of_output int, output &char) int {
+fn example_vfs_fullpathname(vfs &sqlite.Sqlite3_vfs, input &char, size_of_output i32, output &char) i32 {
 	println('fullpathname called')
 
 	mut vfs_state := to_vfsstate(vfs)
@@ -123,7 +123,7 @@ fn example_vfs_fullpathname(vfs &sqlite.Sqlite3_vfs, input &char, size_of_output
 	return sqlite.sqlite_ok
 }
 
-fn example_vfs_access(vfs &sqlite.Sqlite3_vfs, zPath &char, flags int, pResOut &int) int {
+fn example_vfs_access(vfs &sqlite.Sqlite3_vfs, zPath &char, flags i32, pResOut &i32) i32 {
 	println('access called')
 	mut vfs_state := &ExampleVfsState{}
 
@@ -137,7 +137,7 @@ fn example_vfs_access(vfs &sqlite.Sqlite3_vfs, zPath &char, flags int, pResOut &
 }
 
 fn example_vfs_open(vfs &sqlite.Sqlite3_vfs, file_name_or_null_for_tempfile &char, vfs_opened_file &sqlite.Sqlite3_file,
-	in_flags int, out_flags &int) int {
+	in_flags i32, out_flags &i32) i32 {
 	println('open called')
 
 	mut is_temp := false
@@ -179,7 +179,7 @@ fn example_vfs_open(vfs &sqlite.Sqlite3_vfs, file_name_or_null_for_tempfile &cha
 	return sqlite.sqlite_ok
 }
 
-fn example_vfsfile_checkreservedlock(file &sqlite.Sqlite3_file, pResOut &int) int {
+fn example_vfsfile_checkreservedlock(file &sqlite.Sqlite3_file, pResOut &i32) i32 {
 	println('file checkreservedlock')
 
 	unsafe {
@@ -188,25 +188,25 @@ fn example_vfsfile_checkreservedlock(file &sqlite.Sqlite3_file, pResOut &int) in
 	return sqlite.sqlite_ok
 }
 
-fn example_vfsfile_filecontrol(file &sqlite.Sqlite3_file, op int, arg voidptr) int {
+fn example_vfsfile_filecontrol(file &sqlite.Sqlite3_file, op i32, arg voidptr) i32 {
 	println('file filecontrol')
 
 	return 0
 }
 
-fn example_vfsfile_devicecharacteristics(file &sqlite.Sqlite3_file) int {
+fn example_vfsfile_devicecharacteristics(file &sqlite.Sqlite3_file) i32 {
 	println('file devicecharacteristics')
 
 	return 0
 }
 
-fn example_vfsfile_size(file &sqlite.Sqlite3_file, result &i64) int {
+fn example_vfsfile_size(file &sqlite.Sqlite3_file, result &i64) i32 {
 	println('file size')
 
 	return sqlite.sqlite_ok
 }
 
-fn example_vfsfile_read(file &sqlite.Sqlite3_file, output voidptr, amount int, offset i64) int {
+fn example_vfsfile_read(file &sqlite.Sqlite3_file, output voidptr, amount i32, offset i64) i32 {
 	println('file read')
 
 	assert amount > 0
@@ -216,49 +216,49 @@ fn example_vfsfile_read(file &sqlite.Sqlite3_file, output voidptr, amount int, o
 		vfsfile.vfs_state.log << 'read file=${vfsfile.name}'
 	}
 	unsafe {
-		vmemset(output, 0, amount)
+		vmemset(output, 0, int(amount))
 	}
 
 	return sqlite.sqlite_ioerr_short_read
 }
 
-fn example_vfsfile_truncate(file &sqlite.Sqlite3_file, size i64) int {
+fn example_vfsfile_truncate(file &sqlite.Sqlite3_file, size i64) i32 {
 	println('file truncate')
 
 	return sqlite.sqlite_ok
 }
 
-fn example_vfsfile_sectorsize(file &sqlite.Sqlite3_file) int {
+fn example_vfsfile_sectorsize(file &sqlite.Sqlite3_file) i32 {
 	println('file sectorsize')
 
 	return 0
 }
 
-fn example_vfsfile_sync(file &sqlite.Sqlite3_file, flags int) int {
+fn example_vfsfile_sync(file &sqlite.Sqlite3_file, flags i32) i32 {
 	println('file sync called')
 
 	return sqlite.sqlite_ok
 }
 
-fn example_vfsfile_lock(file &sqlite.Sqlite3_file, elock int) int {
+fn example_vfsfile_lock(file &sqlite.Sqlite3_file, elock i32) i32 {
 	println('file lock called')
 
 	return sqlite.sqlite_ok
 }
 
-fn example_vfsfile_unlock(file &sqlite.Sqlite3_file, elock int) int {
+fn example_vfsfile_unlock(file &sqlite.Sqlite3_file, elock i32) i32 {
 	println('file unlock called')
 
 	return sqlite.sqlite_ok
 }
 
-fn example_vfsfile_write(file &sqlite.Sqlite3_file, buf voidptr, amount int, offset i64) int {
+fn example_vfsfile_write(file &sqlite.Sqlite3_file, buf voidptr, amount i32, offset i64) i32 {
 	println('file write called')
 
 	return sqlite.sqlite_ok
 }
 
-fn example_vfsfile_close(file &sqlite.Sqlite3_file) int {
+fn example_vfsfile_close(file &sqlite.Sqlite3_file) i32 {
 	println('file close called')
 
 	unsafe {
@@ -268,13 +268,13 @@ fn example_vfsfile_close(file &sqlite.Sqlite3_file) int {
 	return sqlite.sqlite_ok
 }
 
-fn example_vfs_delete(vfs &sqlite.Sqlite3_vfs, name &char, sync_dir int) int {
+fn example_vfs_delete(vfs &sqlite.Sqlite3_vfs, name &char, sync_dir i32) i32 {
 	println('vfs delete called')
 
 	return sqlite.sqlite_ok
 }
 
-fn example_vfs_getlasterror(vfs &sqlite.Sqlite3_vfs, i int, o &char) int {
+fn example_vfs_getlasterror(vfs &sqlite.Sqlite3_vfs, i i32, o &char) i32 {
 	println('vfs getlasterror called')
 
 	unsafe {

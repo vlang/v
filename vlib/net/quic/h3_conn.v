@@ -260,6 +260,12 @@ pub fn new_h3_conn(mut qc QuicConn, params H3ConnParams) &H3Conn {
 	}
 }
 
+// free releases native resources owned by the wrapped QUIC connection.
+// It is idempotent and must be called once the H3Conn will no longer be polled.
+pub fn (mut h H3Conn) free() {
+	h.qc.handshake.free()
+}
+
 // established reports whether the wrapped QuicConn has reached RFC 9000's
 // `.established` state -- the earliest point at which this connection's
 // own control/QPACK streams are queued to open, and the signal net.http

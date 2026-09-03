@@ -541,7 +541,12 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 				t.infer_for_in_elem_type(iter_type, node)
 			}
 			if elem_type.len > 0 {
-				val_type := if node.op == .amp || iter_type.starts_with('&map[') {
+				// Only `for k, mut v in m` (`.amp`) binds the value by reference, and C
+				// generation declares the binding by reference on that same condition. A
+				// container that is merely a map *reference* (`m &map[string]bool`) still binds
+				// a plain value copy, so typing it `&V` here makes every use of the binding
+				// emit a dereference of a non-pointer local.
+				val_type := if node.op == .amp {
 					'&${elem_type}'
 				} else {
 					elem_type
@@ -560,7 +565,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 					t.infer_for_in_elem_type(iter_type, node)
 				}
 				if elem_type.len > 0 {
-					value_type := if node.op == .amp || iter_type.starts_with('&map[') {
+					value_type := if node.op == .amp {
 						'&${elem_type}'
 					} else {
 						elem_type

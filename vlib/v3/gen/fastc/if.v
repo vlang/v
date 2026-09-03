@@ -84,7 +84,7 @@ fn (mut g Parser) parse_if() !bool {
 	// `if local is Variant { ... }` on a boxed sum-type/interface local smart-casts
 	// `local` to the concrete variant inside the then-branch, so its fields and
 	// methods resolve. Only the exact `local is Variant` form (no `&&`/`||`) binds.
-	cond_tokens := g.last_expression.clone()
+	cond_tokens := g.last_expression
 	mut smartcast_name := ''
 	mut smartcast_type := ''
 	mut smartcast_tmp := ''
@@ -94,8 +94,7 @@ fn (mut g Parser) parse_if() !bool {
 			boxed := fastc_normalize_inferred_type(local.typ)
 			if g.is_boxed_type(boxed) {
 				if cond_tokens.len == 3 && cond_tokens[2].tok == .name {
-					if variant_key := g.resolve_declared_type_key(cond_tokens[2].lit)
-					{
+					if variant_key := g.resolve_declared_type_key(cond_tokens[2].lit) {
 						smartcast_name = cond_tokens[0].lit
 						smartcast_type = fastc_c_declared_type_name(variant_key)
 						smartcast_boxed_type = local.typ

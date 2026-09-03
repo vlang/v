@@ -617,7 +617,7 @@ fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	v3_bin := build_v3()
 	optional_c := gen_c(v3_bin, 'fn_value_optional_void_local_c', optional_fn_src)
 	assert !optional_c.contains('Optional f = __anon_fn'), optional_c
-	assert !optional_c.contains('int f = __anon_fn'), optional_c
+	assert !optional_c.contains('i64 f = __anon_fn'), optional_c
 	assert optional_c.contains('typedef struct Optional (*_fn_ptr_'), optional_c
 	assert optional_c.contains(' f = __anon_fn_'), optional_c
 
@@ -628,30 +628,30 @@ fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 
 	plain_c := gen_c(v3_bin, 'fn_value_plain_int_local_c', plain_fn_src)
 	assert !plain_c.contains('Optional f = __anon_fn'), plain_c
-	assert !plain_c.contains('int f = __anon_fn'), plain_c
-	assert plain_c.contains('typedef int (*_fn_ptr_'), plain_c
+	assert !plain_c.contains('i64 f = __anon_fn'), plain_c
+	assert plain_c.contains('typedef i64 (*_fn_ptr_'), plain_c
 	assert plain_c.contains(' f = __anon_fn_'), plain_c
 
 	shadow_c := gen_c(v3_bin, 'fn_value_local_ident_shadow_c', local_ident_shadow_src)
-	assert shadow_c.contains('int foo = 10'), shadow_c
-	assert shadow_c.contains('int f = foo'), shadow_c
+	assert shadow_c.contains('i64 foo = 10'), shadow_c
+	assert shadow_c.contains('i64 f = foo'), shadow_c
 	call_shadow_c := gen_c(v3_bin, 'fn_value_call_return_shadow_c',
 		local_fn_value_call_return_shadow_src)
 	assert call_shadow_c.contains('string s = f();'), call_shadow_c
-	assert !call_shadow_c.contains('int s = f();'), call_shadow_c
+	assert !call_shadow_c.contains('i64 s = f();'), call_shadow_c
 
 	shadow_call_c := gen_c(v3_bin, 'fn_value_local_call_shadows_global_return_c',
 		local_fn_call_shadow_global_return_src)
-	assert shadow_call_c.contains('int x ='), shadow_call_c
+	assert shadow_call_c.contains('i64 x ='), shadow_call_c
 	assert !shadow_call_c.contains('string x ='), shadow_call_c
 
 	imported_c := gen_project_c(v3_bin, 'fn_value_imported_selector_local_c',
 		imported_fn_value_project_files())
-	assert !imported_c.contains('int f = worker__inc'), imported_c
-	assert !imported_c.contains('int loader = worker__read_ok'), imported_c
+	assert !imported_c.contains('i64 f = worker__inc'), imported_c
+	assert !imported_c.contains('i64 loader = worker__read_ok'), imported_c
 	assert !imported_c.contains(' f = main__inc'), imported_c
-	assert imported_c.contains('int local_f = local_worker.inc'), imported_c
-	assert imported_c.contains('typedef int (*_fn_ptr_'), imported_c
+	assert imported_c.contains('i64 local_f = local_worker.inc'), imported_c
+	assert imported_c.contains('typedef i64 (*_fn_ptr_'), imported_c
 	assert imported_c.contains(' f = worker__inc'), imported_c
 	assert imported_c.contains('f = worker__dec'), imported_c
 	assert imported_c.contains(' loader = worker__read_ok'), imported_c
@@ -666,7 +666,7 @@ fn test_shadowed_fn_value_calls_use_bound_callable_types() {
 
 	optional_c := gen_c(v3_bin, 'fn_value_optional_call_shadow_c',
 		local_fn_value_optional_call_shadow_src)
-	assert optional_c.contains('take((Optional){.ok = true, .value = f()})'), optional_c
+	assert optional_c.contains('take((Optional_i64){.ok = true, .value = f()})'), optional_c
 	assert !optional_c.contains('take(f())'), optional_c
 
 	drop_owned_c := gen_c(v3_bin, 'drop_owned_callback_shadow_c', drop_owned_callback_shadow_src)

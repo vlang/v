@@ -1,0 +1,430 @@
+struct Payload implements IClone {
+mut:
+	values []string
+}
+
+const cache = Payload{
+	values: ["constant"]
+}
+
+const cached_payloads = [Payload{
+	values: ["cached"]
+}]
+
+fn (value &Payload) clone() Payload {
+	return Payload{
+		values: value.values.clone()
+	}
+}
+
+fn (value Payload) payload_text() string {
+	return value.values[0]
+}
+
+struct ObservedPayload implements IClone {
+mut:
+	values []string
+	clones &int
+}
+
+fn (value &ObservedPayload) clone() ObservedPayload {
+	unsafe {
+		*value.clones += 1
+	}
+	return ObservedPayload{
+		values: value.values.clone()
+		clones: value.clones
+	}
+}
+
+struct Holder {
+	left  Payload
+	right Payload
+}
+
+struct RotatingHolder {
+mut:
+	current Payload
+}
+
+fn (mut holder RotatingHolder) snapshot_and_replace() Payload {
+	snapshot := holder.current
+	holder.current = Payload{
+		values: ["replacement"]
+	}
+	return snapshot
+}
+
+struct FixedHolder {
+	items [1]Payload
+}
+
+struct DynamicCopy {
+mut:
+	items []Payload
+}
+
+struct DynamicHolder {
+	items []Payload
+}
+
+struct ObservedPair {
+	left  ObservedPayload
+	right ObservedPayload
+}
+
+struct ObservedOptionalHolder {
+	value ?ObservedPayload
+}
+
+struct ObservedAssignmentTarget {
+mut:
+	payload ObservedPayload
+}
+
+struct ObservedOptionalNode {
+	parent ?&ObservedAssignmentTarget
+}
+
+struct ObservedSharedLeft {
+mut:
+	payload ObservedPayload
+}
+
+struct ObservedSharedRight {
+mut:
+	payload ObservedPayload
+}
+
+type ObservedSharedEntry = ObservedSharedLeft | ObservedSharedRight
+
+interface ObservedPayloadTarget {
+mut:
+	payload ObservedPayload
+}
+
+struct ObservedInterfaceTarget {
+mut:
+	payload ObservedPayload
+}
+
+type Entry = Payload | int
+
+struct EntryHolder {
+	entry Entry
+}
+
+struct EntryCopy {
+	entry Entry
+}
+
+struct AssocCopy {
+mut:
+	left  Payload
+	entry Entry
+}
+
+struct KeyHolder {
+	key string
+}
+
+struct OptionalPayloads {
+mut:
+	items ?[]Payload
+}
+
+struct OptionalCopy {
+mut:
+	value ?Payload
+}
+
+type PayloadMap = map[string]Payload
+
+interface Drop {
+mut:
+	drop()
+}
+
+interface PayloadReader {
+	payload_text() string
+}
+
+struct Tracked implements Drop {
+	id    int
+	drops &int
+}
+
+type TrackedMap = map[string]Tracked
+
+fn (mut value Tracked) drop() {
+	if value.drops != unsafe { nil } {
+		unsafe {
+			*value.drops += 1
+		}
+	}
+}
+
+struct DropObservedPayload implements IClone, Drop {
+mut:
+	values []string
+	drops  &int
+}
+
+fn (value &DropObservedPayload) clone() DropObservedPayload {
+	return DropObservedPayload{
+		values: value.values.clone()
+		drops:  value.drops
+	}
+}
+
+fn (mut value DropObservedPayload) drop() {
+	unsafe {
+		*value.drops += 1
+	}
+	value.values = []
+}
+
+struct DropObservedHolder {
+	value DropObservedPayload
+}
+
+struct DropObservedOptionalCopy {
+	value ?DropObservedPayload
+}
+
+struct DefaultClonePayload {
+	mut:
+	values []DropObservedPayload
+}
+
+struct DefaultCloneOptionalHolder {
+	value ?DefaultClonePayload
+}
+
+type DefaultCloneEntry = DefaultClonePayload | int
+
+struct DefaultCloneArrayHolder {
+	items []DefaultClonePayload
+}
+
+struct OwnedSlicePayload implements IClone, Drop {
+mut:
+	values []string
+	clones &int
+	drops  &int
+}
+
+fn (value &OwnedSlicePayload) clone() OwnedSlicePayload {
+	unsafe {
+		*value.clones += 1
+	}
+	return OwnedSlicePayload{
+		values: value.values.clone()
+		clones: value.clones
+		drops:  value.drops
+	}
+}
+
+fn (mut value OwnedSlicePayload) drop() {
+	unsafe {
+		*value.drops += 1
+	}
+	value.values = []
+}
+
+// A `to_owned` method retains its receiver while the by-value parameter consumes the map slot.
+fn (entries PayloadMap) to_owned(value Payload) {
+	_ = entries
+	assert value.values[0] == "moved"
+}
+
+fn (holder &Holder) accept(value Payload) string {
+	return value.values[0]
+}
+
+fn (holder &Holder) accept_entry(value Entry) string {
+	if value is Payload {
+		return value.values[0]
+	}
+	return ""
+}
+
+fn (holder &Holder) consume(values ...Payload) string {
+	assert values.len == 1
+	return values[0].values[0]
+}
+
+fn consume_payloads(values ...Payload) string {
+	assert values.len == 1
+	return values[0].values[0]
+}
+
+fn consume_payload_reader(value PayloadReader) string {
+	return value.payload_text()
+}
+
+fn (value &ObservedPayload) accept(other ObservedPayload) string {
+	assert value.values[0] == "left"
+	return other.values[0]
+}
+
+fn get_entry(holder &EntryHolder) Entry {
+	return holder.entry
+}
+
+fn get_optional_entry(holder &EntryHolder) ?Entry {
+	return holder.entry
+}
+
+fn get_fixed_items(holder &FixedHolder) []Payload {
+	return holder.items
+}
+
+fn consume_fixed_items(items []Payload) {
+	mut item := items[0]
+	item.values[0] = "argument copy"
+}
+
+fn consume_cached_payloads(items []Payload) string {
+	return items[0].values[0]
+}
+
+fn consume_fixed_entries(items []Entry) {
+	mut item := &(items[0] as Payload)
+	item.values[0] = "converted argument copy"
+}
+
+fn copy_payload_pointer(value &Payload) Payload {
+	return *value
+}
+
+fn maybe_payload() ?Payload {
+	return none
+}
+
+fn maybe_payload_pair() ?(Payload, Payload) {
+	return none
+}
+
+fn maybe_entry() ?Entry {
+	return none
+}
+
+fn select_payload(holder &Holder, pick_left bool) Payload {
+	return if pick_left {
+		holder.left
+	} else {
+		holder.right
+	}
+}
+
+fn apply_entry_map(mut entries map[string]Entry, callback fn (mut map[string]Entry)) {
+	callback(mut entries)
+}
+
+
+fn replace_borrowed_payload(mut target Payload, holder &Holder) {
+	target = holder.left
+	target.values[0] = "changed through mut parameter"
+}
+
+
+
+
+
+fn remember_alias(mut entries map[string]Entry, key string) {
+	alias := &(entries[key] as Payload)
+	_ = alias
+}
+
+fn replace_after_alias_function(mut entries map[string]Entry, key string, alias Entry) {
+	entries[key] = alias
+}
+
+
+fn replace_in_sibling_branch(mut entries map[string]Entry, key string, mut alias Entry, cond bool) {
+	if cond {
+		alias = &(entries[key] as Payload)
+	} else {
+		entries[key] = alias
+	}
+}
+
+
+fn replace_after_branch_merge(mut entries map[string]Entry, key string, mut alias Entry, cond bool) {
+	if cond {
+		alias = &(entries[key] as Payload)
+	}
+	entries[key] = alias
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+fn make_owned_entry() Entry {
+	return Payload{
+		values: ["owned temporary"]
+	}
+}
+
+
+fn make_owned_slice_payloads(clones &int, drops &int) []OwnedSlicePayload {
+	return [OwnedSlicePayload{
+		values: ["owned slice temporary"]
+		clones: clones
+		drops:  drops
+	}]
+}
+
+fn consume_owned_rvalue_slice(clones &int, drops &int) {
+	mut copied := make_owned_slice_payloads(clones, drops)[..]
+	assert unsafe { *clones } == 1
+	copied[0].values[0] = "consumed"
+	assert copied[0].values[0] == "consumed"
+}
+
+
+
+
+
+
+
+
+
+
+
+fn drop_same_module_const_field_projection() {
+	values := cache.values
+	assert values[0] == "constant"
+}

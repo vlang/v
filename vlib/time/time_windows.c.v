@@ -8,12 +8,12 @@ module time
 
 pub struct C.tm {
 pub mut:
-	tm_year int
-	tm_mon  int
-	tm_mday int
-	tm_hour int
-	tm_min  int
-	tm_sec  int
+	tm_year i32
+	tm_mon  i32
+	tm_mday i32
+	tm_hour i32
+	tm_min  i32
+	tm_sec  i32
 }
 
 pub struct C._FILETIME {

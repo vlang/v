@@ -62,6 +62,18 @@ pub fn new_scanner(prefs &pref.Preferences, mode Mode) Scanner {
 	}
 }
 
+// skip_block_to resumes scanning at `offset`, right after the `}` that closes
+// a top-level block whose contents the caller does not need to lex (the
+// FastC declaration passes record function bodies once and skip them in the
+// later passes); the scanner state is what scanning that `}` leaves.
+pub fn (mut s Scanner) skip_block_to(offset int) {
+	s.offset = offset
+	s.pos = offset - 1
+	s.lit = ''
+	s.insert_semi = true
+	s.after_dot = false
+}
+
 // init supports init handling for Scanner.
 pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.offset = 0

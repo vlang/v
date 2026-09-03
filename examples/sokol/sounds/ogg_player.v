@@ -105,8 +105,8 @@ fn (mut p Player) play_ogg_file(fpath string) ! {
 	if !(p.channels == p.stream_channels && p.sample_rate == p.stream_rate) {
 		audio.shutdown()
 		audio.setup(
-			num_channels: p.stream_channels
-			sample_rate:  int(p.stream_rate)
+			num_channels: i32(p.stream_channels)
+			sample_rate:  i32(p.stream_rate)
 		)
 		p.sample_rate = audio.sample_rate()
 		p.channels = audio.channels()

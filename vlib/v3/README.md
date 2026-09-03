@@ -155,12 +155,13 @@ the flat AST or conventional C backend. Set `V_MACOS_V3_NO_FALLBACK=1` while val
 turn any attempted compatibility fallback into a hard failure.
 
 Set `FASTC_BENCH=1` when running a FastC self-host compiler to print the generation time and
-`loc/s` for its input (`FASTC_BENCH_REPEAT=N` reports the best of N child runs). `FASTC_BENCH_PHASES=1`
-prints the time of every generation phase, `FASTC_BENCH_FILES=1` the generation time of every source
-file, and `FASTC_BENCH=1 FASTC_BENCH_LOOP=N` repeats generation N times in-process so an external
-sampler can profile it. The compiler's own C preamble and runtime (hashing, option boxing, tuple
-slots) are emitted by the generator that built it, so such changes take effect one generation later:
-measure the compiler built by the modified compiler, not the modified compiler itself.
+`loc/s` for its input (`FASTC_BENCH_REPEAT=N` reports the best of N child runs).
+`FASTC_BENCH_PHASES=1` prints the time of every generation phase, `FASTC_BENCH_FILES=1` the
+generation time of every source file, and `FASTC_BENCH=1 FASTC_BENCH_LOOP=N` repeats generation N
+times in-process so an external sampler can profile it. The compiler's own C preamble and runtime
+(hashing, option boxing, tuple slots) are emitted by the generator that built it, so such changes
+take effect one generation later: measure the compiler built by the modified compiler, not the
+modified compiler itself.
 
 Self-host generations box `?`/`!` payloads out of a per-thread bump chunk rather than `malloc`, keep
 one file record per scanner pass, and honor `@[direct_array_access]` for string and array indexing.
@@ -169,9 +170,65 @@ returned `map` or large struct can no longer overflow it.
 
 Per-file generation, constant parsing, and the declaration and signature collection passes claim
 their work items from a shared atomic counter (largest files first) instead of a static split, so
-workers on faster cores take more files; the serial merge and output order is restored by index. The first parallel pass also records which declaration
-keywords (`interface`, `$if`, type keywords, generic `fn` syntax) each file mentions, and the later
-collection passes skip files that cannot contain what they scan for.
+workers on faster cores take more files; the serial merge and output order is restored by index.
+The first parallel pass also records which declaration keywords (`interface`, `$if`, type keywords,
+generic `fn` syntax) each file mentions, and the later collection passes skip files that cannot
+contain what they scan for.
+
+Source resolution reads the program on worker threads before the ordering walk runs: each
+imported module directory is listed on a thread and its files are read in chunks on further
+threads, never more than the worker limit (CPU count or `VJOBS`) at once. The main thread joins
+listings first and then the chunks in start order, resolving the imports of each chunk as it
+lands, so reading one module overlaps with discovering the next. A resolve memo in `os.vtmp_dir()`
+(`fastc_resolve_<hash>.memo`, keyed by the entry files, vroot, target and defines) records what
+the previous resolution of the same entry touched, so the next run lists every directory, looks
+up every module and stats every file in one batch instead of level by level along the import
+chain; a file's content is taken from the memo's blob only when its size, mtime, ctime and inode
+still match and it was last modified at least two seconds before the memo was written, and it is
+read again otherwise. The memo also keeps each listed directory's file list and the entry
+module's file list together with the directory's own stamp, so an unchanged directory is stat'ed
+instead of listed again (adding, removing or renaming an entry changes that stamp, and the same
+two-second rule applies); module lookups are recorded once per cache key, the memo's blob is read
+in ranges by the same probe workers. The ordering walk itself is unchanged and replays over that
+data, so the output is identical with and without the memo (`V3_FASTC_NO_RESOLVE_MEMO=1` disables
+it). The type declarations are rendered on a worker while the signatures are collected, the
+generic-method scan and the declaration index share one pass, while workers split oversized files
+into generation fragments and build the by-name struct field index as the declaration phases
+run, and the generated C is returned as ordered pieces (whole per-file bodies are shared rather
+than copied into one buffer; only bodies cut around C directive lines are copied) that the drivers
+write directly. Function bodies are pre-scanned for channel `select` statements only in files
+whose bytes contain the word `select`. The declaration index records the text spans of each file's
+constant and global declarations: a large file's constants are parsed as separate parallel
+candidates (merged in source order), and the global phase parses only the recorded global
+declarations instead of whole files.
+
+A self-host build (`-selfhost`) for 64-bit macOS or glibc Linux emits C with no `#include`
+at all: `gen/fastc/c_abi.v` holds, per target, the C library types, struct layouts, macros,
+globals and function prototypes the emitted code uses, and that prelude replaces the header block
+of the preamble; V's own C helper headers (`vlib/os/execute_capture_nix.h`, ...) are inlined
+after it, and `#include` lines from V sources are left out. TinyCC then parses about 42K lines
+instead of the 110K that the system headers expanded to. The build passes
+`-Werror=implicit-function-declaration` (and no `-w`, which would silence it), so a C function
+missing from the table fails the build instead of being called through an implicit `int`
+prototype that truncates pointer results; `c_abi_test.v` compiles the table
+against the host headers and checks every layout, size, value and prototype. The stitch also
+drops the indexed functions (and enum `str`/print helpers) that nothing reachable from `main`,
+the lifecycle hooks or the non-body pieces refers to, which the source-level name-grouped
+reachability keeps: each worker records its definitions and the mangled names they mention, and
+the assembly cuts the unreachable spans out of the pieces (about 9% of the self-host C).
+
+The TinyCC step itself is split: `fastc_write_c_units` cuts the pieces into up to 8
+translation units (the shared head of typedefs, prototypes and runtime in every unit, the
+dispatch tables, lifecycle functions and `main` only in the first, the file bodies grouped by
+size; the globals are definitions in the first unit and `extern` declarations in the others),
+`fastc_compile_c_units` compiles them with concurrent `tcc -c` processes started through
+`posix_spawn` (forking the large compiler process costs more), and one `tcc` call links the
+objects (`VJOBS=1`, `V3_FASTC_NO_PARALLEL=1`, or `-no-parallel` keeps the single-file build; both
+give the same C with `-keepc`). On macOS TinyCC runs Apple's `codesign` after linking, which costs
+~50 ms per build: the drivers put a no-op `codesign` first on its PATH and ad-hoc sign the
+executable themselves (`gen/fastc/macho_sign.v`, SHA-256 page hashes through CommonCrypto,
+patched into the file in place). The SDK path is taken from `SDKROOT` or the toolchain selected by
+`xcrun`; conventional SDK locations are used only as a fallback.
 
 The standalone compiler supports `self` directly and defaults that command to FastC. For example,
 `./v self x5` replaces the compiler through five descendant FastC generations, with each installed

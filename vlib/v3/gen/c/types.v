@@ -165,6 +165,18 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 	if ct.starts_with('fn_ptr:') {
 		ct = g.resolve_fn_ptr_type(ct)
 	}
+	mut bare_ct := ct
+	mut pointer_suffix := ''
+	for bare_ct.ends_with('*') {
+		bare_ct = bare_ct[..bare_ct.len - 1]
+		pointer_suffix += '*'
+	}
+	// Specialized generic bodies can retain a stale bare concrete type spelling.
+	if optional_payload_is_bare_struct(clean_type) {
+		if qualified := g.unique_qualified_struct_c_type(bare_ct) {
+			return qualified + pointer_suffix
+		}
+	}
 	for candidate in [ct, 'main.${ct}'] {
 		if target := g.tc.type_aliases[candidate] {
 			return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
@@ -968,10 +980,31 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 		g.emitted_optional_types[opt_name] = true
 		return false
 	}
+	// A `?fn (...)` payload names a `_fn_ptr_<hash>` typedef. That typedef may only
+	// have been registered (name reserved) without being emitted — e.g. discovered
+	// via an unused declaration whose param resolves to a different C spelling than a
+	// resolved use (`fn (int)` keyed as `fn_ptr:void|int` vs the emitted
+	// `fn_ptr:void|i64` once `int` widens to i64). Emit the referenced fn-ptr typedef
+	// now so this wrapper never references an undefined type.
+	if bare_val_type.starts_with('_fn_ptr_') {
+		g.ensure_fn_ptr_typedef_by_name(bare_val_type)
+	}
 	err_field := if g.has_ierror_interface() { 'IError err; ' } else { '' }
 	g.writeln('typedef struct ${opt_name} { bool ok; ${err_field}${val_type} value; } ${opt_name};')
 	g.emitted_optional_types[opt_name] = true
 	return true
+}
+
+// ensure_fn_ptr_typedef_by_name emits the `_fn_ptr_<hash>` typedef registered under
+// `name` when it has not been emitted yet. Used when an emitted type references a
+// fn-ptr typedef that was only registered (name reserved) but never resolved/used.
+fn (mut g FlatGen) ensure_fn_ptr_typedef_by_name(name string) {
+	for encoded, registered_name in g.fn_ptr_types {
+		if registered_name == name {
+			g.emit_fn_ptr_typedef(encoded, name, mut g.emitted_fn_ptr_typedefs)
+			return
+		}
+	}
 }
 
 // enum_decls supports enum decls handling for FlatGen.

@@ -223,8 +223,10 @@ fn (g &Parser) render_enum_print_expression(tokens []FastcExpressionToken) ?Fast
 	argument := g.render_call_argument_expression(call_arguments[0], c_type) or { return none }
 	return FastcRenderedExpression{
 		source: 'v_fastc_print_enum_${c_type}(${argument}, ${if tokens[0].lit == 'println' {
-			'true'} else {
-			'false'}})'
+			'true'
+		} else {
+			'false'
+		}})'
 		typ: 'void'
 	}
 }
@@ -316,6 +318,9 @@ fn (g &Parser) render_empty_struct_initializer(c_type string) string {
 	layout_type := fastc_trim_pointer_suffix(c_type)
 	mut rendered_fields := []string{}
 	mut rendered_fields_by_name := map[string]string{}
+	// The struct's rendered defaults are consulted; the constants phase
+	// re-parses a file that did so after they are ready.
+	fastc_note_field_defaults_use(g)
 	for field in g.struct_field_info[layout_type] {
 		if field.default_value == '' {
 			continue
@@ -394,7 +399,7 @@ fn (g &Parser) render_struct_literal_field_names(tokens []FastcExpressionToken, 
 				}
 				function_key := fastc_function_key(module_name, field_name)
 				if function_key in g.functions || function_key in g.mono_functions {
-					resolved_names << fastc_c_function_name_for_key(function_key)
+					resolved_names << g.c_function_name_for_key(function_key)
 				}
 				for resolved_name in resolved_names {
 					needle := '.${resolved_name}='
@@ -886,6 +891,34 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 	}
 }
 
+// fastc_contains_method_marker reports whether `rendered` contains a call of
+// `name` on a receiver, i.e. `.name(` or `->name(`, without building the
+// marker strings.
+@[direct_array_access]
+fn fastc_contains_method_marker(rendered string, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	mut from := 0
+	for from + name.len < rendered.len {
+		index := rendered.index_after_(name, from)
+		if index < 0 {
+			return false
+		}
+		// An occurrence at the start has no receiver before it; keep scanning
+		// past it (and past any other non-call occurrence).
+		end := index + name.len
+		if index > 0 && end < rendered.len && rendered[end] == `(` {
+			previous := rendered[index - 1]
+			if previous == `.` || (previous == `>` && index > 1 && rendered[index - 2] == `-`) {
+				return true
+			}
+		}
+		from = index + 1
+	}
+	return false
+}
+
 fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {
 	if tokens.len < 3 {
 		return none
@@ -898,9 +931,7 @@ fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionT
 		// still needs promotion here. A real method call is rendered later with
 		// its receiver and arguments, so preserve the old early exit for it.
 		is_qualified_call := tokens[i - 1].tok == .name && (tokens[i - 1].lit in g.imports || tokens[i - 1].lit == 'C') && (i < 2 || tokens[i - 2].tok != .dot)
-		method_marker := '.${tokens[i + 1].lit}('
-		pointer_method_marker := '->${tokens[i + 1].lit}('
-		if !is_qualified_call && (rendered_expression.contains(method_marker) || rendered_expression.contains(pointer_method_marker)) {
+		if !is_qualified_call && fastc_contains_method_marker(rendered_expression, tokens[i + 1].lit) {
 			return none
 		}
 	}
@@ -1032,8 +1063,8 @@ fn (g &Parser) render_chained_array_access_expression(tokens []FastcExpressionTo
 			lookup_tokens := tokens[start..close + 1]
 			lookup := g.render_map_expression(lookup_tokens) or { continue }
 			raw_lookup := g.render_raw_expression_tokens(lookup_tokens) or { continue }
-			if rendered.contains(raw_lookup) {
-				rendered = rendered.replace(raw_lookup, lookup.source)
+			if fastc_contains(rendered, raw_lookup) {
+				rendered = fastc_replace(rendered, raw_lookup, lookup.source)
 				changed = true
 			}
 			continue
@@ -1070,11 +1101,11 @@ fn (g &Parser) render_chained_array_access_expression(tokens []FastcExpressionTo
 			'(*(${element_type} *)builtin__array_get(${array_value}, ${index_source}))'
 		}
 		mut needle := '${base_source}[${index_source}]'
-		if !rendered.contains(needle) {
+		if !fastc_contains(rendered, needle) {
 			needle = '${raw_base}[${index_source}]'
 		}
-		if rendered.contains(needle) {
-			rendered = rendered.replace(needle, replacement)
+		if fastc_contains(rendered, needle) {
+			rendered = fastc_replace(rendered, needle, replacement)
 			changed = true
 		}
 	}
@@ -2044,7 +2075,7 @@ fn (g &Parser) render_selfhost_simple_array_literal_item(tokens []FastcExpressio
 		inner := g.render_selfhost_simple_array_literal_item(tokens[2..3], cast_type) or {
 			return none
 		}
-		return '((${cast_type})(${inner}))'
+		return '((${fastc_output_c_type(cast_type)})(${inner}))'
 	}
 	if tokens.len != 1 || tokens[0].source != '' {
 		return none
@@ -2096,7 +2127,7 @@ fn (g &Parser) render_function_value_expression(tokens []FastcExpressionToken) ?
 	if function_key !in g.functions && function_key !in g.mono_functions {
 		return none
 	}
-	return '&${fastc_c_function_name_for_key(function_key)}'
+	return '&${g.c_function_name_for_key(function_key)}'
 }
 
 fn (g &Parser) render_method_value_expression(tokens []FastcExpressionToken) ?string {

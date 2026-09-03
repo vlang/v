@@ -198,14 +198,16 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 		}) or { return none }
 		return FastcRenderedExpression{
 			source: if inner_type == 'Option' {
-				inner} else {
-				fastc_option_success_expression(c_type, inner)}
+				inner
+			} else {
+				fastc_option_success_expression(c_type, inner)
+			}
 			typ: 'Option'
 		}
 	}
 	inner := g.render_call_argument_expression(inner_tokens, c_type) or { return none }
 	return FastcRenderedExpression{
-		source: '((${c_type})(${inner}))'
+		source: '((${fastc_output_c_type(c_type)})(${inner}))'
 		typ: c_type
 	}
 }
@@ -457,6 +459,21 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 }
 
 fn (g &Parser) method_function_key(receiver_type string, name string) string {
+	if by_name := g.method_key_memo[receiver_type] {
+		if cached := by_name[name] {
+			return cached
+		}
+	}
+	key := g.method_function_key_impl(receiver_type, name)
+	mut w := unsafe { &Parser(g) }
+	if receiver_type !in w.method_key_memo {
+		w.method_key_memo[receiver_type] = map[string]string{}
+	}
+	w.method_key_memo[receiver_type][name] = key
+	return key
+}
+
+fn (g &Parser) method_function_key_impl(receiver_type string, name string) string {
 	direct_key := '${g.semantic_type_key(receiver_type)}.${name}'
 	if direct_key in g.functions {
 		return direct_key
