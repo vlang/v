@@ -1641,3 +1641,14 @@ fn test_formatter_does_not_separate_a_commented_assert_from_the_next_statement()
 	spaced_out := vfmt('commented_assert_spaced', spaced)
 	assert spaced_out == spaced, spaced_out
 }
+
+// A `match` range pattern took the parser's position when its node was built, which by then was
+// already past the branch's `{`. The formatter then read a comment written after that brace as
+// directly following the pattern and pulled it above the brace — and the next run re-split the
+// pattern list around it.
+fn test_formatter_keeps_a_trailing_comment_on_a_range_match_branch() {
+	source := "fn f(n int) string {\n\tmatch n {\n\t\t48...57, 97...122 { // 0-9a-z\n\t\t\treturn 'alnum'\n\t\t}\n\t\telse {\n\t\t\treturn ''\n\t\t}\n\t}\n}\n"
+	out := vfmt('range_branch_comment', source)
+	assert out == source, out
+	assert vfmt('range_branch_comment_twice', out) == out
+}

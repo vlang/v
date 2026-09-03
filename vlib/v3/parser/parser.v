@@ -7338,12 +7338,16 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		p.next()
 		rhs := p.expr(.lowest)
 		rstart := p.add_children2(cond, rhs)
-		return p.add_node(flat.Node{
+		// Span the range from its low bound to its high bound. Left to `add_node` the node
+		// would take the parser's current position, which is already past the branch's `{`,
+		// and the formatter would then read a comment written after that brace as directly
+		// following the pattern and pull it above the brace.
+		return p.add_node_from(flat.Node{
 			kind:           .range
 			value:          if p.prefs.is_fmt { '...' } else { '' }
 			children_start: rstart
 			children_count: 2
-		})
+		}, cond)
 	}
 	return cond
 }
