@@ -104,8 +104,8 @@ fn (mut t FakeH3UdpTransport) arm_fatal_error(msg string, delay time.Duration) {
 // methods deterministically. Safe only for tests that never touch c.h3.
 fn new_test_h3_mux_conn_no_driver() &H3MuxConn {
 	return &H3MuxConn{
-		transport: H3UdpTransport(new_fake_h3_udp_transport())
-		qmu: sync.new_mutex()
+		transport:  H3UdpTransport(new_fake_h3_udp_transport())
+		qmu:        sync.new_mutex()
 		idle_since: time.now()
 	}
 }
@@ -211,7 +211,7 @@ fn test_fail_conn_fails_a_request_still_in_pending() {
 	mut c := new_test_h3_mux_conn_no_driver()
 	mut s := new_h3_mux_stream()
 	c.pending << PendingH3Request{
-		req: H3ClientRequest{
+		req:    H3ClientRequest{
 			authority: 'example.com'
 		}
 		stream: s
@@ -260,7 +260,7 @@ fn test_fail_conn_is_idempotent() {
 // harness.
 fn new_handshaking_h3_conn() &quic.H3Conn {
 	mut qc, _ := quic.dial(quic.DialParams{
-		server_name: 'example.com'
+		server_name:    'example.com'
 		alpn_protocols: ['h3']
 	}, u64(1000)) or { panic('quic.dial: ${err.msg()}') }
 	return quic.new_h3_conn(mut qc, quic.H3ConnParams{})
@@ -311,7 +311,7 @@ fn test_driver_fails_a_pending_request_stranded_by_a_dying_transport() {
 	mut h3 := new_handshaking_h3_conn()
 	mut c := new_h3_mux_conn(H3UdpTransport(transport), h3, unsafe { nil })
 
-	done := chan bool{ cap: 1 }
+	done := chan bool{cap: 1}
 	mut outcome := &H3TestDoOutcome{}
 	// The driver's first read() call is already in flight (blocked in the
 	// fake's 300ms delay) by the time this spawn schedules -- this do()
@@ -319,8 +319,7 @@ fn test_driver_fails_a_pending_request_stranded_by_a_dying_transport() {
 	// scheduler.
 	spawn h3_test_do_worker(mut c, H3ClientRequest{ authority: 'example.com' }, mut outcome, done)
 	select {
-		_ := <-done {
-		}
+		_ := <-done {}
 		2 * time.second {
 			assert false, "do() never returned -- the request queued during the driver's blocked read() was stranded (the exact regression fail_conn.pending draining fixes)"
 			return
@@ -340,23 +339,23 @@ fn test_driver_fails_a_second_concurrent_pending_request_too() {
 	mut h3 := new_handshaking_h3_conn()
 	mut c := new_h3_mux_conn(H3UdpTransport(transport), h3, unsafe { nil })
 
-	done1 := chan bool{ cap: 1 }
-	done2 := chan bool{ cap: 1 }
+	done1 := chan bool{cap: 1}
+	done2 := chan bool{cap: 1}
 	mut outcome1 := &H3TestDoOutcome{}
 	mut outcome2 := &H3TestDoOutcome{}
-	spawn h3_test_do_worker(mut c, H3ClientRequest{ authority: 'a.example.com' }, mut outcome1, done1)
-	spawn h3_test_do_worker(mut c, H3ClientRequest{ authority: 'b.example.com' }, mut outcome2, done2)
+	spawn h3_test_do_worker(mut c, H3ClientRequest{ authority: 'a.example.com' }, mut outcome1,
+		done1)
+	spawn h3_test_do_worker(mut c, H3ClientRequest{ authority: 'b.example.com' }, mut outcome2,
+		done2)
 	select {
-		_ := <-done1 {
-		}
+		_ := <-done1 {}
 		2 * time.second {
 			assert false, 'first concurrent request never returned'
 			return
 		}
 	}
 	select {
-		_ := <-done2 {
-		}
+		_ := <-done2 {}
 		2 * time.second {
 			assert false, 'second concurrent request never returned'
 			return
@@ -381,7 +380,7 @@ fn test_dispatch_goaway_fails_streams_at_or_above_the_boundary_retryable() {
 	c.streams[8] = above
 
 	c.dispatch_h3_event(quic.H3Event{
-		kind: .goaway
+		kind:      .goaway
 		goaway_id: u64(4)
 	})
 
@@ -409,7 +408,7 @@ fn test_start_request_rejects_a_pending_request_once_goaway_received() {
 	c.goaway_received = true
 	mut s := new_h3_mux_stream()
 	mut p := PendingH3Request{
-		req: H3ClientRequest{
+		req:    H3ClientRequest{
 			authority: 'example.com'
 		}
 		stream: s
@@ -430,10 +429,10 @@ fn test_dispatch_request_error_h3_request_rejected_is_retryable() {
 	mut s := new_h3_mux_stream()
 	c.streams[1] = s
 	c.dispatch_h3_event(quic.H3Event{
-		kind: .request_error
-		stream_id: u64(1)
+		kind:       .request_error
+		stream_id:  u64(1)
 		error_code: quic.H3ErrorCode.request_rejected.code()
-		reason: 'rejected'
+		reason:     'rejected'
 	})
 	s.mu.lock()
 	ended := s.ended
@@ -448,10 +447,10 @@ fn test_dispatch_request_error_other_codes_are_not_retryable() {
 	mut s := new_h3_mux_stream()
 	c.streams[1] = s
 	c.dispatch_h3_event(quic.H3Event{
-		kind: .request_error
-		stream_id: u64(1)
+		kind:       .request_error
+		stream_id:  u64(1)
 		error_code: quic.H3ErrorCode.internal_error.code()
-		reason: 'boom'
+		reason:     'boom'
 	})
 	s.mu.lock()
 	retryable := s.retryable
@@ -467,7 +466,7 @@ fn test_wait_response_rejects_malformed_status() {
 	s.headers_done = true
 	s.resp_headers = [
 		quic.QpackFieldLine{
-			name: ':status'
+			name:  ':status'
 			value: '20000'
 		},
 	]
@@ -485,11 +484,11 @@ fn test_wait_response_rejects_duplicate_status() {
 	s.headers_done = true
 	s.resp_headers = [
 		quic.QpackFieldLine{
-			name: ':status'
+			name:  ':status'
 			value: '200'
 		},
 		quic.QpackFieldLine{
-			name: ':status'
+			name:  ':status'
 			value: '404'
 		},
 	]
@@ -507,11 +506,11 @@ fn test_wait_response_rejects_status_after_a_regular_field() {
 	s.headers_done = true
 	s.resp_headers = [
 		quic.QpackFieldLine{
-			name: 'content-type'
+			name:  'content-type'
 			value: 'text/plain'
 		},
 		quic.QpackFieldLine{
-			name: ':status'
+			name:  ':status'
 			value: '200'
 		},
 	]
@@ -529,11 +528,11 @@ fn test_wait_response_rejects_unknown_pseudo_header() {
 	s.headers_done = true
 	s.resp_headers = [
 		quic.QpackFieldLine{
-			name: ':status'
+			name:  ':status'
 			value: '200'
 		},
 		quic.QpackFieldLine{
-			name: ':path'
+			name:  ':path'
 			value: '/'
 		},
 	]
@@ -551,7 +550,7 @@ fn test_wait_response_rejects_missing_status() {
 	s.headers_done = true
 	s.resp_headers = [
 		quic.QpackFieldLine{
-			name: 'content-type'
+			name:  'content-type'
 			value: 'text/plain'
 		},
 	]
@@ -569,7 +568,7 @@ fn test_wait_response_accepts_well_formed_status() {
 	s.headers_done = true
 	s.resp_headers = [
 		quic.QpackFieldLine{
-			name: ':status'
+			name:  ':status'
 			value: '204'
 		},
 	]
