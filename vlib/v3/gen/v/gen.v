@@ -3920,7 +3920,14 @@ fn (mut g Gen) write_comment(text string) {
 		if i == lines.len - 1 && line == '' {
 			continue
 		}
-		g.writeln(line)
+		if i == 0 {
+			g.writeln(line)
+			continue
+		}
+		// A block comment's continuation lines already carry their own leading whitespace from
+		// the source, so they are written through verbatim. Indenting them again would add a
+		// level on every run and the formatter would never reach a fixed point.
+		g.writeln_verbatim(line)
 	}
 }
 
@@ -4063,6 +4070,13 @@ fn (mut g Gen) write(str string) {
 	}
 	g.out.write_string(str)
 	g.on_newline = false
+}
+
+// writeln_verbatim writes a line without the current indentation, for text that already carries
+// its own.
+fn (mut g Gen) writeln_verbatim(str string) {
+	g.out.writeln(str)
+	g.on_newline = true
 }
 
 @[inline]

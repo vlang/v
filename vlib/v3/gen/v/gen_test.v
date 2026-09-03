@@ -1591,3 +1591,16 @@ fn test_formatter_keeps_rows_of_small_nested_arrays_on_one_line() {
 	out := vfmt('rows_of_small_nested_arrays', source)
 	assert out == source, out
 }
+
+// A block comment's continuation lines already carry their own leading whitespace, so the
+// formatter must write them through as they are. Indenting them again added one level per run:
+// `v fmt` was not a fixed point, and each further run pushed the body one tab deeper.
+fn test_formatter_keeps_block_comment_body_indentation_stable() {
+	source := "fn probe() {\n\t/*\n\tfirst line\n\tsecond line\n\t*/\n\tprintln('x')\n}\n"
+	out := vfmt('block_comment_indent', source)
+	assert out == source, out
+	twice := vfmt('block_comment_indent_twice', out)
+	assert twice == out, twice
+	thrice := vfmt('block_comment_indent_thrice', twice)
+	assert thrice == out, thrice
+}
