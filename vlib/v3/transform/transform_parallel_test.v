@@ -35,9 +35,9 @@ fn test_generated_calls_publish_exact_resolution_except_cgen_intrinsics() {
 fn test_forwarded_optional_conversion_propagates_borrowed_clone() {
 	mut a := flat.FlatAst.new()
 	source := a.add_node(flat.Node{
-		kind:  .ident
+		kind: .ident
 		value: 'source'
-		typ:   '?string'
+		typ: '?string'
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -46,8 +46,7 @@ fn test_forwarded_optional_conversion_propagates_borrowed_clone() {
 		base_type: types.Type(types.string_)
 	})
 
-	result := t.convert_forwarded_optional_result(source, optional, payload, optional, optional,
-		payload, true)
+	result := t.convert_forwarded_optional_result(source, optional, payload, optional, optional, payload, true)
 
 	assert result != source
 	mut saw_clone := false
