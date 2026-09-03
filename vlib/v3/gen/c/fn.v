@@ -564,9 +564,21 @@ fn (g &FlatGen) needs_no_main_runtime_init_caller() bool {
 		&& (g.a.export_fn_names.len > 0 || g.is_shared)
 }
 
+fn (g &FlatGen) needs_closure_runtime_init() bool {
+	if !g.used_fn_contains('closure.closure_init') && !g.used_fn_contains('closure__closure_init') {
+		return false
+	}
+	for _, module_name in g.tc.file_modules {
+		if module_name == 'closure' {
+			return true
+		}
+	}
+	return false
+}
+
 fn (g &FlatGen) runtime_init_is_needed() bool {
 	return g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
-		|| g.global_inits.len > 0 || g.used_fn_contains_in_module('closure_init', 'closure')
+		|| g.global_inits.len > 0 || g.needs_closure_runtime_init()
 }
 
 fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
