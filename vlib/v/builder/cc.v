@@ -2722,6 +2722,11 @@ fn linux_cross_target_for_arch(arch pref.Arch) !LinuxCrossTarget {
 	}
 }
 
+fn linux_cross_compile_include_arg(sysroot string) string {
+	sysroot_include := os.join_path(sysroot, 'include')
+	return '-I ${os.quoted_path(sysroot_include)}'
+}
+
 fn (mut b Builder) cc_linux_cross() {
 	linux_cross_target := linux_cross_target_for_arch(b.pref.arch) or {
 		verror(err.msg())
@@ -2775,7 +2780,7 @@ fn (mut b Builder) cc_linux_cross() {
 		src_args << '-fPIC'
 		src_args << '-target ${linux_cross_target.triple}'
 		src_args << defines
-		src_args << '-I ${os.quoted_path('\${sysroot}/include')}'
+		src_args << linux_cross_compile_include_arg(sysroot)
 		src_args << other_flags
 		src_args << '-o ${os.quoted_path(src_obj)}'
 		src_args << '-c ${os.quoted_path(src)}'
@@ -2796,7 +2801,7 @@ fn (mut b Builder) cc_linux_cross() {
 	cc_args << '-fPIC'
 	cc_args << '-target ${linux_cross_target.triple}'
 	cc_args << defines
-	cc_args << '-I ${os.quoted_path('\${sysroot}/include')} '
+	cc_args << linux_cross_compile_include_arg(sysroot)
 	cc_args << other_flags
 	cc_args << '-o ${os.quoted_path(obj_file)}'
 	cc_args << '-c ${os.quoted_path(b.out_name_c)}'
