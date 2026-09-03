@@ -163,7 +163,7 @@ fn test_mail_message_data_omits_empty_cc_and_bcc_headers() {
 	assert !message.contains('Bcc:')
 }
 
-fn test_mail_message_data_includes_non_empty_cc_and_bcc_headers() {
+fn test_mail_message_data_includes_cc_header_but_omits_bcc() {
 	mail := Mail{
 		from: 'sender@example.com'
 		to: 'receiver@example.com; '
@@ -174,8 +174,9 @@ fn test_mail_message_data_includes_non_empty_cc_and_bcc_headers() {
 
 	message := mail.message_data()
 
-	// ';'-separated input becomes a ','-joined Cc; Bcc is envelope-only.
+	// ';'-separated input becomes a ','-joined Cc header.
 	assert message.contains('Cc: <copy@example.com>, "One" <one@example.com>\r\n')
+	// Bcc addresses are envelope-only per RFC 5321; they must not appear in DATA headers.
 	assert !message.contains('Bcc:')
 }
 
