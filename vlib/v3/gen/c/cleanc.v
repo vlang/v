@@ -5122,7 +5122,7 @@ fn c_header_compiler_predefined_macro_values(ccompiler string, c_flags []string,
 		// MSVC does not accept the GCC `-dM -E` dump, so probe the numeric
 		// predefined macros (notably `_MSC_VER`) with a preprocess-only run so
 		// version guards such as `#if _MSC_VER >= 1900` resolve.
-		return c_header_msvc_predefined_macro_values(ccompiler, c_flags)
+		return c_header_msvc_predefined_macro_values(ccompiler)
 	}
 	path := os.join_path(os.vtmp_dir(), 'v3_header_macros_${os.getpid()}_${time.now().unix_nano()}.c')
 	defer {
@@ -5158,7 +5158,7 @@ fn c_header_msvc_predefined_macro_candidates() []string {
 	]
 }
 
-fn c_header_msvc_predefined_macro_values(ccompiler string, c_flags []string) map[string]string {
+fn c_header_msvc_predefined_macro_values(ccompiler string) map[string]string {
 	candidates := c_header_msvc_predefined_macro_candidates()
 	path := os.join_path(os.vtmp_dir(), 'v3_msvc_macros_${os.getpid()}_${time.now().unix_nano()}.c')
 	defer {
@@ -11855,7 +11855,7 @@ fn c_header_collect_feature_predicate_invocations(text string, mut invocations [
 	for i < text.len {
 		mut predicate := ''
 		for candidate in ['__has_builtin', '__has_feature', '__has_extension'] {
-			if text[i..].starts_with(candidate) {
+			if c_text_matches_at(text, i, candidate) {
 				predicate = candidate
 				break
 			}

@@ -143,7 +143,7 @@ fn main() {
 }
 ') or { panic(err) }
 
-	compile := os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+	compile := os.execute('${os.quoted_path(v3_bin)} --no-parallel ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(os.quoted_path(out))
 	assert run.exit_code == 0, run.output
@@ -187,7 +187,7 @@ fn main() {
 	println(C.XEvent{ value: 42 }.value)
 }
 ')!
-	compile := os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+	compile := os.execute('${os.quoted_path(v3_bin)} --no-parallel ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(os.quoted_path(out))
 	assert run.exit_code == 0, run.output
@@ -297,7 +297,7 @@ fn main() {
 	println(total)
 }
 ')!
-	compile := os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+	compile := os.execute('${os.quoted_path(v3_bin)} --no-parallel ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(os.quoted_path(out))
 	assert run.exit_code == 0, run.output
@@ -343,7 +343,7 @@ fn main() {
 	println(C.InactiveOnceAlias{ value: 42 }.value)
 }
 ')!
-	compile := os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+	compile := os.execute('${os.quoted_path(v3_bin)} --no-parallel ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(os.quoted_path(out))
 	assert run.exit_code == 0, run.output
@@ -379,7 +379,7 @@ fn main() {
 	println(C.OrderedAlias{ value: 42 }.value)
 }
 ')!
-	compile := os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(root)} -b c -o ${os.quoted_path(out)}')
+	compile := os.execute('${os.quoted_path(v3_bin)} --no-parallel ${os.quoted_path(root)} -b c -o ${os.quoted_path(out)}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(os.quoted_path(out))
 	assert run.exit_code == 0, run.output
@@ -422,7 +422,7 @@ fn main() {
 }
 ') or { panic(err) }
 
-	compile := os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+	compile := os.execute('${os.quoted_path(v3_bin)} --no-parallel ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(os.quoted_path(out))
 	assert run.exit_code == 0, run.output
@@ -488,7 +488,7 @@ fn main() {
 	println(C.v3_inlined_source_value(item) + fallback.value)
 }
 ')!
-	compile := os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+	compile := os.execute('${os.quoted_path(v3_bin)} --no-parallel ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(os.quoted_path(out))
 	assert run.exit_code == 0, run.output
@@ -536,7 +536,7 @@ fn main() {
 	println(C.v3_inserted_source_value(item))
 }
 ')!
-	compile := os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+	compile := os.execute('${os.quoted_path(v3_bin)} --no-parallel ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(os.quoted_path(out))
 	assert run.exit_code == 0, run.output
@@ -574,7 +574,7 @@ fn main() {
 	println(C.V3AfterAlias{ value: 43 }.value)
 }
 ')!
-	compile := os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+	compile := os.execute('${os.quoted_path(v3_bin)} --no-parallel ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(os.quoted_path(out))
 	assert run.exit_code == 0, run.output
