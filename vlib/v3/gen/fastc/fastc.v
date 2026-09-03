@@ -1479,6 +1479,9 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 // per-file bodies are referenced, not copied, so the multi-megabyte output is
 // never assembled into one buffer here.
 fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[string]string, prefs &pref.Preferences) !([]string, bool, []string) {
+	// The `int` C spelling is fixed before any source is generated, so the
+	// generation workers below all read the same width.
+	fastc_set_platform_int_bits(prefs.target.pointer_bits)
 	// Source-level generic monomorphization runs first; it is a no-op when the
 	// program has no generic function definitions (so the self-host is untouched).
 	mut timer := fastc_new_phase_timer()

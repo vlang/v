@@ -230,6 +230,15 @@ fn test_formatter_keeps_trailing_array_initializer_comments_inside() {
 	assert vfmt('trailing_array_initializer_comment_twice', out) == out
 }
 
+// A `const` with a trailing `//` comment used to emit an extra newline after the
+// comment, so every `v fmt -w` pass added one more blank line after it.
+fn test_formatter_keeps_consts_adjacent_after_trailing_comment() {
+	source := 'const first = u64(0x06)\nconst second = u64(0x08) // low 3 bits\nconst third = u64(0x10)\n\nconst fourth = 1 // spaced out\n\nconst fifth = 2\n\nfn main() {}\n'
+	out := vfmt('const_trailing_comment_blank_lines', source)
+	assert out == source, out
+	assert vfmt('const_trailing_comment_blank_lines_twice', out) == out
+}
+
 fn test_formatter_keeps_singleton_grouped_const_comments_before_declaration() {
 	source := 'const (\n\t// only docs\n\tonly = 1\n)\n'
 	expected := '// only docs\nconst only = 1\n'

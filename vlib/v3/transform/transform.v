@@ -17466,7 +17466,8 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 						changed = true
 					}
 					r
-				} else if last_branch > 0 && t.operand_needs_ordering_snapshot(recv_id) {
+				} else if last_branch > 0 && t.operand_needs_ordering_snapshot(recv_id)
+					&& !t.callee_base_is_not_a_runtime_value(recv_id) {
 					// A `mut`/reference receiver keeps its lvalue identity (only its dynamic
 					// base/index components are spilled) so the call still mutates through the
 					// lvalue. An ordinary by-value receiver is spilled by value, so its value is
