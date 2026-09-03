@@ -227,11 +227,13 @@ fn fastc_finish_memo_preload(memo FastcResolveMemo, probe_tasks []FastcMemoTask,
 	}
 }
 
-// FastcPendingMemoStore keeps the memo-store wait API shared with the serial build.
+// FastcPendingMemoStore keeps the memo-store wait API shared with the serial
+// build. It holds no thread: the self-hosted generator only declares a thread
+// type for functions that are spawned, so a `thread` field without a spawn
+// would leave the generated C referring to an undeclared type.
 struct FastcPendingMemoStore {
 mut:
-	workers []thread bool
-	joined  bool
+	stored bool
 }
 
 fn fastc_start_memo_store(memo_path string, previous_text string, sources []FastcSourceFile, builtin_dir string, lookup_modules []string, lookup_sources []string, prefs &pref.Preferences, module_path_cache map[string]string, module_dir_files map[string][]string, entry_paths []string, real_path_cache map[string]string, entry_files map[string][]string, preloaded map[string]FastcLoadedSource) FastcPendingMemoStore {
@@ -240,17 +242,13 @@ fn fastc_start_memo_store(memo_path string, previous_text string, sources []Fast
 	// generation error returns before the worker is joined. Keep persistence
 	// synchronous until the async store can snapshot the source versions it writes.
 	fastc_store_resolve_memo(memo_path, previous_text, sources, builtin_dir, lookup_modules, lookup_sources, prefs, module_path_cache, module_dir_files, entry_paths, real_path_cache, entry_files, preloaded)
-	return FastcPendingMemoStore{}
+	return FastcPendingMemoStore{
+		stored: true
+	}
 }
 
 fn fastc_wait_memo_store(mut pending FastcPendingMemoStore) {
-	if pending.joined {
-		return
-	}
-	pending.joined = true
-	for worker in pending.workers {
-		worker.wait()
-	}
+	pending.stored = true
 }
 
 // FastcModuleListing is one module directory listed on a worker thread.

@@ -187,8 +187,7 @@ read again otherwise. The memo also keeps each listed directory's file list and 
 module's file list together with the directory's own stamp, so an unchanged directory is stat'ed
 instead of listed again (adding, removing or renaming an entry changes that stamp, and the same
 two-second rule applies); module lookups are recorded once per cache key, the memo's blob is read
-in ranges by the same probe workers, and the memo of the current run is written on a worker while
-the program is generated. The ordering walk itself is unchanged and replays over that data, so the
+in ranges by the same probe workers. The ordering walk itself is unchanged and replays over that data, so the
 output is identical with and without the memo (`V3_FASTC_NO_RESOLVE_MEMO=1` disables it). The
 type declarations are rendered on a worker while the signatures are collected, the generic-method
 scan and the declaration index share one pass, the split of oversized files into generation
