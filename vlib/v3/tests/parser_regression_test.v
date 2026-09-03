@@ -261,7 +261,8 @@ fn test_isreftype_qualified_type_names_parse_as_types() {
 }
 
 fn test_isreftype_shared_local_parses_as_expression() {
-	a := parse_parser_regression_source('isreftype_shared_local_expression', 'module main\n\nfn main() {\n\tshared := 1\n\t_ = isreftype(shared)\n}\n')
+	a := parse_parser_regression_source('isreftype_shared_local_expression',
+		'module main\n\nfn main() {\n\tshared := 1\n\t_ = isreftype(shared)\n}\n')
 	mut saw_shared_argument := false
 	for node in a.nodes {
 		if node.kind != .call || node.children_count != 2 {
@@ -278,7 +279,8 @@ fn test_isreftype_shared_local_parses_as_expression() {
 }
 
 fn test_shared_local_index_parses_as_expression() {
-	a := parse_parser_regression_source('shared_local_index_expression', 'fn main() {\n\titems := [10, 20]\n\tshared := 1\n\t_ = items[shared]\n}\n')
+	a := parse_parser_regression_source('shared_local_index_expression',
+		'fn main() {\n\titems := [10, 20]\n\tshared := 1\n\t_ = items[shared]\n}\n')
 	mut saw_shared_index := false
 	for node in a.nodes {
 		if node.kind != .index || node.children_count != 2 {
@@ -286,7 +288,8 @@ fn test_shared_local_index_parses_as_expression() {
 		}
 		base := a.child_node(&node, 0)
 		index := a.child_node(&node, 1)
-		if base.kind == .ident && base.value == 'items' && index.kind == .ident && index.value == 'shared' {
+		if base.kind == .ident && base.value == 'items' && index.kind == .ident
+			&& index.value == 'shared' {
 			saw_shared_index = true
 		}
 	}

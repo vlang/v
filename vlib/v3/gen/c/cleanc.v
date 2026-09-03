@@ -474,79 +474,79 @@ mut:
 	// C spelling for V's platform-width `int`: `i64` on 64-bit targets, `i32` on
 	// 32-bit. Used by hand-written runtime helpers that operate on `[]int`
 	// elements or `int` values directly (kept in sync with set_target).
-	int_ct                        string = 'i64'
-	thread_stack_size             int = 8 * 1024 * 1024
-	compile_values                map[string]string // explicit `-d` values used by `$d(...)` in `#flag`s
-	output_path                   string
-	output_error                  string
-	c99_mode                      bool
-	trace_calls                   bool
-	track_heap                    bool
-	inside_trace_call             bool
-	skip_generics                 bool
-	skip_enum_autostr             bool
-	placeholder_check_forced      bool
-	cur_fn_name                   string
-	cur_fn_is_specialized         bool
-	cur_fn_assert_continues       bool
-	current_decl_is_mut           bool
-	direct_array_access           bool
-	struct_default_module         string
-	default_value_stack           map[string]bool
-	shadowed_global_locals        map[string]bool
-	cur_param_names               []string
-	cur_param_type_values         []types.Type
-	cur_param_types               map[string]types.Type
-	cur_param_name_bits           u64
-	cur_concrete_optional_params  map[string]bool
-	cur_mut_params                map[string]bool
-	cur_mut_pointer_params        map[string]bool
-	cur_mut_param_owners          map[string]types.ScopeBindingOwner
-	cur_fn_ret                    types.Type = types.Type(types.void_)
-	cur_fn_ret_is_optional        bool
-	cur_fn_ret_base               types.Type = types.Type(types.void_)
-	defer_return_tmp_var          string
-	active_locks                  []ActiveLock
-	unsafe_depth                  int
-	loop_depth                    int
-	conditional_branch_scopes     []&types.Scope
-	conditional_branch_depths     []int
-	conditional_branch_depth      int
-	loop_label_depths             map[string]int
-	loop_defer_starts             []int
-	loop_label_defer_starts       map[string]int
-	loop_control_copybacks        []LoopControlCopyback
-	map_loop_copyback_guards      []MapLoopCopybackGuard
-	emitted_loop_break_labels     map[string]bool
-	goto_label_c_names            map[string]string
-	goto_label_count              int
-	goto_label_lock_scopes        map[string][]int
-	pending_loop_label            string
+	int_ct                       string = 'i64'
+	thread_stack_size            int = 8 * 1024 * 1024
+	compile_values               map[string]string // explicit `-d` values used by `$d(...)` in `#flag`s
+	output_path                  string
+	output_error                 string
+	c99_mode                     bool
+	trace_calls                  bool
+	track_heap                   bool
+	inside_trace_call            bool
+	skip_generics                bool
+	skip_enum_autostr            bool
+	placeholder_check_forced     bool
+	cur_fn_name                  string
+	cur_fn_is_specialized        bool
+	cur_fn_assert_continues      bool
+	current_decl_is_mut          bool
+	direct_array_access          bool
+	struct_default_module        string
+	default_value_stack          map[string]bool
+	shadowed_global_locals       map[string]bool
+	cur_param_names              []string
+	cur_param_type_values        []types.Type
+	cur_param_types              map[string]types.Type
+	cur_param_name_bits          u64
+	cur_concrete_optional_params map[string]bool
+	cur_mut_params               map[string]bool
+	cur_mut_pointer_params       map[string]bool
+	cur_mut_param_owners         map[string]types.ScopeBindingOwner
+	cur_fn_ret                   types.Type = types.Type(types.void_)
+	cur_fn_ret_is_optional       bool
+	cur_fn_ret_base              types.Type = types.Type(types.void_)
+	defer_return_tmp_var         string
+	active_locks                 []ActiveLock
+	unsafe_depth                 int
+	loop_depth                   int
+	conditional_branch_scopes    []&types.Scope
+	conditional_branch_depths    []int
+	conditional_branch_depth     int
+	loop_label_depths            map[string]int
+	loop_defer_starts            []int
+	loop_label_defer_starts      map[string]int
+	loop_control_copybacks       []LoopControlCopyback
+	map_loop_copyback_guards     []MapLoopCopybackGuard
+	emitted_loop_break_labels    map[string]bool
+	goto_label_c_names           map[string]string
+	goto_label_count             int
+	goto_label_lock_scopes       map[string][]int
+	pending_loop_label           string
 	// in_return is true only while generating a `return` statement's value, so a bare
 	// generic literal (`return Box{...}`) may adopt `cur_fn_ret`'s concrete instance —
 	// but a literal in a local decl / argument elsewhere in the body does not.
-	in_return                       bool
-	cur_return_node_id              int = -1
-	ownership_return_index          int
-	ownership_seen_return_sources   map[string]bool
-	ownership_propagation_index     int
-	ownership_loop_control_index    int
-	ownership_loop_iteration_index  int
-	ownership_scope_index           int
-	cur_return_drops                []types.OwnershipDropEntry
-	pending_return_scope_drops      []types.OwnershipDropEntry
-	expected_expr_type              types.Type = types.Type(types.void_)
-	expected_enum                   string
-	known_expr_type_id              int = -1
-	known_expr_type                 types.Type = types.Type(types.void_)
-	memo_usable_expr_types          bool
-	cache_struct_fields             bool
-	dedup_fn_decl_aliases           bool
-	prefix_param_scan               bool
-	lean_parallel_worker_init       bool
-	lazy_param_abi_merge            bool
-	usable_expr_type_memo           &UsableExprTypeMemo = unsafe { nil }
-	needed_optional_types           map[string]string
+	in_return                      bool
+	cur_return_node_id             int = -1
+	ownership_return_index         int
+	ownership_seen_return_sources  map[string]bool
+	ownership_propagation_index    int
+	ownership_loop_control_index   int
+	ownership_loop_iteration_index int
+	ownership_scope_index          int
+	cur_return_drops               []types.OwnershipDropEntry
+	pending_return_scope_drops     []types.OwnershipDropEntry
+	expected_expr_type             types.Type = types.Type(types.void_)
+	expected_enum                  string
+	known_expr_type_id             int = -1
+	known_expr_type                types.Type = types.Type(types.void_)
+	memo_usable_expr_types         bool
+	cache_struct_fields            bool
+	dedup_fn_decl_aliases          bool
+	prefix_param_scan              bool
+	lean_parallel_worker_init      bool
+	lazy_param_abi_merge           bool
+	usable_expr_type_memo          &UsableExprTypeMemo = unsafe { nil }
+	needed_optional_types          map[string]string
 	// cabi_int_out_args maps a C-call argument node to the C spelling to emit in its
 	// place (the address of a temporary C `int`), while a `&int` out-parameter is
 	// bridged by a temporary + copy-back around the wrapped call. Keyed by node id so
@@ -923,7 +923,7 @@ fn (g &FlatGen) local_storage_owner(name string) ?types.ScopeBindingOwner {
 		return none
 	}
 	owner := g.tc.cur_scope.lookup_owner(name) or { return none }
-	$if ownership? {
+	$if ownership ? {
 		if !g.tc.cur_scope.nearest_binding_owned_by(name, owner) {
 			return none
 		}
@@ -1667,13 +1667,13 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 					}
 					if is_source_input || include_arg.trim_space().starts_with('"') {
 						c_add_cache_external_input(mut unscoped_inputs, owner_module, file)
-						collection_key := owner_module + '\0' + os.real_path(file)
+						collection_key := owner_module + '\x00' + os.real_path(file)
 						if active_static_storage_paths[collection_key] {
 							c_add_cache_external_input(mut static_storage_inputs, owner_module, file)
 						}
 					}
 				}
-				if node.value in ['include', 'insert'] && !is_source_input && include_arg.trim_space().starts_with('"') && files.any(active_static_storage_paths[owner_module + '\0' + os.real_path(it)]) {
+				if node.value in ['include', 'insert'] && !is_source_input && include_arg.trim_space().starts_with('"') && files.any(active_static_storage_paths[owner_module + '\x00' + os.real_path(it)]) {
 					mut root_context := preinclude_context_directives.clone()
 					root_context << context_directives[owner_module]
 					if !c_add_cache_native_source_root(mut native_source_roots, mut native_root_contexts, owner_module, real_path, root_context, context_is_replayable) {
@@ -1902,7 +1902,7 @@ pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []str
 		memo_key := if include_arg.starts_with('<') {
 			include_arg
 		} else {
-			cur_file + '\0' + include_arg
+			cur_file + '\x00' + include_arg
 		}
 		if cached := header_objc_cache[memo_key] {
 			if cached == 1 {
@@ -2041,7 +2041,7 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	defer {
 		unsafe { text.free() }
 	}
-	collection_key := collection_scope + '\0' + real_path
+	collection_key := collection_scope + '\x00' + real_path
 	first_collection := !collected_paths[collection_key]
 	if collected_paths[collection_key] {
 		if guard := c_whole_file_guard_macro(text) {
@@ -3047,13 +3047,13 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		mut iface_worker := &FlatGen{}
 		mut iface_threads := []thread voidptr{cap: 1}
 		$if !windows {
-			$if !v3_no_parallel? {
+			$if !v3_no_parallel ? {
 				parallel_iface_scan = g.scope_parallel_workers && !effective_no_parallel
 			}
 		}
 		if parallel_iface_scan {
 			$if !windows {
-				$if !v3_no_parallel? {
+				$if !v3_no_parallel ? {
 					iface_worker = g.new_parallel_worker(4)
 					iface_worker.interface_boxed_types = map[string]bool{}
 					iface_worker.interface_boxed_types_done = false
@@ -3088,7 +3088,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		cgsw.restart()
 		if parallel_iface_scan {
 			$if !windows {
-				$if !v3_no_parallel? {
+				$if !v3_no_parallel ? {
 					_ = iface_threads[0].wait()
 					g.publish_interface_impl_scan(mut iface_worker)
 					g.precompute_required_interface_dispatch_methods()
@@ -3101,7 +3101,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.timing_profile('  [ttime]   cg predispatch   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		if !parallel_prep_done {
-			$if !v3_no_parallel? {
+			$if !v3_no_parallel ? {
 				if g.scope_parallel_workers {
 					g.collect_fixed_storage_consts_scoped()
 				} else {
@@ -3134,7 +3134,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.preseed_fn_signature_fn_ptr_types()
 		g.timing_profile('  [ttime]     wr fn sigs     ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
-		$if !v3_no_parallel? {
+		$if !v3_no_parallel ? {
 			if g.scope_parallel_workers {
 				g.preseed_c_extern_fn_ptr_types_scoped()
 			} else {
@@ -3184,7 +3184,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// Function workers collect only the C symbols reached by emitted bodies.
 	// Finalize their declarations and function-pointer types after the merge.
 	g.c_extern_refs_ready = true
-	$if !v3_no_parallel? {
+	$if !v3_no_parallel ? {
 		if g.scope_parallel_workers {
 			g.preseed_c_extern_fn_ptr_types_scoped()
 		} else {
@@ -3272,7 +3272,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	if g.cache_split {
 		g.writeln('/* V3CACHE_SOURCE_DIRECTIVES_END */')
 	}
-	$if !v3_no_parallel? {
+	$if !v3_no_parallel ? {
 		if g.scope_parallel_workers {
 			g.c_extern_forward_decls_scoped()
 		} else {
@@ -4423,7 +4423,7 @@ fn (mut g FlatGen) reserve_collect_gen_info_maps(no_parallel bool) {
 }
 
 fn (mut g FlatGen) cached_shared_alias_pointer_type_from_text(raw string) ?types.Type {
-	key := '\0shared-alias-pointer\0${g.tc.cur_file}\0${g.tc.cur_module}\0${raw}'
+	key := '\x00shared-alias-pointer\x00${g.tc.cur_file}\x00${g.tc.cur_module}\x00${raw}'
 	if cached := g.param_types_cache[key] {
 		if cached.len > 0 {
 			return cached[0]
@@ -4519,7 +4519,7 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 		}
 		if node.value == 'flag' {
 			flags := c_flag_args_with_values(node.typ, g.compiler_vroot, cur_file, g.target, g.compile_values)
-			key := flags.join('\0')
+			key := flags.join('\x00')
 			if flags.len > 0 && key !in seen_groups {
 				seen_groups[key] = true
 				g.c_flags << flags
@@ -4528,7 +4528,7 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 		}
 		if node.value == 'pkgconfig' {
 			flags := c_pkgconfig_flags(node.typ)
-			key := flags.join('\0')
+			key := flags.join('\x00')
 			if flags.len > 0 && key !in seen_groups {
 				seen_groups[key] = true
 				g.c_flags << flags
@@ -4557,7 +4557,7 @@ pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, 
 		} else {
 			continue
 		}
-		key := flags.join('\0')
+		key := flags.join('\x00')
 		if flags.len > 0 && key !in seen_groups {
 			seen_groups[key] = true
 			result << flags
@@ -4657,7 +4657,8 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 						source_path: source_path
 						source_macros_possible: g.native_source_context_has_macro_inputs(module_name)
 						local_context: (g.native_source_contexts[module_name] or {
-							[]NativeSourceContextDirective{}}).clone()
+							[]NativeSourceContextDirective{}
+						}).clone()
 					}
 					return true
 				}
@@ -10551,7 +10552,7 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 			// `#ifdef __linux__` block and one `#ifdef __APPLE__` block), and each
 			// occurrence needs its own context emitted. Keying on the raw include
 			// line alone would drop the second, differently-guarded include.
-			key := prefix.join('\n') + '\0' + clean
+			key := prefix.join('\n') + '\x00' + clean
 			if emitted_includes[key] {
 				continue
 			}
@@ -13745,7 +13746,7 @@ fn sizeof_selector_target(base string, fields []string) string {
 fn (g &FlatGen) cur_scope_has_local_name(name string) bool {
 	mut scope := g.tc.cur_scope
 	for scope != unsafe { nil } && voidptr(scope) != voidptr(g.tc.file_scope) {
-		$if !ownership? {
+		$if !ownership ? {
 			if name in scope.name_indexes {
 				return true
 			}
@@ -20405,9 +20406,9 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('u8* malloc_noscan(ptrdiff_t n);')
 	g.writeln('void* memdup(void* src, ptrdiff_t sz);')
 	g.writeln('static inline Array* v3_heap_array(Array value) { return (Array*)memdup(&value, sizeof(Array)); }')
-	for sort_spec in ['int|${g.int_ct}', 'i8|signed char', 'i16|short', 'i64|long long', 'u8|unsigned char',
-		'u16|unsigned short', 'u32|unsigned', 'u64|unsigned long long', 'isize|ptrdiff_t',
-		'usize|size_t', 'f32|float', 'f64|double', 'rune|unsigned', 'char|char'] {
+	for sort_spec in ['int|${g.int_ct}', 'i8|signed char', 'i16|short', 'i64|long long',
+		'u8|unsigned char', 'u16|unsigned short', 'u32|unsigned', 'u64|unsigned long long',
+		'isize|ptrdiff_t', 'usize|size_t', 'f32|float', 'f64|double', 'rune|unsigned', 'char|char'] {
 		sort_type := sort_spec.all_before('|')
 		c_type := sort_spec.all_after('|')
 		g.writeln('static int v3_array_sort_${sort_type}_cmp(const void* a, const void* b) { ${c_type} av = *(const ${c_type}*)a; ${c_type} bv = *(const ${c_type}*)b; return (av > bv) - (av < bv); }')

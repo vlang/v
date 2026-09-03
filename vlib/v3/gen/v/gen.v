@@ -860,7 +860,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		}
 		.char_literal {
 			if n.value.starts_with('c:') {
-				g.write("c'${n.value[2..]}'")
+				g.write(c_string_literal_text(n.value))
 			} else {
 				g.write(g.rune_literal(n))
 			}
@@ -1760,7 +1760,11 @@ fn (g &Gen) map_key_width(id flat.NodeId) int {
 			g.string_literal_text(n)
 		}
 		.char_literal {
-			if n.value.starts_with('c:') { "c'${n.value[2..]}'" } else { g.rune_literal(n) }
+			if n.value.starts_with('c:') {
+				c_string_literal_text(n.value)
+			} else {
+				g.rune_literal(n)
+			}
 		}
 		.enum_val {
 			'.${n.value}'
@@ -4202,6 +4206,16 @@ fn quote_string(s string) string {
 		return '"${escape_string(s, `"`)}"'
 	}
 	return "'${escape_string(s, `'`)}'"
+}
+
+fn c_string_literal_text(value string) string {
+	raw := value.all_after('c:')
+	// C-string nodes retain source escapes rather than a fully decoded value. Normalize quote
+	// escapes before choosing a delimiter, while protecting literal doubled backslashes.
+	unescaped := raw.replace('\\\\', '\x01').replace_each(["\\'", "'", '\\"', '"'])
+	quote := if unescaped.contains("'") && !unescaped.contains('"') { '"' } else { "'" }
+	escaped := unescaped.replace_each(['\x01', '\\\\', quote, '\\${quote}'])
+	return 'c${quote}${escaped}${quote}'
 }
 
 // escape_string re-escapes a decoded string/char value for emission inside a

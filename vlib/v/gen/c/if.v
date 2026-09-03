@@ -627,7 +627,8 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			if g.need_tmp_var_in_expr(expr.right) {
 				return true
 			}
-			if expr.op in [.eq, .ne] && g.type_is_option_or_option_alias(expr.left_type) && g.type_is_option_or_option_alias(expr.right_type) {
+			if expr.op in [.eq, .ne] && g.type_is_option_or_option_alias(expr.left_type)
+				&& g.type_is_option_or_option_alias(expr.right_type) {
 				return true
 			}
 			// struct pointer equality comparisons may hoist temp vars

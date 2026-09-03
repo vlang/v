@@ -198,8 +198,10 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 		}) or { return none }
 		return FastcRenderedExpression{
 			source: if inner_type == 'Option' {
-				inner} else {
-				fastc_option_success_expression(c_type, inner)}
+				inner
+			} else {
+				fastc_option_success_expression(c_type, inner)
+			}
 			typ: 'Option'
 		}
 	}

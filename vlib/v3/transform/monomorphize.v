@@ -4354,8 +4354,7 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 	}
 	generic_params := t.generic_fn_param_names(decl.node, decl.module)
 	ret_name := t.specialized_signature_type_text(decl, t.generic_fn_return_type_text(decl),
-		concrete_args,
-		generic_params)
+		concrete_args, generic_params)
 	ret := if !isnil(t.tc) {
 		t.tc.parse_resolution_type(ret_name)
 	} else {
@@ -12391,8 +12390,8 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_nam
 		}
 		if qname in t.structs || qname in t.sum_types || qname in t.enum_types
 			|| (!isnil(t.tc) && (qname in t.tc.struct_generic_params
-			|| qname in t.tc.sum_generic_params)) || t.type_short_name_has_non_main_owner(clean)
-			|| alias_target_needs_lock {
+			|| qname in t.tc.sum_generic_params))
+			|| t.type_short_name_has_non_main_owner(clean) || alias_target_needs_lock {
 			return 'main.' + clean
 		}
 	}
@@ -13201,8 +13200,7 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg string) string {
 			len_text := clean[1..bracket_end].trim_space()
 			elem_text := clean[bracket_end + 1..].trim_space()
 			if !is_decimal_text(len_text) && t.generic_type_base_requires_args(elem_text) {
-				return '${t.canonical_generic_specialization_arg(elem_text)}[${
-					t.canonical_generic_specialization_arg(len_text)}]'
+				return '${t.canonical_generic_specialization_arg(elem_text)}[${t.canonical_generic_specialization_arg(len_text)}]'
 			}
 			mut clean_len := len_text
 			if !isnil(t.tc) {
@@ -13326,8 +13324,7 @@ fn strip_main_type_locks(typ string) string {
 	mut start := 0
 	mut i := 0
 	for i + 'main.'.len <= typ.len {
-		if typ[i..].starts_with('main.')
-			&& (i == 0 || !is_type_identifier_byte(typ[i - 1])) {
+		if typ[i..].starts_with('main.') && (i == 0 || !is_type_identifier_byte(typ[i - 1])) {
 			out.write_string(typ[start..i])
 			i += 'main.'.len
 			start = i

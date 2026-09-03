@@ -1436,8 +1436,10 @@ fn (g &Parser) validate_parallel_assignment_targets(names []string) ![]FastcRend
 			}
 			target = FastcRenderedExpression{
 				source: if local.is_reference {
-					'(*${fastc_c_identifier(name)})'} else {
-					fastc_c_identifier(name)}
+					'(*${fastc_c_identifier(name)})'
+				} else {
+					fastc_c_identifier(name)
+				}
 				typ: if local.is_reference { local.typ.trim_right('*') } else { local.typ }
 			}
 		} else {

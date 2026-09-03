@@ -6178,14 +6178,17 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 			continue
 		}
 		// A field read of `current`; a bound method value is not a field read.
-		if parent.kind == .selector && parent.children_count > 0
-			&& tc.a.child(parent, 0) == current && !tc.expr_is_method_value(parent_id) {
+		if parent.kind == .selector && parent.children_count > 0 && tc.a.child(parent, 0) == current
+			&& !tc.expr_is_method_value(parent_id) {
 			current_type := tc.resolve_type(current)
 			call_id := tc.direct_parent_id(parent_id)
-			if parent.value == 'clone' && unalias_type(current_type) is String && (current_type !is Alias || !tc.ownership_type_has_clone_method(current_type)) && call_id != flat.empty_node && int(call_id) >= 0 && int(call_id) < tc.a.nodes.len {
+			if parent.value == 'clone' && unalias_type(current_type) is String
+				&& (current_type !is Alias || !tc.ownership_type_has_clone_method(current_type))
+				&& call_id != flat.empty_node && int(call_id) >= 0 && int(call_id) < tc.a.nodes.len {
 				call := tc.a.node(call_id)
 				if call.kind == .call && call.children_count > 0 && tc.a.child(call, 0) == parent_id {
-					return tc.array_accessor_consumer_siblings_are_stable(call, parent_id) && tc.array_accessor_enclosing_consumers_are_stable(call_id)
+					return tc.array_accessor_consumer_siblings_are_stable(call, parent_id)
+						&& tc.array_accessor_enclosing_consumers_are_stable(call_id)
 				}
 			}
 			final_field = parent_id
@@ -6199,7 +6202,8 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 	}
 	raw_final_type := tc.resolve_type(final_field)
 	final_type := unalias_type(raw_final_type)
-	if !tc.ownership_type_requires_destruction(final_type) && !tc.array_accessor_type_contains_pointer(final_type) {
+	if !tc.ownership_type_requires_destruction(final_type)
+		&& !tc.array_accessor_type_contains_pointer(final_type) {
 		return tc.array_accessor_enclosing_consumers_are_stable(current)
 	}
 	// An owned or pointer field remains borrowed when a comparison or scalar index consumes it
@@ -6215,7 +6219,8 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 			consumer_id = tc.direct_parent_id(consumer_id)
 			continue
 		}
-		if parent.kind == .directive && parent.value == 'string_interp_format' && parent.children_count > 0 && tc.a.child(parent, 0) == consumed_id {
+		if parent.kind == .directive && parent.value == 'string_interp_format'
+			&& parent.children_count > 0 && tc.a.child(parent, 0) == consumed_id {
 			formatted_interp = true
 			consumed_id = consumer_id
 			consumer_id = tc.direct_parent_id(consumer_id)
@@ -6229,10 +6234,13 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 	consumer := tc.a.node(consumer_id)
 	if consumer.kind == .infix && consumer.op in [.eq, .ne, .lt, .gt, .le, .ge]
 		&& !tc.array_accessor_consumer_has_overloaded_operator(consumer) {
-		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id) && tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
+		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id)
+			&& tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
 	}
-	if consumer.kind == .infix && consumer.op == .plus && final_type is String && (raw_final_type !is Alias || !tc.type_has_infix_operator_method(raw_final_type, .plus)) {
-		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id) && tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
+	if consumer.kind == .infix && consumer.op == .plus && final_type is String
+		&& (raw_final_type !is Alias || !tc.type_has_infix_operator_method(raw_final_type, .plus)) {
+		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id)
+			&& tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
 	}
 	if consumer.kind == .string_interp && (consumer.children_count > 1 || formatted_interp)
 		&& final_type is String
@@ -6240,21 +6248,27 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 		// The consumed part's own type dispatches through `wrap_string_conversion`: a string
 		// alias with a custom `str()` could mutate the source array while reading the borrowed
 		// shallow receiver, so reject it here just like an unstable sibling.
-		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id) && tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
+		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id)
+			&& tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
 	}
 	if consumer.kind == .in_expr && consumer.children_count > 1
 		&& tc.a.child(consumer, 0) == consumed_id
 		&& !tc.array_accessor_membership_has_overloaded_equality(consumer) {
-		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id) && tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
+		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id)
+			&& tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
 	}
-	if consumer.kind != .index || consumer.children_count == 0 || tc.a.child(consumer, 0) != consumed_id {
+	if consumer.kind != .index || consumer.children_count == 0
+		|| tc.a.child(consumer, 0) != consumed_id {
 		return false
 	}
 	if _ := tc.index_overload_call_info(tc.resolve_type(tc.a.child(consumer, 0)), false) {
 		return false
 	}
 	index_type := unalias_type(tc.resolve_type(consumer_id))
-	return !tc.ownership_type_requires_destruction(index_type) && !tc.array_accessor_type_contains_pointer(index_type) && tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id) && tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
+	return !tc.ownership_type_requires_destruction(index_type)
+		&& !tc.array_accessor_type_contains_pointer(index_type)
+		&& tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id)
+		&& tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
 }
 
 fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeId) bool {
@@ -6265,15 +6279,18 @@ fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeI
 			return true
 		}
 		parent := tc.a.node(parent_id)
-		if parent.kind == .paren || (parent.kind == .directive && parent.value == 'string_interp_format') {
+		if parent.kind == .paren
+			|| (parent.kind == .directive && parent.value == 'string_interp_format') {
 			current = parent_id
 			continue
 		}
-		if parent.kind == .expr_stmt && parent.children_count > 0 && tc.a.child(parent, 0) == current {
+		if parent.kind == .expr_stmt && parent.children_count > 0
+			&& tc.a.child(parent, 0) == current {
 			current = parent_id
 			continue
 		}
-		if parent.kind in [.block, .match_branch] && parent.children_count > 0 && tc.a.child(parent, parent.children_count - 1) == current {
+		if parent.kind in [.block, .match_branch] && parent.children_count > 0
+			&& tc.a.child(parent, parent.children_count - 1) == current {
 			if parent.kind == .match_branch {
 				// The branch conditions (children before the body) run before the borrowed tail,
 				// so a condition like `delete_last(mut arr)` could empty the array first; reject
@@ -6291,7 +6308,8 @@ fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeI
 		if parent.kind in [.if_expr, .match_stmt, .or_expr] {
 			if parent.children_count > 0 {
 				prerequisite_id := tc.a.child(parent, 0)
-				if prerequisite_id != current && !tc.array_accessor_borrow_sibling_is_stable(prerequisite_id) {
+				if prerequisite_id != current
+					&& !tc.array_accessor_borrow_sibling_is_stable(prerequisite_id) {
 					return false
 				}
 			}
@@ -6313,20 +6331,27 @@ fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeI
 			continue
 		}
 		if parent.kind == .return_stmt {
-			return parent.children_count <= 1 || tc.array_accessor_consumer_siblings_are_stable(parent, current)
+			return parent.children_count <= 1
+				|| tc.array_accessor_consumer_siblings_are_stable(parent, current)
 		}
 		if parent.kind in [.prefix, .cast_expr, .is_expr] {
 			wrapper_type := unalias_type(tc.resolve_type(parent_id))
-			if tc.ownership_type_requires_destruction(wrapper_type) || tc.array_accessor_type_contains_pointer(wrapper_type) || !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
+			if tc.ownership_type_requires_destruction(wrapper_type)
+				|| tc.array_accessor_type_contains_pointer(wrapper_type)
+				|| !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
 				return false
 			}
 			current = parent_id
 			continue
 		}
-		is_string_plus := parent.kind == .infix && parent.op == .plus && unalias_type(tc.resolve_type(parent_id)) is String
+		is_string_plus := parent.kind == .infix && parent.op == .plus
+			&& unalias_type(tc.resolve_type(parent_id)) is String
 		if parent.kind == .infix && !is_string_plus {
 			wrapper_type := unalias_type(tc.resolve_type(parent_id))
-			if tc.ownership_type_requires_destruction(wrapper_type) || tc.array_accessor_type_contains_pointer(wrapper_type) || tc.array_accessor_consumer_has_overloaded_operator(parent) || !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
+			if tc.ownership_type_requires_destruction(wrapper_type)
+				|| tc.array_accessor_type_contains_pointer(wrapper_type)
+				|| tc.array_accessor_consumer_has_overloaded_operator(parent)
+				|| !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
 				return false
 			}
 			current = parent_id
@@ -6346,7 +6371,9 @@ fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeI
 fn (tc &TypeChecker) array_accessor_consumer_has_overloaded_operator(consumer &flat.Node) bool {
 	for i in 0 .. consumer.children_count {
 		mut seen := map[string]bool{}
-		if tc.array_accessor_type_has_overloaded_operator(tc.resolve_type(tc.a.child(consumer, i)), consumer.op, mut seen) {
+		if tc.array_accessor_type_has_overloaded_operator(tc.resolve_type(tc.a.child(consumer, i)),
+			consumer.op, mut seen)
+		{
 			return true
 		}
 	}
@@ -6393,22 +6420,29 @@ fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ Type, op fl
 	}
 	match raw {
 		Alias {
-			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, semantic_op, mut seen)
+			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, semantic_op, mut
+				seen)
 		}
 		Array {
-			return tc.array_accessor_type_has_overloaded_operator(raw.elem_type, semantic_op, mut seen)
+			return tc.array_accessor_type_has_overloaded_operator(raw.elem_type, semantic_op, mut
+				seen)
 		}
 		ArrayFixed {
-			return tc.array_accessor_type_has_overloaded_operator(raw.elem_type, semantic_op, mut seen)
+			return tc.array_accessor_type_has_overloaded_operator(raw.elem_type, semantic_op, mut
+				seen)
 		}
 		Map {
-			return tc.array_accessor_type_has_overloaded_operator(raw.key_type, semantic_op, mut seen) || tc.array_accessor_type_has_overloaded_operator(raw.value_type, semantic_op, mut seen)
+			return
+				tc.array_accessor_type_has_overloaded_operator(raw.key_type, semantic_op, mut seen)
+				|| tc.array_accessor_type_has_overloaded_operator(raw.value_type, semantic_op, mut seen)
 		}
 		OptionType {
-			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, semantic_op, mut seen)
+			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, semantic_op, mut
+				seen)
 		}
 		ResultType {
-			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, semantic_op, mut seen)
+			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, semantic_op, mut
+				seen)
 		}
 		Struct {
 			for field in tc.struct_fields_for_type(raw.name) {
@@ -6419,7 +6453,9 @@ fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ Type, op fl
 		}
 		Interface {
 			for impl_name in tc.interface_impl_names(raw.name) {
-				if tc.array_accessor_type_has_overloaded_operator(tc.parse_type(impl_name), semantic_op, mut seen) {
+				if tc.array_accessor_type_has_overloaded_operator(tc.parse_type(impl_name),
+					semantic_op, mut seen)
+				{
 					return true
 				}
 			}
@@ -6428,7 +6464,9 @@ fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ Type, op fl
 			base := tc.sum_base_name(raw.name)
 			for variant in tc.sum_types[base] or { []string{} } {
 				variant_type := tc.parse_type(tc.concrete_sum_variant_name(raw.name, variant))
-				if tc.array_accessor_type_has_overloaded_operator(variant_type, semantic_op, mut seen) {
+				if tc.array_accessor_type_has_overloaded_operator(variant_type, semantic_op, mut
+					seen)
+				{
 					return true
 				}
 			}
@@ -6442,7 +6480,8 @@ fn (tc &TypeChecker) array_accessor_consumer_siblings_are_stable(consumer &flat.
 	for i in 0 .. consumer.children_count {
 		child_id := tc.a.child(consumer, i)
 		if child_id != consumed_id {
-			if consumer.kind == .string_interp && tc.array_accessor_string_interp_part_can_run_user_code(child_id) {
+			if consumer.kind == .string_interp
+				&& tc.array_accessor_string_interp_part_can_run_user_code(child_id) {
 				return false
 			}
 			if !tc.array_accessor_borrow_sibling_is_stable(child_id) {
@@ -6499,7 +6538,8 @@ fn (tc &TypeChecker) array_accessor_stringifier_can_run_user_code(typ Type, mut 
 			return tc.array_accessor_stringifier_can_run_user_code(clean.elem_type, mut seen)
 		}
 		Map {
-			return tc.array_accessor_stringifier_can_run_user_code(clean.key_type, mut seen) || tc.array_accessor_stringifier_can_run_user_code(clean.value_type, mut seen)
+			return tc.array_accessor_stringifier_can_run_user_code(clean.key_type, mut seen)
+				|| tc.array_accessor_stringifier_can_run_user_code(clean.value_type, mut seen)
 		}
 		Struct {
 			for field in tc.struct_fields_for_type(clean.name) {
@@ -6510,7 +6550,9 @@ fn (tc &TypeChecker) array_accessor_stringifier_can_run_user_code(typ Type, mut 
 		}
 		Interface {
 			for impl_name in tc.interface_impl_names(clean.name) {
-				if tc.array_accessor_stringifier_can_run_user_code(tc.parse_type(impl_name), mut seen) {
+				if tc.array_accessor_stringifier_can_run_user_code(tc.parse_type(impl_name), mut
+					seen)
+				{
 					return true
 				}
 			}
@@ -6560,7 +6602,8 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 		return true
 	}
 	if node.kind == .field_init {
-		return node.children_count == 1 && tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, 0))
+		return node.children_count == 1
+			&& tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, 0))
 	}
 	if node.kind == .struct_init && !tc.array_accessor_struct_init_defaults_are_stable(id, node) {
 		return false
@@ -6577,8 +6620,12 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 		spread_type := unalias_type(tc.resolve_type(tc.a.child(node, 0)))
 		mut clone_types := []Type{}
 		match spread_type {
-			Array { clone_types << spread_type.elem_type }
-			ArrayFixed { clone_types << spread_type.elem_type }
+			Array {
+				clone_types << spread_type.elem_type
+			}
+			ArrayFixed {
+				clone_types << spread_type.elem_type
+			}
 			Map {
 				clone_types << spread_type.key_type
 				clone_types << spread_type.value_type
@@ -6669,8 +6716,10 @@ fn (tc &TypeChecker) array_accessor_method_value_clone_can_run_user_code(id flat
 	receiver_id := tc.a.child(node, 0)
 	receiver_type := tc.resolve_type(receiver_id)
 	mut receiver_is_by_value := false
-	for method_name in receiver_method_name_candidates(unwrap_pointer(receiver_type), node.value, tc.cur_module) {
-		if method_name !in tc.fn_param_types || !tc.method_can_be_called_on_receiver(receiver_type, node.value, method_name) {
+	for method_name in receiver_method_name_candidates(unwrap_pointer(receiver_type), node.value,
+		tc.cur_module) {
+		if method_name !in tc.fn_param_types
+			|| !tc.method_can_be_called_on_receiver(receiver_type, node.value, method_name) {
 			continue
 		}
 		params := tc.fn_param_types[method_name]
@@ -6684,7 +6733,8 @@ fn (tc &TypeChecker) array_accessor_method_value_clone_can_run_user_code(id flat
 			}
 		}
 	}
-	if !receiver_is_by_value || !tc.ownership_type_requires_destruction(receiver_type) || tc.ownership_default_clone_missing_method(receiver_type) != none {
+	if !receiver_is_by_value || !tc.ownership_type_requires_destruction(receiver_type)
+		|| tc.ownership_default_clone_missing_method(receiver_type) != none {
 		return false
 	}
 	mut seen := map[string]bool{}
@@ -6710,7 +6760,8 @@ fn (tc &TypeChecker) array_accessor_clone_can_run_user_code(typ Type, mut seen m
 			return tc.array_accessor_clone_can_run_user_code(typ.elem_type, mut seen)
 		}
 		Map {
-			return tc.array_accessor_clone_can_run_user_code(typ.key_type, mut seen) || tc.array_accessor_clone_can_run_user_code(typ.value_type, mut seen)
+			return tc.array_accessor_clone_can_run_user_code(typ.key_type, mut seen)
+				|| tc.array_accessor_clone_can_run_user_code(typ.value_type, mut seen)
 		}
 		Struct {
 			if tc.ownership_type_has_clone_method(typ) {
@@ -9745,8 +9796,8 @@ fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) 
 				cur_mod = node.value
 			}
 			.fn_decl {
-				if fallback_mod.len > 0 && cur_mod != fallback_mod && !(cur_mod in ['', 'main'] && fallback_mod in ['',
-					'main']) {
+				if fallback_mod.len > 0 && cur_mod != fallback_mod && !(cur_mod in ['', 'main']
+					&& fallback_mod in ['', 'main']) {
 					continue
 				}
 				qname := checker_qualified_fn_name(cur_mod, node.value)
@@ -9916,8 +9967,10 @@ fn (tc &TypeChecker) storage_lvalue_path_from_param(id flat.NodeId, name string,
 	if node.kind == .ident {
 		return if node.value == name || target_param_idx in aliases[node.value] { '' } else { none }
 	}
-	if (node.kind in [.paren, .cast_expr, .as_expr] || (node.kind == .prefix && node.op == .mul)) && node.children_count > 0 {
-		return tc.storage_lvalue_path_from_param(tc.a.child(&node, 0), name, aliases, target_param_idx)
+	if (node.kind in [.paren, .cast_expr, .as_expr] || (node.kind == .prefix && node.op == .mul))
+		&& node.children_count > 0 {
+		return tc.storage_lvalue_path_from_param(tc.a.child(&node, 0), name, aliases,
+			target_param_idx)
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := tc.storage_lvalue_path_from_param(tc.a.child(&node, 0), name, aliases,
@@ -10071,10 +10124,9 @@ fn (tc &TypeChecker) param_storage_direct_definite_write_paths_for_decl(decl Vis
 					return paths
 				}
 				lhs_id := tc.a.child(&child, j)
-				if !tc.storage_write_can_be_bypassed_by_goto(tc.a.node(lhs_id).pos, gotos,
-					labels) {
-					if path := tc.storage_lvalue_path_from_param(lhs_id, target_param.value, aliases,
-						target_param_idx)
+				if !tc.storage_write_can_be_bypassed_by_goto(tc.a.node(lhs_id).pos, gotos, labels) {
+					if path := tc.storage_lvalue_path_from_param(lhs_id, target_param.value,
+						aliases, target_param_idx)
 					{
 						if path !in paths {
 							paths << path
@@ -10110,7 +10162,10 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 		mut deferred_exited_aliases := []map[string][]int{}
 		mut deferred_exited_defer_counts := []int{}
 		for i in 0 .. node.children_count {
-			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut deferred_aliases, mut visiting, mut deferred_writes, mut deferred_exited_writes, mut deferred_loop_exits, mut deferred_exited_aliases, 0, mut deferred_exited_defer_counts)
+			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type,
+				target_param_idx, decl_mod, mut deferred_aliases, mut visiting, mut
+				deferred_writes, mut deferred_exited_writes, mut deferred_loop_exits, mut
+				deferred_exited_aliases, 0, mut deferred_exited_defer_counts)
 		}
 		storage_param_writes_merge(mut deferred_writes, deferred_exited_writes)
 		storage_param_loop_exit_writes_merge(mut deferred_writes, deferred_loop_exits)
@@ -10119,7 +10174,10 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 	}
 	if node.kind == .return_stmt {
 		for i in 0 .. node.children_count {
-			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type,
+				target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut
+				exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut
+				exited_defer_counts)
 		}
 		storage_param_writes_merge(mut exited_writes, writes)
 		exited_aliases << storage_param_sources_clone(aliases)
@@ -10128,9 +10186,9 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 	}
 	if node.kind in [.break_stmt, .continue_stmt] {
 		loop_exits << StorageParamLoopExit{
-			aliases: storage_param_sources_clone(aliases)
-			writes: storage_param_sources_clone(writes)
-			label: node.value
+			aliases:     storage_param_sources_clone(aliases)
+			writes:      storage_param_sources_clone(writes)
+			label:       node.value
 			is_continue: node.kind == .continue_stmt
 		}
 		return
@@ -10138,8 +10196,8 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 	if node.kind == .goto_stmt {
 		loop_exits << StorageParamLoopExit{
 			aliases: storage_param_sources_clone(aliases)
-			writes: storage_param_sources_clone(writes)
-			label: node.value
+			writes:  storage_param_sources_clone(writes)
+			label:   node.value
 			is_goto: true
 		}
 		return
@@ -10188,7 +10246,8 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 								incoming_writes[child.value])
 						} else {
 							scoped = storage_param_sources_clone(label_aliases)
-							scoped_writes = storage_param_sources_clone(incoming_writes[child.value])
+							scoped_writes =
+								storage_param_sources_clone(incoming_writes[child.value])
 						}
 						continues = true
 					}
@@ -10197,7 +10256,10 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 					continue
 				}
 				exit_start := pass_exits.len
-				tc.collect_param_storage_sources(child_id, target_name, target_type, target_param_idx, decl_mod, mut scoped, mut visiting, mut scoped_writes, mut exited_writes, mut pass_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+				tc.collect_param_storage_sources(child_id, target_name, target_type,
+					target_param_idx, decl_mod, mut scoped, mut visiting, mut scoped_writes, mut
+					exited_writes, mut pass_exits, mut exited_aliases, active_defer_count, mut
+					exited_defer_counts)
 				for exit in pass_exits[exit_start..] {
 					if !exit.is_goto || exit.label !in labels {
 						continue
@@ -10239,7 +10301,11 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 				mut deferred_exited_aliases := []map[string][]int{}
 				mut deferred_exited_defer_counts := []int{}
 				for j in 0 .. defer_node.children_count {
-					tc.collect_param_storage_sources(tc.a.child(&defer_node, j), target_name, target_type, target_param_idx, decl_mod, mut deferred_aliases, mut visiting, mut deferred_writes, mut deferred_exited_writes, mut deferred_loop_exits, mut deferred_exited_aliases, 0, mut deferred_exited_defer_counts)
+					tc.collect_param_storage_sources(tc.a.child(&defer_node, j), target_name,
+						target_type, target_param_idx, decl_mod, mut deferred_aliases, mut
+						visiting, mut deferred_writes, mut deferred_exited_writes, mut
+						deferred_loop_exits, mut deferred_exited_aliases, 0, mut
+						deferred_exited_defer_counts)
 				}
 				storage_param_writes_merge(mut deferred_writes, deferred_exited_writes)
 				storage_param_loop_exit_writes_merge(mut deferred_writes, deferred_loop_exits)
@@ -10259,7 +10325,9 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 		}
 		// The wrapped expression runs on both paths. The fallback runs only on failure, so
 		// retain storage sources written either by the success state or by the fallback.
-		tc.collect_param_storage_sources(tc.a.child(&node, 0), target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+		tc.collect_param_storage_sources(tc.a.child(&node, 0), target_name, target_type,
+			target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut
+			loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
 		before := storage_param_sources_clone(aliases)
 		mut merged := storage_param_sources_clone(aliases)
 		before_writes := storage_param_sources_clone(writes)
@@ -10267,7 +10335,10 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 		for i in 1 .. node.children_count {
 			mut fallback_aliases := storage_param_sources_clone(before)
 			mut fallback_writes := storage_param_sources_clone(before_writes)
-			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut fallback_aliases, mut visiting, mut fallback_writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type,
+				target_param_idx, decl_mod, mut fallback_aliases, mut visiting, mut
+				fallback_writes, mut exited_writes, mut loop_exits, mut exited_aliases,
+				active_defer_count, mut exited_defer_counts)
 			storage_param_sources_merge(mut merged, fallback_aliases)
 			storage_param_writes_merge(mut merged_writes, fallback_writes)
 		}
@@ -10277,7 +10348,10 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 	}
 	if node.kind == .if_expr {
 		if node.children_count > 0 {
-			tc.collect_param_storage_sources(tc.a.child(&node, 0), target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+			tc.collect_param_storage_sources(tc.a.child(&node, 0), target_name, target_type,
+				target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut
+				exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut
+				exited_defer_counts)
 		}
 		before := storage_param_sources_clone(aliases)
 		mut merged := storage_param_sources_clone(aliases)
@@ -10290,14 +10364,20 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 		if node.children_count > 1 {
 			mut then_aliases := storage_param_sources_clone(before)
 			mut then_writes := storage_param_sources_clone(before_writes)
-			tc.collect_param_storage_sources(tc.a.child(&node, 1), target_name, target_type, target_param_idx, decl_mod, mut then_aliases, mut visiting, mut then_writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+			tc.collect_param_storage_sources(tc.a.child(&node, 1), target_name, target_type,
+				target_param_idx, decl_mod, mut then_aliases, mut visiting, mut then_writes, mut
+				exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut
+				exited_defer_counts)
 			storage_param_sources_merge(mut merged, then_aliases)
 			storage_param_writes_merge(mut merged_writes, then_writes)
 		}
 		if node.children_count > 2 {
 			mut else_aliases := storage_param_sources_clone(before)
 			mut else_writes := storage_param_sources_clone(before_writes)
-			tc.collect_param_storage_sources(tc.a.child(&node, 2), target_name, target_type, target_param_idx, decl_mod, mut else_aliases, mut visiting, mut else_writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+			tc.collect_param_storage_sources(tc.a.child(&node, 2), target_name, target_type,
+				target_param_idx, decl_mod, mut else_aliases, mut visiting, mut else_writes, mut
+				exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut
+				exited_defer_counts)
 			storage_param_sources_merge(mut merged, else_aliases)
 			storage_param_writes_merge(mut merged_writes, else_writes)
 		}
@@ -10309,7 +10389,10 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 		if take_then := tc.comptime_type_condition_value(node.value) {
 			branch_idx := if take_then { 0 } else { 1 }
 			if branch_idx < node.children_count {
-				tc.collect_param_storage_sources(tc.a.child(&node, branch_idx), target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+				tc.collect_param_storage_sources(tc.a.child(&node, branch_idx), target_name,
+					target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut
+					exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut
+					exited_defer_counts)
 			}
 			return
 		}
@@ -10320,7 +10403,10 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 		for i in 0 .. node.children_count {
 			mut branch_aliases := storage_param_sources_clone(before)
 			mut branch_writes := storage_param_sources_clone(before_writes)
-			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut branch_aliases, mut visiting, mut branch_writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type,
+				target_param_idx, decl_mod, mut branch_aliases, mut visiting, mut branch_writes, mut
+				exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut
+				exited_defer_counts)
 			storage_param_sources_merge(mut merged, branch_aliases)
 			storage_param_writes_merge(mut merged_writes, branch_writes)
 		}
@@ -10330,7 +10416,10 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 	}
 	if node.kind == .match_stmt {
 		if node.children_count > 0 {
-			tc.collect_param_storage_sources(tc.a.child(&node, 0), target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+			tc.collect_param_storage_sources(tc.a.child(&node, 0), target_name, target_type,
+				target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut
+				exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut
+				exited_defer_counts)
 		}
 		before := storage_param_sources_clone(aliases)
 		mut merged := storage_param_sources_clone(aliases)
@@ -10339,7 +10428,10 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 		for i in 1 .. node.children_count {
 			mut branch_aliases := storage_param_sources_clone(before)
 			mut branch_writes := storage_param_sources_clone(before_writes)
-			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut branch_aliases, mut visiting, mut branch_writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type,
+				target_param_idx, decl_mod, mut branch_aliases, mut visiting, mut branch_writes, mut
+				exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut
+				exited_defer_counts)
 			storage_param_sources_merge(mut merged, branch_aliases)
 			storage_param_writes_merge(mut merged_writes, branch_writes)
 		}
@@ -10355,7 +10447,10 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 		for i in 0 .. node.children_count {
 			mut branch_aliases := storage_param_sources_clone(before)
 			mut branch_writes := storage_param_sources_clone(before_writes)
-			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut branch_aliases, mut visiting, mut branch_writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type,
+				target_param_idx, decl_mod, mut branch_aliases, mut visiting, mut branch_writes, mut
+				exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut
+				exited_defer_counts)
 			storage_param_sources_merge(mut merged, branch_aliases)
 			storage_param_writes_merge(mut merged_writes, branch_writes)
 		}
@@ -10368,7 +10463,10 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 		mut loop_aliases := storage_param_sources_clone(aliases)
 		mut loop_writes := storage_param_sources_clone(writes)
 		if node.kind == .for_stmt && node.children_count > 0 {
-			tc.collect_param_storage_sources(tc.a.child(&node, 0), target_name, target_type, target_param_idx, decl_mod, mut loop_aliases, mut visiting, mut loop_writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+			tc.collect_param_storage_sources(tc.a.child(&node, 0), target_name, target_type,
+				target_param_idx, decl_mod, mut loop_aliases, mut visiting, mut loop_writes, mut
+				exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut
+				exited_defer_counts)
 		}
 		mut break_aliases := map[string][]int{}
 		for {
@@ -10376,16 +10474,21 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 			mut pass_writes := storage_param_sources_clone(loop_writes)
 			mut pass_loop_exits := []StorageParamLoopExit{}
 			for i in storage_param_loop_iteration_child_indices(node) {
-				tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut pass_aliases, mut visiting, mut pass_writes, mut exited_writes, mut pass_loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+				tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type,
+					target_param_idx, decl_mod, mut pass_aliases, mut visiting, mut pass_writes, mut
+					exited_writes, mut pass_loop_exits, mut exited_aliases, active_defer_count, mut
+					exited_defer_counts)
 			}
 			mut next_aliases := storage_param_sources_clone(loop_aliases)
 			storage_param_sources_merge(mut next_aliases, pass_aliases)
 			for exit in pass_loop_exits {
 				storage_param_writes_merge(mut pass_writes, exit.writes)
-				continues_current_loop := exit.is_continue && (exit.label.len == 0 || tc.loop_has_label(id, exit.label))
+				continues_current_loop := exit.is_continue
+					&& (exit.label.len == 0 || tc.loop_has_label(id, exit.label))
 				if continues_current_loop {
 					storage_param_sources_merge(mut next_aliases, exit.aliases)
-				} else if !exit.is_continue && !exit.is_goto && (exit.label.len == 0 || tc.loop_has_label(id, exit.label)) {
+				} else if !exit.is_continue && !exit.is_goto
+					&& (exit.label.len == 0 || tc.loop_has_label(id, exit.label)) {
 					storage_param_sources_merge(mut break_aliases, exit.aliases)
 				} else if exit.label.len > 0 && !tc.loop_has_label(id, exit.label) {
 					loop_exits << exit
@@ -10393,7 +10496,8 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 			}
 			mut next_writes := storage_param_sources_clone(loop_writes)
 			storage_param_writes_merge(mut next_writes, pass_writes)
-			if storage_param_sources_equal(loop_aliases, next_aliases) && storage_param_sources_equal(loop_writes, next_writes) {
+			if storage_param_sources_equal(loop_aliases, next_aliases)
+				&& storage_param_sources_equal(loop_writes, next_writes) {
 				break
 			}
 			loop_aliases = next_aliases.move()
@@ -10413,7 +10517,9 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 			lhs_id := tc.a.child(&node, i)
 			rhs_id := tc.a.child(&node, i + 1)
 			lhs := tc.a.nodes[int(lhs_id)]
-			tc.collect_param_storage_sources(rhs_id, target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+			tc.collect_param_storage_sources(rhs_id, target_name, target_type, target_param_idx,
+				decl_mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut loop_exits, mut
+				exited_aliases, active_defer_count, mut exited_defer_counts)
 			mut assigned_sources := []int{}
 			tc.collect_storage_source_params(rhs_id, aliases, target_param_idx, mut
 				assigned_sources)
@@ -10434,8 +10540,9 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 		for pair_idx, lhs_id in lhs_ids {
 			lhs := tc.a.nodes[int(lhs_id)]
 			if lhs.kind != .ident || lhs.value == target_name {
-				if target_path := tc.storage_lvalue_path_from_param(lhs_id, target_name, lhs_aliases,
-					target_param_idx) {
+				if target_path := tc.storage_lvalue_path_from_param(lhs_id, target_name,
+					lhs_aliases, target_param_idx)
+				{
 					if target_path.len == 0 {
 						writes.clear()
 					}
@@ -10480,7 +10587,9 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 						continue
 					}
 					nested_target_idx := i - 1 + param_offset
-					if tc.storage_lvalue_is_rooted_at_param_alias(arg_id, target_name, aliases, target_param_idx) {
+					if tc.storage_lvalue_is_rooted_at_param_alias(arg_id, target_name, aliases,
+						target_param_idx)
+					{
 						if nested_target_idx !in nested_target_idxs {
 							nested_target_idxs << nested_target_idx
 							nested_target_ids << arg_id
@@ -10493,18 +10602,22 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 					}
 				}
 				for alias_i, nested_target_idx in rebound_target_idxs {
-					nested_writes := tc.param_storage_writes_for_decl(decl, nested_target_idx, mut visiting)
+					nested_writes := tc.param_storage_writes_for_decl(decl, nested_target_idx, mut
+						visiting)
 					source_param_idxs := nested_writes[''] or { continue }
-					definite_paths := tc.param_storage_direct_definite_write_paths_for_decl(decl, nested_target_idx)
+					definite_paths := tc.param_storage_direct_definite_write_paths_for_decl(decl,
+						nested_target_idx)
 					alias_name := rebound_alias_names[alias_i]
-					mut call_sources := if '' in definite_paths && nested_target_idx !in source_param_idxs {
+					mut call_sources := if '' in definite_paths
+						&& nested_target_idx !in source_param_idxs {
 						[]int{}
 					} else {
 						aliases[alias_name].clone()
 					}
 					for source_param_idx in source_param_idxs {
 						mut source_id := flat.empty_node
-						if is_method && source_param_idx == 0 && callee.kind == .selector && callee.children_count > 0 {
+						if is_method && source_param_idx == 0 && callee.kind == .selector
+							&& callee.children_count > 0 {
 							source_id = tc.a.child(callee, 0)
 						} else {
 							child_idx := source_param_idx - param_offset + 1
@@ -10513,7 +10626,8 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 							}
 						}
 						if tc.valid_node_id(source_id) {
-							tc.collect_storage_source_params(source_id, aliases, target_param_idx, mut call_sources)
+							tc.collect_storage_source_params(source_id, aliases, target_param_idx, mut
+								call_sources)
 						}
 					}
 					aliases[alias_name] = call_sources
@@ -10560,7 +10674,9 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 		}
 	}
 	for i in 0 .. node.children_count {
-		tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+		tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type,
+			target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut
+			loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
 	}
 }
 
@@ -10607,7 +10723,9 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 			deferred_stmts << child_id
 			continue
 		}
-		tc.collect_param_storage_sources(child_id, target_param.value, target_param.typ, target_param_idx, decl.mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut loop_exits, mut exited_aliases, deferred_stmts.len, mut exited_defer_counts)
+		tc.collect_param_storage_sources(child_id, target_param.value, target_param.typ,
+			target_param_idx, decl.mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut
+			loop_exits, mut exited_aliases, deferred_stmts.len, mut exited_defer_counts)
 		if tc.a.nodes[int(child_id)].kind == .return_stmt {
 			break
 		}
@@ -10626,7 +10744,11 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 			mut deferred_exited_aliases := []map[string][]int{}
 			mut deferred_exited_defer_counts := []int{}
 			for j in 0 .. defer_node.children_count {
-				tc.collect_param_storage_sources(tc.a.child(&defer_node, j), target_param.value, target_param.typ, target_param_idx, decl.mod, mut deferred_aliases, mut visiting, mut deferred_writes, mut deferred_exited_writes, mut deferred_loop_exits, mut deferred_exited_aliases, 0, mut deferred_exited_defer_counts)
+				tc.collect_param_storage_sources(tc.a.child(&defer_node, j), target_param.value,
+					target_param.typ, target_param_idx, decl.mod, mut deferred_aliases, mut
+					visiting, mut deferred_writes, mut deferred_exited_writes, mut
+					deferred_loop_exits, mut deferred_exited_aliases, 0, mut
+					deferred_exited_defer_counts)
 			}
 			storage_param_writes_merge(mut deferred_writes, deferred_exited_writes)
 			storage_param_loop_exit_writes_merge(mut deferred_writes, deferred_loop_exits)
@@ -10659,7 +10781,8 @@ fn (tc &TypeChecker) indirect_call_param_storage_source_params(call flat.Node, t
 		return []int{}
 	}
 	fn_type := fn_type_from_type(tc.resolve_type(tc.a.child(&call, 0))) or { return []int{} }
-	if target_param_idx >= fn_type.params.len || target_param_idx >= fn_type.params_mut.len || !fn_type.params_mut[target_param_idx] {
+	if target_param_idx >= fn_type.params.len || target_param_idx >= fn_type.params_mut.len
+		|| !fn_type.params_mut[target_param_idx] {
 		return []int{}
 	}
 	mut sources := []int{cap: fn_type.params.len - 1}
@@ -10717,11 +10840,13 @@ pub fn (tc &TypeChecker) call_param_flows_to_callback(id flat.NodeId, callback_p
 	decl_module := tc.visible_mutation_call_module(call, call_name)
 	decl := tc.visible_mutation_fn_decl(call_name, decl_module) or { return false }
 	mut visiting := map[u64]bool{}
-	return tc.visible_fn_param_flows_to_callback(decl, callback_param_idx, source_param_idx, mut visiting)
+	return tc.visible_fn_param_flows_to_callback(decl, callback_param_idx, source_param_idx, mut
+		visiting)
 }
 
 fn (tc &TypeChecker) visible_fn_param_flows_to_callback(decl VisibleMutationFnDecl, callback_param_idx int, source_param_idx int, mut visiting map[u64]bool) bool {
-	key := (u64(decl.idx + 1) << 32) | (u64(callback_param_idx + 1) << 16) | u64(source_param_idx + 1)
+	key := (u64(decl.idx + 1) << 32) | (u64(callback_param_idx + 1) << 16) | u64(source_param_idx +
+		1)
 	if visiting[key] {
 		return false
 	}
@@ -10731,8 +10856,9 @@ fn (tc &TypeChecker) visible_fn_param_flows_to_callback(decl VisibleMutationFnDe
 	fn_node := tc.a.nodes[decl.idx]
 	for i in 0 .. fn_node.children_count {
 		child_id := tc.a.child(&fn_node, i)
-		if tc.node_invokes_callback_with_param(child_id, callback_param.value,
-			source_param.value, decl, mut visiting) {
+		if tc.node_invokes_callback_with_param(child_id, callback_param.value, source_param.value,
+			decl, mut visiting)
+		{
 			return true
 		}
 	}
@@ -10752,8 +10878,9 @@ fn (tc &TypeChecker) node_invokes_callback_with_param(id flat.NodeId, callback_n
 		callee := tc.a.node(callee_id)
 		if tc.callback_arg_is_rooted_at_ident(callee_id, callback_name, owner_decl) {
 			for i in 1 .. node.children_count {
-				if tc.callback_arg_is_rooted_at_ident(tc.call_arg_value(tc.a.child(&node,
-					i)), source_name, owner_decl) {
+				if tc.callback_arg_is_rooted_at_ident(tc.call_arg_value(tc.a.child(&node, i)),
+					source_name, owner_decl)
+				{
 					return true
 				}
 			}
@@ -10771,8 +10898,7 @@ fn (tc &TypeChecker) node_invokes_callback_with_param(id flat.NodeId, callback_n
 				mut source_idx := -1
 				if param_offset == 1 && callee.kind == .selector && callee.children_count > 0 {
 					receiver_id := tc.a.child(callee, 0)
-					if tc.callback_arg_is_rooted_at_ident(receiver_id, callback_name,
-						owner_decl) {
+					if tc.callback_arg_is_rooted_at_ident(receiver_id, callback_name, owner_decl) {
 						callback_idx = 0
 					}
 					if tc.callback_arg_is_rooted_at_ident(receiver_id, source_name, owner_decl) {
@@ -10789,15 +10915,17 @@ fn (tc &TypeChecker) node_invokes_callback_with_param(id flat.NodeId, callback_n
 						source_idx = param_idx
 					}
 				}
-				if callback_idx >= 0 && source_idx >= 0 && tc.visible_fn_param_flows_to_callback(decl, callback_idx, source_idx, mut visiting) {
+				if callback_idx >= 0 && source_idx >= 0
+					&& tc.visible_fn_param_flows_to_callback(decl, callback_idx, source_idx, mut visiting) {
 					return true
 				}
 			}
 		}
 	}
 	for i in 0 .. node.children_count {
-		if tc.node_invokes_callback_with_param(tc.a.child(&node, i), callback_name,
-			source_name, owner_decl, mut visiting) {
+		if tc.node_invokes_callback_with_param(tc.a.child(&node, i), callback_name, source_name,
+			owner_decl, mut visiting)
+		{
 			return true
 		}
 	}
@@ -10824,7 +10952,8 @@ fn (tc &TypeChecker) callback_arg_is_rooted_at_ident(id flat.NodeId, name string
 			pending << tc.visible_fn_local_binding_rhs_before(owner_decl, node.value, current)
 			continue
 		}
-		if node.kind in [.paren, .prefix, .selector, .index, .cast_expr, .as_expr, .expr_stmt] && node.children_count > 0 {
+		if node.kind in [.paren, .prefix, .selector, .index, .cast_expr, .as_expr, .expr_stmt]
+			&& node.children_count > 0 {
 			pending << tc.a.child(node, 0)
 			continue
 		}
@@ -10884,7 +11013,8 @@ fn (tc &TypeChecker) callback_binding_call_sources(id flat.NodeId, name string) 
 	param_offset := if is_method { 1 } else { 0 }
 	callee := tc.a.child_node(call, 0)
 	mut target_param_idxs := []int{}
-	if is_method && callee.kind == .selector && callee.children_count > 0 && tc.callback_binding_arg_is_ident(tc.a.child(callee, 0), name) {
+	if is_method && callee.kind == .selector && callee.children_count > 0
+		&& tc.callback_binding_arg_is_ident(tc.a.child(callee, 0), name) {
 		target_param_idxs << 0
 	}
 	for i in 1 .. call.children_count {
@@ -10897,7 +11027,8 @@ fn (tc &TypeChecker) callback_binding_call_sources(id flat.NodeId, name string) 
 	for target_param_idx in target_param_idxs {
 		for source_param_idx in tc.call_param_storage_source_params(id, target_param_idx) {
 			mut source_id := flat.empty_node
-			if is_method && source_param_idx == 0 && callee.kind == .selector && callee.children_count > 0 {
+			if is_method && source_param_idx == 0 && callee.kind == .selector
+				&& callee.children_count > 0 {
 				source_id = tc.a.child(callee, 0)
 			} else {
 				child_idx := source_param_idx - param_offset + 1
@@ -10942,7 +11073,8 @@ fn (tc &TypeChecker) collect_visible_binding_scopes(id flat.NodeId, target_id fl
 		return
 	}
 	for i in 0 .. node.children_count {
-		tc.collect_visible_binding_scopes(tc.a.child(node, i), target_id, name, current_scope, mut scope_parents, mut decl_offsets, mut use_scope)
+		tc.collect_visible_binding_scopes(tc.a.child(node, i), target_id, name, current_scope, mut
+			scope_parents, mut decl_offsets, mut use_scope)
 	}
 }
 
@@ -10988,7 +11120,8 @@ fn (tc &TypeChecker) visible_binding_can_be_bypassed_by_goto(binding_pos token.P
 		}
 		for label_id in labels[jump.value] {
 			label := tc.a.node(label_id)
-			if label.pos.id == binding_pos.id && label.pos.offset > binding_pos.offset && label.pos.offset <= use_pos.offset {
+			if label.pos.id == binding_pos.id && label.pos.offset > binding_pos.offset
+				&& label.pos.offset <= use_pos.offset {
 				return true
 			}
 		}
@@ -11008,14 +11141,16 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 	mut decl_offsets := map[int]int{}
 	mut use_scope := [root_scope]
 	for i in 0 .. fn_node.children_count {
-		tc.collect_visible_binding_scopes(tc.a.child(&fn_node, i), use_id, name, root_scope, mut scope_parents, mut decl_offsets, mut use_scope)
+		tc.collect_visible_binding_scopes(tc.a.child(&fn_node, i), use_id, name, root_scope, mut
+			scope_parents, mut decl_offsets, mut use_scope)
 	}
 	mut gotos := []flat.NodeId{}
 	mut labels := map[string][]flat.NodeId{}
 	for i in 0 .. fn_node.children_count {
 		tc.collect_visible_binding_gotos_and_labels(tc.a.child(&fn_node, i), mut gotos, mut labels)
 	}
-	target_scope := visible_binding_scope_at_offset(use_scope[0], use_pos.offset, root_scope, scope_parents, decl_offsets)
+	target_scope := visible_binding_scope_at_offset(use_scope[0], use_pos.offset, root_scope,
+		scope_parents, decl_offsets)
 	mut stack := []flat.NodeId{}
 	mut stack_conditional := []bool{}
 	mut stack_scopes := []int{}
@@ -11048,11 +11183,14 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 				binding_scope := if current_node.kind == .decl_assign {
 					current_scope
 				} else {
-					visible_binding_scope_at_offset(current_scope, lhs.pos.offset, root_scope, scope_parents, decl_offsets)
+					visible_binding_scope_at_offset(current_scope, lhs.pos.offset, root_scope,
+						scope_parents, decl_offsets)
 				}
-				if lhs.kind == .ident && lhs.value == name && binding_scope == target_scope && lhs.pos.id == use_pos.id && lhs.pos.offset < use_pos.offset {
+				if lhs.kind == .ident && lhs.value == name && binding_scope == target_scope
+					&& lhs.pos.id == use_pos.id && lhs.pos.offset < use_pos.offset {
 					rhs_id := tc.a.child(current_node, i + 1)
-					if current_conditional || tc.visible_binding_can_be_bypassed_by_goto(lhs.pos, use_pos, gotos, labels) {
+					if current_conditional
+						|| tc.visible_binding_can_be_bypassed_by_goto(lhs.pos, use_pos, gotos, labels) {
 						conditional_ids << rhs_id
 						conditional_offsets << lhs.pos.offset
 					} else if lhs.pos.offset > latest_definite_offset {
@@ -11062,11 +11200,14 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 				}
 			}
 		}
-		call_binding_scope := visible_binding_scope_at_offset(current_scope, current_node.pos.offset, root_scope, scope_parents, decl_offsets)
-		if current_node.kind == .call && call_binding_scope == target_scope && current_node.pos.id == use_pos.id && current_node.pos.offset < use_pos.offset {
+		call_binding_scope := visible_binding_scope_at_offset(current_scope,
+			current_node.pos.offset, root_scope, scope_parents, decl_offsets)
+		if current_node.kind == .call && call_binding_scope == target_scope
+			&& current_node.pos.id == use_pos.id && current_node.pos.offset < use_pos.offset {
 			call_sources := tc.callback_binding_call_sources(current_id, name)
 			if call_sources.len > 0 {
-				if current_conditional || tc.visible_binding_can_be_bypassed_by_goto(current_node.pos, use_pos, gotos, labels) {
+				if current_conditional
+					|| tc.visible_binding_can_be_bypassed_by_goto(current_node.pos, use_pos, gotos, labels) {
 					for source_id in call_sources {
 						conditional_ids << source_id
 						conditional_offsets << current_node.pos.offset
@@ -11080,9 +11221,8 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 		if current_node.kind in [.fn_literal, .lambda_expr] {
 			continue
 		}
-		child_conditional := current_conditional || current_node.kind in [.if_expr, .match_stmt,
-			.match_branch, .or_expr, .for_stmt, .for_in_stmt, .select_stmt, .select_branch,
-			.comptime_if, .comptime_for]
+		child_conditional := current_conditional
+			|| current_node.kind in [.if_expr, .match_stmt, .match_branch, .or_expr, .for_stmt, .for_in_stmt, .select_stmt, .select_branch, .comptime_if, .comptime_for]
 		for i in 0 .. current_node.children_count {
 			stack << tc.a.child(current_node, i)
 			stack_conditional << child_conditional

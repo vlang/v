@@ -653,8 +653,7 @@ pub fn (mut m Module) discard_emission_since(value_count int, instruction_count 
 	}
 	for function_index in 0 .. m.funcs.len {
 		mut function := m.funcs[function_index]
-		for function.blocks.len > 0
-			&& int(function.blocks[function.blocks.len - 1]) >= block_count {
+		for function.blocks.len > 0 && int(function.blocks[function.blocks.len - 1]) >= block_count {
 			function.blocks.delete_last()
 		}
 		m.funcs[function_index] = function

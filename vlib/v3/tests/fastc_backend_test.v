@@ -75,7 +75,8 @@ fn test_direct_fastc_compiler_entry_selects_selfhost_driver() {
 	assert os.is_executable(self_output)
 
 	ordinary_source := os.join_path(root, 'v3.v')
-	write_fastc_test_source(ordinary_source, 'module main\nfn main() {\n\t\$if fastc_selfhost ? {\n\t\texit(7)\n\t}\n}\n')
+	write_fastc_test_source(ordinary_source,
+		'module main\nfn main() {\n\t\$if fastc_selfhost ? {\n\t\texit(7)\n\t}\n}\n')
 	ordinary_binary := os.join_path(root, 'ordinary_v3')
 	ordinary_build := cmdexec.run(@VEXE, ['-silent', '-b', 'fastc', '-o', ordinary_binary,
 		ordinary_source])

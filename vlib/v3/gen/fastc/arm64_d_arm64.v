@@ -6507,7 +6507,9 @@ fn (p &FastArm64Parser) option_handler_expression_is_final() bool {
 					return next == .rcbr
 				}
 			}
-			.eof { return false }
+			.eof {
+				return false
+			}
 			else {}
 		}
 	}
@@ -6849,17 +6851,25 @@ fn (mut p FastArm64Parser) parse_match_expression() !FastArm64Value {
 		typ_name: result_name
 		tuple_types: result_tuple_types
 		option_failed: if has_option_metadata {
-			p.program.instr1(.load, merge_block, p.program.i1_type, option_failed_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, merge_block, p.program.i1_type, option_failed_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 		option_error_type: if has_option_metadata {
-			p.program.instr1(.load, merge_block, p.program.u64_type, option_error_type_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, merge_block, p.program.u64_type, option_error_type_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 		option_error_code: if has_option_metadata {
-			p.program.instr1(.load, merge_block, p.program.i32_type, option_error_code_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, merge_block, p.program.i32_type, option_error_code_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 		option_error_message: if has_option_metadata {
-			p.program.instr1(.load, merge_block, p.program.str_type, option_error_message_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, merge_block, p.program.str_type, option_error_message_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 	}
 }
 
@@ -7119,8 +7129,10 @@ fn fast_arm64_interpolation_format(source string) FastArm64InterpolationFormat {
 	return FastArm64InterpolationFormat{
 		width: if width_source.len > 0 { width_source.int() } else { 0 }
 		precision: if dot >= 0 {
-			if precision_source.len > 0 { precision_source.int() } else { 0 }} else {
-			-1}
+			if precision_source.len > 0 { precision_source.int() } else { 0 }
+		} else {
+			-1
+		}
 		specifier: specifier
 		left: left
 		zero_pad: zero_pad
@@ -7470,17 +7482,25 @@ fn (mut p FastArm64Parser) parse_if_expression(expected_type_name string) !FastA
 		typ: then_value.typ
 		typ_name: then_value.typ_name
 		option_failed: if has_option_metadata {
-			p.program.instr1(.load, p.cur_block, p.program.i1_type, option_failed_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, p.cur_block, p.program.i1_type, option_failed_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 		option_error_type: if has_option_metadata {
-			p.program.instr1(.load, p.cur_block, p.program.u64_type, option_error_type_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, p.cur_block, p.program.u64_type, option_error_type_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 		option_error_code: if has_option_metadata {
-			p.program.instr1(.load, p.cur_block, p.program.i32_type, option_error_code_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, p.cur_block, p.program.i32_type, option_error_code_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 		option_error_message: if has_option_metadata {
-			p.program.instr1(.load, p.cur_block, p.program.str_type, option_error_message_slot)} else {
-			ssa.ValueID(0)}
+			p.program.instr1(.load, p.cur_block, p.program.str_type, option_error_message_slot)
+		} else {
+			ssa.ValueID(0)
+		}
 	}
 }
 
@@ -8477,8 +8497,7 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 			if value.address != ssa.ValueID(0) {
 				state_type := p.program.m.type_store.get_ptr(p.program.map_state_type)
 				zero_state := p.program.m.get_or_add_const(state_type, '0')
-				state_address := p.program.struct_field_ptr(p.cur_block, value.address, p.program.map_type,
-					0)
+				state_address := p.program.struct_field_ptr(p.cur_block, value.address, p.program.map_type, 0)
 				p.program.instr2(.store, p.cur_block, p.program.void_type, zero_state, state_address)
 			}
 			return FastArm64Value{
@@ -9590,8 +9609,10 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 		option_error_message: option_error_message
 		option_error_code: option_error_code
 		typ_name: if signature.return_type == 'Option' {
-			signature.option_type} else {
-			signature.return_type}
+			signature.option_type
+		} else {
+			signature.return_type
+		}
 		tuple_types: signature.return_types
 	}
 }
@@ -10332,8 +10353,10 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 		option_error_message: option_error_message
 		option_error_code: option_error_code
 		typ_name: if signature.return_type == 'Option' {
-			signature.option_type} else {
-			signature.return_type}
+			signature.option_type
+		} else {
+			signature.return_type
+		}
 		tuple_types: signature.return_types
 	}
 }

@@ -12515,19 +12515,25 @@ fn (mut p Parser) shared_parameter_token_is_identifier() bool {
 		}
 		end = if tok == first { p.peek_end } else { lookahead.offset }
 		match tok {
-			.lpar { paren_depth++ }
+			.lpar {
+				paren_depth++
+			}
 			.rpar {
 				if paren_depth > 0 {
 					paren_depth--
 				}
 			}
-			.lsbr { bracket_depth++ }
+			.lsbr {
+				bracket_depth++
+			}
 			.rsbr {
 				if bracket_depth > 0 {
 					bracket_depth--
 				}
 			}
-			.lcbr { brace_depth++ }
+			.lcbr {
+				brace_depth++
+			}
 			.rcbr {
 				if brace_depth > 0 {
 					brace_depth--
@@ -12563,7 +12569,8 @@ fn (p &Parser) shared_token_gap_has_line_boundary() bool {
 		offset += 2
 		mut depth := 1
 		for offset + 1 < p.peek_pos && depth > 0 {
-			if p.s.src[offset] == `/` && p.s.src[offset + 1] == `*` && (offset + 2 >= p.peek_pos || p.s.src[offset + 2] != `/`) {
+			if p.s.src[offset] == `/` && p.s.src[offset + 1] == `*`
+				&& (offset + 2 >= p.peek_pos || p.s.src[offset + 2] != `/`) {
 				depth++
 				offset += 2
 				continue

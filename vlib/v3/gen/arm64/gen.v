@@ -502,7 +502,8 @@ fn (g &Gen) c_homogeneous_float_aggregate(typ_id ssa.TypeID) ?Arm64HfaLayout {
 		return none
 	}
 	mut elements := []Arm64HfaElement{cap: 4}
-	if !g.collect_homogeneous_float_elements(typ_id, 0, 0, mut elements) || elements.len == 0 || elements.len > 4 {
+	if !g.collect_homogeneous_float_elements(typ_id, 0, 0, mut elements) || elements.len == 0
+		|| elements.len > 4 {
 		return none
 	}
 	element_type := elements[0].typ
@@ -530,7 +531,7 @@ fn (g &Gen) collect_homogeneous_float_elements(typ_id ssa.TypeID, base_offset in
 	typ := g.m.type_store.types[typ_id]
 	if typ.kind == .float_t {
 		elements << Arm64HfaElement{
-			typ: typ_id
+			typ:    typ_id
 			offset: base_offset
 		}
 		return elements.len <= 4
@@ -538,7 +539,9 @@ fn (g &Gen) collect_homogeneous_float_elements(typ_id ssa.TypeID, base_offset in
 	if typ.kind == .array_t {
 		stride := g.m.type_size(typ.elem_type)
 		for i in 0 .. typ.len {
-			if !g.collect_homogeneous_float_elements(typ.elem_type, base_offset + i * stride, depth + 1, mut elements) {
+			if !g.collect_homogeneous_float_elements(typ.elem_type, base_offset + i * stride,
+
+				depth + 1, mut elements) {
 				return false
 			}
 		}
@@ -548,7 +551,8 @@ fn (g &Gen) collect_homogeneous_float_elements(typ_id ssa.TypeID, base_offset in
 		return false
 	}
 	for i, field_type in typ.fields {
-		if !g.collect_homogeneous_float_elements(field_type, base_offset + g.m.struct_field_offset(typ_id, i), depth + 1, mut elements) {
+		if !g.collect_homogeneous_float_elements(field_type, base_offset +
+			g.m.struct_field_offset(typ_id, i), depth + 1, mut elements) {
 			return false
 		}
 	}
@@ -1209,7 +1213,8 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	if !is_indirect {
 		fn_name = fn_ref.name
 	}
-	is_c_extern := !is_indirect && fn_ref.kind == .func_ref && fn_ref.index >= 0 && fn_ref.index < g.m.funcs.len && g.m.funcs[fn_ref.index].is_c_extern
+	is_c_extern := !is_indirect && fn_ref.kind == .func_ref && fn_ref.index >= 0
+		&& fn_ref.index < g.m.funcs.len && g.m.funcs[fn_ref.index].is_c_extern
 	mut c_return_hfa := Arm64HfaLayout{}
 	if is_c_extern {
 		c_return_hfa = g.c_homogeneous_float_aggregate(instr.typ) or { Arm64HfaLayout{} }
@@ -1549,7 +1554,8 @@ fn (g &Gen) call_stack_arg_size(instr ssa.Instruction) int {
 	mut stack_words := 0
 	fn_ref_id := instr.operands[0]
 	fn_ref := g.m.values[fn_ref_id]
-	is_c_extern := fn_ref.kind == .func_ref && fn_ref.index >= 0 && fn_ref.index < g.m.funcs.len && g.m.funcs[fn_ref.index].is_c_extern
+	is_c_extern := fn_ref.kind == .func_ref && fn_ref.index >= 0 && fn_ref.index < g.m.funcs.len
+		&& g.m.funcs[fn_ref.index].is_c_extern
 	c_variadic_start := g.c_variadic_start(instr) or { -1 }
 	for ai in 1 .. instr.operands.len {
 		arg_id := instr.operands[ai]

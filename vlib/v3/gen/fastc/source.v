@@ -366,13 +366,13 @@ mut:
 	entry_vmod_roots []string
 	entry_files      [][]string
 	files            []string
-	stamps         []FastcFileStamp
-	offsets        []int
-	lookup_modules []string
-	lookup_sources []string
+	stamps           []FastcFileStamp
+	offsets          []int
+	lookup_modules   []string
+	lookup_sources   []string
 	// written is the memo's own write time (unix seconds); cached contents
 	// are trusted only for files modified at least two seconds before it.
-	written i64
+	written    i64
 	blob_token string
 }
 
@@ -392,7 +392,7 @@ fn fastc_same_stamp(a FastcFileStamp, b FastcFileStamp) bool {
 fn fastc_file_stamp(path string) ?FastcFileStamp {
 	st := os.stat(path) or { return none }
 	return FastcFileStamp{
-		size:  i64(st.size)
+		size: i64(st.size)
 		mtime: st.mtime
 		ctime: st.ctime
 		inode: st.inode
@@ -532,7 +532,7 @@ fn fastc_memo_field_end(tabs []int, k int, line_end int) int {
 
 fn fastc_memo_stamp_fields(text string, tabs []int, first int, line_end int, k int) FastcFileStamp {
 	return FastcFileStamp{
-		size:  i64(fastc_memo_field_u64(text, fastc_memo_field_start(tabs, k, first), fastc_memo_field_end(tabs, k, line_end)))
+		size: i64(fastc_memo_field_u64(text, fastc_memo_field_start(tabs, k, first), fastc_memo_field_end(tabs, k, line_end)))
 		mtime: i64(fastc_memo_field_u64(text, fastc_memo_field_start(tabs, k + 1, first), fastc_memo_field_end(tabs, k + 1, line_end)))
 		ctime: i64(fastc_memo_field_u64(text, fastc_memo_field_start(tabs, k + 2, first), fastc_memo_field_end(tabs, k + 2, line_end)))
 		inode: fastc_memo_field_u64(text, fastc_memo_field_start(tabs, k + 3, first), fastc_memo_field_end(tabs, k + 3, line_end))
@@ -622,20 +622,20 @@ fn fastc_memo_probe_tasks(memo FastcResolveMemo, entry_paths []string, entry_rea
 	for index, path in entry_paths {
 		real_path := entry_real_paths[index]
 		mut task := FastcMemoTask{
-			kind:   4
+			kind: 4
 			source: path
-			dir:    real_path
+			dir: real_path
 		}
 		for i, memo_entry in memo.entry_paths {
 			if memo_entry == path && memo.entry_real_paths[i] == real_path && memo.entry_stamps[i].mtime != 0 {
 				task = FastcMemoTask{
-					kind:           4
-					source:         path
-					dir:            real_path
-					files:          memo.entry_files[i]
-					stamps:         [memo.entry_stamps[i]]
+					kind: 4
+					source: path
+					dir: real_path
+					files: memo.entry_files[i]
+					stamps: [memo.entry_stamps[i]]
 					trusted_before: memo.written - 1
-					vmod_root:      memo.entry_vmod_roots[i]
+					vmod_root: memo.entry_vmod_roots[i]
 				}
 				break
 			}
@@ -650,23 +650,23 @@ fn fastc_memo_probe_tasks(memo FastcResolveMemo, entry_paths []string, entry_rea
 		}
 		seen_lookups[lookup_key] = true
 		tasks << FastcMemoTask{
-			kind:        0
+			kind: 0
 			module_name: module_name
-			source:      memo.lookup_sources[i]
+			source: memo.lookup_sources[i]
 		}
 	}
 	with_listings := memo.dir_stamps.len == memo.dirs.len && memo.dir_files.len == memo.dirs.len
 	for i, dir in memo.dirs {
 		mut task := FastcMemoTask{
 			kind: 1
-			dir:  dir
+			dir: dir
 		}
 		if with_listings && memo.dir_stamps[i].mtime != 0 {
 			task = FastcMemoTask{
-				kind:           1
-				dir:            dir
-				files:          memo.dir_files[i]
-				stamps:         [memo.dir_stamps[i]]
+				kind: 1
+				dir: dir
+				files: memo.dir_files[i]
+				stamps: [memo.dir_stamps[i]]
 				trusted_before: memo.written - 1
 			}
 		}
@@ -679,7 +679,7 @@ fn fastc_memo_probe_tasks(memo FastcResolveMemo, entry_paths []string, entry_rea
 			end = memo.files.len
 		}
 		tasks << FastcMemoTask{
-			kind:  3
+			kind: 3
 			files: memo.files[start..end]
 		}
 		start = end
@@ -717,10 +717,10 @@ fn fastc_memo_blob_tasks(memo_path string, memo FastcResolveMemo) ([]FastcMemoTa
 			end = expected
 		}
 		tasks << FastcMemoTask{
-			kind:    5
-			dir:     blob_path
+			kind: 5
+			dir: blob_path
 			offsets: [start, end - start]
-			blob:    blob
+			blob: blob
 		}
 		start = end
 	}
@@ -763,17 +763,17 @@ fn fastc_memo_read_tasks(memo FastcResolveMemo, current_stamps []FastcFileStamp,
 			end = memo.files.len
 		}
 		mut task := FastcMemoTask{
-			kind:  2
+			kind: 2
 			files: memo.files[start..end]
 		}
 		if with_blob {
 			task = FastcMemoTask{
-				kind:           2
-				files:          memo.files[start..end]
-				stamps:         memo.stamps[start..end]
+				kind: 2
+				files: memo.files[start..end]
+				stamps: memo.stamps[start..end]
 				current_stamps: current_stamps[start..end]
-				offsets:        memo.offsets[start..end]
-				blob:           blob
+				offsets: memo.offsets[start..end]
+				blob: blob
 				trusted_before: memo.written - 1
 			}
 		}
@@ -791,7 +791,7 @@ fn fastc_run_memo_task(task FastcMemoTask, index int, prefs &pref.Preferences, c
 		key := fastc_module_cache_key(prefs, task.source, task.module_name)
 		return FastcMemoResult{
 			index: index
-			dir:   fastc_resolve_module_dir(key, task.module_name, task.source, prefs, canonical_vlib, mut local_cache)
+			dir: fastc_resolve_module_dir(key, task.module_name, task.source, prefs, canonical_vlib, mut local_cache)
 		}
 	}
 	if task.kind == 1 {
@@ -803,14 +803,14 @@ fn fastc_run_memo_task(task FastcMemoTask, index int, prefs &pref.Preferences, c
 			if stamp.mtime != 0 && fastc_same_stamp(stamp, task.stamps[0]) && stamp.mtime < task.trusted_before {
 				return FastcMemoResult{
 					index: index
-					dir:   task.dir
+					dir: task.dir
 					files: task.files
 				}
 			}
 		}
 		return FastcMemoResult{
 			index: index
-			dir:   task.dir
+			dir: task.dir
 			files: fastc_list_module_sources(task.dir, prefs)
 		}
 	}
@@ -833,7 +833,7 @@ fn fastc_run_memo_task(task FastcMemoTask, index int, prefs &pref.Preferences, c
 		blob_file.close()
 		return FastcMemoResult{
 			index: index
-			dir:   if read == range_len { 'ok' } else { '' }
+			dir: if read == range_len { 'ok' } else { '' }
 		}
 	}
 	if task.kind == 4 {
@@ -846,14 +846,14 @@ fn fastc_run_memo_task(task FastcMemoTask, index int, prefs &pref.Preferences, c
 			if stamp.mtime != 0 && fastc_same_stamp(stamp, task.stamps[0]) && stamp.mtime < task.trusted_before && fastc_vmod_root_matches(entry_path, task.vmod_root) {
 				return FastcMemoResult{
 					index: index
-					dir:   entry_path
+					dir: entry_path
 					files: task.files
 				}
 			}
 		}
 		return FastcMemoResult{
 			index: index
-			dir:   entry_path
+			dir: entry_path
 			files: fastc_entry_module_files(entry_path, prefs)
 		}
 	}
@@ -863,8 +863,8 @@ fn fastc_run_memo_task(task FastcMemoTask, index int, prefs &pref.Preferences, c
 			stamps << fastc_file_stamp(path) or { FastcFileStamp{} }
 		}
 		return FastcMemoResult{
-			index:  index
-			files:  task.files
+			index: index
+			files: task.files
 			stamps: stamps
 		}
 	}
@@ -883,10 +883,10 @@ fn fastc_run_memo_task(task FastcMemoTask, index int, prefs &pref.Preferences, c
 		sources << fastc_load_source(path, prefs)
 	}
 	return FastcMemoResult{
-		index:   index
-		files:   task.files
+		index: index
+		files: task.files
 		sources: sources
-		stamps:  task.current_stamps
+		stamps: task.current_stamps
 	}
 }
 
@@ -894,13 +894,13 @@ fn fastc_run_memo_task(task FastcMemoTask, index int, prefs &pref.Preferences, c
 fn fastc_load_source_text(path string, source string, prefs &pref.Preferences) FastcLoadedSource {
 	header := fastc_scan_source_header(source, path, prefs) or {
 		return FastcLoadedSource{
-			path:          path
-			failed:        true
+			path: path
+			failed: true
 			error_message: err.msg()
 		}
 	}
 	return FastcLoadedSource{
-		path:   path
+		path: path
 		source: source
 		header: header
 	}
@@ -922,12 +922,12 @@ fn fastc_apply_memo_results(tasks []FastcMemoTask, results []FastcMemoResult, pr
 			for i, source in result.sources {
 				stamp := if i < result.stamps.len { result.stamps[i] } else { FastcFileStamp{} }
 				loaded[task.files[i]] = FastcLoadedSource{
-					path:          source.path
-					source:        source.source
-					header:        source.header
-					failed:        source.failed
+					path: source.path
+					source: source.source
+					header: source.header
+					failed: source.failed
 					error_message: source.error_message
-					stamp:         stamp
+					stamp: stamp
 				}
 			}
 		}

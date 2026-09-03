@@ -65,14 +65,12 @@ fn test_first_last_field_borrow_on_owned_elements() {
 	v3_bin := build_v3_array_accessor_borrow()
 
 	// The exact evict-loop shape: read the last element's scalar field, then remove it.
-	last_field := run_v3_array_accessor_borrow_program(v3_bin, 'last_field',
-		"struct Entry {\n\tname  string\n\tvalue string\n\tsize  int\n}\n\nstruct Tbl {\nmut:\n\tentries []Entry\n\ttotal   int\n}\n\nfn (mut t Tbl) shrink() {\n\tfor t.entries.len > 0 {\n\t\tt.total -= t.entries.last().size\n\t\tt.entries.delete_last()\n\t}\n}\n\nfn main() {\n\tmut t := Tbl{}\n\tt.entries << Entry{ name: 'a', value: 'b', size: 5 }\n\tt.entries << Entry{ name: 'c', value: 'd', size: 7 }\n\tt.total = 12\n\tt.shrink()\n\tprintln(int_str(t.total))\n}\n")
+	last_field := run_v3_array_accessor_borrow_program(v3_bin, 'last_field', "struct Entry {\n\tname  string\n\tvalue string\n\tsize  int\n}\n\nstruct Tbl {\nmut:\n\tentries []Entry\n\ttotal   int\n}\n\nfn (mut t Tbl) shrink() {\n\tfor t.entries.len > 0 {\n\t\tt.total -= t.entries.last().size\n\t\tt.entries.delete_last()\n\t}\n}\n\nfn main() {\n\tmut t := Tbl{}\n\tt.entries << Entry{ name: 'a', value: 'b', size: 5 }\n\tt.entries << Entry{ name: 'c', value: 'd', size: 7 }\n\tt.total = 12\n\tt.shrink()\n\tprintln(int_str(t.total))\n}\n")
 	assert last_field == '0'
 
 	// first()/last() field reads through both value and ref receivers, incl. a chained
 	// field access (`last().name.len`).
-	mixed := run_v3_array_accessor_borrow_program(v3_bin, 'mixed_field',
-		"struct Entry {\n\tname string\n\tn    int\n}\n\nstruct Box {\nmut:\n\tentries []Entry\n}\n\nfn (b &Box) probe() int {\n\treturn b.entries.first().n + b.entries.last().n + b.entries.last().name.len\n}\n\nfn main() {\n\tmut b := Box{}\n\tb.entries << Entry{ name: 'ab', n: 10 }\n\tb.entries << Entry{ name: 'cdef', n: 20 }\n\tprintln(int_str(b.probe()))\n}\n")
+	mixed := run_v3_array_accessor_borrow_program(v3_bin, 'mixed_field', "struct Entry {\n\tname string\n\tn    int\n}\n\nstruct Box {\nmut:\n\tentries []Entry\n}\n\nfn (b &Box) probe() int {\n\treturn b.entries.first().n + b.entries.last().n + b.entries.last().name.len\n}\n\nfn main() {\n\tmut b := Box{}\n\tb.entries << Entry{ name: 'ab', n: 10 }\n\tb.entries << Entry{ name: 'cdef', n: 20 }\n\tprintln(int_str(b.probe()))\n}\n")
 	assert mixed == '34'
 }
 
@@ -80,9 +78,7 @@ fn test_first_last_field_borrow_on_owned_elements() {
 // diagnose non-user modules, so the regressed transform silently produced `(0)` there,
 // which is precisely why `v .` on a fresh `--web` project failed to compile.
 fn test_first_last_field_borrow_in_imported_module() {
-	out := run_v3_array_accessor_borrow_module('borrow_mod',
-		'module mymod\n\nstruct Entry {\n\tname  string\n\tvalue string\n\tsize  int\n}\n\npub struct Tbl {\nmut:\n\tentries []Entry\n\ttotal   int\n}\n\npub fn (mut t Tbl) add(name string, value string) {\n\tsz := name.len + value.len + 32\n\tfor t.entries.len > 0 && t.total + sz > 100 {\n\t\tt.total -= t.entries.last().size\n\t\tt.entries.delete_last()\n\t}\n\tt.entries.insert(0, Entry{ name: name, value: value, size: sz })\n\tt.total += sz\n}\n\npub fn (t &Tbl) total() int {\n\treturn t.total\n}\n',
-		"module main\n\nimport mymod\n\nfn main() {\n\tmut t := mymod.Tbl{}\n\tt.add('a', 'b')\n\tt.add('c', 'd')\n\tprintln(int_str(t.total()))\n}\n")
+	out := run_v3_array_accessor_borrow_module('borrow_mod', 'module mymod\n\nstruct Entry {\n\tname  string\n\tvalue string\n\tsize  int\n}\n\npub struct Tbl {\nmut:\n\tentries []Entry\n\ttotal   int\n}\n\npub fn (mut t Tbl) add(name string, value string) {\n\tsz := name.len + value.len + 32\n\tfor t.entries.len > 0 && t.total + sz > 100 {\n\t\tt.total -= t.entries.last().size\n\t\tt.entries.delete_last()\n\t}\n\tt.entries.insert(0, Entry{ name: name, value: value, size: sz })\n\tt.total += sz\n}\n\npub fn (t &Tbl) total() int {\n\treturn t.total\n}\n', "module main\n\nimport mymod\n\nfn main() {\n\tmut t := mymod.Tbl{}\n\tt.add('a', 'b')\n\tt.add('c', 'd')\n\tprintln(int_str(t.total()))\n}\n")
 	assert out == '68'
 }
 
@@ -114,9 +110,7 @@ fn compile_v3_ownership_program(v3_bin string, name string, src string, extra_ar
 // temp instead of duplicating the call.
 fn test_owned_first_last_receiver_evaluated_once() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_eval_once',
-		"struct E {\n\tname string\n\tsize int\n}\n\n__global (\n\tmake_calls = 0\n)\n\nfn make_entries() []E {\n\tmake_calls++\n\treturn [E{ name: 'a', size: 5 }, E{ name: 'b', size: 9 }]\n}\n\nfn main() {\n\ts := make_entries().last().size\n\tprintln(int_str(s) + ':' + int_str(make_calls))\n}\n",
-		'-enable-globals')
+	compile := compile_v3_ownership_program(v3_bin, 'owned_eval_once', "struct E {\n\tname string\n\tsize int\n}\n\n__global (\n\tmake_calls = 0\n)\n\nfn make_entries() []E {\n\tmake_calls++\n\treturn [E{ name: 'a', size: 5 }, E{ name: 'b', size: 9 }]\n}\n\nfn main() {\n\ts := make_entries().last().size\n\tprintln(int_str(s) + ':' + int_str(make_calls))\n}\n", '-enable-globals')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('unsupported node kind'), compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_eval_once_bin')
@@ -132,8 +126,7 @@ fn test_owned_first_last_receiver_evaluated_once() {
 // independent-copy path and emits an empty `(0)` placeholder that fails C compilation.
 fn test_owned_parenthesized_field_borrow() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_paren_borrow',
-		"struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n\ttotal   int\n}\n\nfn (mut t T) shrink() {\n\tfor t.entries.len > 0 {\n\t\tt.total -= (t.entries.last()).size\n\t\tt.entries.delete_last()\n\t}\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'a', size: 5 }\n\tt.entries << E{ name: 'b', size: 7 }\n\tt.total = 12\n\tt.shrink()\n\tprintln(int_str(t.total))\n}\n", '')
+	compile := compile_v3_ownership_program(v3_bin, 'owned_paren_borrow', "struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n\ttotal   int\n}\n\nfn (mut t T) shrink() {\n\tfor t.entries.len > 0 {\n\t\tt.total -= (t.entries.last()).size\n\t\tt.entries.delete_last()\n\t}\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'a', size: 5 }\n\tt.entries << E{ name: 'b', size: 7 }\n\tt.total = 12\n\tt.shrink()\n\tprintln(int_str(t.total))\n}\n", '')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('unsupported node kind'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
@@ -149,8 +142,7 @@ fn test_owned_parenthesized_field_borrow() {
 // accessor is genuinely impossible, so this must be rejected rather than silently miscompiled.
 fn test_owned_method_value_receiver_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_method_value',
-		"struct E {\n\tname string\n\tsize int\n}\n\nfn (e E) describe() string {\n\treturn e.name\n}\n\nfn main() {\n\tarr := [E{ name: 'a', size: 1 }, E{ name: 'b', size: 2 }]\n\tf := arr.last().describe\n\tprintln(f())\n}\n", '')
+	compile := compile_v3_ownership_program(v3_bin, 'owned_method_value', "struct E {\n\tname string\n\tsize int\n}\n\nfn (e E) describe() string {\n\treturn e.name\n}\n\nfn main() {\n\tarr := [E{ name: 'a', size: 1 }, E{ name: 'b', size: 2 }]\n\tf := arr.last().describe\n\tprintln(f())\n}\n", '')
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
@@ -159,8 +151,7 @@ fn test_owned_method_value_receiver_is_rejected() {
 // cloned (an independent copy), never an alias of the live array element.
 fn test_owned_method_value_with_clone_runs() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_method_value_clone',
-		"struct E {\n\tname string\n\tsize int\n}\n\nfn (e E) clone() E {\n\treturn E{ name: e.name.clone(), size: e.size }\n}\n\nfn (e E) describe() string {\n\treturn e.name\n}\n\nfn main() {\n\tarr := [E{ name: 'a', size: 1 }, E{ name: 'bb', size: 2 }]\n\tf := arr.last().describe\n\tprintln(f())\n}\n", '')
+	compile := compile_v3_ownership_program(v3_bin, 'owned_method_value_clone', "struct E {\n\tname string\n\tsize int\n}\n\nfn (e E) clone() E {\n\treturn E{ name: e.name.clone(), size: e.size }\n}\n\nfn (e E) describe() string {\n\treturn e.name\n}\n\nfn main() {\n\tarr := [E{ name: 'a', size: 1 }, E{ name: 'bb', size: 2 }]\n\tf := arr.last().describe\n\tprintln(f())\n}\n", '')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('unsupported node kind'), compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_method_value_clone_bin')
@@ -175,9 +166,7 @@ fn test_owned_method_value_with_clone_runs() {
 // is destroyed. A clone-less owned element must therefore be rejected, not borrowed.
 fn test_owned_escaping_field_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_escaping_field',
-		"struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) last_name() string {\n\treturn t.entries.last().name\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello', size: 5 }\n\tprintln(t.last_name())\n}\n",
-		'')
+	compile := compile_v3_ownership_program(v3_bin, 'owned_escaping_field', "struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) last_name() string {\n\treturn t.entries.last().name\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello', size: 5 }\n\tprintln(t.last_name())\n}\n", '')
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
@@ -201,9 +190,7 @@ fn test_owned_escaping_field_string_clone_borrows() {
 // (an int), so nothing owned escapes and it must still lower to the in-place borrow.
 fn test_owned_intermediate_field_chain_borrows() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_intermediate_chain',
-		"struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) last_name_len() int {\n\treturn t.entries.last().name.len\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello', size: 5 }\n\tprintln(int_str(t.last_name_len()))\n}\n",
-		'')
+	compile := compile_v3_ownership_program(v3_bin, 'owned_intermediate_chain', "struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) last_name_len() int {\n\treturn t.entries.last().name.len\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello', size: 5 }\n\tprintln(int_str(t.last_name_len()))\n}\n", '')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('unsupported node kind'), compile.output
 	assert !compile.output.contains('cannot return an independent array element'), compile.output
@@ -218,9 +205,7 @@ fn test_owned_intermediate_field_chain_borrows() {
 // array element even when its type has no clone method.
 fn test_owned_field_comparison_borrows() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_field_comparison',
-		"struct E {\n\tname string\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) has_name(name string) bool {\n\treturn t.entries.last().name == name\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello' }\n\tprintln(t.has_name('hello'))\n}\n",
-		'')
+	compile := compile_v3_ownership_program(v3_bin, 'owned_field_comparison', "struct E {\n\tname string\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) has_name(name string) bool {\n\treturn t.entries.last().name == name\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello' }\n\tprintln(t.has_name('hello'))\n}\n", '')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('cannot return an independent array element'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
