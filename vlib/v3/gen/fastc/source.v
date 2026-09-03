@@ -334,6 +334,18 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 			}
 		}
 	}
+	// A module reached through two import spellings is scanned once. Rewrite
+	// import values to the canonical module name used by the loaded source.
+	if module_aliases.len > 0 {
+		for index in 0 .. sources.len {
+			sources[index] = FastcSourceFile{
+				path: sources[index].path
+				source: sources[index].source
+				source_offset: sources[index].source_offset
+				header: fastc_canonicalize_header_imports(sources[index].header, module_aliases)
+			}
+		}
+	}
 	timer.mark('resolve.imports')
 	if memo_path != '' {
 		memo_entry_paths := if prefs.building_v { paths } else { []string{} }
@@ -1155,6 +1167,31 @@ fn fastc_preloaded_source_headers(paths []string, prefs &pref.Preferences, prelo
 		}
 	}
 	return result
+}
+
+// fastc_canonicalize_header_imports rewrites a header's import values to the
+// module name each import was actually loaded and keyed under, so a file that
+// imports a module by an alternate path spelling still resolves its symbols.
+fn fastc_canonicalize_header_imports(header FastcSourceHeader, module_aliases map[string]string) FastcSourceHeader {
+	mut resolved := map[string]string{}
+	for alias, import_path in header.imports {
+		resolved[alias] = module_aliases[import_path] or { import_path }
+	}
+	return FastcSourceHeader{
+		module_name: header.module_name
+		imports: resolved
+		import_order: header.import_order
+		blank_imports: header.blank_imports
+		has_globals: header.has_globals
+		has_constants: header.has_constants
+		has_global_declarations: header.has_global_declarations
+		has_interfaces: header.has_interfaces
+		has_comptime_if: header.has_comptime_if
+		has_type_keywords: header.has_type_keywords
+		has_generic_fn_syntax: header.has_generic_fn_syntax
+		has_select: header.has_select
+		body_spans: header.body_spans
+	}
 }
 
 // fastc_entry_module_files returns the other source files of the entry file's

@@ -82,6 +82,70 @@ fn (mut g Parser) fastc_fixed_array_str_name(c_type string) ?string {
 
 // fastc_array_str_name returns a helper that renders a dynamic array using the
 // element type retained in FastC's `Array_T` spelling.
+// fastc_sumtype_str_helper generates a `str()` helper for a boxed sum type: it
+// switches on the runtime `_typ` tag and formats the concrete variant with the
+// same per-type logic as struct-field formatting. Returns none for a non-sum type
+// or when any variant cannot be formatted.
+fn (mut g Parser) fastc_sumtype_str_helper(c_type string) ?string {
+	base := fastc_normalize_inferred_type(c_type).trim_right('*')
+	if base !in g.sum_types {
+		return none
+	}
+	fn_name := 'v_fastc_sumtype_str_${base}'
+	if fn_name in g.spawn_helpers {
+		return fn_name
+	}
+	g.spawn_helpers[fn_name] = ''
+	g.protos.writeln('string ${fn_name}(${base} it);')
+	mut body := 'string ${fn_name}(${base} it) {\n\tswitch (it._typ) {\n'
+	mut variant_keys := g.sum_type_variants.keys()
+	variant_keys.sort()
+	for key in variant_keys {
+		if !key.starts_with('${base}|') {
+			continue
+		}
+		variant := key.all_after('|')
+		formatted := g.fastc_struct_field_str_expression('(*(${variant} *)it._object)', variant) or {
+			g.spawn_helpers.delete(fn_name)
+			return none
+		}
+		body += '\t\tcase __v_typeid_${variant}: return ${formatted};\n'
+	}
+	body += '\t}\n\treturn _S("unknown");\n}'
+	g.spawn_helpers[fn_name] = body
+	return fn_name
+}
+
+// fastc_sumtype_type_name_helper generates a `type_name()` helper for a boxed
+// sum type or interface: it switches on the runtime `_typ` tag and returns the
+// variant's dotted name (`v.ast.CallExpr`). Returns none for non-boxed types.
+fn (mut g Parser) fastc_sumtype_type_name_helper(c_type string) ?string {
+	base := fastc_normalize_inferred_type(c_type).trim_right('*')
+	if base !in g.sum_types && g.declared_kinds[g.semantic_type_key(base)] != .interface_ {
+		return none
+	}
+	fn_name := 'v_fastc_typename_${base}'
+	if fn_name in g.spawn_helpers {
+		return fn_name
+	}
+	g.spawn_helpers[fn_name] = ''
+	g.protos.writeln('string ${fn_name}(${base} it);')
+	mut body := 'string ${fn_name}(${base} it) {\n\tswitch (it._typ) {\n'
+	mut variant_keys := g.sum_type_variants.keys()
+	variant_keys.sort()
+	for key in variant_keys {
+		if !key.starts_with('${base}|') {
+			continue
+		}
+		variant := key.all_after('|')
+		display := variant.replace('__', '.')
+		body += '\t\tcase __v_typeid_${variant}: return _S("${display}");\n'
+	}
+	body += '\t}\n\treturn _S("unknown");\n}'
+	g.spawn_helpers[fn_name] = body
+	return fn_name
+}
+
 fn (mut g Parser) fastc_array_str_name(c_type string) ?string {
 	array_type := fastc_normalize_inferred_type(c_type).trim_right('*')
 	if !array_type.starts_with('Array_') {
@@ -144,8 +208,7 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 		} else {
 			value_c
 		}
-		return '${fastc_method_c_name(method_signature.module_name,
-			fastc_c_declared_type_name(key), 'str')}(${receiver})'
+		return '${fastc_method_c_name(method_signature.module_name, fastc_c_declared_type_name(key), 'str')}(${receiver})'
 	}
 	if g.declared_kinds[key] == .enum_ {
 		return 'v_fastc_enum_str_${fastc_c_declared_type_name(key)}(${value_c})'
@@ -179,8 +242,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 		value_tokens := g.last_expression.clone()
 		value_type := fastc_normalize_inferred_type(g.last_expression_type)
 		value_key := g.semantic_type_key(value_type)
-		alias_has_str_method := g.declared_kinds[value_key] == .alias_
-			&& '${value_key}.str' in g.functions
+		alias_has_str_method := g.declared_kinds[value_key] == .alias_ && '${value_key}.str' in g.functions
 		interpolation_type := if alias_has_str_method {
 			value_type
 		} else {
@@ -201,8 +263,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 			}
 		}
 		g.expect(.rcbr)!
-		if format_specifier.ends_with('c') && fastc_is_integer_expression_type(interpolation_type)
-			&& !fastc_integer_interpolation_format_is_supported(format_specifier, fastc_is_unsigned_integer_type(interpolation_type)) {
+		if format_specifier.ends_with('c') && fastc_is_integer_expression_type(interpolation_type) && !fastc_integer_interpolation_format_is_supported(format_specifier, fastc_is_unsigned_integer_type(interpolation_type)) {
 			return g.unsupported('interpolation format `${format_specifier}` for `${value_type}`')
 		}
 		if !g.selfhost && format_specifier.ends_with('c') {
@@ -227,10 +288,8 @@ fn (mut g Parser) read_interpolated_string() !string {
 			helper := g.fastc_fixed_array_str_name(interpolation_type) or {
 				return g.unsupported('interpolation of fixed array type `${value_type}`')
 			}
-			is_member_array := value_tokens.len >= 3 && value_tokens.last().tok == .name
-				&& value_tokens[value_tokens.len - 2].tok == .dot
-			is_global_array := value_tokens.len == 1 && value_tokens[0].tok == .name
-				&& fastc_global_key(g.module_name, value_tokens[0].lit) in g.globals
+			is_member_array := value_tokens.len >= 3 && value_tokens.last().tok == .name && value_tokens[value_tokens.len - 2].tok == .dot
+			is_global_array := value_tokens.len == 1 && value_tokens[0].tok == .name && fastc_global_key(g.module_name, value_tokens[0].lit) in g.globals
 			data_source := if is_member_array || is_global_array {
 				value
 			} else {
@@ -251,9 +310,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 			} else {
 				u8(0)
 			}
-			if format_character == `d` || format_character == `u` || format_character == `x`
-				|| format_character == `X` || format_character == `o` || format_character == `c`
-				|| format_character == `b` {
+			if format_character == `d` || format_character == `u` || format_character == `x` || format_character == `X` || format_character == `o` || format_character == `c` || format_character == `b` {
 				if !fastc_integer_interpolation_format_is_supported(format_specifier, is_unsigned) {
 					return g.unsupported('interpolation format `${format_specifier}` for enum `${value_type}`')
 				}
@@ -267,7 +324,19 @@ fn (mut g Parser) read_interpolated_string() !string {
 					return g.unsupported('interpolation format `${format_specifier}` for enum `${value_type}`')
 				}
 				enum_type := fastc_c_declared_type_name(enum_key)
-				enum_name := 'v_fastc_enum_str_${enum_type}(${value})'
+				enum_name := if method_signature := g.functions['${enum_key}.str'] {
+					expected_receiver := method_signature.parameter_types[0]
+					receiver := if expected_receiver.ends_with('*') && !interpolation_type.ends_with('*') {
+						'&(${value})'
+					} else if !expected_receiver.ends_with('*') && interpolation_type.ends_with('*') {
+						'*(${value})'
+					} else {
+						value
+					}
+					'${fastc_method_c_name(method_signature.module_name, enum_type, 'str')}(${receiver})'
+				} else {
+					'v_fastc_enum_str_${enum_type}(${value})'
+				}
 				parts << if width.width > 0 {
 					'v_fastc_string_pad(${enum_name}, ${width.width}, ${width.left_align})'
 				} else {
@@ -277,9 +346,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 		} else {
 			mut converted_primitive := false
 			if !g.selfhost {
-				if primitive_conversion := fastc_primitive_interpolation_expression(interpolation_type,
-					value, format_specifier)
-				{
+				if primitive_conversion := fastc_primitive_interpolation_expression(interpolation_type, value, format_specifier) {
 					parts << primitive_conversion
 					converted_primitive = true
 				} else if fastc_is_primitive_interpolation_type(interpolation_type) {
@@ -291,19 +358,32 @@ fn (mut g Parser) read_interpolated_string() !string {
 				method_key := '${receiver_key}.str'
 				if method_signature := g.functions[method_key] {
 					expected_receiver := method_signature.parameter_types[0]
-					receiver := if expected_receiver.ends_with('*')
-						&& !interpolation_type.ends_with('*') {
+					receiver := if expected_receiver.ends_with('*') && !interpolation_type.ends_with('*') {
 						'&(${value})'
 					} else if !expected_receiver.ends_with('*') && interpolation_type.ends_with('*') {
 						'*(${value})'
 					} else {
 						value
 					}
-					parts << '${fastc_method_c_name(method_signature.module_name,
-						fastc_c_declared_type_name(receiver_key), 'str')}(${receiver})'
+					parts << '${fastc_method_c_name(method_signature.module_name, fastc_c_declared_type_name(receiver_key), 'str')}(${receiver})'
+				} else if sumtype_helper := g.fastc_sumtype_str_helper(interpolation_type) {
+					// A boxed sum type dispatches `str()` on its runtime variant tag.
+					receiver := if interpolation_type.ends_with('*') {
+						'*(${value})'
+					} else {
+						value
+					}
+					parts << '${sumtype_helper}(${receiver})'
 				} else if default_name := g.fastc_default_struct_str_name(interpolation_type) {
-					// No user `str()`: emit V's default `Type{...}` representation.
-					parts << '${default_name}(${value})'
+					// No user `str()`: emit V's default `Type{...}` representation. A pointer
+					// value — a member smart-cast narrows a boxed variant to a `T*`, or the
+					// receiver itself is `&T` — must be deref'd for the by-value helper argument.
+					receiver := if interpolation_type.ends_with('*') || (g.selfhost && g.expression_uses_member_smartcast(value_tokens)) {
+						'*(${value})'
+					} else {
+						value
+					}
+					parts << '${default_name}(${receiver})'
 				} else {
 					local_type := if g.last_expression.len > 0 && g.last_expression[0].tok == .name {
 						local := g.locals[g.last_expression[0].lit] or { FastcLocal{} }
@@ -366,7 +446,7 @@ fn fastc_string_interpolation_width(format string) ?FastcInterpolationWidth {
 		width = width * 10 + int(format[i] - `0`)
 	}
 	return FastcInterpolationWidth{
-		width:      width
+		width: width
 		left_align: left_align
 	}
 }
@@ -376,9 +456,7 @@ fn fastc_integer_interpolation_format_is_supported(format string, is_unsigned bo
 		return true
 	}
 	specifier := format[format.len - 1]
-	supported := specifier == `d` || specifier == `x` || specifier == `X`
-		|| specifier == `o` || specifier == `c` || specifier == `b`
-		|| (is_unsigned && specifier == `u`)
+	supported := specifier == `d` || specifier == `x` || specifier == `X` || specifier == `o` || specifier == `c` || specifier == `b` || (is_unsigned && specifier == `u`)
 	if !supported {
 		return false
 	}
@@ -437,10 +515,27 @@ fn fastc_primitive_interpolation_expression(value_type string, value string, for
 
 fn fastc_string_literal_is_incomplete(literal string) bool {
 	mut raw := literal
+	mut is_raw := false
 	if raw.len > 0 && raw[0] == `r` {
+		is_raw = true
 		raw = raw[1..]
 	}
-	return raw.len < 2 || raw[raw.len - 1] != raw[0]
+	if raw.len < 2 || raw[raw.len - 1] != raw[0] {
+		return true
+	}
+	if is_raw {
+		return false
+	}
+	// The last character matches the opening quote, but when it is an *escaped* quote
+	// (`… \'` before an interpolation) it is not a closing quote — the literal continues
+	// into a `${…}` fragment, so it is incomplete.
+	mut backslashes := 0
+	mut i := raw.len - 2
+	for i >= 0 && raw[i] == `\\` {
+		backslashes++
+		i--
+	}
+	return backslashes % 2 == 1
 }
 
 fn fastc_c_interpolation_segment(literal string, is_first bool, quote u8) !string {
@@ -453,7 +548,11 @@ fn fastc_c_interpolation_segment(literal string, is_first bool, quote u8) !strin
 			content = content[1..]
 		}
 	}
-	if !is_first && content.len > 0 && content[content.len - 1] == quote {
+	// Only the final segment ends with the closing quote of the whole string; a
+	// middle segment that ends with `quote` carries an escaped quote (`\'`)
+	// that belongs to the body, so stripping it would drop the quote and leave a
+	// dangling backslash that corrupts the emitted C string literal.
+	if !is_first && content.len > 0 && content[content.len - 1] == quote && !fastc_trailing_quote_is_escaped(content) {
 		content = content[..content.len - 1]
 	}
 	if content == '' {
@@ -462,6 +561,19 @@ fn fastc_c_interpolation_segment(literal string, is_first bool, quote u8) !strin
 	wrapper := if quote == `'` { "'" } else { '"' }
 	c_literal := fastc_c_string(wrapper + content + wrapper)!
 	return '_S(${c_literal})'
+}
+
+// fastc_trailing_quote_is_escaped reports whether the last character of `content` is
+// preceded by an odd number of backslashes, meaning it is an escaped quote (`\'`) that
+// is part of the string body rather than an unescaped closing delimiter.
+fn fastc_trailing_quote_is_escaped(content string) bool {
+	mut backslashes := 0
+	mut i := content.len - 2
+	for i >= 0 && content[i] == `\\` {
+		backslashes++
+		i--
+	}
+	return backslashes % 2 == 1
 }
 
 fn fastc_method_c_name_for_key(receiver_key string, name string) string {
@@ -572,9 +684,14 @@ fn fastc_c_string(literal string) !string {
 				i += 4
 				continue
 			}
-			if raw[i + 1] >= `0` && raw[i + 1] <= `7` && (i + 3 >= raw.len - 1
-				|| raw[i + 2] < `0` || raw[i + 2] > `7` || raw[i + 3] < `0`
-				|| raw[i + 3] > `7`) {
+			if raw[i + 1] >= `0` && raw[i + 1] <= `7` && (i + 3 >= raw.len - 1 || raw[i + 2] < `0` || raw[i + 2] > `7` || raw[i + 3] < `0` || raw[i + 3] > `7`) {
+				// V's `\0` is a NUL byte; emit a full three-digit octal so a following
+				// digit cannot extend the escape (`_S`'s `sizeof`-based length keeps it).
+				if raw[i + 1] == `0` {
+					result.write_string('\\000')
+					i += 2
+					continue
+				}
 				// V only decodes three-digit octal escapes. Preserve a shorter
 				// spelling as a literal backslash and digits instead of letting C
 				// consume it as a one- or two-digit octal escape.
@@ -632,7 +749,9 @@ fn fastc_c_rune(literal string) !string {
 				96 { 96 }
 				`'` { 39 }
 				`"` { 34 }
-				else { return error('unsupported fastc rune escape') }
+				else {
+					return error('unsupported fastc rune escape')
+				}
 			}
 			return '((rune)${value})'
 		}
@@ -707,8 +826,7 @@ fn fastc_string_has_unrenderable_nul(content string, is_raw bool) bool {
 			i += 2
 			continue
 		}
-		if escape >= `0` && escape <= `7` && i + 3 < content.len && content[i + 2] >= `0`
-			&& content[i + 2] <= `7` && content[i + 3] >= `0` && content[i + 3] <= `7` {
+		if escape >= `0` && escape <= `7` && i + 3 < content.len && content[i + 2] >= `0` && content[i + 2] <= `7` && content[i + 3] >= `0` && content[i + 3] <= `7` {
 			high := int(escape - `0`)
 			middle := int(content[i + 2] - `0`)
 			low := int(content[i + 3] - `0`)
@@ -721,9 +839,9 @@ fn fastc_string_has_unrenderable_nul(content string, is_raw bool) bool {
 			i += 4
 			continue
 		}
-		if escape == `0`
-			|| (escape == `u` && i + 5 < content.len && content[i + 2..i + 6] == '0000')
-			|| (escape == `U` && i + 9 < content.len && content[i + 2..i + 10] == '00000000') {
+		// `\0` renders to the octal escape `\000`; only an all-zero unicode escape
+		// (` `/` `) has no faithful C spelling.
+		if (escape == `u` && i + 5 < content.len && content[i + 2..i + 6] == '0000') || (escape == `U` && i + 9 < content.len && content[i + 2..i + 10] == '00000000') {
 			return true
 		}
 		i += 2
@@ -751,8 +869,7 @@ fn fastc_string_contains_nul(content string, is_raw bool) bool {
 			i += 2
 			continue
 		}
-		if escape >= `0` && escape <= `7` && i + 3 < content.len && content[i + 2] >= `0`
-			&& content[i + 2] <= `7` && content[i + 3] >= `0` && content[i + 3] <= `7` {
+		if escape >= `0` && escape <= `7` && i + 3 < content.len && content[i + 2] >= `0` && content[i + 2] <= `7` && content[i + 3] >= `0` && content[i + 3] <= `7` {
 			high := int(escape - `0`)
 			middle := int(content[i + 2] - `0`)
 			low := int(content[i + 3] - `0`)
@@ -765,10 +882,7 @@ fn fastc_string_contains_nul(content string, is_raw bool) bool {
 			i += 4
 			continue
 		}
-		if escape == `0`
-			|| (escape == `x` && i + 3 < content.len && content[i + 2..i + 4] == '00')
-			|| (escape == `u` && i + 5 < content.len && content[i + 2..i + 6] == '0000')
-			|| (escape == `U` && i + 9 < content.len && content[i + 2..i + 10] == '00000000') {
+		if escape == `0` || (escape == `x` && i + 3 < content.len && content[i + 2..i + 4] == '00') || (escape == `u` && i + 5 < content.len && content[i + 2..i + 6] == '0000') || (escape == `U` && i + 9 < content.len && content[i + 2..i + 10] == '00000000') {
 			return true
 		}
 		i += 2

@@ -423,8 +423,36 @@ fn main() {
 	println(shared)
 }
 ', 'selfhost_static_shared_local.v', prefs) or { panic(err) }
-	assert c_source.contains('i64 shared = (1);'), c_source
+	assert c_source.contains('static ${fastc_platform_int_c_type} shared;'), c_source
+	assert c_source.contains('static bool __v_fastc_static_init_'), c_source
+	assert c_source.contains('shared = (1);'), c_source
 	assert c_source.contains('println(shared)'), c_source
+}
+
+fn test_selfhost_mut_static_pointer_survives_later_calls() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Item {}
+
+fn retained(value &Item) &Item {
+	mut static saved := unsafe { &Item(nil) }
+	if value != unsafe { nil } {
+		saved = value
+	}
+	return saved
+}
+
+fn main() {
+	item := &Item{}
+	_ = retained(item)
+	_ = retained(unsafe { nil })
+}
+', 'selfhost_mut_static_pointer.v', prefs) or { panic(err) }
+	assert c_source.contains('static __typeof__((((Item*)(NULL)))) saved;'), c_source
+	assert c_source.contains('static bool __v_fastc_static_init_'), c_source
+	assert c_source.contains('saved = (((Item*)(NULL)));'), c_source
 }
 
 fn test_selfhost_unsafe_contextual_shared_local_mutation() {
@@ -464,6 +492,35 @@ fn main() {
 ', 'selfhost_contextual_shared_struct_field.v', prefs) or { panic(err) }
 	assert c_source.contains('(Box){.shared='), c_source
 	assert !c_source.contains('(Box){shared='), c_source
+}
+
+fn test_selfhost_shared_map_field_keeps_identity_across_struct_copy() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Registry {
+	values shared map[string]int
+}
+
+fn insert(copy Registry) {
+	lock copy.values {
+		copy.values["answer"] = 42
+	}
+}
+
+fn main() {
+	registry := Registry{}
+	insert(registry)
+	rlock registry.values {
+		println(registry.values["answer"])
+	}
+}
+', 'selfhost_shared_map_field.v', prefs) or { panic(err) }
+	assert c_source.contains('Map_string_int* values;'), c_source
+	assert c_source.contains('*(copy.values)'), c_source
+	assert c_source.contains('*(registry.values)'), c_source
+	assert c_source.contains('(Map_string_int*)v_fastc_interface_box'), c_source
 }
 
 fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
@@ -562,6 +619,41 @@ fn test_fastc_split_rewrites_prealloc_tls_global_linkage() {
 	definition := 'static _Thread_local VMemoryBlock* g_memory_block;\n'
 	assert fastc_extern_declarations(definition, false) == '_Thread_local VMemoryBlock* g_memory_block;\n'
 	assert fastc_extern_declarations(definition, true) == 'extern _Thread_local VMemoryBlock* g_memory_block;\n'
+}
+
+fn test_fastc_window_ranges_keeps_content_appended_after_empty_file() {
+	// An empty final source can still own a non-empty window when generated generic
+	// or anonymous-function definitions are appended after that source's body.
+	assert fastc_window_ranges([0, 20], 10, 20) == [10, 20]
+	assert fastc_window_ranges([0, 10], 10, 10) == []
+}
+
+fn test_fastc_emits_explicit_c_extern_prototype() {
+	functions := {
+		'C.external_api': FastcFunctionSignature{
+			parameter_types: ['int', 'voidptr']
+			return_type: 'int'
+			is_c_extern: true
+		}
+	}
+	assert fastc_c_extern_prototypes(functions) == '#ifndef external_api\nextern int external_api(int, voidptr);\n#endif\n'
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct ExternalUsage {
+	value u64
+}
+
+@[c_extern]
+fn C.external_api(pid int, usage &ExternalUsage) int
+
+fn main() {
+	mut usage := ExternalUsage{}
+	_ = C.external_api(1, &usage)
+}
+', 'selfhost_c_extern.v', prefs) or { panic(err) }
+	assert c_source.contains('#ifndef external_api\nextern int external_api(int, ExternalUsage*);\n#endif'), c_source
 }
 
 fn test_fastc_tcc_job_count_respects_parallel_controls() {
@@ -2212,6 +2304,37 @@ fn main() {
 	assert !source.contains('service.handle'), source
 }
 
+fn test_selfhost_selector_at_end_of_binary_expression_is_not_method_value() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	source := generate('module main
+
+enum Kind {
+	other
+	str
+}
+
+struct Node {
+	kind      Kind
+	is_method bool
+}
+
+fn accepts_str_method(node Node) bool {
+	return node.is_method && node.kind == .str
+}
+
+fn same_storage(left string, right string) bool {
+	return left.len == right.len && unsafe { left.str == right.str }
+}
+
+fn main() {}
+', 'selector_after_binary.v', prefs) or { panic(err) }
+	assert !source.contains('&builtin__bool_str'), source
+	assert source.contains('Kind__str'), source
+	assert source.contains('left.str'), source
+	assert source.contains('right.str'), source
+}
+
 fn test_selfhost_embedded_option_method_recovers_payload_type() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -2376,6 +2499,39 @@ fn main() {
 }
 ', 'plain_enum_array_literal.v', prefs) or { panic(err) }
 	assert plain_enum_array_source.contains('typedef array Array_Space;'), plain_enum_array_source
+}
+
+fn test_higher_order_lowering_handles_pointer_receivers_callbacks_and_keyword_parameters() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn convert(value int) int {
+	return value + 1
+}
+
+fn consume(values []int) int {
+	return values.len
+}
+
+fn apply(mut values []int) int {
+	streamed := values.map(|short| short + 1)
+	return streamed.len + consume(values.map(convert)) + consume(values.map(|short| short + 2))
+}
+
+fn main() {
+	mut values := [1, 2]
+	_ := apply(mut values)
+}
+', 'higher_order_nested_regressions.v', prefs) or { panic(err) }
+	// Mutable array receivers are pointers in C. Both lowerers iterate a value copy of the
+	// header, nested bare callbacks are invoked, and legal V names are escaped for C.
+	assert c_source.contains('Array_int __v_fastc_collection_'), c_source
+	assert c_source.contains('= (*(values));'), c_source
+	assert !c_source.contains('Array_int* __v_fastc_collection_'), c_source
+	assert c_source.contains('convert(it)'), c_source
+	assert c_source.count('int __v_fastc_keyword_short =') == 2, c_source
+	assert !c_source.contains('int short ='), c_source
 }
 
 fn test_real_builtin_path_keyword_identifiers_enum_casts_and_dollar_d() {
@@ -4309,6 +4465,23 @@ fn main() {
 	assert interpolation_source.contains('static string v_fastc_enum_str_Permissions(Permissions value)'), interpolation_source
 	assert interpolation_source.contains('_S("Permissions{")'), interpolation_source
 	assert interpolation_source.contains('v_fastc_enum_str_Permissions(permissions)'), interpolation_source
+
+	custom_str_source := generate(r"module main
+
+enum Kind {
+	assign
+}
+
+fn (kind Kind) str() string {
+	return '='
+}
+
+fn main() {
+	println(Kind.assign.str())
+	println('${Kind.assign}')
+}
+", 'enum_custom_str_interpolation.v', selfhost_prefs) or { panic(err) }
+	assert custom_str_source.contains('Kind_str(Kind__assign)'), custom_str_source
 }
 
 fn test_invalid_enum_printing_matches_interpolation() {
@@ -5704,8 +5877,39 @@ fn main() {
 ', 'valid_parallel_assignment.v', prefs) or { panic(err) }
 	assert c_source.contains('first = __v_fastc_parallel_'), c_source
 	assert c_source.contains('second = __v_fastc_parallel_'), c_source
-	assert c_source.contains('memcpy(&first, __v_fastc_multi_return_'), c_source
-	assert c_source.contains('memcpy(&second, __v_fastc_multi_return_'), c_source
+	assert c_source.contains('memcpy(&first, V_FASTC_MULTI_SOURCE(__v_fastc_multi_return_'), c_source
+	assert c_source.contains('memcpy(&second, V_FASTC_MULTI_SOURCE(__v_fastc_multi_return_'), c_source
+}
+
+fn test_parallel_member_assignment_uses_pointer_backed_multi_return_storage() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Large {
+	bytes [40]u8
+}
+
+struct Holder {
+mut:
+	value Large
+}
+
+fn pair() (int, Large) {
+	return 1, Large{}
+}
+
+fn assign(mut holder Holder) {
+	_, holder.value = pair()
+}
+
+fn main() {
+	mut holder := Holder{}
+	assign(mut holder)
+}
+', 'parallel_member_large_multi_return.v', prefs) or { panic(err) }
+	assert c_source.contains('memcpy(&holder->value, V_FASTC_MULTI_SOURCE(__v_fastc_multi_return_'), c_source
+	assert !c_source.contains('.values[1].data, sizeof(holder->value)'), c_source
 }
 
 fn test_selfhost_parallel_assignment_accepts_aggregate_targets() {
@@ -7711,15 +7915,17 @@ fn main() {
 	assert c_source.contains('typedef struct { void *_object; u32 _typ; void *_methods; } Animal;'), c_source
 	// Construction boxes the concrete variant with its type id.
 	assert c_source.contains('._typ=__v_typeid_Dog'), c_source
-	assert c_source.contains('__v_fastc_box_value = ((Dog){'), c_source
+	assert c_source.contains('Dog __v_fastc_box_value ='), c_source
 	assert !c_source.contains('Dog{sound:'), c_source
 	// `match` dispatches on the boxed `_typ` tag rather than comparing structs.
 	assert c_source.contains('_typ == __v_typeid_Dog'), c_source
 	assert c_source.contains('_typ == __v_typeid_Cat'), c_source
 	// The matched branch smart-casts the subject to the concrete variant so field
-	// access (`a.sound`) resolves.
-	assert c_source.contains('Dog a = *(Dog *)'), c_source
-	assert c_source.contains('Cat a = *(Cat *)'), c_source
+	// access (`a.sound`) resolves through the uniquely named narrowed temporary.
+	assert c_source.contains('Dog __v_fastc_match_cast_'), c_source
+	assert c_source.contains('Cat __v_fastc_match_cast_'), c_source
+	assert c_source.contains('return __v_fastc_match_cast_'), c_source
+	assert !c_source.contains('return a.sound'), c_source
 }
 
 fn test_sum_type_primitive_variants() {
@@ -7889,6 +8095,250 @@ fn main() {
 	// `Plain` has no array variant, so `[]Plain << []Plain` stays a push-many append
 	// that copies each element, matching the main C backend.
 	assert c_source.contains('builtin__array_push_many'), c_source
+}
+
+fn test_sum_type_smartcast_variant_append_is_boxed() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Item {
+	value int
+}
+
+type Node = Item | string
+
+fn retain_items(nodes []Node) []Node {
+	mut result := []Node{}
+	for node in nodes {
+		if node is Item {
+			result << node
+		}
+	}
+	return result
+}
+
+fn main() {}
+', 'sum_type_smartcast_append.v', prefs) or { panic(err) }
+	assert c_source.contains('main__Node __v_fastc_push_value_'), c_source
+	assert c_source.contains('__v_typeid_main__Item'), c_source
+	assert c_source.contains('builtin__array_push((array *)&result'), c_source
+}
+
+fn test_mut_sum_type_smartcast_mutates_boxed_payload() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Item {
+mut:
+	value int
+}
+
+type Node = Item | string
+
+fn update(node Node) {
+	mut current := node
+	if mut current is Item {
+		current.value = 2
+	}
+}
+
+fn main() {}
+', 'mut_sum_type_smartcast.v', prefs) or { panic(err) }
+	assert c_source.contains('Item* __v_fastc_if_cast_'), c_source
+	assert c_source.contains('->value=2'), c_source
+}
+
+fn test_condition_loop_smartcast_subject_is_evaluated_once() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct CallExpr {}
+struct NameExpr {}
+type Expr = CallExpr | NameExpr
+
+struct Argument {
+	expr Expr
+}
+
+fn next_index() int {
+	return 0
+}
+
+fn scan(args []Argument) {
+	for args[next_index()].expr is CallExpr {
+		break
+	}
+}
+
+fn main() {
+	scan([Argument{ expr: CallExpr{} }])
+}
+', 'condition_loop_smartcast_once.v', prefs) or { panic(err) }
+	// The rewritten type-test conjunct owns evaluation of the subject. Its temporary must not
+	// evaluate the indexed expression again in the per-iteration prelude.
+	assert c_source.contains('Expr __v_fastc_smartcast_subject_'), c_source
+	assert c_source.contains('= (Expr){0};'), c_source
+	assert c_source.count('next_index()') == 1, c_source
+}
+
+fn test_mut_sum_type_smartcast_passes_original_box_to_mut_sum_type_parameter() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Item {
+mut:
+	value int
+}
+
+type Node = Item | string
+
+fn inspect(mut node Node) {
+	if mut node is Item {
+		node.value++
+		inspect(mut node)
+	}
+}
+
+fn main() {}
+', 'mut_sum_type_smartcast_argument.v', prefs) or { panic(err) }
+	assert c_source.contains('inspect(__v_fastc_smartcast_subject_'), c_source
+	assert !c_source.contains('inspect(__v_fastc_if_cast_'), c_source
+}
+
+fn test_mut_match_sum_type_smartcast_passes_original_box_to_mut_parameter() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Item {
+mut:
+	value int
+}
+
+type Node = Item | string
+
+fn inspect(mut node Node) {
+	match mut node {
+		Item {
+			node.value++
+			inspect(mut node)
+		}
+		else {}
+	}
+}
+
+fn main() {}
+', 'mut_match_sum_type_smartcast_argument.v', prefs) or { panic(err) }
+	assert c_source.contains('inspect(node)'), c_source
+	assert !c_source.contains('inspect(__v_fastc_match_cast_'), c_source
+}
+
+fn test_selfhost_string_array_index_uses_value_equality() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn locate(names []string, wanted string) (int, int) {
+	return names.index(wanted), names.last_index(wanted)
+}
+
+fn main() {}
+', 'string_array_index.v', prefs) or { panic(err) }
+	assert c_source.count('builtin__string_eq(__v_fastc_index_item') == 2, c_source
+	assert c_source.contains('int __v_fastc_index_cursor = 0;'), c_source
+	assert c_source.contains('int __v_fastc_index_cursor = __v_fastc_index_collection.len - 1;'), c_source
+}
+
+fn test_mut_match_member_smartcast_reads_current_boxed_payload() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct First {
+	value int
+}
+
+struct Second {
+	value int
+}
+
+type Info = First | Second
+
+struct Holder {
+mut:
+	info Info
+}
+
+fn refresh(mut holder Holder) {
+	holder.info = First{ value: 2 }
+}
+
+fn value(mut holder Holder) int {
+	match mut holder.info {
+		First {
+			refresh(mut holder)
+			return holder.info.value
+		}
+		else {
+			return 0
+		}
+	}
+}
+
+fn main() {}
+', 'mut_match_current_payload.v', prefs) or { panic(err) }
+	assert c_source.contains('((First *)__v_fastc_match_'), c_source
+	assert c_source.contains('->_object)->value'), c_source
+}
+
+fn test_reference_to_boxed_interface_has_heap_lifetime() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+interface Value {}
+
+struct Item {}
+
+fn boxed_pointer() &Value {
+	return &Value(Item{})
+}
+
+fn main() {}
+', 'boxed_interface_pointer.v', prefs) or { panic(err) }
+	assert c_source.contains('(Value *)v_fastc_interface_box(&__v_fastc_iface_ref, sizeof(Value))'), c_source
+	assert !c_source.contains('&__v_fastc_iface_ref;'), c_source
+}
+
+fn test_boxed_address_payload_has_heap_lifetime() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Item {
+	value int
+}
+
+struct Other {}
+
+type Value = Item | Other
+
+fn boxed(value Item) Value {
+	return Value(&value)
+}
+
+fn conditionally_boxed(value Item, flag bool) &Value {
+	return if flag { &Value(Other{}) } else { &Value(&value) }
+}
+
+fn main() {}
+', 'boxed_address_payload.v', prefs) or { panic(err) }
+	assert c_source.contains('v_fastc_interface_box((const void*)(&(value)), sizeof(Item))'), c_source
+	assert c_source.contains('v_fastc_interface_box((const void*)(&value), sizeof(Item))'), c_source
 }
 
 fn test_generic_monomorphization() {
@@ -8074,6 +8524,33 @@ fn main() {
 	// empty array (element_size set), not a zeroed one, so `s.items << x` copies the
 	// element. `X{}` gets the field default applied.
 	assert c_source.contains('.items=(((Array_int)builtin____new_array(0, 0, sizeof(int))))'), c_source
+}
+
+fn test_struct_array_alias_field_default_initializes_element_size() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+type ByteBuilder = []u8
+
+struct Output {
+mut:
+	bytes ByteBuilder
+}
+
+fn (mut o Output) write(x u8) {
+	o.bytes << x
+}
+
+fn main() {
+	mut out := Output{}
+	out.write(3)
+	_ := out
+}
+', 'struct_array_alias_default.v', prefs) or { panic(err) }
+	// An omitted array-alias field still needs a typed empty array. In particular,
+	// strings.Builder fields otherwise start with element_size 0 and corrupt writes.
+	assert c_source.contains('.bytes=(((ByteBuilder)builtin____new_array(0, 0, sizeof(u8))))'), c_source
 }
 
 fn test_struct_map_field_default_initializes_runtime() {
@@ -8268,6 +8745,34 @@ fn main() {
 	// variant struct which is not assignable to the boxed `{_object,_typ,_methods}`.
 	assert c_source.contains('.value=('), c_source
 	assert c_source.contains('._typ=__v_typeid_Null'), c_source
+}
+
+fn test_selfhost_sum_type_constant_field_default_is_not_reboxed() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Empty {
+	value int = 1
+}
+
+type Expr = Empty | int
+
+const empty_expr = Expr(Empty{})
+
+struct Holder {
+	expr Expr = empty_expr
+}
+
+fn main() {
+	_ = Holder{}
+}
+', 'selfhost_sum_constant_field_default.v', prefs) or { panic(err) }
+	assert c_source.contains('__v_fastc_struct_default.expr=(main__empty_expr);'), c_source
+	assert !c_source.contains('__v_fastc_box_value = (main__empty_expr)'), c_source
+	assert c_source.contains('static Expr main__empty_expr;'), c_source
+	assert c_source.contains('main__empty_expr = (Expr){._object='), c_source
+	assert c_source.contains('._typ=__v_typeid_Empty'), c_source
 }
 
 fn test_selfhost_interface_method_named_like_keyword() {
@@ -8864,6 +9369,12 @@ fn main() {
 	// The field labels appear in the generated str() body.
 	assert c_source.contains('    x: '), c_source
 	assert c_source.contains('    y: '), c_source
+	prototype := 'string v_fastc_default_str_Point(Point it);'
+	definition := 'string v_fastc_default_str_Point(Point it) {'
+	prototype_index := c_source.index(prototype) or { -1 }
+	definition_index := c_source.index(definition) or { -1 }
+	assert prototype_index >= 0, c_source
+	assert prototype_index < definition_index, c_source
 }
 
 fn test_selfhost_explicit_default_struct_str_method() {
@@ -8882,6 +9393,314 @@ fn main() {
 ', 'selfhost_struct_str_method.v', prefs) or { panic(err) }
 	assert c_source.contains('v_fastc_default_str_Point('), c_source
 	assert !c_source.contains('.str()'), c_source
+}
+
+fn test_direct_array_access_does_not_rewrite_a_lowered_member_suffix() {
+	source := 'builtin__u8_is_digit(((str).str[i]))'
+	assert fastc_replace_c_root_identifier(source, 'str[i]', '((str).str[i])') == source
+}
+
+fn test_direct_array_access_lowers_both_indexed_comparison_operands() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+@[direct_array_access]
+fn compare(s string, a string, i int) bool {
+	return s[i] > a[i]
+}
+
+fn main() {
+	_ = compare("a", "b", 0)
+}
+', 'direct_array_access_comparison.v', prefs) or { panic(err) }
+	assert c_source.contains('((s).str[i])'), c_source
+	assert c_source.contains('((a).str[i])'), c_source
+	assert !c_source.contains('>a[i]'), c_source
+}
+
+fn test_selfhost_parenthesized_membership_comparison_operand_is_lowered() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct State {
+	values map[string]string
+}
+
+fn check(name string, state State, known bool) bool {
+	return (name in state.values) != known
+}
+
+fn main() {
+	_ = check("x", State{}, false)
+}
+', 'selfhost_membership_comparison_operand.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__map_get_check'), c_source
+	assert !c_source.contains('name in state'), c_source
+}
+
+fn test_direct_array_access_lowers_indexed_method_receiver_once() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn (c u8) is_digit() bool {
+	return c >= `0` && c <= `9`
+}
+
+@[direct_array_access]
+fn check(str string, i int) bool {
+	return (str[i] != `-` && str[i] != `+`) && !str[i].is_digit()
+}
+
+fn main() {
+	_ = check("0", 0)
+}
+', 'direct_array_access_method.v', prefs) or { panic(err) }
+	assert c_source.contains('u8_is_digit(((str).str[i]))'), c_source
+	assert !c_source.contains('(str).((str).str[i])'), c_source
+}
+
+fn test_direct_string_index_builtin_method_receiver_is_lowered() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+@[direct_array_access]
+fn character(str string, i int) string {
+	return str[i].ascii_str()
+}
+
+fn main() {
+	_ = character("0", 0)
+}
+', 'direct_string_index_builtin_method.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__u8_ascii_str(((str).str[i]))'), c_source
+	assert !c_source.contains('str[i]).ascii_str'), c_source
+}
+
+fn test_pointer_global_array_field_index_before_member_is_lowered() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Item {
+	name string
+}
+
+struct Table {
+	items []&Item
+}
+
+__global table &Table
+
+fn lookup(i int) string {
+	return if i >= 0 && i < table.items.len {
+		table.items[i].name
+	} else {
+		""
+	}
+}
+
+fn main() {
+	_ = lookup(0)
+}
+', 'pointer_global_array_field_index.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__array_get'), c_source
+	assert !c_source.contains('table->items[i]'), c_source
+	assert c_source.contains('))->name'), c_source
+	assert !c_source.contains(')).name'), c_source
+}
+
+fn test_pointer_member_array_field_index_before_member_is_lowered() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Item {
+	kind int
+}
+
+struct Ast {
+	items []Item
+}
+
+struct Gen {
+	a &Ast
+}
+
+fn lookup(g &Gen, i i64) int {
+	return g.a.items[int(i)].kind
+}
+
+fn main() {
+	_ = lookup(&Gen{}, 0)
+}
+', 'pointer_member_array_field_index.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__array_get'), c_source
+	assert !c_source.contains('items[((int)'), c_source
+}
+
+fn test_pointer_member_array_indexed_by_array_element_is_lowered() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Node {
+	kind int
+}
+
+struct Ast {
+	nodes []Node
+}
+
+struct Parser {
+	a &Ast
+}
+
+fn lookup(p &Parser, ids []int, i int) bool {
+	return p.a.nodes[int(ids[i])].kind != 1
+}
+
+fn main() {
+	_ = lookup(&Parser{}, [], 0)
+}
+', 'pointer_member_array_nested_index.v', prefs) or { panic(err) }
+	assert c_source.count('builtin__array_get') >= 2, c_source
+	assert !c_source.contains('p->a->nodes['), c_source
+}
+
+fn test_pointer_member_array_indexed_by_method_call_is_lowered() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Node {
+	kind int
+}
+
+struct Ast {
+	nodes []Node
+}
+
+fn (a &Ast) child(i int) int {
+	return i
+}
+
+struct Transformer {
+	a &Ast
+}
+
+fn is_first(t &Transformer, i int) bool {
+	return t.a.nodes[int(t.a.child(i))].kind == 1
+}
+
+fn main() {
+	_ = is_first(&Transformer{}, 0)
+}
+', 'pointer_member_array_method_index.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__array_get'), c_source
+	assert !c_source.contains('t->a->nodes['), c_source
+}
+
+fn test_indexed_struct_pointer_field_chain_is_lowered() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Scope {
+	parent &Scope
+}
+
+struct Branch {
+	scope &Scope
+}
+
+struct Tree {
+	branches []Branch
+}
+
+fn parent(tree &Tree, i int) &Scope {
+	mut continuation_scope := tree.branches[i].scope.parent
+	return continuation_scope
+}
+
+fn main() {
+	_ = parent(&Tree{}, 0)
+}
+', 'indexed_struct_pointer_field_chain.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__array_get'), c_source
+	assert c_source.contains('))->scope->parent'), c_source
+	assert !c_source.contains('.scope.parent'), c_source
+}
+
+fn test_mut_map_index_field_in_if_expression_is_lowered() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Info {
+	module_name string
+}
+
+fn existing_module(mut needed map[string]Info, name string) string {
+	return if name in needed {
+		needed[name].module_name
+	} else {
+		""
+	}
+}
+
+fn main() {
+	mut needed := map[string]Info{}
+	_ = existing_module(mut needed, "x")
+}
+', 'mut_map_index_field_if_expression.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__map_get'), c_source
+	assert !c_source.contains('(needed)[name]'), c_source
+}
+
+fn test_map_index_comparison_in_logical_expression_is_lowered() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn before(values map[int]int, key int, offset int) bool {
+	return key !in values || offset < values[key]
+}
+
+fn main() {
+	_ = before(map[int]int{}, 0, 0)
+}
+', 'map_index_logical_comparison.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__map_get'), c_source
+	assert !c_source.contains('(values)[key]'), c_source
+}
+
+fn test_method_array_result_index_before_member_is_lowered() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Node {
+	params []string
+}
+
+fn (node &Node) generic_params() []string {
+	return node.params
+}
+
+fn has_generic(node Node) bool {
+	return node.generic_params().len > 0 && node.generic_params()[0].len > 0
+}
+
+fn main() {
+	_ = has_generic(Node{})
+}
+', 'method_array_result_index.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__array_get'), c_source
+	assert !c_source.contains('Node_generic_params(&(node))[0]'), c_source
 }
 
 fn test_selfhost_or_in_array_literal_element() {
@@ -9109,6 +9928,38 @@ fn main() {
 	assert c_source.contains('MultiReturn'), c_source
 	assert c_source.contains('.values[0], sizeof('), c_source
 	assert c_source.contains('.values[1], sizeof('), c_source
+}
+
+fn test_if_expression_multi_return_guard_uses_pointer_backed_storage() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Large {
+	bytes [40]u8
+}
+
+fn pair(ok bool) ?(Large, int) {
+	if !ok {
+		return none
+	}
+	return Large{}, 1
+}
+
+fn choose(ok bool) Large {
+	return if value, _ := pair(ok) {
+		value
+	} else {
+		Large{}
+	}
+}
+
+fn main() {
+	_ := choose(true)
+}
+', 'if_expression_large_multi_return_guard.v', prefs) or { panic(err) }
+	assert c_source.contains('memcpy(&value, V_FASTC_MULTI_SOURCE(__v_fastc_multi_return_'), c_source
+	assert !c_source.contains('.values[0].data, sizeof(value)'), c_source
 }
 
 fn test_selfhost_if_multi_return_option_guard_with_shared_bindings() {
@@ -9388,6 +10239,26 @@ fn main() {
 	assert c_source.contains('string *__v_fastc_map_value'), c_source
 	assert c_source.contains('*((string *)__v_fastc_option_'), c_source
 	assert !c_source.contains('Option __v_fastc_option_0 = (main__labels[kind])'), c_source
+}
+
+fn test_selfhost_address_of_map_lookup_or_returns_stored_value_pointer() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Item {
+	value int
+}
+
+fn find_ptr(items map[string]Item, key string) &Item {
+	return unsafe { &items[key] or { nil } }
+}
+
+fn main() {}
+', 'selfhost_map_lookup_address.v', prefs) or { panic(err) }
+	assert c_source.contains('Item *__v_fastc_map_value'), c_source
+	assert c_source.contains('Item* __v_fastc_box_value = (__v_fastc_map_value)'), c_source
+	assert !c_source.contains('&({ Option'), c_source
 }
 
 fn test_selfhost_mut_alias_struct_boxes_as_underlying_interface_implementer() {
@@ -9771,6 +10642,152 @@ fn main() {
 	assert c_source.contains('*((Kind *)value._object)'), c_source
 	assert c_source.contains('Kind__one'), c_source
 	assert !c_source.contains('value==.one'), c_source
+}
+
+fn test_selfhost_enum_shorthand_in_smartcast_conjunction() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+enum Op {
+	mul
+}
+
+struct PrefixExpr {
+	op Op
+}
+
+type Expr = PrefixExpr | int
+
+fn check(left Expr) bool {
+	return left is PrefixExpr && left.op == .mul
+}
+
+fn main() {
+	_ = check(1)
+}
+', 'selfhost_smartcast_enum_shorthand.v', prefs) or { panic(err) }
+	assert c_source.contains('Op__mul'), c_source
+	assert !c_source.contains('== (.mul)'), c_source
+}
+
+fn test_selfhost_enum_shorthand_in_parenthesized_smartcast_guard() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+enum Language {
+	v
+	c
+}
+
+struct Ident {
+	language Language
+	obj int
+}
+
+type Expr = Ident | int
+
+struct Arg {
+	expr Expr
+}
+
+struct Table {}
+
+fn (t &Table) is_interface_smartcast(obj int) bool {
+	return obj != 0
+}
+
+struct Gen {
+	table &Table
+}
+
+fn check(g &Gen, arg Arg) bool {
+	if arg.expr is Ident && (arg.expr.language == .c || g.table.is_interface_smartcast(arg.expr.obj)) {
+		return true
+	}
+	return false
+}
+
+fn main() {
+	_ = check(&Gen{}, Arg{})
+}
+', 'selfhost_smartcast_parenthesized_enum_guard.v', prefs) or { panic(err) }
+	assert c_source.contains('Language__c'), c_source
+	assert !c_source.contains('language==.c'), c_source
+}
+
+fn test_selfhost_method_call_in_smartcast_conjunction() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+enum Flag {
+	generic
+}
+
+type Type = u64
+
+fn (t Type) has_flag(flag Flag) bool {
+	return t & u64(flag) != 0
+}
+
+struct StructInit {
+	unresolved bool
+	typ Type
+}
+
+type Expr = StructInit | int
+
+fn check(right &Expr) bool {
+	return right is StructInit && right.unresolved && right.typ.has_flag(.generic)
+}
+
+fn main() {
+	value := Expr(1)
+	_ = check(&value)
+}
+', 'selfhost_smartcast_method_conjunction.v', prefs) or { panic(err) }
+	assert c_source.contains('Type_has_flag(((StructInit *)'), c_source
+	assert !c_source.contains('right.typ.has_flag'), c_source
+}
+
+fn test_selfhost_nested_member_smartcasts_with_mutable_first_subject() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Var {}
+
+type ScopeObject = Var | int
+
+struct Ident {
+	obj ScopeObject
+}
+
+type Expr = Ident | int
+
+struct Selector {
+mut:
+	left Expr
+}
+
+fn check(mut selector Selector) bool {
+	return if mut selector.left is Ident && selector.left.obj is Var {
+		true
+	} else {
+		false
+	}
+}
+
+fn main() {
+	mut selector := Selector{}
+	_ = check(mut selector)
+}
+', 'selfhost_nested_member_smartcasts.v', prefs) or { panic(err) }
+	assert c_source.contains('__v_typeid_Ident'), c_source
+	assert c_source.contains('__v_typeid_Var'), c_source
+	assert !c_source.contains('selector->left.obj is'), c_source
 }
 
 fn test_selfhost_flag_define_directive() {
@@ -11259,6 +12276,39 @@ fn main() {
 	assert c_source.contains('take((Option){.data='), c_source
 	assert c_source.contains('sizeof(Array_u8)'), c_source
 	assert c_source.contains('take((Option){.state=2})'), c_source
+}
+
+fn test_selfhost_option_returning_method_call_compared_with_none() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Checker {}
+
+fn (c &Checker) find(name string, values []string) ?int {
+	_ = c
+	_ = name
+	_ = values
+	return none
+}
+
+fn has_value(c &Checker) bool {
+	return c.find("value", []string{}) != none
+}
+
+fn has_named_value(c &Checker, name string) bool {
+	return name.len > 0 && c.find(name, []string{}) != none
+}
+
+fn main() {
+	checker := &Checker{}
+	_ := has_value(checker)
+	_ := has_named_value(checker, "value")
+}
+', 'option_method_call_none_comparison.v', prefs) or { panic(err) }
+	assert c_source.contains(').state != 2)'), c_source
+	assert !c_source.contains('!= ((Option){.state=2})'), c_source
+	assert !c_source.contains('v_fastc_box_value'), c_source
 }
 
 fn test_selfhost_anonymous_function_is_rejected() {

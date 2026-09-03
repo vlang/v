@@ -65,6 +65,11 @@ fn (g &Parser) expression_token(previous token.Token, previous_lit string, quali
 		.dot {
 			g.dot_piece(previous, previous_lit, module_separator)
 		}
+		.right_shift_unsigned {
+			// V's logical right shift `>>>` has no C spelling; it is used on unsigned operands
+			// (V code casts first, e.g. `u64(x) >>> n`), where a plain C `>>` is logical.
+			'>>'
+		}
 		else {
 			g.tok.str()
 		}
@@ -106,9 +111,27 @@ fn (g &Parser) validate_imported_global_visibility(imported_module string, name 
 	}
 }
 
+// local_c_name is the C spelling of a local: its smart-cast override name when one is active
+// (see FastcLocal.c_name), otherwise the sanitized identifier.
+fn (g &Parser) local_c_name(name string) string {
+	if local := g.locals[name] {
+		if local.c_name != '' {
+			return local.c_name
+		}
+	}
+	return fastc_c_identifier(name)
+}
+
 fn (g &Parser) resolved_expression_name(name string, previous token.Token) string {
 	if previous != .dot && name == 'C' {
 		return ''
+	}
+	if previous != .dot {
+		if local := g.locals[name] {
+			if local.c_name != '' {
+				return local.c_name
+			}
+		}
 	}
 	if previous != .dot && name !in g.locals {
 		return g.resolved_nonlocal_expression_name_cached(name)
@@ -157,6 +180,13 @@ fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
 	}
 	if c_name := g.globals[fastc_global_key('builtin', name)] {
 		return c_name
+	}
+	// A `__global` is truly global, including from a different module than its declaration.
+	suffix := '.${name}'
+	for key, c_name in g.globals {
+		if key == name || key.ends_with(suffix) {
+			return c_name
+		}
 	}
 	return fastc_c_identifier(name)
 }
