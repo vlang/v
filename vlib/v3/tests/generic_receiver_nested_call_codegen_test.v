@@ -145,5 +145,5 @@ fn test_generic_receiver_nested_calls_use_specialized_receiver_methods() {
 	assert generated.contains('Optional_Array'), generated
 	assert !generated.contains('Inner_T__'), generated
 	assert !generated.contains('Outer_T__'), generated
-	assert !generated.contains('Optional_int __return_opt'), generated
+	assert !generated.contains('Optional_i64 __return_opt'), generated
 }

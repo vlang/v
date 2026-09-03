@@ -4011,11 +4011,11 @@ fn (mut tc TypeChecker) check_c_fn_redeclarations(a &flat.FlatAst) {
 					if child.typ.starts_with('...') {
 						is_variadic = true
 					} else {
-						params << tc.c_type(tc.parse_type(child.typ))
+						params << tc.c_extern_abi_type(tc.parse_type(child.typ))
 					}
 				}
 				signature := CFnDeclSignature{
-					return_type: tc.c_type(tc.parse_type(node.typ))
+					return_type: tc.c_extern_abi_type(tc.parse_type(node.typ))
 					params:      params
 					is_variadic: is_variadic
 				}

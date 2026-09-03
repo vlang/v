@@ -294,9 +294,9 @@ fn test_markused_roots_exact_typed_const_receiver_method() {
 	generated := os.read_file(out + '.c') or { panic(err) }
 	// The exact typed receiver methods live in the cached seriesmod object. The program unit
 	// exposes only its rooted entry points; the runtime result above verifies both private calls.
-	assert generated.contains('int seriesmod__run(int x);'), generated
-	assert generated.contains('int seriesmod__local_shadow(void);'), generated
-	assert generated.contains('int othermod__touch(void);'), generated
+	assert generated.contains('i64 seriesmod__run(i64 x);'), generated
+	assert generated.contains('i64 seriesmod__local_shadow(void);'), generated
+	assert generated.contains('i64 othermod__touch(void);'), generated
 	assert !generated.contains('seriesmod__Series__unused'), generated
 	assert !generated.contains('seriesmod__Series__leak'), generated
 	assert !generated.contains('seriesmod__AlternateSeries__measure'), generated

@@ -301,8 +301,8 @@ fn test_fn_param_mutability_participates_in_type_identity() {
 	immutable_id, _ := tc.intern_type(immutable)
 	mutable_id, _ := tc.intern_type(mutable)
 	assert immutable_id != mutable_id
-	assert tc.c_type(immutable) == 'fn_ptr:void|int'
-	assert tc.c_type(mutable) == 'fn_ptr:void|int*'
+	assert tc.c_type(immutable) == 'fn_ptr:void|i64'
+	assert tc.c_type(mutable) == 'fn_ptr:void|i64*'
 
 	cloned := clone_owned_type(mutable)
 	assert cloned is FnType

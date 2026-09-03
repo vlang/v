@@ -922,7 +922,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			outer_cast := assignment_prefix == '' && scoped_operand_prefix == '' && !scoped_or_operand && option_tokens.len != expression_tokens.len
 			if expression_tokens.len >= 2 && expression_tokens[0].tok == .name && expression_tokens[1].tok == .lpar {
 				value_type = fastc_primitive_c_type(expression_tokens[0].lit) or { value_type }
-				cast_prefix := '((${value_type})('
+				cast_prefix := '((${fastc_output_c_type(value_type)})('
 				if option_expression.starts_with(cast_prefix) {
 					option_expression = option_expression[cast_prefix.len..]
 				}
@@ -990,7 +990,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 					'*((${complex_payload_type} *)${temporary}.data)'
 				}
 				complex_success := if cast_type != '' && complex_payload_type != cast_type {
-					'((${cast_type})(${complex_unwrapped}))'
+					'((${fastc_output_c_type(cast_type)})(${complex_unwrapped}))'
 				} else {
 					complex_unwrapped
 				}
@@ -1162,7 +1162,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				'*((${payload_type} *)${temporary}.data)'
 			}
 			mut success_value := if outer_cast && payload_type != value_type {
-				'((${value_type})(${unwrapped_value}))'
+				'((${fastc_output_c_type(value_type)})(${unwrapped_value}))'
 			} else {
 				unwrapped_value
 			}
@@ -1439,7 +1439,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 					previous_lit
 				}
 				result.go_back(previous_lit.len + c_pointer_count)
-				piece = '((${c_cast_type}${'*'.repeat(c_pointer_count)})('
+				piece = '((${fastc_output_c_type(c_cast_type)}${'*'.repeat(c_pointer_count)})('
 				cast_depths << paren_depth + 1
 				if c_pointer_count > 0 {
 					pointer_cast_depths << paren_depth + 1
@@ -1463,7 +1463,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				if !name_is_member {
 					rendered_previous := g.resolved_expression_name(previous_lit, .unknown)
 					result.go_back(rendered_previous.len + pointer_prefix_len)
-					piece = '((${cast_type}${pointer_suffix})('
+					piece = '((${fastc_output_c_type(cast_type)}${pointer_suffix})('
 					cast_depths << paren_depth + 1
 					if pointer_cast {
 						pointer_cast_depths << paren_depth + 1
