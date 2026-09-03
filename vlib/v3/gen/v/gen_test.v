@@ -1652,3 +1652,15 @@ fn test_formatter_keeps_a_trailing_comment_on_a_range_match_branch() {
 	assert out == source, out
 	assert vfmt('range_branch_comment_twice', out) == out
 }
+
+// A bare `return` closing an inline block took the parser's position when its node was built,
+// which by then was past that block's `}`. The formatter read the statement's trailing comment as
+// directly following the `return` and moved it inside the braces, leaving the `}` inside the
+// comment and the file unparseable.
+fn test_formatter_keeps_a_trailing_comment_outside_an_inline_or_block() {
+	source := "fn get(k string) !bool {\n\treturn k != ''\n}\n\nfn probe() {\n\thelp_enabled := get('help') or { return } // ignore the error\n\tif help_enabled {\n\t\tprintln('yes')\n\t}\n}\n"
+	out := vfmt('inline_or_trailing_comment', source)
+	assert out == source, out
+	assert !out.contains('return // ignore the error }'), out
+	assert vfmt('inline_or_trailing_comment_twice', out) == out
+}

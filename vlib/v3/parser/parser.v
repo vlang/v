@@ -6617,11 +6617,16 @@ fn (mut p Parser) return_stmt() flat.NodeId {
 		p.next()
 	}
 	start := p.add_children(ids)
+	// Span the statement from `return` to the last token it consumed. Left to `add_node` it
+	// would take the parser's current position, which for a bare `return` closing an inline
+	// block (`x := f() or { return } // note`) is already past that block's `}` — the formatter
+	// then reads the note as directly following the `return` and moves it inside the braces,
+	// leaving the `}` commented out and the file unparseable.
 	return p.add_node(flat.Node{
 		kind:           .return_stmt
 		children_start: start
 		children_count: flat.child_count(ids.len)
-	})
+	}.with_pos(p.span_to(return_pos)))
 }
 
 fn (mut p Parser) if_stmt() flat.NodeId {
