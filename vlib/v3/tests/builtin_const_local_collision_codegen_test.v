@@ -56,5 +56,5 @@ fn main() {
 	assert c_code.contains('builtin__degree'), c_code
 	assert c_code.contains('#define builtin__hashbits ('), c_code
 	assert c_code.contains('map degree ='), c_code
-	assert c_code.contains('int hashbits = 5;'), c_code
+	assert c_code.contains('i64 hashbits = 5;'), c_code
 }

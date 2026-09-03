@@ -46,6 +46,45 @@ fn run_with_v_environment(program string, args []string, flags string, vexe stri
 	return cmdexec.run(program, args)
 }
 
+fn test_direct_fastc_compiler_entry_selects_selfhost_driver() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v_direct_fastc_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	host_binary := os.join_path(root, 'v_host')
+	os.cp(@VEXE, host_binary) or { panic(err) }
+	linked_entry_dir := os.join_path(root, 'linked_entry')
+	os.mkdir_all(linked_entry_dir) or { panic(err) }
+	linked_entry := os.join_path(linked_entry_dir, 'v3.v')
+	os.symlink(fastc_backend_v3_source, linked_entry) or { panic(err) }
+	direct_binary := os.join_path(root, 'v_fastc_direct')
+	direct_build := cmdexec.run_in(host_binary, ['-silent', '-b', 'fastc', '-o', direct_binary,
+		linked_entry], root)
+	assert direct_build.exit_code == 0, direct_build.output
+	assert os.is_executable(direct_binary)
+
+	self_output := os.join_path(root, 'v_fastc_child')
+	self_build := cmdexec.run(direct_binary, ['self', '-silent', '-o', self_output])
+	assert self_build.exit_code == 0, self_build.output
+	assert self_build.output.contains('V self compiling (-b fastc)...'), self_build.output
+	assert os.is_executable(self_output)
+
+	ordinary_source := os.join_path(root, 'v3.v')
+	write_fastc_test_source(ordinary_source,
+		'module main\nfn main() {\n\t\$if fastc_selfhost ? {\n\t\texit(7)\n\t}\n}\n')
+	ordinary_binary := os.join_path(root, 'ordinary_v3')
+	ordinary_build := cmdexec.run(@VEXE, ['-silent', '-b', 'fastc', '-o', ordinary_binary,
+		ordinary_source])
+	assert ordinary_build.exit_code == 0, ordinary_build.output
+	ordinary_run := cmdexec.run(ordinary_binary, [])
+	assert ordinary_run.exit_code == 0, ordinary_run.output
+}
+
 fn test_v_self_accepts_fastc_backend() {
 	$if !macos && !linux {
 		return
@@ -133,6 +172,29 @@ fn test_v_self_accepts_fastc_backend() {
 	assert compiling_lines.len == 2, repeated_build.output
 	assert os.is_executable(isolated_vexe)
 
+	deep_self_build := run_with_v_environment(isolated_vexe, ['self', '-silent', 'x5'], '',
+		isolated_vexe)
+	assert deep_self_build.exit_code == 0, deep_self_build.output
+	assert deep_self_build.output.count('V self compiling') == 5, deep_self_build.output
+	assert os.is_executable(isolated_vexe)
+	v_old := os.join_path(isolated_vroot, 'v_old')
+	assert os.is_executable(v_old)
+	v_old_repeated_build := run_with_v_environment(v_old, ['self', '-silent', 'x2'], '', v_old)
+	assert v_old_repeated_build.exit_code == 0, v_old_repeated_build.output
+	assert v_old_repeated_build.output.count('V self compiling') == 2, v_old_repeated_build.output
+	assert os.is_executable(v_old)
+	deep_self_output := os.join_path(isolated_vroot, 'v2')
+	deep_self_output_build := run_with_v_environment(isolated_vexe, ['self', '-silent', '-o',
+		deep_self_output], '', isolated_vexe)
+	assert deep_self_output_build.exit_code == 0, deep_self_output_build.output
+	assert deep_self_output_build.output.count('V self compiling') == 1, deep_self_output_build.output
+	assert os.is_executable(deep_self_output)
+	v2_repeated_build := run_with_v_environment(deep_self_output, ['self', '-silent', 'x2'], '',
+		deep_self_output)
+	assert v2_repeated_build.exit_code == 0, v2_repeated_build.output
+	assert v2_repeated_build.output.count('V self compiling') == 2, v2_repeated_build.output
+	assert os.is_executable(deep_self_output)
+
 	prod_build := cmdexec.run(@VEXE, ['self', '-silent', '-prod', '-b', 'fastc', '-o',
 		os.join_path(root, 'v prod')])
 	assert prod_build.exit_code != 0
@@ -198,7 +260,10 @@ fn main() {
 	assert !valid_compile.output.contains(' transform'), valid_compile.output
 	assert !valid_compile.output.contains('markused'), valid_compile.output
 	retained_c := os.read_file(valid_binary + '.c') or { panic(err) }
-	assert retained_c.contains('__typeof__((twice(21))) value = (twice(21));')
+	// A `:=` local whose inferred type is platform `int` is spelled with the explicit
+	// (i64) type rather than `__typeof__`, so `int` locals match the width used for
+	// params/fields and never truncate through C's own `int` inference.
+	assert retained_c.contains('i64 value = (twice(21));')
 	assert retained_c.contains('println(017);')
 	assert retained_c.contains('strlen(__v_fastc_collection_')
 	assert retained_c.contains('((const unsigned char *)__v_fastc_collection_')

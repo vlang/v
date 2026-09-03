@@ -4,8 +4,8 @@
 module termios
 
 // not used but needed for function declarations
-type TcFlag = int
-type Speed = int
+type TcFlag = i32
+type Speed = i32
 type Cc = u8
 
 // Termios represents platform dependent flags representing the terminal state.

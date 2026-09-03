@@ -30,24 +30,24 @@ fn test_option_struct_eq() {
 fn test_option_struct_ne_with_strings() {
 	assert ?Person(Person{
 		name: 'Alice'
-		age:  30
+		age: 30
 	}) != ?Person(Person{
 		name: 'Bob'
-		age:  25
+		age: 25
 	})
 	assert ?Person(Person{
 		name: 'Alice'
-		age:  30
+		age: 30
 	}) != ?Person(none)
 }
 
 fn test_option_struct_eq_with_strings() {
 	assert ?Person(Person{
 		name: 'Alice'
-		age:  30
+		age: 30
 	}) == ?Person(Person{
 		name: 'Alice'
-		age:  30
+		age: 30
 	})
 	assert ?Person(none) == ?Person(none)
 }
@@ -100,6 +100,36 @@ fn test_option_struct_eq_in_short_circuit() {
 	assert !(false && a != b)
 }
 
+struct OptionCallCounter {
+mut:
+	calls int
+}
+
+fn counted_optional_string(mut counter OptionCallCounter, value string) ?string {
+	counter.calls++
+	return value
+}
+
+fn test_option_eq_side_effects_preserve_short_circuiting() {
+	mut left_counter := OptionCallCounter{}
+	mut right_counter := OptionCallCounter{}
+	assert !(false && counted_optional_string(mut left_counter, 'same') == counted_optional_string(mut right_counter, 'same'))
+	assert left_counter.calls == 0
+	assert right_counter.calls == 0
+	assert true && counted_optional_string(mut left_counter, 'same') == counted_optional_string(mut right_counter, 'same')
+	assert left_counter.calls == 1
+	assert right_counter.calls == 1
+	assert true || counted_optional_string(mut left_counter, 'same') == counted_optional_string(mut right_counter, 'same')
+	assert left_counter.calls == 1
+	assert right_counter.calls == 1
+	assert false || counted_optional_string(mut left_counter, 'same') == counted_optional_string(mut right_counter, 'same')
+	assert left_counter.calls == 2
+	assert right_counter.calls == 2
+	assert [1].any(it == 1) && counted_optional_string(mut left_counter, 'same') == counted_optional_string(mut right_counter, 'same')
+	assert left_counter.calls == 3
+	assert right_counter.calls == 3
+}
+
 fn test_option_ptr_struct_eq() {
 	a := ?&Id(&Id{
 		v: 1
@@ -128,4 +158,29 @@ fn test_option_ptr_struct_ne() {
 	})
 	assert a != b
 	assert a != ?&Id(none)
+}
+
+struct OptionPointerOverloadValue {
+	value int
+}
+
+fn (a &OptionPointerOverloadValue) ==(b &OptionPointerOverloadValue) bool {
+	return a.value == b.value
+}
+
+fn test_option_pointer_payload_uses_reference_equality_overload() {
+	a := ?&OptionPointerOverloadValue(&OptionPointerOverloadValue{
+		value: 1
+	})
+	b := ?&OptionPointerOverloadValue(&OptionPointerOverloadValue{
+		value: 1
+	})
+	c := ?&OptionPointerOverloadValue(&OptionPointerOverloadValue{
+		value: 2
+	})
+	n := ?&OptionPointerOverloadValue(none)
+	assert a == b
+	assert a != c
+	assert a != n
+	assert n == ?&OptionPointerOverloadValue(none)
 }

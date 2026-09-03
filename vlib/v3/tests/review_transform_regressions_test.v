@@ -116,6 +116,50 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_array_method_on_imported_global_keeps_global_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_method_on_imported_global', 'import os
+
+fn main() {
+	println(os.args.last().len > 0)
+}
+')
+	assert out == 'true'
+}
+
+fn test_explicit_generic_call_keeps_container_and_imported_struct_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'explicit_generic_call_result_context', 'import time
+
+fn identity[T](value T) T {
+	return value
+}
+
+fn generic_map[M]() map[string]M {
+	return map[string]M{}
+}
+
+struct Box[T] {
+	value T
+}
+
+fn main() {
+	values := identity[map[string]string]({
+		"answer": "yes"
+	})
+	moment := identity[time.Time](time.Time{
+		year: 2024
+	})
+	box := Box[int]{}
+	println(values["answer"])
+	println(moment.year)
+	println(typeof(box.value).name)
+	println(typeof(generic_map[string]()).name)
+}
+')
+	assert out == 'yes\n2024\nint\nmap[string]string'
+}
+
 fn test_sum_equality_uses_canonical_struct_field_types() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_with_flags(v3_bin, 'sum_equality_canonical_struct_field_types', '-building-v', 'import v.token
@@ -168,6 +212,294 @@ fn main() {
 }
 ')
 	assert out == 'true'
+}
+
+fn test_array_append_to_map_value_struct_field_uses_mutable_map_entry() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_append_to_map_value_struct_field', 'struct Item {
+mut:
+	values []int
+}
+
+fn append_value(mut items map[string]Item, key string, value int) {
+	items[key].values << value
+}
+
+fn main() {
+	mut items := {
+		"first": Item{}
+	}
+	append_value(mut items, "first", 7)
+	println(items["first"].values)
+}
+')
+	assert out == '[7]'
+}
+
+fn test_or_block_match_with_break_has_no_value_assignment() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'or_block_match_break', 'struct NoIdle {}
+
+fn (_ NoIdle) msg() string {
+	return "no idle value"
+}
+
+fn (_ NoIdle) code() int {
+	return 0
+}
+
+fn pop_idle() !int {
+	return NoIdle{}
+}
+
+fn get() !int {
+	for {
+		value := pop_idle() or {
+			match err {
+				NoIdle {
+					break
+				}
+				else {
+					return err
+				}
+			}
+		}
+		return value
+	}
+	return 7
+}
+
+fn main() {
+	println(get() or { panic(err) })
+}
+')
+	assert out == '7'
+}
+
+fn test_result_payload_converts_to_interface_and_sum_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'result_interface_and_sum_payload', 'interface Number {
+	number() int
+}
+
+struct Item {
+	value int
+}
+
+fn (item Item) number() int {
+	return item.value
+}
+
+struct ArrayValue {
+	value int
+}
+
+type Value = ArrayValue | string
+
+fn load_item() !Item {
+	return Item{7}
+}
+
+fn load_number() !Number {
+	return load_item()!
+}
+
+fn load_array() !ArrayValue {
+	return ArrayValue{9}
+}
+
+fn load_value() !Value {
+	return load_array()!
+}
+
+fn main() {
+	number := load_number() or { panic(err) }
+	value := load_value() or { panic(err) }
+	println(number.number())
+	match value {
+		ArrayValue { println(value.value) }
+		else {}
+	}
+}
+')
+	assert out == '7\n9'
+}
+
+fn test_interface_pointer_receiver_dispatch_preserves_pointer_depth() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_pointer_receiver_dispatch', 'interface Reader {
+	read() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) read() int {
+	return value.n
+}
+
+fn use(reader &Reader) int {
+	return reader.read()
+}
+
+fn main() {
+	reader := Reader(Value{
+		n: 42
+	})
+	println(use(&reader))
+}
+')
+	assert out == '42'
+}
+
+fn test_interface_field_receiver_preserves_smartcast_projection() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_field_receiver_smartcast', 'interface Reader {
+	read() int
+}
+
+struct Source {
+	n int
+}
+
+fn (source Source) read() int {
+	return source.n
+}
+
+struct Holder {
+	reader Reader
+}
+
+type Value = Holder | string
+
+fn read_value(value Value) int {
+	return match value {
+		Holder { value.reader.read() }
+		else { -1 }
+	}
+}
+
+fn main() {
+	value := Value(Holder{
+		reader: Reader(Source{
+			n: 37
+		})
+	})
+	println(read_value(value))
+}
+')
+	assert out == '37'
+}
+
+fn test_result_c_payload_does_not_use_colliding_interface() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'result_c_payload_interface_collision', {
+		'v.mod':     "Module { name: 'result_c_payload_interface_collision' }\n"
+		'native.h':  'typedef struct { int value; } Value;\n'
+		'pkg/pkg.v': 'module pkg
+
+pub interface Value {
+	number() int
+}
+
+pub fn read(value Value) int {
+	return value.number()
+}
+'
+		'main.v':    'module main
+
+#insert "native.h"
+
+import pkg
+
+@[typedef]
+struct C.Value {
+	value int
+}
+
+struct Box {
+	n int
+}
+
+fn (box Box) number() int {
+	return box.n
+}
+
+fn load() !C.Value {
+	return C.Value{
+		value: 41
+	}
+}
+
+fn main() {
+	native := load() or { panic(err) }
+	println(native.value)
+	println(pkg.read(Box{
+		n: 43
+	}))
+}
+'
+	}, 'main.v')
+	assert out == '41\n43'
+}
+
+fn test_issue_28180_module_collisions_and_embedded_generic_middleware() {
+	v3_bin := build_v3_review_transform()
+	// The reported regression is a compiler failure; keep unrelated runtime
+	// deinitialization outside this coverage.
+	_ = compile_good_project(v3_bin, 'issue_28180_module_collisions', '-nocache', {
+		'v.mod':     'Module {
+	name: "issue_28180"
+}
+'
+		'main.v':    'module main
+
+import app
+
+fn main() {
+	_ = app.new()
+	println("ok")
+}
+'
+		'app/app.v': 'module app
+
+import context
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+@[heap]
+pub struct App {
+	veb.Middleware[Context]
+}
+
+struct Params {
+	name ?string
+}
+
+fn (mut app App) middleware(mut ctx Context) bool {
+	return true
+}
+
+pub fn new() &App {
+	mut base_ctx := context.background()
+	_ = base_ctx.done()
+	params := Params{
+		name: "item"
+	}
+	if name := params.name {
+		assert name == "item"
+	}
+	mut app := &App{}
+	app.use(handler: app.middleware)
+	app.route_use("/admin", handler: app.middleware, after: true)
+	return app
+}
+'
+	}, '')
 }
 
 fn test_return_match_map_lookup_guard_keeps_presence_check() {
@@ -370,11 +702,15 @@ pub fn values() string {
 }
 
 fn gen_c_from_source(v3_bin string, name string, src string) string {
+	return gen_c_from_source_with_flags(v3_bin, name, '', src)
+}
+
+fn gen_c_from_source_with_flags(v3_bin string, name string, flags string, src string) string {
 	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	compile := os.execute('${v3_bin} ${flags} ${src_path} -b c -o ${c_path}')
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert os.exists(c_path)
 	return os.read_file(c_path) or { panic(err) }
@@ -409,6 +745,13 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 }
 
 fn run_good_project_with_flags(v3_bin string, name string, flags string, files map[string]string, input string) string {
+	good_bin := compile_good_project(v3_bin, name, flags, files, input)
+	run := os.execute(good_bin)
+	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
+	return run.output.trim_space()
+}
+
+fn compile_good_project(v3_bin string, name string, flags string, files map[string]string, input string) string {
 	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
@@ -422,12 +765,16 @@ fn run_good_project_with_flags(v3_bin string, name string, flags string, files m
 	compile := os.execute('${v3_bin} ${flags} ${input_path} -b c -o ${good_bin}')
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
-	run := os.execute(good_bin)
-	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
-	return run.output.trim_space()
+	assert !compile.output.contains('gen_node: unsupported node kind'), '${name}: unsupported node reached C generation\n${compile.output}'
+
+	return good_bin
 }
 
 fn gen_c_from_project(v3_bin string, name string, files map[string]string, input string) string {
+	return gen_c_from_project_with_flags(v3_bin, name, '', files, input)
+}
+
+fn gen_c_from_project_with_flags(v3_bin string, name string, flags string, files map[string]string, input string) string {
 	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
@@ -439,7 +786,7 @@ fn gen_c_from_project(v3_bin string, name string, files map[string]string, input
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${input_path} -b c -o ${c_path}')
+	compile := os.execute('${v3_bin} ${flags} ${input_path} -b c -o ${c_path}')
 	assert compile.exit_code == 0, '${name}: C generation failed\n${compile.output}'
 	return os.read_file(c_path) or { panic(err) }
 }
@@ -724,6 +1071,36 @@ fn main() {
 	assert out == '7'
 }
 
+fn test_imported_struct_zero_fields_use_declaration_module_aliases() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'imported_struct_field_alias_scope', {
+		'v.mod':       "Module { name: 'imported_struct_field_alias_scope' }\n"
+		'other/mod.v': 'module other
+
+pub type Type = u32
+
+pub struct Holder {
+pub:
+	typ Type
+}
+'
+		'main.v':      'module main
+
+import other
+
+struct Type {
+	sym &int @[required]
+}
+
+fn main() {
+	holder := other.Holder{}
+	println(holder.typ)
+}
+'
+	}, 'main.v')
+	assert out == '0'
+}
+
 fn test_for_in_smartcast_interface_field_keeps_interface_element_type() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'for_in_smartcast_interface_field',
@@ -982,6 +1359,62 @@ fn test_shared_field_without_sync_import_compiles_and_locks() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'shared_field_without_sync_import',
 		'struct S {\nmut:\n\ta shared int\n}\n\nfn main() {\n\tmut s := S{}\n\tlock s.a {\n\t\ts.a = 7\n\t\tprintln(int_str(s.a))\n\t}\n}\n')
+	assert out == '7'
+}
+
+fn test_direct_shared_field_lock_allows_mut_receiver_and_branch_tail_append() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'direct_shared_lock_mut_receiver_and_append', 'struct State {
+mut:
+	values shared []string
+	count int
+}
+
+fn (mut state State) touch() {
+	state.count++
+}
+
+fn main() {
+	mut state := State{}
+	lock state.values {
+		state.touch()
+		if true {
+			state.values << "ok"
+		}
+	}
+	mut len := 0
+	rlock state.values {
+		len = state.values.len
+	}
+	println(int_str(state.count))
+	println(int_str(len))
+}
+')
+	assert out == '1\n1'
+}
+
+fn test_unsafe_block_tail_keeps_lexical_smartcast() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'unsafe_block_tail_lexical_smartcast', 'struct LambdaNode {
+mut:
+	value int
+}
+
+struct OtherNode {}
+
+type Expr = LambdaNode | OtherNode
+
+fn main() {
+	expr := Expr(LambdaNode{
+		value: 6
+	})
+	if expr is LambdaNode {
+		mut node := unsafe { expr }
+		node.value++
+		println(int_str(node.value))
+	}
+}
+')
 	assert out == '7'
 }
 
@@ -2508,9 +2941,351 @@ fn main() {
 }
 '
 	c_source := gen_c_from_source(v3_bin, 'immediate_bound_method_hot_loop_c', source)
+	init_body := c_fn_body(c_source, 'void _vinit() {')
+	assert init_body.contains('closure__closure_init();'), init_body
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.contains('_vinit();'), main_body
 	assert c_source.contains('closure__closure_try_destroy(__immediate_closure_'), c_source
 	out := run_good(v3_bin, 'immediate_bound_method_hot_loop', source)
 	assert out == '1249975000'
+}
+
+fn test_immediately_invoked_bound_method_keeps_escaped_receiver_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Registry {
+mut:
+	callbacks []fn () int
+}
+
+struct State {
+	value int
+}
+
+fn (state &State) install(registry &Registry) {
+	unsafe {
+		registry.callbacks << fn [state] () int {
+			return state.value
+		}
+	}
+}
+
+fn main() {
+	registry := &Registry{}
+	(State{
+		value: 42
+	}.install)(registry)
+	println(int_str(registry.callbacks[0]()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_bound_method_escaped_receiver_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	call_pos := main_body.index('println(int__str') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert call_pos >= 0, main_body
+	assert destroy_pos > call_pos, main_body
+	out := run_good(v3_bin, 'immediate_bound_method_escaped_receiver', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_pointer_result_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	x := 41
+	p := (fn [x] () &int {
+		return unsafe { &x }
+	})()
+	println(int_str(unsafe { *p + 1 }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_pointer_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	deref_pos := main_body.index('*p') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert deref_pos >= 0, main_body
+	assert destroy_pos > deref_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_aliased_pointer', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_integer_encoded_capture_address_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut value := 41
+	address := (fn [mut value] () usize {
+		return usize(voidptr(&value))
+	})()
+	p := unsafe { &int(voidptr(address)) }
+	println(int_str(unsafe { *p + 1 }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_integer_capture_address_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	deref_pos := main_body.index('*p') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert deref_pos >= 0, main_body
+	assert destroy_pos > deref_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_integer_capture_address', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_integer_capture_address_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut value := 41
+	address := (fn [mut value] () usize {
+		encoded := usize(voidptr(&value))
+		return encoded
+	})()
+	p := unsafe { &int(voidptr(address)) }
+	println(int_str(unsafe { *p + 1 }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_integer_capture_address_c',
+		source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	deref_pos := main_body.index('*p') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert deref_pos >= 0, main_body
+	assert destroy_pos > deref_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_aliased_integer_capture_address', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_result_error_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct CaptureError {
+	ptr &int
+}
+
+fn (err CaptureError) msg() string {
+	return "capture error"
+}
+
+fn main() {
+	x := 41
+	value := (fn [x] () !int {
+		return CaptureError{
+			ptr: unsafe { &x }
+		}
+	})() or {
+		if err is CaptureError {
+			println(int_str(unsafe { *err.ptr + 1 }))
+		}
+		return
+	}
+	println(int_str(value))
+}
+'
+	out := run_good(v3_bin, 'immediate_closure_aliased_result_error', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_slice_result_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	fixed := [3]int{41, 42, 43}
+	slice := (fn [fixed] () []int {
+		return fixed[..]
+	})()
+	println(slice)
+}
+'
+	out := run_good(v3_bin, 'immediate_closure_aliased_slice', source)
+	assert out == '[41, 42, 43]'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_string_result_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut bytes := [2]u8{}
+	bytes[0] = `O`
+	bytes[1] = `K`
+	text := (fn [bytes] () string {
+		return unsafe { tos(&bytes[0], bytes.len) }
+	})()
+	println(text)
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_string_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_aliased_string', source)
+	assert out == 'OK'
+}
+
+fn test_immediately_invoked_closure_keeps_spawned_nested_capture_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut value := 41
+	worker := (fn [mut value] () thread int {
+		return spawn fn [mut value] () int {
+			return value + 1
+		}()
+	})()
+	println(int_str(worker.wait()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_spawned_capture_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	wait_pos := main_body.index('__v_thread_join') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert wait_pos >= 0, main_body
+	assert destroy_pos > wait_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_spawned_capture', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_spawn_capture_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut value := 42
+	worker := (fn [value] () thread int {
+		p := unsafe { &value }
+		return spawn fn [p] () int {
+			return unsafe { *p }
+		}()
+	})()
+	println(int_str(worker.wait()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_spawn_capture_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	wait_pos := main_body.index('__v_thread_join') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert wait_pos >= 0, main_body
+	assert destroy_pos > wait_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_aliased_spawn_capture', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_side_effect_capture_escape_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Registry {
+mut:
+	callbacks []fn () int
+}
+
+fn install(mut registry Registry, callback fn () int) {
+	registry.callbacks << callback
+}
+
+fn main() {
+	mut registry := &Registry{}
+	mut value := 42
+	(fn [mut registry, mut value] () {
+		install(mut registry, fn [mut value] () int {
+			return value
+		})
+	})()
+	println(int_str(registry.callbacks[0]()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_side_effect_escape_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_side_effect_escape', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_factory_closure_keeps_side_effect_capture_escape_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Registry {
+mut:
+	callbacks []fn () int
+}
+
+fn install(mut registry Registry, callback fn () int) {
+	registry.callbacks << callback
+}
+
+fn make_callback(mut registry Registry) fn () {
+	mut value := 42
+	return fn [mut registry, mut value] () {
+		install(mut registry, fn [mut value] () int {
+			return value
+		})
+	}
+}
+
+fn main() {
+	mut registry := Registry{}
+	make_callback(mut registry)()
+	println(int_str(registry.callbacks[0]()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_factory_closure_side_effect_escape_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_factory_closure_side_effect_escape', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_projected_capture_escapes_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct PointerHolder {
+mut:
+	value &int
+}
+
+fn main() {
+	external := 0
+	mut holder := &PointerHolder{
+		value: unsafe { &external }
+	}
+	mut selector_value := 40
+	(fn [mut holder, mut selector_value] () {
+		holder.value = unsafe { &selector_value }
+	})()
+
+	mut pointers := [unsafe { &external }]!
+	mut index_value := 41
+	(fn [mut pointers, mut index_value] () {
+		pointers[0] = unsafe { &index_value }
+	})()
+
+	println(int_str(unsafe { *holder.value }))
+	println(int_str(unsafe { *pointers[0] }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_projected_escapes_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.last_index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_projected_escapes', source)
+	assert out == '40\n41'
+}
+
+fn test_immediately_invoked_closure_keeps_channel_sent_capture_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	ch := chan &int{cap: 1}
+	mut value := 42
+	(fn [ch, mut value] () {
+		ch <- unsafe { &value }
+	})()
+	p := <-ch
+	println(int_str(unsafe { *p }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_channel_escape_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_channel_escape', source)
+	assert out == '42'
 }
 
 fn test_disjoint_same_name_closure_bindings_are_reclaimed() {
@@ -3281,6 +4056,68 @@ fn test_heap_escaping_amp_alias_keeps_heap_pointer() {
 	out := run_good(v3_bin, 'heap_escaping_amp_alias',
 		'struct S {\n\tn int\n}\n\nfn leak() &S {\n\tmut s := S{\n\t\tn: 1\n\t}\n\tp := &s\n\ts = S{\n\t\tn: 2\n\t}\n\treturn p\n}\n\nfn main() {\n\tp := leak()\n\tprintln(int_str(p.n))\n}\n')
 	assert out == '2'
+}
+
+fn test_scalar_return_call_does_not_heap_promote_address_argument() {
+	v3_bin := build_v3_review_transform()
+	c_source := gen_c_from_source(v3_bin, 'scalar_return_address_arg', 'struct Item {
+	value int
+}
+
+fn inspect(item &Item) int {
+	return item.value
+}
+
+fn forward() int {
+	item := Item{
+		value: 7
+	}
+	return inspect(&item)
+}
+
+fn main() {
+	println(int_str(forward()))
+}
+')
+	body := c_fn_body(c_source, 'int forward(void) {')
+	assert body.contains('main__Item item ='), body
+	assert !body.contains('main__Item* item ='), body
+	assert !body.contains('memdup(&__esc'), body
+}
+
+fn test_smartcast_selector_return_keeps_existing_sum_box() {
+	v3_bin := build_v3_review_transform()
+	c_source := gen_c_from_source(v3_bin, 'smartcast_selector_sum_return', 'struct First {
+	value int
+}
+
+struct Second {
+	value int
+}
+
+type Value = First | Second
+
+struct Holder {
+	value Value
+}
+
+fn selected(holder &Holder) Value {
+	if holder.value is First {
+		return holder.value
+	}
+	return holder.value
+}
+
+fn main() {
+	holder := Holder{
+		value: First{value: 7}
+	}
+	println(selected(&holder))
+}
+')
+	body := c_fn_body(c_source, 'Value selected(main__Holder* holder) {')
+	assert body.contains('return holder->value;'), body
+	assert !body.contains('memdup('), body
 }
 
 fn test_returned_closure_alias_heap_promotes_captured_pointer_source() {
@@ -4549,6 +5386,13 @@ fn test_late_inferred_generic_call_emits_specialization() {
 	assert out == '42'
 }
 
+fn test_late_reachable_body_generic_call_emits_specialization() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'late_reachable_body_generic_call_emits_specialization',
+		'fn identity[T](value T) T {\n\treturn value\n}\n\nfn late_helper() int {\n\treturn identity[int](42)\n}\n\nfn outer[T]() int {\n\treturn late_helper()\n}\n\nfn main() {\n\tprintln(int_str(outer[int]()))\n}\n')
+	assert out == '42'
+}
+
 fn test_module_qualified_panic_keeps_module_symbol() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'module_qualified_panic_symbol', {
@@ -4896,6 +5740,55 @@ fn main() {
 	assert out == 'value\ntrue\ntrue\nmain_attr'
 }
 
+fn test_comptime_generic_embedded_field_uses_short_reflected_name() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'comptime_generic_embedded_field_name', 'struct Embedded[T] {
+	value T
+}
+
+struct Container {
+	Embedded[int]
+}
+
+fn main() {
+	$for field in Container.fields {
+		$if field.is_embed {
+			println(field.name)
+		}
+	}
+}
+')
+	assert out == 'Embedded'
+}
+
+fn test_comptime_main_enum_field_matches_enum_type_group() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'comptime_main_enum_field_type_group', 'enum State {
+	idle
+	running
+}
+
+struct Job {
+	state State
+}
+
+fn enum_fields[T]() int {
+	mut count := 0
+	$for field in T.fields {
+		$if field.unaliased_typ is $enum {
+			count++
+		}
+	}
+	return count
+}
+
+fn main() {
+	println(enum_fields[Job]())
+}
+')
+	assert out == '1'
+}
+
 fn test_json2_encode_keeps_independent_array_element_specializations() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'json2_independent_array_element_specializations',
@@ -5123,6 +6016,5951 @@ fn main() {
 '
 	out := run_good(v3_bin, 'array_branch_selected_function_values', source)
 	assert out == '8'
+}
+
+fn test_array_map_drops_temporary_source_after_transient_element_address() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "four"
+	}]
+}
+
+fn text_len(item &Item) int {
+	return item.text.len
+}
+
+fn main() {
+	lengths := make_items().map(text_len(&it))
+	println(lengths)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_transient_address_drop_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array lengths = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_transient_address_drop', '-ownership', source)
+	assert out == '[4]'
+}
+
+fn test_array_map_binds_implicit_reference_receiver_to_source_slot() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	value int
+}
+
+fn (item &Item) self() &Item {
+	return item
+}
+
+fn make_items() []Item {
+	return [Item{
+		value: 1
+	}, Item{
+		value: 2
+	}]
+}
+
+fn main() {
+	items := make_items().map(it.self())
+	println(items[0].value)
+	println(items[1].value)
+	println(items[0] == items[1])
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_implicit_reference_receiver_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert !main_body.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_implicit_reference_receiver', '-ownership',
+		source)
+	assert out == '1\n2\nfalse'
+}
+
+fn test_array_map_keeps_temporary_source_for_generic_pointer_result() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct Box[T] {
+	value T
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "four"
+	}]
+}
+
+fn main() {
+	boxes := make_items().map(Box[&Item]{
+		value: &it
+	})
+	println(boxes[0].value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_generic_pointer_result_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert !main_body.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_generic_pointer_result', '-ownership', source)
+	assert out == 'four'
+}
+
+fn test_array_map_keeps_temporary_source_for_generic_sum_pointer_result() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct Empty {}
+
+type Maybe[T] = T | Empty
+
+fn make_items() []Item {
+	return [Item{
+		text: "four"
+	}]
+}
+
+fn main() {
+	values := make_items().map(Maybe[&Item](&it))
+	for value in values {
+		if value is &Item {
+			println(value.text)
+		}
+	}
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_generic_sum_pointer_result_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert !main_body.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_generic_sum_pointer_result', '-ownership', source)
+	assert out == 'four'
+}
+
+fn test_array_map_keeps_temporary_source_through_index_and_selector_results() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "four"
+	}]
+}
+
+fn main() {
+	indexed := make_items().map([&it][0])
+	selected := make_items().map(PointerBox{
+		value: &it
+	}.value)
+	println(indexed[0].text)
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_wrapped_pointer_results_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert !main_body.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_wrapped_pointer_results', '-ownership', source)
+	assert out == 'four\nfour'
+}
+
+fn test_array_map_keeps_temporary_source_through_dump_result() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "four"
+	}]
+}
+
+fn main() {
+	values := make_items().map(dump(&it))
+	println(values[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_dump_pointer_result_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert !main_body.contains('array__free(&(__map_source_'), main_body
+}
+
+fn test_array_map_keeps_temporary_source_through_local_result_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	values := make_items().map(match flag {
+		true {
+			p := &it
+			q := p
+			q
+		}
+		else {
+			&external
+		}
+	})
+	println(values[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_local_pointer_alias_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_local_pointer_alias', '-ownership', source)
+	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_conditional_result_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	values := make_items().map(match flag {
+		true {
+			mut p := unsafe { &external }
+			if flag {
+				p = unsafe { &it }
+			}
+			p
+		}
+		else {
+			&external
+		}
+	})
+	println(values[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_conditional_pointer_alias_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_conditional_pointer_alias', '-ownership', source)
+	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_branch_local_result_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	values := make_items().map(match flag {
+		true {
+			mut p := unsafe { &external }
+			if flag {
+				q := unsafe { &it }
+				p = q
+			}
+			p
+		}
+		else {
+			&external
+		}
+	})
+	println(values[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_branch_local_pointer_alias_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_branch_local_pointer_alias', '-ownership', source)
+	assert out == 'source'
+}
+
+fn test_array_map_drops_temporary_source_for_shadowed_nested_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	other := Item{
+		text: "other"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut p := unsafe { &external }
+			if flag {
+				mut p := unsafe { &other }
+				p = unsafe { &it }
+			}
+			p
+		}
+		else {
+			&external
+		}
+	})
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_shadowed_nested_alias_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_shadowed_nested_alias', '-ownership', source)
+	assert out == 'external'
+}
+
+fn test_array_map_keeps_temporary_source_through_local_aggregate_selector_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			box := PointerBox{
+				value: unsafe { &it }
+			}
+			box.value
+		}
+		else {
+			&external
+		}
+	})
+	indexed := make_items().map(match flag {
+		true {
+			pointers := [unsafe { &it }]!
+			pointers[0]
+		}
+		else {
+			&external
+		}
+	})
+	println(selected[0].text)
+	println(indexed[0].text)
+}
+'
+	selected_c := gen_c_from_source_with_flags(v3_bin,
+		'array_map_local_aggregate_selector_alias_c', '-ownership', source)
+	main_body := c_fn_body(selected_c, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_local_aggregate_selector_alias', '-ownership',
+		source)
+	assert out == 'source\nsource'
+}
+
+fn test_array_map_keeps_temporary_source_through_nested_aggregate_selector_write() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			if flag {
+				box = PointerBox{
+					value: unsafe { &it }
+				}
+			}
+			box.value
+		}
+		else {
+			&external
+		}
+	})
+	indexed := make_items().map(match flag {
+		true {
+			mut pointers := [unsafe { &external }]!
+			if flag {
+				pointers = [unsafe { &it }]!
+			}
+			pointers[0]
+		}
+		else {
+			&external
+		}
+	})
+	println(selected[0].text)
+	println(indexed[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_selector_write_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_nested_selector_write', '-ownership', source)
+	assert out == 'source\nsource'
+}
+
+fn test_array_map_keeps_temporary_source_through_direct_selector_write() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			box.value = unsafe { &it }
+			box.value
+		}
+		else {
+			&external
+		}
+	})
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_direct_selector_write_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_direct_selector_write', '-ownership', source)
+	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_direct_index_write() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut pointers := [unsafe { &external }]!
+			pointers[0] = unsafe { &it }
+			pointers[0]
+		}
+		else {
+			&external
+		}
+	})
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_direct_index_write_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_direct_index_write', '-ownership', source)
+	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_dynamic_index_write_across_origins() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	idx := 1
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut holder := [&local, &saved]
+			holder[idx].value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_dyn_index_write_c', '-ownership',
+		source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_dyn_index_write', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_copies_projected_aggregate_pointer_origins() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Holder {
+	mut:
+	box &PointerBox
+}
+
+struct Outer {
+	holder Holder
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut selector_saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selector_result := make_items().map(match true {
+		true {
+			outer := Outer{
+				holder: Holder{
+					box: &selector_saved
+				}
+			}
+			mut holder := outer.holder
+			holder.box.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selector_result[0])
+	println(selector_saved.value.text)
+
+	mut index_saved := PointerBox{
+		value: unsafe { &external }
+	}
+	index_result := make_items().map(match true {
+		true {
+			outers := [Outer{
+				holder: Holder{
+					box: &index_saved
+				}
+			}]
+			mut holder := outers[0].holder
+			holder.box.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(index_result[0])
+	println(index_saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_projected_aggregate_origins_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_projected_aggregate_origins', '-ownership',
+		source)
+	assert out == '0\nsource\n0\nsource'
+}
+
+fn test_array_map_merges_pointer_origins_at_forward_goto_label() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &saved
+			unsafe {
+				goto store
+			}
+			alias = &local
+			store:
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_forward_goto_origin_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_forward_goto_origin', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_for_helper_forward_goto_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn store_after_goto(mut box PointerBox, value &Item, replacement &Item) {
+	mut local := PointerBox{
+		value: unsafe { replacement }
+	}
+	mut alias := &box
+	unsafe {
+		goto store
+	}
+	alias = &local
+	store:
+	alias.value = unsafe { value }
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			store_after_goto(mut saved, unsafe { &it }, unsafe { &external })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_helper_goto_origin_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_helper_goto_origin', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_temporary_source_through_nested_local_selector_chain() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	value &Item
+}
+
+struct Outer {
+	inner PointerBox
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			outer := Outer{
+				inner: PointerBox{
+					value: unsafe { &it }
+				}
+			}
+			outer.inner.value
+		}
+		else {
+			&external
+		}
+	})
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_local_selector_chain_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_nested_local_selector_chain', '-ownership',
+		source)
+	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_nested_selector_write() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+struct Outer {
+	mut:
+	inner PointerBox
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut outer := Outer{
+				inner: PointerBox{
+					value: unsafe { &external }
+				}
+			}
+			outer.inner.value = unsafe { &it }
+			outer.inner.value
+		}
+		else {
+			&external
+		}
+	})
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_selector_write_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_nested_selector_write', '-ownership', source)
+	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_mutating_method_write() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn (mut box PointerBox) set(value &Item) {
+	box.value = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			box.set(unsafe { &it })
+			box
+		}
+		else {
+			PointerBox{
+				value: unsafe { &external }
+			}
+		}
+	})
+	println(selected[0].value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutating_method_write_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_mutating_method_write', '-ownership', source)
+	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_mutating_function_write() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn set(mut box PointerBox, value &Item) {
+	box.value = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			set(mut box, unsafe { &it })
+			box
+		}
+		else {
+			PointerBox{
+				value: unsafe { &external }
+			}
+		}
+	})
+	println(selected[0].value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutating_function_write_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_mutating_function_write', '-ownership', source)
+	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_mutating_method_selector_result() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn (mut box PointerBox) set(value &Item) {
+	box.value = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			box.set(unsafe { &it })
+			box.value
+		}
+		else {
+			unsafe { &external }
+		}
+	})
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutating_method_selector_result_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_mutating_method_selector_result', '-ownership',
+		source)
+	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_mutating_function_index_result() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn set(mut values [1]&Item, value &Item) {
+	values[0] = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut values := [1]&Item{}
+			values[0] = unsafe { &external }
+			set(mut values, unsafe { &it })
+			values[0]
+		}
+		else {
+			unsafe { &external }
+		}
+	})
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutating_function_index_result_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_mutating_function_index_result', '-ownership',
+		source)
+	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_nested_mutating_call() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn store(mut box PointerBox, value &Item) {
+	box.value = value
+}
+
+fn (mut box PointerBox) set(value &Item) {
+	store(mut box, value)
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			box.set(unsafe { &it })
+			box
+		}
+		else {
+			PointerBox{
+				value: unsafe { &external }
+			}
+		}
+	})
+	println(selected[0].value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_mutating_call_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_nested_mutating_call', '-ownership', source)
+	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_mutator_local_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn (mut box PointerBox) set(value &Item) {
+	pointer := unsafe { value }
+	box.value = pointer
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			box.set(unsafe { &it })
+			box
+		}
+		else {
+			PointerBox{
+				value: unsafe { &external }
+			}
+		}
+	})
+	println(selected[0].value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_local_alias_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_mutator_local_alias', '-ownership', source)
+	assert out == 'source'
+}
+
+fn test_array_map_drops_temporary_source_after_mutator_local_alias_overwrite() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn (mut box PointerBox) inspect(value &Item) {
+	mut pointer := unsafe { value }
+	pointer = box.value
+	box.value = pointer
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			box.inspect(unsafe { &it })
+			box
+		}
+		else {
+			PointerBox{
+				value: unsafe { &external }
+			}
+		}
+	})
+	println(selected[0].value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_alias_overwrite_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_mutator_alias_overwrite', '-ownership', source)
+	assert out == 'external'
+}
+
+fn test_array_map_keeps_temporary_source_when_external_mutator_retains_element() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn (mut box PointerBox) set(value &Item) {
+	box.value = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			saved.set(unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_mutator_escape_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_external_mutator_escape', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_temporary_source_when_external_array_append_retains_element() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	mut saved := []&Item{}
+	selected := make_items().map(match true {
+		true {
+			saved << unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_append_escape_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_external_append_escape', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_temporary_source_through_external_pointer_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut alias := &saved
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_pointer_alias_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_external_pointer_alias', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_temporary_source_through_external_pointer_in_local_aggregate() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Holder {
+	mut:
+	box &PointerBox
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut holder := Holder{
+				box: unsafe { &saved }
+			}
+			holder.box.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_external_pointer_in_local_aggregate_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_external_pointer_in_local_aggregate',
+		'-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_temporary_source_through_conditional_local_aggregate_initializers() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Holder {
+mut:
+	box &PointerBox
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	mut saved_if := PointerBox{
+		value: unsafe { &external }
+	}
+	selected_if := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut holder := if flag {
+				Holder{
+					box: unsafe { &saved_if }
+				}
+			} else {
+				Holder{
+					box: unsafe { &local }
+				}
+			}
+			holder.box.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	mut saved_match := PointerBox{
+		value: unsafe { &external }
+	}
+	selected_match := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut holder := match flag {
+				true {
+					Holder{
+						box: unsafe { &saved_match }
+					}
+				}
+				else {
+					Holder{
+						box: unsafe { &local }
+					}
+				}
+			}
+			holder.box.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected_if[0])
+	println(saved_if.value.text)
+	println(selected_match[0])
+	println(saved_match.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_conditional_local_aggregate_initializers_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_conditional_local_aggregate_initializers',
+		'-ownership', source)
+	assert out == '0\nsource\n0\nsource'
+}
+
+fn test_array_map_tracks_pointer_origins_through_struct_updates() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Holder {
+mut:
+	box   &PointerBox
+	other int
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved_inherited := PointerBox{
+		value: unsafe { &external }
+	}
+	selected_inherited := make_items().map(match true {
+		true {
+			base := Holder{
+				box: unsafe { &saved_inherited }
+			}
+			mut holder := Holder{
+				...base
+				other: 1
+			}
+			holder.box.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	mut saved_overridden := PointerBox{
+		value: unsafe { &external }
+	}
+	selected_overridden := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			base := Holder{
+				box: unsafe { &saved_overridden }
+			}
+			mut holder := Holder{
+				...base
+				box: unsafe { &local }
+			}
+			holder.box.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected_inherited[0])
+	println(saved_inherited.value.text)
+	println(selected_overridden[0])
+	println(saved_overridden.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_struct_update_pointer_origins_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert compact_main.count('array__free(&(__map_source_') == 1, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_struct_update_pointer_origins', '-ownership',
+		source)
+	assert out == '0\nsource\n0\nexternal'
+}
+
+fn test_array_map_drops_temporary_source_for_local_conditional_pointer_initializers() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected_if := make_items().map(match true {
+		true {
+			mut local_a := PointerBox{
+				value: unsafe { &external }
+			}
+			mut local_b := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := if flag { unsafe { &local_a } } else { unsafe { &local_b } }
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	selected_match := make_items().map(match true {
+		true {
+			mut local_a := PointerBox{
+				value: unsafe { &external }
+			}
+			mut local_b := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := match flag {
+				true { unsafe { &local_a } }
+				else { unsafe { &local_b } }
+			}
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected_if[0])
+	println(selected_match[0])
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_local_conditional_pointer_initializers_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	if_result_pos := compact_main.index('Arrayselected_if=') or { -1 }
+	match_result_pos := compact_main.index('Arrayselected_match=') or { -1 }
+	if_source_drop_pos := compact_main.index('array__free(&(__map_source_') or { -1 }
+	match_drop_offset := compact_main[if_result_pos..].index('array__free(&(__map_source_') or {
+		-1
+	}
+	match_source_drop_pos := if match_drop_offset >= 0 {
+		if_result_pos + match_drop_offset
+	} else {
+		-1
+	}
+	assert if_source_drop_pos >= 0 && if_source_drop_pos < if_result_pos, main_body
+	assert match_source_drop_pos > if_result_pos && match_source_drop_pos < match_result_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_local_conditional_pointer_initializers',
+		'-ownership', source)
+	assert out == '0\n0'
+}
+
+fn test_array_map_keeps_temporary_source_through_external_pointer_in_call_result() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Holder {
+	mut:
+	primary   &PointerBox
+	secondary &PointerBox
+}
+
+fn make_holder(box &PointerBox) Holder {
+	return Holder{
+		primary: box
+		secondary: box
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut holder := make_holder(&saved)
+			holder.secondary.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_pointer_in_call_result_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_external_pointer_in_call_result', '-ownership',
+		source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_tracks_call_result_pointer_origins_per_field() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Holder {
+	mut:
+	primary   &PointerBox
+	secondary &PointerBox
+}
+
+fn make_holder(primary &PointerBox, secondary &PointerBox) Holder {
+	return Holder{
+		primary: primary
+		secondary: secondary
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut holder := make_holder(&saved, &local)
+			holder.secondary.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_call_result_per_field_origin_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_call_result_per_field_origin', '-ownership',
+		source)
+	assert out == '0\nexternal'
+}
+
+fn test_array_map_keeps_temporary_source_through_global_pointer_call_result() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := '@[has_globals]
+module main
+
+struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Holder {
+mut:
+	box &PointerBox
+}
+
+__global saved &PointerBox
+
+fn get_global_holder() Holder {
+	return Holder{
+		box: saved
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	saved = &PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut holder := get_global_holder()
+			holder.box.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_global_pointer_call_result_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_global_pointer_call_result', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_updates_pointer_origins_through_mut_call() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) {
+	target = replacement
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			replace(mut alias, &saved)
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mut_call_pointer_origin_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_mut_call_pointer_origin', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_updates_pointer_origins_through_nested_calls_and_dereferences() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn consume(changed bool) {
+	assert changed
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut nested_saved := PointerBox{
+		value: unsafe { &external }
+	}
+	nested := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			consume(replace(mut alias, &nested_saved))
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	mut dereferenced_saved := PointerBox{
+		value: unsafe { &external }
+	}
+	dereferenced := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			{
+				mut slot := &alias
+				unsafe {
+					*slot = &dereferenced_saved
+				}
+			}
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	mut direct_saved := unsafe { &external }
+	direct := make_items().map(match true {
+		true {
+			mut slot := &direct_saved
+			unsafe {
+				*slot = &it
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(nested[0])
+	println(nested_saved.value.text)
+	println(dereferenced[0])
+	println(direct[0])
+	println(direct_saved.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_nested_call_and_dereference_pointer_origin_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_nested_call_and_dereference_pointer_origin',
+		'-ownership', source)
+	assert out == '0\nsource\n0\n0\nsource'
+}
+
+fn test_array_map_snapshots_call_arguments_and_respects_callback_alias_scopes() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn reset(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn assign(mut target &PointerBox, source &PointerBox, changed bool) {
+	if changed {
+		target = source
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &saved
+			mut target := &local
+			assign(mut target, alias, reset(mut alias, &local))
+			target.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_call_argument_snapshot_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_call_argument_snapshot', '-ownership', source)
+	assert out == '0\nsource'
+
+	files := {
+		'v.mod':        "Module { name: 'array_map_callback_alias_scope' }\n"
+		'api/store.v':  '@[has_globals]
+module api
+
+pub struct Item {
+pub:
+	text string
+}
+
+__global retained &Item
+
+pub fn save(value &Item) {
+	retained = value
+}
+
+pub fn retained_text() string {
+	return retained.text
+}
+'
+		'api/invoke.v': 'module api
+
+pub fn invoke(callback fn (&Item), value &Item) {
+	alias := value
+	unsafe {
+		local := Item{
+			text: "local"
+		}
+		alias := &local
+		_ = alias
+	}
+	callback(alias)
+}
+'
+		'main.v':       'module main
+
+import api
+
+fn make_items() []api.Item {
+	return [api.Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			api.invoke(api.save, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(api.retained_text())
+}
+'
+	}
+	callback_c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_callback_alias_scope_c',
+		'-ownership', files, 'main.v')
+	callback_main_body := c_fn_body(callback_c_source, 'int main(int argc, char** argv) {')
+	compact_callback_main := callback_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_callback_main.contains('array__free(&(__map_source_'), callback_main_body
+	callback_out := run_good_project_with_flags(v3_bin, 'array_map_callback_alias_scope',
+		'-ownership', files, 'main.v')
+	assert callback_out == '0\nsource'
+}
+
+fn test_array_map_classifies_mut_targets_after_earlier_argument_effects() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn rebind_and_return(mut target &PointerBox, replacement &PointerBox, value &Item) &Item {
+	target = replacement
+	return value
+}
+
+fn store(value &Item, mut target &PointerBox) {
+	target.value = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	result := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			store(rebind_and_return(mut alias, &saved, unsafe { &it }), mut alias)
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(result[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_earlier_argument_target_effect_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_earlier_argument_target_effect', '-ownership',
+		source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_classifies_later_expression_children_after_origin_effects() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn rebind(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn store(mut target &PointerBox, value &Item) bool {
+	target.value = value
+	return true
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	result := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			_ := rebind(mut alias, &saved) == store(mut alias, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(result[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_expression_child_origin_effect_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_expression_child_origin_effect', '-ownership',
+		source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_updates_pointer_origins_through_declaration_initializer_call() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			changed := replace(mut alias, &saved)
+			assert changed
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_decl_initializer_pointer_origin_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_decl_initializer_pointer_origin', '-ownership',
+		source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_updates_pointer_origins_through_assignment_rhs_call() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			mut changed := false
+			changed = replace(mut alias, &saved)
+			assert changed
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_assignment_rhs_pointer_origin_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_assignment_rhs_pointer_origin', '-ownership',
+		source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_snapshots_pointer_origins_before_multi_assignment() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &saved
+			mut other := &local
+			alias, other = other, alias
+			other.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_multi_assign_pointer_origin_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_multi_assign_pointer_origin', '-ownership',
+		source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_applies_all_rhs_effects_before_multi_assignment_targets() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn rebind(mut target &PointerBox, replacement &PointerBox) int {
+	target = replacement
+	return 0
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			mut ignored := 0
+			ignored, alias.value = rebind(mut alias, &saved), unsafe { &it }
+			ignored
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_multi_assign_rhs_effects_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_multi_assign_rhs_effects', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_applies_condition_pointer_alias_updates_before_branches() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			if replace(mut alias, &saved) {
+				alias.value = unsafe { &it }
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_condition_pointer_alias_update_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_condition_pointer_alias_update', '-ownership',
+		source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_applies_nested_condition_pointer_alias_updates_before_branches() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	flag := true
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			if flag && replace(mut alias, &saved) {
+				alias.value = unsafe { &it }
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_nested_condition_pointer_alias_update_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_nested_condition_pointer_alias_update',
+		'-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_applies_infix_operand_pointer_alias_updates_before_branches() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			if replace(mut alias, &saved) == true {
+				alias.value = unsafe { &it }
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_infix_operand_pointer_alias_update_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_infix_operand_pointer_alias_update',
+		'-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_applies_match_subject_pointer_alias_updates_before_branches() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			match replace(mut alias, &saved) {
+				true { alias.value = unsafe { &it } }
+				else {}
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_match_subject_pointer_alias_update_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_match_subject_pointer_alias_update',
+		'-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_passed_to_globally_storing_call() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := '@[has_globals]
+module main
+
+struct Item {
+	text string
+}
+
+__global retained &Item
+
+fn save(value &Item) {
+	retained = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			save(unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(retained.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_global_call_sink_c', '-ownership',
+		source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_global_call_sink', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_passed_through_global_store_wrapper() {
+	v3_bin := build_v3_review_transform_ownership()
+	files := {
+		'v.mod':         "Module { name: 'array_map_global_wrapper_sink' }\n"
+		'api/store.v':   '@[has_globals]
+module api
+
+pub struct Item {
+pub:
+	text string
+}
+
+__global retained &Item
+
+fn save(value &Item) {
+	retained = value
+}
+
+pub fn retained_text() string {
+	return retained.text
+}
+'
+		'api/wrapper.v': 'module api
+
+pub fn keep(value &Item) {
+	save(value)
+}
+'
+		'main.v':        'module main
+
+import api
+
+fn make_items() []api.Item {
+	return [api.Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			api.keep(unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(api.retained_text())
+}
+'
+	}
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_global_wrapper_sink_c',
+		'-ownership', files, 'main.v')
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_project_with_flags(v3_bin, 'array_map_global_wrapper_sink', '-ownership',
+		files, 'main.v')
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_captured_by_callback_wrapper() {
+	v3_bin := build_v3_review_transform_ownership()
+	files := {
+		'v.mod':        "Module { name: 'array_map_callback_wrapper_sink' }\n"
+		'api/store.v':  '@[has_globals]
+module api
+
+pub struct Item {
+pub:
+	text string
+}
+
+__global retained &Item
+
+pub fn save(value &Item) {
+	retained = value
+}
+
+pub fn retained_text() string {
+	return retained.text
+}
+'
+		'api/invoke.v': 'module api
+
+pub fn invoke(callback fn ()) {
+	callback()
+}
+'
+		'main.v':       'module main
+
+import api
+
+fn make_items() []api.Item {
+	return [api.Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			p := unsafe { &it }
+			api.invoke(fn [p] () {
+				api.save(p)
+			})
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(api.retained_text())
+}
+'
+	}
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_callback_wrapper_sink_c',
+		'-ownership', files, 'main.v')
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_project_with_flags(v3_bin, 'array_map_callback_wrapper_sink', '-ownership',
+		files, 'main.v')
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_forwarded_through_callback_wrapper() {
+	v3_bin := build_v3_review_transform_ownership()
+	files := {
+		'v.mod':        "Module { name: 'array_map_forwarded_callback_wrapper_sink' }\n"
+		'api/store.v':  '@[has_globals]
+module api
+
+pub struct Item {
+pub:
+	text string
+}
+
+__global retained &Item
+
+pub fn save(value &Item) {
+	retained = value
+}
+
+pub fn retained_text() string {
+	return retained.text
+}
+'
+		'api/invoke.v': 'module api
+
+pub fn invoke(callback fn (&Item), value &Item) {
+	callback(value)
+}
+'
+		'main.v':       'module main
+
+import api
+
+fn make_items() []api.Item {
+	return [api.Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			api.invoke(api.save, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(api.retained_text())
+}
+'
+	}
+	c_source := gen_c_from_project_with_flags(v3_bin,
+		'array_map_forwarded_callback_wrapper_sink_c', '-ownership', files, 'main.v')
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_project_with_flags(v3_bin, 'array_map_forwarded_callback_wrapper_sink',
+		'-ownership', files, 'main.v')
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_forwarded_through_callback_wrapper_local_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	files := {
+		'v.mod':        "Module { name: 'array_map_aliased_callback_wrapper_sink' }\n"
+		'api/store.v':  '@[has_globals]
+module api
+
+pub struct Item {
+pub:
+	text string
+}
+
+__global retained &Item
+
+pub fn save(value &Item) {
+	retained = value
+}
+
+pub fn retained_text() string {
+	return retained.text
+}
+'
+		'api/invoke.v': 'module api
+
+pub fn invoke(callback fn (&Item), value &Item) {
+	callback_alias := callback
+	value_alias := value
+	callback_alias(value_alias)
+}
+'
+		'main.v':       'module main
+
+import api
+
+fn make_items() []api.Item {
+	return [api.Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			api.invoke(api.save, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(api.retained_text())
+}
+'
+	}
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_aliased_callback_wrapper_sink_c',
+		'-ownership', files, 'main.v')
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_project_with_flags(v3_bin, 'array_map_aliased_callback_wrapper_sink',
+		'-ownership', files, 'main.v')
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_forwarded_through_callback_wrapper_helper_rebind() {
+	v3_bin := build_v3_review_transform_ownership()
+	files := {
+		'v.mod':        "Module { name: 'array_map_helper_rebound_callback_alias' }\n"
+		'api/store.v':  '@[has_globals]
+module api
+
+pub struct Item {
+pub:
+	text string
+}
+
+__global retained &Item
+
+pub fn save(value &Item) {
+	retained = value
+}
+
+pub fn retained_text() string {
+	return retained.text
+}
+'
+		'api/invoke.v': 'module api
+
+fn rebind(mut target &Item, value &Item) {
+	target = value
+}
+
+pub fn invoke(callback fn (&Item), value &Item) {
+	mut local := Item{
+		text: "local"
+	}
+	mut alias := &local
+	rebind(mut alias, value)
+	callback(alias)
+}
+'
+		'main.v':       'module main
+
+import api
+
+fn make_items() []api.Item {
+	return [api.Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			api.invoke(api.save, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(api.retained_text())
+}
+'
+	}
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_helper_rebound_callback_alias_c',
+		'-ownership', files, 'main.v')
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_project_with_flags(v3_bin, 'array_map_helper_rebound_callback_alias',
+		'-ownership', files, 'main.v')
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_stored_through_nested_helper_rebind() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn rebind(mut alias &PointerBox, target &PointerBox) {
+	alias = target
+}
+
+fn store(mut target &PointerBox, value &Item) {
+	target.value = value
+}
+
+fn forward(mut target PointerBox, value &Item) {
+	local_item := Item{
+		text: "local"
+	}
+	mut local := PointerBox{
+		value: unsafe { &local_item }
+	}
+	mut alias := &local
+	rebind(mut alias, &target)
+	store(mut alias, value)
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	result := make_items().map(match true {
+		true {
+			forward(mut saved, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(result[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_helper_rebind_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_nested_helper_rebind', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_stored_through_explicitly_dereferenced_helper_target() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := '@[has_globals]
+module main
+
+struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn store(mut target &PointerBox, value &Item) {
+	unsafe {
+		(*target).value = value
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	mut local := Item{
+		text: "local"
+	}
+	mut target := &PointerBox{
+		value: &local
+	}
+	selected := make_items().map(match true {
+		true {
+			store(mut target, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(target.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_explicit_deref_helper_storage_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_explicit_deref_helper_storage', '-ownership',
+		source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_conditional_callback_source_aliases() {
+	v3_bin := build_v3_review_transform_ownership()
+	files := {
+		'v.mod':        "Module { name: 'array_map_conditional_callback_alias' }\n"
+		'api/store.v':  '@[has_globals]
+module api
+
+pub struct Item {
+pub:
+	text string
+}
+
+__global retained &Item
+
+pub fn save(value &Item) {
+	retained = value
+}
+
+pub fn retained_text() string {
+	return retained.text
+}
+'
+		'api/invoke.v': 'module api
+
+pub fn invoke(callback fn (&Item), value &Item, use_local bool) {
+	mut local := Item{
+		text: "local"
+	}
+	mut alias := value
+	if use_local {
+		alias = &local
+	}
+	callback(alias)
+}
+'
+		'main.v':       'module main
+
+import api
+
+fn make_items() []api.Item {
+	return [api.Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			api.invoke(api.save, unsafe { &it }, false)
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(api.retained_text())
+}
+'
+	}
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_conditional_callback_alias_c',
+		'-ownership', files, 'main.v')
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_project_with_flags(v3_bin, 'array_map_conditional_callback_alias',
+		'-ownership', files, 'main.v')
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_forwarded_through_branch_selected_callback_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	files := {
+		'v.mod':        "Module { name: 'array_map_branch_callback_alias' }\n"
+		'api/store.v':  '@[has_globals]
+module api
+
+pub struct Item {
+pub:
+	text string
+}
+
+__global retained &Item
+
+pub fn save(value &Item) {
+	retained = value
+}
+
+pub fn retained_text() string {
+	return retained.text
+}
+'
+		'api/invoke.v': 'module api
+
+fn ignore(_ &Item) {}
+
+fn maybe_callback() ?fn (&Item) {
+	return none
+}
+
+pub fn invoke(callback fn (&Item), value &Item, use_callback bool) {
+	selected := if use_callback { callback } else { ignore }
+	chosen := match use_callback {
+		true { selected }
+		else { ignore }
+	}
+	chosen(value)
+}
+
+pub fn invoke_or(callback fn (&Item), value &Item) {
+	chosen := maybe_callback() or { callback }
+	chosen(value)
+}
+
+pub fn invoke_goto(callback fn (&Item), value &Item) {
+	mut alias := callback
+	unsafe {
+		goto invoke
+	}
+	alias = ignore
+	invoke:
+	alias(value)
+}
+
+pub fn invoke_container(callback fn (&Item), value &Item) {
+	callbacks := [callback]
+	callbacks[0](value)
+}
+'
+		'main.v':       'module main
+
+import api
+
+fn make_items() []api.Item {
+	return [api.Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			api.invoke(api.save, unsafe { &it }, true)
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(api.retained_text())
+	or_selected := make_items().map(match true {
+		true {
+			api.invoke_or(api.save, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(or_selected[0])
+	println(api.retained_text())
+	goto_selected := make_items().map(match true {
+		true {
+			api.invoke_goto(api.save, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(goto_selected[0])
+	println(api.retained_text())
+	container_selected := make_items().map(match true {
+		true {
+			api.invoke_container(api.save, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(container_selected[0])
+	println(api.retained_text())
+}
+'
+	}
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_branch_callback_alias_c',
+		'-ownership', files, 'main.v')
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_project_with_flags(v3_bin, 'array_map_branch_callback_alias', '-ownership',
+		files, 'main.v')
+	assert out == '0\nsource\n0\nsource\n0\nsource\n0\nsource'
+}
+
+fn test_array_map_keeps_source_forwarded_through_nested_callback_wrappers() {
+	v3_bin := build_v3_review_transform_ownership()
+	files := {
+		'v.mod':        "Module { name: 'array_map_nested_callback_wrapper_sink' }\n"
+		'api/store.v':  '@[has_globals]
+module api
+
+pub struct Item {
+pub:
+	text string
+}
+
+__global retained &Item
+
+pub fn save(value &Item) {
+	retained = value
+}
+
+pub fn retained_text() string {
+	return retained.text
+}
+'
+		'api/invoke.v': 'module api
+
+pub fn invoke1(callback fn (&Item), value &Item) {
+	callback(value)
+}
+
+pub fn invoke2(callback fn (&Item), value &Item) {
+	invoke1(callback, value)
+}
+'
+		'main.v':       'module main
+
+import api
+
+fn make_items() []api.Item {
+	return [api.Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			api.invoke2(api.save, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(api.retained_text())
+}
+'
+	}
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_nested_callback_wrapper_sink_c',
+		'-ownership', files, 'main.v')
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_project_with_flags(v3_bin, 'array_map_nested_callback_wrapper_sink',
+		'-ownership', files, 'main.v')
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_passed_to_unresolved_pointer_call() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := '@[has_globals]
+module main
+
+struct Item {
+	text string
+}
+
+__global retained &Item
+
+fn save(value &Item) {
+	retained = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn map_with(callback fn (&Item)) []int {
+	return make_items().map(match true {
+		true {
+			callback(unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+}
+
+fn main() {
+	selected := map_with(save)
+	println(selected[0])
+	println(retained.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_indirect_call_sink_c',
+		'-ownership', source)
+	map_body := c_fn_body(c_source, 'Array main__map_with(')
+	compact_map := map_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_map.contains('array__free(&(__map_source_'), map_body
+	out := run_good_with_flags(v3_bin, 'array_map_indirect_call_sink', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_passed_to_external_c_call() {
+	v3_bin := build_v3_review_transform_ownership()
+	files := {
+		'retainer.c': 'static void* retained_item;
+
+static void retain_item(void* value) {
+	retained_item = value;
+}
+
+static void* get_retained_item(void) {
+	return retained_item;
+}
+'
+		'main.v':     '#insert "retainer.c"
+
+fn C.retain_item(voidptr)
+fn C.get_retained_item() voidptr
+
+struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			C.retain_item(unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	retained := unsafe { &Item(C.get_retained_item()) }
+	println(selected[0])
+	println(retained.text)
+}
+'
+	}
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_external_c_call_sink_c',
+		'-ownership', files, 'main.v')
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_project_with_flags(v3_bin, 'array_map_external_c_call_sink', '-ownership',
+		files, 'main.v')
+	assert out == '0\nsource'
+}
+
+fn test_array_map_applies_deferred_writes_with_exit_pointer_origins() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	saved := &PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			defer {
+				alias.value = unsafe { &it }
+			}
+			alias = saved
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_deferred_exit_origin_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_deferred_exit_origin', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_return_ignores_defers_registered_after_exit() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn map_or_return(mut saved PointerBox, early bool) []int {
+	return make_items().map(match true {
+		true {
+			match early {
+				true { return [7] }
+				false { return [8] }
+			}
+			defer {
+				saved.value = unsafe { &it }
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	result := map_or_return(mut saved, true)
+	println(result[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_return_before_late_defer_c',
+		'-ownership', source)
+	map_body := c_fn_body(c_source, 'Array map_or_return(main__PointerBox* saved, bool early) {')
+	compact_map := map_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert compact_map.contains('array__free(&(__map_source_'), map_body
+	out := run_good_with_flags(v3_bin, 'array_map_return_before_late_defer', '-ownership', source)
+	assert out == '7\nexternal'
+}
+
+fn test_array_map_loop_exit_ignores_defers_registered_after_exit() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := unsafe { &saved }
+			for _ in 0 .. 1 {
+				if it.text.len > 0 {
+					break
+				}
+				defer {
+					alias.value = unsafe { &it }
+				}
+				alias = unsafe { &local }
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	for exit_kind, exit_source in {
+		'break':    source
+		'continue': source.replace('\t\t\t\t\tbreak\n', '\t\t\t\t\tcontinue\n')
+	} {
+		c_source := gen_c_from_source_with_flags(v3_bin,
+			'array_map_${exit_kind}_before_late_defer_c', '-ownership', exit_source)
+		main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+		compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+		assert compact_main.contains('array__free(&(__map_source_'), main_body
+		out := run_good_with_flags(v3_bin, 'array_map_${exit_kind}_before_late_defer',
+			'-ownership', exit_source)
+		assert out == '0\nexternal'
+	}
+}
+
+fn test_array_map_keeps_source_when_returning_element_address() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn first_item() &Item {
+	_ := make_items().map(match true {
+		true {
+			return unsafe { &it }
+		}
+		else {
+			0
+		}
+	})
+	return unsafe { nil }
+}
+
+fn main() {
+	item := first_item()
+	println(item.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_return_element_address_c',
+		'-ownership', source)
+	first_body := c_fn_body(c_source, 'main__Item* main__first_item(void) {')
+	compact_first := first_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_first.contains('array__free(&(__map_source_'), first_body
+	out := run_good_with_flags(v3_bin, 'array_map_return_element_address', '-ownership', source)
+	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_external_pointer_in_local_map() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut holder := {
+				"box": unsafe { &saved }
+			}
+			holder["box"].value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_pointer_in_local_map_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_external_pointer_in_local_map', '-ownership',
+		source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_temporary_source_through_dynamic_local_array_index() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut holder := [1]&PointerBox{}
+			holder[0] = unsafe { &saved }
+			index := 0
+			holder[index].value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_dynamic_local_array_index_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_dynamic_local_array_index', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_temporary_source_through_delimiter_map_key() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut holder := {
+				"x]": unsafe { &saved }
+			}
+			key := "x]"
+			holder[key].value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_delimiter_map_key_c', '-ownership',
+		source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_delimiter_map_key', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_dynamic_assignment_replaces_exact_pointer_origin() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut local := PointerBox{
+		value: unsafe { &external }
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut holder := [1]&PointerBox{}
+			holder[0] = unsafe { &local }
+			index := 0
+			holder[index] = unsafe { &saved }
+			holder[0].value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_dynamic_assignment_replaces_exact_origin_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_dynamic_assignment_replaces_exact_origin',
+		'-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_temporary_source_through_repeated_local_array_initializer() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut holder := []&PointerBox{len: 1, init: unsafe { &saved }}
+			holder[0].value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_repeated_local_array_initializer_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_repeated_local_array_initializer', '-ownership',
+		source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_merges_local_pointer_origins_from_select_branches() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	signal := chan bool{cap: 1}
+	signal <- true
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := unsafe { &local }
+			select {
+				<-signal {
+					alias = unsafe { &saved }
+				}
+				else {}
+			}
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_select_pointer_origins_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_select_pointer_origins', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_tracks_local_pointer_rebind_inside_select_branch() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	signal := chan bool{cap: 1}
+	signal <- true
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := unsafe { &local }
+			select {
+				<-signal {
+					alias = unsafe { &saved }
+					alias.value = unsafe { &it }
+				}
+				else {}
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_select_in_arm_pointer_rebind_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_select_in_arm_pointer_rebind', '-ownership',
+		source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_merges_local_pointer_origins_from_loop_break_paths() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := unsafe { &local }
+			for {
+				alias = unsafe { &saved }
+				if true {
+					break
+				}
+				alias = unsafe { &local }
+			}
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_loop_break_pointer_origins_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_loop_break_pointer_origins', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_propagates_labeled_pointer_origin_exit_to_outer_loop() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut local := PointerBox{
+		value: unsafe { &external }
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut alias := unsafe { &local }
+			outer: for {
+				for {
+					alias = unsafe { &saved }
+					break outer
+				}
+				alias = unsafe { &local }
+			}
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_labeled_outer_loop_pointer_origin_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_labeled_outer_loop_pointer_origin', '-ownership',
+		source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_drops_source_for_unrelated_local_aggregate_pointer_field() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Holder {
+	mut:
+	external &PointerBox
+	local    &PointerBox
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut holder := Holder{
+				external: unsafe { &saved }
+				local: unsafe { &local }
+			}
+			holder.local.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_unrelated_local_aggregate_pointer_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_unrelated_local_aggregate_pointer', '-ownership',
+		source)
+	assert out == '0'
+}
+
+fn test_array_map_keeps_temporary_source_through_conditional_external_pointer_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	flag := true
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			if flag {
+				alias = &saved
+			}
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_conditional_external_pointer_alias_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_conditional_external_pointer_alias',
+		'-ownership', source)
+	assert out == '0\nsource'
+
+	match_source := source.replace('if flag {\n\t\t\t\talias = &saved\n\t\t\t}',
+		'match flag {\n\t\t\t\ttrue { alias = &saved }\n\t\t\t\telse {}\n\t\t\t}')
+	assert match_source != source
+	match_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_match_external_pointer_alias_c', '-ownership', match_source)
+	match_main_body := c_fn_body(match_c_source, 'int main(int argc, char** argv) {')
+	compact_match_main := match_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_match_main.contains('array__free(&(__map_source_'), match_main_body
+	match_out := run_good_with_flags(v3_bin, 'array_map_match_external_pointer_alias',
+		'-ownership', match_source)
+	assert match_out == '0\nsource'
+
+	loop_source := source.replace('if flag {\n\t\t\t\talias = &saved\n\t\t\t}',
+		'for flag {\n\t\t\t\talias = &saved\n\t\t\t\tbreak\n\t\t\t}')
+	assert loop_source != source
+	loop_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_loop_external_pointer_alias_c', '-ownership', loop_source)
+	loop_main_body := c_fn_body(loop_c_source, 'int main(int argc, char** argv) {')
+	compact_loop_main := loop_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_loop_main.contains('array__free(&(__map_source_'), loop_main_body
+	loop_out := run_good_with_flags(v3_bin, 'array_map_loop_external_pointer_alias', '-ownership',
+		loop_source)
+	assert loop_out == '0\nsource'
+
+	or_source := source.replace('fn make_items() []Item {', "fn may_fail() ! {
+	return error('failed')
+}
+
+fn make_items() []Item {").replace('if flag {\n\t\t\t\talias = &saved\n\t\t\t}',
+		'may_fail() or {\n\t\t\t\talias = &saved\n\t\t\t}')
+	assert or_source != source
+	or_c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_or_external_pointer_alias_c',
+		'-ownership', or_source)
+	or_main_body := c_fn_body(or_c_source, 'int main(int argc, char** argv) {')
+	compact_or_main := or_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_or_main.contains('array__free(&(__map_source_'), or_main_body
+	or_out := run_good_with_flags(v3_bin, 'array_map_or_external_pointer_alias', '-ownership',
+		or_source)
+	assert or_out == '0\nsource'
+}
+
+fn test_array_map_tracks_pointer_origin_through_selected_comptime_branch() {
+	v3_bin := build_v3_review_transform_ownership()
+	source_true := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			$if true {
+				alias = &saved
+			}
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source_true := gen_c_from_source_with_flags(v3_bin,
+		'array_map_comptime_external_pointer_alias_true_c', '-ownership', source_true)
+	main_body_true := c_fn_body(c_source_true, 'int main(int argc, char** argv) {')
+	compact_main_true := main_body_true.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main_true.contains('array__free(&(__map_source_'), main_body_true
+	out_true := run_good_with_flags(v3_bin, 'array_map_comptime_external_pointer_alias_true',
+		'-ownership', source_true)
+	assert out_true == '0\nsource'
+
+	source_false := source_true.replace('\$if true {', '\$if false {')
+	c_source_false := gen_c_from_source_with_flags(v3_bin,
+		'array_map_comptime_external_pointer_alias_false_c', '-ownership', source_false)
+	main_body_false := c_fn_body(c_source_false, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body_false.index('array__free(&(') or { -1 }
+	result_move_pos := main_body_false.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body_false
+	out_false := run_good_with_flags(v3_bin, 'array_map_comptime_external_pointer_alias_false',
+		'-ownership', source_false)
+	assert out_false == '0\nexternal'
+}
+
+fn test_array_map_keeps_temporary_source_for_indirect_mutator() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+type Setter = fn (mut PointerBox, &Item)
+
+fn store(mut box PointerBox, value &Item) {
+	box.value = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn apply(setter Setter) {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			setter(mut saved, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+
+fn main() {
+	apply(store)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_indirect_mutator_c', '-ownership',
+		source)
+	apply_body := c_fn_body(c_source, 'void main__apply(main__Setter setter) {')
+	compact_apply := apply_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_apply.contains('array__free(&(__map_source_'), apply_body
+	out := run_good_with_flags(v3_bin, 'array_map_indirect_mutator', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_temporary_source_for_pointer_sent_to_channel() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	saved := chan &Item{cap: 1}
+	selected := make_items().map(match true {
+		true {
+			saved <- unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	retained := <-saved
+	println(retained.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_channel_pointer_sink_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_channel_pointer_sink', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_temporary_source_for_pointer_sent_to_local_channel_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	saved := chan &Item{cap: 1}
+	selected := make_items().map(match true {
+		true {
+			alias := saved
+			alias <- unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	retained := <-saved
+	println(retained.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_local_channel_alias_sink_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_local_channel_alias_sink', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_temporary_source_for_pointer_passed_to_spawn() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+fn hold(item &Item, gate chan bool, saved chan string) {
+	if <-gate {
+		saved <- item.text
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	gate := chan bool{cap: 1}
+	saved := chan string{cap: 1}
+	selected := make_items().map(match true {
+		true {
+			spawn hold(unsafe { &it }, gate, saved)
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	gate <- true
+	println(<-saved)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_spawn_pointer_sink_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_spawn_pointer_sink', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_temporary_source_for_spawned_pointer_receiver() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+fn (item &Item) hold(gate chan bool, saved chan string) {
+	if <-gate {
+		saved <- item.text
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	gate := chan bool{cap: 1}
+	saved := chan string{cap: 1}
+	selected := make_items().map(match true {
+		true {
+			pointer := unsafe { &it }
+			spawn pointer.hold(gate, saved)
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	gate <- true
+	println(<-saved)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_spawn_pointer_receiver_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_spawn_pointer_receiver', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_drops_temporary_source_after_external_pointer_alias_overwrite() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &saved
+			alias = &local
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_external_pointer_alias_overwrite_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_external_pointer_alias_overwrite', '-ownership',
+		source)
+	assert out == '0\nexternal'
+}
+
+fn test_array_map_drops_temporary_source_after_mutator_storage_overwrite() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {
+	box.value = value
+	box.value = replacement
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	selected := make_items().map(match true {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			box.set_then_reset(unsafe { &it }, unsafe { &external })
+			box
+		}
+		else {
+			PointerBox{
+				value: unsafe { &external }
+			}
+		}
+	})
+	println(selected[0].value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_storage_overwrite_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_overwrite', '-ownership', source)
+	assert out == 'external'
+
+	early_return_source := source.replace('box.value = value\n\tbox.value = replacement',
+		'box.value = value\n\tif true {\n\t\treturn\n\t}\n\tbox.value = replacement')
+	assert early_return_source != source
+	early_return_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_mutator_storage_early_return_c', '-ownership', early_return_source)
+	early_return_main_body := c_fn_body(early_return_c_source, 'int main(int argc, char** argv) {')
+	compact_early_return_main :=
+		early_return_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_early_return_main.contains('array__free(&(__map_source_'), early_return_main_body
+
+	early_return_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_early_return',
+		'-ownership', early_return_source)
+	assert early_return_out == 'source'
+
+	delegated_source := source.replace('fn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.value = value',
+		'fn (mut box PointerBox) store(value &Item) {\n\tbox.value = value\n}\n\nfn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.store(value)')
+	assert delegated_source != source
+	delegated_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_delegated_mutator_storage_overwrite_c', '-ownership', delegated_source)
+	delegated_main_body := c_fn_body(delegated_c_source, 'int main(int argc, char** argv) {')
+	delegated_source_drop_pos := delegated_main_body.index('array__free(&(') or { -1 }
+	delegated_result_move_pos := delegated_main_body.index('Array selected = ') or { -1 }
+	assert delegated_source_drop_pos >= 0 && delegated_source_drop_pos < delegated_result_move_pos, delegated_main_body
+
+	delegated_out := run_good_with_flags(v3_bin, 'array_map_delegated_mutator_storage_overwrite',
+		'-ownership', delegated_source)
+	assert delegated_out == 'external'
+
+	reverse_delegated_source := source.replace('fn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.value = value\n\tbox.value = replacement',
+		'fn store(mut box PointerBox, value &Item) {\n\tbox.value = value\n}\n\nfn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.value = value\n\tstore(mut box, replacement)')
+	assert reverse_delegated_source != source
+	reverse_delegated_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_reverse_delegated_mutator_storage_overwrite_c', '-ownership',
+		reverse_delegated_source)
+	reverse_delegated_main_body := c_fn_body(reverse_delegated_c_source,
+		'int main(int argc, char** argv) {')
+	reverse_delegated_source_drop_pos := reverse_delegated_main_body.index('array__free(&(') or {
+		-1
+	}
+	reverse_delegated_result_move_pos := reverse_delegated_main_body.index('Array selected = ') or {
+		-1
+	}
+	assert reverse_delegated_source_drop_pos >= 0
+		&& reverse_delegated_source_drop_pos < reverse_delegated_result_move_pos, reverse_delegated_main_body
+
+	reverse_delegated_out := run_good_with_flags(v3_bin,
+		'array_map_reverse_delegated_mutator_storage_overwrite', '-ownership',
+		reverse_delegated_source)
+	assert reverse_delegated_out == 'external'
+
+	loop_source := source.replace('box.value = value\n\tbox.value = replacement',
+		'for {\n\t\tbox.value = value\n\t\tif true {\n\t\t\tbreak\n\t\t}\n\t\tbox.value = replacement\n\t\tbreak\n\t}')
+	assert loop_source != source
+	loop_c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_storage_loop_break_c',
+		'-ownership', loop_source)
+	loop_main_body := c_fn_body(loop_c_source, 'int main(int argc, char** argv) {')
+	compact_loop_main := loop_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_loop_main.contains('array__free(&(__map_source_'), loop_main_body
+	loop_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_loop_break', '-ownership',
+		loop_source)
+	assert loop_out == 'source'
+
+	deferred_source := source.replace('box.value = value\n\tbox.value = replacement',
+		'defer {\n\t\tbox.value = value\n\t}\n\tbox.value = replacement')
+	assert deferred_source != source
+	deferred_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_mutator_storage_deferred_c', '-ownership', deferred_source)
+	deferred_main_body := c_fn_body(deferred_c_source, 'int main(int argc, char** argv) {')
+	compact_deferred_main := deferred_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_deferred_main.contains('array__free(&(__map_source_'), deferred_main_body
+	deferred_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_deferred', '-ownership',
+		deferred_source)
+	assert deferred_out == 'source'
+
+	deferred_exit_alias_source := source.replace('box.value = value\n\tbox.value = replacement',
+		'mut alias := unsafe { value }\n\tdefer {\n\t\tbox.value = alias\n\t}\n\tif true {\n\t\treturn\n\t}\n\talias = unsafe { replacement }')
+	assert deferred_exit_alias_source != source
+	deferred_exit_alias_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_mutator_storage_deferred_exit_alias_c', '-ownership', deferred_exit_alias_source)
+	deferred_exit_alias_main := c_fn_body(deferred_exit_alias_c_source,
+		'int main(int argc, char** argv) {')
+	compact_deferred_exit_alias_main :=
+		deferred_exit_alias_main.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_deferred_exit_alias_main.contains('array__free(&(__map_source_'), deferred_exit_alias_main
+	deferred_exit_alias_out := run_good_with_flags(v3_bin,
+		'array_map_mutator_storage_deferred_exit_alias', '-ownership', deferred_exit_alias_source)
+	assert deferred_exit_alias_out == 'source'
+
+	nested_deferred_exit_alias_source := source.replace('box.value = value\n\tbox.value = replacement',
+		'if true {\n\t\tmut local := PointerBox{\n\t\t\tvalue: unsafe { replacement }\n\t\t}\n\t\tmut alias := &local\n\t\tdefer {\n\t\t\talias.value = value\n\t\t}\n\t\talias = &box\n\t}')
+	assert nested_deferred_exit_alias_source != source
+	nested_deferred_exit_alias_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_mutator_storage_nested_deferred_exit_alias_c', '-ownership',
+		nested_deferred_exit_alias_source)
+	nested_deferred_exit_alias_main := c_fn_body(nested_deferred_exit_alias_c_source,
+		'int main(int argc, char** argv) {')
+	compact_nested_deferred_exit_alias_main :=
+		nested_deferred_exit_alias_main.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_nested_deferred_exit_alias_main.contains('array__free(&(__map_source_'), nested_deferred_exit_alias_main
+	nested_deferred_exit_alias_out := run_good_with_flags(v3_bin,
+		'array_map_mutator_storage_nested_deferred_exit_alias', '-ownership',
+		nested_deferred_exit_alias_source)
+	assert nested_deferred_exit_alias_out == 'source'
+
+	late_defer_source := source.replace('box.value = value\n\tbox.value = replacement',
+		'box.value = value\n\tif value.text.len > 0 {\n\t\treturn\n\t}\n\tdefer {\n\t\tbox.value = replacement\n\t}')
+	assert late_defer_source != source
+	late_defer_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_mutator_storage_late_defer_c', '-ownership', late_defer_source)
+	late_defer_main := c_fn_body(late_defer_c_source, 'int main(int argc, char** argv) {')
+	compact_late_defer_main := late_defer_main.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_late_defer_main.contains('array__free(&(__map_source_'), late_defer_main
+	late_defer_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_late_defer',
+		'-ownership', late_defer_source)
+	assert late_defer_out == 'source'
+
+	select_source := source.replace('box.value = value\n\tbox.value = replacement',
+		'signal := chan bool{cap: 1}\n\tsignal <- true\n\tselect {\n\t\t<-signal {\n\t\t\tbox.value = value\n\t\t}\n\t\telse {\n\t\t\tbox.value = replacement\n\t\t}\n\t}')
+	assert select_source != source
+	select_c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_storage_select_c',
+		'-ownership', select_source)
+	select_main_body := c_fn_body(select_c_source, 'int main(int argc, char** argv) {')
+	compact_select_main := select_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_select_main.contains('array__free(&(__map_source_'), select_main_body
+	select_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_select', '-ownership',
+		select_source)
+	assert select_out == 'source'
+
+	direct_exit_source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn map_or_return(mut saved PointerBox, early bool) []int {
+	return make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: saved.value
+			}
+			mut alias := &saved
+			defer {
+				alias.value = unsafe { &it }
+			}
+			if early {
+				return [7]
+			}
+			alias = &local
+			0
+		}
+		else {
+			0
+		}
+	})
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	result := map_or_return(mut saved, true)
+	println(result[0])
+	println(saved.value.text)
+}
+'
+	direct_exit_out := run_good_with_flags(v3_bin, 'array_map_deferred_direct_exit_alias',
+		'-ownership', direct_exit_source)
+	assert direct_exit_out == '7\nsource'
+}
+
+fn test_array_map_evaluates_return_expression_before_deferred_origin_snapshot() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn rebind_and_return(mut alias &PointerBox, saved &PointerBox) int {
+	alias = saved
+	return 7
+}
+
+fn map_or_return(saved &PointerBox) int {
+	_ := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: saved.value
+			}
+			mut alias := &local
+			defer {
+				alias.value = unsafe { &it }
+			}
+			return rebind_and_return(mut alias, saved)
+		}
+		else {
+			0
+		}
+	})
+	return 0
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	result := map_or_return(&saved)
+	println(result)
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_return_expr_deferred_origin_c',
+		'-ownership', source)
+	compact_c := c_source.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_c.contains('array__free(&(__map_source_'), c_source
+	out := run_good_with_flags(v3_bin, 'array_map_return_expr_deferred_origin', '-ownership',
+		source)
+	assert out == '7\nsource'
+}
+
+fn test_array_map_keeps_temporary_source_through_mutator_or_success() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn may_fail(ok bool) ! {
+	if !ok {
+		return error("failed")
+	}
+}
+
+fn (mut box PointerBox) store_or_replace(value &Item, replacement &Item, ok bool) {
+	box.value = value
+	may_fail(ok) or {
+		box.value = replacement
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	selected := make_items().map(match true {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			box.store_or_replace(unsafe { &it }, unsafe { &external }, true)
+			box
+		}
+		else {
+			PointerBox{
+				value: unsafe { &external }
+			}
+		}
+	})
+	println(selected[0].value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_or_success_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_mutator_or_success', '-ownership', source)
+	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_mutator_target_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn (mut box PointerBox) set(value &Item) {
+	mut pbox := &box
+	pbox.value = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	selected := make_items().map(match true {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			box.set(unsafe { &it })
+			box
+		}
+		else {
+			PointerBox{
+				value: unsafe { &external }
+			}
+		}
+	})
+	println(selected[0].value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_target_alias_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_mutator_target_alias', '-ownership', source)
+	assert out == 'source'
+
+	aggregate_source := source.replace('mut pbox := &box\n\tpbox.value = value',
+		'tmp := PointerBox{\n\t\tvalue: unsafe { value }\n\t}\n\tbox.value = tmp.value')
+	assert aggregate_source != source
+	aggregate_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_mutator_aggregate_source_c', '-ownership', aggregate_source)
+	aggregate_main_body := c_fn_body(aggregate_c_source, 'int main(int argc, char** argv) {')
+	compact_aggregate_main :=
+		aggregate_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_aggregate_main.contains('array__free(&(__map_source_'), aggregate_main_body
+	aggregate_out := run_good_with_flags(v3_bin, 'array_map_mutator_aggregate_source',
+		'-ownership', aggregate_source)
+	assert aggregate_out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_for_all_mutator_targets_and_computed_indices() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Pair {
+mut:
+	first  PointerBox
+	second PointerBox
+}
+
+struct IndexedBox {
+mut:
+	values []&Item
+}
+
+fn route(mut first PointerBox, mut second PointerBox, value &Item) {
+	_ = first
+	second.value = value
+}
+
+fn pick_index() int {
+	return 0
+}
+
+fn store_at_computed_index(mut box IndexedBox, value &Item) {
+	box.values[pick_index()] = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	pairs := make_items().map(match true {
+		true {
+			mut pair := Pair{
+				first: PointerBox{
+					value: unsafe { &external }
+				}
+				second: PointerBox{
+					value: unsafe { &external }
+				}
+			}
+			route(mut pair.first, mut pair.second, unsafe { &it })
+			pair
+		}
+		else {
+			Pair{}
+		}
+	})
+	indexed := make_items().map(match true {
+		true {
+			mut box := IndexedBox{
+				values: [unsafe { &external }]
+			}
+			store_at_computed_index(mut box, unsafe { &it })
+			box
+		}
+		else {
+			IndexedBox{}
+		}
+	})
+	println(pairs[0].second.value.text)
+	println(indexed[0].values[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_all_mutator_targets_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_all_mutator_targets', '-ownership', source)
+	assert out == 'source\nsource'
+}
+
+fn test_array_map_traces_only_selected_comptime_mutator_branch() {
+	v3_bin := build_v3_review_transform_ownership()
+	source_true := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn (mut box PointerBox) set(value &Item, fallback &Item) {
+	$if true {
+		box.value = value
+	} $else {
+		box.value = fallback
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	selected := make_items().map(match true {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			box.set(unsafe { &it }, unsafe { &external })
+			box
+		}
+		else {
+			PointerBox{
+				value: unsafe { &external }
+			}
+		}
+	})
+	println(selected[0].value.text)
+}
+'
+	c_source_true := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_mutator_true_c',
+		'-ownership', source_true)
+	main_body_true := c_fn_body(c_source_true, 'int main(int argc, char** argv) {')
+	compact_main_true := main_body_true.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main_true.contains('array__free(&(__map_source_'), main_body_true
+	out_true := run_good_with_flags(v3_bin, 'array_map_comptime_mutator_true', '-ownership',
+		source_true)
+	assert out_true == 'source'
+
+	source_false := source_true.replace('\$if true {', '\$if false {')
+	c_source_false := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_mutator_false_c',
+		'-ownership', source_false)
+	main_body_false := c_fn_body(c_source_false, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body_false.index('array__free(&(') or { -1 }
+	result_move_pos := main_body_false.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body_false
+	out_false := run_good_with_flags(v3_bin, 'array_map_comptime_mutator_false', '-ownership',
+		source_false)
+	assert out_false == 'external'
+}
+
+fn test_array_map_traces_only_selected_comptime_if_branch() {
+	v3_bin := build_v3_review_transform_ownership()
+	source_true := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	selected := make_items().map($if true {
+		unsafe { &it }
+	} $else {
+		unsafe { &external }
+	})
+	println(selected[0].text)
+}
+'
+	c_source_true := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_if_true_c',
+		'-ownership', source_true)
+	main_body_true := c_fn_body(c_source_true, 'int main(int argc, char** argv) {')
+	compact_main_true := main_body_true.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main_true.contains('array__free(&(__map_source_'), main_body_true
+	out_true := run_good_with_flags(v3_bin, 'array_map_comptime_if_true', '-ownership', source_true)
+	assert out_true == 'source'
+
+	source_false := source_true.replace('\$if true {', '\$if false {')
+	c_source_false := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_if_false_c',
+		'-ownership', source_false)
+	main_body_false := c_fn_body(c_source_false, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body_false.index('array__free(&(') or { -1 }
+	result_move_pos := main_body_false.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body_false
+	out_false := run_good_with_flags(v3_bin, 'array_map_comptime_if_false', '-ownership',
+		source_false)
+	assert out_false == 'external'
+}
+
+fn test_array_map_drops_temporary_source_after_transient_mutating_method_argument() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	value &Item
+}
+
+fn (mut box PointerBox) inspect(value &Item) int {
+	return box.value.text.len + value.text.len
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			_ = box.inspect(unsafe { &it })
+			box
+		}
+		else {
+			PointerBox{
+				value: unsafe { &external }
+			}
+		}
+	})
+	println(selected[0].value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_transient_mutating_method_arg_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_transient_mutating_method_arg', '-ownership',
+		source)
+	assert out == 'external'
+}
+
+fn test_array_map_keeps_temporary_source_through_returned_closure_capture() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct Callback {
+	run fn () string
+}
+
+struct PointerBox {
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			box := PointerBox{
+				value: unsafe { &it }
+			}
+			Callback{
+				run: fn [box] () string {
+					return box.value.text
+				}
+			}
+		}
+		else {
+			box := PointerBox{
+				value: unsafe { &external }
+			}
+			Callback{
+				run: fn [box] () string {
+					return box.value.text
+				}
+			}
+		}
+	})
+	println(selected[0].run())
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_returned_closure_capture_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_returned_closure_capture', '-ownership', source)
+	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_invoked_closure_capture() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := &PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			p := unsafe { &it }
+			fn [p, mut saved] () {
+				saved.value = p
+			}()
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_invoked_closure_capture_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_invoked_closure_capture', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_drops_temporary_source_for_projected_passthrough_parameter() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerPair {
+	source &Item
+	external &Item
+}
+
+fn pass(pair PointerPair) PointerPair {
+	return pair
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	selected := make_items().map(pass(PointerPair{
+		source: unsafe { &it }
+		external: unsafe { &external }
+	}).external)
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_projected_passthrough_parameter_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_projected_passthrough_parameter', '-ownership',
+		source)
+	assert out == 'external'
+}
+
+fn test_array_map_drops_temporary_source_after_nested_alias_overwrite() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut p := unsafe { &external }
+			if flag {
+				p = unsafe { &it }
+				p = unsafe { &external }
+			}
+			p
+		}
+		else {
+			&external
+		}
+	})
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_alias_overwrite_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_nested_alias_overwrite', '-ownership', source)
+	assert out == 'external'
+}
+
+fn test_array_map_keeps_temporary_source_through_inherited_struct_update_field() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	value &Item
+	other int
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "four"
+	}]
+}
+
+fn main() {
+	values := make_items().map(PointerBox{
+		...PointerBox{
+			value: &it
+		}
+		other: 1
+	}.value)
+	println(values[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_assoc_pointer_result_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert !main_body.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_assoc_pointer_result', '-ownership', source)
+	assert out == 'four'
+}
+
+fn test_array_map_drops_source_for_unselected_helper_result_field() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerPair {
+	source   &Item
+	external &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn pair(source &Item, external &Item) PointerPair {
+	return unsafe {
+		PointerPair{
+			source: source
+			external: external
+		}
+	}
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	selected := make_items().map(pair(&it, &external).external)
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_helper_external_field_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_helper_external_field', '-ownership', source)
+	assert out == 'external'
+}
+
+fn test_array_sort_mixed_pointer_depth_comparator_arguments() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Thing {
+	value int
+}
+
+fn main() {
+	mut items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
+	compare := fn (a &Thing, b &&Thing) int {
+		return a.value - (*b).value
+	}
+	items.sort_with_compare(compare)
+	println(int_str(items[0].value) + "," + int_str(items[1].value) + "," + int_str(items[2].value))
+}
+'
+	out := run_good(v3_bin, 'array_sort_mixed_pointer_depth_comparator', source)
+	assert out == '1,2,3'
+}
+
+fn test_array_sort_pointer_alias_comparator_arguments() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Thing {
+	value int
+}
+
+type ThingRef = &Thing
+
+fn main() {
+	mut first := Thing{value: 3}
+	mut second := Thing{value: 1}
+	mut third := Thing{value: 2}
+	mut items := [ThingRef(&first), ThingRef(&second), ThingRef(&third)]
+	compare := fn (a ThingRef, b ThingRef) int {
+		return a.value - b.value
+	}
+	items.sort_with_compare(compare)
+	println(int_str(items[0].value) + "," + int_str(items[1].value) + "," + int_str(items[2].value))
+}
+'
+	out := run_good(v3_bin, 'array_sort_pointer_alias_comparator', source)
+	assert out == '1,2,3'
+}
+
+fn test_array_sort_pointer_value_comparator_expression_shapes() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Thing {
+	value int
+}
+
+fn compare_thing_values(a &Thing, b &Thing) int {
+	return a.value - b.value
+}
+
+fn get_thing_comparator() fn (&Thing, &Thing) int {
+	return compare_thing_values
+}
+
+struct ThingComparators {
+	compare fn (&Thing, &Thing) int
+}
+
+type ThingCompare = fn (&Thing, &Thing) int
+
+fn sorted_values(items []&Thing) string {
+	return items.map(it.value.str()).join(",")
+}
+
+fn main() {
+	mut local_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
+	local_compare := compare_thing_values
+	local_items.sort_with_compare(local_compare)
+	println(sorted_values(local_items))
+
+	mut call_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
+	call_items.sort_with_compare(get_thing_comparator())
+	println(sorted_values(call_items))
+
+	mut selector_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
+	comparators := ThingComparators{
+		compare: compare_thing_values
+	}
+	selector_items.sort_with_compare(comparators.compare)
+	println(sorted_values(selector_items))
+
+	mut alias_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
+	alias_compare := ThingCompare(compare_thing_values)
+	alias_items.sort_with_compare(alias_compare)
+	println(sorted_values(alias_items))
+}
+'
+	out := run_good(v3_bin, 'array_sort_pointer_value_comparator_expression_shapes', source)
+	assert out == '1,2,3\n1,2,3\n1,2,3\n1,2,3'
+}
+
+fn test_array_map_drops_source_for_unrelated_pointer_result() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct Result {
+	external &int
+	length   int
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "four"
+	}]
+}
+
+fn text_len(item &Item) int {
+	return item.text.len
+}
+
+fn main() {
+	external := 42
+	results := make_items().map(Result{
+		external: &external
+		length:   text_len(&it)
+	})
+	println(results[0].length)
+	println(*results[0].external)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_unrelated_pointer_result_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array results = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_unrelated_pointer_result', '-ownership', source)
+	assert out == '4\n42'
+}
+
+fn test_array_map_drops_source_for_unselected_literal_element_pointer() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	selected := make_items().map([&it, &external][1])
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_selected_external_pointer_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_selected_external_pointer', '-ownership', source)
+	assert out == 'external'
 }
 
 fn test_array_filter_and_map_reclaim_branch_selected_bound_methods() {
@@ -5905,7 +12743,7 @@ fn main() {
 		assert body.contains('int* local ='), body
 	}
 	builtin_body := c_fn_body(c_source, 'int* make_builtin_memdup(void) {')
-	assert builtin_body.contains('int local = 44;'), builtin_body
+	assert builtin_body.contains('i64 local = 44;'), builtin_body
 	assert builtin_body.contains('memdup(&local, sizeof(int))'), builtin_body
 }
 
@@ -5942,6 +12780,82 @@ fn main() {
 	assert out == '7\n4\n1'
 }
 
+fn test_parallel_transform_defers_large_const_map_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut entries := []string{cap: 512}
+	for i in 0 .. 512 {
+		entries << "\t\t'key_${i}': ${i}"
+	}
+	source := "const large_lookup = {\n\t'group': {\n${entries.join('\n')}\n\t}\n}\n\nfn read_large_lookup(key string) int {\n\treturn large_lookup['group'][key]\n}\n\nfn main() {\n\tprintln(read_large_lookup('key_511'))\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_large_const_map', 'VJOBS=4', source)
+	assert out == '511'
+}
+
+fn test_parallel_transform_defers_external_const_collection_clone_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform_ownership()
+	mut fields := []string{cap: 256}
+	for i in 0 .. 256 {
+		fields << '\tfield_${i} string'
+	}
+	mut readers := []string{cap: 64}
+	mut calls := []string{cap: 64}
+	for i in 0 .. 64 {
+		readers << 'fn read_${i}() int {\n\treturn if clone_lookup.len == 1 { ${i} } else { -10000 }\n}'
+		calls << '\ttotal += read_${i}()'
+	}
+	source := "struct Wide implements IClone {\n${fields.join('\n')}\n}\n\nfn make_items() []Wide {\n\treturn [Wide{\n\t\tfield_255: 'ok'\n\t}]\n}\n\nconst clone_lookup = {\n\t'items': make_items().clone()\n}\n\n${readers.join('\n\n')}\n\nfn main() {\n\tmut total := 0\n${calls.join('\n')}\n\tprintln(total)\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_const_collection_clone', 'VJOBS=4', source)
+	assert out == '2016'
+}
+
+fn test_parallel_transform_defers_large_const_map_membership_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut entries := []string{cap: 512}
+	for i in 0 .. 512 {
+		entries << "\t'key_${i}': ${i}"
+	}
+	source := "const large_lookup = {\n${entries.join('\n')}\n}\n\nfn has_key(key string) bool {\n\treturn key in large_lookup\n}\n\nfn lacks_key(key string) bool {\n\treturn key !in large_lookup\n}\n\nfn main() {\n\tprintln(has_key('key_511'))\n\tprintln(lacks_key('missing'))\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_large_const_map_membership', 'VJOBS=4', source)
+	assert out == 'true\ntrue'
+}
+
+fn test_parallel_transform_defers_external_const_map_conditional_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut conditionals := []string{cap: 300}
+	for i in 0 .. 300 {
+		conditionals << 'if false { 0 } else { ${i} }'
+	}
+	source := "const conditional_lookup = {\n\t'value': [${conditionals.join(',\n\t\t')}]\n}\n\nfn read_conditional_lookup() int {\n\treturn conditional_lookup['value'][299]\n}\n\nfn main() {\n\tprintln(read_conditional_lookup())\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_const_map_conditional', 'VJOBS=4', source)
+	assert out == '299'
+}
+
+fn test_parallel_transform_defers_external_const_map_match_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut arms := []string{cap: 300}
+	for i in 0 .. 300 {
+		arms << '${i} { ${i} }'
+	}
+	source := "const match_lookup = {\n\t'value': [match 299 {\n\t\t${arms.join('\n\t\t')}\n\t\telse { -1 }\n\t}]\n}\n\nfn read_match_lookup() int {\n\treturn match_lookup['value'][0]\n}\n\nfn main() {\n\tprintln(read_match_lookup())\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_const_map_match', 'VJOBS=4', source)
+	assert out == '299'
+}
+
 fn test_parallel_transform_merges_generic_call_metadata() {
 	v3_bin := build_v3_review_transform()
 	mut source := 'fn identity[T](value T) T {\n\treturn value\n}\n\n'
@@ -5957,4 +12871,728 @@ fn test_parallel_transform_merges_generic_call_metadata() {
 	source += '\tprintln(total)\n}\n'
 	out := run_good_with_env(v3_bin, 'parallel_transform_generic_calls', 'VJOBS=4', source)
 	assert out == expected.str()
+}
+
+fn test_array_map_keeps_source_for_loop_carried_external_pointer_origin() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			for _ in 0 .. 2 {
+				alias.value = unsafe { &it }
+				alias = &saved
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_loop_carried_pointer_origin_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_loop_carried_pointer_origin', '-ownership',
+		source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_for_loop_carried_helper_pointer_origin() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn store_on_second_iteration(mut box PointerBox, value &Item, replacement &Item) {
+	mut local := PointerBox{
+		value: unsafe { replacement }
+	}
+	mut alias := &local
+	for _ in 0 .. 2 {
+		alias.value = unsafe { value }
+		alias = &box
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			store_on_second_iteration(mut saved, unsafe { &it }, unsafe { &external })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_loop_carried_helper_origin_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_loop_carried_helper_origin', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_for_conditional_continue_helper_pointer_origin() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn store_after_continue(mut box PointerBox, value &Item, replacement &Item) {
+	mut local := PointerBox{
+		value: unsafe { replacement }
+	}
+	mut alias := &local
+	for i in 0 .. 2 {
+		alias.value = unsafe { value }
+		alias = &box
+		if i == 0 {
+			continue
+		}
+		alias = &local
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			store_after_continue(mut saved, unsafe { &it }, unsafe { &external })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_conditional_continue_helper_origin_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_conditional_continue_helper_origin',
+		'-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_for_break_helper_pointer_origin() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn store_after_break(mut box PointerBox, value &Item, replacement &Item) {
+	mut local := PointerBox{
+		value: unsafe { replacement }
+	}
+	mut alias := &local
+	mut i := 0
+	for i = 0; i < 1; alias = &local {
+		alias = &box
+		break
+	}
+	alias.value = unsafe { value }
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			store_after_break(mut saved, unsafe { &it }, unsafe { &external })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_break_helper_origin_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_break_helper_origin', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_labeled_continue_does_not_feed_inner_loop_fixed_point() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			outer: for _ in 0 .. 1 {
+				alias = &local
+				for _ in 0 .. 1 {
+					alias.value = unsafe { &it }
+					alias = &saved
+					continue outer
+				}
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_labeled_continue_inner_fixed_point_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_labeled_continue_inner_fixed_point',
+		'-ownership', source)
+	assert out == '0\nexternal'
+}
+
+fn test_array_map_keeps_source_for_external_array_slice_backing() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := []&Item{len: 1}
+	saved[0] = unsafe { &external }
+	selected := make_items().map(match true {
+		true {
+			mut alias := unsafe { saved[..] }
+			alias[0] = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_slice_backing_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_external_slice_backing', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_struct_stringification_evaluates_dereferenced_pointer_call_once() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'struct_str_dereferenced_call_once', 'struct Node {
+	value int
+}
+
+struct Counter {
+mut:
+	calls int
+}
+
+fn next_node(mut counter Counter) &Node {
+	counter.calls++
+	return &Node{
+		value: counter.calls
+	}
+}
+
+fn main() {
+	mut counter := Counter{}
+	println("\${*next_node(mut counter)}")
+	println(int_str(counter.calls))
+}
+')
+	assert out == 'Node{\n    value: 1\n}\n1'
+}
+
+fn test_specialized_generic_match_expression_ignores_unresolved_branch_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'specialized_generic_match_expression_type', "type Value = []u8 | i64 | string
+
+struct Reader {}
+
+fn (Reader) load[T]() !map[string]T {
+	\$if T is string {
+		return {
+			'answer': 'ready'
+		}
+	}
+	return map[string]T{}
+}
+
+fn normalize[T](value Value) T {
+	\$if T is string {
+		result := match value {
+			[]u8 { value.bytestr() }
+			string { value }
+			i64 { value.str() }
+		}
+		return result
+	}
+	return T{}
+}
+
+fn main() {
+	println(normalize[string](Value('ready')))
+	result := Reader{}.load[string]() or { panic(err) }
+	println(result['answer'])
+}
+")
+	assert out == 'ready\nready'
+}
+
+fn test_comptime_reflected_enum_field_accepts_integer_decoder_result() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'comptime_reflected_enum_integer_assignment', 'enum Role {
+	worker
+	manager
+}
+
+struct Config {
+	role Role
+}
+
+fn decoded_number() int {
+	return 1
+}
+
+fn decode[T]() T {
+	mut value := T{}
+	$for field in T.fields {
+		$if field.is_enum {
+			value.$(field.name) = decoded_number()
+		}
+	}
+	return value
+}
+
+fn main() {
+	println(decode[Config]().role)
+}
+')
+	assert out == 'manager'
+}
+
+fn test_imported_generic_default_uses_main_struct_defaults_after_short_name_collision() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'generic_main_default_short_name_collision', {
+		'v.mod':       "Module { name: 'generic_main_default_short_name_collision' }\n"
+		'factory/x.v': 'module factory\n\nstruct Doc {\n\tast &int\n}\n\npub fn make[T]() T {\n\treturn T{}\n}\n'
+		'main.v':      'module main\n\nimport factory\n\nstruct Doc {\n\titems []int\n}\n\nfn main() {\n\tvalue := factory.make[Doc]()\n\tprintln(value.items.len)\n}\n'
+	}, 'main.v')
+	assert out == '0'
+}
+
+fn test_address_of_nil_pointer_cast_provides_pointer_value_storage() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'address_of_nil_pointer_cast_storage', 'struct Holder {
+	ptr voidptr
+}
+
+fn main() {
+	value := Holder{
+		ptr: unsafe { &voidptr(nil) }
+	}
+	println(value.ptr == unsafe { nil })
+}
+')
+	assert out == 'true'
+}
+
+fn test_later_block_call_arg_does_not_capture_earlier_sum_temporary() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'call_arg_sum_temp_before_block', 'struct Item {}
+
+type Node = Item
+
+fn inspect(node &Node, data voidptr) {
+	println(node is Item)
+	println(data == unsafe { nil })
+}
+
+fn main() {
+	item := &Item{}
+	inspect(item, unsafe { nil })
+}
+')
+	assert out == 'true\ntrue'
+}
+
+fn test_test_command_skips_incompatible_single_file() {
+	v3_bin := build_v3_review_transform()
+	test_dir := os.join_path(os.temp_dir(), 'v3_incompatible_test_${os.getpid()}')
+	os.rmdir_all(test_dir) or {}
+	os.mkdir_all(test_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	test_src := os.join_path(test_dir, 'v3_incompatible_windows_test.v')
+	os.write_file(test_src, 'module main\n\nfn test_never_checked() {\n\tmissing_symbol()\n}\n') or {
+		panic(err)
+	}
+	result := os.execute('${v3_bin} -nocache -os linux test ${test_src}')
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('SKIP ${test_src}'), result.output
+
+	backend_test_src := os.join_path(test_dir, 'v3_incompatible_backend_test.js.v')
+	os.write_file(backend_test_src,
+		'module main\n\nfn test_never_checked() {\n\tmissing_symbol()\n}\n') or { panic(err) }
+	backend_result := os.execute('${v3_bin} -nocache test ${backend_test_src}')
+	assert backend_result.exit_code == 0, backend_result.output
+	assert backend_result.output.contains('SKIP ${backend_test_src}'), backend_result.output
+
+	compatible_test_src := os.join_path(test_dir, 'v3_compatible_backend_test.c.v')
+	os.write_file(compatible_test_src,
+		"module main\n\nfn test_test_command_skips_incompatible_single_file() {\n\tprintln('compatible backend test')\n}\n") or {
+		panic(err)
+	}
+	compatible_result := os.execute('${v3_bin} -nocache test ${compatible_test_src}')
+	assert compatible_result.exit_code == 0, compatible_result.output
+	assert !compatible_result.output.contains('SKIP ${compatible_test_src}'), compatible_result.output
+	assert compatible_result.output.contains('compatible backend test'), compatible_result.output
+}
+
+fn test_test_command_honors_vtest_build_constraint() {
+	v3_bin := build_v3_review_transform()
+	test_src := os.join_path(os.temp_dir(), 'v3_constrained_test.v')
+	os.write_file(test_src,
+		'// vtest build: windows\nmodule main\n\nfn test_never_checked() {\n\tmissing_symbol()\n}\n') or {
+		panic(err)
+	}
+	result := os.execute('${v3_bin} -nocache -os linux test ${test_src}')
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('SKIP ${test_src}'), result.output
+}
+
+fn test_module_can_import_package_with_its_own_short_name() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'same_named_import', {
+		'v.mod':                        "Module { name: 'same_named_import' }\n"
+		'nested/time/same_name_test.v': 'module time
+
+import time
+
+struct Time {
+	local int
+}
+
+fn test_imported_time_type_is_available() {
+	assert time.Time{}.year == 0
+	assert Time{}.local == 0
+}
+'
+	}, 'nested/time/same_name_test.v')
+	assert out == ''
+}
+
+fn test_array_map_follows_c_for_execution_order_for_pointer_origins() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			mut i := 0
+			for alias = &saved; i < 1; alias = &local {
+				alias.value = unsafe { &it }
+				i++
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_c_for_pointer_origin_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_c_for_pointer_origin', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_applies_c_for_post_to_continue_pointer_origins() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			local := Item{
+				text: "local"
+			}
+			mut local_box := PointerBox{
+				value: unsafe { &local }
+			}
+			mut alias := &local_box
+			mut i := 0
+			for i = 0; i < 1; alias = &local_box {
+				alias = &saved
+				i++
+				continue
+			}
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_c_for_continue_post_pointer_origin_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_c_for_continue_post_pointer_origin',
+		'-ownership', source)
+	assert out == '0'
+}
+
+fn test_array_map_tracks_aggregate_pointer_origins_from_or_and_comptime_results() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Holder {
+	box &PointerBox
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn fallback_holder() !Holder {
+	return error("fallback")
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut or_saved := PointerBox{
+		value: unsafe { &external }
+	}
+	mut comptime_saved := PointerBox{
+		value: unsafe { &external }
+	}
+	_ := make_items().map(match true {
+		true {
+			or_holder := fallback_holder() or {
+				Holder{
+					box: &or_saved
+				}
+			}
+			comptime_holder := $if true {
+				Holder{
+					box: &comptime_saved
+				}
+			} $else {
+				Holder{
+					box: &or_saved
+				}
+			}
+			or_holder.box.value = unsafe { &it }
+			comptime_holder.box.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(or_saved.value.text)
+	println(comptime_saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_aggregate_join_origins_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_aggregate_join_origins', '-ownership', source)
+	assert out == 'sourcesource'
 }

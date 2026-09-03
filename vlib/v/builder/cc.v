@@ -2090,6 +2090,7 @@ pub fn (mut v Builder) cc() {
 		break
 	}
 	v.apply_windows_icon_to_executable() or { verror(err.msg()) }
+	v.normalize_reproducible_macos_debug_compiler_uuid()
 	v.generate_reproducible_macos_debug_compiler_dsym(reproducible_debug_object)
 	if v.pref.compress {
 		ret := os.system('strip ${os.quoted_path(v.pref.out_name)}')
@@ -2349,6 +2350,155 @@ fn (v &Builder) should_finalize_reproducible_macos_debug_compiler() bool {
 			&& v.pref.build_mode != .build_module && !v.pref.is_o
 	}
 	return false
+}
+
+fn macho_little_endian_u32(data []u8, offset int) u32 {
+	return u32(data[offset]) | (u32(data[offset + 1]) << 8) | (u32(data[offset + 2]) << 16) |
+		(u32(data[offset + 3]) << 24)
+}
+
+fn macho_u32(data []u8, offset int, little_endian bool) u32 {
+	if little_endian {
+		return macho_little_endian_u32(data, offset)
+	}
+	return (u32(data[offset]) << 24) | (u32(data[offset + 1]) << 16) |
+		(u32(data[offset + 2]) << 8) | u32(data[offset + 3])
+}
+
+fn macho_u64(data []u8, offset int, little_endian bool) u64 {
+	if little_endian {
+		return u64(macho_u32(data, offset, true)) |
+			(u64(macho_u32(data, offset + 4, true)) << 32)
+	}
+	return (u64(macho_u32(data, offset, false)) << 32) |
+		u64(macho_u32(data, offset + 4, false))
+}
+
+fn normalize_thin_macho_uuid(mut data []u8) !bool {
+	if data.len < 4 {
+		return error('Mach-O header is truncated')
+	}
+	magic := macho_little_endian_u32(data, 0)
+	header_size, little_endian := match magic {
+		u32(0xfeedface) { 28, true }
+		u32(0xfeedfacf) { 32, true }
+		u32(0xcefaedfe) { 28, false }
+		u32(0xcffaedfe) { 32, false }
+		else { return false }
+	}
+	if data.len < header_size {
+		return error('Mach-O header is truncated')
+	}
+	ncommands := int(macho_u32(data, 16, little_endian))
+	commands_size := int(macho_u32(data, 20, little_endian))
+	commands_end := header_size + commands_size
+	if commands_size < 0 || commands_end < header_size || commands_end > data.len {
+		return error('Mach-O load commands are truncated')
+	}
+	mut command_offset := header_size
+	for _ in 0 .. ncommands {
+		if command_offset + 8 > commands_end {
+			return error('Mach-O load command header is truncated')
+		}
+		command := macho_u32(data, command_offset, little_endian)
+		command_size := int(macho_u32(data, command_offset + 4, little_endian))
+		if command_size < 8 || command_offset + command_size > commands_end {
+			return error('Mach-O load command is truncated')
+		}
+		if command == 0x1b {
+			if command_size < 24 {
+				return error('Mach-O LC_UUID command is truncated')
+			}
+			uuid_offset := command_offset + 8
+			for i in 0 .. 16 {
+				data[uuid_offset + i] = 0
+			}
+			mut digest := sha256.sum(data)
+			// Match the version and variant bits emitted by ld64 for content UUIDs.
+			digest[6] = (digest[6] & 0x0f) | 0x30
+			digest[8] = (digest[8] & 0x3f) | 0x80
+			for i in 0 .. 16 {
+				data[uuid_offset + i] = digest[i]
+			}
+			return true
+		}
+		command_offset += command_size
+	}
+	// A caller can explicitly link with `-Wl,-no_uuid`; there is nothing to
+	// normalize in that case.
+	return true
+}
+
+fn normalize_fat_macho_uuids(mut data []u8, is_64 bool, little_endian bool) ! {
+	if data.len < 8 {
+		return error('Mach-O universal header is truncated')
+	}
+	architecture_count := u64(macho_u32(data, 4, little_endian))
+	architecture_size := u64(if is_64 { 32 } else { 20 })
+	if architecture_count > u64(data.len - 8) / architecture_size {
+		return error('Mach-O universal architecture table is truncated')
+	}
+	for i in u64(0) .. architecture_count {
+		entry_offset := 8 + int(i * architecture_size)
+		slice_offset := if is_64 {
+			macho_u64(data, entry_offset + 8, little_endian)
+		} else {
+			u64(macho_u32(data, entry_offset + 8, little_endian))
+		}
+		slice_size := if is_64 {
+			macho_u64(data, entry_offset + 16, little_endian)
+		} else {
+			u64(macho_u32(data, entry_offset + 12, little_endian))
+		}
+		if slice_offset > u64(data.len) || slice_size > u64(data.len) - slice_offset {
+			return error('Mach-O universal architecture slice is truncated')
+		}
+		// Keep a view into the universal binary so UUID writes update its slice.
+		mut slice := unsafe { data[int(slice_offset)..int(slice_offset + slice_size)] }
+		if !normalize_thin_macho_uuid(mut slice)! {
+			return error('Mach-O universal architecture slice has an invalid magic')
+		}
+	}
+}
+
+fn normalize_macho_uuid(mut data []u8) ! {
+	if data.len < 4 {
+		return error('Mach-O header is truncated')
+	}
+	magic := macho_little_endian_u32(data, 0)
+	match magic {
+		u32(0xbebafeca) { normalize_fat_macho_uuids(mut data, false, false)! }
+		u32(0xcafebabe) { normalize_fat_macho_uuids(mut data, false, true)! }
+		u32(0xbfbafeca) { normalize_fat_macho_uuids(mut data, true, false)! }
+		u32(0xcafebabf) { normalize_fat_macho_uuids(mut data, true, true)! }
+		else {
+			if data.len < 28 {
+				return error('Mach-O header is truncated')
+			}
+			normalize_thin_macho_uuid(mut data)!
+		}
+	}
+}
+
+fn (v &Builder) normalize_reproducible_macos_debug_compiler_uuid() {
+	$if macos {
+		if !v.should_finalize_reproducible_macos_debug_compiler() {
+			return
+		}
+		// Older ld64 releases include the output path in LC_UUID even with
+		// `-reproducible`. Replace it before dsymutil and codesign consume it.
+		mut binary := os.read_bytes(v.pref.out_name) or {
+			verror('could not read the reproducible macOS compiler binary: ${err}')
+			return
+		}
+		normalize_macho_uuid(mut binary) or {
+			verror('could not normalize the reproducible macOS compiler UUID: ${err}')
+			return
+		}
+		os.write_file_array(v.pref.out_name, binary) or {
+			verror('could not write the reproducible macOS compiler binary: ${err}')
+		}
+	}
 }
 
 fn (v &Builder) generate_reproducible_macos_debug_compiler_dsym(debug_object string) {

@@ -28,6 +28,22 @@ the exact dependency `net.quic` needs is already proven to build and pass on
 Linux, macOS, and Windows. **Decision: P-256 ECDH is a hard dependency of
 `net.quic`.** No opt-out build flag, no reduced-interop fallback mode.
 
+## HTTP/3 connection lifetime
+
+Callers that construct an HTTP/3 connection directly with `new_h3_conn` must call `H3Conn.free`
+after the connection will no longer be polled. This releases the OpenSSL and mbedTLS resources
+owned by its QUIC handshake. The method is idempotent, so a `defer` is the simplest cleanup:
+
+```v ignore
+mut h3 := quic.new_h3_conn(mut connection, params)
+defer {
+	h3.free()
+}
+```
+
+The `net.http` HTTP/3 transport performs this cleanup itself; this requirement applies to direct
+`net.quic` users.
+
 CertificateVerify signature verification (ECDSA and RSA-PSS) and certificate
 chain-of-trust validation (including RSA-PKCS1v1.5-signed certificates, still
 common among real-world CAs — `net.quic` advertises this via the

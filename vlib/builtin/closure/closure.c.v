@@ -498,7 +498,15 @@ fn closure_release_no_lock(exec_ptr voidptr, generation u64) bool {
 	}
 	unsafe {
 		mut p := closure_slot_meta(exec_ptr)
-		p[0] = g_closure.free_closure_ptr
+		// Rewind a released top slot so sequential capacity is reusable immediately.
+		if &u8(exec_ptr) + closure_size == g_closure.closure_ptr {
+			p[0] = nil
+			g_closure.closure_ptr = exec_ptr
+			g_closure.closure_cap++
+		} else {
+			p[0] = g_closure.free_closure_ptr
+			g_closure.free_closure_ptr = exec_ptr
+		}
 		if is_ppc64() {
 			p[1] = nil
 			p[2] = nil
@@ -506,7 +514,6 @@ fn closure_release_no_lock(exec_ptr voidptr, generation u64) bool {
 		} else {
 			p[1] = nil
 		}
-		g_closure.free_closure_ptr = exec_ptr
 	}
 	return true
 }

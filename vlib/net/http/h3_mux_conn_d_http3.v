@@ -798,7 +798,8 @@ fn (mut c H3MuxConn) lookup_stream(stream_id u64) &H3MuxStream {
 }
 
 // fail_conn marks the connection dead, fails every pending AND in-flight
-// stream, and closes the transport. Called only from the driver thread
+// stream, releases the H3 connection, and closes the transport. Called only
+// from the driver thread
 // (on a fatal read/write/h3 error, or idle retirement).
 //
 // Draining c.pending here, not just c.streams, is required: a request
@@ -828,6 +829,9 @@ fn (mut c H3MuxConn) fail_conn(msg string) {
 	c.qmu.unlock()
 	if c.on_retired != unsafe { nil } {
 		c.on_retired()
+	}
+	if c.h3 != unsafe { nil } {
+		c.h3.free()
 	}
 	for mut s in open {
 		s.mu.lock()

@@ -1062,6 +1062,58 @@ fn test_cache_native_input_language_reports_source_language() {
 	assert cache_native_inputs_language(a, '', []string{}, false, prefs.target) == 'objective-c++'
 }
 
+// cache_native_inputs_language memoizes each header include's Objective-C
+// classification, keyed on the include argument alone for `<...>` (which
+// resolves independently of the including file) and on including-file + argument
+// for a quoted include (which resolves relative to that file). This exercises
+// the header-include branch directly -- the only other test that reaches
+// cache_native_inputs_language passes an `.mm` SOURCE file, which takes the
+// unrelated source-file branch -- and pins the quoted-include key: two
+// same-named headers in different module directories with different
+// Objective-C-ness must not share a cache entry.
+fn test_cache_native_inputs_language_header_branch_and_memo_key() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_native_language_header_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+
+	// A quoted `.h` header carrying `@interface` reaches the header-include
+	// branch (a `.h` is not a native source file) and must classify as
+	// objective-c.
+	objc_dir := os.join_path(dir, 'objc_mod')
+	os.mkdir_all(objc_dir) or { panic(err) }
+	os.write_file(os.join_path(objc_dir, 'shared.h'), '@interface V3HeaderBranch\n@end\n')!
+	objc_program := os.join_path(objc_dir, 'prog.v')
+	os.write_file(objc_program, 'module objc_mod\n#include "shared.h"\n')!
+	mut p1 := parser.Parser.new(prefs)
+	a1 := p1.parse_file(objc_program)
+	assert cache_native_inputs_language(a1, '', []string{}, false, prefs.target) == 'objective-c'
+
+	// A plain header in the same shape stays c.
+	plain_dir := os.join_path(dir, 'plain_mod')
+	os.mkdir_all(plain_dir) or { panic(err) }
+	os.write_file(os.join_path(plain_dir, 'shared.h'), 'int plain_decl(void);\n')!
+	plain_program := os.join_path(plain_dir, 'prog.v')
+	os.write_file(plain_program, 'module plain_mod\n#include "shared.h"\n')!
+	mut p2 := parser.Parser.new(prefs)
+	a2 := p2.parse_file(plain_program)
+	assert cache_native_inputs_language(a2, '', []string{}, false, prefs.target) == 'c'
+
+	// Both modules in one AST, the plain one walked first, each including its
+	// own directory-local `"shared.h"`. If the quoted-include memo key dropped
+	// the including-file component, the plain module's entry (`shared.h` ->
+	// clean) would shadow the objc module's header, and the whole probe would
+	// be misclassified as c -- silently dropping __OBJC__ from the shared
+	// compiler-macro probe. Correct keying keeps them distinct.
+	mut p3 := parser.Parser.new(prefs)
+	a3 := p3.parse_files([plain_program, objc_program])
+	assert cache_native_inputs_language(a3, '', []string{}, false, prefs.target) == 'objective-c'
+}
+
 fn test_cache_input_scan_rejects_ambiguous_include_macro_literal() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_ambiguous_include_macro_${os.getpid()}')
 	os.rmdir_all(dir) or {}

@@ -1573,6 +1573,80 @@ fn main() {
 	}
 }
 
+fn test_macos_v3_cached_generic_keeps_main_type_homonym() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()),
+			'macos_v3_generic_main_type_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(os.join_path(root, 'mid')) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		main_file := os.join_path(root, 'main.v')
+		os.write_file(os.join_path(root, 'mid', 'mid.v'), 'module mid
+
+pub struct Context {
+pub:
+	name string
+}
+
+pub struct Middleware[T] {
+pub:
+	handler fn (mut T) string
+}
+
+pub fn make[T]() Middleware[T] {
+	return Middleware[T]{
+		handler: fn [T](mut ctx T) string {
+			return ctx.Context.name
+		}
+	}
+}
+')!
+		os.write_file(main_file, 'module main
+
+import mid
+
+struct Context {
+	mid.Context
+}
+
+fn main() {
+	mut context := Context{
+		Context: mid.Context{
+			name: "main context"
+		}
+	}
+	middleware := mid.make[Context]()
+	println(middleware.handler(mut context))
+}
+')!
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		environment['V3CACHE'] = os.join_path(root, 'cache')
+		environment['V_MACOS_V3_NO_FALLBACK'] = '1'
+		for name in ['first', 'second'] {
+			output := os.join_path(root, name)
+			mut process := os.new_process(@VEXE)
+			process.set_args(['-gc', 'none', '-o', output, main_file])
+			process.set_environment(environment)
+			process.set_redirect_stdio()
+			process.run()
+			process.wait()
+			compiler_output := process.stdout_slurp() + process.stderr_slurp()
+			exit_code := process.code
+			process.close()
+			assert exit_code == 0, compiler_output
+			run := os.execute(os.quoted_path(output))
+			assert run.exit_code == 0, run.output
+			assert run.output.trim_space() == 'main context'
+		}
+	}
+}
+
 fn test_macos_v3_reads_c_error_fallback_report() {
 	$if macos {
 		root := os.join_path(os.vtmp_dir(), 'macos_v3_c_error_report_${os.getpid()}')
@@ -1663,7 +1737,8 @@ exec "\$REAL_CC" "\$@"
 		exit_code := process.code
 		process.close()
 		assert exit_code == 0, compiler_output
-		assert compiler_output.contains('source inputs changed'), compiler_output
+		// The unverified V3 fallback report is dropped silently, without any user-facing note.
+		assert !compiler_output.contains('source inputs changed'), compiler_output
 		assert !compiler_output.contains('V3 could not build this program'), compiler_output
 		assert os.is_executable(output)
 		run := os.execute(os.quoted_path(output))
@@ -1756,11 +1831,11 @@ fn main() {}
 	}
 }
 
-// The compiler-error fallback bounds the input V source into content in the trusted
-// process, uploading a bounded strict subset for a single source file and nothing (a
-// metadata-only report) for a directory build or a non-V / missing input. Runs wherever
-// the dispatcher is embedded (macOS and Linux) without triggering a real V3 failure
-// (PR #28131 review).
+// The compiler-error fallback captures the input V source into content in the trusted
+// process, uploading the full file when it fits the byte budget (so the report is reproducible)
+// and a bounded snapshot otherwise. A directory build or a non-V / missing input uploads nothing
+// (a metadata-only report). Runs wherever the dispatcher is embedded (macOS and Linux) without
+// triggering a real V3 failure (PR #28131 review).
 fn test_macos_v3_compiler_error_content_extraction() {
 	$if macos || linux {
 		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_ce_content_${os.getpid()}')
@@ -1769,7 +1844,7 @@ fn test_macos_v3_compiler_error_content_extraction() {
 		defer {
 			os.rmdir_all(root) or {}
 		}
-		// A single V source file is uploaded as a bounded snippet.
+		// A single V source file is uploaded in full so the report is reproducible.
 		source := os.join_path(root, 'prog.v')
 		mut lines := []string{}
 		for i in 0 .. 200 {
@@ -1779,16 +1854,27 @@ fn test_macos_v3_compiler_error_content_extraction() {
 		os.write_file(source, whole)!
 		compiler_error := macos_v3_compiler_error_message('source parsing')
 		snapshot := macos_v3_compiler_error_input_snapshot(source)
-		v_file, v_source := snapshot.current_report_source()
+		v_file, v_source, v_source_focus, v_source_truncated := snapshot.current_report_source()
 		assert v_file == 'prog.v'
-		assert v_source != ''
 		assert compiler_error.contains('during source parsing')
-		// A bounded strict subset — never the whole file.
-		assert v_source.len < whole.len
+		// The full file is captured (it fits the byte budget), so the report reproduces. An
+		// internal error has no mapped failing line, so its focus is 0 (head+tail if bounded).
+		assert v_source == whole
+		assert v_source_focus == 0
+		assert !v_source_truncated
+		// A large input keeps only a payload-sized snapshot in the at-exit retry state, so a
+		// successful V3 build does not retain an unbounded second copy until process exit.
+		large_source := ('fn large() { println("' + 'x'.repeat(1000) + '") }\n').repeat(100)
+		os.write_file(source, large_source)!
+		large_snapshot := macos_v3_compiler_error_input_snapshot(source)
+		_, large_report_source, _, large_source_truncated := large_snapshot.current_report_source()
+		assert large_report_source.len <= 64 * 1024
+		assert large_report_source.len < large_source.len
+		assert large_source_truncated
 		// Rewriting the file after the pre-V3 snapshot suppresses source completely: the
 		// fallback must not upload bytes that V3 never parsed.
 		os.write_file(source, whole + '\nfn changed_after_snapshot() {}')!
-		changed_file, changed_source := snapshot.current_report_source()
+		changed_file, changed_source, _, _ := snapshot.current_report_source()
 		assert changed_file == ''
 		assert changed_source == ''
 		// A directory build, a non-V file, or a missing input yields no source, so the
@@ -1797,7 +1883,7 @@ fn test_macos_v3_compiler_error_content_extraction() {
 		os.write_file(note, 'not v source')!
 		for empty in [root, note, os.join_path(root, 'missing.v'), ''] {
 			empty_snapshot := macos_v3_compiler_error_input_snapshot(empty)
-			ef, es := empty_snapshot.current_report_source()
+			ef, es, _, _ := empty_snapshot.current_report_source()
 			assert ef == '', empty
 			assert es == '', empty
 		}
@@ -2543,6 +2629,16 @@ fn test_explicit_v3_rejects_structured_v1_only_preferences() {
 		gc_set_by_flag: true
 		gc_mode:        .boehm_full_opt
 		path:           'main.v'
+	})
+	assert macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
+		new_compiler: true
+		is_livemain:  true
+		path:         'main.v'
+	})
+	assert macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
+		new_compiler:  true
+		is_liveshared: true
+		path:          'main.v'
 	})
 	assert !macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
 		new_compiler: true

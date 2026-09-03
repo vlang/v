@@ -1,0 +1,6 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_as_cast.vv:6:2: error: expression evaluated but not used
+    4 | 
+    5 | fn main() {
+    6 |     (Value($embed_file(@FILE)) as embed_file.EmbedFileData)
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    7 | }

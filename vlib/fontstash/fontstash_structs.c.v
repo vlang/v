@@ -1,18 +1,18 @@
 module fontstash
 
 pub struct C.FONSparams {
-	width   int
-	height  int
+	width   i32
+	height  i32
 	flags   char
 	userPtr voidptr
 	// int (*renderCreate)(void* uptr, int width, int height)
-	renderCreate fn (uptr voidptr, width int, height int) int = unsafe { nil }
+	renderCreate fn (uptr voidptr, width i32, height i32) i32 = unsafe { nil }
 	// int (*renderResize)(void* uptr, int width, int height)
-	renderResize fn (uptr voidptr, width int, height int) int = unsafe { nil }
+	renderResize fn (uptr voidptr, width i32, height i32) i32 = unsafe { nil }
 	// void (*renderUpdate)(void* uptr, int* rect, const unsigned char* data)
-	renderUpdate fn (uptr voidptr, rect &int, data &u8) = unsafe { nil }
+	renderUpdate fn (uptr voidptr, rect &i32, data &u8) = unsafe { nil }
 	// void (*renderDraw)(void* uptr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts)
-	renderDraw fn (uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts int) = unsafe { nil }
+	renderDraw fn (uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts i32) = unsafe { nil }
 	// void (*renderDelete)(void* uptr)
 	renderDelete fn (uptr voidptr) = unsafe { nil }
 }
@@ -39,7 +39,7 @@ pub struct C.FONStextIter {
 	isize          i16
 	iblur          i16
 	font           &C.FONSfont = unsafe { nil }
-	prevGlyphIndex int
+	prevGlyphIndex i32
 	str            &u8
 	next           &u8
 	end            &u8
