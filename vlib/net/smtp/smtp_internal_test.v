@@ -99,6 +99,10 @@ fn test_envelope_addr_strips_display_name() {
 	assert envelope_addr('"a<b" <"a<b"@example.com>') == '"a<b"@example.com'
 	// Escaped quote inside a quoted display name must not end the quoted run.
 	assert envelope_addr('"a\\"<b" <ivan@example.com>') == 'ivan@example.com'
+	// Angle brackets inside a quoted local-part must not be treated as the
+	// envelope separator — only the outermost '<' / '>' pair counts.
+	assert envelope_addr('User <"a>b"@example.com>') == '"a>b"@example.com'
+	assert envelope_addr('User <"a>b@c<d"@example.com>') == '"a>b@c<d"@example.com'
 	// Malformed input (no closing '>') passes through; the server can reject.
 	assert envelope_addr('Ivan <ivan@example.com') == 'Ivan <ivan@example.com'
 }
@@ -115,6 +119,20 @@ fn test_mail_message_data_preserves_display_name_in_from_header() {
 
 	// the display name is preserved and quoted per RFC 5322
 	assert message.contains('From: "Ivan Petrov" <ivan@example.com>\r\n')
+}
+
+fn test_mail_message_data_wraps_bare_from_addr() {
+	mail := Mail{
+		from: 'sender@example.com'
+		to: 'receiver@example.com'
+		subject: 'Test'
+		body: 'hi'
+	}
+
+	message := mail.message_data()
+
+	// a bare from address is wrapped in angle brackets
+	assert message.contains('From: <sender@example.com>\r\n')
 }
 
 fn test_mail_message_data_encodes_non_ascii_from() {
@@ -156,9 +174,9 @@ fn test_mail_message_data_includes_non_empty_cc_and_bcc_headers() {
 
 	message := mail.message_data()
 
-	// ';'-separated input (incl. a stray trailing ';') is normalized to a ','-joined list
+	// ';'-separated input becomes a ','-joined Cc; Bcc is envelope-only.
 	assert message.contains('Cc: <copy@example.com>, "One" <one@example.com>\r\n')
-	assert message.contains('Bcc: <hidden@example.com>, "Two" <two@example.com>\r\n')
+	assert !message.contains('Bcc:')
 }
 
 fn test_mail_message_data_formats_to_header() {
@@ -215,9 +233,24 @@ fn test_format_addr() {
 
 	assert format_addr('C:\\Users <user@ex.com>') == '"C:\\\\Users" <user@ex.com>'
 
+	// an even number of backslashes before the closing quote must not defeat
+	// quote stripping; quoted-pairs are decoded to their underlying character
+	// before re-escaping on output.
+	assert format_addr('"A\\(B" <x@example.com>') == '"A(B" <x@example.com>'
+	// a quoted-pair may encode a literal backslash at the end of the name
+	assert format_addr('"A\\\\" <x@example.com>') == '"A\\\\" <x@example.com>'
+
 	// non-ASCII display names become an RFC 2047 encoded-word
 	assert format_addr('Иван Петров <ivan@ex.com>') == '=?utf-8?B?0JjQstCw0L0g0J/QtdGC0YDQvtCy?= <ivan@ex.com>'
 	assert format_addr('"Иван Петров" <ivan@ex.com>') == '=?utf-8?B?0JjQstCw0L0g0J/QtdGC0YDQvtCy?= <ivan@ex.com>'
+
+	// CR/LF inside a display name must be stripped to prevent header injection
+	// via SMTP DATA.  Two occurrences verify the replacement covers the whole
+	// string, not just the first match.
+	assert format_addr('Bad\r\nX\r\nEvil <a@b.com>') == '"BadXEvil" <a@b.com>'
+	// CRLF inside the addr-spec is stripped too, so it cannot leak into the
+	// SMTP envelope or the header.
+	assert format_addr('<a@b.com\r\nX: evil>') == '<a@b.comX: evil>'
 }
 
 fn test_format_addr_list() {

@@ -47,7 +47,7 @@ fn send_mail(starttls bool) {
 	}
 	client.send(smtp.Mail{
 		...send_cfg
-		cc:  'alexander@vlang.io,joe@vlang.io'
+		cc:  'alexander@vlang.io;joe@vlang.io'
 		bcc: 'spytheman@vlang.io'
 	}) or {
 		assert false
