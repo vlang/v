@@ -12170,6 +12170,19 @@ fn main() {
 	assert out == '[][]int'
 }
 
+fn test_for_in_generic_call_keeps_nested_array_element_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'for_in_generic_call_nested_array_element', 'import arrays
+
+fn main() {
+	for part in arrays.chunk("ABCD".bytes(), 2) {
+		println(part[0])
+	}
+}
+')
+	assert out == '65\n67'
+}
+
 fn test_flag_enum_struct_field_defaults_to_zero() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'flag_enum_struct_field_default', '@[flag]

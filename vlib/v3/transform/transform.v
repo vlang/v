@@ -5921,9 +5921,14 @@ fn (mut t Transformer) make_non_aliasing_allocation_call(name string, args []fla
 // as a `&T` — a plain value type, not an already-reference / container / optional type (those
 // either carry their own indirection or are not addressable as a single `T`).
 fn (t &Transformer) heapable_value_type(typ string) bool {
-	return typ.len > 0 && !typ.starts_with('&') && !typ.starts_with('[]')
-		&& !typ.starts_with('map[') && !typ.starts_with('?') && !typ.starts_with('!')
-		&& !typ.starts_with('[') && typ != 'unknown' && typ != 'void'
+	if typ.len == 0 || typ.starts_with('&') || typ.starts_with('[]') || typ.starts_with('map[')
+		|| typ.starts_with('?') || typ.starts_with('!') || typ.starts_with('[') || typ == 'unknown'
+		|| typ == 'void' {
+		return false
+	}
+	// Function values are already pointers in C. `&callback` is accepted as the
+	// same callable value and must not move the function-pointer slot to the heap.
+	return isnil(t.tc) || types.unalias_type(t.tc.parse_type(typ)) !is types.FnType
 }
 
 // heap_attr_struct_type reports whether `typ` is a plain (non-pointer) struct type

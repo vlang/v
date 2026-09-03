@@ -201,7 +201,7 @@ fn test_voidptr_method_value_arg_does_not_panic_for_alias_to_voidptr() {
 	g.a = &a
 	g.tc = &tc
 	alias_to_voidptr := types.Type(types.Alias{
-		name:      'Data'
+		name: 'Data'
 		base_type: types.Type(types.Pointer{
 			base_type: types.Type(types.void_)
 		})
@@ -218,8 +218,8 @@ fn test_same_named_user_context_does_not_route_to_embedded_framework_context() {
 	tc.cur_module = 'veb'
 	tc.structs['main.Context'] = [
 		types.StructField{
-			name:     'veb.Context'
-			typ:      types.Type(types.Struct{
+			name: 'veb.Context'
+			typ: types.Type(types.Struct{
 				name: 'veb.Context'
 			})
 			is_embed: true
@@ -234,8 +234,7 @@ fn test_same_named_user_context_does_not_route_to_embedded_framework_context() {
 	})
 	assert g.embedded_receiver_path_for_expected(base, expected) == none
 	assert g.emitted_method_belongs_to_receiver(base, 'before_request', 'Context__before_request')
-	assert !g.emitted_method_belongs_to_receiver(base, 'before_request',
-		'veb__Context__before_request')
+	assert !g.emitted_method_belongs_to_receiver(base, 'before_request', 'veb__Context__before_request')
 }
 
 fn test_array_receiver_method_is_not_reselected_as_generic() {
@@ -247,12 +246,11 @@ fn test_array_receiver_method_is_not_reselected_as_generic() {
 	g.generic_method_candidates[generic_method_candidate_key('jsonrpc', 'encode_batch')] = [
 		GenericMethodCandidate{
 			name: 'jsonrpc.[]Request.encode_batch'
-			ret:  types.Type(types.string_)
+			ret: types.Type(types.string_)
 		},
 	]
 
-	assert g.specialized_generic_method_name_for_call_with_arg_count(flat.empty_node,
-		'jsonrpc.[]Response.encode_batch', -1) == none
+	assert g.specialized_generic_method_name_for_call_with_arg_count(flat.empty_node, 'jsonrpc.[]Response.encode_batch', -1) == none
 }
 
 fn test_context_lookup_cache_tracks_source_file_imports() {
@@ -292,10 +290,10 @@ fn test_cgen_typeof_display_canonicalizes_fixed_array_generic_args() {
 	assert typeof_display_type_name('Box[int][3]') == '[3]Box[int]'
 	fixed_maps := types.Type(types.ArrayFixed{
 		elem_type: types.Type(types.Map{
-			key_type:   types.Type(types.String{})
+			key_type: types.Type(types.String{})
 			value_type: types.Type(types.int_)
 		})
-		len:       3
+		len: 3
 	})
 	assert typeof_display_resolved_type_name(fixed_maps) == '[3]map[string]int'
 }
@@ -335,11 +333,11 @@ fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
 	g.tc = &tc
 	g.used_fns = &used
 	assert g.should_emit_fn_node_in_module_known(flat.Node{
-		kind:  .fn_decl
+		kind: .fn_decl
 		value: 'FlatGen.sum_type_index'
 	}, 'c', 'interface.v', 'c__FlatGen__sum_type_index', false)
 	assert !g.should_emit_fn_node_in_module_known(flat.Node{
-		kind:  .fn_decl
+		kind: .fn_decl
 		value: 'Transformer.sum_type_index'
 	}, 'transform', 'sum.v', 'transform__Transformer__sum_type_index', false)
 }
@@ -561,8 +559,7 @@ fn test_objective_c_header_detection() {
 	], false, pref.host_target())
 	linux := pref.target_from('linux', 'amd64') or { panic(err) }
 	private_platform_header := '#if defined(__APPLE__)\n#define _LIB_MACOS 1\n#elif defined(__linux__)\n#define _LIB_LINUX 1\n#endif\n#if defined(_LIB_MACOS)\n@interface MacOnly\n@end\n#endif\n'
-	assert !c_header_text_needs_objective_c_for_target(private_platform_header, []string{}, false,
-		linux)
+	assert !c_header_text_needs_objective_c_for_target(private_platform_header, []string{}, false, linux)
 	assert c_header_text_needs_objective_c_for_target(private_platform_header, [
 		'-D_LIB_MACOS=1',
 	], false, linux)
@@ -942,8 +939,7 @@ fn test_header_owned_scan_expands_pasting_macros_inside_typedef_replacements() {
 		macro_values: map[string]string{}
 		function_macro_values: map[string]string{}
 	}
-	scan := c_header_definitely_active_scan('#define CAT(x) x##_t\n#define DECL(name) typedef struct Impl CAT(name);\nDECL(Alias)\n',
-		state, false, pref.Target{
+	scan := c_header_definitely_active_scan('#define CAT(x) x##_t\n#define DECL(name) typedef struct Impl CAT(name);\nDECL(Alias)\n', state, false, pref.Target{
 		os: 'linux'
 	})
 	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias_t;'
@@ -964,8 +960,7 @@ fn test_header_owned_scan_evaluates_logical_object_macro_conditions() {
 		}
 		function_macro_values: map[string]string{}
 	}
-	scan := c_header_definitely_active_scan('#define SUPPORTED (__GNUC__ >= 4 && __GNUC_MINOR__ >= 1)\n#if SUPPORTED\ntypedef struct Active SupportedAlias;\n#else\ntypedef struct Inactive InactiveAlias;\n#endif\n',
-		state, false, pref.Target{
+	scan := c_header_definitely_active_scan('#define SUPPORTED (__GNUC__ >= 4 && __GNUC_MINOR__ >= 1)\n#if SUPPORTED\ntypedef struct Active SupportedAlias;\n#else\ntypedef struct Inactive InactiveAlias;\n#endif\n', state, false, pref.Target{
 		os: 'linux'
 	})
 	assert c_header_owned_typedef_aliases(scan.text) == ['SupportedAlias'], scan.text
@@ -985,8 +980,7 @@ fn test_header_owned_scan_evaluates_logical_or_object_macro_conditions() {
 		}
 		function_macro_values: map[string]string{}
 	}
-	scan := c_header_definitely_active_scan('#define SUPPORTED (__GNUC__ >= 4 || __GNUC_MINOR__ >= 5)\n#if SUPPORTED\ntypedef struct Active SupportedAlias;\n#else\ntypedef struct Inactive InactiveAlias;\n#endif\n',
-		state, false, pref.Target{
+	scan := c_header_definitely_active_scan('#define SUPPORTED (__GNUC__ >= 4 || __GNUC_MINOR__ >= 5)\n#if SUPPORTED\ntypedef struct Active SupportedAlias;\n#else\ntypedef struct Inactive InactiveAlias;\n#endif\n', state, false, pref.Target{
 		os: 'linux'
 	})
 	assert c_header_owned_typedef_aliases(scan.text) == ['SupportedAlias'], scan.text
@@ -1000,8 +994,7 @@ fn test_header_owned_scan_excludes_function_scoped_typedef_macro_invocations() {
 		macro_values: map[string]string{}
 		function_macro_values: map[string]string{}
 	}
-	scan := c_header_definitely_active_scan('#define DECLARE(name) typedef struct Impl name;\nvoid helper(void) {\nDECLARE(LocalAlias)\n}\nDECLARE(GlobalAlias)\n',
-		state, false, pref.Target{
+	scan := c_header_definitely_active_scan('#define DECLARE(name) typedef struct Impl name;\nvoid helper(void) {\nDECLARE(LocalAlias)\n}\nDECLARE(GlobalAlias)\n', state, false, pref.Target{
 		os: 'linux'
 	})
 	assert !scan.typedef_macro_expansions.contains('LocalAlias')
@@ -1050,8 +1043,7 @@ fn test_header_owned_scan_restores_pushed_macro_definition() {
 		macro_values: map[string]string{}
 		function_macro_values: map[string]string{}
 	}
-	scan := c_header_definitely_active_scan('#define SELECT 1\n#pragma push_macro("SELECT")\n#undef SELECT\n#pragma pop_macro("SELECT")\n#if SELECT\ntypedef struct Active RestoredAlias;\n#else\ntypedef struct Wrong WrongAlias;\n#endif\n',
-		state, false, pref.Target{
+	scan := c_header_definitely_active_scan('#define SELECT 1\n#pragma push_macro("SELECT")\n#undef SELECT\n#pragma pop_macro("SELECT")\n#if SELECT\ntypedef struct Active RestoredAlias;\n#else\ntypedef struct Wrong WrongAlias;\n#endif\n', state, false, pref.Target{
 		os: 'linux'
 	})
 	assert c_header_owned_typedef_aliases(scan.text) == ['RestoredAlias'], scan.text
@@ -1059,8 +1051,7 @@ fn test_header_owned_scan_restores_pushed_macro_definition() {
 
 fn test_header_owned_scan_resolves_compiler_feature_predicates() {
 	text := '#if __has_builtin(__builtin_expect)\ntypedef struct Builtin BuiltinAlias;\n#endif\n#if __has_feature(v3_missing_feature) || __has_extension(v3_missing_extension)\ntypedef struct Wrong WrongAlias;\n#endif\n'
-	values := c_header_compiler_feature_predicate_values('cc', []string{}, false, pref.Target{},
-		text)
+	values := c_header_compiler_feature_predicate_values('cc', []string{}, false, pref.Target{}, text)
 	assert values['__has_builtin(__builtin_expect)'] == 1
 	assert values['__has_feature(v3_missing_feature)'] == -1
 	assert values['__has_extension(v3_missing_extension)'] == -1
@@ -1087,8 +1078,7 @@ fn test_header_owned_feature_predicate_invocations_probe_macro_wrappers() {
 
 fn test_header_owned_scan_resolves_wrapped_feature_predicates() {
 	text := '#define HAS_BUILTIN(x) __has_builtin(x)\n#if HAS_BUILTIN(__builtin_expect)\ntypedef struct Builtin BuiltinAlias;\n#else\ntypedef struct Wrong WrongAlias;\n#endif\n'
-	values := c_header_compiler_feature_predicate_values('cc', []string{}, false, pref.Target{},
-		text)
+	values := c_header_compiler_feature_predicate_values('cc', []string{}, false, pref.Target{}, text)
 	assert values['__has_builtin(__builtin_expect)'] == 1
 	state := CHeaderMacroState{
 		defined: map[string]bool{}
@@ -1173,8 +1163,7 @@ fn test_header_owned_scan_resolves_msvc_version_guard() {
 		}
 		function_macro_values: map[string]string{}
 	}
-	scan := c_header_definitely_active_scan('#if _MSC_VER >= 1900\ntypedef struct Modern ModernAlias;\n#else\ntypedef struct Legacy LegacyAlias;\n#endif\n',
-		state, false, pref.Target{
+	scan := c_header_definitely_active_scan('#if _MSC_VER >= 1900\ntypedef struct Modern ModernAlias;\n#else\ntypedef struct Legacy LegacyAlias;\n#endif\n', state, false, pref.Target{
 		os: 'windows'
 	})
 	assert c_header_owned_typedef_aliases(scan.text) == ['ModernAlias'], scan.text

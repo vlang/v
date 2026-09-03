@@ -89,14 +89,14 @@ fn c_output_suggests_missing_header_for_typedef_c_struct(c_output string, known_
 			}
 			if name in known_typedef_c_struct_aliases
 				&& (lower_line.contains('expected (got') || lower_line.contains('unknown type name')
-				|| lower_line.contains('undeclared identifier')
-				|| lower_line.contains('does not name a type')) {
+					|| lower_line.contains('undeclared identifier')
+					|| lower_line.contains('does not name a type')) {
 				return known_typedef_c_struct_aliases[name]
 			}
 			if name.contains('__')
 				&& (lower_line.contains('expected (got') || lower_line.contains('unknown type name')
-				|| lower_line.contains('undeclared identifier')
-				|| lower_line.contains('does not name a type')) {
+					|| lower_line.contains('undeclared identifier')
+					|| lower_line.contains('does not name a type')) {
 				suffix := name.all_after_last('__')
 				if suffix in known_typedef_c_structs {
 					return suffix
@@ -378,8 +378,7 @@ fn normalized_missing_library_name(raw_name string, allow_plain_name bool) strin
 fn c_error_missing_library_name(c_output string) string {
 	for line in c_output.split_into_lines() {
 		if line.contains("library '") && line.contains("' not found") {
-			return normalized_missing_library_name(line.all_after("library '").all_before("' not found"),
-				true)
+			return normalized_missing_library_name(line.all_after("library '").all_before("' not found"), true)
 		}
 		lower_line := line.to_lower()
 		for marker in [
@@ -398,8 +397,7 @@ fn c_error_missing_library_name(c_output string) string {
 			}
 		}
 		if line.contains(': error: ') && lower_line.contains(': no such file or directory') {
-			lib_name := normalized_missing_library_name(line.all_after(': error: ').all_before(': No such file or directory'),
-				false)
+			lib_name := normalized_missing_library_name(line.all_after(': error: ').all_before(': No such file or directory'), false)
 			if lib_name != '' {
 				return lib_name
 			}
@@ -477,8 +475,7 @@ fn (mut v Builder) post_process_c_compiler_output_with_report(ccompiler string, 
 				error_keyword = libatomic_marker
 				error_context_before = 0
 			}
-			elines := error_context_lines(trimmed_output, error_keyword, error_context_before,
-				cut_off_limit)
+			elines := error_context_lines(trimmed_output, error_keyword, error_context_before, cut_off_limit)
 			header := '================== ${c_compilation_error_title} (from ${ccompiler}): =============='
 			println(header)
 			for eline in elines {
@@ -516,13 +513,11 @@ fn (mut v Builder) post_process_c_compiler_output_with_report(ccompiler string, 
 		|| res.output.contains('.o: file not recognized') {
 		more_suggestions += '\n${highlight_word('Suggestion')}: try `v wipe-cache`, then repeat your compilation.'
 	}
-	missing_typedef_header_name := c_output_suggests_missing_header_for_typedef_c_struct(res.output,
-		v.known_typedef_c_structs(), v.known_typedef_c_struct_aliases())
+	missing_typedef_header_name := c_output_suggests_missing_header_for_typedef_c_struct(res.output, v.known_typedef_c_structs(), v.known_typedef_c_struct_aliases())
 	if missing_typedef_header_name != '' {
 		more_suggestions += '\n${highlight_word('Suggestion')}: the C typedef `${missing_typedef_header_name}` backing `@[typedef] struct C.${missing_typedef_header_name} {}` was not found by the C compiler. Make sure the header that defines it is included on this platform and that its `#flag -I` path is correct. If the C API actually declares `struct ${missing_typedef_header_name}` without a typedef, remove `@[typedef]` from the V redeclaration.'
 	}
-	missing_typedef_name := c_output_suggests_missing_typedef_for_c_struct(res.output,
-		v.known_non_typedef_c_structs())
+	missing_typedef_name := c_output_suggests_missing_typedef_for_c_struct(res.output, v.known_non_typedef_c_structs())
 	if missing_typedef_name != '' {
 		more_suggestions += '\n${highlight_word('Suggestion')}: if `${missing_typedef_name}` is declared in the C header with `typedef struct ... ${missing_typedef_name};`, add `@[typedef]` to the V redeclaration: `@[typedef] struct C.${missing_typedef_name} { ... }`.'
 	}
@@ -748,14 +743,14 @@ fn quote_spaced_ordered_pkgconfig_operand(flag cflag.CFlag, preserve_msvc_slash_
 		operand := value[colon_index + 1..]
 		is_operand_quoted := operand.len >= 2
 			&& ((operand[0] == `"` && operand[operand.len - 1] == `"`)
-			|| (operand[0] == `'` && operand[operand.len - 1] == `'`))
+				|| (operand[0] == `'` && operand[operand.len - 1] == `'`))
 		if option_name != '' && option_name.bytes().all(it.is_alnum())
 			&& operand.contains_any(' \t\r\n') && !is_operand_quoted {
 			return cflag.CFlag{
-				mod:    flag.mod
-				os:     flag.os
-				name:   flag.name
-				value:  '${value[..colon_index + 1]}"${operand}"'
+				mod: flag.mod
+				os: flag.os
+				name: flag.name
+				value: '${value[..colon_index + 1]}"${operand}"'
 				cached: flag.cached
 			}
 		}
@@ -766,10 +761,10 @@ fn quote_spaced_ordered_pkgconfig_operand(flag cflag.CFlag, preserve_msvc_slash_
 		return flag
 	}
 	return cflag.CFlag{
-		mod:    flag.mod
-		os:     flag.os
-		name:   flag.name
-		value:  '"${value}"'
+		mod: flag.mod
+		os: flag.os
+		name: flag.name
+		value: '"${value}"'
 		cached: flag.cached
 	}
 }
@@ -780,10 +775,10 @@ fn generic_ordered_pkgconfig_flag(flag cflag.CFlag) cflag.CFlag {
 		return flag
 	}
 	return cflag.CFlag{
-		mod:    flag.mod
-		os:     flag.os
-		name:   flag.name
-		value:  value[1..value.len - 1]
+		mod: flag.mod
+		os: flag.os
+		name: flag.name
+		value: value[1..value.len - 1]
 		cached: flag.cached
 	}
 }
@@ -812,7 +807,8 @@ fn ordinary_flag_takes_linker_operand(flag cflag.CFlag) bool {
 	raw := flag.value.trim_space()
 	return (flag.name == '' && raw in ['-Xlinker', '-force_load', '-weak_framework'])
 		|| (flag.name == '-Wl'
-		&& raw in [',-rpath', ',--rpath', ',-R', ',-rpath-link', ',--rpath-link', ',--version-script'])
+			&& raw in [',-rpath', ',--rpath', ',-R', ',-rpath-link', ',--rpath-link',
+				',--version-script'])
 }
 
 fn ordered_ordinary_link_args(flag cflag.CFlag, force_linker bool) []string {
@@ -848,7 +844,10 @@ fn (v &Builder) split_ordered_pkgconfig_link_flags(cflags []cflag.CFlag) ([]cfla
 	mut ordered_link_flags := []string{}
 	mut pkgconfig_pthread := false
 	mut pending_linker_option := ''
-	convert_windows_import_libs := v.pref.os == .windows && v.pref.ccompiler_type in [.gcc, .mingw]
+	convert_windows_import_libs := v.pref.os == .windows && v.pref.ccompiler_type in [
+		.gcc,
+		.mingw,
+	]
 	for segment in v.table.link_flag_segments {
 		if segment.is_pkgconfig {
 			if pending_linker_option != '' {
@@ -1407,25 +1406,25 @@ fn (v &Builder) thirdparty_cross_compile_config() ThirdpartyCrossCompileConfig {
 	if v.pref.os == .linux && current_os != 'linux' {
 		sysroot := os.join_path(os.vmodules_dir(), 'linuxroot')
 		return ThirdpartyCrossCompileConfig{
-			target_args:           ['-target x86_64-linux-gnu']
+			target_args: ['-target x86_64-linux-gnu']
 			trailing_include_args: [
 				'-I',
 				os.quoted_path('${sysroot}/include'),
 			]
-			sysroot:               sysroot
+			sysroot: sysroot
 		}
 	}
 	if v.pref.os == .freebsd && current_os != 'freebsd' {
 		sysroot := os.join_path(os.vmodules_dir(), 'freebsdroot')
 		return ThirdpartyCrossCompileConfig{
-			target_args:           ['-target x86_64-unknown-freebsd14.0']
+			target_args: ['-target x86_64-unknown-freebsd14.0']
 			trailing_include_args: [
 				'-I',
 				os.quoted_path('${sysroot}/include'),
 				'-I',
 				os.quoted_path('${sysroot}/usr/include'),
 			]
-			sysroot:               sysroot
+			sysroot: sysroot
 		}
 	}
 	return ThirdpartyCrossCompileConfig{}
@@ -1491,13 +1490,11 @@ fn (mut v Builder) setup_output_name() {
 		}
 	}
 	if v.pref.build_mode == .build_module {
-		v.pref.out_name = v.pref.cache_manager.mod_postfix_with_key2cpath(v.pref.path, '.o',
-			v.pref.path) // v.out_name
+		v.pref.out_name = v.pref.cache_manager.mod_postfix_with_key2cpath(v.pref.path, '.o', v.pref.path) // v.out_name
 		if v.pref.is_verbose {
 			println('Building ${v.pref.path} to ${v.pref.out_name} ...')
 		}
-		v.pref.cache_manager.mod_save(v.pref.path, '.output.description.txt', v.pref.path,
-			get_dsc_content('PREF.PATH: ${v.pref.path}\nVOPTS: ${v.pref.cache_manager.vopts}\n')) or {
+		v.pref.cache_manager.mod_save(v.pref.path, '.output.description.txt', v.pref.path, get_dsc_content('PREF.PATH: ${v.pref.path}\nVOPTS: ${v.pref.cache_manager.vopts}\n')) or {
 			panic(err)
 		}
 	}
@@ -1954,8 +1951,7 @@ pub fn (mut v Builder) cc() {
 		}
 		v.handle_usecache(vexe)
 		reproducible_debug_object_lock.release()
-		reproducible_debug_object = v.prepare_reproducible_macos_debug_compiler_object(ccompiler,
-			vdir, mut reproducible_debug_object_lock)
+		reproducible_debug_object = v.prepare_reproducible_macos_debug_compiler_object(ccompiler, vdir, mut reproducible_debug_object_lock)
 		if reproducible_debug_object != '' {
 			// Link the persistent object instead of letting clang use a random temporary
 			// object, whose path would otherwise be recorded in the Mach-O debug map.
@@ -2021,8 +2017,7 @@ pub fn (mut v Builder) cc() {
 			v.show_c_compiler_output(ccompiler, res)
 		}
 		os.chdir(original_pwd) or {}
-		vcache.dlog('| Builder.' + @FN,
-			'>       v.pref.use_cache: ${v.pref.use_cache} | v.pref.retry_compilation: ${v.pref.retry_compilation}')
+		vcache.dlog('| Builder.' + @FN, '>       v.pref.use_cache: ${v.pref.use_cache} | v.pref.retry_compilation: ${v.pref.retry_compilation}')
 		vcache.dlog('| Builder.' + @FN, '>      cmd res.exit_code: ${res.exit_code} | cmd: ${cmd}')
 		vcache.dlog('| Builder.' + @FN, '>  response_file_content:\n${response_file_content}')
 		if res.exit_code != 0 {
@@ -2031,7 +2026,7 @@ pub fn (mut v Builder) cc() {
 			if v.pref.building_v && v.pref.is_prod && !v.pref.no_prod_options && !v.disable_flto
 				&& v.ccoptions.cc == .gcc && response_file_content.contains('-flto')
 				&& (res.output.contains('undefined symbol: main')
-				|| res.output.contains('undefined reference to `main')) {
+					|| res.output.contains('undefined reference to `main')) {
 				v.disable_flto = true
 				if !v.pref.is_quiet {
 					eprintln('Retrying compiler build without `-flto` after a linker failure with missing `main`.')
@@ -2073,12 +2068,7 @@ pub fn (mut v Builder) cc() {
 				}
 			}
 			if res.exit_code == 127 {
-				verror('C compiler error, while attempting to run: \n' +
-					'-----------------------------------------------------------\n' + '${cmd}\n' +
-					'-----------------------------------------------------------\n' +
-					'Probably your C compiler is missing. \n' +
-					'Please reinstall it, or make it available in your PATH.\n\n' +
-					missing_compiler_info())
+				verror('C compiler error, while attempting to run: \n' + '-----------------------------------------------------------\n' + '${cmd}\n' + '-----------------------------------------------------------\n' + 'Probably your C compiler is missing. \n' + 'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
 			}
 		}
 		v.post_process_c_compiler_output(ccompiler, res)
@@ -2226,8 +2216,7 @@ fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler st
 		}
 		now := time.now().unix()
 		os.utime(object_dir, now, now) or {}
-		prune_reproducible_macos_debug_compiler_cache(cache_dir, object_path,
-			max_reproducible_macos_debug_cache_bytes)
+		prune_reproducible_macos_debug_compiler_cache(cache_dir, object_path, max_reproducible_macos_debug_cache_bytes)
 		return object_path
 	}
 	return ''
@@ -2264,10 +2253,10 @@ fn prune_reproducible_macos_debug_compiler_cache(cache_dir string, retained_obje
 			total_size += object_stat.size
 			if object_path != retained_object {
 				candidates << ReproducibleMacosDebugCacheEntry{
-					object_dir:  object_dir
+					object_dir: object_dir
 					object_path: object_path
-					size:        object_stat.size
-					last_used:   dir_stat.mtime
+					size: object_stat.size
+					last_used: dir_stat.mtime
 				}
 			}
 		}
@@ -2353,25 +2342,21 @@ fn (v &Builder) should_finalize_reproducible_macos_debug_compiler() bool {
 }
 
 fn macho_little_endian_u32(data []u8, offset int) u32 {
-	return u32(data[offset]) | (u32(data[offset + 1]) << 8) | (u32(data[offset + 2]) << 16) |
-		(u32(data[offset + 3]) << 24)
+	return u32(data[offset]) | (u32(data[offset + 1]) << 8) | (u32(data[offset + 2]) << 16) | (u32(data[offset + 3]) << 24)
 }
 
 fn macho_u32(data []u8, offset int, little_endian bool) u32 {
 	if little_endian {
 		return macho_little_endian_u32(data, offset)
 	}
-	return (u32(data[offset]) << 24) | (u32(data[offset + 1]) << 16) |
-		(u32(data[offset + 2]) << 8) | u32(data[offset + 3])
+	return (u32(data[offset]) << 24) | (u32(data[offset + 1]) << 16) | (u32(data[offset + 2]) << 8) | u32(data[offset + 3])
 }
 
 fn macho_u64(data []u8, offset int, little_endian bool) u64 {
 	if little_endian {
-		return u64(macho_u32(data, offset, true)) |
-			(u64(macho_u32(data, offset + 4, true)) << 32)
+		return u64(macho_u32(data, offset, true)) | (u64(macho_u32(data, offset + 4, true)) << 32)
 	}
-	return (u64(macho_u32(data, offset, false)) << 32) |
-		u64(macho_u32(data, offset + 4, false))
+	return (u64(macho_u32(data, offset, false)) << 32) | u64(macho_u32(data, offset + 4, false))
 }
 
 fn normalize_thin_macho_uuid(mut data []u8) !bool {
@@ -2384,7 +2369,9 @@ fn normalize_thin_macho_uuid(mut data []u8) !bool {
 		u32(0xfeedfacf) { 32, true }
 		u32(0xcefaedfe) { 28, false }
 		u32(0xcffaedfe) { 32, false }
-		else { return false }
+		else {
+			return false
+		}
 	}
 	if data.len < header_size {
 		return error('Mach-O header is truncated')
@@ -2510,8 +2497,7 @@ fn (v &Builder) generate_reproducible_macos_debug_compiler_dsym(debug_object str
 			verror('could not find `dsymutil` to finalize the reproducible macOS compiler debug information')
 			return
 		}
-		dsymutil_result := os.execute('${os.quoted_path(dsymutil_path)} -o ${os.quoted_path(
-			v.pref.out_name + '.dSYM')} ${os.quoted_path(v.pref.out_name)}')
+		dsymutil_result := os.execute('${os.quoted_path(dsymutil_path)} -o ${os.quoted_path(v.pref.out_name + '.dSYM')} ${os.quoted_path(v.pref.out_name)}')
 		if dsymutil_result.exit_code != 0 {
 			verror('failed to generate the reproducible macOS compiler debug information:\n${dsymutil_result.output}')
 		}
@@ -2729,9 +2715,9 @@ fn linux_cross_target_for_arch(arch pref.Arch) !LinuxCrossTarget {
 		return error('Linux cross compilation currently supports only `-arch amd64`; the bundled linuxroot sysroot does not provide `${arch}` runtime files.')
 	}
 	return LinuxCrossTarget{
-		triple:           'x86_64-linux-gnu'
-		lib_dir:          'x86_64-linux-gnu'
-		dynamic_linker:   '/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2'
+		triple: 'x86_64-linux-gnu'
+		lib_dir: 'x86_64-linux-gnu'
+		dynamic_linker: '/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2'
 		linker_emulation: 'elf_x86_64'
 	}
 }
@@ -2783,14 +2769,13 @@ fn (mut b Builder) cc_linux_cross() {
 	}
 	mut extra_objs := []string{cap: extra_sources.len}
 	for src in extra_sources {
-		src_obj := os.join_path(os.vtmp_dir(), os.file_name(src) + '.' +
-			linux_cross_target.lib_dir + '.o')
+		src_obj := os.join_path(os.vtmp_dir(), os.file_name(src) + '.' + linux_cross_target.lib_dir + '.o')
 		mut src_args := []string{cap: 16}
 		src_args << '-w'
 		src_args << '-fPIC'
 		src_args << '-target ${linux_cross_target.triple}'
 		src_args << defines
-		src_args << '-I ${os.quoted_path('${sysroot}/include')}'
+		src_args << '-I ${os.quoted_path('\${sysroot}/include')}'
 		src_args << other_flags
 		src_args << '-o ${os.quoted_path(src_obj)}'
 		src_args << '-c ${os.quoted_path(src)}'
@@ -2811,7 +2796,7 @@ fn (mut b Builder) cc_linux_cross() {
 	cc_args << '-fPIC'
 	cc_args << '-target ${linux_cross_target.triple}'
 	cc_args << defines
-	cc_args << '-I ${os.quoted_path('${sysroot}/include')} '
+	cc_args << '-I ${os.quoted_path('\${sysroot}/include')} '
 	cc_args << other_flags
 	cc_args << '-o ${os.quoted_path(obj_file)}'
 	cc_args << '-c ${os.quoted_path(b.out_name_c)}'
@@ -3040,8 +3025,7 @@ fn (mut b Builder) build_thirdparty_obj_files() {
 			rest_of_module_flags := b.get_rest_of_module_cflags(flag)
 			$if windows {
 				if b.pref.ccompiler == 'msvc' {
-					b.build_thirdparty_obj_file_with_msvc(flag.mod, flag.value,
-						rest_of_module_flags)
+					b.build_thirdparty_obj_file_with_msvc(flag.mod, flag.value, rest_of_module_flags)
 					continue
 				}
 			}
@@ -3104,8 +3088,7 @@ fn (v &Builder) fixup_tcc_macos_comma_path_flags(mut ccoptions CcompilerOptions)
 	if !plan.required {
 		return
 	}
-	linker_flags, pre_args := materialize_and_rewrite_tcc_macos_libgc_flags(plan,
-		ccoptions.linker_flags, ccoptions.pre_args) or { verror(err.msg()) }
+	linker_flags, pre_args := materialize_and_rewrite_tcc_macos_libgc_flags(plan, ccoptions.linker_flags, ccoptions.pre_args) or { verror(err.msg()) }
 	ccoptions.linker_flags = linker_flags
 	ccoptions.pre_args = pre_args
 }
@@ -3170,8 +3153,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
 	obj_path := os.real_path(path)
 	opath := v.pref.cache_manager.mod_postfix_with_key2cpath(mod, '.o', obj_path)
-	thirdparty_desc_path := v.pref.cache_manager.mod_postfix_with_key2cpath(mod,
-		'.thirdparty.description.txt', obj_path)
+	thirdparty_desc_path := v.pref.cache_manager.mod_postfix_with_key2cpath(mod, '.thirdparty.description.txt', obj_path)
 	mut source_file := c_project_source_from_object_path(obj_path) or { '' }
 	source_kind := if source_file.ends_with('.c') {
 		SourceKind.c
@@ -3182,13 +3164,11 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	} else {
 		SourceKind.unknown
 	}
-	sqlite_validation_message := sqlite_thirdparty_validation_error(mod, obj_path, source_file,
-		source_kind)
+	sqlite_validation_message := sqlite_thirdparty_validation_error(mod, obj_path, source_file, source_kind)
 	if sqlite_validation_message != '' {
 		verror(sqlite_validation_message)
 	}
-	compile_bundled_source := v.should_compile_bundled_thirdparty_object_from_source(obj_path,
-		source_file, source_kind)
+	compile_bundled_source := v.should_compile_bundled_thirdparty_object_from_source(obj_path, source_file, source_kind)
 	if os.exists(obj_path) && !compile_bundled_source {
 		// Some .o files are distributed with no source
 		// for example thirdparty\tcc\lib\openlibm.o
@@ -3272,8 +3252,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		verror(res.output)
 		return
 	}
-	v.pref.cache_manager.mod_save(mod, '.thirdparty.description.txt', obj_path,
-		get_dsc_content('OBJ_PATH: ${obj_path}\nCMD: ${cmd}\n')) or { panic(err) }
+	v.pref.cache_manager.mod_save(mod, '.thirdparty.description.txt', obj_path, get_dsc_content('OBJ_PATH: ${obj_path}\nCMD: ${cmd}\n')) or { panic(err) }
 	if v.pref.show_cc {
 		println('>> OBJECT FILE compilation cmd: ${cmd}')
 	}
@@ -3393,8 +3372,7 @@ pub fn (mut v Builder) quote_compiler_name(name string) string {
 
 fn write_response_file(response_file string, response_file_content string) {
 	$if windows {
-		os.write_file_array(response_file,
-			string_to_ansi_not_null_terminated(response_file_content)) or {
+		os.write_file_array(response_file, string_to_ansi_not_null_terminated(response_file_content)) or {
 			write_response_file_error(response_file_content, err)
 		}
 	} $else {
