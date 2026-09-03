@@ -3203,7 +3203,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int) {
 		}
 		g.emit_comments_before(f.pos.offset)
 		g.source_end = int_max(g.source_end, f.pos.offset)
-		is_embed := f.value == f.typ && f.children_count == 0
+		is_embed := flags.contains('e')
 		if is_embed {
 			g.write(g.type_text(f.value))
 		} else {
@@ -3529,7 +3529,7 @@ fn (g &Gen) aggregate_field_alignments(fields []flat.NodeId, is_interface bool) 
 			gp := f.generic_params()
 			flags := if gp.len > 0 { gp[0] } else { '' }
 			section = access_label(flags)
-			alignable = !(f.value == f.typ && f.children_count == 0)
+			alignable = !flags.contains('e')
 		}
 		if !alignable {
 			g.store_field_alignment(mut alignments, group)

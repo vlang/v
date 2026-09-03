@@ -1939,7 +1939,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					typ:   field_type
 					pos:   p.span_to(field_start)
 				})
-				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, pending_attrs)
+				mut embed_attrs_1 := pending_attrs.clone()
+				embed_attrs_1 << embedded_field_attr
+				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, embed_attrs_1)
 				pending_attrs = []string{}
 				ids << fid
 				if p.tok == .semicolon {
@@ -1965,7 +1967,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 						typ:   embedded_type
 						pos:   p.span_to(field_start)
 					})
-					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, pending_attrs)
+					mut embed_attrs_2 := pending_attrs.clone()
+					embed_attrs_2 << embedded_field_attr
+					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, embed_attrs_2)
 					pending_attrs = []string{}
 					ids << fid
 					if p.tok == .semicolon {
@@ -1991,7 +1995,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					typ:   embedded_type
 					pos:   p.span_to(field_start)
 				})
-				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, pending_attrs)
+				mut embed_attrs_3 := pending_attrs.clone()
+				embed_attrs_3 << embedded_field_attr
+				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, embed_attrs_3)
 				pending_attrs = []string{}
 				ids << fid
 				if p.tok == .semicolon {
@@ -2872,17 +2878,20 @@ fn (mut p Parser) parse_attribute_comptime_cond() string {
 // attributes) - the node's own `kind_id`/`is_mut` are load-bearing (kind dispatch) and must not
 // be repurposed. A default field (private, immutable, no attrs) is left untouched so it costs no
 // allocation and reads back as the default.
+// embedded_field_attr marks a `field_decl` that is a struct embed rather than a named field.
+const embedded_field_attr = '__v3_embedded_field'
+
 fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, is_global bool, attrs []string) {
 	if int(id) < 0 || int(id) >= p.a.nodes.len {
 		return
 	}
 	is_volatile := '__v3_volatile_field' in attrs
-	stored_attrs := if is_volatile {
-		attrs.filter(it != '__v3_volatile_field')
-	} else {
-		attrs
-	}
-	if !is_mut && !is_pub && !is_global && !is_volatile && stored_attrs.len == 0 {
+	// An embed and a field whose name happens to match its type (`thread thread`) are both
+	// stored with `value == typ`, so the node alone cannot tell them apart. Record which this
+	// is; without it the formatter rewrote a `thread thread` field to a bare `thread` embed.
+	is_embedded := embedded_field_attr in attrs
+	stored_attrs := attrs.filter(it != '__v3_volatile_field' && it != embedded_field_attr)
+	if !is_mut && !is_pub && !is_global && !is_volatile && !is_embedded && stored_attrs.len == 0 {
 		return
 	}
 	mut flags := ''
@@ -2897,6 +2906,9 @@ fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, is_
 	}
 	if is_volatile {
 		flags += 'v'
+	}
+	if is_embedded {
+		flags += 'e'
 	}
 	mut gp := []string{cap: stored_attrs.len + 1}
 	gp << flags
