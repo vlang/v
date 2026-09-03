@@ -14,9 +14,11 @@ mut:
 
 // fastc_prepare_link initializes the in-process TinyCC linker on macOS. Other
 // platforms retain the executable-based linker and only record its arguments.
-pub fn fastc_prepare_link(program string, tcc_lib string, base_args []string) FastcPreparedLink {
+// `final_args` are supplied here so state-affecting linker options are visible
+// before TinyCC initializes its output state.
+pub fn fastc_prepare_link(program string, tcc_lib string, base_args []string, final_args []string) FastcPreparedLink {
 	$if macos && !fastc_selfhost ? {
-		return fastc_prepare_libtcc_link(program, tcc_lib, base_args)
+		return fastc_prepare_libtcc_link(program, tcc_lib, base_args, final_args)
 	} $else {
 		return FastcPreparedLink{
 			program: program

@@ -7454,6 +7454,12 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 	if is_debug {
 		cc_args << '-g'
 	}
+	mut final_args := user_c_flags.clone()
+	if uses_threads {
+		final_args << '-lpthread'
+	}
+	final_args << '-lm'
+	final_args << environment_ld_flags
 	mut shim_dir := fastc.FastcCodesignShim{}
 	defer {
 		fastc.fastc_remove_codesign_shim_dir(shim_dir)
@@ -7465,7 +7471,7 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 		mut compile_args := cc_args.clone()
 		compile_args << user_c_flags
 		link_worker := spawn fastc.fastc_prepare_link(tcc_path,
-			os.join_path_single(tcc_dir, 'lib'), cc_args)
+			os.join_path_single(tcc_dir, 'lib'), cc_args, final_args)
 		unit_objects := fastc.fastc_compile_c_units(tcc_path, compile_args, unit_paths) or {
 			mut prepared_link := link_worker.wait()
 			fastc.fastc_discard_link(mut prepared_link)
@@ -7479,12 +7485,6 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 			eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
 		}
 		link_inputs := unit_objects.clone()
-		mut final_args := user_c_flags.clone()
-		if uses_threads {
-			final_args << '-lpthread'
-		}
-		final_args << '-lm'
-		final_args << environment_ld_flags
 		mut display_args := cc_args.clone()
 		display_args << ['-o', staged_binary]
 		display_args << link_inputs
@@ -7504,14 +7504,7 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 		}
 	} else {
 		cc_args << ['-o', 'out', 'src.c']
-		cc_args << user_c_flags
-		if uses_threads {
-			// The emitted spawn runtime calls pthread functions, which live
-			// outside libc on Linux with glibc before 2.34 and on the BSDs.
-			cc_args << '-lpthread'
-		}
-		cc_args << '-lm'
-		cc_args << environment_ld_flags
+		cc_args << final_args
 		command = cmdexec.display(tcc_path, cc_args)
 		shim_dir = fastc.fastc_codesign_shim_dir()
 		sign_in_process = shim_dir.dir != ''

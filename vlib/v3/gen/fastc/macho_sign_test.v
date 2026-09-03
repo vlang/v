@@ -42,7 +42,7 @@ fn test_fastc_prepared_libtcc_link() {
 		'-L${tcc_lib}']
 	compile := os.execute('${tcc} ${base_args.join(' ')} -c -o ${object_path} ${source_path}')
 	assert compile.exit_code == 0, compile.output
-	mut prepared := fastc_prepare_link(tcc, tcc_lib, base_args)
+	mut prepared := fastc_prepare_link(tcc, tcc_lib, base_args, [])
 	skipped_codesigns := C.v_fastc_tcc_skipped_codesign_count()
 	link_result := fastc_finish_link(mut prepared, [object_path], [], exe_path)
 	assert link_result.exit_code == 0, link_result.output
@@ -50,6 +50,36 @@ fn test_fastc_prepared_libtcc_link() {
 	fastc_sign_macho_adhoc(exe_path) or { panic(err) }
 	assert os.execute(exe_path).output.trim_space() == 'linked'
 	assert os.system('/usr/bin/true') == 0
+}
+
+fn test_fastc_prepared_libtcc_applies_linker_options_before_output_setup() {
+	if os.user_os() != 'macos' {
+		return
+	}
+	tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_file(tcc) {
+		return
+	}
+	test_dir := os.join_path(os.temp_dir(), 'fastc_libtcc_nostdlib_${os.getpid()}')
+	os.rmdir_all(test_dir) or {}
+	os.mkdir_all(test_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	source_path := os.join_path_single(test_dir, 'main.c')
+	object_path := os.join_path_single(test_dir, 'main.o')
+	exe_path := os.join_path_single(test_dir, 'main')
+	os.write_file(source_path, 'int main(void) { return 0; }\n') or { panic(err) }
+	tcc_lib := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib')
+	base_args := ['-std=gnu11', '-B${tcc_lib}', '-I${os.join_path_single(tcc_lib, 'include')}']
+	compile := os.execute('${tcc} ${base_args.join(' ')} -c -o ${object_path} ${source_path}')
+	assert compile.exit_code == 0, compile.output
+	final_args := ['-Wl,-nostdlib', '-ltcc1']
+	mut prepared := fastc_prepare_link(tcc, tcc_lib, base_args, final_args)
+	assert fastc_prepared_link_skips_codesign(&prepared)
+	link_result := fastc_finish_link(mut prepared, [object_path], final_args, exe_path)
+	assert link_result.exit_code != 0
+	assert link_result.output.contains("library 'tcc1' not found"), link_result.output
 }
 
 // A TinyCC-linked executable signed in process must run and pass Apple's
