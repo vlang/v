@@ -5761,13 +5761,16 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 		return false
 	}
 	param_types := g.param_types_for(callee_name, callee_name.all_after_last('.'))
-	is_c_variadic_fn := g.c_fn_is_variadic(callee_name, fn_node.value)
+	c_variadic_prefix := g.c_fn_abi_variadic_prefix(callee_name, fn_node.value, param_types)
+	is_c_variadic_fn := c_variadic_prefix >= 0
 	is_variadic_fn := is_c_variadic_fn || (g.tc.fn_variadic[callee_name] or { false })
 		|| g.fn_decl_is_variadic(callee_name, fn_node.value)
 	is_untyped_variadic := is_variadic_fn && param_types.len > 0
 		&& variadic_array_is_native(param_types[param_types.len - 1])
 	is_native_variadic := is_c_variadic_fn || is_untyped_variadic
-	typed_param_count := if is_native_variadic && param_types.len > 0
+	typed_param_count := if is_c_variadic_fn {
+		c_variadic_prefix
+	} else if is_native_variadic && param_types.len > 0
 		&& param_types[param_types.len - 1] is types.Array {
 		param_types.len - 1
 	} else {
@@ -7153,7 +7156,12 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				}
 			}
 			num_call_args := node.children_count - arg_start
-			is_c_variadic_fn := is_c_call && g.c_fn_is_variadic(actual_fn, fn_name)
+			c_variadic_prefix := if is_c_call {
+				g.c_fn_abi_variadic_prefix(actual_fn, fn_name, param_types)
+			} else {
+				-1
+			}
+			is_c_variadic_fn := c_variadic_prefix >= 0
 			is_variadic_fn := !is_method && !is_c_variadic_fn && ((g.tc.fn_variadic[actual_fn] or {
 				false
 			}) || g.fn_decl_is_variadic(actual_fn, fn_name))
@@ -7166,7 +7174,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			} else {
 				-1
 			}
-			typed_param_count := if is_native_variadic_fn && param_types.len > 0
+			typed_param_count := if is_c_variadic_fn {
+				c_variadic_prefix
+			} else if is_native_variadic_fn && param_types.len > 0
 				&& param_types[param_types.len - 1] is types.Array {
 				param_types.len - 1
 			} else {
@@ -12308,20 +12318,38 @@ fn (g &FlatGen) module_c_fn_variadic(name string, fallback string) ?bool {
 	return none
 }
 
-fn (g &FlatGen) c_fn_is_variadic(name string, fallback string) bool {
+fn c_fn_variadic_prefix_from_params(param_types []types.Type) int {
+	if param_types.len > 0 && param_types[param_types.len - 1] is types.Array {
+		return param_types.len - 1
+	}
+	return param_types.len
+}
+
+fn (g &FlatGen) c_fn_abi_variadic_prefix(name string, fallback string, param_types []types.Type) int {
+	for candidate in [name, fallback] {
+		semantic_name := c_fn_semantic_name(candidate)
+		if prefix := g.tc.c_fn_abi_variadic_prefixes[semantic_name] {
+			return prefix
+		}
+	}
 	if is_variadic := g.module_c_fn_variadic(name, fallback) {
-		return is_variadic
+		if is_variadic {
+			return c_fn_variadic_prefix_from_params(param_types)
+		}
 	}
 	for candidate in [name, fallback] {
 		if g.tc.c_variadic_fns[candidate] or { false } {
-			return true
+			return c_fn_variadic_prefix_from_params(param_types)
 		}
 		semantic_name := c_fn_semantic_name(candidate)
 		if g.tc.c_variadic_fns[semantic_name] or { false } {
-			return true
+			return c_fn_variadic_prefix_from_params(param_types)
 		}
 	}
-	return g.fn_decl_is_variadic(name, fallback)
+	if g.fn_decl_is_variadic(name, fallback) {
+		return c_fn_variadic_prefix_from_params(param_types)
+	}
+	return -1
 }
 
 fn (g &FlatGen) fn_decl_variadic_entry(name string) ?bool {
@@ -14988,7 +15016,12 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		|| g.call_uses_concrete_optional_params(callee_name)
 		|| g.call_uses_concrete_optional_params(g.direct_call_name(callee_name))
 		|| (callee_uses_specialized_generic_abi && params_have_optional_result(param_types))
-	is_c_variadic_fn := is_c_call && g.c_fn_is_variadic(fn_name, callee_name)
+	c_variadic_prefix := if is_c_call {
+		g.c_fn_abi_variadic_prefix(fn_name, callee_name, param_types)
+	} else {
+		-1
+	}
+	is_c_variadic_fn := c_variadic_prefix >= 0
 	is_variadic_fn := !is_c_variadic_fn && ((g.tc.fn_variadic[fn_name] or { false })
 		|| g.fn_decl_is_variadic(fn_name, callee_name))
 	is_untyped_variadic_fn := is_variadic_fn && param_types.len > 0
@@ -15000,7 +15033,9 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 	} else {
 		-1
 	}
-	typed_param_count := if is_native_variadic_fn && param_types.len > 0
+	typed_param_count := if is_c_variadic_fn {
+		c_variadic_prefix
+	} else if is_native_variadic_fn && param_types.len > 0
 		&& param_types[param_types.len - 1] is types.Array {
 		param_types.len - 1
 	} else {

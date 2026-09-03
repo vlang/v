@@ -690,6 +690,7 @@ pub mut:
 	c_fn_module_ret_types            map[string]Type
 	c_fn_module_param_types          map[string][]Type
 	c_fn_module_variadic             map[string]bool
+	c_fn_abi_variadic_prefixes       map[string]int
 	fn_shared_params                 map[string][]bool
 	mut_receiver_methods             map[string]bool
 	source_no_body_fns               map[string]bool
@@ -1008,6 +1009,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		c_fn_module_ret_types:                 map[string]Type{}
 		c_fn_module_param_types:               map[string][]Type{}
 		c_fn_module_variadic:                  map[string]bool{}
+		c_fn_abi_variadic_prefixes:            map[string]int{}
 		fn_shared_params:                      map[string][]bool{}
 		mut_receiver_methods:                  map[string]bool{}
 		source_no_body_fns:                    map[string]bool{}
@@ -1169,6 +1171,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		c_fn_module_ret_types:              tc.c_fn_module_ret_types
 		c_fn_module_param_types:            tc.c_fn_module_param_types
 		c_fn_module_variadic:               tc.c_fn_module_variadic
+		c_fn_abi_variadic_prefixes:         tc.c_fn_abi_variadic_prefixes
 		fn_shared_params:                   tc.fn_shared_params
 		mut_receiver_methods:               tc.mut_receiver_methods
 		source_no_body_fns:                 tc.source_no_body_fns
@@ -3581,6 +3584,11 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 						false)
 				}
 				if is_variadic {
+					tc.c_fn_abi_variadic_prefixes[c_name] = if ptypes.len > 0 {
+						ptypes.len - 1
+					} else {
+						0
+					}
 					tc.register_c_variadic_fn(node.value)
 				}
 				if !node.value.starts_with('C.') {
