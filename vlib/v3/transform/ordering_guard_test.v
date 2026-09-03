@@ -68,7 +68,12 @@ fn test_untyped_callee_base_is_not_spilled_into_an_ordering_temp() {
 		t.cur_module = 'main'
 
 		call, node := build_namespace_call(mut t, 'nsbase', base_type, 'abs_path')
-		assert !t.call_selector_base_is_namespace(t.a.child(&node, 0), 'abs_path', node.value), 'the classifier must miss this base, otherwise the backstop is not what is under test'
+		// `call_selector_base_is_namespace` takes the *base* of the callee selector, so unwrap the
+		// callee first — passing the callee itself would assert about the wrong node and could
+		// read false even for a base the classifier does recognize.
+		callee := t.a.nodes[int(t.a.child(&node, 0))]
+		assert callee.kind == .selector
+		assert !t.call_selector_base_is_namespace(t.a.child(&callee, 0), 'abs_path', node.value), 'the classifier must miss this base, otherwise the backstop is not what is under test'
 
 		t.transform_call_expr(call, node)
 		assert ordering_snapshot_decl_count(&t) == 0, 'a `${base_type}` callee base must not be spilled into an ordering temp'
