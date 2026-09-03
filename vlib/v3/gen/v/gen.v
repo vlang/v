@@ -1549,8 +1549,9 @@ fn (mut g Gen) index_expr(id flat.NodeId) {
 		return
 	}
 	g.expr(children[0])
+	gate := if n.op == .gated_index { '#' } else { '' }
 	if n.value == 'range' {
-		g.write('[')
+		g.write('${gate}[')
 		if children.len > 1 && int(children[1]) >= 0 {
 			g.expr(children[1])
 		}
@@ -1561,7 +1562,6 @@ fn (mut g Gen) index_expr(id flat.NodeId) {
 		g.write(']')
 		return
 	}
-	gate := if n.op == .gated_index { '#' } else { '' }
 	g.write('${gate}[')
 	g.expr_list(children[1..], ', ')
 	g.write(']')
