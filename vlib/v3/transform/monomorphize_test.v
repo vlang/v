@@ -3,6 +3,43 @@ module transform
 import v3.flat
 import v3.types
 
+fn test_specialized_fn_signature_types_are_recorded_once() {
+	mut a := flat.FlatAst.new()
+	param_id := a.add_node(flat.Node{
+		kind:  .param
+		value: 'value'
+		typ:   'T'
+	})
+	children_start := a.children.len
+	a.children << param_id
+	mut fn_node := flat.Node{
+		kind:           .fn_decl
+		value:          'identity'
+		typ:            'T'
+		children_start: children_start
+		children_count: 1
+	}
+	fn_node.set_generic_params(['T'])
+	fn_id := a.add_node(fn_node)
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	decl := GenericFnDecl{
+		id:     fn_id
+		node:   fn_node
+		module: 'main'
+		file:   'main.v'
+		key:    'identity'
+	}
+
+	t.request_generic_fn_specialization(decl, ['int'])
+	assert t.monomorph_signature_types.len == 2
+	t.register_specialized_fn_signature_value(decl, specialized_generic_fn_value(fn_node.value,
+		['int']), ['int'])
+
+	assert t.monomorph_signature_types.len == 2
+	assert t.monomorph_signature_spec_keys.len == 1
+}
+
 fn test_comptime_loop_type_metadata_survives_generic_specialization() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

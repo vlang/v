@@ -4285,11 +4285,18 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 		t.tc.cur_file = decl.file
 	}
 	generic_params := t.generic_fn_param_names(decl.node, decl.module)
+	signature_key := t.generic_specialization_progress_key(decl, concrete_args)
+	record_signature_types := signature_key !in t.monomorph_signature_spec_keys
+	if record_signature_types {
+		t.monomorph_signature_spec_keys[signature_key] = true
+	}
 	ret_name := t.specialized_signature_type_text(decl, t.generic_fn_return_type_text(decl), concrete_args, generic_params)
-	t.monomorph_signature_types << MonomorphSignatureType{
-		typ: ret_name
-		module: decl.module
-		file: decl.file
+	if record_signature_types {
+		t.monomorph_signature_types << MonomorphSignatureType{
+			typ: ret_name
+			module: decl.module
+			file: decl.file
+		}
 	}
 	ret := if !isnil(t.tc) {
 		t.tc.parse_resolution_type(ret_name)
@@ -4307,10 +4314,12 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 			continue
 		}
 		param_type := explicit_mut_pointer_param_type_text(child, t.specialized_signature_type_text(decl, child.typ, concrete_args, generic_params))
-		t.monomorph_signature_types << MonomorphSignatureType{
-			typ: param_type
-			module: decl.module
-			file: decl.file
+		if record_signature_types {
+			t.monomorph_signature_types << MonomorphSignatureType{
+				typ: param_type
+				module: decl.module
+				file: decl.file
+			}
 		}
 		if param_type.starts_with('...') {
 			variadic = true
