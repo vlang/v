@@ -801,6 +801,21 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		g.next()
 		return false
 	}
+	if g.tok == .string {
+		actual := g.lit.trim('\'"')
+		g.next()
+		operator := g.tok
+		if operator !in [.eq, .ne] {
+			return g.unsupported('compile-time string comparison operator `${g.token_source()}`')
+		}
+		g.next()
+		if g.tok != .string {
+			return g.unsupported('compile-time string comparison value `${g.token_source()}`')
+		}
+		expected := g.lit.trim('\'"')
+		g.next()
+		return if operator == .eq { actual == expected } else { actual != expected }
+	}
 	if g.tok == .dollar {
 		// `$pkgconfig('lib')`: true when pkg-config reports the library present.
 		g.next()
