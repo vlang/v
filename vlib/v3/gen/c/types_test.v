@@ -21,10 +21,10 @@ fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
 	mut ast := &flat.FlatAst{}
 	ast.nodes = [flat.Node{
 		kind: .call
-		typ:  '?([]'
+		typ: '?([]'
 	}, flat.Node{
 		kind: .call
-		typ:  '?string'
+		typ: '?string'
 	}]
 	mut tc := types.TypeChecker.new(ast)
 	mut g := FlatGen.new()
@@ -42,7 +42,7 @@ fn test_json_pointer_sum_variants_use_direct_owned_payloads() {
 	tc.structs['main.Node'] = [
 		types.StructField{
 			name: 'name'
-			typ:  types.Type(types.String{})
+			typ: types.Type(types.String{})
 		},
 	]
 	mut encode_gen := FlatGen.new()
@@ -188,6 +188,19 @@ fn test_optional_payload_keeps_concrete_c_type_with_interface_collision() {
 	assert g.concrete_optional_type_name(result_type) == 'Optional_Value'
 }
 
+fn test_optional_typedef_keeps_qualified_interface_with_struct_collision() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.interface_names['cipher.Block'] = true
+	tc.structs['hash.Block'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	assert g.emit_optional_typedef('Optional_cipher__Block', 'cipher__Block')
+	assert g.sb.str().contains('cipher__Block value; } Optional_cipher__Block;')
+}
+
 fn test_optional_payload_does_not_qualify_ambiguous_interface() {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)
@@ -208,9 +221,9 @@ fn test_optional_payload_does_not_qualify_ambiguous_interface() {
 fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {
 	mut ast := flat.FlatAst.new()
 	ast.add_node(flat.Node{
-		kind:  .fn_decl
+		kind: .fn_decl
 		value: 'load'
-		typ:   '!Image'
+		typ: '!Image'
 	})
 	mut tc := types.TypeChecker.new(&ast)
 	tc.cur_module = 'json2'
@@ -225,9 +238,9 @@ fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {
 fn test_declaration_signature_scan_collects_specialized_fn_nodes() {
 	mut ast := flat.FlatAst.new()
 	fn_id := ast.add_node(flat.Node{
-		kind:  .fn_decl
+		kind: .fn_decl
 		value: 'decode_T_Data'
-		typ:   '!Data'
+		typ: '!Data'
 	})
 	ast.specialized_fn_nodes[int(fn_id)] = true
 	mut tc := types.TypeChecker.new(&ast)
@@ -242,9 +255,9 @@ fn test_declaration_signature_scan_collects_specialized_fn_nodes() {
 fn test_specialized_signature_scan_uses_declaration_module() {
 	mut ast := flat.FlatAst.new()
 	fn_id := ast.add_node(flat.Node{
-		kind:  .fn_decl
+		kind: .fn_decl
 		value: 'QueryBuilder_Entity_update'
-		typ:   '!&QueryBuilder[Entity]'
+		typ: '!&QueryBuilder[Entity]'
 	})
 	ast.specialized_fn_nodes[int(fn_id)] = true
 	ast.specialized_fn_modules[int(fn_id)] = 'orm'
