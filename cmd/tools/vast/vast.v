@@ -2051,6 +2051,8 @@ fn (t Tree) asm_stmt(node ast.AsmStmt) &Node {
 	obj.add_terse('is_basic', t.bool_node(node.is_basic))
 	obj.add_terse('is_volatile', t.bool_node(node.is_volatile))
 	obj.add_terse('is_goto', t.bool_node(node.is_goto))
+	obj.add_terse('is_raw', t.bool_node(node.is_raw))
+	obj.add_terse('is_intel', t.bool_node(node.is_intel))
 	obj.add('scope', t.scope(node.scope))
 	// obj.add('scope', t.number_node(int(node.scope)))
 	obj.add('pos', t.pos(node.pos))
@@ -2069,6 +2071,7 @@ fn (t Tree) asm_register(node ast.AsmRegister) &Node {
 	obj.add_terse('name', t.string_node(node.name))
 	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add_terse('size', t.number_node(node.size))
+	obj.add('pos', t.pos(node.pos))
 	return obj
 }
 
@@ -2076,6 +2079,7 @@ fn (t Tree) asm_template(node ast.AsmTemplate) &Node {
 	mut obj := create_object()
 	obj.add_terse('ast_type', t.string_node('AsmTemplate'))
 	obj.add_terse('name', t.string_node(node.name))
+	obj.add_terse('raw_template', t.string_node(node.raw_template))
 	obj.add_terse('is_label', t.bool_node(node.is_label))
 	obj.add_terse('is_directive', t.bool_node(node.is_directive))
 	obj.add_terse('args', t.array_node_asm_arg(node.args))
