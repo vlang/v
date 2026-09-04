@@ -43,18 +43,19 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 		return none
 	}
 	element_type := g.array_element_type(receiver_type) or { return none }
-	mut closure_tokens := tokens[open + 1..tokens.len - 1]
+	mut closure_tokens := tokens[open + 1..tokens.len - 1].clone()
 	if closure_tokens.len == 0 {
 		return none
 	}
 	mut it_name := 'it'
 	if closure_tokens[0].tok == .pipe {
 		// Explicit closure header `|param|` names the element instead of implicit `it`.
-		if closure_tokens.len < 4 || closure_tokens[1].tok != .name || closure_tokens[2].tok != .pipe {
+		if closure_tokens.len < 4 || closure_tokens[1].tok != .name
+			|| closure_tokens[2].tok != .pipe {
 			return none
 		}
 		it_name = closure_tokens[1].lit
-		closure_tokens = closure_tokens[3..]
+		closure_tokens = closure_tokens[3..].clone()
 		if closure_tokens.len == 0 {
 			return none
 		}
