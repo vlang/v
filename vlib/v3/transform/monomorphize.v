@@ -625,43 +625,23 @@ fn (mut t Transformer) seed_cached_monomorph_specs(specs []MonomorphCacheSpec) {
 	}
 }
 
-fn (mut t Transformer) materialize_monomorph_signature_types(specs []MonomorphCacheSpec) {
-	if isnil(t.tc) || specs.len == 0 {
+fn (mut t Transformer) materialize_monomorph_signature_types() {
+	if isnil(t.tc) || t.monomorph_signature_types.len == 0 {
 		return
 	}
-	fn_decls := t.cached_generic_fn_decls()
 	struct_decls := t.collect_generic_struct_decls()
 	sum_decls := t.collect_generic_sum_decls()
 	if struct_decls.len == 0 && sum_decls.len == 0 {
+		t.monomorph_signature_types.clear()
 		return
 	}
 	mut struct_specs := map[string]string{}
 	mut sum_specs := map[string]GenericSpecContext{}
-	for spec in specs {
-		decl := fn_decls[spec.decl_key] or { continue }
-		args := t.canonical_generic_specialization_args(spec.args)
-		if args.len == 0 || t.generic_args_have_placeholders(args) {
-			continue
-		}
-		generic_params := t.generic_fn_param_names(decl.node, decl.module)
-		mut signature_types := [
-			t.specialized_signature_type_text(decl, t.generic_fn_return_type_text(decl), args, generic_params),
-		]
-		for i in 0 .. decl.node.children_count {
-			param := t.a.child_node(&decl.node, i)
-			if param.kind != .param {
-				if t.prefix_param_scan {
-					break
-				}
-				continue
-			}
-			signature_types << t.specialized_signature_type_text(decl, param.typ, args, generic_params)
-		}
-		for typ in signature_types {
-			t.collect_generic_struct_spec_from_type(typ, decl.module, decl.file, struct_decls, mut struct_specs)
-			t.collect_generic_sum_spec_from_type(typ, decl.module, decl.file, sum_decls, mut sum_specs)
-		}
+	for signature in t.monomorph_signature_types {
+		t.collect_generic_struct_spec_from_type(signature.typ, signature.module, signature.file, struct_decls, mut struct_specs)
+		t.collect_generic_sum_spec_from_type(signature.typ, signature.module, signature.file, sum_decls, mut sum_specs)
 	}
+	t.monomorph_signature_types.clear()
 	t.expand_generic_materialization_specs(struct_decls, sum_decls, mut struct_specs, mut sum_specs)
 	for spec, context in sum_specs {
 		decl := sum_decls[context.base] or { continue }
@@ -4306,6 +4286,11 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 	}
 	generic_params := t.generic_fn_param_names(decl.node, decl.module)
 	ret_name := t.specialized_signature_type_text(decl, t.generic_fn_return_type_text(decl), concrete_args, generic_params)
+	t.monomorph_signature_types << MonomorphSignatureType{
+		typ: ret_name
+		module: decl.module
+		file: decl.file
+	}
 	ret := if !isnil(t.tc) {
 		t.tc.parse_resolution_type(ret_name)
 	} else {
@@ -4322,6 +4307,11 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 			continue
 		}
 		param_type := explicit_mut_pointer_param_type_text(child, t.specialized_signature_type_text(decl, child.typ, concrete_args, generic_params))
+		t.monomorph_signature_types << MonomorphSignatureType{
+			typ: param_type
+			module: decl.module
+			file: decl.file
+		}
 		if param_type.starts_with('...') {
 			variadic = true
 		}
@@ -12984,7 +12974,7 @@ fn (mut t Transformer) record_generic_specialization_args_in_module(base string,
 	}
 	for key in keys {
 		if key.len > 0 && !t.has_recorded_generic_specialization_args(key) {
-			t.generic_specialization_args[key] = recorded_args.clone()
+			t.generic_specialization_args[key] = recorded_args
 			t.generic_specialization_args_log << key
 		}
 	}
@@ -13001,7 +12991,7 @@ fn (mut t Transformer) record_generic_specialization_args_for_names(names []stri
 	recorded_args := args.clone()
 	for name in names {
 		if name.len > 0 && !t.has_recorded_generic_specialization_args(name) {
-			t.generic_specialization_args[name] = recorded_args.clone()
+			t.generic_specialization_args[name] = recorded_args
 			t.generic_specialization_args_log << name
 		}
 	}
