@@ -15,6 +15,9 @@ import v3.workers
 
 const min_parallel_transform_items = 256
 const max_parallel_transform_jobs = 7
+// Disposable self-host scratch permits more growable workers within the same
+// memory ceiling. Ordinary generic builds keep the smaller clone limit.
+const max_selfhost_transform_jobs = 12
 // Shared-base workers share the AST but retain private checker and transform
 // scratch. Eight lanes keep large user builds below the ordinary memory ceiling.
 const max_shared_transform_jobs = 8
@@ -2106,13 +2109,17 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		t.transform_pure_items_serial(items)
 		return false
 	} $else {
+
 		// Generic body lowering can discover signatures, so generic builds use the
-		// cloned-worker path below. Each worker owns its signature maps and the
-		// deterministic merge publishes additions after all body work has joined.
+		// cloned-worker path below. Self-host builds also use growable clones:
+		// metadata-driven expansions otherwise send most compiler functions to the
+		// serial fallback and require an expensive whole-program estimate first.
+		// Each worker owns its signature maps, and the deterministic merge publishes
+		// additions after all body work has joined.
 		if isnil(t.a.worker_pool) {
 			t.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
-		n_jobs := transform_job_count(t.a.worker_pool.size() + 1, items.len)
+		n_jobs := transform_job_count(t.a.worker_pool.size() + 1, items.len, t.building_v && t.scope_parallel_workers)
 		if items.len < min_parallel_transform_items || n_jobs <= 1 {
 			t.transform_pure_items_serial(items)
 			return false
@@ -2126,11 +2133,10 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		// Clone-free shared-base path: needs the checker's top-level index for
 		// exact per-item subtree ranges, and skip_generics (the generic passes
 		// scan and mutate arbitrary AST regions, which the shared design forbids).
-		if t.skip_generics && !isnil(t.tc) && t.tc.top_level_idx.len > 0 {
+		if t.skip_generics && !t.building_v && !isnil(t.tc) && t.tc.top_level_idx.len > 0 {
 			shared_jobs := shared_transform_job_count(t.a.worker_pool.size() + 1, items.len)
 			if shared_jobs > 1 {
-				return t.run_parallel_transform_shared(items, base_nodes, base_children,
-					shared_jobs)
+				return t.run_parallel_transform_shared(items, base_nodes, base_children, shared_jobs)
 			}
 		}
 		// Freeze the checker's warm type cache (fully populated by the check
@@ -2151,16 +2157,41 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		mut transform_workers := []voidptr{cap: thread_count}
 		mut args := []TransformChunkArgs{cap: chunk_count}
 		args << TransformChunkArgs{
-			worker:    voidptr(t)
+			worker: voidptr(t)
 			items_ptr: unsafe { voidptr(&chunks[0]) }
 		}
-		for ci in 0 .. thread_count {
-			wast := t.clone_ast_base(base_nodes, base_children)
+		mut worker_asts := []&flat.FlatAst{cap: thread_count}
+		mut copies := []TransformByteCopy{cap: thread_count * 2}
+		for _ in 0 .. thread_count {
+			wast := t.allocate_ast_base_clone(base_nodes, base_children)
+			worker_asts << wast
+			copies << TransformByteCopy{
+				dst: wast.nodes.data
+				src: t.a.nodes.data
+				bytes: u64(base_nodes) * u64(t.a.nodes.element_size)
+			}
+			copies << TransformByteCopy{
+				dst: wast.children.data
+				src: t.a.children.data
+				bytes: u64(base_children) * u64(t.a.children.element_size)
+			}
+		}
+		mut copy_tasks := []workers.Task{cap: copies.len}
+		for ci in 0 .. copies.len {
+			copy_tasks << workers.Task{
+				run: transform_byte_copy_thread
+				arg: unsafe { voidptr(&copies[ci]) }
+				force_sync: ci == 0
+			}
+		}
+		// No body can mutate the source until every base copy has completed.
+		t.a.worker_pool.run(copy_tasks)
+		for ci, wast in worker_asts {
 			wtc := t.tc.fork_for_parallel_transform(wast)
 			ww := t.fork_worker(wast, wtc)
 			transform_workers << voidptr(ww)
 			args << TransformChunkArgs{
-				worker:    voidptr(ww)
+				worker: voidptr(ww)
 				items_ptr: unsafe { voidptr(&chunks[ci + 1]) }
 			}
 		}
@@ -2174,8 +2205,8 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		for ci in 0 .. chunk_count {
 			helper_idx := ci - 1
 			tasks << workers.Task{
-				run:        transform_chunk_thread
-				arg:        unsafe { voidptr(&args[ci]) }
+				run: transform_chunk_thread
+				arg: unsafe { voidptr(&args[ci]) }
 				force_sync: ci == 0 || fail == 'transform:all' || fail == 'transform:${helper_idx}'
 			}
 		}
@@ -2694,13 +2725,14 @@ fn late_scan_chunk_bounds(a &flat.FlatAst, cands []LateFnCandidate, n int) []int
 
 // transform_job_count caps the worker count by both the runtime job count and a
 // fixed ceiling (each worker clones the base AST, so more workers cost more memory).
-fn transform_job_count(n_runtime_jobs int, n_items int) int {
+fn transform_job_count(n_runtime_jobs int, n_items int, scoped_selfhost bool) int {
 	if n_runtime_jobs <= 0 || n_items <= 0 {
 		return 0
 	}
 	mut n := n_runtime_jobs
-	if n > max_parallel_transform_jobs {
-		n = max_parallel_transform_jobs
+	limit := if scoped_selfhost { max_selfhost_transform_jobs } else { max_parallel_transform_jobs }
+	if n > limit {
+		n = limit
 	}
 	if n > n_items {
 		n = n_items

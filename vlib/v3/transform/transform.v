@@ -3421,8 +3421,8 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 			} else {
 				// Clone-free workers need conservative expansion estimates because they
 				// append into fixed .nogrow regions. Generic transform workers have
-				// private growable ASTs, so avoid rescanning every function solely to
-				// estimate capacity they do not use.
+				// private growable ASTs, as do self-host transforms. Avoid rescanning
+				// those functions to estimate capacity they do not use.
 				if sc_profile {
 					scsw.restart()
 				}
@@ -3437,7 +3437,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 						str_est, str_needs_deferred_lowering = t.fn_span_interp_estimate(range_lo, i)
 					}
 				}
-				map_est := if t.skip_generics {
+				map_est := if t.skip_generics && !t.building_v {
 					t.fn_span_map_expansion_estimate(range_lo, i)
 				} else {
 					0
@@ -3616,10 +3616,25 @@ fn (mut t Transformer) transform_deferred_expansion_items() {
 // rest of the build (worker memory is never freed under -gc none). Transform grows
 // the AST by well under 25% per worker, so a fixed base/4 margin avoids the cliff.
 fn (t &Transformer) clone_ast_base(base_nodes int, base_children int) &flat.FlatAst {
+	mut cloned := t.allocate_ast_base_clone(base_nodes, base_children)
+	// Both arrays own enough storage for these immutable base payloads.
+	unsafe {
+		vmemcpy(cloned.nodes.data, t.a.nodes.data, isize(base_nodes) * isize(t.a.nodes.element_size))
+		vmemcpy(cloned.children.data, t.a.children.data, isize(base_children) * isize(t.a.children.element_size))
+	}
+	return cloned
+}
+
+// allocate_ast_base_clone reserves a private AST whose base payload is filled
+// before use. Parallel transform copies the disjoint allocations concurrently.
+fn (t &Transformer) allocate_ast_base_clone(base_nodes int, base_children int) &flat.FlatAst {
 	mut nodes := []flat.Node{cap: base_nodes + base_nodes / 4}
-	nodes << t.a.nodes[0..base_nodes]
 	mut children := []flat.NodeId{cap: base_children + base_children / 4}
-	children << t.a.children[0..base_children]
+	// The caller fills these uninitialized slots from the immutable source AST.
+	unsafe {
+		nodes.grow_len(base_nodes)
+		children.grow_len(base_children)
+	}
 	return &flat.FlatAst{
 		nodes: nodes
 		children: children

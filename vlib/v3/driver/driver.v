@@ -10034,7 +10034,8 @@ pub fn run(args []string) {
 			prealloc_scope_leave_for_v3(transform_scope)
 			retain_transform_scope := building_v && current_parallel_transform && backend == 'c'
 				&& !cache_state.manager.enabled && retained_transform_regions.len == 0
-				&& os.getenv('V3_RETAIN_TRANSFORM_SCOPE') != ''
+				&& (input_is_v3_compiler_entry(input_file)
+					|| os.getenv('V3_RETAIN_TRANSFORM_SCOPE') != '')
 			if retain_transform_scope {
 				// Cgen is the only remaining semantic consumer in this no-cache self-host
 				// path. Keep the typed transform arena alive through it instead of cloning
@@ -15653,9 +15654,10 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		}
 	}
 	mut was_parallel := false
-	// Explicit self-hosting is faster through the normal incremental import loop:
+	// Compiler self-hosting is faster through the normal incremental import loop:
 	// eager discovery duplicates import-identity and collision work for this graph.
 	if prefs.building_v && !prefs.selfhost && allow_parallel && !cache_state.manager.enabled
+		&& !initial_files.any(input_is_v3_compiler_entry(it))
 		&& os.getenv('V3_NO_EAGER_SELFHOST_IMPORTS') == '' {
 		modules := discover_eager_selfhost_modules(a, prefs, first_file, project_root, mut parsed_modules, mut module_path_cache)
 		mut eager_files := []string{}
