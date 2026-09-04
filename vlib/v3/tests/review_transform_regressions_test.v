@@ -5808,6 +5808,23 @@ fn main() {
 	assert out == '8'
 }
 
+fn test_fixed_array_filter_and_map_keep_branch_callbacks_inside_iteration() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'fixed_array_branch_callbacks', 'fn main() {
+	values := [1, 2, 3, 4]!
+	filtered := values.filter(if it % 2 == 0 { true } else { false })
+	mapped := values.map(match it % 2 {
+		0 { it * 10 }
+		else { it + 1 }
+	})
+	assert filtered == [2, 4]
+	assert mapped == [2, 20, 4, 40]
+	println(int_str(filtered.len + mapped[3]))
+}
+')
+	assert out == '42'
+}
+
 fn test_array_map_drops_temporary_source_after_transient_element_address() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {

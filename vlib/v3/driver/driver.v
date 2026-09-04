@@ -85,6 +85,8 @@ const embedded_parallel_transform_node_limit = 10_000_000
 const scoped_serial_user_check_node_threshold = 1_000_000
 const scoped_serial_user_transform_node_threshold = 1_000_000
 const scoped_serial_user_cgen_node_threshold = 2_000_000
+const scoped_large_cold_cache_node_limit = 500_000
+const v3_large_cold_cache_marker_version = 'v3-large-cold-cache-bypass-v1'
 const scoped_linux_user_job_limit = 4
 const scoped_transform_signature_headroom = 2048
 const v3_vvmrc_file_name = '.vvmrc'
@@ -2691,12 +2693,14 @@ struct PrepareV3CheckerNativeInputsArgs {
 	user_c_flags  []string
 	scope_enabled bool
 	done          chan bool
+	release       chan bool
 }
 
 fn prepare_v3_checker_native_inputs_thread(args &PrepareV3CheckerNativeInputsArgs) {
 	mut state := unsafe { &V3ModuleCacheState(args.state) }
 	prepare_v3_checker_native_inputs_scoped(mut state, args.a, args.prefs, args.user_files, args.user_c_flags, args.scope_enabled)
 	args.done <- true
+	_ := <-args.release
 }
 
 fn ast_has_native_source_include(a &flat.FlatAst) bool {
@@ -2711,6 +2715,16 @@ fn ast_has_native_source_include(a &flat.FlatAst) bool {
 		}
 	}
 	return false
+}
+
+// should_overlap_v3_native_inputs reports whether native-input resolution can
+// safely run alongside the checker's declaration pass.
+fn should_overlap_v3_native_inputs(backend string, external_inputs_ready bool, module_cache_enabled bool, native_inputs_needed bool, building_v bool, scope_prealloc_stages bool) bool {
+	if backend != 'c' || external_inputs_ready || module_cache_enabled {
+		return false
+	}
+	return (native_inputs_needed && building_v)
+		|| (!native_inputs_needed && scope_prealloc_stages)
 }
 
 fn native_source_typedefs(path string) map[string]bool {
@@ -8872,12 +8886,17 @@ pub fn run(args []string) {
 	// The module cache splits imported implementations into separate objects, so its main source
 	// alone cannot reproduce the build. Literal output uses a deliberately reduced
 	// builtin source set, which likewise must remain a monolithic translation unit.
-	cache_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused && !no_builtin
+	cache_candidate_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused
+		&& !no_builtin
 		&& !keep_c && !backend_explicit && !c_compiler_explicit && !minimal_literal_output
 		&& c_compiler == 'cc' && target.os == host_target.os && target.arch == host_target.arch
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
-	cc_identity := if cache_enabled { default_cc_identity() } else { '' }
-	compiler_signature := if cache_enabled { v3_cache_compiler_signature(prefs.vroot) } else { '' }
+	cc_identity := if cache_candidate_enabled { default_cc_identity() } else { '' }
+	compiler_signature := if cache_candidate_enabled {
+		v3_cache_compiler_signature(prefs.vroot)
+	} else {
+		''
+	}
 	effective_warns_are_errors := v3_effective_warns_are_errors(warns_are_errors, is_prod)
 	cache_salt := [
 		'compiler=${compiler_signature}',
@@ -8911,7 +8930,19 @@ pub fn run(args []string) {
 	].join('\n')
 	build_pseudo_values := [prefs.build_date, prefs.build_time, prefs.build_timestamp].join('\n')
 	version_pseudo_values := [prefs.vhash, prefs.vcurrent_hash].join('\n')
+	cache_probe_manager := modulecache.new_manager(prefs.vroot, cache_salt, cache_candidate_enabled, build_pseudo_values, version_pseudo_values)
+	large_cold_cache_marker := if cache_candidate_enabled {
+		v3_large_cold_cache_marker_path(cache_probe_manager.dir, input_file, file_list)
+	} else {
+		''
+	}
+	large_cold_cache_bypass := cache_candidate_enabled
+		&& valid_v3_large_cold_cache_marker(large_cold_cache_marker)
+	cache_enabled := cache_candidate_enabled && !large_cold_cache_bypass
 	cache_manager := modulecache.new_manager(prefs.vroot, cache_salt, cache_enabled, build_pseudo_values, version_pseudo_values)
+	if large_cold_cache_bypass {
+		trace_v3_cache_fallback('persisted large source graph bypasses cache setup')
+	}
 	program_cache_enabled := persistent_program_cache_enabled(cache_enabled, is_test_command
 		|| is_v3_test_file(input_file, backend, target), os.vtmp_dir())
 	force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
@@ -9409,6 +9440,17 @@ pub fn run(args []string) {
 			}
 		}
 	}
+	// A cold module-cache build retains per-unit semantic and transform state in
+	// addition to the full source AST. For very large preallocated programs this
+	// can exhaust the process address space before any cache entry is publishable.
+	// Restarting without the module cache releases the lookup state and uses the
+	// bounded whole-program pipeline; existing whole/generic/incremental hits still
+	// keep their fast path.
+	if should_restart_v3_large_cold_cache(cache_state.manager.enabled, scope_prealloc_stages, a.nodes.len, cgen_cache_hit, generic_cache_hit, incremental_cache_hit) {
+		_ = write_v3_large_cold_cache_marker(large_cold_cache_marker, fallback_report_sources.keys())
+		trace_v3_cache_fallback('cold source graph is too large for scoped cache population')
+		restart_v3_without_cache()
+	}
 	// Exact whole-program cache hits do not consume the generic or incremental
 	// snapshots. Build those AST-wide signatures only on a miss, while retaining
 	// them for publishing a fresh development cache after a cold build.
@@ -9439,8 +9481,12 @@ pub fn run(args []string) {
 	// inputs before checking so the type is available to semantic lookup.
 	mut ck_stage_sw := time.new_stopwatch()
 	native_inputs_needed := !cache_state.external_inputs_ready && ast_has_native_source_include(a)
-	native_inputs_overlap := native_inputs_needed && building_v && !cache_state.manager.enabled
+	// Large cache-disabled C builds still have to resolve native inputs before
+	// Cgen. When the source does not expose native typedefs to semantic collection,
+	// overlap that independent work with the checker's declaration pass.
+	native_inputs_overlap := should_overlap_v3_native_inputs(backend, cache_state.external_inputs_ready, cache_state.manager.enabled, native_inputs_needed, building_v, scope_prealloc_stages)
 	native_inputs_done := chan bool{ cap: 1 }
+	native_inputs_release := chan bool{ cap: 1 }
 	native_inputs_args := PrepareV3CheckerNativeInputsArgs{
 		state: voidptr(&cache_state)
 		a: a
@@ -9449,6 +9495,7 @@ pub fn run(args []string) {
 		user_c_flags: cache_c_flags
 		scope_enabled: scope_prealloc_stages
 		done: native_inputs_done
+		release: native_inputs_release
 	}
 	if native_inputs_overlap {
 		spawn prepare_v3_checker_native_inputs_thread(&native_inputs_args)
@@ -9519,6 +9566,16 @@ pub fn run(args []string) {
 		pre_tc.collect(a)
 		if native_inputs_overlap {
 			_ := <-native_inputs_done
+			// A spawned prealloc worker owns its base arena until it exits. Promote the
+			// published manifest on the caller while that arena is still alive.
+			cache_state.module_external_inputs = clone_string_list_map(cache_state.module_external_inputs)
+			cache_state.module_native_roots = clone_string_list_map(cache_state.module_native_roots)
+			cache_state.native_root_contexts = clone_string_list_map(cache_state.native_root_contexts)
+			cache_state.external_input_signatures = clone_string_string_map(cache_state.external_input_signatures)
+			cache_state.external_input_digests = clone_string_string_map(cache_state.external_input_digests)
+			cache_state.external_resolution_dirs = clone_string_list(cache_state.external_resolution_dirs)
+			cache_state.external_missing_paths = clone_string_list(cache_state.external_missing_paths)
+			native_inputs_release <- true
 			if backend == 'c' && cache_state.external_inputs_ready {
 				fallback_report_sources = macos_v3_fallback_report_inputs(fallback_report_sources, &cache_state)
 				_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
@@ -9878,7 +9935,13 @@ pub fn run(args []string) {
 		// incomplete, leave the manifest without its completeness marker so the stable
 		// retry prints the fallback notice but does not submit an unverified report.
 		if backend == 'c' && !cache_state.external_inputs_ready {
-			_ = prepare_v3_cache_external_inputs_scoped(mut cache_state, a, prefs, user_files, cache_c_flags, scope_prealloc_stages)
+			if cache_state.manager.enabled {
+				_ = prepare_v3_cache_external_inputs_scoped(mut cache_state, a, prefs, user_files, cache_c_flags, scope_prealloc_stages)
+			} else {
+				// Cache ownership and native declaration extraction have no consumer on
+				// an uncached build. Keep only the manifest needed by Cgen and fallback.
+				prepare_v3_checker_native_inputs_scoped(mut cache_state, a, prefs, user_files, cache_c_flags, scope_prealloc_stages)
+			}
 		}
 		if backend == 'c' && cache_state.external_inputs_ready {
 			fallback_report_sources = macos_v3_fallback_report_inputs(fallback_report_sources, &cache_state)
@@ -10574,6 +10637,11 @@ pub fn run(args []string) {
 		if !cgen_cache_hit && scope_prealloc_cgen {
 			cgen_parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			cgen_scope := prealloc_scope_begin_for_v3()
+			// Rebuild fork-shared lookup indexes in Cgen's parent arena. Scoped serial
+			// batches otherwise can inherit map storage populated by an earlier arena.
+			pre_tc.set_fresh_type_cache(cgen_parse_cache_enabled)
+			pre_tc.freeze_type_cache_for_forks()
+			pre_tc.discard_type_cache_overlay_after_forks()
 			mut scoped_generated_c_flags := []string{}
 			generated_path := if cache_state.manager.enabled { cache_plan_file } else { cc_src }
 			mut g := cgen.FlatGen.new()
@@ -12571,6 +12639,123 @@ fn trace_v3_cache_fallback(reason string) {
 	if os.getenv('V3_CACHE_TRACE') != '' {
 		eprintln('  V3 module cache fallback: reason=${reason}')
 	}
+}
+
+fn should_restart_v3_large_cold_cache(cache_enabled bool, scoped_prealloc bool, node_count int, cgen_hit bool, generic_hit bool, incremental_hit bool) bool {
+	return cache_enabled && scoped_prealloc && node_count >= scoped_large_cold_cache_node_limit
+		&& !cgen_hit && !generic_hit && !incremental_hit
+}
+
+fn v3_large_cold_cache_marker_path(cache_dir string, input_file string, file_list []string) string {
+	mut identity := strings.new_builder(128)
+	identity.write_string(os.real_path(input_file))
+	for path in file_list {
+		identity.write_u8(0)
+		identity.write_string(os.real_path(path))
+	}
+	return os.join_path(cache_dir, 'large_cold_${sha256.hexhash(identity.str())}.marker')
+}
+
+fn v3_large_cold_cache_directory_signature(path string) string {
+	mut entries := os.ls(path) or { return '' }
+	mut relevant := []string{cap: entries.len}
+	for entry in entries {
+		entry_path := os.join_path_single(path, entry)
+		if os.is_dir(entry_path) {
+			relevant << 'd:${entry}'
+		} else if entry == 'v.mod' || entry.ends_with('.v') || entry.ends_with('.vv')
+			|| entry.ends_with('.vsh') {
+			relevant << 'f:${entry}'
+		}
+	}
+	relevant.sort()
+	return sha256.hexhash(relevant.join('\n'))
+}
+
+fn v3_large_cold_cache_marker_content(source_files []string) ?string {
+	mut files := map[string]string{}
+	mut directories := map[string]string{}
+	for source_file in source_files {
+		path := os.real_path(source_file)
+		metadata := modulecache.file_metadata_signature(path)
+		if metadata == '' {
+			return none
+		}
+		files[path] = metadata
+		directory := os.dir(path)
+		directory_signature := v3_large_cold_cache_directory_signature(directory)
+		if directory_signature == '' {
+			return none
+		}
+		directories[directory] = directory_signature
+	}
+	if files.len == 0 {
+		return none
+	}
+	mut file_paths := files.keys()
+	file_paths.sort()
+	mut directory_paths := directories.keys()
+	directory_paths.sort()
+	mut content := strings.new_builder((file_paths.len + directory_paths.len) * 96)
+	content.write_string(v3_large_cold_cache_marker_version)
+	for path in file_paths {
+		for part in ['f', path, files[path]] {
+			content.write_u8(0)
+			content.write_string(part)
+		}
+	}
+	for path in directory_paths {
+		for part in ['d', path, directories[path]] {
+			content.write_u8(0)
+			content.write_string(part)
+		}
+	}
+	return content.str()
+}
+
+fn write_v3_large_cold_cache_marker(path string, source_files []string) bool {
+	if path == '' {
+		return false
+	}
+	os.mkdir_all(os.dir(path), mode: 0o700) or { return false }
+	content := v3_large_cold_cache_marker_content(source_files) or { return false }
+	temporary_path := '${path}.${os.getpid()}.${tempname.unique_token()}.tmp'
+	os.write_file(temporary_path, content) or { return false }
+	os.mv(temporary_path, path) or {
+		os.rm(temporary_path) or {}
+		return os.is_file(path)
+	}
+	return true
+}
+
+fn valid_v3_large_cold_cache_marker(path string) bool {
+	if path == '' {
+		return false
+	}
+	content := os.read_file(path) or { return false }
+	parts := content.split('\x00')
+	if parts.len < 4 || parts[0] != v3_large_cold_cache_marker_version
+		|| (parts.len - 1) % 3 != 0 {
+		os.rm(path) or {}
+		return false
+	}
+	for i := 1; i < parts.len; i += 3 {
+		kind := parts[i]
+		input_path := parts[i + 1]
+		expected := parts[i + 2]
+		actual := if kind == 'f' {
+			modulecache.file_metadata_signature(input_path)
+		} else if kind == 'd' {
+			v3_large_cold_cache_directory_signature(input_path)
+		} else {
+			''
+		}
+		if actual == '' || actual != expected {
+			os.rm(path) or {}
+			return false
+		}
+	}
+	return true
 }
 
 fn restart_v3_without_cache() {

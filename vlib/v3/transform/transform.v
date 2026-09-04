@@ -15737,8 +15737,11 @@ fn (mut t Transformer) build_source_parent_index() {
 		if node.kind == .fn_decl && node.pos.is_valid() {
 			fn_offsets[node.pos.id] << node.pos.offset
 		}
-		if node.kind == .if_expr && node.pos.is_valid() {
-			if_exprs[node.pos.id] << parent_id
+		if node.kind == .if_expr && node.children_count >= 2 {
+			body := t.a.child_node(&node, 1)
+			if body.pos.is_valid() {
+				if_exprs[body.pos.id] << parent_id
+			}
 		}
 		if node.kind != .decl_assign || node.children_count < 2 {
 			continue
@@ -17407,6 +17410,17 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 			&& t.receiver_selector_is_fn_field(t.normalize_type_alias(t.trim_pointer_type(t.lvalue_type(recv_sel_base_id))), recv_fn.value)
 		is_method := is_selector_call && !is_fn_field_callee && !is_namespace_call
 		recv_id := if is_method { recv_sel_base_id } else { flat.empty_node }
+		mut callback_base_type := if is_method { t.node_type(recv_id) } else { '' }
+		if callback_base_type in ['', 'unknown'] && is_method {
+			callback_base_type = t.lvalue_type(recv_id)
+		}
+		if callback_base_type in ['', 'unknown'] && is_method {
+			callback_base_type = t.raw_expr_type_without_smartcast(recv_id)
+		}
+		callback_base_type = t.normalize_type_alias(t.trim_pointer_type(callback_base_type))
+		array_dsl_callback := is_method
+			&& recv_fn.value in ['filter', 'map', 'any', 'all', 'count']
+			&& (callback_base_type.starts_with('[]') || t.is_fixed_array_type(callback_base_type))
 		// A plain (non-method) call whose callee is itself a value branch —
 		// `(match node { ... make_cb(node)! ... })()` — must materialize operand 0 too;
 		// otherwise transform_call_args lowers child 0 with plain transform_expr and leaves the
@@ -17424,7 +17438,11 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 			-1
 		}
 		for i in 1 .. node.children_count {
-			if t.operand_hoists_value_branch(t.a.child(&node, i)) {
+			// Array callback expressions bind `it` inside their lowering. Materializing
+			// an `if`/`match` callback here would hoist it outside the generated loop,
+			// before that binding exists.
+			if !(array_dsl_callback && i == 1)
+				&& t.operand_hoists_value_branch(t.a.child(&node, i)) {
 				last_branch = i
 			}
 		}

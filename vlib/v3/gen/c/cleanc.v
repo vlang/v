@@ -610,13 +610,15 @@ mut:
 	// (preseed_fn_ptr_type has optional-typedef side effects the body-walk
 	// preseed does not); armed only for the contiguous pre-dispatch preseed
 	// block, while no arena scope can be freed and reused.
-	preseed_sig_type_seen      &PreseedTypeSeen = unsafe { nil }
-	struct_decl_pref_cache     &StructDeclPrefCache = unsafe { nil }
-	unused_param_seen          &UnusedParamSeen = unsafe { nil }
-	cache_split                bool
-	cache_native_input_paths   map[string]bool
-	program_body_only          bool
-	cached_support_identifiers map[string]bool
+	preseed_sig_type_seen              &PreseedTypeSeen = unsafe { nil }
+	struct_decl_pref_cache             &StructDeclPrefCache = unsafe { nil }
+	qualified_struct_c_types_by_suffix map[string][]string
+	qualified_struct_c_types_ready     bool
+	unused_param_seen                  &UnusedParamSeen = unsafe { nil }
+	cache_split                        bool
+	cache_native_input_paths           map[string]bool
+	program_body_only                  bool
+	cached_support_identifiers         map[string]bool
 	// Set when the target is built with -prealloc / -d prealloc: the bump
 	// arena's base block pointer must be thread-local (matching V1's cgen),
 	// or every spawned thread would race on the same arena.
@@ -1136,6 +1138,7 @@ pub fn FlatGen.new() FlatGen {
 		generic_fn_key_ordinal: map[string]int{}
 		struct_decl_infos: map[string]StructDeclInfo{}
 		struct_decl_short_infos: map[string]StructDeclInfo{}
+		qualified_struct_c_types_by_suffix: map[string][]string{}
 		decl_attrs: map[int][]string{}
 		decl_attrs_by_source_position: map[u64][]string{}
 		c_decl_abi_names: map[string]string{}
@@ -2861,6 +2864,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.generic_fn_key_ordinal.clear()
 	g.struct_decl_infos.clear()
 	g.struct_decl_short_infos.clear()
+	g.qualified_struct_c_types_by_suffix.clear()
+	g.qualified_struct_c_types_ready = false
 	g.decl_attrs.clear()
 	g.decl_attrs_by_source_position.clear()
 	g.c_decl_abi_names.clear()
@@ -2955,6 +2960,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.has_builtins = g.tc.has_builtins
 	g.precompute_shared_alias_pointer_shorts()
 	g.collect_gen_info(effective_no_parallel)
+	g.precompute_qualified_struct_c_types()
 	g.precompute_const_short_index()
 	g.precompute_local_global_suffix_names()
 	g.preintern_json_encode_strings()
@@ -3062,6 +3068,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.preseed_struct_fn_ptr_types()
 		g.preseed_sum_fn_ptr_types()
 		g.preseed_global_fn_ptr_types()
+		g.preseed_type_alias_fn_ptr_types()
 		g.timing_profile('  [ttime]     wr struct/sum  ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		g.preseed_fn_signature_fn_ptr_types()
@@ -4556,6 +4563,11 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		if c_include_arg_is_builtin_abi_helper(include_arg, g.compiler_vroot) {
 			return true
 		}
+		// Header parsing is intentionally left to the C compiler. Keep the small
+		// amount of ABI ownership information that cannot be inferred from V
+		// declarations themselves, so V3 does not emit a second, incompatible
+		// declaration for APIs whose headers use const or typedef-qualified types.
+		g.collect_known_c_header_metadata(include_arg)
 		include_dirs := c_flag_include_dirs(g.c_flags)
 		// `#insert` is an explicit request to inline the source text. Delay only
 		// ordinary source includes until after generated type declarations.
@@ -4660,16 +4672,7 @@ const c_builtin_abi_helper_header_paths = [
 // declarations from the translation unit; anchoring at `vroot` suppresses only the
 // helper actually shipped under the running V installation.
 fn c_include_arg_is_builtin_abi_helper(include_arg string, vroot string) bool {
-	clean := trimmed_space(include_arg)
-	if clean.len < 2 {
-		return false
-	}
-	path := if (clean[0] == `"` && clean[clean.len - 1] == `"`) || (clean[0] == `<` && clean[clean.len - 1] == `>`) {
-		clean[1..clean.len - 1]
-	} else {
-		clean
-	}
-	normalized := path.replace('\\', '/')
+	normalized := normalized_c_include_arg_path(include_arg)
 	root := vroot.replace('\\', '/').trim_right('/')
 	for suffix in c_builtin_abi_helper_header_paths {
 		// The helper's `#insert "@VEXEROOT/..."` resolves to `vroot` + suffix, so an
@@ -4684,6 +4687,106 @@ fn c_include_arg_is_builtin_abi_helper(include_arg string, vroot string) bool {
 		}
 	}
 	return false
+}
+
+fn (mut g FlatGen) collect_known_c_header_metadata(include_arg string) {
+	path := normalized_c_include_arg_path(include_arg)
+	match path {
+		'pwd.h' {
+			g.collect_preserved_c_fns(['getpwnam', 'getpwuid'])
+			g.collect_preserved_c_structs(['passwd'])
+		}
+		'mbedtls/net_sockets.h' {
+			g.collect_preserved_c_fns([
+				'mbedtls_net_accept',
+				'mbedtls_net_bind',
+				'mbedtls_net_connect',
+				'mbedtls_net_free',
+				'mbedtls_net_init',
+				'mbedtls_net_recv',
+				'mbedtls_net_recv_timeout',
+				'mbedtls_net_send',
+			])
+		}
+		'mbedtls/entropy.h' {
+			g.collect_preserved_c_fns(['mbedtls_entropy_free', 'mbedtls_entropy_func',
+				'mbedtls_entropy_init'])
+		}
+		'mbedtls/ctr_drbg.h' {
+			g.collect_preserved_c_fns(['mbedtls_ctr_drbg_free', 'mbedtls_ctr_drbg_init',
+				'mbedtls_ctr_drbg_random', 'mbedtls_ctr_drbg_seed'])
+		}
+		'mbedtls/error.h' {
+			g.collect_preserved_c_fns(['mbedtls_high_level_strerr'])
+		}
+		'mbedtls/ssl.h' {
+			g.collect_preserved_c_fns([
+				'mbedtls_debug_set_threshold',
+				'mbedtls_pk_free',
+				'mbedtls_pk_init',
+				'mbedtls_pk_parse_key',
+				'mbedtls_pk_parse_keyfile',
+				'mbedtls_pk_sign_ext',
+				'mbedtls_pk_verify',
+				'mbedtls_pk_verify_ext',
+				'mbedtls_ssl_conf_alpn_protocols',
+				'mbedtls_ssl_conf_authmode',
+				'mbedtls_ssl_conf_ca_chain',
+				'mbedtls_ssl_conf_own_cert',
+				'mbedtls_ssl_conf_read_timeout',
+				'mbedtls_ssl_conf_rng',
+				'mbedtls_ssl_conf_sni',
+				'mbedtls_ssl_config_defaults',
+				'mbedtls_ssl_config_free',
+				'mbedtls_ssl_config_init',
+				'mbedtls_ssl_free',
+				'mbedtls_ssl_get_alpn_protocol',
+				'mbedtls_ssl_handshake',
+				'mbedtls_ssl_init',
+				'mbedtls_ssl_read',
+				'mbedtls_ssl_session_reset',
+				'mbedtls_ssl_set_bio',
+				'mbedtls_ssl_set_hostname',
+				'mbedtls_ssl_set_hs_authmode',
+				'mbedtls_ssl_set_hs_ca_chain',
+				'mbedtls_ssl_set_hs_own_cert',
+				'mbedtls_ssl_setup',
+				'mbedtls_ssl_write',
+				'mbedtls_x509_crt_free',
+				'mbedtls_x509_crt_init',
+				'mbedtls_x509_crt_parse',
+				'mbedtls_x509_crt_parse_file',
+				'mbedtls_x509_crt_verify',
+			])
+		}
+		else {
+			if normalized_c_include_path_is_vroot_header(path, g.compiler_vroot, '/vlib/compress/brotli/brotli_dl.h') {
+				g.collect_preserved_c_fns(['v_brotli_open', 'v_brotli_sym', 'v_brotli_close',
+					'v_brotli_msan_unpoison'])
+			}
+		}
+	}
+}
+
+fn normalized_c_include_arg_path(include_arg string) string {
+	clean := trimmed_space(include_arg)
+	is_quoted := clean.len >= 2 && clean[0] == `"` && clean[clean.len - 1] == `"`
+	is_angled := clean.len >= 2 && clean[0] == `<` && clean[clean.len - 1] == `>`
+	path := if is_quoted || is_angled {
+		clean[1..clean.len - 1]
+	} else {
+		clean
+	}
+	return path.replace('\\', '/')
+}
+
+fn normalized_c_include_path_is_vroot_header(path string, vroot string, suffix string) bool {
+	root := vroot.replace('\\', '/').trim_right('/')
+	return (root.len > 0 && path == root + suffix) || path == '@VEXEROOT' + suffix
+}
+
+fn c_include_arg_is_vroot_header(include_arg string, vroot string, suffix string) bool {
+	return normalized_c_include_path_is_vroot_header(normalized_c_include_arg_path(include_arg), vroot, suffix)
 }
 
 fn (mut g FlatGen) emit_preinclude_directives() {

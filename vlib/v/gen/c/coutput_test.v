@@ -750,11 +750,8 @@ pub fn call() {
 	cmd := '${os.quoted_path(vexe)} -shared -o - coutput_sdl'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
-	if generated_c_uses_v3_codegen(compilation.output) {
-		assert compilation.output.contains('foreign_bool c_helper_decl(void);')
-	} else {
-		assert compilation.output.contains('#include "${header_include_path}"')
-	}
+	// V3 leaves headers to the C compiler instead of scanning and inlining them.
+	assert compilation.output.contains('#include "${header_include_path}"')
 	assert !compilation.output.contains('extern bool c_helper_decl(')
 }
 

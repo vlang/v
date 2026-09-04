@@ -1,3 +1,4 @@
+// vtest vflags: -d http3
 module http
 
 import sync
@@ -72,7 +73,7 @@ fn test_h3_round_trip_rejects_client_certificate_key() {
 // header).
 fn new_test_h3_mux_conn_for_pool_test() &H3MuxConn {
 	return &H3MuxConn{
-		transport:  unsafe { nil }
+		transport:  H3UdpTransport(unsafe { nil })
 		qmu:        sync.new_mutex()
 		idle_since: time.now()
 	}

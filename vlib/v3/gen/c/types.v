@@ -964,9 +964,11 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 		return false
 	}
 	bare_val_type := val_type.trim_right('*')
+	interface_matches := g.qualified_interface_c_types(bare_val_type.all_after_last('__'))
+	is_known_interface := bare_val_type in interface_matches
 	// Multi-return names can contain a module-qualified field component, but the
 	// payload is the generated tuple struct rather than a stale source struct.
-	if !bare_val_type.starts_with('multi_return_')
+	if !is_known_interface && !bare_val_type.starts_with('multi_return_')
 		&& (g.stale_ambiguous_qualified_struct_c_type(bare_val_type)
 			|| g.stale_missing_qualified_struct_c_type(bare_val_type)) {
 		// Stale generic annotations can lose the declaration module or inherit the
