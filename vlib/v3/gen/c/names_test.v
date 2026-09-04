@@ -436,6 +436,14 @@ fn test_preserved_system_include_declarations_are_header_specific() {
 	assert c_preserved_system_include_struct_names('<poll.h>') == ['pollfd']
 }
 
+fn test_compiler_header_metadata_text_excludes_implementation_body() {
+	sokol_text := 'typedef struct sapp_desc sapp_desc;\n#ifdef SOKOL_APP_IMPL\nstatic void private_impl(void) {}\n#endif\n'
+	assert c_compiler_header_metadata_text('/vroot/thirdparty/sokol/sokol_app.h', '/vroot', sokol_text) == 'typedef struct sapp_desc sapp_desc;\n'
+	assert c_compiler_header_metadata_text('/project/sokol_app.h', '/vroot', sokol_text) == sokol_text
+	resize_text := 'typedef struct stbir_pixel_layout stbir_pixel_layout;\n#if defined(STB_IMAGE_RESIZE_IMPLEMENTATION) || defined(STB_IMAGE_RESIZE2_IMPLEMENTATION)\nstatic void private_resize_impl(void) {}\n#endif\n'
+	assert c_compiler_header_metadata_text('/vroot/thirdparty/stb_image/stb_image_resize2.h', '/vroot', resize_text) == 'typedef struct stbir_pixel_layout stbir_pixel_layout;\n'
+}
+
 fn test_compiler_header_to_preserve_is_anchored_to_vroot() {
 	root := os.join_path(os.vtmp_dir(), 'v3_preserve_header_${os.getpid()}')
 	header_dir := os.join_path(root, 'thirdparty', 'sokol')

@@ -4837,11 +4837,14 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			if header_path := c_compiler_header_to_preserve(include_arg, g.compiler_vroot, source_file, include_dirs) {
 				header_text := os.read_file(header_path) or { '' }
 				if header_text.len > 0 {
+					metadata_text := c_compiler_header_metadata_text(header_path, g.compiler_vroot, header_text)
 					g.record_header_owned_include(module_name, include_arg, source_file, before_import, true)
-					g.collect_inlined_c_structs_ex(header_text, true)
+					g.collect_inlined_c_structs_ex(metadata_text, true)
 					g.prescanned_header_files[os.real_path(header_path)] = true
+					// Keep definitions from the implementation body: some single-header
+					// libraries expose public functions only through those definitions.
 					g.collect_inlined_c_fns(header_text)
-					g.collect_inlined_c_declared_fns(header_text)
+					g.collect_inlined_c_declared_fns(metadata_text)
 					if c_header_text_needs_objective_c_for_target(header_text, g.c_flags, g.c99_mode, g.target) && 'objective-c' !in g.c_flags {
 						g.c_flags << ['-x', 'objective-c', '-x', 'none']
 					}
@@ -5761,7 +5764,8 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 	// These compiler-shipped header-only libraries declare the public typedefs
 	// consumed by V in the parent file; their platform includes add no such names.
 	if c_header_owned_uses_single_scan(real_path, g.compiler_vroot) {
-		g.collect_header_owned_c_typedef_text(text)
+		metadata_text := c_compiler_header_metadata_text(real_path, g.compiler_vroot, text)
+		g.collect_header_owned_c_typedef_text(metadata_text)
 		return c_header_macro_state_after_unknown_include(state)
 	}
 	feature_predicates := c_header_compiler_feature_predicate_values(g.ccompiler, g.header_owned_effective_c_flags(), g.c99_mode, g.target, text)
@@ -9733,6 +9737,38 @@ fn c_header_owned_uses_single_scan(path string, vroot string) bool {
 		'/thirdparty/fontstash/fontstash.h', '/thirdparty/sokol/util/sokol_fontstash.h']
 }
 
+// c_compiler_header_metadata_text excludes implementation-only bodies from the
+// declaration scan for compiler-shipped single-header libraries. Their public
+// types and prototypes precede the implementation guard; the C compiler still
+// receives the complete header through the preserved #include.
+fn c_compiler_header_metadata_text(path string, vroot string, text string) string {
+	clean_path := path.replace('\\', '/')
+	resolved_vroot := if os.exists(vroot) { os.real_path(vroot) } else { vroot }
+	clean_vroot := resolved_vroot.replace('\\', '/').trim_right('/')
+	if clean_vroot.len == 0 {
+		return text
+	}
+	relative_path := clean_path.trim_string_left(clean_vroot)
+	implementation_guard := match relative_path {
+		'/thirdparty/sokol/sokol_app.h' { '#ifdef SOKOL_APP_IMPL' }
+		'/thirdparty/sokol/sokol_gfx.h' { '#ifdef SOKOL_GFX_IMPL' }
+		'/thirdparty/sokol/util/sokol_gl.h' { '#ifdef SOKOL_GL_IMPL' }
+		'/thirdparty/stb_image/stb_image.h' { '#ifdef STB_IMAGE_IMPLEMENTATION' }
+		'/thirdparty/stb_image/stb_image_write.h' { '#ifdef STB_IMAGE_WRITE_IMPLEMENTATION' }
+		'/thirdparty/stb_image/stb_image_resize2.h' {
+			'#if defined(STB_IMAGE_RESIZE_IMPLEMENTATION) || defined(STB_IMAGE_RESIZE2_IMPLEMENTATION)'
+		}
+		'/thirdparty/fontstash/fontstash.h' { '#ifdef FONTSTASH_IMPLEMENTATION' }
+		'/thirdparty/sokol/util/sokol_fontstash.h' { '#ifdef SOKOL_FONTSTASH_IMPL' }
+		else {
+			return text
+		}
+	}
+	marker := '\n${implementation_guard}'
+	implementation_start := text.index(marker) or { return text }
+	return text[..implementation_start + 1]
+}
+
 fn c_compiler_header_to_preserve(include_arg string, vroot string, source_file string, include_dirs []string) ?string {
 	for path in c_include_file_paths(include_arg, vroot, source_file, include_dirs) {
 		if os.is_file(path) && c_header_owned_uses_single_scan(os.real_path(path), vroot) {
@@ -10252,6 +10288,13 @@ fn (mut g FlatGen) collect_inlined_c_source_typedefs(text string, module_name st
 		context_directives.join('\n') + '\n' + text
 	} else {
 		text
+	}
+	// Most native implementation files contain only functions. Avoid constructing
+	// macro state (which can launch the C preprocessor) when no typedef keyword can
+	// contribute a C type declaration.
+	if !source_with_context.contains('typedef')
+		&& !effective_flags.any(it.contains('typedef')) {
+		return
 	}
 	scan := c_header_definitely_active_scan_in_file(source_with_context, g.header_owned_initial_macro_state(), c_effective_strict_iso_mode(effective_flags, g.c99_mode), g.target, CHeaderIncludeContext{
 		vroot: g.compiler_vroot
