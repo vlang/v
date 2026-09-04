@@ -2692,12 +2692,14 @@ struct PrepareV3CheckerNativeInputsArgs {
 	user_c_flags  []string
 	scope_enabled bool
 	done          chan bool
+	release       chan bool
 }
 
 fn prepare_v3_checker_native_inputs_thread(args &PrepareV3CheckerNativeInputsArgs) {
 	mut state := unsafe { &V3ModuleCacheState(args.state) }
 	prepare_v3_checker_native_inputs_scoped(mut state, args.a, args.prefs, args.user_files, args.user_c_flags, args.scope_enabled)
 	args.done <- true
+	_ := <-args.release
 }
 
 fn ast_has_native_source_include(a &flat.FlatAst) bool {
@@ -9295,6 +9297,7 @@ pub fn run(args []string) {
 	native_inputs_needed := !cache_state.external_inputs_ready && ast_has_native_source_include(a)
 	native_inputs_overlap := native_inputs_needed && building_v && !cache_state.manager.enabled
 	native_inputs_done := chan bool{ cap: 1 }
+	native_inputs_release := chan bool{ cap: 1 }
 	native_inputs_args := PrepareV3CheckerNativeInputsArgs{
 		state: voidptr(&cache_state)
 		a: a
@@ -9303,6 +9306,7 @@ pub fn run(args []string) {
 		user_c_flags: cache_c_flags
 		scope_enabled: scope_prealloc_stages
 		done: native_inputs_done
+		release: native_inputs_release
 	}
 	if native_inputs_overlap {
 		spawn prepare_v3_checker_native_inputs_thread(&native_inputs_args)
@@ -9373,6 +9377,16 @@ pub fn run(args []string) {
 		pre_tc.collect(a)
 		if native_inputs_overlap {
 			_ := <-native_inputs_done
+			// A spawned prealloc worker owns its base arena until it exits. Promote the
+			// published manifest on the caller while that arena is still alive.
+			cache_state.module_external_inputs = clone_string_list_map(cache_state.module_external_inputs)
+			cache_state.module_native_roots = clone_string_list_map(cache_state.module_native_roots)
+			cache_state.native_root_contexts = clone_string_list_map(cache_state.native_root_contexts)
+			cache_state.external_input_signatures = clone_string_string_map(cache_state.external_input_signatures)
+			cache_state.external_input_digests = clone_string_string_map(cache_state.external_input_digests)
+			cache_state.external_resolution_dirs = clone_string_list(cache_state.external_resolution_dirs)
+			cache_state.external_missing_paths = clone_string_list(cache_state.external_missing_paths)
+			native_inputs_release <- true
 			if backend == 'c' && cache_state.external_inputs_ready {
 				fallback_report_sources = macos_v3_fallback_report_inputs(fallback_report_sources, &cache_state)
 				_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
@@ -9732,7 +9746,13 @@ pub fn run(args []string) {
 		// incomplete, leave the manifest without its completeness marker so the stable
 		// retry prints the fallback notice but does not submit an unverified report.
 		if backend == 'c' && !cache_state.external_inputs_ready {
-			_ = prepare_v3_cache_external_inputs_scoped(mut cache_state, a, prefs, user_files, cache_c_flags, scope_prealloc_stages)
+			if cache_state.manager.enabled {
+				_ = prepare_v3_cache_external_inputs_scoped(mut cache_state, a, prefs, user_files, cache_c_flags, scope_prealloc_stages)
+			} else {
+				// Cache ownership and native declaration extraction have no consumer on
+				// an uncached build. Keep only the manifest needed by Cgen and fallback.
+				prepare_v3_checker_native_inputs_scoped(mut cache_state, a, prefs, user_files, cache_c_flags, scope_prealloc_stages)
+			}
 		}
 		if backend == 'c' && cache_state.external_inputs_ready {
 			fallback_report_sources = macos_v3_fallback_report_inputs(fallback_report_sources, &cache_state)
@@ -10428,6 +10448,11 @@ pub fn run(args []string) {
 		if !cgen_cache_hit && scope_prealloc_cgen {
 			cgen_parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			cgen_scope := prealloc_scope_begin_for_v3()
+			// Rebuild fork-shared lookup indexes in Cgen's parent arena. Scoped serial
+			// batches otherwise can inherit map storage populated by an earlier arena.
+			pre_tc.set_fresh_type_cache(cgen_parse_cache_enabled)
+			pre_tc.freeze_type_cache_for_forks()
+			pre_tc.discard_type_cache_overlay_after_forks()
 			mut scoped_generated_c_flags := []string{}
 			generated_path := if cache_state.manager.enabled { cache_plan_file } else { cc_src }
 			mut g := cgen.FlatGen.new()
