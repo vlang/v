@@ -11679,7 +11679,11 @@ fn (mut t Transformer) stabilize_original_lvalue_receiver(id flat.NodeId) ?flat.
 			if node.children_count == 0 {
 				return none
 			}
-			inner := t.stabilize_original_lvalue_receiver(t.a.child(&node, 0))?
+			child := t.a.child(&node, 0)
+			inner := t.stabilize_original_lvalue_receiver(child)?
+			if inner == child {
+				return id
+			}
 			return t.rebuild_transformed_lvalue(node, [inner])
 		}
 		.prefix {
@@ -11692,13 +11696,20 @@ fn (mut t Transformer) stabilize_original_lvalue_receiver(id flat.NodeId) ?flat.
 			} else {
 				t.spill_original_lvalue_component(child_id, 'recv_deref')
 			}
+			if new_child == child_id {
+				return id
+			}
 			return t.rebuild_transformed_lvalue(node, [new_child])
 		}
 		.selector {
 			if node.children_count == 0 {
 				return none
 			}
-			base := t.stabilize_original_lvalue_receiver(t.a.child(&node, 0))?
+			base_child := t.a.child(&node, 0)
+			base := t.stabilize_original_lvalue_receiver(base_child)?
+			if base == base_child {
+				return id
+			}
 			mut children := [base]
 			for i in 1 .. node.children_count {
 				children << t.a.child(&node, i)
@@ -11722,6 +11733,7 @@ fn (mut t Transformer) stabilize_original_lvalue_receiver(id flat.NodeId) ?flat.
 			} else {
 				t.stabilize_original_lvalue_receiver(base_child)?
 			}
+			mut changed := base != base_child
 			mut children := [base]
 			for i in 1 .. node.children_count {
 				comp_id := t.a.child(&node, i)
@@ -11729,11 +11741,18 @@ fn (mut t Transformer) stabilize_original_lvalue_receiver(id flat.NodeId) ?flat.
 				// prelude could mutate) into a temp while keeping the surrounding lvalue shape,
 				// so `items[idx].update(match ... { change(mut idx)! } ...)` mutates the element
 				// at the source-order index. A pure constant index needs no snapshot.
-				children << if t.is_pure_constant_expr(comp_id) {
+				component := if t.is_pure_constant_expr(comp_id) {
 					comp_id
 				} else {
 					t.spill_original_lvalue_component(comp_id, 'recv_index')
 				}
+				if component != comp_id {
+					changed = true
+				}
+				children << component
+			}
+			if !changed {
+				return id
 			}
 			return t.rebuild_transformed_lvalue(node, children)
 		}
@@ -11744,7 +11763,13 @@ fn (mut t Transformer) stabilize_original_lvalue_receiver(id flat.NodeId) ?flat.
 }
 
 fn (mut t Transformer) spill_original_lvalue_component(id flat.NodeId, prefix string) flat.NodeId {
+	if t.is_ordering_snapshot_temp(id) {
+		return id
+	}
 	transformed := t.transform_expr(id)
+	if t.is_ordering_snapshot_temp(transformed) {
+		return transformed
+	}
 	tmp_name := t.new_temp(prefix)
 	mut typ := t.node_type(transformed)
 	if typ.len == 0 {
@@ -11755,6 +11780,7 @@ fn (mut t Transformer) spill_original_lvalue_component(id flat.NodeId, prefix st
 	} else {
 		t.pending_stmts << t.make_decl_assign(tmp_name, transformed)
 	}
+	t.ordering_snapshot_names[tmp_name] = true
 	return t.make_ident(tmp_name)
 }
 
