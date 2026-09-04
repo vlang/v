@@ -4231,19 +4231,24 @@ fn shared_storage_from_payload_value_expr(expr string) ?string {
 	return storage
 }
 
-fn (mut g FlatGen) gen_shared_array_push_arg(marker string, arg_id flat.NodeId) bool {
-	if !marker.starts_with('shared_array_push:') {
-		return false
-	}
+fn (mut g FlatGen) gen_shared_array_push_arg(marker string, target_id flat.NodeId, arg_id flat.NodeId) bool {
 	if int(arg_id) < 0 || int(arg_id) >= g.a.nodes.len {
 		return false
 	}
-	inner := marker['shared_array_push:'.len..].trim_space()
-	if inner.len == 0 {
-		return false
+	mut qualified := ''
+	mut wrapper := ''
+	if marker.starts_with('shared_array_push:') {
+		inner := marker['shared_array_push:'.len..].trim_space()
+		if inner.len == 0 {
+			return false
+		}
+		qualified = g.shared_qualify_type_text(inner, g.tc.cur_module)
+		wrapper = g.shared_wrapper_c_name(qualified)
+	} else {
+		info := g.shared_array_info_for_expr(target_id) or { return false }
+		qualified = info.inner
+		wrapper = info.wrapper
 	}
-	qualified := g.shared_qualify_type_text(inner, g.tc.cur_module)
-	wrapper := g.shared_wrapper_c_name(qualified)
 	mut value_id := arg_id
 	arg := g.a.nodes[int(arg_id)]
 	if arg.kind == .prefix && arg.op == .amp && arg.children_count > 0 {
@@ -7533,7 +7538,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					}
 				}
 				if arg_idx == 1 && emitted_callee_name in ['array_push', 'array__push']
-					&& g.gen_shared_array_push_arg(node.value, arg_id) {
+					&& g.gen_shared_array_push_arg(node.value, g.a.child(&node, arg_start), arg_id) {
 					continue
 				}
 				if !is_c_call && arg_idx < typed_param_count
@@ -15381,7 +15386,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			}
 		}
 		if arg_idx == 1 && fn_name in ['array_push', 'array__push']
-			&& g.gen_shared_array_push_arg(node.value, arg_id) {
+			&& g.gen_shared_array_push_arg(node.value, g.a.child(&node, start), arg_id) {
 			continue
 		}
 		if arg_idx == 0 && call_name_is_isnil(fn_name, callee_name)

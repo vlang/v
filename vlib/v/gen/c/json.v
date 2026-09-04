@@ -103,7 +103,7 @@ fn (mut g Gen) gen_jsons() {
 				init_styp += init_generated
 			} else if utyp.is_ptr() {
 				ptr_styp := g.styp(utyp.set_nr_muls(utyp.nr_muls() - 1))
-				init_styp += ' = HEAP(${ptr_styp}, {0})'
+				init_styp += ' = cJSON_IsNull(root) ? 0 : HEAP(${ptr_styp}, {0})'
 			}
 		}
 
@@ -182,6 +182,14 @@ ${enc_fn_dec} {
 		}
 		if is_js_prim(sym.name) && utyp.is_ptr() {
 			g.gen_prim_enc_dec(utyp, mut enc, mut dec)
+		} else if sym.name == 'time.Time' && !utyp.has_flag(.option) && !utyp.is_ptr() {
+			tmp_time_res := g.new_tmp_var()
+			dec.writeln('\t${result_name}_time__Time ${tmp_time_res} = json__decode_time(root);')
+			dec.writeln('\tif (${tmp_time_res}.is_error) {')
+			dec.writeln('\t\treturn ${tmp_time_res};')
+			dec.writeln('\t}')
+			dec.writeln('\tres = *(time__Time*)${tmp_time_res}.data;')
+			enc.writeln('\to = ${js_enc_name('i64')}(time__Time_unix(val));')
 		} else if sym.kind in [.array, .array_fixed] {
 			array_size := if sym.kind == .array_fixed {
 				(sym.info as ast.ArrayFixed).size
@@ -215,7 +223,7 @@ ${enc_fn_dec} {
 				}
 			} else if psym.info is ast.Struct {
 				enc.writeln('\to = cJSON_CreateObject();')
-				gen_struct_root_validation(ret_styp, mut dec)
+				gen_struct_root_validation(utyp, ret_styp, mut dec)
 				g.gen_struct_enc_dec(utyp, psym.info, ret_styp, mut enc, mut dec, '')
 			} else if psym.kind == .enum {
 				g.gen_enum_enc_dec(utyp, psym, mut enc, mut dec)
@@ -227,6 +235,16 @@ ${enc_fn_dec} {
 				g.gen_json_for_type(m.value_type)
 				dec.writeln(g.decode_map(utyp, m.key_type, m.value_type, ret_styp))
 				enc.writeln(g.encode_map(utyp, m.key_type, m.value_type))
+			} else if psym.kind in [.array, .array_fixed] {
+				array_size := if psym.kind == .array_fixed {
+					(psym.info as ast.ArrayFixed).size
+				} else {
+					-1
+				}
+				value_type := g.table.value_type(parent_typ)
+				g.gen_json_for_type(value_type)
+				dec.writeln(g.decode_array(utyp, value_type, array_size, ret_styp))
+				enc.writeln(g.encode_array(utyp, value_type, array_size))
 			} else if utyp.has_flag(.option) {
 				g.gen_option_enc_dec(utyp, mut enc, mut dec)
 			} else {
@@ -250,7 +268,7 @@ ${enc_fn_dec} {
 			if sym.info !is ast.Struct {
 				g.json_error(utyp, 'json: ${sym.name} is not struct')
 			}
-			gen_struct_root_validation(ret_styp, mut dec)
+			gen_struct_root_validation(utyp, ret_styp, mut dec)
 			g.gen_struct_enc_dec(utyp, sym.info, ret_styp, mut enc, mut dec, '')
 		}
 		// cJSON_delete
@@ -388,8 +406,15 @@ fn (mut g Gen) gen_prim_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec s
 	}
 }
 
-fn gen_struct_root_validation(ret_styp string, mut dec strings.Builder) {
-	dec.writeln('\tif (!cJSON_IsObject(root) && !cJSON_IsNull(root) && !cJSON_IsArray(root)) {')
+fn gen_struct_root_validation(utyp ast.Type, ret_styp string, mut dec strings.Builder) {
+	if utyp.is_ptr() && !utyp.has_flag(.option) {
+		dec.writeln('\tif (cJSON_IsNull(root)) {')
+		dec.writeln('\t\t${result_name}_${ret_styp} ret;')
+		dec.writeln('\t\tbuiltin___result_ok(&res, (${result_name}*)&ret, sizeof(res));')
+		dec.writeln('\t\treturn ret;')
+		dec.writeln('\t}')
+	}
+	dec.writeln('\tif (!cJSON_IsObject(root)) {')
 	dec.writeln('\t\treturn (${result_name}_${ret_styp}){ .is_error = true, .err = builtin___v_error(builtin__string__plus(_S("Json element is not an object: "), json__json_print(root))), .data = {0} };')
 	dec.writeln('\t}')
 }

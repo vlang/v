@@ -118,6 +118,20 @@ fn test_macos_compile_args_append_macosx_version_min_after_cflags() {
 	]
 }
 
+fn test_macos_clang_cstrict_ignores_trailing_language_reset_warning() {
+	compile_args := macos_compile_args([
+		'-os',
+		'macos',
+		'-cc',
+		'clang',
+		'-cstrict',
+		'-usecache',
+		hello_world_example(),
+	])
+	assert compile_args.contains('-x none')
+	assert compile_args.contains('-Wno-unused-command-line-argument')
+}
+
 fn test_cc_from_string_detects_cl_as_msvc() {
 	assert pref.cc_from_string('cl') == .msvc
 	assert pref.cc_from_string('C:/Program Files/Microsoft Visual Studio/cl.exe') == .msvc

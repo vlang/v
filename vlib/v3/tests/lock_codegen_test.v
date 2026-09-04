@@ -514,3 +514,21 @@ pub:
 	assert c_code.contains('v3_map_str(plain_record.values, 1, 1, 0)'), c_code
 	assert !c_code.contains('v3_map_str(plain_record.values->val,'), c_code
 }
+
+fn test_array_of_shared_append_boxes_payload() {
+	c_code := lock_codegen_gen_c('array_of_shared_append', 'struct Item {
+	value int
+}
+
+fn main() {
+	mut items := []shared Item{}
+	item := Item{
+		value: 7
+	}
+	items << item
+}
+')
+	assert c_code.contains('array_push(&items, &(__shared__main__main__Item*[]){'), c_code
+	assert c_code.contains('__dup__shared__main__main__Item'), c_code
+	assert !c_code.contains('main__Item __arr_val_0 = item;\n\tarray_push(&items, &__arr_val_0);'), c_code
+}

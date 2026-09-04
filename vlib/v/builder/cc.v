@@ -1317,6 +1317,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 				}
 			}
 		}
+		if ccoptions.cc == .clang && ccoptions.source_args.contains('-x none') {
+			// Clang 21 warns that this language reset is unused when no source follows it.
+			// Keep the reset for cached/object inputs, but do not let -cstrict promote that
+			// command-line warning to an error.
+			ccoptions.wargs << '-Wno-unused-command-line-argument'
+		}
 	}
 	if !v.pref.no_std {
 		ccoptions.source_args << ['-std=${c_std}', '-D_DEFAULT_SOURCE']
