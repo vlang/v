@@ -4079,13 +4079,8 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		g.collect_c_flags_from_directives()
 	}
 	g.c_flags << g.initial_c_flags
-	inttypes_scope := cgen_worker_scope_begin(g.scope_parallel_workers)
-	uses_system_stdint := g.translation_unit_uses_inttypes()
-	cgen_worker_scope_leave(inttypes_scope)
-	g.use_system_stdint = uses_system_stdint
-	cgen_worker_scope_free(inttypes_scope)
 	if profile {
-		g.timing_profile('  [ttime]   ci flags+stdint  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		g.timing_profile('  [ttime]   ci flags         ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	}
 	cisw := time.new_stopwatch()
 	mut ci_fn_ns := u64(0)
@@ -4412,7 +4407,6 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		}
 	}
 	g.modules['strings'] = 'strings'
-	g.rebuild_header_owned_c_typedefs()
 	g.materialize_objective_cpp_sources()
 	ccio_sw := time.new_stopwatch()
 	g.collect_const_init_order_from_files()
@@ -4699,32 +4693,6 @@ pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, 
 	return result
 }
 
-fn (g &FlatGen) translation_unit_uses_inttypes() bool {
-	mut cur_file := ''
-	include_dirs := c_flag_include_dirs(g.c_flags)
-	for node_idx in g.top_level_nodes() {
-		node := g.a.nodes[node_idx]
-		if node_kind_id(node) == 77 {
-			cur_file = node.value
-			continue
-		}
-		if node.kind != .directive || node.value !in ['include', 'insert', 'preinclude', 'postinclude'] || node.typ.len == 0 {
-			continue
-		}
-		include_arg := c_include_arg_for_target(node.typ, g.compiler_vroot, cur_file, g.target)
-		if trimmed_space(include_arg) == '<inttypes.h>' {
-			return true
-		}
-		mut seen := map[string]bool{}
-		for path in c_include_file_paths(include_arg, g.compiler_vroot, cur_file, include_dirs) {
-			if c_inline_header_tree_uses_inttypes(path, g.compiler_vroot, include_dirs, mut seen) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, source_file string, before_import bool) bool {
 	if node.kind != .directive {
 		return false
@@ -4740,15 +4708,6 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		directive := '#include ${include_arg}'
 		if node.value == 'preinclude' {
 			if directive !in g.preinclude_directives {
-				g.preinclude_header_owned << CHeaderOwnershipDirective{
-					include_arg: include_arg
-					source_file: source_file
-				}
-				if !g.preinclude_state_initialized {
-					g.preinclude_macro_state = g.header_owned_initial_macro_state()
-					g.preinclude_state_initialized = true
-				}
-				g.preinclude_macro_state = g.collect_preserved_include_metadata_with_state(include_arg, source_file, g.preinclude_macro_state)
 				g.preinclude_directives << directive
 			}
 		} else if directive !in g.postinclude_directives {
@@ -4829,44 +4788,6 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		}
 		if !c_include_arg_is_source_file(include_arg) {
 			g.add_native_source_context_directive(module_name, c_native_source_context_header_include(include_arg, g.compiler_vroot, source_file, include_dirs), before_import)
-		}
-		// Keep large compiler-shipped implementation headers as real includes. The C
-		// compiler has to parse them either way; expanding them into the generated
-		// translation unit first only makes V scan and copy several megabytes.
-		if !g.cache_split && node.value == 'include' {
-			if header_path := c_compiler_header_to_preserve(include_arg, g.compiler_vroot, source_file, include_dirs) {
-				header_text := os.read_file(header_path) or { '' }
-				if header_text.len > 0 {
-					metadata_text := c_compiler_header_metadata_text(header_path, g.compiler_vroot, header_text)
-					g.record_header_owned_include(module_name, include_arg, source_file, before_import, true)
-					g.collect_inlined_c_structs_ex(metadata_text, true)
-					g.prescanned_header_files[os.real_path(header_path)] = true
-					// Keep definitions from the implementation body: some single-header
-					// libraries expose public functions only through those definitions.
-					g.collect_inlined_c_fns(header_text)
-					g.collect_inlined_c_declared_fns(metadata_text)
-					if c_header_text_needs_objective_c_for_target(header_text, g.c_flags, g.c99_mode, g.target) && 'objective-c' !in g.c_flags {
-						g.c_flags << ['-x', 'objective-c', '-x', 'none']
-					}
-					g.add_c_directive(module_name, '#include ${include_arg}', before_import)
-					return true
-				}
-			}
-		}
-		if trimmed_space(include_arg) == '<objc/message.h>' {
-			g.record_header_owned_include(module_name, include_arg, source_file, before_import, true)
-			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
-			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
-			g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
-			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
-			return true
-		}
-		// Resolved angle headers already have a compiler search path. Preserve the
-		// include and scan their tree for declaration metadata without recursively
-		// materializing every header body into the generated translation unit.
-		if trimmed_space(include_arg).starts_with('<')
-			&& g.collect_preserved_header_tree(include_arg, source_file, include_dirs) {
-			g.record_header_owned_include(module_name, include_arg, source_file, before_import, true)
 			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
 			return true
 		}
@@ -4939,12 +4860,6 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 	if node.value in ['define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif', 'pragma',
 		'error', 'warning'] {
 		directive := c_preprocessor_directive_line(node.value, node.typ)
-		g.header_owned_directives << CHeaderOwnershipDirective{
-			module: module_name
-			directive: directive
-			source_file: source_file
-			before_import: before_import
-		}
 		g.add_native_source_context_directive(module_name, directive, before_import)
 		g.add_c_directive(module_name, directive, before_import)
 		return true
