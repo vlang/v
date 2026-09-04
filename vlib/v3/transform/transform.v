@@ -242,6 +242,7 @@ mut:
 	generic_alias_names           map[string]bool
 	type_alias_suffixes           map[string]string
 	local_decl_nodes_by_name      map[string][]int
+	fn_decl_offsets_by_file       map[int][]int
 	struct_field_decl_metas_cache map[string]map[string]FieldDeclMeta
 	comptime_field_metas_cache    map[string][]FieldMeta
 	comptime_reflected_for_roles  map[string]u8
@@ -3421,30 +3422,34 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				t.item_range_lo = old_range_lo
 				t.item_range_hi = old_range_hi
 			} else {
-				// Some lowering expands far beyond the parsed subtree cost. Aggregate
-				// interpolation emits inline autostr trees, while a const map reference
-				// can point outside this function's range at a map with thousands of
-				// entries. Fold bounded expansion into the worker cost, but defer an
-				// unbounded item to the growable master arena: the shared workers use
-				// fixed .nogrow regions, and even the complete reserved pool can be
-				// smaller than one expanded constant map.
+				// Clone-free workers need conservative expansion estimates because they
+				// append into fixed .nogrow regions. Generic transform workers have
+				// private growable ASTs, so avoid rescanning every function solely to
+				// estimate capacity they do not use.
 				if sc_profile {
 					scsw.restart()
 				}
 				mut str_est := 0
 				mut str_needs_deferred_lowering := false
-				if t.building_v && t.parallel_enabled {
-					// The compiler's interpolated types are all bounded primitives and
-					// metadata names; none can trigger aggregate auto-str expansion.
-					str_est = 0
-				} else {
-					str_est, str_needs_deferred_lowering = t.fn_span_interp_estimate(range_lo, i)
+				if t.skip_generics {
+					if t.building_v && t.parallel_enabled {
+						// The compiler's interpolated types are all bounded primitives and
+						// metadata names; none can trigger aggregate auto-str expansion.
+						str_est = 0
+					} else {
+						str_est, str_needs_deferred_lowering = t.fn_span_interp_estimate(range_lo, i)
+					}
 				}
-				map_est := t.fn_span_map_expansion_estimate(range_lo, i)
+				map_est := if t.skip_generics {
+					t.fn_span_map_expansion_estimate(range_lo, i)
+				} else {
+					0
+				}
 				if sc_profile {
 					est_ms += f64(scsw.elapsed().microseconds()) / 1000.0
 				}
-				if str_needs_deferred_lowering || map_est > deferred_map_expansion_threshold {
+				if t.skip_generics
+					&& (str_needs_deferred_lowering || map_est > deferred_map_expansion_threshold) {
 					t.deferred_expansion_items << FnWorkItem{
 						fn_idx:             i
 						range_lo:           range_lo
@@ -3919,6 +3924,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		generic_alias_names:             t.generic_alias_names
 		type_alias_suffixes:             t.type_alias_suffixes
 		local_decl_nodes_by_name:        t.local_decl_nodes_by_name
+		fn_decl_offsets_by_file:         t.fn_decl_offsets_by_file
 		struct_field_decl_metas_cache:   t.struct_field_decl_metas_cache
 		comptime_field_metas_cache:      map[string][]FieldMeta{}
 		comptime_reflected_for_roles:    t.comptime_reflected_for_roles
@@ -15849,6 +15855,7 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 fn (mut t Transformer) build_source_parent_index() {
 	t.source_parent_ids = []int{len: t.a.nodes.len, init: -1}
 	mut decls := map[string][]int{}
+	mut fn_offsets := map[int][]int{}
 	mut shared_names := map[string]bool{}
 	for parent_id, node in t.a.nodes {
 		for i in 0 .. node.children_count {
@@ -15856,6 +15863,9 @@ fn (mut t Transformer) build_source_parent_index() {
 			if child_id >= 0 && child_id < t.source_parent_ids.len && child_id != parent_id {
 				t.source_parent_ids[child_id] = parent_id
 			}
+		}
+		if node.kind == .fn_decl && node.pos.is_valid() {
+			fn_offsets[node.pos.id] << node.pos.offset
 		}
 		if node.kind != .decl_assign || node.children_count < 2 {
 			continue
@@ -15872,7 +15882,13 @@ fn (mut t Transformer) build_source_parent_index() {
 			}
 		}
 	}
+	for file_id, offsets in fn_offsets {
+		mut sorted := offsets.clone()
+		sorted.sort()
+		fn_offsets[file_id] = sorted
+	}
 	t.local_decl_nodes_by_name = decls.move()
+	t.fn_decl_offsets_by_file = fn_offsets.move()
 	t.shared_local_decl_names = shared_names.move()
 }
 

@@ -4787,13 +4787,18 @@ fn (mut t Transformer) concrete_fn_alias_call_return_type(id int, node flat.Node
 		return none
 	}
 	callee := t.a.child_node(&node, 0)
-	if callee.kind != .ident || callee.value.len == 0 || t.var_type(callee.value).len > 0 {
+	if callee.kind != .ident || callee.value.len == 0 {
 		return none
 	}
 	ret := t.tc.fn_ret_types[callee.value] or { return none }
 	ret_name := ret.name()
 	base, _, is_generic_alias := generic_app_parts(ret_name)
 	if !is_generic_alias {
+		return none
+	}
+	// Most call identifiers are ordinary functions. Avoid the contextual scope
+	// lookup until the return type proves this can be a generic function alias.
+	if t.var_type(callee.value).len > 0 {
 		return none
 	}
 	module_name := t.node_module_or(id, t.cur_module)
@@ -9107,17 +9112,34 @@ fn (t &Transformer) local_decl_type_before_pos(name string, before flat.Node) ?s
 		return none
 	}
 	mut fn_start := 0
-	for node in t.a.nodes {
-		if node.kind == .fn_decl && node.pos.offset > fn_start
-			&& node.pos.offset < before.pos.offset {
-			fn_start = node.pos.offset
+	if offsets := t.fn_decl_offsets_by_file[before.pos.id] {
+		mut low := 0
+		mut high := offsets.len
+		for low < high {
+			mid := (low + high) / 2
+			if offsets[mid] < before.pos.offset {
+				low = mid + 1
+			} else {
+				high = mid
+			}
+		}
+		if low > 0 {
+			fn_start = offsets[low - 1]
+		}
+	} else {
+		for node in t.a.nodes {
+			if node.kind == .fn_decl && node.pos.id == before.pos.id
+				&& node.pos.offset > fn_start && node.pos.offset < before.pos.offset {
+				fn_start = node.pos.offset
+			}
 		}
 	}
 	mut best := ''
 	mut best_offset := -1
 	for idx in t.local_decl_nodes_by_name[name] {
 		node := t.a.nodes[idx]
-		if node.pos.offset <= fn_start || node.pos.offset >= before.pos.offset
+		if node.pos.id != before.pos.id || node.pos.offset <= fn_start
+			|| node.pos.offset >= before.pos.offset
 			|| node.pos.offset <= best_offset {
 			continue
 		}

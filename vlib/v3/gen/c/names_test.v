@@ -708,6 +708,12 @@ fn test_header_owned_compiler_state_includes_clang_guards() {
 	state := g.header_owned_initial_macro_state()
 	assert state.defined['__clang__']
 	assert state.defined['__GNUC__']
+	assert g.header_owned_initial_macro_key.len > 0
+	g.header_owned_initial_macros.defined['__v3_cached_macro_probe__'] = true
+	mut cached := g.header_owned_initial_macro_state()
+	assert cached.defined['__v3_cached_macro_probe__']
+	cached.defined.delete('__v3_cached_macro_probe__')
+	assert g.header_owned_initial_macros.defined['__v3_cached_macro_probe__']
 }
 
 fn test_header_owned_compiler_macro_probe_uses_effective_compile_context() {
