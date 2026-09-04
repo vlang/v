@@ -413,7 +413,11 @@ fn test_preserved_system_include_declarations_are_header_specific() {
 	assert c_header_owned_system_include_skips_tree_scan('<Metal/Metal.h>')
 	assert c_header_owned_system_include_skips_tree_scan(' <QuartzCore/CAMetalLayer.h> ')
 	assert c_header_owned_system_include_skips_tree_scan('<mbedtls/ssl.h>')
+	assert c_header_owned_system_include_skips_tree_scan('<mbedtls/ecdsa.h>')
 	assert 'mbedtls_ssl_context' in c_preserved_system_include_typedef_names('<mbedtls/ssl.h>')
+	assert 'mbedtls_ecdsa_context' in c_preserved_system_include_typedef_names('<mbedtls/ecdsa.h>')
+	assert 'mbedtls_ecp_group' in c_preserved_system_include_typedef_names('<mbedtls/ecp.h>')
+	assert 'mbedtls_mpi' in c_preserved_system_include_typedef_names('<mbedtls/bignum.h>')
 	assert c_header_owned_uses_single_scan('/vroot/thirdparty/sokol/sokol_app.h', '/vroot')
 	assert c_header_owned_uses_single_scan('/vroot/thirdparty/sokol/sokol_gfx.h', '/vroot')
 	assert c_header_owned_uses_single_scan('/vroot/thirdparty/stb_image/stb_image.h', '/vroot')
@@ -422,6 +426,10 @@ fn test_preserved_system_include_declarations_are_header_specific() {
 	assert 'sqlite3_bind_text' in c_preserved_system_include_declared_fns('"sqlite3.h"')
 	assert 'sqlite3_column_name' in c_preserved_system_include_declared_fns('<sqlite3.h>')
 	assert 'mbedtls_pk_parse_key' in c_preserved_system_include_declared_fns('<mbedtls/ssl.h>')
+	assert 'mbedtls_ecdsa_write_signature' in c_preserved_system_include_declared_fns('<mbedtls/ecdsa.h>')
+	assert 'mbedtls_ecdh_compute_shared' in c_preserved_system_include_declared_fns('<mbedtls/ecdh.h>')
+	assert 'mbedtls_ecp_point_write_binary' in c_preserved_system_include_declared_fns('<mbedtls/ecp.h>')
+	assert 'mbedtls_mpi_write_binary' in c_preserved_system_include_declared_fns('<mbedtls/bignum.h>')
 	assert 'mbedtls_net_accept' in c_preserved_system_include_declared_fns('<mbedtls/net_sockets.h>')
 	assert c_preserved_system_include_declared_fns('<openssl/ssl.h>') == ['X509_free']
 	assert c_preserved_system_include_declared_fns('<openssl/x509.h>') == [
@@ -434,6 +442,14 @@ fn test_preserved_system_include_declarations_are_header_specific() {
 		'objc_msgSendSuper',
 	]
 	assert c_preserved_system_include_struct_names('<poll.h>') == ['pollfd']
+}
+
+fn test_compiler_header_metadata_text_excludes_implementation_body() {
+	sokol_text := 'typedef struct sapp_desc sapp_desc;\n#ifdef SOKOL_APP_IMPL\nstatic void private_impl(void) {}\n#endif\n'
+	assert c_compiler_header_metadata_text('/vroot/thirdparty/sokol/sokol_app.h', '/vroot', sokol_text) == 'typedef struct sapp_desc sapp_desc;\n'
+	assert c_compiler_header_metadata_text('/project/sokol_app.h', '/vroot', sokol_text) == sokol_text
+	resize_text := 'typedef struct stbir_pixel_layout stbir_pixel_layout;\n#if defined(STB_IMAGE_RESIZE_IMPLEMENTATION) || defined(STB_IMAGE_RESIZE2_IMPLEMENTATION)\nstatic void private_resize_impl(void) {}\n#endif\n'
+	assert c_compiler_header_metadata_text('/vroot/thirdparty/stb_image/stb_image_resize2.h', '/vroot', resize_text) == 'typedef struct stbir_pixel_layout stbir_pixel_layout;\n'
 }
 
 fn test_compiler_header_to_preserve_is_anchored_to_vroot() {

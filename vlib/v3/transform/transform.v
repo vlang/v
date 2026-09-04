@@ -52,6 +52,9 @@ const non_aliasing_allocation_call_marker = '__v3_non_aliasing_allocation_call'
 const source_deref_marker = '__v3_source_deref'
 const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
 const stack_value_decl_marker = '__v3_stack_value_decl'
+// Small late-reachability sets are cheaper to lower directly than through a
+// sequence of disposable scoped-worker forks. Larger sets keep bounded scratch.
+const direct_late_transform_max_names = 64
 
 // SumEqRequest records where a sum type's equality helper was first requested,
 // so the helper body is built under that module/file resolution context. The
@@ -4919,7 +4922,8 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names &[]string, names_star
 	t.used_fns_log_active = true
 	mut transformed_scoped := false
 	$if !v3_no_parallel ? {
-		if t.scope_parallel_workers && t.retain_worker_results {
+		if t.scope_parallel_workers && t.retain_worker_results
+			&& pending.len > direct_late_transform_max_names {
 			t.transform_late_candidates_scoped(candidate_index, mut candidates, mut late, mut pending, mut queued)
 			transformed_scoped = true
 		}
