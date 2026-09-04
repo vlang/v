@@ -101,7 +101,11 @@ $if !windows {
 		a := unsafe { &TransformChunkArgs(arg) }
 		mut w := unsafe { &Transformer(a.worker) }
 		items := unsafe { &[]FnWorkItem(a.items_ptr) }
-		w.transform_pure_items_serial(*items)
+		if w.scope_parallel_workers && w.retain_worker_results {
+			w.transform_scoped_helper_batches(*items, 1)
+		} else {
+			w.transform_pure_items_serial(*items)
+		}
 		return unsafe { nil }
 	}
 
@@ -1100,12 +1104,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			view.specialized_fn_modules = map[int]string{}
 			view.specialized_fn_files = map[int]string{}
 			mut wtc := t.tc.fork_for_parallel_transform(view)
-			wtc.ensure_private_transform_signatures()
 			mut w := t.fork_worker(view, wtc)
 			w.global_temp_counter = node_starts[ci]
-			w.fn_ret_types = t.fn_ret_types.clone()
-			w.receiver_method_suffix_index = t.receiver_method_suffix_index.clone()
-			w.signature_maps_shared = false
 			w.generic_fn_decls_cache = decls.clone()
 			w.generic_fn_decls_ready = true
 			w.generic_receiver_methods_by_name = t.generic_receiver_methods_by_name.clone()
@@ -1462,17 +1462,16 @@ fn monomorph_job_count(n_runtime_jobs int, n_specs int) int {
 	return n
 }
 
-fn monomorph_job_limit(available_jobs int, node_count int, configured_jobs int) int {
+fn monomorph_job_limit(available_jobs int, _node_count int, configured_jobs int) int {
 	if available_jobs <= 1 {
 		return 1
 	}
 	if configured_jobs > 0 {
 		return int_min(available_jobs, configured_jobs)
 	}
-	// Each helper retains a forked checker and its disposable specialization arena
-	// until the final publication barrier. Three workers keep large applications well
-	// below the normal memory limit; smaller programs retain the lower-latency four-way path.
-	return int_min(available_jobs, if node_count >= 500_000 { 3 } else { 4 })
+	// Scoped generic-transform batches keep enough memory available for the
+	// lower-latency four-way specialization path on large applications too.
+	return int_min(available_jobs, 4)
 }
 
 // monomorph_regions_can_merge_in_place reports whether sequential leftward

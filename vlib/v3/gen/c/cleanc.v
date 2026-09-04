@@ -427,6 +427,8 @@ mut:
 	preinclude_header_owned        []CHeaderOwnershipDirective
 	header_owned_pragma_once_seen  map[string]bool
 	header_owned_macro_context     CHeaderOwnedMacroContext
+	header_owned_initial_macro_key string
+	header_owned_initial_macros    CHeaderMacroState
 	preinclude_directives          []string
 	postinclude_directives         []string
 	early_c_source_directives      map[string]bool
@@ -2970,6 +2972,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.preinclude_header_owned = []CHeaderOwnershipDirective{}
 	g.header_owned_pragma_once_seen.clear()
 	g.header_owned_macro_context = CHeaderOwnedMacroContext{}
+	g.header_owned_initial_macro_key = ''
+	g.header_owned_initial_macros = CHeaderMacroState{}
 	g.preinclude_directives = []string{}
 	g.postinclude_directives = []string{}
 	g.early_c_source_directives.clear()
@@ -5155,8 +5159,12 @@ fn (mut g FlatGen) ensure_header_owned_macro_context() {
 	}
 }
 
-fn (g &FlatGen) header_owned_initial_macro_state() CHeaderMacroState {
+fn (mut g FlatGen) header_owned_initial_macro_state() CHeaderMacroState {
 	effective_flags := g.header_owned_effective_c_flags()
+	cache_key := '${g.ccompiler}\x00${g.c99_mode}\x00${g.target.os}\x00${g.target.arch}\x00${g.target.abi}\x00${effective_flags.join('\x00')}'
+	if cache_key == g.header_owned_initial_macro_key {
+		return c_header_macro_state_clone(g.header_owned_initial_macros)
+	}
 	mut state := c_header_macro_state_for_flags(effective_flags)
 	compiler_values := c_header_compiler_predefined_macro_values(g.ccompiler, effective_flags, g.c99_mode, g.target)
 	for name, value in compiler_values {
@@ -5187,6 +5195,8 @@ fn (g &FlatGen) header_owned_initial_macro_state() CHeaderMacroState {
 		state.uncertain.delete(name)
 		state.defined[name] = true
 	}
+	g.header_owned_initial_macro_key = cache_key
+	g.header_owned_initial_macros = c_header_macro_state_clone(state)
 	return state
 }
 
