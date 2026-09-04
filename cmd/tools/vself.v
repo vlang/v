@@ -32,11 +32,6 @@ fn main() {
 	os.unsetenv('VSELF_COMMAND_INDEX')
 	repeat_count, mut args := extract_repeat_count(args_[1..], command_index)
 	mut effective_args := effective_self_build_args(args)
-	default_fastc_build := should_use_default_fastc_build(effective_args)
-	if default_fastc_build {
-		args << ['-b', 'fastc']
-		effective_args = effective_self_build_args(args)
-	}
 	fastc_self_build := uses_fastc_backend(effective_args)
 	if fastc_self_build && '-prod' in effective_args {
 		eprintln('`v self -b fastc` does not support `-prod`; remove `-prod`.')
@@ -162,61 +157,6 @@ fn uses_fastc_backend(args []string) bool {
 		}
 	}
 	return backend == 'fastc'
-}
-
-fn has_backend_arg(args []string) bool {
-	for i, arg in args {
-		if arg in ['-b', '-backend'] && i + 1 < args.len {
-			return true
-		}
-		if arg.starts_with('-b=') || arg.starts_with('-backend=') {
-			return true
-		}
-	}
-	return false
-}
-
-fn should_use_default_fastc_build(args []string) bool {
-	if os.user_os() !in ['linux', 'macos'] || '-old-compiler' in args {
-		return false
-	}
-	if has_backend_arg(args) || has_self_build_configuration_arg(args) {
-		return false
-	}
-	if os.getenv('CC') != '' {
-		return false
-	}
-	mut i := 0
-	for i < args.len {
-		arg := args[i]
-		if arg in ['-o', '-output'] {
-			if i + 1 >= args.len {
-				return false
-			}
-			i += 2
-			continue
-		}
-		if arg == '-gc' {
-			if i + 1 >= args.len || args[i + 1] != 'none' {
-				return false
-			}
-			i += 2
-			continue
-		}
-		if arg.starts_with('-gc=') {
-			if arg.all_after('=') != 'none' {
-				return false
-			}
-			i++
-			continue
-		}
-		if arg !in ['-new-compiler', '-silent', '-v', '-verbose', '-keepc', '-prealloc',
-			'-no-prealloc', '-retry-compilation', '-no-retry-compilation'] {
-			return false
-		}
-		i++
-	}
-	return true
 }
 
 fn normalize_fastc_backend_args(args []string) []string {

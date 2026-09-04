@@ -61,23 +61,22 @@ fn test_linux_tinyc_self_build_does_not_enable_prealloc() {
 	assert_vself_builds_v3(old_result.output)
 }
 
-fn test_linux_default_self_build_uses_v3_fastc() {
+fn test_linux_default_self_build_uses_v3_c_backend() {
 	$if !linux {
 		return
 	}
 	noop := os.find_abs_path_of_executable('echo') or { return }
-	tool := os.join_path(os.vtmp_dir(), 'vself_v3_fastc_test')
+	tool := os.join_path(os.vtmp_dir(), 'vself_v3_c_backend_test')
 	defer {
 		os.rm(tool) or {}
 	}
 	build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
 	assert build.exit_code == 0, build.output
 	result :=
-		os.execute('env -u CC VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -o /tmp/vself_v3_fastc_test')
+		os.execute('env -u CC VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -o /tmp/vself_v3_c_backend_test')
 	assert result.exit_code == 0, result.output
-	assert result.output.contains('-b fastc'), result.output
-	assert !result.output.contains('fastc_real_builtin'), result.output
-	assert !result.output.contains('-cc'), result.output
+	assert !result.output.contains('-b fastc'), result.output
+	assert result.output.contains('-prealloc'), result.output
 	assert_vself_builds_v3(result.output)
 }
 
@@ -95,9 +94,10 @@ fn test_macos_default_self_build_compiler_selection() {
 	default_result :=
 		os.execute('env -u CC VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -o /tmp/vself_macos_prealloc_test')
 	assert default_result.exit_code == 0, default_result.output
-	assert default_result.output.contains('-b fastc'), default_result.output
-	assert !default_result.output.contains('fastc_real_builtin'), default_result.output
-	assert !default_result.output.contains('-cc'), default_result.output
+	default_cc := if os.uname().machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
+	assert !default_result.output.contains('-b fastc'), default_result.output
+	assert default_result.output.contains('-cc ${default_cc}'), default_result.output
+	assert default_result.output.contains('-prealloc'), default_result.output
 	assert_vself_builds_v3(default_result.output)
 	override_result :=
 		os.execute('CC=cc VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -o /tmp/vself_macos_prealloc_test')
