@@ -419,6 +419,19 @@ fn test_known_c_header_metadata_avoids_conflicting_fallback_declarations() {
 		assert !g.should_emit_c_extern_decl(name)
 	}
 	assert c_include_arg_is_vroot_header('"@VEXEROOT/vlib/compress/brotli/brotli_dl.h"', '', '/vlib/compress/brotli/brotli_dl.h')
+
+	mut quoted := FlatGen.new()
+	quoted.compiler_vroot = '/vroot'
+	for header in ['"pwd.h"', '"mbedtls/net_sockets.h"', '"mbedtls/entropy.h"', '"mbedtls/ctr_drbg.h"',
+		'"mbedtls/error.h"', '"mbedtls/ssl.h"', '"/vroot/vlib/compress/brotli/brotli_dl.h"'] {
+		quoted.collect_known_c_header_metadata(header)
+	}
+	assert quoted.inlined_c_structs['passwd']
+	for name in ['getpwnam', 'getpwuid', 'mbedtls_net_bind', 'mbedtls_entropy_init',
+		'mbedtls_ctr_drbg_seed', 'mbedtls_high_level_strerr', 'mbedtls_ssl_write',
+		'v_brotli_msan_unpoison'] {
+		assert !quoted.should_emit_c_extern_decl(name)
+	}
 }
 
 fn test_apple_framework_include_does_not_match_x11() {

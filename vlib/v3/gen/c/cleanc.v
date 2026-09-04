@@ -4672,16 +4672,7 @@ const c_builtin_abi_helper_header_paths = [
 // declarations from the translation unit; anchoring at `vroot` suppresses only the
 // helper actually shipped under the running V installation.
 fn c_include_arg_is_builtin_abi_helper(include_arg string, vroot string) bool {
-	clean := trimmed_space(include_arg)
-	if clean.len < 2 {
-		return false
-	}
-	path := if (clean[0] == `"` && clean[clean.len - 1] == `"`) || (clean[0] == `<` && clean[clean.len - 1] == `>`) {
-		clean[1..clean.len - 1]
-	} else {
-		clean
-	}
-	normalized := path.replace('\\', '/')
+	normalized := normalized_c_include_arg_path(include_arg)
 	root := vroot.replace('\\', '/').trim_right('/')
 	for suffix in c_builtin_abi_helper_header_paths {
 		// The helper's `#insert "@VEXEROOT/..."` resolves to `vroot` + suffix, so an
@@ -4699,13 +4690,13 @@ fn c_include_arg_is_builtin_abi_helper(include_arg string, vroot string) bool {
 }
 
 fn (mut g FlatGen) collect_known_c_header_metadata(include_arg string) {
-	clean := trimmed_space(include_arg)
-	match clean {
-		'<pwd.h>' {
+	path := normalized_c_include_arg_path(include_arg)
+	match path {
+		'pwd.h' {
 			g.collect_preserved_c_fns(['getpwnam', 'getpwuid'])
 			g.collect_preserved_c_structs(['passwd'])
 		}
-		'<mbedtls/net_sockets.h>' {
+		'mbedtls/net_sockets.h' {
 			g.collect_preserved_c_fns([
 				'mbedtls_net_accept',
 				'mbedtls_net_bind',
@@ -4717,18 +4708,18 @@ fn (mut g FlatGen) collect_known_c_header_metadata(include_arg string) {
 				'mbedtls_net_send',
 			])
 		}
-		'<mbedtls/entropy.h>' {
+		'mbedtls/entropy.h' {
 			g.collect_preserved_c_fns(['mbedtls_entropy_free', 'mbedtls_entropy_func',
 				'mbedtls_entropy_init'])
 		}
-		'<mbedtls/ctr_drbg.h>' {
+		'mbedtls/ctr_drbg.h' {
 			g.collect_preserved_c_fns(['mbedtls_ctr_drbg_free', 'mbedtls_ctr_drbg_init',
 				'mbedtls_ctr_drbg_random', 'mbedtls_ctr_drbg_seed'])
 		}
-		'<mbedtls/error.h>' {
+		'mbedtls/error.h' {
 			g.collect_preserved_c_fns(['mbedtls_high_level_strerr'])
 		}
-		'<mbedtls/ssl.h>' {
+		'mbedtls/ssl.h' {
 			g.collect_preserved_c_fns([
 				'mbedtls_debug_set_threshold',
 				'mbedtls_pk_free',
@@ -4769,7 +4760,7 @@ fn (mut g FlatGen) collect_known_c_header_metadata(include_arg string) {
 			])
 		}
 		else {
-			if c_include_arg_is_vroot_header(clean, g.compiler_vroot, '/vlib/compress/brotli/brotli_dl.h') {
+			if normalized_c_include_path_is_vroot_header(path, g.compiler_vroot, '/vlib/compress/brotli/brotli_dl.h') {
 				g.collect_preserved_c_fns(['v_brotli_open', 'v_brotli_sym', 'v_brotli_close',
 					'v_brotli_msan_unpoison'])
 			}
@@ -4777,19 +4768,25 @@ fn (mut g FlatGen) collect_known_c_header_metadata(include_arg string) {
 	}
 }
 
-fn c_include_arg_is_vroot_header(include_arg string, vroot string, suffix string) bool {
-	if include_arg.len < 2 {
-		return false
-	}
-	path := if (include_arg[0] == `"` && include_arg[include_arg.len - 1] == `"`)
-		|| (include_arg[0] == `<` && include_arg[include_arg.len - 1] == `>`) {
-		include_arg[1..include_arg.len - 1]
+fn normalized_c_include_arg_path(include_arg string) string {
+	clean := trimmed_space(include_arg)
+	is_quoted := clean.len >= 2 && clean[0] == `"` && clean[clean.len - 1] == `"`
+	is_angled := clean.len >= 2 && clean[0] == `<` && clean[clean.len - 1] == `>`
+	path := if is_quoted || is_angled {
+		clean[1..clean.len - 1]
 	} else {
-		include_arg
+		clean
 	}
-	normalized := path.replace('\\', '/')
+	return path.replace('\\', '/')
+}
+
+fn normalized_c_include_path_is_vroot_header(path string, vroot string, suffix string) bool {
 	root := vroot.replace('\\', '/').trim_right('/')
-	return (root.len > 0 && normalized == root + suffix) || normalized == '@VEXEROOT' + suffix
+	return (root.len > 0 && path == root + suffix) || path == '@VEXEROOT' + suffix
+}
+
+fn c_include_arg_is_vroot_header(include_arg string, vroot string, suffix string) bool {
+	return normalized_c_include_path_is_vroot_header(normalized_c_include_arg_path(include_arg), vroot, suffix)
 }
 
 fn (mut g FlatGen) emit_preinclude_directives() {
