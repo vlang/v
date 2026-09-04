@@ -280,7 +280,7 @@ pub fn new_quic_stream(id StreamId, role QuicRole) &QuicStream {
 	}
 
 	mut s := &QuicStream{
-		id:        id
+		id: id
 		direction: direction
 	}
 	if has_send {

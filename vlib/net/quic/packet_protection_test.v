@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 import crypto.rand
@@ -179,12 +178,12 @@ fn test_protect_packet_then_unprotect_packet_round_trips_long_header_all_pn_leng
 		packet_number := c[1]
 
 		h := QuicLongHeader{
-			typ:     .initial
+			typ: .initial
 			version: quic_v1
-			dcid:    dcid
-			scid:    scid
-			token:   []u8{}
-			length:  u64(pn_length) + u64(payload.len) + 16 // + AEAD tag
+			dcid: dcid
+			scid: scid
+			token: []u8{}
+			length: u64(pn_length) + u64(payload.len) + 16 // + AEAD tag
 		}
 		mut header := encode_long_header(h, 0, u8(pn_length - 1))!
 		header << truncate_packet_number(packet_number, pn_length)
@@ -205,8 +204,8 @@ fn test_encrypt_packet_payload_rejects_iv_shorter_than_a_packet_number() {
 	// 8-byte packet number into fewer than 8 bytes of IV.
 	keys := QuicPacketProtectionKeys{
 		key: rand.bytes(16)!
-		iv:  rand.bytes(4)!
-		hp:  rand.bytes(16)!
+		iv: rand.bytes(4)!
+		hp: rand.bytes(16)!
 	}
 	encrypt_packet_payload(keys, 1, []u8{len: 8}, []u8{len: 10}) or {
 		assert err.msg().contains('IV')
@@ -245,12 +244,12 @@ fn test_unprotect_packet_rejects_tampered_ciphertext() {
 	packet_number := u64(7)
 
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    dcid
-		scid:    scid
-		token:   []u8{}
-		length:  u64(pn_length) + u64(payload.len) + 16
+		dcid: dcid
+		scid: scid
+		token: []u8{}
+		length: u64(pn_length) + u64(payload.len) + 16
 	}
 	mut header := encode_long_header(h, 0, u8(pn_length - 1))!
 	header << truncate_packet_number(packet_number, pn_length)
@@ -280,12 +279,12 @@ fn test_unprotect_packet_rejects_wrong_direction_keys() {
 	packet_number := u64(9)
 
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    dcid
-		scid:    scid
-		token:   []u8{}
-		length:  u64(pn_length) + u64(payload.len) + 16
+		dcid: dcid
+		scid: scid
+		token: []u8{}
+		length: u64(pn_length) + u64(payload.len) + 16
 	}
 	mut header := encode_long_header(h, 0, u8(pn_length - 1))!
 	header << truncate_packet_number(packet_number, pn_length)

@@ -1,4 +1,4 @@
-// vtest build: present_openssl? && !sanitize-memory-clang
+// vtest build: !sanitize-memory-clang
 module quic
 
 import net.mbedtls
@@ -114,7 +114,9 @@ fn test_quiche_reference_capture_full_handshake() {
 	// net.mbedtls/x509_standalone_signature_test.v's own note), so every
 	// other ECDSA test in this codebase can only exercise the rejection
 	// path (a key-type mismatch), never a genuine accepted signature.
-	mbedtls_chain := mbedtls.build_certificate_chain([parsed_cert.certificate_list[0].cert_data])!
+	mbedtls_chain := mbedtls.build_certificate_chain([
+		parsed_cert.certificate_list[0].cert_data,
+	])!
 	defer {
 		mbedtls.free_certificate_chain(mbedtls_chain)
 	}
@@ -164,7 +166,9 @@ fn test_quiche_reference_capture_rejects_tampered_certificate_verify() {
 	mut tampered_signature := parsed_cv.signature.clone()
 	tampered_signature[0] ^= 0xff
 
-	mbedtls_chain := mbedtls.build_certificate_chain([parsed_cert.certificate_list[0].cert_data])!
+	mbedtls_chain := mbedtls.build_certificate_chain([
+		parsed_cert.certificate_list[0].cert_data,
+	])!
 	defer {
 		mbedtls.free_certificate_chain(mbedtls_chain)
 	}

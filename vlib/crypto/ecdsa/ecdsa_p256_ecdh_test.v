@@ -1,4 +1,8 @@
-// vtest build: present_openssl? && !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
+// vtest build: !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
+//
+// No present_openssl? conjunct: see ecdsa_test.v's own header comment --
+// this file is likewise genuinely backend-neutral now that mbedTLS is the
+// default backend.
 module ecdsa
 
 // These tests cover the P-256 ECDH addition made for net.quic's TLS 1.3

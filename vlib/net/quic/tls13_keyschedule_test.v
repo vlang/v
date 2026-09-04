@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 import encoding.hex
@@ -104,10 +103,8 @@ fn test_full_chain_matches_rfc8448_end_to_end() {
 	transcript_hash_ch_sfin := hex.decode(rfc8448_transcript_hash_ch_sfin)!
 
 	early_secret := derive_early_secret()!
-	handshake_secrets := derive_handshake_secrets(early_secret, ecdhe_shared_secret,
-		transcript_hash_ch_sh)!
-	application_secrets := derive_application_secrets(handshake_secrets.handshake_secret,
-		transcript_hash_ch_sfin)!
+	handshake_secrets := derive_handshake_secrets(early_secret, ecdhe_shared_secret, transcript_hash_ch_sh)!
+	application_secrets := derive_application_secrets(handshake_secrets.handshake_secret, transcript_hash_ch_sfin)!
 
 	assert handshake_secrets.client_secret == hex.decode(rfc8448_client_hs_traffic)!
 	assert handshake_secrets.server_secret == hex.decode(rfc8448_server_hs_traffic)!

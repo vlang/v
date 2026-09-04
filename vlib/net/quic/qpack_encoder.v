@@ -104,8 +104,7 @@ pub fn (mut e QpackEncoder) note_section_acknowledged(stream_id u64) ! {
 		}
 	}
 	if idx == -1 {
-		return error_with_code('qpack: Section Acknowledgment for stream ${stream_id} with nothing outstanding',
-			int(QpackErrorCode.decoder_stream_error))
+		return error_with_code('qpack: Section Acknowledgment for stream ${stream_id} with nothing outstanding', int(QpackErrorCode.decoder_stream_error))
 	}
 	section := e.unacked[idx]
 	mut max_ref := -1
@@ -149,13 +148,11 @@ pub fn (mut e QpackEncoder) note_stream_cancelled(stream_id u64) {
 // before narrowing, since `increment` arrives straight off the wire.
 pub fn (mut e QpackEncoder) note_insert_count_increment(increment u64) ! {
 	if increment == 0 {
-		return error_with_code('qpack: Insert Count Increment of zero',
-			int(QpackErrorCode.decoder_stream_error))
+		return error_with_code('qpack: Insert Count Increment of zero', int(QpackErrorCode.decoder_stream_error))
 	}
 	new_count := u64(e.known_received_count) + increment
 	if new_count > u64(e.dynamic_table.insert_count()) {
-		return error_with_code('qpack: Insert Count Increment exceeds entries actually inserted',
-			int(QpackErrorCode.decoder_stream_error))
+		return error_with_code('qpack: Insert Count Increment exceeds entries actually inserted', int(QpackErrorCode.decoder_stream_error))
 	}
 	e.known_received_count = int(new_count)
 }
@@ -269,8 +266,7 @@ pub fn (mut e QpackEncoder) encode_field_section(stream_id u64, lines []QpackFie
 
 		if have_name_ref {
 			if name_is_static {
-				stream_buf << encode_literal_with_name_ref(true, never_index, name_index,
-					line.value)
+				stream_buf << encode_literal_with_name_ref(true, never_index, name_index, line.value)
 			} else {
 				// This is STILL a reference to the dynamic table (for the NAME),
 				// exactly like the exact-match and post-insert cases above -- it
@@ -305,18 +301,17 @@ pub fn (mut e QpackEncoder) encode_field_section(stream_id u64, lines []QpackFie
 
 	if referenced.len > 0 {
 		e.unacked << QpackUnackedSection{
-			stream_id:  stream_id
+			stream_id: stream_id
 			referenced: referenced
 		}
 	}
 
-	prefix := encode_field_section_prefix(required_insert_count, u64(base),
-		e.peer_max_table_capacity)!
+	prefix := encode_field_section_prefix(required_insert_count, u64(base), e.peer_max_table_capacity)!
 	mut field_section := []u8{}
 	field_section << prefix
 	field_section << stream_buf
 	return QpackEncodedFieldSection{
 		encoder_instructions: instructions
-		field_section:        field_section
+		field_section: field_section
 	}
 }

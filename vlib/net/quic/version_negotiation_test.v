@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_handle_version_negotiation_discards_list_including_v1() {
@@ -13,8 +12,8 @@ fn test_handle_version_negotiation_discards_list_including_v1() {
 	original_dcid := [u8(5), 6]
 	original_scid := [u8(1), 2]
 	vn := QuicVersionNegotiation{
-		dcid:     original_scid
-		scid:     original_dcid
+		dcid: original_scid
+		scid: original_dcid
 		versions: [u32(0x1a2a3a4a), quic_v1] // grease + v1
 	}
 	handle_version_negotiation(vn, original_dcid, original_scid, false)!
@@ -24,8 +23,8 @@ fn test_handle_version_negotiation_rejects_list_without_v1() {
 	original_dcid := [u8(5), 6]
 	original_scid := [u8(1), 2]
 	vn := QuicVersionNegotiation{
-		dcid:     original_scid
-		scid:     original_dcid
+		dcid: original_scid
+		scid: original_dcid
 		versions: [u32(0x1a2a3a4a), u32(0xff00_0001)]
 	}
 	handle_version_negotiation(vn, original_dcid, original_scid, false) or {
@@ -39,8 +38,8 @@ fn test_handle_version_negotiation_rejects_empty_list() {
 	original_dcid := [u8(5), 6]
 	original_scid := [u8(1), 2]
 	vn := QuicVersionNegotiation{
-		dcid:     original_scid
-		scid:     original_dcid
+		dcid: original_scid
+		scid: original_dcid
 		versions: []u32{}
 	}
 	handle_version_negotiation(vn, original_dcid, original_scid, false) or {
@@ -60,8 +59,8 @@ fn test_handle_version_negotiation_discards_mismatched_dcid() {
 	original_dcid := [u8(5), 6]
 	original_scid := [u8(1), 2]
 	vn := QuicVersionNegotiation{
-		dcid:     [u8(9), 9] // does NOT match original_scid
-		scid:     original_dcid
+		dcid: [u8(9), 9] // does NOT match original_scid
+		scid: original_dcid
 		versions: [u32(0xff00_0001)] // no v1 -- would otherwise be terminal
 	}
 	handle_version_negotiation(vn, original_dcid, original_scid, false)!
@@ -75,8 +74,8 @@ fn test_handle_version_negotiation_discards_mismatched_scid() {
 	original_dcid := [u8(5), 6]
 	original_scid := [u8(1), 2]
 	vn := QuicVersionNegotiation{
-		dcid:     original_scid
-		scid:     [u8(9), 9]         // does NOT match original_dcid
+		dcid: original_scid
+		scid: [u8(9), 9] // does NOT match original_dcid
 		versions: [u32(0xff00_0001)] // no v1 -- would otherwise be terminal
 	}
 	handle_version_negotiation(vn, original_dcid, original_scid, false)!
@@ -92,8 +91,8 @@ fn test_handle_version_negotiation_discards_when_other_packet_already_processed(
 	original_dcid := [u8(5), 6]
 	original_scid := [u8(1), 2]
 	vn := QuicVersionNegotiation{
-		dcid:     original_scid
-		scid:     original_dcid
+		dcid: original_scid
+		scid: original_dcid
 		versions: [u32(0xff00_0001)] // no v1 -- would otherwise be terminal
 	}
 	handle_version_negotiation(vn, original_dcid, original_scid, true)!

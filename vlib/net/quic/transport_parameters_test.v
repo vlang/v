@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_encode_transport_parameters_empty() {
@@ -8,17 +7,17 @@ fn test_encode_transport_parameters_empty() {
 
 fn test_transport_parameters_round_trip_all_varint_fields() {
 	params := QuicTransportParameters{
-		max_idle_timeout:                    30000
-		max_udp_payload_size:                1500
-		initial_max_data:                    1_000_000
-		initial_max_stream_data_bidi_local:  262144
+		max_idle_timeout: 30000
+		max_udp_payload_size: 1500
+		initial_max_data: 1_000_000
+		initial_max_stream_data_bidi_local: 262144
 		initial_max_stream_data_bidi_remote: 262144
-		initial_max_stream_data_uni:         262144
-		initial_max_streams_bidi:            100
-		initial_max_streams_uni:             100
-		ack_delay_exponent:                  3
-		max_ack_delay:                       25
-		active_connection_id_limit:          4
+		initial_max_stream_data_uni: 262144
+		initial_max_streams_bidi: 100
+		initial_max_streams_uni: 100
+		ack_delay_exponent: 3
+		max_ack_delay: 25
+		active_connection_id_limit: 4
 	}
 	encoded := encode_transport_parameters(params)!
 	decoded := decode_transport_parameters(encoded)!
@@ -40,7 +39,7 @@ fn test_transport_parameters_round_trip_bytes_fields() {
 	dcid := [u8(0x83), 0x94, 0xc8, 0xf0]
 	scid := [u8(0x01), 0x02, 0x03]
 	params := QuicTransportParameters{
-		initial_source_connection_id:       scid
+		initial_source_connection_id: scid
 		original_destination_connection_id: dcid
 	}
 	encoded := encode_transport_parameters(params)!
@@ -75,11 +74,11 @@ fn test_transport_parameters_omitted_fields_stay_none() {
 
 fn test_preferred_address_round_trip() {
 	pa := PreferredAddress{
-		ipv4_address:          [u8(192), 0, 2, 1]!
-		ipv4_port:             443
-		ipv6_address:          [u8(0x20), 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]!
-		ipv6_port:             443
-		connection_id:         [u8(0xaa), 0xbb, 0xcc]
+		ipv4_address: [u8(192), 0, 2, 1]!
+		ipv4_port: 443
+		ipv6_address: [u8(0x20), 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]!
+		ipv6_port: 443
+		connection_id: [u8(0xaa), 0xbb, 0xcc]
 		stateless_reset_token: []u8{len: 16, init: 0x42}
 	}
 	params := QuicTransportParameters{
@@ -99,7 +98,7 @@ fn test_preferred_address_round_trip() {
 
 fn test_encode_preferred_address_rejects_zero_length_connection_id() {
 	pa := PreferredAddress{
-		connection_id:         []u8{}
+		connection_id: []u8{}
 		stateless_reset_token: []u8{len: 16}
 	}
 	encode_preferred_address(pa) or {
@@ -117,7 +116,7 @@ fn test_encode_preferred_address_rejects_zero_length_connection_id() {
 // declared length.
 fn test_encode_preferred_address_rejects_overlong_connection_id() {
 	pa := PreferredAddress{
-		connection_id:         []u8{len: 256, init: 0xAB}
+		connection_id: []u8{len: 256, init: 0xAB}
 		stateless_reset_token: []u8{len: 16}
 	}
 	encode_preferred_address(pa) or {
@@ -149,8 +148,8 @@ fn test_decode_preferred_address_rejects_zero_length_connection_id() {
 // shape.
 fn test_encode_preferred_address_rejects_mismatched_address_port() {
 	pa_v4 := PreferredAddress{
-		ipv4_port:             8080 // nonzero port, but ipv4_address defaults to all-zero
-		connection_id:         [u8(1), 2, 3, 4]
+		ipv4_port: 8080 // nonzero port, but ipv4_address defaults to all-zero
+		connection_id: [u8(1), 2, 3, 4]
 		stateless_reset_token: []u8{len: 16}
 	}
 	encode_preferred_address(pa_v4) or {
@@ -163,8 +162,8 @@ fn test_encode_preferred_address_rejects_mismatched_address_port() {
 
 fn test_encode_preferred_address_rejects_mismatched_ipv6_address_port() {
 	pa_v6 := PreferredAddress{
-		ipv6_port:             443 // nonzero port, but ipv6_address defaults to all-zero
-		connection_id:         [u8(1), 2, 3, 4]
+		ipv6_port: 443 // nonzero port, but ipv6_address defaults to all-zero
+		connection_id: [u8(1), 2, 3, 4]
 		stateless_reset_token: []u8{len: 16}
 	}
 	encode_preferred_address(pa_v6) or {
@@ -201,7 +200,7 @@ fn test_decode_preferred_address_rejects_mismatched_address_port() {
 // 9000 §17.2) -- the same limit header.v's dcid/scid already enforce.
 fn test_encode_preferred_address_rejects_v1_cid_over_20_bytes() {
 	pa := PreferredAddress{
-		connection_id:         []u8{len: 21, init: 0xAB}
+		connection_id: []u8{len: 21, init: 0xAB}
 		stateless_reset_token: []u8{len: 16}
 	}
 	encode_preferred_address(pa) or {

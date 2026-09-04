@@ -87,15 +87,13 @@ pub fn (mut r QpackStreamRegistry) note_stream_opened(kind QpackStreamKind) ! {
 	match kind {
 		.encoder {
 			if r.seen_encoder {
-				return error_with_code('qpack: received a second encoder stream',
-					int(H3ErrorCode.stream_creation_error))
+				return error_with_code('qpack: received a second encoder stream', int(H3ErrorCode.stream_creation_error))
 			}
 			r.seen_encoder = true
 		}
 		.decoder {
 			if r.seen_decoder {
-				return error_with_code('qpack: received a second decoder stream',
-					int(H3ErrorCode.stream_creation_error))
+				return error_with_code('qpack: received a second decoder stream', int(H3ErrorCode.stream_creation_error))
 			}
 			r.seen_decoder = true
 		}

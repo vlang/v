@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 import crypto.ecdsa
@@ -54,8 +53,7 @@ fn conn_test_sign_certificate_verify(signed_content []u8) ![]u8 {
 		C.mbedtls_pk_free(&pk)
 	}
 	unsafe {
-		parse_ret := C.mbedtls_pk_parse_key(&pk, conn_test_key_pem.str, conn_test_key_pem.len + 1,
-			0, 0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+		parse_ret := C.mbedtls_pk_parse_key(&pk, conn_test_key_pem.str, conn_test_key_pem.len + 1, 0, 0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
 		if parse_ret != 0 {
 			return error('test: failed to parse RSA private key, mbedtls ret: ${parse_ret}')
 		}
@@ -63,8 +61,7 @@ fn conn_test_sign_certificate_verify(signed_content []u8) ![]u8 {
 	// pk_type 6 = MBEDTLS_PK_RSASSA_PSS, md_alg 9 = MBEDTLS_MD_SHA256.
 	mut sig := []u8{len: 600}
 	mut sig_len := usize(0)
-	ret := C.mbedtls_pk_sign_ext(6, &pk, 9, hash.data, usize(hash.len), sig.data, usize(sig.len),
-		&sig_len, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+	ret := C.mbedtls_pk_sign_ext(6, &pk, 9, hash.data, usize(hash.len), sig.data, usize(sig.len), &sig_len, C.mbedtls_ctr_drbg_random, &ctr_drbg)
 	if ret != 0 {
 		return error('test: mbedtls_pk_sign_ext failed, mbedtls ret: ${ret}')
 	}
@@ -189,24 +186,24 @@ fn conn_test_concat_bytes(a []u8, b []u8) []u8 {
 
 fn generous_transport_params() QuicTransportParameters {
 	return QuicTransportParameters{
-		initial_max_data:                    1_000_000
-		initial_max_stream_data_bidi_local:  100_000
+		initial_max_data: 1_000_000
+		initial_max_stream_data_bidi_local: 100_000
 		initial_max_stream_data_bidi_remote: 100_000
-		initial_max_stream_data_uni:         100_000
-		initial_max_streams_bidi:            10
-		initial_max_streams_uni:             10
+		initial_max_stream_data_uni: 100_000
+		initial_max_streams_bidi: 10
+		initial_max_streams_uni: 10
 	}
 }
 
 fn build_fake_long_header_packet(typ LongPacketType, dcid []u8, scid []u8, pn u64, payload []u8, keys QuicPacketProtectionKeys) !QuicDatagram {
 	pn_length := 2
 	h := QuicLongHeader{
-		typ:     typ
+		typ: typ
 		version: quic_v1
-		dcid:    dcid
-		scid:    scid
-		token:   []u8{}
-		length:  u64(pn_length) + u64(payload.len) + aead_tag_len
+		dcid: dcid
+		scid: scid
+		token: []u8{}
+		length: u64(pn_length) + u64(payload.len) + aead_tag_len
 	}
 	mut header := encode_long_header(h, 0, u8(pn_length - 1))!
 	header << [u8(pn >> 8), u8(pn)]
@@ -234,9 +231,9 @@ fn build_fake_one_rtt_packet(dcid []u8, pn u64, payload []u8, keys QuicPacketPro
 fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTransportParameters) !(&QuicConn, []u8, u64) {
 	mut now := u64(1000)
 	mut c, initial_dg := dial(DialParams{
-		server_name:          'example.com'
-		ca_bundle_pem:        conn_test_cert_pem
-		alpn_protocols:       ['h3']
+		server_name: 'example.com'
+		ca_bundle_pem: conn_test_cert_pem
+		alpn_protocols: ['h3']
 		transport_parameters: own_params
 	}, now)!
 	assert initial_dg.bytes.len >= min_initial_datagram_size
@@ -256,17 +253,14 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 		client_pub.free()
 	}
 	server_shared_secret := server_priv.derive_shared_secret(client_pub)!
-	server_hello_framed := conn_test_build_fake_server_hello(server_random,
-		server_ecdhe_public_bytes)!
+	server_hello_framed := conn_test_build_fake_server_hello(server_random, server_ecdhe_public_bytes)!
 
 	early_secret := derive_early_secret()!
 	ch_sh_hash := sha256.sum256(conn_test_concat_bytes(c.client_hello, server_hello_framed))
-	server_handshake_secrets := derive_handshake_secrets(early_secret, server_shared_secret,
-		ch_sh_hash)!
+	server_handshake_secrets := derive_handshake_secrets(early_secret, server_shared_secret, ch_sh_hash)!
 
 	sh_payload := encode_crypto_frame(0, server_hello_framed)!
-	sh_datagram := build_fake_long_header_packet(.initial, c.scid, server_initial_scid, 0,
-		sh_payload, c.initial_keys_server)!
+	sh_datagram := build_fake_long_header_packet(.initial, c.scid, server_initial_scid, 0, sh_payload, c.initial_keys_server)!
 	result1 := c.poll(sh_datagram.bytes, now)!
 	assert result1.events.len == 0
 	assert c.handshake.state() == .wait_encrypted_extensions
@@ -278,8 +272,7 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 	ee_params.original_destination_connection_id = c.original_dcid
 	ee_framed := conn_test_build_fake_encrypted_extensions(ee_params)!
 	ee_payload := encode_crypto_frame(0, ee_framed)!
-	ee_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 0,
-		ee_payload, hs_keys_server)!
+	ee_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 0, ee_payload, hs_keys_server)!
 	result2 := c.poll(ee_datagram.bytes, now)!
 	assert result2.events.len == 0
 	assert c.handshake.state() == .wait_certificate
@@ -298,20 +291,17 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 	c.handshake.certificate_transcript_hash = c.handshake.transcript_hash()
 	c.handshake.state = .wait_certificate_verify
 
-	signed_content := certificate_verify_signed_content(.server,
-		c.handshake.certificate_transcript_hash)
+	signed_content := certificate_verify_signed_content(.server, c.handshake.certificate_transcript_hash)
 	sig := conn_test_sign_certificate_verify(signed_content)!
 	cv_framed := conn_test_build_fake_certificate_verify(sig_scheme_rsa_pss_rsae_sha256, sig)!
 	cv_msg, _ := parse_handshake_message(cv_framed)!
 	c.handshake.process_certificate_verify(cv_msg, cv_framed)!
 	assert c.handshake.state() == .wait_finished
 
-	finished_verify_data := compute_finished_verify_data(server_handshake_secrets.server_secret,
-		c.handshake.transcript_hash())!
+	finished_verify_data := compute_finished_verify_data(server_handshake_secrets.server_secret, c.handshake.transcript_hash())!
 	finished_framed := encode_handshake_message(.finished, finished_verify_data)!
 	finished_payload := encode_crypto_frame(u64(ee_framed.len), finished_framed)!
-	finished_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 1,
-		finished_payload, hs_keys_server)!
+	finished_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 1, finished_payload, hs_keys_server)!
 	result3 := c.poll(finished_datagram.bytes, now)!
 	assert result3.events.len == 0
 	assert c.handshake.state() == .connected
@@ -321,8 +311,7 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 	server_app_keys := read_keys.current_keys
 	mut hs_done_payload := [u8(frame_type_handshake_done)]
 	hs_done_payload << [u8(0), 0, 0, 0]
-	hs_done_datagram := build_fake_one_rtt_packet(c.scid, 0, hs_done_payload, server_app_keys,
-		false)!
+	hs_done_datagram := build_fake_one_rtt_packet(c.scid, 0, hs_done_payload, server_app_keys, false)!
 	result4 := c.poll(hs_done_datagram.bytes, now)!
 	assert result4.events.any(it.kind == .handshake_confirmed)
 	assert c.state() == .established
@@ -336,13 +325,12 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 // -----------------------------------------------------------------------
 
 fn h3_test_conn() !(&QuicConn, &H3Conn, []u8, u64) {
-	mut c, server_initial_scid, now := drive_to_established(generous_transport_params(),
-		generous_transport_params())!
+	mut c, server_initial_scid, now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	mut h := new_h3_conn(mut c, H3ConnParams{
-		settings:                     [
+		settings: [
 			H3Setting{
 				identifier: qpack_settings_max_table_capacity_id
-				value:      4096
+				value: 4096
 			},
 		]
 		own_qpack_max_table_capacity: 4096
@@ -471,7 +459,7 @@ fn test_h3_conn_qpack_glue_loop_end_to_end_with_section_ack() {
 	set_cap_instr := peer_encoder.set_capacity(4096, 4096)!
 	encoded := peer_encoder.encode_field_section(0, [
 		QpackFieldLine{
-			name:  'x-test'
+			name: 'x-test'
 			value: 'hello'
 		},
 	])!
@@ -526,14 +514,14 @@ fn test_h3_conn_1xx_interim_response_is_discarded_not_misdelivered_as_final_or_t
 
 	interim := peer_encoder.encode_field_section(stream_id, [
 		QpackFieldLine{
-			name:  ':status'
+			name: ':status'
 			value: '103'
 		},
 	])!
 	assert interim.encoder_instructions.len == 0, 'a static-table-only reference must not need an encoder instruction'
 	final := peer_encoder.encode_field_section(stream_id, [
 		QpackFieldLine{
-			name:  ':status'
+			name: ':status'
 			value: '200'
 		},
 	])!
@@ -572,7 +560,7 @@ fn test_h3_conn_prunes_request_stream_state_once_finalized() {
 
 	final := peer_encoder.encode_field_section(stream_id, [
 		QpackFieldLine{
-			name:  ':status'
+			name: ':status'
 			value: '200'
 		},
 	])!
@@ -672,7 +660,7 @@ fn test_h3_conn_blocked_headers_retry_after_delayed_encoder_instruction() {
 	set_cap_instr := peer_encoder.set_capacity(4096, 4096)!
 	encoded := peer_encoder.encode_field_section(0, [
 		QpackFieldLine{
-			name:  'x-blocked'
+			name: 'x-blocked'
 			value: 'later'
 		},
 	])!
@@ -699,8 +687,7 @@ fn test_h3_conn_blocked_headers_retry_after_delayed_encoder_instruction() {
 
 	// Deliver the previously-withheld insert instruction as a continuation
 	// of the SAME encoder stream, in a LATER poll() call.
-	insert_frame := server_uni_stream_continuation_frame(1, u64(cap_bytes.len),
-		encoded.encoder_instructions)!
+	insert_frame := server_uni_stream_continuation_frame(1, u64(cap_bytes.len), encoded.encoder_instructions)!
 	insert_datagram := build_fake_one_rtt_packet(c.scid, 2, insert_frame, read_keys(mut c), false)!
 	unblocked_result := h.poll(insert_datagram.bytes, now)!
 	headers_ev := unblocked_result.events.filter(it.kind == .response_headers)

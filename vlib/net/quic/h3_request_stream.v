@@ -68,8 +68,7 @@ pub fn (mut s H3RequestStreamState) note_frame_kind(frame_is_headers bool, frame
 	match s.phase {
 		.awaiting_response_headers {
 			if !frame_is_headers {
-				return error_with_code('h3: first frame on a request stream was not HEADERS',
-					int(H3ErrorCode.frame_unexpected))
+				return error_with_code('h3: first frame on a request stream was not HEADERS', int(H3ErrorCode.frame_unexpected))
 			}
 			// Phase is deliberately NOT advanced here: whether this HEADERS
 			// block is the final response or an RFC 9110 §15.2 1xx interim
@@ -90,17 +89,14 @@ pub fn (mut s H3RequestStreamState) note_frame_kind(frame_is_headers bool, frame
 				return
 			}
 			if !frame_is_data {
-				return error_with_code('h3: unexpected frame type on a request stream mid-body',
-					int(H3ErrorCode.frame_unexpected))
+				return error_with_code('h3: unexpected frame type on a request stream mid-body', int(H3ErrorCode.frame_unexpected))
 			}
 		}
 		.trailers_received {
-			return error_with_code('h3: received a frame on a request stream after its trailing HEADERS',
-				int(H3ErrorCode.frame_unexpected))
+			return error_with_code('h3: received a frame on a request stream after its trailing HEADERS', int(H3ErrorCode.frame_unexpected))
 		}
 		.done {
-			return error_with_code('h3: received a frame on a request stream after it ended',
-				int(H3ErrorCode.frame_unexpected))
+			return error_with_code('h3: received a frame on a request stream after it ended', int(H3ErrorCode.frame_unexpected))
 		}
 	}
 }
