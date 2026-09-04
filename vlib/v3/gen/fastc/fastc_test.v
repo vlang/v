@@ -675,6 +675,9 @@ fn test_fastc_tcc_job_count_respects_parallel_controls() {
 	os.unsetenv('V3_FASTC_NO_PARALLEL')
 	mut prefs := pref.new_preferences()
 	assert fastc_tcc_job_count(prefs) == 4
+	os.setenv('VJOBS', '100', true)
+	assert fastc_tcc_job_count(prefs) == 16
+	os.setenv('VJOBS', '4', true)
 	prefs.no_parallel = true
 	assert fastc_tcc_job_count(prefs) == 1
 	prefs.no_parallel = false
@@ -689,6 +692,24 @@ fn test_fastc_unit_group_starts_accounts_for_prepended_text() {
 	assert fastc_unit_group_starts(unit_sizes, 2, 250, 0) == [0, 2, 4]
 	// Common text is part of every later unit too.
 	assert fastc_unit_group_starts([100, 100, 100, 100], 2, 0, 300) == [0, 3, 4]
+}
+
+fn test_fastc_unit_compile_order_starts_largest_cache_misses_first() {
+	root := os.join_path_single(os.vtmp_dir(), 'fastc_unit_order_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	paths := [os.join_path_single(root, 'small.c'), os.join_path_single(root, 'cached.c'),
+		os.join_path_single(root, 'large.c'), os.join_path_single(root, 'medium.c')]
+	for i, size in [10, 100, 80, 40] {
+		os.write_file(paths[i], 'x'.repeat(size)) or { panic(err) }
+	}
+	prepared := FastcPreparedUnits{
+		entries: [FastcUnitCacheEntry{}, FastcUnitCacheEntry{ hit: true }, FastcUnitCacheEntry{},
+			FastcUnitCacheEntry{}]
+	}
+	assert fastc_unit_compile_order(paths, prepared) == [2, 3, 0]
 }
 
 fn test_fastc_link_cache_restores_an_independent_executable() {
@@ -3753,6 +3774,8 @@ fn main() {
 	assert c_source.contains('static int answer;'), c_source
 	assert c_source.contains('\tanswer = 42;'), c_source
 	assert c_source.contains('v_fastc_init_globals();'), c_source
+	assert c_source.contains('void v_fastc_init_globals(void) {'), c_source
+	assert !c_source.contains('static void v_fastc_init_globals'), c_source
 }
 
 fn test_script_main_initializes_globals_before_statements() {
@@ -3769,7 +3792,7 @@ fn init() {
 println(answer)
 ', 'initialized_script_global.v', prefs) or { panic(err) }
 	main_source := c_source.all_after('int main(void) {')
-	startup_source := c_source.all_after('static void v_fastc_init_globals(void) {')
+	startup_source := c_source.all_after('void v_fastc_init_globals(void) {')
 	initializer := startup_source.index('answer = 42;') or { -1 }
 	module_initializer := startup_source.index('\n\tinit();') or { -1 }
 	startup_call := main_source.index('v_fastc_init_globals();') or { -1 }
@@ -3961,7 +3984,7 @@ pub fn value() int {
 	prefs.module_search_paths = [root]
 	c_source := generate_files([main_file], prefs) or { panic(err) }
 	main_source := c_source.all_after('int main(void) {')
-	startup_source := c_source.all_after('static void v_fastc_init_globals(void) {')
+	startup_source := c_source.all_after('void v_fastc_init_globals(void) {')
 	dependency_initializer := startup_source.index('dep__state = 1;') or { -1 }
 	dependency_init := startup_source.index('\tdep__init();') or { -1 }
 	importer_initializer := startup_source.index('main__copied = dep__value();') or { -1 }
@@ -4040,7 +4063,8 @@ pub fn ping() {}
 	mut prefs := pref.new_preferences()
 	prefs.module_search_paths = [root]
 	c_source := generate_files([main_file], prefs) or { panic(err) }
-	cleanup_source := c_source.all_after('static void v_fastc_cleanup_modules(void) {')
+	assert !c_source.contains('static void v_fastc_cleanup_modules'), c_source
+	cleanup_source := c_source.all_after('void v_fastc_cleanup_modules(void) {')
 	main_cleanup := cleanup_source.index('\n\tcleanup();') or { -1 }
 	dependency_cleanup := cleanup_source.index('\n\tdep__cleanup();') or { -1 }
 	assert main_cleanup >= 0, c_source
@@ -4161,12 +4185,12 @@ pub fn ping() {}
 	}
 	assert header.import_order == ['zed', 'alpha']
 	c_source := generate_files([main_file], prefs) or { panic(err) }
-	startup_source := c_source.all_after('static void v_fastc_init_globals(void) {')
+	startup_source := c_source.all_after('void v_fastc_init_globals(void) {')
 	zed_init := startup_source.index('\tzed__init();') or { -1 }
 	alpha_init := startup_source.index('\talpha__init();') or { -1 }
 	assert zed_init >= 0, c_source
 	assert alpha_init > zed_init, c_source
-	cleanup_source := c_source.all_after('static void v_fastc_cleanup_modules(void) {')
+	cleanup_source := c_source.all_after('void v_fastc_cleanup_modules(void) {')
 	alpha_cleanup := cleanup_source.index('\talpha__cleanup();') or { -1 }
 	zed_cleanup := cleanup_source.index('\tzed__cleanup();') or { -1 }
 	assert alpha_cleanup >= 0, c_source

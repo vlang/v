@@ -220,10 +220,10 @@ the lifecycle hooks or the non-body pieces refers to, which the source-level nam
 reachability keeps: each worker records its definitions and the mangled names they mention, and
 the assembly cuts the unreachable spans out of the pieces (about 9% of the self-host C).
 
-The TinyCC step itself is split: `fastc_write_c_units` cuts the pieces into up to 8
+The TinyCC step itself is split: `fastc_write_c_units` cuts the pieces into up to 16
 translation units (the shared head of typedefs, prototypes and runtime in every unit, the
-dispatch tables, lifecycle functions and `main` only in the first, the file bodies grouped by
-size; the globals are definitions in the first unit and `extern` declarations in the others),
+dispatch tables and lifecycle functions only in the first, the file bodies grouped by size; the
+globals are definitions in the first unit and `extern` declarations in the others),
 `fastc_compile_c_units` compiles them with concurrent `tcc -c` processes started through
 `posix_spawn` (forking the large compiler process costs more), and one `tcc` call links the
 objects (`VJOBS=1`, `V3_FASTC_NO_PARALLEL=1`, or `-no-parallel` keeps the single-file build; both

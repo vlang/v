@@ -14,11 +14,9 @@ mut:
 // the first compile that failed.
 pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string, prepared FastcPreparedUnits) ![]string {
 	mut compiles := []FastcUnitCompile{cap: unit_paths.len}
-	for i, unit_path in unit_paths {
+	for i in fastc_unit_compile_order(unit_paths, prepared) {
+		unit_path := unit_paths[i]
 		entry := prepared.entries[i]
-		if entry.hit {
-			continue
-		}
 		object := entry.object
 		mut args := base_args.clone()
 		args << ['-c', unit_path, '-o', object]

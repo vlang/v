@@ -2256,11 +2256,11 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	fastc_collect_c_piece_ranges(mut pieces, prototype_pieces, kept_proto_ranges)
 	prototype_end := pieces.len
 	if startup_initializers.len > 0 {
-		pieces << 'static void v_fastc_init_globals(void);'
+		pieces << 'void v_fastc_init_globals(void);'
 		pieces << '\n'
 	}
 	if module_cleanup_calls.len > 0 {
-		pieces << 'static void v_fastc_cleanup_modules(void);'
+		pieces << 'void v_fastc_cleanup_modules(void);'
 		pieces << '\n'
 	}
 	pieces << '\n'
@@ -2279,7 +2279,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	pieces << fastc_piece(interface_dispatches)
 	if startup_initializers.len > 0 {
-		pieces << 'static void v_fastc_init_globals(void) {'
+		pieces << 'void v_fastc_init_globals(void) {'
 		pieces << '\n'
 		pieces << fastc_piece(startup_initializers)
 		pieces << '}'
@@ -2287,7 +2287,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		pieces << '\n'
 	}
 	if module_cleanup_calls.len > 0 {
-		pieces << 'static void v_fastc_cleanup_modules(void) {'
+		pieces << 'void v_fastc_cleanup_modules(void) {'
 		pieces << '\n'
 		for cleanup_call in module_cleanup_calls {
 			pieces << '\t${cleanup_call}();'
@@ -2479,8 +2479,8 @@ fn fastc_parallel_worker_limit(prefs &pref.Preferences) int {
 // program's translation units with.
 pub fn fastc_tcc_job_count(prefs &pref.Preferences) int {
 	mut jobs := fastc_parallel_worker_limit(prefs)
-	if jobs > 18 {
-		jobs = 18
+	if jobs > 16 {
+		jobs = 16
 	}
 	if jobs < 1 {
 		jobs = 1
@@ -2492,7 +2492,7 @@ pub fn fastc_tcc_job_count(prefs &pref.Preferences) int {
 // for the C text prepended to each translation unit. The first unit also owns
 // the runtime/startup/main definitions, so balancing only the bodies makes it
 // the slowest TinyCC job. Dynamic programming finds the partition whose
-// largest emitted source is smallest; there are at most 18 groups and a few
+// largest emitted source is smallest; there are at most 16 groups and a few
 // hundred source files, so this costs much less than writing one unit.
 fn fastc_unit_group_starts(unit_sizes []int, groups int, first_overhead int, shared_overhead int) []int {
 	unit_count := unit_sizes.len
@@ -2684,6 +2684,31 @@ pub struct FastcPreparedUnits {
 pub:
 	objects   []string
 	cache_key string
+}
+
+// fastc_unit_compile_order returns the indexes of uncached C units largest
+// first. TinyCC processes start one at a time, so launching longer jobs first
+// reduces the time spent waiting for the final unit.
+fn fastc_unit_compile_order(unit_paths []string, prepared FastcPreparedUnits) []int {
+	mut order := []int{cap: unit_paths.len}
+	mut sizes := []u64{cap: unit_paths.len}
+	for i, path in unit_paths {
+		if prepared.entries[i].hit {
+			continue
+		}
+		size := os.file_size(path)
+		order << i
+		sizes << size
+		mut at := order.len - 1
+		for at > 0 && sizes[at - 1] < size {
+			order[at] = order[at - 1]
+			sizes[at] = sizes[at - 1]
+			at--
+		}
+		order[at] = i
+		sizes[at] = size
+	}
+	return order
 }
 
 fn fastc_unit_cache_entry(unit_path string, configuration string, cache_dir string) FastcUnitCacheEntry {
