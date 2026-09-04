@@ -20,7 +20,7 @@ jobs:
         run: make -j4 && ./v symlink
 
       - name: Run V benchmark and save output
-        run: (echo '```txt'; v -prod crun vlib/json2/tests/bench.v; echo '```') > vlib/json2/tests/bench_out.md
+        run: (echo '```txt'; v -prod -w crun vlib/json2/tests/bench.v; echo '```') > vlib/json2/tests/bench_out.md
 
       - name: Upload result file
         uses: actions/upload-artifact@v7

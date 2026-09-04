@@ -1268,6 +1268,16 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 				return selector_type
 			}
 		}
+		if iter_node.kind == .call {
+			concrete_call_type := t.normalize_type_alias(t.concrete_generic_call_return_type(iter_id,
+				iter_node))
+			concrete_payload := for_iter_payload_type(concrete_call_type)
+			if concrete_payload.len > 0 && !for_iter_type_has_generic_placeholder(concrete_payload)
+				&& for_iter_type_is_container(concrete_payload) {
+				t.set_node_typ(int(iter_id), concrete_call_type)
+				return concrete_payload
+			}
+		}
 		checker_type := t.raw_checker_node_type(iter_id)
 		if checker_type.len > 0 {
 			checker_payload := for_iter_payload_type(checker_type)

@@ -127,6 +127,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 	scan.init(file, source)
 	mut brace_depth := 0
 	mut next_declaration_is_enabled := true
+	mut next_declaration_is_c_extern := false
 	mut previous_tok := token.Token.unknown
 	mut skip_index := 0
 	mut tok := scan.scan()
@@ -135,6 +136,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 			attribute := fastc_scan_declaration_attribute(mut scan, path, prefs)!
 			tok = attribute.tok
 			next_declaration_is_enabled = next_declaration_is_enabled && attribute.is_enabled
+			next_declaration_is_c_extern = next_declaration_is_c_extern || attribute.is_c_extern
 			continue
 		}
 		if tok == .key_type && brace_depth == 0 {
@@ -377,6 +379,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 				last_parameter_is_params: fixed_parameter_count > 0 && fastc_parameter_is_params_struct(parameter_types.last(), params_structs)
 				is_public: is_public || is_c_function
 				is_disabled: !next_declaration_is_enabled
+				is_c_extern: is_c_function && next_declaration_is_c_extern
 				module_name: header.module_name
 				path: path
 			}
@@ -388,17 +391,20 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 					}
 					if previous.path.ends_with('.c.v') {
 						next_declaration_is_enabled = true
+						next_declaration_is_c_extern = false
 						continue
 					}
 				}
 			}
 			functions[function_key] = signature
 			next_declaration_is_enabled = true
+			next_declaration_is_c_extern = false
 			continue
 		}
 		if brace_depth == 0 && tok in [.key_struct, .key_enum, .key_interface, .key_type, .key_union,
 			.key_const, .key_global] {
 			next_declaration_is_enabled = true
+			next_declaration_is_c_extern = false
 		}
 		if tok == .lcbr && brace_depth == 0 {
 			skipped, next_skip := fastc_skip_recorded_body(mut scan, skips, skip_index)
@@ -554,6 +560,9 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 		'new_array_from_c_array': true
 		'string_plus_many':       true
 		'v_fixed_index':          true
+		// `m1 == m2` lowers to a `builtin__map_map_eq` call in generated C, so no source
+		// `.map_map_eq(` reference surfaces; seed it so it survives reachability pruning.
+		'map_map_eq':             true
 	}
 	for name in top_level_references.keys() {
 		used[name] = true
@@ -1403,6 +1412,33 @@ fn fastc_map_key_value_types(typ string) ?(string, string) {
 	return none
 }
 
+fn fastc_declared_map_key_value_types(typ string, declared_kinds map[string]FastcDeclaredTypeKind) ?(string, string) {
+	base := typ.trim_right('*')
+	if !base.starts_with('Map_') {
+		return none
+	}
+	payload := base['Map_'.len..]
+	mut matched_key := ''
+	mut matched_prefix := ''
+	for type_key, kind in declared_kinds {
+		// Map keys may be enums or aliases of scalar key types. Choose the longest
+		// matching C spelling because qualified type names can share prefixes.
+		if kind !in [.enum_, .alias_] {
+			continue
+		}
+		c_type := fastc_c_declared_type_name(type_key)
+		prefix := '${fastc_composite_type_part(c_type)}_'
+		if payload.starts_with(prefix) && prefix.len > matched_prefix.len {
+			matched_key = c_type
+			matched_prefix = prefix
+		}
+	}
+	if matched_key == '' {
+		return none
+	}
+	return matched_key, fastc_decode_map_value_type(payload[matched_prefix.len..])
+}
+
 fn fastc_decode_map_value_type(encoded string) string {
 	// A trailing `_ptr` on a composite value can belong to its nested element
 	// type (`map[string][]&T` -> `Map_string_Array_T_ptr`), not to the map
@@ -1417,28 +1453,7 @@ fn (g &Parser) map_key_value_types(typ string) ?(string, string) {
 	if key_type, value_type := fastc_map_key_value_types(typ) {
 		return key_type, value_type
 	}
-	base := typ.trim_right('*')
-	if !base.starts_with('Map_') {
-		return none
-	}
-	payload := base['Map_'.len..]
-	mut matched_key := ''
-	mut matched_prefix := ''
-	for type_key, kind in g.declared_kinds {
-		if kind != .enum_ {
-			continue
-		}
-		c_type := g.declared_type_c_names[type_key] or { fastc_c_declared_type_name(type_key) }
-		prefix := '${fastc_composite_type_part(c_type)}_'
-		if payload.starts_with(prefix) && prefix.len > matched_prefix.len {
-			matched_key = c_type
-			matched_prefix = prefix
-		}
-	}
-	if matched_key == '' {
-		return none
-	}
-	return matched_key, fastc_decode_map_value_type(payload[matched_prefix.len..])
+	return fastc_declared_map_key_value_types(typ, g.declared_kinds)
 }
 
 fn fastc_register_composite_type(typ string, mut composite_types map[string]bool) {

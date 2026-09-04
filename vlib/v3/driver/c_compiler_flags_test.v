@@ -3,6 +3,11 @@ module driver
 import os
 import v3.pref
 
+fn test_input_is_cmd_v_accepts_relative_entry_file() {
+	assert input_is_cmd_v('cmd/v')
+	assert input_is_cmd_v('cmd/v/v.v')
+}
+
 fn test_v3_tcc_backtrace_enabled() {
 	assert !v3_tcc_backtrace_enabled('macos', 'arm64', false)
 	assert v3_tcc_backtrace_enabled('macos', 'amd64', false)

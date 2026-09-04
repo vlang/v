@@ -77,6 +77,21 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 				typ: signature.return_type
 			}
 		}
+		// `f(x, ...arr)` spreads an existing array into the variadic parameter: the array itself
+		// is the variadic argument, so pass it directly rather than packing its `...` token into a
+		// C array literal.
+		if call_args.len == fixed_arguments + 1 && call_args[fixed_arguments].len >= 2 && call_args[fixed_arguments][0].tok == .ellipsis {
+			mut c_arguments := []string{cap: fixed_arguments + 1}
+			for argument_index in 0 .. fixed_arguments {
+				c_arguments << g.render_call_argument_expression(call_args[argument_index], signature.parameter_types[argument_index]) or { return none }
+			}
+			spread := g.render_call_argument_expression(call_args[fixed_arguments][1..], variadic_type) or { return none }
+			c_arguments << spread
+			return FastcRenderedExpression{
+				source: '${fastc_c_function_name_for_key(function_key)}(${c_arguments.join(',')})'
+				typ: signature.return_type
+			}
+		}
 		mut rendered_arguments := []string{}
 		for argument_index, argument in call_args {
 			expected_type := if argument_index < fixed_arguments {
@@ -151,14 +166,68 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		}
 		// `mod.func()` is a module-qualified call; skip method rendering. But a FIELD named
 		// like an imported module (`recv.mod.method()`, e.g. `h.time.elapsed()`) is a real
-		// method call — only skip when `mod` is a bare module ref, not preceded by a `.`.
-		if tokens[i - 2].tok == .name && (tokens[i - 2].lit in g.imports || tokens[i - 2].lit == 'C') && (i < 3 || tokens[i - 3].tok != .dot) {
+		// method call — only skip when `mod` is a bare module ref, not preceded by a `.`. A LOCAL
+		// of the module's name (`for token in … { token.starts_with(…) }`) shadows the module.
+		if tokens[i - 2].tok == .name && (tokens[i - 2].lit in g.imports || tokens[i - 2].lit == 'C') && tokens[i - 2].lit !in g.locals && (i < 3 || tokens[i - 3].tok != .dot) {
 			continue
 		}
 		receiver_start := fastc_method_receiver_start(tokens, i - 1)
 		receiver_tokens := tokens[receiver_start..i - 1]
-		receiver_type := g.infer_expression_type(receiver_tokens) or { continue }
-		if tokens[i].lit == 'contains' && fastc_trim_pointer_suffix(fastc_normalize_inferred_type(receiver_type)).starts_with('Array_') {
+		mut receiver_type := g.infer_expression_type(receiver_tokens) or { '' }
+		if receiver_type == '' {
+			// An imported struct reached through an active sum-type smartcast can
+			// lose its member type in generic expression inference. The dedicated
+			// member walk still has the narrowed receiver and field metadata.
+			receiver_type = g.infer_member_access_type(receiver_tokens, 0, receiver_tokens.len) or {
+				continue
+			}
+		}
+		// A method defined on the whole sum type (`fn (e Expr) is_blank_ident()`) stays
+		// callable after the value is narrowed to a variant. When the narrowed type lacks the
+		// method but the receiver is a bare local whose declared (un-narrowed) type has it,
+		// dispatch on the un-narrowed value instead of the smart-cast variant pointer.
+		mut unnarrowed_receiver := ''
+		if receiver_tokens.len == 1 && receiver_tokens[0].tok == .name && receiver_tokens[0].lit in g.member_smartcasts {
+			narrowed_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
+			if narrowed_key !in g.functions && narrowed_key !in g.mono_functions {
+				if local := g.locals[receiver_tokens[0].lit] {
+					original_key, _ := g.resolve_method(local.typ, tokens[i].lit)
+					if original_key in g.functions || original_key in g.mono_functions {
+						receiver_type = local.typ
+						unnarrowed_receiver = g.resolved_expression_name(receiver_tokens[0].lit, .unknown)
+					}
+				}
+			}
+		}
+		// A bare-local `is` smart-cast shadows the local with the narrowed variant value, whose
+		// declared C name still holds the boxed original. A method named like a variant field but
+		// defined on the whole sum type (`ast.Ident` has a `pos` field; `ast.Expr` has a `pos()`
+		// method) is not on the variant, so dispatch it on the boxed original C variable.
+		if unnarrowed_receiver == '' && receiver_tokens.len == 1 && receiver_tokens[0].tok == .name {
+			if local := g.locals[receiver_tokens[0].lit] {
+				if local.smartcast_origin_type != '' && local.smartcast_origin_type != receiver_type {
+					narrowed_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
+					if narrowed_key !in g.functions && narrowed_key !in g.mono_functions {
+						origin_key, _ := g.resolve_method(local.smartcast_origin_type, tokens[i].lit)
+						if origin_key in g.functions || origin_key in g.mono_functions {
+							receiver_type = local.smartcast_origin_type
+							unnarrowed_receiver = fastc_c_identifier(receiver_tokens[0].lit)
+						}
+					}
+				}
+			}
+		}
+		contains_method_key, _ := g.resolve_method(receiver_type, 'contains')
+		// The generic `array.contains` is a compiler-magic builtin with no emitted body, so it must
+		// still be lowered inline; only a genuine USER-defined `contains` (a non-builtin module)
+		// suppresses the inline. Without this the call links against an undefined builtin__array_contains.
+		mut array_has_user_contains := contains_method_key in g.functions || contains_method_key in g.mono_functions
+		if sig := g.functions[contains_method_key] {
+			if sig.module_name == 'builtin' {
+				array_has_user_contains = false
+			}
+		}
+		if tokens[i].lit == 'contains' && !array_has_user_contains && fastc_trim_pointer_suffix(fastc_normalize_inferred_type(receiver_type)).starts_with('Array_') {
 			call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 			call_args := fastc_call_arguments(tokens, i + 1, call_end) or { continue }
 			if call_args.len != 1 {
@@ -190,6 +259,89 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				changed = true
 			}
 			continue
+		}
+		if tokens[i].lit in ['index', 'last_index'] && fastc_trim_pointer_suffix(fastc_normalize_inferred_type(receiver_type)).starts_with('Array_') {
+			element_type := g.array_element_type(receiver_type) or { '' }
+			if fastc_trim_pointer_suffix(g.underlying_alias_type(element_type)) == 'string' {
+				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
+				call_args := fastc_call_arguments(tokens, i + 1, call_end) or { continue }
+				if call_args.len != 1 {
+					continue
+				}
+				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
+				argument := g.render_call_argument_expression(call_args[0], element_type) or {
+					continue
+				}
+				access := if receiver_type.ends_with('*') { '->' } else { '.' }
+				loop_init := if tokens[i].lit == 'last_index' {
+					'__v_fastc_index_collection${access}len - 1'
+				} else {
+					'0'
+				}
+				loop_condition := if tokens[i].lit == 'last_index' {
+					'__v_fastc_index_cursor >= 0'
+				} else {
+					'__v_fastc_index_cursor < __v_fastc_index_collection${access}len'
+				}
+				loop_step := if tokens[i].lit == 'last_index' {
+					'__v_fastc_index_cursor--'
+				} else {
+					'__v_fastc_index_cursor++'
+				}
+				call_source := '({ ${element_type} __v_fastc_index_item = (${argument}); __typeof__((${receiver.source})) __v_fastc_index_collection = (${receiver.source}); int __v_fastc_index_result = -1; for (int __v_fastc_index_cursor = ${loop_init}; ${loop_condition}; ${loop_step}) { if (builtin__string_eq(__v_fastc_index_item, ((${element_type} *)__v_fastc_index_collection${access}data)[__v_fastc_index_cursor])) { __v_fastc_index_result = __v_fastc_index_cursor; break; } } __v_fastc_index_result; })'
+				if receiver_start == 0 && call_end == tokens.len - 1 {
+					return FastcRenderedExpression{
+						source: call_source
+						typ: 'int'
+					}
+				}
+				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
+					continue
+				}
+				if rendered.contains(raw_call) {
+					rendered = rendered.replace(raw_call, call_source)
+					changed = true
+				}
+				continue
+			}
+		}
+		if tokens[i].lit == 'wait' && receiver_type.trim_right('*').starts_with('Array_') {
+			element := g.array_element_type(receiver_type) or { '' }
+			if element.starts_with(fastc_thread_type_prefix) {
+				// `[]thread T`.wait() joins every handle and gathers their `[]T` results.
+				wait_end := fastc_matching_rpar(tokens, i + 1) or { continue }
+				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
+				value_type := g.thread_value_types[element] or { continue }
+				result_type := fastc_array_c_type(value_type)
+				mut w := unsafe { &Parser(g) }
+				fastc_register_composite_type(result_type, mut w.composite_types)
+				wait_helper := g.fastc_unclaimed_generated_name(fastc_thread_wait_name(element))
+				recv_src := if receiver_type.ends_with('*') {
+					'*(${receiver.source})'
+				} else {
+					receiver.source
+				}
+				wait_all := '({ __typeof__((${recv_src})) __v_fastc_threads = (${recv_src}); ${result_type} __v_fastc_results = (${result_type})builtin____new_array(0, __v_fastc_threads.len, sizeof(${value_type})); for (int __v_fastc_ti = 0; __v_fastc_ti < __v_fastc_threads.len; __v_fastc_ti++) { ${value_type} __v_fastc_tv = ${wait_helper}(((${element} *)__v_fastc_threads.data)[__v_fastc_ti]); builtin__array_push((array *)&__v_fastc_results, &__v_fastc_tv); } __v_fastc_results; })'
+				if receiver_start == 0 && wait_end == tokens.len - 1 {
+					return FastcRenderedExpression{
+						source: wait_all
+						typ: result_type
+					}
+				}
+				mut wait_needle := '${receiver.source}.wait()'
+				if !rendered.contains(wait_needle) {
+					raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { '' }
+					raw_needle := '${raw_receiver}.wait()'
+					if raw_receiver != '' && rendered.contains(raw_needle) {
+						wait_needle = raw_needle
+					}
+				}
+				if rendered.contains(wait_needle) {
+					rendered = rendered.replace(wait_needle, wait_all)
+					changed = true
+				}
+				continue
+			}
 		}
 		if tokens[i].lit == 'wait' && receiver_type.starts_with(fastc_thread_type_prefix) {
 			// `.wait()` joins a spawned thread (see spawn.v); it has no entry in
@@ -232,6 +384,123 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				helper := w.fastc_default_struct_str_name(receiver_type.trim_right('*')) or {
 					continue
 				}
+				// A member smart-cast reads the narrowed struct through a variant pointer, so its
+				// rendered source is a `T*` even though the inferred receiver type is the value
+				// `T`; the by-value default `str(T)` helper then needs an explicit deref.
+				receiver_is_pointer := receiver_type.ends_with('*') || (g.selfhost && g.expression_uses_member_smartcast(receiver_tokens))
+				receiver_argument := if receiver_is_pointer {
+					'*(${receiver.source})'
+				} else {
+					receiver.source
+				}
+				call_source := '${helper}(${receiver_argument})'
+				if receiver_start == 0 && call_end == tokens.len - 1 {
+					return FastcRenderedExpression{
+						source: call_source
+						typ: 'string'
+					}
+				}
+				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
+					continue
+				}
+				if rendered.contains(raw_call) {
+					rendered = rendered.replace(raw_call, call_source)
+					changed = true
+				}
+				continue
+			}
+			if tokens[i].lit == 'str' && g.declared_kinds[g.semantic_type_key(receiver_type)] == .enum_ {
+				// `enum_val.str()`: reuse the generated `v_fastc_enum_str_<T>` helper.
+				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
+				if call_end != i + 2 {
+					continue
+				}
+				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
+				enum_c := fastc_normalize_inferred_type(receiver_type).trim_right('*')
+				receiver_argument := if receiver_type.ends_with('*') {
+					'*(${receiver.source})'
+				} else {
+					receiver.source
+				}
+				call_source := 'v_fastc_enum_str_${enum_c}(${receiver_argument})'
+				if receiver_start == 0 && call_end == tokens.len - 1 {
+					return FastcRenderedExpression{
+						source: call_source
+						typ: 'string'
+					}
+				}
+				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
+					continue
+				}
+				if rendered.contains(raw_call) {
+					rendered = rendered.replace(raw_call, call_source)
+					changed = true
+				}
+				continue
+			}
+			if tokens[i].lit == 'str' && receiver_type.trim_right('*').starts_with('Array_') {
+				// `arr.str()`: reuse the same generated array formatter as `${arr}`.
+				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
+				if call_end != i + 2 {
+					continue
+				}
+				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
+				mut w := unsafe { &Parser(g) }
+				helper := w.fastc_array_str_name(receiver_type) or { continue }
+				receiver_argument := if receiver_type.ends_with('*') {
+					'*(${receiver.source})'
+				} else {
+					receiver.source
+				}
+				call_source := '${helper}(${receiver_argument})'
+				if receiver_start == 0 && call_end == tokens.len - 1 {
+					return FastcRenderedExpression{
+						source: call_source
+						typ: 'string'
+					}
+				}
+				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
+					continue
+				}
+				if rendered.contains(raw_call) {
+					rendered = rendered.replace(raw_call, call_source)
+					changed = true
+				}
+				continue
+			}
+			if tokens[i].lit == 'free' {
+				// A struct's auto-generated `free()` has no FastC method; under `-gc none`
+				// it is a no-op. (Real `free()` methods — arrays, strings, user types —
+				// resolve above and never reach here.)
+				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
+				if call_end != i + 2 {
+					continue
+				}
+				call_source := '((void)0)'
+				if receiver_start == 0 && call_end == tokens.len - 1 {
+					return FastcRenderedExpression{
+						source: call_source
+						typ: 'void'
+					}
+				}
+				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
+					continue
+				}
+				if rendered.contains(raw_call) {
+					rendered = rendered.replace(raw_call, call_source)
+					changed = true
+				}
+				continue
+			}
+			if tokens[i].lit == 'type_name' && g.is_boxed_type(fastc_normalize_inferred_type(receiver_type)) {
+				// `x.type_name()` on a sum type / interface: switch on the runtime tag.
+				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
+				if call_end != i + 2 {
+					continue
+				}
+				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
+				mut w := unsafe { &Parser(g) }
+				helper := w.fastc_sumtype_type_name_helper(receiver_type) or { continue }
 				receiver_argument := if receiver_type.ends_with('*') {
 					'*(${receiver.source})'
 				} else {
@@ -330,7 +599,14 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 			continue
 		}
-		receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
+		receiver := if unnarrowed_receiver != '' {
+			FastcRenderedExpression{
+				source: unnarrowed_receiver
+				typ: receiver_type
+			}
+		} else {
+			g.render_method_receiver_expression(receiver_tokens) or { continue }
+		}
 		mut receiver_source := receiver.source
 		mut separator := if receiver_tokens.len == 1 && receiver_type.ends_with('*') {
 			'->'
@@ -340,9 +616,13 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		mut method_marker := '${separator}${tokens[i].lit}('
 		if receiver_start == 0 {
 			raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { receiver_source }
+			// Only align `receiver_source` to the text already in `rendered` when the receiver
+			// renders the same way there (no member smart-cast). A smart-cast receiver renders
+			// differently (a variant pointer) and must be kept for the call argument; the raw
+			// receiver text is matched separately by the raw-needle fallback below.
 			if receiver_source == raw_receiver && fastc_contains(rendered, method_marker) {
 				receiver_source = rendered.all_before_last(method_marker)
-			} else {
+			} else if receiver_source == raw_receiver {
 				alternate_separator := if separator == '.' { '->' } else { '.' }
 				alternate_marker := '${alternate_separator}${tokens[i].lit}('
 				if fastc_contains(rendered, alternate_marker) {
@@ -355,10 +635,24 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		mut needle := '${receiver_source}${separator}${tokens[i].lit}('
 		if !fastc_contains(rendered, needle) {
 			raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { '' }
-			raw_needle := '${raw_receiver}${separator}${tokens[i].lit}('
-			if raw_receiver != '' && fastc_contains(rendered, raw_needle) {
-				needle = raw_needle
+			if raw_receiver != '' {
+				// The smart-cast receiver may render with a pointer `->` while the raw receiver
+				// text uses a value `.` (a narrowed local read as a variant pointer); try both.
+				for candidate_separator in ['.', '->'] {
+					raw_needle := '${raw_receiver}${candidate_separator}${tokens[i].lit}('
+					if fastc_contains(rendered, raw_needle) {
+						needle = raw_needle
+						break
+					}
+				}
 			}
+		}
+		if !rendered.contains(needle) && receiver_start == 0 && rendered.contains(method_marker) {
+			// A receiver that renders differently in the boxed method form than in the raw
+			// expression (a sum-type conversion `Node(x).m()`, whose grouping parens differ):
+			// splice at the raw receiver text preceding the call, while the boxed receiver is
+			// still used for the actual call argument built below.
+			needle = rendered.all_before_last(method_marker) + method_marker
 		}
 		expected_receiver := signature.parameter_types[0]
 		mut effective_receiver_source := receiver_source
@@ -504,8 +798,14 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			call_replacement = '(*(((${element_type} *)${replacement}))))'
 		}
 		if fastc_contains(rendered, call_needle) {
-			rendered = fastc_replace(rendered, call_needle, call_replacement)
-			changed = true
+			// Boundary-aware replace: a receiver needle like `return_type.clear(` must NOT match
+			// the suffix of a longer chain `g.fn_decl.return_type.clear(` (whose receiver is the
+			// whole `g.fn_decl.return_type`), or the method would splice onto the wrong receiver.
+			replaced := fastc_replace_call_needle(rendered, call_needle, call_replacement)
+			if replaced != rendered {
+				rendered = replaced
+				changed = true
+			}
 		}
 	}
 	if !changed {

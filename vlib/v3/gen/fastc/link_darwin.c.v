@@ -5,11 +5,13 @@ import strings
 
 #flag darwin -I @VEXEROOT/thirdparty/tcc/include
 
-#flag darwin @VEXEROOT/thirdparty/tcc/lib/libtcc.a
+$if !tinyc {
+	#flag darwin @VEXEROOT/thirdparty/tcc/lib/libtcc.a
+}
 
 #include "libtcc.h"
 
-$if !fastc_selfhost ? {
+$if !tinyc && !fastc_selfhost ? {
 	#insert "@VEXEROOT/vlib/v3/gen/fastc/libtcc_system_darwin.h"
 }
 

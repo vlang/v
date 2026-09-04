@@ -552,6 +552,30 @@ fn main() {
 	assert out == '42\n42'
 }
 
+fn test_address_of_local_fn_value_stores_the_callable_value() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'address_of_local_fn_value', 'struct Holder {
+	f fn (int) int = unsafe { nil }
+}
+
+fn make_holder() Holder {
+	offset := 4
+	local := fn [offset] (value int) int {
+		return value + offset
+	}
+	return Holder{
+		f: &local
+	}
+}
+
+fn main() {
+	holder := make_holder()
+	println(holder.f(3))
+}
+')
+	assert out == '7'
+}
+
 fn test_const_generic_fn_factory_value_call_uses_const_storage() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'const_generic_fn_factory_value_call', '

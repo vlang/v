@@ -1704,7 +1704,7 @@ fn input_is_v3_compiler_entry(input_file string) bool {
 
 fn input_is_cmd_v(input_file string) bool {
 	normalized := input_file.replace('\\', '/').trim_right('/')
-	return normalized == 'cmd/v' || normalized.ends_with('/cmd/v')
+	return normalized in ['cmd/v', 'cmd/v/v.v'] || normalized.ends_with('/cmd/v')
 		|| normalized.ends_with('/cmd/v/v.v')
 }
 
@@ -7454,7 +7454,15 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 	if is_debug {
 		cc_args << '-g'
 	}
-	mut final_args := user_c_flags.clone()
+	// Keep archives and other link-only source directives after the generated
+	// object inputs. Only their state-affecting options are applied while
+	// preparing libtcc; static archives remain order-sensitive link operands.
+	compile_base_args := c_object_compile_flags(cc_args)
+	base_link_args := c_dylib_link_flags(cc_args)
+	user_compile_args := c_object_compile_flags(user_c_flags)
+	user_link_args := c_dylib_link_flags(user_c_flags)
+	mut final_args := base_link_args.clone()
+	final_args << user_link_args
 	if uses_threads {
 		final_args << '-lpthread'
 	}
@@ -7468,10 +7476,10 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 	mut command := ''
 	mut sign_in_process := false
 	if unit_paths.len > 1 {
-		mut compile_args := cc_args.clone()
-		compile_args << user_c_flags
+		mut compile_args := compile_base_args.clone()
+		compile_args << user_compile_args
 		link_worker := spawn fastc.fastc_prepare_link(tcc_path,
-			os.join_path_single(tcc_dir, 'lib'), cc_args, final_args)
+			os.join_path_single(tcc_dir, 'lib'), compile_base_args, final_args)
 		unit_objects := fastc.fastc_compile_c_units(tcc_path, compile_args, unit_paths) or {
 			mut prepared_link := link_worker.wait()
 			fastc.fastc_discard_link(mut prepared_link)
@@ -7485,7 +7493,7 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 			eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
 		}
 		link_inputs := unit_objects.clone()
-		mut display_args := cc_args.clone()
+		mut display_args := compile_base_args.clone()
 		display_args << ['-o', staged_binary]
 		display_args << link_inputs
 		display_args << final_args
@@ -7503,6 +7511,8 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 			eprintln('fastc-phase tcc.linked ${cc_sw.elapsed().microseconds()}us')
 		}
 	} else {
+		cc_args = compile_base_args.clone()
+		cc_args << user_compile_args
 		cc_args << ['-o', 'out', 'src.c']
 		cc_args << final_args
 		command = cmdexec.display(tcc_path, cc_args)
