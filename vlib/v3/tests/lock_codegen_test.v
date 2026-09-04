@@ -480,3 +480,37 @@ pub mut:
 	})
 	assert c_code.contains('.values->val, 1, 1, 0)'), c_code
 }
+
+fn test_shared_field_fallback_disambiguates_plain_homonym() {
+	c_code := lock_codegen_gen_c_sources('shared_field_plain_homonym', {
+		'main.v':          'module main
+
+import guarded
+import plain
+
+fn main() {
+	guarded_record := guarded.Record{}
+	plain_record := plain.Record{}
+	println(guarded_record)
+	println(plain_record)
+}
+'
+		'guarded/types.v': 'module guarded
+
+pub struct Record {
+pub mut:
+	values shared map[string]string
+}
+'
+		'plain/types.v':   'module plain
+
+pub struct Record {
+pub:
+	values map[string]string
+}
+'
+	})
+	assert c_code.contains('v3_map_str(guarded_record.values->val, 1, 1, 0)'), c_code
+	assert c_code.contains('v3_map_str(plain_record.values, 1, 1, 0)'), c_code
+	assert !c_code.contains('v3_map_str(plain_record.values->val,'), c_code
+}
