@@ -10,7 +10,34 @@ fn fastc_type_key(module_name string, name string) string {
 }
 
 fn fastc_c_declared_type_name(type_key string) string {
+	if fastc_compact_v3_type_names {
+		if type_key.starts_with('v3.gen.fastc.') {
+			return 'F__' + type_key[13..].replace('.', '__')
+		}
+		if type_key.starts_with('v3.token.') {
+			return 'T__' + type_key[9..].replace('.', '__')
+		}
+		if type_key.starts_with('v3.pref.') {
+			return 'P__' + type_key[8..].replace('.', '__')
+		}
+		if type_key.starts_with('v3.scanner.') {
+			return 'S__' + type_key[11..].replace('.', '__')
+		}
+	}
 	return type_key.replace('.', '__')
+}
+
+fn fastc_c_module_name(module_name string) string {
+	if fastc_compact_v3_type_names {
+		return match module_name {
+			'v3.gen.fastc' { 'F' }
+			'v3.token' { 'T' }
+			'v3.pref' { 'P' }
+			'v3.scanner' { 'S' }
+			else { module_name.replace('.', '__') }
+		}
+	}
+	return module_name.replace('.', '__')
 }
 
 // fastc_declared_type_c_names indexes declared type keys by their generated C
@@ -102,13 +129,53 @@ fn (g &Parser) unqualified_function_key(name string) string {
 // site. The mapping does not depend on the parser's context, so the memo
 // is never reset.
 fn (g &Parser) c_function_name_for_key(key string) string {
+	return g.c_function_name_or(key, fastc_c_function_name_for_key(key))
+}
+
+fn (g &Parser) c_function_name_or(key string, conventional string) string {
 	if cached := g.c_function_name_memo[key] {
 		return cached
 	}
-	c_name := fastc_c_function_name_for_key(key)
+	c_name := if compact_name := g.function_c_names[key] {
+		compact_name
+	} else {
+		conventional
+	}
 	mut w := unsafe { &Parser(g) }
 	w.c_function_name_memo[key] = c_name
 	return c_name
+}
+
+fn fastc_compact_function_c_names(functions map[string]FastcFunctionSignature, compact bool) map[string]string {
+	mut names := map[string]string{}
+	if !compact {
+		return names
+	}
+	mut keys := functions.keys()
+	keys.sort()
+	mut compact_id := 0
+	for key in keys {
+		signature := functions[key]
+		if !key.starts_with('C.') && key != 'main' && !key.starts_with('main.')
+			&& signature.module_name !in ['', 'main', 'builtin'] && !signature.module_name.starts_with('math') {
+			names[key] = 'v_f${compact_id}'
+			compact_id++
+		}
+	}
+	return names
+}
+
+fn fastc_signature_c_name(key string, signature FastcFunctionSignature) string {
+	if key.starts_with('C.') {
+		return fastc_c_function_name_for_key(key)
+	}
+	name := key.all_after_last('.')
+	prefix := key.all_before_last('.')
+	return if prefix == '' || prefix == signature.module_name {
+		fastc_c_function_name(signature.module_name, name)
+	} else {
+		fastc_method_c_name(signature.module_name, fastc_c_declared_type_name(prefix), name)
+	}
 }
 
 fn fastc_c_function_name_for_key(key string) string {
@@ -118,7 +185,7 @@ fn fastc_c_function_name_for_key(key string) string {
 	sanitized := naming.sanitize(key)
 	c_name := naming.c_name(key)
 	if c_name != sanitized || sanitized.starts_with('v_fastc_') {
-		return '__v_fastc_function_${sanitized}'
+		return '__vf_function_${sanitized}'
 	}
 	return c_name
 }

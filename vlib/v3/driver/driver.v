@@ -7351,7 +7351,7 @@ $if !skip_fastc ? {
 		return os.join_path_single(canonical_parent, os.file_name(absolute_path))
 	}
 
-	fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, environment_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool) V3FastCCompileResult {
+	fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, environment_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool, cache_enabled bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
 		bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 		cc_sw := time.new_stopwatch()
 		tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
@@ -7359,35 +7359,19 @@ $if !skip_fastc ? {
 		if !os.is_executable(tcc_path) {
 			return V3FastCCompileResult{}
 		}
-		build_dir := os.join_path_single(os.dir(os.real_path(bin_file)), '.${os.file_name(bin_file)}.fastc.${tempname.unique_token()}')
-		os.mkdir_all(build_dir) or { return V3FastCCompileResult{} }
-		defer {
-			cleanup_c_build_dir(build_dir)
-		}
-		source_file := os.join_path_single(build_dir, 'src.c')
-		staged_binary := os.join_path_single(build_dir, 'out')
-		// The program's translation units are compiled by concurrent TinyCC
-		// processes and linked; a program that does not split is compiled as
-		// one file.
-		if bench_phases {
-			eprintln('fastc-phase tcc.setup ${cc_sw.elapsed().microseconds()}us')
-		}
-		unit_paths := fastc.fastc_write_c_units(os.join_path_single(build_dir, 'src'), pieces, units, fastc.fastc_tcc_job_count(prefs)) or { return V3FastCCompileResult{} }
-		if unit_paths.len < 2 {
-			fastc.write_c_pieces(source_file, pieces) or { return V3FastCCompileResult{} }
-		}
-		if bench_phases {
-			eprintln('fastc-phase tcc.units_written ${cc_sw.elapsed().microseconds()}us units=${unit_paths.len}')
-		}
 		tcc_resources := v3_tcc_resource_flags(prefs.vroot)
 		mut cc_args := environment_c_flags.clone()
 		cc_args << ['-std=gnu11', tcc_resources.base_arg, tcc_resources.include_arg,
 			tcc_resources.library_arg]
-		cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), macos_sdk_root)
+		if !(prefs.building_v && prefs.normalized_target_os() == 'macos') {
+			cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), macos_sdk_root)
+		}
 		cc_args << source_c_flags
 		// A call without a prototype would silently truncate a pointer result
 		// (the C carries no headers): it is an error, not a warning.
-		cc_args << '-Werror=implicit-function-declaration'
+		if '-Werror=implicit-function-declaration' !in cc_args {
+			cc_args << '-Werror=implicit-function-declaration'
+		}
 		if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), false) {
 			cc_args << '-bt25'
 		}
@@ -7398,20 +7382,115 @@ $if !skip_fastc ? {
 		// object inputs. Only their state-affecting options are applied while
 		// preparing libtcc; static archives remain order-sensitive link operands.
 		compile_base_args := c_object_compile_flags(cc_args)
-		base_link_args := c_dylib_link_flags(cc_args)
 		user_compile_args := c_object_compile_flags(user_c_flags)
+		mut compile_args := compile_base_args.clone()
+		compile_args << user_compile_args
+		jobs := fastc.fastc_tcc_job_count(prefs)
+		mut uses_prestarted := false
+		$if macos {
+			uses_prestarted = fastc.fastc_prestarted_c_units_match(&prestarted, compile_args, jobs)
+			if !uses_prestarted {
+				fastc.fastc_discard_prestarted_c_units(mut prestarted)
+			}
+		}
+		build_dir := if uses_prestarted {
+			prestarted.build_dir
+		} else {
+			os.join_path_single(os.dir(os.real_path(bin_file)), '.${os.file_name(bin_file)}.fastc.${tempname.unique_token()}')
+		}
+		if !uses_prestarted {
+			os.mkdir_all(build_dir) or { return V3FastCCompileResult{} }
+		}
+		defer {
+			cleanup_c_build_dir(build_dir)
+		}
+		source_file := os.join_path_single(build_dir, 'src.c')
+		staged_binary := os.join_path_single(build_dir, 'out')
+		unit_prefix := os.join_path_single(build_dir, 'src')
+		mut rendering_units := fastc.FastcRenderingCUnits{}
+		mut feeding_units := fastc.FastcFeedingCUnits{}
+		mut feeds_prestarted := false
+		$if macos {
+			if !cache_enabled && prefs.building_v {
+				if uses_prestarted {
+					feeding_units = fastc.fastc_begin_render_prestarted_c_units(mut prestarted, unit_prefix, pieces, units, jobs) or {
+						fastc.write_c_pieces(source_file, pieces) or {}
+						return V3FastCCompileResult{
+							command: cmdexec.display(tcc_path, compile_args)
+							output: err.msg()
+						}
+					}
+					feeds_prestarted = true
+				} else {
+					rendering_units = fastc.fastc_begin_render_c_units(unit_prefix, pieces, units, jobs)
+				}
+			}
+		}
+		// The program's translation units are compiled by concurrent TinyCC
+		// processes and linked; a program that does not split is compiled as
+		// one file.
+		if bench_phases {
+			eprintln('fastc-phase tcc.setup ${cc_sw.elapsed().microseconds()}us')
+		}
+		base_link_args := c_dylib_link_flags(cc_args)
 		user_link_args := c_dylib_link_flags(user_c_flags)
 		mut final_args := base_link_args.clone()
 		final_args << user_link_args
-		if uses_threads {
-			final_args << '-lpthread'
+		if prefs.building_v && prefs.normalized_target_os() == 'macos' {
+			// Header-free self-hosts only call symbols from FastC's macOS ABI
+			// table. Its compact stub avoids parsing the SDK's full libSystem
+			// umbrella stub while preserving the same dylib install name.
+			fastc_system_tbd := os.join_path_single(build_dir, 'libFastcSystem.tbd')
+			os.write_file(fastc_system_tbd, fastc.fastc_macos_system_tbd(prefs.normalized_target_arch())) or {
+				return V3FastCCompileResult{}
+			}
+			final_args << fastc_system_tbd
+		} else {
+			if uses_threads {
+				final_args << '-lpthread'
+			}
+			final_args << '-lm'
 		}
-		final_args << '-lm'
 		atomic_arg := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
 		if atomic_arg.len > 0 {
 			final_args << atomic_arg
 		}
 		final_args << environment_ld_flags
+		generation_link_cache_key := fastc.fastc_generation_link_cache_key(tcc_path, compile_args, final_args, pieces, units, jobs, cache_enabled)
+		if fastc.fastc_restore_link_cache(generation_link_cache_key, staged_binary) {
+			if bench_phases {
+				now_us := cc_sw.elapsed().microseconds()
+				eprintln('fastc-phase tcc.units_written ${now_us}us units=0')
+				eprintln('fastc-phase tcc.units_compiled ${now_us}us')
+				eprintln('fastc-phase tcc.linked ${now_us}us')
+				eprintln('fastc-phase tcc.signed ${now_us}us')
+			}
+			os.mv(staged_binary, bin_file) or {
+				return V3FastCCompileResult{
+					output: err.msg()
+				}
+			}
+			return V3FastCCompileResult{
+				success: true
+			}
+		}
+		mut unit_paths := []string{}
+		if feeds_prestarted {
+			unit_paths = feeding_units.paths.clone()
+		} else if rendering_units.paths.len > 0 {
+			unit_paths = rendering_units.paths.clone()
+		}
+		if unit_paths.len == 0 {
+			unit_paths = fastc.fastc_write_c_units(unit_prefix, pieces, units, jobs) or {
+				return V3FastCCompileResult{}
+			}
+		}
+		if unit_paths.len < 2 {
+			fastc.write_c_pieces(source_file, pieces) or { return V3FastCCompileResult{} }
+		}
+		if bench_phases {
+			eprintln('fastc-phase tcc.units_written ${cc_sw.elapsed().microseconds()}us units=${unit_paths.len}')
+		}
 		mut shim_dir := fastc.FastcCodesignShim{}
 		defer {
 			fastc.fastc_remove_codesign_shim_dir(shim_dir)
@@ -7419,37 +7498,74 @@ $if !skip_fastc ? {
 		mut result := os.Result{}
 		mut command := ''
 		mut sign_in_process := false
+		link_cache_key := generation_link_cache_key
+		mut link_cache_restored := false
 		if unit_paths.len > 1 {
-			mut compile_args := compile_base_args.clone()
-			compile_args << user_compile_args
-			link_worker := spawn fastc.fastc_prepare_link(tcc_path, os.join_path_single(tcc_dir, 'lib'), compile_base_args, final_args)
-			unit_objects := fastc.fastc_compile_c_units(tcc_path, compile_args, unit_paths) or {
-				mut prepared_link := link_worker.wait()
-				fastc.fastc_discard_link(mut prepared_link)
-				fastc.write_c_pieces(source_file, pieces) or {}
-				return V3FastCCompileResult{
-					command: cmdexec.display(tcc_path, compile_args)
-					output: err.msg()
-				}
-			}
-			if bench_phases {
-				eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
-			}
-			link_inputs := unit_objects.clone()
+			prepared_units := fastc.fastc_prepare_c_units(tcc_path, compile_args, unit_paths, cache_enabled)
+			link_inputs := prepared_units.objects.clone()
 			mut display_args := compile_base_args.clone()
 			display_args << ['-o', staged_binary]
 			display_args << link_inputs
 			display_args << final_args
 			command = cmdexec.display(tcc_path, display_args)
-			mut prepared_link := link_worker.wait()
-			sign_in_process = fastc.fastc_prepared_link_skips_codesign(&prepared_link)
-			if !sign_in_process {
-				// The executable-based linker still needs the PATH shim; the prepared
-				// libtcc linker suppresses its codesign call without a subprocess.
-				shim_dir = fastc.fastc_codesign_shim_dir()
-				sign_in_process = shim_dir.dir != ''
+			if fastc.fastc_restore_link_cache(link_cache_key, staged_binary) {
+				link_cache_restored = true
+				result = os.Result{}
+				if bench_phases {
+					eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
+				}
+			} else {
+				mut prepared_link := fastc.fastc_prepare_link(tcc_path, os.join_path_single(tcc_dir, 'lib'), compile_base_args, final_args)
+				preload_link := (feeds_prestarted || rendering_units.paths.len > 0)
+					&& fastc.fastc_prepared_link_accepts_inputs(&prepared_link)
+				if feeds_prestarted {
+					if !uses_prestarted {
+						fastc.fastc_discard_link(mut prepared_link)
+						return V3FastCCompileResult{
+							command: cmdexec.display(tcc_path, compile_args)
+							output: 'prestarted TinyCC units were not available'
+						}
+					}
+					fastc.fastc_finish_prestarted_c_units(mut prestarted, mut feeding_units, prepared_units, mut prepared_link, preload_link) or {
+						fastc.fastc_discard_link(mut prepared_link)
+						fastc.write_c_pieces(source_file, pieces) or {}
+						return V3FastCCompileResult{
+							command: cmdexec.display(tcc_path, compile_args)
+							output: err.msg()
+						}
+					}
+				} else if rendering_units.paths.len > 0 {
+					fastc.fastc_compile_rendering_c_units(tcc_path, compile_args, mut rendering_units, prepared_units, mut prepared_link, preload_link) or {
+						fastc.fastc_discard_link(mut prepared_link)
+						fastc.write_c_pieces(source_file, pieces) or {}
+						return V3FastCCompileResult{
+							command: cmdexec.display(tcc_path, compile_args)
+							output: err.msg()
+						}
+					}
+				} else {
+					fastc.fastc_compile_c_units(tcc_path, compile_args, unit_paths, prepared_units) or {
+						fastc.fastc_discard_link(mut prepared_link)
+						fastc.write_c_pieces(source_file, pieces) or {}
+						return V3FastCCompileResult{
+							command: cmdexec.display(tcc_path, compile_args)
+							output: err.msg()
+						}
+					}
+				}
+				if bench_phases {
+					eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
+				}
+				sign_in_process = fastc.fastc_prepared_link_skips_codesign(&prepared_link)
+				if !sign_in_process {
+					// The executable-based linker still needs the PATH shim; the prepared
+					// libtcc linker suppresses its codesign call without a subprocess.
+					shim_dir = fastc.fastc_codesign_shim_dir()
+					sign_in_process = shim_dir.dir != ''
+				}
+				finish_inputs := if preload_link { []string{} } else { link_inputs }
+				result = fastc.fastc_finish_link(mut prepared_link, finish_inputs, final_args, staged_binary)
 			}
-			result = fastc.fastc_finish_link(mut prepared_link, link_inputs, final_args, staged_binary)
 			if bench_phases {
 				eprintln('fastc-phase tcc.linked ${cc_sw.elapsed().microseconds()}us')
 			}
@@ -7481,6 +7597,9 @@ $if !skip_fastc ? {
 					output: 'could not sign ${staged_binary}: ${err.msg()}'
 				}
 			}
+		}
+		if !link_cache_restored {
+			fastc.fastc_publish_link_cache(link_cache_key, staged_binary)
 		}
 		if bench_phases {
 			eprintln('fastc-phase tcc.signed ${cc_sw.elapsed().microseconds()}us')
@@ -8595,6 +8714,40 @@ pub fn run(args []string) {
 					return
 				}
 			}
+			mut prestarted_fastc_units := fastc.FastcPrestartedCUnits{}
+			mut prestart_workers := []thread fastc.FastcPrestartedCUnits{}
+			$if macos {
+				if !c_only && prefs.building_v && !fastc_cross_target && (is_debug || no_cache) {
+					tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
+					tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
+					prestart_jobs := fastc.fastc_tcc_job_count(prefs)
+					if prestart_jobs >= 2 && os.is_executable(tcc_path) {
+						tcc_resources := v3_tcc_resource_flags(prefs.vroot)
+						mut anticipated_cc_args := environment_c_flags.clone()
+						anticipated_cc_args << ['-std=gnu11', tcc_resources.base_arg,
+							tcc_resources.include_arg, tcc_resources.library_arg]
+						anticipated_cc_args << '-Werror=implicit-function-declaration'
+						if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), false) {
+							anticipated_cc_args << '-bt25'
+						}
+						if is_debug {
+							anticipated_cc_args << '-g'
+						}
+						mut anticipated_compile_args := c_object_compile_flags(anticipated_cc_args)
+						anticipated_compile_args << c_object_compile_flags(user_c_flags)
+						prestart_dir := os.join_path_single(os.dir(os.real_path(bin_file)), '.${os.file_name(bin_file)}.fastc.${tempname.unique_token()}')
+						prestart_workers << spawn fastc.fastc_prestart_c_units(tcc_path, anticipated_compile_args, prestart_dir, prestart_jobs)
+					}
+				}
+			}
+			defer {
+				$if macos {
+					if prestart_workers.len > 0 {
+						prestarted_fastc_units = prestart_workers[0].wait()
+					}
+					fastc.fastc_discard_prestarted_c_units(mut prestarted_fastc_units)
+				}
+			}
 			if os.getenv('FASTC_BENCH_PHASES') != '' {
 				eprintln('fastc-phase driver.setup ${driver_sw.elapsed().microseconds()}us')
 			}
@@ -8602,6 +8755,10 @@ pub fn run(args []string) {
 				eprintln(err.msg())
 				exit(1)
 				return
+			}
+			if prestart_workers.len > 0 {
+				prestarted_fastc_units = prestart_workers[0].wait()
+				prestart_workers.clear()
 			}
 			if os.getenv('FASTC_BENCH_PHASES') != '' {
 				eprintln('fastc-phase driver.generated ${driver_sw.elapsed().microseconds()}us')
@@ -8639,7 +8796,7 @@ pub fn run(args []string) {
 			} else {
 				''
 			}
-			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, environment_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads)
+			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, environment_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads, prefs.building_v && !is_debug && !no_cache, mut prestarted_fastc_units)
 			if (!silent || show_cc) && fastc_result.command.len > 0 {
 				if c_to_stdout {
 					eprintln('  > ${fastc_result.command}')

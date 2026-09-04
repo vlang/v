@@ -176,3 +176,78 @@ static inline int v_os_exec_capture_start(char *const argv[], int *child_pid, in
 	return 0;
 }
 #endif
+
+#if defined(__APPLE__)
+static inline void v_os_fd_write_all(int fd, const char *data, size_t len) {
+	while (len > 0) {
+		ssize_t written = write(fd, data, len);
+		if (written <= 0) {
+			return;
+		}
+		data += written;
+		len -= (size_t)written;
+	}
+}
+
+// v_os_exec_capture_input_start is the argv-based capture helper with an
+// additional pipe connected to the child's stdin. F_SETNOSIGPIPE makes a
+// writer observe EPIPE instead of terminating the parent when a child exits
+// after reporting an early input error.
+static inline int v_os_exec_capture_input_start(char *const argv[], int *child_pid, int *read_fd, int *write_fd) {
+	if (argv == NULL || argv[0] == NULL) {
+		return -1;
+	}
+	int output_pipe[2];
+	int input_pipe[2];
+	if (pipe(output_pipe) != 0) {
+		return -1;
+	}
+	if (pipe(input_pipe) != 0) {
+		close(output_pipe[0]);
+		close(output_pipe[1]);
+		return -1;
+	}
+	v_os_execute_set_cloexec(output_pipe[0]);
+	v_os_execute_set_cloexec(output_pipe[1]);
+	v_os_execute_set_cloexec(input_pipe[0]);
+	v_os_execute_set_cloexec(input_pipe[1]);
+	fcntl(input_pipe[1], F_SETNOSIGPIPE, 1);
+	v_posix_spawn_file_actions_t actions;
+	if (posix_spawn_file_actions_init(&actions) != 0) {
+		close(output_pipe[0]);
+		close(output_pipe[1]);
+		close(input_pipe[0]);
+		close(input_pipe[1]);
+		return -1;
+	}
+	int err = 0;
+	if ((err = posix_spawn_file_actions_adddup2(&actions, input_pipe[0], STDIN_FILENO)) != 0
+		|| (err = posix_spawn_file_actions_adddup2(&actions, output_pipe[1], STDOUT_FILENO)) != 0
+		|| (err = posix_spawn_file_actions_adddup2(&actions, output_pipe[1], STDERR_FILENO)) != 0
+		|| (err = posix_spawn_file_actions_addclose(&actions, input_pipe[0])) != 0
+		|| (err = posix_spawn_file_actions_addclose(&actions, input_pipe[1])) != 0
+		|| (err = posix_spawn_file_actions_addclose(&actions, output_pipe[0])) != 0
+		|| (err = posix_spawn_file_actions_addclose(&actions, output_pipe[1])) != 0) {
+		posix_spawn_file_actions_destroy(&actions);
+		close(output_pipe[0]);
+		close(output_pipe[1]);
+		close(input_pipe[0]);
+		close(input_pipe[1]);
+		return -1;
+	}
+	err = posix_spawnp(child_pid, argv[0], &actions, NULL, argv, environ);
+	posix_spawn_file_actions_destroy(&actions);
+	if (err != 0) {
+		close(output_pipe[0]);
+		close(output_pipe[1]);
+		close(input_pipe[0]);
+		close(input_pipe[1]);
+		return -1;
+	}
+	close(output_pipe[1]);
+	close(input_pipe[0]);
+	*read_fd = output_pipe[0];
+	*write_fd = input_pipe[1];
+	return 0;
+}
+#endif

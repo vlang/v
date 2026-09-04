@@ -49,6 +49,40 @@ fn test_parse_resolve_memo_rejects_short_listings() {
 	assert memo.dir_files[0].len == 0
 }
 
+fn test_resolve_memo_unchanged_sources_use_preloaded_stamps() {
+	stamp := FastcFileStamp{
+		size: 12
+		mtime: 20
+		ctime: 21
+		inode: 22
+	}
+	memo := FastcResolveMemo{
+		files: ['/tmp/a.v']
+		stamps: [stamp]
+	}
+	sources := [FastcSourceFile{
+		path: '/tmp/a.v'
+	}]
+	preloaded := {
+		'/tmp/a.v': FastcLoadedSource{
+			path: '/tmp/a.v'
+			stamp: stamp
+		}
+	}
+	assert fastc_resolve_memo_sources_unchanged(memo, sources, preloaded)
+	mut changed := preloaded.clone()
+	changed['/tmp/a.v'] = FastcLoadedSource{
+		path: '/tmp/a.v'
+		stamp: FastcFileStamp{
+			size: 13
+			mtime: 20
+			ctime: 21
+			inode: 22
+		}
+	}
+	assert !fastc_resolve_memo_sources_unchanged(memo, sources, changed)
+}
+
 fn test_fastc_index_of_and_replace() {
 	text := 'abc_call(x) + abc_call(y) - ab'
 	assert fastc_index_of(text, 'abc_call(', 0) == text.index_after_('abc_call(', 0)
@@ -235,8 +269,8 @@ fn main() {
 	assert c_source.contains('return shared+other;'), c_source
 	assert c_source.contains('return shared^2;'), c_source
 	assert !c_source.contains('return &shared'), c_source
-	assert c_source.contains('Option __v_fastc_option_0 = (shared);'), c_source
-	assert c_source.contains('__v_fastc_membership_item = (shared);'), c_source
+	assert c_source.contains('Option __v0 = (shared);'), c_source
+	assert c_source.contains('__vf_m_x = (shared);'), c_source
 	assert c_source.count('return shared;') == 3, c_source
 	assert c_source.contains('if (shared)'), c_source
 	assert c_source.contains('total+=shared;'), c_source
@@ -393,7 +427,7 @@ fn main() {
 	_ := propagate() or { 0 }
 }
 ', 'selfhost_multiline_shared_result_propagation.v', prefs) or { panic(err) }
-	assert c_source.contains('Option __v_fastc_option_propagate = (shared);'), c_source
+	assert c_source.contains('Option __vf_op = (shared);'), c_source
 	assert !c_source.contains('shared!'), c_source
 }
 
@@ -424,7 +458,7 @@ fn main() {
 }
 ', 'selfhost_static_shared_local.v', prefs) or { panic(err) }
 	assert c_source.contains('static ${fastc_platform_int_c_type} shared;'), c_source
-	assert c_source.contains('static bool __v_fastc_static_init_'), c_source
+	assert c_source.contains('static bool __v'), c_source
 	assert c_source.contains('shared = (1);'), c_source
 	assert c_source.contains('println(shared)'), c_source
 }
@@ -451,7 +485,7 @@ fn main() {
 }
 ', 'selfhost_mut_static_pointer.v', prefs) or { panic(err) }
 	assert c_source.contains('static __typeof__((((Item*)(NULL)))) saved;'), c_source
-	assert c_source.contains('static bool __v_fastc_static_init_'), c_source
+	assert c_source.contains('static bool __v'), c_source
 	assert c_source.contains('saved = (((Item*)(NULL)));'), c_source
 }
 
@@ -675,6 +709,9 @@ fn test_fastc_tcc_job_count_respects_parallel_controls() {
 	os.unsetenv('V3_FASTC_NO_PARALLEL')
 	mut prefs := pref.new_preferences()
 	assert fastc_tcc_job_count(prefs) == 4
+	os.setenv('VJOBS', '100', true)
+	assert fastc_tcc_job_count(prefs) == 12
+	os.setenv('VJOBS', '4', true)
 	prefs.no_parallel = true
 	assert fastc_tcc_job_count(prefs) == 1
 	prefs.no_parallel = false
@@ -682,12 +719,184 @@ fn test_fastc_tcc_job_count_respects_parallel_controls() {
 	assert fastc_tcc_job_count(prefs) == 1
 }
 
+fn test_fastc_prestart_skips_single_unit() {
+	build_dir := os.join_path_single(os.vtmp_dir(), 'fastc_prestart_single_${os.getpid()}')
+	os.rmdir_all(build_dir) or {}
+	defer {
+		os.rmdir_all(build_dir) or {}
+	}
+	mut units := fastc_prestart_c_units('', [], build_dir, 1)
+	assert !fastc_prestarted_c_units_match(&units, [], 1)
+	assert !os.exists(build_dir)
+	fastc_discard_prestarted_c_units(mut units)
+}
+
+fn test_fastc_unit_group_starts_accounts_for_prepended_text() {
+	unit_sizes := [90, 90, 90, 300]
+	assert fastc_unit_group_starts(unit_sizes, 2, 0, 0) == [0, 3, 4]
+	// The extra first-unit runtime makes a smaller first body optimal.
+	assert fastc_unit_group_starts(unit_sizes, 2, 250, 0) == [0, 2, 4]
+	// Common text is part of every later unit too.
+	assert fastc_unit_group_starts([100, 100, 100, 100], 2, 0, 300) == [0, 3, 4]
+}
+
+fn test_fastc_extern_declarations_extracts_static_helpers() {
+	text := 'static int count = 3;\nstatic inline int add(int a, int b) { return a + b; }\nstatic void clear(void) {\n\tcount = 0;\n}\n#define COUNT count\n'
+	definitions := fastc_extern_declarations(text, false)
+	assert definitions == 'int count = 3;\nint add(int a, int b) { return a + b; }\nvoid clear(void) {\n\tcount = 0;\n}\n#define COUNT count\n'
+	declarations := fastc_extern_declarations(text, true)
+	assert declarations == 'extern int count;\nextern int add(int a, int b);\nextern void clear(void);\n#define COUNT count\n'
+}
+
+fn test_fastc_rendered_units_match_temporary_files() {
+	root := os.join_path_single(os.vtmp_dir(), 'fastc_rendered_units_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	pieces := ['ignored definition', 'ignored prototypes', 'solo\n', 'body_a\n', 'body_b\n']
+	units := FastcUnitLayout{
+		head_end: 2
+		solo_end: 3
+		prototype_start: 1
+		prototype_end: 2
+		unit_starts: [3, 4, 5]
+		extern_indexes: [0]
+		extern_texts: ['extern shared;\n']
+		define_texts: ['int shared;\n']
+		prototype_texts: ['void first(void);\n', 'void second(void);\n']
+		unit_ref_starts: [0, 1, 2]
+		unit_ref_ids: [0, 1]
+		solo_prototype_ids: [1]
+	}
+	prefix := os.join_path_single(root, 'unit')
+	rendered := fastc_render_c_units(prefix, pieces, units, 2)
+	written_paths := fastc_write_c_units(prefix, pieces, units, 2) or { panic(err) }
+	assert rendered.paths == written_paths
+	for i, path in written_paths {
+		assert rendered.sources[i] == os.read_file(path) or { panic(err) }
+	}
+}
+
+fn test_fastc_unit_compile_order_starts_largest_cache_misses_first() {
+	root := os.join_path_single(os.vtmp_dir(), 'fastc_unit_order_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	paths := [os.join_path_single(root, 'small.c'), os.join_path_single(root, 'cached.c'),
+		os.join_path_single(root, 'large.c'), os.join_path_single(root, 'medium.c')]
+	for i, size in [10, 100, 80, 40] {
+		os.write_file(paths[i], 'x'.repeat(size)) or { panic(err) }
+	}
+	prepared := FastcPreparedUnits{
+		entries: [FastcUnitCacheEntry{}, FastcUnitCacheEntry{ hit: true }, FastcUnitCacheEntry{},
+			FastcUnitCacheEntry{}]
+	}
+	assert fastc_unit_compile_order(paths, prepared) == [2, 3, 0]
+}
+
+fn test_fastc_link_cache_restores_an_independent_executable() {
+	$if !windows {
+		key := 'test-${os.getpid()}'
+		cached := fastc_link_cache_path(key)
+		root := os.join_path(os.vtmp_dir(), 'v3_fastc_link_cache_test_${os.getpid()}')
+		source := os.join_path_single(root, 'source')
+		first := os.join_path_single(root, 'first')
+		second := os.join_path_single(root, 'second')
+		os.mkdir_all(root) or { panic(err) }
+		os.rm(cached) or {}
+		defer {
+			os.rmdir_all(root) or {}
+			os.rm(cached) or {}
+		}
+		os.write_file(source, 'cached executable') or { panic(err) }
+		os.chmod(source, 0o700) or { panic(err) }
+		fastc_publish_link_cache(key, source)
+		os.write_file(source, 'changed source') or { panic(err) }
+		assert fastc_restore_link_cache(key, first)
+		assert os.read_file(first) or { panic(err) } == 'cached executable'
+		os.write_file(first, 'changed output') or { panic(err) }
+		assert fastc_restore_link_cache(key, second)
+		assert os.read_file(second) or { panic(err) } == 'cached executable'
+	}
+}
+
+fn test_fastc_generation_link_cache_key_covers_generated_inputs() {
+	tcc := os.join_path(@VMODROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	units := FastcUnitLayout{
+		head_end: 1
+		solo_end: 1
+		unit_starts: [1, 2]
+	}
+	key := fastc_generation_link_cache_key(tcc, ['-c'], ['-lm'], ['head', 'body'], units, 2, true)
+	assert key != ''
+	assert key != fastc_generation_link_cache_key(tcc, ['-g'], ['-lm'], ['head', 'body'], units, 2, true)
+	assert key != fastc_generation_link_cache_key(tcc, ['-c'], ['-lm'], ['head', 'changed'], units, 2, true)
+	assert fastc_generation_link_cache_key(tcc, ['-c'], ['-lm'], ['head', 'body'], units, 2, false) == ''
+}
+
+fn test_fastc_generation_link_cache_key_uses_tbd_contents() {
+	root := os.join_path_single(os.vtmp_dir(), 'fastc_tbd_key_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	first := os.join_path_single(root, 'first.tbd')
+	second := os.join_path_single(root, 'second.tbd')
+	os.write_file(first, 'same stub') or { panic(err) }
+	os.write_file(second, 'same stub') or { panic(err) }
+	tcc := os.join_path(@VMODROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	units := FastcUnitLayout{
+		head_end: 1
+		solo_end: 1
+		unit_starts: [1, 2]
+	}
+	first_key := fastc_generation_link_cache_key(tcc, [], [first], ['head', 'body'], units, 2, true)
+	second_key := fastc_generation_link_cache_key(tcc, [], [second], ['head', 'body'], units, 2, true)
+	assert first_key == second_key
+	os.write_file(second, 'changed stub') or { panic(err) }
+	assert first_key != fastc_generation_link_cache_key(tcc, [], [second], ['head', 'body'], units, 2, true)
+}
+
+fn test_fastc_collect_c_name_ids_scans_index_markers() {
+	ids := {
+		'alpha__one':     1
+		'v_fastc_helper': 2
+		'_leading__name': 3
+	}
+	text := 'ordinary(alpha__one()); v_fastc_helper(); _leading__name(); foov_fastc_helper();'
+	mut found := []int{}
+	fastc_collect_c_name_ids(text, 0, text.len, ids, mut found)
+	assert found == [1, 2, 3]
+}
+
+fn test_parallel_constant_seed_preserves_constant_field_defaults() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	sources := [
+		FastcSourceFile{
+			path: 'constant_default.v'
+			source: 'module fastc\nconst default_retries = 3\nstruct Config {\n\tretries int = default_retries\n}\nfn main() { _ = Config{} }\n'
+			header: FastcSourceHeader{ module_name: 'v3.gen.fastc' }
+		},
+		FastcSourceFile{
+			path: 'other_constant.v'
+			source: 'module fastc\nconst other_constant = 4\n'
+			header: FastcSourceHeader{ module_name: 'v3.gen.fastc' }
+		},
+	]
+	c_source, _, _ := generate_source_files(sources, map[string]string{}, prefs) or { panic(err) }
+	assert c_source.contains('#define v3__gen__fastc__default_retries (3)'), c_source
+	assert c_source.contains('.retries=(v3__gen__fastc__default_retries)'), c_source
+}
+
 fn test_fastc_fragmented_generation_matches_serial_output() {
 	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
 	sources := [
 		FastcSourceFile{
 			path: 'large.v'
-			source: 'module fastc\nfn fastc_fragment_first() {\n${large_comment}\n}\nfn fastc_fragment_second() {}\n'
+			source: 'module fastc\nfn fastc_fragment_first() {\n${large_comment}\n}\nfn fastc_fragment_second() {\n\tprintln(@LINE)\n\tprintln(@COLUMN)\n\tprintln(@FILE_LINE)\n\tprintln(@LOCATION)\n}\n'
 			header: FastcSourceHeader{
 				module_name: 'v3.gen.fastc'
 			}
@@ -720,6 +929,12 @@ fn test_fastc_fragmented_generation_matches_serial_output() {
 		panic(err)
 	}
 	assert parallel == serial
+	fragments := fastc_source_generation_fragments(sources[0], parallel_prefs)
+	mut fragmented_length := 0
+	for fragment in fragments {
+		fragmented_length += fragment.source.len
+	}
+	assert fragmented_length == sources[0].source.len
 }
 
 fn test_fastc_generation_fragments_keep_top_level_comptime_chain_together() {
@@ -773,7 +988,7 @@ fn test_fastc_overlap_workers_honor_serial_preferences() {
 	for name in ['a', 'b', 'c', 'd'] {
 		functions[name] = FastcFunctionSignature{}
 	}
-	mut pending_dispatches := fastc_start_interface_dispatches(map[string]FastcDeclaredTypeKind{}, functions, map[string]bool{}, map[string]bool{}, false, prefs)
+	mut pending_dispatches := fastc_start_interface_dispatches(map[string]FastcDeclaredTypeKind{}, functions, map[string]string{}, map[string]bool{}, map[string]bool{}, false, prefs)
 	assert pending_dispatches.workers.len == 0
 	assert fastc_wait_interface_dispatches(mut pending_dispatches) == ''
 }
@@ -959,8 +1174,8 @@ fn main() {
 }
 ', 'spawn_params_struct.v', prefs) or { panic(err) }
 	assert c_source.contains('args->result = configured(args->arg0, args->arg1);'), c_source
-	assert c_source.contains('__v_fastc_struct_default.value=(default_value());'), c_source
-	assert c_source.contains('.value=(__v_fastc_struct_field_0)'), c_source
+	assert c_source.contains('__vf_sd.value=(default_value());'), c_source
+	assert c_source.contains('.value=(__vf_sf_0)'), c_source
 	assert c_source.contains('v_fastc_interface_box(&(PointerConfig){0}, sizeof(PointerConfig))'), c_source
 }
 
@@ -986,7 +1201,7 @@ fn main() {
 	println(handle.wait())
 }
 ', 'spawn_shared_named_params_field.v', prefs) or { panic(err) }
-	assert c_source.contains('.shared=(__v_fastc_struct_field_0)'), c_source
+	assert c_source.contains('.shared=(__vf_sf_0)'), c_source
 }
 
 fn test_generate_and_compile_without_flat_ast() {
@@ -1014,8 +1229,8 @@ fn twice(value int) int {
 	c_source := generate(source, 'fastc_test.v', prefs) or { panic(err) }
 	assert c_source.contains('i64 total = (0);')
 	assert c_source.contains('string label = ("total=");')
-	assert c_source.contains('__v_fastc_range_start_0 = (0);')
-	assert c_source.contains('__v_fastc_range_end_1 = (3);')
+	assert c_source.contains('__v0 = (0);')
+	assert c_source.contains('__v1 = (3);')
 	assert c_source.contains('i64 twice(i64 value);')
 	assert c_source.contains('setvbuf(stdout, NULL, _IONBF, 0);')
 	assert !c_source.contains('v3.flat')
@@ -1127,7 +1342,7 @@ fn main() {
 	assert c_source.count('builtin__string_plus_many(2, (string[]){') >= 4, c_source
 	assert c_source.contains('combined=builtin__string_plus_many(2, (string[]){combined,"b"});'), c_source
 	assert c_source.contains('alias_combined=builtin__string_plus_many(2, (string[]){alias_combined,((Str)("y"))});'), c_source
-	assert c_source.count('builtin__string_eq(__v_fastc_match_') >= 2, c_source
+	assert c_source.count('builtin__string_eq(__v') >= 2, c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_string_concat_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -2255,7 +2470,7 @@ fn test_real_builtin_path_provided_params_struct_named_args() {
 	// separate arguments.
 	source := generate("module main\n@[params]\nstruct Opts {\n\ta int\n\tb bool\n}\nfn foo(x int, opts Opts) int {\n\treturn x + opts.a\n}\nfn main() {\n\tr := foo(1, a: 2, b: true)\n\tif r > 0 {\n\t\tprintln('ok')\n\t}\n}\n", 'params_named_args.v', prefs) or { panic(err) }
 	assert source.contains('foo(1,({'), source
-	assert source.contains('__v_fastc_struct_field_'), source
+	assert source.contains('__vf_sf_'), source
 }
 
 fn test_real_builtin_path_embedded_method_promotion() {
@@ -2369,8 +2584,8 @@ fn main() {
 	_ := text
 }
 ', 'embedded_option_method.v', prefs) or { panic(err) }
-	assert source.contains('*((string *)__v_fastc_option_'), source
-	assert !source.contains('*((int *)__v_fastc_option_'), source
+	assert source.contains('*((string *)__v'), source
+	assert !source.contains('*((int *)__v'), source
 }
 
 fn test_real_builtin_path_inferred_enum_keyed_map() {
@@ -2398,8 +2613,8 @@ fn test_selfhost_map_literal_call_argument_uses_runtime_map() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	source := generate("module main\nfn use_headers(headers map[string]string) {}\nfn main() {\n\tuse_headers({\n\t\t'Server': 'veb'\n\t})\n}\n", 'map_literal_argument.v', prefs) or { panic(err) }
-	assert source.contains('use_headers(({ map __v_fastc_argument_map = builtin__new_map'), source
-	assert source.contains('builtin__map_set(&__v_fastc_argument_map'), source
+	assert source.contains('use_headers(({ map __vf_argument_map = builtin__new_map'), source
+	assert source.contains('builtin__map_set(&__vf_argument_map'), source
 }
 
 fn test_selfhost_empty_inferred_map_uses_expected_return_type() {
@@ -2526,11 +2741,11 @@ fn main() {
 ', 'higher_order_nested_regressions.v', prefs) or { panic(err) }
 	// Mutable array receivers are pointers in C. Both lowerers iterate a value copy of the
 	// header, nested bare callbacks are invoked, and legal V names are escaped for C.
-	assert c_source.contains('Array_int __v_fastc_collection_'), c_source
+	assert c_source.contains('Array_int __v'), c_source
 	assert c_source.contains('= (*(values));'), c_source
-	assert !c_source.contains('Array_int* __v_fastc_collection_'), c_source
+	assert !c_source.contains('Array_int* __v'), c_source
 	assert c_source.contains('convert(it)'), c_source
-	assert c_source.count('int __v_fastc_keyword_short =') == 2, c_source
+	assert c_source.count('int __vf_keyword_short =') == 2, c_source
 	assert !c_source.contains('int short ='), c_source
 }
 
@@ -2759,7 +2974,7 @@ fn main() {
 }
 ', 'struct_field_default.v', prefs) or { panic(err) }
 	assert c_source.contains('int default_retries(void)'), c_source
-	assert c_source.contains('__v_fastc_struct_default.retries=(default_retries());'), c_source
+	assert c_source.contains('__vf_sd.retries=(default_retries());'), c_source
 }
 
 fn test_required_struct_fields_must_be_initialized() {
@@ -2857,7 +3072,7 @@ pub fn make() Settings {
 			header: fastc_scan_source_header(module_source, module_file, prefs) or { panic(err) }
 		},
 	], map[string]string{}, prefs) or { panic(err) }
-	assert c_source.contains('.visible=(__v_fastc_struct_field_0)'), c_source
+	assert c_source.contains('.visible=(__vf_sf_0)'), c_source
 }
 
 fn test_imported_public_field_mutability_is_preserved() {
@@ -2963,10 +3178,10 @@ fn main() {
 	println(config.value)
 }
 ', 'valid_struct_literal.v', prefs) or { panic(err) }
-	assert c_source.contains('__v_fastc_struct_field_0 = (enabled);'), c_source
-	assert c_source.contains('__v_fastc_struct_field_1 = (2);'), c_source
-	assert c_source.contains('.enabled=(__v_fastc_struct_field_0)'), c_source
-	assert c_source.contains('.value=(__v_fastc_struct_field_1)'), c_source
+	assert c_source.contains('__vf_sf_0 = (enabled);'), c_source
+	assert c_source.contains('__vf_sf_1 = (2);'), c_source
+	assert c_source.contains('.enabled=(__vf_sf_0)'), c_source
+	assert c_source.contains('.value=(__vf_sf_1)'), c_source
 
 	update_source := generate('module main
 
@@ -2980,7 +3195,7 @@ fn main() {
 	println(config.value)
 }
 ', 'valid_struct_update.v', prefs) or { panic(err) }
-	assert update_source.contains('__v_fastc_struct_update'), update_source
+	assert update_source.contains('__vf_struct_update'), update_source
 
 	pointer_update_source := generate('module main
 
@@ -2997,8 +3212,8 @@ fn main() {
 	_ := clone_config(base)
 }
 ', 'valid_pointer_struct_update.v', prefs) or { panic(err) }
-	assert pointer_update_source.contains('Config __v_fastc_struct_update = *(base);'), pointer_update_source
-	assert pointer_update_source.contains('v_fastc_interface_box(&__v_fastc_struct_update, sizeof(Config))'), pointer_update_source
+	assert pointer_update_source.contains('Config __vf_struct_update = *(base);'), pointer_update_source
+	assert pointer_update_source.contains('v_fastc_interface_box(&__vf_struct_update, sizeof(Config))'), pointer_update_source
 }
 
 fn test_selfhost_struct_field_initializers_preserve_source_order() {
@@ -3022,11 +3237,11 @@ fn main() {
 }
 '
 	c_source := generate(source, 'struct_field_initializer_order.v', prefs) or { panic(err) }
-	second_initializer := c_source.index('__v_fastc_struct_field_0 = (next(2));') or { -1 }
-	first_initializer := c_source.index('__v_fastc_struct_field_1 = (next(1));') or { -1 }
+	second_initializer := c_source.index('__vf_sf_0 = (next(2));') or { -1 }
+	first_initializer := c_source.index('__vf_sf_1 = (next(1));') or { -1 }
 	assert second_initializer >= 0, c_source
 	assert first_initializer > second_initializer, c_source
-	assert c_source.contains('(Pair){.first=(__v_fastc_struct_field_1),.second=(__v_fastc_struct_field_0)}'), c_source
+	assert c_source.contains('(Pair){.first=(__vf_sf_1),.second=(__vf_sf_0)}'), c_source
 }
 
 fn test_embedded_struct_fields_use_storage_paths() {
@@ -3070,8 +3285,8 @@ fn main() {
 	println(outer.number)
 }
 ', 'embedded_struct_fields.v', prefs) or { panic(err) }
-	assert c_source.contains('.__embedded_0.value=(__v_fastc_struct_field_0)'), c_source
-	assert c_source.contains('.__embedded_0.__embedded_0.number=(__v_fastc_struct_field_1)'), c_source
+	assert c_source.contains('.__embedded_0.value=(__vf_sf_0)'), c_source
+	assert c_source.contains('.__embedded_0.__embedded_0.number=(__vf_sf_1)'), c_source
 	assert c_source.contains('outer.__embedded_0.value'), c_source
 	assert c_source.contains('outer.__embedded_0.child.count'), c_source
 	assert c_source.contains('outer.__embedded_0.__embedded_0.number'), c_source
@@ -3614,7 +3829,7 @@ fn main() {
 	assert c_source.contains('union Payload {\n\tint number;'), c_source
 	assert c_source.contains('struct Named { void *_object; u32 _typ; void *_methods; };'), c_source
 	assert c_source.contains('Named_name(Named value) {'), c_source
-	assert c_source.contains('__typeof__((({ __typeof__((42)) __v_fastc_struct_field_0 = (42); (Choice){.value=(__v_fastc_struct_field_0)}; }))) choice'), c_source
+	assert c_source.contains('__typeof__((({ __typeof__((42)) __vf_sf_0 = (42); (Choice){.value=(__vf_sf_0)}; }))) choice'), c_source
 }
 
 fn test_selected_top_level_comptime_constants_are_collected_and_emitted() {
@@ -3678,6 +3893,8 @@ fn main() {
 	assert c_source.contains('static int answer;'), c_source
 	assert c_source.contains('\tanswer = 42;'), c_source
 	assert c_source.contains('v_fastc_init_globals();'), c_source
+	assert c_source.contains('void v_fastc_init_globals(void) {'), c_source
+	assert !c_source.contains('static void v_fastc_init_globals'), c_source
 }
 
 fn test_script_main_initializes_globals_before_statements() {
@@ -3694,7 +3911,7 @@ fn init() {
 println(answer)
 ', 'initialized_script_global.v', prefs) or { panic(err) }
 	main_source := c_source.all_after('int main(void) {')
-	startup_source := c_source.all_after('static void v_fastc_init_globals(void) {')
+	startup_source := c_source.all_after('void v_fastc_init_globals(void) {')
 	initializer := startup_source.index('answer = 42;') or { -1 }
 	module_initializer := startup_source.index('\n\tinit();') or { -1 }
 	startup_call := main_source.index('v_fastc_init_globals();') or { -1 }
@@ -3886,7 +4103,7 @@ pub fn value() int {
 	prefs.module_search_paths = [root]
 	c_source := generate_files([main_file], prefs) or { panic(err) }
 	main_source := c_source.all_after('int main(void) {')
-	startup_source := c_source.all_after('static void v_fastc_init_globals(void) {')
+	startup_source := c_source.all_after('void v_fastc_init_globals(void) {')
 	dependency_initializer := startup_source.index('dep__state = 1;') or { -1 }
 	dependency_init := startup_source.index('\tdep__init();') or { -1 }
 	importer_initializer := startup_source.index('main__copied = dep__value();') or { -1 }
@@ -3965,7 +4182,8 @@ pub fn ping() {}
 	mut prefs := pref.new_preferences()
 	prefs.module_search_paths = [root]
 	c_source := generate_files([main_file], prefs) or { panic(err) }
-	cleanup_source := c_source.all_after('static void v_fastc_cleanup_modules(void) {')
+	assert !c_source.contains('static void v_fastc_cleanup_modules'), c_source
+	cleanup_source := c_source.all_after('void v_fastc_cleanup_modules(void) {')
 	main_cleanup := cleanup_source.index('\n\tcleanup();') or { -1 }
 	dependency_cleanup := cleanup_source.index('\n\tdep__cleanup();') or { -1 }
 	assert main_cleanup >= 0, c_source
@@ -4086,12 +4304,12 @@ pub fn ping() {}
 	}
 	assert header.import_order == ['zed', 'alpha']
 	c_source := generate_files([main_file], prefs) or { panic(err) }
-	startup_source := c_source.all_after('static void v_fastc_init_globals(void) {')
+	startup_source := c_source.all_after('void v_fastc_init_globals(void) {')
 	zed_init := startup_source.index('\tzed__init();') or { -1 }
 	alpha_init := startup_source.index('\talpha__init();') or { -1 }
 	assert zed_init >= 0, c_source
 	assert alpha_init > zed_init, c_source
-	cleanup_source := c_source.all_after('static void v_fastc_cleanup_modules(void) {')
+	cleanup_source := c_source.all_after('void v_fastc_cleanup_modules(void) {')
 	alpha_cleanup := cleanup_source.index('\talpha__cleanup();') or { -1 }
 	zed_cleanup := cleanup_source.index('\tzed__cleanup();') or { -1 }
 	assert alpha_cleanup >= 0, c_source
@@ -4970,10 +5188,10 @@ fn parenthesized(left Pair, right Pair) bool {
 	return !(left == right)
 }
 ', 'struct_equality.v', prefs) or { panic(err) }
-	assert c_source.contains('Pair __v_fastc_eq_left = (left);'), c_source
-	assert c_source.contains('Pair __v_fastc_eq_right = (right);'), c_source
-	assert c_source.contains('((__v_fastc_eq_left).inner).value'), c_source
-	assert c_source.contains('builtin__string_eq((__v_fastc_eq_left).label, (__v_fastc_eq_right).label)'), c_source
+	assert c_source.contains('Pair __vf_eq_left = (left);'), c_source
+	assert c_source.contains('Pair __vf_eq_right = (right);'), c_source
+	assert c_source.contains('((__vf_eq_left).inner).value'), c_source
+	assert c_source.contains('builtin__string_eq((__vf_eq_left).label, (__vf_eq_right).label)'), c_source
 	assert c_source.contains('!('), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_struct_equality_${os.getpid()}')
@@ -5002,8 +5220,8 @@ fn equal(left Values, right Values) bool {
 	return left == right
 }
 ', 'struct_array_equality.v', prefs) or { panic(err) }
-	assert c_source.contains('__v_fastc_array_eq_left.len == __v_fastc_array_eq_right.len'), c_source
-	assert c_source.contains('((int *)__v_fastc_array_eq_left.data)'), c_source
+	assert c_source.contains('__vf_array_eq_left.len == __vf_array_eq_right.len'), c_source
+	assert c_source.contains('((int *)__vf_array_eq_left.data)'), c_source
 }
 
 fn test_literal_membership_evaluates_subject_once() {
@@ -5011,7 +5229,7 @@ fn test_literal_membership_evaluates_subject_once() {
 	prefs.building_v = true
 	for operator in ['in', '!in'] {
 		c_source := generate('module main\n\nfn next() int {\n\treturn 1\n}\n\nfn main() {\n\tif next() ${operator} [0, 2] {}\n}\n', 'membership_subject_once.v', prefs) or { panic(err) }
-		assert c_source.contains('__v_fastc_membership_item = (next());'), c_source
+		assert c_source.contains('__vf_m_x = (next());'), c_source
 		assert c_source.count('next()') == 1, c_source
 	}
 }
@@ -5021,14 +5239,14 @@ fn test_array_membership_evaluates_candidate_before_collection() {
 	prefs.building_v = true
 	for operator in ['in', '!in'] {
 		c_source := generate('module main\n\nfn candidate() int {\n\treturn 1\n}\n\nfn collection() []int {\n\treturn [1, 2]\n}\n\nfn main() {\n\tif candidate() ${operator} collection() {}\n}\n', 'array_membership_order.v', prefs) or { panic(err) }
-		candidate_index := c_source.index('__v_fastc_membership_item = (candidate());') or { -1 }
-		collection_index := c_source.index('__v_fastc_membership_collection = (collection());') or {
+		candidate_index := c_source.index('__vf_m_x = (candidate());') or { -1 }
+		collection_index := c_source.index('__vf_m_a = (collection());') or {
 			-1
 		}
 		assert candidate_index >= 0, c_source
 		assert collection_index > candidate_index, c_source
 		assert c_source.count('candidate()') == 1, c_source
-		assert c_source.count('__v_fastc_membership_collection = (collection());') == 1, c_source
+		assert c_source.count('__vf_m_a = (collection());') == 1, c_source
 	}
 }
 
@@ -5074,9 +5292,9 @@ fn test_literal_membership_materializes_candidates_before_comparison() {
 		rendered := g.render_special_expression(tokens, '') or {
 			panic('membership was not rendered')
 		}
-		first_assignment := '__v_fastc_membership_candidate_0 = (candidate(1));'
-		second_assignment := '__v_fastc_membership_candidate_1 = (candidate(2));'
-		comparison := '__v_fastc_membership_subject) == (__v_fastc_membership_candidate_0)'
+		first_assignment := '__vf_m_c0 = (candidate(1));'
+		second_assignment := '__vf_m_c1 = (candidate(2));'
+		comparison := '__vf_m_s) == (__vf_m_c0)'
 		first_index := rendered.source.index(first_assignment) or { -1 }
 		second_index := rendered.source.index(second_assignment) or { -1 }
 		comparison_index := rendered.source.index(comparison) or { -1 }
@@ -5094,13 +5312,13 @@ fn test_membership_temporaries_do_not_collide_with_user_names() {
 	c_source := generate('module main
 
 fn main() {
-	__v_fastc_membership_candidate_0 := 1
-	if 1 in [__v_fastc_membership_candidate_0] {}
+	__vf_m_c0 := 1
+	if 1 in [__vf_m_c0] {}
 }
 ', 'membership_temporary_collision.v', prefs) or { panic(err) }
-	assert c_source.contains('int __v_fastc_membership_1_item = (1);'), c_source
-	assert c_source.contains('__v_fastc_membership_1_collection'), c_source
-	assert !c_source.contains('int __v_fastc_membership_item = (1);'), c_source
+	assert c_source.contains('int __vf_m_1_x = (1);'), c_source
+	assert c_source.contains('__vf_m_1_a'), c_source
+	assert !c_source.contains('int __vf_m_x = (1);'), c_source
 }
 
 fn test_selfhost_string_membership_uses_substring_semantics() {
@@ -5121,19 +5339,19 @@ fn main() {
 	if 'xyz' !in 'hello' {}
 }
 ", 'string_membership.v', prefs) or { panic(err) }
-	substring_assignment := 'string __v_fastc_membership_substring = (substring());'
-	value_assignment := 'string __v_fastc_membership_value = (value());'
+	substring_assignment := 'string __vf_m_s = (substring());'
+	value_assignment := 'string __vf_m_v = (value());'
 	assert c_source.contains('static bool v_fastc_string_contains(string value, string substring)'), c_source
 	assert c_source.contains(substring_assignment), c_source
 	assert c_source.contains(value_assignment), c_source
 	substring_index := c_source.index(substring_assignment) or { -1 }
 	value_index := c_source.index(value_assignment) or { -1 }
 	assert substring_index < value_index, c_source
-	assert c_source.contains('v_fastc_string_contains(__v_fastc_membership_value, __v_fastc_membership_substring)'), c_source
-	assert c_source.contains('!(v_fastc_string_contains(__v_fastc_membership_value, __v_fastc_membership_substring))'), c_source
+	assert c_source.contains('v_fastc_string_contains(__vf_m_v, __vf_m_s)'), c_source
+	assert c_source.contains('!(v_fastc_string_contains(__vf_m_v, __vf_m_s))'), c_source
 	assert c_source.count('substring()') == 1, c_source
 	assert c_source.count('value()') == 1, c_source
-	assert !c_source.contains('u8 __v_fastc_membership_item'), c_source
+	assert !c_source.contains('u8 __vf_m_x'), c_source
 }
 
 fn test_string_alias_membership_uses_string_equality() {
@@ -5151,7 +5369,7 @@ fn main() {
 	if value in values {}
 }
 ", 'string_alias_membership.v', prefs) or { panic(err) }
-	assert c_source.count('builtin__string_eq(__v_fastc_membership_item, ((Str *)__v_fastc_membership_collection.data)') == 2, c_source
+	assert c_source.count('builtin__string_eq(__vf_m_x, ((Str *)__vf_m_a.data)') == 2, c_source
 }
 
 fn test_mixed_integer_comparisons_preserve_signed_semantics() {
@@ -5213,7 +5431,7 @@ fn main() {
 	}
 }
 ', 'valid_match_branch_types.v', prefs) or { panic(err) }
-	assert c_source.contains('if (((__v_fastc_match_'), c_source
+	assert c_source.contains('if (((__v'), c_source
 	assert c_source.contains('== (0)) || '), c_source
 	assert c_source.contains('== (1))'), c_source
 }
@@ -5383,9 +5601,9 @@ fn main() {
 	println(value())
 }
 ', 'return_before_defer.v', prefs) or { panic(err) }
-	evaluation := c_source.index('__typeof__((x)) __v_fastc_return_') or { panic(c_source) }
+	evaluation := c_source.index('__typeof__((x)) __v') or { panic(c_source) }
 	deferred_assignment := c_source.index_after('x=2;', evaluation) or { panic(c_source) }
-	returned_temporary := c_source.index_after('return __v_fastc_return_', deferred_assignment) or {
+	returned_temporary := c_source.index_after('return __v', deferred_assignment) or {
 		panic(c_source)
 	}
 	assert evaluation < deferred_assignment
@@ -5657,15 +5875,15 @@ fn main() {
 	println(auto + v_auto)
 }
 ', 'reserved_identifiers.v', prefs) or { panic(err) }
-	assert c_source.contains('int __v_fastc_keyword_auto;'), c_source
+	assert c_source.contains('int __vf_keyword_auto;'), c_source
 	assert c_source.contains('int v_auto;'), c_source
-	assert c_source.contains('int calculate(Holder holder, int __v_fastc_keyword_register, int v_register)'), c_source
-	assert c_source.contains('__typeof__((__v_fastc_keyword_register)) __v_fastc_keyword_restrict = (__v_fastc_keyword_register);'), c_source
+	assert c_source.contains('int calculate(Holder holder, int __vf_keyword_register, int v_register)'), c_source
+	assert c_source.contains('__typeof__((__vf_keyword_register)) __vf_keyword_restrict = (__vf_keyword_register);'), c_source
 	assert c_source.contains('__typeof__((v_register)) v_restrict = (v_register);'), c_source
-	assert c_source.contains('return holder.__v_fastc_keyword_auto+holder.v_auto+__v_fastc_keyword_restrict+v_restrict;'), c_source
-	assert c_source.contains('int __v_fastc_function_auto(void)'), c_source
+	assert c_source.contains('return holder.__vf_keyword_auto+holder.v_auto+__vf_keyword_restrict+v_restrict;'), c_source
+	assert c_source.contains('int __vf_function_auto(void)'), c_source
 	assert c_source.contains('int v_auto(void)'), c_source
-	assert c_source.contains(' __v_fastc_keyword_auto = (result);'), c_source
+	assert c_source.contains(' __vf_keyword_auto = (result);'), c_source
 	assert c_source.contains(' v_auto = (v_result);'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_reserved_names_${os.getpid()}')
@@ -5710,12 +5928,12 @@ fn main() {
 }
 ', 'libc_function_collisions.v', prefs) or { panic(err) }
 	for name in ['strlen', 'printf', 'open', 'close'] {
-		assert c_source.contains('int __v_fastc_function_${name}(void)'), c_source
+		assert c_source.contains('int __vf_function_${name}(void)'), c_source
 	}
-	assert c_source.contains('return __v_fastc_function_strlen();'), c_source
-	assert c_source.contains('return __v_fastc_function_printf();'), c_source
-	assert c_source.contains('return __v_fastc_function_open();'), c_source
-	assert c_source.contains('println(__v_fastc_function_close());'), c_source
+	assert c_source.contains('return __vf_function_strlen();'), c_source
+	assert c_source.contains('return __vf_function_printf();'), c_source
+	assert c_source.contains('return __vf_function_open();'), c_source
+	assert c_source.contains('println(__vf_function_close());'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_libc_names_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -5750,8 +5968,8 @@ fn main() {
 }
 ", 'fastc_runtime_function_collision.v', prefs) or { panic(err) }
 	assert c_source.contains('static string v_fastc_bool_str(bool value)'), c_source
-	assert c_source.contains('string __v_fastc_function_v_fastc_bool_str(bool value)'), c_source
-	assert c_source.contains('println(__v_fastc_function_v_fastc_bool_str(((bool)true)))'), c_source
+	assert c_source.contains('string __vf_function_v_fastc_bool_str(bool value)'), c_source
+	assert c_source.contains('println(__vf_function_v_fastc_bool_str(((bool)true)))'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_runtime_names_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -5875,10 +6093,10 @@ fn main() {
 	println(second)
 }
 ', 'valid_parallel_assignment.v', prefs) or { panic(err) }
-	assert c_source.contains('first = __v_fastc_parallel_'), c_source
-	assert c_source.contains('second = __v_fastc_parallel_'), c_source
-	assert c_source.contains('memcpy(&first, V_FASTC_MULTI_SOURCE(__v_fastc_multi_return_'), c_source
-	assert c_source.contains('memcpy(&second, V_FASTC_MULTI_SOURCE(__v_fastc_multi_return_'), c_source
+	assert c_source.contains('first = __v'), c_source
+	assert c_source.contains('second = __v'), c_source
+	assert c_source.contains('memcpy(&first, V_FASTC_MULTI_SOURCE(__v'), c_source
+	assert c_source.contains('memcpy(&second, V_FASTC_MULTI_SOURCE(__v'), c_source
 }
 
 fn test_parallel_member_assignment_uses_pointer_backed_multi_return_storage() {
@@ -5908,7 +6126,7 @@ fn main() {
 	assign(mut holder)
 }
 ', 'parallel_member_large_multi_return.v', prefs) or { panic(err) }
-	assert c_source.contains('memcpy(&holder->value, V_FASTC_MULTI_SOURCE(__v_fastc_multi_return_'), c_source
+	assert c_source.contains('memcpy(&holder->value, V_FASTC_MULTI_SOURCE(__v'), c_source
 	assert !c_source.contains('.values[1].data, sizeof(holder->value)'), c_source
 }
 
@@ -5931,7 +6149,7 @@ fn main() {
 	swap(mut holder)
 }
 ', 'parallel_aggregate_assignment.v', prefs) or { panic(err) }
-	assert c_source.count('__v_fastc_parallel_') >= 4, c_source
+	assert c_source.count('__v') >= 4, c_source
 }
 
 fn test_selfhost_parallel_declaration_from_if_expression() {
@@ -5954,7 +6172,7 @@ fn main() {
 	_ := choose(true)
 }
 ', 'selfhost_parallel_if_expression.v', prefs) or { panic(err) }
-	assert c_source.contains('MultiReturn __v_fastc_multi_return_'), c_source
+	assert c_source.contains('MultiReturn __v'), c_source
 	assert c_source.contains('int a = (int){0};'), c_source
 	assert c_source.contains('int b = (int){0};'), c_source
 }
@@ -5988,7 +6206,7 @@ fn main() {
 }
 ', 'selfhost_nested_receiver_option_multireturn.v', prefs) or { panic(err) }
 	assert c_source.contains('Data data = (Data){0};'), c_source
-	assert c_source.contains('memcpy(&data, __v_fastc_multi_return_'), c_source
+	assert c_source.contains('memcpy(&data, __v'), c_source
 }
 
 fn test_selfhost_option_multireturn_guard_from_nested_mut_receiver() {
@@ -6023,7 +6241,7 @@ fn main() {
 }
 ', 'selfhost_nested_mut_receiver_option_multireturn_guard.v', prefs) or { panic(err) }
 	assert c_source.contains('u64 first = (u64){0};'), c_source
-	assert c_source.contains('memcpy(&first, __v_fastc_multi_return_'), c_source
+	assert c_source.contains('memcpy(&first, __v'), c_source
 	assert !c_source.contains(';);'), c_source
 }
 
@@ -6295,10 +6513,10 @@ fn main() {
 	iterate(map[string]int{})
 }
 ', 'map_pointer_iteration.v', prefs) or { panic(err) }
-	assert c_source.count('builtin__map_keys((map *)&__v_fastc_map_collection_') == 1, c_source
-	assert c_source.count('builtin__map_values((map *)&__v_fastc_map_collection_') == 1, c_source
-	assert c_source.count('builtin__map_keys((map *)__v_fastc_map_collection_') == 1, c_source
-	assert c_source.count('builtin__map_values((map *)__v_fastc_map_collection_') == 1, c_source
+	assert c_source.count('builtin__map_keys((map *)&__v') == 1, c_source
+	assert c_source.count('builtin__map_values((map *)&__v') == 1, c_source
+	assert c_source.count('builtin__map_keys((map *)__v') == 1, c_source
+	assert c_source.count('builtin__map_values((map *)__v') == 1, c_source
 }
 
 fn test_map_pointer_sized_callbacks_follow_target_width() {
@@ -6393,7 +6611,7 @@ fn main() {
 	}
 }
 ', 'array_pointer_iteration.v', prefs) or { panic(err) }
-	assert c_source.count('int *value = &(((int *)__v_fastc_collection_') == 2, c_source
+	assert c_source.count('int *value = &(((int *)__v') == 2, c_source
 	assert c_source.count('take(value);') == 2, c_source
 }
 
@@ -6805,7 +7023,7 @@ fn main() {
 	add(mut groups, 'x', 1)
 }
 ", 'selfhost_append_to_map_array.v', prefs) or { panic(err) }
-	assert c_source.contains('__v_fastc_append_map_target'), c_source
+	assert c_source.contains('__vf_append_map_target'), c_source
 	assert c_source.contains('builtin__map_get_check'), c_source
 	assert !c_source.contains('groups[key]'), c_source
 }
@@ -6824,10 +7042,10 @@ fn main() {
 	add(mut groups, 0, 42)
 }
 ', 'selfhost_append_to_nested_array.v', prefs) or { panic(err) }
-	assert c_source.contains('__v_fastc_append_array_target'), c_source
+	assert c_source.contains('__vf_append_array_target'), c_source
 	assert c_source.contains('builtin__array_get(*(groups), index)'), c_source
 	assert c_source.contains('builtin____new_array(0,0,sizeof(int))'), c_source
-	assert c_source.contains('((Array_int *)__v_fastc_array_init.data)[__v_fastc_array_index]'), c_source
+	assert c_source.contains('((Array_int *)__vf_array_init.data)[__vf_array_index]'), c_source
 	assert !c_source.contains('groups[index]'), c_source
 }
 
@@ -6857,12 +7075,12 @@ fn test_selfhost_fixed_array_elements_skip_dynamic_inner_array_initialization() 
 	fixed := g.render_struct_literal_expression(tokens) or { panic('fixed array literal was not rendered') }
 	assert fixed.source.contains('sizeof(' + 'FixedArray_2_int' + ')'), fixed.source
 	assert !fixed.source.contains('builtin____new_array(0,0,sizeof(int))'), fixed.source
-	assert !fixed.source.contains('((FixedArray_2_int *)__v_fastc_array_init.data)'), fixed.source
+	assert !fixed.source.contains('((FixedArray_2_int *)__vf_array_init.data)'), fixed.source
 
 	tokens[0].typ = 'Array_Array_int'
 	dynamic := g.render_struct_literal_expression(tokens) or { panic('dynamic array literal was not rendered') }
 	assert dynamic.source.contains('builtin____new_array(0,0,sizeof(int))'), dynamic.source
-	assert dynamic.source.contains('((Array_int *)__v_fastc_array_init.data)'), dynamic.source
+	assert dynamic.source.contains('((Array_int *)__vf_array_init.data)'), dynamic.source
 }
 
 fn test_selfhost_append_array_result_to_struct_field() {
@@ -6955,7 +7173,7 @@ fn main() {}
 	// did not set `expected_expression_type` to the field type and a stale `Option`
 	// leaked in).
 	assert c_source.contains('_S("a")'), c_source
-	assert !c_source.contains('__v_fastc_box_value = (_S("a"))'), c_source
+	assert !c_source.contains('__vf_bv = (_S("a"))'), c_source
 }
 
 fn test_selfhost_result_method_or_block_is_a_statement() {
@@ -6982,7 +7200,7 @@ fn main() {
 	pad(mut writer)
 }
 ', 'result_method_or_statement.v', prefs) or { panic(err) }
-	assert c_source.contains('Option __v_fastc_option_'), c_source
+	assert c_source.contains('Option __v'), c_source
 }
 
 fn test_selfhost_comptime_if_starts_or_block_statement() {
@@ -7004,7 +7222,7 @@ fn main() {
 	use()
 }
 ', 'selfhost_comptime_if_or_statement.v', prefs) or { panic(err) }
-	assert c_source.contains('Option __v_fastc_option_'), c_source
+	assert c_source.contains('Option __v'), c_source
 	assert !c_source.contains('_S("trace")'), c_source
 }
 
@@ -7021,8 +7239,8 @@ fn main() {
 	_ := first([]string{})
 }
 ", 'array_lookup_or_block.v', prefs) or { panic(err) }
-	assert c_source.contains('bool __v_fastc_array_missing = __v_fastc_array_index < 0 || __v_fastc_array_index >= __v_fastc_array.len;'), c_source
-	assert c_source.contains('(Option){.data=__v_fastc_array_value, .state=__v_fastc_array_missing ? 2 : 0}'), c_source
+	assert c_source.contains('bool __vf_array_missing = __vf_array_index < 0 || __vf_array_index >= __vf_array.len;'), c_source
+	assert c_source.contains('(Option){.data=__vf_array_value, .state=__vf_array_missing ? 2 : 0}'), c_source
 }
 
 fn test_selfhost_array_slices_use_the_runtime_helper() {
@@ -7092,16 +7310,16 @@ fn main() {
 }
 ', 'array_slice.v', prefs) or { panic(err) }
 	assert c_source.contains('return builtin__array_slice(values, start, end);'), c_source
-	assert c_source.contains('__typeof__((make_values())) __v_fastc_slice_receiver = (make_values()); builtin__array_slice(__v_fastc_slice_receiver, 1, __v_fastc_slice_receiver.len);'), c_source
-	assert c_source.contains('__typeof__((make_text())) __v_fastc_slice_receiver = (make_text()); builtin__string_substr((__v_fastc_slice_receiver), 1, __v_fastc_slice_receiver.len);'), c_source
+	assert c_source.contains('__typeof__((make_values())) __vf_slice_receiver = (make_values()); builtin__array_slice(__vf_slice_receiver, 1, __vf_slice_receiver.len);'), c_source
+	assert c_source.contains('__typeof__((make_text())) __vf_slice_receiver = (make_text()); builtin__string_substr((__vf_slice_receiver), 1, __vf_slice_receiver.len);'), c_source
 	assert c_source.contains('return builtin__string_substr((value), 1, 2);'), c_source
 	assert c_source.contains('return builtin__string_substr((value), 1, value.len);'), c_source
 	assert !c_source.contains('builtin__array_slice(value, 1'), c_source
 	assert !c_source.contains('make_values().len'), c_source
 	assert !c_source.contains('make_text().len'), c_source
 	assert !c_source.contains('__v_slice.flags |= ArrayFlags__is_slice'), c_source
-	assert c_source.contains('__v_fastc_mut_argument = (({ __typeof__((buffer->bytes)) __v_fastc_slice_receiver'), c_source
-	assert !c_source.contains('__v_fastc_slice_receiver->len'), c_source
+	assert c_source.contains('__vf_mut_argument = (({ __typeof__((buffer->bytes)) __vf_slice_receiver'), c_source
+	assert !c_source.contains('__vf_slice_receiver->len'), c_source
 	assert c_source.contains('write_bytes(({ __typeof__(('), c_source
 	assert c_source.contains('builtin__array_clone(&(builtin__array_slice(*(values), 0, 1)))'), c_source
 }
@@ -7156,7 +7374,7 @@ fn test_literal_range_must_not_be_empty() {
 	}
 
 	c_source := generate('module main\nfn main() { for i in 2 .. 4 { println(i) } }\n', 'valid_literal_range.v', prefs) or { panic(err) }
-	assert c_source.contains('for (__typeof__((__v_fastc_range_start_0)) i = (__v_fastc_range_start_0); i < (__v_fastc_range_end_1); i++) {'), c_source
+	assert c_source.contains('for (__typeof__((__v0)) i = (__v0); i < (__v1); i++) {'), c_source
 }
 
 fn test_arithmetic_operand_types_are_not_validated() {
@@ -7315,7 +7533,7 @@ fn main() {
 	make() or { return }
 }
 ', 'selfhost_static_option_constructor.v', prefs) or { panic(err) }
-	assert c_source.contains('*((Key *)__v_fastc_option_propagate.data)'), c_source
+	assert c_source.contains('*((Key *)__vf_op.data)'), c_source
 	assert c_source.contains('Key_use(key);'), c_source
 }
 
@@ -7408,7 +7626,7 @@ fn main() {
 	use() or { return }
 }
 ', 'selfhost_nested_propagation_cast.v', prefs) or { panic(err) }
-	assert c_source.contains('Option __v_fastc_option_propagate = (maybe())'), c_source
+	assert c_source.contains('Option __vf_op = (maybe())'), c_source
 	assert !c_source.contains('maybe()!'), c_source
 }
 
@@ -7470,7 +7688,7 @@ fn main() {
 	run() or { return }
 }
 ', 'selfhost_nested_argument_and_outer_propagation.v', prefs) or { panic(err) }
-	assert c_source.contains('Option __v_fastc_option_propagate = (outer('), c_source
+	assert c_source.contains('Option __vf_op = (outer('), c_source
 	assert !c_source.contains('outer(inner()!)!'), c_source
 }
 
@@ -7603,9 +7821,9 @@ fn main() {
 	}
 }
 ', 'range_bounds.v', prefs) or { panic(err) }
-	assert c_source.contains('__v_fastc_range_start_0 = (start());')
-	assert c_source.contains('__v_fastc_range_end_1 = (limit());')
-	assert c_source.contains('i < (__v_fastc_range_end_1)')
+	assert c_source.contains('__v0 = (start());')
+	assert c_source.contains('__v1 = (limit());')
+	assert c_source.contains('i < (__v1)')
 	assert !c_source.contains('i < (limit())')
 }
 
@@ -7780,10 +7998,10 @@ fn main() {
 }
 ', 'unsigned_right_shift_assignment.v', prefs) or { panic(err) }
 	assert !c_source.contains('>>>='), c_source
-	assert c_source.count('u64 __v_fastc_unsigned_shift_count =') == 3, c_source
-	assert c_source.count('u64 __v_fastc_unsigned_shift_value =') == 3, c_source
-	assert c_source.count('__v_fastc_unsigned_shift_count >= 64') == 3, c_source
-	assert c_source.count('__v_fastc_unsigned_shift_value >> __v_fastc_unsigned_shift_count') == 3, c_source
+	assert c_source.count('u64 __vf_unsigned_shift_count =') == 3, c_source
+	assert c_source.count('u64 __vf_unsigned_shift_value =') == 3, c_source
+	assert c_source.count('__vf_unsigned_shift_count >= 64') == 3, c_source
+	assert c_source.count('__vf_unsigned_shift_value >> __vf_unsigned_shift_count') == 3, c_source
 }
 
 fn test_selfhost_main_result_propagation_panics_and_runs_defers() {
@@ -7800,11 +8018,11 @@ fn main() {
 	fail()!
 }
 ", 'main_result_propagation.v', prefs) or { panic(err) }
-	panic_call := 'builtin__panic_result_not_set(builtin__IError_msg(__v_fastc_option_propagate.err));'
+	panic_call := 'builtin__panic_result_not_set(builtin__IError_msg(__vf_op.err));'
 	assert c_source.contains(panic_call), c_source
-	assert c_source.contains('if (__v_fastc_option_propagate.state) {'), c_source
+	assert c_source.contains('if (__vf_op.state) {'), c_source
 	assert c_source.count('println(_S("cleanup"));') == 2, c_source
-	assert !c_source.contains('if (__v_fastc_option_propagate.state) { return 1; }'), c_source
+	assert !c_source.contains('if (__vf_op.state) { return 1; }'), c_source
 	used := fastc_collect_referenced_function_names([], prefs, map[string]FastcFunctionSignature{})
 	assert used['panic_result_not_set']
 }
@@ -7825,9 +8043,9 @@ fn main() {
 	ordinary_c := generate(source, 'ordinary_string_alias_iteration.v', ordinary_prefs) or {
 		panic(err)
 	}
-	assert ordinary_c.contains('string __v_fastc_collection_'), ordinary_c
-	assert ordinary_c.contains('strlen(__v_fastc_collection_'), ordinary_c
-	assert ordinary_c.contains('((const unsigned char *)__v_fastc_collection_'), ordinary_c
+	assert ordinary_c.contains('string __v'), ordinary_c
+	assert ordinary_c.contains('strlen(__v'), ordinary_c
+	assert ordinary_c.contains('((const unsigned char *)__v'), ordinary_c
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_string_alias_iteration_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -7850,9 +8068,9 @@ fn main() {
 	selfhost_c := generate(source, 'selfhost_string_alias_iteration.v', selfhost_prefs) or {
 		panic(err)
 	}
-	assert selfhost_c.contains('__typeof__((value)) __v_fastc_collection_'), selfhost_c
-	assert selfhost_c.contains('__v_fastc_collection_0.len'), selfhost_c
-	assert selfhost_c.contains('__v_fastc_collection_0.str'), selfhost_c
+	assert selfhost_c.contains('__typeof__((value)) __v'), selfhost_c
+	assert selfhost_c.contains('__v0.len'), selfhost_c
+	assert selfhost_c.contains('__v0.str'), selfhost_c
 }
 
 fn test_interface_argument_boxing_at_call_site() {
@@ -7897,8 +8115,8 @@ fn main() {
 	assert c_source.contains('._object='), c_source
 	assert c_source.contains('._typ=__v_typeid_Dog'), c_source
 	assert c_source.contains('case __v_typeid_Dog:'), c_source
-	assert c_source.contains('__v_fastc_box_value = (d)'), c_source
-	assert c_source.contains('__v_fastc_box_value = ((Dog){})'), c_source
+	assert c_source.contains('__vf_bv = (d)'), c_source
+	assert c_source.contains('__vf_bv = ((Dog){})'), c_source
 	// Assignment to an interface variable boxes rather than emitting `cur=(Dog){}`.
 	assert c_source.contains('cur=(Animal){._object='), c_source
 }
@@ -7936,16 +8154,16 @@ fn main() {
 	assert c_source.contains('typedef struct { void *_object; u32 _typ; void *_methods; } Animal;'), c_source
 	// Construction boxes the concrete variant with its type id.
 	assert c_source.contains('._typ=__v_typeid_Dog'), c_source
-	assert c_source.contains('Dog __v_fastc_box_value ='), c_source
+	assert c_source.contains('Dog __vf_bv ='), c_source
 	assert !c_source.contains('Dog{sound:'), c_source
 	// `match` dispatches on the boxed `_typ` tag rather than comparing structs.
 	assert c_source.contains('_typ == __v_typeid_Dog'), c_source
 	assert c_source.contains('_typ == __v_typeid_Cat'), c_source
 	// The matched branch smart-casts the subject to the concrete variant so field
 	// access (`a.sound`) resolves through the uniquely named narrowed temporary.
-	assert c_source.contains('Dog __v_fastc_match_cast_'), c_source
-	assert c_source.contains('Cat __v_fastc_match_cast_'), c_source
-	assert c_source.contains('return __v_fastc_match_cast_'), c_source
+	assert c_source.contains('Dog __v'), c_source
+	assert c_source.contains('Cat __v'), c_source
+	assert c_source.contains('return __v'), c_source
 	assert !c_source.contains('return a.sound'), c_source
 }
 
@@ -7976,7 +8194,7 @@ fn main() {
 	assert c_source.contains('#define __v_typeid_int 1073741824'), c_source
 	assert c_source.contains('#define __v_typeid_bool '), c_source
 	// A primitive is boxed into the sum type with its type id on construction.
-	assert c_source.contains('int __v_fastc_box_value = (42)'), c_source
+	assert c_source.contains('int __vf_bv = (42)'), c_source
 	assert c_source.contains('._typ=__v_typeid_int'), c_source
 	// `match` dispatches on the tag and smart-casts to the primitive C type.
 	assert c_source.contains('_typ == __v_typeid_int'), c_source
@@ -8010,7 +8228,7 @@ fn main() {
 	// composite range and is registered so it also gets a typedef.
 	assert c_source.contains('#define __v_typeid_Array_int '), c_source
 	// The array literal is boxed as a real construction, not raw `[1,2,3]`.
-	assert c_source.contains('Array_int __v_fastc_box_value = (((Array_int)builtin__new_array_from_c_array'), c_source
+	assert c_source.contains('Array_int __vf_bv = (((Array_int)builtin__new_array_from_c_array'), c_source
 	assert c_source.contains('._typ=__v_typeid_Array_int'), c_source
 	// `match []int` dispatches on the composite tag and smart-casts to the array.
 	assert c_source.contains('_typ == __v_typeid_Array_int'), c_source
@@ -8038,10 +8256,10 @@ fn main() {
 ', 'sum_type_match_expr.v', prefs) or { panic(err) }
 	// A `match` used as an expression over a sum type dispatches on the boxed tag
 	// (not a struct-vs-type comparison) and smart-casts inside each branch value.
-	assert c_source.contains('__v_fastc_match_0._typ == __v_typeid_int'), c_source
-	assert c_source.contains('int v = *(int *)__v_fastc_match_0._object'), c_source
-	assert c_source.contains('bool v = *(bool *)__v_fastc_match_0._object'), c_source
-	assert !c_source.contains('(__v_fastc_match_0) == (int)'), c_source
+	assert c_source.contains('__v0._typ == __v_typeid_int'), c_source
+	assert c_source.contains('int v = *(int *)__v0._object'), c_source
+	assert c_source.contains('bool v = *(bool *)__v0._object'), c_source
+	assert !c_source.contains('(__v0) == (int)'), c_source
 }
 
 fn test_sum_type_map_and_nested_variants() {
@@ -8141,7 +8359,7 @@ fn retain_items(nodes []Node) []Node {
 
 fn main() {}
 ', 'sum_type_smartcast_append.v', prefs) or { panic(err) }
-	assert c_source.contains('main__Node __v_fastc_push_value_'), c_source
+	assert c_source.contains('main__Node __v'), c_source
 	assert c_source.contains('__v_typeid_main__Item'), c_source
 	assert c_source.contains('builtin__array_push((array *)&result'), c_source
 }
@@ -8167,7 +8385,7 @@ fn update(node Node) {
 
 fn main() {}
 ', 'mut_sum_type_smartcast.v', prefs) or { panic(err) }
-	assert c_source.contains('Item* __v_fastc_if_cast_'), c_source
+	assert c_source.contains('Item* __v'), c_source
 	assert c_source.contains('->value=2'), c_source
 }
 
@@ -8200,7 +8418,7 @@ fn main() {
 ', 'condition_loop_smartcast_once.v', prefs) or { panic(err) }
 	// The rewritten type-test conjunct owns evaluation of the subject. Its temporary must not
 	// evaluate the indexed expression again in the per-iteration prelude.
-	assert c_source.contains('Expr __v_fastc_smartcast_subject_'), c_source
+	assert c_source.contains('Expr __v'), c_source
 	assert c_source.contains('= (Expr){0};'), c_source
 	assert c_source.count('next_index()') == 1, c_source
 }
@@ -8224,10 +8442,13 @@ fn inspect(mut node Node) {
 	}
 }
 
-fn main() {}
+fn main() {
+	mut node := Node(Item{})
+	inspect(mut node)
+}
 ', 'mut_sum_type_smartcast_argument.v', prefs) or { panic(err) }
-	assert c_source.contains('inspect(__v_fastc_smartcast_subject_'), c_source
-	assert !c_source.contains('inspect(__v_fastc_if_cast_'), c_source
+	assert c_source.contains('inspect(__v0)'), c_source
+	assert !c_source.contains('inspect(__v3)'), c_source
 }
 
 fn test_mut_match_sum_type_smartcast_passes_original_box_to_mut_parameter() {
@@ -8252,10 +8473,13 @@ fn inspect(mut node Node) {
 	}
 }
 
-fn main() {}
+fn main() {
+	mut node := Node(Item{})
+	inspect(mut node)
+}
 ', 'mut_match_sum_type_smartcast_argument.v', prefs) or { panic(err) }
 	assert c_source.contains('inspect(node)'), c_source
-	assert !c_source.contains('inspect(__v_fastc_match_cast_'), c_source
+	assert !c_source.contains('inspect(__v'), c_source
 }
 
 fn test_selfhost_string_array_index_uses_value_equality() {
@@ -8269,9 +8493,9 @@ fn locate(names []string, wanted string) (int, int) {
 
 fn main() {}
 ', 'string_array_index.v', prefs) or { panic(err) }
-	assert c_source.count('builtin__string_eq(__v_fastc_index_item') == 2, c_source
-	assert c_source.contains('int __v_fastc_index_cursor = 0;'), c_source
-	assert c_source.contains('int __v_fastc_index_cursor = __v_fastc_index_collection.len - 1;'), c_source
+	assert c_source.count('builtin__string_eq(__vitem') == 2, c_source
+	assert c_source.contains('int __vcursor = 0;'), c_source
+	assert c_source.contains('int __vcursor = __vcollection.len - 1;'), c_source
 }
 
 fn test_mut_match_member_smartcast_reads_current_boxed_payload() {
@@ -8312,7 +8536,7 @@ fn value(mut holder Holder) int {
 
 fn main() {}
 ', 'mut_match_current_payload.v', prefs) or { panic(err) }
-	assert c_source.contains('((First *)__v_fastc_match_'), c_source
+	assert c_source.contains('((First *)__v'), c_source
 	assert c_source.contains('->_object)->value'), c_source
 }
 
@@ -8331,8 +8555,8 @@ fn boxed_pointer() &Value {
 
 fn main() {}
 ', 'boxed_interface_pointer.v', prefs) or { panic(err) }
-	assert c_source.contains('(Value *)v_fastc_interface_box(&__v_fastc_iface_ref, sizeof(Value))'), c_source
-	assert !c_source.contains('&__v_fastc_iface_ref;'), c_source
+	assert c_source.contains('(Value *)v_fastc_interface_box(&__vf_iface_ref, sizeof(Value))'), c_source
+	assert !c_source.contains('&__vf_iface_ref;'), c_source
 }
 
 fn test_boxed_address_payload_has_heap_lifetime() {
@@ -8789,8 +9013,8 @@ fn main() {
 	_ = Holder{}
 }
 ', 'selfhost_sum_constant_field_default.v', prefs) or { panic(err) }
-	assert c_source.contains('__v_fastc_struct_default.expr=(main__empty_expr);'), c_source
-	assert !c_source.contains('__v_fastc_box_value = (main__empty_expr)'), c_source
+	assert c_source.contains('__vf_sd.expr=(main__empty_expr);'), c_source
+	assert !c_source.contains('__vf_bv = (main__empty_expr)'), c_source
 	assert c_source.contains('static Expr main__empty_expr;'), c_source
 	assert c_source.contains('main__empty_expr = (Expr){._object='), c_source
 	assert c_source.contains('._typ=__v_typeid_Empty'), c_source
@@ -9101,8 +9325,8 @@ fn main() {
 	c_source := generate(source, 'selfhost_or_value.v', prefs) or { panic(err) }
 	// The or-block runs its leading statement (`flag = 9`), then uses the trailing value
 	// (`42`) on failure and the unwrapped option value on success, via an
-	// `__v_fastc_or_result` temp.
-	assert c_source.contains('__v_fastc_or_result'), c_source
+	// `__vf_or_result` temp.
+	assert c_source.contains('__vf_or_result'), c_source
 	assert c_source.contains('flag=9'), c_source
 	assert c_source.contains(' = (42)'), c_source
 }
@@ -9125,7 +9349,7 @@ fn main() {
 }
 ', 'selfhost_multiline_struct_fallback.v', prefs) or { panic(err) }
 	assert c_source.contains('? ((Item){}) : *((Item *)'), c_source
-	assert !c_source.contains('if (__v_fastc_option_'), c_source
+	assert !c_source.contains('if (__v'), c_source
 }
 
 fn test_veb_template_compiles_to_builder() {
@@ -9843,7 +10067,7 @@ fn main() {
 ', 'selfhost_blank_for.v', prefs) or { panic(err) }
 	// `_` is the blank identifier: nested `for _ in ...` loops must not be rejected as
 	// a redeclaration, and the range counter for `_` gets a private name, not `_`.
-	assert c_source.contains('__v_fastc_range_index'), c_source
+	assert c_source.contains('__vf_range_index'), c_source
 }
 
 fn test_selfhost_if_is_smartcast_field_access() {
@@ -9916,8 +10140,8 @@ fn main() {
 ', 'selfhost_member_is_smartcast.v', prefs) or { panic(err) }
 	// A member smart-cast keeps a pointer to the boxed concrete value, and the nested
 	// member chain is rendered through it so both type inference and C access use File.
-	assert c_source.contains('File *__v_fastc_smartcast_member_'), c_source
-	assert c_source.contains('__v_fastc_smartcast_member_'), c_source
+	assert c_source.contains('File *__v'), c_source
+	assert c_source.contains('__v'), c_source
 	assert c_source.contains('->fd'), c_source
 }
 
@@ -9979,7 +10203,7 @@ fn main() {
 	_ := choose(true)
 }
 ', 'if_expression_large_multi_return_guard.v', prefs) or { panic(err) }
-	assert c_source.contains('memcpy(&value, V_FASTC_MULTI_SOURCE(__v_fastc_multi_return_'), c_source
+	assert c_source.contains('memcpy(&value, V_FASTC_MULTI_SOURCE(__v'), c_source
 	assert !c_source.contains('.values[0].data, sizeof(value)'), c_source
 }
 
@@ -10092,8 +10316,8 @@ fn size(decoded Decoded) int {
 
 fn main() {}
 ', 'selfhost_match_member_smartcast.v', prefs) or { panic(err) }
-	assert c_source.contains('DataFrame *__v_fastc_smartcast_member_'), c_source
-	assert c_source.contains('__v_fastc_smartcast_member_'), c_source
+	assert c_source.contains('DataFrame *__v'), c_source
+	assert c_source.contains('__v'), c_source
 	assert c_source.contains('->data.len'), c_source
 	assert !c_source.contains('decoded.frame.data'), c_source
 }
@@ -10140,8 +10364,8 @@ fn classify(ok bool) ?Kind {
 
 fn main() {}
 ', 'selfhost_optional_enum_shorthand_return.v', prefs) or { panic(err) }
-	assert c_source.contains('Kind __v_fastc_box_value = (Kind__one)'), c_source
-	assert !c_source.contains('__v_fastc_box_value = (.one)'), c_source
+	assert c_source.contains('Kind __vf_bv = (Kind__one)'), c_source
+	assert !c_source.contains('__vf_bv = (.one)'), c_source
 	assert !c_source.contains('sizeof()'), c_source
 }
 
@@ -10231,8 +10455,8 @@ fn (mut p Pool) take(key string) {
 
 fn main() {}
 ', 'selfhost_map_array_ptr.v', prefs) or { panic(err) }
-	assert c_source.contains('Array_main__Item_ptr *__v_fastc_map_value'), c_source
-	assert !c_source.contains('Array_main__Item* *__v_fastc_map_value'), c_source
+	assert c_source.contains('Array_main__Item_ptr *__vf_mv'), c_source
+	assert !c_source.contains('Array_main__Item* *__vf_mv'), c_source
 }
 
 fn test_selfhost_map_lookup_or_return_uses_option_value_type() {
@@ -10257,9 +10481,9 @@ fn main() {
 	write(.item)
 }
 ', 'selfhost_map_lookup_or_return.v', prefs) or { panic(err) }
-	assert c_source.contains('string *__v_fastc_map_value'), c_source
-	assert c_source.contains('*((string *)__v_fastc_option_'), c_source
-	assert !c_source.contains('Option __v_fastc_option_0 = (main__labels[kind])'), c_source
+	assert c_source.contains('string *__vf_mv'), c_source
+	assert c_source.contains('*((string *)__v'), c_source
+	assert !c_source.contains('Option __v0 = (main__labels[kind])'), c_source
 }
 
 fn test_selfhost_address_of_map_lookup_or_returns_stored_value_pointer() {
@@ -10277,8 +10501,8 @@ fn find_ptr(items map[string]Item, key string) &Item {
 
 fn main() {}
 ', 'selfhost_map_lookup_address.v', prefs) or { panic(err) }
-	assert c_source.contains('Item *__v_fastc_map_value'), c_source
-	assert c_source.contains('Item* __v_fastc_box_value = (__v_fastc_map_value)'), c_source
+	assert c_source.contains('Item *__vf_mv'), c_source
+	assert c_source.contains('Item* __vf_bv = (__vf_mv)'), c_source
 	assert !c_source.contains('&({ Option'), c_source
 }
 
@@ -10434,8 +10658,8 @@ fn main() {
 ', 'selfhost_as_cast.v', prefs) or { panic(err) }
 	// `a as Loud` (interface -> interface) re-boxes the same object under the target
 	// type; `b as Dog` (sum -> concrete) unboxes the stored object.
-	assert c_source.contains('._object = __v_fastc_as_src'), c_source
-	assert c_source.contains('*((Dog *)__v_fastc_as_src'), c_source
+	assert c_source.contains('._object = __vf_as_src'), c_source
+	assert c_source.contains('*((Dog *)__vf_as_src'), c_source
 }
 
 fn test_selfhost_as_cast_to_module_qualified_concrete_type() {
@@ -10476,7 +10700,7 @@ pub fn (d Dog) sound() int {
 			}
 		},
 	], map[string]string{}, prefs) or { panic(err) }
-	assert c_source.contains('*((animals__Dog *)__v_fastc_as_src'), c_source
+	assert c_source.contains('*((animals__Dog *)__vf_as_src'), c_source
 	assert !c_source.contains(' as animals__Dog'), c_source
 }
 
@@ -10568,7 +10792,7 @@ fn main() {
 	assert c_source.contains('builtin__chan_try_push'), c_source
 	assert c_source.contains('builtin__chan_try_pop'), c_source
 	assert c_source.contains('builtin__chan_close(ch,(Array_IError){0})'), c_source
-	assert c_source.contains('Item __v_fastc_chan_recv'), c_source
+	assert c_source.contains('Item __vf_chan_recv'), c_source
 	assert !c_source.contains('items.closed'), c_source
 }
 
@@ -10925,7 +11149,7 @@ fn main() {
 	_ := choose(Limits{}, true)
 }
 ', 'selfhost_option_if_expression.v', prefs) or { panic(err) }
-	assert c_source.contains('Option __v_fastc_if_guard'), c_source
+	assert c_source.contains('Option __v'), c_source
 	assert c_source.contains('u64 value = *((u64 *)'), c_source
 	assert !c_source.contains('value:=selected'), c_source
 }
@@ -11063,7 +11287,7 @@ fn main() {
 ', 'selfhost_bang_method.v', prefs) or { panic(err) }
 	// `decode(raw)!.len`: the receiver `decode(raw)!` unwraps the result (propagating
 	// its error) before `.len` is taken.
-	assert c_source.contains('__v_fastc_option_propagate'), c_source
+	assert c_source.contains('__vf_op'), c_source
 }
 
 fn test_selfhost_mut_method_on_pointer_field() {
@@ -11123,7 +11347,7 @@ fn main() {
 }
 ', 'selfhost_spawn_mut.v', prefs) or { panic(err) }
 	// `spawn bump(mut c)`: the `mut` parameter is a pointer, so c is passed by address.
-	assert c_source.contains('__v_fastc_spawn_start'), c_source
+	assert c_source.contains('__vf_spawn_start'), c_source
 }
 
 fn test_selfhost_mut_map_option_guard() {
@@ -11218,10 +11442,10 @@ fn main() {
 	_ := total(Holder{})
 }
 ', 'fixed_array_field_iteration.v', prefs) or { panic(err) }
-	assert c_source.contains('Item *__v_fastc_collection_'), c_source
+	assert c_source.contains('Item *__v'), c_source
 	assert c_source.contains('= &((holder.items)[0]);'), c_source
-	assert !c_source.contains('__typeof__((holder.items)) __v_fastc_collection_'), c_source
-	assert !c_source.contains('__v_fastc_collection_0.data'), c_source
+	assert !c_source.contains('__typeof__((holder.items)) __v'), c_source
+	assert !c_source.contains('__v0.data'), c_source
 }
 
 fn test_selfhost_fixed_array_struct_field_copy_uses_memcpy() {
@@ -11245,9 +11469,9 @@ fn main() {
 	_ := copy(Holder{})
 }
 ', 'fixed_array_struct_field_copy.v', prefs) or { panic(err) }
-	assert c_source.contains('memcpy(__v_fastc_struct_fixed.items, source.items, sizeof(__v_fastc_struct_fixed.items));'), c_source
+	assert c_source.contains('memcpy(__vf_struct_fixed.items, source.items, sizeof(__vf_struct_fixed.items));'), c_source
 
-	assert !c_source.contains('__typeof__((source.items)) __v_fastc_struct_field_'), c_source
+	assert !c_source.contains('__typeof__((source.items)) __vf_sf_'), c_source
 }
 
 fn test_selfhost_panic_argument_uses_string_concatenation_lowering() {
@@ -11303,7 +11527,7 @@ fn main() {
 	_ := call(map[string]Handler{})
 }
 ', 'map_guard_function_alias.v', prefs) or { panic(err) }
-	assert c_source.contains('Handler handler = *((Handler *)__v_fastc_if_guard_'), c_source
+	assert c_source.contains('Handler handler = *((Handler *)__v'), c_source
 	assert c_source.contains('return handler(1);'), c_source
 	assert !c_source.contains('sizeof());'), c_source
 }
@@ -11327,7 +11551,7 @@ fn main() {
 	_ := call(Server{})
 }
 ', 'function_field_result_payload.v', prefs) or { panic(err) }
-	assert c_source.contains('*((string *)__v_fastc_option_'), c_source
+	assert c_source.contains('*((string *)__v'), c_source
 	assert !c_source.contains('return; } 0;'), c_source
 }
 
@@ -11353,7 +11577,7 @@ fn main() {
 ', 'optional_function_field_guard.v', prefs) or { panic(err) }
 	assert c_source.contains('config.callback != NULL'), c_source
 	assert c_source.contains('Option (*callback)(int)'), c_source
-	assert !c_source.contains('Option __v_fastc_if_guard_'), c_source
+	assert !c_source.contains('Option __v'), c_source
 }
 
 fn test_selfhost_derived_overloaded_comparisons() {
@@ -11441,8 +11665,8 @@ fn main() {
 	value *= Count{ value: 3 }
 }
 ', 'overloaded_compound_assignment.v', prefs) or { panic(err) }
-	assert c_source.contains('Count *__v_fastc_overloaded_assignment_target = &(value)'), c_source
-	assert c_source.contains('main__Count_mul(*__v_fastc_overloaded_assignment_target'), c_source
+	assert c_source.contains('Count *__vf_overloaded_assignment_target = &(value)'), c_source
+	assert c_source.contains('main__Count_mul(*__vf_overloaded_assignment_target'), c_source
 	assert !c_source.contains('value*='), c_source
 }
 
@@ -11523,10 +11747,10 @@ fn main() {
 	_ := different(["a"], ["b"])
 }
 ', 'dynamic_array_equality.v', prefs) or { panic(err) }
-	assert c_source.contains('__v_fastc_array_eq_left.len == __v_fastc_array_eq_right.len'), c_source
-	assert c_source.contains('((u64 *)__v_fastc_array_eq_left.data)'), c_source
-	assert c_source.contains('builtin__string_eq(((string *)__v_fastc_array_eq_left.data)'), c_source
-	assert c_source.contains('!__v_fastc_array_equal'), c_source
+	assert c_source.contains('__vf_array_eq_left.len == __vf_array_eq_right.len'), c_source
+	assert c_source.contains('((u64 *)__vf_array_eq_left.data)'), c_source
+	assert c_source.contains('builtin__string_eq(((string *)__vf_array_eq_left.data)'), c_source
+	assert c_source.contains('!__vf_array_equal'), c_source
 	assert !c_source.contains('left==right'), c_source
 }
 
@@ -11545,8 +11769,8 @@ fn missing(value Preferred) bool {
 
 fn main() {}
 ', 'fixed_array_field_equality.v', prefs) or { panic(err) }
-	assert c_source.contains('u8 *__v_fastc_array_eq_left = (u8 *)(value.ipv4)'), c_source
-	assert c_source.contains('__v_fastc_array_eq_index < 4'), c_source
+	assert c_source.contains('u8 *__vf_array_eq_left = (u8 *)(value.ipv4)'), c_source
+	assert c_source.contains('__vf_array_eq_index < 4'), c_source
 	assert !c_source.contains('==[4]u8{}'), c_source
 }
 
@@ -11760,7 +11984,7 @@ fn slice(address Address) []u8 {
 fn main() {}
 ', 'selfhost_fixed_field_slice.v', prefs) or { panic(err) }
 	assert c_source.contains('&(((address.bytes))[0])'), c_source
-	assert !c_source.contains('__typeof__((address.bytes)) __v_fastc_slice_receiver'), c_source
+	assert !c_source.contains('__typeof__((address.bytes)) __vf_slice_receiver'), c_source
 }
 
 fn test_selfhost_embedded_union_fixed_array_slice_promotes_member() {
@@ -11869,7 +12093,7 @@ fn main() {
 	// balanced (`Option t = (make_box(x))`, not `((make_box(x))`) and the grouped operand`s
 	// value type (Box) flows into the result token so the method binds to the unwrapped Box.
 	assert c_source.contains('Box_doubled'), c_source
-	assert c_source.contains('__v_fastc_option'), c_source
+	assert c_source.contains('__v'), c_source
 	assert !c_source.contains('= ((make_box'), c_source
 }
 
@@ -11892,7 +12116,7 @@ fn main() {
 ', 'selfhost_parenthesized_or_comparison.v', prefs) or { panic(err) }
 	// The synthetic option-unwrapping atom must retain its full statement expression
 	// when the surrounding string equality re-renders the comparison operands.
-	assert c_source.contains('Option __v_fastc_option_'), c_source
+	assert c_source.contains('Option __v'), c_source
 	assert c_source.contains('= (maybe_role())'), c_source
 	assert c_source.contains('builtin__string_eq'), c_source
 }
@@ -11939,8 +12163,8 @@ fn main() {
 	append_value(mut values, "compiler", Text{ value: " initializer" })
 }
 ', 'selfhost_map_assignment_overloaded_operation.v', prefs) or { panic(err) }
-	assert c_source.contains('Text __v_fastc_map_value = (Text_plus(previous,suffix))'), c_source
-	assert !c_source.contains('Text_plus(({ string __v_fastc_map_key'), c_source
+	assert c_source.contains('Text __vf_mv = (Text_plus(previous,suffix))'), c_source
+	assert !c_source.contains('Text_plus(({ string __vf_k'), c_source
 }
 
 fn test_selfhost_map_assignment_with_propagated_result() {
@@ -11966,7 +12190,7 @@ fn main() {
 }
 ', 'selfhost_map_assignment_propagated_result.v', prefs) or { panic(err) }
 	assert c_source.contains('builtin__map_set'), c_source
-	assert c_source.contains('__v_fastc_option_propagate'), c_source
+	assert c_source.contains('__vf_op'), c_source
 	assert !c_source.contains('items[_S("answer")]'), c_source
 }
 
@@ -11984,7 +12208,7 @@ fn main() {
 	insert(mut values, "group", "key", "value")
 }
 ', 'selfhost_nested_map_assignment.v', prefs) or { panic(err) }
-	assert c_source.contains('Map_string_string *__v_fastc_nested_map_value'), c_source
+	assert c_source.contains('Map_string_string *__vf_nested_map_value'), c_source
 	assert c_source.contains('builtin__new_map(sizeof(string), sizeof(string)'), c_source
 	assert c_source.contains('builtin__map_set((map *)({'), c_source
 	assert !c_source.contains('&values[group]'), c_source
@@ -12004,7 +12228,7 @@ fn main() {
 }
 ', 'selfhost_array_any.v', prefs) or { panic(err) }
 	assert c_source.contains('string it ='), c_source
-	assert c_source.contains('bool __v_fastc_mapped_'), c_source
+	assert c_source.contains('bool __v'), c_source
 	assert !c_source.contains('builtin__array_any'), c_source
 }
 
@@ -12051,7 +12275,7 @@ fn main() {
 	_ := use_number()
 }
 ', 'selfhost_arithmetic_or_method.v', prefs) or { panic(err) }
-	assert c_source.contains('__v_fastc_option'), c_source
+	assert c_source.contains('__v'), c_source
 	assert c_source.contains('100+('), c_source
 	assert !c_source.contains('.doubled()'), c_source
 }
@@ -12088,7 +12312,7 @@ fn main() {
 ', 'selfhost_pointer_struct_or_call.v', prefs) or { panic(err) }
 	assert c_source.contains('(Conn*)v_fastc_interface_box'), c_source
 	assert c_source.contains('Conn_use(c)'), c_source
-	assert c_source.contains('take(({ Option __v_fastc_option_'), c_source
+	assert c_source.contains('take(({ Option __v'), c_source
 }
 
 fn test_selfhost_method_on_parenthesized_or_in_struct_field() {
@@ -12158,7 +12382,7 @@ fn main() {
 ', 'selfhost_or_binop.v', prefs) or { panic(err) }
 	// `maybe(x) or { return -1 } + 10`: the diverging or-block returns on failure, and the
 	// `+ 10` binds to the unwrapped success value rather than orphaning as its own statement.
-	assert c_source.contains('__v_fastc_option'), c_source
+	assert c_source.contains('__v'), c_source
 	assert c_source.contains('+ 10') || c_source.contains('+10'), c_source
 }
 
@@ -12183,11 +12407,11 @@ fn main() {
 	_ := use_it()
 }
 ', 'selfhost_option_if_guard_err.v', prefs) or { panic(err) }
-	assert c_source.contains('IError err = __v_fastc_if_guard_'), c_source
+	assert c_source.contains('IError err = __v'), c_source
 }
 
 fn test_selfhost_multi_return_macro_uses_collision_safe_temporaries() {
-	assert c_selfhost_preamble.contains('__v_fastc_multi_value')
+	assert c_selfhost_preamble.contains('__vf_multi_value')
 	assert !c_selfhost_preamble.contains('__typeof__(expression) value =')
 }
 
@@ -12249,8 +12473,8 @@ fn main() {
 	_ := remove(Stream{})
 }
 ', 'option_field_local_guard.v', prefs) or { panic(err) }
-	assert c_source.contains('Option __v_fastc_if_guard_'), c_source
-	assert c_source.contains('u64 id = *((u64 *)__v_fastc_if_guard_'), c_source
+	assert c_source.contains('Option __v'), c_source
+	assert c_source.contains('u64 id = *((u64 *)__v'), c_source
 	assert !c_source.contains('if (id:=stream_id)'), c_source
 }
 
@@ -12276,7 +12500,7 @@ fn main() {
 ', 'explicit_option_casts.v', prefs) or { panic(err) }
 	assert c_source.contains('(Option){.state=2}'), c_source
 	assert c_source.contains('(Option){.data='), c_source
-	assert c_source.contains('u64 unwrapped = *((u64 *)__v_fastc_if_guard_'), c_source
+	assert c_source.contains('u64 unwrapped = *((u64 *)__v'), c_source
 	assert !c_source.contains('?((u64)'), c_source
 }
 

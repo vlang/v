@@ -220,10 +220,10 @@ the lifecycle hooks or the non-body pieces refers to, which the source-level nam
 reachability keeps: each worker records its definitions and the mangled names they mention, and
 the assembly cuts the unreachable spans out of the pieces (about 9% of the self-host C).
 
-The TinyCC step itself is split: `fastc_write_c_units` cuts the pieces into up to 8
+The TinyCC step itself is split: `fastc_write_c_units` cuts the pieces into up to 16
 translation units (the shared head of typedefs, prototypes and runtime in every unit, the
-dispatch tables, lifecycle functions and `main` only in the first, the file bodies grouped by
-size; the globals are definitions in the first unit and `extern` declarations in the others),
+dispatch tables and lifecycle functions only in the first, the file bodies grouped by size; the
+globals are definitions in the first unit and `extern` declarations in the others),
 `fastc_compile_c_units` compiles them with concurrent `tcc -c` processes started through
 `posix_spawn` (forking the large compiler process costs more), and one `tcc` call links the
 objects (`VJOBS=1`, `V3_FASTC_NO_PARALLEL=1`, or `-no-parallel` keeps the single-file build; both
@@ -232,6 +232,13 @@ give the same C with `-keepc`). On macOS TinyCC runs Apple's `codesign` after li
 executable themselves (`gen/fastc/macho_sign.v`, SHA-256 page hashes through CommonCrypto,
 patched into the file in place). The SDK path is taken from `SDKROOT` or the toolchain selected by
 `xcrun`; conventional SDK locations are used only as a fallback.
+
+Default self-host builds content-cache the split TinyCC objects and the linked, signed executable
+under `os.vtmp_dir()`. The keys cover the exact generated units, TinyCC build, compile options, and
+link options. The executable key is calculated directly from the generated pieces and unit layout,
+so a warm hit is restored before temporary C files are written or object files are read. A cached
+executable is restored as an independent copy, so replacing or modifying the output cannot change
+the cache. Pass `-nocache` or `--no-cache` through the full V driver to bypass both caches.
 
 The standalone compiler supports `self` directly and defaults that command to FastC. For example,
 `./v self x5` replaces the compiler through five descendant FastC generations, with each installed

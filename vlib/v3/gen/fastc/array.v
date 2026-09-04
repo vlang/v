@@ -327,7 +327,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		is_fixed_array := base_layout_type.starts_with('FixedArray_')
 		is_raw_fixed_array := is_fixed_array && g.fixed_array_uses_raw_storage(base_tokens)
 		needs_receiver_temporary := omitted_end && base_tokens.len > 1 && !is_raw_fixed_array
-		receiver_name := '__v_fastc_slice_receiver'
+		receiver_name := '__vf_slice_receiver'
 		receiver_source := if needs_receiver_temporary { receiver_name } else { base_source }
 		receiver_is_pointer := base_type.ends_with('*') && !needs_receiver_temporary
 		access := if receiver_is_pointer { '->' } else { '.' }
@@ -371,7 +371,8 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 			'builtin__array_slice(${array_value}, ${start}, ${end})'
 		}
 		if needs_receiver_temporary {
-			slice_source = '({ __typeof__((${base_source})) ${receiver_name} = (${base_source}); ${slice_source}; })'
+			receiver_decl_type := g.declaration_c_type(base_type, base_source)
+			slice_source = '({ ${receiver_decl_type} ${receiver_name} = (${base_source}); ${slice_source}; })'
 		}
 		return FastcRenderedExpression{
 			source: slice_source
@@ -619,7 +620,7 @@ fn (g &Parser) resolved_root_expression_name(name string) string {
 		}
 	}
 	// A local/parameter whose name is a C keyword (`short`, `default`) is emitted as
-	// `__v_fastc_keyword_<name>`; return that so an index base matches the render_raw buffer
+	// `__vf_keyword_<name>`; return that so an index base matches the render_raw buffer
 	// spelling and its lowered `string_at`/`array_get` receiver is the real variable.
 	return fastc_c_identifier(name)
 }
@@ -634,11 +635,11 @@ fn (g &Parser) fastc_inline_array_element_equality(array_type string, left strin
 		return error('nested array element')
 	}
 	inner_comparison := if g.underlying_alias_type(inner_element).trim_right('*') == 'string' {
-		'builtin__string_eq(((${inner_element} *)__v_fastc_meq_l.data)[__v_fastc_meq_k], ((${inner_element} *)__v_fastc_meq_r.data)[__v_fastc_meq_k])'
+		'builtin__string_eq(((${inner_element} *)__vf_meq_l.data)[__vf_meq_k], ((${inner_element} *)__vf_meq_r.data)[__vf_meq_k])'
 	} else {
-		'(((${inner_element} *)__v_fastc_meq_l.data)[__v_fastc_meq_k] == ((${inner_element} *)__v_fastc_meq_r.data)[__v_fastc_meq_k])'
+		'(((${inner_element} *)__vf_meq_l.data)[__vf_meq_k] == ((${inner_element} *)__vf_meq_r.data)[__vf_meq_k])'
 	}
-	return '({ ${array_type} __v_fastc_meq_l = (${left}); ${array_type} __v_fastc_meq_r = (${right}); bool __v_fastc_meq = (__v_fastc_meq_l.len == __v_fastc_meq_r.len); for (int __v_fastc_meq_k = 0; __v_fastc_meq && __v_fastc_meq_k < __v_fastc_meq_l.len; __v_fastc_meq_k++) { if (!${inner_comparison}) { __v_fastc_meq = false; break; } } __v_fastc_meq; })'
+	return '({ ${array_type} __vf_meq_l = (${left}); ${array_type} __vf_meq_r = (${right}); bool __vf_meq = (__vf_meq_l.len == __vf_meq_r.len); for (int __vf_meq_k = 0; __vf_meq && __vf_meq_k < __vf_meq_l.len; __vf_meq_k++) { if (!${inner_comparison}) { __vf_meq = false; break; } } __vf_meq; })'
 }
 
 fn (g &Parser) render_membership_candidate(tokens []FastcExpressionToken, expected_type string) ?string {

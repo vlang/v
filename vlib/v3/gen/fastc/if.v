@@ -1355,7 +1355,7 @@ fn fastc_option_success_expression(value_type string, expression string) string 
 }
 
 fn fastc_box_expression(value_type string, expression string) string {
-	return '({ ${value_type} __v_fastc_box_value = (${expression}); v_fastc_interface_box(&__v_fastc_box_value, sizeof(${value_type})); })'
+	return '({ ${value_type} __vf_bv = (${expression}); v_fastc_interface_box(&__vf_bv, sizeof(${value_type})); })'
 }
 
 // read_if_expression_multi_return_guard lowers `if a, b := opt_multi() { x } else { y }`

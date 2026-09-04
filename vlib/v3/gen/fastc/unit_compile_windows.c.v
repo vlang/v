@@ -9,13 +9,44 @@ mut:
 	object  string
 }
 
+// fastc_prestart_c_units is unavailable on Windows, whose process wrapper has
+// no stdin-pipe prestart path.
+pub fn fastc_prestart_c_units(_ string, _ []string, _ string, _ int) FastcPrestartedCUnits {
+	return FastcPrestartedCUnits{}
+}
+
+// fastc_discard_prestarted_c_units is a no-op on Windows.
+pub fn fastc_discard_prestarted_c_units(mut _ FastcPrestartedCUnits) {}
+
+// fastc_begin_feed_prestarted_c_units is unavailable on Windows.
+pub fn fastc_begin_feed_prestarted_c_units(mut _ FastcPrestartedCUnits, mut _ FastcRenderingCUnits) !FastcFeedingCUnits {
+	return error('prestarted FastC units are unavailable on Windows')
+}
+
+// fastc_begin_render_prestarted_c_units is unavailable on Windows.
+pub fn fastc_begin_render_prestarted_c_units(mut _ FastcPrestartedCUnits, _ string, _ []string, _ FastcUnitLayout, _ int) !FastcFeedingCUnits {
+	return error('prestarted FastC units are unavailable on Windows')
+}
+
+// fastc_finish_prestarted_c_units is unavailable on Windows.
+pub fn fastc_finish_prestarted_c_units(mut _ FastcPrestartedCUnits, mut _ FastcFeedingCUnits, _ FastcPreparedUnits, mut _ FastcPreparedLink, _ bool) ![]string {
+	return error('prestarted FastC units are unavailable on Windows')
+}
+
+// fastc_compile_prestarted_rendering_c_units is unavailable on Windows.
+pub fn fastc_compile_prestarted_rendering_c_units(mut _ FastcPrestartedCUnits, mut _ FastcRenderingCUnits, _ FastcPreparedUnits, mut _ FastcPreparedLink, _ bool) ![]string {
+	return error('prestarted FastC units are unavailable on Windows')
+}
+
 // fastc_compile_c_units compiles the translation units to objects with
 // concurrent TinyCC processes and returns the object paths, or the output of
 // the first compile that failed.
-pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string) ![]string {
+pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string, prepared FastcPreparedUnits) ![]string {
 	mut compiles := []FastcUnitCompile{cap: unit_paths.len}
-	for unit_path in unit_paths {
-		object := unit_path[..unit_path.len - 2] + '.o'
+	for i in fastc_unit_compile_order(unit_paths, prepared) {
+		unit_path := unit_paths[i]
+		entry := prepared.entries[i]
+		object := entry.object
 		mut args := base_args.clone()
 		args << ['-c', unit_path, '-o', object]
 		mut process := os.new_process(tcc)
@@ -27,7 +58,6 @@ pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string
 			object: object
 		}
 	}
-	mut objects := []string{cap: unit_paths.len}
 	mut failure := ''
 	for mut compile in compiles {
 		compile.process.wait()
@@ -37,12 +67,26 @@ pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string
 		if code != 0 && failure == '' {
 			failure = if output.len > 0 { output } else { 'tcc failed on ${compile.object}' }
 		}
-		objects << compile.object
 	}
 	if failure != '' {
 		return error(failure)
 	}
-	return objects
+	for entry in prepared.entries {
+		fastc_publish_unit_cache(entry)
+	}
+	return prepared.objects
+}
+
+// fastc_compile_c_unit_texts keeps the cross-platform API available; Windows
+// currently uses temporary files because its process wrapper has no stdin pipe.
+pub fn fastc_compile_c_unit_texts(tcc string, base_args []string, unit_paths []string, sources []string, prepared FastcPreparedUnits) ![]string {
+	if unit_paths.len != sources.len {
+		return error('invalid streamed FastC unit layout')
+	}
+	for i, source in sources {
+		os.write_file(unit_paths[i], source)!
+	}
+	return fastc_compile_c_units(tcc, base_args, unit_paths, prepared)
 }
 
 // fastc_run_command runs the program with the argument vector and returns

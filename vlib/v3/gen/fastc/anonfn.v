@@ -53,7 +53,7 @@ fn (mut g Parser) parse_anonymous_function() !string {
 		g.next()
 	}
 	anon_source := g.s.src[anon_start..body_end]
-	name := '__v_fastc_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${anon_start}'
+	name := '__vf_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${anon_start}'
 	// Rewrite `fn (...) ...` as `fn <name> (...) ...` so `parse_function` reads it as
 	// an ordinary declaration.
 	after_fn_keyword := anon_source[2..]

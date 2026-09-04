@@ -88,7 +88,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 			spread := g.render_call_argument_expression(call_args[fixed_arguments][1..], variadic_type) or { return none }
 			c_arguments << spread
 			return FastcRenderedExpression{
-				source: '${fastc_c_function_name_for_key(function_key)}(${c_arguments.join(',')})'
+				source: '${g.c_function_name_for_key(function_key)}(${c_arguments.join(',')})'
 				typ: signature.return_type
 			}
 		}
@@ -240,11 +240,12 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 			access := if receiver_type.ends_with('*') { '->' } else { '.' }
 			comparison := if fastc_trim_pointer_suffix(g.underlying_alias_type(element_type)) == 'string' {
-				'builtin__string_eq(__v_fastc_contains_item, ((${element_type} *)__v_fastc_contains_collection${access}data)[__v_fastc_contains_index])'
+				'builtin__string_eq(__vf_contains_item, ((${element_type} *)__vf_contains_collection${access}data)[__vf_contains_index])'
 			} else {
-				'(__v_fastc_contains_item == ((${element_type} *)__v_fastc_contains_collection${access}data)[__v_fastc_contains_index])'
+				'(__vf_contains_item == ((${element_type} *)__vf_contains_collection${access}data)[__vf_contains_index])'
 			}
-			call_source := '({ ${element_type} __v_fastc_contains_item = (${argument}); __typeof__((${receiver.source})) __v_fastc_contains_collection = (${receiver.source}); bool __v_fastc_contains_found = false; for (int __v_fastc_contains_index = 0; __v_fastc_contains_index < __v_fastc_contains_collection${access}len; __v_fastc_contains_index++) { if (${comparison}) { __v_fastc_contains_found = true; break; } } __v_fastc_contains_found; })'
+			receiver_decl_type := g.declaration_c_type(receiver_type, receiver.source)
+			call_source := '({ ${element_type} __vf_contains_item = (${argument}); ${receiver_decl_type} __vf_contains_collection = (${receiver.source}); bool __vf_contains_found = false; for (int __vf_contains_index = 0; __vf_contains_index < __vf_contains_collection${access}len; __vf_contains_index++) { if (${comparison}) { __vf_contains_found = true; break; } } __vf_contains_found; })'
 			if receiver_start == 0 && call_end == tokens.len - 1 {
 				return FastcRenderedExpression{
 					source: call_source
@@ -274,21 +275,22 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				}
 				access := if receiver_type.ends_with('*') { '->' } else { '.' }
 				loop_init := if tokens[i].lit == 'last_index' {
-					'__v_fastc_index_collection${access}len - 1'
+					'__vf_index_collection${access}len - 1'
 				} else {
 					'0'
 				}
 				loop_condition := if tokens[i].lit == 'last_index' {
-					'__v_fastc_index_cursor >= 0'
+					'__vf_index_cursor >= 0'
 				} else {
-					'__v_fastc_index_cursor < __v_fastc_index_collection${access}len'
+					'__vf_index_cursor < __vf_index_collection${access}len'
 				}
 				loop_step := if tokens[i].lit == 'last_index' {
-					'__v_fastc_index_cursor--'
+					'__vf_index_cursor--'
 				} else {
-					'__v_fastc_index_cursor++'
+					'__vf_index_cursor++'
 				}
-				call_source := '({ ${element_type} __v_fastc_index_item = (${argument}); __typeof__((${receiver.source})) __v_fastc_index_collection = (${receiver.source}); int __v_fastc_index_result = -1; for (int __v_fastc_index_cursor = ${loop_init}; ${loop_condition}; ${loop_step}) { if (builtin__string_eq(__v_fastc_index_item, ((${element_type} *)__v_fastc_index_collection${access}data)[__v_fastc_index_cursor])) { __v_fastc_index_result = __v_fastc_index_cursor; break; } } __v_fastc_index_result; })'
+				receiver_decl_type := g.declaration_c_type(receiver_type, receiver.source)
+				call_source := '({ ${element_type} __vf_index_item = (${argument}); ${receiver_decl_type} __vf_index_collection = (${receiver.source}); int __vf_index_result = -1; for (int __vf_index_cursor = ${loop_init}; ${loop_condition}; ${loop_step}) { if (builtin__string_eq(__vf_index_item, ((${element_type} *)__vf_index_collection${access}data)[__vf_index_cursor])) { __vf_index_result = __vf_index_cursor; break; } } __vf_index_result; })'
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
@@ -321,7 +323,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				} else {
 					receiver.source
 				}
-				wait_all := '({ __typeof__((${recv_src})) __v_fastc_threads = (${recv_src}); ${result_type} __v_fastc_results = (${result_type})builtin____new_array(0, __v_fastc_threads.len, sizeof(${value_type})); for (int __v_fastc_ti = 0; __v_fastc_ti < __v_fastc_threads.len; __v_fastc_ti++) { ${value_type} __v_fastc_tv = ${wait_helper}(((${element} *)__v_fastc_threads.data)[__v_fastc_ti]); builtin__array_push((array *)&__v_fastc_results, &__v_fastc_tv); } __v_fastc_results; })'
+				receiver_decl_type := g.declaration_c_type(receiver_type.trim_right('*'), recv_src)
+				wait_all := '({ ${receiver_decl_type} __vf_threads = (${recv_src}); ${result_type} __vf_results = (${result_type})builtin____new_array(0, __vf_threads.len, sizeof(${value_type})); for (int __vf_ti = 0; __vf_ti < __vf_threads.len; __vf_ti++) { ${value_type} __vf_tv = ${wait_helper}(((${element} *)__vf_threads.data)[__vf_ti]); builtin__array_push((array *)&__vf_results, &__vf_tv); } __vf_results; })'
 				if receiver_start == 0 && wait_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: wait_all
@@ -677,7 +680,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			effective_receiver_source
 		}
 		has_arguments := call_end > i + 2
-		method_c_name := fastc_method_c_name(signature.module_name, expected_receiver, tokens[i].lit)
+		method_c_name := g.c_function_name_or(method_key, fastc_method_c_name(signature.module_name, expected_receiver, tokens[i].lit))
 		mut direct_arguments := []string{}
 		if has_arguments {
 			call_args := fastc_call_arguments(tokens, i + 1, call_end) or { continue }

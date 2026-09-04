@@ -348,11 +348,35 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 	}
 	timer.mark('resolve.imports')
 	if memo_path != '' {
-		memo_entry_paths := if prefs.building_v { paths } else { []string{} }
-		pending_memo_store = fastc_start_memo_store(memo_path, memo_text, sources, builtin_dir, memo_lookup_modules, memo_lookup_sources, prefs, module_path_cache, module_dir_files, memo_entry_paths, real_path_cache, entry_files, preloaded)
+		// An unchanged source set would serialize the same memo body and return
+		// without writing it. Recognize that common warm path from the stamps the
+		// preload already collected, avoiding a second walk and string build.
+		if !fastc_resolve_memo_sources_unchanged(memo, sources, preloaded) {
+			memo_entry_paths := if prefs.building_v { paths } else { []string{} }
+			pending_memo_store = fastc_start_memo_store(memo_path, memo_text, sources, builtin_dir, memo_lookup_modules, memo_lookup_sources, prefs, module_path_cache, module_dir_files, memo_entry_paths, real_path_cache, entry_files, preloaded)
+		}
 		timer.mark('resolve.memo_store')
 	}
 	return sources, module_aliases
+}
+
+// fastc_resolve_memo_sources_unchanged reports whether the resolved files and
+// their versions are exactly the source sequence already recorded by `memo`.
+fn fastc_resolve_memo_sources_unchanged(memo FastcResolveMemo, sources []FastcSourceFile, preloaded map[string]FastcLoadedSource) bool {
+	if memo.files.len == 0 || memo.files.len != sources.len || memo.stamps.len != sources.len {
+		return false
+	}
+	for i, source_file in sources {
+		if memo.files[i] != source_file.path {
+			return false
+		}
+		loaded := preloaded[source_file.path] or { return false }
+		if loaded.stamp.size == 0 || loaded.stamp.mtime == 0
+			|| !fastc_same_stamp(memo.stamps[i], loaded.stamp) {
+			return false
+		}
+	}
+	return true
 }
 
 // FastcResolveMemo records what an earlier resolution of the same entry
@@ -1288,15 +1312,15 @@ fn fastc_sources_in_dependency_order(sources []FastcSourceFile) ![]FastcSourceFi
 
 // fastc_module_init_calls lists the `init` hooks of `ordered_sources`, which
 // must already be in module dependency order.
-fn fastc_module_init_calls(ordered_sources []FastcSourceFile, functions map[string]FastcFunctionSignature) ![]string {
-	return fastc_module_lifecycle_calls(ordered_sources, functions, 'init', false)
+fn fastc_module_init_calls(ordered_sources []FastcSourceFile, functions map[string]FastcFunctionSignature, function_c_names map[string]string) ![]string {
+	return fastc_module_lifecycle_calls(ordered_sources, functions, function_c_names, 'init', false)
 }
 
-fn fastc_module_cleanup_calls(ordered_sources []FastcSourceFile, functions map[string]FastcFunctionSignature) ![]string {
-	return fastc_module_lifecycle_calls(ordered_sources, functions, 'cleanup', true)
+fn fastc_module_cleanup_calls(ordered_sources []FastcSourceFile, functions map[string]FastcFunctionSignature, function_c_names map[string]string) ![]string {
+	return fastc_module_lifecycle_calls(ordered_sources, functions, function_c_names, 'cleanup', true)
 }
 
-fn fastc_module_lifecycle_calls(ordered_sources []FastcSourceFile, functions map[string]FastcFunctionSignature, hook_name string, reverse bool) ![]string {
+fn fastc_module_lifecycle_calls(ordered_sources []FastcSourceFile, functions map[string]FastcFunctionSignature, function_c_names map[string]string, hook_name string, reverse bool) ![]string {
 	mut seen_modules := map[string]bool{}
 	mut ordered_modules := []string{}
 	for source_file in ordered_sources {
@@ -1315,13 +1339,17 @@ fn fastc_module_lifecycle_calls(ordered_sources []FastcSourceFile, functions map
 			if signature.parameter_types.len > 0 {
 				return error('fastc parser does not support module `${hook_name}` with parameters in ${signature.path}')
 			}
-			calls << fastc_c_function_name(module_name, hook_name)
+			calls << if c_name := function_c_names[function_key] {
+				c_name
+			} else {
+				fastc_c_function_name(module_name, hook_name)
+			}
 		}
 	}
 	return calls
 }
 
-fn fastc_generate_startup_initializers(ordered_sources []FastcSourceFile, constant_initializers map[string]string, global_initializers map[string]string, module_init_calls []string) !string {
+fn fastc_generate_startup_initializers(ordered_sources []FastcSourceFile, constant_initializers map[string]string, global_initializers map[string]string, module_init_calls []string, function_c_names map[string]string) !string {
 	mut seen_modules := map[string]bool{}
 	mut out := strings.new_builder(1024)
 	for source_file in ordered_sources {
@@ -1334,7 +1362,12 @@ fn fastc_generate_startup_initializers(ordered_sources []FastcSourceFile, consta
 		global_initializer := global_initializers[module_name] or { '' }
 		out.write_string(constant_initializer)
 		out.write_string(global_initializer)
-		init_call := fastc_c_function_name(module_name, 'init')
+		function_key := fastc_function_key(module_name, 'init')
+		init_call := if c_name := function_c_names[function_key] {
+			c_name
+		} else {
+			fastc_c_function_name(module_name, 'init')
+		}
 		if init_call in module_init_calls {
 			out.writeln('\t${init_call}();')
 		}

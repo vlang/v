@@ -8,6 +8,7 @@ module fastc
 // generator is usable before a target is configured; generation calls
 // `fastc_set_platform_int_bits` with the target pointer width first.
 __global fastc_platform_int_c_type = 'i64'
+__global fastc_compact_v3_type_names = false
 
 // fastc_set_platform_int_bits selects the C spelling for the platform `int`
 // from the target pointer width. Generation calls this once, before any worker
@@ -16,4 +17,8 @@ __global fastc_platform_int_c_type = 'i64'
 // correct, and matches `types.set_platform_int_bits` in the C backend.
 fn fastc_set_platform_int_bits(bits int) {
 	fastc_platform_int_c_type = if bits == 32 { 'i32' } else { 'i64' }
+}
+
+fn fastc_set_compact_v3_type_names(compact bool) {
+	fastc_compact_v3_type_names = compact
 }
