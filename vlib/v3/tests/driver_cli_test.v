@@ -1765,7 +1765,7 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	help := cmdexec.run(v3_bin, ['--help'])
 	assert help.exit_code == 0
 	assert help.output.contains('-cc <compiler>')
-	assert help.output.contains('-no-memory-limit             disable the 4032 MiB user-build memory safety limit')
+	assert help.output.contains('-no-memory-limit             disable the 10176 MiB user-build memory safety limit')
 	c_output := os.join_path(root, 'hello.c')
 	c_compile := cmdexec.run(v3_bin, ['-no-memory-limit', '-o', c_output, source])
 	assert c_compile.exit_code == 0, c_compile.output

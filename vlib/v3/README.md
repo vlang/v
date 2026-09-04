@@ -90,9 +90,9 @@ two's-complement semantics. On macOS, `-cg` links executables with exported symb
 backtraces while plain `-g` retains its V-source debug behavior.
 For `-prod`, generated C units of at least 8 MiB use `-O2 -flto`; Clang also uses a bounded inline
 threshold for those units. Smaller production units retain `-O3 -flto`.
-The driver monitors compiler memory throughout the build. Ordinary builds stop at 4032 MiB;
-compiler-tree and self-host builds stop at 3840 MiB, leaving extra sampling headroom below a
-4 GiB process ceiling.
+The driver monitors compiler memory throughout the build. Ordinary builds stop at 10176 MiB;
+compiler-tree and self-host builds stop at 9984 MiB, leaving extra sampling headroom below a
+10 GiB process ceiling.
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
 On macOS and Linux, `make` and the default `v self` build the compiler with `-prealloc`, enabling
