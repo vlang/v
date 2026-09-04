@@ -7,8 +7,9 @@ Usage:
 
 Options:
   All other options are passed to the build command. (e.g. -prod)
-  With -prod and clang/gcc, `v self` may use PGO automatically when tools are available.
+  Plain self-builds compile the full `cmd/v` CLI, which embeds and defaults to V3 on macOS/Linux.
   On Apple Silicon, regular self-builds use bundled TCC by default; `CC` or `-cc` overrides it.
+  With -prod and clang/gcc, `v self` may use PGO automatically when tools are available.
   On macOS and Linux, `-b fastc` builds the standalone experimental V3 FastC compiler.
   `-prod` cannot be combined with `-b fastc`.
   FastC replacement builds (`xN` without `-o`) reject options that the standalone compiler

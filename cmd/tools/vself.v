@@ -8,6 +8,8 @@ import v.util.vflags
 
 const args_ = arguments()
 const is_debug = args_.contains('-debug')
+const full_v_cli_source = 'cmd/v'
+const standalone_v3_source = 'vlib/v3/v3.v'
 
 // support a renamed `v` executable too:
 const vexe = os.getenv_opt('VEXE') or { @VEXE }
@@ -85,7 +87,9 @@ fn main() {
 	}
 	final_binary := if obinary != '' { obinary } else { 'v2' }
 	pgo_cc_kind := if fastc_self_build { '' } else { pgo_compiler_kind(args) }
-	compilation_source := if fastc_self_build { 'vlib/v3/v3.v' } else { 'cmd/v' }
+	// Only explicit FastC builds are standalone. Regular replacements must retain
+	// cmd/v so commands such as self, up, fmt, and version remain available.
+	compilation_source := if fastc_self_build { standalone_v3_source } else { full_v_cli_source }
 	for run_idx in 0 .. repeat_count {
 		run_label := if repeat_count > 1 { ' [${run_idx + 1}/${repeat_count}]' } else { '' }
 		options := if args.len > 0 { '(${compile_args.join(' ')})' } else { '' }
@@ -505,13 +509,13 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 	}
 	mut generate_args := with_output_arg(args, pgo_binary)
 	generate_args << ['-cflags', '-fprofile-generate=${profile_dir}']
-	generate_cmd := compose_v_cmd(vexe, generate_args, 'cmd/v')
+	generate_cmd := compose_v_cmd(vexe, generate_args, full_v_cli_source)
 	run_cmd(generate_cmd) or {
 		eprintln('PGO step failed while building the instrumented compiler.')
 		eprintln(err.msg())
 		return false
 	}
-	training_cmd := '${os.quoted_path(pgo_binary)} -o ${os.quoted_path(training_output)} ${os.quoted_path('cmd/v')}'
+	training_cmd := '${os.quoted_path(pgo_binary)} -o ${os.quoted_path(training_output)} ${os.quoted_path(full_v_cli_source)}'
 	run_cmd(training_cmd) or {
 		eprintln('PGO step failed while generating the profiling data.')
 		eprintln(err.msg())
@@ -530,7 +534,7 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 	if cc_kind == 'gcc' {
 		final_args << ['-cflags', '-fprofile-correction']
 	}
-	final_cmd := compose_v_cmd(vexe, final_args, 'cmd/v')
+	final_cmd := compose_v_cmd(vexe, final_args, full_v_cli_source)
 	run_cmd(final_cmd) or {
 		eprintln('PGO step failed while building the final compiler binary.')
 		eprintln(err.msg())
@@ -566,13 +570,13 @@ fn bootstrap_self_build(vroot string, args []string, final_binary string) ! {
 	mut bootstrap_args := ['-no-parallel']
 	bootstrap_args << with_output_arg(args, bootstrap_v2)
 	bootstrap_v1_cmd := os.join_path('.', bootstrap_v1)
-	bootstrap_v2_cmd := '${os.quoted_path(bootstrap_v1_cmd)} ${bootstrap_args.join(' ')} ${os.quoted_path('cmd/v')}'
+	bootstrap_v2_cmd := '${os.quoted_path(bootstrap_v1_cmd)} ${bootstrap_args.join(' ')} ${os.quoted_path(full_v_cli_source)}'
 	run_cmd(bootstrap_v2_cmd) or {
 		return error('bootstrap fallback failed while building v2.\n${err.msg()}')
 	}
 	final_args := with_output_arg(args, final_binary)
 	bootstrap_v2_cmd_path := os.join_path('.', bootstrap_v2)
-	final_cmd := '${os.quoted_path(bootstrap_v2_cmd_path)} ${final_args.join(' ')} ${os.quoted_path('cmd/v')}'
+	final_cmd := '${os.quoted_path(bootstrap_v2_cmd_path)} ${final_args.join(' ')} ${os.quoted_path(full_v_cli_source)}'
 	run_cmd(final_cmd) or {
 		return error('bootstrap fallback failed while building the final compiler.\n${err.msg()}')
 	}
