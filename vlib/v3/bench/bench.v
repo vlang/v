@@ -5,9 +5,9 @@ import runtime
 import sync
 import time
 
-// Leave 256 MiB below the externally visible 4 GiB ceiling so an allocation
-// between watchdog samples cannot make the process cross that ceiling first.
-const default_memory_limit_kb = i64(3840) * 1024
+// Ordinary builds leave 64 MiB below the externally visible 4 GiB ceiling.
+// Compiler-tree and self-host builds retain the larger 256 MiB sampling cushion.
+const default_memory_limit_kb = i64(4032) * 1024
 const self_host_memory_limit_kb = i64(3840) * 1024
 const compiler_tree_memory_limit_kb = i64(3840) * 1024
 const memory_monitor_interval = 10 * time.millisecond

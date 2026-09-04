@@ -157,7 +157,10 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	mut interface_impl_cache := map[string]bool{}
 	// Generic cloning is recursive. Reuse one stack-shaped child-id buffer instead
 	// of allocating a temporary array for every cloned AST node.
-	t.generic_clone_children.ensure_cap(t.a.nodes.len)
+	// Its live length is bounded by the active generic subtree, not by the whole
+	// program; let exceptional deep trees grow it instead of reserving millions
+	// of entries up front.
+	t.generic_clone_children.ensure_cap(65536)
 	struct_decls := t.collect_generic_struct_decls()
 	t.monomorph_profile('mono driver struct decls: ${time.ticks() - debug_started} ms')
 	t.materialize_generic_sum_types(false)
@@ -3758,8 +3761,8 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 		concrete_error_count = t.tc.errors.len
 		t.tc.check_concrete_fn_semantics(int(clone_id), decl.file, decl.module)
 	}
-	t.transform_specialized_fn_body(clone_id, decl.module, decl.file, generic_params,
-		concrete_args, decl.node.value, validate_return)
+	t.transform_specialized_fn_body(clone_id, specialization_nodes_start, decl.module, decl.file,
+		generic_params, concrete_args, decl.node.value, validate_return)
 	was_boxed_types_frozen := t.interface_boxed_types_frozen
 	t.interface_boxed_types_frozen = false
 	t.collect_lowered_interface_boxed_types_range(specialization_nodes_start, t.a.nodes.len)
@@ -3779,7 +3782,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	return clone_id
 }
 
-fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, module_name string, file_name string, params []string, args []string, source_name string, validate_return bool) {
+fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, specialization_nodes_start int, module_name string, file_name string, params []string, args []string, source_name string, validate_return bool) {
 	if int(clone_id) < 0 || int(clone_id) >= t.a.nodes.len {
 		return
 	}
@@ -3807,7 +3810,14 @@ fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, modul
 	old_validating_specialization := t.validating_generic_spec
 	t.in_monomorphize_scan = false
 	t.validating_generic_spec = true
+	old_node_type_memo := t.node_type_memo
+	t.node_type_memo = &NodeTypeMemo{}
+	if t.memo_node_types {
+		t.begin_node_type_memo(specialization_nodes_start, t.a.nodes.len - 1)
+	}
 	t.transform_fn_body(int(clone_id))
+	t.end_node_type_memo()
+	t.node_type_memo = old_node_type_memo
 	if validate_return {
 		t.validate_specialized_fn_return(clone_id, source_name)
 	}
@@ -7431,14 +7441,25 @@ fn (t &Transformer) local_concrete_fn_shadows_generic(name string, module_name s
 			return false
 		}
 	}
-	if qname in t.fn_ret_types || name in t.fn_ret_types {
+	if qname in t.fn_ret_types {
 		return true
 	}
 	if isnil(t.tc) {
+		return name in t.fn_ret_types
+	}
+	if qname in t.tc.fn_param_types || qname in t.tc.fn_ret_types {
+		return true
+	}
+	if name !in t.fn_ret_types && name !in t.tc.fn_param_types && name !in t.tc.fn_ret_types {
 		return false
 	}
-	return qname in t.tc.fn_param_types || qname in t.tc.fn_ret_types || name in t.tc.fn_param_types
-		|| name in t.tc.fn_ret_types
+	decl_module := t.tc.fn_type_modules[name] or { '' }
+	source_module := if t.cur_fn_source_module.len > 0 {
+		t.cur_fn_source_module
+	} else {
+		module_name
+	}
+	return generic_decl_module_matches_call_module(decl_module, source_module)
 }
 
 fn generic_decl_module_matches_call_module(decl_module string, call_module string) bool {
@@ -12434,6 +12455,11 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_nam
 }
 
 fn (t &Transformer) type_short_name_has_non_main_owner(name string) bool {
+	if t.non_main_type_index_ready {
+		return t.non_main_type_short_names[name]
+	}
+	// Small fixture transformers can call this helper before prepare_with_pre_scans().
+	// Production transforms use the prebuilt O(1) index above.
 	for candidate, info in t.structs {
 		owner := if info.module.len > 0 { info.module } else { candidate.all_before_last('.') }
 		if candidate.contains('.') && candidate.all_after_last('.') == name

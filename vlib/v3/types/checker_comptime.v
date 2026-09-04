@@ -4253,7 +4253,11 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 				return
 			}
 		}
-		if tc.unsafe_depth == 0 && fn_param_is_voidptr_type(actual) {
+		// Match the established checker: only raw void pointers require an unsafe cast.
+		// Pointer aliases retain their declared type, and void-pointer aliases are valid
+		// cast targets without an unsafe block.
+		if tc.unsafe_depth == 0 && actual.name() in ['voidptr', '&void']
+			&& !fn_param_is_voidptr_type(target) {
 			if unalias_type(target_base) is SumType {
 				tc.record_error_at(.assignment_mismatch,
 					'cannot cast voidptr to `${target_name}` outside `unsafe`', id, node.pos)

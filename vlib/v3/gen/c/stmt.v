@@ -6921,7 +6921,8 @@ fn (g &FlatGen) index_rhs_alias_elem_type(rhs flat.Node) ?types.Type {
 }
 
 fn (g &FlatGen) preserve_specialized_alias_decl_type(rhs_id flat.NodeId, rhs flat.Node, v_type types.Type) types.Type {
-	if v_type is types.Alias || !g.name_uses_specialized_generic_abi(g.cur_fn_name) {
+	if v_type is types.Alias
+		|| (!g.cur_fn_is_specialized && !g.name_uses_specialized_generic_abi(g.cur_fn_name)) {
 		return v_type
 	}
 	rhs_type := g.decl_rhs_fallback_type(rhs_id, rhs)

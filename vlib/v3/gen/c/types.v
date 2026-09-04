@@ -973,6 +973,14 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 		return false
 	}
 	bare_val_type := val_type.trim_right('*')
+	if g.stale_ambiguous_qualified_struct_c_type(bare_val_type)
+		|| g.stale_missing_qualified_struct_c_type(bare_val_type) {
+		// Stale generic annotations can lose the declaration module or inherit the
+		// generic helper's module. The correctly qualified specialization registers
+		// the usable optional; do not emit a phantom payload type here.
+		g.emitted_optional_types[opt_name] = true
+		return false
+	}
 	if !bare_val_type.contains('__') && g.stale_ambiguous_qualified_interface_c_type(bare_val_type) {
 		// A stale unqualified signature cannot identify which imported interface it
 		// belongs to. Its concrete, module-qualified signature registers the usable

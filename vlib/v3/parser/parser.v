@@ -6291,7 +6291,19 @@ fn (mut p Parser) stmt() flat.NodeId {
 		.key_unsafe {
 			unsafe_start := p.span_start()
 			p.next()
-			return p.unsafe_block_stmt(unsafe_start)
+			unsafe_id := p.unsafe_block_stmt(unsafe_start)
+			expr_id := p.expr_with_lhs(unsafe_id, .lowest)
+			if expr_id == unsafe_id {
+				return unsafe_id
+			}
+			if p.tok == .semicolon {
+				p.next()
+			}
+			return p.add_node(flat.Node{
+				kind: .expr_stmt
+				children_start: p.add_child(expr_id)
+				children_count: 1
+			})
 		}
 		.key_defer {
 			return p.defer_stmt()
@@ -12515,7 +12527,7 @@ fn (p &Parser) shared_token_gap_has_line_boundary() bool {
 }
 
 fn token_can_start_type_name(tok token.Token) bool {
-	return tok == .name || tok == .amp || tok == .question || tok == .not || tok == .lsbr
+	return tok == .name || tok == .amp || tok == .and || tok == .question || tok == .not || tok == .lsbr
 		|| tok == .lpar || tok == .key_fn || tok == .key_struct || tok == .ellipsis
 		|| tok == .key_mut || tok == .key_shared || tok == .key_atomic || tok == .key_typeof
 }

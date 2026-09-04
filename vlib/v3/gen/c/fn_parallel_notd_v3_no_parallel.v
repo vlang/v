@@ -2429,6 +2429,12 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		module_cleanup_fn_modules: g.module_cleanup_fn_modules
 		module_imports: g.module_imports
 		preserved_header_files_seen: g.preserved_header_files_seen
+		inlined_c_structs: g.inlined_c_structs
+		inlined_c_typedef_names: g.inlined_c_typedef_names
+		inlined_c_fns: g.inlined_c_fns
+		inlined_c_declared_fns: g.inlined_c_declared_fns
+		inlined_c_active_macros: g.inlined_c_active_macros
+		inlined_c_static_fns: g.inlined_c_static_fns
 		libc_compat_fns: g.libc_compat_fns.clone()
 		tc: if result_only {
 			unsafe { g.tc }
@@ -3016,10 +3022,15 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		}
 		mut fs_worker := g.new_parallel_worker(0)
 		fs_worker.tc.verbose = g.tc.verbose
+		// These helpers can intern C names concurrently. Give each a detached cache
+		// instead of racing through the shared master cache backing.
+		fs_worker.c_name_cache = &CNameCache{}
 		mut fixed_array_worker := g.new_parallel_worker(1)
 		fixed_array_worker.tc.verbose = g.tc.verbose
+		fixed_array_worker.c_name_cache = &CNameCache{}
 		mut optional_worker := g.new_parallel_worker(2)
 		optional_worker.tc.verbose = g.tc.verbose
+		optional_worker.c_name_cache = &CNameCache{}
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 		if fail.len > 0 {
 			// prepare_pre_dispatch_master can submit its own selection/cost batches to

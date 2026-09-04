@@ -38,6 +38,8 @@ pub mut:
 	in_str_inter_format bool
 	str_inter_cbr_depth int
 	str_quote           u8
+	str_parent_quotes   []u8
+	str_parent_depths   []int
 	diagnostics         []Diagnostic
 }
 
@@ -86,6 +88,8 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.in_str_inter_format = false
 	s.str_inter_cbr_depth = 0
 	s.str_quote = 0
+	s.str_parent_quotes = []u8{}
+	s.str_parent_depths = []int{}
 	s.diagnostics = []Diagnostic{}
 	s.file = unsafe { file }
 	s.src = src
@@ -165,6 +169,9 @@ pub fn (mut s Scanner) scan() token.Token {
 		s.pos = s.offset
 		s.string_literal(false, s.str_quote)
 		s.lit = s.source_lit(s.pos, s.offset)
+		if !s.in_str_inter {
+			s.restore_parent_string_interpolation()
+		}
 		return .string
 	}
 	follows_dot := s.after_dot
@@ -253,11 +260,17 @@ pub fn (mut s Scanner) scan() token.Token {
 			&& (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
 			quote := s.src[s.offset]
 			s.offset++
-			if !s.in_str_inter {
+			nested_interpolation := s.in_str_inter && !s.skip_interpolation
+			if nested_interpolation {
+				s.begin_nested_string_interpolation(quote)
+			} else if !s.in_str_inter {
 				s.str_quote = quote
 			}
 			s.string_literal(false, quote)
 			s.lit = s.source_lit(s.pos, s.offset)
+			if nested_interpolation && !s.in_str_inter {
+				s.restore_parent_string_interpolation()
+			}
 			s.insert_semi = true
 			return .string
 		}
@@ -269,11 +282,17 @@ pub fn (mut s Scanner) scan() token.Token {
 		return tok
 	} else if c == `'` || c == `"` {
 		s.offset++
-		if !s.in_str_inter {
+		nested_interpolation := s.in_str_inter && !s.skip_interpolation
+		if nested_interpolation {
+			s.begin_nested_string_interpolation(c)
+		} else if !s.in_str_inter {
 			s.str_quote = c
 		}
 		s.string_literal(s.in_str_inter || (s.offset >= 2 && s.src[s.offset - 2] == `r`), c)
 		s.lit = s.source_lit(s.pos, s.offset)
+		if nested_interpolation && !s.in_str_inter {
+			s.restore_parent_string_interpolation()
+		}
 		s.insert_semi = true
 		return .string
 	} else if c == `\`` {
@@ -666,6 +685,26 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 		s.offset++
 	}
 	s.error('unfinished string literal', s.src.len)
+}
+
+fn (mut s Scanner) begin_nested_string_interpolation(quote u8) {
+	s.str_parent_quotes << s.str_quote
+	s.str_parent_depths << s.str_inter_cbr_depth
+	s.in_str_inter = false
+	s.str_inter_cbr_depth = 0
+	s.str_quote = quote
+}
+
+fn (mut s Scanner) restore_parent_string_interpolation() {
+	if s.str_parent_quotes.len == 0 {
+		return
+	}
+	last := s.str_parent_quotes.len - 1
+	s.str_quote = s.str_parent_quotes[last]
+	s.str_inter_cbr_depth = s.str_parent_depths[last]
+	s.str_parent_quotes.delete_last()
+	s.str_parent_depths.delete_last()
+	s.in_str_inter = true
 }
 
 fn (mut s Scanner) check_string_escape(backslash_offset int) {
