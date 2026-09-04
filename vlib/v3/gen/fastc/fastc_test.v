@@ -6560,6 +6560,27 @@ fn main() {}
 	assert !c_source.contains('return 2;'), c_source
 }
 
+fn test_selfhost_comptime_literal_string_condition() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate("module main
+
+fn selected_branch() int {
+	\$if 'c' == 'arm64' {
+		return 1
+	} \$else {
+		return 2
+	}
+}
+
+fn main() {
+	println(selected_branch())
+}
+", 'comptime_literal_string_condition.v', prefs) or { panic(err) }
+	assert c_source.contains('i64 selected_branch(void) {\n\treturn 2;\n}'), c_source
+	assert !c_source.contains('i64 selected_branch(void) {\n\treturn 1;'), c_source
+}
+
 fn test_selfhost_typeof_name_interpolation_uses_the_inferred_type() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true

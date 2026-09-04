@@ -1998,13 +1998,12 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	timer.mark('wait_interface_dispatches')
 	// Fixed arrays that occur only in declarations or signatures are not seen by
 	// the expression renderer, so register their raw markers before emitting typedefs.
+	// Function signatures are present in the prototypes; fixed arrays reached while
+	// rendering function bodies are registered directly on the per-file parser.
 	fastc_collect_referenced_fixed_array_types(type_output.declarations_head, mut fixed_array_types)
 	fastc_collect_referenced_fixed_array_types(type_declarations, mut fixed_array_types)
 	for prototype_piece in prototype_pieces {
 		fastc_collect_referenced_fixed_array_types(prototype_piece, mut fixed_array_types)
-	}
-	for body_piece in body_pieces {
-		fastc_collect_referenced_fixed_array_types(body_piece, mut fixed_array_types)
 	}
 	fixed_array_declarations := fastc_generate_fixed_array_declarations(fixed_array_types)
 	preamble := if header_free {
