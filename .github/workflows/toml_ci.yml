@@ -28,6 +28,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      - name: Cache V build
+        uses: actions/cache@v4
+        with:
+          path: v
+          key: v-toml-${{ runner.os }}-${{ hashFiles('cmd/**', 'vlib/**', 'thirdparty/**', 'make*', '.github/actions/setup-v/**') }}
+          restore-keys: |
+            v-toml-${{ runner.os }}-
       - uses: ./.github/actions/setup-v
       - name: Install dependencies
         run: |
