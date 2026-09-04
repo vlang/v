@@ -1238,15 +1238,11 @@ fn (mut g Gen) gen_str_for_struct(typ ast.Type, info ast.Struct, lang ast.Langua
 		if i in field_skips {
 			continue
 		}
-		ftyp_noshared := if field.typ.has_flag(.shared_f) {
-			field.typ.deref().clear_flag(.shared_f)
-		} else {
-			field.typ
-		}
+		ftyp_noshared := auto_str_shared_payload_type(field.typ)
 		mut ptr_amp := if ftyp_noshared.is_ptr() { '&' } else { '' }
 		mut base_typ := g.unwrap_generic(field.typ)
 		if base_typ.has_flag(.shared_f) {
-			base_typ = base_typ.clear_flag(.shared_f).deref()
+			base_typ = auto_str_shared_payload_type(base_typ)
 		}
 		base_fmt := g.type_to_fmt(base_typ)
 		is_opt_field := field.typ.has_flag(.option)
@@ -1371,8 +1367,8 @@ fn (mut g Gen) gen_str_for_struct(typ ast.Type, info ast.Struct, lang ast.Langua
 			if field.typ in ast.charptr_types {
 				fn_body.write_string('builtin__tos4((byteptr)${func})')
 			} else {
-				is_ptr_field := field.typ.is_ptr() && sym.kind in [.struct, .interface]
-				is_opt_ptr_field := field.typ.has_flag(.option) && field.typ.is_ptr()
+				is_ptr_field := ftyp_noshared.is_ptr() && sym.kind in [.struct, .interface]
+				is_opt_ptr_field := ftyp_noshared.has_flag(.option) && ftyp_noshared.is_ptr()
 					&& sym.kind in [.struct, .interface]
 				if is_ptr_field && !field.typ.has_flag(.option) {
 					// Use address-based circular reference detection for pointer fields.
@@ -1458,8 +1454,9 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 	$if trace_autostr ? {
 		eprintln('> struct_auto_str_func: ${sym.name} | field_type.debug() | ${fn_name} | ${field_name} | ${has_custom_str} | ${expects_ptr}')
 	}
-	field_type := if _field_type.has_flag(.shared_f) { _field_type.deref() } else { _field_type }
-	sufix := if field_type.has_flag(.shared_f) { '->val' } else { '' }
+	is_shared_field := _field_type.has_flag(.shared_f)
+	field_type := auto_str_shared_payload_type(_field_type)
+	sufix := if is_shared_field { '->val' } else { '' }
 	deref, _ := deref_kind(expects_ptr, field_type.is_ptr(), field_type)
 	final_field_name := if lang == .c { field_name } else { c_name(field_name) }
 	op := if lang == .c { '->' } else { '.' }
@@ -1535,6 +1532,14 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		}
 		return method_str, false
 	}
+}
+
+fn auto_str_shared_payload_type(typ ast.Type) ast.Type {
+	if !typ.has_flag(.shared_f) {
+		return typ
+	}
+	payload_typ := typ.clear_flag(.shared_f)
+	return if payload_typ.is_ptr() { payload_typ.deref() } else { payload_typ }
 }
 
 fn data_str(x StrIntpType) string {

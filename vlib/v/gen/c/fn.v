@@ -3050,6 +3050,10 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr, unwrapped_rec_type ast.
 			return true
 		}
 	}
+	if node.from_embed_types.len > 0 {
+		g.gen_expr_to_string(left_node, rec_type)
+		return true
+	}
 	rec_sym := g.table.sym(rec_type)
 	if g.alias_uses_parent_str(rec_sym) {
 		rec_type = (rec_sym.info as ast.Alias).parent_type

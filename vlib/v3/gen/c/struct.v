@@ -2925,8 +2925,11 @@ fn (mut g FlatGen) shared_array_info_for_expr(id flat.NodeId) ?SharedArrayInfo {
 	if node.kind == .paren && node.children_count > 0 {
 		return g.shared_array_info_for_expr(g.a.child(&node, 0))
 	}
-	if node.kind == .prefix && node.op == .mul && node.children_count > 0 {
+	if node.kind == .prefix && node.op in [.amp, .mul] && node.children_count > 0 {
 		info := g.shared_array_info_for_expr(g.a.child(&node, 0))?
+		if node.op == .amp {
+			return info
+		}
 		return SharedArrayInfo{
 			inner: info.inner
 			wrapper: info.wrapper

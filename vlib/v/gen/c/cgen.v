@@ -13627,7 +13627,12 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 			if sym.is_empty_struct_array() {
 				return '{E_STRUCT}'
 			}
-			return '{0}'
+			info := sym.info as ast.ArrayFixed
+			elem_default := g.type_default(info.elem_type)
+			if elem_default in ['0', '{0}'] || g.inside_global_decl || g.inside_const {
+				return '{0}'
+			}
+			return '{${[]string{len: info.size, init: elem_default}.join(', ')}}'
 		}
 		.sum_type {
 			return if decode_sumtype { g.type_default_sumtype(typ, sym) } else { '{0}' }
