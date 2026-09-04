@@ -14,6 +14,40 @@ fn test_large_cold_cache_restarts_without_cache() {
 	assert !should_restart_v3_large_cold_cache(true, true, limit, false, false, true)
 }
 
+fn test_large_cold_cache_marker_bypasses_unchanged_sources_and_invalidates_changes() {
+	root := os.join_path(os.vtmp_dir(), 'v3_large_cold_cache_marker_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source_path := os.join_path(root, 'main.v')
+	os.write_file(source_path, 'fn main() {}\n')!
+	marker_path := v3_large_cold_cache_marker_path(os.join_path(root, 'cache'), source_path, [])
+	assert write_v3_large_cold_cache_marker(marker_path, [source_path])
+	assert valid_v3_large_cold_cache_marker(marker_path)
+
+	os.write_file(os.join_path(root, 'added.v'), 'fn added() {}\n')!
+	assert !valid_v3_large_cold_cache_marker(marker_path)
+	assert !os.exists(marker_path)
+
+	assert write_v3_large_cold_cache_marker(marker_path, [source_path])
+	assert valid_v3_large_cold_cache_marker(marker_path)
+	os.write_file(source_path, 'fn main() { println(1) }\n')!
+	assert !valid_v3_large_cold_cache_marker(marker_path)
+}
+
+fn test_large_cold_cache_marker_is_scoped_to_the_input_set() {
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_large_cold_cache_marker_paths')
+	first := v3_large_cold_cache_marker_path(cache_dir, '/project/main.v', [])
+	second := v3_large_cold_cache_marker_path(cache_dir, '/project/other.v', [])
+	with_list := v3_large_cold_cache_marker_path(cache_dir, '/project/main.v', [
+		'/project/extra.v',
+	])
+	assert first != second
+	assert first != with_list
+}
+
 fn test_whole_program_cache_is_not_persistent_for_test_inputs() {
 	old_v3cache := os.getenv('V3CACHE')
 	had_v3cache := 'V3CACHE' in os.environ()
