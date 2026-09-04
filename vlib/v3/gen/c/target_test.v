@@ -996,7 +996,7 @@ fn test_cache_input_scan_rejects_repeated_native_root_with_different_context() {
 	]
 }
 
-fn test_cache_native_input_language_detects_implicit_objective_c() {
+fn test_cache_native_input_language_detects_implicit_objective_c_sources() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_native_objective_c_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
@@ -1018,7 +1018,7 @@ fn test_cache_native_input_language_detects_implicit_objective_c() {
 	assert !cache_native_input_path_needs_objective_c(plain_header, []string{}, false, prefs.target)
 	for include, expected in {
 		'"implementation.m"': true
-		'"implementation.h"': true
+		'"implementation.h"': false
 		'"plain.h"':          false
 	} {
 		source := os.join_path(dir, 'sample_${expected}_${include.len}.v')
@@ -1062,16 +1062,9 @@ fn test_cache_native_input_language_reports_source_language() {
 	assert cache_native_inputs_language(a, '', []string{}, false, prefs.target) == 'objective-c++'
 }
 
-// cache_native_inputs_language memoizes each header include's Objective-C
-// classification, keyed on the include argument alone for `<...>` (which
-// resolves independently of the including file) and on including-file + argument
-// for a quoted include (which resolves relative to that file). This exercises
-// the header-include branch directly -- the only other test that reaches
-// cache_native_inputs_language passes an `.mm` SOURCE file, which takes the
-// unrelated source-file branch -- and pins the quoted-include key: two
-// same-named headers in different module directories with different
-// Objective-C-ness must not share a cache entry.
-fn test_cache_native_inputs_language_header_branch_and_memo_key() {
+// Header directives are left to the real preprocessor and do not select the
+// generated translation unit's language. Only included native source files do.
+fn test_cache_native_inputs_language_ignores_headers() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_native_language_header_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
@@ -1081,9 +1074,6 @@ fn test_cache_native_inputs_language_header_branch_and_memo_key() {
 	mut prefs := pref.new_preferences()
 	prefs.target = pref.host_target()
 
-	// A quoted `.h` header carrying `@interface` reaches the header-include
-	// branch (a `.h` is not a native source file) and must classify as
-	// objective-c.
 	objc_dir := os.join_path(dir, 'objc_mod')
 	os.mkdir_all(objc_dir) or { panic(err) }
 	os.write_file(os.join_path(objc_dir, 'shared.h'), '@interface V3HeaderBranch\n@end\n')!
@@ -1091,7 +1081,7 @@ fn test_cache_native_inputs_language_header_branch_and_memo_key() {
 	os.write_file(objc_program, 'module objc_mod\n#include "shared.h"\n')!
 	mut p1 := parser.Parser.new(prefs)
 	a1 := p1.parse_file(objc_program)
-	assert cache_native_inputs_language(a1, '', []string{}, false, prefs.target) == 'objective-c'
+	assert cache_native_inputs_language(a1, '', []string{}, false, prefs.target) == 'c'
 
 	// A plain header in the same shape stays c.
 	plain_dir := os.join_path(dir, 'plain_mod')
@@ -1103,15 +1093,10 @@ fn test_cache_native_inputs_language_header_branch_and_memo_key() {
 	a2 := p2.parse_file(plain_program)
 	assert cache_native_inputs_language(a2, '', []string{}, false, prefs.target) == 'c'
 
-	// Both modules in one AST, the plain one walked first, each including its
-	// own directory-local `"shared.h"`. If the quoted-include memo key dropped
-	// the including-file component, the plain module's entry (`shared.h` ->
-	// clean) would shadow the objc module's header, and the whole probe would
-	// be misclassified as c -- silently dropping __OBJC__ from the shared
-	// compiler-macro probe. Correct keying keeps them distinct.
+	// Multiple same-named headers remain ignored regardless of their contents.
 	mut p3 := parser.Parser.new(prefs)
 	a3 := p3.parse_files([plain_program, objc_program])
-	assert cache_native_inputs_language(a3, '', []string{}, false, prefs.target) == 'objective-c'
+	assert cache_native_inputs_language(a3, '', []string{}, false, prefs.target) == 'c'
 }
 
 fn test_cache_input_scan_rejects_ambiguous_include_macro_literal() {

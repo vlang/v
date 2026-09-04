@@ -1,5 +1,6 @@
 module c
 
+import os
 import v3.flat
 import v3.gen.c.naming
 import v3.types
@@ -5054,6 +5055,11 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 		return true
 	}
 	if name.starts_with('C.') {
+		// Match V1: `@[typedef]` C structs name types supplied by native code and
+		// must never get a synthesized V-owned declaration or body.
+		if name in g.tc.c_typedef_structs {
+			return true
+		}
 		if g.cache_native_c_symbols[name[2..]] {
 			return true
 		}
@@ -5061,10 +5067,10 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 			return true
 		}
 		if info := g.struct_decl_infos[name] {
-			// Platform binding files describe types supplied by their C/Objective-C
-			// headers. Emitting a fallback body can redefine Objective-C classes such
-			// as NSFont, while V1 deliberately leaves these declarations header-owned.
-			if info.file.ends_with('.c.v') {
+			// Platform binding files and plain V files with a header directive describe
+			// types supplied by native code. Keep the cheap V1 source-file heuristic;
+			// inspecting the included header itself is unnecessary.
+			if info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file) {
 				return true
 			}
 		}
@@ -5202,6 +5208,28 @@ fn (g &FlatGen) cached_support_has_c_type(c_name string) bool {
 	for prefix in ['struct ', 'union '] {
 		if c_name.starts_with(prefix) {
 			return g.cached_support_identifiers[c_name[prefix.len..]]
+		}
+	}
+	return false
+}
+
+fn c_source_looks_header_backed(path string) bool {
+	source := os.read_file(path) or { return false }
+	for line in source.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed.len == 0 || trimmed.starts_with('//') {
+			continue
+		}
+		if trimmed.starts_with('#include') {
+			return true
+		}
+		if trimmed.starts_with('#insert') {
+			lower_trimmed := trimmed.to_lower()
+			if lower_trimmed.contains('.h"') || lower_trimmed.contains(".h'")
+				|| lower_trimmed.contains('.h ') || lower_trimmed.contains('.hpp')
+				|| lower_trimmed.ends_with('.h') {
+				return true
+			}
 		}
 	}
 	return false
