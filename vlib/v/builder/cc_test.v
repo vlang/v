@@ -321,6 +321,17 @@ fn test_linux_cross_target_for_arm64_errors() {
 	}
 }
 
+fn test_linux_cross_compile_include_arg_resolves_sysroot() {
+	sysroot := os.join_path(os.vtmp_dir(), 'cross root', 'linuxroot')
+	sysroot_include := os.join_path(sysroot, 'include')
+	include_arg := linux_cross_compile_include_arg(sysroot)
+	compile_command := 'clang ${include_arg} -c main.c'
+
+	assert include_arg == '-I ${os.quoted_path(sysroot_include)}'
+	assert compile_command.contains(os.quoted_path(sysroot_include))
+	assert !compile_command.contains('\${sysroot}')
+}
+
 fn test_git_symlink_target_path_detects_placeholder_file() {
 	test_root := os.join_path(os.vtmp_dir(), 'v_builder_git_symlink_target_${os.getpid()}')
 	os.rmdir_all(test_root) or {}
