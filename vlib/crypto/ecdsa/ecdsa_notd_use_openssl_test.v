@@ -16,7 +16,7 @@ import crypto.sha512
 // crypto.ecdsa directory is run with -d use_openssl explicitly (this file
 // carries no vtest vflags of its own to force the flag either way).
 fn test_sign_with_custom_hash_is_not_implemented() ! {
-	$if use_openssl? {
+	$if use_openssl ? {
 		eprintln('skipping: .with_custom_hash signing IS implemented under -d use_openssl')
 		return
 	}

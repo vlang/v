@@ -165,7 +165,6 @@ fn test_ack_frame_with_ecn_counts_round_trip() {
 	}
 	encoded := encode_ack_frame(ranges, 0, ecn)!
 	assert encoded[0] == 0x03 // ACK-with-ECN frame type
-	
 
 	frame, _ := parse_frame(encoded)!
 	match frame {
@@ -236,7 +235,6 @@ fn test_encode_ack_frame_rejects_range_with_largest_less_than_smallest() {
 
 fn test_scaled_ack_delay_micros_normal_value() {
 	assert scaled_ack_delay_micros(100, 3) == 800 // 100 << 3
-	
 }
 
 fn test_scaled_ack_delay_micros_saturates_instead_of_wrapping() {

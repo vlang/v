@@ -48,7 +48,6 @@ fn test_appendix_b2_dynamic_table() {
 
 	assert dec.dynamic_table.insert_count() == 2
 	assert dec.dynamic_table.size() == 106 // RFC's own shown running total
-	
 
 	field_section := [u8(0x03), 0x81, 0x10, 0x11]
 	result := dec.decode_field_section(4, field_section) or { panic('${err}') }

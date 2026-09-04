@@ -13,7 +13,6 @@ fn test_data_frame_roundtrip() {
 	}
 	assert encoded[0] == u8(h3_frame_data)
 	assert encoded[1] == u8(5) // length, 1-byte varint
-	
 }
 
 fn test_headers_frame_roundtrip() {

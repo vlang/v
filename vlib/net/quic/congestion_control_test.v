@@ -78,7 +78,6 @@ fn test_slow_start_resumes_after_persistent_congestion_drops_below_ssthresh() {
 	]
 	c.on_packets_acked(acked)
 	assert c.congestion_window == 2400 + 1200 // full slow-start growth
-	
 }
 
 fn test_on_packets_acked_does_not_grow_window_during_recovery() {
@@ -131,7 +130,6 @@ fn test_on_packets_lost_ordinary_loss_halves_window_via_ssthresh() {
 
 	assert c.bytes_in_flight == 0
 	assert c.ssthresh or { 0 } == 6000 // initial_window(12000) * 0.5
-	
 
 	assert c.congestion_window == 6000
 	assert c.congestion_recovery_start_time or { 0 } == 5000
@@ -180,7 +178,6 @@ fn test_single_reaction_per_recovery_episode() {
 	]
 	c.on_packets_lost(first_loss, false, 5000)
 	assert c.congestion_window == 6000 // 12000 * 0.5
-	
 
 	assert c.congestion_recovery_start_time or { 0 } == 5000
 
@@ -197,10 +194,8 @@ fn test_single_reaction_per_recovery_episode() {
 	]
 	c.on_packets_lost(second_loss, false, 6000)
 	assert c.congestion_window == 6000 // unchanged: still one reaction
-	
 
 	assert c.congestion_recovery_start_time or { 0 } == 5000 // unchanged
-	
 
 	// Sent at time 7000, AFTER the recovery episode started (5000) -- a
 	// genuinely new loss episode, must react again.
@@ -215,7 +210,6 @@ fn test_single_reaction_per_recovery_episode() {
 	]
 	c.on_packets_lost(third_loss, false, 8000)
 	assert c.congestion_window == 3000 // 6000 * 0.5
-	
 
 	assert c.congestion_recovery_start_time or { 0 } == 8000
 }
