@@ -2309,7 +2309,6 @@ fn (g &FlatGen) configure_c_extern_scan_worker(mut worker FlatGen) {
 	worker.inlined_c_fns = g.inlined_c_fns.clone()
 	worker.inlined_c_declared_fns = g.inlined_c_declared_fns.clone()
 	worker.inlined_c_active_macros = g.inlined_c_active_macros.clone()
-	worker.possibly_active_c_macros = g.possibly_active_c_macros.clone()
 	worker.inlined_c_static_fns = g.inlined_c_static_fns.clone()
 	worker.cache_omitted_c_fns = g.cache_omitted_c_fns.clone()
 }
@@ -2430,7 +2429,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		module_cleanup_fns: g.module_cleanup_fns
 		module_cleanup_fn_modules: g.module_cleanup_fn_modules
 		module_imports: g.module_imports
-		preserved_header_files_seen: g.preserved_header_files_seen
 		inlined_c_structs: g.inlined_c_structs
 		inlined_c_typedef_names: g.inlined_c_typedef_names
 		inlined_c_fns: g.inlined_c_fns
@@ -2473,7 +2471,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		generic_fn_key_ordinal: g.generic_fn_key_ordinal
 		struct_decl_infos: g.struct_decl_infos
 		struct_decl_short_infos: g.struct_decl_short_infos
-		header_owned_c_typedefs: g.header_owned_c_typedefs
 		decl_attrs: g.decl_attrs
 		decl_attrs_by_source_position: g.decl_attrs_by_source_position
 		shared_type_names: g.shared_type_names
@@ -2492,7 +2489,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		compiler_vexe: g.compiler_vexe
 		compiler_vexe_env_setup: g.compiler_vexe_env_setup
 		ccompiler: g.ccompiler
-		macro_probe_c_flags: g.macro_probe_c_flags
 		target: g.target
 		suppress_main: g.suppress_main
 		cur_param_names: if result_only {
