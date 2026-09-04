@@ -2290,7 +2290,7 @@ fn (g &Parser) rewrite_embedded_as_casts(tokens []FastcExpressionToken) ?[]Fastc
 				i++
 				continue
 			}
-			inner := result[i + 1..close]
+			inner := result[i + 1..close].clone()
 			if fastc_bare_as_cast_index(inner, 0, inner.len) == none {
 				i++
 				continue
