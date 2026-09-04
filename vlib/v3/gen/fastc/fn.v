@@ -955,11 +955,13 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	if is_main {
 		g.write_line('return 0;')
 	}
-	function_body := g.out.cut_to(function_body_start)
-	for declaration in g.function_defer_declarations {
-		g.write_line(declaration)
+	if g.function_defer_declarations.len > 0 {
+		function_body := g.out.cut_to(function_body_start)
+		for declaration in g.function_defer_declarations {
+			g.write_line(declaration)
+		}
+		g.out.write_string(function_body)
 	}
-	g.out.write_string(function_body)
 	g.in_main = previous_in_main
 	g.return_type = previous_return_type
 	g.return_types = previous_return_types.clone()

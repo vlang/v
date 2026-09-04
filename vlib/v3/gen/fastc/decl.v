@@ -2702,7 +2702,7 @@ fn fastc_render_enum_symbol(tokens []FastcExpressionToken, start int, source_fil
 }
 
 fn fastc_emit_enum_print_function(c_name string, name string, fields []string, is_flag bool, mut out strings.Builder) {
-	out.writeln('static void v_fastc_print_enum_${c_name}(${c_name} value, bool newline) {')
+	out.writeln('void v_fastc_print_enum_${c_name}(${c_name} value, bool newline) {')
 	if is_flag {
 		out.writeln('\tfputs("${name}{", stdout);')
 		out.writeln('\tbool written = false;')
@@ -2736,7 +2736,7 @@ fn fastc_generate_enum_string_helpers(infos []FastcEnumInfo) ([]string, []string
 	mut texts := []string{cap: infos.len * 2}
 	for info in infos {
 		mut out := strings.new_builder(256)
-		out.writeln('static string v_fastc_enum_str_${info.c_name}(${info.c_name} value) {')
+		out.writeln('string v_fastc_enum_str_${info.c_name}(${info.c_name} value) {')
 		if info.is_flag {
 			out.writeln('\tstring parts[${info.fields.len * 2 + 2}] = {0};')
 			out.writeln('\tint part_count = 0;')
@@ -2769,7 +2769,7 @@ fn fastc_generate_enum_string_helpers(infos []FastcEnumInfo) ([]string, []string
 		mut from_out := strings.new_builder(256)
 		// `Enum.from_string(s)` maps a field-name string back to its value, returning
 		// `?Enum` (none when no field name matches).
-		from_out.writeln('static Option ${info.c_name}__from_string(string __v_fastc_from) {')
+		from_out.writeln('Option ${info.c_name}__from_string(string __v_fastc_from) {')
 		for field in info.fields {
 			from_out.writeln('\tif (builtin__string_eq(__v_fastc_from, _S("${field}"))) { ${info.c_name} __v_fastc_value = ${info.c_name}__${field}; return (Option){.data=v_fastc_interface_box(&__v_fastc_value, sizeof(${info.c_name})), .state=0}; }')
 		}

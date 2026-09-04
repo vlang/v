@@ -110,6 +110,7 @@ fn fastc_c_abi_functions(target_os string, target_arch string) []FastcCAbiFuncti
 		fastc_c_abi_fn('fprintf', 'int @(FILE *, const char *, ...);', ''),
 		fastc_c_abi_fn('printf', 'int @(const char *, ...);', ''),
 		fastc_c_abi_fn('snprintf', 'int @(char *, size_t, const char *, ...);', ''),
+		fastc_c_abi_fn('sscanf', 'int @(const char *, const char *, ...);', ''),
 		fastc_c_abi_fn('setvbuf', 'int @(FILE *, char *, int, size_t);', ''),
 		fastc_c_abi_fn('getline', 'ssize_t @(char **, size_t *, FILE *);', ''),
 		fastc_c_abi_fn('popen', 'FILE *@(const char *, const char *);', ''),
@@ -121,7 +122,9 @@ fn fastc_c_abi_functions(target_os string, target_arch string) []FastcCAbiFuncti
 		fastc_c_abi_fn('lseek', 'off_t @(int, off_t, int);', ''),
 		fastc_c_abi_fn('ftruncate', 'int @(int, off_t);', ''),
 		fastc_c_abi_fn('symlink', 'int @(const char *, const char *);', ''),
+		fastc_c_abi_fn('link', 'int @(const char *, const char *);', ''),
 		fastc_c_abi_fn('fcntl', 'int @(int, int, ...);', ''),
+		fastc_c_abi_fn('flock', 'int @(int, int);', ''),
 		fastc_c_abi_fn('ioctl', 'int @(int, unsigned long, ...);', ''),
 		fastc_c_abi_fn('isatty', 'int @(int);', ''),
 		fastc_c_abi_fn('dup2', 'int @(int, int);', ''),
@@ -130,11 +133,14 @@ fn fastc_c_abi_functions(target_os string, target_arch string) []FastcCAbiFuncti
 		fastc_c_abi_fn('chdir', 'int @(const char *);', ''),
 		fastc_c_abi_fn('getcwd', 'char *@(char *, size_t);', ''),
 		fastc_c_abi_fn('mkdir', 'int @(const char *, mode_t);', ''),
+		fastc_c_abi_fn('mkstemp', 'int @(char *);', ''),
 		fastc_c_abi_fn('rmdir', 'int @(const char *);', ''),
 		fastc_c_abi_fn('unlink', 'int @(const char *);', ''),
 		fastc_c_abi_fn('remove', 'int @(const char *);', ''),
 		fastc_c_abi_fn('rename', 'int @(const char *, const char *);', ''),
 		fastc_c_abi_fn('chmod', 'int @(const char *, mode_t);', ''),
+		fastc_c_abi_fn('utime', 'int @(const char *, const struct utimbuf *);', ''),
+		fastc_c_abi_fn('uname', 'int @(struct utsname *);', ''),
 		fastc_c_abi_fn('readlink', 'ssize_t @(const char *, char *, size_t);', ''),
 		fastc_c_abi_fn('realpath', 'char *@(const char *, char *);', realpath_label),
 		fastc_c_abi_fn('stat', 'int @(const char *, struct stat *);', stat_label),
@@ -147,17 +153,23 @@ fn fastc_c_abi_functions(target_os string, target_arch string) []FastcCAbiFuncti
 		fastc_c_abi_fn('setenv', 'int @(const char *, const char *, int);', ''),
 		fastc_c_abi_fn('unsetenv', 'int @(const char *);', ''),
 		fastc_c_abi_fn('exit', 'void @(int);', ''),
+		fastc_c_abi_fn('atexit', 'int @(void (*)(void));', ''),
 		fastc_c_abi_fn('abort', 'void @(void);', ''),
+		fastc_c_abi_fn('system', 'int @(const char *);', ''),
+		fastc_c_abi_fn('signal', 'void (*@(int, void (*)(int)))(int);', ''),
 		fastc_c_abi_fn('getpid', 'pid_t @(void);', ''),
 		fastc_c_abi_fn('getuid', 'uid_t @(void);', ''),
+		fastc_c_abi_fn('geteuid', 'uid_t @(void);', ''),
 		fastc_c_abi_fn('fork', 'pid_t @(void);', ''),
 		fastc_c_abi_fn('execve', 'int @(const char *, char *const *, char *const *);', ''),
+		fastc_c_abi_fn('execvp', 'int @(const char *, char *const *);', ''),
 		fastc_c_abi_fn('wait', 'pid_t @(int *);', ''),
 		fastc_c_abi_fn('waitpid', 'pid_t @(pid_t, int *, int);', ''),
 		fastc_c_abi_fn('setpgid', 'int @(pid_t, pid_t);', ''),
 		fastc_c_abi_fn('sysconf', 'long @(int);', ''),
 		fastc_c_abi_fn('pthread_create', 'int @(pthread_t *, const pthread_attr_t *, void *(*)(void *), void *);', ''),
 		fastc_c_abi_fn('pthread_join', 'int @(pthread_t, void **);', ''),
+		fastc_c_abi_fn('pthread_detach', 'int @(pthread_t);', ''),
 		fastc_c_abi_fn('pthread_self', 'pthread_t @(void);', ''),
 		fastc_c_abi_fn('pthread_attr_init', 'int @(pthread_attr_t *);', ''),
 		fastc_c_abi_fn('pthread_attr_destroy', 'int @(pthread_attr_t *);', ''),
@@ -169,17 +181,41 @@ fn fastc_c_abi_functions(target_os string, target_arch string) []FastcCAbiFuncti
 		fastc_c_abi_fn('pthread_once', 'int @(pthread_once_t *, void (*)(void));', ''),
 		fastc_c_abi_fn('pthread_mutex_init', 'int @(pthread_mutex_t *, const pthread_mutexattr_t *);', ''),
 		fastc_c_abi_fn('pthread_mutex_lock', 'int @(pthread_mutex_t *);', ''),
+		fastc_c_abi_fn('pthread_mutex_trylock', 'int @(pthread_mutex_t *);', ''),
 		fastc_c_abi_fn('pthread_mutex_unlock', 'int @(pthread_mutex_t *);', ''),
 		fastc_c_abi_fn('pthread_mutex_destroy', 'int @(pthread_mutex_t *);', ''),
 		fastc_c_abi_fn('clock_gettime', 'int @(clockid_t, struct timespec *);', ''),
+		fastc_c_abi_fn('gettimeofday', 'int @(struct timeval *, void *);', ''),
 		fastc_c_abi_fn('nanosleep', 'int @(const struct timespec *, struct timespec *);', ''),
 		fastc_c_abi_fn('localtime_r', 'struct tm *@(const time_t *, struct tm *);', ''),
+		fastc_c_abi_fn('gmtime_r', 'struct tm *@(const time_t *, struct tm *);', ''),
 		fastc_c_abi_fn('time', 'time_t @(time_t *);', ''),
+		fastc_c_abi_fn('strftime', 'size_t @(char *, size_t, const char *, const struct tm *);', ''),
 		fastc_c_abi_fn('mmap', 'void *@(void *, size_t, int, int, int, off_t);', ''),
 		fastc_c_abi_fn('munmap', 'int @(void *, size_t);', ''),
 		fastc_c_abi_fn('select', 'int @(int, fd_set *, fd_set *, fd_set *, struct timeval *);', ''),
+		fastc_c_abi_fn('pow', 'double @(double, double);', ''),
 	]
 	if macos {
+		fns << fastc_c_abi_fn('getrusage', 'int @(int, struct rusage *);', '')
+		fns << fastc_c_abi_fn('task_info', 'int @(uint32_t, uint32_t, int *, uint32_t *);', '')
+		fns << fastc_c_abi_fn('pthread_condattr_init', 'int @(pthread_condattr_t *);', '')
+		fns << fastc_c_abi_fn('pthread_attr_set_qos_class_np', 'int @(pthread_attr_t *, uint32_t, int);', '')
+		fns << fastc_c_abi_fn('pthread_condattr_setpshared', 'int @(pthread_condattr_t *, int);', '')
+		fns << fastc_c_abi_fn('pthread_condattr_destroy', 'int @(pthread_condattr_t *);', '')
+		fns << fastc_c_abi_fn('pthread_cond_init', 'int @(pthread_cond_t *, const pthread_condattr_t *);', '')
+		fns << fastc_c_abi_fn('pthread_cond_signal', 'int @(pthread_cond_t *);', '')
+		fns << fastc_c_abi_fn('pthread_cond_wait', 'int @(pthread_cond_t *, pthread_mutex_t *);', '')
+		fns << fastc_c_abi_fn('pthread_cond_timedwait', 'int @(pthread_cond_t *, pthread_mutex_t *, const struct timespec *);', '')
+		fns << fastc_c_abi_fn('pthread_cond_destroy', 'int @(pthread_cond_t *);', '')
+		fns << fastc_c_abi_fn('pthread_rwlockattr_init', 'int @(pthread_rwlockattr_t *);', '')
+		fns << fastc_c_abi_fn('pthread_rwlock_init', 'int @(pthread_rwlock_t *, const pthread_rwlockattr_t *);', '')
+		fns << fastc_c_abi_fn('pthread_rwlock_rdlock', 'int @(pthread_rwlock_t *);', '')
+		fns << fastc_c_abi_fn('pthread_rwlock_tryrdlock', 'int @(pthread_rwlock_t *);', '')
+		fns << fastc_c_abi_fn('pthread_rwlock_wrlock', 'int @(pthread_rwlock_t *);', '')
+		fns << fastc_c_abi_fn('pthread_rwlock_trywrlock', 'int @(pthread_rwlock_t *);', '')
+		fns << fastc_c_abi_fn('pthread_rwlock_unlock', 'int @(pthread_rwlock_t *);', '')
+		fns << fastc_c_abi_fn('pthread_rwlock_destroy', 'int @(pthread_rwlock_t *);', '')
 		fns << fastc_c_abi_fn('__error', 'int *@(void);', '')
 		fns << fastc_c_abi_fn('CC_SHA256', 'unsigned char *@(const void *, unsigned int, unsigned char *);', '')
 		fns << fastc_c_abi_fn('mach_absolute_time', 'uint64_t @(void);', '')
@@ -219,6 +255,11 @@ fn fastc_c_abi_prelude(target_os string, target_arch string, p string) string {
 		b.writeln('typedef struct ${p}v_dir ${p}DIR;')
 		b.writeln('struct ${p}timespec { long tv_sec; long tv_nsec; };')
 		b.writeln('struct ${p}timeval { long tv_sec; ${p}suseconds_t tv_usec; };')
+		b.writeln('struct ${p}utimbuf { ${p}time_t actime; ${p}time_t modtime; };')
+		b.writeln('struct ${p}utsname { char sysname[256]; char nodename[256]; char release[256]; char version[256]; char machine[256]; };')
+		b.writeln('struct ${p}rusage { struct ${p}timeval ru_utime; struct ${p}timeval ru_stime; long ru_maxrss; long ru_ixrss; long ru_idrss; long ru_isrss; long ru_minflt; long ru_majflt; long ru_nswap; long ru_inblock; long ru_oublock; long ru_msgsnd; long ru_msgrcv; long ru_nsignals; long ru_nvcsw; long ru_nivcsw; };')
+		b.writeln('struct __attribute__((packed, aligned(4))) ${p}task_basic_info { int suspend_count; ${p}uint64_t virtual_size; ${p}uint64_t resident_size; struct { int seconds; int microseconds; } user_time; struct { int seconds; int microseconds; } system_time; int policy; };')
+		b.writeln('struct ${p}flock { ${p}off_t l_start; ${p}off_t l_len; ${p}pid_t l_pid; short l_type; short l_whence; };')
 		b.writeln('struct ${p}stat { ${p}dev_t st_dev; ${p}mode_t st_mode; ${p}nlink_t st_nlink; ${p}ino_t st_ino; ${p}uid_t st_uid; ${p}gid_t st_gid; ${p}dev_t st_rdev; struct ${p}timespec st_atimespec; struct ${p}timespec st_mtimespec; struct ${p}timespec st_ctimespec; struct ${p}timespec st_birthtimespec; ${p}off_t st_size; long long st_blocks; int st_blksize; unsigned int st_flags; unsigned int st_gen; int st_lspare; long long st_qspare[2]; };')
 		b.writeln('#define ${p}st_atime st_atimespec.tv_sec')
 		b.writeln('#define ${p}st_mtime st_mtimespec.tv_sec')
@@ -229,11 +270,16 @@ fn fastc_c_abi_prelude(target_os string, target_arch string, p string) string {
 		b.writeln('typedef struct { long __sig; char __opaque[56]; } ${p}pthread_mutex_t;')
 		b.writeln('typedef struct { long __sig; char __opaque[8]; } ${p}pthread_mutexattr_t;')
 		b.writeln('typedef struct { long __sig; char __opaque[8]; } ${p}pthread_once_t;')
+		b.writeln('typedef struct { long __sig; char __opaque[40]; } ${p}pthread_cond_t;')
+		b.writeln('typedef struct { long __sig; char __opaque[8]; } ${p}pthread_condattr_t;')
+		b.writeln('typedef struct { long __sig; char __opaque[192]; } ${p}pthread_rwlock_t;')
+		b.writeln('typedef struct { long __sig; char __opaque[16]; } ${p}pthread_rwlockattr_t;')
 		b.writeln('#define ${p}PTHREAD_ONCE_INIT {0x30B1BCBA, {0}}')
 		b.writeln('typedef unsigned long ${p}pthread_key_t;')
 		b.writeln('typedef struct { ${p}uint32_t numer; ${p}uint32_t denom; } ${p}mach_timebase_info_data_t;')
 		b.writeln('struct mach_header;')
 		b.writeln('#define ${p}PTHREAD_CREATE_DETACHED 2')
+		b.writeln('#define ${p}PTHREAD_PROCESS_PRIVATE 2')
 		b.writeln('typedef struct { ${p}int32_t fds_bits[32]; } ${p}fd_set;')
 		b.writeln('#define ${p}FD_SETSIZE 1024')
 		b.writeln('#define ${p}FD_ZERO(set) ${p}memset((set), 0, sizeof(*(set)))')
@@ -255,9 +301,40 @@ fn fastc_c_abi_prelude(target_os string, target_arch string, p string) string {
 		b.writeln('#define ${p}O_SYNC 0x80')
 		b.writeln('#define ${p}O_NONBLOCK 0x4')
 		b.writeln('#define ${p}O_NOCTTY 0x20000')
+		b.writeln('#define ${p}F_SETLK 8')
+		b.writeln('#define ${p}F_SETLKW 9')
+		b.writeln('#define ${p}F_RDLCK 1')
+		b.writeln('#define ${p}F_UNLCK 2')
+		b.writeln('#define ${p}F_WRLCK 3')
+		b.writeln('#define ${p}LOCK_SH 0x01')
+		b.writeln('#define ${p}LOCK_EX 0x02')
+		b.writeln('#define ${p}LOCK_NB 0x04')
+		b.writeln('#define ${p}LOCK_UN 0x08')
 		b.writeln('#define ${p}EAGAIN 35')
+		b.writeln('#define ${p}EINVAL 22')
+		b.writeln('#define ${p}ETIMEDOUT 60')
+		b.writeln('#define ${p}SIGHUP 1')
+		b.writeln('#define ${p}SIGINT 2')
+		b.writeln('#define ${p}SIGQUIT 3')
+		b.writeln('#define ${p}SIGILL 4')
+		b.writeln('#define ${p}SIGABRT 6')
+		b.writeln('#define ${p}SIGFPE 8')
+		b.writeln('#define ${p}SIGKILL 9')
+		b.writeln('#define ${p}SIGSEGV 11')
+		b.writeln('#define ${p}SIGPIPE 13')
+		b.writeln('#define ${p}SIGALRM 14')
+		b.writeln('#define ${p}SIGTERM 15')
+		b.writeln('#define ${p}SIG_DFL ((void (*)(int))0)')
+		b.writeln('#define ${p}SIG_IGN ((void (*)(int))1)')
+		b.writeln('#define ${p}SIG_ERR ((void (*)(int))-1)')
+		b.writeln('#define ${p}MACH_TASK_BASIC_INFO_COUNT 12')
+		b.writeln('#define ${p}TASK_BASIC_INFO ${if arm { 18 } else { 5 }}')
+		b.writeln('#define ${p}KERN_SUCCESS 0')
+		b.writeln('#define ${p}QOS_CLASS_USER_INITIATED 0x19')
+		b.writeln('#define ${p}RUSAGE_SELF 0')
 		b.writeln('#define ${p}BUFSIZ 1024')
 		b.writeln('#define ${p}MAP_ANONYMOUS 0x1000')
+		b.writeln('#define ${p}MAP_ANON ${p}MAP_ANONYMOUS')
 		b.writeln('#define ${p}CLOCK_MONOTONIC 6')
 		b.writeln('#define ${p}_SC_NPROCESSORS_ONLN 58')
 		b.writeln('#define ${p}FIONREAD 0x4004667fUL')
@@ -328,8 +405,16 @@ fn fastc_c_abi_prelude(target_os string, target_arch string, p string) string {
 	b.writeln('struct ${p}tm { int tm_sec; int tm_min; int tm_hour; int tm_mday; int tm_mon; int tm_year; int tm_wday; int tm_yday; int tm_isdst; long tm_gmtoff; char *tm_zone; };')
 	if p == '' {
 		b.writeln('extern char **environ;')
+		if macos {
+			b.writeln('extern ${p}uint32_t mach_task_self_;')
+			b.writeln('#define mach_task_self() mach_task_self_')
+		}
 	} else {
 		b.writeln('extern char **${p}environ __asm__("${symbol_prefix}environ");')
+		if macos {
+			b.writeln('extern ${p}uint32_t ${p}mach_task_self_ __asm__("${symbol_prefix}mach_task_self_");')
+			b.writeln('#define ${p}mach_task_self() ${p}mach_task_self_')
+		}
 	}
 	b.writeln('#define ${p}S_IRUSR 0400')
 	b.writeln('#define ${p}S_IWUSR 0200')
@@ -364,6 +449,7 @@ fn fastc_c_abi_prelude(target_os string, target_arch string, p string) string {
 	b.writeln('#define ${p}PROT_READ 1')
 	b.writeln('#define ${p}PROT_WRITE 2')
 	b.writeln('#define ${p}MAP_PRIVATE 2')
+	b.writeln('#define ${p}MAP_SHARED 1')
 	b.writeln('#define ${p}MAP_FAILED ((void *)-1)')
 	b.writeln('#define ${p}CLOCK_REALTIME 0')
 	b.writeln('#define ${p}WNOHANG 1')

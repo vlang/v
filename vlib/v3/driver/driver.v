@@ -7407,6 +7407,10 @@ $if !skip_fastc ? {
 			final_args << '-lpthread'
 		}
 		final_args << '-lm'
+		atomic_arg := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
+		if atomic_arg.len > 0 {
+			final_args << atomic_arg
+		}
 		final_args << environment_ld_flags
 		mut shim_dir := fastc.FastcCodesignShim{}
 		defer {

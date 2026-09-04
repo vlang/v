@@ -80,6 +80,7 @@ fn fastc_c_abi_check_source(host_os string, prelude string) string {
 	out << '#include <sys/mman.h>'
 	out << '#include <sys/wait.h>'
 	out << '#include <errno.h>'
+	out << '#include <signal.h>'
 	out << '#include <dirent.h>'
 	if macos {
 		out << '#include <CommonCrypto/CommonDigest.h>'
@@ -87,7 +88,12 @@ fn fastc_c_abi_check_source(host_os string, prelude string) string {
 	out << '#include <unistd.h>'
 	out << '#include <fcntl.h>'
 	out << '#include <time.h>'
+	out << '#include <math.h>'
 	if macos {
+		out << '#include <utime.h>'
+		out << '#include <sys/resource.h>'
+		out << '#include <sys/utsname.h>'
+		out << '#include <mach/mach.h>'
 		out << '#include <mach/mach_time.h>'
 		out << '#include <mach-o/dyld.h>'
 	}
@@ -111,9 +117,17 @@ fn fastc_c_abi_check_source(host_os string, prelude string) string {
 		'S_IWOTH', 'S_IXOTH', 'S_IFMT', 'S_IFDIR', 'S_IFREG', 'S_IFLNK', 'S_IFSOCK', 'S_IFIFO',
 		'S_IFCHR', 'S_IFBLK', 'F_GETFD', 'F_SETFD', 'FD_CLOEXEC', 'EINTR', 'EAGAIN', 'ENOENT',
 		'EEXIST', 'SEEK_SET', 'SEEK_CUR', 'SEEK_END', 'EOF', '_IOFBF', '_IOLBF', '_IONBF', 'BUFSIZ',
-		'PROT_READ', 'PROT_WRITE', 'MAP_PRIVATE', 'MAP_ANONYMOUS', 'CLOCK_REALTIME', 'CLOCK_MONOTONIC',
-		'WNOHANG', '_SC_NPROCESSORS_ONLN', 'STDIN_FILENO', 'STDOUT_FILENO', 'STDERR_FILENO',
-		'FIONREAD', 'FD_SETSIZE', 'PTHREAD_CREATE_DETACHED']
+		'PROT_READ', 'PROT_WRITE', 'MAP_PRIVATE', 'MAP_SHARED', 'MAP_ANONYMOUS', 'CLOCK_REALTIME',
+		'CLOCK_MONOTONIC', 'WNOHANG', '_SC_NPROCESSORS_ONLN', 'STDIN_FILENO', 'STDOUT_FILENO',
+		'STDERR_FILENO', 'FIONREAD', 'FD_SETSIZE', 'PTHREAD_CREATE_DETACHED',
+		'PTHREAD_PROCESS_PRIVATE']
+	if macos {
+		macros << ['MAP_ANON', 'F_SETLK', 'F_SETLKW', 'F_RDLCK', 'F_UNLCK', 'F_WRLCK', 'LOCK_SH',
+			'LOCK_EX', 'LOCK_NB', 'LOCK_UN', 'EINVAL', 'ETIMEDOUT', 'SIGHUP', 'SIGINT', 'SIGQUIT',
+			'SIGILL', 'SIGABRT', 'SIGFPE', 'SIGKILL', 'SIGSEGV', 'SIGPIPE', 'SIGALRM', 'SIGTERM',
+			'MACH_TASK_BASIC_INFO_COUNT', 'TASK_BASIC_INFO', 'KERN_SUCCESS',
+			'QOS_CLASS_USER_INITIATED', 'RUSAGE_SELF']
+	}
 	for name in macros {
 		out << 'CHECK_EQ(v_abi_${name}, ${name});'
 	}
@@ -126,6 +140,15 @@ fn fastc_c_abi_check_source(host_os string, prelude string) string {
 		out << 'CHECK_SIZE(${name});'
 	}
 	if macos {
+		out << 'CHECK_SIZE(pthread_cond_t);'
+		out << 'CHECK_SIZE(pthread_condattr_t);'
+		out << 'CHECK_SIZE(pthread_rwlock_t);'
+		out << 'CHECK_SIZE(pthread_rwlockattr_t);'
+		out << 'CHECK_STRUCT_SIZE(flock);'
+		out << 'CHECK_STRUCT_SIZE(utimbuf);'
+		out << 'CHECK_STRUCT_SIZE(utsname);'
+		out << 'CHECK_STRUCT_SIZE(rusage);'
+		out << 'CHECK_STRUCT_SIZE(task_basic_info);'
 		out << 'CHECK_SIZE(mach_timebase_info_data_t);'
 		out << 'CHECK_EQ(offsetof(v_abi_mach_timebase_info_data_t, denom), offsetof(mach_timebase_info_data_t, denom));'
 	}
