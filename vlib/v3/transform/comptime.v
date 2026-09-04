@@ -2411,7 +2411,8 @@ fn (t &Transformer) comptime_option_unwrapped_local_type(name string, call flat.
 	for _ in 0 .. 4 {
 		mut found_offset := -1
 		mut next_name := ''
-		for candidate in t.a.nodes {
+		for candidate_id in t.local_decl_nodes_by_name[source_name] {
+			candidate := t.a.nodes[candidate_id]
 			if candidate.kind != .decl_assign || candidate.children_count < 2
 				|| !candidate.pos.is_valid() || candidate.pos.id != call.pos.id
 				|| candidate.pos.offset >= call.pos.offset || candidate.pos.offset <= found_offset {
@@ -2429,7 +2430,8 @@ fn (t &Transformer) comptime_option_unwrapped_local_type(name string, call flat.
 		}
 		source_name = next_name
 	}
-	for candidate in t.a.nodes {
+	for candidate_id in t.if_expr_nodes_by_file[call.pos.id] {
+		candidate := t.a.nodes[candidate_id]
 		if candidate.kind != .if_expr || candidate.children_count < 2 {
 			continue
 		}

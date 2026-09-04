@@ -246,6 +246,7 @@ mut:
 	generic_alias_names           map[string]bool
 	type_alias_suffixes           map[string]string
 	local_decl_nodes_by_name      map[string][]int
+	if_expr_nodes_by_file         map[int][]int
 	fn_decl_offsets_by_file       map[int][]int
 	struct_field_decl_metas_cache map[string]map[string]FieldDeclMeta
 	comptime_field_metas_cache    map[string][]FieldMeta
@@ -3920,6 +3921,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		generic_alias_names: t.generic_alias_names
 		type_alias_suffixes: t.type_alias_suffixes
 		local_decl_nodes_by_name: t.local_decl_nodes_by_name
+		if_expr_nodes_by_file: t.if_expr_nodes_by_file
 		fn_decl_offsets_by_file: t.fn_decl_offsets_by_file
 		struct_field_decl_metas_cache: t.struct_field_decl_metas_cache
 		comptime_field_metas_cache: map[string][]FieldMeta{}
@@ -15714,6 +15716,7 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 fn (mut t Transformer) build_source_parent_index() {
 	t.source_parent_ids = []int{len: t.a.nodes.len, init: -1}
 	mut decls := map[string][]int{}
+	mut if_exprs := map[int][]int{}
 	mut fn_offsets := map[int][]int{}
 	mut shared_names := map[string]bool{}
 	for parent_id, node in t.a.nodes {
@@ -15725,6 +15728,12 @@ fn (mut t Transformer) build_source_parent_index() {
 		}
 		if node.kind == .fn_decl && node.pos.is_valid() {
 			fn_offsets[node.pos.id] << node.pos.offset
+		}
+		if node.kind == .if_expr && node.children_count >= 2 {
+			body := t.a.child_node(&node, 1)
+			if body.pos.is_valid() {
+				if_exprs[body.pos.id] << parent_id
+			}
 		}
 		if node.kind != .decl_assign || node.children_count < 2 {
 			continue
@@ -15747,6 +15756,7 @@ fn (mut t Transformer) build_source_parent_index() {
 		fn_offsets[file_id] = sorted
 	}
 	t.local_decl_nodes_by_name = decls.move()
+	t.if_expr_nodes_by_file = if_exprs.move()
 	t.fn_decl_offsets_by_file = fn_offsets.move()
 	t.shared_local_decl_names = shared_names.move()
 }

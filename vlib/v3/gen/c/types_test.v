@@ -201,6 +201,25 @@ fn test_optional_typedef_keeps_qualified_interface_with_struct_collision() {
 	assert g.sb.str().contains('cipher__Block value; } Optional_cipher__Block;')
 }
 
+fn test_precomputed_qualified_struct_c_types_preserve_ambiguity_checks() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.structs['first.Entry'] = []types.StructField{}
+	tc.structs['second.Entry'] = []types.StructField{}
+	tc.structs['outer.inner.Value'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	g.precompute_qualified_struct_c_types()
+	assert g.qualified_struct_c_types_ready
+	assert g.qualified_struct_c_types('Entry').len == 2
+	assert g.qualified_struct_c_types('inner__Value') == ['outer__inner__Value']
+	assert g.stale_ambiguous_qualified_struct_c_type('Entry')
+	assert !g.stale_missing_qualified_struct_c_type('first__Entry')
+	assert g.stale_missing_qualified_struct_c_type('missing__Entry')
+}
+
 fn test_optional_payload_does_not_qualify_ambiguous_interface() {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)

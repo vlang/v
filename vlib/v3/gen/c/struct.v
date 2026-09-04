@@ -404,7 +404,27 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		&& g.gen_lowered_sum_init(node) {
 		return
 	}
-	mut name := g.struct_init_c_type_name(init_value)
+	mut contextual_lookup_name := ''
+	expected_init_type := default_init_unalias_type(types.unwrap_all_pointers(g.expected_expr_type))
+	mut contextual_ct := ''
+	if expected_init_type is types.Struct {
+		expected_name := expected_init_type.name
+		expected_ct := g.value_c_type(expected_init_type)
+		if init_value == expected_name || g.generic_struct_init_context_matches(init_value, expected_name)
+			|| (init_value.contains('_')
+				&& g.flattened_generic_struct_c_type_short_name(expected_ct) == init_value) {
+			// The same semantic nested generic can be materialized once with a
+			// qualified inner argument and once with its in-module shorthand. Emit
+			// the instance required by the call/field context and use its fields.
+			contextual_ct = expected_ct
+			contextual_lookup_name = expected_name
+		}
+	}
+	mut name := if contextual_ct.len > 0 {
+		contextual_ct
+	} else {
+		g.struct_init_c_type_name(init_value)
+	}
 	if init_value.contains('[') {
 		if qualified_name := g.unique_qualified_struct_c_type(name) {
 			name = qualified_name
@@ -418,22 +438,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 			name = inst
 		}
 	}
-	mut contextual_lookup_name := ''
-	expected_init_type := default_init_unalias_type(types.unwrap_all_pointers(g.expected_expr_type))
-	if expected_init_type is types.Struct {
-		expected_name := expected_init_type.name
-		expected_ct := g.value_c_type(expected_init_type)
-		if g.generic_struct_init_context_matches(init_value, expected_name)
-			|| (init_value.contains('_')
-				&& g.flattened_generic_struct_c_type_short_name(expected_ct) == init_value) {
-			// The same semantic nested generic can be materialized once with a
-			// qualified inner argument and once with its in-module shorthand. Emit
-			// the instance required by the call/field context and use its fields.
-			name = expected_ct
-			contextual_lookup_name = expected_name
-		}
-	}
-	init_type := g.tc.parse_type(init_value)
+	init_type := init_semantic_type
 	node_type := g.parse_node_type(&node)
 	is_optional_init := init_value == 'Optional' || init_type is types.OptionType
 		|| init_type is types.ResultType
@@ -730,6 +735,9 @@ fn (g &FlatGen) qualified_struct_c_types(short_ct string) []string {
 	if short_ct.len == 0 {
 		return []string{}
 	}
+	if g.qualified_struct_c_types_ready {
+		return g.qualified_struct_c_types_by_suffix[short_ct]
+	}
 	mut matches := []string{}
 	for type_name, _ in g.tc.structs {
 		candidate_ct := g.struct_cname(type_name)
@@ -741,6 +749,23 @@ fn (g &FlatGen) qualified_struct_c_types(short_ct string) []string {
 		}
 	}
 	return matches
+}
+
+fn (mut g FlatGen) precompute_qualified_struct_c_types() {
+	mut by_suffix := map[string][]string{}
+	for type_name, _ in g.tc.structs {
+		candidate_ct := g.struct_cname(type_name)
+		mut suffix := candidate_ct
+		for {
+			if candidate_ct !in by_suffix[suffix] {
+				by_suffix[suffix] << candidate_ct
+			}
+			separator := suffix.index('__') or { break }
+			suffix = suffix[separator + 2..]
+		}
+	}
+	g.qualified_struct_c_types_by_suffix = by_suffix.move()
+	g.qualified_struct_c_types_ready = true
 }
 
 fn (g &FlatGen) stale_ambiguous_qualified_struct_c_type(short_ct string) bool {

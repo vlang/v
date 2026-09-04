@@ -610,13 +610,15 @@ mut:
 	// (preseed_fn_ptr_type has optional-typedef side effects the body-walk
 	// preseed does not); armed only for the contiguous pre-dispatch preseed
 	// block, while no arena scope can be freed and reused.
-	preseed_sig_type_seen      &PreseedTypeSeen = unsafe { nil }
-	struct_decl_pref_cache     &StructDeclPrefCache = unsafe { nil }
-	unused_param_seen          &UnusedParamSeen = unsafe { nil }
-	cache_split                bool
-	cache_native_input_paths   map[string]bool
-	program_body_only          bool
-	cached_support_identifiers map[string]bool
+	preseed_sig_type_seen              &PreseedTypeSeen = unsafe { nil }
+	struct_decl_pref_cache             &StructDeclPrefCache = unsafe { nil }
+	qualified_struct_c_types_by_suffix map[string][]string
+	qualified_struct_c_types_ready     bool
+	unused_param_seen                  &UnusedParamSeen = unsafe { nil }
+	cache_split                        bool
+	cache_native_input_paths           map[string]bool
+	program_body_only                  bool
+	cached_support_identifiers         map[string]bool
 	// Set when the target is built with -prealloc / -d prealloc: the bump
 	// arena's base block pointer must be thread-local (matching V1's cgen),
 	// or every spawned thread would race on the same arena.
@@ -1136,6 +1138,7 @@ pub fn FlatGen.new() FlatGen {
 		generic_fn_key_ordinal: map[string]int{}
 		struct_decl_infos: map[string]StructDeclInfo{}
 		struct_decl_short_infos: map[string]StructDeclInfo{}
+		qualified_struct_c_types_by_suffix: map[string][]string{}
 		decl_attrs: map[int][]string{}
 		decl_attrs_by_source_position: map[u64][]string{}
 		c_decl_abi_names: map[string]string{}
@@ -2861,6 +2864,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.generic_fn_key_ordinal.clear()
 	g.struct_decl_infos.clear()
 	g.struct_decl_short_infos.clear()
+	g.qualified_struct_c_types_by_suffix.clear()
+	g.qualified_struct_c_types_ready = false
 	g.decl_attrs.clear()
 	g.decl_attrs_by_source_position.clear()
 	g.c_decl_abi_names.clear()
@@ -2955,6 +2960,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.has_builtins = g.tc.has_builtins
 	g.precompute_shared_alias_pointer_shorts()
 	g.collect_gen_info(effective_no_parallel)
+	g.precompute_qualified_struct_c_types()
 	g.precompute_const_short_index()
 	g.precompute_local_global_suffix_names()
 	g.preintern_json_encode_strings()

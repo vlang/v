@@ -2570,6 +2570,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		enum_method_cache: &ContextStringLookupCache{}
 		qualified_enum_method_cache: &ContextStringLookupCache{}
 		struct_decl_pref_cache: &StructDeclPrefCache{}
+		qualified_struct_c_types_by_suffix: g.qualified_struct_c_types_by_suffix
+		qualified_struct_c_types_ready: g.qualified_struct_c_types_ready
 		embedded_fields_by_type: g.embedded_fields_by_type
 		param_types_by_short: g.param_types_by_short
 		generic_method_candidates: g.generic_method_candidates
