@@ -107,6 +107,9 @@ fn fastc_render_c_unit_stdin(fd int, pieces []string, units &FastcUnitLayout, g 
 // fastc_prestart_c_units starts TinyCC processes that wait for their source on
 // stdin. Starting this on a worker lets source generation hide process launch.
 pub fn fastc_prestart_c_units(tcc string, base_args []string, build_dir string, unit_count int) FastcPrestartedCUnits {
+	if unit_count < 2 {
+		return FastcPrestartedCUnits{}
+	}
 	os.mkdir_all(build_dir) or { return FastcPrestartedCUnits{} }
 	mut units := FastcPrestartedCUnits{
 		build_dir: build_dir

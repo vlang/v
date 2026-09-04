@@ -8720,7 +8720,8 @@ pub fn run(args []string) {
 				if !c_only && prefs.building_v && !fastc_cross_target && (is_debug || no_cache) {
 					tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 					tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
-					if os.is_executable(tcc_path) {
+					prestart_jobs := fastc.fastc_tcc_job_count(prefs)
+					if prestart_jobs >= 2 && os.is_executable(tcc_path) {
 						tcc_resources := v3_tcc_resource_flags(prefs.vroot)
 						mut anticipated_cc_args := environment_c_flags.clone()
 						anticipated_cc_args << ['-std=gnu11', tcc_resources.base_arg,
@@ -8735,7 +8736,7 @@ pub fn run(args []string) {
 						mut anticipated_compile_args := c_object_compile_flags(anticipated_cc_args)
 						anticipated_compile_args << c_object_compile_flags(user_c_flags)
 						prestart_dir := os.join_path_single(os.dir(os.real_path(bin_file)), '.${os.file_name(bin_file)}.fastc.${tempname.unique_token()}')
-						prestart_workers << spawn fastc.fastc_prestart_c_units(tcc_path, anticipated_compile_args, prestart_dir, fastc.fastc_tcc_job_count(prefs))
+						prestart_workers << spawn fastc.fastc_prestart_c_units(tcc_path, anticipated_compile_args, prestart_dir, prestart_jobs)
 					}
 				}
 			}

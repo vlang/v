@@ -710,13 +710,25 @@ fn test_fastc_tcc_job_count_respects_parallel_controls() {
 	mut prefs := pref.new_preferences()
 	assert fastc_tcc_job_count(prefs) == 4
 	os.setenv('VJOBS', '100', true)
-	assert fastc_tcc_job_count(prefs) == 14
+	assert fastc_tcc_job_count(prefs) == 12
 	os.setenv('VJOBS', '4', true)
 	prefs.no_parallel = true
 	assert fastc_tcc_job_count(prefs) == 1
 	prefs.no_parallel = false
 	os.setenv('V3_FASTC_NO_PARALLEL', '1', true)
 	assert fastc_tcc_job_count(prefs) == 1
+}
+
+fn test_fastc_prestart_skips_single_unit() {
+	build_dir := os.join_path_single(os.vtmp_dir(), 'fastc_prestart_single_${os.getpid()}')
+	os.rmdir_all(build_dir) or {}
+	defer {
+		os.rmdir_all(build_dir) or {}
+	}
+	mut units := fastc_prestart_c_units('', [], build_dir, 1)
+	assert !fastc_prestarted_c_units_match(&units, [], 1)
+	assert !os.exists(build_dir)
+	fastc_discard_prestarted_c_units(mut units)
 }
 
 fn test_fastc_unit_group_starts_accounts_for_prepended_text() {
