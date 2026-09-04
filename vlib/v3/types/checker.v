@@ -12651,7 +12651,35 @@ fn (tc &TypeChecker) generic_args_are_concrete(args []string) bool {
 	return true
 }
 
+// generic_placeholder_token_prescreen reports whether text can contain a bare
+// single-capital-letter generic type component. It deliberately accepts a
+// superset so the recursive parser can cheaply skip ordinary concrete types.
+@[direct_array_access]
+fn generic_placeholder_token_prescreen(text string) bool {
+	for i in 0 .. text.len {
+		ch := text[i]
+		if ch < `A` || ch > `Z` {
+			continue
+		}
+		prev_ident := i > 0 && placeholder_token_ident_char(text[i - 1])
+		next_ident := i + 1 < text.len && placeholder_token_ident_char(text[i + 1])
+		if !prev_ident && !next_ident {
+			return true
+		}
+	}
+	return false
+}
+
+@[inline]
+fn placeholder_token_ident_char(ch u8) bool {
+	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || (ch >= `0` && ch <= `9`)
+		|| ch == `_`
+}
+
 fn (tc &TypeChecker) type_text_has_generic_placeholder(typ string) bool {
+	if !generic_placeholder_token_prescreen(typ) {
+		return false
+	}
 	clean := trimmed_space(typ)
 	if is_bare_generic_param(clean) {
 		return !tc.is_known_type_text(clean)
@@ -12699,6 +12727,9 @@ fn (tc &TypeChecker) type_text_has_generic_placeholder(typ string) bool {
 }
 
 fn (tc &TypeChecker) type_text_has_unbound_generic_placeholder(typ string, bound []string) bool {
+	if !generic_placeholder_token_prescreen(typ) {
+		return false
+	}
 	clean := trimmed_space(typ)
 	if is_bare_generic_param(clean) {
 		return !tc.is_known_type_text(clean) && clean !in bound
