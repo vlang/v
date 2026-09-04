@@ -5,6 +5,10 @@ import time
 
 fn C.v_os_exec_capture_start(argv &&char, child_pid &int, read_fd &int) int
 
+fn C.v_os_exec_capture_input_start(argv &&char, child_pid &int, read_fd &int, write_fd &int) int
+
+fn C.v_os_fd_write_all(fd int, data &char, len usize)
+
 fn C.waitpid(pid int, status &int, options int) int
 
 struct FastcUnitCompile {
@@ -67,6 +71,82 @@ pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string
 	return prepared.objects
 }
 
+fn fastc_stream_unit_compile_order(sources []string) []int {
+	mut order := []int{cap: sources.len}
+	mut sizes := []int{cap: sources.len}
+	for i, source in sources {
+		order << i
+		sizes << source.len
+		mut at := order.len - 1
+		for at > 0 && sizes[at - 1] < source.len {
+			order[at] = order[at - 1]
+			sizes[at] = sizes[at - 1]
+			at--
+		}
+		order[at] = i
+		sizes[at] = source.len
+	}
+	return order
+}
+
+fn fastc_write_unit_stdin(fd int, source string) {
+	C.v_os_fd_write_all(fd, &char(source.str), usize(source.len))
+	C.close(fd)
+}
+
+// fastc_compile_c_unit_texts streams in-memory translation units to concurrent
+// TinyCC processes. This avoids a temporary-file write/read round trip and
+// overlaps feeding earlier processes with starting the remaining ones.
+pub fn fastc_compile_c_unit_texts(tcc string, base_args []string, unit_paths []string, sources []string, prepared FastcPreparedUnits) ![]string {
+	if unit_paths.len != sources.len || prepared.entries.len != sources.len {
+		return error('invalid streamed FastC unit layout')
+	}
+	bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
+	sw := time.new_stopwatch()
+	mut compiles := []FastcUnitCompile{cap: unit_paths.len}
+	mut writers := []thread{cap: unit_paths.len}
+	mut start_error := ''
+	for i in fastc_stream_unit_compile_order(sources) {
+		object := prepared.entries[i].object
+		mut args := [tcc]
+		args << base_args
+		args << ['-c', '-', '-o', object]
+		mut pid := 0
+		mut read_fd := -1
+		mut write_fd := -1
+		if !fastc_start_capture_input(args, &pid, &read_fd, &write_fd) {
+			start_error = 'could not start ${tcc} for ${unit_paths[i]}'
+			break
+		}
+		compiles << FastcUnitCompile{
+			pid: pid
+			read_fd: read_fd
+			object: object
+		}
+		writers << spawn fastc_write_unit_stdin(write_fd, sources[i])
+	}
+	if bench_phases {
+		eprintln('fastc-phase tcc.units_started ${sw.elapsed().microseconds()}us streamed=1')
+	}
+	mut failure := start_error
+	for i, compile in compiles {
+		output := os.fd_slurp(compile.read_fd).join('')
+		os.fd_close(compile.read_fd)
+		writers[i].wait()
+		code := fastc_wait_exit_code(compile.pid)
+		if bench_phases {
+			eprintln('fastc-phase tcc.unit_done ${sw.elapsed().microseconds()}us ${os.file_name(compile.object)}')
+		}
+		if code != 0 && failure == '' {
+			failure = if output.len > 0 { output } else { 'tcc failed on ${compile.object}' }
+		}
+	}
+	if failure != '' {
+		return error(failure)
+	}
+	return prepared.objects
+}
+
 // fastc_run_command runs the program with the argument vector and returns
 // its exit code and merged output, like cmdexec.run, but through posix_spawn
 // and a blocking wait rather than a fork of this (large) process and a
@@ -99,6 +179,19 @@ fn fastc_start_capture(argv []string, pid &int, read_fd &int) bool {
 	}
 	cargs << &char(unsafe { nil })
 	return C.v_os_exec_capture_start(cargs.data, pid, read_fd) == 0
+}
+
+fn fastc_start_capture_input(argv []string, pid &int, read_fd &int, write_fd &int) bool {
+	$if macos {
+		mut cargs := []&char{cap: argv.len + 1}
+		for arg in argv {
+			cargs << &char(arg.str)
+		}
+		cargs << &char(unsafe { nil })
+		return C.v_os_exec_capture_input_start(cargs.data, pid, read_fd, write_fd) == 0
+	} $else {
+		return false
+	}
 }
 
 // fastc_wait_exit_code waits for the process and returns its exit code; a

@@ -60,6 +60,19 @@ fn test_c_abi_prelude_requires_glibc_on_linux() {
 	assert !fastc_c_abi_supported('linux', 'x86', true)
 }
 
+fn test_fastc_macos_system_tbd_uses_abi_symbols() {
+	arm := fastc_macos_system_tbd('arm64')
+	assert arm.contains("install-name:    '/usr/lib/libSystem.B.dylib'")
+	assert arm.contains('targets:         [ arm64-macos, arm64e-macos ]')
+	assert arm.contains('_malloc')
+	assert arm.contains(r'_realpath$DARWIN_EXTSN')
+	assert arm.contains('___stdoutp')
+	assert arm.contains('_posix_spawn_file_actions_init')
+	amd64 := fastc_macos_system_tbd('amd64')
+	assert amd64.contains('targets:         [ x86_64-macos, x86_64-maccatalyst ]')
+	assert amd64.contains(r'_stat$INODE64')
+}
+
 // fastc_c_abi_check_source renders the C program that compares the prefixed
 // prelude with the real headers: static assertions for layouts, values and
 // prototypes, and runtime checks for the initializers and fd_set macros.

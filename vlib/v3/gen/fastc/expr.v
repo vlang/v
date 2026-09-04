@@ -1089,10 +1089,10 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			return g.unsupported('ORM `sql` select is only supported as `x := sql db { select ... }`')
 		}
 	}
-	mut result := strings.new_builder(32)
+	mut result := strings.new_builder(64)
 	// Most expressions are a handful of tokens; start with room for them so
 	// the token buffer is not regrown several times per expression.
-	mut expression_tokens := []FastcExpressionToken{cap: 8}
+	mut expression_tokens := []FastcExpressionToken{cap: 16}
 	if prefix.len > 0 {
 		result.write_string(g.resolved_expression_name(prefix, .unknown))
 		expression_tokens << FastcExpressionToken{
@@ -2093,6 +2093,10 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		previous_token_end = g.s.offset
 		g.next()
 	}
+	return g.finish_read_expression(mut result, mut expression_tokens, saved_expected_expression_type, paren_depth, bracket_depth, brace_depth, unsafe_expression_depth, mutation_operator, tokens_before_mutation)
+}
+
+fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut expression_tokens []FastcExpressionToken, saved_expected_expression_type string, paren_depth int, bracket_depth int, brace_depth int, unsafe_expression_depth int, mutation_operator token.Token, tokens_before_mutation int) !string {
 	g.expected_expression_type = saved_expected_expression_type
 	if paren_depth != 0 {
 		return g.unsupported('unbalanced expression')

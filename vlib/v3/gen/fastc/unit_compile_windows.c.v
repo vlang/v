@@ -48,6 +48,18 @@ pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string
 	return prepared.objects
 }
 
+// fastc_compile_c_unit_texts keeps the cross-platform API available; Windows
+// currently uses temporary files because its process wrapper has no stdin pipe.
+pub fn fastc_compile_c_unit_texts(tcc string, base_args []string, unit_paths []string, sources []string, prepared FastcPreparedUnits) ![]string {
+	if unit_paths.len != sources.len {
+		return error('invalid streamed FastC unit layout')
+	}
+	for i, source in sources {
+		os.write_file(unit_paths[i], source)!
+	}
+	return fastc_compile_c_units(tcc, base_args, unit_paths, prepared)
+}
+
 // fastc_run_command runs the program with the argument vector and returns
 // its exit code and merged output.
 pub fn fastc_run_command(program string, args []string) os.Result {

@@ -694,6 +694,36 @@ fn test_fastc_unit_group_starts_accounts_for_prepended_text() {
 	assert fastc_unit_group_starts([100, 100, 100, 100], 2, 0, 300) == [0, 3, 4]
 }
 
+fn test_fastc_rendered_units_match_temporary_files() {
+	root := os.join_path_single(os.vtmp_dir(), 'fastc_rendered_units_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	pieces := ['ignored definition', 'ignored prototypes', 'solo\n', 'body_a\n', 'body_b\n']
+	units := FastcUnitLayout{
+		head_end: 2
+		solo_end: 3
+		prototype_start: 1
+		prototype_end: 2
+		unit_starts: [3, 4, 5]
+		extern_indexes: [0]
+		extern_texts: ['extern shared;\n']
+		define_texts: ['int shared;\n']
+		prototype_texts: ['void first(void);\n', 'void second(void);\n']
+		unit_ref_starts: [0, 1, 2]
+		unit_ref_ids: [0, 1]
+		solo_prototype_ids: [1]
+	}
+	prefix := os.join_path_single(root, 'unit')
+	rendered := fastc_render_c_units(prefix, pieces, units, 2)
+	written_paths := fastc_write_c_units(prefix, pieces, units, 2) or { panic(err) }
+	assert rendered.paths == written_paths
+	for i, path in written_paths {
+		assert rendered.sources[i] == os.read_file(path) or { panic(err) }
+	}
+}
+
 fn test_fastc_unit_compile_order_starts_largest_cache_misses_first() {
 	root := os.join_path_single(os.vtmp_dir(), 'fastc_unit_order_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
@@ -750,6 +780,41 @@ fn test_fastc_generation_link_cache_key_covers_generated_inputs() {
 	assert key != fastc_generation_link_cache_key(tcc, ['-g'], ['-lm'], ['head', 'body'], units, 2, true)
 	assert key != fastc_generation_link_cache_key(tcc, ['-c'], ['-lm'], ['head', 'changed'], units, 2, true)
 	assert fastc_generation_link_cache_key(tcc, ['-c'], ['-lm'], ['head', 'body'], units, 2, false) == ''
+}
+
+fn test_fastc_generation_link_cache_key_uses_tbd_contents() {
+	root := os.join_path_single(os.vtmp_dir(), 'fastc_tbd_key_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	first := os.join_path_single(root, 'first.tbd')
+	second := os.join_path_single(root, 'second.tbd')
+	os.write_file(first, 'same stub') or { panic(err) }
+	os.write_file(second, 'same stub') or { panic(err) }
+	tcc := os.join_path(@VMODROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	units := FastcUnitLayout{
+		head_end: 1
+		solo_end: 1
+		unit_starts: [1, 2]
+	}
+	first_key := fastc_generation_link_cache_key(tcc, [], [first], ['head', 'body'], units, 2, true)
+	second_key := fastc_generation_link_cache_key(tcc, [], [second], ['head', 'body'], units, 2, true)
+	assert first_key == second_key
+	os.write_file(second, 'changed stub') or { panic(err) }
+	assert first_key != fastc_generation_link_cache_key(tcc, [], [second], ['head', 'body'], units, 2, true)
+}
+
+fn test_fastc_collect_c_name_ids_scans_index_markers() {
+	ids := {
+		'alpha__one':     1
+		'v_fastc_helper': 2
+		'_leading__name': 3
+	}
+	text := 'ordinary(alpha__one()); v_fastc_helper(); _leading__name(); foov_fastc_helper();'
+	mut found := []int{}
+	fastc_collect_c_name_ids(text, 0, text.len, ids, mut found)
+	assert found == [1, 2, 3]
 }
 
 fn test_parallel_constant_seed_preserves_constant_field_defaults() {

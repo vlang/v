@@ -7376,11 +7376,15 @@ $if !skip_fastc ? {
 		mut cc_args := environment_c_flags.clone()
 		cc_args << ['-std=gnu11', tcc_resources.base_arg, tcc_resources.include_arg,
 			tcc_resources.library_arg]
-		cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), macos_sdk_root)
+		if !(prefs.building_v && prefs.normalized_target_os() == 'macos') {
+			cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), macos_sdk_root)
+		}
 		cc_args << source_c_flags
 		// A call without a prototype would silently truncate a pointer result
 		// (the C carries no headers): it is an error, not a warning.
-		cc_args << '-Werror=implicit-function-declaration'
+		if '-Werror=implicit-function-declaration' !in cc_args {
+			cc_args << '-Werror=implicit-function-declaration'
+		}
 		if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), false) {
 			cc_args << '-bt25'
 		}
@@ -7396,10 +7400,21 @@ $if !skip_fastc ? {
 		user_link_args := c_dylib_link_flags(user_c_flags)
 		mut final_args := base_link_args.clone()
 		final_args << user_link_args
-		if uses_threads {
-			final_args << '-lpthread'
+		if prefs.building_v && prefs.normalized_target_os() == 'macos' {
+			// Header-free self-hosts only call symbols from FastC's macOS ABI
+			// table. Its compact stub avoids parsing the SDK's full libSystem
+			// umbrella stub while preserving the same dylib install name.
+			fastc_system_tbd := os.join_path_single(build_dir, 'libFastcSystem.tbd')
+			os.write_file(fastc_system_tbd, fastc.fastc_macos_system_tbd(prefs.normalized_target_arch())) or {
+				return V3FastCCompileResult{}
+			}
+			final_args << fastc_system_tbd
+		} else {
+			if uses_threads {
+				final_args << '-lpthread'
+			}
+			final_args << '-lm'
 		}
-		final_args << '-lm'
 		atomic_arg := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
 		if atomic_arg.len > 0 {
 			final_args << atomic_arg
@@ -7426,7 +7441,21 @@ $if !skip_fastc ? {
 				success: true
 			}
 		}
-		unit_paths := fastc.fastc_write_c_units(os.join_path_single(build_dir, 'src'), pieces, units, jobs) or { return V3FastCCompileResult{} }
+		unit_prefix := os.join_path_single(build_dir, 'src')
+		mut unit_paths := []string{}
+		mut streamed_sources := []string{}
+		$if macos {
+			if !cache_enabled && prefs.building_v {
+				mut rendered_units := fastc.fastc_render_c_units(unit_prefix, pieces, units, jobs)
+				unit_paths = rendered_units.paths.clone()
+				streamed_sources = rendered_units.sources.clone()
+			}
+		}
+		if unit_paths.len == 0 {
+			unit_paths = fastc.fastc_write_c_units(unit_prefix, pieces, units, jobs) or {
+				return V3FastCCompileResult{}
+			}
+		}
 		if unit_paths.len < 2 {
 			fastc.write_c_pieces(source_file, pieces) or { return V3FastCCompileResult{} }
 		}
@@ -7458,13 +7487,25 @@ $if !skip_fastc ? {
 				}
 			} else {
 				link_worker := spawn fastc.fastc_prepare_link(tcc_path, os.join_path_single(tcc_dir, 'lib'), compile_base_args, final_args)
-				fastc.fastc_compile_c_units(tcc_path, compile_args, unit_paths, prepared_units) or {
-					mut failed_link := link_worker.wait()
-					fastc.fastc_discard_link(mut failed_link)
-					fastc.write_c_pieces(source_file, pieces) or {}
-					return V3FastCCompileResult{
-						command: cmdexec.display(tcc_path, compile_args)
-						output: err.msg()
+				if streamed_sources.len > 0 {
+					fastc.fastc_compile_c_unit_texts(tcc_path, compile_args, unit_paths, streamed_sources, prepared_units) or {
+						mut failed_link := link_worker.wait()
+						fastc.fastc_discard_link(mut failed_link)
+						fastc.write_c_pieces(source_file, pieces) or {}
+						return V3FastCCompileResult{
+							command: cmdexec.display(tcc_path, compile_args)
+							output: err.msg()
+						}
+					}
+				} else {
+					fastc.fastc_compile_c_units(tcc_path, compile_args, unit_paths, prepared_units) or {
+						mut failed_link := link_worker.wait()
+						fastc.fastc_discard_link(mut failed_link)
+						fastc.write_c_pieces(source_file, pieces) or {}
+						return V3FastCCompileResult{
+							command: cmdexec.display(tcc_path, compile_args)
+							output: err.msg()
+						}
 					}
 				}
 				if bench_phases {

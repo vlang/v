@@ -2539,16 +2539,15 @@ fn fastc_unit_group_starts(unit_sizes []int, groups int, first_overhead int, sha
 	return starts
 }
 
-// fastc_write_c_units writes the translation units of a generation for
-// `jobs` parallel TinyCC processes: `prefix.unit<k>.c` files, each with the
-// shared head (the globals as extern declarations after the first), the
-// first also with the startup, cleanup and main pieces, and consecutive body
-// units grouped to balance their sizes. It returns the paths, or none when
-// the program does not split.
-pub fn fastc_write_c_units(prefix string, pieces []string, units FastcUnitLayout, jobs int) ![]string {
+struct FastcCUnitPlan {
+	paths       []string
+	first_units []int
+}
+
+fn fastc_c_unit_plan(prefix string, pieces []string, units FastcUnitLayout, jobs int) FastcCUnitPlan {
 	unit_count := units.unit_starts.len - 1
 	if jobs < 2 || unit_count < 2 || units.head_end <= 0 || units.solo_end > pieces.len {
-		return []string{}
+		return FastcCUnitPlan{}
 	}
 	mut unit_sizes := []int{cap: unit_count}
 	for u in 0 .. unit_count {
@@ -2559,7 +2558,6 @@ pub fn fastc_write_c_units(prefix string, pieces []string, units FastcUnitLayout
 		unit_sizes << size
 	}
 	groups := if jobs < unit_count { jobs } else { unit_count }
-	mut paths := []string{cap: groups}
 	mut first_overhead := 1
 	mut shared_overhead := 1
 	for k in 0 .. units.head_end {
@@ -2584,17 +2582,35 @@ pub fn fastc_write_c_units(prefix string, pieces []string, units FastcUnitLayout
 	}
 	first_units := fastc_unit_group_starts(unit_sizes, groups, first_overhead, shared_overhead)
 	if first_units.len == 0 {
-		return []string{}
+		return FastcCUnitPlan{}
 	}
+	mut paths := []string{cap: groups}
 	for g in 0 .. groups {
 		paths << '${prefix}.unit${g}.c'
 	}
+	return FastcCUnitPlan{
+		paths: paths
+		first_units: first_units
+	}
+}
+
+// fastc_write_c_units writes the translation units of a generation for
+// `jobs` parallel TinyCC processes: `prefix.unit<k>.c` files, each with the
+// shared head (the globals as extern declarations after the first), the
+// first also with the startup, cleanup and main pieces, and consecutive body
+// units grouped to balance their sizes. It returns the paths, or none when
+// the program does not split.
+pub fn fastc_write_c_units(prefix string, pieces []string, units FastcUnitLayout, jobs int) ![]string {
+	plan := fastc_c_unit_plan(prefix, pieces, units, jobs)
+	if plan.paths.len == 0 {
+		return []string{}
+	}
 	// The files are written concurrently; they add up to several megabytes.
 	mut writers := [
-		spawn fastc_write_c_unit(paths[0], pieces, &units, 0, first_units[0], first_units[1]),
+		spawn fastc_write_c_unit(plan.paths[0], pieces, &units, 0, plan.first_units[0], plan.first_units[1]),
 	]
-	for g in 1 .. groups {
-		writers << spawn fastc_write_c_unit(paths[g], pieces, &units, g, first_units[g], first_units[g + 1])
+	for g in 1 .. plan.paths.len {
+		writers << spawn fastc_write_c_unit(plan.paths[g], pieces, &units, g, plan.first_units[g], plan.first_units[g + 1])
 	}
 	mut failure := ''
 	for writer in writers {
@@ -2606,7 +2622,7 @@ pub fn fastc_write_c_units(prefix string, pieces []string, units FastcUnitLayout
 	if failure != '' {
 		return error(failure)
 	}
-	return paths
+	return plan.paths
 }
 
 // fastc_write_c_unit writes one translation unit: the head (with the shared
@@ -2615,7 +2631,24 @@ pub fn fastc_write_c_units(prefix string, pieces []string, units FastcUnitLayout
 // units `first_unit` to `end_unit`. It returns an error message or ''.
 fn fastc_write_c_unit(path string, pieces []string, units &FastcUnitLayout, g int, first_unit int, end_unit int) string {
 	mut file := os.create(path) or { return 'could not create ${path}: ${err.msg()}' }
-	// One buffered write per unit: piecewise writes cost several times more.
+	text := fastc_render_c_unit(pieces, units, g, first_unit, end_unit)
+	file.write_string(text) or {
+		file.close()
+		return 'could not write ${path}: ${err.msg()}'
+	}
+	file.close()
+	return ''
+}
+
+// FastcRenderedCUnits holds split translation units in memory so an uncached
+// build can stream them to TinyCC without temporary C files.
+pub struct FastcRenderedCUnits {
+pub:
+	paths   []string
+	sources []string
+}
+
+fn fastc_render_c_unit(pieces []string, units &FastcUnitLayout, g int, first_unit int, end_unit int) string {
 	mut out := strings.new_builder(1024 * 1024)
 	for k in 0 .. units.head_end {
 		if units.prototype_start < units.prototype_end && k >= units.prototype_start
@@ -2663,12 +2696,27 @@ fn fastc_write_c_unit(path string, pieces []string, units &FastcUnitLayout, g in
 	for k in units.unit_starts[first_unit] .. units.unit_starts[end_unit] {
 		out.write_string(pieces[k])
 	}
-	file.write(out) or {
-		file.close()
-		return 'could not write ${path}: ${err.msg()}'
+	return out.str()
+}
+
+// fastc_render_c_units renders balanced split translation units in parallel.
+pub fn fastc_render_c_units(prefix string, pieces []string, units FastcUnitLayout, jobs int) FastcRenderedCUnits {
+	plan := fastc_c_unit_plan(prefix, pieces, units, jobs)
+	if plan.paths.len == 0 {
+		return FastcRenderedCUnits{}
 	}
-	file.close()
-	return ''
+	mut workers := []thread string{cap: plan.paths.len}
+	for g in 0 .. plan.paths.len {
+		workers << spawn fastc_render_c_unit(pieces, &units, g, plan.first_units[g], plan.first_units[g + 1])
+	}
+	mut sources := []string{cap: plan.paths.len}
+	for worker in workers {
+		sources << worker.wait()
+	}
+	return FastcRenderedCUnits{
+		paths: plan.paths
+		sources: sources
+	}
 }
 
 struct FastcUnitCacheEntry {
@@ -2825,7 +2873,15 @@ pub fn fastc_generation_link_cache_key(tcc string, compile_args []string, final_
 	if !enabled || pieces.len == 0 {
 		return ''
 	}
-	configuration := 'fastc-generation-link-v1\x00${fastc_unit_cache_configuration(tcc, compile_args)}\x00${final_args.join('\x00')}\x00${jobs}\x00${units.head_end}\x00${units.solo_end}\x00${units.prototype_start}\x00${units.prototype_end}\x00${units.unit_starts}\x00${units.extern_indexes}\x00${units.unit_ref_starts}\x00${units.unit_ref_ids}\x00${units.solo_prototype_ids}\x00${units.tail_prototype_ids}'
+	mut stable_final_args := []string{cap: final_args.len}
+	for arg in final_args {
+		if arg.ends_with('.tbd') && os.is_file(arg) {
+			stable_final_args << 'tbd-content:' + (os.read_file(arg) or { arg })
+		} else {
+			stable_final_args << arg
+		}
+	}
+	configuration := 'fastc-generation-link-v1\x00${fastc_unit_cache_configuration(tcc, compile_args)}\x00${stable_final_args.join('\x00')}\x00${jobs}\x00${units.head_end}\x00${units.solo_end}\x00${units.prototype_start}\x00${units.prototype_end}\x00${units.unit_starts}\x00${units.extern_indexes}\x00${units.unit_ref_starts}\x00${units.unit_ref_ids}\x00${units.solo_prototype_ids}\x00${units.tail_prototype_ids}'
 	mut hash := fastc_unit_cache_hash(configuration, u64(0x510e527fade682d1))
 	for piece in pieces {
 		hash = fastc_unit_cache_hash(piece, hash ^ u64(piece.len))
@@ -3308,36 +3364,40 @@ fn fastc_c_identifier_start_byte(value u8) bool {
 
 // fastc_collect_c_name_ids appends the ids of the indexed functions named in
 // text[start..end]. Every indexed C name carries a module or type separator
-// (`__`), so only such identifiers are looked up, through a view of the text.
+// (`__`) or the `v_fastc_` prefix, so only underscores can begin a candidate.
+// Expanding from those markers avoids classifying every ordinary identifier.
 @[direct_array_access]
 fn fastc_collect_c_name_ids(text string, start int, end int, ids map[string]int, mut out []int) {
 	mut i := start
 	for i < end {
-		if !fastc_c_identifier_start_byte(text[i]) {
+		if text[i] != `_` {
 			i++
 			continue
 		}
-		word_start := i
-		mut separated := false
-		i++
-		for i < end && fastc_identifier_byte(text[i]) {
-			if text[i] == `_` && text[i - 1] == `_` {
-				separated = true
-			}
+		mut word_start := i
+		mut indexed := i + 1 < end && text[i + 1] == `_`
+		if !indexed && i > start && text[i - 1] == `v` && i + 6 < end && text[i + 1] == `f`
+			&& text[i + 2] == `a` && text[i + 3] == `s` && text[i + 4] == `t`
+			&& text[i + 5] == `c` && text[i + 6] == `_` {
+			word_start = i - 1
+			indexed = word_start == start || !fastc_identifier_byte(text[word_start - 1])
+		}
+		if !indexed {
 			i++
+			continue
 		}
-		if !separated && i - word_start > 8 && text[word_start] == `v` && text[word_start + 1] == `_`
-			&& text[word_start + 2] == `f` && text[word_start + 3] == `a` && text[word_start + 4] == `s`
-			&& text[word_start + 5] == `t` && text[word_start + 6] == `c` && text[word_start + 7] == `_` {
-			// The enum helpers are indexed too.
-			separated = true
+		for word_start > start && fastc_identifier_byte(text[word_start - 1]) {
+			word_start--
 		}
-		if separated {
-			candidate := unsafe { tos(text.str + word_start, i - word_start) }
-			if id := ids[candidate] {
-				out << id
-			}
+		mut word_end := i + 2
+		for word_end < end && fastc_identifier_byte(text[word_end]) {
+			word_end++
 		}
+		candidate := unsafe { tos(text.str + word_start, word_end - word_start) }
+		if id := ids[candidate] {
+			out << id
+		}
+		i = word_end
 	}
 }
 
