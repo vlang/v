@@ -497,7 +497,7 @@ pub fn run(args []string) {
 	mut result := os.Result{}
 	mut sign_in_process := false
 	if unit_paths.len > 1 {
-		link_worker := spawn fastc.fastc_prepare_link(tcc, tcc_lib, cc_args)
+		link_worker := spawn fastc.fastc_prepare_link(tcc, tcc_lib, cc_args, link_libs)
 		unit_objects := fastc.fastc_compile_c_units(tcc, cc_args, unit_paths) or {
 			mut prepared_link := link_worker.wait()
 			fastc.fastc_discard_link(mut prepared_link)

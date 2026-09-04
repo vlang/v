@@ -7455,12 +7455,19 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 		cc_args << '-g'
 	}
 	// Keep archives and other link-only source directives after the generated
-	// object inputs. Static archives are order-sensitive, and passing one while
-	// preparing libtcc can make it extract the same members for every later unit.
+	// object inputs. Only their state-affecting options are applied while
+	// preparing libtcc; static archives remain order-sensitive link operands.
 	compile_base_args := c_object_compile_flags(cc_args)
 	base_link_args := c_dylib_link_flags(cc_args)
 	user_compile_args := c_object_compile_flags(user_c_flags)
 	user_link_args := c_dylib_link_flags(user_c_flags)
+	mut final_args := base_link_args.clone()
+	final_args << user_link_args
+	if uses_threads {
+		final_args << '-lpthread'
+	}
+	final_args << '-lm'
+	final_args << environment_ld_flags
 	mut shim_dir := fastc.FastcCodesignShim{}
 	defer {
 		fastc.fastc_remove_codesign_shim_dir(shim_dir)
@@ -7472,7 +7479,7 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 		mut compile_args := compile_base_args.clone()
 		compile_args << user_compile_args
 		link_worker := spawn fastc.fastc_prepare_link(tcc_path,
-			os.join_path_single(tcc_dir, 'lib'), compile_base_args)
+			os.join_path_single(tcc_dir, 'lib'), compile_base_args, final_args)
 		unit_objects := fastc.fastc_compile_c_units(tcc_path, compile_args, unit_paths) or {
 			mut prepared_link := link_worker.wait()
 			fastc.fastc_discard_link(mut prepared_link)
@@ -7486,13 +7493,6 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 			eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
 		}
 		link_inputs := unit_objects.clone()
-		mut final_args := base_link_args.clone()
-		final_args << user_link_args
-		if uses_threads {
-			final_args << '-lpthread'
-		}
-		final_args << '-lm'
-		final_args << environment_ld_flags
 		mut display_args := compile_base_args.clone()
 		display_args << ['-o', staged_binary]
 		display_args << link_inputs
@@ -7514,15 +7514,7 @@ fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_fil
 		cc_args = compile_base_args.clone()
 		cc_args << user_compile_args
 		cc_args << ['-o', 'out', 'src.c']
-		cc_args << base_link_args
-		cc_args << user_link_args
-		if uses_threads {
-			// The emitted spawn runtime calls pthread functions, which live
-			// outside libc on Linux with glibc before 2.34 and on the BSDs.
-			cc_args << '-lpthread'
-		}
-		cc_args << '-lm'
-		cc_args << environment_ld_flags
+		cc_args << final_args
 		command = cmdexec.display(tcc_path, cc_args)
 		shim_dir = fastc.fastc_codesign_shim_dir()
 		sign_in_process = shim_dir.dir != ''

@@ -31,6 +31,8 @@ fn C.tcc_set_output_type(&C.TCCState, int) int
 
 fn C.tcc_add_file(&C.TCCState, &char) int
 
+fn C.tcc_add_library(&C.TCCState, &char) int
+
 fn C.tcc_output_file(&C.TCCState, &char) int
 
 fn C.v_fastc_tcc_set_skip_codesign(int)
@@ -104,7 +106,48 @@ fn fastc_libtcc_apply_options(state &C.TCCState, args []string) int {
 	return C.tcc_set_options(state, options.str)
 }
 
-fn fastc_prepare_libtcc_link(program string, tcc_lib string, base_args []string) FastcPreparedLink {
+fn fastc_libtcc_output_options(args []string) []string {
+	mut options := []string{cap: args.len}
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		is_combined_path_option := arg.len > 2
+			&& (arg.starts_with('-B') || arg.starts_with('-L'))
+		if arg in ['-nostdinc', '-nostdlib'] || is_combined_path_option {
+			options << arg
+			i++
+			continue
+		}
+		if arg in ['-B', '-L'] && i + 1 < args.len {
+			options << [arg, args[i + 1]]
+			i += 2
+			continue
+		}
+		if arg.starts_with('-Wl,') {
+			linker_args := arg[4..].split(',')
+			mut output_linker_args := []string{}
+			mut j := 0
+			for j < linker_args.len {
+				linker_arg := linker_args[j]
+				clean := linker_arg.trim_left('-')
+				if clean == 'nostdlib' || (clean.starts_with('L') && clean.len > 1) {
+					output_linker_args << linker_arg
+				} else if clean == 'L' && j + 1 < linker_args.len {
+					output_linker_args << [linker_arg, linker_args[j + 1]]
+					j++
+				}
+				j++
+			}
+			if output_linker_args.len > 0 {
+				options << '-Wl,${output_linker_args.join(',')}'
+			}
+		}
+		i++
+	}
+	return options
+}
+
+fn fastc_prepare_libtcc_link(program string, tcc_lib string, base_args []string, final_args []string) FastcPreparedLink {
 	state := C.tcc_new()
 	if isnil(state) {
 		return FastcPreparedLink{
@@ -115,8 +158,8 @@ fn fastc_prepare_libtcc_link(program string, tcc_lib string, base_args []string)
 	diagnostics := &FastcLibtccDiagnostics{}
 	C.tcc_set_error_func(state, diagnostics, fastc_libtcc_error_callback)
 	C.tcc_set_lib_path(state, tcc_lib.str)
-	options := fastc_libtcc_options(base_args)
-	if C.tcc_set_options(state, options.str) != 0
+	if fastc_libtcc_apply_options(state, base_args) != 0
+		|| fastc_libtcc_apply_options(state, fastc_libtcc_output_options(final_args)) != 0
 		|| C.tcc_set_output_type(state, fastc_tcc_output_exe) != 0 {
 		C.tcc_delete(state)
 		return FastcPreparedLink{
@@ -133,6 +176,16 @@ fn fastc_prepare_libtcc_link(program string, tcc_lib string, base_args []string)
 
 fn fastc_libtcc_state(link &FastcPreparedLink) &C.TCCState {
 	return unsafe { &C.TCCState(link.state) }
+}
+
+fn fastc_libtcc_add_library(state &C.TCCState, name string, diagnostics &FastcLibtccDiagnostics) ?os.Result {
+	if C.tcc_add_library(state, name.str) != 0 {
+		return os.Result{
+			exit_code: 1
+			output: fastc_libtcc_diagnostics(diagnostics, 'could not add library `${name}` to the TinyCC link')
+		}
+	}
+	return none
 }
 
 fn fastc_finish_libtcc_link(mut link FastcPreparedLink, input_paths []string, final_args []string, output string) os.Result {
@@ -159,7 +212,44 @@ fn fastc_finish_libtcc_link(mut link FastcPreparedLink, input_paths []string, fi
 		}
 	}
 	mut pending_options := []string{}
-	for arg in final_args {
+	mut i := 0
+	for i < final_args.len {
+		arg := final_args[i]
+		if arg == '-l' {
+			if i + 1 >= final_args.len {
+				return os.Result{
+					exit_code: 1
+					output: 'missing library name after `-l`'
+				}
+			}
+			if fastc_libtcc_apply_options(state, pending_options) != 0 {
+				return os.Result{
+					exit_code: 1
+					output: fastc_libtcc_diagnostics(diagnostics, 'TinyCC rejected the link options')
+				}
+			}
+			pending_options.clear()
+			i++
+			if result := fastc_libtcc_add_library(state, final_args[i], diagnostics) {
+				return result
+			}
+			i++
+			continue
+		}
+		if arg.starts_with('-l') && arg.len > 2 {
+			if fastc_libtcc_apply_options(state, pending_options) != 0 {
+				return os.Result{
+					exit_code: 1
+					output: fastc_libtcc_diagnostics(diagnostics, 'TinyCC rejected the link options')
+				}
+			}
+			pending_options.clear()
+			if result := fastc_libtcc_add_library(state, arg[2..], diagnostics) {
+				return result
+			}
+			i++
+			continue
+		}
 		if fastc_libtcc_is_link_input(arg) {
 			if fastc_libtcc_apply_options(state, pending_options) != 0 {
 				return os.Result{
@@ -177,6 +267,7 @@ fn fastc_finish_libtcc_link(mut link FastcPreparedLink, input_paths []string, fi
 		} else {
 			pending_options << arg
 		}
+		i++
 	}
 	if fastc_libtcc_apply_options(state, pending_options) != 0 {
 		return os.Result{
