@@ -21296,9 +21296,8 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('DWORD WINAPI TlsAlloc(void);')
 	g.writeln('void* WINAPI TlsGetValue(DWORD index);')
 	g.writeln('BOOL WINAPI TlsSetValue(DWORD index, void* value);')
-	g.writeln('DWORD WINAPI FlsAlloc(void (WINAPI *callback)(void*));')
-	g.writeln('void* WINAPI FlsGetValue(DWORD index);')
-	g.writeln('BOOL WINAPI FlsSetValue(DWORD index, void* value);')
+	g.writeln('void* WINAPI GetModuleHandleA(const char* module_name);')
+	g.writeln('void* WINAPI GetProcAddress(void* module, const char* proc_name);')
 	g.writeln('typedef struct { HANDLE handle; void* context; } __v_thread;')
 	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
@@ -24282,14 +24281,27 @@ fn (g &FlatGen) is_builtin_autostr_addr_state(name string) bool {
 
 fn (mut g FlatGen) emit_tinyc_windows_thread_local_slot(cname string, ct string, dims string) {
 	g.writeln('#if defined(__TINYC__) && defined(_WIN32)')
+	// TinyCC's bundled import library does not expose the Fls* symbols. Resolve
+	// them at runtime so Windows can still release each slot at thread exit.
+	g.writeln('typedef DWORD (WINAPI *${cname}_fls_alloc_fn)(void (WINAPI *)(void*));')
+	g.writeln('typedef void* (WINAPI *${cname}_fls_get_fn)(DWORD);')
+	g.writeln('typedef BOOL (WINAPI *${cname}_fls_set_fn)(DWORD, void*);')
 	g.writeln('static DWORD ${cname}_key = 0xFFFFFFFF;')
+	g.writeln('static ${cname}_fls_get_fn ${cname}_fls_get;')
+	g.writeln('static ${cname}_fls_set_fn ${cname}_fls_set;')
 	g.writeln('static void WINAPI ${cname}_slot_free(void* p) { free(p); }')
 	g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
-	g.writeln('static void ${cname}_key_init(void) { ${cname}_key = FlsAlloc(${cname}_slot_free); }')
+	g.writeln('static void ${cname}_key_init(void) {')
+	g.writeln('\tvoid* kernel32 = GetModuleHandleA("kernel32.dll");')
+	g.writeln('\t${cname}_fls_alloc_fn fls_alloc = (${cname}_fls_alloc_fn)GetProcAddress(kernel32, "FlsAlloc");')
+	g.writeln('\t${cname}_fls_get = (${cname}_fls_get_fn)GetProcAddress(kernel32, "FlsGetValue");')
+	g.writeln('\t${cname}_fls_set = (${cname}_fls_set_fn)GetProcAddress(kernel32, "FlsSetValue");')
+	g.writeln('\t${cname}_key = fls_alloc && ${cname}_fls_get && ${cname}_fls_set ? fls_alloc(${cname}_slot_free) : TlsAlloc();')
+	g.writeln('}')
 	if dims.len > 0 {
-		g.writeln('static ${ct} (*${cname}_slot(void))${dims} { void* p = FlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(*${cname}_slot())); FlsSetValue(${cname}_key, p); } return p; }')
+		g.writeln('static ${ct} (*${cname}_slot(void))${dims} { void* p = ${cname}_fls_get ? ${cname}_fls_get(${cname}_key) : TlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(*${cname}_slot())); if (${cname}_fls_set) ${cname}_fls_set(${cname}_key, p); else TlsSetValue(${cname}_key, p); } return p; }')
 	} else {
-		g.writeln('static ${ct}* ${cname}_slot(void) { void* p = FlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); FlsSetValue(${cname}_key, p); } return (${ct}*)p; }')
+		g.writeln('static ${ct}* ${cname}_slot(void) { void* p = ${cname}_fls_get ? ${cname}_fls_get(${cname}_key) : TlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); if (${cname}_fls_set) ${cname}_fls_set(${cname}_key, p); else TlsSetValue(${cname}_key, p); } return (${ct}*)p; }')
 	}
 	g.writeln('#define ${cname} (*${cname}_slot())')
 	g.writeln('#elif defined(__TINYC__)')

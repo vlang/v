@@ -748,11 +748,24 @@ fn (mut g Gen) write_autostr_tls_global(mut def_builder strings.Builder, linkage
 	slot_fn := 'v_${cname}_tls_slot'
 	slot_linkage := if g.pref.parallel_cc { '' } else { 'static ' }
 	def_builder.writeln('#if defined(__TINYC__) && defined(_WIN32)')
+	// TinyCC's bundled import library does not expose the Fls* symbols. Resolve
+	// them at runtime so Windows can still release each slot at thread exit.
+	def_builder.writeln('typedef DWORD (WINAPI *${cname}_fls_alloc_fn)(void (WINAPI *)(void*));')
+	def_builder.writeln('typedef void* (WINAPI *${cname}_fls_get_fn)(DWORD);')
+	def_builder.writeln('typedef BOOL (WINAPI *${cname}_fls_set_fn)(DWORD, void*);')
 	def_builder.writeln('static DWORD ${cname}_tls_key = 0xFFFFFFFF;')
+	def_builder.writeln('static ${cname}_fls_get_fn ${cname}_fls_get;')
+	def_builder.writeln('static ${cname}_fls_set_fn ${cname}_fls_set;')
 	def_builder.writeln('static void WINAPI ${cname}_tls_free(void* p) { free(p); }')
 	def_builder.writeln('static void ${cname}_tls_init(void) __attribute__((constructor));')
-	def_builder.writeln('static void ${cname}_tls_init(void) { ${cname}_tls_key = FlsAlloc(${cname}_tls_free); }')
-	def_builder.writeln('${slot_linkage}${styp}* ${slot_fn}(void) { void* p = FlsGetValue(${cname}_tls_key); if (!p) { p = calloc(1, sizeof(${styp})); FlsSetValue(${cname}_tls_key, p); } return (${styp}*)p; }')
+	def_builder.writeln('static void ${cname}_tls_init(void) {')
+	def_builder.writeln('\tvoid* kernel32 = GetModuleHandleA("kernel32.dll");')
+	def_builder.writeln('\t${cname}_fls_alloc_fn fls_alloc = (${cname}_fls_alloc_fn)GetProcAddress(kernel32, "FlsAlloc");')
+	def_builder.writeln('\t${cname}_fls_get = (${cname}_fls_get_fn)GetProcAddress(kernel32, "FlsGetValue");')
+	def_builder.writeln('\t${cname}_fls_set = (${cname}_fls_set_fn)GetProcAddress(kernel32, "FlsSetValue");')
+	def_builder.writeln('\t${cname}_tls_key = fls_alloc && ${cname}_fls_get && ${cname}_fls_set ? fls_alloc(${cname}_tls_free) : TlsAlloc();')
+	def_builder.writeln('}')
+	def_builder.writeln('${slot_linkage}${styp}* ${slot_fn}(void) { void* p = ${cname}_fls_get ? ${cname}_fls_get(${cname}_tls_key) : TlsGetValue(${cname}_tls_key); if (!p) { p = calloc(1, sizeof(${styp})); if (${cname}_fls_set) ${cname}_fls_set(${cname}_tls_key, p); else TlsSetValue(${cname}_tls_key, p); } return (${styp}*)p; }')
 	def_builder.writeln('#define ${cname} (*${slot_fn}())')
 	def_builder.writeln('#elif defined(__TINYC__)')
 	def_builder.writeln('#include <pthread.h>')
