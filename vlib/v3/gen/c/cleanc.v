@@ -1767,34 +1767,14 @@ fn c_add_cache_native_source_root(mut native_source_roots map[string][]string, m
 	return true
 }
 
-// cache_native_inputs_need_objective_c reports whether cgen will implicitly
-// compile the generated translation unit as Objective-C because of a source
-// directive rather than an explicit compiler flag.
-pub fn cache_native_inputs_need_objective_c(a &flat.FlatAst, vroot string, c_flags []string, c99_mode bool, target pref.Target) bool {
-	include_dirs := c_flag_include_dirs(c_flags)
-	mut cur_file := ''
-	for node in a.nodes {
-		if node.kind == .file {
-			cur_file = node.value
-			continue
-		}
-		if node.kind != .directive || node.value !in ['include', 'insert'] || node.typ.len == 0 {
-			continue
-		}
-		include_arg := c_include_arg_for_target(node.typ, vroot, cur_file, target)
-		if include_arg.len == 0 || c_include_arg_is_builtin_abi_helper(include_arg, vroot) {
-			continue
-		}
-		if c_include_arg_is_source_file(include_arg) {
-			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
-				if cache_native_input_path_needs_objective_c(path, c_flags, c99_mode, target) {
-					return true
-				}
-			}
-			continue
-		}
-	}
-	return false
+// cache_native_inputs_need_objective_c reports whether cgen must implicitly
+// compile the generated translation unit as Objective-C because of a native
+// input rather than an explicit compiler flag.
+pub fn cache_native_inputs_need_objective_c(a &flat.FlatAst, vroot string, c_flags []string, c99_mode bool, ccompiler string, target pref.Target) bool {
+	return cache_native_inputs_language(a, vroot, c_flags, c99_mode, ccompiler, target) in [
+		'objective-c',
+		'objective-c++',
+	]
 }
 
 // cache_native_input_path_needs_objective_c reports whether a native input
@@ -1836,7 +1816,7 @@ pub fn cache_native_input_language(path string, c_flags []string, c99_mode bool,
 // native input requires. The shared compiler-macro probe uses it so it never omits
 // a language macro (`__OBJC__`, `__cplusplus`) that an input's active branches
 // depend on.
-pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []string, c99_mode bool, target pref.Target) string {
+pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []string, c99_mode bool, ccompiler string, target pref.Target) string {
 	include_dirs := c_flag_include_dirs(c_flags)
 	mut need_objc := false
 	mut need_cpp := false
@@ -1846,7 +1826,8 @@ pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []str
 			cur_file = node.value
 			continue
 		}
-		if node.kind != .directive || node.value !in ['include', 'insert'] || node.typ.len == 0 {
+		if node.kind != .directive
+			|| node.value !in ['include', 'insert', 'preinclude', 'postinclude'] || node.typ.len == 0 {
 			continue
 		}
 		include_arg := c_include_arg_for_target(node.typ, vroot, cur_file, target)
@@ -1869,6 +1850,11 @@ pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []str
 					else {}
 				}
 			}
+		} else if target.os in ['macos', 'ios'] && ccompiler !in ['tcc', 'tinyc'] {
+			// Match V1's conservative Darwin behavior without opening the header.
+			// Apple headers can expose Objective-C declarations based on __OBJC__, so
+			// the cache probe and generated translation unit must both define it.
+			need_objc = true
 		}
 	}
 	return c_native_language_from_features(need_objc, need_cpp)
@@ -9446,10 +9432,18 @@ fn dedupe_top_level_c_includes(directives []string) []string {
 		}
 		result << directive
 		name := c_directive_name(clean)
+		if depth == 0 && name in ['define', 'undef'] {
+			// A repeated unguarded include can intentionally observe a different macro
+			// state. Only deduplicate within one unchanged top-level macro epoch.
+			seen_includes.clear()
+		}
 		if name in ['if', 'ifdef', 'ifndef'] {
 			depth++
 		} else if name == 'endif' && depth > 0 {
 			depth--
+			if depth == 0 {
+				seen_includes.clear()
+			}
 		}
 	}
 	return result

@@ -380,6 +380,17 @@ fn test_cache_split_uses_system_sigaction_declaration() {
 }
 
 fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_c_struct_source_owner_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	header_backed_file := os.join_path(dir, 'header_backed.v')
+	headerless_file := os.join_path(dir, 'headerless.v')
+	os.write_file(header_backed_file, 'module main\n#include "types.h"\n')!
+	os.write_file(headerless_file, 'module main\n')!
+
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)
 	mut g := FlatGen.new()
@@ -388,8 +399,26 @@ fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
 	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', 'ui_darwin.c.v', flat.Node{})
 	assert g.skip_builtin_struct('C.NSFont')
 
-	g.register_struct_decl_info('C.Local', 'C.Local', 'main', 'main.v', flat.Node{})
+	g.register_struct_decl_info('C.HeaderOwned', 'C.HeaderOwned', 'main', header_backed_file, flat.Node{})
+	assert g.skip_builtin_struct('C.HeaderOwned')
+
+	g.register_struct_decl_info('C.Local', 'C.Local', 'main', headerless_file, flat.Node{})
 	assert !g.skip_builtin_struct('C.Local')
+
+	g.register_struct_decl_info('C.Alias', 'C.Alias', 'main', headerless_file, flat.Node{})
+	tc.c_typedef_structs['C.Alias'] = true
+	assert g.skip_builtin_struct('C.Alias')
+}
+
+fn test_top_level_include_deduplication_resets_after_preprocessor_state_changes() {
+	macro_directives := dedupe_top_level_c_includes(['#include <types.h>', '#include <types.h>',
+		'#define FEATURE 1', '#include <types.h>'])
+	assert macro_directives == ['#include <types.h>', '#define FEATURE 1', '#include <types.h>']
+
+	conditional_directives := dedupe_top_level_c_includes(['#include <types.h>', '#if FEATURE',
+		'#include <types.h>', '#endif', '#include <types.h>'])
+	assert conditional_directives == ['#include <types.h>', '#if FEATURE', '#include <types.h>',
+		'#endif', '#include <types.h>']
 }
 
 fn test_headerless_preamble_keeps_explicit_puts_declaration() {
