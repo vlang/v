@@ -1533,10 +1533,9 @@ fn main() {
 		assert run.exit_code == 0, run.output
 		assert run.output.trim_space() == '42'
 
-		// Keep the imported wrapper warm while changing only the program to one that
-		// V3 cannot compile yet. Its cached `.vh` must contribute the original wrapper
-		// source digest to the fallback manifest, or the stable retry will incorrectly
-		// report that the source inputs changed (PR #28131 review).
+		// Keep the imported wrapper warm while changing only the main program. Generic
+		// methods are supported by V3 now, so this third build must remain on V3 and keep
+		// reusing the cached wrapper instead of exercising the former compatibility fallback.
 		os.write_file(main_file, 'module main
 
 import wrapper
@@ -1556,20 +1555,20 @@ fn main() {
 	}
 ')!
 		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
-		fallback_output := os.join_path(root, 'fallback')
-		mut fallback_process := os.new_process(@VEXE)
-		fallback_process.set_args(['-gc', 'none', '-o', fallback_output, main_file])
-		fallback_process.set_environment(environment)
-		fallback_process.set_redirect_stdio()
-		fallback_process.run()
-		fallback_process.wait()
-		fallback_text := fallback_process.stdout_slurp() + fallback_process.stderr_slurp()
-		fallback_exit_code := fallback_process.code
-		fallback_process.close()
-		assert fallback_exit_code == 0, fallback_text
-		assert fallback_text.contains('V3 could not build this program'), fallback_text
-		assert !fallback_text.contains('source inputs changed'), fallback_text
-		assert os.is_executable(fallback_output)
+		third_output := os.join_path(root, 'third')
+		mut third_process := os.new_process(@VEXE)
+		third_process.set_args(['-gc', 'none', '-o', third_output, main_file])
+		third_process.set_environment(environment)
+		third_process.set_redirect_stdio()
+		third_process.run()
+		third_process.wait()
+		third_text := third_process.stdout_slurp() + third_process.stderr_slurp()
+		third_exit_code := third_process.code
+		third_process.close()
+		assert third_exit_code == 0, third_text
+		assert !third_text.contains('V3 could not build this program'), third_text
+		assert !third_text.contains('V3 module cache miss: module=wrapper'), third_text
+		assert os.is_executable(third_output)
 	}
 }
 
@@ -1746,7 +1745,7 @@ exec "\$REAL_CC" "\$@"
 	}
 }
 
-fn test_macos_v3_compiler_failures_fall_back_to_old_compiler() {
+fn test_macos_v3_inline_asm_compiles_and_c_failures_are_reported() {
 	$if macos {
 		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_c_error_retry_${os.getpid()}')
 		os.rmdir_all(root) or {}
@@ -1776,9 +1775,7 @@ fn test_macos_v3_compiler_failures_fall_back_to_old_compiler() {
 }
 ')!
 		mut environment := os.environ()
-		// This test exercises a real V3->V1 fallback, so clear the job-level no-fallback
-		// guard that CI sets for eligible V3 builds — otherwise V3 exits at the failure
-		// instead of retrying and the fallback never happens (PR #28131 review).
+		// The missing-library case below still exercises the V3->V1 C-error retry.
 		environment.delete('V_MACOS_V3_NO_FALLBACK')
 		environment['GITHUB_ACTIONS'] = 'true'
 		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
@@ -1796,11 +1793,10 @@ fn test_macos_v3_compiler_failures_fall_back_to_old_compiler() {
 		assert exit_code == 0, compiler_output
 		assert compiler_output.contains('Running macOS V3 compiler in process:'), compiler_output
 		assert !compiler_output.contains('Launching macOS V3 compiler:'), compiler_output
-		assert compiler_output.contains('compatibility compiler for inline assembly'), compiler_output
-		// An inline-assembly fallback is a known limitation, not a bug (so no report is
-		// filed), but the standard fallback notice must still be printed once the stable
-		// build succeeds, matching doc/docs.md (PR #28131 review).
-		assert compiler_output.contains('V3 could not build this program'), compiler_output
+		// Host inline assembly is supported by V3 now and must not enter the compatibility
+		// path that this test originally covered.
+		assert !compiler_output.contains('compatibility compiler for inline assembly'), compiler_output
+		assert !compiler_output.contains('V3 could not build this program'), compiler_output
 		assert os.is_executable(output)
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0
@@ -1896,11 +1892,9 @@ fn test_macos_v3_compiler_error_content_extraction() {
 	}
 }
 
-// End-to-end: a construct V3 cannot build yet (a generic method on a generic
-// struct) must fall back to the stable compiler, print the user-facing notice, and
-// still produce a working program. The bug endpoint is pointed at an unroutable
-// address so the report path runs without ever touching the network.
-fn test_macos_v3_compiler_error_falls_back_and_notifies() {
+// Generic methods on generic structs used to require the compatibility compiler.
+// Keep the former fallback fixture as an end-to-end regression that V3 now owns.
+fn test_macos_v3_generic_method_compiles_without_fallback() {
 	$if macos {
 		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_compiler_error_${os.getpid()}')
 		os.rmdir_all(root) or {}
@@ -1936,14 +1930,8 @@ fn main() {
 }
 ')!
 		mut environment := os.environ()
-		// This test exercises a real V3->V1 fallback, so clear the job-level no-fallback
-		// guard that CI sets for eligible V3 builds — otherwise V3 exits at the failure
-		// instead of retrying and the fallback never happens (PR #28131 review).
-		environment.delete('V_MACOS_V3_NO_FALLBACK')
-		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
-		// Unroutable endpoint: the submission attempt fails fast, so the test never
-		// contacts the real bug server while still exercising the report path.
-		environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
+		environment['V_MACOS_V3_NO_FALLBACK'] = '1'
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
 		environment['VFLAGS'] = ''
 		environment['VOSARGS'] = ''
 		mut process := os.new_process(@VEXE)
@@ -1956,7 +1944,7 @@ fn main() {
 		exit_code := process.code
 		process.close()
 		assert exit_code == 0, compiler_output
-		assert compiler_output.contains('V3 could not build this program'), compiler_output
+		assert !compiler_output.contains('V3 could not build this program'), compiler_output
 		assert os.is_executable(output)
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0, run.output
@@ -1964,11 +1952,8 @@ fn main() {
 	}
 }
 
-// End-to-end (directory build): the same V3-incompatible program built as a
-// directory (`v <dir>`), so `input_path` is a directory and no source reproducer
-// can be staged. The fallback must still print the notice instead of going silent
-// (PR #28131 review feedback).
-fn test_macos_v3_compiler_error_directory_build_notifies() {
+// The same generic-method regression must stay on V3 for a directory build too.
+fn test_macos_v3_generic_method_directory_build_compiles_without_fallback() {
 	$if macos {
 		root := os.join_path(os.real_path(os.vtmp_dir()),
 			'macos_v3_compiler_error_dir_${os.getpid()}')
@@ -2005,12 +1990,8 @@ fn main() {
 ')!
 		output := os.join_path(root, 'app_bin')
 		mut environment := os.environ()
-		// This test exercises a real V3->V1 fallback, so clear the job-level no-fallback
-		// guard that CI sets for eligible V3 builds — otherwise V3 exits at the failure
-		// instead of retrying and the fallback never happens (PR #28131 review).
-		environment.delete('V_MACOS_V3_NO_FALLBACK')
-		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
-		environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
+		environment['V_MACOS_V3_NO_FALLBACK'] = '1'
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
 		environment['VFLAGS'] = ''
 		environment['VOSARGS'] = ''
 		mut process := os.new_process(@VEXE)
@@ -2023,10 +2004,7 @@ fn main() {
 		exit_code := process.code
 		process.close()
 		assert exit_code == 0, compiler_output
-		// The notice must appear even though no single source file could be staged.
-		assert compiler_output.contains('V3 could not build this program'), compiler_output
-		// Without a complete parser-owned input manifest, the fallback deliberately
-		// suppresses report submission instead of uploading unverified inputs.
+		assert !compiler_output.contains('V3 could not build this program'), compiler_output
 		assert !compiler_output.contains('V3 compiler bug report'), compiler_output
 		assert os.is_executable(output)
 		run := os.execute(os.quoted_path(output))
@@ -2035,11 +2013,10 @@ fn main() {
 	}
 }
 
-// End-to-end (PR #28131 review): a V3 internal-error fallback for `v -o - source.v` must
-// keep stdout as pure generated C. V1 has already written the C to stdout, so the report
-// banner, its context, and the fallback notice all go to stderr — never stdout — or the
-// documented `-o -` output would be invalid C for exactly the programs that needed the
-// fallback.
+// A V3 internal-error handoff for `v -o - source.v` must keep stdout as pure generated C.
+// The compatibility compiler has already written the C to stdout, so the fallback notice
+// goes to stderr. Use an explicit report handoff because the old generic-method fixture is
+// supported by V3 now and no longer provides a deterministic internal failure.
 fn test_macos_v3_fallback_report_stays_off_generated_c_stdout() {
 	$if macos {
 		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_stdout_c_${os.getpid()}')
@@ -2049,37 +2026,21 @@ fn test_macos_v3_fallback_report_stays_off_generated_c_stdout() {
 			os.rmdir_all(root) or {}
 		}
 		source := os.join_path(root, 'gen.v')
-		os.write_file(source, 'struct Opt[T] {
-	val  T
-	some bool
-}
-
-fn some[T](val T) Opt[T] {
-	return Opt[T]{
-		val:  val
-		some: true
-	}
-}
-
-fn (f Opt[T]) map[U](op fn (T) U) Opt[U] {
-	if f.some {
-		return some[U](op(f.val))
-	}
-	return Opt[U]{}
-}
-
-fn main() {
-	result := some("hello").map(|s| s.len)
-	assert result.some && result.val == 5
-}
+		os.write_file(source, 'fn main() {}
 ')!
+		clear_macos_v3_report_env()
+		builder.export_external_v3_report_to_env(builder.ExternalCErrorBugReport{
+			kind:                   macos_v3_compiler_error_fallback
+			ccompiler:              'v3'
+			c_output:               macos_v3_compiler_error_message('semantic checking')
+			source_inline:          true
+			input_digests_complete: false
+			tag:                    'V3'
+		})
 		mut environment := os.environ()
-		// Exercise a real fallback; clear the job-level no-fallback guard CI may set.
-		environment.delete('V_MACOS_V3_NO_FALLBACK')
-		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
-		// Keep an unroutable endpoint configured in case this fixture gains a complete
-		// parser-owned input manifest in the future.
-		environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
+		clear_macos_v3_report_env()
+		environment[macos_v3_retry_env] = '1'
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
 		environment['VFLAGS'] = ''
 		environment['VOSARGS'] = ''
 		stdout_path := os.join_path(root, 'stdout.c')
@@ -2127,23 +2088,20 @@ fn test_macos_v3_inline_asm_trace_stays_off_generated_c_stdout() {
 			os.rmdir_all(root) or {}
 		}
 		source := os.join_path(root, 'gen.v')
+		// Use the non-host instruction set so V3 requests its inline-assembly
+		// compatibility fallback. The stable compiler only emits C (`-o -`), so the
+		// foreign instruction is never assembled by the host toolchain.
 		asm_body := $if arm64 {
-			'asm arm64 {
-		mov output, 1
-		; +r (output)
+			'asm amd64 {
+		nop
 	}'
 		} $else {
-			'asm amd64 {
-		mov eax, 1
-		mov output, eax
-		; =r (output)
-		; ; eax
+			'asm arm64 {
+		nop
 	}'
 		}
 		os.write_file(source, 'fn main() {
-	mut output := 0
 	${asm_body}
-	assert output == 1
 }
 ')!
 		mut environment := os.environ()
