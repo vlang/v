@@ -1693,6 +1693,9 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 	if node.typ.len > 0 && transform_scope_owns(scope, node.typ.str) {
 		node.typ = t.promote_scoped_result_text(node.typ)
 	}
+	if isnil(node.payload) {
+		return
+	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
 		return

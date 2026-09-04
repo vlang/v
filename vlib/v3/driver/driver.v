@@ -10194,9 +10194,9 @@ pub fn run(args []string) {
 			monomorph_errors = clone_string_list(monomorph_errors)
 			generated_monomorph_specs = clone_monomorph_cache_specs(generated_monomorph_specs)
 			// Scoped specialization can leave parse-cache key text in a disposable
-			// worker arena. Cgen must reparse from the promoted AST instead of reading
-			// those keys after the monomorph scope is released.
-			pre_tc.set_fresh_type_cache(false)
+			// worker arena. Discard those entries, but keep parsing memoized for cgen:
+			// its keys come from the promoted AST and are safe after this scope ends.
+			pre_tc.set_fresh_type_cache(true)
 			prealloc_scope_free_for_v3(monomorph_scope)
 		} else {
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a, &pre_tc, monomorph_input_used, !current_no_parallel
