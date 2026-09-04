@@ -500,6 +500,20 @@ const c_selfhost_preamble_includes = r'#include <stdint.h>
 const c_selfhost_post_directives = r'#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP
 #define pthread_rwlockattr_setkind_np(a, b) (0)
 #endif
+#ifndef memory_order_relaxed
+#define memory_order_relaxed 0
+#define memory_order_acquire 2
+#define memory_order_release 3
+#define memory_order_acq_rel 4
+#define memory_order_seq_cst 5
+#endif
+#if defined(__TINYC__) && defined(__aarch64__)
+#undef atomic_thread_fence
+#undef __atomic_thread_fence
+extern void _V_atomic_thread_fence(int order);
+#define atomic_thread_fence(order) _V_atomic_thread_fence(order)
+#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)
+#endif
 
 '
 
@@ -966,11 +980,18 @@ pub:
 // (the globals), with extern_texts holding those declarations.
 pub struct FastcUnitLayout {
 pub mut:
-	head_end       int
-	solo_end       int
-	unit_starts    []int
-	extern_indexes []int
-	extern_texts   []string
+	head_end           int
+	solo_end           int
+	unit_starts        []int
+	extern_indexes     []int
+	extern_texts       []string
+	prototype_start    int
+	prototype_end      int
+	prototype_texts    []string
+	unit_ref_starts    []int
+	unit_ref_ids       []int
+	solo_prototype_ids []int
+	tail_prototype_ids []int
 	// define_texts are the same pieces with `static` dropped, for the first
 	// unit: a static definition would not satisfy the other units' externs.
 	define_texts []string
@@ -1799,9 +1820,12 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	for name, _ in constant_output.composite_types {
 		composite_types[name] = true
 	}
-	// The fixed ABI prelude covers the bootstrap compiler. The real-builtin
-	// path reaches the wider C API used by cmd/v and must retain its headers.
-	header_free := prefs.building_v && 'fastc_real_builtin' !in prefs.user_defines && fastc_c_abi_supported(prefs.target.os, prefs.target.arch, fastc_host_uses_glibc())
+	// The wider real-builtin ABI is covered on macOS. Linux keeps its headers
+	// until the matching pthread, signal, file-lock and Mach-independent types
+	// have been added to the glibc table too.
+	header_free := prefs.building_v
+		&& ('fastc_real_builtin' !in prefs.user_defines || prefs.target.os == 'macos')
+		&& fastc_c_abi_supported(prefs.target.os, prefs.target.arch, fastc_host_uses_glibc())
 	global_output := fastc_generate_global_declarations(ordered_sources, global_sources, prefs, header_free, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, constant_output.compile_time_values, public_constants, constant_types, globals, public_globals, mut global_types)!
 	timer.mark('global_declarations')
 	for name, _ in global_output.composite_types {
@@ -2018,6 +2042,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut kept_body_ranges := hoisted_body.body_ranges.clone()
 	mut kept_conditional_ranges := hoisted_body.conditional_ranges.clone()
 	mut kept_proto_ranges := [0, proto_len]
+	mut solo_prototype_ids := []int{}
 	mut enum_helpers_len := 0
 	for helper_text in type_output.enum_helper_texts {
 		enum_helpers_len += helper_text.len
@@ -2059,6 +2084,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		if id := function_ids['main'] {
 			root_ids << id
 		}
+		solo_prototype_ids = root_ids.clone()
 		// The enum helpers join the walk as one more output placed after the
 		// bodies, so their unreachable pieces are dropped the same way.
 		mut helper_output := FastcFileGenOutput{}
@@ -2098,6 +2124,47 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		kept_proto_ranges = fastc_subtract_ranges(kept_proto_ranges, dead_proto_ranges)
 		kept_helper_ranges = fastc_subtract_ranges(kept_helper_ranges, dead_helper_ranges)
 		timer.mark('prune')
+	}
+	mut prototype_texts := []string{}
+	mut unit_ref_starts := []int{}
+	mut unit_ref_ids := []int{}
+	mut tail_prototype_ids := []int{}
+	mut unindexed_prototypes := strings.new_builder(256)
+	if prune_unreachable {
+		prototype_texts = []string{len: function_ids.len}
+		unit_ref_starts = []int{cap: outputs.len + 1}
+		for oi, output in outputs {
+			unit_ref_starts << unit_ref_ids.len
+			unit_ref_ids << output.refs
+			tail_prototype_ids << output.root_refs
+			mut proto_cursor := 0
+			for fi, id in output.function_ids {
+				proto_start := output.proto_spans[2 * fi]
+				proto_end := output.proto_spans[2 * fi + 1]
+				if proto_cursor < proto_start {
+					// On-demand monomorphizations append declarations outside the
+					// ordinary function spans, so they remain shared by every unit.
+					unindexed_prototypes.write_string(output.prototypes[proto_cursor..proto_start])
+				}
+				if proto_end > proto_cursor {
+					proto_cursor = proto_end
+				}
+				if proto_start >= proto_end
+					|| !fastc_range_is_kept(kept_proto_ranges, output_proto_offsets[oi] + proto_start, output_proto_offsets[oi] + proto_end) {
+					continue
+				}
+				prototype := output.prototypes[proto_start..proto_end]
+				if id >= 0 {
+					prototype_texts[id] = prototype
+				} else {
+					unindexed_prototypes.write_string(prototype)
+				}
+			}
+			if proto_cursor < output.prototypes.len {
+				unindexed_prototypes.write_string(output.prototypes[proto_cursor..])
+			}
+		}
+		unit_ref_starts << unit_ref_ids.len
 	}
 	mut pieces := []string{cap: 64 + body_pieces.len * 3}
 	pieces << fastc_piece(preamble)
@@ -2150,6 +2217,17 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	extern_texts << fastc_extern_declarations(global_output.declarations, true)
 	define_texts << fastc_extern_declarations(global_output.declarations, false)
 	pieces << fastc_piece(global_output.declarations)
+	// Helper implementations are emitted once in the first translation unit.
+	// Keep only their declarations in the shared head parsed by every TinyCC job.
+	runtime_definitions := if prefs.building_v {
+		c_selfhost_runtime.replace('static ', '')
+	} else {
+		''
+	}
+	pieces << fastc_definition_prototypes(runtime_definitions)
+	for helper_text in type_output.enum_helper_texts {
+		pieces << fastc_definition_prototypes(helper_text)
+	}
 	// Generated formatting helpers can be registered while parsing a function
 	// that reachability later removes, even though another live helper calls
 	// them. Keep their declarations outside the per-function prototype ranges.
@@ -2157,10 +2235,15 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	spawn_helper_names.sort()
 	mut spawn_helper_prototypes := strings.new_builder(256)
 	for spawn_helper_name in spawn_helper_names {
-		spawn_helper_prototypes.write_string(fastc_definition_prototypes(spawn_helpers[spawn_helper_name]))
+		helper_definitions := spawn_helpers[spawn_helper_name].replace('static ', '')
+		spawn_helpers[spawn_helper_name] = helper_definitions
+		spawn_helper_prototypes.write_string(fastc_definition_prototypes(helper_definitions))
 	}
 	pieces << fastc_take_string(mut spawn_helper_prototypes)
+	pieces << fastc_take_string(mut unindexed_prototypes)
+	prototype_start := pieces.len
 	fastc_collect_c_piece_ranges(mut pieces, prototype_pieces, kept_proto_ranges)
+	prototype_end := pieces.len
 	if startup_initializers.len > 0 {
 		pieces << 'static void v_fastc_init_globals(void);'
 		pieces << '\n'
@@ -2170,9 +2253,11 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		pieces << '\n'
 	}
 	pieces << '\n'
-	if prefs.building_v {
-		pieces << fastc_piece(c_selfhost_runtime)
-	}
+	// The interface dispatch functions are definitions, so they belong to
+	// one unit; every unit sees their prototypes.
+	pieces << fastc_definition_prototypes(interface_dispatches)
+	head_end := pieces.len
+	pieces << fastc_piece(runtime_definitions)
 	fastc_collect_c_piece_ranges(mut pieces, type_output.enum_helper_texts, kept_helper_ranges)
 	if spawn_helpers.len > 0 {
 		for spawn_helper_name in spawn_helper_names {
@@ -2181,10 +2266,6 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			pieces << '\n'
 		}
 	}
-	// The interface dispatch functions are definitions, so they belong to
-	// one unit; every unit sees their prototypes.
-	pieces << fastc_definition_prototypes(interface_dispatches)
-	head_end := pieces.len
 	pieces << fastc_piece(interface_dispatches)
 	if startup_initializers.len > 0 {
 		pieces << 'static void v_fastc_init_globals(void) {'
@@ -2241,6 +2322,15 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	units.extern_indexes = extern_indexes
 	units.extern_texts = extern_texts
 	units.define_texts = define_texts
+	if prune_unreachable {
+		units.prototype_start = prototype_start
+		units.prototype_end = prototype_end
+		units.prototype_texts = prototype_texts
+		units.unit_ref_starts = unit_ref_starts
+		units.unit_ref_ids = unit_ref_ids
+		units.solo_prototype_ids = solo_prototype_ids
+		units.tail_prototype_ids = tail_prototype_ids
+	}
 	timer.mark('assemble')
 	if header_free {
 		// A C function without a prototype in the ABI table must fail the
@@ -2251,16 +2341,18 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 }
 
 // fastc_definition_prototypes returns a prototype for every function
-// definition of `text` (a definition starts a line and ends it with `) {`).
+// definition of `text` (a definition starts a line and contains `) {`).
 fn fastc_definition_prototypes(text string) string {
 	if text.len == 0 {
 		return ''
 	}
 	mut out := strings.new_builder(text.len / 8 + 64)
 	for line in text.split_into_lines() {
-		if line.len > 4 && !line[0].is_space() && line.ends_with(') {') && !line.starts_with('static ')
+		if line.len > 4 && !line[0].is_space() && !line.starts_with('static ')
 			&& !line.starts_with('#') {
-			out.writeln(line[..line.len - 2] + ';')
+			if body_start := line.index(') {') {
+				out.writeln(line[..body_start + 1] + ';')
+			}
 		}
 	}
 	return out.str()
@@ -2314,6 +2406,18 @@ fn fastc_window_ranges(ranges []int, window_start int, window_end int) []int {
 	return out
 }
 
+fn fastc_range_is_kept(ranges []int, start int, end int) bool {
+	for i := 0; i + 1 < ranges.len; i += 2 {
+		if ranges[i] <= start && end <= ranges[i + 1] {
+			return true
+		}
+		if ranges[i] > start {
+			break
+		}
+	}
+	return false
+}
+
 // fastc_extern_declarations rewrites the `static` variable definitions of a
 // declaration block for a split build: as `extern` declarations (`as_extern`)
 // for the units that share the globals, or as external definitions (without
@@ -2364,8 +2468,8 @@ fn fastc_parallel_worker_limit(prefs &pref.Preferences) int {
 // program's translation units with.
 pub fn fastc_tcc_job_count(prefs &pref.Preferences) int {
 	mut jobs := fastc_parallel_worker_limit(prefs)
-	if jobs > 8 {
-		jobs = 8
+	if jobs > 18 {
+		jobs = 18
 	}
 	if jobs < 1 {
 		jobs = 1
@@ -2414,7 +2518,11 @@ pub fn fastc_write_c_units(prefix string, pieces []string, units FastcUnitLayout
 				break
 			}
 			if size > 0 && remaining_groups > 0 && size + unit_sizes[u] > target {
-				break
+				under_target := target - size
+				over_target := size + unit_sizes[u] - target
+				if under_target <= over_target {
+					break
+				}
 			}
 			size += unit_sizes[u]
 			remaining -= unit_sizes[u]
@@ -2451,6 +2559,10 @@ fn fastc_write_c_unit(path string, pieces []string, units &FastcUnitLayout, g in
 	// One buffered write per unit: piecewise writes cost several times more.
 	mut out := strings.new_builder(1024 * 1024)
 	for k in 0 .. units.head_end {
+		if units.prototype_start < units.prototype_end && k >= units.prototype_start
+			&& k < units.prototype_end {
+			continue
+		}
 		mut text := pieces[k]
 		for e, index in units.extern_indexes {
 			if index == k {
@@ -2458,6 +2570,30 @@ fn fastc_write_c_unit(path string, pieces []string, units &FastcUnitLayout, g in
 			}
 		}
 		out.write_string(text)
+	}
+	if units.prototype_start < units.prototype_end && units.prototype_texts.len > 0
+		&& units.unit_ref_starts.len == units.unit_starts.len {
+		mut needed := []bool{len: units.prototype_texts.len}
+		if g == 0 {
+			for id in units.solo_prototype_ids {
+				needed[id] = true
+			}
+		}
+		for u in first_unit .. end_unit {
+			for r in units.unit_ref_starts[u] .. units.unit_ref_starts[u + 1] {
+				needed[units.unit_ref_ids[r]] = true
+			}
+		}
+		if end_unit == units.unit_starts.len - 1 {
+			for id in units.tail_prototype_ids {
+				needed[id] = true
+			}
+		}
+		for id, include_prototype in needed {
+			if include_prototype {
+				out.write_string(units.prototype_texts[id])
+			}
+		}
 	}
 	if g == 0 {
 		for k in units.head_end .. units.solo_end {
@@ -2834,6 +2970,7 @@ fn fastc_partition_c_directive_ranges(total_len int, lines []FastcCDirectiveLine
 // it cannot be read (so the C compiler reports the problem).
 fn fastc_inlined_c_header(path string) string {
 	content := os.read_file(path) or { return '#include "${path}"\n' }
+	is_tcc_atomic := path.ends_with('/thirdparty/stdatomic/nix/atomic.h')
 	// The helper headers' own includes (Windows and MSVC branches, or the
 	// system headers the prelude replaces) are left out: the build has none.
 	mut out := strings.new_builder(content.len + 64)
@@ -2843,7 +2980,14 @@ fn fastc_inlined_c_header(path string) string {
 			out.writeln('')
 			continue
 		}
-		out.writeln(line)
+		// TinyCC's ARM atomic fallbacks are external inline definitions. A
+		// header-free parallel build emits this header in every translation unit,
+		// so keep those fallback definitions local to their unit.
+		out.writeln(if is_tcc_atomic {
+			line.replace('extern inline ', 'static inline ')
+		} else {
+			line
+		})
 	}
 	return out.str()
 }

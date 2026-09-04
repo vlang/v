@@ -10,6 +10,16 @@ fn fastc_matching_rpar(tokens []FastcExpressionToken, open int) ?int {
 // when the tokens are a bare `X as T` cast (no surrounding binary operator, so
 // `a == b as T` — a comparison — is excluded). Returns none otherwise.
 fn fastc_bare_as_cast_index(tokens []FastcExpressionToken, start int, end int) ?int {
+	mut contains_as := false
+	for i := start; i < end; i++ {
+		if tokens[i].tok == .key_as {
+			contains_as = true
+			break
+		}
+	}
+	if !contains_as {
+		return none
+	}
 	mut depth := 0
 	mut as_index := -1
 	for i := start; i < end; i++ {
@@ -439,14 +449,6 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 	if start >= end {
 		return ''
 	}
-	// `X as T` yields the target type `T` (so `(x as T).field` resolves).
-	if as_index := fastc_bare_as_cast_index(tokens, start, end) {
-		if as_index + 1 < end {
-			if target := g.type_from_expression_tokens(tokens[as_index + 1..end]) {
-				return fastc_normalize_inferred_type(target)
-			}
-		}
-	}
 	if end - start == 1 {
 		item := tokens[start]
 		if item.typ != '' {
@@ -487,6 +489,14 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			}
 			else {
 				''
+			}
+		}
+	}
+	// `X as T` yields the target type `T` (so `(x as T).field` resolves).
+	if as_index := fastc_bare_as_cast_index(tokens, start, end) {
+		if as_index + 1 < end {
+			if target := g.type_from_expression_tokens(tokens[as_index + 1..end]) {
+				return fastc_normalize_inferred_type(target)
 			}
 		}
 	}
