@@ -6113,6 +6113,12 @@ fn (mut g FlatGen) preseed_global_fn_ptr_types() {
 	}
 }
 
+fn (mut g FlatGen) preseed_type_alias_fn_ptr_types() {
+	for _, target in g.tc.type_aliases {
+		g.preseed_fn_ptr_type(g.tc.parse_type(target))
+	}
+}
+
 fn (mut g FlatGen) preseed_fn_signature_fn_ptr_types() {
 	for _, params in g.fn_decl_param_types {
 		for typ in params {

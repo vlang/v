@@ -3,6 +3,17 @@ module driver
 import os
 import v3.pref
 
+fn test_large_cold_cache_restarts_without_cache() {
+	limit := scoped_large_cold_cache_node_limit
+	assert should_restart_v3_large_cold_cache(true, true, limit, false, false, false)
+	assert !should_restart_v3_large_cold_cache(true, true, limit - 1, false, false, false)
+	assert !should_restart_v3_large_cold_cache(false, true, limit, false, false, false)
+	assert !should_restart_v3_large_cold_cache(true, false, limit, false, false, false)
+	assert !should_restart_v3_large_cold_cache(true, true, limit, true, false, false)
+	assert !should_restart_v3_large_cold_cache(true, true, limit, false, true, false)
+	assert !should_restart_v3_large_cold_cache(true, true, limit, false, false, true)
+}
+
 fn test_whole_program_cache_is_not_persistent_for_test_inputs() {
 	old_v3cache := os.getenv('V3CACHE')
 	had_v3cache := 'V3CACHE' in os.environ()

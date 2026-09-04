@@ -85,6 +85,7 @@ const embedded_parallel_transform_node_limit = 10_000_000
 const scoped_serial_user_check_node_threshold = 1_000_000
 const scoped_serial_user_transform_node_threshold = 1_000_000
 const scoped_serial_user_cgen_node_threshold = 2_000_000
+const scoped_large_cold_cache_node_limit = 500_000
 const scoped_linux_user_job_limit = 4
 const scoped_transform_signature_headroom = 2048
 const v3_vvmrc_file_name = '.vvmrc'
@@ -9252,6 +9253,16 @@ pub fn run(args []string) {
 			}
 		}
 	}
+	// A cold module-cache build retains per-unit semantic and transform state in
+	// addition to the full source AST. For very large preallocated programs this
+	// can exhaust the process address space before any cache entry is publishable.
+	// Restarting without the module cache releases the lookup state and uses the
+	// bounded whole-program pipeline; existing whole/generic/incremental hits still
+	// keep their fast path.
+	if should_restart_v3_large_cold_cache(cache_state.manager.enabled, scope_prealloc_stages, a.nodes.len, cgen_cache_hit, generic_cache_hit, incremental_cache_hit) {
+		trace_v3_cache_fallback('cold source graph is too large for scoped cache population')
+		restart_v3_without_cache()
+	}
 	// Exact whole-program cache hits do not consume the generic or incremental
 	// snapshots. Build those AST-wide signatures only on a miss, while retaining
 	// them for publishing a fresh development cache after a cold build.
@@ -12414,6 +12425,11 @@ fn trace_v3_cache_fallback(reason string) {
 	if os.getenv('V3_CACHE_TRACE') != '' {
 		eprintln('  V3 module cache fallback: reason=${reason}')
 	}
+}
+
+fn should_restart_v3_large_cold_cache(cache_enabled bool, scoped_prealloc bool, node_count int, cgen_hit bool, generic_hit bool, incremental_hit bool) bool {
+	return cache_enabled && scoped_prealloc && node_count >= scoped_large_cold_cache_node_limit
+		&& !cgen_hit && !generic_hit && !incremental_hit
 }
 
 fn restart_v3_without_cache() {

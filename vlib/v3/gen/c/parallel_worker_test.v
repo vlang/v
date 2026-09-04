@@ -349,6 +349,18 @@ fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {
 	assert g.emitted_fn_ptr_typedefs[encoded]
 }
 
+fn test_parallel_type_declarations_preseed_function_type_aliases() {
+	mut g, tc := parallel_worker_test_gen(true)
+	tc.type_aliases['Callback'] = 'fn (int)'
+	callback_type := tc.parse_type(tc.type_aliases['Callback'])
+	encoded := tc.c_type(callback_type)
+	assert encoded.starts_with('fn_ptr:')
+	assert encoded !in g.fn_ptr_types
+
+	g.preseed_type_alias_fn_ptr_types()
+	assert encoded in g.fn_ptr_types
+}
+
 fn test_dynamic_parallel_merge_preserves_chunk_order() {
 	mut g, _ := parallel_worker_test_gen(true)
 	mut first := g.new_parallel_dispatch_worker(1)
