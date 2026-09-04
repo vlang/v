@@ -6,6 +6,7 @@ import v3.ansi
 import v3.flat
 import v3.parser
 import v3.pref
+import v3.types
 
 fn restore_driver_environment(name string, old_value string, was_set bool) {
 	if was_set {
@@ -112,6 +113,21 @@ fn test_v3_default_diagnostic_color_uses_environment() {
 	os.setenv(name, 'always', true)
 	apply_v3_default_diagnostic_color()
 	assert ansi.red('error') == '\x1b[31merror\x1b[39m'
+}
+
+fn test_release_unused_diagnostic_scope_rebinds_notices() {
+	mut notices := []types.TypeError{cap: 1}
+	scope := prealloc_scope_begin_for_v3()
+	notices << types.TypeError{ msg: 'first' }
+	notices << types.TypeError{ msg: 'second' }
+	$if prealloc {
+		assert scoped_value_owned(scope, notices.data)
+	}
+	release_unused_diagnostic_scope(mut notices, scope)
+	assert notices.len == 0
+	assert notices.cap == 0
+	notices << types.TypeError{ msg: 'parent owned' }
+	assert notices[0].msg == 'parent owned'
 }
 
 fn test_macos_v3_fallback_payload_validation() {

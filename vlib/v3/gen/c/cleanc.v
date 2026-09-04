@@ -4219,8 +4219,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			continue
 		}
 		if node.kind == .directive {
-			directive_handled := g.collect_c_directive(cur_module, node, cur_file,
-				!seen_import_in_file)
+			directive_handled := g.collect_c_directive(cur_module, node, cur_file, !seen_import_in_file)
 			if directive_handled {
 				continue
 			}
@@ -4824,19 +4823,15 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		// compiler has to parse them either way; expanding them into the generated
 		// translation unit first only makes V scan and copy several megabytes.
 		if !g.cache_split && node.value == 'include' {
-			if header_path := c_compiler_header_to_preserve(include_arg, g.compiler_vroot,
-				source_file, include_dirs)
-			{
+			if header_path := c_compiler_header_to_preserve(include_arg, g.compiler_vroot, source_file, include_dirs) {
 				header_text := os.read_file(header_path) or { '' }
 				if header_text.len > 0 {
-					g.record_header_owned_include(module_name, include_arg, source_file,
-						before_import, true)
+					g.record_header_owned_include(module_name, include_arg, source_file, before_import, true)
 					g.collect_inlined_c_structs_ex(header_text, true)
 					g.prescanned_header_files[os.real_path(header_path)] = true
 					g.collect_inlined_c_fns(header_text)
 					g.collect_inlined_c_declared_fns(header_text)
-					if c_header_text_needs_objective_c_for_target(header_text, g.c_flags,
-						g.c99_mode, g.target) && 'objective-c' !in g.c_flags {
+					if c_header_text_needs_objective_c_for_target(header_text, g.c_flags, g.c99_mode, g.target) && 'objective-c' !in g.c_flags {
 						g.c_flags << ['-x', 'objective-c', '-x', 'none']
 					}
 					g.add_c_directive(module_name, '#include ${include_arg}', before_import)
@@ -5087,8 +5082,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedefs_with_include_dirs(include_arg
 	g.ensure_header_owned_macro_context()
 	if c_header_owned_system_include_skips_tree_scan(include_arg) {
 		g.collect_known_header_owned_c_typedef_names(include_arg)
-		g.header_owned_macro_context.state = c_header_macro_state_after_unknown_include(
-			g.header_owned_macro_context.state)
+		g.header_owned_macro_context.state = c_header_macro_state_after_unknown_include(g.header_owned_macro_context.state)
 		return
 	}
 	quote_include_dirs := c_flag_quote_include_dirs(g.header_owned_effective_c_flags())
@@ -5771,8 +5765,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 			framework_include_dirs: framework_include_dirs
 			feature_predicates: feature_predicates
 		}
-		scan := c_header_definitely_active_scan_with_include_results(text, state, strict_iso_mode,
-			g.target, include_results, include_context)
+		scan := c_header_definitely_active_scan_with_include_results(text, state, strict_iso_mode, g.target, include_results, include_context)
 		cgen_worker_scope_leave(scan_scope)
 		if scan.has_pragma_once {
 			g.header_owned_pragma_once_seen[real_path] = true
@@ -5808,8 +5801,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 			raw_include_arg = raw_include_arg.clone()
 		}
 		cgen_worker_scope_free(scan_scope)
-		include_args := c_header_owned_include_args(raw_include_arg, include_state,
-			g.compiler_vroot, real_path)
+		include_args := c_header_owned_include_args(raw_include_arg, include_state, g.compiler_vroot, real_path)
 		mut found := false
 		mut result_state := CHeaderMacroState{}
 		mut result_typedef_aliases := []string{}
@@ -5901,15 +5893,14 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 		}
 	}
 	fallback_scope := cgen_worker_scope_begin(g.scope_parallel_workers)
-	fallback_scan := c_header_definitely_active_scan_in_file(text, state, strict_iso_mode, g.target,
-		CHeaderIncludeContext{
-			vroot: g.compiler_vroot
-			source_file: real_path
-			include_dirs: include_dirs
-			quote_include_dirs: quote_include_dirs
-			framework_include_dirs: framework_include_dirs
-			feature_predicates: feature_predicates
-		})
+	fallback_scan := c_header_definitely_active_scan_in_file(text, state, strict_iso_mode, g.target, CHeaderIncludeContext{
+		vroot: g.compiler_vroot
+		source_file: real_path
+		include_dirs: include_dirs
+		quote_include_dirs: quote_include_dirs
+		framework_include_dirs: framework_include_dirs
+		feature_predicates: feature_predicates
+	})
 	cgen_worker_scope_leave(fallback_scope)
 	if fallback_scan.has_pragma_once {
 		g.header_owned_pragma_once_seen[real_path] = true
@@ -6292,8 +6283,7 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path strin
 			}
 		}
 		if unresolved_include < 0 {
-			result := g.finish_preserved_header_scan(scan, visit_key, collect_declarations,
-				scan_scope)
+			result := g.finish_preserved_header_scan(scan, visit_key, collect_declarations, scan_scope)
 			cgen_worker_scope_free(scan_scope)
 			return result
 		}
@@ -6347,8 +6337,7 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path strin
 		feature_predicates: feature_predicates
 	})
 	cgen_worker_scope_leave(fallback_scope)
-	result := g.finish_preserved_header_scan(fallback_scan, visit_key, collect_declarations,
-		fallback_scope)
+	result := g.finish_preserved_header_scan(fallback_scan, visit_key, collect_declarations, fallback_scope)
 	cgen_worker_scope_free(fallback_scope)
 	return result
 }
@@ -6463,12 +6452,11 @@ fn c_header_macro_state_clone(state CHeaderMacroState) CHeaderMacroState {
 
 fn c_header_macro_state_promote(state CHeaderMacroState, scope voidptr) CHeaderMacroState {
 	return CHeaderMacroState{
-		defined:                  promote_cgen_string_bool_lookup(state.defined, scope)
-		undefined:                promote_cgen_string_bool_lookup(state.undefined, scope)
-		uncertain:                promote_cgen_string_bool_lookup(state.uncertain, scope)
-		macro_values:             promote_cgen_string_string_lookup(state.macro_values, scope)
-		function_macro_values:    promote_cgen_string_string_lookup(state.function_macro_values,
-			scope)
+		defined: promote_cgen_string_bool_lookup(state.defined, scope)
+		undefined: promote_cgen_string_bool_lookup(state.undefined, scope)
+		uncertain: promote_cgen_string_bool_lookup(state.uncertain, scope)
+		macro_values: promote_cgen_string_string_lookup(state.macro_values, scope)
+		function_macro_values: promote_cgen_string_string_lookup(state.function_macro_values, scope)
 		external_macros_possible: state.external_macros_possible
 	}
 }
@@ -9696,9 +9684,8 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 
 fn c_preserved_system_include_skips_tree_scan(include_arg string) bool {
 	return trimmed_space(include_arg) in ['<Cocoa/Cocoa.h>', '<Foundation/Foundation.h>',
-		'<AppKit/AppKit.h>', '<mbedtls/net_sockets.h>', '<mbedtls/ssl.h>',
-		'<mbedtls/entropy.h>', '<mbedtls/ctr_drbg.h>', '<mbedtls/error.h>',
-		'<mbedtls/threading.h>', '<mbedtls/oid.h>']
+		'<AppKit/AppKit.h>', '<mbedtls/net_sockets.h>', '<mbedtls/ssl.h>', '<mbedtls/entropy.h>',
+		'<mbedtls/ctr_drbg.h>', '<mbedtls/error.h>', '<mbedtls/threading.h>', '<mbedtls/oid.h>']
 }
 
 fn c_header_owned_system_include_skips_tree_scan(include_arg string) bool {
@@ -9722,13 +9709,11 @@ fn c_header_owned_uses_single_scan(path string, vroot string) bool {
 		return false
 	}
 	relative_path := clean_path.trim_string_left(clean_vroot)
-	return relative_path in ['/thirdparty/sokol/sokol_app.h',
-		'/thirdparty/sokol/sokol_gfx.h', '/thirdparty/sokol/util/sokol_gl.h',
-		'/thirdparty/sokol/sokol_v.post.h', '/thirdparty/stb_image/stb_image.h',
-		'/thirdparty/stb_image/stb_image_write.h',
-		'/thirdparty/stb_image/stb_image_resize2.h',
-		'/thirdparty/stb_image/stb_v_header.h', '/thirdparty/fontstash/fontstash.h',
-		'/thirdparty/sokol/util/sokol_fontstash.h']
+	return relative_path in ['/thirdparty/sokol/sokol_app.h', '/thirdparty/sokol/sokol_gfx.h',
+		'/thirdparty/sokol/util/sokol_gl.h', '/thirdparty/sokol/sokol_v.post.h',
+		'/thirdparty/stb_image/stb_image.h', '/thirdparty/stb_image/stb_image_write.h',
+		'/thirdparty/stb_image/stb_image_resize2.h', '/thirdparty/stb_image/stb_v_header.h',
+		'/thirdparty/fontstash/fontstash.h', '/thirdparty/sokol/util/sokol_fontstash.h']
 }
 
 fn c_compiler_header_to_preserve(include_arg string, vroot string, source_file string, include_dirs []string) ?string {

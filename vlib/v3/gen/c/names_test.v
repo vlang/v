@@ -451,7 +451,9 @@ fn test_compiler_header_to_preserve_is_anchored_to_vroot() {
 		return
 	}
 	assert os.real_path(resolved) == os.real_path(header_path)
-	assert c_compiler_header_to_preserve('"sokol_app.h"', '/different/vroot', '', [header_dir]) == none
+	assert c_compiler_header_to_preserve('"sokol_app.h"', '/different/vroot', '', [
+		header_dir,
+	]) == none
 }
 
 fn test_unresolved_openssl_headers_are_preserved() {

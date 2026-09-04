@@ -173,8 +173,10 @@ fn (mut g Parser) read_match_expression() !string {
 				is_mut: smartcast_saved.is_mut
 				is_reference: smartcast_is_reference
 				typ: if smartcast_is_reference {
-					smartcast_type + '*'} else {
-					smartcast_type}
+					smartcast_type + '*'
+				} else {
+					smartcast_type
+				}
 			}
 		}
 		projection_path := if subject_member_path != '' {

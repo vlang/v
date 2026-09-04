@@ -6300,7 +6300,7 @@ fn (mut p Parser) stmt() flat.NodeId {
 				p.next()
 			}
 			return p.add_node(flat.Node{
-				kind:           .expr_stmt
+				kind: .expr_stmt
 				children_start: p.add_child(expr_id)
 				children_count: 1
 			})

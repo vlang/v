@@ -49,8 +49,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 		if g.valid_node_id(then_id) {
 			then_block := g.a.nodes[int(then_id)]
 			then_scope_drop_prefix_count = g.block_scope_drop_prefix_count(then_block)
-			then_scope_drops_consumed = g.gen_branch_block_children(then_block, 1 +
-				then_scope_drop_prefix_count)
+			then_scope_drops_consumed = g.gen_branch_block_children(then_block, 1 + then_scope_drop_prefix_count)
 			if !g.block_consumes_scope_ownership_drops(then_block) {
 				then_scope_drops_consumed = true
 			}
@@ -104,8 +103,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			g.enter_conditional_branch(true)
 			mut else_scope_drops_consumed := false
 			else_scope_drop_prefix_count := g.block_scope_drop_prefix_count(else_node)
-			else_scope_drops_consumed = g.gen_branch_block_children(else_node, 1 +
-				else_scope_drop_prefix_count)
+			else_scope_drops_consumed = g.gen_branch_block_children(else_node, 1 + else_scope_drop_prefix_count)
 			if !g.block_consumes_scope_ownership_drops(else_node) {
 				else_scope_drops_consumed = true
 			}
@@ -311,8 +309,7 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 		then_block := g.a.nodes[int(then_id)]
 		then_scope_drop_prefix_count = g.block_scope_drop_prefix_count(then_block)
 		g.enter_conditional_branch(true)
-		then_scope_drops_consumed = g.gen_branch_block_children(then_block, 2 +
-			then_scope_drop_prefix_count)
+		then_scope_drops_consumed = g.gen_branch_block_children(then_block, 2 + then_scope_drop_prefix_count)
 		g.leave_conditional_branch()
 		if !g.block_consumes_scope_ownership_drops(then_block) {
 			then_scope_drops_consumed = true
@@ -427,8 +424,7 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 			g.enter_conditional_branch(true)
 			mut else_scope_drops_consumed := false
 			else_scope_drop_prefix_count := g.block_scope_drop_prefix_count(else_node)
-			else_scope_drops_consumed = g.gen_branch_block_children(else_node, 1 +
-				else_scope_drop_prefix_count)
+			else_scope_drops_consumed = g.gen_branch_block_children(else_node, 1 + else_scope_drop_prefix_count)
 			if !g.block_consumes_scope_ownership_drops(else_node) {
 				else_scope_drops_consumed = true
 			}
@@ -568,7 +564,7 @@ fn (g &FlatGen) multi_return_tail_parts(block &flat.Node, count int) ?MultiRetur
 			if nested.prefix_count == 0 {
 				return MultiReturnTailParts{
 					prefix_count: int(block.children_count) - 1
-					values:       nested.values.clone()
+					values: nested.values.clone()
 				}
 			}
 		}
@@ -589,7 +585,7 @@ fn (g &FlatGen) multi_return_tail_parts(block &flat.Node, count int) ?MultiRetur
 		if values.len == count {
 			return MultiReturnTailParts{
 				prefix_count: i
-				values:       values.clone()
+				values: values.clone()
 			}
 		}
 	}
@@ -684,12 +680,7 @@ fn (mut g FlatGen) gen_multi_return_tail_temp(ct string, ret_types []types.Type,
 // is_expr_kind reports whether is expr kind applies in c.
 fn (g &FlatGen) is_expr_kind(kind flat.NodeKind) bool {
 	return match kind {
-		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
-		.string_interp, .ident, .infix, .prefix, .postfix, .paren, .call, .selector, .index,
-		.if_expr, .struct_init, .field_init, .array_literal, .array_init, .map_init, .fn_literal,
-		.or_expr, .cast_expr, .as_expr, .enum_val, .assoc, .range, .nil_literal, .none_expr,
-		.spawn_expr, .lock_expr, .lambda_expr, .sizeof_expr, .typeof_expr, .dump_expr,
-		.offsetof_expr, .is_expr, .in_expr {
+		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .string_interp, .ident, .infix, .prefix, .postfix, .paren, .call, .selector, .index, .if_expr, .struct_init, .field_init, .array_literal, .array_init, .map_init, .fn_literal, .or_expr, .cast_expr, .as_expr, .enum_val, .assoc, .range, .nil_literal, .none_expr, .spawn_expr, .lock_expr, .lambda_expr, .sizeof_expr, .typeof_expr, .dump_expr, .offsetof_expr, .is_expr, .in_expr {
 			true
 		}
 		else {
@@ -751,8 +742,7 @@ fn (mut g FlatGen) if_expr_tail_value_type(id flat.NodeId) types.Type {
 	}
 	source_id := g.a.child(&node, 0)
 	source_node := g.a.nodes[int(source_id)]
-	source_type := g.optional_source_type_for_expr(source_id,
-		g.or_expr_source_type(source_id, source_node))
+	source_type := g.optional_source_type_for_expr(source_id, g.or_expr_source_type(source_id, source_node))
 	if source_type is types.OptionType {
 		return source_type.base_type
 	}
