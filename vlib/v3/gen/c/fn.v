@@ -17119,7 +17119,7 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		g.tc.cur_file = decl.file
 		g.tc.cur_module = decl.module_name
 		node := g.a.nodes[decl.node_idx]
-		line := g.c_possibly_active_macro_extern_decl(name, c_macro_safe_extern_decl(name, g.c_extern_decl_line(node, name)))
+		line := c_macro_safe_extern_decl(name, g.c_extern_decl_line(node, name))
 		if g.c_extern_decl_is_cached_object_fallback(name) {
 			g.writeln('#ifndef V3CACHE_PROGRAM_UNIT')
 			g.writeln(line)
@@ -17323,17 +17323,6 @@ fn c_macro_safe_extern_decl(cfn string, declaration string) string {
 		return declaration
 	}
 	return declaration.replace_once('${cfn}(', '(${cfn})(')
-}
-
-// c_possibly_active_macro_extern_decl keeps a prototype available when a lightweight
-// preinclude scan saw a same-named macro only inside an unresolved preprocessor branch.
-// The real C preprocessor selects exactly one safe form: the macro when it exists, or the
-// declaration when it does not.
-fn (g &FlatGen) c_possibly_active_macro_extern_decl(cfn string, declaration string) string {
-	if cfn !in g.possibly_active_c_macros {
-		return declaration
-	}
-	return '#ifndef ${cfn}\n${declaration}\n#endif'
 }
 
 fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
