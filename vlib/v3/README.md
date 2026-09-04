@@ -233,6 +233,12 @@ executable themselves (`gen/fastc/macho_sign.v`, SHA-256 page hashes through Com
 patched into the file in place). The SDK path is taken from `SDKROOT` or the toolchain selected by
 `xcrun`; conventional SDK locations are used only as a fallback.
 
+Default self-host builds content-cache the split TinyCC objects and the linked, signed executable
+under `os.vtmp_dir()`. The keys cover the exact generated units, TinyCC build, compile options, and
+link options. A cached executable is restored as an independent copy, so replacing or modifying the
+output cannot change the cache. Pass `-nocache` or `--no-cache` through the full V driver to bypass
+both caches.
+
 The standalone compiler supports `self` directly and defaults that command to FastC. For example,
 `./v self x5` replaces the compiler through five descendant FastC generations, with each installed
 generation compiling the next one. `-b fastc`, `-gc none`, `-cc tinyc|tcc`, `-keepc`, `-silent`,

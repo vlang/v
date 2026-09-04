@@ -12,10 +12,14 @@ mut:
 // fastc_compile_c_units compiles the translation units to objects with
 // concurrent TinyCC processes and returns the object paths, or the output of
 // the first compile that failed.
-pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string) ![]string {
+pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string, prepared FastcPreparedUnits) ![]string {
 	mut compiles := []FastcUnitCompile{cap: unit_paths.len}
-	for unit_path in unit_paths {
-		object := unit_path[..unit_path.len - 2] + '.o'
+	for i, unit_path in unit_paths {
+		entry := prepared.entries[i]
+		if entry.hit {
+			continue
+		}
+		object := entry.object
 		mut args := base_args.clone()
 		args << ['-c', unit_path, '-o', object]
 		mut process := os.new_process(tcc)
@@ -27,7 +31,6 @@ pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string
 			object: object
 		}
 	}
-	mut objects := []string{cap: unit_paths.len}
 	mut failure := ''
 	for mut compile in compiles {
 		compile.process.wait()
@@ -37,12 +40,14 @@ pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string
 		if code != 0 && failure == '' {
 			failure = if output.len > 0 { output } else { 'tcc failed on ${compile.object}' }
 		}
-		objects << compile.object
 	}
 	if failure != '' {
 		return error(failure)
 	}
-	return objects
+	for entry in prepared.entries {
+		fastc_publish_unit_cache(entry)
+	}
+	return prepared.objects
 }
 
 // fastc_run_command runs the program with the argument vector and returns

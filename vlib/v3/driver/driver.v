@@ -7351,7 +7351,7 @@ $if !skip_fastc ? {
 		return os.join_path_single(canonical_parent, os.file_name(absolute_path))
 	}
 
-	fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, environment_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool) V3FastCCompileResult {
+	fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, environment_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool, cache_enabled bool) V3FastCCompileResult {
 		bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 		cc_sw := time.new_stopwatch()
 		tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
@@ -7419,37 +7419,49 @@ $if !skip_fastc ? {
 		mut result := os.Result{}
 		mut command := ''
 		mut sign_in_process := false
+		mut link_cache_key := ''
+		mut link_cache_restored := false
 		if unit_paths.len > 1 {
 			mut compile_args := compile_base_args.clone()
 			compile_args << user_compile_args
-			link_worker := spawn fastc.fastc_prepare_link(tcc_path, os.join_path_single(tcc_dir, 'lib'), compile_base_args, final_args)
-			unit_objects := fastc.fastc_compile_c_units(tcc_path, compile_args, unit_paths) or {
-				mut prepared_link := link_worker.wait()
-				fastc.fastc_discard_link(mut prepared_link)
-				fastc.write_c_pieces(source_file, pieces) or {}
-				return V3FastCCompileResult{
-					command: cmdexec.display(tcc_path, compile_args)
-					output: err.msg()
-				}
-			}
-			if bench_phases {
-				eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
-			}
-			link_inputs := unit_objects.clone()
+			prepared_units := fastc.fastc_prepare_c_units(tcc_path, compile_args, unit_paths, cache_enabled)
+			link_inputs := prepared_units.objects.clone()
+			link_cache_key = fastc.fastc_link_cache_key(prepared_units.cache_key, final_args)
 			mut display_args := compile_base_args.clone()
 			display_args << ['-o', staged_binary]
 			display_args << link_inputs
 			display_args << final_args
 			command = cmdexec.display(tcc_path, display_args)
-			mut prepared_link := link_worker.wait()
-			sign_in_process = fastc.fastc_prepared_link_skips_codesign(&prepared_link)
-			if !sign_in_process {
-				// The executable-based linker still needs the PATH shim; the prepared
-				// libtcc linker suppresses its codesign call without a subprocess.
-				shim_dir = fastc.fastc_codesign_shim_dir()
-				sign_in_process = shim_dir.dir != ''
+			if fastc.fastc_restore_link_cache(link_cache_key, staged_binary) {
+				link_cache_restored = true
+				result = os.Result{}
+				if bench_phases {
+					eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
+				}
+			} else {
+				link_worker := spawn fastc.fastc_prepare_link(tcc_path, os.join_path_single(tcc_dir, 'lib'), compile_base_args, final_args)
+				fastc.fastc_compile_c_units(tcc_path, compile_args, unit_paths, prepared_units) or {
+					mut failed_link := link_worker.wait()
+					fastc.fastc_discard_link(mut failed_link)
+					fastc.write_c_pieces(source_file, pieces) or {}
+					return V3FastCCompileResult{
+						command: cmdexec.display(tcc_path, compile_args)
+						output: err.msg()
+					}
+				}
+				if bench_phases {
+					eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
+				}
+				mut prepared_link := link_worker.wait()
+				sign_in_process = fastc.fastc_prepared_link_skips_codesign(&prepared_link)
+				if !sign_in_process {
+					// The executable-based linker still needs the PATH shim; the prepared
+					// libtcc linker suppresses its codesign call without a subprocess.
+					shim_dir = fastc.fastc_codesign_shim_dir()
+					sign_in_process = shim_dir.dir != ''
+				}
+				result = fastc.fastc_finish_link(mut prepared_link, link_inputs, final_args, staged_binary)
 			}
-			result = fastc.fastc_finish_link(mut prepared_link, link_inputs, final_args, staged_binary)
 			if bench_phases {
 				eprintln('fastc-phase tcc.linked ${cc_sw.elapsed().microseconds()}us')
 			}
@@ -7481,6 +7493,9 @@ $if !skip_fastc ? {
 					output: 'could not sign ${staged_binary}: ${err.msg()}'
 				}
 			}
+		}
+		if !link_cache_restored {
+			fastc.fastc_publish_link_cache(link_cache_key, staged_binary)
 		}
 		if bench_phases {
 			eprintln('fastc-phase tcc.signed ${cc_sw.elapsed().microseconds()}us')
@@ -8639,7 +8654,7 @@ pub fn run(args []string) {
 			} else {
 				''
 			}
-			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, environment_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads)
+			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, environment_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads, prefs.building_v && !is_debug && !no_cache)
 			if (!silent || show_cc) && fastc_result.command.len > 0 {
 				if c_to_stdout {
 					eprintln('  > ${fastc_result.command}')

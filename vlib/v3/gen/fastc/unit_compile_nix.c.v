@@ -17,13 +17,17 @@ struct FastcUnitCompile {
 // concurrent TinyCC processes (started with posix_spawn, which is cheaper
 // than forking the compiler process), and returns the object paths, or the
 // output of the first compile that failed.
-pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string) ![]string {
+pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string, prepared FastcPreparedUnits) ![]string {
 	bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 	sw := time.new_stopwatch()
 	mut compiles := []FastcUnitCompile{cap: unit_paths.len}
 	mut start_error := ''
-	for unit_path in unit_paths {
-		object := unit_path[..unit_path.len - 2] + '.o'
+	for i, unit_path in unit_paths {
+		entry := prepared.entries[i]
+		if entry.hit {
+			continue
+		}
+		object := entry.object
 		mut args := [tcc]
 		args << base_args
 		args << ['-c', unit_path, '-o', object]
@@ -42,7 +46,6 @@ pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string
 	if bench_phases {
 		eprintln('fastc-phase tcc.units_started ${sw.elapsed().microseconds()}us')
 	}
-	mut objects := []string{cap: unit_paths.len}
 	mut failure := start_error
 	for compile in compiles {
 		// The merged output is drained before the wait, so a compiler that
@@ -56,12 +59,14 @@ pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string
 		if code != 0 && failure == '' {
 			failure = if output.len > 0 { output } else { 'tcc failed on ${compile.object}' }
 		}
-		objects << compile.object
 	}
 	if failure != '' {
 		return error(failure)
 	}
-	return objects
+	for entry in prepared.entries {
+		fastc_publish_unit_cache(entry)
+	}
+	return prepared.objects
 }
 
 // fastc_run_command runs the program with the argument vector and returns

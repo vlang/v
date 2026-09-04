@@ -682,6 +682,41 @@ fn test_fastc_tcc_job_count_respects_parallel_controls() {
 	assert fastc_tcc_job_count(prefs) == 1
 }
 
+fn test_fastc_unit_group_starts_accounts_for_prepended_text() {
+	unit_sizes := [90, 90, 90, 300]
+	assert fastc_unit_group_starts(unit_sizes, 2, 0, 0) == [0, 3, 4]
+	// The extra first-unit runtime makes a smaller first body optimal.
+	assert fastc_unit_group_starts(unit_sizes, 2, 250, 0) == [0, 2, 4]
+	// Common text is part of every later unit too.
+	assert fastc_unit_group_starts([100, 100, 100, 100], 2, 0, 300) == [0, 3, 4]
+}
+
+fn test_fastc_link_cache_restores_an_independent_executable() {
+	$if !windows {
+		key := 'test-${os.getpid()}'
+		cached := fastc_link_cache_path(key)
+		root := os.join_path(os.vtmp_dir(), 'v3_fastc_link_cache_test_${os.getpid()}')
+		source := os.join_path_single(root, 'source')
+		first := os.join_path_single(root, 'first')
+		second := os.join_path_single(root, 'second')
+		os.mkdir_all(root) or { panic(err) }
+		os.rm(cached) or {}
+		defer {
+			os.rmdir_all(root) or {}
+			os.rm(cached) or {}
+		}
+		os.write_file(source, 'cached executable') or { panic(err) }
+		os.chmod(source, 0o700) or { panic(err) }
+		fastc_publish_link_cache(key, source)
+		os.write_file(source, 'changed source') or { panic(err) }
+		assert fastc_restore_link_cache(key, first)
+		assert os.read_file(first) or { panic(err) } == 'cached executable'
+		os.write_file(first, 'changed output') or { panic(err) }
+		assert fastc_restore_link_cache(key, second)
+		assert os.read_file(second) or { panic(err) } == 'cached executable'
+	}
+}
+
 fn test_fastc_fragmented_generation_matches_serial_output() {
 	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
 	sources := [

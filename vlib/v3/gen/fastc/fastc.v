@@ -2477,6 +2477,57 @@ pub fn fastc_tcc_job_count(prefs &pref.Preferences) int {
 	return jobs
 }
 
+// fastc_unit_group_starts partitions consecutive body units while accounting
+// for the C text prepended to each translation unit. The first unit also owns
+// the runtime/startup/main definitions, so balancing only the bodies makes it
+// the slowest TinyCC job. Dynamic programming finds the partition whose
+// largest emitted source is smallest; there are at most 18 groups and a few
+// hundred source files, so this costs much less than writing one unit.
+fn fastc_unit_group_starts(unit_sizes []int, groups int, first_overhead int, shared_overhead int) []int {
+	unit_count := unit_sizes.len
+	if groups < 1 || unit_count < groups {
+		return []int{}
+	}
+	mut prefix := []int{len: unit_count + 1}
+	for i, size in unit_sizes {
+		prefix[i + 1] = prefix[i] + size
+	}
+	mut previous := []int{len: unit_count + 1, init: max_int}
+	previous[0] = 0
+	mut splits := [][]int{len: groups + 1}
+	for count in 1 .. groups + 1 {
+		mut current := []int{len: unit_count + 1, init: max_int}
+		splits[count] = []int{len: unit_count + 1, init: -1}
+		overhead := if count == 1 { first_overhead } else { shared_overhead }
+		for end in count .. unit_count + 1 {
+			for start in count - 1 .. end {
+				if previous[start] == max_int {
+					continue
+				}
+				group_size := overhead + prefix[end] - prefix[start]
+				largest := if previous[start] > group_size { previous[start] } else { group_size }
+				if largest < current[end] {
+					current[end] = largest
+					splits[count][end] = start
+				}
+			}
+		}
+		previous = current.clone()
+	}
+	mut starts := []int{len: groups + 1}
+	starts[groups] = unit_count
+	mut end := unit_count
+	for count := groups; count > 0; count-- {
+		start := splits[count][end]
+		if start < 0 {
+			return []int{}
+		}
+		starts[count - 1] = start
+		end = start
+	}
+	return starts
+}
+
 // fastc_write_c_units writes the translation units of a generation for
 // `jobs` parallel TinyCC processes: `prefix.unit<k>.c` files, each with the
 // shared head (the globals as extern declarations after the first), the
@@ -2488,7 +2539,6 @@ pub fn fastc_write_c_units(prefix string, pieces []string, units FastcUnitLayout
 	if jobs < 2 || unit_count < 2 || units.head_end <= 0 || units.solo_end > pieces.len {
 		return []string{}
 	}
-	mut total := 0
 	mut unit_sizes := []int{cap: unit_count}
 	for u in 0 .. unit_count {
 		mut size := 0
@@ -2496,40 +2546,38 @@ pub fn fastc_write_c_units(prefix string, pieces []string, units FastcUnitLayout
 			size += pieces[k].len
 		}
 		unit_sizes << size
-		total += size
 	}
 	groups := if jobs < unit_count { jobs } else { unit_count }
 	mut paths := []string{cap: groups}
-	mut first_units := []int{cap: groups + 1}
-	mut u := 0
-	mut remaining := total
-	for g in 0 .. groups {
-		// Every group aims at an equal share of what is left, so the last
-		// one does not end up with the remainder of the rounding.
-		target := (remaining + groups - g - 1) / (groups - g)
-		paths << '${prefix}.unit${g}.c'
-		first_units << u
-		mut size := 0
-		remaining_groups := groups - g - 1
-		for u < unit_count {
-			// Leave one unit for every later group; the last group takes the
-			// rest, the others stop at the size target.
-			if unit_count - u <= remaining_groups {
+	mut first_overhead := 1
+	mut shared_overhead := 1
+	for k in 0 .. units.head_end {
+		if units.prototype_start < units.prototype_end && k >= units.prototype_start
+			&& k < units.prototype_end {
+			continue
+		}
+		mut first_text := pieces[k]
+		mut shared_text := pieces[k]
+		for e, index in units.extern_indexes {
+			if index == k {
+				first_text = units.define_texts[e]
+				shared_text = units.extern_texts[e]
 				break
 			}
-			if size > 0 && remaining_groups > 0 && size + unit_sizes[u] > target {
-				under_target := target - size
-				over_target := size + unit_sizes[u] - target
-				if under_target <= over_target {
-					break
-				}
-			}
-			size += unit_sizes[u]
-			remaining -= unit_sizes[u]
-			u++
 		}
+		first_overhead += first_text.len
+		shared_overhead += shared_text.len
 	}
-	first_units << unit_count
+	for k in units.head_end .. units.solo_end {
+		first_overhead += pieces[k].len
+	}
+	first_units := fastc_unit_group_starts(unit_sizes, groups, first_overhead, shared_overhead)
+	if first_units.len == 0 {
+		return []string{}
+	}
+	for g in 0 .. groups {
+		paths << '${prefix}.unit${g}.c'
+	}
 	// The files are written concurrently; they add up to several megabytes.
 	mut writers := [
 		spawn fastc_write_c_unit(paths[0], pieces, &units, 0, first_units[0], first_units[1]),
@@ -2610,6 +2658,155 @@ fn fastc_write_c_unit(path string, pieces []string, units &FastcUnitLayout, g in
 	}
 	file.close()
 	return ''
+}
+
+struct FastcUnitCacheEntry {
+	object       string
+	cache_object string
+	hit          bool
+}
+
+// FastcPreparedUnits holds the ordered TinyCC objects and their content cache
+// entries. Preparing them restores object-cache hits before compilation starts.
+pub struct FastcPreparedUnits {
+	entries []FastcUnitCacheEntry
+pub:
+	objects   []string
+	cache_key string
+}
+
+fn fastc_unit_cache_entry(unit_path string, configuration string, cache_dir string) FastcUnitCacheEntry {
+	object := unit_path[..unit_path.len - 2] + '.o'
+	source := os.read_file(unit_path) or {
+		return FastcUnitCacheEntry{
+			object: object
+		}
+	}
+	configuration_hash := fastc_unit_cache_hash(configuration, u64(0x6a09e667f3bcc909))
+	source_hash := fastc_unit_cache_hash(source, configuration_hash)
+	cache_object := os.join_path_single(cache_dir, '${source_hash.hex()}.o')
+	if os.is_file(cache_object) && os.file_size(cache_object) > 0 {
+		os.rm(object) or {}
+		os.link(cache_object, object) or {
+			os.cp(cache_object, object) or {
+				return FastcUnitCacheEntry{
+					object: object
+					cache_object: cache_object
+				}
+			}
+		}
+		return FastcUnitCacheEntry{
+			object: object
+			cache_object: cache_object
+			hit: true
+		}
+	}
+	return FastcUnitCacheEntry{
+		object: object
+		cache_object: cache_object
+	}
+}
+
+fn fastc_unit_cache_entries(tcc string, base_args []string, unit_paths []string, enabled bool) []FastcUnitCacheEntry {
+	mut entries := []FastcUnitCacheEntry{len: unit_paths.len}
+	for i, unit_path in unit_paths {
+		entries[i] = FastcUnitCacheEntry{
+			object: unit_path[..unit_path.len - 2] + '.o'
+		}
+	}
+	if !enabled || unit_paths.len == 0 {
+		return entries
+	}
+	cache_dir := os.join_path_single(os.vtmp_dir(), 'v3_fastc_unit_cache')
+	os.mkdir_all(cache_dir) or { return entries }
+	build_hash := os.read_file(os.join_path_single(os.dir(tcc), 'build_source_hash.txt')) or { '' }
+	configuration := 'fastc-unit-v1\x00${tcc}\x00${os.file_size(tcc)}\x00${os.file_last_mod_unix(tcc)}\x00${build_hash}\x00${base_args.join('\x00')}'
+	mut workers := []thread FastcUnitCacheEntry{cap: unit_paths.len}
+	for unit_path in unit_paths {
+		workers << spawn fastc_unit_cache_entry(unit_path, configuration, cache_dir)
+	}
+	for i, worker in workers {
+		entries[i] = worker.wait()
+	}
+	return entries
+}
+
+fn fastc_publish_unit_cache(entry FastcUnitCacheEntry) {
+	if entry.hit || entry.cache_object == '' || !os.is_file(entry.object)
+		|| os.file_size(entry.object) == 0 || os.is_file(entry.cache_object) {
+		return
+	}
+	os.link(entry.object, entry.cache_object) or {
+		if os.is_file(entry.cache_object) {
+			return
+		}
+		staged := '${entry.cache_object}.tmp.${os.getpid()}'
+		os.cp(entry.object, staged) or { return }
+		os.mv(staged, entry.cache_object) or { os.rm(staged) or {} }
+	}
+}
+
+fn fastc_unit_cache_key(entries []FastcUnitCacheEntry) string {
+	mut text := strings.new_builder(entries.len * 24)
+	for entry in entries {
+		if entry.cache_object == '' {
+			return ''
+		}
+		text.write_string(os.file_name(entry.cache_object))
+		text.write_u8(0)
+	}
+	return fastc_unit_cache_hash(text.str(), u64(0xbb67ae8584caa73b)).hex()
+}
+
+// fastc_prepare_c_units calculates the object cache keys and restores hits.
+pub fn fastc_prepare_c_units(tcc string, base_args []string, unit_paths []string, cache_enabled bool) FastcPreparedUnits {
+	entries := fastc_unit_cache_entries(tcc, base_args, unit_paths, cache_enabled)
+	return FastcPreparedUnits{
+		entries: entries
+		objects: entries.map(it.object)
+		cache_key: fastc_unit_cache_key(entries)
+	}
+}
+
+// fastc_link_cache_key identifies a link of content-addressed unit objects.
+pub fn fastc_link_cache_key(unit_key string, final_args []string) string {
+	if unit_key == '' {
+		return ''
+	}
+	text := 'fastc-link-v1\x00${unit_key}\x00${final_args.join('\x00')}'
+	return fastc_unit_cache_hash(text, u64(0x3c6ef372fe94f82b)).hex()
+}
+
+fn fastc_link_cache_path(key string) string {
+	return os.join_path(os.vtmp_dir(), 'v3_fastc_link_cache', '${key}.bin')
+}
+
+// fastc_restore_link_cache copies a cached linked self-host to output.
+pub fn fastc_restore_link_cache(key string, output string) bool {
+	if key == '' {
+		return false
+	}
+	cached := fastc_link_cache_path(key)
+	if !os.is_file(cached) || os.file_size(cached) == 0 {
+		return false
+	}
+	fastc_copy_cached_link(cached, output) or { return false }
+	return os.is_executable(output)
+}
+
+// fastc_publish_link_cache atomically caches a linked and signed self-host.
+pub fn fastc_publish_link_cache(key string, output string) {
+	if key == '' || !os.is_executable(output) {
+		return
+	}
+	cached := fastc_link_cache_path(key)
+	if os.is_file(cached) {
+		return
+	}
+	os.mkdir_all(os.dir(cached)) or { return }
+	staged := '${cached}.tmp.${os.getpid()}'
+	fastc_copy_cached_link(output, staged) or { return }
+	os.mv(staged, cached) or { os.rm(staged) or {} }
 }
 
 // FastcUnitCompile is one TinyCC process compiling a translation unit.
