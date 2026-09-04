@@ -71,7 +71,6 @@ fn test_multi_stream_interleaved_reassembly_and_flow_control() {
 	assert s3.recv.reassembler.data().bytestr() == 'FooBar'
 	assert s3.recv.state == .data_recvd
 	assert !s3.has_send() // confirmed recv-only, as a peer-initiated uni stream must be
-	
 
 	assert s4.recv.reassembler.data().bytestr() == 'X'
 	assert s4.recv.state == .data_recvd

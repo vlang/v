@@ -303,7 +303,6 @@ fn test_split_coalesced_datagram_ignores_packet_with_mismatched_dcid() {
 
 	packets := split_coalesced_datagram(buf)!
 	assert packets.len == 2 // the mismatched middle packet is excluded
-	
 
 	h_first, _ := parse_long_header(packets[0].bytes)!
 	h_last, _ := parse_long_header(packets[1].bytes)!

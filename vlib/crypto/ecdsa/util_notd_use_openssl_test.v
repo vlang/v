@@ -13,7 +13,7 @@ module ecdsa
 // own to force the flag either way).
 
 fn test_pubkey_from_bytes_stub_error() {
-	$if use_openssl? {
+	$if use_openssl ? {
 		eprintln('skipping: pubkey_from_bytes IS implemented under -d use_openssl')
 		return
 	}
@@ -25,7 +25,7 @@ fn test_pubkey_from_bytes_stub_error() {
 }
 
 fn test_pubkey_from_string_stub_error() {
-	$if use_openssl? {
+	$if use_openssl ? {
 		eprintln('skipping: pubkey_from_string IS implemented under -d use_openssl')
 		return
 	}
@@ -37,7 +37,7 @@ fn test_pubkey_from_string_stub_error() {
 }
 
 fn test_privkey_from_string_stub_error() {
-	$if use_openssl? {
+	$if use_openssl ? {
 		eprintln('skipping: privkey_from_string IS implemented under -d use_openssl')
 		return
 	}

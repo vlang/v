@@ -138,7 +138,6 @@ fn test_encoder_full_round_trip_through_decoder_with_insertion() {
 	]
 	result := e.encode_field_section(5, lines) or { panic('${err}') }
 	assert result.encoder_instructions.len > 0 // new name+value -> should insert
-	
 
 	applied := dec.apply_encoder_instruction(result.encoder_instructions) or { panic('${err}') }
 	assert applied.applied
@@ -222,7 +221,6 @@ fn test_phase_r_dynamic_name_reference_without_insertion_tracks_required_insert_
 		},
 	]) or { panic('${err}') }
 	assert first.encoder_instructions.len > 0 // confirms it actually got inserted
-	
 
 	e.note_section_acknowledged(1) or { panic('${err}') }
 
@@ -278,5 +276,4 @@ fn test_phase_r_set_capacity_rejects_reducing_below_a_referenced_entry() {
 	assert got.name == 'x'
 	assert got.value == '1'
 	assert e.dynamic_table.capacity() == 100 // the resize itself must not have taken effect
-	
 }

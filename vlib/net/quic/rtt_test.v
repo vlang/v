@@ -42,13 +42,10 @@ fn test_rtt_estimator_subsequent_sample_uses_ewma() {
 	r.update(.application_data, 140 * time.millisecond, 10 * time.millisecond, 25 * time.millisecond, false)
 
 	assert r.min_rtt == 100 * time.millisecond // unchanged: 140ms is not a new minimum
-	
 
 	assert r.rttvar == 45 * time.millisecond // (50*3 + |100-130|) / 4 = 180/4
-	
 
 	assert r.smoothed_rtt == 103_750_000 * time.nanosecond // (100*7 + 130) / 8 = 830/8
-	
 
 	assert r.latest_rtt == 140 * time.millisecond
 }
@@ -69,10 +66,8 @@ fn test_rtt_estimator_ack_delay_never_pushes_below_min_rtt() {
 
 	assert r.min_rtt == 50 * time.millisecond
 	assert r.rttvar == 112_500_000 * time.nanosecond // (100*3 + |200-50|) / 4 = 450/4
-	
 
 	assert r.smoothed_rtt == 181_250_000 * time.nanosecond // (200*7 + 50) / 8 = 1450/8
-	
 }
 
 // test_rtt_estimator_ack_delay_ignored_for_initial_and_handshake confirms
@@ -107,20 +102,16 @@ fn test_rtt_estimator_max_ack_delay_clamp_only_after_confirmation() {
 	unconfirmed.update(.application_data, 150 * time.millisecond, 40 * time.millisecond, 10 * time.millisecond, false)
 	// unclamped: adjusted_rtt = 150 - 40 = 110ms
 	assert unconfirmed.rttvar == 40 * time.millisecond // (50*3 + |100-110|)/4 = 160/4
-	
 
 	assert unconfirmed.smoothed_rtt == 101_250_000 * time.nanosecond // (100*7+110)/8 = 810/8
-	
 
 	mut confirmed := new_rtt_estimator()
 	confirmed.update(.application_data, 100 * time.millisecond, 0, 0, false)
 	confirmed.update(.application_data, 150 * time.millisecond, 40 * time.millisecond, 10 * time.millisecond, true)
 	// clamped to max_ack_delay: adjusted_rtt = 150 - 10 = 140ms
 	assert confirmed.rttvar == 47_500_000 * time.nanosecond // (50*3 + |100-140|)/4 = 190/4
-	
 
 	assert confirmed.smoothed_rtt == 105 * time.millisecond // (100*7+140)/8 = 840/8
-	
 }
 
 fn test_rtt_estimator_pto_period_uses_kinitialrtt_before_any_sample() {
