@@ -521,7 +521,7 @@ jobs:
           for test in "${tests[@]}"; do
             "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
               env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
-              ./v -cc gcc -d gg_multiwindow test "$test"
+              ./v -no-memory-limit -cc gcc -d gg_multiwindow test "$test"
           done
 
           ./v -cc gcc -d gg_multiwindow \
@@ -570,7 +570,7 @@ jobs:
             "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
               "$RUNNER_TEMP/multiwindow_x11_command.sh" \
               env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true \
-              ./v -cc gcc -d gg_multiwindow -d x_multiwindow_x11 test "$test"
+              ./v -no-memory-limit -cc gcc -d gg_multiwindow -d x_multiwindow_x11 test "$test"
           done
 
           "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
@@ -1142,7 +1142,7 @@ jobs:
           for test in "${tests[@]}"; do
             "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
               env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
-              ./v -cc "$compiler" -d gg_multiwindow test "$test"
+              ./v -no-memory-limit -cc "$compiler" -d gg_multiwindow test "$test"
           done
 
           ./v -cc "$compiler" -d gg_multiwindow \
@@ -1194,7 +1194,7 @@ jobs:
             "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
               "$RUNNER_TEMP/multiwindow_x11_command.sh" \
               env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true \
-              ./v -cc "$compiler" -d gg_multiwindow -d x_multiwindow_x11 test "$test"
+              ./v -no-memory-limit -cc "$compiler" -d gg_multiwindow -d x_multiwindow_x11 test "$test"
           done
 
           "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
