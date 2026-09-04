@@ -305,7 +305,8 @@ fn (mut g Parser) read_match_expression() !string {
 	}
 	g.last_expression_type = if result_type == '' { outer_expected_type } else { result_type }
 	g.last_expression = []FastcExpressionToken{}
-	return '({ __typeof__((${subject})) ${temporary} = (${subject}); ${expression}; })'
+	subject_decl_type := g.declaration_c_type(subject_type, subject)
+	return '({ ${subject_decl_type} ${temporary} = (${subject}); ${expression}; })'
 }
 
 fn (g &Parser) normalized_match_case_key(tokens []FastcExpressionToken, rendered string) string {

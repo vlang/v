@@ -36,15 +36,15 @@ fn fastc_wait_referenced_function_names(mut pending FastcPendingReferences) map[
 	return pending.workers[0].wait()
 }
 
-fn fastc_start_interface_dispatches(declared_kinds map[string]FastcDeclaredTypeKind, functions map[string]FastcFunctionSignature, interface_methods map[string]bool, used_function_names map[string]bool, selfhost bool, prefs &pref.Preferences) FastcPendingInterfaceDispatches {
+fn fastc_start_interface_dispatches(declared_kinds map[string]FastcDeclaredTypeKind, functions map[string]FastcFunctionSignature, function_c_names map[string]string, interface_methods map[string]bool, used_function_names map[string]bool, selfhost bool, prefs &pref.Preferences) FastcPendingInterfaceDispatches {
 	if fastc_parallel_job_count(functions.len, prefs) <= 1 {
 		return FastcPendingInterfaceDispatches{
-			dispatches: fastc_generate_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, selfhost)
+			dispatches: fastc_generate_interface_dispatches(declared_kinds, functions, function_c_names, interface_methods, used_function_names, selfhost)
 		}
 	}
 	return FastcPendingInterfaceDispatches{
 		workers: [
-			spawn fastc_generate_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, selfhost),
+			spawn fastc_generate_interface_dispatches(declared_kinds, functions, function_c_names, interface_methods, used_function_names, selfhost),
 		]
 	}
 }
@@ -657,7 +657,7 @@ fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile
 	}
 }
 
-const fastc_generation_fragment_size = 28 * 1024
+const fastc_generation_fragment_size = 16 * 1024
 
 fn fastc_generation_fragment_is_followed_by_comptime_else(scan scanner.Scanner) bool {
 	mut lookahead := scan
@@ -693,7 +693,8 @@ fn fastc_source_generation_fragments(source_file FastcSourceFile, prefs &pref.Pr
 			}
 			.rcbr {
 				brace_depth--
-				if brace_depth == 0 && paren_depth == 0 && bracket_depth == 0 && scan.offset >= next_target {
+				if brace_depth == 0 && paren_depth == 0 && bracket_depth == 0
+					&& scan.offset >= next_target {
 					pending_cut = true
 				}
 			}
@@ -714,7 +715,8 @@ fn fastc_source_generation_fragments(source_file FastcSourceFile, prefs &pref.Pr
 				bracket_depth--
 			}
 			.semicolon {
-				if pending_cut && brace_depth == 0 && paren_depth == 0 && bracket_depth == 0 && !fastc_generation_fragment_is_followed_by_comptime_else(scan) {
+				if pending_cut && brace_depth == 0 && paren_depth == 0 && bracket_depth == 0
+					&& !fastc_generation_fragment_is_followed_by_comptime_else(scan) {
 					cuts << scan.offset
 					next_target = source_file.source.len * cuts.len / part_count
 					pending_cut = false
@@ -868,15 +870,15 @@ mut:
 	result  FastcFieldDefaultsResult
 }
 
-fn fastc_start_field_defaults(source_imports map[string]map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, enum_field_names map[string][]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string, sum_types map[string]bool) FastcPendingFieldDefaults {
+fn fastc_start_field_defaults(source_imports map[string]map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, enum_field_names map[string][]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, function_c_names map[string]string, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string, sum_types map[string]bool) FastcPendingFieldDefaults {
 	if fastc_parallel_worker_limit(prefs) <= 1 {
 		return FastcPendingFieldDefaults{
-			result: fastc_run_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, enum_field_names, alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, sum_types)
+			result: fastc_run_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, enum_field_names, alias_base_types, struct_fields, struct_field_info, functions, function_c_names, constants, public_constants, constant_types, globals, public_globals, global_types, sum_types)
 		}
 	}
 	return FastcPendingFieldDefaults{
 		workers: [
-			spawn fastc_run_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, enum_field_names, alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, sum_types),
+			spawn fastc_run_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, enum_field_names, alias_base_types, struct_fields, struct_field_info, functions, function_c_names, constants, public_constants, constant_types, globals, public_globals, global_types, sum_types),
 		]
 	}
 }

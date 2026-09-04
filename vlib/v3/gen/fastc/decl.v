@@ -600,7 +600,7 @@ fn fastc_merge_declaration_partial(partial FastcDeclarationPartial, mut declared
 	}
 }
 
-fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_sources map[string]string, prefs &pref.Preferences, header_free bool, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, constant_values map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, mut global_types map[string]string) !FastcGlobalDeclarations {
+fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_sources map[string]string, prefs &pref.Preferences, header_free bool, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, function_c_names map[string]string, constants map[string]string, constant_values map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, mut global_types map[string]string) !FastcGlobalDeclarations {
 	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	mut out := strings.new_builder(1024)
 	mut module_initializers := map[string]string{}
@@ -651,6 +651,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			out: strings.new_builder(0)
 			protos: strings.new_builder(0)
 			functions: functions
+			function_c_names: function_c_names
 			constant_types: constant_types
 			global_types: global_types
 			composite_types: map[string]bool{}
@@ -878,9 +879,9 @@ struct FastcFieldDefaultsResult {
 
 // fastc_run_field_defaults renders the field defaults into a copy of the
 // field table (the renderer replaces each type's entry) and indexes it.
-fn fastc_run_field_defaults(source_imports map[string]map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, enum_field_names map[string][]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string, sum_types map[string]bool) FastcFieldDefaultsResult {
+fn fastc_run_field_defaults(source_imports map[string]map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, enum_field_names map[string][]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, function_c_names map[string]string, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string, sum_types map[string]bool) FastcFieldDefaultsResult {
 	mut rendered := struct_field_info.clone()
-	fastc_render_struct_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, enum_field_names, alias_base_types, struct_fields, mut rendered, functions, constants, public_constants, constant_types, globals, public_globals, global_types, sum_types) or {
+	fastc_render_struct_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, enum_field_names, alias_base_types, struct_fields, mut rendered, functions, function_c_names, constants, public_constants, constant_types, globals, public_globals, global_types, sum_types) or {
 		return FastcFieldDefaultsResult{
 			failed: true
 			error_message: err.msg()
@@ -892,7 +893,7 @@ fn fastc_run_field_defaults(source_imports map[string]map[string]string, prefs &
 	}
 }
 
-fn fastc_render_struct_field_defaults(source_imports map[string]map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, enum_field_names map[string][]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string, sum_types map[string]bool) ! {
+fn fastc_render_struct_field_defaults(source_imports map[string]map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, enum_field_names map[string][]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, function_c_names map[string]string, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string, sum_types map[string]bool) ! {
 	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	helper_has_c_functions := fastc_functions_declare_c(functions)
 	mut type_names := struct_field_info.keys()
@@ -978,6 +979,7 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 				out: strings.new_builder(0)
 				protos: strings.new_builder(0)
 				functions: functions
+				function_c_names: function_c_names
 				constant_types: constant_types
 				global_types: global_types
 				fixed_array_types: map[string]string{}
@@ -1039,6 +1041,7 @@ struct FastcConstantGenContext {
 	sum_types                 map[string]bool
 	sum_type_variants         map[string]bool
 	functions                 map[string]FastcFunctionSignature
+	function_c_names          map[string]string
 	constants                 map[string]string
 	public_constants          map[string]bool
 	globals                   map[string]string
@@ -1111,6 +1114,7 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 		out: strings.new_builder(256)
 		protos: strings.new_builder(0)
 		functions: ctx.functions
+		function_c_names: ctx.function_c_names
 		constant_types: constant_types
 		composite_types: map[string]bool{}
 		fixed_array_types: map[string]string{}
@@ -1232,7 +1236,7 @@ fn fastc_field_defaults_reference_constants(struct_field_info map[string][]Fastc
 	return false
 }
 
-fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, sum_types map[string]bool, sum_type_variants map[string]bool, mut pending_defaults FastcPendingFieldDefaults, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, initial_parallel_results []FastcConstantFileResult, mut constant_types map[string]string) !FastcConstantDeclarations {
+fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, sum_types map[string]bool, sum_type_variants map[string]bool, mut pending_defaults FastcPendingFieldDefaults, functions map[string]FastcFunctionSignature, function_c_names map[string]string, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, initial_parallel_results []FastcConstantFileResult, mut constant_types map[string]string) !FastcConstantDeclarations {
 	mut values := []FastcConstantValue{}
 	mut composite_types := map[string]bool{}
 	mut fixed_array_types := map[string]string{}
@@ -1252,6 +1256,7 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 		sum_types: sum_types
 		sum_type_variants: sum_type_variants
 		functions: functions
+		function_c_names: function_c_names
 		constants: constants
 		public_constants: public_constants
 		globals: globals
@@ -1283,6 +1288,7 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 		sum_types: sum_types
 		sum_type_variants: sum_type_variants
 		functions: functions
+		function_c_names: function_c_names
 		constants: constants
 		public_constants: public_constants
 		globals: globals
@@ -2779,9 +2785,9 @@ fn fastc_generate_enum_string_helpers(infos []FastcEnumInfo) ([]string, []string
 		mut from_out := strings.new_builder(256)
 		// `Enum.from_string(s)` maps a field-name string back to its value, returning
 		// `?Enum` (none when no field name matches).
-		from_out.writeln('Option ${info.c_name}__from_string(string __v_fastc_from) {')
+		from_out.writeln('Option ${info.c_name}__from_string(string __vf_from) {')
 		for field in info.fields {
-			from_out.writeln('\tif (builtin__string_eq(__v_fastc_from, _S("${field}"))) { ${info.c_name} __v_fastc_value = ${info.c_name}__${field}; return (Option){.data=v_fastc_interface_box(&__v_fastc_value, sizeof(${info.c_name})), .state=0}; }')
+			from_out.writeln('\tif (builtin__string_eq(__vf_from, _S("${field}"))) { ${info.c_name} __vf_value = ${info.c_name}__${field}; return (Option){.data=v_fastc_interface_box(&__vf_value, sizeof(${info.c_name})), .state=0}; }')
 		}
 		from_out.writeln('\treturn (Option){.state=2};')
 		from_out.writeln('}')

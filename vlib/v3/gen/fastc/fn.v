@@ -460,8 +460,8 @@ fn (mut g Parser) next() {
 	g.lit = g.s.lit
 }
 
-fn (mut g Parser) temporary_name(kind string) string {
-	name := '__v_fastc_${kind}_${g.temp_id}'
+fn (mut g Parser) temporary_name(_ string) string {
+	name := '__v${g.temp_id}'
 	g.temp_id++
 	return name
 }
@@ -469,7 +469,7 @@ fn (mut g Parser) temporary_name(kind string) string {
 fn (g &Parser) temporary_namespace(kind string) string {
 	mut index := 0
 	for {
-		namespace := '__v_fastc_${kind}' + if index == 0 { '' } else { '_${index}' }
+		namespace := '__vf_${kind}' + if index == 0 { '' } else { '_${index}' }
 		prefix := namespace + '_'
 		mut collision := false
 		for local_name in g.locals.keys() {
@@ -479,8 +479,8 @@ fn (g &Parser) temporary_namespace(kind string) string {
 			}
 		}
 		if !collision {
-			// Every candidate prefix starts with `__v_fastc_`, so only the
-			// program's few `__v_fastc_`-prefixed function and global C names
+			// Every candidate prefix starts with `__vf_`, so only the
+			// program's few `__vf_`-prefixed function and global C names
 			// can collide (see fastc_reserved_temporary_c_names); rescanning
 			// every function key here made each temporary O(program).
 			for c_name in g.fastc_prefixed_c_names {
@@ -499,24 +499,24 @@ fn (g &Parser) temporary_namespace(kind string) string {
 }
 
 // fastc_reserved_temporary_c_names collects the generated function and global
-// C names that begin with the `__v_fastc_` temporary namespace prefix. Only
+// C names that begin with the `__vf_` temporary namespace prefix. Only
 // these can collide with a temporary_namespace candidate.
 fn fastc_reserved_temporary_c_names(functions map[string]FastcFunctionSignature, globals map[string]string) []string {
 	mut names := []string{}
 	for function_key in functions.keys() {
 		// Only an unqualified key can collide with a C keyword or libc name and
-		// so be renamed into the `__v_fastc_` namespace: a module-qualified key
+		// so be renamed into the `__vf_` namespace: a module-qualified key
 		// keeps its `module__name` spelling, and `C.` keys are emitted verbatim.
 		if function_key.contains('.') {
 			continue
 		}
 		function_c_name := fastc_c_function_name_for_key(function_key)
-		if function_c_name.starts_with('__v_fastc_') {
+		if function_c_name.starts_with('__vf_') {
 			names << function_c_name
 		}
 	}
 	for c_name in globals.values() {
-		if c_name.starts_with('__v_fastc_') {
+		if c_name.starts_with('__vf_') {
 			names << c_name
 		}
 	}
@@ -781,11 +781,12 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.skip_balanced(.lcbr, .rcbr)!
 		return
 	}
-	c_name := if receiver_type == '' {
+	conventional_c_name := if receiver_type == '' {
 		fastc_c_function_name(g.module_name, name)
 	} else {
 		fastc_method_c_name(g.module_name, fastc_c_declared_type_name(receiver_key), name)
 	}
+	c_name := g.c_function_name_or(function_key, conventional_c_name)
 	g.last_function_c_name = c_name
 	c_return_type := if is_main { 'int' } else { fastc_output_c_type(return_type) }
 	c_params := if is_main && g.selfhost {

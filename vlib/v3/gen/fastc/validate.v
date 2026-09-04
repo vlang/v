@@ -155,7 +155,7 @@ fn (g &Parser) resolved_nonlocal_expression_name_cached(name string) string {
 // resolved_expression_name memoizes the answer per name.
 fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
 	if imported_module := g.imports[name] {
-		return imported_module.replace('.', '__')
+		return fastc_c_module_name(imported_module)
 	}
 	function_key := g.unqualified_function_key(name)
 	if function_key in g.functions {

@@ -77,6 +77,7 @@ fn (mut g Parser) parse_for() !bool {
 				}
 				g.next()
 				end := g.read_expression([token.Token.lcbr])!
+				end_expression_type := g.last_expression_type
 				end_expression := g.last_expression
 				if start_value := fastc_integer_literal_value(start_expression) {
 					if end_value := fastc_integer_literal_value(end_expression) {
@@ -96,9 +97,11 @@ fn (mut g Parser) parse_for() !bool {
 					fastc_c_identifier(name)
 				}
 				// V evaluates both range bounds exactly once, from left to right.
-				g.write_line('__typeof__((${start})) ${start_name} = (${start});')
-				g.write_line('__typeof__((${end})) ${end_name} = (${end});')
-				g.write_line('for (__typeof__((${start_name})) ${c_name} = (${start_name}); ${c_name} < (${end_name}); ${c_name}++) {')
+				start_type := g.declaration_c_type(start_expression_type, start)
+				end_type := g.declaration_c_type(end_expression_type, end)
+				g.write_line('${start_type} ${start_name} = (${start});')
+				g.write_line('${end_type} ${end_name} = (${end});')
+				g.write_line('for (${start_type} ${c_name} = (${start_name}); ${c_name} < (${end_name}); ${c_name}++) {')
 				if name != '_' {
 					g.locals[name] = FastcLocal{
 						typ: fastc_normalize_inferred_type(start_expression_type)
@@ -135,7 +138,8 @@ fn (mut g Parser) parse_for() !bool {
 				keys_name := g.temporary_name('map_keys')
 				values_name := g.temporary_name('map_values')
 				index_name := g.temporary_name('map_index')
-				g.write_line('__typeof__((${start})) ${collection_name} = (${start});')
+				collection_c_type := g.declaration_c_type(start_expression_type, start)
+				g.write_line('${collection_c_type} ${collection_name} = (${start});')
 				map_pointer := if collection_layout_type.ends_with('*') {
 					collection_name
 				} else {
@@ -208,7 +212,8 @@ fn (mut g Parser) parse_for() !bool {
 			} else if is_ordinary_string {
 				g.write_line('string ${collection_name} = (${start});')
 			} else {
-				g.write_line('__typeof__((${start})) ${collection_name} = (${start});')
+				collection_c_type := g.declaration_c_type(start_expression_type, start)
+				g.write_line('${collection_c_type} ${collection_name} = (${start});')
 			}
 			collection_length := if is_ordinary_string {
 				'strlen(${collection_name} ? ${collection_name} : "")'
@@ -306,7 +311,7 @@ fn (mut g Parser) parse_for() !bool {
 			update := g.read_statement_expression([token.Token.lcbr])!
 			g.expect(.lcbr)!
 			initializer := if is_declaration {
-				'__typeof__((${initial})) ${fastc_c_identifier(name)} = (${initial})'
+				'${g.declaration_c_type(initial_type, initial)} ${fastc_c_identifier(name)} = (${initial})'
 			} else {
 				'${fastc_c_identifier(name)} = (${initial})'
 			}

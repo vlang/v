@@ -1739,7 +1739,7 @@ fn (mut g Parser) parse_veb_html_return() !bool {
 		}
 	}
 	ctx_name := g.fastc_veb_context_name()
-	bname := '__v_fastc_veb_tmpl'
+	bname := '__vf_veb_tmpl'
 	mut lowering := fastc_veb_compile_template(tmpl_path, bname, ctx_name) or {
 		return g.unsupported('veb template `${tmpl_path}`: ${err.msg()}')
 	}

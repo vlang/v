@@ -99,6 +99,149 @@ fn fastc_render_unit_stdin(fd int, worker thread string) {
 	fastc_write_unit_stdin(fd, source)
 }
 
+fn fastc_render_c_unit_stdin(fd int, pieces []string, units &FastcUnitLayout, g int, first_unit int, end_unit int) {
+	source := fastc_render_c_unit(pieces, units, g, first_unit, end_unit)
+	fastc_write_unit_stdin(fd, source)
+}
+
+// fastc_prestart_c_units starts TinyCC processes that wait for their source on
+// stdin. Starting this on a worker lets source generation hide process launch.
+pub fn fastc_prestart_c_units(tcc string, base_args []string, build_dir string, unit_count int) FastcPrestartedCUnits {
+	os.mkdir_all(build_dir) or { return FastcPrestartedCUnits{} }
+	mut units := FastcPrestartedCUnits{
+		build_dir: build_dir
+		base_args: base_args.clone()
+		unit_count: unit_count
+		paths: []string{len: unit_count}
+		objects: []string{len: unit_count}
+		pids: []int{len: unit_count}
+		read_fds: []int{len: unit_count, init: -1}
+		write_fds: []int{len: unit_count, init: -1}
+		active: true
+	}
+	for i in 0 .. unit_count {
+		path := os.join_path_single(build_dir, 'src.unit${i}.c')
+		object := path[..path.len - 2] + '.o'
+		mut args := [tcc]
+		args << base_args
+		args << ['-c', '-', '-o', object]
+		mut pid := 0
+		mut read_fd := -1
+		mut write_fd := -1
+		if !fastc_start_capture_input(args, &pid, &read_fd, &write_fd) {
+			fastc_discard_prestarted_c_units(mut units)
+			return FastcPrestartedCUnits{}
+		}
+		units.paths[i] = path
+		units.objects[i] = object
+		units.pids[i] = pid
+		units.read_fds[i] = read_fd
+		units.write_fds[i] = write_fd
+	}
+	return units
+}
+
+// fastc_discard_prestarted_c_units closes and reaps unused prestarted TinyCC
+// processes, then removes their private build directory.
+pub fn fastc_discard_prestarted_c_units(mut units FastcPrestartedCUnits) {
+	if !units.active {
+		return
+	}
+	for fd in units.write_fds {
+		if fd >= 0 {
+			C.close(fd)
+		}
+	}
+	for i, pid in units.pids {
+		if pid <= 0 {
+			continue
+		}
+		if i < units.read_fds.len && units.read_fds[i] >= 0 {
+			_ = os.fd_slurp(units.read_fds[i])
+			os.fd_close(units.read_fds[i])
+		}
+		fastc_wait_exit_code(pid)
+	}
+	units.active = false
+	os.rmdir_all(units.build_dir) or {}
+}
+
+// fastc_begin_feed_prestarted_c_units starts copying rendered source to TinyCC
+// processes that were launched while FastC generation was still running.
+pub fn fastc_begin_feed_prestarted_c_units(mut prestarted FastcPrestartedCUnits, mut rendering FastcRenderingCUnits) !FastcFeedingCUnits {
+	if !prestarted.active || rendering.paths != prestarted.paths
+		|| rendering.workers.len != prestarted.unit_count {
+		return error('invalid prestarted FastC unit layout')
+	}
+	mut writers := []thread{len: prestarted.unit_count}
+	for i in rendering.order {
+		writers[i] = spawn fastc_render_unit_stdin(prestarted.write_fds[i], rendering.workers[i])
+		prestarted.write_fds[i] = -1
+	}
+	return FastcFeedingCUnits{
+		paths: rendering.paths
+		writers: writers
+	}
+}
+
+// fastc_begin_render_prestarted_c_units renders directly into prestarted
+// TinyCC processes, avoiding a second set of threads just to hand strings off.
+pub fn fastc_begin_render_prestarted_c_units(mut prestarted FastcPrestartedCUnits, prefix string, pieces []string, units FastcUnitLayout, jobs int) !FastcFeedingCUnits {
+	plan := fastc_c_unit_plan(prefix, pieces, units, jobs)
+	if !prestarted.active || plan.paths != prestarted.paths
+		|| plan.paths.len != prestarted.unit_count {
+		return error('invalid prestarted FastC unit layout')
+	}
+	mut writers := []thread{len: prestarted.unit_count}
+	for g in 0 .. plan.paths.len {
+		writers[g] = spawn fastc_render_c_unit_stdin(prestarted.write_fds[g], pieces, &units, g, plan.first_units[g], plan.first_units[g + 1])
+		prestarted.write_fds[g] = -1
+	}
+	return FastcFeedingCUnits{
+		paths: plan.paths
+		writers: writers
+	}
+}
+
+// fastc_finish_prestarted_c_units waits for TinyCC and optionally loads each
+// completed object into the prepared linker in translation-unit order.
+pub fn fastc_finish_prestarted_c_units(mut prestarted FastcPrestartedCUnits, mut feeding FastcFeedingCUnits, prepared FastcPreparedUnits, mut prepared_link FastcPreparedLink, preload_link bool) ![]string {
+	if !prestarted.active || feeding.paths != prestarted.paths
+		|| feeding.writers.len != prestarted.unit_count
+		|| prepared.entries.len != prestarted.unit_count {
+		return error('invalid prestarted FastC unit layout')
+	}
+	mut failure := ''
+	for i in 0 .. prestarted.unit_count {
+		output := os.fd_slurp(prestarted.read_fds[i]).join('')
+		os.fd_close(prestarted.read_fds[i])
+		prestarted.read_fds[i] = -1
+		feeding.writers[i].wait()
+		code := fastc_wait_exit_code(prestarted.pids[i])
+		prestarted.pids[i] = 0
+		if code != 0 && failure == '' {
+			failure = if output.len > 0 { output } else { 'tcc failed on ${prestarted.objects[i]}' }
+		} else if code == 0 && preload_link && failure == '' {
+			fastc_add_prepared_link_input(mut prepared_link, prestarted.objects[i]) or {
+				failure = err.msg()
+			}
+		}
+	}
+	prestarted.active = false
+	if failure != '' {
+		return error(failure)
+	}
+	return prepared.objects
+}
+
+// fastc_compile_prestarted_rendering_c_units feeds and waits for translation
+// units in one call. Callers with independent setup work can use the split
+// begin/finish API to overlap that work with rendering and compilation.
+pub fn fastc_compile_prestarted_rendering_c_units(mut prestarted FastcPrestartedCUnits, mut rendering FastcRenderingCUnits, prepared FastcPreparedUnits, mut prepared_link FastcPreparedLink, preload_link bool) ![]string {
+	mut feeding := fastc_begin_feed_prestarted_c_units(mut prestarted, mut rendering)!
+	return fastc_finish_prestarted_c_units(mut prestarted, mut feeding, prepared, mut prepared_link, preload_link)
+}
+
 // fastc_compile_rendering_c_units starts concurrent TinyCC processes while
 // their translation units are still being rendered, then streams each unit
 // as soon as its render worker completes.

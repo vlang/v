@@ -9,6 +9,35 @@ mut:
 	object  string
 }
 
+// fastc_prestart_c_units is unavailable on Windows, whose process wrapper has
+// no stdin-pipe prestart path.
+pub fn fastc_prestart_c_units(_ string, _ []string, _ string, _ int) FastcPrestartedCUnits {
+	return FastcPrestartedCUnits{}
+}
+
+// fastc_discard_prestarted_c_units is a no-op on Windows.
+pub fn fastc_discard_prestarted_c_units(mut _ FastcPrestartedCUnits) {}
+
+// fastc_begin_feed_prestarted_c_units is unavailable on Windows.
+pub fn fastc_begin_feed_prestarted_c_units(mut _ FastcPrestartedCUnits, mut _ FastcRenderingCUnits) !FastcFeedingCUnits {
+	return error('prestarted FastC units are unavailable on Windows')
+}
+
+// fastc_begin_render_prestarted_c_units is unavailable on Windows.
+pub fn fastc_begin_render_prestarted_c_units(mut _ FastcPrestartedCUnits, _ string, _ []string, _ FastcUnitLayout, _ int) !FastcFeedingCUnits {
+	return error('prestarted FastC units are unavailable on Windows')
+}
+
+// fastc_finish_prestarted_c_units is unavailable on Windows.
+pub fn fastc_finish_prestarted_c_units(mut _ FastcPrestartedCUnits, mut _ FastcFeedingCUnits, _ FastcPreparedUnits, mut _ FastcPreparedLink, _ bool) ![]string {
+	return error('prestarted FastC units are unavailable on Windows')
+}
+
+// fastc_compile_prestarted_rendering_c_units is unavailable on Windows.
+pub fn fastc_compile_prestarted_rendering_c_units(mut _ FastcPrestartedCUnits, mut _ FastcRenderingCUnits, _ FastcPreparedUnits, mut _ FastcPreparedLink, _ bool) ![]string {
+	return error('prestarted FastC units are unavailable on Windows')
+}
+
 // fastc_compile_c_units compiles the translation units to objects with
 // concurrent TinyCC processes and returns the object paths, or the output of
 // the first compile that failed.

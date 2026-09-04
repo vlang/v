@@ -97,7 +97,11 @@ fn fastc_macho_sign_capacity(original_len int, ident string) int {
 // empty requirements blob and an empty CMS wrapper), replacing any signature
 // it has. The identifier is the file name, as `codesign -s -` uses.
 pub fn fastc_sign_macho_adhoc(path string) ! {
-	fastc_sign_macho_adhoc_buffered(path)!
+	$if macos {
+		fastc_sign_macho_adhoc_mapped(path)!
+	} $else {
+		fastc_sign_macho_adhoc_buffered(path)!
+	}
 }
 
 fn fastc_sign_macho_adhoc_buffered(path string) ! {

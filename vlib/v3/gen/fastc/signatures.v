@@ -1518,7 +1518,7 @@ fn fastc_collect_veb_template_references(source_file FastcSourceFile, function_n
 		explicit_path = lookahead.lit.trim('\'"')
 	}
 	template_path := fastc_referenced_veb_template_path(source_file.path, function_name, explicit_path) or { return }
-	generated := fastc_veb_compile_template(template_path, '__v_fastc_reachability_template', 'ctx') or {
+	generated := fastc_veb_compile_template(template_path, '__vf_reachability_template', 'ctx') or {
 		return
 	}
 	fastc_collect_generated_template_references(generated, template_path, prefs, available_names, mut references)

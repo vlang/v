@@ -476,7 +476,7 @@ fn (mut g Parser) lower_higher_order_expression(mut result strings.Builder, mut 
 			if cmp_name !in g.spawn_helpers {
 				// The same rendered comparison in two blocks with swapped element
 				// bindings yields the -1 / +1 / 0 ordering without re-rendering it.
-				g.spawn_helpers[cmp_name] = 'static int ${cmp_name}(void *__v_fastc_a, void *__v_fastc_b) { { ${norm_element} a = *(${norm_element} *)__v_fastc_a; ${norm_element} b = *(${norm_element} *)__v_fastc_b; if (${condition}) { return -1; } } { ${norm_element} a = *(${norm_element} *)__v_fastc_b; ${norm_element} b = *(${norm_element} *)__v_fastc_a; if (${condition}) { return 1; } } return 0; }'
+				g.spawn_helpers[cmp_name] = 'static int ${cmp_name}(void *__vf_a, void *__vf_b) { { ${norm_element} a = *(${norm_element} *)__vf_a; ${norm_element} b = *(${norm_element} *)__vf_b; if (${condition}) { return -1; } } { ${norm_element} a = *(${norm_element} *)__vf_b; ${norm_element} b = *(${norm_element} *)__vf_a; if (${condition}) { return 1; } } return 0; }'
 			}
 			lowered := '({ builtin__array_sort_with_compare((array *)&(${receiver_source}), ${cmp_name}); })'
 			result.write_string(lowered)
@@ -4007,7 +4007,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 				inner_source = defaulted_call.source
 			}
 			value_type := g.option_value_type_for_expression(inner_tokens)
-			temporary := '__v_fastc_option_propagate'
+			temporary := '__vf_op'
 			failure := if g.in_main {
 				deferred := g.deferred_scopes_source()
 				'${deferred} builtin__panic_result_not_set(builtin__IError_msg(${temporary}.err));'
@@ -4047,7 +4047,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 				} else if item.tok in [.rpar, .rsbr, .rcbr] {
 					depth--
 				} else if depth == 0 && item.tok in [.key_in, .not_in] && i > 0 && i + 1 < tokens.len {
-					temporary_namespace := g.temporary_namespace('membership')
+					temporary_namespace := g.temporary_namespace('m')
 					right_tokens := tokens[i + 1..]
 					// `x in [Type1, Type2, …]` where `x` is a boxed sum type is a membership
 					// over the runtime type tag (V's `x is Type1 || x is Type2 || …`), not a
@@ -4067,7 +4067,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 									return none
 								}
 								access := if left_boxed_type.ends_with('*') { '->' } else { '.' }
-								subject_name := '${temporary_namespace}_subject'
+								subject_name := '${temporary_namespace}_s'
 								mut checks := []string{}
 								for type_id in type_ids {
 									checks << '(${subject_name}${access}_typ == __v_typeid_${type_id})'
@@ -4108,8 +4108,8 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 						value := g.render_call_argument_expression(right_tokens, right_type) or {
 							return none
 						}
-						substring_name := '${temporary_namespace}_substring'
-						value_name := '${temporary_namespace}_value'
+						substring_name := '${temporary_namespace}_s'
+						value_name := '${temporary_namespace}_v'
 						found := 'v_fastc_string_contains(${value_name}, ${substring_name})'
 						predicate := if item.tok == .not_in { '!(${found})' } else { found }
 						return FastcRenderedExpression{
@@ -4128,7 +4128,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 						} else {
 							'&(${map_source})'
 						}
-						key_name := '${temporary_namespace}_map_key'
+						key_name := '${temporary_namespace}_k'
 						found := 'builtin__map_get_check((map *)${map_expression}, &${key_name}) != NULL'
 						predicate := if item.tok == .not_in { '!(${found})' } else { found }
 						return FastcRenderedExpression{
@@ -4145,10 +4145,10 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 						collection := g.render_call_argument_expression(right_tokens, right_type) or {
 							return none
 						}
-						item_name := '${temporary_namespace}_item'
-						collection_name := '${temporary_namespace}_collection'
-						found_name := '${temporary_namespace}_found'
-						index_name := '${temporary_namespace}_index'
+						item_name := '${temporary_namespace}_x'
+						collection_name := '${temporary_namespace}_a'
+						found_name := '${temporary_namespace}_f'
+						index_name := '${temporary_namespace}_i'
 						access := if right_type.ends_with('*') { '->' } else { '.' }
 						collection_length := if fixed_length := fastc_fixed_array_length(right_layout) {
 							fixed_length
@@ -4172,10 +4172,12 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 						// selfhost parser renders nested `${if ... { '${...}' }}` blocks
 						// literally, corrupting the emitted membership expression.
 						predicate := if item.tok == .not_in { '!${found_name}' } else { found_name }
-						// A collection lowered to a `({ … for … })` statement-expression (e.g.
-						// `arr.map(it.f)`) cannot be `__typeof__`'d by TinyCC; name its known array
-						// type directly instead.
-						collection_c_type := if collection.starts_with('({') {
+						// The membership collection was already inferred. In a self-host, naming
+						// that type directly avoids duplicating large inline array literals and
+						// also handles statement expressions that TinyCC cannot inspect.
+						collection_c_type := if g.selfhost && right_type != '' {
+							fastc_normalize_inferred_type(right_type)
+						} else if collection.starts_with('({') {
 							right_type
 						} else {
 							'__typeof__((${collection}))'
@@ -4202,7 +4204,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 					lhs_source := g.render_membership_candidate(tokens[..i], lhs_type) or {
 						return none
 					}
-					lhs_name := '${temporary_namespace}_subject'
+					lhs_name := '${temporary_namespace}_s'
 					value_type := fastc_runtime_c_type(fastc_normalize_inferred_type(lhs_type))
 					mut initializers := []string{cap: items.len}
 					mut comparisons := []string{cap: items.len}
@@ -4210,7 +4212,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 						candidate_source := g.render_membership_candidate(candidate, lhs_type) or {
 							return none
 						}
-						candidate_name := '${temporary_namespace}_candidate_${candidate_index}'
+						candidate_name := '${temporary_namespace}_c${candidate_index}'
 						initializers << '${value_type} ${candidate_name} = (${candidate_source});'
 						comparison := if g.underlying_alias_type(lhs_type).trim_right('*') == 'string' {
 							'builtin__string_eq(${lhs_name}, ${candidate_name})'

@@ -9,19 +9,26 @@ import v3.token
 // returns the packed result. Helpers are registered per call target and
 // deduplicated program-wide; the pthread runtime block is emitted only when a
 // program spawns.
-const fastc_thread_type_prefix = '__v_fastc_thread_'
+const fastc_thread_type_prefix = '__vf_thread_'
 
 const c_spawn_runtime = r'#include <pthread.h>
 '
 
-// fastc_name_key hex-encodes the original UTF-8 bytes. The readable sanitized
-// part of a generated name is lossy, so this C-safe key keeps names injective.
+// fastc_name_key preserves ASCII letters and digits and hex-escapes every
+// other UTF-8 byte. Escaping underscores too makes the result injective while
+// keeping ordinary type and function names much shorter than full hex.
 fn fastc_name_key(text string) string {
 	hex_digits := '0123456789abcdef'
-	mut encoded := strings.new_builder(text.len * 2)
+	mut encoded := strings.new_builder(text.len + 8)
 	for value in text.bytes() {
-		encoded.write_u8(hex_digits[value >> 4])
-		encoded.write_u8(hex_digits[value & 0x0f])
+		if (value >= `a` && value <= `z`) || (value >= `A` && value <= `Z`)
+			|| (value >= `0` && value <= `9`) {
+			encoded.write_u8(value)
+		} else {
+			encoded.write_u8(`_`)
+			encoded.write_u8(hex_digits[value >> 4])
+			encoded.write_u8(hex_digits[value & 0x0f])
+		}
 	}
 	return encoded.str()
 }
@@ -30,12 +37,11 @@ fn fastc_thread_type_name(value_type string) string {
 	if value_type in ['', 'void'] {
 		return '${fastc_thread_type_prefix}void'
 	}
-	sanitized := value_type.replace('*', '_ptr').replace(' ', '_').replace('.', '__')
-	return '${fastc_thread_type_prefix}k${fastc_name_key(value_type)}_${sanitized}'
+	return '${fastc_thread_type_prefix}k${fastc_name_key(value_type)}'
 }
 
 fn fastc_thread_wait_name(thread_type string) string {
-	return '__v_fastc_thread_wait_${thread_type.all_after(fastc_thread_type_prefix)}'
+	return '__vf_thread_wait_${thread_type.all_after(fastc_thread_type_prefix)}'
 }
 
 // read_spawn_expression parses `spawn callee(arguments)` eagerly at an
@@ -110,8 +116,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 			} else {
 				receiver.source
 			}
-			method_target = fastc_method_c_name(method_signature.module_name, expected_receiver,
-				method_name)
+			method_target = g.c_function_name_or(method_key, fastc_method_c_name(method_signature.module_name, expected_receiver, method_name))
 			function_key = method_key
 			callee = method_name
 		} else {
@@ -272,9 +277,8 @@ fn (mut g Parser) read_spawn_expression() !string {
 		signature.return_type
 	}
 	thread_type := g.fastc_unclaimed_generated_name(fastc_thread_type_name(value_type))
-	start_name := g.fastc_unclaimed_generated_name(fastc_spawn_start_name(function_key))
-	g.register_spawn_helpers(function_key, thread_type, value_type, signature.parameter_types,
-		start_name, method_target)
+	start_name := g.fastc_unclaimed_generated_name('__vf_spawn_start_${g.fastc_spawn_target_stem(function_key)}')
+	g.register_spawn_helpers(function_key, thread_type, value_type, signature.parameter_types, start_name, method_target)
 	g.last_expression = []FastcExpressionToken{}
 	g.last_expression_type = thread_type
 	g.last_multi_return_types = []string{}
@@ -282,19 +286,25 @@ fn (mut g Parser) read_spawn_expression() !string {
 }
 
 fn fastc_spawn_start_name(function_key string) string {
-	return '__v_fastc_spawn_start_${fastc_spawn_target_stem(function_key)}'
+	return '__vf_spawn_start_${fastc_spawn_target_stem(function_key)}'
 }
 
-// fastc_spawn_target_stem puts the injective target key before the readable C
-// name. A collision suffix on one target therefore cannot equal another
-// target's natural generated name, and parallel file parsers choose alike.
+// fastc_spawn_target_stem uses an injective target key, so a collision suffix
+// on one target cannot equal another target's natural generated name and
+// parallel file parsers choose alike.
 fn fastc_spawn_target_stem(function_key string) string {
-	readable := fastc_c_identifier(fastc_c_function_name_for_key(function_key))
-	return 'k${fastc_name_key(function_key)}_${readable}'
+	return 'k${fastc_name_key(function_key)}'
+}
+
+fn (g &Parser) fastc_spawn_target_stem(function_key string) string {
+	if compact_name := g.function_c_names[function_key] {
+		return compact_name
+	}
+	return fastc_spawn_target_stem(function_key)
 }
 
 // fastc_unclaimed_generated_name screens a deterministic generated name
-// against the program's collected `__v_fastc_`-prefixed function and global C
+// against the program's collected `__vf_`-prefixed function and global C
 // names and its declared type spellings, suffixing until free. Both inputs
 // are frozen program-wide, so every file resolves the same name.
 fn (g &Parser) fastc_unclaimed_generated_name(base string) string {
@@ -367,9 +377,9 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 	} else {
 		g.c_function_name_for_key(function_key)
 	}
-	target_stem := fastc_spawn_target_stem(function_key)
-	args_struct := g.fastc_unclaimed_generated_name('__v_fastc_spawn_args_${target_stem}')
-	run_name := g.fastc_unclaimed_generated_name('__v_fastc_spawn_run_${target_stem}')
+	target_stem := g.fastc_spawn_target_stem(function_key)
+	args_struct := g.fastc_unclaimed_generated_name('__vf_spawn_args_${target_stem}')
+	run_name := g.fastc_unclaimed_generated_name('__vf_spawn_run_${target_stem}')
 	mut fields := ''
 	if value_type != '' {
 		fields += '\t${value_type} result;\n'
