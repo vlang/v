@@ -1010,7 +1010,8 @@ fn test_cache_native_input_language_detects_implicit_objective_c_sources() {
 	os.write_file(objective_c_header, '@interface V3CacheImplementation\n@end\n')!
 	os.write_file(plain_header, 'int plain_declaration(void);\n')!
 	mut prefs := pref.new_preferences()
-	prefs.target = pref.host_target()
+	prefs.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	linux := pref.target_from('linux', 'amd64') or { panic(err) }
 	assert cache_native_input_path_needs_objective_c(objective_c_source, []string{}, false,
 		prefs.target)
 	assert cache_native_input_path_needs_objective_c(objective_c_header, []string{}, false,
@@ -1018,14 +1019,16 @@ fn test_cache_native_input_language_detects_implicit_objective_c_sources() {
 	assert !cache_native_input_path_needs_objective_c(plain_header, []string{}, false, prefs.target)
 	for include, expected in {
 		'"implementation.m"': true
-		'"implementation.h"': false
-		'"plain.h"':          false
+		'"implementation.h"': true
+		'"plain.h"':          true
 	} {
 		source := os.join_path(dir, 'sample_${expected}_${include.len}.v')
 		os.write_file(source, 'module sample\n#include ${include}\n')!
 		mut p := parser.Parser.new(prefs)
 		a := p.parse_file(source)
-		assert cache_native_inputs_need_objective_c(a, '', []string{}, false, prefs.target) == expected
+		assert cache_native_inputs_need_objective_c(a, '', []string{}, false, 'clang', prefs.target) == expected
+		linux_expected := include == '"implementation.m"'
+		assert cache_native_inputs_need_objective_c(a, '', []string{}, false, 'clang', linux) == linux_expected
 	}
 }
 
@@ -1059,44 +1062,54 @@ fn test_cache_native_input_language_reports_source_language() {
 	os.write_file(mm_program, 'module sample\n#include "impl.mm"\n')!
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(mm_program)
-	assert cache_native_inputs_language(a, '', []string{}, false, prefs.target) == 'objective-c++'
+	assert cache_native_inputs_language(a, '', []string{}, false, 'clang', prefs.target) == 'objective-c++'
 }
 
-// Header directives are left to the real preprocessor and do not select the
-// generated translation unit's language. Only included native source files do.
-fn test_cache_native_inputs_language_ignores_headers() {
+// Darwin header directives select Objective-C without opening the headers, while
+// other targets keep using C. This keeps the cache probe and final compile aligned.
+fn test_cache_native_inputs_language_uses_objective_c_for_darwin_headers() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_native_language_header_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	mut prefs := pref.new_preferences()
-	prefs.target = pref.host_target()
+	mut macos_prefs := pref.new_preferences()
+	macos_prefs.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	ios := pref.target_from('ios', 'arm64') or { panic(err) }
+	linux := pref.target_from('linux', 'amd64') or { panic(err) }
 
 	objc_dir := os.join_path(dir, 'objc_mod')
 	os.mkdir_all(objc_dir) or { panic(err) }
 	os.write_file(os.join_path(objc_dir, 'shared.h'), '@interface V3HeaderBranch\n@end\n')!
 	objc_program := os.join_path(objc_dir, 'prog.v')
 	os.write_file(objc_program, 'module objc_mod\n#include "shared.h"\n')!
-	mut p1 := parser.Parser.new(prefs)
+	mut p1 := parser.Parser.new(macos_prefs)
 	a1 := p1.parse_file(objc_program)
-	assert cache_native_inputs_language(a1, '', []string{}, false, prefs.target) == 'c'
+	assert cache_native_inputs_language(a1, '', []string{}, false, 'clang', macos_prefs.target) == 'objective-c'
+	assert cache_native_inputs_language(a1, '', []string{}, false, 'clang', ios) == 'objective-c'
+	assert cache_native_inputs_language(a1, '', []string{}, false, 'tinyc', macos_prefs.target) == 'c'
+	assert cache_native_inputs_language(a1, '', []string{}, false, 'clang', linux) == 'c'
 
-	// A plain header in the same shape stays c.
+	// The choice is based only on the directive and target, not header contents.
 	plain_dir := os.join_path(dir, 'plain_mod')
 	os.mkdir_all(plain_dir) or { panic(err) }
 	os.write_file(os.join_path(plain_dir, 'shared.h'), 'int plain_decl(void);\n')!
 	plain_program := os.join_path(plain_dir, 'prog.v')
 	os.write_file(plain_program, 'module plain_mod\n#include "shared.h"\n')!
-	mut p2 := parser.Parser.new(prefs)
+	mut p2 := parser.Parser.new(macos_prefs)
 	a2 := p2.parse_file(plain_program)
-	assert cache_native_inputs_language(a2, '', []string{}, false, prefs.target) == 'c'
+	assert cache_native_inputs_language(a2, '', []string{}, false, 'clang', macos_prefs.target) == 'objective-c'
+	assert cache_native_inputs_language(a2, '', []string{}, false, 'clang', linux) == 'c'
 
-	// Multiple same-named headers remain ignored regardless of their contents.
-	mut p3 := parser.Parser.new(prefs)
-	a3 := p3.parse_files([plain_program, objc_program])
-	assert cache_native_inputs_language(a3, '', []string{}, false, prefs.target) == 'c'
+	// Missing pre/postinclude headers prove the language choice does not read them.
+	placed_program := os.join_path(dir, 'placed.v')
+	os.write_file(placed_program,
+		'module placed\n#preinclude "missing_early.h"\n#postinclude <missing_late.h>\n')!
+	mut p3 := parser.Parser.new(macos_prefs)
+	a3 := p3.parse_file(placed_program)
+	assert cache_native_inputs_language(a3, '', []string{}, false, 'clang', macos_prefs.target) == 'objective-c'
+	assert cache_native_inputs_language(a3, '', []string{}, false, 'clang', linux) == 'c'
 }
 
 fn test_cache_input_scan_rejects_ambiguous_include_macro_literal() {

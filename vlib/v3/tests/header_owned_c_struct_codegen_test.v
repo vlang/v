@@ -131,3 +131,36 @@ fn main() {
 	assert define > first_include, generated
 	assert generated[define..].contains('#include "library.h"'), generated
 }
+
+fn test_macos_header_only_objective_c_uses_objective_c_translation_unit() {
+	$if macos {
+		root := os.join_path(os.vtmp_dir(), 'v3_header_only_objective_c_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'objective_c_api.h'), '#ifndef __OBJC__
+#error this header requires an Objective-C translation unit
+#endif
+@interface V3HeaderOnlyObject
+@end
+')!
+		os.write_file(os.join_path(root, 'main.v'), 'module main
+
+#flag -I @DIR
+#include "objective_c_api.h"
+
+fn main() {
+	println(42)
+}
+')!
+		v3_bin := header_owned_build_v3()
+		out := os.join_path(root, 'out')
+		compile := os.execute('${os.quoted_path(v3_bin)} -new-compiler -nocache --no-parallel -cc clang ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+		assert compile.exit_code == 0, compile.output
+		run := os.execute(os.quoted_path(out))
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '42', run.output
+	}
+}
