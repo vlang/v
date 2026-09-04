@@ -17068,6 +17068,16 @@ fn (tc &TypeChecker) generic_struct_method_alias_target(type_name string) string
 }
 
 fn (tc &TypeChecker) generic_receiver_method_pattern_match(base string, actual_args []string, method string) ?GenericReceiverMethodPatternMatch {
+	cache_key := '${tc.cur_file}\x00${tc.cur_module}\x00${tc.fn_context.generic_params.join(',')}\x00${base}\x00${actual_args.join(',')}\x00${method}'
+	if !isnil(tc.type_cache) {
+		cache := tc.type_cache
+		if matched := cache.recv_pattern_entries[cache_key] {
+			return matched
+		}
+		if cache.recv_pattern_misses[cache_key] {
+			return none
+		}
+	}
 	mut best := GenericReceiverMethodPatternMatch{}
 	mut found := false
 	for method_spelling in [method, '@${method}'] {
@@ -17117,7 +17127,15 @@ fn (tc &TypeChecker) generic_receiver_method_pattern_match(base string, actual_a
 		}
 	}
 	if !found {
+		if !isnil(tc.type_cache) {
+			mut cache := tc.type_cache
+			cache.recv_pattern_misses[cache_key] = true
+		}
 		return none
+	}
+	if !isnil(tc.type_cache) {
+		mut cache := tc.type_cache
+		cache.recv_pattern_entries[cache_key] = best
 	}
 	return best
 }

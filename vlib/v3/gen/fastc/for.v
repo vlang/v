@@ -157,7 +157,7 @@ fn (mut g Parser) parse_for() !bool {
 					g.write_line('${map_value_type} ${fastc_c_identifier(value_name)} = ((${map_value_type} *)${values_name}.data)[${index_name}];')
 					g.locals[value_name] = FastcLocal{
 						is_mut: value_is_mut
-						typ:    map_value_type
+						typ: map_value_type
 					}
 				}
 				_ = g.parse_loop_block_body()!
@@ -180,9 +180,7 @@ fn (mut g Parser) parse_for() !bool {
 				''
 			}
 			is_fixed_array := fixed_length != ''
-			is_raw_fixed_array := is_fixed_array && (start_expression.len > 1
-				|| (start_expression.len == 1
-				&& fastc_global_key(g.module_name, start_expression[0].lit) in g.globals))
+			is_raw_fixed_array := is_fixed_array && (start_expression.len > 1 || (start_expression.len == 1 && fastc_global_key(g.module_name, start_expression[0].lit) in g.globals))
 			g.next()
 			collection_name := g.temporary_name('collection')
 			is_ordinary_string := !g.selfhost && collection_layout_type == 'string'
@@ -229,21 +227,24 @@ fn (mut g Parser) parse_for() !bool {
 			actual_value_name := if value_name == '' { name } else { value_name }
 			if actual_value_name != '_' {
 				c_value_name := fastc_c_identifier(actual_value_name)
-				if item_is_mut {
+				// `for i, mut x in arr` makes the value variable a mutable reference to the
+				// element exactly like `for mut x in arr`; the `mut` is just carried on the
+				// second binding (`value_is_mut`) instead of the first.
+				if item_is_mut || value_is_mut {
 					if element_type.ends_with('*') {
 						// Pointer elements are already references to mutable values. Taking the
 						// array slot's address here would incorrectly bind `x` as `&&T`.
 						g.write_line('${element_type} ${c_value_name} = ((${element_type} *)${collection_data})[${index_name}];')
 						g.locals[actual_value_name] = FastcLocal{
 							is_mut: true
-							typ:    element_type
+							typ: element_type
 						}
 					} else {
 						g.write_line('${element_type} *${c_value_name} = &(((${element_type} *)${collection_data})[${index_name}]);')
 						g.locals[actual_value_name] = FastcLocal{
-							is_mut:       true
+							is_mut: true
 							is_reference: true
-							typ:          element_type + '*'
+							typ: element_type + '*'
 						}
 					}
 				} else if is_ordinary_string {
@@ -251,8 +252,7 @@ fn (mut g Parser) parse_for() !bool {
 					g.locals[actual_value_name] = FastcLocal{
 						typ: 'u8'
 					}
-				} else if !is_fixed_array && collection_layout_type.ends_with('*')
-					&& collection_layout_type.trim_right('*') != 'string' {
+				} else if !is_fixed_array && collection_layout_type.ends_with('*') && collection_layout_type.trim_right('*') != 'string' {
 					g.write_line('${element_type} *${c_value_name} = &(((${element_type} *)${collection_data})[${index_name}]);')
 					g.locals[actual_value_name] = FastcLocal{
 						typ: element_type + '*'
@@ -298,7 +298,7 @@ fn (mut g Parser) parse_for() !bool {
 			if is_declaration {
 				g.locals[name] = FastcLocal{
 					is_mut: true
-					typ:    initial_type
+					typ: initial_type
 				}
 			}
 			condition := g.read_expression([token.Token.semicolon])!
@@ -322,7 +322,11 @@ fn (mut g Parser) parse_for() !bool {
 		}
 		g.validate_expression_name(name, .unknown)!
 		condition := g.read_expression_with_prefix(name, [token.Token.lcbr])!
+		condition_tokens := g.last_expression.clone()
 		g.expect(.lcbr)!
+		if g.write_condition_loop(condition, condition_tokens)! {
+			return false
+		}
 		g.write_line('while (${condition}) {')
 		g.indent++
 		_ = g.parse_loop_block_body()!
@@ -331,7 +335,11 @@ fn (mut g Parser) parse_for() !bool {
 		return false
 	}
 	condition := g.read_expression([token.Token.lcbr])!
+	condition_tokens := g.last_expression.clone()
 	g.expect(.lcbr)!
+	if g.write_condition_loop(condition, condition_tokens)! {
+		return false
+	}
 	g.write_line('while (${condition}) {')
 	g.indent++
 	_ = g.parse_loop_block_body()!
@@ -340,13 +348,71 @@ fn (mut g Parser) parse_for() !bool {
 	return false
 }
 
+// write_condition_loop emits a `for <cond> { … }` loop whose condition narrows a boxed member
+// (`for x.f is T { … x.f.field … }`), keeping the smart-cast live through the body exactly as
+// an `if` does. Because the condition is re-checked each iteration (its tag test reads a
+// per-iteration temp), the loop is emitted as `while (1) { <boxed temps>; if (!cond) break;
+// <member ptrs>; body }`. Returns false (emitting nothing) when the condition has no member
+// smart-cast, so the caller falls back to a plain `while (cond)`.
+fn (mut g Parser) write_condition_loop(condition string, condition_tokens []FastcExpressionToken) !bool {
+	if !g.selfhost {
+		return false
+	}
+	plans, rewritten_condition := g.detect_member_smartcasts(condition_tokens, condition)
+	if plans.len == 0 {
+		return false
+	}
+	loop_condition := if rewritten_condition != '' { rewritten_condition } else { condition }
+	g.write_line('while (1) {')
+	g.indent++
+	for plan in plans {
+		boxed_zero := if plan.boxed_type.ends_with('*') {
+			'NULL'
+		} else {
+			'(${plan.boxed_type}){0}'
+		}
+		g.write_line('${plan.boxed_type} ${plan.boxed_tmp} = ${boxed_zero};')
+	}
+	g.write_line('if (!(${loop_condition})) { break; }')
+	mut previous_member_smartcasts := map[string]FastcMemberSmartcast{}
+	mut had_member_smartcasts := map[string]bool{}
+	for plan in plans {
+		plan_access := if plan.boxed_type.ends_with('*') { '->' } else { '.' }
+		g.write_line('${plan.type_c} *${plan.member_tmp} = (${plan.type_c} *)${plan.boxed_tmp}${plan_access}_object;')
+		if plan.path !in previous_member_smartcasts {
+			had_member_smartcasts[plan.path] = plan.path in g.member_smartcasts
+			previous_member_smartcasts[plan.path] = g.member_smartcasts[plan.path] or {
+				FastcMemberSmartcast{}
+			}
+		}
+		g.member_smartcasts[plan.path] = FastcMemberSmartcast{
+			typ: plan.type_c + '*'
+			source: plan.member_tmp
+		}
+	}
+	_ = g.parse_loop_block_body()!
+	for path, present in had_member_smartcasts {
+		if present {
+			g.member_smartcasts[path] = previous_member_smartcasts[path]
+		} else {
+			g.member_smartcasts.delete(path)
+		}
+	}
+	g.indent--
+	g.write_line('}')
+	return true
+}
+
 fn (g &Parser) mutable_collection_expression(tokens []FastcExpressionToken) bool {
 	for item in tokens {
 		if item.tok != .name {
 			continue
 		}
 		if local := g.locals[item.lit] {
-			return local.is_mut || (item.unsafe_depth > 0 && fastc_is_pointer_type(local.typ))
+			// An `unsafe { … }` collection is the programmer's explicit assertion that
+			// mutable iteration is intended (`for mut f in unsafe { s.fields }`); the
+			// array's data is shared regardless, so the mutation reaches the source.
+			return local.is_mut || item.unsafe_depth > 0
 		}
 		global_key := fastc_global_key(g.module_name, item.lit)
 		return item.unsafe_depth > 0 && global_key in g.globals

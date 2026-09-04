@@ -168,7 +168,7 @@ jobs:
           set -euo pipefail
 
           source='vlib/x/multiwindow/native_operation_proof_test.v'
-          expected_source_sha256='56931b74007d11de80300c16979d0b8ae30345d1827aa64ffe1c7748d5bdfb4b'
+          expected_source_sha256='e483121f01365b178f93d1c8e8f5f0fd181479a18193b0438be5bcde81cae1b8'
           if [[ "${VFLAGS:-}" != '-cc clang' ]]; then
             echo "native operation V1 compatibility gate VFLAGS mismatch" >&2
             exit 1

@@ -94,7 +94,7 @@ fn test_fmt_checks_accept_legacy_formatted_source() {
 
 	format_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(source_path)}')
 	assert format_res.exit_code == 0, format_res.output
-	assert format_res.output == '// Header\nmodule main\n', format_res.output
+	assert format_res.output == source, format_res.output
 
 	for check_args in ['-verify -inprocess', '-verify', '-c'] {
 		res :=

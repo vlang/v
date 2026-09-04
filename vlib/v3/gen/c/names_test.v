@@ -201,7 +201,7 @@ fn test_voidptr_method_value_arg_does_not_panic_for_alias_to_voidptr() {
 	g.a = &a
 	g.tc = &tc
 	alias_to_voidptr := types.Type(types.Alias{
-		name:      'Data'
+		name: 'Data'
 		base_type: types.Type(types.Pointer{
 			base_type: types.Type(types.void_)
 		})
@@ -218,8 +218,8 @@ fn test_same_named_user_context_does_not_route_to_embedded_framework_context() {
 	tc.cur_module = 'veb'
 	tc.structs['main.Context'] = [
 		types.StructField{
-			name:     'veb.Context'
-			typ:      types.Type(types.Struct{
+			name: 'veb.Context'
+			typ: types.Type(types.Struct{
 				name: 'veb.Context'
 			})
 			is_embed: true
@@ -234,8 +234,7 @@ fn test_same_named_user_context_does_not_route_to_embedded_framework_context() {
 	})
 	assert g.embedded_receiver_path_for_expected(base, expected) == none
 	assert g.emitted_method_belongs_to_receiver(base, 'before_request', 'Context__before_request')
-	assert !g.emitted_method_belongs_to_receiver(base, 'before_request',
-		'veb__Context__before_request')
+	assert !g.emitted_method_belongs_to_receiver(base, 'before_request', 'veb__Context__before_request')
 }
 
 fn test_array_receiver_method_is_not_reselected_as_generic() {
@@ -247,12 +246,11 @@ fn test_array_receiver_method_is_not_reselected_as_generic() {
 	g.generic_method_candidates[generic_method_candidate_key('jsonrpc', 'encode_batch')] = [
 		GenericMethodCandidate{
 			name: 'jsonrpc.[]Request.encode_batch'
-			ret:  types.Type(types.string_)
+			ret: types.Type(types.string_)
 		},
 	]
 
-	assert g.specialized_generic_method_name_for_call_with_arg_count(flat.empty_node,
-		'jsonrpc.[]Response.encode_batch', -1) == none
+	assert g.specialized_generic_method_name_for_call_with_arg_count(flat.empty_node, 'jsonrpc.[]Response.encode_batch', -1) == none
 }
 
 fn test_context_lookup_cache_tracks_source_file_imports() {
@@ -292,10 +290,10 @@ fn test_cgen_typeof_display_canonicalizes_fixed_array_generic_args() {
 	assert typeof_display_type_name('Box[int][3]') == '[3]Box[int]'
 	fixed_maps := types.Type(types.ArrayFixed{
 		elem_type: types.Type(types.Map{
-			key_type:   types.Type(types.String{})
+			key_type: types.Type(types.String{})
 			value_type: types.Type(types.int_)
 		})
-		len:       3
+		len: 3
 	})
 	assert typeof_display_resolved_type_name(fixed_maps) == '[3]map[string]int'
 }
@@ -335,11 +333,11 @@ fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
 	g.tc = &tc
 	g.used_fns = &used
 	assert g.should_emit_fn_node_in_module_known(flat.Node{
-		kind:  .fn_decl
+		kind: .fn_decl
 		value: 'FlatGen.sum_type_index'
 	}, 'c', 'interface.v', 'c__FlatGen__sum_type_index', false)
 	assert !g.should_emit_fn_node_in_module_known(flat.Node{
-		kind:  .fn_decl
+		kind: .fn_decl
 		value: 'Transformer.sum_type_index'
 	}, 'transform', 'sum.v', 'transform__Transformer__sum_type_index', false)
 }
@@ -409,6 +407,17 @@ fn test_system_libc_preamble_identifies_glibc_before_manual_stdio_declarations()
 }
 
 fn test_preserved_system_include_declarations_are_header_specific() {
+	assert c_preserved_system_include_skips_tree_scan('<Cocoa/Cocoa.h>')
+	assert c_preserved_system_include_skips_tree_scan('<Foundation/Foundation.h>')
+	assert !c_preserved_system_include_skips_tree_scan('<stdio.h>')
+	assert c_header_owned_system_include_skips_tree_scan('<Metal/Metal.h>')
+	assert c_header_owned_system_include_skips_tree_scan(' <QuartzCore/CAMetalLayer.h> ')
+	assert c_header_owned_system_include_skips_tree_scan('<mbedtls/ssl.h>')
+	assert 'mbedtls_ssl_context' in c_preserved_system_include_typedef_names('<mbedtls/ssl.h>')
+	assert c_header_owned_uses_single_scan('/vroot/thirdparty/sokol/sokol_app.h', '/vroot')
+	assert c_header_owned_uses_single_scan('/vroot/thirdparty/sokol/sokol_gfx.h', '/vroot')
+	assert c_header_owned_uses_single_scan('/vroot/thirdparty/stb_image/stb_image.h', '/vroot')
+	assert !c_header_owned_uses_single_scan('/project/sokol_app.h', '/vroot')
 	assert c_preserved_system_include_declared_fns('<stdio.h>').len == 0
 	assert 'sqlite3_bind_text' in c_preserved_system_include_declared_fns('"sqlite3.h"')
 	assert 'sqlite3_column_name' in c_preserved_system_include_declared_fns('<sqlite3.h>')
@@ -422,8 +431,29 @@ fn test_preserved_system_include_declarations_are_header_specific() {
 	assert 'OPENSSL_free' in c_preserved_system_include_declared_fns('<openssl/ec.h>')
 	assert c_preserved_system_include_declared_fns('<objc/message.h>') == [
 		'objc_msgSend',
+		'objc_msgSendSuper',
 	]
 	assert c_preserved_system_include_struct_names('<poll.h>') == ['pollfd']
+}
+
+fn test_compiler_header_to_preserve_is_anchored_to_vroot() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserve_header_${os.getpid()}')
+	header_dir := os.join_path(root, 'thirdparty', 'sokol')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(header_dir)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header_path := os.join_path(header_dir, 'sokol_app.h')
+	os.write_file(header_path, 'typedef int sapp_test;\n')!
+	resolved := c_compiler_header_to_preserve('"sokol_app.h"', root, '', [header_dir]) or {
+		assert false
+		return
+	}
+	assert os.real_path(resolved) == os.real_path(header_path)
+	assert c_compiler_header_to_preserve('"sokol_app.h"', '/different/vroot', '', [
+		header_dir,
+	]) == none
 }
 
 fn test_unresolved_openssl_headers_are_preserved() {
@@ -561,8 +591,7 @@ fn test_objective_c_header_detection() {
 	], false, pref.host_target())
 	linux := pref.target_from('linux', 'amd64') or { panic(err) }
 	private_platform_header := '#if defined(__APPLE__)\n#define _LIB_MACOS 1\n#elif defined(__linux__)\n#define _LIB_LINUX 1\n#endif\n#if defined(_LIB_MACOS)\n@interface MacOnly\n@end\n#endif\n'
-	assert !c_header_text_needs_objective_c_for_target(private_platform_header, []string{}, false,
-		linux)
+	assert !c_header_text_needs_objective_c_for_target(private_platform_header, []string{}, false, linux)
 	assert c_header_text_needs_objective_c_for_target(private_platform_header, [
 		'-D_LIB_MACOS=1',
 	], false, linux)
@@ -679,6 +708,12 @@ fn test_header_owned_compiler_state_includes_clang_guards() {
 	state := g.header_owned_initial_macro_state()
 	assert state.defined['__clang__']
 	assert state.defined['__GNUC__']
+	assert g.header_owned_initial_macro_key.len > 0
+	g.header_owned_initial_macros.defined['__v3_cached_macro_probe__'] = true
+	mut cached := g.header_owned_initial_macro_state()
+	assert cached.defined['__v3_cached_macro_probe__']
+	cached.defined.delete('__v3_cached_macro_probe__')
+	assert g.header_owned_initial_macros.defined['__v3_cached_macro_probe__']
 }
 
 fn test_header_owned_compiler_macro_probe_uses_effective_compile_context() {
@@ -942,8 +977,7 @@ fn test_header_owned_scan_expands_pasting_macros_inside_typedef_replacements() {
 		macro_values: map[string]string{}
 		function_macro_values: map[string]string{}
 	}
-	scan := c_header_definitely_active_scan('#define CAT(x) x##_t\n#define DECL(name) typedef struct Impl CAT(name);\nDECL(Alias)\n',
-		state, false, pref.Target{
+	scan := c_header_definitely_active_scan('#define CAT(x) x##_t\n#define DECL(name) typedef struct Impl CAT(name);\nDECL(Alias)\n', state, false, pref.Target{
 		os: 'linux'
 	})
 	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias_t;'
@@ -964,8 +998,7 @@ fn test_header_owned_scan_evaluates_logical_object_macro_conditions() {
 		}
 		function_macro_values: map[string]string{}
 	}
-	scan := c_header_definitely_active_scan('#define SUPPORTED (__GNUC__ >= 4 && __GNUC_MINOR__ >= 1)\n#if SUPPORTED\ntypedef struct Active SupportedAlias;\n#else\ntypedef struct Inactive InactiveAlias;\n#endif\n',
-		state, false, pref.Target{
+	scan := c_header_definitely_active_scan('#define SUPPORTED (__GNUC__ >= 4 && __GNUC_MINOR__ >= 1)\n#if SUPPORTED\ntypedef struct Active SupportedAlias;\n#else\ntypedef struct Inactive InactiveAlias;\n#endif\n', state, false, pref.Target{
 		os: 'linux'
 	})
 	assert c_header_owned_typedef_aliases(scan.text) == ['SupportedAlias'], scan.text
@@ -985,8 +1018,7 @@ fn test_header_owned_scan_evaluates_logical_or_object_macro_conditions() {
 		}
 		function_macro_values: map[string]string{}
 	}
-	scan := c_header_definitely_active_scan('#define SUPPORTED (__GNUC__ >= 4 || __GNUC_MINOR__ >= 5)\n#if SUPPORTED\ntypedef struct Active SupportedAlias;\n#else\ntypedef struct Inactive InactiveAlias;\n#endif\n',
-		state, false, pref.Target{
+	scan := c_header_definitely_active_scan('#define SUPPORTED (__GNUC__ >= 4 || __GNUC_MINOR__ >= 5)\n#if SUPPORTED\ntypedef struct Active SupportedAlias;\n#else\ntypedef struct Inactive InactiveAlias;\n#endif\n', state, false, pref.Target{
 		os: 'linux'
 	})
 	assert c_header_owned_typedef_aliases(scan.text) == ['SupportedAlias'], scan.text
@@ -1000,8 +1032,7 @@ fn test_header_owned_scan_excludes_function_scoped_typedef_macro_invocations() {
 		macro_values: map[string]string{}
 		function_macro_values: map[string]string{}
 	}
-	scan := c_header_definitely_active_scan('#define DECLARE(name) typedef struct Impl name;\nvoid helper(void) {\nDECLARE(LocalAlias)\n}\nDECLARE(GlobalAlias)\n',
-		state, false, pref.Target{
+	scan := c_header_definitely_active_scan('#define DECLARE(name) typedef struct Impl name;\nvoid helper(void) {\nDECLARE(LocalAlias)\n}\nDECLARE(GlobalAlias)\n', state, false, pref.Target{
 		os: 'linux'
 	})
 	assert !scan.typedef_macro_expansions.contains('LocalAlias')
@@ -1050,8 +1081,7 @@ fn test_header_owned_scan_restores_pushed_macro_definition() {
 		macro_values: map[string]string{}
 		function_macro_values: map[string]string{}
 	}
-	scan := c_header_definitely_active_scan('#define SELECT 1\n#pragma push_macro("SELECT")\n#undef SELECT\n#pragma pop_macro("SELECT")\n#if SELECT\ntypedef struct Active RestoredAlias;\n#else\ntypedef struct Wrong WrongAlias;\n#endif\n',
-		state, false, pref.Target{
+	scan := c_header_definitely_active_scan('#define SELECT 1\n#pragma push_macro("SELECT")\n#undef SELECT\n#pragma pop_macro("SELECT")\n#if SELECT\ntypedef struct Active RestoredAlias;\n#else\ntypedef struct Wrong WrongAlias;\n#endif\n', state, false, pref.Target{
 		os: 'linux'
 	})
 	assert c_header_owned_typedef_aliases(scan.text) == ['RestoredAlias'], scan.text
@@ -1059,8 +1089,7 @@ fn test_header_owned_scan_restores_pushed_macro_definition() {
 
 fn test_header_owned_scan_resolves_compiler_feature_predicates() {
 	text := '#if __has_builtin(__builtin_expect)\ntypedef struct Builtin BuiltinAlias;\n#endif\n#if __has_feature(v3_missing_feature) || __has_extension(v3_missing_extension)\ntypedef struct Wrong WrongAlias;\n#endif\n'
-	values := c_header_compiler_feature_predicate_values('cc', []string{}, false, pref.Target{},
-		text)
+	values := c_header_compiler_feature_predicate_values('cc', []string{}, false, pref.Target{}, text)
 	assert values['__has_builtin(__builtin_expect)'] == 1
 	assert values['__has_feature(v3_missing_feature)'] == -1
 	assert values['__has_extension(v3_missing_extension)'] == -1
@@ -1087,8 +1116,7 @@ fn test_header_owned_feature_predicate_invocations_probe_macro_wrappers() {
 
 fn test_header_owned_scan_resolves_wrapped_feature_predicates() {
 	text := '#define HAS_BUILTIN(x) __has_builtin(x)\n#if HAS_BUILTIN(__builtin_expect)\ntypedef struct Builtin BuiltinAlias;\n#else\ntypedef struct Wrong WrongAlias;\n#endif\n'
-	values := c_header_compiler_feature_predicate_values('cc', []string{}, false, pref.Target{},
-		text)
+	values := c_header_compiler_feature_predicate_values('cc', []string{}, false, pref.Target{}, text)
 	assert values['__has_builtin(__builtin_expect)'] == 1
 	state := CHeaderMacroState{
 		defined: map[string]bool{}
@@ -1173,8 +1201,7 @@ fn test_header_owned_scan_resolves_msvc_version_guard() {
 		}
 		function_macro_values: map[string]string{}
 	}
-	scan := c_header_definitely_active_scan('#if _MSC_VER >= 1900\ntypedef struct Modern ModernAlias;\n#else\ntypedef struct Legacy LegacyAlias;\n#endif\n',
-		state, false, pref.Target{
+	scan := c_header_definitely_active_scan('#if _MSC_VER >= 1900\ntypedef struct Modern ModernAlias;\n#else\ntypedef struct Legacy LegacyAlias;\n#endif\n', state, false, pref.Target{
 		os: 'windows'
 	})
 	assert c_header_owned_typedef_aliases(scan.text) == ['ModernAlias'], scan.text

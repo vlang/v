@@ -259,9 +259,11 @@ static inline bool v_fastc_us_le(u64 a, i64 b) { return b >= 0 && a <= (u64)b; }
 // Keep source identifiers distinct from C keywords while preserving the same
 // spelling used by the conventional C generator.
 const fastc_c_reserved_identifiers = {
+	'array':    true
 	'asm':      true
 	'auto':     true
 	'break':    true
+	'map':      true
 	'case':     true
 	'char':     true
 	'const':    true
@@ -309,7 +311,7 @@ fn fastc_c_identifier(name string) string {
 	}
 	first := name[0]
 	// Bitset of the initial letters used by the reserved-identifier table (`a` is bit 0).
-	if first < `a` || first > `w` || (u32(8_259_967) & (u32(1) << (first - `a`))) == 0 {
+	if first < `a` || first > `w` || (u32(8_264_063) & (u32(1) << (first - `a`))) == 0 {
 		return name
 	}
 	return if name in fastc_c_reserved_identifiers {
@@ -331,6 +333,42 @@ typedef _Bool bool;
 #include <string.h>
 #ifndef _WIN32
 #include <pthread.h>
+#endif
+
+/* `C.__V_architecture` (pref.get_host_arch) resolves the host arch at C-compile time;
+ * its numeric values match pref.Arch (amd64=1, arm64=2, …). */
+#ifndef __V_architecture
+#define __V_architecture 0
+#if defined(__x86_64__) || defined(_M_AMD64)
+#undef __V_architecture
+#define __V_architecture 1
+#endif
+#if defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
+#undef __V_architecture
+#define __V_architecture 2
+#endif
+#if defined(__arm__) || defined(_M_ARM)
+#undef __V_architecture
+#define __V_architecture 3
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+#undef __V_architecture
+#define __V_architecture 4
+#endif
+#if defined(__riscv) && __riscv_xlen == 32
+#undef __V_architecture
+#define __V_architecture 5
+#endif
+#if defined(__i386__) || defined(_M_IX86)
+#undef __V_architecture
+#define __V_architecture 6
+#endif
+#endif
+
+/* `C.V_COMMIT_HASH` (util.vhash) is normally injected by the build; keep the same
+ * placeholder the C backend uses when it is absent. */
+#ifndef V_COMMIT_HASH
+#define V_COMMIT_HASH "@@@"
 #endif
 
 typedef int8_t i8;
@@ -461,6 +499,20 @@ const c_selfhost_preamble_includes = r'#include <stdint.h>
 
 const c_selfhost_post_directives = r'#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP
 #define pthread_rwlockattr_setkind_np(a, b) (0)
+#endif
+#ifndef memory_order_relaxed
+#define memory_order_relaxed 0
+#define memory_order_acquire 2
+#define memory_order_release 3
+#define memory_order_acq_rel 4
+#define memory_order_seq_cst 5
+#endif
+#if defined(__TINYC__) && defined(__aarch64__)
+#undef atomic_thread_fence
+#undef __atomic_thread_fence
+extern void _V_atomic_thread_fence(int order);
+#define atomic_thread_fence(order) _V_atomic_thread_fence(order)
+#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)
 #endif
 
 '
@@ -647,6 +699,19 @@ static void builtin__array_sort(array *values) {
 	}
 }
 
+static array builtin__array_sorted(array *values) {
+	array result = *values;
+	if (values != NULL && values->len > 0) {
+		size_t bytes = (size_t)values->len * (size_t)values->element_size;
+		result.data = malloc(bytes);
+		if (result.data != NULL && values->data != NULL) memcpy(result.data, values->data, bytes);
+		result.offset = 0;
+		result.cap = values->len;
+	}
+	builtin__array_sort(&result);
+	return result;
+}
+
 '
 
 enum FastcDeclaredTypeKind {
@@ -667,6 +732,7 @@ struct FastcFunctionSignature {
 	last_parameter_is_params bool
 	is_public                bool
 	is_disabled              bool
+	is_c_extern              bool
 	module_name              string
 	path                     string
 }
@@ -712,6 +778,11 @@ struct FastcLocal {
 	is_mut       bool
 	is_reference bool
 	typ          string
+	// A smart-cast that narrows a local to a concrete variant may store the narrowed value
+	// in a uniquely named C temporary rather than shadowing the local's own C name, so a
+	// later `defer` body (rendered at function scope) still binds the original name. When set,
+	// the local's spelling resolves to this name instead of `fastc_c_identifier(name)`.
+	c_name string
 	// For a variable declared with an option type (`b ?bool`), the C `typ` is the
 	// type-erased `Option`; this keeps the wrapped value type so an `if x := b`
 	// guard on the bare variable can unwrap it.
@@ -724,12 +795,30 @@ struct FastcLocal {
 	// For a channel local (`ch chan T` / `ch := chan T{…}`), the C `typ` is the erased
 	// `chan`; this keeps the element C type so `<-ch` recovers the received value type.
 	chan_element_type string
+	// For a bare-local `is` smart-cast whose `typ` is the narrowed variant, this records the
+	// original boxed sum-type/interface type. A method defined on the whole sum type (`fn (e
+	// Expr) pos()`) is not on the variant, so it dispatches on the still-live boxed original.
+	smartcast_origin_type string
+	// C expression that still names the original boxed value while this local is narrowed.
+	// Mutable calls accepting the sum type must receive this storage, not the concrete payload
+	// pointer, because their ABI expects the sum-type tag/object wrapper.
+	smartcast_origin_source string
+	// For a bool local assigned a top-level `&&` chain of `is` tests (`ok := x is A && y is B`),
+	// the member smart-casts implied when the bool is true. A later `ok && x.field` then narrows
+	// `x`/`y` for the rest of that `&&` chain. Scoped with the local, so it never leaks between
+	// functions that reuse the bool's name.
+	bool_implications []FastcBoolImplication
 }
 
 struct FastcLocalScopeChange {
 	name         string
 	previous     FastcLocal
 	had_previous bool
+}
+
+struct FastcFunctionDeferBlock {
+	flag  string
+	lines []string
 }
 
 struct FastcExpressionToken {
@@ -768,9 +857,13 @@ struct FastcStructField {
 	is_skip              bool
 	is_function          bool
 	is_optional_function bool
-	module_name          string
-	path                 string
-	default_source       string
+	// Shared map fields keep pointer identity even though FastC currently erases locking.
+	// Without this, copying their containing struct detaches subsequent map header updates.
+	is_shared_pointer bool
+	module_name       string
+	path              string
+	imports           map[string]string
+	default_source    string
 mut:
 	default_value string
 	storage_path  []string
@@ -887,11 +980,18 @@ pub:
 // (the globals), with extern_texts holding those declarations.
 pub struct FastcUnitLayout {
 pub mut:
-	head_end       int
-	solo_end       int
-	unit_starts    []int
-	extern_indexes []int
-	extern_texts   []string
+	head_end           int
+	solo_end           int
+	unit_starts        []int
+	extern_indexes     []int
+	extern_texts       []string
+	prototype_start    int
+	prototype_end      int
+	prototype_texts    []string
+	unit_ref_starts    []int
+	unit_ref_ids       []int
+	solo_prototype_ids []int
+	tail_prototype_ids []int
 	// define_texts are the same pieces with `static` dropped, for the first
 	// unit: a static definition would not satisfy the other units' externs.
 	define_texts []string
@@ -1009,11 +1109,12 @@ struct FastcComptimeBlock {
 }
 
 struct FastcDeclarationAttribute {
-	tok        token.Token
-	is_enabled bool
-	is_flag    bool
-	is_params  bool
-	is_typedef bool
+	tok         token.Token
+	is_enabled  bool
+	is_flag     bool
+	is_params   bool
+	is_typedef  bool
+	is_c_extern bool
 }
 
 struct FastcEnumInfo {
@@ -1032,7 +1133,13 @@ struct FastcTypeDeclarations {
 	enum_helper_names []string
 	enum_helper_texts []string
 	alias_base_types  map[string]string
-	enum_field_types  map[string]string
+	// Return type (C spelling) declared by each `type Name = fn (...) Ret` alias,
+	// keyed by the alias C name. Lets a call through such a value infer its result.
+	fn_alias_return_types map[string]string
+	enum_field_types      map[string]string
+	// Value names declared by each enum, keyed by the enum's C name, in source
+	// order. Used to unroll `$for x in Enum.values { ... }`.
+	enum_field_names map[string][]string
 	// Declared C names of sum types (`type X = A | B`). They share the boxed
 	// `{void*_object; u32 _typ;}` layout with interfaces; construction boxes a
 	// variant and `match` dispatches on `_typ`.
@@ -1052,8 +1159,19 @@ struct FastcLoopBlockResult {
 // member cannot be shadowed under its qualified source spelling, so member-chain rendering
 // consults this table while the branch is active.
 struct FastcMemberSmartcast {
-	typ    string
-	source string
+	typ           string
+	source        string
+	variants      []string
+	tag_source    string
+	object_source string
+}
+
+// FastcBoolImplication records that a bool local (assigned a top-level `&&` chain of `is` tests,
+// `enum_operands := lhs is Enum && rhs is Enum`) implies a member smart-cast on `subject` whenever
+// the bool is true — so a later `enum_operands && lhs.field` narrows `lhs` for the rest of the `&&`.
+struct FastcBoolImplication {
+	subject   string
+	smartcast FastcMemberSmartcast
 }
 
 struct Parser {
@@ -1079,7 +1197,9 @@ struct Parser {
 	declared_kinds         map[string]FastcDeclaredTypeKind
 	enum_flags             map[string]bool
 	enum_field_types       map[string]string
+	enum_field_names       map[string][]string
 	alias_base_types       map[string]string
+	fn_alias_return_types  map[string]string
 	sum_types              map[string]bool
 	// Declared variants of each sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`.
 	// Lets an append distinguish push-many (`[]T << []T`) from boxing an array-valued
@@ -1151,21 +1271,26 @@ mut:
 	current_method_is_static bool
 	expected_expression_type string
 	capturing_defer          bool
+	// next_declaration_is_unsafe records a `@[unsafe]` attribute seen just before a
+	// top-level declaration, so a function so marked parses its body as unsafe.
+	next_declaration_is_unsafe bool
 	// While parsing an `or { ... }` block that yields a value, a trailing bare value
 	// expression is captured here (typed by `or_value_expected_type`) instead of being
 	// rejected as a value-only statement.
-	or_value_capture        bool
-	or_value_captured       string
-	or_value_expected_type  string
-	defer_depth             int
-	captured_defer_lines    []string
-	deferred_lines          []string
-	deferred_block_starts   []int
-	loop_defer_block_starts []int
-	loop_has_breaks         []bool
-	statement_reachable     bool
-	last_expression_type    string
-	last_expression         []FastcExpressionToken
+	or_value_capture            bool
+	or_value_captured           string
+	or_value_expected_type      string
+	defer_depth                 int
+	captured_defer_lines        []string
+	deferred_lines              []string
+	deferred_block_starts       []int
+	function_defer_blocks       []FastcFunctionDeferBlock
+	function_defer_declarations []string
+	loop_defer_block_starts     []int
+	loop_has_breaks             []bool
+	statement_reachable         bool
+	last_expression_type        string
+	last_expression             []FastcExpressionToken
 	// Conditional expressions have no flat token list after their branches are
 	// parsed. Preserve an Option payload type for their consuming declaration.
 	last_option_value_type  string
@@ -1202,6 +1327,12 @@ mut:
 	// Struct field lookups memoized per receiver type and field name (a field
 	// with an empty name records a miss); reset with the other memos.
 	field_memo map[string]map[string]FastcStructField
+	// The render and inference passes commonly ask for the same field several
+	// times in succession. Keep that entry outside the nested maps.
+	last_field_receiver string
+	last_field_name     string
+	last_field          FastcStructField
+	last_field_known    bool
 	// used_field_defaults records that a rendered struct field default was
 	// consulted (see fastc_note_field_defaults_use).
 	used_field_defaults bool
@@ -1337,7 +1468,9 @@ struct FastcFileGenContext {
 	declared_kinds            map[string]FastcDeclaredTypeKind
 	enum_flags                map[string]bool
 	enum_field_types          map[string]string
+	enum_field_names          map[string][]string
 	alias_base_types          map[string]string
+	fn_alias_return_types     map[string]string
 	sum_types                 map[string]bool
 	sum_type_variants         map[string]bool
 	struct_fields             map[string]map[string]string
@@ -1455,7 +1588,9 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		declared_kinds: ctx.declared_kinds
 		enum_flags: ctx.enum_flags
 		enum_field_types: ctx.enum_field_types
+		enum_field_names: ctx.enum_field_names
 		alias_base_types: ctx.alias_base_types
+		fn_alias_return_types: ctx.fn_alias_return_types
 		sum_types: ctx.sum_types
 		sum_type_variants: ctx.sum_type_variants
 		struct_fields: ctx.struct_fields
@@ -1651,16 +1786,45 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	for source_file in sources {
 		source_imports[source_file.path] = source_file.header.imports.clone()
 	}
+	if fastc_field_defaults_reference_constants(struct_field_info, constants) {
+		seed_ctx := FastcConstantGenContext{
+			prefs: unsafe { prefs }
+			declared_types: declared_types
+			declared_type_c_names: declared_type_c_names
+			declared_type_key_by_name: declared_type_key_by_name
+			fastc_prefixed_c_names: fastc_prefixed_c_names
+			has_c_functions: fastc_functions_declare_c(functions)
+			declared_kinds: declared_kinds
+			enum_flags: enum_flags
+			enum_field_types: enum_field_types
+			alias_base_types: type_output.alias_base_types
+			struct_fields: struct_fields
+			struct_field_info: struct_field_info
+			sum_types: type_output.sum_types
+			sum_type_variants: type_output.sum_type_variants
+			functions: functions
+			constants: constants
+			public_constants: public_constants
+			globals: globals
+			public_globals: public_globals
+		}
+		constant_candidates := fastc_constant_candidates(ordered_sources, constant_sources, constant_spans)
+		fastc_seed_constant_types(&seed_ctx, constant_candidates, mut constant_types)
+	}
 	// The struct field defaults render on a worker while the constants are
 	// pre-parsed; a constant file that consulted them is re-parsed after.
-	mut pending_defaults := fastc_start_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, type_output.sum_types)
-	constant_output := fastc_generate_constant_declarations(ordered_sources, constant_sources, constant_spans, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, mut pending_defaults, functions, constants, public_constants, globals, public_globals, mut constant_types)!
+	mut pending_defaults := fastc_start_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.enum_field_names, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, type_output.sum_types)
+	constant_output := fastc_generate_constant_declarations(ordered_sources, constant_sources, constant_spans, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, type_output.sum_types, type_output.sum_type_variants, mut pending_defaults, functions, constants, public_constants, globals, public_globals, mut constant_types)!
 	struct_field_info = constant_output.struct_field_info.clone()
 	timer.mark('constant_declarations')
 	for name, _ in constant_output.composite_types {
 		composite_types[name] = true
 	}
+	// The wider real-builtin ABI is covered on macOS. Linux keeps its headers
+	// until the matching pthread, signal, file-lock and Mach-independent types
+	// have been added to the glibc table too.
 	header_free := prefs.building_v
+		&& ('fastc_real_builtin' !in prefs.user_defines || prefs.target.os == 'macos')
 		&& fastc_c_abi_supported(prefs.target.os, prefs.target.arch, fastc_host_uses_glibc())
 	global_output := fastc_generate_global_declarations(ordered_sources, global_sources, prefs, header_free, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, constant_output.compile_time_values, public_constants, constant_types, globals, public_globals, mut global_types)!
 	timer.mark('global_declarations')
@@ -1727,7 +1891,9 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		declared_kinds: declared_kinds
 		enum_flags: enum_flags
 		enum_field_types: enum_field_types
+		enum_field_names: type_output.enum_field_names
 		alias_base_types: type_output.alias_base_types
+		fn_alias_return_types: type_output.fn_alias_return_types
 		sum_types: type_output.sum_types
 		sum_type_variants: type_output.sum_type_variants
 		struct_fields: struct_fields
@@ -1854,6 +2020,15 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	interface_dispatches := fastc_wait_interface_dispatches(mut pending_interface_dispatches)
 	timer.mark('wait_interface_dispatches')
+	// Fixed arrays that occur only in declarations or signatures are not seen by
+	// the expression renderer, so register their raw markers before emitting typedefs.
+	// Function signatures are present in the prototypes; fixed arrays reached while
+	// rendering function bodies are registered directly on the per-file parser.
+	fastc_collect_referenced_fixed_array_types(type_output.declarations_head, mut fixed_array_types)
+	fastc_collect_referenced_fixed_array_types(type_declarations, mut fixed_array_types)
+	for prototype_piece in prototype_pieces {
+		fastc_collect_referenced_fixed_array_types(prototype_piece, mut fixed_array_types)
+	}
 	fixed_array_declarations := fastc_generate_fixed_array_declarations(fixed_array_types)
 	preamble := if header_free {
 		c_selfhost_preamble.replace(c_selfhost_preamble_includes, fastc_c_abi_prelude(prefs.target.os, prefs.target.arch, ''))
@@ -1867,6 +2042,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut kept_body_ranges := hoisted_body.body_ranges.clone()
 	mut kept_conditional_ranges := hoisted_body.conditional_ranges.clone()
 	mut kept_proto_ranges := [0, proto_len]
+	mut solo_prototype_ids := []int{}
 	mut enum_helpers_len := 0
 	for helper_text in type_output.enum_helper_texts {
 		enum_helpers_len += helper_text.len
@@ -1908,6 +2084,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		if id := function_ids['main'] {
 			root_ids << id
 		}
+		solo_prototype_ids = root_ids.clone()
 		// The enum helpers join the walk as one more output placed after the
 		// bodies, so their unreachable pieces are dropped the same way.
 		mut helper_output := FastcFileGenOutput{}
@@ -1948,6 +2125,47 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		kept_helper_ranges = fastc_subtract_ranges(kept_helper_ranges, dead_helper_ranges)
 		timer.mark('prune')
 	}
+	mut prototype_texts := []string{}
+	mut unit_ref_starts := []int{}
+	mut unit_ref_ids := []int{}
+	mut tail_prototype_ids := []int{}
+	mut unindexed_prototypes := strings.new_builder(256)
+	if prune_unreachable {
+		prototype_texts = []string{len: function_ids.len}
+		unit_ref_starts = []int{cap: outputs.len + 1}
+		for oi, output in outputs {
+			unit_ref_starts << unit_ref_ids.len
+			unit_ref_ids << output.refs
+			tail_prototype_ids << output.root_refs
+			mut proto_cursor := 0
+			for fi, id in output.function_ids {
+				proto_start := output.proto_spans[2 * fi]
+				proto_end := output.proto_spans[2 * fi + 1]
+				if proto_cursor < proto_start {
+					// On-demand monomorphizations append declarations outside the
+					// ordinary function spans, so they remain shared by every unit.
+					unindexed_prototypes.write_string(output.prototypes[proto_cursor..proto_start])
+				}
+				if proto_end > proto_cursor {
+					proto_cursor = proto_end
+				}
+				if proto_start >= proto_end
+					|| !fastc_range_is_kept(kept_proto_ranges, output_proto_offsets[oi] + proto_start, output_proto_offsets[oi] + proto_end) {
+					continue
+				}
+				prototype := output.prototypes[proto_start..proto_end]
+				if id >= 0 {
+					prototype_texts[id] = prototype
+				} else {
+					unindexed_prototypes.write_string(prototype)
+				}
+			}
+			if proto_cursor < output.prototypes.len {
+				unindexed_prototypes.write_string(output.prototypes[proto_cursor..])
+			}
+		}
+		unit_ref_starts << unit_ref_ids.len
+	}
 	mut pieces := []string{cap: 64 + body_pieces.len * 3}
 	pieces << fastc_piece(preamble)
 	for header_path in inlined_header_paths {
@@ -1965,17 +2183,14 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	if prefs.building_v {
 		pieces << fastc_piece(c_selfhost_post_directives)
 	}
-	if spawn_typedefs.len > 0 && !header_free {
-		pieces << fastc_piece(c_spawn_runtime)
-		pieces << '\n'
-	}
-	pieces << fastc_piece(constant_output.macros)
-	pieces << fastc_piece(type_output.declarations_head)
-	pieces << fastc_piece(composite_typedefs)
-	pieces << fastc_piece(type_declarations)
-	pieces << late_composite_declarations.str()
-	pieces << fastc_piece(fixed_array_declarations)
 	if spawn_typedefs.len > 0 {
+		if !header_free {
+			pieces << fastc_piece(c_spawn_runtime)
+			pieces << '\n'
+		}
+		// A `thread` handle can appear as a struct field, so its typedef must precede the
+		// aggregate type declarations that embed it (and the `Array_`/typeid composites
+		// derived from it), not follow them.
 		mut thread_type_names := spawn_typedefs.keys()
 		thread_type_names.sort()
 		for thread_type_name in thread_type_names {
@@ -1984,6 +2199,13 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 		pieces << '\n'
 	}
+	pieces << fastc_piece(constant_output.macros)
+	pieces << fastc_piece(type_output.declarations_head)
+	pieces << fastc_piece(composite_typedefs)
+	pieces << fastc_piece(type_declarations)
+	pieces << late_composite_declarations.str()
+	pieces << fastc_piece(fixed_array_declarations)
+	pieces << fastc_c_extern_prototypes(functions)
 	mut extern_indexes := []int{}
 	mut extern_texts := []string{}
 	mut define_texts := []string{}
@@ -1995,7 +2217,33 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	extern_texts << fastc_extern_declarations(global_output.declarations, true)
 	define_texts << fastc_extern_declarations(global_output.declarations, false)
 	pieces << fastc_piece(global_output.declarations)
+	// Helper implementations are emitted once in the first translation unit.
+	// Keep only their declarations in the shared head parsed by every TinyCC job.
+	runtime_definitions := if prefs.building_v {
+		c_selfhost_runtime.replace('static ', '')
+	} else {
+		''
+	}
+	pieces << fastc_definition_prototypes(runtime_definitions)
+	for helper_text in type_output.enum_helper_texts {
+		pieces << fastc_definition_prototypes(helper_text)
+	}
+	// Generated formatting helpers can be registered while parsing a function
+	// that reachability later removes, even though another live helper calls
+	// them. Keep their declarations outside the per-function prototype ranges.
+	mut spawn_helper_names := spawn_helpers.keys()
+	spawn_helper_names.sort()
+	mut spawn_helper_prototypes := strings.new_builder(256)
+	for spawn_helper_name in spawn_helper_names {
+		helper_definitions := spawn_helpers[spawn_helper_name].replace('static ', '')
+		spawn_helpers[spawn_helper_name] = helper_definitions
+		spawn_helper_prototypes.write_string(fastc_definition_prototypes(helper_definitions))
+	}
+	pieces << fastc_take_string(mut spawn_helper_prototypes)
+	pieces << fastc_take_string(mut unindexed_prototypes)
+	prototype_start := pieces.len
 	fastc_collect_c_piece_ranges(mut pieces, prototype_pieces, kept_proto_ranges)
+	prototype_end := pieces.len
 	if startup_initializers.len > 0 {
 		pieces << 'static void v_fastc_init_globals(void);'
 		pieces << '\n'
@@ -2005,23 +2253,19 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		pieces << '\n'
 	}
 	pieces << '\n'
-	if prefs.building_v {
-		pieces << fastc_piece(c_selfhost_runtime)
-	}
+	// The interface dispatch functions are definitions, so they belong to
+	// one unit; every unit sees their prototypes.
+	pieces << fastc_definition_prototypes(interface_dispatches)
+	head_end := pieces.len
+	pieces << fastc_piece(runtime_definitions)
 	fastc_collect_c_piece_ranges(mut pieces, type_output.enum_helper_texts, kept_helper_ranges)
 	if spawn_helpers.len > 0 {
-		mut spawn_helper_names := spawn_helpers.keys()
-		spawn_helper_names.sort()
 		for spawn_helper_name in spawn_helper_names {
 			pieces << spawn_helpers[spawn_helper_name]
 			pieces << '\n'
 			pieces << '\n'
 		}
 	}
-	// The interface dispatch functions are definitions, so they belong to
-	// one unit; every unit sees their prototypes.
-	pieces << fastc_definition_prototypes(interface_dispatches)
-	head_end := pieces.len
 	pieces << fastc_piece(interface_dispatches)
 	if startup_initializers.len > 0 {
 		pieces << 'static void v_fastc_init_globals(void) {'
@@ -2059,11 +2303,11 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// program with any keeps a single unit.
 	mut unit_starts := []int{cap: outputs.len + 2}
 	if kept_conditional_ranges.len == 0 && outputs.len > 0 {
-		for i, output in outputs {
+		for i, _ in outputs {
 			window_start := output_body_offsets[i]
 			window_end := if i + 1 < outputs.len { output_body_offsets[i + 1] } else { body_len }
 			unit_starts << pieces.len
-			fastc_collect_c_piece_ranges(mut pieces, body_pieces, fastc_window_ranges(kept_body_ranges, window_start, window_end, output.body.len == 0))
+			fastc_collect_c_piece_ranges(mut pieces, body_pieces, fastc_window_ranges(kept_body_ranges, window_start, window_end))
 		}
 	} else {
 		fastc_collect_c_piece_ranges(mut pieces, body_pieces, kept_body_ranges)
@@ -2078,6 +2322,15 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	units.extern_indexes = extern_indexes
 	units.extern_texts = extern_texts
 	units.define_texts = define_texts
+	if prune_unreachable {
+		units.prototype_start = prototype_start
+		units.prototype_end = prototype_end
+		units.prototype_texts = prototype_texts
+		units.unit_ref_starts = unit_ref_starts
+		units.unit_ref_ids = unit_ref_ids
+		units.solo_prototype_ids = solo_prototype_ids
+		units.tail_prototype_ids = tail_prototype_ids
+	}
 	timer.mark('assemble')
 	if header_free {
 		// A C function without a prototype in the ABI table must fail the
@@ -2088,29 +2341,56 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 }
 
 // fastc_definition_prototypes returns a prototype for every function
-// definition of `text` (a definition starts a line and ends it with `) {`).
+// definition of `text` (a definition starts a line and contains `) {`).
 fn fastc_definition_prototypes(text string) string {
 	if text.len == 0 {
 		return ''
 	}
 	mut out := strings.new_builder(text.len / 8 + 64)
 	for line in text.split_into_lines() {
-		if line.len > 4 && !line[0].is_space() && line.ends_with(') {') && !line.starts_with('static ')
+		if line.len > 4 && !line[0].is_space() && !line.starts_with('static ')
 			&& !line.starts_with('#') {
-			out.writeln(line[..line.len - 2] + ';')
+			if body_start := line.index(') {') {
+				out.writeln(line[..body_start + 1] + ';')
+			}
 		}
 	}
 	return out.str()
 }
 
-// fastc_window_ranges returns the parts of the ascending [start, end)
-// `ranges` inside [window_start, window_end). An empty body contributes
-// nothing; `empty` short-circuits the search for it.
-fn fastc_window_ranges(ranges []int, window_start int, window_end int, empty bool) []int {
-	mut out := []int{}
-	if empty {
-		return out
+// fastc_c_extern_prototypes emits declarations explicitly requested with `@[c_extern]`.
+// Such symbols come from linked system libraries rather than an included header, so C99 must
+// see their V-declared ABI before a call (matching the main C backend's behavior).
+fn fastc_c_extern_prototypes(functions map[string]FastcFunctionSignature) string {
+	mut keys := functions.keys()
+	keys.sort()
+	mut out := strings.new_builder(128)
+	for key in keys {
+		signature := functions[key]
+		if !key.starts_with('C.') || !signature.is_c_extern || signature.is_disabled {
+			continue
+		}
+		name := key.all_after_first('C.')
+		mut parameters := []string{cap: signature.parameter_types.len + 1}
+		for parameter_type in signature.parameter_types {
+			parameters << parameter_type
+		}
+		if signature.is_variadic {
+			parameters << '...'
+		} else if parameters.len == 0 {
+			parameters << 'void'
+		}
+		out.writeln('#ifndef ${name}')
+		out.writeln('extern ${signature.return_type} ${name}(${parameters.join(', ')});')
+		out.writeln('#endif')
 	}
+	return out.str()
+}
+
+// fastc_window_ranges returns the parts of the ascending [start, end)
+// `ranges` inside [window_start, window_end).
+fn fastc_window_ranges(ranges []int, window_start int, window_end int) []int {
+	mut out := []int{}
 	for i := 0; i + 1 < ranges.len; i += 2 {
 		start := ranges[i]
 		end := ranges[i + 1]
@@ -2124,6 +2404,18 @@ fn fastc_window_ranges(ranges []int, window_start int, window_end int, empty boo
 		out << if end > window_end { window_end } else { end }
 	}
 	return out
+}
+
+fn fastc_range_is_kept(ranges []int, start int, end int) bool {
+	for i := 0; i + 1 < ranges.len; i += 2 {
+		if ranges[i] <= start && end <= ranges[i + 1] {
+			return true
+		}
+		if ranges[i] > start {
+			break
+		}
+	}
+	return false
 }
 
 // fastc_extern_declarations rewrites the `static` variable definitions of a
@@ -2176,8 +2468,8 @@ fn fastc_parallel_worker_limit(prefs &pref.Preferences) int {
 // program's translation units with.
 pub fn fastc_tcc_job_count(prefs &pref.Preferences) int {
 	mut jobs := fastc_parallel_worker_limit(prefs)
-	if jobs > 8 {
-		jobs = 8
+	if jobs > 18 {
+		jobs = 18
 	}
 	if jobs < 1 {
 		jobs = 1
@@ -2226,7 +2518,11 @@ pub fn fastc_write_c_units(prefix string, pieces []string, units FastcUnitLayout
 				break
 			}
 			if size > 0 && remaining_groups > 0 && size + unit_sizes[u] > target {
-				break
+				under_target := target - size
+				over_target := size + unit_sizes[u] - target
+				if under_target <= over_target {
+					break
+				}
 			}
 			size += unit_sizes[u]
 			remaining -= unit_sizes[u]
@@ -2263,6 +2559,10 @@ fn fastc_write_c_unit(path string, pieces []string, units &FastcUnitLayout, g in
 	// One buffered write per unit: piecewise writes cost several times more.
 	mut out := strings.new_builder(1024 * 1024)
 	for k in 0 .. units.head_end {
+		if units.prototype_start < units.prototype_end && k >= units.prototype_start
+			&& k < units.prototype_end {
+			continue
+		}
 		mut text := pieces[k]
 		for e, index in units.extern_indexes {
 			if index == k {
@@ -2270,6 +2570,30 @@ fn fastc_write_c_unit(path string, pieces []string, units &FastcUnitLayout, g in
 			}
 		}
 		out.write_string(text)
+	}
+	if units.prototype_start < units.prototype_end && units.prototype_texts.len > 0
+		&& units.unit_ref_starts.len == units.unit_starts.len {
+		mut needed := []bool{len: units.prototype_texts.len}
+		if g == 0 {
+			for id in units.solo_prototype_ids {
+				needed[id] = true
+			}
+		}
+		for u in first_unit .. end_unit {
+			for r in units.unit_ref_starts[u] .. units.unit_ref_starts[u + 1] {
+				needed[units.unit_ref_ids[r]] = true
+			}
+		}
+		if end_unit == units.unit_starts.len - 1 {
+			for id in units.tail_prototype_ids {
+				needed[id] = true
+			}
+		}
+		for id, include_prototype in needed {
+			if include_prototype {
+				out.write_string(units.prototype_texts[id])
+			}
+		}
 	}
 	if g == 0 {
 		for k in units.head_end .. units.solo_end {
@@ -2646,6 +2970,7 @@ fn fastc_partition_c_directive_ranges(total_len int, lines []FastcCDirectiveLine
 // it cannot be read (so the C compiler reports the problem).
 fn fastc_inlined_c_header(path string) string {
 	content := os.read_file(path) or { return '#include "${path}"\n' }
+	is_tcc_atomic := path.ends_with('/thirdparty/stdatomic/nix/atomic.h')
 	// The helper headers' own includes (Windows and MSVC branches, or the
 	// system headers the prelude replaces) are left out: the build has none.
 	mut out := strings.new_builder(content.len + 64)
@@ -2655,7 +2980,14 @@ fn fastc_inlined_c_header(path string) string {
 			out.writeln('')
 			continue
 		}
-		out.writeln(line)
+		// TinyCC's ARM atomic fallbacks are external inline definitions. A
+		// header-free parallel build emits this header in every translation unit,
+		// so keep those fallback definitions local to their unit.
+		out.writeln(if is_tcc_atomic {
+			line.replace('extern inline ', 'static inline ')
+		} else {
+			line
+		})
 	}
 	return out.str()
 }

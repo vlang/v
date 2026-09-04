@@ -10,7 +10,7 @@ fn fastc_scan_comptime_unary(mut scan scanner.Scanner, first token.Token, path s
 		result := fastc_scan_comptime_unary(mut scan, scan.scan(), path, prefs)!
 		return FastcComptimeCondition{
 			value: !result.value
-			tok:   result.tok
+			tok: result.tok
 		}
 	}
 	if first == .lpar {
@@ -20,19 +20,19 @@ fn fastc_scan_comptime_unary(mut scan scanner.Scanner, first token.Token, path s
 		}
 		return FastcComptimeCondition{
 			value: result.value
-			tok:   scan.scan()
+			tok: scan.scan()
 		}
 	}
 	if first == .key_true {
 		return FastcComptimeCondition{
 			value: true
-			tok:   scan.scan()
+			tok: scan.scan()
 		}
 	}
 	if first == .key_false {
 		return FastcComptimeCondition{
 			value: false
-			tok:   scan.scan()
+			tok: scan.scan()
 		}
 	}
 	if first == .dollar {
@@ -41,18 +41,18 @@ fn fastc_scan_comptime_unary(mut scan scanner.Scanner, first token.Token, path s
 			return error('fastc parser does not support compile-time condition `${scan.lit}` in ${path}')
 		}
 		if scan.scan() != .lpar {
-			return error('fastc parser does not support `$pkgconfig` condition in ${path}')
+			return error('fastc parser does not support `\$pkgconfig` condition in ${path}')
 		}
 		if scan.scan() != .string {
-			return error('fastc parser does not support `$pkgconfig` library name in ${path}')
+			return error('fastc parser does not support `\$pkgconfig` library name in ${path}')
 		}
 		library := scan.lit.trim('\'"')
 		if scan.scan() != .rpar {
-			return error('fastc parser does not support `$pkgconfig` condition in ${path}')
+			return error('fastc parser does not support `\$pkgconfig` condition in ${path}')
 		}
 		return FastcComptimeCondition{
 			value: pref.comptime_pkgconfig_value(library)
-			tok:   scan.scan()
+			tok: scan.scan()
 		}
 	}
 	if first != .name {
@@ -71,7 +71,7 @@ fn fastc_scan_comptime_unary(mut scan scanner.Scanner, first token.Token, path s
 	}
 	return FastcComptimeCondition{
 		value: value
-		tok:   tok
+		tok: tok
 	}
 }
 
@@ -86,7 +86,7 @@ fn fastc_scan_comptime_and(mut scan scanner.Scanner, first token.Token, path str
 	}
 	return FastcComptimeCondition{
 		value: value
-		tok:   tok
+		tok: tok
 	}
 }
 
@@ -101,7 +101,7 @@ fn fastc_scan_comptime_or(mut scan scanner.Scanner, first token.Token, path stri
 	}
 	return FastcComptimeCondition{
 		value: value
-		tok:   tok
+		tok: tok
 	}
 }
 
@@ -123,7 +123,7 @@ fn fastc_scan_comptime_block(mut scan scanner.Scanner, first token.Token, path s
 			if depth == 0 {
 				return FastcComptimeBlock{
 					source: scan.src[start..scan.pos]
-					tok:    scan.scan()
+					tok: scan.scan()
 				}
 			}
 		}
@@ -158,14 +158,14 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 		if tok != .dollar {
 			return FastcComptimeBlock{
 				source: selected
-				tok:    tok
+				tok: tok
 			}
 		}
 		mut lookahead := scan
 		if lookahead.scan() != .key_else {
 			return FastcComptimeBlock{
 				source: selected
-				tok:    tok
+				tok: tok
 			}
 		}
 		_ = scan.scan()
@@ -180,7 +180,7 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 		}
 		return FastcComptimeBlock{
 			source: selected
-			tok:    fastc_scan_skip_semicolons(mut scan, else_block.tok)
+			tok: fastc_scan_skip_semicolons(mut scan, else_block.tok)
 		}
 	}
 	return FastcComptimeBlock{}
@@ -198,8 +198,7 @@ fn fastc_collect_selected_comptime_function_signatures(source string, path strin
 			if lookahead.scan() == .key_if {
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
-					collect_function_signatures(selected.source, path, header, prefs, []int{},
-						declared_types, declared_type_c_names, params_structs, mut functions)!
+					collect_function_signatures(selected.source, path, header, prefs, []int{}, declared_types, declared_type_c_names, params_structs, mut functions)!
 				}
 				tok = selected.tok
 				continue
@@ -261,7 +260,7 @@ fn (mut g Parser) parse_comptime_if_statement() !bool {
 	}
 	g.next()
 	if g.tok != .key_else {
-		return g.unsupported('compile-time branch after `$if`')
+		return g.unsupported('compile-time branch after `\$if`')
 	}
 	g.next()
 	if g.tok == .dollar {
@@ -287,7 +286,7 @@ fn (mut g Parser) parse_comptime_match_statement() !bool {
 	g.expect(.dollar)!
 	g.expect(.key_match)!
 	if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier(.key_match)) {
-		return g.unsupported('compile-time `$match` subject')
+		return g.unsupported('compile-time `\$match` subject')
 	}
 	subject_name := g.lit
 	mut subject_type := g.comptime_named_type(subject_name)
@@ -295,7 +294,7 @@ fn (mut g Parser) parse_comptime_match_statement() !bool {
 	if g.tok == .dot {
 		g.next()
 		if g.tok != .name || g.lit !in ['typ', 'unaliased_typ'] {
-			return g.unsupported('compile-time `$match` type member')
+			return g.unsupported('compile-time `\$match` type member')
 		}
 		if g.lit == 'unaliased_typ' {
 			subject_type = g.underlying_alias_type(subject_type)
@@ -308,21 +307,20 @@ fn (mut g Parser) parse_comptime_match_statement() !bool {
 	g.skip_semicolons()
 	for g.tok != .rcbr {
 		if g.tok == .eof {
-			return g.unsupported('unfinished compile-time `$match`')
+			return g.unsupported('unfinished compile-time `\$match`')
 		}
 		mut branch_matches := false
 		if g.tok == .dollar {
 			g.next()
 			if g.tok != .key_else {
-				return g.unsupported('compile-time `$match` branch')
+				return g.unsupported('compile-time `\$match` branch')
 			}
 			g.next()
 			branch_matches = !selected
 		} else {
 			for {
 				target_type := g.parse_type()!
-				branch_matches = branch_matches
-					|| g.underlying_alias_type(subject_type) == g.underlying_alias_type(target_type)
+				branch_matches = branch_matches || g.underlying_alias_type(subject_type) == g.underlying_alias_type(target_type)
 				if g.tok != .comma {
 					break
 				}
@@ -352,38 +350,40 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 	g.expect(.dollar)!
 	g.expect(.key_for)!
 	if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier(.key_for)) {
-		return g.unsupported('`$for` loop variable')
+		return g.unsupported('`\$for` loop variable')
 	}
 	loop_var := g.lit
 	g.next()
 	g.expect(.key_in)!
 	if g.tok != .name {
-		return g.unsupported('`$for` iterable')
+		return g.unsupported('`\$for` iterable')
 	}
 	first := g.lit
 	g.next()
 	if g.tok != .dot {
-		return g.unsupported('`$for` expects `Type.fields`')
+		return g.unsupported('`\$for` expects `Type.fields`')
 	}
 	g.next()
 	if g.tok != .name {
-		return g.unsupported('`$for` iterable member')
+		return g.unsupported('`\$for` iterable member')
 	}
 	mut type_key := ''
-	if g.lit == 'fields' {
+	mut member := g.lit
+	if member in ['fields', 'values'] {
 		type_key = g.resolve_declared_type_key(first) or {
-			return g.unsupported('`$for` over unknown type `${first}`')
+			return g.unsupported('`\$for` over unknown type `${first}`')
 		}
 		g.next()
 	} else {
-		// Qualified `mod.Type.fields`.
+		// Qualified `mod.Type.fields` / `mod.Type.values`.
 		module_name := g.imports[first] or { first }
 		type_key = fastc_type_key(module_name, g.lit)
 		g.next()
 		g.expect(.dot)!
-		if g.tok != .name || g.lit != 'fields' {
-			return g.unsupported('`$for` only supports `.fields`')
+		if g.tok != .name || g.lit !in ['fields', 'values'] {
+			return g.unsupported('`\$for` only supports `.fields` or `.values`')
 		}
+		member = g.lit
 		g.next()
 	}
 	g.expect(.lcbr)!
@@ -405,24 +405,34 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 		g.next()
 	}
 	if body_end < 0 {
-		return g.unsupported('unterminated `$for` block')
+		return g.unsupported('unterminated `\$for` block')
 	}
 	body_source := g.s.src[body_start..body_end]
 	g.next() // consume the closing `}`; the main scanner now continues after it
 	saved_tok := g.tok
 	saved_lit := g.lit
 	saved_s := g.s
-	for field in g.struct_field_info[c_type] {
-		// Substitute this field's comptime references (`<var>.name`,
-		// `x.$(<var>.name)`) at the source level, then re-scan the result as
-		// ordinary V — no comptime awareness is needed in the renderer.
-		substituted := g.substitute_comptime_field(body_source, loop_var, field)
+	// Build one substituted body per iteration item: a struct field for `.fields`,
+	// or an enum value for `.values`.
+	mut substituted_bodies := []string{}
+	if member == 'values' {
+		for value_name in g.enum_field_names[c_type] {
+			substituted_bodies << g.substitute_comptime_enum_value(body_source, loop_var, c_type, value_name)
+		}
+	} else {
+		for field in g.struct_field_info[c_type] {
+			substituted_bodies << g.substitute_comptime_field(body_source, loop_var, field)
+		}
+	}
+	for substituted in substituted_bodies {
+		// Re-scan each unrolled body as ordinary V — no comptime awareness is needed
+		// in the renderer.
 		file := token.File.unindexed('comptime_for', substituted.len)
 		g.s = scanner.new_scanner(g.prefs, .normal)
 		g.s.init(file, substituted)
 		g.next()
 		// A fresh C block scopes any locals the body declares, so re-parsing it per
-		// field does not redeclare them in the enclosing scope.
+		// item does not redeclare them in the enclosing scope.
 		g.write_line('{')
 		g.indent++
 		outer_locals := g.locals.clone()
@@ -484,8 +494,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 					part = s.scan()
 				}
 				edits << FastcSourceEdit{
-					start:       loop_start
-					end:         loop_end
+					start: loop_start
+					end: loop_end
 					replacement: if field.is_skip { 'is_skip = true' } else { '' }
 				}
 				previous = .rcbr
@@ -507,8 +517,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 							close := s.scan()
 							if close == .rpar {
 								edits << FastcSourceEdit{
-									start:       dollar_pos
-									end:         s.offset
+									start: dollar_pos
+									end: s.offset
 									replacement: field_name
 								}
 								previous = .rpar
@@ -530,8 +540,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 				member := s.scan()
 				if member == .name && s.lit == 'name' {
 					edits << FastcSourceEdit{
-						start:       var_pos
-						end:         s.offset
+						start: var_pos
+						end: s.offset
 						replacement: "'${field_name}'"
 					}
 					previous = .name
@@ -541,8 +551,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 				if member == .name && s.lit == 'is_embed' {
 					is_embed := field.name.starts_with('__embedded_')
 					edits << FastcSourceEdit{
-						start:       var_pos
-						end:         s.offset
+						start: var_pos
+						end: s.offset
 						replacement: if is_embed { 'true' } else { 'false' }
 					}
 					previous = if is_embed { token.Token.key_true } else { token.Token.key_false }
@@ -558,12 +568,11 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 						attr_tok := s.scan()
 						attr_name := s.lit.trim('\'"')
 						close_tok := s.scan()
-						if contains_tok == .name && contains_name == 'contains' && open_tok == .lpar
-							&& attr_tok == .string && close_tok == .rpar {
+						if contains_tok == .name && contains_name == 'contains' && open_tok == .lpar && attr_tok == .string && close_tok == .rpar {
 							matches := field.is_skip && attr_name == 'skip'
 							edits << FastcSourceEdit{
-								start:       var_pos
-								end:         s.offset
+								start: var_pos
+								end: s.offset
 								replacement: if matches { 'true' } else { 'false' }
 							}
 							previous = if matches {
@@ -576,8 +585,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 						}
 					}
 					edits << FastcSourceEdit{
-						start:       var_pos
-						end:         s.offset
+						start: var_pos
+						end: s.offset
 						replacement: if field.is_skip { "['skip']" } else { "['']" }
 					}
 					previous = member
@@ -597,8 +606,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 								field.typ.trim_right('*') == type_c
 							}
 							edits << FastcSourceEdit{
-								start:       var_pos
-								end:         type_end
+								start: var_pos
+								end: type_end
 								replacement: if matches { 'true' } else { 'false' }
 							}
 							previous = if matches {
@@ -626,6 +635,53 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 			continue
 		}
 		previous = tok
+		tok = s.scan()
+	}
+	return fastc_apply_source_edits(body, edits)
+}
+
+// substitute_comptime_enum_value rewrites one `$for x in Enum.values { ... }` body
+// for a single enum value: `<var>.name` becomes the value-name string literal and
+// `<var>.value` becomes the enum's C constant. Other `<var>.<member>` forms are left
+// as-is so they surface as unsupported when re-parsed.
+fn (g &Parser) substitute_comptime_enum_value(body string, loop_var string, enum_c_type string, value_name string) string {
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file('cv', body.len)
+	file.index_lines_without_digest(body)
+	mut s := scanner.new_scanner(g.prefs, .normal)
+	s.init(file, body)
+	mut edits := []FastcSourceEdit{}
+	mut tok := s.scan()
+	for tok != .eof {
+		if fastc_comptime_loop_var_token(tok) && s.lit == loop_var {
+			var_pos := s.pos
+			after := s.scan()
+			if after == .dot {
+				member := s.scan()
+				if member == .name && s.lit == 'name' {
+					edits << FastcSourceEdit{
+						start: var_pos
+						end: s.offset
+						replacement: "'${value_name}'"
+					}
+					tok = s.scan()
+					continue
+				}
+				if member == .name && s.lit == 'value' {
+					edits << FastcSourceEdit{
+						start: var_pos
+						end: s.offset
+						replacement: '${enum_c_type}__${value_name}'
+					}
+					tok = s.scan()
+					continue
+				}
+				tok = s.scan()
+				continue
+			}
+			tok = after
+			continue
+		}
 		tok = s.scan()
 	}
 	return fastc_apply_source_edits(body, edits)
@@ -745,6 +801,21 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		g.next()
 		return false
 	}
+	if g.tok == .string {
+		actual := g.lit.trim('\'"')
+		g.next()
+		operator := g.tok
+		if operator !in [.eq, .ne] {
+			return g.unsupported('compile-time string comparison operator `${g.token_source()}`')
+		}
+		g.next()
+		if g.tok != .string {
+			return g.unsupported('compile-time string comparison value `${g.token_source()}`')
+		}
+		expected := g.lit.trim('\'"')
+		g.next()
+		return if operator == .eq { actual == expected } else { actual != expected }
+	}
 	if g.tok == .dollar {
 		// `$pkgconfig('lib')`: true when pkg-config reports the library present.
 		g.next()
@@ -754,7 +825,7 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		g.next()
 		g.expect(.lpar)!
 		if g.tok != .string {
-			return g.unsupported('`$pkgconfig` library name')
+			return g.unsupported('`\$pkgconfig` library name')
 		}
 		library := g.lit.trim('\'"')
 		g.next()
@@ -836,6 +907,21 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		matches := g.comptime_type_matches(left_type, target_type, target_is_group)
 		return if operator == .key_is { matches } else { !matches }
 	}
+	if g.tok in [.eq, .ne] {
+		// `$if @BACKEND == 'arm64'` etc.: compare a compile-time pseudo variable to a
+		// string literal.
+		operator := g.tok
+		g.next()
+		if g.tok != .string {
+			return g.unsupported('compile-time comparison value `${g.token_source()}`')
+		}
+		expected := g.lit.trim('\'"')
+		g.next()
+		actual := g.comptime_pseudo_string(name) or {
+			return g.unsupported('compile-time comparison of `${name}`')
+		}
+		return if operator == .eq { actual == expected } else { actual != expected }
+	}
 	is_optional := g.tok == .question
 	if is_optional {
 		g.next()
@@ -844,6 +930,18 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		pref.comptime_optional_flag_value(g.prefs, name)
 	} else {
 		pref.comptime_flag_value(g.prefs, name)
+	}
+}
+
+// comptime_pseudo_string returns the plain string value of a compile-time pseudo
+// variable used in a `$if … == '…'` comparison, or none when it is not comparable.
+fn (g &Parser) comptime_pseudo_string(name string) ?string {
+	return match name {
+		'@BACKEND' { g.prefs.backend.str() }
+		'@OS' { g.prefs.normalized_target_os() }
+		'@CCOMPILER' { g.prefs.ccompiler }
+		'@PLATFORM' { g.prefs.comptime_platform() }
+		else { none }
 	}
 }
 
@@ -926,7 +1024,7 @@ fn (mut g Parser) skip_open_block() ! {
 
 fn (mut g Parser) skip_comptime_if_chain() ! {
 	if g.tok != .dollar {
-		return g.unsupported('compile-time `$else` branch')
+		return g.unsupported('compile-time `\$else` branch')
 	}
 	g.next()
 
@@ -953,7 +1051,7 @@ fn (mut g Parser) read_comptime_d_expression() !string {
 	g.expect(.name)! // consume `d`
 	g.expect(.lpar)!
 	if g.tok != .string {
-		return g.unsupported('`$d` compile-time value key')
+		return g.unsupported('`\$d` compile-time value key')
 	}
 	g.next() // the define name (only meaningful with `-d name=value`, not transported)
 	g.expect(.comma)!
@@ -963,6 +1061,71 @@ fn (mut g Parser) read_comptime_d_expression() !string {
 	g.last_expression_type = value_type
 	g.last_expression = []FastcExpressionToken{}
 	return default_value
+}
+
+// read_comptime_embed_file lowers `$embed_file('path')` by reading the file at
+// generation time. The compiler chain uses the result as `.to_string()` /
+// `.to_bytes()`, so those two accessors are supported directly; the file bytes
+// become a C string literal or a `[]u8` array, exactly what the accessors return.
+fn (mut g Parser) read_comptime_embed_file() !string {
+	g.expect(.name)! // consume `embed_file`
+	g.expect(.lpar)!
+	if g.tok != .string {
+		return g.unsupported('`\$embed_file` requires a string literal path')
+	}
+	path_literal := g.lit
+	g.next()
+	// Additional arguments (e.g. an `EmbedFileIndex` or compression option) do not
+	// change what the two supported accessors return, so ignore them.
+	for g.tok == .comma {
+		g.next()
+		g.read_expression([token.Token.comma, token.Token.rpar])!
+	}
+	g.expect(.rpar)!
+	embed_path := fastc_string_literal_content(path_literal)
+	resolved := if os.is_abs_path(embed_path) {
+		embed_path
+	} else {
+		os.join_path(os.dir(g.path), embed_path)
+	}
+	content := os.read_file(resolved) or {
+		return g.unsupported('`\$embed_file` cannot read `${resolved}`')
+	}
+	if g.tok != .dot {
+		return g.unsupported('`\$embed_file` is only supported with a `.to_string()` or `.to_bytes()` accessor')
+	}
+	g.next()
+	if g.tok != .name {
+		return g.unsupported('`\$embed_file` accessor')
+	}
+	accessor := g.lit
+	g.next()
+	g.expect(.lpar)!
+	g.expect(.rpar)!
+	match accessor {
+		'to_string', 'str' {
+			g.last_expression_type = 'string'
+			g.last_expression = []FastcExpressionToken{}
+			return '_S(${fastc_c_string_value(content)})'
+		}
+		else {
+			return g.unsupported('`\$embed_file` accessor `.${accessor}()`')
+		}
+	}
+}
+
+// fastc_string_literal_content returns the raw text inside a scanned string
+// literal token, stripping an optional `r`/`c` prefix and the surrounding quotes.
+// Embed paths contain no escape sequences, so no unescaping is required.
+fn fastc_string_literal_content(literal string) string {
+	mut raw := literal
+	if raw.len >= 3 && raw[0] in [`r`, `c`] && raw[1] in [`'`, `"`] {
+		raw = raw[1..]
+	}
+	if raw.len >= 2 && raw[0] in [`'`, `"`, `\``] && raw[raw.len - 1] == raw[0] {
+		return raw[1..raw.len - 1]
+	}
+	return raw
 }
 
 fn (g &Parser) dollar_keyword_is(keyword string) bool {
@@ -1074,6 +1237,9 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 	if g.tok == .name && g.lit == 'd' {
 		return g.read_comptime_d_expression()!
 	}
+	if g.tok == .name && g.lit == 'embed_file' {
+		return g.read_comptime_embed_file()!
+	}
 	g.expect(.key_if)!
 	condition := g.parse_comptime_or()!
 	g.expect(.lcbr)!
@@ -1098,7 +1264,7 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 	}
 	g.skip_open_block()!
 	if g.tok != .dollar {
-		return g.unsupported('compile-time if expression without `$else`')
+		return g.unsupported('compile-time if expression without `\$else`')
 	}
 	g.next()
 	g.expect(.key_else)!
@@ -1122,7 +1288,6 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 // `@ident` interpolation (HTML-escaped via `veb.filter_html`), `%key` i18n shorthand,
 // `@include`, and `@if` / `@for` / `@else` control flow. Other `@` directives are
 // reported as unsupported.
-
 fn fastc_veb_ident_start(c u8) bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`
 }
@@ -1396,8 +1561,7 @@ fn fastc_veb_compile_template(path string, bname string, ctx_name string) !strin
 			block_kinds << 'control'
 			continue
 		}
-		if trimmed == '@else' || trimmed == '@else {' || trimmed == '@else{'
-			|| trimmed.starts_with('@else if ') {
+		if trimmed == '@else' || trimmed == '@else {' || trimmed == '@else{' || trimmed.starts_with('@else if ') {
 			out += fastc_veb_append_stmt(bname, current)
 			current = ''
 			rest := trimmed['@else'.len..].trim_right('{').trim_space()
@@ -1472,8 +1636,7 @@ fn fastc_veb_compile_template(path string, bname string, ctx_name string) !strin
 		// A standalone `@ident` line (control directives `@if`/`@for`/... are handled above)
 		// is a bare interpolation like `@source`, not a directive — render it as content.
 		// Only a `@` followed by a non-identifier is a malformed/unsupported directive.
-		if trimmed.starts_with('@') && !trimmed.starts_with('@@') && !trimmed.starts_with('@{')
-			&& !(trimmed.len > 1 && fastc_veb_ident_start(trimmed[1])) {
+		if trimmed.starts_with('@') && !trimmed.starts_with('@@') && !trimmed.starts_with('@{') && !(trimmed.len > 1 && fastc_veb_ident_start(trimmed[1])) {
 			return error('unsupported template directive `${trimmed}`')
 		}
 		current += fastc_veb_line_content(line, ctx_name) + r'\n'
@@ -1543,12 +1706,12 @@ fn (g &Parser) fastc_veb_context_name() string {
 fn (mut g Parser) parse_veb_html_return() !bool {
 	g.next() // consume `$`
 	if g.tok != .name || g.lit != 'veb' {
-		return g.unsupported('comptime `$` expression')
+		return g.unsupported('comptime `\$` expression')
 	}
 	g.next() // consume `veb`
 	g.expect(.dot)!
 	if g.tok != .name || g.lit != 'html' {
-		return g.unsupported('`$veb.${g.lit}()` is not supported (only `$veb.html()`)')
+		return g.unsupported('`\$veb.${g.lit}()` is not supported (only `\$veb.html()`)')
 	}
 	g.next() // consume `html`
 	g.expect(.lpar)!
@@ -1558,7 +1721,7 @@ fn (mut g Parser) parse_veb_html_return() !bool {
 		g.next()
 	}
 	if g.tok != .rpar {
-		return g.unsupported('`$veb.html(...)` argument must be a string-literal path')
+		return g.unsupported('`\$veb.html(...)` argument must be a string-literal path')
 	}
 	g.expect(.rpar)!
 	g.consume_statement_end()

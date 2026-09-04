@@ -65,6 +65,11 @@ fn (g &Parser) expression_token(previous token.Token, previous_lit string, quali
 		.dot {
 			g.dot_piece(previous, previous_lit, module_separator)
 		}
+		.right_shift_unsigned {
+			// V's logical right shift `>>>` has no C spelling; it is used on unsigned operands
+			// (V code casts first, e.g. `u64(x) >>> n`), where a plain C `>>` is logical.
+			'>>'
+		}
 		else {
 			g.tok.str()
 		}
@@ -106,20 +111,42 @@ fn (g &Parser) validate_imported_global_visibility(imported_module string, name 
 	}
 }
 
+// local_c_name is the C spelling of a local: its smart-cast override name when one is active
+// (see FastcLocal.c_name), otherwise the sanitized identifier.
+fn (g &Parser) local_c_name(name string) string {
+	if local := g.locals[name] {
+		if local.c_name != '' {
+			return local.c_name
+		}
+	}
+	return fastc_c_identifier(name)
+}
+
 fn (g &Parser) resolved_expression_name(name string, previous token.Token) string {
 	if previous != .dot && name == 'C' {
 		return ''
 	}
-	if previous != .dot && name !in g.locals {
-		if cached := g.resolved_name_memo[name] {
-			return cached
+	if previous != .dot {
+		if local := g.locals[name] {
+			if local.c_name != '' {
+				return local.c_name
+			}
 		}
-		resolved := g.resolved_nonlocal_expression_name(name)
-		mut w := unsafe { &Parser(g) }
-		w.resolved_name_memo[name] = resolved
-		return resolved
+	}
+	if previous != .dot && name !in g.locals {
+		return g.resolved_nonlocal_expression_name_cached(name)
 	}
 	return fastc_c_identifier(name)
+}
+
+fn (g &Parser) resolved_nonlocal_expression_name_cached(name string) string {
+	if cached := g.resolved_name_memo[name] {
+		return cached
+	}
+	resolved := g.resolved_nonlocal_expression_name(name)
+	mut w := unsafe { &Parser(g) }
+	w.resolved_name_memo[name] = resolved
+	return resolved
 }
 
 // resolved_nonlocal_expression_name renders a bare name that is not a local:
@@ -153,6 +180,13 @@ fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
 	}
 	if c_name := g.globals[fastc_global_key('builtin', name)] {
 		return c_name
+	}
+	// A `__global` is truly global, including from a different module than its declaration.
+	suffix := '.${name}'
+	for key, c_name in g.globals {
+		if key == name || key.ends_with(suffix) {
+			return c_name
+		}
 	}
 	return fastc_c_identifier(name)
 }
@@ -808,23 +842,42 @@ fn (g &Parser) struct_member_type(receiver_type string, field_name string) strin
 }
 
 fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?FastcStructField {
+	if g.last_field_known && receiver_type == g.last_field_receiver && field_name == g.last_field_name {
+		if g.last_field.name == '' {
+			return none
+		}
+		return g.last_field
+	}
+	mut w := unsafe { &Parser(g) }
 	if by_name := g.field_memo[receiver_type] {
 		if cached := by_name[field_name] {
+			w.last_field_receiver = receiver_type
+			w.last_field_name = field_name
+			w.last_field = cached
+			w.last_field_known = true
 			if cached.name == '' {
 				return none
 			}
 			return cached
 		}
 	}
-	mut w := unsafe { &Parser(g) }
 	if receiver_type !in w.field_memo {
 		w.field_memo[receiver_type] = map[string]FastcStructField{}
 	}
 	if field := g.struct_field_metadata_impl(receiver_type, field_name) {
 		w.field_memo[receiver_type][field_name] = field
+		w.last_field_receiver = receiver_type
+		w.last_field_name = field_name
+		w.last_field = field
+		w.last_field_known = true
 		return field
 	}
-	w.field_memo[receiver_type][field_name] = FastcStructField{}
+	miss := FastcStructField{}
+	w.field_memo[receiver_type][field_name] = miss
+	w.last_field_receiver = receiver_type
+	w.last_field_name = field_name
+	w.last_field = miss
+	w.last_field_known = true
 	return none
 }
 

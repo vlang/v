@@ -1,13 +1,12 @@
-// vtest build: present_openssl?
 module quic
 
 fn build_test_retry_packet(dcid []u8, scid []u8, token []u8, original_dcid []u8) ![]u8 {
 	h := QuicLongHeader{
-		typ:     .retry
+		typ: .retry
 		version: quic_v1
-		dcid:    dcid
-		scid:    scid
-		token:   token // ignored by encode_long_header for .retry -- appended manually below
+		dcid: dcid
+		scid: scid
+		token: token // ignored by encode_long_header for .retry -- appended manually below
 	}
 	mut buf := encode_long_header(h, 0, 0)!
 	buf << token
@@ -86,12 +85,12 @@ fn test_retry_packet_rejects_wrong_original_dcid() {
 
 fn test_parse_retry_packet_rejects_non_retry_type() {
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    [u8(1), 2]
-		scid:    [u8(3), 4]
-		token:   []u8{}
-		length:  20
+		dcid: [u8(1), 2]
+		scid: [u8(3), 4]
+		token: []u8{}
+		length: 20
 	}
 	buf := encode_long_header(h, 0, 0)!
 	parse_retry_packet(buf, [u8(99)], [u8(1), 2]) or {
@@ -104,11 +103,11 @@ fn test_parse_retry_packet_rejects_non_retry_type() {
 fn test_parse_retry_packet_rejects_truncated_packet() {
 	original_scid := [u8(1), 2]
 	h := QuicLongHeader{
-		typ:     .retry
+		typ: .retry
 		version: quic_v1
-		dcid:    original_scid
-		scid:    [u8(3), 4]
-		token:   []u8{}
+		dcid: original_scid
+		scid: [u8(3), 4]
+		token: []u8{}
 	}
 	mut buf := encode_long_header(h, 0, 0)!
 	buf << [u8(1), 2, 3] // far fewer than the required 16-byte tag

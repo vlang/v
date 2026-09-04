@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_stream_reassembler_in_order() {
@@ -53,6 +52,7 @@ fn test_stream_reassembler_discard_frees_held_window_and_preserves_consumed_len(
 	r.discard(5)!
 	assert r.data().bytestr() == 'world'
 	assert r.consumed_len() == 10 // unchanged -- discard doesn't un-receive data
+	
 }
 
 fn test_stream_reassembler_discard_is_idempotent_for_a_stale_base() {

@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 // test_fits_within_pmtu_runtime_assertion_at_1200_bytes is the plan's own

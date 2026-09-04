@@ -8,6 +8,8 @@ import v.util.vflags
 
 const args_ = arguments()
 const is_debug = args_.contains('-debug')
+const full_v_cli_source = 'cmd/v'
+const standalone_v3_source = 'vlib/v3/v3.v'
 
 // support a renamed `v` executable too:
 const vexe = os.getenv_opt('VEXE') or { @VEXE }
@@ -24,8 +26,7 @@ fn main() {
 	vexe_name := os.file_name(vexe)
 	short_v_name := vexe_name.all_before('.')
 
-	recompilation.must_be_enabled(vroot,
-		'Please install V from source, to use `${vexe_name} self` .')
+	recompilation.must_be_enabled(vroot, 'Please install V from source, to use `${vexe_name} self` .')
 	os.chdir(vroot)!
 	os.setenv('VCOLORS', 'always', true)
 	command_index := os.getenv('VSELF_COMMAND_INDEX').int()
@@ -46,10 +47,11 @@ fn main() {
 		uos := os.user_os()
 		uname := os.uname()
 		if uos == 'macos' {
-			// V3 relies on native thread-local preallocation scopes to keep
-			// compiler self-builds below the memory limit. TCC does not support
-			// that implementation on macOS, so use the system compiler.
-			args << ['-cc', os.getenv_opt('CC') or { 'cc' }]
+			// Apple Silicon's bundled TCC is much faster for compiler rebuilds. The
+			// generated compiler uses pthread-backed allocator state because native
+			// TinyCC TLS is not reliable on macOS.
+			default_cc := if uname.machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
+			args << ['-cc', os.getenv_opt('CC') or { default_cc }]
 		} else if uos == 'linux' && uname.machine in ['arm64', 'aarch64'] {
 			// Bundled TCC can hang while bootstrapping V on Linux ARM64, so
 			// prefer the system compiler for self-builds there.
@@ -85,7 +87,9 @@ fn main() {
 	}
 	final_binary := if obinary != '' { obinary } else { 'v2' }
 	pgo_cc_kind := if fastc_self_build { '' } else { pgo_compiler_kind(args) }
-	compilation_source := if fastc_self_build { 'vlib/v3/v3.v' } else { 'cmd/v' }
+	// Only explicit FastC builds are standalone. Regular replacements must retain
+	// cmd/v so commands such as self, up, fmt, and version remain available.
+	compilation_source := if fastc_self_build { standalone_v3_source } else { full_v_cli_source }
 	for run_idx in 0 .. repeat_count {
 		run_label := if repeat_count > 1 { ' [${run_idx + 1}/${repeat_count}]' } else { '' }
 		options := if args.len > 0 { '(${compile_args.join(' ')})' } else { '' }
@@ -327,13 +331,14 @@ fn self_build_supports_prealloc(args []string) bool {
 		i++
 	}
 	return target_os in ['linux', 'macos'] && gc == 'none'
-		&& self_ccompiler_supports_prealloc(ccompiler)
+		&& self_ccompiler_supports_prealloc(ccompiler, target_os)
 }
 
-fn self_ccompiler_supports_prealloc(ccompiler string) bool {
+fn self_ccompiler_supports_prealloc(ccompiler string, target_os string) bool {
 	cc := os.file_name(ccompiler.trim_space()).to_lower_ascii()
-	return !cc.contains('tcc') && !cc.contains('tinyc') && !cc.contains('tinygcc')
-		&& !cc.contains('tiny_gcc') && !cc.contains('tiny-gcc')
+	is_tinyc := cc.contains('tcc') || cc.contains('tinyc') || cc.contains('tinygcc')
+		|| cc.contains('tiny_gcc') || cc.contains('tiny-gcc')
+	return !is_tinyc || target_os == 'macos'
 }
 
 fn has_profile_cflag(args []string) bool {
@@ -504,13 +509,13 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 	}
 	mut generate_args := with_output_arg(args, pgo_binary)
 	generate_args << ['-cflags', '-fprofile-generate=${profile_dir}']
-	generate_cmd := compose_v_cmd(vexe, generate_args, 'cmd/v')
+	generate_cmd := compose_v_cmd(vexe, generate_args, full_v_cli_source)
 	run_cmd(generate_cmd) or {
 		eprintln('PGO step failed while building the instrumented compiler.')
 		eprintln(err.msg())
 		return false
 	}
-	training_cmd := '${os.quoted_path(pgo_binary)} -o ${os.quoted_path(training_output)} ${os.quoted_path('cmd/v')}'
+	training_cmd := '${os.quoted_path(pgo_binary)} -o ${os.quoted_path(training_output)} ${os.quoted_path(full_v_cli_source)}'
 	run_cmd(training_cmd) or {
 		eprintln('PGO step failed while generating the profiling data.')
 		eprintln(err.msg())
@@ -529,7 +534,7 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 	if cc_kind == 'gcc' {
 		final_args << ['-cflags', '-fprofile-correction']
 	}
-	final_cmd := compose_v_cmd(vexe, final_args, 'cmd/v')
+	final_cmd := compose_v_cmd(vexe, final_args, full_v_cli_source)
 	run_cmd(final_cmd) or {
 		eprintln('PGO step failed while building the final compiler binary.')
 		eprintln(err.msg())
@@ -551,8 +556,7 @@ fn bootstrap_self_build(vroot string, args []string, final_binary string) ! {
 		os.rm(bootstrap_v1) or {}
 		os.rm(bootstrap_v2) or {}
 	}
-	vc_source := os.join_path(vroot, 'vc',
-		if os.user_os() == 'windows' { 'v_win.c' } else { 'v.c' })
+	vc_source := os.join_path(vroot, 'vc', if os.user_os() == 'windows' { 'v_win.c' } else { 'v.c' })
 	if !os.exists(vc_source) {
 		return error('bootstrap fallback failed: `${vc_source}` is missing')
 	}
@@ -566,13 +570,13 @@ fn bootstrap_self_build(vroot string, args []string, final_binary string) ! {
 	mut bootstrap_args := ['-no-parallel']
 	bootstrap_args << with_output_arg(args, bootstrap_v2)
 	bootstrap_v1_cmd := os.join_path('.', bootstrap_v1)
-	bootstrap_v2_cmd := '${os.quoted_path(bootstrap_v1_cmd)} ${bootstrap_args.join(' ')} ${os.quoted_path('cmd/v')}'
+	bootstrap_v2_cmd := '${os.quoted_path(bootstrap_v1_cmd)} ${bootstrap_args.join(' ')} ${os.quoted_path(full_v_cli_source)}'
 	run_cmd(bootstrap_v2_cmd) or {
 		return error('bootstrap fallback failed while building v2.\n${err.msg()}')
 	}
 	final_args := with_output_arg(args, final_binary)
 	bootstrap_v2_cmd_path := os.join_path('.', bootstrap_v2)
-	final_cmd := '${os.quoted_path(bootstrap_v2_cmd_path)} ${final_args.join(' ')} ${os.quoted_path('cmd/v')}'
+	final_cmd := '${os.quoted_path(bootstrap_v2_cmd_path)} ${final_args.join(' ')} ${os.quoted_path(full_v_cli_source)}'
 	run_cmd(final_cmd) or {
 		return error('bootstrap fallback failed while building the final compiler.\n${err.msg()}')
 	}
@@ -585,8 +589,8 @@ fn bootstrap_c_cmd(cc string, out_binary string, vc_source string) string {
 		parts << ['-std=c99', '-municode', '-w', '-o', os.quoted_path(out_binary),
 			os.quoted_path(vc_source), '-lws2_32']
 	} else {
-		parts << ['-std=c99', '-w', '-o', os.quoted_path(out_binary),
-			os.quoted_path(vc_source), '-lm', '-lpthread']
+		parts << ['-std=c99', '-w', '-o', os.quoted_path(out_binary), os.quoted_path(vc_source),
+			'-lm', '-lpthread']
 	}
 	return parts.join(' ')
 }
@@ -608,7 +612,11 @@ fn list_folder(short_v_name string, bmessage string, message string) {
 
 fn backup_old_version_and_rename_newer(short_v_name string) !bool {
 	mut errors := []string{}
-	short_v_file := if os.user_os() == 'windows' { '${short_v_name}.exe' } else { '${short_v_name}' }
+	short_v_file := if os.user_os() == 'windows' {
+		'${short_v_name}.exe'
+	} else {
+		'${short_v_name}'
+	}
 	short_v2_file := if os.user_os() == 'windows' { 'v2.exe' } else { 'v2' }
 	short_bak_file := if os.user_os() == 'windows' { 'v_old.exe' } else { 'v_old' }
 	v_file := os.real_path(short_v_file)

@@ -6,6 +6,51 @@ fn fastc_matching_rpar(tokens []FastcExpressionToken, open int) ?int {
 	return fastc_matching_rpar_before(tokens, open, tokens.len)
 }
 
+// fastc_bare_as_cast_index returns the index of a top-level `as` in tokens[start..end]
+// when the tokens are a bare `X as T` cast (no surrounding binary operator, so
+// `a == b as T` — a comparison — is excluded). Returns none otherwise.
+fn fastc_bare_as_cast_index(tokens []FastcExpressionToken, start int, end int) ?int {
+	mut contains_as := false
+	for i := start; i < end; i++ {
+		if tokens[i].tok == .key_as {
+			contains_as = true
+			break
+		}
+	}
+	if !contains_as {
+		return none
+	}
+	mut depth := 0
+	mut as_index := -1
+	for i := start; i < end; i++ {
+		match tokens[i].tok {
+			.lpar, .lsbr, .lcbr {
+				depth++
+			}
+			.rpar, .rsbr, .rcbr {
+				depth--
+			}
+			.key_as {
+				if depth == 0 {
+					as_index = i
+				}
+			}
+			.eq, .ne, .lt, .gt, .le, .ge, .and, .logical_or, .plus, .minus, .mul, .div, .mod, .pipe, .amp, .xor, .left_shift, .right_shift, .right_shift_unsigned {
+				if depth == 0 && as_index < 0 {
+					// A binary operator before any `as` means the whole expression is not a
+					// cast (e.g. `a == b as T`).
+					return none
+				}
+			}
+			else {}
+		}
+	}
+	if as_index < 0 {
+		return none
+	}
+	return as_index
+}
+
 fn fastc_matching_rpar_before(tokens []FastcExpressionToken, open int, end int) ?int {
 	mut depth := 0
 	for i in open .. end {
@@ -231,9 +276,10 @@ fn (g &Parser) infer_boolean_binary_expression_type(tokens []FastcExpressionToke
 		right_type := g.type_from_expression_tokens(tokens[operator_index + 1..end]) or {
 			return g.unsupported('type test `${operator.str()}` with an undeclared target type')
 		}
-		if g.semantic_type_key(right_type) !in g.declared_types && !right_type.starts_with('Array_') && !right_type.starts_with('Map_') {
-			// Composite variants (`x is []string` / `x is map[…]`) are not declared
-			// types but do get generated `__v_typeid_` tags, so allow them.
+		if g.semantic_type_key(right_type) !in g.declared_types && !right_type.starts_with('Array_') && !right_type.starts_with('Map_') && fastc_primitive_c_type(right_type) == none {
+			// Composite variants (`x is []string` / `x is map[…]`) and primitive variants
+			// (`x is u64`) are not declared types but do get generated `__v_typeid_` tags,
+			// so allow them.
 			return g.unsupported('type test `${operator.str()}` with undeclared type `${right_type}`')
 		}
 		return 'bool'
@@ -341,6 +387,8 @@ fn (g &Parser) nonlocal_name_type(name string) string {
 		global_type
 	} else if global_type := g.global_types[fastc_global_key('builtin', name)] {
 		global_type
+	} else if global_type := g.resolve_cross_module_global_type(name) {
+		global_type
 	} else if g.selfhost {
 		'int'
 	} else {
@@ -362,6 +410,12 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 // lowerings ask about the same operands and receivers repeatedly.
 fn (g &Parser) infer_expression_type_range(tokens []FastcExpressionToken, expression_start int, expression_end int) !string {
 	if expression_end - expression_start < 2 {
+		return g.infer_expression_type_range_impl(tokens, expression_start, expression_end)!
+	}
+	// Flow-sensitive member smartcasts are installed while an `&&` expression is rendered.
+	// A type cached before the left operand narrows its subject is stale for the operands to
+	// its right, so infer those ranges directly while an active smartcast affects them.
+	if g.expression_uses_member_smartcast(tokens[expression_start..expression_end]) {
 		return g.infer_expression_type_range_impl(tokens, expression_start, expression_end)!
 	}
 	memo_key := fastc_comparison_memo_key(tokens[expression_start..expression_end], 2)
@@ -402,7 +456,10 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 		return match item.tok {
 			.name {
-				if local := g.locals[item.lit] {
+				if smartcast := g.member_smartcasts[item.lit] {
+					// A bare local narrowed by `x is T` reads as the concrete variant.
+					smartcast.typ
+				} else if local := g.locals[item.lit] {
 					local.typ
 				} else {
 					g.nonlocal_name_type(item.lit)
@@ -432,6 +489,14 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			}
 			else {
 				''
+			}
+		}
+	}
+	// `X as T` yields the target type `T` (so `(x as T).field` resolves).
+	if as_index := fastc_bare_as_cast_index(tokens, start, end) {
+		if as_index + 1 < end {
+			if target := g.type_from_expression_tokens(tokens[as_index + 1..end]) {
+				return fastc_normalize_inferred_type(target)
 			}
 		}
 	}
@@ -569,6 +634,10 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 							// Calling a function-pointer parameter (`f(x)`).
 							return local.fn_return_type
 						}
+						// Calling a value whose type is a `type X = fn (...) Ret` alias.
+						if ret := g.fn_alias_return_types[fastc_trim_pointer_suffix(local.typ)] {
+							return ret
+						}
 					}
 					if primitive := fastc_primitive_c_type(name) {
 						return primitive
@@ -605,9 +674,56 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			continue
 		}
 		receiver_start := fastc_method_receiver_start_after(tokens, i - 1, start)
+		if receiver_start != start {
+			// A prefix before the receiver (`*a.node(id)`, `-x.len()`) modifies the
+			// method result, so its type is not the method return type; let the
+			// prefix-operator handling below (e.g. `*` deref) infer it instead.
+			continue
+		}
 		receiver_type := g.infer_expression_type_range(tokens, receiver_start, i - 1)!
 		if receiver_type == '' {
 			continue
+		}
+		if tokens[i].lit in ['map', 'filter', 'any', 'all', 'count'] && fastc_trim_pointer_suffix(fastc_normalize_inferred_type(g.underlying_alias_type(receiver_type))).starts_with('Array_') {
+			// The magic closure methods change the result type: `filter` keeps the array,
+			// `count` is an int, `any`/`all` are bools, and `map` yields an array of the
+			// closure's element type (inferred with `it` bound to the element).
+			method := tokens[i].lit
+			if method == 'filter' {
+				return fastc_trim_pointer_suffix(fastc_normalize_inferred_type(g.underlying_alias_type(receiver_type)))
+			}
+			if method == 'count' {
+				return 'int'
+			}
+			if method in ['any', 'all'] {
+				return 'bool'
+			}
+			array_type := fastc_normalize_inferred_type(g.underlying_alias_type(receiver_type))
+			if element_type := g.array_element_type(array_type) {
+				mut closure_start := i + 2
+				mut it_name := 'it'
+				if tokens[closure_start].tok == .pipe && closure_start + 2 < close {
+					it_name = tokens[closure_start + 1].lit
+					closure_start += 3
+				}
+				mut w := unsafe { &Parser(g) }
+				had_it := it_name in g.locals
+				saved_it := g.locals[it_name] or { FastcLocal{} }
+				w.locals[it_name] = FastcLocal{
+					typ: element_type
+				}
+				closure_type := g.infer_expression_type_range(tokens, closure_start, close) or {
+					''
+				}
+				if had_it {
+					w.locals[it_name] = saved_it
+				} else {
+					w.locals.delete(it_name)
+				}
+				if closure_type != '' {
+					return fastc_array_c_type(fastc_normalize_inferred_type(closure_type))
+				}
+			}
 		}
 		if tokens[i].lit == 'wait' && receiver_type.starts_with(fastc_thread_type_prefix) {
 			value_type := g.thread_value_types[receiver_type] or { '' }
@@ -616,14 +732,45 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			}
 			return value_type
 		}
-		function_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
+		if tokens[i].lit == 'wait' && receiver_type.trim_right('*').starts_with('Array_') {
+			// `[]thread T`.wait() joins every thread and returns their `[]T` results.
+			element := g.array_element_type(receiver_type) or { '' }
+			if element.starts_with(fastc_thread_type_prefix) {
+				value_type := g.thread_value_types[element] or { '' }
+				if value_type != '' {
+					return fastc_array_c_type(value_type)
+				}
+			}
+		}
+		mut function_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
+		mut method_receiver_type := receiver_type
+		if function_key !in g.functions && i - receiver_start == 2 && tokens[receiver_start].tok == .name && tokens[i - 1].tok == .dot {
+			// A method of the whole sum type (`fn (t Type) tname()`) invoked on a NARROWED variant
+			// receiver (`base is Prim && base.tname()`) is not found on the variant; resolve it on
+			// the local's boxed origin, as the method renderer does — so a `base.tname() == 'u8'`
+			// string comparison is typed as string and not left a raw pointer `==`.
+			if local := g.locals[tokens[receiver_start].lit] {
+				origin := if local.smartcast_origin_type != '' {
+					local.smartcast_origin_type
+				} else {
+					local.typ
+				}
+				if origin != '' && origin != receiver_type {
+					origin_key, _ := g.resolve_method(origin, tokens[i].lit)
+					if origin_key in g.functions {
+						function_key = origin_key
+						method_receiver_type = origin
+					}
+				}
+			}
+		}
 		if static_key := g.static_function_key_for_call(tokens, i) {
 			if signature := g.functions[static_key] {
 				return signature.return_type
 			}
 		}
 		if signature := g.functions[function_key] {
-			return g.specialized_method_return_type(receiver_type, function_key, signature)
+			return g.specialized_method_return_type(method_receiver_type, function_key, signature)
 		}
 		if field := g.struct_field_metadata(receiver_type, tokens[i].lit) {
 			if function_alias := g.functions[field.typ] {
@@ -633,13 +780,35 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		if tokens[i].lit == 'str' && g.can_generate_default_struct_str(receiver_type) {
 			return 'string'
 		}
+		if tokens[i].lit == 'str' && g.declared_kinds[g.semantic_type_key(receiver_type)] == .enum_ {
+			return 'string'
+		}
+		if tokens[i].lit == 'str' && receiver_type.trim_right('*').starts_with('Array_') {
+			return 'string'
+		}
+		if tokens[i].lit == 'type_name' && g.is_boxed_type(fastc_normalize_inferred_type(receiver_type)) {
+			return 'string'
+		}
 	}
 	if end - start >= 3 && tokens[end - 2].tok == .dot && tokens[end - 1].tok == .name {
 		receiver_start := fastc_method_receiver_start_after(tokens, end - 2, start)
 		if receiver_start == start {
+			// A member smartcast on the full path overrides the declared field type
+			// (`if x.f is T { … x.f.g … }`, incl. an indexed chain `x.args[0].expr` keyed
+			// as `x.args[].expr`, reads the member as the concrete variant).
+			if member_path := fastc_indexed_member_chain_path(tokens[start..end]) {
+				if smartcast := g.member_smartcasts[member_path] {
+					return smartcast.typ
+				}
+			}
 			receiver_type := g.infer_expression_type_range(tokens, start, end - 2)!
 			if field := g.struct_field_metadata(receiver_type, tokens[end - 1].lit) {
 				return field.typ
+			}
+			// A field shared by every variant of a boxed sum type (`node.name` where
+			// `node` is `ast.TypeDecl`) resolves to that common field's type.
+			if common := g.sumtype_common_field_type(receiver_type, tokens[end - 1].lit) {
+				return common
 			}
 		}
 	}
@@ -652,6 +821,16 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 	}
 	if tokens[start].tok in [.amp, .and] {
 		operand_type := g.infer_expression_type_range(tokens, start + 1, end)!
+		// A mutable/reference local has pointer storage but value type `T` in V.
+		// Taking `&local` therefore yields its existing `T*` storage type, not
+		// `T**`. The rendered `&(*local)` expression follows the same rule.
+		if tokens[start].tok == .amp && end - start == 2 && tokens[start + 1].tok == .name {
+			if local := g.locals[tokens[start + 1].lit] {
+				if local.is_reference {
+					return local.typ
+				}
+			}
+		}
 		mut pointer_count := 1
 		if tokens[start].tok == .and {
 			pointer_count = 2
@@ -664,7 +843,14 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 	}
 	if tokens[start].tok == .mul {
 		operand_type := g.infer_expression_type_range(tokens, start + 1, end)!
-		return fastc_trim_pointer_suffix(operand_type)
+		// Dereferencing removes exactly one pointer level. trim_right('*') collapses
+		// `T**` all the way to `T`, which makes values such as
+		// `*(&&ast.File(ptr))` look by-value and adds a bogus address-of later.
+		return if operand_type.ends_with('*') {
+			operand_type[..operand_type.len - 1]
+		} else {
+			operand_type
+		}
 	}
 	if tokens[start].tok == .bit_not {
 		operand_type := g.infer_expression_type_range(tokens, start + 1, end)!
@@ -864,6 +1050,126 @@ fn fastc_expression_tokens_contain_range(tokens []FastcExpressionToken, start in
 	return false
 }
 
+// fastc_member_chain_path returns the dotted path (`a.b.c`) for a pure member
+// chain `name (. name)*` spanning tokens[start..end], or none for anything else.
+fn fastc_member_chain_path(tokens []FastcExpressionToken, start int, end int) ?string {
+	if start >= end || tokens[start].tok != .name {
+		return none
+	}
+	mut path := tokens[start].lit
+	mut i := start + 1
+	for i < end {
+		if i + 1 >= end || tokens[i].tok != .dot || tokens[i + 1].tok != .name {
+			return none
+		}
+		path += '.' + tokens[i + 1].lit
+		i += 2
+	}
+	return path
+}
+
+// fastc_indexed_member_chain_path is like fastc_member_chain_path but also accepts array
+// index segments (`right.args[0].expr`), keying each `[…]` as the `[]` marker that
+// render_member_receiver uses so a member smart-cast registered here is found when the
+// chain is rendered.
+fn fastc_indexed_member_chain_path(tokens []FastcExpressionToken) ?string {
+	if tokens.len == 0 || tokens[0].tok != .name {
+		return none
+	}
+	mut path := tokens[0].lit
+	mut i := 1
+	for i < tokens.len {
+		if tokens[i].tok == .lsbr {
+			close := fastc_matching_delimiter(tokens, i, .lsbr, .rsbr) or { return none }
+			path += '[]'
+			i = close + 1
+			continue
+		}
+		if i + 1 < tokens.len && tokens[i].tok == .dot && tokens[i + 1].tok == .name {
+			path += '.' + tokens[i + 1].lit
+			i += 2
+			continue
+		}
+		return none
+	}
+	return path
+}
+
+// sum_type_variant_list returns the C variant type names of a sum type (`base` is a
+// normalized C type name; any pointer suffix is trimmed).
+fn (g &Parser) sum_type_variant_list(sum_type string) []string {
+	base := fastc_trim_pointer_suffix(sum_type)
+	prefix := '${base}|'
+	mut variants := []string{}
+	for key, present in g.sum_type_variants {
+		if present && key.starts_with(prefix) {
+			variants << key[prefix.len..]
+		}
+	}
+	return variants
+}
+
+// sum_type_leaf_variants returns the concrete (non-sum-type) variants of `sum_type`,
+// recursively expanding any variant that is itself a sum type. A value whose static type is
+// a sum type always carries the runtime tag of one of these leaf struct variants, so field
+// dispatch and common-field detection must reason over the flattened set.
+fn (g &Parser) sum_type_leaf_variants(sum_type string) []string {
+	mut leaves := []string{}
+	for variant in g.sum_type_variant_list(sum_type) {
+		if fastc_trim_pointer_suffix(variant) in g.sum_types {
+			leaves << g.sum_type_leaf_variants(variant)
+		} else {
+			leaves << variant
+		}
+	}
+	return leaves
+}
+
+// sumtype_common_field_type returns the shared C type of a field that every variant of
+// `sum_type` declares (a V "common sum-type field"), or none when the field is absent
+// from some variant, has different types across variants, or is reached through an
+// embedded field. Only direct fields are treated as common. Variants that are themselves
+// sum types are flattened to their leaf struct variants first.
+fn (g &Parser) sumtype_common_field_type(sum_type string, field_name string) ?string {
+	base := fastc_trim_pointer_suffix(sum_type)
+	if base !in g.sum_types {
+		return none
+	}
+	variants := g.sum_type_leaf_variants(base)
+	if variants.len == 0 {
+		return none
+	}
+	mut common_type := ''
+	for variant in variants {
+		field := g.struct_field_metadata(variant, field_name) or { return none }
+		if field.storage_path.len > 0 {
+			return none
+		}
+		if common_type == '' {
+			common_type = field.typ
+		} else if field.typ != common_type {
+			return none
+		}
+	}
+	if common_type == '' {
+		return none
+	}
+	return common_type
+}
+
+// resolve_cross_module_global_type returns the type of a `__global` declared in ANY module,
+// looked up by its bare name — `__global`s are truly global, so a reference from a different
+// module than the declaring one (`global_table` in v.ast, used from v.checker) still resolves.
+fn (g &Parser) resolve_cross_module_global_type(name string) ?string {
+	suffix := '.${name}'
+	for key, global_type in g.global_types {
+		if key == name || key.ends_with(suffix) {
+			return global_type
+		}
+	}
+	return none
+}
+
 fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int, end int) ?string {
 	if end - start < 3 || tokens[start].tok != .name {
 		return none
@@ -877,10 +1183,18 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 		current_type = constant_type
 	} else if constant_type := g.constant_types[fastc_constant_key('builtin', tokens[start].lit)] {
 		current_type = constant_type
+	} else if global_type := g.resolve_cross_module_global_type(tokens[start].lit) {
+		current_type = global_type
 	} else {
 		return none
 	}
 	mut member_path := tokens[start].lit
+	// A smart-cast on the bare subject itself (`x is T`, or an option local narrowed by
+	// `x != none`) reshapes it before any field access, exactly as render_member_receiver
+	// does when producing the matching source.
+	if smartcast := g.member_smartcasts[member_path] {
+		current_type = smartcast.typ
+	}
 	mut index := start + 1
 	for index < end {
 		if tokens[index].tok == .lsbr {
@@ -909,6 +1223,12 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 				current_type = current_type[..current_type.len - 1]
 			} else {
 				return none
+			}
+			// Key the index segment as the `[]` marker so a member smart-cast registered on an
+			// indexed chain (`right.args[0].expr is T` → `right.args[].expr`) is found below.
+			member_path += '[]'
+			if smartcast := g.member_smartcasts[member_path] {
+				current_type = smartcast.typ
 			}
 			index = close + 1
 			continue
@@ -969,12 +1289,16 @@ fn (g &Parser) semantic_type_key(c_type string) string {
 }
 
 fn (g &Parser) underlying_alias_type(c_type string) string {
+	return fastc_underlying_alias_type(c_type, g.alias_base_types)
+}
+
+fn fastc_underlying_alias_type(c_type string, alias_base_types map[string]string) string {
 	// Fast path: most types are not aliases, so resolve the first hop before
 	// allocating the cycle-guard map. underlying_alias_type is called for
 	// nearly every inferred expression type; the unconditional map allocation
 	// showed up as a hot allocation site under -prealloc.
 	base0 := fastc_trim_pointer_suffix(c_type)
-	first := g.alias_base_types[base0] or { return c_type }
+	first := alias_base_types[base0] or { return c_type }
 	mut resolved := first + c_type[base0.len..]
 	mut seen := map[string]bool{}
 	seen[base0] = true
@@ -983,7 +1307,7 @@ fn (g &Parser) underlying_alias_type(c_type string) string {
 		if base in seen {
 			return resolved
 		}
-		alias_base := g.alias_base_types[base] or { return resolved }
+		alias_base := alias_base_types[base] or { return resolved }
 		seen[base] = true
 		resolved = alias_base + resolved[base.len..]
 	}
@@ -1128,6 +1452,15 @@ fn fastc_is_pointer_type(typ string) bool {
 }
 
 fn fastc_array_element_type(typ string) ?string {
+	// A `FixedArray_<len>_FASTC_ARRAY_OF_<elem>` name carries the raw element type after the
+	// marker, and that element may itself be a pointer (`[N]&T` -> `..._FASTC_ARRAY_OF_T*`).
+	// Extract it before any trailing-`*` trim mistakes the element's pointer for a suffix on
+	// the whole array type.
+	if typ.starts_with('FixedArray_') && typ.contains('_FASTC_ARRAY_OF_') {
+		if element_type := fastc_fixed_array_element_type(typ) {
+			return element_type
+		}
+	}
 	base := fastc_trim_pointer_suffix(typ)
 	if base.starts_with('Array_') && base.len > 'Array_'.len {
 		return fastc_decode_ptr_element_type(base['Array_'.len..])

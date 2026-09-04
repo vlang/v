@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_connection_close_tracker_starts_active() {

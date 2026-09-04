@@ -25,8 +25,7 @@ fn (mut h H3Conn) drive_peer_qpack_encoder_stream(stream_id u64, mut result H3Po
 		h.peer_qpack_encoder_buf << new_bytes
 	}
 	if u64(h.peer_qpack_encoder_buf.len) > max_h3_control_plane_buffered_bytes {
-		return error_with_code('h3: QPACK encoder stream ${stream_id} exceeded the ${max_h3_control_plane_buffered_bytes}-byte control-plane buffering limit without completing an instruction',
-			int(H3ErrorCode.excessive_load))
+		return error_with_code('h3: QPACK encoder stream ${stream_id} exceeded the ${max_h3_control_plane_buffered_bytes}-byte control-plane buffering limit without completing an instruction', int(H3ErrorCode.excessive_load))
 	}
 	for {
 		// apply_encoder_instruction's own errors already carry the correct
@@ -57,8 +56,7 @@ fn (mut h H3Conn) drive_peer_qpack_decoder_stream(stream_id u64) ! {
 		h.peer_qpack_decoder_buf << new_bytes
 	}
 	if u64(h.peer_qpack_decoder_buf.len) > max_h3_control_plane_buffered_bytes {
-		return error_with_code('h3: QPACK decoder stream ${stream_id} exceeded the ${max_h3_control_plane_buffered_bytes}-byte control-plane buffering limit without completing an instruction',
-			int(H3ErrorCode.excessive_load))
+		return error_with_code('h3: QPACK decoder stream ${stream_id} exceeded the ${max_h3_control_plane_buffered_bytes}-byte control-plane buffering limit without completing an instruction', int(H3ErrorCode.excessive_load))
 	}
 	for {
 		// Unlike apply_encoder_instruction, decode_qpack_decoder_instruction

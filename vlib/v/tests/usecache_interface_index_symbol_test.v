@@ -56,7 +56,10 @@ fn test_usecache_builtin_autostr_globals_are_extern_only() {
 		os.execute('${os.quoted_path(vexe)} -old-compiler -usecache -o - ${os.quoted_path(source_path)}')
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('extern Array_fixed_int_64 g_autostr_type_stack;'), res.output
-	assert res.output.contains('extern AutostrAddrStackState g_autostr_addr_state;'), res.output
+	assert res.output.contains('#define g_autostr_addr_state (*v_g_autostr_addr_state_tls_slot())'), res.output
+	assert res.output.contains('extern __declspec(thread) AutostrAddrStackState g_autostr_addr_state;'), res.output
+	assert res.output.contains('extern thread_local AutostrAddrStackState g_autostr_addr_state;'), res.output
+	assert res.output.contains('extern _Thread_local AutostrAddrStackState g_autostr_addr_state;'), res.output
 	assert !res.output.contains('extern Array_fixed_int_64 g_autostr_type_stack = {0};'), res.output
 	assert !res.output.contains('extern AutostrAddrStackState g_autostr_addr_state ='), res.output
 	assert !res.output.contains('g_autostr_type_stack = {0}; // global 3'), res.output

@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 import crypto.rand
@@ -98,6 +97,7 @@ fn test_key_update_state_tolerates_resolving_before_committing() {
 	resolution_b := s.resolve_read_keys(true, 105)!
 	assert resolution_a.is_new_update == true
 	assert resolution_b.is_new_update == true // stale-but-expected: nothing committed yet
+	
 
 	s.note_successful_decrypt(resolution_a, 100)!
 	assert s.current_phase_bit() == true
@@ -170,6 +170,7 @@ fn test_key_update_state_second_update_does_not_corrupt_bookkeeping_via_stale_re
 	// Commit the genuine second update first.
 	s.note_successful_decrypt(new_resolution, 200)!
 	assert s.current_phase_bit() == false // back to phase 0, by parity -- generation 2
+	
 
 	// Commit the OLD, generation-0 resolution. Its phase bit (false) now
 	// coincidentally matches s.current_phase (also false, but for

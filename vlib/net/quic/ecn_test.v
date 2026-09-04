@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 // test_ecn_state_parses_counts_without_erroring_and_never_validates is the
@@ -10,8 +9,8 @@ fn test_ecn_state_parses_counts_without_erroring_and_never_validates() {
 	assert !s.is_validated()
 
 	s.note_ack_ecn_counts(EcnCounts{
-		ect0:   10
-		ect1:   0
+		ect0: 10
+		ect1: 0
 		ecn_ce: 3
 	})
 	assert s.last_ect0 == 10
@@ -27,13 +26,13 @@ fn test_ecn_state_parses_counts_without_erroring_and_never_validates() {
 fn test_ecn_state_records_latest_cumulative_totals() {
 	mut s := new_ecn_state()
 	s.note_ack_ecn_counts(EcnCounts{
-		ect0:   1
-		ect1:   2
+		ect0: 1
+		ect1: 2
 		ecn_ce: 3
 	})
 	s.note_ack_ecn_counts(EcnCounts{
-		ect0:   5
-		ect1:   6
+		ect0: 5
+		ect1: 6
 		ecn_ce: 7
 	})
 	assert s.last_ect0 == 5

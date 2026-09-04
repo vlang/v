@@ -31,6 +31,7 @@ const param_retry_source_connection_id = u64(0x10)
 // encode-side sanity checks and decode-side validation below.
 const max_ack_delay_exponent = u64(20)
 const max_ack_delay_upper_bound = u64(0x4000) // 2^14; values >= this are invalid
+
 const min_active_connection_id_limit = u64(2)
 const min_max_udp_payload_size = u64(1200)
 
@@ -160,14 +161,14 @@ pub fn decode_preferred_address(buf []u8) !PreferredAddress {
 	// limit. A peer sending 21-255 bytes here is spec-invalid even though
 	// nothing about THIS TLV's own encoding would fail to round-trip it.
 	if cid_len > quic_v1_max_cid_len {
-		return error('quic: preferred_address connection_id ${cid_len} exceeds QUIC v1\'s ${quic_v1_max_cid_len}-byte limit')
+		return error("quic: preferred_address connection_id ${cid_len} exceeds QUIC v1's ${quic_v1_max_cid_len}-byte limit")
 	}
 	return PreferredAddress{
-		ipv4_address:          ipv4_address
-		ipv4_port:             ipv4_port
-		ipv6_address:          ipv6_address
-		ipv6_port:             ipv6_port
-		connection_id:         buf[25..25 + cid_len].clone()
+		ipv4_address: ipv4_address
+		ipv4_port: ipv4_port
+		ipv6_address: ipv6_address
+		ipv6_port: ipv6_port
+		connection_id: buf[25..25 + cid_len].clone()
 		stateless_reset_token: buf[25 + cid_len..expected_len].clone()
 	}
 }
@@ -376,7 +377,7 @@ pub fn decode_transport_parameters(buf []u8) !QuicTransportParameters {
 		match id {
 			param_original_destination_connection_id {
 				if value.len > quic_v1_max_cid_len {
-					return error('quic: original_destination_connection_id ${value.len} exceeds QUIC v1\'s ${quic_v1_max_cid_len}-byte limit')
+					return error("quic: original_destination_connection_id ${value.len} exceeds QUIC v1's ${quic_v1_max_cid_len}-byte limit")
 				}
 				params.original_destination_connection_id = value.clone()
 			}
@@ -454,13 +455,13 @@ pub fn decode_transport_parameters(buf []u8) !QuicTransportParameters {
 			}
 			param_initial_source_connection_id {
 				if value.len > quic_v1_max_cid_len {
-					return error('quic: initial_source_connection_id ${value.len} exceeds QUIC v1\'s ${quic_v1_max_cid_len}-byte limit')
+					return error("quic: initial_source_connection_id ${value.len} exceeds QUIC v1's ${quic_v1_max_cid_len}-byte limit")
 				}
 				params.initial_source_connection_id = value.clone()
 			}
 			param_retry_source_connection_id {
 				if value.len > quic_v1_max_cid_len {
-					return error('quic: retry_source_connection_id ${value.len} exceeds QUIC v1\'s ${quic_v1_max_cid_len}-byte limit')
+					return error("quic: retry_source_connection_id ${value.len} exceeds QUIC v1's ${quic_v1_max_cid_len}-byte limit")
 				}
 				params.retry_source_connection_id = value.clone()
 			}

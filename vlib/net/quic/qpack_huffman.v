@@ -29,8 +29,8 @@ const qpack_huffman_decode_map = qpack_huffman_table.decode_map() or { panic('qp
 
 fn build_qpack_huffman_table() huffman.Table {
 	return huffman.build(
-		lengths:   qpack_huffman_code_lens[..].map(int(it))
-		max_bits:  qpack_max_code_bits
+		lengths: qpack_huffman_code_lens[..].map(int(it))
+		max_bits: qpack_max_code_bits
 		bit_order: .msb_first
 	) or { panic('qpack: ${err}') }
 }

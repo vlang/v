@@ -15,15 +15,11 @@ import v3.workers
 
 const min_parallel_transform_items = 256
 const max_parallel_transform_jobs = 7
-// Shared-base (clone-free) transform: workers share the master arrays and
-// append into pre-partitioned capacity regions, so extra threads cost no
-// clone memory; cap by core count only.
-const max_shared_transform_jobs = 18
-// Shared regions are cheap views over the same AST. Keep two chunks per lane so
-// the persistent queue can absorb heterogeneous-core and scheduler stragglers;
-// the caller consumes two synchronous chunks while each pool worker consumes
-// two queued chunks.
-const shared_transform_chunks_per_job = 2
+// Shared-base workers share the AST but retain private checker and transform
+// scratch. Eight lanes keep large user builds below the ordinary memory ceiling.
+const max_shared_transform_jobs = 8
+// One chunk per lane bounds the number of private worker views kept until merge.
+const shared_transform_chunks_per_job = 1
 // Normal function lowering needs part of the shared append pool too. Limit
 // expansion estimates to the other half before assigning fixed worker regions.
 const shared_expansion_pool_divisor = 2
@@ -32,7 +28,7 @@ const max_parallel_monomorph_jobs = 18
 const scoped_transform_batches = 16
 const scoped_transform_max_batch_items = 2048
 const scoped_monomorph_batch_specs = 512
-const scoped_monomorph_node_threshold = 500_000
+const scoped_monomorph_node_threshold = 1_000_000
 
 $if !windows {
 	// RegionRelocateArgs is one worker region's in-place id-relocation job: the
@@ -105,7 +101,11 @@ $if !windows {
 		a := unsafe { &TransformChunkArgs(arg) }
 		mut w := unsafe { &Transformer(a.worker) }
 		items := unsafe { &[]FnWorkItem(a.items_ptr) }
-		w.transform_pure_items_serial(*items)
+		if w.scope_parallel_workers && w.retain_worker_results {
+			w.transform_scoped_helper_batches(*items, 1)
+		} else {
+			w.transform_pure_items_serial(*items)
+		}
 		return unsafe { nil }
 	}
 
@@ -1104,18 +1104,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			view.specialized_fn_modules = map[int]string{}
 			view.specialized_fn_files = map[int]string{}
 			mut wtc := t.tc.fork_for_parallel_transform(view)
-			wtc.fn_ret_types = t.tc.fn_ret_types.clone()
-			wtc.fn_param_types = t.tc.fn_param_types.clone()
-			wtc.fn_variadic = t.tc.fn_variadic.clone()
-			wtc.specialized_generic_fns = t.tc.specialized_generic_fns.clone()
-			wtc.fn_type_modules = t.tc.fn_type_modules.clone()
-			wtc.fn_type_files = t.tc.fn_type_files.clone()
-			wtc.transform_signature_maps_shared = false
 			mut w := t.fork_worker(view, wtc)
 			w.global_temp_counter = node_starts[ci]
-			w.fn_ret_types = t.fn_ret_types.clone()
-			w.receiver_method_suffix_index = t.receiver_method_suffix_index.clone()
-			w.signature_maps_shared = false
 			w.generic_fn_decls_cache = decls.clone()
 			w.generic_fn_decls_ready = true
 			w.generic_receiver_methods_by_name = t.generic_receiver_methods_by_name.clone()
@@ -1136,6 +1126,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		// signature base. This algorithm moves and mutates those maps, so detach
 		// once before taking ownership of their storage.
 		t.ensure_private_signature_maps()
+		mut master_tc := unsafe { &types.TypeChecker(voidptr(t.tc)) }
+		master_tc.ensure_private_transform_signatures()
 		mut shared_fn_ret_types := t.fn_ret_types.move()
 		mut shared_receiver_index := t.receiver_method_suffix_index.move()
 		t.parallel_monomorph_scan_nodes = []int{}
@@ -1328,6 +1320,11 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 	// Workers treat declaration parameter metadata as immutable. Build the lazy
 	// index in the parent arena before a scoped worker can grow its backing map.
 	t.prepare_parallel_call_param_types()
+	// A scoped transformer can itself be a fork whose signature tables still
+	// point at its parent's read-only base. Detach before pre-registering the
+	// batch, rather than mutating storage another worker may be reading.
+	t.ensure_private_signature_maps()
+	t.tc.ensure_private_transform_signatures()
 	t.tc.freeze_type_cache_for_forks()
 	defer {
 		t.tc.unfreeze_type_cache_after_forks()
@@ -1357,14 +1354,7 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 			t.a.children.cap)
 		wast.specialized_fn_nodes = map[int]bool{}
 		mut wtc := t.tc.fork_for_parallel_transform(wast)
-		wtc.fn_ret_types = t.tc.fn_ret_types.clone()
-		wtc.fn_param_types = t.tc.fn_param_types.clone()
-		wtc.fn_variadic = t.tc.fn_variadic.clone()
-		wtc.specialized_generic_fns = t.tc.specialized_generic_fns.clone()
-		wtc.fn_type_modules = t.tc.fn_type_modules.clone()
-		wtc.fn_type_files = t.tc.fn_type_files.clone()
-		wtc.receiver_method_suffix_index = t.tc.receiver_method_suffix_index.clone()
-		wtc.transform_signature_maps_shared = false
+		wtc.ensure_private_transform_signatures()
 		mut w := t.fork_worker(wast, wtc)
 		w.fn_ret_types = t.fn_ret_types.clone()
 		w.receiver_method_suffix_index = t.receiver_method_suffix_index.clone()
@@ -1472,17 +1462,16 @@ fn monomorph_job_count(n_runtime_jobs int, n_specs int) int {
 	return n
 }
 
-fn monomorph_job_limit(available_jobs int, node_count int, configured_jobs int) int {
+fn monomorph_job_limit(available_jobs int, _node_count int, configured_jobs int) int {
 	if available_jobs <= 1 {
 		return 1
 	}
 	if configured_jobs > 0 {
 		return int_min(available_jobs, configured_jobs)
 	}
-	// Each helper retains a forked checker and its disposable specialization arena
-	// until the final publication barrier. Two workers keep large applications under
-	// the normal memory budget; smaller programs retain the lower-latency four-way path.
-	return int_min(available_jobs, if node_count >= 500_000 { 2 } else { 4 })
+	// Scoped generic-transform batches keep enough memory available for the
+	// lower-latency four-way specialization path on large applications too.
+	return int_min(available_jobs, 4)
 }
 
 // monomorph_regions_can_merge_in_place reports whether sequential leftward
@@ -1703,6 +1692,9 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 	}
 	if node.typ.len > 0 && transform_scope_owns(scope, node.typ.str) {
 		node.typ = t.promote_scoped_result_text(node.typ)
+	}
+	if isnil(node.payload) {
+		return
 	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {

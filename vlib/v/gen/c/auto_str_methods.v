@@ -194,8 +194,8 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 			g.gen_str_for_fn_type(sym.info, styp, str_fn_name)
 		}
 		ast.Struct {
-			g.gen_str_for_struct(sym.info, sym.language, styp, g.table.type_to_str(typ.typ),
-				str_fn_name)
+			g.gen_str_for_struct(typ.typ, sym.info, sym.language, styp,
+				g.table.type_to_str(typ.typ), str_fn_name)
 		}
 		ast.Map {
 			g.gen_str_for_map(sym.info, styp, str_fn_name)
@@ -267,7 +267,8 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string,
 			g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(${deref}it.data);')
 		}
 	}
-	g.auto_str_funcs.writeln('\t\treturn ${str_intp_sub('${type_name}(%%)', 'res')};')
+	option_label := type_name + '(%%)'
+	g.auto_str_funcs.writeln('\t\treturn ${str_intp_sub(option_label, 'res')};')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('\treturn _S("${type_name}(none)");')
 	g.auto_str_funcs.writeln('}')
@@ -1139,7 +1140,12 @@ fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 	return .si_i32
 }
 
-fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp string, typ_str string, str_fn_name string) {
+fn guarded_auto_str_fn_name(str_fn_name string) string {
+	return '${str_fn_name}__root'
+}
+
+fn (mut g Gen) gen_str_for_struct(typ ast.Type, info ast.Struct, lang ast.Language, styp string,
+	typ_str string, str_fn_name string) {
 	$if trace_autostr ? {
 		eprintln('> gen_str_for_struct: ${info.parent_type.debug()} | ${styp} | ${str_fn_name}')
 	}
@@ -1148,6 +1154,17 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 	arg_def := if is_c_struct { '${styp}* it' } else { '${styp} it' }
 	g.definitions.writeln('${g.static_non_parallel}string ${str_fn_name}(${arg_def});')
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${arg_def}) { return indent_${str_fn_name}(it, 0);}')
+	if !is_c_struct {
+		root_str_fn_name := guarded_auto_str_fn_name(str_fn_name)
+		g.definitions.writeln('${g.static_non_parallel}string ${root_str_fn_name}(${styp}* it);')
+		g.auto_str_funcs.writeln('${g.static_non_parallel}string ${root_str_fn_name}(${styp}* it) {')
+		g.auto_str_funcs.writeln('\tif (builtin__autostr_addr_type_in_stack((voidptr)it, ${g.type_sidx(typ)})) { return _S("<circular>"); }')
+		g.auto_str_funcs.writeln('\tbuiltin__autostr_addr_type_push((voidptr)it, ${g.type_sidx(typ)});')
+		g.auto_str_funcs.writeln('\tstring res = ${str_fn_name}(*it);')
+		g.auto_str_funcs.writeln('\tbuiltin__autostr_addr_pop();')
+		g.auto_str_funcs.writeln('\treturn res;')
+		g.auto_str_funcs.writeln('}')
+	}
 	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${arg_def}, ${ast.int_type_name} indent_count);')
 	mut fn_builder := strings.new_builder(512)
 	defer {
@@ -1221,15 +1238,11 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		if i in field_skips {
 			continue
 		}
-		ftyp_noshared := if field.typ.has_flag(.shared_f) {
-			field.typ.deref().clear_flag(.shared_f)
-		} else {
-			field.typ
-		}
+		ftyp_noshared := auto_str_shared_payload_type(field.typ)
 		mut ptr_amp := if ftyp_noshared.is_ptr() { '&' } else { '' }
 		mut base_typ := g.unwrap_generic(field.typ)
 		if base_typ.has_flag(.shared_f) {
-			base_typ = base_typ.clear_flag(.shared_f).deref()
+			base_typ = auto_str_shared_payload_type(base_typ)
 		}
 		base_fmt := g.type_to_fmt(base_typ)
 		is_opt_field := field.typ.has_flag(.option)
@@ -1334,7 +1347,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			is_field_array = true
 		}
 		// handle circular ref type of struct to the struct itself
-		if styp == field_styp && !allow_circular {
+		if styp == field_styp && !allow_circular && !ftyp_noshared.is_ptr() {
 			if is_field_array {
 				tmpvar := g.new_tmp_var()
 				if is_opt_field {
@@ -1354,19 +1367,20 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			if field.typ in ast.charptr_types {
 				fn_body.write_string('builtin__tos4((byteptr)${func})')
 			} else {
-				is_ptr_field := field.typ.is_ptr() && sym.kind in [.struct, .interface]
-				is_opt_ptr_field := field.typ.has_flag(.option) && field.typ.is_ptr()
+				is_ptr_field := ftyp_noshared.is_ptr() && sym.kind in [.struct, .interface]
+				is_opt_ptr_field := ftyp_noshared.has_flag(.option) && ftyp_noshared.is_ptr()
 					&& sym.kind in [.struct, .interface]
 				if is_ptr_field && !field.typ.has_flag(.option) {
 					// Use address-based circular reference detection for pointer fields.
 					// This correctly detects actual circular references (same instance)
 					// without false positives from different instances of the same type.
 					tmpvar := g.new_tmp_var()
+					guard_type := g.type_sidx(ftyp_noshared.deref().clear_flag(.option))
 					mut before := '\tstring ${tmpvar};\n'
-					before += '\tif (builtin__isnil((voidptr)${it_field_name}) || builtin__autostr_addr_in_stack((voidptr)${it_field_name})) {\n'
+					before += '\tif (builtin__isnil((voidptr)${it_field_name}) || builtin__autostr_addr_type_in_stack((voidptr)${it_field_name}, ${guard_type})) {\n'
 					before += '\t\t${tmpvar} = ${funcprefix}builtin__isnil((voidptr)${it_field_name}) ? _S("nil") : _S("<circular>");\n'
 					before += '\t} else {\n'
-					before += '\t\tbuiltin__autostr_addr_push((voidptr)${it_field_name});\n'
+					before += '\t\tbuiltin__autostr_addr_type_push((voidptr)${it_field_name}, ${guard_type});\n'
 					before += '\t\t${tmpvar} = ${funcprefix}${func};\n'
 					before += '\t\tbuiltin__autostr_addr_pop();\n'
 					before += '\t}'
@@ -1380,15 +1394,16 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 					// Use address-based circular reference detection for option pointer fields (?&Struct).
 					// Extract the pointer from the option struct's data field.
 					tmpvar := g.new_tmp_var()
+					guard_type := g.type_sidx(ftyp_noshared.deref().clear_flag(.option))
 					mut before := '\tstring ${tmpvar};\n'
 					before += '\tif (${it_field_name}.state != 0) {\n'
 					before += '\t\t${tmpvar} = ${funcprefix}_S("Option(none)");\n'
 					before += '\t} else {\n'
 					before += '\t\tvoidptr ${tmpvar}_addr = *(voidptr*)${it_field_name}.data;\n'
-					before += '\t\tif (builtin__isnil(${tmpvar}_addr) || builtin__autostr_addr_in_stack(${tmpvar}_addr)) {\n'
+					before += '\t\tif (builtin__isnil(${tmpvar}_addr) || builtin__autostr_addr_type_in_stack(${tmpvar}_addr, ${guard_type})) {\n'
 					before += '\t\t\t${tmpvar} = ${funcprefix}builtin__isnil(${tmpvar}_addr) ? _S("Option(nil)") : _S("<circular>");\n'
 					before += '\t\t} else {\n'
-					before += '\t\t\tbuiltin__autostr_addr_push(${tmpvar}_addr);\n'
+					before += '\t\t\tbuiltin__autostr_addr_type_push(${tmpvar}_addr, ${guard_type});\n'
 					before += '\t\t\t${tmpvar} = ${funcprefix}${func};\n'
 					before += '\t\t\tbuiltin__autostr_addr_pop();\n'
 					before += '\t\t}\n'
@@ -1439,8 +1454,9 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 	$if trace_autostr ? {
 		eprintln('> struct_auto_str_func: ${sym.name} | field_type.debug() | ${fn_name} | ${field_name} | ${has_custom_str} | ${expects_ptr}')
 	}
-	field_type := if _field_type.has_flag(.shared_f) { _field_type.deref() } else { _field_type }
-	sufix := if field_type.has_flag(.shared_f) { '->val' } else { '' }
+	is_shared_field := _field_type.has_flag(.shared_f)
+	field_type := auto_str_shared_payload_type(_field_type)
+	sufix := if is_shared_field { '->val' } else { '' }
 	deref, _ := deref_kind(expects_ptr, field_type.is_ptr(), field_type)
 	final_field_name := if lang == .c { field_name } else { c_name(field_name) }
 	op := if lang == .c { '->' } else { '.' }
@@ -1516,6 +1532,14 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		}
 		return method_str, false
 	}
+}
+
+fn auto_str_shared_payload_type(typ ast.Type) ast.Type {
+	if !typ.has_flag(.shared_f) {
+		return typ
+	}
+	payload_typ := typ.clear_flag(.shared_f)
+	return if payload_typ.is_ptr() { payload_typ.deref() } else { payload_typ }
 }
 
 fn data_str(x StrIntpType) string {

@@ -15,9 +15,15 @@ fn test_tinyc_windows_thread_local_slot_uses_win32_tls() {
 	c_code := g.sb.str()
 	windows_code := c_code.all_before('#elif defined(__TINYC__)')
 	assert windows_code.contains('#if defined(__TINYC__) && defined(_WIN32)')
-	assert windows_code.contains('state_key = FlsAlloc(state_slot_free);')
-	assert windows_code.contains('FlsGetValue(state_key)')
-	assert windows_code.contains('FlsSetValue(state_key, p)')
+	assert windows_code.contains('GetProcAddress(kernel32, "FlsAlloc")')
+	assert windows_code.contains('GetProcAddress(kernel32, "FlsGetValue")')
+	assert windows_code.contains('GetProcAddress(kernel32, "FlsSetValue")')
+	assert windows_code.contains('fls_alloc(state_slot_free)')
+	assert windows_code.contains('state_fls_get(state_key)')
+	assert windows_code.contains('state_fls_set(state_key, p)')
+	assert !windows_code.contains('FlsAlloc(state_slot_free)')
+	assert !windows_code.contains('FlsGetValue(state_key)')
+	assert !windows_code.contains('FlsSetValue(state_key, p)')
 	assert windows_code.contains('state_slot_free(void* p) { free(p); }')
 	assert !windows_code.contains('pthread_')
 }
@@ -83,9 +89,11 @@ fn test_headerless_libc_preamble_declares_printf_for_cached_test_harnesses() {
 	assert c_code.contains('DWORD WINAPI TlsAlloc(void);'), c_code
 	assert c_code.contains('void* WINAPI TlsGetValue(DWORD index);'), c_code
 	assert c_code.contains('BOOL WINAPI TlsSetValue(DWORD index, void* value);'), c_code
-	assert c_code.contains('DWORD WINAPI FlsAlloc(void (WINAPI *callback)(void*));'), c_code
-	assert c_code.contains('void* WINAPI FlsGetValue(DWORD index);'), c_code
-	assert c_code.contains('BOOL WINAPI FlsSetValue(DWORD index, void* value);'), c_code
+	assert c_code.contains('void* WINAPI GetModuleHandleA(const char* module_name);'), c_code
+	assert c_code.contains('void* WINAPI GetProcAddress(void* module, const char* proc_name);'), c_code
+	assert !c_code.contains('DWORD WINAPI FlsAlloc('), c_code
+	assert !c_code.contains('void* WINAPI FlsGetValue('), c_code
+	assert !c_code.contains('BOOL WINAPI FlsSetValue('), c_code
 }
 
 fn test_headerless_libc_preamble_declares_qsort_for_generated_sort_helpers() {
