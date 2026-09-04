@@ -1192,11 +1192,21 @@ fn fastc_constant_candidates(ordered_sources []FastcSourceFile, constant_sources
 }
 
 // fastc_seed_constant_types parses constants in source order only to make their
-// types available to struct field defaults. It is used conditionally when a
-// default references a constant; the authoritative parallel pass still renders
-// and emits the declarations after the defaults are available.
-fn fastc_seed_constant_types(ctx &FastcConstantGenContext, candidates []FastcSourceFile, mut constant_types map[string]string) {
-	for candidate in candidates {
+// types available to struct field defaults. Independent results from the
+// authoritative parallel pass are reused; only order-dependent candidates are
+// parsed again before the defaults are rendered.
+fn fastc_seed_constant_types(ctx &FastcConstantGenContext, candidates []FastcSourceFile, parallel_results []FastcConstantFileResult, mut constant_types map[string]string) {
+	for index, candidate in candidates {
+		if index < parallel_results.len {
+			result := parallel_results[index]
+			if !result.failed && !result.used_field_defaults
+				&& fastc_constant_file_is_independent(result) {
+				for value in result.values {
+					constant_types[value.key] = value.typ
+				}
+				continue
+			}
+		}
 		mut result := fastc_parse_constant_file(ctx, candidate, constant_types)
 		if result.failed {
 			return
@@ -1222,7 +1232,7 @@ fn fastc_field_defaults_reference_constants(struct_field_info map[string][]Fastc
 	return false
 }
 
-fn fastc_generate_constant_declarations(ordered_sources []FastcSourceFile, constant_sources map[string]string, constant_spans map[string][]int, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, sum_types map[string]bool, sum_type_variants map[string]bool, mut pending_defaults FastcPendingFieldDefaults, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, mut constant_types map[string]string) !FastcConstantDeclarations {
+fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, sum_types map[string]bool, sum_type_variants map[string]bool, mut pending_defaults FastcPendingFieldDefaults, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, initial_parallel_results []FastcConstantFileResult, mut constant_types map[string]string) !FastcConstantDeclarations {
 	mut values := []FastcConstantValue{}
 	mut composite_types := map[string]bool{}
 	mut fixed_array_types := map[string]string{}
@@ -1247,12 +1257,12 @@ fn fastc_generate_constant_declarations(ordered_sources []FastcSourceFile, const
 		globals: globals
 		public_globals: public_globals
 	}
-	// Candidates carry their filtered constant source as `source`, in module
-	// dependency order, so both the parallel pre-pass and the in-order merge
-	// below see the same files.
-	candidates := fastc_constant_candidates(ordered_sources, constant_sources, constant_spans)
 	sw := time.new_stopwatch()
-	parallel_results := fastc_parse_constant_files_parallel(&ctx, candidates, constant_types)
+	parallel_results := if initial_parallel_results.len > 0 {
+		initial_parallel_results
+	} else {
+		fastc_parse_constant_files_parallel(&ctx, candidates, constant_types)
+	}
 	parallel_us := sw.elapsed().microseconds()
 	// The rendered defaults are needed from here on: for the in-order parse of
 	// the files that consulted them, and by the phases after this one.

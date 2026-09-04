@@ -1137,7 +1137,11 @@ fn (g &Parser) dollar_keyword_is(keyword string) bool {
 }
 
 fn (g &Parser) comptime_pseudo_expression(name string) ?string {
-	line, column := fastc_line_column(g.s.src, g.s.pos)
+	mut line, mut column := fastc_line_column(g.s.src, g.s.pos)
+	if line == 1 {
+		column += g.source_column_offset
+	}
+	line += g.source_line_offset
 	module_name := if g.module_name == '' { 'main' } else { g.module_name }
 	function_name := g.current_function
 	receiver_name := g.current_receiver.all_after_last('.')

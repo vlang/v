@@ -912,10 +912,12 @@ struct FastcSourceHeader {
 }
 
 struct FastcSourceFile {
-	path          string
-	source        string
-	source_offset int
-	header        FastcSourceHeader
+	path                 string
+	source               string
+	source_offset        int
+	source_line_offset   int
+	source_column_offset int
+	header               FastcSourceHeader
 }
 
 struct FastcQueuedSource {
@@ -1224,15 +1226,17 @@ struct Parser {
 	has_startup_inits bool
 	has_cleanup_hooks bool
 mut:
-	path          string
-	source_offset int
-	module_name   string
-	imports       map[string]string
-	s             scanner.Scanner
-	tok           token.Token
-	lit           string
-	out           strings.Builder
-	protos        strings.Builder
+	path                 string
+	source_offset        int
+	source_line_offset   int
+	source_column_offset int
+	module_name          string
+	imports              map[string]string
+	s                    scanner.Scanner
+	tok                  token.Token
+	lit                  string
+	out                  strings.Builder
+	protos               strings.Builder
 	// The function definitions of this file, recorded for the reachability
 	// prune: see FastcFileGenOutput.
 	function_id_table    map[string]int
@@ -1570,6 +1574,8 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		declared_type_key_memo: map[string]FastcMemoEntry{}
 		path: source_file.path
 		source_offset: source_file.source_offset
+		source_line_offset: source_file.source_line_offset
+		source_column_offset: source_file.source_column_offset
 		module_name: source_file.header.module_name
 		imports: source_file.header.imports
 		declared_types: ctx.declared_types
@@ -1786,6 +1792,11 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	for source_file in sources {
 		source_imports[source_file.path] = source_file.header.imports.clone()
 	}
+	// Candidates carry their filtered constant source as `source`, in module
+	// dependency order, so both the parallel pre-pass and the in-order merge
+	// see the same files.
+	constant_candidates := fastc_constant_candidates(ordered_sources, constant_sources, constant_spans)
+	mut parallel_constant_results := []FastcConstantFileResult{}
 	if fastc_field_defaults_reference_constants(struct_field_info, constants) {
 		seed_ctx := FastcConstantGenContext{
 			prefs: unsafe { prefs }
@@ -1808,13 +1819,13 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			globals: globals
 			public_globals: public_globals
 		}
-		constant_candidates := fastc_constant_candidates(ordered_sources, constant_sources, constant_spans)
-		fastc_seed_constant_types(&seed_ctx, constant_candidates, mut constant_types)
+		parallel_constant_results = fastc_parse_constant_files_parallel(&seed_ctx, constant_candidates, constant_types)
+		fastc_seed_constant_types(&seed_ctx, constant_candidates, parallel_constant_results, mut constant_types)
 	}
 	// The struct field defaults render on a worker while the constants are
 	// pre-parsed; a constant file that consulted them is re-parsed after.
 	mut pending_defaults := fastc_start_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.enum_field_names, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, type_output.sum_types)
-	constant_output := fastc_generate_constant_declarations(ordered_sources, constant_sources, constant_spans, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, type_output.sum_types, type_output.sum_type_variants, mut pending_defaults, functions, constants, public_constants, globals, public_globals, mut constant_types)!
+	constant_output := fastc_generate_constant_declarations(constant_candidates, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, type_output.sum_types, type_output.sum_type_variants, mut pending_defaults, functions, constants, public_constants, globals, public_globals, parallel_constant_results, mut constant_types)!
 	struct_field_info = constant_output.struct_field_info.clone()
 	timer.mark('constant_declarations')
 	for name, _ in constant_output.composite_types {
@@ -2707,6 +2718,11 @@ fn fastc_unit_cache_entry(unit_path string, configuration string, cache_dir stri
 	}
 }
 
+fn fastc_unit_cache_configuration(tcc string, base_args []string) string {
+	build_hash := os.read_file(os.join_path_single(os.dir(tcc), 'build_source_hash.txt')) or { '' }
+	return 'fastc-unit-v1\x00${tcc}\x00${os.file_size(tcc)}\x00${os.file_last_mod_unix(tcc)}\x00${build_hash}\x00${base_args.join('\x00')}'
+}
+
 fn fastc_unit_cache_entries(tcc string, base_args []string, unit_paths []string, enabled bool) []FastcUnitCacheEntry {
 	mut entries := []FastcUnitCacheEntry{len: unit_paths.len}
 	for i, unit_path in unit_paths {
@@ -2719,8 +2735,7 @@ fn fastc_unit_cache_entries(tcc string, base_args []string, unit_paths []string,
 	}
 	cache_dir := os.join_path_single(os.vtmp_dir(), 'v3_fastc_unit_cache')
 	os.mkdir_all(cache_dir) or { return entries }
-	build_hash := os.read_file(os.join_path_single(os.dir(tcc), 'build_source_hash.txt')) or { '' }
-	configuration := 'fastc-unit-v1\x00${tcc}\x00${os.file_size(tcc)}\x00${os.file_last_mod_unix(tcc)}\x00${build_hash}\x00${base_args.join('\x00')}'
+	configuration := fastc_unit_cache_configuration(tcc, base_args)
 	mut workers := []thread FastcUnitCacheEntry{cap: unit_paths.len}
 	for unit_path in unit_paths {
 		workers << spawn fastc_unit_cache_entry(unit_path, configuration, cache_dir)
@@ -2775,6 +2790,31 @@ pub fn fastc_link_cache_key(unit_key string, final_args []string) string {
 	}
 	text := 'fastc-link-v1\x00${unit_key}\x00${final_args.join('\x00')}'
 	return fastc_unit_cache_hash(text, u64(0x3c6ef372fe94f82b)).hex()
+}
+
+// fastc_generation_link_cache_key identifies the final executable directly
+// from the generated pieces and every input that affects unit compilation or
+// linking. A warm build can therefore restore the executable before writing
+// and re-reading the split C files.
+pub fn fastc_generation_link_cache_key(tcc string, compile_args []string, final_args []string, pieces []string, units FastcUnitLayout, jobs int, enabled bool) string {
+	if !enabled || pieces.len == 0 {
+		return ''
+	}
+	configuration := 'fastc-generation-link-v1\x00${fastc_unit_cache_configuration(tcc, compile_args)}\x00${final_args.join('\x00')}\x00${jobs}\x00${units.head_end}\x00${units.solo_end}\x00${units.prototype_start}\x00${units.prototype_end}\x00${units.unit_starts}\x00${units.extern_indexes}\x00${units.unit_ref_starts}\x00${units.unit_ref_ids}\x00${units.solo_prototype_ids}\x00${units.tail_prototype_ids}'
+	mut hash := fastc_unit_cache_hash(configuration, u64(0x510e527fade682d1))
+	for piece in pieces {
+		hash = fastc_unit_cache_hash(piece, hash ^ u64(piece.len))
+	}
+	for text in units.extern_texts {
+		hash = fastc_unit_cache_hash(text, hash ^ u64(text.len))
+	}
+	for text in units.define_texts {
+		hash = fastc_unit_cache_hash(text, hash ^ u64(text.len))
+	}
+	for text in units.prototype_texts {
+		hash = fastc_unit_cache_hash(text, hash ^ u64(text.len))
+	}
+	return hash.hex()
 }
 
 fn fastc_link_cache_path(key string) string {

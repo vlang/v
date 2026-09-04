@@ -7372,13 +7372,6 @@ $if !skip_fastc ? {
 		if bench_phases {
 			eprintln('fastc-phase tcc.setup ${cc_sw.elapsed().microseconds()}us')
 		}
-		unit_paths := fastc.fastc_write_c_units(os.join_path_single(build_dir, 'src'), pieces, units, fastc.fastc_tcc_job_count(prefs)) or { return V3FastCCompileResult{} }
-		if unit_paths.len < 2 {
-			fastc.write_c_pieces(source_file, pieces) or { return V3FastCCompileResult{} }
-		}
-		if bench_phases {
-			eprintln('fastc-phase tcc.units_written ${cc_sw.elapsed().microseconds()}us units=${unit_paths.len}')
-		}
 		tcc_resources := v3_tcc_resource_flags(prefs.vroot)
 		mut cc_args := environment_c_flags.clone()
 		cc_args << ['-std=gnu11', tcc_resources.base_arg, tcc_resources.include_arg,
@@ -7412,6 +7405,34 @@ $if !skip_fastc ? {
 			final_args << atomic_arg
 		}
 		final_args << environment_ld_flags
+		mut compile_args := compile_base_args.clone()
+		compile_args << user_compile_args
+		jobs := fastc.fastc_tcc_job_count(prefs)
+		generation_link_cache_key := fastc.fastc_generation_link_cache_key(tcc_path, compile_args, final_args, pieces, units, jobs, cache_enabled)
+		if fastc.fastc_restore_link_cache(generation_link_cache_key, staged_binary) {
+			if bench_phases {
+				now_us := cc_sw.elapsed().microseconds()
+				eprintln('fastc-phase tcc.units_written ${now_us}us units=0')
+				eprintln('fastc-phase tcc.units_compiled ${now_us}us')
+				eprintln('fastc-phase tcc.linked ${now_us}us')
+				eprintln('fastc-phase tcc.signed ${now_us}us')
+			}
+			os.mv(staged_binary, bin_file) or {
+				return V3FastCCompileResult{
+					output: err.msg()
+				}
+			}
+			return V3FastCCompileResult{
+				success: true
+			}
+		}
+		unit_paths := fastc.fastc_write_c_units(os.join_path_single(build_dir, 'src'), pieces, units, jobs) or { return V3FastCCompileResult{} }
+		if unit_paths.len < 2 {
+			fastc.write_c_pieces(source_file, pieces) or { return V3FastCCompileResult{} }
+		}
+		if bench_phases {
+			eprintln('fastc-phase tcc.units_written ${cc_sw.elapsed().microseconds()}us units=${unit_paths.len}')
+		}
 		mut shim_dir := fastc.FastcCodesignShim{}
 		defer {
 			fastc.fastc_remove_codesign_shim_dir(shim_dir)
@@ -7419,14 +7440,11 @@ $if !skip_fastc ? {
 		mut result := os.Result{}
 		mut command := ''
 		mut sign_in_process := false
-		mut link_cache_key := ''
+		link_cache_key := generation_link_cache_key
 		mut link_cache_restored := false
 		if unit_paths.len > 1 {
-			mut compile_args := compile_base_args.clone()
-			compile_args << user_compile_args
 			prepared_units := fastc.fastc_prepare_c_units(tcc_path, compile_args, unit_paths, cache_enabled)
 			link_inputs := prepared_units.objects.clone()
-			link_cache_key = fastc.fastc_link_cache_key(prepared_units.cache_key, final_args)
 			mut display_args := compile_base_args.clone()
 			display_args << ['-o', staged_binary]
 			display_args << link_inputs

@@ -235,9 +235,10 @@ patched into the file in place). The SDK path is taken from `SDKROOT` or the too
 
 Default self-host builds content-cache the split TinyCC objects and the linked, signed executable
 under `os.vtmp_dir()`. The keys cover the exact generated units, TinyCC build, compile options, and
-link options. A cached executable is restored as an independent copy, so replacing or modifying the
-output cannot change the cache. Pass `-nocache` or `--no-cache` through the full V driver to bypass
-both caches.
+link options. The executable key is calculated directly from the generated pieces and unit layout,
+so a warm hit is restored before temporary C files are written or object files are read. A cached
+executable is restored as an independent copy, so replacing or modifying the output cannot change
+the cache. Pass `-nocache` or `--no-cache` through the full V driver to bypass both caches.
 
 The standalone compiler supports `self` directly and defaults that command to FastC. For example,
 `./v self x5` replaces the compiler through five descendant FastC generations, with each installed

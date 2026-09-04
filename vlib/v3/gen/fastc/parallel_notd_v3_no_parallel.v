@@ -743,11 +743,16 @@ fn fastc_source_generation_fragments(source_file FastcSourceFile, prefs &pref.Pr
 			}
 			position_offset++
 		}
-		prefix := '\n'.repeat(position_lines) + ' '.repeat(position_column)
 		fragments << FastcSourceFile{
 			path: source_file.path
-			source: prefix + source_file.source[start..cuts[i + 1]]
-			source_offset: source_file.source_offset + start - prefix.len
+			source: source_file.source[start..cuts[i + 1]]
+			source_offset: source_file.source_offset + start
+			source_line_offset: source_file.source_line_offset + position_lines
+			source_column_offset: if position_lines == 0 {
+				source_file.source_column_offset + position_column
+			} else {
+				position_column
+			}
 			header: source_file.header
 		}
 	}

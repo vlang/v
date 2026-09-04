@@ -717,12 +717,46 @@ fn test_fastc_link_cache_restores_an_independent_executable() {
 	}
 }
 
+fn test_fastc_generation_link_cache_key_covers_generated_inputs() {
+	tcc := os.join_path(@VMODROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	units := FastcUnitLayout{
+		head_end: 1
+		solo_end: 1
+		unit_starts: [1, 2]
+	}
+	key := fastc_generation_link_cache_key(tcc, ['-c'], ['-lm'], ['head', 'body'], units, 2, true)
+	assert key != ''
+	assert key != fastc_generation_link_cache_key(tcc, ['-g'], ['-lm'], ['head', 'body'], units, 2, true)
+	assert key != fastc_generation_link_cache_key(tcc, ['-c'], ['-lm'], ['head', 'changed'], units, 2, true)
+	assert fastc_generation_link_cache_key(tcc, ['-c'], ['-lm'], ['head', 'body'], units, 2, false) == ''
+}
+
+fn test_parallel_constant_seed_preserves_constant_field_defaults() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	sources := [
+		FastcSourceFile{
+			path: 'constant_default.v'
+			source: 'module fastc\nconst default_retries = 3\nstruct Config {\n\tretries int = default_retries\n}\nfn main() { _ = Config{} }\n'
+			header: FastcSourceHeader{ module_name: 'v3.gen.fastc' }
+		},
+		FastcSourceFile{
+			path: 'other_constant.v'
+			source: 'module fastc\nconst other_constant = 4\n'
+			header: FastcSourceHeader{ module_name: 'v3.gen.fastc' }
+		},
+	]
+	c_source, _, _ := generate_source_files(sources, map[string]string{}, prefs) or { panic(err) }
+	assert c_source.contains('#define v3__gen__fastc__default_retries (3)'), c_source
+	assert c_source.contains('.retries=(v3__gen__fastc__default_retries)'), c_source
+}
+
 fn test_fastc_fragmented_generation_matches_serial_output() {
 	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
 	sources := [
 		FastcSourceFile{
 			path: 'large.v'
-			source: 'module fastc\nfn fastc_fragment_first() {\n${large_comment}\n}\nfn fastc_fragment_second() {}\n'
+			source: 'module fastc\nfn fastc_fragment_first() {\n${large_comment}\n}\nfn fastc_fragment_second() {\n\tprintln(@LINE)\n\tprintln(@COLUMN)\n\tprintln(@FILE_LINE)\n\tprintln(@LOCATION)\n}\n'
 			header: FastcSourceHeader{
 				module_name: 'v3.gen.fastc'
 			}
@@ -755,6 +789,12 @@ fn test_fastc_fragmented_generation_matches_serial_output() {
 		panic(err)
 	}
 	assert parallel == serial
+	fragments := fastc_source_generation_fragments(sources[0], parallel_prefs)
+	mut fragmented_length := 0
+	for fragment in fragments {
+		fragmented_length += fragment.source.len
+	}
+	assert fragmented_length == sources[0].source.len
 }
 
 fn test_fastc_generation_fragments_keep_top_level_comptime_chain_together() {
