@@ -406,6 +406,21 @@ fn test_system_libc_preamble_identifies_glibc_before_manual_stdio_declarations()
 	assert features < manual_stdio
 }
 
+fn test_known_c_header_metadata_avoids_conflicting_fallback_declarations() {
+	mut g := FlatGen.new()
+	g.compiler_vroot = '/vroot'
+	g.collect_known_c_header_metadata('<pwd.h>')
+	g.collect_known_c_header_metadata('<mbedtls/net_sockets.h>')
+	g.collect_known_c_header_metadata('<mbedtls/ssl.h>')
+	g.collect_known_c_header_metadata('"/vroot/vlib/compress/brotli/brotli_dl.h"')
+	assert g.inlined_c_structs['passwd']
+	for name in ['getpwnam', 'getpwuid', 'mbedtls_net_bind', 'mbedtls_pk_parse_key',
+		'mbedtls_ssl_write', 'v_brotli_msan_unpoison'] {
+		assert !g.should_emit_c_extern_decl(name)
+	}
+	assert c_include_arg_is_vroot_header('"@VEXEROOT/vlib/compress/brotli/brotli_dl.h"', '', '/vlib/compress/brotli/brotli_dl.h')
+}
+
 fn test_apple_framework_include_does_not_match_x11() {
 	assert c_is_apple_framework_include('<Cocoa/Cocoa.h>')
 	assert c_is_apple_framework_include('<CoreFoundation/CFString.h>')

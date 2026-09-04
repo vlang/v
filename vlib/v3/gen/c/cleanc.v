@@ -4563,6 +4563,11 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		if c_include_arg_is_builtin_abi_helper(include_arg, g.compiler_vroot) {
 			return true
 		}
+		// Header parsing is intentionally left to the C compiler. Keep the small
+		// amount of ABI ownership information that cannot be inferred from V
+		// declarations themselves, so V3 does not emit a second, incompatible
+		// declaration for APIs whose headers use const or typedef-qualified types.
+		g.collect_known_c_header_metadata(include_arg)
 		include_dirs := c_flag_include_dirs(g.c_flags)
 		// `#insert` is an explicit request to inline the source text. Delay only
 		// ordinary source includes until after generated type declarations.
@@ -4691,6 +4696,100 @@ fn c_include_arg_is_builtin_abi_helper(include_arg string, vroot string) bool {
 		}
 	}
 	return false
+}
+
+fn (mut g FlatGen) collect_known_c_header_metadata(include_arg string) {
+	clean := trimmed_space(include_arg)
+	match clean {
+		'<pwd.h>' {
+			g.collect_preserved_c_fns(['getpwnam', 'getpwuid'])
+			g.collect_preserved_c_structs(['passwd'])
+		}
+		'<mbedtls/net_sockets.h>' {
+			g.collect_preserved_c_fns([
+				'mbedtls_net_accept',
+				'mbedtls_net_bind',
+				'mbedtls_net_connect',
+				'mbedtls_net_free',
+				'mbedtls_net_init',
+				'mbedtls_net_recv',
+				'mbedtls_net_recv_timeout',
+				'mbedtls_net_send',
+			])
+		}
+		'<mbedtls/entropy.h>' {
+			g.collect_preserved_c_fns(['mbedtls_entropy_free', 'mbedtls_entropy_func',
+				'mbedtls_entropy_init'])
+		}
+		'<mbedtls/ctr_drbg.h>' {
+			g.collect_preserved_c_fns(['mbedtls_ctr_drbg_free', 'mbedtls_ctr_drbg_init',
+				'mbedtls_ctr_drbg_random', 'mbedtls_ctr_drbg_seed'])
+		}
+		'<mbedtls/error.h>' {
+			g.collect_preserved_c_fns(['mbedtls_high_level_strerr'])
+		}
+		'<mbedtls/ssl.h>' {
+			g.collect_preserved_c_fns([
+				'mbedtls_debug_set_threshold',
+				'mbedtls_pk_free',
+				'mbedtls_pk_init',
+				'mbedtls_pk_parse_key',
+				'mbedtls_pk_parse_keyfile',
+				'mbedtls_pk_sign_ext',
+				'mbedtls_pk_verify',
+				'mbedtls_pk_verify_ext',
+				'mbedtls_ssl_conf_alpn_protocols',
+				'mbedtls_ssl_conf_authmode',
+				'mbedtls_ssl_conf_ca_chain',
+				'mbedtls_ssl_conf_own_cert',
+				'mbedtls_ssl_conf_read_timeout',
+				'mbedtls_ssl_conf_rng',
+				'mbedtls_ssl_conf_sni',
+				'mbedtls_ssl_config_defaults',
+				'mbedtls_ssl_config_free',
+				'mbedtls_ssl_config_init',
+				'mbedtls_ssl_free',
+				'mbedtls_ssl_get_alpn_protocol',
+				'mbedtls_ssl_handshake',
+				'mbedtls_ssl_init',
+				'mbedtls_ssl_read',
+				'mbedtls_ssl_session_reset',
+				'mbedtls_ssl_set_bio',
+				'mbedtls_ssl_set_hostname',
+				'mbedtls_ssl_set_hs_authmode',
+				'mbedtls_ssl_set_hs_ca_chain',
+				'mbedtls_ssl_set_hs_own_cert',
+				'mbedtls_ssl_setup',
+				'mbedtls_ssl_write',
+				'mbedtls_x509_crt_free',
+				'mbedtls_x509_crt_init',
+				'mbedtls_x509_crt_parse',
+				'mbedtls_x509_crt_parse_file',
+				'mbedtls_x509_crt_verify',
+			])
+		}
+		else {
+			if c_include_arg_is_vroot_header(clean, g.compiler_vroot, '/vlib/compress/brotli/brotli_dl.h') {
+				g.collect_preserved_c_fns(['v_brotli_open', 'v_brotli_sym', 'v_brotli_close',
+					'v_brotli_msan_unpoison'])
+			}
+		}
+	}
+}
+
+fn c_include_arg_is_vroot_header(include_arg string, vroot string, suffix string) bool {
+	if include_arg.len < 2 {
+		return false
+	}
+	path := if (include_arg[0] == `"` && include_arg[include_arg.len - 1] == `"`)
+		|| (include_arg[0] == `<` && include_arg[include_arg.len - 1] == `>`) {
+		include_arg[1..include_arg.len - 1]
+	} else {
+		include_arg
+	}
+	normalized := path.replace('\\', '/')
+	root := vroot.replace('\\', '/').trim_right('/')
+	return (root.len > 0 && normalized == root + suffix) || normalized == '@VEXEROOT' + suffix
 }
 
 fn (mut g FlatGen) emit_preinclude_directives() {
