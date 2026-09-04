@@ -37,6 +37,26 @@ pub fn fastc_prepared_link_skips_codesign(link &FastcPreparedLink) bool {
 	}
 }
 
+// fastc_prepared_link_accepts_inputs reports whether object files can be
+// loaded into this linker before the final output step.
+pub fn fastc_prepared_link_accepts_inputs(link &FastcPreparedLink) bool {
+	$if macos && !tinyc && !fastc_selfhost ?&& !v3_backend ? {
+		return !isnil(link.state)
+	} $else {
+		return false
+	}
+}
+
+// fastc_add_prepared_link_input loads one completed object into the macOS
+// in-process linker. Callers preserve the original object order.
+pub fn fastc_add_prepared_link_input(mut link FastcPreparedLink, input_path string) ! {
+	$if macos && !tinyc && !fastc_selfhost ?&& !v3_backend ? {
+		fastc_libtcc_add_input(mut link, input_path)!
+	} $else {
+		return error('prepared FastC linker does not accept inputs')
+	}
+}
+
 // fastc_finish_link adds the compiled inputs to a prepared linker and writes
 // the executable. `final_args` contains libraries and other link-only flags.
 pub fn fastc_finish_link(mut link FastcPreparedLink, input_paths []string, final_args []string, output string) os.Result {

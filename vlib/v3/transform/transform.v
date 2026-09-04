@@ -95,6 +95,12 @@ pub:
 	args     []string
 }
 
+struct MonomorphSignatureType {
+	typ    string
+	module string
+	file   string
+}
+
 // SmartcastContext stores smartcast context state used by transform.
 pub struct SmartcastContext {
 pub:
@@ -246,8 +252,8 @@ mut:
 	generic_alias_names           map[string]bool
 	type_alias_suffixes           map[string]string
 	local_decl_nodes_by_name      map[string][]int
-	if_expr_nodes_by_file         map[int][]int
 	fn_decl_offsets_by_file       map[int][]int
+	if_expr_nodes_by_file         map[int][]int
 	struct_field_decl_metas_cache map[string]map[string]FieldDeclMeta
 	comptime_field_metas_cache    map[string][]FieldMeta
 	comptime_reflected_for_roles  map[string]u8
@@ -369,6 +375,8 @@ mut:
 	generic_fn_specs_in_progress       map[string]bool
 	generic_fn_spec_nodes              map[string]flat.NodeId
 	monomorph_cache_specs              map[string]MonomorphCacheSpec
+	monomorph_signature_types          []MonomorphSignatureType
+	monomorph_signature_spec_keys      map[string]bool
 	generic_clone_children             []flat.NodeId
 	node_context_stack                 []flat.NodeId
 	specialization_decl_nodes_by_name  map[string][]int
@@ -1453,7 +1461,7 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 	// intact and alternate both passes until late reachability stops growing.
 	for {
 		generated_names := t.monomorphize_pass()
-		t.materialize_monomorph_signature_types(t.sorted_monomorph_cache_specs())
+		t.materialize_monomorph_signature_types()
 		t.monomorph_profile('mono wrapper pass: ${time.ticks() - debug_started} ms')
 		for name in generated_names {
 			t.mark_used_fn_key(name)
@@ -1536,7 +1544,7 @@ pub fn register_cached_monomorph_signatures(a &flat.FlatAst, tc &types.TypeCheck
 	mut t := new_transformer_view(a, tc, used_fns)
 	t.prepare()
 	t.seed_cached_monomorph_specs(cached_specs)
-	t.materialize_monomorph_signature_types(cached_specs)
+	t.materialize_monomorph_signature_types()
 }
 
 fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) Transformer {
@@ -3921,8 +3929,8 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		generic_alias_names: t.generic_alias_names
 		type_alias_suffixes: t.type_alias_suffixes
 		local_decl_nodes_by_name: t.local_decl_nodes_by_name
-		if_expr_nodes_by_file: t.if_expr_nodes_by_file
 		fn_decl_offsets_by_file: t.fn_decl_offsets_by_file
+		if_expr_nodes_by_file: t.if_expr_nodes_by_file
 		struct_field_decl_metas_cache: t.struct_field_decl_metas_cache
 		comptime_field_metas_cache: map[string][]FieldMeta{}
 		comptime_reflected_for_roles: t.comptime_reflected_for_roles
@@ -15716,8 +15724,8 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 fn (mut t Transformer) build_source_parent_index() {
 	t.source_parent_ids = []int{len: t.a.nodes.len, init: -1}
 	mut decls := map[string][]int{}
-	mut if_exprs := map[int][]int{}
 	mut fn_offsets := map[int][]int{}
+	mut if_exprs := map[int][]int{}
 	mut shared_names := map[string]bool{}
 	for parent_id, node in t.a.nodes {
 		for i in 0 .. node.children_count {
@@ -15756,8 +15764,8 @@ fn (mut t Transformer) build_source_parent_index() {
 		fn_offsets[file_id] = sorted
 	}
 	t.local_decl_nodes_by_name = decls.move()
-	t.if_expr_nodes_by_file = if_exprs.move()
 	t.fn_decl_offsets_by_file = fn_offsets.move()
+	t.if_expr_nodes_by_file = if_exprs.move()
 	t.shared_local_decl_names = shared_names.move()
 }
 

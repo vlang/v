@@ -79,14 +79,72 @@ pub fn fastc_remove_codesign_shim_dir(shim FastcCodesignShim) {
 	}
 }
 
+struct FastcMachoPatch {
+mut:
+	original_len int
+	tail_start   int
+	load_end     int
+	final_len    int
+}
+
+fn fastc_macho_sign_capacity(original_len int, ident string) int {
+	code_limit := (original_len + 15) & ~15
+	return code_limit + fastc_adhoc_signature_size(ident, code_limit)
+}
+
 // fastc_sign_macho_adhoc gives the 64-bit Mach-O executable at `path` an
 // ad-hoc code signature (a SHA-256 code directory over 4 KiB pages, an
 // empty requirements blob and an empty CMS wrapper), replacing any signature
 // it has. The identifier is the file name, as `codesign -s -` uses.
 pub fn fastc_sign_macho_adhoc(path string) ! {
-	mut file := os.read_bytes(path)!
-	original_len := file.len
-	if file.len < macho_header_size || fastc_read_u32_le(file, 0) != macho_magic_64 {
+	$if macos {
+		fastc_sign_macho_adhoc_mapped(path)!
+	} $else {
+		fastc_sign_macho_adhoc_buffered(path)!
+	}
+}
+
+fn fastc_sign_macho_adhoc_buffered(path string) ! {
+	original_len := int(os.file_size(path))
+	capacity := fastc_macho_sign_capacity(original_len, path.all_after_last('/'))
+	mut file := []u8{len: capacity}
+	mut out := os.open_file(path, 'r+')!
+	read := out.read_into_ptr(file.data, original_len) or {
+		out.close()
+		return err
+	}
+	if read != original_len {
+		out.close()
+		return error('`${path}`: could not read the complete Mach-O file')
+	}
+	patch := fastc_patch_macho_signature(mut file, original_len, path) or {
+		out.close()
+		return err
+	}
+	out.write_to(0, file[..patch.load_end]) or {
+		out.close()
+		return err
+	}
+	out.write_to(u64(patch.tail_start), file[patch.tail_start..patch.final_len]) or {
+		out.close()
+		return err
+	}
+	if patch.original_len > patch.final_len {
+		// A larger old signature is cut off.
+		out.flush()
+		if C.ftruncate(i32(out.fd), u64(patch.final_len)) != 0 {
+			out.close()
+			return error('`${path}`: could not truncate the old signature')
+		}
+	}
+	out.close()
+}
+
+// fastc_patch_macho_signature validates and patches a buffer whose length is
+// large enough for the replacement signature. It returns the ranges that a
+// buffered caller must publish; the macOS path patches a shared mapping.
+fn fastc_patch_macho_signature(mut file []u8, original_len int, path string) !FastcMachoPatch {
+	if original_len < macho_header_size || fastc_read_u32_le(file, 0) != macho_magic_64 {
 		return error('`${path}` is not a 64-bit Mach-O file')
 	}
 	mut ncmds := int(fastc_read_u32_le(file, 16))
@@ -96,12 +154,12 @@ pub fn fastc_sign_macho_adhoc(path string) ! {
 	mut signature_cmd := -1
 	mut offset := macho_header_size
 	for _ in 0 .. ncmds {
-		if offset + 8 > file.len {
+		if offset + 8 > original_len {
 			return error('`${path}`: truncated load commands')
 		}
 		cmd := fastc_read_u32_le(file, offset)
 		cmdsize := int(fastc_read_u32_le(file, offset + 4))
-		if cmdsize < 8 || offset + cmdsize > file.len {
+		if cmdsize < 8 || offset + cmdsize > original_len {
 			return error('`${path}`: bad load command size')
 		}
 		if cmd == macho_lc_segment_64 {
@@ -121,16 +179,15 @@ pub fn fastc_sign_macho_adhoc(path string) ! {
 	}
 	// The signed range ends where the signature starts: at the old signature
 	// when there is one, else at the (16-byte padded) end of the file.
-	mut code_limit := file.len
+	mut code_limit := original_len
 	if signature_cmd >= 0 {
 		code_limit = int(fastc_read_u32_le(file, signature_cmd + 8))
-		if code_limit > file.len {
+		if code_limit > original_len {
 			return error('`${path}`: signature past the end of the file')
 		}
-		file.trim(code_limit)
 	} else {
 		load_end := macho_header_size + sizeofcmds
-		if load_end + 16 > file.len {
+		if load_end + 16 > original_len {
 			return error('`${path}`: no room for a signature load command')
 		}
 		for k in 0 .. 16 {
@@ -148,9 +205,9 @@ pub fn fastc_sign_macho_adhoc(path string) ! {
 	}
 	// Only the load commands and the tail from here (padding and signature)
 	// change; they are patched into the file rather than rewriting it all.
-	tail_start := file.len
+	tail_start := code_limit
 	for code_limit % 16 != 0 {
-		file << 0
+		file[code_limit] = 0
 		code_limit++
 	}
 	ident := path.all_after_last('/')
@@ -168,26 +225,14 @@ pub fn fastc_sign_macho_adhoc(path string) ! {
 	if signature.len != signature_size {
 		return error('`${path}`: signature size mismatch')
 	}
-	file << signature
+	unsafe { vmemcpy(&u8(file.data) + code_limit, signature.data, signature.len) }
 	load_end := macho_header_size + sizeofcmds
-	mut out := os.open_file(path, 'r+')!
-	out.write_to(0, file[..load_end]) or {
-		out.close()
-		return err
+	return FastcMachoPatch{
+		original_len: original_len
+		tail_start: tail_start
+		load_end: load_end
+		final_len: code_limit + signature.len
 	}
-	out.write_to(u64(tail_start), file[tail_start..]) or {
-		out.close()
-		return err
-	}
-	if original_len > file.len {
-		// A larger old signature is cut off.
-		out.flush()
-		if C.ftruncate(i32(out.fd), u64(file.len)) != 0 {
-			out.close()
-			return error('`${path}`: could not truncate the old signature')
-		}
-	}
-	out.close()
 }
 
 fn fastc_adhoc_signature_size(ident string, code_limit int) int {

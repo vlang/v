@@ -1235,6 +1235,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 						t.generic_specialization_args[name.clone()] = spec_args.clone()
 					}
 				}
+				// Every emitted worker specialization is registered by the master below.
+				// Importing the worker's private log would duplicate materialization work.
 			}
 			for idx in args[ci].scan_nodes {
 				t.parallel_monomorph_scan_nodes << idx + node_shift

@@ -143,7 +143,9 @@ fn test_fastc_prepared_libtcc_preserves_archive_option_order() {
 	final_args := ['-Wl,--whole-archive', archive_path, '-Wl,--no-whole-archive']
 	mut prepared := fastc_prepare_link(tcc, tcc_lib, base_args, final_args)
 	assert fastc_prepared_link_skips_codesign(&prepared)
-	link_result := fastc_finish_link(mut prepared, [main_object], final_args, exe_path)
+	assert fastc_prepared_link_accepts_inputs(&prepared)
+	fastc_add_prepared_link_input(mut prepared, main_object) or { panic(err) }
+	link_result := fastc_finish_link(mut prepared, [], final_args, exe_path)
 	assert link_result.exit_code == 0, link_result.output
 	nm_result := os.execute('/usr/bin/nm -g ${exe_path}')
 	assert nm_result.exit_code == 0, nm_result.output

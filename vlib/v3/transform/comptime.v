@@ -2430,28 +2430,41 @@ fn (t &Transformer) comptime_option_unwrapped_local_type(name string, call flat.
 		}
 		source_name = next_name
 	}
-	for candidate_id in t.if_expr_nodes_by_file[call.pos.id] {
-		candidate := t.a.nodes[candidate_id]
-		if candidate.kind != .if_expr || candidate.children_count < 2 {
-			continue
+	if t.source_parent_ids.len > 0 {
+		for candidate_id in t.if_expr_nodes_by_file[call.pos.id] {
+			if t.comptime_option_guard_unwraps(t.a.nodes[candidate_id], source_name, call) {
+				return fm.comptime_typ[1..].trim_space()
+			}
 		}
-		body := t.a.child_node(&candidate, 1)
-		if !body.pos.is_valid() || body.pos.id != call.pos.id || call.pos.offset < body.pos.offset
-			|| call.pos.offset > body.pos.end {
-			continue
-		}
-		condition := t.a.child_node(&candidate, 0)
-		if condition.kind != .infix || condition.op != .ne || condition.children_count < 2 {
-			continue
-		}
-		left := t.a.child_node(condition, 0)
-		right := t.a.child_node(condition, 1)
-		if (left.kind == .ident && left.value == source_name && right.kind == .none_expr)
-			|| (right.kind == .ident && right.value == source_name && left.kind == .none_expr) {
-			return fm.comptime_typ[1..].trim_space()
+	} else {
+		// Hand-built transform tests may invoke this helper without prepare(), so
+		// retain the complete scan when the immutable source indexes are unavailable.
+		for candidate in t.a.nodes {
+			if t.comptime_option_guard_unwraps(candidate, source_name, call) {
+				return fm.comptime_typ[1..].trim_space()
+			}
 		}
 	}
 	return none
+}
+
+fn (t &Transformer) comptime_option_guard_unwraps(candidate flat.Node, source_name string, call flat.Node) bool {
+	if candidate.kind != .if_expr || candidate.children_count < 2 {
+		return false
+	}
+	body := t.a.child_node(&candidate, 1)
+	if !body.pos.is_valid() || body.pos.id != call.pos.id || call.pos.offset < body.pos.offset
+		|| call.pos.offset > body.pos.end {
+		return false
+	}
+	condition := t.a.child_node(&candidate, 0)
+	if condition.kind != .infix || condition.op != .ne || condition.children_count < 2 {
+		return false
+	}
+	left := t.a.child_node(condition, 0)
+	right := t.a.child_node(condition, 1)
+	return (left.kind == .ident && left.value == source_name && right.kind == .none_expr)
+		|| (right.kind == .ident && right.value == source_name && left.kind == .none_expr)
 }
 
 fn (mut t Transformer) comptime_reflected_for_in_local_type(name string, fm FieldMeta) ?string {
