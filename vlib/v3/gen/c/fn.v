@@ -1071,8 +1071,24 @@ fn (g &FlatGen) export_fn_c_abi_key(module_name string, name string) ?string {
 	return none
 }
 
-fn (g &FlatGen) export_fn_c_abi_decl(module_name string, name string) ?flat.Node {
-	export_name := g.export_fn_name_in_module(module_name, name) or { return none }
+fn export_lookup_module(module_name string) string {
+	return if module_name in ['', 'main'] { 'main' } else { module_name }
+}
+
+fn export_c_abi_lookup_key(module_name string, export_name string) string {
+	return '${export_lookup_module(module_name)}\x01${export_name}'
+}
+
+fn (mut g FlatGen) precompute_export_lookups() {
+	g.export_c_abi_decls.clear()
+	g.main_export_owners.clear()
+	for qname, export_name in g.a.export_fn_names {
+		mut owners := g.main_export_owners[export_name] or { []string{} }
+		if qname !in owners {
+			owners << qname
+			g.main_export_owners[export_name] = owners
+		}
+	}
 	mut cur_module := ''
 	for idx in g.top_level_nodes() {
 		node := g.a.nodes[idx]
@@ -1084,13 +1100,21 @@ fn (g &FlatGen) export_fn_c_abi_decl(module_name string, name string) ?flat.Node
 			cur_module = node.value
 			continue
 		}
-		if node.kind != .c_fn_decl || node.value.trim_string_left('C.') != export_name {
+		if node.kind != .c_fn_decl {
 			continue
 		}
-		if cur_module == module_name
-			|| (cur_module in ['', 'main'] && module_name in ['', 'main']) {
-			return node
+		key := export_c_abi_lookup_key(cur_module, node.value.trim_string_left('C.'))
+		if key !in g.export_c_abi_decls {
+			g.export_c_abi_decls[key] = flat.NodeId(idx)
 		}
+	}
+}
+
+fn (g &FlatGen) export_fn_c_abi_decl(module_name string, name string) ?flat.Node {
+	export_name := g.export_fn_name_in_module(module_name, name) or { return none }
+	key := export_c_abi_lookup_key(module_name, export_name)
+	if idx := g.export_c_abi_decls[key] {
+		return g.a.nodes[int(idx)]
 	}
 	return none
 }
@@ -1236,8 +1260,8 @@ fn (g &FlatGen) main_export_name_owned_by_other_fn(module_name string, name stri
 		return false
 	}
 	natural_name := g.cname(name.trim_string_left('main.'))
-	for qname, export_name in g.a.export_fn_names {
-		if export_name == natural_name && qname != name && qname != 'main.${name}' {
+	for qname in g.main_export_owners[natural_name] {
+		if qname != name && qname != 'main.${name}' {
 			return true
 		}
 	}

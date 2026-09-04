@@ -504,6 +504,8 @@ mut:
 	decl_attrs                    map[int][]string
 	decl_attrs_by_source_position map[u64][]string
 	c_decl_abi_names              map[string]string
+	export_c_abi_decls            map[string]flat.NodeId
+	main_export_owners            map[string][]string
 	c_extern_global_names         map[string]string
 	shared_type_names             map[string]SharedTypeInfo // __shared__ wrapper name -> wrapped type metadata
 	shared_alias_pointer_shorts   map[string]string // alias short name -> shared inner type; '' means ambiguous
@@ -1222,6 +1224,8 @@ pub fn FlatGen.new() FlatGen {
 		decl_attrs: map[int][]string{}
 		decl_attrs_by_source_position: map[u64][]string{}
 		c_decl_abi_names: map[string]string{}
+		export_c_abi_decls: map[string]flat.NodeId{}
+		main_export_owners: map[string][]string{}
 		c_extern_global_names: map[string]string{}
 		shared_type_names: map[string]SharedTypeInfo{}
 		shared_alias_pointer_shorts: map[string]string{}
@@ -3032,6 +3036,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.decl_attrs.clear()
 	g.decl_attrs_by_source_position.clear()
 	g.c_decl_abi_names.clear()
+	g.export_c_abi_decls.clear()
+	g.main_export_owners.clear()
 	g.c_extern_global_names.clear()
 	g.shared_type_names.clear()
 	g.shared_alias_pointer_shorts.clear()
@@ -4064,6 +4070,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	mut presw := time.new_stopwatch()
 	g.unused_param_seen = &UnusedParamSeen{}
 	g.reserve_collect_gen_info_maps(no_parallel)
+	g.precompute_export_lookups()
 	if profile {
 		g.timing_profile('  [ttime]   ci reserve maps  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		presw.restart()
@@ -10919,11 +10926,12 @@ fn c_strip_comments(text string) string {
 }
 
 fn (mut g FlatGen) collect_inlined_c_declared_fns(text string) {
-	g.collect_inlined_c_declarations(text)
+	without_comments := c_strip_comments(text)
+	g.collect_inlined_c_declarations_without_comments(without_comments)
 	// Inlined source text has not gone through the active-branch scanner. Keep
 	// every visible definition conservative, as before; only preserved headers
 	// can use their final preprocessor state to prove that a later #undef wins.
-	for line in c_strip_comments(text).split_into_lines() {
+	for line in without_comments.split_into_lines() {
 		clean := line.trim_space()
 		if clean.len == 0 || clean[0] != `#` || c_directive_name(clean) != 'define' {
 			continue
@@ -10940,11 +10948,15 @@ fn (mut g FlatGen) collect_inlined_c_declared_fns(text string) {
 }
 
 fn (mut g FlatGen) collect_inlined_c_declarations(text string) {
+	g.collect_inlined_c_declarations_without_comments(c_strip_comments(text))
+}
+
+fn (mut g FlatGen) collect_inlined_c_declarations_without_comments(text string) {
 	// Header declarations often span several lines (one parameter per line);
 	// accumulate a pending declaration until its terminating `;` so those are
 	// collected too, not just single-line prototypes.
 	mut pending := ''
-	for line in c_strip_comments(text).split_into_lines() {
+	for line in text.split_into_lines() {
 		clean := line.trim_space()
 		for name in c_macro_declared_fn_names(clean) {
 			g.inlined_c_declared_fns[name] = true

@@ -424,6 +424,8 @@ mut:
 	struct_field_last_state     i8
 	struct_field_fn_diagnostics map[string]string
 	sum_variant_pattern_entries map[string]string
+	recv_pattern_entries        map[string]GenericReceiverMethodPatternMatch
+	recv_pattern_misses         map[string]bool
 	lexical_smartcast_entries   map[int]Type
 	lexical_smartcast_misses    map[int]bool
 	ierror_compat_entries       map[string]int
@@ -1560,6 +1562,8 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 		cache.clear_c_type_entries()
 		cache.struct_field_entries.clear()
 		cache.struct_field_misses.clear()
+		cache.recv_pattern_entries.clear()
+		cache.recv_pattern_misses.clear()
 		cache.ierror_compat_entries.clear()
 		cache.interface_impl_entries.clear()
 		cache.source_error_embed_entries.clear()
@@ -1659,6 +1663,8 @@ pub fn (mut tc TypeChecker) free_parallel_transform_caches() {
 			tc.type_cache.c_entries.free()
 			tc.type_cache.struct_field_entries.free()
 			tc.type_cache.struct_field_misses.free()
+			tc.type_cache.recv_pattern_entries.free()
+			tc.type_cache.recv_pattern_misses.free()
 			tc.type_cache.ierror_compat_entries.free()
 			tc.type_cache.interface_impl_entries.free()
 			tc.type_cache.source_error_embed_entries.free()
@@ -6263,6 +6269,7 @@ pub fn (mut tc TypeChecker) register_generated_fn_param_types(name string, param
 pub fn (mut tc TypeChecker) rebuild_fn_param_suffix_index() {
 	// Allocate a new map so callers rebuilding after a disposable prealloc
 	// scope do not retain its keys, values, or backing storage.
+	tc.clear_generic_receiver_pattern_cache()
 	tc.receiver_method_suffix_index = map[string]string{}
 	tc.generic_receiver_method_index = map[string][]string{}
 	tc.receiver_method_suffix_index.reserve(u32(tc.fn_param_types.len * 3))
@@ -6299,6 +6306,7 @@ fn (mut tc TypeChecker) add_receiver_method_suffix_index(name string) {
 		if name !in indexed {
 			indexed << name
 			tc.generic_receiver_method_index[method] = indexed
+			tc.clear_generic_receiver_pattern_cache()
 		}
 	}
 	tc.set_receiver_method_suffix_index(name, name)
@@ -6313,6 +6321,15 @@ fn (mut tc TypeChecker) add_receiver_method_suffix_index(name string) {
 			tc.set_receiver_method_suffix_index(name[i + 1..], name)
 		}
 	}
+}
+
+fn (tc &TypeChecker) clear_generic_receiver_pattern_cache() {
+	if isnil(tc.type_cache) {
+		return
+	}
+	mut cache := tc.type_cache
+	cache.recv_pattern_entries.clear()
+	cache.recv_pattern_misses.clear()
 }
 
 fn (mut tc TypeChecker) set_receiver_method_suffix_index(key string, name string) {

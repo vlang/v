@@ -225,6 +225,7 @@ mut:
 	module_type_cache             &AliasCache = unsafe { nil }
 	struct_guess_cache            &AliasCache = unsafe { nil }
 	generic_unresolved_cache      &GenericUnresolvedCache = unsafe { nil }
+	generic_spec_decode_cache     &LookupCache = unsafe { nil }
 	struct_field_type_cache       &LookupCache = unsafe { nil }
 	variant_short_name_cache      &AliasCache = unsafe { nil }
 	selector_type_cache           &SelectorTypeCache = unsafe { nil }
@@ -1708,6 +1709,10 @@ fn (mut t Transformer) prepare() {
 	t.struct_guess_cache = &AliasCache{}
 	t.var_type_cache = &VarTypeIndexCache{}
 	t.generic_unresolved_cache = &GenericUnresolvedCache{}
+	t.generic_spec_decode_cache = &LookupCache{
+		entries: map[string]string{}
+		misses: map[string]bool{}
+	}
 	t.receiver_method_cache = &ReceiverMethodCache{}
 	t.promote_text_cache = &PromoteTextCache{}
 	t.struct_field_type_cache = &LookupCache{
@@ -3657,6 +3662,10 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.struct_guess_cache = &AliasCache{}
 	w.var_type_cache = &VarTypeIndexCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
+	w.generic_spec_decode_cache = &LookupCache{
+		entries: map[string]string{}
+		misses: map[string]bool{}
+	}
 	w.receiver_method_cache = &ReceiverMethodCache{}
 	w.promote_text_cache = &PromoteTextCache{}
 	w.struct_field_type_cache = &LookupCache{
@@ -3788,6 +3797,10 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.struct_guess_cache = &AliasCache{}
 	w.var_type_cache = &VarTypeIndexCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
+	w.generic_spec_decode_cache = &LookupCache{
+		entries: map[string]string{}
+		misses: map[string]bool{}
+	}
 	w.receiver_method_cache = &ReceiverMethodCache{}
 	w.promote_text_cache = &PromoteTextCache{}
 	w.struct_field_type_cache = &LookupCache{
@@ -4249,6 +4262,9 @@ fn (mut t Transformer) clone_scoped_worker_node(idx int, scope voidptr) {
 	if node.typ.len > 0 && transform_scope_owns(scope, node.typ.str) {
 		_, typ := t.a.intern_text(node.typ)
 		node.typ = typ
+	}
+	if isnil(node.payload) {
+		return
 	}
 	old_params := node.generic_params()
 	if old_params.len > 0 {

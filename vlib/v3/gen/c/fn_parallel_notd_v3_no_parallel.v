@@ -2411,6 +2411,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		global_inits: g.global_inits
 		global_init_order: g.global_init_order
 		c_decl_abi_names: g.c_decl_abi_names
+		export_c_abi_decls: g.export_c_abi_decls
+		main_export_owners: g.main_export_owners
 		c_extern_global_names: g.c_extern_global_names
 		enum_backing_infos: g.enum_backing_infos
 		iface_impls: g.iface_impls

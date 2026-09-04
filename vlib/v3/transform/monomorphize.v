@@ -4438,7 +4438,7 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 }
 
 fn (t &Transformer) specialized_direct_generic_type_text(typ string, args []string, params []string) ?string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	for i, param in params {
 		if clean == param && i < args.len {
 			return args[i]
@@ -11368,7 +11368,7 @@ fn generic_app_parts(typ string) (string, []string, bool) {
 	if bracket_end <= bracket || bracket_end >= typ.len {
 		return '', []string{}, false
 	}
-	inner := typ[bracket + 1..bracket_end].trim_space()
+	inner := trimmed_transform_text(typ[bracket + 1..bracket_end])
 	if typeof_display_is_fixed_array_len_text(inner) && !inner.starts_with('C.')
 		&& !inner.starts_with('JS.') {
 		return '', []string{}, false
@@ -11412,14 +11412,14 @@ fn split_generic_args(s string) []string {
 			}
 			`,` {
 				if bracket_depth == 0 && paren_depth == 0 {
-					parts << s[start..i].trim_space()
+					parts << trimmed_transform_text(s[start..i])
 					start = i + 1
 				}
 			}
 			else {}
 		}
 	}
-	parts << s[start..].trim_space()
+	parts << trimmed_transform_text(s[start..])
 	return parts
 }
 
@@ -11432,7 +11432,7 @@ fn normalize_generic_args(args []string, module_name string) []string {
 }
 
 fn normalize_generic_arg(arg string, module_name string) string {
-	clean := arg.trim_space()
+	clean := trimmed_transform_text(arg)
 	if clean.len == 0 {
 		return clean
 	}
@@ -11652,7 +11652,7 @@ fn substitute_generic_type_text(typ string, args []string) string {
 
 @[direct_array_access]
 fn substitute_generic_type_text_with_params(typ string, args []string, params []string) string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if clean.len == 0 || args.len == 0 {
 		return typ
 	}
@@ -13359,7 +13359,8 @@ fn (t &Transformer) canonical_short_fixed_array_arg(arg string) ?string {
 }
 
 fn (t &Transformer) recorded_generic_specialization_args(typ string) ?[]string {
-	clean := typ.trim_space().trim_left('&')
+	trimmed := trimmed_transform_text(typ)
+	clean := if trimmed.starts_with('&') { trimmed.trim_left('&') } else { trimmed }
 	if clean.len == 0 {
 		return none
 	}

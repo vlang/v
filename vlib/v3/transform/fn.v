@@ -6842,11 +6842,24 @@ fn (t &Transformer) decode_single_generic_specialized_type_args(name string) ?[]
 	if isnil(t.tc) {
 		return none
 	}
+	if !isnil(t.generic_spec_decode_cache) {
+		mut cache := t.generic_spec_decode_cache
+		if decoded := cache.entries[name] {
+			return [decoded]
+		}
+		if name in cache.misses {
+			return none
+		}
+	}
 	for base, params in t.tc.struct_generic_params {
 		if params.len != 1 {
 			continue
 		}
-		if args := decode_single_generic_specialized_type_args_for_base(name, base) {
+		if args := t.decode_single_generic_specialized_type_args_for_base(name, base) {
+			if !isnil(t.generic_spec_decode_cache) {
+				mut cache := t.generic_spec_decode_cache
+				cache.entries[name] = args[0]
+			}
 			return args
 		}
 	}
@@ -6854,25 +6867,56 @@ fn (t &Transformer) decode_single_generic_specialized_type_args(name string) ?[]
 		if params.len != 1 {
 			continue
 		}
-		if args := decode_single_generic_specialized_type_args_for_base(name, base) {
+		if args := t.decode_single_generic_specialized_type_args_for_base(name, base) {
+			if !isnil(t.generic_spec_decode_cache) {
+				mut cache := t.generic_spec_decode_cache
+				cache.entries[name] = args[0]
+			}
 			return args
+		}
+	}
+	if !isnil(t.generic_spec_decode_cache) {
+		mut cache := t.generic_spec_decode_cache
+		cache.misses[name] = true
+	}
+	return none
+}
+
+fn (t &Transformer) decode_single_generic_specialized_type_args_for_base(name string, base string) ?[]string {
+	short_base := base.all_after_last('.')
+	if decoded := decode_single_generic_specialized_type_arg_with_prefix(name, base, base) {
+		return [decoded]
+	}
+	base_cname := t.tc.cached_c_name(base)
+	if base_cname != base {
+		if decoded := decode_single_generic_specialized_type_arg_with_prefix(name, base_cname, base) {
+			return [decoded]
+		}
+	}
+	if short_base != base {
+		if decoded := decode_single_generic_specialized_type_arg_with_prefix(name, short_base, base) {
+			return [decoded]
+		}
+	}
+	short_cname := t.tc.cached_c_name(short_base)
+	if short_cname != base && short_cname != base_cname && short_cname != short_base {
+		if decoded := decode_single_generic_specialized_type_arg_with_prefix(name, short_cname, base) {
+			return [decoded]
 		}
 	}
 	return none
 }
 
-fn decode_single_generic_specialized_type_args_for_base(name string, base string) ?[]string {
-	short_base := base.all_after_last('.')
-	for prefix in [base, c_name(base), short_base, c_name(short_base)] {
-		if !name.starts_with('${prefix}_') {
-			continue
-		}
-		decoded := generic_type_arg_from_suffix_with_containers(name[prefix.len + 1..])
-		if decoded.len > 0 && generic_specialized_type_matches_flat_name(name, base, [
-			decoded,
-		]) {
-			return [decoded]
-		}
+fn decode_single_generic_specialized_type_arg_with_prefix(name string, prefix string, base string) ?string {
+	if prefix.len == 0 || name.len <= prefix.len || name[prefix.len] != `_`
+		|| !name.starts_with(prefix) {
+		return none
+	}
+	decoded := generic_type_arg_from_suffix_with_containers(name[prefix.len + 1..])
+	if decoded.len > 0 && generic_specialized_type_matches_flat_name(name, base, [
+		decoded,
+	]) {
+		return decoded
 	}
 	return none
 }
