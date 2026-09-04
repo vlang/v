@@ -1565,6 +1565,7 @@ mut:
 fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceFile) FastcFileGenOutput {
 	file := token.File.unindexed(source_file.path, source_file.source.len)
 	prefs := ctx.prefs
+	body_capacity := source_file.source.len * (if prefs.building_v { 4 } else { 2 }) + 1024
 	mut gen := Parser{
 		prefs: unsafe { prefs }
 		unqualified_key_memo: map[string]string{}
@@ -1620,7 +1621,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		has_startup_inits: ctx.has_startup_inits
 		has_cleanup_hooks: ctx.has_cleanup_hooks
 		s: scanner.new_scanner(prefs, .normal)
-		out: strings.new_builder(source_file.source.len * 2 + 1024)
+		out: strings.new_builder(body_capacity)
 		protos: strings.new_builder(4096)
 		functions: ctx.functions
 		function_id_table: ctx.function_ids
@@ -2178,11 +2179,14 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		unit_ref_starts << unit_ref_ids.len
 	}
 	mut pieces := []string{cap: 64 + body_pieces.len * 3}
-	pieces << fastc_piece(preamble)
+	mut extern_indexes := []int{}
+	mut extern_texts := []string{}
+	mut define_texts := []string{}
+	fastc_append_split_head_piece(mut pieces, mut extern_indexes, mut extern_texts, mut define_texts, preamble)
 	for header_path in inlined_header_paths {
-		pieces << fastc_inlined_c_header(header_path)
+		fastc_append_split_head_piece(mut pieces, mut extern_indexes, mut extern_texts, mut define_texts, fastc_inlined_c_header(header_path))
 	}
-	pieces << fastc_piece(c_integer_comparison_helpers)
+	fastc_append_split_head_piece(mut pieces, mut extern_indexes, mut extern_texts, mut define_texts, c_integer_comparison_helpers)
 	fastc_collect_c_piece_ranges(mut pieces, body_pieces, hoisted_body.directive_ranges)
 	timer.mark('assemble.directives')
 	if hoisted_body.final_kind == 1 {
@@ -2192,7 +2196,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		pieces << '\n'
 	}
 	if prefs.building_v {
-		pieces << fastc_piece(c_selfhost_post_directives)
+		fastc_append_split_head_piece(mut pieces, mut extern_indexes, mut extern_texts, mut define_texts, c_selfhost_post_directives)
 	}
 	if spawn_typedefs.len > 0 {
 		if !header_free {
@@ -2217,9 +2221,6 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	pieces << late_composite_declarations.str()
 	pieces << fastc_piece(fixed_array_declarations)
 	pieces << fastc_c_extern_prototypes(functions)
-	mut extern_indexes := []int{}
-	mut extern_texts := []string{}
-	mut define_texts := []string{}
 	extern_indexes << pieces.len
 	extern_texts << fastc_extern_declarations(constant_output.declarations, true)
 	define_texts << fastc_extern_declarations(constant_output.declarations, false)
@@ -2429,17 +2430,58 @@ fn fastc_range_is_kept(ranges []int, start int, end int) bool {
 	return false
 }
 
-// fastc_extern_declarations rewrites the `static` variable definitions of a
-// declaration block for a split build: as `extern` declarations (`as_extern`)
-// for the units that share the globals, or as external definitions (without
-// `static`) for the unit that holds them. Static functions and multi-line
-// initializers are left as they are (they stay per unit).
+fn fastc_append_split_head_piece(mut pieces []string, mut extern_indexes []int, mut extern_texts []string, mut define_texts []string, text string) {
+	// TinyCC recognizes its private atomic helpers only while compiling these
+	// static-inline wrappers; keep that header local to every translation unit.
+	if text.contains('__atomic_exchange_4') {
+		pieces << fastc_piece(text)
+		return
+	}
+	definitions := fastc_extern_declarations(text, false)
+	declarations := fastc_extern_declarations(text, true)
+	if definitions != text || declarations != text {
+		extern_indexes << pieces.len
+		extern_texts << declarations
+		define_texts << definitions
+	}
+	pieces << fastc_piece(text)
+}
+
+fn fastc_external_function_header(line string, as_extern bool) string {
+	body_start := line.index(') {') or { return line }
+	mut header := line['static '.len..body_start + 1]
+	if header.starts_with('inline ') {
+		header = header['inline '.len..]
+	}
+	return if as_extern { 'extern ${header};' } else { header + line[body_start + 1..] }
+}
+
+// fastc_extern_declarations rewrites top-level `static` definitions for a
+// split build: as `extern` declarations (`as_extern`) for units that share
+// them, or as external definitions in the first unit. TinyCC does not inline,
+// so emitting helper bodies once avoids parsing and generating them per unit.
 fn fastc_extern_declarations(text string, as_extern bool) string {
 	if !fastc_contains(text, 'static ') {
 		return text
 	}
 	mut out := strings.new_builder(text.len)
-	for line in text.split_into_lines() {
+	lines := text.split_into_lines()
+	mut i := 0
+	for i < lines.len {
+		line := lines[i]
+		if line.starts_with('static ') && line.contains(') {') {
+			out.writeln(fastc_external_function_header(line, as_extern))
+			mut depth := line.count('{') - line.count('}')
+			i++
+			for i < lines.len && depth > 0 {
+				if !as_extern {
+					out.writeln(lines[i])
+				}
+				depth += lines[i].count('{') - lines[i].count('}')
+				i++
+			}
+			continue
+		}
 		if line.starts_with('static ') && !fastc_contains(line, '(') && line.ends_with(';') {
 			mut declaration := line['static '.len..]
 			if as_extern {
@@ -2450,9 +2492,11 @@ fn fastc_extern_declarations(text string, as_extern bool) string {
 			} else {
 				out.writeln(declaration)
 			}
+			i++
 			continue
 		}
 		out.writeln(line)
+		i++
 	}
 	return out.str()
 }
@@ -2479,6 +2523,10 @@ fn fastc_parallel_worker_limit(prefs &pref.Preferences) int {
 // program's translation units with.
 pub fn fastc_tcc_job_count(prefs &pref.Preferences) int {
 	mut jobs := fastc_parallel_worker_limit(prefs)
+	benchmark_jobs := os.getenv('V3_FASTC_TCC_JOBS').int()
+	if benchmark_jobs > 0 {
+		jobs = benchmark_jobs
+	}
 	if jobs > 16 {
 		jobs = 16
 	}
@@ -2542,6 +2590,7 @@ fn fastc_unit_group_starts(unit_sizes []int, groups int, first_overhead int, sha
 struct FastcCUnitPlan {
 	paths       []string
 	first_units []int
+	sizes       []int
 }
 
 fn fastc_c_unit_plan(prefix string, pieces []string, units FastcUnitLayout, jobs int) FastcCUnitPlan {
@@ -2585,12 +2634,19 @@ fn fastc_c_unit_plan(prefix string, pieces []string, units FastcUnitLayout, jobs
 		return FastcCUnitPlan{}
 	}
 	mut paths := []string{cap: groups}
+	mut sizes := []int{cap: groups}
 	for g in 0 .. groups {
 		paths << '${prefix}.unit${g}.c'
+		mut size := if g == 0 { first_overhead } else { shared_overhead }
+		for u in first_units[g] .. first_units[g + 1] {
+			size += unit_sizes[u]
+		}
+		sizes << size
 	}
 	return FastcCUnitPlan{
 		paths: paths
 		first_units: first_units
+		sizes: sizes
 	}
 }
 
@@ -2648,6 +2704,17 @@ pub:
 	sources []string
 }
 
+// FastcRenderingCUnits holds translation-unit render workers. Keeping the
+// workers live lets an uncached build start TinyCC while the C text is still
+// being assembled.
+pub struct FastcRenderingCUnits {
+pub:
+	paths []string
+mut:
+	workers []thread string
+	order   []int
+}
+
 fn fastc_render_c_unit(pieces []string, units &FastcUnitLayout, g int, first_unit int, end_unit int) string {
 	mut out := strings.new_builder(1024 * 1024)
 	for k in 0 .. units.head_end {
@@ -2699,24 +2766,58 @@ fn fastc_render_c_unit(pieces []string, units &FastcUnitLayout, g int, first_uni
 	return out.str()
 }
 
-// fastc_render_c_units renders balanced split translation units in parallel.
-pub fn fastc_render_c_units(prefix string, pieces []string, units FastcUnitLayout, jobs int) FastcRenderedCUnits {
+fn fastc_descending_size_order(sizes []int) []int {
+	mut order := []int{cap: sizes.len}
+	mut ordered_sizes := []int{cap: sizes.len}
+	for i, size in sizes {
+		order << i
+		ordered_sizes << size
+		mut at := order.len - 1
+		for at > 0 && ordered_sizes[at - 1] < size {
+			order[at] = order[at - 1]
+			ordered_sizes[at] = ordered_sizes[at - 1]
+			at--
+		}
+		order[at] = i
+		ordered_sizes[at] = size
+	}
+	return order
+}
+
+// fastc_begin_render_c_units starts rendering balanced split translation
+// units and returns immediately, so their consumers can start concurrently.
+pub fn fastc_begin_render_c_units(prefix string, pieces []string, units FastcUnitLayout, jobs int) FastcRenderingCUnits {
 	plan := fastc_c_unit_plan(prefix, pieces, units, jobs)
 	if plan.paths.len == 0 {
-		return FastcRenderedCUnits{}
+		return FastcRenderingCUnits{}
 	}
 	mut workers := []thread string{cap: plan.paths.len}
 	for g in 0 .. plan.paths.len {
 		workers << spawn fastc_render_c_unit(pieces, &units, g, plan.first_units[g], plan.first_units[g + 1])
 	}
-	mut sources := []string{cap: plan.paths.len}
-	for worker in workers {
+	return FastcRenderingCUnits{
+		paths: plan.paths
+		workers: workers
+		order: fastc_descending_size_order(plan.sizes)
+	}
+}
+
+// fastc_finish_render_c_units waits for an in-progress unit render.
+pub fn fastc_finish_render_c_units(mut rendering FastcRenderingCUnits) FastcRenderedCUnits {
+	mut sources := []string{cap: rendering.paths.len}
+	for worker in rendering.workers {
 		sources << worker.wait()
 	}
 	return FastcRenderedCUnits{
-		paths: plan.paths
+		paths: rendering.paths
 		sources: sources
 	}
+}
+
+// fastc_render_c_units renders balanced split translation units in parallel.
+pub fn fastc_render_c_units(prefix string, pieces []string, units FastcUnitLayout, jobs int) FastcRenderedCUnits {
+	mut rendering := fastc_begin_render_c_units(prefix, pieces, units, jobs)
+	return fastc_finish_render_c_units(mut rendering)
 }
 
 struct FastcUnitCacheEntry {
@@ -3370,9 +3471,9 @@ fn fastc_c_identifier_start_byte(value u8) bool {
 fn fastc_collect_c_name_ids(text string, start int, end int, ids map[string]int, mut out []int) {
 	mut i := start
 	for i < end {
-		if text[i] != `_` {
-			i++
-			continue
+		i = fastc_next_underscore(text, i, end)
+		if i >= end {
+			break
 		}
 		mut word_start := i
 		mut indexed := i + 1 < end && text[i + 1] == `_`

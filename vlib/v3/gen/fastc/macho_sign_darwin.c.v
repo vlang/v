@@ -14,7 +14,7 @@ fn fastc_hash_code_pages_native(data &u8, hashes &u8, page_count int, code_limit
 		fastc_hash_native_range(data, hashes, 0, page_count, code_limit)
 		return
 	}
-	worker_count := 4
+	worker_count := 6
 	mut workers := [
 		spawn fastc_hash_native_range(data, hashes, 0, page_count / worker_count, code_limit),
 	]

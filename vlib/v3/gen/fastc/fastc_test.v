@@ -694,6 +694,14 @@ fn test_fastc_unit_group_starts_accounts_for_prepended_text() {
 	assert fastc_unit_group_starts([100, 100, 100, 100], 2, 0, 300) == [0, 3, 4]
 }
 
+fn test_fastc_extern_declarations_extracts_static_helpers() {
+	text := 'static int count = 3;\nstatic inline int add(int a, int b) { return a + b; }\nstatic void clear(void) {\n\tcount = 0;\n}\n#define COUNT count\n'
+	definitions := fastc_extern_declarations(text, false)
+	assert definitions == 'int count = 3;\nint add(int a, int b) { return a + b; }\nvoid clear(void) {\n\tcount = 0;\n}\n#define COUNT count\n'
+	declarations := fastc_extern_declarations(text, true)
+	assert declarations == 'extern int count;\nextern int add(int a, int b);\nextern void clear(void);\n#define COUNT count\n'
+}
+
 fn test_fastc_rendered_units_match_temporary_files() {
 	root := os.join_path_single(os.vtmp_dir(), 'fastc_rendered_units_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }

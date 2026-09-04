@@ -745,7 +745,9 @@ fn fastc_source_generation_fragments(source_file FastcSourceFile, prefs &pref.Pr
 		}
 		fragments << FastcSourceFile{
 			path: source_file.path
-			source: source_file.source[start..cuts[i + 1]]
+			// The original source array remains alive throughout generation; share
+			// its bytes instead of copying every fragment before the parallel pass.
+			source: unsafe { source_file.source[start..cuts[i + 1]] }
 			source_offset: source_file.source_offset + start
 			source_line_offset: source_file.source_line_offset + position_lines
 			source_column_offset: if position_lines == 0 {

@@ -7443,12 +7443,11 @@ $if !skip_fastc ? {
 		}
 		unit_prefix := os.join_path_single(build_dir, 'src')
 		mut unit_paths := []string{}
-		mut streamed_sources := []string{}
+		mut rendering_units := fastc.FastcRenderingCUnits{}
 		$if macos {
 			if !cache_enabled && prefs.building_v {
-				mut rendered_units := fastc.fastc_render_c_units(unit_prefix, pieces, units, jobs)
-				unit_paths = rendered_units.paths.clone()
-				streamed_sources = rendered_units.sources.clone()
+				rendering_units = fastc.fastc_begin_render_c_units(unit_prefix, pieces, units, jobs)
+				unit_paths = rendering_units.paths.clone()
 			}
 		}
 		if unit_paths.len == 0 {
@@ -7486,11 +7485,12 @@ $if !skip_fastc ? {
 					eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
 				}
 			} else {
-				link_worker := spawn fastc.fastc_prepare_link(tcc_path, os.join_path_single(tcc_dir, 'lib'), compile_base_args, final_args)
-				if streamed_sources.len > 0 {
-					fastc.fastc_compile_c_unit_texts(tcc_path, compile_args, unit_paths, streamed_sources, prepared_units) or {
-						mut failed_link := link_worker.wait()
-						fastc.fastc_discard_link(mut failed_link)
+				mut prepared_link := fastc.fastc_prepare_link(tcc_path, os.join_path_single(tcc_dir, 'lib'), compile_base_args, final_args)
+				preload_link := rendering_units.paths.len > 0
+					&& fastc.fastc_prepared_link_accepts_inputs(&prepared_link)
+				if rendering_units.paths.len > 0 {
+					fastc.fastc_compile_rendering_c_units(tcc_path, compile_args, mut rendering_units, prepared_units, mut prepared_link, preload_link) or {
+						fastc.fastc_discard_link(mut prepared_link)
 						fastc.write_c_pieces(source_file, pieces) or {}
 						return V3FastCCompileResult{
 							command: cmdexec.display(tcc_path, compile_args)
@@ -7499,8 +7499,7 @@ $if !skip_fastc ? {
 					}
 				} else {
 					fastc.fastc_compile_c_units(tcc_path, compile_args, unit_paths, prepared_units) or {
-						mut failed_link := link_worker.wait()
-						fastc.fastc_discard_link(mut failed_link)
+						fastc.fastc_discard_link(mut prepared_link)
 						fastc.write_c_pieces(source_file, pieces) or {}
 						return V3FastCCompileResult{
 							command: cmdexec.display(tcc_path, compile_args)
@@ -7511,7 +7510,6 @@ $if !skip_fastc ? {
 				if bench_phases {
 					eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
 				}
-				mut prepared_link := link_worker.wait()
 				sign_in_process = fastc.fastc_prepared_link_skips_codesign(&prepared_link)
 				if !sign_in_process {
 					// The executable-based linker still needs the PATH shim; the prepared
@@ -7519,7 +7517,8 @@ $if !skip_fastc ? {
 					shim_dir = fastc.fastc_codesign_shim_dir()
 					sign_in_process = shim_dir.dir != ''
 				}
-				result = fastc.fastc_finish_link(mut prepared_link, link_inputs, final_args, staged_binary)
+				finish_inputs := if preload_link { []string{} } else { link_inputs }
+				result = fastc.fastc_finish_link(mut prepared_link, finish_inputs, final_args, staged_binary)
 			}
 			if bench_phases {
 				eprintln('fastc-phase tcc.linked ${cc_sw.elapsed().microseconds()}us')

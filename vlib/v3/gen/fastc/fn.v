@@ -759,7 +759,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		return
 	}
 	is_fastc_source := name.starts_with('fastc_') || g.path.ends_with('/fastc/fastc.v') || g.module_name.ends_with('fastc')
-	if g.selfhost && name != 'fastc_collect_referenced_function_names' && !is_fastc_source && name !in [
+	if g.selfhost && name != 'fastc_collect_referenced_function_names' && name !in [
 		'main',
 		'init',
 		'cleanup',
@@ -1032,7 +1032,7 @@ fn (mut g Parser) emit_generic_body_stub(out_checkpoint int, saved_indent int, b
 // record_function_span notes the C definition the last parse_function wrote
 // to `out` (and its prototype in `protos`) for the reachability prune.
 fn (mut g Parser) record_function_span(out_start int, proto_start int) {
-	if g.last_function_c_name == '' || g.in_mono_drain {
+	if g.last_function_c_name == '' || g.in_mono_drain || g.function_id_table.len == 0 {
 		return
 	}
 	g.function_ids << g.function_id_table[g.last_function_c_name] or { -1 }

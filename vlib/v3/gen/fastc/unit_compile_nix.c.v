@@ -94,6 +94,79 @@ fn fastc_write_unit_stdin(fd int, source string) {
 	C.close(fd)
 }
 
+fn fastc_render_unit_stdin(fd int, worker thread string) {
+	source := worker.wait()
+	fastc_write_unit_stdin(fd, source)
+}
+
+// fastc_compile_rendering_c_units starts concurrent TinyCC processes while
+// their translation units are still being rendered, then streams each unit
+// as soon as its render worker completes.
+pub fn fastc_compile_rendering_c_units(tcc string, base_args []string, mut rendering FastcRenderingCUnits, prepared FastcPreparedUnits, mut prepared_link FastcPreparedLink, preload_link bool) ![]string {
+	if rendering.paths.len != rendering.workers.len
+		|| prepared.entries.len != rendering.paths.len {
+		return error('invalid rendering FastC unit layout')
+	}
+	bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
+	sw := time.new_stopwatch()
+	mut compiles := []FastcUnitCompile{len: rendering.paths.len}
+	mut writers := []thread{len: rendering.paths.len}
+	mut handed := []bool{len: rendering.paths.len}
+	mut start_error := ''
+	for i in rendering.order {
+		object := prepared.entries[i].object
+		mut args := [tcc]
+		args << base_args
+		args << ['-c', '-', '-o', object]
+		mut pid := 0
+		mut read_fd := -1
+		mut write_fd := -1
+		if !fastc_start_capture_input(args, &pid, &read_fd, &write_fd) {
+			start_error = 'could not start ${tcc} for ${rendering.paths[i]}'
+			break
+		}
+		compiles[i] = FastcUnitCompile{
+			pid: pid
+			read_fd: read_fd
+			object: object
+		}
+		handed[i] = true
+		writers[i] = spawn fastc_render_unit_stdin(write_fd, rendering.workers[i])
+	}
+	if bench_phases {
+		eprintln('fastc-phase tcc.units_started ${sw.elapsed().microseconds()}us streamed=rendering')
+	}
+	mut failure := start_error
+	for i, compile in compiles {
+		if !handed[i] {
+			continue
+		}
+		output := os.fd_slurp(compile.read_fd).join('')
+		os.fd_close(compile.read_fd)
+		writers[i].wait()
+		code := fastc_wait_exit_code(compile.pid)
+		if bench_phases {
+			eprintln('fastc-phase tcc.unit_done ${sw.elapsed().microseconds()}us ${os.file_name(compile.object)}')
+		}
+		if code != 0 && failure == '' {
+			failure = if output.len > 0 { output } else { 'tcc failed on ${compile.object}' }
+		} else if code == 0 && preload_link && failure == '' {
+			fastc_add_prepared_link_input(mut prepared_link, compile.object) or {
+				failure = err.msg()
+			}
+		}
+	}
+	for i, was_handed in handed {
+		if !was_handed {
+			rendering.workers[i].wait()
+		}
+	}
+	if failure != '' {
+		return error(failure)
+	}
+	return prepared.objects
+}
+
 // fastc_compile_c_unit_texts streams in-memory translation units to concurrent
 // TinyCC processes. This avoids a temporary-file write/read round trip and
 // overlaps feeding earlier processes with starting the remaining ones.
