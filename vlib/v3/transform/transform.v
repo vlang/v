@@ -17412,7 +17412,7 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 		callback_base_type = t.normalize_type_alias(t.trim_pointer_type(callback_base_type))
 		array_dsl_callback := is_method
 			&& recv_fn.value in ['filter', 'map', 'any', 'all', 'count']
-			&& callback_base_type.starts_with('[]')
+			&& (callback_base_type.starts_with('[]') || t.is_fixed_array_type(callback_base_type))
 		// A plain (non-method) call whose callee is itself a value branch —
 		// `(match node { ... make_cb(node)! ... })()` — must materialize operand 0 too;
 		// otherwise transform_call_args lowers child 0 with plain transform_expr and leaves the
