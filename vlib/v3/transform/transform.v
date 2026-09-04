@@ -376,6 +376,7 @@ mut:
 	generic_fn_spec_nodes              map[string]flat.NodeId
 	monomorph_cache_specs              map[string]MonomorphCacheSpec
 	monomorph_signature_types          []MonomorphSignatureType
+	monomorph_signature_spec_keys      map[string]bool
 	generic_clone_children             []flat.NodeId
 	node_context_stack                 []flat.NodeId
 	specialization_decl_nodes_by_name  map[string][]int
