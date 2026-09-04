@@ -8,6 +8,7 @@ import v.util.vflags
 
 const args_ = arguments()
 const is_debug = args_.contains('-debug')
+const v3_self_source = 'vlib/v3/v3.v'
 
 // support a renamed `v` executable too:
 const vexe = os.getenv_opt('VEXE') or { @VEXE }
@@ -31,8 +32,12 @@ fn main() {
 	os.unsetenv('VSELF_COMMAND_INDEX')
 	repeat_count, mut args := extract_repeat_count(args_[1..], command_index)
 	mut effective_args := effective_self_build_args(args)
+	default_fastc_build := should_use_default_fastc_build(effective_args)
+	if default_fastc_build {
+		args << ['-b', 'fastc']
+		effective_args = effective_self_build_args(args)
+	}
 	fastc_self_build := uses_fastc_backend(effective_args)
-	default_v3_fastc_build := should_use_default_v3_fastc_build(effective_args)
 	if fastc_self_build && '-prod' in effective_args {
 		eprintln('`v self -b fastc` does not support `-prod`; remove `-prod`.')
 		exit(1)
@@ -41,17 +46,7 @@ fn main() {
 		args = normalize_fastc_backend_args(args)
 		effective_args = effective_self_build_args(args)
 	}
-	if default_v3_fastc_build {
-		// Build the regular cmd/v CLI through V3's scanner-direct FastC path. The
-		// real builtin keeps the resulting executable compatible with the full CLI.
-		if '-new-compiler' !in effective_args {
-			args << '-new-compiler'
-		}
-		args << ['-b', 'fastc', '-d', 'fastc_real_builtin']
-		effective_args = effective_self_build_args(args)
-	}
-	if !fastc_self_build && !default_v3_fastc_build
-		&& !has_self_build_configuration_arg(effective_args) {
+	if !fastc_self_build && !has_self_build_configuration_arg(effective_args) {
 		// compiling by default, i.e. `v self`:
 		uos := os.user_os()
 		uname := os.uname()
@@ -91,26 +86,19 @@ fn main() {
 	if obinary == '' {
 		compile_args << ['-o', 'v2']
 	}
-	if fastc_self_build {
+	if '-selfhost' !in effective_args {
 		compile_args << '-selfhost'
 	}
 	final_binary := if obinary != '' { obinary } else { 'v2' }
 	pgo_cc_kind := if fastc_self_build { '' } else { pgo_compiler_kind(args) }
-	compilation_source := if fastc_self_build {
-		'vlib/v3/v3.v'
-	} else if default_v3_fastc_build {
-		'cmd/v/v.v'
-	} else {
-		'cmd/v'
-	}
 	for run_idx in 0 .. repeat_count {
 		run_label := if repeat_count > 1 { ' [${run_idx + 1}/${repeat_count}]' } else { '' }
 		options := if args.len > 0 { '(${compile_args.join(' ')})' } else { '' }
 		println('V self compiling${run_label} ${options}...')
-		cmd := compose_v_cmd(vexe, compile_args, compilation_source)
+		cmd := compose_v_cmd(vexe, compile_args, v3_self_source)
 		mut used_pgo := false
 		if pgo_cc_kind != '' {
-			used_pgo = compile_with_pgo(vroot, vexe, args, final_binary, pgo_cc_kind)
+			used_pgo = compile_with_pgo(vroot, vexe, compile_args, final_binary, pgo_cc_kind)
 			if !used_pgo {
 				eprintln('PGO self-build failed; falling back to a regular self-build.')
 			}
@@ -122,7 +110,7 @@ fn main() {
 			}
 		} else if !used_pgo {
 			if !try_compile(cmd) {
-				bootstrap_self_build(vroot, clone_args(args), final_binary) or {
+				bootstrap_self_build(vroot, clone_args(compile_args), final_binary) or {
 					eprintln('cannot compile to `${vroot}`: \n${err.msg()}')
 					exit(1)
 				}
@@ -188,7 +176,7 @@ fn has_backend_arg(args []string) bool {
 	return false
 }
 
-fn should_use_default_v3_fastc_build(args []string) bool {
+fn should_use_default_fastc_build(args []string) bool {
 	if os.user_os() !in ['linux', 'macos'] || '-old-compiler' in args {
 		return false
 	}
@@ -563,7 +551,7 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 		return false
 	}
 	pgo_binary := os.join_path(pgo_workspace, 'v_pgo_gen')
-	training_output := os.join_path(pgo_workspace, 'cmd_v_training.c')
+	training_output := os.join_path(pgo_workspace, 'v3_training.c')
 	mut use_profile_flag := '-fprofile-use=${profile_dir}'
 	mut llvm_profdata := ''
 	mut profile_data := ''
@@ -577,13 +565,13 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 	}
 	mut generate_args := with_output_arg(args, pgo_binary)
 	generate_args << ['-cflags', '-fprofile-generate=${profile_dir}']
-	generate_cmd := compose_v_cmd(vexe, generate_args, 'cmd/v')
+	generate_cmd := compose_v_cmd(vexe, generate_args, v3_self_source)
 	run_cmd(generate_cmd) or {
 		eprintln('PGO step failed while building the instrumented compiler.')
 		eprintln(err.msg())
 		return false
 	}
-	training_cmd := '${os.quoted_path(pgo_binary)} -o ${os.quoted_path(training_output)} ${os.quoted_path('cmd/v')}'
+	training_cmd := '${os.quoted_path(pgo_binary)} -selfhost -o ${os.quoted_path(training_output)} ${os.quoted_path(v3_self_source)}'
 	run_cmd(training_cmd) or {
 		eprintln('PGO step failed while generating the profiling data.')
 		eprintln(err.msg())
@@ -602,7 +590,7 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 	if cc_kind == 'gcc' {
 		final_args << ['-cflags', '-fprofile-correction']
 	}
-	final_cmd := compose_v_cmd(vexe, final_args, 'cmd/v')
+	final_cmd := compose_v_cmd(vexe, final_args, v3_self_source)
 	run_cmd(final_cmd) or {
 		eprintln('PGO step failed while building the final compiler binary.')
 		eprintln(err.msg())
@@ -638,13 +626,13 @@ fn bootstrap_self_build(vroot string, args []string, final_binary string) ! {
 	mut bootstrap_args := ['-no-parallel']
 	bootstrap_args << with_output_arg(args, bootstrap_v2)
 	bootstrap_v1_cmd := os.join_path('.', bootstrap_v1)
-	bootstrap_v2_cmd := '${os.quoted_path(bootstrap_v1_cmd)} ${bootstrap_args.join(' ')} ${os.quoted_path('cmd/v')}'
+	bootstrap_v2_cmd := '${os.quoted_path(bootstrap_v1_cmd)} ${bootstrap_args.join(' ')} ${os.quoted_path(v3_self_source)}'
 	run_cmd(bootstrap_v2_cmd) or {
 		return error('bootstrap fallback failed while building v2.\n${err.msg()}')
 	}
 	final_args := with_output_arg(args, final_binary)
 	bootstrap_v2_cmd_path := os.join_path('.', bootstrap_v2)
-	final_cmd := '${os.quoted_path(bootstrap_v2_cmd_path)} ${final_args.join(' ')} ${os.quoted_path('cmd/v')}'
+	final_cmd := '${os.quoted_path(bootstrap_v2_cmd_path)} ${final_args.join(' ')} ${os.quoted_path(v3_self_source)}'
 	run_cmd(final_cmd) or {
 		return error('bootstrap fallback failed while building the final compiler.\n${err.msg()}')
 	}

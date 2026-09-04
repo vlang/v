@@ -7,6 +7,7 @@ Usage:
 
 Options:
   All other options are passed to the build command. (e.g. -prod)
+  All self-builds compile the V3 entry point at `vlib/v3/v3.v`.
   On macOS and Linux, plain self-builds use V3 FastC and bundled TCC by default.
   Set `CC`, pass `-cc`/`-prod`/another backend, or use `-old-compiler` for a conventional build.
   With -prod and clang/gcc, `v self` may use PGO automatically when tools are available.
