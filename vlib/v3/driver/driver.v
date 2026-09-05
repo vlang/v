@@ -8868,7 +8868,7 @@ pub fn run(args []string) {
 			}
 			if fastc_bench {
 				total_us := driver_sw.elapsed().microseconds()
-				total_lines := source_file_line_count(fastc_generation.source_paths)
+				total_lines := source_file_line_count(fastc_generation.source_paths, map[int]&v3token.File{})
 				mloc_per_s := f64(total_lines) / f64(total_us)
 				eprintln('fastc-bench-total: files=${fastc_generation.source_paths.len} lines=${total_lines} total=${f64(total_us) / 1000.0:.2f}ms throughput=${mloc_per_s:.3f} MLOC/s (includes TinyCC)')
 			}
