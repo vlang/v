@@ -9060,6 +9060,12 @@ asm amd64 intel {
 }
 ```
 
+Structured `intel` blocks support only register-only `r` constraints for input and output
+operands. V uses the GNU x86 `%V` operand modifier so GCC and Clang substitute register names
+without AT&T's `%` prefix. Memory-capable constraints such as `m` are rejected because compilers
+can still format those placeholders with AT&T addressing. In a `raw intel` block, the template is
+passed through unchanged, so use the selected C compiler's explicit operand modifiers.
+
 The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the C backend. MSVC
 does not support this form of inline assembly on 64-bit targets, and individual instructions or
 constraints can still depend on the selected C compiler and target architecture.

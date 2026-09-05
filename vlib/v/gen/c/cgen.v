@@ -6396,6 +6396,10 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 				|| (name !in stmt.input.map(it.alias) && name !in stmt.output.map(it.alias)) {
 				asm_formatted_name := if name in stmt.global_labels { '%l[${name}]' } else { name }
 				g.write(asm_formatted_name)
+			} else if stmt.is_intel {
+				// `%V` asks GCC and Clang to substitute an x86 register without the `%`
+				// prefix required by AT&T syntax.
+				g.write('%V[${name}]')
 			} else {
 				g.write('%[${name}]')
 			}

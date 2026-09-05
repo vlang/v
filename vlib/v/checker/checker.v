@@ -4284,6 +4284,10 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 	mut aliases := c.asm_ios(mut stmt.output, mut stmt.scope, true)
 	aliases2 := c.asm_ios(mut stmt.input, mut stmt.scope, false)
 	aliases << aliases2
+	if stmt.is_intel && !stmt.is_raw {
+		c.check_asm_intel_ios(stmt.output)
+		c.check_asm_intel_ios(stmt.input)
+	}
 	for mut template in stmt.templates {
 		if stmt.is_raw {
 			continue
@@ -4337,6 +4341,16 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 				msg += '; did you mean `${suggestion}`?'
 			}
 			c.error(msg, clob.reg.pos)
+		}
+	}
+}
+
+fn (mut c Checker) check_asm_intel_ios(ios []ast.AsmIO) {
+	for io in ios {
+		constraint := io.constraint.trim_left('=+&%*')
+		if constraint != 'r' {
+			c.error('constraint `${io.constraint}` is not supported for operands in structured `intel` assembly; use a register-only `r` constraint or a `raw` template with explicit operand modifiers',
+				io.pos)
 		}
 	}
 }
