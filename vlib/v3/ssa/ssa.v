@@ -435,6 +435,8 @@ mut:
 	type_size_visiting []bool
 	type_align_cache   []int
 	field_offset_cache map[u64]int
+	field_size_cache   map[u64]int
+	type_layout_frozen bool
 }
 
 // new creates a Module value for ssa.
@@ -445,6 +447,7 @@ pub fn Module.new() &Module {
 		c_typedef_structs: map[int]bool{}
 		const_cache: map[string]ValueID{}
 		field_offset_cache: map[u64]int{}
+		field_size_cache: map[u64]int{}
 	}
 	m.values << Value{
 		kind: .unknown
@@ -824,9 +827,39 @@ pub fn (m &Module) get_block_from_val(val_id int) int {
 
 // type_size returns the byte size for an SSA type on the current target.
 pub fn (m &Module) type_size(typ_id TypeID) int {
+	if typ_id <= 0 || typ_id >= m.type_store.types.len {
+		return 0
+	}
+	if m.type_layout_frozen {
+		return m.type_size_cache[typ_id]
+	}
 	mut mm := unsafe { &Module(voidptr(m)) }
 	mm.ensure_type_layout_cache()
 	return m.type_size_inner(typ_id, 0, mut mm.type_size_visiting, mut mm.type_size_cache)
+}
+
+// freeze_type_layouts precomputes layout data so concurrent code generators
+// can query it without mutating the shared module.
+pub fn (m &Module) freeze_type_layouts() {
+	if m.type_layout_frozen {
+		return
+	}
+	mut mm := unsafe { &Module(voidptr(m)) }
+	mm.ensure_type_layout_cache()
+	for typ in 1 .. m.type_store.types.len {
+		_ = m.type_size(TypeID(typ))
+		_ = m.type_align(TypeID(typ))
+	}
+	for typ in 1 .. m.type_store.types.len {
+		layout := m.type_store.types[typ]
+		if layout.kind == .struct_t {
+			for field in 0 .. layout.fields.len {
+				_ = m.struct_field_offset(TypeID(typ), field)
+				_ = m.struct_field_size(TypeID(typ), field)
+			}
+		}
+	}
+	mm.type_layout_frozen = true
 }
 
 fn (mut m Module) ensure_type_layout_cache() {
@@ -950,6 +983,9 @@ fn (m &Module) type_align_for_layout(typ_id TypeID) int {
 	if typ_id <= 0 || typ_id >= m.type_store.types.len {
 		return 1
 	}
+	if m.type_layout_frozen {
+		return m.type_align_cache[typ_id]
+	}
 	mut mm := unsafe { &Module(voidptr(m)) }
 	mm.ensure_type_layout_cache()
 	if mm.type_align_cache[typ_id] > 0 {
@@ -1057,6 +1093,9 @@ pub fn (m &Module) struct_field_offset(typ_id TypeID, field_idx int) int {
 	if cached := m.field_offset_cache[key] {
 		return cached - 1
 	}
+	if m.type_layout_frozen {
+		return 0
+	}
 	if typ.is_union {
 		mut mm := unsafe { &Module(voidptr(m)) }
 		mm.field_offset_cache[key] = 1
@@ -1096,10 +1135,18 @@ pub fn (m &Module) struct_field_size(typ_id TypeID, field_idx int) int {
 	if typ.kind != .struct_t || field_idx < 0 || field_idx >= typ.fields.len {
 		return 0
 	}
+	key := (u64(typ_id) << 32) | u64(field_idx)
+	if cached := m.field_size_cache[key] {
+		return cached - 1
+	}
+	if m.type_layout_frozen {
+		return 0
+	}
 	mut mm := unsafe { &Module(voidptr(m)) }
 	mm.ensure_type_layout_cache()
 	mm.type_size_visiting[typ_id] = true
 	size := m.type_size_inner(typ.fields[field_idx], 1, mut mm.type_size_visiting, mut mm.type_size_cache)
 	mm.type_size_visiting[typ_id] = false
+	mm.field_size_cache[key] = size + 1
 	return size
 }

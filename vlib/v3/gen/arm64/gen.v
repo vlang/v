@@ -101,18 +101,8 @@ fn (mut g Gen) gen_parallel_c_host() {
 		return
 	}
 	g.gen_pre_pass()
-	// type_size lazily fills the module layout cache. Populate it before workers
-	// share the otherwise read-only SSA module.
-	for typ in 1 .. g.m.type_store.types.len {
-		_ = g.m.type_size(ssa.TypeID(typ))
-		_ = g.m.type_align(ssa.TypeID(typ))
-		layout := g.m.type_store.types[typ]
-		if layout.kind == .struct_t {
-			for field in 0 .. layout.fields.len {
-				_ = g.m.struct_field_offset(ssa.TypeID(typ), field)
-			}
-		}
-	}
+	// Freeze all lazily-computed layout data before workers share the SSA module.
+	g.m.freeze_type_layouts()
 	ranges := arm64_function_ranges(g.m, 12)
 	mut workers := []thread &Gen{cap: ranges.len}
 	for r in ranges {
