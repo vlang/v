@@ -192,6 +192,17 @@ fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Nod
 			return expected.name
 		}
 	}
+	// A qualified source literal can still use an import alias (`token.File{}`),
+	// while the expected type already carries the canonical module selected by
+	// the checker. This is especially important for fallback literals in `or`
+	// blocks, whose transformed node may no longer have a cached expression type.
+	if node.value.len > 0 {
+		expected := g.value_unalias_type(types.unwrap_pointer(g.expected_expr_type))
+		source_name := node.value.trim_left('&?!').all_after_last('.')
+		if expected is types.Struct && expected.name.all_after_last('.') == source_name {
+			return if node.value.starts_with('&') { '&${expected.name}' } else { expected.name }
+		}
+	}
 	return node.value
 }
 
@@ -375,7 +386,18 @@ fn (mut g FlatGen) gen_unset_struct_field_default(struct_name string, field_name
 fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	node := g.a.nodes[int(id)]
 	init_module := g.tc.cur_module
-	init_value := g.struct_init_effective_type_name(id, node)
+	raw_init_value := g.struct_init_effective_type_name(id, node)
+	canonical_init_value := g.canonical_import_alias_type_text_in_file(raw_init_value, g.node_source_file(&node))
+	canonical_init_base := canonical_init_value.trim_left('&?!').all_before('[')
+	// Transforms also use dotted synthetic names that resemble imported source
+	// types. Only apply a file's import alias when it resolves to a declaration.
+	init_value := if canonical_init_value != raw_init_value
+		&& (canonical_init_base in g.tc.structs
+			|| g.exact_known_import_type_text(canonical_init_base) != none) {
+		canonical_init_value
+	} else {
+		raw_init_value
+	}
 	if init_value.starts_with('chan ') {
 		g.gen_channel_init(node)
 		return
@@ -1385,6 +1407,14 @@ fn channel_init_field(node flat.Node, a &flat.FlatAst, name string) ?flat.NodeId
 
 // gen_heap_struct_init emits heap struct init output for c.
 fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
+	canonical_value := g.canonical_import_alias_type_text_in_file(node.value, g.node_source_file(&node))
+	canonical_base := canonical_value.trim_left('&?!').all_before('[')
+	if canonical_value != node.value && g.exact_known_import_type_text(canonical_base) != none {
+		mut canonical_node := node
+		canonical_node.value = canonical_value
+		g.gen_heap_struct_init(canonical_node)
+		return
+	}
 	init_module := g.tc.cur_module
 	parsed_init_type := g.tc.parse_type(node.value)
 	clean_init_type := default_init_unalias_type(types.unwrap_all_pointers(parsed_init_type))

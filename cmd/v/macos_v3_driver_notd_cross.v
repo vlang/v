@@ -1,9 +1,7 @@
 module main
 
 $if macos || linux {
-	$if !autofree {
-		import v3.driver
-	}
+	import v3.driver
 }
 
 // The V3 driver (vlib/v3) is linked directly into `cmd/v` on the target
@@ -14,30 +12,16 @@ $if macos || linux {
 //
 // Other targets (Windows, the BSDs, and the portable `-os cross` VC generation)
 // get the stub below or the one in macos_v3_driver_d_cross.v, so V3's
-// thread/parallel code is never cross-compiled into them; `-new-compiler` then
-// reports that this build does not embed V3.
+// thread/parallel code is never cross-compiled into them.
 $if macos || linux {
-	$if !autofree {
-		@[markused]
-		fn macos_v3_driver_is_available() bool {
-			return true
-		}
+	@[markused]
+	fn macos_v3_driver_is_available() bool {
+		return true
+	}
 
-		@[markused]
-		fn macos_v3_driver_run(args []string) {
-			driver.run(args)
-		}
-	} $else {
-		// The ordinary embedded driver has no ownership support, and cmd/v routes
-		// autofree user builds to V1 before this entry point. Keep it out of an
-		// autofree cmd/v self-build so V1 does not have to lower V3's internals.
-		@[markused]
-		fn macos_v3_driver_is_available() bool {
-			return false
-		}
-
-		@[markused]
-		fn macos_v3_driver_run(_ []string) {}
+	@[markused]
+	fn macos_v3_driver_run(args []string) {
+		driver.run(args)
 	}
 } $else {
 	@[markused]

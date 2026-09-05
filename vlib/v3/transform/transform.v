@@ -13572,7 +13572,15 @@ fn (t &Transformer) expr_can_take_address(id flat.NodeId) bool {
 			if t.selector_chain_has_sum_variant_field(id) {
 				return false
 			}
-			return t.expr_can_take_address(t.a.child(&node, 0))
+			base_id := t.a.child(&node, 0)
+			mut base_type := t.node_type(base_id)
+			if base_type.len == 0 {
+				base_type = t.resolve_expr_type(base_id)
+			}
+			if t.normalize_type_alias(base_type).trim_space().starts_with('&') {
+				return true
+			}
+			return t.expr_can_take_address(base_id)
 		}
 		.prefix {
 			return node.op == .mul

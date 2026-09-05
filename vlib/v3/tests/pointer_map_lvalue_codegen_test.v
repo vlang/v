@@ -38,6 +38,36 @@ mut:
 	inner Inner
 }
 
+struct MapState {
+mut:
+	values map[string]int
+}
+
+struct MapOwner {
+mut:
+	state MapState
+}
+
+fn (mut owner MapOwner) current_state() &MapState {
+	return &owner.state
+}
+
+struct Link {
+	value int
+}
+
+struct Holder {
+	link &Link
+}
+
+fn (link &Link) read() int {
+	return link.value
+}
+
+fn (holder &Holder) read_link() int {
+	return holder.link.read()
+}
+
 fn update(m_ref &map[string][]int, ch chan []int) int {
 	mut x := 0
 	unsafe {
@@ -63,6 +93,19 @@ fn main() {
 	mut nested := map[string]NestedItem{}
 	nested['key'].inner.values << 23
 	assert nested['key'].inner.values == [23]
+	mut owner := MapOwner{}
+	for i in 0 .. 100 {
+		owner.current_state().values[i.str()] = i
+	}
+	assert owner.state.values.len == 100
+	assert owner.state.values['99'] == 99
+	link := &Link{
+		value: 7
+	}
+	holder := Holder{
+		link: link
+	}
+	assert holder.read_link() == 7
 	println('\${values['key'][0] + values['key'][1]}:\${x}')
 }
 ") or {

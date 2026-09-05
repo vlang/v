@@ -151,6 +151,26 @@ fn test_optional_payload_ignores_import_aliases_from_other_files() {
 	assert alias_payload == 'main__AnyStruct_json__Any'
 }
 
+fn test_import_alias_type_text_uses_the_node_source_file() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.cur_file = 'unrelated.v'
+	tc.file_imports['driver.v\npref'] = 'v3.pref'
+	tc.file_imports['unrelated.v\npref'] = 'v.pref'
+	tc.file_imports['parser.v\ntoken'] = 'v3.token'
+	tc.structs['token.Pos'] = []types.StructField{}
+	tc.structs['v3.token.Pos'] = []types.StructField{}
+	tc.struct_modules['token.Pos'] = 'v3.token'
+	tc.file_modules['parser.v'] = 'parser'
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	assert g.canonical_import_alias_type_text_in_file('&pref.Preferences', 'driver.v') == '&v3.pref.Preferences'
+	assert g.canonical_import_alias_type_text_in_file('map[string][]pref.Target', 'driver.v') == 'map[string][]v3.pref.Target'
+	assert g.canonical_import_alias_type_in_file('token.Pos', 'parser.v').name() == 'v3.token.Pos'
+}
+
 fn test_optional_payload_qualifies_interface() {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)

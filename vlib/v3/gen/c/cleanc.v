@@ -492,6 +492,7 @@ mut:
 	skip_enum_autostr            bool
 	placeholder_check_forced     bool
 	cur_fn_name                  string
+	cur_fn_source_file           string
 	cur_fn_is_specialized        bool
 	cur_fn_assert_continues      bool
 	current_decl_is_mut          bool
@@ -10992,7 +10993,9 @@ fn mut_optional_param_value_types_match(param_type types.Type, expected types.Ty
 
 // gen_expr_with_expected_type emits expr with expected type output for c.
 @[direct_array_access]
-fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Type) {
+fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected_type types.Type) {
+	node := unsafe { &g.a.nodes[int(id)] }
+	expected := g.canonical_import_alias_type_for_node(expected_type, node)
 	has_known_actual := g.known_expr_type_id == int(id)
 	known_actual := g.known_expr_type
 	if has_known_actual {
@@ -11005,7 +11008,6 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 	if expected is types.Enum {
 		g.expected_enum = expected.name
 	}
-	node := unsafe { &g.a.nodes[int(id)] }
 	expected_is_ierror := if node.kind == .none_expr || node.kind == .call {
 		g.is_ierror_type_name(semantic_expected.name())
 	} else {
@@ -15119,13 +15121,13 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.array_init {
-			raw_init_type := g.tc.parse_type(node.value)
+			raw_init_type := g.canonical_import_alias_type_in_file(node.value, g.node_source_file(node))
 			init_type := raw_init_type
 			if init_type is types.ArrayFixed {
 				c_elem, dims := g.fixed_array_decl_parts(init_type)
 				g.write('(${c_elem}${dims}){0}')
 			} else {
-				c_elem := g.sizeof_target(node.value)
+				c_elem := g.value_sizeof_target(raw_init_type)
 				g.write('array_new(sizeof(${c_elem}), 0, 0)')
 			}
 		}
@@ -15136,7 +15138,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			panic('internal error: SQL expression reached C backend after transform')
 		}
 		.cast_expr {
-			target_type := g.tc.parse_type(node.value)
+			target_type := g.canonical_import_alias_type_in_file(node.value, g.node_source_file(node))
 			semantic_target := cgen_unalias_type(target_type)
 			mut ct := if node.value.starts_with('fn_ptr:') {
 				g.resolve_fn_ptr_type(node.value)
@@ -15435,7 +15437,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.sizeof_expr {
-			g.write('sizeof(${g.sizeof_target(node.value)})')
+			g.write('sizeof(${g.sizeof_target_in_file(node.value, g.node_source_file(node))})')
 		}
 		.typeof_expr {
 			g.gen_typeof_name(node)

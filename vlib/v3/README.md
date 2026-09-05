@@ -38,39 +38,21 @@ plus production and shared builds and supported cross targets and backends. The 
 itself continues to use the established test dispatcher, while each discovered test file is
 compiled by V3.
 
-`cmd/v` remains the CLI and compatibility dispatcher. Its own build, its internal command-tool
-bootstrap, and the `vlib/v3/v3.v` compiler bootstrap retain the compatibility compiler. Explicit
-non-none garbage collectors, sanitizer builds, live reload, and autofree also stay off the default
-V3 path until V3 supports their runtime behavior. Debug builds selected with `-g`/`-debug` also use
-the established compiler; `-cg`/`-cdebug` remains eligible for V3. Pass `-old-compiler` to
-explicitly select the compatibility compiler for another user build. On Windows and the BSDs,
-where the V3 driver is not embedded, `v` uses the established compiler by default.
+`cmd/v` remains the full CLI and tool dispatcher. On macOS and Linux it links V3, but does not link
+the established compiler in `vlib/v`; its own build and every other direct C build therefore use
+V3. Commands such as `test` remain external tools, while each discovered test file is compiled by
+V3. Non-C backends remain separate builder tools.
 
-Pass `-new-compiler` for the opposite: it runs the embedded V3 driver (`vlib/v3`) in the SAME
-process, exactly like the default macOS and Linux path — it never launches a separate `v3`
-executable. Because only macOS and Linux embed the V3 driver, `-new-compiler` applies there: it
-forces V3 for a `run`/`build` target even when the default heuristic would defer to V1, and
-disables the automatic V1 fallback so a V3 failure is reported instead of silently retried with
-V1. It never forces V3 onto options V3 cannot honor yet (those error asking you to drop the flag),
-leaves the `test` command to the test dispatcher, and errors on builds that do not embed the V3
-compiler — Windows, the BSDs, and the portable cross-VC bootstrap — rather than opting them into
-V3. `-old-compiler` takes precedence when both are given.
-
-To make this possible the V3 driver (`vlib/v3`) is linked into `cmd/v` on macOS and Linux, so `v`
-compiles in-process there by default and `v -new-compiler` does so wherever V3 is embedded. Windows
-and the BSDs get a stub instead, so `-new-compiler` there reports that the build does not embed V3.
+`-new-compiler` remains accepted for command-line compatibility and selects the same in-process V3
+driver. `-old-compiler` is unavailable in a V3-only executable and reports an error. On Windows,
+the BSDs, and portable cross-VC builds, the V3 driver is not embedded and `cmd/v` retains the
+established compiler.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.
 
-When delegated V3 compilation rejects a source before producing its output, `cmd/v` automatically
-retries the command through the established compiler. Exit codes from successfully compiled
-`run` programs are returned unchanged and do not trigger a retry.
-
-When V3's generated C fails to compile, `cmd/v` automatically retries the command through the
-established compiler. If that retry succeeds, the existing automatic C-error reporter submits the
-V3 diagnostics to bugs.vlang.io with `V3` in the report's build options. The usual
-`V_C_ERROR_BUG_REPORT_DISABLED` and GitHub CI safeguards still apply.
+V3 parser, checker, code-generation, and C-compiler failures are returned directly; `cmd/v` does
+not retry them with V1.
 
 ## Target selection
 

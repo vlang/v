@@ -5469,7 +5469,7 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 			return g.tc.expr_type(id) or { g.lock_expr_result_type(node) }
 		}
 		if node.kind in [.as_expr, .cast_expr] && node.value.len > 0 {
-			target_type := g.tc.parse_type(node.value)
+			target_type := g.canonical_import_alias_type_in_file(node.value, g.node_source_file(&node))
 			if !decl_annotation_is_unusable(target_type, node.value) {
 				return target_type
 			}
@@ -6123,6 +6123,14 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					rhs_v_type = lhs_type
 				}
 			}
+			if arr := array_like_type(rhs_v_type) {
+				canonical_elem := g.canonical_import_alias_type_for_node(arr.elem_type, &rhs)
+				if canonical_elem.name() != arr.elem_type.name() {
+					rhs_v_type = types.Type(types.Array{
+						elem_type: canonical_elem
+					})
+				}
+			}
 			if fixed := array_fixed_type(rhs_v_type) {
 				lhs_str := g.decl_lhs_str(lhs_id)
 				if !lhs_is_defer_capture {
@@ -6161,9 +6169,9 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 		} else if rhs.kind == .or_expr {
 			g.gen_decl_or_expr(lhs, rhs)
 		} else if rhs.kind == .array_init {
-			raw_init_type := g.tc.parse_type(rhs.value)
-			mut init_type := raw_init_type
 			mut resolved_init_type := g.tc.resolve_type(rhs_id)
+			raw_init_type := g.canonical_import_alias_type_in_file(rhs.value, g.node_source_file(&node))
+			mut init_type := raw_init_type
 			if node.typ.len > 0 {
 				decl_type := g.tc.parse_resolution_type(node.typ)
 				if arr := array_like_type(decl_type) {
@@ -6178,6 +6186,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					init_type = arr.elem_type
 				}
 			}
+			init_type = g.canonical_import_alias_type_for_node(init_type, &node)
 			is_dynamic_array_init := resolved_init_type is types.Array || rhs.typ.starts_with('[]')
 				|| node.typ.starts_with('[]') || lhs.typ.starts_with('[]')
 			if init_type is types.ArrayFixed && !is_dynamic_array_init {
@@ -6353,8 +6362,10 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				}
 			}
 			if rhs.kind == .cast_expr && rhs.value.len > 0 {
-				cast_type := g.tc.parse_type(rhs.value)
-				if cast_type is types.SumType {
+				cast_text := g.canonical_import_alias_type_text_in_file(rhs.value, g.node_source_file(&rhs))
+				cast_type := g.canonical_import_alias_type_in_file(rhs.value, g.node_source_file(&rhs))
+				if cast_type is types.SumType
+					|| !decl_annotation_is_unusable(cast_type, cast_text) {
 					v_type = cast_type
 				}
 			}
@@ -6508,6 +6519,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				i += 2
 				continue
 			}
+			v_type = g.canonical_import_alias_type_for_node(v_type, &rhs)
 			semantic_v_type := cgen_unalias_type(v_type)
 			ct0 := if rhs.kind == .struct_init
 				&& g.struct_init_effective_type_name(rhs_id, rhs).starts_with('chan ') {
