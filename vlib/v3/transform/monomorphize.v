@@ -656,10 +656,16 @@ fn (t &Transformer) sorted_monomorph_cache_specs() []MonomorphCacheSpec {
 	mut specs := []MonomorphCacheSpec{cap: keys.len}
 	for key in keys {
 		spec := t.monomorph_cache_specs[key]
+		// Spec arguments can come from monomorph workers whose arenas are
+		// released before the driver promotes this returned list.
+		mut args := []string{cap: spec.args.len}
+		for arg in spec.args {
+			args << arg.clone()
+		}
 		specs << MonomorphCacheSpec{
 			decl_key: spec.decl_key.clone()
 			module: spec.module.clone()
-			args: spec.args.clone()
+			args: args
 		}
 	}
 	return specs
