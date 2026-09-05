@@ -1,0 +1,14 @@
+vlib/v/checker/tests/asm_arm64_unknown_register.vv:3:7: error: unknown register `x00`; did you mean `x0`?
+    1 | fn main() {
+    2 |     asm arm64 {
+    3 |         mov x00, x0
+      |             ~~~
+    4 |         ; ; ; xzrr
+    5 |     }
+vlib/v/checker/tests/asm_arm64_unknown_register.vv:4:9: error: unknown clobbered register `xzrr`; did you mean `xzr`?
+    2 |     asm arm64 {
+    3 |         mov x00, x0
+    4 |         ; ; ; xzrr
+      |               ~~~~
+    5 |     }
+    6 | }
