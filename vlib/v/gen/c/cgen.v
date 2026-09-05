@@ -6329,7 +6329,11 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 		// the reverse order; Intel blocks already have the order expected by the assembler.
 		if template.args.len > 1 && !template.is_directive && !stmt.is_intel
 			&& stmt.arch !in [.arm64, .s390x, .ppc64le, .loongarch64, .rv64, .rv32] {
-			template.args.reverse_in_place()
+			// `template` is a copy, but its `args` still shares the AST's buffer, so this
+			// has to build a new array. Reversing in place would edit the AST itself, and
+			// a generic `asm` block is generated once per concrete type: the second
+			// instantiation would reverse the first one's result back.
+			template.args = template.args.reverse()
 		}
 
 		for i, arg in template.args {
