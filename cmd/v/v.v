@@ -238,14 +238,14 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_a
 		return
 	}
 	if !is_ownership_relevant_command(command, prefs) {
-		// `-autofree` is also an established option for command modes such as
-		// `run` and `test`. Leave modes that do not compile directly on the regular
+		// `-autofree` is also an established option for command modes such as `test`.
+		// Leave modes that do not compile one target directly on the regular
 		// command path instead of rejecting them in the ownership dispatcher.
 		if is_autofree && !is_ownership {
 			return
 		}
 		mode := if is_autofree { '-autofree' } else { '-ownership' }
-		eprintln('v: `${mode}` currently supports direct compilation only. Use `v ${mode} module_dir`.')
+		eprintln('v: `${mode}` currently supports direct compilation and `run` only. Use `v ${mode} module_dir`.')
 		exit(1)
 	}
 	ownership_args := v3_ownership_forwarded_args(prefs, merged_args)
@@ -334,12 +334,15 @@ fn ownership_delegation_is_requested(is_ownership bool, is_autofree bool, old_co
 	if new_compiler {
 		return false
 	}
-	return is_autofree && host_os == 'macos'
+	return is_autofree && host_os in ['macos', 'linux']
 }
 
 fn is_ownership_relevant_command(command string, prefs &pref.Preferences) bool {
-	if prefs.path == '' || prefs.is_run || prefs.is_crun {
+	if prefs.path == '' || prefs.is_crun {
 		return false
+	}
+	if prefs.is_run {
+		return command == 'run' && (prefs.path.ends_with('.v') || os.exists(prefs.path))
 	}
 	return prefs.path == command && (command.ends_with('.v') || os.exists(command))
 }

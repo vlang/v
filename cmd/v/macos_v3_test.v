@@ -238,13 +238,46 @@ fn test_macos_v3_fastc_rejects_incompatible_gc() {
 fn test_macos_v3_ownership_delegation_never_selects_v1() {
 	assert ownership_delegation_is_requested(true, false, false, false, 'linux')
 	assert ownership_delegation_is_requested(false, true, false, false, 'macos')
-	assert !ownership_delegation_is_requested(false, true, false, false, 'linux')
+	assert ownership_delegation_is_requested(false, true, false, false, 'linux')
+	assert !ownership_delegation_is_requested(false, true, false, false, 'windows')
 	assert !ownership_delegation_is_requested(true, false, true, false, 'macos')
+	direct_prefs := &pref.Preferences{
+		path: 'main.v'
+	}
+	assert is_ownership_relevant_command('main.v', direct_prefs)
+	run_prefs := &pref.Preferences{
+		path: 'main.v'
+		is_run: true
+	}
+	assert is_ownership_relevant_command('run', run_prefs)
+	assert !is_ownership_relevant_command('test', run_prefs)
 	assert macos_v3_explicit_autofree_is_unsupported(&pref.Preferences{
 		new_compiler: true
 		autofree: true
 		path: 'main.v'
 	})
+}
+
+fn test_macos_v3_autofree_direct_and_run_use_ownership_compiler() {
+	$if macos || linux {
+		root := os.join_path(os.vtmp_dir(), 'v3_autofree_run_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		os.write_file(source, "fn main() { println('autofree run') }\n")!
+		output := os.join_path(root, 'direct')
+		direct := run_macos_v3_test_process(@VEXE, ['-autofree', '-o', output, source], macos_v3_test_vroot, {})
+		assert direct.exit_code == 0, direct.output
+		direct_run := run_macos_v3_test_process(output, [], macos_v3_test_vroot, {})
+		assert direct_run.exit_code == 0, direct_run.output
+		assert direct_run.output.trim_space() == 'autofree run', direct_run.output
+		result := run_macos_v3_test_process(@VEXE, ['-autofree', 'run', source], macos_v3_test_vroot, {})
+		assert result.exit_code == 0, result.output
+		assert result.output.trim_space() == 'autofree run', result.output
+	}
 }
 
 fn test_macos_v3_parallel_cc_ignores_inactive_header_definitions() {

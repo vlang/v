@@ -16006,7 +16006,9 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 	if selected_receiver.kind == .selector && selected_receiver.children_count > 0 {
 		outer_id := g.a.child(&selected_receiver, 0)
 		outer_type := g.receiver_base_type(outer_id)
-		if g.emitted_method_belongs_to_receiver(outer_type, method_short, emitted_name) {
+		selected_type := g.receiver_base_type(receiver_id)
+		if !g.emitted_method_belongs_to_receiver(selected_type, method_short, emitted_name)
+			&& g.emitted_method_belongs_to_receiver(outer_type, method_short, emitted_name) {
 			receiver_id = outer_id
 		}
 	}

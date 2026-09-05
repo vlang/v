@@ -8216,6 +8216,9 @@ pub fn run(args []string) {
 		eprintln("builder error: ${input_file} doesn't exist")
 		exit(1)
 	}
+	if input_implies_building_v(input_file) {
+		building_v = true
+	}
 	configure_selfhost_parallelism(building_v)
 	if generate_c_project.len > 0 {
 		if backend != 'c' {
@@ -8291,7 +8294,10 @@ pub fn run(args []string) {
 			eprintln('unsupported garbage collector define `${define_name}`; v3 programs must not use a garbage collector')
 			exit(1)
 		}
-		if define_name == 'ownership' && backend != 'fastc' && !ownership_checker_compiled() {
+		// A standard V3 compiler must be able to build the ownership-enabled V3
+		// executable before that executable can perform ownership analysis itself.
+		if define_name == 'ownership' && backend != 'fastc' && !ownership_checker_compiled()
+			&& !building_v {
 			eprintln('ownership support is not compiled into this v3 executable')
 			exit(1)
 		}
