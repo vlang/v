@@ -1871,6 +1871,8 @@ pub:
 	is_basic    bool
 	is_volatile bool
 	is_goto     bool
+	is_raw      bool
+	is_intel    bool
 	clobbered   []AsmClobbered
 	pos         token.Pos
 pub mut:
@@ -1886,6 +1888,7 @@ pub mut:
 pub struct AsmTemplate {
 pub mut:
 	name         string
+	raw_template string
 	is_label     bool // `example_label:`
 	is_directive bool // .globl assembly_function
 	args         []AsmArg
@@ -1909,6 +1912,7 @@ pub mut:
 	name string // eax or r12d etc.
 	typ  Type
 	size int
+	pos  token.Pos
 }
 
 pub struct AsmDisp {
@@ -2010,6 +2014,7 @@ pub const x86_with_number_register_list = {
 		'mm#': 16
 		'cr#': 16
 		'dr#': 16
+		'k#':  8
 	}
 	80:  {
 		'st#': 16

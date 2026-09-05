@@ -17,10 +17,17 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 	} else {
 		stmt.arch.str()
 	}
-	f.writeln('${lit_arch} {')
+	f.write(lit_arch)
+	if stmt.is_raw {
+		f.write(' raw')
+	}
+	if stmt.is_intel {
+		f.write(' intel')
+	}
+	f.writeln(' {')
 	f.indent++
 
-	f.asm_templates(stmt.templates)
+	f.asm_templates(stmt.templates, stmt.is_raw)
 
 	if stmt.output.len != 0 || stmt.input.len != 0 || stmt.clobbered.len != 0 {
 		f.write('; ')
@@ -130,8 +137,17 @@ fn (mut f Fmt) asm_reg(reg ast.AsmRegister) {
 	f.write(reg.name)
 }
 
-fn (mut f Fmt) asm_templates(templates []ast.AsmTemplate) {
+fn (mut f Fmt) asm_templates(templates []ast.AsmTemplate, is_raw bool) {
 	for template in templates {
+		if is_raw {
+			f.write('"${template.raw_template}"')
+			if template.comments.len == 0 {
+				f.writeln('')
+			} else {
+				f.comments(template.comments)
+			}
+			continue
+		}
 		if template.is_directive {
 			f.write('.')
 		}
