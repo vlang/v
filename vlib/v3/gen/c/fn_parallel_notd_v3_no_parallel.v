@@ -254,15 +254,10 @@ $if !windows {
 		defer {
 			w.timing_profile('  [ttime]     cg typedecls   ${f64(tdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (task)')
 		}
-		// This task uses the master generator from a pool thread. Keep caches
-		// disabled because their entries would otherwise borrow that thread's
-		// disposable arena.
-		w.import_alias_cache = unsafe { nil }
-		w.enum_selector_cache = unsafe { nil }
-		w.enum_method_cache = unsafe { nil }
-		w.qualified_enum_method_cache = unsafe { nil }
-		w.local_typedef_shadow_facts = unsafe { nil }
-		w.local_global_shadow_facts = unsafe { nil }
+		// This task uses the master generator from a pool thread, so memoize into
+		// private caches: entries written here would otherwise borrow this
+		// thread's arena, and body lanes clone the master's memo maps meanwhile.
+		saved_lookup_caches := w.begin_scratch_lookup_caches()
 		// Self-host declaration output is several MiB. Reserve it once instead of
 		// repeatedly copying a geometrically growing builder.
 		w.sb.ensure_cap(4 * 1024 * 1024)
@@ -325,6 +320,7 @@ $if !windows {
 			tail.sb = strings.new_builder(0)
 		}
 		w.timing_profile('  [ttime]       td init defs  ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		w.restore_scratch_lookup_caches(saved_lookup_caches)
 		w.parallel_support_ready = true
 		return unsafe { nil }
 	}

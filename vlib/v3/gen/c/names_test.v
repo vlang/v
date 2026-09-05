@@ -586,3 +586,43 @@ fn test_specialized_generic_abi_name_does_not_classify_array_receivers() {
 	assert !g.name_uses_specialized_generic_abi('cli.[]Flag.get_int')
 	assert !g.name_uses_specialized_generic_abi('[]Flag.get_int')
 }
+
+// test_scratch_lookup_caches_keep_batch_entries_out_of_the_generator covers the
+// crash where a `forward_decls` batch memoized a struct C type into the master's
+// cache: both the key and the map node were owned by the batch's scratch arena,
+// so the next batch's lookup compared against freed memory.
+fn test_scratch_lookup_caches_keep_batch_entries_out_of_the_generator() {
+	mut g := FlatGen.new()
+	own_unique_struct_ct_cache := g.unique_struct_ct_cache
+	own_struct_cname_cache := g.struct_cname_cache
+	own_generic_app_cache := g.generic_app_cache
+	saved := g.begin_scratch_lookup_caches()
+	assert voidptr(g.unique_struct_ct_cache) != voidptr(own_unique_struct_ct_cache)
+	assert voidptr(g.struct_cname_cache) != voidptr(own_struct_cname_cache)
+	assert voidptr(g.generic_app_cache) != voidptr(own_generic_app_cache)
+	// The frozen entries stay readable through the overlay's base.
+	assert voidptr(g.generic_app_cache.base) == voidptr(own_generic_app_cache)
+	g.unique_struct_ct_cache.put('Batch', 'main__Batch')
+	g.param_types_cache['batch'] = [types.Type(types.void_)]
+	g.restore_scratch_lookup_caches(saved)
+	assert voidptr(g.unique_struct_ct_cache) == voidptr(own_unique_struct_ct_cache)
+	assert voidptr(g.struct_cname_cache) == voidptr(own_struct_cname_cache)
+	assert voidptr(g.generic_app_cache) == voidptr(own_generic_app_cache)
+	assert g.unique_struct_ct_cache.get('Batch') == none
+	assert 'batch' !in g.param_types_cache
+}
+
+// test_scratch_lookup_caches_leave_disabled_caches_disabled keeps the swap about
+// where entries are written, never about whether a generator memoizes at all.
+fn test_scratch_lookup_caches_leave_disabled_caches_disabled() {
+	mut g := FlatGen.new()
+	assert isnil(g.local_typedef_shadow_facts)
+	assert isnil(g.struct_decl_pref_cache)
+	saved := g.begin_scratch_lookup_caches()
+	assert isnil(g.local_typedef_shadow_facts)
+	assert isnil(g.struct_decl_pref_cache)
+	assert !isnil(g.mut_recv_facts)
+	g.restore_scratch_lookup_caches(saved)
+	assert isnil(g.local_typedef_shadow_facts)
+	assert isnil(g.struct_decl_pref_cache)
+}

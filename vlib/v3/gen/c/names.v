@@ -2,6 +2,7 @@ module c
 
 import strings
 import v3.gen.c.naming
+import v3.types
 
 // c_name converts c name data for c.
 fn c_name(name string) string {
@@ -266,6 +267,168 @@ fn (mut g FlatGen) reset_context_lookup_caches() {
 	g.enum_selector_cache = &ContextStringLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}
 	g.qualified_enum_method_cache = &ContextStringLookupCache{}
+}
+
+// ScratchLookupCaches holds a generator's memoizing caches while it emits from a
+// disposable arena. Both a cached string and the map node holding it come from
+// whichever arena is current when the entry is written, so a cache a scratch
+// batch populates must not outlive that batch: the next lookup would compare
+// against a freed key. The same swap keeps a task that borrows the master
+// generator on a pool thread out of the memo maps body lanes concurrently clone.
+// See begin_scratch_lookup_caches.
+struct ScratchLookupCaches {
+	interface_receiver_cache        &StringLookupCache
+	normalize_call_cache            &StringLookupCache
+	flattened_generic_name_cache    &StringLookupCache
+	generic_struct_context_ct_cache &StringLookupCache
+	struct_cname_cache              &StringLookupCache
+	unique_struct_ct_cache          &StringLookupCache
+	alias_method_cache              &StringLookupCache
+	import_alias_cache              &ContextStringLookupCache
+	enum_selector_cache             &ContextStringLookupCache
+	enum_method_cache               &ContextStringLookupCache
+	qualified_enum_method_cache     &ContextStringLookupCache
+	mut_recv_facts                  &FnNameFactCache
+	local_typedef_shadow_facts      &FnNameFactCache
+	local_global_shadow_facts       &ContextNameFactCache
+	generic_app_cache               &GenericAppCache
+	struct_decl_pref_cache          &StructDeclPrefCache
+	sum_variant_actual_cache        &SumVariantActualCache
+	array_method_cache              map[string]string
+	param_types_cache               map[string][]types.Type
+}
+
+// begin_scratch_lookup_caches swaps in batch-local memo caches and returns the
+// generator's own caches. The caller must pass the result to
+// restore_scratch_lookup_caches once the scratch arena is no longer current;
+// everything the batch memoized is then dropped together with that arena.
+fn (mut g FlatGen) begin_scratch_lookup_caches() ScratchLookupCaches {
+	saved := ScratchLookupCaches{
+		interface_receiver_cache: g.interface_receiver_cache
+		normalize_call_cache: g.normalize_call_cache
+		flattened_generic_name_cache: g.flattened_generic_name_cache
+		generic_struct_context_ct_cache: g.generic_struct_context_ct_cache
+		struct_cname_cache: g.struct_cname_cache
+		unique_struct_ct_cache: g.unique_struct_ct_cache
+		alias_method_cache: g.alias_method_cache
+		import_alias_cache: g.import_alias_cache
+		enum_selector_cache: g.enum_selector_cache
+		enum_method_cache: g.enum_method_cache
+		qualified_enum_method_cache: g.qualified_enum_method_cache
+		mut_recv_facts: g.mut_recv_facts
+		local_typedef_shadow_facts: g.local_typedef_shadow_facts
+		local_global_shadow_facts: g.local_global_shadow_facts
+		generic_app_cache: g.generic_app_cache
+		struct_decl_pref_cache: g.struct_decl_pref_cache
+		sum_variant_actual_cache: g.sum_variant_actual_cache
+		array_method_cache: g.array_method_cache
+		param_types_cache: g.param_types_cache
+	}
+	// A cache the generator has disabled stays disabled, so this only changes
+	// where entries are written, never whether they are memoized at all.
+	g.interface_receiver_cache = scratch_string_lookup_cache(saved.interface_receiver_cache)
+	g.normalize_call_cache = scratch_string_lookup_cache(saved.normalize_call_cache)
+	g.flattened_generic_name_cache = scratch_string_lookup_cache(saved.flattened_generic_name_cache)
+	g.generic_struct_context_ct_cache = scratch_string_lookup_cache(saved.generic_struct_context_ct_cache)
+	g.struct_cname_cache = scratch_string_lookup_cache(saved.struct_cname_cache)
+	g.unique_struct_ct_cache = scratch_string_lookup_cache(saved.unique_struct_ct_cache)
+	g.alias_method_cache = scratch_string_lookup_cache(saved.alias_method_cache)
+	g.import_alias_cache = scratch_context_string_lookup_cache(saved.import_alias_cache)
+	g.enum_selector_cache = scratch_context_string_lookup_cache(saved.enum_selector_cache)
+	g.enum_method_cache = scratch_context_string_lookup_cache(saved.enum_method_cache)
+	g.qualified_enum_method_cache = scratch_context_string_lookup_cache(saved.qualified_enum_method_cache)
+	g.mut_recv_facts = scratch_fn_name_fact_cache(saved.mut_recv_facts)
+	g.local_typedef_shadow_facts = scratch_fn_name_fact_cache(saved.local_typedef_shadow_facts)
+	g.local_global_shadow_facts = scratch_context_name_fact_cache(saved.local_global_shadow_facts)
+	g.generic_app_cache = scratch_generic_app_cache(saved.generic_app_cache)
+	g.struct_decl_pref_cache = scratch_struct_decl_pref_cache(saved.struct_decl_pref_cache)
+	g.sum_variant_actual_cache = scratch_sum_variant_actual_cache(saved.sum_variant_actual_cache)
+	g.array_method_cache = map[string]string{}
+	g.param_types_cache = map[string][]types.Type{}
+	return saved
+}
+
+// restore_scratch_lookup_caches puts the generator's own caches back. It must run
+// after the scratch arena stops being the current one and before it is freed.
+fn (mut g FlatGen) restore_scratch_lookup_caches(saved ScratchLookupCaches) {
+	g.interface_receiver_cache = saved.interface_receiver_cache
+	g.normalize_call_cache = saved.normalize_call_cache
+	g.flattened_generic_name_cache = saved.flattened_generic_name_cache
+	g.generic_struct_context_ct_cache = saved.generic_struct_context_ct_cache
+	g.struct_cname_cache = saved.struct_cname_cache
+	g.unique_struct_ct_cache = saved.unique_struct_ct_cache
+	g.alias_method_cache = saved.alias_method_cache
+	g.import_alias_cache = saved.import_alias_cache
+	g.enum_selector_cache = saved.enum_selector_cache
+	g.enum_method_cache = saved.enum_method_cache
+	g.qualified_enum_method_cache = saved.qualified_enum_method_cache
+	g.mut_recv_facts = saved.mut_recv_facts
+	g.local_typedef_shadow_facts = saved.local_typedef_shadow_facts
+	g.local_global_shadow_facts = saved.local_global_shadow_facts
+	g.generic_app_cache = saved.generic_app_cache
+	g.struct_decl_pref_cache = saved.struct_decl_pref_cache
+	g.sum_variant_actual_cache = saved.sum_variant_actual_cache
+	g.array_method_cache = saved.array_method_cache
+	g.param_types_cache = saved.param_types_cache
+}
+
+fn scratch_string_lookup_cache(cache &StringLookupCache) &StringLookupCache {
+	if isnil(cache) {
+		return unsafe { nil }
+	}
+	return &StringLookupCache{}
+}
+
+fn scratch_context_string_lookup_cache(cache &ContextStringLookupCache) &ContextStringLookupCache {
+	if isnil(cache) {
+		return unsafe { nil }
+	}
+	return &ContextStringLookupCache{}
+}
+
+fn scratch_fn_name_fact_cache(cache &FnNameFactCache) &FnNameFactCache {
+	if isnil(cache) {
+		return unsafe { nil }
+	}
+	return &FnNameFactCache{}
+}
+
+fn scratch_context_name_fact_cache(cache &ContextNameFactCache) &ContextNameFactCache {
+	if isnil(cache) {
+		return unsafe { nil }
+	}
+	return &ContextNameFactCache{}
+}
+
+fn scratch_struct_decl_pref_cache(cache &StructDeclPrefCache) &StructDeclPrefCache {
+	if isnil(cache) {
+		return unsafe { nil }
+	}
+	return &StructDeclPrefCache{}
+}
+
+fn scratch_sum_variant_actual_cache(cache &SumVariantActualCache) &SumVariantActualCache {
+	if isnil(cache) {
+		return unsafe { nil }
+	}
+	return &SumVariantActualCache{}
+}
+
+// scratch_generic_app_cache keeps reading the enclosing arena's entries through
+// `base`, and keeps that overlay chain one level deep, exactly like the
+// per-worker caches built by new_parallel_worker_config.
+fn scratch_generic_app_cache(cache &GenericAppCache) &GenericAppCache {
+	if isnil(cache) {
+		return unsafe { nil }
+	}
+	if !isnil(cache.base) {
+		return &GenericAppCache{
+			base: cache.base
+		}
+	}
+	return &GenericAppCache{
+		base: cache
+	}
 }
 
 // cname is the memoizing wrapper for naming.c_name used on FlatGen hot paths.
