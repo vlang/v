@@ -20709,20 +20709,10 @@ fn (g &FlatGen) is_safe_global_init(val_id flat.NodeId) bool {
 		}
 		return node.children_count == 1 && g.is_safe_global_init(g.a.child(&node, 0))
 	}
-	return match node.kind {
-		.array_literal {
-			// Array literals need a backing temp the transformer drops for globals;
-			// leave them zero/NULL instead of emitting a reference to an undeclared
-			// symbol.
-			false
-		}
-		.array_init {
-			true
-		}
-		else {
-			true
-		}
-	}
+	// Array literals need a backing temp the transformer drops for globals; leave
+	// them zero/NULL instead of emitting a reference to an undeclared symbol.
+	// Everything else, `.array_init` included, is safe.
+	return node.kind != .array_literal
 }
 
 fn (g &FlatGen) const_get_deps(val_id flat.NodeId) []string {
