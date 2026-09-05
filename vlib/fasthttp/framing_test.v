@@ -123,9 +123,9 @@ fn test_frame_public_result_wrappers() {
 }
 
 fn test_frame_content_length_overflow_rejected() {
-	// A Content-Length far beyond i32 must be rejected (400), not wrapped to a
-	// negative int that frames the request as body-less (a smuggling primitive).
-	req := 'POST /a HTTP/1.1\r\nContent-Length: 99999999999\r\n\r\n'.bytes()
+	// A Content-Length beyond the active int width must be rejected (400), not
+	// wrapped to a negative length that frames the request as body-less.
+	req := ('POST /a HTTP/1.1\r\nContent-Length: ' + max_int.str() + '0\r\n\r\n').bytes()
 	assert frame_request_length_lim_idx(req, 0, 0) == frame_err_malformed
 	mut code := 0
 	frame_request_length_lim(req, 0, 0) or { code = err.code() }
@@ -133,10 +133,84 @@ fn test_frame_content_length_overflow_rejected() {
 }
 
 fn test_frame_chunked_size_overflow_rejected() {
-	// A hex chunk size beyond i32 must be rejected, not wrapped negative (which
-	// would make the next offset negative and read out of bounds).
-	req := 'POST /c HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\nffffffffff\r\nx'.bytes()
+	// A hexadecimal size beyond the active int width must be rejected.
+	req := ('POST /c HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n' + i64(max_int).hex() + '0\r\nx').bytes()
 	assert frame_request_length_lim_idx(req, 0, 0) == frame_err_malformed
+}
+
+fn test_frame_content_length_offset_overflow_rejected() {
+	// The numeral itself fits, but adding the nonzero head offset does not.
+	req := ('POST /a HTTP/1.1\r\nContent-Length: ' + max_int.str() + '\r\n\r\n').bytes()
+	assert frame_request_length_lim_idx(req, 0, 0) == frame_err_malformed
+}
+
+fn test_frame_chunk_offset_overflow_rejected() {
+	// No enormous body is required: the declared size plus data_start overflows.
+	req := ('POST /c HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n' + i64(max_int).hex() + '\r\n').bytes()
+	assert frame_request_length_lim_idx(req, 0, 0) == frame_err_malformed
+}
+
+fn test_frame_conflicting_content_lengths_rejected() {
+	conflicting := 'POST / HTTP/1.1\r\nContent-Length: 4\r\nContent-Length: 0\r\n\r\n'.bytes()
+	assert frame_request_length_lim_idx(conflicting, 0, 0) == frame_err_malformed
+	identical := 'POST / HTTP/1.1\r\nContent-Length: 4\r\nContent-Length: 4\r\n\r\ntest'.bytes()
+	assert frame_request_length_lim_idx(identical, 0, 0) == identical.len
+}
+
+fn test_frame_content_length_accepts_tab_ows_and_waits_for_body() {
+	head := 'POST / HTTP/1.1\r\nContent-Length:\t5\r\n\r\n'
+	partial := (head + 'abc').bytes()
+	complete := (head + 'abcde').bytes()
+	assert frame_request_length_lim_idx(partial, 0, 0) == -1
+	assert frame_request_length_lim_idx(complete, 0, 0) == complete.len
+}
+
+fn test_frame_malformed_content_length_rejected() {
+	req := 'POST / HTTP/1.1\r\nContent-Length: nope\r\n\r\n'.bytes()
+	assert frame_request_length_lim_idx(req, 0, 0) == frame_err_malformed
+}
+
+fn test_frame_transfer_encoding_uses_exact_final_token() {
+	for raw in [
+		'POST / HTTP/1.1\r\nTransfer-Encoding: xchunked\r\n\r\n',
+		'POST / HTTP/1.1\r\nTransfer-Encoding: chunked, gzip\r\n\r\n',
+		'POST / HTTP/1.1\r\nTransfer-Encoding: gzip\r\n\r\n',
+	] {
+		assert frame_request_length_lim_idx(raw.bytes(), 0, 0) == frame_err_malformed
+	}
+	valid := 'POST / HTTP/1.1\r\nTransfer-Encoding: gzip, chunked\r\n\r\n0\r\n\r\n'.bytes()
+	assert frame_request_length_lim_idx(valid, 0, 0) == valid.len
+}
+
+fn test_frame_transfer_encoding_with_content_length_rejected() {
+	req := 'POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n0\r\n\r\n'.bytes()
+	assert frame_request_length_lim_idx(req, 0, 0) == frame_err_malformed
+	assert frame_expected_total(req) == -1
+}
+
+fn test_frame_empty_chunk_size_rejected() {
+	req := 'POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n\r\n0\r\n\r\n'.bytes()
+	assert frame_request_length_lim_idx(req, 0, 0) == frame_err_malformed
+}
+
+fn test_frame_chunk_data_requires_crlf() {
+	req := 'POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nWikiXX0\r\n\r\n'.bytes()
+	assert frame_request_length_lim_idx(req, 0, 0) == frame_err_malformed
+}
+
+fn test_frame_chunk_body_limit_ignores_pipelined_suffix() {
+	first := 'POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nx\r\n0\r\n\r\n'
+	second := 'GET /next HTTP/1.1\r\n\r\n'
+	combined := (first + second).bytes()
+	assert frame_request_length_lim_idx(combined, 0, 1) == first.len
+}
+
+fn test_frame_head_limit_covers_request_line_and_final_blank_line() {
+	unterminated := 'GET /a-very-long-target-without-a-line-ending HTTP/1.1'.bytes()
+	assert frame_request_length_lim_idx(unterminated, 16, 0) == frame_err_header
+	req := 'GET / HTTP/1.1\r\nHost: h\r\n\r\n'.bytes()
+	assert frame_request_length_lim_idx(req, req.len - 1, 0) == frame_err_header
+	assert frame_request_length_lim_idx(req, req.len, 0) == req.len
 }
 
 fn test_frame_chunked_with_trailers() {

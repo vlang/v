@@ -48,9 +48,7 @@ fn test_decode_http_request_invalid_request() {
 }
 
 fn test_decode_http_request_with_headers_and_body() {
-	raw := 'POST /submit HTTP/1.1\r\n' + 'Host: localhost\r\n' +
-		'Content-Type: application/json\r\n' + 'Content-Length: 18\r\n' + '\r\n' +
-		'{"status": "ok"}'
+	raw := 'POST /submit HTTP/1.1\r\n' + 'Host: localhost\r\n' + 'Content-Type: application/json\r\n' + 'Content-Length: 18\r\n' + '\r\n' + '{"status": "ok"}'
 
 	buffer := raw.bytes()
 	req := decode_http_request(buffer) or { panic(err) }
@@ -74,6 +72,14 @@ fn test_decode_http_request_no_body() {
 
 	assert req.header_fields.to_string(req.buffer) == 'User-Agent: V'
 	assert req.body.len == 0
+}
+
+fn test_decode_http_request_uses_framer_offsets_for_bare_lf_headers() {
+	buffer := 'POST /mixed HTTP/1.1\r\nHost: example.com\nContent-Length: 4\n\ntest'.bytes()
+	req := decode_http_request(buffer) or { panic(err) }
+
+	assert req.header_fields.to_string(req.buffer) == 'Host: example.com\nContent-Length: 4'
+	assert req.body.to_string(req.buffer) == 'test'
 }
 
 fn test_decode_http_request_malformed_no_double_crlf() {
