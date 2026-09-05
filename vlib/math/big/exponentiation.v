@@ -7,9 +7,9 @@ are based on refer to https://github.com/vlang/v/pull/18461
 
 // internal struct to make passing montgomery values simpler
 struct MontgomeryContext {
-	n  Integer // |modulus|
-	ni Integer // n^(-1)
-	rr Integer // for conversions
+	n     Integer // |modulus|
+	rr    Integer // R^2 mod n, for conversions into montgomery form
+	n0inv u64 // -n[0]^-1 mod 2^digit_bits, the reduction multiplier
 }
 
 // montgomery calculates a montgomery context for reductions to montgomery space based on
@@ -21,16 +21,16 @@ fn (m Integer) montgomery() MontgomeryContext {
 	}
 
 	n := m.abs()
-	b := u32(n.bit_len())
+	// R is the smallest power of the base above n, so that reduction is a
+	// digit-wise shift rather than a bit-wise one.
+	r_bits := u32(n.digits.len * digit_bits)
 
 	return MontgomeryContext{
 		n: n
-		// r = 2^(log_2(n))
-		// ri := multiplicative inverse of r in the ring Z/nZ
-		// ri * r == 1 (mod n)
-		// ni = ((ri * 2^(log_2(n))) - 1) / n
-		ni: (one_int.left_shift(b).mod_inv(n).left_shift(b) - one_int) / n
-		rr: one_int.left_shift(b * 2) % n
+		rr: one_int.left_shift(r_bits * 2) % n
+		// n * n0inv == -1 (mod base), which is what makes the low digit of
+		// t + m * n vanish during reduction.
+		n0inv: (-mod_inv_digit(n.digits[0])) & max_digit
 	}
 }
 
@@ -185,12 +185,15 @@ fn (a Integer) mont_even(x Integer, m Integer) Integer {
 	t1 := x1.mask_bits(m2n)
 	t2 := x2.mask_bits(m2n)
 
-	t := (if t2.abs_cmp(t1) >= 0 {
-		(t2 - t1).mask_bits(m2n)
-	} else {
-		// (x2 - x1) % m2 = 1 + ((~((x2 % m2) - (x1 % m2))) % m2)
-		(t1 - t2).abs().bitwise_not().mask_bits(m2n) + one_int
-	} * m1i).mask_bits(m2n)
+	t := (
+		if t2.abs_cmp(t1) >= 0 {
+			(t2 - t1).mask_bits(m2n)
+		} else {
+			// (x2 - x1) % m2 = 1 + ((~((x2 % m2) - (x1 % m2))) % m2)
+			(t1 - t2).abs().bitwise_not().mask_bits(m2n) + one_int
+		} * m1i
+	)
+	.mask_bits(m2n)
 
 	return x1 + m1 * t
 }
@@ -295,18 +298,6 @@ fn get_window_size(n u32) int {
 	}
 }
 
-// mont_mul performs multiplication of two variables in montgomery
-// space and reduces the result to montgomery space
-fn (a Integer) mont_mul(b Integer, ctx MontgomeryContext) Integer {
-	if (a.digits.len + b.digits.len) > 2 * ctx.n.digits.len {
-		return zero_int
-	}
-
-	t := a * b
-
-	return t.from_mont(ctx)
-}
-
 fn (a Integer) to_mont(ctx MontgomeryContext) Integer {
 	return a.mont_mul(ctx.rr, ctx)
 }
@@ -315,13 +306,5 @@ fn (a Integer) to_mont(ctx MontgomeryContext) Integer {
 // Efficient Software Implementations of Modular Exponentiation by Shay Gueron
 // (https://eprint.iacr.org/2011/239.pdf)
 fn (a Integer) from_mont(ctx MontgomeryContext) Integer {
-	log2n := u32(ctx.n.bit_len())
-
-	r := (a + ((a.mask_bits(log2n) * ctx.ni).mask_bits(log2n) * ctx.n)).right_shift(log2n)
-
-	return if r.abs_cmp(ctx.n) >= 0 {
-		r - ctx.n
-	} else {
-		r
-	}
+	return a.mont_mul(one_int, ctx)
 }
