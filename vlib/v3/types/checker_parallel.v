@@ -2789,7 +2789,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 		w.symbols = new_symbol_interner()
 		w.type_cache.base = unsafe { nil }
 	}
-	return &w
+	return w
 }
 
 // precomputed_check_cache returns the immutable indexes warmed before the

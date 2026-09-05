@@ -324,7 +324,6 @@ fn map_free_nop(_ voidptr) {
 }
 
 fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
-	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > int(sizeof(voidptr))
 	return map{
@@ -332,11 +331,11 @@ fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn,
 		value_bytes:     value_bytes
 		even_index:      init_even_index
 		cached_hashbits: max_cached_hashbits
-		shift:           init_log_capicity
-		key_values:      new_dense_array(key_bytes, value_bytes)
-		metas:           unsafe { &u32(vcalloc_noscan(metasize)) }
-		extra_metas:     extra_metas_inc
-		len:             0
+		shift: init_log_capicity
+		key_values: DenseArray{ key_bytes: key_bytes, value_bytes: value_bytes }
+		metas: unsafe { nil }
+		extra_metas: extra_metas_inc
+		len: 0
 		has_string_keys: has_string_keys
 		hash_fn:         hash_fn
 		key_eq_fn:       key_eq_fn
@@ -390,6 +389,9 @@ pub fn (mut m map) move() map {
 // It does it by setting the map length to `0`
 // Example: mut m := {'abc': 'xyz', 'def': 'aaa'}; m.clear(); assert m.len == 0
 pub fn (mut m map) clear() {
+	if m.metas == unsafe { nil } {
+		return
+	}
 	unsafe {
 		if m.key_values.all_deleted != 0 {
 			free(m.key_values.all_deleted)
@@ -503,6 +505,12 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 // not equivalent to the key of any other element already in the container.
 // If the key already exists, its value is changed to the value of the new element.
 fn (mut m map) set(key voidptr, value voidptr) {
+	if m.metas == unsafe { nil } {
+		// Most compiler bookkeeping maps remain empty. Allocate backing storage
+		// only on the first insertion or an explicit reservation.
+		m.key_values = new_dense_array(m.key_bytes, m.value_bytes)
+		m.metas = unsafe { &u32(vcalloc_noscan(sizeof(u32) * (m.even_index + 2 + m.extra_metas))) }
+	}
 	// Integer-based load factor check: equivalent to (2*len)/even_index > 0.8
 	// which simplifies to 5*len > 2*even_index (avoids float ops broken in ARM64 backend)
 	if u32(5) * u32(m.len) > u32(2) * m.even_index {
@@ -580,14 +588,41 @@ fn (mut m map) reserve_metas(meta_bytes u32) {
 
 // reserve ensures that the map can store at least `n` entries without rehashing.
 pub fn (mut m map) reserve(n u32) {
-	for u64(n) * 5 > u64(m.even_index) * 2 {
-		m.expand()
+	if m.len == 0 {
+		old_index := m.even_index
+		for u64(n) * 5 > u64(m.even_index) * 2 {
+			m.even_index = ((m.even_index + 2) << 1) - 2
+			if m.cached_hashbits == 0 {
+				m.shift += max_cached_hashbits
+				m.cached_hashbits = max_cached_hashbits
+			} else {
+				m.cached_hashbits--
+			}
+		}
+		if m.even_index != old_index || (n > 0 && m.metas == unsafe { nil }) {
+			// Empty maps have no entries to rehash. Allocate the final metadata
+			// table once instead of zeroing every intermediate doubled table.
+			meta_bytes := sizeof(u32) * (m.even_index + 2 + m.extra_metas)
+			unsafe {
+				free(m.metas)
+				m.metas = &u32(vcalloc_noscan(meta_bytes))
+			}
+		}
+	} else {
+		for u64(n) * 5 > u64(m.even_index) * 2 {
+			m.expand()
+		}
 	}
 	dense_cap := u64(n) + u64(m.key_values.deletes)
 	if dense_cap > u64(max_int) {
 		panic('map.reserve: max_int will be exceeded')
 	}
-	m.key_values.reserve(int(dense_cap))
+	// DenseArray's geometric growth starts at eight slots.
+	if dense_cap > 0 && dense_cap < 8 {
+		m.key_values.reserve(8)
+	} else {
+		m.key_values.reserve(int(dense_cap))
+	}
 }
 
 // cached_rehashd works like rehash. However, instead of rehashing the
@@ -617,6 +652,9 @@ fn (mut m map) cached_rehash(old_cap u32) {
 // does not exist in the map, it's added to the map along with the zero/default value.
 // If the key exists, its respective value is returned.
 fn (mut m map) get_and_set(key voidptr, zero voidptr) voidptr {
+	if m.metas == unsafe { nil } {
+		m.set(key, zero)
+	}
 	for {
 		mut index, mut meta := m.key_to_index(key)
 		for {
@@ -760,6 +798,9 @@ fn (mut d DenseArray) delete(i int) {
 // delete removes the mapping of a particular key from the map.
 @[unsafe]
 pub fn (mut m map) delete(key voidptr) {
+	if m.len == 0 {
+		return
+	}
 	mut index, mut meta := m.key_to_index(key)
 	index, meta = m.meta_less(index, meta)
 	// Perform backwards shifting
@@ -827,6 +868,9 @@ pub fn (m &map) keys() array {
 // values returns all values in the map.
 pub fn (m &map) values() array {
 	mut values := __new_array(m.len, 0, m.value_bytes)
+	if m.len == 0 {
+		return values
+	}
 	mut item := unsafe { &u8(values.data) }
 
 	if m.key_values.deletes == 0 {
@@ -875,6 +919,9 @@ fn (d &DenseArray) clone() DenseArray {
 // clone returns a clone of the `map`.
 @[unsafe]
 pub fn (m &map) clone() map {
+	if m.metas == unsafe { nil } {
+		return new_map(m.key_bytes, m.value_bytes, m.hash_fn, m.key_eq_fn, m.clone_fn, m.free_fn)
+	}
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
 	res := map{
 		key_bytes:       m.key_bytes

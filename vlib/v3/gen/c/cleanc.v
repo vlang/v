@@ -435,6 +435,7 @@ mut:
 	fn_decl_variadic_short_counts  map[string]int
 	fn_decl_shared_params          map[string][]bool
 	fn_shared_params_resolved      map[string][]bool
+	shared_param_index_empty       bool
 	has_shared_params              bool
 	fn_decl_mut_receivers          map[string]bool
 	fn_decl_ret_types              map[string]types.Type // fn decl name (and qualified variants) -> return type
@@ -573,6 +574,7 @@ mut:
 	enum_selector_cache             &ContextStringLookupCache = unsafe { nil }
 	enum_method_cache               &ContextStringLookupCache = unsafe { nil }
 	qualified_enum_method_cache     &ContextStringLookupCache = unsafe { nil }
+	import_type_cache               &ImportTypeCache = unsafe { nil }
 	embedded_fields_by_type         map[string][]types.StructField // type name -> its embedded fields (usually empty)
 	param_types_by_short            map[string][]types.Type // method short-name suffix -> param types (fallback index)
 	generic_method_candidates       map[string][]GenericMethodCandidate
@@ -1185,6 +1187,7 @@ pub fn FlatGen.new() FlatGen {
 		enum_selector_cache: &ContextStringLookupCache{}
 		enum_method_cache: &ContextStringLookupCache{}
 		qualified_enum_method_cache: &ContextStringLookupCache{}
+		import_type_cache: &ImportTypeCache{}
 		embedded_fields_by_type: map[string][]types.StructField{}
 		param_types_by_short: map[string][]types.Type{}
 		generic_method_candidates: map[string][]GenericMethodCandidate{}
@@ -2846,6 +2849,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fn_decl_variadic_short_counts.clear()
 	g.fn_decl_shared_params.clear()
 	g.fn_shared_params_resolved.clear()
+	g.shared_param_index_empty = false
 	g.has_shared_params = false
 	g.fn_decl_mut_receivers.clear()
 	g.fn_decl_ret_types.clear()
@@ -2907,6 +2911,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.enum_selector_cache = &ContextStringLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}
 	g.qualified_enum_method_cache = &ContextStringLookupCache{}
+	g.import_type_cache = &ImportTypeCache{}
 	g.embedded_fields_by_type.clear()
 	g.param_types_by_short.clear()
 	g.generic_method_candidates.clear()
@@ -3807,6 +3812,7 @@ fn (g &FlatGen) new_collect_gen_info_view() FlatGen {
 	view.enum_selector_cache = &ContextStringLookupCache{}
 	view.enum_method_cache = &ContextStringLookupCache{}
 	view.qualified_enum_method_cache = &ContextStringLookupCache{}
+	view.import_type_cache = &ImportTypeCache{}
 	view.mut_recv_facts = &FnNameFactCache{}
 	view.local_global_shadow_facts = &ContextNameFactCache{}
 	view.generic_app_cache = &GenericAppCache{}
@@ -3907,7 +3913,8 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	profile := !isnil(g.tc) && g.tc.verbose
 	mut presw := time.new_stopwatch()
 	g.unused_param_seen = &UnusedParamSeen{}
-	g.reserve_collect_gen_info_maps(no_parallel)
+	defer_fn_signature_registrations := !no_parallel && g.scope_parallel_workers && g.skip_generics && g.incremental_fn_names.len == 0 && par_cgen_prep_enabled()
+	g.reserve_collect_gen_info_maps(no_parallel, defer_fn_signature_registrations)
 	g.precompute_export_lookups()
 	if profile {
 		g.timing_profile('  [ttime]   ci reserve maps  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -3937,7 +3944,6 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	mut preferred_shared_fn_node_indexes := map[string]int{}
 	mut preferred_shared_fn_params := map[string][]bool{}
 	mut fn_signature_registrations := []FnSignatureRegistration{cap: 16_384}
-	defer_fn_signature_registrations := !no_parallel && g.scope_parallel_workers && g.skip_generics && g.incremental_fn_names.len == 0 && par_cgen_prep_enabled()
 	top_level_nodes := g.top_level_nodes()
 	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes, no_parallel)
 	has_parallel_fn_preps := fn_preps.len == top_level_nodes.len
@@ -4214,6 +4220,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		}
 	}
 	if defer_fn_signature_registrations {
+		g.reserve_fn_signature_registrations(fn_signature_registrations)
 		g.apply_fn_signature_registrations(fn_signature_registrations)
 	}
 	if g.has_shared_params {
@@ -4315,7 +4322,7 @@ mut:
 }
 
 @[direct_array_access]
-fn (mut g FlatGen) reserve_collect_gen_info_maps(no_parallel bool) {
+fn (mut g FlatGen) reserve_collect_gen_info_maps(no_parallel bool, deferred_signatures bool) {
 	counts := g.scan_collect_gen_info(no_parallel)
 	mut fn_count := counts.fn_count
 	struct_count := counts.struct_count
@@ -4331,12 +4338,14 @@ fn (mut g FlatGen) reserve_collect_gen_info_maps(no_parallel bool) {
 	}
 	fn_alias_count := u32(fn_count * 7 + 1024)
 	fn_name_count := u32(fn_count * 2 + 1024)
-	g.fn_decl_param_types.reserve(fn_alias_count)
-	g.fn_decl_variadic.reserve(fn_name_count)
+	if !deferred_signatures {
+		g.fn_decl_param_types.reserve(fn_alias_count)
+		g.fn_decl_variadic.reserve(fn_name_count)
+		g.fn_decl_shared_params.reserve(fn_alias_count)
+		g.fn_decl_mut_receivers.reserve(fn_name_count)
+		g.fn_decl_ret_types.reserve(fn_alias_count)
+	}
 	g.fn_decl_variadic_short_counts.reserve(u32(fn_count + 256))
-	g.fn_decl_shared_params.reserve(fn_alias_count)
-	g.fn_decl_mut_receivers.reserve(fn_name_count)
-	g.fn_decl_ret_types.reserve(fn_alias_count)
 	g.fn_decl_nodes_by_name.reserve(fn_name_count)
 	g.fn_decl_nodes_by_short.reserve(u32(fn_count + 256))
 	g.fn_decl_nodes_by_module_short.reserve(fn_name_count)
@@ -4364,6 +4373,11 @@ fn (mut g FlatGen) reserve_collect_gen_info_maps(no_parallel bool) {
 }
 
 fn (mut g FlatGen) cached_shared_alias_pointer_type_from_text(raw string) ?types.Type {
+	if g.shared_alias_index_ready && g.shared_alias_pointer_shorts.len == 0 {
+		// Direct `shared T` (including pointer wrappers) still needs lowering,
+		// but without aliases it needs no per-file memoization key.
+		return g.shared_alias_pointer_type_from_text(raw)
+	}
 	key := '\x00shared-alias-pointer\x00${g.tc.cur_file}\x00${g.tc.cur_module}\x00${raw}'
 	if cached := g.param_types_cache[key] {
 		if cached.len > 0 {
@@ -10081,6 +10095,33 @@ fn (mut g FlatGen) prepare_fn_signature_registration(name string, full_name stri
 	}
 }
 
+// Size deferred signature maps from the aliases and flags they will receive.
+// Most compilations have few variadics and no shared parameters.
+fn (mut g FlatGen) reserve_fn_signature_registrations(registrations []FnSignatureRegistration) {
+	mut names := u32(0)
+	mut variadics := u32(0)
+	mut shared_names := u32(0)
+	mut mutable := u32(0)
+	for registration in registrations {
+		aliases := u32(registration.alias_count)
+		names += aliases + 1
+		if registration.is_variadic {
+			variadics += aliases + 1
+		}
+		if registration.shared_params.len > 0 {
+			shared_names += aliases
+		}
+		if registration.is_mut {
+			mutable += aliases
+		}
+	}
+	g.fn_decl_param_types.reserve(u32(g.fn_decl_param_types.len) + names)
+	g.fn_decl_ret_types.reserve(u32(g.fn_decl_ret_types.len) + names)
+	g.fn_decl_variadic.reserve(u32(g.fn_decl_variadic.len) + variadics)
+	g.fn_decl_shared_params.reserve(u32(g.fn_decl_shared_params.len) + shared_names)
+	g.fn_decl_mut_receivers.reserve(u32(g.fn_decl_mut_receivers.len) + mutable)
+}
+
 fn (mut g FlatGen) apply_fn_signature_registration_group(registration FnSignatureRegistration, group int) {
 	match group {
 		0 {
@@ -11403,7 +11444,7 @@ fn (mut g FlatGen) gen_pointer_alias_value_cast_expr(id flat.NodeId, expected ty
 }
 
 fn (g &FlatGen) array_index_type_for_expected_arg(actual types.Type, node flat.Node) types.Type {
-	if spread_index_expected_type_marker !in node.generic_params() {
+	if isnil(node.payload) || spread_index_expected_type_marker !in node.payload.generic_params {
 		return actual
 	}
 	expected := g.expected_expr_type
@@ -11736,9 +11777,6 @@ fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 		if param_type := g.current_param_type(node.value) {
 			return param_type
 		}
-		if param_type := g.current_param_map_type(node.value) {
-			return param_type
-		}
 		if fn_name := g.direct_callback_ident_name(id) {
 			if fn_type := g.callback_fn_value_type(fn_name) {
 				return types.Type(fn_type)
@@ -11889,9 +11927,6 @@ fn (g &FlatGen) pointer_variant_arg_needs_heap_copy(node flat.Node) bool {
 		return false
 	}
 	if _ := g.current_param_type(child.value) {
-		return true
-	}
-	if _ := g.current_param_map_type(child.value) {
 		return true
 	}
 	if _ := g.tc.cur_scope.lookup(child.value) {
@@ -14361,11 +14396,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						g.gen_expr(child_id)
 						return
 					}
-				} else if typ := g.current_param_map_type(child.value) {
-					if typ !is types.Pointer {
-						g.gen_expr(child_id)
-						return
-					}
 				}
 			}
 			if node.op == .mul && child.kind == .index && child.children_count > 1 {
@@ -14672,13 +14702,20 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			// Enum fields take precedence when a method has the same name. Only a
 			// non-enum selector can be lowered as a bound method value.
 			mut clone_receiver_fn := ''
-			for param in node.generic_params() {
-				if param.starts_with(flat.method_value_clone_receiver_marker_prefix) {
-					clone_receiver_fn = param.all_after(flat.method_value_clone_receiver_marker_prefix)
-					break
+			mut generated_variant_access := false
+			mut borrow_receiver := false
+			if !isnil(node.payload) {
+				params := node.payload.generic_params
+				generated_variant_access = '__v3_generated_variant_access' in params
+				borrow_receiver = flat.method_value_borrow_receiver_marker in params
+				for param in params {
+					if param.starts_with(flat.method_value_clone_receiver_marker_prefix) {
+						clone_receiver_fn = param.all_after(flat.method_value_clone_receiver_marker_prefix)
+						break
+					}
 				}
 			}
-			if enum_selector_qbase.len == 0 && '__v3_generated_variant_access' !in node.generic_params() && g.gen_method_value_closure(id, base_id, base_type0, node.value, flat.method_value_borrow_receiver_marker in node.generic_params(), clone_receiver_fn) {
+			if enum_selector_qbase.len == 0 && !generated_variant_access && g.gen_method_value_closure(id, base_id, base_type0, node.value, borrow_receiver, clone_receiver_fn) {
 				return
 			}
 			// The expected type belongs to the selected field, not to its base. In

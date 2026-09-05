@@ -4263,9 +4263,6 @@ fn (g &FlatGen) local_ident_type(name string) ?types.Type {
 	if typ := g.current_param_type(name) {
 		return typ
 	}
-	if typ := g.current_param_map_type(name) {
-		return typ
-	}
 	if g.cur_scope_has_local_name(name) {
 		if typ := g.tc.cur_scope.lookup(name) {
 			if typ !is types.Void {
@@ -5487,9 +5484,6 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 		}
 		if node.kind == .ident {
 			if typ := g.current_param_type(node.value) {
-				return typ
-			}
-			if typ := g.current_param_map_type(node.value) {
 				return typ
 			}
 			if typ := g.tc.expr_type(id) {

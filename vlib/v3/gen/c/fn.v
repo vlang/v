@@ -6458,7 +6458,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if g.is_json_decode_call(id, target_name) {
+	if g.is_json_decode_target_name(resolved_target_name)
+		|| g.is_json_decode_target_name(target_name) {
 		if !g.is_json_decode_self_call(target_name, resolved_target_name)
 			&& g.gen_json_decode_call(node) {
 			return
@@ -8105,9 +8106,6 @@ fn (g &FlatGen) receiver_base_type(base_id flat.NodeId) types.Type {
 			}
 			return typ
 		}
-		if typ := g.current_param_map_type(base.value) {
-			return typ
-		}
 		if typ := g.tc.expr_type(base_id) {
 			if typ !is types.Unknown && typ !is types.Void
 				&& !g.type_contains_generic_placeholder(typ) {
@@ -8838,6 +8836,9 @@ fn (mut g FlatGen) gen_json_encode_call(node flat.Node, pretty bool) bool {
 }
 
 fn (mut g FlatGen) preintern_json_encode_strings() {
+	if !g.has_legacy_json_module() {
+		return
+	}
 	for idx, node in g.a.nodes {
 		if node.kind != .call || node.children_count < 2 {
 			continue
@@ -11896,20 +11897,6 @@ fn (g &FlatGen) embedded_receiver_type_names_match(actual string, expected strin
 
 // current_param_type returns current param type data for FlatGen.
 fn (g &FlatGen) current_param_type(name string) ?types.Type {
-	if g.cur_param_types.len == 0 {
-		return none
-	}
-	if g.cur_param_name_bits != 0 && g.cur_param_name_bits & current_param_name_bit(name) == 0 {
-		return none
-	}
-	typ := g.cur_param_types[name] or { return none }
-	if g.cur_mut_params.len > 0 && g.current_mut_param_binding_is_shadowed(name) {
-		return none
-	}
-	return typ
-}
-
-fn (g &FlatGen) current_param_map_type(name string) ?types.Type {
 	if g.cur_param_types.len == 0 {
 		return none
 	}
@@ -15132,7 +15119,7 @@ fn (g &FlatGen) target_module_call_name(target string, node flat.Node) ?string {
 			}
 		}
 	}
-	static_name := '${base}.${method}'
+	static_name := target
 	if static_name in g.tc.fn_param_types || static_name in g.tc.fn_ret_types
 		|| static_name in g.tc.fn_generic_params {
 		params := g.tc.fn_param_types[static_name] or {
@@ -15172,14 +15159,22 @@ fn (g &FlatGen) target_module_call_arg_start(target string, node flat.Node) int 
 	if !target.contains('.') || node.children_count <= 1 {
 		return 1
 	}
-	base := target.all_before_last('.')
 	first_arg := g.a.child_node(&node, 1)
+	if first_arg.kind != .ident {
+		return 1
+	}
+	base := target.all_before_last('.')
+	if first_arg.value == base || (base.len > first_arg.value.len
+		&& base.ends_with(first_arg.value) && base[base.len - first_arg.value.len - 1] == `.`) {
+		return 2
+	}
 	// Constant resolution can qualify the synthetic module-base argument when the
 	// imported module exports a same-named constant (`flags` -> `flags.flags`). It
 	// is still the namespace marker inserted while lowering the selector.
-	qualified_same_name := '${base}.${base.all_after_last('.')}'
-	if first_arg.kind == .ident && (first_arg.value == base || base.ends_with('.${first_arg.value}')
-		|| first_arg.value == qualified_same_name) {
+	short_base := c_short_name_view(base)
+	if first_arg.value.len == base.len + 1 + short_base.len
+		&& first_arg.value.starts_with(base) && first_arg.value[base.len] == `.`
+		&& first_arg.value.ends_with(short_base) {
 		return 2
 	}
 	return 1
@@ -15953,15 +15948,26 @@ fn type_is_fn_value(typ types.Type) bool {
 }
 
 fn type_is_void_pointer(typ types.Type) bool {
-	if typ.name() == 'voidptr' {
-		return true
-	}
 	if typ is types.Pointer {
 		base := if typ.base_type is types.Alias { typ.base_type.base_type } else { typ.base_type }
 		return base is types.Void
 	}
 	if typ is types.Alias {
-		return type_is_void_pointer(typ.base_type)
+		return typ.name == 'voidptr' || type_is_void_pointer(typ.base_type)
+	}
+	// Only named variants can have this spelling without being a pointer.
+	// Formatting containers and function signatures here creates unused strings.
+	if typ is types.Struct {
+		return typ.name == 'voidptr'
+	}
+	if typ is types.Interface {
+		return typ.name == 'voidptr'
+	}
+	if typ is types.Enum {
+		return typ.name == 'voidptr'
+	}
+	if typ is types.SumType {
+		return typ.name == 'voidptr'
 	}
 	return false
 }
@@ -16012,7 +16018,8 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 	receiver_wants_ptr := params[0] is types.Pointer
 		|| g.mut_receiver_arg_wants_addr(fn_node.value, receiver_id)
 		|| g.mut_receiver_arg_wants_addr(emitted_name, receiver_id)
-	receiver_wants_shared := g.fn_param_is_shared_for_call(0, fn_node.value, emitted_name, g.cname(fn_node.value), g.cname(emitted_name))
+	receiver_wants_shared := !g.shared_param_index_empty
+		&& g.fn_param_is_shared_for_call(0, fn_node.value, emitted_name, g.cname(fn_node.value), g.cname(emitted_name))
 	receiver := g.a.nodes[int(receiver_id)]
 	receiver_type := g.receiver_base_type(receiver_id)
 	receiver_declares_method := g.emitted_method_belongs_to_receiver(receiver_type, method_short, emitted_name)
@@ -16876,6 +16883,7 @@ fn (mut g FlatGen) forward_decls() {
 		master_tc := g.tc
 		master_c_name_cache := g.c_name_cache
 		master_import_alias_cache := g.import_alias_cache
+		master_import_type_cache := g.import_type_cache
 		master_enum_selector_cache := g.enum_selector_cache
 		master_enum_method_cache := g.enum_method_cache
 		master_qualified_enum_method_cache := g.qualified_enum_method_cache
@@ -16893,6 +16901,7 @@ fn (mut g FlatGen) forward_decls() {
 		// Context-cache entries can own strings allocated by this disposable
 		// batch. Disable them until the master caches are restored.
 		g.import_alias_cache = unsafe { nil }
+		g.import_type_cache = unsafe { nil }
 		g.enum_selector_cache = unsafe { nil }
 		g.enum_method_cache = unsafe { nil }
 		g.qualified_enum_method_cache = unsafe { nil }
@@ -16908,6 +16917,7 @@ fn (mut g FlatGen) forward_decls() {
 		g.tc = master_tc
 		g.c_name_cache = master_c_name_cache
 		g.import_alias_cache = master_import_alias_cache
+		g.import_type_cache = master_import_type_cache
 		g.enum_selector_cache = master_enum_selector_cache
 		g.enum_method_cache = master_enum_method_cache
 		g.qualified_enum_method_cache = master_qualified_enum_method_cache
@@ -18269,7 +18279,7 @@ fn (mut g FlatGen) fn_shared_params_with_implicit_veb_ctx(node flat.Node, flags 
 }
 
 fn (g &FlatGen) fn_param_is_shared(fn_name string, idx int) bool {
-	if (!g.has_shared_params && g.tc.fn_shared_params.len == 0) || idx < 0 || fn_name.len == 0 {
+	if g.shared_param_index_empty || (!g.has_shared_params && g.tc.fn_shared_params.len == 0) || idx < 0 || fn_name.len == 0 {
 		return false
 	}
 	if flags := g.fn_shared_params_resolved[fn_name] {
@@ -18313,7 +18323,7 @@ fn (g &FlatGen) fn_param_shared_exact(fn_name string, idx int) ?bool {
 }
 
 fn (g &FlatGen) fn_param_is_shared_for_call(idx int, name1 string, name2 string, name3 string, name4 string) bool {
-	if (!g.has_shared_params && g.tc.fn_shared_params.len == 0) || idx < 0 {
+	if g.shared_param_index_empty || (!g.has_shared_params && g.tc.fn_shared_params.len == 0) || idx < 0 {
 		return false
 	}
 	mut found_exact := false
@@ -18355,7 +18365,19 @@ fn (g &FlatGen) fn_param_is_shared_for_call(idx int, name1 string, name2 string,
 }
 
 fn (mut g FlatGen) precompute_shared_param_index() {
-	if !g.has_shared_params && g.tc.fn_shared_params.len == 0 {
+	// The checker also stores all-false arrays to preserve exact-name shadowing.
+	// When no declaration has a shared parameter, every query is false without
+	// copying those arrays or searching their source/C-name aliases per call.
+	g.shared_param_index_empty = !g.has_shared_params
+	if g.shared_param_index_empty {
+		for _, flags in g.tc.fn_shared_params {
+			if true in flags {
+				g.shared_param_index_empty = false
+				break
+			}
+		}
+	}
+	if g.shared_param_index_empty {
 		return
 	}
 	for name, flags in g.tc.fn_shared_params {
@@ -18390,7 +18412,7 @@ fn (mut g FlatGen) gen_shared_local_receiver_arg(base_id flat.NodeId) bool {
 }
 
 fn (mut g FlatGen) fn_needs_implicit_veb_ctx(node flat.Node) bool {
-	return g.fn_returns_veb_result(node) && g.fn_has_receiver_param(node)
+	return g.fn_has_receiver_param(node) && g.fn_returns_veb_result(node)
 		&& !g.fn_receiver_type_is_context(node) && !g.fn_has_veb_context_param(node)
 		&& g.type_name_known_in_current_module('Context')
 }
@@ -18405,6 +18427,9 @@ fn (g &FlatGen) is_implicit_veb_ctx_param(pt types.Type) bool {
 }
 
 fn (g &FlatGen) call_has_implicit_veb_ctx(names []string) bool {
+	if g.tc.fn_implicit_veb_ctx.len == 0 {
+		return false
+	}
 	for name in names {
 		if name.len == 0 {
 			continue
@@ -18538,8 +18563,6 @@ fn (mut g FlatGen) fn_node_return_type(node flat.Node, module_name string) types
 }
 
 fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_name string) ?types.Type {
-	dotted_name := dotted_fn_name_in_module(module_name, node.value)
-	cname := g.fn_c_name_in_module(module_name, node.value)
 	if rt := g.fn_decl_ret_types[fn_decl_module_key(module_name, node.value)] {
 		return rt
 	}
@@ -18554,6 +18577,7 @@ fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_na
 			return rt
 		}
 	}
+	dotted_name := dotted_fn_name_in_module(module_name, node.value)
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
 		if rt := g.tc.fn_ret_types[dotted_name] {
 			return rt
@@ -18564,7 +18588,7 @@ fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_na
 				return rt
 			}
 		}
-		if rt := g.tc.fn_ret_types[cname] {
+		if rt := g.tc.fn_ret_types[g.fn_c_name_in_module(module_name, node.value)] {
 			return rt
 		}
 		if rt := g.tc.fn_ret_types[node.value] {
@@ -18598,6 +18622,7 @@ fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_na
 			}
 		}
 	}
+	cname := g.fn_c_name_in_module(module_name, node.value)
 	if cname != node.value && cname != c_value {
 		if rt := g.tc.fn_ret_types[cname] {
 			return rt
@@ -18649,9 +18674,8 @@ fn (mut g FlatGen) fn_node_param_types(node flat.Node, module_name string) []typ
 }
 
 fn (mut g FlatGen) fn_node_param_types_from_signatures(node flat.Node, module_name string, explicit_params int) ?[]types.Type {
-	dotted_name := dotted_fn_name_in_module(module_name, node.value)
-	cname := g.fn_c_name_in_module(module_name, node.value)
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
+		dotted_name := dotted_fn_name_in_module(module_name, node.value)
 		if params := g.matching_fn_param_types(dotted_name, explicit_params) {
 			return params
 		}
@@ -18661,7 +18685,7 @@ fn (mut g FlatGen) fn_node_param_types_from_signatures(node flat.Node, module_na
 				return params
 			}
 		}
-		if params := g.matching_fn_param_types(cname, explicit_params) {
+		if params := g.matching_fn_param_types(g.fn_c_name_in_module(module_name, node.value), explicit_params) {
 			return params
 		}
 		if params := g.matching_fn_param_types(node.value, explicit_params) {
@@ -18684,6 +18708,7 @@ fn (mut g FlatGen) fn_node_param_types_from_signatures(node flat.Node, module_na
 			return params
 		}
 	}
+	dotted_name := dotted_fn_name_in_module(module_name, node.value)
 	if dotted_name != node.value {
 		if params := g.matching_fn_param_types(dotted_name, explicit_params) {
 			return params
@@ -18695,6 +18720,7 @@ fn (mut g FlatGen) fn_node_param_types_from_signatures(node flat.Node, module_na
 			}
 		}
 	}
+	cname := g.fn_c_name_in_module(module_name, node.value)
 	if cname != node.value && cname != c_value {
 		if params := g.matching_fn_param_types(cname, explicit_params) {
 			return params

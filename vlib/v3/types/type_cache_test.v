@@ -50,6 +50,15 @@ fn test_parse_resolution_type_in_file_does_not_require_an_active_file_cursor() {
 	tc.cur_module = ''
 
 	assert tc.parse_resolution_type_in_file('token.Pos', 'parser.v').name() == 'v3.token.Pos'
+	tc.fn_type_files['parser.read'] = 'parser.v'
+	tc.fn_type_modules['parser.read'] = 'parser'
+	for text in ['', '!', '?', 'int', 'bool', 'string', 'voidptr', '&[]u8', '?int', '![]string'] {
+		fresh := tc.fork_type_parse_view('parser.v', 'parser')
+		expected := fresh.parse_resolution_type(text)
+		assert tc.parse_resolution_type_in_file(text, 'parser.v') == expected
+		assert tc.fn_signature_type('parser.read', text) == expected
+	}
+	assert tc.fn_signature_type('parser.read', 'token.Pos').name() == 'v3.token.Pos'
 }
 
 fn test_parse_thread_type_qualifies_concrete_payloads() {
@@ -62,6 +71,56 @@ fn test_parse_thread_type_qualifies_concrete_payloads() {
 	assert tc.parse_type('thread FixtureResult').name() == 'thread fixturetest.FixtureResult'
 	assert tc.parse_type('thread ?FixtureResult').name() == 'thread ?fixturetest.FixtureResult'
 	assert tc.parse_type('thread T').name() == 'thread T'
+}
+
+fn test_alias_target_parsing_preserves_declaration_module() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'caller'
+	tc.cur_file = 'caller.v'
+	tc.type_alias_modules['dep.Alias'] = 'dep'
+	tc.structs['caller.Item'] = []StructField{}
+	tc.structs['dep.Item'] = []StructField{}
+	for text in ['int', 'string', ' &[]u8 ', '?int', '![]string', 'shared int', 'Item', '&Item'] {
+		fresh := tc.fork_type_parse_view('caller.v', 'dep')
+		expected := if text == 'shared int' {
+			Type(Pointer{ base_type: Type(int_) })
+		} else {
+			fresh.parse_type(text)
+		}
+		parsed := tc.parse_alias_type('dep.Alias', text)
+		assert parsed is Alias
+		assert parsed.name == 'dep.Alias'
+		assert parsed.base_type == expected
+	}
+	assert tc.parse_alias_target_type('dep.Alias', 'Item').name() == 'dep.Item'
+	assert tc.cur_module == 'caller'
+}
+
+fn test_context_independent_container_types_match_declaration_views() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_file = 'caller.v'
+	tc.cur_module = 'caller'
+	tc.file_modules['dep.v'] = 'dep'
+	tc.type_alias_modules['dep.Alias'] = 'dep'
+	tc.fn_type_files['dep.read'] = 'dep.v'
+	tc.fn_type_modules['dep.read'] = 'dep'
+	for text in ['map[string]int', '?map[string][]u8', '[]map[int]&string', '[32]u8', '&[2][3]int',
+		'map[[4]u8][]map[string]bool'] {
+		assert context_independent_type_text(text)
+		fresh := tc.fork_type_parse_view('dep.v', 'dep')
+		expected := fresh.parse_resolution_type(text)
+		assert tc.parse_resolution_type_in_file(text, 'dep.v') == expected
+		assert tc.fn_signature_type('dep.read', text) == expected
+		alias_typ := tc.parse_alias_type('dep.Alias', text)
+		assert alias_typ is Alias
+		assert alias_typ.base_type == fresh.parse_type(text)
+	}
+	for text in ['map', 'array', 'map[string]Item', 'map[Key]int', 'map[string]int ', '[size]int',
+		'[2 + 3]int', '[0x10]int', 'map[string', '[2', '[2]'] {
+		assert !context_independent_type_text(text)
+	}
 }
 
 fn test_parse_resolution_fn_type_preserves_nested_main_type_lock() {

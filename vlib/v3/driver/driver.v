@@ -9228,7 +9228,7 @@ pub fn run(args []string) {
 			}
 			if fastc_bench {
 				total_us := driver_sw.elapsed().microseconds()
-				total_lines := source_file_line_count(fastc_generation.source_paths)
+				total_lines := source_file_line_count(fastc_generation.source_paths, map[int]&v3token.File{})
 				mloc_per_s := f64(total_lines) / f64(total_us)
 				eprintln('fastc-bench-total: files=${fastc_generation.source_paths.len} lines=${total_lines} total=${f64(total_us) / 1000.0:.2f}ms throughput=${mloc_per_s:.3f} MLOC/s (includes TinyCC)')
 			}
@@ -9629,11 +9629,11 @@ pub fn run(args []string) {
 	])
 	b.metric_items('parsed .vh files', p.parsed_v_header_files, 'files', '.vh files', p.parsed_v_header_file_paths)
 	if !silent {
-		println('    ${'parsed .vh lines':-28s} ${source_file_line_count(p.parsed_v_header_file_paths)} lines')
+		println('    ${'parsed .vh lines':-28s} ${source_file_line_count(p.parsed_v_header_file_paths, a.source_files)} lines')
 	}
 	b.metric_items('parsed .v files', p.parsed_v_files, 'files', '.v files', p.parsed_v_file_paths)
 	if !silent {
-		println('    ${'parsed .v lines':-28s} ${source_file_line_count(p.parsed_v_file_paths)} lines')
+		println('    ${'parsed .v lines':-28s} ${source_file_line_count(p.parsed_v_file_paths, a.source_files)} lines')
 	}
 	b.metric('AST nodes after parse', a.nodes.len, 'nodes')
 	b.metric('AST children after parse', a.children.len, 'edges')
@@ -16733,9 +16733,30 @@ fn canonical_node_texts(mut a flat.FlatAst, node flat.Node) flat.Node {
 	return canonical
 }
 
-fn source_file_line_count(paths []string) int {
+fn source_file_line_count(paths []string, files map[int]&v3token.File) int {
+	if paths.len == 0 {
+		return 0
+	}
+	// The parser already indexed these exact source buffers. Reuse its line
+	// tables instead of reading every source file again for the stage report.
+	mut counts := map[string]int{}
+	for _, file in files {
+		if !file.has_source_sha256() {
+			continue
+		}
+		count := file.line_count()
+		counts[file.name] = if count > 0 && file.line_start(count) == file.size {
+			count - 1
+		} else {
+			count
+		}
+	}
 	mut lines := 0
 	for path in paths {
+		if count := counts[path] {
+			lines += count
+			continue
+		}
 		source := os.read_file(path) or { continue }
 		if source.len == 0 {
 			continue

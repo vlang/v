@@ -38,7 +38,9 @@ fn test_cloned_worker_merge_replays_relocated_children_and_body_roots() {
 		mut master := new_transformer(mut a, &tc, map[string]bool{})
 		base_nodes := a.nodes.len
 		base_children := a.children.len
+		clone_scope := transform_worker_scope_begin(true)
 		mut worker_ast := master.clone_ast_base(base_nodes, base_children)
+		transform_worker_scope_leave(clone_scope)
 		worker_tc := tc.fork_for_parallel_transform(worker_ast)
 		mut worker := master.fork_worker(worker_ast, worker_tc)
 		new_leaf := worker_ast.add_node(flat.Node{ kind: .int_literal, value: '2' })
@@ -82,6 +84,7 @@ fn test_cloned_worker_merge_replays_relocated_children_and_body_roots() {
 		}
 		master.merge_worker(worker, [FnWorkItem{ fn_idx: int(fn_id) }], base_nodes, base_children, false)
 		master.merge_regions_absorbed = false
+		transform_worker_scope_free(clone_scope)
 		assert a.children[base_slot] == merged_leaf
 		assert a.child(a.node(fn_id), 0) == merged_body
 		assert a.child(a.node(merged_body), 0) == leaf
@@ -111,6 +114,31 @@ fn test_parallel_split_balances_equal_cost_functions() {
 		}
 	}
 	assert seen.len == items.len
+}
+
+fn test_source_split_keeps_ranges_disjoint_with_uneven_costs() {
+	mut items := []FnWorkItem{}
+	for i in 0 .. 40 {
+		items << FnWorkItem{
+			fn_idx: 39 - i
+			cost: if i == 20 { 100 } else { 10 }
+		}
+	}
+	for jobs in [1, 4, 40, 50] {
+		chunks := split_work_items_by_source(items, jobs)
+		assert chunks.len == if jobs < 40 { jobs } else { 40 }
+		mut previous := -1
+		mut count := 0
+		for chunk in chunks {
+			assert chunk.len > 0
+			for item in chunk {
+				assert item.fn_idx == previous + 1
+				previous = item.fn_idx
+				count++
+			}
+		}
+		assert count == items.len
+	}
 }
 
 fn test_alias_receiver_index_preserves_integer_fallback_order() {
@@ -295,9 +323,9 @@ fn test_normalize_type_in_module_cache_tracks_current_file() {
 	}
 
 	t.cur_file = 'first.v'
-	assert t.normalize_type_in_module('dep.Type', 'shared') == 'alpha.Type'
+	assert t.normalize_type_in_module('dep.Type'.clone(), 'shared') == 'alpha.Type'
 	t.cur_file = 'second.v'
-	assert t.normalize_type_in_module('dep.Type', 'shared') == 'beta.Type'
+	assert t.normalize_type_in_module('dep.Type'.clone(), 'shared') == 'beta.Type'
 }
 
 fn test_flattened_generic_receiver_short_variants() {
@@ -604,6 +632,7 @@ fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
 	t.prepare_parallel_call_param_types()
 	assert t.call_param_types_prepared
 	mut worker := t.fork_worker(t.a, t.tc)
+	mut sibling := t.fork_worker(t.a, t.tc)
 	assert worker.call_param_types_index_ready
 	assert worker.call_param_types_prepared
 	assert worker.call_param_types_decl_index.len == t.call_param_types_decl_index.len
@@ -614,6 +643,17 @@ fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
 	}
 	assert params.len == 1
 	assert params[0] is types.String
+	assert worker.call_param_types_decl_shared
+	assert worker.call_param_types_from_decl('worker_missing') == none
+	assert !worker.call_param_types_decl_shared
+	assert !t.call_param_types_decl_misses['worker_missing']
+	assert !sibling.call_param_types_decl_misses['worker_missing']
+	assert t.call_param_types_from_decl('master_missing') == none
+	assert !t.call_param_types_decl_shared
+	assert !worker.call_param_types_decl_misses['master_missing']
+	assert !sibling.call_param_types_decl_misses['master_missing']
+	assert sibling.call_param_types_from_decl('sibling_missing') == none
+	assert !t.call_param_types_decl_misses['sibling_missing']
 	t.add_call_param_types_decl_key('main.takes_string', a.nodes.len - 1, 'signature_index_test.v', 'main')
 	assert !t.call_param_types_prepared
 }
@@ -723,6 +763,20 @@ fn test_multi_return_selector_suffix_does_not_match_free_fn() {
 		return
 	}
 	assert items.len == 2
+
+	tc.fn_ret_types['pair'] = types.Type(types.MultiReturn{
+		types: [types.Type(types.bool_), types.Type(types.bool_)]
+	})
+	tc.fn_ret_types['Other.pair'] = types.Type(types.MultiReturn{
+		types: [types.Type(types.int_), types.Type(types.int_), types.Type(types.int_)]
+	})
+	t.receiver_method_suffix_index['pair'] = receiver_method_suffix_ambiguous
+	t.collect_multi_return_fn_ret_types()
+	ambiguous_pair := t.find_multi_return_call_types(call, 2) or { panic('missing pair') }
+	assert ambiguous_pair == [types.Type(types.int_), types.Type(types.string_)]
+	triple := t.find_multi_return_call_types(call, 3) or { panic('missing triple') }
+	assert triple.len == 3
+	assert t.find_multi_return_call_types(call, 4) == none
 }
 
 fn test_qualify_or_storage_type_resolves_imported_generic_base_only() {
@@ -819,6 +873,88 @@ fn test_transform_lane_budget_bounds_base_ast_clones() {
 	assert transform_clone_budget_jobs(8, 9_000_000_000) == 1
 	assert transform_clone_budget_jobs(18, 1) == 18
 	assert transform_clone_budget_jobs(1, 9_000_000_000) == 1
+}
+
+fn test_merged_resolution_cache_initializes_gaps_and_preserves_entries() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_resolved_call_entry(1, 'main.first')
+	t.set_resolved_fn_value_entry(2, 'main.callback')
+	t.set_resolved_call_entry(4096, 'main.last')
+	t.set_resolved_fn_value_entry(8192, 'main.final_callback')
+	assert tc.resolved_call_names[1] == 'main.first'
+	assert tc.resolved_call_set[1]
+	assert tc.resolved_call_names[4096] == 'main.last'
+	assert tc.resolved_call_set[4096]
+	assert tc.resolved_fn_value_names[2] == 'main.callback'
+	assert tc.resolved_fn_value_set[2]
+	assert tc.resolved_fn_value_names[8192] == 'main.final_callback'
+	assert tc.resolved_fn_value_set[8192]
+	for i in 3 .. 4096 {
+		assert tc.resolved_call_names[i] == ''
+		assert !tc.resolved_call_set[i]
+		assert tc.resolved_fn_value_names[i] == ''
+		assert !tc.resolved_fn_value_set[i]
+	}
+}
+
+fn test_alias_cache_distinguishes_collisions_and_owned_spellings() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['abc.Def'] = []
+	tc.structs['axc.Dof'] = []
+	t := Transformer{
+		tc: &tc
+		alias_cache: &AliasCache{}
+	}
+	// These distinct spellings share the sampled bytes used for the cache slot.
+	for _ in 0 .. 3 {
+		for name in ['abc.Def', 'axc.Dof'] {
+			assert t.normalize_type_alias(name.clone()) == name
+			assert t.normalize_type_alias(name.clone()) == name
+		}
+	}
+}
+
+fn test_node_type_memo_reuses_capacity_when_function_range_grows() {
+	mut t := Transformer{}
+	t.begin_node_type_memo(0, 127)
+	values := t.node_type_memo.values.data
+	filled := t.node_type_memo.filled.data
+	t.node_type_memo.filled[0] = 1
+	t.begin_node_type_memo(200, 263)
+	t.node_type_memo.filled[0] = 1
+	t.begin_node_type_memo(400, 495)
+	assert t.node_type_memo.values.len == 96
+	assert t.node_type_memo.filled.len == 96
+	assert t.node_type_memo.values.data == values
+	assert t.node_type_memo.filled.data == filled
+	for flag in t.node_type_memo.filled {
+		assert flag == 0
+	}
+}
+
+fn test_unchanged_node_text_still_invalidates_semantic_memos() {
+	mut a := flat.FlatAst.new()
+	idx := int(a.add_node(flat.Node{ kind: .ident, value: 'value', typ: 'int' }))
+	mut tc := types.TypeChecker.new(&a)
+	tc.expr_type_set = []bool{len: a.nodes.len}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.begin_node_type_memo(idx, idx)
+	for change_type in [true, false] {
+		tc.expr_type_set[idx] = true
+		t.node_type_memo.filled[0] = 1
+		if change_type {
+			t.set_node_typ(idx, 'int'.clone())
+		} else {
+			t.set_node_value(idx, 'value'.clone())
+		}
+		assert !tc.expr_type_set[idx]
+		assert t.node_type_memo.filled[0] == 0
+		assert a.nodes[idx].typ == 'int'
+		assert a.nodes[idx].value == 'value'
+	}
 }
 
 fn test_selfhost_transform_lane_count_is_memory_bounded() {

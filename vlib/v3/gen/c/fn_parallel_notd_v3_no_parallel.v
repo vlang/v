@@ -261,6 +261,7 @@ $if !windows {
 		w.enum_selector_cache = unsafe { nil }
 		w.enum_method_cache = unsafe { nil }
 		w.qualified_enum_method_cache = unsafe { nil }
+		w.import_type_cache = unsafe { nil }
 		w.local_typedef_shadow_facts = unsafe { nil }
 		w.local_global_shadow_facts = unsafe { nil }
 		// Self-host declaration output is several MiB. Reserve it once instead of
@@ -945,10 +946,10 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 		g.register_interface_strings()
 		g.tc = master_tc
 		cgen_worker_scope_leave(selection_scope)
-		if !retain_selection && g.parallel_worker_scopes.len > 0 {
+		if g.parallel_worker_scopes.len > 0 {
 			// Candidate collection records helper scopes while selection_scope is
-			// current. Re-own the list before releasing that arena; the scopes it
-			// points to remain live until final cgen cleanup.
+			// current. The list must outlive every arena it names, including a
+			// retained selection_scope freed partway through final cgen cleanup.
 			g.parallel_worker_scopes = g.parallel_worker_scopes.clone()
 		}
 		if retain_selection {
@@ -988,6 +989,9 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 			g.c_extern_refs = clone_cgen_string_bool_map(g.c_extern_refs)
 			g.c_name_cache = clone_c_name_cache(g.c_name_cache)
 			g.generic_app_cache = clone_generic_app_cache(g.generic_app_cache)
+			// Import resolutions can borrow text and Type payloads from selection.
+			// Discard that memo before its scratch storage is released.
+			g.import_type_cache = &ImportTypeCache{}
 			cgen_worker_scope_free(selection_scope)
 			n_items = g.fn_gen_items.len
 			g.timing_profile('  [ttime]       pm clone out ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -2469,6 +2473,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		fn_decl_variadic_short_counts: g.fn_decl_variadic_short_counts
 		fn_decl_shared_params: g.fn_decl_shared_params
 		fn_shared_params_resolved: g.fn_shared_params_resolved
+		shared_param_index_empty: g.shared_param_index_empty
 		has_shared_params: g.has_shared_params
 		fn_decl_mut_receivers: g.fn_decl_mut_receivers
 		fn_decl_ret_types: g.fn_decl_ret_types
@@ -2577,6 +2582,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		enum_selector_cache: &ContextStringLookupCache{}
 		enum_method_cache: &ContextStringLookupCache{}
 		qualified_enum_method_cache: &ContextStringLookupCache{}
+		import_type_cache: &ImportTypeCache{}
 		struct_decl_pref_cache: &StructDeclPrefCache{}
 		qualified_struct_c_types_by_suffix: g.qualified_struct_c_types_by_suffix
 		qualified_struct_c_types_ready: g.qualified_struct_c_types_ready
