@@ -1,0 +1,11 @@
+{
+  "msg_hello": "Hello from JSON",
+  "msg_bye": "Bye",
+  "menu": {
+    "file": "File",
+    "edit": {
+      "undo": "Undo"
+    }
+  },
+  "answer": 42
+}
