@@ -175,21 +175,24 @@ pub fn sanitize(name string) string {
 		return name
 	}
 	out_len := name.len + dot_count
-	mut out := []u8{len: out_len + 1}
+	// The returned string owns a standalone allocation, not managed array storage.
+	mut out := unsafe { malloc_noscan(out_len + 1) }
 	mut dst := 0
 	for i in 0 .. name.len {
 		c := name[i]
 		if c == `.` {
-			out[dst] = `_`
-			out[dst + 1] = `_`
+			unsafe {
+				out[dst] = `_`
+				out[dst + 1] = `_`
+			}
 			dst += 2
 		} else {
-			out[dst] = c
+			unsafe { out[dst] = c }
 			dst++
 		}
 	}
-	// Transfer the private, NUL-terminated buffer; no mutable alias escapes.
-	return unsafe { tos(out.data, out_len) }
+	unsafe { out[out_len] = 0 }
+	return unsafe { tos(out, out_len) }
 }
 
 fn sanitize_complex(name string) string {
