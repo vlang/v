@@ -263,7 +263,7 @@ fn main() {
 	assert c_source.count('consume(&(value));') == 3, c_source
 	assert c_source.count('consume(&(shared));') == 2, c_source
 	assert c_source.contains('consume(&(type));'), c_source
-	assert c_source.contains('__typeof__(((Box){})) shared = ((Box){});'), c_source
+	assert c_source.contains('Box shared = ((Box){});'), c_source
 	assert c_source.contains('return shared;'), c_source
 	assert c_source.contains('i64 pair(i64 shared, i64 other)'), c_source
 	assert c_source.contains('return shared+other;'), c_source
@@ -484,7 +484,7 @@ fn main() {
 	_ = retained(unsafe { nil })
 }
 ', 'selfhost_mut_static_pointer.v', prefs) or { panic(err) }
-	assert c_source.contains('static __typeof__((((Item*)(NULL)))) saved;'), c_source
+	assert c_source.contains('static Item* saved;'), c_source
 	assert c_source.contains('static bool __v'), c_source
 	assert c_source.contains('saved = (((Item*)(NULL)));'), c_source
 }
@@ -5583,7 +5583,7 @@ fn main() {
 	println(value)
 }
 ", 'block_local_scope.v', prefs) or { panic(err) }
-	assert c_source.contains('__typeof__((1)) value = (1);'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} value = (1);'), c_source
 	assert c_source.contains('string value = ("outer");'), c_source
 }
 
@@ -7310,17 +7310,17 @@ fn main() {
 }
 ', 'array_slice.v', prefs) or { panic(err) }
 	assert c_source.contains('return builtin__array_slice(values, start, end);'), c_source
-	assert c_source.contains('__typeof__((make_values())) __vf_slice_receiver = (make_values()); builtin__array_slice(__vf_slice_receiver, 1, __vf_slice_receiver.len);'), c_source
-	assert c_source.contains('__typeof__((make_text())) __vf_slice_receiver = (make_text()); builtin__string_substr((__vf_slice_receiver), 1, __vf_slice_receiver.len);'), c_source
+	assert c_source.contains('Array_int __vf_slice_receiver = (make_values()); builtin__array_slice(__vf_slice_receiver, 1, __vf_slice_receiver.len);'), c_source
+	assert c_source.contains('string __vf_slice_receiver = (make_text()); builtin__string_substr((__vf_slice_receiver), 1, __vf_slice_receiver.len);'), c_source
 	assert c_source.contains('return builtin__string_substr((value), 1, 2);'), c_source
 	assert c_source.contains('return builtin__string_substr((value), 1, value.len);'), c_source
 	assert !c_source.contains('builtin__array_slice(value, 1'), c_source
 	assert !c_source.contains('make_values().len'), c_source
 	assert !c_source.contains('make_text().len'), c_source
 	assert !c_source.contains('__v_slice.flags |= ArrayFlags__is_slice'), c_source
-	assert c_source.contains('__vf_mut_argument = (({ __typeof__((buffer->bytes)) __vf_slice_receiver'), c_source
+	assert c_source.contains('__vf_mut_argument = (({ Array_u8 __vf_slice_receiver'), c_source
 	assert !c_source.contains('__vf_slice_receiver->len'), c_source
-	assert c_source.contains('write_bytes(({ __typeof__(('), c_source
+	assert c_source.contains('write_bytes(({ Array_u8 '), c_source
 	assert c_source.contains('builtin__array_clone(&(builtin__array_slice(*(values), 0, 1)))'), c_source
 }
 
@@ -7374,7 +7374,7 @@ fn test_literal_range_must_not_be_empty() {
 	}
 
 	c_source := generate('module main\nfn main() { for i in 2 .. 4 { println(i) } }\n', 'valid_literal_range.v', prefs) or { panic(err) }
-	assert c_source.contains('for (__typeof__((__v0)) i = (__v0); i < (__v1); i++) {'), c_source
+	assert c_source.contains('for (__typeof__((2)) i = (__v0); i < (__v1); i++) {'), c_source
 }
 
 fn test_arithmetic_operand_types_are_not_validated() {
@@ -7966,11 +7966,11 @@ fn test_expressions_without_safe_lowering_are_rejected() {
 	}
 	assert bool_c.contains('println(((bool)true));')
 	low_hex_c := generate('module main\nfn main() { x := 0x7fff_ffff | 0; println(x) }\n', 'low_hex_literal.v', prefs) or { panic(err) }
-	assert low_hex_c.contains('__typeof__((0x7fffffff|0)) x = (0x7fffffff|0);')
+	assert low_hex_c.contains('${fastc_platform_int_c_type} x = (0x7fffffff|0);')
 	low_binary_c := generate('module main\nfn main() { x := 0b01111111111111111111111111111111 | 0; println(x) }\n', 'low_binary_literal.v', prefs) or { panic(err) }
-	assert low_binary_c.contains('__typeof__((0b01111111111111111111111111111111|0))')
+	assert low_binary_c.contains('${fastc_platform_int_c_type} x = (0b01111111111111111111111111111111|0);')
 	max_int_c := generate('module main\nfn main() { x := 2_147_483_647 - 1; println(x) }\n', 'max_int_expression.v', prefs) or { panic(err) }
-	assert max_int_c.contains('__typeof__((2147483647-1)) x = (2147483647-1);')
+	assert max_int_c.contains('${fastc_platform_int_c_type} x = (2147483647-1);')
 	call_c := generate('module main\nfn sum(a int, b int) int { return a + b }\nfn main() { println(sum(1, 2)) }\n', 'call_comma.v', prefs) or { panic(err) }
 	assert call_c.contains('println(sum(1,2));')
 }
@@ -8068,7 +8068,7 @@ fn main() {
 	selfhost_c := generate(source, 'selfhost_string_alias_iteration.v', selfhost_prefs) or {
 		panic(err)
 	}
-	assert selfhost_c.contains('__typeof__((value)) __v'), selfhost_c
+	assert selfhost_c.contains('Text __v'), selfhost_c
 	assert selfhost_c.contains('__v0.len'), selfhost_c
 	assert selfhost_c.contains('__v0.str'), selfhost_c
 }
@@ -10876,11 +10876,14 @@ fn test_selfhost_pthread_rwlock_fallback_follows_includes() {
 
 fn main() {}
 ', 'selfhost_pthread_fallback.v', prefs) or { panic(err) }
-	include_index := c_source.index('#include <pthread.h>') or { panic(c_source) }
+	// A self-host build is header free: `#include <pthread.h>` is dropped for the C ABI
+	// prelude, so the fallback has to follow the pthread declarations of that prelude,
+	// exactly as it had to follow the include they replaced.
+	declaration_index := c_source.index('int pthread_rwlockattr_init(') or { panic(c_source) }
 	fallback_index := c_source.index('#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP') or {
 		panic(c_source)
 	}
-	assert include_index < fallback_index, c_source
+	assert declaration_index < fallback_index, c_source
 }
 
 fn test_selfhost_is_composite_variant_smartcast() {
