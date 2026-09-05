@@ -1,0 +1,14 @@
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:4:3: error: a named operand in a structured `intel` block is always substituted as a 64-bit register, so it cannot share an instruction with the 32-bit register `eax`; use the 64-bit register instead, or a `raw intel` block with explicit operand modifiers
+    2 |     mut res := 0
+    3 |     asm amd64 intel {
+    4 |         mov eax, a
+      |         ~~~~~~~~~~
+    5 |         mov res, eax
+    6 |         ; +r (res)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:5:3: error: a named operand in a structured `intel` block is always substituted as a 64-bit register, so it cannot share an instruction with the 32-bit register `eax`; use the 64-bit register instead, or a `raw intel` block with explicit operand modifiers
+    3 |     asm amd64 intel {
+    4 |         mov eax, a
+    5 |         mov res, eax
+      |         ~~~~~~~~~~~~
+    6 |         ; +r (res)
+    7 |         ; r (a)
