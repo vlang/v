@@ -727,7 +727,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			}
 		}
 		if tokens[i].lit == 'wait' && receiver_type.starts_with(fastc_thread_type_prefix) {
-			value_type := g.thread_value_types[receiver_type] or { '' }
+			value_type := g.fastc_thread_value_type(receiver_type) or { '' }
 			if value_type == '' {
 				return 'void'
 			}
@@ -737,7 +737,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			// `[]thread T`.wait() joins every thread and returns their `[]T` results.
 			element := g.array_element_type(receiver_type) or { '' }
 			if element.starts_with(fastc_thread_type_prefix) {
-				value_type := g.thread_value_types[element] or { '' }
+				value_type := g.fastc_thread_value_type(element) or { '' }
 				if value_type != '' {
 					return fastc_array_c_type(value_type)
 				}
