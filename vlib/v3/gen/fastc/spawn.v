@@ -30,7 +30,7 @@ fn fastc_name_key(text string) string {
 			encoded.write_u8(hex_digits[value & 0x0f])
 		}
 	}
-	return encoded.str()
+	return fastc_take_string(mut encoded)
 }
 
 fn fastc_thread_type_name(value_type string) string {

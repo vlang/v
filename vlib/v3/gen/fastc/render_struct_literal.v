@@ -144,7 +144,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	if open + 1 < close {
 		items := fastc_expression_list_items(tokens, open + 1, close) or { return none }
 		mut is_positional := false
-		if !fastc_expression_tokens_contain(tokens[open + 1..close], .ellipsis) {
+		if !fastc_expression_tokens_contain_range(tokens, open + 1, close, .ellipsis) {
 			for item in items {
 				if item.len == 0 {
 					continue

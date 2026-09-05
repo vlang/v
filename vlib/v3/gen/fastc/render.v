@@ -46,7 +46,7 @@ fn (g &Parser) fastc_resolve_flag_enum_statics(source string, enum_c string) str
 		return source
 	}
 	mut out := source.replace('${enum_c}__zero()', '((${enum_c})0)')
-	if out.contains('${enum_c}__all()') {
+	if fastc_contains(out, '${enum_c}__all()') {
 		if members := g.enum_field_names[enum_c] {
 			mut parts := []string{cap: members.len}
 			for member in members {
@@ -790,8 +790,9 @@ fn (g &Parser) render_struct_literal_field_names(tokens []FastcExpressionToken, 
 				}
 				for resolved_name in resolved_names {
 					needle := '.${resolved_name}='
-					if rendered.contains(needle) {
-						rendered = rendered.replace(needle, '.${fastc_c_identifier(field_name)}=')
+					replaced := fastc_replace(rendered, needle, '.${fastc_c_identifier(field_name)}=')
+					if replaced.str != rendered.str {
+						rendered = replaced
 						changed = true
 					}
 				}
@@ -958,7 +959,8 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 			}
 		}
 	}
-	if g.selfhost && operator == .assign && left_type.contains('_FASTC_ARRAY_OF_') && g.fixed_array_uses_raw_storage(left_tokens) {
+	if g.selfhost && operator == .assign && fastc_contains(left_type, '_FASTC_ARRAY_OF_')
+		&& g.fixed_array_uses_raw_storage(left_tokens) {
 		// `s.arr = [N]T{}` zeroes a raw-storage fixed array; the empty `[N]T{}` literal is not
 		// lowered to a value, so memset rather than memcpy from an unrendered right-hand side.
 		if fastc_is_empty_fixed_array_literal(rhs_tokens) {
@@ -1493,18 +1495,20 @@ fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionT
 		// the raw render spuriously deref'd a FIELD that shadows a pointer local (`node.left.len`
 		// inside `for mut left in node.left` → `node.left->len`); in that case the raw and
 		// member-receiver renders disagree, so proceed to replace the raw with the correct chain.
-		if !root_is_pointer && !promoted_chain.contains('__embedded_') && raw_chain == promoted_chain {
+		if !root_is_pointer && !fastc_contains(promoted_chain, '__embedded_')
+			&& raw_chain == promoted_chain {
 			continue
 		}
 		mut needle := raw_chain
-		if !rendered.contains(needle) {
+		if !fastc_contains(rendered, needle) {
 			root_source := g.resolved_expression_name(item.lit, .unknown)
 			pointer_chain := raw_chain.replace_once('${root_source}.', '${root_source}->')
-			if rendered.contains(pointer_chain) {
+			if fastc_contains(rendered, pointer_chain) {
 				needle = pointer_chain
 			}
 		}
-		if promoted_chain != needle && rendered.contains(needle) && !(promoted_chain.contains(needle) && rendered.contains(promoted_chain)) {
+		if promoted_chain != needle && fastc_contains(rendered, needle)
+			&& !(fastc_contains(promoted_chain, needle) && fastc_contains(rendered, promoted_chain)) {
 			// A whole-word replace: the chain `node.expr` must not match the prefix of a longer
 			// identifier such as the sibling field `node.expr_type`. Skip when the promoted form
 			// (which itself contains the raw chain, e.g. a smart-cast `((T*)(x.f)._object)`) is
@@ -1543,11 +1547,12 @@ fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionT
 				raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { continue }
 				receiver_source := g.render_member_receiver(receiver_tokens) or { raw_receiver }
 				mut needle := '${receiver_source}.${tokens[i + 1].lit}'
-				if !rendered.contains(needle) {
+				if !fastc_contains(rendered, needle) {
 					needle = '${raw_receiver}.${tokens[i + 1].lit}'
 				}
-				if rendered.contains(needle) {
-					rendered = rendered.replace(needle, fixed_length)
+				replaced := fastc_replace(rendered, needle, fixed_length)
+				if replaced.str != rendered.str {
+					rendered = replaced
 					changed = true
 				}
 				continue
@@ -1581,8 +1586,8 @@ fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionT
 			continue
 		}
 		parenthesized_needle := ').${tokens[i + 1].lit}'
-		if receiver_tokens.last().tok == .rpar && rendered.contains(parenthesized_needle) {
-			rendered = rendered.replace(parenthesized_needle, ')->${tokens[i + 1].lit}')
+		if receiver_tokens.last().tok == .rpar && fastc_contains(rendered, parenthesized_needle) {
+			rendered = fastc_replace(rendered, parenthesized_needle, ')->${tokens[i + 1].lit}')
 			changed = true
 		}
 	}
@@ -1609,7 +1614,8 @@ fn (g &Parser) render_chained_array_access_expression(tokens []FastcExpressionTo
 			continue
 		}
 		close := fastc_matching_delimiter(tokens, open, .lsbr, .rsbr) or { continue }
-		if close <= open + 1 || fastc_expression_tokens_contain(tokens[open + 1..close], .dotdot) {
+		if close <= open + 1
+			|| fastc_expression_tokens_contain_range(tokens, open + 1, close, .dotdot) {
 			continue
 		}
 		start := fastc_method_receiver_start(tokens, open)
@@ -1622,8 +1628,9 @@ fn (g &Parser) render_chained_array_access_expression(tokens []FastcExpressionTo
 			lookup_tokens := tokens[start..close + 1]
 			lookup := g.render_map_expression(lookup_tokens) or { continue }
 			raw_lookup := g.render_raw_expression_tokens(lookup_tokens) or { continue }
-			if fastc_contains(rendered, raw_lookup) {
-				rendered = fastc_replace(rendered, raw_lookup, lookup.source)
+			replaced := fastc_replace(rendered, raw_lookup, lookup.source)
+			if replaced.str != rendered.str {
+				rendered = replaced
 				changed = true
 				continue
 			}
@@ -1643,8 +1650,9 @@ fn (g &Parser) render_chained_array_access_expression(tokens []FastcExpressionTo
 				'(${base_src})[${key_source}]',
 				'(*(${base_src}))[${key_source}]',
 			] {
-				if rendered.contains(lowered_needle) {
-					rendered = rendered.replace(lowered_needle, lookup.source)
+				lowered_replaced := fastc_replace(rendered, lowered_needle, lookup.source)
+				if lowered_replaced.str != rendered.str {
+					rendered = lowered_replaced
 					changed = true
 					break
 				}
@@ -2207,7 +2215,8 @@ fn (g &Parser) render_as_cast_member_access(tokens []FastcExpressionToken) ?Fast
 			// `(x as T).val` is rendered above; lower the string byte / dynamic-array element
 			// access here so it does not reach the raw renderer as a mangled `.valbuiltin_…`.
 			close_index := fastc_matching_delimiter(tokens, i, .lsbr, .rsbr) or { return none }
-			if close_index != tokens.len - 1 || close_index <= i + 1 || fastc_expression_tokens_contain(tokens[i + 1..close_index], .dotdot) {
+			if close_index != tokens.len - 1 || close_index <= i + 1
+				|| fastc_expression_tokens_contain_range(tokens, i + 1, close_index, .dotdot) {
 				return none
 			}
 			index_source := g.render_membership_candidate(tokens[i + 1..close_index], 'int') or {
@@ -3149,7 +3158,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		inner := g.render_call_argument_expression(tokens[1..], inner_expected_type) or {
 			return none
 		}
-		if fastc_expression_tokens_contain(tokens[1..], .dotdot) {
+		if fastc_expression_tokens_contain_range(tokens, 1, tokens.len, .dotdot) {
 			declaration_type := g.declaration_c_type(inner_expected_type, inner)
 			return '({ ${declaration_type} __vf_mut_argument = (${inner}); &__vf_mut_argument; })'
 		}
@@ -4416,8 +4425,9 @@ fn (g &Parser) render_nested_option_propagation(tokens []FastcExpressionToken, r
 		propagation := g.render_option_propagation(inner_tokens) or { continue }
 		raw_inner := g.render_raw_expression_tokens(inner_tokens) or { continue }
 		needle := '${raw_inner}!'
-		if rendered.contains(needle) {
-			rendered = rendered.replace(needle, propagation.source)
+		replaced := fastc_replace(rendered, needle, propagation.source)
+		if replaced.str != rendered.str {
+			rendered = replaced
 			changed = true
 		}
 	}

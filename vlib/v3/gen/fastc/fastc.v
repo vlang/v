@@ -1077,6 +1077,8 @@ struct FastcConstantDeclarations {
 	compile_time_values map[string]string
 	composite_types     map[string]bool
 	fixed_array_types   map[string]string
+
+mut:
 	// The struct fields with their defaults rendered, and their by-name index:
 	// the defaults are rendered on a worker while the constants are pre-parsed.
 	struct_field_info   map[string][]FastcStructField
@@ -1382,6 +1384,15 @@ fn fastc_comparison_memo_key(tokens []FastcExpressionToken, tag i64) i64 {
 		return 0
 	}
 	return i64(((u64(tokens.data) >> 3) << 16) | (u64(tokens.len) & 0x7fff) | (u64(tag) << 62))
+}
+
+fn fastc_comparison_memo_range_key(tokens []FastcExpressionToken, start int, end int, tag i64) i64 {
+	length := end - start
+	if length >= 32768 {
+		return 0
+	}
+	data := u64(tokens.data) + u64(start * int(sizeof(FastcExpressionToken)))
+	return i64(((data >> 3) << 16) | (u64(length) & 0x7fff) | (u64(tag) << 62))
 }
 
 // generate scans V source and emits C as each declaration and statement is consumed. It does
@@ -1839,8 +1850,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// The struct field defaults render on a worker while the constants are
 	// pre-parsed; a constant file that consulted them is re-parsed after.
 	mut pending_defaults := fastc_start_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.enum_field_names, type_output.alias_base_types, struct_fields, struct_field_info, functions, function_c_names, constants, public_constants, constant_types, globals, public_globals, global_types, type_output.sum_types)
-	constant_output := fastc_generate_constant_declarations(constant_candidates, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, type_output.sum_types, type_output.sum_type_variants, mut pending_defaults, functions, function_c_names, constants, public_constants, globals, public_globals, parallel_constant_results, mut constant_types)!
-	struct_field_info = constant_output.struct_field_info.clone()
+	mut constant_output := fastc_generate_constant_declarations(constant_candidates, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, type_output.sum_types, type_output.sum_type_variants, mut pending_defaults, functions, function_c_names, constants, public_constants, globals, public_globals, parallel_constant_results, mut constant_types)!
+	struct_field_info = constant_output.struct_field_info.move()
 	timer.mark('constant_declarations')
 	for name, _ in constant_output.composite_types {
 		composite_types[name] = true
@@ -1867,7 +1878,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	used_function_names := fastc_wait_referenced_function_names(mut pending_references)
 	timer.mark('wait_references')
 	mut pending_interface_dispatches := fastc_start_interface_dispatches(declared_kinds, functions, function_c_names, interface_methods, used_function_names, prefs.building_v, prefs)
-	struct_field_lookup := constant_output.struct_field_lookup.clone()
+	struct_field_lookup := constant_output.struct_field_lookup.move()
 	// The per-file prototype blocks are emitted as pieces too, so they are
 	// never concatenated into one buffer.
 	// A self-host build for a target with a C ABI table takes no header:

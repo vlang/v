@@ -1712,6 +1712,90 @@ fn main() {
 	assert c_source.contains('u32_str((*('), c_source
 }
 
+fn test_selfhost_array_str_helper_uses_compact_method_name() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module formatter
+
+struct Attr {}
+
+fn (value &Attr) str() string {
+	return "attr"
+}
+
+fn format(values []Attr) string {
+	return "\${values}"
+}
+', 'compact_array_element_str.v', prefs) or { panic(err) }
+	assert c_source.contains('string v_fastc_array_str_Array_formatter__Attr'), c_source
+	assert c_source.contains('v_f'), c_source
+	assert !c_source.contains('formatter__Attr_str(&'), c_source
+}
+
+fn test_selfhost_interpolation_uses_compact_str_method_name() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module formatter
+
+enum OS {
+	linux
+}
+
+fn (value OS) str() string {
+	return "linux"
+}
+
+fn format(value OS) string {
+	return "\${value}"
+}
+', 'compact_interpolation_str.v', prefs) or { panic(err) }
+	assert c_source.contains('return v_f'), c_source
+	assert !c_source.contains('formatter__OS_str(value)'), c_source
+}
+
+fn test_selfhost_qualified_function_default_uses_compact_name() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	compare_source := 'module compare
+
+pub fn similarity(left string, right string) f32 {
+	return if left == right { f32(1) } else { f32(0) }
+}
+'
+	util_source := 'module main
+
+import compare
+
+type SimilarityFn = fn (string, string) f32
+
+struct Config {
+	similarity_fn SimilarityFn = compare.similarity
+}
+
+fn main() {
+	_ := Config{}
+}
+'
+	c_source, _, _ := generate_source_files([
+		FastcSourceFile{
+			path: 'compare/compare.v'
+			source: compare_source
+			header: fastc_scan_source_header(compare_source, 'compare/compare.v', prefs) or {
+				panic(err)
+			}
+		},
+		FastcSourceFile{
+			path: 'main.v'
+			source: util_source
+			header: fastc_scan_source_header(util_source, 'main.v', prefs) or {
+				panic(err)
+			}
+		},
+	], map[string]string{}, prefs) or { panic(err) }
+	assert c_source.contains('.similarity_fn=(&v_f'), c_source
+	assert !c_source.contains('.similarity_fn=(compare__similarity)'), c_source
+}
+
 fn test_ordinary_nul_codepoint_interpolation_is_rejected() {
 	prefs := pref.new_preferences()
 	mut message := ''
