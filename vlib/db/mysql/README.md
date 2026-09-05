@@ -75,6 +75,29 @@ Sharing one `mysql.DB` across threads now serializes connection-level queries sa
 For concurrent servers, prefer `mysql.new_connection_pool(...)` so requests do not share the same
 session and transaction state on one connection.
 
+## Bulk loading with `LOAD DATA LOCAL INFILE`
+
+libmysqlclient 8.x disables client side `LOAD DATA LOCAL INFILE` by default. Set
+`local_infile` so `connect()` enables it before the handshake - it also turns on the
+`.client_local_files` capability, which the statement needs:
+
+```v oksyntax
+import db.mysql
+
+config := mysql.Config{
+	host:         '127.0.0.1'
+	username:     'root'
+	password:     '12345678'
+	dbname:       'mysql'
+	local_infile: true
+}
+
+mut db := mysql.connect(config)!
+db.exec_none("load data local infile '/tmp/users.csv' into table users fields terminated by ','")
+```
+
+The server has to allow it as well (`local_infile=ON`).
+
 ## Transaction
 
 ```v oksyntax

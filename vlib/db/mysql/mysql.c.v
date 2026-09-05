@@ -96,6 +96,12 @@ pub mut:
 	// `MYSQL_OPT_SSL_MODE` call is made and the libmysqlclient default applies.
 	ssl_mode SslMode
 
+	// local_infile enables `LOAD DATA LOCAL INFILE`, which libmysqlclient 8.x
+	// disables by default. It sets `MYSQL_OPT_LOCAL_INFILE` before connecting and
+	// adds the `.client_local_files` capability flag, since the statement needs
+	// both. The server must also allow it (`local_infile=ON`).
+	local_infile bool
+
 	// SSL params, only valid when set .client_ssl
 	ssl_key    string
 	ssl_cert   string
@@ -137,6 +143,13 @@ pub fn connect(config Config) !DB {
 		db.set_option(C.MYSQL_OPT_SSL_MODE, &ssl_mode)
 	}
 
+	mut connection_flag := config.flag
+	if config.local_infile {
+		enabled := u32(1)
+		db.set_option(C.MYSQL_OPT_LOCAL_INFILE, &enabled)
+		connection_flag.set(.client_local_files)
+	}
+
 	if config.flag.has(.client_ssl) {
 		if config.ssl_key.len > 0 {
 			db.set_option(C.MYSQL_OPT_SSL_KEY, config.ssl_key.str)
@@ -156,7 +169,7 @@ pub fn connect(config Config) !DB {
 	}
 
 	connection := C.mysql_real_connect(db.conn, config.host.str, username.str, config.password.str,
-		config.dbname.str, config.port, 0, config.flag)
+		config.dbname.str, config.port, 0, connection_flag)
 
 	if isnil(connection) {
 		db.throw_mysql_error()!
