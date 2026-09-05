@@ -4783,7 +4783,8 @@ fn (t &Transformer) enum_str_method_name(typ string) ?string {
 	}
 	for candidate in candidates {
 		method := '${candidate}.str'
-		if t.is_known_fn_name(method) {
+		if method in t.fn_ret_types
+			|| (!isnil(t.tc) && method in t.tc.fn_param_types) {
 			return method
 		}
 	}
@@ -4796,7 +4797,9 @@ fn (t &Transformer) enum_str_method_name(typ string) ?string {
 // one. Mirrors the struct-str qualification so the C name matches cgen's enum_decls naming.
 fn (mut t Transformer) enum_autostr_call(expr flat.NodeId, typ string) flat.NodeId {
 	qualified := t.enum_autostr_type_name(typ)
-	return t.make_call_typed('${c_name(qualified)}__autostr', [expr], 'string')
+	helper := '${c_name(qualified)}__autostr'
+	t.mark_fn_used_name(helper)
+	return t.make_call_typed(helper, [expr], 'string')
 }
 
 fn (t &Transformer) enum_autostr_type_name(typ string) string {
@@ -12392,6 +12395,14 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	if method == 'str' {
 		if smartcast_str := t.smartcast_sum_str_call(base_id) {
 			return smartcast_str
+		}
+		if t.is_enum_stringify_type(base_type) && t.enum_str_method_name(base_type) == none {
+			mut value := t.transform_expr(base_id)
+			if base_is_pointer {
+				value = t.make_prefix(.mul, value)
+				t.set_node_typ(int(value), base_type)
+			}
+			return t.enum_autostr_call(value, base_type)
 		}
 		if !recovered_or_value_type {
 			if exact_call := t.lower_checker_selected_receiver_method(id, node, base_id, 'str') {

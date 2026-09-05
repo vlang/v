@@ -3451,15 +3451,24 @@ fn enqueue_stringified_primitive_helpers(type_name string, mut used map[string]b
 
 // enqueue_enum_str_method supports enqueue enum str method handling for markused.
 fn enqueue_enum_str_method(type_name string, cur_module string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+	mut has_custom_method := false
 	for candidate in stringification_type_candidates(type_name, cur_module) {
 		method := '${candidate}.str'
 		if method in tc.fn_ret_types {
+			has_custom_method = true
 			enqueue(method, mut used, mut queue)
 			lowered := markused_c_name(method)
 			if lowered != method {
 				enqueue(lowered, mut used, mut queue)
 			}
 		}
+	}
+	if has_custom_method {
+		return
+	}
+	parsed := tc.parse_type(type_name)
+	if parsed is types.Enum {
+		enqueue('${markused_c_name(parsed.name)}__autostr', mut used, mut queue)
 	}
 }
 

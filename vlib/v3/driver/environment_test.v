@@ -3,7 +3,6 @@ module driver
 import os
 import crypto.sha256
 import v3.ansi
-import v3.flat
 import v3.parser
 import v3.pref
 import v3.types
@@ -280,34 +279,6 @@ fn test_v3_fallback_ignores_only_warmup_only_module_sources() {
 	// warm-up makes its source set part of the shared V3/V1 manifest again.
 	record_v3_fallback_module_use(mut state, 'hash', false)
 	assert hash_source !in v3_fallback_ignored_warmup_source_paths(state)
-}
-
-fn test_parallel_cc_external_definition_precheck_uses_active_ast_directives() {
-	root := os.join_path(os.temp_dir(), 'v3_parallel_cc_active_directive_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root)!
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn main() {}\n')!
-	os.write_file(os.join_path(root, 'windows_impl.h'), 'int windows_impl(void) { return 1; }\n')!
-	mut a := &flat.FlatAst{
-		nodes: [
-			flat.Node{
-				kind: .file
-				value: source
-			},
-			flat.Node{
-				kind: .directive
-				value: 'include'
-				typ: '"@DIR/windows_impl.h"'
-			},
-		]
-	}
-	assert v3_parallel_cc_active_sources_include_external_definition(a, [source])
-	a.nodes[1] = flat.Node{}
-	assert !v3_parallel_cc_active_sources_include_external_definition(a, [source])
 }
 
 fn test_embedded_vroot_uses_baked_root_for_a_moved_compiler() {

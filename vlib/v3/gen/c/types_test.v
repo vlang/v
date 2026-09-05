@@ -24,6 +24,44 @@ fn test_void_pointer_predicate_preserves_alias_and_named_type_rules() {
 	}
 }
 
+fn test_enum_autostr_emission_follows_used_function_filter() {
+	test_dir := os.join_path(os.vtmp_dir(), 'v3_enum_autostr_used_${os.getpid()}')
+	os.rmdir_all(test_dir) or {}
+	os.mkdir_all(test_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	source_path := os.join_path(test_dir, 'main.v')
+	os.write_file(source_path, 'module main
+
+enum Used {
+	one
+}
+
+enum Unused {
+	two
+}
+
+fn main() {}
+') or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(source_path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	mut g := FlatGen.new()
+	c_source := g.gen_with_used_options(a, {
+		'main':          true
+		'Used__autostr': true
+	}, &tc, true)
+	assert c_source.contains('string Used__autostr(Used it)'), c_source
+	assert !c_source.contains('Unused__autostr'), c_source
+}
+
 fn test_json_helper_scan_requires_legacy_json_module() {
 	mut ast := flat.FlatAst.new()
 	ast.nodes = [flat.Node{ kind: .call, children_count: 2 },

@@ -15,9 +15,9 @@ import v3.workers
 
 const min_parallel_transform_items = 256
 const max_parallel_transform_jobs = 7
-// Disposable self-host scratch permits more growable workers within the same
-// memory ceiling. Ordinary generic builds keep the smaller clone limit.
-const max_selfhost_transform_jobs = 18
+// Every self-host helper owns a full base-AST clone. Seven lanes keep the
+// production compiler build below 4 GB while retaining useful parallelism.
+const max_selfhost_transform_jobs = 7
 // Every growable lane clones the base AST, so the lane count is also a memory
 // decision. Bound the combined clone size instead of trusting the lane cap
 // alone: a bigger program on the same machine then keeps its memory ceiling.
