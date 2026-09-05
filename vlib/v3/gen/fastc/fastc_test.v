@@ -13589,3 +13589,47 @@ fn main() {
 	assert c_source.contains('kevent()'), c_source
 	assert !c_source.contains('(struct kevent)(*('), c_source
 }
+
+fn test_selfhost_method_on_literal_arithmetic_uses_default_int_type() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn (n int) label() int {
+	return n
+}
+
+fn main() {
+	_ := (8 * 1024 * 1024).label()
+}
+', 'selfhost_literal_arithmetic_method.v', prefs) or { panic(err) }
+	assert c_source.contains('int_label(8*1024*1024)'), c_source
+	assert !c_source.contains('.label()'), c_source
+}
+
+fn test_selfhost_address_of_mut_parameter_keeps_parameter_pointer() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Program {}
+
+struct Parser {
+mut:
+	program &Program = unsafe { nil }
+}
+
+fn Parser.new(mut program Program) &Parser {
+	return &Parser{
+		program: unsafe { &program }
+	}
+}
+
+fn main() {
+	mut program := Program{}
+	_ := Parser.new(mut program)
+}
+', 'address_of_mut_parameter.v', prefs) or { panic(err) }
+	assert c_source.contains('.program=(program)'), c_source
+	assert !c_source.contains('.program=(&program)'), c_source
+}

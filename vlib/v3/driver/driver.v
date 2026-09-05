@@ -8657,6 +8657,7 @@ pub fn run(args []string) {
 			eprintln('fastc support is not compiled into this v3 executable')
 			exit(1)
 		} $else {
+			fastc_bench := os.getenv('FASTC_BENCH') != ''
 
 			// FastC is a standalone parser that emits C while consuming scanner tokens.
 			// Never let an unsupported FastC input continue into the AST frontend below.
@@ -8754,7 +8755,8 @@ pub fn run(args []string) {
 			mut prestarted_fastc_units := fastc.FastcPrestartedCUnits{}
 			mut prestart_workers := []thread fastc.FastcPrestartedCUnits{}
 			$if macos {
-				if !c_only && prefs.building_v && !fastc_cross_target && (is_debug || no_cache) {
+				if !c_only && prefs.building_v && !fastc_cross_target
+					&& (is_debug || no_cache || fastc_bench) {
 					tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 					tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
 					prestart_jobs := fastc.fastc_tcc_job_count(prefs)
@@ -8833,7 +8835,7 @@ pub fn run(args []string) {
 			} else {
 				''
 			}
-			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, environment_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads, prefs.building_v && !is_debug && !no_cache, mut prestarted_fastc_units)
+			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, environment_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads, prefs.building_v && !is_debug && !no_cache && !fastc_bench, mut prestarted_fastc_units)
 			if (!silent || show_cc) && fastc_result.command.len > 0 {
 				if c_to_stdout {
 					eprintln('  > ${fastc_result.command}')
@@ -8863,6 +8865,12 @@ pub fn run(args []string) {
 					eprintln(fastc_result.output.trim_space())
 				}
 				exit(1)
+			}
+			if fastc_bench {
+				total_us := driver_sw.elapsed().microseconds()
+				total_lines := source_file_line_count(fastc_generation.source_paths)
+				mloc_per_s := f64(total_lines) / f64(total_us)
+				eprintln('fastc-bench-total: files=${fastc_generation.source_paths.len} lines=${total_lines} total=${f64(total_us) / 1000.0:.2f}ms throughput=${mloc_per_s:.3f} MLOC/s (includes TinyCC)')
 			}
 			b.step('tcc')
 			b.metric('generated C size', fastc_source_size, 'bytes')
