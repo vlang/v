@@ -12857,7 +12857,51 @@ fn (mut t Transformer) fn_field_arg_compatible(actual_type string, expected_type
 		&& (expected in ['voidptr', '&void', 'byteptr', 'charptr'] || expected.starts_with('&')) {
 		return true
 	}
+	if (actual.starts_with('fn(') || actual.starts_with('fn ('))
+		&& (expected.starts_with('fn(') || expected.starts_with('fn ('))
+		&& fn_type_texts_signature_compatible(actual, expected) {
+		return true
+	}
 	return false
+}
+
+// fn_type_texts_signature_compatible reports whether two fn-type texts such as
+// `fn (&Request, &ResponseWriter)` and `fn(&Request, mut ResponseWriter)`
+// denote the same signature. fn literals are stringified with plain parameter
+// types, while fn-type aliases expand to the declared spelling which may carry
+// `mut`/`shared` parameter modes; both forms mean the same function type, so
+// the comparison normalizes mode prefixes away before comparing each parameter
+// type and the return type.
+fn fn_type_texts_signature_compatible(actual string, expected string) bool {
+	actual_params, actual_ret := fn_type_text_parts(actual) or { return false }
+	expected_params, expected_ret := fn_type_text_parts(expected) or { return false }
+	if actual_params.len != expected_params.len {
+		return false
+	}
+	for i in 0 .. actual_params.len {
+		if normalize_fn_param_text(actual_params[i]) != normalize_fn_param_text(expected_params[i]) {
+			return false
+		}
+	}
+	return normalize_fn_param_text(actual_ret) == normalize_fn_param_text(expected_ret)
+}
+
+// normalize_fn_param_text maps a fn-type parameter/return text to its canonical
+// type spelling so that a fn literal's stringified form (`fn (&Request,
+// &ResponseWriter)`, where a `mut` parameter is stringified as `&T`) matches the
+// declared fn-type alias spelling (`fn(&Request, mut ResponseWriter)`, where a
+// `mut` parameter is spelled `mut T`). A `mut` parameter denotes reference
+// passing, so it canonicalizes to `&T`; `shared` likewise carries no type
+// identity of its own and is dropped. Interior whitespace is removed so
+// `fn (T)` and `fn(T)` compare equal.
+fn normalize_fn_param_text(text string) string {
+	mut clean := text.trim_space()
+	if clean.starts_with('mut ') {
+		clean = '&' + clean[4..].trim_space()
+	} else if clean.starts_with('shared ') {
+		clean = clean[7..].trim_space()
+	}
+	return clean.replace(' ', '')
 }
 
 fn (mut t Transformer) validate_specialized_call_result(id flat.NodeId, actual_type string) bool {
@@ -13017,6 +13061,18 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	}
 	if expected == '&void'
 		&& (actual.starts_with('&') || actual in ['voidptr', 'byteptr', 'charptr', 'nil']) {
+		return true
+	}
+	// fn-typed arguments: a fn literal is stringified with its parameter types
+	// inline (`fn (&Request, &ResponseWriter)`), while the same signature
+	// written as a fn-type alias expands to its declared spelling, which may
+	// carry `mut` parameter mode (`fn(&Request, mut ResponseWriter)`). Both
+	// spellings denote the same signature, so compare the fn parameter/return
+	// texts with `mut`/whitespace normalized instead of requiring byte-equal
+	// spelling.
+	if (actual.starts_with('fn(') || actual.starts_with('fn ('))
+		&& (expected.starts_with('fn(') || expected.starts_with('fn ('))
+		&& fn_type_texts_signature_compatible(actual, expected) {
 		return true
 	}
 	// Any pointer converts to voidptr.
