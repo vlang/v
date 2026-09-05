@@ -73,6 +73,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		typ_idx := typ.idx()
 		high_type := c.expr(mut node.high)
 		high_type_idx := high_type.idx()
+		errors_before_range_checks := c.errors.len
 		if typ_idx in ast.integer_type_idxs && high_type_idx !in ast.integer_type_idxs
 			&& high_type_idx != ast.void_type_idx {
 			c.error('range types do not match', node.cond.pos())
@@ -99,15 +100,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				high_pos)
 		}
 
-		// Check for empty hardcoded integer ranges (e.g., 4 .. 2)
-		if node.cond is ast.IntegerLiteral && node.high is ast.IntegerLiteral {
-			low_val := node.cond.val.i64()
-			high_val := node.high.val.i64()
-
-			if low_val >= high_val {
-				c.error('empty range: `${node.cond.val} .. ${node.high.val}` will never execute',
-					cond_pos.extend(high_pos))
-			}
+		range_error := c.errors.len > errors_before_range_checks
+		if !range_error {
+			c.check_for_empty_range(node.cond, node.high)
 		}
 
 		if high_type in [ast.int_type, ast.int_literal_type] {
@@ -380,5 +375,33 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	c.in_for_count--
 	if c.smartcast_mut_pos != token.Pos{} {
 		c.smartcast_mut_pos = token.Pos{}
+	}
+}
+
+// Check for empty range with comptime constant integer bounds
+fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr) {
+	if low_val := c.eval_comptime_const_expr(low, 0) {
+		if high_val := c.eval_comptime_const_expr(high, 0) {
+			low_i := low_val.i64()
+			high_i := high_val.i64()
+
+			if low_i != none && high_i != none {
+				if low_i >= high_i {
+					c.error('empty range: `${low_i} .. ${high_i}` will never execute',
+						low.pos().extend(high.pos()))
+				}
+			} else {
+				// Fall back to an unsigned comparison for literals that overflow i64
+				low_u := low_val.u64()
+				high_u := high_val.u64()
+
+				if low_u != none && high_u != none {
+					if low_u >= high_u {
+						c.error('empty range: `${low_u} .. ${high_u}` will never execute',
+							low.pos().extend(high.pos()))
+					}
+				}
+			}
+		}
 	}
 }

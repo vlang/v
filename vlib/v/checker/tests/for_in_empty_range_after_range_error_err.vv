@@ -1,0 +1,13 @@
+fn main() {
+	for i in 4.0 .. 2 {
+		println(i)
+	}
+
+	for i in int(4) .. 2.0 {
+		println(i)
+	}
+
+	for i in 0 .. 1 << 99 {
+		println(i)
+	}
+}

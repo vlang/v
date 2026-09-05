@@ -1,0 +1,7 @@
+vlib/v/checker/tests/for_in_empty_range_f32_operand_rounding_err.vv:13:11: error: empty range: `0 .. -1` will never execute
+   12 | 
+   13 | fn main() {
+   14 |     for i in 0 .. int(add_f32(16777217.0, 1.0)) - 16777217 {
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   15 |         println(i)
+   16 |     }
