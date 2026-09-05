@@ -340,7 +340,7 @@ $if !windows {
 
 // TopLevelKindScanArgs is the payload for one top-level-kind flag-scan worker.
 struct TopLevelKindScanArgs {
-	a                 &flat.FlatAst      = unsafe { nil }
+	a                 &flat.FlatAst = unsafe { nil }
 	tc                &types.TypeChecker = unsafe { nil }
 	start             int
 	end               int
@@ -477,19 +477,19 @@ fn scan_literal_decl_flags_parallel(t &Transformer, limit int, mut flags []u8, m
 				break
 			}
 			args << TopLevelKindScanArgs{
-				a:            a
-				tc:           t.tc
-				start:        start
-				end:          end
-				flags:        flags.data
+				a: a
+				tc: t.tc
+				start: start
+				end: end
+				flags: flags.data
 				escape_flags: escape_flags.data
 			}
 		}
 		mut tasks := []workers.Task{cap: args.len}
 		for ji in 0 .. args.len {
 			tasks << workers.Task{
-				run:        literal_decl_scan_thread
-				arg:        unsafe { voidptr(&args[ji]) }
+				run: literal_decl_scan_thread
+				arg: unsafe { voidptr(&args[ji]) }
 				force_sync: ji == 0
 			}
 		}
@@ -569,19 +569,19 @@ fn scan_top_level_kind_flags_parallel(a &flat.FlatAst, base int, mut flags []u8,
 				break
 			}
 			args << TopLevelKindScanArgs{
-				a:                 a
-				start:             start
-				end:               end
-				flags:             flags.data
-				base:              base
+				a: a
+				start: start
+				end: end
+				flags: flags.data
+				base: base
 				prefix_param_scan: prefix_param_scan
 			}
 		}
 		mut tasks := []workers.Task{cap: args.len}
 		for ji in 0 .. args.len {
 			tasks << workers.Task{
-				run:        top_level_kind_scan_thread
-				arg:        unsafe { voidptr(&args[ji]) }
+				run: top_level_kind_scan_thread
+				arg: unsafe { voidptr(&args[ji]) }
 				force_sync: ji == 0
 			}
 		}
@@ -680,17 +680,17 @@ pub fn promote_scoped_texts_parallel(mut a flat.FlatAst, scope voidptr) bool {
 				break
 			}
 			args << ScopedTextPromoteArgs{
-				a:     a
+				a: a
 				scope: scope
 				start: start
-				end:   end
+				end: end
 			}
 		}
 		mut tasks := []workers.Task{cap: args.len}
 		for ji in 0 .. args.len {
 			tasks << workers.Task{
-				run:        scoped_text_promote_thread
-				arg:        unsafe { voidptr(&args[ji]) }
+				run: scoped_text_promote_thread
+				arg: unsafe { voidptr(&args[ji]) }
 				force_sync: ji == 0
 			}
 		}
@@ -773,15 +773,15 @@ fn free_worker_scopes_parallel(a &flat.FlatAst, scopes []voidptr) bool {
 			}
 			args << WorkerScopeFreeArgs{
 				scopes: scopes
-				start:  start
-				end:    end
+				start: start
+				end: end
 			}
 		}
 		mut tasks := []workers.Task{cap: args.len}
 		for ji in 0 .. args.len {
 			tasks << workers.Task{
-				run:        worker_scope_free_thread
-				arg:        unsafe { voidptr(&args[ji]) }
+				run: worker_scope_free_thread
+				arg: unsafe { voidptr(&args[ji]) }
 				force_sync: ji == 0
 			}
 		}
@@ -814,18 +814,18 @@ pub fn promote_scoped_checker_node_caches_parallel(mut tc types.TypeChecker, a &
 				break
 			}
 			args << CheckerCachePromoteArgs{
-				tc:              voidptr(tc)
-				scope:           scope
-				start:           start
-				end:             end
+				tc: voidptr(tc)
+				scope: scope
+				start: start
+				end: end
 				generated_start: generated_start
 			}
 		}
 		mut tasks := []workers.Task{cap: args.len}
 		for ji in 0 .. args.len {
 			tasks << workers.Task{
-				run:        checker_cache_promote_thread
-				arg:        unsafe { voidptr(&args[ji]) }
+				run: checker_cache_promote_thread
+				arg: unsafe { voidptr(&args[ji]) }
 				force_sync: ji == 0
 			}
 		}
@@ -859,18 +859,18 @@ pub fn scan_scoped_text_flags_parallel(a &flat.FlatAst, scope voidptr, mut flags
 				break
 			}
 			args << ScopedTextScanArgs{
-				a:     a
+				a: a
 				scope: scope
 				start: start
-				end:   end
+				end: end
 				flags: flags.data
 			}
 		}
 		mut tasks := []workers.Task{cap: args.len}
 		for ji in 0 .. args.len {
 			tasks << workers.Task{
-				run:        scoped_text_scan_thread
-				arg:        unsafe { voidptr(&args[ji]) }
+				run: scoped_text_scan_thread
+				arg: unsafe { voidptr(&args[ji]) }
 				force_sync: ji == 0
 			}
 		}
@@ -912,7 +912,7 @@ mut:
 struct MonomorphClaimState {
 mut:
 	mu          &sync.Mutex = unsafe { nil }
-	cond        &sync.Cond  = unsafe { nil }
+	cond        &sync.Cond = unsafe { nil }
 	claimed     map[string]bool
 	queues      [][]PendingGenericFnSpec
 	queue_costs []i64
@@ -987,8 +987,7 @@ $if !windows {
 				w.register_specialized_fn_signature_value(spec.decl, value, spec.args)
 			}
 			if !private_region && !w.monomorph_worker_has_headroom(spec) {
-				w.detach_monomorph_worker_region(a.base_nodes, a.base_children, a.node_start,
-					a.child_start, spec)
+				w.detach_monomorph_worker_region(a.base_nodes, a.base_children, a.node_start, a.child_start, spec)
 				private_region = true
 			}
 			spec_nodes_start := w.a.nodes.len
@@ -996,10 +995,8 @@ $if !windows {
 			generated << w.generated_fn_used_names(spec.decl, root, spec.args)
 			for i in spec_nodes_start .. w.a.nodes.len {
 				node := w.a.nodes[i]
-				w.collect_generic_struct_specs_from_node(node, spec.decl.module, spec.decl.file,
-					true, a.struct_decls, mut struct_specs)
-				w.collect_generic_sum_specs_from_node(node, spec.decl.module, spec.decl.file,
-					a.sum_decls, mut sum_specs)
+				w.collect_generic_struct_specs_from_node(node, spec.decl.module, spec.decl.file, true, a.struct_decls, mut struct_specs)
+				w.collect_generic_sum_specs_from_node(node, spec.decl.module, spec.decl.file, a.sum_decls, mut sum_specs)
 			}
 			roots << root
 			emitted_specs << spec
@@ -1088,16 +1085,16 @@ fn (mut t Transformer) prepare_parallel_monomorph_scan(start int, end int) bool 
 				break
 			}
 			args << MonomorphScanArgs{
-				a:     t.a
+				a: t.a
 				start: chunk_start
-				end:   chunk_end
+				end: chunk_end
 			}
 		}
 		mut tasks := []workers.Task{cap: args.len}
 		for ji in 0 .. args.len {
 			tasks << workers.Task{
-				run:        monomorph_scan_thread
-				arg:        unsafe { voidptr(&args[ji]) }
+				run: monomorph_scan_thread
+				arg: unsafe { voidptr(&args[ji]) }
 				force_sync: ji == 0
 			}
 		}
@@ -1201,11 +1198,11 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
 		decls := t.cached_generic_fn_decls()
 		mut claims := &MonomorphClaimState{
-			mu:          sync.new_mutex()
-			claimed:     map[string]bool{}
-			queues:      [][]PendingGenericFnSpec{len: n_jobs}
+			mu: sync.new_mutex()
+			claimed: map[string]bool{}
+			queues: [][]PendingGenericFnSpec{len: n_jobs}
 			queue_costs: []i64{len: n_jobs}
-			remaining:   specs.len
+			remaining: specs.len
 		}
 		claims.cond = sync.new_cond(claims.mu)
 		for spec in specs {
@@ -1216,20 +1213,19 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		}
 		mut args := []MonomorphChunkArgs{len: n_jobs}
 		args[0] = MonomorphChunkArgs{
-			worker:        voidptr(t)
-			claims:        claims
-			is_master:     true
-			worker_idx:    0
-			base_nodes:    base_nodes
+			worker: voidptr(t)
+			claims: claims
+			is_master: true
+			worker_idx: 0
+			base_nodes: base_nodes
 			base_children: base_children
-			node_start:    node_starts[0]
-			child_start:   child_starts[0]
-			struct_decls:  struct_decls
-			sum_decls:     sum_decls
+			node_start: node_starts[0]
+			child_start: child_starts[0]
+			struct_decls: struct_decls
+			sum_decls: sum_decls
 		}
 		for ci in 1 .. n_jobs {
-			mut view := shared_region_view(t.a, node_starts[ci], node_starts[ci + 1],
-				child_starts[ci], child_starts[ci + 1])
+			mut view := shared_region_view(t.a, node_starts[ci], node_starts[ci + 1], child_starts[ci], child_starts[ci + 1])
 			view.specialized_fn_nodes = map[int]bool{}
 			view.specialized_fn_modules = map[int]string{}
 			view.specialized_fn_files = map[int]string{}
@@ -1240,15 +1236,15 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			w.generic_fn_decls_ready = true
 			w.generic_receiver_methods_by_name = t.generic_receiver_methods_by_name.clone()
 			args[ci] = MonomorphChunkArgs{
-				worker:        voidptr(w)
-				claims:        claims
-				worker_idx:    ci
-				base_nodes:    base_nodes
+				worker: voidptr(w)
+				claims: claims
+				worker_idx: ci
+				base_nodes: base_nodes
 				base_children: base_children
-				node_start:    node_starts[ci]
-				child_start:   child_starts[ci]
-				struct_decls:  struct_decls
-				sum_decls:     sum_decls
+				node_start: node_starts[ci]
+				child_start: child_starts[ci]
+				struct_decls: struct_decls
+				sum_decls: sum_decls
 			}
 		}
 
@@ -1279,8 +1275,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		mut tasks := []workers.Task{cap: n_jobs}
 		for ci in 0 .. n_jobs {
 			tasks << workers.Task{
-				run:        monomorph_chunk_thread
-				arg:        unsafe { voidptr(&args[ci]) }
+				run: monomorph_chunk_thread
+				arg: unsafe { voidptr(&args[ci]) }
 				force_sync: ci == 0
 			}
 		}
@@ -1309,12 +1305,9 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			merged_nodes_cap += w.a.nodes.len - node_starts[ci]
 			merged_children_cap += w.a.children.len - child_starts[ci]
 		}
-		merge_in_place := t.monomorph_regions_can_merge_in_place(args, node_starts, child_starts,
-			original_nodes_data, original_children_data, original_nodes_cap, original_children_cap,
-			base_nodes, base_children)
+		merge_in_place := t.monomorph_regions_can_merge_in_place(args, node_starts, child_starts, original_nodes_data, original_children_data, original_nodes_cap, original_children_cap, base_nodes, base_children)
 		if !merge_in_place && t.a.nodes.data == original_nodes_data {
-			nodes := clone_monomorph_node_region(t.a.nodes, base_nodes, base_nodes,
-				merged_nodes_cap)
+			nodes := clone_monomorph_node_region(t.a.nodes, base_nodes, base_nodes, merged_nodes_cap)
 			unsafe {
 				t.a.nodes.flags.set(.nofree)
 			}
@@ -1322,8 +1315,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			t.a.file_node_ids = []int{}
 		}
 		if !merge_in_place && t.a.children.data == original_children_data {
-			children := clone_monomorph_child_region(t.a.children, base_children, base_children,
-				merged_children_cap)
+			children := clone_monomorph_child_region(t.a.children, base_children, base_children, merged_children_cap)
 			unsafe {
 				t.a.children.flags.set(.nofree)
 			}
@@ -1376,8 +1368,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			}
 			for spec, context in args[ci].sum_specs {
 				t.parallel_monomorph_sum_specs[spec.clone()] = GenericSpecContext{
-					base:   context.base.clone()
-					file:   context.file.clone()
+					base: context.base.clone()
+					file: context.file.clone()
 					module: context.module.clone()
 				}
 			}
@@ -1430,8 +1422,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		mut owned_sum_specs := map[string]GenericSpecContext{}
 		for spec, context in t.parallel_monomorph_sum_specs {
 			owned_sum_specs[spec.clone()] = GenericSpecContext{
-				base:   context.base.clone()
-				file:   context.file.clone()
+				base: context.base.clone()
+				file: context.file.clone()
 				module: context.module.clone()
 			}
 		}
@@ -1482,8 +1474,7 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 			}
 		}
 		scope := transform_worker_scope_begin(true)
-		mut wast := shared_region_view(t.a, base_nodes, t.a.nodes.cap, base_children,
-			t.a.children.cap)
+		mut wast := shared_region_view(t.a, base_nodes, t.a.nodes.cap, base_children, t.a.children.cap)
 		wast.specialized_fn_nodes = map[int]bool{}
 		mut wtc := t.tc.fork_for_parallel_transform(wast)
 		wtc.ensure_private_transform_signatures()
@@ -1660,8 +1651,7 @@ fn (mut t Transformer) detach_monomorph_worker_region(base_nodes int, base_child
 	node_cap := monomorph_private_region_cap(t.a.nodes.len, node_headroom)
 	child_cap := monomorph_private_region_cap(t.a.children.len, child_headroom)
 	mut nodes := clone_monomorph_node_region(t.a.nodes, base_nodes, node_start, node_cap)
-	mut children := clone_monomorph_child_region(t.a.children, base_children, child_start,
-		child_cap)
+	mut children := clone_monomorph_child_region(t.a.children, base_children, child_start, child_cap)
 	unsafe {
 		// These descriptors alias the master's allocation. Never release it when
 		// replacing them; other workers can still be appending to their regions.
@@ -1690,8 +1680,7 @@ fn clone_monomorph_node_region(source []flat.Node, base_count int, region_start 
 		}
 		own_count := source.len - region_start
 		if own_count > 0 {
-			vmemcpy(&result[region_start], &source[region_start],
-				own_count * int(sizeof(flat.Node)))
+			vmemcpy(&result[region_start], &source[region_start], own_count * int(sizeof(flat.Node)))
 		}
 	}
 	return result
@@ -1705,8 +1694,7 @@ fn clone_monomorph_child_region(source []flat.NodeId, base_count int, region_sta
 		}
 		own_count := source.len - region_start
 		if own_count > 0 {
-			vmemcpy(&result[region_start], &source[region_start],
-				own_count * int(sizeof(flat.NodeId)))
+			vmemcpy(&result[region_start], &source[region_start], own_count * int(sizeof(flat.NodeId)))
 		}
 	}
 	return result
@@ -1779,14 +1767,14 @@ fn (mut t Transformer) collect_interface_boxed_types_parallel() bool {
 		for i in 0 .. n_jobs {
 			args[i] = InterfaceBoxScanArgs{
 				source: voidptr(t)
-				start:  bounds[i]
-				end:    bounds[i + 1]
-				file:   files[i]
+				start: bounds[i]
+				end: bounds[i + 1]
+				file: files[i]
 				module: modules[i]
 			}
 			tasks << workers.Task{
-				run:        interface_box_scan_thread
-				arg:        unsafe { voidptr(&args[i]) }
+				run: interface_box_scan_thread
+				arg: unsafe { voidptr(&args[i]) }
 				force_sync: i == 0 || fail == 'transform:all' || fail == 'transform:interface:all'
 					|| fail == 'transform:interface:${i - 1}'
 			}
@@ -1962,9 +1950,9 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 	for name, req in batch.sum_eq_types {
 		if name !in t.sum_eq_types {
 			t.sum_eq_types[t.promote_scoped_result_text(name)] = SumEqRequest{
-				sum_name:      t.promote_scoped_result_text(req.sum_name)
-				module:        t.promote_scoped_result_text(req.module)
-				file:          t.promote_scoped_result_text(req.file)
+				sum_name: t.promote_scoped_result_text(req.sum_name)
+				module: t.promote_scoped_result_text(req.module)
+				file: t.promote_scoped_result_text(req.file)
 				helper_module: t.promote_scoped_result_text(req.helper_module)
 			}
 		}
@@ -1972,8 +1960,8 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 	for name, req in batch.auto_str_types {
 		if name !in t.auto_str_types {
 			t.auto_str_types[t.promote_scoped_result_text(name)] = AutoStrRequest{
-				module:        t.promote_scoped_result_text(req.module)
-				file:          t.promote_scoped_result_text(req.file)
+				module: t.promote_scoped_result_text(req.module)
+				file: t.promote_scoped_result_text(req.file)
 				helper_module: t.promote_scoped_result_text(req.helper_module)
 			}
 		}
@@ -1982,7 +1970,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 		if name !in t.default_clone_types {
 			t.default_clone_types[t.promote_scoped_result_text(name)] = DefaultCloneRequest{
 				module: t.promote_scoped_result_text(req.module)
-				file:   t.promote_scoped_result_text(req.file)
+				file: t.promote_scoped_result_text(req.file)
 			}
 		}
 	}
@@ -2158,8 +2146,7 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 			t.cur_file = candidates[ci].file
 			t.cur_module = candidates[ci].module
 			for call_name in t.generated_fn_body_call_names(flat.NodeId(idx)) {
-				t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut
-					queued)
+				t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut queued)
 			}
 			for j in node_starts[si] .. node_starts[si + 1] {
 				generated := t.a.nodes[j]
@@ -2168,8 +2155,7 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 					continue
 				}
 				for call_name in t.generated_fn_body_call_names(flat.NodeId(j)) {
-					t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut
-						queued)
+					t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut queued)
 				}
 			}
 		}
@@ -2186,9 +2172,9 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 		t.deferred_base_writes[i] = match write.kind {
 			0, 1 {
 				DeferredBaseWrite{
-					idx:  write.idx
+					idx: write.idx
 					kind: write.kind
-					str:  t.promote_scoped_result_text(write.str)
+					str: t.promote_scoped_result_text(write.str)
 				}
 			}
 			2 {
@@ -2197,18 +2183,18 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 					params << t.promote_scoped_result_text(param)
 				}
 				DeferredBaseWrite{
-					idx:  write.idx
+					idx: write.idx
 					kind: write.kind
 					node: flat.Node{
-						value:                t.promote_scoped_result_text(write.node.value)
-						typ:                  t.promote_scoped_result_text(write.node.typ)
-						payload:              flat.node_payload(params)
-						pos:                  write.node.pos
-						children_start:       write.node.children_start
-						children_count:       write.node.children_count
-						kind:                 write.node.kind
-						op:                   write.node.op
-						is_mut:               write.node.is_mut
+						value: t.promote_scoped_result_text(write.node.value)
+						typ: t.promote_scoped_result_text(write.node.typ)
+						payload: flat.node_payload(params)
+						pos: write.node.pos
+						children_start: write.node.children_start
+						children_count: write.node.children_count
+						kind: write.node.kind
+						op: write.node.op
+						is_mut: write.node.is_mut
 						skip_ownership_drops: write.node.skip_ownership_drops
 					}
 				}
@@ -2219,8 +2205,8 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 					params << t.promote_scoped_result_text(param)
 				}
 				DeferredBaseWrite{
-					idx:     write.idx
-					kind:    write.kind
+					idx: write.idx
+					kind: write.kind
 					gparams: params
 				}
 			}
@@ -2411,21 +2397,21 @@ fn shared_region_view(a &flat.FlatAst, nstart int, nend int, cstart int, cend in
 		children.flags.set(.nogrow)
 	}
 	return &flat.FlatAst{
-		nodes:                  nodes
-		children:               children
-		user_code_start:        a.user_code_start
-		disabled_fns:           a.disabled_fns
-		noreturn_fns:           a.noreturn_fns
-		source_files:           a.source_files
-		template_call_sites:    a.template_call_sites
-		template_actions:       a.template_actions
-		source_buffers:         a.source_buffers
-		text_values:            a.text_values
-		text_ids:               a.text_ids
-		worker_pool:            a.worker_pool
-		specialized_fn_nodes:   a.specialized_fn_nodes.clone()
+		nodes: nodes
+		children: children
+		user_code_start: a.user_code_start
+		disabled_fns: a.disabled_fns
+		noreturn_fns: a.noreturn_fns
+		source_files: a.source_files
+		template_call_sites: a.template_call_sites
+		template_actions: a.template_actions
+		source_buffers: a.source_buffers
+		text_values: a.text_values
+		text_ids: a.text_ids
+		worker_pool: a.worker_pool
+		specialized_fn_nodes: a.specialized_fn_nodes.clone()
 		specialized_fn_modules: a.specialized_fn_modules.clone()
-		specialized_fn_files:   a.specialized_fn_files.clone()
+		specialized_fn_files: a.specialized_fn_files.clone()
 	}
 }
 
@@ -2530,21 +2516,20 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
 		mut args := []SharedChunkArgs{len: chunk_count}
 		args[0] = SharedChunkArgs{
-			worker:    voidptr(t)
+			worker: voidptr(t)
 			items_ptr: unsafe { voidptr(&chunks[0]) }
 			is_master: true
 		}
 		mut sfsw := time.new_stopwatch()
 		for ci in 0 .. thread_count {
-			view := shared_region_view(t.a, node_starts[ci + 1], node_starts[ci + 2], child_starts[
-				ci + 1], child_starts[ci + 2])
+			view := shared_region_view(t.a, node_starts[ci + 1], node_starts[ci + 2], child_starts[ci + 1], child_starts[ci + 2])
 			view_ms := f64(sfsw.elapsed().microseconds()) / 1000.0
 			wtc := t.tc.fork_for_parallel_transform(view)
 			tc_ms := f64(sfsw.elapsed().microseconds()) / 1000.0
 			mut ww := t.fork_worker(view, wtc)
 			ww.defer_oor_writes = false
 			args[ci + 1] = SharedChunkArgs{
-				worker:    voidptr(ww)
+				worker: voidptr(ww)
 				items_ptr: unsafe { voidptr(&chunks[ci + 1]) }
 			}
 			t.timing_profile('  [ttime]     ss fork ${ci} view ${view_ms:.2f} tc ${tc_ms - view_ms:.2f} wk ${f64(sfsw.elapsed().microseconds()) / 1000.0 - tc_ms:.2f} ms')
@@ -2569,8 +2554,8 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		for ci in 0 .. chunk_count {
 			helper_idx := ci - 1
 			tasks << workers.Task{
-				run:        shared_chunk_thread
-				arg:        unsafe { voidptr(&args[ci]) }
+				run: shared_chunk_thread
+				arg: unsafe { voidptr(&args[ci]) }
 				force_sync: ci < sync_chunk_count || fail == 'transform:all'
 					|| fail == 'transform:${helper_idx}'
 			}
@@ -2609,9 +2594,9 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 				master_base_nodes << write.idx
 			}
 			t.retained_worker_regions << ScopedTransformRegion{
-				scope:      t.worker_scope
-				new_start:  base_nodes
-				new_end:    t.a.nodes.len
+				scope: t.worker_scope
+				new_start: base_nodes
+				new_end: t.a.nodes.len
 				base_nodes: master_base_nodes
 			}
 		}
@@ -2633,9 +2618,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		mut mwsw := time.new_stopwatch()
 		for ci in 0 .. thread_count {
 			ww := unsafe { &Transformer(args[ci + 1].worker) }
-			t.timing_profile('  [ttime]     mg region ${ci}: nodes [${node_starts[ci + 1]}, ${ww.a.nodes.len}) cap ${node_starts[
-				ci + 2]} children [${child_starts[ci + 1]}, ${ww.a.children.len}) cap ${child_starts[
-				ci + 2]} dst n ${t.a.nodes.len} c ${t.a.children.len}')
+			t.timing_profile('  [ttime]     mg region ${ci}: nodes [${node_starts[ci + 1]}, ${ww.a.nodes.len}) cap ${node_starts[ci + 2]} children [${child_starts[ci + 1]}, ${ww.a.children.len}) cap ${child_starts[ci + 2]} dst n ${t.a.nodes.len} c ${t.a.children.len}')
 			mwsw.restart()
 			t.merge_worker_used_fns(ww)
 			merge_used_ms += f64(mwsw.elapsed().microseconds()) / 1000.0
@@ -2660,9 +2643,9 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 					worker_base_nodes << write.idx
 				}
 				t.retained_worker_regions << ScopedTransformRegion{
-					scope:      ww.worker_scope
-					new_start:  merged_node_start
-					new_end:    t.a.nodes.len
+					scope: ww.worker_scope
+					new_start: merged_node_start
+					new_end: t.a.nodes.len
 					base_nodes: worker_base_nodes
 				}
 			}
@@ -2717,8 +2700,7 @@ $if !windows {
 		mut w := unsafe { &Transformer(args.worker) }
 		cands := unsafe { &[]LateFnCandidate(args.cands_ptr) }
 		mut results := unsafe { &[][]string(args.results_ptr) }
-		res := w.scan_late_call_names_range(*cands, args.used, args.candidate_names, args.start,
-			args.end)
+		res := w.scan_late_call_names_range(*cands, args.used, args.candidate_names, args.start, args.end)
 		unsafe {
 			(*results)[args.index] = res
 		}
@@ -2760,14 +2742,14 @@ fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, us
 		mut scan_workers := []voidptr{len: thread_count, init: unsafe { nil }}
 		mut args := []LateScanChunkArgs{len: n_jobs}
 		args[0] = LateScanChunkArgs{
-			worker:          voidptr(t)
-			cands_ptr:       unsafe { voidptr(&cands) }
-			used:            unsafe { used }
+			worker: voidptr(t)
+			cands_ptr: unsafe { voidptr(&cands) }
+			used: unsafe { used }
 			candidate_names: unsafe { candidate_names }
-			results_ptr:     unsafe { voidptr(&results) }
-			index:           0
-			start:           bounds[0]
-			end:             bounds[1]
+			results_ptr: unsafe { voidptr(&results) }
+			index: 0
+			start: bounds[0]
+			end: bounds[1]
 		}
 		for ci in 0 .. thread_count {
 			// No AST clone: the scan never appends nodes. Only the checker is
@@ -2777,14 +2759,14 @@ fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, us
 			ww := t.fork_scan_worker(wtc)
 			scan_workers[ci] = voidptr(ww)
 			args[ci + 1] = LateScanChunkArgs{
-				worker:          scan_workers[ci]
-				cands_ptr:       unsafe { voidptr(&cands) }
-				used:            unsafe { used }
+				worker: scan_workers[ci]
+				cands_ptr: unsafe { voidptr(&cands) }
+				used: unsafe { used }
 				candidate_names: unsafe { candidate_names }
-				results_ptr:     unsafe { voidptr(&results) }
-				index:           ci + 1
-				start:           bounds[ci + 1]
-				end:             bounds[ci + 2]
+				results_ptr: unsafe { voidptr(&results) }
+				index: ci + 1
+				start: bounds[ci + 1]
+				end: bounds[ci + 2]
 			}
 		}
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
@@ -2792,8 +2774,8 @@ fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, us
 		for ci in 0 .. n_jobs {
 			helper_idx := ci - 1
 			tasks << workers.Task{
-				run:        late_scan_chunk_thread
-				arg:        unsafe { voidptr(&args[ci]) }
+				run: late_scan_chunk_thread
+				arg: unsafe { voidptr(&args[ci]) }
 				force_sync: ci == 0 || fail == 'transform:all' || fail == 'transform:${helper_idx}'
 			}
 		}
@@ -2899,12 +2881,12 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 		// and the checker's post-check const/import tables. Its suffix map and
 		// result cache are private and cloned out below.
 		mut w := &Transformer{
-			a:                               t.a
-			tc:                              t.tc
-			skip_generics:                   t.skip_generics
-			building_v:                      t.building_v
-			scope_parallel_workers:          t.scope_parallel_workers
-			const_suffixes:                  map[string]string{}
+			a: t.a
+			tc: t.tc
+			skip_generics: t.skip_generics
+			building_v: t.building_v
+			scope_parallel_workers: t.scope_parallel_workers
+			const_suffixes: map[string]string{}
 			const_array_fixed_storage_cache: map[string]i8{}
 		}
 		scan_thread := spawn transform_const_fixed_scan_thread(voidptr(w))
@@ -2916,12 +2898,12 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 		if os.getenv('V3_NO_PAR_TRANSFORM_PARAM_PREP') == '' {
 			param_tc := t.tc.fork_for_parallel_transform(t.a)
 			mut param_w := &Transformer{
-				a:                            t.a
-				tc:                           param_tc
-				prefix_param_scan:            t.prefix_param_scan
-				call_param_types_decl_cache:  map[int][]types.Type{}
+				a: t.a
+				tc: param_tc
+				prefix_param_scan: t.prefix_param_scan
+				call_param_types_decl_cache: map[int][]types.Type{}
 				call_param_types_decl_misses: map[string]bool{}
-				call_param_types_decl_index:  map[string]FnParamDeclRef{}
+				call_param_types_decl_index: map[string]FnParamDeclRef{}
 			}
 			param_thread := spawn transform_param_prep_thread(voidptr(param_w))
 			t.defer_pre_scan_indexes = true
