@@ -1,0 +1,12 @@
+struct Box[T] {
+	val T
+}
+
+type Sum = Box[int] | int
+
+fn main() {
+	v := Sum(1)
+	if v is Box[Missing] {
+		println('yes')
+	}
+}
