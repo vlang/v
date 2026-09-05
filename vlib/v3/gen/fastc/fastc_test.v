@@ -1796,6 +1796,53 @@ fn main() {
 	assert !c_source.contains('.similarity_fn=(compare__similarity)'), c_source
 }
 
+fn test_selfhost_qualified_function_compaction_preserves_same_named_callback() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	compare_source := 'module compare
+
+pub fn similarity(left string, right string) f32 {
+	return if left == right { f32(1) } else { f32(0) }
+}
+'
+	main_source := 'module main
+
+import compare
+
+type SimilarityFn = fn (string, string) f32
+
+fn f(compare__similarity SimilarityFn) f32 {
+	return compare.similarity("a", "b") + compare__similarity("c", "d")
+}
+
+fn callback(left string, right string) f32 {
+	return 2
+}
+
+fn main() {
+	println(f(callback))
+}
+'
+	c_source, _, _ := generate_source_files([
+		FastcSourceFile{
+			path: 'compare/compare.v'
+			source: compare_source
+			header: fastc_scan_source_header(compare_source, 'compare/compare.v', prefs) or {
+				panic(err)
+			}
+		},
+		FastcSourceFile{
+			path: 'main.v'
+			source: main_source
+			header: fastc_scan_source_header(main_source, 'main.v', prefs) or {
+				panic(err)
+			}
+		},
+	], map[string]string{}, prefs) or { panic(err) }
+	assert c_source.contains('compare__similarity(_S("c"),_S("d"))'), c_source
+	assert !c_source.contains('compare__similarity(_S("a"),_S("b"))'), c_source
+}
+
 fn test_fastc_replace_c_call_identifier_skips_quoted_c_literals() {
 	source := r'consume("compare__similarity(\"", compare__similarity(1))'
 	expected := r'consume("compare__similarity(\"", v_f0(1))'

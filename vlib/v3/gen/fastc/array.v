@@ -896,14 +896,20 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 		} else if piece == '' {
 			piece = item.tok.str()
 		}
+		if previous_module_separator && item.tok == .name && i + 1 < tokens.len
+			&& tokens[i + 1].tok == .lpar {
+			if compact_name, prefix_len := g.compact_qualified_function_call(tokens, i) {
+				result.go_back(prefix_len)
+				piece = compact_name
+			}
+		}
 		if result.len > 0 && fastc_needs_space(result.last(), piece) && !module_separator && !previous_module_separator {
 			result.write_u8(` `)
 		}
 		result.write_string(piece)
 		previous_module_separator = module_separator
 	}
-	rendered := g.render_enum_alias_member_references(tokens, fastc_take_string(mut result))
-	return g.render_qualified_function_calls(tokens, rendered)
+	return g.render_enum_alias_member_references(tokens, fastc_take_string(mut result))
 }
 
 fn (g &Parser) expression_dot_is_module_separator(tokens []FastcExpressionToken, index int) bool {

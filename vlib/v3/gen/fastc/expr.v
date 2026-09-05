@@ -2098,6 +2098,16 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		g.validate_expression_stream_token(expression_tokens, stops, allow_mutation_statement, allow_declaration_guard, paren_depth, bracket_depth, brace_depth, unsafe_expression_depth, source_token_count, mut operator_state)!
 		streamed := g.render_expression_stream_token(mut expression_tokens, stops, previous_token, previous_lit, previous_module_separator, shared_is_struct_field, spawn_is_field_name, keyword_is_field_name, brace_depth, previous_was_pointer_cast, next_token_is_mut_argument, source_token_count)!
 		mut piece := streamed.piece
+		if previous_module_separator && expression_tokens.len >= 3
+			&& expression_tokens.last().tok == .name {
+			mut call_lookahead := g.s
+			if call_lookahead.scan() == .lpar {
+				if compact_name, prefix_len := g.compact_qualified_function_call(expression_tokens, expression_tokens.len - 1) {
+					result.go_back(prefix_len)
+					piece = compact_name
+				}
+			}
+		}
 		module_separator := streamed.module_separator
 		next_token_is_mut_argument = streamed.next_token_is_mut_argument
 		source_token_count = streamed.source_token_count
@@ -2265,7 +2275,6 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 	}
 	rendered_expression = g.render_enum_alias_member_references(expression_tokens, rendered_expression)
 	rendered_expression = g.render_constant_references(expression_tokens, rendered_expression)
-	rendered_expression = g.render_qualified_function_calls(expression_tokens, rendered_expression)
 	if g.selfhost {
 		// `m[k].field = value`: a map value is not a C lvalue, so assign the field through a
 		// mutable pointer to the entry rather than the map-read spelling render_special yields.
@@ -2484,22 +2493,18 @@ fn (g &Parser) render_constant_references(tokens []FastcExpressionToken, source 
 	return rendered
 }
 
-fn (g &Parser) render_qualified_function_calls(tokens []FastcExpressionToken, source string) string {
-	mut rendered := source
-	for i := 2; i + 1 < tokens.len; i++ {
-		if tokens[i].tok != .name || tokens[i - 1].tok != .dot || tokens[i - 2].tok != .name
-			|| tokens[i + 1].tok != .lpar || tokens[i - 2].lit in g.locals {
-			continue
-		}
-		imported_module := g.imports[tokens[i - 2].lit] or { continue }
-		function_key := fastc_function_key(g.resolve_module_alias(imported_module), tokens[i].lit)
-		if function_key !in g.functions || function_key !in g.function_c_names {
-			continue
-		}
-		conventional_name := fastc_c_function_name(imported_module, tokens[i].lit)
-		rendered = fastc_replace_c_call_identifier(rendered, conventional_name, g.c_function_name_for_key(function_key))
+// compact_qualified_function_call returns the compact symbol and the byte count of the
+// module prefix already written before the qualified function token.
+fn (g &Parser) compact_qualified_function_call(tokens []FastcExpressionToken, name_index int) ?(string, int) {
+	if name_index < 2 || name_index >= tokens.len || tokens[name_index].tok != .name
+		|| tokens[name_index - 1].tok != .dot || tokens[name_index - 2].tok != .name
+		|| tokens[name_index - 2].lit in g.locals {
+		return none
 	}
-	return rendered
+	imported_module := g.imports[tokens[name_index - 2].lit] or { return none }
+	function_key := fastc_function_key(g.resolve_module_alias(imported_module), tokens[name_index].lit)
+	compact_name := g.function_c_names[function_key] or { return none }
+	return compact_name, fastc_c_module_name(imported_module).len + 2
 }
 
 // fastc_index_of returns the first index of `needle` in `text` at or after
