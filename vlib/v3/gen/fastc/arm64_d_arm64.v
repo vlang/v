@@ -311,6 +311,19 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	timer.mark('arm64.codegen')
 	gen.write_and_link(output)
 	timer.mark('arm64.link')
+	if os.getenv('FASTC_BENCH') != '' {
+		mut total_lines := 0
+		for source_file in input_sources {
+			for ch in source_file.source {
+				if ch == `\n` {
+					total_lines++
+				}
+			}
+		}
+		total_us := timer.sw.elapsed().microseconds()
+		mloc_per_s := f64(total_lines) / f64(total_us)
+		eprintln('fastc-arm64-bench: files=${input_sources.len} lines=${total_lines} total=${f64(total_us) / 1000.0:.2f}ms throughput=${mloc_per_s:.3f} MLOC/s (includes Mach-O link)')
+	}
 	mut source_paths := []string{cap: sources.len}
 	for source_file in sources {
 		source_paths << source_file.path
@@ -1187,6 +1200,9 @@ fn (mut p FastArm64Program) type_id(name string) ssa.TypeID {
 	if clean.starts_with('struct ') {
 		return p.type_id('C.${clean['struct '.len..]}')
 	}
+	if clean == 'array' {
+		return p.array_type
+	}
 	if id := p.type_ids['C.${clean}'] {
 		return id
 	}
@@ -1215,7 +1231,8 @@ fn (mut p FastArm64Program) type_id(name string) ssa.TypeID {
 		'bool' { p.i1_type }
 		'i8', 'char' { p.i8_type }
 		'i16' { p.i16_type }
-		'int', 'i32', 'rune' { p.i32_type }
+		'i32', 'rune' { p.i32_type }
+		'int' { p.i64_type }
 		'i64', 'isize', 'int_literal' { p.i64_type }
 		'u8', 'byte' { p.u8_type }
 		'u16' { p.u16_type }
@@ -7403,8 +7420,44 @@ fn (mut p FastArm64Parser) stringify(value FastArm64Value) !FastArm64Value {
 }
 
 fn (mut p FastArm64Parser) parse_if_expression(expected_type_name string) !FastArm64Value {
+	p.push_local_scope()
 	p.expect(.key_if)!
-	condition := p.parse_expression(0)!
+	mut condition := FastArm64Value{}
+	if p.tok == .name {
+		mut look := p.s
+		if look.scan() == .decl_assign {
+			name := p.lit
+			p.next()
+			p.next()
+			p.last_map_found = ssa.ValueID(0)
+			value := p.parse_expression(0)!
+			address := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(value.typ))
+			p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, address)
+			p.declare_local(name, FastArm64Local{
+				addr: address
+				typ: value.typ
+				typ_name: value.typ_name
+				option_failed: value.option_failed
+				option_error_type: value.option_error_type
+				option_error_message: value.option_error_message
+				option_error_code: value.option_error_code
+			})
+			condition = if p.last_map_found != ssa.ValueID(0) {
+				FastArm64Value{
+					id: p.last_map_found
+					typ: p.program.i1_type
+					typ_name: 'bool'
+				}
+			} else {
+				p.truthy_value(value)
+			}
+			p.last_map_found = ssa.ValueID(0)
+		} else {
+			condition = p.parse_expression(0)!
+		}
+	} else {
+		condition = p.parse_expression(0)!
+	}
 	for p.tok == .semicolon {
 		p.next()
 	}
@@ -7477,7 +7530,7 @@ fn (mut p FastArm64Parser) parse_if_expression(expected_type_name string) !FastA
 	}
 	p.cur_block = merge_block
 	has_option_metadata := p.if_expression_value_has_option_metadata(then_value) || (!else_terminated && p.if_expression_value_has_option_metadata(else_value))
-	return FastArm64Value{
+	result := FastArm64Value{
 		id: p.program.instr1(.load, p.cur_block, then_value.typ, result_slot)
 		typ: then_value.typ
 		typ_name: then_value.typ_name
@@ -7502,6 +7555,8 @@ fn (mut p FastArm64Parser) parse_if_expression(expected_type_name string) !FastA
 			ssa.ValueID(0)
 		}
 	}
+	p.pop_local_scope()
+	return result
 }
 
 fn (p &FastArm64Parser) if_expression_value_has_option_metadata(value FastArm64Value) bool {
@@ -7632,6 +7687,24 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 	}
 	if first_name == 'map' && p.tok == .lsbr {
 		return p.parse_map_literal()
+	}
+	// The direct backend only reaches the read side of FastC's target-configuration
+	// globals: generate_arm64_files does not call the C generator's setters. Keep
+	// their declaration defaults available without pulling mutable C-generator
+	// state into the native compiler.
+	if first_name == 'fastc_platform_int_c_type' {
+		return FastArm64Value{
+			id: p.program.m.add_value(.string_literal, p.program.str_type, 'i64', 0)
+			typ: p.program.str_type
+			typ_name: 'string'
+		}
+	}
+	if first_name == 'fastc_compact_v3_type_names' {
+		return FastArm64Value{
+			id: p.program.m.get_or_add_const(p.program.i1_type, '0')
+			typ: p.program.i1_type
+			typ_name: 'bool'
+		}
 	}
 	if local := p.locals[first_name] {
 		return FastArm64Value{
@@ -9406,6 +9479,26 @@ fn (mut p FastArm64Parser) resolve_method_key(value FastArm64Value, method strin
 	return none
 }
 
+fn (mut p FastArm64Parser) method_receiver(value FastArm64Value, expected_type ssa.TypeID) ssa.ValueID {
+	expected_layout := p.program.m.type_store.types[expected_type]
+	if expected_layout.kind != .ptr_t {
+		return value.id
+	}
+	value_layout := p.program.m.type_store.types[value.typ]
+	if value_layout.kind == .ptr_t {
+		if value.typ == expected_type {
+			return value.id
+		}
+		return p.program.instr1(.bitcast, p.cur_block, expected_type, value.id)
+	}
+	if value.address != ssa.ValueID(0) {
+		return value.address
+	}
+	receiver_slot := p.program.instr0(.alloca, p.cur_block, expected_type)
+	p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, receiver_slot)
+	return receiver_slot
+}
+
 fn (mut p FastArm64Parser) emit_zero_argument_method(value FastArm64Value, method string) ?FastArm64Value {
 	resolved := p.resolve_method_key(value, method) or { return none }
 	signature := p.program.functions[resolved]
@@ -9414,16 +9507,7 @@ fn (mut p FastArm64Parser) emit_zero_argument_method(value FastArm64Value, metho
 	}
 	p.program.native_used_function_names[resolved] = true
 	expected_receiver := p.program.type_id(signature.parameter_types[0])
-	mut receiver_id := value.id
-	if p.program.m.type_store.types[expected_receiver].kind == .ptr_t && value.typ != expected_receiver {
-		if value.address != ssa.ValueID(0) {
-			receiver_id = value.address
-		} else {
-			receiver_slot := p.program.instr0(.alloca, p.cur_block, expected_receiver)
-			p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, receiver_slot)
-			receiver_id = receiver_slot
-		}
-	}
+	receiver_id := p.method_receiver(value, expected_receiver)
 	func_id := p.program.register_signature_function(resolved) or { return none }
 	ret := p.program.fn_returns[resolved]
 	symbol := p.program.fn_symbols[resolved]
@@ -9545,16 +9629,7 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 	}
 	p.validate_call_argument_count(method, resolved, signature, call_args, 1)!
 	expected_receiver := p.program.type_id(signature.parameter_types[0])
-	mut receiver_id := value.id
-	if p.program.m.type_store.types[expected_receiver].kind == .ptr_t && value.typ != expected_receiver {
-		if value.address != ssa.ValueID(0) {
-			receiver_id = value.address
-		} else {
-			receiver_slot := p.program.instr0(.alloca, p.cur_block, expected_receiver)
-			p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, receiver_slot)
-			receiver_id = receiver_slot
-		}
-	}
+	receiver_id := p.method_receiver(value, expected_receiver)
 	func_id := p.program.register_signature_function(resolved) or {
 		return p.unsupported('registered method `${resolved}`')
 	}

@@ -148,6 +148,11 @@ times in-process so an external sampler can profile it. The compiler's own C pre
 take effect one generation later: measure the compiler built by the modified compiler, not the
 modified compiler itself.
 
+`FASTC_BENCH=1` also prints end-to-end MLOC/s. The FastC total includes TinyCC compilation and
+linking; the direct ARM64 total includes Mach-O generation, linking, and signing.
+For the optimized FastC pipeline, build the full compiler with `./v -prod -o ./vnew cmd/v`, then run
+`FASTC_BENCH=1 ./vnew -nocache -b fastc -selfhost -o /tmp/v3-fastc vlib/v3/v3.v`.
+
 Self-host generations box `?`/`!` payloads out of a per-thread bump chunk rather than `malloc`, keep
 one file record per scanner pass, and honor `@[direct_array_access]` for string and array indexing.
 Multi-return components larger than 32 bytes are boxed instead of copied into the tuple slot, so a

@@ -4488,6 +4488,19 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 }
 
 fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {
+	if tokens.len == 2 && tokens[0].tok == .amp && tokens[1].tok == .name {
+		if local := g.locals[tokens[1].lit] {
+			if local.is_reference {
+				// A `mut T` parameter is already a `T*` in C. Taking its address in V
+				// preserves that pointer; emitting `&parameter` would instead return the
+				// address of the temporary C parameter slot.
+				return FastcRenderedExpression{
+					source: g.resolved_root_expression_name(tokens[1].lit)
+					typ: local.typ
+				}
+			}
+		}
+	}
 	if tokens.len == 1 {
 		if tokens[0].tok == .name {
 			if local := g.locals[tokens[0].lit] {
