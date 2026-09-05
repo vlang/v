@@ -1,4 +1,5 @@
 // vtest build: present_openssl?
+// vtest vflags: -d use_openssl
 module quic
 
 import crypto.ecdsa
@@ -71,12 +72,12 @@ fn accept_test_pem_to_der(pem string) []u8 {
 
 fn accept_test_transport_parameters() QuicTransportParameters {
 	return QuicTransportParameters{
-		max_idle_timeout:                    30000
-		initial_max_data:                    1 << 20
-		initial_max_stream_data_bidi_local:  1 << 16
+		max_idle_timeout: 30000
+		initial_max_data: 1 << 20
+		initial_max_stream_data_bidi_local: 1 << 16
 		initial_max_stream_data_bidi_remote: 1 << 16
-		initial_max_streams_bidi:            4
-		initial_max_streams_uni:             4
+		initial_max_streams_bidi: 4
+		initial_max_streams_uni: 4
 	}
 }
 
@@ -99,9 +100,9 @@ fn test_dial_and_accept_full_handshake_and_stream_exchange() {
 	}
 
 	dial_params := DialParams{
-		server_name:          'localhost'
-		ca_bundle_pem:        accept_test_cert_pem
-		alpn_protocols:       ['h3']
+		server_name: 'localhost'
+		ca_bundle_pem: accept_test_cert_pem
+		alpn_protocols: ['h3']
 		transport_parameters: accept_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!
@@ -112,13 +113,13 @@ fn test_dial_and_accept_full_handshake_and_stream_exchange() {
 
 	accept_params := AcceptParams{
 		transport_parameters: accept_test_transport_parameters()
-		alpn_protocols:       ['h3']
-		certificate_chain:    [
+		alpn_protocols: ['h3']
+		certificate_chain: [
 			CertificateEntry{
 				cert_data: accept_test_pem_to_der(accept_test_cert_pem)
 			},
 		]
-		signing_key:          signing_key
+		signing_key: signing_key
 	}
 	mut server, mut server_result := accept(client_dg.bytes, accept_params, 0)!
 	defer {
@@ -231,9 +232,9 @@ fn test_dial_and_accept_full_handshake_and_stream_exchange() {
 // every other rejection reason accept() might have.
 fn test_accept_rejects_undersized_initial_datagram() {
 	dial_params := DialParams{
-		server_name:          'localhost'
-		ca_bundle_pem:        accept_test_cert_pem
-		alpn_protocols:       ['h3']
+		server_name: 'localhost'
+		ca_bundle_pem: accept_test_cert_pem
+		alpn_protocols: ['h3']
 		transport_parameters: accept_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!
@@ -249,13 +250,13 @@ fn test_accept_rejects_undersized_initial_datagram() {
 	}
 	accept_params := AcceptParams{
 		transport_parameters: accept_test_transport_parameters()
-		alpn_protocols:       ['h3']
-		certificate_chain:    [
+		alpn_protocols: ['h3']
+		certificate_chain: [
 			CertificateEntry{
 				cert_data: accept_test_pem_to_der(accept_test_cert_pem)
 			},
 		]
-		signing_key:          signing_key
+		signing_key: signing_key
 	}
 	truncated := client_dg.bytes[..min_initial_datagram_size - 1].clone()
 	accept(truncated, accept_params, 0) or {
