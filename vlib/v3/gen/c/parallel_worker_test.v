@@ -458,3 +458,23 @@ fn test_dynamic_parallel_chunk_capture_keeps_deduplicated_wrapper_attempts() {
 	assert g.parallel_chunk_wrapper_defs[0].spawn == ['spawn-shared;', 'spawn-shared;']
 	assert g.parallel_chunk_wrapper_defs[0].callback == ['callback-shared;', 'callback-shared;']
 }
+
+// c_extern_forward_decls() runs inside a disposable worker in scoped mode, so the
+// worker must inherit the header/linkage state the emission rule reads. Without it
+// every `fn C.` declaration looks header backed and silently loses its prototype.
+fn test_scoped_c_extern_worker_inherits_header_and_linkage_state() {
+	mut g, _ := parallel_worker_test_gen(true)
+	linked_file := '/project/linked.c.v'
+	lib_file := '/project/lib_only.c.v'
+	header_file := '/project/wrapped.c.v'
+	g.note_c_flag_directive('linked', linked_file, '@VMODROOT/helper.o')
+	g.note_c_flag_directive('lib_only', lib_file, '-lfoo')
+	g.note_c_include_directive('wrapped', header_file)
+
+	mut worker := g.new_parallel_worker(8)
+	g.configure_c_extern_scan_worker(mut worker)
+
+	assert worker.should_emit_c_extern_decl_from_file('helper_fn', linked_file, 'linked')
+	assert worker.should_emit_c_extern_decl_from_file('foo_open', lib_file, 'lib_only')
+	assert !worker.should_emit_c_extern_decl_from_file('wrapped_fn', header_file, 'wrapped')
+}

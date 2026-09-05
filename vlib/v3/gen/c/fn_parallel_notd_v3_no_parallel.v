@@ -2315,6 +2315,11 @@ fn (g &FlatGen) configure_c_extern_scan_worker(mut worker FlatGen) {
 	worker.c_directives = g.c_directives
 	worker.inlined_c_fns = g.inlined_c_fns.clone()
 	worker.inlined_c_declared_fns = g.inlined_c_declared_fns.clone()
+	worker.files_with_c_includes = g.files_with_c_includes.clone()
+	worker.files_linking_c_sources = g.files_linking_c_sources.clone()
+	worker.mods_with_c_libs = g.mods_with_c_libs.clone()
+	worker.mods_with_c_includes = g.mods_with_c_includes.clone()
+	worker.c_extern_forced_decls = g.c_extern_forced_decls.clone()
 	worker.inlined_c_active_macros = g.inlined_c_active_macros.clone()
 	worker.inlined_c_static_fns = g.inlined_c_static_fns.clone()
 	worker.cache_omitted_c_fns = g.cache_omitted_c_fns.clone()
@@ -2441,6 +2446,10 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		inlined_c_typedef_names: g.inlined_c_typedef_names
 		inlined_c_fns: g.inlined_c_fns
 		inlined_c_declared_fns: g.inlined_c_declared_fns
+		files_with_c_includes: g.files_with_c_includes
+		files_linking_c_sources: g.files_linking_c_sources
+		mods_with_c_libs: g.mods_with_c_libs
+		mods_with_c_includes: g.mods_with_c_includes
 		inlined_c_active_macros: g.inlined_c_active_macros
 		inlined_c_static_fns: g.inlined_c_static_fns
 		libc_compat_fns: g.libc_compat_fns.clone()
