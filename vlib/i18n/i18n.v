@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module i18n
 
+import json2
 import os
 
 pub const default_translations_dir = 'translations'
@@ -14,10 +15,25 @@ pub fn load_tr_map() map[string]map[string]string {
 	return load_tr_map_from_dir(default_translations_dir)
 }
 
-// load_tr_map_from_dir loads all .tr files from dir into a lang -> key -> text map.
+// load_tr_map_from_dir loads all .tr and .json files from dir into a
+// lang -> key -> text map. A `.tr` entry wins when the same key is defined by both
+// formats, since `.tr` is the primary format.
 pub fn load_tr_map_from_dir(dir string) map[string]map[string]string {
-	files := os.walk_ext(dir, '.tr')
 	mut res := map[string]map[string]string{}
+	for json_path in os.walk_ext(dir, '.json') {
+		lang, prefix := fetch_lang_and_prefix_from_json_path(dir, json_path)
+		if lang.len == 0 {
+			continue
+		}
+		text := os.read_file(json_path) or {
+			eprintln('translation file "${json_path}" failed to load')
+			continue
+		}
+		for key, val in parse_tr_json(text, prefix, json_path) {
+			res[lang][key] = val
+		}
+	}
+	files := os.walk_ext(dir, '.tr')
 	for tr_path in files {
 		lang := fetch_lang_from_tr_path(tr_path)
 		if lang.len == 0 {
@@ -50,6 +66,50 @@ fn parse_tr_text(text string) map[string]string {
 
 fn fetch_lang_from_tr_path(path string) string {
 	return os.file_name(path).all_before_last('.tr')
+}
+
+// fetch_lang_and_prefix_from_json_path maps a translation file path to its language
+// and to the prefix its keys get. A file directly in `dir` is named after its
+// language, like a `.tr` file (`translations/en.json` -> `en`). A file in a
+// subdirectory uses that directory as the language and its own name as a key prefix,
+// so translations can be split per feature (`translations/zh/dashboard.json` -> `zh`,
+// with keys under `dashboard.`).
+fn fetch_lang_and_prefix_from_json_path(dir string, path string) (string, string) {
+	name := os.file_name(path).all_before_last('.json')
+	parent := os.file_name(os.dir(path))
+	if os.norm_path(os.dir(path)) == os.norm_path(dir) || parent.len == 0 {
+		return name, ''
+	}
+	return parent, name
+}
+
+// parse_tr_json flattens a JSON object into `key -> text` pairs. Nested objects are
+// joined with `.`, so `{"menu": {"file": "File"}}` defines `menu.file`.
+fn parse_tr_json(text string, prefix string, path string) map[string]string {
+	mut res := map[string]string{}
+	decoded := json2.decode[json2.Any](text) or {
+		eprintln('translation file "${path}" is not valid JSON: ${err}')
+		return res
+	}
+	flatten_tr_json(decoded, prefix, mut res)
+	return res
+}
+
+fn flatten_tr_json(value json2.Any, key string, mut res map[string]string) {
+	if value is map[string]json2.Any {
+		for name, child in value {
+			child_key := if key.len == 0 { name } else { '${key}.${name}' }
+			flatten_tr_json(child, child_key, mut res)
+		}
+		return
+	}
+	if value is []json2.Any {
+		// an array cannot name a translation; ignore it rather than inventing indices
+		return
+	}
+	if key.len != 0 {
+		res[key] = value.str()
+	}
 }
 
 // tr returns the translation for key from the default translations directory.
