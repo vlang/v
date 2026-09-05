@@ -638,7 +638,17 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			return g.unsupported('method receiver')
 		}
 		receiver_name = g.lit
+		receiver_name_end := g.s
 		g.next()
+		if g.tok == .rpar {
+			// a type only receiver like `fn (Padding) marker() {}`: rewind, so that the single
+			// name is parsed as the receiver type. The binding stays unnamed (`_`), matching
+			// the V parser, but it must still occupy argument 0 for dispatch to line up.
+			g.s = receiver_name_end
+			g.tok = .name
+			g.lit = receiver_name
+			receiver_name = '_'
+		}
 		if g.tok == .name && g.lit != 'C' {
 			receiver_key = fastc_type_key(g.module_name, g.lit)
 		} else if g.tok == .key_none {

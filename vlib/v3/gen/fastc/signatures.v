@@ -166,7 +166,14 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 				if tok != .name {
 					return error('fastc parser does not support method receiver in ${path}')
 				}
+				type_only_scan := scan
 				tok = scan.scan()
+				if tok == .rpar {
+					// type only receiver like `fn (Padding) marker() {}`: rewind, so that the
+					// single name is scanned as the receiver type instead of as its binding
+					scan = type_only_scan
+					tok = .name
+				}
 				if tok == .name && scan.lit != 'C' {
 					receiver_key = fastc_type_key(header.module_name, scan.lit)
 				} else if tok == .key_none {

@@ -10288,6 +10288,52 @@ fn main() {
 	assert c_source.contains('V_FASTC_MULTI_VALUE(((Frame){'), c_source
 }
 
+fn test_selfhost_type_only_method_receiver_is_an_unnamed_parameter() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Padding {
+	length int
+}
+
+fn (Padding) marker() {}
+
+struct Header {
+	size int
+}
+
+fn (mut Header) marker() {}
+
+fn (h Header) named() int {
+	return h.size
+}
+
+fn (p &Padding) pointer_named() int {
+	return p.length
+}
+
+fn main() {
+	p := Padding{
+		length: 1
+	}
+	p.marker()
+	mut h := Header{
+		size: 2
+	}
+	h.marker()
+	println(h.named())
+	println(p.pointer_named())
+}
+', 'selfhost_type_only_receiver.v', prefs) or { panic(err) }
+	// A type only receiver still occupies argument 0, so dispatch lines up; its binding is
+	// unnamed (`_`), matching the V parser. Named receivers keep their own name.
+	assert c_source.contains('void Padding_marker(Padding _)'), c_source
+	assert c_source.contains('void Header_marker(Header* _)'), c_source
+	assert c_source.contains('i64 Header_named(Header h)'), c_source
+	assert c_source.contains('i64 Padding_pointer_named(Padding* p)'), c_source
+}
+
 fn test_selfhost_match_statement_smartcasts_member_subject() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
