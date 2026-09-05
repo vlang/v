@@ -2473,6 +2473,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		fn_decl_variadic_short_counts: g.fn_decl_variadic_short_counts
 		fn_decl_shared_params: g.fn_decl_shared_params
 		fn_shared_params_resolved: g.fn_shared_params_resolved
+		shared_param_index_empty: g.shared_param_index_empty
 		has_shared_params: g.has_shared_params
 		fn_decl_mut_receivers: g.fn_decl_mut_receivers
 		fn_decl_ret_types: g.fn_decl_ret_types

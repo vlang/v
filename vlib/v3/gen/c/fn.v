@@ -16032,7 +16032,8 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 	receiver_wants_ptr := params[0] is types.Pointer
 		|| g.mut_receiver_arg_wants_addr(fn_node.value, receiver_id)
 		|| g.mut_receiver_arg_wants_addr(emitted_name, receiver_id)
-	receiver_wants_shared := g.fn_param_is_shared_for_call(0, fn_node.value, emitted_name, g.cname(fn_node.value), g.cname(emitted_name))
+	receiver_wants_shared := !g.shared_param_index_empty
+		&& g.fn_param_is_shared_for_call(0, fn_node.value, emitted_name, g.cname(fn_node.value), g.cname(emitted_name))
 	receiver := g.a.nodes[int(receiver_id)]
 	receiver_type := g.receiver_base_type(receiver_id)
 	receiver_declares_method := g.emitted_method_belongs_to_receiver(receiver_type, method_short, emitted_name)
@@ -18292,7 +18293,7 @@ fn (mut g FlatGen) fn_shared_params_with_implicit_veb_ctx(node flat.Node, flags 
 }
 
 fn (g &FlatGen) fn_param_is_shared(fn_name string, idx int) bool {
-	if (!g.has_shared_params && g.tc.fn_shared_params.len == 0) || idx < 0 || fn_name.len == 0 {
+	if g.shared_param_index_empty || (!g.has_shared_params && g.tc.fn_shared_params.len == 0) || idx < 0 || fn_name.len == 0 {
 		return false
 	}
 	if flags := g.fn_shared_params_resolved[fn_name] {
@@ -18336,7 +18337,7 @@ fn (g &FlatGen) fn_param_shared_exact(fn_name string, idx int) ?bool {
 }
 
 fn (g &FlatGen) fn_param_is_shared_for_call(idx int, name1 string, name2 string, name3 string, name4 string) bool {
-	if (!g.has_shared_params && g.tc.fn_shared_params.len == 0) || idx < 0 {
+	if g.shared_param_index_empty || (!g.has_shared_params && g.tc.fn_shared_params.len == 0) || idx < 0 {
 		return false
 	}
 	mut found_exact := false
@@ -18378,7 +18379,19 @@ fn (g &FlatGen) fn_param_is_shared_for_call(idx int, name1 string, name2 string,
 }
 
 fn (mut g FlatGen) precompute_shared_param_index() {
-	if !g.has_shared_params && g.tc.fn_shared_params.len == 0 {
+	// The checker also stores all-false arrays to preserve exact-name shadowing.
+	// When no declaration has a shared parameter, every query is false without
+	// copying those arrays or searching their source/C-name aliases per call.
+	g.shared_param_index_empty = !g.has_shared_params
+	if g.shared_param_index_empty {
+		for _, flags in g.tc.fn_shared_params {
+			if true in flags {
+				g.shared_param_index_empty = false
+				break
+			}
+		}
+	}
+	if g.shared_param_index_empty {
 		return
 	}
 	for name, flags in g.tc.fn_shared_params {

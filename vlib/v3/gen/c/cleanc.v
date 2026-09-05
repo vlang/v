@@ -435,6 +435,7 @@ mut:
 	fn_decl_variadic_short_counts  map[string]int
 	fn_decl_shared_params          map[string][]bool
 	fn_shared_params_resolved      map[string][]bool
+	shared_param_index_empty       bool
 	has_shared_params              bool
 	fn_decl_mut_receivers          map[string]bool
 	fn_decl_ret_types              map[string]types.Type // fn decl name (and qualified variants) -> return type
@@ -2842,6 +2843,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fn_decl_variadic_short_counts.clear()
 	g.fn_decl_shared_params.clear()
 	g.fn_shared_params_resolved.clear()
+	g.shared_param_index_empty = false
 	g.has_shared_params = false
 	g.fn_decl_mut_receivers.clear()
 	g.fn_decl_ret_types.clear()

@@ -34,6 +34,32 @@ fn test_implicit_veb_context_call_lookup_accepts_source_and_c_names() {
 	assert !g.call_has_implicit_veb_ctx(['app.index'])
 }
 
+fn test_shared_param_index_skips_all_false_signatures() {
+	mut g, mut tc := parallel_worker_test_gen(true)
+	tc.fn_shared_params['plain'] = [false, false]
+	tc.fn_shared_params['empty'] = []bool{}
+	g.precompute_shared_param_index()
+	assert g.shared_param_index_empty
+	assert g.fn_shared_params_resolved.len == 0
+	assert !g.fn_param_is_shared('plain', 0)
+	assert !g.fn_param_is_shared_for_call(0, 'plain', 'empty', '', '')
+	w := g.new_parallel_worker(1)
+	assert w.shared_param_index_empty
+	assert !w.fn_param_is_shared_for_call(1, 'plain', '', '', '')
+
+	// A single shared signature keeps exact false entries authoritative over
+	// shared short-name fallbacks, including when the index is prepared again.
+	tc.fn_shared_params['send'] = [true]
+	tc.fn_shared_params['dep.send'] = [true]
+	g.fn_decl_shared_params['dep.send'] = [false]
+	g.precompute_shared_param_index()
+	assert !g.shared_param_index_empty
+	assert g.fn_param_is_shared_for_call(0, 'send', '', '', '')
+	assert !g.fn_param_is_shared_for_call(0, 'dep.send', '', '', '')
+	assert !g.fn_param_is_shared_for_call(1, 'send', '', '', '')
+	assert !g.fn_param_is_shared_for_call(0, 'plain', '', '', '')
+}
+
 fn test_parallel_dispatch_worker_shares_checker_as_scoped_accumulator() {
 	g, tc := parallel_worker_test_gen(true)
 	w := g.new_parallel_dispatch_worker(1)
