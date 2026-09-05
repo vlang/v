@@ -11762,9 +11762,6 @@ fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 		if param_type := g.current_param_type(node.value) {
 			return param_type
 		}
-		if param_type := g.current_param_map_type(node.value) {
-			return param_type
-		}
 		if fn_name := g.direct_callback_ident_name(id) {
 			if fn_type := g.callback_fn_value_type(fn_name) {
 				return types.Type(fn_type)
@@ -11915,9 +11912,6 @@ fn (g &FlatGen) pointer_variant_arg_needs_heap_copy(node flat.Node) bool {
 		return false
 	}
 	if _ := g.current_param_type(child.value) {
-		return true
-	}
-	if _ := g.current_param_map_type(child.value) {
 		return true
 	}
 	if _ := g.tc.cur_scope.lookup(child.value) {
@@ -14383,11 +14377,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 				if typ := g.current_param_type(child.value) {
-					if typ !is types.Pointer {
-						g.gen_expr(child_id)
-						return
-					}
-				} else if typ := g.current_param_map_type(child.value) {
 					if typ !is types.Pointer {
 						g.gen_expr(child_id)
 						return

@@ -291,6 +291,41 @@ fn test_unqualified_type_normalization_cache_preserves_spacing_and_nesting() {
 	assert g.import_type_cache.unqualified_texts.len == 0
 }
 
+fn test_import_alias_type_normalization_preserves_primitive_containers_and_named_types() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_file = 'driver.v'
+	tc.file_imports['driver.v\nmodel'] = 'app.model'
+	tc.structs['app.model.Item'] = []types.StructField{}
+	tc.structs['Box[int, string]'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	node := flat.Node{ kind: .ident }
+	for text in ['int', 'string', 'voidptr', '&&int', '?[]int', '!map[string][]u8', '[3]int'] {
+		typ := tc.parse_type(text)
+		assert g.canonical_import_alias_type_for_node(typ, &node) == typ
+		assert g.canonical_import_alias_type_text_in_file(typ.name(), 'driver.v') == typ.name()
+	}
+	for text, expected in {
+		'model.Item':      'app.model.Item'
+		'&model.Item':     '&app.model.Item'
+		'[]model.Item':    '[]app.model.Item'
+		'?model.Item':     '?app.model.Item'
+		'Box[int,string]': 'Box[int, string]'
+	} {
+		// Stale nominal spellings still require import and generic normalization.
+		typ := types.Type(types.Struct{ name: text })
+		assert g.canonical_import_alias_type_for_node(typ, &node).name() == expected
+	}
+	wrapped := types.Type(types.Array{
+		elem_type: types.Type(types.Pointer{
+			base_type: types.Type(types.Struct{ name: 'model.Item' })
+		})
+	})
+	assert g.canonical_import_alias_type_for_node(wrapped, &node).name() == '[]&app.model.Item'
+}
+
 fn test_optional_payload_qualifies_interface() {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)

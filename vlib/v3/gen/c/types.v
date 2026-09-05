@@ -177,10 +177,11 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 			return qualified + pointer_suffix
 		}
 	}
-	for candidate in [ct, 'main.${ct}'] {
-		if target := g.tc.type_aliases[candidate] {
-			return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
-		}
+	if target := g.tc.type_aliases[ct] {
+		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
+	}
+	if target := g.tc.type_aliases['main.${ct}'] {
+		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
 	}
 	return ct
 }
@@ -191,10 +192,11 @@ fn (mut g FlatGen) value_unalias_type(typ types.Type) types.Type {
 		// Generic substitution can preserve a caller alias only as its type name
 		// after the specialized body has moved into the generic function's module.
 		// Recover the registered alias before selecting the C storage type.
-		for candidate in [clean_type.name, 'main.${clean_type.name}'] {
-			if target := g.tc.type_aliases[candidate] {
-				return cgen_unalias_type(g.tc.parse_type(target))
-			}
+		if target := g.tc.type_aliases[clean_type.name] {
+			return cgen_unalias_type(g.tc.parse_type(target))
+		}
+		if target := g.tc.type_aliases['main.${clean_type.name}'] {
+			return cgen_unalias_type(g.tc.parse_type(target))
 		}
 	}
 	return clean_type
@@ -472,6 +474,9 @@ fn (g &FlatGen) canonical_import_alias_type_in_file_uncached(typ string, file st
 }
 
 fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.Node) types.Type {
+	if !type_has_import_alias_text(typ) {
+		return typ
+	}
 	source := typ.name()
 	// Only dotted names can reference an import alias. Primitive and local
 	// type spellings do not need a walk through synthesized child nodes.
@@ -483,6 +488,29 @@ fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.
 		}
 	}
 	return typ
+}
+
+// Primitive containers already have canonical names. Inspect their leaves
+// directly instead of allocating type text merely to normalize it unchanged.
+fn type_has_import_alias_text(typ types.Type) bool {
+	return match typ {
+		types.Struct, types.Interface, types.Enum, types.SumType, types.Alias, types.FnType, types.MultiReturn, types.Channel {
+			true
+		}
+		types.Pointer, types.OptionType, types.ResultType {
+			type_has_import_alias_text(typ.base_type)
+		}
+		types.Array {
+			type_has_import_alias_text(typ.elem_type)
+		}
+		types.ArrayFixed {
+			typ.len_expr.len > 0 || type_has_import_alias_text(typ.elem_type)
+		}
+		types.Map {
+			type_has_import_alias_text(typ.key_type) || type_has_import_alias_text(typ.value_type)
+		}
+		else { false }
+	}
 }
 
 fn (mut g FlatGen) sizeof_target_in_file(value string, file string) string {

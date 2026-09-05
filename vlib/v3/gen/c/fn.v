@@ -8106,9 +8106,6 @@ fn (g &FlatGen) receiver_base_type(base_id flat.NodeId) types.Type {
 			}
 			return typ
 		}
-		if typ := g.current_param_map_type(base.value) {
-			return typ
-		}
 		if typ := g.tc.expr_type(base_id) {
 			if typ !is types.Unknown && typ !is types.Void
 				&& !g.type_contains_generic_placeholder(typ) {
@@ -11900,20 +11897,6 @@ fn (g &FlatGen) embedded_receiver_type_names_match(actual string, expected strin
 
 // current_param_type returns current param type data for FlatGen.
 fn (g &FlatGen) current_param_type(name string) ?types.Type {
-	if g.cur_param_types.len == 0 {
-		return none
-	}
-	if g.cur_param_name_bits != 0 && g.cur_param_name_bits & current_param_name_bit(name) == 0 {
-		return none
-	}
-	typ := g.cur_param_types[name] or { return none }
-	if g.cur_mut_params.len > 0 && g.current_mut_param_binding_is_shadowed(name) {
-		return none
-	}
-	return typ
-}
-
-fn (g &FlatGen) current_param_map_type(name string) ?types.Type {
 	if g.cur_param_types.len == 0 {
 		return none
 	}
