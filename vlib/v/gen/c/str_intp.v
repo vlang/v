@@ -775,7 +775,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	g.write2('builtin__str_intp(', node_.vals.len.str())
 	g.write(', _MOV((StrIntpData[]){')
 	for i, val in node_.vals {
-		mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
+		val_opaque_pos := if i < node_.opaque_pos.len { node_.opaque_pos[i] } else { []int{} }
+		mut escaped_val := cescape_nonascii(util.smart_quote(val, false, val_opaque_pos))
 		escaped_val = escaped_val.replace('\0', '\\0')
 
 		if escaped_val.len > 0 {
@@ -948,7 +949,8 @@ fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts
 			if written_parts > 0 {
 				g.write(', ')
 			}
-			mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
+			val_opaque_pos := if i < node.opaque_pos.len { node.opaque_pos[i] } else { []int{} }
+			mut escaped_val := cescape_nonascii(util.smart_quote(val, false, val_opaque_pos))
 			escaped_val = escaped_val.replace('\0', '\\0')
 			g.write2('_S("', escaped_val)
 			g.write('")')

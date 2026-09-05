@@ -81,6 +81,11 @@ pub mut:
 	u32_escapes_pos []int    = []int{cap: 10} // pos list of \UXXXXXXXX
 	h_escapes_pos   []int    = []int{cap: 10} // pos list of \xXX
 	str_segments    []string = []string{cap: 10}
+	// for each `.string` token (keyed by its `tidx`) that contains a decoded \xXX/\uXXXX/\UXXXXXXXX
+	// escape, the byte offsets in that token's `.lit` which are opaque, already-resolved bytes -
+	// consumed once by the parser when it builds the corresponding ast.StringLiteral/StringInterLiteral,
+	// so that cgen's util.smart_quote() knows never to reinterpret them as the start of another escape.
+	string_opaque_pos map[int][]int = map[int][]int{}
 }
 
 /*
@@ -1332,6 +1337,11 @@ pub fn (mut s Scanner) ident_string() string {
 	}
 	if start <= s.pos {
 		mut string_so_far := s.text[start..end]
+		// byte offsets (into the *decoded* literal below) that came straight out of
+		// decode_h_escape_single/decode_u16_escape_single/decode_u32_escape_single, i.e.
+		// bytes that are already fully resolved and must never be reinterpreted as the
+		// start of another escape sequence downstream (see util.smart_quote).
+		mut opaque_pos := []int{}
 		if !s.is_fmt {
 			mut segment_idx := 0
 			s.str_segments.clear()
@@ -1342,22 +1352,37 @@ pub fn (mut s Scanner) ident_string() string {
 				s.all_pos << s.h_escapes_pos
 				s.all_pos.sort()
 
+				mut out_len := 0
 				for pos in s.all_pos {
-					s.str_segments << string_so_far[segment_idx..(pos - start)]
+					literal_segment := string_so_far[segment_idx..(pos - start)]
+					s.str_segments << literal_segment
+					out_len += literal_segment.len
 					segment_idx = pos - start
 					if pos in s.u16_escapes_pos {
 						decoded := s.decode_u16_escape_single(string_so_far, segment_idx)
 						s.str_segments << decoded.segment
+						for i in 0 .. decoded.segment.len {
+							opaque_pos << out_len + i
+						}
+						out_len += decoded.segment.len
 						segment_idx = decoded.idx
 					}
 					if pos in s.u32_escapes_pos {
 						decoded := s.decode_u32_escape_single(string_so_far, segment_idx)
 						s.str_segments << decoded.segment
+						for i in 0 .. decoded.segment.len {
+							opaque_pos << out_len + i
+						}
+						out_len += decoded.segment.len
 						segment_idx = decoded.idx
 					}
 					if pos in s.h_escapes_pos {
 						decoded := s.decode_h_escape_single(string_so_far, segment_idx)
 						s.str_segments << decoded.segment
+						for i in 0 .. decoded.segment.len {
+							opaque_pos << out_len + i
+						}
+						out_len += decoded.segment.len
 						segment_idx = decoded.idx
 					}
 				}
@@ -1370,11 +1395,20 @@ pub fn (mut s Scanner) ident_string() string {
 
 		if n_cr_chars > 0 {
 			string_so_far = string_so_far.replace('\r', '')
+			// '\r' removal shifts every byte offset after it; bail out on the rare
+			// literal that mixes a hex/unicode escape with raw '\r' bytes, instead of
+			// risking marking the wrong byte as opaque.
+			opaque_pos.clear()
 		}
 		if !is_raw && string_so_far.contains('\\\n') {
 			lit = trim_slash_line_break(string_so_far)
+			// same reasoning as above: line-continuation trimming can also shift offsets.
+			opaque_pos.clear()
 		} else {
 			lit = string_so_far
+		}
+		if opaque_pos.len > 0 {
+			s.string_opaque_pos[s.tidx] = opaque_pos
 		}
 	}
 	if s.text[end] == quote {

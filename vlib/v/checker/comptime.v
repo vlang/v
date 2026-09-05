@@ -1152,7 +1152,7 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 			return expr.val.i64()
 		}
 		ast.StringLiteral {
-			return util.smart_quote(expr.val, expr.is_raw)
+			return util.smart_quote(expr.val, expr.is_raw, expr.opaque_pos)
 		}
 		ast.StringInterLiteral {
 			if nlevel < 0 {

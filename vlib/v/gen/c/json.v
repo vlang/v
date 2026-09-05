@@ -294,7 +294,8 @@ fn (mut g Gen) gen_enum_to_str(utyp ast.Type, sym ast.TypeSymbol, enum_var strin
 			ast.Attr{}
 		}
 		if attr.has_arg {
-			enc.writeln('${result_var} = json__encode_string(_S("${attr.arg}")); break;')
+			escaped_arg := cescape_nonascii(util.smart_quote(attr.arg, false, attr.arg_opaque_pos))
+			enc.writeln('${result_var} = json__encode_string(_S("${escaped_arg}")); break;')
 		} else {
 			enc.writeln('${result_var} = json__encode_string(_S("${val}")); break;')
 		}
@@ -318,7 +319,8 @@ fn (mut g Gen) gen_str_to_enum(utyp ast.Type, sym ast.TypeSymbol, val_var string
 			dec.write_string('${ident}else if (builtin__string__eq(_S("${val}"), ${val_var})')
 		}
 		if attr.has_arg {
-			dec.write_string(' || builtin__string__eq(_S("${attr.arg}"), ${val_var})')
+			escaped_arg := cescape_nonascii(util.smart_quote(attr.arg, false, attr.arg_opaque_pos))
+			dec.write_string(' || builtin__string__eq(_S("${escaped_arg}"), ${val_var})')
 		}
 		dec.write_string(')\t')
 		if is_option {
