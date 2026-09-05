@@ -44,6 +44,7 @@ fn test_zero_aggregate_uses_address_fallback_past_immediate_range() {
 	large_array := m.type_store.get_array(i64_type, 4097)
 	mut g := Gen.new(m)
 	g.emit_zero_aggregate(9, large_array, 0)
+	g.materialize_text()
 	assert g.macho.text_data.len == (4096 + 3) * 4
 	last := g.macho.text_data.len - 4
 	assert read_u32_le(g.macho.text_data, last) == asm_str(xzr, Reg(11))
@@ -55,6 +56,7 @@ fn test_external_global_address_uses_got_load_relocations() {
 	m.add_external_global('environ', m.type_store.get_ptr(m.type_store.get_ptr(i8_type)))
 	mut g := Gen.new(m)
 	g.emit_global_addr(8, 'environ')
+	g.materialize_text()
 	assert g.macho.relocs.len == 2
 	assert g.macho.relocs[0].type_ == arm64_reloc_got_load_page21
 	assert g.macho.relocs[1].type_ == arm64_reloc_got_load_pageoff12
@@ -74,6 +76,7 @@ fn test_aggregate_bitcast_copies_every_word() {
 	g.set_stack_slot(source, -16)
 	g.set_stack_slot(result, -32)
 	g.gen_instr(result)
+	g.materialize_text()
 	assert g.macho.text_data.len == 16
 }
 
@@ -97,6 +100,7 @@ fn test_large_c_variadic_aggregate_passes_its_address() {
 	g.reset_value_slots(&m.funcs[caller_id])
 	g.set_stack_slot(large, -24)
 	g.gen_call(int(call), m.instrs[m.values[call].index])
+	g.materialize_text()
 	mut words := []u32{}
 	for i := 0; i < g.macho.text_data.len; i += 4 {
 		words << read_u32_le(g.macho.text_data, i)
@@ -126,6 +130,7 @@ fn test_c_homogeneous_float_aggregate_uses_simd_argument_registers() {
 	g.reset_value_slots(&m.funcs[caller_id])
 	g.set_stack_slot(pair, -16)
 	g.gen_call(int(call), m.instrs[m.values[call].index])
+	g.materialize_text()
 	mut words := []u32{}
 	for i := 0; i < g.macho.text_data.len; i += 4 {
 		words << read_u32_le(g.macho.text_data, i)
@@ -160,6 +165,7 @@ fn test_c_homogeneous_float_aggregate_overflow_uses_the_stack() {
 	g.reset_value_slots(&m.funcs[caller_id])
 	g.set_stack_slot(pair, -16)
 	g.gen_call(int(call), m.instrs[m.values[call].index])
+	g.materialize_text()
 	mut words := []u32{}
 	for i := 0; i < g.macho.text_data.len; i += 4 {
 		words << read_u32_le(g.macho.text_data, i)
@@ -214,6 +220,7 @@ fn test_c_homogeneous_float_aggregate_return_uses_simd_registers() {
 	g.reset_value_slots(&m.funcs[caller_id])
 	g.set_stack_slot(call, -24)
 	g.gen_call(int(call), m.instrs[m.values[call].index])
+	g.materialize_text()
 	mut words := []u32{}
 	for i := 0; i < g.macho.text_data.len; i += 4 {
 		words << read_u32_le(g.macho.text_data, i)
@@ -244,6 +251,7 @@ fn test_c_f32_homogeneous_float_aggregate_return_uses_simd_registers() {
 	g.reset_value_slots(&m.funcs[caller_id])
 	g.set_stack_slot(call, -8)
 	g.gen_call(int(call), m.instrs[m.values[call].index])
+	g.materialize_text()
 	mut words := []u32{}
 	for i := 0; i < g.macho.text_data.len; i += 4 {
 		words << read_u32_le(g.macho.text_data, i)
@@ -276,6 +284,7 @@ fn test_literal_c_variadic_string_stores_both_words() {
 	mut g := Gen.new(m)
 	g.reset_value_slots(&m.funcs[caller_id])
 	g.gen_call(int(call), m.instrs[m.values[call].index])
+	g.materialize_text()
 	mut words := []u32{}
 	for i := 0; i < g.macho.text_data.len; i += 4 {
 		words << read_u32_le(g.macho.text_data, i)

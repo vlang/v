@@ -110,6 +110,7 @@ struct FastArm64Program {
 	functions        map[string]FastcFunctionSignature
 	type_decls       map[string]FastArm64TypeDecl
 	constant_sources map[string]FastArm64ConstantDecl
+	short_constants  map[string]FastArm64ConstantDecl
 	enum_values      map[string]FastArm64ConstantDecl
 mut:
 	m                          &ssa.Module = unsafe { nil }
@@ -133,6 +134,7 @@ mut:
 	type_ids                   map[string]ssa.TypeID
 	type_aliases               map[string]string
 	fn_ids                     map[string]int
+	fn_symbol_ids              map[string]int
 	fn_returns                 map[string]ssa.TypeID
 	fn_symbols                 map[string]string
 	function_keys_by_name      map[string][]string
@@ -178,6 +180,7 @@ mut:
 	map_key                  string
 	map_value                string
 	last_map_found           ssa.ValueID
+	known_body_span_index    int
 	current_function         string
 	current_receiver         string
 	current_method_is_static bool
@@ -204,6 +207,12 @@ struct FastArm64Generation {
 	source_paths []string
 }
 
+struct FastArm64Declarations {
+	types       map[string]FastArm64TypeDecl
+	constants   map[string]FastArm64ConstantDecl
+	enum_values map[string]FastArm64ConstantDecl
+}
+
 // generate_arm64_files parses FastC source tokens directly into SSA and emits a Mach-O binary.
 // It deliberately does not create Flat AST nodes or C source.
 pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output string) !FastArm64Generation {
@@ -211,7 +220,6 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	input_sources, _ := fastc_resolve_source_files(paths, prefs)!
 	timer.mark('arm64.resolve')
 	fast_arm64_validate_output_source_paths(output, input_sources)!
-	fast_arm64_validate_unsupported_calls(input_sources, prefs)!
 	timer.mark('arm64.validate')
 	mut sources := fastc_monomorphize_sources(input_sources, prefs)!
 	timer.mark('arm64.monomorphize')
@@ -257,12 +265,13 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	mut interface_fields := map[string]FastcInterfaceField{}
 	mut embed_embedders := []string{}
 	mut embed_embeddeds := []string{}
+	declaration_worker := spawn fast_arm64_collect_declarations_job(sources, prefs, declared_types, enum_flags, type_source_paths)
 	fastc_collect_signatures(sources, prefs, declared_types, declared_type_c_names, params_structs, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
 	timer.mark('arm64.signatures')
-	type_decls, constant_sources, enum_values := fast_arm64_collect_declarations(sources, prefs, declared_types, enum_flags, type_source_paths)!
+	declarations := declaration_worker.wait()!
 	timer.mark('arm64.declarations')
 
-	mut program := FastArm64Program.new(prefs, declared_types, functions, type_decls, constant_sources, enum_values)
+	mut program := FastArm64Program.new(prefs, declared_types, functions, declarations.types, declarations.constants, declarations.enum_values)
 	program.register_functions()
 	// The lifecycle hooks run in module dependency order; the resolver returns
 	// discovery order.
@@ -307,7 +316,7 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	timer.mark('arm64.parse')
 	fast_arm64_hide_unused_prototypes(mut program.m)
 	mut gen := arm64.Gen.new(program.m)
-	gen.gen()
+	gen.gen_parallel()
 	timer.mark('arm64.codegen')
 	gen.write_and_link(output)
 	timer.mark('arm64.link')
@@ -330,41 +339,6 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	}
 	return FastArm64Generation{
 		source_paths: source_paths
-	}
-}
-
-fn fast_arm64_validate_unsupported_calls(sources []FastcSourceFile, prefs &pref.Preferences) ! {
-	for source_file in sources {
-		if source_file.header.module_name == 'os' {
-			continue
-		}
-		file := token.File.unindexed(source_file.path, source_file.source.len)
-		mut scan := scanner.new_scanner(prefs, .normal)
-		scan.init(file, source_file.source)
-		mut previous_3 := token.Token.unknown
-		mut previous_3_literal := ''
-		mut previous_2 := token.Token.unknown
-		mut previous_2_literal := ''
-		mut previous_1 := token.Token.unknown
-		mut previous_1_literal := ''
-		mut tok := scan.scan()
-		for tok != .eof {
-			if tok == .lpar && previous_1 == .name && previous_1_literal == 'exec' && previous_2 == .dot && previous_3 == .name {
-				module_name := source_file.header.imports[previous_3_literal] or {
-					previous_3_literal
-				}
-				if module_name == 'os' {
-					return error('fastc parser does not support `os.exec` on the direct ARM64 backend')
-				}
-			}
-			previous_3 = previous_2
-			previous_3_literal = previous_2_literal
-			previous_2 = previous_1
-			previous_2_literal = previous_1_literal
-			previous_1 = tok
-			previous_1_literal = if tok == .name { scan.lit } else { '' }
-			tok = scan.scan()
-		}
 	}
 }
 
@@ -532,6 +506,15 @@ fn fast_arm64_collect_declarations(sources []FastcSourceFile, prefs &pref.Prefer
 		declarations[declaration.key] = expanded
 	}
 	return declarations, constants, enum_values
+}
+
+fn fast_arm64_collect_declarations_job(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, enum_flags map[string]bool, type_source_paths map[string]bool) !FastArm64Declarations {
+	types, constants, enum_values := fast_arm64_collect_declarations(sources, prefs, declared_types, enum_flags, type_source_paths)!
+	return FastArm64Declarations{
+		types: types
+		constants: constants
+		enum_values: enum_values
+	}
 }
 
 fn fast_arm64_expand_embedded_declaration(key string, declarations map[string]FastArm64TypeDecl, mut visiting map[string]bool) !FastArm64TypeDecl {
@@ -1129,15 +1112,24 @@ fn FastArm64Program.new(prefs &pref.Preferences, declared_types map[string]bool,
 	// FastC hands this SSA directly to the ARM64 emitter. It does not run SSA
 	// rewrites, so maintaining a unique user list for every operand is pure cost.
 	m.track_uses = false
+	// Direct parsing emits SSA in one pass. Function count is already known and
+	// gives a reliable sizing hint, avoiding repeated copies of the large value,
+	// instruction, and block arrays while self-hosting.
+	m.values.ensure_cap(functions.len * 420)
+	m.instrs.ensure_cap(functions.len * 320)
+	m.blocks.ensure_cap(functions.len * 26)
+	m.funcs.ensure_cap(functions.len + 128)
 	mut program := &FastArm64Program{
 		prefs: unsafe { prefs }
 		declared_types: declared_types
 		functions: functions
 		type_decls: type_decls
 		constant_sources: constant_sources
+		short_constants: fast_arm64_unique_short_constants(constant_sources)
 		enum_values: enum_values
 		m: m
 		fn_ids: map[string]int{}
+		fn_symbol_ids: map[string]int{}
 		fn_returns: map[string]ssa.TypeID{}
 		fn_symbols: map[string]string{}
 		function_keys_by_name: map[string][]string{}
@@ -1189,6 +1181,24 @@ fn FastArm64Program.new(prefs &pref.Preferences, declared_types map[string]bool,
 	return program
 }
 
+fn fast_arm64_unique_short_constants(constants map[string]FastArm64ConstantDecl) map[string]FastArm64ConstantDecl {
+	mut short_constants := map[string]FastArm64ConstantDecl{}
+	mut ambiguous := map[string]bool{}
+	for key, declaration in constants {
+		short_name := key.all_after_last('.')
+		if short_name == key || short_name in ambiguous {
+			continue
+		}
+		if short_name in short_constants {
+			short_constants.delete(short_name)
+			ambiguous[short_name] = true
+		} else {
+			short_constants[short_name] = declaration
+		}
+	}
+	return short_constants
+}
+
 fn (mut p FastArm64Program) type_id(name string) ssa.TypeID {
 	// Type spellings come from FastC's scanner and declaration index, which already
 	// remove surrounding trivia. Keeping this path allocation-free matters during
@@ -1200,8 +1210,53 @@ fn (mut p FastArm64Program) type_id(name string) ssa.TypeID {
 	if clean.starts_with('struct ') {
 		return p.type_id('C.${clean['struct '.len..]}')
 	}
-	if clean == 'array' {
-		return p.array_type
+	match clean {
+		'', 'void' {
+			return p.void_type
+		}
+		'bool' {
+			return p.i1_type
+		}
+		'i8', 'char' {
+			return p.i8_type
+		}
+		'i16' {
+			return p.i16_type
+		}
+		'i32', 'rune' {
+			return p.i32_type
+		}
+		'int', 'i64', 'isize', 'int_literal' {
+			return p.i64_type
+		}
+		'u8', 'byte' {
+			return p.u8_type
+		}
+		'u16' {
+			return p.u16_type
+		}
+		'u32', 'unsigned int' {
+			return p.u32_type
+		}
+		'u64', 'usize' {
+			return p.u64_type
+		}
+		'f32' {
+			return p.f32_type
+		}
+		'f64', 'float_literal' {
+			return p.f64_type
+		}
+		'string' {
+			return p.str_type
+		}
+		'voidptr', 'byteptr', 'charptr' {
+			return p.ptr_i8
+		}
+		'array' {
+			return p.array_type
+		}
+		else {}
 	}
 	if id := p.type_ids['C.${clean}'] {
 		return id
@@ -1216,41 +1271,18 @@ fn (mut p FastArm64Program) type_id(name string) ssa.TypeID {
 		p.type_ids[clean] = id
 		return id
 	}
-	if clean !in ['bool', 'i8', 'char', 'i16', 'int', 'i32', 'rune', 'i64', 'isize', 'int_literal',
-		'u8', 'byte', 'u16', 'u32', 'unsigned int', 'u64', 'usize', 'f32', 'f64', 'float_literal',
-		'string', 'voidptr', 'byteptr', 'charptr'] {
-		if alias := p.type_aliases[clean] {
-			return p.type_id(alias)
-		}
-		if id := p.type_ids[clean] {
-			return id
-		}
+	if alias := p.type_aliases[clean] {
+		return p.type_id(alias)
 	}
-	return match clean {
-		'', 'void' { p.void_type }
-		'bool' { p.i1_type }
-		'i8', 'char' { p.i8_type }
-		'i16' { p.i16_type }
-		'i32', 'rune' { p.i32_type }
-		'int' { p.i64_type }
-		'i64', 'isize', 'int_literal' { p.i64_type }
-		'u8', 'byte' { p.u8_type }
-		'u16' { p.u16_type }
-		'u32', 'unsigned int' { p.u32_type }
-		'u64', 'usize' { p.u64_type }
-		'f32' { p.f32_type }
-		'f64', 'float_literal' { p.f64_type }
-		'string' { p.str_type }
-		'voidptr', 'byteptr', 'charptr' { p.ptr_i8 }
-		else {
-			if clean.starts_with('Array_') || clean.starts_with('[]') {
-				p.array_type
-			} else if clean.starts_with('Map_') || clean.starts_with('map[') {
-				p.map_type
-			} else {
-				p.i64_type
-			}
-		}
+	if id := p.type_ids[clean] {
+		return id
+	}
+	return if clean.starts_with('Array_') || clean.starts_with('[]') {
+		p.array_type
+	} else if clean.starts_with('Map_') || clean.starts_with('map[') {
+		p.map_type
+	} else {
+		p.i64_type
 	}
 }
 
@@ -1258,7 +1290,11 @@ fn (mut p FastArm64Program) register_function(key string, symbol string, ret ssa
 	if id := p.fn_ids[key] {
 		return id
 	}
-	id := p.m.new_function(symbol, ret)
+	id := p.fn_symbol_ids[symbol] or {
+		new_id := p.m.add_function(symbol, ret)
+		p.fn_symbol_ids[symbol] = new_id
+		new_id
+	}
 	p.fn_ids[key] = id
 	p.fn_returns[key] = ret
 	p.fn_symbols[key] = symbol
@@ -3912,10 +3948,34 @@ fn (mut p FastArm64Parser) skip_declaration() ! {
 		p.next()
 	}
 	if p.tok == .lcbr {
+		if p.skip_known_function_body() {
+			return
+		}
 		p.skip_group(.lcbr, .rcbr)!
 	} else if p.tok == .semicolon {
 		p.next()
 	}
+}
+
+fn (mut p FastArm64Parser) skip_known_function_body() bool {
+	// body_spans belong to the complete source file. Selected comptime branches
+	// use temporary source strings and must continue with balanced token scans.
+	if p.s.src.str != p.source_file.source.str {
+		return false
+	}
+	spans := p.source_file.header.body_spans
+	for p.known_body_span_index + 1 < spans.len
+		&& spans[p.known_body_span_index] < p.s.pos {
+		p.known_body_span_index += 2
+	}
+	if p.known_body_span_index + 1 >= spans.len
+		|| spans[p.known_body_span_index] != p.s.pos {
+		return false
+	}
+	p.s.skip_block_to(spans[p.known_body_span_index + 1])
+	p.known_body_span_index += 2
+	p.next()
+	return true
 }
 
 fn (mut p FastArm64Parser) skip_value_declaration() {
@@ -7752,19 +7812,7 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 	if declaration := p.program.constant_sources[first_name] {
 		return p.parse_constant_declaration(declaration)
 	}
-	mut short_constant := FastArm64ConstantDecl{}
-	mut has_short_constant := false
-	for constant_name, declaration in p.program.constant_sources {
-		if constant_name.ends_with('.${first_name}') {
-			if has_short_constant {
-				has_short_constant = false
-				break
-			}
-			short_constant = declaration
-			has_short_constant = true
-		}
-	}
-	if has_short_constant {
+	if short_constant := p.program.short_constants[first_name] {
 		return p.parse_constant_declaration(short_constant)
 	}
 	mut key := fastc_function_key(p.source_file.header.module_name, first_name)
