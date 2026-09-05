@@ -45,7 +45,11 @@ fn scope_name_bit(name string) u64 {
 
 @[inline]
 fn scope_fast_slot(name string) int {
-	return int(((u64(voidptr(name.str)) >> 4) ^ u64(name.len)) & 31)
+	// Identical identifiers often come from different source allocations.
+	if name.len == 0 {
+		return 0
+	}
+	return int((u32(name[0]) * 11 + u32(name[name.len - 1]) * 2 + u32(name.len) * 3) & 31)
 }
 
 @[direct_array_access; inline]
@@ -53,8 +57,9 @@ fn (s &Scope) own_binding_index(name string) ?int {
 	if s.fast_lookup {
 		slot := scope_fast_slot(name)
 		if s.fast_generations[slot] == s.fast_generation
-			&& s.fast_name_ptrs[slot] == voidptr(name.str)
-			&& s.fast_name_lens[slot] == u16(name.len) {
+			&& s.fast_name_lens[slot] == name.len
+			&& (s.fast_name_ptrs[slot] == voidptr(name.str)
+				|| s.names[int(s.fast_indexes[slot])] == name) {
 			return int(s.fast_indexes[slot])
 		}
 	}
