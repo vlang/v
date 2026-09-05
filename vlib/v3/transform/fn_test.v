@@ -168,6 +168,9 @@ fn test_or_payload_type_qualifies_generic_base_in_own_module() {
 	expr_type, value_type := t.specialized_or_expr_types('!QueryBuilder[sapp.Event]')
 	assert expr_type == '!orm.QueryBuilder[sapp.Event]'
 	assert value_type == 'orm.QueryBuilder[sapp.Event]'
+	tuple_expr_type, tuple_value_type := t.specialized_or_expr_types('!(&ui.QNode, map[string]ui.QmlEvent)')
+	assert tuple_expr_type == '!(&ui.QNode, map[string]ui.QmlEvent)'
+	assert tuple_value_type == '(&ui.QNode, map[string]ui.QmlEvent)'
 }
 
 fn test_specialized_receiver_method_qualifies_imported_generic_base() {
