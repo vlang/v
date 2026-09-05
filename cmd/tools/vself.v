@@ -101,7 +101,11 @@ fn main() {
 		compile_args << '-selfhost'
 	}
 	final_binary := if obinary != '' { obinary } else { 'v2' }
-	pgo_cc_kind := if fastc_self_build { '' } else { pgo_compiler_kind(effective_args) }
+	pgo_cc_kind := if fastc_self_build || '-parallel-cc' in effective_args {
+		''
+	} else {
+		pgo_compiler_kind(args)
+	}
 	// Only explicit FastC builds are standalone. Regular replacements must retain
 	// cmd/v so commands such as self, up, fmt, and version remain available.
 	compilation_source := if fastc_self_build { standalone_v3_source } else { full_v_cli_source }
