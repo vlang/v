@@ -37,7 +37,7 @@ fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime &C._FILETIME)
 
 fn C.FileTimeToSystemTime(lpFileTime &C._FILETIME, lpSystemTime &SystemTime)
 
-fn C.SystemTimeToTzSpecificLocalTime(lpTimeZoneInformation &C.TIME_ZONE_INFORMATION, lpUniversalTime &SystemTime,
+fn C.SystemTimeToTzSpecificLocalTime(lpTimeZoneInformation voidptr, lpUniversalTime &SystemTime,
 	lpLocalTime &SystemTime)
 
 fn C.localtime_s(t &C.time_t, tm &C.tm)

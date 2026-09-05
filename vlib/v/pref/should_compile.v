@@ -365,6 +365,9 @@ pub fn (prefs &Preferences) should_compile_asm(path string) bool {
 }
 
 pub fn (prefs &Preferences) should_compile_js(file string) bool {
+	if file.ends_with('_native.v') {
+		return false
+	}
 	if !file.ends_with('.js.v') && file.split('.').len > 2 {
 		// Probably something like `a.c.v`.
 		return false
@@ -373,6 +376,9 @@ pub fn (prefs &Preferences) should_compile_js(file string) bool {
 }
 
 pub fn (prefs &Preferences) should_compile_wasm(file string) bool {
+	if file.ends_with('_native.v') {
+		return false
+	}
 	if !file.ends_with('.wasm.v') && file.count('.') >= 2 {
 		// not .wasm.v not just .v something else like .c.v
 		return false
