@@ -618,6 +618,7 @@ mut:
 	qualified_struct_c_types_ready     bool
 	unused_param_seen                  &UnusedParamSeen = unsafe { nil }
 	cache_split                        bool
+	parallel_cc                        bool
 	cache_native_input_paths           map[string]bool
 	program_body_only                  bool
 	cached_support_identifiers         map[string]bool
@@ -1318,6 +1319,11 @@ pub fn (mut g FlatGen) set_track_heap(enabled bool) {
 // module objects without changing regular `-o file.c` output.
 pub fn (mut g FlatGen) set_cache_split(enabled bool) {
 	g.cache_split = enabled
+}
+
+// set_parallel_cc marks safe top-level function batches for split C compilation.
+pub fn (mut g FlatGen) set_parallel_cc(enabled bool) {
+	g.parallel_cc = enabled
 }
 
 // set_cache_native_input_paths assigns native headers and sources to their owning
@@ -3277,6 +3283,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// remain stable across function-body literal edits. Keep them with the
 		// program specialization cache instead of regenerating module globals in
 		// every edited translation unit.
+		g.write_parallel_cc_unit_marker()
 		g.writeln('/* V3CACHE_MODULE __v3_program_support */')
 		g.gen_json_decode_pointer_helper_defs(json_decode_pointer_helpers, false)
 		g.gen_json_encode_pointer_helper_defs(json_encode_pointer_helpers, false)
@@ -3326,12 +3333,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	if g.fn_segs.len > 0 {
 		for segment in g.fn_segs {
+			g.write_parallel_cc_unit_marker()
 			g.sb.write_string(segment)
 			unsafe { segment.free() }
 		}
 		g.fn_segs = []string{}
 	}
 	if fn_code.len > 0 {
+		g.write_parallel_cc_unit_marker()
 		g.sb.write_string(fn_code)
 		// The final builder now owns a copy of the function code.
 		unsafe { fn_code.free() }
@@ -3370,6 +3379,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// Keep only the returned C string, not the builder's copied backing array.
 	unsafe { g.sb.free() }
 	return result
+}
+
+fn (mut g FlatGen) write_parallel_cc_unit_marker() {
+	if g.parallel_cc {
+		g.writeln('/* V3PARALLEL_CC_UNIT */')
+	}
 }
 
 fn (mut g FlatGen) gen_pre_body_support_declarations() {
