@@ -1417,6 +1417,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		}
 		mut default_val := field.default_val
 		mut has_default := default_val != ''
+		mut default_is_literal := false
 		mut nullable := field.nullable
 		mut is_unique := false
 		mut is_skip := false
@@ -1470,7 +1471,16 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 				'default' {
 					has_default = true
 					if default_val == '' {
-						default_val = attr.arg.trim_space()
+						arg := attr.arg.trim_space()
+						if arg.len >= 2 && arg.starts_with('`') && arg.ends_with('`') {
+							// As documented, a value surrounded by backticks is a plain
+							// string, that has to reach the DB as a quoted SQL literal,
+							// instead of verbatim SQL like `CURRENT_TIME`.
+							default_is_literal = true
+							default_val = arg#[1..-1]
+						} else {
+							default_val = arg
+						}
 					}
 				}
 				'references' {
@@ -1524,7 +1534,9 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		}
 		stmt = '${q}${field_name}${q} ${col_typ}'
 		if defaults && has_default {
-			if default_val != '' {
+			if default_is_literal {
+				stmt += " DEFAULT '${default_val.replace("'", "''")}'"
+			} else if default_val != '' {
 				stmt += ' DEFAULT ${default_val}'
 			} else {
 				// Handle @[default: ''] - explicitly set DEFAULT '' for the column
