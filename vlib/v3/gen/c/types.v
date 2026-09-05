@@ -1062,7 +1062,7 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			if t.name.contains('_T_') && !g.type_name_known(t.name) {
 				return true
 			}
-			if type_name_is_unbound_generic_decl(t.name, g.struct_generic_params_for_name(t.name), t.name in g.tc.structs || g.tc.qualify_name(t.name) in g.tc.structs) {
+			if !g.skip_generics && t.name.contains('[') && type_name_is_unbound_generic_decl(t.name, g.struct_generic_params_for_name(t.name), t.name in g.tc.structs || g.tc.qualify_name(t.name) in g.tc.structs) {
 				return true
 			}
 			return g.type_name_contains_generic_placeholder(t.name)
@@ -1074,7 +1074,7 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			return g.type_name_contains_generic_placeholder(t.name)
 		}
 		types.SumType {
-			if type_name_is_unbound_generic_decl(t.name, g.sum_generic_params_for_name(t.name), t.name in g.tc.sum_types || g.tc.qualify_name(t.name) in g.tc.sum_types) {
+			if !g.skip_generics && t.name.contains('[') && type_name_is_unbound_generic_decl(t.name, g.sum_generic_params_for_name(t.name), t.name in g.tc.sum_types || g.tc.qualify_name(t.name) in g.tc.sum_types) {
 				return true
 			}
 			return g.type_name_contains_generic_placeholder(t.name)
