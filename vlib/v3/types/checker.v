@@ -5005,7 +5005,7 @@ pub fn (tc &TypeChecker) parse_resolution_type_in_file(typ string, file string) 
 	return scoped.parse_resolution_type(typ)
 }
 
-// Primitive payloads and their pointer/array/optional wrappers cannot refer
+// Primitive payloads and their pointer/container/optional wrappers cannot refer
 // to a declaration's imports. Keep them out of the checker-view constructor.
 @[manualfree]
 fn context_independent_type_text(typ string) bool {
@@ -5015,6 +5015,26 @@ fn context_independent_type_text(typ string) bool {
 			start++
 		} else if typ[start] == `[` && start + 1 < typ.len && typ[start + 1] == `]` {
 			start += 2
+		} else if typ[start] == `[` {
+			mut end := start + 1
+			for end < typ.len && typ[end] >= `0` && typ[end] <= `9` {
+				end++
+			}
+			if end == start + 1 || end >= typ.len || typ[end] != `]` {
+				return false
+			}
+			start = end + 1
+		} else if start + 4 < typ.len && typ[start] == `m` && typ[start + 1] == `a`
+			&& typ[start + 2] == `p` && typ[start + 3] == `[` {
+			end := find_matching_bracket(typ, start + 3)
+			if end >= typ.len {
+				return false
+			}
+			key := unsafe { typ.substr_unsafe(start + 4, end) }
+			if !context_independent_type_text(key) {
+				return false
+			}
+			start = end + 1
 		} else {
 			break
 		}

@@ -97,6 +97,32 @@ fn test_alias_target_parsing_preserves_declaration_module() {
 	assert tc.cur_module == 'caller'
 }
 
+fn test_context_independent_container_types_match_declaration_views() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_file = 'caller.v'
+	tc.cur_module = 'caller'
+	tc.file_modules['dep.v'] = 'dep'
+	tc.type_alias_modules['dep.Alias'] = 'dep'
+	tc.fn_type_files['dep.read'] = 'dep.v'
+	tc.fn_type_modules['dep.read'] = 'dep'
+	for text in ['map[string]int', '?map[string][]u8', '[]map[int]&string', '[32]u8', '&[2][3]int',
+		'map[[4]u8][]map[string]bool'] {
+		assert context_independent_type_text(text)
+		fresh := tc.fork_type_parse_view('dep.v', 'dep')
+		expected := fresh.parse_resolution_type(text)
+		assert tc.parse_resolution_type_in_file(text, 'dep.v') == expected
+		assert tc.fn_signature_type('dep.read', text) == expected
+		alias_typ := tc.parse_alias_type('dep.Alias', text)
+		assert alias_typ is Alias
+		assert alias_typ.base_type == fresh.parse_type(text)
+	}
+	for text in ['map', 'array', 'map[string]Item', 'map[Key]int', 'map[string]int ', '[size]int',
+		'[2 + 3]int', '[0x10]int', 'map[string', '[2', '[2]'] {
+		assert !context_independent_type_text(text)
+	}
+}
+
 fn test_parse_resolution_fn_type_preserves_nested_main_type_lock() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)

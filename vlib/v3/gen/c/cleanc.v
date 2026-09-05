@@ -3896,7 +3896,8 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	profile := !isnil(g.tc) && g.tc.verbose
 	mut presw := time.new_stopwatch()
 	g.unused_param_seen = &UnusedParamSeen{}
-	g.reserve_collect_gen_info_maps(no_parallel)
+	defer_fn_signature_registrations := !no_parallel && g.scope_parallel_workers && g.skip_generics && g.incremental_fn_names.len == 0 && par_cgen_prep_enabled()
+	g.reserve_collect_gen_info_maps(no_parallel, defer_fn_signature_registrations)
 	g.precompute_export_lookups()
 	if profile {
 		g.timing_profile('  [ttime]   ci reserve maps  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -3926,7 +3927,6 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	mut preferred_shared_fn_node_indexes := map[string]int{}
 	mut preferred_shared_fn_params := map[string][]bool{}
 	mut fn_signature_registrations := []FnSignatureRegistration{cap: 16_384}
-	defer_fn_signature_registrations := !no_parallel && g.scope_parallel_workers && g.skip_generics && g.incremental_fn_names.len == 0 && par_cgen_prep_enabled()
 	top_level_nodes := g.top_level_nodes()
 	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes, no_parallel)
 	has_parallel_fn_preps := fn_preps.len == top_level_nodes.len
@@ -4203,6 +4203,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		}
 	}
 	if defer_fn_signature_registrations {
+		g.reserve_fn_signature_registrations(fn_signature_registrations)
 		g.apply_fn_signature_registrations(fn_signature_registrations)
 	}
 	if g.has_shared_params {
@@ -4304,7 +4305,7 @@ mut:
 }
 
 @[direct_array_access]
-fn (mut g FlatGen) reserve_collect_gen_info_maps(no_parallel bool) {
+fn (mut g FlatGen) reserve_collect_gen_info_maps(no_parallel bool, deferred_signatures bool) {
 	counts := g.scan_collect_gen_info(no_parallel)
 	mut fn_count := counts.fn_count
 	struct_count := counts.struct_count
@@ -4320,12 +4321,14 @@ fn (mut g FlatGen) reserve_collect_gen_info_maps(no_parallel bool) {
 	}
 	fn_alias_count := u32(fn_count * 7 + 1024)
 	fn_name_count := u32(fn_count * 2 + 1024)
-	g.fn_decl_param_types.reserve(fn_alias_count)
-	g.fn_decl_variadic.reserve(fn_name_count)
+	if !deferred_signatures {
+		g.fn_decl_param_types.reserve(fn_alias_count)
+		g.fn_decl_variadic.reserve(fn_name_count)
+		g.fn_decl_shared_params.reserve(fn_alias_count)
+		g.fn_decl_mut_receivers.reserve(fn_name_count)
+		g.fn_decl_ret_types.reserve(fn_alias_count)
+	}
 	g.fn_decl_variadic_short_counts.reserve(u32(fn_count + 256))
-	g.fn_decl_shared_params.reserve(fn_alias_count)
-	g.fn_decl_mut_receivers.reserve(fn_name_count)
-	g.fn_decl_ret_types.reserve(fn_alias_count)
 	g.fn_decl_nodes_by_name.reserve(fn_name_count)
 	g.fn_decl_nodes_by_short.reserve(u32(fn_count + 256))
 	g.fn_decl_nodes_by_module_short.reserve(fn_name_count)
@@ -10073,6 +10076,33 @@ fn (mut g FlatGen) prepare_fn_signature_registration(name string, full_name stri
 		is_mut: is_mut
 		return_type: rt
 	}
+}
+
+// Size deferred signature maps from the aliases and flags they will receive.
+// Most compilations have few variadics and no shared parameters.
+fn (mut g FlatGen) reserve_fn_signature_registrations(registrations []FnSignatureRegistration) {
+	mut names := u32(0)
+	mut variadics := u32(0)
+	mut shared_names := u32(0)
+	mut mutable := u32(0)
+	for registration in registrations {
+		aliases := u32(registration.alias_count)
+		names += aliases + 1
+		if registration.is_variadic {
+			variadics += aliases + 1
+		}
+		if registration.shared_params.len > 0 {
+			shared_names += aliases
+		}
+		if registration.is_mut {
+			mutable += aliases
+		}
+	}
+	g.fn_decl_param_types.reserve(u32(g.fn_decl_param_types.len) + names)
+	g.fn_decl_ret_types.reserve(u32(g.fn_decl_ret_types.len) + names)
+	g.fn_decl_variadic.reserve(u32(g.fn_decl_variadic.len) + variadics)
+	g.fn_decl_shared_params.reserve(u32(g.fn_decl_shared_params.len) + shared_names)
+	g.fn_decl_mut_receivers.reserve(u32(g.fn_decl_mut_receivers.len) + mutable)
 }
 
 fn (mut g FlatGen) apply_fn_signature_registration_group(registration FnSignatureRegistration, group int) {

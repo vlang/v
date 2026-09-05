@@ -15962,15 +15962,26 @@ fn type_is_fn_value(typ types.Type) bool {
 }
 
 fn type_is_void_pointer(typ types.Type) bool {
-	if typ.name() == 'voidptr' {
-		return true
-	}
 	if typ is types.Pointer {
 		base := if typ.base_type is types.Alias { typ.base_type.base_type } else { typ.base_type }
 		return base is types.Void
 	}
 	if typ is types.Alias {
-		return type_is_void_pointer(typ.base_type)
+		return typ.name == 'voidptr' || type_is_void_pointer(typ.base_type)
+	}
+	// Only named variants can have this spelling without being a pointer.
+	// Formatting containers and function signatures here creates unused strings.
+	if typ is types.Struct {
+		return typ.name == 'voidptr'
+	}
+	if typ is types.Interface {
+		return typ.name == 'voidptr'
+	}
+	if typ is types.Enum {
+		return typ.name == 'voidptr'
+	}
+	if typ is types.SumType {
+		return typ.name == 'voidptr'
 	}
 	return false
 }

@@ -6,6 +6,24 @@ import v3.parser
 import v3.pref
 import v3.types
 
+fn test_void_pointer_predicate_preserves_alias_and_named_type_rules() {
+	void_alias := types.Type(types.Alias{ name: 'Nothing', base_type: types.Type(types.void_) })
+	for typ in [types.Type(types.voidptr_), types.Type(types.Pointer{ base_type: void_alias }),
+		types.Type(types.Alias{ name: 'Opaque', base_type: types.Type(types.voidptr_) }),
+		types.Type(types.Alias{ name: 'voidptr', base_type: types.Type(types.int_) }),
+		types.Type(types.Struct{ name: 'voidptr' }), types.Type(types.Enum{ name: 'voidptr' }),
+		types.Type(types.Interface{ name: 'voidptr' }), types.Type(types.SumType{ name: 'voidptr' })] {
+		assert type_is_void_pointer(typ)
+	}
+	for typ in [types.Type(types.int_), types.Type(types.void_), void_alias,
+		types.Type(types.Pointer{ base_type: types.Type(types.voidptr_) }),
+		types.Type(types.Array{ elem_type: types.Type(types.voidptr_) }),
+		types.Type(types.Map{ key_type: types.Type(types.String{}), value_type: types.Type(types.voidptr_) }),
+		types.Type(types.FnType{ return_type: types.Type(types.voidptr_) })] {
+		assert !type_is_void_pointer(typ)
+	}
+}
+
 fn test_json_helper_scan_requires_legacy_json_module() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
