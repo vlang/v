@@ -16156,6 +16156,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 		.match_stmt {
 			return tc.match_expr_tail_type(id)
 		}
+		.return_stmt {
+			return Type(void_)
+		}
 		.in_expr {
 			return Type(bool_)
 		}
