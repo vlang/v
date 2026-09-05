@@ -17094,7 +17094,9 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			&& !referenced_c_externs[raw_cfn] && !referenced_c_externs[cfn] {
 			continue
 		}
-		if !g.should_emit_c_extern_decl_from_file(cfn, cur_file) {
+		forced_extern := g.c_extern_forced_decls[raw_name] || g.c_extern_forced_decls[raw_cfn]
+			|| g.c_extern_forced_decls[cfn]
+		if !forced_extern && !g.should_emit_c_extern_decl_from_file(cfn, cur_file, cur_module) {
 			continue
 		}
 		if cfn == 'syscall' {
@@ -17487,7 +17489,26 @@ fn (g &FlatGen) c_extern_decl_is_cached_object_fallback(cfn string) bool {
 		&& cfn !in g.inlined_c_declared_fns && cfn !in g.inlined_c_active_macros
 }
 
-fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file string) bool {
+// c_extern_decl_has_no_header mirrors the V1 backend's rule for deciding whether a
+// `fn C.foo` declaration still needs a generated prototype. V3 does not parse C
+// headers, so a V declaration is only ever an approximation of the real signature:
+// `&char` cannot express `const char*`, and a typedef'd `Window` or `Status` cannot
+// be spelled at all. Emitting one next to the header that already declares the
+// symbol is therefore a `conflicting types` error waiting to happen (sokol, stb,
+// fontstash and Xlib all hit it). A prototype is only needed where no header can
+// supply one: the declaring file links a C source/object directly, or its module
+// links a C library without including anything.
+fn (g &FlatGen) c_extern_decl_has_no_header(source_file string, module_name string) bool {
+	if g.files_with_c_includes[source_file] {
+		return false
+	}
+	if g.files_linking_c_sources[source_file] {
+		return true
+	}
+	return g.mods_with_c_libs[module_name] && module_name !in g.mods_with_c_includes
+}
+
+fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file string, module_name string) bool {
 	// builtin/cfns.c.v declares the static vschannel helper supplied by its C header.
 	// A user C.request declaration is unrelated and still needs an extern prototype.
 	if cfn == 'request' && source_file.replace('\\', '/').ends_with('/builtin/cfns.c.v') {
@@ -17508,7 +17529,10 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 			}
 		}
 	}
-	return g.should_emit_c_extern_decl(cfn)
+	if !g.should_emit_c_extern_decl(cfn) {
+		return false
+	}
+	return g.c_extern_decl_has_no_header(source_file, module_name)
 }
 
 // c_system_libc_preamble_declared_fns contains only symbols declared by the fixed
