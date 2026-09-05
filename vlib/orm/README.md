@@ -45,6 +45,9 @@ struct Foo {
   emitted as a properly quoted (and escaped) SQL string literal instead:
   `[default: '\`/dashboard\`']` produces `DEFAULT '/dashboard'`, while
   `[default: 'CURRENT_TIME']` produces `DEFAULT CURRENT_TIME`.
+  Single quotes are doubled, and for MySQL - which also treats backslash as an
+  escape character inside string literals - backslashes are doubled too, so a
+  value like `C:\tmp\new` keeps its backslashes on every dialect.
 
 - `[fkey: 'parent_id']` sets foreign key for an field which holds an array
 - `[references]` or `[references: 'tablename']` or `[references: 'tablename(field_id)']`

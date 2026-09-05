@@ -1362,6 +1362,20 @@ fn parse_table_attr_fields(table Table, attr VAttribute, valid_sql_field_names [
 	return attr_fields
 }
 
+// sql_string_literal renders `value` as a quoted SQL string literal.
+// Doubling single quotes is standard SQL. MySQL additionally treats backslash as
+// an escape character inside string literals, unless the server runs with
+// NO_BACKSLASH_ESCAPES, so a literal backslash has to be doubled there too -
+// otherwise a value like `C:\tmp\new` would be stored with a tab and a newline
+// in it.
+fn sql_string_literal(sql_dialect SQLDialect, value string) string {
+	mut escaped := value
+	if sql_dialect == .mysql {
+		escaped = escaped.replace('\\', '\\\\')
+	}
+	return "'" + escaped.replace("'", "''") + "'"
+}
+
 pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) !string,
 	alternative bool) !string {
 	mut str := 'CREATE TABLE IF NOT EXISTS ${q}${table.name}${q} ('
@@ -1535,7 +1549,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		stmt = '${q}${field_name}${q} ${col_typ}'
 		if defaults && has_default {
 			if default_is_literal {
-				stmt += " DEFAULT '${default_val.replace("'", "''")}'"
+				stmt += ' DEFAULT ${sql_string_literal(sql_dialect, default_val)}'
 			} else if default_val != '' {
 				stmt += ' DEFAULT ${default_val}'
 			} else {
