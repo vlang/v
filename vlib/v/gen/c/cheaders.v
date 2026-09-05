@@ -677,10 +677,31 @@ V_CRT_LINKAGE void * V_CRT_CALL memcpy(void *dest, const void *src, size_t n);
 V_CRT_LINKAGE void * V_CRT_CALL memmove(void *dest, const void *src, size_t n);
 V_CRT_LINKAGE void * V_CRT_CALL memset(void *dest, int ch, size_t n);
 V_CRT_LINKAGE int V_CRT_CALL memcmp(const void *left, const void *right, size_t n);
+// memchr/strchr/strrchr/strstr are the C23 type-generic string functions, and
+// glibc 2.42+ implements them as function-like macros over _Generic, so that a
+// const-qualified argument yields a const-qualified return type. If any include
+// above already pulled in <string.h> (mbedtls/net_sockets.h, netdb.h, dirent.h,
+// ... all do, and gcc 15 defaults to -std=gnu23), the name is already a macro
+// here, and a declaration like
+// `void *memchr(const void *str, int c, size_t n);` expands into the middle of
+// a _Generic expression, which fails to parse:
+// `error: expected identifier or ( before _Generic`.
+// A defined macro also means <string.h> has already declared the real function,
+// so skipping the declaration below loses nothing in that case. The reverse
+// order stays fine as-is: a <string.h> pulled in later by a module header
+// defines the macro after these declarations, which C permits.
+#ifndef memchr
 V_CRT_LINKAGE void * V_CRT_CALL memchr(const void *str, int c, size_t n);
+#endif
+#ifndef strchr
 V_CRT_LINKAGE char * V_CRT_CALL strchr(const char *str, int c);
+#endif
+#ifndef strrchr
 V_CRT_LINKAGE char * V_CRT_CALL strrchr(const char *str, int c);
+#endif
+#ifndef strstr
 V_CRT_LINKAGE char * V_CRT_CALL strstr(const char *haystack, const char *needle);
+#endif
 V_CRT_LINKAGE int V_CRT_CALL fseek(FILE *stream, long offset, int whence);
 V_CRT_LINKAGE isize V_CRT_CALL getline(char **lineptr, size_t *n, FILE *stream);
 #if defined(_WIN32) || defined(_WIN64)
