@@ -13527,7 +13527,20 @@ fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) 
 
 fn same_dir_module_source_files(test_file string, module_name string, prefs &pref.Preferences) []string {
 	dir := os.dir(test_file)
-	all_files := pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target)
+	mut all_files := pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target)
+	// A `subdirs` manifest makes several directories one source module. When a
+	// test file sits beside a source in one of those virtual directories, include
+	// the complete module instead of only its physical-directory siblings.
+	vmod_root := nearest_vmod_root_for_file(test_file)
+	if vmod_root.len > 0 {
+		virtual_module_files := v3_directory_user_files(vmod_root, prefs, false, false) or {
+			[]string{}
+		}
+		real_dir := os.real_path(dir)
+		if virtual_module_files.any(os.real_path(os.dir(it)) == real_dir) {
+			all_files = virtual_module_files.clone()
+		}
+	}
 	mut files := []string{}
 	mut imported_modules := map[string]bool{}
 	if module_name.len > 0 {
