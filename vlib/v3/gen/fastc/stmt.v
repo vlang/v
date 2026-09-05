@@ -2305,7 +2305,10 @@ fn (g &Parser) expression_tokens_are_statement(expression_tokens []FastcExpressi
 			}
 		}
 	}
-	return function_key in g.functions || (name_index == 0 && name in ['print', 'println'])
+	// An on demand monomorphized call is rewritten to its instance name (`take_mono_Payload`),
+	// which is registered in `mono_functions` rather than in `functions`.
+	return function_key in g.functions || function_key in g.mono_functions
+		|| (name_index == 0 && name in ['print', 'println'])
 }
 
 fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_static bool) ! {
