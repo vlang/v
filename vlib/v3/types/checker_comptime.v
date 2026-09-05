@@ -10837,6 +10837,7 @@ fn (mut tc TypeChecker) check_asm_stmt(id flat.NodeId, node flat.Node) {
 	source := tc.source_texts_by_file[file.name] or { return }
 	start := int_max(0, node.pos.offset)
 	end := int_min(source.len, node.pos.end)
+	tc.check_inline_asm_block(id, node, source, start, end)
 	mut line_start := start
 	for line_start < end {
 		line_end := source.index_after('\n', line_start) or { end }

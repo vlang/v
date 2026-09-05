@@ -231,7 +231,7 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 		assert c_source.contains('"mov %[character], \'A\'\\n\\t"'), c_source
 	} $else $if amd64 {
 		assert c_source.contains('"mov %[a], %%rax\\n\\t"'), c_source
-		assert c_source.contains('"movq \\$7, (%[ptr])\\n\\t"'), c_source
+		assert c_source.contains('"movq \$7, (%[ptr])\\n\\t"'), c_source
 		assert c_source.contains('"mov \'A\', %[character]\\n\\t"'), c_source
 		assert c_source.contains('"movq 0(%[base], %[index], 1), %[indexed]\\n\\t"'), c_source
 		assert c_source.contains('".byte 0x27, 0x35, 0x0f, 0x48\\n\\t"'), c_source
@@ -288,4 +288,122 @@ fn test_x86_inline_asm_segment_address_reaches_c_lowering() {
 	assert generate.exit_code == 0, generate.output
 	c_source := os.read_file(c_path) or { panic(err) }
 	assert c_source.contains('"mov %%fs:(%[value]), %[value]\\n\\t"'), c_source
+}
+
+fn generate_inline_asm_c(name string, source string) (os.Result, string) {
+	v3_bin := build_v3_inline_asm()
+	source_path := '${inline_asm_tmp_path(name)}.v'
+	c_path := '${inline_asm_tmp_path(name)}.c'
+	os.write_file(source_path, source) or { panic(err) }
+	result := os.execute('${v3_bin} -os linux -arch amd64 -cc clang -o ${c_path} ${source_path}')
+	c_source := os.read_file(c_path) or { '' }
+	return result, c_source
+}
+
+fn test_raw_asm_templates_reach_c_lowering_unchanged() {
+	generate, c_source := generate_inline_asm_c('raw_program', 'fn main() {
+	mut value := 40
+	increment := 2
+	asm amd64 raw {
+		"addl %[increment], %[value]\\n\\t"
+		; [value] "+r" (value)
+		; [increment] "r" (increment)
+		; cc
+	}
+	println(value)
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"addl %[increment], %[value]\\n\\t"'), c_source
+	assert c_source.contains('[value] "+r" (value)'), c_source
+	assert c_source.contains('[increment] "r" (increment)'), c_source
+	assert c_source.contains('"cc"'), c_source
+	assert !c_source.contains('.intel_syntax'), c_source
+}
+
+fn test_intel_asm_blocks_keep_operand_order_and_switch_syntax() {
+	generate, c_source := generate_inline_asm_c('intel_program', 'fn main() {
+	mut value := 40
+	increment := 2
+	asm amd64 intel {
+		add value, increment
+		; +r (value)
+		; r (increment)
+		; cc
+	}
+	println(value)
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('".intel_syntax noprefix\\n\\t"'), c_source
+	assert c_source.contains('"add %V[value], %V[increment]\\n\\t"'), c_source
+	assert c_source.contains('".att_syntax prefix\\n\\t"'), c_source
+}
+
+fn test_structured_x86_asm_reverses_three_operand_instructions() {
+	generate, c_source := generate_inline_asm_c('reorder_program', 'fn main() {
+	lhs := 6
+	mut result := 0
+	asm amd64 {
+		imul result, lhs, 7
+		; =r (result)
+		; r (lhs)
+		; cc
+	}
+	println(result)
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"imul \$7, %[lhs], %[result]\\n\\t"'), c_source
+}
+
+fn test_intel_asm_rejects_memory_capable_constraints() {
+	generate, _ := generate_inline_asm_c('intel_constraint_program', 'fn main() {
+	value := 1
+	asm amd64 intel {
+		mov eax, value
+		; ; m (value)
+	}
+}
+')
+	assert generate.exit_code != 0, generate.output
+	assert generate.output.contains('constraint `m` is not supported for operands in structured `intel` assembly'), generate.output
+}
+
+fn test_misspelled_asm_registers_are_reported_with_suggestions() {
+	generate, _ := generate_inline_asm_c('register_suggestion_program', 'fn main() {
+	asm amd64 {
+		mov xmm01, xmm1
+	}
+}
+')
+	assert generate.exit_code != 0, generate.output
+	assert generate.output.contains('unknown register `xmm01`; did you mean `xmm1`?'), generate.output
+}
+
+fn test_misspelled_asm_clobbers_are_reported_with_suggestions() {
+	generate, _ := generate_inline_asm_c('clobber_suggestion_program', 'fn main() {
+	asm amd64 {
+		nop
+		; ; ; raxx
+	}
+}
+')
+	assert generate.exit_code != 0, generate.output
+	assert generate.output.contains('unknown clobbered register `raxx`; did you mean `rax`?'), generate.output
+}
+
+fn test_raw_asm_keeps_avx512_mask_syntax_and_clobbers() {
+	generate, c_source := generate_inline_asm_c('avx512_program', 'fn main() {
+	asm amd64 raw {
+		"vpxord %%zmm0, %%zmm0, %%zmm0%{%%k1%}%{z%}\\n\\t"
+		; ; ; zmm0
+		  k1
+	}
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"vpxord %%zmm0, %%zmm0, %%zmm0%{%%k1%}%{z%}\\n\\t"'), c_source
+	assert c_source.contains('"zmm0"'), c_source
+	assert c_source.contains('"k1"'), c_source
 }

@@ -595,3 +595,73 @@ fn test_heap_local_address_expr_copies_selector_from_stack_alias() {
 	assert external_expr == '&p->x'
 	tc.pop_scope()
 }
+
+fn test_inline_asm_x86_reverses_every_structured_operand() {
+	aliases := {
+		'dst': true
+		'src': true
+	}
+	assert lower_c_inline_asm_template('imul dst, src, 7', 'amd64', aliases, true) == 'imul \$7, %[src], %[dst]'
+	assert lower_c_inline_asm_template('mov dst, src', 'amd64', aliases, true) == 'mov %[src], %[dst]'
+}
+
+fn test_inline_asm_intel_templates_keep_destination_first_order() {
+	aliases := {
+		'value':     true
+		'increment': true
+	}
+	assert lower_c_inline_asm_intel_template('add value, increment', aliases) == 'add %V[value], %V[increment]'
+	assert lower_c_inline_asm_intel_template('mov rax, 7', aliases) == 'mov rax, 7'
+	assert lower_c_inline_asm_intel_template('mov rax, [value + rcx*4 + 8]', aliases) == 'mov rax, [%V[value] + rcx*4 + 8]'
+	assert lower_c_inline_asm_intel_template('mov rax, `A`', aliases) == "mov rax, 'A'"
+	assert lower_c_inline_asm_intel_template('loop_start:', aliases) == 'loop_start:'
+}
+
+fn test_inline_asm_raw_templates_are_taken_verbatim() {
+	source := '"addl %[increment], %[value]\\n\\t"
+"nop%{%%k1%}\\n\\t" // trailing comment
+'
+	assert parse_c_inline_asm_raw_templates(source) == [
+		'addl %[increment], %[value]\\n\\t',
+		'nop%{%%k1%}\\n\\t',
+	]
+}
+
+fn test_inline_asm_block_reads_raw_and_intel_modifiers() {
+	raw := parse_c_inline_asm_block('asm amd64 raw {
+	"nop\\n\\t"
+	; [out] "=r" (result)
+	; [lhs] "r" (lhs)
+	; cc
+}') or {
+		assert false
+		return
+	}
+	assert raw.arch == 'amd64'
+	assert raw.is_raw
+	assert !raw.is_intel
+	assert raw.templates == ['nop\\n\\t']
+	assert raw.output.map(it.constraint) == ['=r']
+	assert raw.output.map(it.alias) == ['out']
+	assert raw.input.map(it.alias) == ['lhs']
+	assert raw.clobbered == ['cc']
+
+	intel := parse_c_inline_asm_block('asm amd64 intel {
+	add value, increment
+	; +r (value)
+}') or {
+		assert false
+		return
+	}
+	assert intel.arch == 'amd64'
+	assert intel.is_intel
+	assert !intel.is_raw
+	assert intel.templates == ['add value, increment']
+}
+
+fn test_inline_asm_x86_registers_include_avx512_mask_registers() {
+	assert is_c_inline_asm_x86_register('k0')
+	assert is_c_inline_asm_x86_register('k7')
+	assert !is_c_inline_asm_x86_register('k8')
+	assert !is_c_inline_asm_x86_register('kernel')
+}
