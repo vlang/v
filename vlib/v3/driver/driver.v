@@ -1793,27 +1793,27 @@ fn safe_default_bin_file_name(filename string) string {
 }
 
 struct V3CCompilerFlagOptions {
-	environment_c_flags  []string
-	environment_ld_flags []string
-	target_args          []string
-	link_c_standard      string
-	dependencies         []string
-	warn_args            []string
-	vroot                string
-	target_os            string
-	target_arch          string
-	macos_sdk_root       string
-	pic_flag             string
-	is_prod              bool
-	no_prod_options      bool
-	is_shared            bool
-	parallel_cc          bool
-	large_c_unit         bool
-	limit_inlining       bool
-	explicit_tcc         bool
-	is_c_debug           bool
-	is_o                 bool
-	is_liveshared        bool
+	environment_c_flags []string
+	link_ld_flags       []string
+	target_args         []string
+	link_c_standard     string
+	dependencies        []string
+	warn_args           []string
+	vroot               string
+	target_os           string
+	target_arch         string
+	macos_sdk_root      string
+	pic_flag            string
+	is_prod             bool
+	no_prod_options     bool
+	is_shared           bool
+	parallel_cc         bool
+	large_c_unit        bool
+	limit_inlining      bool
+	explicit_tcc        bool
+	is_c_debug          bool
+	is_o                bool
+	is_liveshared       bool
 }
 
 struct V3CCompilerFlagPlan {
@@ -2353,7 +2353,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	mut after_inputs := options.dependencies.clone()
 	add_v3_default_linker_flags(mut after_inputs, options.target_os, options.is_o)
 	if !options.is_o {
-		after_inputs << options.environment_ld_flags
+		after_inputs << options.link_ld_flags
 	}
 	return V3CCompilerFlagPlan{
 		before_inputs: before_inputs
@@ -2608,7 +2608,7 @@ fn write_v3_crun_cache_marker(bin_file string, build_identity string) ! {
 	}
 }
 
-fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, user_files []string, user_c_flags []string, is_strict bool, enable_globals bool, direct_vsh string) string {
+fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, user_files []string, user_c_flags []string, link_ld_flags []string, is_strict bool, enable_globals bool, direct_vsh string) string {
 	direct_vsh_path := os.real_path(direct_vsh)
 	mut source_paths := map[string]bool{}
 	for file in user_files {
@@ -2639,6 +2639,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 		is_strict.str(),
 		enable_globals.str(),
 		user_c_flags.join('\x00'),
+		link_ld_flags.join('\x00'),
 		source_signature,
 		prefs.vhash,
 		prefs.vcurrent_hash,
@@ -2690,7 +2691,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|test] <file.v|directory> [options]\n' + '  -o <output>                 output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>     target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict  C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|test] <file.v|directory> [options]\n' + '  -o <output>                 output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>     target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict  C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -d <name>                    compile-time define'
 }
 
 fn shared_library_postfix(target_os string) string {
@@ -7655,7 +7656,8 @@ fn v3_driver_option_requires_value(option string) bool {
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
-	return v3_driver_option_requires_value(option) || option in ['-cflags', '-dump-c-flags']
+	return v3_driver_option_requires_value(option) || option in ['-cflags', '-ldflags',
+		'-dump-c-flags']
 }
 
 fn apply_v3_diagnostic_color_option(option string) {
@@ -7737,7 +7739,7 @@ $if !skip_fastc ? {
 		return os.join_path_single(canonical_parent, os.file_name(absolute_path))
 	}
 
-	fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, environment_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool, cache_enabled bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
+	fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, link_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool, cache_enabled bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
 		bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 		cc_sw := time.new_stopwatch()
 		tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
@@ -7841,7 +7843,7 @@ $if !skip_fastc ? {
 		if atomic_arg.len > 0 {
 			final_args << atomic_arg
 		}
-		final_args << environment_ld_flags
+		final_args << link_ld_flags
 		generation_link_cache_key := fastc.fastc_generation_link_cache_key(tcc_path, compile_args, final_args, pieces, units, jobs, cache_enabled)
 		if fastc.fastc_restore_link_cache(generation_link_cache_key, staged_binary) {
 			if bench_phases {
@@ -8115,6 +8117,7 @@ pub fn run(args []string) {
 	mut user_defines := []string{}
 	mut compile_values := map[string]string{}
 	mut user_c_flags := []string{}
+	mut user_ld_flags := []string{}
 	mut should_run := false
 	mut is_direct_vsh := false
 	mut is_test_command := false
@@ -8158,8 +8161,8 @@ pub fn run(args []string) {
 			eprintln('option `${args[i]}` requires a value')
 			exit(1)
 		}
-		if args[i] == '-cflags' && i + 1 >= args.len {
-			eprintln('option `-cflags` requires a value')
+		if args[i] in ['-cflags', '-ldflags'] && i + 1 >= args.len {
+			eprintln('option `${args[i]}` requires a value')
 			exit(1)
 		}
 		if args[i] == 'run' && input_file.len == 0 && !should_run {
@@ -8361,6 +8364,15 @@ pub fn run(args []string) {
 			}
 			user_c_flags << parsed_c_flags
 			i += 2
+		} else if args[i] == '-ldflags' && i + 1 < args.len {
+			// Linker-only options; unlike `-cflags` they are never passed to the
+			// per-object C compilations, only appended to the final link command.
+			parsed_ld_flags := cmdexec.split_args(args[i + 1]) or {
+				eprintln('invalid `-ldflags` value: ${err.msg()}')
+				exit(1)
+			}
+			user_ld_flags << parsed_ld_flags
+			i += 2
 		} else if args[i] in ['-g', '-cg', '-cdebug'] {
 			is_debug = true
 			if args[i] in ['-cg', '-cdebug'] {
@@ -8542,6 +8554,10 @@ pub fn run(args []string) {
 		// `-no-bounds-checking`, matching the established parser contract.
 		user_defines = user_defines.filter(it.all_before('=').trim_space() != 'no_bounds_checking')
 	}
+	// `-ldflags` comes after the ambient `LDFLAGS`, so an explicitly passed option
+	// wins, exactly like V1 orders `env_ldflags` before the `-ldflags` value.
+	mut link_ld_flags := environment_ld_flags.clone()
+	link_ld_flags << user_ld_flags
 	if is_prof && backend !in ['c', 'fastc'] {
 		eprintln('option `-profile` is only supported by the C backend')
 		exit(1)
@@ -9195,7 +9211,7 @@ pub fn run(args []string) {
 			} else {
 				''
 			}
-			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, environment_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads, prefs.building_v && !is_debug && !no_cache && !fastc_bench, mut prestarted_fastc_units)
+			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads, prefs.building_v && !is_debug && !no_cache && !fastc_bench, mut prestarted_fastc_units)
 			if (!silent || show_cc) && fastc_result.command.len > 0 {
 				if c_to_stdout {
 					eprintln('  > ${fastc_result.command}')
@@ -9649,7 +9665,7 @@ pub fn run(args []string) {
 			mut crun_c_flags := user_c_flags.clone()
 			crun_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 			_ = prepare_v3_cache_external_inputs_scoped(mut cache_state, a, prefs, user_files, crun_c_flags, scope_prealloc_stages)
-			crun_build_identity = v3_crun_build_identity(&cache_state, prefs, user_files, crun_c_flags, is_strict, enable_globals_compat, input_file)
+			crun_build_identity = v3_crun_build_identity(&cache_state, prefs, user_files, crun_c_flags, link_ld_flags, is_strict, enable_globals_compat, input_file)
 			if crun_build_identity.len > 0 {
 				os.setenv(v3_crun_build_identity_env, crun_build_identity, true)
 			}
@@ -11243,7 +11259,7 @@ pub fn run(args []string) {
 		}
 		c_flag_plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
 			environment_c_flags: environment_c_flags
-			environment_ld_flags: environment_ld_flags
+			link_ld_flags: link_ld_flags
 			target_args: target_args
 			link_c_standard: link_c_standard
 			dependencies: resolved_c_flags
@@ -11807,7 +11823,7 @@ pub fn run(args []string) {
 			tcc_args << resolved_c_flags
 			add_v3_default_linker_flags(mut tcc_args, prefs.normalized_target_os(), is_o)
 			if !is_o {
-				tcc_args << environment_ld_flags
+				tcc_args << link_ld_flags
 			}
 			if !silent || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}')

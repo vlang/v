@@ -489,6 +489,59 @@ fn main() {
 	assert run.output.trim_space() == '73'
 }
 
+fn test_driver_ldflags_are_appended_to_the_link_command() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_ldflags_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	// `make LDFLAGS=...` bootstraps V with `-ldflags`, so the driver has to accept
+	// the option instead of rejecting it as unknown.
+	library_dir := os.join_path(root, 'link libs')
+	os.mkdir_all(library_dir) or { panic(err) }
+	environment_library_dir := os.join_path(root, 'env libs')
+	os.mkdir_all(environment_library_dir) or { panic(err) }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'module main
+
+fn main() {
+	println(73)
+}
+') or { panic(err) }
+	output := os.join_path(root, 'ldflags_program')
+	mut environment := os.environ()
+	environment['LDFLAGS'] = '-L "${environment_library_dir}"'
+	compile := run_driver_with_environment(v3_bin, ['-silent', '-showcc', '-nocache', '-ldflags',
+		'-L "${library_dir}"', '-o', output, source], environment)
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('unknown option'), compile.output
+	// The ambient LDFLAGS come first, so an explicitly passed `-ldflags` wins, the
+	// same order V1 uses for `env_ldflags` and `-ldflags`.
+	environment_index := compile.output.index(environment_library_dir) or {
+		assert false, compile.output
+		return
+	}
+	option_index := compile.output.index(library_dir) or {
+		assert false, compile.output
+		return
+	}
+	assert environment_index < option_index, compile.output
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '73'
+
+	// The flags really reach the linker, so an unknown library still fails the build.
+	missing_output := os.join_path(root, 'ldflags_missing_library')
+	missing := cmdexec.run(v3_bin, ['-silent', '-nocache', '-ldflags', '-lv3_missing_link_library',
+		'-o', missing_output, source])
+	assert missing.exit_code != 0, missing.output
+	assert !os.exists(missing_output)
+
+	assert_driver_cli_failure(v3_bin, ['-ldflags'], 'option `-ldflags` requires a value')
+}
+
 fn run_driver_with_stdin_file(v3_bin string, args []string, stdin_path string) os.Result {
 	mut process := os.new_process(v3_bin)
 	process.set_args(args)
