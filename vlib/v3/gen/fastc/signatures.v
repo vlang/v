@@ -1483,6 +1483,34 @@ fn fastc_collect_generated_template_references(source string, path string, prefs
 	}
 }
 
+fn fastc_collect_active_body_references(source string, source_file FastcSourceFile, function_name string, prefs &pref.Preferences, available_names map[string]bool, mut references map[string]bool) {
+	file := token.File.unindexed(source_file.path, source.len)
+	mut scan := scanner.new_scanner(prefs, .normal)
+	scan.init(file, source)
+	mut tok := scan.scan()
+	for tok != .eof {
+		if tok == .dollar {
+			mut lookahead := scan
+			if lookahead.scan() == .key_if {
+				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), source_file.path, prefs) or {
+					tok = scan.scan()
+					continue
+				}
+				if selected.source != '' {
+					fastc_collect_active_body_references(selected.source, source_file, function_name, prefs, available_names, mut references)
+				}
+				tok = selected.tok
+				continue
+			}
+			fastc_collect_veb_template_references(source_file, function_name, scan, prefs, available_names, mut references)
+		}
+		if (tok == .name || tok.is_keyword()) && scan.lit in available_names {
+			references[scan.lit] = true
+		}
+		tok = scan.scan()
+	}
+}
+
 fn fastc_referenced_veb_template_path(source_path string, function_name string, explicit_path string) ?string {
 	dir := os.dir(os.real_path(source_path))
 	mut candidates := if explicit_path == '' {
@@ -1591,6 +1619,18 @@ fn fastc_collect_file_references(source_file FastcSourceFile, prefs &pref.Prefer
 			} else if tok == .rcbr {
 				depth--
 			} else if tok == .dollar {
+				mut lookahead := scan
+				if lookahead.scan() == .key_if {
+					selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), source_file.path, prefs) or {
+						tok = scan.scan()
+						continue
+					}
+					if selected.source != '' {
+						fastc_collect_active_body_references(selected.source, source_file, function_name, prefs, available_names, mut function_references)
+					}
+					tok = selected.tok
+					continue
+				}
 				fastc_collect_veb_template_references(source_file, function_name, scan, prefs, available_names, mut function_references)
 			} else if (tok == .name || tok.is_keyword()) && scan.lit in available_names {
 				function_references[scan.lit] = true

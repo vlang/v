@@ -1219,7 +1219,8 @@ fn (mut g Parser) parse_simple_statement() ! {
 				// A `.member` enum-shorthand element needs its target enum type to lower; re-render it
 				// through the argument path. Other values keep their raw streamed form so contextual
 				// re-rendering never disturbs a spawn/thread or already-correct value.
-				is_complex_or := value.contains('({') && (value.contains('return ') || value.contains('for (') || value.contains('switch ('))
+				is_complex_or := value.contains('({') && (value.contains('return ')
+					|| value.contains('for (') || value.contains('switch ('))
 				boxes_variant := g.should_box_variant(element_type, value_type)
 				push_value := if boxes_variant || (g.last_expression.len == 2 && g.last_expression[0].tok == .dot && g.last_expression[1].tok == .name) || is_complex_or {
 					// A `.member` enum-shorthand element, or a complex `or { return … }`-unwrap: the
@@ -1713,7 +1714,7 @@ fn (g &Parser) parallel_rhs_is_option_tuple_or() bool {
 		}
 		prev_end = probe.pos
 		tok = probe.scan()
-		if depth == 0 && probe.src[prev_end..probe.pos].contains('\n') {
+		if depth == 0 && fastc_source_range_has_newline(probe.src, prev_end, probe.pos) {
 			return false
 		}
 	}
@@ -2374,7 +2375,9 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 		// V's platform `int` is i64 on 64-bit targets. C `__typeof__` would keep
 		// integer literals and C-int expressions at 32 bits and silently truncate.
 		declaration_type = fastc_platform_int_c_type
-	} else if expression.starts_with('({') && (expression.contains('for (') || expression.contains('switch (') || expression.contains('return ')) && g.last_expression_type != '' && local_type != '' {
+	} else if expression.starts_with('({')
+		&& (expression.contains('for (') || expression.contains('switch (')
+			|| expression.contains('return ')) && g.last_expression_type != '' && local_type != '' {
 		// TinyCC cannot take `__typeof__` of a statement expression that runs a `for` loop (as an
 		// array `{len:, init:}` initializer lowers to), a `switch` (as a sum-type common-field
 		// read lowers to), or a `return` (an `x or { return … }` propagation), so name the known

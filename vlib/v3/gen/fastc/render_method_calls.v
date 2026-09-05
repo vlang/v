@@ -156,10 +156,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {
 	mut rendered := rendered_expression
 	mut changed := false
-	if flags := g.render_flag_method_expression(tokens, rendered) {
-		rendered = flags.source
-		changed = true
-	}
+	mut flags_processed := false
 	for i := tokens.len - 2; i >= 2; i-- {
 		if tokens[i].tok != .name || tokens[i - 1].tok != .dot || tokens[i + 1].tok != .lpar {
 			continue
@@ -172,6 +169,13 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			continue
 		}
 		receiver_start := fastc_method_receiver_start(tokens, i - 1)
+		if !flags_processed && tokens[i].lit in ['has', 'set', 'clear'] {
+			flags_processed = true
+			if flags := g.render_flag_method_expression(tokens, rendered) {
+				rendered = flags.source
+				changed = true
+			}
+		}
 		receiver_tokens := tokens[receiver_start..i - 1]
 		mut receiver_type := g.infer_expression_type(receiver_tokens) or { '' }
 		if receiver_type == '' {
@@ -217,17 +221,23 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				}
 			}
 		}
-		contains_method_key, _ := g.resolve_method(receiver_type, 'contains')
-		// The generic `array.contains` is a compiler-magic builtin with no emitted body, so it must
-		// still be lowered inline; only a genuine USER-defined `contains` (a non-builtin module)
-		// suppresses the inline. Without this the call links against an undefined builtin__array_contains.
-		mut array_has_user_contains := contains_method_key in g.functions || contains_method_key in g.mono_functions
-		if sig := g.functions[contains_method_key] {
-			if sig.module_name == 'builtin' {
-				array_has_user_contains = false
+		is_array_receiver := tokens[i].lit in ['contains', 'index', 'last_index']
+			&& fastc_trim_pointer_suffix(fastc_normalize_inferred_type(receiver_type)).starts_with('Array_')
+		mut array_has_user_contains := false
+		if tokens[i].lit == 'contains' && is_array_receiver {
+			contains_method_key, _ := g.resolve_method(receiver_type, 'contains')
+			// The generic `array.contains` is a compiler-magic builtin with no emitted body, so it must
+			// still be lowered inline; only a genuine USER-defined `contains` (a non-builtin module)
+			// suppresses the inline. Without this the call links against an undefined builtin__array_contains.
+			array_has_user_contains = contains_method_key in g.functions
+				|| contains_method_key in g.mono_functions
+			if sig := g.functions[contains_method_key] {
+				if sig.module_name == 'builtin' {
+					array_has_user_contains = false
+				}
 			}
 		}
-		if tokens[i].lit == 'contains' && !array_has_user_contains && fastc_trim_pointer_suffix(fastc_normalize_inferred_type(receiver_type)).starts_with('Array_') {
+		if tokens[i].lit == 'contains' && is_array_receiver && !array_has_user_contains {
 			call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 			call_args := fastc_call_arguments(tokens, i + 1, call_end) or { continue }
 			if call_args.len != 1 {
@@ -255,13 +265,14 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 				continue
 			}
-			if fastc_contains(rendered, raw_call) {
-				rendered = fastc_replace(rendered, raw_call, call_source)
+			replaced := fastc_replace(rendered, raw_call, call_source)
+			if replaced.str != rendered.str {
+				rendered = replaced
 				changed = true
 			}
 			continue
 		}
-		if tokens[i].lit in ['index', 'last_index'] && fastc_trim_pointer_suffix(fastc_normalize_inferred_type(receiver_type)).starts_with('Array_') {
+		if tokens[i].lit in ['index', 'last_index'] && is_array_receiver {
 			element_type := g.array_element_type(receiver_type) or { '' }
 			if fastc_trim_pointer_suffix(g.underlying_alias_type(element_type)) == 'string' {
 				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
@@ -300,8 +311,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 					continue
 				}
-				if rendered.contains(raw_call) {
-					rendered = rendered.replace(raw_call, call_source)
+				replaced := fastc_replace(rendered, raw_call, call_source)
+				if replaced.str != rendered.str {
+					rendered = replaced
 					changed = true
 				}
 				continue
@@ -332,15 +344,16 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 					}
 				}
 				mut wait_needle := '${receiver.source}.wait()'
-				if !rendered.contains(wait_needle) {
+				if !fastc_contains(rendered, wait_needle) {
 					raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { '' }
 					raw_needle := '${raw_receiver}.wait()'
-					if raw_receiver != '' && rendered.contains(raw_needle) {
+					if raw_receiver != '' && fastc_contains(rendered, raw_needle) {
 						wait_needle = raw_needle
 					}
 				}
-				if rendered.contains(wait_needle) {
-					rendered = rendered.replace(wait_needle, wait_all)
+				replaced := fastc_replace(rendered, wait_needle, wait_all)
+				if replaced.str != rendered.str {
+					rendered = replaced
 					changed = true
 				}
 				continue
@@ -369,8 +382,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 					wait_needle = raw_needle
 				}
 			}
-			if fastc_contains(rendered, wait_needle) {
-				rendered = fastc_replace(rendered, wait_needle, wait_call)
+			replaced := fastc_replace(rendered, wait_needle, wait_call)
+			if replaced.str != rendered.str {
+				rendered = replaced
 				changed = true
 			}
 			continue
@@ -406,8 +420,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 					continue
 				}
-				if rendered.contains(raw_call) {
-					rendered = rendered.replace(raw_call, call_source)
+				replaced := fastc_replace(rendered, raw_call, call_source)
+				if replaced.str != rendered.str {
+					rendered = replaced
 					changed = true
 				}
 				continue
@@ -435,8 +450,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 					continue
 				}
-				if rendered.contains(raw_call) {
-					rendered = rendered.replace(raw_call, call_source)
+				replaced := fastc_replace(rendered, raw_call, call_source)
+				if replaced.str != rendered.str {
+					rendered = replaced
 					changed = true
 				}
 				continue
@@ -465,8 +481,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 					continue
 				}
-				if rendered.contains(raw_call) {
-					rendered = rendered.replace(raw_call, call_source)
+				replaced := fastc_replace(rendered, raw_call, call_source)
+				if replaced.str != rendered.str {
+					rendered = replaced
 					changed = true
 				}
 				continue
@@ -489,8 +506,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 					continue
 				}
-				if rendered.contains(raw_call) {
-					rendered = rendered.replace(raw_call, call_source)
+				replaced := fastc_replace(rendered, raw_call, call_source)
+				if replaced.str != rendered.str {
+					rendered = replaced
 					changed = true
 				}
 				continue
@@ -519,8 +537,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 					continue
 				}
-				if fastc_contains(rendered, raw_call) {
-					rendered = fastc_replace(rendered, raw_call, call_source)
+				replaced := fastc_replace(rendered, raw_call, call_source)
+				if replaced.str != rendered.str {
+					rendered = replaced
 					changed = true
 				}
 				continue
@@ -559,16 +578,18 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 					raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 						continue
 					}
-					if fastc_contains(rendered, raw_call) {
-						rendered = fastc_replace(rendered, raw_call, call_source)
+					replaced := fastc_replace(rendered, raw_call, call_source)
+					if replaced.str != rendered.str {
+						rendered = replaced
 						changed = true
 					}
 					continue
 				}
 				for separator in ['->', '.'] {
 					marker := '${receiver.source}${separator}${tokens[i].lit}('
-					if fastc_contains(rendered, marker) {
-						rendered = fastc_replace(rendered, marker, '(${receiver.source}${separator}${tokens[i].lit})(')
+					replaced := fastc_replace(rendered, marker, '(${receiver.source}${separator}${tokens[i].lit})(')
+					if replaced.str != rendered.str {
+						rendered = replaced
 						changed = true
 						break
 					}
@@ -596,8 +617,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 				continue
 			}
-			if fastc_contains(rendered, raw_call) {
-				rendered = fastc_replace(rendered, raw_call, disabled_call)
+			replaced := fastc_replace(rendered, raw_call, disabled_call)
+			if replaced.str != rendered.str {
+				rendered = replaced
 				changed = true
 			}
 			continue
@@ -650,7 +672,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				}
 			}
 		}
-		if !rendered.contains(needle) && receiver_start == 0 && rendered.contains(method_marker) {
+		if !fastc_contains(rendered, needle) && receiver_start == 0
+			&& fastc_contains(rendered, method_marker) {
 			// A receiver that renders differently in the boxed method form than in the raw
 			// expression (a sum-type conversion `Node(x).m()`, whose grouping parens differ):
 			// splice at the raw receiver text preceding the call, while the boxed receiver is
@@ -784,8 +807,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 				continue
 			}
-			if fastc_contains(rendered, raw_call) {
-				rendered = fastc_replace(rendered, raw_call, direct_call)
+			replaced := fastc_replace(rendered, raw_call, direct_call)
+			if replaced.str != rendered.str {
+				rendered = replaced
 				changed = true
 				continue
 			}
@@ -817,9 +841,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 	if concatenation := g.render_composed_string_concatenation(tokens) {
 		return concatenation
 	}
-	inferred_type := g.infer_expression_type(tokens) or { '' }
 	return FastcRenderedExpression{
 		source: rendered
-		typ: inferred_type
+		typ: g.infer_expression_type(tokens) or { '' }
 	}
 }

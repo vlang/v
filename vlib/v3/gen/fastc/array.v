@@ -465,7 +465,7 @@ fn (g &Parser) render_nested_array_access_expression(tokens []FastcExpressionTok
 			raw_access := g.render_raw_expression_tokens(access_tokens) or { continue }
 			replacement := g.render_array_access_expression(access_tokens) or { continue }
 			mut needle := raw_access
-			if !rendered.contains(needle) {
+			if !fastc_contains(rendered, needle) {
 				// Pointer-member lowering may already have changed the base from dots to arrows
 				// (`g.a.nodes[i]` -> `g->a->nodes[i]`) before the dynamic-array index is
 				// rewritten. Reconstruct that spelling from the complete member base.
@@ -474,13 +474,14 @@ fn (g &Parser) render_nested_array_access_expression(tokens []FastcExpressionTok
 						continue
 					}
 					pointer_needle := '${member_base}[${index_source}]'
-					if rendered.contains(pointer_needle) {
+					if fastc_contains(rendered, pointer_needle) {
 						needle = pointer_needle
 					}
 				}
 			}
-			if rendered.contains(needle) {
-				rendered = rendered.replace(needle, replacement.source)
+			replaced := fastc_replace(rendered, needle, replacement.source)
+			if replaced.str != rendered.str {
+				rendered = replaced
 				changed = true
 			}
 			continue
@@ -489,12 +490,13 @@ fn (g &Parser) render_nested_array_access_expression(tokens []FastcExpressionTok
 		if close <= i + 1 {
 			continue
 		}
-		if fastc_expression_tokens_contain(tokens[i + 2..close], .dotdot) {
+		if fastc_expression_tokens_contain_range(tokens, i + 2, close, .dotdot) {
 			access_tokens := tokens[i..close + 1]
 			raw_access := g.render_raw_expression_tokens(access_tokens) or { continue }
 			replacement := g.render_array_access_expression(access_tokens) or { continue }
-			if rendered.contains(raw_access) {
-				rendered = rendered.replace(raw_access, replacement.source)
+			replaced := fastc_replace(rendered, raw_access, replacement.source)
+			if replaced.str != rendered.str {
+				rendered = replaced
 				changed = true
 			}
 			continue
@@ -503,7 +505,7 @@ fn (g &Parser) render_nested_array_access_expression(tokens []FastcExpressionTok
 		base_source := g.resolved_root_expression_name(tokens[i].lit)
 		needle := '${base_source}[${index_source}]'
 		replacement := g.render_array_access_expression(tokens[i..close + 1]) or { continue }
-		if rendered.contains(needle) {
+		if fastc_contains(rendered, needle) {
 			// A method receiver may already contain the lowered direct access
 			// `((s).str[i])`; the raw `s[i]` suffix there is a struct member, not
 			// another root access to lower.
@@ -519,7 +521,8 @@ fn (g &Parser) render_nested_array_access_expression(tokens []FastcExpressionTok
 			continue
 		}
 		close := fastc_matching_delimiter(tokens, open, .lsbr, .rsbr) or { continue }
-		if close <= open + 1 || fastc_expression_tokens_contain(tokens[open + 1..close], .dotdot) {
+		if close <= open + 1
+			|| fastc_expression_tokens_contain_range(tokens, open + 1, close, .dotdot) {
 			continue
 		}
 		start := fastc_method_receiver_start(tokens, open)
@@ -529,8 +532,8 @@ fn (g &Parser) render_nested_array_access_expression(tokens []FastcExpressionTok
 		access_tokens := tokens[start..close + 1]
 		replacement := g.render_array_access_expression(access_tokens) or { continue }
 		raw_access := g.render_raw_expression_tokens(access_tokens) or { '' }
-		if raw_access != '' && rendered.contains(raw_access) {
-			rendered = rendered.replace(raw_access, replacement.source)
+		if raw_access != '' && fastc_contains(rendered, raw_access) {
+			rendered = fastc_replace(rendered, raw_access, replacement.source)
 			changed = true
 			continue
 		}
@@ -541,8 +544,9 @@ fn (g &Parser) render_nested_array_access_expression(tokens []FastcExpressionTok
 			continue
 		}
 		needle := '${method_base.source}[${index_source}]'
-		if rendered.contains(needle) {
-			rendered = rendered.replace(needle, replacement.source)
+		replaced := fastc_replace(rendered, needle, replacement.source)
+		if replaced.str != rendered.str {
+			rendered = replaced
 			changed = true
 		}
 	}
@@ -713,7 +717,7 @@ fn (g &Parser) render_leading_member_chain_promotion(tokens []FastcExpressionTok
 		return none
 	}
 	chain_source := g.render_member_receiver(tokens[..chain_end]) or { return none }
-	if !chain_source.contains('__embedded_') {
+	if !fastc_contains(chain_source, '__embedded_') {
 		return none
 	}
 	rest_source := g.render_membership_candidate(tokens[chain_end + 1..], expected_type) or {
@@ -891,6 +895,13 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 			piece = '__'
 		} else if piece == '' {
 			piece = item.tok.str()
+		}
+		if previous_module_separator && item.tok == .name && i + 1 < tokens.len
+			&& tokens[i + 1].tok == .lpar {
+			if compact_name, prefix_len := g.compact_qualified_function_call(tokens, i) {
+				result.go_back(prefix_len)
+				piece = compact_name
+			}
 		}
 		if result.len > 0 && fastc_needs_space(result.last(), piece) && !module_separator && !previous_module_separator {
 			result.write_u8(` `)
@@ -1098,7 +1109,7 @@ fn fastc_collect_referenced_fixed_array_types(source string, mut fixed_array_typ
 			end++
 		}
 		name := source[i..end]
-		if name.starts_with('FixedArray_') && name.contains('_FASTC_ARRAY_OF_') {
+		if name.starts_with('FixedArray_') && fastc_contains(name, '_FASTC_ARRAY_OF_') {
 			if _ := fastc_fixed_array_length(name) {
 				if _ := fastc_fixed_array_element_type(name) {
 					// Key on the same sanitized name the expression renderer uses, so a

@@ -1712,6 +1712,143 @@ fn main() {
 	assert c_source.contains('u32_str((*('), c_source
 }
 
+fn test_selfhost_array_str_helper_uses_compact_method_name() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module formatter
+
+struct Attr {}
+
+fn (value &Attr) str() string {
+	return "attr"
+}
+
+fn format(values []Attr) string {
+	return "\${values}"
+}
+', 'compact_array_element_str.v', prefs) or { panic(err) }
+	assert c_source.contains('string v_fastc_array_str_Array_formatter__Attr'), c_source
+	assert c_source.contains('v_f'), c_source
+	assert !c_source.contains('formatter__Attr_str(&'), c_source
+}
+
+fn test_selfhost_interpolation_uses_compact_str_method_name() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module formatter
+
+enum OS {
+	linux
+}
+
+fn (value OS) str() string {
+	return "linux"
+}
+
+fn format(value OS) string {
+	return "\${value}"
+}
+', 'compact_interpolation_str.v', prefs) or { panic(err) }
+	assert c_source.contains('return v_f'), c_source
+	assert !c_source.contains('formatter__OS_str(value)'), c_source
+}
+
+fn test_selfhost_qualified_function_default_uses_compact_name() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	compare_source := 'module compare
+
+pub fn similarity(left string, right string) f32 {
+	return if left == right { f32(1) } else { f32(0) }
+}
+'
+	util_source := 'module main
+
+import compare
+
+type SimilarityFn = fn (string, string) f32
+
+struct Config {
+	similarity_fn SimilarityFn = compare.similarity
+}
+
+fn main() {
+	_ := Config{}
+}
+'
+	c_source, _, _ := generate_source_files([
+		FastcSourceFile{
+			path: 'compare/compare.v'
+			source: compare_source
+			header: fastc_scan_source_header(compare_source, 'compare/compare.v', prefs) or {
+				panic(err)
+			}
+		},
+		FastcSourceFile{
+			path: 'main.v'
+			source: util_source
+			header: fastc_scan_source_header(util_source, 'main.v', prefs) or {
+				panic(err)
+			}
+		},
+	], map[string]string{}, prefs) or { panic(err) }
+	assert c_source.contains('.similarity_fn=(&v_f'), c_source
+	assert !c_source.contains('.similarity_fn=(compare__similarity)'), c_source
+}
+
+fn test_selfhost_qualified_function_compaction_preserves_same_named_callback() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	compare_source := 'module compare
+
+pub fn similarity(left string, right string) f32 {
+	return if left == right { f32(1) } else { f32(0) }
+}
+'
+	main_source := 'module main
+
+import compare
+
+type SimilarityFn = fn (string, string) f32
+
+fn f(compare__similarity SimilarityFn) f32 {
+	return compare.similarity("a", "b") + compare__similarity("c", "d")
+}
+
+fn callback(left string, right string) f32 {
+	return 2
+}
+
+fn main() {
+	println(f(callback))
+}
+'
+	c_source, _, _ := generate_source_files([
+		FastcSourceFile{
+			path: 'compare/compare.v'
+			source: compare_source
+			header: fastc_scan_source_header(compare_source, 'compare/compare.v', prefs) or {
+				panic(err)
+			}
+		},
+		FastcSourceFile{
+			path: 'main.v'
+			source: main_source
+			header: fastc_scan_source_header(main_source, 'main.v', prefs) or {
+				panic(err)
+			}
+		},
+	], map[string]string{}, prefs) or { panic(err) }
+	assert c_source.contains('compare__similarity(_S("c"),_S("d"))'), c_source
+	assert !c_source.contains('compare__similarity(_S("a"),_S("b"))'), c_source
+}
+
+fn test_fastc_replace_c_call_identifier_skips_quoted_c_literals() {
+	source := r'consume("compare__similarity(\"", compare__similarity(1))'
+	expected := r'consume("compare__similarity(\"", v_f0(1))'
+	assert fastc_replace_c_call_identifier(source, 'compare__similarity', 'v_f0') == expected
+}
+
 fn test_ordinary_nul_codepoint_interpolation_is_rejected() {
 	prefs := pref.new_preferences()
 	mut message := ''
@@ -9371,6 +9508,38 @@ fn test_veb_template_compiles_to_builder() {
 	assert src.contains('for x in xs {'), src
 	assert src.contains('veb.filter_html(x)'), src
 	assert src.contains('veb.tr(ctx.lang.str(), "greeting")'), src
+}
+
+fn test_selected_comptime_branch_collects_veb_template_references() {
+	dir := os.join_path(os.temp_dir(), 'v3_veb_references_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	template_path := os.join_path_single(dir, 'selected.html')
+	os.write_file(template_path, '@if template_only() {\n<p>selected</p>\n}\n') or { panic(err) }
+	main_path := os.join_path_single(dir, 'main.v')
+	source := 'module main
+
+fn handler() string {
+	$if linux {
+		return $veb.html("selected.html")
+	} $else {
+		return ""
+	}
+}
+'
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('linux', pref.host_arch()) or { panic(err) }
+	mut references := map[string]map[string]bool{}
+	mut top_level_references := map[string]bool{}
+	fastc_collect_file_references(FastcSourceFile{
+		path: main_path
+		source: source
+	}, prefs, {
+		'template_only': true
+	}, mut references, mut top_level_references)
+	assert references['handler']['template_only']
 }
 
 fn test_selfhost_match_branch_with_statement_and_multireturn() {
