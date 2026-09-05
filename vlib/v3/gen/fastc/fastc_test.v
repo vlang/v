@@ -1104,6 +1104,31 @@ fn test_selfhost_spawn_nested_wait_statement_and_helper_names() {
 	assert c_source.contains('${void_waiter}(done);'), c_source
 }
 
+fn test_selfhost_spawn_wait_uses_explicit_parameter_type() {
+	$if windows {
+		return
+	}
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn produce() string {
+	return "done"
+}
+
+fn consume(worker thread string) {
+	result := worker.wait()
+	println(result)
+}
+
+fn main() {
+	consume(spawn produce())
+}
+', 'spawn_explicit_parameter.v', prefs) or { panic(err) }
+	assert c_source.contains('string result = (__vf_thread_wait_kstring(worker));'), c_source
+	assert !c_source.contains('void result ='), c_source
+}
+
 fn test_selfhost_spawn_rejects_disabled_callee_before_arguments() {
 	$if windows {
 		return
@@ -6512,6 +6537,28 @@ fn main() {
 	assert empty_initializer_source.contains('for (; i<2; i++) {'), empty_initializer_source
 }
 
+fn test_labeled_break_and_continue_target_the_outer_loop() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn main() {
+	outer: for i := 0; i < 2; i++ {
+		for {
+			if i == 0 {
+				continue outer
+			}
+			break outer
+		}
+	}
+}
+', 'labeled_loop.v', prefs) or { panic(err) }
+	assert c_source.contains('goto __vf_loop_outer_continue;'), c_source
+	assert c_source.contains('__vf_loop_outer_continue:;'), c_source
+	assert c_source.contains('goto __vf_loop_outer_break;'), c_source
+	assert c_source.contains('__vf_loop_outer_break:;'), c_source
+}
+
 fn test_negative_integer_literals_are_lowered_for_unsigned_targets() {
 	prefs := pref.new_preferences()
 	for source in [
@@ -9266,6 +9313,37 @@ fn main() {
 	// The appended value is a method call and must be routed through the argument
 	// renderer, not streamed raw as `c.value()` (an unresolved struct field call).
 	assert c_source.contains('Counter_value(c)'), c_source
+}
+
+fn test_selfhost_append_copies_pointer_return_into_value_array() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Node {
+	value int
+}
+
+fn child() &Node {
+	return &Node{
+		value: 1
+	}
+}
+
+fn append_ref(node &Node) {
+	mut refs := []&Node{}
+	refs << node
+}
+
+fn main() {
+	mut pending := []Node{}
+	pending << child()
+	append_ref(child())
+}
+', 'selfhost_append_pointer_return.v', prefs) or { panic(err) }
+	assert c_source.contains('Node __v0 = (*(child()));'), c_source
+	assert c_source.contains('Node* __v0 = (node);'), c_source
+	assert !c_source.contains('Node* __v0 = (*(node));'), c_source
 }
 
 fn test_orm_where_operator_mapping() {

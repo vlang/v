@@ -1297,6 +1297,9 @@ mut:
 	function_defer_declarations []string
 	loop_defer_block_starts     []int
 	loop_has_breaks             []bool
+	loop_labels                 []string
+	parsing_loop_labels         []string
+	pending_loop_label          string
 	statement_reachable         bool
 	last_expression_type        string
 	last_expression             []FastcExpressionToken
@@ -1652,6 +1655,8 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		deferred_block_starts: []int{}
 		loop_defer_block_starts: []int{}
 		loop_has_breaks: []bool{}
+		loop_labels: []string{}
+		parsing_loop_labels: []string{}
 		statement_reachable: true
 	}
 	// The per-file lookup memos fill up quickly; size them once instead of

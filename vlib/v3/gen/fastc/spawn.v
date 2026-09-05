@@ -33,11 +33,61 @@ fn fastc_name_key(text string) string {
 	return fastc_take_string(mut encoded)
 }
 
+fn fastc_name_key_hex_value(value u8) ?u8 {
+	if value >= `0` && value <= `9` {
+		return u8(value - `0`)
+	}
+	if value >= `a` && value <= `f` {
+		return u8(value - `a` + 10)
+	}
+	return none
+}
+
+fn fastc_decode_name_key(encoded string) ?string {
+	mut decoded := strings.new_builder(encoded.len)
+	mut i := 0
+	for i < encoded.len {
+		if encoded[i] != `_` {
+			decoded.write_u8(encoded[i])
+			i++
+			continue
+		}
+		if i + 2 >= encoded.len {
+			return none
+		}
+		high := fastc_name_key_hex_value(encoded[i + 1])?
+		low := fastc_name_key_hex_value(encoded[i + 2])?
+		decoded.write_u8((high << 4) | low)
+		i += 3
+	}
+	return fastc_take_string(mut decoded)
+}
+
 fn fastc_thread_type_name(value_type string) string {
 	if value_type in ['', 'void'] {
 		return '${fastc_thread_type_prefix}void'
 	}
 	return '${fastc_thread_type_prefix}k${fastc_name_key(value_type)}'
+}
+
+fn fastc_thread_value_type_from_name(thread_type string) ?string {
+	name := thread_type.trim_right('*')
+	if name == '${fastc_thread_type_prefix}void' {
+		return ''
+	}
+	value_prefix := '${fastc_thread_type_prefix}k'
+	if !name.starts_with(value_prefix) {
+		return none
+	}
+	return fastc_decode_name_key(name[value_prefix.len..])
+}
+
+fn (g &Parser) fastc_thread_value_type(thread_type string) ?string {
+	name := thread_type.trim_right('*')
+	if value_type := g.thread_value_types[name] {
+		return value_type
+	}
+	return fastc_thread_value_type_from_name(name)
 }
 
 fn fastc_thread_wait_name(thread_type string) string {
