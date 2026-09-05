@@ -32,6 +32,9 @@ pub mut:
 fn test_map_delete_reclaims_dense_array_tail() {
 	mut m := map[string]string{}
 	raw := unsafe { &MapLayoutForTest(&m) }
+	// Establish backing storage before checking repeated insertion/deletion.
+	m['first'] = 'first'
+	m.delete('first')
 	initial_cap := raw.key_values.cap
 	for i in 0 .. 100 {
 		key := i.str()
@@ -43,6 +46,71 @@ fn test_map_delete_reclaims_dense_array_tail() {
 		assert raw.key_values.cap == initial_cap
 		assert raw.key_values.all_deleted == unsafe { nil }
 	}
+}
+
+fn test_empty_map_defers_storage_until_first_write() {
+	mut m := map[string]int{}
+	raw := unsafe { &MapLayoutForTest(&m) }
+	assert raw.metas == unsafe { nil }
+	assert raw.key_values.keys == unsafe { nil }
+	assert raw.key_values.values == unsafe { nil }
+	assert m['absent'] == 0
+	assert 'absent' !in m
+	assert m.keys().len == 0
+	assert m.values().len == 0
+	m.delete('absent')
+	m.clear()
+	m.reserve(0)
+	mut copy := m.clone()
+	assert raw.metas == unsafe { nil }
+	copy['copy'] += 2
+	assert copy == {
+		'copy': 2
+	}
+	assert m.len == 0
+	m['original']++
+	assert m == {
+		'original': 1
+	}
+	assert copy == {
+		'copy': 2
+	}
+	assert raw.metas != unsafe { nil }
+	unsafe { copy.free() }
+	m.clear()
+	m['reused'] = 3
+	assert m == {
+		'reused': 3
+	}
+	unsafe { m.free() }
+	mut empty := map[string]int{}
+	unsafe { empty.free() }
+}
+
+fn test_lazy_map_small_reservations_and_nested_first_writes() {
+	for n in [0, 1, 2, 7, 8, 9, 100] {
+		mut m := map[int]int{}
+		m.reserve(u32(n))
+		for i in 0 .. 100 {
+			m[i] += i + 1
+		}
+		for i in 0 .. 100 {
+			assert m[i] == i + 1
+		}
+		mut copy := m.clone()
+		m.clear()
+		assert copy.len == 100
+		copy[0]++
+		assert copy[0] == 2
+		assert m.len == 0
+	}
+	mut arrays := map[string][]int{}
+	arrays['new'] << 1
+	arrays['new'] << 2
+	assert arrays['new'] == [1, 2]
+	mut nested := map[string]map[string]int{}
+	nested['outer']['inner'] = 1
+	assert nested['outer']['inner'] == 1
 }
 
 fn test_map_reserve_preallocates_dense_array() {
