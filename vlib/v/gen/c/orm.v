@@ -801,11 +801,11 @@ fn (mut g Gen) write_orm_table_struct(typ ast.Type) {
 		for attr in table_attrs {
 			g.write('(VAttribute){')
 			g.indent++
-			name1 := util.smart_quote(attr.name, false)
+			name1 := util.smart_quote(attr.name, false, attr.name_opaque_pos)
 			name := cescape_nonascii(name1)
 			g.write(' .name = _S("${name}"),')
 			g.write(' .has_arg = ${attr.has_arg},')
-			arg1 := util.smart_quote(attr.arg, false)
+			arg1 := util.smart_quote(attr.arg, false, attr.arg_opaque_pos)
 			arg := cescape_nonascii(arg1)
 			g.write(' .arg = _S("${arg}"),')
 			g.write(' .kind = ${int(attr.kind)},')
@@ -869,11 +869,11 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 				for attr in field.attrs {
 					g.write('(VAttribute){')
 					g.indent++
-					name1 := util.smart_quote(attr.name, false)
+					name1 := util.smart_quote(attr.name, false, attr.name_opaque_pos)
 					name := cescape_nonascii(name1)
 					g.write(' .name = _S("${name}"),')
 					g.write(' .has_arg = ${attr.has_arg},')
-					arg1 := util.smart_quote(attr.arg, false)
+					arg1 := util.smart_quote(attr.arg, false, attr.arg_opaque_pos)
 					arg := cescape_nonascii(arg1)
 					g.write(' .arg = _S("${arg}"),')
 					g.write(' .kind = ${int(attr.kind)},')
@@ -2234,7 +2234,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		g.writeln('_MOV((string[${select_exprs.len}]){')
 		g.indent++
 		for select_expr in select_exprs {
-			expr1 := util.smart_quote(select_expr, false)
+			expr1 := util.smart_quote(select_expr, false, []int{})
 			expr := cescape_nonascii(expr1)
 			g.writeln('_S("${expr}"),')
 		}
@@ -2670,14 +2670,16 @@ fn (g &Gen) get_table_name_by_struct_type(typ ast.Type) string {
 		sym.name.all_before('[')
 	}
 	mut table_name := util.strip_mod_name(base_name)
+	mut table_name_opaque_pos := []int{}
 
 	if attr := info.attrs.find_first('table') {
 		table_name = attr.arg
+		table_name_opaque_pos = attr.arg_opaque_pos.clone()
 	} else {
 		// Keep default ORM table names aligned with unquoted SQL identifiers across DB drivers.
 		table_name = table_name.to_lower()
 	}
-	escaped_table_name := cescape_nonascii(util.smart_quote(table_name, false))
+	escaped_table_name := cescape_nonascii(util.smart_quote(table_name, false, table_name_opaque_pos))
 	return escaped_table_name
 }
 

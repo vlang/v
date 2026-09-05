@@ -15,7 +15,7 @@ const double_quote = 34
 const double_escape = '\\\\'
 
 @[direct_array_access]
-pub fn smart_quote(str string, raw bool) string {
+pub fn smart_quote(str string, raw bool, opaque_pos []int) string {
 	len := str.len
 	if len == 0 {
 		return ''
@@ -37,6 +37,19 @@ pub fn smart_quote(str string, raw bool) string {
 		}
 		if is_pure {
 			return str
+		}
+	}
+	// bytes at these offsets already came out of a \xXX/\uXXXX/\UXXXXXXXX decode (see
+	// scanner.Scanner.string_opaque_pos): they are final, resolved bytes, never the
+	// start of an as-yet-undecoded source escape sequence, even if the byte that follows
+	// them happens to spell out a recognized escape letter (e.g. `n`, `t`, `\`, ...).
+	mut is_opaque := []bool{}
+	if opaque_pos.len > 0 {
+		is_opaque = []bool{len: len}
+		for p in opaque_pos {
+			if p >= 0 && p < len {
+				is_opaque[p] = true
+			}
 		}
 	}
 	// ensure there is enough space for the potential expansion of several \\ or \n
@@ -69,6 +82,13 @@ pub fn smart_quote(str string, raw bool) string {
 			continue
 		}
 		if current == backslash {
+			if is_opaque.len > 0 && is_opaque[pos] {
+				// a final, literal backslash byte from a decoded escape - always \\,
+				// regardless of what follows it.
+				current = 0
+				result.write_string(double_escape)
+				continue
+			}
 			if raw {
 				result.write_string(double_escape)
 				continue
