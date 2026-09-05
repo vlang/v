@@ -164,8 +164,9 @@ fn handle(req fasthttp.HttpRequest, mut out []u8, ws voidptr, mut ctl fasthttp.R
 ## Configuration
 
 `ServerConfig` fields: `family` (`.ip` / `.ip6`), `port`,
-`max_request_buffer_size` (bounds the request head; an oversized head gets `413`),
-`timeout_in_seconds` (read/write deadlines; a stalled request gets `408`),
+`max_request_buffer_size` (bounds the request head; an oversized head gets `431`),
+`max_request_body_size` (defaults to 64 MiB; set to `0` only to allow unlimited buffered
+request bodies), `timeout_in_seconds` (read/write deadlines; a stalled request gets `408`),
 `user_data` (an opaque pointer surfaced as `HttpRequest.user_data`), `handler` /
 `append_handler`, and `make_state`.
 
@@ -185,8 +186,8 @@ handle.shutdown(timeout: 5 * time.second)! // drain in-flight, then stop
 | Platform | Backend | Pooling + pipelining | Append handler | make_state |
 |---|---|---|---|---|
 | Linux   | epoll  | yes | yes | yes |
-| macOS/BSD | kqueue | one request per read | yes | yes |
-| Windows | IOCP   | one request per read | yes | not yet (`run` WIP) |
+| macOS/BSD | kqueue | yes, serial responses | yes | yes |
+| Windows | IOCP   | yes, serial responses | yes | yes |
 
 ## Request-scoped allocation with `-prealloc`
 
