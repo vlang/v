@@ -11429,7 +11429,7 @@ fn (mut g FlatGen) gen_pointer_alias_value_cast_expr(id flat.NodeId, expected ty
 }
 
 fn (g &FlatGen) array_index_type_for_expected_arg(actual types.Type, node flat.Node) types.Type {
-	if spread_index_expected_type_marker !in node.generic_params() {
+	if isnil(node.payload) || spread_index_expected_type_marker !in node.payload.generic_params {
 		return actual
 	}
 	expected := g.expected_expr_type
@@ -14687,13 +14687,20 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			// Enum fields take precedence when a method has the same name. Only a
 			// non-enum selector can be lowered as a bound method value.
 			mut clone_receiver_fn := ''
-			for param in node.generic_params() {
-				if param.starts_with(flat.method_value_clone_receiver_marker_prefix) {
-					clone_receiver_fn = param.all_after(flat.method_value_clone_receiver_marker_prefix)
-					break
+			mut generated_variant_access := false
+			mut borrow_receiver := false
+			if !isnil(node.payload) {
+				params := node.payload.generic_params
+				generated_variant_access = '__v3_generated_variant_access' in params
+				borrow_receiver = flat.method_value_borrow_receiver_marker in params
+				for param in params {
+					if param.starts_with(flat.method_value_clone_receiver_marker_prefix) {
+						clone_receiver_fn = param.all_after(flat.method_value_clone_receiver_marker_prefix)
+						break
+					}
 				}
 			}
-			if enum_selector_qbase.len == 0 && '__v3_generated_variant_access' !in node.generic_params() && g.gen_method_value_closure(id, base_id, base_type0, node.value, flat.method_value_borrow_receiver_marker in node.generic_params(), clone_receiver_fn) {
+			if enum_selector_qbase.len == 0 && !generated_variant_access && g.gen_method_value_closure(id, base_id, base_type0, node.value, borrow_receiver, clone_receiver_fn) {
 				return
 			}
 			// The expected type belongs to the selected field, not to its base. In
