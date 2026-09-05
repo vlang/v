@@ -8224,13 +8224,47 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	if p.tok == .key_volatile || (p.tok == .name && p.lit == 'volatile') {
 		p.next()
 	}
-	// V assembly blocks name their instruction set before `{` (`asm arm64 { ... }`).
+	// V assembly blocks name their instruction set before `{` (`asm arm64 { ... }`), then
+	// optionally the `raw` and `intel` template modifiers (`asm amd64 raw intel { ... }`).
 	mut asm_arch := ''
+	mut is_raw := false
+	mut is_intel := false
 	for p.tok == .name {
+		modifier_pos := p.tok_pos
 		if asm_arch.len == 0 {
 			asm_arch = p.lit
+			p.next()
+			continue
+		}
+		match p.lit {
+			'raw' {
+				if is_raw {
+					p.record_diagnostic('duplicate `raw` assembly modifier', modifier_pos)
+				}
+				is_raw = true
+			}
+			'intel' {
+				if is_intel {
+					p.record_diagnostic('duplicate `intel` assembly modifier', modifier_pos)
+				}
+				is_intel = true
+			}
+			else {}
 		}
 		p.next()
+	}
+	if !p.prefs.is_fmt {
+		if is_intel && asm_arch !in ['amd64', 'i386'] {
+			p.record_diagnostic('the `intel` assembly modifier is only supported for i386 and amd64', asm_pos)
+		}
+		if p.prefs.backend != 'c' {
+			if is_raw {
+				p.record_diagnostic('the `raw` assembly modifier is only supported by the C backend', asm_pos)
+			}
+			if is_intel {
+				p.record_diagnostic('the `intel` assembly modifier is only supported by the C backend', asm_pos)
+			}
+		}
 	}
 	// Consume the asm block while retaining its exact source. Inline assembly uses
 	// a line-sensitive syntax that cannot be reconstructed from the normal token
@@ -8265,6 +8299,13 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 				p.check(.rpar)
 				continue
 			} else if depth == 1 && p.tok != .semicolon {
+				if is_raw && section == 0 && !p.prefs.is_fmt {
+					if p.tok != .string {
+						p.record_diagnostic('raw assembly templates must contain only double-quoted string literals', p.tok_pos)
+					} else if !p.lit.starts_with('"') {
+						p.record_diagnostic('raw assembly templates must use double-quoted string literals', p.tok_pos)
+					}
+				}
 				if p.tok == .name && p.lit == 'memory' {
 					has_memory_clobber = true
 				} else {

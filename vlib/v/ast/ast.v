@@ -2042,6 +2042,43 @@ pub const arm_with_number_register_list = {
 	'r#': 16
 }
 
+// AArch64 shares none of arm32's `r#` register names: its general purpose registers are
+// `x0`-`x30` with 32-bit `w0`-`w30` views, and its SIMD registers are named after the
+// element width they are accessed through.
+// 'sp' takes the x31 encoding slot, 'lr' is x30 and 'fp' is x29.
+pub const arm64_no_number_register_list = {
+	32: ['wsp', 'wzr']
+	64: ['sp', 'lr', 'fp', 'pc', 'xzr', 'nzcv', 'fpcr', 'fpsr', 'daif']
+}
+
+// no comments because maps do not support comments
+// x#/w#: general purpose registers, x31/w31 do not exist ('sp' or 'xzr' take that slot)
+// b#/h#/s#/d#/q#: the 8, 16, 32, 64 and 128 bit views of the SIMD registers
+// v#: a whole SIMD register, addressed as a vector
+// z#/p#: SVE vector and predicate registers, sized here at the 128-bit minimum vector length
+pub const arm64_with_number_register_list = {
+	8:   {
+		'b#': 32
+	}
+	16:  {
+		'h#': 32
+		'p#': 16
+	}
+	32:  {
+		'w#': 31
+		's#': 32
+	}
+	64:  {
+		'x#': 31
+		'd#': 32
+	}
+	128: {
+		'q#': 32
+		'v#': 32
+		'z#': 32
+	}
+}
+
 pub const riscv_no_number_register_list = ['zero', 'ra', 'sp', 'gp', 'tp']
 pub const riscv_with_number_register_list = {
 	'x#': 32
@@ -3200,29 +3237,10 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			return all_registers(mut t, .amd64)
 		}
 		.amd64, .i386 {
-			for bit_size, array in x86_no_number_register_list {
-				for name in array {
-					res[name] = AsmRegister{
-						name: name
-						typ:  t.bitsize_to_type(bit_size)
-						size: bit_size
-					}
-				}
-			}
-			for bit_size, array in x86_with_number_register_list {
-				for name, max_num in array {
-					for i in 0 .. max_num {
-						hash_index := name.index('#') or {
-							panic('all_registers: no hashtag found')
-						}
-						assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
-						res[assembled_name] = AsmRegister{
-							name: assembled_name
-							typ:  t.bitsize_to_type(bit_size)
-							size: bit_size
-						}
-					}
-				}
+			x86 := gen_all_sized_registers(mut t, x86_no_number_register_list,
+				x86_with_number_register_list)
+			for k, v in x86 {
+				res[k] = v
 			}
 		}
 		.arm32 {
@@ -3233,8 +3251,8 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			}
 		}
 		.arm64 {
-			arm64 := gen_all_registers(mut t, arm_no_number_register_list,
-				arm_with_number_register_list, 64)
+			arm64 := gen_all_sized_registers(mut t, arm64_no_number_register_list,
+				arm64_with_number_register_list)
 			for k, v in arm64 {
 				res[k] = v
 			}
@@ -3285,7 +3303,35 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 	return res
 }
 
-// only for arm and riscv because x86 has different sized registers
+// for x86 and arm64, whose register names are grouped by the bit size they address
+fn gen_all_sized_registers(mut t Table, without_numbers map[int][]string, with_numbers map[int]map[string]int) map[string]ScopeObject {
+	mut res := map[string]ScopeObject{}
+	for bit_size, array in without_numbers {
+		for name in array {
+			res[name] = AsmRegister{
+				name: name
+				typ:  t.bitsize_to_type(bit_size)
+				size: bit_size
+			}
+		}
+	}
+	for bit_size, array in with_numbers {
+		for name, max_num in array {
+			hash_index := name.index('#') or { panic('all_registers: no hashtag found') }
+			for i in 0 .. max_num {
+				assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
+				res[assembled_name] = AsmRegister{
+					name: assembled_name
+					typ:  t.bitsize_to_type(bit_size)
+					size: bit_size
+				}
+			}
+		}
+	}
+	return res
+}
+
+// only for arm32 and riscv because x86 and arm64 have different sized registers
 fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[string]int, bit_size int) map[string]ScopeObject {
 	mut res := map[string]ScopeObject{}
 	for name in without_numbers {
