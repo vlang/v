@@ -13202,6 +13202,9 @@ fn (tc &TypeChecker) parse_alias_type(name string, target string) Type {
 
 fn (tc &TypeChecker) parse_alias_target_type(name string, target string) Type {
 	clean := trimmed_space(target)
+	if context_independent_type_text(target) {
+		return tc.parse_type(target)
+	}
 	if clean.starts_with('shared ') {
 		return Type(Pointer{
 			base_type: tc.parse_alias_target_type(name, trimmed_space(clean[7..]))

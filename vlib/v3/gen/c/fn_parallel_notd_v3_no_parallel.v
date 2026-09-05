@@ -989,6 +989,9 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 			g.c_extern_refs = clone_cgen_string_bool_map(g.c_extern_refs)
 			g.c_name_cache = clone_c_name_cache(g.c_name_cache)
 			g.generic_app_cache = clone_generic_app_cache(g.generic_app_cache)
+			// Import resolutions can borrow text and Type payloads from selection.
+			// Discard that memo before its scratch storage is released.
+			g.import_type_cache = &ImportTypeCache{}
 			cgen_worker_scope_free(selection_scope)
 			n_items = g.fn_gen_items.len
 			g.timing_profile('  [ttime]       pm clone out ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')

@@ -6458,7 +6458,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if g.is_json_decode_call(id, target_name) {
+	if g.is_json_decode_target_name(resolved_target_name)
+		|| g.is_json_decode_target_name(target_name) {
 		if !g.is_json_decode_self_call(target_name, resolved_target_name)
 			&& g.gen_json_decode_call(node) {
 			return
@@ -16884,6 +16885,7 @@ fn (mut g FlatGen) forward_decls() {
 		master_tc := g.tc
 		master_c_name_cache := g.c_name_cache
 		master_import_alias_cache := g.import_alias_cache
+		master_import_type_cache := g.import_type_cache
 		master_enum_selector_cache := g.enum_selector_cache
 		master_enum_method_cache := g.enum_method_cache
 		master_qualified_enum_method_cache := g.qualified_enum_method_cache
@@ -16901,6 +16903,7 @@ fn (mut g FlatGen) forward_decls() {
 		// Context-cache entries can own strings allocated by this disposable
 		// batch. Disable them until the master caches are restored.
 		g.import_alias_cache = unsafe { nil }
+		g.import_type_cache = unsafe { nil }
 		g.enum_selector_cache = unsafe { nil }
 		g.enum_method_cache = unsafe { nil }
 		g.qualified_enum_method_cache = unsafe { nil }
@@ -16916,6 +16919,7 @@ fn (mut g FlatGen) forward_decls() {
 		g.tc = master_tc
 		g.c_name_cache = master_c_name_cache
 		g.import_alias_cache = master_import_alias_cache
+		g.import_type_cache = master_import_type_cache
 		g.enum_selector_cache = master_enum_selector_cache
 		g.enum_method_cache = master_enum_method_cache
 		g.qualified_enum_method_cache = master_qualified_enum_method_cache
@@ -18398,7 +18402,7 @@ fn (mut g FlatGen) gen_shared_local_receiver_arg(base_id flat.NodeId) bool {
 }
 
 fn (mut g FlatGen) fn_needs_implicit_veb_ctx(node flat.Node) bool {
-	return g.fn_returns_veb_result(node) && g.fn_has_receiver_param(node)
+	return g.fn_has_receiver_param(node) && g.fn_returns_veb_result(node)
 		&& !g.fn_receiver_type_is_context(node) && !g.fn_has_veb_context_param(node)
 		&& g.type_name_known_in_current_module('Context')
 }
@@ -18413,6 +18417,9 @@ fn (g &FlatGen) is_implicit_veb_ctx_param(pt types.Type) bool {
 }
 
 fn (g &FlatGen) call_has_implicit_veb_ctx(names []string) bool {
+	if g.tc.fn_implicit_veb_ctx.len == 0 {
+		return false
+	}
 	for name in names {
 		if name.len == 0 {
 			continue
@@ -18657,9 +18664,8 @@ fn (mut g FlatGen) fn_node_param_types(node flat.Node, module_name string) []typ
 }
 
 fn (mut g FlatGen) fn_node_param_types_from_signatures(node flat.Node, module_name string, explicit_params int) ?[]types.Type {
-	dotted_name := dotted_fn_name_in_module(module_name, node.value)
-	cname := g.fn_c_name_in_module(module_name, node.value)
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
+		dotted_name := dotted_fn_name_in_module(module_name, node.value)
 		if params := g.matching_fn_param_types(dotted_name, explicit_params) {
 			return params
 		}
@@ -18669,7 +18675,7 @@ fn (mut g FlatGen) fn_node_param_types_from_signatures(node flat.Node, module_na
 				return params
 			}
 		}
-		if params := g.matching_fn_param_types(cname, explicit_params) {
+		if params := g.matching_fn_param_types(g.fn_c_name_in_module(module_name, node.value), explicit_params) {
 			return params
 		}
 		if params := g.matching_fn_param_types(node.value, explicit_params) {
@@ -18692,6 +18698,7 @@ fn (mut g FlatGen) fn_node_param_types_from_signatures(node flat.Node, module_na
 			return params
 		}
 	}
+	dotted_name := dotted_fn_name_in_module(module_name, node.value)
 	if dotted_name != node.value {
 		if params := g.matching_fn_param_types(dotted_name, explicit_params) {
 			return params
@@ -18703,6 +18710,7 @@ fn (mut g FlatGen) fn_node_param_types_from_signatures(node flat.Node, module_na
 			}
 		}
 	}
+	cname := g.fn_c_name_in_module(module_name, node.value)
 	if cname != node.value && cname != c_value {
 		if params := g.matching_fn_param_types(cname, explicit_params) {
 			return params

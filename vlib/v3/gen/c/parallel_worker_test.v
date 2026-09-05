@@ -20,6 +20,19 @@ fn test_parallel_dispatch_worker_owns_checker_outside_scoped_batching() {
 	assert w.tc != tc
 }
 
+fn test_implicit_veb_context_call_lookup_accepts_source_and_c_names() {
+	g, mut tc := parallel_worker_test_gen(false)
+	assert !g.call_has_implicit_veb_ctx(['', 'app.index'])
+	tc.fn_implicit_veb_ctx['app.index'] = true
+	assert g.call_has_implicit_veb_ctx(['missing', 'app.index'])
+	assert !g.call_has_implicit_veb_ctx(['missing'])
+	tc.fn_implicit_veb_ctx.clear()
+	tc.fn_implicit_veb_ctx['app__index'] = true
+	assert g.call_has_implicit_veb_ctx(['', 'app.index'])
+	tc.fn_implicit_veb_ctx['app__index'] = false
+	assert !g.call_has_implicit_veb_ctx(['app.index'])
+}
+
 fn test_parallel_dispatch_worker_shares_checker_as_scoped_accumulator() {
 	g, tc := parallel_worker_test_gen(true)
 	w := g.new_parallel_dispatch_worker(1)

@@ -4886,6 +4886,13 @@ fn (c &CallCollector) expr_contains_call_or_index(id flat.NodeId) bool {
 	if int(id) < 0 {
 		return false
 	}
+	root := c.a.node(id)
+	if root.kind in [.call, .index] {
+		return true
+	}
+	if root.children_count == 0 {
+		return false
+	}
 	mut stack := [id]
 	for stack.len > 0 {
 		cur_id := stack.pop()
@@ -4905,6 +4912,13 @@ fn (c &CallCollector) expr_contains_call_or_index(id flat.NodeId) bool {
 
 fn (c &CallCollector) expr_contains_call(id flat.NodeId) bool {
 	if int(id) < 0 {
+		return false
+	}
+	root := c.a.node(id)
+	if root.kind == .call {
+		return true
+	}
+	if root.children_count == 0 {
 		return false
 	}
 	mut stack := [id]
@@ -6172,31 +6186,27 @@ fn (c &CallCollector) collect_top_level_selector_fallback(base &flat.Node, metho
 }
 
 fn (c &CallCollector) collect_lowered_join_path_single(call &flat.Node, resolved_call string, mut calls []string) {
-	mut call_names := []string{}
-	if resolved_call.len > 0 {
-		call_names << resolved_call
+	if call.children_count <= 2 {
+		return
 	}
-	if call.children_count > 0 {
+	mut is_join_path := resolved_call in ['join_path', 'os.join_path']
+	if !is_join_path {
 		callee_id := c.a.child(call, 0)
 		if int(callee_id) >= 0 {
 			callee := c.a.node(callee_id)
-			if callee.kind == .ident && callee.value.len > 0 {
-				call_names << callee.value
-			} else if callee.kind == .selector && callee.value.len > 0 && callee.children_count > 0 {
+			if callee.kind == .ident {
+				is_join_path = callee.value in ['join_path', 'os.join_path']
+			} else if callee.kind == .selector && callee.value == 'join_path'
+				&& callee.children_count > 0 {
 				base_id := c.a.child(callee, 0)
 				if int(base_id) >= 0 {
 					base := c.a.node(base_id)
-					if base.kind == .ident && base.value.len > 0 {
-						call_names << '${base.value}.${callee.value}'
-					}
+					is_join_path = base.kind == .ident && base.value == 'os'
 				}
 			}
 		}
 	}
-	if !call_names.any(it == 'join_path' || it == 'os.join_path') {
-		return
-	}
-	if call.children_count <= 2 {
+	if !is_join_path {
 		return
 	}
 	for i in 1 .. call.children_count {
@@ -8242,15 +8252,6 @@ fn (c &CallCollector) collect_omitted_params_default_calls(call &flat.Node, call
 	}
 	info := c.fn_decls[name] or { c.fn_decls[callee_name] or { return } }
 	fn_node := c.a.node(info.node_id)
-	mut param_type_texts := []string{}
-	for i in 0 .. fn_node.children_count {
-		p := c.a.child_node(fn_node, i)
-		// Skip the receiver parameter (op == .dot): it is the selector base, not a
-		// positional call argument.
-		if p.kind == .param && p.op != .dot {
-			param_type_texts << p.typ
-		}
-	}
 	// Count only positional arguments. Trailing named params
 	// (`compress(data, level: 3)`) are `field_init` children of the call, not
 	// positional arguments; counting them would make the trailing params struct
@@ -8263,12 +8264,19 @@ fn (c &CallCollector) collect_omitted_params_default_calls(call &flat.Node, call
 		}
 		provided++
 	}
-	if provided >= param_type_texts.len {
-		return
-	}
-	fn_imports := c.imports(info.import_context)
-	for i in provided .. param_type_texts.len {
-		c.collect_struct_default_calls_for_type(param_type_texts[i], info.module, fn_imports, mut calls)
+	// Visit only omitted parameter types; ordinary calls need no temporary
+	// signature array. Receiver and named-argument handling stays independent.
+	mut param_index := 0
+	for i in 0 .. fn_node.children_count {
+		p := c.a.child_node(fn_node, i)
+		// The receiver (op == .dot) is the selector base, not a positional argument.
+		if p.kind != .param || p.op == .dot {
+			continue
+		}
+		if param_index >= provided {
+			c.collect_struct_default_calls_for_type(p.typ, info.module, c.imports(info.import_context), mut calls)
+		}
+		param_index++
 	}
 }
 

@@ -1712,6 +1712,7 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.has_goto_nodes = false
 }
 
+@[direct_array_access]
 fn (mut tc TypeChecker) fill_direct_parent_edges(a &flat.FlatAst) {
 	mut fn_cost := 0
 	for parent_idx, node in a.nodes {

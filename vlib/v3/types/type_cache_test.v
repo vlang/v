@@ -73,6 +73,30 @@ fn test_parse_thread_type_qualifies_concrete_payloads() {
 	assert tc.parse_type('thread T').name() == 'thread T'
 }
 
+fn test_alias_target_parsing_preserves_declaration_module() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'caller'
+	tc.cur_file = 'caller.v'
+	tc.type_alias_modules['dep.Alias'] = 'dep'
+	tc.structs['caller.Item'] = []StructField{}
+	tc.structs['dep.Item'] = []StructField{}
+	for text in ['int', 'string', ' &[]u8 ', '?int', '![]string', 'shared int', 'Item', '&Item'] {
+		fresh := tc.fork_type_parse_view('caller.v', 'dep')
+		expected := if text == 'shared int' {
+			Type(Pointer{ base_type: Type(int_) })
+		} else {
+			fresh.parse_type(text)
+		}
+		parsed := tc.parse_alias_type('dep.Alias', text)
+		assert parsed is Alias
+		assert parsed.name == 'dep.Alias'
+		assert parsed.base_type == expected
+	}
+	assert tc.parse_alias_target_type('dep.Alias', 'Item').name() == 'dep.Item'
+	assert tc.cur_module == 'caller'
+}
+
 fn test_parse_resolution_fn_type_preserves_nested_main_type_lock() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
