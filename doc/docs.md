@@ -9066,6 +9066,12 @@ without AT&T's `%` prefix. Memory-capable constraints such as `m` are rejected b
 can still format those placeholders with AT&T addressing. In a `raw intel` block, the template is
 passed through unchanged, so use the selected C compiler's explicit operand modifiers.
 
+`%V` is the only operand modifier that omits the `%` prefix, and it always prints the **64-bit**
+register, whatever the V type of the operand is. A named operand therefore cannot share an
+instruction with a narrower hard register - `mov eax, some_int` would reach the assembler as
+`mov eax, rcx` - so V rejects that at compile time. Use the 64-bit register (`rax`) or a
+`raw intel` block, where you can pick the width yourself with `%k`, `%w` and friends.
+
 The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the C backend. MSVC
 does not support this form of inline assembly on 64-bit targets, and individual instructions or
 constraints can still depend on the selected C compiler and target architecture.
