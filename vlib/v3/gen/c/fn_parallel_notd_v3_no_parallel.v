@@ -946,10 +946,10 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 		g.register_interface_strings()
 		g.tc = master_tc
 		cgen_worker_scope_leave(selection_scope)
-		if !retain_selection && g.parallel_worker_scopes.len > 0 {
+		if g.parallel_worker_scopes.len > 0 {
 			// Candidate collection records helper scopes while selection_scope is
-			// current. Re-own the list before releasing that arena; the scopes it
-			// points to remain live until final cgen cleanup.
+			// current. The list must outlive every arena it names, including a
+			// retained selection_scope freed partway through final cgen cleanup.
 			g.parallel_worker_scopes = g.parallel_worker_scopes.clone()
 		}
 		if retain_selection {

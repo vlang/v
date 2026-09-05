@@ -3,6 +3,7 @@ module c
 import v3.flat
 import v3.pref
 import v3.types
+import v3.workers
 
 fn parallel_worker_test_gen(scoped bool) (&FlatGen, &types.TypeChecker) {
 	mut ast := &flat.FlatAst{}
@@ -322,6 +323,25 @@ fn test_scoped_pre_dispatch_preserves_direct_array_access_flag() {
 	assert g.fn_gen_items[0].direct_array_access
 	assert g.fn_gen_items[0].ignore_overflow
 	g.release_scoped_fn_items()
+}
+
+fn test_retained_selection_scope_does_not_own_scope_list() {
+	$if prealloc {
+		mut g, mut tc := parallel_worker_test_gen(true)
+		tc.building_v_fast = true
+		g.a.worker_pool = workers.new(8)
+		defer { g.a.worker_pool.close() }
+		for _ in 0 .. 2048 {
+			g.a.add_node(flat.Node{ kind: .module_decl, value: 'main' })
+		}
+		g.prepare_pre_dispatch_master()
+		assert g.parallel_worker_scopes.len > 1
+		for scope in g.parallel_worker_scopes {
+			assert !cgen_scope_owns(scope, g.parallel_worker_scopes.data)
+		}
+		g.free_parallel_worker_scopes()
+		assert g.parallel_worker_scopes.len == 0
+	}
 }
 
 fn test_parallel_generic_app_cache_uses_frozen_base_and_private_overlays() {
