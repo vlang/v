@@ -1279,7 +1279,14 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 		p.register_auto_import('sync')
 	}
 	rec_start_pos := p.tok.pos()
-	rec.name = p.check_name()
+	is_type_only_receiver := p.tok.kind == .name && p.peek_tok.kind == .rpar
+	if is_type_only_receiver {
+		// Keep type-only receivers in sync with V3. The ignored binding still needs to be
+		// present in the method signature so dispatch and code generation receive argument 0.
+		rec.name = '_'
+	} else {
+		rec.name = p.check_name()
+	}
 	if !rec.is_mut {
 		rec.is_mut = p.tok.kind == .key_mut
 		if rec.is_mut {
