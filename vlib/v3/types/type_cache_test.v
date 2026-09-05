@@ -52,7 +52,7 @@ fn test_parse_resolution_type_in_file_does_not_require_an_active_file_cursor() {
 	assert tc.parse_resolution_type_in_file('token.Pos', 'parser.v').name() == 'v3.token.Pos'
 	tc.fn_type_files['parser.read'] = 'parser.v'
 	tc.fn_type_modules['parser.read'] = 'parser'
-	for text in ['int', 'bool', 'string', 'voidptr', '&[]u8', '?int', '![]string'] {
+	for text in ['', '!', '?', 'int', 'bool', 'string', 'voidptr', '&[]u8', '?int', '![]string'] {
 		fresh := tc.fork_type_parse_view('parser.v', 'parser')
 		expected := fresh.parse_resolution_type(text)
 		assert tc.parse_resolution_type_in_file(text, 'parser.v') == expected

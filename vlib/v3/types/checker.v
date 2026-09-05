@@ -5011,6 +5011,9 @@ pub fn (tc &TypeChecker) parse_resolution_type_in_file(typ string, file string) 
 // to a declaration's imports. Keep them out of the checker-view constructor.
 @[manualfree]
 fn context_independent_type_text(typ string) bool {
+	if typ in ['', '!', '?'] {
+		return true
+	}
 	mut start := 0
 	for start < typ.len {
 		if typ[start] in [`&`, `?`, `!`] {
