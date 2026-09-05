@@ -211,6 +211,37 @@ pub:
 // analogous note).
 pub struct HandshakeDoneFrame {}
 
+// NewConnectionIdFrame represents a NEW_CONNECTION_ID frame (type 0x18, RFC
+// 9000 §19.15): the sender offering an additional connection ID (and its
+// associated stateless-reset token, see generate_stateless_reset_token in
+// stateless_reset.v) for the peer to use. `retire_prior_to` is validated
+// against `sequence_number` (§19.15's "MUST be less than or equal to"
+// requirement) by both parse_frame and encode_new_connection_id_frame;
+// every other requirement in that section (the zero-length-DCID
+// prohibition, duplicate-sequence-number handling) needs connection state
+// parse_frame doesn't have, so -- same division as HandshakeDoneFrame's
+// role check above -- it is deferred to the caller.
+pub struct NewConnectionIdFrame {
+pub:
+	sequence_number       u64
+	retire_prior_to       u64
+	connection_id         []u8
+	stateless_reset_token []u8 // always exactly 16 bytes (RFC 9000 §19.15)
+}
+
+// RetireConnectionIdFrame represents a RETIRE_CONNECTION_ID frame (type
+// 0x19, RFC 9000 §19.16): the sender will no longer use the connection ID
+// with this sequence number. Every normative check in §19.16 (sequence
+// number not greater than any previously sent, not equal to the DCID of
+// the packet carrying this frame, not sent by an endpoint using a
+// zero-length CID) needs connection state parse_frame doesn't have, so --
+// same division as HandshakeDoneFrame's role check above -- it is deferred
+// to the caller.
+pub struct RetireConnectionIdFrame {
+pub:
+	sequence_number u64
+}
+
 pub type QuicFrame = AckFrame
 	| ConnectionCloseFrame
 	| CryptoFrame
@@ -219,9 +250,11 @@ pub type QuicFrame = AckFrame
 	| MaxDataFrame
 	| MaxStreamDataFrame
 	| MaxStreamsFrame
+	| NewConnectionIdFrame
 	| PaddingFrame
 	| PingFrame
 	| ResetStreamFrame
+	| RetireConnectionIdFrame
 	| StopSendingFrame
 	| StreamDataBlockedFrame
 	| StreamFrame
@@ -244,6 +277,8 @@ const frame_type_data_blocked = u64(0x14)
 const frame_type_stream_data_blocked = u64(0x15)
 const frame_type_streams_blocked_bidi = u64(0x16)
 const frame_type_streams_blocked_uni = u64(0x17)
+const frame_type_new_connection_id = u64(0x18)
+const frame_type_retire_connection_id = u64(0x19)
 const frame_type_connection_close_transport = u64(0x1c)
 const frame_type_connection_close_application = u64(0x1d)
 const frame_type_handshake_done = u64(0x1e)
@@ -313,6 +348,14 @@ pub fn parse_frame(buf []u8) !(QuicFrame, int) {
 
 	if typ == frame_type_streams_blocked_bidi || typ == frame_type_streams_blocked_uni {
 		return parse_streams_blocked_frame(buf, typ_len, typ == frame_type_streams_blocked_uni)
+	}
+
+	if typ == frame_type_new_connection_id {
+		return parse_new_connection_id_frame(buf, typ_len)
+	}
+
+	if typ == frame_type_retire_connection_id {
+		return parse_retire_connection_id_frame(buf, typ_len)
 	}
 
 	if typ == frame_type_connection_close_transport
@@ -598,6 +641,60 @@ fn parse_streams_blocked_frame(buf []u8, start int, is_uni bool) !(QuicFrame, in
 	}), start + n1
 }
 
+fn parse_new_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
+	mut offset := start
+	sequence_number, n1 := decode_varint(buf[offset..])!
+	offset += n1
+	retire_prior_to, n2 := decode_varint(buf[offset..])!
+	offset += n2
+
+	// RFC 9000 §19.15: "The value in the Retire Prior To field MUST be
+	// less than or equal to the value in the Sequence Number field.
+	// Receiving a value in the Retire Prior To field that is greater than
+	// that in the Sequence Number field MUST be treated as a connection
+	// error of type FRAME_ENCODING_ERROR."
+	if retire_prior_to > sequence_number {
+		return error('quic: NEW_CONNECTION_ID frame: retire_prior_to ${retire_prior_to} exceeds sequence_number ${sequence_number} (RFC 9000 §19.15)')
+	}
+
+	if offset >= buf.len {
+		return error('quic: NEW_CONNECTION_ID frame: missing Length field')
+	}
+	length := int(buf[offset])
+	offset += 1
+	// RFC 9000 §19.15: "Values less than 1 and greater than 20 are invalid
+	// and MUST be treated as a connection error of type
+	// FRAME_ENCODING_ERROR." 20 is quic_v1_max_cid_len (header.v).
+	if length < 1 || length > quic_v1_max_cid_len {
+		return error('quic: NEW_CONNECTION_ID frame: connection ID length ${length} is outside the valid 1-${quic_v1_max_cid_len} range (RFC 9000 §19.15)')
+	}
+	if offset + length > buf.len {
+		return error('quic: NEW_CONNECTION_ID frame: declares a ${length}-byte connection ID exceeding the remaining buffer')
+	}
+	connection_id := buf[offset..offset + length].clone()
+	offset += length
+
+	if offset + 16 > buf.len {
+		return error('quic: NEW_CONNECTION_ID frame: missing 16-byte stateless reset token')
+	}
+	stateless_reset_token := buf[offset..offset + 16].clone()
+	offset += 16
+
+	return QuicFrame(NewConnectionIdFrame{
+		sequence_number:       sequence_number
+		retire_prior_to:       retire_prior_to
+		connection_id:         connection_id
+		stateless_reset_token: stateless_reset_token
+	}), offset
+}
+
+fn parse_retire_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
+	sequence_number, n1 := decode_varint(buf[start..])!
+	return QuicFrame(RetireConnectionIdFrame{
+		sequence_number: sequence_number
+	}), start + n1
+}
+
 fn parse_connection_close_frame(buf []u8, start int, is_application_error bool) !(QuicFrame, int) {
 	mut offset := start
 	error_code, n1 := decode_varint(buf[offset..])!
@@ -840,6 +937,38 @@ pub fn encode_streams_blocked_frame(direction StreamDirection, maximum_streams u
 	return out
 }
 
+// encode_new_connection_id_frame serializes a NEW_CONNECTION_ID frame.
+// Mirrors parse_new_connection_id_frame's exact validation (RFC 9000
+// §19.15) so a caller cannot construct a frame this same module's own
+// parser would then reject.
+pub fn encode_new_connection_id_frame(sequence_number u64, retire_prior_to u64, connection_id []u8, stateless_reset_token []u8) ![]u8 {
+	if retire_prior_to > sequence_number {
+		return error('quic: encode_new_connection_id_frame: retire_prior_to ${retire_prior_to} exceeds sequence_number ${sequence_number} (RFC 9000 §19.15)')
+	}
+	if connection_id.len < 1 || connection_id.len > quic_v1_max_cid_len {
+		return error('quic: encode_new_connection_id_frame: connection ID length ${connection_id.len} is outside the valid 1-${quic_v1_max_cid_len} range (RFC 9000 §19.15)')
+	}
+	if stateless_reset_token.len != 16 {
+		return error('quic: encode_new_connection_id_frame: stateless reset token must be exactly 16 bytes, got ${stateless_reset_token.len}')
+	}
+	mut out := encode_varint(frame_type_new_connection_id)!
+	out << encode_varint(sequence_number)!
+	out << encode_varint(retire_prior_to)!
+	out << u8(connection_id.len)
+	out << connection_id
+	out << stateless_reset_token
+	return out
+}
+
+// encode_retire_connection_id_frame serializes a RETIRE_CONNECTION_ID
+// frame. See RetireConnectionIdFrame's doc comment for which §19.16
+// requirements are the caller's responsibility rather than this function's.
+pub fn encode_retire_connection_id_frame(sequence_number u64) ![]u8 {
+	mut out := encode_varint(frame_type_retire_connection_id)!
+	out << encode_varint(sequence_number)!
+	return out
+}
+
 // encode_connection_close_frame serializes a CONNECTION_CLOSE frame.
 // `frame_type` is ignored (the Frame Type field is OMITTED from the wire
 // entirely, not encoded as a zero value) when `is_application_error` is
@@ -863,4 +992,14 @@ pub fn encode_connection_close_frame(is_application_error bool, error_code u64, 
 	out << encode_varint(u64(reason_bytes.len))!
 	out << reason_bytes
 	return out
+}
+
+// encode_handshake_done_frame serializes a HANDSHAKE_DONE frame (type
+// 0x1e, RFC 9000 §19.20) -- no fields, a bare frame-type varint. Only a
+// server ever sends one (see HandshakeDoneFrame's own doc comment on the
+// decode side); this encoder itself has no role awareness to enforce
+// that, matching this file's established division of labor (role checks
+// live on the caller, e.g. QuicConn).
+pub fn encode_handshake_done_frame() ![]u8 {
+	return encode_varint(frame_type_handshake_done)
 }

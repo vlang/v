@@ -335,7 +335,7 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 	sh_datagram := build_fake_long_header_packet(.initial, c.scid, server_initial_scid, 0, sh_payload, c.initial_keys_server)!
 	result1 := c.poll(sh_datagram.bytes, now)!
 	assert result1.events.len == 0
-	assert c.handshake.state() == .wait_encrypted_extensions
+	assert c.client_handshake().state() == .wait_encrypted_extensions
 	now += 10
 
 	// --- Deliver EncryptedExtensions as a real, protected Handshake packet ---
@@ -348,14 +348,15 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 	ee_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 0, ee_payload, hs_keys_server)!
 	result2 := c.poll(ee_datagram.bytes, now)!
 	assert result2.events.len == 0
-	assert c.handshake.state() == .wait_certificate
+	assert c.client_handshake().state() == .wait_certificate
 	now += 10
 
 	// --- Certificate + CertificateVerify: direct API, not over the wire (see doc comment below) ---
 	server_der := conn_test_pem_to_der(conn_test_cert_pem)
 	cert_framed := conn_test_build_fake_certificate(server_der)!
 	cert_msg, _ := parse_handshake_message(cert_framed)!
-	c.handshake.process_certificate_or_request(cert_msg, cert_framed) or {
+	mut c_hs := c.client_handshake()
+	c_hs.process_certificate_or_request(cert_msg, cert_framed) or {
 		// Expected: this repo's test cert is self-signed, so trust
 		// validation fails -- matches tls13_handshake_test.v's own
 		// documented, accepted limitation. The transcript is still
@@ -363,28 +364,28 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 	}
 	real_chain := mbedtls.build_certificate_chain([server_der])!
 	unsafe {
-		c.handshake.verified_chain = &VerifiedCertificateChain{
+		c.client_handshake().verified_chain = &VerifiedCertificateChain{
 			chain: real_chain
 		}
 	}
-	c.handshake.certificate_transcript_hash = c.handshake.transcript_hash()
-	c.handshake.state = .wait_certificate_verify
+	c.client_handshake().certificate_transcript_hash = c.client_handshake().transcript_hash()
+	c.client_handshake().state = .wait_certificate_verify
 
-	signed_content := certificate_verify_signed_content(.server, c.handshake.certificate_transcript_hash)
+	signed_content := certificate_verify_signed_content(.server, c.client_handshake().certificate_transcript_hash)
 	sig := conn_test_sign_certificate_verify(signed_content)!
 	cv_framed := conn_test_build_fake_certificate_verify(sig_scheme_rsa_pss_rsae_sha256, sig)!
 	cv_msg, _ := parse_handshake_message(cv_framed)!
-	c.handshake.process_certificate_verify(cv_msg, cv_framed)!
-	assert c.handshake.state() == .wait_finished
+	c_hs.process_certificate_verify(cv_msg, cv_framed)!
+	assert c.client_handshake().state() == .wait_finished
 
 	// --- Deliver Finished as a real, protected Handshake packet ---
-	finished_verify_data := compute_finished_verify_data(server_handshake_secrets.server_secret, c.handshake.transcript_hash())!
+	finished_verify_data := compute_finished_verify_data(server_handshake_secrets.server_secret, c.client_handshake().transcript_hash())!
 	finished_framed := encode_handshake_message(.finished, finished_verify_data)!
 	finished_payload := encode_crypto_frame(u64(ee_framed.len), finished_framed)!
 	finished_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 1, finished_payload, hs_keys_server)!
 	result3 := c.poll(finished_datagram.bytes, now)!
 	assert result3.events.len == 0
-	assert c.handshake.state() == .connected
+	assert c.client_handshake().state() == .connected
 	now += 10
 
 	// --- Fake server: deliver HANDSHAKE_DONE over a real 1-RTT packet ---
@@ -421,7 +422,8 @@ fn test_dial_produces_a_valid_padded_initial_datagram() {
 		transport_parameters: QuicTransportParameters{}
 	}, u64(0))!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	assert dg.bytes.len >= min_initial_datagram_size
 	assert c.state() == .handshaking
@@ -457,7 +459,8 @@ fn test_dial_produces_a_valid_padded_initial_datagram() {
 fn test_full_handshake_reaches_confirmed_over_fake_transport() {
 	mut c, _, _ := drive_to_established(QuicTransportParameters{}, QuicTransportParameters{})!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	assert c.handshake_completion_is_complete()
 	assert c.app_write_keys != none
@@ -485,7 +488,8 @@ fn (c &QuicConn) handshake_completion_is_complete() bool {
 fn test_stream_write_read_round_trip_over_fake_transport() {
 	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 
 	stream_id := c.open_stream(true)!
@@ -536,7 +540,8 @@ fn test_open_stream_respects_peer_max_streams_and_streams_blocked() {
 	mut c, server_initial_scid, mut now :=
 		drive_to_established(own_params, restrictive_peer_params)!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 
 	c.open_stream(true) or { assert err.msg().contains('STREAM_LIMIT') }
@@ -575,7 +580,8 @@ fn test_open_stream_respects_peer_max_streams_and_streams_blocked() {
 fn test_close_sends_connection_close_and_transitions_to_closing() {
 	mut c, server_initial_scid, now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 
 	c.close(42, 'bye')
@@ -619,7 +625,8 @@ fn test_close_before_one_rtt_keys_downgrades_to_transport_connection_close() {
 		transport_parameters: QuicTransportParameters{}
 	}, now)!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	assert initial_dg.bytes.len >= min_initial_datagram_size
 
@@ -655,7 +662,7 @@ fn test_close_before_one_rtt_keys_downgrades_to_transport_connection_close() {
 	ee_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 0, ee_payload, hs_keys_server)!
 	result2 := c.poll(ee_datagram.bytes, now)!
 	assert result2.events.len == 0
-	assert c.handshake.state() == .wait_certificate
+	assert c.client_handshake().state() == .wait_certificate
 	assert c.app_write_keys == none // still pre-1-RTT -- the window this bug lives in
 
 	now += 10
@@ -692,7 +699,8 @@ fn test_close_before_one_rtt_keys_downgrades_to_transport_connection_close() {
 fn test_non_ack_eliciting_packet_does_not_elicit_an_ack() {
 	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
@@ -710,7 +718,7 @@ fn test_non_ack_eliciting_packet_does_not_elicit_an_ack() {
 // 9002's on_ack_received contract (its own doc comment: "ack_delay_exponent
 // is the PEER's own ack_delay_exponent transport parameter") -- conn.v's
 // handle_ack_frame passed the bare frame.v default_ack_delay_exponent
-// constant (3) instead of c.handshake.peer_transport_parameters.
+// constant (3) instead of c.client_handshake().peer_transport_parameters.
 // ack_delay_exponent, so any peer advertising a non-default value (legal up
 // to 20 per RFC 9000 §18.2) had every one of its ACK Delay fields
 // misinterpreted, corrupting the smoothed_rtt/rttvar the PTO timer is built
@@ -726,7 +734,8 @@ fn test_handle_ack_frame_uses_peer_advertised_ack_delay_exponent() {
 	peer_params.ack_delay_exponent = 12
 	mut c, _, now := drive_to_established(generous_transport_params(), peer_params)!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 
 	// First RTT sample -- seeds has_sample; RttEstimator.update's
@@ -789,7 +798,8 @@ fn test_handle_ack_frame_uses_peer_advertised_ack_delay_exponent() {
 fn test_client_follows_server_initiated_key_update() {
 	mut c, server_initial_scid, now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
@@ -836,7 +846,8 @@ fn test_client_follows_server_initiated_key_update() {
 fn test_peer_connection_close_enters_draining() {
 	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
@@ -890,7 +901,8 @@ fn test_closing_deadline_not_extended_by_peer_close_while_already_closing() {
 	mut c, _, now0 :=
 		drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 
 	c.close(1, 'bye')
@@ -944,7 +956,8 @@ fn test_idle_timeout_mechanism_fires_after_configured_window() {
 	peer_params.max_idle_timeout = 5000
 	mut c, _, mut now := drive_to_established(own_params, peer_params)!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 
 	// Genuinely idle (nothing received or sent since establishment) and
@@ -983,7 +996,8 @@ fn test_idle_timeout_mechanism_fires_after_configured_window() {
 fn test_process_one_rtt_packet_resets_idle_timer_on_receive() {
 	mut c, _, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
@@ -1018,7 +1032,8 @@ fn test_process_one_rtt_packet_resets_idle_timer_on_receive() {
 fn test_handshake_done_rejected_when_role_is_server() {
 	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	c.role = .server
 
@@ -1046,7 +1061,8 @@ fn test_handshake_done_rejected_when_role_is_server() {
 fn test_discarded_initial_keys_reject_further_packets() {
 	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	assert c.initial_keys_discarded
 
@@ -1075,7 +1091,8 @@ fn test_discarded_initial_keys_reject_further_packets() {
 fn test_discarded_handshake_keys_reject_further_packets() {
 	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	assert c.handshake_keys_discarded
 	hs_keys_server := c.handshake_keys_server or {
@@ -1114,7 +1131,8 @@ fn test_wrong_destination_cid_rejected_on_long_header() {
 		transport_parameters: QuicTransportParameters{}
 	}, u64(0))!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	assert initial_dg.bytes.len >= min_initial_datagram_size
 	assert c.peer_scid.len == 0
@@ -1131,7 +1149,7 @@ fn test_wrong_destination_cid_rejected_on_long_header() {
 	result := c.poll(forged_datagram.bytes, u64(10))!
 	assert result.events.len == 0
 	assert c.peer_scid.len == 0
-	assert c.handshake.state() == .wait_server_hello
+	assert c.client_handshake().state() == .wait_server_hello
 }
 
 // test_wrong_destination_cid_rejected_on_short_header is the 1-RTT sibling of
@@ -1141,7 +1159,8 @@ fn test_wrong_destination_cid_rejected_on_long_header() {
 fn test_wrong_destination_cid_rejected_on_short_header() {
 	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
@@ -1190,7 +1209,8 @@ fn test_wrong_source_cid_rejected_after_peer_scid_established() {
 		transport_parameters: QuicTransportParameters{}
 	}, u64(0))!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	assert initial_dg.bytes.len >= min_initial_datagram_size
 
@@ -1260,7 +1280,8 @@ fn test_compute_next_timeout_includes_closing_deadline() {
 		transport_parameters: QuicTransportParameters{}
 	}, u64(0))!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	c.congestion_control.bytes_in_flight = 0
 	assert c.idle_timeout_deadline() == none
@@ -1285,7 +1306,8 @@ fn test_compute_next_timeout_includes_closing_deadline() {
 fn test_write_stream_on_auto_created_sibling_stream_is_not_stuck() {
 	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 
 	// Server-initiated bidi stream ids are 1, 5, 9, ... (base 1, step 4).
@@ -1346,14 +1368,16 @@ fn test_negotiated_alpn_is_none_before_established_and_selected_value_after() {
 		transport_parameters: QuicTransportParameters{}
 	}, u64(0))!
 	defer {
-		fresh.handshake.free()
+		mut fresh_hs := fresh.client_handshake()
+		fresh_hs.free()
 	}
 	assert fresh.state() == .handshaking
 	assert fresh.negotiated_alpn() == none
 
 	mut c, _, _ := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	assert c.negotiated_alpn()? == 'h3'
 }
@@ -1371,7 +1395,8 @@ fn test_negotiated_alpn_is_none_before_established_and_selected_value_after() {
 fn test_peer_stream_opened_never_fires_for_a_locally_opened_stream() {
 	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	stream_id := c.open_stream(true)!
 	c.write_stream(stream_id, 'hello from client'.bytes(), true)!
@@ -1402,7 +1427,8 @@ fn test_peer_stream_opened_never_fires_for_a_locally_opened_stream() {
 fn test_peer_stream_opened_survives_reordering_past_an_auto_created_filler() {
 	mut c, _, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
@@ -1437,7 +1463,8 @@ fn test_peer_stream_opened_survives_reordering_past_an_auto_created_filler() {
 fn test_peer_stream_opened_fires_from_a_bare_reset_stream_frame() {
 	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
@@ -1460,7 +1487,8 @@ fn test_peer_stream_opened_fires_from_a_bare_reset_stream_frame() {
 fn test_stream_recv_status_reports_all_three_terminal_states() {
 	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
-		c.handshake.free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	assert c.stream_recv_status(1) == none // never seen at all
 

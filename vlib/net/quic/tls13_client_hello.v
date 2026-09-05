@@ -289,6 +289,149 @@ fn decode_alpn_response(data []u8) !string {
 	return list[1..].bytestr()
 }
 
+// decode_alpn_offer parses a CLIENT's ALPN extension_data (RFC 7301 §3.1),
+// returning every protocol name offered, most preferred first, in wire
+// order. This is the multi-entry counterpart to decode_alpn_response
+// (this file) -- a server reads a client's full offer list with this
+// function, a client reads a server's single-entry selection with that
+// one; the two share a wire TYPE but not a wire SHAPE, the same class of
+// asymmetry tls13_server_hello.v documents for supported_versions/
+// key_share. RFC 7301 §3.1's own bounds are enforced: the list must not be
+// empty, and no entry may be empty (opaque ProtocolName<1..2^8-1>).
+pub fn decode_alpn_offer(data []u8) ![]string {
+	if data.len < 2 {
+		return error('quic: ALPN extension_data too short: need at least 2 bytes, have ${data.len}')
+	}
+	list_len := int((u32(data[0]) << 8) | u32(data[1]))
+	if 2 + list_len != data.len {
+		return error('quic: ALPN list_length ${list_len} does not match extension_data length ${data.len - 2}')
+	}
+	list := data[2..]
+	if list.len == 0 {
+		return error('quic: ALPN ProtocolNameList must not be empty')
+	}
+	mut protocols := []string{}
+	mut cursor := 0
+	for cursor < list.len {
+		name_len := int(list[cursor])
+		cursor += 1
+		if name_len == 0 {
+			return error('quic: ALPN protocol name must not be empty')
+		}
+		if cursor + name_len > list.len {
+			return error('quic: ALPN protocol name declares ${name_len} bytes exceeding the remaining list')
+		}
+		protocols << list[cursor..cursor + name_len].bytestr()
+		cursor += name_len
+	}
+	return protocols
+}
+
+// parse_supported_versions_from_client parses the CLIENT-side
+// supported_versions payload (RFC 8446 §4.2.1): a 1-byte length prefix
+// followed by that many bytes of 2-byte version codepoints -- the list
+// shape a client OFFERS, not the server's bare 2-byte selected_version
+// (see parse_supported_versions_from_server, tls13_server_hello.v, for
+// that shape -- the same asymmetry as key_share below).
+fn parse_supported_versions_from_client(data []u8) ![]u16 {
+	if data.len < 1 {
+		return error('quic: supported_versions (client) truncated: need at least 1 byte, have ${data.len}')
+	}
+	list_len := int(data[0])
+	if 1 + list_len != data.len {
+		return error('quic: supported_versions (client) list length ${list_len} does not match remaining data ${data.len - 1}')
+	}
+	if list_len == 0 || list_len % 2 != 0 {
+		return error('quic: supported_versions (client) list length ${list_len} must be a non-zero, even number of bytes')
+	}
+	mut versions := []u16{}
+	mut cursor := 1
+	for cursor < data.len {
+		versions << u16((u32(data[cursor]) << 8) | u32(data[cursor + 1]))
+		cursor += 2
+	}
+	return versions
+}
+
+// ClientKeyShareEntry is one offered (group, key_exchange) pair from a
+// client's key_share extension.
+pub struct ClientKeyShareEntry {
+pub:
+	group        u16
+	key_exchange []u8
+}
+
+// parse_key_share_extension_client parses the CLIENT-side key_share payload
+// (RFC 8446 §4.2.8's KeyShareClientHello): a 2-byte client_shares length
+// prefix, then zero or more KeyShareEntry values (group(2) +
+// key_exchange_len(2) + key_exchange) -- the list shape a client OFFERS,
+// not a server's single bare KeyShareEntry (see
+// encode_key_share_extension_server, tls13_server_hello.v, for that
+// shape). This codebase's own build_client_hello only ever sends exactly
+// one entry, but the wire format itself permits any number, so this parses
+// the full list rather than assuming one.
+pub fn parse_key_share_extension_client(data []u8) ![]ClientKeyShareEntry {
+	if data.len < 2 {
+		return error('quic: key_share (client) truncated: need at least 2 bytes, have ${data.len}')
+	}
+	list_len := int((u32(data[0]) << 8) | u32(data[1]))
+	if 2 + list_len != data.len {
+		return error('quic: key_share (client) client_shares length ${list_len} does not match remaining data ${data.len - 2}')
+	}
+	mut entries := []ClientKeyShareEntry{}
+	mut cursor := 2
+	end := 2 + list_len
+	for cursor < end {
+		if end - cursor < 4 {
+			return error('quic: key_share (client) truncated KeyShareEntry header')
+		}
+		group := u16((u32(data[cursor]) << 8) | u32(data[cursor + 1]))
+		ke_len := int((u32(data[cursor + 2]) << 8) | u32(data[cursor + 3]))
+		cursor += 4
+		if cursor + ke_len > end {
+			return error('quic: key_share (client) KeyShareEntry declares ${ke_len}-byte key_exchange exceeding client_shares')
+		}
+		if ke_len == 0 {
+			return error('quic: key_share (client) KeyShareEntry key_exchange must not be empty (opaque key_exchange<1..2^16-1>)')
+		}
+		entries << ClientKeyShareEntry{
+			group:        group
+			key_exchange: data[cursor..cursor + ke_len].clone()
+		}
+		cursor += ke_len
+	}
+	return entries
+}
+
+// parse_signature_algorithms_extension_client parses a client's
+// signature_algorithms payload (RFC 8446 §4.2.3's
+// `SignatureScheme supported_signature_algorithms<2..2^16-2>`): a 2-byte
+// length prefix followed by that many bytes of 2-byte SignatureScheme
+// codepoints -- byte-identical framing to supported_groups's NamedGroupList
+// (parse_encrypted_extensions, tls13_server_hello.v, validates that inner
+// shape the same way), but kept as its own named function rather than a
+// shared generic helper, matching this module's established
+// one-function-per-RFC-field convention.
+fn parse_signature_algorithms_extension_client(data []u8) ![]u16 {
+	if data.len < 2 {
+		return error('quic: signature_algorithms (client) truncated: need at least 2 bytes, have ${data.len}')
+	}
+	list_len := int((u32(data[0]) << 8) | u32(data[1]))
+	if 2 + list_len != data.len {
+		return error('quic: signature_algorithms (client) list length ${list_len} does not match remaining data ${data.len - 2}')
+	}
+	if list_len == 0 || list_len % 2 != 0 {
+		return error('quic: signature_algorithms (client) list length ${list_len} must be a non-zero, even number of bytes')
+	}
+	mut schemes := []u16{}
+	mut cursor := 2
+	for cursor < data.len {
+		schemes << u16((u32(data[cursor]) << 8) | u32(data[cursor + 1]))
+		cursor += 2
+	}
+	return schemes
+}
+
 // ClientHelloParams is everything build_client_hello needs beyond what's
 // fixed by v1's scope decisions (single cipher suite, single named group,
 // a fixed signature_algorithms list).
@@ -397,4 +540,103 @@ pub fn build_client_hello(p ClientHelloParams) ![]u8 {
 	body << extensions
 
 	return encode_handshake_message(.client_hello, body)!
+}
+
+// ParsedClientHello is the structural parse of a ClientHello (RFC 8446
+// §4.1.2), scoped like ParsedServerHello (tls13_server_hello.v): a few
+// RFC-mandated, caller-state-independent fields pulled out directly, plus
+// the raw extension list for a caller to interpret with the same
+// find_extension/decode_* helpers process_encrypted_extensions already
+// uses on the client side. cipher_suites is the FULL offered list (unlike
+// ParsedServerHello's single cipher_suite) -- a server must find its own
+// suite among possibly many, not just record what a peer already chose.
+pub struct ParsedClientHello {
+pub:
+	random        []u8
+	cipher_suites []u16
+	extensions    []TlsExtension
+}
+
+// parse_client_hello parses a ClientHello handshake message BODY. Validates
+// only what has no caller-dependent state: legacy_version, the
+// cipher_suites/legacy_compression_methods vector shapes, and
+// legacy_session_id -- RFC 9001 §8.4: "A server SHOULD treat the receipt of
+// a TLS ClientHello with a non-empty legacy_session_id field as a
+// connection error of type PROTOCOL_VIOLATION" (this file's own
+// build_client_hello doc comment already states the identical requirement
+// from the sending side; the QUIC-native PROTOCOL_VIOLATION code, not a TLS
+// alert, is why this uses error_with_code with quic_error_protocol_violation
+// directly rather than a TLS alert mapping). Extension-level semantic
+// validation (ALPN offered-list, key_share group, quic_transport_parameters
+// cross-checks, and rejecting the four server-only transport parameters a
+// client must never send) is the caller's job -- the same division of
+// labor process_encrypted_extensions already uses for EncryptedExtensions.
+pub fn parse_client_hello(body []u8) !ParsedClientHello {
+	if body.len < 2 + 32 + 1 {
+		return error('quic: truncated ClientHello: need at least 35 bytes for the fixed prefix, have ${body.len}')
+	}
+	if body[0] != 0x03 || body[1] != 0x03 {
+		return error('quic: ClientHello legacy_version must be 0x0303, got 0x${body[0]:02x}${body[1]:02x}')
+	}
+	random := body[2..34].clone()
+	mut cursor := 34
+	session_id_len := int(body[cursor])
+	cursor += 1
+	if session_id_len != 0 {
+		return error_with_code('quic: ClientHello legacy_session_id must be empty (RFC 9001 §8.4)',
+			int(quic_error_protocol_violation))
+	}
+
+	if body.len < cursor + 2 {
+		return error('quic: truncated ClientHello after legacy_session_id')
+	}
+	suites_len := int((u32(body[cursor]) << 8) | u32(body[cursor + 1]))
+	cursor += 2
+	if suites_len == 0 || suites_len % 2 != 0 {
+		return error('quic: ClientHello cipher_suites length ${suites_len} must be a non-zero, even number of bytes')
+	}
+	if body.len < cursor + suites_len {
+		return error('quic: truncated ClientHello cipher_suites: declares ${suites_len} bytes, only ${body.len - cursor} remain')
+	}
+	mut cipher_suites := []u16{}
+	mut suite_cursor := cursor
+	for suite_cursor < cursor + suites_len {
+		cipher_suites << u16((u32(body[suite_cursor]) << 8) | u32(body[suite_cursor + 1]))
+		suite_cursor += 2
+	}
+	cursor += suites_len
+
+	if body.len < cursor + 1 {
+		return error('quic: truncated ClientHello: missing legacy_compression_methods')
+	}
+	compression_len := int(body[cursor])
+	cursor += 1
+	if body.len < cursor + compression_len {
+		return error('quic: truncated ClientHello legacy_compression_methods')
+	}
+	// RFC 8446 §4.1.2: "For every TLS 1.3 ClientHello, this vector MUST
+	// contain exactly one byte, set to zero" -- the offering side's mirror
+	// of parse_server_hello's fixed single-byte legacy_compression_method
+	// check (a server only ever selects, never offers, one, so that side
+	// has no vector wrapper at all).
+	if compression_len != 1 || body[cursor] != 0 {
+		return error('quic: ClientHello legacy_compression_methods must be exactly [0], got ${compression_len} bytes')
+	}
+	cursor += compression_len
+
+	if body.len < cursor + 2 {
+		return error('quic: truncated ClientHello: missing extensions length')
+	}
+	extensions_len := int((u32(body[cursor]) << 8) | u32(body[cursor + 1]))
+	cursor += 2
+	if cursor + extensions_len != body.len {
+		return error('quic: ClientHello extensions length ${extensions_len} does not match remaining body ${body.len - cursor}')
+	}
+	extensions := parse_extension_list(body[cursor..])!
+
+	return ParsedClientHello{
+		random:        random
+		cipher_suites: cipher_suites
+		extensions:    extensions
+	}
 }

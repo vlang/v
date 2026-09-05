@@ -12,11 +12,17 @@ module quic
 // request stream, not per connection.
 
 // H3RequestStreamPhase is where a request stream currently is in RFC
-// 9114 §4.1's message sequence, from THIS (client) endpoint's receive
-// side -- it tracks the SERVER's response, since a v1 client only ever
-// sends its own request once, synchronously, when opening the stream
-// (h3_conn.v's open_request_stream/send_request_headers/send_request_data),
-// never incrementally re-entering an earlier phase of its own send side.
+// 9114 §4.1's message sequence, from THIS endpoint's own receive side --
+// on a CLIENT-role H3Conn it tracks the SERVER's response; on a SERVER-
+// role one (Phase 13e) it tracks the CLIENT's request instead (RFC 9114
+// §4.1's HEADERS -> DATA* -> optional trailing HEADERS grammar is
+// symmetric between a request and a response, so the same phase machine
+// applies unchanged either way -- see h3_conn.v's own module doc comment).
+// Either role sends its own side of the exchange once, synchronously, when
+// opening/answering the stream (h3_conn.v's open_request_stream/send_
+// request_headers/send_request_data for a client, send_response_headers/
+// send_response_data for a server), never incrementally re-entering an
+// earlier phase of its own send side.
 pub enum H3RequestStreamPhase {
 	awaiting_response_headers
 	in_body
@@ -32,7 +38,8 @@ mut:
 }
 
 // new_h3_request_stream_state returns a tracker for a request stream that
-// has not yet received any response frames.
+// has not yet received any frames on its receive side (the peer's response
+// for a client-role H3Conn, the peer's request for a server-role one).
 pub fn new_h3_request_stream_state() &H3RequestStreamState {
 	return &H3RequestStreamState{
 		phase: .awaiting_response_headers
@@ -49,10 +56,10 @@ pub fn (s &H3RequestStreamState) phase() H3RequestStreamPhase {
 // frame's contents (mirrors H3ControlStreamState.note_frame's calling
 // convention). `frame_is_headers`/`frame_is_data` classify the frame that
 // was just decoded (any OTHER Table-1-legal frame on a `.request`-role
-// stream is illegal on a client's request stream in v1 -- PUSH_PROMISE is
-// the only other type Table 1 permits there, and v1 never authorizes push,
-// see h3_control_stream.v's MAX_PUSH_ID scope decision -- so both false is
-// always rejected here, not silently accepted).
+// stream is illegal here in v1, for either connection role -- PUSH_PROMISE
+// is the only other type Table 1 permits there, and neither role ever
+// authorizes push, see h3_control_stream.v's MAX_PUSH_ID scope decision --
+// so both false is always rejected here, not silently accepted).
 //
 // Errors, carrying an H3ErrorCode via `error_with_code`, when:
 //   - the first frame is not HEADERS (§4.1: "A HTTP message ... consists of
@@ -102,14 +109,18 @@ pub fn (mut s H3RequestStreamState) note_frame_kind(frame_is_headers bool, frame
 }
 
 // note_final_response_headers transitions the stream past the response-
-// headers position once the caller (h3_conn.v) has determined -- by
-// inspecting a decoded HEADERS block's :status field, which this framing-
-// only state machine never sees -- that it is the final (non-1xx) response,
-// as opposed to an RFC 9110 §15.2 interim response that leaves the phase
-// unchanged. A no-op once already past .awaiting_response_headers: safe to
-// call at most once per stream in practice (note_frame_kind only reaches
-// the .awaiting_response_headers branch before this has ever been called),
-// but idempotent rather than assuming that ordering.
+// headers position once the caller (h3_conn.v) has determined this is the
+// real headers block, not one to keep waiting past. On a CLIENT-role
+// H3Conn that means inspecting a decoded HEADERS block's :status field,
+// which this framing-only state machine never sees itself, and confirming
+// it is the final (non-1xx) response, as opposed to an RFC 9110 §15.2
+// interim response that leaves the phase unchanged; on a SERVER-role one a
+// request has no such interim concept, so the caller calls this
+// unconditionally on the first HEADERS block. A no-op once already past
+// .awaiting_response_headers: safe to call at most once per stream in
+// practice (note_frame_kind only reaches the .awaiting_response_headers
+// branch before this has ever been called), but idempotent rather than
+// assuming that ordering.
 pub fn (mut s H3RequestStreamState) note_final_response_headers() {
 	if s.phase == .awaiting_response_headers {
 		s.phase = .in_body
