@@ -238,7 +238,7 @@ fn test_tcc_retry_preserves_shared_and_enable_globals_flags() {
 }
 
 fn fake_windows_short_path(path string) string {
-	return path.replace(r'C:\Users\Léo', r'C:\Users\LEO~1')
+	return path.replace(r'C:\Program Files', r'C:\PROGRA~1').replace(r'C:\Users\Léo', r'C:\Users\LEO~1')
 }
 
 fn test_rewrite_windows_path_arg_rewrites_quoted_object_paths() {
@@ -257,4 +257,47 @@ fn test_rewrite_windows_path_arg_leaves_non_paths_alone() {
 	for arg in ['-bt25', '-std=c99', '-D_DEFAULT_SOURCE'] {
 		assert rewrite_windows_path_arg(arg, fake_windows_short_path) == arg
 	}
+}
+
+fn test_rewrite_windows_path_operand_arg_rewrites_path_operands() {
+	assert rewrite_windows_path_operand_arg(r'-I"C:\Users\Léo\include"', fake_windows_short_path) == r'-I"C:\Users\LEO~1\include"'
+	assert rewrite_windows_path_operand_arg(r'-L"C:\Users\Léo\lib"', fake_windows_short_path) == r'-L"C:\Users\LEO~1\lib"'
+	assert rewrite_windows_path_operand_arg(r'-B"C:\Users\Léo\bin"', fake_windows_short_path) == r'-B"C:\Users\LEO~1\bin"'
+	assert rewrite_windows_path_operand_arg(r'-o "C:\Users\Léo\bin\tool.exe"', fake_windows_short_path) == r'-o "C:\Users\LEO~1\bin\tool.exe"'
+	obj := r'"C:\Users\Léo\.vmodules\.cache\bc\artifact.o"'
+	expected := r'"C:\Users\LEO~1\.vmodules\.cache\bc\artifact.o"'
+	assert rewrite_windows_path_operand_arg(obj, fake_windows_short_path) == expected
+}
+
+fn test_rewrite_windows_path_operand_arg_leaves_path_like_values_alone() {
+	// `-DROOT="C:\Program Files\SDK"` is macro data, not a filesystem operand:
+	// rewriting it would silently change the compiled macro value (see the
+	// review of issue #28126), so it must be left byte for byte untouched.
+	for arg in [r'-DROOT="C:\Program Files\SDK"', '-D_DEFAULT_SOURCE', '-std=c99', '-bt25'] {
+		assert rewrite_windows_path_operand_arg(arg, fake_windows_short_path) == arg
+	}
+}
+
+fn test_rewrite_windows_path_arg_rewrites_path_like_values() {
+	// the broader tcc rewrite still rewrites quoted path substrings, even in
+	// data bearing options; only rewrite_windows_path_operand_arg (gcc) leaves
+	// them alone
+	arg := r'-DROOT="C:\Program Files\SDK"'
+	expected := r'-DROOT="C:\PROGRA~1\SDK"'
+	assert rewrite_windows_path_arg(arg, fake_windows_short_path) == expected
+}
+
+fn test_cc_uses_short_windows_paths() {
+	// tcc and the MinGW gcc toolchain both read response files with the ANSI
+	// C runtime, so both need ASCII 8.3 short paths on Windows (see issue #28126).
+	assert cc_uses_short_windows_paths(.tcc)
+	assert cc_uses_short_windows_paths(.gcc)
+	// clang, msvc, icc, emcc and unknown compilers are excluded:
+	// msvc uses the wide CreateProcessW command line directly, while the
+	// clang/LLVM toolchain handles Unicode paths on its own.
+	assert !cc_uses_short_windows_paths(.clang)
+	assert !cc_uses_short_windows_paths(.msvc)
+	assert !cc_uses_short_windows_paths(.icc)
+	assert !cc_uses_short_windows_paths(.emcc)
+	assert !cc_uses_short_windows_paths(.unknown)
 }

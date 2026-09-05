@@ -1529,18 +1529,15 @@ fn looks_like_windows_path(value string) bool {
 	return value.contains('\\') || value.contains('/') || (value.len > 1 && value[1] == `:`)
 }
 
-fn rewrite_windows_path_arg(arg string, resolver WindowsPathResolver) string {
+// rewrite_windows_path_operand_arg rewrites only the path value of compiler
+// arguments that take a filesystem operand: the path bearing options `-I`,
+// `-L`, `-B`, `-o ` and `-c `, and bare source/object/archive file paths.
+// Option values that merely contain a path looking substring are left
+// untouched, so that e.g. `-DROOT="C:\Program Files\SDK"` keeps its exact
+// macro value after the rewrite.
+fn rewrite_windows_path_operand_arg(arg string, resolver WindowsPathResolver) string {
 	if arg == '' {
 		return ''
-	}
-	if start := arg.index('"') {
-		end := arg.last_index('"') or { -1 }
-		if end > start {
-			path := arg[start + 1..end]
-			if looks_like_windows_path(path) {
-				return arg[..start] + '"${resolver(path)}"' + arg[end + 1..]
-			}
-		}
 	}
 	for prefix in ['-I', '-L', '-B', '-o ', '-c '] {
 		if arg.starts_with(prefix) {
@@ -1557,6 +1554,37 @@ fn rewrite_windows_path_arg(arg string, resolver WindowsPathResolver) string {
 	return arg
 }
 
+// rewrite_windows_path_arg rewrites any quoted path substring of a compiler
+// argument, in addition to the whole path operands handled by
+// rewrite_windows_path_operand_arg. tcc keeps this broader, pre-existing
+// rewrite, so its whole argument vector stays ASCII on Windows; the narrower
+// operand only rewrite is used for gcc, see tcc_windows_path_arg.
+fn rewrite_windows_path_arg(arg string, resolver WindowsPathResolver) string {
+	if arg == '' {
+		return ''
+	}
+	if start := arg.index('"') {
+		end := arg.last_index('"') or { -1 }
+		if end > start {
+			path := arg[start + 1..end]
+			if looks_like_windows_path(path) {
+				return arg[..start] + '"${resolver(path)}"' + arg[end + 1..]
+			}
+		}
+	}
+	return rewrite_windows_path_operand_arg(arg, resolver)
+}
+
+// cc_uses_short_windows_paths reports whether the given C compiler needs the
+// Windows paths passed to it to be rewritten to their ASCII 8.3 short forms
+// first. Both tcc and the MinGW gcc toolchain read response file contents
+// with the ANSI C runtime: non-ASCII characters in paths get mangled on
+// Windows setups, whose active code page can not represent them (or whose
+// compiler expects UTF-8), so V passes them only as pure ASCII short paths.
+fn cc_uses_short_windows_paths(cc CC) bool {
+	return cc in [.gcc, .tcc]
+}
+
 fn short_windows_path(path string) string {
 	$if windows {
 		return os.short_path(path)
@@ -1566,17 +1594,27 @@ fn short_windows_path(path string) string {
 
 fn (v &Builder) tcc_windows_path(p string) string {
 	$if windows {
-		if v.ccoptions.cc == .tcc {
+		if cc_uses_short_windows_paths(v.ccoptions.cc) {
 			return short_windows_path(p)
 		}
 	}
 	return p
 }
 
+// tcc_windows_path_arg rewrites the Windows path arguments of tcc and the
+// MinGW gcc toolchain to ASCII 8.3 short paths, so that non-ASCII project
+// paths survive the ANSI response file encoding (see issue #28126). tcc keeps
+// the broader rewrite_windows_path_arg, while gcc gets only its real
+// filesystem operands rewritten: gcc argument vectors can contain user
+// `CFLAGS` with path looking values (e.g. `-DROOT="C:\Program Files\SDK"`),
+// which must not be altered.
 fn (v &Builder) tcc_windows_path_arg(arg string) string {
 	$if windows {
 		if v.ccoptions.cc == .tcc {
 			return rewrite_windows_path_arg(arg, short_windows_path)
+		}
+		if v.ccoptions.cc == .gcc {
+			return rewrite_windows_path_operand_arg(arg, short_windows_path)
 		}
 	}
 	return arg
