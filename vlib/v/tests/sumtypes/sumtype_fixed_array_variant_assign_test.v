@@ -69,3 +69,35 @@ fn test_plain_fixed_array_assignment_still_works() {
 	m['k'] = [1.0, 2.0, 3.0]!
 	assert m['k'] == [1.0, 2.0, 3.0]!
 }
+
+fn test_match_branch_on_fixed_array_variant() {
+	v := Val([1.0, 2.0, 3.0]!)
+	mut got := ''
+	match v {
+		[3]f64 { got = 'vec ${v}' }
+		[]Val { got = 'list' }
+		else { got = 'other' }
+	}
+	assert got == 'vec [1.0, 2.0, 3.0]'
+
+	n := Num([3, 4]!)
+	match n {
+		[2]int { assert n == [3, 4]! }
+		int { assert false }
+	}
+}
+
+// A `[N]T` match branch is a type pattern, but `[a, b]!` is still a fixed array
+// literal *value* to match against.
+fn test_match_branch_on_fixed_array_literal_value() {
+	pick := fn (a [2]int) string {
+		return match a {
+			[1, 2]! { 'onetwo' }
+			[3, 4]! { 'threefour' }
+			else { 'other' }
+		}
+	}
+	assert pick([1, 2]!) == 'onetwo'
+	assert pick([3, 4]!) == 'threefour'
+	assert pick([9, 9]!) == 'other'
+}
