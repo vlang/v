@@ -3775,7 +3775,8 @@ fn c_declaration_item_has_replicated_function_static_storage(item string, has_br
 			|| c_declaration_head_uses_macro(block.inner, static_storage_macros)
 	}
 	if !has_brace {
-		return false
+		macro_name := c_declaration_macro_invocation_name(item, false) or { return false }
+		return static_storage_macros[macro_name]
 	}
 	clean := trim_leading_c_comments(item.trim_space())
 	brace := clean.index_u8(`{`)

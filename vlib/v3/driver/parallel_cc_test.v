@@ -114,6 +114,36 @@ fn test_v3_parallel_cc_falls_back_for_native_function_local_static_state() {
 	}
 }
 
+fn test_v3_parallel_cc_falls_back_for_macro_generated_function_local_static_state() {
+	$if macos || linux {
+		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_macro_static_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path_single(root, 'main.v')
+		header := os.join_path_single(root, 'state.h')
+		output := os.join_path_single(root, 'main')
+		os.write_file(header, '#define DEF(name) \\
+	static inline int name(void) { \\
+		static int state; \\
+		return ++state; \\
+	}
+DEF(v3_parallel_macro_next)
+')!
+		os.write_file(source, '#flag -I @DIR\n#include "state.h"\n\nfn C.v3_parallel_macro_next() int\n\nfn first() int { return C.v3_parallel_macro_next() }\nfn second() int { return C.v3_parallel_macro_next() }\nfn main() { println(first())\nprintln(second()) }\n')!
+		build := cmdexec.run(@VEXE, ['-parallel-cc', '-nocache', '-showcc', '-o', output,
+			source])
+		assert build.exit_code == 0, build.output
+		assert !build.output.contains('unit_0.c'), build.output
+		assert build.output.contains('src.c'), build.output
+		run_result := cmdexec.run(output, [])
+		assert run_result.exit_code == 0, run_result.output
+		assert run_result.output.trim_space() == '1\n2'
+	}
+}
+
 fn test_v3_parallel_cc_falls_back_for_coverage_and_profile_state() {
 	$if macos || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_instrumentation_${os.getpid()}')

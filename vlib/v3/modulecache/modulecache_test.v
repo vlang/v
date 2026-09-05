@@ -61,6 +61,13 @@ static inline int next_value(void) {
 ')
 	assert c_source_replicated_function_has_static_storage('extern "C" { static inline int next_value(void) { static int state; return ++state; } }
 ')
+	assert c_source_replicated_function_has_static_storage('#define DEF(name) \\
+	static inline int name(void) { \\
+		static int state; \\
+		return ++state; \\
+	}
+DEF(next_value)
+')
 	assert !c_source_replicated_function_has_static_storage('int next_value(void) {
 	static int state = 0;
 	return ++state;
