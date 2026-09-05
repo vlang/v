@@ -117,7 +117,17 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []st
 		tc.restore_type_cache_base()
 		for i, iface_name in iface_names {
 			if !isnil(results.items[i]) {
-				tc.interface_impl_indexes[iface_name] = results.items[i]
+				// Worker indexes are backed by disposable worker arenas. Publish a
+				// parent-owned copy before those arenas are released.
+				worker_index := results.items[i]
+				mut names := []string{cap: worker_index.names.len}
+				for name in worker_index.names {
+					names << name.clone()
+				}
+				tc.interface_impl_indexes[iface_name] = &InterfaceImplIndex{
+					names: names
+					ids:   stable_interface_type_ids(names)
+				}
 			}
 		}
 		return true
