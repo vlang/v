@@ -427,9 +427,10 @@ mut:
 @[heap]
 struct ImportTypeCache {
 mut:
-	by_file   map[string]&ImportFileTypeCache
-	last_file string
-	last      &ImportFileTypeCache = unsafe { nil }
+	unqualified_texts map[string]string
+	by_file           map[string]&ImportFileTypeCache
+	last_file         string
+	last              &ImportFileTypeCache = unsafe { nil }
 }
 
 fn (mut cache ImportTypeCache) for_file(file string) &ImportFileTypeCache {
@@ -566,8 +567,22 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file(typ string, file string
 	// Import tables are immutable during C generation. Each worker owns its
 	// cache, with separate entries for source files visited by synthesized nodes.
 	mut cache := g.import_type_cache
-	if isnil(cache) || !typ.contains('.') {
+	if isnil(cache) {
 		return g.canonical_import_alias_type_text_in_file_uncached(typ, file)
+	}
+	if !typ.contains('.') {
+		if !typ.contains('[') && !typ.starts_with('&') && !typ.starts_with('?')
+			&& !typ.starts_with('!') {
+			return g.canonical_import_alias_type_text_in_file_uncached(typ, file)
+		}
+		// Wrapper and generic normalization is independent of the source file
+		// without a dotted name. Reuse it across file contexts in this worker.
+		if result := cache.unqualified_texts[typ] {
+			return result
+		}
+		result := g.canonical_import_alias_type_text_in_file_uncached(typ, file)
+		cache.unqualified_texts[typ] = result
+		return result
 	}
 	mut entry := cache.for_file(file)
 	if result := entry.texts[typ] {

@@ -26,13 +26,27 @@ fn test_void_pointer_predicate_preserves_alias_and_named_type_rules() {
 
 fn test_json_helper_scan_requires_legacy_json_module() {
 	mut ast := flat.FlatAst.new()
+	ast.nodes = [flat.Node{ kind: .call, children_count: 2 },
+		flat.Node{ kind: .ident, value: 'json.encode' },
+		flat.Node{ kind: .ident, value: 'pointer', typ: '&int' }]
+	ast.children = [flat.NodeId(1), flat.NodeId(2)]
 	mut tc := types.TypeChecker.new(&ast)
+	tc.resolved_call_names = ['json.encode', '', '']
+	tc.resolved_call_set = [true, false, false]
+	tc.expr_type_values = [types.Type(types.void_), types.Type(types.void_),
+		types.Type(types.Pointer{ base_type: types.Type(types.int_) })]
+	tc.expr_type_set = [false, false, true]
+	tc.file_modules['json2.v'] = 'json2'
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc
 	assert !g.has_legacy_json_module()
+	g.preintern_json_encode_strings()
+	assert g.str_lits.len == 0
 	tc.file_modules['json_primitives.c.v'] = 'json'
 	assert g.has_legacy_json_module()
+	g.preintern_json_encode_strings()
+	assert 'null' in g.str_lits
 }
 
 fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
@@ -251,6 +265,30 @@ fn test_import_type_cache_keeps_file_contexts_separate() {
 	g.reset_context_lookup_caches()
 	tc.file_imports['first.v\nmodel'] = 'second.model'
 	assert g.canonical_import_alias_type_in_file('model.Item', 'first.v').name() == 'second.model.Item'
+}
+
+fn test_unqualified_type_normalization_cache_preserves_spacing_and_nesting() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	for input, expected in {
+		'&&int':                          '&&int'
+		'& ? []int':                      '&?[]int'
+		'[]map[ string ] []int':          '[]map[string][]int'
+		'Box[int,string]':                'Box[int, string]'
+		'Box[map[string][]int, ?string]': 'Box[map[string][]int, ?string]'
+		'[3]int':                         '[3]int'
+	} {
+		for file in ['one.v', 'two.v', 'one.v'] {
+			assert g.canonical_import_alias_type_text_in_file(input.clone(), file) == expected
+		}
+	}
+	assert g.import_type_cache.unqualified_texts.len > 0
+	assert g.import_type_cache.by_file.len == 0
+	g.reset_context_lookup_caches()
+	assert g.import_type_cache.unqualified_texts.len == 0
 }
 
 fn test_optional_payload_qualifies_interface() {

@@ -8839,6 +8839,9 @@ fn (mut g FlatGen) gen_json_encode_call(node flat.Node, pretty bool) bool {
 }
 
 fn (mut g FlatGen) preintern_json_encode_strings() {
+	if !g.has_legacy_json_module() {
+		return
+	}
 	for idx, node in g.a.nodes {
 		if node.kind != .call || node.children_count < 2 {
 			continue
