@@ -898,8 +898,16 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			&& !left.is_blank_ident() && right_is_lvalue
 			&& (!right_type.is_ptr() || (right is ast.Ident && assign_expr_is_auto_deref(right))) {
 			// Do not allow `a = b`
-			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
-				right.pos())
+			if expr_is_or_unwrapped(right) {
+				// `x := opt_map or { ... }` is still a copy of the wrapped map, so the guard
+				// applies (see #27870), but `.clone()` has to be applied to the whole
+				// or-expression rather than to the option itself.
+				c.error('cannot copy map: unwrapping an option map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)',
+					right.pos())
+			} else {
+				c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
+					right.pos())
+			}
 		}
 		if is_assign && !c.inside_unsafe && !left.is_blank_ident()
 			&& c.is_nocopy_struct(left_type_unwrapped) && c.is_nocopy_struct(right_type_unwrapped)
@@ -1394,5 +1402,17 @@ fn (mut c Checker) change_flags_if_comptime_expr(mut left ast.Ident, right ast.E
 				left.obj.typ = c.comptime.comptime_for_field_type.clear_flag(.option)
 			}
 		}
+	}
+}
+
+// expr_is_or_unwrapped reports whether `expr` is an option/result access that was
+// unwrapped in place with an `or {}` block.
+fn expr_is_or_unwrapped(expr ast.Expr) bool {
+	return match expr {
+		ast.SelectorExpr { expr.or_block.kind != .absent }
+		ast.CallExpr { expr.or_block.kind != .absent }
+		ast.Ident { expr.or_expr.kind != .absent }
+		ast.IndexExpr { expr.or_expr.kind != .absent }
+		else { false }
 	}
 }
