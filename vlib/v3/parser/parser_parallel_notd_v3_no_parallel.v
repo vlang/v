@@ -400,7 +400,6 @@ fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int,
 // the ordered worker-prefix snapshots.
 fn (mut p Parser) precollect_parallel_comptime_scope(mut s scanner.Scanner, src string, path string, module_name string, stop_at_rcbr bool, mut values map[string]string, mut decls []ComptimeConstPrepassDecl) string {
 	mut current_module := module_name
-	mut brace_depth := 0
 	mut has_pending_attrs := false
 	mut pending_decl_disabled := false
 	for {
@@ -409,20 +408,13 @@ fn (mut p Parser) precollect_parallel_comptime_scope(mut s scanner.Scanner, src 
 			return current_module
 		}
 		if tok == .lcbr {
-			brace_depth++
+			skip_parallel_comptime_block(mut s)
 			continue
 		}
 		if tok == .rcbr {
-			if brace_depth > 0 {
-				brace_depth--
-				continue
-			}
 			if stop_at_rcbr {
 				return current_module
 			}
-			continue
-		}
-		if brace_depth != 0 {
 			continue
 		}
 		if tok == .dollar {
@@ -716,7 +708,13 @@ fn (p &Parser) new_parallel_comptime_prepass_resolver(src string, path string, m
 	resolver.cur_module = module_name
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, src.len)
-	file.index_lines(src)
+	// This temporary file is only used for pseudo-variable positions. The full
+	// parser hashes the source once when it creates the file retained by the AST.
+	for i, c in src {
+		if c == `\n` {
+			file.add_line(i + 1)
+		}
+	}
 	resolver.s.init(file, src)
 	return resolver
 }
@@ -731,9 +729,24 @@ fn parallel_comptime_prepass_token_text(tok token.Token, s &scanner.Scanner, src
 	return s.lit
 }
 
+@[direct_array_access]
 fn skip_parallel_comptime_block(mut s scanner.Scanner) {
 	mut depth := 1
 	for depth > 0 {
+		// Only block boundaries matter in a skipped declaration body. Let the
+		// scanner handle comments, directives and quoted/interpolated text, but
+		// avoid classifying every identifier and operator in the body twice.
+		if !s.in_str_incomplete && !s.in_str_inter {
+			for s.offset < s.src.len {
+				c := s.src[s.offset]
+				if c in [`{`, `}`, `/`, `'`, `"`, `\``, `#`]
+					|| (c in [`r`, `c`] && s.offset + 1 < s.src.len
+						&& s.src[s.offset + 1] in [`'`, `"`]) {
+					break
+				}
+				s.offset++
+			}
+		}
 		tok := s.scan()
 		if tok == .eof {
 			return

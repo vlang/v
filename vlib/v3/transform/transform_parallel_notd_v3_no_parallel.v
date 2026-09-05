@@ -17,7 +17,11 @@ const min_parallel_transform_items = 256
 const max_parallel_transform_jobs = 7
 // Disposable self-host scratch permits more growable workers within the same
 // memory ceiling. Ordinary generic builds keep the smaller clone limit.
-const max_selfhost_transform_jobs = 12
+const max_selfhost_transform_jobs = 18
+// Every growable lane clones the base AST, so the lane count is also a memory
+// decision. Bound the combined clone size instead of trusting the lane cap
+// alone: a bigger program on the same machine then keeps its memory ceiling.
+const selfhost_transform_clone_budget_bytes = u64(2_600_000_000)
 // Shared-base workers share the AST but retain private checker and transform
 // scratch. Eight lanes keep large user builds below the ordinary memory ceiling.
 const max_shared_transform_jobs = 8
@@ -28,7 +32,7 @@ const shared_transform_chunks_per_job = 1
 const shared_expansion_pool_divisor = 2
 const max_parallel_monomorph_jobs = 18
 // Recycle scratch arenas throughout large self-hosting transforms.
-const scoped_transform_batches = 16
+const scoped_transform_batches = 8
 const scoped_transform_max_batch_items = 2048
 const scoped_monomorph_batch_specs = 512
 const scoped_monomorph_node_threshold = 1_000_000
@@ -50,9 +54,132 @@ $if !windows {
 	fn region_relocate_thread(arg voidptr) voidptr {
 		a := unsafe { &RegionRelocateArgs(arg) }
 		mut w := unsafe { &Transformer(a.worker) }
-		w.relocate_region_in_place(a.node_start, a.node_end, a.child_start, a.child_end,
-			a.node_shift, a.child_shift)
+		w.relocate_region_in_place(a.node_start, a.node_end, a.child_start, a.child_end, a.node_shift, a.child_shift)
 		return unsafe { nil }
+	}
+
+	// relocate_worker_regions computes final offsets in merge order, then lets
+	// each helper relocate its private appended region before the serial copy.
+	fn (mut t Transformer) relocate_worker_regions(worker_ptrs []voidptr, node_starts []int, child_starts []int) {
+		mut running_nodes := t.a.nodes.len
+		mut running_children := t.a.children.len
+		mut reloc_args := []RegionRelocateArgs{cap: worker_ptrs.len}
+		for ci, ptr in worker_ptrs {
+			w := unsafe { &Transformer(ptr) }
+			ns := node_starts[ci]
+			cs := child_starts[ci]
+			reloc_args << RegionRelocateArgs{
+				worker: ptr
+				node_start: ns
+				node_end: w.a.nodes.len
+				child_start: cs
+				child_end: w.a.children.len
+				node_shift: i32(running_nodes - ns)
+				child_shift: i32(running_children - cs)
+			}
+			running_nodes += w.a.nodes.len - ns
+			running_children += w.a.children.len - cs
+		}
+		mut tasks := []workers.Task{cap: reloc_args.len}
+		for i in 0 .. reloc_args.len {
+			tasks << workers.Task{
+				run: region_relocate_thread
+				arg: unsafe { voidptr(&reloc_args[i]) }
+				force_sync: i == 0
+			}
+		}
+		t.a.worker_pool.run(tasks)
+		t.merge_regions_relocated = true
+	}
+
+	// RegionAbsorbArgs is one worker region's relocate-and-append job. The master
+	// grows its arrays to the final length first, so every worker can write its
+	// own disjoint destination slice at the same time and the merge that follows
+	// only has to publish annotations.
+	struct RegionAbsorbArgs {
+		worker      voidptr // &Transformer (region view)
+		node_start  int
+		node_end    int
+		child_start int
+		child_end   int
+		node_shift  i32
+		child_shift i32
+	mut:
+		dst_nodes    voidptr
+		dst_children voidptr
+	}
+
+	fn region_absorb_thread(arg voidptr) voidptr {
+		a := unsafe { &RegionAbsorbArgs(arg) }
+		mut w := unsafe { &Transformer(a.worker) }
+		w.absorb_region_into(a.node_start, a.node_end, a.child_start, a.child_end, a.node_shift, a.child_shift, a.dst_nodes, a.dst_children)
+		return unsafe { nil }
+	}
+
+	// absorb_worker_regions relocates every helper's appended region straight
+	// into its final master slot, in parallel. It records the per-worker shifts
+	// for the serial merge that follows and reports how many it prepared.
+	fn (mut t Transformer) absorb_worker_regions(worker_ptrs []voidptr, base_nodes int, base_children int) []RegionAbsorbArgs {
+		if worker_ptrs.len == 0 {
+			return []RegionAbsorbArgs{}
+		}
+		mut absorb_args := []RegionAbsorbArgs{cap: worker_ptrs.len}
+		mut running_nodes := t.a.nodes.len
+		mut running_children := t.a.children.len
+		nodes_old_len := t.a.nodes.len
+		children_old_len := t.a.children.len
+		for ptr in worker_ptrs {
+			w := unsafe { &Transformer(ptr) }
+			absorb_args << RegionAbsorbArgs{
+				worker: ptr
+				node_start: base_nodes
+				node_end: w.a.nodes.len
+				child_start: base_children
+				child_end: w.a.children.len
+				node_shift: i32(running_nodes - base_nodes)
+				child_shift: i32(running_children - base_children)
+			}
+			running_nodes += w.a.nodes.len - base_nodes
+			running_children += w.a.children.len - base_children
+		}
+		// One growth each: the destination pointers below must stay valid for the
+		// whole parallel pass, so no worker may trigger a reallocation.
+		if running_nodes > nodes_old_len {
+			unsafe {
+				t.a.nodes.grow_len(running_nodes - nodes_old_len)
+			}
+		}
+		if running_children > children_old_len {
+			unsafe {
+				t.a.children.grow_len(running_children - children_old_len)
+			}
+		}
+		// Address the destinations off the array bases: a worker that appended
+		// nothing lands exactly on the end of the array.
+		nodes_base := unsafe { &u8(t.a.nodes.data) }
+		children_base := unsafe { &u8(t.a.children.data) }
+		node_size := usize(t.a.nodes.element_size)
+		child_size := usize(t.a.children.element_size)
+		for i in 0 .. absorb_args.len {
+			node_off := usize(absorb_args[i].node_start + int(absorb_args[i].node_shift))
+			child_off := usize(absorb_args[i].child_start + int(absorb_args[i].child_shift))
+			absorb_args[i].dst_nodes = unsafe { voidptr(nodes_base + node_off * node_size) }
+			absorb_args[i].dst_children = unsafe {
+				voidptr(children_base + child_off * child_size)
+			}
+		}
+		mut tasks := []workers.Task{cap: absorb_args.len}
+		for i in 0 .. absorb_args.len {
+			tasks << workers.Task{
+				run: region_absorb_thread
+				arg: unsafe { voidptr(&absorb_args[i]) }
+				force_sync: i == 0
+			}
+		}
+		t.a.worker_pool.run(tasks)
+		t.merge_regions_relocated = true
+		t.merge_regions_absorbed = true
+		return absorb_args
 	}
 
 	// transform_pre_scan_index_thread builds the AST/tc-only prepare() indexes
@@ -2119,7 +2246,8 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		if isnil(t.a.worker_pool) {
 			t.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
-		n_jobs := transform_job_count(t.a.worker_pool.size() + 1, items.len, t.building_v && t.scope_parallel_workers)
+		mut n_jobs := transform_job_count(t.a.worker_pool.size() + 1, items.len, t.building_v && t.scope_parallel_workers)
+		n_jobs = clamp_transform_jobs_to_clone_budget(n_jobs, base_nodes, base_children, t.a)
 		if items.len < min_parallel_transform_items || n_jobs <= 1 {
 			t.transform_pure_items_serial(items)
 			return false
@@ -2144,6 +2272,8 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		// do not re-parse every type text from a cold cache; the master itself
 		// writes through a private overlay for the duration of the region.
 		t.tc.freeze_type_cache_for_forks()
+		// Every clone is ready before dispatch. Equal loads avoid the old spawn
+		// chain's startup bias leaving early workers with much more body work.
 		mut chunks := split_work_items(items, n_jobs)
 		chunk_count := chunks.len
 
@@ -2211,12 +2341,25 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 			}
 		}
 		any_started := t.a.worker_pool.run(tasks)
+		mut absorbed := []RegionAbsorbArgs{}
+		if t.building_v && t.scope_parallel_workers && t.retain_worker_results
+			&& os.getenv('V3_NO_MERGE_RELOC').len == 0 {
+			absorbed = t.absorb_worker_regions(transform_workers, base_nodes, base_children)
+		}
 		// Merge each helper in fixed chunk order for deterministic node ids.
 		for ci in 0 .. thread_count {
 			ww := unsafe { &Transformer(transform_workers[ci]) }
 			t.merge_worker_used_fns(ww)
-			t.merge_worker(ww, chunks[ci + 1], base_nodes, base_children, true)
+			if t.merge_regions_absorbed {
+				t.merge_absorbed_node_shift = absorbed[ci].node_shift
+				t.merge_absorbed_child_shift = absorbed[ci].child_shift
+			}
+			// Helpers append into fresh master IDs; their private caches cannot have
+			// populated this range. Publish only the relocated worker annotations.
+			t.merge_worker(ww, chunks[ci + 1], base_nodes, base_children, false)
 		}
+		t.merge_regions_absorbed = false
+		t.merge_regions_relocated = false
 		t.tc.unfreeze_type_cache_after_forks()
 		return any_started
 	}
@@ -2344,7 +2487,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		if chunk_target > bounded_items.len {
 			chunk_target = bounded_items.len
 		}
-		mut chunks := split_work_items_ex(bounded_items, chunk_target, false)
+		mut chunks := split_work_items(bounded_items, chunk_target)
 		chunk_count := chunks.len
 		thread_count := chunk_count - 1
 		// Pool.run queues asynchronous work before running synchronous tasks. Give
@@ -2479,35 +2622,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		// in merge_worker re-reads children_start values).
 		if thread_count > 0 && (t.retain_worker_results || t.stage_scope != unsafe { nil })
 			&& os.getenv('V3_NO_MERGE_RELOC').len == 0 {
-			mut running_nodes := t.a.nodes.len
-			mut running_children := t.a.children.len
-			mut reloc_args := []RegionRelocateArgs{cap: thread_count}
-			for ci in 0 .. thread_count {
-				ww := unsafe { &Transformer(args[ci + 1].worker) }
-				ns := node_starts[ci + 1]
-				cs := child_starts[ci + 1]
-				reloc_args << RegionRelocateArgs{
-					worker:      args[ci + 1].worker
-					node_start:  ns
-					node_end:    ww.a.nodes.len
-					child_start: cs
-					child_end:   ww.a.children.len
-					node_shift:  i32(running_nodes - ns)
-					child_shift: i32(running_children - cs)
-				}
-				running_nodes += ww.a.nodes.len - ns
-				running_children += ww.a.children.len - cs
-			}
-			mut reloc_tasks := []workers.Task{cap: thread_count}
-			for i in 0 .. reloc_args.len {
-				reloc_tasks << workers.Task{
-					run:        region_relocate_thread
-					arg:        unsafe { voidptr(&reloc_args[i]) }
-					force_sync: i == 0
-				}
-			}
-			t.a.worker_pool.run(reloc_tasks)
-			t.merge_regions_relocated = true
+			t.relocate_worker_regions(args[1..].map(it.worker), node_starts[1..chunk_count], child_starts[1..chunk_count])
 		}
 		// Compact each worker region in fixed order (deterministic
 		// node numbering). merge_worker treats the region start exactly like a
@@ -2723,14 +2838,40 @@ fn late_scan_chunk_bounds(a &flat.FlatAst, cands []LateFnCandidate, n int) []int
 	return bounds
 }
 
-// transform_job_count caps the worker count by both the runtime job count and a
-// fixed ceiling (each worker clones the base AST, so more workers cost more memory).
+// clamp_transform_jobs_to_clone_budget lowers the lane count until the private
+// base-AST clones fit selfhost_transform_clone_budget_bytes. The master works on
+// the shared base, so only the n-1 helper lanes clone.
+fn clamp_transform_jobs_to_clone_budget(n_jobs int, base_nodes int, base_children int, a &flat.FlatAst) int {
+	clone_bytes := u64(base_nodes) * u64(a.nodes.element_size) + u64(base_children) * u64(a.children.element_size)
+	return transform_clone_budget_jobs(n_jobs, clone_bytes)
+}
+
+// transform_clone_budget_jobs is the lane arithmetic behind
+// clamp_transform_jobs_to_clone_budget, split out so it can be checked without
+// building an AST.
+fn transform_clone_budget_jobs(n_jobs int, clone_bytes u64) int {
+	if n_jobs <= 1 || clone_bytes == 0 {
+		return n_jobs
+	}
+	affordable := selfhost_transform_clone_budget_bytes / clone_bytes
+	if affordable >= u64(n_jobs - 1) {
+		return n_jobs
+	}
+	// Only convert after bounding by the requested number of helper lanes.
+	return int(affordable) + 1
+}
+
+// transform_job_count caps workers by the runtime job count and clone limit.
 fn transform_job_count(n_runtime_jobs int, n_items int, scoped_selfhost bool) int {
 	if n_runtime_jobs <= 0 || n_items <= 0 {
 		return 0
 	}
 	mut n := n_runtime_jobs
-	limit := if scoped_selfhost { max_selfhost_transform_jobs } else { max_parallel_transform_jobs }
+	limit := if scoped_selfhost {
+		max_selfhost_transform_jobs
+	} else {
+		max_parallel_transform_jobs
+	}
 	if n > limit {
 		n = limit
 	}

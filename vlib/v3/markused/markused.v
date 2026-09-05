@@ -708,6 +708,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// skipping a repeat performs no fewer markings.
 	mut safe_alias_done := map[string]bool{}
 	mut iface_tail_done := map[string]bool{}
+	mut processed_module_calls := map[string]map[string]bool{}
 	safe_alias_done.reserve(u32(fn_decls.len))
 	iface_tail_done.reserve(u32(fn_decls.len))
 	if tc.verbose {
@@ -827,12 +828,24 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 			}
 			for initializer_ref in initializer_refs {
-				enqueue_initializer_ref_calls(a, collector, fn_decls, initializer_ref, mut
-					processed_initializer_refs, mut initializer_calls, mut used, mut queue)
+				enqueue_initializer_ref_calls(a, collector, fn_decls, initializer_ref, mut processed_initializer_refs, mut initializer_calls, mut used, mut queue)
 			}
 			total_callees += unique_call_count
+			// With no generic discovery, callee processing depends only on the
+			// name and caller module. Resolve repeated edges once across the BFS.
+			mut module_calls := if !detect_reachable_generics {
+				processed_module_calls[fn_info.module] or { map[string]bool{} }
+			} else {
+				map[string]bool{}
+			}
 			for call_idx in 0 .. unique_call_count {
 				callee := calls[call_idx]
+				if !detect_reachable_generics {
+					if module_calls[callee] {
+						continue
+					}
+					module_calls[callee] = true
+				}
 				if !valid_symbol_name(callee) {
 					continue
 				}
@@ -940,6 +953,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 						}
 					}
 				}
+			}
+			if !detect_reachable_generics {
+				processed_module_calls[fn_info.module] = module_calls.move()
 			}
 		}
 		new_added := queue.len - prev_len

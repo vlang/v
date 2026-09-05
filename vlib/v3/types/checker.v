@@ -2581,9 +2581,15 @@ fn (mut tc TypeChecker) collect_top_level_idx_fast(a &flat.FlatAst, inactive []b
 		}
 	}
 	mut synthetic_pos := 0
+	mut previous_trailing := -1
+	mut previous_file := ''
+	mut previous_module := ''
 	for k := 0; k + 1 < a.file_node_ids.len; k += 2 {
 		marker := a.file_node_ids[k]
 		trailing := a.file_node_ids[k + 1]
+		// Implicit imports live between file pairs. Preserve the context that a
+		// full node scan would carry from the preceding file through this gap.
+		previous_file, previous_module = tc.collect_index_gap(a, previous_trailing + 1, marker, previous_file, previous_module, inactive)
 		for synthetic_pos < tc.synthetic_top_level_type_ids.len
 			&& tc.synthetic_top_level_type_ids[synthetic_pos] <= marker {
 			synthetic_pos++
@@ -2626,7 +2632,32 @@ fn (mut tc TypeChecker) collect_top_level_idx_fast(a &flat.FlatAst, inactive []b
 			synthetic_pos++
 		}
 		tc.top_level_idx << trailing
+		previous_trailing = trailing
+		previous_file = idx_file
+		previous_module = idx_module
 	}
+	// Anything past the last indexed pair belongs to no later file pair.
+	_, _ = tc.collect_index_gap(a, previous_trailing + 1, a.nodes.len, previous_file, previous_module, inactive)
+}
+
+// collect_index_gap indexes the raw node range between two indexed file pairs,
+// where synthetic import insertion can leave whole bundle files. It mirrors the
+// full scan's `.file` handling, which switches the active file and clears the
+// active module, so a bundle's `module` declaration cannot leak into the file
+// that follows it.
+fn (mut tc TypeChecker) collect_index_gap(a &flat.FlatAst, start int, end int, file string, module_name string, inactive []bool) (string, string) {
+	mut gap_file := file
+	mut gap_module := module_name
+	for idx in start .. end {
+		if a.nodes[idx].kind == .file {
+			gap_file = a.nodes[idx].value
+			gap_module = ''
+			tc.top_level_idx << idx
+			continue
+		}
+		gap_module = tc.collect_index_child(a, idx, gap_file, gap_module, inactive)
+	}
+	return gap_file, gap_module
 }
 
 fn (mut tc TypeChecker) collect_module_attributes(node flat.Node, file string) {

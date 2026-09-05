@@ -115,6 +115,8 @@ mut:
 	parsing_inferred_fixed_array_type bool
 	diagnostic_limit_reached          bool
 	local_type_names                  map[string]string
+	local_type_decls_by_block         map[int][]string
+	local_type_decls_indexed          bool
 	local_type_scopes                 []string
 	anonymous_struct_types            map[string][]string
 	anonymous_struct_count            int
@@ -223,6 +225,8 @@ pub fn (mut p Parser) release_source_storage() {
 	p.cur_struct = ''
 	p.pending_export = ''
 	p.local_type_names = map[string]string{}
+	p.local_type_decls_by_block = map[int][]string{}
+	p.local_type_decls_indexed = false
 	p.export_records = []ExportRecord{}
 	p.s.src = ''
 	p.s.lit = ''
@@ -290,6 +294,8 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.in_for_container = false
 	p.parsing_inferred_fixed_array_type = false
 	p.local_type_scopes = []string{}
+	p.local_type_decls_by_block = map[int][]string{}
+	p.local_type_decls_indexed = false
 	p.anonymous_struct_types = map[string][]string{}
 	p.anonymous_struct_count = 0
 	p.sql_query_data_aliases.clear()
@@ -13452,52 +13458,87 @@ fn (mut p Parser) predeclare_local_type_names_in_block(open_brace_pos int) {
 	if scope.len == 0 || open_brace_pos < 0 || open_brace_pos >= p.s.src.len {
 		return
 	}
+	if !p.local_type_decls_indexed {
+		p.index_local_type_declarations()
+	}
+	for name in p.local_type_decls_by_block[open_brace_pos] {
+		p.declare_local_type_name(name, scope)
+	}
+}
+
+// Index raw lexical blocks once. Forward declarations in a block must not see
+// names from its nested blocks, and the scanner owns string/comment boundaries.
+@[direct_array_access]
+fn (mut p Parser) index_local_type_declarations() {
+	p.local_type_decls_indexed = true
 	mut s := scanner.new_scanner(p.prefs, .normal)
 	s.init(p.s.current_file(), p.s.src)
-	s.offset = open_brace_pos + 1
-	s.pos = s.offset
-	mut depth := 0
+	mut blocks := []int{}
+	mut expecting_name := false
+	mut name := ''
+	mut block := -1
 	for {
+		if !expecting_name && name.len == 0 && !s.in_str_incomplete && !s.in_str_inter {
+			// Only braces and declaration keywords matter here. Skip ordinary
+			// expressions without asking the scanner to classify every token.
+			src := s.src
+			src_len := src.len
+			mut off := s.offset
+			for off < src_len {
+				c := src[off]
+				if c == `{` || c == `}` || c == `/` || c == `'` || c == `"` || c == `\``
+					|| c == `#` {
+					break
+				}
+				if c == `r` || c == `c` {
+					if off + 1 < src_len && (src[off + 1] == `'` || src[off + 1] == `"`) {
+						break
+					}
+				} else if (c == `s` && off + 6 <= src_len && src[off + 1] == `t`
+					&& src[off + 2] == `r` && src[off + 3] == `u` && src[off + 4] == `c`
+					&& src[off + 5] == `t`) || (c == `u` && off + 5 <= src_len
+					&& src[off + 1] == `n` && src[off + 2] == `i` && src[off + 3] == `o`
+					&& src[off + 4] == `n`) {
+					prev := if off > 0 { src[off - 1] } else { u8(0) }
+					if !prev.is_alnum() && prev != `_` && prev < 128 {
+						break
+					}
+				}
+				off++
+			}
+			s.offset = off
+		}
 		tok := s.scan()
+		if name.len > 0 {
+			if tok != .dot {
+				p.local_type_decls_by_block[block] << name
+			}
+			name = ''
+		}
+		if expecting_name {
+			if tok == .name {
+				name = s.lit
+			}
+			expecting_name = false
+		}
 		if tok == .eof {
 			return
 		}
 		if tok == .lcbr {
-			depth++
-			continue
-		}
-		if tok == .rcbr {
-			if depth == 0 {
-				return
+			blocks << s.pos
+		} else if tok == .rcbr {
+			if blocks.len > 0 {
+				blocks.delete_last()
 			}
-			depth--
-			continue
-		}
-		if depth != 0 || (tok != .key_struct && tok != .key_union) {
-			continue
-		}
-		name_tok := s.scan()
-		if name_tok == .lcbr {
-			depth++
-			continue
-		}
-		if name_tok != .name {
-			continue
-		}
-		name := s.lit
-		after_name_tok := s.scan()
-		if after_name_tok != .dot {
-			p.declare_local_type_name(name, scope)
-		}
-		if after_name_tok == .lcbr {
-			depth++
-			continue
+		} else if tok in [.key_struct, .key_union] && blocks.len > 0 {
+			block = blocks.last()
+			expecting_name = true
 		}
 	}
 }
 
 fn (p &Parser) resolve_local_type_name(name string) string {
-	if p.local_type_scopes.len == 0 || name.len == 0 {
+	if p.local_type_names.len == 0 || p.local_type_scopes.len == 0 || name.len == 0 {
 		return name
 	}
 	mut suffix := ''

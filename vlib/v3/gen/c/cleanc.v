@@ -465,6 +465,7 @@ mut:
 	c_extern_global_names         map[string]string
 	shared_type_names             map[string]SharedTypeInfo // __shared__ wrapper name -> wrapped type metadata
 	shared_alias_pointer_shorts   map[string]string // alias short name -> shared inner type; '' means ambiguous
+	shared_alias_index_ready      bool
 	needs_shared_runtime          bool
 	const_runtime_inits           []string
 	const_runtime_init_modules    []string
@@ -10183,12 +10184,23 @@ fn (mut g FlatGen) register_struct_decl_info(name string, full_name string, modu
 }
 
 fn (mut g FlatGen) register_struct_decl_info_at(node_id int, name string, full_name string, module_name string, source_file string, node flat.Node) {
+	// These declarations are immutable during codegen. Most structs have no
+	// shared fields, so avoid rescanning their ordinary fields at every selector.
+	mut shared_fields := []flat.NodeId{}
+	for i in 0 .. node.children_count {
+		field_id := g.a.child(&node, i)
+		field := g.a.node(field_id)
+		if field.kind == .field_decl && shared_inner_type_text(field.typ) != none {
+			shared_fields << field_id
+		}
+	}
 	info := StructDeclInfo{
 		node: node
 		node_id: node_id
 		module: module_name
 		file: source_file
 		full_name: full_name
+		shared_fields: shared_fields
 	}
 	g.struct_decl_infos[full_name] = info
 	if name !in g.struct_decl_short_infos {

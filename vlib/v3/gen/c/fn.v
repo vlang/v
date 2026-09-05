@@ -1238,7 +1238,7 @@ const c_main_runtime_shadow_fn_names = {
 }
 
 fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?string {
-	if name.starts_with('C.') {
+	if module_name !in ['', 'main'] || name.starts_with('C.') {
 		return none
 	}
 	c_type_name := !isnil(g.tc)
@@ -1249,10 +1249,7 @@ fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?
 		&& !needs_export_wrapper && !export_name_owned {
 		return none
 	}
-	if module_name.len == 0 || module_name == 'main' {
-		return g.cname('main.${name}')
-	}
-	return none
+	return g.cname('main.${name}')
 }
 
 fn (g &FlatGen) main_export_name_owned_by_other_fn(module_name string, name string) bool {

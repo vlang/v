@@ -2234,11 +2234,12 @@ fn (g &FlatGen) scalar_zero_init(c_type string) string {
 
 // StructDeclInfo stores struct decl info metadata used by c.
 struct StructDeclInfo {
-	node      flat.Node
-	node_id   int
-	module    string
-	file      string
-	full_name string
+	node          flat.Node
+	node_id       int
+	module        string
+	file          string
+	full_name     string
+	shared_fields []flat.NodeId
 }
 
 struct SoaFieldInfo {
@@ -2305,6 +2306,9 @@ fn (g &FlatGen) shared_alias_pointer_type_from_text(raw string) ?types.Type {
 			base_type: g.tc.parse_type(inner)
 		})
 	}
+	if g.shared_alias_index_ready && g.shared_alias_pointer_shorts.len == 0 {
+		return none
+	}
 	for candidate in [clean, g.tc.qualify_name(clean)] {
 		if target := g.tc.type_aliases[candidate] {
 			if inner := shared_inner_type_text(target) {
@@ -2328,6 +2332,7 @@ fn (g &FlatGen) shared_alias_pointer_type_from_text(raw string) ?types.Type {
 }
 
 fn (mut g FlatGen) precompute_shared_alias_pointer_shorts() {
+	g.shared_alias_index_ready = true
 	for name, target in g.tc.type_aliases {
 		inner := shared_inner_type_text(target) or { continue }
 		short := name.all_after_last('.')
@@ -3071,9 +3076,9 @@ fn (mut g FlatGen) generic_shared_field_info(type_name string, field_name string
 	defer {
 		g.tc.cur_module = old_module
 	}
-	for i in 0 .. info.node.children_count {
-		field := g.a.child_node(&info.node, i)
-		if field.kind != .field_decl || field.value != field_name {
+	for field_id in info.shared_fields {
+		field := g.a.node(field_id)
+		if field.value != field_name {
 			continue
 		}
 		inner := shared_inner_type_text(field.typ) or { return none }
@@ -3101,9 +3106,9 @@ fn (mut g FlatGen) shared_field_info(type_name string, field_name string) ?Share
 	defer {
 		g.tc.cur_module = old_module
 	}
-	for i in 0 .. info.node.children_count {
-		field := g.a.child_node(&info.node, i)
-		if field.kind != .field_decl || field.value != field_name {
+	for field_id in info.shared_fields {
+		field := g.a.node(field_id)
+		if field.value != field_name {
 			continue
 		}
 		inner := shared_inner_type_text(field.typ) or { return none }

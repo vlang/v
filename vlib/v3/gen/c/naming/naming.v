@@ -158,6 +158,7 @@ fn is_string_literal_symbol(name string) bool {
 
 // sanitize converts a V symbol or type spelling into a C identifier spelling
 // without applying reserved-word or libc collision prefixes.
+@[direct_array_access]
 pub fn sanitize(name string) string {
 	mut dot_count := 0
 	for i in 0 .. name.len {
@@ -173,7 +174,8 @@ pub fn sanitize(name string) string {
 	if dot_count == 0 {
 		return name
 	}
-	mut out := []u8{len: name.len + dot_count}
+	out_len := name.len + dot_count
+	mut out := []u8{len: out_len + 1}
 	mut dst := 0
 	for i in 0 .. name.len {
 		c := name[i]
@@ -186,7 +188,8 @@ pub fn sanitize(name string) string {
 			dst++
 		}
 	}
-	return out.bytestr()
+	// Transfer the private, NUL-terminated buffer; no mutable alias escapes.
+	return unsafe { tos(out.data, out_len) }
 }
 
 fn sanitize_complex(name string) string {
