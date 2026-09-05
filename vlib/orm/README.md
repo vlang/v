@@ -40,8 +40,16 @@ struct Foo {
 - `[sql_type: 'SQL TYPE']` explicitly sets the type in SQL
 - `[sql_select: 'SQL expression']` uses a custom expression in `SELECT` for the field
 - `[default: 'raw_sql']` inserts `raw_sql` verbatim in a "DEFAULT" clause when
-  creating a new table, allowing for SQL functions like `CURRENT_TIME`. For raw strings,
-  surround `raw_sql` with backticks (\`).
+  creating a new table, allowing for SQL functions like `CURRENT_TIME`.
+  A plain string default has to be surrounded with backticks (\`), so that it is
+  emitted as a properly quoted (and escaped) SQL string literal instead:
+  `[default: '\`/dashboard\`']` produces `DEFAULT '/dashboard'`, while
+  `[default: 'CURRENT_TIME']` produces `DEFAULT CURRENT_TIME`.
+  Single quotes are doubled for you. A backslash is kept verbatim, except on
+  MySQL, where a backslash is rejected with an error: its meaning there depends
+  on the server's `NO_BACKSLASH_ESCAPES` sql_mode, which cannot be known while
+  generating the DDL. Use `sql_type` with an explicit `DEFAULT` clause for that
+  case.
 
 - `[fkey: 'parent_id']` sets foreign key for an field which holds an array
 - `[references]` or `[references: 'tablename']` or `[references: 'tablename(field_id)']`

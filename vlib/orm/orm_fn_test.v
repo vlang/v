@@ -833,3 +833,81 @@ fn sql_type_from_v(typ int) !string {
 		error('Unknown type ${typ}')
 	}
 }
+
+fn test_orm_table_gen_string_defaults() {
+	table := orm.Table{
+		name: 'test_table'
+	}
+	// A backtick delimited `default:` value is a plain string, and has to be
+	// emitted as a quoted SQL literal (see https://github.com/vlang/v/issues/27987).
+	// Everything else stays verbatim SQL, so that `CURRENT_TIME`, `gen_random_uuid()`
+	// etc keep working.
+	query := orm.orm_table_gen(.default, table, "'", true, 0, [
+		orm.TableField{
+			name:     'home_path'
+			typ:      typeof[string]().idx
+			nullable: true
+			attrs:    [
+				VAttribute{
+					name:    'default'
+					has_arg: true
+					arg:     '`/dashboard`'
+					kind:    .string
+				},
+			]
+		},
+		orm.TableField{
+			name:     'method'
+			typ:      typeof[string]().idx
+			nullable: true
+			attrs:    [
+				VAttribute{
+					name:    'default'
+					has_arg: true
+					arg:     '`POST`'
+					kind:    .string
+				},
+			]
+		},
+		orm.TableField{
+			name:     'quoted'
+			typ:      typeof[string]().idx
+			nullable: true
+			attrs:    [
+				VAttribute{
+					name:    'default'
+					has_arg: true
+					arg:     "`o'brien`"
+					kind:    .string
+				},
+			]
+		},
+		orm.TableField{
+			name:     'empty'
+			typ:      typeof[string]().idx
+			nullable: true
+			attrs:    [
+				VAttribute{
+					name:    'default'
+					has_arg: true
+					arg:     '``'
+					kind:    .string
+				},
+			]
+		},
+		orm.TableField{
+			name:     'created_at'
+			typ:      typeof[string]().idx
+			nullable: true
+			attrs:    [
+				VAttribute{
+					name:    'default'
+					has_arg: true
+					arg:     'CURRENT_TIMESTAMP'
+					kind:    .string
+				},
+			]
+		},
+	], sql_type_from_v, false) or { panic(err) }
+	assert query == "CREATE TABLE IF NOT EXISTS 'test_table' ('home_path' TEXT DEFAULT '/dashboard', 'method' TEXT DEFAULT 'POST', 'quoted' TEXT DEFAULT 'o''brien', 'empty' TEXT DEFAULT '', 'created_at' TEXT DEFAULT CURRENT_TIMESTAMP);"
+}
