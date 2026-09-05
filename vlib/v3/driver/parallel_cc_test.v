@@ -13,12 +13,14 @@ fn test_merge_v3_parallel_c_units_bounds_and_preserves_source() {
 }
 
 fn test_split_v3_parallel_c_source_uses_safe_unit_markers() {
-	source := '#include <stdio.h>\n/* V3CACHE_BODY_BEGIN */\n/* V3PARALLEL_CC_UNIT */\n/* V3CACHE_MODULE first */\nvoid first(void) {}\n/* V3PARALLEL_CC_UNIT */\n/* V3CACHE_MODULE second */\nvoid second(void) {}\n/* V3CACHE_BODY_END */\n'
-	prefix, units := split_v3_parallel_c_source(source, 1) or { panic(err) }
+	source := '#include <stdio.h>\n/* V3CACHE_BODY_BEGIN */\n\t/* V3PARALLEL_CC_UNIT */\n/* V3CACHE_MODULE first */\nvoid first(void) { puts("/* V3PARALLEL_CC_UNIT */"); }\n// /* V3PARALLEL_CC_UNIT */ inside a comment\n/* V3PARALLEL_CC_UNIT */\n/* V3CACHE_MODULE second */\nvoid second(void) {}\n/* V3CACHE_BODY_END */\n'
+	prefix, units := split_v3_parallel_c_source(source, 8) or { panic(err) }
 	assert prefix == '#include <stdio.h>\n'
-	assert units.len == 1
-	assert units[0].contains('void first(void) {}')
-	assert units[0].contains('void second(void) {}')
+	assert units.len == 2
+	assert units[0].contains('void first(void) {')
+	assert units[0].contains('puts("/* V3PARALLEL_CC_UNIT */")')
+	assert units[0].contains('inside a comment')
+	assert units[1].contains('void second(void) {}')
 }
 
 fn test_v3_parallel_cc_compiles_and_runs_multiple_c_units() {
@@ -41,5 +43,85 @@ fn test_v3_parallel_cc_compiles_and_runs_multiple_c_units() {
 		run_result := cmdexec.run(output, [])
 		assert run_result.exit_code == 0, run_result.output
 		assert run_result.output.trim_space() == '42'
+	}
+}
+
+fn test_v3_parallel_cc_does_not_shadow_user_parallel_header() {
+	$if macos || linux {
+		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_header_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path_single(root, 'main.v')
+		header := os.join_path_single(root, 'parallel.h')
+		output := os.join_path_single(root, 'main')
+		os.write_file(header, '#ifndef V3_USER_PARALLEL_H\n#define V3_USER_PARALLEL_H\nstatic inline int v3_user_parallel_header_value(void) { return 42; }\n#endif\n')!
+		os.write_file(source, '#flag -I @DIR\n#include "parallel.h"\n\nfn C.v3_user_parallel_header_value() int\n\nfn main() { println(C.v3_user_parallel_header_value()) }\n')!
+		build := cmdexec.run(@VEXE, ['-parallel-cc', '-nocache', '-showcc', '-o', output, source])
+		assert build.exit_code == 0, build.output
+		assert build.output.contains('unit_0.c')
+		run_result := cmdexec.run(output, [])
+		assert run_result.exit_code == 0, run_result.output
+		assert run_result.output.trim_space() == '42'
+	}
+}
+
+fn test_v3_parallel_cc_falls_back_for_native_static_state() {
+	$if macos || linux {
+		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_static_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path_single(root, 'main.v')
+		header := os.join_path_single(root, 'state.h')
+		output := os.join_path_single(root, 'main')
+		os.write_file(header, 'static int v3_parallel_state;\nstatic inline int v3_parallel_next(void) { return ++v3_parallel_state; }\n')!
+		os.write_file(source, '#flag -I @DIR\n#include "state.h"\n\nfn C.v3_parallel_next() int\n\nfn first() int { return C.v3_parallel_next() }\nfn second() int { return C.v3_parallel_next() }\nfn main() { println(first())\nprintln(second()) }\n')!
+		build := cmdexec.run(@VEXE, ['-parallel-cc', '-nocache', '-showcc', '-o', output, source])
+		assert build.exit_code == 0, build.output
+		assert !build.output.contains('unit_0.c'), build.output
+		assert build.output.contains('src.c'), build.output
+		run_result := cmdexec.run(output, [])
+		assert run_result.exit_code == 0, run_result.output
+		assert run_result.output.trim_space() == '1\n2'
+	}
+}
+
+fn test_v3_parallel_cc_falls_back_for_coverage_and_profile_state() {
+	$if macos || linux {
+		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_instrumentation_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path_single(root, 'main.v')
+		os.write_file(source, "println('42')\n")!
+		for mode in ['coverage', 'profile'] {
+			output := os.join_path_single(root, 'main_${mode}')
+			state_path := os.join_path_single(root, mode)
+			option := if mode == 'coverage' { '-coverage' } else { '-profile' }
+			build := cmdexec.run(@VEXE, ['-parallel-cc', option, state_path, '-nocache', '-showcc',
+				'-o', output, source])
+			assert build.exit_code == 0, build.output
+			assert !build.output.contains('unit_0.c'), build.output
+			assert build.output.contains('src.c'), build.output
+			run_result := cmdexec.run(output, [])
+			assert run_result.exit_code == 0, run_result.output
+			assert run_result.output.trim_space() == '42'
+			if mode == 'coverage' {
+				counter_files := os.walk_ext(state_path, '.csv')
+				assert counter_files.len > 0, 'missing coverage counters in ${state_path}: ${os.walk_ext(root, '')}'
+				counter_data := os.read_file(counter_files[0])!
+				assert counter_data.split_into_lines().any(it.len > 0 && it[0].is_digit())
+			} else {
+				assert os.is_file(state_path)
+				assert os.file_size(state_path) > 0
+			}
+		}
 	}
 }

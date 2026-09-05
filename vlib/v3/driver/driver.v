@@ -1825,6 +1825,9 @@ struct V3CCompilerFlagPlan {
 const v3_parallel_cc_unit_marker = '/* V3PARALLEL_CC_UNIT */'
 const v3_parallel_cc_max_jobs = 2
 const v3_parallel_cc_units_per_job = 4
+const v3_parallel_cc_monolithic_define = 'v3_parallel_cc_monolithic'
+const v3_parallel_cc_monolithic_exit_code = 125
+const v3_parallel_cc_monolithic_message = 'v3 parallel C source requires monolithic regeneration'
 
 struct V3ParallelCCompileTask {
 	compiler string
@@ -1877,53 +1880,102 @@ fn write_v3_parallel_c_source(path string, header_name string, body string, owne
 	file.write_string(body)!
 }
 
-fn v3_parallel_local_include_path(line string, including_dir string) ?string {
+fn v3_parallel_c_include_dirs(flags []string) []string {
+	mut dirs := []string{}
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i]
+		mut path := ''
+		if flag in ['-I', '-iquote', '-isystem'] && i + 1 < flags.len {
+			path = flags[i + 1]
+			i += 2
+		} else if flag.starts_with('-I') && flag.len > 2 {
+			path = flag[2..]
+			i++
+		} else if flag.starts_with('-iquote') && flag.len > '-iquote'.len {
+			path = flag['-iquote'.len..]
+			i++
+		} else if flag.starts_with('-isystem') && flag.len > '-isystem'.len {
+			path = flag['-isystem'.len..]
+			i++
+		} else {
+			i++
+		}
+		if path.len > 0 {
+			real_path := os.real_path(path)
+			if os.is_dir(real_path) && real_path !in dirs {
+				dirs << real_path
+			}
+		}
+	}
+	return dirs
+}
+
+fn v3_parallel_local_include_path(line string, including_dir string, include_dirs []string) ?string {
 	trimmed := line.trim_space()
-	prefix := '#include "'
-	if !trimmed.starts_with(prefix) {
+	quoted_prefix := '#include "'
+	angle_prefix := '#include <'
+	quoted := trimmed.starts_with(quoted_prefix)
+	prefix := if quoted { quoted_prefix } else { angle_prefix }
+	if !quoted && !trimmed.starts_with(angle_prefix) {
 		return none
 	}
 	rest := trimmed[prefix.len..]
-	end := rest.index_u8(`"`)
+	end := rest.index_u8(if quoted { `"` } else { `>` })
 	if end <= 0 {
 		return none
 	}
 	raw_path := rest[..end]
-	path := if os.is_abs_path(raw_path) {
-		raw_path
-	} else if including_dir.len > 0 {
-		os.join_path_single(including_dir, raw_path)
-	} else {
+	if os.is_abs_path(raw_path) {
+		if os.is_file(raw_path) {
+			return os.real_path(raw_path)
+		}
 		return none
 	}
-	if !os.is_file(path) {
-		return none
+	mut search_dirs := []string{}
+	if quoted && including_dir.len > 0 {
+		search_dirs << including_dir
 	}
-	return os.real_path(path)
+	search_dirs << include_dirs
+	for dir in search_dirs {
+		path := os.join_path_single(dir, raw_path)
+		if os.is_file(path) {
+			return os.real_path(path)
+		}
+	}
+	return none
 }
 
-fn v3_parallel_expand_local_includes(path string, mut active map[string]bool) string {
+fn v3_parallel_expand_local_includes(path string, include_dirs []string, mut active map[string]bool) (string, bool) {
 	real_path := os.real_path(path)
 	if active[real_path] {
-		return ''
+		return '', true
 	}
-	source := os.read_file(real_path) or { return '' }
+	source := os.read_file(real_path) or { return '', false }
 	active[real_path] = true
 	mut expanded := strings.new_builder(source.len)
+	mut complete := true
 	for line in source.split_into_lines() {
-		if include_path := v3_parallel_local_include_path(line, os.dir(real_path)) {
-			expanded.writeln(v3_parallel_expand_local_includes(include_path, mut active))
+		if include_path := v3_parallel_local_include_path(line, os.dir(real_path), include_dirs) {
+			included, included_complete := v3_parallel_expand_local_includes(include_path, include_dirs, mut active)
+			expanded.writeln(included)
+			complete = complete && included_complete
 		} else {
+			if line.trim_space().starts_with('#include "') {
+				complete = false
+			}
 			expanded.writeln(line)
 		}
 	}
 	active.delete(real_path)
-	return expanded.str()
+	return expanded.str(), complete
 }
 
-fn v3_parallel_c_declaration_header(prefix string) string {
+fn v3_parallel_c_declaration_header(prefix string, include_dirs []string) (string, bool) {
 	mut replacements := map[string]string{}
 	mut in_native_directives := false
+	mut native_directives := strings.new_builder(1024)
+	mut safe := true
 	for line in prefix.split_into_lines() {
 		trimmed := line.trim_space()
 		if trimmed == '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */' {
@@ -1937,15 +1989,32 @@ fn v3_parallel_c_declaration_header(prefix string) string {
 		if !in_native_directives || trimmed in replacements {
 			continue
 		}
-		if include_path := v3_parallel_local_include_path(line, '') {
+		native_directives.writeln(line)
+		if include_path := v3_parallel_local_include_path(line, '', include_dirs) {
 			mut active := map[string]bool{}
-			expanded := v3_parallel_expand_local_includes(include_path, mut active)
+			expanded, complete := v3_parallel_expand_local_includes(include_path, include_dirs, mut active)
+			variables, variables_complete := modulecache.c_source_static_variable_identifiers(expanded)
+			if !complete || !variables_complete
+				|| (variables.len > 0
+					&& !expanded.contains('#define V_PARALLEL_CC_STATIC_STORAGE_HANDLED 1')) {
+				safe = false
+			}
 			replacements[trimmed] = modulecache.declaration_header(expanded)
+		} else if trimmed.starts_with('#include "') {
+			// An unresolved quoted include can still be found by the C compiler through
+			// an option that is opaque here. Its file-static state cannot be shared safely.
+			safe = false
 		}
+	}
+	native_source := native_directives.str()
+	variables, variables_complete := modulecache.c_source_static_variable_identifiers(native_source)
+	if !variables_complete
+		|| variables.keys().any(!it.starts_with('_v3_lit_') && !it.starts_with('_str_')) {
+		safe = false
 	}
 	header := modulecache.declaration_header(prefix)
 	if replacements.len == 0 {
-		return header
+		return header, safe
 	}
 	mut out := strings.new_builder(header.len)
 	for line in header.split_into_lines() {
@@ -1955,7 +2024,7 @@ fn v3_parallel_c_declaration_header(prefix string) string {
 			out.writeln(line)
 		}
 	}
-	return out.str()
+	return out.str(), safe
 }
 
 fn merge_v3_parallel_c_units(parts []string, max_units int) []string {
@@ -1999,11 +2068,27 @@ fn split_v3_parallel_c_source(source string, max_units int) !(string, []string) 
 	body_end := source.index_after('\n/* V3CACHE_BODY_END */', body_start) or {
 		return error('missing v3 parallel C body end marker')
 	}
+	body := source[body_start..body_end]
 	mut units := []string{}
-	for part in source[body_start..body_end].split(v3_parallel_cc_unit_marker) {
-		if part.trim_space().len > 0 {
-			units << part
+	mut unit_start := 0
+	mut line_start := 0
+	for line_start < body.len {
+		line_end := body.index_after('\n', line_start) or { body.len }
+		if body[line_start..line_end].trim_space() == v3_parallel_cc_unit_marker {
+			part := body[unit_start..line_start]
+			if part.trim_space().len > 0 {
+				units << part
+			}
+			unit_start = if line_end < body.len { line_end + 1 } else { line_end }
 		}
+		if line_end >= body.len {
+			break
+		}
+		line_start = line_end + 1
+	}
+	last := body[unit_start..]
+	if last.trim_space().len > 0 {
+		units << last
 	}
 	if units.len == 0 {
 		return error('missing v3 parallel C unit markers')
@@ -2025,9 +2110,17 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 			output: 'failed to split generated C source: ${err.msg()}'
 		}
 	}
-	header_name := 'parallel.h'
+	header_name := 'v3_parallel_cc_${tempname.unique_token()}.h'
 	header_path := os.join_path_single(build_dir, header_name)
-	header := v3_parallel_c_declaration_header(prefix)
+	mut c_flags := c_flag_plan.before_inputs.clone()
+	c_flags << c_flag_plan.after_inputs
+	header, header_is_safe := v3_parallel_c_declaration_header(prefix, v3_parallel_c_include_dirs(c_flags))
+	if !header_is_safe {
+		return os.Result{
+			exit_code: v3_parallel_cc_monolithic_exit_code
+			output: v3_parallel_cc_monolithic_message
+		}
+	}
 	os.write_file(header_path, header) or {
 		return os.Result{
 			exit_code: 1
@@ -9171,7 +9264,8 @@ pub fn run(args []string) {
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	host_target := pref.host_target()
 	use_parallel_c_compilation := parallel_cc && backend == 'c' && !c_only && !explicit_tcc
-		&& !is_o && target.os != 'windows'
+		&& !is_o && target.os != 'windows' && coverage_dir.len == 0 && profile_file.len == 0
+		&& v3_parallel_cc_monolithic_define !in user_defines
 	// `-keepc` and explicit `-b c` promise a complete generated C translation unit.
 	// The module cache splits imported implementations into separate objects, so its main source
 	// alone cannot reproduce the build. Literal output uses a deliberately reduced
@@ -11749,6 +11843,21 @@ pub fn run(args []string) {
 					println('  > ${cmdexec.display(c_compiler, cc_args)}')
 				}
 				result = cmdexec.run_in(c_compiler, cc_args, cc_dir)
+			}
+			if result.exit_code == v3_parallel_cc_monolithic_exit_code
+				&& result.output == v3_parallel_cc_monolithic_message {
+				cleanup_c_build_dir(cc_dir)
+				mut regeneration_args := ['-d', v3_parallel_cc_monolithic_define]
+				for arg in args {
+					if arg !in [macos_v3_compat_c99_flag, macos_v3_internal_quiet_flag] {
+						regeneration_args << arg
+					}
+				}
+				os.execvp(os.executable(), regeneration_args) or {
+					eprintln('failed to restart monolithic C compilation: ${err.msg()}')
+					exit(1)
+				}
+				return
 			}
 			show_v3_c_compiler_output(show_c_output, c_compiler, result)
 			if result.exit_code != 0 {
