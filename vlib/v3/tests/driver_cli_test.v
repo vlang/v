@@ -402,6 +402,11 @@ fn test_standard_v3_excludes_ownership_checker() {
 		'ownership support is not compiled into this v3 executable')
 	assert_driver_cli_failure(v3_bin, ['-downership', source],
 		'ownership support is not compiled into this v3 executable')
+	unrelated_v3_source := os.join_path(root, 'v3.v')
+	os.write_file(unrelated_v3_source, 'fn main() {}\n')!
+	assert_driver_cli_failure(v3_bin, ['-d', 'ownership', '-o',
+		os.join_path(root, 'unrelated_v3'), unrelated_v3_source],
+		'ownership support is not compiled into this v3 executable')
 }
 
 fn test_explicit_arm64_import_unskips_ssa_dependencies() {

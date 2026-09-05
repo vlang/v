@@ -8297,7 +8297,7 @@ pub fn run(args []string) {
 		// A standard V3 compiler must be able to build the ownership-enabled V3
 		// executable before that executable can perform ownership analysis itself.
 		if define_name == 'ownership' && backend != 'fastc' && !ownership_checker_compiled()
-			&& !building_v {
+			&& !input_is_v3_compiler_entry(input_file) {
 			eprintln('ownership support is not compiled into this v3 executable')
 			exit(1)
 		}
