@@ -62,6 +62,21 @@ fn main() {
 		args << ['-gc', 'none']
 	}
 	effective_args = effective_self_build_args(args)
+	if !fastc_self_build && os.user_os() == 'macos' && '-prod' in effective_args
+		&& '-parallel-cc' !in effective_args {
+		// A V3-only cmd/v is large enough that monolithic clang + LTO dominates
+		// the self-build. Parallel C compilation also keeps the generated unit out
+		// of the full-LTO path when the self-build is already running under V3.
+		args << '-parallel-cc'
+	}
+	effective_args = effective_self_build_args(args)
+	if !fastc_self_build && os.user_os() == 'macos' && '-prod' in effective_args
+		&& '-no-memory-limit' !in effective_args && '--no-memory-limit' !in effective_args {
+		// Production C generation for the embedded V3 compiler can legitimately
+		// exceed V3's default 10 GB process limit before clang starts.
+		args << '-no-memory-limit'
+	}
+	effective_args = effective_self_build_args(args)
 	if !fastc_self_build && os.user_os() in ['linux', 'macos']
 		&& self_build_supports_prealloc(effective_args) && !has_prealloc_arg(effective_args) {
 		// The embedded V3 compiler uses disposable preallocation scopes. Pass the
@@ -369,6 +384,12 @@ fn pgo_compiler_kind(args []string) string {
 	if '-prod' !in args || '-no-prod-options' in args {
 		return ''
 	}
+	// A parallel self-build is the bounded-cost production path for the large
+	// V3-only compiler. PGO would compile that compiler three times and erase
+	// most of the gain from splitting C compilation / avoiding full LTO.
+	if '-parallel-cc' in args {
+		return ''
+	}
 	if os.user_os() == 'windows' {
 		return ''
 	}
@@ -568,7 +589,7 @@ fn bootstrap_self_build(vroot string, args []string, final_binary string) ! {
 		return error('bootstrap fallback failed while building v1.\n${err.msg()}')
 	}
 	mut bootstrap_args := ['-no-parallel']
-	bootstrap_args << with_output_arg(args, bootstrap_v2)
+	bootstrap_args << with_output_arg(initial_bootstrap_args(args), bootstrap_v2)
 	bootstrap_v1_cmd := os.join_path('.', bootstrap_v1)
 	bootstrap_v2_cmd := '${os.quoted_path(bootstrap_v1_cmd)} ${bootstrap_args.join(' ')} ${os.quoted_path(full_v_cli_source)}'
 	run_cmd(bootstrap_v2_cmd) or {
@@ -580,6 +601,14 @@ fn bootstrap_self_build(vroot string, args []string, final_binary string) ! {
 	run_cmd(final_cmd) or {
 		return error('bootstrap fallback failed while building the final compiler.\n${err.msg()}')
 	}
+}
+
+fn initial_bootstrap_args(args []string) []string {
+	// vc/v.c can be one generation behind this source tree. Its parallel C
+	// splitter predates the single-definition header protocol, and older copies
+	// may also predate V3's process-memory switch. The compiler it produces is
+	// current and receives the original arguments for the final build.
+	return args.filter(it !in ['-parallel-cc', '-no-memory-limit', '--no-memory-limit'])
 }
 
 fn bootstrap_c_cmd(cc string, out_binary string, vc_source string) string {

@@ -10,8 +10,11 @@ import v.help
 import v.pref
 import v.util
 import v.util.version
-import v.builder
-import v.builder.cbuilder
+
+$if !macos && !linux {
+	import v.builder
+	import v.builder.cbuilder
+}
 
 @[markused]
 const external_tools = [
@@ -66,21 +69,6 @@ const external_tools = [
 	'where',
 ]
 
-struct MacosV3CErrorReport {
-	kind      string // '' = generated-C compilation error; 'compiler_error' = V3 internal compiler error
-	ccompiler string
-	c_output  string
-	// Content only. The process that owned the staged report already bounded the source
-	// and deleted the directory, so the retry never reads a path or deletes a directory
-	// named by the (inheritable, forgeable) environment.
-	v_file                 string // informational base filename (no directory)
-	v_source               string // the full failing file (bounded only when larger than the byte budget)
-	v_source_truncated     bool   // true when v_source is a bounded excerpt rather than the whole file
-	v_source_focus         int    // failing line's 1-based position within v_source (0 = none)
-	input_digests          map[string]string
-	input_digests_complete bool
-}
-
 @[unsafe]
 fn timers_pointer(p &util.Timers) &util.Timers {
 	// TODO: the static variable here is used as a workaround for the current incompatibility of -usecache and globals in the main module:
@@ -103,7 +91,7 @@ fn main() {
 	mut timers := unsafe {
 		timers_pointer(util.new_timers(
 			should_print: timers_should_print
-			label:        'main'
+			label: 'main'
 		))
 	}
 	timers.start('v start')
@@ -129,12 +117,11 @@ fn main() {
 		util.launch_tool(false, 'vrepl', os.args[1..])
 		return
 	}
-	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
-	prefs, command, command_idx := pref.parse_args_for_launcher_with_command_index(external_tools,
-		args_and_flags, true)
+	mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
+	prefs, command, command_idx := pref.parse_args_for_launcher_with_command_index(external_tools, args_and_flags, true)
 	maybe_delegate_to_vvmrc(command, prefs)
 	maybe_delegate_to_ownership(command, prefs, args_and_flags)
-	macos_v3_c_error_report := maybe_delegate_to_macos_v3(command, prefs)
+	maybe_delegate_to_macos_v3(command, prefs)
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
@@ -163,7 +150,7 @@ fn main() {
 	}
 	match command {
 		'run', 'crun', 'build', 'build-module' {
-			rebuild(prefs, macos_v3_c_error_report)
+			rebuild(prefs)
 			return
 		}
 		'help' {
@@ -177,8 +164,7 @@ fn main() {
 			util.launch_tool(prefs.is_verbose, 'vcreate', os.args[1..])
 			return
 		}
-		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
-		'upgrade' {
+		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update', 'upgrade' {
 			util.launch_tool(prefs.is_verbose, 'vpm', os.args[1..])
 			return
 		}
@@ -202,7 +188,7 @@ fn main() {
 			if command.ends_with('.v') || os.exists(command) {
 				// println('command')
 				// println(prefs.path)
-				rebuild(prefs, macos_v3_c_error_report)
+				rebuild(prefs)
 				return
 			}
 		}
@@ -244,17 +230,11 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_a
 		// ownership compiler. Its direct parser reports unsupported modes.
 		return
 	}
-	$if macos {
-		if macos_v3_test_ownership_uses_v1(prefs, merged_args) {
-			return
-		}
-	}
-	if !ownership_delegation_is_requested(is_ownership, is_autofree, prefs.old_compiler,
-		prefs.new_compiler, os.user_os()) {
+	if !ownership_delegation_is_requested(is_ownership, is_autofree, prefs.old_compiler, prefs.new_compiler, os.user_os()) {
 		return
 	}
-	if is_autofree && !is_ownership && (autofree_requires_standard_compiler(prefs)
-		|| autofree_args_require_standard_compiler(merged_args, command)) {
+	if is_autofree && !is_ownership && (autofree_has_unsupported_ownership_preferences(prefs)
+		|| autofree_args_have_unsupported_ownership_option(merged_args, command)) {
 		return
 	}
 	if !is_ownership_relevant_command(command, prefs) {
@@ -272,9 +252,9 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_a
 	launch_v3_ownership_compiler(prefs.is_verbose, ownership_args)
 }
 
-fn autofree_args_require_standard_compiler(args []string, command string) bool {
+fn autofree_args_have_unsupported_ownership_option(args []string, command string) bool {
 	$if macos {
-		return macos_v3_has_v1_only_leading_option(args, command)
+		return macos_v3_has_unsupported_leading_option(args, command)
 	}
 	return false
 }
@@ -303,13 +283,14 @@ fn v3_args_have_ownership_define(args []string) bool {
 	return false
 }
 
-fn autofree_requires_standard_compiler(prefs &pref.Preferences) bool {
-	// Autofree selects no-GC by default, but an explicit collector still belongs
-	// to V1 until ownership mode implements it.
-	return v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc)
+fn autofree_has_unsupported_ownership_preferences(prefs &pref.Preferences) bool {
+	// Autofree selects no-GC by default, but the ownership-enabled V3 compiler
+	// does not yet implement explicit collectors or these compatibility modes.
+	return v3_has_unsupported_preferences(prefs)
+		|| (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc)
 }
 
-fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
+fn v3_has_unsupported_preferences(prefs &pref.Preferences) bool {
 	if prefs.cmain.len > 0 || prefs.custom_prelude.len > 0 || prefs.is_check_return
 		|| prefs.div_by_zero_is_zero || prefs.obfuscate_removed || prefs.no_std
 		|| prefs.is_vls || prefs.new_transform || prefs.is_livemain
@@ -320,7 +301,7 @@ fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 		|| prefs.wasm_stack_top != 1024 + (16 * 1024) || prefs.line_info.len > 0
 		|| prefs.use_coroutines || prefs.checker_match_exhaustive_cutoff_limit != 12
 		|| (prefs.backend == .c && !prefs.is_fastc && prefs.os != ._auto
-		&& prefs.os != pref.get_host_os())
+			&& prefs.os != pref.get_host_os())
 		|| prefs.build_options.any(it.starts_with('-debug-tcc')) || prefs.is_musl
 		|| prefs.build_options.any(it in ['-musl', '-glibc']) || !prefs.relaxed_gcc14 {
 		return true
@@ -423,42 +404,31 @@ fn launch_v3_ownership_compiler(is_verbose bool, args []string) {
 
 fn cached_v3_ownership_executable_path(vroot string) string {
 	vroot_hash := hash.sum64_string(os.real_path(vroot), 0).hex_full()
-	return util.path_of_executable(os.join_path(os.vtmp_dir(), 'v', 'delegated_v3', vroot_hash,
-		'v3_ownership'))
+	return util.path_of_executable(os.join_path(os.vtmp_dir(), 'v', 'delegated_v3', vroot_hash, 'v3_ownership'))
 }
 
-fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport) {
+fn rebuild(prefs &pref.Preferences) {
 	match prefs.backend {
 		.c {
-			$if no_bootstrapv ? {
+			$if macos || linux {
+				// Every C-backend build is dispatched to V3 before this point. Keeping
+				// this path fatal prevents an accidental dependency on the unlinked V1
+				// builder from being hidden behind an external tool bootstrap.
+				eprintln('internal error: C-backend compilation was not dispatched to V3')
+				exit(1)
+			} $else $if no_bootstrapv ? {
+
 				// TODO: improve the bootstrapping with a split C backend here.
 				// C code generated by `VEXE=v cmd/tools/builders/c_builder -os cross -o c.c cmd/tools/builders/c_builder.v`
 				// is enough to bootstrap the C backend, and thus the rest, but currently bootstrapping relies on
 				// `v -os cross -o v.c cmd/v` having a functional C codegen inside instead.
 				util.launch_tool(prefs.is_verbose, 'builders/c_builder', os.args[1..])
-			}
-			if failed := macos_v3_c_error_report {
-				builder.compile_with_external_c_error_report('build', prefs, cbuilder.compile_c, builder.ExternalCErrorBugReport{
-					kind:                   failed.kind
-					ccompiler:              failed.ccompiler
-					c_output:               failed.c_output
-					v_file:                 failed.v_file
-					v_source:               failed.v_source
-					v_source_truncated:     failed.v_source_truncated
-					v_source_focus:         failed.v_source_focus
-					source_inline:          true
-					input_digests:          failed.input_digests
-					input_digests_complete: failed.input_digests_complete
-					tag:                    'V3'
-				})
-			} else {
+			} $else {
 				builder.compile('build', prefs, cbuilder.compile_c)
 			}
 		}
 		.js_node, .js_freestanding, .js_browser {
-			// The js backends are V1-only and never receive a V3 fallback report; the
-			// content-only report (if any inherited one is present) names no directory to
-			// clean, so there is nothing to do here but hand off.
+			// Non-C backends remain external tools and are not linked into cmd/v.
 			util.launch_tool(prefs.is_verbose, 'builders/js_builder', os.args[1..])
 		}
 		.interpret {
@@ -466,27 +436,6 @@ fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport
 			exit(1)
 		}
 		.wasm {
-			if failed := macos_v3_c_error_report {
-				// The wasm builder runs as an external tool via os.execvp, which replaces
-				// this process, so this process cannot submit the V3->V1 fallback report or
-				// print the notice after the retry. Forward the already-bounded content
-				// through the environment; the builder submits/notifies on its own build
-				// success without ever reading a path or deleting a directory named by the
-				// (inheritable, forgeable) environment.
-				builder.export_external_v3_report_to_env(builder.ExternalCErrorBugReport{
-					kind:                   failed.kind
-					ccompiler:              failed.ccompiler
-					c_output:               failed.c_output
-					v_file:                 failed.v_file
-					v_source:               failed.v_source
-					v_source_truncated:     failed.v_source_truncated
-					v_source_focus:         failed.v_source_focus
-					source_inline:          true
-					input_digests:          failed.input_digests
-					input_digests_complete: failed.input_digests_complete
-					tag:                    'V3'
-				})
-			}
 			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])
 		}
 	}

@@ -4963,6 +4963,14 @@ pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
 	return view.parse_type(qualified)
 }
 
+// parse_resolution_type_in_file resolves type text using the imports and module
+// of `file` without mutating the checker's current traversal cursor.
+pub fn (tc &TypeChecker) parse_resolution_type_in_file(typ string, file string) Type {
+	module_name := tc.file_modules[file] or { '' }
+	mut scoped := tc.fork_type_parse_view(file, module_name)
+	return scoped.parse_resolution_type(typ)
+}
+
 // reset_resolution_type_view_cache discards lookup views that may have been
 // created inside a completed scoped parallel phase.
 pub fn (mut tc TypeChecker) reset_resolution_type_view_cache() {

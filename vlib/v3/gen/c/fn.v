@@ -4550,6 +4550,11 @@ fn (g &FlatGen) print_fn_selector_matches(c_name string, module_name string, sou
 fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_name string, skip_prelude_scan bool) {
 	g.tc.cur_module = module_name
 	g.cur_fn_name = node.value
+	g.cur_fn_source_file = if source_file := g.a.source_files[node.pos.id] {
+		source_file.name
+	} else {
+		g.tc.cur_file
+	}
 	g.cur_fn_assert_continues = g.tc.declaration_has_attribute(node_id, 'assert_continues')
 	g.begin_usable_expr_type_memo()
 	g.known_expr_type_id = -1
@@ -4605,7 +4610,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		param_id := g.a.child(&node, i)
 		p := g.a.node(param_id)
 		if p.kind == .param {
-			decl_param_type := g.tc.parse_resolution_type(p.typ)
+			decl_param_type := g.canonical_import_alias_type_in_file(p.typ, g.node_source_file(p))
 			param_type := if p.is_mut && p.op == .amp && param_idx < typed_params.len {
 				g.fn_node_effective_param_type(p, typed_params[param_idx])
 			} else if shared_alias_ptr := g.shared_alias_pointer_type_from_text(p.typ) {
@@ -6637,6 +6642,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	match dispatch_name {
 		'array_new' {
 			g.write('array_new(')
+			source_file := g.node_source_file(&node)
 			for i in 1 .. node.children_count {
 				if i > 1 {
 					g.write(', ')
@@ -6646,8 +6652,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				if i == 1 {
 					arg_expr := g.expr_to_string(arg_id)
 					if raw_sizeof := raw_sizeof_arg_value(arg_expr) {
-						if raw_sizeof_needs_normalization(raw_sizeof) {
-							g.write('sizeof(${g.sizeof_target(raw_sizeof)})')
+						if alias_target := g.import_alias_sizeof_target_in_file(raw_sizeof, g.node_source_file(&arg_node)) {
+							g.write('sizeof(${alias_target})')
+						} else if raw_sizeof_needs_normalization(raw_sizeof) {
+							g.write('sizeof(${g.sizeof_target_in_file(raw_sizeof, source_file)})')
 						} else {
 							g.write(arg_expr)
 						}
@@ -6655,10 +6663,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						g.write(arg_expr)
 					}
 				} else if arg_node.kind == .sizeof_expr {
-					g.write('sizeof(${g.sizeof_target(arg_node.value)})')
+					g.write('sizeof(${g.sizeof_target_in_file(arg_node.value, source_file)})')
 				} else if raw_sizeof := raw_sizeof_arg_value(arg_node.value) {
 					if raw_sizeof_needs_normalization(raw_sizeof) {
-						g.write('sizeof(${g.sizeof_target(raw_sizeof)})')
+						g.write('sizeof(${g.sizeof_target_in_file(raw_sizeof, source_file)})')
 					} else {
 						g.gen_expr(arg_id)
 					}
@@ -7526,7 +7534,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					break
 				}
 				if arg_node.kind == .sizeof_expr {
-					g.write('sizeof(${g.sizeof_target(arg_node.value)})')
+					g.write('sizeof(${g.sizeof_target_in_file(arg_node.value, g.node_source_file(&arg_node))})')
 					continue
 				}
 				if g.gen_array_equality_literal_arg([emitted_callee_name, actual_fn, fn_name], arg_idx, arg_id, arg_node) {
@@ -15422,7 +15430,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			continue
 		}
 		if arg_node.kind == .sizeof_expr {
-			g.write('sizeof(${g.sizeof_target(arg_node.value)})')
+			g.write('sizeof(${g.sizeof_target_in_file(arg_node.value, g.node_source_file(&arg_node))})')
 			continue
 		}
 		if g.gen_ierror_str_arg(fn_name, callee_name, arg_idx, arg_id) {

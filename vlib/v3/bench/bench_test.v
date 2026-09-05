@@ -87,6 +87,17 @@ fn test_stage_memory_monitor_stops_before_state_release() {
 	assert stopwatch.elapsed() < time.second
 }
 
+fn test_stage_memory_monitor_exit_hook_stops_active_monitor() {
+	mut b := new()
+	b.disable_memory_limit()
+	b.memory_monitor_interval = time.minute
+	b.start_memory_monitor()
+	stopwatch := time.new_stopwatch()
+	stop_stage_memory_monitors_at_exit()
+	b.memory_monitor_started = false
+	assert stopwatch.elapsed() < time.second
+}
+
 fn test_limit_memory_metric_is_available() {
 	memory := current_limit_memory()
 	assert memory.kb > 0

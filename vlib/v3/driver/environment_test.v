@@ -310,6 +310,10 @@ fn test_parallel_cc_external_definition_precheck_uses_active_ast_directives() {
 	assert !v3_parallel_cc_active_sources_include_external_definition(a, [source])
 }
 
+fn test_embedded_vroot_uses_baked_root_for_a_moved_compiler() {
+	assert embedded_vroot(@VEXEROOT, '/private/tmp/moved-v', '/private/tmp/main.v') == @VEXEROOT
+}
+
 fn test_impure_v_diagnostics_inspect_ast_nodes_in_every_pure_v_file() {
 	root := os.join_path(os.temp_dir(), 'v3_impure_v_ast_${os.getpid()}')
 	os.rmdir_all(root) or {}

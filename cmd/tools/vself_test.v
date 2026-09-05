@@ -107,6 +107,15 @@ fn test_macos_default_self_build_compiler_selection() {
 	assert override_result.output.contains('-cc cc'), override_result.output
 	assert override_result.output.contains('-prealloc'), override_result.output
 	assert_vself_preserves_full_cli(override_result.output)
+	prod_result :=
+		os.execute('CC=clang VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -prod -o /tmp/vself_macos_prod_test')
+	assert prod_result.exit_code == 0, prod_result.output
+	assert prod_result.output.contains('-parallel-cc'), prod_result.output
+	assert prod_result.output.contains('-no-memory-limit'), prod_result.output
+	assert prod_result.output.contains('-prealloc'), prod_result.output
+	assert !prod_result.output.contains('-fprofile'), prod_result.output
+	assert prod_result.output.count('cmd/v') == 1, prod_result.output
+	assert_vself_preserves_full_cli(prod_result.output)
 	old_result :=
 		os.execute('CC=cc VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -old-compiler -o /tmp/vself_macos_old_test')
 	assert old_result.exit_code == 0, old_result.output
@@ -159,10 +168,10 @@ fn main() {
 }
 ") or { panic(err) }
 	isolated_vexe := os.join_path(root, 'v')
-	mock_build := os.execute('${os.quoted_path(vexe)} -old-compiler -o ${os.quoted_path(isolated_vexe)} ${os.quoted_path(mock_source)}')
+	mock_build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(isolated_vexe)} ${os.quoted_path(mock_source)}')
 	assert mock_build.exit_code == 0, mock_build.output
 	vself_tool := os.join_path(root, 'vself')
-	vself_build := os.execute('${os.quoted_path(vexe)} -old-compiler -o ${os.quoted_path(vself_tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
+	vself_build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(vself_tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
 	assert vself_build.exit_code == 0, vself_build.output
 
 	self_result := os.execute('env -u CC VFLAGS="" VOSARGS="" VSELF_TEST_FULL_CLI=${os.quoted_path(vexe)} VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(vself_tool)} self -silent')

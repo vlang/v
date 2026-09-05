@@ -7720,6 +7720,7 @@ pub fn run(args []string) {
 	mut warn_impure_v := false
 	mut warns_are_errors := false
 	mut notes_are_errors := false
+	mut fatal_errors := false
 	mut check_overflow := false
 	mut force_bounds_checking := false
 	mut print_v_files := false
@@ -8085,6 +8086,9 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-N' {
 			notes_are_errors = true
+			i++
+		} else if args[i] == '-Wfatal-errors' {
+			fatal_errors = true
 			i++
 		} else if args[i] == '-print-v-files' {
 			print_v_files = true
@@ -8572,8 +8576,9 @@ pub fn run(args []string) {
 		resolve_vroot_for_input(prefs.vroot, os.real_path(input_file))
 	} else if pref.has_macos_v3_caller_environment() && prefs.vexe.len > 0 {
 		// The macOS dispatcher sets VEXE to the invoking compiler. Preserve that
-		// checkout instead of selecting another V checkout around the input.
-		os.real_path(os.dir(prefs.vexe))
+		// checkout instead of selecting another V checkout around the input. A
+		// compiler produced with `v self -o /other/path` still uses its baked root.
+		embedded_vroot(prefs.vroot, prefs.vexe, input_file)
 	} else {
 		resolve_vroot_for_input(prefs.vroot, input_file)
 	}
@@ -9158,6 +9163,9 @@ pub fn run(args []string) {
 						'error:'
 					}
 					eprintln(v3errors.formatted_parser_diagnostic(severity, diagnostic.message, a, diagnostic.pos))
+					if fatal_errors && severity == 'error:' {
+						break
+					}
 				} else {
 					severity := if effective_warns_are_errors && diagnostic.severity == 'warning:' {
 						'error:'
@@ -9167,6 +9175,9 @@ pub fn run(args []string) {
 						'error:'
 					}
 					eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: ${severity} ${diagnostic.message}')
+					if fatal_errors && severity == 'error:' {
+						break
+					}
 				}
 			}
 		}
@@ -9583,7 +9594,7 @@ pub fn run(args []string) {
 		}
 		if has_conflicting_c_declaration_errors(pre_tc.errors) {
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
 			}
 			exit(1)
 		}
@@ -9600,7 +9611,7 @@ pub fn run(args []string) {
 		}
 		if pre_tc.check_interface_embedding_limits() {
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
 			}
 			exit(1)
 		}
@@ -9718,7 +9729,7 @@ pub fn run(args []string) {
 				}
 			}
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
 			}
 			pre_tc.notices.clear()
 		}
@@ -9898,7 +9909,7 @@ pub fn run(args []string) {
 			if cache_state.manager.enabled {
 				cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			}
-			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture)
+			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture, fatal_errors)
 			for notice in pre_tc.notices {
 				if notice.severity == 'warning:' {
 					checker_warning_count++
@@ -10331,7 +10342,7 @@ pub fn run(args []string) {
 		b.step('annotate types (cached)')
 		if !is_repl && cgen_cache_metadata.diagnostics.len > 0 {
 			cached_notices := restore_v3_type_diagnostics(mut a, cgen_cache_metadata.diagnostics)
-			print_type_diagnostics(a, cached_notices, []types.TypeError{}, is_checker_fixture)
+			print_type_diagnostics(a, cached_notices, []types.TypeError{}, is_checker_fixture, fatal_errors)
 			for notice in cached_notices {
 				if notice.severity == 'warning:' {
 					checker_warning_count++
@@ -10348,7 +10359,7 @@ pub fn run(args []string) {
 		if macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 			exit(1)
 		}
-		print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+		print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
 		exit(1)
 	}
 
@@ -10446,7 +10457,7 @@ pub fn run(args []string) {
 			}
 			if pre_tc.errors.len == 0
 				|| !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
 			}
 			for notice in pre_tc.notices {
 				if notice.severity == 'warning:' {
@@ -13685,6 +13696,17 @@ fn resolve_vroot_for_input(initial string, input_file string) string {
 	return initial
 }
 
+fn embedded_vroot(initial string, vexe string, input_file string) string {
+	vexe_root := os.real_path(os.dir(vexe))
+	if is_valid_vroot(vexe_root) {
+		return vexe_root
+	}
+	if is_valid_vroot(initial) {
+		return initial
+	}
+	return resolve_vroot_for_input(initial, input_file)
+}
+
 fn nearest_vroot_for_path(path string) ?string {
 	if path.len == 0 {
 		return none
@@ -13723,7 +13745,7 @@ fn builtin_dir_for_vroot(root string) string {
 }
 
 // print_type_diagnostics renders notices before fatal type errors.
-fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool) {
+fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool) {
 	mut ordered_notices := notices.clone()
 	ordered_notices.sort_with_compare(compare_print_notices)
 	for notice in ordered_notices {
@@ -13747,14 +13769,20 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			ordered_errors << err
 		}
 	}
-	max_errors := if all_errors || ordered_errors.len < 20 { ordered_errors.len } else { 20 }
+	max_errors := if fatal_errors {
+		if ordered_errors.len > 0 { 1 } else { 0 }
+	} else if all_errors || ordered_errors.len < 20 {
+		ordered_errors.len
+	} else {
+		20
+	}
 	for ei in 0 .. max_errors {
 		err := ordered_errors[ei]
 		severity := if err.severity.len > 0 { err.severity } else { 'error:' }
 		eprintln(v3errors.formatted_error(severity, err.msg, a, err.node, err.pos))
 		print_type_diagnostic_details(err.details)
 	}
-	if !all_errors && ordered_errors.len > max_errors {
+	if !fatal_errors && !all_errors && ordered_errors.len > max_errors {
 		eprintln('... and ${ordered_errors.len - max_errors} more errors')
 	}
 }
