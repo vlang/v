@@ -58,3 +58,62 @@ fn test_map_reserve_preallocates_dense_array() {
 	assert raw.key_values.keys == keys
 	assert raw.key_values.values == values
 }
+
+fn test_empty_map_reserve_matches_populated_map_hash_state() {
+	// The largest reservation crosses the cached-hash-bit rollover.
+	for n in [32, 1024, 1_000_000] {
+		mut empty := map[int]int{}
+		mut populated := {
+			-1: 42
+		}
+		empty.reserve(u32(n))
+		populated.reserve(u32(n))
+		e := unsafe { &MapLayoutForTest(&empty) }
+		p := unsafe { &MapLayoutForTest(&populated) }
+		assert e.even_index == p.even_index
+		assert e.cached_hashbits == p.cached_hashbits
+		assert e.shift == p.shift
+		reserved_index := e.even_index
+		for i in 0 .. n {
+			empty[i] = i * 3
+		}
+		// Collision tails may grow without rehashing the reserved buckets.
+		assert e.even_index == reserved_index
+		for i in 0 .. n {
+			assert empty[i] == i * 3
+		}
+		if n < 1_000_000 {
+			for i in n .. n * 2 {
+				empty[i] = i * 3
+			}
+			for i in 0 .. n * 2 {
+				assert empty[i] == i * 3
+			}
+		}
+		unsafe {
+			empty.free()
+			populated.free()
+		}
+	}
+}
+
+fn test_empty_map_reserve_after_deletion_and_clear() {
+	mut m := {
+		'old': 1
+	}
+	m.delete('old')
+	m.reserve(1024)
+	m['new'] = 2
+	assert m == {
+		'new': 2
+	}
+	m.clear()
+	m.reserve(2048)
+	m['cleared'] = 3
+	assert m == {
+		'cleared': 3
+	}
+	m.reserve(0)
+	m['next'] = 4
+	assert m.keys() == ['cleared', 'next']
+}

@@ -580,8 +580,30 @@ fn (mut m map) reserve_metas(meta_bytes u32) {
 
 // reserve ensures that the map can store at least `n` entries without rehashing.
 pub fn (mut m map) reserve(n u32) {
-	for u64(n) * 5 > u64(m.even_index) * 2 {
-		m.expand()
+	if m.len == 0 {
+		old_index := m.even_index
+		for u64(n) * 5 > u64(m.even_index) * 2 {
+			m.even_index = ((m.even_index + 2) << 1) - 2
+			if m.cached_hashbits == 0 {
+				m.shift += max_cached_hashbits
+				m.cached_hashbits = max_cached_hashbits
+			} else {
+				m.cached_hashbits--
+			}
+		}
+		if m.even_index != old_index {
+			// Empty maps have no entries to rehash. Allocate the final metadata
+			// table once instead of zeroing every intermediate doubled table.
+			meta_bytes := sizeof(u32) * (m.even_index + 2 + m.extra_metas)
+			unsafe {
+				free(m.metas)
+				m.metas = &u32(vcalloc_noscan(meta_bytes))
+			}
+		}
+	} else {
+		for u64(n) * 5 > u64(m.even_index) * 2 {
+			m.expand()
+		}
 	}
 	dense_cap := u64(n) + u64(m.key_values.deletes)
 	if dense_cap > u64(max_int) {
