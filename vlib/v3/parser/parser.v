@@ -7275,6 +7275,13 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 			typ: typ
 		})
 	}
+	if p.tok == .lsbr && p.current_lbr_starts_fixed_array_type() {
+		// A fixed array variant pattern, e.g. `match v { [3]f64 { ... } }`.
+		// Without this the `[3]f64` is parsed as an array literal, and the whole
+		// match degrades into a value match against it.
+		typ := p.parse_type_name()
+		return p.match_type_pattern_node(typ)
+	}
 	if p.tok == .name && p.lit == 'map' && p.peek() == .lsbr {
 		typ := p.parse_type_name()
 		return p.add_val(.ident, typ)
@@ -12178,6 +12185,42 @@ fn (mut p Parser) current_lbr_starts_array_type() bool {
 		return false
 	}
 	return p.lbr_starts_array_type_from_offset(p.s.offset)
+}
+
+// current_lbr_starts_fixed_array_type reports whether the current `[` starts a
+// fixed array type like `[3]f64`, rather than an array literal. It scans from the
+// `[` token itself instead of the scanner offset, so that it stays correct after
+// the caller has already peeked past the `[`. A `!` right after the closing `]`
+// marks a fixed array *literal* (`[1, 2]!`), never a type.
+fn (mut p Parser) current_lbr_starts_fixed_array_type() bool {
+	if p.tok != .lsbr || p.char_after_matching_rsbr(p.tok_pos + 1) == `!` {
+		return false
+	}
+	return p.lbr_starts_array_type_from_offset(p.tok_pos + 1)
+}
+
+// char_after_matching_rsbr returns the first non blank character after the `]`
+// that closes the `[` whose contents start at `offset`, or 0 when there is none.
+fn (p &Parser) char_after_matching_rsbr(offset int) u8 {
+	mut idx := offset
+	mut depth := 1
+	for idx < p.s.src.len {
+		c := p.s.src[idx]
+		if c == `[` {
+			depth++
+		} else if c == `]` {
+			depth--
+			if depth == 0 {
+				idx++
+				for idx < p.s.src.len && (p.s.src[idx] == ` ` || p.s.src[idx] == `\t`) {
+					idx++
+				}
+				return if idx < p.s.src.len { p.s.src[idx] } else { u8(0) }
+			}
+		}
+		idx++
+	}
+	return 0
 }
 
 fn (mut p Parser) current_generic_struct_init_suffix_followed_by_lcbr() bool {

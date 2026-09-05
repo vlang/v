@@ -1388,7 +1388,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		right_sym := g.table.sym(unwrapped_val_type)
 		unaliased_right_sym := g.table.final_sym(unwrapped_val_type)
 		unaliased_left_sym := g.table.final_sym(g.unwrap_generic(var_type))
-		is_fixed_array_var := unaliased_right_sym.kind == .array_fixed && val !is ast.ArrayInit && (val in [
+		// A fixed array assigned to a sumtype/interface has to be boxed into the variant
+		// (`Array_fixed_f64_3_to_sumtype_Val(...)`), not memcpy()-ed over the receiving
+		// sumtype/interface struct.
+		is_boxed_fixed_array_val := unaliased_right_sym.kind == .array_fixed
+			&& unaliased_left_sym.kind in [.sum_type, .interface] && !var_type.has_flag(.option)
+		is_fixed_array_var := unaliased_right_sym.kind == .array_fixed && !is_boxed_fixed_array_val
+			&& val !is ast.ArrayInit && (val in [
 			ast.Ident,
 			ast.IndexExpr,
 			ast.CallExpr,
@@ -1493,7 +1499,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 				g.writeln(';}')
 			}
-		} else if node.op == .assign && (is_fixed_array_init || is_fixed_array_var || (unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr)) {
+		} else if node.op == .assign && !is_boxed_fixed_array_val
+			&& (is_fixed_array_init || is_fixed_array_var || (unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr)) {
 			// Fixed arrays
 			if unaliased_left_sym.kind != .array_fixed && unaliased_right_sym.kind == .array_fixed && (g.pref.translated || g.file.is_translated) {
 				// translated:
