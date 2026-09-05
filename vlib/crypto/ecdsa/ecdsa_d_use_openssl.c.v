@@ -28,7 +28,12 @@ module ecdsa
 #flag windows -IC:/Program Files/OpenSSL/include
 #flag windows -LC:/Program Files/OpenSSL/lib/VC/x64/MD
 
-#flag -lcrypto
+$if msvc {
+	// OpenSSL's MSVC import library is conventionally named libcrypto.lib.
+	#flag -llibcrypto
+} $else {
+	#flag -lcrypto
+}
 
 #include <openssl/ecdsa.h>
 #include <openssl/obj_mac.h>

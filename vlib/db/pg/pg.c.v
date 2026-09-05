@@ -9,6 +9,10 @@ $if $pkgconfig('libpq') {
 } $else {
 	$if msvc {
 		#flag -llibpq
+	} $else $if windows {
+		// GCC and TCC need a GNU-compatible import library, not MSVC's libpq.lib.
+		// Keep the path explicit so a missing dependency names the expected file.
+		#flag @VEXEROOT/thirdparty/pg/win64/mingw/libpq.dll.a
 	} $else {
 		#flag -lpq
 	}
