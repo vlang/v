@@ -1221,6 +1221,8 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		interface_fields: tc.interface_fields
 		interface_embeds: tc.interface_embeds
 		interface_abstract_methods: tc.interface_abstract_methods
+		interface_impl_name_snapshots: tc.interface_impl_name_snapshots
+		interface_impl_candidates_at_snapshot: tc.interface_impl_candidates_at_snapshot
 		interface_impl_candidates_at_index: tc.interface_impl_candidates_at_index
 		interface_method_names_index: tc.interface_method_names_index
 		interface_abstract_index: tc.interface_abstract_index
