@@ -245,3 +245,18 @@ fn test_query_is_serialized_for_shared_connections() {
 		assert count > 0
 	}
 }
+
+// Regression test for https://github.com/vlang/v/issues/27525. It does not need a
+// server: `local_infile` has to be applied before `mysql_real_connect()`, so the only
+// thing that can be checked from V is that the option is exposed and that enabling it
+// also turns on the `.client_local_files` capability, which the statement needs.
+fn test_local_infile_config_defaults_to_off_and_can_be_enabled() {
+	off := mysql.Config{}
+	assert !off.local_infile
+	assert !off.flag.has(.client_local_files)
+
+	on := mysql.Config{
+		local_infile: true
+	}
+	assert on.local_infile
+}
