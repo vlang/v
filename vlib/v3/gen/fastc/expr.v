@@ -2557,17 +2557,70 @@ fn fastc_replace(text string, needle string, replacement string) string {
 	return fastc_take_string(mut out)
 }
 
+// fastc_replace_c_call_identifier rewrites generated C call sites without changing
+// matching text inside string/character literals or comments.
 fn fastc_replace_c_call_identifier(source string, identifier string, replacement string) string {
 	if identifier == '' || identifier == replacement || !fastc_contains(source, identifier) {
 		return source
 	}
 	mut out := strings.new_builder(source.len + replacement.len + 1)
 	mut start := 0
-	for start < source.len {
-		index := fastc_index_of(source, identifier, start)
-		if index < 0 {
-			unsafe { out.write_ptr(source.str + start, source.len - start) }
-			break
+	mut index := 0
+	mut quote := u8(0)
+	mut escaped := false
+	mut in_line_comment := false
+	mut in_block_comment := false
+	mut replaced := false
+	for index < source.len {
+		character := source[index]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if character == `\\` {
+				escaped = true
+			} else if character == quote {
+				quote = 0
+			}
+			index++
+			continue
+		}
+		if in_line_comment {
+			if character == `\n` {
+				in_line_comment = false
+			}
+			index++
+			continue
+		}
+		if in_block_comment {
+			if character == `*` && index + 1 < source.len && source[index + 1] == `/` {
+				in_block_comment = false
+				index += 2
+				continue
+			}
+			index++
+			continue
+		}
+		if character in [`'`, `"`] {
+			quote = character
+			index++
+			continue
+		}
+		if character == `/` && index + 1 < source.len {
+			if source[index + 1] == `/` {
+				in_line_comment = true
+				index += 2
+				continue
+			}
+			if source[index + 1] == `*` {
+				in_block_comment = true
+				index += 2
+				continue
+			}
+		}
+		if character != identifier[0] || index + identifier.len > source.len
+			|| unsafe { vmemcmp(source.str + index, identifier.str, identifier.len) } != 0 {
+			index++
+			continue
 		}
 		end := index + identifier.len
 		before_is_name_or_member := index > 0 && (source[index - 1].is_alnum() || source[index - 1] in [
@@ -2578,14 +2631,18 @@ fn fastc_replace_c_call_identifier(source string, identifier string, replacement
 		for after < source.len && source[after] in [` `, `\t`, `\r`, `\n`] {
 			after++
 		}
-		unsafe { out.write_ptr(source.str + start, index - start) }
-		if before_is_name_or_member || after >= source.len || source[after] != `(` {
-			out.write_string(identifier)
-		} else {
+		if !before_is_name_or_member && after < source.len && source[after] == `(` {
+			unsafe { out.write_ptr(source.str + start, index - start) }
 			out.write_string(replacement)
+			start = end
+			replaced = true
 		}
-		start = end
+		index = end
 	}
+	if !replaced {
+		return source
+	}
+	unsafe { out.write_ptr(source.str + start, source.len - start) }
 	return fastc_take_string(mut out)
 }
 

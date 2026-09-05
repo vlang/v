@@ -1796,6 +1796,12 @@ fn main() {
 	assert !c_source.contains('.similarity_fn=(compare__similarity)'), c_source
 }
 
+fn test_fastc_replace_c_call_identifier_skips_quoted_c_literals() {
+	source := r'consume("compare__similarity(\"", compare__similarity(1))'
+	expected := r'consume("compare__similarity(\"", v_f0(1))'
+	assert fastc_replace_c_call_identifier(source, 'compare__similarity', 'v_f0') == expected
+}
+
 fn test_ordinary_nul_codepoint_interpolation_is_rejected() {
 	prefs := pref.new_preferences()
 	mut message := ''
@@ -9455,6 +9461,38 @@ fn test_veb_template_compiles_to_builder() {
 	assert src.contains('for x in xs {'), src
 	assert src.contains('veb.filter_html(x)'), src
 	assert src.contains('veb.tr(ctx.lang.str(), "greeting")'), src
+}
+
+fn test_selected_comptime_branch_collects_veb_template_references() {
+	dir := os.join_path(os.temp_dir(), 'v3_veb_references_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	template_path := os.join_path_single(dir, 'selected.html')
+	os.write_file(template_path, '@if template_only() {\n<p>selected</p>\n}\n') or { panic(err) }
+	main_path := os.join_path_single(dir, 'main.v')
+	source := 'module main
+
+fn handler() string {
+	$if linux {
+		return $veb.html("selected.html")
+	} $else {
+		return ""
+	}
+}
+'
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('linux', pref.host_arch()) or { panic(err) }
+	mut references := map[string]map[string]bool{}
+	mut top_level_references := map[string]bool{}
+	fastc_collect_file_references(FastcSourceFile{
+		path: main_path
+		source: source
+	}, prefs, {
+		'template_only': true
+	}, mut references, mut top_level_references)
+	assert references['handler']['template_only']
 }
 
 fn test_selfhost_match_branch_with_statement_and_multireturn() {
