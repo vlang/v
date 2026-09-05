@@ -38,6 +38,24 @@ fn test_scoped_parallel_dispatch_worker_owns_string_snapshot() {
 	assert g.str_lits == ['source', 'master generated']
 }
 
+fn test_scoped_parallel_dispatch_workers_detach_shared_string_snapshot() {
+	mut g, _ := parallel_worker_test_gen(true)
+	assert g.intern_string('source') == 0
+	g.str_lits_shared = true
+	mut first := g.new_parallel_dispatch_worker(1)
+	mut second := g.new_parallel_dispatch_worker(2)
+	assert first.str_lits_shared
+	assert second.str_lits_shared
+	assert g.intern_string('master generated') == 1
+	assert first.str_lits == ['source']
+	assert first.intern_string('first generated') == 1
+	assert second.str_lits == ['source']
+	assert second.intern_string('second generated') == 1
+	assert g.str_lits == ['source', 'master generated']
+	assert first.str_lits == ['source', 'first generated']
+	assert second.str_lits == ['source', 'second generated']
+}
+
 fn test_scoped_parallel_worker_reuses_preselected_functions_and_c_extern_refs() {
 	mut g, _ := parallel_worker_test_gen(true)
 	g.fn_gen_items = [FlatFnGenItem{

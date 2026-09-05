@@ -3,6 +3,122 @@ module transform
 import v3.flat
 import v3.types
 
+fn test_cloned_worker_merge_replays_relocated_children_and_body_roots() {
+	// 'plain' copies and relocates inside the serial merge, 'relocated' relocates
+	// the worker region in parallel first, and 'absorbed' also writes it straight
+	// into the master's pre-grown arrays. All three must merge identically.
+	for mode in ['plain', 'relocated', 'absorbed'] {
+		mut a := flat.FlatAst.new()
+		leaf := a.add_node(flat.Node{ kind: .int_literal, value: '1' })
+		base_slot := a.children.len
+		a.add_child(leaf)
+		fn_id := a.add_node(flat.Node{
+			kind: .fn_decl
+			value: 'helper'
+			children_start: base_slot
+			children_count: 1
+		})
+		mut tc := types.TypeChecker.new(&a)
+		mut master := new_transformer(mut a, &tc, map[string]bool{})
+		base_nodes := a.nodes.len
+		base_children := a.children.len
+		mut worker_ast := master.clone_ast_base(base_nodes, base_children)
+		worker_tc := tc.fork_for_parallel_transform(worker_ast)
+		mut worker := master.fork_worker(worker_ast, worker_tc)
+		new_leaf := worker_ast.add_node(flat.Node{ kind: .int_literal, value: '2' })
+		worker_ast.add_child(leaf)
+		worker_ast.add_child(new_leaf)
+		body := worker_ast.add_node(flat.Node{
+			kind: .block
+			children_start: base_children
+			children_count: 2
+		})
+		worker_ast.add_child(body)
+		worker_ast.nodes[int(fn_id)] = flat.Node{
+			kind: .fn_decl
+			value: 'helper'
+			children_start: base_children + 2
+			children_count: 1
+		}
+		worker_ast.children[base_slot] = new_leaf
+		worker.inplace_child_log << InplaceChildRewrite{ slot: base_slot, child: new_leaf }
+		a.add_node(flat.Node{ kind: .int_literal, value: '3' })
+		a.add_child(leaf)
+		merged_leaf := flat.NodeId(a.nodes.len)
+		merged_body := flat.NodeId(a.nodes.len + 1)
+		node_shift := i32(a.nodes.len - base_nodes)
+		child_shift := i32(a.children.len - base_children)
+		if mode == 'relocated' {
+			worker.relocate_region_in_place(base_nodes, worker_ast.nodes.len, base_children, worker_ast.children.len, node_shift, child_shift)
+			master.merge_regions_relocated = true
+		} else if mode == 'absorbed' {
+			nodes_dst := a.nodes.len
+			children_dst := a.children.len
+			unsafe {
+				a.nodes.grow_len(worker_ast.nodes.len - base_nodes)
+				a.children.grow_len(worker_ast.children.len - base_children)
+			}
+			worker.absorb_region_into(base_nodes, worker_ast.nodes.len, base_children, worker_ast.children.len, node_shift, child_shift, unsafe { voidptr(&a.nodes[nodes_dst]) }, unsafe { voidptr(&a.children[children_dst]) })
+			master.merge_regions_relocated = true
+			master.merge_regions_absorbed = true
+			master.merge_absorbed_node_shift = node_shift
+			master.merge_absorbed_child_shift = child_shift
+		}
+		master.merge_worker(worker, [FnWorkItem{ fn_idx: int(fn_id) }], base_nodes, base_children, false)
+		master.merge_regions_absorbed = false
+		assert a.children[base_slot] == merged_leaf
+		assert a.child(a.node(fn_id), 0) == merged_body
+		assert a.child(a.node(merged_body), 0) == leaf
+		assert a.child(a.node(merged_body), 1) == merged_leaf
+	}
+}
+
+fn test_parallel_split_balances_equal_cost_functions() {
+	mut items := []FnWorkItem{}
+	for i in 0 .. 40 {
+		items << FnWorkItem{
+			fn_idx: i
+			cost: 100
+			rank: 100
+		}
+	}
+	chunks := split_work_items(items, 4)
+	mut seen := map[int]bool{}
+	for chunk in chunks {
+		assert chunk.len == 10
+		mut previous := -1
+		for item in chunk {
+			assert item.fn_idx > previous
+			assert item.fn_idx !in seen
+			seen[item.fn_idx] = true
+			previous = item.fn_idx
+		}
+	}
+	assert seen.len == items.len
+}
+
+fn test_alias_receiver_index_preserves_integer_fallback_order() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['Count'] = 'i64'
+	tc.type_aliases['OtherCount'] = 'i32'
+	tc.fn_param_types['Plain.show'] = [types.Type(types.i64_)]
+	tc.fn_param_types['Count.show'] = [types.Type(types.i64_)]
+	tc.fn_param_types['OtherCount.show'] = [types.Type(types.i32_)]
+	tc.fn_param_types['Count.other'] = [types.Type(types.i64_)]
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.resolve_alias_receiver_method('u8', 'show') or { '' } == 'Count.show'
+	t.collect_alias_methods()
+	t.skip_generics = true
+	assert t.resolve_alias_receiver_method('u16', 'show') or { '' } == 'Count.show'
+	assert t.resolve_alias_receiver_method('u16', 'missing') == none
+	// Generic lowering can add signatures after preparation and uses the live table.
+	t.skip_generics = false
+	tc.type_aliases['LateCount'] = 'u64'
+	tc.fn_param_types['LateCount.late'] = [types.Type(types.u64_)]
+	assert t.resolve_alias_receiver_method('u8', 'late') or { '' } == 'LateCount.late'
+}
+
 fn test_generic_app_parts_distinguishes_postfix_fixed_arrays() {
 	_, _, numeric_fixed := generic_app_parts('C.sg_color_attachment_action[4]')
 	assert !numeric_fixed
@@ -674,4 +790,16 @@ fn test_immediate_closure_thread_result_may_alias_capture() {
 
 	without_checker := Transformer{}
 	assert without_checker.immediate_closure_result_may_alias_capture('thread int')
+}
+
+fn test_transform_lane_budget_bounds_base_ast_clones() {
+	// A self-host sized base AST (~95 MiB per clone) keeps every runtime lane.
+	assert transform_clone_budget_jobs(18, 100_000_000) == 18
+	// Ten times that program size only affords two helper clones.
+	assert transform_clone_budget_jobs(18, 1_000_000_000) == 3
+	// Oversized inputs fall back to the master without a helper clone.
+	assert transform_clone_budget_jobs(2, 9_000_000_000) == 1
+	assert transform_clone_budget_jobs(8, 9_000_000_000) == 1
+	assert transform_clone_budget_jobs(18, 1) == 18
+	assert transform_clone_budget_jobs(1, 9_000_000_000) == 1
 }

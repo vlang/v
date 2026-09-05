@@ -669,12 +669,9 @@ fn (t &Transformer) resolve_alias_receiver_method(base_type string, method strin
 		}
 		return none
 	}
-	for name, params in t.tc.fn_param_types {
-		if !name.ends_with('.${method}') || params.len == 0 {
-			continue
-		}
-		receiver_name := name.all_before_last('.')
-		if receiver_name.len == 0 || receiver_name !in t.tc.type_aliases {
+	for name in t.alias_receiver_method_candidates(method) {
+		params := t.tc.fn_param_types[name]
+		if params.len == 0 {
 			continue
 		}
 		param_name := t.semantic_type_name(params[0])
@@ -691,6 +688,26 @@ fn (t &Transformer) resolve_alias_receiver_method(base_type string, method strin
 		cache.misses[cache_key] = true
 	}
 	return none
+}
+
+fn (t &Transformer) alias_receiver_method_candidates(method string) []string {
+	// Generic-free lowering cannot add source alias receiver methods. Preserve
+	// declaration order while avoiding a whole signature-table scan per miss.
+	if t.skip_generics && t.alias_method_candidates_ready {
+		return t.alias_method_candidates[method]
+	}
+	mut candidates := []string{}
+	method_suffix := '.${method}'
+	for name, params in t.tc.fn_param_types {
+		if params.len == 0 || !name.ends_with(method_suffix) {
+			continue
+		}
+		receiver_name := name.all_before_last('.')
+		if receiver_name.len > 0 && receiver_name in t.tc.type_aliases {
+			candidates << name
+		}
+	}
+	return candidates
 }
 
 // alias_target_type_preserving_main_lock returns the underlying type while retaining

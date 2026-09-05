@@ -12681,45 +12681,50 @@ fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
 	return result
 }
 
-struct LexicalSmartcastCandidate {
-	typ   Type
-	depth int
-}
-
 fn (tc &TypeChecker) lexical_smartcast_type(id flat.NodeId, key string) ?Type {
-	mut best := LexicalSmartcastCandidate{
-		depth: max_int
-	}
-	mut found := false
-	if candidate := tc.lexical_if_smartcast_candidate(id, key) {
-		best = candidate
-		found = true
-	}
-	if candidate := tc.lexical_for_smartcast_candidate(id, key) {
-		if !found || candidate.depth < best.depth {
-			best = candidate
-			found = true
-		}
-	}
-	if candidate := tc.lexical_match_smartcast_candidate(id, key) {
-		if !found || candidate.depth < best.depth {
-			best = candidate
-			found = true
-		}
-	}
-	if found {
-		return best.typ
-	}
-	return none
+	return tc.lexical_smartcast_type_in_parents(id, key, false)
 }
 
-fn (tc &TypeChecker) lexical_for_smartcast_candidate(id flat.NodeId, key string) ?LexicalSmartcastCandidate {
+// Walk the parent chain once, returning the nearest valid narrowing. Separate
+// if/for/match walks repeated the same parent lookups and evaluated outer
+// conditions even when a closer branch already determined the type.
+fn (tc &TypeChecker) lexical_smartcast_type_in_parents(id flat.NodeId, key string, match_only bool) ?Type {
+	idx := int(id)
+	if idx < 0 || idx >= tc.direct_parent_ids.len || key.len == 0 || !valid_string_data(key) {
+		return none
+	}
 	mut current := id
 	mut parent_id := tc.direct_parent_id(current)
+	mut match_branch := flat.NodeId(-1)
 	mut depth := 1
 	for tc.valid_node_id(parent_id) {
+		if match_only && depth > 64 {
+			return none
+		}
 		parent := tc.a.node(parent_id)
-		if parent.kind == .for_stmt && parent.children_count > 3 {
+		if !match_only && parent.kind == .if_expr && parent.children_count >= 2 {
+			mut branch_index := -1
+			for i in 1 .. parent.children_count {
+				if tc.a.child(parent, i) == current {
+					branch_index = i
+					break
+				}
+			}
+			if branch_index >= 1 {
+				cond_id := tc.a.child(parent, 0)
+				bindings := if branch_index == 1 {
+					tc.extract_smartcasts(cond_id)
+				} else {
+					tc.extract_else_branch_smartcasts(cond_id)
+				}
+				for binding in bindings {
+					branch_id := tc.a.child(parent, branch_index)
+					if binding.name == key && !tc.branch_writes_key_before(branch_id, id, key) {
+						return binding.typ
+					}
+				}
+			}
+		} else if !match_only && parent.kind == .for_stmt && parent.children_count > 3 {
 			mut body_index := -1
 			for i in 3 .. parent.children_count {
 				if tc.a.child(parent, i) == current {
@@ -12732,19 +12737,26 @@ fn (tc &TypeChecker) lexical_for_smartcast_candidate(id flat.NodeId, key string)
 			// rest of the body (the dynamic pass deletes the smartcast on assignment).
 			// Only reconstruct the condition smartcast when no preceding body statement,
 			// nor the statement holding `id`, writes `key`.
-			if body_index >= 3 && !tc.for_body_writes_key_before(parent, body_index, current, key) {
+			if body_index >= 3 {
 				for binding in tc.extract_smartcasts(tc.a.child(parent, 1)) {
-					if binding.name == key {
-						return LexicalSmartcastCandidate{
-							typ:   binding.typ
-							depth: depth
-						}
+					if binding.name == key
+						&& !tc.for_body_writes_key_before(parent, body_index, current, key) {
+						return binding.typ
 					}
 				}
 			}
+		} else if depth <= 64 && parent.kind == .match_branch {
+			match_branch = parent_id
+		} else if depth <= 64 && parent.kind == .match_stmt && tc.valid_node_id(match_branch) {
+			branch := tc.a.node(match_branch)
+			if typ := tc.lexical_match_branch_smartcast_type(parent, branch, key) {
+				return typ
+			}
+			// An unrelated inner match leaves an enclosing narrowing available.
+			match_branch = flat.empty_node
 		}
 		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
-			break
+			return none
 		}
 		current = parent_id
 		parent_id = tc.direct_parent_id(current)
@@ -12950,96 +12962,8 @@ fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
 	return false
 }
 
-fn (tc &TypeChecker) lexical_if_smartcast_candidate(id flat.NodeId, key string) ?LexicalSmartcastCandidate {
-	idx := int(id)
-	if idx < 0 || idx >= tc.direct_parent_ids.len {
-		return none
-	}
-	mut current := id
-	mut parent_id := tc.direct_parent_id(current)
-	mut depth := 1
-	for tc.valid_node_id(parent_id) {
-		parent := tc.a.node(parent_id)
-		if parent.kind == .if_expr && parent.children_count >= 2 {
-			mut branch_index := -1
-			for i in 1 .. parent.children_count {
-				if tc.a.child(parent, i) == current {
-					branch_index = i
-					break
-				}
-			}
-			if branch_index >= 1 {
-				cond_id := tc.a.child(parent, 0)
-				bindings := if branch_index == 1 {
-					tc.extract_smartcasts(cond_id)
-				} else {
-					tc.extract_else_branch_smartcasts(cond_id)
-				}
-				for binding in bindings {
-					branch_id := tc.a.child(parent, branch_index)
-					if binding.name == key && !tc.branch_writes_key_before(branch_id, id, key) {
-						return LexicalSmartcastCandidate{
-							typ:   binding.typ
-							depth: depth
-						}
-					}
-				}
-			}
-		}
-		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
-			break
-		}
-		current = parent_id
-		parent_id = tc.direct_parent_id(current)
-		depth++
-	}
-	return none
-}
-
 fn (tc &TypeChecker) lexical_match_smartcast_type(id flat.NodeId) ?Type {
-	if candidate := tc.lexical_match_smartcast_candidate(id, tc.expr_key(id)) {
-		return candidate.typ
-	}
-	return none
-}
-
-fn (tc &TypeChecker) lexical_match_smartcast_candidate(id flat.NodeId, key string) ?LexicalSmartcastCandidate {
-	idx := int(id)
-	if idx < 0 || idx >= tc.direct_parent_ids.len {
-		return none
-	}
-	if key.len == 0 || !valid_string_data(key) {
-		return none
-	}
-	mut current := id
-	mut branch_id := flat.NodeId(-1)
-	mut depth := 0
-	for _ in 0 .. 64 {
-		depth++
-		parent_id := tc.direct_parent_id(current)
-		if !tc.valid_node_id(parent_id) {
-			return none
-		}
-		parent := tc.a.node(parent_id)
-		if parent.kind == .match_branch {
-			branch_id = parent_id
-		} else if parent.kind == .match_stmt && tc.valid_node_id(branch_id) {
-			branch := tc.a.node(branch_id)
-			if typ := tc.lexical_match_branch_smartcast_type(parent, branch, key) {
-				return LexicalSmartcastCandidate{
-					typ:   typ
-					depth: depth
-				}
-			}
-			// An unrelated nested match does not cancel a narrowing established by
-			// an enclosing match on the same expression.
-			branch_id = flat.empty_node
-		} else if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
-			return none
-		}
-		current = parent_id
-	}
-	return none
+	return tc.lexical_smartcast_type_in_parents(id, tc.expr_key(id), true)
 }
 
 fn (tc &TypeChecker) lexical_match_branch_smartcast_type(parent &flat.Node, branch &flat.Node, key string) ?Type {
@@ -13119,15 +13043,15 @@ pub fn (tc &TypeChecker) cached_c_name(name string) string {
 		return naming.c_name(name)
 	}
 	mut cache := unsafe { tc.type_cache }
+	if cached := cache.c_name_entries[name] {
+		return cached
+	}
 	mut fallback := cache.base
 	for !isnil(fallback) {
 		if cached := fallback.c_name_entries[name] {
 			return cached
 		}
 		fallback = fallback.base
-	}
-	if cached := cache.c_name_entries[name] {
-		return cached
 	}
 	result := naming.c_name(name)
 	cache.c_name_entries[name] = result

@@ -708,6 +708,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// skipping a repeat performs no fewer markings.
 	mut safe_alias_done := map[string]bool{}
 	mut iface_tail_done := map[string]bool{}
+	mut processed_module_calls := map[string]map[string]bool{}
 	safe_alias_done.reserve(u32(fn_decls.len))
 	iface_tail_done.reserve(u32(fn_decls.len))
 	if tc.verbose {
@@ -827,12 +828,24 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 			}
 			for initializer_ref in initializer_refs {
-				enqueue_initializer_ref_calls(a, collector, fn_decls, initializer_ref, mut
-					processed_initializer_refs, mut initializer_calls, mut used, mut queue)
+				enqueue_initializer_ref_calls(a, collector, fn_decls, initializer_ref, mut processed_initializer_refs, mut initializer_calls, mut used, mut queue)
 			}
 			total_callees += unique_call_count
+			// With no generic discovery, callee processing depends only on the
+			// name and caller module. Resolve repeated edges once across the BFS.
+			mut module_calls := if !detect_reachable_generics {
+				processed_module_calls[fn_info.module] or { map[string]bool{} }
+			} else {
+				map[string]bool{}
+			}
 			for call_idx in 0 .. unique_call_count {
 				callee := calls[call_idx]
+				if !detect_reachable_generics {
+					if module_calls[callee] {
+						continue
+					}
+					module_calls[callee] = true
+				}
 				if !valid_symbol_name(callee) {
 					continue
 				}
@@ -940,6 +953,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 						}
 					}
 				}
+			}
+			if !detect_reachable_generics {
+				processed_module_calls[fn_info.module] = module_calls.move()
 			}
 		}
 		new_added := queue.len - prev_len
@@ -4585,13 +4601,13 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 					&& child.children_count > 0 {
 					base := c.a.child_node(child, 0)
 					if base.kind == .ident && base.value.len > 0 && child.value.len > 0 {
-						c.add_initializer_ref_candidates('${base.value}.${child.value}',
-							cur_module, imports, mut initializer_refs)
+						c.add_initializer_ref_candidates('${base.value}.${child.value}', cur_module, imports, mut initializer_refs)
 					}
 				}
-				if c.selector_is_enum_value(child, cur_module, imports, local_values) {
-					// Enum fields are values even when a method has the same name.
-				} else if !source_edges_authoritative {
+				// Authoritative checker edges already cover source function values.
+				// Enum classification is only needed by the fallback collector.
+				if !source_edges_authoritative
+					&& !c.selector_is_enum_value(child, cur_module, imports, local_values) {
 					c.collect_fn_value_selector(child_id, child, cur_module, imports, mut calls)
 				}
 			}
@@ -6623,6 +6639,11 @@ fn markused_index_overload_compound_type_is_string(typ types.Type) bool {
 
 // collect_struct_operator_call updates collect struct operator call state for markused.
 fn (c &CallCollector) collect_struct_operator_call(lhs_id flat.NodeId, op flat.Op, cur_module string, local_types map[string]string, mut calls []string) {
+	// Logical/bitwise operators cannot dispatch to a struct overload. Avoid
+	// resolving their operand types merely to discover that after the lookup.
+	if markused_struct_operator_symbol(op) == none {
+		return
+	}
 	lhs_type := c.operator_lhs_type(lhs_id, local_types)
 	c.collect_struct_operator_call_for_type(lhs_type, op, cur_module, mut calls)
 }

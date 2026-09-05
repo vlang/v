@@ -2422,6 +2422,18 @@ fn prealloc_scope_free_for_v3(scope voidptr) {
 	}
 }
 
+// free_retained_scopes releases the stage arenas the self-host path keeps alive
+// through code generation. Unmapping multi-gigabyte arenas is slow enough to be
+// worth overlapping with the C compiler, which reads only the generated file.
+fn free_retained_scopes(transform_scope voidptr, prepare_scope voidptr) {
+	if transform_scope != unsafe { nil } {
+		prealloc_scope_free_for_v3(transform_scope)
+	}
+	if prepare_scope != unsafe { nil } {
+		prealloc_scope_free_for_v3(prepare_scope)
+	}
+}
+
 // release_unused_diagnostic_scope discards notice storage before its arena is released.
 fn release_unused_diagnostic_scope(mut notices []types.TypeError, scope voidptr) {
 	prealloc_scope_leave_for_v3(scope)
@@ -10913,6 +10925,16 @@ pub fn run(args []string) {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			return
 		}
+		// Nothing below reads the transformed AST or its checker payloads: the C
+		// compiler consumes the generated file. Release those arenas alongside it
+		// so their unmapping is not serial work after the compile.
+		mut scope_free_threads := []thread{}
+		if retained_transform_scope != unsafe { nil }
+			|| retained_transform_prepare_scope != unsafe { nil } {
+			scope_free_threads << spawn free_retained_scopes(retained_transform_scope, retained_transform_prepare_scope)
+			retained_transform_scope = unsafe { nil }
+			retained_transform_prepare_scope = unsafe { nil }
+		}
 		mut tcc_link_has_incompatible_objects := false
 		if prefs.normalized_target_os() == 'macos' {
 			for flag in resolved_c_flags {
@@ -11505,6 +11527,9 @@ Please install the corresponding development package/libraries and make sure the
 		os.rm(retained_full_c_source) or {}
 		os.rm(cc_src) or {}
 		os.rmdir(cc_dir) or {}
+		for scope_free_thread in scope_free_threads {
+			scope_free_thread.wait()
+		}
 		b.step(if tcc_cache_hit {
 			'tcc (cached)'
 		} else if used_tcc {
@@ -15114,31 +15139,28 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 	}
 	old_len := a.nodes.len
 	mut new_nodes := []flat.Node{cap: old_len + insertions.len}
-	mut ins_idx := 0
-	for i in 0 .. old_len {
-		for ins_idx < insertions.len && insertions[ins_idx].pos == i {
-			new_nodes << canonical_node_texts(mut a, insertions[ins_idx].node)
-			ins_idx++
-		}
-		mut node := a.nodes[i]
+	mut start := 0
+	for insertion in insertions {
+		// Copy each unchanged region once instead of appending every AST node.
+		new_nodes << a.nodes[start..insertion.pos]
+		new_nodes << canonical_node_texts(mut a, insertion.node)
+		start = insertion.pos
+	}
+	new_nodes << a.nodes[start..]
+	for i in 0 .. new_nodes.len {
+		mut node := new_nodes[i]
 		if node.kind == .directive && node.value.starts_with('@attributes:') {
 			target_idx := node.value['@attributes:'.len..].int()
 			if target_idx >= 0 && target_idx < old_len {
 				node.value = '@attributes:${target_idx + synthetic_index_shift(insertions, target_idx)}'
-				node = canonical_node_texts(mut a, node)
+				new_nodes[i] = canonical_node_texts(mut a, node)
 			}
 		}
-		new_nodes << node
-	}
-	// Insertions at pos == old_len append at the very end (the last wave module's
-	// region ends at the array tail).
-	for ins_idx < insertions.len {
-		new_nodes << canonical_node_texts(mut a, insertions[ins_idx].node)
-		ins_idx++
 	}
 	a.nodes = new_nodes
-	a.file_node_ids = []int{}
-	a.file_index_incomplete = true
+	for i, idx in a.file_node_ids {
+		a.file_node_ids[i] = idx + synthetic_index_shift(insertions, idx)
+	}
 	for k in 0 .. a.children.len {
 		cid := int(a.children[k])
 		if cid >= 0 {
@@ -15185,6 +15207,13 @@ fn collect_import_scan_ids(a &flat.FlatAst, region_start int, pair_cursor int) (
 			continue
 		}
 		trailing := a.file_node_ids[cursor + 1]
+		// Implicit imports can be inserted between parsed files. They retain the
+		// preceding file's context and must be visited before the next marker.
+		for i in last_trailing + 1 .. marker {
+			if a.nodes[i].kind in [.file, .module_decl, .import_decl] {
+				ids << i
+			}
+		}
 		ids << marker
 		tnode := a.nodes[trailing]
 		collect_import_scan_children(a, &tnode, mut ids)
