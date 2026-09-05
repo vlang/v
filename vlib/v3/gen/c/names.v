@@ -184,9 +184,9 @@ fn (mut c ContextNameFactCache) put(name string, value i8) {
 
 @[inline]
 fn (mut c ContextNameFactCache) select_context(file string, module_name string) {
-	if c.file.len == file.len && c.module.len == module_name.len && unsafe {
-		c.file.str == file.str && c.module.str == module_name.str
-	} {
+	if c.file.len == file.len && c.module.len == module_name.len
+		&& (unsafe { c.file.str == file.str } || c.file == file)
+		&& (unsafe { c.module.str == module_name.str } || c.module == module_name) {
 		return
 	}
 	c.file = file
@@ -248,9 +248,9 @@ mut:
 
 @[inline]
 fn (mut c ContextStringLookupCache) select_context(file string, module_name string) {
-	if c.file.len == file.len && c.module.len == module_name.len && unsafe {
-		c.file.str == file.str && c.module.str == module_name.str
-	} {
+	if c.file.len == file.len && c.module.len == module_name.len
+		&& (unsafe { c.file.str == file.str } || c.file == file)
+		&& (unsafe { c.module.str == module_name.str } || c.module == module_name) {
 		return
 	}
 	c.file = file
@@ -266,6 +266,7 @@ fn (mut g FlatGen) reset_context_lookup_caches() {
 	g.enum_selector_cache = &ContextStringLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}
 	g.qualified_enum_method_cache = &ContextStringLookupCache{}
+	g.import_type_cache = &ImportTypeCache{}
 }
 
 // cname is the memoizing wrapper for naming.c_name used on FlatGen hot paths.

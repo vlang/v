@@ -417,7 +417,50 @@ fn (g &FlatGen) canonical_import_alias_type_text(typ string) string {
 	return g.canonical_import_alias_type_text_in_file(typ, g.tc.cur_file)
 }
 
+@[heap]
+struct ImportFileTypeCache {
+mut:
+	texts  map[string]string
+	parsed map[string]types.Type
+}
+
+@[heap]
+struct ImportTypeCache {
+mut:
+	by_file   map[string]&ImportFileTypeCache
+	last_file string
+	last      &ImportFileTypeCache = unsafe { nil }
+}
+
+fn (mut cache ImportTypeCache) for_file(file string) &ImportFileTypeCache {
+	if !isnil(cache.last) && cache.last_file == file {
+		return cache.last
+	}
+	entry := cache.by_file[file] or {
+		created := &ImportFileTypeCache{}
+		cache.by_file[file] = created
+		created
+	}
+	cache.last_file = file
+	cache.last = entry
+	return entry
+}
+
 fn (g &FlatGen) canonical_import_alias_type_in_file(typ string, file string) types.Type {
+	mut cache := g.import_type_cache
+	if !g.skip_generics || isnil(cache) || typ.contains('typeof') {
+		return g.canonical_import_alias_type_in_file_uncached(typ, file)
+	}
+	mut entry := cache.for_file(file)
+	if result := entry.parsed[typ] {
+		return result
+	}
+	result := g.canonical_import_alias_type_in_file_uncached(typ, file)
+	entry.parsed[typ] = result
+	return result
+}
+
+fn (g &FlatGen) canonical_import_alias_type_in_file_uncached(typ string, file string) types.Type {
 	canonical := g.canonical_import_alias_type_text_in_file(typ, file)
 	if canonical != typ {
 		if exact := g.exact_known_import_type_text(canonical) {
@@ -429,7 +472,10 @@ fn (g &FlatGen) canonical_import_alias_type_in_file(typ string, file string) typ
 
 fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.Node) types.Type {
 	source := typ.name()
-	canonical := g.canonical_import_alias_type_text_in_file(source, g.node_source_file(node))
+	// Only dotted names can reference an import alias. Primitive and local
+	// type spellings do not need a walk through synthesized child nodes.
+	file := if source.contains('.') { g.node_source_file(node) } else { '' }
+	canonical := g.canonical_import_alias_type_text_in_file(source, file)
 	if canonical != source {
 		if exact := g.exact_known_import_type_text(canonical) {
 			return exact
@@ -457,7 +503,7 @@ fn (mut g FlatGen) import_alias_sizeof_target_in_file(value string, file string)
 }
 
 fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
-	clean := typ.trim_space()
+	clean := trimmed_space(typ)
 	if clean.starts_with('&') {
 		return types.Type(types.Pointer{
 			base_type: g.exact_known_import_type_text(clean[1..])?
@@ -486,7 +532,10 @@ fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
 	if clean.contains('.') {
 		module_name := clean.all_before_last('.')
 		short_name := clean.all_after_last('.')
-		for _, info in g.struct_decl_infos {
+		// Declaration collection already indexes the qualified name. Program
+		// and builtin declarations use bare keys, matching qualify_name_in_module.
+		key := if module_name in ['', 'main', 'builtin'] { short_name } else { clean }
+		if info := g.struct_decl_infos[key] {
 			if info.module == module_name && info.node.value == short_name {
 				return types.Type(types.Struct{
 					name: clean
@@ -514,11 +563,35 @@ fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
 }
 
 fn (g &FlatGen) canonical_import_alias_type_text_in_file(typ string, file string) string {
-	clean := typ.trim_space()
+	// Import tables are immutable during C generation. Each worker owns its
+	// cache, with separate entries for source files visited by synthesized nodes.
+	mut cache := g.import_type_cache
+	if isnil(cache) || !typ.contains('.') {
+		return g.canonical_import_alias_type_text_in_file_uncached(typ, file)
+	}
+	mut entry := cache.for_file(file)
+	if result := entry.texts[typ] {
+		return result
+	}
+	result := g.canonical_import_alias_type_text_in_file_uncached(typ, file)
+	entry.texts[typ] = result
+	return result
+}
+
+fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, file string) string {
+	clean := trimmed_space(typ)
 	for prefix in ['&', '?', '!', '[]'] {
 		if clean.starts_with(prefix) {
-			return prefix + g.canonical_import_alias_type_text_in_file(clean[prefix.len..], file)
+			inner := clean[prefix.len..]
+			canonical := g.canonical_import_alias_type_text_in_file(inner, file)
+			if inner == canonical {
+				return clean
+			}
+			return prefix + canonical
 		}
+	}
+	if !clean.contains('.') && !clean.contains('[') {
+		return clean
 	}
 	if clean.starts_with('map[') {
 		bracket_end := shared_generic_matching_bracket(clean, 3)

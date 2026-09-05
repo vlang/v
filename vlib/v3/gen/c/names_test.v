@@ -271,6 +271,24 @@ fn test_context_lookup_cache_tracks_source_file_imports() {
 	assert g.enum_selector_base_name('kind.Kind')? == 'second.token.Kind'
 }
 
+fn test_transformed_module_call_namespace_arguments() {
+	mut a := flat.FlatAst.new()
+	mut g := FlatGen.new()
+	g.a = &a
+	callee := a.add_val(.ident, 'net.flags.read')
+	for name in ['net.flags', 'flags', 'net.flags.flags', 'other.flags', 'lags', 'net.flagsxflags'] {
+		arg := a.add_val(.ident, name)
+		start := a.begin_children()
+		a.add_child(callee)
+		a.add_child(arg)
+		call := flat.Node{ kind: .call, children_start: start, children_count: 2 }
+		expected := if name in ['net.flags', 'flags', 'net.flags.flags'] { 2 } else { 1 }
+		assert g.target_module_call_arg_start('net.flags.read', call) == expected, name
+		a.nodes[int(arg)].kind = .string_literal
+		assert g.target_module_call_arg_start('net.flags.read', call) == 1
+	}
+}
+
 fn test_cgen_flattened_generic_receiver_short_variants() {
 	assert cgen_flattened_generic_receiver_short_variants('foo__Bar_baz__Qux') == [
 		'Bar_Qux',

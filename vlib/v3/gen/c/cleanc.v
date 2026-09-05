@@ -573,6 +573,7 @@ mut:
 	enum_selector_cache             &ContextStringLookupCache = unsafe { nil }
 	enum_method_cache               &ContextStringLookupCache = unsafe { nil }
 	qualified_enum_method_cache     &ContextStringLookupCache = unsafe { nil }
+	import_type_cache               &ImportTypeCache = unsafe { nil }
 	embedded_fields_by_type         map[string][]types.StructField // type name -> its embedded fields (usually empty)
 	param_types_by_short            map[string][]types.Type // method short-name suffix -> param types (fallback index)
 	generic_method_candidates       map[string][]GenericMethodCandidate
@@ -1184,6 +1185,7 @@ pub fn FlatGen.new() FlatGen {
 		enum_selector_cache: &ContextStringLookupCache{}
 		enum_method_cache: &ContextStringLookupCache{}
 		qualified_enum_method_cache: &ContextStringLookupCache{}
+		import_type_cache: &ImportTypeCache{}
 		embedded_fields_by_type: map[string][]types.StructField{}
 		param_types_by_short: map[string][]types.Type{}
 		generic_method_candidates: map[string][]GenericMethodCandidate{}
@@ -2901,6 +2903,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.enum_selector_cache = &ContextStringLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}
 	g.qualified_enum_method_cache = &ContextStringLookupCache{}
+	g.import_type_cache = &ImportTypeCache{}
 	g.embedded_fields_by_type.clear()
 	g.param_types_by_short.clear()
 	g.generic_method_candidates.clear()
@@ -3792,6 +3795,7 @@ fn (g &FlatGen) new_collect_gen_info_view() FlatGen {
 	view.enum_selector_cache = &ContextStringLookupCache{}
 	view.enum_method_cache = &ContextStringLookupCache{}
 	view.qualified_enum_method_cache = &ContextStringLookupCache{}
+	view.import_type_cache = &ImportTypeCache{}
 	view.mut_recv_facts = &FnNameFactCache{}
 	view.local_global_shadow_facts = &ContextNameFactCache{}
 	view.generic_app_cache = &GenericAppCache{}
@@ -4349,6 +4353,11 @@ fn (mut g FlatGen) reserve_collect_gen_info_maps(no_parallel bool) {
 }
 
 fn (mut g FlatGen) cached_shared_alias_pointer_type_from_text(raw string) ?types.Type {
+	if g.shared_alias_index_ready && g.shared_alias_pointer_shorts.len == 0 {
+		// Direct `shared T` (including pointer wrappers) still needs lowering,
+		// but without aliases it needs no per-file memoization key.
+		return g.shared_alias_pointer_type_from_text(raw)
+	}
 	key := '\x00shared-alias-pointer\x00${g.tc.cur_file}\x00${g.tc.cur_module}\x00${raw}'
 	if cached := g.param_types_cache[key] {
 		if cached.len > 0 {

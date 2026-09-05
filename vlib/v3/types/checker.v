@@ -1152,9 +1152,9 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 // a fresh map, while a synchronous subview may keep recording in its owning
 // checker's private map. Keeping this constructor explicit prevents a
 // newly-added mutable field from being silently shared by parallel workers.
-fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by_fn map[int][]SymbolId) TypeChecker {
+fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by_fn map[int][]SymbolId) &TypeChecker {
 	fs := new_scope(tc.file_scope)
-	return TypeChecker{
+	return &TypeChecker{
 		a: ast
 		compiler_vroot: tc.compiler_vroot
 		raw_type_equality: tc.raw_type_equality
@@ -1355,13 +1355,13 @@ pub fn (tc &TypeChecker) fork_for_parallel_codegen() &TypeChecker {
 		// Never share the memo across threads; each fork owns a private one.
 		forked.qualify_name_cache = &QualifyNameCache{}
 	}
-	return &forked
+	return forked
 }
 
 // fork_type_parse_view creates a lookup-only view in an explicit source
 // context. It shares the compilation's immutable indexes, interner, and
 // synchronous memoization cache, but none of the caller's function state.
-fn (tc &TypeChecker) fork_type_parse_view(file string, module_name string) TypeChecker {
+fn (tc &TypeChecker) fork_type_parse_view(file string, module_name string) &TypeChecker {
 	mut view := tc.fork_program_view(tc.a, map[int][]SymbolId{})
 	view.cur_file = file
 	view.cur_module = module_name
@@ -1377,7 +1377,7 @@ fn (tc &TypeChecker) fork_type_parse_view(file string, module_name string) TypeC
 // a synchronous expression-type query while owning every mutable map it may
 // consult. This avoids inheriting unrelated checker state through a whole
 // struct copy.
-fn (tc &TypeChecker) fork_smartcast_query_view() TypeChecker {
+fn (tc &TypeChecker) fork_smartcast_query_view() &TypeChecker {
 	// This query is synchronous, so any dependency it discovers remains owned
 	// by the current master/worker checker rather than crossing worker threads.
 	mut view := tc.fork_program_view(tc.a, tc.direct_dependencies_by_fn)
@@ -1455,7 +1455,7 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 		ierror_compat_entries: map[string]int{}
 		source_error_embed_entries: map[string]int{}
 	}
-	return &forked
+	return forked
 }
 
 // ensure_private_transform_signatures detaches the signature tables before a
@@ -4989,17 +4989,40 @@ pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
 	}
 	mut unscoped := tc.fork_type_parse_view(tc.cur_file, '')
 	unscoped.resolution_type_mode = false
-	view := &unscoped
-	views.by_file[tc.cur_file] = view
-	return view.parse_type(qualified)
+	views.by_file[tc.cur_file] = unscoped
+	return unscoped.parse_type(qualified)
 }
 
 // parse_resolution_type_in_file resolves type text using the imports and module
 // of `file` without mutating the checker's current traversal cursor.
 pub fn (tc &TypeChecker) parse_resolution_type_in_file(typ string, file string) Type {
+	if context_independent_type_text(typ) {
+		return tc.parse_type(typ)
+	}
 	module_name := tc.file_modules[file] or { '' }
 	mut scoped := tc.fork_type_parse_view(file, module_name)
 	return scoped.parse_resolution_type(typ)
+}
+
+// Primitive payloads and their pointer/array/optional wrappers cannot refer
+// to a declaration's imports. Keep them out of the checker-view constructor.
+@[manualfree]
+fn context_independent_type_text(typ string) bool {
+	mut start := 0
+	for start < typ.len {
+		if typ[start] in [`&`, `?`, `!`] {
+			start++
+		} else if typ[start] == `[` && start + 1 < typ.len && typ[start + 1] == `]` {
+			start += 2
+		} else {
+			break
+		}
+	}
+	if typ.len - start > 7 {
+		return false
+	}
+	leaf := unsafe { typ.substr_unsafe(start, typ.len) }
+	return leaf != 'array' && leaf != 'map' && is_builtin_type_name(leaf)
 }
 
 // reset_resolution_type_view_cache discards lookup views that may have been

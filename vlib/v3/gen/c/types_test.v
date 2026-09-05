@@ -169,6 +169,70 @@ fn test_import_alias_type_text_uses_the_node_source_file() {
 	assert g.canonical_import_alias_type_text_in_file('&pref.Preferences', 'driver.v') == '&v3.pref.Preferences'
 	assert g.canonical_import_alias_type_text_in_file('map[string][]pref.Target', 'driver.v') == 'map[string][]v3.pref.Target'
 	assert g.canonical_import_alias_type_in_file('token.Pos', 'parser.v').name() == 'v3.token.Pos'
+	for _ in 0 .. 3 {
+		for file in ['driver.v', 'unrelated.v'] {
+			expected := if file == 'driver.v' {
+				'&v3.pref.Preferences'
+			} else {
+				'&v.pref.Preferences'
+			}
+			assert g.canonical_import_alias_type_text_in_file('&pref.Preferences'.clone(), file.clone()) == expected
+			assert g.canonical_import_alias_type_text_in_file(' &pref.Preferences ', file) == expected
+		}
+	}
+	assert g.canonical_import_alias_type_text_in_file(' &&int ', 'driver.v') == '&&int'
+	assert g.canonical_import_alias_type_text_in_file('map[ string ] []int', 'driver.v') == 'map[string][]int'
+	assert g.canonical_import_alias_type_text_in_file('Box[int,string]', 'driver.v') == 'Box[int, string]'
+}
+
+fn test_exact_import_type_lookup_uses_qualified_declaration_keys() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	for module_name in ['dep.nested', 'main', 'builtin'] {
+		key := qualify_name_in_module(module_name, 'Item')
+		g.register_struct_decl_info('Item', key, module_name, '', flat.Node{
+			kind: .struct_decl
+			value: 'Item'
+		})
+		resolved := g.exact_known_import_type_text('${module_name}.Item') or { panic('missing declaration') }
+		assert resolved is types.Struct
+		assert resolved.name() == '${module_name}.Item'
+	}
+	assert g.exact_known_import_type_text('other.Item') == none
+	// The bare declaration now belongs to builtin, so it cannot satisfy main.
+	assert g.exact_known_import_type_text('main.Item') == none
+	tc.sum_types['dep.Value'] = ['int', 'string']
+	assert g.exact_known_import_type_text('dep.Value')? is types.SumType
+}
+
+fn test_import_type_cache_keeps_file_contexts_separate() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.file_imports['first.v\nmodel'] = 'first.model'
+	tc.file_imports['second.v\nmodel'] = 'second.model'
+	tc.structs['first.model.Item'] = []types.StructField{}
+	tc.structs['second.model.Item'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.skip_generics = true
+	for _ in 0 .. 3 {
+		for file in ['first.v', 'second.v'] {
+			for typ in ['model.Item', '&model.Item', '[]model.Item', '?model.Item'] {
+				cached := g.canonical_import_alias_type_in_file(typ.clone(), file.clone())
+				uncached := g.canonical_import_alias_type_in_file_uncached(typ, file)
+				assert cached == uncached
+				assert cached.name().contains(file.all_before('.') + '.model.Item')
+			}
+		}
+	}
+	// A new generation must not retain types from the previous declaration table.
+	g.reset_context_lookup_caches()
+	tc.file_imports['first.v\nmodel'] = 'second.model'
+	assert g.canonical_import_alias_type_in_file('model.Item', 'first.v').name() == 'second.model.Item'
 }
 
 fn test_optional_payload_qualifies_interface() {

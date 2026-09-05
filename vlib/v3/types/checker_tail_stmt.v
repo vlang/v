@@ -13304,6 +13304,13 @@ pub fn (tc &TypeChecker) type_count() int {
 // type. Hot compiler paths should prefer this to repeated recursive Type.name
 // construction.
 pub fn (tc &TypeChecker) type_name(t Type) string {
+	has_literal_name := match t {
+		Primitive, Void, Unknown, Nil, None, String, Char, Rune, ISize, USize { true }
+		else { false }
+	}
+	if has_literal_name {
+		return t.name()
+	}
 	// Stored-name variants are free; interning them would only add hashing on
 	// top of returning the field.
 	if t is Struct {
@@ -16421,7 +16428,20 @@ fn (tc &TypeChecker) c_extern_abi_type(t Type) string {
 	return tc.c_type(t)
 }
 
+// c_type returns the C representation of a semantic type.
 pub fn (tc &TypeChecker) c_type(t Type) string {
+	// These representations are constant or depend only on primitive flags.
+	// Interning a collection recursively walks its element types even though
+	// every dynamic array/map/channel uses the same C container.
+	has_simple_c_type := match t {
+		Primitive, Void, Unknown, Nil, None, String, Char, Rune, ISize, USize, Array, Channel, Map {
+			true
+		}
+		else { false }
+	}
+	if has_simple_c_type {
+		return tc.c_type_uncached(t)
+	}
 	if tc.type_cache == unsafe { nil } || isnil(tc.type_interner) {
 		return tc.c_type_uncached(t)
 	}

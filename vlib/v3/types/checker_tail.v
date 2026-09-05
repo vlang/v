@@ -4636,6 +4636,20 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 }
 
 fn (mut tc TypeChecker) record_empty_array_generic_call_errors(node flat.Node, info CallInfo) bool {
+	// Most calls cannot produce this diagnostic. Avoid resolving their generic
+	// declarations unless an argument is actually an untyped empty array.
+	mut has_empty_array := false
+	for i in 1 .. node.children_count {
+		arg_id := tc.call_arg_value(tc.a.child(&node, i))
+		arg := tc.a.node(arg_id)
+		if arg.kind == .array_literal && arg.children_count == 0 && arg.typ.len == 0 {
+			has_empty_array = true
+			break
+		}
+	}
+	if !has_empty_array {
+		return false
+	}
 	if tc.call_has_explicit_generic_type_args(node) {
 		return false
 	}
@@ -15822,6 +15836,9 @@ fn generic_variadic_elem_param_text(param_text string) string {
 }
 
 fn (tc &TypeChecker) parse_fn_signature_type(name string, typ string) Type {
+	if context_independent_type_text(typ) {
+		return tc.parse_type(typ)
+	}
 	decl_file := tc.fn_type_files[name] or { return tc.parse_type(typ) }
 	decl_module := tc.fn_type_modules[name] or { tc.file_modules[decl_file] or { tc.cur_module } }
 	mut scoped := tc.fork_type_parse_view(decl_file, decl_module)

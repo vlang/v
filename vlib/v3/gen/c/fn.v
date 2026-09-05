@@ -15132,7 +15132,7 @@ fn (g &FlatGen) target_module_call_name(target string, node flat.Node) ?string {
 			}
 		}
 	}
-	static_name := '${base}.${method}'
+	static_name := target
 	if static_name in g.tc.fn_param_types || static_name in g.tc.fn_ret_types
 		|| static_name in g.tc.fn_generic_params {
 		params := g.tc.fn_param_types[static_name] or {
@@ -15172,14 +15172,22 @@ fn (g &FlatGen) target_module_call_arg_start(target string, node flat.Node) int 
 	if !target.contains('.') || node.children_count <= 1 {
 		return 1
 	}
-	base := target.all_before_last('.')
 	first_arg := g.a.child_node(&node, 1)
+	if first_arg.kind != .ident {
+		return 1
+	}
+	base := target.all_before_last('.')
+	if first_arg.value == base || (base.len > first_arg.value.len
+		&& base.ends_with(first_arg.value) && base[base.len - first_arg.value.len - 1] == `.`) {
+		return 2
+	}
 	// Constant resolution can qualify the synthetic module-base argument when the
 	// imported module exports a same-named constant (`flags` -> `flags.flags`). It
 	// is still the namespace marker inserted while lowering the selector.
-	qualified_same_name := '${base}.${base.all_after_last('.')}'
-	if first_arg.kind == .ident && (first_arg.value == base || base.ends_with('.${first_arg.value}')
-		|| first_arg.value == qualified_same_name) {
+	short_base := c_short_name_view(base)
+	if first_arg.value.len == base.len + 1 + short_base.len
+		&& first_arg.value.starts_with(base) && first_arg.value[base.len] == `.`
+		&& first_arg.value.ends_with(short_base) {
 		return 2
 	}
 	return 1
@@ -18538,8 +18546,6 @@ fn (mut g FlatGen) fn_node_return_type(node flat.Node, module_name string) types
 }
 
 fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_name string) ?types.Type {
-	dotted_name := dotted_fn_name_in_module(module_name, node.value)
-	cname := g.fn_c_name_in_module(module_name, node.value)
 	if rt := g.fn_decl_ret_types[fn_decl_module_key(module_name, node.value)] {
 		return rt
 	}
@@ -18554,6 +18560,7 @@ fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_na
 			return rt
 		}
 	}
+	dotted_name := dotted_fn_name_in_module(module_name, node.value)
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
 		if rt := g.tc.fn_ret_types[dotted_name] {
 			return rt
@@ -18564,7 +18571,7 @@ fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_na
 				return rt
 			}
 		}
-		if rt := g.tc.fn_ret_types[cname] {
+		if rt := g.tc.fn_ret_types[g.fn_c_name_in_module(module_name, node.value)] {
 			return rt
 		}
 		if rt := g.tc.fn_ret_types[node.value] {
@@ -18598,6 +18605,7 @@ fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_na
 			}
 		}
 	}
+	cname := g.fn_c_name_in_module(module_name, node.value)
 	if cname != node.value && cname != c_value {
 		if rt := g.tc.fn_ret_types[cname] {
 			return rt

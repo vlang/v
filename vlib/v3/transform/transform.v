@@ -156,7 +156,7 @@ mut:
 	tc_signature_names_log        []string
 	generated_capture_contexts    []string
 	struct_maps_shared            bool
-	multi_return_fn_ret_types     map[string]types.Type
+	multi_return_fn_ret_types     map[string][]types.Type
 	receiver_method_suffix_index  map[string]string
 	declared_fn_name_counts       map[string]u8
 	variadic_suffix_index         map[string]i8
@@ -268,6 +268,7 @@ mut:
 	comptime_reflected_for_ready  bool
 	call_param_types_decl_cache   map[int][]types.Type
 	call_param_types_decl_misses  map[string]bool
+	call_param_types_decl_shared  bool
 	call_param_types_decl_index   map[string]FnParamDeclRef
 	call_param_types_index_ready  bool
 	call_param_types_prepared     bool
@@ -512,13 +513,21 @@ mut:
 	recent_results     [1024]string
 	recent_generations [1024]u32
 	canonical_types    [1024]string
-	canonical_results  [1024]string
 	entries            map[string]string
 }
 
-@[inline]
+// Sample text bytes so separately allocated copies can hit the same slot.
+// Every lookup still compares the complete spelling to handle collisions.
+@[direct_array_access; inline]
 fn alias_cache_slot(typ string) int {
-	return int((u64(voidptr(typ.str)) >> 4 ^ u64(typ.len)) & 1023)
+	if typ.len == 0 {
+		return 0
+	}
+	mut hash := u32(typ.len)
+	hash = (hash * 16777619) ^ u32(typ[0])
+	hash = (hash * 16777619) ^ u32(typ[typ.len / 2])
+	hash = (hash * 16777619) ^ u32(typ[typ.len - 1])
+	return int(hash & 1023)
 }
 
 // trimmed_transform_text avoids allocating a substring for the overwhelmingly
@@ -1954,10 +1963,19 @@ fn (mut t Transformer) collect_multi_return_fn_ret_types() {
 	if isnil(t.tc) {
 		return
 	}
-	t.multi_return_fn_ret_types = map[string]types.Type{}
+	t.multi_return_fn_ret_types = map[string][]types.Type{}
 	for name, ret_type in t.tc.fn_ret_types {
-		if type_contains_multi_return(ret_type) {
-			t.multi_return_fn_ret_types[name] = ret_type
+		if !type_contains_multi_return(ret_type) {
+			continue
+		}
+		// Preserve declaration-map order for ambiguous matches. A leading dot
+		// indexes methods only; a bare suffix also includes the exact free name.
+		t.multi_return_fn_ret_types[name] << ret_type
+		for i, ch in name {
+			if ch == `.` {
+				t.multi_return_fn_ret_types[name[i..]] << ret_type
+				t.multi_return_fn_ret_types[name[i + 1..]] << ret_type
+			}
 		}
 	}
 }
@@ -2119,12 +2137,17 @@ fn (mut t Transformer) rewrite_two_children_in_place(id flat.NodeId, first flat.
 fn (mut t Transformer) set_node_typ(idx int, typ string) {
 	if t.base_write_allowed(idx) {
 		t.invalidate_node_type_memo(idx)
-		t.a.nodes[idx].typ = typ
-		t.a.nodes[idx].set_type_text_id(0)
-		t.mark_scoped_owned_base_node(idx)
 		if !isnil(t.tc) {
 			t.tc.invalidate_checked_expr_type(idx)
 		}
+		// Child rewrites still invalidate the semantic caches even when the
+		// stored text already matches. Avoid publishing another identical write.
+		if t.a.nodes[idx].type_text_id() == 0 && same_transform_text(t.a.nodes[idx].typ, typ) {
+			return
+		}
+		t.a.nodes[idx].typ = typ
+		t.a.nodes[idx].set_type_text_id(0)
+		t.mark_scoped_owned_base_node(idx)
 		return
 	}
 	if t.defer_oor_writes {
@@ -2140,11 +2163,14 @@ fn (mut t Transformer) set_node_typ(idx int, typ string) {
 fn (mut t Transformer) set_node_value(idx int, value string) {
 	if t.base_write_allowed(idx) {
 		t.invalidate_node_type_memo(idx)
-		t.a.nodes[idx].value = value
-		t.mark_scoped_owned_base_node(idx)
 		if !isnil(t.tc) {
 			t.tc.invalidate_checked_expr_type(idx)
 		}
+		if same_transform_text(t.a.nodes[idx].value, value) {
+			return
+		}
+		t.a.nodes[idx].value = value
+		t.mark_scoped_owned_base_node(idx)
 		return
 	}
 	if t.defer_oor_writes {
@@ -3646,6 +3672,10 @@ fn (t &Transformer) allocate_ast_base_clone(base_nodes int, base_children int) &
 		nodes.grow_len(base_nodes)
 		children.grow_len(base_children)
 	}
+	return t.ast_base_clone_with_storage(nodes, children)
+}
+
+fn (t &Transformer) ast_base_clone_with_storage(nodes []flat.Node, children []flat.NodeId) &flat.FlatAst {
 	return &flat.FlatAst{
 		nodes: nodes
 		children: children
@@ -3963,12 +3993,19 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		comptime_field_metas_cache: map[string][]FieldMeta{}
 		comptime_reflected_for_roles: t.comptime_reflected_for_roles
 		comptime_reflected_for_ready: t.comptime_reflected_for_ready
-		// Late scoped workers can discover parameter signatures for generic
-		// declarations added after the parallel pre-scan. Keep those recursive
-		// Type values worker-local: their payloads belong to the worker arena and
-		// must not outlive it through the master's shared cache.
-		call_param_types_decl_cache: t.call_param_types_decl_cache.clone()
-		call_param_types_decl_misses: t.call_param_types_decl_misses.clone()
+		// Prepared signatures are immutable. A worker detaches these maps if
+		// late generic declarations require a new, scratch-owned cache entry.
+		call_param_types_decl_cache: if t.call_param_types_decl_shared {
+			t.call_param_types_decl_cache
+		} else {
+			t.call_param_types_decl_cache.clone()
+		}
+		call_param_types_decl_misses: if t.call_param_types_decl_shared {
+			t.call_param_types_decl_misses
+		} else {
+			t.call_param_types_decl_misses.clone()
+		}
+		call_param_types_decl_shared: t.call_param_types_decl_shared
 		call_param_types_decl_index: t.call_param_types_decl_index
 		call_param_types_index_ready: t.call_param_types_index_ready
 		call_param_types_prepared: t.call_param_types_prepared
@@ -4655,9 +4692,18 @@ fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
 		t.tc.sparse_resolved_call_names[idx] = t.tc.canonical_symbol(name)
 		return
 	}
-	for t.tc.resolved_call_names.len <= idx {
-		t.tc.resolved_call_names << ''
-		t.tc.resolved_call_set << false
+	if t.tc.resolved_call_names.len <= idx {
+		start := t.tc.resolved_call_names.len
+		set_start := t.tc.resolved_call_set.len
+		amount := idx + 1 - start
+		// Merging an appended worker region can leave a large gap. Initialize
+		// that range once instead of growing both caches one element at a time.
+		unsafe {
+			t.tc.resolved_call_names.grow_len(amount)
+			t.tc.resolved_call_set.grow_len(amount)
+			vmemset(&t.tc.resolved_call_names[start], 0, isize(amount) * isize(sizeof(string)))
+			vmemset(&t.tc.resolved_call_set[set_start], 0, isize(amount))
+		}
 	}
 	t.tc.resolved_call_names[idx] = t.tc.canonical_symbol(name)
 	t.tc.resolved_call_set[idx] = true
@@ -4682,9 +4728,18 @@ fn (mut t Transformer) set_resolved_fn_value_entry(idx int, name string) {
 		t.tc.sparse_resolved_fn_values[idx] = t.tc.canonical_symbol(name)
 		return
 	}
-	for t.tc.resolved_fn_value_names.len <= idx {
-		t.tc.resolved_fn_value_names << ''
-		t.tc.resolved_fn_value_set << false
+	if t.tc.resolved_fn_value_names.len <= idx {
+		start := t.tc.resolved_fn_value_names.len
+		set_start := t.tc.resolved_fn_value_set.len
+		amount := idx + 1 - start
+		// Merging an appended worker region can leave a large gap. Initialize
+		// that range once instead of growing both caches one element at a time.
+		unsafe {
+			t.tc.resolved_fn_value_names.grow_len(amount)
+			t.tc.resolved_fn_value_set.grow_len(amount)
+			vmemset(&t.tc.resolved_fn_value_names[start], 0, isize(amount) * isize(sizeof(string)))
+			vmemset(&t.tc.resolved_fn_value_set[set_start], 0, isize(amount))
+		}
 	}
 	t.tc.resolved_fn_value_names[idx] = t.tc.canonical_symbol(name)
 	t.tc.resolved_fn_value_set[idx] = true
@@ -4825,6 +4880,36 @@ fn split_work_items(items []FnWorkItem, n int) [][]FnWorkItem {
 		buckets[bi].sort(a.fn_idx < b.fn_idx)
 	}
 	return buckets
+}
+
+// Keep each self-host worker's writes in adjacent source pages so snapshots
+// copy a page for its owning worker instead of for many scattered writers.
+fn split_work_items_by_source(items []FnWorkItem, n int) [][]FnWorkItem {
+	if items.len == 0 || n <= 0 {
+		return [][]FnWorkItem{}
+	}
+	count := if n < items.len { n } else { items.len }
+	mut ordered := items.clone()
+	ordered.sort(a.fn_idx < b.fn_idx)
+	mut total := i64(0)
+	for item in ordered {
+		total += i64(item.cost) + 1
+	}
+	mut chunks := [][]FnWorkItem{cap: count}
+	mut consumed := i64(0)
+	mut start := 0
+	for ci in 0 .. count {
+		target := total * i64(ci + 1) / i64(count)
+		mut end := start
+		limit := ordered.len - (count - ci - 1)
+		for end < limit && (consumed < target || end == start || ci == count - 1) {
+			consumed += i64(ordered[end].cost) + 1
+			end++
+		}
+		chunks << ordered[start..end]
+		start = end
+	}
+	return chunks
 }
 
 // should_transform_fn reports whether should transform fn applies in transform.
@@ -14858,17 +14943,9 @@ fn (t &Transformer) find_multi_return_call_types(node flat.Node, expected_count 
 		return none
 	}
 	for candidate in candidates {
-		suffix := if candidate.starts_with('.') { candidate } else { '.${candidate}' }
-		for key, ret in t.multi_return_fn_ret_types {
-			matches := if candidate.starts_with('.') {
-				key.ends_with(suffix)
-			} else {
-				key == candidate || key.ends_with(suffix)
-			}
-			if matches {
-				if items := multi_return_types_from_type(ret, expected_count) {
-					return items
-				}
+		for ret in t.multi_return_fn_ret_types[candidate] {
+			if items := multi_return_types_from_type(ret, expected_count) {
+				return items
 			}
 		}
 	}
@@ -22283,8 +22360,7 @@ fn (t &Transformer) variant_short_name(name string) string {
 	mut cache := t.variant_short_name_cache
 	recent_slot := alias_cache_slot(name)
 	if cache.recent_generations[recent_slot] == cache.recent_generation
-		&& unsafe { cache.recent_types[recent_slot].str == name.str }
-		&& cache.recent_types[recent_slot].len == name.len {
+		&& same_transform_text(cache.recent_types[recent_slot], name) {
 		return cache.recent_results[recent_slot]
 	}
 	if cached := cache.entries[name] {

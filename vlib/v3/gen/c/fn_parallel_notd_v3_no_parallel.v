@@ -261,6 +261,7 @@ $if !windows {
 		w.enum_selector_cache = unsafe { nil }
 		w.enum_method_cache = unsafe { nil }
 		w.qualified_enum_method_cache = unsafe { nil }
+		w.import_type_cache = unsafe { nil }
 		w.local_typedef_shadow_facts = unsafe { nil }
 		w.local_global_shadow_facts = unsafe { nil }
 		// Self-host declaration output is several MiB. Reserve it once instead of
@@ -2577,6 +2578,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		enum_selector_cache: &ContextStringLookupCache{}
 		enum_method_cache: &ContextStringLookupCache{}
 		qualified_enum_method_cache: &ContextStringLookupCache{}
+		import_type_cache: &ImportTypeCache{}
 		struct_decl_pref_cache: &StructDeclPrefCache{}
 		qualified_struct_c_types_by_suffix: g.qualified_struct_c_types_by_suffix
 		qualified_struct_c_types_ready: g.qualified_struct_c_types_ready
