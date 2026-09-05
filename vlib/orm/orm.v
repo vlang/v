@@ -96,6 +96,10 @@ pub enum OperationKind {
 	is_not_null // IS NOT NULL
 	in          // IN
 	not_in      // NOT IN
+	// Internal markers delimiting a correlated `EXISTS` subquery. They carry no
+	// data and never reach a driver as an operator.
+	exists_open
+	exists_close
 }
 
 pub enum MathOperationKind {
@@ -176,13 +180,19 @@ fn (kind OperationKind) to_str() string {
 		.is_not_null { 'IS NOT NULL' }
 		.in { 'IN' }
 		.not_in { 'NOT IN' }
+		.exists_open { '' }
+		.exists_close { '' }
 	}
 
 	return str
 }
 
 fn (kind OperationKind) is_unary() bool {
-	return kind in [.is_null, .is_not_null]
+	return kind in [.is_null, .is_not_null, .exists_open, .exists_close]
+}
+
+fn (kind OperationKind) is_exists_marker() bool {
+	return kind in [.exists_open, .exists_close]
 }
 
 fn (kind OrderType) to_str() string {
@@ -224,6 +234,21 @@ pub mut:
 	is_and      []bool
 	batch_rows  int
 	batch_key   string
+	// exists holds the correlated subqueries referenced by `.exists_open` markers
+	// in `kinds`; the marker's field name carries its index in this array.
+	exists []ExistsClause
+}
+
+// ExistsClause describes a correlated `EXISTS` subquery that filters root rows by a
+// `@[fkey]` relationship. Deeper hops of the relationship path become joins *inside*
+// the subquery, so the root query still returns one row per root entity.
+pub struct ExistsClause {
+pub mut:
+	table      string // table of the first relationship hop
+	fkey       string // column of `table` referencing the root table
+	parent_key string // root column referenced by `fkey`
+	// joins are the remaining hops, each joined onto the previous one
+	joins []JoinConfig
 }
 
 pub struct InfixType {
@@ -825,6 +850,7 @@ fn clone_query_data(data QueryData) QueryData {
 		is_and:      data.is_and.clone()
 		batch_rows:  data.batch_rows
 		batch_key:   data.batch_key
+		exists:      data.exists.clone()
 	}
 }
 
@@ -947,7 +973,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 
 	// where
 	if kind == .update || kind == .delete {
-		str += gen_where_clause(where, q, qm, num, mut c)
+		str += gen_where_clause(where, table.name, q, qm, num, mut c)
 	}
 	str += ';'
 	$if trace_orm_stmt ? {
@@ -1205,10 +1231,7 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 
 	// Generate JOIN clauses
 	for join in cfg.joins {
-		left_table := if join.on_left_table.len > 0 { join.on_left_table } else { cfg.table.name }
-		str += ' ${join.kind.to_str()} ${q}${join.table.name}${q}'
-		str += ' ON ${q}${left_table}${q}.${q}${join.on_left_col}${q}'
-		str += ' = ${q}${join.table.name}${q}.${q}${join.on_right_col}${q}'
+		str += gen_join_clause(join, cfg.table.name, q)
 	}
 
 	mut c := PlaceholderCounter{
@@ -1224,7 +1247,7 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 				eprintln('> orm_select_gen: field[${i}] = ${field}')
 			}
 		}
-		str += gen_where_clause(where, q, qm, num, mut c)
+		str += gen_where_clause(where, cfg.table.name, q, qm, num, mut c)
 	}
 
 	// Note: do not order, if the user did not want it explicitly,
@@ -1272,7 +1295,7 @@ fn table_qualified_field(table_name string, column_name string) string {
 	return '${table_name}${table_qualified_field_separator}${column_name}'
 }
 
-fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c PlaceholderCounter) string {
+fn gen_where_clause(where QueryData, root_table string, q string, qm string, num bool, mut c PlaceholderCounter) string {
 	mut str := ''
 	mut data_idx := 0
 	for i, field in where.fields {
@@ -1282,7 +1305,13 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c Placeh
 		if current_pre_par > 0 {
 			str += ' ( '.repeat(current_pre_par)
 		}
-		str += gen_qualified_field(field, q) + ' ${where.kinds[i].to_str()}'
+		if where.kinds[i] == .exists_open {
+			str += gen_exists_header(where, field, root_table, q)
+		} else if where.kinds[i] == .exists_close {
+			str += ' )'
+		} else {
+			str += gen_qualified_field(field, q) + ' ${where.kinds[i].to_str()}'
+		}
 		if !where.kinds[i].is_unary() {
 			expand_array := where.kinds[i] in [.in, .not_in]!
 			array_len := if expand_array && where.data.len > data_idx {
@@ -1312,8 +1341,9 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c Placeh
 		if current_post_par > 0 {
 			str += ' ) '.repeat(current_post_par)
 		}
-		if i < where.fields.len - 1 {
-			if where.is_and[i] {
+		if i < where.fields.len - 1 && where.kinds[i + 1] != .exists_close {
+			// a subquery header is always followed by its own correlated conditions
+			if where.kinds[i] == .exists_open || where.is_and[i] {
 				str += ' AND '
 			} else {
 				str += ' OR '
@@ -1321,6 +1351,44 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c Placeh
 		}
 	}
 	return str
+}
+
+// gen_exists_header renders everything of a correlated subquery up to and including
+// the correlation predicate. The conditions that follow it are rendered by the
+// regular loop and closed by the matching `.exists_close` marker.
+fn gen_exists_header(where QueryData, field string, root_table string, q string) string {
+	index := exists_clause_index(field) or { return '' }
+	if index < 0 || index >= where.exists.len {
+		return ''
+	}
+	clause := where.exists[index]
+	mut str := 'EXISTS (SELECT 1 FROM ${q}${clause.table}${q}'
+	for join in clause.joins {
+		str += gen_join_clause(join, clause.table, q)
+	}
+	str += ' WHERE ${q}${clause.table}${q}.${q}${clause.fkey}${q}'
+	str += ' = ${q}${root_table}${q}.${q}${clause.parent_key}${q}'
+	return str
+}
+
+fn gen_join_clause(join JoinConfig, default_left_table string, q string) string {
+	left_table := if join.on_left_table.len > 0 { join.on_left_table } else { default_left_table }
+	return ' ${join.kind.to_str()} ${q}${join.table.name}${q}' +
+		' ON ${q}${left_table}${q}.${q}${join.on_left_col}${q}' +
+		' = ${q}${join.table.name}${q}.${q}${join.on_right_col}${q}'
+}
+
+const exists_clause_marker = '::v_orm_exists::'
+
+fn exists_clause_field(index int) string {
+	return '${exists_clause_marker}${index}'
+}
+
+fn exists_clause_index(field string) ?int {
+	if !field.starts_with(exists_clause_marker) {
+		return none
+	}
+	return field[exists_clause_marker.len..].int()
 }
 
 // gen_qualified_field renders a field name with the given quote character q.

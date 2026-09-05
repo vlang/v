@@ -584,6 +584,78 @@ struct User {
 	only_names := qb.select('name')!.query()!
 ```
 
+Function Call queries do not load `@[fkey]` array relationships unless requested with `include`.
+`then_include` continues from the last included relationship; call `include` again to start
+another path from the root:
+
+```v ignore
+@[table: 'parents']
+struct Parent {
+	id       int     @[primary]
+	children []Child @[fkey: 'parent_id']
+}
+
+struct Child {
+	id        int       @[primary]
+	parent_id int
+	grandkids []Grandkid @[fkey: 'child_id']
+}
+
+parents := qb
+	.include('children')!
+	.then_include('grandkids')!
+	.query()!
+```
+
+`include` decides which relationships are returned; `where` decides which rows are returned.
+The two are independent, so a relationship can be filtered on without being loaded:
+
+```v ignore
+// parents that have a matching grandkid, returning no relationship at all
+parents := qb
+	.where('children.grandkids.name = ?', 'grandkid')!
+	.query()!
+```
+
+A `where` field prefixed by a relationship path filters the root query through a correlated
+`EXISTS`, and — when that relationship is also included — filters the rows loaded for it.
+A path may be any chain of `@[fkey]` relationships, and after `include` or `then_include` the
+name of the last included relationship also works as a short form:
+
+```v ignore
+parents := qb
+	.include('children')!
+	.then_include('grandkids')!
+	.where('name = ? && grandkids.name != ?', 'parent', 'excluded')!
+	.query()!
+```
+
+Every term of one `where` call must be satisfied by the same related row, while separate
+calls may match different rows:
+
+```v ignore
+// one grandkid named `grandkid` that owns a toy named `ball`
+qb.where('children.grandkids.name = ? && children.grandkids.toys.name = ?', 'grandkid', 'ball')!
+
+// a grandkid named `grandkid`, and a toy named `ball` under any grandkid
+qb.where('children.grandkids.name = ?', 'grandkid')!.where('children.grandkids.toys.name = ?', 'ball')!
+```
+
+Root and relationship predicates combine freely with `&&` and `||`; a root branch still
+matches a row whose relationship branch does not:
+
+```v ignore
+qb.where('name = ? || children.name = ?', 'parent', 'child')!
+```
+
+Two sibling relationships combined with `&&` in a single call are rejected, since no single
+related row can satisfy both; filter them in separate `where` calls instead.
+
+`update` and `delete` accept relationship predicates and apply them as the same `EXISTS`.
+`insert` and `insert_many` reject them, because they ignore `where` entirely.
+
+The SQL-like API keeps its existing implicit relationship loading behavior.
+
 8. Update records​​ (note: `update()` must be placed last):
 
 ```v ignore
