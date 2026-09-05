@@ -16882,11 +16882,6 @@ fn (mut g FlatGen) forward_decls() {
 		output_sb := g.sb
 		master_tc := g.tc
 		master_c_name_cache := g.c_name_cache
-		master_import_alias_cache := g.import_alias_cache
-		master_import_type_cache := g.import_type_cache
-		master_enum_selector_cache := g.enum_selector_cache
-		master_enum_method_cache := g.enum_method_cache
-		master_qualified_enum_method_cache := g.qualified_enum_method_cache
 		mut master_concrete_optional_params := g.cur_concrete_optional_params.move()
 		mut master_needed_optional_types := g.needed_optional_types.move()
 		mut master_fn_ptr_types := g.fn_ptr_types.move()
@@ -16898,13 +16893,10 @@ fn (mut g FlatGen) forward_decls() {
 		g.c_name_cache = &CNameCache{
 			base: master_c_name_cache
 		}
-		// Context-cache entries can own strings allocated by this disposable
-		// batch. Disable them until the master caches are restored.
-		g.import_alias_cache = unsafe { nil }
-		g.import_type_cache = unsafe { nil }
-		g.enum_selector_cache = unsafe { nil }
-		g.enum_method_cache = unsafe { nil }
-		g.qualified_enum_method_cache = unsafe { nil }
+		// Memo-cache entries own strings allocated by this disposable batch, and
+		// so do the maps holding them. Emit against batch-local caches, so that
+		// nothing this arena owns is still reachable once it is freed.
+		saved_lookup_caches := g.begin_scratch_lookup_caches()
 		g.cur_concrete_optional_params = map[string]bool{}
 		g.needed_optional_types = map[string]string{}
 		g.fn_ptr_types = master_fn_ptr_types.clone()
@@ -16916,11 +16908,7 @@ fn (mut g FlatGen) forward_decls() {
 		g.line_start = true
 		g.tc = master_tc
 		g.c_name_cache = master_c_name_cache
-		g.import_alias_cache = master_import_alias_cache
-		g.import_type_cache = master_import_type_cache
-		g.enum_selector_cache = master_enum_selector_cache
-		g.enum_method_cache = master_enum_method_cache
-		g.qualified_enum_method_cache = master_qualified_enum_method_cache
+		g.restore_scratch_lookup_caches(saved_lookup_caches)
 		g.cur_concrete_optional_params = master_concrete_optional_params.move()
 		g.needed_optional_types = master_needed_optional_types.move()
 		g.fn_ptr_types = master_fn_ptr_types.move()
