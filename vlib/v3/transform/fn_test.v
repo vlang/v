@@ -3,6 +3,22 @@ module transform
 import v3.flat
 import v3.types
 
+fn test_enum_autostr_call_marks_synthesized_helper_used() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, {
+		'main': true
+	})
+	expr := a.add_node(flat.Node{
+		kind: .enum_val
+		value: 'ready'
+		typ: 'state.Status'
+	})
+	call := t.enum_autostr_call(expr, 'state.Status')
+	assert t.used_fns['state__Status__autostr']
+	assert a.node(call).kind == .call
+}
+
 fn test_cloned_worker_merge_replays_relocated_children_and_body_roots() {
 	// 'plain' copies and relocates inside the serial merge, 'relocated' relocates
 	// the worker region in parallel first, and 'absorbed' also writes it straight
@@ -803,4 +819,10 @@ fn test_transform_lane_budget_bounds_base_ast_clones() {
 	assert transform_clone_budget_jobs(8, 9_000_000_000) == 1
 	assert transform_clone_budget_jobs(18, 1) == 18
 	assert transform_clone_budget_jobs(1, 9_000_000_000) == 1
+}
+
+fn test_selfhost_transform_lane_count_is_memory_bounded() {
+	assert transform_job_count(18, 10_000, true) == 7
+	assert transform_job_count(18, 10_000, false) == 7
+	assert transform_job_count(4, 10_000, true) == 4
 }

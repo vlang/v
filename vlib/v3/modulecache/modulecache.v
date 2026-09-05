@@ -3258,16 +3258,23 @@ pub fn c_source_type_declarations(source string) string {
 // c_source_type_declarations_with_status also reports whether every declaration-like
 // file-scope macro invocation could be classified.
 pub fn c_source_type_declarations_with_status(source string) (string, bool) {
-	header, _, _, complete := c_declaration_header_mode(source, true)
+	header, _, _, _, complete := c_declaration_header_mode(source, true)
 	return header, complete
 }
 
 fn c_declaration_header(prefix string) (string, bool, bool) {
-	header, has_static_storage, declares_types, _ := c_declaration_header_mode(prefix, false)
+	header, has_static_storage, _, declares_types, _ := c_declaration_header_mode(prefix, false)
 	return header, has_static_storage, declares_types
 }
 
-fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool, bool) {
+// c_source_replicated_function_has_static_storage reports whether a function
+// definition retained by declaration_header contains function-local static storage.
+pub fn c_source_replicated_function_has_static_storage(source string) bool {
+	_, _, has_replicated_function_static_storage, _, _ := c_declaration_header_mode(source, false)
+	return has_replicated_function_static_storage
+}
+
+fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool, bool, bool) {
 	mut out := strings.new_builder(prefix.len / 2)
 	mut item := strings.new_builder(512)
 	mut item_head := strings.new_builder(512)
@@ -3277,6 +3284,7 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 	mut function_has_conditionals := false
 	mut function_conditional_depth := 0
 	mut has_static_storage := false
+	mut has_replicated_function_static_storage := false
 	mut declares_types := false
 	mut types_complete := true
 	mut in_block_comment := false
@@ -3287,6 +3295,7 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 	static_storage_macros := c_sources_macro_identifiers_referencing([prefix], {
 		'static': true
 	})
+	definition_preserving_macros := c_definition_preserving_macro_names(prefix)
 	lines := prefix.split_into_lines()
 	for line_idx, raw_line in lines {
 		line := raw_line + '\n'
@@ -3360,8 +3369,7 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 			continue
 		}
 		item.write_string(line)
-		delta, saw_brace, next_comment, last_code, first_open := c_line_braces(raw_line,
-			in_block_comment)
+		delta, saw_brace, next_comment, last_code, first_open := c_line_braces(raw_line, in_block_comment)
 		in_block_comment = next_comment
 		brace_depth += delta
 		if !has_brace {
@@ -3405,6 +3413,8 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 		has_static_storage = has_static_storage
 			|| c_declaration_item_has_static_storage(declaration, has_brace)
 			|| static_storage_macros[storage_macro_name]
+		has_replicated_function_static_storage = has_replicated_function_static_storage
+			|| c_declaration_item_has_replicated_function_static_storage(declaration, has_brace, definition_preserving_macros, static_storage_macros)
 		item_declares_type := c_declaration_item_declares_type(declaration, has_brace)
 			|| type_declaration_macros[macro_name]
 		if types_only && macro_name.len > 0 && !item_declares_type {
@@ -3412,7 +3422,7 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 		}
 		declares_types = declares_types || item_declares_type
 		if !types_only || item_declares_type {
-			out.write_string(c_declaration_item(declaration, has_brace, types_only))
+			out.write_string(c_declaration_item(declaration, has_brace, types_only, definition_preserving_macros))
 		}
 		item_head.clear()
 		brace_depth = 0
@@ -3428,6 +3438,8 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 		has_static_storage = has_static_storage
 			|| c_declaration_item_has_static_storage(declaration, has_brace)
 			|| static_storage_macros[storage_macro_name]
+		has_replicated_function_static_storage = has_replicated_function_static_storage
+			|| c_declaration_item_has_replicated_function_static_storage(declaration, has_brace, definition_preserving_macros, static_storage_macros)
 		item_declares_type := c_declaration_item_declares_type(declaration, has_brace)
 			|| type_declaration_macros[macro_name]
 		if types_only && macro_name.len > 0 && !item_declares_type {
@@ -3435,10 +3447,10 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 		}
 		declares_types = declares_types || item_declares_type
 		if !types_only || item_declares_type {
-			out.write_string(c_declaration_item(declaration, has_brace, types_only))
+			out.write_string(c_declaration_item(declaration, has_brace, types_only, definition_preserving_macros))
 		}
 	}
-	return out.str(), has_static_storage, declares_types, types_complete
+	return out.str(), has_static_storage, has_replicated_function_static_storage, declares_types, types_complete
 }
 
 fn c_type_declaration_macro_names(source string) map[string]bool {
@@ -3693,14 +3705,14 @@ fn c_preprocessor_line_continues(line string) bool {
 	return line.trim_right('\r').ends_with('\\')
 }
 
-fn c_declaration_item(item string, has_brace bool, types_only bool) string {
+fn c_declaration_item(item string, has_brace bool, types_only bool, definition_preserving_macros map[string]bool) string {
 	trimmed := item.trim_space()
 	if trimmed.len == 0 {
 		return item
 	}
 	clean := trim_leading_c_comments(trimmed)
 	if block := c_extern_c_block(item) {
-		inner_header, _, _, _ := c_declaration_header_mode(block.inner, types_only)
+		inner_header, _, _, _, _ := c_declaration_header_mode(block.inner, types_only)
 		mut result := block.before
 		if !result.ends_with('\n') && !inner_header.starts_with('\n') {
 			result += '\n'
@@ -3719,7 +3731,8 @@ fn c_declaration_item(item string, has_brace bool, types_only bool) string {
 	}
 	if has_brace && brace > 0 {
 		if c_declaration_head_is_function(head) {
-			if c_declaration_head_keeps_definition(head) {
+			if c_declaration_head_keeps_definition(head)
+				|| c_declaration_head_uses_macro(head, definition_preserving_macros) {
 				return item
 			}
 			return '${head};\n'
@@ -3734,6 +3747,53 @@ fn c_declaration_item(item string, has_brace bool, types_only bool) string {
 		return item
 	}
 	return c_extern_storage_decl(clean.trim_right(';'))
+}
+
+fn c_definition_preserving_macro_names(source string) map[string]bool {
+	mut result := map[string]bool{}
+	for name, replacements in c_source_macro_replacements(source) {
+		if replacements.len > 0
+			&& replacements.all(c_declaration_head_keeps_definition(it.trim_space())) {
+			result[name] = true
+		}
+	}
+	return result
+}
+
+fn c_declaration_head_uses_macro(head string, macros map[string]bool) bool {
+	for name, present in macros {
+		if present && c_code_contains_identifier(head, name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn c_declaration_item_has_replicated_function_static_storage(item string, has_brace bool, definition_preserving_macros map[string]bool, static_storage_macros map[string]bool) bool {
+	if block := c_extern_c_block(item) {
+		return c_source_replicated_function_has_static_storage(block.inner)
+			|| c_declaration_head_uses_macro(block.inner, static_storage_macros)
+	}
+	if !has_brace {
+		macro_name := c_declaration_macro_invocation_name(item, false) or { return false }
+		return static_storage_macros[macro_name]
+	}
+	clean := trim_leading_c_comments(item.trim_space())
+	brace := clean.index_u8(`{`)
+	if brace <= 0 {
+		return false
+	}
+	head := clean[..brace].trim_space()
+	if !c_static_declaration_head_is_function(head) {
+		return false
+	}
+	if !c_declaration_head_keeps_definition(head)
+		&& !c_declaration_head_uses_macro(head, definition_preserving_macros) {
+		return false
+	}
+	body := clean[brace + 1..]
+	return c_code_contains_identifier(body, 'static')
+		|| c_declaration_head_uses_macro(body, static_storage_macros)
 }
 
 fn c_declaration_item_has_static_storage(item string, has_brace bool) bool {

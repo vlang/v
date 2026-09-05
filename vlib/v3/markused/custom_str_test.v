@@ -223,6 +223,18 @@ fn test_optional_string_interpolation_seeds_imported_enum_str_method() {
 	assert used['colors.Color.str']
 }
 
+fn test_string_interpolation_seeds_imported_enum_autostr_helper() {
+	a, tc := parse_checked_two_file_source('imported_enum_interp_autostr', imported_enum_main_source('_ := "\${c}"'), 'colors/colors.v', 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+')
+	used := mark_used(a, tc)
+	assert used['colors__Color__autostr']
+}
+
 // test_imported_operator_infix_seeds_operator_methods validates this v3 regression case.
 fn test_imported_operator_infix_seeds_operator_methods() {
 	a, tc := parse_checked_two_file_source('imported_operator_infix',
@@ -482,6 +494,29 @@ fn test_imported_optional_enum_interpolation_compile_keeps_str_method() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_optional_enum_interp_input_bin')
+	compile := os.execute('${v3_bin} -o ${bin} ${root}')
+	assert compile.exit_code == 0, compile.output
+}
+
+fn test_imported_enum_direct_str_compile_keeps_autostr_helper() {
+	v3_bin := build_v3_bin('imported_enum_direct_autostr_test')
+
+	root := os.join_path(os.temp_dir(), 'v3_markused_imported_enum_direct_autostr_input')
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(os.join_path(root, 'colors')) or { panic(err) }
+	os.write_file(os.join_path(root, 'main.v'), imported_enum_main_source('_ := c.str()')) or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'colors/colors.v'), 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+') or { panic(err) }
+	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_enum_direct_autostr_input_bin')
 	compile := os.execute('${v3_bin} -o ${bin} ${root}')
 	assert compile.exit_code == 0, compile.output
 }

@@ -1331,6 +1331,9 @@ fn (mut g FlatGen) enum_str_forward_decls() {
 			.enum_decl {
 				name := g.enum_decl_type_name(node, cur_module)
 				cn := g.cname(name)
+				if !g.enum_autostr_is_used(cn) {
+					continue
+				}
 				if emitted[cn] {
 					continue
 				}
@@ -1362,6 +1365,9 @@ fn (mut g FlatGen) enum_str_defs() {
 			.enum_decl {
 				name := g.enum_decl_type_name(node, cur_module)
 				cn := g.cname(name)
+				if !g.enum_autostr_is_used(cn) {
+					continue
+				}
 				if emitted[cn] {
 					continue
 				}
@@ -1407,6 +1413,10 @@ fn (mut g FlatGen) enum_str_defs() {
 			else {}
 		}
 	}
+}
+
+fn (g &FlatGen) enum_autostr_is_used(cname string) bool {
+	return !g.has_used_fn_filter() || g.used_fn_contains('${cname}__autostr')
 }
 
 fn (g &FlatGen) enum_decl_type_name(node flat.Node, module_name string) string {
