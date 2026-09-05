@@ -249,6 +249,32 @@ fn generated_c_uses_v3_codegen(generated_c string) bool {
 	return !generated_c.contains('#define VV_LOC')
 }
 
+fn test_map_guard_without_observed_error_does_not_allocate_error() {
+	os.chdir(vroot) or {}
+	path := os.join_path(testdata_folder, 'if_guard_map_missing_key_cleanup.vv')
+	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(path)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	if generated_c_uses_v3_codegen(compilation.output) {
+		return
+	}
+	mut body := ''
+	mut in_function := false
+	for line in compilation.output.split_into_lines() {
+		if line.contains('main__has_value(') && line.ends_with('{') {
+			in_function = true
+		}
+		if in_function {
+			body += line + '\n'
+			if line == '}' {
+				break
+			}
+		}
+	}
+	assert body.contains('.err = _const_none__')
+	assert !body.contains('builtin___v_error(')
+}
+
 fn test_or_block_err_var_collision_does_not_emit_self_referential_err() {
 	os.chdir(vroot) or {}
 	path := os.join_path(testdata_folder, 'or_block_err_var_collision.vv')

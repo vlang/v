@@ -23,6 +23,10 @@ enum CWideIndexKind {
 // wrapper). Otherwise the static `none` instance keeps the option fully
 // initialized without allocating a MessageError + interface box on every miss.
 fn (g &Gen) index_or_skips_err(node ast.IndexExpr) bool {
+	if node.or_expr.kind == .absent && node.pos.len > 0
+		&& node.pos == g.discarded_index_error_pos {
+		return true
+	}
 	if node.is_option || node.or_expr.kind != .block {
 		return false
 	}
