@@ -325,7 +325,7 @@ fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rend
 		for argument_index < call_end {
 			if tokens[argument_index].tok == .dot && argument_index + 1 < call_end && tokens[argument_index + 1].tok == .name {
 				// The raw renderer mangles a `.member` shorthand whose name is a C keyword
-				// (`.unsigned` -> `.__v_fastc_keyword_unsigned`); match that spelling so the
+				// (`.unsigned` -> `.__vf_keyword_unsigned`); match that spelling so the
 				// needle still finds the call. The enum constant itself keeps the raw name.
 				raw_argument.write_string('.${fastc_c_identifier(tokens[argument_index + 1].lit)}')
 				c_argument.write_string('${fastc_c_declared_type_name(receiver_key)}__${tokens[argument_index + 1].lit}')
@@ -338,18 +338,18 @@ fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rend
 			argument_index++
 		}
 		method := tokens[i].lit
-		raw_receiver_source := receiver.str()
+		raw_receiver_source := fastc_take_string(mut receiver)
 		receiver_source := g.render_member_receiver(receiver_tokens) or { raw_receiver_source }
-		raw_argument_source := raw_argument.str()
-		c_argument_source := c_argument.str()
+		raw_argument_source := fastc_take_string(mut raw_argument)
+		c_argument_source := fastc_take_string(mut c_argument)
 		mut needle := '${raw_receiver_source}.${method}(${c_argument_source})'
-		if !rendered.contains(needle) {
+		if !fastc_contains(rendered, needle) {
 			needle = '${receiver_source}.${method}(${c_argument_source})'
 		}
-		if !rendered.contains(needle) {
+		if !fastc_contains(rendered, needle) {
 			needle = '${raw_receiver_source}.${method}(${raw_argument_source})'
 		}
-		if !rendered.contains(needle) {
+		if !fastc_contains(rendered, needle) {
 			needle = '${receiver_source}.${method}(${raw_argument_source})'
 		}
 		replacement := match method {
@@ -367,10 +367,10 @@ fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rend
 				typ: if method == 'has' { 'bool' } else { 'void' }
 			}
 		}
-		if !rendered.contains(needle) {
+		if !fastc_contains(rendered, needle) {
 			continue
 		}
-		rendered = rendered.replace(needle, replacement)
+		rendered = fastc_replace(rendered, needle, replacement)
 		if method == 'has' {
 			result_type = 'bool'
 		}
@@ -409,8 +409,9 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 			raw_call := g.render_raw_expression_tokens(tokens[call_start..call_end + 1]) or {
 				continue
 			}
-			if rendered.contains(raw_call) {
-				rendered = rendered.replace(raw_call, disabled_call)
+			replaced := fastc_replace(rendered, raw_call, disabled_call)
+			if replaced.str != rendered.str {
+				rendered = replaced
 				result_type = signature.return_type
 				changed = true
 			}
@@ -418,6 +419,7 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 		}
 		type_key := function_key.all_before_last('.')
 		owner := fastc_c_declared_type_name(type_key)
+		method_c_name := g.c_function_name_or(function_key, fastc_method_c_name_for_key(type_key, tokens[i].lit))
 		call_start := if i >= 4 && tokens[i - 4].tok == .name && tokens[i - 3].tok == .dot {
 			i - 4
 		} else {
@@ -445,7 +447,7 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 				named_initializer := g.render_named_struct_initializer(signature.parameter_types[named_start], call_args[named_start..]) or { '' }
 				if named_initializer != '' {
 					rendered_arguments << named_initializer
-					call_source := '${fastc_method_c_name_for_key(type_key, tokens[i].lit)}(${rendered_arguments.join(',')})'
+					call_source := '${method_c_name}(${rendered_arguments.join(',')})'
 					if call_start == 0 && call_end == tokens.len - 1 {
 						return FastcRenderedExpression{
 							source: call_source
@@ -455,8 +457,9 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 					raw_call := g.render_raw_expression_tokens(tokens[call_start..call_end + 1]) or {
 						continue
 					}
-					if rendered.contains(raw_call) {
-						rendered = rendered.replace(raw_call, call_source)
+					replaced := fastc_replace(rendered, raw_call, call_source)
+					if replaced.str != rendered.str {
+						rendered = replaced
 						result_type = signature.return_type
 						changed = true
 						continue
@@ -475,7 +478,7 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 				rendered_arguments << rendered_argument
 			}
 			if arguments_ok {
-				call_source := '${fastc_method_c_name_for_key(type_key, tokens[i].lit)}(${rendered_arguments.join(',')})'
+				call_source := '${method_c_name}(${rendered_arguments.join(',')})'
 				if call_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
@@ -485,8 +488,9 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 				raw_call := g.render_raw_expression_tokens(tokens[call_start..call_end + 1]) or {
 					continue
 				}
-				if rendered.contains(raw_call) {
-					rendered = rendered.replace(raw_call, call_source)
+				replaced := fastc_replace(rendered, raw_call, call_source)
+				if replaced.str != rendered.str {
+					rendered = replaced
 					result_type = signature.return_type
 					changed = true
 					continue
@@ -494,13 +498,13 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 			}
 		}
 		mut needle := '${owner}.${tokens[i].lit}('
-		if !rendered.contains(needle) {
+		if !fastc_contains(rendered, needle) {
 			needle = '${owner}__${tokens[i].lit}('
 		}
-		if !rendered.contains(needle) {
+		if !fastc_contains(rendered, needle) {
 			continue
 		}
-		rendered = rendered.replace(needle, '${fastc_method_c_name_for_key(type_key, tokens[i].lit)}(')
+		rendered = fastc_replace(rendered, needle, '${method_c_name}(')
 		result_type = signature.return_type
 		changed = true
 	}
@@ -760,7 +764,7 @@ fn (g &Parser) render_mutable_map_value_pointer(tokens []FastcExpressionToken) ?
 		empty_value = '(${value_type})builtin__new_map(sizeof(${fastc_runtime_c_type(nested_key_type)}), sizeof(${fastc_runtime_c_type(nested_value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn})'
 	}
 	return FastcRenderedExpression{
-		source: '({ ${key_type} __v_fastc_nested_map_key = (${key_source}); ${value_type} *__v_fastc_nested_map_value = (${value_type} *)builtin__map_get_check((map *)(${map_address}), &__v_fastc_nested_map_key); if (__v_fastc_nested_map_value == NULL) { ${value_type} __v_fastc_nested_map_empty = ${empty_value}; builtin__map_set((map *)(${map_address}), &__v_fastc_nested_map_key, &__v_fastc_nested_map_empty); __v_fastc_nested_map_value = (${value_type} *)builtin__map_get_check((map *)(${map_address}), &__v_fastc_nested_map_key); } __v_fastc_nested_map_value; })'
+		source: '({ ${key_type} __vf_nested_map_key = (${key_source}); ${value_type} *__vf_nested_map_value = (${value_type} *)builtin__map_get_check((map *)(${map_address}), &__vf_nested_map_key); if (__vf_nested_map_value == NULL) { ${value_type} __vf_nested_map_empty = ${empty_value}; builtin__map_set((map *)(${map_address}), &__vf_nested_map_key, &__vf_nested_map_empty); __vf_nested_map_value = (${value_type} *)builtin__map_get_check((map *)(${map_address}), &__vf_nested_map_key); } __vf_nested_map_value; })'
 		typ: value_type
 	}
 }

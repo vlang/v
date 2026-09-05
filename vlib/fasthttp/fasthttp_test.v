@@ -20,8 +20,7 @@ fn test_fasthttp_example_compiles() {
 	vroot := os.dir(vexe)
 
 	// Build the fasthttp example
-	build_result := os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(fasthttp_example_exe)} ${os.join_path(vroot,
-		'examples', 'fasthttp')}')
+	build_result := os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(fasthttp_example_exe)} ${os.join_path(vroot, 'examples', 'fasthttp')}')
 	assert build_result == 0, 'fasthttp example failed to compile'
 	assert os.exists(fasthttp_example_exe), 'fasthttp example binary not found after build'
 }
@@ -107,7 +106,7 @@ fn test_new_server() {
 	}
 
 	server := new_server(ServerConfig{
-		port:    8080
+		port: 8080
 		handler: handler
 	}) or {
 		assert false, 'Failed to create server: ${err}'
@@ -115,6 +114,15 @@ fn test_new_server() {
 	}
 
 	assert server.port == 8080
+	assert server.max_request_body_size == default_max_request_body_size
+
+	if _ := new_server(ServerConfig{
+		port: 8080
+		max_request_body_size: -1
+		handler: handler
+	}) {
+		assert false, 'negative max_request_body_size should be rejected'
+	}
 }
 
 fn test_server_ipv4_ipv6_binding() {
@@ -126,8 +134,8 @@ fn test_server_ipv4_ipv6_binding() {
 	}
 
 	server_ipv4 := new_server(ServerConfig{
-		family:  .ip
-		port:    8081
+		family: .ip
+		port: 8081
 		handler: handler
 	}) or {
 		assert false, 'Failed to create IPv4 server: ${err}'
@@ -136,8 +144,8 @@ fn test_server_ipv4_ipv6_binding() {
 
 	// Test IPv6 binding
 	server_ipv6 := new_server(ServerConfig{
-		family:  .ip6
-		port:    8082
+		family: .ip6
+		port: 8082
 		handler: handler
 	}) or {
 		assert false, 'Failed to create IPv6 server: ${err}'
@@ -153,11 +161,11 @@ fn test_server_ipv4_ipv6_binding() {
 fn test_response_takeover_mode_reusable_keeps_connection() {
 	$if linux || bsd || windows {
 		mut server := new_server(ServerConfig{
-			family:                  .ip
-			port:                    reusable_takeover_port
-			timeout_in_seconds:      2
+			family: .ip
+			port: reusable_takeover_port
+			timeout_in_seconds: 2
 			max_request_buffer_size: 8192
-			handler:                 reusable_takeover_handler
+			handler: reusable_takeover_handler
 		}) or {
 			assert false, 'Failed to create server: ${err}'
 			return
@@ -199,8 +207,7 @@ fn reusable_takeover_handler(req HttpRequest) !HttpResponse {
 	path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
 	if path == '/reusable' {
 		body := 'manual'
-		send_raw_response(req.client_conn_handle,
-			'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n${body.len:x}\r\n${body}\r\n0\r\n\r\n')
+		send_raw_response(req.client_conn_handle, 'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n${body.len:x}\r\n${body}\r\n0\r\n\r\n')
 		return HttpResponse{
 			takeover_mode: .reusable
 		}

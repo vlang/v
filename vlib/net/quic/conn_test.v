@@ -496,7 +496,6 @@ fn test_stream_write_read_round_trip_over_fake_transport() {
 
 	stream_id := c.open_stream(true)!
 	assert stream_id == 0 // first client-initiated bidi stream id, RFC 9000 §2.1
-	
 
 	c.write_stream(stream_id, 'hello from client'.bytes(), true)!
 	result := c.poll(none, now)!
@@ -589,7 +588,6 @@ fn test_close_sends_connection_close_and_transitions_to_closing() {
 
 	c.close(42, 'bye')
 	assert c.state() == .established // deferred -- nothing happens synchronously
-	
 
 	result := c.poll(none, now)!
 	assert c.state() == .closing
@@ -668,7 +666,6 @@ fn test_close_before_one_rtt_keys_downgrades_to_transport_connection_close() {
 	assert result2.events.len == 0
 	assert c.client_handshake().state() == .wait_certificate
 	assert c.app_write_keys == none // still pre-1-RTT -- the window this bug lives in
-	
 
 	now += 10
 
@@ -1496,7 +1493,6 @@ fn test_stream_recv_status_reports_all_three_terminal_states() {
 		c_hs.free()
 	}
 	assert c.stream_recv_status(1) == none // never seen at all
-	
 
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys

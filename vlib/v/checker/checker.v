@@ -4,6 +4,7 @@ module checker
 
 import os
 import strconv
+import strings
 import v.ast
 import v.vmod
 import v.token
@@ -4283,7 +4284,14 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 	mut aliases := c.asm_ios(mut stmt.output, mut stmt.scope, true)
 	aliases2 := c.asm_ios(mut stmt.input, mut stmt.scope, false)
 	aliases << aliases2
+	if stmt.is_intel && !stmt.is_raw {
+		c.check_asm_intel_ios(stmt.output)
+		c.check_asm_intel_ios(stmt.input)
+	}
 	for mut template in stmt.templates {
+		if stmt.is_raw {
+			continue
+		}
 		if template.is_directive {
 			/*
 			align n[,value]
@@ -4323,9 +4331,59 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 			c.asm_arg(arg, stmt, aliases)
 		}
 	}
-	for mut clob in stmt.clobbered {
-		c.asm_arg(clob.reg, stmt, aliases)
+	for clob in stmt.clobbered {
+		if clob.reg.name in ['cc', 'memory', 'dirflag', 'fpsr', 'flags'] {
+			continue
+		}
+		if clob.reg.name !in stmt.scope.objects {
+			mut msg := 'unknown clobbered register `${clob.reg.name}`'
+			if suggestion := closest_asm_register(clob.reg.name, stmt.scope.objects) {
+				msg += '; did you mean `${suggestion}`?'
+			}
+			c.error(msg, clob.reg.pos)
+		}
 	}
+}
+
+fn (mut c Checker) check_asm_intel_ios(ios []ast.AsmIO) {
+	for io in ios {
+		constraint := io.constraint.trim_left('=+&%*')
+		if constraint != 'r' {
+			c.error('constraint `${io.constraint}` is not supported for operands in structured `intel` assembly; use a register-only `r` constraint or a `raw` template with explicit operand modifiers',
+				io.pos)
+		}
+	}
+}
+
+fn closest_asm_register(name string, registers map[string]ast.ScopeObject) ?string {
+	mut digit_start := -1
+	for i, character in name {
+		if character.is_digit() {
+			digit_start = i
+			break
+		}
+	}
+	if digit_start > 0 && name[digit_start..].bytes().all(it.is_digit()) {
+		normalized := name[..digit_start] + name[digit_start..].int().str()
+		if normalized in registers {
+			return normalized
+		}
+	}
+	mut candidates := registers.keys()
+	candidates.sort()
+	mut closest := ''
+	mut closest_distance := 3
+	for candidate in candidates {
+		distance := strings.levenshtein_distance(name, candidate)
+		if distance < closest_distance {
+			closest = candidate
+			closest_distance = distance
+		}
+	}
+	if closest != '' && closest_distance <= if name.len <= 4 { 1 } else { 2 } {
+		return closest
+	}
+	return none
 }
 
 fn asm_expected_operand_count(arch pref.Arch, name string) ?int {
@@ -4340,7 +4398,15 @@ fn asm_expected_operand_count(arch pref.Arch, name string) ?int {
 
 fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
 	match arg {
-		ast.AsmAlias {}
+		ast.AsmAlias {
+			if arg.name !in aliases && arg.name !in stmt.local_labels
+				&& arg.name !in stmt.global_labels {
+				if suggestion := closest_asm_register(arg.name, stmt.scope.objects) {
+					c.error('unknown register `${arg.name}`; did you mean `${suggestion}`?',
+						arg.pos)
+				}
+			}
+		}
 		ast.AsmAddressing {
 			if arg.scale !in [-1, 1, 2, 4, 8] {
 				c.error('scale must be one of 1, 2, 4, or 8', arg.pos)

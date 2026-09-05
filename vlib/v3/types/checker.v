@@ -2581,9 +2581,15 @@ fn (mut tc TypeChecker) collect_top_level_idx_fast(a &flat.FlatAst, inactive []b
 		}
 	}
 	mut synthetic_pos := 0
+	mut previous_trailing := -1
+	mut previous_file := ''
+	mut previous_module := ''
 	for k := 0; k + 1 < a.file_node_ids.len; k += 2 {
 		marker := a.file_node_ids[k]
 		trailing := a.file_node_ids[k + 1]
+		// Implicit imports live between file pairs. Preserve the context that a
+		// full node scan would carry from the preceding file through this gap.
+		previous_file, previous_module = tc.collect_index_gap(a, previous_trailing + 1, marker, previous_file, previous_module, inactive)
 		for synthetic_pos < tc.synthetic_top_level_type_ids.len
 			&& tc.synthetic_top_level_type_ids[synthetic_pos] <= marker {
 			synthetic_pos++
@@ -2626,7 +2632,32 @@ fn (mut tc TypeChecker) collect_top_level_idx_fast(a &flat.FlatAst, inactive []b
 			synthetic_pos++
 		}
 		tc.top_level_idx << trailing
+		previous_trailing = trailing
+		previous_file = idx_file
+		previous_module = idx_module
 	}
+	// Anything past the last indexed pair belongs to no later file pair.
+	_, _ = tc.collect_index_gap(a, previous_trailing + 1, a.nodes.len, previous_file, previous_module, inactive)
+}
+
+// collect_index_gap indexes the raw node range between two indexed file pairs,
+// where synthetic import insertion can leave whole bundle files. It mirrors the
+// full scan's `.file` handling, which switches the active file and clears the
+// active module, so a bundle's `module` declaration cannot leak into the file
+// that follows it.
+fn (mut tc TypeChecker) collect_index_gap(a &flat.FlatAst, start int, end int, file string, module_name string, inactive []bool) (string, string) {
+	mut gap_file := file
+	mut gap_module := module_name
+	for idx in start .. end {
+		if a.nodes[idx].kind == .file {
+			gap_file = a.nodes[idx].value
+			gap_module = ''
+			tc.top_level_idx << idx
+			continue
+		}
+		gap_module = tc.collect_index_child(a, idx, gap_file, gap_module, inactive)
+	}
+	return gap_file, gap_module
 }
 
 fn (mut tc TypeChecker) collect_module_attributes(node flat.Node, file string) {
@@ -4961,6 +4992,14 @@ pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
 	view := &unscoped
 	views.by_file[tc.cur_file] = view
 	return view.parse_type(qualified)
+}
+
+// parse_resolution_type_in_file resolves type text using the imports and module
+// of `file` without mutating the checker's current traversal cursor.
+pub fn (tc &TypeChecker) parse_resolution_type_in_file(typ string, file string) Type {
+	module_name := tc.file_modules[file] or { '' }
+	mut scoped := tc.fork_type_parse_view(file, module_name)
+	return scoped.parse_resolution_type(typ)
 }
 
 // reset_resolution_type_view_cache discards lookup views that may have been
@@ -12651,7 +12690,35 @@ fn (tc &TypeChecker) generic_args_are_concrete(args []string) bool {
 	return true
 }
 
+// generic_placeholder_token_prescreen reports whether text can contain a bare
+// single-capital-letter generic type component. It deliberately accepts a
+// superset so the recursive parser can cheaply skip ordinary concrete types.
+@[direct_array_access]
+fn generic_placeholder_token_prescreen(text string) bool {
+	for i in 0 .. text.len {
+		ch := text[i]
+		if ch < `A` || ch > `Z` {
+			continue
+		}
+		prev_ident := i > 0 && placeholder_token_ident_char(text[i - 1])
+		next_ident := i + 1 < text.len && placeholder_token_ident_char(text[i + 1])
+		if !prev_ident && !next_ident {
+			return true
+		}
+	}
+	return false
+}
+
+@[inline]
+fn placeholder_token_ident_char(ch u8) bool {
+	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || (ch >= `0` && ch <= `9`)
+		|| ch == `_`
+}
+
 fn (tc &TypeChecker) type_text_has_generic_placeholder(typ string) bool {
+	if !generic_placeholder_token_prescreen(typ) {
+		return false
+	}
 	clean := trimmed_space(typ)
 	if is_bare_generic_param(clean) {
 		return !tc.is_known_type_text(clean)
@@ -12699,6 +12766,9 @@ fn (tc &TypeChecker) type_text_has_generic_placeholder(typ string) bool {
 }
 
 fn (tc &TypeChecker) type_text_has_unbound_generic_placeholder(typ string, bound []string) bool {
+	if !generic_placeholder_token_prescreen(typ) {
+		return false
+	}
 	clean := trimmed_space(typ)
 	if is_bare_generic_param(clean) {
 		return !tc.is_known_type_text(clean) && clean !in bound

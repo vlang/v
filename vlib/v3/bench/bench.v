@@ -5,11 +5,11 @@ import runtime
 import sync
 import time
 
-// Ordinary builds leave 64 MiB below the externally visible 4 GiB ceiling.
+// Ordinary builds leave 64 MiB below the externally visible 10 GiB ceiling.
 // Compiler-tree and self-host builds retain the larger 256 MiB sampling cushion.
-const default_memory_limit_kb = i64(4032) * 1024
-const self_host_memory_limit_kb = i64(3840) * 1024
-const compiler_tree_memory_limit_kb = i64(3840) * 1024
+const default_memory_limit_kb = i64(10176) * 1024
+const self_host_memory_limit_kb = i64(9984) * 1024
+const compiler_tree_memory_limit_kb = i64(9984) * 1024
 const memory_monitor_interval = 10 * time.millisecond
 
 // Step represents step data used by bench.
@@ -51,6 +51,20 @@ struct StageMemoryMonitor {
 	wake  &sync.Semaphore = sync.new_semaphore()
 mut:
 	rss_peak_kb i64
+	exiting     bool
+}
+
+struct StageMemoryMonitorExitEntry {
+	state  &StageMemoryMonitor = unsafe { nil }
+	worker thread
+mut:
+	active bool
+}
+
+struct StageMemoryMonitorExitRegistry {
+mut:
+	entries             []StageMemoryMonitorExitEntry
+	callback_registered bool
 }
 
 // Bench represents bench data used by bench.
@@ -116,7 +130,68 @@ pub fn (mut b Bench) start_memory_monitor() {
 		b.memory_monitor_thread = spawn monitor_stage_memory(b.stage_memory, b.memory_limit_kb,
 			b.memory_monitor_interval)
 		b.memory_monitor_started = true
+		register_stage_memory_monitor_exit(b.stage_memory, b.memory_monitor_thread) or {
+			stop_stage_memory_monitor_thread(b.stage_memory, b.memory_monitor_thread)
+			b.memory_monitor_started = false
+			panic(err)
+		}
 	}
+}
+
+@[unsafe]
+fn stage_memory_monitor_exit_registry() &StageMemoryMonitorExitRegistry {
+	mut static registry := unsafe { &StageMemoryMonitorExitRegistry(nil) }
+	if registry == unsafe { nil } {
+		registry = &StageMemoryMonitorExitRegistry{}
+	}
+	return registry
+}
+
+fn register_stage_memory_monitor_exit(state &StageMemoryMonitor, worker thread) ! {
+	mut registry := unsafe { stage_memory_monitor_exit_registry() }
+	if !registry.callback_registered {
+		at_exit(stop_stage_memory_monitors_at_exit)!
+		registry.callback_registered = true
+	}
+	registry.entries << StageMemoryMonitorExitEntry{
+		state:  state
+		worker: worker
+		active: true
+	}
+}
+
+fn stop_stage_memory_monitors_at_exit() {
+	mut registry := unsafe { stage_memory_monitor_exit_registry() }
+	for i in 0 .. registry.entries.len {
+		if !registry.entries[i].active {
+			continue
+		}
+		registry.entries[i].active = false
+		mut monitor := unsafe { &StageMemoryMonitor(voidptr(registry.entries[i].state)) }
+		// The watchdog itself can terminate the process after reporting the memory
+		// limit. It cannot join its own thread, and it will not touch this state again.
+		if monitor.exiting {
+			continue
+		}
+		stop_stage_memory_monitor_thread(registry.entries[i].state, registry.entries[i].worker)
+	}
+}
+
+fn deactivate_stage_memory_monitor_exit(state &StageMemoryMonitor) {
+	mut registry := unsafe { stage_memory_monitor_exit_registry() }
+	for i in 0 .. registry.entries.len {
+		if registry.entries[i].active && registry.entries[i].state == state {
+			registry.entries[i].active = false
+			return
+		}
+	}
+}
+
+fn stop_stage_memory_monitor_thread(state &StageMemoryMonitor, worker thread) {
+	mut monitor := unsafe { &StageMemoryMonitor(voidptr(state)) }
+	mut wake := unsafe { &sync.Semaphore(voidptr(monitor.wake)) }
+	wake.post()
+	worker.wait()
 }
 
 fn monitor_stage_memory(state &StageMemoryMonitor, limit_kb i64, interval i64) {
@@ -138,6 +213,9 @@ fn monitor_stage_memory(state &StageMemoryMonitor, limit_kb i64, interval i64) {
 			memory := current_limit_memory()
 			message := memory_limit_error(memory.kb, limit_kb, 'during compilation', memory.metric)
 			if message.len > 0 {
+				monitor.mutex.lock()
+				monitor.exiting = true
+				monitor.mutex.unlock()
 				eprintln(message)
 				exit(1)
 			}
@@ -150,10 +228,8 @@ pub fn (mut b Bench) stop_memory_monitor() {
 	if !b.memory_monitor_started {
 		return
 	}
-	mut monitor := unsafe { &StageMemoryMonitor(voidptr(b.stage_memory)) }
-	mut wake := unsafe { &sync.Semaphore(voidptr(monitor.wake)) }
-	wake.post()
-	b.memory_monitor_thread.wait()
+	deactivate_stage_memory_monitor_exit(b.stage_memory)
+	stop_stage_memory_monitor_thread(b.stage_memory, b.memory_monitor_thread)
 	b.memory_monitor_started = false
 }
 

@@ -88,7 +88,6 @@ fn test_decode_prefixed_string_huffman_flag_set_correctly() {
 	_, huffman, _ := decode_prefixed_string(out, 7) or { panic('${err}') }
 	assert huffman
 	assert out.len < 11 // shorter than the 1 (length byte) + 10 (raw) it would take unencoded
-	
 }
 
 fn test_decode_prefixed_string_rejects_oversized_declared_length() {

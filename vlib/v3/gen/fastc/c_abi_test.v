@@ -28,7 +28,15 @@ fn test_c_abi_prelude_matches_host_headers() {
 	exe_path := os.join_path_single(test_dir, 'abi_check')
 	os.write_file(source_path, source) or { panic(err) }
 	tcc_lib := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib')
-	mut args := ['-std=gnu11', '-B${tcc_lib}', '-I${os.join_path_single(tcc_lib, 'include')}',
+	// tcc resolves its own headers and libtcc1.a under `-B`. The bundle keeps them in
+	// `lib` on macOS but in `lib/tcc` on Linux, so point `-B` at whichever one has them;
+	// `-L` stays on `lib`, which is where libgc/libtcc live in both layouts.
+	tcc_base := if os.is_file(os.join_path(tcc_lib, 'tcc', 'include', 'stddef.h')) {
+		os.join_path_single(tcc_lib, 'tcc')
+	} else {
+		tcc_lib
+	}
+	mut args := ['-std=gnu11', '-B${tcc_base}', '-I${os.join_path_single(tcc_base, 'include')}',
 		'-L${tcc_lib}', '-I/usr/local/include', '-L/usr/local/lib']
 	if host_os == 'macos' {
 		mut sdk_root := os.getenv('SDKROOT')
@@ -58,6 +66,19 @@ fn test_c_abi_prelude_requires_glibc_on_linux() {
 	}
 	assert fastc_c_abi_supported('macos', 'amd64', false)
 	assert !fastc_c_abi_supported('linux', 'x86', true)
+}
+
+fn test_fastc_macos_system_tbd_uses_abi_symbols() {
+	arm := fastc_macos_system_tbd('arm64')
+	assert arm.contains("install-name:    '/usr/lib/libSystem.B.dylib'")
+	assert arm.contains('targets:         [ arm64-macos, arm64e-macos ]')
+	assert arm.contains('_malloc')
+	assert arm.contains(r'_realpath$DARWIN_EXTSN')
+	assert arm.contains('___stdoutp')
+	assert arm.contains('_posix_spawn_file_actions_init')
+	amd64 := fastc_macos_system_tbd('amd64')
+	assert amd64.contains('targets:         [ x86_64-macos, x86_64-maccatalyst ]')
+	assert amd64.contains(r'_stat$INODE64')
 }
 
 // fastc_c_abi_check_source renders the C program that compares the prefixed

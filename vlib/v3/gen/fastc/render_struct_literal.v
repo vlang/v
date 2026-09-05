@@ -34,8 +34,9 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 				rendered_item := g.render_call_argument_expression(item, fixed_element_type) or {
 					return none
 				}
-				temporary := '__v_fastc_struct_field_${temporary_start + initializers.len}'
-				initializers << '__typeof__((${rendered_item})) ${temporary} = (${rendered_item});'
+				temporary := '__vf_sf_${temporary_start + initializers.len}'
+				declaration_type := g.declaration_c_type(fixed_element_type, rendered_item)
+				initializers << '${declaration_type} ${temporary} = (${rendered_item});'
 				values << temporary
 			}
 			joined_values := values.join(',')
@@ -57,7 +58,7 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 		}
 		return FastcStructLiteralFieldValue{
 			field_value: value
-			fixed_array_copy: 'memcpy(__v_fastc_struct_fixed.${c_field_name}, ${copy_source}, sizeof(__v_fastc_struct_fixed.${c_field_name}));'
+			fixed_array_copy: 'memcpy(__vf_struct_fixed.${c_field_name}, ${copy_source}, sizeof(__vf_struct_fixed.${c_field_name}));'
 			is_fixed_array: true
 		}
 	}
@@ -68,11 +69,11 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 	} else {
 		g.render_call_argument_expression(value_tokens, expected_type) or { return none }
 	}
-	temporary := '__v_fastc_struct_field_${temporary_start}'
-	// TinyCC cannot `__typeof__` a statement-expression that declares locals or ends in a
-	// designated compound literal (`chan T{cap: …}`, an `or`-block); the field type is known, so
-	// name it directly in that case rather than inferring it back from the value.
-	field_decl_type := if expected_type != '' && value.starts_with('({') {
+	temporary := '__vf_sf_${temporary_start}'
+	// Prefer the declared field type. Besides handling statement expressions that
+	// TinyCC cannot inspect with `__typeof__`, this avoids spelling a potentially
+	// large initializer twice in the generated C.
+	field_decl_type := if expected_type != '' {
 		fastc_normalize_inferred_type(expected_type)
 	} else {
 		'__typeof__((${value}))'
@@ -143,7 +144,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	if open + 1 < close {
 		items := fastc_expression_list_items(tokens, open + 1, close) or { return none }
 		mut is_positional := false
-		if !fastc_expression_tokens_contain(tokens[open + 1..close], .ellipsis) {
+		if !fastc_expression_tokens_contain_range(tokens, open + 1, close, .ellipsis) {
 			for item in items {
 				if item.len == 0 {
 					continue
@@ -164,7 +165,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				}
 				rendered_item := g.render_call_argument_expression(item, field.typ) or { return none }
 				values << if field.is_shared_pointer {
-					'({ ${field.typ} __v_fastc_shared_field_value = (${rendered_item}); (${field.typ}*)v_fastc_interface_box(&__v_fastc_shared_field_value, sizeof(${field.typ})); })'
+					'({ ${field.typ} __vf_shared_field_value = (${rendered_item}); (${field.typ}*)v_fastc_interface_box(&__vf_shared_field_value, sizeof(${field.typ})); })'
 				} else {
 					rendered_item
 				}
@@ -386,18 +387,18 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			}
 			// `index` names the current element position inside an `init:` closure; bind it
 			// to the loop counter so an expression like `init: index` fills 0, 1, 2, ….
-			value_source = '({ ${explicit_initializers.join(' ')} ${array_type} __v_fastc_array_init = ${base}; for (int __v_fastc_array_index = 0; __v_fastc_array_index < __v_fastc_array_init.len; __v_fastc_array_index++) { int index = __v_fastc_array_index; (void)index; ((${element_type} *)__v_fastc_array_init.data)[__v_fastc_array_index] = (${inner}); } __v_fastc_array_init; })'
+			value_source = '({ ${explicit_initializers.join(' ')} ${array_type} __vf_array_init = ${base}; for (int __vf_array_index = 0; __vf_array_index < __vf_array_init.len; __vf_array_index++) { int index = __vf_array_index; (void)index; ((${element_type} *)__vf_array_init.data)[__vf_array_index] = (${inner}); } __vf_array_init; })'
 		} else if inner_array_element_type != '' {
 			// A zeroed inner dynamic array has element_size == 0, so appending to an
 			// element of `[][]T{len: n}` copies no data. Construct a valid empty inner
 			// array for every outer element, as the main C backend does.
 			inner_default := '((${element_type})builtin____new_array(0,0,sizeof(${inner_array_element_type})))'
-			value_source = '({ ${explicit_initializers.join(' ')} ${array_type} __v_fastc_array_init = ${base}; for (int __v_fastc_array_index = 0; __v_fastc_array_index < __v_fastc_array_init.len; __v_fastc_array_index++) { ((${element_type} *)__v_fastc_array_init.data)[__v_fastc_array_index] = ${inner_default}; } __v_fastc_array_init; })'
+			value_source = '({ ${explicit_initializers.join(' ')} ${array_type} __vf_array_init = ${base}; for (int __vf_array_index = 0; __vf_array_index < __vf_array_init.len; __vf_array_index++) { ((${element_type} *)__vf_array_init.data)[__vf_array_index] = ${inner_default}; } __vf_array_init; })'
 		} else if explicit_initializers.len > 0 {
 			value_source = '({ ${explicit_initializers.join(' ')} ${base}; })'
 		}
 		if c_type.ends_with('*') {
-			value_source = '({ ${array_type} __v_fastc_array_pointer_value = (${value_source}); (${c_type})v_fastc_interface_box(&__v_fastc_array_pointer_value, sizeof(${array_type})); })'
+			value_source = '({ ${array_type} __vf_array_pointer_value = (${value_source}); (${c_type})v_fastc_interface_box(&__vf_array_pointer_value, sizeof(${array_type})); })'
 		}
 		return FastcRenderedExpression{
 			source: value_source
@@ -407,19 +408,19 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	if update_source != '' {
 		mut assignments := []string{cap: rendered_fields.len}
 		for field in rendered_fields {
-			assignments << '__v_fastc_struct_update${field};'
+			assignments << '__vf_struct_update${field};'
 		}
 		if c_type.ends_with('*') {
 			base_type := c_type.trim_right('*')
 			copy_statements := fixed_array_copies.join(' ')
 			return FastcRenderedExpression{
-				source: '({ ${base_type} __v_fastc_struct_update = *(${update_source}); ${explicit_initializers.join(' ')} ${assignments.join(' ')} ${copy_statements.replace('__v_fastc_struct_fixed', '__v_fastc_struct_update')} (${c_type})v_fastc_interface_box(&__v_fastc_struct_update, sizeof(${base_type})); })'
+				source: '({ ${base_type} __vf_struct_update = *(${update_source}); ${explicit_initializers.join(' ')} ${assignments.join(' ')} ${copy_statements.replace('__vf_struct_fixed', '__vf_struct_update')} (${c_type})v_fastc_interface_box(&__vf_struct_update, sizeof(${base_type})); })'
 				typ: c_type
 			}
 		}
 		copy_statements := fixed_array_copies.join(' ')
 		return FastcRenderedExpression{
-			source: '({ ${c_type} __v_fastc_struct_update = (${update_source}); ${explicit_initializers.join(' ')} ${assignments.join(' ')} ${copy_statements.replace('__v_fastc_struct_fixed', '__v_fastc_struct_update')} __v_fastc_struct_update; })'
+			source: '({ ${c_type} __vf_struct_update = (${update_source}); ${explicit_initializers.join(' ')} ${assignments.join(' ')} ${copy_statements.replace('__vf_struct_fixed', '__vf_struct_update')} __vf_struct_update; })'
 			typ: c_type
 		}
 	}
@@ -429,9 +430,9 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			return rendered
 		}
 		access := if c_type.ends_with('*') { '->' } else { '.' }
-		copies := fixed_array_copies.join(' ').replace('__v_fastc_struct_fixed.', '__v_fastc_struct_with_fixed${access}')
+		copies := fixed_array_copies.join(' ').replace('__vf_struct_fixed.', '__vf_struct_with_fixed${access}')
 		return FastcRenderedExpression{
-			source: '({ ${c_type} __v_fastc_struct_with_fixed = (${rendered.source}); ${copies} __v_fastc_struct_with_fixed; })'
+			source: '({ ${c_type} __vf_struct_with_fixed = (${rendered.source}); ${copies} __vf_struct_with_fixed; })'
 			typ: c_type
 		}
 	}
@@ -444,12 +445,12 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		base_type := c_type.trim_right('*')
 		copies := fixed_array_copies.join(' ')
 		result := if c_type.ends_with('*') {
-			'(${c_type})v_fastc_interface_box(&__v_fastc_struct_fixed, sizeof(${base_type}))'
+			'(${c_type})v_fastc_interface_box(&__vf_struct_fixed, sizeof(${base_type}))'
 		} else {
-			'__v_fastc_struct_fixed'
+			'__vf_struct_fixed'
 		}
 		return FastcRenderedExpression{
-			source: '({ ${explicit_initializers.join(' ')} ${base_type} __v_fastc_struct_fixed = (${base_type}){${rendered_fields.join(',')}}; ${copies} ${result}; })'
+			source: '({ ${explicit_initializers.join(' ')} ${base_type} __vf_struct_fixed = (${base_type}){${rendered_fields.join(',')}}; ${copies} ${result}; })'
 			typ: c_type
 		}
 	}

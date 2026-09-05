@@ -331,7 +331,6 @@ fn test_build_client_hello_structure() {
 	body := msg.body
 	mut cursor := 0
 	assert body[cursor] == 0x03 && body[cursor + 1] == 0x03 // legacy_version
-	
 
 	cursor += 2
 	assert body[cursor..cursor + 32] == random
@@ -343,7 +342,6 @@ fn test_build_client_hello_structure() {
 	assert cipher_suites_len == 2
 	cursor += 2
 	assert body[cursor] == 0x13 && body[cursor + 1] == 0x01 // TLS_AES_128_GCM_SHA256
-	
 
 	cursor += cipher_suites_len
 	compression_len := int(body[cursor])
@@ -386,7 +384,6 @@ fn test_build_client_hello_structure() {
 	list_len := (u32(alpn_data[0]) << 8) | u32(alpn_data[1])
 	assert list_len == 3
 	assert alpn_data[2] == 2 // protocol name length
-	
 
 	assert alpn_data[3..5].bytestr() == 'h3'
 }

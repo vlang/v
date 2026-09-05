@@ -496,28 +496,40 @@ pub fn run(args []string) {
 	mut shim_dir := fastc.FastcCodesignShim{}
 	mut result := os.Result{}
 	mut sign_in_process := false
+	mut link_cache_key := ''
+	mut link_cache_restored := false
 	if unit_paths.len > 1 {
-		link_worker := spawn fastc.fastc_prepare_link(tcc, tcc_lib, cc_args, link_libs)
-		unit_objects := fastc.fastc_compile_c_units(tcc, cc_args, unit_paths) or {
+		prepared_units := fastc.fastc_prepare_c_units(tcc, cc_args, unit_paths, prefs.building_v)
+		link_inputs := prepared_units.objects.clone()
+		link_cache_key = fastc.fastc_link_cache_key(prepared_units.cache_key, link_libs)
+		if fastc.fastc_restore_link_cache(link_cache_key, staged_output) {
+			link_cache_restored = true
+			result = os.Result{}
+			if bench_phases {
+				eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
+			}
+		} else {
+			link_worker := spawn fastc.fastc_prepare_link(tcc, tcc_lib, cc_args, link_libs)
+			fastc.fastc_compile_c_units(tcc, cc_args, unit_paths, prepared_units) or {
+				mut failed_link := link_worker.wait()
+				fastc.fastc_discard_link(mut failed_link)
+				fastc.fastc_remove_codesign_shim_dir(shim_dir)
+				fastc.fastc_remove_c_units(unit_paths)
+				// The whole program is kept as one file for the error message.
+				fastc.write_c_pieces(c_path, generation.c_pieces) or {}
+				fail(err.msg())
+			}
+			if bench_phases {
+				eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
+			}
 			mut prepared_link := link_worker.wait()
-			fastc.fastc_discard_link(mut prepared_link)
-			fastc.fastc_remove_codesign_shim_dir(shim_dir)
-			fastc.fastc_remove_c_units(unit_paths)
-			// The whole program is kept as one file for the error message.
-			fastc.write_c_pieces(c_path, generation.c_pieces) or {}
-			fail(err.msg())
+			sign_in_process = fastc.fastc_prepared_link_skips_codesign(&prepared_link)
+			if !sign_in_process {
+				shim_dir = fastc.fastc_codesign_shim_dir()
+				sign_in_process = shim_dir.dir != ''
+			}
+			result = fastc.fastc_finish_link(mut prepared_link, link_inputs, link_libs, staged_output)
 		}
-		if bench_phases {
-			eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
-		}
-		link_inputs := unit_objects.clone()
-		mut prepared_link := link_worker.wait()
-		sign_in_process = fastc.fastc_prepared_link_skips_codesign(&prepared_link)
-		if !sign_in_process {
-			shim_dir = fastc.fastc_codesign_shim_dir()
-			sign_in_process = shim_dir.dir != ''
-		}
-		result = fastc.fastc_finish_link(mut prepared_link, link_inputs, link_libs, staged_output)
 		if bench_phases {
 			eprintln('fastc-phase tcc.linked ${cc_sw.elapsed().microseconds()}us')
 		}
@@ -542,6 +554,9 @@ pub fn run(args []string) {
 		fastc.fastc_sign_macho_adhoc(staged_output) or {
 			fail('could not sign ${staged_output}: ${err.msg()}')
 		}
+	}
+	if !link_cache_restored {
+		fastc.fastc_publish_link_cache(link_cache_key, staged_output)
 	}
 	os.mv(staged_output, output) or { fail(err.msg()) }
 	if keep_c {

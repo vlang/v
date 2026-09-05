@@ -99,14 +99,15 @@ fn runtime_array_struct_index_info(t types.Type) (bool, bool) {
 
 // gen_array_literal_value emits array literal value output for c.
 fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type) {
-	c_elem := g.value_c_type(elem_type)
-	sizeof_elem := g.value_sizeof_target(elem_type)
+	canonical_elem_type := g.canonical_import_alias_type_for_node(elem_type, &node)
+	c_elem := g.value_c_type(canonical_elem_type)
+	sizeof_elem := g.value_sizeof_target(canonical_elem_type)
 	count := node.children_count
 	if count == 0 {
 		g.write('array_new(sizeof(${sizeof_elem}), 0, 0)')
 		return
 	}
-	new_fn := if count == 1 && array_literal_elem_can_use_noscan(elem_type) {
+	new_fn := if count == 1 && array_literal_elem_can_use_noscan(canonical_elem_type) {
 		'new_array_from_c_array_noscan'
 	} else {
 		'new_array_from_c_array'
@@ -122,14 +123,14 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 		// `generic_struct_init_instance_type` array skip, and is emitted as the bare `Box`
 		// while the array storage is `Box_int` — incompatible C.
 		child_id := g.a.child(&node, i)
-		if fixed := array_fixed_type(elem_type) {
+		if fixed := array_fixed_type(canonical_elem_type) {
 			initializer := g.fixed_array_initializer_string(child_id, fixed)
 			if initializer.len > 0 {
 				g.write(initializer)
 				continue
 			}
 		}
-		g.gen_expr_with_expected_type(child_id, elem_type)
+		g.gen_expr_with_expected_type(child_id, canonical_elem_type)
 	}
 	g.write('})')
 }

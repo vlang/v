@@ -402,6 +402,11 @@ fn test_standard_v3_excludes_ownership_checker() {
 		'ownership support is not compiled into this v3 executable')
 	assert_driver_cli_failure(v3_bin, ['-downership', source],
 		'ownership support is not compiled into this v3 executable')
+	unrelated_v3_source := os.join_path(root, 'v3.v')
+	os.write_file(unrelated_v3_source, 'fn main() {}\n')!
+	assert_driver_cli_failure(v3_bin, ['-d', 'ownership', '-o',
+		os.join_path(root, 'unrelated_v3'), unrelated_v3_source],
+		'ownership support is not compiled into this v3 executable')
 }
 
 fn test_explicit_arm64_import_unskips_ssa_dependencies() {
@@ -1765,7 +1770,7 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	help := cmdexec.run(v3_bin, ['--help'])
 	assert help.exit_code == 0
 	assert help.output.contains('-cc <compiler>')
-	assert help.output.contains('-no-memory-limit             disable the 4032 MiB user-build memory safety limit')
+	assert help.output.contains('-no-memory-limit             disable the 10176 MiB user-build memory safety limit')
 	c_output := os.join_path(root, 'hello.c')
 	c_compile := cmdexec.run(v3_bin, ['-no-memory-limit', '-o', c_output, source])
 	assert c_compile.exit_code == 0, c_compile.output

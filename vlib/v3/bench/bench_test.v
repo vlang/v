@@ -11,8 +11,8 @@ fn test_memory_limit_error_starts_at_limit() {
 
 	message := memory_limit_error(default_memory_limit_kb, default_memory_limit_kb, 'after parse',
 		'RSS')
-	assert message.contains('4032 MiB RSS after parse')
-	assert message.contains('limit: 4032 MiB')
+	assert message.contains('10176 MiB RSS after parse')
+	assert message.contains('limit: 10176 MiB')
 	assert message.contains('`-no-memory-limit`')
 }
 
@@ -27,14 +27,14 @@ fn test_self_host_memory_limit() {
 	mut b := new()
 	b.use_self_host_memory_limit()
 	assert memory_limit_error(self_host_memory_limit_kb, b.memory_limit_kb, 'after transform',
-		'RSS').contains('(limit: 3840 MiB)')
+		'RSS').contains('(limit: 9984 MiB)')
 }
 
 fn test_compiler_tree_memory_limit() {
 	mut b := new()
 	b.use_compiler_tree_memory_limit()
 	assert memory_limit_error(compiler_tree_memory_limit_kb, b.memory_limit_kb, 'after transform',
-		'RSS').contains('(limit: 3840 MiB)')
+		'RSS').contains('(limit: 9984 MiB)')
 }
 
 fn test_step_parts_record_individual_timings() {
@@ -84,6 +84,17 @@ fn test_stage_memory_monitor_stops_before_state_release() {
 	stopwatch := time.new_stopwatch()
 	b.stop_memory_monitor()
 	assert !b.memory_monitor_started
+	assert stopwatch.elapsed() < time.second
+}
+
+fn test_stage_memory_monitor_exit_hook_stops_active_monitor() {
+	mut b := new()
+	b.disable_memory_limit()
+	b.memory_monitor_interval = time.minute
+	b.start_memory_monitor()
+	stopwatch := time.new_stopwatch()
+	stop_stage_memory_monitors_at_exit()
+	b.memory_monitor_started = false
 	assert stopwatch.elapsed() < time.second
 }
 

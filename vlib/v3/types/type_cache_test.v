@@ -37,6 +37,21 @@ fn test_parse_resolution_type_prefers_file_import_over_known_short_symbol() {
 	assert tc.parse_resolution_type('Box[token.Pos]').name() == 'Box[v.token.Pos]'
 }
 
+fn test_parse_resolution_type_in_file_does_not_require_an_active_file_cursor() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.structs['token.Pos'] = []StructField{}
+	tc.structs['v3.token.Pos'] = []StructField{}
+	tc.cur_file = 'parser.v'
+	tc.cur_module = 'parser'
+	tc.register_file_import('token', 'v3.token')
+	tc.file_modules['parser.v'] = 'parser'
+	tc.cur_file = ''
+	tc.cur_module = ''
+
+	assert tc.parse_resolution_type_in_file('token.Pos', 'parser.v').name() == 'v3.token.Pos'
+}
+
 fn test_parse_thread_type_qualifies_concrete_payloads() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)

@@ -251,6 +251,19 @@ fn test_macos_v3_fallback_report_inputs_snapshot_native_dependencies() {
 	assert inputs['${v3_fallback_native_input_prefix}${header_path}'] != sha256.hexhash(os.read_file(header_path)!)
 }
 
+fn test_should_overlap_v3_native_inputs() {
+	// Large user builds without native typedefs can hide native-input discovery
+	// behind declaration collection.
+	assert should_overlap_v3_native_inputs('c', false, false, false, false, true)
+	// Self-hosting retains its existing overlap when native inputs are needed.
+	assert should_overlap_v3_native_inputs('c', false, false, true, true, false)
+	assert !should_overlap_v3_native_inputs('c', false, false, true, false, true)
+	assert !should_overlap_v3_native_inputs('c', false, false, false, false, false)
+	assert !should_overlap_v3_native_inputs('c', true, false, false, false, true)
+	assert !should_overlap_v3_native_inputs('c', false, true, false, false, true)
+	assert !should_overlap_v3_native_inputs('wasm', false, false, false, false, true)
+}
+
 fn test_v3_fallback_ignores_only_warmup_only_module_sources() {
 	hash_source := os.real_path(os.join_path(os.vtmp_dir(), 'v3_fallback_hash.v'))
 	mut state := V3ModuleCacheState{
@@ -295,6 +308,10 @@ fn test_parallel_cc_external_definition_precheck_uses_active_ast_directives() {
 	assert v3_parallel_cc_active_sources_include_external_definition(a, [source])
 	a.nodes[1] = flat.Node{}
 	assert !v3_parallel_cc_active_sources_include_external_definition(a, [source])
+}
+
+fn test_embedded_vroot_uses_baked_root_for_a_moved_compiler() {
+	assert embedded_vroot(@VEXEROOT, '/private/tmp/moved-v', '/private/tmp/main.v') == @VEXEROOT
 }
 
 fn test_impure_v_diagnostics_inspect_ast_nodes_in_every_pure_v_file() {

@@ -115,6 +115,7 @@ mut:
 	is_sql                               bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
 	is_shared                            bool // for initialization of hidden mutex in `[rw]shared` literals
 	is_vlines_enabled                    bool // is it safe to generate #line directives when -g is passed
+	vlines_pending_nl                    bool // the output ends with an unterminated `#line` directive
 	is_autofree                          bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree
 	is_autofree_tmp                      bool // when generating autofree temporary variables
 	is_builtin_mod                       bool
@@ -6305,8 +6306,15 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 	if stmt.templates.len == 0 {
 		g.writeln('""')
 	}
+	if stmt.is_intel {
+		g.writeln('".intel_syntax noprefix\\n\\t"')
+	}
 	for template_tmp in stmt.templates {
 		mut template := template_tmp
+		if stmt.is_raw {
+			g.writeln('"${template.raw_template}"')
+			continue
+		}
 		g.write('"')
 		if template.is_directive {
 			g.write('.')
@@ -6317,11 +6325,15 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 		} else {
 			g.write(' ')
 		}
-		// swap destination and operands for att syntax, not for arm64
-		if template.args.len != 0 && !template.is_directive
+		// V's structured x86 assembly uses destination-first operand order. AT&T uses
+		// the reverse order; Intel blocks already have the order expected by the assembler.
+		if template.args.len > 1 && !template.is_directive && !stmt.is_intel
 			&& stmt.arch !in [.arm64, .s390x, .ppc64le, .loongarch64, .rv64, .rv32] {
-			template.args.prepend(template.args.last())
-			template.args.delete(template.args.len - 1)
+			// `template` is a copy, but its `args` still shares the AST's buffer, so this
+			// has to build a new array. Reversing in place would edit the AST itself, and
+			// a generic `asm` block is generated once per concrete type: the second
+			// instantiation would reverse the first one's result back.
+			template.args = template.args.reverse()
 		}
 
 		for i, arg in template.args {
@@ -6340,6 +6352,9 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 			g.write('\\n\\t')
 		}
 		g.writeln('"')
+	}
+	if stmt.is_intel {
+		g.writeln('".att_syntax prefix\\n\\t"')
 	}
 
 	if stmt.output.len != 0 || stmt.input.len != 0 || stmt.clobbered.len != 0 || stmt.is_goto {
@@ -6386,6 +6401,10 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 				|| (name !in stmt.input.map(it.alias) && name !in stmt.output.map(it.alias)) {
 				asm_formatted_name := if name in stmt.global_labels { '%l[${name}]' } else { name }
 				g.write(asm_formatted_name)
+			} else if stmt.is_intel {
+				// `%V` asks GCC and Clang to substitute an x86 register without the `%`
+				// prefix required by AT&T syntax.
+				g.write('%V[${name}]')
 			} else {
 				g.write('%[${name}]')
 			}
@@ -6394,7 +6413,9 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			g.write("'${arg.val}'")
 		}
 		ast.IntegerLiteral {
-			if stmt.arch == .arm64 {
+			if stmt.is_intel {
+				g.write(arg.val)
+			} else if stmt.arch == .arm64 {
 				g.write('#${arg.val}')
 			} else if stmt.arch in [.s390x, .ppc64le, .loongarch64, .rv64, .rv32] {
 				g.write('${arg.val}')
@@ -6403,17 +6424,25 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			}
 		}
 		ast.FloatLiteral {
-			if g.pref.nofloat {
+			if stmt.is_intel {
+				g.write(if g.pref.nofloat { arg.val.int().str() } else { arg.val })
+			} else if g.pref.nofloat {
 				g.write('\$${arg.val.int()}')
 			} else {
 				g.write('\$${arg.val}')
 			}
 		}
 		ast.BoolLiteral {
-			g.write('\$${arg.val.str()}')
+			if stmt.is_intel {
+				g.write(arg.val.str())
+			} else {
+				g.write('\$${arg.val.str()}')
+			}
 		}
 		ast.AsmRegister {
-			if stmt.arch in [.rv64, .rv32] {
+			if stmt.is_intel {
+				g.write(arg.name)
+			} else if stmt.arch in [.rv64, .rv32] {
 				g.write('${arg.name}')
 			} else if stmt.arch == .loongarch64 {
 				g.write('$${arg.name}')
@@ -6425,6 +6454,10 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			}
 		}
 		ast.AsmAddressing {
+			if stmt.is_intel {
+				g.asm_addressing_intel(arg, stmt)
+				return
+			}
 			if arg.segment != '' {
 				g.write('%%${arg.segment}:')
 			}
@@ -6507,6 +6540,49 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			g.write(arg)
 		}
 	}
+}
+
+fn (mut g Gen) asm_addressing_intel(arg ast.AsmAddressing, stmt ast.AsmStmt) {
+	if arg.segment != '' {
+		g.write('${arg.segment}:')
+	}
+	g.write('[')
+	match arg.mode {
+		.base {
+			g.asm_arg(arg.base, stmt)
+		}
+		.displacement {
+			g.asm_arg(arg.displacement, stmt)
+		}
+		.base_plus_displacement, .rip_plus_displacement {
+			g.asm_arg(arg.base, stmt)
+			g.write(' + ')
+			g.asm_arg(arg.displacement, stmt)
+		}
+		.index_times_scale_plus_displacement {
+			g.asm_arg(arg.index, stmt)
+			g.write(' * ${arg.scale} + ')
+			g.asm_arg(arg.displacement, stmt)
+		}
+		.base_plus_index_plus_displacement {
+			g.asm_arg(arg.base, stmt)
+			g.write(' + ')
+			g.asm_arg(arg.index, stmt)
+			g.write(' + ')
+			g.asm_arg(arg.displacement, stmt)
+		}
+		.base_plus_index_times_scale_plus_displacement {
+			g.asm_arg(arg.base, stmt)
+			g.write(' + ')
+			g.asm_arg(arg.index, stmt)
+			g.write(' * ${arg.scale} + ')
+			g.asm_arg(arg.displacement, stmt)
+		}
+		.invalid {
+			g.error('invalid addressing mode', arg.pos)
+		}
+	}
+	g.write(']')
 }
 
 fn (mut g Gen) gen_asm_ios(ios []ast.AsmIO) {

@@ -267,8 +267,8 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	// The lifecycle hooks run in module dependency order; the resolver returns
 	// discovery order.
 	lifecycle_sources := fastc_sources_in_dependency_order(sources)!
-	module_init_calls := fastc_module_init_calls(lifecycle_sources, functions)!
-	module_cleanup_calls := fastc_module_cleanup_calls(lifecycle_sources, functions)!
+	module_init_calls := fastc_module_init_calls(lifecycle_sources, functions, map[string]string{})!
+	module_cleanup_calls := fastc_module_cleanup_calls(lifecycle_sources, functions, map[string]string{})!
 	module_init_function_keys := fast_arm64_lifecycle_function_keys(module_init_calls, 'init', functions)
 	module_cleanup_function_keys := fast_arm64_lifecycle_function_keys(module_cleanup_calls, 'cleanup', functions)
 	program.register_module_lifecycle(module_init_function_keys, module_cleanup_function_keys)
@@ -2199,7 +2199,7 @@ fn (mut p FastArm64Program) register_spawn_wrapper(function_key string, target_i
 		field_names: field_names
 	})
 	name_key := fastc_name_key(function_key)
-	wrapper_key := '__v_fastc_arm64_spawn_wrapper_${name_key}'
+	wrapper_key := '__vf_arm64_spawn_wrapper_${name_key}'
 	wrapper_id := p.register_function(wrapper_key, wrapper_key, p.ptr_i8, false)
 	entry := p.m.add_block(wrapper_id, 'spawn_wrapper_entry')
 	raw_context := p.add_arg(wrapper_id, p.ptr_i8, 'context')

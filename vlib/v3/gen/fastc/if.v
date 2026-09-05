@@ -1233,7 +1233,8 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 		// subject, the streaming reader's own rendering of this conjunct (which already
 		// resolved enum shorthands and constants) is reused by splitting the rendered
 		// condition the same way as the tokens.
-		uses_smartcast := g.expression_uses_member_smartcast(conjunct[cstart..])
+		uses_smartcast := g.member_smartcasts.len > 0
+			&& g.expression_uses_member_smartcast(conjunct[cstart..])
 		if !uses_smartcast && aligned {
 			condition_parts << '(${rendered_conjuncts[i].trim_space()})'
 			continue
@@ -1244,7 +1245,8 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 		// `left is PrefixExpr && left.op == .mul` against the narrowed field's enum type.
 		// A call-bearing operand (`sym(x).kind != .placeholder`) is left to the raw/special path,
 		// whose call handling the comparison renderer does not reproduce.
-		if uses_smartcast && !fastc_expression_tokens_contain(conjunct[cstart..], .lpar) {
+		if uses_smartcast
+			&& !fastc_expression_tokens_contain_range(conjunct, cstart, conjunct.len, .lpar) {
 			if guard := g.render_guard_comparison(conjunct[cstart..]) {
 				condition_parts << '(${guard})'
 				continue
@@ -1254,7 +1256,7 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 		// both method lowering and the active smartcast receiver. The general member
 		// renderer below only handles the receiver chain and can leave the call raw.
 		if uses_smartcast && fastc_tokens_are_plain_call(fastc_strip_paren_tokens(conjunct[cstart..]))
-			&& !fastc_expression_tokens_contain(conjunct[cstart..], .key_as) {
+			&& !fastc_expression_tokens_contain_range(conjunct, cstart, conjunct.len, .key_as) {
 			if raw := g.render_raw_expression_tokens(conjunct[cstart..]) {
 				if special := g.render_special_expression(conjunct[cstart..], raw) {
 					condition_parts << '(${special.source})'
@@ -1355,7 +1357,7 @@ fn fastc_option_success_expression(value_type string, expression string) string 
 }
 
 fn fastc_box_expression(value_type string, expression string) string {
-	return '({ ${value_type} __v_fastc_box_value = (${expression}); v_fastc_interface_box(&__v_fastc_box_value, sizeof(${value_type})); })'
+	return '({ ${value_type} __vf_bv = (${expression}); v_fastc_interface_box(&__vf_bv, sizeof(${value_type})); })'
 }
 
 // read_if_expression_multi_return_guard lowers `if a, b := opt_multi() { x } else { y }`

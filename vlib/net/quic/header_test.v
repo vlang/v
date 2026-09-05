@@ -286,16 +286,12 @@ fn test_encode_short_header_round_trips_through_parse() {
 	// function assumes header protection has already been removed and would
 	// reject these reserved bits as nonzero.
 	assert encoded[0] & 0x40 != 0 // Fixed Bit always set
-	
 
 	assert encoded[0] & 0x20 != 0 // spin_bit
-	
 
 	assert encoded[0] & 0x04 != 0 // key_phase
-	
 
 	assert encoded[0] & 0x03 == 0x3 // pn_length_bits
-	
 
 	assert encoded[1..] == dcid
 

@@ -1137,7 +1137,11 @@ fn (g &Parser) dollar_keyword_is(keyword string) bool {
 }
 
 fn (g &Parser) comptime_pseudo_expression(name string) ?string {
-	line, column := fastc_line_column(g.s.src, g.s.pos)
+	mut line, mut column := fastc_line_column(g.s.src, g.s.pos)
+	if line == 1 {
+		column += g.source_column_offset
+	}
+	line += g.source_line_offset
 	module_name := if g.module_name == '' { 'main' } else { g.module_name }
 	function_name := g.current_function
 	receiver_name := g.current_receiver.all_after_last('.')
@@ -1735,7 +1739,7 @@ fn (mut g Parser) parse_veb_html_return() !bool {
 		}
 	}
 	ctx_name := g.fastc_veb_context_name()
-	bname := '__v_fastc_veb_tmpl'
+	bname := '__vf_veb_tmpl'
 	mut lowering := fastc_veb_compile_template(tmpl_path, bname, ctx_name) or {
 		return g.unsupported('veb template `${tmpl_path}`: ${err.msg()}')
 	}

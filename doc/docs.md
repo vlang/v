@@ -75,72 +75,20 @@ project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
 
 ## The default compiler
 
-On macOS and Linux, `v` compiles your program with the experimental **V3**
-compiler (a newer implementation of the V compiler, whose source lives in
-`vlib/v3`) by default. On other platforms, and for C builds that select a
-target OS different from the host, the established compiler in `vlib/v` is
-used. V scripts (`.vsh`, including `v run script.vsh`), the `crun` and
-`build-module` commands, and debug builds selected with `-g`/`-debug` also
-remain on the established compiler. Same-OS cross-architecture builds can still
-use V3 when the target is supported. Copies or symlinks whose resolved compiler
-executable is not named `v` or `vnew` also remain on the established compiler by
-default; pass `-new-compiler` to select V3 explicitly in those installations.
+On macOS and Linux, the top-level `v` executable contains only the experimental
+**V3** C compiler (whose source lives in `vlib/v3`). Every direct C build,
+including compiler self-builds, is compiled by V3 in-process. The CLI and tool
+commands remain in `cmd/v`; commands such as `test` and `fmt` are external tools,
+and non-C backends remain separate builder tools.
 
-You normally do not need to do anything: when V3 cannot yet build an eligible
-program, `v` automatically falls back to the established compiler, so your build
-keeps working. A fallback also prints a short notice, for example:
+V3 compilation errors are returned directly. These builds do not silently retry
+with the established compiler, and `-old-compiler` reports that the executable
+contains only V3. `-new-compiler` remains accepted for command-line compatibility
+and selects the same embedded driver.
 
-```text
-note: V3 could not build this program, so V used the stable compiler instead.
-```
-
-### Opting out with `-old-compiler`
-
-Pass `-old-compiler` to skip V3 entirely and compile with the established
-compiler:
-
-```shell
-v -old-compiler run main.v
-```
-
-This is a temporary compatibility workaround for when a build behaves differently
-under V3. On platforms where the established compiler is the default,
-`-new-compiler` opts into V3 for a single build (only where the V3 compiler is
-embedded in your `v`).
-
-### Automatic bug reports
-
-To help close the remaining gaps, a successful fallback (V3 fails to build a
-program that the established compiler then builds) normally submits the V
-version, target OS/arch, and build options to `https://bugs.vlang.io`. When a
-generated-C diagnostic maps to a verified V source, the **full mapped source
-file** is included so the report is reproducible; a failure without such a
-mapping submits metadata only. The source is bounded to a window around the
-failure only when the file is larger than the upload byte budget.
-This full-file selection applies only to verified V3 fallback reports. When the
-established compiler is used directly, its automatic C-error reports retain a
-bounded strict subset of mapped source and omit source when no strict subset is
-possible.
-A single-file build that hits an **internal V3 compiler error** uploads the
-complete captured input when it fits the 64 KiB source and process-environment
-transport budgets. Larger snapshots are truncated to a bounded head-and-tail
-window, and source is omitted when the transport cannot safely carry an excerpt.
-A directory build (such as `v .`) submits metadata only for this failure type
-because it has no single input snapshot. A **generated-C compilation error** is
-instead mapped back to the specific failing file through the staged C's `#line`
-directives, so even a directory build can upload that one failing file (still
-only when its current bytes match what V3 parsed). If the input selected for the
-source changes after V3 parses it, that report submits metadata only rather than
-source V3 did not parse. Before submitting any report, the stable
-compiler also verifies that it parsed the same bytes for every captured project
-input; if it did not, no fallback report is submitted. Inline-assembly fallbacks
-and reports that cannot fit safely through the retry's process environment are
-notice-only and do not submit a report. Reporting is also skipped for test
-compilations and to the default endpoint in GitHub CI. A custom fallback endpoint
-set with `V_C_ERROR_BUG_REPORT_URL` remains active in CI. The
-`-bug-report-url` option selects the established compiler and configures only its
-reports. You can turn reporting off entirely by setting
-`V_C_ERROR_BUG_REPORT_DISABLED=1`.
+On platforms that do not embed V3, `cmd/v` still contains the established
+compiler from `vlib/v`. There, `-new-compiler` reports that the current build does
+not include V3.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
@@ -9029,6 +8977,46 @@ println('a: ${a}') // 100
 println('b: ${b}') // 20
 println('c: ${c}') // 120
 ```
+
+The C backend also supports raw GNU assembly templates. In a `raw` block, V passes each
+double-quoted template string through unchanged and still checks the output, input, and clobber
+lists. Operands can use GNU's named form or V's `constraint (expression) as alias` form:
+
+```v ignore
+mut value := 40
+increment := 2
+asm amd64 raw {
+    "addl %[increment], %[value]\n\t"
+    ; [value] "+r" (value)
+    ; [increment] "r" (increment)
+    ; cc
+}
+assert value == 42
+```
+
+Use `intel` for destination-first structured x86 assembly. V surrounds the generated template
+with `.intel_syntax noprefix` and `.att_syntax prefix`, and does not reorder its operands:
+
+```v ignore
+mut value := 40
+increment := 2
+asm amd64 intel {
+    add value, increment
+    ; +r (value)
+    ; r (increment)
+    ; cc
+}
+```
+
+Structured `intel` blocks support only register-only `r` constraints for input and output
+operands. V uses the GNU x86 `%V` operand modifier so GCC and Clang substitute register names
+without AT&T's `%` prefix. Memory-capable constraints such as `m` are rejected because compilers
+can still format those placeholders with AT&T addressing. In a `raw intel` block, the template is
+passed through unchanged, so use the selected C compiler's explicit operand modifiers.
+
+The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the C backend. MSVC
+does not support this form of inline assembly on 64-bit targets, and individual instructions or
+constraints can still depend on the selected C compiler and target architecture.
 
 For more examples, see
 [vlib/v/slow_tests/assembly/asm_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/slow_tests/assembly/asm_test.amd64.v)

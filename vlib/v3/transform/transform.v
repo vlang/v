@@ -52,6 +52,9 @@ const non_aliasing_allocation_call_marker = '__v3_non_aliasing_allocation_call'
 const source_deref_marker = '__v3_source_deref'
 const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
 const stack_value_decl_marker = '__v3_stack_value_decl'
+// Small late-reachability sets are cheaper to lower directly than through a
+// sequence of disposable scoped-worker forks. Larger sets keep bounded scratch.
+const direct_late_transform_max_names = 64
 
 // SumEqRequest records where a sum type's equality helper was first requested,
 // so the helper body is built under that module/file resolution context. The
@@ -90,6 +93,12 @@ pub:
 	decl_key string
 	module   string
 	args     []string
+}
+
+struct MonomorphSignatureType {
+	typ    string
+	module string
+	file   string
 }
 
 // SmartcastContext stores smartcast context state used by transform.
@@ -134,6 +143,8 @@ mut:
 	non_main_type_index_ready     bool
 	unique_fields                 map[string]string
 	alias_methods                 map[string]string
+	alias_method_candidates       map[string][]string
+	alias_method_candidates_ready bool
 	globals                       map[string]string
 	sum_types                     map[string][]string
 	sum_variant_parents           map[string][]string
@@ -161,6 +172,12 @@ mut:
 	// merge_regions_relocated marks worker regions as already id-relocated in
 	// place (parallel pass), so merge_worker compacts with plain memmoves.
 	merge_regions_relocated bool
+	// merge_regions_absorbed marks worker regions as already relocated *into*
+	// their final master slots by that same parallel pass, so merge_worker skips
+	// the bulk copies entirely and shifts ids with the offsets recorded below.
+	merge_regions_absorbed     bool
+	merge_absorbed_node_shift  i32
+	merge_absorbed_child_shift i32
 	// const_array_fixed_storage_cache avoids rescanning the complete AST for
 	// repeated uses of the same array constant in one transform worker.
 	const_array_fixed_storage_cache map[string]i8
@@ -244,6 +261,7 @@ mut:
 	type_alias_suffixes           map[string]string
 	local_decl_nodes_by_name      map[string][]int
 	fn_decl_offsets_by_file       map[int][]int
+	if_expr_nodes_by_file         map[int][]int
 	struct_field_decl_metas_cache map[string]map[string]FieldDeclMeta
 	comptime_field_metas_cache    map[string][]FieldMeta
 	comptime_reflected_for_roles  map[string]u8
@@ -365,6 +383,8 @@ mut:
 	generic_fn_specs_in_progress       map[string]bool
 	generic_fn_spec_nodes              map[string]flat.NodeId
 	monomorph_cache_specs              map[string]MonomorphCacheSpec
+	monomorph_signature_types          []MonomorphSignatureType
+	monomorph_signature_spec_keys      map[string]bool
 	generic_clone_children             []flat.NodeId
 	node_context_stack                 []flat.NodeId
 	specialization_decl_nodes_by_name  map[string][]int
@@ -1449,7 +1469,7 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 	// intact and alternate both passes until late reachability stops growing.
 	for {
 		generated_names := t.monomorphize_pass()
-		t.materialize_monomorph_signature_types(t.sorted_monomorph_cache_specs())
+		t.materialize_monomorph_signature_types()
 		t.monomorph_profile('mono wrapper pass: ${time.ticks() - debug_started} ms')
 		for name in generated_names {
 			t.mark_used_fn_key(name)
@@ -1532,7 +1552,7 @@ pub fn register_cached_monomorph_signatures(a &flat.FlatAst, tc &types.TypeCheck
 	mut t := new_transformer_view(a, tc, used_fns)
 	t.prepare()
 	t.seed_cached_monomorph_specs(cached_specs)
-	t.materialize_monomorph_signature_types(cached_specs)
+	t.materialize_monomorph_signature_types()
 }
 
 fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) Transformer {
@@ -1572,18 +1592,19 @@ fn (mut t Transformer) mark_fn_used_name(name string) {
 	if name.len == 0 {
 		return
 	}
-	if !t.used_fn_contains_name(name) && !t.used_fn_contains_name(c_name(name))
+	lowered := if isnil(t.tc) { c_name(name) } else { t.tc.cached_c_name(name) }
+	if !t.used_fn_contains_name(name) && !t.used_fn_contains_name(lowered)
 		&& t.enum_method_name_shadows_field(name) {
 		return
 	}
 	t.mark_used_fn_key(name)
-	t.mark_used_fn_key(c_name(name))
+	t.mark_used_fn_key(lowered)
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		needs_module_prefix := !name.contains('.') || local_method_fn_name_needs_module_prefix(name)
 		if needs_module_prefix && !name.starts_with('${t.cur_module}.') {
 			qname := '${t.cur_module}.${name}'
 			t.mark_used_fn_key(qname)
-			t.mark_used_fn_key(c_name(qname))
+			t.mark_used_fn_key(if isnil(t.tc) { c_name(qname) } else { t.tc.cached_c_name(qname) })
 		}
 	}
 }
@@ -2939,6 +2960,7 @@ fn (mut t Transformer) collect_alias_methods() {
 			continue
 		}
 		method := name.all_after_last('.')
+		t.alias_method_candidates[method] << name
 		param_name := params[0].name()
 		clean_alias := if param_name.starts_with('&') { param_name[1..] } else { param_name }
 		alias_target := t.normalize_type_alias(clean_alias)
@@ -2950,6 +2972,7 @@ fn (mut t Transformer) collect_alias_methods() {
 			t.alias_methods[key] = name
 		}
 	}
+	t.alias_method_candidates_ready = true
 }
 
 // normalize_sum_variant_type transforms normalize sum variant type data for transform.
@@ -3409,8 +3432,8 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 			} else {
 				// Clone-free workers need conservative expansion estimates because they
 				// append into fixed .nogrow regions. Generic transform workers have
-				// private growable ASTs, so avoid rescanning every function solely to
-				// estimate capacity they do not use.
+				// private growable ASTs, as do self-host transforms. Avoid rescanning
+				// those functions to estimate capacity they do not use.
 				if sc_profile {
 					scsw.restart()
 				}
@@ -3425,7 +3448,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 						str_est, str_needs_deferred_lowering = t.fn_span_interp_estimate(range_lo, i)
 					}
 				}
-				map_est := if t.skip_generics {
+				map_est := if t.skip_generics && !t.building_v {
 					t.fn_span_map_expansion_estimate(range_lo, i)
 				} else {
 					0
@@ -3604,10 +3627,25 @@ fn (mut t Transformer) transform_deferred_expansion_items() {
 // rest of the build (worker memory is never freed under -gc none). Transform grows
 // the AST by well under 25% per worker, so a fixed base/4 margin avoids the cliff.
 fn (t &Transformer) clone_ast_base(base_nodes int, base_children int) &flat.FlatAst {
+	mut cloned := t.allocate_ast_base_clone(base_nodes, base_children)
+	// Both arrays own enough storage for these immutable base payloads.
+	unsafe {
+		vmemcpy(cloned.nodes.data, t.a.nodes.data, isize(base_nodes) * isize(t.a.nodes.element_size))
+		vmemcpy(cloned.children.data, t.a.children.data, isize(base_children) * isize(t.a.children.element_size))
+	}
+	return cloned
+}
+
+// allocate_ast_base_clone reserves a private AST whose base payload is filled
+// before use. Parallel transform copies the disjoint allocations concurrently.
+fn (t &Transformer) allocate_ast_base_clone(base_nodes int, base_children int) &flat.FlatAst {
 	mut nodes := []flat.Node{cap: base_nodes + base_nodes / 4}
-	nodes << t.a.nodes[0..base_nodes]
 	mut children := []flat.NodeId{cap: base_children + base_children / 4}
-	children << t.a.children[0..base_children]
+	// The caller fills these uninitialized slots from the immutable source AST.
+	unsafe {
+		nodes.grow_len(base_nodes)
+		children.grow_len(base_children)
+	}
 	return &flat.FlatAst{
 		nodes: nodes
 		children: children
@@ -3896,6 +3934,8 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		non_main_type_index_ready: t.non_main_type_index_ready
 		unique_fields: t.unique_fields
 		alias_methods: t.alias_methods
+		alias_method_candidates: t.alias_method_candidates
+		alias_method_candidates_ready: t.alias_method_candidates_ready
 		globals: t.globals
 		sum_types: t.sum_types
 		sum_variant_parents: t.sum_variant_parents
@@ -3918,6 +3958,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		type_alias_suffixes: t.type_alias_suffixes
 		local_decl_nodes_by_name: t.local_decl_nodes_by_name
 		fn_decl_offsets_by_file: t.fn_decl_offsets_by_file
+		if_expr_nodes_by_file: t.if_expr_nodes_by_file
 		struct_field_decl_metas_cache: t.struct_field_decl_metas_cache
 		comptime_field_metas_cache: map[string][]FieldMeta{}
 		comptime_reflected_for_roles: t.comptime_reflected_for_roles
@@ -4318,6 +4359,43 @@ fn (mut t Transformer) relocate_region_in_place(node_start int, node_end int, ch
 	}
 }
 
+// absorb_region_into is relocate_region_in_place with the relocated values
+// written straight into the master's pre-grown arrays, so the serial merge no
+// longer has to copy the region afterwards. Each worker owns a disjoint
+// destination slice, and the master's arrays cannot move while this runs.
+@[direct_array_access]
+fn (mut t Transformer) absorb_region_into(node_start int, node_end int, child_start int, child_end int, node_shift i32, child_shift i32, dst_nodes voidptr, dst_children voidptr) {
+	unsafe {
+		mut nodes_out := &flat.Node(dst_nodes)
+		for k in node_start .. node_end {
+			node := t.a.nodes[k]
+			nodes_out[k - node_start] = if node.children_start >= child_start {
+				node.with_shifted_children(child_shift)
+			} else {
+				node
+			}
+		}
+		mut children_out := &flat.NodeId(dst_children)
+		for j in child_start .. child_end {
+			cid := t.a.children[j]
+			children_out[j - child_start] = if int(cid) >= node_start {
+				flat.NodeId(int(cid) + int(node_shift))
+			} else {
+				cid
+			}
+		}
+	}
+	// The worker's rewrites of base-region child slots stay in its own array;
+	// merge_worker publishes them from there under the same shift.
+	for rewrite in t.inplace_child_log {
+		t.a.children[rewrite.slot] = if int(rewrite.child) >= node_start {
+			flat.NodeId(int(rewrite.child) + int(node_shift))
+		} else {
+			rewrite.child
+		}
+	}
+}
+
 // merge_worker folds a finished worker's transformed output back into the master
 // AST. The worker created its new nodes/children at indices base_nodes/base_children
 // (matching the master at fork time); here they are appended to the master and every
@@ -4325,22 +4403,33 @@ fn (mut t Transformer) relocate_region_in_place(node_start int, node_end int, ch
 // distance the block moved. `items` lists the function indices this worker owned, so
 // their rewritten top-level nodes can be copied into place.
 fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nodes int, base_children int, clear_node_caches bool) {
-	node_shift := i32(t.a.nodes.len - base_nodes)
-	child_shift := i32(t.a.children.len - base_children)
-	if !t.merge_regions_relocated {
-		for rewrite in w.inplace_child_log {
-			t.a.children[rewrite.slot] = if int(rewrite.child) >= base_nodes {
-				flat.NodeId(int(rewrite.child) + int(node_shift))
-			} else {
-				rewrite.child
-			}
+	// Absorbed regions were written straight into the master arrays, which are
+	// already grown to their final length, so the shifts come from the absorb
+	// pass instead of the current master length.
+	node_shift := if t.merge_regions_absorbed {
+		t.merge_absorbed_node_shift
+	} else {
+		i32(t.a.nodes.len - base_nodes)
+	}
+	child_shift := if t.merge_regions_absorbed {
+		t.merge_absorbed_child_shift
+	} else {
+		i32(t.a.children.len - base_children)
+	}
+	for rewrite in w.inplace_child_log {
+		t.a.children[rewrite.slot] = if t.merge_regions_relocated {
+			w.a.children[rewrite.slot]
+		} else if int(rewrite.child) >= base_nodes {
+			flat.NodeId(int(rewrite.child) + int(node_shift))
+		} else {
+			rewrite.child
 		}
 	}
 	// New children: bulk-copy the worker block, then relocate references to
 	// worker-local new nodes in place (a per-element push paid a capacity check
 	// and branch per child id).
 	new_children := w.a.children.len - base_children
-	if new_children > 0 {
+	if new_children > 0 && !t.merge_regions_absorbed {
 		old_len := t.a.children.len
 		unsafe {
 			t.a.children.grow_len(new_children)
@@ -4369,7 +4458,7 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 	// points into the new children block in place (a per-element push paid a
 	// capacity check, a branch and a struct copy per node).
 	new_nodes := w.a.nodes.len - base_nodes
-	if new_nodes > 0 {
+	if new_nodes > 0 && !t.merge_regions_absorbed {
 		nodes_old_len := t.a.nodes.len
 		unsafe {
 			t.a.nodes.grow_len(new_nodes)
@@ -4709,48 +4798,12 @@ fn (mut t Transformer) clear_typechecker_node_cache(idx int) {
 	}
 }
 
-// split_work_items distributes items across `n` buckets using greedy
-// least-loaded-by-cost assignment, so heavy functions are spread evenly. The
-// assignment is deterministic for a given input (required for reproducible builds).
-// Buckets are seeded with a virtual load matching their thread's start delay in
-// the spawn chain (see run_parallel_transform): bucket 0 (the master) starts
-// after one AST clone, worker k starts after k+1 clones plus its own
-// clone-for-successor, and the last worker clones nothing. One `unit`
-// approximates one clone-time in cost terms, so all threads finish together.
+// split_work_items distributes functions evenly by estimated cost. All pool
+// workers start after the base copies finish, so no startup bias is needed.
+// Sorting each bucket by source position preserves module cache locality.
 fn split_work_items(items []FnWorkItem, n int) [][]FnWorkItem {
-	return split_work_items_ex(items, n, true)
-}
-
-// split_work_items_ex is split_work_items with the spawn-chain stagger bias
-// made optional: the shared-base path spawns every worker up front, so only
-// the master keeps a lighter share (it pays for the merges afterwards).
-fn split_work_items_ex(items []FnWorkItem, n int, chain_stagger bool) [][]FnWorkItem {
 	mut buckets := [][]FnWorkItem{len: n, init: []FnWorkItem{}}
 	mut loads := []i64{len: n}
-	if n > 1 {
-		mut total := i64(0)
-		for it in items {
-			total += i64(it.cost) + 1
-		}
-		unit := total / i64(n * 16)
-		if chain_stagger {
-			// The master (bucket 0) also pays for the serial pre-phase warmup, the
-			// first worker clone, and the interleaved merges, and measures slower
-			// per cost unit than the helpers; give it a markedly lighter share.
-			loads[0] = unit * 5
-			for b in 1 .. n {
-				if b == n - 1 {
-					loads[b] = unit * i64(b)
-				} else {
-					loads[b] = unit * i64(b + 1)
-				}
-			}
-		} else {
-			// The persistent pool waits for every submitted callback before the
-			// master can merge. Keep shared-base chunks evenly loaded; staggering
-			// their finish times only lengthens the wait for the heaviest bucket.
-		}
-	}
 	mut sorted := items.clone()
 	sorted.sort(a.rank > b.rank)
 	for it in sorted {
@@ -4919,7 +4972,8 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names &[]string, names_star
 	t.used_fns_log_active = true
 	mut transformed_scoped := false
 	$if !v3_no_parallel ? {
-		if t.scope_parallel_workers && t.retain_worker_results {
+		if t.scope_parallel_workers && t.retain_worker_results
+			&& pending.len > direct_late_transform_max_names {
 			t.transform_late_candidates_scoped(candidate_index, mut candidates, mut late, mut pending, mut queued)
 			transformed_scoped = true
 		}
@@ -13518,7 +13572,15 @@ fn (t &Transformer) expr_can_take_address(id flat.NodeId) bool {
 			if t.selector_chain_has_sum_variant_field(id) {
 				return false
 			}
-			return t.expr_can_take_address(t.a.child(&node, 0))
+			base_id := t.a.child(&node, 0)
+			mut base_type := t.node_type(base_id)
+			if base_type.len == 0 {
+				base_type = t.resolve_expr_type(base_id)
+			}
+			if t.normalize_type_alias(base_type).trim_space().starts_with('&') {
+				return true
+			}
+			return t.expr_can_take_address(base_id)
 		}
 		.prefix {
 			return node.op == .mul
@@ -14796,11 +14858,12 @@ fn (t &Transformer) find_multi_return_call_types(node flat.Node, expected_count 
 		return none
 	}
 	for candidate in candidates {
+		suffix := if candidate.starts_with('.') { candidate } else { '.${candidate}' }
 		for key, ret in t.multi_return_fn_ret_types {
 			matches := if candidate.starts_with('.') {
-				key.ends_with(candidate)
+				key.ends_with(suffix)
 			} else {
-				key == candidate || key.ends_with('.${candidate}')
+				key == candidate || key.ends_with(suffix)
 			}
 			if matches {
 				if items := multi_return_types_from_type(ret, expected_count) {
@@ -15711,6 +15774,7 @@ fn (mut t Transformer) build_source_parent_index() {
 	t.source_parent_ids = []int{len: t.a.nodes.len, init: -1}
 	mut decls := map[string][]int{}
 	mut fn_offsets := map[int][]int{}
+	mut if_exprs := map[int][]int{}
 	mut shared_names := map[string]bool{}
 	for parent_id, node in t.a.nodes {
 		for i in 0 .. node.children_count {
@@ -15721,6 +15785,12 @@ fn (mut t Transformer) build_source_parent_index() {
 		}
 		if node.kind == .fn_decl && node.pos.is_valid() {
 			fn_offsets[node.pos.id] << node.pos.offset
+		}
+		if node.kind == .if_expr && node.children_count >= 2 {
+			body := t.a.child_node(&node, 1)
+			if body.pos.is_valid() {
+				if_exprs[body.pos.id] << parent_id
+			}
 		}
 		if node.kind != .decl_assign || node.children_count < 2 {
 			continue
@@ -15744,6 +15814,7 @@ fn (mut t Transformer) build_source_parent_index() {
 	}
 	t.local_decl_nodes_by_name = decls.move()
 	t.fn_decl_offsets_by_file = fn_offsets.move()
+	t.if_expr_nodes_by_file = if_exprs.move()
 	t.shared_local_decl_names = shared_names.move()
 }
 
@@ -17388,6 +17459,17 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 			&& t.receiver_selector_is_fn_field(t.normalize_type_alias(t.trim_pointer_type(t.lvalue_type(recv_sel_base_id))), recv_fn.value)
 		is_method := is_selector_call && !is_fn_field_callee && !is_namespace_call
 		recv_id := if is_method { recv_sel_base_id } else { flat.empty_node }
+		mut callback_base_type := if is_method { t.node_type(recv_id) } else { '' }
+		if callback_base_type in ['', 'unknown'] && is_method {
+			callback_base_type = t.lvalue_type(recv_id)
+		}
+		if callback_base_type in ['', 'unknown'] && is_method {
+			callback_base_type = t.raw_expr_type_without_smartcast(recv_id)
+		}
+		callback_base_type = t.normalize_type_alias(t.trim_pointer_type(callback_base_type))
+		array_dsl_callback := is_method
+			&& recv_fn.value in ['filter', 'map', 'any', 'all', 'count']
+			&& (callback_base_type.starts_with('[]') || t.is_fixed_array_type(callback_base_type))
 		// A plain (non-method) call whose callee is itself a value branch —
 		// `(match node { ... make_cb(node)! ... })()` — must materialize operand 0 too;
 		// otherwise transform_call_args lowers child 0 with plain transform_expr and leaves the
@@ -17405,7 +17487,11 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 			-1
 		}
 		for i in 1 .. node.children_count {
-			if t.operand_hoists_value_branch(t.a.child(&node, i)) {
+			// Array callback expressions bind `it` inside their lowering. Materializing
+			// an `if`/`match` callback here would hoist it outside the generated loop,
+			// before that binding exists.
+			if !(array_dsl_callback && i == 1)
+				&& t.operand_hoists_value_branch(t.a.child(&node, i)) {
 				last_branch = i
 			}
 		}

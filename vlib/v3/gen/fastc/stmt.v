@@ -558,7 +558,8 @@ fn (mut g Parser) parse_match_statement() !bool {
 	smartcast_is_reference := subject_is_mut || subject_type.ends_with('*')
 	g.expect(.lcbr)!
 	subject_name := g.temporary_name('match')
-	g.write_line('__typeof__((${subject})) ${subject_name} = (${subject});')
+	subject_decl_type := g.declaration_c_type(subject_type, subject)
+	g.write_line('${subject_decl_type} ${subject_name} = (${subject});')
 	is_string := g.underlying_alias_type(subject_type).trim_right('*') == 'string'
 	// A sum type or interface subject dispatches on the boxed `_typ` tag; each
 	// branch names a variant/implementer type. When the subject is a plain local,
@@ -900,13 +901,14 @@ fn (mut g Parser) parse_return() !bool {
 		}
 		g.consume_statement_end()
 		mut evaluated_values := []string{cap: values.len}
-		for value in values {
+		for i, value in values {
 			if !g.has_deferred_blocks() {
 				evaluated_values << value
 				continue
 			}
 			temporary := g.temporary_name('return')
-			g.write_line('__typeof__((${value})) ${temporary} = (${value});')
+			declaration_type := g.declaration_c_type(value_types[i], value)
+			g.write_line('${declaration_type} ${temporary} = (${value});')
 			evaluated_values << temporary
 		}
 		g.write_all_deferred_scopes()
@@ -948,7 +950,7 @@ fn (mut g Parser) parse_return() !bool {
 	mut actual_type := g.last_expression_type
 	if g.selfhost && g.return_type == '' {
 		g.consume_statement_end()
-		g.write_return_expression(expression)
+		g.write_return_expression(expression, actual_type)
 		return true
 	}
 	contextual_return_type := if g.return_type == 'Option' && g.option_return_type != '' {
@@ -964,7 +966,7 @@ fn (mut g Parser) parse_return() !bool {
 		// A struct-field/global/`__global` fixed array is stored as a raw C array, but the
 		// by-value return type is the `struct { T data[N]; }` wrapper; copy the raw array into
 		// its `.data` so the value can be returned.
-		expression = '({ ${g.return_type} __v_fastc_fixed_ret; memcpy(__v_fastc_fixed_ret.data, ${expression}, sizeof(__v_fastc_fixed_ret.data)); __v_fastc_fixed_ret; })'
+		expression = '({ ${g.return_type} __vf_fixed_ret; memcpy(__vf_fixed_ret.data, ${expression}, sizeof(__vf_fixed_ret.data)); __vf_fixed_ret; })'
 		actual_type = g.return_type
 	}
 	if g.selfhost && actual_type.ends_with('*') && !g.return_type.ends_with('*') && g.return_type == actual_type.trim_right('*') {
@@ -1013,17 +1015,18 @@ fn (mut g Parser) parse_return() !bool {
 		actual_type = 'Option'
 	}
 	g.consume_statement_end()
-	g.write_return_expression(expression)
+	g.write_return_expression(expression, actual_type)
 	return true
 }
 
-fn (mut g Parser) write_return_expression(expression string) {
+fn (mut g Parser) write_return_expression(expression string, expression_type string) {
 	if !g.has_deferred_blocks() {
 		g.write_line('return ${expression};')
 		return
 	}
 	temporary := g.temporary_name('return')
-	g.write_line('__typeof__((${expression})) ${temporary} = (${expression});')
+	declaration_type := g.declaration_c_type(expression_type, expression)
+	g.write_line('${declaration_type} ${temporary} = (${expression});')
 	g.write_all_deferred_scopes()
 	g.write_line('return ${temporary};')
 }
@@ -1209,13 +1212,15 @@ fn (mut g Parser) parse_simple_statement() ! {
 				g.write_line('${element_type} ${value_name} = (${boxed});')
 				g.write_line('builtin__array_push(${array_target}, &${value_name});')
 			} else if is_array_append {
-				g.write_line('__typeof__((${value})) ${value_name} = (${value});')
+				value_decl_type := g.declaration_c_type(value_type, value)
+				g.write_line('${value_decl_type} ${value_name} = (${value});')
 				g.write_line('builtin__array_push_many(${array_target}, ${value_name}.data, ${value_name}.len);')
 			} else {
 				// A `.member` enum-shorthand element needs its target enum type to lower; re-render it
 				// through the argument path. Other values keep their raw streamed form so contextual
 				// re-rendering never disturbs a spawn/thread or already-correct value.
-				is_complex_or := value.contains('({') && (value.contains('return ') || value.contains('for (') || value.contains('switch ('))
+				is_complex_or := value.contains('({') && (value.contains('return ')
+					|| value.contains('for (') || value.contains('switch ('))
 				boxes_variant := g.should_box_variant(element_type, value_type)
 				push_value := if boxes_variant || (g.last_expression.len == 2 && g.last_expression[0].tok == .dot && g.last_expression[1].tok == .name) || is_complex_or {
 					// A `.member` enum-shorthand element, or a complex `or { return … }`-unwrap: the
@@ -1229,10 +1234,10 @@ fn (mut g Parser) parse_simple_statement() ! {
 				// TinyCC cannot `__typeof__` a statement expression that runs a `return`/`for`/
 				// `switch` (an `or { return … }`-unwrap element); name the element type directly, as
 				// the declaration path does. Gated on `({` so a compound-literal value is unaffected.
-				push_decl_type := if boxes_variant || (element_type != '' && push_value.contains('({') && (push_value.contains('return ') || push_value.contains('for (') || push_value.contains('switch ('))) {
+				push_decl_type := if boxes_variant {
 					element_type
 				} else {
-					'__typeof__((${push_value}))'
+					g.declaration_c_type(element_type, push_value)
 				}
 				g.write_line('${push_decl_type} ${value_name} = (${push_value});')
 				g.write_line('builtin__array_push(${array_target}, &${value_name});')
@@ -1545,9 +1550,10 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 			g.validate_parallel_assignment_targets(names)!
 		}
 		mut temporaries := []string{cap: values.len}
-		for item in values {
+		for i, item in values {
 			temporary := g.temporary_name('parallel')
-			g.write_line('__typeof__((${item})) ${temporary} = (${item});')
+			declaration_type := g.declaration_c_type(value_types[i], item)
+			g.write_line('${declaration_type} ${temporary} = (${item});')
 			temporaries << temporary
 		}
 		if is_declaration {
@@ -1628,12 +1634,14 @@ fn (mut g Parser) finish_parallel_member_assignment(names []string, member_targe
 	}
 	g.last_multi_return_types = []string{}
 	mut values := []string{}
+	mut value_types := []string{}
 	for {
 		value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 		if value == '' {
 			return g.unsupported('empty parallel assignment')
 		}
 		values << value
+		value_types << g.last_expression_type
 		if g.tok != .comma {
 			break
 		}
@@ -1645,9 +1653,10 @@ fn (mut g Parser) finish_parallel_member_assignment(names []string, member_targe
 			return g.unsupported('parallel assignment with ${targets.len} targets and ${values.len} values')
 		}
 		mut temporaries := []string{cap: values.len}
-		for value in values {
+		for i, value in values {
 			temporary := g.temporary_name('parallel')
-			g.write_line('__typeof__((${value})) ${temporary} = (${value});')
+			declaration_type := g.declaration_c_type(value_types[i], value)
+			g.write_line('${declaration_type} ${temporary} = (${value});')
 			temporaries << temporary
 		}
 		for i, target in targets {
@@ -1705,7 +1714,7 @@ fn (g &Parser) parallel_rhs_is_option_tuple_or() bool {
 		}
 		prev_end = probe.pos
 		tok = probe.scan()
-		if depth == 0 && probe.src[prev_end..probe.pos].contains('\n') {
+		if depth == 0 && fastc_source_range_has_newline(probe.src, prev_end, probe.pos) {
 			return false
 		}
 	}
@@ -1902,12 +1911,14 @@ fn (mut g Parser) parse_parallel_expression_assignment(first_source string, firs
 	g.next()
 	g.last_multi_return_types = []string{}
 	mut values := []string{}
+	mut value_types := []string{}
 	for {
 		value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 		if value == '' {
 			return g.unsupported('empty parallel assignment')
 		}
 		values << value
+		value_types << g.last_expression_type
 		if g.tok != .comma {
 			break
 		}
@@ -1919,9 +1930,10 @@ fn (mut g Parser) parse_parallel_expression_assignment(first_source string, firs
 			return g.unsupported('parallel assignment with ${targets.len} targets and ${values.len} values')
 		}
 		mut temporaries := []string{cap: values.len}
-		for value in values {
+		for i, value in values {
 			temporary := g.temporary_name('parallel')
-			g.write_line('__typeof__((${value})) ${temporary} = (${value});')
+			declaration_type := g.declaration_c_type(value_types[i], value)
+			g.write_line('${declaration_type} ${temporary} = (${value});')
 			temporaries << temporary
 		}
 		for i, target in targets {
@@ -2294,7 +2306,10 @@ fn (g &Parser) expression_tokens_are_statement(expression_tokens []FastcExpressi
 			}
 		}
 	}
-	return function_key in g.functions || (name_index == 0 && name in ['print', 'println'])
+	// An on demand monomorphized call is rewritten to its instance name (`take_mono_Payload`),
+	// which is registered in `mono_functions` rather than in `functions`.
+	return function_key in g.functions || function_key in g.mono_functions
+		|| (name_index == 0 && name in ['print', 'println'])
 }
 
 fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_static bool) ! {
@@ -2338,6 +2353,8 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	g.consume_statement_end()
 	// GNU typeof is unevaluated and is supported by bundled TinyCC. It lets the
 	// direct path preserve V's `:=` without running any inference or type checker.
+	// A self-host has already inferred the C type, so spelling that type directly
+	// avoids duplicating large statement expressions in the generated source.
 	c_name := fastc_c_identifier(name)
 	normalized_type := fastc_normalize_inferred_type(g.last_expression_type)
 	local_type := if g.selfhost && g.last_expression_type == '' {
@@ -2345,7 +2362,11 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	} else {
 		normalized_type
 	}
-	mut declaration_type := '__typeof__((${expression}))'
+	mut declaration_type := if g.selfhost && local_type != '' && !local_type.starts_with('fn (') {
+		local_type
+	} else {
+		'__typeof__((${expression}))'
+	}
 	if expression.starts_with('"') {
 		// C's typeof preserves a literal's array type instead of applying the usual
 		// pointer decay. The spelling alone is enough to lower this case.
@@ -2354,7 +2375,9 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 		// V's platform `int` is i64 on 64-bit targets. C `__typeof__` would keep
 		// integer literals and C-int expressions at 32 bits and silently truncate.
 		declaration_type = fastc_platform_int_c_type
-	} else if expression.starts_with('({') && (expression.contains('for (') || expression.contains('switch (') || expression.contains('return ')) && g.last_expression_type != '' && local_type != '' {
+	} else if expression.starts_with('({')
+		&& (expression.contains('for (') || expression.contains('switch (')
+			|| expression.contains('return ')) && g.last_expression_type != '' && local_type != '' {
 		// TinyCC cannot take `__typeof__` of a statement expression that runs a `for` loop (as an
 		// array `{len:, init:}` initializer lowers to), a `switch` (as a sum-type common-field
 		// read lowers to), or a `return` (an `x or { return … }` propagation), so name the known
@@ -2389,6 +2412,18 @@ fn fastc_normalize_inferred_type(typ string) string {
 		'nil' { 'voidptr' }
 		else { typ }
 	}
+}
+
+fn (g &Parser) declaration_c_type(inferred_type string, expression string) string {
+	if g.selfhost && inferred_type != '' {
+		normalized := fastc_normalize_inferred_type(inferred_type)
+		if !normalized.starts_with('fn (') {
+			mut w := unsafe { &Parser(g) }
+			fastc_register_composite_type(normalized, mut w.composite_types)
+			return if normalized == 'int' { fastc_platform_int_c_type } else { normalized }
+		}
+	}
+	return '__typeof__((${expression}))'
 }
 
 fn (mut g Parser) consume_statement_end() {

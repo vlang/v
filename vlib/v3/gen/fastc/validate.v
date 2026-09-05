@@ -155,7 +155,7 @@ fn (g &Parser) resolved_nonlocal_expression_name_cached(name string) string {
 // resolved_expression_name memoizes the answer per name.
 fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
 	if imported_module := g.imports[name] {
-		return imported_module.replace('.', '__')
+		return fastc_c_module_name(imported_module)
 	}
 	function_key := g.unqualified_function_key(name)
 	if function_key in g.functions {
@@ -837,6 +837,10 @@ fn (g &Parser) struct_direct_member_type(receiver_type string, field_name string
 }
 
 fn (g &Parser) struct_member_type(receiver_type string, field_name string) string {
+	direct_type := g.struct_direct_member_type(receiver_type, field_name)
+	if direct_type != '' {
+		return direct_type
+	}
 	field := g.struct_field_metadata(receiver_type, field_name) or { return '' }
 	return field.typ
 }
@@ -849,6 +853,16 @@ fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?F
 		return g.last_field
 	}
 	mut w := unsafe { &Parser(g) }
+	// Most lookups are direct fields already present in the program-wide index.
+	// Return those without copying them into every file parser's recursive
+	// embedded-field memo.
+	if field := g.direct_struct_field_metadata(receiver_type, field_name) {
+		w.last_field_receiver = receiver_type
+		w.last_field_name = field_name
+		w.last_field = field
+		w.last_field_known = true
+		return field
+	}
 	if by_name := g.field_memo[receiver_type] {
 		if cached := by_name[field_name] {
 			w.last_field_receiver = receiver_type
@@ -881,7 +895,7 @@ fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?F
 	return none
 }
 
-fn (g &Parser) struct_field_metadata_impl(receiver_type string, field_name string) ?FastcStructField {
+fn (g &Parser) direct_struct_field_metadata(receiver_type string, field_name string) ?FastcStructField {
 	mut layout_type := fastc_trim_pointer_suffix(receiver_type)
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
@@ -893,10 +907,15 @@ fn (g &Parser) struct_field_metadata_impl(receiver_type string, field_name strin
 			return field
 		}
 	}
-	for field in g.struct_field_info[layout_type] {
-		if field.name == field_name {
-			return field
-		}
+	return none
+}
+
+fn (g &Parser) struct_field_metadata_impl(receiver_type string, field_name string) ?FastcStructField {
+	mut layout_type := fastc_trim_pointer_suffix(receiver_type)
+	if layout_type.starts_with('Array_') {
+		layout_type = 'array'
+	} else if layout_type.starts_with('Map_') {
+		layout_type = 'map'
 	}
 	direct_type := g.struct_direct_member_type(receiver_type, field_name)
 	if direct_type != '' {

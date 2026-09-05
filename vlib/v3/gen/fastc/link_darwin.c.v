@@ -21,19 +21,19 @@ fn C.tcc_new() &C.TCCState
 
 fn C.tcc_delete(&C.TCCState)
 
-fn C.tcc_set_lib_path(&C.TCCState, &char)
+fn C.tcc_set_lib_path(&C.TCCState, const_path &char)
 
-fn C.tcc_set_error_func(&C.TCCState, voidptr, fn (voidptr, &char))
+fn C.v_fastc_tcc_set_error_func(&C.TCCState, voidptr, voidptr)
 
-fn C.tcc_set_options(&C.TCCState, &char) int
+fn C.tcc_set_options(&C.TCCState, const_options &char) int
 
 fn C.tcc_set_output_type(&C.TCCState, int) int
 
-fn C.tcc_add_file(&C.TCCState, &char) int
+fn C.tcc_add_file(&C.TCCState, const_filename &char) int
 
-fn C.tcc_add_library(&C.TCCState, &char) int
+fn C.tcc_add_library(&C.TCCState, const_libraryname &char) int
 
-fn C.tcc_output_file(&C.TCCState, &char) int
+fn C.tcc_output_file(&C.TCCState, const_filename &char) int
 
 fn C.v_fastc_tcc_set_skip_codesign(int)
 
@@ -95,7 +95,7 @@ fn fastc_libtcc_is_link_input(arg string) bool {
 	lower := arg.to_lower()
 	return lower.ends_with('.o') || lower.ends_with('.obj') || lower.ends_with('.a')
 		|| lower.ends_with('.lib') || lower.ends_with('.dylib') || lower.ends_with('.so')
-		|| lower.contains('.so.')
+		|| lower.ends_with('.tbd') || lower.contains('.so.')
 }
 
 fn fastc_libtcc_apply_options(state &C.TCCState, args []string) int {
@@ -156,7 +156,7 @@ fn fastc_prepare_libtcc_link(program string, tcc_lib string, base_args []string,
 		}
 	}
 	diagnostics := &FastcLibtccDiagnostics{}
-	C.tcc_set_error_func(state, diagnostics, fastc_libtcc_error_callback)
+	C.v_fastc_tcc_set_error_func(state, diagnostics, voidptr(fastc_libtcc_error_callback))
 	C.tcc_set_lib_path(state, tcc_lib.str)
 	if fastc_libtcc_apply_options(state, base_args) != 0
 		|| fastc_libtcc_apply_options(state, fastc_libtcc_output_options(final_args)) != 0
@@ -188,6 +188,17 @@ fn fastc_libtcc_add_library(state &C.TCCState, name string, diagnostics &FastcLi
 	return none
 }
 
+fn fastc_libtcc_add_input(mut link FastcPreparedLink, input_path string) ! {
+	state := fastc_libtcc_state(&link)
+	if isnil(state) || isnil(link.diagnostics) {
+		return error('prepared TinyCC linker is unavailable')
+	}
+	mut diagnostics := unsafe { &FastcLibtccDiagnostics(link.diagnostics) }
+	if C.tcc_add_file(state, input_path.str) != 0 {
+		return error(fastc_libtcc_diagnostics(diagnostics, 'could not add `${input_path}` to the TinyCC link'))
+	}
+}
+
 fn fastc_finish_libtcc_link(mut link FastcPreparedLink, input_paths []string, final_args []string, output string) os.Result {
 	state := fastc_libtcc_state(&link)
 	if isnil(state) || isnil(link.diagnostics) {
@@ -204,10 +215,10 @@ fn fastc_finish_libtcc_link(mut link FastcPreparedLink, input_paths []string, fi
 		link.diagnostics = unsafe { nil }
 	}
 	for input_path in input_paths {
-		if C.tcc_add_file(state, input_path.str) != 0 {
+		fastc_libtcc_add_input(mut link, input_path) or {
 			return os.Result{
 				exit_code: 1
-				output: fastc_libtcc_diagnostics(diagnostics, 'could not add `${input_path}` to the TinyCC link')
+				output: err.msg()
 			}
 		}
 	}

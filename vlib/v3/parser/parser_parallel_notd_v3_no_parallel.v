@@ -93,7 +93,7 @@ fn clone_comptime_const_prepass_decls(values []ComptimeConstPrepassDecl) []Compt
 	mut cloned := []ComptimeConstPrepassDecl{cap: values.len}
 	for value in values {
 		cloned << ComptimeConstPrepassDecl{
-			key:   value.key.clone()
+			key: value.key.clone()
 			value: value.value.clone()
 		}
 	}
@@ -198,24 +198,24 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		}
 		mut args := []ParseChunkArgs{cap: n_chunks}
 		args << ParseChunkArgs{
-			worker:        voidptr(p)
-			paths_ptr:     unsafe { voidptr(&paths) }
-			starts_ptr:    unsafe { voidptr(&starts) }
+			worker: voidptr(p)
+			paths_ptr: unsafe { voidptr(&paths) }
+			starts_ptr: unsafe { voidptr(&starts) }
 			prepass_chunk: voidptr(prepass_chunks[0])
-			start:         bounds[0]
-			end:           bounds[1]
-			chunk_bytes:   int(master_chunk_bytes)
+			start: bounds[0]
+			end: bounds[1]
+			chunk_bytes: int(master_chunk_bytes)
 			scope_enabled: false
 		}
 		for ci in 0 .. thread_count {
 			args << ParseChunkArgs{
-				worker:        voidptr(parser_workers[ci])
-				paths_ptr:     unsafe { voidptr(&paths) }
-				starts_ptr:    unsafe { voidptr(&starts) }
+				worker: voidptr(parser_workers[ci])
+				paths_ptr: unsafe { voidptr(&paths) }
+				starts_ptr: unsafe { voidptr(&starts) }
 				prepass_chunk: voidptr(prepass_chunks[ci + 1])
-				start:         bounds[ci + 1]
-				end:           bounds[ci + 2]
-				chunk_bytes:   worker_chunk_bytes[ci]
+				start: bounds[ci + 1]
+				end: bounds[ci + 2]
+				chunk_bytes: worker_chunk_bytes[ci]
 				scope_enabled: true
 			}
 		}
@@ -228,8 +228,8 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		for ci in 0 .. n_chunks {
 			helper_idx := ci - 1
 			prepass_tasks << workers.Task{
-				run:        precollect_const_chunk_thread
-				arg:        unsafe { voidptr(&args[ci]) }
+				run: precollect_const_chunk_thread
+				arg: unsafe { voidptr(&args[ci]) }
 				force_sync: ci == 0 || fail == 'parser:all' || fail == 'parser:${helper_idx}'
 			}
 		}
@@ -272,14 +272,14 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		for ci in order {
 			helper_idx := ci - 1
 			tasks << workers.Task{
-				run:        parse_chunk_thread
-				arg:        unsafe { voidptr(&args[ci]) }
+				run: parse_chunk_thread
+				arg: unsafe { voidptr(&args[ci]) }
 				force_sync: fail == 'parser:all' || fail == 'parser:${helper_idx}'
 			}
 		}
 		tasks << workers.Task{
-			run:        parse_chunk_thread
-			arg:        unsafe { voidptr(&args[0]) }
+			run: parse_chunk_thread
+			arg: unsafe { voidptr(&args[0]) }
 			force_sync: true
 		}
 		ppsw2 := time.new_stopwatch()
@@ -291,8 +291,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		mut next_chunk_file_id := p.next_file_id
 		for ci in 0 .. thread_count {
 			worker_first_file_id := dispatch_file_id_start + bounds[ci + 1]
-			parser_workers[ci].remap_worker_file_ids(worker_first_file_id,
-				next_chunk_file_id - worker_first_file_id)
+			parser_workers[ci].remap_worker_file_ids(worker_first_file_id, next_chunk_file_id - worker_first_file_id)
 			next_chunk_file_id = parser_workers[ci].next_file_id
 		}
 		// Merge each helper in fixed chunk order (input file order),
@@ -302,8 +301,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			p.merge_parsed_workers_parallel(mut parser_workers, mut starts, bounds, mut args)
 		} else {
 			for ci in 0 .. thread_count {
-				p.merge_parsed_worker(mut parser_workers[ci], mut starts, bounds[ci + 1], bounds[
-					ci + 2], args[ci + 1].scope)
+				p.merge_parsed_worker(mut parser_workers[ci], mut starts, bounds[ci + 1], bounds[ci + 2], args[ci + 1].scope)
 				parser_worker_scope_free(args[ci + 1].scope)
 			}
 		}
@@ -350,8 +348,7 @@ fn (mut p Parser) remap_worker_file_ids(first_file_id int, delta int) {
 		} else {
 			file_id
 		}
-		template_call_sites[shifted_id] = remap_worker_pos(call_site, first_file_id,
-			old_next_file_id, delta)
+		template_call_sites[shifted_id] = remap_worker_pos(call_site, first_file_id, old_next_file_id, delta)
 	}
 	p.a.template_call_sites = template_call_sites.move()
 	mut template_actions := map[int]string{}
@@ -391,8 +388,7 @@ fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int,
 		mut s := scanner.new_scanner(p.prefs, .normal)
 		s.init(file, src)
 		mut module_name := ''
-		module_name = p.precollect_parallel_comptime_scope(mut s, src, path, module_name, false, mut
-			values, mut decls)
+		module_name = p.precollect_parallel_comptime_scope(mut s, src, path, module_name, false, mut values, mut decls)
 	}
 }
 
@@ -400,7 +396,6 @@ fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int,
 // the ordered worker-prefix snapshots.
 fn (mut p Parser) precollect_parallel_comptime_scope(mut s scanner.Scanner, src string, path string, module_name string, stop_at_rcbr bool, mut values map[string]string, mut decls []ComptimeConstPrepassDecl) string {
 	mut current_module := module_name
-	mut brace_depth := 0
 	mut has_pending_attrs := false
 	mut pending_decl_disabled := false
 	for {
@@ -409,33 +404,24 @@ fn (mut p Parser) precollect_parallel_comptime_scope(mut s scanner.Scanner, src 
 			return current_module
 		}
 		if tok == .lcbr {
-			brace_depth++
+			skip_parallel_comptime_block(mut s)
 			continue
 		}
 		if tok == .rcbr {
-			if brace_depth > 0 {
-				brace_depth--
-				continue
-			}
 			if stop_at_rcbr {
 				return current_module
 			}
-			continue
-		}
-		if brace_depth != 0 {
 			continue
 		}
 		if tok == .dollar {
 			saved_s := s
 			comptime_kind := s.scan()
 			if comptime_kind == .key_if {
-				current_module = p.precollect_parallel_comptime_if(mut s, src, path,
-					current_module, mut values, mut decls)
+				current_module = p.precollect_parallel_comptime_if(mut s, src, path, current_module, mut values, mut decls)
 				continue
 			}
 			if comptime_kind == .key_match {
-				current_module = p.precollect_parallel_comptime_match(mut s, src, path,
-					current_module, mut values, mut decls)
+				current_module = p.precollect_parallel_comptime_match(mut s, src, path, current_module, mut values, mut decls)
 				continue
 			}
 			s = saved_s
@@ -457,8 +443,7 @@ fn (mut p Parser) precollect_parallel_comptime_scope(mut s scanner.Scanner, src 
 			pending_decl_disabled = false
 			if tok == .key_const {
 				if !disabled {
-					p.precollect_parallel_const_decl_and_apply(mut s, current_module, mut values, mut
-						decls)
+					p.precollect_parallel_const_decl_and_apply(mut s, current_module, mut values, mut decls)
 				}
 				continue
 			}
@@ -491,13 +476,11 @@ fn (mut p Parser) precollect_parallel_comptime_if(mut s scanner.Scanner, src str
 	for {
 		mut is_enabled := true
 		if has_condition {
-			is_enabled = p.parallel_comptime_branch_enabled(mut s, src, path, current_module,
-				values)
+			is_enabled = p.parallel_comptime_branch_enabled(mut s, src, path, current_module, values)
 		}
 		take_branch := !any_taken && is_enabled
 		if take_branch {
-			current_module = p.precollect_parallel_comptime_scope(mut s, src, path, current_module,
-				true, mut values, mut decls)
+			current_module = p.precollect_parallel_comptime_scope(mut s, src, path, current_module, true, mut values, mut decls)
 			any_taken = true
 		} else {
 			skip_parallel_comptime_block(mut s)
@@ -561,8 +544,7 @@ fn (mut p Parser) parallel_comptime_branch_enabled(mut s scanner.Scanner, src st
 		cond += piece
 		prev = piece
 	}
-	resolved := p.resolve_parallel_comptime_prepass_text(cond, cond_start, src, path, module_name,
-		values, true)
+	resolved := p.resolve_parallel_comptime_prepass_text(cond, cond_start, src, path, module_name, values, true)
 	return p.eval_comptime_cond(resolved)
 }
 
@@ -588,8 +570,7 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 		if piece.starts_with('@') {
 			subject_has_pseudo = true
 		}
-		piece = p.resolve_parallel_comptime_prepass_at_token(piece, s.pos, src, path,
-			current_module)
+		piece = p.resolve_parallel_comptime_prepass_at_token(piece, s.pos, src, path, current_module)
 		if subject.len == 0 {
 			subject_start = s.pos
 			subject_is_literal = tok in [.string, .char, .number, .key_true, .key_false]
@@ -599,8 +580,7 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 		subject += piece
 		prev = piece
 	}
-	resolved_subject := p.resolve_parallel_comptime_prepass_text(subject, subject_start, src, path,
-		current_module, values, false)
+	resolved_subject := p.resolve_parallel_comptime_prepass_text(subject, subject_start, src, path, current_module, values, false)
 	subject_known := subject_is_literal || subject_has_pseudo || resolved_subject != subject
 	mut matched := false
 	for {
@@ -640,8 +620,7 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 			for {
 				if tok == .lcbr && nested_depth == 0 {
 					if pattern.len > 0 {
-						resolved_pattern := p.resolve_parallel_comptime_prepass_text(pattern,
-							pattern_start, src, path, current_module, values, false)
+						resolved_pattern := p.resolve_parallel_comptime_prepass_text(pattern, pattern_start, src, path, current_module, values, false)
 						if comptime_cond_value(resolved_pattern) == comptime_cond_value(resolved_subject) {
 							pattern_matches = true
 						}
@@ -649,8 +628,7 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 					break
 				}
 				if tok == .comma && nested_depth == 0 {
-					resolved_pattern := p.resolve_parallel_comptime_prepass_text(pattern,
-						pattern_start, src, path, current_module, values, false)
+					resolved_pattern := p.resolve_parallel_comptime_prepass_text(pattern, pattern_start, src, path, current_module, values, false)
 					if comptime_cond_value(resolved_pattern) == comptime_cond_value(resolved_subject) {
 						pattern_matches = true
 					}
@@ -661,8 +639,7 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 					continue
 				}
 				mut piece := parallel_comptime_prepass_token_text(tok, s, src)
-				piece = p.resolve_parallel_comptime_prepass_at_token(piece, s.pos, src, path,
-					current_module)
+				piece = p.resolve_parallel_comptime_prepass_at_token(piece, s.pos, src, path, current_module)
 				if pattern.len > 0 && comptime_cond_needs_space(pattern_prev, piece) {
 					pattern += ' '
 				}
@@ -684,8 +661,7 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 
 		take_arm := subject_known && !matched && (is_else || pattern_matches)
 		if take_arm {
-			current_module = p.precollect_parallel_comptime_scope(mut s, src, path, current_module,
-				true, mut values, mut decls)
+			current_module = p.precollect_parallel_comptime_scope(mut s, src, path, current_module, true, mut values, mut decls)
 			matched = true
 		} else {
 			skip_parallel_comptime_block(mut s)
@@ -698,8 +674,7 @@ fn (mut p Parser) resolve_parallel_comptime_prepass_text(text string, pos int, s
 	mut resolver := p.new_parallel_comptime_prepass_resolver(src, path, module_name)
 	resolver.tok_pos = pos
 	resolver.comptime_const_values = values.clone()
-	return resolver.resolve_comptime_cached_values(resolver.resolve_comptime_at_values(text),
-		preserve_flags)
+	return resolver.resolve_comptime_cached_values(resolver.resolve_comptime_at_values(text), preserve_flags)
 }
 
 fn (mut p Parser) resolve_parallel_comptime_prepass_at_token(text string, pos int, src string, path string, module_name string) string {
@@ -716,7 +691,13 @@ fn (p &Parser) new_parallel_comptime_prepass_resolver(src string, path string, m
 	resolver.cur_module = module_name
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, src.len)
-	file.index_lines(src)
+	// This temporary file is only used for pseudo-variable positions. The full
+	// parser hashes the source once when it creates the file retained by the AST.
+	for i, c in src {
+		if c == `\n` {
+			file.add_line(i + 1)
+		}
+	}
 	resolver.s.init(file, src)
 	return resolver
 }
@@ -731,9 +712,24 @@ fn parallel_comptime_prepass_token_text(tok token.Token, s &scanner.Scanner, src
 	return s.lit
 }
 
+@[direct_array_access]
 fn skip_parallel_comptime_block(mut s scanner.Scanner) {
 	mut depth := 1
 	for depth > 0 {
+		// Only block boundaries matter in a skipped declaration body. Let the
+		// scanner handle comments, directives and quoted/interpolated text, but
+		// avoid classifying every identifier and operator in the body twice.
+		if !s.in_str_incomplete && !s.in_str_inter {
+			for s.offset < s.src.len {
+				c := s.src[s.offset]
+				if c in [`{`, `}`, `/`, `'`, `"`, `\``, `#`]
+					|| (c in [`r`, `c`] && s.offset + 1 < s.src.len
+						&& s.src[s.offset + 1] in [`'`, `"`]) {
+					break
+				}
+				s.offset++
+			}
+		}
 		tok := s.scan()
 		if tok == .eof {
 			return
@@ -871,7 +867,7 @@ fn (mut p Parser) precollect_parallel_const_decl(mut s scanner.Scanner, module_n
 		}
 		if value := parallel_comptime_const_value(value_tokens) {
 			decls << ComptimeConstPrepassDecl{
-				key:   comptime_const_value_key(module_name, name)
+				key: comptime_const_value_key(module_name, name)
 				value: value
 			}
 		}
@@ -1000,8 +996,7 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		node.value, all_hit = p.a.probe_text_ptr_cached(node.value, mut cache_ptrs, mut cache_vals)
 		mut hit := true
 		mut type_id := u16(0)
-		type_id, node.typ, hit = p.a.probe_type_text_ptr_cached(node.typ, mut type_cache_ptrs, mut
-			type_cache_vals, mut type_cache_ids)
+		type_id, node.typ, hit = p.a.probe_type_text_ptr_cached(node.typ, mut type_cache_ptrs, mut type_cache_vals, mut type_cache_ids)
 		node.set_type_text_id(type_id)
 		all_hit = all_hit && hit
 		params := node.generic_params()
@@ -1009,8 +1004,7 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 			mut canonical_params := []string{cap: params.len}
 			mut params_hit := true
 			for item in params {
-				canonical, item_hit := p.a.probe_text_ptr_cached(item, mut cache_ptrs, mut
-					cache_vals)
+				canonical, item_hit := p.a.probe_text_ptr_cached(item, mut cache_ptrs, mut cache_vals)
 				canonical_params << canonical
 				params_hit = params_hit && item_hit
 			}
@@ -1039,7 +1033,7 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		for file_id, file in w.a.source_files {
 			ma.pending_files << PendingSourceFile{
 				file_id: file_id
-				file:    clone_parser_source_file(file)
+				file: clone_parser_source_file(file)
 			}
 		}
 	}
@@ -1098,28 +1092,26 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 	mut margs := []ParseMergeCopyArgs{cap: thread_count}
 	for ci in 0 .. thread_count {
 		margs << ParseMergeCopyArgs{
-			master:       voidptr(p)
-			worker:       voidptr(parser_workers[ci])
-			node_offset:  node_offsets[ci]
+			master: voidptr(p)
+			worker: voidptr(parser_workers[ci])
+			node_offset: node_offsets[ci]
 			child_offset: child_offsets[ci]
-			has_scope:    args[ci + 1].scope != unsafe { nil }
-			miss_nodes:   []int{cap: 4096}
+			has_scope: args[ci + 1].scope != unsafe { nil }
+			miss_nodes: []int{cap: 4096}
 		}
 	}
 	mut tasks := []workers.Task{cap: thread_count}
 	for ci in 0 .. thread_count {
 		tasks << workers.Task{
-			run:        parse_merge_copy_thread
-			arg:        unsafe { voidptr(&margs[ci]) }
+			run: parse_merge_copy_thread
+			arg: unsafe { voidptr(&margs[ci]) }
 			force_sync: ci == 0
 		}
 	}
 	p.a.worker_pool.run(tasks)
 	for ci in 0 .. thread_count {
 		p.a.intern_node_texts_at(margs[ci].miss_nodes)
-		p.merge_parsed_worker_bookkeeping(mut *parser_workers[ci], mut starts, bounds[ci + 1], bounds[
-			ci + 2], args[ci + 1].scope, node_offsets[ci], margs[ci].pending_files,
-			margs[ci].has_scope)
+		p.merge_parsed_worker_bookkeeping(mut *parser_workers[ci], mut starts, bounds[ci + 1], bounds[ci + 2], args[ci + 1].scope, node_offsets[ci], margs[ci].pending_files, margs[ci].has_scope)
 		parser_worker_scope_free(args[ci + 1].scope)
 	}
 }
@@ -1132,8 +1124,7 @@ fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_star
 		old_len := p.a.children.len
 		unsafe {
 			p.a.children.grow_len(new_children)
-			vmemcpy(&p.a.children[old_len], &w.a.children[0],
-				new_children * int(sizeof(flat.NodeId)))
+			vmemcpy(&p.a.children[old_len], &w.a.children[0], new_children * int(sizeof(flat.NodeId)))
 			// Ownership of the copied elements moved to the master.
 			w.a.children.len = 0
 		}
@@ -1171,8 +1162,7 @@ fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_star
 			}
 		}
 	}
-	p.merge_parsed_worker_tail(mut w, mut starts, chunk_start, chunk_end, worker_scope, node_shift,
-		p.a.nodes.len)
+	p.merge_parsed_worker_tail(mut w, mut starts, chunk_start, chunk_end, worker_scope, node_shift, p.a.nodes.len)
 }
 
 // merge_parsed_worker_tail runs the serial per-chunk bookkeeping that follows
@@ -1184,8 +1174,7 @@ fn (mut p Parser) merge_parsed_worker_tail(mut w Parser, mut starts []int, chunk
 	// Worker text tables are private. Rebind every moved payload to the
 	// master's compilation-wide canonical text table before the worker dies.
 	p.a.intern_node_texts_range(node_shift, node_end)
-	p.merge_parsed_worker_bookkeeping(mut w, mut starts, chunk_start, chunk_end, worker_scope,
-		node_shift, [], false)
+	p.merge_parsed_worker_bookkeeping(mut w, mut starts, chunk_start, chunk_end, worker_scope, node_shift, [], false)
 }
 
 @[direct_array_access]
@@ -1229,11 +1218,11 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 	}
 	for diagnostic in w.diagnostics {
 		p.append_diagnostic(Diagnostic{
-			file:     diagnostic.file.clone()
-			pos:      diagnostic.pos
-			line:     diagnostic.line
-			column:   diagnostic.column
-			message:  diagnostic.message.clone()
+			file: diagnostic.file.clone()
+			pos: diagnostic.pos
+			line: diagnostic.line
+			column: diagnostic.column
+			message: diagnostic.message.clone()
 			severity: diagnostic.severity.clone()
 		})
 	}

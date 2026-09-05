@@ -3,6 +3,122 @@ module transform
 import v3.flat
 import v3.types
 
+fn test_cloned_worker_merge_replays_relocated_children_and_body_roots() {
+	// 'plain' copies and relocates inside the serial merge, 'relocated' relocates
+	// the worker region in parallel first, and 'absorbed' also writes it straight
+	// into the master's pre-grown arrays. All three must merge identically.
+	for mode in ['plain', 'relocated', 'absorbed'] {
+		mut a := flat.FlatAst.new()
+		leaf := a.add_node(flat.Node{ kind: .int_literal, value: '1' })
+		base_slot := a.children.len
+		a.add_child(leaf)
+		fn_id := a.add_node(flat.Node{
+			kind: .fn_decl
+			value: 'helper'
+			children_start: base_slot
+			children_count: 1
+		})
+		mut tc := types.TypeChecker.new(&a)
+		mut master := new_transformer(mut a, &tc, map[string]bool{})
+		base_nodes := a.nodes.len
+		base_children := a.children.len
+		mut worker_ast := master.clone_ast_base(base_nodes, base_children)
+		worker_tc := tc.fork_for_parallel_transform(worker_ast)
+		mut worker := master.fork_worker(worker_ast, worker_tc)
+		new_leaf := worker_ast.add_node(flat.Node{ kind: .int_literal, value: '2' })
+		worker_ast.add_child(leaf)
+		worker_ast.add_child(new_leaf)
+		body := worker_ast.add_node(flat.Node{
+			kind: .block
+			children_start: base_children
+			children_count: 2
+		})
+		worker_ast.add_child(body)
+		worker_ast.nodes[int(fn_id)] = flat.Node{
+			kind: .fn_decl
+			value: 'helper'
+			children_start: base_children + 2
+			children_count: 1
+		}
+		worker_ast.children[base_slot] = new_leaf
+		worker.inplace_child_log << InplaceChildRewrite{ slot: base_slot, child: new_leaf }
+		a.add_node(flat.Node{ kind: .int_literal, value: '3' })
+		a.add_child(leaf)
+		merged_leaf := flat.NodeId(a.nodes.len)
+		merged_body := flat.NodeId(a.nodes.len + 1)
+		node_shift := i32(a.nodes.len - base_nodes)
+		child_shift := i32(a.children.len - base_children)
+		if mode == 'relocated' {
+			worker.relocate_region_in_place(base_nodes, worker_ast.nodes.len, base_children, worker_ast.children.len, node_shift, child_shift)
+			master.merge_regions_relocated = true
+		} else if mode == 'absorbed' {
+			nodes_dst := a.nodes.len
+			children_dst := a.children.len
+			unsafe {
+				a.nodes.grow_len(worker_ast.nodes.len - base_nodes)
+				a.children.grow_len(worker_ast.children.len - base_children)
+			}
+			worker.absorb_region_into(base_nodes, worker_ast.nodes.len, base_children, worker_ast.children.len, node_shift, child_shift, unsafe { voidptr(&a.nodes[nodes_dst]) }, unsafe { voidptr(&a.children[children_dst]) })
+			master.merge_regions_relocated = true
+			master.merge_regions_absorbed = true
+			master.merge_absorbed_node_shift = node_shift
+			master.merge_absorbed_child_shift = child_shift
+		}
+		master.merge_worker(worker, [FnWorkItem{ fn_idx: int(fn_id) }], base_nodes, base_children, false)
+		master.merge_regions_absorbed = false
+		assert a.children[base_slot] == merged_leaf
+		assert a.child(a.node(fn_id), 0) == merged_body
+		assert a.child(a.node(merged_body), 0) == leaf
+		assert a.child(a.node(merged_body), 1) == merged_leaf
+	}
+}
+
+fn test_parallel_split_balances_equal_cost_functions() {
+	mut items := []FnWorkItem{}
+	for i in 0 .. 40 {
+		items << FnWorkItem{
+			fn_idx: i
+			cost: 100
+			rank: 100
+		}
+	}
+	chunks := split_work_items(items, 4)
+	mut seen := map[int]bool{}
+	for chunk in chunks {
+		assert chunk.len == 10
+		mut previous := -1
+		for item in chunk {
+			assert item.fn_idx > previous
+			assert item.fn_idx !in seen
+			seen[item.fn_idx] = true
+			previous = item.fn_idx
+		}
+	}
+	assert seen.len == items.len
+}
+
+fn test_alias_receiver_index_preserves_integer_fallback_order() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['Count'] = 'i64'
+	tc.type_aliases['OtherCount'] = 'i32'
+	tc.fn_param_types['Plain.show'] = [types.Type(types.i64_)]
+	tc.fn_param_types['Count.show'] = [types.Type(types.i64_)]
+	tc.fn_param_types['OtherCount.show'] = [types.Type(types.i32_)]
+	tc.fn_param_types['Count.other'] = [types.Type(types.i64_)]
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.resolve_alias_receiver_method('u8', 'show') or { '' } == 'Count.show'
+	t.collect_alias_methods()
+	t.skip_generics = true
+	assert t.resolve_alias_receiver_method('u16', 'show') or { '' } == 'Count.show'
+	assert t.resolve_alias_receiver_method('u16', 'missing') == none
+	// Generic lowering can add signatures after preparation and uses the live table.
+	t.skip_generics = false
+	tc.type_aliases['LateCount'] = 'u64'
+	tc.fn_param_types['LateCount.late'] = [types.Type(types.u64_)]
+	assert t.resolve_alias_receiver_method('u8', 'late') or { '' } == 'LateCount.late'
+}
+
 fn test_generic_app_parts_distinguishes_postfix_fixed_arrays() {
 	_, _, numeric_fixed := generic_app_parts('C.sg_color_attachment_action[4]')
 	assert !numeric_fixed
@@ -29,7 +145,7 @@ fn test_or_payload_type_qualifies_imported_generic_base() {
 		cur_module: 'main'
 	}
 	info := StructInfo{
-		name:   'QueryBuilder'
+		name: 'QueryBuilder'
 		module: 'orm'
 	}
 	t.structs['QueryBuilder'] = info
@@ -43,7 +159,7 @@ fn test_or_payload_type_qualifies_generic_base_in_own_module() {
 		cur_module: 'orm'
 	}
 	info := StructInfo{
-		name:   'QueryBuilder'
+		name: 'QueryBuilder'
 		module: 'orm'
 	}
 	t.structs['QueryBuilder'] = info
@@ -59,7 +175,7 @@ fn test_specialized_receiver_method_qualifies_imported_generic_base() {
 		cur_module: 'main'
 	}
 	info := StructInfo{
-		name:   'QueryBuilder'
+		name: 'QueryBuilder'
 		module: 'orm'
 	}
 	t.structs['QueryBuilder'] = info
@@ -81,31 +197,31 @@ fn test_receiver_method_resolution_follows_main_locked_struct_alias() {
 	t.cur_module = 'veb'
 	t.structs['App'] = StructInfo{}
 	t.structs['Context'] = StructInfo{
-		name:   'Context'
+		name: 'Context'
 		fields: [
 			FieldInfo{
-				name:        'Context'
-				typ:         'veb.Context'
-				raw_typ:     'veb.Context'
+				name: 'Context'
+				typ: 'veb.Context'
+				raw_typ: 'veb.Context'
 				is_embedded: true
 			},
 		]
 	}
 	t.structs['veb.Context'] = StructInfo{
-		name:   'Context'
+		name: 'Context'
 		module: 'veb'
 		fields: [
 			FieldInfo{
-				name:    'req'
-				typ:     'http.Request'
+				name: 'req'
+				typ: 'http.Request'
 				raw_typ: 'http.Request'
 			},
 		]
 	}
 	t.embedded_fields['Context'] = [
 		FieldInfo{
-			name:    'Context'
-			typ:     'veb.Context'
+			name: 'Context'
+			typ: 'veb.Context'
 			raw_typ: 'veb.Context'
 		},
 	]
@@ -132,7 +248,7 @@ fn test_receiver_method_resolution_follows_main_locked_struct_alias() {
 
 fn test_sql_table_name_substitutes_active_generic_parameter() {
 	t := Transformer{
-		active_generic_params:      ['T']
+		active_generic_params: ['T']
 		active_specialization_args: ['User']
 	}
 	assert t.sql_resolved_table_name('T') == 'User'
@@ -154,8 +270,8 @@ fn test_normalize_type_in_module_cache_tracks_current_file() {
 	tc.structs['alpha.Type'] = []
 	tc.structs['beta.Type'] = []
 	mut t := Transformer{
-		tc:                &tc
-		cur_module:        'shared'
+		tc: &tc
+		cur_module: 'shared'
 		module_type_cache: &AliasCache{}
 	}
 
@@ -185,10 +301,10 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.struct_modules['v.token.Pos'] = 'token'
 	mut t := Transformer{
-		a:          &a
-		tc:         &tc
+		a: &a
+		tc: &tc
 		cur_module: 'token'
-		cur_file:   'token.v'
+		cur_file: 'token.v'
 	}
 	value := t.make_ident('pos')
 	t.stringify_stack << 'Wrapper'
@@ -275,44 +391,44 @@ fn test_large_recursive_pointer_auto_str_stops_before_expanding_back_edge() {
 	for i in 0 .. 64 {
 		large_fields << FieldInfo{
 			name: 'value_${i}'
-			typ:  'int'
+			typ: 'int'
 		}
 	}
 	large_fields << FieldInfo{
-		name:    'root'
-		typ:     '&Root'
+		name: 'root'
+		typ: '&Root'
 		raw_typ: '&Root'
 	}
 	t.structs['Root'] = StructInfo{
-		name:   'Root'
+		name: 'Root'
 		fields: [
 			FieldInfo{
-				name:    'large'
-				typ:     '&Large'
+				name: 'large'
+				typ: '&Large'
 				raw_typ: '&Large'
 			},
 		]
 	}
 	t.structs['Large'] = StructInfo{
-		name:   'Large'
+		name: 'Large'
 		fields: large_fields
 	}
 	t.structs['Small'] = StructInfo{
-		name:   'Small'
+		name: 'Small'
 		fields: [
 			FieldInfo{
-				name:    'root'
-				typ:     '&SmallRoot'
+				name: 'root'
+				typ: '&SmallRoot'
 				raw_typ: '&SmallRoot'
 			},
 		]
 	}
 	t.structs['SmallRoot'] = StructInfo{
-		name:   'SmallRoot'
+		name: 'SmallRoot'
 		fields: [
 			FieldInfo{
-				name:    'small'
-				typ:     '&Small'
+				name: 'small'
+				typ: '&Small'
 				raw_typ: '&Small'
 			},
 		]
@@ -334,22 +450,22 @@ fn test_if_type_merge_ignores_unresolved_branch_fallbacks() {
 fn test_generic_inference_uses_seeded_mut_param_value_type_while_cloning() {
 	mut a := flat.FlatAst.new()
 	ident_id := a.add_node(flat.Node{
-		kind:  .ident
+		kind: .ident
 		value: 'value'
-		typ:   '&Concrete'
+		typ: '&Concrete'
 	})
 	mut t := Transformer{
-		a:                        &a
-		in_monomorphize_scan:     true
+		a: &a
+		in_monomorphize_scan: true
 		cloning_generic_fn_depth: 1
-		var_types:                [
+		var_types: [
 			VarTypeBinding{
-				name:    'value'
-				typ:     'Concrete'
+				name: 'value'
+				typ: 'Concrete'
 				raw_typ: 'Concrete'
 			},
 		]
-		mut_param_values:         {
+		mut_param_values: {
 			'value': true
 		}
 	}
@@ -359,12 +475,12 @@ fn test_generic_inference_uses_seeded_mut_param_value_type_while_cloning() {
 fn test_lowered_generic_operator_call_records_operator_use() {
 	decls := {
 		'Box.+': GenericFnDecl{
-			node:   flat.Node{
-				kind:  .fn_decl
+			node: flat.Node{
+				kind: .fn_decl
 				value: 'Box[T].+'
 			}
 			module: 'main'
-			key:    'Box.+'
+			key: 'Box.+'
 		}
 	}
 	specs := {
@@ -377,21 +493,20 @@ fn test_lowered_generic_operator_call_records_operator_use() {
 
 	mut a := flat.FlatAst.new()
 	callee_id := a.add_node(flat.Node{
-		kind:  .ident
+		kind: .ident
 		value: 'Box_int__plus'
 	})
 	call_start := a.children.len
 	a.children << callee_id
 	call_id := a.add_node(flat.Node{
-		kind:           .call
+		kind: .call
 		children_start: i32(call_start)
 		children_count: flat.child_count(1)
 	})
 	mut t := Transformer{
 		a: &a
 	}
-	assert t.record_lowered_generic_struct_operator_call(a.nodes[int(call_id)],
-		lowered_operator_uses)
+	assert t.record_lowered_generic_struct_operator_call(a.nodes[int(call_id)], lowered_operator_uses)
 	assert t.used_struct_operator_fns['Box[int].+']
 	assert t.used_struct_operator_fns['Box_int__plus']
 }
@@ -399,21 +514,21 @@ fn test_lowered_generic_operator_call_records_operator_use() {
 fn test_specialized_zero_arg_method_is_not_lowered_as_generic_cast() {
 	mut a := flat.FlatAst.new()
 	callee_id := a.add_node(flat.Node{
-		kind:  .ident
+		kind: .ident
 		value: 'Tree_f64.min'
 	})
 	receiver_id := a.add_node(flat.Node{
 		kind: .ident
-		typ:  'Tree[f64]'
+		typ: 'Tree[f64]'
 	})
 	children_start := a.children.len
 	a.children << callee_id
 	a.children << receiver_id
 	call := flat.Node{
-		kind:           .call
+		kind: .call
 		children_start: children_start
 		children_count: 2
-		value:          'f64'
+		value: 'f64'
 	}
 	mut tc := types.TypeChecker.new(&a)
 	tc.specialized_generic_fns['Tree_f64.min'] = true
@@ -440,10 +555,10 @@ fn test_typeof_display_canonicalizes_fixed_array_map_values() {
 	assert typeof_display_type_text('Box[int][3]') == '[3]Box[int]'
 	fixed_maps := types.Type(types.ArrayFixed{
 		elem_type: types.Type(types.Map{
-			key_type:   types.Type(types.String{})
+			key_type: types.Type(types.String{})
 			value_type: types.Type(types.int_)
 		})
-		len:       3
+		len: 3
 	})
 	assert typeof_display_resolved_type_text(fixed_maps) == '[3]map[string]int'
 }
@@ -453,15 +568,15 @@ fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
 	a.add_val(.file, 'signature_index_test.v')
 	a.add_val(.module_decl, 'main')
 	param_id := a.add_node(flat.Node{
-		kind:  .param
+		kind: .param
 		value: 'value'
-		typ:   'string'
+		typ: 'string'
 	})
 	children_start := a.children.len
 	a.children << param_id
 	a.add_node(flat.Node{
-		kind:           .fn_decl
-		value:          'takes_string'
+		kind: .fn_decl
+		value: 'takes_string'
 		children_start: children_start
 		children_count: 1
 	})
@@ -480,8 +595,7 @@ fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
 	}
 	assert params.len == 1
 	assert params[0] is types.String
-	t.add_call_param_types_decl_key('main.takes_string', a.nodes.len - 1, 'signature_index_test.v',
-		'main')
+	t.add_call_param_types_decl_key('main.takes_string', a.nodes.len - 1, 'signature_index_test.v', 'main')
 	assert !t.call_param_types_prepared
 }
 
@@ -548,21 +662,21 @@ fn test_frozen_interface_boxed_types_are_read_only_in_skip_generics_workers() {
 fn test_multi_return_selector_suffix_does_not_match_free_fn() {
 	mut a := flat.FlatAst.new()
 	receiver_id := a.add_node(flat.Node{
-		kind:  .ident
+		kind: .ident
 		value: 'value'
 	})
 	selector_children_start := a.children.len
 	a.children << receiver_id
 	selector_id := a.add_node(flat.Node{
-		kind:           .selector
-		value:          'pair'
+		kind: .selector
+		value: 'pair'
 		children_start: i32(selector_children_start)
 		children_count: 1
 	})
 	call_children_start := a.children.len
 	a.children << selector_id
 	call_id := a.add_node(flat.Node{
-		kind:           .call
+		kind: .call
 		children_start: i32(call_children_start)
 		children_count: 1
 	})
@@ -572,8 +686,8 @@ fn test_multi_return_selector_suffix_does_not_match_free_fn() {
 	mut tc := types.TypeChecker.new(a)
 	tc.fn_ret_types['pair'] = multi_return
 	mut t := Transformer{
-		a:                            &a
-		tc:                           &tc
+		a: &a
+		tc: &tc
 		receiver_method_suffix_index: {
 			'pair': 'pair'
 		}
@@ -620,7 +734,7 @@ fn test_immediate_closure_generic_struct_pointer_result_may_alias_capture() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['Box'] = [types.StructField{
 		name: 'value'
-		typ:  tc.parse_type('T')
+		typ: tc.parse_type('T')
 	}]
 	tc.struct_generic_params['Box'] = ['T']
 	t := new_transformer(mut a, &tc, map[string]bool{})
@@ -642,7 +756,7 @@ fn test_immediate_closure_result_error_may_alias_capture() {
 	tc.structs['TextBox'] = [
 		types.StructField{
 			name: 'text'
-			typ:  types.Type(types.String{})
+			typ: types.Type(types.String{})
 		},
 	]
 	t := new_transformer(mut a, &tc, map[string]bool{})
@@ -662,11 +776,11 @@ fn test_immediate_closure_thread_result_may_alias_capture() {
 	tc.structs['Worker'] = [
 		types.StructField{
 			name: 'handle'
-			typ:  tc.parse_type('thread int')
+			typ: tc.parse_type('thread int')
 		},
 	]
 	with_checker := Transformer{
-		a:  &a
+		a: &a
 		tc: &tc
 	}
 	assert with_checker.immediate_closure_result_may_alias_capture('thread int')
@@ -674,4 +788,16 @@ fn test_immediate_closure_thread_result_may_alias_capture() {
 
 	without_checker := Transformer{}
 	assert without_checker.immediate_closure_result_may_alias_capture('thread int')
+}
+
+fn test_transform_lane_budget_bounds_base_ast_clones() {
+	// A self-host sized base AST (~95 MiB per clone) keeps every runtime lane.
+	assert transform_clone_budget_jobs(18, 100_000_000) == 18
+	// Ten times that program size only affords two helper clones.
+	assert transform_clone_budget_jobs(18, 1_000_000_000) == 3
+	// Oversized inputs fall back to the master without a helper clone.
+	assert transform_clone_budget_jobs(2, 9_000_000_000) == 1
+	assert transform_clone_budget_jobs(8, 9_000_000_000) == 1
+	assert transform_clone_budget_jobs(18, 1) == 18
+	assert transform_clone_budget_jobs(1, 9_000_000_000) == 1
 }

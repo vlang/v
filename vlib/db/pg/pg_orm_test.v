@@ -48,6 +48,79 @@ struct TestCommentAttribute {
 	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
 }
 
+@[table: 'test_small_int_types']
+struct TestSmallIntTypes {
+mut:
+	id     int @[primary; sql: serial]
+	status u8
+	delta  i8
+}
+
+// Regression test for https://github.com/vlang/v/issues/27986:
+// `u8`/`i8` fields are declared as SMALLINT by pg_type_from_v(), so they have to
+// be bound as int2 as well. Binding them as PostgreSQL's internal `"char"` type
+// made every insert fail with `column "status" is of type smallint but
+// expression is of type "char"`.
+fn test_pg_orm_u8_i8_are_bound_as_smallint() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working postgres server running on localhost.')
+		return
+	}
+	mut db := pg.connect(
+		host:     'localhost'
+		user:     'postgres'
+		password: '12345678'
+		dbname:   'postgres'
+	) or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+	sql db {
+		drop table TestSmallIntTypes
+	} or {}
+	sql db {
+		create table TestSmallIntTypes
+	}!
+
+	samples := [
+		TestSmallIntTypes{
+			status: 0
+			delta:  0
+		},
+		TestSmallIntTypes{
+			status: 255
+			delta:  -1
+		},
+		TestSmallIntTypes{
+			status: 200
+			delta:  -128
+		},
+		TestSmallIntTypes{
+			status: 1
+			delta:  127
+		},
+	]
+	for sample in samples {
+		sql db {
+			insert sample into TestSmallIntTypes
+		}!
+	}
+
+	rows := sql db {
+		select from TestSmallIntTypes order by id
+	}!
+	assert rows.len == samples.len
+	for i, row in rows {
+		assert row.status == samples[i].status
+		assert row.delta == samples[i].delta
+	}
+
+	sql db {
+		drop table TestSmallIntTypes
+	}!
+}
+
 fn test_pg_orm() {
 	$if !network ? {
 		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')

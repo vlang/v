@@ -73,7 +73,7 @@ fn test_linux_default_self_build_preserves_full_cli() {
 	build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
 	assert build.exit_code == 0, build.output
 	result :=
-		os.execute('env -u CC VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -o /tmp/vself_v3_c_backend_test')
+		os.execute('env -u CC VFLAGS="" VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -o /tmp/vself_v3_c_backend_test')
 	assert result.exit_code == 0, result.output
 	assert !result.output.contains('-b fastc'), result.output
 	assert result.output.contains('-prealloc'), result.output
@@ -92,7 +92,7 @@ fn test_macos_default_self_build_compiler_selection() {
 	build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
 	assert build.exit_code == 0, build.output
 	default_result :=
-		os.execute('env -u CC VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -o /tmp/vself_macos_prealloc_test')
+		os.execute('env -u CC VFLAGS="" VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -o /tmp/vself_macos_prealloc_test')
 	assert default_result.exit_code == 0, default_result.output
 	default_cc := if os.uname().machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
 	assert !default_result.output.contains('-b fastc'), default_result.output
@@ -100,15 +100,24 @@ fn test_macos_default_self_build_compiler_selection() {
 	assert default_result.output.contains('-prealloc'), default_result.output
 	assert_vself_preserves_full_cli(default_result.output)
 	override_result :=
-		os.execute('CC=cc VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -o /tmp/vself_macos_prealloc_test')
+		os.execute('CC=cc VFLAGS="" VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -o /tmp/vself_macos_prealloc_test')
 	assert override_result.exit_code == 0, override_result.output
 	assert !override_result.output.contains('-new-compiler'), override_result.output
 	assert !override_result.output.contains('-b fastc'), override_result.output
 	assert override_result.output.contains('-cc cc'), override_result.output
 	assert override_result.output.contains('-prealloc'), override_result.output
 	assert_vself_preserves_full_cli(override_result.output)
+	prod_result :=
+		os.execute('CC=clang VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -prod -o /tmp/vself_macos_prod_test')
+	assert prod_result.exit_code == 0, prod_result.output
+	assert prod_result.output.contains('-parallel-cc'), prod_result.output
+	assert prod_result.output.contains('-no-memory-limit'), prod_result.output
+	assert prod_result.output.contains('-prealloc'), prod_result.output
+	assert !prod_result.output.contains('-fprofile'), prod_result.output
+	assert prod_result.output.count('cmd/v') == 1, prod_result.output
+	assert_vself_preserves_full_cli(prod_result.output)
 	old_result :=
-		os.execute('CC=cc VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -old-compiler -o /tmp/vself_macos_old_test')
+		os.execute('CC=cc VFLAGS="" VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -old-compiler -o /tmp/vself_macos_old_test')
 	assert old_result.exit_code == 0, old_result.output
 	assert !old_result.output.contains('-new-compiler'), old_result.output
 	assert !old_result.output.contains('-b fastc'), old_result.output
@@ -159,10 +168,10 @@ fn main() {
 }
 ") or { panic(err) }
 	isolated_vexe := os.join_path(root, 'v')
-	mock_build := os.execute('${os.quoted_path(vexe)} -old-compiler -o ${os.quoted_path(isolated_vexe)} ${os.quoted_path(mock_source)}')
+	mock_build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(isolated_vexe)} ${os.quoted_path(mock_source)}')
 	assert mock_build.exit_code == 0, mock_build.output
 	vself_tool := os.join_path(root, 'vself')
-	vself_build := os.execute('${os.quoted_path(vexe)} -old-compiler -o ${os.quoted_path(vself_tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
+	vself_build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(vself_tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
 	assert vself_build.exit_code == 0, vself_build.output
 
 	self_result := os.execute('env -u CC VFLAGS="" VOSARGS="" VSELF_TEST_FULL_CLI=${os.quoted_path(vexe)} VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(vself_tool)} self -silent')

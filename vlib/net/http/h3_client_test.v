@@ -1,3 +1,4 @@
+// vtest vflags: -d http3
 module http
 
 import net.quic

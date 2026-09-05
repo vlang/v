@@ -21,10 +21,10 @@ fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
 	mut ast := &flat.FlatAst{}
 	ast.nodes = [flat.Node{
 		kind: .call
-		typ:  '?([]'
+		typ: '?([]'
 	}, flat.Node{
 		kind: .call
-		typ:  '?string'
+		typ: '?string'
 	}]
 	mut tc := types.TypeChecker.new(ast)
 	mut g := FlatGen.new()
@@ -42,7 +42,7 @@ fn test_json_pointer_sum_variants_use_direct_owned_payloads() {
 	tc.structs['main.Node'] = [
 		types.StructField{
 			name: 'name'
-			typ:  types.Type(types.String{})
+			typ: types.Type(types.String{})
 		},
 	]
 	mut encode_gen := FlatGen.new()
@@ -151,6 +151,26 @@ fn test_optional_payload_ignores_import_aliases_from_other_files() {
 	assert alias_payload == 'main__AnyStruct_json__Any'
 }
 
+fn test_import_alias_type_text_uses_the_node_source_file() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.cur_file = 'unrelated.v'
+	tc.file_imports['driver.v\npref'] = 'v3.pref'
+	tc.file_imports['unrelated.v\npref'] = 'v.pref'
+	tc.file_imports['parser.v\ntoken'] = 'v3.token'
+	tc.structs['token.Pos'] = []types.StructField{}
+	tc.structs['v3.token.Pos'] = []types.StructField{}
+	tc.struct_modules['token.Pos'] = 'v3.token'
+	tc.file_modules['parser.v'] = 'parser'
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	assert g.canonical_import_alias_type_text_in_file('&pref.Preferences', 'driver.v') == '&v3.pref.Preferences'
+	assert g.canonical_import_alias_type_text_in_file('map[string][]pref.Target', 'driver.v') == 'map[string][]v3.pref.Target'
+	assert g.canonical_import_alias_type_in_file('token.Pos', 'parser.v').name() == 'v3.token.Pos'
+}
+
 fn test_optional_payload_qualifies_interface() {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)
@@ -188,6 +208,38 @@ fn test_optional_payload_keeps_concrete_c_type_with_interface_collision() {
 	assert g.concrete_optional_type_name(result_type) == 'Optional_Value'
 }
 
+fn test_optional_typedef_keeps_qualified_interface_with_struct_collision() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.interface_names['cipher.Block'] = true
+	tc.structs['hash.Block'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	assert g.emit_optional_typedef('Optional_cipher__Block', 'cipher__Block')
+	assert g.sb.str().contains('cipher__Block value; } Optional_cipher__Block;')
+}
+
+fn test_precomputed_qualified_struct_c_types_preserve_ambiguity_checks() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.structs['first.Entry'] = []types.StructField{}
+	tc.structs['second.Entry'] = []types.StructField{}
+	tc.structs['outer.inner.Value'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	g.precompute_qualified_struct_c_types()
+	assert g.qualified_struct_c_types_ready
+	assert g.qualified_struct_c_types('Entry').len == 2
+	assert g.qualified_struct_c_types('inner__Value') == ['outer__inner__Value']
+	assert g.stale_ambiguous_qualified_struct_c_type('Entry')
+	assert !g.stale_missing_qualified_struct_c_type('first__Entry')
+	assert g.stale_missing_qualified_struct_c_type('missing__Entry')
+}
+
 fn test_optional_payload_does_not_qualify_ambiguous_interface() {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)
@@ -208,9 +260,9 @@ fn test_optional_payload_does_not_qualify_ambiguous_interface() {
 fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {
 	mut ast := flat.FlatAst.new()
 	ast.add_node(flat.Node{
-		kind:  .fn_decl
+		kind: .fn_decl
 		value: 'load'
-		typ:   '!Image'
+		typ: '!Image'
 	})
 	mut tc := types.TypeChecker.new(&ast)
 	tc.cur_module = 'json2'
@@ -225,9 +277,9 @@ fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {
 fn test_declaration_signature_scan_collects_specialized_fn_nodes() {
 	mut ast := flat.FlatAst.new()
 	fn_id := ast.add_node(flat.Node{
-		kind:  .fn_decl
+		kind: .fn_decl
 		value: 'decode_T_Data'
-		typ:   '!Data'
+		typ: '!Data'
 	})
 	ast.specialized_fn_nodes[int(fn_id)] = true
 	mut tc := types.TypeChecker.new(&ast)
@@ -242,9 +294,9 @@ fn test_declaration_signature_scan_collects_specialized_fn_nodes() {
 fn test_specialized_signature_scan_uses_declaration_module() {
 	mut ast := flat.FlatAst.new()
 	fn_id := ast.add_node(flat.Node{
-		kind:  .fn_decl
+		kind: .fn_decl
 		value: 'QueryBuilder_Entity_update'
-		typ:   '!&QueryBuilder[Entity]'
+		typ: '!&QueryBuilder[Entity]'
 	})
 	ast.specialized_fn_nodes[int(fn_id)] = true
 	ast.specialized_fn_modules[int(fn_id)] = 'orm'

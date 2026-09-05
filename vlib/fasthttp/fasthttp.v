@@ -9,10 +9,20 @@ import time
 
 const max_thread_pool_size = runtime.nr_cpus()
 const max_connection_size = 65536 // Max events per epoll_wait
+const default_max_request_body_size = 64 * 1024 * 1024
 
 const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const status_444_response = 'HTTP/1.1 444 No Response\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const status_413_response = 'HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+const status_431_response = 'HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+
+fn response_for_frame_error(frame_result int) []u8 {
+	return match frame_result {
+		frame_err_body { status_413_response }
+		frame_err_header { status_431_response }
+		else { tiny_bad_request_response }
+	}
+}
 
 pub struct Slice {
 pub:
@@ -233,7 +243,11 @@ pub:
 	host                    string
 	port                    int = 3000
 	max_request_buffer_size int = 8192
-	timeout_in_seconds      int = 30
+	// max_request_body_size independently bounds buffered request payload bytes.
+	// Set it to 0 only for trusted deployments that intentionally allow unlimited
+	// in-memory request bodies.
+	max_request_body_size int = default_max_request_body_size
+	timeout_in_seconds    int = 30
 	// handler is the classic contract: it builds and returns a full HttpResponse.
 	// Set exactly ONE of `handler` or `append_handler`.
 	handler   fn (HttpRequest) !HttpResponse = unsafe { nil }
@@ -254,7 +268,7 @@ pub:
 pub struct ShutdownParams {
 pub:
 	timeout         time.Duration = time.infinite
-	retry_period_ms int           = 10
+	retry_period_ms int = 10
 }
 
 // WaitTillRunningParams allows parametrizing the calls to `ServerHandle.wait_till_running()`.

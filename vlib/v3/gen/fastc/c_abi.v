@@ -229,6 +229,26 @@ fn fastc_c_abi_functions(target_os string, target_arch string) []FastcCAbiFuncti
 	return fns
 }
 
+// fastc_macos_system_tbd returns a compact libSystem text stub containing the
+// complete macOS ABI table used by header-free FastC self-host builds. Passing
+// this to TinyCC avoids parsing the SDK's much larger umbrella stub at link
+// time while retaining the same libSystem install name.
+pub fn fastc_macos_system_tbd(target_arch string) string {
+	targets := if target_arch == 'amd64' {
+		'x86_64-macos, x86_64-maccatalyst'
+	} else {
+		'arm64-macos, arm64e-macos'
+	}
+	mut symbols := ['___stdinp', '___stdoutp', '___stderrp', '_environ', '_mach_task_self_',
+		'_clonefile', '_posix_spawn', '_posix_spawn_file_actions_addclose',
+		'_posix_spawn_file_actions_adddup2', '_posix_spawn_file_actions_destroy',
+		'_posix_spawn_file_actions_init', '_posix_spawnp']
+	for f in fastc_c_abi_functions('macos', target_arch) {
+		symbols << if f.asm_label != '' { f.asm_label } else { '_' + f.name }
+	}
+	return '--- !tapi-tbd\n' + 'tbd-version:     4\n' + 'targets:         [ ${targets} ]\n' + "install-name:    '/usr/lib/libSystem.B.dylib'\n" + 'exports:\n' + '  - targets:         [ ${targets} ]\n' + '    symbols:         [ ${symbols.join(', ')} ]\n' + '...\n'
+}
+
 // fastc_c_abi_prelude renders the header-free prelude for a target. `p`
 // prefixes every name the prelude introduces (types, struct tags, macros,
 // functions, globals); it is '' for generation and lets c_abi_test.v compile
@@ -303,6 +323,7 @@ fn fastc_c_abi_prelude(target_os string, target_arch string, p string) string {
 		b.writeln('#define ${p}O_NOCTTY 0x20000')
 		b.writeln('#define ${p}F_SETLK 8')
 		b.writeln('#define ${p}F_SETLKW 9')
+		b.writeln('#define ${p}F_SETNOSIGPIPE 73')
 		b.writeln('#define ${p}F_RDLCK 1')
 		b.writeln('#define ${p}F_UNLCK 2')
 		b.writeln('#define ${p}F_WRLCK 3')

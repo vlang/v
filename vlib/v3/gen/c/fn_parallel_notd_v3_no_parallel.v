@@ -17,7 +17,7 @@ const min_flat_cgen_parallel_items = 128
 // expression. Keep self-host body batches narrow so those values are released
 // throughout cgen instead of accumulating across hundreds of functions.
 const scoped_cgen_worker_batches = 256
-const flat_cgen_chunks_per_job = 12
+const flat_cgen_chunks_per_job = 6
 
 // FlatCgenChunkArgs represents flat cgen chunk args data used by c.
 struct FlatCgenChunkArgs {
@@ -921,7 +921,8 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 	if g.scope_parallel_workers {
 		mut pmsw := time.new_stopwatch()
 		selection_scope := cgen_worker_scope_begin(true)
-		retain_selection := os.getenv('V3_RETAIN_CGEN_PREP_SCOPE') != ''
+		retain_selection := g.tc.building_v_fast
+			|| os.getenv('V3_RETAIN_CGEN_PREP_SCOPE') != ''
 		master_tc := g.tc
 		g.tc = g.clone_parallel_type_checker()
 		g.tc.verbose = master_tc.verbose
@@ -1463,6 +1464,9 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			// Snapshot body-worker state before the declaration task starts mutating
 			// the master generator. Constructing workers lazily from that task's
 			// concurrent state can copy a moved map or a partially updated cache.
+			// All workers can share the prepared literal table until an insertion.
+			// The declaration task must detach too before adding its own literals.
+			g.str_lits_shared = true
 			worker_setup_scope := cgen_worker_scope_begin(true)
 			for ci := 0; ci < worker_count; ci++ {
 				cgen_workers[ci] = voidptr(g.new_parallel_dispatch_worker(ci))
@@ -1577,6 +1581,9 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		// Keep helper output in ordered result segments until the join so generated
 		// string IDs can be reconciled with literals emitted by the master chunk.
 		mut cgen_workers := []voidptr{cap: thread_count}
+		if g.scope_parallel_workers {
+			g.str_lits_shared = true
+		}
 		worker_setup_scope := cgen_worker_scope_begin(g.scope_parallel_workers)
 		for ci := 0; ci < thread_count; ci++ {
 			mut w := g.new_parallel_dispatch_worker(ci + 1)
@@ -2309,7 +2316,6 @@ fn (g &FlatGen) configure_c_extern_scan_worker(mut worker FlatGen) {
 	worker.inlined_c_fns = g.inlined_c_fns.clone()
 	worker.inlined_c_declared_fns = g.inlined_c_declared_fns.clone()
 	worker.inlined_c_active_macros = g.inlined_c_active_macros.clone()
-	worker.possibly_active_c_macros = g.possibly_active_c_macros.clone()
 	worker.inlined_c_static_fns = g.inlined_c_static_fns.clone()
 	worker.cache_omitted_c_fns = g.cache_omitted_c_fns.clone()
 }
@@ -2358,9 +2364,9 @@ fn (g &FlatGen) new_parallel_dispatch_worker(worker_id int) &FlatGen {
 
 // new_parallel_result_worker creates a non-emitting helper accumulator. Caches
 // that it only passes to fresh batch generators stay shared with the frozen
-// master snapshot; result tables remain private. Its string tables are copied
-// eagerly because the master can extend its own table after tasks start, before
-// a helper's first copy-on-write intern.
+// master snapshot; result tables remain private. String tables can also stay
+// shared when the master detaches its own table on insertion. Other callers
+// still receive an independent snapshot before the master can extend its table.
 fn (g &FlatGen) new_parallel_result_worker(worker_id int) &FlatGen {
 	return g.new_parallel_worker_config(worker_id, true)
 }
@@ -2383,21 +2389,21 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		cache_program_files: g.cache_program_files
 		incremental_fn_names: g.incremental_fn_names
 		cached_support_identifiers: g.cached_support_identifiers
-		str_lits: if result_only {
+		str_lits: if result_only && !g.str_lits_shared {
 			clone_cgen_string_list(g.str_lits)
 		} else if g.scope_parallel_workers {
 			g.str_lits
 		} else {
 			g.str_lits.clone()
 		}
-		str_lit_ids: if result_only {
+		str_lit_ids: if result_only && !g.str_lits_shared {
 			clone_cgen_string_int_map(g.str_lit_ids)
 		} else if g.scope_parallel_workers {
 			g.str_lit_ids
 		} else {
 			g.str_lit_ids.clone()
 		}
-		str_lits_shared: g.scope_parallel_workers && !result_only
+		str_lits_shared: g.scope_parallel_workers && (!result_only || g.str_lits_shared)
 		global_types: g.global_types
 		global_raw_type_texts: g.global_raw_type_texts
 		enum_vals: g.enum_vals
@@ -2430,7 +2436,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		module_cleanup_fns: g.module_cleanup_fns
 		module_cleanup_fn_modules: g.module_cleanup_fn_modules
 		module_imports: g.module_imports
-		preserved_header_files_seen: g.preserved_header_files_seen
 		inlined_c_structs: g.inlined_c_structs
 		inlined_c_typedef_names: g.inlined_c_typedef_names
 		inlined_c_fns: g.inlined_c_fns
@@ -2473,11 +2478,11 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		generic_fn_key_ordinal: g.generic_fn_key_ordinal
 		struct_decl_infos: g.struct_decl_infos
 		struct_decl_short_infos: g.struct_decl_short_infos
-		header_owned_c_typedefs: g.header_owned_c_typedefs
 		decl_attrs: g.decl_attrs
 		decl_attrs_by_source_position: g.decl_attrs_by_source_position
 		shared_type_names: g.shared_type_names
 		shared_alias_pointer_shorts: g.shared_alias_pointer_shorts
+		shared_alias_index_ready: g.shared_alias_index_ready
 		const_runtime_inits: if result_only {
 			g.const_runtime_inits
 		} else {
@@ -2492,7 +2497,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		compiler_vexe: g.compiler_vexe
 		compiler_vexe_env_setup: g.compiler_vexe_env_setup
 		ccompiler: g.ccompiler
-		macro_probe_c_flags: g.macro_probe_c_flags
 		target: g.target
 		suppress_main: g.suppress_main
 		cur_param_names: if result_only {
@@ -2574,6 +2578,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		enum_method_cache: &ContextStringLookupCache{}
 		qualified_enum_method_cache: &ContextStringLookupCache{}
 		struct_decl_pref_cache: &StructDeclPrefCache{}
+		qualified_struct_c_types_by_suffix: g.qualified_struct_c_types_by_suffix
+		qualified_struct_c_types_ready: g.qualified_struct_c_types_ready
 		embedded_fields_by_type: g.embedded_fields_by_type
 		param_types_by_short: g.param_types_by_short
 		generic_method_candidates: g.generic_method_candidates

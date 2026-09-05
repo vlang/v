@@ -414,17 +414,117 @@ fn optional_payload_struct_name(t types.Type) ?string {
 }
 
 fn (g &FlatGen) canonical_import_alias_type_text(typ string) string {
+	return g.canonical_import_alias_type_text_in_file(typ, g.tc.cur_file)
+}
+
+fn (g &FlatGen) canonical_import_alias_type_in_file(typ string, file string) types.Type {
+	canonical := g.canonical_import_alias_type_text_in_file(typ, file)
+	if canonical != typ {
+		if exact := g.exact_known_import_type_text(canonical) {
+			return exact
+		}
+	}
+	return g.tc.parse_resolution_type_in_file(typ, file)
+}
+
+fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.Node) types.Type {
+	source := typ.name()
+	canonical := g.canonical_import_alias_type_text_in_file(source, g.node_source_file(node))
+	if canonical != source {
+		if exact := g.exact_known_import_type_text(canonical) {
+			return exact
+		}
+	}
+	return typ
+}
+
+fn (mut g FlatGen) sizeof_target_in_file(value string, file string) string {
+	canonical := g.canonical_import_alias_type_text_in_file(value, file)
+	if canonical != value {
+		if exact := g.exact_known_import_type_text(canonical) {
+			return g.value_sizeof_target(exact)
+		}
+	}
+	return g.sizeof_target(value)
+}
+
+fn (mut g FlatGen) import_alias_sizeof_target_in_file(value string, file string) ?string {
+	canonical := g.canonical_import_alias_type_text_in_file(value, file)
+	if canonical == value {
+		return none
+	}
+	return g.value_sizeof_target(g.exact_known_import_type_text(canonical)?)
+}
+
+fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
+	clean := typ.trim_space()
+	if clean.starts_with('&') {
+		return types.Type(types.Pointer{
+			base_type: g.exact_known_import_type_text(clean[1..])?
+		})
+	}
+	if clean.starts_with('?') {
+		return types.Type(types.OptionType{
+			base_type: g.exact_known_import_type_text(clean[1..])?
+		})
+	}
+	if clean.starts_with('!') {
+		return types.Type(types.ResultType{
+			base_type: g.exact_known_import_type_text(clean[1..])?
+		})
+	}
+	if clean.starts_with('[]') {
+		return types.Type(types.Array{
+			elem_type: g.exact_known_import_type_text(clean[2..])?
+		})
+	}
+	if clean in g.tc.structs {
+		return types.Type(types.Struct{
+			name: clean
+		})
+	}
+	if clean.contains('.') {
+		module_name := clean.all_before_last('.')
+		short_name := clean.all_after_last('.')
+		for _, info in g.struct_decl_infos {
+			if info.module == module_name && info.node.value == short_name {
+				return types.Type(types.Struct{
+					name: clean
+				})
+			}
+		}
+	}
+	if clean in g.tc.interface_names {
+		return types.Type(types.Interface{
+			name: clean
+		})
+	}
+	if clean in g.tc.sum_types {
+		return types.Type(types.SumType{
+			name: clean
+		})
+	}
+	if clean in g.tc.enum_names {
+		return types.Type(types.Enum{
+			name: clean
+			is_flag: clean in g.tc.flag_enums
+		})
+	}
+	return none
+}
+
+fn (g &FlatGen) canonical_import_alias_type_text_in_file(typ string, file string) string {
 	clean := typ.trim_space()
 	for prefix in ['&', '?', '!', '[]'] {
 		if clean.starts_with(prefix) {
-			return prefix + g.canonical_import_alias_type_text(clean[prefix.len..])
+			return prefix + g.canonical_import_alias_type_text_in_file(clean[prefix.len..], file)
 		}
 	}
 	if clean.starts_with('map[') {
 		bracket_end := shared_generic_matching_bracket(clean, 3)
 		if bracket_end < clean.len - 1 {
-			key := g.canonical_import_alias_type_text(clean[4..bracket_end])
-			value := g.canonical_import_alias_type_text(clean[bracket_end + 1..])
+			key := g.canonical_import_alias_type_text_in_file(clean[4..bracket_end], file)
+			value := g.canonical_import_alias_type_text_in_file(clean[bracket_end + 1..], file)
 			return 'map[${key}]${value}'
 		}
 	}
@@ -432,18 +532,41 @@ fn (g &FlatGen) canonical_import_alias_type_text(typ string) string {
 	if ok {
 		mut canonical_args := []string{cap: args.len}
 		for arg in args {
-			canonical_args << g.canonical_import_alias_type_text(arg)
+			canonical_args << g.canonical_import_alias_type_text_in_file(arg, file)
 		}
-		canonical_base := g.canonical_import_alias_type_text(base)
+		canonical_base := g.canonical_import_alias_type_text_in_file(base, file)
 		return '${canonical_base}[${canonical_args.join(', ')}]'
 	}
 	if clean.contains('.') {
 		alias := clean.all_before('.')
-		if module_name := g.current_file_import_alias_module(alias) {
+		if module_name := g.tc.file_imports['${file}\n${alias}'] {
 			return module_name + clean[alias.len..]
 		}
 	}
 	return clean
+}
+
+fn (g &FlatGen) node_source_file(node &flat.Node) string {
+	if source_file := g.a.source_files[node.pos.id] {
+		return source_file.name
+	}
+	mut pending := []flat.Node{cap: node.children_count}
+	for i in 0 .. node.children_count {
+		pending << g.a.child_node(node, i)
+	}
+	for pending.len > 0 {
+		child := pending.pop()
+		if source_file := g.a.source_files[child.pos.id] {
+			return source_file.name
+		}
+		for i in 0 .. child.children_count {
+			pending << g.a.child_node(&child, i)
+		}
+	}
+	if g.cur_fn_source_file.len > 0 {
+		return g.cur_fn_source_file
+	}
+	return g.tc.cur_file
 }
 
 fn (g &FlatGen) current_file_import_alias_module(alias string) ?string {
@@ -964,9 +1087,11 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 		return false
 	}
 	bare_val_type := val_type.trim_right('*')
+	interface_matches := g.qualified_interface_c_types(bare_val_type.all_after_last('__'))
+	is_known_interface := bare_val_type in interface_matches
 	// Multi-return names can contain a module-qualified field component, but the
 	// payload is the generated tuple struct rather than a stale source struct.
-	if !bare_val_type.starts_with('multi_return_')
+	if !is_known_interface && !bare_val_type.starts_with('multi_return_')
 		&& (g.stale_ambiguous_qualified_struct_c_type(bare_val_type)
 			|| g.stale_missing_qualified_struct_c_type(bare_val_type)) {
 		// Stale generic annotations can lose the declaration module or inherit the

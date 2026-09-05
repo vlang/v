@@ -38,6 +38,24 @@ fn test_scoped_parallel_dispatch_worker_owns_string_snapshot() {
 	assert g.str_lits == ['source', 'master generated']
 }
 
+fn test_scoped_parallel_dispatch_workers_detach_shared_string_snapshot() {
+	mut g, _ := parallel_worker_test_gen(true)
+	assert g.intern_string('source') == 0
+	g.str_lits_shared = true
+	mut first := g.new_parallel_dispatch_worker(1)
+	mut second := g.new_parallel_dispatch_worker(2)
+	assert first.str_lits_shared
+	assert second.str_lits_shared
+	assert g.intern_string('master generated') == 1
+	assert first.str_lits == ['source']
+	assert first.intern_string('first generated') == 1
+	assert second.str_lits == ['source']
+	assert second.intern_string('second generated') == 1
+	assert g.str_lits == ['source', 'master generated']
+	assert first.str_lits == ['source', 'first generated']
+	assert second.str_lits == ['source', 'second generated']
+}
+
 fn test_scoped_parallel_worker_reuses_preselected_functions_and_c_extern_refs() {
 	mut g, _ := parallel_worker_test_gen(true)
 	g.fn_gen_items = [FlatFnGenItem{
@@ -242,12 +260,12 @@ fn test_fused_parallel_prep_interns_body_string_literals() {
 	mut g, _ := parallel_worker_test_gen(false)
 	g.a.nodes = [
 		flat.Node{
-			kind:           .fn_decl
+			kind: .fn_decl
 			children_start: 0
 			children_count: 1
 		},
 		flat.Node{
-			kind:  .string_literal
+			kind: .string_literal
 			value: 'worker literal'
 		},
 	]
@@ -272,18 +290,18 @@ fn test_serial_prep_interns_ast_string_literals_in_source_order() {
 fn test_scoped_pre_dispatch_preserves_direct_array_access_flag() {
 	mut g, _ := parallel_worker_test_gen(true)
 	fn_id := g.a.add_node(flat.Node{
-		kind:  .fn_decl
+		kind: .fn_decl
 		value: 'unchecked_index'
 	})
 	g.fn_gen_items = [
 		FlatFnGenItem{
-			node_id:             fn_id
-			file:                'direct_array_access.v'
-			module:              'main'
-			c_name:              'main__unchecked_index'
-			cost:                1
+			node_id: fn_id
+			file: 'direct_array_access.v'
+			module: 'main'
+			c_name: 'main__unchecked_index'
+			cost: 1
 			direct_array_access: true
-			ignore_overflow:     true
+			ignore_overflow: true
 		},
 	]
 	g.prepare_pre_dispatch_master()
@@ -326,12 +344,11 @@ fn test_open_generic_receiver_template_bypasses_stale_generic_app_cache() {
 	mut cache := g.generic_app_cache
 	cache.entries['AtomicVal[T]'] = GenericAppInfo{}
 	node := flat.Node{
-		kind:  .fn_decl
+		kind: .fn_decl
 		value: 'AtomicVal[T].load'
 	}
 	assert g.fn_node_is_open_generic_template(node, 'stdatomic')
-	assert !g.should_emit_fn_node_in_module_known(node, 'stdatomic', 'atomic.v',
-		'stdatomic__AtomicVal_T__load', true)
+	assert !g.should_emit_fn_node_in_module_known(node, 'stdatomic', 'atomic.v', 'stdatomic__AtomicVal_T__load', true)
 }
 
 fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {
@@ -347,6 +364,18 @@ fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {
 	assert precomputed_idx >= 0
 	assert typedef_idx > precomputed_idx
 	assert g.emitted_fn_ptr_typedefs[encoded]
+}
+
+fn test_parallel_type_declarations_preseed_function_type_aliases() {
+	mut g, mut tc := parallel_worker_test_gen(true)
+	tc.type_aliases['Callback'] = 'fn (int)'
+	callback_type := tc.parse_type(tc.type_aliases['Callback'])
+	encoded := tc.c_type(callback_type)
+	assert encoded.starts_with('fn_ptr:')
+	assert encoded !in g.fn_ptr_types
+
+	g.preseed_type_alias_fn_ptr_types()
+	assert encoded in g.fn_ptr_types
 }
 
 fn test_dynamic_parallel_merge_preserves_chunk_order() {
@@ -373,13 +402,13 @@ fn test_dynamic_parallel_merge_replays_wrapper_defs_in_chunk_order() {
 	high.parallel_chunk_wrapper_defs = [
 		ParallelChunkWrapperDefs{
 			chunk_idx: 3
-			spawn:     ['spawn-3-typedef;', 'spawn-3-trampoline;', 'spawn-shared;']
-			callback:  ['callback-3;']
+			spawn: ['spawn-3-typedef;', 'spawn-3-trampoline;', 'spawn-shared;']
+			callback: ['callback-3;']
 		},
 		ParallelChunkWrapperDefs{
 			chunk_idx: 2
-			spawn:     ['spawn-2-typedef;', 'spawn-2-trampoline;']
-			callback:  ['callback-2;']
+			spawn: ['spawn-2-typedef;', 'spawn-2-trampoline;']
+			callback: ['callback-2;']
 		},
 	]
 
@@ -389,13 +418,13 @@ fn test_dynamic_parallel_merge_replays_wrapper_defs_in_chunk_order() {
 	low.parallel_chunk_wrapper_defs = [
 		ParallelChunkWrapperDefs{
 			chunk_idx: 1
-			spawn:     ['spawn-1-typedef;', 'spawn-1-trampoline;']
-			callback:  ['callback-1;']
+			spawn: ['spawn-1-typedef;', 'spawn-1-trampoline;']
+			callback: ['callback-1;']
 		},
 		ParallelChunkWrapperDefs{
 			chunk_idx: 0
-			spawn:     ['spawn-0-typedef;', 'spawn-0-trampoline;', 'spawn-shared;']
-			callback:  ['callback-0;']
+			spawn: ['spawn-0-typedef;', 'spawn-0-trampoline;', 'spawn-shared;']
+			callback: ['callback-0;']
 		},
 	]
 
