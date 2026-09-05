@@ -47,6 +47,33 @@ int external_helper(void) {
 	assert !header.contains('return local_helper();')
 }
 
+fn test_replicated_function_static_storage_detection() {
+	assert c_source_replicated_function_has_static_storage('static inline int next_value(void) {
+	static int state = 0;
+	return ++state;
+}
+')
+	assert c_source_replicated_function_has_static_storage('#define LOCAL_STORAGE static
+static inline int next_value(void) {
+	LOCAL_STORAGE int state = 0;
+	return ++state;
+}
+')
+	assert c_source_replicated_function_has_static_storage('extern "C" { static inline int next_value(void) { static int state; return ++state; } }
+')
+	assert !c_source_replicated_function_has_static_storage('int next_value(void) {
+	static int state = 0;
+	return ++state;
+}
+')
+	assert !c_source_replicated_function_has_static_storage('static inline int next_value(void) {
+	// static int comment_state;
+	const char *text = "static int string_state";
+	return text[0];
+}
+')
+}
+
 fn test_cached_file_line_uses_source_file_name() {
 	source := 'return [@FILE, @FILE_LINE, @LINE]'
 	source_file := os.join_path(os.vtmp_dir(), 'nested', 'origin.v')

@@ -1995,6 +1995,7 @@ fn v3_parallel_c_declaration_header(prefix string, include_dirs []string) (strin
 			expanded, complete := v3_parallel_expand_local_includes(include_path, include_dirs, mut active)
 			variables, variables_complete := modulecache.c_source_static_variable_identifiers(expanded)
 			if !complete || !variables_complete
+				|| modulecache.c_source_replicated_function_has_static_storage(expanded)
 				|| (variables.len > 0
 					&& !expanded.contains('#define V_PARALLEL_CC_STATIC_STORAGE_HANDLED 1')) {
 				safe = false
@@ -2009,6 +2010,7 @@ fn v3_parallel_c_declaration_header(prefix string, include_dirs []string) (strin
 	native_source := native_directives.str()
 	variables, variables_complete := modulecache.c_source_static_variable_identifiers(native_source)
 	if !variables_complete
+		|| modulecache.c_source_replicated_function_has_static_storage(native_source)
 		|| variables.keys().any(!it.starts_with('_v3_lit_') && !it.starts_with('_str_')) {
 		safe = false
 	}
