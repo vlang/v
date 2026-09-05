@@ -534,6 +534,15 @@ fn main() {
 	assert missing.exit_code != 0, missing.output
 	assert !os.exists(missing_output)
 
+	// A cached `run` (no `-o`) links through its own path on macOS, so the flags
+	// have to reach that link command and its executable cache key as well.
+	warm_run := cmdexec.run(v3_bin, ['-silent', 'run', source])
+	assert warm_run.exit_code == 0, warm_run.output
+	assert warm_run.output.trim_space() == '73'
+	cached_missing := cmdexec.run(v3_bin, ['-silent', '-ldflags', '-lv3_missing_link_library',
+		'run', source])
+	assert cached_missing.exit_code != 0, cached_missing.output
+
 	assert_driver_cli_failure(v3_bin, ['-ldflags'], 'option `-ldflags` requires a value')
 }
 

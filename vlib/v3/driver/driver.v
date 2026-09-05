@@ -11329,6 +11329,11 @@ pub fn run(args []string) {
 			tcc_args << cached_dev_dylib
 			tcc_args << tcc_dynamic_link_flags(resolved_c_flags)
 			add_v3_default_linker_flags(mut tcc_args, prefs.normalized_target_os(), is_o)
+			if !is_o {
+				// Added before the cache key is derived from `tcc_args`, so a cached
+				// executable is never reused across a change of the link flags.
+				tcc_args << link_ld_flags
+			}
 			program_source_identity := '${prefix_source_identity}\n${modulecache.file_signature(tcc_main_file)}\n${if cached_program_body_source.len > 0 {
 				modulecache.file_signature(cached_program_body_source)
 			} else {
