@@ -746,14 +746,11 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 		// `now >= deadline` checks earlier in this SAME function already
 		// gate idle-timeout/closing-deadline firing.
 		mut loss_timer_due := false
-		if deadline, _ := c.loss_detection.next_timeout(handshake_confirmed, max_ack_delay,
-			c.congestion_control.bytes_in_flight)
-		{
+		if deadline, _ := c.loss_detection.next_timeout(handshake_confirmed, max_ack_delay, c.congestion_control.bytes_in_flight) {
 			loss_timer_due = now >= deadline
 		}
 		if loss_timer_due {
-			timeout_result := c.loss_detection.on_loss_detection_timeout(now, handshake_confirmed,
-				max_ack_delay)
+			timeout_result := c.loss_detection.on_loss_detection_timeout(now, handshake_confirmed, max_ack_delay)
 			if timeout_result.pto_fired {
 				c.send_pto_probe(timeout_result.pto_space, now, mut result) or {
 					code := if err.code() != 0 {
@@ -1623,8 +1620,7 @@ fn (mut c QuicConn) dispatch_handshake_message(msg HandshakeMessage, framed []u8
 			c.handshake_keys_server = derive_packet_protection_keys(hs.server_secret)!
 		}
 		.wait_encrypted_extensions {
-			handshake.process_encrypted_extensions(msg, framed, c.peer_scid, c.original_dcid,
-				c.retry_scid)!
+			handshake.process_encrypted_extensions(msg, framed, c.peer_scid, c.original_dcid, c.retry_scid)!
 			peer_params := handshake.peer_transport_parameters
 			c.conn_send_window.raise_limit(peer_params.initial_max_data or { u64(0) })
 			c.peer_max_streams_bidi = peer_params.initial_max_streams_bidi or { u64(0) }

@@ -371,8 +371,7 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 	c.client_handshake().certificate_transcript_hash = c.client_handshake().transcript_hash()
 	c.client_handshake().state = .wait_certificate_verify
 
-	signed_content := certificate_verify_signed_content(.server,
-		c.client_handshake().certificate_transcript_hash)
+	signed_content := certificate_verify_signed_content(.server, c.client_handshake().certificate_transcript_hash)
 	sig := conn_test_sign_certificate_verify(signed_content)!
 	cv_framed := conn_test_build_fake_certificate_verify(sig_scheme_rsa_pss_rsae_sha256, sig)!
 	cv_msg, _ := parse_handshake_message(cv_framed)!
@@ -380,8 +379,7 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 	assert c.client_handshake().state() == .wait_finished
 
 	// --- Deliver Finished as a real, protected Handshake packet ---
-	finished_verify_data := compute_finished_verify_data(server_handshake_secrets.server_secret,
-		c.client_handshake().transcript_hash())!
+	finished_verify_data := compute_finished_verify_data(server_handshake_secrets.server_secret, c.client_handshake().transcript_hash())!
 	finished_framed := encode_handshake_message(.finished, finished_verify_data)!
 	finished_payload := encode_crypto_frame(u64(ee_framed.len), finished_framed)!
 	finished_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 1, finished_payload, hs_keys_server)!
