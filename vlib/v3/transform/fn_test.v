@@ -958,7 +958,13 @@ fn test_unchanged_node_text_still_invalidates_semantic_memos() {
 }
 
 fn test_selfhost_transform_lane_count_is_memory_bounded() {
-	assert transform_job_count(18, 10_000, true) == 7
+	// A self-host lane is a copy-on-write mapping of the base AST where the
+	// target supports one, so the count follows the cores; where the base has to
+	// be copied, every lane costs a clone and the old bound applies.
+	selfhost_lanes := if ast_snapshots_supported() { 18 } else { 7 }
+	assert transform_job_count(18, 10_000, true) == selfhost_lanes
 	assert transform_job_count(18, 10_000, false) == 7
 	assert transform_job_count(4, 10_000, true) == 4
+	// Fewer items than lanes still gives one lane per item.
+	assert transform_job_count(18, 3, true) == 3
 }
