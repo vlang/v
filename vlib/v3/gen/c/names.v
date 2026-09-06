@@ -373,8 +373,15 @@ fn (mut g FlatGen) restore_scratch_lookup_caches(saved ScratchLookupCaches) {
 	g.generic_app_cache = saved.generic_app_cache
 	g.struct_decl_pref_cache = saved.struct_decl_pref_cache
 	g.sum_variant_actual_cache = saved.sum_variant_actual_cache
-	g.array_method_cache = saved.array_method_cache
-	g.param_types_cache = saved.param_types_cache
+	// These two are plain maps rather than pointers, so putting the generator's
+	// own map back is an aliasing copy the checker rejects outside `unsafe`.
+	// Cloning would deep-copy a cache we are only restoring, and `saved` is a
+	// by-value parameter that dies with this call, so nothing else can observe
+	// the alias.
+	unsafe {
+		g.array_method_cache = saved.array_method_cache
+		g.param_types_cache = saved.param_types_cache
+	}
 }
 
 fn scratch_string_lookup_cache(cache &StringLookupCache) &StringLookupCache {
