@@ -2147,6 +2147,15 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 		child_id := t.a.child(&body, i)
 		child := t.a.nodes[int(child_id)]
 		is_last := i == body.children_count - 1
+		if is_last && child.kind == .if_expr && t.node_type(child_id) != 'void' {
+			// A trailing `if` is the `or` block's value, and it reaches here unwrapped by
+			// an expr_stmt. Lowering it as a plain statement would emit each branch's value
+			// as a bare expression and drop it, leaving the target at its zero value.
+			for stmt_id in t.build_if_value_chain(child_id, target_name, target_type) {
+				result << stmt_id
+			}
+			continue
+		}
 		if is_last && child.kind == .expr_stmt && child.children_count > 0 {
 			inner_id := t.a.child(&child, 0)
 			inner := t.a.nodes[int(inner_id)]
