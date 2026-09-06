@@ -82,25 +82,6 @@ fn retry_macos_v3_with_v1(state &MacosV3RetryState) {
 	}
 }
 
-@[noreturn]
-fn launch_macos_v1_compiler(is_verbose bool, args []string) {
-	vexe := pref.vexe_path()
-	fallback_executable := os.join_path(os.dir(vexe), macos_v3_v1_fallback_binary)
-	if !os.is_executable(fallback_executable) {
-		eprintln('`-old-compiler` requires `${fallback_executable}`, but it is missing. Rebuild V with `make` to create the V1 compatibility compiler.')
-		exit(1)
-	}
-	caller_environment := macos_v3_original_caller_environment(os.environ())
-	replace_macos_v3_process_environment(caller_environment)
-	if is_verbose {
-		eprintln('Using V1 compatibility compiler `${fallback_executable}`.')
-	}
-	os.execvp(fallback_executable, args) or {
-		eprintln('failed to launch the V1 compatibility compiler `${fallback_executable}`: ${err}')
-		exit(1)
-	}
-}
-
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 	if !is_macos_v3_relevant_command(command, prefs) {
 		return
@@ -112,8 +93,19 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 		}
 		return
 	}
+	all_args := util.join_env_vflags_and_os_args()
 	if prefs.old_compiler {
-		launch_macos_v1_compiler(prefs.is_verbose, os.args[1..])
+		// Bootstrap/self-host executables are deliberately V3-only on macOS/Linux.
+		// Some established CI/build invocations still inherit `-old-compiler` in
+		// VFLAGS while using v2/vstrict/... to rebuild cmd/v. Ignore that selector
+		// only for a noncanonical compiler executable; the public `v` CLI keeps its
+		// existing explicit rejection below.
+		if os.base(os.executable()) !in ['v', 'v.exe', 'vnew', 'vnew.exe'] {
+			bootstrap_args := all_args[1..].filter(it != '-old-compiler')
+			launch_macos_v3_compiler(prefs, bootstrap_args)
+		}
+		eprintln('`-old-compiler` is not available: this V executable contains only the V3 compiler.')
+		exit(1)
 	}
 	if message := macos_v3_fastc_incompatibility(prefs) {
 		eprintln(message)
@@ -123,7 +115,6 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 		eprintln('`-new-compiler` cannot be combined with `-autofree`: the embedded V3 compiler does not include ownership support.')
 		exit(1)
 	}
-	all_args := util.join_env_vflags_and_os_args()
 	launch_macos_v3_compiler(prefs, all_args[1..])
 }
 
