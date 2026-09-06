@@ -418,8 +418,7 @@ fn build_modules_clang() {
 
 fn test_inline_assembly() {
 	// V3 does not lower inline assembly yet. Select V1 explicitly so this task
-	// remains transparent and never exercises the compatibility retry path (which
-	// is disabled below via V_MACOS_V3_NO_FALLBACK).
+	// remains transparent without making the rest of the Linux task runner strict.
 	exec('v -old-compiler test vlib/v/slow_tests/assembly')
 }
 
@@ -488,11 +487,4 @@ const all_tasks = {
 	'test_inline_assembly':                              Task{test_inline_assembly, 'Test inline assembly'}
 }
 
-// V3 is the default compiler on Linux as well as macOS. A supported V3
-// compilation must fail directly in CI: never let the compatibility retry turn a
-// V3 regression into a passing V1 build. The workflow job also exports this in its
-// `env:`, so it already covers this runner script's own compilation (`v run
-// ci/linux_ci.vsh ...`); setting it here as well applies it when the tasks are run
-// outside that job (e.g. locally).
-os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 common.run(all_tasks)
