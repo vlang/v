@@ -11,7 +11,10 @@ import v.pref
 import v.util
 import v.util.version
 
-$if !macos && !linux {
+$if v1_fallback ? {
+	import v.builder
+	import v.builder.cbuilder
+} $else $if !macos && !linux {
 	import v.builder
 	import v.builder.cbuilder
 }
@@ -120,8 +123,13 @@ fn main() {
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
 	prefs, command, command_idx := pref.parse_args_for_launcher_with_command_index(external_tools, args_and_flags, true)
 	maybe_delegate_to_vvmrc(command, prefs)
-	maybe_delegate_to_ownership(command, prefs, args_and_flags)
-	maybe_delegate_to_macos_v3(command, prefs)
+	$if v1_fallback ? {
+		// This binary is the stable compatibility compiler. Never delegate back to
+		// either embedded V3 or the V3 ownership compiler.
+	} $else {
+		maybe_delegate_to_ownership(command, prefs, args_and_flags)
+		maybe_delegate_to_macos_v3(command, prefs)
+	}
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
@@ -413,7 +421,9 @@ fn cached_v3_ownership_executable_path(vroot string) string {
 fn rebuild(prefs &pref.Preferences) {
 	match prefs.backend {
 		.c {
-			$if macos || linux {
+			$if v1_fallback ? {
+				builder.compile('build', prefs, cbuilder.compile_c)
+			} $else $if macos || linux {
 				// Every C-backend build is dispatched to V3 before this point. Keeping
 				// this path fatal prevents an accidental dependency on the unlinked V1
 				// builder from being hidden behind an external tool bootstrap.
