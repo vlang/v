@@ -3,8 +3,8 @@ module main
 // The V3 compiler is linked directly into `cmd/v` on macOS and Linux. The
 // command shell hands C-backend compilations to it in-process while leaving
 // tool commands and other backends on their existing external-tool paths.
-// When V3 explicitly requests a compatibility retry, the lean V3-only command
-// shell execs the separately built V1 compiler instead of linking V1 back into
+// When V3 requests a compatibility retry, the lean V3-only command shell execs
+// the separately built full V1 command binary instead of linking V1 back into
 // the main `v` executable.
 import os
 import v.pref
@@ -69,20 +69,29 @@ fn retry_macos_v3_with_v1(state &MacosV3RetryState) {
 	if os.getenv(macos_v3_no_fallback_env) == '1' {
 		return
 	}
-	if !os.is_executable(state.fallback_executable) {
-		eprintln('V3 requested the V1 compatibility compiler (${fallback_reason}), but `${state.fallback_executable}` is missing. Rebuild V with `make` to create it.')
-		return
-	}
 	replace_macos_v3_process_environment(state.caller_environment)
-	if state.is_verbose || os.getenv('V3_CACHE_TRACE') != '' {
-		eprintln('V3 requested the V1 compatibility compiler (${fallback_reason}); retrying with `${state.fallback_executable}`.')
-	}
-	os.execvp(state.fallback_executable, state.retry_args) or {
-		eprintln('failed to launch the V1 compatibility compiler `${state.fallback_executable}`: ${err}')
-	}
+	launch_macos_v1_fallback(state.fallback_executable, state.retry_args, state.is_verbose,
+		'V3 compilation failed (${fallback_reason})')
 }
 
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
+	$if macos || linux {
+		if prefs.old_compiler {
+			// `v self` and bootstrap passes build cmd/v with temporary names such as
+			// v2/vstrict. Keep those compiler self-builds on V3 even if an inherited
+			// VFLAGS still contains the historical selector. Everywhere else an
+			// explicit -old-compiler means the separately built full V1 command shell.
+			if macos_v3_is_self_build_target(prefs)
+				&& os.base(os.executable()) !in ['v', 'v.exe', 'vnew', 'vnew.exe'] {
+				all_args := util.join_env_vflags_and_os_args()
+				bootstrap_args := all_args[1..].filter(it != '-old-compiler')
+				launch_macos_v3_compiler(prefs, bootstrap_args)
+			}
+			fallback_executable := macos_v3_v1_fallback_executable()
+			launch_macos_v1_fallback(fallback_executable, os.args[1..], prefs.is_verbose,
+				'`-old-compiler` was requested')
+		}
+	}
 	if !is_macos_v3_relevant_command(command, prefs) {
 		return
 	}
@@ -93,20 +102,6 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 		}
 		return
 	}
-	all_args := util.join_env_vflags_and_os_args()
-	if prefs.old_compiler {
-		// Bootstrap/self-host executables are deliberately V3-only on macOS/Linux.
-		// Some established CI/build invocations still inherit `-old-compiler` in
-		// VFLAGS while using v2/vstrict/... to rebuild cmd/v. Ignore that selector
-		// only for a noncanonical compiler executable; the public `v` CLI keeps its
-		// existing explicit rejection below.
-		if os.base(os.executable()) !in ['v', 'v.exe', 'vnew', 'vnew.exe'] {
-			bootstrap_args := all_args[1..].filter(it != '-old-compiler')
-			launch_macos_v3_compiler(prefs, bootstrap_args)
-		}
-		eprintln('`-old-compiler` is not available: this V executable contains only the V3 compiler.')
-		exit(1)
-	}
 	if message := macos_v3_fastc_incompatibility(prefs) {
 		eprintln(message)
 		exit(1)
@@ -115,7 +110,42 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 		eprintln('`-new-compiler` cannot be combined with `-autofree`: the embedded V3 compiler does not include ownership support.')
 		exit(1)
 	}
+	all_args := util.join_env_vflags_and_os_args()
 	launch_macos_v3_compiler(prefs, all_args[1..])
+}
+
+@[noreturn]
+fn launch_macos_v1_fallback(executable string, args []string, is_verbose bool, reason string) {
+	if !os.is_executable(executable) {
+		eprintln('${reason}, but the V1 compatibility compiler `${executable}` is missing. Rebuild V with `make` to create it.')
+		exit(1)
+	}
+	// Keep nested tool/test compilations on V1 as well. Otherwise an inherited
+	// caller VEXE can point back at the V3-only command binary and bypass the
+	// compatibility compiler after the first retry.
+	os.setenv('VEXE', os.real_path(executable), true)
+	os.setenv('VCHILD', 'true', true)
+	if is_verbose || os.getenv('V3_CACHE_TRACE') != '' {
+		eprintln('${reason}; retrying with `${executable}`.')
+	}
+	os.execvp(executable, args) or {
+		eprintln('failed to launch the V1 compatibility compiler `${executable}`: ${err}')
+		exit(1)
+	}
+	exit(1)
+}
+
+fn macos_v3_v1_fallback_executable() string {
+	return os.join_path(os.dir(pref.vexe_path()), macos_v3_v1_fallback_binary)
+}
+
+fn macos_v3_is_self_build_target(prefs &pref.Preferences) bool {
+	if prefs.path == '' {
+		return false
+	}
+	vroot := os.real_path(os.dir(pref.vexe_path())).replace('\\', '/').trim_right('/')
+	target := os.real_path(prefs.path).replace('\\', '/').trim_right('/')
+	return target == '${vroot}/cmd/v' || target == '${vroot}/cmd/v/v.v'
 }
 
 fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
@@ -142,7 +172,10 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	caller_environment := macos_v3_original_caller_environment(dispatch_environment)
 	mut environment := macos_v3_child_environment(vexe, caller_environment, dispatch_environment)
 	no_fallback := environment[macos_v3_no_fallback_env] or { '' }
+	// cmd/v self-builds deliberately remain V3-only. The compatibility compiler
+	// exists for user programs and tools, not as an alternate self-host path.
 	fallback_enabled := !prefs.new_compiler && no_fallback != '1'
+		&& !macos_v3_is_self_build_target(prefs)
 	fallback_file := macos_v3_fallback_file_for_pid()
 	c_error_dir := macos_v3_c_error_report_dir(fallback_file)
 	os.rm(fallback_file) or {}
@@ -158,12 +191,12 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	replace_macos_v3_process_environment(environment)
 	if fallback_enabled {
 		retry_state := &MacosV3RetryState{
-			caller_environment: caller_environment
-			fallback_file: fallback_file
-			c_error_dir: c_error_dir
-			retry_args: os.args[1..].clone()
-			fallback_executable: os.join_path(vroot, macos_v3_v1_fallback_binary)
-			is_verbose: prefs.is_verbose
+			caller_environment:  caller_environment
+			fallback_file:       fallback_file
+			c_error_dir:         c_error_dir
+			retry_args:          os.args[1..].clone()
+			fallback_executable: macos_v3_v1_fallback_executable()
+			is_verbose:          prefs.is_verbose
 		}
 		unsafe { macos_v3_retry_state(retry_state) }
 		at_exit(retry_macos_v3_at_exit) or {
