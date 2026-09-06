@@ -6078,10 +6078,10 @@ fn (mut t Transformer) make_array_merge_sort_stmt(base flat.NodeId, elem_type st
 	i_name := t.new_temp('sort_i')
 	j_name := t.new_temp('sort_j')
 	k_name := t.new_temp('sort_k')
-	c_name := t.new_temp('sort_c')
+	copy_name := t.new_temp('sort_c')
 	t.set_var_type(n_name, 'int')
 	t.set_var_type(buf_name, array_type)
-	for name in [w_name, lo_name, mid_name, hi_name, i_name, j_name, k_name, c_name] {
+	for name in [w_name, lo_name, mid_name, hi_name, i_name, j_name, k_name, copy_name] {
 		t.set_var_type(name, 'int')
 	}
 	// One pass over the merged range picks from the left run whenever the right
@@ -6119,8 +6119,8 @@ fn (mut t Transformer) make_array_merge_sort_stmt(base flat.NodeId, elem_type st
 		t.make_assign(t.make_ident(lo_name), t.make_ident(hi_name)),
 	]
 	run_for := t.make_for_stmt(t.make_decl_assign_typed(lo_name, t.make_int_literal(0), 'int'), t.make_infix(.lt, t.make_ident(lo_name), t.make_ident(n_name)), t.make_empty(), run_body, src)
-	copy_back := t.make_for_stmt(t.make_decl_assign_typed(c_name, t.make_int_literal(0), 'int'), t.make_infix(.lt, t.make_ident(c_name), t.make_ident(n_name)), t.make_expr_stmt(t.make_postfix(t.make_ident(c_name), .inc)), [
-		t.copy_sorted_element(base, c_name, t.make_ident(buf_name), c_name, elem_type),
+	copy_back := t.make_for_stmt(t.make_decl_assign_typed(copy_name, t.make_int_literal(0), 'int'), t.make_infix(.lt, t.make_ident(copy_name), t.make_ident(n_name)), t.make_expr_stmt(t.make_postfix(t.make_ident(copy_name), .inc)), [
+		t.copy_sorted_element(base, copy_name, t.make_ident(buf_name), copy_name, elem_type),
 	], src)
 	width_for := t.make_for_stmt(t.make_decl_assign_typed(w_name, t.make_int_literal(1), 'int'), t.make_infix(.lt, t.make_ident(w_name), t.make_ident(n_name)), t.make_assign(t.make_ident(w_name), t.make_infix(.left_shift, t.make_ident(w_name), t.make_int_literal(1))), [
 		run_for,

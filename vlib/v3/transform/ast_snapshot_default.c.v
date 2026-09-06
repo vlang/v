@@ -6,9 +6,9 @@ fn ast_snapshots_supported() bool {
 	return false
 }
 
-fn snapshot_ast_buffer(data voidptr, len u64, capacity u64) ?AstBufferSnapshot {
+fn snapshot_ast_buffer(_data voidptr, _len u64, _capacity u64) ?AstBufferSnapshot {
 	return none
 }
 
-fn release_ast_buffer_snapshot(snapshot AstBufferSnapshot) {
+fn release_ast_buffer_snapshot(_snapshot AstBufferSnapshot) {
 }
