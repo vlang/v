@@ -1,6 +1,7 @@
 module main
 
-$if macos || linux {
+$if v1_fallback ? {
+} $else $if macos || linux {
 	import v3.driver
 }
 
@@ -10,10 +11,20 @@ $if macos || linux {
 // SAME process: on macOS by default, and on any of those platforms when
 // `-new-compiler` is passed.
 //
-// Other targets (Windows, the BSDs, and the portable `-os cross` VC generation)
-// get the stub below or the one in macos_v3_driver_d_cross.v, so V3's
+// The separately built `v1_fallback` command shell deliberately takes the stub
+// path even on macOS/Linux, so it contains only the stable compiler. Other
+// targets (Windows, the BSDs, and the portable `-os cross` VC generation) get
+// the same stub below or the one in macos_v3_driver_d_cross.v, so V3's
 // thread/parallel code is never cross-compiled into them.
-$if macos || linux {
+$if v1_fallback ? {
+	@[markused]
+	fn macos_v3_driver_is_available() bool {
+		return false
+	}
+
+	@[markused]
+	fn macos_v3_driver_run(_ []string) {}
+} $else $if macos || linux {
 	@[markused]
 	fn macos_v3_driver_is_available() bool {
 		return true
