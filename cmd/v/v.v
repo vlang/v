@@ -15,8 +15,13 @@ $if v1_fallback ? {
 	import v.builder
 	import v.builder.cbuilder
 } $else $if !macos && !linux {
-	import v.builder
-	import v.builder.cbuilder
+	// A `v1_fallback` compiler generating a portable/cross target can also make
+	// this platform branch visible. Exclude the compatibility build explicitly
+	// so the V1 modules are imported exactly once.
+	$if !v1_fallback ? {
+		import v.builder
+		import v.builder.cbuilder
+	}
 }
 
 @[markused]
