@@ -143,6 +143,12 @@ fn macos_v3_is_self_build_target(prefs &pref.Preferences) bool {
 	if prefs.path == '' {
 		return false
 	}
+	// Only native-host compiler rebuilds belong to the V3-only self-build fast
+	// path. Cross/VC generation still needs the compatibility compiler because
+	// V3 deliberately does not implement those target modes yet.
+	if prefs.os != ._auto && prefs.os != pref.get_host_os() {
+		return false
+	}
 	vroot := os.real_path(os.dir(pref.vexe_path())).replace('\\', '/').trim_right('/')
 	target := os.real_path(prefs.path).replace('\\', '/').trim_right('/')
 	return target == '${vroot}/cmd/v' || target == '${vroot}/cmd/v/v.v'
