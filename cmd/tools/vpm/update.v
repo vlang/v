@@ -44,11 +44,7 @@ fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 	// Derive the canonical module name from the install path so URL-based
 	// updates report the registered name (e.g. `spytheman.vtray` for
 	// `<vmodules>/spytheman/vtray`) instead of the bare URL-derived `vtray`.
-	// Normalize both sides via real_path so macOS's `/tmp` -> `/private/tmp`
-	// resolution doesn't leave the prefix unstripped.
-	vmodules_real := os.real_path(settings.vmodules_path)
-	rel_install_path := install_path.trim_string_left(vmodules_real).trim_left(os.path_separator)
-	name := rel_install_path.replace(os.path_separator, '.')
+	name := import_path_of(install_path)
 	vcs := vcs_used_in_dir(install_path) or {
 		vpm_error('failed to find version control system for `${name}`.', verbose: true)
 		return &UpdateResult{}
