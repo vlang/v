@@ -626,6 +626,7 @@ mut:
 	qualified_struct_c_types_ready     bool
 	unused_param_seen                  &UnusedParamSeen = unsafe { nil }
 	cache_split                        bool
+	cache_stable_symbols               bool
 	parallel_cc                        bool
 	cache_native_input_paths           map[string]bool
 	program_body_only                  bool
@@ -1334,6 +1335,15 @@ pub fn (mut g FlatGen) set_track_heap(enabled bool) {
 // module objects without changing regular `-o file.c` output.
 pub fn (mut g FlatGen) set_cache_split(enabled bool) {
 	g.cache_split = enabled
+}
+
+// set_cache_stable_symbols turns on the content-addressed renaming of generated
+// string-literal symbols. Only the module cache needs it, so that separately
+// compiled generations agree on a symbol's name. A split C build shares one
+// generated prefix with its own units, so it keeps the plain `_str_N` numbering
+// and skips a rewrite pass over the whole translation unit.
+pub fn (mut g FlatGen) set_cache_stable_symbols(enabled bool) {
+	g.cache_stable_symbols = enabled
 }
 
 // set_parallel_cc marks safe top-level function batches for split C compilation.
@@ -2662,12 +2672,19 @@ fn (mut g FlatGen) write_scoped_function_output(path string, fn_code string) boo
 	return true
 }
 
-fn (mut g FlatGen) append_function_output(path string, fn_code string) bool {
+fn (mut g FlatGen) append_function_output(path string, fn_code string, separator string) bool {
 	mut file := os.open_append(path) or {
 		g.output_error = err.msg()
 		return false
 	}
 	for segment in g.fn_segs {
+		if separator.len > 0 {
+			file.write_string(separator) or {
+				g.output_error = err.msg()
+				file.close()
+				return false
+			}
+		}
 		file.write_string(segment) or {
 			g.output_error = err.msg()
 			file.close()
@@ -3198,19 +3215,33 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			unsafe { fn_code.free() }
 		}
 		g.writeln('/* V3CACHE_BODY_END */')
-		source := g.sb.str()
-		result := g.rewrite_cache_string_symbols(source)
-		unsafe {
-			source.free()
-			g.sb.free()
+		if g.cache_stable_symbols {
+			source := g.sb.str()
+			result := g.rewrite_cache_string_symbols(source)
+			unsafe {
+				source.free()
+				g.sb.free()
+			}
+			if g.output_path.len > 0 {
+				os.write_file(g.output_path, result) or { g.output_error = err.msg() }
+				unsafe { result.free() }
+				g.sb = strings.new_builder(4096)
+				return ''
+			}
+			return result
 		}
+		// A split C build keeps the plain `_str_N` numbering, so nothing rewrites
+		// the finished unit and it never needs a second copy of it.
 		if g.output_path.len > 0 {
-			os.write_file(g.output_path, result) or { g.output_error = err.msg() }
-			unsafe { result.free() }
+			mut output := unsafe { g.sb.reuse_as_plain_u8_array() }
+			os.write_file_array(g.output_path, output) or { g.output_error = err.msg() }
+			unsafe { output.free() }
 			g.sb = strings.new_builder(4096)
 			return ''
 		}
-		return result
+		plain := g.sb.str()
+		unsafe { g.sb.free() }
+		return plain
 	}
 	mut known_output_len := g.sb.len + fn_code.len + const_code.len + g.parallel_type_decls.len + g.parallel_global_decls.len + g.parallel_support_decls.len + g.parallel_enum_str_defs.len + g.parallel_interface_stubs.len + g.parallel_init_defs.len
 	for segment in g.fn_segs {
@@ -3325,11 +3356,22 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	g.timing_profile('  [ttime] cg postamble       ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (sb: ${g.sb.len})')
 	cgsw.restart()
-	if !g.cache_split && !g.object_file_mode && g.output_path.len > 0 && g.postinclude_directives.len == 0 && (g.fn_segs.len > 0 || fn_code.len > 0) {
+	// A split C build still streams: it needs the unit markers between the function
+	// segments and the body terminator after them, but nothing rewrites the
+	// finished unit, so the segments never have to be copied through the builder.
+	stream_unit_markers := g.cache_split && g.parallel_cc && !g.cache_stable_symbols
+	if (!g.cache_split || stream_unit_markers) && !g.object_file_mode && g.output_path.len > 0
+		&& g.postinclude_directives.len == 0 && (g.fn_segs.len > 0 || fn_code.len > 0) {
+		separator := if stream_unit_markers { '${parallel_cc_unit_marker}\n' } else { '' }
+		tail := if stream_unit_markers {
+			'${separator}${fn_code}/* V3CACHE_BODY_END */\n'
+		} else {
+			fn_code
+		}
 		mut prefix := unsafe { g.sb.reuse_as_plain_u8_array() }
 		$if !windows {
 			if os.getenv('V3_NO_MMAP_CGEN_OUTPUT') == '' {
-				write_c_output_mapped(g.output_path, prefix, g.fn_segs, fn_code) or {
+				write_c_output_mapped(g.output_path, prefix, g.fn_segs, tail, separator) or {
 					g.output_error = err.msg()
 				}
 				unsafe { prefix.free() }
@@ -3349,7 +3391,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		unsafe { prefix.free() }
 		g.sb = strings.new_builder(4096)
 		if g.output_error.len == 0 {
-			g.append_function_output(g.output_path, fn_code)
+			g.append_function_output(g.output_path, tail, separator)
 		}
 		g.timing_profile('  [ttime] cg write out       ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		return ''
@@ -3377,19 +3419,23 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	if g.cache_split {
 		g.writeln('/* V3CACHE_BODY_END */')
-		source := g.sb.str()
-		result := g.rewrite_cache_string_symbols(source)
-		unsafe {
-			source.free()
-			g.sb.free()
+		// Only the module cache renames the string-literal symbols; a split C
+		// build keeps the plain numbering and skips the pass over the whole unit.
+		if g.cache_stable_symbols {
+			source := g.sb.str()
+			result := g.rewrite_cache_string_symbols(source)
+			unsafe {
+				source.free()
+				g.sb.free()
+			}
+			if g.output_path.len > 0 {
+				os.write_file(g.output_path, result) or { g.output_error = err.msg() }
+				unsafe { result.free() }
+				g.sb = strings.new_builder(4096)
+				return ''
+			}
+			return result
 		}
-		if g.output_path.len > 0 {
-			os.write_file(g.output_path, result) or { g.output_error = err.msg() }
-			unsafe { result.free() }
-			g.sb = strings.new_builder(4096)
-			return ''
-		}
-		return result
 	}
 	if g.output_path.len > 0 {
 		mut output := unsafe { g.sb.reuse_as_plain_u8_array() }
@@ -3404,9 +3450,11 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	return result
 }
 
+const parallel_cc_unit_marker = '/* V3PARALLEL_CC_UNIT */'
+
 fn (mut g FlatGen) write_parallel_cc_unit_marker() {
 	if g.parallel_cc {
-		g.writeln('/* V3PARALLEL_CC_UNIT */')
+		g.writeln(parallel_cc_unit_marker)
 	}
 }
 

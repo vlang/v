@@ -1076,7 +1076,7 @@ fn (mut g FlatGen) write_scoped_cgen_batch_output(batch &FlatGen) bool {
 		g.output_error = err.msg()
 		return false
 	}
-	if batch.cache_split {
+	if batch.cache_stable_symbols {
 		mut b := unsafe { batch }
 		source := b.sb.str()
 		stable_source := b.rewrite_cache_string_symbols(source)
@@ -1154,7 +1154,7 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		}
 	}
 	for def in batch.spawn_wrapper_defs {
-		if batch.cache_split {
+		if batch.cache_stable_symbols {
 			stable_def := b.rewrite_cache_string_symbols(def)
 			g.add_spawn_wrapper_def(stable_def)
 		} else {
@@ -1167,7 +1167,7 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		}
 	}
 	for def in batch.callback_wrapper_defs {
-		if batch.cache_split {
+		if batch.cache_stable_symbols {
 			stable_def := b.rewrite_cache_string_symbols(def)
 			g.add_callback_wrapper_def(stable_def)
 		} else {
@@ -2461,6 +2461,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		has_builtins: g.has_builtins
 		cache_split: g.cache_split
+		cache_stable_symbols: g.cache_stable_symbols
 		compile_values: g.compile_values
 		trace_calls: g.trace_calls
 		skip_generics: g.skip_generics
@@ -2858,7 +2859,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	}
 	string_id_remap := g.publish_worker_string_literals(w)
 	borrow_worker_segments := os.getenv('V3_RETAIN_CGEN_RESULT_SCOPES') != ''
-		&& w.worker_scope != unsafe { nil } && !g.cache_split && string_id_remap.len == 0
+		&& w.worker_scope != unsafe { nil } && !g.cache_stable_symbols && string_id_remap.len == 0
 	user_c_symbols := if string_id_remap.len > 0 {
 		g.cache_user_c_string_symbols()
 	} else {
@@ -2866,7 +2867,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	}
 	worker_output := ww.sb.str()
 	if worker_output.len > 0 {
-		if g.cache_split {
+		if g.cache_stable_symbols {
 			stable_output := ww.rewrite_cache_string_symbols(worker_output)
 			g.fn_segs << stable_output
 			unsafe { worker_output.free() }
@@ -2882,7 +2883,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	// The ordered segment owns the copied output; release the worker builder.
 	unsafe { ww.sb.free() }
 	for segment_idx, segment in w.fn_segs {
-		normalized := if g.cache_split {
+		normalized := if g.cache_stable_symbols {
 			ww.rewrite_cache_string_symbols(segment)
 		} else if string_id_remap.len > 0 {
 			remap_scoped_worker_string_symbols(segment, string_id_remap, user_c_symbols)
@@ -2945,7 +2946,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 				continue
 			}
 			for def in wrappers.spawn {
-				normalized := if g.cache_split {
+				normalized := if g.cache_stable_symbols {
 					ww.rewrite_cache_string_symbols(def)
 				} else if string_id_remap.len > 0 {
 					remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols)
@@ -2957,7 +2958,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 		}
 	} else {
 		for def in w.spawn_wrapper_defs {
-			if g.cache_split {
+			if g.cache_stable_symbols {
 				g.add_spawn_wrapper_def(ww.rewrite_cache_string_symbols(def))
 			} else if string_id_remap.len > 0 {
 				g.add_spawn_wrapper_def(remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols))
@@ -2977,7 +2978,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 				continue
 			}
 			for def in wrappers.callback {
-				normalized := if g.cache_split {
+				normalized := if g.cache_stable_symbols {
 					ww.rewrite_cache_string_symbols(def)
 				} else if string_id_remap.len > 0 {
 					remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols)
@@ -2989,7 +2990,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 		}
 	} else {
 		for def in w.callback_wrapper_defs {
-			if g.cache_split {
+			if g.cache_stable_symbols {
 				g.add_callback_wrapper_def(ww.rewrite_cache_string_symbols(def))
 			} else if string_id_remap.len > 0 {
 				g.add_callback_wrapper_def(remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols))
