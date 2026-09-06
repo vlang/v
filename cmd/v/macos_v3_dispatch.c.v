@@ -100,6 +100,13 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 			eprintln('`-new-compiler` requires a build that embeds the V3 compiler, which this one does not.')
 			exit(1)
 		}
+		$if macos || linux {
+			// musl deliberately does not link V3 because its runtime still depends on
+			// glibc-only C interfaces. Use the same full external compatibility
+			// compiler that an ordinary failed V3 build would retry through.
+			launch_macos_v1_fallback(macos_v3_v1_fallback_executable(), os.args[1..],
+				prefs.is_verbose, 'the embedded V3 compiler is unavailable on this target')
+		}
 		return
 	}
 	if message := macos_v3_fastc_incompatibility(prefs) {
