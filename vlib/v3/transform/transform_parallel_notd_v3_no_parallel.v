@@ -2883,7 +2883,18 @@ fn transform_job_count(n_runtime_jobs int, n_items int, scoped_selfhost bool) in
 	}
 	mut n := n_runtime_jobs
 	limit := if scoped_selfhost {
-		max_selfhost_transform_jobs
+		if ast_snapshots_supported() {
+			// A copy-on-write lane shares the base AST's pages until it rewrites
+			// them, so it costs the pages it touches rather than a whole clone and
+			// the count can follow the core count. Going from 7 lanes to one per
+			// core took the transform phase of the self-host from 235 ms to 148 ms
+			// for 23 MiB of extra peak RSS. clamp_transform_jobs_to_clone_budget
+			// still bounds it by the size of the base AST, which also covers a
+			// snapshot that fails at runtime and falls back to a real copy.
+			n_runtime_jobs
+		} else {
+			max_selfhost_transform_jobs
+		}
 	} else {
 		max_parallel_transform_jobs
 	}

@@ -14,6 +14,12 @@ fn C.mach_vm_remap(target C.task_t, address &u64, size u64, mask u64, flags int,
 
 fn C.getpagesize() int
 
+// ast_snapshots_supported reports that a base-AST lane can be handed out as a
+// copy-on-write mapping instead of a byte copy.
+fn ast_snapshots_supported() bool {
+	return true
+}
+
 fn snapshot_ast_buffer(data voidptr, len u64, capacity u64) ?AstBufferSnapshot {
 	if len == 0 || capacity < len || data == unsafe { nil } {
 		return none
