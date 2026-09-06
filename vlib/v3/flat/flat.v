@@ -275,6 +275,10 @@ pub mut:
 	// or file_index_incomplete is set (a source file failed to read).
 	file_node_ids         []i32
 	file_index_incomplete bool
+	// has_vsh_source records that at least one parsed source file is a `.vsh`
+	// script. V script mode makes the `os` module global inside such files, and
+	// the checker only pays for that lookup when this flag is set.
+	has_vsh_source bool
 	// source_buffers owns the storage behind zero-copy scanner strings retained
 	// by AST nodes. Keeping the buffers on the AST makes the lifetime boundary
 	// explicit and lets parser workers transfer ownership with their nodes.

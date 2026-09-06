@@ -4514,7 +4514,7 @@ fn (tc &TypeChecker) const_key_for_name(name string) ?string {
 	if name in tc.const_types {
 		return name
 	}
-	return none
+	return tc.vsh_os_const_key(name)
 }
 
 fn (tc &TypeChecker) local_name_conflicts_with_current_module_const(name string) bool {
@@ -5963,7 +5963,7 @@ fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
 		// active. Recover a selected symbol from the source file only when it has one
 		// unambiguous declaration across the registered imports.
 		if !tc.resolution_type_mode {
-			return none
+			return tc.vsh_os_fn_symbol(name)
 		}
 		mut resolved := ''
 		suffix := '\n${name}'
@@ -5984,7 +5984,7 @@ fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
 		if resolved.len > 0 {
 			return resolved
 		}
-		return none
+		return tc.vsh_os_fn_symbol(name)
 	}
 	for candidate in candidates {
 		if tc.fn_signature_known(candidate) || candidate in tc.fn_ret_types
@@ -5992,7 +5992,7 @@ fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
 			return candidate
 		}
 	}
-	return none
+	return tc.vsh_os_fn_symbol(name)
 }
 
 // resolve_any_selective_import_fn resolves an unqualified selected function
@@ -6017,7 +6017,7 @@ pub fn (tc &TypeChecker) resolve_any_selective_import_fn(name string) ?string {
 	if resolved.len > 0 {
 		return resolved
 	}
-	return none
+	return tc.vsh_os_fn_key(name)
 }
 
 fn (tc &TypeChecker) resolve_selective_import_type_symbol(name string) ?string {
@@ -6028,6 +6028,59 @@ fn (tc &TypeChecker) resolve_selective_import_type_symbol(name string) ?string {
 		}
 	}
 	return none
+}
+
+// vsh_os_fn_symbol resolves an unqualified call name inside a `.vsh` script to
+// its `os` declaration. V script mode makes the `os` module global, but only as
+// a last resort: a local, builtin or explicitly imported declaration with the
+// same name keeps priority, exactly like in a plain `.v` file.
+fn (tc &TypeChecker) vsh_os_fn_symbol(name string) ?string {
+	if !tc.vsh_script_file() {
+		return none
+	}
+	return tc.vsh_os_fn_key(name)
+}
+
+// vsh_os_fn_key applies the script-mode `os` lookup without requiring the script
+// file itself to be the active one. Monomorphization collects candidate names for
+// a generic call outside any file context, and a compilation only has script-mode
+// symbols at all when it contains a `.vsh` script.
+fn (tc &TypeChecker) vsh_os_fn_key(name string) ?string {
+	if !tc.a.has_vsh_source || name.len == 0 || name.contains('.') {
+		return none
+	}
+	// Only a real V declaration shadows the script's `os` symbol. A bare name is
+	// also registered for every `fn C.name()` declaration, and those must not hide
+	// the V wrapper: `getenv('HOME')` in a script is `os.getenv`, not `C.getenv`.
+	if name in tc.v_fn_semantic_names {
+		return none
+	}
+	key := 'os.${name}'
+	if tc.fn_signature_known(key) || key in tc.fn_ret_types || key in tc.fn_param_types {
+		return key
+	}
+	return none
+}
+
+// vsh_os_const_key resolves an unqualified constant name inside a `.vsh` script
+// to its `os` declaration, under the same last-resort rule as `os` functions.
+fn (tc &TypeChecker) vsh_os_const_key(name string) ?string {
+	if !tc.vsh_script_file() || name.len == 0 || name.contains('.') {
+		return none
+	}
+	key := 'os.${name}'
+	if key in tc.const_types {
+		return key
+	}
+	return none
+}
+
+// vsh_script_file reports whether the file being checked is a V script, whose
+// `os` symbols are visible unqualified. The `.vsh` test is guarded by an
+// AST-wide flag so non-script compilations never pay for it.
+@[inline]
+fn (tc &TypeChecker) vsh_script_file() bool {
+	return tc.a.has_vsh_source && tc.cur_file.ends_with('.vsh')
 }
 
 fn (tc &TypeChecker) selective_import_candidates(name string) ?[]string {

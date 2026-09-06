@@ -1190,6 +1190,7 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 		w.a.file_node_ids.len = 0
 	}
 	p.a.file_index_incomplete = p.a.file_index_incomplete || w.a.file_index_incomplete
+	p.a.has_vsh_source = p.a.has_vsh_source || w.a.has_vsh_source
 	// The worker validated its exports against its own files only; revalidate
 	// them here against disabled fns accumulated from earlier chunks, exactly
 	// like the serial parse where register_pending_export sees every previously
