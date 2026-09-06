@@ -45,8 +45,8 @@ fn test_header_backed_declarations_do_not_get_a_second_prototype() {
 	os.write_file(header, 'int postinclude_api(void);\n')!
 	os.write_file(source, 'fn main() {}\n')!
 
-	// The header is still handed to the C compiler unparsed; it is simply trusted to
-	// declare what it declares, so no generated prototype is placed beside it.
+	// A postincluded header is emitted after every declaration and call site, so it
+	// cannot be the declaration they use and the prototype has to stay.
 	mut postinclude_g := FlatGen.new()
 	postinclude_g.collect_c_directive('main', flat.Node{
 		kind: .directive
@@ -55,8 +55,9 @@ fn test_header_backed_declarations_do_not_get_a_second_prototype() {
 	}, source, false)
 	assert 'postinclude_api' !in postinclude_g.inlined_c_declared_fns
 	assert '#include "${header}"' in postinclude_g.postinclude_directives
-	assert !postinclude_g.should_emit_c_extern_decl_from_file('postinclude_api', source, 'main')
+	assert postinclude_g.should_emit_c_extern_decl_from_file('postinclude_api', source, 'main')
 
+	// A preincluded header comes first, so it owns what it declares.
 	mut preinclude_g := FlatGen.new()
 	preinclude_g.collect_c_directive('main', flat.Node{
 		kind: .directive
@@ -481,4 +482,45 @@ fn test_preprocessor_scan_tracks_comments_after_source_code() {
 	assert trailing == '#if defined(ENABLED)'
 	not_a_directive, _ := c_preprocessor_directive_scan_line('int other; #define LATE 1', false)
 	assert not_a_directive == ''
+}
+
+// A `#include linux <x.h>` is dropped when building for another target, so it must
+// not make the file look header backed there and swallow the prototype of a
+// declaration that only a linked C source can supply.
+fn test_target_inactive_include_does_not_claim_header_ownership() {
+	root := os.join_path(os.vtmp_dir(), 'v3_inactive_include_ownership_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() {}\n')!
+	inactive_target := if os.user_os() == 'windows' { 'linux' } else { 'windows' }
+
+	mut g := FlatGen.new()
+	g.set_target(pref.target_from(os.user_os(), 'amd64') or { panic(err) })
+	g.note_c_flag_directive('main', source, '@VMODROOT/helper.o')
+	for kind in ['include', 'preinclude'] {
+		g.collect_c_directive('main', flat.Node{
+			kind: .directive
+			value: kind
+			typ: '${inactive_target} <ownership_probe.h>'
+		}, source, false)
+	}
+	assert source !in g.files_with_c_includes
+	assert 'main' !in g.mods_with_c_includes
+	assert g.should_emit_c_extern_decl_from_file('helper_fn', source, 'main')
+
+	// The same include for the target being built does claim ownership.
+	mut active_g := FlatGen.new()
+	active_g.set_target(pref.target_from(os.user_os(), 'amd64') or { panic(err) })
+	active_g.note_c_flag_directive('main', source, '@VMODROOT/helper.o')
+	active_g.collect_c_directive('main', flat.Node{
+		kind: .directive
+		value: 'include'
+		typ: '${os.user_os()} <ownership_probe.h>'
+	}, source, false)
+	assert source in active_g.files_with_c_includes
+	assert !active_g.should_emit_c_extern_decl_from_file('helper_fn', source, 'main')
 }

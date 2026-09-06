@@ -17505,6 +17505,12 @@ fn (g &FlatGen) c_extern_decl_has_no_header(source_file string, module_name stri
 	if g.files_linking_c_sources[source_file] {
 		return true
 	}
+	// A `#postinclude` lands after every declaration and call site in the unit, so it
+	// can never be the declaration they use; without a prototype they would compile to
+	// an implicit declaration.
+	if g.files_with_c_postincludes[source_file] {
+		return true
+	}
 	return g.mods_with_c_libs[module_name] && module_name !in g.mods_with_c_includes
 }
 

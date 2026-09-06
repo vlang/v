@@ -406,6 +406,7 @@ mut:
 	inlined_c_fns                  map[string]bool
 	inlined_c_declared_fns         map[string]bool
 	files_with_c_includes          map[string]bool
+	files_with_c_postincludes      map[string]bool
 	files_linking_c_sources        map[string]bool
 	mods_with_c_libs               map[string]bool
 	mods_with_c_includes           map[string]bool
@@ -1113,6 +1114,7 @@ pub fn FlatGen.new() FlatGen {
 		inlined_c_fns: map[string]bool{}
 		inlined_c_declared_fns: map[string]bool{}
 		files_with_c_includes: map[string]bool{}
+		files_with_c_postincludes: map[string]bool{}
 		files_linking_c_sources: map[string]bool{}
 		mods_with_c_libs: map[string]bool{}
 		mods_with_c_includes: map[string]bool{}
@@ -2826,6 +2828,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.inlined_c_fns.clear()
 	g.inlined_c_declared_fns.clear()
 	g.files_with_c_includes.clear()
+	g.files_with_c_postincludes.clear()
 	g.files_linking_c_sources.clear()
 	g.mods_with_c_libs.clear()
 	g.mods_with_c_includes.clear()
@@ -4557,6 +4560,15 @@ fn (mut g FlatGen) note_c_include_directive(module_name string, source_file stri
 	}
 }
 
+// note_c_postinclude_directive records a `#postinclude`. Such a header is emitted
+// after every generated declaration and call site, so it cannot declare anything
+// for them: the generated prototype is the only declaration they can get.
+fn (mut g FlatGen) note_c_postinclude_directive(source_file string) {
+	if source_file.len > 0 {
+		g.files_with_c_postincludes[source_file] = true
+	}
+}
+
 // c_flag_links_c_source reports whether a `#flag` adds a C source or object file to
 // the link. Such a file ships no header, so the V declaration is the only prototype
 // the translation unit can get.
@@ -4581,24 +4593,27 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 	if node.kind != .directive {
 		return false
 	}
-	if node.value in ['include', 'preinclude', 'insert'] {
-		g.note_c_include_directive(module_name, source_file)
-	}
 	if node.value in ['preinclude', 'postinclude'] {
 		if node.typ.len == 0 {
 			return true
 		}
 		include_arg := c_include_arg_for_target(node.typ, g.compiler_vroot, source_file, g.target)
+		// A `#include linux <x.h>` contributes nothing when building for another
+		// target, so it must not make the file look header backed there.
 		if include_arg.len == 0 {
 			return true
 		}
 		directive := '#include ${include_arg}'
 		if node.value == 'preinclude' {
+			g.note_c_include_directive(module_name, source_file)
 			if directive !in g.preinclude_directives {
 				g.preinclude_directives << directive
 			}
-		} else if directive !in g.postinclude_directives {
-			g.postinclude_directives << directive
+		} else {
+			g.note_c_postinclude_directive(source_file)
+			if directive !in g.postinclude_directives {
+				g.postinclude_directives << directive
+			}
 		}
 		return true
 	}
@@ -4610,6 +4625,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		if include_arg.len == 0 {
 			return true
 		}
+		g.note_c_include_directive(module_name, source_file)
 		// These helper headers are superseded by the inline compiler helpers emitted in
 		// builtin_abi_decls(); also including them would redefine the helpers.
 		if c_include_arg_is_builtin_abi_helper(include_arg, g.compiler_vroot) {
