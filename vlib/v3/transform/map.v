@@ -1799,6 +1799,20 @@ fn (t &Transformer) const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
 	return none
 }
 
+// const_map_source_for_ident picks the container a `const` map identifier should
+// lower to. Constants are emitted once into a module-scope C global, so an
+// ordinary reference to the identifier reuses that map; substituting the
+// initializer instead would rebuild the whole literal (a `new_map` plus one
+// `map__set`, hash and key clone per entry) at every lookup. Inside a constant's
+// own initializer the global is not assigned yet, so the initializer expression
+// is still the only valid source there.
+fn (t &Transformer) const_map_source_for_ident(id flat.NodeId) flat.NodeId {
+	if t.in_const_init {
+		return t.const_expr_for_ident(id) or { id }
+	}
+	return id
+}
+
 // lower_map_membership_expr builds lower map membership expr data for transform.
 fn (mut t Transformer) lower_map_membership_expr(map_id flat.NodeId, key_id flat.NodeId, map_type string) ?flat.NodeId {
 	clean_type := t.clean_map_type(map_type)
@@ -1818,7 +1832,7 @@ fn (mut t Transformer) lower_map_membership_expr(map_id flat.NodeId, key_id flat
 	if key_type.len == 0 {
 		return none
 	}
-	map_source_id := t.const_expr_for_ident(map_id) or { map_id }
+	map_source_id := t.const_map_source_for_ident(map_id)
 	// Spill the typed key before materializing the container so a side-effecting key
 	// evaluates before a value-branch map's hoisted propagation prelude, preserving
 	// source order, e.g. `tr.key() in (match node { First { tr.map_first(node)! } ... })`.
@@ -1862,7 +1876,7 @@ fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) 
 	if key_type.len == 0 || value_type.len == 0 {
 		return none
 	}
-	map_source_id := t.const_expr_for_ident(base_id) or { base_id }
+	map_source_id := t.const_map_source_for_ident(base_id)
 	source_is_owned_temporary := !isnil(t.tc)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(map_type))
 		&& !base_type.starts_with('&') && !t.expr_can_take_address(map_source_id)
