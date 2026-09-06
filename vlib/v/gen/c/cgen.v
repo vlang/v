@@ -8924,6 +8924,11 @@ fn (mut g Gen) boehm_collect_keep_alive_helper_name(typ ast.Type) string {
 			return ''
 		}
 	}
+	if sym.kind == .struct && sym.language != .v {
+		if !g.c_type_has_ptr(resolved_typ) {
+			return ''
+		}
+	}
 	styp := g.styp(resolved_typ)
 	if styp.ends_with('_ptr') {
 		return ''
@@ -9047,10 +9052,53 @@ fn (mut g Gen) type_needs_deep_scope_gc_pin(typ ast.Type) bool {
 			return g.contains_ptr(info.elem_type)
 		}
 		.struct {
+			if sym.language != .v {
+				return g.c_type_has_ptr(resolved_typ)
+			}
 			return true
 		}
 		else {
 			return false
+		}
+	}
+}
+
+fn (mut g Gen) c_type_has_ptr(typ ast.Type) bool {
+	if typ == 0 {
+		return false
+	}
+	if typ.has_option_or_result() || typ.is_any_kind_of_pointer() || typ.is_ptr() {
+		return true
+	}
+	sym := g.table.final_sym(g.unwrap_generic(typ))
+	if sym.is_pointer() {
+		return true
+	}
+	match sym.kind {
+		.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char,
+		.rune, .bool, .enum {
+			return false
+		}
+		.array_fixed {
+			info := sym.info as ast.ArrayFixed
+			return g.c_type_has_ptr(info.elem_type)
+		}
+		.struct {
+			info := sym.info as ast.Struct
+			for embed in info.embeds {
+				if g.c_type_has_ptr(embed) {
+					return true
+				}
+			}
+			for field in info.fields {
+				if g.c_type_has_ptr(field.typ) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return true
 		}
 	}
 }
