@@ -424,32 +424,32 @@ fn test_system_libc_preamble_identifies_glibc_before_manual_stdio_declarations()
 	assert features < manual_stdio
 }
 
-fn test_known_c_header_metadata_avoids_conflicting_fallback_declarations() {
-	mut g := FlatGen.new()
-	g.compiler_vroot = '/vroot'
-	g.collect_known_c_header_metadata('<pwd.h>')
-	g.collect_known_c_header_metadata('<mbedtls/net_sockets.h>')
-	g.collect_known_c_header_metadata('<mbedtls/ssl.h>')
-	g.collect_known_c_header_metadata('"/vroot/vlib/compress/brotli/brotli_dl.h"')
-	assert g.inlined_c_structs['passwd']
-	for name in ['getpwnam', 'getpwuid', 'mbedtls_net_bind', 'mbedtls_pk_parse_key',
-		'mbedtls_ssl_write', 'v_brotli_msan_unpoison'] {
-		assert !g.should_emit_c_extern_decl(name)
-	}
-	assert c_include_arg_is_vroot_header('"@VEXEROOT/vlib/compress/brotli/brotli_dl.h"', '', '/vlib/compress/brotli/brotli_dl.h')
+fn test_header_backed_c_declarations_skip_generated_prototypes() {
+	source := '/project/user.v'
+	header_source := '/project/bindings.c.v'
 
-	mut quoted := FlatGen.new()
-	quoted.compiler_vroot = '/vroot'
-	for header in ['"pwd.h"', '"mbedtls/net_sockets.h"', '"mbedtls/entropy.h"', '"mbedtls/ctr_drbg.h"',
-		'"mbedtls/error.h"', '"mbedtls/ssl.h"', '"/vroot/vlib/compress/brotli/brotli_dl.h"'] {
-		quoted.collect_known_c_header_metadata(header)
-	}
-	assert quoted.inlined_c_structs['passwd']
-	for name in ['getpwnam', 'getpwuid', 'mbedtls_net_bind', 'mbedtls_entropy_init',
-		'mbedtls_ctr_drbg_seed', 'mbedtls_high_level_strerr', 'mbedtls_ssl_write',
-		'v_brotli_msan_unpoison'] {
-		assert !quoted.should_emit_c_extern_decl(name)
-	}
+	// A `fn C.` declaration in a file that includes a header is already declared by
+	// that header; a generated prototype would only conflict with it.
+	mut g := FlatGen.new()
+	g.note_c_include_directive('bindings', header_source)
+	assert !g.should_emit_c_extern_decl_from_file('mbedtls_ssl_write', header_source, 'bindings')
+
+	// A file that links a C source or object ships no header, so it keeps its
+	// prototype, and so does a module that only links a C library.
+	mut linked := FlatGen.new()
+	linked.note_c_flag_directive('bindings', header_source, '@VMODROOT/helper.o')
+	assert linked.should_emit_c_extern_decl_from_file('helper_fn', header_source, 'bindings')
+
+	mut lib_only := FlatGen.new()
+	lib_only.note_c_flag_directive('bindings', source, '-lfoo')
+	assert lib_only.should_emit_c_extern_decl_from_file('foo_open', source, 'bindings')
+	lib_only.note_c_include_directive('bindings', '/project/other.c.v')
+	assert !lib_only.should_emit_c_extern_decl_from_file('foo_open', source, 'bindings')
+
+	// Nothing links and nothing includes: the symbol has to come from somewhere else,
+	// so V3 stays out of the way, exactly like the V1 backend.
+	mut bare := FlatGen.new()
+	assert !bare.should_emit_c_extern_decl_from_file('unrelated_api', source, 'main')
 }
 
 fn test_apple_framework_include_does_not_match_x11() {

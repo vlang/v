@@ -2314,6 +2314,12 @@ fn (g &FlatGen) configure_c_extern_scan_worker(mut worker FlatGen) {
 	worker.c_directives = g.c_directives
 	worker.inlined_c_fns = g.inlined_c_fns.clone()
 	worker.inlined_c_declared_fns = g.inlined_c_declared_fns.clone()
+	worker.files_with_c_includes = g.files_with_c_includes.clone()
+	worker.files_with_c_postincludes = g.files_with_c_postincludes.clone()
+	worker.files_linking_c_sources = g.files_linking_c_sources.clone()
+	worker.mods_with_c_libs = g.mods_with_c_libs.clone()
+	worker.mods_with_c_includes = g.mods_with_c_includes.clone()
+	worker.c_extern_forced_decls = g.c_extern_forced_decls.clone()
 	worker.inlined_c_active_macros = g.inlined_c_active_macros.clone()
 	worker.inlined_c_static_fns = g.inlined_c_static_fns.clone()
 	worker.cache_omitted_c_fns = g.cache_omitted_c_fns.clone()
@@ -2416,6 +2422,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		global_inits: g.global_inits
 		global_init_order: g.global_init_order
 		c_decl_abi_names: g.c_decl_abi_names
+		c_extern_forced_decls: g.c_extern_forced_decls
 		export_c_abi_decls: g.export_c_abi_decls
 		main_export_owners: g.main_export_owners
 		c_extern_global_names: g.c_extern_global_names
@@ -2439,6 +2446,11 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		inlined_c_typedef_names: g.inlined_c_typedef_names
 		inlined_c_fns: g.inlined_c_fns
 		inlined_c_declared_fns: g.inlined_c_declared_fns
+		files_with_c_includes: g.files_with_c_includes
+		files_with_c_postincludes: g.files_with_c_postincludes
+		files_linking_c_sources: g.files_linking_c_sources
+		mods_with_c_libs: g.mods_with_c_libs
+		mods_with_c_includes: g.mods_with_c_includes
 		inlined_c_active_macros: g.inlined_c_active_macros
 		inlined_c_static_fns: g.inlined_c_static_fns
 		libc_compat_fns: g.libc_compat_fns.clone()

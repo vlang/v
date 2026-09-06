@@ -405,6 +405,11 @@ mut:
 	inlined_c_typedef_names        map[string]bool
 	inlined_c_fns                  map[string]bool
 	inlined_c_declared_fns         map[string]bool
+	files_with_c_includes          map[string]bool
+	files_with_c_postincludes      map[string]bool
+	files_linking_c_sources        map[string]bool
+	mods_with_c_libs               map[string]bool
+	mods_with_c_includes           map[string]bool
 	inlined_c_active_macros        map[string]bool
 	inlined_c_static_fns           map[string]bool
 	cache_omitted_c_fns            map[string]bool
@@ -461,6 +466,7 @@ mut:
 	decl_attrs                    map[int][]string
 	decl_attrs_by_source_position map[u64][]string
 	c_decl_abi_names              map[string]string
+	c_extern_forced_decls         map[string]bool
 	export_c_abi_decls            map[string]flat.NodeId
 	main_export_owners            map[string][]string
 	c_extern_global_names         map[string]string
@@ -1110,6 +1116,11 @@ pub fn FlatGen.new() FlatGen {
 		cache_native_c_symbols: map[string]bool{}
 		inlined_c_fns: map[string]bool{}
 		inlined_c_declared_fns: map[string]bool{}
+		files_with_c_includes: map[string]bool{}
+		files_with_c_postincludes: map[string]bool{}
+		files_linking_c_sources: map[string]bool{}
+		mods_with_c_libs: map[string]bool{}
+		mods_with_c_includes: map[string]bool{}
 		inlined_c_active_macros: map[string]bool{}
 		inlined_c_static_fns: map[string]bool{}
 		cache_omitted_c_fns: map[string]bool{}
@@ -1147,6 +1158,7 @@ pub fn FlatGen.new() FlatGen {
 		decl_attrs: map[int][]string{}
 		decl_attrs_by_source_position: map[u64][]string{}
 		c_decl_abi_names: map[string]string{}
+		c_extern_forced_decls: map[string]bool{}
 		export_c_abi_decls: map[string]flat.NodeId{}
 		main_export_owners: map[string][]string{}
 		c_extern_global_names: map[string]string{}
@@ -2824,6 +2836,11 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cache_native_c_symbols.clear()
 	g.inlined_c_fns.clear()
 	g.inlined_c_declared_fns.clear()
+	g.files_with_c_includes.clear()
+	g.files_with_c_postincludes.clear()
+	g.files_linking_c_sources.clear()
+	g.mods_with_c_libs.clear()
+	g.mods_with_c_includes.clear()
 	g.inlined_c_active_macros.clear()
 	g.inlined_c_static_fns.clear()
 	g.cache_omitted_c_fns.clear()
@@ -2867,6 +2884,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.decl_attrs.clear()
 	g.decl_attrs_by_source_position.clear()
 	g.c_decl_abi_names.clear()
+	g.c_extern_forced_decls.clear()
 	g.export_c_abi_decls.clear()
 	g.main_export_owners.clear()
 	g.c_extern_global_names.clear()
@@ -4479,6 +4497,9 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 		if node.kind != .directive || node.typ.len == 0 {
 			continue
 		}
+		if node.value == 'flag' {
+			g.note_c_flag_directive(cur_module, cur_file, node.typ)
+		}
 		flags := if node.value == 'flag' {
 			c_flag_args_with_values(node.typ, g.compiler_vroot, cur_file, g.target, g.compile_values)
 		} else if node.value == 'pkgconfig' {
@@ -4545,6 +4566,58 @@ pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, 
 	return result
 }
 
+// c_source_file_is_in_vlib reports whether a source file belongs to the compiler's
+// own vlib tree. Module level C library/include flags are only tracked for user
+// modules, so a platform `#flag` inside vlib never forces a prototype.
+fn (g &FlatGen) c_source_file_is_in_vlib(source_file string) bool {
+	root := g.compiler_vroot.replace('\\', '/').trim_right('/')
+	if root.len == 0 {
+		return false
+	}
+	return source_file.replace('\\', '/').starts_with('${root}/vlib/')
+}
+
+// note_c_include_directive records that a file (and, for user code, its module)
+// pulls in a C header. The header is the authoritative declaration of everything it
+// covers, so V3 must not add a second, less precise prototype next to it.
+fn (mut g FlatGen) note_c_include_directive(module_name string, source_file string) {
+	if source_file.len > 0 {
+		g.files_with_c_includes[source_file] = true
+	}
+	if module_name.len > 0 && !g.c_source_file_is_in_vlib(source_file) {
+		g.mods_with_c_includes[module_name] = true
+	}
+}
+
+// note_c_postinclude_directive records a `#postinclude`. Such a header is emitted
+// after every generated declaration and call site, so it cannot declare anything
+// for them: the generated prototype is the only declaration they can get.
+fn (mut g FlatGen) note_c_postinclude_directive(source_file string) {
+	if source_file.len > 0 {
+		g.files_with_c_postincludes[source_file] = true
+	}
+}
+
+// c_flag_links_c_source reports whether a `#flag` adds a C source or object file to
+// the link. Such a file ships no header, so the V declaration is the only prototype
+// the translation unit can get.
+fn c_flag_links_c_source(flag string) bool {
+	return flag.contains('.c ') || flag.ends_with('.c') || flag.contains('.cpp')
+		|| flag.contains('.cc') || flag.contains('.o ') || flag.ends_with('.o')
+}
+
+// note_c_flag_directive records the two `#flag` shapes that leave a `fn C.` symbol
+// without a header: a linked C source/object, and a user module that links a C
+// library (`-lfoo`) without including anything.
+fn (mut g FlatGen) note_c_flag_directive(module_name string, source_file string, flag string) {
+	if source_file.len > 0 && c_flag_links_c_source(flag) {
+		g.files_linking_c_sources[source_file] = true
+	}
+	if module_name.len > 0 && flag.contains('-l') && !g.c_source_file_is_in_vlib(source_file) {
+		g.mods_with_c_libs[module_name] = true
+	}
+}
+
 fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, source_file string, before_import bool) bool {
 	if node.kind != .directive {
 		return false
@@ -4554,16 +4627,22 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			return true
 		}
 		include_arg := c_include_arg_for_target(node.typ, g.compiler_vroot, source_file, g.target)
+		// A `#include linux <x.h>` contributes nothing when building for another
+		// target, so it must not make the file look header backed there.
 		if include_arg.len == 0 {
 			return true
 		}
 		directive := '#include ${include_arg}'
 		if node.value == 'preinclude' {
+			g.note_c_include_directive(module_name, source_file)
 			if directive !in g.preinclude_directives {
 				g.preinclude_directives << directive
 			}
-		} else if directive !in g.postinclude_directives {
-			g.postinclude_directives << directive
+		} else {
+			g.note_c_postinclude_directive(source_file)
+			if directive !in g.postinclude_directives {
+				g.postinclude_directives << directive
+			}
 		}
 		return true
 	}
@@ -4575,16 +4654,12 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		if include_arg.len == 0 {
 			return true
 		}
+		g.note_c_include_directive(module_name, source_file)
 		// These helper headers are superseded by the inline compiler helpers emitted in
 		// builtin_abi_decls(); also including them would redefine the helpers.
 		if c_include_arg_is_builtin_abi_helper(include_arg, g.compiler_vroot) {
 			return true
 		}
-		// Header parsing is intentionally left to the C compiler. Keep the small
-		// amount of ABI ownership information that cannot be inferred from V
-		// declarations themselves, so V3 does not emit a second, incompatible
-		// declaration for APIs whose headers use const or typedef-qualified types.
-		g.collect_known_c_header_metadata(include_arg)
 		include_dirs := c_flag_include_dirs(g.c_flags)
 		// `#insert` is an explicit request to inline the source text. Delay only
 		// ordinary source includes until after generated type declarations.
@@ -4706,85 +4781,6 @@ fn c_include_arg_is_builtin_abi_helper(include_arg string, vroot string) bool {
 	return false
 }
 
-fn (mut g FlatGen) collect_known_c_header_metadata(include_arg string) {
-	path := normalized_c_include_arg_path(include_arg)
-	match path {
-		'pwd.h' {
-			g.collect_preserved_c_fns(['getpwnam', 'getpwuid'])
-			g.collect_preserved_c_structs(['passwd'])
-		}
-		'mbedtls/net_sockets.h' {
-			g.collect_preserved_c_fns([
-				'mbedtls_net_accept',
-				'mbedtls_net_bind',
-				'mbedtls_net_connect',
-				'mbedtls_net_free',
-				'mbedtls_net_init',
-				'mbedtls_net_recv',
-				'mbedtls_net_recv_timeout',
-				'mbedtls_net_send',
-			])
-		}
-		'mbedtls/entropy.h' {
-			g.collect_preserved_c_fns(['mbedtls_entropy_free', 'mbedtls_entropy_func',
-				'mbedtls_entropy_init'])
-		}
-		'mbedtls/ctr_drbg.h' {
-			g.collect_preserved_c_fns(['mbedtls_ctr_drbg_free', 'mbedtls_ctr_drbg_init',
-				'mbedtls_ctr_drbg_random', 'mbedtls_ctr_drbg_seed'])
-		}
-		'mbedtls/error.h' {
-			g.collect_preserved_c_fns(['mbedtls_high_level_strerr'])
-		}
-		'mbedtls/ssl.h' {
-			g.collect_preserved_c_fns([
-				'mbedtls_debug_set_threshold',
-				'mbedtls_pk_free',
-				'mbedtls_pk_init',
-				'mbedtls_pk_parse_key',
-				'mbedtls_pk_parse_keyfile',
-				'mbedtls_pk_sign_ext',
-				'mbedtls_pk_verify',
-				'mbedtls_pk_verify_ext',
-				'mbedtls_ssl_conf_alpn_protocols',
-				'mbedtls_ssl_conf_authmode',
-				'mbedtls_ssl_conf_ca_chain',
-				'mbedtls_ssl_conf_own_cert',
-				'mbedtls_ssl_conf_read_timeout',
-				'mbedtls_ssl_conf_rng',
-				'mbedtls_ssl_conf_sni',
-				'mbedtls_ssl_config_defaults',
-				'mbedtls_ssl_config_free',
-				'mbedtls_ssl_config_init',
-				'mbedtls_ssl_free',
-				'mbedtls_ssl_get_alpn_protocol',
-				'mbedtls_ssl_handshake',
-				'mbedtls_ssl_init',
-				'mbedtls_ssl_read',
-				'mbedtls_ssl_session_reset',
-				'mbedtls_ssl_set_bio',
-				'mbedtls_ssl_set_hostname',
-				'mbedtls_ssl_set_hs_authmode',
-				'mbedtls_ssl_set_hs_ca_chain',
-				'mbedtls_ssl_set_hs_own_cert',
-				'mbedtls_ssl_setup',
-				'mbedtls_ssl_write',
-				'mbedtls_x509_crt_free',
-				'mbedtls_x509_crt_init',
-				'mbedtls_x509_crt_parse',
-				'mbedtls_x509_crt_parse_file',
-				'mbedtls_x509_crt_verify',
-			])
-		}
-		else {
-			if normalized_c_include_path_is_vroot_header(path, g.compiler_vroot, '/vlib/compress/brotli/brotli_dl.h') {
-				g.collect_preserved_c_fns(['v_brotli_open', 'v_brotli_sym', 'v_brotli_close',
-					'v_brotli_msan_unpoison'])
-			}
-		}
-	}
-}
-
 fn normalized_c_include_arg_path(include_arg string) string {
 	clean := trimmed_space(include_arg)
 	is_quoted := clean.len >= 2 && clean[0] == `"` && clean[clean.len - 1] == `"`
@@ -4795,15 +4791,6 @@ fn normalized_c_include_arg_path(include_arg string) string {
 		clean
 	}
 	return path.replace('\\', '/')
-}
-
-fn normalized_c_include_path_is_vroot_header(path string, vroot string, suffix string) bool {
-	root := vroot.replace('\\', '/').trim_right('/')
-	return (root.len > 0 && path == root + suffix) || path == '@VEXEROOT' + suffix
-}
-
-fn c_include_arg_is_vroot_header(include_arg string, vroot string, suffix string) bool {
-	return normalized_c_include_path_is_vroot_header(normalized_c_include_arg_path(include_arg), vroot, suffix)
 }
 
 fn (mut g FlatGen) emit_preinclude_directives() {
@@ -10213,11 +10200,19 @@ fn (mut g FlatGen) index_c_decl_attributes(target_idx int, module_name string, a
 	}
 	target := g.a.nodes[target_idx]
 	if target.kind == .c_fn_decl {
+		raw_name := target.value.trim_string_left('C.')
+		qualified := qualify_name_in_module(module_name, raw_name)
+		names := [raw_name, 'C.${raw_name}', qualified, g.cname(raw_name), g.cname(qualified)]
 		if abi_name := cgen_decl_attr_arg(attrs, 'c') {
-			raw_name := target.value.trim_string_left('C.')
-			qualified := qualify_name_in_module(module_name, raw_name)
-			for name in [raw_name, 'C.${raw_name}', qualified, g.cname(raw_name), g.cname(qualified)] {
+			for name in names {
 				g.c_decl_abi_names[name] = abi_name
+			}
+		}
+		// `@[c_extern]` is the documented way to say "this symbol comes from a linked
+		// library or object, not from a header", so its prototype is always emitted.
+		if cgen_decl_has_attr(attrs, 'c_extern') {
+			for name in names {
+				g.c_extern_forced_decls[name] = true
 			}
 		}
 		return
@@ -16768,7 +16763,35 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
 	g.writeln('#include <sys/event.h>')
 	g.writeln('#endif')
+	g.system_execinfo_declarations()
 	g.writeln('')
+}
+
+// system_execinfo_declarations owns the backtrace API the same way the V1 backend
+// does: include <execinfo.h> where it exists, and fall back to the glibc shaped
+// prototypes where it does not (musl, older toolchains). builtin declares
+// `fn C.backtrace` next to an unrelated `#include`, so nothing else can supply it.
+fn (mut g FlatGen) system_execinfo_declarations() {
+	g.writeln('#if defined(__has_include) && !defined(__TINYC__)')
+	g.writeln('\t#if __has_include(<execinfo.h>) && !defined(_WIN32)')
+	g.writeln('\t\t#define __V_HAVE_EXECINFO_H 1')
+	g.writeln('\t\t#include <execinfo.h>')
+	g.writeln('\t#endif')
+	g.writeln('#elif (defined(__linux__) && (defined(__GLIBC__) || defined(__GNU_LIBRARY__))) || defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)')
+	g.writeln('\t#define __V_HAVE_EXECINFO_H 1')
+	g.writeln('\t#include <execinfo.h>')
+	g.writeln('#endif')
+	g.headerless_execinfo_declarations()
+}
+
+// headerless_execinfo_declarations declares the backtrace API without reaching for
+// <execinfo.h>, for units that are generated without system headers.
+fn (mut g FlatGen) headerless_execinfo_declarations() {
+	g.writeln('#if !defined(__V_HAVE_EXECINFO_H) && !defined(_WIN32)')
+	g.writeln('int backtrace(void** __array, int __size);')
+	g.writeln('char** backtrace_symbols(void* const* __array, int __size);')
+	g.writeln('void backtrace_symbols_fd(void* const* __array, int __size, int __fd);')
+	g.writeln('#endif')
 }
 
 fn (mut g FlatGen) system_libc_preamble() {
@@ -16953,6 +16976,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('int setenv(const char* name, const char* value, int overwrite);')
 	g.writeln('int unsetenv(const char* name);')
 	g.writeln('void abort(void);')
+	g.headerless_execinfo_declarations()
 	for name in c_function_like_macro_decl_names() {
 		g.writeln('#ifdef ${name}')
 		g.writeln('#undef ${name}')
@@ -17303,6 +17327,9 @@ fn c_function_like_macro_decl_names() []string {
 }
 
 const c_headerless_libc_declared_fns = [
+	'backtrace',
+	'backtrace_symbols',
+	'backtrace_symbols_fd',
 	'malloc',
 	'calloc',
 	'realloc',
