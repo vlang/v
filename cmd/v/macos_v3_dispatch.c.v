@@ -100,6 +100,10 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 			eprintln('`-new-compiler` requires a build that embeds the V3 compiler, which this one does not.')
 			exit(1)
 		}
+		if os.getenv(macos_v3_no_fallback_env) == '1' {
+			eprintln('the embedded V3 compiler is unavailable on this target, and fallback is disabled.')
+			exit(1)
+		}
 		$if macos || linux {
 			// musl deliberately does not link V3 because its runtime still depends on
 			// glibc-only C interfaces. Use the same full external compatibility
