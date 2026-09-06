@@ -6,6 +6,7 @@ TMPDIR ?= /tmp
 VROOT  ?= .
 VC     ?= ./vc
 VEXE   ?= ./v
+V1_FALLBACK_EXE := $(dir $(VEXE))v1_fallback
 VCREPO ?= https://github.com/vlang/vc
 TCCREPO ?= https://github.com/vlang/tccbin
 LEGACYREPO ?= https://github.com/macports/macports-legacy-support
@@ -43,6 +44,7 @@ endif
 
 ifeq ($(_SYS),Linux)
 LINUX := 1
+V1_FALLBACK_BUILD := 1
 TCCOS := linux
 ifneq ($(shell ldd --version 2>&1 | grep -i musl),)
 TCCOS := linuxmusl
@@ -51,6 +53,7 @@ endif
 
 ifeq ($(_SYS),Darwin)
 MAC := 1
+V1_FALLBACK_BUILD := 1
 TCCOS := macos
 ifeq ($(shell expr $(shell uname -r | cut -d. -f1) \<= 16), 1)
 LEGACY := 1
@@ -83,6 +86,7 @@ endif
 ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
+undefine V1_FALLBACK_BUILD
 TCCOS := android
 ifneq ($(wildcard $(PREFIX)/lib/libexecinfo.*),)
 LDFLAGS += -lexecinfo
@@ -220,6 +224,9 @@ endif
 ifdef NETBSD
 	paxctl +m v2$(EXE_EXT)
 endif
+ifdef V1_FALLBACK_BUILD
+	./v1$(EXE_EXT) -no-parallel -o $(V1_FALLBACK_EXE) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/tools/builders/c_builder.v
+endif
 	./v2$(EXE_EXT) -nocache -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 ifdef NETBSD
 	paxctl +m $(VEXE)$(EXE_EXT)
@@ -311,7 +318,7 @@ endif
 
 else
 latest_tcc:
-	@echo "Using local tcc"
+	@echo "Using local tccbin"
 	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 endif
 
