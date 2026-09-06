@@ -8924,6 +8924,12 @@ fn (mut g Gen) boehm_collect_keep_alive_helper_name(typ ast.Type) string {
 			return ''
 		}
 	}
+	if sym.kind == .struct && sym.language != .v {
+		mut visited := []ast.Type{}
+		if !g.c_struct_has_keepalive_fields(resolved_typ, mut visited) {
+			return ''
+		}
+	}
 	styp := g.styp(resolved_typ)
 	if styp.ends_with('_ptr') {
 		return ''
@@ -9047,12 +9053,72 @@ fn (mut g Gen) type_needs_deep_scope_gc_pin(typ ast.Type) bool {
 			return g.contains_ptr(info.elem_type)
 		}
 		.struct {
+			if sym.language != .v {
+				mut visited := []ast.Type{}
+				return g.c_struct_has_keepalive_fields(resolved_typ, mut visited)
+			}
 			return true
 		}
 		else {
 			return false
 		}
 	}
+}
+
+fn (mut g Gen) c_struct_has_keepalive_fields(typ ast.Type, mut visited []ast.Type) bool {
+	if typ in visited {
+		return false
+	}
+	visited << typ
+	sym := g.table.final_sym(typ)
+	if sym.kind != .struct {
+		return false
+	}
+	info := sym.info as ast.Struct
+	for embed in info.embeds {
+		if embed.is_any_kind_of_pointer() || embed.is_ptr() {
+			return true
+		}
+		embed_sym := g.table.final_sym(embed)
+		if embed_sym.kind == .struct {
+			if g.c_struct_has_keepalive_fields(embed, mut visited) {
+				return true
+			}
+		} else if embed_sym.kind == .array_fixed {
+			elem_type := (embed_sym.info as ast.ArrayFixed).elem_type
+			if elem_type.is_any_kind_of_pointer() || elem_type.is_ptr() {
+				return true
+			}
+			if g.table.final_sym(elem_type).kind == .struct {
+				if g.c_struct_has_keepalive_fields(elem_type, mut visited) {
+					return true
+				}
+			}
+		}
+	}
+	for field in info.fields {
+		field_typ := field.typ
+		if field_typ.is_any_kind_of_pointer() || field_typ.is_ptr() {
+			return true
+		}
+		field_sym := g.table.final_sym(field_typ)
+		if field_sym.kind == .struct {
+			if g.c_struct_has_keepalive_fields(field_typ, mut visited) {
+				return true
+			}
+		} else if field_sym.kind == .array_fixed {
+			elem_type := (field_sym.info as ast.ArrayFixed).elem_type
+			if elem_type.is_any_kind_of_pointer() || elem_type.is_ptr() {
+				return true
+			}
+			if g.table.final_sym(elem_type).kind == .struct {
+				if g.c_struct_has_keepalive_fields(elem_type, mut visited) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) scope_var_needs_deep_gc_pin(obj ast.Var) bool {

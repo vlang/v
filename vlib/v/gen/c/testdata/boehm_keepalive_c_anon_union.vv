@@ -1,0 +1,36 @@
+// vtest vflags: -prod -gc boehm_full_opt -cc gcc
+#include "@VMODROOT/vlib/v/gen/c/testdata/boehm_keepalive_c_anon_union.h"
+
+union C.anon_u {
+mut:
+	u u32
+	a u8
+}
+
+@[typedef]
+struct C.TestAnonRecord {
+mut:
+	kind   int
+	anon_u C.anon_u
+}
+
+struct C.TestAnonEvent {
+mut:
+	events u32
+	record C.TestAnonRecord
+}
+
+fn consume(rec &C.TestAnonRecord) {
+	_ = rec
+}
+
+fn trigger_pin(ev C.TestAnonEvent) {
+	consume(&ev.record)
+}
+
+fn main() {
+	mut ev := C.TestAnonEvent{}
+	ev.record.kind = 42
+	trigger_pin(ev)
+	println('ok')
+}
