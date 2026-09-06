@@ -36,6 +36,10 @@ _SYS := $(patsubst MINGW%,MinGW,$(_SYS))
 ifneq ($(filter $(_SYS),MSYS MinGW),)
 WIN32 := 1
 EXE_EXT := .exe
+# vc/v.c is generated with `-cross` targeting the host OS that ran gen_vc_ci.yml
+# (Linux), so it only guards *nix headers/APIs, not Windows. The dedicated
+# `-os windows` snapshot lives in vc/v_win.c; that is the one Windows needs.
+VCFILE := v_win.c
 # GNU make defaults CC to `cc`, but mingw32-make installations often only
 # provide `gcc`. Switch only the implicit default and preserve explicit CC=...
 ifneq ($(filter $(origin CC),default file),)
