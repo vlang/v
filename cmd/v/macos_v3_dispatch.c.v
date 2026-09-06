@@ -3,9 +3,9 @@ module main
 // The V3 compiler is linked directly into `cmd/v` on macOS and Linux. The
 // command shell hands C-backend compilations to it in-process while leaving
 // tool commands and other backends on their existing external-tool paths.
-// When V3 requests a compatibility retry, the lean V3-only command shell execs
-// the separately built full V1 command binary instead of linking V1 back into
-// the main `v` executable.
+// When V3 fails an ordinary program compilation, the lean V3-only command
+// shell execs the separately built full V1 command binary instead of linking
+// V1 back into the main `v` executable.
 import os
 import v.pref
 import v.util
@@ -201,6 +201,14 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 		unsafe { macos_v3_retry_state(retry_state) }
 		at_exit(retry_macos_v3_at_exit) or {
 			eprintln('cannot register the V3 compatibility fallback: ${err}')
+			exit(1)
+		}
+		// Treat every early V3 exit while compiling an ordinary program as a
+		// compatibility failure. V3 may overwrite this sentinel with a more
+		// specific reason (inline asm or generated-C failure). A successful V3
+		// compilation removes the file below before exiting.
+		os.write_file(fallback_file, macos_v3_compiler_error_fallback) or {
+			eprintln('cannot stage the V3 compatibility fallback: ${err}')
 			exit(1)
 		}
 	}
