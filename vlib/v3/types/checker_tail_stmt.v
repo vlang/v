@@ -7502,6 +7502,12 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, typ)
 		return
 	}
+	if key := tc.vsh_os_const_key(node.value) {
+		tc.register_synth_type(id, tc.const_type_from_initializer(key, tc.const_types[key] or {
+			Type(void_)
+		}))
+		return
+	}
 	if key := tc.generic_fn_value_key(node.value) {
 		if !tc.ident_is_call_callee_or_generic_base(id) && !tc.expr_is_direct_call_argument(id)
 			&& tc.resolved_fn_value_name(id) == none {
