@@ -76,3 +76,30 @@ fn test_macos_v3_uses_external_v1_fallback_for_unsupported_programs() {
 		assert !os.exists(strict_output)
 	}
 }
+
+fn test_macos_v3_compiler_error_retries_external_v1() {
+	$if macos || linux {
+		vroot := os.dir(@VEXE)
+		fallback := os.join_path(vroot, macos_v3_v1_fallback_binary)
+		if !os.is_executable(fallback) {
+			return
+		}
+		root := os.join_path(os.vtmp_dir(), 'v3_external_compiler_error_fallback_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		// V1 accepts this implicit numeric conversion while strict V3 currently
+		// rejects it, so it exercises the generic `compiler_error` fallback marker.
+		source := os.join_path(root, 'duration.v')
+		os.write_file(source, 'import time\n\nfn main() {\n\tmut d := time.Duration(0)\n\td = 1.0 * time.second\n\tprintln(d)\n}\n')!
+		output := os.join_path(root, 'duration')
+		result := run_external_fallback_test_process(@VEXE, ['-silent', '-o', output, source],
+			vroot, {
+			'V_MACOS_V3_NO_FALLBACK': ''
+		})
+		assert result.exit_code == 0, result.output
+		assert os.is_executable(output)
+	}
+}
