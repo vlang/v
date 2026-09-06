@@ -19209,7 +19209,34 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static const u64 _wyp[4] = {0x2d358dccaa6c78a5ull, 0x8bb84b93962eacc9ull, 0x4b33a62ed433d4a3ull, 0x4d5a2da51de1aa47ull};')
 	g.writeln('static inline u64 _wymix(u64 a, u64 b) { u64 ha = a >> 32, hb = b >> 32, la = (u32)a, lb = (u32)b, hi, lo; u64 rh = ha * hb, rm0 = ha * lb, rm1 = hb * la, rl = la * lb, t = rl + (rm0 << 32), c = t < rl; lo = t + (rm1 << 32); c += lo < t; hi = rh + (rm0 >> 32) + (rm1 >> 32) + c; return lo ^ hi; }')
 	g.writeln('static inline u64 wyhash64(u64 a, u64 b) { a ^= _wyp[0]; b ^= _wyp[1]; a *= 0xa0761d6478bd642full; b *= 0xe7037ed1a0b428dbull; return (a ^ (a >> 32)) ^ (b ^ (b >> 32)); }')
-	g.writeln('static inline u64 wyhash(const void* key, size_t len, u64 seed, const u64* secret) { const unsigned char* p = (const unsigned char*)key; u64 h = seed ^ secret[0] ^ (u64)len; for (size_t i = 0; i < len; i++) h = wyhash64(h ^ (u64)p[i], secret[(i + 1) & 3]); return h; }')
+	// Map keys are hashed on every lookup, so this mixes a 64-bit word per step
+	// instead of a byte. Assembling the word from its bytes is defined for any
+	// alignment and any effective type of the key storage; optimizing compilers
+	// fold it into a single load, and the hash stays identical across byte
+	// orders. The macro keeps the loads inline for compilers that do not honour
+	// `static inline`, such as TinyCC. This matches the fastc preamble.
+	g.writeln('#define V_WY_LOAD8(p) ((u64)(p)[0] | ((u64)(p)[1] << 8) | ((u64)(p)[2] << 16) | ((u64)(p)[3] << 24) | ((u64)(p)[4] << 32) | ((u64)(p)[5] << 40) | ((u64)(p)[6] << 48) | ((u64)(p)[7] << 56))')
+	g.writeln('static inline u64 wyhash(const void* key, size_t len, u64 seed, const u64* secret) {')
+	g.writeln('\tconst unsigned char* p = (const unsigned char*)key;')
+	g.writeln('\tsize_t n = len;')
+	g.writeln('\tu64 h = seed ^ secret[0] ^ ((u64)len * 0x9e3779b97f4a7c15ull);')
+	g.writeln('\twhile (n >= 8) { h = (h ^ V_WY_LOAD8(p)) * 0xa0761d6478bd642full; h ^= h >> 29; p += 8; n -= 8; }')
+	g.writeln('\tif (n > 0) {')
+	g.writeln('\t\tu64 v = 0;')
+	g.writeln('\t\tswitch (n) {')
+	g.writeln('\t\t\tcase 7: v |= (u64)p[6] << 48;')
+	g.writeln('\t\t\tcase 6: v |= (u64)p[5] << 40;')
+	g.writeln('\t\t\tcase 5: v |= (u64)p[4] << 32;')
+	g.writeln('\t\t\tcase 4: v |= (u64)p[3] << 24;')
+	g.writeln('\t\t\tcase 3: v |= (u64)p[2] << 16;')
+	g.writeln('\t\t\tcase 2: v |= (u64)p[1] << 8;')
+	g.writeln('\t\t\tdefault: v |= (u64)p[0];')
+	g.writeln('\t\t}')
+	g.writeln('\t\th = (h ^ v) * 0xe7037ed1a0b428dbull; h ^= h >> 29;')
+	g.writeln('\t}')
+	g.writeln('\th *= 0x8ebc6af09c88c6e3ull; h ^= h >> 32; h *= 0x589965cc75374cc3ull; h ^= h >> 29;')
+	g.writeln('\treturn h;')
+	g.writeln('}')
 	g.writeln('#define v_signal_with_handler_cast(sig, handler) signal((sig), ((void (*)(int))(handler)))')
 	g.writeln('string string__clone(string a);')
 	g.writeln('void string__free(string* s);')
