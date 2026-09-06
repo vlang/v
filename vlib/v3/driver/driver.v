@@ -15604,16 +15604,16 @@ fn synthetic_index_shift(insertions []SyntheticInsertion, idx int) int {
 // care about (.file markers/trailers, module_decl, import_decl) for every file
 // pair at or past region_start, in ascending node order. Falls back to the
 // full id range when the parser file index is unusable.
-fn collect_import_scan_ids(a &flat.FlatAst, region_start int, pair_cursor int) ([]int, int) {
+fn collect_import_scan_ids(a &flat.FlatAst, region_start int, pair_cursor int) ([]i32, int) {
 	if !file_index_usable_for_imports(a) {
-		mut all := []int{cap: a.nodes.len - region_start}
+		mut all := []i32{cap: a.nodes.len - region_start}
 		for i in region_start .. a.nodes.len {
 			all << i
 		}
 		return all, pair_cursor
 	}
 	mut cursor := pair_cursor
-	mut ids := []int{cap: 4096}
+	mut ids := []i32{cap: 4096}
 	mut last_trailing := region_start - 1
 	for cursor + 1 < a.file_node_ids.len {
 		marker := a.file_node_ids[cursor]
@@ -15649,7 +15649,7 @@ fn collect_import_scan_ids(a &flat.FlatAst, region_start int, pair_cursor int) (
 	return ids, cursor
 }
 
-fn collect_import_scan_children(a &flat.FlatAst, node &flat.Node, mut ids []int) {
+fn collect_import_scan_children(a &flat.FlatAst, node &flat.Node, mut ids []i32) {
 	for ci in 0 .. node.children_count {
 		id := int(a.child(node, ci))
 		if id < 0 || id >= a.nodes.len {
@@ -16171,7 +16171,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		scan_ids, next_pair_cursor := collect_import_scan_ids(a, node_idx, pair_cursor)
 		pair_cursor = next_pair_cursor
 		if os.getenv('V3_VERIFY_IMPORT_IDX') != '' {
-			mut full := []int{}
+			mut full := []i32{}
 			for i in node_idx .. a.nodes.len {
 				if a.nodes[i].kind in [.file, .module_decl, .import_decl] {
 					full << i

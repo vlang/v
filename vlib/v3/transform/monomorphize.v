@@ -59,6 +59,7 @@ fn (mut t Transformer) collect_generic_specs_range_scoped(struct_decls map[strin
 		// `last`; workers only read them while collecting type spellings.
 		w.node_module_map_cache = t.node_module_map_cache
 		w.node_file_map_cache = t.node_file_map_cache
+		w.node_context_texts = t.node_context_texts
 		w.node_module_map_nodes = t.node_module_map_nodes
 		mut batch_struct_specs := map[string]string{}
 		mut batch_sum_specs := map[string]GenericSpecContext{}
@@ -2681,7 +2682,12 @@ fn (mut t Transformer) collect_generic_sum_decls() map[string]GenericSumDecl {
 				if node.generic_params().len == 0 || node.children_count == 0 {
 					continue
 				}
-				module_name := t.node_module_map_cache[i] or { cur_module }
+				module_id := t.node_module_map_cache[i] or { u32(0) }
+				module_name := if module_id != 0 {
+					t.node_context_text(module_id)
+				} else {
+					cur_module
+				}
 				key := generic_type_decl_key(node.value, module_name)
 				decls[key] = GenericSumDecl{
 					id: flat.NodeId(i)
@@ -3415,8 +3421,8 @@ fn (mut t Transformer) ensure_node_module_map() {
 		return
 	}
 	if t.node_module_map_nodes < 0 || t.node_module_map_nodes > t.a.nodes.len {
-		t.node_module_map_cache = []string{len: t.a.nodes.len, cap: t.a.nodes.cap}
-		t.node_file_map_cache = []string{len: t.a.nodes.len, cap: t.a.nodes.cap}
+		t.node_module_map_cache = []u32{len: t.a.nodes.len, cap: t.a.nodes.cap}
+		t.node_file_map_cache = []u32{len: t.a.nodes.len, cap: t.a.nodes.cap}
 		t.node_module_map_nodes = 0
 	} else {
 		t.ensure_node_context_map_capacity()
@@ -3454,19 +3460,46 @@ fn (mut t Transformer) ensure_node_context_map_capacity() {
 	}
 	if t.node_module_map_cache.len < t.a.nodes.len {
 		t.node_module_map_cache.ensure_cap(t.a.nodes.cap)
-		t.node_module_map_cache << []string{len: t.a.nodes.len - t.node_module_map_cache.len}
+		t.node_module_map_cache << []u32{len: t.a.nodes.len - t.node_module_map_cache.len}
 	}
 	if t.node_file_map_cache.len < t.a.nodes.len {
 		t.node_file_map_cache.ensure_cap(t.a.nodes.cap)
-		t.node_file_map_cache << []string{len: t.a.nodes.len - t.node_file_map_cache.len}
+		t.node_file_map_cache << []u32{len: t.a.nodes.len - t.node_file_map_cache.len}
 	}
+}
+
+// node_context_text_id interns a declaration-context spelling for the per-node
+// module/file tables. Id 0 means "unset". Only the owning transformer interns
+// (workers run with node_context_read_only set), so the shared table needs no
+// synchronization.
+fn (mut t Transformer) node_context_text_id(value string) u32 {
+	if value.len == 0 {
+		return 0
+	}
+	if id := t.node_context_text_ids[value] {
+		return id
+	}
+	id := u32(t.node_context_texts.len + 1)
+	t.node_context_texts << value
+	t.node_context_text_ids[value] = id
+	return id
+}
+
+// node_context_text resolves an interned declaration-context spelling.
+@[inline]
+fn (t &Transformer) node_context_text(id u32) string {
+	idx := int(id) - 1
+	if idx < 0 || idx >= t.node_context_texts.len {
+		return ''
+	}
+	return t.node_context_texts[idx]
 }
 
 fn (t &Transformer) node_file_or(idx int, fallback string) string {
 	if idx >= 0 && idx < t.node_file_map_cache.len {
-		file_name := t.node_file_map_cache[idx]
-		if file_name.len > 0 {
-			return file_name
+		file_id := t.node_file_map_cache[idx]
+		if file_id != 0 {
+			return t.node_context_text(file_id)
 		}
 	}
 	return fallback
@@ -3474,12 +3507,12 @@ fn (t &Transformer) node_file_or(idx int, fallback string) string {
 
 fn (t &Transformer) node_module_or(idx int, fallback string) string {
 	if idx >= 0 && idx < t.node_module_map_cache.len {
-		module_name := t.node_module_map_cache[idx]
-		if module_name.len > 0 {
-			return module_name
+		module_id := t.node_module_map_cache[idx]
+		if module_id != 0 {
+			return t.node_context_text(module_id)
 		}
 		if !isnil(t.tc) && idx < t.node_file_map_cache.len {
-			file_name := t.node_file_map_cache[idx]
+			file_name := t.node_context_text(t.node_file_map_cache[idx])
 			if source_module := t.tc.file_modules[file_name] {
 				return source_module
 			}
@@ -3495,6 +3528,8 @@ fn (mut t Transformer) mark_node_context(id flat.NodeId, module_name string, fil
 	if t.node_context_read_only {
 		return
 	}
+	module_id := t.node_context_text_id(module_name)
+	file_id := t.node_context_text_id(file_name)
 	t.node_context_stack.clear()
 	t.node_context_stack << id
 	for t.node_context_stack.len > 0 {
@@ -3504,15 +3539,15 @@ fn (mut t Transformer) mark_node_context(id flat.NodeId, module_name string, fil
 			continue
 		}
 		if idx < t.node_module_map_cache.len && idx < t.node_file_map_cache.len
-			&& t.node_module_map_cache[idx] == module_name
-			&& t.node_file_map_cache[idx] == file_name {
+			&& t.node_module_map_cache[idx] == module_id
+			&& t.node_file_map_cache[idx] == file_id {
 			continue
 		}
 		if idx < t.node_module_map_cache.len {
-			t.node_module_map_cache[idx] = module_name
+			t.node_module_map_cache[idx] = module_id
 		}
 		if idx < t.node_file_map_cache.len {
-			t.node_file_map_cache[idx] = file_name
+			t.node_file_map_cache[idx] = file_id
 		}
 		node := t.a.nodes[idx]
 		start := node.children_start

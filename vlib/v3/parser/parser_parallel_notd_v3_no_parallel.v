@@ -318,7 +318,7 @@ fn remap_worker_pos(pos token.Pos, first_file_id int, next_file_id int, delta in
 	}
 	return token.Pos{
 		...pos
-		id: pos.id + delta
+		id: i32(pos.id + delta)
 	}
 }
 

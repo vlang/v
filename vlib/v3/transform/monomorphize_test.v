@@ -104,8 +104,8 @@ fn test_explicit_generic_fn_value_candidates_resolve_selective_import() {
 	file_name := '/tmp/main.v'
 	tc.file_selective_imports[file_import_key(file_name, 'id')] = ['lib.id']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.node_file_map_cache = []string{len: a.nodes.len}
-	t.node_file_map_cache[int(index_id)] = file_name
+	t.node_file_map_cache = []u32{len: a.nodes.len}
+	t.node_file_map_cache[int(index_id)] = t.node_context_text_id(file_name)
 
 	candidates := t.explicit_generic_fn_value_decl_candidates(index_id, base_id, a.nodes[int(base_id)], 'main')
 	assert candidates[0] == 'lib.id'
