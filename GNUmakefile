@@ -318,7 +318,7 @@ endif
 
 else
 latest_tcc:
-	@echo "Using local tccbin"
+	@echo "Using local tcc"
 	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 endif
 
