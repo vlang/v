@@ -82,6 +82,25 @@ fn retry_macos_v3_with_v1(state &MacosV3RetryState) {
 	}
 }
 
+@[noreturn]
+fn launch_macos_v1_compiler(is_verbose bool, args []string) {
+	vexe := pref.vexe_path()
+	fallback_executable := os.join_path(os.dir(vexe), macos_v3_v1_fallback_binary)
+	if !os.is_executable(fallback_executable) {
+		eprintln('`-old-compiler` requires `${fallback_executable}`, but it is missing. Rebuild V with `make` to create the V1 compatibility compiler.')
+		exit(1)
+	}
+	caller_environment := macos_v3_original_caller_environment(os.environ())
+	replace_macos_v3_process_environment(caller_environment)
+	if is_verbose {
+		eprintln('Using V1 compatibility compiler `${fallback_executable}`.')
+	}
+	os.execvp(fallback_executable, args) or {
+		eprintln('failed to launch the V1 compatibility compiler `${fallback_executable}`: ${err}')
+		exit(1)
+	}
+}
+
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 	if !is_macos_v3_relevant_command(command, prefs) {
 		return
@@ -94,8 +113,7 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 		return
 	}
 	if prefs.old_compiler {
-		eprintln('`-old-compiler` is not available: this V executable contains only the V3 compiler.')
-		exit(1)
+		launch_macos_v1_compiler(prefs.is_verbose, os.args[1..])
 	}
 	if message := macos_v3_fastc_incompatibility(prefs) {
 		eprintln(message)
