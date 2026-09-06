@@ -31,6 +31,8 @@ fn run_macos_v3_test_process(executable string, args []string, work_dir string, 
 fn test_macos_v3_embedded_driver_matches_target_selection() {
 	$if cross ? {
 		assert !macos_v3_driver_is_available()
+	} $else $if musl ? {
+		assert !macos_v3_driver_is_available()
 	} $else $if macos || linux {
 		assert macos_v3_driver_is_available()
 	} $else {
