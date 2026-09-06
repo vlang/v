@@ -91,6 +91,10 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 			launch_macos_v1_fallback(fallback_executable, os.args[1..], prefs.is_verbose,
 				'`-old-compiler` was requested')
 		}
+		if macos_v3_needs_v1_compatibility(command, prefs) {
+			launch_macos_v1_fallback(macos_v3_v1_fallback_executable(), os.args[1..],
+				prefs.is_verbose, 'this build requires the V1 compatibility compiler')
+		}
 	}
 	if !is_macos_v3_relevant_command(command, prefs) {
 		return
@@ -163,6 +167,28 @@ fn macos_v3_is_self_build_target(prefs &pref.Preferences) bool {
 	vroot := os.real_path(os.dir(pref.vexe_path())).replace('\\', '/').trim_right('/')
 	target := os.real_path(prefs.path).replace('\\', '/').trim_right('/')
 	return target == '${vroot}/cmd/v' || target == '${vroot}/cmd/v/v.v'
+}
+
+fn macos_v3_needs_v1_compatibility(command string, prefs &pref.Preferences) bool {
+	// FastC and explicit `-new-compiler` are deliberately strict V3 requests.
+	if prefs.new_compiler || prefs.is_fastc || prefs.backend != .c || prefs.path == ''
+		|| command == 'test' || command in external_tools
+		|| macos_v3_non_compilation_command(command) {
+		return false
+	}
+	// Portable VC generation and non-host C targets were compatibility-compiler
+	// modes before the V3-only self-build change. Do not make V3 fail first (or,
+	// worse, emit subtly different cross-target C) before selecting V1.
+	if prefs.output_cross_c || (prefs.os != ._auto && prefs.os != pref.get_host_os()) {
+		return true
+	}
+	// V's command tools are part of the compiler toolchain, not ordinary user
+	// programs. Until V3 can reliably self-host all of them, compile them with the
+	// same stable compatibility compiler used for V3 retries.
+	vroot := os.real_path(os.dir(pref.vexe_path())).replace('\\', '/').trim_right('/')
+	target := os.real_path(prefs.path).replace('\\', '/').trim_right('/')
+	tools := '${vroot}/cmd/tools'
+	return target == tools || target.starts_with(tools + '/')
 }
 
 fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
