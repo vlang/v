@@ -105,6 +105,8 @@ fn test_envelope_addr_strips_display_name() {
 	assert envelope_addr('User <"a>b@c<d"@example.com>') == '"a>b@c<d"@example.com'
 	// Malformed input (no closing '>') passes through; the server can reject.
 	assert envelope_addr('Ivan <ivan@example.com') == 'Ivan <ivan@example.com'
+	// A bare address must still be CRLF-sanitized to keep the newline out of RCPT TO.
+	assert envelope_addr('victim@example.com\nX-Evil: yes') == 'victim@example.comX-Evil: yes'
 }
 
 fn test_mail_message_data_preserves_display_name_in_from_header() {
@@ -252,6 +254,8 @@ fn test_format_addr() {
 	// CRLF inside the addr-spec is stripped too, so it cannot leak into the
 	// SMTP envelope or the header.
 	assert format_addr('<a@b.com\r\nX: evil>') == '<a@b.comX: evil>'
+	// A bare address must still be CRLF-sanitized to keep the newline out of the header.
+	assert format_addr('victim@example.com\nX-Evil: yes') == '<victim@example.comX-Evil: yes>'
 }
 
 fn test_format_addr_list() {

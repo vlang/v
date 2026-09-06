@@ -275,15 +275,15 @@ fn envelope_addr(s string) string {
 //   '"a<b"@example.com'          ->  Option(none), '"a<b"@example.com'
 //   'John "The Boss" <j@ex.com>' ->  Option('John "The Boss"'), 'j@ex.com'
 fn split_mailbox(s string) (?string, string) {
-	trimmed := s.trim_space()
+	trimmed := strip_crlf(s.trim_space())
 	open_at := index_unquoted(trimmed, `<`, 0) or {
 		return none, trimmed
 	}
 	close_at := index_unquoted(trimmed, `>`, open_at + 1) or {
 		return none, trimmed
 	}
-	addr := strip_crlf(trimmed[open_at + 1..close_at].trim_space())
-	name := strip_crlf(unquote_name(trimmed[..open_at]))
+	addr := trimmed[open_at + 1..close_at].trim_space()
+	name := unquote_name(trimmed[..open_at])
 	display_name := if name == '' { none } else { name }
 	return display_name, addr
 }
