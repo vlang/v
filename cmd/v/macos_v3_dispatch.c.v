@@ -140,7 +140,7 @@ fn macos_v3_v1_fallback_executable() string {
 }
 
 fn macos_v3_is_self_build_target(prefs &pref.Preferences) bool {
-	if prefs.path == '' {
+	if prefs.path == '' || prefs.output_cross_c {
 		return false
 	}
 	// Only native-host compiler rebuilds belong to the V3-only self-build fast
