@@ -9683,6 +9683,14 @@ fn (mut t Transformer) simple_nested_string_interpolation(value string) ?flat.No
 		if inner.len == 0 || string_has_interp_start_bytes(inner) || string_has_newline_byte(inner) {
 			return none
 		}
+		if nested_interp_text_reads_it(inner) {
+			// `it` is owned by an enclosing `map`/`filter`, which renames it while
+			// lowering its body. A real nested interpolation of `it` reaches this
+			// transform as a parsed part rather than as literal text, so an `it`
+			// still encoded in the text here has no binding to rename and expanding
+			// it would emit an undeclared identifier.
+			return none
+		}
 		expr, typ := t.simple_nested_interp_expr(inner) or { return none }
 		parts << t.wrap_string_conversion(expr, typ)
 		i = end + 1
@@ -9952,6 +9960,46 @@ fn nested_interp_closing_brace(value string, start int) ?int {
 		}
 	}
 	return none
+}
+
+// nested_interp_text_reads_it reports whether an interpolation encoded in literal
+// text reads the implicit `it` binding, ignoring `it` used as a field name or
+// inside a quoted string.
+fn nested_interp_text_reads_it(inner string) bool {
+	mut quote := u8(0)
+	mut i := 0
+	for i < inner.len {
+		c := inner[i]
+		if quote != 0 {
+			if c == `\\` && i + 1 < inner.len {
+				i += 2
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if c == `'` || c == `"` || c == `\`` {
+			quote = c
+			i++
+			continue
+		}
+		if c.is_letter() || c == `_` {
+			mut j := i
+			for j < inner.len && (inner[j].is_alnum() || inner[j] == `_`) {
+				j++
+			}
+			if inner[i..j] == 'it' && (i == 0 || inner[i - 1] != `.`) {
+				return true
+			}
+			i = j
+			continue
+		}
+		i++
+	}
+	return false
 }
 
 fn nested_interp_literal_inner(value string) ?string {
