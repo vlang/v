@@ -118,9 +118,9 @@ fn test_macos_v3_old_compiler_uses_external_v1_command() {
 	}
 }
 
-fn test_macos_v3_compile_error_does_not_fall_back() {
+fn test_macos_v3_invalid_program_still_reports_an_error_after_v1_retry() {
 	$if macos || linux {
-		root := os.join_path(os.vtmp_dir(), 'v3_only_compile_error_${os.getpid()}')
+		root := os.join_path(os.vtmp_dir(), 'v3_invalid_program_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
 		defer {
@@ -135,7 +135,6 @@ fn test_macos_v3_compile_error_does_not_fall_back() {
 		})
 		assert result.exit_code == 1, result.output
 		assert result.output.contains('missing_name'), result.output
-		assert !result.output.contains('stable compiler instead'), result.output
 		assert !os.exists(os.join_path(root, 'stale_fallback'))
 	}
 }
