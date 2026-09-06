@@ -9289,7 +9289,7 @@ pub fn run(args []string) {
 	minimal_literal_output := !is_prof
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	host_target := pref.host_target()
-	use_parallel_c_compilation := parallel_cc && backend == 'c' && !c_only && !explicit_tcc
+	mut use_parallel_c_compilation := parallel_cc && backend == 'c' && !c_only && !explicit_tcc
 		&& !is_o && target.os != 'windows' && coverage_dir.len == 0 && profile_file.len == 0
 		&& v3_parallel_cc_monolithic_define !in user_defines
 	// `-keepc` and explicit `-b c` promise a complete generated C translation unit.
@@ -9496,6 +9496,14 @@ pub fn run(args []string) {
 		exit(1)
 	}
 	test_files := test_input_files(user_files, backend, prefs.target)
+	// A test binary keeps the harness counters (`__v3_test_failures` and the
+	// setjmp buffer that `assert` longjmps out of) as `static` definitions inside
+	// the program body, so they live in whichever split unit the body lands in
+	// and a unit that only references them does not compile. Test builds stay in
+	// one translation unit.
+	if test_files.len > 0 {
+		use_parallel_c_compilation = false
+	}
 
 	if !no_builtin {
 		seed_implicit_imports(mut a, minimal_literal_output)
