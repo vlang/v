@@ -119,20 +119,58 @@ flake.nix
 thirdparty/stdatomic/nix/cpp/*.h
 
 # ignore thirdparty libs that are distributed separately
-thirdparty/iossim/
-thirdparty/iossim
+thirdparty/binaryen*
+thirdparty/wabt*
 thirdparty/tcc/
-thirdparty/tcc
-thirdparty/legacy/
-thirdparty/legacy
-thirdparty/stdatomic/nix/*.o
-thirdparty/stdatomic/nix/*.a
+thirdparty/sqlite/
 
-# Ignore auto-generated amalgamated file
-vlib/v/gen/c/cheaders.v
+# ignore VLS log
+vls.log
 
-# ignore symlink to v created via `v symlink`
-/usr/local/bin/v
+# ignore v2go tmperror files
+*.tmperr
 
-# ignore files created by V language server
-.vls/
+.vtmp_cov_*/
+
+# ignore Intellij files
+.idea/
+/*.iml
+
+# ignore generated files:
+wasm.v
+
+# ignore large GTK *.gir files
+Gtk-4.0.gir
+*.gir
+
+vlib/builtin/js/*.js
+vlib/v/tests/*.js
+
+# ignore tags indexes, used by emacs/vim:
+ETAGS
+TAGS
+tags
+
+# ignore the old regexp based v.ctags file (people using universal ctags < 6.1.0, can still benefit from them)
+.ctags.d/v.ctags
+
+# ignore .NET7.0 Assembly Files
+bench/vectors/bin
+bench/vectors/obj
+
+autofuzz.log
+.project.gf
+.aider*
+
+# ignore common file names for bugs/reproductions
+bug*
+issue*
+!thirdparty/tccbin_automation/schemas/issue-projection.schema.json
+!thirdparty/tccbin_automation/tests/fixtures/issue-projection.schema-fixture.json
+!thirdparty/tccbin_automation/tests/fixtures/issue-ledger.dark.json
+
+# ignore cmd2/v stuff
+.claude/
+.copilot/
+.agents/
+.codex/
