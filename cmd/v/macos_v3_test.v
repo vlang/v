@@ -82,14 +82,14 @@ fn test_macos_v3_relevant_command_owns_every_direct_c_build() {
 
 fn test_macos_v3_cmd_source_unlinks_v1_on_supported_hosts() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v', 'v.v'))!
-	assert source.contains('$if v1_fallback ? {')
-	assert source.contains('} $else $if !macos && !linux {')
+	assert source.contains('\$if v1_fallback ? {')
+	assert source.contains('} \$else \$if !macos && !linux {')
 	assert source.contains('import v.builder')
 	assert source.contains('import v.builder.cbuilder')
-	assert source.contains('$if v1_fallback ? {\n\t\t\tbuilder.compile')
+	assert source.contains('\$if v1_fallback ? {\n\t\t\tbuilder.compile')
 	driver := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v',
 		'macos_v3_driver_notd_cross.v'))!
-	assert driver.contains('$if v1_fallback ? {')
+	assert driver.contains('\$if v1_fallback ? {')
 	assert driver.contains('fn macos_v3_driver_is_available() bool')
 }
 
@@ -298,7 +298,7 @@ fn test_macos_v3_parallel_cc_ignores_inactive_header_definitions() {
 		}
 		os.write_file(os.join_path(root, 'inactive_impl.h'), 'int inactive_impl(void) { return 1; }\n')!
 		source := os.join_path(root, 'main.v')
-		os.write_file(source, '$if windows {\n#include "@DIR/inactive_impl.h"\n}\n\nfn main() { println("ok") }\n')!
+		os.write_file(source, '\$if windows {\n#include "@DIR/inactive_impl.h"\n}\n\nfn main() { println("ok") }\n')!
 		output := os.join_path(root, 'main')
 		result := run_macos_v3_test_process(@VEXE, ['-gc', 'none', '-parallel-cc', '-nocache', '-o',
 			output, source], macos_v3_test_vroot, {})
