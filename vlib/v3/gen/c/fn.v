@@ -2314,10 +2314,21 @@ fn (g &FlatGen) concrete_generic_method_name_from_call_receiver(node flat.Node, 
 	return none
 }
 
+// cgen_type_is_indexable_container reports whether `typ` is a container value that
+// `x[i]` indexes into. A selector of such a type cannot be a generic method name.
+fn cgen_type_is_indexable_container(typ types.Type) bool {
+	mut cur := types.unalias_type(typ)
+	for cur is types.Pointer {
+		cur = types.unalias_type(cur.base_type)
+	}
+	return cur is types.Array || cur is types.ArrayFixed || cur is types.Map
+}
+
 fn (g &FlatGen) is_explicit_generic_method_call_selector(fn_node &flat.Node, resolved_target_name string, target_name string) bool {
 	if fn_node.kind != .index || fn_node.children_count < 2 {
 		return false
 	}
+	selector_id := g.a.child(fn_node, 0)
 	selector := g.a.child_node(fn_node, 0)
 	if selector.kind != .selector || selector.children_count == 0 {
 		return false
@@ -2330,6 +2341,11 @@ fn (g &FlatGen) is_explicit_generic_method_call_selector(fn_node &flat.Node, res
 		if arg.kind == .index && arg.value != 'range' {
 			continue
 		}
+		return false
+	}
+	if cgen_type_is_indexable_container(g.usable_expr_type(selector_id)) {
+		// `recv.field[i]()` calls the function value stored at `i` in an array or
+		// map field, so the brackets are an index and not explicit type arguments.
 		return false
 	}
 	if resolved_target_name.contains('.') || target_name.contains('.') {
@@ -15844,7 +15860,12 @@ fn (mut g FlatGen) gen_generated_storage_pointer_arg(arg_idx int, arg_id flat.No
 	if inner.kind != .ident || !generated_storage_pointer_arg_name(inner.value) {
 		return false
 	}
-	g.gen_expr(arg_id)
+	// The container copies `elem_size` bytes from this pointer, so the address of the
+	// temporary is always required. Emitting the `&` here keeps a function-valued
+	// element from collapsing to the bare function pointer, which would make the
+	// container read its element bytes out of the function's own code.
+	g.write('&')
+	g.gen_expr(inner_id)
 	return true
 }
 

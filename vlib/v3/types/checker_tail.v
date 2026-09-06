@@ -3286,6 +3286,23 @@ fn (mut tc TypeChecker) check_valid_call_preamble(id flat.NodeId, node flat.Node
 	return false
 }
 
+// call_callee_indexes_container reports whether a call's `x[i]` callee indexes an
+// array or map value. Such a call invokes the function stored at `i`, so the
+// brackets are an index and not explicit generic type arguments.
+fn (mut tc TypeChecker) call_callee_indexes_container(callee &flat.Node) bool {
+	if callee.children_count == 0 || callee.value == 'range' {
+		return false
+	}
+	base_id := tc.a.child(callee, 0)
+	base := tc.a.node(base_id)
+	if base.kind == .ident && !tc.ident_resolves_to_value(base.value) {
+		// A bare generic function name such as `apply` in `apply[int](v)`.
+		return false
+	}
+	base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(base_id))
+	return base_type is Array || base_type is ArrayFixed || base_type is Map
+}
+
 // check_call validates check call state for types.
 @[direct_array_access]
 fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
@@ -3444,7 +3461,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		if callee.kind == .call {
 			tc.check_node(callee_id)
 		}
-		if callee.kind == .index && callee.children_count > 1 {
+		if callee.kind == .index && callee.children_count > 1
+			&& !tc.call_callee_indexes_container(callee) {
 			mut has_unbound_generic_type_arg := false
 			for i in 1 .. callee.children_count {
 				type_arg_id := tc.a.child(callee, i)
