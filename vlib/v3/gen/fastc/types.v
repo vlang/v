@@ -885,8 +885,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		if open_index > start {
 			base_type := g.infer_expression_type_range(tokens, start, open_index)!
 			base_layout := fastc_trim_pointer_suffix(base_type)
-			if fastc_expression_tokens_contain_range(tokens, open_index + 1, end - 1,
-				.dotdot) {
+			if fastc_expression_tokens_contain_range(tokens, open_index + 1, end - 1, .dotdot) {
 				// Slicing a fixed array yields a dynamic array of its element type.
 				if base_layout.starts_with('FixedArray_') {
 					if element := g.array_element_type(base_layout) {

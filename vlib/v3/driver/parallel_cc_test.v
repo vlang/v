@@ -60,8 +60,7 @@ fn test_v3_parallel_cc_keeps_test_binaries_in_one_unit() {
 		// The harness counters `assert` writes are `static` definitions inside the
 		// program body, so a split unit that only references them would not
 		// compile. The build has to stay in one translation unit.
-		build := cmdexec.run(@VEXE, ['-parallel-cc', '-nocache', '-showcc', '-o', output,
-			source])
+		build := cmdexec.run(@VEXE, ['-parallel-cc', '-nocache', '-showcc', '-o', output, source])
 		assert build.exit_code == 0, build.output
 		assert !build.output.contains('unit_1.c'), build.output
 		run_result := cmdexec.run(output, [])
@@ -156,8 +155,7 @@ fn test_v3_parallel_cc_falls_back_for_macro_generated_function_local_static_stat
 DEF(v3_parallel_macro_next)
 ')!
 		os.write_file(source, '#flag -I @DIR\n#include "state.h"\n\nfn C.v3_parallel_macro_next() int\n\nfn first() int { return C.v3_parallel_macro_next() }\nfn second() int { return C.v3_parallel_macro_next() }\nfn main() { println(first())\nprintln(second()) }\n')!
-		build := cmdexec.run(@VEXE, ['-parallel-cc', '-nocache', '-showcc', '-o', output,
-			source])
+		build := cmdexec.run(@VEXE, ['-parallel-cc', '-nocache', '-showcc', '-o', output, source])
 		assert build.exit_code == 0, build.output
 		assert !build.output.contains('unit_0.c'), build.output
 		assert build.output.contains('src.c'), build.output
