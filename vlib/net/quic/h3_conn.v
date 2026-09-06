@@ -172,6 +172,21 @@ mut:
 	own_qpack_encoder_stream_id ?u64
 	own_qpack_decoder_stream_id ?u64
 
+	// pending_own_encoder_instructions buffers bytes apply_peer_settings
+	// generates (h3_control_stream.v) for OUR OWN QPACK encoder stream
+	// before that stream has actually been opened yet. The peer's own
+	// SETTINGS frame can arrive, and be processed, before this
+	// connection's own open_own_streams_if_ready() call has had a chance
+	// to run (confirmed against a real server: Google's QUIC endpoints
+	// are fast enough to trigger this ordering on essentially every
+	// connection) -- silently dropping the instruction in that window
+	// left this encoder's LOCAL capacity state raised (so it went on to
+	// insert dynamic-table entries) while the PEER's decoder never learned
+	// of the same capacity increase, since the Set Dynamic Table Capacity
+	// instruction that would have told it never reached the wire. Flushed
+	// by open_own_streams_if_ready once the real stream ID exists.
+	pending_own_encoder_instructions []u8
+
 	// Peer-initiated uni streams whose type is still unknown: raw
 	// accumulated header bytes, keyed by stream_id. Removed once
 	// classified (bounded by max_h3_uni_stream_header_buffered_bytes per
@@ -339,7 +354,15 @@ fn (mut h H3Conn) open_own_streams_if_ready() ! {
 	if h.own_qpack_encoder_stream_id == none {
 		enc_id := h.qc.open_stream(false)!
 		h.own_qpack_encoder_stream_id = enc_id
-		h.qc.write_stream(enc_id, encode_qpack_encoder_stream_header()!, false)!
+		mut enc_bytes := encode_qpack_encoder_stream_header()!
+		// Flush anything apply_peer_settings buffered before this stream
+		// existed (H3Conn.pending_own_encoder_instructions' own doc
+		// comment) -- appended after the stream-type header but in the
+		// SAME write, so it can never land as a separate, differently-
+		// ordered write relative to the header it must follow.
+		enc_bytes << h.pending_own_encoder_instructions
+		h.pending_own_encoder_instructions = []u8{}
+		h.qc.write_stream(enc_id, enc_bytes, false)!
 	}
 	if h.own_qpack_decoder_stream_id == none {
 		dec_id := h.qc.open_stream(false)!
@@ -397,10 +420,32 @@ fn (mut h H3Conn) pump_pending_uni_header(stream_id u64) ! {
 	if new_bytes.len > 0 {
 		buf << new_bytes
 	}
-	if u64(buf.len) > max_h3_uni_stream_header_buffered_bytes {
-		return error_with_code('h3: peer unidirectional stream ${stream_id} sent more than ${max_h3_uni_stream_header_buffered_bytes} bytes without completing its type header', int(H3ErrorCode.general_protocol_error))
-	}
 	kind, consumed := classify_peer_uni_stream_header(buf) or {
+		// Only a genuine "still not enough bytes for even the type
+		// varint (plus, for a push stream, its Push ID)" case reaches
+		// here -- checked AFTER attempting classification, not before:
+		// RFC 9114 places no requirement that a stream's type header
+		// arrive in its own STREAM frame separate from whatever legal
+		// payload follows it (SETTINGS, QPACK instructions, ...), so a
+		// real peer writing its header and immediately-following data in
+		// ONE write is completely normal, RFC-compliant behavior, not a
+		// slow/malicious peer trickling a header in byte by byte. Gating
+		// the length cap on a FAILED classification (rather than on raw
+		// buf.len regardless of outcome) means a fully-classifiable
+		// buffer plus a large legitimate payload afterward is never
+		// mistaken for one still stuck incomplete. Confirmed against
+		// real interop: Google's and http3.is's QUIC stacks write the
+		// entire control-stream header + SETTINGS frame as one 45-byte
+		// STREAM frame -- classification succeeds instantly on byte 0,
+		// but the OLD unconditional buf.len check (evaluated before ever
+		// trying to classify) rejected it outright as "sent more than 32
+		// bytes without completing its header," when the header itself
+		// was one byte. Cloudflare's own stack happens to write a
+		// smaller first STREAM frame, which is why this bug never
+		// reproduced against it.
+		if u64(buf.len) > max_h3_uni_stream_header_buffered_bytes {
+			return error_with_code('h3: peer unidirectional stream ${stream_id} sent more than ${max_h3_uni_stream_header_buffered_bytes} bytes without completing its type header', int(H3ErrorCode.general_protocol_error))
+		}
 		h.pending_peer_uni_headers[stream_id] = buf
 		return
 	}

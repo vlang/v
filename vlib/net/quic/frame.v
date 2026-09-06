@@ -182,6 +182,71 @@ pub:
 	maximum_data u64
 }
 
+// NewTokenFrame represents a NEW_TOKEN frame (type 0x07, RFC 9000 §19.7):
+// sent only by a server, providing a token the client MAY present on a
+// FUTURE connection's Initial packet for address validation (and,
+// separately, 0-RTT). This module implements neither 0-RTT nor token-
+// carrying reconnection (net.quic's own documented v1 scope), so the
+// token is parsed and kept only long enough to size the frame correctly
+// on the wire -- never stored or reused. Parsing it at all (rather than
+// treating the type as unrecognized) is still required: real servers
+// (confirmed: Google's QUIC endpoints) send this immediately after the
+// handshake as standard practice, unrelated to whether the CLIENT ever
+// intends to use it, and RFC 9000 §12.4's frame type table has no
+// allowance for an implementation to reject a frame it merely doesn't
+// act on.
+pub struct NewTokenFrame {
+pub:
+	token []u8
+}
+
+// NewConnectionIdFrame represents a NEW_CONNECTION_ID frame (type 0x18,
+// RFC 9000 §19.15): the peer offering an additional connection ID this
+// endpoint MAY switch to. Parsed and otherwise ignored -- net.quic
+// implements neither an active-CID pool nor connection migration (v1
+// scope, PROGRESS.md), and never switches away from the one DCID
+// established at the handshake. As with NewTokenFrame, parsing (not
+// merely tolerating on the wire) is required regardless: real servers
+// send this as standard practice independent of whether the client ever
+// migrates, per RFC 9000 §5.1.1's own recommendation to keep a pool of
+// several ready.
+pub struct NewConnectionIdFrame {
+pub:
+	sequence_number       u64
+	retire_prior_to       u64
+	connection_id         []u8
+	stateless_reset_token []u8
+}
+
+// RetireConnectionIdFrame represents a RETIRE_CONNECTION_ID frame (type
+// 0x19, RFC 9000 §19.16): the peer retiring one of ITS OWN previously
+// issued connection IDs (the ones the peer uses to address US, from this
+// endpoint's own NEW_CONNECTION_ID frames -- which net.quic never sends,
+// having no active-CID pool of its own to issue from). Parsed and
+// otherwise ignored, same rationale as NewConnectionIdFrame.
+pub struct RetireConnectionIdFrame {
+pub:
+	sequence_number u64
+}
+
+// PathChallengeFrame/PathResponseFrame represent PATH_CHALLENGE (0x1a)/
+// PATH_RESPONSE (0x1b) frames (RFC 9000 §19.17/§19.18): 8 bytes of
+// sender-chosen data. RFC 9000 §8.2.1's MUST-respond-with-PATH_RESPONSE
+// requirement is NOT implemented here (net.quic never migrates and has
+// never been observed to receive an unprompted PATH_CHALLENGE from a
+// real server in practice) -- parsed so the connection survives one
+// arriving, not acted upon. Tracked as a known gap in PROGRESS.md rather
+// than silently presented as full RFC 9000 §8.2 path-validation support.
+pub struct PathChallengeFrame {
+pub:
+	data []u8
+}
+
+pub struct PathResponseFrame {
+pub:
+	data []u8
+}
+
 // StreamDataBlockedFrame represents a STREAM_DATA_BLOCKED frame (type
 // 0x15, RFC 9000 §19.13): same as DataBlockedFrame, but for one stream's
 // limit.
@@ -219,9 +284,14 @@ pub type QuicFrame = AckFrame
 	| MaxDataFrame
 	| MaxStreamDataFrame
 	| MaxStreamsFrame
+	| NewConnectionIdFrame
+	| NewTokenFrame
 	| PaddingFrame
+	| PathChallengeFrame
+	| PathResponseFrame
 	| PingFrame
 	| ResetStreamFrame
+	| RetireConnectionIdFrame
 	| StopSendingFrame
 	| StreamDataBlockedFrame
 	| StreamFrame
@@ -234,6 +304,7 @@ const frame_type_ack_ecn = u64(0x03)
 const frame_type_reset_stream = u64(0x04)
 const frame_type_stop_sending = u64(0x05)
 const frame_type_crypto = u64(0x06)
+const frame_type_new_token = u64(0x07)
 const frame_type_stream_base = u64(0x08) // 0x08-0x0f, OFF/LEN/FIN bits in the low 3 bits
 
 const frame_type_max_data = u64(0x10)
@@ -244,9 +315,19 @@ const frame_type_data_blocked = u64(0x14)
 const frame_type_stream_data_blocked = u64(0x15)
 const frame_type_streams_blocked_bidi = u64(0x16)
 const frame_type_streams_blocked_uni = u64(0x17)
+const frame_type_new_connection_id = u64(0x18)
+const frame_type_retire_connection_id = u64(0x19)
+const frame_type_path_challenge = u64(0x1a)
+const frame_type_path_response = u64(0x1b)
 const frame_type_connection_close_transport = u64(0x1c)
 const frame_type_connection_close_application = u64(0x1d)
 const frame_type_handshake_done = u64(0x1e)
+
+// max_connection_id_length is RFC 9000 §17.2's own connection ID length
+// bound (a single byte's worth by construction, but the RFC additionally
+// caps it here) -- NEW_CONNECTION_ID's Length field (§19.15) MUST NOT
+// exceed it.
+const max_connection_id_length = 20
 
 // parse_frame parses exactly one frame from the start of `buf`, returning
 // the frame and the number of bytes consumed. A run of consecutive PADDING
@@ -287,6 +368,10 @@ pub fn parse_frame(buf []u8) !(QuicFrame, int) {
 		return parse_crypto_frame(buf, typ_len)
 	}
 
+	if typ == frame_type_new_token {
+		return parse_new_token_frame(buf, typ_len)
+	}
+
 	if typ >= frame_type_stream_base && typ <= frame_type_stream_base + 7 {
 		return parse_stream_frame(buf, typ_len, u8(typ))
 	}
@@ -313,6 +398,22 @@ pub fn parse_frame(buf []u8) !(QuicFrame, int) {
 
 	if typ == frame_type_streams_blocked_bidi || typ == frame_type_streams_blocked_uni {
 		return parse_streams_blocked_frame(buf, typ_len, typ == frame_type_streams_blocked_uni)
+	}
+
+	if typ == frame_type_new_connection_id {
+		return parse_new_connection_id_frame(buf, typ_len)
+	}
+
+	if typ == frame_type_retire_connection_id {
+		return parse_retire_connection_id_frame(buf, typ_len)
+	}
+
+	if typ == frame_type_path_challenge {
+		return parse_path_challenge_or_response_frame(buf, typ_len, false)
+	}
+
+	if typ == frame_type_path_response {
+		return parse_path_challenge_or_response_frame(buf, typ_len, true)
 	}
 
 	if typ == frame_type_connection_close_transport
@@ -409,6 +510,103 @@ fn parse_ack_frame(buf []u8, start int, has_ecn_counts bool) !(QuicFrame, int) {
 		ranges: ranges
 		ecn_counts: ecn_counts
 	}), offset
+}
+
+// parse_new_token_frame parses a NEW_TOKEN frame (RFC 9000 §19.7):
+// Type (i) = 0x07, Token Length (i), Token (..). A zero-length token is
+// syntactically legal per the grammar (no MUST-be-nonzero requirement in
+// the RFC text) -- rejecting it here would be inventing a restriction the
+// spec doesn't impose, so it is accepted, matching parse_crypto_frame's
+// identical tolerance for a zero-length CRYPTO frame.
+fn parse_new_token_frame(buf []u8, start int) !(QuicFrame, int) {
+	mut offset := start
+	length, n1 := decode_varint(buf[offset..])!
+	offset += n1
+	if u64(offset) + length > u64(buf.len) {
+		return error('quic: NEW_TOKEN frame: length ${length} exceeds remaining buffer')
+	}
+	token := buf[offset..offset + int(length)].clone()
+	offset += int(length)
+	return QuicFrame(NewTokenFrame{
+		token: token
+	}), offset
+}
+
+// stateless_reset_token_length is RFC 9000 §19.15's fixed 128-bit (16
+// byte) Stateless Reset Token field width, carried by every
+// NEW_CONNECTION_ID frame.
+const stateless_reset_token_length = 16
+
+// path_challenge_data_length is RFC 9000 §19.17/§19.18's fixed 8-byte
+// data field width, shared by PATH_CHALLENGE and PATH_RESPONSE.
+const path_challenge_data_length = 8
+
+// parse_new_connection_id_frame parses a NEW_CONNECTION_ID frame (RFC
+// 9000 §19.15): Sequence Number (i), Retire Prior To (i), Length (8),
+// Connection ID (8..160), Stateless Reset Token (128). "Retire Prior To"
+// MUST NOT exceed "Sequence Number" (RFC 9000 §19.15) -- checked here even
+// though the value itself is otherwise unused (NewConnectionIdFrame's own
+// doc comment), since accepting an out-of-order value would silently let
+// a malformed frame through as if it were well-formed.
+fn parse_new_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
+	mut offset := start
+	sequence_number, n1 := decode_varint(buf[offset..])!
+	offset += n1
+	retire_prior_to, n2 := decode_varint(buf[offset..])!
+	offset += n2
+	if retire_prior_to > sequence_number {
+		return error('quic: NEW_CONNECTION_ID frame: retire_prior_to ${retire_prior_to} exceeds sequence_number ${sequence_number} (RFC 9000 §19.15)')
+	}
+	if offset >= buf.len {
+		return error('quic: NEW_CONNECTION_ID frame: missing Length field')
+	}
+	cid_len := int(buf[offset])
+	offset += 1
+	if cid_len > max_connection_id_length {
+		return error('quic: NEW_CONNECTION_ID frame: connection ID length ${cid_len} exceeds the ${max_connection_id_length}-byte limit (RFC 9000 §19.15)')
+	}
+	if offset + cid_len + stateless_reset_token_length > buf.len {
+		return error('quic: NEW_CONNECTION_ID frame: connection ID/stateless reset token exceed remaining buffer')
+	}
+	connection_id := buf[offset..offset + cid_len].clone()
+	offset += cid_len
+	stateless_reset_token := buf[offset..offset + stateless_reset_token_length].clone()
+	offset += stateless_reset_token_length
+	return QuicFrame(NewConnectionIdFrame{
+		sequence_number: sequence_number
+		retire_prior_to: retire_prior_to
+		connection_id: connection_id
+		stateless_reset_token: stateless_reset_token
+	}), offset
+}
+
+// parse_retire_connection_id_frame parses a RETIRE_CONNECTION_ID frame
+// (RFC 9000 §19.16): Sequence Number (i).
+fn parse_retire_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
+	sequence_number, n1 := decode_varint(buf[start..])!
+	return QuicFrame(RetireConnectionIdFrame{
+		sequence_number: sequence_number
+	}), start + n1
+}
+
+// parse_path_challenge_or_response_frame parses a PATH_CHALLENGE (RFC
+// 9000 §19.17) or PATH_RESPONSE (§19.18) frame -- identical wire shape,
+// one fixed 8-byte Data field, differing only in which frame type they
+// decode to.
+fn parse_path_challenge_or_response_frame(buf []u8, start int, is_response bool) !(QuicFrame, int) {
+	if start + path_challenge_data_length > buf.len {
+		return error('quic: PATH_CHALLENGE/PATH_RESPONSE frame: data field exceeds remaining buffer')
+	}
+	data := buf[start..start + path_challenge_data_length].clone()
+	end := start + path_challenge_data_length
+	if is_response {
+		return QuicFrame(PathResponseFrame{
+			data: data
+		}), end
+	}
+	return QuicFrame(PathChallengeFrame{
+		data: data
+	}), end
 }
 
 fn parse_crypto_frame(buf []u8, start int) !(QuicFrame, int) {

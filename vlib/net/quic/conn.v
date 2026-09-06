@@ -1035,6 +1035,24 @@ fn (mut c QuicConn) dispatch_one_rtt_frame(frame QuicFrame, now u64, mut result 
 			// DATA_BLOCKED/STREAM_DATA_BLOCKED/STREAMS_BLOCKED: purely
 			// informational hints (RFC 9000 §19.12-§19.14 impose no MUST
 			// response) -- legal on the wire, accepted, not acted upon.
+			//
+			// NewTokenFrame: this module implements neither 0-RTT nor
+			// token-carrying reconnection (v1 scope, PROGRESS.md) -- the
+			// token itself (frame.v's own NewTokenFrame doc comment) is
+			// discarded here, never stored. Real servers (confirmed:
+			// Google's QUIC endpoints) send this as standard practice
+			// immediately after the handshake regardless of whether the
+			// client ever intends to use it.
+			//
+			// NewConnectionIdFrame/RetireConnectionIdFrame: no active-CID
+			// pool, no connection migration (v1 scope, PROGRESS.md) -- see
+			// each struct's own doc comment (frame.v). Also confirmed sent
+			// by real servers (Google) as standard practice.
+			//
+			// PathChallengeFrame/PathResponseFrame: RFC 9000 §8.2.1's
+			// MUST-respond requirement is a known, tracked gap (frame.v's
+			// own doc comment) -- parsed so an unexpected one doesn't tear
+			// down the connection, not yet acted upon.
 		}
 	}
 }

@@ -25,7 +25,7 @@ mut:
 	cookies map[string]string
 pub mut:
 	version    Version = .v1_1
-	method     Method  = .get
+	method     Method = .get
 	header     Header
 	host       string
 	data       string
@@ -39,21 +39,21 @@ pub mut:
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
 
-	validate                 bool // when true, certificate failures will stop further processing
-	verify                   string
+	validate                 bool = true // set to false to allow requests through even when their certificates are found to be invalid
+	verify                   string // path to a rootca.pem file; empty uses the vendored default trust store (net.mbedtls.default_ca_bundle_pem) instead
 	cert                     string
 	cert_key                 string
 	in_memory_verification   bool // if true, verify, cert, and cert_key are read from memory, not from a file
 	allow_redirect           bool = true // whether to allow redirect
-	max_retries              int  = 5    // maximum number of retries required when an underlying socket error occurs
+	max_retries              int = 5 // maximum number of retries required when an underlying socket error occurs
 	enable_http2             bool = true // when true (the default) and the URL is https, advertise ALPN `h2, http/1.1` and use HTTP/2 if the server selects it; set to false to force HTTP/1.1. Ignored for plain http://, and for the Windows SChannel backend which has no ALPN yet (see vlang/v#27383). on_progress / on_progress_body / stop_copying_limit / stop_receiving_limit are honored on the HTTP/2 path; on_progress fires per DATA frame payload rather than per raw network read.
 	enable_http3             bool // when true and the URL is https, use HTTP/3 (QUIC over UDP) for this request instead of the TCP-based HTTP/1.1/2 path. **Requires building with `-d http3`**: the QUIC/TLS/QPACK stack is compiled only on demand so ordinary net.http and veb builds do not pay its compile-time cost -- without the flag, an enable_http3 request fails fast with a "not compiled in" error. Opt-in only (default false) and, unlike enable_http2, never automatically probed: UDP has no fast-fail signal the way a closed TCP port does, so there is no automatic fallback to HTTP/1.1/2 if the h3 attempt fails or times out -- that decision is the caller's. Ignored for plain http://. req.cert/req.cert_key (mutual TLS) are not supported by this v1 HTTP/3 client; setting either alongside enable_http3 fails the request immediately rather than silently ignoring them. req.validate is also not honorable yet: net.quic's client TLS stack has no skip-verification mode at all (v1 limitation, unlike the h1/h2 ssl.SSLConn path), so certificate validation is always enforced regardless of this flag. **req.verify is effectively REQUIRED for HTTP/3 today**: net.quic's TLS 1.3 stack has no OS/default trust-store fallback of any kind (unlike the h1/h2 ssl.SSLConn path, which uses the platform's own trust store when req.verify is empty) -- leaving req.verify unset means every h3 request fails certificate verification against every real server, since there are no trust anchors to validate against at all. on_progress / on_progress_body / stop_copying_limit / stop_receiving_limit are not honored on the HTTP/3 path (see H3ClientRequest's own scope note).
 	disable_connection_reuse bool // opt out of the shared connection pool: open a fresh connection for this request, send `Connection: close`, and close the connection after the response (the pre-pooling behavior)
 	// callbacks to allow custom reporting code to run, while the request is running, and to implement streaming
-	on_redirect      RequestRedirectFn     = unsafe { nil }
-	on_progress      RequestProgressFn     = unsafe { nil }
+	on_redirect      RequestRedirectFn = unsafe { nil }
+	on_progress      RequestProgressFn = unsafe { nil }
 	on_progress_body RequestProgressBodyFn = unsafe { nil }
-	on_finish        RequestFinishFn       = unsafe { nil }
+	on_finish        RequestFinishFn = unsafe { nil }
 
 	stop_copying_limit   i64 = -1 // after this many bytes are received, stop copying to the response. Note that on_progress and on_progress_body callbacks, will continue to fire normally, until the full response is read, which allows you to implement streaming downloads, without keeping the whole big response in memory
 	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
@@ -155,7 +155,7 @@ pub fn (req &Request) cookie(name string) ?Cookie {
 
 	if value := req.cookies[name] {
 		return Cookie{
-			name:  name
+			name: name
 			value: value
 		}
 	}
@@ -657,8 +657,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 					u64(0)
 				}
 				if !response_has_no_body(req.method, status_code) {
-					validate_received_response_completion(has_content_length, expected_size,
-						body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
+					validate_received_response_completion(has_content_length, expected_size, body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
 				}
 				break
 			}
@@ -677,8 +676,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 				u64(0)
 			}
 			if !response_has_no_body(req.method, status_code) {
-				validate_received_response_completion(has_content_length, expected_size,
-					body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
+				validate_received_response_completion(has_content_length, expected_size, body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
 			}
 			break
 		}
@@ -749,8 +747,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			chunked_complete = chunked_body_tracker.advance(bchunk, mut dechunked)
 			progress_body_so_far = chunked_body_tracker.decoded_len
 			if req.on_progress_body != unsafe { nil } && dechunked.len > 0 {
-				req.on_progress_body(req, dechunked, progress_body_so_far, expected_size,
-					status_code)!
+				req.on_progress_body(req, dechunked, progress_body_so_far, expected_size, status_code)!
 			}
 		} else if req.on_progress_body != unsafe { nil } {
 			req.on_progress_body(req, bchunk, progress_body_so_far, expected_size, status_code)!
@@ -787,10 +784,10 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		old_len = new_len
 	}
 	return ReceivedResponseInfo{
-		headers_end:         headers_end
+		headers_end: headers_end
 		is_chunked_transfer: is_chunked_transfer
-		has_truncated_body:  has_truncated_body
-		reusable:            framed_complete
+		has_truncated_body: has_truncated_body
+		reusable: framed_complete
 	}
 }
 
@@ -806,8 +803,7 @@ struct ReceivedResponseBuffer {
 
 fn (req &Request) read_all_from_client_connection(r &net.TcpConn) !ReceivedResponseBuffer {
 	mut content := strings.new_builder(4096)
-	info := req.receive_all_data_from_cb_in_builder(mut content, voidptr(r),
-		read_from_tcp_connection_cb)!
+	info := req.receive_all_data_from_cb_in_builder(mut content, voidptr(r), read_from_tcp_connection_cb)!
 	return ReceivedResponseBuffer{
 		data: content
 		info: info
@@ -866,6 +862,7 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 		}
 		line = reader.read_line()!
 	}
+
 	// header.coerce(canonicalize: true)
 
 	mut request_cookies := map[string]string{}
@@ -874,10 +871,10 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 	}
 
 	return Request{
-		method:  method
-		url:     target.str()
-		header:  header
-		host:    (header.get(.host) or { '' }).clone()
+		method: method
+		url: target.str()
+		header: header
+		host: (header.get(.host) or { '' }).clone()
 		version: version
 		cookies: request_cookies
 	}
@@ -934,10 +931,10 @@ pub fn parse_request_head_str(s string) !Request {
 	}
 
 	return Request{
-		method:  method
-		url:     target
-		header:  header
-		host:    (header.get(.host) or { '' }).clone()
+		method: method
+		url: target
+		header: header
+		host: (header.get(.host) or { '' }).clone()
 		version: version
 		cookies: request_cookies
 	}
@@ -1186,9 +1183,9 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 				files[name] = []FileData{}
 			}
 			files[name] << FileData{
-				filename:     filename
+				filename: filename
 				content_type: content_type
-				data:         data
+				data: data
 			}
 			continue
 		}

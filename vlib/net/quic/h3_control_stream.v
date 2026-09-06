@@ -102,6 +102,16 @@ fn (mut h H3Conn) apply_peer_settings(settings []H3Setting) ! {
 		if instructions.len > 0 {
 			if enc_id := h.own_qpack_encoder_stream_id {
 				h.qc.write_stream(enc_id, instructions, false)!
+			} else {
+				// Our own encoder stream doesn't exist yet -- buffer
+				// rather than drop (H3Conn.pending_own_encoder_instructions'
+				// own doc comment). qpack_encoder.set_capacity has
+				// ALREADY mutated this encoder's local capacity state
+				// above regardless of whether these bytes reach the wire
+				// yet, so losing them here would silently desync this
+				// connection's own view of its dynamic table capacity
+				// from the peer decoder's.
+				h.pending_own_encoder_instructions << instructions
 			}
 		}
 	}
