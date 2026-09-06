@@ -132,7 +132,8 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	dispatch_environment := os.environ()
 	caller_environment := macos_v3_original_caller_environment(dispatch_environment)
 	mut environment := macos_v3_child_environment(vexe, caller_environment, dispatch_environment)
-	fallback_enabled := !prefs.new_compiler && environment[macos_v3_no_fallback_env] or { '' } != '1'
+	no_fallback := environment[macos_v3_no_fallback_env] or { '' }
+	fallback_enabled := !prefs.new_compiler && no_fallback != '1'
 	fallback_file := macos_v3_fallback_file_for_pid()
 	c_error_dir := macos_v3_c_error_report_dir(fallback_file)
 	os.rm(fallback_file) or {}
