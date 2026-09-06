@@ -1823,8 +1823,26 @@ struct V3CCompilerFlagPlan {
 }
 
 const v3_parallel_cc_unit_marker = '/* V3PARALLEL_CC_UNIT */'
-const v3_parallel_cc_max_jobs = 2
-const v3_parallel_cc_units_per_job = 4
+const v3_parallel_cc_max_jobs = 32
+// One unit per job: every extra unit re-parses the shared declaration header, so
+// splitting finer than the number of concurrent compilers costs more than the
+// better load balancing returns.
+const v3_parallel_cc_units_per_job = 1
+// Used when the free memory of the machine cannot be read; this is the bound the
+// split C build shipped with before it became memory-aware.
+const v3_parallel_cc_fallback_jobs = 2
+// Peak resident size of one C compiler process, measured against the source size
+// of its translation unit (clang needs ~35 bytes per source byte on a generated
+// unit), plus a floor for the fixed per-process cost.
+const v3_parallel_cc_memory_per_source_byte = u64(40)
+const v3_parallel_cc_min_job_memory = u64(192 * 1024 * 1024)
+// Only half of the free memory is spent on C compilers; the rest stays available
+// for the compiler process itself, which still holds its arenas.
+const v3_parallel_cc_memory_share = u64(2)
+// A split unit re-parses the shared declaration header, so a small program would
+// pay for the extra headers instead of saving anything. A program with this many
+// AST nodes takes seconds in a single translation unit.
+const v3_parallel_cc_auto_node_threshold = 400000
 const v3_parallel_cc_monolithic_define = 'v3_parallel_cc_monolithic'
 const v3_parallel_cc_monolithic_exit_code = 125
 const v3_parallel_cc_monolithic_message = 'v3 parallel C source requires monolithic regeneration'
@@ -2098,6 +2116,34 @@ fn split_v3_parallel_c_source(source string, max_units int) !(string, []string) 
 	return split.prefix, merge_v3_parallel_c_units(units, max_units)
 }
 
+// v3_parallel_cc_job_count bounds the concurrent C compiler processes by both the
+// core count and the memory that is actually free. Each unit re-parses the shared
+// declaration prefix and then compiles its own share of the bodies, so its peak
+// resident size follows the unit's source size rather than the whole program's:
+// splitting into more units raises the total memory (every unit pays for the
+// prefix again) while lowering each process's peak.
+fn v3_parallel_cc_job_count(source string) int {
+	cores := int_max(1, int_min(v3_parallel_cc_max_jobs, runtime.nr_jobs()))
+	free := runtime.free_memory() or { return int_min(cores, v3_parallel_cc_fallback_jobs) }
+	budget := u64(free) / v3_parallel_cc_memory_share
+	body_start := source.index('/* V3CACHE_BODY_BEGIN */') or { 0 }
+	prefix_bytes := u64(body_start)
+	body_bytes := u64(source.len) - prefix_bytes
+	mut jobs := cores
+	for jobs > 1 {
+		unit_bytes := prefix_bytes + body_bytes / u64(jobs)
+		mut per_job := unit_bytes * v3_parallel_cc_memory_per_source_byte
+		if per_job < v3_parallel_cc_min_job_memory {
+			per_job = v3_parallel_cc_min_job_memory
+		}
+		if per_job * u64(jobs) <= budget {
+			break
+		}
+		jobs--
+	}
+	return jobs
+}
+
 fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3CCompilerFlagPlan, native_support_inputs []string, cached_objects []string, cached_dev_dylib string, objective_c bool, build_dir string, show_command bool) os.Result {
 	source := os.read_file(source_path) or {
 		return os.Result{
@@ -2105,7 +2151,7 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 			output: 'failed to read generated C source ${source_path}: ${err.msg()}'
 		}
 	}
-	job_count := int_max(1, int_min(v3_parallel_cc_max_jobs, runtime.nr_jobs()))
+	job_count := v3_parallel_cc_job_count(source)
 	prefix, bodies := split_v3_parallel_c_source(source, job_count * v3_parallel_cc_units_per_job) or {
 		return os.Result{
 			exit_code: 1
@@ -9289,9 +9335,10 @@ pub fn run(args []string) {
 	minimal_literal_output := !is_prof
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	host_target := pref.host_target()
-	use_parallel_c_compilation := parallel_cc && backend == 'c' && !c_only && !explicit_tcc
-		&& !is_o && target.os != 'windows' && coverage_dir.len == 0 && profile_file.len == 0
+	parallel_c_compilation_supported := backend == 'c' && !c_only && !explicit_tcc && !is_o
+		&& target.os != 'windows' && coverage_dir.len == 0 && profile_file.len == 0
 		&& v3_parallel_cc_monolithic_define !in user_defines
+	mut use_parallel_c_compilation := parallel_cc && parallel_c_compilation_supported
 	// `-keepc` and explicit `-b c` promise a complete generated C translation unit.
 	// The module cache splits imported implementations into separate objects, so its main source
 	// alone cannot reproduce the build. Literal output uses a deliberately reduced
@@ -9301,6 +9348,14 @@ pub fn run(args []string) {
 		&& !keep_c && !backend_explicit && !c_compiler_explicit && !minimal_literal_output
 		&& c_compiler == 'cc' && target.os == host_target.os && target.arch == host_target.arch
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
+	// A whole program in one C translation unit is a single-threaded C compiler
+	// run, which for a large program costs several times what all of V's own
+	// phases do. When the object cache is not the one feeding the C compiler
+	// there is nothing to reuse, so that work is split across cores instead.
+	// `-prod` keeps its monolithic unit because `-flto` needs to see the whole
+	// program at once. `-d v3_parallel_cc_monolithic` opts out.
+	auto_parallel_c_candidate := !parallel_cc && parallel_c_compilation_supported && !is_prod
+		&& !prefs.is_shared && !cache_candidate_enabled
 	cc_identity := if cache_candidate_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_candidate_enabled {
 		v3_cache_compiler_signature(prefs.vroot)
@@ -9650,6 +9705,15 @@ pub fn run(args []string) {
 	b.metric_items('parsed .v files', p.parsed_v_files, 'files', '.v files', p.parsed_v_file_paths)
 	if !silent {
 		println('    ${'parsed .v lines':-28s} ${source_file_line_count(p.parsed_v_file_paths, a.source_files)} lines')
+	}
+	// A test binary keeps the harness counters (`__v3_test_failures` and the
+	// setjmp buffer) as `static` definitions inside the program body, so a unit
+	// that only references them would not see a definition. Test builds stay in
+	// one translation unit.
+	if test_files.len > 0 {
+		use_parallel_c_compilation = false
+	} else if auto_parallel_c_candidate && a.nodes.len >= v3_parallel_cc_auto_node_threshold {
+		use_parallel_c_compilation = true
 	}
 	b.metric('AST nodes after parse', a.nodes.len, 'nodes')
 	b.metric('AST children after parse', a.children.len, 'edges')
@@ -11087,6 +11151,7 @@ pub fn run(args []string) {
 			g.set_compile_values(prefs.compile_values)
 			g.set_track_heap('track_heap' in prefs.user_defines)
 			g.set_cache_split(cache_state.manager.enabled || use_parallel_c_compilation)
+			g.set_cache_stable_symbols(cache_state.manager.enabled)
 			g.set_parallel_cc(use_parallel_c_compilation)
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
@@ -11142,6 +11207,7 @@ pub fn run(args []string) {
 			g.set_compile_values(prefs.compile_values)
 			g.set_track_heap('track_heap' in prefs.user_defines)
 			g.set_cache_split(cache_state.manager.enabled || use_parallel_c_compilation)
+			g.set_cache_stable_symbols(cache_state.manager.enabled)
 			g.set_parallel_cc(use_parallel_c_compilation)
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
