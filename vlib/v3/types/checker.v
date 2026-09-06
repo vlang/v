@@ -860,7 +860,7 @@ pub mut:
 	ct_update_indexed             bool
 	insert_include_dirs_by_file   map[string][]string
 	has_spawn_expr                int = -1
-	inactive_top_level_node_ids   []int
+	inactive_top_level_node_ids   []i32
 	selected_file_called_fns      map[string]bool
 	// Names newly inserted into selected_file_called_fns and not yet chased by
 	// the transitive closure in collect_selected_file_called_fns_transitively.
@@ -878,13 +878,13 @@ pub mut:
 	// `collect`; no later phase of the check step appends declarations. Phases
 	// after the check (transform) may grow the AST: top_level_idx_nodes_len
 	// records the node count the index covers.
-	top_level_idx           []int
+	top_level_idx           []i32
 	top_level_idx_nodes_len int
 	// Anonymous and function-local struct declarations are synthesized below
 	// the file's top-level declaration tree. The direct-parent pass records their
 	// sorted node ids so collect_top_level_idx_fast can merge them without
 	// rescanning every gap between parser-recorded declarations.
-	synthetic_top_level_type_ids  []int
+	synthetic_top_level_type_ids  []i32
 	expected_expr_id              int = -1
 	expected_expr_type            Type = Type(void_)
 	cur_fn_ret_type               Type = Type(void_)
@@ -944,14 +944,14 @@ mut:
 	direct_parent_ids           []flat.NodeId
 	rewritten_parent_ids        []flat.NodeId
 	value_used_nodes            []bool
-	fn_check_costs              []int
+	fn_check_costs              []i32
 	direct_parent_index_trusted bool
 	has_goto_nodes              bool
 	// Immutable declaration indexes shared by checker workers.
 	declaration_attributes       map[int][]string
 	type_declaration_ids         map[string][]int
 	strings_builder_bindings     map[string]bool
-	strings_builder_candidates   []int
+	strings_builder_candidates   []i32
 	static_associated_fn_keys    map[string]bool
 	declaration_param_mutability map[string][]bool
 	strict_map_index_files       map[string]bool
@@ -1704,13 +1704,13 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.direct_parent_ids = []flat.NodeId{len: a.nodes.len, init: flat.empty_node}
 	tc.rewritten_parent_ids = []flat.NodeId{}
 	tc.value_used_nodes = []bool{len: a.nodes.len}
-	tc.fn_check_costs = if tc.building_v_fast { []int{len: a.nodes.len} } else { []int{} }
+	tc.fn_check_costs = if tc.building_v_fast { []i32{len: a.nodes.len} } else { []i32{} }
 	tc.declaration_attributes = map[int][]string{}
 	tc.insert_include_dirs_by_file = map[string][]string{}
 	tc.translated_files = map[string]bool{}
 	tc.has_globals_files = map[string]bool{}
-	tc.strings_builder_candidates = []int{cap: 1024}
-	tc.synthetic_top_level_type_ids = []int{cap: 2048}
+	tc.strings_builder_candidates = []i32{cap: 1024}
+	tc.synthetic_top_level_type_ids = []i32{cap: 2048}
 	tc.has_goto_nodes = false
 }
 
@@ -1999,7 +1999,7 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 			ancestor = next
 		}
 	}
-	tc.strings_builder_candidates = []int{}
+	tc.strings_builder_candidates = []i32{}
 }
 
 // has_fn_decl_short_name reports whether collection indexed a function
@@ -2869,7 +2869,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	// whole compile.
 	tc.declared_type_scope_keys = map[string]bool{}
 	tc.concrete_type_scope_keys = map[string]bool{}
-	tc.top_level_idx = []int{cap: 65536}
+	tc.top_level_idx = []i32{cap: 65536}
 	if !parallel_index_prep {
 		tc.prepare_threads_condition()
 	}

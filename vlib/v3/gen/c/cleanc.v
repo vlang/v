@@ -302,7 +302,7 @@ mut:
 	used_fns                       &map[string]bool = unsafe { nil }
 	used_fn_names                  []string
 	fn_gen_items                   []FlatFnGenItem
-	top_level_node_ids             []int
+	top_level_node_ids             []i32
 	ast_string_literals            []string
 	ast_string_literals_ready      bool
 	fn_segs                        []string
@@ -1050,7 +1050,7 @@ pub fn FlatGen.new() FlatGen {
 		lazy_param_abi_merge: os.getenv('V3_NO_LAZY_PARAM_ABI_MERGE') == ''
 		sb: strings.new_builder(4096)
 		fn_gen_items: []FlatFnGenItem{}
-		top_level_node_ids: []int{}
+		top_level_node_ids: []i32{}
 		fn_segs: []string{}
 		fn_seg_chunk_indexes: []int{}
 		parallel_chunk_wrapper_defs: []ParallelChunkWrapperDefs{}
@@ -1227,11 +1227,11 @@ pub fn FlatGen.new() FlatGen {
 
 // top_level_nodes returns the precomputed declaration index in full cgen and
 // preserves standalone generator helpers used by focused tests and tools.
-fn (g &FlatGen) top_level_nodes() []int {
+fn (g &FlatGen) top_level_nodes() []i32 {
 	if g.top_level_node_ids.len > 0 {
 		return g.top_level_node_ids
 	}
-	mut ids := []int{}
+	mut ids := []i32{}
 	for node_idx, node in g.a.nodes {
 		if node.kind in [.file, .module_decl, .fn_decl, .c_fn_decl, .struct_decl, .type_decl,
 			.global_decl, .const_decl, .enum_decl, .interface_decl, .import_decl, .directive] {
@@ -1453,18 +1453,18 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 }
 
 struct CCachePlacedInclude {
-	file_node      int
-	module_node    int
-	directive_node int
+	file_node      i32
+	module_node    i32
+	directive_node i32
 }
 
 // c_cache_external_input_node_order mirrors cgen placement: preincludes are
 // emitted before the translation-unit prefix and postincludes after its bodies,
 // independent of where their V directives occur.
-fn c_cache_external_input_node_order(a &flat.FlatAst) []int {
+fn c_cache_external_input_node_order(a &flat.FlatAst) []i32 {
 	mut preincludes := []CCachePlacedInclude{}
 	mut postincludes := []CCachePlacedInclude{}
-	mut normal := []int{cap: a.nodes.len}
+	mut normal := []i32{cap: a.nodes.len}
 	mut file_node := -1
 	mut module_node := -1
 	for node_id, node in a.nodes {
@@ -1489,7 +1489,7 @@ fn c_cache_external_input_node_order(a &flat.FlatAst) []int {
 		}
 		normal << node_id
 	}
-	mut ordered := []int{cap: normal.len + (preincludes.len + postincludes.len) * 3}
+	mut ordered := []i32{cap: normal.len + (preincludes.len + postincludes.len) * 3}
 	for placed in preincludes {
 		if placed.file_node >= 0 {
 			ordered << placed.file_node
@@ -2736,7 +2736,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.used_fns = &used_fns
 	g.used_fn_names = []string{}
 	g.fn_gen_items = []FlatFnGenItem{}
-	g.top_level_node_ids = []int{}
+	g.top_level_node_ids = []i32{}
 	g.ast_string_literals = []string{}
 	g.ast_string_literals_ready = false
 	g.direct_array_access = false
@@ -4271,7 +4271,7 @@ fn (mut g FlatGen) scan_collect_gen_info_serial() CollectGenInfoScanCounts {
 	mut counts := CollectGenInfoScanCounts{}
 	incremental := g.incremental_fn_names.len > 0
 	g.ast_string_literals = []string{cap: 4096}
-	g.top_level_node_ids = []int{cap: 4096}
+	g.top_level_node_ids = []i32{cap: 4096}
 	for node_idx, node in g.a.nodes {
 		if node.kind == .string_literal {
 			g.ast_string_literals << node.value

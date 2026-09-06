@@ -1256,7 +1256,7 @@ fn (tc &TypeChecker) enum_initializer_calls_helper(fn_name string, module_name s
 	target_module := if module_name in ['', 'main'] { '' } else { module_name }
 	mut indexes := tc.top_level_idx.clone()
 	if indexes.len == 0 {
-		indexes = []int{len: tc.a.nodes.len, init: index}
+		indexes = []i32{len: tc.a.nodes.len, init: i32(index)}
 	}
 	mut cur_module := ''
 	for idx in indexes {

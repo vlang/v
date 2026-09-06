@@ -161,7 +161,7 @@ mut:
 	declared_fn_name_counts       map[string]u8
 	variadic_suffix_index         map[string]i8
 	const_suffixes                map[string]string
-	source_parent_ids             []int
+	source_parent_ids             []i32
 	shared_local_decl_names       map[string]bool
 	// const_array_fixed_storage_ready marks the cache below as fully populated
 	// (by the overlapped pre-dispatch scan), making the precompute a no-op.
@@ -406,7 +406,7 @@ mut:
 	parallel_monomorph_scan_nodes      []int
 	parallel_monomorph_scan_start      int
 	parallel_monomorph_scan_end        int
-	fn_scan_costs                      []int
+	fn_scan_costs                      []i32
 	fn_escape_scan_flags               []u8
 	literal_fn_decls                   []int
 	literal_fn_decls_ready             bool
@@ -420,10 +420,16 @@ mut:
 	str_expansion_memo                 map[string]int
 	deferred_expansion_items           []FnWorkItem
 	deferred_expansion_count           int
-	node_module_map_cache              []string
-	node_file_map_cache                []string
-	node_module_map_nodes              int = -1
-	node_context_read_only             bool
+	// node_module_map_cache/node_file_map_cache hold one interned id per node
+	// (0 == unset) into node_context_texts. A whole-AST table of 24-byte string
+	// headers costs hundreds of MiB on a compiler-sized program; the id table is
+	// 4 bytes per node and resolves to the same canonical spelling.
+	node_module_map_cache  []u32
+	node_file_map_cache    []u32
+	node_context_texts     []string
+	node_context_text_ids  map[string]u32
+	node_module_map_nodes  int = -1
+	node_context_read_only bool
 	// used_fns_log records names newly inserted into used_fns while the
 	// late-used-fn-bodies pass runs, so that pass can tell "was this name
 	// already used before the current body's transform" without cloning the
@@ -1209,7 +1215,7 @@ fn reserve_parallel_transform_ast_with_cache_mode(mut a flat.FlatAst, skip_gener
 		_ = copy_thread1.wait()
 		_ = copy_thread2.wait()
 		a.nodes = grown_nodes
-		a.file_node_ids = []int{}
+		a.file_node_ids = []i32{}
 		a.children = grown_children
 		return
 	}
@@ -3520,7 +3526,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 			const_ms += f64(scsw.elapsed().microseconds()) / 1000.0
 		}
 	}
-	t.fn_scan_costs = []int{}
+	t.fn_scan_costs = []i32{}
 	t.fn_escape_scan_flags = []u8{}
 	t.timing_profile('  [ttime]   sc consts ${const_ms:.2f} ms, closures ${lit_ms:.2f} ms, expansion est ${est_ms:.2f} ms')
 	return pure
@@ -3542,7 +3548,7 @@ fn (mut t Transformer) collect_literal_fn_decls(limit int) []int {
 		mut literal_pending := false
 		mut escape_scan_needed := false
 		mut span_cost := 0
-		t.fn_scan_costs = []int{len: limit}
+		t.fn_scan_costs = []i32{len: limit}
 		t.fn_escape_scan_flags = []u8{len: limit}
 		for i in 0 .. flags.len {
 			flag := flags[i]
@@ -3780,10 +3786,11 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	if t.node_context_read_only {
 		w.node_module_map_cache = t.node_module_map_cache
 		w.node_file_map_cache = t.node_file_map_cache
+		w.node_context_texts = t.node_context_texts
 		w.node_module_map_nodes = t.node_module_map_nodes
 		w.node_context_read_only = true
 	} else {
-		w.node_module_map_cache = []string{}
+		w.node_module_map_cache = []u32{}
 		w.node_module_map_nodes = -1
 	}
 	w.var_types = []VarTypeBinding{}
@@ -3908,7 +3915,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
 	w.generic_call_spec_misses = map[int]bool{}
-	w.node_module_map_cache = []string{}
+	w.node_module_map_cache = []u32{}
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
 	w.var_type_indices = map[string]int{}
@@ -6127,7 +6134,7 @@ fn (mut t Transformer) collect_exclusive_closure_return_fns() {
 	mut literal_pending := false
 	mut span_cost := 0
 	t.literal_fn_decls = []int{cap: 64}
-	t.fn_scan_costs = []int{len: t.a.nodes.len}
+	t.fn_scan_costs = []i32{len: t.a.nodes.len}
 	for idx in 0 .. t.a.nodes.len {
 		node := t.a.nodes[idx]
 		span_cost += match node.kind {
@@ -10981,7 +10988,7 @@ fn (mut t Transformer) precompute_const_array_fixed_storage() {
 	if candidate_keys.len == 0 {
 		return
 	}
-	mut ref_candidates := []int{len: t.a.nodes.len}
+	mut ref_candidates := []i32{len: t.a.nodes.len}
 	mut ref_states := []u8{len: t.a.nodes.len}
 	mut unmatched := []int{len: candidate_keys.len}
 	mut fixed_candidates := []bool{len: candidate_keys.len}
@@ -11059,7 +11066,7 @@ fn (t &Transformer) const_array_candidate_for_expr(id flat.NodeId, module_name s
 	return candidates[key] or { return none }
 }
 
-fn (t &Transformer) mark_const_array_ref_safe(mut candidates []int, mut states []u8, mut unmatched []int, id flat.NodeId) {
+fn (t &Transformer) mark_const_array_ref_safe(mut candidates []i32, mut states []u8, mut unmatched []int, id flat.NodeId) {
 	idx := int(id)
 	if idx < 0 || idx >= t.a.nodes.len {
 		return
@@ -15848,7 +15855,7 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 }
 
 fn (mut t Transformer) build_source_parent_index() {
-	t.source_parent_ids = []int{len: t.a.nodes.len, init: -1}
+	t.source_parent_ids = []i32{len: t.a.nodes.len, init: -1}
 	mut decls := map[string][]int{}
 	mut fn_offsets := map[int][]int{}
 	mut if_exprs := map[int][]int{}

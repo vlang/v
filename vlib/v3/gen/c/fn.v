@@ -220,7 +220,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	return items
 }
 
-fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []int, start int, end int, first_file string, first_module string, direct_array_access_fns DirectArrayAccessFns, ignore_overflow_fns DirectArrayAccessFns, program_modules map[string]bool) []FlatFnGenCandidate {
+fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []i32, start int, end int, first_file string, first_module string, direct_array_access_fns DirectArrayAccessFns, ignore_overflow_fns DirectArrayAccessFns, program_modules map[string]bool) []FlatFnGenCandidate {
 	mut candidates := []FlatFnGenCandidate{cap: end - start}
 	mut cur_module := first_module
 	mut cur_file := first_file

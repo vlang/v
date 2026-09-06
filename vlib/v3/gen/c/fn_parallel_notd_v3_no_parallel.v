@@ -47,7 +47,7 @@ mut:
 
 struct CollectGenInfoFnPrepArgs {
 	g            voidptr // read-only &FlatGen master
-	node_ids_ptr voidptr // &[]int
+	node_ids_ptr voidptr // &[]i32
 	preps_ptr    voidptr // &[]CollectGenFnPrep; shards fill disjoint positions
 	start        int
 	end          int
@@ -104,7 +104,7 @@ $if !windows {
 		a.scope = cgen_worker_scope_begin(true)
 		master := unsafe { &FlatGen(a.g) }
 		mut view := master.new_collect_gen_info_view()
-		nodes := unsafe { &[]int(a.nodes_ptr) }
+		nodes := unsafe { &[]i32(a.nodes_ptr) }
 		a.candidates = view.collect_fn_gen_candidates_range(*nodes, a.start, a.end, a.file, a.module_name, a.direct_array_access_fns, a.ignore_overflow_fns, a.program_modules)
 		cgen_worker_scope_leave(a.scope)
 		return unsafe { nil }
@@ -116,7 +116,7 @@ $if !windows {
 		mut view := master.new_collect_gen_info_view()
 		view.tc.cur_file = a.file
 		view.tc.cur_module = a.module_name
-		node_ids := unsafe { &[]int(a.node_ids_ptr) }
+		node_ids := unsafe { &[]i32(a.node_ids_ptr) }
 		mut preps := unsafe { &[]CollectGenFnPrep(a.preps_ptr) }
 		mut cur_file := a.file
 		mut cur_module := a.module_name
@@ -186,7 +186,7 @@ $if !windows {
 	fn collect_gen_info_scan_fill_thread(arg voidptr) voidptr {
 		mut a := unsafe { &CollectGenInfoScanArgs(arg) }
 		g := unsafe { &FlatGen(a.g) }
-		mut top_levels := unsafe { &[]int(a.top_levels_ptr) }
+		mut top_levels := unsafe { &[]i32(a.top_levels_ptr) }
 		mut literals := unsafe { &[]string(a.strings_ptr) }
 		mut top_level_pos := a.top_level_pos
 		mut string_pos := a.string_pos
@@ -560,7 +560,7 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 			top_level_count += counted_top_levels
 			string_count += counted_strings
 		}
-		g.top_level_node_ids = []int{len: top_level_count}
+		g.top_level_node_ids = []i32{len: top_level_count}
 		g.ast_string_literals = []string{len: string_count}
 		for mut arg in args {
 			arg.top_levels_ptr = unsafe { voidptr(&g.top_level_node_ids) }
@@ -677,7 +677,7 @@ fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(parallel bool
 // collect_gen_info_fn_preps resolves used function signatures on the persistent
 // worker pool. Registration stays serial in collect_gen_info, preserving all
 // source-order and duplicate-declaration semantics.
-fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []int, no_parallel bool) []CollectGenFnPrep {
+fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []i32, no_parallel bool) []CollectGenFnPrep {
 	$if windows {
 		return []CollectGenFnPrep{}
 	} $else {

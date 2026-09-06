@@ -1033,7 +1033,7 @@ fn (tc &TypeChecker) comptime_static_enum_helper_fn(callee_name string, enum_mod
 	short := callee_name.all_after_last('.')
 	mut indexes := tc.top_level_idx.clone()
 	if indexes.len == 0 {
-		indexes = []int{len: tc.a.nodes.len, init: index}
+		indexes = []i32{len: tc.a.nodes.len, init: i32(index)}
 	}
 	for priority in 0 .. 4 {
 		mut cur_mod := ''

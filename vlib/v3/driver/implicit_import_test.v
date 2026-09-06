@@ -237,7 +237,7 @@ fn test_synthetic_import_insertion_preserves_file_index_and_import_order() {
 		assert marker.value == trailing.value
 	}
 	for region in [0, boundary] {
-		mut expected := []int{}
+		mut expected := []i32{}
 		for i in region .. ast.nodes.len {
 			if ast.nodes[i].kind in [.file, .module_decl, .import_decl] {
 				expected << i

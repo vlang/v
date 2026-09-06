@@ -262,7 +262,7 @@ fn test_enclosing_generic_param_uses_the_owning_top_level_declaration() {
 	})
 
 	mut tc := TypeChecker.new(&a)
-	tc.top_level_idx = [int(generic_fn_id), int(unrelated_fn_id)]
+	tc.top_level_idx = [i32(generic_fn_id), i32(unrelated_fn_id)]
 	tc.build_enclosing_generic_param_index(&a)
 	assert tc.node_has_enclosing_generic_param(generic_child, 'T')
 	assert !tc.node_has_enclosing_generic_param(unrelated_child, 'T')

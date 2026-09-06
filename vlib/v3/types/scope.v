@@ -22,7 +22,7 @@ pub mut:
 	fast_name_lens   [32]u16
 	fast_indexes     [32]u32
 	fast_generations [32]u32
-	generations      []int
+	generations      []i32
 	storage_keys     []string
 	next_generation  int
 	lifetime         int

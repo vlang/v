@@ -35,7 +35,7 @@ fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(_ bool) bool 
 	return false
 }
 
-fn (mut g FlatGen) collect_gen_info_fn_preps(_ []int, _ bool) []CollectGenFnPrep {
+fn (mut g FlatGen) collect_gen_info_fn_preps(_ []i32, _ bool) []CollectGenFnPrep {
 	return []CollectGenFnPrep{}
 }
 
