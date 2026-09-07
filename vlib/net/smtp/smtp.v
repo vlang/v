@@ -15,6 +15,8 @@ import rand
 
 const recv_size = 128
 
+const recipient_separator = ';'
+
 enum ReplyCode {
 	ready      = 220
 	close      = 221
@@ -134,14 +136,29 @@ pub fn (mut c Client) send(config Mail) ! {
 		return error('Disconnected from server')
 	}
 	from := if config.from != '' { config.from } else { c.from }
-	c.send_mailfrom(from) or { return error('Sending mailfrom failed') }
-	c.send_mailto(config.to) or { return error('Sending mailto failed') }
-	c.send_data() or { return error('Sending mail data failed') }
-	c.send_body(Mail{
+	c.send_mailfrom(from) or {
+		return error('Sending mailfrom failed: ${err}')
+	}
+	c.send_mailto(config.to) or {
+		return error('Sending mailto (to) failed: ${err}')
+	}
+	c.send_mailto(config.cc) or {
+		return error('Sending mailto (cc) failed: ${err}')
+	}
+	c.send_mailto(config.bcc) or {
+		return error('Sending mailto (bcc) failed: ${err}')
+	}
+	c.send_data() or {
+		return error('Sending mail data failed: ${err}')
+	}
+	mail := Mail{
 		...config
-		from:     from
+		from: from
 		boundary: rand.uuid_v4()
-	}) or { return error('Sending mail body failed') }
+	}
+	c.send_body(mail) or {
+		return error('Sending mail body failed: ${err}')
+	}
 }
 
 // quit closes the connection to the server
@@ -183,7 +200,7 @@ fn (mut c Client) expect_reply(expected ReplyCode) ! {
 		}
 	}
 
-	$if smtp_debug ? {
+	$if smtp_debug? {
 		eprintln('\n\n[RECV]')
 		eprint(str)
 	}
@@ -200,7 +217,7 @@ fn (mut c Client) expect_reply(expected ReplyCode) ! {
 
 @[inline]
 fn (mut c Client) send_str(s string) ! {
-	$if smtp_debug ? {
+	$if smtp_debug? {
 		eprintln('\n\n[SEND START]')
 		eprint(s.trim_space())
 		eprintln('\n[SEND END]')
@@ -243,33 +260,96 @@ fn (mut c Client) send_auth() ! {
 }
 
 // envelope_addr extracts the bare mailbox from an address that may include a
-// display name. The SMTP envelope (`MAIL FROM:` / `RCPT TO:`) only accepts a
-// bare mailbox (RFC 5321), while `Mail.from`/`Mail.to` may also be written in
-// the RFC 5322 `Display Name <addr@example.com>` form for the message header.
-//
-// Only strip an angle-addr wrapper when the input actually ends in `>`; bare
-// mailboxes are returned unchanged. When walking for the opening `<`, quoted
-// strings are skipped so a quoted local-part like `"a<b"@example.com` is
-// preserved intact.
+// display name, for the SMTP envelope (`MAIL FROM:` / `RCPT TO:`), which only
+// accepts a bare mailbox (RFC 5321).
 fn envelope_addr(s string) string {
-	trimmed := s.trim_space()
-	if !trimmed.ends_with('>') {
+	_, addr_spec := split_mailbox(s)
+	return addr_spec
+}
+
+// split_mailbox splits an RFC 5322 mailbox into a (display_name, addr_spec) pair.
+// An angle-addr `<addr>` NOT inside a quoted string is the separator.
+//
+//   'User <a@ex.com>'            ->  Option('User'), 'a@ex.com'
+//   'a@ex.com'                   ->  Option(none), 'a@ex.com'
+//   '"a<b"@example.com'          ->  Option(none), '"a<b"@example.com'
+//   'John "The Boss" <j@ex.com>' ->  Option('John "The Boss"'), 'j@ex.com'
+fn split_mailbox(s string) (?string, string) {
+	trimmed := strip_crlf(s.trim_space())
+	open_at := index_unquoted(trimmed, `<`, 0) or {
+		return none, trimmed
+	}
+	close_at := index_unquoted(trimmed, `>`, open_at + 1) or {
+		return none, trimmed
+	}
+	addr := trimmed[open_at + 1..close_at].trim_space()
+	name := unquote_name(trimmed[..open_at])
+	display_name := if name == '' { none } else { name }
+	return display_name, addr
+}
+
+// strip_crlf removes CR and LF characters from s, preventing header or
+// protocol injection when the value is later placed into SMTP DATA.
+fn strip_crlf(s string) string {
+	return s.replace('\r', '').replace('\n', '')
+}
+
+// index_unquoted returns the index of the first byte `what` not inside a
+// quoted-string, starting from `start`. Returns none if not found.
+fn index_unquoted(s string, what u8, start int) ?int {
+	mut i := start
+	for i < s.len {
+		if s[i] == `"` {
+			i = skip_quoted_string(s, i)
+		} else if s[i] == what {
+			return i
+		} else {
+			i++
+		}
+	}
+	return none
+}
+
+// unquote_name decodes a display name that is a single quoted-string,
+// removing the surrounding quotes and decoding quoted-pairs (RFC 5322 #3.2.1).
+// Non-quoted or malformed names are returned unchanged.
+fn unquote_name(name string) string {
+	trimmed := name.trim_space()
+	if trimmed.len < 2 || trimmed[0] != `"` {
 		return trimmed
 	}
-	mut in_quote := false
-	mut i := 0
-	for i < trimmed.len - 1 {
-		c := trimmed[i]
-		if c == `"` {
-			in_quote = !in_quote
-		} else if in_quote && c == `\\` && i + 1 < trimmed.len {
-			i++
-		} else if c == `<` && !in_quote {
-			return trimmed[i + 1..trimmed.len - 1]
-		}
-		i++
+	end := skip_quoted_string(trimmed, 0)
+	if end != trimmed.len || trimmed[end - 1] != `"` {
+		return trimmed // not a single, well-formed quoted-string
 	}
-	return trimmed
+	mut sb := strings.new_builder(trimmed.len)
+	mut i := 1
+	for i < end - 1 {
+		if trimmed[i] == `\\` && i + 1 < trimmed.len {
+			sb.write_u8(trimmed[i + 1])
+			i += 2
+		} else {
+			sb.write_u8(trimmed[i])
+			i++
+		}
+	}
+	return sb.str()
+}
+
+// skip_quoted_string returns the index just past the quoted-string starting
+// at s[start], honoring quoted-pairs (`\\X`). Returns s.len if unterminated.
+fn skip_quoted_string(s string, start int) int {
+	mut i := start + 1
+	for i < s.len {
+		if s[i] == `\\` && i + 1 < s.len {
+			i += 2
+		} else if s[i] == `"` {
+			return i + 1
+		} else {
+			i++
+		}
+	}
+	return s.len
 }
 
 fn (mut c Client) send_mailfrom(from string) ! {
@@ -278,8 +358,12 @@ fn (mut c Client) send_mailfrom(from string) ! {
 }
 
 fn (mut c Client) send_mailto(to string) ! {
-	for rcpt in to.split(';') {
-		c.send_str('RCPT TO:<${envelope_addr(rcpt)}>\r\n')!
+	for rcpt in to.split(recipient_separator) {
+		addr := envelope_addr(rcpt)
+		if addr == '' {
+			continue
+		}
+		c.send_str('RCPT TO:<${addr}>\r\n')!
 		c.expect_reply(.action_ok)!
 	}
 }
@@ -295,22 +379,27 @@ fn (mut c Client) send_body(cfg Mail) ! {
 }
 
 fn (cfg &Mail) message_data() string {
-	date := cfg.date.custom_format('ddd, D MMM YYYY HH:mm ZZ')
-	nonascii_subject := cfg.subject.bytes().any(it < u8(` `) || it > u8(`~`))
 	parts, attachments := cfg.mime_parts()
-	mut sb := strings.new_builder(200 + cfg.body.len + cfg.text.body.len + cfg.html.body.len +
-		(cfg.attachments.len + cfg.text.attachments.len + cfg.html.attachments.len) * 200)
-	sb.write_string('From: ${cfg.from}\r\n')
-	sb.write_string('To: <${cfg.to.split(';').join('>; <')}>\r\n')
-	sb.write_string('Cc: <${cfg.cc.split(';').join('>; <')}>\r\n')
-	sb.write_string('Bcc: <${cfg.bcc.split(';').join('>; <')}>\r\n')
-	sb.write_string('Date: ${date}\r\n')
-	if nonascii_subject {
-		// handle UTF-8 subjects according RFC 1342
-		sb.write_string('Subject: =?utf-8?B?' + base64.encode_str(cfg.subject) + '?=\r\n')
-	} else {
-		sb.write_string('Subject: ${cfg.subject}\r\n')
+
+	message_body_len := cfg.body.len + cfg.text.body.len + cfg.html.body.len
+	attachments_len := cfg.attachments.len + cfg.text.attachments.len + cfg.html.attachments.len
+	mut sb := strings.new_builder(200 + message_body_len + attachments_len * 200)
+
+	sb.write_string('From: ${format_addr(cfg.from)}\r\n')
+	sb.write_string('To: ${format_addr_list(cfg.to)}\r\n')
+
+	// Bcc addresses are not added here. They are delivered as envelope recipients.
+	cc := format_addr_list(cfg.cc)
+	if cc != '' {
+		sb.write_string('Cc: ${cc}\r\n')
 	}
+
+	date := cfg.date.custom_format('ddd, D MMM YYYY HH:mm ZZ')
+	sb.write_string('Date: ${date}\r\n')
+
+	subject := if cfg.subject.is_ascii() { cfg.subject } else { encode_rfc2047(cfg.subject) }
+	sb.write_string('Subject: ${subject}\r\n')
+
 	if parts.len > 1 || attachments.len > 0 {
 		sb.write_string('MIME-Version: 1.0\r\n')
 	}
@@ -346,6 +435,62 @@ fn (cfg &Mail) message_data() string {
 	return sb.str()
 }
 
+// format_addr_list formats a mailbox-list for the To/Cc/Bcc headers.
+// Input is separated by ';', output uses ',' per RFC 5322 #3.6.3.
+//
+//   'a@ex.com;b@ex.com'          ->  '<a@ex.com>, <b@ex.com>'
+//   'User <a@ex.com>; b@ex.com'  ->  '"User" <a@ex.com>, <b@ex.com>'
+//   'a@ex.com;;b@ex.com'         ->  '<a@ex.com>, <b@ex.com>'
+//   '"Doe, John" <d@ex.com>'     ->  '"Doe, John" <d@ex.com>'
+//   ''                           ->  ''
+fn format_addr_list(raw string) string {
+	if raw.trim_space() == '' {
+		return ''
+	}
+	parts := raw.split(recipient_separator)
+	mut result := []string{}
+	for part in parts {
+		formatted := format_addr(part)
+		if formatted != '' {
+			result << formatted
+		}
+	}
+	return result.join(', ')
+}
+
+// format_addr formats a single mailbox per RFC 5322 #3.4.
+//
+//   'User <u@ex.com>'  ->  '"User" <u@ex.com>'
+//   'u@ex.com'         ->  '<u@ex.com>'
+//   ''                 ->  ''
+fn format_addr(addr string) string {
+	trimmed := addr.trim_space()
+	if trimmed == '' {
+		return ''
+	}
+
+	display_name, addr_spec := split_mailbox(trimmed)
+	name := display_name or {
+		return '<${addr_spec}>'
+	}
+
+	if !name.is_ascii() {
+		return '${encode_rfc2047(name)} <${addr_spec}>'
+	}
+
+	escaped := name.replace('\\', '\\\\').replace('"', '\\"')
+	return '"${escaped}" <${addr_spec}>'
+}
+
+// encode_rfc2047 encodes s as an RFC 2047 encoded-word ('=?utf-8?B?<base64>?=')
+// for use in a message header.
+//
+// Note: folding an over-long value into several encoded-words is not
+// implemented yet, so such a value may exceed the 75-character limit.
+fn encode_rfc2047(s string) string {
+	return '=?utf-8?B?${base64.encode_str(s)}?='
+}
+
 struct MimePart {
 	body_type BodyType
 	body      string
@@ -358,14 +503,14 @@ fn (cfg &Mail) mime_parts() ([]MimePart, []Attachment) {
 		if cfg.text.body != '' {
 			parts << MimePart{
 				body_type: .text
-				body:      cfg.text.body
+				body: cfg.text.body
 			}
 		}
 		attachments << cfg.text.attachments
 		if cfg.html.body != '' {
 			parts << MimePart{
 				body_type: .html
-				body:      cfg.html.body
+				body: cfg.html.body
 			}
 		}
 		attachments << cfg.html.attachments
@@ -373,7 +518,7 @@ fn (cfg &Mail) mime_parts() ([]MimePart, []Attachment) {
 	}
 	return [MimePart{
 		body_type: cfg.body_type
-		body:      cfg.body
+		body: cfg.body
 	}], cfg.attachments
 }
 
