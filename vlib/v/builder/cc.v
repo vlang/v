@@ -1743,7 +1743,6 @@ mut:
 	args              []string
 	response_files    []string
 	response_contents []string
-	response_utf8     []bool
 }
 
 fn (mut plan GccUnicodeResponsePlan) add_ascii_run(response_file string, args []string) {
@@ -1751,10 +1750,9 @@ fn (mut plan GccUnicodeResponsePlan) add_ascii_run(response_file string, args []
 	plan.args << '@${file}'
 	plan.response_files << file
 	plan.response_contents << gcc_response_file_content_for_exact_args(args)
-	plan.response_utf8 << false
 }
 
-fn gcc_unicode_response_plan(response_file string, args []string, max_command_bytes int) GccUnicodeResponsePlan {
+fn gcc_unicode_response_plan(response_file string, args []string, max_command_bytes int, ansi_preserves_args bool) !GccUnicodeResponsePlan {
 	exact_args := ccompiler_exec_args('', args)[1..]
 	mut plan := GccUnicodeResponsePlan{}
 	mut ascii_run := []string{}
@@ -1777,17 +1775,29 @@ fn gcc_unicode_response_plan(response_file string, args []string, max_command_by
 		// Reserve a separator and the quotes added around every Windows argument.
 		quoted_command_bytes += arg.len + 3
 	}
-	// A Unicode-capable MinGW driver accepts UTF-8 response-file bytes. Use one
-	// only when the wide command line itself would exceed the Windows limit.
+	// Preserve the compiler's active-code-page response-file encoding when it is
+	// lossless. Otherwise no response-file encoding can safely carry these args.
 	if quoted_command_bytes > max_command_bytes {
+		if !ansi_preserves_args {
+			return error('the Windows GCC command has too many non-ASCII arguments for the command line and they cannot be represented in the active ANSI code page; enable 8.3 short paths or use a Unicode-capable GCC or Clang toolchain')
+		}
 		return GccUnicodeResponsePlan{
 			args: ['@${response_file}']
 			response_files: [response_file]
 			response_contents: [gcc_response_file_content_for_exact_args(exact_args)]
-			response_utf8: [true]
 		}
 	}
 	return plan
+}
+
+fn response_file_content_is_ansi_lossless(content string) bool {
+	$if windows {
+		ansi := string_to_ansi_not_null_terminated(content)
+		ansi_text := ansi.bytestr()
+		decoded := unsafe { string_from_wide(ansi_text.to_wide(from_ansi: true)) }
+		return decoded == content
+	}
+	return true
 }
 
 fn (v &Builder) ccompiler_response_file_content(args []string, formatted string) string {
@@ -1808,8 +1818,24 @@ fn (v &Builder) windows_gcc_needs_direct_exec(args []string) bool {
 }
 
 fn ccompiler_is_windows_batch_file(ccompiler string) bool {
-	name := ccompiler.trim_space().trim('"').trim("'").to_lower_ascii()
+	name := resolved_windows_ccompiler_path(ccompiler).to_lower_ascii()
 	return name.ends_with('.bat') || name.ends_with('.cmd')
+}
+
+fn resolved_windows_ccompiler_path(ccompiler string) string {
+	name := ccompiler.trim_space().trim('"').trim("'")
+	$if windows {
+		if os.file_ext(name) == '' && (name.contains('/') || name.contains('\\')) {
+			for suffix in ['.exe', '.bat', '.cmd', ''] {
+				candidate := name + suffix
+				if os.is_file(candidate) {
+					return os.abs_path(candidate)
+				}
+			}
+		}
+		return os.find_abs_path_of_executable(name) or { name }
+	}
+	return name
 }
 
 fn (v &Builder) execute_ccompiler(ccompiler string, cmd string, exec_args []string) os.Result {
@@ -2232,7 +2258,8 @@ pub fn (mut v Builder) cc() {
 			} else {
 				30000
 			}
-			plan := gcc_unicode_response_plan(response_file, rsp_args, max_command_bytes)
+			ansi_preserves_args := response_file_content_is_ansi_lossless(gcc_response_file_content(rsp_args))
+			plan := gcc_unicode_response_plan(response_file, rsp_args, max_command_bytes, ansi_preserves_args) or { verror(err.msg()) }
 			mut transport_args := plan.args.clone()
 			for i, arg in transport_args {
 				if arg.starts_with('@') {
@@ -2240,11 +2267,7 @@ pub fn (mut v Builder) cc() {
 				}
 			}
 			for i, file in plan.response_files {
-				if plan.response_utf8[i] {
-					write_utf8_response_file(file, plan.response_contents[i])
-				} else {
-					write_response_file(file, plan.response_contents[i])
-				}
+				write_response_file(file, plan.response_contents[i])
 			}
 			response_file_content = plan.response_contents.join('\n')
 			compiler_exec_args = [ccompiler]
@@ -3651,12 +3674,6 @@ fn write_response_file(response_file string, response_file_content string) {
 		os.write_file(response_file, response_file_content) or {
 			write_response_file_error(response_file_content, err)
 		}
-	}
-}
-
-fn write_utf8_response_file(response_file string, response_file_content string) {
-	os.write_file(response_file, response_file_content) or {
-		write_response_file_error(response_file, err)
 	}
 }
 

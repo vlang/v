@@ -344,6 +344,21 @@ fn test_windows_batch_compilers_keep_the_command_interpreter_path() {
 	assert ccompiler_is_windows_batch_file(r'C:\toolchains\gcc-wrapper.cmd')
 	assert ccompiler_is_windows_batch_file(r'"C:\Program Files\GCC\gcc-wrapper.BAT"')
 	assert !ccompiler_is_windows_batch_file(r'C:\toolchains\gcc.exe')
+	$if windows {
+		test_root := os.join_path(os.vtmp_dir(), 'v_gcc_batch_resolve_${os.getpid()}')
+		wrapper := os.join_path(test_root, 'v-gcc-wrapper.cmd')
+		os.mkdir_all(test_root) or { panic(err) }
+		defer {
+			os.rmdir_all(test_root) or {}
+		}
+		os.write_file(wrapper, '@echo off\r\nexit /b 0\r\n') or { panic(err) }
+		old_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', old_path, true)
+		}
+		os.setenv('PATH', test_root + os.path_delimiter + old_path, true)
+		assert ccompiler_is_windows_batch_file('v-gcc-wrapper')
+	}
 }
 
 fn test_gcc_unicode_response_plan_keeps_large_ascii_runs_out_of_the_command_line() {
@@ -355,7 +370,7 @@ fn test_gcc_unicode_response_plan_keeps_large_ascii_runs_out_of_the_command_line
 	args << r'-o "D:\工作目录\main.exe"'
 	args << r'"D:\工作目录\main.c"'
 	args << '-lm'
-	plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000)
+	plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000, false)!
 	assert plan.args == [
 		r'@D:\工作目录\main.c.rsp.0',
 		r'D:\工作目录\main.exe',
@@ -365,21 +380,31 @@ fn test_gcc_unicode_response_plan_keeps_large_ascii_runs_out_of_the_command_line
 	assert plan.response_files == [r'D:\工作目录\main.c.rsp.0', r'D:\工作目录\main.c.rsp.1']
 	assert plan.response_contents[0].contains('V_WINDOWS_UNICODE_PATH_LONG_COMMAND_1999')
 	assert plan.response_contents[1] == '"-lm"'
-	assert plan.response_utf8 == [false, false]
 	assert plan.args.join(' ').len < 8191
 }
 
-fn test_gcc_unicode_response_plan_uses_utf8_for_oversized_unicode_runs() {
+fn test_gcc_unicode_response_plan_uses_ansi_when_it_preserves_oversized_unicode_runs() {
 	mut args := [r'-o "D:\工作目录\main.exe"']
 	for i in 0 .. 1200 {
 		args << '"D:\\工作目录\\cached_${i}.o"'
 	}
 	assert args.join(' ').len > 32767
-	plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000)
+	plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000, true)!
 	assert plan.args == [r'@D:\工作目录\main.c.rsp']
 	assert plan.response_files == [r'D:\工作目录\main.c.rsp']
-	assert plan.response_utf8 == [true]
 	assert plan.response_contents[0].contains(r'D:\\工作目录\\cached_1199.o')
+}
+
+fn test_gcc_unicode_response_plan_rejects_an_unrepresentable_oversized_command() {
+	mut args := []string{}
+	for i in 0 .. 1200 {
+		args << '"D:\\工作目录\\cached_${i}.o"'
+	}
+	if plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000, false) {
+		assert false, '${plan.args}'
+	} else {
+		assert err.msg().contains('cannot be represented in the active ANSI code page')
+	}
 }
 
 fn test_windows_gnu_compilers_compile_in_a_non_ascii_directory() {
