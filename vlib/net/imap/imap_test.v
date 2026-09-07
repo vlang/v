@@ -586,6 +586,14 @@ fn test_ssl_and_starttls_are_mutually_exclusive() {
 	assert false, 'asking for both TLS modes must be rejected'
 }
 
+fn test_tls_certificate_validation_defaults_to_on() {
+	config := Config{}
+	assert config.validate
+	assert !Config{
+		validate: false
+	}.validate
+}
+
 fn test_empty_sets_do_not_reach_the_server() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
 	seen := chan string{ cap: 64 }

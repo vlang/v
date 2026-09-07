@@ -53,15 +53,23 @@ const tag_prefix = 'a'
 // Leave `port` unset to take 993 when `ssl` is true and 143 otherwise. Set
 // `ssl` for a connection encrypted from the first byte, or `starttls` to
 // upgrade a plain connection once it is open. The two are mutually exclusive.
+// TLS certificates are validated by default. `verify` names a PEM CA bundle;
+// set `in_memory_verification` when it contains the PEM data itself. `cert` and
+// `cert_key` configure a client certificate when the server requires one.
 pub struct Config {
 pub:
-	server   string
-	port     int
-	username string
-	password string
-	ssl      bool
-	starttls bool
-	timeout  time.Duration
+	server                 string
+	port                   int
+	username               string
+	password               string
+	ssl                    bool
+	starttls               bool
+	timeout                time.Duration
+	validate               bool = true
+	verify                 string
+	cert                   string
+	cert_key               string
+	in_memory_verification bool
 }
 
 // Client is a connection to an IMAP server.
@@ -669,7 +677,13 @@ fn (c &Client) effective_port() int {
 // upgrade_to_tls wraps the current connection in TLS and points the decoder at
 // it.
 fn (mut c Client) upgrade_to_tls() ! {
-	c.ssl_conn = ssl.new_ssl_conn()!
+	c.ssl_conn = ssl.new_ssl_conn(
+		validate: c.validate
+		verify: c.verify
+		cert: c.cert
+		cert_key: c.cert_key
+		in_memory_verification: c.in_memory_verification
+	)!
 	c.ssl_conn.connect(mut c.conn, c.server) or {
 		return error('imap: TLS handshake with ${c.server} failed: ${err}')
 	}

@@ -236,6 +236,12 @@ fn test_an_unknown_fetch_item_does_not_derail_the_rest() {
 	assert msg.flags == ['\\Seen']
 }
 
+fn test_an_unknown_fetch_item_with_a_section_is_skipped() {
+	mut c := client_over('* 1 FETCH (BINARY[1] {8}\r\nabcdefgh UID 7)\r\na1 OK done\r\n')
+	msg := c.read_response('a1')!.messages[0]
+	assert msg.uid == 7
+}
+
 fn test_internal_date() {
 	mut c := client_over('* 1 FETCH (INTERNALDATE "17-Jul-1996 02:44:25 -0700")\r\na1 OK done\r\n')
 	stamp := c.read_response('a1')!.messages[0].internal_date

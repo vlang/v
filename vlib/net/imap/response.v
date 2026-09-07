@@ -377,6 +377,11 @@ fn read_msg_att(mut d Decoder, seq u32) !Message {
 				}
 			}
 			else {
+				// Extension fetch items may attach a section with no space, for
+				// example BINARY[1]. Consume it before stepping over the value.
+				if d.accept(`[`)! {
+					read_section_key(mut d)!
+				}
 				d.sp()!
 				d.skip_value()!
 			}
