@@ -18,6 +18,7 @@
 //     username: 'someone@example.com'
 //     password: 'hunter2'
 //     ssl:      true
+//     verify:   '/etc/ssl/certs/ca-certificates.crt'
 // )!
 // defer { c.close() or {} }
 //
@@ -104,6 +105,18 @@ pub mut:
 	// during any command as messages arrive or are removed by another client.
 	exists u32
 	recent u32
+}
+
+struct CommandRefusedError {
+	message string
+}
+
+fn (e CommandRefusedError) msg() string {
+	return e.message
+}
+
+fn (_ CommandRefusedError) code() int {
+	return 0
 }
 
 // new_client opens a session, greets the server, upgrades the connection if
@@ -196,11 +209,22 @@ pub fn (mut c Client) login_plain() ! {
 		return
 	}
 	tag := c.next_tag()
-	c.write_line('${tag} AUTHENTICATE PLAIN')!
-	c.await_continuation(tag)!
+	c.write_line('${tag} AUTHENTICATE PLAIN', false) or {
+		c.shutdown()
+		return err
+	}
+	c.await_continuation(tag) or {
+		if err !is CommandRefusedError {
+			c.shutdown()
+		}
+		return err
+	}
 	// RFC 4616: an authorisation identity, an authentication identity and a
 	// password, joined by NUL bytes.
-	c.write_line(base64.encode_str('\0${c.username}\0${c.password}'))!
+	c.write_line(base64.encode_str('\0${c.username}\0${c.password}'), true) or {
+		c.shutdown()
+		return err
+	}
 	c.read_response(tag)!
 	c.authenticated = true
 }
@@ -506,15 +530,30 @@ fn (mut c Client) send(text []string, literals [][]u8) !Response {
 		return error('imap: a command needs one more text part than it has literals')
 	}
 	tag := c.next_tag()
+	redact := text[0].to_upper().starts_with('LOGIN')
 	mut line := '${tag} ${text[0]}'
 	for i, payload in literals {
 		// The server has to agree to take the octets before they are sent.
-		c.write_line('${line}{${payload.len}}')!
-		c.await_continuation(tag)!
-		c.write_raw(payload)!
+		c.write_line('${line}{${payload.len}}', redact) or {
+			c.shutdown()
+			return err
+		}
+		c.await_continuation(tag) or {
+			if err !is CommandRefusedError {
+				c.shutdown()
+			}
+			return err
+		}
+		c.write_raw(payload) or {
+			c.shutdown()
+			return err
+		}
 		line = text[i + 1]
 	}
-	c.write_line(line)!
+	c.write_line(line, redact) or {
+		c.shutdown()
+		return err
+	}
 	res := c.read_response_raw(tag) or {
 		c.shutdown()
 		return err
@@ -562,7 +601,9 @@ fn (mut c Client) await_continuation(tag string) ! {
 		if got != tag {
 			return error('imap: the server answered tag `${got}` while `${tag}` was outstanding')
 		}
-		return error('imap: ${res.status} ${res.text}')
+		return CommandRefusedError{
+			message: 'imap: ${res.status} ${res.text}'
+		}
 	}
 }
 
@@ -739,11 +780,23 @@ fn (mut c Client) next_tag() string {
 	return '${tag_prefix}${c.tag_seq:04}'
 }
 
-fn (mut c Client) write_line(line string) ! {
+fn (mut c Client) write_line(line string, redact bool) ! {
+	_ = redact
 	$if imap_debug? {
-		eprintln('[imap send] ${line}')
+		eprintln('[imap send] ${imap_debug_line(line, redact)}')
 	}
 	c.write_raw('${line}\r\n'.bytes())!
+}
+
+fn imap_debug_line(line string, redact bool) string {
+	if !redact {
+		return line
+	}
+	upper := line.to_upper()
+	if login := upper.index(' LOGIN') {
+		return '${line[..login]} LOGIN <credentials redacted>'
+	}
+	return '<authentication data redacted>'
 }
 
 fn (mut c Client) write_raw(data []u8) ! {

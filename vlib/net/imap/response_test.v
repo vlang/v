@@ -186,6 +186,7 @@ fn test_a_nested_multipart_body_structure() {
 	assert structure.parts.len == 2
 	alternative := structure.parts[0]
 	assert alternative.mime_type() == 'multipart/alternative'
+	assert alternative.params['boundary'] == 'inner'
 	assert alternative.parts.len == 2
 	assert alternative.parts[0].mime_type() == 'text/plain'
 	assert alternative.parts[1].mime_type() == 'text/html'
@@ -196,6 +197,7 @@ fn test_a_nested_multipart_body_structure() {
 	assert image.id == '<id@x>'
 	assert image.description == 'a cat'
 	assert image.size == 4554
+	assert structure.params['boundary'] == 'outer'
 }
 
 fn test_several_sections_come_back_keyed() {

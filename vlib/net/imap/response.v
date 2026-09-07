@@ -605,10 +605,15 @@ fn read_multipart(mut d Decoder) !BodyStructure {
 	}
 	d.sp()!
 	media_subtype := d.string_value()!
+	mut params := map[string]string{}
+	if d.accept(` `)! {
+		params = read_param_list(mut d)!
+	}
 	skip_extensions(mut d)!
 	return BodyStructure{
 		media_type: 'multipart'
 		media_subtype: media_subtype
+		params: params
 		parts: parts
 	}
 }

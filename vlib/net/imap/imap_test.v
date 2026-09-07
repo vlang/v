@@ -27,6 +27,18 @@ fn run_server(mut l net.TcpListener, hello string, seen chan string) {
 	mut r := io.new_buffered_reader(reader: c)
 	for {
 		mut line := r.read_line() or { return }
+		if line.contains('APPEND "BadTag"') {
+			seen <- line
+			c.write_string('a9999 OK wrong tag\r\n') or { return }
+			r.read_line() or { return }
+			return
+		}
+		if line.contains('APPEND "Reject"') {
+			seen <- line
+			tag := line.fields()[0]
+			c.write_string('${tag} NO append refused\r\n') or { return }
+			continue
+		}
 		// A command may carry literals. Each one is announced by the client,
 		// acknowledged here, and only then sent.
 		for {
@@ -646,6 +658,46 @@ fn test_a_wrong_completion_tag_closes_the_transport() {
 	assert false, 'a mismatched completion tag must invalidate the session'
 }
 
+fn test_a_wrong_literal_continuation_tag_closes_the_transport() {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	seen := chan string{ cap: 64 }
+	port, th := start(mut l, mock_greeting, seen)!
+	mut c := new_client(server: '127.0.0.1', port: port)!
+	c.append('BadTag', [], time.Time{}, 'body'.bytes()) or {
+		assert err.msg().contains('a9999')
+		assert !c.transport_open
+		assert !c.is_open
+		th.wait()
+		l.close() or {}
+		assert drain(seen) == ['a0001 APPEND "BadTag" {4}']
+		return
+	}
+	assert false, 'a mismatched continuation tag must invalidate the session'
+}
+
+fn test_a_refused_literal_continuation_keeps_the_session_usable() {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	seen := chan string{ cap: 64 }
+	port, th := start(mut l, mock_greeting, seen)!
+	mut c := new_client(server: '127.0.0.1', port: port)!
+	c.append('Reject', [], time.Time{}, 'body'.bytes()) or {
+		assert err.msg().contains('append refused')
+		assert c.transport_open
+		assert c.is_open
+		c.noop()!
+		c.close()!
+		th.wait()
+		l.close() or {}
+		assert drain(seen) == [
+			'a0001 APPEND "Reject" {4}',
+			'a0002 NOOP',
+			'a0003 LOGOUT',
+		]
+		return
+	}
+	assert false, 'a refused continuation must be reported as an error'
+}
+
 fn test_sasl_plain_can_be_selected_during_construction() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
 	seen := chan string{ cap: 64 }
@@ -665,6 +717,16 @@ fn test_sasl_plain_can_be_selected_during_construction() {
 		base64.encode_str('\0bob\0hunter2'),
 		'a0002 LOGOUT',
 	]
+}
+
+fn test_authentication_debug_lines_are_redacted() {
+	login := imap_debug_line('a0001 LOGIN "bob" "hunter2"', true)
+	assert login == 'a0001 LOGIN <credentials redacted>'
+	assert !login.contains('bob')
+	assert !login.contains('hunter2')
+	plain := imap_debug_line(base64.encode_str('\0bob\0hunter2'), true)
+	assert plain == '<authentication data redacted>'
+	assert imap_debug_line('a0002 NOOP', false) == 'a0002 NOOP'
 }
 
 fn test_an_unsolicited_bye_closes_the_local_transport() {
