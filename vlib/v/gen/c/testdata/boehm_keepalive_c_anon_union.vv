@@ -5,6 +5,7 @@ union C.anon_u {
 mut:
 	u u32
 	a u8
+	p voidptr
 }
 
 @[typedef]

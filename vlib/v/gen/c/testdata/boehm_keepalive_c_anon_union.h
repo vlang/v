@@ -5,6 +5,7 @@ typedef struct _TestAnonRecord {
 	union {
 		uint32_t u;
 		uint8_t a;
+		void *p;
 	} anon_u;
 } TestAnonRecord;
 
