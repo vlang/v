@@ -176,7 +176,6 @@ fn (mut s SSLConn) init() ! {
 		if res != 1 {
 			return error_with_code('net.openssl SSLConn.init, SSL_CTX_set_default_verify_paths failed', net.err_tls_certificate_invalid_code)
 		}
-		C.SSL_CTX_set_verify_depth(s.sslctx, 4)
 		C.SSL_CTX_set_options(s.sslctx, C.SSL_OP_NO_COMPRESSION)
 	}
 

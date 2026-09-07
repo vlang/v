@@ -1535,6 +1535,29 @@ fn peer_connection_id_for_test(sequence u64, connection_id []u8, token_byte u8) 
 	}
 }
 
+fn test_new_connection_id_rejects_after_zero_length_initial_cid() {
+	mut c, _ := dial(DialParams{
+		server_name: 'example.com'
+		ca_bundle_pem: conn_test_cert_pem
+		alpn_protocols: ['h3']
+	}, u64(0))!
+	defer {
+		c.handshake.free()
+	}
+	// handle_new_connection_id is reached only for protected 1-RTT frames,
+	// after the initial peer CID has been learned. Marking the first packet as
+	// processed makes the empty sequence-0 entry represent an intentional
+	// zero-length CID rather than dial's not-yet-learned placeholder.
+	c.processed_first_server_packet = true
+	c.handle_new_connection_id(peer_connection_id_for_test(1, [u8(1)], 0x11)) or {
+		assert err.code() == int(quic_error_protocol_violation)
+		assert err.msg().contains('zero-length initial connection ID')
+		assert c.peer_connection_ids.len == 1
+		return
+	}
+	assert false, 'expected NEW_CONNECTION_ID after a zero-length initial CID to be rejected'
+}
+
 fn test_new_connection_id_without_retirement_is_tolerated() {
 	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {

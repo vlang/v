@@ -1180,6 +1180,15 @@ fn (mut c QuicConn) update_initial_peer_connection_id(connection_id []u8, statel
 }
 
 fn (mut c QuicConn) handle_new_connection_id(frame NewConnectionIdFrame) ! {
+	initial := c.peer_connection_ids[u64(0)] or {
+		return error_with_code('quic: internal error: missing initial peer connection ID state', int(quic_error_internal_error))
+	}
+	// RFC 9000 §5.1: an endpoint that selected a zero-length connection ID
+	// cannot issue any additional connection IDs during the connection.
+	if initial.connection_id.len == 0 {
+		return error_with_code('quic: PROTOCOL_VIOLATION: peer using a zero-length initial connection ID sent NEW_CONNECTION_ID', int(quic_error_protocol_violation))
+	}
+
 	// RFC 9000 §5.1.1 requires both connection IDs and their stateless
 	// reset tokens to be unique across sequence numbers.
 	for sequence, existing in c.peer_connection_ids {
