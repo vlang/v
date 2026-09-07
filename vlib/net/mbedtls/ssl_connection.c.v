@@ -63,24 +63,20 @@ fn new_sslcerts_in_memory_with_rng(verify string, cert string, cert_key string, 
 	if verify != '' {
 		ret := C.mbedtls_x509_crt_parse(&certs.cacert, verify.str, verify.len + 1)
 		if ret != 0 {
-			return error_with_code('net.mbedtls new_sslcerts_in_memory, mbedtls_x509_crt_parse error 1 ret: ${ret}',
-				ret)
+			return error_with_code('net.mbedtls new_sslcerts_in_memory, mbedtls_x509_crt_parse error 1 ret: ${ret}', ret)
 		}
 	}
 	if cert != '' {
 		ret := C.mbedtls_x509_crt_parse(&certs.client_cert, cert.str, cert.len + 1)
 		if ret != 0 {
-			return error_with_code('net.mbedtls new_sslcerts_in_memory, mbedtls_x509_crt_parse error 2 ret: ${ret}',
-				ret)
+			return error_with_code('net.mbedtls new_sslcerts_in_memory, mbedtls_x509_crt_parse error 2 ret: ${ret}', ret)
 		}
 	}
 	if cert_key != '' {
 		unsafe {
-			ret := C.mbedtls_pk_parse_key(&certs.client_key, cert_key.str, cert_key.len + 1, 0, 0,
-				C.mbedtls_ctr_drbg_random, rng)
+			ret := C.mbedtls_pk_parse_key(&certs.client_key, cert_key.str, cert_key.len + 1, 0, 0, C.mbedtls_ctr_drbg_random, rng)
 			if ret != 0 {
-				return error_with_code('net.mbedtls new_sslcerts_in_memory, mbedtls_pk_parse_key error ret: ${ret}',
-					ret)
+				return error_with_code('net.mbedtls new_sslcerts_in_memory, mbedtls_pk_parse_key error ret: ${ret}', ret)
 			}
 		}
 	}
@@ -103,24 +99,20 @@ fn new_sslcerts_from_file_with_rng(verify string, cert string, cert_key string, 
 	if verify != '' {
 		ret := C.mbedtls_x509_crt_parse_file(&certs.cacert, &char(verify.str))
 		if ret != 0 {
-			return error_with_code('net.mbedtls new_sslcerts_from_file, mbedtls_x509_crt_parse_file error 1 ret: ${ret}',
-				ret)
+			return error_with_code('net.mbedtls new_sslcerts_from_file, mbedtls_x509_crt_parse_file error 1 ret: ${ret}', ret)
 		}
 	}
 	if cert != '' {
 		ret := C.mbedtls_x509_crt_parse_file(&certs.client_cert, &char(cert.str))
 		if ret != 0 {
-			return error_with_code('net.mbedtls new_sslcerts_from_file, mbedtls_x509_crt_parse_file error 2 ret: ${ret}',
-				ret)
+			return error_with_code('net.mbedtls new_sslcerts_from_file, mbedtls_x509_crt_parse_file error 2 ret: ${ret}', ret)
 		}
 	}
 	if cert_key != '' {
 		unsafe {
-			ret := C.mbedtls_pk_parse_keyfile(&certs.client_key, &char(cert_key.str), 0,
-				C.mbedtls_ctr_drbg_random, rng)
+			ret := C.mbedtls_pk_parse_keyfile(&certs.client_key, &char(cert_key.str), 0, C.mbedtls_ctr_drbg_random, rng)
 			if ret != 0 {
-				return error_with_code('net.mbedtls new_sslcerts_from_file, mbedtls_pk_parse_keyfile error ret: ${ret}',
-					ret)
+				return error_with_code('net.mbedtls new_sslcerts_from_file, mbedtls_pk_parse_keyfile error ret: ${ret}', ret)
 			}
 		}
 	}
@@ -188,7 +180,7 @@ mut:
 // create a new SSLListener binding to `saddr`
 pub fn new_ssl_listener(saddr string, config SSLConnectConfig) !&SSLListener {
 	mut listener := &SSLListener{
-		saddr:  saddr
+		saddr: saddr
 		config: config
 	}
 	listener.init()!
@@ -246,13 +238,11 @@ fn (mut l SSLListener) init() ! {
 	mut ret := 0
 
 	if l.config.in_memory_verification {
-		l.certs = new_sslcerts_in_memory_with_rng(l.config.verify, l.config.cert,
-			l.config.cert_key, &l.ctr_drbg) or {
+		l.certs = new_sslcerts_in_memory_with_rng(l.config.verify, l.config.cert, l.config.cert_key, &l.ctr_drbg) or {
 			return error('net.mbedtls SSLListener.init, cert failure 1, err: ${err}')
 		}
 	} else {
-		l.certs = new_sslcerts_from_file_with_rng(l.config.verify, l.config.cert,
-			l.config.cert_key, &l.ctr_drbg) or {
+		l.certs = new_sslcerts_from_file_with_rng(l.config.verify, l.config.cert, l.config.cert_key, &l.ctr_drbg) or {
 			return error('net.mbedtls SSLListener.init, cert failure 2, err: ${err}')
 		}
 	}
@@ -270,15 +260,12 @@ fn (mut l SSLListener) init() ! {
 	ret = C.mbedtls_net_bind(&l.server_fd, bind_ip, voidptr(bind_port.str), C.MBEDTLS_NET_PROTO_TCP)
 
 	if ret != 0 {
-		return error_with_code("net.mbedtls SSLListener.init, mbedtls_net_bind can't bind to ${l.saddr} error ret: ${ret}",
-			ret)
+		return error_with_code("net.mbedtls SSLListener.init, mbedtls_net_bind can't bind to ${l.saddr} error ret: ${ret}", ret)
 	}
 
-	ret = C.mbedtls_ssl_config_defaults(&l.conf, C.MBEDTLS_SSL_IS_SERVER,
-		C.MBEDTLS_SSL_TRANSPORT_STREAM, C.MBEDTLS_SSL_PRESET_DEFAULT)
+	ret = C.mbedtls_ssl_config_defaults(&l.conf, C.MBEDTLS_SSL_IS_SERVER, C.MBEDTLS_SSL_TRANSPORT_STREAM, C.MBEDTLS_SSL_PRESET_DEFAULT)
 	if ret != 0 {
-		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_config_defaults can't set config defaults ret: ${ret}",
-			ret)
+		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_config_defaults can't set config defaults ret: ${ret}", ret)
 	}
 	listener_read_timeout := ssl_listener_read_timeout(l.config)
 	$if trace_mbedtls_timeouts ? {
@@ -289,8 +276,7 @@ fn (mut l SSLListener) init() ! {
 	C.mbedtls_ssl_conf_ca_chain(&l.conf, &l.certs.cacert, unsafe { nil })
 	ret = C.mbedtls_ssl_conf_own_cert(&l.conf, &l.certs.client_cert, &l.certs.client_key)
 	if ret != 0 {
-		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_conf_own_cert can't load certificate ret: ${ret}",
-			ret)
+		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_conf_own_cert can't load certificate ret: ${ret}", ret)
 	}
 
 	// Advertise ALPN protocols for accepted connections to select from.
@@ -309,15 +295,13 @@ fn (mut l SSLListener) init() ! {
 		}
 		ret = C.mbedtls_ssl_conf_alpn_protocols(&l.conf, voidptr(l.alpn_list))
 		if ret != 0 {
-			return error_with_code('net.mbedtls SSLListener.init, mbedtls_ssl_conf_alpn_protocols failed ret: ${ret}',
-				ret)
+			return error_with_code('net.mbedtls SSLListener.init, mbedtls_ssl_conf_alpn_protocols failed ret: ${ret}', ret)
 		}
 	}
 
 	ret = C.mbedtls_ssl_setup(&l.ssl, &l.conf)
 	if ret != 0 {
-		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_setup can't setup ssl ret: ${ret}",
-			ret)
+		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_setup can't setup ssl ret: ${ret}", ret)
 	}
 
 	if get_cert_callback := l.config.get_certificate {
@@ -358,30 +342,27 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 	ret := C.mbedtls_ssl_setup(&conn.ssl, &l.conf)
 	if ret != 0 {
 		conn.shutdown() or {}
-		return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_setup SSL setup failed ret: ${ret}',
-			ret)
+		return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_setup SSL setup failed ret: ${ret}', ret)
 	}
 
-	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
-		C.mbedtls_net_recv_timeout)
+	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv, C.mbedtls_net_recv_timeout)
 	conn.server_handshake(net.infinite_timeout)!
 	return conn
 }
 
 fn (mut l SSLListener) accept_tcp_connection() !&SSLConn {
 	mut conn := &SSLConn{
-		config:       l.config
-		duration:     ssl_listener_read_timeout(l.config)
+		config: l.config
+		duration: ssl_listener_read_timeout(l.config)
 		read_timeout: ssl_listener_read_timeout(l.config)
-		opened:       true
+		opened: true
 	}
 	ip := [16]u8{}
 	iplen := usize(0)
 
 	ret := C.mbedtls_net_accept(&l.server_fd, &conn.server_fd, &ip, 16, &iplen)
 	if ret != 0 {
-		return error_with_code("net.mbedtls SSLListener.accept, mbedtls_net_accept can't accept connection ret: ${ret}",
-			ret)
+		return error_with_code("net.mbedtls SSLListener.accept, mbedtls_net_accept can't accept connection ret: ${ret}", ret)
 	}
 	conn.handle = conn.server_fd.fd
 	conn.owns_socket = true
@@ -407,8 +388,7 @@ fn (mut conn SSLConn) do_handshake_loop(deadline time.Time) ! {
 				conn.wait_for_write(ssl_remaining_timeout(deadline))!
 			}
 			else {
-				return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_handshake failed 1; handshake ret: ${ret}',
-					ret)
+				return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_handshake failed 1; handshake ret: ${ret}', ret)
 			}
 		}
 
@@ -451,8 +431,7 @@ pub fn (mut l SSLListener) accept_raw_with_timeout(accept_timeout time.Duration)
 	ret := C.mbedtls_ssl_setup(&conn.ssl, &l.conf)
 	if ret != 0 {
 		conn.shutdown() or {}
-		return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_setup SSL setup failed ret: ${ret}',
-			ret)
+		return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_setup SSL setup failed ret: ${ret}', ret)
 	}
 
 	C.v_mbedtls_ssl_set_bio_nonblocking(&conn.ssl, &conn.server_fd)
@@ -467,8 +446,7 @@ pub fn (mut conn SSLConn) complete_handshake(timeout time.Duration) ! {
 	deadline := ssl_timeout_deadline(timeout)
 	conn.do_handshake_loop(deadline)!
 	net.set_blocking(conn.handle, true)!
-	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
-		C.mbedtls_net_recv_timeout)
+	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv, C.mbedtls_net_recv_timeout)
 }
 
 // accept_with_timeouts waits up to `accept_timeout` for a new client, then
@@ -488,7 +466,7 @@ pub:
 	verify   string // the path to a rootca.pem file, containing trusted CA certificate(s)
 	cert     string // the path to a cert.pem file, containing client certificate(s) for the request
 	cert_key string // the path to a key.pem file, containing private keys for the client certificate(s)
-	validate bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
+	validate bool // set this to true, if you want to stop requests, when their certificates are found to be invalid
 
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 
@@ -553,8 +531,8 @@ pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 		eprintln(@METHOD)
 	}
 	mut conn := &SSLConn{
-		config:       config
-		duration:     config.read_timeout
+		config: config
+		duration: config.read_timeout
 		read_timeout: config.read_timeout
 	}
 	conn.init()!
@@ -628,11 +606,9 @@ fn (mut s SSLConn) init() ! {
 	C.mbedtls_ssl_config_init(&s.conf)
 	init_rng(mut s.ctr_drbg, mut s.entropy)!
 	mut ret := 0
-	ret = C.mbedtls_ssl_config_defaults(&s.conf, C.MBEDTLS_SSL_IS_CLIENT,
-		C.MBEDTLS_SSL_TRANSPORT_STREAM, C.MBEDTLS_SSL_PRESET_DEFAULT)
+	ret = C.mbedtls_ssl_config_defaults(&s.conf, C.MBEDTLS_SSL_IS_CLIENT, C.MBEDTLS_SSL_TRANSPORT_STREAM, C.MBEDTLS_SSL_PRESET_DEFAULT)
 	if ret != 0 {
-		return error_with_code('net.mbedtls SSLConn.init, mbedtls_ssl_config_defaults failed to set SSL configuration ret: ${ret}',
-			ret)
+		return error_with_code('net.mbedtls SSLConn.init, mbedtls_ssl_config_defaults failed to set SSL configuration ret: ${ret}', ret)
 	}
 	$if trace_mbedtls_timeouts ? {
 		dump(s.read_timeout)
@@ -662,58 +638,61 @@ fn (mut s SSLConn) init() ! {
 		}
 		ret = C.mbedtls_ssl_conf_alpn_protocols(&s.conf, voidptr(s.alpn_list))
 		if ret != 0 {
-			return error_with_code('net.mbedtls SSLConn.init, mbedtls_ssl_conf_alpn_protocols failed ret: ${ret}',
-				ret)
+			return error_with_code('net.mbedtls SSLConn.init, mbedtls_ssl_conf_alpn_protocols failed ret: ${ret}', ret)
 		}
 	}
-	if s.config.verify != '' || s.config.cert != '' || s.config.cert_key != '' {
-		s.certs = &SSLCerts{}
-		C.mbedtls_x509_crt_init(&s.certs.cacert)
-		C.mbedtls_x509_crt_init(&s.certs.client_cert)
-		C.mbedtls_pk_init(&s.certs.client_key)
-	}
+	s.certs = &SSLCerts{}
+	C.mbedtls_x509_crt_init(&s.certs.cacert)
+	C.mbedtls_x509_crt_init(&s.certs.client_cert)
+	C.mbedtls_pk_init(&s.certs.client_key)
 
 	if s.config.in_memory_verification {
 		if s.config.verify != '' {
-			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, s.config.verify.str,
-
-				s.config.verify.len + 1)
+			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, s.config.verify.str, s.config.verify.len + 1)
+		} else {
+			// This is the CLIENT connect path only (new_ssl_conn/dial --
+			// SSLListener.accept() never calls this function, it reuses the
+			// listener's own already-configured mbedtls_ssl_config instead).
+			// A caller that didn't supply a CA bundle almost always still
+			// wants ordinary internet HTTPS to work, not an unverifiable
+			// connection -- fall back to the Linux system trust store, or
+			// (any other platform, or a Linux system missing one) the
+			// vendored default (default_ca_bundle.v), rather than leaving
+			// s.certs.cacert empty. Mirrors verify_certificate_chain's
+			// identical fallback for net.quic's HTTP/3 client.
+			ca_bundle_pem := system_or_default_ca_bundle_pem()
+			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, ca_bundle_pem.str, ca_bundle_pem.len + 1)
 		}
 		if s.config.cert != '' {
-			ret = C.mbedtls_x509_crt_parse(&s.certs.client_cert, s.config.cert.str,
-
-				s.config.cert.len + 1)
+			ret = C.mbedtls_x509_crt_parse(&s.certs.client_cert, s.config.cert.str, s.config.cert.len + 1)
 		}
 		if s.config.cert_key != '' {
 			unsafe {
-				ret = C.mbedtls_pk_parse_key(&s.certs.client_key, s.config.cert_key.str,
-
-					s.config.cert_key.len + 1, 0, 0, C.mbedtls_ctr_drbg_random, &s.ctr_drbg)
+				ret = C.mbedtls_pk_parse_key(&s.certs.client_key, s.config.cert_key.str, s.config.cert_key.len + 1, 0, 0, C.mbedtls_ctr_drbg_random, &s.ctr_drbg)
 			}
 		}
 	} else {
 		if s.config.verify != '' {
 			ret = C.mbedtls_x509_crt_parse_file(&s.certs.cacert, &char(s.config.verify.str))
+		} else {
+			ca_bundle_pem := system_or_default_ca_bundle_pem()
+			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, ca_bundle_pem.str, ca_bundle_pem.len + 1)
 		}
 		if s.config.cert != '' {
 			ret = C.mbedtls_x509_crt_parse_file(&s.certs.client_cert, &char(s.config.cert.str))
 		}
 		if s.config.cert_key != '' {
 			unsafe {
-				ret = C.mbedtls_pk_parse_keyfile(&s.certs.client_key, &char(s.config.cert_key.str),
-					0, C.mbedtls_ctr_drbg_random, &s.ctr_drbg)
+				ret = C.mbedtls_pk_parse_keyfile(&s.certs.client_key, &char(s.config.cert_key.str), 0, C.mbedtls_ctr_drbg_random, &s.ctr_drbg)
 			}
 		}
 	}
 	if ret < 0 {
-		return error_with_code('net.mbedtls SSLConn.init, failed to set certificates, ret: ${ret}',
-			ret)
+		return error_with_code('net.mbedtls SSLConn.init, failed to set certificates, ret: ${ret}', ret)
 	}
 
-	if unsafe { s.certs != nil } {
-		C.mbedtls_ssl_conf_ca_chain(&s.conf, &s.certs.cacert, 0)
-		C.mbedtls_ssl_conf_own_cert(&s.conf, &s.certs.client_cert, &s.certs.client_key)
-	}
+	C.mbedtls_ssl_conf_ca_chain(&s.conf, &s.certs.cacert, 0)
+	C.mbedtls_ssl_conf_own_cert(&s.conf, &s.certs.client_cert, &s.certs.client_key)
 
 	if s.config.validate {
 		C.mbedtls_ssl_conf_authmode(&s.conf, C.MBEDTLS_SSL_VERIFY_REQUIRED)
@@ -723,8 +702,7 @@ fn (mut s SSLConn) init() ! {
 
 	ret = C.mbedtls_ssl_setup(&s.ssl, &s.conf)
 	if ret != 0 {
-		return error_with_code('net.mbedtls SSLConn.init, mbedtls_ssl_setup failed to setup SSL connection ret: ${ret}',
-			ret)
+		return error_with_code('net.mbedtls SSLConn.init, mbedtls_ssl_setup failed to setup SSL connection ret: ${ret}', ret)
 	}
 }
 
@@ -740,12 +718,10 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	s.set_read_timeout(tcp_conn.read_timeout())
 	mut ret := C.mbedtls_ssl_set_hostname(&s.ssl, &char(hostname.str))
 	if ret != 0 {
-		return error_with_code('net.mbedtls SSLConn.connect, mbedtls_ssl_set_hostname failed to set hostname',
-			ret)
+		return error_with_code('net.mbedtls SSLConn.connect, mbedtls_ssl_set_hostname failed to set hostname', ret)
 	}
 	s.server_fd.fd = s.handle
-	C.mbedtls_ssl_set_bio(&s.ssl, &s.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
-		C.mbedtls_net_recv_timeout)
+	C.mbedtls_ssl_set_bio(&s.ssl, &s.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv, C.mbedtls_net_recv_timeout)
 	ret = C.mbedtls_ssl_handshake(&s.ssl)
 	// WANT_READ/WANT_WRITE are not errors -- mbedtls's own docs require every
 	// caller to retry the handshake call on them. On this blocking BIO each
@@ -756,8 +732,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 		ret = C.mbedtls_ssl_handshake(&s.ssl)
 	}
 	if ret != 0 {
-		return error_with_code('net.mbedtls SSLConn.connect, mbedtls_ssl_handshake failed 2; ret: ${ret}',
-			ret)
+		return error_with_code('net.mbedtls SSLConn.connect, mbedtls_ssl_handshake failed 2; ret: ${ret}', ret)
 	}
 	s.opened = true
 }
@@ -795,13 +770,11 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	}
 
 	port_str := port.str()
-	ret = C.mbedtls_net_connect(&s.server_fd, &char(hostname.str), &char(port_str.str),
-		C.MBEDTLS_NET_PROTO_TCP)
+	ret = C.mbedtls_net_connect(&s.server_fd, &char(hostname.str), &char(port_str.str), C.MBEDTLS_NET_PROTO_TCP)
 	if ret != 0 {
 		return error_with_code('net.mbedtls SSLConn.dial, failed to connect to host', ret)
 	}
-	C.mbedtls_ssl_set_bio(&s.ssl, &s.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
-		C.mbedtls_net_recv_timeout)
+	C.mbedtls_ssl_set_bio(&s.ssl, &s.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv, C.mbedtls_net_recv_timeout)
 	s.handle = s.server_fd.fd
 	ret = C.mbedtls_ssl_handshake(&s.ssl)
 	// See the identical retry loop in SSLConn.connect() above for why
@@ -810,8 +783,7 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 		ret = C.mbedtls_ssl_handshake(&s.ssl)
 	}
 	if ret != 0 {
-		return error_with_code('net.mbedtls SSLConn.dial, mbedtls_ssl_handshake failed 3; ret: ${ret}',
-			ret)
+		return error_with_code('net.mbedtls SSLConn.dial, mbedtls_ssl_handshake failed 3; ret: ${ret}', ret)
 	}
 	s.opened = true
 	connected = true
@@ -882,15 +854,13 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 					$if trace_ssl ? {
 						eprintln('${@METHOD} ---> res: C.MBEDTLS_ERR_SSL_TIMEOUT')
 					}
-					return error_with_code('net.mbedtls SSLConn.socket_read_into_ptr, did not receive any data within ${s.read_timeout.milliseconds()}ms. Use conn.set_read_timeout(...) to increase the timeout',
-						res)
+					return error_with_code('net.mbedtls SSLConn.socket_read_into_ptr, did not receive any data within ${s.read_timeout.milliseconds()}ms. Use conn.set_read_timeout(...) to increase the timeout', res)
 				}
 				else {
 					$if trace_ssl ? {
 						eprintln('${@METHOD} ---> res: could not read using SSL')
 					}
-					return error_with_code('net.mbedtls SSLConn.socket_read_into_ptr, could not read using SSL',
-						res)
+					return error_with_code('net.mbedtls SSLConn.socket_read_into_ptr, could not read using SSL', res)
 				}
 			}
 		}
@@ -943,8 +913,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 						$if trace_ssl ? {
 							eprintln('${@METHOD} ---> res: could not write SSL, sent: ${sent}')
 						}
-						return error_with_code('net.mbedtls SSLConn.write_ptr, could not write using SSL',
-							sent)
+						return error_with_code('net.mbedtls SSLConn.write_ptr, could not write using SSL', sent)
 					}
 				}
 			}
@@ -985,7 +954,7 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 		microseconds := (remaining_time % 1000) * 1000
 
 		tt := C.timeval{
-			tv_sec:  u64(seconds)
+			tv_sec: u64(seconds)
 			tv_usec: u64(microseconds)
 		}
 		timeval_timeout := if is_infinite { &C.timeval(unsafe { nil }) } else { &tt }

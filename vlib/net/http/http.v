@@ -22,28 +22,28 @@ pub mut:
 	data          string
 	params        map[string]string
 	cookies       map[string]string
-	user_agent    string  = 'v.http'
+	user_agent    string = 'v.http'
 	user_ptr      voidptr = unsafe { nil }
 	verbose       bool
 	proxy         &HttpProxy = unsafe { nil }
-	read_timeout  i64        = 30 * time.second // timeout for reading the response; applies to plain http and to direct https requests
-	write_timeout i64        = 30 * time.second // timeout for writing the request; applies to plain http (write timeouts are not enforced on the SSL write path yet)
+	read_timeout  i64 = 30 * time.second // timeout for reading the response; applies to plain http and to direct https requests
+	write_timeout i64 = 30 * time.second // timeout for writing the request; applies to plain http (write timeouts are not enforced on the SSL write path yet)
 
-	validate                 bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
-	verify                   string // the path to a rootca.pem file, containing trusted CA certificate(s)
+	validate                 bool = true // set this to false to allow requests through even when their certificates are found to be invalid
+	verify                   string // the path to a rootca.pem file, containing trusted CA certificate(s); empty uses net.mbedtls.system_or_default_ca_bundle_pem instead (the Linux system CA bundle if present, else the vendored default)
 	cert                     string // the path to a cert.pem file, containing client certificate(s) for the request
 	cert_key                 string // the path to a key.pem file, containing private keys for the client certificate(s)
-	in_memory_verification   bool   // if true, verify, cert, and cert_key are read from memory, not from a file
+	in_memory_verification   bool // if true, verify, cert, and cert_key are read from memory, not from a file
 	allow_redirect           bool = true // whether to allow redirect
-	max_retries              int  = 5    // maximum number of retries required when an underlying socket error occurs
+	max_retries              int = 5 // maximum number of retries required when an underlying socket error occurs
 	enable_http2             bool = true // when true (the default) and the URL is https, advertise ALPN `h2, http/1.1` and use HTTP/2 if the server selects it; set to false to force HTTP/1.1. Ignored for plain http://, and for the Windows SChannel backend which has no ALPN yet (see vlang/v#27383). on_progress / on_progress_body / stop_copying_limit / stop_receiving_limit are honored on the HTTP/2 path; on_progress fires per DATA frame payload rather than per raw network read.
-	enable_http3             bool // when true and the URL is https, use HTTP/3 (QUIC over UDP) for this request instead of the TCP-based HTTP/1.1/2 path. Requires building with `-d http3`; without it, the request fails fast rather than including the QUIC/TLS/QPACK stack in ordinary net.http builds. Opt-in only (default false) and, unlike enable_http2, never automatically probed: UDP has no fast-fail signal the way a closed TCP port does, so there is no automatic fallback to HTTP/1.1/2 if the h3 attempt fails or times out -- that decision is the caller's. Ignored for plain http://. req.cert/req.cert_key (mutual TLS) are not supported by this v1 HTTP/3 client; setting either alongside enable_http3 fails the request immediately rather than silently ignoring them. req.validate is also not honorable yet: net.quic's TLS 1.3 stack has no skip-verification mode at all (v1 limitation), so certificate validation is always enforced regardless of this flag. **req.verify is effectively REQUIRED for HTTP/3 today**: net.quic's TLS 1.3 stack has no OS/default trust-store fallback (unlike the h1/h2 ssl.SSLConn path), so leaving req.verify unset means every h3 request fails certificate verification against every real server.
+	enable_http3             bool // when true and the URL is https, use HTTP/3 (QUIC over UDP) for this request instead of the TCP-based HTTP/1.1/2 path. Requires building with `-d http3`; without it, the request fails fast rather than including the QUIC/TLS/QPACK stack in ordinary net.http builds. Opt-in only (default false) and, unlike enable_http2, never automatically probed: UDP has no fast-fail signal the way a closed TCP port does, so there is no automatic fallback to HTTP/1.1/2 if the h3 attempt fails or times out -- that decision is the caller's. Ignored for plain http://. req.cert/req.cert_key (mutual TLS) are not supported by this v1 HTTP/3 client; setting either alongside enable_http3 fails the request immediately rather than silently ignoring them. req.validate: net.quic's TLS 1.3 stack has no skip-verification mode at all (v1 limitation) and always enforces certificate validation, so setting validate: false alongside enable_http3 fails the request immediately (same fail-fast precedent as req.cert/req.cert_key above) rather than silently connecting with verification still on. req.verify defaults to the same trust store (net.mbedtls.system_or_default_ca_bundle_pem) as the h1/h2 path when left unset -- set it explicitly only when a DIFFERENT or additional CA is actually needed.
 	disable_connection_reuse bool // opt out of the shared connection pool: open a fresh connection for this request, send `Connection: close`, and close the connection after the response (the pre-pooling behavior)
 	// callbacks to allow custom reporting code to run, while the request is running, and to implement streaming
-	on_redirect      RequestRedirectFn     = unsafe { nil }
-	on_progress      RequestProgressFn     = unsafe { nil }
+	on_redirect      RequestRedirectFn = unsafe { nil }
+	on_progress      RequestProgressFn = unsafe { nil }
 	on_progress_body RequestProgressBodyFn = unsafe { nil }
-	on_finish        RequestFinishFn       = unsafe { nil }
+	on_finish        RequestFinishFn = unsafe { nil }
 
 	stop_copying_limit   i64 = -1 // after this many bytes are received, stop copying to the response. Note that on_progress and on_progress_body callbacks, will continue to fire normally, until the full response is read, which allows you to implement streaming downloads, without keeping the whole big response in memory
 	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
@@ -56,8 +56,8 @@ pub fn new_request(method Method, url_ string, data string) Request {
 	// println('new req() method=${method} url="${url}" dta="${data}"')
 	return Request{
 		method: method
-		url:    url
-		data:   data
+		url: url
+		data: data
 		/*
 		headers: {
 			'Accept-Encoding': 'compress'
@@ -75,8 +75,8 @@ pub fn get(url string) !Response {
 pub fn post(url string, data string) !Response {
 	return fetch(
 		method: .post
-		url:    url
-		data:   data
+		url: url
+		data: data
 		header: new_header(key: .content_type, value: content_type_default)
 	)
 }
@@ -85,8 +85,8 @@ pub fn post(url string, data string) !Response {
 pub fn post_json(url string, data string) !Response {
 	return fetch(
 		method: .post
-		url:    url
-		data:   data
+		url: url
+		data: data
 		header: new_header(key: .content_type, value: 'application/json')
 	)
 }
@@ -96,18 +96,18 @@ pub fn post_json(url string, data string) !Response {
 pub fn post_form(url string, data map[string]string) !Response {
 	return fetch(
 		method: .post
-		url:    url
+		url: url
 		header: new_header(key: .content_type, value: 'application/x-www-form-urlencoded')
-		data:   url_encode_form_data(data)
+		data: url_encode_form_data(data)
 	)
 }
 
 pub fn post_form_with_cookies(url string, data map[string]string, cookies map[string]string) !Response {
 	return fetch(
-		method:  .post
-		url:     url
-		header:  new_header(key: .content_type, value: 'application/x-www-form-urlencoded')
-		data:    url_encode_form_data(data)
+		method: .post
+		url: url
+		header: new_header(key: .content_type, value: 'application/x-www-form-urlencoded')
+		data: url_encode_form_data(data)
 		cookies: cookies
 	)
 }
@@ -128,9 +128,9 @@ pub fn post_multipart_form(url string, conf PostMultipartFormConfig) !Response {
 	header.set(.content_type, 'multipart/form-data; boundary="${boundary}"')
 	return fetch(
 		method: .post
-		url:    url
+		url: url
 		header: header
-		data:   body
+		data: body
 	)
 }
 
@@ -138,8 +138,8 @@ pub fn post_multipart_form(url string, conf PostMultipartFormConfig) !Response {
 pub fn put(url string, data string) !Response {
 	return fetch(
 		method: .put
-		url:    url
-		data:   data
+		url: url
+		data: data
 		header: new_header(key: .content_type, value: content_type_default)
 	)
 }
@@ -148,8 +148,8 @@ pub fn put(url string, data string) !Response {
 pub fn patch(url string, data string) !Response {
 	return fetch(
 		method: .patch
-		url:    url
-		data:   data
+		url: url
+		data: data
 		header: new_header(key: .content_type, value: content_type_default)
 	)
 }
@@ -173,33 +173,33 @@ pub fn prepare(config FetchConfig) !Request {
 	}
 	url := build_url_from_fetch(config) or { return error('http.fetch: invalid url ${config.url}') }
 	req := Request{
-		method:                   config.method
-		url:                      url
-		data:                     config.data
-		header:                   config.header
-		cookies:                  config.cookies
-		user_agent:               config.user_agent
-		user_ptr:                 config.user_ptr
-		verbose:                  config.verbose
-		validate:                 config.validate
-		read_timeout:             config.read_timeout
-		write_timeout:            config.write_timeout
-		verify:                   config.verify
-		cert:                     config.cert
-		proxy:                    config.proxy
-		cert_key:                 config.cert_key
-		in_memory_verification:   config.in_memory_verification
-		allow_redirect:           config.allow_redirect
-		max_retries:              config.max_retries
-		enable_http2:             config.enable_http2
-		enable_http3:             config.enable_http3
+		method: config.method
+		url: url
+		data: config.data
+		header: config.header
+		cookies: config.cookies
+		user_agent: config.user_agent
+		user_ptr: config.user_ptr
+		verbose: config.verbose
+		validate: config.validate
+		read_timeout: config.read_timeout
+		write_timeout: config.write_timeout
+		verify: config.verify
+		cert: config.cert
+		proxy: config.proxy
+		cert_key: config.cert_key
+		in_memory_verification: config.in_memory_verification
+		allow_redirect: config.allow_redirect
+		max_retries: config.max_retries
+		enable_http2: config.enable_http2
+		enable_http3: config.enable_http3
 		disable_connection_reuse: config.disable_connection_reuse
-		on_progress:              config.on_progress
-		on_progress_body:         config.on_progress_body
-		on_redirect:              config.on_redirect
-		on_finish:                config.on_finish
-		stop_copying_limit:       config.stop_copying_limit
-		stop_receiving_limit:     config.stop_receiving_limit
+		on_progress: config.on_progress
+		on_progress_body: config.on_progress_body
+		on_redirect: config.on_redirect
+		on_finish: config.on_finish
+		stop_copying_limit: config.stop_copying_limit
+		stop_receiving_limit: config.stop_receiving_limit
 	}
 	return req
 }

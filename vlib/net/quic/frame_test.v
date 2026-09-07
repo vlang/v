@@ -259,14 +259,18 @@ fn test_scaled_ack_delay_micros_saturates_at_exponent_ge_64() {
 }
 
 fn test_parse_frame_rejects_unimplemented_frame_type() {
-	// 0x18 (NEW_CONNECTION_ID) is a real, valid QUIC frame type this module
-	// simply doesn't implement yet -- connection ID rotation/migration is
-	// explicitly out of v1 scope (see stateless_reset.v's own doc comment)
-	// -- must be a clear "not implemented" error, not a wire-format error
-	// or a panic. (0x08 STREAM and 0x1e HANDSHAKE_DONE, both used here
-	// before their respective phases implemented them, would no longer
-	// demonstrate this.)
-	parse_frame([u8(0x18)]) or {
+	// Every RFC 9000 base frame type (0x00-0x1e) is now handled by this
+	// module (parsed and acted on, or parsed and deliberately not acted
+	// on -- NEW_CONNECTION_ID/RETIRE_CONNECTION_ID/PATH_CHALLENGE/
+	// PATH_RESPONSE, connection migration being out of v1 scope, see each
+	// struct's own doc comment in this file). 0x30 (DATAGRAM, RFC 9221) is
+	// a real, valid, but genuinely different-RFC extension frame type this
+	// module has no support for at all -- still must be a clear "not
+	// implemented" error, not a wire-format error or a panic. (0x08
+	// STREAM, 0x18 NEW_CONNECTION_ID, and 0x1e HANDSHAKE_DONE, all used
+	// here at earlier points before their respective support landed,
+	// would no longer demonstrate this.)
+	parse_frame([u8(0x30)]) or {
 		assert err.msg().contains('not yet implemented')
 		return
 	}
@@ -735,4 +739,182 @@ fn test_streams_blocked_frame_round_trip_both_directions() {
 			assert false, 'expected a StreamsBlockedFrame'
 		}
 	}
+}
+
+// test_new_token_frame_round_trip covers the exact real-world shape that
+// motivated adding this frame type: a server (confirmed against Google's
+// QUIC endpoints) sending a NEW_TOKEN frame immediately after the
+// handshake, which this module previously rejected outright as an
+// unimplemented frame type, tearing down the connection.
+fn test_new_token_frame_round_trip() {
+	mut buf := encode_varint(frame_type_new_token)!
+	token := [u8(1), 2, 3, 4, 5]
+	buf << encode_varint(u64(token.len))!
+	buf << token
+	frame, n := parse_frame(buf)!
+	assert n == buf.len
+	match frame {
+		NewTokenFrame {
+			assert frame.token == token
+		}
+		else {
+			assert false, 'expected a NewTokenFrame'
+		}
+	}
+}
+
+fn test_new_token_frame_accepts_zero_length_token() {
+	mut buf := encode_varint(frame_type_new_token)!
+	buf << encode_varint(u64(0))!
+	frame, n := parse_frame(buf)!
+	assert n == buf.len
+	match frame {
+		NewTokenFrame {
+			assert frame.token.len == 0
+		}
+		else {
+			assert false, 'expected a NewTokenFrame'
+		}
+	}
+}
+
+// test_new_connection_id_frame_round_trip covers the exact real-world
+// shape that motivated adding this frame type, same as NEW_TOKEN above --
+// confirmed sent by Google's QUIC endpoints as standard practice
+// (RFC 9000 §5.1.1), regardless of whether this client ever migrates.
+fn test_new_connection_id_frame_round_trip() {
+	mut buf := encode_varint(frame_type_new_connection_id)!
+	buf << encode_varint(u64(2))! // sequence_number
+	buf << encode_varint(u64(0))! // retire_prior_to
+	cid := [u8(0xaa), 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x11, 0x22]
+	buf << u8(cid.len)
+	buf << cid
+	reset_token := []u8{len: 16, init: u8(0x42)}
+	buf << reset_token
+	frame, n := parse_frame(buf)!
+	assert n == buf.len
+	match frame {
+		NewConnectionIdFrame {
+			assert frame.sequence_number == 2
+			assert frame.retire_prior_to == 0
+			assert frame.connection_id == cid
+			assert frame.stateless_reset_token == reset_token
+		}
+		else {
+			assert false, 'expected a NewConnectionIdFrame'
+		}
+	}
+}
+
+fn test_new_connection_id_frame_rejects_retire_prior_to_above_sequence_number() {
+	mut buf := encode_varint(frame_type_new_connection_id)!
+	buf << encode_varint(u64(1))! // sequence_number
+	buf << encode_varint(u64(2))! // retire_prior_to -- exceeds sequence_number
+	buf << u8(0) // zero-length connection ID
+	buf << []u8{len: 16}
+	parse_frame(buf) or {
+		assert err.msg().contains('retire_prior_to')
+		return
+	}
+	assert false, 'expected retire_prior_to exceeding sequence_number to be rejected'
+}
+
+// test_new_connection_id_frame_rejects_zero_length is a direct regression
+// test for a real finding (Codex/Local AI review, vlang/v#28406): the
+// original fix only checked the upper bound (>20), never the lower one --
+// RFC 9000 §19.15 rejects BOTH cid_len < 1 and cid_len > 20 as
+// FRAME_ENCODING_ERROR, two distinct named cases, not one range with a
+// single edge.
+fn test_new_connection_id_frame_rejects_zero_length() {
+	mut buf := encode_varint(frame_type_new_connection_id)!
+	buf << encode_varint(u64(0))!
+	buf << encode_varint(u64(0))!
+	buf << u8(0) // zero-length connection ID -- invalid per RFC 9000 §19.15
+	buf << []u8{len: 16}
+	parse_frame(buf) or {
+		assert err.msg().contains('at least 1')
+		return
+	}
+	assert false, 'expected a zero-length connection ID to be rejected'
+}
+
+fn test_new_connection_id_frame_rejects_length_above_20() {
+	mut buf := encode_varint(frame_type_new_connection_id)!
+	buf << encode_varint(u64(0))!
+	buf << encode_varint(u64(0))!
+	buf << u8(21) // exceeds max_connection_id_length
+	parse_frame(buf) or {
+		assert err.msg().contains('exceeds')
+		return
+	}
+	assert false, 'expected a connection ID length above 20 to be rejected'
+}
+
+fn test_retire_connection_id_frame_round_trip() {
+	mut buf := encode_varint(frame_type_retire_connection_id)!
+	buf << encode_varint(u64(7))!
+	frame, n := parse_frame(buf)!
+	assert n == buf.len
+	match frame {
+		RetireConnectionIdFrame {
+			assert frame.sequence_number == 7
+		}
+		else {
+			assert false, 'expected a RetireConnectionIdFrame'
+		}
+	}
+}
+
+fn test_path_challenge_and_response_frame_round_trip() {
+	data := [u8(1), 2, 3, 4, 5, 6, 7, 8]
+
+	mut challenge_buf := encode_varint(frame_type_path_challenge)!
+	challenge_buf << data
+	challenge_frame, cn := parse_frame(challenge_buf)!
+	assert cn == challenge_buf.len
+	match challenge_frame {
+		PathChallengeFrame {
+			assert challenge_frame.data == data
+		}
+		else {
+			assert false, 'expected a PathChallengeFrame'
+		}
+	}
+
+	mut response_buf := encode_varint(frame_type_path_response)!
+	response_buf << data
+	response_frame, rn := parse_frame(response_buf)!
+	assert rn == response_buf.len
+	match response_frame {
+		PathResponseFrame {
+			assert response_frame.data == data
+		}
+		else {
+			assert false, 'expected a PathResponseFrame'
+		}
+	}
+}
+
+fn test_encode_path_response_frame_round_trip() {
+	data := [u8(1), 2, 3, 4, 5, 6, 7, 8]
+	encoded := encode_path_response_frame(data)!
+	assert encoded[0] == frame_type_path_response
+	frame, n := parse_frame(encoded)!
+	assert n == encoded.len
+	match frame {
+		PathResponseFrame {
+			assert frame.data == data
+		}
+		else {
+			assert false, 'expected a PathResponseFrame'
+		}
+	}
+}
+
+fn test_encode_path_response_frame_rejects_wrong_length() {
+	encode_path_response_frame([u8(1), 2, 3]) or {
+		assert err.msg().contains('8 bytes')
+		return
+	}
+	assert false, 'expected a non-8-byte data field to be rejected'
 }

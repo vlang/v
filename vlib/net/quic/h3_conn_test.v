@@ -394,6 +394,90 @@ fn test_h3_conn_peer_control_stream_requires_settings_first() {
 	}
 }
 
+// test_h3_conn_classifies_uni_stream_header_when_combined_with_large_payload
+// is a direct regression test for a real interop bug: pump_pending_uni_header
+// used to check the 32-byte header-buffering cap BEFORE ever attempting to
+// classify the stream, so a peer writing its Stream Type header and a large
+// (but otherwise ordinary) SETTINGS frame in ONE write -- entirely legal per
+// RFC 9114, since nothing requires the header to arrive in its own STREAM
+// frame -- was wrongly rejected as "sent more than 32 bytes without
+// completing its type header," even though classification only ever needed
+// the header's own single leading byte. Confirmed against real servers:
+// Google's and http3.is's QUIC stacks both write the control-stream header
+// and SETTINGS as one combined write; Cloudflare's happens to split them
+// across two writes, which is why this bug never reproduced against it.
+fn test_h3_conn_classifies_uni_stream_header_when_combined_with_large_payload() {
+	mut c, mut h, _, now := h3_test_conn()!
+	defer {
+		c.handshake.free()
+	}
+	mut buf := encode_h3_control_stream_header()!
+	mut settings := []H3Setting{}
+	for i in 0 .. 8 {
+		settings << H3Setting{
+			identifier: u64(0x21 + i * 0x1f) // RFC 9114 §7.2.8 grease identifiers
+			value: u64(1_000_000 + i)
+		}
+	}
+	buf << encode_settings_frame(settings)!
+	assert buf.len > 32, 'test setup: need a combined header+payload write bigger than the 32-byte cap'
+	frame := server_uni_stream_frame(0, buf)!
+	datagram := build_fake_one_rtt_packet(c.scid, 0, frame, read_keys(mut c), false)!
+	result := h.poll(datagram.bytes, now)!
+	assert result.events.any(it.kind == .settings_received)
+}
+
+// test_h3_conn_buffers_encoder_instruction_before_own_encoder_stream_opened
+// is a direct regression test for a real interop bug: apply_peer_settings
+// used to SILENTLY DROP the Set Dynamic Table Capacity instruction it
+// generated (from applying the peer's SETTINGS_QPACK_MAX_TABLE_CAPACITY) if
+// this connection's own QPACK encoder stream hadn't been opened yet --
+// while still mutating this encoder's LOCAL capacity state regardless, so
+// it went on to insert dynamic-table entries the PEER's decoder was never
+// told it could accept. Confirmed against a real server: Google's QUIC
+// endpoints are fast enough that their SETTINGS frame is processed before
+// open_own_streams_if_ready's own established()-gated first call has run.
+// Calls apply_peer_settings directly (this test file is in the same
+// module) rather than trying to orchestrate the exact handshake-timing
+// window through the full poll() pipeline.
+fn test_h3_conn_buffers_encoder_instruction_before_own_encoder_stream_opened() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut h := new_h3_conn(mut c, H3ConnParams{
+		settings: [
+			H3Setting{
+				identifier: qpack_settings_max_table_capacity_id
+				value: 4096
+			},
+		]
+		own_qpack_max_table_capacity: 4096
+	})
+	// Deliberately skip h3_test_conn()'s own extra h.poll(none, now) --
+	// own_qpack_encoder_stream_id must still be none here, matching the
+	// real race window.
+	assert h.own_qpack_encoder_stream_id == none
+
+	h.apply_peer_settings([
+		H3Setting{
+			identifier: qpack_settings_max_table_capacity_id
+			value: 4096
+		},
+	]) or { assert false, 'apply_peer_settings must not error just because our own encoder stream is not open yet: ${err}' }
+	assert h.pending_own_encoder_instructions.len > 0
+
+	h.poll(none, now)!
+	assert h.own_qpack_encoder_stream_id != none
+	assert h.pending_own_encoder_instructions.len == 0
+	// Queue-now-drain-later, same as QuicConn.write_stream's own contract
+	// (h3_test_conn's doc comment) -- the bytes open_own_streams_if_ready
+	// just queued on the encoder stream (header + the flushed instruction)
+	// drain on the NEXT poll() call, not this one.
+	result := h.poll(none, now + 10)!
+	assert result.outgoing.len > 0
+}
+
 fn test_h3_conn_peer_control_stream_settings_then_second_settings_rejected() {
 	mut c, mut h, _, now := h3_test_conn()!
 	defer {

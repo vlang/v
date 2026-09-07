@@ -1496,3 +1496,29 @@ fn test_stream_recv_status_reports_all_three_terminal_states() {
 	uni_id := c.open_stream(false)!
 	assert c.stream_recv_status(uni_id) == none
 }
+
+// test_path_challenge_queues_a_path_response is a direct regression test
+// for a real finding (Codex/Local AI review, vlang/v#28406): a received
+// PATH_CHALLENGE used to be parsed and then silently dropped, never
+// answered, contradicting RFC 9000 §8.2.1's MUST-echo-back requirement.
+// Exercises dispatch_one_rtt_frame/drain_pending_path_responses directly
+// (this test file is in the same module) rather than a full encrypt/
+// decrypt round trip, mirroring this module's own precedent for testing
+// queue-then-drain state (h3_conn_test.v's encoder-instruction-buffering
+// regression test).
+fn test_path_challenge_queues_a_path_response() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	data := [u8(1), 2, 3, 4, 5, 6, 7, 8]
+	mut result := PollResult{}
+	c.dispatch_one_rtt_frame(PathChallengeFrame{ data: data }, now, mut result)!
+	assert c.pending_path_responses.len == 1
+	assert c.pending_path_responses[0] == data
+
+	mut drain_result := PollResult{}
+	c.drain_pending_path_responses(now, mut drain_result)!
+	assert drain_result.outgoing.len == 1
+	assert c.pending_path_responses.len == 0
+}

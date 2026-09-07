@@ -41,7 +41,7 @@ fn test_h3_round_trip_rejects_client_certificate() {
 	mut t := new_transport()
 	req := &Request{
 		enable_http3: true
-		cert:         'client.pem'
+		cert: 'client.pem'
 	}
 	t.h3_round_trip(req, 'key', .get, 'example.com', 443, '/', '', new_header()) or {
 		assert err.msg().contains('client certificates')
@@ -54,13 +54,35 @@ fn test_h3_round_trip_rejects_client_certificate_key() {
 	mut t := new_transport()
 	req := &Request{
 		enable_http3: true
-		cert_key:     'client.key'
+		cert_key: 'client.key'
 	}
 	t.h3_round_trip(req, 'key', .get, 'example.com', 443, '/', '', new_header()) or {
 		assert err.msg().contains('client certificates')
 		return
 	}
 	assert false, 'expected h3_round_trip to reject a request with req.cert_key set'
+}
+
+// test_h3_round_trip_rejects_validate_false is a direct regression test
+// for a real finding (Codex/Local AI review, vlang/v#28406): validate
+// now defaults to true, but net.quic's TLS 1.3 stack has no
+// skip-verification mode at all -- an explicit validate: false (only
+// reachable by the caller setting it, since the default is true) used to
+// be silently ignored, leaving a caller who deliberately opted out of
+// verification unable to reach a self-signed/invalid-cert endpoint with
+// no indication why. Same fail-fast shape as the cert/cert_key checks
+// above.
+fn test_h3_round_trip_rejects_validate_false() {
+	mut t := new_transport()
+	req := &Request{
+		enable_http3: true
+		validate: false
+	}
+	t.h3_round_trip(req, 'key', .get, 'example.com', 443, '/', '', new_header()) or {
+		assert err.msg().contains('always verifies certificates')
+		return
+	}
+	assert false, 'expected h3_round_trip to reject a request with validate: false'
 }
 
 // new_test_h3_mux_conn_for_pool_test builds a bare H3MuxConn suitable only
@@ -73,8 +95,8 @@ fn test_h3_round_trip_rejects_client_certificate_key() {
 // header).
 fn new_test_h3_mux_conn_for_pool_test() &H3MuxConn {
 	return &H3MuxConn{
-		transport:  H3UdpTransport(unsafe { nil })
-		qmu:        sync.new_mutex()
+		transport: H3UdpTransport(unsafe { nil })
+		qmu: sync.new_mutex()
 		idle_since: time.now()
 	}
 }
