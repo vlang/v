@@ -163,6 +163,7 @@ fn (mut s SSLConn) init() ! {
 	}
 
 	if s.config.validate {
+		C.SSL_CTX_set_verify(s.sslctx, C.SSL_VERIFY_PEER, unsafe { nil })
 		C.SSL_CTX_set_verify_depth(s.sslctx, 4)
 		C.SSL_CTX_set_options(s.sslctx, C.SSL_OP_NO_COMPRESSION)
 	}

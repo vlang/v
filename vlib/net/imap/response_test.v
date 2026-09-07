@@ -352,6 +352,16 @@ fn test_an_unknown_untagged_response_skips_its_literals() {
 	assert c.read_response('a1')!.status == .ok
 }
 
+fn test_unknown_response_text_ending_like_a_literal_stays_text() {
+	mut c := client_over('* X-STATUS note {3}\r\na1 OK done\r\n')
+	assert c.read_response('a1')!.status == .ok
+}
+
+fn test_a_standalone_literal_marker_needs_a_token_delimiter_after_its_payload() {
+	mut c := client_over('* X-STATUS {3}\r\na1 OK done\r\n')
+	assert c.read_response('a1')!.status == .ok
+}
+
 fn test_malformed_internal_dates_return_errors() {
 	for stamp in ['32-Jan-2026 00:00:00 +0000', '29-Feb-2025 00:00:00 +0000',
 		'01-Jan-2026 24:00:00 +0000', '01-Jan-2026 00:60:00 +0000', '01-Jan-2026 00:00:60 +0000',

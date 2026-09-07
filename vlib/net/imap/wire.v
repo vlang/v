@@ -354,9 +354,56 @@ fn (mut d Decoder) skip_response_text() ! {
 		if size > max_literal_size {
 			return error('imap: the server announced a ${size} octet literal, over the ${max_literal_size} limit')
 		}
+		if !d.literal_payload_has_token_delimiter(size)! {
+			return
+		}
 		d.crlf()!
 		d.read_n(int(size))!
 	}
+}
+
+// literal_payload_has_token_delimiter checks the byte after a possible
+// literal payload without consuming it. A literal is a string token, so the
+// next byte must end that token; otherwise a free-form `{n}` suffix would eat
+// bytes from the following response.
+fn (mut d Decoder) literal_payload_has_token_delimiter(size u32) !bool {
+	d.ensure_buffered(1)!
+	mut line_ending_len := 1
+	if d.buf[d.pos] == `\r` {
+		d.ensure_buffered(2)!
+		if d.buf[d.pos + 1] != `\n` {
+			return error('imap: expected LF after CR')
+		}
+		line_ending_len = 2
+	} else if d.buf[d.pos] != `\n` {
+		return error('imap: expected the end of the line')
+	}
+	required := line_ending_len + int(size) + 1
+	d.ensure_buffered(required)!
+	next := d.buf[d.pos + line_ending_len + int(size)]
+	return next == ` ` || next == `)` || next == `\r` || next == `\n`
+}
+
+// ensure_buffered makes `n` bytes available from the current position while
+// preserving them for the ordinary decoder methods.
+fn (mut d Decoder) ensure_buffered(n int) ! {
+	if d.filled - d.pos >= n {
+		return
+	}
+	mut buffered := d.buf[d.pos..d.filled].clone()
+	mut r := d.reader or { return error('imap: the response ended early') }
+	for buffered.len < n {
+		need := n - buffered.len
+		mut chunk := []u8{len: if need < decoder_chunk { need } else { decoder_chunk }}
+		nread := r.read(mut chunk)!
+		if nread <= 0 {
+			return error('imap: the connection closed in the middle of a response')
+		}
+		buffered << chunk[..nread]
+	}
+	d.buf = buffered
+	d.pos = 0
+	d.filled = buffered.len
 }
 
 fn literal_suffix_size(line string) !(bool, u32) {
@@ -365,6 +412,11 @@ fn literal_suffix_size(line string) !(bool, u32) {
 	}
 	brace := line.last_index_u8(`{`)
 	if brace < 0 {
+		return false, 0
+	}
+	// Without an extension grammar, only a standalone string token is
+	// unambiguous. Text before the marker makes `{n}` part of free-form text.
+	if line[..brace].trim_space() != '' {
 		return false, 0
 	}
 	mut digits_end := line.len - 1
