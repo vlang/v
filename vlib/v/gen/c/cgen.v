@@ -6443,7 +6443,9 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 		ast.AsmRegister {
 			if stmt.is_intel {
 				g.write(arg.name)
-			} else if stmt.arch in [.rv64, .rv32] {
+			} else if stmt.arch in [.rv64, .rv32, .arm64, .arm32] {
+				// ARM and RISC-V assembly write register names plainly; the `%`
+				// prefix below is x86/AT&T syntax.
 				g.write('${arg.name}')
 			} else if stmt.arch == .loongarch64 {
 				g.write('$${arg.name}')

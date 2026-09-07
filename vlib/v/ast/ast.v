@@ -2042,6 +2042,17 @@ pub const arm_with_number_register_list = {
 	'r#': 16
 }
 
+// AArch64 names its general purpose registers `x0`-`x30` (64-bit) and `w0`-`w30`
+// (their 32-bit views); the `r0`-`r15` names above are ARM32 only.
+pub const arm64_no_number_register_list = ['sp', 'lr', 'fp', 'xzr']
+pub const arm64_with_number_register_list = {
+	'x#': 31
+}
+pub const arm64_32bit_no_number_register_list = ['wsp', 'wzr']
+pub const arm64_32bit_with_number_register_list = {
+	'w#': 31
+}
+
 pub const riscv_no_number_register_list = ['zero', 'ra', 'sp', 'gp', 'tp']
 pub const riscv_with_number_register_list = {
 	'x#': 32
@@ -3233,9 +3244,14 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			}
 		}
 		.arm64 {
-			arm64 := gen_all_registers(mut t, arm_no_number_register_list,
-				arm_with_number_register_list, 64)
+			arm64 := gen_all_registers(mut t, arm64_no_number_register_list,
+				arm64_with_number_register_list, 64)
 			for k, v in arm64 {
+				res[k] = v
+			}
+			arm64_32bit := gen_all_registers(mut t, arm64_32bit_no_number_register_list,
+				arm64_32bit_with_number_register_list, 32)
+			for k, v in arm64_32bit {
 				res[k] = v
 			}
 		}
