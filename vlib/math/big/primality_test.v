@@ -1,4 +1,6 @@
 import math.big
+import rand
+import rand.splitmix64
 
 fn parse(s string) big.Integer {
 	return big.integer_from_string(s) or { panic('cannot parse ${s}') }
@@ -100,6 +102,21 @@ fn test_large_primes() {
 	// Verified against an independent Miller-Rabin implementation.
 	assert parse('108088063435698740984721578578639788695211488257777317159208121754987034915181').is_probably_prime(40)
 	assert parse('13072341731781637478543110202182709643196526891726746125798087730494475533760525940644433783483689624697551241382508919700393467667516668276328127648845601').is_probably_prime(40)
+}
+
+fn test_primality_witnesses_do_not_use_global_rng() {
+	old_rng := rand.get_current_rng()
+	defer {
+		rand.set_rng(old_rng)
+	}
+	seed := [u32(1234), 5678]
+	mut installed_rng := splitmix64.SplitMix64RNG{}
+	mut control_rng := splitmix64.SplitMix64RNG{}
+	installed_rng.seed(seed)
+	control_rng.seed(seed)
+	rand.set_rng(installed_rng)
+	assert parse('170141183460469231731687303715884105727').is_probably_prime(1)
+	assert rand.u64() == control_rng.u64()
 }
 
 fn test_large_composite() {

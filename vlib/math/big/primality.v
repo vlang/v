@@ -1,6 +1,6 @@
 module big
 
-import rand
+import crypto.rand.internal
 
 // Every prime below 64.
 const tiny_primes = [u64(2), 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61]!
@@ -133,27 +133,15 @@ fn (x Integer) passes_miller_rabin_round(a Integer, d Integer, s int, x_minus_on
 // not rebuilt on every round.
 @[direct_array_access]
 fn random_base(x_minus_three Integer) Integer {
-	top_bits := x_minus_three.bit_len() - (x_minus_three.digits.len - 1) * digit_bits
-	top_mask := (u64(1) << top_bits) - 1
+	bit_len := x_minus_three.bit_len()
+	byte_len := (bit_len + 7) / 8
+	top_mask := u8(0xff >> (byte_len * 8 - bit_len))
 	for {
-		mut digits := []u64{len: x_minus_three.digits.len}
-		for i in 0 .. digits.len {
-			digits[i] = rand.u64() & max_digit
+		mut bytes := internal.bytes(byte_len) or {
+			panic('math.big: failed to read random Miller-Rabin witness: ${err}')
 		}
-		digits[digits.len - 1] &= top_mask
-		// Integer invariants forbid leading zero digits.
-		mut n := digits.len
-		for n > 0 && digits[n - 1] == 0 {
-			n--
-		}
-		if n == 0 {
-			return two_int
-		}
-		digits.trim(n)
-		candidate := Integer{
-			digits: digits
-			signum: 1
-		}
+		bytes[0] &= top_mask
+		candidate := integer_from_bytes(bytes)
 		if candidate.abs_cmp(x_minus_three) < 0 {
 			return candidate + two_int
 		}
