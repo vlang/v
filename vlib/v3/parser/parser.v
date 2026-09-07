@@ -4935,7 +4935,7 @@ fn comptime_flag_is_target_arch(name string, target_arch string) bool {
 	return match target_arch {
 		'amd64' { name in ['amd64', 'x64', 'x86_64'] }
 		'arm64' { name in ['arm64', 'aarch64'] }
-		'x86' { name in ['x86', 'i386'] }
+		'x86' { name in ['x86', 'i386', 'i486', 'i586', 'i686', 'x86_32', 'ia-32', 'ia32'] }
 		'riscv64' { name in ['riscv64', 'rv64'] }
 		else { name == target_arch }
 	}
@@ -8216,13 +8216,17 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	mut asm_arch := ''
 	mut is_raw := false
 	mut is_intel := false
+	if p.tok == .name {
+		asm_arch = p.lit
+		p.next()
+		if asm_arch == 'ia' && p.tok == .minus && p.peek() == .number && p.peek_lit == '32' {
+			asm_arch = 'ia-32'
+			p.next()
+			p.next()
+		}
+	}
 	for p.tok == .name {
 		modifier_pos := p.tok_pos
-		if asm_arch.len == 0 {
-			asm_arch = p.lit
-			p.next()
-			continue
-		}
 		match p.lit {
 			'raw' {
 				if is_raw {

@@ -331,8 +331,8 @@ fn test_intel_asm_blocks_keep_operand_order_and_switch_syntax() {
 	increment := 2
 	asm amd64 intel {
 		add value, increment
-		; +r (value)
-		; r (increment)
+		; (value)
+		; (increment)
 		; cc
 	}
 	println(value)
@@ -342,6 +342,8 @@ fn test_intel_asm_blocks_keep_operand_order_and_switch_syntax() {
 	assert c_source.contains('".intel_syntax noprefix\\n\\t"'), c_source
 	assert c_source.contains('"add %V[value], %V[increment]\\n\\t"'), c_source
 	assert c_source.contains('".att_syntax prefix\\n\\t"'), c_source
+	assert c_source.contains('[value] "+r" (value)'), c_source
+	assert c_source.contains('[increment] "r" (increment)'), c_source
 }
 
 fn test_structured_x86_asm_reverses_three_operand_instructions() {
@@ -412,14 +414,29 @@ fn test_intel_asm_accepts_amx_tile_registers() {
 }
 
 fn test_intel_asm_accepts_x86_arch_aliases() {
-	generate, c_source := generate_inline_asm_c('intel_x86_64_program', 'fn main() {
+	generate, c_source := generate_inline_asm_c('intel_x86_register_program', 'fn main() {
 	asm x86_64 intel {
 		mov rax, rbx
+		lea rax, [rax + riz]
+		lea eax, [eax + eiz]
 	}
 }
 ')
 	assert generate.exit_code == 0, generate.output
 	assert c_source.contains('"mov rax, rbx\\n\\t"'), c_source
+	assert c_source.contains('"lea rax, [rax + riz]\\n\\t"'), c_source
+	assert c_source.contains('"lea eax, [eax + eiz]\\n\\t"'), c_source
+
+	for arch in ['i386', 'i486', 'i586', 'i686', 'x86', 'x86_32', 'ia-32', 'ia32'] {
+		x86_generate, x86_c_source := generate_inline_asm_c_for_arch('intel_${arch}_program', 'fn main() {
+	asm ${arch} intel {
+		mov eax, ebx
+	}
+}
+', 'i386')
+		assert x86_generate.exit_code == 0, '${arch}: ${x86_generate.output}'
+		assert x86_c_source.contains('"mov eax, ebx\\n\\t"'), '${arch}: ${x86_c_source}'
+	}
 }
 
 fn test_inline_asm_accepts_dotted_local_labels() {
@@ -441,12 +458,16 @@ fn test_arm64_asm_accepts_sme_za_register() {
 	asm arm64 {
 		zero {za}
 		zero {zt0}
+		ptrue pn8.b
+		ptrue pn15.b
 	}
 }
 ', 'arm64')
 	assert generate.exit_code == 0, generate.output
 	assert c_source.contains('"zero {za}\\n\\t"'), c_source
 	assert c_source.contains('"zero {zt0}\\n\\t"'), c_source
+	assert c_source.contains('"ptrue pn8.b\\n\\t"'), c_source
+	assert c_source.contains('"ptrue pn15.b\\n\\t"'), c_source
 }
 
 fn test_intel_asm_rejects_narrow_register_operands() {

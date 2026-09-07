@@ -68,8 +68,8 @@ pub fn x86_asm_register_names() []string {
 	mut names := ['al', 'ah', 'bl', 'bh', 'cl', 'ch', 'dl', 'dh', 'bpl', 'sil', 'dil', 'spl', 'ax',
 		'bx', 'cx', 'dx', 'bp', 'si', 'di', 'sp', 'cs', 'ss', 'ds', 'es', 'fs', 'gs', 'flags', 'ip',
 		'gdtr', 'idtr', 'tr', 'ldtr', 'cw', 'sw', 'tw', 'fp_ip', 'fp_dp', 'fp_cs', 'fp_ds', 'fp_opc',
-		'st', 'eax', 'ebx', 'ecx', 'edx', 'ebp', 'esi', 'edi', 'esp', 'eflags', 'eip', 'mxcsr',
-		'rax', 'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip']
+		'st', 'eax', 'ebx', 'ecx', 'edx', 'ebp', 'esi', 'edi', 'esp', 'eflags', 'eip', 'eiz', 'mxcsr',
+		'rax', 'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip', 'riz']
 	for i in 0 .. 8 {
 		names << 'k${i}'
 		names << 'tmm${i}'
@@ -94,14 +94,17 @@ pub fn x86_asm_register_names() []string {
 
 // arm64_asm_register_names returns the register names an arm64 assembly block can use.
 pub fn arm64_asm_register_names() []string {
-	mut names := ['sp', 'wsp', 'lr', 'fp', 'pc', 'xzr', 'wzr', 'nzcv', 'fpcr', 'fpsr', 'daif',
-		'za', 'zt0']
+	mut names := ['sp', 'wsp', 'lr', 'fp', 'pc', 'xzr', 'wzr', 'nzcv', 'fpcr', 'fpsr', 'daif', 'za',
+		'zt0']
 	for i in 0 .. 31 {
 		names << 'x${i}'
 		names << 'w${i}'
 	}
 	for i in 0 .. 16 {
 		names << 'p${i}'
+	}
+	for i in 8 .. 16 {
+		names << 'pn${i}'
 	}
 	for i in 0 .. 32 {
 		names << 'v${i}'

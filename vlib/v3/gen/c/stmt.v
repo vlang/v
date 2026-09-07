@@ -3853,7 +3853,8 @@ fn is_c_inline_asm_x86_arch(arch string) bool {
 fn is_c_inline_asm_x86_register(name string) bool {
 	if name in ['al', 'ah', 'ax', 'eax', 'rax', 'bl', 'bh', 'bx', 'ebx', 'rbx', 'cl', 'ch', 'cx',
 		'ecx', 'rcx', 'dl', 'dh', 'dx', 'edx', 'rdx', 'sil', 'si', 'esi', 'rsi', 'dil', 'di', 'edi',
-		'rdi', 'spl', 'sp', 'esp', 'rsp', 'bpl', 'bp', 'ebp', 'rbp', 'rip', 'eflags', 'flags'] {
+		'rdi', 'spl', 'sp', 'esp', 'rsp', 'bpl', 'bp', 'ebp', 'rbp', 'rip', 'eiz', 'riz', 'eflags',
+		'flags'] {
 		return true
 	}
 	// AVX-512 opmask registers: k0 through k7.

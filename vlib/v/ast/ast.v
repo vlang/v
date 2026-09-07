@@ -1988,10 +1988,11 @@ pub const x86_no_number_register_list = {
 		'edi',
 		'esp',
 		'eflags',
-		'eip', // CSR register
+		'eip',
+		'eiz', // CSR registers
 		'mxcsr', // 32-bit FP core registers 'fp_dp', 'fp_ip' (TODO: why are there duplicates?)
 	]
-	64: ['rax', 'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip']
+	64: ['rax', 'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip', 'riz']
 }
 // no comments because maps do not support comments
 // r#*: gp registers added in 64-bit extensions, can only be from 8-15 actually
@@ -2047,6 +2048,7 @@ pub const arm_with_number_register_list = {
 // element width they are accessed through.
 // 'sp' takes the x31 encoding slot, 'lr' is x30 and 'fp' is x29.
 pub const arm64_no_number_register_list = {
+	16: ['pn8', 'pn9', 'pn10', 'pn11', 'pn12', 'pn13', 'pn14', 'pn15']
 	32: ['wsp', 'wzr']
 	64: ['sp', 'lr', 'fp', 'pc', 'xzr', 'nzcv', 'fpcr', 'fpsr', 'daif', 'za', 'zt0']
 }

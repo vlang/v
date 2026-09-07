@@ -62,7 +62,7 @@ fn (mut tc TypeChecker) check_inline_asm_block(id flat.NodeId, node flat.Node, s
 		for index in 1 .. 3 {
 			if index < sections.len {
 				ios := inline_asm_ios(block, sections[index])
-				tc.check_inline_asm_intel_ios(id, node, start, ios, child_offset)
+				tc.check_inline_asm_intel_ios(id, node, start, ios, child_offset, index == 1)
 				child_offset += ios.len
 			}
 		}
@@ -91,9 +91,14 @@ fn (mut tc TypeChecker) check_inline_asm_block(id flat.NodeId, node flat.Node, s
 
 // check_inline_asm_intel_ios rejects the operand constraints that a structured `intel`
 // block cannot express, because compilers still format those placeholders as AT&T.
-fn (mut tc TypeChecker) check_inline_asm_intel_ios(id flat.NodeId, node flat.Node, base int, ios []InlineAsmIOSpan, child_offset int) {
+fn (mut tc TypeChecker) check_inline_asm_intel_ios(id flat.NodeId, node flat.Node, base int, ios []InlineAsmIOSpan, child_offset int, is_output bool) {
 	for index, io in ios {
-		if io.constraint.trim_left('=+&%*') == 'r' {
+		constraint := if io.constraint == '' {
+			if is_output { '+r' } else { 'r' }
+		} else {
+			io.constraint
+		}
+		if constraint.trim_left('=+&%*') == 'r' {
 			child_index := child_offset + index
 			if child_index < int(node.children_count) {
 				child_id := tc.a.child(&node, child_index)
@@ -105,7 +110,7 @@ fn (mut tc TypeChecker) check_inline_asm_intel_ios(id flat.NodeId, node flat.Nod
 			}
 			continue
 		}
-		tc.record_error_at(.compile_error, 'constraint `${io.constraint}` is not supported for operands in structured `intel` assembly; use a register-only `r` constraint or a `raw` template with explicit operand modifiers', id, token.new_span(node.pos.id, base + io.start, base + io.end))
+		tc.record_error_at(.compile_error, 'constraint `${constraint}` is not supported for operands in structured `intel` assembly; use a register-only `r` constraint or a `raw` template with explicit operand modifiers', id, token.new_span(node.pos.id, base + io.start, base + io.end))
 	}
 }
 
