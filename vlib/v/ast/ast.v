@@ -2048,7 +2048,7 @@ pub const arm_with_number_register_list = {
 // 'sp' takes the x31 encoding slot, 'lr' is x30 and 'fp' is x29.
 pub const arm64_no_number_register_list = {
 	32: ['wsp', 'wzr']
-	64: ['sp', 'lr', 'fp', 'pc', 'xzr', 'nzcv', 'fpcr', 'fpsr', 'daif']
+	64: ['sp', 'lr', 'fp', 'pc', 'xzr', 'nzcv', 'fpcr', 'fpsr', 'daif', 'za']
 }
 
 // no comments because maps do not support comments

@@ -54,7 +54,9 @@ pub fn parse_inline_asm_header(source string) InlineAsmHeader {
 // unknown names as errors.
 pub fn asm_register_names(arch string) []string {
 	return match arch {
-		'amd64', 'i386', 'x86' { x86_asm_register_names() }
+		'amd64', 'x64', 'x86_64', 'i386', 'i486', 'i586', 'i686', 'x86', 'x86_32', 'ia-32', 'ia32' {
+			x86_asm_register_names()
+		}
 		'arm64', 'aarch64' { arm64_asm_register_names() }
 		else { []string{} }
 	}
@@ -92,7 +94,8 @@ pub fn x86_asm_register_names() []string {
 
 // arm64_asm_register_names returns the register names an arm64 assembly block can use.
 pub fn arm64_asm_register_names() []string {
-	mut names := ['sp', 'wsp', 'lr', 'fp', 'pc', 'xzr', 'wzr', 'nzcv', 'fpcr', 'fpsr', 'daif']
+	mut names := ['sp', 'wsp', 'lr', 'fp', 'pc', 'xzr', 'wzr', 'nzcv', 'fpcr', 'fpsr', 'daif',
+		'za']
 	for i in 0 .. 31 {
 		names << 'x${i}'
 		names << 'w${i}'

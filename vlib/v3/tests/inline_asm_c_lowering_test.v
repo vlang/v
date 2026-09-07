@@ -411,6 +411,42 @@ fn test_intel_asm_accepts_amx_tile_registers() {
 	assert c_source.contains('"tilezero tmm0\\n\\t"'), c_source
 }
 
+fn test_intel_asm_accepts_x86_arch_aliases() {
+	generate, c_source := generate_inline_asm_c('intel_x86_64_program', 'fn main() {
+	asm x86_64 intel {
+		mov rax, rbx
+	}
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"mov rax, rbx\\n\\t"'), c_source
+}
+
+fn test_inline_asm_accepts_dotted_local_labels() {
+	generate, c_source := generate_inline_asm_c('dotted_local_label_program', 'fn main() {
+	asm amd64 {
+		jmp .L0
+		.L0:
+		nop
+	}
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"jmp .L0\\n\\t"'), c_source
+	assert c_source.contains('".L0:\\n\\t"'), c_source
+}
+
+fn test_arm64_asm_accepts_sme_za_register() {
+	generate, c_source := generate_inline_asm_c_for_arch('arm64_sme_za_program', 'fn main() {
+	asm arm64 {
+		zero {za}
+	}
+}
+', 'arm64')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"zero {za}\\n\\t"'), c_source
+}
+
 fn test_intel_asm_rejects_narrow_register_operands() {
 	generate, _ := generate_inline_asm_c('intel_narrow_register_program', 'fn main() {
 	value := u32(7)

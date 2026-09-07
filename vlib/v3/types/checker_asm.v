@@ -279,7 +279,7 @@ fn inline_asm_template_labels(block string, section InlineAsmRange) map[string]b
 		if !trimmed.ends_with(':') {
 			continue
 		}
-		name := trimmed#[..-1].trim_space()
+		name := trimmed#[..-1].trim_space().trim_left('.')
 		if inline_asm_is_ident(name) {
 			labels[name] = true
 		}

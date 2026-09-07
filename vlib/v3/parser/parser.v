@@ -8241,7 +8241,7 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 		p.next()
 	}
 	if !p.prefs.is_fmt {
-		if is_intel && asm_arch !in ['amd64', 'i386'] {
+		if is_intel && pref.normalized_arch(asm_arch) !in ['amd64', 'x86'] {
 			p.record_diagnostic('the `intel` assembly modifier is only supported for i386 and amd64', asm_pos)
 		}
 		if p.prefs.backend != 'c' {
