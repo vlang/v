@@ -221,6 +221,11 @@ mut:
 	streams_blocked_sent_uni  ?u64
 	pending_streams_blocked   []StreamDirection
 
+	// pending_path_responses holds the 8-byte data field of every
+	// PATH_CHALLENGE this connection has received but not yet echoed back
+	// -- RFC 9000 §8.2.1's MUST, drained by drain_pending_path_responses.
+	pending_path_responses [][]u8
+
 	pending_close      ?PendingClose
 	sent_close_payload ?[]u8
 	closing_deadline   ?u64
@@ -1031,6 +1036,13 @@ fn (mut c QuicConn) dispatch_one_rtt_frame(frame QuicFrame, now u64, mut result 
 				}
 			}
 		}
+		PathChallengeFrame {
+			// RFC 9000 §8.2.1: "an endpoint MUST respond by echoing the
+			// data contained in the PATH_CHALLENGE frame in a
+			// PATH_RESPONSE frame." Queued for the next drain_outgoing()
+			// call, same deferred-send shape as pending_streams_blocked.
+			c.pending_path_responses << frame.data
+		}
 		else {
 			// DATA_BLOCKED/STREAM_DATA_BLOCKED/STREAMS_BLOCKED: purely
 			// informational hints (RFC 9000 §19.12-§19.14 impose no MUST
@@ -1049,10 +1061,10 @@ fn (mut c QuicConn) dispatch_one_rtt_frame(frame QuicFrame, now u64, mut result 
 			// each struct's own doc comment (frame.v). Also confirmed sent
 			// by real servers (Google) as standard practice.
 			//
-			// PathChallengeFrame/PathResponseFrame: RFC 9000 §8.2.1's
-			// MUST-respond requirement is a known, tracked gap (frame.v's
-			// own doc comment) -- parsed so an unexpected one doesn't tear
-			// down the connection, not yet acted upon.
+			// PathResponseFrame: this connection never sends PATH_CHALLENGE
+			// itself (no connection migration, v1 scope), so an incoming
+			// PATH_RESPONSE has nothing to correlate against -- legal on
+			// the wire, accepted, not acted upon.
 		}
 	}
 }
@@ -1440,6 +1452,7 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 		c.drain_pending_stream_writes(now, mut result)!
 		c.drain_pending_stream_resets(now, mut result)!
 		c.drain_pending_streams_blocked(now, mut result)!
+		c.drain_pending_path_responses(now, mut result)!
 		c.drain_flow_control_raises(now, mut result)!
 	}
 }
@@ -1507,6 +1520,18 @@ fn (mut c QuicConn) drain_pending_streams_blocked(now u64, mut result PollResult
 		result.outgoing << datagram
 	}
 	c.pending_streams_blocked = []StreamDirection{}
+}
+
+// drain_pending_path_responses sends the PATH_RESPONSE frames queued by
+// dispatch_one_rtt_frame's PathChallengeFrame case, echoing back each
+// PATH_CHALLENGE's own data verbatim (RFC 9000 §8.2.1's MUST).
+fn (mut c QuicConn) drain_pending_path_responses(now u64, mut result PollResult) ! {
+	for data in c.pending_path_responses {
+		response_frame := encode_path_response_frame(data)!
+		datagram := c.build_one_rtt_packet(response_frame, true, now)!
+		result.outgoing << datagram
+	}
+	c.pending_path_responses = [][]u8{}
 }
 
 // drain_flow_control_raises sends MAX_DATA/MAX_STREAM_DATA once this

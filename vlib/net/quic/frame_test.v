@@ -819,6 +819,25 @@ fn test_new_connection_id_frame_rejects_retire_prior_to_above_sequence_number() 
 	assert false, 'expected retire_prior_to exceeding sequence_number to be rejected'
 }
 
+// test_new_connection_id_frame_rejects_zero_length is a direct regression
+// test for a real finding (Codex/Local AI review, vlang/v#28406): the
+// original fix only checked the upper bound (>20), never the lower one --
+// RFC 9000 §19.15 rejects BOTH cid_len < 1 and cid_len > 20 as
+// FRAME_ENCODING_ERROR, two distinct named cases, not one range with a
+// single edge.
+fn test_new_connection_id_frame_rejects_zero_length() {
+	mut buf := encode_varint(frame_type_new_connection_id)!
+	buf << encode_varint(u64(0))!
+	buf << encode_varint(u64(0))!
+	buf << u8(0) // zero-length connection ID -- invalid per RFC 9000 §19.15
+	buf << []u8{len: 16}
+	parse_frame(buf) or {
+		assert err.msg().contains('at least 1')
+		return
+	}
+	assert false, 'expected a zero-length connection ID to be rejected'
+}
+
 fn test_new_connection_id_frame_rejects_length_above_20() {
 	mut buf := encode_varint(frame_type_new_connection_id)!
 	buf << encode_varint(u64(0))!
@@ -874,4 +893,28 @@ fn test_path_challenge_and_response_frame_round_trip() {
 			assert false, 'expected a PathResponseFrame'
 		}
 	}
+}
+
+fn test_encode_path_response_frame_round_trip() {
+	data := [u8(1), 2, 3, 4, 5, 6, 7, 8]
+	encoded := encode_path_response_frame(data)!
+	assert encoded[0] == frame_type_path_response
+	frame, n := parse_frame(encoded)!
+	assert n == encoded.len
+	match frame {
+		PathResponseFrame {
+			assert frame.data == data
+		}
+		else {
+			assert false, 'expected a PathResponseFrame'
+		}
+	}
+}
+
+fn test_encode_path_response_frame_rejects_wrong_length() {
+	encode_path_response_frame([u8(1), 2, 3]) or {
+		assert err.msg().contains('8 bytes')
+		return
+	}
+	assert false, 'expected a non-8-byte data field to be rejected'
 }

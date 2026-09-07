@@ -51,13 +51,13 @@ const h3_fresh_conn_request_attempts = 20
 // from per-request fields beyond what is obviously necessary (verify/cert).
 fn h3_default_transport_parameters() quic.QuicTransportParameters {
 	return quic.QuicTransportParameters{
-		max_idle_timeout:                    30_000
-		initial_max_data:                    10_000_000
-		initial_max_stream_data_bidi_local:  1_000_000
+		max_idle_timeout: 30_000
+		initial_max_data: 10_000_000
+		initial_max_stream_data_bidi_local: 1_000_000
 		initial_max_stream_data_bidi_remote: 1_000_000
-		initial_max_stream_data_uni:         1_000_000
-		initial_max_streams_bidi:            100
-		initial_max_streams_uni:             100
+		initial_max_stream_data_uni: 1_000_000
+		initial_max_streams_bidi: 100
+		initial_max_streams_uni: 100
 	}
 }
 
@@ -71,7 +71,7 @@ fn h3_default_transport_parameters() quic.QuicTransportParameters {
 struct H3DialCall {
 mut:
 	mu       &sync.Mutex = sync.new_mutex()
-	cv       &sync.Cond  = unsafe { nil }
+	cv       &sync.Cond = unsafe { nil }
 	done     bool
 	conn     &H3MuxConn = unsafe { nil }
 	err      string
@@ -97,6 +97,18 @@ fn (mut t Transport) h3_round_trip(req &Request, key string, method Method, host
 		// client-certificate support yet) -- fail fast with a clear error
 		// rather than silently ignoring the caller's mutual-TLS intent.
 		return error('http.transport: HTTP/3 (enable_http3) does not support client certificates (req.cert/req.cert_key) in this version')
+	}
+	if !req.validate {
+		// net.quic's TLS 1.3 stack has no skip-verification mode at all (v1
+		// limitation, unlike the h1/h2 mbedTLS/vschannel paths) -- silently
+		// ignoring an explicit validate: false would leave a caller who
+		// deliberately opted out of verification (e.g. to reach a
+		// self-signed dev/test endpoint) unable to connect at all, with no
+		// indication why. Fail fast instead, mirroring the identical
+		// req.cert/req.cert_key check above. validate defaults to true, so
+		// reaching here with it false only happens when the caller set it
+		// explicitly.
+		return error('http.transport: HTTP/3 (enable_http3) always verifies certificates; validate: false is not supported in this version')
 	}
 	for _ in 0 .. h3_round_trip_attempts {
 		t.mu.lock()
@@ -195,15 +207,13 @@ fn (mut t Transport) h3_dial_and_do(req &Request, key string, method Method, hos
 		req.verify
 	} else if req.verify != '' {
 		os.read_file(req.verify) or {
-			return t.h3_dial_failed(key, mut call,
-				error('http.transport: failed to read CA bundle ${req.verify}: ${err.msg()}'))
+			return t.h3_dial_failed(key, mut call, error('http.transport: failed to read CA bundle ${req.verify}: ${err.msg()}'))
 		}
 	} else {
 		''
 	}
 
-	transport, _, h3 := h3_dial_udp_and_open(host, host, port, ca_pem, ['h3'],
-		h3_default_transport_parameters()) or { return t.h3_dial_failed(key, mut call, err) }
+	transport, _, h3 := h3_dial_udp_and_open(host, host, port, ca_pem, ['h3'], h3_default_transport_parameters()) or { return t.h3_dial_failed(key, mut call, err) }
 
 	t.mu.lock()
 	t.h3_dial_seq++

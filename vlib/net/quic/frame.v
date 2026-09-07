@@ -562,6 +562,14 @@ fn parse_new_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
 	}
 	cid_len := int(buf[offset])
 	offset += 1
+	// RFC 9000 §19.15: "Values less than 1 and greater than 20 are invalid
+	// and MUST be treated as a connection error of type
+	// FRAME_ENCODING_ERROR." A zero-length connection ID is a distinct,
+	// separately-named invalid case from the upper bound below, not just
+	// an edge of it -- both ends of the range need their own check.
+	if cid_len < 1 {
+		return error('quic: NEW_CONNECTION_ID frame: connection ID length must be at least 1 (RFC 9000 §19.15)')
+	}
 	if cid_len > max_connection_id_length {
 		return error('quic: NEW_CONNECTION_ID frame: connection ID length ${cid_len} exceeds the ${max_connection_id_length}-byte limit (RFC 9000 §19.15)')
 	}
@@ -607,6 +615,19 @@ fn parse_path_challenge_or_response_frame(buf []u8, start int, is_response bool)
 	return QuicFrame(PathChallengeFrame{
 		data: data
 	}), end
+}
+
+// encode_path_response_frame serializes a PATH_RESPONSE frame (RFC 9000
+// §19.18): the same 8 bytes a peer's PATH_CHALLENGE carried, echoed back
+// verbatim -- RFC 9000 §8.2.1: "an endpoint MUST respond by echoing the
+// data contained in the PATH_CHALLENGE frame in a PATH_RESPONSE frame."
+pub fn encode_path_response_frame(data []u8) ![]u8 {
+	if data.len != path_challenge_data_length {
+		return error('quic: encode_path_response_frame: data must be exactly ${path_challenge_data_length} bytes, got ${data.len}')
+	}
+	mut out := encode_varint(frame_type_path_response)!
+	out << data
+	return out
 }
 
 fn parse_crypto_frame(buf []u8, start int) !(QuicFrame, int) {
