@@ -94,7 +94,12 @@ fn test_macos_v3_cmd_source_unlinks_v1_on_supported_hosts() {
 }
 
 fn test_vc_bootstrap_builds_a_v1_compatibility_compiler() {
-	for path in ['GNUmakefile', 'Makefile', 'cmd/tools/vself.v'] {
+	for path in [
+		'GNUmakefile',
+		'Makefile',
+		'cmd/tools/vself.v',
+		'thirdparty/tccbin_automation/bootstrap/bootstrap.sh',
+	] {
 		source := os.read_file(os.join_path(macos_v3_test_vroot, path))!
 		assert source.contains('-DCUSTOM_DEFINE_v1_fallback'), path
 	}
