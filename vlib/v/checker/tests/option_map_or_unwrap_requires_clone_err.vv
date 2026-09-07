@@ -2,6 +2,8 @@
 // `cannot copy map` guard just like `m2 := m1`: an immutable binding is not proof
 // that the unwrapped map is unaliased (e.g. it can wrap a still-mutable map), so
 // V requires an explicit `clone`/`move`, e.g. `x := (c.f or { ... }).clone()`.
+// The diagnostic is specialized for this shape, because `.clone()` has to be applied
+// to the whole or-expression rather than to the option itself.
 // See vlang/v issue #27867.
 struct Category {
 	translations ?map[string]int
