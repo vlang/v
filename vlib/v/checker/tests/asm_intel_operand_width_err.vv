@@ -54,6 +54,14 @@ fn intel_double_shift_hard_register(value i64) {
 	}
 }
 
+fn intel_bmi_hard_register(left i64, right i64) {
+	asm amd64 intel {
+		andn eax, left, right
+		; ; r (left)
+		  r (right)
+	}
+}
+
 fn main() {
 	println(intel_sub(50, 8))
 }
