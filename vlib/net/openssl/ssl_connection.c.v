@@ -55,6 +55,12 @@ pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 	return conn
 }
 
+fn write_in_memory_tls_file(path string, contents string, source string) ! {
+	os.write_file(path, contents) or {
+		return error_with_code('net.openssl SSLConn.init, failed to write in-memory ${source}: ${err.msg()}', net.err_tls_certificate_invalid_code)
+	}
+}
+
 // Select operation
 enum Select {
 	read
@@ -213,13 +219,13 @@ fn (mut s SSLConn) init() ! {
 			cert = os.temp_dir() + '/v_cert' + now
 			cert_key = os.temp_dir() + '/v_cert_key' + now
 			if s.config.verify != '' {
-				os.write_file(verify, s.config.verify)!
+				write_in_memory_tls_file(verify, s.config.verify, 'CA bundle')!
 			}
 			if s.config.cert != '' {
-				os.write_file(cert, s.config.cert)!
+				write_in_memory_tls_file(cert, s.config.cert, 'client certificate')!
 			}
 			if s.config.cert_key != '' {
-				os.write_file(cert_key, s.config.cert_key)!
+				write_in_memory_tls_file(cert_key, s.config.cert_key, 'client key')!
 			}
 		}
 		if s.config.verify != '' {

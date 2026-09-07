@@ -675,6 +675,12 @@ fn (mut s SSLConn) init() ! {
 	C.mbedtls_x509_crt_init(&s.certs.cacert)
 	C.mbedtls_x509_crt_init(&s.certs.client_cert)
 	C.mbedtls_pk_init(&s.certs.client_key)
+	// Reject an incomplete client credential before loading the trust store or
+	// parsing either half. This is deterministic TLS configuration failure, so
+	// use the portable certificate-error code that HTTP treats as non-retryable.
+	if (s.config.cert == '') != (s.config.cert_key == '') {
+		return error_with_code('net.mbedtls SSLConn.init, both cert and cert_key are required for a client certificate', net.err_tls_certificate_invalid_code)
+	}
 
 	if s.config.in_memory_verification {
 		if s.config.verify != '' {
@@ -731,13 +737,6 @@ fn (mut s SSLConn) init() ! {
 	}
 
 	C.mbedtls_ssl_conf_ca_chain(&s.conf, &s.certs.cacert, 0)
-	// An initialized-but-empty mbedtls_x509_crt/mbedtls_pk_context is not a
-	// usable client credential. Registering it makes an optional server
-	// CertificateRequest take the broken "send a certificate" path instead
-	// of the legal empty-certificate-list path. Only register a complete pair.
-	if (s.config.cert == '') != (s.config.cert_key == '') {
-		return error('net.mbedtls SSLConn.init, both cert and cert_key are required for a client certificate')
-	}
 	if s.config.cert != '' {
 		ret = C.mbedtls_ssl_conf_own_cert(&s.conf, &s.certs.client_cert, &s.certs.client_key)
 		if ret != 0 {

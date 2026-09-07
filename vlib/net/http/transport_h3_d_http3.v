@@ -97,7 +97,7 @@ fn (mut t Transport) h3_round_trip(req &Request, key string, method Method, host
 		// v1's TLS 1.3 stack rejects any CertificateRequest outright (no
 		// client-certificate support yet) -- fail fast with a clear error
 		// rather than silently ignoring the caller's mutual-TLS intent.
-		return error('http.transport: HTTP/3 (enable_http3) does not support client certificates (req.cert/req.cert_key) in this version')
+		return error_with_code('http.transport: HTTP/3 (enable_http3) does not support client certificates (req.cert/req.cert_key) in this version', net.err_tls_certificate_invalid_code)
 	}
 	if !req.validate {
 		// net.quic's TLS 1.3 stack has no skip-verification mode at all (v1
@@ -109,7 +109,7 @@ fn (mut t Transport) h3_round_trip(req &Request, key string, method Method, host
 		// req.cert/req.cert_key check above. validate defaults to true, so
 		// reaching here with it false only happens when the caller set it
 		// explicitly.
-		return error('http.transport: HTTP/3 (enable_http3) always verifies certificates; validate: false is not supported in this version')
+		return error_with_code('http.transport: HTTP/3 (enable_http3) always verifies certificates; validate: false is not supported in this version', net.err_tls_certificate_invalid_code)
 	}
 	for _ in 0 .. h3_round_trip_attempts {
 		t.mu.lock()
@@ -208,7 +208,7 @@ fn (mut t Transport) h3_dial_and_do(req &Request, key string, method Method, hos
 		req.verify
 	} else if req.verify != '' {
 		os.read_file(req.verify) or {
-			return t.h3_dial_failed(key, mut call, error('http.transport: failed to read CA bundle ${req.verify}: ${err.msg()}'))
+			return t.h3_dial_failed(key, mut call, error_with_code('http.transport: failed to read CA bundle ${req.verify}: ${err.msg()}', net.err_tls_certificate_invalid_code))
 		}
 	} else {
 		''

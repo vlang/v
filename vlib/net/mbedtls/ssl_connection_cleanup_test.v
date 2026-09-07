@@ -21,6 +21,19 @@ fn test_client_non_certificate_failure_keeps_mbedtls_code() {
 	assert err.msg() == 'handshake timed out'
 }
 
+fn test_incomplete_client_credentials_are_nonretryable() {
+	new_ssl_conn(SSLConnectConfig{
+		cert: 'unused because the pair is incomplete'
+		validate: false
+		in_memory_verification: true
+	}) or {
+		assert err.code() == net.err_tls_certificate_invalid_code
+		assert err.msg().contains('both cert and cert_key are required')
+		return
+	}
+	assert false, 'expected an incomplete client certificate pair to be rejected'
+}
+
 fn test_client_default_ca_bundle_rejects_partial_parse() {
 	mut cacert := C.mbedtls_x509_crt{}
 	C.mbedtls_x509_crt_init(&cacert)

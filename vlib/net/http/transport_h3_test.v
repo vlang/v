@@ -47,6 +47,8 @@ fn test_h3_round_trip_rejects_client_certificate() {
 	}
 	t.h3_round_trip(req, 'key', .get, 'example.com', 443, '/', '', new_header()) or {
 		assert err.msg().contains('client certificates')
+		assert err.code() == net.err_tls_certificate_invalid_code
+		assert is_no_need_retry_error(err.code())
 		return
 	}
 	assert false, 'expected h3_round_trip to reject a request with req.cert set'
@@ -60,6 +62,8 @@ fn test_h3_round_trip_rejects_client_certificate_key() {
 	}
 	t.h3_round_trip(req, 'key', .get, 'example.com', 443, '/', '', new_header()) or {
 		assert err.msg().contains('client certificates')
+		assert err.code() == net.err_tls_certificate_invalid_code
+		assert is_no_need_retry_error(err.code())
 		return
 	}
 	assert false, 'expected h3_round_trip to reject a request with req.cert_key set'
@@ -82,9 +86,27 @@ fn test_h3_round_trip_rejects_validate_false() {
 	}
 	t.h3_round_trip(req, 'key', .get, 'example.com', 443, '/', '', new_header()) or {
 		assert err.msg().contains('always verifies certificates')
+		assert err.code() == net.err_tls_certificate_invalid_code
+		assert is_no_need_retry_error(err.code())
 		return
 	}
 	assert false, 'expected h3_round_trip to reject a request with validate: false'
+}
+
+fn test_h3_round_trip_rejects_unreadable_ca_file_without_retry() {
+	mut t := new_transport()
+	req := &Request{
+		enable_http3: true
+		validate: true
+		verify: '/path/that/does/not/exist/vlang-invalid-h3-ca.pem'
+	}
+	t.h3_round_trip(req, 'key', .get, 'example.com', 443, '/', '', new_header()) or {
+		assert err.msg().contains('failed to read CA bundle')
+		assert err.code() == net.err_tls_certificate_invalid_code
+		assert is_no_need_retry_error(err.code())
+		return
+	}
+	assert false, 'expected an unreadable HTTP/3 CA file to be rejected'
 }
 
 fn test_h3_certificate_alert_is_nonretryable_at_http_boundary() {
