@@ -1,3 +1,0 @@
-fn main() {
-	println(i64(-0xffffffff))
-}

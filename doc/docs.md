@@ -9069,11 +9069,12 @@ passed through unchanged, so use the selected C compiler's explicit operand modi
 `%V` is the only operand modifier that omits the `%` prefix, and it prints the compilation
 target's native register: 64 bits for 64-bit machine code and 32 bits for 32-bit machine code,
 including when `-m32` overrides an explicit architecture. This is independent of the architecture
-declared on the assembly block. V therefore requires named operands to have that same width,
-whatever other hard registers the instruction uses. For example, in a 64-bit build,
-`mov eax, some_int` would reach the assembler as `mov eax, rcx`, so V rejects it at compile time.
-Use a target-native-width operand or a `raw intel` block, where you can pick the width yourself with
-`%k`, `%w` and related modifiers.
+declared on the assembly block. For instructions whose register operands must have the same width,
+V rejects a named operand combined with an explicit hard register of a different width. For
+example, in a 64-bit build, `mov eax, some_value` would reach the assembler as `mov eax, rcx`, so V
+rejects it at compile time. Named operands may still use narrower V types when no conflicting hard
+register is present. Use a `raw intel` block to pick operand widths explicitly with `%k`, `%w` and
+related modifiers.
 
 The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the C backend. MSVC
 does not support this form of inline assembly on 64-bit targets, and individual instructions or

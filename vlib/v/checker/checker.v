@@ -4283,9 +4283,7 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 	}
 	mut aliases := c.asm_ios(mut stmt.output, mut stmt.scope, true)
 	aliases2 := c.asm_ios(mut stmt.input, mut stmt.scope, false)
-	for alias, typ in aliases2 {
-		aliases[alias] = typ
-	}
+	aliases << aliases2
 	if stmt.is_intel && !stmt.is_raw {
 		errors_before := c.errors.len
 		c.check_asm_intel_ios(stmt.output)
@@ -4362,10 +4360,9 @@ fn (mut c Checker) check_asm_intel_ios(ios []ast.AsmIO) {
 	}
 }
 
-// check_asm_intel_operand_widths rejects named operands whose V type is not the
-// target's native register width. The GNU `%V` modifier used by structured Intel
-// blocks always substitutes a target-native register, independently of the V type.
-fn (mut c Checker) check_asm_intel_operand_widths(stmt ast.AsmStmt, aliases map[string]ast.Type) {
+// check_asm_intel_operand_widths rejects explicit hard registers that conflict with
+// target-native registers substituted for named operands in structured Intel blocks.
+fn (mut c Checker) check_asm_intel_operand_widths(stmt ast.AsmStmt, aliases []string) {
 	if stmt.arch !in [.amd64, .i386] {
 		return
 	}
@@ -4376,56 +4373,12 @@ fn (mut c Checker) check_asm_intel_operand_widths(stmt ast.AsmStmt, aliases map[
 		if template.is_directive || template.is_label {
 			continue
 		}
-		for arg in template.args {
-			c.check_asm_intel_arg_width(arg, aliases, native_width, template.pos)
-		}
 		c.check_asm_intel_hard_register_widths(template, aliases, native_width)
 	}
 }
 
-fn (mut c Checker) check_asm_intel_arg_width(arg ast.AsmArg, aliases map[string]ast.Type,
-	native_width int, pos token.Pos) {
-	match arg {
-		ast.AsmAlias {
-			if arg.name !in aliases {
-				return
-			}
-			typ := c.unwrap_generic(aliases[arg.name])
-			if typ == 0 || typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(typ) {
-				return
-			}
-			type_width := c.asm_intel_type_width(typ)
-			if type_width != native_width {
-				c.error('named operand `${arg.name}` has ${type_width * 8}-bit type `${c.table.type_str(typ)}`, but structured `intel` assembly substitutes named operands with a ${native_width * 8}-bit register for the current compilation target; use matching native-width operands and registers, or a `raw intel` block with explicit operand modifiers',
-					pos)
-			}
-		}
-		ast.AsmAddressing {
-			c.check_asm_intel_arg_width(arg.displacement, aliases, native_width, pos)
-			c.check_asm_intel_arg_width(arg.base, aliases, native_width, pos)
-			c.check_asm_intel_arg_width(arg.index, aliases, native_width, pos)
-		}
-		else {}
-	}
-}
-
-fn (c &Checker) asm_intel_type_width(typ ast.Type) int {
-	if typ.nr_muls() == 0 && !typ.has_option_or_result() {
-		sym := c.table.sym(typ)
-		if sym.info is ast.Alias {
-			return c.asm_intel_type_width(sym.info.parent_type)
-		}
-		if sym.info is ast.Enum && sym.info.typ != ast.int_type {
-			width, _ := c.table.type_size(sym.info.typ)
-			return width
-		}
-	}
-	width, _ := c.table.type_size(typ)
-	return width
-}
-
 fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate,
-	aliases map[string]ast.Type, native_width int) {
+	aliases []string, native_width int) {
 	// These integer instructions require their register operands to have the same
 	// width. Intentional mixed-width forms such as `movzx` and shift counts are
 	// deliberately absent.
@@ -4452,21 +4405,14 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	if !is_same_width && !name.starts_with('cmov') {
 		return
 	}
-	mut has_native_alias := false
+	mut has_named_alias := false
 	for arg in template.args {
 		if arg is ast.AsmAlias && arg.name in aliases {
-			typ := c.unwrap_generic(aliases[arg.name])
-			if typ == 0 || typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(typ) {
-				continue
-			}
-			type_width := c.asm_intel_type_width(typ)
-			if type_width == native_width {
-				has_native_alias = true
-				break
-			}
+			has_named_alias = true
+			break
 		}
 	}
-	if !has_native_alias {
+	if !has_named_alias {
 		return
 	}
 	for i, arg in template.args {
@@ -4540,7 +4486,7 @@ fn asm_expected_operand_count(arch pref.Arch, name string) ?int {
 	}
 }
 
-fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases map[string]ast.Type) {
+fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
 	match arg {
 		ast.AsmAlias {
 			if arg.name !in aliases && arg.name !in stmt.local_labels
@@ -4569,18 +4515,15 @@ fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases map[string]
 	}
 }
 
-fn (mut c Checker) asm_ios(mut ios []ast.AsmIO, mut scope ast.Scope, output bool) map[string]ast.Type {
-	mut aliases := map[string]ast.Type{}
+fn (mut c Checker) asm_ios(mut ios []ast.AsmIO, mut scope ast.Scope, output bool) []string {
+	mut aliases := []string{}
 	for mut io in ios {
-		mut typ := c.expr(mut io.expr)
-		if io.expr is ast.IntegerLiteral {
-			typ = io.expr.concrete_type()
-		}
+		typ := c.expr(mut io.expr)
 		if output {
 			c.fail_if_immutable(mut io.expr)
 		}
 		if io.alias != '' {
-			aliases[io.alias] = typ
+			aliases << io.alias
 			if io.alias in scope.objects {
 				scope.objects[io.alias] = ast.Var{
 					name:      io.alias

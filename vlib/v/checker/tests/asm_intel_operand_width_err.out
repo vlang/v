@@ -1,31 +1,17 @@
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:8:3: error: named operand `a` has 32-bit type `int`, but structured `intel` assembly substitutes named operands with a 64-bit register for the current compilation target; use matching native-width operands and registers, or a `raw intel` block with explicit operand modifiers
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:8:3: error: hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers for the current compilation target; use matching register widths, or a `raw intel` block with explicit operand modifiers
     6 |     mut res := 0
     7 |     asm amd64 intel {
     8 |         mov eax, a
       |         ~~~~~~~~~~
     9 |         mov res, eax
    10 |         ; +r (res)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:9:3: error: named operand `res` has 32-bit type `int`, but structured `intel` assembly substitutes named operands with a 64-bit register for the current compilation target; use matching native-width operands and registers, or a `raw intel` block with explicit operand modifiers
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:9:3: error: hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers for the current compilation target; use matching register widths, or a `raw intel` block with explicit operand modifiers
     7 |     asm amd64 intel {
     8 |         mov eax, a
     9 |         mov res, eax
       |         ~~~~~~~~~~~~
    10 |         ; +r (res)
    11 |         ; r (a)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:20:3: error: named operand `result` has 32-bit type `int`, but structured `intel` assembly substitutes named operands with a 64-bit register for the current compilation target; use matching native-width operands and registers, or a `raw intel` block with explicit operand modifiers
-   18 |     mut result := value
-   19 |     asm amd64 intel {
-   20 |         sar result, 1
-      |         ~~~~~~~~~~~~~
-   21 |         ; +r (result)
-   22 |     }
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:28:3: error: named operand `one` has 32-bit type `i32`, but structured `intel` assembly substitutes named operands with a 64-bit register for the current compilation target; use matching native-width operands and registers, or a `raw intel` block with explicit operand modifiers
-   26 | fn intel_literal() {
-   27 |     asm amd64 intel {
-   28 |         mov rax, one
-      |         ~~~~~~~~~~~~
-   29 |         ; ; r (1) as one
-   30 |     }
 vlib/v/checker/tests/asm_intel_operand_width_err.vv:35:3: error: hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers for the current compilation target; use matching register widths, or a `raw intel` block with explicit operand modifiers
    33 | fn intel_hard_register(value i64) {
    34 |     asm amd64 intel {
@@ -61,13 +47,6 @@ vlib/v/checker/tests/asm_intel_operand_width_err.vv:63:3: error: hard register `
       |         ~~~~~~~~~~~~~~~~~~~~~
    64 |         ; ; r (left)
    65 |           r (right)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:71:3: error: named operand `value` has 8-bit type `IntelNarrow`, but structured `intel` assembly substitutes named operands with a 64-bit register for the current compilation target; use matching native-width operands and registers, or a `raw intel` block with explicit operand modifiers
-   69 | fn intel_narrow_enum(value IntelNarrow) {
-   70 |     asm amd64 intel {
-   71 |         mov rax, value
-      |         ~~~~~~~~~~~~~~
-   72 |         ; ; r (value)
-   73 |     }
 vlib/v/checker/tests/asm_intel_operand_width_err.vv:78:3: error: hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers for the current compilation target; use matching register widths, or a `raw intel` block with explicit operand modifiers
    76 | fn intel_encoding_prefix_hard_register(value i64) {
    77 |     asm amd64 intel {

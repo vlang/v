@@ -245,34 +245,6 @@ pub:
 	pos token.Pos
 }
 
-// concrete_type returns the integer type used to emit this literal in C.
-pub fn (node IntegerLiteral) concrete_type() Type {
-	is_negative := node.val.starts_with('-')
-	literal := if is_negative { node.val[1..] } else { node.val }
-	uval := literal.u64()
-	if uval <= u64(0x7FFFFFFF) {
-		return i32_type
-	}
-	// C treats the sign as a unary operator. Keep negative magnitudes signed so
-	// non-decimal literals do not acquire an unsigned suffix and wrap on negation.
-	if is_negative {
-		if uval <= u64(0x8000000000000000) {
-			return i64_type
-		}
-		return u64_type
-	}
-	is_non_decimal := literal.starts_with('0x') || literal.starts_with('0X')
-		|| literal.starts_with('0o') || literal.starts_with('0O') || literal.starts_with('0b')
-		|| literal.starts_with('0B')
-	if is_non_decimal && uval <= u64(0xFFFFFFFF) {
-		return u32_type
-	}
-	if uval <= u64(0x7FFFFFFFFFFFFFFF) {
-		return i64_type
-	}
-	return u64_type
-}
-
 pub struct FloatLiteral {
 pub:
 	val string
