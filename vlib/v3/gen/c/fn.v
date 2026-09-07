@@ -15501,12 +15501,16 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			// differ from V's (notably C `int` vs V's i64 for platform `int`) needs an
 			// ABI thunk, not a bare function-pointer cast: casting the pointer does not
 			// convert the arguments the C library passes. Emit the adapter when one is
-			// required; otherwise fall through to the plain C-ABI cast below.
+			// required; otherwise fall through to the plain C-ABI cast below. Direct C
+			// functions already have their exact ABI in the included header, including
+			// qualifiers that cannot be expressed by their `fn C.` declarations.
 			if arg_idx >= 0 && arg_idx < typed_param_count {
 				if cb_fn := fn_type_from(param_types[arg_idx]) {
-					if thunk := g.c_call_callback_abi_thunk(arg_id, cb_fn) {
-						g.write(thunk)
-						continue
+					if !g.is_c_extern_fn_name_arg(arg_id) {
+						if thunk := g.c_call_callback_abi_thunk(arg_id, cb_fn) {
+							g.write(thunk)
+							continue
+						}
 					}
 				}
 			}
@@ -17940,6 +17944,18 @@ fn (mut g FlatGen) c_call_arg_cabi_cast(arg_idx int, typed_param_count int, para
 		if ct == 'int' {
 			return none
 		}
+		// A `C.` function passed by name into a C callback slot must stay uncast: the
+		// C compiler already has that function's real prototype from the header, and
+		// that prototype is exactly what the callee's parameter type was written
+		// against. A `fn C.` declaration cannot spell C qualifiers, so casting to the
+		// V-declared signature is what *creates* an incompatible-pointer-type error
+		// (e.g. `fn C.mbedtls_net_send(voidptr, &u8, usize) i32` drops the `const` in
+		// mbedtls_net_send's real `const unsigned char *` buffer parameter).
+		if _ := fn_type_from(param_types[arg_idx]) {
+			if g.is_c_extern_fn_name_arg(arg_id) {
+				return none
+			}
+		}
 		return ct
 	}
 	if is_variadic {
@@ -17958,6 +17974,25 @@ fn (mut g FlatGen) c_call_arg_cabi_cast(arg_idx int, typed_param_count int, para
 		}
 	}
 	return none
+}
+
+// is_c_extern_fn_name_arg reports whether the argument expression is a plain
+// reference to a `C.` extern function (`C.foo`, no wrapping conversion), i.e. a
+// function the C compiler already has a real prototype for from an included
+// header.
+fn (g &FlatGen) is_c_extern_fn_name_arg(arg_id flat.NodeId) bool {
+	if int(arg_id) < 0 || int(arg_id) >= g.a.nodes.len {
+		return false
+	}
+	arg_node := g.a.nodes[int(arg_id)]
+	if arg_node.kind == .cast_expr {
+		return false
+	}
+	if arg_node.kind in [.paren, .expr_stmt] && arg_node.children_count > 0 {
+		return g.is_c_extern_fn_name_arg(g.a.child(&arg_node, 0))
+	}
+	name := g.direct_callback_ident_name(arg_id) or { return false }
+	return name.starts_with('C.')
 }
 
 fn (mut g FlatGen) c_extern_decl_line(node flat.Node, cfn string) string {
