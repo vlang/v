@@ -1,28 +1,35 @@
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:4:3: error: named operand `a` has 32-bit type `int`, but structured `intel` assembly substitutes named operands with a 64-bit register for the current compilation target; use a 64-bit operand, or a `raw intel` block with explicit operand modifiers
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:4:3: error: named operand `a` has 32-bit type `int`, but structured `intel` assembly substitutes named operands with a 64-bit register for the current compilation target; use matching native-width operands and registers, or a `raw intel` block with explicit operand modifiers
     2 |     mut res := 0
     3 |     asm amd64 intel {
     4 |         mov eax, a
       |         ~~~~~~~~~~
     5 |         mov res, eax
     6 |         ; +r (res)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:5:3: error: named operand `res` has 32-bit type `int`, but structured `intel` assembly substitutes named operands with a 64-bit register for the current compilation target; use a 64-bit operand, or a `raw intel` block with explicit operand modifiers
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:5:3: error: named operand `res` has 32-bit type `int`, but structured `intel` assembly substitutes named operands with a 64-bit register for the current compilation target; use matching native-width operands and registers, or a `raw intel` block with explicit operand modifiers
     3 |     asm amd64 intel {
     4 |         mov eax, a
     5 |         mov res, eax
       |         ~~~~~~~~~~~~
     6 |         ; +r (res)
     7 |         ; r (a)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:16:3: error: named operand `result` has 32-bit type `int`, but structured `intel` assembly substitutes named operands with a 64-bit register for the current compilation target; use a 64-bit operand, or a `raw intel` block with explicit operand modifiers
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:16:3: error: named operand `result` has 32-bit type `int`, but structured `intel` assembly substitutes named operands with a 64-bit register for the current compilation target; use matching native-width operands and registers, or a `raw intel` block with explicit operand modifiers
    14 |     mut result := value
    15 |     asm amd64 intel {
    16 |         sar result, 1
       |         ~~~~~~~~~~~~~
    17 |         ; +r (result)
    18 |     }
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:24:3: error: named operand `one` has 32-bit type `i32`, but structured `intel` assembly substitutes named operands with a 64-bit register for the current compilation target; use a 64-bit operand, or a `raw intel` block with explicit operand modifiers
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:24:3: error: named operand `one` has 32-bit type `i32`, but structured `intel` assembly substitutes named operands with a 64-bit register for the current compilation target; use matching native-width operands and registers, or a `raw intel` block with explicit operand modifiers
    22 | fn intel_literal() {
    23 |     asm amd64 intel {
    24 |         mov rax, one
       |         ~~~~~~~~~~~~
    25 |         ; ; r (1) as one
    26 |     }
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:31:3: error: hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers for the current compilation target; use matching register widths, or a `raw intel` block with explicit operand modifiers
+   29 | fn intel_hard_register(value i64) {
+   30 |     asm amd64 intel {
+   31 |         mov eax, value
+      |         ~~~~~~~~~~~~~~
+   32 |         ; ; r (value)
+   33 |     }

@@ -4379,6 +4379,7 @@ fn (mut c Checker) check_asm_intel_operand_widths(stmt ast.AsmStmt, aliases map[
 		for arg in template.args {
 			c.check_asm_intel_arg_width(arg, aliases, native_width, template.pos)
 		}
+		c.check_asm_intel_hard_register_widths(template, aliases, native_width)
 	}
 }
 
@@ -4389,10 +4390,13 @@ fn (mut c Checker) check_asm_intel_arg_width(arg ast.AsmArg, aliases map[string]
 			if arg.name !in aliases {
 				return
 			}
-			typ := aliases[arg.name]
+			typ := c.unwrap_generic(aliases[arg.name])
+			if typ == 0 || typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(typ) {
+				return
+			}
 			type_width, _ := c.table.type_size(typ)
 			if type_width != native_width {
-				c.error('named operand `${arg.name}` has ${type_width * 8}-bit type `${c.table.type_str(typ)}`, but structured `intel` assembly substitutes named operands with a ${native_width * 8}-bit register for the current compilation target; use a ${native_width * 8}-bit operand, or a `raw intel` block with explicit operand modifiers',
+				c.error('named operand `${arg.name}` has ${type_width * 8}-bit type `${c.table.type_str(typ)}`, but structured `intel` assembly substitutes named operands with a ${native_width * 8}-bit register for the current compilation target; use matching native-width operands and registers, or a `raw intel` block with explicit operand modifiers',
 					pos)
 			}
 		}
@@ -4402,6 +4406,41 @@ fn (mut c Checker) check_asm_intel_arg_width(arg ast.AsmArg, aliases map[string]
 			c.check_asm_intel_arg_width(arg.index, aliases, native_width, pos)
 		}
 		else {}
+	}
+}
+
+fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate,
+	aliases map[string]ast.Type, native_width int) {
+	// These integer instructions require their register operands to have the same
+	// width. Intentional mixed-width forms such as `movzx` and shift counts are
+	// deliberately absent.
+	if template.name !in ['mov', 'add', 'adc', 'sub', 'sbb', 'and', 'or', 'xor', 'cmp',
+		'test', 'xchg', 'xadd', 'cmpxchg', 'imul', 'bsf', 'bsr', 'popcnt', 'lzcnt', 'tzcnt']
+		&& !template.name.starts_with('cmov') {
+		return
+	}
+	mut has_native_alias := false
+	for arg in template.args {
+		if arg is ast.AsmAlias && arg.name in aliases {
+			typ := c.unwrap_generic(aliases[arg.name])
+			if typ == 0 || typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(typ) {
+				continue
+			}
+			type_width, _ := c.table.type_size(typ)
+			if type_width == native_width {
+				has_native_alias = true
+				break
+			}
+		}
+	}
+	if !has_native_alias {
+		return
+	}
+	for arg in template.args {
+		if arg is ast.AsmRegister && arg.size > 0 && arg.size != native_width * 8 {
+			c.error('hard register `${arg.name}` is ${arg.size}-bit, but named operands in structured `intel` assembly expand to ${native_width * 8}-bit registers for the current compilation target; use matching register widths, or a `raw intel` block with explicit operand modifiers',
+				template.pos)
+		}
 	}
 }
 

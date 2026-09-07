@@ -29,3 +29,17 @@ fn test_intel_mixed_width_hard_registers_with_clang() {
 	assert shifted == 42
 	assert extended == 42
 }
+
+fn intel_generic_add[T](value T, increment T) T {
+	mut result := value
+	asm amd64 intel {
+		add result, increment
+		; +r (result)
+		; r (increment)
+	}
+	return result
+}
+
+fn test_intel_generic_native_width_operands_with_clang() {
+	assert intel_generic_add[i64](19, 23) == 42
+}

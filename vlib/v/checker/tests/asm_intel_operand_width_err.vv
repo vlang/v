@@ -26,6 +26,13 @@ fn intel_literal() {
 	}
 }
 
+fn intel_hard_register(value i64) {
+	asm amd64 intel {
+		mov eax, value
+		; ; r (value)
+	}
+}
+
 fn main() {
 	println(intel_sub(50, 8))
 }
