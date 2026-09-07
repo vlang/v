@@ -48,7 +48,8 @@ fn test_intel_segment_register_move_with_clang() {
 	mut value := i64(0)
 	asm amd64 intel {
 		mov value, ds
-		; =r (value)
+		mov ds, value
+		; +r (value)
 	}
 	assert value >= 0
 }

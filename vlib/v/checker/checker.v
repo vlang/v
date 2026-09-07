@@ -4439,8 +4439,10 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	}
 	for i, arg in template.args {
 		if arg is ast.AsmRegister && arg.size > 0 && arg.size != native_width * 8 {
-			// Moving a segment selector into a wider GPR is a valid zero-extending form.
-			if name == 'mov' && i == 1 && arg.name in ['cs', 'ss', 'ds', 'es', 'fs', 'gs'] {
+			// MOV accepts segment registers with wider GPRs in either direction, except
+			// that CS cannot be a destination.
+			if name == 'mov' && arg.name in ['cs', 'ss', 'ds', 'es', 'fs', 'gs']
+				&& (i == 1 || (i == 0 && arg.name != 'cs')) {
 				continue
 			}
 			c.error('hard register `${arg.name}` is ${arg.size}-bit, but named operands in structured `intel` assembly expand to ${native_width * 8}-bit registers for the current compilation target; use matching register widths, or a `raw intel` block with explicit operand modifiers',
