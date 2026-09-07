@@ -11,17 +11,12 @@ import v.pref
 import v.util
 import v.util.version
 
-$if v1_fallback ? {
+$if v1_fallback ?|| ( !macos && !linux ) {
+	// The compatibility compiler and non-V3 targets both need the V1 builder.
+	// Keep this as one import site: a compatibility compiler generating a cross
+	// target can satisfy both parts of the condition.
 	import v.builder
 	import v.builder.cbuilder
-} $else $if !macos && !linux {
-	// A `v1_fallback` compiler generating a portable/cross target can also make
-	// this platform branch visible. Exclude the compatibility build explicitly
-	// so the V1 modules are imported exactly once.
-	$if !v1_fallback ? {
-		import v.builder
-		import v.builder.cbuilder
-	}
 }
 
 @[markused]
@@ -429,6 +424,7 @@ fn rebuild(prefs &pref.Preferences) {
 			$if v1_fallback ? {
 				builder.compile('build', prefs, cbuilder.compile_c)
 			} $else $if macos || linux {
+
 				// Every C-backend build is dispatched to V3 before this point. Keeping
 				// this path fatal prevents an accidental dependency on the unlinked V1
 				// builder from being hidden behind an external tool bootstrap.
