@@ -77,6 +77,14 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 	$if macos || linux {
 		if prefs.old_compiler {
 			fallback_executable := macos_v3_v1_fallback_executable()
+			// A clean bootstrap inherits VFLAGS in the temporary v1 compiler before
+			// make has created v1_fallback. Keep that self-build on V3; once the
+			// fallback exists, an explicit -old-compiler always delegates to it.
+			if macos_v3_needs_bootstrap_before_v1_fallback(prefs, os.executable(), fallback_executable) {
+				all_args := util.join_env_vflags_and_os_args()
+				bootstrap_args := all_args[1..].filter(it != '-old-compiler')
+				launch_macos_v3_compiler(prefs, bootstrap_args)
+			}
 			launch_macos_v1_fallback(fallback_executable, os.args[1..], prefs.is_verbose, '`-old-compiler` was requested')
 		}
 		if macos_v3_needs_v1_compatibility(command, prefs) {
@@ -153,6 +161,11 @@ fn macos_v3_is_self_build_target(prefs &pref.Preferences) bool {
 	vroot := os.real_path(os.dir(pref.vexe_path())).replace('\\', '/').trim_right('/')
 	target := os.real_path(prefs.path).replace('\\', '/').trim_right('/')
 	return target == '${vroot}/cmd/v' || target == '${vroot}/cmd/v/v.v'
+}
+
+fn macos_v3_needs_bootstrap_before_v1_fallback(prefs &pref.Preferences, executable string, fallback_executable string) bool {
+	return macos_v3_is_self_build_target(prefs)
+		&& os.base(executable) !in ['v', 'v.exe', 'vnew', 'vnew.exe'] && !os.is_executable(fallback_executable)
 }
 
 fn macos_v3_needs_v1_compatibility(command string, prefs &pref.Preferences) bool {
