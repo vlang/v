@@ -1,0 +1,35 @@
+fn main() {
+	// Narrow-type wraparound (wrap_comptime_int)
+	for i in u8(0) .. max_u8 + 1 {
+		println(i)
+	}
+
+	// u64/i64 boundary mixing (raw_int_bits)
+	// A huge u64 (only fits u64) combined with a negative i64 (only fits i64)
+	// in the same operation.
+	for i in 4 .. u64(max_i64 + 1) + i64(min_i64) {
+		println(i)
+	}
+	for i in 4 .. i64(min_i64) + u64(max_i64 + 1) {
+		println(i)
+	}
+
+	// Cast bit-reinterpret (eval_comptime_const_cast_value)
+	// u64(min_i64) must reinterpret to 9223372036854775808, not be rejected.
+	for i in u64(min_i64) .. u64(min_i64) {
+		println(i)
+	}
+
+	// Mixed int/float arithmetic (promoted_type generic path)
+	// i32 + f32 is valid V and was previously unhandled entirely.
+	for i in 4 .. int(i32(1) + f32(1.0)) {
+		println(i)
+	}
+
+	// f32 precision rounding
+	// f32(16777216.0) + f32(1.0) rounds to 16777216.0 in true f32 precision
+	// (can't represent 16777217 exactly), so subtracting 16777216 gives 0.
+	for i in 0 .. int(f32(16777216.0) + f32(1.0)) - 16777216 {
+		println(i)
+	}
+}

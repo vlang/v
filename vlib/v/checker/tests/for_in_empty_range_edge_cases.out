@@ -1,0 +1,42 @@
+vlib/v/checker/tests/for_in_empty_range_edge_cases.vv:3:11: error: empty range: `0 .. 0` will never execute
+    1 | fn main() {
+    2 |     // Narrow-type wraparound (wrap_comptime_int)
+    3 |     for i in u8(0) .. max_u8 + 1 {
+      |              ~~~~~~~~~~~~~~~~~~~
+    4 |         println(i)
+    5 |     }
+vlib/v/checker/tests/for_in_empty_range_edge_cases.vv:10:11: error: empty range: `4 .. 0` will never execute
+    8 |     // A huge u64 (only fits u64) combined with a negative i64 (only fits i64)
+    9 |     // in the same operation.
+   10 |     for i in 4 .. u64(max_i64 + 1) + i64(min_i64) {
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   11 |         println(i)
+   12 |     }
+vlib/v/checker/tests/for_in_empty_range_edge_cases.vv:13:11: error: empty range: `4 .. 0` will never execute
+   11 |         println(i)
+   12 |     }
+   13 |     for i in 4 .. i64(min_i64) + u64(max_i64 + 1) {
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   14 |         println(i)
+   15 |     }
+vlib/v/checker/tests/for_in_empty_range_edge_cases.vv:19:11: error: empty range: `9223372036854775808 .. 9223372036854775808` will never execute
+   17 |     // Cast bit-reinterpret (eval_comptime_const_cast_value)
+   18 |     // u64(min_i64) must reinterpret to 9223372036854775808, not be rejected.
+   19 |     for i in u64(min_i64) .. u64(min_i64) {
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   20 |         println(i)
+   21 |     }
+vlib/v/checker/tests/for_in_empty_range_edge_cases.vv:25:11: error: empty range: `4 .. 2` will never execute
+   23 |     // Mixed int/float arithmetic (promoted_type generic path)
+   24 |     // i32 + f32 is valid V and was previously unhandled entirely.
+   25 |     for i in 4 .. int(i32(1) + f32(1.0)) {
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   26 |         println(i)
+   27 |     }
+vlib/v/checker/tests/for_in_empty_range_edge_cases.vv:32:11: error: empty range: `0 .. 0` will never execute
+   30 |     // f32(16777216.0) + f32(1.0) rounds to 16777216.0 in true f32 precision
+   31 |     // (can't represent 16777217 exactly), so subtracting 16777216 gives 0.
+   32 |     for i in 0 .. int(f32(16777216.0) + f32(1.0)) - 16777216 {
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   33 |         println(i)
+   34 |     }

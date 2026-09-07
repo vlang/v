@@ -1,0 +1,5 @@
+fn main() {
+	for i in 0 .. u8(2) ** u8(8) {
+		println(i)
+	}
+}

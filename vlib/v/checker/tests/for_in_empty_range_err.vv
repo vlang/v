@@ -2,4 +2,244 @@ fn main() {
 	for i in 4 .. 2 {
 		println(i)
 	}
+
+	for i in 4 .. int(2) {
+		println(i)
+	}
+
+	for i in int(4) .. 2 {
+		println(i)
+	}
+
+	for i in int(4) .. int(2) {
+		println(i)
+	}
+
+	for i in int(4) .. int(2.0) {
+		println(i)
+	}
+
+	for i in int(4.0) .. int(2) {
+		println(i)
+	}
+
+	for i in int(4.0) .. int(2.0) {
+		println(i)
+	}
+
+	// ? -----------u8---------------
+
+	for i in u8(2) + u8(2) .. 2 {
+		println(i)
+	}
+
+	for i in u8(2) + u16(2) .. 2 {
+		println(i)
+	}
+
+	for i in u8(2) + u32(2) .. 2 {
+		println(i)
+	}
+
+	for i in u8(2) + u64(2) .. 2 {
+		println(i)
+	}
+
+	for i in u8(2) + i16(2) .. 2 {
+		println(i)
+	}
+
+	for i in u8(2) + i32(2) .. 2 {
+		println(i)
+	}
+
+	for i in u8(2) + i64(2) .. 2 {
+		println(i)
+	}
+
+	// ? -----------u16---------------
+
+	for i in u16(2) + u8(2) .. 2 {
+		println(i)
+	}
+
+	for i in u16(2) + u16(2) .. 2 {
+		println(i)
+	}
+
+	for i in u16(2) + u32(2) .. 2 {
+		println(i)
+	}
+
+	for i in u16(2) + u64(2) .. 2 {
+		println(i)
+	}
+
+	for i in u16(2) + i32(2) .. 2 {
+		println(i)
+	}
+
+	for i in u16(2) + i64(2) .. 2 {
+		println(i)
+	}
+
+	// ? -----------u32---------------
+
+	for i in u32(2) + u8(2) .. 2 {
+		println(i)
+	}
+
+	for i in u32(2) + u16(2) .. 2 {
+		println(i)
+	}
+
+	for i in u32(2) + u32(2) .. 2 {
+		println(i)
+	}
+
+	for i in u32(2) + u64(2) .. 2 {
+		println(i)
+	}
+
+	for i in u32(2) + i64(2) .. 2 {
+		println(i)
+	}
+
+	// ? -----------u64---------------
+
+	for i in u64(2) + u8(2) .. 2 {
+		println(i)
+	}
+
+	for i in u64(2) + u16(2) .. 2 {
+		println(i)
+	}
+
+	for i in u64(2) + u32(2) .. 2 {
+		println(i)
+	}
+
+	for i in u64(2) + u64(2) .. 2 {
+		println(i)
+	}
+
+	for i in u64(2) + i64(2) .. 2 {
+		println(i)
+	}
+
+	// ? -----------i8---------------
+
+	for i in i8(2) + i8(2) .. 2 {
+		println(i)
+	}
+
+	for i in i8(2) + i16(2) .. 2 {
+		println(i)
+	}
+
+	for i in i8(2) + i32(2) .. 2 {
+		println(i)
+	}
+
+	for i in i8(2) + i64(2) .. 2 {
+		println(i)
+	}
+
+	// ? -----------i16---------------
+
+	for i in i16(2) + u8(2) .. 2 {
+		println(i)
+	}
+
+	for i in i16(2) + i8(2) .. 2 {
+		println(i)
+	}
+
+	for i in i16(2) + i16(2) .. 2 {
+		println(i)
+	}
+
+	for i in i16(2) + i32(2) .. 2 {
+		println(i)
+	}
+
+	for i in i16(2) + i64(2) .. 2 {
+		println(i)
+	}
+
+	// ? -----------i32---------------
+
+	for i in i32(2) + u8(2) .. 2 {
+		println(i)
+	}
+
+	for i in i32(2) + u16(2) .. 2 {
+		println(i)
+	}
+
+	for i in i32(2) + i8(2) .. 2 {
+		println(i)
+	}
+
+	for i in i32(2) + i16(2) .. 2 {
+		println(i)
+	}
+
+	for i in i32(2) + i32(2) .. 2 {
+		println(i)
+	}
+
+	for i in i32(2) + i64(2) .. 2 {
+		println(i)
+	}
+
+	// ? -----------i64---------------
+
+	for i in i64(2) + u8(2) .. 2 {
+		println(i)
+	}
+
+	for i in i64(2) + u16(2) .. 2 {
+		println(i)
+	}
+
+	for i in i64(2) + u32(2) .. 2 {
+		println(i)
+	}
+
+	for i in i64(2) + u64(2) .. 2 {
+		println(i)
+	}
+
+	for i in i64(2) + i8(2) .. 2 {
+		println(i)
+	}
+
+	for i in i64(2) + i16(2) .. 2 {
+		println(i)
+	}
+
+	for i in i64(2) + i32(2) .. 2 {
+		println(i)
+	}
+
+	for i in i64(2) + i64(2) .. 2 {
+		println(i)
+	}
+
+	// ? -----------f32---------------
+
+	for i in int(f32(16777216.0) + f64(1.0)) .. 16777217 {
+		println(i)
+	}
+
+	// ? -----------f64---------------
+
+	for i in int(f64(16777216.0) + f32(1.0)) .. 16777217 {
+		println(i)
+	}
+
+	for i in int(f64(16777216.0) + f64(1.0)) .. 16777217 {
+		println(i)
+	}
 }

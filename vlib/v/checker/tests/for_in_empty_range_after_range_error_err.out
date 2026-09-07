@@ -1,0 +1,20 @@
+vlib/v/checker/tests/for_in_empty_range_after_range_error_err.vv:2:11: error: range type can only be an integer type
+    1 | fn main() {
+    2 |     for i in 4.0 .. 2 {
+      |              ~~~~~~~~
+    3 |         println(i)
+    4 |     }
+vlib/v/checker/tests/for_in_empty_range_after_range_error_err.vv:6:11: error: range types do not match
+    4 |     }
+    5 | 
+    6 |     for i in int(4) .. 2.0 {
+      |              ~~~~~~
+    7 |         println(i)
+    8 |     }
+vlib/v/checker/tests/for_in_empty_range_after_range_error_err.vv:10:21: error: shift count for type `int literal` too large (maximum: 64 bits)
+    8 |     }
+    9 | 
+   10 |     for i in 0 .. 1 << 99 {
+      |                        ~~
+   11 |         println(i)
+   12 |     }

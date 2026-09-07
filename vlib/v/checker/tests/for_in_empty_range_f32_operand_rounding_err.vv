@@ -1,0 +1,17 @@
+// Folding f32 arithmetic in a single step at f64 precision, and rounding only
+// the final result, can disagree with real f32 arithmetic: `16777217.0 + 1.0`
+// rounds each operand to f32 first (16777217.0 -> 16777216.0, ties to even),
+// giving 16777216.0 + 1.0 -> 16777217.0 -> rounded again -> 16777216.0.
+// Folding at f64 precision first gives 16777218.0 (exactly representable, so
+// no further rounding hides the discrepancy) - a different, wrong answer.
+
+@[comptime]
+fn add_f32(a f32, b f32) f32 {
+	return a + b
+}
+
+fn main() {
+	for i in 0 .. int(add_f32(16777217.0, 1.0)) - 16777217 {
+		println(i)
+	}
+}
