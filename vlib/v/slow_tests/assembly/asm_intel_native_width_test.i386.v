@@ -10,4 +10,10 @@ fn test_intel_i386_accepts_32_bit_named_operands() {
 		; cc
 	}
 	assert result == 42
+	asm i386 intel {
+		mov result, one
+		; +r (result)
+		; r (1) as one
+	}
+	assert result == 1
 }

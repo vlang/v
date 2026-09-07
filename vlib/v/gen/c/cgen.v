@@ -7207,7 +7207,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.write2('-0', node.val[3..])
 			} else {
 				g.write(node.val)
-				val_type := determine_integer_literal_type(node)
+				val_type := node.concrete_type()
 				if val_type in [ast.u32_type, ast.u64_type] {
 					g.write('U')
 				}
@@ -15279,46 +15279,6 @@ fn vint2int(name string) string {
 		}
 	}
 	return name
-}
-
-const hi_32_mask = u64(0xFFFFFFFF00000000)
-const lo_32_mask = u64(0x00000000FFFFFFFF)
-const sign_bit_32 = u32(0x80000000)
-const sign_bit_64 = u64(0x8000000000000000)
-
-fn determine_integer_literal_type(node ast.IntegerLiteral) ast.Type {
-	is_negative := node.val.starts_with('-')
-	if is_negative {
-		uval := node.val.i64()
-		high32 := u32(uval >> 32)
-		low32 := u32(uval)
-		// Check if high 32 bits are all ones (0xFFFFFFFF)
-		// This indicates a 32-bit negative number in two's complement
-		high32_all_ones := high32 == u32(0xFFFFFFFF)
-		// Check if the sign bit (bit 31) is set in low 32 bits
-		// This confirms the number is negative in 32-bit context
-		low32_sign_bit_set := (low32 & sign_bit_32) != 0
-		// If both conditions are true, it's a 32-bit signed integer (i32)
-		// Otherwise, it requires 64-bit representation (i64)
-		return if high32_all_ones && low32_sign_bit_set { ast.i32_type } else { ast.i64_type }
-	} else {
-		uval := node.val.u64()
-		high32_all_zero := (uval & hi_32_mask) == 0
-		if high32_all_zero {
-			low32 := u32(uval)
-			// Check if sign bit (bit 31) is clear (0)
-			// This indicates the number fits in 31 bits (signed 32-bit positive)
-			low32_sign_bit_clear := (low32 & sign_bit_32) == 0
-			// If sign bit is clear, it's a signed 32-bit integer (i32)
-			// Otherwise, it's an unsigned 32-bit integer (u32)
-			return if low32_sign_bit_clear { ast.i32_type } else { ast.u32_type }
-		} else {
-			sign_bit_clear := (uval & sign_bit_64) == 0
-			// If sign bit is clear, it's a signed 64-bit integer (i64)
-			// Otherwise, it's an unsigned 64-bit integer (u64)
-			return if sign_bit_clear { ast.i64_type } else { ast.u64_type }
-		}
-	}
 }
 
 fn get_overflow_fn_type(typ ast.Type) ast.Type {

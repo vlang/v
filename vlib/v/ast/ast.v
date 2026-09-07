@@ -245,6 +245,25 @@ pub:
 	pos token.Pos
 }
 
+// concrete_type returns the integer type used to emit this literal in C.
+pub fn (node IntegerLiteral) concrete_type() Type {
+	if node.val.starts_with('-') {
+		uval := node.val.i64()
+		high32 := u32(uval >> 32)
+		low32 := u32(uval)
+		return if high32 == u32(0xFFFFFFFF) && (low32 & u32(0x80000000)) != 0 {
+			i32_type
+		} else {
+			i64_type
+		}
+	}
+	uval := node.val.u64()
+	if (uval & u64(0xFFFFFFFF00000000)) == 0 {
+		return if (u32(uval) & u32(0x80000000)) == 0 { i32_type } else { u32_type }
+	}
+	return if (uval & u64(0x8000000000000000)) == 0 { i64_type } else { u64_type }
+}
+
 pub struct FloatLiteral {
 pub:
 	val string

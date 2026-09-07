@@ -4476,7 +4476,10 @@ fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases map[string]
 fn (mut c Checker) asm_ios(mut ios []ast.AsmIO, mut scope ast.Scope, output bool) map[string]ast.Type {
 	mut aliases := map[string]ast.Type{}
 	for mut io in ios {
-		typ := c.expr(mut io.expr)
+		mut typ := c.expr(mut io.expr)
+		if io.expr is ast.IntegerLiteral {
+			typ = io.expr.concrete_type()
+		}
 		if output {
 			c.fail_if_immutable(mut io.expr)
 		}

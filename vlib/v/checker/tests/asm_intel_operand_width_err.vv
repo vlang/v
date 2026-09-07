@@ -19,6 +19,13 @@ fn intel_shift(value int) int {
 	return result
 }
 
+fn intel_literal() {
+	asm amd64 intel {
+		mov rax, one
+		; ; r (1) as one
+	}
+}
+
 fn main() {
 	println(intel_sub(50, 8))
 }

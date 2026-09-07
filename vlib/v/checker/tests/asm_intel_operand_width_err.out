@@ -19,3 +19,10 @@ vlib/v/checker/tests/asm_intel_operand_width_err.vv:16:3: error: named operand `
       |         ~~~~~~~~~~~~~
    17 |         ; +r (result)
    18 |     }
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:24:3: error: named operand `one` has 32-bit type `i32`, but structured `intel` assembly substitutes named operands with a 64-bit register on amd64; use a 64-bit operand, or a `raw intel` block with explicit operand modifiers
+   22 | fn intel_literal() {
+   23 |     asm amd64 intel {
+   24 |         mov rax, one
+      |         ~~~~~~~~~~~~
+   25 |         ; ; r (1) as one
+   26 |     }
