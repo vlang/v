@@ -7,6 +7,10 @@ typedef struct _TestAnonRecord {
 		uint8_t a;
 		void *p;
 	} anon_u;
+	struct {
+		int n;
+		void *p;
+	} anon_s;
 } TestAnonRecord;
 
 struct TestAnonEvent {

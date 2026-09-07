@@ -42,7 +42,7 @@ fn test_boehm_keepalive_pointer_alias_does_not_recurse_into_its_parent() {
 		unwrap_generic_cache: map[u64]ast.Type{}
 	}
 	assert g.c_type_has_ptr(node_type)
-	assert !g.type_has_pointer_bearing_c_union(node_type)
+	assert !g.type_has_pointer_bearing_nested_c_aggregate(node_type)
 }
 
 fn test_boehm_keepalive_repeated_union_hierarchy_is_memoized() {
@@ -82,5 +82,5 @@ fn test_boehm_keepalive_repeated_union_hierarchy_is_memoized() {
 		unwrap_generic_cache: map[u64]ast.Type{}
 	}
 	assert !g.c_type_has_ptr(union_type)
-	assert !g.type_has_pointer_bearing_c_union(union_type)
+	assert !g.type_has_pointer_bearing_nested_c_aggregate(union_type)
 }

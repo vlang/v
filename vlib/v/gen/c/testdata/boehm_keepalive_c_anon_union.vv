@@ -8,11 +8,18 @@ mut:
 	p voidptr
 }
 
+struct C.anon_s {
+mut:
+	n int
+	p voidptr
+}
+
 @[typedef]
 struct C.TestAnonRecord {
 mut:
 	kind   int
 	anon_u C.anon_u
+	anon_s C.anon_s
 }
 
 struct C.TestAnonEvent {

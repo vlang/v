@@ -8918,7 +8918,7 @@ fn (mut g Gen) boehm_collect_keep_alive_helper_name(typ ast.Type) string {
 	if sym.kind !in [.string, .array, .struct] {
 		return ''
 	}
-	if g.type_has_pointer_bearing_c_union(resolved_typ) {
+	if g.type_has_pointer_bearing_nested_c_aggregate(resolved_typ) {
 		return ''
 	}
 	if sym.kind == .array {
@@ -9122,14 +9122,14 @@ fn (mut g Gen) c_type_has_ptr_memo(typ ast.Type, mut memo map[ast.Type]bool) boo
 	return result
 }
 
-fn (mut g Gen) type_has_pointer_bearing_c_union(typ ast.Type) bool {
+fn (mut g Gen) type_has_pointer_bearing_nested_c_aggregate(typ ast.Type) bool {
 	mut memo := map[ast.Type]bool{}
 	mut ptr_memo := map[ast.Type]bool{}
-	return g.type_has_pointer_bearing_c_union_memo(typ, mut memo, mut ptr_memo)
+	return g.type_has_pointer_bearing_nested_c_aggregate_memo(typ, false, mut memo, mut ptr_memo)
 }
 
-fn (mut g Gen) type_has_pointer_bearing_c_union_memo(typ ast.Type, mut memo map[ast.Type]bool,
-	mut ptr_memo map[ast.Type]bool) bool {
+fn (mut g Gen) type_has_pointer_bearing_nested_c_aggregate_memo(typ ast.Type, is_nested bool,
+	mut memo map[ast.Type]bool, mut ptr_memo map[ast.Type]bool) bool {
 	if typ == 0 || typ.has_option_or_result() || typ.is_any_kind_of_pointer() || typ.is_ptr() {
 		return false
 	}
@@ -9150,30 +9150,32 @@ fn (mut g Gen) type_has_pointer_bearing_c_union_memo(typ ast.Type, mut memo map[
 	result := match sym.kind {
 		.array_fixed {
 			info := sym.info as ast.ArrayFixed
-			g.type_has_pointer_bearing_c_union_memo(info.elem_type, mut memo, mut ptr_memo)
+			g.type_has_pointer_bearing_nested_c_aggregate_memo(info.elem_type, true, mut memo,
+				mut ptr_memo)
 		}
 		.struct {
 			info := sym.info as ast.Struct
-			mut has_pointer_bearing_c_union := sym.language != .v && info.is_union
+			mut has_pointer_bearing_nested_c_aggregate := is_nested && sym.language != .v
 				&& g.c_type_has_ptr_memo(resolved_typ, mut ptr_memo)
-			if !has_pointer_bearing_c_union {
+			if !has_pointer_bearing_nested_c_aggregate {
 				for embed in info.embeds {
-					if g.type_has_pointer_bearing_c_union_memo(embed, mut memo, mut ptr_memo) {
-						has_pointer_bearing_c_union = true
-						break
-					}
-				}
-			}
-			if !has_pointer_bearing_c_union {
-				for field in info.fields {
-					if g.type_has_pointer_bearing_c_union_memo(field.typ, mut memo,
+					if g.type_has_pointer_bearing_nested_c_aggregate_memo(embed, true, mut memo,
 							mut ptr_memo) {
-						has_pointer_bearing_c_union = true
+						has_pointer_bearing_nested_c_aggregate = true
 						break
 					}
 				}
 			}
-			has_pointer_bearing_c_union
+			if !has_pointer_bearing_nested_c_aggregate {
+				for field in info.fields {
+					if g.type_has_pointer_bearing_nested_c_aggregate_memo(field.typ, true, mut memo,
+							mut ptr_memo) {
+						has_pointer_bearing_nested_c_aggregate = true
+						break
+					}
+				}
+			}
+			has_pointer_bearing_nested_c_aggregate
 		}
 		else {
 			false
