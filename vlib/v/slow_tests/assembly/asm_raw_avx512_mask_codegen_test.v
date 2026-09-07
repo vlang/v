@@ -34,7 +34,7 @@ fn main() {
 	masked()
 }
 ')!
-	res := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(out_c)} ${os.quoted_path(source)}')
+	res := os.execute('${os.quoted_path(vexe)} -cross -o ${os.quoted_path(out_c)} ${os.quoted_path(source)}')
 	assert res.exit_code == 0, res.output
 	generated := os.read_file(out_c)!
 	assert generated.contains(r'"vpxord %%zmm0, %%zmm0, %%zmm0%{%%k1%}%{z%}\n\t"'), generated
