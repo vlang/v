@@ -4387,6 +4387,7 @@ fn (c &Checker) asm_intel_arg_has_named_alias(arg ast.AsmArg, aliases []string) 
 		ast.AsmAddressing {
 			c.asm_intel_arg_has_named_alias(arg.base, aliases)
 				|| c.asm_intel_arg_has_named_alias(arg.index, aliases)
+				|| c.asm_intel_arg_has_named_alias(arg.displacement, aliases)
 		}
 		else { false }
 	}
@@ -4395,7 +4396,7 @@ fn (c &Checker) asm_intel_arg_has_named_alias(arg ast.AsmArg, aliases []string) 
 fn (mut c Checker) check_asm_intel_address_register_widths(arg ast.AsmArg, aliases []string,
 	native_width int, pos token.Pos) {
 	if arg is ast.AsmAddressing && c.asm_intel_arg_has_named_alias(arg, aliases) {
-		for address_arg in [arg.base, arg.index] {
+		for address_arg in [arg.base, arg.index, arg.displacement] {
 			if address_arg is ast.AsmRegister && address_arg.size > 0
 				&& address_arg.size != native_width * 8 {
 				c.error('hard register `${address_arg.name}` is ${address_arg.size}-bit, but named operands in the same structured `intel` address expand to ${native_width * 8}-bit registers for the current compilation target; use matching address-register widths, or a `raw intel` block with explicit operand modifiers',
@@ -4426,8 +4427,14 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 		'rorx', 'sarx', 'shlx', 'shrx', 'shld', 'shrd', 'popcnt', 'lzcnt', 'tzcnt', 'crc32']
 	mut is_same_width := name in same_width_instructions
 	mut explicit_width := 0
+	cmov_conditions := ['a', 'ae', 'b', 'be', 'c', 'e', 'g', 'ge', 'l', 'le', 'na', 'nae', 'nb',
+		'nbe', 'nc', 'ne', 'ng', 'nge', 'nl', 'nle', 'no', 'np', 'ns', 'nz', 'o', 'p', 'pe', 'po',
+		's', 'z']
+	is_suffixed_cmov := name.len > 5 && name.starts_with('cmov')
+		&& name[name.len - 1] in [`b`, `w`, `l`, `q`]
+		&& name[4..name.len - 1] in cmov_conditions
 	if !is_same_width && name.len > 1 && name[name.len - 1] in [`b`, `w`, `l`, `q`]
-		&& name[..name.len - 1] in same_width_instructions {
+		&& (name[..name.len - 1] in same_width_instructions || is_suffixed_cmov) {
 		explicit_width = match name[name.len - 1] {
 			`b` { 8 }
 			`w` { 16 }
@@ -4466,7 +4473,8 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 		if arg is ast.AsmRegister && arg.size > 0 && arg.size != native_width * 8 {
 			// A 32-bit CRC32 destination accepts 8-/16-bit sources; a 64-bit destination
 			// accepts only an 8-bit source as its narrower form.
-			if name == 'crc32' && i == 1 && (native_width == 4 || arg.size == 8) {
+			if name == 'crc32' && i == 1
+				&& (arg.size == 8 || (native_width == 4 && arg.size == 16)) {
 				continue
 			}
 			// MOVQ transfers between a native-width GPR and an MMX/XMM register are valid;
@@ -4476,7 +4484,7 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 				continue
 			}
 			// The final SHLD/SHRD operand is an immediate or the 8-bit CL register.
-			if name in ['shld', 'shrd'] && i == 2 {
+			if name in ['shld', 'shrd'] && i == 2 && arg.name == 'cl' {
 				continue
 			}
 			// MOV accepts segment registers with wider GPRs in either direction, except

@@ -78,7 +78,7 @@ vlib/v/checker/tests/asm_intel_operand_width_err.vv:99:3: error: hard register `
 vlib/v/checker/tests/asm_intel_operand_width_err.vv:106:3: error: hard register `eax` is 32-bit, but named operands in the same structured `intel` address expand to 64-bit registers for the current compilation target; use matching address-register widths, or a `raw intel` block with explicit operand modifiers
   104 | fn intel_address_hard_register(base i64) {
   105 |     asm amd64 intel {
-  106 |         mov rax, [base + eax + 0]
+  106 |         mov rax, [eax * 4 + base]
       |         ~~~~~~~~~~~~~~~~~~~~~~~~~
   107 |         ; ; r (base)
   108 |     }
@@ -89,3 +89,24 @@ vlib/v/checker/tests/asm_intel_operand_width_err.vv:114:3: error: hard register 
       |         ~~~~~~~~~~~~~~~~~
   115 |         ; +r (result)
   116 |         ; ; rax
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:123:3: error: hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers for the current compilation target; use matching register widths, or a `raw intel` block with explicit operand modifiers
+  121 |     mut result := value
+  122 |     asm amd64 intel {
+  123 |         shld result, value, eax
+      |         ~~~~~~~~~~~~~~~~~~~~~~~
+  124 |         ; +r (result)
+  125 |         ; r (value)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:132:3: error: instruction `cmovzl` selects 32-bit operands, but named operands in structured `intel` assembly expand to 64-bit registers for the current compilation target; use a matching instruction width, or a `raw intel` block with explicit operand modifiers
+  130 | fn intel_cmov_size_suffix(value i64) {
+  131 |     asm amd64 intel {
+  132 |         cmovzl rax, value
+      |         ~~~~~~~~~~~~~~~~~
+  133 |         ; ; r (value)
+  134 |     }
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:139:3: error: hard register `eax` is 32-bit, but named operands in the same structured `intel` address expand to 64-bit registers for the current compilation target; use matching address-register widths, or a `raw intel` block with explicit operand modifiers
+  137 | fn intel_address_hard_displacement(base i64) {
+  138 |     asm amd64 intel {
+  139 |         mov rax, [base * 4 + eax]
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~
+  140 |         ; ; r (base)
+  141 |     }

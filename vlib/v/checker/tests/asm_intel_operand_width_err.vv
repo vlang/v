@@ -103,7 +103,7 @@ fn intel_crc32_hard_register(value i64) {
 
 fn intel_address_hard_register(base i64) {
 	asm amd64 intel {
-		mov rax, [base + eax + 0]
+		mov rax, [eax * 4 + base]
 		; ; r (base)
 	}
 }
@@ -114,6 +114,30 @@ fn intel_crc32_dword_source(checksum i64) {
 		crc32 result, eax
 		; +r (result)
 		; ; rax
+	}
+}
+
+fn intel_double_shift_bad_count(value i64) {
+	mut result := value
+	asm amd64 intel {
+		shld result, value, eax
+		; +r (result)
+		; r (value)
+		; rax
+	}
+}
+
+fn intel_cmov_size_suffix(value i64) {
+	asm amd64 intel {
+		cmovzl rax, value
+		; ; r (value)
+	}
+}
+
+fn intel_address_hard_displacement(base i64) {
+	asm amd64 intel {
+		mov rax, [base * 4 + eax]
+		; ; r (base)
 	}
 }
 

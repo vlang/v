@@ -26,3 +26,13 @@ fn intel_i386_control_register_moves(input int) {
 		; +r (value)
 	}
 }
+
+fn intel_i386_crc32_narrow_sources(input int) {
+	mut result := input
+	asm i386 intel {
+		crc32 result, cl
+		crc32 result, cx
+		; +r (result)
+		; ; ecx
+	}
+}
