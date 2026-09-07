@@ -141,6 +141,19 @@ fn intel_address_hard_displacement(base i64) {
 	}
 }
 
+fn intel_label_alias_collisions(value i64) {
+	asm amd64 intel {
+	local_width_label:
+		add eax, local_width_label
+		.global global_width_label
+	global_width_label:
+		add eax, global_width_label
+		; ; r (value) as local_width_label
+		  r (value) as global_width_label
+		; eax
+	}
+}
+
 fn main() {
 	println(intel_sub(50, 8))
 }

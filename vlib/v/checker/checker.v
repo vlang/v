@@ -4366,6 +4366,13 @@ fn (mut c Checker) check_asm_intel_operand_widths(stmt ast.AsmStmt, aliases []st
 	if stmt.arch !in [.amd64, .i386] {
 		return
 	}
+	mut operand_aliases := []string{cap: aliases.len}
+	for alias in aliases {
+		// Assembly labels take precedence over same-named I/O aliases in Cgen.
+		if alias !in stmt.local_labels && alias !in stmt.global_labels {
+			operand_aliases << alias
+		}
+	}
 	// `%V` is expanded by the C compiler for its machine width, not for the
 	// architecture declared on the V assembly block.
 	native_width := if c.pref.m64 { 8 } else { 4 }
@@ -4374,10 +4381,10 @@ fn (mut c Checker) check_asm_intel_operand_widths(stmt ast.AsmStmt, aliases []st
 			continue
 		}
 		for arg in template.args {
-			c.check_asm_intel_address_register_widths(arg, aliases, native_width,
+			c.check_asm_intel_address_register_widths(arg, operand_aliases, native_width,
 				template.pos)
 		}
-		c.check_asm_intel_hard_register_widths(template, aliases, native_width)
+		c.check_asm_intel_hard_register_widths(template, operand_aliases, native_width)
 	}
 }
 
