@@ -789,6 +789,16 @@ fn test_new_token_frame_rejects_truncated_token_as_frame_encoding_error() {
 	assert false, 'expected a truncated NEW_TOKEN token to be rejected'
 }
 
+fn test_new_token_frame_rejects_truncated_length_as_frame_encoding_error() {
+	buf := [u8(frame_type_new_token)]
+	parse_frame(buf) or {
+		assert err.code() == int(quic_error_frame_encoding_error)
+		assert err.msg().contains('Token Length')
+		return
+	}
+	assert false, 'expected a missing NEW_TOKEN Token Length to be rejected'
+}
+
 // test_new_connection_id_frame_round_trip covers the exact real-world
 // shape that motivated adding this frame type, same as NEW_TOKEN above --
 // confirmed sent by Google's QUIC endpoints as standard practice
@@ -864,6 +874,29 @@ fn test_new_connection_id_frame_rejects_length_above_20() {
 	assert false, 'expected a connection ID length above 20 to be rejected'
 }
 
+fn test_new_connection_id_frame_rejects_truncated_fields_as_frame_encoding_error() {
+	prefix := encode_varint(frame_type_new_connection_id)!
+	mut missing_retire := prefix.clone()
+	missing_retire << encode_varint(u64(0))!
+	mut missing_length := missing_retire.clone()
+	missing_length << encode_varint(u64(0))!
+	mut truncated_cid := missing_length.clone()
+	truncated_cid << u8(4)
+	truncated_cid << [u8(1), 2]
+	mut truncated_token := missing_length.clone()
+	truncated_token << u8(1)
+	truncated_token << u8(1)
+	truncated_token << []u8{len: stateless_reset_token_length - 1}
+	for buf in [prefix, missing_retire, missing_length, truncated_cid, truncated_token] {
+		mut rejected := false
+		parse_frame(buf) or {
+			assert err.code() == int(quic_error_frame_encoding_error)
+			rejected = true
+		}
+		assert rejected, 'expected truncated NEW_CONNECTION_ID fields to be rejected'
+	}
+}
+
 fn test_retire_connection_id_frame_round_trip() {
 	mut buf := encode_varint(frame_type_retire_connection_id)!
 	buf << encode_varint(u64(7))!
@@ -877,6 +910,16 @@ fn test_retire_connection_id_frame_round_trip() {
 			assert false, 'expected a RetireConnectionIdFrame'
 		}
 	}
+}
+
+fn test_retire_connection_id_frame_rejects_truncated_sequence_as_frame_encoding_error() {
+	buf := [u8(frame_type_retire_connection_id)]
+	parse_frame(buf) or {
+		assert err.code() == int(quic_error_frame_encoding_error)
+		assert err.msg().contains('Sequence Number')
+		return
+	}
+	assert false, 'expected a missing RETIRE_CONNECTION_ID Sequence Number to be rejected'
 }
 
 fn test_path_challenge_and_response_frame_round_trip() {

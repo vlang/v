@@ -521,7 +521,9 @@ fn parse_ack_frame(buf []u8, start int, has_ecn_counts bool) !(QuicFrame, int) {
 // be empty; a client has to treat an empty token as FRAME_ENCODING_ERROR.
 fn parse_new_token_frame(buf []u8, start int) !(QuicFrame, int) {
 	mut offset := start
-	length, n1 := decode_varint(buf[offset..])!
+	length, n1 := decode_varint(buf[offset..]) or {
+		return error_with_code('quic: NEW_TOKEN frame: malformed or truncated Token Length (RFC 9000 §19.7 FRAME_ENCODING_ERROR): ${err.msg()}', int(quic_error_frame_encoding_error))
+	}
 	offset += n1
 	if length == 0 {
 		return error_with_code('quic: NEW_TOKEN frame: token must not be empty (RFC 9000 §19.7 FRAME_ENCODING_ERROR)', int(quic_error_frame_encoding_error))
@@ -554,15 +556,19 @@ const path_challenge_data_length = 8
 // a malformed frame through as if it were well-formed.
 fn parse_new_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
 	mut offset := start
-	sequence_number, n1 := decode_varint(buf[offset..])!
+	sequence_number, n1 := decode_varint(buf[offset..]) or {
+		return error_with_code('quic: NEW_CONNECTION_ID frame: malformed or truncated Sequence Number (RFC 9000 §19.15 FRAME_ENCODING_ERROR): ${err.msg()}', int(quic_error_frame_encoding_error))
+	}
 	offset += n1
-	retire_prior_to, n2 := decode_varint(buf[offset..])!
+	retire_prior_to, n2 := decode_varint(buf[offset..]) or {
+		return error_with_code('quic: NEW_CONNECTION_ID frame: malformed or truncated Retire Prior To (RFC 9000 §19.15 FRAME_ENCODING_ERROR): ${err.msg()}', int(quic_error_frame_encoding_error))
+	}
 	offset += n2
 	if retire_prior_to > sequence_number {
 		return error_with_code('quic: NEW_CONNECTION_ID frame: retire_prior_to ${retire_prior_to} exceeds sequence_number ${sequence_number} (RFC 9000 §19.15 FRAME_ENCODING_ERROR)', int(quic_error_frame_encoding_error))
 	}
 	if offset >= buf.len {
-		return error('quic: NEW_CONNECTION_ID frame: missing Length field')
+		return error_with_code('quic: NEW_CONNECTION_ID frame: missing Length field (RFC 9000 §19.15 FRAME_ENCODING_ERROR)', int(quic_error_frame_encoding_error))
 	}
 	cid_len := int(buf[offset])
 	offset += 1
@@ -578,7 +584,7 @@ fn parse_new_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
 		return error_with_code('quic: NEW_CONNECTION_ID frame: connection ID length ${cid_len} exceeds the ${max_connection_id_length}-byte limit (RFC 9000 §19.15 FRAME_ENCODING_ERROR)', int(quic_error_frame_encoding_error))
 	}
 	if offset + cid_len + stateless_reset_token_length > buf.len {
-		return error('quic: NEW_CONNECTION_ID frame: connection ID/stateless reset token exceed remaining buffer')
+		return error_with_code('quic: NEW_CONNECTION_ID frame: connection ID/stateless reset token exceed remaining buffer (RFC 9000 §19.15 FRAME_ENCODING_ERROR)', int(quic_error_frame_encoding_error))
 	}
 	connection_id := buf[offset..offset + cid_len].clone()
 	offset += cid_len
@@ -595,7 +601,9 @@ fn parse_new_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
 // parse_retire_connection_id_frame parses a RETIRE_CONNECTION_ID frame
 // (RFC 9000 §19.16): Sequence Number (i).
 fn parse_retire_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
-	sequence_number, n1 := decode_varint(buf[start..])!
+	sequence_number, n1 := decode_varint(buf[start..]) or {
+		return error_with_code('quic: RETIRE_CONNECTION_ID frame: malformed or truncated Sequence Number (RFC 9000 §19.16 FRAME_ENCODING_ERROR): ${err.msg()}', int(quic_error_frame_encoding_error))
+	}
 	return QuicFrame(RetireConnectionIdFrame{
 		sequence_number: sequence_number
 	}), start + n1
