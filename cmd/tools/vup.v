@@ -72,7 +72,7 @@ fn main() {
 	}
 	if !app.recompile_vup() {
 		app.show_current_v_version()
-		eprintln('`v up` failed. Run `cd ${app.vroot} && git pull --rebase && ${get_make_cmd_name()}` to finish updating V.')
+		eprintln('`v up` failed. Run `cd ${os.quoted_path(app.vroot)} && ${v_upstream_pull_command()} && ${get_make_cmd_name()}` to finish updating V.')
 		exit(1)
 	}
 	app.show_current_v_version()
