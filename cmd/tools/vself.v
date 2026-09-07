@@ -62,18 +62,18 @@ fn main() {
 		args << ['-gc', 'none']
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && os.user_os() == 'macos' && '-prod' in effective_args
+	if !fastc_self_build && os.user_os() in ['linux', 'macos'] && '-prod' in effective_args
 		&& '-parallel-cc' !in effective_args {
-		// A V3-only cmd/v is large enough that monolithic clang + LTO dominates
+		// A V3-only cmd/v is large enough that a monolithic C compiler + LTO dominates
 		// the self-build. Parallel C compilation also keeps the generated unit out
 		// of the full-LTO path when the self-build is already running under V3.
 		args << '-parallel-cc'
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && os.user_os() == 'macos' && '-prod' in effective_args
+	if !fastc_self_build && os.user_os() in ['linux', 'macos'] && '-prod' in effective_args
 		&& '-no-memory-limit' !in effective_args && '--no-memory-limit' !in effective_args {
 		// Production C generation for the embedded V3 compiler can legitimately
-		// exceed V3's default 10 GB process limit before clang starts.
+		// exceed V3's default 10 GB process limit before the native compiler starts.
 		args << '-no-memory-limit'
 	}
 	effective_args = effective_self_build_args(args)
@@ -101,7 +101,11 @@ fn main() {
 		compile_args << '-selfhost'
 	}
 	final_binary := if obinary != '' { obinary } else { 'v2' }
-	pgo_cc_kind := if fastc_self_build { '' } else { pgo_compiler_kind(args) }
+	pgo_cc_kind := if fastc_self_build || '-parallel-cc' in effective_args {
+		''
+	} else {
+		pgo_compiler_kind(args)
+	}
 	// Only explicit FastC builds are standalone. Regular replacements must retain
 	// cmd/v so commands such as self, up, fmt, and version remain available.
 	compilation_source := if fastc_self_build { standalone_v3_source } else { full_v_cli_source }

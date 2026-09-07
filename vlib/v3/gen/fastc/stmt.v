@@ -118,7 +118,15 @@ fn (mut g Parser) parse_statement() !bool {
 			g.parse_if()!
 		}
 		.key_for {
-			g.parse_for()!
+			loop_label := g.pending_loop_label
+			g.pending_loop_label = ''
+			g.parsing_loop_labels << loop_label
+			terminates := g.parse_for()!
+			g.parsing_loop_labels.delete_last()
+			if loop_label != '' {
+				g.write_line('${fastc_loop_break_label(loop_label)}:;')
+			}
+			terminates
 		}
 		.key_match {
 			g.parse_match_statement()!
@@ -131,25 +139,49 @@ fn (mut g Parser) parse_statement() !bool {
 		}
 		.key_break {
 			g.next()
+			mut target_label := ''
+			if g.tok == .name {
+				target_label = g.lit
+				g.next()
+			}
 			g.consume_statement_end()
 			if g.loop_defer_block_starts.len == 0 {
 				return g.unsupported('`break` outside a loop')
 			}
-			if g.statement_reachable && g.loop_has_breaks.len > 0 {
-				g.loop_has_breaks[g.loop_has_breaks.len - 1] = true
+			loop_index := g.loop_index_for_label(target_label) or {
+				return g.unsupported('unknown loop label `${target_label}`')
 			}
-			g.write_deferred_blocks_from(g.loop_defer_block_starts.last())
-			g.write_line('break;')
+			if g.statement_reachable {
+				g.loop_has_breaks[loop_index] = true
+			}
+			g.write_deferred_blocks_from(g.loop_defer_block_starts[loop_index])
+			g.write_line(if target_label == '' {
+				'break;'
+			} else {
+				'goto ${fastc_loop_break_label(target_label)};'
+			})
 			true
 		}
 		.key_continue {
 			g.next()
+			mut target_label := ''
+			if g.tok == .name {
+				target_label = g.lit
+				g.next()
+			}
 			g.consume_statement_end()
 			if g.loop_defer_block_starts.len == 0 {
 				return g.unsupported('`continue` outside a loop')
 			}
-			g.write_deferred_blocks_from(g.loop_defer_block_starts.last())
-			g.write_line('continue;')
+			loop_index := g.loop_index_for_label(target_label) or {
+				return g.unsupported('unknown loop label `${target_label}`')
+			}
+			g.write_deferred_blocks_from(g.loop_defer_block_starts[loop_index])
+			g.write_line(if target_label == '' {
+				'continue;'
+			} else {
+				'goto ${fastc_loop_continue_label(target_label)};'
+			})
 			true
 		}
 		.key_goto {
@@ -532,16 +564,42 @@ fn (g &Parser) deferred_scopes_source() string {
 }
 
 fn (mut g Parser) parse_loop_block_body() !FastcLoopBlockResult {
+	loop_label := if g.parsing_loop_labels.len > 0 { g.parsing_loop_labels.last() } else { '' }
+	g.loop_labels << loop_label
 	g.loop_defer_block_starts << g.deferred_block_starts.len
 	g.loop_has_breaks << false
 	terminates := g.parse_block_body()!
 	has_reachable_break := g.loop_has_breaks.last()
+	if g.loop_labels.len > 0 && g.loop_labels.last() != '' {
+		g.write_line('${fastc_loop_continue_label(g.loop_labels.last())}:;')
+	}
 	g.loop_has_breaks.delete_last()
 	g.loop_defer_block_starts.delete_last()
+	g.loop_labels.delete_last()
 	return FastcLoopBlockResult{
 		terminates: terminates
 		has_reachable_break: has_reachable_break
 	}
+}
+
+fn fastc_loop_break_label(label string) string {
+	return '__vf_loop_${fastc_c_identifier(label)}_break'
+}
+
+fn fastc_loop_continue_label(label string) string {
+	return '__vf_loop_${fastc_c_identifier(label)}_continue'
+}
+
+fn (g &Parser) loop_index_for_label(label string) ?int {
+	if label == '' {
+		return g.loop_labels.len - 1
+	}
+	for i := g.loop_labels.len - 1; i >= 0; i-- {
+		if g.loop_labels[i] == label {
+			return i
+		}
+	}
+	return none
 }
 
 fn (mut g Parser) parse_match_statement() !bool {
@@ -1150,10 +1208,14 @@ fn (mut g Parser) parse_simple_statement() ! {
 			// the connection method call.
 			return g.parse_orm_sql_statement()
 		}
-		if g.selfhost && g.tok == .colon {
+		if g.tok == .colon {
 			g.next()
 			g.skip_semicolons()
-			g.write_line('${fastc_c_identifier(name)}:')
+			if g.tok == .key_for {
+				g.pending_loop_label = name
+			} else {
+				g.write_line('${fastc_c_identifier(name)}:')
+			}
 			return
 		}
 		if g.selfhost && g.tok == .comma {
@@ -1216,13 +1278,17 @@ fn (mut g Parser) parse_simple_statement() ! {
 				g.write_line('${value_decl_type} ${value_name} = (${value});')
 				g.write_line('builtin__array_push_many(${array_target}, ${value_name}.data, ${value_name}.len);')
 			} else {
-				// A `.member` enum-shorthand element needs its target enum type to lower; re-render it
-				// through the argument path. Other values keep their raw streamed form so contextual
-				// re-rendering never disturbs a spawn/thread or already-correct value.
+				// Enum shorthand and pointer/value conversions need the target element type to lower;
+				// re-render them through the argument path. Other values keep their raw streamed form
+				// so contextual re-rendering never disturbs a spawn/thread or already-correct value.
 				is_complex_or := value.contains('({') && (value.contains('return ')
 					|| value.contains('for (') || value.contains('switch ('))
 				boxes_variant := g.should_box_variant(element_type, value_type)
-				push_value := if boxes_variant || (g.last_expression.len == 2 && g.last_expression[0].tok == .dot && g.last_expression[1].tok == .name) || is_complex_or {
+				copies_pointed_value := value_type.ends_with('*')
+					&& element_type == value_type.trim_right('*')
+				converts_pointer_element := element_type.ends_with('*')
+					&& value_type in [element_type, element_type.trim_right('*')]
+				push_value := if boxes_variant || copies_pointed_value || converts_pointer_element || (g.last_expression.len == 2 && g.last_expression[0].tok == .dot && g.last_expression[1].tok == .name) || is_complex_or {
 					// A `.member` enum-shorthand element, or a complex `or { return … }`-unwrap: the
 					// streamed form can carry a paren imbalance and/or unresolved shorthand. A
 					// smart-cast variant appended to a sum-type array also needs to be boxed back into

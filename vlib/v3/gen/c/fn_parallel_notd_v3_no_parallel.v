@@ -47,7 +47,7 @@ mut:
 
 struct CollectGenInfoFnPrepArgs {
 	g            voidptr // read-only &FlatGen master
-	node_ids_ptr voidptr // &[]int
+	node_ids_ptr voidptr // &[]i32
 	preps_ptr    voidptr // &[]CollectGenFnPrep; shards fill disjoint positions
 	start        int
 	end          int
@@ -104,7 +104,7 @@ $if !windows {
 		a.scope = cgen_worker_scope_begin(true)
 		master := unsafe { &FlatGen(a.g) }
 		mut view := master.new_collect_gen_info_view()
-		nodes := unsafe { &[]int(a.nodes_ptr) }
+		nodes := unsafe { &[]i32(a.nodes_ptr) }
 		a.candidates = view.collect_fn_gen_candidates_range(*nodes, a.start, a.end, a.file, a.module_name, a.direct_array_access_fns, a.ignore_overflow_fns, a.program_modules)
 		cgen_worker_scope_leave(a.scope)
 		return unsafe { nil }
@@ -116,7 +116,7 @@ $if !windows {
 		mut view := master.new_collect_gen_info_view()
 		view.tc.cur_file = a.file
 		view.tc.cur_module = a.module_name
-		node_ids := unsafe { &[]int(a.node_ids_ptr) }
+		node_ids := unsafe { &[]i32(a.node_ids_ptr) }
 		mut preps := unsafe { &[]CollectGenFnPrep(a.preps_ptr) }
 		mut cur_file := a.file
 		mut cur_module := a.module_name
@@ -186,7 +186,7 @@ $if !windows {
 	fn collect_gen_info_scan_fill_thread(arg voidptr) voidptr {
 		mut a := unsafe { &CollectGenInfoScanArgs(arg) }
 		g := unsafe { &FlatGen(a.g) }
-		mut top_levels := unsafe { &[]int(a.top_levels_ptr) }
+		mut top_levels := unsafe { &[]i32(a.top_levels_ptr) }
 		mut literals := unsafe { &[]string(a.strings_ptr) }
 		mut top_level_pos := a.top_level_pos
 		mut string_pos := a.string_pos
@@ -254,15 +254,10 @@ $if !windows {
 		defer {
 			w.timing_profile('  [ttime]     cg typedecls   ${f64(tdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (task)')
 		}
-		// This task uses the master generator from a pool thread. Keep caches
-		// disabled because their entries would otherwise borrow that thread's
-		// disposable arena.
-		w.import_alias_cache = unsafe { nil }
-		w.enum_selector_cache = unsafe { nil }
-		w.enum_method_cache = unsafe { nil }
-		w.qualified_enum_method_cache = unsafe { nil }
-		w.local_typedef_shadow_facts = unsafe { nil }
-		w.local_global_shadow_facts = unsafe { nil }
+		// This task uses the master generator from a pool thread, so memoize into
+		// private caches: entries written here would otherwise borrow this
+		// thread's arena, and body lanes clone the master's memo maps meanwhile.
+		saved_lookup_caches := w.begin_scratch_lookup_caches()
 		// Self-host declaration output is several MiB. Reserve it once instead of
 		// repeatedly copying a geometrically growing builder.
 		w.sb.ensure_cap(4 * 1024 * 1024)
@@ -325,6 +320,7 @@ $if !windows {
 			tail.sb = strings.new_builder(0)
 		}
 		w.timing_profile('  [ttime]       td init defs  ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		w.restore_scratch_lookup_caches(saved_lookup_caches)
 		w.parallel_support_ready = true
 		return unsafe { nil }
 	}
@@ -559,7 +555,7 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 			top_level_count += counted_top_levels
 			string_count += counted_strings
 		}
-		g.top_level_node_ids = []int{len: top_level_count}
+		g.top_level_node_ids = []i32{len: top_level_count}
 		g.ast_string_literals = []string{len: string_count}
 		for mut arg in args {
 			arg.top_levels_ptr = unsafe { voidptr(&g.top_level_node_ids) }
@@ -676,7 +672,7 @@ fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(parallel bool
 // collect_gen_info_fn_preps resolves used function signatures on the persistent
 // worker pool. Registration stays serial in collect_gen_info, preserving all
 // source-order and duplicate-declaration semantics.
-fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []int, no_parallel bool) []CollectGenFnPrep {
+fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []i32, no_parallel bool) []CollectGenFnPrep {
 	$if windows {
 		return []CollectGenFnPrep{}
 	} $else {
@@ -945,10 +941,10 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 		g.register_interface_strings()
 		g.tc = master_tc
 		cgen_worker_scope_leave(selection_scope)
-		if !retain_selection && g.parallel_worker_scopes.len > 0 {
+		if g.parallel_worker_scopes.len > 0 {
 			// Candidate collection records helper scopes while selection_scope is
-			// current. Re-own the list before releasing that arena; the scopes it
-			// points to remain live until final cgen cleanup.
+			// current. The list must outlive every arena it names, including a
+			// retained selection_scope freed partway through final cgen cleanup.
 			g.parallel_worker_scopes = g.parallel_worker_scopes.clone()
 		}
 		if retain_selection {
@@ -988,6 +984,9 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 			g.c_extern_refs = clone_cgen_string_bool_map(g.c_extern_refs)
 			g.c_name_cache = clone_c_name_cache(g.c_name_cache)
 			g.generic_app_cache = clone_generic_app_cache(g.generic_app_cache)
+			// Import resolutions can borrow text and Type payloads from selection.
+			// Discard that memo before its scratch storage is released.
+			g.import_type_cache = &ImportTypeCache{}
 			cgen_worker_scope_free(selection_scope)
 			n_items = g.fn_gen_items.len
 			g.timing_profile('  [ttime]       pm clone out ${f64(pmsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -1077,7 +1076,7 @@ fn (mut g FlatGen) write_scoped_cgen_batch_output(batch &FlatGen) bool {
 		g.output_error = err.msg()
 		return false
 	}
-	if batch.cache_split {
+	if batch.cache_stable_symbols {
 		mut b := unsafe { batch }
 		source := b.sb.str()
 		stable_source := b.rewrite_cache_string_symbols(source)
@@ -1155,7 +1154,7 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		}
 	}
 	for def in batch.spawn_wrapper_defs {
-		if batch.cache_split {
+		if batch.cache_stable_symbols {
 			stable_def := b.rewrite_cache_string_symbols(def)
 			g.add_spawn_wrapper_def(stable_def)
 		} else {
@@ -1168,7 +1167,7 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		}
 	}
 	for def in batch.callback_wrapper_defs {
-		if batch.cache_split {
+		if batch.cache_stable_symbols {
 			stable_def := b.rewrite_cache_string_symbols(def)
 			g.add_callback_wrapper_def(stable_def)
 		} else {
@@ -2315,6 +2314,12 @@ fn (g &FlatGen) configure_c_extern_scan_worker(mut worker FlatGen) {
 	worker.c_directives = g.c_directives
 	worker.inlined_c_fns = g.inlined_c_fns.clone()
 	worker.inlined_c_declared_fns = g.inlined_c_declared_fns.clone()
+	worker.files_with_c_includes = g.files_with_c_includes.clone()
+	worker.files_with_c_postincludes = g.files_with_c_postincludes.clone()
+	worker.files_linking_c_sources = g.files_linking_c_sources.clone()
+	worker.mods_with_c_libs = g.mods_with_c_libs.clone()
+	worker.mods_with_c_includes = g.mods_with_c_includes.clone()
+	worker.c_extern_forced_decls = g.c_extern_forced_decls.clone()
 	worker.inlined_c_active_macros = g.inlined_c_active_macros.clone()
 	worker.inlined_c_static_fns = g.inlined_c_static_fns.clone()
 	worker.cache_omitted_c_fns = g.cache_omitted_c_fns.clone()
@@ -2417,6 +2422,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		global_inits: g.global_inits
 		global_init_order: g.global_init_order
 		c_decl_abi_names: g.c_decl_abi_names
+		c_extern_forced_decls: g.c_extern_forced_decls
 		export_c_abi_decls: g.export_c_abi_decls
 		main_export_owners: g.main_export_owners
 		c_extern_global_names: g.c_extern_global_names
@@ -2440,6 +2446,11 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		inlined_c_typedef_names: g.inlined_c_typedef_names
 		inlined_c_fns: g.inlined_c_fns
 		inlined_c_declared_fns: g.inlined_c_declared_fns
+		files_with_c_includes: g.files_with_c_includes
+		files_with_c_postincludes: g.files_with_c_postincludes
+		files_linking_c_sources: g.files_linking_c_sources
+		mods_with_c_libs: g.mods_with_c_libs
+		mods_with_c_includes: g.mods_with_c_includes
 		inlined_c_active_macros: g.inlined_c_active_macros
 		inlined_c_static_fns: g.inlined_c_static_fns
 		libc_compat_fns: g.libc_compat_fns.clone()
@@ -2450,6 +2461,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		has_builtins: g.has_builtins
 		cache_split: g.cache_split
+		cache_stable_symbols: g.cache_stable_symbols
 		compile_values: g.compile_values
 		trace_calls: g.trace_calls
 		skip_generics: g.skip_generics
@@ -2469,6 +2481,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		fn_decl_variadic_short_counts: g.fn_decl_variadic_short_counts
 		fn_decl_shared_params: g.fn_decl_shared_params
 		fn_shared_params_resolved: g.fn_shared_params_resolved
+		shared_param_index_empty: g.shared_param_index_empty
 		has_shared_params: g.has_shared_params
 		fn_decl_mut_receivers: g.fn_decl_mut_receivers
 		fn_decl_ret_types: g.fn_decl_ret_types
@@ -2577,6 +2590,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		enum_selector_cache: &ContextStringLookupCache{}
 		enum_method_cache: &ContextStringLookupCache{}
 		qualified_enum_method_cache: &ContextStringLookupCache{}
+		import_type_cache: &ImportTypeCache{}
 		struct_decl_pref_cache: &StructDeclPrefCache{}
 		qualified_struct_c_types_by_suffix: g.qualified_struct_c_types_by_suffix
 		qualified_struct_c_types_ready: g.qualified_struct_c_types_ready
@@ -2845,7 +2859,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	}
 	string_id_remap := g.publish_worker_string_literals(w)
 	borrow_worker_segments := os.getenv('V3_RETAIN_CGEN_RESULT_SCOPES') != ''
-		&& w.worker_scope != unsafe { nil } && !g.cache_split && string_id_remap.len == 0
+		&& w.worker_scope != unsafe { nil } && !g.cache_stable_symbols && string_id_remap.len == 0
 	user_c_symbols := if string_id_remap.len > 0 {
 		g.cache_user_c_string_symbols()
 	} else {
@@ -2853,7 +2867,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	}
 	worker_output := ww.sb.str()
 	if worker_output.len > 0 {
-		if g.cache_split {
+		if g.cache_stable_symbols {
 			stable_output := ww.rewrite_cache_string_symbols(worker_output)
 			g.fn_segs << stable_output
 			unsafe { worker_output.free() }
@@ -2869,7 +2883,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	// The ordered segment owns the copied output; release the worker builder.
 	unsafe { ww.sb.free() }
 	for segment_idx, segment in w.fn_segs {
-		normalized := if g.cache_split {
+		normalized := if g.cache_stable_symbols {
 			ww.rewrite_cache_string_symbols(segment)
 		} else if string_id_remap.len > 0 {
 			remap_scoped_worker_string_symbols(segment, string_id_remap, user_c_symbols)
@@ -2932,7 +2946,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 				continue
 			}
 			for def in wrappers.spawn {
-				normalized := if g.cache_split {
+				normalized := if g.cache_stable_symbols {
 					ww.rewrite_cache_string_symbols(def)
 				} else if string_id_remap.len > 0 {
 					remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols)
@@ -2944,7 +2958,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 		}
 	} else {
 		for def in w.spawn_wrapper_defs {
-			if g.cache_split {
+			if g.cache_stable_symbols {
 				g.add_spawn_wrapper_def(ww.rewrite_cache_string_symbols(def))
 			} else if string_id_remap.len > 0 {
 				g.add_spawn_wrapper_def(remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols))
@@ -2964,7 +2978,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 				continue
 			}
 			for def in wrappers.callback {
-				normalized := if g.cache_split {
+				normalized := if g.cache_stable_symbols {
 					ww.rewrite_cache_string_symbols(def)
 				} else if string_id_remap.len > 0 {
 					remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols)
@@ -2976,7 +2990,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 		}
 	} else {
 		for def in w.callback_wrapper_defs {
-			if g.cache_split {
+			if g.cache_stable_symbols {
 				g.add_callback_wrapper_def(ww.rewrite_cache_string_symbols(def))
 			} else if string_id_remap.len > 0 {
 				g.add_callback_wrapper_def(remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols))

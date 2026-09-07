@@ -6,15 +6,85 @@ import v3.parser
 import v3.pref
 import v3.types
 
+fn test_void_pointer_predicate_preserves_alias_and_named_type_rules() {
+	void_alias := types.Type(types.Alias{ name: 'Nothing', base_type: types.Type(types.void_) })
+	for typ in [types.Type(types.voidptr_), types.Type(types.Pointer{ base_type: void_alias }),
+		types.Type(types.Alias{ name: 'Opaque', base_type: types.Type(types.voidptr_) }),
+		types.Type(types.Alias{ name: 'voidptr', base_type: types.Type(types.int_) }),
+		types.Type(types.Struct{ name: 'voidptr' }), types.Type(types.Enum{ name: 'voidptr' }),
+		types.Type(types.Interface{ name: 'voidptr' }), types.Type(types.SumType{ name: 'voidptr' })] {
+		assert type_is_void_pointer(typ)
+	}
+	for typ in [types.Type(types.int_), types.Type(types.void_), void_alias,
+		types.Type(types.Pointer{ base_type: types.Type(types.voidptr_) }),
+		types.Type(types.Array{ elem_type: types.Type(types.voidptr_) }),
+		types.Type(types.Map{ key_type: types.Type(types.String{}), value_type: types.Type(types.voidptr_) }),
+		types.Type(types.FnType{ return_type: types.Type(types.voidptr_) })] {
+		assert !type_is_void_pointer(typ)
+	}
+}
+
+fn test_enum_autostr_emission_follows_used_function_filter() {
+	test_dir := os.join_path(os.vtmp_dir(), 'v3_enum_autostr_used_${os.getpid()}')
+	os.rmdir_all(test_dir) or {}
+	os.mkdir_all(test_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	source_path := os.join_path(test_dir, 'main.v')
+	os.write_file(source_path, 'module main
+
+enum Used {
+	one
+}
+
+enum Unused {
+	two
+}
+
+fn main() {}
+') or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(source_path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	mut g := FlatGen.new()
+	c_source := g.gen_with_used_options(a, {
+		'main':          true
+		'Used__autostr': true
+	}, &tc, true)
+	assert c_source.contains('string Used__autostr(Used it)'), c_source
+	assert !c_source.contains('Unused__autostr'), c_source
+}
+
 fn test_json_helper_scan_requires_legacy_json_module() {
 	mut ast := flat.FlatAst.new()
+	ast.nodes = [flat.Node{ kind: .call, children_count: 2 },
+		flat.Node{ kind: .ident, value: 'json.encode' },
+		flat.Node{ kind: .ident, value: 'pointer', typ: '&int' }]
+	ast.children = [flat.NodeId(1), flat.NodeId(2)]
 	mut tc := types.TypeChecker.new(&ast)
+	tc.resolved_call_names = ['json.encode', '', '']
+	tc.resolved_call_set = [true, false, false]
+	tc.expr_type_values = [types.Type(types.void_), types.Type(types.void_),
+		types.Type(types.Pointer{ base_type: types.Type(types.int_) })]
+	tc.expr_type_set = [false, false, true]
+	tc.file_modules['json2.v'] = 'json2'
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc
 	assert !g.has_legacy_json_module()
+	g.preintern_json_encode_strings()
+	assert g.str_lits.len == 0
 	tc.file_modules['json_primitives.c.v'] = 'json'
 	assert g.has_legacy_json_module()
+	g.preintern_json_encode_strings()
+	assert 'null' in g.str_lits
 }
 
 fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
@@ -169,6 +239,129 @@ fn test_import_alias_type_text_uses_the_node_source_file() {
 	assert g.canonical_import_alias_type_text_in_file('&pref.Preferences', 'driver.v') == '&v3.pref.Preferences'
 	assert g.canonical_import_alias_type_text_in_file('map[string][]pref.Target', 'driver.v') == 'map[string][]v3.pref.Target'
 	assert g.canonical_import_alias_type_in_file('token.Pos', 'parser.v').name() == 'v3.token.Pos'
+	for _ in 0 .. 3 {
+		for file in ['driver.v', 'unrelated.v'] {
+			expected := if file == 'driver.v' {
+				'&v3.pref.Preferences'
+			} else {
+				'&v.pref.Preferences'
+			}
+			assert g.canonical_import_alias_type_text_in_file('&pref.Preferences'.clone(), file.clone()) == expected
+			assert g.canonical_import_alias_type_text_in_file(' &pref.Preferences ', file) == expected
+		}
+	}
+	assert g.canonical_import_alias_type_text_in_file(' &&int ', 'driver.v') == '&&int'
+	assert g.canonical_import_alias_type_text_in_file('map[ string ] []int', 'driver.v') == 'map[string][]int'
+	assert g.canonical_import_alias_type_text_in_file('Box[int,string]', 'driver.v') == 'Box[int, string]'
+}
+
+fn test_exact_import_type_lookup_uses_qualified_declaration_keys() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	for module_name in ['dep.nested', 'main', 'builtin'] {
+		key := qualify_name_in_module(module_name, 'Item')
+		g.register_struct_decl_info('Item', key, module_name, '', flat.Node{
+			kind: .struct_decl
+			value: 'Item'
+		})
+		resolved := g.exact_known_import_type_text('${module_name}.Item') or { panic('missing declaration') }
+		assert resolved is types.Struct
+		assert resolved.name() == '${module_name}.Item'
+	}
+	assert g.exact_known_import_type_text('other.Item') == none
+	// The bare declaration now belongs to builtin, so it cannot satisfy main.
+	assert g.exact_known_import_type_text('main.Item') == none
+	tc.sum_types['dep.Value'] = ['int', 'string']
+	assert g.exact_known_import_type_text('dep.Value')? is types.SumType
+}
+
+fn test_import_type_cache_keeps_file_contexts_separate() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.file_imports['first.v\nmodel'] = 'first.model'
+	tc.file_imports['second.v\nmodel'] = 'second.model'
+	tc.structs['first.model.Item'] = []types.StructField{}
+	tc.structs['second.model.Item'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.skip_generics = true
+	for _ in 0 .. 3 {
+		for file in ['first.v', 'second.v'] {
+			for typ in ['model.Item', '&model.Item', '[]model.Item', '?model.Item'] {
+				cached := g.canonical_import_alias_type_in_file(typ.clone(), file.clone())
+				uncached := g.canonical_import_alias_type_in_file_uncached(typ, file)
+				assert cached == uncached
+				assert cached.name().contains(file.all_before('.') + '.model.Item')
+			}
+		}
+	}
+	// A new generation must not retain types from the previous declaration table.
+	g.reset_context_lookup_caches()
+	tc.file_imports['first.v\nmodel'] = 'second.model'
+	assert g.canonical_import_alias_type_in_file('model.Item', 'first.v').name() == 'second.model.Item'
+}
+
+fn test_unqualified_type_normalization_cache_preserves_spacing_and_nesting() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	for input, expected in {
+		'&&int':                          '&&int'
+		'& ? []int':                      '&?[]int'
+		'[]map[ string ] []int':          '[]map[string][]int'
+		'Box[int,string]':                'Box[int, string]'
+		'Box[map[string][]int, ?string]': 'Box[map[string][]int, ?string]'
+		'[3]int':                         '[3]int'
+	} {
+		for file in ['one.v', 'two.v', 'one.v'] {
+			assert g.canonical_import_alias_type_text_in_file(input.clone(), file) == expected
+		}
+	}
+	assert g.import_type_cache.unqualified_texts.len > 0
+	assert g.import_type_cache.by_file.len == 0
+	g.reset_context_lookup_caches()
+	assert g.import_type_cache.unqualified_texts.len == 0
+}
+
+fn test_import_alias_type_normalization_preserves_primitive_containers_and_named_types() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_file = 'driver.v'
+	tc.file_imports['driver.v\nmodel'] = 'app.model'
+	tc.structs['app.model.Item'] = []types.StructField{}
+	tc.structs['Box[int, string]'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	node := flat.Node{ kind: .ident }
+	for text in ['int', 'string', 'voidptr', '&&int', '?[]int', '!map[string][]u8', '[3]int'] {
+		typ := tc.parse_type(text)
+		assert g.canonical_import_alias_type_for_node(typ, &node) == typ
+		assert g.canonical_import_alias_type_text_in_file(typ.name(), 'driver.v') == typ.name()
+	}
+	for text, expected in {
+		'model.Item':      'app.model.Item'
+		'&model.Item':     '&app.model.Item'
+		'[]model.Item':    '[]app.model.Item'
+		'?model.Item':     '?app.model.Item'
+		'Box[int,string]': 'Box[int, string]'
+	} {
+		// Stale nominal spellings still require import and generic normalization.
+		typ := types.Type(types.Struct{ name: text })
+		assert g.canonical_import_alias_type_for_node(typ, &node).name() == expected
+	}
+	wrapped := types.Type(types.Array{
+		elem_type: types.Type(types.Pointer{
+			base_type: types.Type(types.Struct{ name: 'model.Item' })
+		})
+	})
+	assert g.canonical_import_alias_type_for_node(wrapped, &node).name() == '[]&app.model.Item'
 }
 
 fn test_optional_payload_qualifies_interface() {

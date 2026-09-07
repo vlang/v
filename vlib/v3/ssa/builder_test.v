@@ -222,6 +222,24 @@ fn test_type_size_reuses_module_layout_cache() {
 		assert m.struct_field_size(struct_type, 1) == 20
 	}
 	assert m.type_size_cache.cap == cache_capacity
+	m.freeze_type_layouts()
+	assert m.type_layout_frozen
+	assert m.struct_field_size(struct_type, 0) == 4
+	frozen_sizes := m.type_size_cache.clone()
+	frozen_alignments := m.type_align_cache.clone()
+	frozen_offsets := m.field_offset_cache.clone()
+	frozen_field_sizes := m.field_size_cache.clone()
+	for _ in 0 .. 100 {
+		assert m.type_size(array_type) == 20
+		assert m.type_align(struct_type) == 4
+		assert m.struct_field_offset(struct_type, 1) == 4
+		assert m.struct_field_size(struct_type, 1) == 20
+	}
+	assert m.type_size_cache == frozen_sizes
+	assert m.type_align_cache == frozen_alignments
+	assert m.field_offset_cache == frozen_offsets
+	assert m.field_size_cache == frozen_field_sizes
+	assert m.type_size_visiting.all(!it)
 }
 
 fn test_packed_and_aligned_struct_layout() {

@@ -6058,26 +6058,103 @@ fn (mut t Transformer) make_array_default_sort_stmt(base flat.NodeId, elem_type 
 			return t.make_expr_stmt(t.make_call_typed(helper, [base_addr], 'void'))
 		}
 	}
+	return t.make_array_merge_sort_stmt(base, elem_type, src, cmp_id, false)
+}
+
+// make_array_merge_sort_stmt lowers `arr.sort(...)` / `arr.sort_with_compare(...)`
+// to an in-place bottom-up merge sort through a scratch buffer, which keeps the
+// stable order the V1 backend produces with its `v_stable_sort` helper. The
+// previous lowering was a plain insertion sort: quadratic, so a single 24k
+// element `sort` call (the compiler's own parallel check work list) cost about
+// 300 ms of the self-host.
+fn (mut t Transformer) make_array_merge_sort_stmt(base flat.NodeId, elem_type string, src flat.Node, cmp flat.NodeId, use_compare bool) flat.NodeId {
+	array_type := '[]${elem_type}'
+	n_name := t.new_temp('sort_n')
+	buf_name := t.new_temp('sort_buf')
+	w_name := t.new_temp('sort_w')
+	lo_name := t.new_temp('sort_lo')
+	mid_name := t.new_temp('sort_mid')
+	hi_name := t.new_temp('sort_hi')
 	i_name := t.new_temp('sort_i')
 	j_name := t.new_temp('sort_j')
-	tmp_name := t.new_temp('sort_tmp')
-	t.set_var_type(i_name, 'int')
-	t.set_var_type(j_name, 'int')
-	t.set_var_type(tmp_name, elem_type)
-	init := t.make_decl_assign_typed(i_name, t.make_int_literal(1), 'int')
-	cond := t.make_infix(.lt, t.make_ident(i_name), t.make_selector(base, 'len', 'int'))
-	post := t.make_expr_stmt(t.make_postfix(t.make_ident(i_name), .inc))
-	j_decl := t.make_decl_assign_typed(j_name, t.make_ident(i_name), 'int')
-	inner_cond := t.make_infix(.logical_and, t.make_infix(.gt, t.make_ident(j_name), t.make_int_literal(0)), t.array_sort_less_expr(base, elem_type, j_name, cmp_id))
-	tmp_decl := t.make_decl_assign_typed(tmp_name, t.make_index(base, t.make_ident(j_name), elem_type), elem_type)
-	prev_idx := t.make_infix(.minus, t.make_ident(j_name), t.make_int_literal(1))
-	assign_cur := t.make_index_assign(t.make_index(base, t.make_ident(j_name), elem_type), t.make_index(base, prev_idx, elem_type))
-	prev_idx2 := t.make_infix(.minus, t.make_ident(j_name), t.make_int_literal(1))
-	assign_prev := t.make_index_assign(t.make_index(base, prev_idx2, elem_type), t.make_ident(tmp_name))
-	dec_j := t.make_expr_stmt(t.make_postfix(t.make_ident(j_name), .dec))
-	inner_body := [tmp_decl, assign_cur, assign_prev, dec_j]
-	inner_for := t.make_for_stmt(t.make_empty(), inner_cond, t.make_empty(), inner_body, src)
-	return t.make_for_stmt(init, cond, post, [j_decl, inner_for], src)
+	k_name := t.new_temp('sort_k')
+	copy_name := t.new_temp('sort_c')
+	t.set_var_type(n_name, 'int')
+	t.set_var_type(buf_name, array_type)
+	for name in [w_name, lo_name, mid_name, hi_name, i_name, j_name, k_name, copy_name] {
+		t.set_var_type(name, 'int')
+	}
+	// One pass over the merged range picks from the left run whenever the right
+	// run is exhausted or does not compare strictly smaller, so equal elements
+	// keep their original order and the sort stays stable.
+	right := t.make_index(base, t.make_ident(j_name), elem_type)
+	left := t.make_index(base, t.make_ident(i_name), elem_type)
+	less := if use_compare {
+		t.array_sort_compare_less_expr(right, left, elem_type, cmp)
+	} else {
+		t.array_sort_less_expr(right, left, elem_type, cmp)
+	}
+	take_left_cond := t.make_infix(.logical_or, t.make_infix(.ge, t.make_ident(j_name), t.make_ident(hi_name)), t.make_infix(.logical_and, t.make_infix(.lt, t.make_ident(i_name), t.make_ident(mid_name)), t.make_prefix(.not, t.make_paren(less))))
+	take_left := t.make_block([
+		t.copy_sorted_element(t.make_ident(buf_name), k_name, base, i_name, elem_type),
+		t.increment_sort_index(i_name),
+	])
+	take_right := t.make_block([
+		t.copy_sorted_element(t.make_ident(buf_name), k_name, base, j_name, elem_type),
+		t.increment_sort_index(j_name),
+	])
+	merge_for := t.make_for_stmt(t.make_decl_assign_typed(k_name, t.make_ident(lo_name), 'int'), t.make_infix(.lt, t.make_ident(k_name), t.make_ident(hi_name)), t.make_expr_stmt(t.make_postfix(t.make_ident(k_name), .inc)), [
+		t.make_if_with_skip_ownership_drops(take_left_cond, take_left, take_right),
+	], src)
+	// Both halves are clamped to the array length, so a trailing run shorter than
+	// the current width is simply copied through, and `lo = hi` still advances.
+	run_body := [
+		t.make_decl_assign_typed(mid_name, t.make_infix(.plus, t.make_ident(lo_name), t.make_ident(w_name)), 'int'),
+		t.clamp_sort_index(mid_name, n_name),
+		t.make_decl_assign_typed(hi_name, t.make_infix(.plus, t.make_ident(mid_name), t.make_ident(w_name)), 'int'),
+		t.clamp_sort_index(hi_name, n_name),
+		t.make_decl_assign_typed(i_name, t.make_ident(lo_name), 'int'),
+		t.make_decl_assign_typed(j_name, t.make_ident(mid_name), 'int'),
+		merge_for,
+		t.make_assign(t.make_ident(lo_name), t.make_ident(hi_name)),
+	]
+	run_for := t.make_for_stmt(t.make_decl_assign_typed(lo_name, t.make_int_literal(0), 'int'), t.make_infix(.lt, t.make_ident(lo_name), t.make_ident(n_name)), t.make_empty(), run_body, src)
+	copy_back := t.make_for_stmt(t.make_decl_assign_typed(copy_name, t.make_int_literal(0), 'int'), t.make_infix(.lt, t.make_ident(copy_name), t.make_ident(n_name)), t.make_expr_stmt(t.make_postfix(t.make_ident(copy_name), .inc)), [
+		t.copy_sorted_element(base, copy_name, t.make_ident(buf_name), copy_name, elem_type),
+	], src)
+	width_for := t.make_for_stmt(t.make_decl_assign_typed(w_name, t.make_int_literal(1), 'int'), t.make_infix(.lt, t.make_ident(w_name), t.make_ident(n_name)), t.make_assign(t.make_ident(w_name), t.make_infix(.left_shift, t.make_ident(w_name), t.make_int_literal(1))), [
+		run_for,
+		copy_back,
+	], src)
+	// The scratch buffer only holds shallow copies of elements the array still
+	// owns, so releasing its storage never touches the elements themselves.
+	free_buf := t.make_expr_stmt(t.make_call_typed('array__free', [
+		t.make_prefix(.amp, t.make_ident(buf_name)),
+	], 'void'))
+	return t.make_block([
+		t.make_decl_assign_typed(n_name, t.make_selector(base, 'len', 'int'), 'int'),
+		t.make_decl_assign_typed(buf_name, t.make_array_new_call(elem_type, t.make_ident(n_name), t.make_ident(n_name)), array_type),
+		width_for,
+		free_buf,
+	])
+}
+
+// copy_sorted_element builds `dst[dst_idx] = src[src_idx]` for the merge passes.
+fn (mut t Transformer) copy_sorted_element(dst flat.NodeId, dst_idx string, source flat.NodeId, src_idx string, elem_type string) flat.NodeId {
+	return t.make_index_assign(t.make_index(dst, t.make_ident(dst_idx), elem_type), t.make_index(source, t.make_ident(src_idx), elem_type))
+}
+
+// increment_sort_index builds `name = name + 1`.
+fn (mut t Transformer) increment_sort_index(name string) flat.NodeId {
+	return t.make_assign(t.make_ident(name), t.make_infix(.plus, t.make_ident(name), t.make_int_literal(1)))
+}
+
+// clamp_sort_index builds `if name > limit { name = limit }`.
+fn (mut t Transformer) clamp_sort_index(name string, limit string) flat.NodeId {
+	assign := t.make_block([
+		t.make_assign(t.make_ident(name), t.make_ident(limit)),
+	])
+	return t.make_if_with_skip_ownership_drops(t.make_infix(.gt, t.make_ident(name), t.make_ident(limit)), assign, flat.empty_node)
 }
 
 fn (t &Transformer) array_default_sort_runtime_helper(elem_type string) ?string {
@@ -6091,32 +6168,11 @@ fn (t &Transformer) array_default_sort_runtime_helper(elem_type string) ?string 
 
 // make_array_compare_sort_stmt builds make array compare sort stmt data for transform.
 fn (mut t Transformer) make_array_compare_sort_stmt(base flat.NodeId, elem_type string, src flat.Node, cmp flat.NodeId) flat.NodeId {
-	i_name := t.new_temp('sort_i')
-	j_name := t.new_temp('sort_j')
-	tmp_name := t.new_temp('sort_tmp')
-	t.set_var_type(i_name, 'int')
-	t.set_var_type(j_name, 'int')
-	t.set_var_type(tmp_name, elem_type)
-	init := t.make_decl_assign_typed(i_name, t.make_int_literal(1), 'int')
-	cond := t.make_infix(.lt, t.make_ident(i_name), t.make_selector(base, 'len', 'int'))
-	post := t.make_expr_stmt(t.make_postfix(t.make_ident(i_name), .inc))
-	j_decl := t.make_decl_assign_typed(j_name, t.make_ident(i_name), 'int')
-	inner_cond := t.make_infix(.logical_and, t.make_infix(.gt, t.make_ident(j_name), t.make_int_literal(0)), t.array_sort_compare_less_expr(base, elem_type, j_name, cmp))
-	tmp_decl := t.make_decl_assign_typed(tmp_name, t.make_index(base, t.make_ident(j_name), elem_type), elem_type)
-	prev_idx := t.make_infix(.minus, t.make_ident(j_name), t.make_int_literal(1))
-	assign_cur := t.make_index_assign(t.make_index(base, t.make_ident(j_name), elem_type), t.make_index(base, prev_idx, elem_type))
-	prev_idx2 := t.make_infix(.minus, t.make_ident(j_name), t.make_int_literal(1))
-	assign_prev := t.make_index_assign(t.make_index(base, prev_idx2, elem_type), t.make_ident(tmp_name))
-	dec_j := t.make_expr_stmt(t.make_postfix(t.make_ident(j_name), .dec))
-	inner_body := [tmp_decl, assign_cur, assign_prev, dec_j]
-	inner_for := t.make_for_stmt(t.make_empty(), inner_cond, t.make_empty(), inner_body, src)
-	return t.make_for_stmt(init, cond, post, [j_decl, inner_for], src)
+	return t.make_array_merge_sort_stmt(base, elem_type, src, cmp, true)
 }
 
 // array_sort_less_expr supports array sort less expr handling for Transformer.
-fn (mut t Transformer) array_sort_less_expr(base flat.NodeId, elem_type string, idx_name string, cmp_id flat.NodeId) flat.NodeId {
-	cur := t.make_index(base, t.make_ident(idx_name), elem_type)
-	prev := t.make_index(base, t.make_infix(.minus, t.make_ident(idx_name), t.make_int_literal(1)), elem_type)
+fn (mut t Transformer) array_sort_less_expr(cur flat.NodeId, prev flat.NodeId, elem_type string, cmp_id flat.NodeId) flat.NodeId {
 	if int(cmp_id) >= 0 {
 		cmp_node := t.a.nodes[int(cmp_id)]
 		if cmp_node.kind == .lambda_expr && cmp_node.children_count >= 3 {
@@ -6201,9 +6257,7 @@ fn (mut t Transformer) array_sort_simple_operator_expr(node flat.Node, cur flat.
 }
 
 // array_sort_compare_less_expr supports array sort compare less expr handling for Transformer.
-fn (mut t Transformer) array_sort_compare_less_expr(base flat.NodeId, elem_type string, idx_name string, cmp flat.NodeId) flat.NodeId {
-	cur := t.make_index(base, t.make_ident(idx_name), elem_type)
-	prev := t.make_index(base, t.make_infix(.minus, t.make_ident(idx_name), t.make_int_literal(1)), elem_type)
+fn (mut t Transformer) array_sort_compare_less_expr(cur flat.NodeId, prev flat.NodeId, elem_type string, cmp flat.NodeId) flat.NodeId {
 	cmp_cur_type, cmp_prev_type := t.array_sort_compare_arg_types(cmp, elem_type)
 	cur_arg := if cmp_cur_type == elem_type { cur } else { t.make_prefix(.amp, cur) }
 	prev_arg := if cmp_prev_type == elem_type { prev } else { t.make_prefix(.amp, prev) }

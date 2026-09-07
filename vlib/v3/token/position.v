@@ -3,11 +3,14 @@ module token
 import crypto.sha256
 
 // Pos represents pos data used by token.
+// The byte offsets, span end and file id are stored as i32: a Pos is embedded in
+// every AST node, and no source file or file table comes close to 2 GiB. Reads
+// promote to `int` implicitly, so consumers are unaffected.
 pub struct Pos {
 pub:
-	offset int
-	end    int
-	id     int
+	offset i32
+	end    i32
+	id     i32
 	meta   u16
 }
 
@@ -16,9 +19,9 @@ const type_text_meta_flag = u16(0x8000)
 // new_pos creates a source position from a stable file id and byte offset.
 pub fn new_pos(file_id int, offset int) Pos {
 	return Pos{
-		id:     file_id
-		offset: offset
-		end:    offset
+		id:     i32(file_id)
+		offset: i32(offset)
+		end:    i32(offset)
 	}
 }
 
@@ -26,9 +29,9 @@ pub fn new_pos(file_id int, offset int) Pos {
 // retained as the start for compatibility with existing diagnostic consumers.
 pub fn new_span(file_id int, start int, end int) Pos {
 	return Pos{
-		id:     file_id
-		offset: start
-		end:    if end < start { start } else { end }
+		id:     i32(file_id)
+		offset: i32(start)
+		end:    i32(if end < start { start } else { end })
 	}
 }
 
@@ -107,7 +110,8 @@ pub:
 	name string
 	size int
 mut:
-	line_offsets []int = [0]
+	// One entry per source line, so keep it compact: offsets are file-local.
+	line_offsets []i32 = [i32(0)]
 	// Keep the digest inline: stored files can outlive parser-worker preallocation scopes.
 	source_digest     [sha256.size]u8
 	has_source_digest bool
@@ -147,14 +151,14 @@ pub fn File.unindexed(name string, size int) &File {
 	return &File{
 		name:         name
 		size:         size
-		line_offsets: []int{}
+		line_offsets: []i32{}
 	}
 }
 
 // add_line updates add line state for File.
 @[inline]
 pub fn (mut f File) add_line(offset int) {
-	f.line_offsets << offset
+	f.line_offsets << i32(offset)
 }
 
 // index_lines records every source-line start for logarithmic position lookup
@@ -163,7 +167,7 @@ pub fn (mut f File) index_lines(src string) {
 	f.index_lines_without_digest(src)
 	for i, c in src {
 		if c == `\n` {
-			f.line_offsets << i + 1
+			f.line_offsets << i32(i + 1)
 		}
 	}
 	digest := sha256.sum(src.bytes())
@@ -183,7 +187,7 @@ pub fn (mut f File) index_lines(src string) {
 // parameter keeps the call sites and signature stable.
 pub fn (mut f File) index_lines_without_digest(src string) {
 	_ := src
-	f.line_offsets = [0]
+	f.line_offsets = [i32(0)]
 	f.has_source_digest = false
 }
 

@@ -325,7 +325,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				// `[]thread T`.wait() joins every handle and gathers their `[]T` results.
 				wait_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
-				value_type := g.thread_value_types[element] or { continue }
+				value_type := g.fastc_thread_value_type(element) or { continue }
 				result_type := fastc_array_c_type(value_type)
 				mut w := unsafe { &Parser(g) }
 				fastc_register_composite_type(result_type, mut w.composite_types)
@@ -364,7 +364,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			// the collected function signatures.
 			wait_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 			receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
-			value_type := g.thread_value_types[receiver_type] or { '' }
+			value_type := g.fastc_thread_value_type(receiver_type) or { '' }
 			wait_call := '${g.fastc_unclaimed_generated_name(fastc_thread_wait_name(receiver_type))}(${receiver.source})'
 			if receiver_start == 0 && wait_end == tokens.len - 1 {
 				return FastcRenderedExpression{

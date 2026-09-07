@@ -534,14 +534,18 @@ fn (g &Parser) method_function_key(receiver_type string, name string) string {
 }
 
 fn (g &Parser) method_function_key_impl(receiver_type string, name string) string {
-	direct_key := '${g.semantic_type_key(receiver_type)}.${name}'
+	// Literal-only arithmetic keeps its precise inference category for assignment
+	// validation, but method lookup needs the concrete default V type. Without
+	// this, `(8 * 1024 * 1024).str()` is left as raw C `.str()` syntax.
+	method_receiver_type := fastc_normalize_inferred_type(receiver_type)
+	direct_key := '${g.semantic_type_key(method_receiver_type)}.${name}'
 	if direct_key in g.functions {
 		return direct_key
 	}
 	// A type alias (`type GitlyDb = sqlite.DB`) inherits its base type's methods, so a
 	// method missing on the alias resolves against the underlying type.
-	base := g.underlying_alias_type(receiver_type)
-	if base != receiver_type {
+	base := g.underlying_alias_type(method_receiver_type)
+	if base != method_receiver_type {
 		base_key := '${g.semantic_type_key(base)}.${name}'
 		if base_key in g.functions {
 			return base_key
@@ -550,7 +554,7 @@ fn (g &Parser) method_function_key_impl(receiver_type string, name string) strin
 	if g.selfhost && name in ['keys', 'values'] && 'map.${name}' in g.functions {
 		return 'map.${name}'
 	}
-	mut layout_type := fastc_trim_pointer_suffix(receiver_type)
+	mut layout_type := fastc_trim_pointer_suffix(method_receiver_type)
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
 	} else if layout_type.starts_with('Map_') {

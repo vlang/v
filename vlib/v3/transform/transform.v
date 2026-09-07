@@ -156,12 +156,12 @@ mut:
 	tc_signature_names_log        []string
 	generated_capture_contexts    []string
 	struct_maps_shared            bool
-	multi_return_fn_ret_types     map[string]types.Type
+	multi_return_fn_ret_types     map[string][]types.Type
 	receiver_method_suffix_index  map[string]string
 	declared_fn_name_counts       map[string]u8
 	variadic_suffix_index         map[string]i8
 	const_suffixes                map[string]string
-	source_parent_ids             []int
+	source_parent_ids             []i32
 	shared_local_decl_names       map[string]bool
 	// const_array_fixed_storage_ready marks the cache below as fully populated
 	// (by the overlapped pre-dispatch scan), making the precompute a no-op.
@@ -268,6 +268,7 @@ mut:
 	comptime_reflected_for_ready  bool
 	call_param_types_decl_cache   map[int][]types.Type
 	call_param_types_decl_misses  map[string]bool
+	call_param_types_decl_shared  bool
 	call_param_types_decl_index   map[string]FnParamDeclRef
 	call_param_types_index_ready  bool
 	call_param_types_prepared     bool
@@ -405,7 +406,7 @@ mut:
 	parallel_monomorph_scan_nodes      []int
 	parallel_monomorph_scan_start      int
 	parallel_monomorph_scan_end        int
-	fn_scan_costs                      []int
+	fn_scan_costs                      []i32
 	fn_escape_scan_flags               []u8
 	literal_fn_decls                   []int
 	literal_fn_decls_ready             bool
@@ -419,10 +420,16 @@ mut:
 	str_expansion_memo                 map[string]int
 	deferred_expansion_items           []FnWorkItem
 	deferred_expansion_count           int
-	node_module_map_cache              []string
-	node_file_map_cache                []string
-	node_module_map_nodes              int = -1
-	node_context_read_only             bool
+	// node_module_map_cache/node_file_map_cache hold one interned id per node
+	// (0 == unset) into node_context_texts. A whole-AST table of 24-byte string
+	// headers costs hundreds of MiB on a compiler-sized program; the id table is
+	// 4 bytes per node and resolves to the same canonical spelling.
+	node_module_map_cache  []u32
+	node_file_map_cache    []u32
+	node_context_texts     []string
+	node_context_text_ids  map[string]u32
+	node_module_map_nodes  int = -1
+	node_context_read_only bool
 	// used_fns_log records names newly inserted into used_fns while the
 	// late-used-fn-bodies pass runs, so that pass can tell "was this name
 	// already used before the current body's transform" without cloning the
@@ -512,13 +519,21 @@ mut:
 	recent_results     [1024]string
 	recent_generations [1024]u32
 	canonical_types    [1024]string
-	canonical_results  [1024]string
 	entries            map[string]string
 }
 
-@[inline]
+// Sample text bytes so separately allocated copies can hit the same slot.
+// Every lookup still compares the complete spelling to handle collisions.
+@[direct_array_access; inline]
 fn alias_cache_slot(typ string) int {
-	return int((u64(voidptr(typ.str)) >> 4 ^ u64(typ.len)) & 1023)
+	if typ.len == 0 {
+		return 0
+	}
+	mut hash := u32(typ.len)
+	hash = (hash * 16777619) ^ u32(typ[0])
+	hash = (hash * 16777619) ^ u32(typ[typ.len / 2])
+	hash = (hash * 16777619) ^ u32(typ[typ.len - 1])
+	return int(hash & 1023)
 }
 
 // trimmed_transform_text avoids allocating a substring for the overwhelmingly
@@ -1200,14 +1215,14 @@ fn reserve_parallel_transform_ast_with_cache_mode(mut a flat.FlatAst, skip_gener
 		_ = copy_thread1.wait()
 		_ = copy_thread2.wait()
 		a.nodes = grown_nodes
-		a.file_node_ids = []int{}
+		a.file_node_ids = []i32{}
 		a.children = grown_children
 		return
 	}
 	if grow_nodes {
 		old_nodes := a.nodes
 		a.nodes = []flat.Node{cap: nodes_cap}
-		a.file_node_ids = []int{}
+		a.file_node_ids = []i32{}
 		a.nodes << old_nodes
 	}
 	if grow_children {
@@ -1954,10 +1969,19 @@ fn (mut t Transformer) collect_multi_return_fn_ret_types() {
 	if isnil(t.tc) {
 		return
 	}
-	t.multi_return_fn_ret_types = map[string]types.Type{}
+	t.multi_return_fn_ret_types = map[string][]types.Type{}
 	for name, ret_type in t.tc.fn_ret_types {
-		if type_contains_multi_return(ret_type) {
-			t.multi_return_fn_ret_types[name] = ret_type
+		if !type_contains_multi_return(ret_type) {
+			continue
+		}
+		// Preserve declaration-map order for ambiguous matches. A leading dot
+		// indexes methods only; a bare suffix also includes the exact free name.
+		t.multi_return_fn_ret_types[name] << ret_type
+		for i, ch in name {
+			if ch == `.` {
+				t.multi_return_fn_ret_types[name[i..]] << ret_type
+				t.multi_return_fn_ret_types[name[i + 1..]] << ret_type
+			}
 		}
 	}
 }
@@ -2119,12 +2143,17 @@ fn (mut t Transformer) rewrite_two_children_in_place(id flat.NodeId, first flat.
 fn (mut t Transformer) set_node_typ(idx int, typ string) {
 	if t.base_write_allowed(idx) {
 		t.invalidate_node_type_memo(idx)
-		t.a.nodes[idx].typ = typ
-		t.a.nodes[idx].set_type_text_id(0)
-		t.mark_scoped_owned_base_node(idx)
 		if !isnil(t.tc) {
 			t.tc.invalidate_checked_expr_type(idx)
 		}
+		// Child rewrites still invalidate the semantic caches even when the
+		// stored text already matches. Avoid publishing another identical write.
+		if t.a.nodes[idx].type_text_id() == 0 && same_transform_text(t.a.nodes[idx].typ, typ) {
+			return
+		}
+		t.a.nodes[idx].typ = typ
+		t.a.nodes[idx].set_type_text_id(0)
+		t.mark_scoped_owned_base_node(idx)
 		return
 	}
 	if t.defer_oor_writes {
@@ -2140,11 +2169,14 @@ fn (mut t Transformer) set_node_typ(idx int, typ string) {
 fn (mut t Transformer) set_node_value(idx int, value string) {
 	if t.base_write_allowed(idx) {
 		t.invalidate_node_type_memo(idx)
-		t.a.nodes[idx].value = value
-		t.mark_scoped_owned_base_node(idx)
 		if !isnil(t.tc) {
 			t.tc.invalidate_checked_expr_type(idx)
 		}
+		if same_transform_text(t.a.nodes[idx].value, value) {
+			return
+		}
+		t.a.nodes[idx].value = value
+		t.mark_scoped_owned_base_node(idx)
 		return
 	}
 	if t.defer_oor_writes {
@@ -3357,15 +3389,15 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 	// ((previous top-level decl of ANY kind, fn_idx]); the shared-base parallel
 	// transform relies on those ranges being disjoint per item.
 	use_checker_tl := t.tc.top_level_idx.len > 0 && t.tc.top_level_idx_nodes_len == t.a.nodes.len
-	mut rebuilt_tl := []int{}
+	mut rebuilt_tl := []i32{}
 	if !use_checker_tl {
 		// Hand-built test ASTs and transforms after declaration synthesis do not
 		// have a current checker index. Rebuild only in that uncommon case.
-		rebuilt_tl = []int{cap: 1024}
+		rebuilt_tl = []i32{cap: 1024}
 		for i, node in t.a.nodes {
 			if node.kind in [.file, .module_decl, .struct_decl, .type_decl, .interface_decl,
 				.enum_decl, .import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl] {
-				rebuilt_tl << i
+				rebuilt_tl << i32(i)
 			}
 		}
 	}
@@ -3494,7 +3526,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 			const_ms += f64(scsw.elapsed().microseconds()) / 1000.0
 		}
 	}
-	t.fn_scan_costs = []int{}
+	t.fn_scan_costs = []i32{}
 	t.fn_escape_scan_flags = []u8{}
 	t.timing_profile('  [ttime]   sc consts ${const_ms:.2f} ms, closures ${lit_ms:.2f} ms, expansion est ${est_ms:.2f} ms')
 	return pure
@@ -3516,7 +3548,7 @@ fn (mut t Transformer) collect_literal_fn_decls(limit int) []int {
 		mut literal_pending := false
 		mut escape_scan_needed := false
 		mut span_cost := 0
-		t.fn_scan_costs = []int{len: limit}
+		t.fn_scan_costs = []i32{len: limit}
 		t.fn_escape_scan_flags = []u8{len: limit}
 		for i in 0 .. flags.len {
 			flag := flags[i]
@@ -3646,6 +3678,10 @@ fn (t &Transformer) allocate_ast_base_clone(base_nodes int, base_children int) &
 		nodes.grow_len(base_nodes)
 		children.grow_len(base_children)
 	}
+	return t.ast_base_clone_with_storage(nodes, children)
+}
+
+fn (t &Transformer) ast_base_clone_with_storage(nodes []flat.Node, children []flat.NodeId) &flat.FlatAst {
 	return &flat.FlatAst{
 		nodes: nodes
 		children: children
@@ -3750,10 +3786,11 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	if t.node_context_read_only {
 		w.node_module_map_cache = t.node_module_map_cache
 		w.node_file_map_cache = t.node_file_map_cache
+		w.node_context_texts = t.node_context_texts
 		w.node_module_map_nodes = t.node_module_map_nodes
 		w.node_context_read_only = true
 	} else {
-		w.node_module_map_cache = []string{}
+		w.node_module_map_cache = []u32{}
 		w.node_module_map_nodes = -1
 	}
 	w.var_types = []VarTypeBinding{}
@@ -3878,7 +3915,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
 	w.generic_call_spec_misses = map[int]bool{}
-	w.node_module_map_cache = []string{}
+	w.node_module_map_cache = []u32{}
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
 	w.var_type_indices = map[string]int{}
@@ -3963,12 +4000,19 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		comptime_field_metas_cache: map[string][]FieldMeta{}
 		comptime_reflected_for_roles: t.comptime_reflected_for_roles
 		comptime_reflected_for_ready: t.comptime_reflected_for_ready
-		// Late scoped workers can discover parameter signatures for generic
-		// declarations added after the parallel pre-scan. Keep those recursive
-		// Type values worker-local: their payloads belong to the worker arena and
-		// must not outlive it through the master's shared cache.
-		call_param_types_decl_cache: t.call_param_types_decl_cache.clone()
-		call_param_types_decl_misses: t.call_param_types_decl_misses.clone()
+		// Prepared signatures are immutable. A worker detaches these maps if
+		// late generic declarations require a new, scratch-owned cache entry.
+		call_param_types_decl_cache: if t.call_param_types_decl_shared {
+			t.call_param_types_decl_cache
+		} else {
+			t.call_param_types_decl_cache.clone()
+		}
+		call_param_types_decl_misses: if t.call_param_types_decl_shared {
+			t.call_param_types_decl_misses
+		} else {
+			t.call_param_types_decl_misses.clone()
+		}
+		call_param_types_decl_shared: t.call_param_types_decl_shared
 		call_param_types_decl_index: t.call_param_types_decl_index
 		call_param_types_index_ready: t.call_param_types_index_ready
 		call_param_types_prepared: t.call_param_types_prepared
@@ -4655,9 +4699,18 @@ fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
 		t.tc.sparse_resolved_call_names[idx] = t.tc.canonical_symbol(name)
 		return
 	}
-	for t.tc.resolved_call_names.len <= idx {
-		t.tc.resolved_call_names << ''
-		t.tc.resolved_call_set << false
+	if t.tc.resolved_call_names.len <= idx {
+		start := t.tc.resolved_call_names.len
+		set_start := t.tc.resolved_call_set.len
+		amount := idx + 1 - start
+		// Merging an appended worker region can leave a large gap. Initialize
+		// that range once instead of growing both caches one element at a time.
+		unsafe {
+			t.tc.resolved_call_names.grow_len(amount)
+			t.tc.resolved_call_set.grow_len(amount)
+			vmemset(&t.tc.resolved_call_names[start], 0, isize(amount) * isize(sizeof(string)))
+			vmemset(&t.tc.resolved_call_set[set_start], 0, isize(amount))
+		}
 	}
 	t.tc.resolved_call_names[idx] = t.tc.canonical_symbol(name)
 	t.tc.resolved_call_set[idx] = true
@@ -4682,9 +4735,18 @@ fn (mut t Transformer) set_resolved_fn_value_entry(idx int, name string) {
 		t.tc.sparse_resolved_fn_values[idx] = t.tc.canonical_symbol(name)
 		return
 	}
-	for t.tc.resolved_fn_value_names.len <= idx {
-		t.tc.resolved_fn_value_names << ''
-		t.tc.resolved_fn_value_set << false
+	if t.tc.resolved_fn_value_names.len <= idx {
+		start := t.tc.resolved_fn_value_names.len
+		set_start := t.tc.resolved_fn_value_set.len
+		amount := idx + 1 - start
+		// Merging an appended worker region can leave a large gap. Initialize
+		// that range once instead of growing both caches one element at a time.
+		unsafe {
+			t.tc.resolved_fn_value_names.grow_len(amount)
+			t.tc.resolved_fn_value_set.grow_len(amount)
+			vmemset(&t.tc.resolved_fn_value_names[start], 0, isize(amount) * isize(sizeof(string)))
+			vmemset(&t.tc.resolved_fn_value_set[set_start], 0, isize(amount))
+		}
 	}
 	t.tc.resolved_fn_value_names[idx] = t.tc.canonical_symbol(name)
 	t.tc.resolved_fn_value_set[idx] = true
@@ -4827,6 +4889,36 @@ fn split_work_items(items []FnWorkItem, n int) [][]FnWorkItem {
 	return buckets
 }
 
+// Keep each self-host worker's writes in adjacent source pages so snapshots
+// copy a page for its owning worker instead of for many scattered writers.
+fn split_work_items_by_source(items []FnWorkItem, n int) [][]FnWorkItem {
+	if items.len == 0 || n <= 0 {
+		return [][]FnWorkItem{}
+	}
+	count := if n < items.len { n } else { items.len }
+	mut ordered := items.clone()
+	ordered.sort(a.fn_idx < b.fn_idx)
+	mut total := i64(0)
+	for item in ordered {
+		total += i64(item.cost) + 1
+	}
+	mut chunks := [][]FnWorkItem{cap: count}
+	mut consumed := i64(0)
+	mut start := 0
+	for ci in 0 .. count {
+		target := total * i64(ci + 1) / i64(count)
+		mut end := start
+		limit := ordered.len - (count - ci - 1)
+		for end < limit && (consumed < target || end == start || ci == count - 1) {
+			consumed += i64(ordered[end].cost) + 1
+			end++
+		}
+		chunks << ordered[start..end]
+		start = end
+	}
+	return chunks
+}
+
 // should_transform_fn reports whether should transform fn applies in transform.
 fn (t &Transformer) should_transform_fn(node flat.Node) bool {
 	if !t.has_used_fn_filter() {
@@ -4915,7 +5007,7 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names &[]string, names_star
 	late_scan_ids := if t.building_v && t.tc.top_level_idx.len > 0 {
 		t.tc.top_level_idx
 	} else {
-		[]int{}
+		[]i32{}
 	}
 	scan_count := if late_scan_ids.len > 0 { late_scan_ids.len } else { limit }
 	for scan_pos in 0 .. scan_count {
@@ -6042,7 +6134,7 @@ fn (mut t Transformer) collect_exclusive_closure_return_fns() {
 	mut literal_pending := false
 	mut span_cost := 0
 	t.literal_fn_decls = []int{cap: 64}
-	t.fn_scan_costs = []int{len: t.a.nodes.len}
+	t.fn_scan_costs = []i32{len: t.a.nodes.len}
 	for idx in 0 .. t.a.nodes.len {
 		node := t.a.nodes[idx]
 		span_cost += match node.kind {
@@ -9591,6 +9683,14 @@ fn (mut t Transformer) simple_nested_string_interpolation(value string) ?flat.No
 		if inner.len == 0 || string_has_interp_start_bytes(inner) || string_has_newline_byte(inner) {
 			return none
 		}
+		if nested_interp_text_reads_it(inner) {
+			// `it` is owned by an enclosing `map`/`filter`, which renames it while
+			// lowering its body. A real nested interpolation of `it` reaches this
+			// transform as a parsed part rather than as literal text, so an `it`
+			// still encoded in the text here has no binding to rename and expanding
+			// it would emit an undeclared identifier.
+			return none
+		}
 		expr, typ := t.simple_nested_interp_expr(inner) or { return none }
 		parts << t.wrap_string_conversion(expr, typ)
 		i = end + 1
@@ -9860,6 +9960,46 @@ fn nested_interp_closing_brace(value string, start int) ?int {
 		}
 	}
 	return none
+}
+
+// nested_interp_text_reads_it reports whether an interpolation encoded in literal
+// text reads the implicit `it` binding, ignoring `it` used as a field name or
+// inside a quoted string.
+fn nested_interp_text_reads_it(inner string) bool {
+	mut quote := u8(0)
+	mut i := 0
+	for i < inner.len {
+		c := inner[i]
+		if quote != 0 {
+			if c == `\\` && i + 1 < inner.len {
+				i += 2
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if c == `'` || c == `"` || c == `\`` {
+			quote = c
+			i++
+			continue
+		}
+		if c.is_letter() || c == `_` {
+			mut j := i
+			for j < inner.len && (inner[j].is_alnum() || inner[j] == `_`) {
+				j++
+			}
+			if inner[i..j] == 'it' && (i == 0 || inner[i - 1] != `.`) {
+				return true
+			}
+			i = j
+			continue
+		}
+		i++
+	}
+	return false
 }
 
 fn nested_interp_literal_inner(value string) ?string {
@@ -10896,7 +11036,7 @@ fn (mut t Transformer) precompute_const_array_fixed_storage() {
 	if candidate_keys.len == 0 {
 		return
 	}
-	mut ref_candidates := []int{len: t.a.nodes.len}
+	mut ref_candidates := []i32{len: t.a.nodes.len}
 	mut ref_states := []u8{len: t.a.nodes.len}
 	mut unmatched := []int{len: candidate_keys.len}
 	mut fixed_candidates := []bool{len: candidate_keys.len}
@@ -10974,7 +11114,7 @@ fn (t &Transformer) const_array_candidate_for_expr(id flat.NodeId, module_name s
 	return candidates[key] or { return none }
 }
 
-fn (t &Transformer) mark_const_array_ref_safe(mut candidates []int, mut states []u8, mut unmatched []int, id flat.NodeId) {
+fn (t &Transformer) mark_const_array_ref_safe(mut candidates []i32, mut states []u8, mut unmatched []int, id flat.NodeId) {
 	idx := int(id)
 	if idx < 0 || idx >= t.a.nodes.len {
 		return
@@ -14858,17 +14998,9 @@ fn (t &Transformer) find_multi_return_call_types(node flat.Node, expected_count 
 		return none
 	}
 	for candidate in candidates {
-		suffix := if candidate.starts_with('.') { candidate } else { '.${candidate}' }
-		for key, ret in t.multi_return_fn_ret_types {
-			matches := if candidate.starts_with('.') {
-				key.ends_with(suffix)
-			} else {
-				key == candidate || key.ends_with(suffix)
-			}
-			if matches {
-				if items := multi_return_types_from_type(ret, expected_count) {
-					return items
-				}
+		for ret in t.multi_return_fn_ret_types[candidate] {
+			if items := multi_return_types_from_type(ret, expected_count) {
+				return items
 			}
 		}
 	}
@@ -15771,7 +15903,7 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 }
 
 fn (mut t Transformer) build_source_parent_index() {
-	t.source_parent_ids = []int{len: t.a.nodes.len, init: -1}
+	t.source_parent_ids = []i32{len: t.a.nodes.len, init: -1}
 	mut decls := map[string][]int{}
 	mut fn_offsets := map[int][]int{}
 	mut if_exprs := map[int][]int{}
@@ -22283,8 +22415,7 @@ fn (t &Transformer) variant_short_name(name string) string {
 	mut cache := t.variant_short_name_cache
 	recent_slot := alias_cache_slot(name)
 	if cache.recent_generations[recent_slot] == cache.recent_generation
-		&& unsafe { cache.recent_types[recent_slot].str == name.str }
-		&& cache.recent_types[recent_slot].len == name.len {
+		&& same_transform_text(cache.recent_types[recent_slot], name) {
 		return cache.recent_results[recent_slot]
 	}
 	if cached := cache.entries[name] {

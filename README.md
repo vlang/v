@@ -301,7 +301,8 @@ hello world
 ```
 
 `v self` defaults to `-gc none`. Pass `-gc <mode>` if you need a different GC mode.
-On macOS, `v -prod self` uses a single production build instead of the three-pass PGO cycle.
+On macOS and Linux, `v -prod self` uses a single production build instead of the three-pass
+PGO cycle.
 
 ```bash
 cd examples

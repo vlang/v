@@ -28,12 +28,12 @@ fn (mut t Transformer) begin_node_type_memo(lo int, hi int) {
 		memo.filled = []u8{len: n}
 	} else {
 		if n <= memo.values.len {
-			memo.values = memo.values[..n]
-			memo.filled = memo.filled[..n]
+			memo.values.trim(n)
+			memo.filled.trim(n)
 		} else {
 			unsafe {
-				memo.values.grow_len(n)
-				memo.filled.grow_len(n)
+				memo.values.grow_len(n - memo.values.len)
+				memo.filled.grow_len(n - memo.filled.len)
 			}
 		}
 		if n > 0 {
@@ -1140,9 +1140,8 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 	}
 	mut c := t.alias_cache
 	recent_slot := alias_cache_slot(typ)
-	if c.canonical_types[recent_slot].len == typ.len
-		&& unsafe { c.canonical_types[recent_slot].str == typ.str } {
-		return c.canonical_results[recent_slot]
+	if same_transform_text(c.canonical_types[recent_slot], typ) {
+		return c.canonical_types[recent_slot]
 	}
 	if !same_transform_text(c.module, t.cur_module) || !same_transform_text(c.file, t.cur_file) {
 		c.module = t.cur_module
@@ -1151,8 +1150,7 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 		c.clear_recent()
 	}
 	if c.recent_generations[recent_slot] == c.recent_generation
-		&& unsafe { c.recent_types[recent_slot].str == typ.str }
-		&& c.recent_types[recent_slot].len == typ.len {
+		&& same_transform_text(c.recent_types[recent_slot], typ) {
 		return c.recent_results[recent_slot]
 	}
 	if cached := c.entries[typ] {
@@ -1163,7 +1161,6 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 		c.entries[typ] = fast
 		c.put_recent(typ, fast)
 		c.canonical_types[recent_slot] = typ
-		c.canonical_results[recent_slot] = fast
 		return fast
 	}
 	result := t.normalize_type_alias_uncached(typ)
@@ -1485,8 +1482,7 @@ fn (t &Transformer) normalize_type_in_module(typ string, mod string) string {
 	}
 	recent_slot := alias_cache_slot(typ)
 	if cache.recent_generations[recent_slot] == cache.recent_generation
-		&& unsafe { cache.recent_types[recent_slot].str == typ.str }
-		&& cache.recent_types[recent_slot].len == typ.len {
+		&& same_transform_text(cache.recent_types[recent_slot], typ) {
 		return cache.recent_results[recent_slot]
 	}
 	if cached := cache.entries[typ] {

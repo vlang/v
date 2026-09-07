@@ -30,14 +30,25 @@ static inline mbedtls_pk_context *v_mbedtls_x509_crt_get_pk(mbedtls_x509_crt *cr
  * (real mbedTLS API, not a V-side assumption) -- resolved here in C, where
  * the struct's size/layout are fully known, rather than attempting a V-side
  * by-value pass of an intentionally-opaque struct type.
+ *
+ * Returns plain `int` and takes a NON-const pointer, deliberately: this
+ * signature has to match the V-side declaration
+ * `fn C.v_mbedtls_pk_ec_group_id(pk &C.mbedtls_pk_context) int` EXACTLY.
+ * V emits its own prototype for a called C function into every translation
+ * unit that needs it, and that TU can also be one that includes this header
+ * (the v3 per-module build does exactly this), so a return type or a
+ * parameter const-qualifier that differs from the V declaration is a hard
+ * "conflicting types" C error, not a warning. V has no way to spell either
+ * `const T*` or a C enum return type in an `fn C.` declaration, so the C
+ * side is the side that must match.
  */
-static inline mbedtls_ecp_group_id v_mbedtls_pk_ec_group_id(const mbedtls_pk_context *pk)
+static inline int v_mbedtls_pk_ec_group_id(mbedtls_pk_context *pk)
 {
 	const mbedtls_ecp_keypair *kp = mbedtls_pk_ec(*pk);
 	if (kp == NULL) {
-		return MBEDTLS_ECP_DP_NONE;
+		return (int)MBEDTLS_ECP_DP_NONE;
 	}
-	return mbedtls_ecp_keypair_get_group_id(kp);
+	return (int)mbedtls_ecp_keypair_get_group_id(kp);
 }
 
 /* v_mbedtls_check_server_cert_usage verifies the leaf certificate's

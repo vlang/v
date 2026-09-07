@@ -3,6 +3,7 @@ module c
 import v3.flat
 import v3.pref
 import v3.types
+import v3.workers
 
 fn parallel_worker_test_gen(scoped bool) (&FlatGen, &types.TypeChecker) {
 	mut ast := &flat.FlatAst{}
@@ -18,6 +19,45 @@ fn test_parallel_dispatch_worker_owns_checker_outside_scoped_batching() {
 	g, tc := parallel_worker_test_gen(false)
 	w := g.new_parallel_dispatch_worker(1)
 	assert w.tc != tc
+}
+
+fn test_implicit_veb_context_call_lookup_accepts_source_and_c_names() {
+	g, mut tc := parallel_worker_test_gen(false)
+	assert !g.call_has_implicit_veb_ctx(['', 'app.index'])
+	tc.fn_implicit_veb_ctx['app.index'] = true
+	assert g.call_has_implicit_veb_ctx(['missing', 'app.index'])
+	assert !g.call_has_implicit_veb_ctx(['missing'])
+	tc.fn_implicit_veb_ctx.clear()
+	tc.fn_implicit_veb_ctx['app__index'] = true
+	assert g.call_has_implicit_veb_ctx(['', 'app.index'])
+	tc.fn_implicit_veb_ctx['app__index'] = false
+	assert !g.call_has_implicit_veb_ctx(['app.index'])
+}
+
+fn test_shared_param_index_skips_all_false_signatures() {
+	mut g, mut tc := parallel_worker_test_gen(true)
+	tc.fn_shared_params['plain'] = [false, false]
+	tc.fn_shared_params['empty'] = []bool{}
+	g.precompute_shared_param_index()
+	assert g.shared_param_index_empty
+	assert g.fn_shared_params_resolved.len == 0
+	assert !g.fn_param_is_shared('plain', 0)
+	assert !g.fn_param_is_shared_for_call(0, 'plain', 'empty', '', '')
+	w := g.new_parallel_worker(1)
+	assert w.shared_param_index_empty
+	assert !w.fn_param_is_shared_for_call(1, 'plain', '', '', '')
+
+	// A single shared signature keeps exact false entries authoritative over
+	// shared short-name fallbacks, including when the index is prepared again.
+	tc.fn_shared_params['send'] = [true]
+	tc.fn_shared_params['dep.send'] = [true]
+	g.fn_decl_shared_params['dep.send'] = [false]
+	g.precompute_shared_param_index()
+	assert !g.shared_param_index_empty
+	assert g.fn_param_is_shared_for_call(0, 'send', '', '', '')
+	assert !g.fn_param_is_shared_for_call(0, 'dep.send', '', '', '')
+	assert !g.fn_param_is_shared_for_call(1, 'send', '', '', '')
+	assert !g.fn_param_is_shared_for_call(0, 'plain', '', '', '')
 }
 
 fn test_parallel_dispatch_worker_shares_checker_as_scoped_accumulator() {
@@ -311,6 +351,25 @@ fn test_scoped_pre_dispatch_preserves_direct_array_access_flag() {
 	g.release_scoped_fn_items()
 }
 
+fn test_retained_selection_scope_does_not_own_scope_list() {
+	$if prealloc {
+		mut g, mut tc := parallel_worker_test_gen(true)
+		tc.building_v_fast = true
+		g.a.worker_pool = workers.new(8)
+		defer { g.a.worker_pool.close() }
+		for _ in 0 .. 2048 {
+			g.a.add_node(flat.Node{ kind: .module_decl, value: 'main' })
+		}
+		g.prepare_pre_dispatch_master()
+		assert g.parallel_worker_scopes.len > 1
+		for scope in g.parallel_worker_scopes {
+			assert !cgen_scope_owns(scope, g.parallel_worker_scopes.data)
+		}
+		g.free_parallel_worker_scopes()
+		assert g.parallel_worker_scopes.len == 0
+	}
+}
+
 fn test_parallel_generic_app_cache_uses_frozen_base_and_private_overlays() {
 	mut g, _ := parallel_worker_test_gen(true)
 	base, args, ok := g.shared_generic_app_parts('Frozen[int]')
@@ -457,4 +516,24 @@ fn test_dynamic_parallel_chunk_capture_keeps_deduplicated_wrapper_attempts() {
 	assert g.callback_wrapper_defs == ['callback-shared;']
 	assert g.parallel_chunk_wrapper_defs[0].spawn == ['spawn-shared;', 'spawn-shared;']
 	assert g.parallel_chunk_wrapper_defs[0].callback == ['callback-shared;', 'callback-shared;']
+}
+
+// c_extern_forward_decls() runs inside a disposable worker in scoped mode, so the
+// worker must inherit the header/linkage state the emission rule reads. Without it
+// every `fn C.` declaration looks header backed and silently loses its prototype.
+fn test_scoped_c_extern_worker_inherits_header_and_linkage_state() {
+	mut g, _ := parallel_worker_test_gen(true)
+	linked_file := '/project/linked.c.v'
+	lib_file := '/project/lib_only.c.v'
+	header_file := '/project/wrapped.c.v'
+	g.note_c_flag_directive('linked', linked_file, '@VMODROOT/helper.o')
+	g.note_c_flag_directive('lib_only', lib_file, '-lfoo')
+	g.note_c_include_directive('wrapped', header_file)
+
+	mut worker := g.new_parallel_worker(8)
+	g.configure_c_extern_scan_worker(mut worker)
+
+	assert worker.should_emit_c_extern_decl_from_file('helper_fn', linked_file, 'linked')
+	assert worker.should_emit_c_extern_decl_from_file('foo_open', lib_file, 'lib_only')
+	assert !worker.should_emit_c_extern_decl_from_file('wrapped_fn', header_file, 'wrapped')
 }

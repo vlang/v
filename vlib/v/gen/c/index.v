@@ -23,6 +23,10 @@ enum CWideIndexKind {
 // wrapper). Otherwise the static `none` instance keeps the option fully
 // initialized without allocating a MessageError + interface box on every miss.
 fn (g &Gen) index_or_skips_err(node ast.IndexExpr) bool {
+	if node.or_expr.kind == .absent && node.pos.len > 0
+		&& node.pos == g.discarded_index_error_pos {
+		return true
+	}
 	if node.is_option || node.or_expr.kind != .block {
 		return false
 	}
@@ -135,16 +139,15 @@ fn (mut g Gen) index_operator_method_info(receiver ast.Expr, receiver_type ast.T
 	}
 	method_name = g.specialized_method_name_from_receiver(method, recv.typ, method_name)
 	return IndexOperatorMethodInfo{
-		method:        method
-		name:          method_name
+		method: method
+		name: method_name
 		receiver_type: recv.typ
 	}
 }
 
 fn (mut g Gen) index_operator_call(receiver ast.Expr, receiver_type ast.Type, index ast.Expr, index_type ast.Type, op string, value ast.Expr, value_type ast.Type) {
 	info := g.index_operator_method_info(receiver, receiver_type, op) or {
-		g.error('missing `${op}` overload for `${g.table.type_to_str(receiver_type)}`',
-			receiver.pos())
+		g.error('missing `${op}` overload for `${g.table.type_to_str(receiver_type)}`', receiver.pos())
 		return
 	}
 	g.write(info.name)
@@ -164,8 +167,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 		g.index_range_expr(node, node.index)
 	} else {
 		if node.is_index_operator {
-			g.index_operator_call(node.left, node.left_type, node.index, node.index_type, '[]',
-				ast.empty_expr, ast.void_type)
+			g.index_operator_call(node.left, node.left_type, node.index, node.index_type, '[]', ast.empty_expr, ast.void_type)
 			return
 		}
 		mut left_type := ast.Type(0)
@@ -180,12 +182,10 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 		}
 		if left_type == 0 || left_type.has_flag(.generic)
 			|| g.type_has_unresolved_generic_parts(left_type) {
-			left_type = g.unwrap_generic(g.recheck_concrete_type(g.resolved_expr_type(node.left,
-				node.left_type)))
+			left_type = g.unwrap_generic(g.recheck_concrete_type(g.resolved_expr_type(node.left, node.left_type)))
 		}
 		if left_type == 0 {
-			left_type = g.unwrap_generic(g.type_resolver.get_type_or_default(node.left,
-				node.left_type))
+			left_type = g.unwrap_generic(g.type_resolver.get_type_or_default(node.left, node.left_type))
 		}
 		sym := g.table.final_sym(left_type)
 		if sym.kind == .array {
@@ -646,8 +646,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.writeln('\t*((${elem_type_str}*)&${tmp_opt}.data) = *((${elem_type_str}*)${tmp_opt_ptr});')
 			}
 			g.writeln('} else {')
-			g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = ${g.index_or_err_init(node,
-				'array index out of range')};')
+			g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = ${g.index_or_err_init(node, 'array index out of range')};')
 			g.writeln('}')
 			if !node.is_option {
 				if keep_option_result {
@@ -762,8 +761,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	} else {
 		sym.info as ast.Map
 	}
-	key_type_, val_type_ := g.resolved_map_key_value_types(map_left_type, info.key_type,
-		info.value_type)
+	key_type_, val_type_ := g.resolved_map_key_value_types(map_left_type, info.key_type, info.value_type)
 	mut key_type := key_type_
 	mut val_type := val_type_
 	if node.left is ast.Ident {
@@ -945,7 +943,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 				or_value_type := g.resolved_or_block_value_type(node.or_expr)
 				keep_option_result := node.is_option || (node.or_expr.kind == .block
 					&& (or_value_type in [ast.none_type, ast.none_type_idx]
-					|| or_value_type.has_flag(.option)))
+						|| or_value_type.has_flag(.option)))
 				plain_val_type := val_type.clear_option_and_result()
 				plain_val_sym := g.table.final_sym(plain_val_type)
 				plain_val_type_str := if plain_val_sym.kind == .function {
@@ -957,8 +955,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.writeln('if (${tmp_opt_ptr}) {')
 				g.writeln('\t${tmp_opt} = *${tmp_opt_ptr};')
 				g.writeln('} else {')
-				g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = ${g.index_or_err_init(node,
-					'map key does not exist')};')
+				g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = ${g.index_or_err_init(node, 'map key does not exist')};')
 				g.writeln('}')
 				if !node.is_option {
 					g.or_block_on_value(tmp_opt, node.or_expr, val_type)
@@ -982,8 +979,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 					g.writeln('\t*((${val_type_str}*)&${tmp_opt}.data) = *((${val_type_str}*)${tmp_opt_ptr});')
 				}
 				g.writeln('} else {')
-				g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = ${g.index_or_err_init(node,
-					'map key does not exist')};')
+				g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = ${g.index_or_err_init(node, 'map key does not exist')};')
 				g.writeln('}')
 				if !node.is_option {
 					if keep_option_result {

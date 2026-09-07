@@ -1256,7 +1256,7 @@ fn (tc &TypeChecker) enum_initializer_calls_helper(fn_name string, module_name s
 	target_module := if module_name in ['', 'main'] { '' } else { module_name }
 	mut indexes := tc.top_level_idx.clone()
 	if indexes.len == 0 {
-		indexes = []int{len: tc.a.nodes.len, init: index}
+		indexes = []i32{len: tc.a.nodes.len, init: i32(index)}
 	}
 	mut cur_module := ''
 	for idx in indexes {
@@ -3286,6 +3286,23 @@ fn (mut tc TypeChecker) check_valid_call_preamble(id flat.NodeId, node flat.Node
 	return false
 }
 
+// call_callee_indexes_container reports whether a call's `x[i]` callee indexes an
+// array or map value. Such a call invokes the function stored at `i`, so the
+// brackets are an index and not explicit generic type arguments.
+fn (mut tc TypeChecker) call_callee_indexes_container(callee &flat.Node) bool {
+	if callee.children_count == 0 || callee.value == 'range' {
+		return false
+	}
+	base_id := tc.a.child(callee, 0)
+	base := tc.a.node(base_id)
+	if base.kind == .ident && !tc.ident_resolves_to_value(base.value) {
+		// A bare generic function name such as `apply` in `apply[int](v)`.
+		return false
+	}
+	base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(base_id))
+	return base_type is Array || base_type is ArrayFixed || base_type is Map
+}
+
 // check_call validates check call state for types.
 @[direct_array_access]
 fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
@@ -3444,7 +3461,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		if callee.kind == .call {
 			tc.check_node(callee_id)
 		}
-		if callee.kind == .index && callee.children_count > 1 {
+		if callee.kind == .index && callee.children_count > 1
+			&& !tc.call_callee_indexes_container(callee) {
 			mut has_unbound_generic_type_arg := false
 			for i in 1 .. callee.children_count {
 				type_arg_id := tc.a.child(callee, i)
@@ -4636,6 +4654,20 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 }
 
 fn (mut tc TypeChecker) record_empty_array_generic_call_errors(node flat.Node, info CallInfo) bool {
+	// Most calls cannot produce this diagnostic. Avoid resolving their generic
+	// declarations unless an argument is actually an untyped empty array.
+	mut has_empty_array := false
+	for i in 1 .. node.children_count {
+		arg_id := tc.call_arg_value(tc.a.child(&node, i))
+		arg := tc.a.node(arg_id)
+		if arg.kind == .array_literal && arg.children_count == 0 && arg.typ.len == 0 {
+			has_empty_array = true
+			break
+		}
+	}
+	if !has_empty_array {
+		return false
+	}
 	if tc.call_has_explicit_generic_type_args(node) {
 		return false
 	}
@@ -15822,6 +15854,9 @@ fn generic_variadic_elem_param_text(param_text string) string {
 }
 
 fn (tc &TypeChecker) parse_fn_signature_type(name string, typ string) Type {
+	if context_independent_type_text(typ) {
+		return tc.parse_type(typ)
+	}
 	decl_file := tc.fn_type_files[name] or { return tc.parse_type(typ) }
 	decl_module := tc.fn_type_modules[name] or { tc.file_modules[decl_file] or { tc.cur_module } }
 	mut scoped := tc.fork_type_parse_view(decl_file, decl_module)

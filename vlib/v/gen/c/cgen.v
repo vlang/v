@@ -167,6 +167,7 @@ mut:
 	inside_opt_data                      bool
 	inside_if_option                     bool
 	inside_if_result                     bool
+	discarded_index_error_pos            token.Pos // exact guard lookup whose error cannot be observed
 	inside_match_option                  bool
 	inside_match_result                  bool
 	inside_veb_tmpl                      bool

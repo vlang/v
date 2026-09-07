@@ -4,7 +4,9 @@ import v3.token
 import v3.workers
 
 // NodeId aliases node id values used by flat.
-pub type NodeId = int
+// Node ids index `FlatAst.nodes`, so i32 is ample and keeps `children` (one entry
+// per AST edge) and every node-id side table half the size of a 64-bit `int`.
+pub type NodeId = i32
 
 // TextId is the stable identity of one canonical AST text value.
 pub type TextId = u32
@@ -271,8 +273,12 @@ pub mut:
 	// its top-level index without a full node scan. Stages that renumber
 	// nodes clear the list; consumers fall back to scanning when it is empty
 	// or file_index_incomplete is set (a source file failed to read).
-	file_node_ids         []int
+	file_node_ids         []i32
 	file_index_incomplete bool
+	// has_vsh_source records that at least one parsed source file is a `.vsh`
+	// script. V script mode makes the `os` module global inside such files, and
+	// the checker only pays for that lookup when this flag is set.
+	has_vsh_source bool
 	// source_buffers owns the storage behind zero-copy scanner strings retained
 	// by AST nodes. Keeping the buffers on the AST makes the lifetime boundary
 	// explicit and lets parser workers transfer ownership with their nodes.

@@ -1793,33 +1793,48 @@ fn safe_default_bin_file_name(filename string) string {
 }
 
 struct V3CCompilerFlagOptions {
-	environment_c_flags  []string
-	environment_ld_flags []string
-	target_args          []string
-	link_c_standard      string
-	dependencies         []string
-	warn_args            []string
-	vroot                string
-	target_os            string
-	target_arch          string
-	macos_sdk_root       string
-	pic_flag             string
-	is_prod              bool
-	no_prod_options      bool
-	is_shared            bool
-	parallel_cc          bool
-	large_c_unit         bool
-	limit_inlining       bool
-	explicit_tcc         bool
-	is_c_debug           bool
-	is_o                 bool
-	is_liveshared        bool
+	environment_c_flags []string
+	link_ld_flags       []string
+	target_args         []string
+	link_c_standard     string
+	dependencies        []string
+	warn_args           []string
+	vroot               string
+	target_os           string
+	target_arch         string
+	macos_sdk_root      string
+	pic_flag            string
+	is_prod             bool
+	no_prod_options     bool
+	is_shared           bool
+	parallel_cc         bool
+	large_c_unit        bool
+	limit_inlining      bool
+	explicit_tcc        bool
+	is_c_debug          bool
+	is_o                bool
+	is_liveshared       bool
 }
 
 struct V3CCompilerFlagPlan {
 	before_inputs []string
 	after_inputs  []string
 	tcc_includes  string
+}
+
+const v3_parallel_cc_unit_marker = '/* V3PARALLEL_CC_UNIT */'
+const v3_parallel_cc_max_jobs = 2
+const v3_parallel_cc_units_per_job = 4
+const v3_parallel_cc_monolithic_define = 'v3_parallel_cc_monolithic'
+const v3_parallel_cc_monolithic_exit_code = 125
+const v3_parallel_cc_monolithic_message = 'v3 parallel C source requires monolithic regeneration'
+
+struct V3ParallelCCompileTask {
+	compiler string
+	args     []string
+	dir      string
+mut:
+	result os.Result
 }
 
 fn (plan &V3CCompilerFlagPlan) compiler_args(output string, inputs []string, support_inputs []string) []string {
@@ -1836,6 +1851,351 @@ fn (plan &V3CCompilerFlagPlan) all_flags(support_inputs []string) []string {
 	flags << support_inputs
 	flags << plan.after_inputs
 	return flags
+}
+
+fn run_v3_parallel_c_compile_task(raw_task voidptr) voidptr {
+	mut task := unsafe { &V3ParallelCCompileTask(raw_task) }
+	task.result = cmdexec.run_in(task.compiler, task.args, task.dir)
+	return unsafe { nil }
+}
+
+fn write_v3_parallel_c_source(path string, header_name string, body string, owner bool) ! {
+	mut file := os.create(path)!
+	defer {
+		file.close()
+	}
+	file.writeln('#define V3CACHE_PROGRAM_UNIT 1')!
+	file.writeln('#define V_PARALLEL_CC 1')!
+	file.writeln('#define _VPARALLELCC 1')!
+	if owner {
+		file.writeln('#define V_PARALLEL_CC_OUT_0 1')!
+		file.write_string(body)!
+		return
+	}
+	file.writeln('#include "${header_name}"')!
+	// These program lifecycle functions are emitted in the generated body rather
+	// than its declaration prefix, so later body units need explicit prototypes.
+	file.writeln('void _vinit(void);')!
+	file.writeln('void _vcleanup(void);')!
+	file.write_string(body)!
+}
+
+fn v3_parallel_c_include_dirs(flags []string) []string {
+	mut dirs := []string{}
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i]
+		mut path := ''
+		if flag in ['-I', '-iquote', '-isystem'] && i + 1 < flags.len {
+			path = flags[i + 1]
+			i += 2
+		} else if flag.starts_with('-I') && flag.len > 2 {
+			path = flag[2..]
+			i++
+		} else if flag.starts_with('-iquote') && flag.len > '-iquote'.len {
+			path = flag['-iquote'.len..]
+			i++
+		} else if flag.starts_with('-isystem') && flag.len > '-isystem'.len {
+			path = flag['-isystem'.len..]
+			i++
+		} else {
+			i++
+		}
+		if path.len > 0 {
+			real_path := os.real_path(path)
+			if os.is_dir(real_path) && real_path !in dirs {
+				dirs << real_path
+			}
+		}
+	}
+	return dirs
+}
+
+fn v3_parallel_local_include_path(line string, including_dir string, include_dirs []string) ?string {
+	trimmed := line.trim_space()
+	quoted_prefix := '#include "'
+	angle_prefix := '#include <'
+	quoted := trimmed.starts_with(quoted_prefix)
+	prefix := if quoted { quoted_prefix } else { angle_prefix }
+	if !quoted && !trimmed.starts_with(angle_prefix) {
+		return none
+	}
+	rest := trimmed[prefix.len..]
+	end := rest.index_u8(if quoted { `"` } else { `>` })
+	if end <= 0 {
+		return none
+	}
+	raw_path := rest[..end]
+	if os.is_abs_path(raw_path) {
+		if os.is_file(raw_path) {
+			return os.real_path(raw_path)
+		}
+		return none
+	}
+	mut search_dirs := []string{}
+	if quoted && including_dir.len > 0 {
+		search_dirs << including_dir
+	}
+	search_dirs << include_dirs
+	for dir in search_dirs {
+		path := os.join_path_single(dir, raw_path)
+		if os.is_file(path) {
+			return os.real_path(path)
+		}
+	}
+	return none
+}
+
+fn v3_parallel_expand_local_includes(path string, include_dirs []string, mut active map[string]bool) (string, bool) {
+	real_path := os.real_path(path)
+	if active[real_path] {
+		return '', true
+	}
+	source := os.read_file(real_path) or { return '', false }
+	active[real_path] = true
+	mut expanded := strings.new_builder(source.len)
+	mut complete := true
+	for line in source.split_into_lines() {
+		if include_path := v3_parallel_local_include_path(line, os.dir(real_path), include_dirs) {
+			included, included_complete := v3_parallel_expand_local_includes(include_path, include_dirs, mut active)
+			expanded.writeln(included)
+			complete = complete && included_complete
+		} else {
+			if line.trim_space().starts_with('#include "') {
+				complete = false
+			}
+			expanded.writeln(line)
+		}
+	}
+	active.delete(real_path)
+	return expanded.str(), complete
+}
+
+fn v3_parallel_c_declaration_header(prefix string, include_dirs []string) (string, bool) {
+	mut replacements := map[string]string{}
+	mut in_native_directives := false
+	mut native_directives := strings.new_builder(1024)
+	mut safe := true
+	for line in prefix.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed == '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */' {
+			in_native_directives = true
+			continue
+		}
+		if trimmed == '/* V3CACHE_NATIVE_DIRECTIVES_END */' {
+			in_native_directives = false
+			continue
+		}
+		if !in_native_directives || trimmed in replacements {
+			continue
+		}
+		native_directives.writeln(line)
+		if include_path := v3_parallel_local_include_path(line, '', include_dirs) {
+			mut active := map[string]bool{}
+			expanded, complete := v3_parallel_expand_local_includes(include_path, include_dirs, mut active)
+			variables, variables_complete := modulecache.c_source_static_variable_identifiers(expanded)
+			if !complete || !variables_complete
+				|| modulecache.c_source_replicated_function_has_static_storage(expanded)
+				|| (variables.len > 0
+					&& !expanded.contains('#define V_PARALLEL_CC_STATIC_STORAGE_HANDLED 1')) {
+				safe = false
+			}
+			replacements[trimmed] = modulecache.declaration_header(expanded)
+		} else if trimmed.starts_with('#include "') {
+			// An unresolved quoted include can still be found by the C compiler through
+			// an option that is opaque here. Its file-static state cannot be shared safely.
+			safe = false
+		}
+	}
+	native_source := native_directives.str()
+	variables, variables_complete := modulecache.c_source_static_variable_identifiers(native_source)
+	if !variables_complete
+		|| modulecache.c_source_replicated_function_has_static_storage(native_source)
+		|| variables.keys().any(!it.starts_with('_v3_lit_') && !it.starts_with('_str_')) {
+		safe = false
+	}
+	header := modulecache.declaration_header(prefix)
+	if replacements.len == 0 {
+		return header, safe
+	}
+	mut out := strings.new_builder(header.len)
+	for line in header.split_into_lines() {
+		if declarations := replacements[line.trim_space()] {
+			out.writeln(declarations)
+		} else {
+			out.writeln(line)
+		}
+	}
+	return out.str(), safe
+}
+
+fn merge_v3_parallel_c_units(parts []string, max_units int) []string {
+	if max_units <= 0 || parts.len <= max_units {
+		return parts.clone()
+	}
+	mut remaining_size := 0
+	for part in parts {
+		remaining_size += part.len
+	}
+	mut groups_left := max_units
+	mut target_size := (remaining_size + groups_left - 1) / groups_left
+	mut merged := []string{cap: max_units}
+	mut current := []string{}
+	mut current_size := 0
+	for part_index, part in parts {
+		current << part
+		current_size += part.len
+		remaining_parts := parts.len - part_index - 1
+		if merged.len < max_units - 1
+			&& (current_size >= target_size || remaining_parts == groups_left - 1) {
+			merged << current.join('')
+			remaining_size -= current_size
+			groups_left--
+			target_size = (remaining_size + groups_left - 1) / groups_left
+			current = []string{}
+			current_size = 0
+		}
+	}
+	if current.len > 0 {
+		merged << current.join('')
+	}
+	return merged
+}
+
+fn split_v3_parallel_c_source(source string, max_units int) !(string, []string) {
+	split := modulecache.split_generated_c(source)!
+	body_begin := '/* V3CACHE_BODY_BEGIN */\n'
+	begin := source.index(body_begin) or { return error('missing v3 parallel C body marker') }
+	body_start := begin + body_begin.len
+	body_end := source.index_after('\n/* V3CACHE_BODY_END */', body_start) or {
+		return error('missing v3 parallel C body end marker')
+	}
+	body := source[body_start..body_end]
+	mut units := []string{}
+	mut unit_start := 0
+	mut line_start := 0
+	for line_start < body.len {
+		line_end := body.index_after('\n', line_start) or { body.len }
+		if body[line_start..line_end].trim_space() == v3_parallel_cc_unit_marker {
+			part := body[unit_start..line_start]
+			if part.trim_space().len > 0 {
+				units << part
+			}
+			unit_start = if line_end < body.len { line_end + 1 } else { line_end }
+		}
+		if line_end >= body.len {
+			break
+		}
+		line_start = line_end + 1
+	}
+	last := body[unit_start..]
+	if last.trim_space().len > 0 {
+		units << last
+	}
+	if units.len == 0 {
+		return error('missing v3 parallel C unit markers')
+	}
+	return split.prefix, merge_v3_parallel_c_units(units, max_units)
+}
+
+fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3CCompilerFlagPlan, native_support_inputs []string, cached_objects []string, cached_dev_dylib string, objective_c bool, build_dir string, show_command bool) os.Result {
+	source := os.read_file(source_path) or {
+		return os.Result{
+			exit_code: 1
+			output: 'failed to read generated C source ${source_path}: ${err.msg()}'
+		}
+	}
+	job_count := int_max(1, int_min(v3_parallel_cc_max_jobs, runtime.nr_jobs()))
+	prefix, bodies := split_v3_parallel_c_source(source, job_count * v3_parallel_cc_units_per_job) or {
+		return os.Result{
+			exit_code: 1
+			output: 'failed to split generated C source: ${err.msg()}'
+		}
+	}
+	header_name := 'v3_parallel_cc_${tempname.unique_token()}.h'
+	header_path := os.join_path_single(build_dir, header_name)
+	mut c_flags := c_flag_plan.before_inputs.clone()
+	c_flags << c_flag_plan.after_inputs
+	header, header_is_safe := v3_parallel_c_declaration_header(prefix, v3_parallel_c_include_dirs(c_flags))
+	if !header_is_safe {
+		return os.Result{
+			exit_code: v3_parallel_cc_monolithic_exit_code
+			output: v3_parallel_cc_monolithic_message
+		}
+	}
+	os.write_file(header_path, header) or {
+		return os.Result{
+			exit_code: 1
+			output: 'failed to write parallel C header ${header_path}: ${err.msg()}'
+		}
+	}
+	mut tasks := []&V3ParallelCCompileTask{cap: bodies.len + 1}
+	mut objects := []string{cap: bodies.len + 1}
+	mut compile_flags := c_object_compile_flags(c_flag_plan.before_inputs)
+	compile_flags << c_object_compile_flags(c_flag_plan.after_inputs)
+	for unit_index := 0; unit_index <= bodies.len; unit_index++ {
+		source_name := 'unit_${unit_index}.c'
+		object_name := 'unit_${unit_index}.o'
+		unit_source := if unit_index == 0 { prefix } else { bodies[unit_index - 1] }
+		write_v3_parallel_c_source(os.join_path_single(build_dir, source_name), header_name, unit_source, unit_index == 0) or {
+			return os.Result{
+				exit_code: 1
+				output: 'failed to write parallel C unit ${source_name}: ${err.msg()}'
+			}
+		}
+		mut compile_args := compile_flags.clone()
+		compile_args << ['-x', if objective_c { 'objective-c' } else { 'c' }, '-c', '-o',
+			object_name, source_name]
+		if show_command {
+			println('  > ${cmdexec.display(c_compiler, compile_args)}')
+		}
+		tasks << &V3ParallelCCompileTask{
+			compiler: c_compiler
+			args: compile_args
+			dir: build_dir
+		}
+		objects << object_name
+	}
+	mut work := []workers.Task{cap: tasks.len}
+	for task in tasks {
+		work << workers.Task{
+			run: run_v3_parallel_c_compile_task
+			arg: voidptr(task)
+		}
+	}
+	mut pool := workers.new(job_count)
+	pool.run(work)
+	mut errors := strings.new_builder(1024)
+	mut failed := false
+	for task in tasks {
+		if task.result.exit_code != 0 {
+			failed = true
+			errors.write_string(task.result.output)
+			if task.result.output.len > 0 && !task.result.output.ends_with('\n') {
+				errors.writeln('')
+			}
+		}
+	}
+	if failed {
+		output := errors.str()
+		pool.close()
+		return os.Result{
+			exit_code: 1
+			output: output
+		}
+	}
+	pool.close()
+	mut link_inputs := objects.clone()
+	link_inputs << native_support_inputs
+	link_inputs << cached_objects
+	if cached_dev_dylib.len > 0 {
+		link_inputs << cached_dev_dylib
+	}
+	link_args := c_flag_plan.compiler_args('out', link_inputs, [])
+	if show_command {
+		println('  > ${cmdexec.display(c_compiler, link_args)}')
+	}
+	return cmdexec.run_in(c_compiler, link_args, build_dir)
 }
 
 fn v3_c_source_inputs(source string, objective_c bool) []string {
@@ -1993,7 +2353,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	mut after_inputs := options.dependencies.clone()
 	add_v3_default_linker_flags(mut after_inputs, options.target_os, options.is_o)
 	if !options.is_o {
-		after_inputs << options.environment_ld_flags
+		after_inputs << options.link_ld_flags
 	}
 	return V3CCompilerFlagPlan{
 		before_inputs: before_inputs
@@ -2248,7 +2608,7 @@ fn write_v3_crun_cache_marker(bin_file string, build_identity string) ! {
 	}
 }
 
-fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, user_files []string, user_c_flags []string, is_strict bool, enable_globals bool, direct_vsh string) string {
+fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, user_files []string, user_c_flags []string, link_ld_flags []string, is_strict bool, enable_globals bool, direct_vsh string) string {
 	direct_vsh_path := os.real_path(direct_vsh)
 	mut source_paths := map[string]bool{}
 	for file in user_files {
@@ -2279,6 +2639,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 		is_strict.str(),
 		enable_globals.str(),
 		user_c_flags.join('\x00'),
+		link_ld_flags.join('\x00'),
 		source_signature,
 		prefs.vhash,
 		prefs.vcurrent_hash,
@@ -2330,7 +2691,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|test] <file.v|directory> [options]\n' + '  -o <output>                 output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>     target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict  C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|test] <file.v|directory> [options]\n' + '  -o <output>                 output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>     target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict  C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -d <name>                    compile-time define'
 }
 
 fn shared_library_postfix(target_os string) string {
@@ -7295,7 +7656,8 @@ fn v3_driver_option_requires_value(option string) bool {
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
-	return v3_driver_option_requires_value(option) || option in ['-cflags', '-dump-c-flags']
+	return v3_driver_option_requires_value(option) || option in ['-cflags', '-ldflags',
+		'-dump-c-flags']
 }
 
 fn apply_v3_diagnostic_color_option(option string) {
@@ -7377,7 +7739,7 @@ $if !skip_fastc ? {
 		return os.join_path_single(canonical_parent, os.file_name(absolute_path))
 	}
 
-	fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, environment_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool, cache_enabled bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
+	fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, link_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool, cache_enabled bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
 		bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 		cc_sw := time.new_stopwatch()
 		tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
@@ -7481,7 +7843,7 @@ $if !skip_fastc ? {
 		if atomic_arg.len > 0 {
 			final_args << atomic_arg
 		}
-		final_args << environment_ld_flags
+		final_args << link_ld_flags
 		generation_link_cache_key := fastc.fastc_generation_link_cache_key(tcc_path, compile_args, final_args, pieces, units, jobs, cache_enabled)
 		if fastc.fastc_restore_link_cache(generation_link_cache_key, staged_binary) {
 			if bench_phases {
@@ -7755,6 +8117,7 @@ pub fn run(args []string) {
 	mut user_defines := []string{}
 	mut compile_values := map[string]string{}
 	mut user_c_flags := []string{}
+	mut user_ld_flags := []string{}
 	mut should_run := false
 	mut is_direct_vsh := false
 	mut is_test_command := false
@@ -7798,8 +8161,8 @@ pub fn run(args []string) {
 			eprintln('option `${args[i]}` requires a value')
 			exit(1)
 		}
-		if args[i] == '-cflags' && i + 1 >= args.len {
-			eprintln('option `-cflags` requires a value')
+		if args[i] in ['-cflags', '-ldflags'] && i + 1 >= args.len {
+			eprintln('option `${args[i]}` requires a value')
 			exit(1)
 		}
 		if args[i] == 'run' && input_file.len == 0 && !should_run {
@@ -8001,6 +8364,15 @@ pub fn run(args []string) {
 			}
 			user_c_flags << parsed_c_flags
 			i += 2
+		} else if args[i] == '-ldflags' && i + 1 < args.len {
+			// Linker-only options; unlike `-cflags` they are never passed to the
+			// per-object C compilations, only appended to the final link command.
+			parsed_ld_flags := cmdexec.split_args(args[i + 1]) or {
+				eprintln('invalid `-ldflags` value: ${err.msg()}')
+				exit(1)
+			}
+			user_ld_flags << parsed_ld_flags
+			i += 2
 		} else if args[i] in ['-g', '-cg', '-cdebug'] {
 			is_debug = true
 			if args[i] in ['-cg', '-cdebug'] {
@@ -8182,6 +8554,10 @@ pub fn run(args []string) {
 		// `-no-bounds-checking`, matching the established parser contract.
 		user_defines = user_defines.filter(it.all_before('=').trim_space() != 'no_bounds_checking')
 	}
+	// `-ldflags` comes after the ambient `LDFLAGS`, so an explicitly passed option
+	// wins, exactly like V1 orders `env_ldflags` before the `-ldflags` value.
+	mut link_ld_flags := environment_ld_flags.clone()
+	link_ld_flags << user_ld_flags
 	if is_prof && backend !in ['c', 'fastc'] {
 		eprintln('option `-profile` is only supported by the C backend')
 		exit(1)
@@ -8657,6 +9033,7 @@ pub fn run(args []string) {
 			eprintln('fastc support is not compiled into this v3 executable')
 			exit(1)
 		} $else {
+			fastc_bench := os.getenv('FASTC_BENCH') != ''
 
 			// FastC is a standalone parser that emits C while consuming scanner tokens.
 			// Never let an unsupported FastC input continue into the AST frontend below.
@@ -8754,7 +9131,8 @@ pub fn run(args []string) {
 			mut prestarted_fastc_units := fastc.FastcPrestartedCUnits{}
 			mut prestart_workers := []thread fastc.FastcPrestartedCUnits{}
 			$if macos {
-				if !c_only && prefs.building_v && !fastc_cross_target && (is_debug || no_cache) {
+				if !c_only && prefs.building_v && !fastc_cross_target
+					&& (is_debug || no_cache || fastc_bench) {
 					tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 					tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
 					prestart_jobs := fastc.fastc_tcc_job_count(prefs)
@@ -8833,7 +9211,7 @@ pub fn run(args []string) {
 			} else {
 				''
 			}
-			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, environment_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads, prefs.building_v && !is_debug && !no_cache, mut prestarted_fastc_units)
+			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads, prefs.building_v && !is_debug && !no_cache && !fastc_bench, mut prestarted_fastc_units)
 			if (!silent || show_cc) && fastc_result.command.len > 0 {
 				if c_to_stdout {
 					eprintln('  > ${fastc_result.command}')
@@ -8863,6 +9241,12 @@ pub fn run(args []string) {
 					eprintln(fastc_result.output.trim_space())
 				}
 				exit(1)
+			}
+			if fastc_bench {
+				total_us := driver_sw.elapsed().microseconds()
+				total_lines := source_file_line_count(fastc_generation.source_paths, map[int]&v3token.File{})
+				mloc_per_s := f64(total_lines) / f64(total_us)
+				eprintln('fastc-bench-total: files=${fastc_generation.source_paths.len} lines=${total_lines} total=${f64(total_us) / 1000.0:.2f}ms throughput=${mloc_per_s:.3f} MLOC/s (includes TinyCC)')
 			}
 			b.step('tcc')
 			b.metric('generated C size', fastc_source_size, 'bytes')
@@ -8905,12 +9289,15 @@ pub fn run(args []string) {
 	minimal_literal_output := !is_prof
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	host_target := pref.host_target()
+	mut use_parallel_c_compilation := parallel_cc && backend == 'c' && !c_only && !explicit_tcc
+		&& !is_o && target.os != 'windows' && coverage_dir.len == 0 && profile_file.len == 0
+		&& v3_parallel_cc_monolithic_define !in user_defines
 	// `-keepc` and explicit `-b c` promise a complete generated C translation unit.
 	// The module cache splits imported implementations into separate objects, so its main source
 	// alone cannot reproduce the build. Literal output uses a deliberately reduced
 	// builtin source set, which likewise must remain a monolithic translation unit.
 	cache_candidate_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused
-		&& !no_builtin
+		&& !no_builtin && !parallel_cc
 		&& !keep_c && !backend_explicit && !c_compiler_explicit && !minimal_literal_output
 		&& c_compiler == 'cc' && target.os == host_target.os && target.arch == host_target.arch
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
@@ -9109,6 +9496,14 @@ pub fn run(args []string) {
 		exit(1)
 	}
 	test_files := test_input_files(user_files, backend, prefs.target)
+	// A test binary keeps the harness counters (`__v3_test_failures` and the
+	// setjmp buffer that `assert` longjmps out of) as `static` definitions inside
+	// the program body, so they live in whichever split unit the body lands in
+	// and a unit that only references them does not compile. Test builds stay in
+	// one translation unit.
+	if test_files.len > 0 {
+		use_parallel_c_compilation = false
+	}
 
 	if !no_builtin {
 		seed_implicit_imports(mut a, minimal_literal_output)
@@ -9258,11 +9653,11 @@ pub fn run(args []string) {
 	])
 	b.metric_items('parsed .vh files', p.parsed_v_header_files, 'files', '.vh files', p.parsed_v_header_file_paths)
 	if !silent {
-		println('    ${'parsed .vh lines':-28s} ${source_file_line_count(p.parsed_v_header_file_paths)} lines')
+		println('    ${'parsed .vh lines':-28s} ${source_file_line_count(p.parsed_v_header_file_paths, a.source_files)} lines')
 	}
 	b.metric_items('parsed .v files', p.parsed_v_files, 'files', '.v files', p.parsed_v_file_paths)
 	if !silent {
-		println('    ${'parsed .v lines':-28s} ${source_file_line_count(p.parsed_v_file_paths)} lines')
+		println('    ${'parsed .v lines':-28s} ${source_file_line_count(p.parsed_v_file_paths, a.source_files)} lines')
 	}
 	b.metric('AST nodes after parse', a.nodes.len, 'nodes')
 	b.metric('AST children after parse', a.children.len, 'edges')
@@ -9278,7 +9673,7 @@ pub fn run(args []string) {
 			mut crun_c_flags := user_c_flags.clone()
 			crun_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 			_ = prepare_v3_cache_external_inputs_scoped(mut cache_state, a, prefs, user_files, crun_c_flags, scope_prealloc_stages)
-			crun_build_identity = v3_crun_build_identity(&cache_state, prefs, user_files, crun_c_flags, is_strict, enable_globals_compat, input_file)
+			crun_build_identity = v3_crun_build_identity(&cache_state, prefs, user_files, crun_c_flags, link_ld_flags, is_strict, enable_globals_compat, input_file)
 			if crun_build_identity.len > 0 {
 				os.setenv(v3_crun_build_identity_env, crun_build_identity, true)
 			}
@@ -10699,7 +11094,9 @@ pub fn run(args []string) {
 			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
 			g.set_track_heap('track_heap' in prefs.user_defines)
-			g.set_cache_split(cache_state.manager.enabled)
+			g.set_cache_split(cache_state.manager.enabled || use_parallel_c_compilation)
+			g.set_cache_stable_symbols(cache_state.manager.enabled)
+			g.set_parallel_cc(use_parallel_c_compilation)
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(user_files)
@@ -10753,7 +11150,9 @@ pub fn run(args []string) {
 			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
 			g.set_track_heap('track_heap' in prefs.user_defines)
-			g.set_cache_split(cache_state.manager.enabled)
+			g.set_cache_split(cache_state.manager.enabled || use_parallel_c_compilation)
+			g.set_cache_stable_symbols(cache_state.manager.enabled)
+			g.set_parallel_cc(use_parallel_c_compilation)
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(user_files)
@@ -10870,7 +11269,7 @@ pub fn run(args []string) {
 		}
 		c_flag_plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
 			environment_c_flags: environment_c_flags
-			environment_ld_flags: environment_ld_flags
+			link_ld_flags: link_ld_flags
 			target_args: target_args
 			link_c_standard: link_c_standard
 			dependencies: resolved_c_flags
@@ -11306,11 +11705,6 @@ pub fn run(args []string) {
 				exit(1)
 			}
 		}
-		if parallel_cc && v3_parallel_cc_active_sources_include_external_definition(a, user_files) {
-			eprintln('failed to link after parallel C compilation')
-			cleanup_c_build_dir(cc_dir)
-			exit(1)
-		}
 		// Compile inside a per-output build dir, using constant relative source/output basenames,
 		// then move the result to bin_file. On macOS arm64 tcc bakes the -o basename into the
 		// ad-hoc code-signature identifier and the input .c path into the symbol table, so building
@@ -11353,6 +11747,11 @@ pub fn run(args []string) {
 			tcc_args << cached_dev_dylib
 			tcc_args << tcc_dynamic_link_flags(resolved_c_flags)
 			add_v3_default_linker_flags(mut tcc_args, prefs.normalized_target_os(), is_o)
+			if !is_o {
+				// Added before the cache key is derived from `tcc_args`, so a cached
+				// executable is never reused across a change of the link flags.
+				tcc_args << link_ld_flags
+			}
 			program_source_identity := '${prefix_source_identity}\n${modulecache.file_signature(tcc_main_file)}\n${if cached_program_body_source.len > 0 {
 				modulecache.file_signature(cached_program_body_source)
 			} else {
@@ -11439,7 +11838,7 @@ pub fn run(args []string) {
 			tcc_args << resolved_c_flags
 			add_v3_default_linker_flags(mut tcc_args, prefs.normalized_target_os(), is_o)
 			if !is_o {
-				tcc_args << environment_ld_flags
+				tcc_args << link_ld_flags
 			}
 			if !silent || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}')
@@ -11476,11 +11875,31 @@ pub fn run(args []string) {
 			if cached_dev_dylib.len > 0 {
 				compiler_inputs << cached_dev_dylib
 			}
-			cc_args := c_flag_plan.compiler_args('out', compiler_inputs, [])
-			if !silent || show_cc {
-				println('  > ${cmdexec.display(c_compiler, cc_args)}')
+			if use_parallel_c_compilation && cached_program_main_object.len == 0
+				&& fallback_source == 'src.c' {
+				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, !silent || show_cc)
+			} else {
+				cc_args := c_flag_plan.compiler_args('out', compiler_inputs, [])
+				if !silent || show_cc {
+					println('  > ${cmdexec.display(c_compiler, cc_args)}')
+				}
+				result = cmdexec.run_in(c_compiler, cc_args, cc_dir)
 			}
-			result = cmdexec.run_in(c_compiler, cc_args, cc_dir)
+			if result.exit_code == v3_parallel_cc_monolithic_exit_code
+				&& result.output == v3_parallel_cc_monolithic_message {
+				cleanup_c_build_dir(cc_dir)
+				mut regeneration_args := ['-d', v3_parallel_cc_monolithic_define]
+				for arg in args {
+					if arg !in [macos_v3_compat_c99_flag, macos_v3_internal_quiet_flag] {
+						regeneration_args << arg
+					}
+				}
+				os.execvp(os.executable(), regeneration_args) or {
+					eprintln('failed to restart monolithic C compilation: ${err.msg()}')
+					exit(1)
+				}
+				return
+			}
 			show_v3_c_compiler_output(show_c_output, c_compiler, result)
 			if result.exit_code != 0 {
 				if retry_compilation && v3_is_tcc_compilation_failure(c_compiler, result.output) {
@@ -11691,47 +12110,6 @@ fn v3_is_tcc_compilation_failure(c_compiler string, output string) bool {
 	for line in output.split_into_lines() {
 		if line.trim_space().to_lower().starts_with('tcc:') {
 			return true
-		}
-	}
-	return false
-}
-
-fn v3_parallel_cc_active_sources_include_external_definition(a &flat.FlatAst, source_files []string) bool {
-	mut selected_files := map[string]bool{}
-	for file in source_files {
-		selected_files[os.real_path(file)] = true
-	}
-	mut current_file := ''
-	mut selected := false
-	// Checker/transform pruning replaces directives from inactive `$if` branches with empty
-	// nodes, so this stream matches the target selected for generated C.
-	for node in a.nodes {
-		if node.kind == .file {
-			current_file = node.value
-			selected = os.real_path(current_file) in selected_files
-			continue
-		}
-		if !selected || node.kind != .directive || node.value != 'include' {
-			continue
-		}
-		raw_target, _ := checker_fixture_include_target_message(node.typ)
-		if !raw_target.starts_with('"') {
-			continue
-		}
-		rest := raw_target[1..]
-		end := rest.index('"') or { continue }
-		header_path := rest[..end].replace('@DIR', os.dir(current_file))
-		header := os.read_file(header_path) or { continue }
-		for header_line in header.split_into_lines() {
-			declaration := header_line.trim_space()
-			if declaration.len == 0 || declaration.starts_with('#')
-				|| declaration.starts_with('static ') || declaration.starts_with('inline ')
-				|| declaration.starts_with('typedef ') {
-				continue
-			}
-			if declaration.contains('(') && declaration.contains(')') && declaration.contains('{') {
-				return true
-			}
 		}
 	}
 	return false
@@ -13527,7 +13905,20 @@ fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) 
 
 fn same_dir_module_source_files(test_file string, module_name string, prefs &pref.Preferences) []string {
 	dir := os.dir(test_file)
-	all_files := pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target)
+	mut all_files := pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target)
+	// A `subdirs` manifest makes several directories one source module. When a
+	// test file sits beside a source in one of those virtual directories, include
+	// the complete module instead of only its physical-directory siblings.
+	vmod_root := nearest_vmod_root_for_file(test_file)
+	if vmod_root.len > 0 {
+		virtual_module_files := v3_directory_user_files(vmod_root, prefs, false, false) or {
+			[]string{}
+		}
+		real_dir := os.real_path(dir)
+		if virtual_module_files.any(os.real_path(os.dir(it)) == real_dir) {
+			all_files = virtual_module_files.clone()
+		}
+	}
 	mut files := []string{}
 	mut imported_modules := map[string]bool{}
 	if module_name.len > 0 {
@@ -15223,16 +15614,16 @@ fn synthetic_index_shift(insertions []SyntheticInsertion, idx int) int {
 // care about (.file markers/trailers, module_decl, import_decl) for every file
 // pair at or past region_start, in ascending node order. Falls back to the
 // full id range when the parser file index is unusable.
-fn collect_import_scan_ids(a &flat.FlatAst, region_start int, pair_cursor int) ([]int, int) {
+fn collect_import_scan_ids(a &flat.FlatAst, region_start int, pair_cursor int) ([]i32, int) {
 	if !file_index_usable_for_imports(a) {
-		mut all := []int{cap: a.nodes.len - region_start}
+		mut all := []i32{cap: a.nodes.len - region_start}
 		for i in region_start .. a.nodes.len {
 			all << i
 		}
 		return all, pair_cursor
 	}
 	mut cursor := pair_cursor
-	mut ids := []int{cap: 4096}
+	mut ids := []i32{cap: 4096}
 	mut last_trailing := region_start - 1
 	for cursor + 1 < a.file_node_ids.len {
 		marker := a.file_node_ids[cursor]
@@ -15268,7 +15659,7 @@ fn collect_import_scan_ids(a &flat.FlatAst, region_start int, pair_cursor int) (
 	return ids, cursor
 }
 
-fn collect_import_scan_children(a &flat.FlatAst, node &flat.Node, mut ids []int) {
+fn collect_import_scan_children(a &flat.FlatAst, node &flat.Node, mut ids []i32) {
 	for ci in 0 .. node.children_count {
 		id := int(a.child(node, ci))
 		if id < 0 || id >= a.nodes.len {
@@ -15790,7 +16181,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		scan_ids, next_pair_cursor := collect_import_scan_ids(a, node_idx, pair_cursor)
 		pair_cursor = next_pair_cursor
 		if os.getenv('V3_VERIFY_IMPORT_IDX') != '' {
-			mut full := []int{}
+			mut full := []i32{}
 			for i in node_idx .. a.nodes.len {
 				if a.nodes[i].kind in [.file, .module_decl, .import_decl] {
 					full << i
@@ -16373,9 +16764,30 @@ fn canonical_node_texts(mut a flat.FlatAst, node flat.Node) flat.Node {
 	return canonical
 }
 
-fn source_file_line_count(paths []string) int {
+fn source_file_line_count(paths []string, files map[int]&v3token.File) int {
+	if paths.len == 0 {
+		return 0
+	}
+	// The parser already indexed these exact source buffers. Reuse its line
+	// tables instead of reading every source file again for the stage report.
+	mut counts := map[string]int{}
+	for _, file in files {
+		if !file.has_source_sha256() {
+			continue
+		}
+		count := file.line_count()
+		counts[file.name] = if count > 0 && file.line_start(count) == file.size {
+			count - 1
+		} else {
+			count
+		}
+	}
 	mut lines := 0
 	for path in paths {
+		if count := counts[path] {
+			lines += count
+			continue
+		}
 		source := os.read_file(path) or { continue }
 		if source.len == 0 {
 			continue

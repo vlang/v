@@ -15,9 +15,9 @@ import v3.workers
 
 const min_parallel_transform_items = 256
 const max_parallel_transform_jobs = 7
-// Disposable self-host scratch permits more growable workers within the same
-// memory ceiling. Ordinary generic builds keep the smaller clone limit.
-const max_selfhost_transform_jobs = 18
+// Every self-host helper owns a full base-AST clone. Seven lanes keep the
+// production compiler build below 4 GB while retaining useful parallelism.
+const max_selfhost_transform_jobs = 7
 // Every growable lane clones the base AST, so the lane count is also a memory
 // decision. Bound the combined clone size instead of trusting the lane cap
 // alone: a bigger program on the same machine then keeps its memory ceiling.
@@ -33,6 +33,7 @@ const shared_expansion_pool_divisor = 2
 const max_parallel_monomorph_jobs = 18
 // Recycle scratch arenas throughout large self-hosting transforms.
 const scoped_transform_batches = 8
+const scoped_selfhost_transform_batches = 4
 const scoped_transform_max_batch_items = 2048
 const scoped_monomorph_batch_specs = 512
 const scoped_monomorph_node_threshold = 1_000_000
@@ -113,6 +114,12 @@ $if !windows {
 		a := unsafe { &RegionAbsorbArgs(arg) }
 		mut w := unsafe { &Transformer(a.worker) }
 		w.absorb_region_into(a.node_start, a.node_end, a.child_start, a.child_end, a.node_shift, a.child_shift, a.dst_nodes, a.dst_children)
+		return unsafe { nil }
+	}
+
+	fn transform_clone_storage_free_thread(arg voidptr) voidptr {
+		storage := unsafe { &TransformCloneStorage(arg) }
+		release_transform_clone_storage(storage)
 		return unsafe { nil }
 	}
 
@@ -232,7 +239,8 @@ $if !windows {
 		mut w := unsafe { &Transformer(a.worker) }
 		items := unsafe { &[]FnWorkItem(a.items_ptr) }
 		if w.scope_parallel_workers && w.retain_worker_results {
-			w.transform_scoped_helper_batches(*items, 1)
+			batches := if w.building_v { scoped_selfhost_transform_batches } else { 1 }
+			w.transform_scoped_helper_batches(*items, batches)
 		} else {
 			w.transform_pure_items_serial(*items)
 		}
@@ -1312,7 +1320,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 				t.a.nodes.flags.set(.nofree)
 			}
 			t.a.nodes = nodes
-			t.a.file_node_ids = []int{}
+			t.a.file_node_ids = []i32{}
 		}
 		if !merge_in_place && t.a.children.data == original_children_data {
 			children := clone_monomorph_child_region(t.a.children, base_children, base_children, merged_children_cap)
@@ -1659,7 +1667,7 @@ fn (mut t Transformer) detach_monomorph_worker_region(base_nodes int, base_child
 		t.a.children.flags.set(.nofree)
 	}
 	t.a.nodes = nodes
-	t.a.file_node_ids = []int{}
+	t.a.file_node_ids = []i32{}
 	t.a.children = children
 }
 
@@ -1898,7 +1906,7 @@ fn (mut t Transformer) promote_scoped_ast_storage(scope voidptr) {
 		mut nodes := []flat.Node{cap: t.a.nodes.len + t.a.nodes.len / 4 + 1024}
 		nodes << t.a.nodes
 		t.a.nodes = nodes
-		t.a.file_node_ids = []int{}
+		t.a.file_node_ids = []i32{}
 	}
 	if owns_children {
 		mut children := []flat.NodeId{cap: t.a.children.len + t.a.children.len / 4 + 1024}
@@ -2260,15 +2268,15 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		t.tc.freeze_type_cache_for_forks()
 		// Every clone is ready before dispatch. Equal loads avoid the old spawn
 		// chain's startup bias leaving early workers with much more body work.
-		mut chunks := split_work_items(items, n_jobs)
+		mut chunks := if t.building_v && t.scope_parallel_workers {
+			split_work_items_by_source(items, n_jobs)
+		} else {
+			split_work_items(items, n_jobs)
+		}
 		chunk_count := chunks.len
 
-		// chunk[0] is transformed by the master on this thread, directly against the
-		// master AST — no clone. Only chunks[1..] get helper threads, each with a
-		// private AST clone + forked TypeChecker. This removes one full base-AST clone
-		// from the peak (each clone is ~one nodes-array; under -gc none they are never
-		// freed, so they also inflate the later cgen peak) and keeps the master thread,
-		// which would otherwise block in join, doing useful work.
+		// The caller transforms chunk[0] directly in the master AST. Helpers own
+		// private base containers, released after their results have been merged.
 		thread_count := chunk_count - 1
 		mut transform_workers := []voidptr{cap: thread_count}
 		mut args := []TransformChunkArgs{cap: chunk_count}
@@ -2277,9 +2285,22 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 			items_ptr: unsafe { voidptr(&chunks[0]) }
 		}
 		mut worker_asts := []&flat.FlatAst{cap: thread_count}
+		mut clone_storage := []TransformCloneStorage{cap: thread_count}
 		mut copies := []TransformByteCopy{cap: thread_count * 2}
 		for _ in 0 .. thread_count {
+			if t.scope_parallel_workers && t.building_v {
+				if wast, storage := t.snapshot_ast_base(base_nodes, base_children) {
+					worker_asts << wast
+					clone_storage << storage
+					continue
+				}
+			}
+			// Base containers are temporary. Worker payloads are allocated and
+			// promoted outside this arena and survive after merge releases it.
+			clone_scope := transform_worker_scope_begin(t.scope_parallel_workers)
 			wast := t.allocate_ast_base_clone(base_nodes, base_children)
+			transform_worker_scope_leave(clone_scope)
+			clone_storage << TransformCloneStorage{ scope: clone_scope }
 			worker_asts << wast
 			copies << TransformByteCopy{
 				dst: wast.nodes.data
@@ -2344,6 +2365,17 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 			// populated this range. Publish only the relocated worker annotations.
 			t.merge_worker(ww, chunks[ci + 1], base_nodes, base_children, false)
 		}
+		mut free_tasks := []workers.Task{cap: clone_storage.len}
+		for ci, storage in clone_storage {
+			if storage.scope != unsafe { nil } || storage.nodes.bytes > 0 {
+				free_tasks << workers.Task{
+					run: transform_clone_storage_free_thread
+					arg: unsafe { voidptr(&clone_storage[ci]) }
+					force_sync: ci == 0
+				}
+			}
+		}
+		t.a.worker_pool.run(free_tasks)
 		t.merge_regions_absorbed = false
 		t.merge_regions_relocated = false
 		t.tc.unfreeze_type_cache_after_forks()
@@ -2354,6 +2386,7 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 fn (mut t Transformer) mark_parallel_worker_maps_shared() {
 	t.signature_maps_shared = true
 	t.struct_maps_shared = true
+	t.call_param_types_decl_shared = true
 	if !isnil(t.tc) {
 		mut master_tc := unsafe { &types.TypeChecker(voidptr(t.tc)) }
 		master_tc.transform_signature_maps_shared = true
@@ -2850,7 +2883,18 @@ fn transform_job_count(n_runtime_jobs int, n_items int, scoped_selfhost bool) in
 	}
 	mut n := n_runtime_jobs
 	limit := if scoped_selfhost {
-		max_selfhost_transform_jobs
+		if ast_snapshots_supported() {
+			// A copy-on-write lane shares the base AST's pages until it rewrites
+			// them, so it costs the pages it touches rather than a whole clone and
+			// the count can follow the core count. Going from 7 lanes to one per
+			// core took the transform phase of the self-host from 235 ms to 148 ms
+			// for 23 MiB of extra peak RSS. clamp_transform_jobs_to_clone_budget
+			// still bounds it by the size of the base AST, which also covers a
+			// snapshot that fails at runtime and falls back to a real copy.
+			n_runtime_jobs
+		} else {
+			max_selfhost_transform_jobs
+		}
 	} else {
 		max_parallel_transform_jobs
 	}
@@ -2913,6 +2957,7 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 			_ = index_thread.wait()
 			t.call_param_types_decl_cache = param_w.call_param_types_decl_cache.move()
 			t.call_param_types_decl_misses = param_w.call_param_types_decl_misses.move()
+			t.call_param_types_decl_shared = true
 			t.call_param_types_decl_index = param_w.call_param_types_decl_index.move()
 			t.call_param_types_index_ready = param_w.call_param_types_index_ready
 			t.call_param_types_prepared = param_w.call_param_types_prepared

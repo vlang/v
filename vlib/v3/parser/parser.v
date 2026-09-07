@@ -288,6 +288,12 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.comptime_value_undos.clear()
 	p.comptime_value_scopes.clear()
 	p.imported_module_names.clear()
+	if !p.prefs.is_fmt && path.ends_with('.vsh') {
+		// V script mode: `os` is in scope from the first statement on, so the alias
+		// has to be known before the body is parsed, not only once the synthetic
+		// `import os` node below is appended.
+		p.imported_module_names['os'] = true
+	}
 	p.local_binding_counts.clear()
 	p.local_binding_undos.clear()
 	p.local_binding_scopes.clear()
@@ -377,6 +383,12 @@ pub fn (mut p Parser) parse_into(path string) {
 			ids << id
 		}
 	}
+	if !p.prefs.is_fmt && path.ends_with('.vsh') {
+		p.a.has_vsh_source = true
+		if implicit_os_id := p.vsh_implicit_os_import(ids) {
+			ids << implicit_os_id
+		}
+	}
 	start := p.add_children(ids)
 	trailing_id := p.add_node(flat.Node{
 		kind: .file
@@ -392,6 +404,24 @@ pub fn (mut p Parser) parse_into(path string) {
 		p.collect_formatter_comments(file, stable_src)
 	}
 	p.collect_scanner_diagnostics()
+}
+
+// vsh_implicit_os_import gives a `.vsh` script the implicit `import os` of V's
+// script mode. It is only added when the script does not already import `os`
+// itself, so that an explicit import keeps its own alias and selected symbols.
+fn (mut p Parser) vsh_implicit_os_import(ids []flat.NodeId) ?flat.NodeId {
+	for id in ids {
+		node := p.a.nodes[int(id)]
+		if node.kind == .import_decl && node.value == 'os' {
+			return none
+		}
+	}
+	return p.add_node(flat.Node{
+		kind: .import_decl
+		value: 'os'
+		typ: 'os'
+		pos: token.new_span(p.cur_file_id, 0, 0)
+	})
 }
 
 fn (mut p Parser) collect_formatter_comments(file &token.File, source string) {

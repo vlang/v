@@ -860,7 +860,7 @@ pub mut:
 	ct_update_indexed             bool
 	insert_include_dirs_by_file   map[string][]string
 	has_spawn_expr                int = -1
-	inactive_top_level_node_ids   []int
+	inactive_top_level_node_ids   []i32
 	selected_file_called_fns      map[string]bool
 	// Names newly inserted into selected_file_called_fns and not yet chased by
 	// the transitive closure in collect_selected_file_called_fns_transitively.
@@ -878,13 +878,13 @@ pub mut:
 	// `collect`; no later phase of the check step appends declarations. Phases
 	// after the check (transform) may grow the AST: top_level_idx_nodes_len
 	// records the node count the index covers.
-	top_level_idx           []int
+	top_level_idx           []i32
 	top_level_idx_nodes_len int
 	// Anonymous and function-local struct declarations are synthesized below
 	// the file's top-level declaration tree. The direct-parent pass records their
 	// sorted node ids so collect_top_level_idx_fast can merge them without
 	// rescanning every gap between parser-recorded declarations.
-	synthetic_top_level_type_ids  []int
+	synthetic_top_level_type_ids  []i32
 	expected_expr_id              int = -1
 	expected_expr_type            Type = Type(void_)
 	cur_fn_ret_type               Type = Type(void_)
@@ -944,14 +944,14 @@ mut:
 	direct_parent_ids           []flat.NodeId
 	rewritten_parent_ids        []flat.NodeId
 	value_used_nodes            []bool
-	fn_check_costs              []int
+	fn_check_costs              []i32
 	direct_parent_index_trusted bool
 	has_goto_nodes              bool
 	// Immutable declaration indexes shared by checker workers.
 	declaration_attributes       map[int][]string
 	type_declaration_ids         map[string][]int
 	strings_builder_bindings     map[string]bool
-	strings_builder_candidates   []int
+	strings_builder_candidates   []i32
 	static_associated_fn_keys    map[string]bool
 	declaration_param_mutability map[string][]bool
 	strict_map_index_files       map[string]bool
@@ -1152,9 +1152,9 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 // a fresh map, while a synchronous subview may keep recording in its owning
 // checker's private map. Keeping this constructor explicit prevents a
 // newly-added mutable field from being silently shared by parallel workers.
-fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by_fn map[int][]SymbolId) TypeChecker {
+fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by_fn map[int][]SymbolId) &TypeChecker {
 	fs := new_scope(tc.file_scope)
-	return TypeChecker{
+	return &TypeChecker{
 		a: ast
 		compiler_vroot: tc.compiler_vroot
 		raw_type_equality: tc.raw_type_equality
@@ -1221,6 +1221,8 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		interface_fields: tc.interface_fields
 		interface_embeds: tc.interface_embeds
 		interface_abstract_methods: tc.interface_abstract_methods
+		interface_impl_name_snapshots: tc.interface_impl_name_snapshots
+		interface_impl_candidates_at_snapshot: tc.interface_impl_candidates_at_snapshot
 		interface_impl_candidates_at_index: tc.interface_impl_candidates_at_index
 		interface_method_names_index: tc.interface_method_names_index
 		interface_abstract_index: tc.interface_abstract_index
@@ -1355,13 +1357,13 @@ pub fn (tc &TypeChecker) fork_for_parallel_codegen() &TypeChecker {
 		// Never share the memo across threads; each fork owns a private one.
 		forked.qualify_name_cache = &QualifyNameCache{}
 	}
-	return &forked
+	return forked
 }
 
 // fork_type_parse_view creates a lookup-only view in an explicit source
 // context. It shares the compilation's immutable indexes, interner, and
 // synchronous memoization cache, but none of the caller's function state.
-fn (tc &TypeChecker) fork_type_parse_view(file string, module_name string) TypeChecker {
+fn (tc &TypeChecker) fork_type_parse_view(file string, module_name string) &TypeChecker {
 	mut view := tc.fork_program_view(tc.a, map[int][]SymbolId{})
 	view.cur_file = file
 	view.cur_module = module_name
@@ -1377,7 +1379,7 @@ fn (tc &TypeChecker) fork_type_parse_view(file string, module_name string) TypeC
 // a synchronous expression-type query while owning every mutable map it may
 // consult. This avoids inheriting unrelated checker state through a whole
 // struct copy.
-fn (tc &TypeChecker) fork_smartcast_query_view() TypeChecker {
+fn (tc &TypeChecker) fork_smartcast_query_view() &TypeChecker {
 	// This query is synchronous, so any dependency it discovers remains owned
 	// by the current master/worker checker rather than crossing worker threads.
 	mut view := tc.fork_program_view(tc.a, tc.direct_dependencies_by_fn)
@@ -1455,7 +1457,7 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 		ierror_compat_entries: map[string]int{}
 		source_error_embed_entries: map[string]int{}
 	}
-	return &forked
+	return forked
 }
 
 // ensure_private_transform_signatures detaches the signature tables before a
@@ -1702,16 +1704,17 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.direct_parent_ids = []flat.NodeId{len: a.nodes.len, init: flat.empty_node}
 	tc.rewritten_parent_ids = []flat.NodeId{}
 	tc.value_used_nodes = []bool{len: a.nodes.len}
-	tc.fn_check_costs = if tc.building_v_fast { []int{len: a.nodes.len} } else { []int{} }
+	tc.fn_check_costs = if tc.building_v_fast { []i32{len: a.nodes.len} } else { []i32{} }
 	tc.declaration_attributes = map[int][]string{}
 	tc.insert_include_dirs_by_file = map[string][]string{}
 	tc.translated_files = map[string]bool{}
 	tc.has_globals_files = map[string]bool{}
-	tc.strings_builder_candidates = []int{cap: 1024}
-	tc.synthetic_top_level_type_ids = []int{cap: 2048}
+	tc.strings_builder_candidates = []i32{cap: 1024}
+	tc.synthetic_top_level_type_ids = []i32{cap: 2048}
 	tc.has_goto_nodes = false
 }
 
+@[direct_array_access]
 fn (mut tc TypeChecker) fill_direct_parent_edges(a &flat.FlatAst) {
 	mut fn_cost := 0
 	for parent_idx, node in a.nodes {
@@ -1996,7 +1999,7 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 			ancestor = next
 		}
 	}
-	tc.strings_builder_candidates = []int{}
+	tc.strings_builder_candidates = []i32{}
 }
 
 // has_fn_decl_short_name reports whether collection indexed a function
@@ -2866,7 +2869,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	// whole compile.
 	tc.declared_type_scope_keys = map[string]bool{}
 	tc.concrete_type_scope_keys = map[string]bool{}
-	tc.top_level_idx = []int{cap: 65536}
+	tc.top_level_idx = []i32{cap: 65536}
 	if !parallel_index_prep {
 		tc.prepare_threads_condition()
 	}
@@ -4511,7 +4514,7 @@ fn (tc &TypeChecker) const_key_for_name(name string) ?string {
 	if name in tc.const_types {
 		return name
 	}
-	return none
+	return tc.vsh_os_const_key(name)
 }
 
 fn (tc &TypeChecker) local_name_conflicts_with_current_module_const(name string) bool {
@@ -4989,17 +4992,63 @@ pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
 	}
 	mut unscoped := tc.fork_type_parse_view(tc.cur_file, '')
 	unscoped.resolution_type_mode = false
-	view := &unscoped
-	views.by_file[tc.cur_file] = view
-	return view.parse_type(qualified)
+	views.by_file[tc.cur_file] = unscoped
+	return unscoped.parse_type(qualified)
 }
 
 // parse_resolution_type_in_file resolves type text using the imports and module
 // of `file` without mutating the checker's current traversal cursor.
 pub fn (tc &TypeChecker) parse_resolution_type_in_file(typ string, file string) Type {
+	if context_independent_type_text(typ) {
+		return tc.parse_type(typ)
+	}
 	module_name := tc.file_modules[file] or { '' }
 	mut scoped := tc.fork_type_parse_view(file, module_name)
 	return scoped.parse_resolution_type(typ)
+}
+
+// Primitive payloads and their pointer/container/optional wrappers cannot refer
+// to a declaration's imports. Keep them out of the checker-view constructor.
+@[manualfree]
+fn context_independent_type_text(typ string) bool {
+	if typ in ['', '!', '?'] {
+		return true
+	}
+	mut start := 0
+	for start < typ.len {
+		if typ[start] in [`&`, `?`, `!`] {
+			start++
+		} else if typ[start] == `[` && start + 1 < typ.len && typ[start + 1] == `]` {
+			start += 2
+		} else if typ[start] == `[` {
+			mut end := start + 1
+			for end < typ.len && typ[end] >= `0` && typ[end] <= `9` {
+				end++
+			}
+			if end == start + 1 || end >= typ.len || typ[end] != `]` {
+				return false
+			}
+			start = end + 1
+		} else if start + 4 < typ.len && typ[start] == `m` && typ[start + 1] == `a`
+			&& typ[start + 2] == `p` && typ[start + 3] == `[` {
+			end := find_matching_bracket(typ, start + 3)
+			if end >= typ.len {
+				return false
+			}
+			key := unsafe { typ.substr_unsafe(start + 4, end) }
+			if !context_independent_type_text(key) {
+				return false
+			}
+			start = end + 1
+		} else {
+			break
+		}
+	}
+	if typ.len - start > 7 {
+		return false
+	}
+	leaf := unsafe { typ.substr_unsafe(start, typ.len) }
+	return leaf != 'array' && leaf != 'map' && is_builtin_type_name(leaf)
 }
 
 // reset_resolution_type_view_cache discards lookup views that may have been
@@ -5914,7 +5963,7 @@ fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
 		// active. Recover a selected symbol from the source file only when it has one
 		// unambiguous declaration across the registered imports.
 		if !tc.resolution_type_mode {
-			return none
+			return tc.vsh_os_fn_symbol(name)
 		}
 		mut resolved := ''
 		suffix := '\n${name}'
@@ -5935,7 +5984,7 @@ fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
 		if resolved.len > 0 {
 			return resolved
 		}
-		return none
+		return tc.vsh_os_fn_symbol(name)
 	}
 	for candidate in candidates {
 		if tc.fn_signature_known(candidate) || candidate in tc.fn_ret_types
@@ -5943,7 +5992,7 @@ fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
 			return candidate
 		}
 	}
-	return none
+	return tc.vsh_os_fn_symbol(name)
 }
 
 // resolve_any_selective_import_fn resolves an unqualified selected function
@@ -5968,7 +6017,7 @@ pub fn (tc &TypeChecker) resolve_any_selective_import_fn(name string) ?string {
 	if resolved.len > 0 {
 		return resolved
 	}
-	return none
+	return tc.vsh_os_fn_key(name)
 }
 
 fn (tc &TypeChecker) resolve_selective_import_type_symbol(name string) ?string {
@@ -5979,6 +6028,59 @@ fn (tc &TypeChecker) resolve_selective_import_type_symbol(name string) ?string {
 		}
 	}
 	return none
+}
+
+// vsh_os_fn_symbol resolves an unqualified call name inside a `.vsh` script to
+// its `os` declaration. V script mode makes the `os` module global, but only as
+// a last resort: a local, builtin or explicitly imported declaration with the
+// same name keeps priority, exactly like in a plain `.v` file.
+fn (tc &TypeChecker) vsh_os_fn_symbol(name string) ?string {
+	if !tc.vsh_script_file() {
+		return none
+	}
+	return tc.vsh_os_fn_key(name)
+}
+
+// vsh_os_fn_key applies the script-mode `os` lookup without requiring the script
+// file itself to be the active one. Monomorphization collects candidate names for
+// a generic call outside any file context, and a compilation only has script-mode
+// symbols at all when it contains a `.vsh` script.
+fn (tc &TypeChecker) vsh_os_fn_key(name string) ?string {
+	if !tc.a.has_vsh_source || name.len == 0 || name.contains('.') {
+		return none
+	}
+	// Only a real V declaration shadows the script's `os` symbol. A bare name is
+	// also registered for every `fn C.name()` declaration, and those must not hide
+	// the V wrapper: `getenv('HOME')` in a script is `os.getenv`, not `C.getenv`.
+	if name in tc.v_fn_semantic_names {
+		return none
+	}
+	key := 'os.${name}'
+	if tc.fn_signature_known(key) || key in tc.fn_ret_types || key in tc.fn_param_types {
+		return key
+	}
+	return none
+}
+
+// vsh_os_const_key resolves an unqualified constant name inside a `.vsh` script
+// to its `os` declaration, under the same last-resort rule as `os` functions.
+fn (tc &TypeChecker) vsh_os_const_key(name string) ?string {
+	if !tc.vsh_script_file() || name.len == 0 || name.contains('.') {
+		return none
+	}
+	key := 'os.${name}'
+	if key in tc.const_types {
+		return key
+	}
+	return none
+}
+
+// vsh_script_file reports whether the file being checked is a V script, whose
+// `os` symbols are visible unqualified. The `.vsh` test is guarded by an
+// AST-wide flag so non-script compilations never pay for it.
+@[inline]
+fn (tc &TypeChecker) vsh_script_file() bool {
+	return tc.a.has_vsh_source && tc.cur_file.ends_with('.vsh')
 }
 
 fn (tc &TypeChecker) selective_import_candidates(name string) ?[]string {
