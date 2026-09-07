@@ -100,7 +100,7 @@ fn (x Integer) miller_rabin(rounds int) bool {
 	// Above the deterministic range, fixed bases are only a prelude. Perform
 	// every requested random round so the documented 1 / 4^rounds bound holds.
 	for _ in 0 .. rounds {
-		base := random_base(x, x_minus_three)
+		base := random_base(x_minus_three)
 		if !x.passes_miller_rabin_round(base, d, s, x_minus_one, ctx) {
 			return false
 		}
@@ -132,25 +132,33 @@ fn (x Integer) passes_miller_rabin_round(a Integer, d Integer, s int, x_minus_on
 // exhausted. `x_minus_three` is `x - 3`, supplied by the caller so that it is
 // not rebuilt on every round.
 @[direct_array_access]
-fn random_base(x Integer, x_minus_three Integer) Integer {
-	mut digits := []u64{len: x.digits.len}
-	for i in 0 .. digits.len {
-		digits[i] = rand.u64() & max_digit
+fn random_base(x_minus_three Integer) Integer {
+	top_bits := x_minus_three.bit_len() - (x_minus_three.digits.len - 1) * digit_bits
+	top_mask := (u64(1) << top_bits) - 1
+	for {
+		mut digits := []u64{len: x_minus_three.digits.len}
+		for i in 0 .. digits.len {
+			digits[i] = rand.u64() & max_digit
+		}
+		digits[digits.len - 1] &= top_mask
+		// Integer invariants forbid leading zero digits.
+		mut n := digits.len
+		for n > 0 && digits[n - 1] == 0 {
+			n--
+		}
+		if n == 0 {
+			return two_int
+		}
+		digits.trim(n)
+		candidate := Integer{
+			digits: digits
+			signum: 1
+		}
+		if candidate.abs_cmp(x_minus_three) < 0 {
+			return candidate + two_int
+		}
 	}
-	// Integer invariants forbid leading zero digits.
-	mut n := digits.len
-	for n > 0 && digits[n - 1] == 0 {
-		n--
-	}
-	if n == 0 {
-		return two_int
-	}
-	digits.trim(n)
-	candidate := Integer{
-		digits: digits
-		signum: 1
-	}
-	return candidate % x_minus_three + two_int
+	return two_int
 }
 
 // split_odd writes `n` as `d * 2^s` with `d` odd, and returns `d` and `s`.

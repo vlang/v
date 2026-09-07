@@ -65,6 +65,12 @@ fn test_safe_prime() {
 	assert q.is_probably_prime(40), '(p - 1) / 2 is not prime'
 }
 
+fn test_safe_prime_small_sizes() {
+	assert rand.safe_prime(3)! == big.integer_from_int(7)
+	assert rand.safe_prime(4)! == big.integer_from_int(11)
+	assert rand.safe_prime(5)! == big.integer_from_int(23)
+}
+
 fn test_safe_prime_rejects_invalid_sizes() {
 	if _ := rand.safe_prime(2) {
 		assert false, 'safe_prime(2) should have failed'

@@ -41,6 +41,12 @@ pub fn safe_prime(bits int) !big.Integer {
 	if bits < 3 {
 		return error('crypto.rand: safe_prime requires at least 3 bits')
 	}
+	if bits == 4 {
+		return big.integer_from_int(11)
+	}
+	if bits == 5 {
+		return big.integer_from_int(23)
+	}
 	for {
 		// q first, so the expensive test runs on the smaller number.
 		q := prime(bits - 1)!
