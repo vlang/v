@@ -1,9 +1,9 @@
-// Or-unwrapping an option map into a new variable is a map copy, so it keeps the
+// Or-unwrapping a stored option map into a new variable is a map copy, so it keeps the
 // `cannot copy map` guard just like `m2 := m1`: an immutable binding is not proof
 // that the unwrapped map is unaliased (e.g. it can wrap a still-mutable map), so
 // V requires an explicit `clone`/`move`, e.g. `x := (c.f or { ... }).clone()`.
 // The diagnostic is specialized for this shape, because `.clone()` has to be applied
-// to the whole or-expression rather than to the option itself.
+// to the whole or-expression rather than to the option/result itself.
 // See vlang/v issue #27867.
 struct Category {
 	translations ?map[string]int
@@ -12,6 +12,12 @@ struct Category {
 fn get_opt() ?map[string]int {
 	return {
 		'a': 1
+	}
+}
+
+fn get_result() !map[string]int {
+	return {
+		'b': 2
 	}
 }
 
@@ -25,6 +31,8 @@ fn main() {
 
 	opt := get_opt()
 	variable := opt or { panic('none') }
+	// A fresh Result-returning call does not copy a stored map and remains valid.
+	result_call := get_result() or { panic(err) }
 
 	m := {
 		'k': get_opt()
@@ -33,5 +41,6 @@ fn main() {
 
 	println(field)
 	println(variable)
+	println(result_call)
 	println(index)
 }

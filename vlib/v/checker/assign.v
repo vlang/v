@@ -899,10 +899,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			&& (!right_type.is_ptr() || (right is ast.Ident && assign_expr_is_auto_deref(right))) {
 			// Do not allow `a = b`
 			if expr_is_or_unwrapped(right) {
-				// `x := opt_map or { ... }` is still a copy of the wrapped map, so the guard
+				// `x := stored_map or { ... }` is still a copy of the wrapped map, so the guard
 				// applies (see #27870), but `.clone()` has to be applied to the whole
-				// or-expression rather than to the option itself.
-				c.error('cannot copy map: unwrapping an option map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)',
+				// or-expression rather than to the option/result itself.
+				c.error('cannot copy map: unwrapping a map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)',
 					right.pos())
 			} else {
 				c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
