@@ -429,14 +429,14 @@ fn test_intel_asm_accepts_amx_tile_registers() {
 fn test_intel_asm_accepts_x86_arch_aliases() {
 	generate, c_source := generate_inline_asm_c('intel_x86_register_program', 'fn main() {
 	asm x86_64 intel {
-		mov rax, rbx
+		mov rAx, rBx
 		lea rax, [rax + riz]
 		lea eax, [eax + eiz]
 	}
 }
 ')
 	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"mov rax, rbx\\n\\t"'), c_source
+	assert c_source.contains('"mov rAx, rBx\\n\\t"'), c_source
 	assert c_source.contains('"lea rax, [rax + riz]\\n\\t"'), c_source
 	assert c_source.contains('"lea eax, [eax + eiz]\\n\\t"'), c_source
 
@@ -554,6 +554,7 @@ fn test_arm64_asm_accepts_operand_keywords() {
 		ptrue p2.b, pow2
 		smstart sm
 		smstop sm
+		sys #0, c7, c8, #0, x0
 	}
 }
 ', 'arm64')
@@ -565,6 +566,7 @@ fn test_arm64_asm_accepts_operand_keywords() {
 	assert c_source.contains('"ptrue p2.b, pow2\\n\\t"'), c_source
 	assert c_source.contains('"smstart sm\\n\\t"'), c_source
 	assert c_source.contains('"smstop sm\\n\\t"'), c_source
+	assert c_source.contains('"sys #0, c7, c8, #0, x0\\n\\t"'), c_source
 }
 
 fn test_misspelled_asm_registers_are_reported_with_suggestions() {

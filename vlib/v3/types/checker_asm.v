@@ -188,11 +188,12 @@ fn (mut tc TypeChecker) check_inline_asm_templates(id flat.NodeId, node flat.Nod
 			})
 		}
 		for word in inline_asm_words(block, InlineAsmRange{ start: operand_start, end: line.end }) {
-			if aliases[word.text] || word.text in labels || word.text in registers
-				|| inline_asm_operand_is_keyword(word.text, arch, is_intel) {
+			register_word := if is_intel { word.text.to_lower_ascii() } else { word.text }
+			if aliases[word.text] || word.text in labels || register_word in registers
+				|| inline_asm_operand_is_keyword(register_word, arch, is_intel) {
 				continue
 			}
-			suggestion := util.closest_asm_register(word.text, registers) or { continue }
+			suggestion := util.closest_asm_register(register_word, registers) or { continue }
 			tc.record_error_at(.unknown_ident, 'unknown register `${word.text}`; did you mean `${suggestion}`?', id, token.new_span(node.pos.id, base + word.start, base + word.end))
 		}
 	}
@@ -206,6 +207,10 @@ fn inline_asm_operand_is_keyword(word string, arch string, is_intel bool) bool {
 		return false
 	}
 	if word in inline_asm_arm64_operand_keywords {
+		return true
+	}
+	if word in ['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'c10', 'c11', 'c12',
+		'c13', 'c14', 'c15'] {
 		return true
 	}
 	return word.starts_with('vl')
