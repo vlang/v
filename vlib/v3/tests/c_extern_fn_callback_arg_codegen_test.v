@@ -32,6 +32,8 @@ fn v_send(ctx voidptr, buf &u8, len usize) i32 {
 
 fn main() {
 	println(C.native_register(C.native_send))
+	println(C.native_register((C.native_send)))
+	println(C.native_register(voidptr(C.native_send)))
 	println(C.native_register(v_send))
 }
 ') or { panic(err) }
@@ -56,8 +58,12 @@ fn test_c_extern_fn_callback_arg_is_not_cast() {
 	// prototype, and a cast to the V-declared signature would drop the parameter's
 	// `const` and trip -Wincompatible-pointer-types at the call.
 	assert compact.contains('native_register(native_send)'), c_code
-	assert !compact.contains(')(native_send)'), c_code
+	assert compact.contains('native_register((native_send))'), c_code
+	// An explicit conversion is not a bare C function reference. Preserve it as
+	// the inner expression and cast that result to the callback parameter type.
+	assert !compact.contains('native_register((void*)(native_send))'), c_code
+	assert compact.contains(')((void*)(native_send)))'), c_code
 	// A V function still needs the C-ABI cast: C has no declaration of its own for
 	// it, so the fn-pointer typedef is what gives the argument a type.
-	assert compact.contains('native_register((_fn_ptr_'), c_code
+	assert compact.count('native_register((_fn_ptr_') == 2, c_code
 }

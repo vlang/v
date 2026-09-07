@@ -17977,6 +17977,16 @@ fn (mut g FlatGen) c_call_arg_cabi_cast(arg_idx int, typed_param_count int, para
 // function the C compiler already has a real prototype for from an included
 // header.
 fn (g &FlatGen) is_c_extern_fn_name_arg(arg_id flat.NodeId) bool {
+	if int(arg_id) < 0 || int(arg_id) >= g.a.nodes.len {
+		return false
+	}
+	arg_node := g.a.nodes[int(arg_id)]
+	if arg_node.kind == .cast_expr {
+		return false
+	}
+	if arg_node.kind in [.paren, .expr_stmt] && arg_node.children_count > 0 {
+		return g.is_c_extern_fn_name_arg(g.a.child(&arg_node, 0))
+	}
 	name := g.direct_callback_ident_name(arg_id) or { return false }
 	return name.starts_with('C.')
 }
