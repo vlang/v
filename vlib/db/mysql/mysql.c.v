@@ -143,12 +143,7 @@ pub fn connect(config Config) !DB {
 		db.set_option(C.MYSQL_OPT_SSL_MODE, &ssl_mode)
 	}
 
-	mut connection_flag := config.flag
-	if config.local_infile {
-		enabled := u32(1)
-		db.set_option(C.MYSQL_OPT_LOCAL_INFILE, &enabled)
-		connection_flag.set(.client_local_files)
-	}
+	connection_flag := db.apply_local_infile(config)
 
 	if config.flag.has(.client_ssl) {
 		if config.ssl_key.len > 0 {
@@ -184,6 +179,16 @@ pub fn connect(config Config) !DB {
 	}
 
 	return db
+}
+
+fn (mut db DB) apply_local_infile(config Config) ConnectionFlag {
+	mut connection_flag := config.flag
+	if config.local_infile {
+		enabled := u32(1)
+		db.set_option(C.MYSQL_OPT_LOCAL_INFILE, &enabled)
+		connection_flag.set(.client_local_files)
+	}
+	return connection_flag
 }
 
 // query executes the SQL statement pointed to by the string `q`.
