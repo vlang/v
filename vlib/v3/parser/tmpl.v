@@ -83,6 +83,43 @@ fn is_tmpl_ident_part(c u8) bool {
 	return c.is_letter() || c.is_digit() || c == `_`
 }
 
+// The position of `directive` in `line`, where it is spelled as a directive and
+// not merely as the start of a longer `@name` interpolation.
+//
+// `line.contains('@for')` also matches `@form_method`, so a line interpolating a
+// variable whose name begins with a directive's was compiled as that directive's
+// header (issue #28433). `@if `, `@js ` and `@css ` are spelled with a trailing
+// space and never had the problem.
+//
+// `aliases` are the spellings that may follow the directive and still be it:
+// TEMPLATES.md documents `@endif` and `@endfor` as closing a block exactly as
+// `@end` does, so a plain word-boundary rule would reject two documented forms
+// that `examples/veb/todo` uses.
+fn tmpl_directive_pos(line string, directive string, aliases []string) ?int {
+	mut start := 0
+	for {
+		pos := line.index_after(directive, start) or { return none }
+		end := pos + directive.len
+		if end == line.len || !is_tmpl_ident_part(line[end]) {
+			return pos
+		}
+		for alias in aliases {
+			after := end + alias.len
+			if line[end..].starts_with(alias)
+				&& (after == line.len || !is_tmpl_ident_part(line[after])) {
+				return pos
+			}
+		}
+		start = pos + 1
+	}
+	return none
+}
+
+fn has_tmpl_directive(line string, directive string, aliases []string) bool {
+	tmpl_directive_pos(line, directive, aliases) or { return false }
+	return true
+}
+
 fn find_tmpl_balanced_end(line string, start int, open u8, close u8) int {
 	if start >= line.len || line[start] != open {
 		return -1
@@ -518,7 +555,7 @@ struct TemplateControlSourceMap {
 }
 
 fn parse_tmpl_control_line(line string, directive string) TmplControlLine {
-	pos := line.index(directive) or { return TmplControlLine{} }
+	pos := tmpl_directive_pos(line, directive, []) or { return TmplControlLine{} }
 	remainder := line[pos + directive.len..].trim_space()
 	if remainder.len == 0 {
 		return TmplControlLine{
@@ -561,7 +598,7 @@ fn parse_tmpl_control_line(line string, directive string) TmplControlLine {
 }
 
 fn parse_tmpl_else_line(line string) TmplControlLine {
-	pos := line.index('@else') or { return TmplControlLine{} }
+	pos := tmpl_directive_pos(line, '@else', []) or { return TmplControlLine{} }
 	remainder := line[pos + '@else'.len..].trim_space()
 	if remainder.len == 0 {
 		return TmplControlLine{
@@ -627,7 +664,7 @@ fn template_control_source_map(line string) ?TemplateControlSourceMap {
 			has_inline_body:  control.has_inline_body
 		}
 	}
-	if pos := line.index('@for') {
+	if pos := tmpl_directive_pos(line, '@for', []) {
 		control := parse_tmpl_control_line(line, '@for')
 		inline_source := control.prefix + control.inline_body
 		return TemplateControlSourceMap{
@@ -647,7 +684,7 @@ fn template_control_source_map(line string) ?TemplateControlSourceMap {
 			has_inline_body:  control.has_inline_body
 		}
 	}
-	if pos := line.index('@else') {
+	if pos := tmpl_directive_pos(line, '@else', []) {
 		control := parse_tmpl_else_line(line)
 		inline_source := control.prefix + control.inline_body
 		return TemplateControlSourceMap{
@@ -937,7 +974,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 			}
 			continue
 		}
-		if line.contains('@end') {
+		if has_tmpl_directive(line, '@end', ['if', 'for']) {
 			source.writeln(tmpl_str_end)
 			source.writeln('}')
 			source.write_string(tmpl_str_start)
@@ -946,7 +983,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 			}
 			continue
 		}
-		if line.contains('@else') {
+		if has_tmpl_directive(line, '@else', []) {
 			control := parse_tmpl_else_line(line)
 			source.writeln(tmpl_str_end)
 			source.writeln('} ${control.header} {')
@@ -964,7 +1001,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 			}
 			continue
 		}
-		if line.contains('@for') {
+		if has_tmpl_directive(line, '@for', []) {
 			control := parse_tmpl_control_line(line, '@for')
 			source.writeln(tmpl_str_end)
 			source.writeln('for ${control.header} {')

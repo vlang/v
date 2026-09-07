@@ -21,19 +21,19 @@ fn C.tcc_new() &C.TCCState
 
 fn C.tcc_delete(&C.TCCState)
 
-fn C.tcc_set_lib_path(&C.TCCState, &char)
+fn C.tcc_set_lib_path(&C.TCCState, const_path &char)
 
-fn C.tcc_set_error_func(&C.TCCState, voidptr, fn (voidptr, &char))
+fn C.v_fastc_tcc_set_error_func(&C.TCCState, voidptr, voidptr)
 
-fn C.tcc_set_options(&C.TCCState, &char) int
+fn C.tcc_set_options(&C.TCCState, const_options &char) int
 
 fn C.tcc_set_output_type(&C.TCCState, int) int
 
-fn C.tcc_add_file(&C.TCCState, &char) int
+fn C.tcc_add_file(&C.TCCState, const_filename &char) int
 
-fn C.tcc_add_library(&C.TCCState, &char) int
+fn C.tcc_add_library(&C.TCCState, const_libraryname &char) int
 
-fn C.tcc_output_file(&C.TCCState, &char) int
+fn C.tcc_output_file(&C.TCCState, const_filename &char) int
 
 fn C.v_fastc_tcc_set_skip_codesign(int)
 
@@ -156,7 +156,7 @@ fn fastc_prepare_libtcc_link(program string, tcc_lib string, base_args []string,
 		}
 	}
 	diagnostics := &FastcLibtccDiagnostics{}
-	C.tcc_set_error_func(state, diagnostics, fastc_libtcc_error_callback)
+	C.v_fastc_tcc_set_error_func(state, diagnostics, voidptr(fastc_libtcc_error_callback))
 	C.tcc_set_lib_path(state, tcc_lib.str)
 	if fastc_libtcc_apply_options(state, base_args) != 0
 		|| fastc_libtcc_apply_options(state, fastc_libtcc_output_options(final_args)) != 0

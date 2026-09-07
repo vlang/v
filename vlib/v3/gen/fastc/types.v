@@ -415,10 +415,11 @@ fn (g &Parser) infer_expression_type_range(tokens []FastcExpressionToken, expres
 	// Flow-sensitive member smartcasts are installed while an `&&` expression is rendered.
 	// A type cached before the left operand narrows its subject is stale for the operands to
 	// its right, so infer those ranges directly while an active smartcast affects them.
-	if g.expression_uses_member_smartcast(tokens[expression_start..expression_end]) {
+	if g.member_smartcasts.len > 0
+		&& g.expression_uses_member_smartcast(tokens[expression_start..expression_end]) {
 		return g.infer_expression_type_range_impl(tokens, expression_start, expression_end)!
 	}
-	memo_key := fastc_comparison_memo_key(tokens[expression_start..expression_end], 2)
+	memo_key := fastc_comparison_memo_range_key(tokens, expression_start, expression_end, 2)
 	if memo_key != 0 {
 		if cached := g.type_memo[memo_key] {
 			return cached
@@ -726,7 +727,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			}
 		}
 		if tokens[i].lit == 'wait' && receiver_type.starts_with(fastc_thread_type_prefix) {
-			value_type := g.thread_value_types[receiver_type] or { '' }
+			value_type := g.fastc_thread_value_type(receiver_type) or { '' }
 			if value_type == '' {
 				return 'void'
 			}
@@ -736,7 +737,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			// `[]thread T`.wait() joins every thread and returns their `[]T` results.
 			element := g.array_element_type(receiver_type) or { '' }
 			if element.starts_with(fastc_thread_type_prefix) {
-				value_type := g.thread_value_types[element] or { '' }
+				value_type := g.fastc_thread_value_type(element) or { '' }
 				if value_type != '' {
 					return fastc_array_c_type(value_type)
 				}
@@ -884,7 +885,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		if open_index > start {
 			base_type := g.infer_expression_type_range(tokens, start, open_index)!
 			base_layout := fastc_trim_pointer_suffix(base_type)
-			if fastc_expression_tokens_contain(tokens[open_index + 1..end - 1], .dotdot) {
+			if fastc_expression_tokens_contain_range(tokens, open_index + 1, end - 1, .dotdot) {
 				// Slicing a fixed array yields a dynamic array of its element type.
 				if base_layout.starts_with('FixedArray_') {
 					if element := g.array_element_type(base_layout) {

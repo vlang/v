@@ -249,6 +249,32 @@ fn generated_c_uses_v3_codegen(generated_c string) bool {
 	return !generated_c.contains('#define VV_LOC')
 }
 
+fn test_map_guard_without_observed_error_does_not_allocate_error() {
+	os.chdir(vroot) or {}
+	path := os.join_path(testdata_folder, 'if_guard_map_missing_key_cleanup.vv')
+	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(path)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	if generated_c_uses_v3_codegen(compilation.output) {
+		return
+	}
+	mut body := ''
+	mut in_function := false
+	for line in compilation.output.split_into_lines() {
+		if line.contains('main__has_value(') && line.ends_with('{') {
+			in_function = true
+		}
+		if in_function {
+			body += line + '\n'
+			if line == '}' {
+				break
+			}
+		}
+	}
+	assert body.contains('.err = _const_none__')
+	assert !body.contains('builtin___v_error(')
+}
+
 fn test_or_block_err_var_collision_does_not_emit_self_referential_err() {
 	os.chdir(vroot) or {}
 	path := os.join_path(testdata_folder, 'or_block_err_var_collision.vv')
@@ -980,6 +1006,32 @@ fn test_auxiliary_c_symbols_use_stable_type_hashes() {
 	assert keepalive_a.len > 0
 	assert compare_a == compare_b
 	assert keepalive_a == keepalive_b
+}
+
+fn test_boehm_scope_pin_does_not_walk_array_elements() {
+	$if windows {
+		$if tinyc {
+			eprintln('> skipping ${@FN} on windows-tcc, since deep GC scope pins are not emitted there')
+			return
+		}
+	}
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_boehm_constant_time_array_pin.v')
+	os.write_file(test_source,
+		['module main', '', 'struct Item {', '\tname string', '\tdata []u8', '}', '', 'fn sink(_ int) {}', '', 'fn hot(items []Item) {', '\tsink(items.len)', '}', '', 'fn main() {', '\thot([])', '}'].join('\n') +
+		'\n')!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -old-compiler -prod -gc boehm_full_opt -o - ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert !generated_c_uses_v3_codegen(compilation.output)
+	helper_signature := '_Array_main__Item(Array_main__Item* it, voidptr* out, int idx) {'
+	assert compilation.output.contains(helper_signature)
+	helper_body := compilation.output.all_after(helper_signature).all_before('\n}')
+	assert helper_body.contains('voidptr _v_keep_root = it->data;')
+	assert !helper_body.contains('_v_keep_i')
 }
 
 fn test_veb_implicit_ctx_alias_uses_user_context_name() {

@@ -669,12 +669,9 @@ fn (t &Transformer) resolve_alias_receiver_method(base_type string, method strin
 		}
 		return none
 	}
-	for name, params in t.tc.fn_param_types {
-		if !name.ends_with('.${method}') || params.len == 0 {
-			continue
-		}
-		receiver_name := name.all_before_last('.')
-		if receiver_name.len == 0 || receiver_name !in t.tc.type_aliases {
+	for name in t.alias_receiver_method_candidates(method) {
+		params := t.tc.fn_param_types[name]
+		if params.len == 0 {
 			continue
 		}
 		param_name := t.semantic_type_name(params[0])
@@ -691,6 +688,26 @@ fn (t &Transformer) resolve_alias_receiver_method(base_type string, method strin
 		cache.misses[cache_key] = true
 	}
 	return none
+}
+
+fn (t &Transformer) alias_receiver_method_candidates(method string) []string {
+	// Generic-free lowering cannot add source alias receiver methods. Preserve
+	// declaration order while avoiding a whole signature-table scan per miss.
+	if t.skip_generics && t.alias_method_candidates_ready {
+		return t.alias_method_candidates[method]
+	}
+	mut candidates := []string{}
+	method_suffix := '.${method}'
+	for name, params in t.tc.fn_param_types {
+		if params.len == 0 || !name.ends_with(method_suffix) {
+			continue
+		}
+		receiver_name := name.all_before_last('.')
+		if receiver_name.len > 0 && receiver_name in t.tc.type_aliases {
+			candidates << name
+		}
+	}
+	return candidates
 }
 
 // alias_target_type_preserving_main_lock returns the underlying type while retaining
@@ -2459,6 +2476,14 @@ fn (t &Transformer) call_callee_fn_type(fn_id flat.NodeId) ?types.FnType {
 	return transform_fn_type(t.tc.resolve_type(fn_id))
 }
 
+fn (mut t Transformer) ensure_private_call_param_types_decl_cache() {
+	if t.call_param_types_decl_shared {
+		t.call_param_types_decl_cache = t.call_param_types_decl_cache.clone()
+		t.call_param_types_decl_misses = t.call_param_types_decl_misses.clone()
+		t.call_param_types_decl_shared = false
+	}
+}
+
 fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Type {
 	if call_name.len == 0 || isnil(t.tc) {
 		return none
@@ -2468,6 +2493,7 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 	}
 	t.ensure_call_param_types_decl_index()
 	decl := t.call_param_types_decl_index[call_name] or {
+		t.ensure_private_call_param_types_decl_cache()
 		t.call_param_types_decl_misses[call_name] = true
 		return none
 	}
@@ -2486,6 +2512,7 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 		}
 		mut param_type := t.parse_decl_param_type(child.typ, decl.module, decl.file)
 		if param_type is types.Unknown || (param_type is types.Void && child.typ != 'void') {
+			t.ensure_private_call_param_types_decl_cache()
 			t.call_param_types_decl_misses[call_name] = true
 			return none
 		}
@@ -2497,6 +2524,7 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 		}
 		params << param_type
 	}
+	t.ensure_private_call_param_types_decl_cache()
 	t.call_param_types_decl_cache[decl.idx] = params.clone()
 	return params
 }
@@ -2574,6 +2602,7 @@ fn (mut t Transformer) prepare_parallel_call_param_types() {
 		_ = t.call_param_types_from_decl(name) or { continue }
 	}
 	t.call_param_types_prepared = true
+	t.call_param_types_decl_shared = true
 }
 
 fn (mut t Transformer) add_call_param_types_decl_key(key string, idx int, file string, module_name string) {
@@ -2583,6 +2612,7 @@ fn (mut t Transformer) add_call_param_types_decl_key(key string, idx int, file s
 	// A later generic specialization can extend the declaration index between
 	// parallel batches. Make the next snapshot include its signature too.
 	t.call_param_types_prepared = false
+	t.ensure_private_call_param_types_decl_cache()
 	if key !in t.call_param_types_decl_index {
 		t.call_param_types_decl_index[key] = FnParamDeclRef{
 			idx: idx
@@ -4753,7 +4783,8 @@ fn (t &Transformer) enum_str_method_name(typ string) ?string {
 	}
 	for candidate in candidates {
 		method := '${candidate}.str'
-		if t.is_known_fn_name(method) {
+		if method in t.fn_ret_types
+			|| (!isnil(t.tc) && method in t.tc.fn_param_types) {
 			return method
 		}
 	}
@@ -4766,7 +4797,9 @@ fn (t &Transformer) enum_str_method_name(typ string) ?string {
 // one. Mirrors the struct-str qualification so the C name matches cgen's enum_decls naming.
 fn (mut t Transformer) enum_autostr_call(expr flat.NodeId, typ string) flat.NodeId {
 	qualified := t.enum_autostr_type_name(typ)
-	return t.make_call_typed('${c_name(qualified)}__autostr', [expr], 'string')
+	helper := '${c_name(qualified)}__autostr'
+	t.mark_fn_used_name(helper)
+	return t.make_call_typed(helper, [expr], 'string')
 }
 
 fn (t &Transformer) enum_autostr_type_name(typ string) string {
@@ -12362,6 +12395,14 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	if method == 'str' {
 		if smartcast_str := t.smartcast_sum_str_call(base_id) {
 			return smartcast_str
+		}
+		if t.is_enum_stringify_type(base_type) && t.enum_str_method_name(base_type) == none {
+			mut value := t.transform_expr(base_id)
+			if base_is_pointer {
+				value = t.make_prefix(.mul, value)
+				t.set_node_typ(int(value), base_type)
+			}
+			return t.enum_autostr_call(value, base_type)
 		}
 		if !recovered_or_value_type {
 			if exact_call := t.lower_checker_selected_receiver_method(id, node, base_id, 'str') {

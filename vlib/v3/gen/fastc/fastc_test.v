@@ -263,7 +263,7 @@ fn main() {
 	assert c_source.count('consume(&(value));') == 3, c_source
 	assert c_source.count('consume(&(shared));') == 2, c_source
 	assert c_source.contains('consume(&(type));'), c_source
-	assert c_source.contains('__typeof__(((Box){})) shared = ((Box){});'), c_source
+	assert c_source.contains('Box shared = ((Box){});'), c_source
 	assert c_source.contains('return shared;'), c_source
 	assert c_source.contains('i64 pair(i64 shared, i64 other)'), c_source
 	assert c_source.contains('return shared+other;'), c_source
@@ -484,7 +484,7 @@ fn main() {
 	_ = retained(unsafe { nil })
 }
 ', 'selfhost_mut_static_pointer.v', prefs) or { panic(err) }
-	assert c_source.contains('static __typeof__((((Item*)(NULL)))) saved;'), c_source
+	assert c_source.contains('static Item* saved;'), c_source
 	assert c_source.contains('static bool __v'), c_source
 	assert c_source.contains('saved = (((Item*)(NULL)));'), c_source
 }
@@ -1104,6 +1104,31 @@ fn test_selfhost_spawn_nested_wait_statement_and_helper_names() {
 	assert c_source.contains('${void_waiter}(done);'), c_source
 }
 
+fn test_selfhost_spawn_wait_uses_explicit_parameter_type() {
+	$if windows {
+		return
+	}
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn produce() string {
+	return "done"
+}
+
+fn consume(worker thread string) {
+	result := worker.wait()
+	println(result)
+}
+
+fn main() {
+	consume(spawn produce())
+}
+', 'spawn_explicit_parameter.v', prefs) or { panic(err) }
+	assert c_source.contains('string result = (__vf_thread_wait_kstring(worker));'), c_source
+	assert !c_source.contains('void result ='), c_source
+}
+
 fn test_selfhost_spawn_rejects_disabled_callee_before_arguments() {
 	$if windows {
 		return
@@ -1710,6 +1735,143 @@ fn main() {
 	assert c_source.contains('string v_fastc_array_str_Array_u32(Array_u32 it)'), c_source
 	assert c_source.contains('v_fastc_array_str_Array_u32(versions.values)'), c_source
 	assert c_source.contains('u32_str((*('), c_source
+}
+
+fn test_selfhost_array_str_helper_uses_compact_method_name() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module formatter
+
+struct Attr {}
+
+fn (value &Attr) str() string {
+	return "attr"
+}
+
+fn format(values []Attr) string {
+	return "\${values}"
+}
+', 'compact_array_element_str.v', prefs) or { panic(err) }
+	assert c_source.contains('string v_fastc_array_str_Array_formatter__Attr'), c_source
+	assert c_source.contains('v_f'), c_source
+	assert !c_source.contains('formatter__Attr_str(&'), c_source
+}
+
+fn test_selfhost_interpolation_uses_compact_str_method_name() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module formatter
+
+enum OS {
+	linux
+}
+
+fn (value OS) str() string {
+	return "linux"
+}
+
+fn format(value OS) string {
+	return "\${value}"
+}
+', 'compact_interpolation_str.v', prefs) or { panic(err) }
+	assert c_source.contains('return v_f'), c_source
+	assert !c_source.contains('formatter__OS_str(value)'), c_source
+}
+
+fn test_selfhost_qualified_function_default_uses_compact_name() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	compare_source := 'module compare
+
+pub fn similarity(left string, right string) f32 {
+	return if left == right { f32(1) } else { f32(0) }
+}
+'
+	util_source := 'module main
+
+import compare
+
+type SimilarityFn = fn (string, string) f32
+
+struct Config {
+	similarity_fn SimilarityFn = compare.similarity
+}
+
+fn main() {
+	_ := Config{}
+}
+'
+	c_source, _, _ := generate_source_files([
+		FastcSourceFile{
+			path: 'compare/compare.v'
+			source: compare_source
+			header: fastc_scan_source_header(compare_source, 'compare/compare.v', prefs) or {
+				panic(err)
+			}
+		},
+		FastcSourceFile{
+			path: 'main.v'
+			source: util_source
+			header: fastc_scan_source_header(util_source, 'main.v', prefs) or {
+				panic(err)
+			}
+		},
+	], map[string]string{}, prefs) or { panic(err) }
+	assert c_source.contains('.similarity_fn=(&v_f'), c_source
+	assert !c_source.contains('.similarity_fn=(compare__similarity)'), c_source
+}
+
+fn test_selfhost_qualified_function_compaction_preserves_same_named_callback() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	compare_source := 'module compare
+
+pub fn similarity(left string, right string) f32 {
+	return if left == right { f32(1) } else { f32(0) }
+}
+'
+	main_source := 'module main
+
+import compare
+
+type SimilarityFn = fn (string, string) f32
+
+fn f(compare__similarity SimilarityFn) f32 {
+	return compare.similarity("a", "b") + compare__similarity("c", "d")
+}
+
+fn callback(left string, right string) f32 {
+	return 2
+}
+
+fn main() {
+	println(f(callback))
+}
+'
+	c_source, _, _ := generate_source_files([
+		FastcSourceFile{
+			path: 'compare/compare.v'
+			source: compare_source
+			header: fastc_scan_source_header(compare_source, 'compare/compare.v', prefs) or {
+				panic(err)
+			}
+		},
+		FastcSourceFile{
+			path: 'main.v'
+			source: main_source
+			header: fastc_scan_source_header(main_source, 'main.v', prefs) or {
+				panic(err)
+			}
+		},
+	], map[string]string{}, prefs) or { panic(err) }
+	assert c_source.contains('compare__similarity(_S("c"),_S("d"))'), c_source
+	assert !c_source.contains('compare__similarity(_S("a"),_S("b"))'), c_source
+}
+
+fn test_fastc_replace_c_call_identifier_skips_quoted_c_literals() {
+	source := r'consume("compare__similarity(\"", compare__similarity(1))'
+	expected := r'consume("compare__similarity(\"", v_f0(1))'
+	assert fastc_replace_c_call_identifier(source, 'compare__similarity', 'v_f0') == expected
 }
 
 fn test_ordinary_nul_codepoint_interpolation_is_rejected() {
@@ -5583,7 +5745,7 @@ fn main() {
 	println(value)
 }
 ", 'block_local_scope.v', prefs) or { panic(err) }
-	assert c_source.contains('__typeof__((1)) value = (1);'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} value = (1);'), c_source
 	assert c_source.contains('string value = ("outer");'), c_source
 }
 
@@ -6373,6 +6535,28 @@ fn main() {
 }
 ', 'empty_loop_initializer.v', selfhost_prefs) or { panic(err) }
 	assert empty_initializer_source.contains('for (; i<2; i++) {'), empty_initializer_source
+}
+
+fn test_labeled_break_and_continue_target_the_outer_loop() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn main() {
+	outer: for i := 0; i < 2; i++ {
+		for {
+			if i == 0 {
+				continue outer
+			}
+			break outer
+		}
+	}
+}
+', 'labeled_loop.v', prefs) or { panic(err) }
+	assert c_source.contains('goto __vf_loop_outer_continue;'), c_source
+	assert c_source.contains('__vf_loop_outer_continue:;'), c_source
+	assert c_source.contains('goto __vf_loop_outer_break;'), c_source
+	assert c_source.contains('__vf_loop_outer_break:;'), c_source
 }
 
 fn test_negative_integer_literals_are_lowered_for_unsigned_targets() {
@@ -7310,17 +7494,17 @@ fn main() {
 }
 ', 'array_slice.v', prefs) or { panic(err) }
 	assert c_source.contains('return builtin__array_slice(values, start, end);'), c_source
-	assert c_source.contains('__typeof__((make_values())) __vf_slice_receiver = (make_values()); builtin__array_slice(__vf_slice_receiver, 1, __vf_slice_receiver.len);'), c_source
-	assert c_source.contains('__typeof__((make_text())) __vf_slice_receiver = (make_text()); builtin__string_substr((__vf_slice_receiver), 1, __vf_slice_receiver.len);'), c_source
+	assert c_source.contains('Array_int __vf_slice_receiver = (make_values()); builtin__array_slice(__vf_slice_receiver, 1, __vf_slice_receiver.len);'), c_source
+	assert c_source.contains('string __vf_slice_receiver = (make_text()); builtin__string_substr((__vf_slice_receiver), 1, __vf_slice_receiver.len);'), c_source
 	assert c_source.contains('return builtin__string_substr((value), 1, 2);'), c_source
 	assert c_source.contains('return builtin__string_substr((value), 1, value.len);'), c_source
 	assert !c_source.contains('builtin__array_slice(value, 1'), c_source
 	assert !c_source.contains('make_values().len'), c_source
 	assert !c_source.contains('make_text().len'), c_source
 	assert !c_source.contains('__v_slice.flags |= ArrayFlags__is_slice'), c_source
-	assert c_source.contains('__vf_mut_argument = (({ __typeof__((buffer->bytes)) __vf_slice_receiver'), c_source
+	assert c_source.contains('__vf_mut_argument = (({ Array_u8 __vf_slice_receiver'), c_source
 	assert !c_source.contains('__vf_slice_receiver->len'), c_source
-	assert c_source.contains('write_bytes(({ __typeof__(('), c_source
+	assert c_source.contains('write_bytes(({ Array_u8 '), c_source
 	assert c_source.contains('builtin__array_clone(&(builtin__array_slice(*(values), 0, 1)))'), c_source
 }
 
@@ -7374,7 +7558,7 @@ fn test_literal_range_must_not_be_empty() {
 	}
 
 	c_source := generate('module main\nfn main() { for i in 2 .. 4 { println(i) } }\n', 'valid_literal_range.v', prefs) or { panic(err) }
-	assert c_source.contains('for (__typeof__((__v0)) i = (__v0); i < (__v1); i++) {'), c_source
+	assert c_source.contains('for (__typeof__((2)) i = (__v0); i < (__v1); i++) {'), c_source
 }
 
 fn test_arithmetic_operand_types_are_not_validated() {
@@ -7966,11 +8150,11 @@ fn test_expressions_without_safe_lowering_are_rejected() {
 	}
 	assert bool_c.contains('println(((bool)true));')
 	low_hex_c := generate('module main\nfn main() { x := 0x7fff_ffff | 0; println(x) }\n', 'low_hex_literal.v', prefs) or { panic(err) }
-	assert low_hex_c.contains('__typeof__((0x7fffffff|0)) x = (0x7fffffff|0);')
+	assert low_hex_c.contains('${fastc_platform_int_c_type} x = (0x7fffffff|0);')
 	low_binary_c := generate('module main\nfn main() { x := 0b01111111111111111111111111111111 | 0; println(x) }\n', 'low_binary_literal.v', prefs) or { panic(err) }
-	assert low_binary_c.contains('__typeof__((0b01111111111111111111111111111111|0))')
+	assert low_binary_c.contains('${fastc_platform_int_c_type} x = (0b01111111111111111111111111111111|0);')
 	max_int_c := generate('module main\nfn main() { x := 2_147_483_647 - 1; println(x) }\n', 'max_int_expression.v', prefs) or { panic(err) }
-	assert max_int_c.contains('__typeof__((2147483647-1)) x = (2147483647-1);')
+	assert max_int_c.contains('${fastc_platform_int_c_type} x = (2147483647-1);')
 	call_c := generate('module main\nfn sum(a int, b int) int { return a + b }\nfn main() { println(sum(1, 2)) }\n', 'call_comma.v', prefs) or { panic(err) }
 	assert call_c.contains('println(sum(1,2));')
 }
@@ -8068,7 +8252,7 @@ fn main() {
 	selfhost_c := generate(source, 'selfhost_string_alias_iteration.v', selfhost_prefs) or {
 		panic(err)
 	}
-	assert selfhost_c.contains('__typeof__((value)) __v'), selfhost_c
+	assert selfhost_c.contains('Text __v'), selfhost_c
 	assert selfhost_c.contains('__v0.len'), selfhost_c
 	assert selfhost_c.contains('__v0.str'), selfhost_c
 }
@@ -9131,6 +9315,37 @@ fn main() {
 	assert c_source.contains('Counter_value(c)'), c_source
 }
 
+fn test_selfhost_append_copies_pointer_return_into_value_array() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Node {
+	value int
+}
+
+fn child() &Node {
+	return &Node{
+		value: 1
+	}
+}
+
+fn append_ref(node &Node) {
+	mut refs := []&Node{}
+	refs << node
+}
+
+fn main() {
+	mut pending := []Node{}
+	pending << child()
+	append_ref(child())
+}
+', 'selfhost_append_pointer_return.v', prefs) or { panic(err) }
+	assert c_source.contains('Node __v0 = (*(child()));'), c_source
+	assert c_source.contains('Node* __v0 = (node);'), c_source
+	assert !c_source.contains('Node* __v0 = (*(node));'), c_source
+}
+
 fn test_orm_where_operator_mapping() {
 	// The `update ... where` lowering maps V comparison tokens to `orm.OperationKind`
 	// variant names; `!=` becomes `neq`, and unsupported operators return ''.
@@ -9371,6 +9586,38 @@ fn test_veb_template_compiles_to_builder() {
 	assert src.contains('for x in xs {'), src
 	assert src.contains('veb.filter_html(x)'), src
 	assert src.contains('veb.tr(ctx.lang.str(), "greeting")'), src
+}
+
+fn test_selected_comptime_branch_collects_veb_template_references() {
+	dir := os.join_path(os.temp_dir(), 'v3_veb_references_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	template_path := os.join_path_single(dir, 'selected.html')
+	os.write_file(template_path, '@if template_only() {\n<p>selected</p>\n}\n') or { panic(err) }
+	main_path := os.join_path_single(dir, 'main.v')
+	source := 'module main
+
+fn handler() string {
+	$if linux {
+		return $veb.html("selected.html")
+	} $else {
+		return ""
+	}
+}
+'
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('linux', pref.host_arch()) or { panic(err) }
+	mut references := map[string]map[string]bool{}
+	mut top_level_references := map[string]bool{}
+	fastc_collect_file_references(FastcSourceFile{
+		path: main_path
+		source: source
+	}, prefs, {
+		'template_only': true
+	}, mut references, mut top_level_references)
+	assert references['handler']['template_only']
 }
 
 fn test_selfhost_match_branch_with_statement_and_multireturn() {
@@ -10288,6 +10535,52 @@ fn main() {
 	assert c_source.contains('V_FASTC_MULTI_VALUE(((Frame){'), c_source
 }
 
+fn test_selfhost_type_only_method_receiver_is_an_unnamed_parameter() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Padding {
+	length int
+}
+
+fn (Padding) marker() {}
+
+struct Header {
+	size int
+}
+
+fn (mut Header) marker() {}
+
+fn (h Header) named() int {
+	return h.size
+}
+
+fn (p &Padding) pointer_named() int {
+	return p.length
+}
+
+fn main() {
+	p := Padding{
+		length: 1
+	}
+	p.marker()
+	mut h := Header{
+		size: 2
+	}
+	h.marker()
+	println(h.named())
+	println(p.pointer_named())
+}
+', 'selfhost_type_only_receiver.v', prefs) or { panic(err) }
+	// A type only receiver still occupies argument 0, so dispatch lines up; its binding is
+	// unnamed (`_`), matching the V parser. Named receivers keep their own name.
+	assert c_source.contains('void Padding_marker(Padding _)'), c_source
+	assert c_source.contains('void Header_marker(Header* _)'), c_source
+	assert c_source.contains('i64 Header_named(Header h)'), c_source
+	assert c_source.contains('i64 Padding_pointer_named(Padding* p)'), c_source
+}
+
 fn test_selfhost_match_statement_smartcasts_member_subject() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -10830,11 +11123,14 @@ fn test_selfhost_pthread_rwlock_fallback_follows_includes() {
 
 fn main() {}
 ', 'selfhost_pthread_fallback.v', prefs) or { panic(err) }
-	include_index := c_source.index('#include <pthread.h>') or { panic(c_source) }
+	// A self-host build is header free: `#include <pthread.h>` is dropped for the C ABI
+	// prelude, so the fallback has to follow the pthread declarations of that prelude,
+	// exactly as it had to follow the include they replaced.
+	declaration_index := c_source.index('int pthread_rwlockattr_init(') or { panic(c_source) }
 	fallback_index := c_source.index('#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP') or {
 		panic(c_source)
 	}
-	assert include_index < fallback_index, c_source
+	assert declaration_index < fallback_index, c_source
 }
 
 fn test_selfhost_is_composite_variant_smartcast() {
@@ -13292,4 +13588,48 @@ fn main() {
 	assert !c_source.contains('[main__event_count](struct kevent){}'), c_source
 	assert c_source.contains('kevent()'), c_source
 	assert !c_source.contains('(struct kevent)(*('), c_source
+}
+
+fn test_selfhost_method_on_literal_arithmetic_uses_default_int_type() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn (n int) label() int {
+	return n
+}
+
+fn main() {
+	_ := (8 * 1024 * 1024).label()
+}
+', 'selfhost_literal_arithmetic_method.v', prefs) or { panic(err) }
+	assert c_source.contains('int_label(8*1024*1024)'), c_source
+	assert !c_source.contains('.label()'), c_source
+}
+
+fn test_selfhost_address_of_mut_parameter_keeps_parameter_pointer() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Program {}
+
+struct Parser {
+mut:
+	program &Program = unsafe { nil }
+}
+
+fn Parser.new(mut program Program) &Parser {
+	return &Parser{
+		program: unsafe { &program }
+	}
+}
+
+fn main() {
+	mut program := Program{}
+	_ := Parser.new(mut program)
+}
+', 'address_of_mut_parameter.v', prefs) or { panic(err) }
+	assert c_source.contains('.program=(program)'), c_source
+	assert !c_source.contains('.program=(&program)'), c_source
 }

@@ -4485,6 +4485,84 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '7'
 }
 
+fn test_cold_module_cache_preserves_parallel_interface_indexes() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_parallel_interfaces_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'contract/contract.v', 'module contract
+
+pub interface JsonEncoder {
+	to_json() string
+}
+
+pub interface A {
+	a() int
+}
+
+pub interface B {
+	b() int
+}
+
+pub interface C {
+	c() int
+}
+
+pub struct Null {}
+
+pub fn (null Null) to_json() string {
+	_ = null
+	return "null"
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import contract
+
+fn main() {
+	println("hi")
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'app')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert run_module_cache_binary(output) == 'hi'
+}
+
+fn test_cold_module_cache_preserves_parallel_monomorph_specs() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_parallel_monomorph_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import x.json2
+
+struct Result {
+	success bool
+	values  []string
+}
+
+fn main() {
+	result := json2.decode[Result](r\'{"success":true,"values":["A","B"]}\')!
+	println(result.success)
+	println(result.values.join(","))
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'app')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert run_module_cache_binary(output) == 'true\nA,B'
+}
+
 fn test_cached_interface_implementer_with_embedded_body_has_forward_declaration() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_interface_embedded_body_${os.getpid()}')

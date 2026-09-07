@@ -6,7 +6,7 @@ import os
 
 #include <sys/mman.h>
 
-fn C.CC_SHA256(data voidptr, len u32, md &u8) &u8
+fn C.CC_SHA256(const_data voidptr, len u32, md &u8) &u8
 
 // fastc_sign_macho_adhoc_mapped extends and patches the linker output through
 // a private mapping. The page hashes can read that mapping directly, avoiding a

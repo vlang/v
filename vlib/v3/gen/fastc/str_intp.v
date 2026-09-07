@@ -199,7 +199,8 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 		}
 	}
 	key := g.semantic_type_key(ft)
-	if method_signature := g.functions['${key}.str'] {
+	method_key := '${key}.str'
+	if method_signature := g.functions[method_key] {
 		expected_receiver := method_signature.parameter_types[0]
 		receiver := if expected_receiver.ends_with('*') && !ft.ends_with('*') {
 			'&(${value_c})'
@@ -208,7 +209,8 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 		} else {
 			value_c
 		}
-		return '${fastc_method_c_name(method_signature.module_name, fastc_c_declared_type_name(key), 'str')}(${receiver})'
+		method_c_name := g.c_function_name_or(method_key, fastc_method_c_name(method_signature.module_name, fastc_c_declared_type_name(key), 'str'))
+		return '${method_c_name}(${receiver})'
 	}
 	if g.declared_kinds[key] == .enum_ {
 		return 'v_fastc_enum_str_${fastc_c_declared_type_name(key)}(${value_c})'
@@ -324,7 +326,8 @@ fn (mut g Parser) read_interpolated_string() !string {
 					return g.unsupported('interpolation format `${format_specifier}` for enum `${value_type}`')
 				}
 				enum_type := fastc_c_declared_type_name(enum_key)
-				enum_name := if method_signature := g.functions['${enum_key}.str'] {
+				method_key := '${enum_key}.str'
+				enum_name := if method_signature := g.functions[method_key] {
 					expected_receiver := method_signature.parameter_types[0]
 					receiver := if expected_receiver.ends_with('*') && !interpolation_type.ends_with('*') {
 						'&(${value})'
@@ -333,7 +336,8 @@ fn (mut g Parser) read_interpolated_string() !string {
 					} else {
 						value
 					}
-					'${fastc_method_c_name(method_signature.module_name, enum_type, 'str')}(${receiver})'
+					method_c_name := g.c_function_name_or(method_key, fastc_method_c_name(method_signature.module_name, enum_type, 'str'))
+					'${method_c_name}(${receiver})'
 				} else {
 					'v_fastc_enum_str_${enum_type}(${value})'
 				}
@@ -365,7 +369,8 @@ fn (mut g Parser) read_interpolated_string() !string {
 					} else {
 						value
 					}
-					parts << '${fastc_method_c_name(method_signature.module_name, fastc_c_declared_type_name(receiver_key), 'str')}(${receiver})'
+					method_c_name := g.c_function_name_or(method_key, fastc_method_c_name(method_signature.module_name, fastc_c_declared_type_name(receiver_key), 'str'))
+					parts << '${method_c_name}(${receiver})'
 				} else if sumtype_helper := g.fastc_sumtype_str_helper(interpolation_type) {
 					// A boxed sum type dispatches `str()` on its runtime variant tag.
 					receiver := if interpolation_type.ends_with('*') {

@@ -978,22 +978,10 @@ fn (l &Linker) generate_code_signature(ident string) []u8 {
 	// Compute page hashes in parallel (16KB pages)
 	mut all_hashes := []u8{len: n_pages * 32}
 	data_ptr := unsafe { &u8(l.buf.data) }
-	$if clang {
-		// The bootstrap compiler uses the C backend, where hashing independent
-		// code-signature pages in parallel saves most of the signing pass. Native
-		// descendants keep the sequential fallback until spawn is supported there.
-		if n_pages >= 64 {
-			worker_count := 8
-			mut workers := []thread{}
-			for worker in 0 .. worker_count {
-				start := n_pages * worker / worker_count
-				end := n_pages * (worker + 1) / worker_count
-				workers << spawn sha256_hash_pages(data_ptr, mut all_hashes, start, end, code_limit)
-			}
-			workers.wait()
-		} else {
-			sha256_hash_pages(data_ptr, mut all_hashes, 0, n_pages, code_limit)
-		}
+	$if macos && clang {
+		// Optimized C-hosted compilers can use CommonCrypto's accelerated SHA-256.
+		// Native descendants retain the self-contained implementation below.
+		sha256_hash_pages_native(data_ptr, mut all_hashes, n_pages, code_limit)
 	} $else {
 		sha256_hash_pages(data_ptr, mut all_hashes, 0, n_pages, code_limit)
 	}

@@ -31,10 +31,9 @@ fn after() {}
 		FastcSourceFile{
 			path: path
 			source: source
-			header: FastcSourceHeader{
+			header: fastc_header_with_scan_flags(FastcSourceHeader{
 				module_name: 'main'
-				has_constants: true
-			}
+			}, fastc_source_scan_flags(source))
 		},
 	], prefs, 0, 1)
 	assert !partial.failed, partial.error_message
@@ -67,10 +66,9 @@ fn test_filtered_eof_comptime_spans_include_closing_brace() {
 		FastcSourceFile{
 			path: path
 			source: source
-			header: FastcSourceHeader{
+			header: fastc_header_with_scan_flags(FastcSourceHeader{
 				module_name: 'main'
-				has_constants: true
-			}
+			}, fastc_source_scan_flags(source))
 		},
 	], prefs, 0, 1)
 	assert !partial.failed, partial.error_message
@@ -86,10 +84,9 @@ fn test_constant_visibility_resets_after_each_declaration() {
 		FastcSourceFile{
 			path: path
 			source: source
-			header: FastcSourceHeader{
+			header: fastc_header_with_scan_flags(FastcSourceHeader{
 				module_name: 'example'
-				has_constants: true
-			}
+			}, fastc_source_scan_flags(source))
 		},
 	], prefs, 0, 1)
 	assert !partial.failed, partial.error_message
@@ -117,30 +114,35 @@ fn test_partitioned_c_directives_match_materialized_hoisting() {
 		fastc_write_c_source_ranges(mut event_body, event_partitioned.source, event_partitioned.body_ranges)
 		mut directives := strings.new_builder(256)
 		fastc_write_c_source_ranges(mut directives, partitioned.source, partitioned.directive_ranges)
-		assert event_directives.str() == directives.str()
-		if partitioned.final_kind == 1 {
-			directives.write_u8(`\n`)
-		}
-		if partitioned.directive_ranges.len > 0 {
-			directives.writeln('')
-		}
 		mut conditional_code := strings.new_builder(256)
 		fastc_write_c_source_ranges(mut conditional_code, partitioned.source, partitioned.conditional_ranges)
-		assert event_conditional_code.str() == conditional_code.str()
-		if partitioned.final_kind == 2 {
-			conditional_code.write_u8(`\n`)
-		}
-		if partitioned.conditional_ranges.len > 0 {
-			conditional_code.writeln('')
-		}
 		mut body := strings.new_builder(source.len)
 		fastc_write_c_source_ranges(mut body, partitioned.source, partitioned.body_ranges)
-		assert event_body.str() == body.str()
-		if partitioned.final_kind == 0 {
-			body.write_u8(`\n`)
+		// `str()` empties its builder, so each section is materialized exactly once, and the
+		// trailing newlines fastc_hoist_c_directives appends are added to those strings.
+		mut directives_text := directives.str()
+		mut conditional_code_text := conditional_code.str()
+		mut body_text := body.str()
+		assert event_directives.str() == directives_text
+		assert event_conditional_code.str() == conditional_code_text
+		assert event_body.str() == body_text
+		if partitioned.final_kind == 1 {
+			directives_text += '\n'
 		}
-		assert directives.str() == hoisted.directives
-		assert conditional_code.str() == hoisted.conditional_code
-		assert body.str() == hoisted.body
+		if partitioned.directive_ranges.len > 0 {
+			directives_text += '\n'
+		}
+		if partitioned.final_kind == 2 {
+			conditional_code_text += '\n'
+		}
+		if partitioned.conditional_ranges.len > 0 {
+			conditional_code_text += '\n'
+		}
+		if partitioned.final_kind == 0 {
+			body_text += '\n'
+		}
+		assert directives_text == hoisted.directives
+		assert conditional_code_text == hoisted.conditional_code
+		assert body_text == hoisted.body
 	}
 }

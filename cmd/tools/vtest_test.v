@@ -83,6 +83,10 @@ fn test_vtest_executable_compiles() {
 }
 
 fn test_strict_v3_flags_apply_only_to_top_level_test_compilation() {
+	$if !macos && !linux {
+		// The embedded V3 compiler is currently available only on macOS and Linux.
+		return
+	}
 	os.execute_or_exit('${os.quoted_path(vexe)} -old-compiler -nocache -o ${mytest_exe} cmd/tools/vtest.v')
 	old_vflags := os.getenv_opt('VFLAGS')
 	old_test_only := os.getenv_opt('VTEST_ONLY_FN')
