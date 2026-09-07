@@ -33,6 +33,13 @@ fn intel_hard_register(value i64) {
 	}
 }
 
+fn intel_uppercase_hard_register(value i64) {
+	asm amd64 intel {
+		MOV eax, value
+		; ; r (value)
+	}
+}
+
 fn main() {
 	println(intel_sub(50, 8))
 }

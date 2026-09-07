@@ -4414,9 +4414,10 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	// These integer instructions require their register operands to have the same
 	// width. Intentional mixed-width forms such as `movzx` and shift counts are
 	// deliberately absent.
-	if template.name !in ['mov', 'add', 'adc', 'sub', 'sbb', 'and', 'or', 'xor', 'cmp',
+	name := template.name.to_lower_ascii()
+	if name !in ['mov', 'add', 'adc', 'sub', 'sbb', 'and', 'or', 'xor', 'cmp',
 		'test', 'xchg', 'xadd', 'cmpxchg', 'imul', 'bsf', 'bsr', 'popcnt', 'lzcnt', 'tzcnt']
-		&& !template.name.starts_with('cmov') {
+		&& !name.starts_with('cmov') {
 		return
 	}
 	mut has_native_alias := false
@@ -4436,8 +4437,12 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	if !has_native_alias {
 		return
 	}
-	for arg in template.args {
+	for i, arg in template.args {
 		if arg is ast.AsmRegister && arg.size > 0 && arg.size != native_width * 8 {
+			// Moving a segment selector into a wider GPR is a valid zero-extending form.
+			if name == 'mov' && i == 1 && arg.name in ['cs', 'ss', 'ds', 'es', 'fs', 'gs'] {
+				continue
+			}
 			c.error('hard register `${arg.name}` is ${arg.size}-bit, but named operands in structured `intel` assembly expand to ${native_width * 8}-bit registers for the current compilation target; use matching register widths, or a `raw intel` block with explicit operand modifiers',
 				template.pos)
 		}

@@ -43,3 +43,12 @@ fn intel_generic_add[T](value T, increment T) T {
 fn test_intel_generic_native_width_operands_with_clang() {
 	assert intel_generic_add[i64](19, 23) == 42
 }
+
+fn test_intel_segment_register_move_with_clang() {
+	mut value := i64(0)
+	asm amd64 intel {
+		mov value, ds
+		; =r (value)
+	}
+	assert value >= 0
+}
