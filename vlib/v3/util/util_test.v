@@ -58,6 +58,7 @@ fn test_asm_register_names_cover_the_supported_architectures() {
 	assert 'fpsr' in arm64
 	assert 'daif' in arm64
 	assert 'za' in arm64
+	assert 'zt0' in arm64
 	assert 'rax' in asm_register_names('x86_64')
 
 	assert asm_register_names('ppc64le').len == 0

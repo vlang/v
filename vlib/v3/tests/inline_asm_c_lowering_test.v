@@ -440,11 +440,13 @@ fn test_arm64_asm_accepts_sme_za_register() {
 	generate, c_source := generate_inline_asm_c_for_arch('arm64_sme_za_program', 'fn main() {
 	asm arm64 {
 		zero {za}
+		zero {zt0}
 	}
 }
 ', 'arm64')
 	assert generate.exit_code == 0, generate.output
 	assert c_source.contains('"zero {za}\\n\\t"'), c_source
+	assert c_source.contains('"zero {zt0}\\n\\t"'), c_source
 }
 
 fn test_intel_asm_rejects_narrow_register_operands() {
@@ -458,6 +460,53 @@ fn test_intel_asm_rejects_narrow_register_operands() {
 ')
 	assert generate.exit_code != 0, generate.output
 	assert generate.output.contains('structured `intel` assembly cannot represent a 32-bit register operand'), generate.output
+}
+
+fn test_intel_asm_validates_enum_backing_widths() {
+	default_generate, _ := generate_inline_asm_c('intel_default_enum_register_program', 'enum Kind {
+	one
+}
+
+fn main() {
+	value := Kind.one
+	asm amd64 intel {
+		mov eax, value
+		; ; r (value)
+	}
+}
+')
+	assert default_generate.exit_code != 0, default_generate.output
+	assert default_generate.output.contains('structured `intel` assembly cannot represent a 32-bit register operand'), default_generate.output
+
+	narrow_generate, _ := generate_inline_asm_c('intel_narrow_enum_register_program', 'enum Kind as u8 {
+	one
+}
+
+fn main() {
+	value := Kind.one
+	asm amd64 intel {
+		mov al, value
+		; ; r (value)
+	}
+}
+')
+	assert narrow_generate.exit_code != 0, narrow_generate.output
+	assert narrow_generate.output.contains('structured `intel` assembly cannot represent a 8-bit register operand'), narrow_generate.output
+
+	wide_generate, c_source := generate_inline_asm_c('intel_wide_enum_register_program', 'enum Kind as u64 {
+	one
+}
+
+fn main() {
+	value := Kind.one
+	asm amd64 intel {
+		mov rax, value
+		; ; r (value)
+	}
+}
+')
+	assert wide_generate.exit_code == 0, wide_generate.output
+	assert c_source.contains('"mov rax, %V[value]\\n\\t"'), c_source
 }
 
 fn test_arm64_asm_accepts_operand_keywords() {

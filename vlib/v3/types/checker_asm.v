@@ -97,7 +97,7 @@ fn (mut tc TypeChecker) check_inline_asm_intel_ios(id flat.NodeId, node flat.Nod
 			child_index := child_offset + index
 			if child_index < int(node.children_count) {
 				child_id := tc.a.child(&node, child_index)
-				if width := inline_asm_intel_operand_width(tc.resolve_type(child_id)) {
+				if width := tc.inline_asm_intel_operand_width(tc.resolve_type(child_id)) {
 					if width != platform_int_bits() {
 						tc.record_error(.assignment_mismatch, 'structured `intel` assembly cannot represent a ${width}-bit register operand; use a ${platform_int_bits()}-bit operand or a `raw` template with an explicit modifier', child_id)
 					}
@@ -109,7 +109,7 @@ fn (mut tc TypeChecker) check_inline_asm_intel_ios(id flat.NodeId, node flat.Nod
 	}
 }
 
-fn inline_asm_intel_operand_width(typ Type) ?int {
+fn (tc &TypeChecker) inline_asm_intel_operand_width(typ Type) ?int {
 	clean := unalias_type(typ)
 	return match clean {
 		Primitive {
@@ -124,8 +124,31 @@ fn inline_asm_intel_operand_width(typ Type) ?int {
 		Char { 8 }
 		Rune { 32 }
 		ISize, USize, Pointer { platform_int_bits() }
+		Enum { tc.inline_asm_enum_backing_width(clean.name) }
 		else { none }
 	}
+}
+
+fn (tc &TypeChecker) inline_asm_enum_backing_width(name string) int {
+	for index in tc.top_level_idx {
+		decl := tc.a.nodes[index]
+		if decl.kind != .enum_decl || decl.value != name.all_after_last('.') {
+			continue
+		}
+		file := tc.a.source_files[decl.pos.id] or { continue }
+		module_name := tc.file_modules[file.name] or { '' }
+		qualified := qualify_decl_name_in_module(decl.value, module_name)
+		if name.contains('.') && qualified != name {
+			continue
+		}
+		if decl.generic_params().len > 0 && decl.generic_params()[0].len > 0 {
+			if width := tc.inline_asm_intel_operand_width(tc.parse_type(decl.generic_params()[0])) {
+				return width
+			}
+		}
+		break
+	}
+	return 32
 }
 
 // check_inline_asm_clobbers reports clobber list entries that name no known register.

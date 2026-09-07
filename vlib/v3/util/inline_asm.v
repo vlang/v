@@ -95,7 +95,7 @@ pub fn x86_asm_register_names() []string {
 // arm64_asm_register_names returns the register names an arm64 assembly block can use.
 pub fn arm64_asm_register_names() []string {
 	mut names := ['sp', 'wsp', 'lr', 'fp', 'pc', 'xzr', 'wzr', 'nzcv', 'fpcr', 'fpsr', 'daif',
-		'za']
+		'za', 'zt0']
 	for i in 0 .. 31 {
 		names << 'x${i}'
 		names << 'w${i}'
