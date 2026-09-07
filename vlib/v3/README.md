@@ -492,9 +492,9 @@ invocation. Target compilations receive both `-ownership` and `-d ownership`, so
 
 The table uses the first v3-generated C stage, `./v3 -o v4 v3.v`. The plain
 bootstrap includes thread support. v3 self-hosts parallel-capable successors by
-default; pass `-no-parallel` or `--no-parallel` to disable threaded
-transform/C codegen and omit parallel support from the self-hosted compiler
-output. Debug builds use bundled TCC first, then fall back to `cc` only when
+default; pass `-no-parallel` or `--no-parallel` to disable threaded transform/C
+codegen for the current build. The self-hosted compiler output retains parallel
+support. Debug builds use bundled TCC first, then fall back to `cc` only when
 that compile fails.
 
 Pass `-c99` to the v3 C backend to compile generated C and support objects as
