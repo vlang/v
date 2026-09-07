@@ -281,6 +281,8 @@ fn test_internal_date() {
 fn test_search_and_expunge() {
 	mut c := client_over('* SEARCH 2 84 882\r\na1 OK done\r\n')
 	assert c.read_response('a1')!.numbers == [u32(2), 84, 882]
+	mut modseq := client_over('* SEARCH 2 5 (MODSEQ 917162500)\r\na1 OK done\r\n')
+	assert modseq.read_response('a1')!.numbers == [u32(2), 5]
 
 	// A search that matched nothing sends the keyword with no numbers.
 	mut empty := client_over('* SEARCH\r\na1 OK done\r\n')
@@ -294,7 +296,7 @@ fn test_search_and_expunge() {
 }
 
 fn test_status_data() {
-	mut c := client_over('* STATUS "Work/&AMk-t&AOk-" (MESSAGES 231 UIDNEXT 44292 UNSEEN 3)\r\n' + 'a1 OK done\r\n')
+	mut c := client_over('* STATUS "Work/&AMk-t&AOk-" (MESSAGES 231 SIZE 5000000000 UIDNEXT 44292 UNSEEN 3)\r\n' + 'a1 OK done\r\n')
 	status := c.read_response('a1')!.statuses[0]
 	assert status.name == 'Work/Été'
 	assert status.messages == 231
@@ -368,6 +370,8 @@ fn test_an_unknown_response_skips_literals_inside_extension_arguments() {
 fn test_an_unknown_response_skips_multiple_top_level_literals() {
 	mut c := client_over('* ACL {5}\r\nINBOX {3}\r\nbob lr\r\na1 OK done\r\n')
 	assert c.read_response('a1')!.status == .ok
+	mut after_atom := client_over('* ACL INBOX {3}\r\nbob lr\r\na1 OK done\r\n')
+	assert after_atom.read_response('a1')!.status == .ok
 }
 
 fn test_malformed_internal_dates_return_errors() {

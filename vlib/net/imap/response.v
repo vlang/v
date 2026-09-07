@@ -299,7 +299,7 @@ fn (mut c Client) read_untagged(mut d Decoder, mut out Response) ! {
 			// An extension this module does not model. Its line is skipped
 			// whole rather than half read, including any literal payloads and
 			// the continuation of the response behind them.
-			d.skip_response_text()!
+			d.skip_response_text(name)!
 		}
 	}
 }
@@ -706,24 +706,27 @@ fn read_status_data(mut d Decoder) !MailboxStatus {
 		for {
 			name := d.atom()!.to_upper()
 			d.sp()!
-			value := d.number()!
 			match name {
 				'MESSAGES' {
-					messages = value
+					messages = d.number()!
 				}
 				'RECENT' {
-					recent = value
+					recent = d.number()!
 				}
 				'UIDNEXT' {
-					uid_next = value
+					uid_next = d.number()!
 				}
 				'UIDVALIDITY' {
-					uid_validity = value
+					uid_validity = d.number()!
 				}
 				'UNSEEN' {
-					unseen = value
+					unseen = d.number()!
 				}
-				else {}
+				else {
+					// Extensions such as RFC 8438 SIZE use values wider than the
+					// base protocol's 32-bit number, or another value shape.
+					d.skip_value()!
+				}
 			}
 			if !d.more_in_list()! {
 				break
@@ -836,6 +839,12 @@ fn read_space_separated(mut d Decoder) ![]string {
 fn read_numbers(mut d Decoder) ![]u32 {
 	mut out := []u32{}
 	for d.accept(` `)! {
+		// RFC 7162 appends `(MODSEQ n)` to SEARCH results. It is metadata,
+		// not another message number.
+		if d.peek_byte()! == `(` {
+			d.skip_value()!
+			return out
+		}
 		out << d.number()!
 	}
 	return out

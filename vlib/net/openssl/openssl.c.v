@@ -44,6 +44,7 @@ $if $pkgconfig('openssl') {
 #include <openssl/rand.h> # Please install OpenSSL development headers
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/x509v3.h>
 #insert "@VEXEROOT/vlib/net/openssl/openssl_compat.h"
 
 @[typedef]
@@ -126,6 +127,8 @@ fn C.SSL_do_handshake(&C.SSL) i32
 fn C.SSL_set_cipher_list(ctx &C.SSL, str &char) i32
 
 fn C.v_net_openssl_get1_peer_certificate(ssl &C.SSL) &C.X509
+
+fn C.v_net_openssl_has_x509_identity_checks() int
 
 fn C.X509_free(const_cert &C.X509)
 

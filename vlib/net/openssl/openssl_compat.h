@@ -24,9 +24,12 @@ static X509 *v_net_openssl_get1_peer_certificate(SSL *ssl) {
 #endif
 
 // X509_check_host and X509_check_ip_asc were added in OpenSSL 1.0.2. Keep
-// older supported builds linkable and fail certificate identity checks closed
-// when those APIs are unavailable.
+// older builds linkable and report that identity validation is unavailable so
+// callers can reject validated connections before starting a handshake.
 #if !defined(OPENSSL_VERSION_NUMBER) || OPENSSL_VERSION_NUMBER < 0x10002000L
+static int v_net_openssl_has_x509_identity_checks(void) {
+	return 0;
+}
 static int v_net_openssl_x509_check_host(X509 *cert, const char *name, size_t name_len, unsigned int flags, char **peer_name) {
 	(void)cert;
 	(void)name;
@@ -42,6 +45,9 @@ static int v_net_openssl_x509_check_ip_asc(X509 *cert, const char *ip_asc, unsig
 	return 0;
 }
 #else
+static int v_net_openssl_has_x509_identity_checks(void) {
+	return 1;
+}
 static int v_net_openssl_x509_check_host(X509 *cert, const char *name, size_t name_len, unsigned int flags, char **peer_name) {
 	return X509_check_host(cert, name, name_len, flags, peer_name);
 }

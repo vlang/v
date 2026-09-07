@@ -344,8 +344,12 @@ fn (mut d Decoder) text() !string {
 // payloads behind to be mistaken for the next response. A literal marker ends
 // its physical line; the response continues after exactly the announced
 // number of octets.
-fn (mut d Decoder) skip_response_text() ! {
-	mut context := ResponseTextContext{}
+fn (mut d Decoder) skip_response_text(response_name string) ! {
+	mut context := ResponseTextContext{
+		// RFC 4314 responses contain several top-level astring values, so a
+		// literal can validly follow an atom without an enclosing list.
+		allow_top_level_literals: response_name in ['ACL', 'LISTRIGHTS', 'MYRIGHTS']
+	}
 	for {
 		line := d.text()!
 		has_literal, size := literal_suffix_size(line, mut context)!
@@ -362,11 +366,12 @@ fn (mut d Decoder) skip_response_text() ! {
 
 struct ResponseTextContext {
 mut:
-	depth               int
-	quoted              bool
-	escaped             bool
-	has_top_level_value bool
-	saw_literal         bool
+	depth                    int
+	quoted                   bool
+	escaped                  bool
+	has_top_level_value      bool
+	saw_literal              bool
+	allow_top_level_literals bool
 }
 
 fn literal_suffix_size(line string, mut context ResponseTextContext) !(bool, u32) {
@@ -381,7 +386,7 @@ fn literal_suffix_size(line string, mut context ResponseTextContext) !(bool, u32
 	// A top-level suffix after ordinary text is ambiguous with prose. Inside a
 	// list, or after a literal has already established a structured response,
 	// the grammar gives the next marker an unambiguous token context.
-	if context.quoted || (context.depth == 0 && context.has_top_level_value && !context.saw_literal) {
+	if context.quoted || (context.depth == 0 && context.has_top_level_value && !context.saw_literal && !context.allow_top_level_literals) {
 		return false, 0
 	}
 	mut digits_end := line.len - 1

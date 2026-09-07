@@ -157,6 +157,9 @@ fn (mut s SSLConn) init() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
+	if s.config.validate && C.v_net_openssl_has_x509_identity_checks() != 1 {
+		return error('net.openssl SSLConn.init, certificate identity validation requires OpenSSL 1.0.2 or newer')
+	}
 	s.sslctx = unsafe { C.SSL_CTX_new(C.SSLv23_client_method()) }
 	if s.sslctx == 0 {
 		return error('net.openssl Could not get ssl context')
