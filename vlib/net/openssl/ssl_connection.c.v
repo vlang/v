@@ -285,9 +285,10 @@ fn (s &SSLConn) verify_hostname(hostname string) ! {
 	defer {
 		C.X509_free(cert)
 	}
-	ip_result := C.X509_check_ip_asc(cert, &char(hostname.str), 0)
+	ip_result := C.v_net_openssl_x509_check_ip_asc(cert, &char(hostname.str), 0)
 	verified := if ip_result == -2 {
-		C.X509_check_host(cert, &char(hostname.str), usize(hostname.len), 0, unsafe { nil }) == 1
+		C.v_net_openssl_x509_check_host(cert, &char(hostname.str), usize(hostname.len), 0,
+			unsafe { nil }) == 1
 	} else {
 		ip_result == 1
 	}

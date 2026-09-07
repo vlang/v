@@ -515,7 +515,10 @@ fn (mut c Client) send(text []string, literals [][]u8) !Response {
 		line = text[i + 1]
 	}
 	c.write_line(line)!
-	res := c.read_response_raw(tag)!
+	res := c.read_response_raw(tag) or {
+		c.shutdown()
+		return err
+	}
 	c.absorb(res)
 	if res.status != .ok {
 		return error('imap: ${res.status} ${res.text}')

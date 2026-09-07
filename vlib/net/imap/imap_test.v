@@ -106,6 +106,9 @@ fn mock_reply(tag string, cmd string, line string) string {
 		// the server says so: attached to whatever command is in flight.
 		return '* 9 EXISTS\r\n* 2 RECENT\r\n${tag} OK NOOP completed\r\n'
 	}
+	if cmd == 'WRONGTAG' {
+		return 'a9999 OK wrong tag\r\n'
+	}
 	if cmd == 'ORDERED' {
 		return '* 11 EXISTS\r\n* 5 EXPUNGE\r\n${tag} OK updates completed\r\n'
 	}
@@ -624,6 +627,23 @@ fn test_connect_rejects_replacing_a_live_transport() {
 		return
 	}
 	assert false, 'connect must not replace an open transport'
+}
+
+fn test_a_wrong_completion_tag_closes_the_transport() {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	seen := chan string{ cap: 64 }
+	port, th := start(mut l, mock_greeting, seen)!
+	mut c := new_client(server: '127.0.0.1', port: port)!
+	c.command('WRONGTAG') or {
+		assert err.msg().contains('a9999')
+		assert !c.transport_open
+		assert !c.is_open
+		th.wait()
+		l.close() or {}
+		assert drain(seen) == ['a0001 WRONGTAG']
+		return
+	}
+	assert false, 'a mismatched completion tag must invalidate the session'
 }
 
 fn test_sasl_plain_can_be_selected_during_construction() {

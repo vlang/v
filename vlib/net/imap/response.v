@@ -203,7 +203,10 @@ mut:
 // read_response reads responses until the one tagged `tag`, and turns a NO or
 // BAD completion into an error.
 fn (mut c Client) read_response(tag string) !Response {
-	out := c.read_response_raw(tag)!
+	out := c.read_response_raw(tag) or {
+		c.shutdown()
+		return err
+	}
 	if out.status == .ok {
 		return out
 	}
