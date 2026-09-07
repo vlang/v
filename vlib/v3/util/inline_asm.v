@@ -74,6 +74,9 @@ pub fn x86_asm_register_names() []string {
 		names << 'k${i}'
 		names << 'tmm${i}'
 	}
+	for i in 0 .. 4 {
+		names << 'bnd${i}'
+	}
 	for i in 0 .. 16 {
 		names << 'r${i}'
 		names << 'r${i}b'

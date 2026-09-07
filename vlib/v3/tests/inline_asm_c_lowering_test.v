@@ -549,12 +549,18 @@ fn test_arm64_asm_accepts_operand_keywords() {
 		add x0, x1, x2, lsr 3
 		add x0, x1, w2, sxtw
 		csel x0, x1, x2, eq
+		ptrue p0.b, vl1
+		ptrue p1.b, vl256
+		ptrue p2.b, pow2
 	}
 }
 ', 'arm64')
 	assert generate.exit_code == 0, generate.output
 	assert c_source.contains('"dmb sy\\n\\t"'), c_source
 	assert c_source.contains('"add x0, x1, x2, lsr 3\\n\\t"'), c_source
+	assert c_source.contains('"ptrue p0.b, vl1\\n\\t"'), c_source
+	assert c_source.contains('"ptrue p1.b, vl256\\n\\t"'), c_source
+	assert c_source.contains('"ptrue p2.b, pow2\\n\\t"'), c_source
 }
 
 fn test_misspelled_asm_registers_are_reported_with_suggestions() {
@@ -586,6 +592,8 @@ fn test_raw_asm_keeps_avx512_mask_syntax_and_clobbers() {
 		"vpxord %%zmm0, %%zmm0, %%zmm0%{%%k1%}%{z%}\\n\\t"
 		; ; ; zmm0
 		  k1
+		  bnd0
+		  bnd3
 	}
 }
 ')
@@ -593,4 +601,6 @@ fn test_raw_asm_keeps_avx512_mask_syntax_and_clobbers() {
 	assert c_source.contains('"vpxord %%zmm0, %%zmm0, %%zmm0%{%%k1%}%{z%}\\n\\t"'), c_source
 	assert c_source.contains('"zmm0"'), c_source
 	assert c_source.contains('"k1"'), c_source
+	assert c_source.contains('"bnd0"'), c_source
+	assert c_source.contains('"bnd3"'), c_source
 }

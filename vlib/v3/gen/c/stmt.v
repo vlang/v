@@ -3867,6 +3867,9 @@ fn is_c_inline_asm_x86_register(name string) bool {
 	if name.len == 2 && name[0] == `k` && name[1] >= `0` && name[1] <= `7` {
 		return true
 	}
+	if name.len == 4 && name.starts_with('bnd') && name[3] >= `0` && name[3] <= `3` {
+		return true
+	}
 	for prefix in ['r', 'xmm', 'ymm', 'zmm', 'mm', 'st', 'tmm'] {
 		if name.starts_with(prefix) && name.len > prefix.len {
 			mut end := name.len

@@ -2021,6 +2021,7 @@ pub const x86_with_number_register_list = {
 		'st#': 16
 	}
 	128: {
+		'bnd#': 4
 		'xmm#': 32
 	}
 	256: {

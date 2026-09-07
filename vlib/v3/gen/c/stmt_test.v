@@ -610,11 +610,13 @@ fn test_inline_asm_intel_templates_keep_destination_first_order() {
 		'value':     true
 		'increment': true
 	}
-	assert lower_c_inline_asm_intel_template('add value, increment', aliases) == 'add %V[value], %V[increment]'
-	assert lower_c_inline_asm_intel_template('mov rax, 7', aliases) == 'mov rax, 7'
-	assert lower_c_inline_asm_intel_template('mov rax, [value + rcx*4 + 8]', aliases) == 'mov rax, [%V[value] + rcx*4 + 8]'
-	assert lower_c_inline_asm_intel_template('mov rax, `A`', aliases) == "mov rax, 'A'"
-	assert lower_c_inline_asm_intel_template('loop_start:', aliases) == 'loop_start:'
+	assert lower_c_inline_asm_intel_template('add value, increment', aliases, false) == 'add %V[value], %V[increment]'
+	assert lower_c_inline_asm_intel_template('mov rax, 7', aliases, false) == 'mov rax, 7'
+	assert lower_c_inline_asm_intel_template('mov rax, [value + rcx*4 + 8]', aliases, false) == 'mov rax, [%V[value] + rcx*4 + 8]'
+	assert lower_c_inline_asm_intel_template('mov rax, `A`', aliases, false) == "mov rax, 'A'"
+	assert lower_c_inline_asm_intel_template('loop_start:', aliases, false) == 'loop_start:'
+	assert lower_c_inline_asm_intel_template('vpxord zmm0{k1}{z}, zmm0, zmm0',
+		aliases, true) == 'vpxord zmm0%{k1%}%{z%}, zmm0, zmm0'
 }
 
 fn test_inline_asm_raw_templates_are_taken_verbatim() {
@@ -679,4 +681,7 @@ fn test_inline_asm_x86_registers_include_avx512_mask_registers() {
 	assert !is_c_inline_asm_x86_register('kernel')
 	assert is_c_inline_asm_x86_register('tmm0')
 	assert is_c_inline_asm_x86_register('tmm7')
+	assert is_c_inline_asm_x86_register('bnd0')
+	assert is_c_inline_asm_x86_register('bnd3')
+	assert !is_c_inline_asm_x86_register('bnd4')
 }

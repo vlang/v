@@ -41,7 +41,7 @@ const inline_asm_arm64_operand_keywords = ['lsl', 'lsr', 'asr', 'ror', 'msl', 'u
 	'uxtx', 'sxtb', 'sxth', 'sxtw', 'sxtx', 'eq', 'ne', 'cs', 'hs', 'cc', 'lo', 'mi', 'pl', 'vs',
 	'vc', 'hi', 'ls', 'ge', 'lt', 'gt', 'le', 'al', 'nv', 'sy', 'st', 'ld', 'osh', 'oshst', 'oshld',
 	'nsh', 'nshst', 'nshld', 'ish', 'ishst', 'ishld', 'mul', 'vl', 'b', 'h', 's', 'd', 'q', 'z',
-	'm']
+	'm', 'pow2', 'mul3', 'mul4', 'all']
 
 // check_inline_asm_block reports the assembly diagnostics that only need the block's
 // preserved source: unsupported operand constraints in structured `intel` blocks, and
@@ -199,8 +199,17 @@ fn (mut tc TypeChecker) check_inline_asm_templates(id flat.NodeId, node flat.Nod
 }
 
 fn inline_asm_operand_is_keyword(word string, arch string, is_intel bool) bool {
-	return (is_intel && word in inline_asm_intel_operand_keywords)
-		|| (arch in ['arm64', 'aarch64'] && word in inline_asm_arm64_operand_keywords)
+	if is_intel && word in inline_asm_intel_operand_keywords {
+		return true
+	}
+	if arch !in ['arm64', 'aarch64'] {
+		return false
+	}
+	if word in inline_asm_arm64_operand_keywords {
+		return true
+	}
+	return word.starts_with('vl')
+		&& word[2..] in ['1', '2', '3', '4', '5', '6', '7', '8', '16', '32', '64', '128', '256']
 }
 
 // inline_asm_mask_comments replaces every comment with spaces, keeping newlines and the

@@ -48,6 +48,9 @@ fn test_asm_register_names_cover_the_supported_architectures() {
 	assert 'st' in amd64
 	assert 'eiz' in amd64
 	assert 'riz' in amd64
+	assert 'bnd0' in amd64
+	assert 'bnd3' in amd64
+	assert 'bnd4' !in amd64
 
 	i386 := asm_register_names('i386')
 	assert 'eax' in i386
