@@ -2045,7 +2045,7 @@ pub const arm_with_number_register_list = {
 }
 
 // AArch64 shares none of arm32's `r#` register names: its general purpose registers are
-// `x0`-`x30` with 32-bit `w0`-`w30` views, and its SIMD registers are named after the
+// `x0`-`x31` with 32-bit `w0`-`w31` views, and its SIMD registers are named after the
 // element width they are accessed through.
 // 'sp' takes the x31 encoding slot, 'lr' is x30 and 'fp' is x29.
 pub const arm64_no_number_register_list = {
@@ -2055,7 +2055,7 @@ pub const arm64_no_number_register_list = {
 }
 
 // no comments because maps do not support comments
-// x#/w#: general purpose registers, x31/w31 do not exist ('sp' or 'xzr' take that slot)
+// x#/w#: general purpose registers; x31/w31 share the encoding used by sp/wsp and xzr/wzr
 // b#/h#/s#/d#/q#: the 8, 16, 32, 64 and 128 bit views of the SIMD registers
 // v#: a whole SIMD register, addressed as a vector
 // z#/p#: SVE vector and predicate registers, sized here at the 128-bit minimum vector length
@@ -2068,11 +2068,11 @@ pub const arm64_with_number_register_list = {
 		'p#': 16
 	}
 	32:  {
-		'w#': 31
+		'w#': 32
 		's#': 32
 	}
 	64:  {
-		'x#': 31
+		'x#': 32
 		'd#': 32
 	}
 	128: {

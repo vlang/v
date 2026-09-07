@@ -59,6 +59,8 @@ fn test_asm_register_names_cover_the_supported_architectures() {
 	arm64 := asm_register_names('arm64')
 	assert 'x0' in arm64
 	assert 'w30' in arm64
+	assert 'x31' in arm64
+	assert 'w31' in arm64
 	assert 'sp' in arm64
 	assert 'fpsr' in arm64
 	assert 'daif' in arm64
