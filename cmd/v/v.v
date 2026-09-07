@@ -11,10 +11,10 @@ import v.pref
 import v.util
 import v.util.version
 
-$if v1_fallback ?|| ( !macos && !linux ) {
-	// The compatibility compiler and non-V3 targets both need the V1 builder.
-	// Keep this as one import site: a compatibility compiler generating a cross
-	// target can satisfy both parts of the condition.
+$if v1_fallback ?|| cross ?|| ( !macos && !linux ) {
+	// The compatibility compiler, portable cross snapshots, and non-V3 targets
+	// all need the V1 builder. Keep this as one import site: a compatibility
+	// compiler generating a cross target can satisfy multiple parts of the condition.
 	import v.builder
 	import v.builder.cbuilder
 }
@@ -123,9 +123,9 @@ fn main() {
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
 	prefs, command, command_idx := pref.parse_args_for_launcher_with_command_index(external_tools, args_and_flags, true)
 	maybe_delegate_to_vvmrc(command, prefs)
-	$if v1_fallback ? {
-		// This binary is the stable compatibility compiler. Never delegate back to
-		// either embedded V3 or the V3 ownership compiler.
+	$if v1_fallback ?|| cross ? {
+		// This binary is a stable compatibility compiler, including portable VC
+		// snapshots. Never delegate back to embedded V3 or the ownership compiler.
 	} $else {
 		maybe_delegate_to_ownership(command, prefs, args_and_flags)
 		maybe_delegate_to_macos_v3(command, prefs)
@@ -421,7 +421,7 @@ fn cached_v3_ownership_executable_path(vroot string) string {
 fn rebuild(prefs &pref.Preferences) {
 	match prefs.backend {
 		.c {
-			$if v1_fallback ? {
+			$if v1_fallback ?|| cross ? {
 				builder.compile('build', prefs, cbuilder.compile_c)
 			} $else $if macos || linux {
 
