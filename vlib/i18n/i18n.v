@@ -108,7 +108,7 @@ fn flatten_tr_json(value json2.Any, key string, mut res map[string]string) {
 		return
 	}
 	if key.len != 0 {
-		res[key] = value.str()
+		res[key] = if value is json2.Null { 'null' } else { value.str() }
 	}
 }
 

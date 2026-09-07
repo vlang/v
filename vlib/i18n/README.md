@@ -50,6 +50,9 @@ can be split per feature. `translations/zh/dashboard.json` defines `zh` keys und
 
 gives `dashboard.title` and `dashboard.widgets.clock`.
 
+Non-string scalar values use their JSON representation, so `42`, `true`, and `null`
+are loaded as `"42"`, `"true"`, and `"null"`. Arrays are ignored.
+
 When the same key is defined by both formats, the `.tr` value wins.
 
 ## Usage

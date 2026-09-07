@@ -39,6 +39,7 @@ fn test_load_tr_map_from_dir_reads_json_files() {
 	assert translations['en']['menu.edit.undo'] == 'Undo'
 	// non string scalars are usable as well
 	assert translations['en']['answer'] == '42'
+	assert translations['en']['missing'] == 'null'
 }
 
 fn test_tr_files_win_over_json_for_the_same_key() {
