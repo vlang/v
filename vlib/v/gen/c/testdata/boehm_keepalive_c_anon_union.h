@@ -11,4 +11,6 @@ typedef struct _TestAnonRecord {
 struct TestAnonEvent {
 	uint32_t events;
 	TestAnonRecord record;
+	// Intentionally omitted from the V declaration. C structs may be partially declared.
+	void *hidden;
 };
