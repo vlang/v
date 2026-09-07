@@ -253,16 +253,21 @@ pub fn (node IntegerLiteral) concrete_type() Type {
 	if uval <= u64(0x7FFFFFFF) {
 		return i32_type
 	}
+	// C treats the sign as a unary operator. Keep negative magnitudes signed so
+	// non-decimal literals do not acquire an unsigned suffix and wrap on negation.
+	if is_negative {
+		if uval <= u64(0x8000000000000000) {
+			return i64_type
+		}
+		return u64_type
+	}
 	is_non_decimal := literal.starts_with('0x') || literal.starts_with('0X')
 		|| literal.starts_with('0o') || literal.starts_with('0O') || literal.starts_with('0b')
 		|| literal.starts_with('0B')
-	// The sign is a unary operator in C. Decimal 2147483648 therefore already has
-	// a 64-bit signed type in `-2147483648`, while non-decimal constants may use
-	// the unsigned 32-bit candidate.
-	if (!is_negative || is_non_decimal) && uval <= u64(0xFFFFFFFF) {
+	if is_non_decimal && uval <= u64(0xFFFFFFFF) {
 		return u32_type
 	}
-	if uval <= u64(0x7FFFFFFFFFFFFFFF) || (is_negative && !is_non_decimal) {
+	if uval <= u64(0x7FFFFFFFFFFFFFFF) {
 		return i64_type
 	}
 	return u64_type
