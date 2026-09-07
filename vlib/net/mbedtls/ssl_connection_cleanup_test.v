@@ -1,6 +1,8 @@
 module mbedtls
 
 import net
+import os
+import rand
 
 fn test_unconnected_ssl_conn_shutdown_is_safe_and_idempotent() {
 	mut conn := new_ssl_conn(validate: false)!
@@ -47,6 +49,37 @@ fn test_incomplete_client_credentials_are_nonretryable() {
 		return
 	}
 	assert false, 'expected an incomplete client certificate pair to be rejected'
+}
+
+// test_client_ca_file_rejects_empty_file is the h1/h2 sibling of HTTP/3's
+// own regression test for the same class of finding (external review,
+// vlang/v#28406, issuecomment-5572430232): an explicitly configured but
+// empty CA file must be rejected, not silently treated as "no CA
+// configured". Unlike HTTP/3 (which reads the file into a string before
+// net.quic ever sees it, so an empty read result is ambiguous with an
+// unset field), this path hands the file PATH straight to mbedTLS's own
+// `mbedtls_x509_crt_parse_file`, which parse_client_ca_file already
+// treats as a hard failure on any nonzero return -- this test empirically
+// confirms mbedTLS itself returns nonzero for a genuinely empty (0-byte)
+// file, rather than assuming it from reading the C API's documentation.
+fn test_client_ca_file_rejects_empty_file() {
+	workdir := os.join_path(os.vtmp_dir(), 'v_mbedtls_empty_ca_${rand.ulid()}')
+	os.mkdir_all(workdir) or { panic(err) }
+	defer {
+		os.rmdir_all(workdir) or {}
+	}
+	empty_ca_path := os.join_path(workdir, 'empty-ca.pem')
+	os.write_file(empty_ca_path, '') or { panic(err) }
+
+	new_ssl_conn(SSLConnectConfig{
+		verify: empty_ca_path
+		validate: true
+	}) or {
+		assert err.code() == net.err_tls_certificate_invalid_code
+		assert err.msg().contains('failed to parse configured CA file')
+		return
+	}
+	assert false, 'expected an empty configured CA file to be rejected'
 }
 
 fn test_client_default_ca_bundle_rejects_partial_parse() {

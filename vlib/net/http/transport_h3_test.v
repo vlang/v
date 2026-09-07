@@ -3,6 +3,8 @@ module http
 
 import net
 import net.quic
+import os
+import rand
 import sync
 import time
 
@@ -116,6 +118,40 @@ fn test_h3_certificate_alert_is_nonretryable_at_http_boundary() {
 	assert h3_http_dial_error_code(123) == 123
 	assert h3_http_connection_error_code(u64(bad_certificate)) == net.err_tls_certificate_invalid_code
 	assert h3_http_connection_error_code(123) == 0
+}
+
+// test_h3_round_trip_rejects_an_explicitly_configured_but_empty_ca_file is a
+// direct regression test for a real finding (external review, vlang/v#28406,
+// issuecomment-5572430232): net.quic's DialParams carries CA trust as
+// in-memory PEM content, so transport_h3_d_http3.v must read req.verify's
+// file into a string before dialing -- and an empty read result was
+// indistinguishable, downstream, from req.verify never having been set,
+// silently widening trust to the system/default CA bundle instead of
+// failing. Unlike the happy-path dial tests this file's own module doc
+// comment says need a real peer, this check runs entirely from local state
+// (map lookups + a file read) before h3_dial_and_do ever reaches the
+// network -- reached here via h3_round_trip exactly like the
+// cert/cert_key/validate fail-fast checks above it.
+fn test_h3_round_trip_rejects_an_explicitly_configured_but_empty_ca_file() {
+	workdir := os.join_path(os.vtmp_dir(), 'v_h3_empty_ca_${rand.ulid()}')
+	os.mkdir_all(workdir) or { panic(err) }
+	defer {
+		os.rmdir_all(workdir) or {}
+	}
+	empty_ca_path := os.join_path(workdir, 'empty-ca.pem')
+	os.write_file(empty_ca_path, '') or { panic(err) }
+
+	mut t := new_transport()
+	req := &Request{
+		enable_http3: true
+		verify: empty_ca_path
+	}
+	t.h3_round_trip(req, 'key', .get, 'example.com', 443, '/', '', new_header()) or {
+		assert err.msg().contains('empty')
+		assert err.msg().contains(empty_ca_path)
+		return
+	}
+	assert false, 'expected h3_round_trip to reject an explicitly configured but empty CA file'
 }
 
 // new_test_h3_mux_conn_for_pool_test builds a bare H3MuxConn suitable only

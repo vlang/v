@@ -364,6 +364,14 @@ The default Windows SChannel backend does not use `verify` or
 or compile with `-d no_vschannel` to use the bundled mbedTLS backend with a
 private CA file or PEM data.
 
+An explicitly configured `verify` **replaces** the system/default trust store
+entirely; it is never merged with it. A certificate rejected by the selected
+trust store stays rejected — verification is never retried against the
+default/system roots as a fallback, since that would silently restore trust
+in a CA an administrator deliberately excluded by supplying a private `verify`
+bundle. This applies identically across every TLS backend (mbedTLS, OpenSSL,
+and the h1/h2/HTTP-3 paths that use them).
+
 As a temporary compatibility measure, `validate: false` disables certificate validation
 for HTTP/1.1 and HTTP/2 requests. HTTP/3 currently requires validation and rejects that
 setting. Disabling validation is insecure and should not be used in production.

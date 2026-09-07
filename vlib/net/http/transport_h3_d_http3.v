@@ -207,9 +207,30 @@ fn (mut t Transport) h3_dial_and_do(req &Request, key string, method Method, hos
 	ca_pem := if req.in_memory_verification {
 		req.verify
 	} else if req.verify != '' {
-		os.read_file(req.verify) or {
+		content := os.read_file(req.verify) or {
 			return t.h3_dial_failed(key, mut call, error_with_code('http.transport: failed to read CA bundle ${req.verify}: ${err.msg()}', net.err_tls_certificate_invalid_code))
 		}
+		// An empty read result is indistinguishable, downstream, from
+		// req.verify never having been set at all -- net.quic.DialParams
+		// carries CA trust as in-memory PEM content (there is no separate
+		// "was a path configured" signal once it reaches
+		// verify_certificate_chain, which treats an empty ca_bundle_pem as
+		// "caller didn't supply one, use system/default trust" by design.
+		// A caller who explicitly named a CA file that turns out to be
+		// empty almost certainly wants a hard failure, not a silent
+		// widening of trust to every default root -- reject it here, at
+		// the one point that still knows req.verify was genuinely set.
+		// Found via external review, vlang/v#28406
+		// (issuecomment-5572430232): the h1/h2 mbedTLS path doesn't share
+		// this gap because it hands the file PATH straight to mbedTLS's
+		// own file-parsing functions, which already fail hard on an empty
+		// file (see the nonzero-parse-result rejection fixed earlier on
+		// this same PR) -- HTTP/3 has no such backstop because reading the
+		// file into a string is this transport's own extra step.
+		if content == '' {
+			return t.h3_dial_failed(key, mut call, error_with_code('http.transport: configured CA bundle ${req.verify} is empty', net.err_tls_certificate_invalid_code))
+		}
+		content
 	} else {
 		''
 	}
