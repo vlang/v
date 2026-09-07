@@ -4414,10 +4414,13 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	// These integer instructions require their register operands to have the same
 	// width. Intentional mixed-width forms such as `movzx` and shift counts are
 	// deliberately absent.
-	name := template.name.to_lower_ascii()
+	mut name := template.name.to_lower_ascii()
+	if name.starts_with('lock ') {
+		name = name.all_after(' ')
+	}
 	if name !in ['mov', 'add', 'adc', 'sub', 'sbb', 'and', 'or', 'xor', 'cmp',
-		'test', 'xchg', 'xadd', 'cmpxchg', 'imul', 'bsf', 'bsr', 'popcnt', 'lzcnt', 'tzcnt']
-		&& !name.starts_with('cmov') {
+		'test', 'xchg', 'xadd', 'cmpxchg', 'imul', 'bsf', 'bsr', 'bt', 'btc', 'btr', 'bts',
+		'popcnt', 'lzcnt', 'tzcnt'] && !name.starts_with('cmov') {
 		return
 	}
 	mut has_native_alias := false
