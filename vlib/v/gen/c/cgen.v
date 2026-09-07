@@ -8880,9 +8880,17 @@ fn (mut g Gen) boehm_collect_keep_alive_helper_name(typ ast.Type) string {
 	if sym.kind !in [.string, .array, .struct] {
 		return ''
 	}
+	if g.type_has_pointer_bearing_nested_c_aggregate(resolved_typ) {
+		return ''
+	}
 	if sym.kind == .array {
 		info := sym.info as ast.Array
 		if !g.contains_ptr(info.elem_type) {
+			return ''
+		}
+	}
+	if sym.kind == .struct && sym.language != .v {
+		if !g.c_type_has_ptr(resolved_typ) {
 			return ''
 		}
 	}
@@ -9012,6 +9020,128 @@ fn (mut g Gen) type_needs_deep_scope_gc_pin(typ ast.Type) bool {
 	}
 }
 
+fn (mut g Gen) c_type_has_ptr(typ ast.Type) bool {
+	mut memo := map[ast.Type]bool{}
+	return g.c_type_has_ptr_memo(typ, mut memo)
+}
+
+fn (mut g Gen) c_type_has_ptr_memo(typ ast.Type, mut memo map[ast.Type]bool) bool {
+	if typ == 0 {
+		return false
+	}
+	unaliased_typ := g.table.fully_unaliased_type(g.unwrap_generic(typ))
+	if unaliased_typ.has_option_or_result() || unaliased_typ.is_any_kind_of_pointer()
+		|| unaliased_typ.is_ptr() {
+		return true
+	}
+	if unaliased_typ in memo {
+		return memo[unaliased_typ]
+	}
+	memo[unaliased_typ] = false
+	sym := g.table.final_sym(unaliased_typ)
+	if sym.is_pointer() {
+		memo[unaliased_typ] = true
+		return true
+	}
+	result := match sym.kind {
+		.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char,
+		.rune, .bool, .enum {
+			false
+		}
+		.array_fixed {
+			info := sym.info as ast.ArrayFixed
+			g.c_type_has_ptr_memo(info.elem_type, mut memo)
+		}
+		.struct {
+			info := sym.info as ast.Struct
+			mut has_ptr := false
+			for embed in info.embeds {
+				if g.c_type_has_ptr_memo(embed, mut memo) {
+					has_ptr = true
+					break
+				}
+			}
+			if !has_ptr {
+				for field in info.fields {
+					if g.c_type_has_ptr_memo(field.typ, mut memo) {
+						has_ptr = true
+						break
+					}
+				}
+			}
+			has_ptr
+		}
+		else {
+			true
+		}
+	}
+	memo[unaliased_typ] = result
+	return result
+}
+
+fn (mut g Gen) type_has_pointer_bearing_nested_c_aggregate(typ ast.Type) bool {
+	mut memo := map[ast.Type]bool{}
+	mut ptr_memo := map[ast.Type]bool{}
+	return g.type_has_pointer_bearing_nested_c_aggregate_memo(typ, false, mut memo, mut ptr_memo)
+}
+
+fn (mut g Gen) type_has_pointer_bearing_nested_c_aggregate_memo(typ ast.Type, is_nested bool,
+	mut memo map[ast.Type]bool, mut ptr_memo map[ast.Type]bool) bool {
+	if typ == 0 || typ.has_option_or_result() || typ.is_any_kind_of_pointer() || typ.is_ptr() {
+		return false
+	}
+	mut resolved_typ := g.unwrap_generic(g.recheck_concrete_type(typ))
+	if resolved_typ == 0 {
+		resolved_typ = g.unwrap_generic(typ)
+	}
+	resolved_typ = g.table.fully_unaliased_type(resolved_typ)
+	if resolved_typ == 0 || resolved_typ.has_option_or_result()
+		|| resolved_typ.is_any_kind_of_pointer() || resolved_typ.is_ptr() {
+		return false
+	}
+	if resolved_typ in memo {
+		return memo[resolved_typ]
+	}
+	memo[resolved_typ] = false
+	sym := g.table.final_sym(resolved_typ)
+	result := match sym.kind {
+		.array_fixed {
+			info := sym.info as ast.ArrayFixed
+			g.type_has_pointer_bearing_nested_c_aggregate_memo(info.elem_type, true, mut memo,
+				mut ptr_memo)
+		}
+		.struct {
+			info := sym.info as ast.Struct
+			mut has_pointer_bearing_nested_c_aggregate := is_nested && sym.language != .v
+				&& g.c_type_has_ptr_memo(resolved_typ, mut ptr_memo)
+			if !has_pointer_bearing_nested_c_aggregate {
+				for embed in info.embeds {
+					if g.type_has_pointer_bearing_nested_c_aggregate_memo(embed, true, mut memo,
+							mut ptr_memo) {
+						has_pointer_bearing_nested_c_aggregate = true
+						break
+					}
+				}
+			}
+			if !has_pointer_bearing_nested_c_aggregate {
+				for field in info.fields {
+					if g.type_has_pointer_bearing_nested_c_aggregate_memo(field.typ, true, mut memo,
+							mut ptr_memo) {
+						has_pointer_bearing_nested_c_aggregate = true
+						break
+					}
+				}
+			}
+			has_pointer_bearing_nested_c_aggregate
+		}
+		else {
+			false
+		}
+	}
+	memo[resolved_typ] = result
+	return result
+}
+
 fn (mut g Gen) scope_var_needs_deep_gc_pin(obj ast.Var) bool {
 	if obj.name == '_' || obj.is_special || obj.is_inherited || obj.is_auto_heap {
 		return false
@@ -9102,6 +9232,17 @@ fn (mut g Gen) scope_gc_pin_pregen(node_pos int) []ScopeGcPin {
 		cvar_name := g.scope_gc_pin_expr(obj) or { continue }
 		collect_helper_name := g.boehm_collect_keep_alive_helper_name(obj.typ)
 		if collect_helper_name == '' {
+			if !opened_scope {
+				g.writeln('{')
+				opened_scope = true
+			}
+			// Some C aggregates cannot safely be named in a generated helper prototype.
+			// Keep the whole object conservatively reachable without referring to its type.
+			tmp_name := g.new_tmp_var()
+			g.writeln('voidptr ${tmp_name} = &${cvar_name};')
+			pins << ScopeGcPin{
+				post_stmt: 'GC_reachable_here(${tmp_name});'
+			}
 			continue
 		}
 		if !opened_scope {
