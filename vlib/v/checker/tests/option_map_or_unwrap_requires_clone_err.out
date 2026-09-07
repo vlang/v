@@ -24,5 +24,12 @@ vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:45:18: error: ca
    44 |     }
    45 |     index := m['k'] or { panic('none') }
       |                     ~~~~~~~~~~~~~~~~~~~~
-   46 |
-   47 |     println(field)
+   46 |     map_ch := chan map[string]int{}
+   47 |     channel_receive := <-map_ch or { panic(err) }
+vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:47:21: error: cannot copy map: unwrapping a map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)
+   45 |     index := m['k'] or { panic('none') }
+   46 |     map_ch := chan map[string]int{}
+   47 |     channel_receive := <-map_ch or { panic(err) }
+      |                        ~~
+   48 |
+   49 |     println(field)

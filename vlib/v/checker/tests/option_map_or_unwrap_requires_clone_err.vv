@@ -43,9 +43,12 @@ fn main() {
 		'k': get_opt()
 	}
 	index := m['k'] or { panic('none') }
+	map_ch := chan map[string]int{}
+	channel_receive := <-map_ch or { panic(err) }
 
 	println(field)
 	println(variable)
 	println(result_call)
 	println(index)
+	println(channel_receive)
 }

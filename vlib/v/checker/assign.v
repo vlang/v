@@ -1413,6 +1413,7 @@ fn expr_is_or_unwrapped(expr ast.Expr) bool {
 		ast.CallExpr { expr.or_block.kind == .block }
 		ast.Ident { expr.or_expr.kind == .block }
 		ast.IndexExpr { expr.or_expr.kind == .block }
+		ast.PrefixExpr { expr.or_block.kind == .block }
 		else { false }
 	}
 }
