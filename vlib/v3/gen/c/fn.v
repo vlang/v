@@ -17940,6 +17940,18 @@ fn (mut g FlatGen) c_call_arg_cabi_cast(arg_idx int, typed_param_count int, para
 		if ct == 'int' {
 			return none
 		}
+		// A `C.` function passed by name into a C callback slot must stay uncast: the
+		// C compiler already has that function's real prototype from the header, and
+		// that prototype is exactly what the callee's parameter type was written
+		// against. A `fn C.` declaration cannot spell C qualifiers, so casting to the
+		// V-declared signature is what *creates* an incompatible-pointer-type error
+		// (e.g. `fn C.mbedtls_net_send(voidptr, &u8, usize) i32` drops the `const` in
+		// mbedtls_net_send's real `const unsigned char *` buffer parameter).
+		if _ := fn_type_from(param_types[arg_idx]) {
+			if g.is_c_extern_fn_name_arg(arg_id) {
+				return none
+			}
+		}
 		return ct
 	}
 	if is_variadic {
@@ -17958,6 +17970,15 @@ fn (mut g FlatGen) c_call_arg_cabi_cast(arg_idx int, typed_param_count int, para
 		}
 	}
 	return none
+}
+
+// is_c_extern_fn_name_arg reports whether the argument expression is a plain
+// reference to a `C.` extern function (`C.foo`, no wrapping conversion), i.e. a
+// function the C compiler already has a real prototype for from an included
+// header.
+fn (g &FlatGen) is_c_extern_fn_name_arg(arg_id flat.NodeId) bool {
+	name := g.direct_callback_ident_name(arg_id) or { return false }
+	return name.starts_with('C.')
 }
 
 fn (mut g FlatGen) c_extern_decl_line(node flat.Node, cfn string) string {
