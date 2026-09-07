@@ -15,6 +15,26 @@ fn test_v3_tcc_backtrace_enabled() {
 	assert !v3_tcc_backtrace_enabled('linux', 'arm64', true)
 }
 
+fn test_v3_prefers_bundled_tcc_for_debug_selfhost() {
+	host := pref.host_target()
+	assert v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, false,
+		host, true)
+	assert !v3_should_prefer_bundled_tcc_for_selfhost(false, 'c', false, false, false, false,
+		host, true)
+	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'fastc', false, false, false, false,
+		host, true)
+	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', true, false, false, false,
+		host, true)
+	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, true, false, false,
+		host, true)
+	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, true, false,
+		host, true)
+	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, true,
+		host, true)
+	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, false,
+		host, false)
+}
+
 fn test_v3_explicit_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	vroot := os.join_path(os.temp_dir(), 'v3_tcc_flag_plan')
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
