@@ -4395,10 +4395,17 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	same_width_instructions := ['mov', 'movbe', 'add', 'adc', 'adcx', 'adox', 'sub', 'sbb', 'and',
 		'andn', 'or', 'xor', 'cmp', 'test', 'xchg', 'xadd', 'cmpxchg', 'imul', 'bsf', 'bsr', 'bt',
 		'btc', 'btr', 'bts', 'bextr', 'blsi', 'blsmsk', 'blsr', 'bzhi', 'mulx', 'pdep', 'pext',
-		'rorx', 'sarx', 'shlx', 'shrx', 'shld', 'shrd', 'popcnt', 'lzcnt', 'tzcnt']
+		'rorx', 'sarx', 'shlx', 'shrx', 'shld', 'shrd', 'popcnt', 'lzcnt', 'tzcnt', 'crc32']
 	mut is_same_width := name in same_width_instructions
+	mut explicit_width := 0
 	if !is_same_width && name.len > 1 && name[name.len - 1] in [`b`, `w`, `l`, `q`]
 		&& name[..name.len - 1] in same_width_instructions {
+		explicit_width = match name[name.len - 1] {
+			`b` { 8 }
+			`w` { 16 }
+			`l` { 32 }
+			else { 64 }
+		}
 		name = name[..name.len - 1]
 		is_same_width = true
 	}
@@ -4415,8 +4422,24 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	if !has_named_alias {
 		return
 	}
+	if explicit_width > 0 && explicit_width != native_width * 8 {
+		mut suffix_applies_to_alias := name != 'crc32'
+		if name == 'crc32' && template.args.len > 1 {
+			source := template.args[1]
+			suffix_applies_to_alias = source is ast.AsmAlias && source.name in aliases
+		}
+		if suffix_applies_to_alias {
+			c.error('instruction `${template.name}` selects ${explicit_width}-bit operands, but named operands in structured `intel` assembly expand to ${native_width * 8}-bit registers for the current compilation target; use a matching instruction width, or a `raw intel` block with explicit operand modifiers',
+				template.pos)
+			return
+		}
+	}
 	for i, arg in template.args {
 		if arg is ast.AsmRegister && arg.size > 0 && arg.size != native_width * 8 {
+			// CRC32 permits a narrow explicit source next to a native-width destination.
+			if name == 'crc32' && i == 1 {
+				continue
+			}
 			// MOVQ transfers between a native-width GPR and an MMX/XMM register are valid;
 			// the vector register's container size is not the scalar operand width.
 			if is_movq && native_width == 8

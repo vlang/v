@@ -97,3 +97,24 @@ fn test_intel_movq_vector_transfer_with_clang() {
 	}
 	assert result == 42
 }
+
+fn intel_crc32_narrow_source_with_clang(value i64) i64 {
+	mut result := value
+	asm amd64 intel {
+		crc32 result, al
+		; +r (result)
+		; ; rax
+	}
+	return result
+}
+
+@[noinline]
+fn can_run_intel_crc32_test() bool {
+	return false
+}
+
+fn test_intel_crc32_narrow_source_compiles_with_clang() {
+	if can_run_intel_crc32_test() {
+		assert intel_crc32_narrow_source_with_clang(42) != 0
+	}
+}

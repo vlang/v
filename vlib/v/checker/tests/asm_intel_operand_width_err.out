@@ -61,3 +61,17 @@ vlib/v/checker/tests/asm_intel_operand_width_err.vv:85:3: error: hard register `
       |         ~~~~~~~~~~~~~~~
    86 |         ; ; r (value)
    87 |     }
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:92:3: error: instruction `addl` selects 32-bit operands, but named operands in structured `intel` assembly expand to 64-bit registers for the current compilation target; use a matching instruction width, or a `raw intel` block with explicit operand modifiers
+   90 | fn intel_narrow_size_suffix(value i64) {
+   91 |     asm amd64 intel {
+   92 |         addl rax, value
+      |         ~~~~~~~~~~~~~~~
+   93 |         ; ; r (value)
+   94 |     }
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:99:3: error: hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers for the current compilation target; use matching register widths, or a `raw intel` block with explicit operand modifiers
+   97 | fn intel_crc32_hard_register(value i64) {
+   98 |     asm amd64 intel {
+   99 |         crc32 eax, value
+      |         ~~~~~~~~~~~~~~~~
+  100 |         ; ; r (value)
+  101 |     }

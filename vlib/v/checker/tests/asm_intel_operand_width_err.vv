@@ -87,6 +87,20 @@ fn intel_size_suffix_hard_register(value i64) {
 	}
 }
 
+fn intel_narrow_size_suffix(value i64) {
+	asm amd64 intel {
+		addl rax, value
+		; ; r (value)
+	}
+}
+
+fn intel_crc32_hard_register(value i64) {
+	asm amd64 intel {
+		crc32 eax, value
+		; ; r (value)
+	}
+}
+
 fn main() {
 	println(intel_sub(50, 8))
 }
