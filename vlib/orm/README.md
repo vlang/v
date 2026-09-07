@@ -6,6 +6,15 @@ regardless of the DB driver you decide to use.
 Driver authors using the shared SQL generators can target SQLite, PostgreSQL, MySQL, and
 H2-backed connections with the built-in ORM dialect helpers.
 
+## Deprecation notice: orm_fn
+
+> [!WARNING]
+> The Function Call API (`orm_fn`; `orm.new_query[T]` / `QueryBuilder`) is
+> deprecated and will be removed from the standard library after
+> **2027-08-17**, to be maintained in a separate repository. Prefer the
+> built-in `sql` ORM syntax for new code.
+> See https://github.com/vlang/v/issues/27001 for details.
+
 ## Nullable
 
 For a nullable column, use an option field. If the field is non-option, the column will be defined
@@ -527,6 +536,14 @@ fn main() {
 ```
 
 ## Function Call API
+
+> [!WARNING]
+> This section documents the deprecated Function Call API (`orm_fn`;
+> `orm.new_query[T]` / `QueryBuilder`). It is deprecated and will be
+> removed from the standard library after **2027-08-17**, to be maintained
+> in a separate repository. Prefer the built-in `sql` ORM syntax for new
+> code. See https://github.com/vlang/v/issues/27001 for details.
+
 You can utilize the `Function Call API` to work with `ORM`. It provides the
 capability to dynamically construct SQL statements. The Function Call API
 supports common operations such as `Create Table`/`Drop Table`/`Insert`/`Delete`/`Update`/`Select`,
