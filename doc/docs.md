@@ -9067,12 +9067,13 @@ can still format those placeholders with AT&T addressing. In a `raw intel` block
 passed through unchanged, so use the selected C compiler's explicit operand modifiers.
 
 `%V` is the only operand modifier that omits the `%` prefix, and it prints the compilation
-target's native register: 64 bits when targeting amd64 and 32 bits when targeting i386,
-independently of the architecture declared on the assembly block. V therefore requires named
-operands to have that same width, whatever other hard registers the instruction uses. For example,
-when targeting amd64, `mov eax, some_int` would reach the assembler as `mov eax, rcx`, so V rejects
-it at compile time. Use a target-native-width operand or a `raw intel` block, where you can pick the
-width yourself with `%k`, `%w` and related modifiers.
+target's native register: 64 bits for 64-bit machine code and 32 bits for 32-bit machine code,
+including when `-m32` overrides an explicit architecture. This is independent of the architecture
+declared on the assembly block. V therefore requires named operands to have that same width,
+whatever other hard registers the instruction uses. For example, in a 64-bit build,
+`mov eax, some_int` would reach the assembler as `mov eax, rcx`, so V rejects it at compile time.
+Use a target-native-width operand or a `raw intel` block, where you can pick the width yourself with
+`%k`, `%w` and related modifiers.
 
 The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the C backend. MSVC
 does not support this form of inline assembly on 64-bit targets, and individual instructions or

@@ -4369,22 +4369,21 @@ fn (mut c Checker) check_asm_intel_operand_widths(stmt ast.AsmStmt, aliases map[
 	if stmt.arch !in [.amd64, .i386] {
 		return
 	}
-	// `%V` is expanded by the C compiler for its target, not for the architecture
-	// declared on the V assembly block. Prefer that target when both are x86.
-	target_arch := if c.pref.arch in [.amd64, .i386] { c.pref.arch } else { stmt.arch }
-	native_width := if target_arch == .amd64 { 8 } else { 4 }
+	// `%V` is expanded by the C compiler for its machine width, not for the
+	// architecture declared on the V assembly block.
+	native_width := if c.pref.m64 { 8 } else { 4 }
 	for template in stmt.templates {
 		if template.is_directive || template.is_label {
 			continue
 		}
 		for arg in template.args {
-			c.check_asm_intel_arg_width(arg, aliases, native_width, target_arch, template.pos)
+			c.check_asm_intel_arg_width(arg, aliases, native_width, template.pos)
 		}
 	}
 }
 
 fn (mut c Checker) check_asm_intel_arg_width(arg ast.AsmArg, aliases map[string]ast.Type,
-	native_width int, arch pref.Arch, pos token.Pos) {
+	native_width int, pos token.Pos) {
 	match arg {
 		ast.AsmAlias {
 			if arg.name !in aliases {
@@ -4393,14 +4392,14 @@ fn (mut c Checker) check_asm_intel_arg_width(arg ast.AsmArg, aliases map[string]
 			typ := aliases[arg.name]
 			type_width, _ := c.table.type_size(typ)
 			if type_width != native_width {
-				c.error('named operand `${arg.name}` has ${type_width * 8}-bit type `${c.table.type_str(typ)}`, but structured `intel` assembly substitutes named operands with a ${native_width * 8}-bit register on ${arch}; use a ${native_width * 8}-bit operand, or a `raw intel` block with explicit operand modifiers',
+				c.error('named operand `${arg.name}` has ${type_width * 8}-bit type `${c.table.type_str(typ)}`, but structured `intel` assembly substitutes named operands with a ${native_width * 8}-bit register for the current compilation target; use a ${native_width * 8}-bit operand, or a `raw intel` block with explicit operand modifiers',
 					pos)
 			}
 		}
 		ast.AsmAddressing {
-			c.check_asm_intel_arg_width(arg.displacement, aliases, native_width, arch, pos)
-			c.check_asm_intel_arg_width(arg.base, aliases, native_width, arch, pos)
-			c.check_asm_intel_arg_width(arg.index, aliases, native_width, arch, pos)
+			c.check_asm_intel_arg_width(arg.displacement, aliases, native_width, pos)
+			c.check_asm_intel_arg_width(arg.base, aliases, native_width, pos)
+			c.check_asm_intel_arg_width(arg.index, aliases, native_width, pos)
 		}
 		else {}
 	}
