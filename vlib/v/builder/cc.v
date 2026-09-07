@@ -1743,6 +1743,7 @@ mut:
 	args              []string
 	response_files    []string
 	response_contents []string
+	response_utf8     []bool
 }
 
 fn (mut plan GccUnicodeResponsePlan) add_ascii_run(response_file string, args []string) {
@@ -1750,9 +1751,10 @@ fn (mut plan GccUnicodeResponsePlan) add_ascii_run(response_file string, args []
 	plan.args << '@${file}'
 	plan.response_files << file
 	plan.response_contents << gcc_response_file_content_for_exact_args(args)
+	plan.response_utf8 << false
 }
 
-fn gcc_unicode_response_plan(response_file string, args []string) GccUnicodeResponsePlan {
+fn gcc_unicode_response_plan(response_file string, args []string, max_command_bytes int) GccUnicodeResponsePlan {
 	exact_args := ccompiler_exec_args('', args)[1..]
 	mut plan := GccUnicodeResponsePlan{}
 	mut ascii_run := []string{}
@@ -1769,6 +1771,21 @@ fn gcc_unicode_response_plan(response_file string, args []string) GccUnicodeResp
 	}
 	if ascii_run.len > 0 {
 		plan.add_ascii_run(response_file, ascii_run)
+	}
+	mut quoted_command_bytes := 0
+	for arg in plan.args {
+		// Reserve a separator and the quotes added around every Windows argument.
+		quoted_command_bytes += arg.len + 3
+	}
+	// A Unicode-capable MinGW driver accepts UTF-8 response-file bytes. Use one
+	// only when the wide command line itself would exceed the Windows limit.
+	if quoted_command_bytes > max_command_bytes {
+		return GccUnicodeResponsePlan{
+			args: ['@${response_file}']
+			response_files: [response_file]
+			response_contents: [gcc_response_file_content_for_exact_args(exact_args)]
+			response_utf8: [true]
+		}
 	}
 	return plan
 }
@@ -2210,7 +2227,12 @@ pub fn (mut v Builder) cc() {
 		mut compiler_exec_args := []string{}
 		if use_unicode_rsp {
 			response_file = '${v.out_name_c}.rsp'
-			plan := gcc_unicode_response_plan(response_file, rsp_args)
+			max_command_bytes := if ccompiler_is_windows_batch_file(ccompiler) {
+				7000
+			} else {
+				30000
+			}
+			plan := gcc_unicode_response_plan(response_file, rsp_args, max_command_bytes)
 			mut transport_args := plan.args.clone()
 			for i, arg in transport_args {
 				if arg.starts_with('@') {
@@ -2218,7 +2240,11 @@ pub fn (mut v Builder) cc() {
 				}
 			}
 			for i, file in plan.response_files {
-				write_response_file(file, plan.response_contents[i])
+				if plan.response_utf8[i] {
+					write_utf8_response_file(file, plan.response_contents[i])
+				} else {
+					write_response_file(file, plan.response_contents[i])
+				}
 			}
 			response_file_content = plan.response_contents.join('\n')
 			compiler_exec_args = [ccompiler]
@@ -3625,6 +3651,12 @@ fn write_response_file(response_file string, response_file_content string) {
 		os.write_file(response_file, response_file_content) or {
 			write_response_file_error(response_file_content, err)
 		}
+	}
+}
+
+fn write_utf8_response_file(response_file string, response_file_content string) {
+	os.write_file(response_file, response_file_content) or {
+		write_response_file_error(response_file, err)
 	}
 }
 
