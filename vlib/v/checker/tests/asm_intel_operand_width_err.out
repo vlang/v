@@ -75,3 +75,17 @@ vlib/v/checker/tests/asm_intel_operand_width_err.vv:99:3: error: hard register `
       |         ~~~~~~~~~~~~~~~~
   100 |         ; ; r (value)
   101 |     }
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:106:3: error: hard register `eax` is 32-bit, but named operands in the same structured `intel` address expand to 64-bit registers for the current compilation target; use matching address-register widths, or a `raw intel` block with explicit operand modifiers
+  104 | fn intel_address_hard_register(base i64) {
+  105 |     asm amd64 intel {
+  106 |         mov rax, [base + eax + 0]
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~
+  107 |         ; ; r (base)
+  108 |     }
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:114:3: error: hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers for the current compilation target; use matching register widths, or a `raw intel` block with explicit operand modifiers
+  112 |     mut result := checksum
+  113 |     asm amd64 intel {
+  114 |         crc32 result, eax
+      |         ~~~~~~~~~~~~~~~~~
+  115 |         ; +r (result)
+  116 |         ; ; rax

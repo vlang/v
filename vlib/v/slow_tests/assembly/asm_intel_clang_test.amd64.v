@@ -118,3 +118,17 @@ fn test_intel_crc32_narrow_source_compiles_with_clang() {
 		assert intel_crc32_narrow_source_with_clang(42) != 0
 	}
 }
+
+fn test_intel_native_width_address_registers_with_clang() {
+	value := i64(42)
+	base := &value
+	mut result := i64(0)
+	asm amd64 intel {
+		xor rax, rax
+		mov result, [base + rax + 0]
+		; =r (result)
+		; r (base)
+		; rax
+	}
+	assert result == 42
+}

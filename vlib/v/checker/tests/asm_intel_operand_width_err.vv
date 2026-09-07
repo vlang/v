@@ -101,6 +101,22 @@ fn intel_crc32_hard_register(value i64) {
 	}
 }
 
+fn intel_address_hard_register(base i64) {
+	asm amd64 intel {
+		mov rax, [base + eax + 0]
+		; ; r (base)
+	}
+}
+
+fn intel_crc32_dword_source(checksum i64) {
+	mut result := checksum
+	asm amd64 intel {
+		crc32 result, eax
+		; +r (result)
+		; ; rax
+	}
+}
+
 fn main() {
 	println(intel_sub(50, 8))
 }

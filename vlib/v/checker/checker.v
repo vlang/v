@@ -4373,7 +4373,35 @@ fn (mut c Checker) check_asm_intel_operand_widths(stmt ast.AsmStmt, aliases []st
 		if template.is_directive || template.is_label {
 			continue
 		}
+		for arg in template.args {
+			c.check_asm_intel_address_register_widths(arg, aliases, native_width,
+				template.pos)
+		}
 		c.check_asm_intel_hard_register_widths(template, aliases, native_width)
+	}
+}
+
+fn (c &Checker) asm_intel_arg_has_named_alias(arg ast.AsmArg, aliases []string) bool {
+	return match arg {
+		ast.AsmAlias { arg.name in aliases }
+		ast.AsmAddressing {
+			c.asm_intel_arg_has_named_alias(arg.base, aliases)
+				|| c.asm_intel_arg_has_named_alias(arg.index, aliases)
+		}
+		else { false }
+	}
+}
+
+fn (mut c Checker) check_asm_intel_address_register_widths(arg ast.AsmArg, aliases []string,
+	native_width int, pos token.Pos) {
+	if arg is ast.AsmAddressing && c.asm_intel_arg_has_named_alias(arg, aliases) {
+		for address_arg in [arg.base, arg.index] {
+			if address_arg is ast.AsmRegister && address_arg.size > 0
+				&& address_arg.size != native_width * 8 {
+				c.error('hard register `${address_arg.name}` is ${address_arg.size}-bit, but named operands in the same structured `intel` address expand to ${native_width * 8}-bit registers for the current compilation target; use matching address-register widths, or a `raw intel` block with explicit operand modifiers',
+					pos)
+			}
+		}
 	}
 }
 
@@ -4436,8 +4464,9 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	}
 	for i, arg in template.args {
 		if arg is ast.AsmRegister && arg.size > 0 && arg.size != native_width * 8 {
-			// CRC32 permits a narrow explicit source next to a native-width destination.
-			if name == 'crc32' && i == 1 {
+			// A 32-bit CRC32 destination accepts 8-/16-bit sources; a 64-bit destination
+			// accepts only an 8-bit source as its narrower form.
+			if name == 'crc32' && i == 1 && (native_width == 4 || arg.size == 8) {
 				continue
 			}
 			// MOVQ transfers between a native-width GPR and an MMX/XMM register are valid;
