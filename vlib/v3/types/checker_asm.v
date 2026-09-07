@@ -29,6 +29,11 @@ struct InlineAsmIOSpan {
 // mistaken for an operand is the one after them.
 const inline_asm_instruction_prefixes = ['lock', 'rep', 'repe', 'repz', 'repne', 'repnz']
 
+// Intel memory operands can use these words to select an address, distance or
+// explicit operand size. They are syntax, not possible misspellings of registers.
+const inline_asm_intel_operand_keywords = ['ptr', 'byte', 'word', 'dword', 'qword', 'tbyte', 'oword',
+	'xmmword', 'ymmword', 'zmmword', 'short', 'near', 'far', 'offset', 'rel', 'abs']
+
 // check_inline_asm_block reports the assembly diagnostics that only need the block's
 // preserved source: unsupported operand constraints in structured `intel` blocks, and
 // register names that were probably misspelled.
@@ -68,7 +73,7 @@ fn (mut tc TypeChecker) check_inline_asm_block(id flat.NodeId, node flat.Node, s
 				}
 			}
 		}
-		tc.check_inline_asm_templates(id, node, block, start, sections[0], registers, aliases)
+		tc.check_inline_asm_templates(id, node, block, start, sections[0], registers, aliases, header.is_intel)
 	}
 }
 
@@ -99,7 +104,7 @@ fn (mut tc TypeChecker) check_inline_asm_clobbers(id flat.NodeId, node flat.Node
 
 // check_inline_asm_templates reports operand names that are close enough to a register
 // name to be a typo. Anything else can legitimately be a symbol or a label.
-fn (mut tc TypeChecker) check_inline_asm_templates(id flat.NodeId, node flat.Node, block string, base int, section InlineAsmRange, registers []string, aliases map[string]bool) {
+fn (mut tc TypeChecker) check_inline_asm_templates(id flat.NodeId, node flat.Node, block string, base int, section InlineAsmRange, registers []string, aliases map[string]bool, is_intel bool) {
 	labels := inline_asm_template_labels(block, section)
 	for line in inline_asm_lines(block, section) {
 		trimmed := block[line.start..line.end].trim_space()
@@ -115,7 +120,8 @@ fn (mut tc TypeChecker) check_inline_asm_templates(id flat.NodeId, node flat.Nod
 			})
 		}
 		for word in inline_asm_words(block, InlineAsmRange{ start: operand_start, end: line.end }) {
-			if aliases[word.text] || word.text in labels || word.text in registers {
+			if aliases[word.text] || word.text in labels || word.text in registers
+				|| (is_intel && word.text in inline_asm_intel_operand_keywords) {
 				continue
 			}
 			suggestion := util.closest_asm_register(word.text, registers) or { continue }

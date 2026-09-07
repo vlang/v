@@ -370,6 +370,17 @@ fn test_intel_asm_rejects_memory_capable_constraints() {
 	assert generate.output.contains('constraint `m` is not supported for operands in structured `intel` assembly'), generate.output
 }
 
+fn test_intel_asm_accepts_size_qualified_memory_operands() {
+	generate, c_source := generate_inline_asm_c('intel_memory_size_program', 'fn main() {
+	asm amd64 intel {
+		mov eax, dword ptr [rbx]
+	}
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"mov eax, dword ptr [rbx]\\n\\t"'), c_source
+}
+
 fn test_misspelled_asm_registers_are_reported_with_suggestions() {
 	generate, _ := generate_inline_asm_c('register_suggestion_program', 'fn main() {
 	asm amd64 {
