@@ -53,8 +53,9 @@ const tag_prefix = 'a'
 // Leave `port` unset to take 993 when `ssl` is true and 143 otherwise. Set
 // `ssl` for a connection encrypted from the first byte, or `starttls` to
 // upgrade a plain connection once it is open. The two are mutually exclusive.
-// TLS certificates are validated by default. `verify` names a PEM CA bundle;
-// set `in_memory_verification` when it contains the PEM data itself. `cert` and
+// TLS certificates are validated by default. A TLS connection with validation
+// enabled requires `verify` to name a PEM CA bundle; set
+// `in_memory_verification` when it contains the PEM data itself. `cert` and
 // `cert_key` configure a client certificate when the server requires one.
 pub struct Config {
 pub:
@@ -70,6 +71,13 @@ pub:
 	cert                   string
 	cert_key               string
 	in_memory_verification bool
+	auth_method            AuthMethod
+}
+
+// AuthMethod selects how new_client authenticates configured credentials.
+pub enum AuthMethod {
+	login
+	plain
 }
 
 // Client is a connection to an IMAP server.
@@ -104,15 +112,25 @@ pub fn new_client(config Config) !&Client {
 	if config.ssl && config.starttls {
 		return error('imap: cannot use both implicit SSL and STARTTLS')
 	}
+	if (config.ssl || config.starttls) && config.validate && config.verify == '' {
+		return error('imap: TLS certificate validation requires a CA bundle in `verify`')
+	}
 	mut c := &Client{
 		Config: config
 	}
 	c.connect()!
-	c.login() or {
+	c.authenticate() or {
 		c.shutdown()
 		return err
 	}
 	return c
+}
+
+fn (mut c Client) authenticate() ! {
+	match c.auth_method {
+		.login { c.login()! }
+		.plain { c.login_plain()! }
+	}
 }
 
 // connect opens the transport and reads the server greeting, without logging
@@ -171,6 +189,9 @@ pub fn (mut c Client) login() ! {
 // login_plain authenticates with the SASL PLAIN mechanism instead, which some
 // servers require and others prefer.
 pub fn (mut c Client) login_plain() ! {
+	if c.username == '' || c.authenticated {
+		return
+	}
 	tag := c.next_tag()
 	c.write_line('${tag} AUTHENTICATE PLAIN')!
 	c.await_continuation(tag)!
@@ -178,6 +199,7 @@ pub fn (mut c Client) login_plain() ! {
 	// password, joined by NUL bytes.
 	c.write_line(base64.encode_str('\0${c.username}\0${c.password}'))!
 	c.read_response(tag)!
+	c.authenticated = true
 }
 
 // capability returns the extensions the server advertises.
@@ -695,6 +717,9 @@ fn (mut c Client) upgrade_to_tls() ! {
 	)!
 	c.ssl_conn.connect(mut c.conn, c.server) or {
 		return error('imap: TLS handshake with ${c.server} failed: ${err}')
+	}
+	$if use_openssl? {
+		c.ssl_conn.verify_hostname(c.server)!
 	}
 	c.dec = decoder_on(io.new_buffered_reader(reader: c.ssl_conn))
 	c.encrypted = true

@@ -258,6 +258,23 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	s.complete_connect()!
 }
 
+// verify_hostname checks that the peer certificate is valid for hostname.
+pub fn (s &SSLConn) verify_hostname(hostname string) ! {
+	if !s.config.validate {
+		return
+	}
+	cert := C.v_net_openssl_get1_peer_certificate(s.ssl)
+	if cert == unsafe { nil } {
+		return error('net.openssl SSLConn.verify_hostname, the peer sent no certificate')
+	}
+	defer {
+		C.X509_free(cert)
+	}
+	if C.X509_check_host(cert, &char(hostname.str), usize(hostname.len), 0, unsafe { nil }) != 1 {
+		return error('net.openssl SSLConn.verify_hostname, the certificate is not valid for `${hostname}`')
+	}
+}
+
 // dial opens an ssl connection on hostname:port
 pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	$if trace_ssl ? {

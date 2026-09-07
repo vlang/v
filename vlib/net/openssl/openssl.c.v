@@ -125,6 +125,8 @@ fn C.v_net_openssl_get1_peer_certificate(ssl &C.SSL) &C.X509
 
 fn C.X509_free(const_cert &C.X509)
 
+fn C.X509_check_host(const_cert &C.X509, const_name &char, name_len usize, flags u32, peer_name &&char) int
+
 fn C.ERR_clear_error()
 
 fn C.ERR_get_error() u64

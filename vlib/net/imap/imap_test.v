@@ -3,6 +3,7 @@ module imap
 import io
 import net
 import time
+import encoding.base64
 
 // These drive the client over a real socket against a scripted server, so that
 // tagging, literal sending, continuations and the mailbox name encoding are
@@ -38,6 +39,13 @@ fn run_server(mut l net.TcpListener, hello string, seen chan string) {
 		seen <- line
 		fields := line.split(' ')
 		if fields.len < 2 {
+			continue
+		}
+		if fields[1].to_upper() == 'AUTHENTICATE' {
+			c.write_string('+ continue\r\n') or { return }
+			payload := r.read_line() or { return }
+			seen <- payload
+			c.write_string('${fields[0]} OK AUTHENTICATE completed\r\n') or { return }
 			continue
 		}
 		c.write_string(mock_reply(fields[0], fields[1].to_upper(), line)) or { return }
@@ -559,7 +567,7 @@ fn test_preauth_cannot_bypass_requested_starttls() {
 	seen := chan string{ cap: 64 }
 	port, th := start(mut l, '* PREAUTH already authenticated', seen)!
 
-	new_client(server: '127.0.0.1', port: port, starttls: true) or {
+	new_client(server: '127.0.0.1', port: port, starttls: true, validate: false) or {
 		assert err.msg().contains('before STARTTLS')
 		th.wait()
 		l.close() or {}
@@ -574,7 +582,7 @@ fn test_a_refused_starttls_closes_the_transport() {
 	seen := chan string{ cap: 64 }
 	port, th := start(mut l, mock_greeting, seen)!
 
-	new_client(server: '127.0.0.1', port: port, starttls: true) or {
+	new_client(server: '127.0.0.1', port: port, starttls: true, validate: false) or {
 		assert err.msg().contains('unknown command')
 		th.wait()
 		l.close() or {}
@@ -599,6 +607,27 @@ fn test_a_failed_automatic_login_closes_the_transport() {
 		return
 	}
 	assert false, 'a refused automatic login must fail construction'
+}
+
+fn test_sasl_plain_can_be_selected_during_construction() {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	seen := chan string{ cap: 64 }
+	port, th := start(mut l, '* OK [CAPABILITY IMAP4rev1 AUTH=PLAIN LOGINDISABLED] ready', seen)!
+	mut c := new_client(
+		server: '127.0.0.1'
+		port: port
+		username: 'bob'
+		password: 'hunter2'
+		auth_method: .plain
+	)!
+	c.close()!
+	th.wait()
+	l.close() or {}
+	assert drain(seen) == [
+		'a0001 AUTHENTICATE PLAIN',
+		base64.encode_str('\0bob\0hunter2'),
+		'a0002 LOGOUT',
+	]
 }
 
 fn test_an_unsolicited_bye_closes_the_local_transport() {
@@ -633,6 +662,14 @@ fn test_tls_certificate_validation_defaults_to_on() {
 	assert !Config{
 		validate: false
 	}.validate
+}
+
+fn test_tls_validation_requires_an_explicit_ca_bundle() {
+	new_client(server: 'imap.example.com', ssl: true) or {
+		assert err.msg().contains('requires a CA bundle')
+		return
+	}
+	assert false, 'validated TLS without trust roots must fail before dialing'
 }
 
 fn test_empty_sets_do_not_reach_the_server() {
