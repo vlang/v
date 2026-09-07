@@ -9067,10 +9067,12 @@ fn (mut g Gen) c_type_has_ptr(typ ast.Type) bool {
 	if typ == 0 {
 		return false
 	}
-	if typ.has_option_or_result() || typ.is_any_kind_of_pointer() || typ.is_ptr() {
+	unaliased_typ := g.table.fully_unaliased_type(g.unwrap_generic(typ))
+	if unaliased_typ.has_option_or_result() || unaliased_typ.is_any_kind_of_pointer()
+		|| unaliased_typ.is_ptr() {
 		return true
 	}
-	sym := g.table.final_sym(g.unwrap_generic(typ))
+	sym := g.table.final_sym(unaliased_typ)
 	if sym.is_pointer() {
 		return true
 	}
@@ -9111,6 +9113,7 @@ fn (mut g Gen) type_has_pointer_bearing_c_union(typ ast.Type) bool {
 	if resolved_typ == 0 {
 		resolved_typ = g.unwrap_generic(typ)
 	}
+	resolved_typ = g.table.fully_unaliased_type(resolved_typ)
 	if resolved_typ == 0 || resolved_typ.has_option_or_result()
 		|| resolved_typ.is_any_kind_of_pointer() || resolved_typ.is_ptr() {
 		return false
