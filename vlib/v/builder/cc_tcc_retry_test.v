@@ -340,6 +340,11 @@ fn test_gcc_response_file_content_quotes_exact_arguments() {
 	assert gcc_response_file_content([r'-B"C:\toolchain\\"', r'-DNAME=\"foo\"']) == r'"-BC:\\toolchain\\" "-DNAME=\"foo\""'
 }
 
+fn test_windows_exec_arg_escaping_preserves_embedded_quotes() {
+	assert windows_quote_exec_arg(r'-DNAME="café"') == r'"-DNAME=\"café\""'
+	assert windows_quote_exec_arg(r'C:\work\') == r'"C:\work\\"'
+}
+
 fn test_windows_batch_compilers_keep_the_command_interpreter_path() {
 	assert ccompiler_is_windows_batch_file(r'C:\toolchains\gcc-wrapper.cmd')
 	assert ccompiler_is_windows_batch_file(r'"C:\Program Files\GCC\gcc-wrapper.BAT"')
@@ -393,6 +398,14 @@ fn test_gcc_unicode_response_plan_uses_ansi_when_it_preserves_oversized_unicode_
 	assert plan.args == [r'@D:\工作目录\main.c.rsp']
 	assert plan.response_files == [r'D:\工作目录\main.c.rsp']
 	assert plan.response_contents[0].contains(r'D:\\工作目录\\cached_1199.o')
+}
+
+fn test_gcc_unicode_response_plan_sizes_windows_escaped_arguments() {
+	arg := r'-DNAME=\"工作\"'
+	exact_arg := ccompiler_exec_args('', [arg])[1]
+	plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', [arg], exact_arg.len + 3,
+		true)!
+	assert plan.args == [r'@D:\工作目录\main.c.rsp']
 }
 
 fn test_gcc_unicode_response_plan_rejects_an_unrepresentable_oversized_command() {

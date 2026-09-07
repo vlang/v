@@ -14,6 +14,7 @@ import v.pref
 import v.util
 import v.vcache
 import term
+import strings
 
 const c_std = 'c99'
 const cpp_std = 'c++17'
@@ -1738,6 +1739,41 @@ fn gcc_response_file_content_for_exact_args(args []string) string {
 	return args.map('"' + it.replace('\\', '\\\\').replace('"', '\\"') + '"').join(' ')
 }
 
+fn windows_quote_exec_arg(arg string) string {
+	if arg.len == 0 {
+		return '""'
+	}
+	quote_char := `"`
+	backslash := `\\`
+	mut quoted := strings.new_builder(arg.len + 8)
+	quoted.write_u8(quote_char)
+	mut pending_backslashes := 0
+	for ch in arg.bytes() {
+		if ch == backslash {
+			pending_backslashes++
+			continue
+		}
+		if ch == quote_char {
+			for _ in 0 .. pending_backslashes * 2 + 1 {
+				quoted.write_u8(backslash)
+			}
+			quoted.write_u8(quote_char)
+			pending_backslashes = 0
+			continue
+		}
+		for _ in 0 .. pending_backslashes {
+			quoted.write_u8(backslash)
+		}
+		pending_backslashes = 0
+		quoted.write_u8(ch)
+	}
+	for _ in 0 .. pending_backslashes * 2 {
+		quoted.write_u8(backslash)
+	}
+	quoted.write_u8(quote_char)
+	return quoted.str()
+}
+
 struct GccUnicodeResponsePlan {
 mut:
 	args              []string
@@ -1772,8 +1808,8 @@ fn gcc_unicode_response_plan(response_file string, args []string, max_command_by
 	}
 	mut quoted_command_bytes := 0
 	for arg in plan.args {
-		// Reserve a separator and the quotes added around every Windows argument.
-		quoted_command_bytes += arg.len + 3
+		// Account for the exact backslash+quote expansion used by CreateProcessW.
+		quoted_command_bytes += windows_quote_exec_arg(arg).len + 1
 	}
 	// Preserve the compiler's active-code-page response-file encoding when it is
 	// lossless. Otherwise no response-file encoding can safely carry these args.
@@ -2272,7 +2308,7 @@ pub fn (mut v Builder) cc() {
 			response_file_content = plan.response_contents.join('\n')
 			compiler_exec_args = [ccompiler]
 			compiler_exec_args << transport_args
-			cmd = '${v.quote_compiler_name(ccompiler)} ${transport_args.map(os.quoted_path(it)).join(' ')}'
+			cmd = '${v.quote_compiler_name(ccompiler)} ${transport_args.map(windows_quote_exec_arg(it)).join(' ')}'
 			if !v.ccoptions.debug_mode {
 				v.pref.cleanup_files << plan.response_files
 			}
