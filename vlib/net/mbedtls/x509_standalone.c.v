@@ -174,15 +174,16 @@ pub fn verify_rsa_pss_signature(pk &C.mbedtls_pk_context, md_alg MbedtlsMdType, 
 // verify_certificate_chain validates `chain` (from build_certificate_chain)
 // against `ca_bundle_pem`, one or more trusted CA certificates concatenated
 // in PEM format, AND that `hostname` matches the leaf certificate's
-// SAN/CN. An empty `ca_bundle_pem` falls back to the vendored
-// default_ca_bundle_pem (default_ca_bundle.v) rather than one caller
+// SAN/CN. An empty `ca_bundle_pem` falls back to
+// system_or_default_ca_bundle_pem (default_ca_bundle.v: the Linux system
+// CA bundle if present, else the vendored default) rather than one caller
 // having to supply a full trust store just to talk to the public
 // internet — mirrors the identical fallback in SSLConn.init's own
-// client-side cert loading (ssl_connection.c.v). There is still no OS
-// trust-store lookup anywhere in this codebase (Windows CryptoAPI, macOS
-// Keychain, or Linux's distro-provided bundle paths) — only the one
-// vendored snapshot, for any TLS client (HTTP/1.1, HTTP/2, or this QUIC
-// path).
+// client-side cert loading (ssl_connection.c.v). Still no OS-native
+// trust-store lookup for Windows (CryptoAPI) or macOS (Keychain) — neither
+// ships a flat PEM file the way Linux distros do, so both fall back to the
+// vendored snapshot; see system_or_default_ca_bundle_pem's own doc
+// comment.
 //
 // `hostname` is passed straight through as mbedtls_x509_crt_verify's `cn`
 // parameter — mbedTLS itself does the SAN/CN matching (DNS names and IP
