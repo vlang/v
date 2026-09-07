@@ -6525,6 +6525,10 @@ fn v3_should_prefer_bundled_tcc_for_selfhost(building_v bool, backend string, c_
 	return target.os == host.os && target.arch == host.arch
 }
 
+fn v3_should_regenerate_for_cc_fallback(prefer_bundled_tcc bool, tried_tcc bool, tcc_exit_code int) bool {
+	return prefer_bundled_tcc && (!tried_tcc || tcc_exit_code != 0)
+}
+
 struct V3TestBuildConstraint {
 	expression string
 	line       int
@@ -8995,7 +8999,8 @@ pub fn run(args []string) {
 	// The non-production C path tries bundled TCC before its `cc` fallback. Select
 	// TinyCC compile-time branches for a self-host too, so system headers and inline
 	// assembly intended for Clang do not prevent that first attempt.
-	prefer_bundled_tcc := v3_should_prefer_bundled_tcc_for_selfhost(building_v, backend, c_only, is_prod, is_c_debug, c_compiler_explicit, target, bundled_tcc_available)
+	prefer_bundled_tcc := retry_compilation
+		&& v3_should_prefer_bundled_tcc_for_selfhost(building_v, backend, c_only, is_prod, is_c_debug, c_compiler_explicit, target, bundled_tcc_available)
 	effective_c_compiler := if backend == 'arm64' {
 		'tinyc'
 	} else if prefer_bundled_tcc {
@@ -11861,6 +11866,20 @@ pub fn run(args []string) {
 			result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
 			show_v3_c_compiler_output(show_c_output, tcc_path, result)
 			used_tcc = result.exit_code == 0
+		}
+		if v3_should_regenerate_for_cc_fallback(prefer_bundled_tcc, tried_tcc, result.exit_code) {
+			fallback := 'cc'
+			eprintln('warning: bundled tcc could not build the generated unit, regenerating with ${fallback}')
+			retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
+			cleanup_c_build_dir(cc_dir)
+			retry_result := cmdexec.run(os.executable(), retry_args)
+			if retry_result.output.len > 0 {
+				print(retry_result.output)
+			}
+			if retry_result.exit_code != 0 {
+				exit(retry_result.exit_code)
+			}
+			return
 		}
 		if is_prod || !tried_tcc || result.exit_code != 0 {
 			used_tcc = false

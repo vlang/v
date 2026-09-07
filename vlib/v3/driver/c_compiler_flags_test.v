@@ -35,6 +35,14 @@ fn test_v3_prefers_bundled_tcc_for_debug_selfhost() {
 		host, false)
 }
 
+fn test_v3_regenerates_cc_fallback_after_preferred_tcc() {
+	assert !v3_should_regenerate_for_cc_fallback(false, false, 0)
+	assert !v3_should_regenerate_for_cc_fallback(false, true, 1)
+	assert !v3_should_regenerate_for_cc_fallback(true, true, 0)
+	assert v3_should_regenerate_for_cc_fallback(true, true, 1)
+	assert v3_should_regenerate_for_cc_fallback(true, false, 0)
+}
+
 fn test_v3_explicit_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	vroot := os.join_path(os.temp_dir(), 'v3_tcc_flag_plan')
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
