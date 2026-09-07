@@ -490,8 +490,11 @@ fn (mut c Client) send(text []string, literals [][]u8) !Response {
 		line = text[i + 1]
 	}
 	c.write_line(line)!
-	mut res := c.read_response(tag)!
+	res := c.read_response_raw(tag)!
 	c.absorb(res)
+	if res.status != .ok {
+		return error('imap: ${res.status} ${res.text}')
+	}
 	return res
 }
 
@@ -564,14 +567,17 @@ fn (mut c Client) absorb(res Response) {
 	// follows it. Servers are not obliged to send a fresh EXISTS afterwards,
 	// and Dovecot does not, so a client that waited for one would go on
 	// reporting a count that includes messages it just watched being removed.
-	for _ in res.expunged {
+	mut removals := res.expunged.len
+	if res.has_exists {
+		c.exists = res.exists
+		// Only removals that arrived after the last EXISTS remain to be applied;
+		// that count superseded every earlier event.
+		removals = res.expunged_after_exists
+	}
+	for _ in 0 .. removals {
 		if c.exists > 0 {
 			c.exists--
 		}
-	}
-	// An EXISTS the server did send is authoritative over that arithmetic.
-	if res.has_exists {
-		c.exists = res.exists
 	}
 	if res.has_recent {
 		c.recent = res.recent
@@ -630,7 +636,10 @@ fn (mut c Client) open_mailbox(verb string, name string) !Mailbox {
 	// A selection attempt returns the session to authenticated state if it
 	// fails, so the old mailbox and its counters stop being current up front.
 	c.clear_selected()
-	res := c.run_with_mailbox(verb, name)!
+	res := c.run_with_mailbox(verb, name) or {
+		c.clear_selected()
+		return err
+	}
 	c.selected = name
 	c.exists = res.exists
 	c.recent = res.recent

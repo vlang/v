@@ -195,13 +195,24 @@ mut:
 	read_only       bool
 	// has_exists and has_recent record whether the server said anything at
 	// all, since zero is a perfectly ordinary count.
-	has_exists bool
-	has_recent bool
+	has_exists            bool
+	has_recent            bool
+	expunged_after_exists int
 }
 
 // read_response reads responses until the one tagged `tag`, and turns a NO or
 // BAD completion into an error.
 fn (mut c Client) read_response(tag string) !Response {
+	out := c.read_response_raw(tag)!
+	if out.status == .ok {
+		return out
+	}
+	return error('imap: ${out.status} ${out.text}')
+}
+
+// read_response_raw retains a NO or BAD completion so callers can apply any
+// unsolicited mailbox updates that preceded it before returning the error.
+fn (mut c Client) read_response_raw(tag string) !Response {
 	mut out := Response{}
 	for {
 		mut d := c.decoder()!
@@ -226,10 +237,7 @@ fn (mut c Client) read_response(tag string) !Response {
 		if got != tag {
 			return error('imap: the server answered tag `${got}` while `${tag}` was outstanding')
 		}
-		if out.status == .ok {
-			return out
-		}
-		return error('imap: ${out.status} ${out.text}')
+		return out
 	}
 	return out
 }
@@ -296,6 +304,7 @@ fn read_message_data(mut d Decoder, mut out Response, n u32) ! {
 	if name == 'EXISTS' {
 		out.exists = n
 		out.has_exists = true
+		out.expunged_after_exists = 0
 		return
 	}
 	if name == 'RECENT' {
@@ -305,6 +314,9 @@ fn read_message_data(mut d Decoder, mut out Response, n u32) ! {
 	}
 	if name == 'EXPUNGE' {
 		out.expunged << n
+		if out.has_exists {
+			out.expunged_after_exists++
+		}
 		return
 	}
 	if name == 'FETCH' {

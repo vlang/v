@@ -287,6 +287,10 @@ fn (mut d Decoder) string_value() !string {
 	if ch == `"` {
 		return d.quoted()
 	}
+	if ch == `~` {
+		d.expect(`~`)!
+		return d.literal()
+	}
 	if ch == `{` {
 		return d.literal()
 	}
@@ -454,7 +458,7 @@ fn (mut d Decoder) flag() !string {
 // does not model cannot derail the rest of the response.
 fn (mut d Decoder) skip_value() ! {
 	ch := d.peek_byte()!
-	if ch == `"` || ch == `{` {
+	if ch == `"` || ch == `{` || ch == `~` {
 		d.string_value()!
 		return
 	}

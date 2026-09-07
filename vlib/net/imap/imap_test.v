@@ -98,6 +98,12 @@ fn mock_reply(tag string, cmd string, line string) string {
 		// the server says so: attached to whatever command is in flight.
 		return '* 9 EXISTS\r\n* 2 RECENT\r\n${tag} OK NOOP completed\r\n'
 	}
+	if cmd == 'ORDERED' {
+		return '* 11 EXISTS\r\n* 5 EXPUNGE\r\n${tag} OK updates completed\r\n'
+	}
+	if cmd == 'FAILUPDATE' {
+		return '* 12 EXISTS\r\n${tag} NO command refused\r\n'
+	}
 	if cmd == 'LIST' || cmd == 'LSUB' {
 		return '* ${cmd} (\\Noselect) "/" ""\r\n' + '* ${cmd} (\\HasNoChildren) "/" INBOX\r\n' + '* ${cmd} (\\HasChildren) "/" "Travail"\r\n' + '* ${cmd} () "/" "Travail/&AMk-t&AOk- 2026"\r\n' + '${tag} OK ${cmd} completed\r\n'
 	}
@@ -391,6 +397,41 @@ fn test_an_explicit_count_wins_over_the_arithmetic() {
 	th.wait()
 	l.close() or {}
 	drain(seen)
+}
+
+fn test_unsolicited_counts_and_removals_keep_arrival_order() {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	seen := chan string{ cap: 64 }
+	port, th := start(mut l, mock_greeting, seen)!
+	mut c := new_client(server: '127.0.0.1', port: port)!
+	c.select_mailbox('INBOX')!
+
+	c.command('ORDERED')!
+	assert c.exists == 10
+	c.close()!
+	th.wait()
+	l.close() or {}
+	drain(seen)
+}
+
+fn test_unsolicited_updates_survive_a_refused_command() {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	seen := chan string{ cap: 64 }
+	port, th := start(mut l, mock_greeting, seen)!
+	mut c := new_client(server: '127.0.0.1', port: port)!
+	c.select_mailbox('INBOX')!
+
+	c.command('FAILUPDATE') or {
+		assert err.msg().contains('command refused')
+		assert c.exists == 12
+		c.noop()!
+		c.close()!
+		th.wait()
+		l.close() or {}
+		drain(seen)
+		return
+	}
+	assert false, 'the command must remain refused after applying its updates'
 }
 
 fn test_a_refused_login_is_an_error() {
