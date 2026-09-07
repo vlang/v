@@ -4,6 +4,7 @@ module http
 
 import net
 import net.mbedtls
+import net.openssl
 
 const openssl_validation_cert_path = @VEXEROOT + '/vlib/net/websocket/tests/autobahn/fuzzing_server_wss/config/server.crt'
 const openssl_validation_key_path = @VEXEROOT + '/vlib/net/websocket/tests/autobahn/fuzzing_server_wss/config/server.key'
@@ -77,4 +78,17 @@ fn test_openssl_rejects_trusted_certificate_for_wrong_host() {
 	}
 	server.wait()
 	assert false, 'expected OpenSSL to reject the certificate for the wrong host'
+}
+
+fn test_openssl_ca_setup_failure_is_not_retryable() {
+	openssl.new_ssl_conn(openssl.SSLConnectConfig{
+		verify: '/path/that/does/not/exist/vlang-invalid-ca.pem'
+		validate: true
+	}) or {
+		assert err.code() == net.err_tls_certificate_invalid_code
+		assert is_no_need_retry_error(err.code())
+		assert err.msg().contains('SSL_CTX_load_verify_locations failed')
+		return
+	}
+	assert false, 'expected OpenSSL to reject an invalid CA file'
 }

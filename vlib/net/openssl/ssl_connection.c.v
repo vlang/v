@@ -174,7 +174,7 @@ fn (mut s SSLConn) init() ! {
 		// custom CA file below.
 		res = C.v_net_openssl_configure_peer_verification(s.sslctx, int(s.config.verify == ''))
 		if res != 1 {
-			return error('net.openssl SSLConn.init, SSL_CTX_set_default_verify_paths failed')
+			return error_with_code('net.openssl SSLConn.init, SSL_CTX_set_default_verify_paths failed', net.err_tls_certificate_invalid_code)
 		}
 		C.SSL_CTX_set_verify_depth(s.sslctx, 4)
 		C.SSL_CTX_set_options(s.sslctx, C.SSL_OP_NO_COMPRESSION)
@@ -226,21 +226,21 @@ fn (mut s SSLConn) init() ! {
 		if s.config.verify != '' {
 			res = C.SSL_CTX_load_verify_locations(voidptr(s.sslctx), &char(verify.str), 0)
 			if s.config.validate && res != 1 {
-				return error('net.openssl SSLConn.init, SSL_CTX_load_verify_locations failed')
+				return error_with_code('net.openssl SSLConn.init, SSL_CTX_load_verify_locations failed', net.err_tls_certificate_invalid_code)
 			}
 		}
 		if s.config.cert != '' {
 			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str),
 				C.SSL_FILETYPE_PEM)
 			if s.config.validate && res != 1 {
-				return error('net.openssl SSLConn.init, SSL_CTX_use_certificate_file failed, res: ${res}')
+				return error_with_code('net.openssl SSLConn.init, SSL_CTX_use_certificate_file failed, res: ${res}', net.err_tls_certificate_invalid_code)
 			}
 		}
 		if s.config.cert_key != '' {
 			res = C.SSL_CTX_use_PrivateKey_file(voidptr(s.sslctx), &char(cert_key.str),
 				C.SSL_FILETYPE_PEM)
 			if s.config.validate && res != 1 {
-				return error('net.openssl SSLConn.init, SSL_CTX_use_PrivateKey_file failed, res: ${res}')
+				return error_with_code('net.openssl SSLConn.init, SSL_CTX_use_PrivateKey_file failed, res: ${res}', net.err_tls_certificate_invalid_code)
 			}
 		}
 
@@ -261,11 +261,14 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	s.duration = tcp_conn.read_timeout()
 	mut res := C.SSL_set_tlsext_host_name(voidptr(s.ssl), voidptr(hostname.str))
 	if res != 1 {
+		if s.config.validate {
+			return error_with_code('net.openssl SSLConn.connect, could not set host name', net.err_tls_certificate_invalid_code)
+		}
 		return error('net.openssl SSLConn.connect, could not set host name')
 	}
 	if s.config.validate
 		&& C.v_net_openssl_configure_peer_name_verification(s.ssl, &char(hostname.str)) != 1 {
-		return error('net.openssl SSLConn.connect, could not configure peer name verification')
+		return error_with_code('net.openssl SSLConn.connect, could not configure peer name verification', net.err_tls_certificate_invalid_code)
 	}
 	if C.SSL_set_fd(voidptr(s.ssl), tcp_conn.sock.handle) != 1 {
 		return error('net.openssl SSLConn.connect, could not assign ssl to socket.')
