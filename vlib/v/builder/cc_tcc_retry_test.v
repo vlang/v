@@ -261,12 +261,14 @@ fn test_rewrite_windows_path_arg_leaves_non_paths_alone() {
 
 fn test_rewrite_windows_path_operand_arg_rewrites_path_operands() {
 	assert rewrite_windows_path_operand_arg(r'-I"C:\Users\Léo\include"', fake_windows_short_path) == r'-I"C:\Users\LEO~1\include"'
+	assert rewrite_windows_path_operand_arg(r"-I'C:\Users\Léo\include'", fake_windows_short_path) == r'-I"C:\Users\LEO~1\include"'
 	assert rewrite_windows_path_operand_arg(r'-L"C:\Users\Léo\lib"', fake_windows_short_path) == r'-L"C:\Users\LEO~1\lib"'
 	assert rewrite_windows_path_operand_arg(r'-B"C:\Users\Léo\bin"', fake_windows_short_path) == r'-B"C:\Users\LEO~1\bin"'
 	assert rewrite_windows_path_operand_arg(r'-o "C:\Users\Léo\bin\tool.exe"', fake_windows_short_path) == r'-o "C:\Users\LEO~1\bin\tool.exe"'
 	obj := r'"C:\Users\Léo\.vmodules\.cache\bc\artifact.o"'
 	expected := r'"C:\Users\LEO~1\.vmodules\.cache\bc\artifact.o"'
 	assert rewrite_windows_path_operand_arg(obj, fake_windows_short_path) == expected
+	assert rewrite_windows_path_operand_arg(r"'C:\Users\Léo\input.o'", fake_windows_short_path) == r'"C:\Users\LEO~1\input.o"'
 }
 
 fn test_rewrite_windows_path_operand_arg_leaves_path_like_values_alone() {

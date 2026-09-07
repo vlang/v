@@ -1531,8 +1531,8 @@ fn looks_like_windows_path(value string) bool {
 // macro value after the rewrite.
 fn single_windows_path_operand(value string) ?string {
 	trimmed := value.trim_space()
-	if trimmed.len >= 2 && trimmed[0] == `"` {
-		if trimmed[trimmed.len - 1] != `"` {
+	if trimmed.len >= 2 && trimmed[0] in [`"`, `'`] {
+		if trimmed[trimmed.len - 1] != trimmed[0] {
 			return none
 		}
 		return trimmed[1..trimmed.len - 1]
