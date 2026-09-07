@@ -9543,7 +9543,7 @@ fn (mut g Gen) enum_field_expr(expr ast.Expr) string {
 	if expr is ast.Ident && expr.kind == .constant {
 		const_def := g.global_const_defs[util.no_dots(expr.name)]
 		if const_def.def.starts_with('#define') {
-			return const_def.def.all_after_last(' ')
+			return const_def.def.all_after(' ').all_after(' ').all_before('//').trim_space()
 		}
 		if const_def.def.contains('const ') {
 			return const_def.def.all_after_last('=').all_before_last(';')
