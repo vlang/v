@@ -19,9 +19,6 @@ pub fn prime(bits int) !big.Integer {
 		return error('crypto.rand: prime requires at least 2 bits')
 	}
 	if bits == 2 {
-		if int_u64(2)! == 0 {
-			return big.two_int
-		}
 		return big.integer_from_int(3)
 	}
 	for {

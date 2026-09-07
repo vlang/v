@@ -70,6 +70,12 @@ fn test_mersenne_primes() {
 	assert parse('170141183460469231731687303715884105727').is_probably_prime(20)
 }
 
+fn test_fermat_primes_with_unit_miller_rabin_exponent() {
+	// These decompose p - 1 into d * 2^s with d == 1.
+	assert big.integer_from_int(257).is_probably_prime(20)
+	assert big.integer_from_int(65537).is_probably_prime(20)
+}
+
 fn test_mersenne_composites() {
 	// 2^11 - 1
 	assert !parse('2047').is_probably_prime(20)

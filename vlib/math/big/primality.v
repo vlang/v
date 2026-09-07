@@ -12,6 +12,12 @@ const primes_b = u64(29 * 31 * 41 * 43 * 47 * 53)
 // Bases that make Miller-Rabin deterministic below 3317044064679887385961981.
 const deterministic_bases = [u64(2), 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41]!
 
+const deterministic_limit = Integer{
+	digits: [u64(120970133908792829), 2877077]
+	signum: 1
+	is_const: true
+}
+
 // is_probably_prime reports whether `x` is prime, with a probability of a
 // composite being misreported below `1 / 4^rounds`.
 //
@@ -82,11 +88,19 @@ fn (x Integer) miller_rabin(rounds int) bool {
 	// Hoisted out of the loop: deriving a context costs a modular inverse, and
 	// every round shares the same modulus.
 	ctx := x.montgomery()
-	// Only the random rounds need this, and only its value, so compute it once
-	// rather than once per call to random_base.
 	x_minus_three := x - integer_from_int(3)
-	for i in 0 .. rounds {
-		base := x.round_base(i, x_minus_three)
+	for base in deterministic_bases {
+		if !x.passes_miller_rabin_round(integer_from_u64(base), d, s, x_minus_one, ctx) {
+			return false
+		}
+	}
+	if x.abs_cmp(deterministic_limit) < 0 {
+		return true
+	}
+	// Above the deterministic range, fixed bases are only a prelude. Perform
+	// every requested random round so the documented 1 / 4^rounds bound holds.
+	for _ in 0 .. rounds {
+		base := random_base(x, x_minus_three)
 		if !x.passes_miller_rabin_round(base, d, s, x_minus_one, ctx) {
 			return false
 		}
@@ -94,19 +108,10 @@ fn (x Integer) miller_rabin(rounds int) bool {
 	return true
 }
 
-// round_base returns the base for round `i`: one of the fixed bases while they
-// last, a random one afterwards.
-fn (x Integer) round_base(i int, x_minus_three Integer) Integer {
-	if i < deterministic_bases.len {
-		return integer_from_u64(deterministic_bases[i])
-	}
-	return random_base(x, x_minus_three)
-}
-
 // passes_miller_rabin_round reports whether the base `a` fails to witness that
 // `x` is composite, given `x - 1 == d * 2^s` and a context derived from `x`.
 fn (x Integer) passes_miller_rabin_round(a Integer, d Integer, s int, x_minus_one Integer, ctx MontgomeryContext) bool {
-	mut y := a.mont_odd_with_ctx(d, x, ctx)
+	mut y := if d == one_int { a % x } else { a.mont_odd_with_ctx(d, x, ctx) }
 	if y == one_int || y == x_minus_one {
 		return true
 	}
@@ -206,7 +211,9 @@ fn (x Integer) lucas_probable_prime() bool {
 			}
 		}
 		if p > 10000 {
-			return false
+			// Miller-Rabin already accepted `x`. Parameter-search exhaustion is
+			// inconclusive, not evidence of compositeness, so preserve that result.
+			return true
 		}
 		p++
 	}

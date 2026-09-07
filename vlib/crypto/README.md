@@ -20,6 +20,25 @@ system's cryptographically secure random source and can return an error. The sep
 
 ## Examples
 
+### Prime generation
+
+Use `crypto.rand.prime(bits)` to generate an odd prime with exactly `bits` bits. Its two
+highest bits are set, so multiplying two primes of the same size produces a `2 * bits`-bit
+RSA modulus. `crypto.rand.safe_prime(bits)` additionally requires `(p - 1) / 2` to be prime
+and is considerably slower. Both functions use the operating system's cryptographically
+secure random source and can return an error.
+
+```v
+import crypto.rand
+
+fn main() {
+	p := rand.prime(256)!
+	safe := rand.safe_prime(256)!
+	assert p.bit_len() == 256
+	assert safe.bit_len() == 256
+}
+```
+
 ### Constant-time comparisons
 
 Use `crypto.subtle` for low-level helpers whose running time does not depend on secret data:
@@ -99,21 +118,27 @@ fn main() {
 }
 
 fn make_token(secret string) string {
-	header :=
-		base64.url_encode(json2.encode(JwtHeader{'HS256', 'JWT'}, escape_unicode: true).bytes())
+	header := base64.url_encode(
+		json2.encode(JwtHeader{'HS256', 'JWT'}, escape_unicode: true).bytes(),
+	)
 	payload := base64.url_encode(json2.encode(JwtPayload{'1234567890', 'John Doe', 1516239022},
 		escape_unicode: true
 	).bytes())
-	signature := base64.url_encode(hmac.new(secret.bytes(), '${header}.${payload}'.bytes(),
-		sha256.sum, sha256.block_size))
+	signature := base64.url_encode(
+		hmac.new(secret.bytes(), '${header}.${payload}'.bytes(), sha256.sum, sha256.block_size),
+	)
 	jwt := '${header}.${payload}.${signature}'
 	return jwt
 }
 
 fn auth_verify(secret string, token string) bool {
 	token_split := token.split('.')
-	signature_mirror := hmac.new(secret.bytes(), '${token_split[0]}.${token_split[1]}'.bytes(),
-		sha256.sum, sha256.block_size)
+	signature_mirror := hmac.new(
+		secret.bytes(),
+		'${token_split[0]}.${token_split[1]}'.bytes(),
+		sha256.sum,
+		sha256.block_size,
+	)
 	signature_from_token := base64.url_decode(token_split[2])
 	return hmac.equal(signature_from_token, signature_mirror)
 }

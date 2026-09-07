@@ -36,10 +36,10 @@ fn test_prime_is_random() {
 }
 
 fn test_prime_small_sizes() {
-	// Two bits leaves only 2 and 3.
+	// The top-two-bit and oddness guarantees select 3 at two bits.
 	for _ in 0 .. 10 {
 		p := rand.prime(2) or { panic(err) }
-		assert p == big.two_int || p == big.integer_from_int(3)
+		assert p == big.integer_from_int(3)
 	}
 	p3 := rand.prime(3) or { panic(err) }
 	assert p3 == big.integer_from_int(5) || p3 == big.integer_from_int(7)
