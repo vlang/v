@@ -1023,7 +1023,7 @@ fn test_boehm_scope_pin_does_not_walk_array_elements() {
 	defer {
 		os.rm(test_source) or {}
 	}
-	cmd := '${os.quoted_path(vexe)} -prod -gc boehm_full_opt -o - ${os.quoted_path(test_source)}'
+	cmd := '${os.quoted_path(vexe)} -old-compiler -prod -gc boehm_full_opt -o - ${os.quoted_path(test_source)}'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
 	assert !generated_c_uses_v3_codegen(compilation.output)
