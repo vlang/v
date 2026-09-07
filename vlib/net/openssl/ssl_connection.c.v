@@ -218,6 +218,11 @@ fn (mut s SSLConn) init() ! {
 			if s.config.validate && res != 1 {
 				return error('net.openssl SSLConn.init, SSL_CTX_load_verify_locations failed')
 			}
+		} else {
+			res = C.SSL_CTX_set_default_verify_paths(s.sslctx)
+			if res != 1 {
+				return error('net.openssl SSLConn.init, SSL_CTX_set_default_verify_paths failed')
+			}
 		}
 		if s.config.cert != '' {
 			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str),

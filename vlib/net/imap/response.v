@@ -679,8 +679,15 @@ fn read_mailbox_list(mut d Decoder) !MailboxInfo {
 		}
 	}
 	d.sp()!
+	name := d.mailbox_name()!
+	// RFC 5258 permits a parenthesised LIST-EXTENDED data item after the
+	// mailbox name. The current public result has no place for it, but it must
+	// still be consumed so the next response starts at the right byte.
+	if d.accept(` `)! {
+		d.skip_value()!
+	}
 	return MailboxInfo{
-		name: d.mailbox_name()!
+		name: name
 		delimiter: delimiter
 		attributes: attributes
 	}

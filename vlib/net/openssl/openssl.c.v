@@ -105,6 +105,8 @@ fn C.SSL_CTX_set_verify_depth(s &C.SSL_CTX, depth i32)
 
 fn C.SSL_CTX_set_verify(ctx &C.SSL_CTX, mode int, verify_callback voidptr)
 
+fn C.SSL_CTX_set_default_verify_paths(ctx &C.SSL_CTX) int
+
 fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, const_file &char, const_ca_path &char) i32
 
 fn C.SSL_CTX_free(ctx &C.SSL_CTX)

@@ -806,6 +806,12 @@ fn test_tls_validation_requires_an_explicit_ca_bundle() {
 	assert false, 'validated TLS without trust roots must fail before dialing'
 }
 
+fn test_bracketed_ipv6_is_normalized_for_tls_identity_checks() {
+	assert normalize_tls_hostname('[2001:db8::1]') == '2001:db8::1'
+	assert normalize_tls_hostname('2001:db8::1') == '2001:db8::1'
+	assert normalize_tls_hostname('imap.example.com') == 'imap.example.com'
+}
+
 fn test_empty_sets_do_not_reach_the_server() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
 	seen := chan string{ cap: 64 }

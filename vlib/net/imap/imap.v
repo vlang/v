@@ -776,11 +776,19 @@ fn (mut c Client) upgrade_to_tls() ! {
 		cert_key: c.cert_key
 		in_memory_verification: c.in_memory_verification
 	)!
-	c.ssl_conn.connect(mut c.conn, c.server) or {
+	tls_hostname := normalize_tls_hostname(c.server)
+	c.ssl_conn.connect(mut c.conn, tls_hostname) or {
 		return error('imap: TLS handshake with ${c.server} failed: ${err}')
 	}
 	c.dec = decoder_on(io.new_buffered_reader(reader: c.ssl_conn))
 	c.encrypted = true
+}
+
+fn normalize_tls_hostname(hostname string) string {
+	if hostname.len > 2 && hostname[0] == `[` && hostname[hostname.len - 1] == `]` {
+		return hostname[1..hostname.len - 1]
+	}
+	return hostname
 }
 
 fn (mut c Client) decoder() !&Decoder {

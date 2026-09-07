@@ -74,9 +74,9 @@ fn test_uid_validity_holds_the_full_32_bit_range() {
 }
 
 fn test_list_reads_every_form_of_a_mailbox_name() {
-	mut c := client_over('* LIST (\\Noselect) "/" ""\r\n' + '* LIST () "." INBOX\r\n' + '* LIST (\\HasChildren \\Marked) "/" "Work/Reports 2026"\r\n' + '* LIST (\\Noinferiors) NIL "Flat"\r\n' + '* LIST () "/" "od\\"d"\r\n' + '* LIST () "/" {7}\r\nliteral\r\n' + '* LIST () "/" "&AMk-l&AOk-ments"\r\n' + 'a1 OK LIST completed\r\n')
+	mut c := client_over('* LIST (\\Noselect) "/" ""\r\n' + '* LIST () "." INBOX\r\n' + '* LIST (\\HasChildren \\Marked) "/" "Work/Reports 2026"\r\n' + '* LIST (\\Noinferiors) NIL "Flat"\r\n' + '* LIST () "/" "od\\"d"\r\n' + '* LIST () "/" {7}\r\nliteral\r\n' + '* LIST () "/" "&AMk-l&AOk-ments"\r\n' + '* LIST (\\HasChildren) "/" "foo" (CHILDINFO ("SUBSCRIBED"))\r\n' + 'a1 OK LIST completed\r\n')
 	boxes := c.read_response('a1')!.mailboxes
-	assert boxes.len == 7
+	assert boxes.len == 8
 	// The empty name is how a client discovers the delimiter, so it survives.
 	assert boxes[0].name == ''
 	assert boxes[0].delimiter == '/'
@@ -94,6 +94,9 @@ fn test_list_reads_every_form_of_a_mailbox_name() {
 	assert boxes[5].name == 'literal'
 	// And it comes back as UTF-8, not as the modified UTF-7 it travelled in.
 	assert boxes[6].name == 'Éléments'
+	// LIST-EXTENDED data after the name is consumed even though it is not
+	// represented in MailboxInfo.
+	assert boxes[7].name == 'foo'
 }
 
 fn test_fetch_reads_metadata() {
@@ -359,6 +362,11 @@ fn test_unknown_response_text_ending_like_a_literal_stays_text() {
 
 fn test_an_unknown_response_skips_literals_inside_extension_arguments() {
 	mut c := client_over('* METADATA "INBOX" (/shared/comment {3}\r\nfoo /private/comment {3}\r\nbar)\r\na1 OK done\r\n')
+	assert c.read_response('a1')!.status == .ok
+}
+
+fn test_an_unknown_response_skips_multiple_top_level_literals() {
+	mut c := client_over('* ACL {5}\r\nINBOX {3}\r\nbob lr\r\na1 OK done\r\n')
 	assert c.read_response('a1')!.status == .ok
 }
 

@@ -366,6 +366,7 @@ mut:
 	quoted              bool
 	escaped             bool
 	has_top_level_value bool
+	saw_literal         bool
 }
 
 fn literal_suffix_size(line string, mut context ResponseTextContext) !(bool, u32) {
@@ -377,10 +378,10 @@ fn literal_suffix_size(line string, mut context ResponseTextContext) !(bool, u32
 		return false, 0
 	}
 	context.scan(line[..brace])
-	// A top-level response-text suffix is ambiguous with ordinary prose. A
-	// literal after other fields is accepted only while a parenthesised value
-	// is still open, where the grammar gives it an unambiguous token context.
-	if context.quoted || (context.depth == 0 && context.has_top_level_value) {
+	// A top-level suffix after ordinary text is ambiguous with prose. Inside a
+	// list, or after a literal has already established a structured response,
+	// the grammar gives the next marker an unambiguous token context.
+	if context.quoted || (context.depth == 0 && context.has_top_level_value && !context.saw_literal) {
 		return false, 0
 	}
 	mut digits_end := line.len - 1
@@ -404,6 +405,7 @@ fn literal_suffix_size(line string, mut context ResponseTextContext) !(bool, u32
 	if context.depth == 0 {
 		context.has_top_level_value = true
 	}
+	context.saw_literal = true
 	return true, u32(size)
 }
 
