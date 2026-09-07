@@ -12,4 +12,9 @@ struct Config {
 fn main() {
 	config := Config{}
 	println(u32(config.mode))
+	println(RasterizationMode.max_enum.str())
+	println(match RasterizationMode.max_enum {
+		.max_enum { 'max' }
+		else { 'other' }
+	})
 }
