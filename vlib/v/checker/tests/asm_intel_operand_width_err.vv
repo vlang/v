@@ -73,6 +73,13 @@ fn intel_narrow_enum(value IntelNarrow) {
 	}
 }
 
+fn intel_encoding_prefix_hard_register(value i64) {
+	asm amd64 intel {
+		rex add eax, value
+		; ; r (value)
+	}
+}
+
 fn main() {
 	println(intel_sub(50, 8))
 }

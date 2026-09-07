@@ -4430,7 +4430,12 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	// width. Intentional mixed-width forms such as `movzx` and shift counts are
 	// deliberately absent.
 	mut name := template.name.to_lower_ascii()
-	if name.starts_with('lock ') {
+	for name.contains(' ') {
+		prefix := name.all_before(' ')
+		if prefix !in ['lock', 'rex', 'vex', 'xop'] && !prefix.starts_with('rex.')
+			&& !prefix.starts_with('vex.') && !prefix.starts_with('xop.') {
+			break
+		}
 		name = name.all_after(' ')
 	}
 	if name !in ['mov', 'movbe', 'add', 'adc', 'adcx', 'adox', 'sub', 'sbb', 'and', 'andn',
