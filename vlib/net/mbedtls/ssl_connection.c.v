@@ -37,6 +37,22 @@ fn mbedtls_client_handshake_error(message string, ret int) IError {
 	return error_with_code(message, ret)
 }
 
+fn parse_client_ca_bundle(cacert &C.mbedtls_x509_crt, ca_bundle_pem string, source string) ! {
+	ret := C.mbedtls_x509_crt_parse(cacert, ca_bundle_pem.str, ca_bundle_pem.len + 1)
+	// A positive return is the number of PEM certificates that failed to
+	// parse while others succeeded. A partial trust store is not safe to use.
+	if ret != 0 {
+		return error_with_code('net.mbedtls SSLConn.init, failed to parse ${source}, mbedtls ret: ${ret}', net.err_tls_certificate_invalid_code)
+	}
+}
+
+fn parse_client_ca_file(cacert &C.mbedtls_x509_crt, path string) ! {
+	ret := C.mbedtls_x509_crt_parse_file(cacert, &char(path.str))
+	if ret != 0 {
+		return error_with_code('net.mbedtls SSLConn.init, failed to parse configured CA file, mbedtls ret: ${ret}', net.err_tls_certificate_invalid_code)
+	}
+}
+
 // SSLCerts represents a pair of CA and client certificates + key
 pub struct SSLCerts {
 pub mut:
@@ -662,7 +678,7 @@ fn (mut s SSLConn) init() ! {
 
 	if s.config.in_memory_verification {
 		if s.config.verify != '' {
-			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, s.config.verify.str, s.config.verify.len + 1)
+			parse_client_ca_bundle(&s.certs.cacert, s.config.verify, 'configured CA bundle')!
 		} else if s.config.validate {
 			// This is the CLIENT connect path only (new_ssl_conn/dial --
 			// SSLListener.accept() never calls this function, it reuses the
@@ -675,34 +691,43 @@ fn (mut s SSLConn) init() ! {
 			// s.certs.cacert empty. Mirrors verify_certificate_chain's
 			// identical fallback for net.quic's HTTP/3 client.
 			ca_bundle_pem := system_or_default_ca_bundle_pem()
-			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, ca_bundle_pem.str, ca_bundle_pem.len + 1)
+			parse_client_ca_bundle(&s.certs.cacert, ca_bundle_pem, 'system/default CA bundle')!
 		}
 		if s.config.cert != '' {
 			ret = C.mbedtls_x509_crt_parse(&s.certs.client_cert, s.config.cert.str, s.config.cert.len + 1)
+			if ret != 0 {
+				return error_with_code('net.mbedtls SSLConn.init, failed to parse configured client certificate, mbedtls ret: ${ret}', net.err_tls_certificate_invalid_code)
+			}
 		}
 		if s.config.cert_key != '' {
 			unsafe {
 				ret = C.mbedtls_pk_parse_key(&s.certs.client_key, s.config.cert_key.str, s.config.cert_key.len + 1, 0, 0, C.mbedtls_ctr_drbg_random, &s.ctr_drbg)
 			}
+			if ret != 0 {
+				return error_with_code('net.mbedtls SSLConn.init, failed to parse configured client key, mbedtls ret: ${ret}', net.err_tls_certificate_invalid_code)
+			}
 		}
 	} else {
 		if s.config.verify != '' {
-			ret = C.mbedtls_x509_crt_parse_file(&s.certs.cacert, &char(s.config.verify.str))
+			parse_client_ca_file(&s.certs.cacert, s.config.verify)!
 		} else if s.config.validate {
 			ca_bundle_pem := system_or_default_ca_bundle_pem()
-			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, ca_bundle_pem.str, ca_bundle_pem.len + 1)
+			parse_client_ca_bundle(&s.certs.cacert, ca_bundle_pem, 'system/default CA bundle')!
 		}
 		if s.config.cert != '' {
 			ret = C.mbedtls_x509_crt_parse_file(&s.certs.client_cert, &char(s.config.cert.str))
+			if ret != 0 {
+				return error_with_code('net.mbedtls SSLConn.init, failed to parse configured client certificate file, mbedtls ret: ${ret}', net.err_tls_certificate_invalid_code)
+			}
 		}
 		if s.config.cert_key != '' {
 			unsafe {
 				ret = C.mbedtls_pk_parse_keyfile(&s.certs.client_key, &char(s.config.cert_key.str), 0, C.mbedtls_ctr_drbg_random, &s.ctr_drbg)
 			}
+			if ret != 0 {
+				return error_with_code('net.mbedtls SSLConn.init, failed to parse configured client key file, mbedtls ret: ${ret}', net.err_tls_certificate_invalid_code)
+			}
 		}
-	}
-	if ret < 0 {
-		return error_with_code('net.mbedtls SSLConn.init, failed to set certificates, ret: ${ret}', ret)
 	}
 
 	C.mbedtls_ssl_conf_ca_chain(&s.conf, &s.certs.cacert, 0)

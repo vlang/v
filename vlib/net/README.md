@@ -18,5 +18,6 @@ socket.set_multicast_loop(true)!
 ## TLS errors
 
 TLS backends return `net.err_tls_certificate_invalid_code` when peer-certificate validation
-fails. Higher-level clients can use this portable code to avoid retrying a deterministic
-certificate failure; the original backend details remain in the error message.
+or certificate/trust-store setup fails. Higher-level clients can use this portable code to avoid
+retrying a deterministic certificate failure; the original backend details remain in the error
+message.

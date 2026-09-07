@@ -20,3 +20,19 @@ fn test_client_non_certificate_failure_keeps_mbedtls_code() {
 	assert err.code() == C.MBEDTLS_ERR_SSL_TIMEOUT
 	assert err.msg() == 'handshake timed out'
 }
+
+fn test_client_default_ca_bundle_rejects_partial_parse() {
+	mut cacert := C.mbedtls_x509_crt{}
+	C.mbedtls_x509_crt_init(&cacert)
+	defer {
+		C.mbedtls_x509_crt_free(&cacert)
+	}
+	partially_malformed_bundle := default_ca_bundle_pem + '\n-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n'
+	parse_client_ca_bundle(&cacert, partially_malformed_bundle, 'system/default CA bundle') or {
+		assert err.code() == net.err_tls_certificate_invalid_code
+		assert err.msg().contains('system/default CA bundle')
+		assert err.msg().contains('mbedtls ret: 1'), 'expected the positive skipped-certificate count in the message: ${err.msg()}'
+		return
+	}
+	assert false, 'expected a partially malformed default CA bundle to be rejected'
+}
