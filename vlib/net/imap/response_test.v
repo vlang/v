@@ -200,6 +200,30 @@ fn test_a_nested_multipart_body_structure() {
 	assert structure.params['boundary'] == 'outer'
 }
 
+fn test_an_rfc822_part_retains_the_attached_message_structure() {
+	mut c := client_over('* 7 FETCH (BODYSTRUCTURE ' + '("MESSAGE" "RFC822" NIL NIL NIL "7BIT" 123 ' + '(NIL "Forwarded" NIL NIL NIL NIL NIL NIL NIL "<forwarded@x>") ' + '("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "7BIT" 42 3) 5))\r\n' + 'a1 OK done\r\n')
+	attached := c.read_response('a1')!.messages[0].structure or {
+		assert false, 'the attached message body structure was not parsed'
+		return
+	}
+	assert attached.mime_type() == 'message/rfc822'
+	envelope := attached.message_envelope or {
+		assert false, 'the attached message envelope was not retained'
+		return
+	}
+	assert envelope.subject == 'Forwarded'
+	assert envelope.message_id == '<forwarded@x>'
+	nested := attached.message_structure or {
+		assert false, 'the attached message MIME tree was not retained'
+		return
+	}
+	assert nested.mime_type() == 'text/plain'
+	assert nested.params['charset'] == 'UTF-8'
+	assert nested.size == 42
+	assert nested.lines == 3
+	assert attached.lines == 5
+}
+
 fn test_several_sections_come_back_keyed() {
 	header := 'Subject: hi\r\n'
 	text := 'body text\r\n'

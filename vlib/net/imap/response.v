@@ -107,15 +107,19 @@ pub:
 }
 
 // BodyStructure describes one MIME part. A multipart has `parts` filled in and
-// a media type of `multipart`; every other part is a leaf.
+// a media type of `multipart`. A `message/rfc822` part retains the attached
+// message's envelope and MIME tree in `message_envelope` and
+// `message_structure`.
 pub struct BodyStructure {
 pub:
-	media_type    string
-	media_subtype string
-	params        map[string]string
-	id            string
-	description   string
-	encoding      string
+	media_type        string
+	media_subtype     string
+	params            map[string]string
+	id                string
+	description       string
+	encoding          string
+	message_envelope  ?Envelope
+	message_structure ?&BodyStructure
 	// size is the part's length in octets, and `lines` its line count for a
 	// text part.
 	size  u32
@@ -572,6 +576,8 @@ fn read_body_structure(mut d Decoder) !BodyStructure {
 	d.sp()!
 	size := d.number()!
 	mut lines := u32(0)
+	mut message_envelope := ?Envelope(none)
+	mut message_structure := ?&BodyStructure(none)
 	// A text part states its line count, and an embedded message states its
 	// envelope, its own structure and its line count. Neither is required to
 	// be followed by the extension fields, so each step is guarded.
@@ -579,9 +585,10 @@ fn read_body_structure(mut d Decoder) !BodyStructure {
 		lines = d.number()!
 	}
 	if media_type.to_upper() == 'MESSAGE' && media_subtype.to_upper() == 'RFC822' && d.accept(` `)! {
-		read_envelope(mut d)!
+		message_envelope = read_envelope(mut d)!
 		d.sp()!
-		read_body_structure(mut d)!
+		mut nested := read_body_structure(mut d)!
+		message_structure = &nested
 		d.sp()!
 		lines = d.number()!
 	}
@@ -593,6 +600,8 @@ fn read_body_structure(mut d Decoder) !BodyStructure {
 		id: id
 		description: description
 		encoding: encoding
+		message_envelope: message_envelope
+		message_structure: message_structure
 		size: size
 		lines: lines
 	}
