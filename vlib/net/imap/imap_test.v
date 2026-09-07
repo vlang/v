@@ -226,6 +226,7 @@ fn test_a_full_session() {
 		port: port
 		username: 'bob'
 		password: 'hunter2'
+		allow_insecure_auth: true
 	)!
 	assert c.is_open
 	assert !c.encrypted
@@ -356,7 +357,13 @@ fn test_a_password_a_quoted_string_cannot_hold_becomes_a_literal() {
 
 	// A password with an accent is eight bit, which a quoted string is not
 	// defined over.
-	mut c := new_client(server: '127.0.0.1', port: port, username: 'bob', password: 'mot-de-passé')!
+	mut c := new_client(
+		server: '127.0.0.1'
+		port: port
+		username: 'bob'
+		password: 'mot-de-passé'
+		allow_insecure_auth: true
+	)!
 	c.close()!
 	th.wait()
 	l.close() or {}
@@ -470,6 +477,7 @@ fn test_a_refused_login_is_an_error() {
 			port: port
 			username: 'bob'
 			password: 'wrong'
+			allow_insecure_auth: true
 		}
 	}
 	c.connect()!
@@ -553,7 +561,13 @@ fn test_a_preauth_greeting_opens_the_session() {
 	seen := chan string{ cap: 64 }
 	port, th := start(mut l, '* PREAUTH IMAP4rev1 already authenticated', seen)!
 
-	mut c := new_client(server: '127.0.0.1', port: port, username: 'already', password: 'unused')!
+	mut c := new_client(
+		server: '127.0.0.1'
+		port: port
+		username: 'already'
+		password: 'unused'
+		allow_insecure_auth: true
+	)!
 	assert c.is_open
 	c.noop()!
 	c.close()!
@@ -567,7 +581,13 @@ fn test_greeting_logindisabled_prevents_sending_credentials() {
 	seen := chan string{ cap: 64 }
 	port, th := start(mut l, '* OK [CAPABILITY IMAP4rev1 LOGINDISABLED] no cleartext login', seen)!
 
-	new_client(server: '127.0.0.1', port: port, username: 'bob', password: 'secret') or {
+	new_client(
+		server: '127.0.0.1'
+		port: port
+		username: 'bob'
+		password: 'secret'
+		allow_insecure_auth: true
+	) or {
 		assert err.msg().contains('disabled LOGIN')
 		th.wait()
 		l.close() or {}
@@ -612,7 +632,13 @@ fn test_a_failed_automatic_login_closes_the_transport() {
 	seen := chan string{ cap: 64 }
 	port, th := start(mut l, mock_greeting, seen)!
 
-	new_client(server: '127.0.0.1', port: port, username: 'bob', password: 'wrong') or {
+	new_client(
+		server: '127.0.0.1'
+		port: port
+		username: 'bob'
+		password: 'wrong'
+		allow_insecure_auth: true
+	) or {
 		assert err.msg().contains('Invalid credentials')
 		// The mock exits only after its peer closes, so this also verifies that
 		// the setup error did not leave the transport behind.
@@ -708,6 +734,7 @@ fn test_sasl_plain_can_be_selected_during_construction() {
 		username: 'bob'
 		password: 'hunter2'
 		auth_method: .plain
+		allow_insecure_auth: true
 	)!
 	c.close()!
 	th.wait()
@@ -761,6 +788,14 @@ fn test_tls_certificate_validation_defaults_to_on() {
 	assert !Config{
 		validate: false
 	}.validate
+}
+
+fn test_plaintext_credentials_require_explicit_opt_in() {
+	new_client(server: '127.0.0.1', port: 1, username: 'bob', password: 'secret') or {
+		assert err.msg().contains('allow_insecure_auth')
+		return
+	}
+	assert false, 'plaintext credentials must be rejected before dialing'
 }
 
 fn test_tls_validation_requires_an_explicit_ca_bundle() {

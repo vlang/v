@@ -58,6 +58,8 @@ const tag_prefix = 'a'
 // enabled requires `verify` to name a PEM CA bundle; set
 // `in_memory_verification` when it contains the PEM data itself. `cert` and
 // `cert_key` configure a client certificate when the server requires one.
+// Credentials are refused on an unencrypted connection unless
+// `allow_insecure_auth` is explicitly set.
 pub struct Config {
 pub:
 	server                 string
@@ -72,6 +74,7 @@ pub:
 	cert                   string
 	cert_key               string
 	in_memory_verification bool
+	allow_insecure_auth    bool
 	auth_method            AuthMethod
 }
 
@@ -127,6 +130,9 @@ pub fn new_client(config Config) !&Client {
 	}
 	if (config.ssl || config.starttls) && config.validate && config.verify == '' {
 		return error('imap: TLS certificate validation requires a CA bundle in `verify`')
+	}
+	if config.username != '' && !config.ssl && !config.starttls && !config.allow_insecure_auth {
+		return error('imap: refusing to send credentials without TLS; set `allow_insecure_auth` to opt in')
 	}
 	mut c := &Client{
 		Config: config
@@ -194,6 +200,7 @@ pub fn (mut c Client) login() ! {
 	if c.username == '' || c.authenticated {
 		return
 	}
+	c.ensure_auth_is_safe()!
 	if c.has_capability('LOGINDISABLED') {
 		return error('imap: the server disabled LOGIN in its greeting')
 	}
@@ -208,6 +215,7 @@ pub fn (mut c Client) login_plain() ! {
 	if c.username == '' || c.authenticated {
 		return
 	}
+	c.ensure_auth_is_safe()!
 	tag := c.next_tag()
 	c.write_line('${tag} AUTHENTICATE PLAIN', false) or {
 		c.shutdown()
@@ -227,6 +235,12 @@ pub fn (mut c Client) login_plain() ! {
 	}
 	c.read_response(tag)!
 	c.authenticated = true
+}
+
+fn (c &Client) ensure_auth_is_safe() ! {
+	if !c.encrypted && !c.allow_insecure_auth {
+		return error('imap: refusing to send credentials without TLS; set `allow_insecure_auth` to opt in')
+	}
 }
 
 // capability returns the extensions the server advertises.
