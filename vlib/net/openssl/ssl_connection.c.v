@@ -166,6 +166,9 @@ fn (mut s SSLConn) init() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
+	if (s.config.cert == '') != (s.config.cert_key == '') {
+		return error_with_code('net.openssl SSLConn.init, both cert and cert_key are required for a client certificate', net.err_tls_certificate_invalid_code)
+	}
 	s.sslctx = unsafe { C.SSL_CTX_new(C.SSLv23_client_method()) }
 	if s.sslctx == 0 {
 		return error('net.openssl Could not get ssl context')
