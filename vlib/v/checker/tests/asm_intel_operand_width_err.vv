@@ -80,6 +80,13 @@ fn intel_encoding_prefix_hard_register(value i64) {
 	}
 }
 
+fn intel_size_suffix_hard_register(value i64) {
+	asm amd64 intel {
+		addq eax, value
+		; ; r (value)
+	}
+}
+
 fn main() {
 	println(intel_sub(50, 8))
 }

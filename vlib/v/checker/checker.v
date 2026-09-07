@@ -4438,11 +4438,17 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 		}
 		name = name.all_after(' ')
 	}
-	if name !in ['mov', 'movbe', 'add', 'adc', 'adcx', 'adox', 'sub', 'sbb', 'and', 'andn',
-		'or', 'xor', 'cmp', 'test', 'xchg', 'xadd', 'cmpxchg', 'imul', 'bsf', 'bsr', 'bt',
+	same_width_instructions := ['mov', 'movbe', 'add', 'adc', 'adcx', 'adox', 'sub', 'sbb', 'and',
+		'andn', 'or', 'xor', 'cmp', 'test', 'xchg', 'xadd', 'cmpxchg', 'imul', 'bsf', 'bsr', 'bt',
 		'btc', 'btr', 'bts', 'bextr', 'blsi', 'blsmsk', 'blsr', 'bzhi', 'mulx', 'pdep', 'pext',
 		'rorx', 'sarx', 'shlx', 'shrx', 'shld', 'shrd', 'popcnt', 'lzcnt', 'tzcnt']
-		&& !name.starts_with('cmov') {
+	mut is_same_width := name in same_width_instructions
+	if !is_same_width && name.len > 1 && name[name.len - 1] in [`b`, `w`, `l`, `q`]
+		&& name[..name.len - 1] in same_width_instructions {
+		name = name[..name.len - 1]
+		is_same_width = true
+	}
+	if !is_same_width && !name.starts_with('cmov') {
 		return
 	}
 	mut has_native_alias := false

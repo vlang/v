@@ -75,3 +75,10 @@ vlib/v/checker/tests/asm_intel_operand_width_err.vv:78:3: error: hard register `
       |         ~~~~~~~~~~~~~~~~~~
    79 |         ; ; r (value)
    80 |     }
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:85:3: error: hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers for the current compilation target; use matching register widths, or a `raw intel` block with explicit operand modifiers
+   83 | fn intel_size_suffix_hard_register(value i64) {
+   84 |     asm amd64 intel {
+   85 |         addq eax, value
+      |         ~~~~~~~~~~~~~~~
+   86 |         ; ; r (value)
+   87 |     }
