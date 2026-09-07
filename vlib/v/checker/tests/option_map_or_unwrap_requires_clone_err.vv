@@ -21,6 +21,11 @@ fn get_result() !map[string]int {
 	}
 }
 
+fn propagate_option(stored ?map[string]int) ?map[string]int {
+	copy := stored?
+	return copy
+}
+
 fn main() {
 	c := Category{
 		translations: {

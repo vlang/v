@@ -1409,10 +1409,10 @@ fn (mut c Checker) change_flags_if_comptime_expr(mut left ast.Ident, right ast.E
 // unwrapped in place with an `or {}` block.
 fn expr_is_or_unwrapped(expr ast.Expr) bool {
 	return match expr {
-		ast.SelectorExpr { expr.or_block.kind != .absent }
-		ast.CallExpr { expr.or_block.kind != .absent }
-		ast.Ident { expr.or_expr.kind != .absent }
-		ast.IndexExpr { expr.or_expr.kind != .absent }
+		ast.SelectorExpr { expr.or_block.kind == .block }
+		ast.CallExpr { expr.or_block.kind == .block }
+		ast.Ident { expr.or_expr.kind == .block }
+		ast.IndexExpr { expr.or_expr.kind == .block }
 		else { false }
 	}
 }
