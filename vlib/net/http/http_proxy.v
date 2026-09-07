@@ -216,8 +216,12 @@ fn (pr &HttpProxy) ssl_dial(host string, req &Request) !&ssl.SSLConn {
 	config := proxy_ssl_config(req)
 	if pr.scheme in ['http', 'https'] {
 		mut tcp := pr.connect_tcp(host)!
-		mut ssl_conn := ssl.new_ssl_conn(config)!
+		mut ssl_conn := ssl.new_ssl_conn(config) or {
+			tcp.close() or {}
+			return err
+		}
 		ssl_conn.connect(mut tcp, host.all_before_last(':')) or {
+			ssl_conn.shutdown() or {}
 			tcp.close() or {}
 			return err
 		}

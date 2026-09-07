@@ -48,7 +48,10 @@ pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 		ssl:    unsafe { nil }
 		handle: 0
 	}
-	conn.init() or { return err }
+	conn.init() or {
+		conn.shutdown() or {}
+		return err
+	}
 	return conn
 }
 

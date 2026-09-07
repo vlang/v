@@ -154,6 +154,8 @@ pub mut:
 	// flushed a record to the peer (TLS cannot prove zero). On full success it
 	// equals the bytes written.
 	last_write_sent int
+mut:
+	cleanup_done bool
 }
 
 // SSLListener listens on a TCP port and accepts connection secured with TLS
@@ -535,7 +537,10 @@ pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 		duration: config.read_timeout
 		read_timeout: config.read_timeout
 	}
-	conn.init()!
+	conn.init() or {
+		conn.shutdown() or {}
+		return err
+	}
 	return conn
 }
 
@@ -556,17 +561,19 @@ pub fn (mut s SSLConn) shutdown() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
-	if !s.opened {
-		return error('net.mbedtls SSLConn.shutdown, connection was not open')
+	if s.cleanup_done {
+		return
 	}
-	// Mark closed before freeing so a second shutdown (e.g. a worker defer racing
-	// close_idle) is a harmless no-op rather than a double-free of the mbedtls
-	// contexts below.
+	// Mark cleaned up before freeing so a second shutdown (e.g. a worker defer
+	// racing close_idle) is a harmless no-op. This also permits callers to
+	// release contexts after a handshake fails before `opened` becomes true.
+	s.cleanup_done = true
 	s.opened = false
 	if unsafe { s.certs != nil } {
 		C.mbedtls_x509_crt_free(&s.certs.cacert)
 		C.mbedtls_x509_crt_free(&s.certs.client_cert)
 		C.mbedtls_pk_free(&s.certs.client_key)
+		s.certs = unsafe { nil }
 	}
 	C.mbedtls_ssl_free(&s.ssl)
 	C.mbedtls_ssl_config_free(&s.conf)
@@ -772,6 +779,7 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 			free_rng(mut s.ctr_drbg, mut s.entropy)
 			s.handle = 0
 			s.owns_socket = false
+			s.cleanup_done = true
 		}
 	}
 	s.owns_socket = true

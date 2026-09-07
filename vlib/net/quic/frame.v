@@ -238,12 +238,9 @@ pub:
 
 // PathChallengeFrame/PathResponseFrame represent PATH_CHALLENGE (0x1a)/
 // PATH_RESPONSE (0x1b) frames (RFC 9000 §19.17/§19.18): 8 bytes of
-// sender-chosen data. RFC 9000 §8.2.1's MUST-respond-with-PATH_RESPONSE
-// requirement is NOT implemented here (net.quic never migrates and has
-// never been observed to receive an unprompted PATH_CHALLENGE from a
-// real server in practice) -- parsed so the connection survives one
-// arriving, not acted upon. Tracked as a known gap in PROGRESS.md rather
-// than silently presented as full RFC 9000 §8.2 path-validation support.
+// sender-chosen data. QuicConn queues received PATH_CHALLENGE data and
+// drain_pending_path_responses emits the required PATH_RESPONSE. Full path
+// validation and connection migration remain outside net.quic's current scope.
 pub struct PathChallengeFrame {
 pub:
 	data []u8
@@ -562,7 +559,7 @@ fn parse_new_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
 	retire_prior_to, n2 := decode_varint(buf[offset..])!
 	offset += n2
 	if retire_prior_to > sequence_number {
-		return error('quic: NEW_CONNECTION_ID frame: retire_prior_to ${retire_prior_to} exceeds sequence_number ${sequence_number} (RFC 9000 §19.15)')
+		return error_with_code('quic: NEW_CONNECTION_ID frame: retire_prior_to ${retire_prior_to} exceeds sequence_number ${sequence_number} (RFC 9000 §19.15 FRAME_ENCODING_ERROR)', int(quic_error_frame_encoding_error))
 	}
 	if offset >= buf.len {
 		return error('quic: NEW_CONNECTION_ID frame: missing Length field')
@@ -575,10 +572,10 @@ fn parse_new_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
 	// separately-named invalid case from the upper bound below, not just
 	// an edge of it -- both ends of the range need their own check.
 	if cid_len < 1 {
-		return error('quic: NEW_CONNECTION_ID frame: connection ID length must be at least 1 (RFC 9000 §19.15)')
+		return error_with_code('quic: NEW_CONNECTION_ID frame: connection ID length must be at least 1 (RFC 9000 §19.15 FRAME_ENCODING_ERROR)', int(quic_error_frame_encoding_error))
 	}
 	if cid_len > max_connection_id_length {
-		return error('quic: NEW_CONNECTION_ID frame: connection ID length ${cid_len} exceeds the ${max_connection_id_length}-byte limit (RFC 9000 §19.15)')
+		return error_with_code('quic: NEW_CONNECTION_ID frame: connection ID length ${cid_len} exceeds the ${max_connection_id_length}-byte limit (RFC 9000 §19.15 FRAME_ENCODING_ERROR)', int(quic_error_frame_encoding_error))
 	}
 	if offset + cid_len + stateless_reset_token_length > buf.len {
 		return error('quic: NEW_CONNECTION_ID frame: connection ID/stateless reset token exceed remaining buffer')

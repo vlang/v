@@ -38,9 +38,13 @@ pub fn socks5_ssl_dial(proxy_url string, host string, username string, password 
 // socks5_ssl_dial_with_config creates a new SSL connection through a SOCKS5
 // proxy using `config` for target-server certificate validation.
 pub fn socks5_ssl_dial_with_config(proxy_url string, host string, username string, password string, config ssl.SSLConnectConfig) !&ssl.SSLConn {
-	mut ssl_conn := ssl.new_ssl_conn(config)!
 	mut con := socks5_dial(proxy_url, host, username, password)!
+	mut ssl_conn := ssl.new_ssl_conn(config) or {
+		con.close() or {}
+		return err
+	}
 	ssl_conn.connect(mut con, host.all_before_last(':')) or {
+		ssl_conn.shutdown() or {}
 		con.close() or {}
 		return err
 	}

@@ -812,6 +812,7 @@ fn test_new_connection_id_frame_rejects_retire_prior_to_above_sequence_number() 
 	buf << u8(0) // zero-length connection ID
 	buf << []u8{len: 16}
 	parse_frame(buf) or {
+		assert err.code() == int(quic_error_frame_encoding_error)
 		assert err.msg().contains('retire_prior_to')
 		return
 	}
@@ -831,6 +832,7 @@ fn test_new_connection_id_frame_rejects_zero_length() {
 	buf << u8(0) // zero-length connection ID -- invalid per RFC 9000 §19.15
 	buf << []u8{len: 16}
 	parse_frame(buf) or {
+		assert err.code() == int(quic_error_frame_encoding_error)
 		assert err.msg().contains('at least 1')
 		return
 	}
@@ -843,6 +845,7 @@ fn test_new_connection_id_frame_rejects_length_above_20() {
 	buf << encode_varint(u64(0))!
 	buf << u8(21) // exceeds max_connection_id_length
 	parse_frame(buf) or {
+		assert err.code() == int(quic_error_frame_encoding_error)
 		assert err.msg().contains('exceeds')
 		return
 	}
