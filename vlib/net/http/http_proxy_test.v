@@ -60,6 +60,24 @@ fn test_proxy_headers_authenticated() ? {
 		'Proxy-Connection: Keep-Alive\r\nProxy-Authorization: Basic ${auth_token}\r\n\r\n'
 }
 
+// HTTPS proxying must preserve the same TLS policy as a direct request;
+// otherwise setting a proxy would silently disable certificate validation.
+fn test_proxy_ssl_config_preserves_request_tls_policy() {
+	req := &Request{
+		validate: true
+		verify: 'custom CA contents'
+		cert: 'client certificate contents'
+		cert_key: 'client key contents'
+		in_memory_verification: true
+	}
+	config := proxy_ssl_config(req)
+	assert config.validate
+	assert config.verify == req.verify
+	assert config.cert == req.cert
+	assert config.cert_key == req.cert_key
+	assert config.in_memory_verification
+}
+
 enum ProxyTunnelCopyResult {
 	data
 	timeout

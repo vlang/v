@@ -162,7 +162,7 @@ fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Req
 	s := req.build_request_headers_with(method, host_name, port,
 		'${host.scheme}://${host_name}${port_part}${path}', data, header)
 	if host.scheme == 'https' {
-		mut client := pr.ssl_dial('${host_name}:${port}')!
+		mut client := pr.ssl_dial('${host_name}:${port}', req)!
 
 		$if windows {
 			return error('Windows Not SUPPORTED') // TODO: windows ssl
@@ -200,16 +200,23 @@ fn (pr &HttpProxy) dial(host string) !&net.TcpConn {
 	return pr.connect_tcp(host)!
 }
 
-fn (pr &HttpProxy) ssl_dial(host string) !&ssl.SSLConn {
+// proxy_ssl_config preserves the request's TLS policy when HTTPS is
+// tunneled through either an HTTP or SOCKS5 proxy.
+fn proxy_ssl_config(req &Request) ssl.SSLConnectConfig {
+	return ssl.SSLConnectConfig{
+		verify:                 req.verify
+		cert:                   req.cert
+		cert_key:               req.cert_key
+		validate:               req.validate
+		in_memory_verification: req.in_memory_verification
+	}
+}
+
+fn (pr &HttpProxy) ssl_dial(host string, req &Request) !&ssl.SSLConn {
+	config := proxy_ssl_config(req)
 	if pr.scheme in ['http', 'https'] {
 		mut tcp := pr.connect_tcp(host)!
-		mut ssl_conn := ssl.new_ssl_conn(
-			verify:                 ''
-			cert:                   ''
-			cert_key:               ''
-			validate:               false
-			in_memory_verification: false
-		)!
+		mut ssl_conn := ssl.new_ssl_conn(config)!
 		ssl_conn.connect(mut tcp, host.all_before_last(':')) or {
 			tcp.close() or {}
 			return err
@@ -217,7 +224,8 @@ fn (pr &HttpProxy) ssl_dial(host string) !&ssl.SSLConn {
 		ssl_conn.owns_socket = true
 		return ssl_conn
 	} else if pr.scheme == 'socks5' {
-		return socks.socks5_ssl_dial(pr.host, host, pr.username, pr.password)!
+		return socks.socks5_ssl_dial_with_config(pr.host, host, pr.username, pr.password,
+			config)!
 	} else {
 		return error('http_proxy ssl_dial: invalid proxy scheme')
 	}

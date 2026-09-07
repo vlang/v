@@ -341,6 +341,28 @@ V comes with a version of mbedtls, which should work on all systems. If you find
 use OpenSSL instead, you will need to make sure that it is installed on your system, then
 use the `-d use_openssl` switch when you compile.
 
+HTTPS requests made with `net.http` validate server certificates by default. This is a
+behavior change from older V releases, where `http.FetchConfig.validate` defaulted to
+`false`. With the bundled mbedTLS backend, an empty `verify` setting uses the Linux system
+CA bundle when available and otherwise falls back to V's vendored Mozilla CA bundle. The
+same validation settings are applied when an HTTP or SOCKS5 proxy is configured.
+
+For a private CA, set `verify` to its PEM file. Set `in_memory_verification: true` when
+`verify` contains PEM data instead of a file path:
+
+```v ignore
+import net.http
+
+response := http.fetch(
+	url: 'https://internal.example'
+	verify: '/path/to/private-ca.pem'
+)!
+```
+
+As a temporary compatibility measure, `validate: false` disables certificate validation
+for HTTP/1.1 and HTTP/2 requests. HTTP/3 currently requires validation and rejects that
+setting. Disabling validation is insecure and should not be used in production.
+
 Note: Mbed-TLS is smaller and easier to install on windows too (V comes with it), but if you
 write programs, that do lots of http requests to HTTPS/SSL servers, in most cases, it is *best*
 to compile with `-d use_openssl`, and do so on a system, where you do have OpenSSL installed
