@@ -1776,9 +1776,18 @@ fn windows_quote_exec_arg(arg string) string {
 
 struct GccUnicodeResponsePlan {
 mut:
-	args              []string
-	response_files    []string
-	response_contents []string
+	args                   []string
+	response_files         []string
+	response_contents      []string
+	response_encoding      GccResponseFileEncoding
+	requires_full_response bool
+	full_response_content  string
+}
+
+enum GccResponseFileEncoding {
+	ascii
+	ansi
+	utf8
 }
 
 fn (mut plan GccUnicodeResponsePlan) add_ascii_run(response_file string, args []string) {
@@ -1788,9 +1797,11 @@ fn (mut plan GccUnicodeResponsePlan) add_ascii_run(response_file string, args []
 	plan.response_contents << gcc_response_file_content_for_exact_args(args)
 }
 
-fn gcc_unicode_response_plan(response_file string, args []string, max_command_bytes int, ansi_preserves_args bool) !GccUnicodeResponsePlan {
+fn gcc_unicode_response_plan(response_file string, args []string, max_command_bytes int) GccUnicodeResponsePlan {
 	exact_args := ccompiler_exec_args('', args)[1..]
-	mut plan := GccUnicodeResponsePlan{}
+	mut plan := GccUnicodeResponsePlan{
+		response_encoding: .ascii
+	}
 	mut ascii_run := []string{}
 	for arg in exact_args {
 		if arg.is_ascii() {
@@ -1811,19 +1822,20 @@ fn gcc_unicode_response_plan(response_file string, args []string, max_command_by
 		// Account for the exact backslash+quote expansion used by CreateProcessW.
 		quoted_command_bytes += windows_quote_exec_arg(arg).len + 1
 	}
-	// Preserve the compiler's active-code-page response-file encoding when it is
-	// lossless. Otherwise no response-file encoding can safely carry these args.
 	if quoted_command_bytes > max_command_bytes {
-		if !ansi_preserves_args {
-			return error('the Windows GCC command has too many non-ASCII arguments for the command line and they cannot be represented in the active ANSI code page; enable 8.3 short paths or use a Unicode-capable GCC or Clang toolchain')
-		}
-		return GccUnicodeResponsePlan{
-			args: ['@${response_file}']
-			response_files: [response_file]
-			response_contents: [gcc_response_file_content_for_exact_args(exact_args)]
-		}
+		plan.requires_full_response = true
+		plan.full_response_content = gcc_response_file_content_for_exact_args(exact_args)
 	}
 	return plan
+}
+
+fn gcc_unicode_full_response_plan(response_file string, content string, encoding GccResponseFileEncoding) GccUnicodeResponsePlan {
+	return GccUnicodeResponsePlan{
+		args: ['@${response_file}']
+		response_files: [response_file]
+		response_contents: [content]
+		response_encoding: encoding
+	}
 }
 
 fn response_file_content_is_ansi_lossless(content string) bool {
@@ -1834,6 +1846,79 @@ fn response_file_content_is_ansi_lossless(content string) bool {
 		return decoded == content
 	}
 	return true
+}
+
+fn gcc_response_file_encoding_from_probes(utf8_supported bool, ansi_supported bool, ansi_preserves_content bool) !GccResponseFileEncoding {
+	if utf8_supported {
+		return .utf8
+	}
+	if ansi_supported && ansi_preserves_content {
+		return .ansi
+	}
+	return error('the Windows GCC command has too many non-ASCII arguments for the command line, and the selected driver accepts neither a compatible UTF-8 response file nor a lossless active-code-page response file; enable 8.3 short paths or use a Unicode-capable GCC or Clang toolchain')
+}
+
+fn first_non_ascii_response_rune(content string) string {
+	for character in content.runes() {
+		if character > 127 {
+			return character.str()
+		}
+	}
+	return ''
+}
+
+fn (mut v Builder) windows_gcc_response_file_probe(ccompiler string, response_file string, marker string, encoding GccResponseFileEncoding) bool {
+	$if windows {
+		probe_id := '${os.getpid()}_${time.sys_mono_now()}'
+		probe_source := '${response_file}.${probe_id}_${marker}.c'
+		probe_response := '${response_file}.${probe_id}.encoding_probe'
+		defer {
+			os.rm(probe_source) or {}
+			os.rm(probe_response) or {}
+		}
+		transport_source := v.tcc_windows_path(probe_source)
+		// Resolve the production path transport before creating the leaf so the
+		// non-ASCII marker remains available to distinguish the driver's decoder.
+		os.write_file(probe_source, '') or { return false }
+		probe_content := gcc_response_file_content_for_exact_args(['-fsyntax-only', '-x', 'c',
+			transport_source])
+		if encoding == .utf8 {
+			os.write_file(probe_response, probe_content) or { return false }
+		} else {
+			os.write_file_array(probe_response, string_to_ansi_not_null_terminated(probe_content)) or {
+				return false
+			}
+		}
+		probe_arg := '@${v.tcc_windows_path(probe_response)}'
+		probe_cmd := '${v.quote_compiler_name(ccompiler)} ${windows_quote_exec_arg(probe_arg)}'
+		probe_result := v.execute_ccompiler(ccompiler, probe_cmd, [ccompiler, probe_arg])
+		return probe_result.exit_code == 0
+	}
+	return false
+}
+
+fn (mut v Builder) windows_gcc_response_file_encoding(ccompiler string, response_file string, content string) !GccResponseFileEncoding {
+	marker := first_non_ascii_response_rune(content)
+	if marker == '' {
+		return .ascii
+	}
+	utf8_supported := v.windows_gcc_response_file_probe(ccompiler, response_file, marker, .utf8)
+	ansi_preserves_content := response_file_content_is_ansi_lossless(content)
+	mut ansi_supported := false
+	if !utf8_supported && ansi_preserves_content {
+		ansi_supported = v.windows_gcc_response_file_probe(ccompiler, response_file, marker, .ansi)
+	}
+	return gcc_response_file_encoding_from_probes(utf8_supported, ansi_supported, ansi_preserves_content)
+}
+
+fn write_gcc_response_file(response_file string, response_file_content string, encoding GccResponseFileEncoding) {
+	if encoding == .utf8 {
+		os.write_file(response_file, response_file_content) or {
+			write_response_file_error(response_file, err)
+		}
+		return
+	}
+	write_response_file(response_file, response_file_content)
 }
 
 fn (v &Builder) ccompiler_response_file_content(args []string, formatted string) string {
@@ -2318,8 +2403,11 @@ pub fn (mut v Builder) cc() {
 			} else {
 				30000
 			}
-			ansi_preserves_args := response_file_content_is_ansi_lossless(gcc_response_file_content(rsp_args))
-			plan := gcc_unicode_response_plan(response_file, rsp_args, max_command_bytes, ansi_preserves_args) or { verror(err.msg()) }
+			mut plan := gcc_unicode_response_plan(response_file, rsp_args, max_command_bytes)
+			if plan.requires_full_response {
+				response_encoding := v.windows_gcc_response_file_encoding(ccompiler, response_file, plan.full_response_content) or { verror(err.msg()) }
+				plan = gcc_unicode_full_response_plan(response_file, plan.full_response_content, response_encoding)
+			}
 			mut transport_args := plan.args.clone()
 			for i, arg in transport_args {
 				if arg.starts_with('@') {
@@ -2327,7 +2415,7 @@ pub fn (mut v Builder) cc() {
 				}
 			}
 			for i, file in plan.response_files {
-				write_response_file(file, plan.response_contents[i])
+				write_gcc_response_file(file, plan.response_contents[i], plan.response_encoding)
 			}
 			response_file_content = plan.response_contents.join('\n')
 			compiler_exec_args = [ccompiler]

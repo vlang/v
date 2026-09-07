@@ -402,7 +402,7 @@ fn test_gcc_unicode_response_plan_keeps_large_ascii_runs_out_of_the_command_line
 	args << r'-o "D:\工作目录\main.exe"'
 	args << r'"D:\工作目录\main.c"'
 	args << '-lm'
-	plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000, false)!
+	plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000)
 	assert plan.args == [
 		r'@D:\工作目录\main.c.rsp.0',
 		r'D:\工作目录\main.exe',
@@ -413,6 +413,7 @@ fn test_gcc_unicode_response_plan_keeps_large_ascii_runs_out_of_the_command_line
 	assert plan.response_contents[0].contains('V_WINDOWS_UNICODE_PATH_LONG_COMMAND_1999')
 	assert plan.response_contents[1] == '"-lm"'
 	assert plan.args.join(' ').len < 8191
+	assert !plan.requires_full_response
 }
 
 fn test_gcc_unicode_response_plan_uses_ansi_when_it_preserves_oversized_unicode_runs() {
@@ -421,29 +422,70 @@ fn test_gcc_unicode_response_plan_uses_ansi_when_it_preserves_oversized_unicode_
 		args << '"D:\\工作目录\\cached_${i}.o"'
 	}
 	assert args.join(' ').len > 32767
-	plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000, true)!
+	split_plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000)
+	assert split_plan.requires_full_response
+	plan := gcc_unicode_full_response_plan(r'D:\工作目录\main.c.rsp',
+		split_plan.full_response_content, .ansi)
 	assert plan.args == [r'@D:\工作目录\main.c.rsp']
 	assert plan.response_files == [r'D:\工作目录\main.c.rsp']
+	assert plan.response_contents[0].contains(r'D:\\工作目录\\cached_1199.o')
+	assert plan.response_encoding == .ansi
+}
+
+fn test_gcc_unicode_response_plan_uses_utf8_when_the_driver_accepts_it() {
+	mut args := []string{}
+	for i in 0 .. 1200 {
+		args << '"D:\\工作目录\\cached_${i}.o"'
+	}
+	split_plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000)
+	assert split_plan.requires_full_response
+	plan := gcc_unicode_full_response_plan(r'D:\工作目录\main.c.rsp',
+		split_plan.full_response_content, .utf8)
+	assert plan.args == [r'@D:\工作目录\main.c.rsp']
+	assert plan.response_encoding == .utf8
 	assert plan.response_contents[0].contains(r'D:\\工作目录\\cached_1199.o')
 }
 
 fn test_gcc_unicode_response_plan_sizes_windows_escaped_arguments() {
 	arg := r'-DNAME=\"工作\"'
 	exact_arg := ccompiler_exec_args('', [arg])[1]
-	plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', [arg], exact_arg.len + 3,
-		true)!
+	split_plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', [arg], exact_arg.len + 3)
+	assert split_plan.requires_full_response
+	plan := gcc_unicode_full_response_plan(r'D:\工作目录\main.c.rsp',
+		split_plan.full_response_content, .ansi)
 	assert plan.args == [r'@D:\工作目录\main.c.rsp']
 }
 
-fn test_gcc_unicode_response_plan_rejects_an_unrepresentable_oversized_command() {
-	mut args := []string{}
-	for i in 0 .. 1200 {
-		args << '"D:\\工作目录\\cached_${i}.o"'
+fn test_gcc_response_file_encoding_prefers_the_selected_drivers_utf8_support() {
+	assert gcc_response_file_encoding_from_probes(true, false, false)! == .utf8
+	assert gcc_response_file_encoding_from_probes(true, true, true)! == .utf8
+}
+
+fn test_gcc_response_file_encoding_uses_only_lossless_supported_ansi() {
+	assert gcc_response_file_encoding_from_probes(false, true, true)! == .ansi
+	for probe in [[true, false], [false, true], [false, false]] {
+		if encoding := gcc_response_file_encoding_from_probes(false, probe[0], probe[1]) {
+			assert false, '${encoding}'
+		} else {
+			assert err.msg().contains('lossless active-code-page response file')
+		}
 	}
-	if plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000, false) {
-		assert false, '${plan.args}'
-	} else {
-		assert err.msg().contains('cannot be represented in the active ANSI code page')
+}
+
+fn test_write_gcc_response_file_honors_the_selected_encoding() {
+	$if windows {
+		test_root := os.join_path(os.vtmp_dir(), 'v_gcc_rsp_encoding_${os.getpid()}')
+		utf8_file := os.join_path(test_root, 'utf8.rsp')
+		ansi_file := os.join_path(test_root, 'ansi.rsp')
+		content := '"café 工作"'
+		os.mkdir_all(test_root) or { panic(err) }
+		defer {
+			os.rmdir_all(test_root) or {}
+		}
+		write_gcc_response_file(utf8_file, content, .utf8)
+		write_gcc_response_file(ansi_file, content, .ansi)
+		assert os.read_bytes(utf8_file)! == content.bytes()
+		assert os.read_bytes(ansi_file)! == string_to_ansi_not_null_terminated(content)
 	}
 }
 
