@@ -345,68 +345,30 @@ fn (mut d Decoder) text() !string {
 // its physical line; the response continues after exactly the announced
 // number of octets.
 fn (mut d Decoder) skip_response_text() ! {
+	mut context := ResponseTextContext{}
 	for {
 		line := d.text()!
-		has_literal, size := literal_suffix_size(line)!
+		has_literal, size := literal_suffix_size(line, mut context)!
 		if !has_literal {
 			return
 		}
 		if size > max_literal_size {
 			return error('imap: the server announced a ${size} octet literal, over the ${max_literal_size} limit')
 		}
-		if !d.literal_payload_has_token_delimiter(size)! {
-			return
-		}
 		d.crlf()!
 		d.read_n(int(size))!
 	}
 }
 
-// literal_payload_has_token_delimiter checks the byte after a possible
-// literal payload without consuming it. A literal is a string token, so the
-// next byte must end that token; otherwise a free-form `{n}` suffix would eat
-// bytes from the following response.
-fn (mut d Decoder) literal_payload_has_token_delimiter(size u32) !bool {
-	d.ensure_buffered(1)!
-	mut line_ending_len := 1
-	if d.buf[d.pos] == `\r` {
-		d.ensure_buffered(2)!
-		if d.buf[d.pos + 1] != `\n` {
-			return error('imap: expected LF after CR')
-		}
-		line_ending_len = 2
-	} else if d.buf[d.pos] != `\n` {
-		return error('imap: expected the end of the line')
-	}
-	required := line_ending_len + int(size) + 1
-	d.ensure_buffered(required)!
-	next := d.buf[d.pos + line_ending_len + int(size)]
-	return next == ` ` || next == `)` || next == `\r` || next == `\n`
+struct ResponseTextContext {
+mut:
+	depth               int
+	quoted              bool
+	escaped             bool
+	has_top_level_value bool
 }
 
-// ensure_buffered makes `n` bytes available from the current position while
-// preserving them for the ordinary decoder methods.
-fn (mut d Decoder) ensure_buffered(n int) ! {
-	if d.filled - d.pos >= n {
-		return
-	}
-	mut buffered := d.buf[d.pos..d.filled].clone()
-	mut r := d.reader or { return error('imap: the response ended early') }
-	for buffered.len < n {
-		need := n - buffered.len
-		mut chunk := []u8{len: if need < decoder_chunk { need } else { decoder_chunk }}
-		nread := r.read(mut chunk)!
-		if nread <= 0 {
-			return error('imap: the connection closed in the middle of a response')
-		}
-		buffered << chunk[..nread]
-	}
-	d.buf = buffered
-	d.pos = 0
-	d.filled = buffered.len
-}
-
-fn literal_suffix_size(line string) !(bool, u32) {
+fn literal_suffix_size(line string, mut context ResponseTextContext) !(bool, u32) {
 	if !line.ends_with('}') {
 		return false, 0
 	}
@@ -414,9 +376,11 @@ fn literal_suffix_size(line string) !(bool, u32) {
 	if brace < 0 {
 		return false, 0
 	}
-	// Without an extension grammar, only a standalone string token is
-	// unambiguous. Text before the marker makes `{n}` part of free-form text.
-	if line[..brace].trim_space() != '' {
+	context.scan(line[..brace])
+	// A top-level response-text suffix is ambiguous with ordinary prose. A
+	// literal after other fields is accepted only while a parenthesised value
+	// is still open, where the grammar gives it an unambiguous token context.
+	if context.quoted || (context.depth == 0 && context.has_top_level_value) {
 		return false, 0
 	}
 	mut digits_end := line.len - 1
@@ -437,7 +401,50 @@ fn literal_suffix_size(line string) !(bool, u32) {
 			return error('imap: a literal size in an extension response overflows 32 bits')
 		}
 	}
+	if context.depth == 0 {
+		context.has_top_level_value = true
+	}
 	return true, u32(size)
+}
+
+fn (mut context ResponseTextContext) scan(prefix string) {
+	for ch in prefix.bytes() {
+		if context.quoted {
+			if context.escaped {
+				context.escaped = false
+			} else if ch == `\\` {
+				context.escaped = true
+			} else if ch == `"` {
+				context.quoted = false
+			}
+			continue
+		}
+		match ch {
+			`"` {
+				context.quoted = true
+				if context.depth == 0 {
+					context.has_top_level_value = true
+				}
+			}
+			`(` {
+				if context.depth == 0 {
+					context.has_top_level_value = true
+				}
+				context.depth++
+			}
+			`)` {
+				if context.depth > 0 {
+					context.depth--
+				}
+			}
+			` `, `\t` {}
+			else {
+				if context.depth == 0 {
+					context.has_top_level_value = true
+				}
+			}
+		}
+	}
 }
 
 // accept_nil consumes the atom NIL where a parenthesised value could stand,

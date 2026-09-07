@@ -357,8 +357,8 @@ fn test_unknown_response_text_ending_like_a_literal_stays_text() {
 	assert c.read_response('a1')!.status == .ok
 }
 
-fn test_a_standalone_literal_marker_needs_a_token_delimiter_after_its_payload() {
-	mut c := client_over('* X-STATUS {3}\r\na1 OK done\r\n')
+fn test_an_unknown_response_skips_literals_inside_extension_arguments() {
+	mut c := client_over('* METADATA "INBOX" (/shared/comment {3}\r\nfoo /private/comment {3}\r\nbar)\r\na1 OK done\r\n')
 	assert c.read_response('a1')!.status == .ok
 }
 
