@@ -29,7 +29,16 @@ const deterministic_limit = Integer{
 // Note that a `true` result is a statement of probability, not certainty.
 // Do not use this to validate an attacker-supplied modulus without also
 // checking the surrounding protocol.
+// If the system entropy source fails, this form fails closed with `false`;
+// use `is_probably_prime_checked` when the caller must distinguish that error.
 pub fn (x Integer) is_probably_prime(rounds int) bool {
+	return x.is_probably_prime_checked(rounds) or { false }
+}
+
+// is_probably_prime_checked is the fallible form of `is_probably_prime`. It
+// returns an error if the operating system cannot provide entropy for random
+// Miller-Rabin witnesses. Values inside the deterministic range need no entropy.
+pub fn (x Integer) is_probably_prime_checked(rounds int) !bool {
 	if x.signum <= 0 {
 		return false
 	}
@@ -49,7 +58,10 @@ pub fn (x Integer) is_probably_prime(rounds int) bool {
 	if reps <= 0 {
 		reps = 40
 	}
-	return x.miller_rabin(reps) && x.lucas_probable_prime()
+	if !x.miller_rabin(reps)! {
+		return false
+	}
+	return x.lucas_probable_prime()
 }
 
 // mod_small returns `|x| mod m` for a modulus that fits in 32 bits. It walks
@@ -82,7 +94,7 @@ fn (x Integer) mod_small(m u64) u64 {
 // `a^(d * 2^r) == -1 (mod x)` for some `0 <= r < s`, for every base `a` coprime
 // to it. A base satisfying neither witnesses that `x` is composite, and at most
 // a quarter of the bases fail to witness one.
-fn (x Integer) miller_rabin(rounds int) bool {
+fn (x Integer) miller_rabin(rounds int) !bool {
 	x_minus_one := x - one_int
 	d, s := split_odd(x_minus_one)
 	// Hoisted out of the loop: deriving a context costs a modular inverse, and
@@ -100,7 +112,7 @@ fn (x Integer) miller_rabin(rounds int) bool {
 	// Above the deterministic range, fixed bases are only a prelude. Perform
 	// every requested random round so the documented 1 / 4^rounds bound holds.
 	for _ in 0 .. rounds {
-		base := random_base(x_minus_three)
+		base := random_base(x_minus_three)!
 		if !x.passes_miller_rabin_round(base, d, s, x_minus_one, ctx) {
 			return false
 		}
@@ -132,21 +144,19 @@ fn (x Integer) passes_miller_rabin_round(a Integer, d Integer, s int, x_minus_on
 // exhausted. `x_minus_three` is `x - 3`, supplied by the caller so that it is
 // not rebuilt on every round.
 @[direct_array_access]
-fn random_base(x_minus_three Integer) Integer {
+fn random_base(x_minus_three Integer) !Integer {
 	bit_len := x_minus_three.bit_len()
 	byte_len := (bit_len + 7) / 8
 	top_mask := u8(0xff >> (byte_len * 8 - bit_len))
 	for {
-		mut bytes := internal.bytes(byte_len) or {
-			panic('math.big: failed to read random Miller-Rabin witness: ${err}')
-		}
+		mut bytes := internal.bytes(byte_len)!
 		bytes[0] &= top_mask
 		candidate := integer_from_bytes(bytes)
 		if candidate.abs_cmp(x_minus_three) < 0 {
 			return candidate + two_int
 		}
 	}
-	return two_int
+	return error('math.big: unreachable random witness state')
 }
 
 // split_odd writes `n` as `d * 2^s` with `d` odd, and returns `d` and `s`.

@@ -26,7 +26,7 @@ pub fn prime(bits int) !big.Integer {
 		candidate.set_bit(u32(bits - 1), true)
 		candidate.set_bit(u32(bits - 2), true)
 		candidate.set_bit(0, true)
-		if candidate.is_probably_prime(0) {
+		if candidate.is_probably_prime_checked(0)! {
 			return candidate
 		}
 	}
@@ -51,7 +51,7 @@ pub fn safe_prime(bits int) !big.Integer {
 		// q first, so the expensive test runs on the smaller number.
 		q := prime(bits - 1)!
 		p := q.left_shift(1) + big.one_int
-		if p.bit_len() == bits && p.is_probably_prime(0) {
+		if p.bit_len() == bits && p.is_probably_prime_checked(0)! {
 			return p
 		}
 	}

@@ -11,6 +11,10 @@ round in addition to the fixed bases, so a composite has probability below `1 / 
 of being reported as probably prime. Passing zero or a negative round count selects the
 default of 40 rounds.
 
+Use `Integer.is_probably_prime_checked(rounds)` when an operating-system entropy failure
+must be distinguished from a composite result. The boolean form fails closed and returns
+`false` if entropy is unavailable.
+
 The result remains probabilistic for large values. Protocols that validate untrusted
 parameters may require additional checks.
 
