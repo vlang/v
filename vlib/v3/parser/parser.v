@@ -4481,7 +4481,13 @@ fn source_contains_target_inline_asm(source string, target_arch string) bool {
 			for offset < source.len && inline_asm_ident_char(source[offset]) {
 				offset++
 			}
-			ident := source[start..offset]
+			mut ident_end := offset
+			if source[start..offset] == 'ia' && offset + 3 <= source.len
+				&& source[offset..offset + 3] == '-32' {
+				ident_end += 3
+			}
+			ident := source[start..ident_end]
+			offset = ident_end
 			if ident == 'r' && offset < source.len && source[offset] in [`'`, `"`] {
 				offset = inline_asm_skip_quoted(source, offset, source[offset], true)
 				sequence = 0
@@ -4507,6 +4513,8 @@ fn source_contains_target_inline_asm(source string, target_arch string) bool {
 				} else {
 					0
 				}
+			} else if sequence == 3 && ident in ['raw', 'intel'] {
+				// Keep waiting for the opening brace after optional asm modifiers.
 			} else {
 				sequence = if ident == 'asm' { 1 } else { 0 }
 			}
@@ -4834,10 +4842,22 @@ fn inline_asm_tokens_match_target(tokens []InlineAsmScanToken, start int, end in
 	if i < end && tokens[i].kind == .key_volatile {
 		i++
 	}
-	if i >= end || !comptime_flag_is_target_arch(tokens[i].lit, target_arch) {
+	if i >= end {
+		return false
+	}
+	mut asm_arch := tokens[i].lit
+	if asm_arch == 'ia' && i + 2 < end && tokens[i + 1].kind == .minus
+		&& tokens[i + 2].kind == .number && tokens[i + 2].lit == '32' {
+		asm_arch = 'ia-32'
+		i += 2
+	}
+	if !comptime_flag_is_target_arch(asm_arch, target_arch) {
 		return false
 	}
 	i++
+	for i < end && tokens[i].kind == .name && tokens[i].lit in ['raw', 'intel'] {
+		i++
+	}
 	return i < end && tokens[i].kind == .lcbr
 }
 

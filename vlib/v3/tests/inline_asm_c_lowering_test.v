@@ -391,6 +391,19 @@ fn test_intel_asm_accepts_size_qualified_memory_operands() {
 	assert c_source.contains('"fadd st, st(1)\\n\\t"'), c_source
 }
 
+fn test_intel_extended_asm_escapes_decorator_braces() {
+	generate, c_source := generate_inline_asm_c('intel_decorator_program', 'fn main() {
+	input := u64(0)
+	asm amd64 intel {
+		vpxord zmm0{k1}{z}, zmm0, zmm0
+		; ; r (input)
+	}
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"vpxord zmm0%{k1%}%{z%}, zmm0, zmm0\\n\\t"'), c_source
+}
+
 fn test_inline_asm_header_comments_do_not_enable_raw_mode() {
 	generate, c_source := generate_inline_asm_c('header_comment_program', 'fn main() {
 	asm amd64 /* raw */ {
@@ -442,15 +455,14 @@ fn test_intel_asm_accepts_x86_arch_aliases() {
 fn test_inline_asm_accepts_dotted_local_labels() {
 	generate, c_source := generate_inline_asm_c('dotted_local_label_program', 'fn main() {
 	asm amd64 {
+		.L0: nop
 		jmp .L0
-		.L0:
-		nop
 	}
 }
 ')
 	assert generate.exit_code == 0, generate.output
 	assert c_source.contains('"jmp .L0\\n\\t"'), c_source
-	assert c_source.contains('".L0:\\n\\t"'), c_source
+	assert c_source.contains('".L0: nop\\n\\t"'), c_source
 }
 
 fn test_arm64_asm_accepts_sme_za_register() {

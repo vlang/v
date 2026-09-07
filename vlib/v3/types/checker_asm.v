@@ -299,15 +299,16 @@ fn inline_asm_skip_mnemonic(block string, line InlineAsmRange) int {
 	return i
 }
 
-// inline_asm_template_labels collects the `name:` labels a template section declares.
+// inline_asm_template_labels collects the leading `name:` labels a template section declares.
 fn inline_asm_template_labels(block string, section InlineAsmRange) map[string]bool {
 	mut labels := map[string]bool{}
 	for line in inline_asm_lines(block, section) {
 		trimmed := block[line.start..line.end].trim_space()
-		if !trimmed.ends_with(':') {
+		colon := trimmed.index_u8(`:`)
+		if colon < 0 {
 			continue
 		}
-		name := trimmed#[..-1].trim_space().trim_left('.')
+		name := trimmed[..colon].trim_space().trim_left('.')
 		if inline_asm_is_ident(name) {
 			labels[name] = true
 		}

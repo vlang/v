@@ -3105,7 +3105,7 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 			continue
 		}
 		lowered := if block.is_intel {
-			lower_c_inline_asm_intel_template(template, aliases)
+			lower_c_inline_asm_intel_template(template, aliases, is_extended)
 		} else {
 			lower_c_inline_asm_template(template, block.arch, aliases, is_extended)
 		}
@@ -3564,7 +3564,7 @@ fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bo
 // lower_c_inline_asm_intel_template keeps V's destination-first structured syntax as
 // written, since the block is wrapped in `.intel_syntax noprefix`. Only the operand
 // aliases become GNU placeholders.
-fn lower_c_inline_asm_intel_template(source string, aliases map[string]bool) string {
+fn lower_c_inline_asm_intel_template(source string, aliases map[string]bool, is_extended bool) string {
 	line := source.trim_space()
 	if line.len == 0 || line.ends_with(':') {
 		return line
@@ -3589,12 +3589,12 @@ fn lower_c_inline_asm_intel_template(source string, aliases map[string]bool) str
 	operands := split_c_inline_asm_operands(operands_source)
 	mut lowered := []string{cap: operands.len}
 	for operand in operands {
-		lowered << lower_c_inline_asm_intel_operand(operand, aliases)
+		lowered << lower_c_inline_asm_intel_operand(operand, aliases, is_extended)
 	}
 	return instruction + ' ' + lowered.join(', ')
 }
 
-fn lower_c_inline_asm_intel_operand(source string, aliases map[string]bool) string {
+fn lower_c_inline_asm_intel_operand(source string, aliases map[string]bool, is_extended bool) string {
 	operand := source.trim_space()
 	if operand.len >= 2 && operand[0] == `\`` && operand[operand.len - 1] == `\`` {
 		return "'${operand[1..operand.len - 1]}'"
@@ -3602,10 +3602,10 @@ fn lower_c_inline_asm_intel_operand(source string, aliases map[string]bool) stri
 	if label := c_inline_asm_quoted_label(operand) {
 		return label
 	}
-	return lower_c_inline_asm_intel_atoms(operand, aliases)
+	return lower_c_inline_asm_intel_atoms(operand, aliases, is_extended)
 }
 
-fn lower_c_inline_asm_intel_atoms(source string, aliases map[string]bool) string {
+fn lower_c_inline_asm_intel_atoms(source string, aliases map[string]bool, is_extended bool) string {
 	mut out := strings.new_builder(source.len + 8)
 	mut i := 0
 	mut quote := u8(0)
@@ -3624,6 +3624,12 @@ fn lower_c_inline_asm_intel_atoms(source string, aliases map[string]bool) string
 		}
 		if c in [`'`, `"`] {
 			quote = c
+			out.write_u8(c)
+			i++
+			continue
+		}
+		if is_extended && c in [`{`, `|`, `}`] {
+			out.write_u8(`%`)
 			out.write_u8(c)
 			i++
 			continue
