@@ -17,22 +17,14 @@ fn test_v3_tcc_backtrace_enabled() {
 
 fn test_v3_prefers_bundled_tcc_for_debug_selfhost() {
 	host := pref.host_target()
-	assert v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, false,
-		host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(false, 'c', false, false, false, false,
-		host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'fastc', false, false, false, false,
-		host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', true, false, false, false,
-		host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, true, false, false,
-		host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, true, false,
-		host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, true,
-		host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, false,
-		host, false)
+	assert v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, false, host, true)
+	assert !v3_should_prefer_bundled_tcc_for_selfhost(false, 'c', false, false, false, false, host, true)
+	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'fastc', false, false, false, false, host, true)
+	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', true, false, false, false, host, true)
+	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, true, false, false, host, true)
+	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, true, false, host, true)
+	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, true, host, true)
+	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, false, host, false)
 }
 
 fn test_v3_regenerates_cc_fallback_after_preferred_tcc() {
@@ -47,9 +39,9 @@ fn test_v3_explicit_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	vroot := os.join_path(os.temp_dir(), 'v3_tcc_flag_plan')
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
 		explicit_tcc: true
-		target_os:    'macos'
-		target_arch:  'arm64'
-		vroot:        vroot
+		target_os: 'macos'
+		target_arch: 'arm64'
+		vroot: vroot
 	})
 	assert '-bt25' !in plan.before_inputs
 	tcc_install_dir := os.join_path(vroot, 'thirdparty', 'tcc', 'lib')
@@ -62,9 +54,9 @@ fn test_v3_explicit_tcc_flag_plan_restores_native_local_prefix() {
 	host_os := os.user_os()
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
 		explicit_tcc: true
-		target_os:    host_os
-		target_arch:  'amd64'
-		vroot:        os.join_path(os.temp_dir(), 'v3_tcc_native_flag_plan')
+		target_os: host_os
+		target_arch: 'amd64'
+		vroot: os.join_path(os.temp_dir(), 'v3_tcc_native_flag_plan')
 	})
 	if host_os == 'windows' {
 		assert '-I/usr/local/include' !in plan.before_inputs
