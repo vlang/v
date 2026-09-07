@@ -184,6 +184,10 @@ struct JsonAttrHazardWrap {
 	c JsonAttrHazardEnum
 }
 
+struct JsonFieldAttrHazard {
+	value string @[json: 'C\x5cnD']
+}
+
 fn test_json_enum_attr_arg_with_decoded_backslash() {
 	encoded := json.encode(JsonAttrHazardWrap{ c: .blue })
 	// the true attr value is 4 bytes (A, 0x5C, 'n', B); a spec-compliant JSON encoding of that
@@ -194,6 +198,14 @@ fn test_json_enum_attr_arg_with_decoded_backslash() {
 	assert decoded.c == .blue
 }
 
+fn test_json_field_attr_arg_with_decoded_backslash() {
+	encoded := json.encode(JsonFieldAttrHazard{ value: 'ok' })
+	assert encoded.bytes() == [u8(123), 34, 67, 92, 92, 110, 68, 34, 58, 34, 111, 107, 34, 125]
+
+	decoded := json.decode(JsonFieldAttrHazard, '{"C\\\\nD":"ok"}') or { panic(err) }
+	assert decoded.value == 'ok'
+}
+
 // regression test for a sixth gap found in the same review round: get_table_name_by_struct_type()
 // (vlib/v/gen/c/orm.v) reads the ORM table name from a struct's @[table: ...] attribute arg but
 // was passing a hardcoded empty opaque_pos to smart_quote instead of attr.arg_opaque_pos - the
@@ -201,6 +213,12 @@ fn test_json_enum_attr_arg_with_decoded_backslash() {
 @[table: 'T\x5cnU']
 struct OrmTableHazardItem {
 	id int @[primary; sql: serial]
+}
+
+@[table: 'orm_column_hazard_items']
+struct OrmColumnHazardItem {
+	id    int @[primary; sql: serial]
+	value string @[sql: 'A\x5cnB']
 }
 
 fn test_orm_table_name_with_decoded_backslash() {
@@ -214,6 +232,33 @@ fn test_orm_table_name_with_decoded_backslash() {
 		if row.vals.len > 0 {
 			found = true
 			assert row.vals[0].bytes() == [u8(84), 92, 110, 85]
+		}
+	}
+	assert found
+}
+
+fn test_orm_column_name_with_decoded_backslash() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	sql db {
+		create table OrmColumnHazardItem
+	} or { panic(err) }
+	item := OrmColumnHazardItem{
+		value: 'ok'
+	}
+	sql db {
+		insert item into OrmColumnHazardItem
+	} or { panic(err) }
+	items := sql db {
+		select from OrmColumnHazardItem where value == 'ok'
+	} or { panic(err) }
+	assert items.len == 1
+	assert items[0].value == 'ok'
+
+	columns := db.exec('pragma table_info(orm_column_hazard_items)') or { panic(err) }
+	mut found := false
+	for column in columns {
+		if column.vals.len > 1 && column.vals[1].bytes() == [u8(65), 92, 110, 66] {
+			found = true
 		}
 	}
 	assert found

@@ -579,7 +579,7 @@ fn (mut g Gen) emit_sql_query_data_leaf(query_var string, expr ast.InfixExpr, re
 		field := g.get_orm_current_table_field(field_name) or {
 			verror('field "${field_name}" does not exist on "${g.sql_table_name}"')
 		}
-		field_name = g.get_orm_column_name_from_struct_field(field)
+		field_name = g.get_orm_escaped_column_name_from_struct_field(field)
 	}
 	is_nil_comparison := expr.right is ast.Nil && expr.op in [.eq, .ne]
 	ignore_rhs := expr.op in [.key_is, .not_is] || is_nil_comparison
@@ -1008,7 +1008,7 @@ fn (mut g Gen) write_orm_bulk_insert(node &ast.SqlStmtLine, table_name string, c
 		g.writeln('_MOV((string[${fields.len}]){')
 		g.indent++
 		for f in fields {
-			g.writeln('_S("${g.get_orm_column_name_from_struct_field(f)}"),')
+			g.writeln('_S("${g.get_orm_escaped_column_name_from_struct_field(f)}"),')
 		}
 		g.indent--
 		g.writeln('})')
@@ -1073,7 +1073,7 @@ fn (mut g Gen) write_orm_upsert(node &ast.SqlStmtLine, table_name string, connec
 		g.writeln('_MOV((string[${fields.len}]){')
 		g.indent++
 		for field in fields {
-			g.writeln('_S("${g.get_orm_column_name_from_struct_field(field)}"),')
+			g.writeln('_S("${g.get_orm_escaped_column_name_from_struct_field(field)}"),')
 		}
 		g.indent--
 		g.writeln('})')
@@ -1581,7 +1581,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		g.writeln('_MOV((string[${fields.len}]){ ')
 		g.indent++
 		for f in fields {
-			g.writeln('_S("${g.get_orm_column_name_from_struct_field(f)}"),')
+			g.writeln('_S("${g.get_orm_escaped_column_name_from_struct_field(f)}"),')
 		}
 		g.indent--
 		g.writeln('})')
@@ -2078,7 +2078,7 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 				field := g.get_orm_current_table_field(expr.name) or {
 					verror('field "${expr.name}" does not exist on "${g.sql_table_name}"')
 				}
-				fields << g.get_orm_column_name_from_struct_field(field)
+				fields << g.get_orm_escaped_column_name_from_struct_field(field)
 			} else {
 				data << expr
 			}
@@ -2165,7 +2165,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 			field := g.get_orm_current_table_field(node.order_expr.name) or {
 				verror('field "${node.order_expr.name}" does not exist on "${g.sql_table_name}"')
 			}
-			g.write(g.get_orm_column_name_from_struct_field(field))
+			g.write(g.get_orm_escaped_column_name_from_struct_field(field))
 		} else {
 			g.expr(node.order_expr)
 		}
@@ -2197,9 +2197,9 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		g.writeln('_MOV((string[${select_fields.len}]){')
 		g.indent++
 		for field in select_fields {
-			column_name := g.get_orm_column_name_from_struct_field(field)
+			column_name := g.get_orm_escaped_column_name_from_struct_field(field)
 			g.writeln('_S("${column_name}"),')
-			select_exprs << g.get_orm_select_expr_from_struct_field(field)
+			select_exprs << g.get_orm_escaped_select_expr_from_struct_field(field)
 			mut final_field_typ := g.table.final_type(field.typ.clear_flag(.option))
 			if node.aggregate_kind == .avg {
 				final_field_typ = ast.f64_type
@@ -2643,7 +2643,7 @@ fn (g &Gen) orm_table_column_names(typ ast.Type) []string {
 			if field.attrs.contains('skip') || field.attrs.contains_arg('sql', '-') {
 				continue
 			}
-			names << g.get_orm_column_name_from_struct_field(field)
+			names << g.get_orm_escaped_column_name_from_struct_field(field)
 		}
 	}
 	return names
@@ -2705,12 +2705,24 @@ fn (g &Gen) get_orm_current_table_field(name string) ?ast.StructField {
 
 // get_orm_column_name_from_struct_field converts the struct field to a table column name.
 fn (g &Gen) get_orm_column_name_from_struct_field(field ast.StructField) string {
+	name, _ := g.get_orm_column_name_and_opaque_pos(field)
+	return name
+}
+
+fn (g &Gen) get_orm_escaped_column_name_from_struct_field(field ast.StructField) string {
+	name, opaque_pos := g.get_orm_column_name_and_opaque_pos(field)
+	return cescape_nonascii(util.smart_quote(name, false, opaque_pos))
+}
+
+fn (g &Gen) get_orm_column_name_and_opaque_pos(field ast.StructField) (string, []int) {
 	mut name := field.name
+	mut opaque_pos := []int{}
 
 	if attr := field.attrs.find_first('sql') {
 		if attr.arg !in ['serial', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16', 'u32', 'u64',
 			'f32', 'f64', 'bool', 'string'] {
 			name = attr.arg
+			opaque_pos = attr.arg_opaque_pos.clone()
 		}
 	}
 
@@ -2720,7 +2732,7 @@ fn (g &Gen) get_orm_column_name_from_struct_field(field ast.StructField) string 
 		name = '${name}_id'
 	}
 
-	return name
+	return name, opaque_pos
 }
 
 fn (g &Gen) get_orm_field_by_column_name(fields []ast.StructField, column string) ?ast.StructField {
@@ -2732,17 +2744,41 @@ fn (g &Gen) get_orm_field_by_column_name(fields []ast.StructField, column string
 	return none
 }
 
-// get_orm_select_expr_from_struct_field returns the SQL expression used in a SELECT list.
-fn (g &Gen) get_orm_select_expr_from_struct_field(field ast.StructField) string {
+// get_orm_escaped_select_expr_from_struct_field returns the C-escaped SQL expression used in a SELECT list.
+fn (g &Gen) get_orm_escaped_select_expr_from_struct_field(field ast.StructField) string {
 	if attr := field.attrs.find_first('sql_select') {
-		arg := attr.arg.trim_space()
+		mut arg, mut opaque_pos := trim_orm_attr_arg(attr.arg, attr.arg_opaque_pos)
 		if arg.len >= 2 && ((arg.starts_with("'") && arg.ends_with("'"))
 			|| (arg.starts_with('"') && arg.ends_with('"'))) {
-			return arg[1..arg.len - 1].trim_space()
+			mut inner_opaque_pos := []int{}
+			for pos in opaque_pos {
+				if pos > 0 && pos < arg.len - 1 {
+					inner_opaque_pos << pos - 1
+				}
+			}
+			arg, opaque_pos = trim_orm_attr_arg(arg[1..arg.len - 1], inner_opaque_pos)
 		}
-		return arg
+		return cescape_nonascii(util.smart_quote(arg, false, opaque_pos))
 	}
-	return g.get_orm_column_name_from_struct_field(field)
+	return g.get_orm_escaped_column_name_from_struct_field(field)
+}
+
+fn trim_orm_attr_arg(arg string, opaque_pos []int) (string, []int) {
+	mut start := 0
+	mut end := arg.len
+	for start < end && arg[start].is_space() {
+		start++
+	}
+	for end > start && arg[end - 1].is_space() {
+		end--
+	}
+	mut trimmed_opaque_pos := []int{}
+	for pos in opaque_pos {
+		if pos >= start && pos < end {
+			trimmed_opaque_pos << pos - start
+		}
+	}
+	return arg[start..end], trimmed_opaque_pos
 }
 
 // get_orm_struct_primary_field returns the table's primary column field.
@@ -2761,7 +2797,7 @@ fn (g &Gen) get_orm_upsert_conflict_groups(fields []ast.StructField, table_attrs
 	mut named_unique_group_order := []string{}
 	mut seen := map[string]bool{}
 	for field in fields {
-		column_name := g.get_orm_column_name_from_struct_field(field)
+		column_name := g.get_orm_escaped_column_name_from_struct_field(field)
 		for attr in field.attrs {
 			match attr.name {
 				'primary' {
