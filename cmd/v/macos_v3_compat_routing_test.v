@@ -50,14 +50,18 @@ fn test_linux_routes_implicit_cmd_v_self_build_to_v1_compatibility() {
 fn test_temporary_self_build_bootstraps_only_before_v1_fallback_exists() {
 	$if macos || linux {
 		vroot := os.dir(@VEXE)
-		prefs := &pref.Preferences{
+		mut prefs := &pref.Preferences{
 			path: os.join_path(vroot, 'cmd', 'v')
 			backend: .c
 		}
 		missing_fallback := os.join_path(os.vtmp_dir(), 'missing_v1_fallback_${os.getpid()}')
 		os.rm(missing_fallback) or {}
-		assert macos_v3_needs_bootstrap_before_v1_fallback(prefs, os.join_path(vroot, 'v1'), missing_fallback)
-		assert !macos_v3_needs_bootstrap_before_v1_fallback(prefs, os.join_path(vroot, 'vnew'), missing_fallback)
-		assert !macos_v3_needs_bootstrap_before_v1_fallback(prefs, os.join_path(vroot, 'v1'), @VEXE)
+		// Simulate the implicit Linux compatibility decision independently of the host.
+		assert macos_v3_needs_bootstrap_before_v1_fallback(prefs, true, os.join_path(vroot, 'v1'), missing_fallback)
+		assert !macos_v3_needs_bootstrap_before_v1_fallback(prefs, false, os.join_path(vroot, 'v1'), missing_fallback)
+		prefs.old_compiler = true
+		assert macos_v3_needs_bootstrap_before_v1_fallback(prefs, false, os.join_path(vroot, 'v1'), missing_fallback)
+		assert !macos_v3_needs_bootstrap_before_v1_fallback(prefs, true, os.join_path(vroot, 'vnew'), missing_fallback)
+		assert !macos_v3_needs_bootstrap_before_v1_fallback(prefs, true, os.join_path(vroot, 'v1'), @VEXE)
 	}
 }
