@@ -1731,7 +1731,46 @@ fn ccompiler_exec_args(ccompiler string, args []string) []string {
 
 fn gcc_response_file_content(args []string) string {
 	exact_args := ccompiler_exec_args('', args)[1..]
-	return exact_args.map('"' + it.replace('\\', '\\\\').replace('"', '\\"') + '"').join(' ')
+	return gcc_response_file_content_for_exact_args(exact_args)
+}
+
+fn gcc_response_file_content_for_exact_args(args []string) string {
+	return args.map('"' + it.replace('\\', '\\\\').replace('"', '\\"') + '"').join(' ')
+}
+
+struct GccUnicodeResponsePlan {
+mut:
+	args              []string
+	response_files    []string
+	response_contents []string
+}
+
+fn (mut plan GccUnicodeResponsePlan) add_ascii_run(response_file string, args []string) {
+	file := '${response_file}.${plan.response_files.len}'
+	plan.args << '@${file}'
+	plan.response_files << file
+	plan.response_contents << gcc_response_file_content_for_exact_args(args)
+}
+
+fn gcc_unicode_response_plan(response_file string, args []string) GccUnicodeResponsePlan {
+	exact_args := ccompiler_exec_args('', args)[1..]
+	mut plan := GccUnicodeResponsePlan{}
+	mut ascii_run := []string{}
+	for arg in exact_args {
+		if arg.is_ascii() {
+			ascii_run << arg
+			continue
+		}
+		if ascii_run.len > 0 {
+			plan.add_ascii_run(response_file, ascii_run)
+			ascii_run = []string{}
+		}
+		plan.args << arg
+	}
+	if ascii_run.len > 0 {
+		plan.add_ascii_run(response_file, ascii_run)
+	}
+	return plan
 }
 
 fn (v &Builder) ccompiler_response_file_content(args []string, formatted string) string {
@@ -1756,14 +1795,14 @@ fn ccompiler_is_windows_batch_file(ccompiler string) bool {
 	return name.ends_with('.bat') || name.ends_with('.cmd')
 }
 
-fn (v &Builder) execute_ccompiler(ccompiler string, args []string, cmd string) os.Result {
-	if v.windows_gcc_needs_direct_exec(args) && !ccompiler_is_windows_batch_file(ccompiler) {
-		return os.exec(ccompiler_exec_args(ccompiler, args))
+fn (v &Builder) execute_ccompiler(ccompiler string, cmd string, exec_args []string) os.Result {
+	if exec_args.len > 0 && !ccompiler_is_windows_batch_file(ccompiler) {
+		return os.exec(exec_args)
 	}
 	return os.execute(cmd)
 }
 
-fn (v &Builder) should_use_rsp(rsp_args []string) bool {
+fn (v &Builder) response_files_are_allowed(rsp_args []string) bool {
 	if v.pref.no_rsp || v.pref.os == .termux {
 		return false
 	}
@@ -1771,6 +1810,13 @@ fn (v &Builder) should_use_rsp(rsp_args []string) bool {
 		if arg.contains("'\\''") || arg.contains('\n') || arg.contains('\r') {
 			return false
 		}
+	}
+	return true
+}
+
+fn (v &Builder) should_use_rsp(rsp_args []string) bool {
+	if !v.response_files_are_allowed(rsp_args) {
+		return false
 	}
 	// os.short_path returns its input when a Windows volume has 8.3 aliases disabled.
 	// An ANSI response file would replace those remaining Unicode characters with `?`.
@@ -2144,6 +2190,8 @@ pub fn (mut v Builder) cc() {
 		v.dump_c_options(all_args)
 		mut rsp_args := all_args.map(v.rsp_safe_arg(it))
 		rsp_args = rsp_args.map(v.tcc_windows_path_arg(it))
+		use_unicode_rsp := v.response_files_are_allowed(rsp_args)
+			&& v.windows_gcc_needs_direct_exec(rsp_args)
 		mut should_use_rsp := v.should_use_rsp(rsp_args)
 		mut str_args := if !should_use_rsp {
 			rsp_args.map(shell_safe_cc_arg(it)).join(' ').replace('\n', ' ')
@@ -2159,7 +2207,27 @@ pub fn (mut v Builder) cc() {
 		}
 		mut response_file := ''
 		mut response_file_content := str_args
-		if should_use_rsp {
+		mut compiler_exec_args := []string{}
+		if use_unicode_rsp {
+			response_file = '${v.out_name_c}.rsp'
+			plan := gcc_unicode_response_plan(response_file, rsp_args)
+			mut transport_args := plan.args.clone()
+			for i, arg in transport_args {
+				if arg.starts_with('@') {
+					transport_args[i] = '@${v.tcc_windows_path(arg[1..])}'
+				}
+			}
+			for i, file in plan.response_files {
+				write_response_file(file, plan.response_contents[i])
+			}
+			response_file_content = plan.response_contents.join('\n')
+			compiler_exec_args = [ccompiler]
+			compiler_exec_args << transport_args
+			cmd = '${v.quote_compiler_name(ccompiler)} ${transport_args.map(os.quoted_path(it)).join(' ')}'
+			if !v.ccoptions.debug_mode {
+				v.pref.cleanup_files << plan.response_files
+			}
+		} else if should_use_rsp {
 			response_file = '${v.out_name_c}.rsp'
 			response_file_content = v.ccompiler_response_file_content(rsp_args, str_args)
 			write_response_file(response_file, response_file_content)
@@ -2186,7 +2254,10 @@ pub fn (mut v Builder) cc() {
 		// Run
 		ccompiler_label := 'C ${os.file_name(ccompiler):3}'
 		util.timing_start(ccompiler_label)
-		res := v.execute_ccompiler(ccompiler, rsp_args, cmd)
+		if compiler_exec_args.len == 0 && v.windows_gcc_needs_direct_exec(rsp_args) {
+			compiler_exec_args = ccompiler_exec_args(ccompiler, rsp_args)
+		}
+		res := v.execute_ccompiler(ccompiler, cmd, compiler_exec_args)
 		util.timing_measure(ccompiler_label)
 		if v.pref.show_c_output {
 			v.show_c_compiler_output(ccompiler, res)
@@ -2343,7 +2414,7 @@ fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler st
 			return ''
 		}
 		util.timing_start('C object')
-		res := v.execute_ccompiler(ccompiler, rsp_args, cmd)
+		res := v.execute_ccompiler(ccompiler, cmd, []string{})
 		util.timing_measure('C object')
 		os.chdir(original_pwd) or {}
 		if v.pref.show_c_output {

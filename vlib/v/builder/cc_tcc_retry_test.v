@@ -346,6 +346,28 @@ fn test_windows_batch_compilers_keep_the_command_interpreter_path() {
 	assert !ccompiler_is_windows_batch_file(r'C:\toolchains\gcc.exe')
 }
 
+fn test_gcc_unicode_response_plan_keeps_large_ascii_runs_out_of_the_command_line() {
+	mut args := []string{}
+	for i in 0 .. 2000 {
+		args << '-DV_WINDOWS_UNICODE_PATH_LONG_COMMAND_${i}=1'
+	}
+	assert args.join(' ').len > 32767
+	args << r'-o "D:\工作目录\main.exe"'
+	args << r'"D:\工作目录\main.c"'
+	args << '-lm'
+	plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args)
+	assert plan.args == [
+		r'@D:\工作目录\main.c.rsp.0',
+		r'D:\工作目录\main.exe',
+		r'D:\工作目录\main.c',
+		r'@D:\工作目录\main.c.rsp.1',
+	]
+	assert plan.response_files == [r'D:\工作目录\main.c.rsp.0', r'D:\工作目录\main.c.rsp.1']
+	assert plan.response_contents[0].contains('V_WINDOWS_UNICODE_PATH_LONG_COMMAND_1999')
+	assert plan.response_contents[1] == '"-lm"'
+	assert plan.args.join(' ').len < 8191
+}
+
 fn test_windows_gnu_compilers_compile_in_a_non_ascii_directory() {
 	if os.user_os() != 'windows' {
 		return
