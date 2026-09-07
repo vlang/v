@@ -9538,26 +9538,6 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 	g.write('}')
 }
 
-fn (g &Gen) is_enum_type_used(enum_typ ast.Type) bool {
-	if !g.pref.skip_unused || enum_typ.idx() in g.table.used_features.used_syms {
-		return true
-	}
-	for sym in g.table.type_symbols {
-		if sym.kind != .alias || sym.idx !in g.table.used_features.used_syms {
-			continue
-		}
-		match sym.info {
-			ast.Alias {
-				if g.table.final_sym(sym.info.parent_type).idx == enum_typ.idx() {
-					return true
-				}
-			}
-			else {}
-		}
-	}
-	return false
-}
-
 fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	enum_name := util.no_dots(node.name)
 	is_flag := node.is_flag
@@ -9600,7 +9580,7 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	if needs_define_style {
 		mut last_value := '0'
 		enum_typ_name := g.table.get_type_name(node.typ)
-		if !g.is_enum_type_used(node.enum_typ) {
+		if g.pref.skip_unused && node.enum_typ !in g.table.used_features.used_syms {
 			return
 		}
 		g.enum_typedefs.writeln('')
@@ -9623,7 +9603,7 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		}
 		return
 	}
-	if !g.is_enum_type_used(node.enum_typ) {
+	if g.pref.skip_unused && node.enum_typ !in g.table.used_features.used_syms {
 		return
 	}
 	g.enum_typedefs.writeln('')
