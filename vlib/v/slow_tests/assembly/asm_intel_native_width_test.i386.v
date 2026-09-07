@@ -17,3 +17,12 @@ fn test_intel_i386_accepts_32_bit_named_operands() {
 	}
 	assert result == 1
 }
+
+fn intel_i386_control_register_moves(input int) {
+	mut value := input
+	asm i386 intel {
+		mov value, cr0
+		mov cr0, value
+		; +r (value)
+	}
+}

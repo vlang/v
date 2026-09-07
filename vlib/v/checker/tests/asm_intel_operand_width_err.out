@@ -47,3 +47,10 @@ vlib/v/checker/tests/asm_intel_operand_width_err.vv:45:3: error: hard register `
       |         ~~~~~~~~~~~~~
    46 |         ; ; r (index)
    47 |     }
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:52:3: error: hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers for the current compilation target; use matching register widths, or a `raw intel` block with explicit operand modifiers
+   50 | fn intel_double_shift_hard_register(value i64) {
+   51 |     asm amd64 intel {
+   52 |         shld eax, value, 1
+      |         ~~~~~~~~~~~~~~~~~~
+   53 |         ; ; r (value)
+   54 |     }

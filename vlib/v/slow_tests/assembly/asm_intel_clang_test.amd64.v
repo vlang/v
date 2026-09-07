@@ -15,18 +15,24 @@ fn test_intel_extended_register_operands_with_clang() {
 
 fn test_intel_mixed_width_hard_registers_with_clang() {
 	mut shifted := i64(21)
+	mut double_shifted := i64(21)
+	shift_source := i64(-1)
 	mut extended := i64(0)
 	asm amd64 intel {
 		mov cl, 1
 		shl shifted, cl
+		shld double_shifted, shift_source, cl
 		mov al, 42
 		movzx extended, al
 		; +r (shifted)
+		  +r (double_shifted)
 		  =r (extended)
-		; ; rax
+		; r (shift_source)
+		; rax
 		  rcx
 	}
 	assert shifted == 42
+	assert double_shifted == 43
 	assert extended == 42
 }
 

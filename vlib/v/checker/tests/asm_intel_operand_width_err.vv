@@ -47,6 +47,13 @@ fn intel_bit_test_hard_register(index i64) {
 	}
 }
 
+fn intel_double_shift_hard_register(value i64) {
+	asm amd64 intel {
+		shld eax, value, 1
+		; ; r (value)
+	}
+}
+
 fn main() {
 	println(intel_sub(50, 8))
 }

@@ -4420,7 +4420,7 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	}
 	if name !in ['mov', 'add', 'adc', 'sub', 'sbb', 'and', 'or', 'xor', 'cmp',
 		'test', 'xchg', 'xadd', 'cmpxchg', 'imul', 'bsf', 'bsr', 'bt', 'btc', 'btr', 'bts',
-		'popcnt', 'lzcnt', 'tzcnt'] && !name.starts_with('cmov') {
+		'shld', 'shrd', 'popcnt', 'lzcnt', 'tzcnt'] && !name.starts_with('cmov') {
 		return
 	}
 	mut has_native_alias := false
@@ -4442,10 +4442,20 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	}
 	for i, arg in template.args {
 		if arg is ast.AsmRegister && arg.size > 0 && arg.size != native_width * 8 {
+			// The final SHLD/SHRD operand is an immediate or the 8-bit CL register.
+			if name in ['shld', 'shrd'] && i == 2 {
+				continue
+			}
 			// MOV accepts segment registers with wider GPRs in either direction, except
 			// that CS cannot be a destination.
 			if name == 'mov' && arg.name in ['cs', 'ss', 'ds', 'es', 'fs', 'gs']
 				&& (i == 1 || (i == 0 && arg.name != 'cs')) {
+				continue
+			}
+			// The shared register table records CR/DR registers as 64-bit, but their
+			// MOV forms use 32-bit GPRs on i386 targets.
+			if name == 'mov' && native_width == 4
+				&& (arg.name.starts_with('cr') || arg.name.starts_with('dr')) {
 				continue
 			}
 			c.error('hard register `${arg.name}` is ${arg.size}-bit, but named operands in structured `intel` assembly expand to ${native_width * 8}-bit registers for the current compilation target; use matching register widths, or a `raw intel` block with explicit operand modifiers',
