@@ -8803,10 +8803,9 @@ pub fn run(args []string) {
 	}
 	if building_v || cmd_v_build {
 		if no_parallel {
+			// This controls the current build only. Keep parallel support in the output
+			// compiler so its module graph does not depend on how it was bootstrapped.
 			user_defines = user_defines.filter(it != 'parallel')
-			if 'v3_no_parallel' !in user_defines {
-				user_defines << 'v3_no_parallel'
-			}
 		} else if 'parallel' !in user_defines {
 			user_defines << 'parallel'
 		}
