@@ -1,3 +1,7 @@
+enum IntelNarrow as u8 {
+	value
+}
+
 fn intel_sub(a int, b int) int {
 	mut res := 0
 	asm amd64 intel {
@@ -59,6 +63,13 @@ fn intel_bmi_hard_register(left i64, right i64) {
 		andn eax, left, right
 		; ; r (left)
 		  r (right)
+	}
+}
+
+fn intel_narrow_enum(value IntelNarrow) {
+	asm amd64 intel {
+		mov rax, value
+		; ; r (value)
 	}
 }
 

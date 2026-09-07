@@ -1,6 +1,10 @@
 // vtest build: !windows && !msvc
 // vtest vflags: -cc clang -no-retry-compilation
 
+enum IntelWide as u64 {
+	value = 42
+}
+
 fn test_intel_extended_register_operands_with_clang() {
 	increment := i64(23)
 	mut result := i64(19)
@@ -58,4 +62,15 @@ fn test_intel_segment_register_move_with_clang() {
 		; +r (value)
 	}
 	assert value >= 0
+}
+
+fn test_intel_wide_enum_operand_with_clang() {
+	input := IntelWide.value
+	mut result := u64(0)
+	asm amd64 intel {
+		mov result, input
+		; =r (result)
+		; r (input)
+	}
+	assert result == 42
 }

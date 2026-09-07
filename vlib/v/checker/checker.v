@@ -4394,7 +4394,7 @@ fn (mut c Checker) check_asm_intel_arg_width(arg ast.AsmArg, aliases map[string]
 			if typ == 0 || typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(typ) {
 				return
 			}
-			type_width, _ := c.table.type_size(typ)
+			type_width := c.asm_intel_type_width(typ)
 			if type_width != native_width {
 				c.error('named operand `${arg.name}` has ${type_width * 8}-bit type `${c.table.type_str(typ)}`, but structured `intel` assembly substitutes named operands with a ${native_width * 8}-bit register for the current compilation target; use matching native-width operands and registers, or a `raw intel` block with explicit operand modifiers',
 					pos)
@@ -4407,6 +4407,21 @@ fn (mut c Checker) check_asm_intel_arg_width(arg ast.AsmArg, aliases map[string]
 		}
 		else {}
 	}
+}
+
+fn (c &Checker) asm_intel_type_width(typ ast.Type) int {
+	if typ.nr_muls() == 0 && !typ.has_option_or_result() {
+		sym := c.table.sym(typ)
+		if sym.info is ast.Alias {
+			return c.asm_intel_type_width(sym.info.parent_type)
+		}
+		if sym.info is ast.Enum && sym.info.typ != ast.int_type {
+			width, _ := c.table.type_size(sym.info.typ)
+			return width
+		}
+	}
+	width, _ := c.table.type_size(typ)
+	return width
 }
 
 fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate,
@@ -4432,7 +4447,7 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 			if typ == 0 || typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(typ) {
 				continue
 			}
-			type_width, _ := c.table.type_size(typ)
+			type_width := c.asm_intel_type_width(typ)
 			if type_width == native_width {
 				has_native_alias = true
 				break
