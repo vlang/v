@@ -1751,8 +1751,13 @@ fn (v &Builder) windows_gcc_needs_direct_exec(args []string) bool {
 	return false
 }
 
+fn ccompiler_is_windows_batch_file(ccompiler string) bool {
+	name := ccompiler.trim_space().trim('"').trim("'").to_lower_ascii()
+	return name.ends_with('.bat') || name.ends_with('.cmd')
+}
+
 fn (v &Builder) execute_ccompiler(ccompiler string, args []string, cmd string) os.Result {
-	if v.windows_gcc_needs_direct_exec(args) {
+	if v.windows_gcc_needs_direct_exec(args) && !ccompiler_is_windows_batch_file(ccompiler) {
 		return os.exec(ccompiler_exec_args(ccompiler, args))
 	}
 	return os.execute(cmd)

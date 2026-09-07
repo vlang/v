@@ -340,6 +340,12 @@ fn test_gcc_response_file_content_quotes_exact_arguments() {
 	assert gcc_response_file_content([r'-B"C:\toolchain\\"', r'-DNAME=\"foo\"']) == r'"-BC:\\toolchain\\" "-DNAME=\"foo\""'
 }
 
+fn test_windows_batch_compilers_keep_the_command_interpreter_path() {
+	assert ccompiler_is_windows_batch_file(r'C:\toolchains\gcc-wrapper.cmd')
+	assert ccompiler_is_windows_batch_file(r'"C:\Program Files\GCC\gcc-wrapper.BAT"')
+	assert !ccompiler_is_windows_batch_file(r'C:\toolchains\gcc.exe')
+}
+
 fn test_windows_gnu_compilers_compile_in_a_non_ascii_directory() {
 	if os.user_os() != 'windows' {
 		return
