@@ -209,7 +209,7 @@ pub fn verify_certificate_chain(chain &C.mbedtls_x509_crt, ca_bundle_pem string,
 	effective_ca_bundle_pem := if ca_bundle_pem != '' {
 		ca_bundle_pem
 	} else {
-		default_ca_bundle_pem
+		system_or_default_ca_bundle_pem()
 	}
 	// ca_bundle_pem.str (not .bytes()): mbedtls_x509_crt_parse's PEM path
 	// needs a real NUL-terminated buffer (it scans for

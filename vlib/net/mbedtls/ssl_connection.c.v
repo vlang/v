@@ -655,11 +655,13 @@ fn (mut s SSLConn) init() ! {
 			// listener's own already-configured mbedtls_ssl_config instead).
 			// A caller that didn't supply a CA bundle almost always still
 			// wants ordinary internet HTTPS to work, not an unverifiable
-			// connection -- fall back to the vendored default trust store
-			// (default_ca_bundle.v) rather than leaving s.certs.cacert
-			// empty, mirroring verify_certificate_chain's identical
-			// fallback for net.quic's HTTP/3 client.
-			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, default_ca_bundle_pem.str, default_ca_bundle_pem.len + 1)
+			// connection -- fall back to the Linux system trust store, or
+			// (any other platform, or a Linux system missing one) the
+			// vendored default (default_ca_bundle.v), rather than leaving
+			// s.certs.cacert empty. Mirrors verify_certificate_chain's
+			// identical fallback for net.quic's HTTP/3 client.
+			ca_bundle_pem := system_or_default_ca_bundle_pem()
+			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, ca_bundle_pem.str, ca_bundle_pem.len + 1)
 		}
 		if s.config.cert != '' {
 			ret = C.mbedtls_x509_crt_parse(&s.certs.client_cert, s.config.cert.str, s.config.cert.len + 1)
@@ -673,7 +675,8 @@ fn (mut s SSLConn) init() ! {
 		if s.config.verify != '' {
 			ret = C.mbedtls_x509_crt_parse_file(&s.certs.cacert, &char(s.config.verify.str))
 		} else {
-			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, default_ca_bundle_pem.str, default_ca_bundle_pem.len + 1)
+			ca_bundle_pem := system_or_default_ca_bundle_pem()
+			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, ca_bundle_pem.str, ca_bundle_pem.len + 1)
 		}
 		if s.config.cert != '' {
 			ret = C.mbedtls_x509_crt_parse_file(&s.certs.client_cert, &char(s.config.cert.str))
