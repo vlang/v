@@ -8913,9 +8913,10 @@ fn (mut g Gen) boehm_collect_keep_alive_helper_name(typ ast.Type) string {
 			sb.writeln('\treturn idx;')
 		}
 		.array {
-			info := sym.info as ast.Array
-			elem_styp := g.styp(info.elem_type)
-			elem_helper := g.boehm_collect_keep_alive_helper_name(info.elem_type)
+			// Arrays whose elements contain pointers use Boehm-scanned backing storage:
+			// check_noscan only selects atomic storage for pointer-free element types.
+			// Keeping that one backing block reachable therefore keeps every nested
+			// allocation reachable too, without walking all elements at every call site.
 			sb.writeln('\tif (it->data == 0) {')
 			sb.writeln('\t\treturn idx;')
 			sb.writeln('\t}')
@@ -8925,11 +8926,6 @@ fn (mut g Gen) boehm_collect_keep_alive_helper_name(typ ast.Type) string {
 			sb.writeln('\t}')
 			sb.writeln('\tif (out != 0) { out[idx] = _v_keep_root; }')
 			sb.writeln('\tidx++;')
-			if elem_helper != '' {
-				sb.writeln('\tfor (int _v_keep_i = 0; _v_keep_i < it->len; ++_v_keep_i) {')
-				sb.writeln('\t\tidx = ${elem_helper}(&(((${elem_styp}*)it->data)[_v_keep_i]), out, idx);')
-				sb.writeln('\t}')
-			}
 			sb.writeln('\treturn idx;')
 		}
 		.struct {
