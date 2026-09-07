@@ -718,9 +718,6 @@ fn (mut c Client) upgrade_to_tls() ! {
 	c.ssl_conn.connect(mut c.conn, c.server) or {
 		return error('imap: TLS handshake with ${c.server} failed: ${err}')
 	}
-	$if use_openssl? {
-		c.ssl_conn.verify_hostname(c.server)!
-	}
 	c.dec = decoder_on(io.new_buffered_reader(reader: c.ssl_conn))
 	c.encrypted = true
 }

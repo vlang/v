@@ -246,6 +246,20 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} hostname: ${hostname}')
 	}
+	mut connected := false
+	defer {
+		if !connected {
+			if s.ssl != 0 {
+				unsafe { C.SSL_free(voidptr(s.ssl)) }
+				s.ssl = unsafe { nil }
+			}
+			if s.sslctx != 0 {
+				C.SSL_CTX_free(s.sslctx)
+				s.sslctx = unsafe { nil }
+			}
+			s.handle = 0
+		}
+	}
 	s.handle = tcp_conn.sock.handle
 	s.duration = tcp_conn.read_timeout()
 	mut res := C.SSL_set_tlsext_host_name(voidptr(s.ssl), voidptr(hostname.str))
@@ -256,10 +270,11 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 		return error('net.openssl SSLConn.connect, could not assign ssl to socket.')
 	}
 	s.complete_connect()!
+	s.verify_hostname(hostname)!
+	connected = true
 }
 
-// verify_hostname checks that the peer certificate is valid for hostname.
-pub fn (s &SSLConn) verify_hostname(hostname string) ! {
+fn (s &SSLConn) verify_hostname(hostname string) ! {
 	if !s.config.validate {
 		return
 	}
@@ -270,7 +285,13 @@ pub fn (s &SSLConn) verify_hostname(hostname string) ! {
 	defer {
 		C.X509_free(cert)
 	}
-	if C.X509_check_host(cert, &char(hostname.str), usize(hostname.len), 0, unsafe { nil }) != 1 {
+	ip_result := C.X509_check_ip_asc(cert, &char(hostname.str), 0)
+	verified := if ip_result == -2 {
+		C.X509_check_host(cert, &char(hostname.str), usize(hostname.len), 0, unsafe { nil }) == 1
+	} else {
+		ip_result == 1
+	}
+	if !verified {
 		return error('net.openssl SSLConn.verify_hostname, the certificate is not valid for `${hostname}`')
 	}
 }

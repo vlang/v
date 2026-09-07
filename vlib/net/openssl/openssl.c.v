@@ -127,6 +127,8 @@ fn C.X509_free(const_cert &C.X509)
 
 fn C.X509_check_host(const_cert &C.X509, const_name &char, name_len usize, flags u32, peer_name &&char) int
 
+fn C.X509_check_ip_asc(const_cert &C.X509, const_ip_asc &char, flags u32) int
+
 fn C.ERR_clear_error()
 
 fn C.ERR_get_error() u64
