@@ -1,5 +1,9 @@
 module quic
 
+// quic_error_frame_encoding_error is RFC 9000 §20.1's
+// FRAME_ENCODING_ERROR transport error.
+const quic_error_frame_encoding_error = u64(0x07)
+
 // QUIC frame parsing (RFC 9000 §19). Scoped to the frame types usable in
 // the Initial and Handshake packet number spaces (RFC 9000 §12.4, Table 3):
 // PADDING, PING, ACK, CRYPTO, and CONNECTION_CLOSE (transport-level only --
@@ -187,9 +191,9 @@ pub:
 // FUTURE connection's Initial packet for address validation (and,
 // separately, 0-RTT). This module implements neither 0-RTT nor token-
 // carrying reconnection (net.quic's own documented v1 scope), so the
-// token is parsed and kept only long enough to size the frame correctly
-// on the wire -- never stored or reused. Parsing it at all (rather than
-// treating the type as unrecognized) is still required: real servers
+// A non-empty token is parsed and kept only long enough to size the frame
+// correctly on the wire -- never stored or reused. Parsing it at all
+// (rather than treating the type as unrecognized) is still required: real servers
 // (confirmed: Google's QUIC endpoints) send this immediately after the
 // handshake as standard practice, unrelated to whether the CLIENT ever
 // intends to use it, and RFC 9000 §12.4's frame type table has no
@@ -205,11 +209,12 @@ pub:
 // endpoint MAY switch to. Parsed and otherwise ignored -- net.quic
 // implements neither an active-CID pool nor connection migration (v1
 // scope, PROGRESS.md), and never switches away from the one DCID
-// established at the handshake. As with NewTokenFrame, parsing (not
-// merely tolerating on the wire) is required regardless: real servers
-// send this as standard practice independent of whether the client ever
-// migrates, per RFC 9000 §5.1.1's own recommendation to keep a pool of
-// several ready.
+// established at the handshake. Advertisements that do not retire that
+// in-use ID are tolerated by QuicConn; a positive Retire Prior To cannot
+// safely be ignored and is rejected there until connection-ID rotation is
+// implemented. Parsing is required regardless: real servers send this as
+// standard practice independent of whether the client ever migrates, per
+// RFC 9000 §5.1.1's own recommendation to keep a pool of several ready.
 pub struct NewConnectionIdFrame {
 pub:
 	sequence_number       u64
@@ -223,7 +228,9 @@ pub:
 // issued connection IDs (the ones the peer uses to address US, from this
 // endpoint's own NEW_CONNECTION_ID frames -- which net.quic never sends,
 // having no active-CID pool of its own to issue from). Parsed and
-// otherwise ignored, same rationale as NewConnectionIdFrame.
+// QuicConn validates the sequence number against the locally-issued CID
+// state, then rejects retirement of its sole CID explicitly because it
+// cannot issue the required replacement yet.
 pub struct RetireConnectionIdFrame {
 pub:
 	sequence_number u64
@@ -513,15 +520,15 @@ fn parse_ack_frame(buf []u8, start int, has_ecn_counts bool) !(QuicFrame, int) {
 }
 
 // parse_new_token_frame parses a NEW_TOKEN frame (RFC 9000 §19.7):
-// Type (i) = 0x07, Token Length (i), Token (..). A zero-length token is
-// syntactically legal per the grammar (no MUST-be-nonzero requirement in
-// the RFC text) -- rejecting it here would be inventing a restriction the
-// spec doesn't impose, so it is accepted, matching parse_crypto_frame's
-// identical tolerance for a zero-length CRYPTO frame.
+// Type (i) = 0x07, Token Length (i), Token (..). The Token field MUST NOT
+// be empty; a client has to treat an empty token as FRAME_ENCODING_ERROR.
 fn parse_new_token_frame(buf []u8, start int) !(QuicFrame, int) {
 	mut offset := start
 	length, n1 := decode_varint(buf[offset..])!
 	offset += n1
+	if length == 0 {
+		return error_with_code('quic: NEW_TOKEN frame: token must not be empty (RFC 9000 §19.7 FRAME_ENCODING_ERROR)', int(quic_error_frame_encoding_error))
+	}
 	if u64(offset) + length > u64(buf.len) {
 		return error('quic: NEW_TOKEN frame: length ${length} exceeds remaining buffer')
 	}

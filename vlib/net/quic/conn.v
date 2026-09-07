@@ -44,6 +44,10 @@ const aead_tag_len = 16
 // carries no more specific QUIC error code of its own (see close_with_error).
 const quic_error_protocol_violation = u64(0x0a)
 
+// quic_error_internal_error is used when the peer requests a legal state
+// transition that this v1 implementation cannot safely perform.
+const quic_error_internal_error = u64(0x01)
+
 // default_max_ack_delay is RFC 9000 §18.2's stated default for the
 // max_ack_delay transport parameter, used until the peer's own value (if
 // any) is known.
@@ -111,6 +115,12 @@ mut:
 	role  QuicRole
 	state ConnectionState
 
+	// The initial source connection ID has sequence number 0 (RFC 9000
+	// §5.1.1). v1 never issues NEW_CONNECTION_ID, so this remains 0, but
+	// retaining it as connection state makes RETIRE_CONNECTION_ID's required
+	// upper-bound validation explicit and safe to extend when CID rotation
+	// is implemented.
+	largest_issued_cid_sequence   u64
 	original_dcid                 []u8
 	dcid                          []u8
 	scid                          []u8
@@ -1043,6 +1053,30 @@ fn (mut c QuicConn) dispatch_one_rtt_frame(frame QuicFrame, now u64, mut result 
 			// call, same deferred-send shape as pending_streams_blocked.
 			c.pending_path_responses << frame.data
 		}
+		NewConnectionIdFrame {
+			// The currently-used peer CID is the initial sequence 0. A
+			// positive Retire Prior To therefore requires us to stop using it
+			// and select a replacement (RFC 9000 §5.1.2). Until this module
+			// implements a peer-CID pool, fail the connection explicitly
+			// instead of silently continuing to address packets to a retired
+			// CID. The common real-server advertisement with Retire Prior To 0
+			// is safe to tolerate because it does not retire the in-use CID.
+			if frame.retire_prior_to > 0 {
+				return error_with_code('quic: NEW_CONNECTION_ID requires retiring the in-use connection ID, but connection-ID rotation is not supported', int(quic_error_internal_error))
+			}
+		}
+		RetireConnectionIdFrame {
+			// RFC 9000 §19.16: naming a sequence number greater than any this
+			// endpoint has issued is a PROTOCOL_VIOLATION. Only the initial
+			// source CID (sequence 0) exists in v1.
+			if frame.sequence_number > c.largest_issued_cid_sequence {
+				return error_with_code('quic: PROTOCOL_VIOLATION: RETIRE_CONNECTION_ID sequence ${frame.sequence_number} exceeds largest issued sequence ${c.largest_issued_cid_sequence} (RFC 9000 §19.16)', int(quic_error_protocol_violation))
+			}
+			// Retiring sequence 0 is legal, but requires issuing a replacement
+			// CID. Explicitly close rather than keep accepting traffic for a CID
+			// the peer has retired.
+			return error_with_code('quic: RETIRE_CONNECTION_ID requires replacing the sole local connection ID, but connection-ID rotation is not supported', int(quic_error_internal_error))
+		}
 		else {
 			// DATA_BLOCKED/STREAM_DATA_BLOCKED/STREAMS_BLOCKED: purely
 			// informational hints (RFC 9000 §19.12-§19.14 impose no MUST
@@ -1055,11 +1089,6 @@ fn (mut c QuicConn) dispatch_one_rtt_frame(frame QuicFrame, now u64, mut result 
 			// Google's QUIC endpoints) send this as standard practice
 			// immediately after the handshake regardless of whether the
 			// client ever intends to use it.
-			//
-			// NewConnectionIdFrame/RetireConnectionIdFrame: no active-CID
-			// pool, no connection migration (v1 scope, PROGRESS.md) -- see
-			// each struct's own doc comment (frame.v). Also confirmed sent
-			// by real servers (Google) as standard practice.
 			//
 			// PathResponseFrame: this connection never sends PATH_CHALLENGE
 			// itself (no connection migration, v1 scope), so an incoming

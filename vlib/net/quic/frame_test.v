@@ -763,19 +763,18 @@ fn test_new_token_frame_round_trip() {
 	}
 }
 
-fn test_new_token_frame_accepts_zero_length_token() {
+// test_new_token_frame_rejects_zero_length_token covers RFC 9000 §19.7's
+// explicit requirement that an empty token be treated as a
+// FRAME_ENCODING_ERROR.
+fn test_new_token_frame_rejects_zero_length_token() {
 	mut buf := encode_varint(frame_type_new_token)!
 	buf << encode_varint(u64(0))!
-	frame, n := parse_frame(buf)!
-	assert n == buf.len
-	match frame {
-		NewTokenFrame {
-			assert frame.token.len == 0
-		}
-		else {
-			assert false, 'expected a NewTokenFrame'
-		}
+	parse_frame(buf) or {
+		assert err.code() == int(quic_error_frame_encoding_error)
+		assert err.msg().contains('must not be empty')
+		return
 	}
+	assert false, 'expected a zero-length NEW_TOKEN token to be rejected'
 }
 
 // test_new_connection_id_frame_round_trip covers the exact real-world

@@ -1522,3 +1522,79 @@ fn test_path_challenge_queues_a_path_response() {
 	assert drain_result.outgoing.len == 1
 	assert c.pending_path_responses.len == 0
 }
+
+// A peer may advertise spare CIDs without forcing this connection to use
+// them. This is the real-server shape that motivated NEW_CONNECTION_ID
+// parsing and remains safe even though v1 has no CID pool.
+fn test_new_connection_id_without_retirement_is_tolerated() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut result := PollResult{}
+	c.dispatch_one_rtt_frame(NewConnectionIdFrame{
+		sequence_number: 1
+		retire_prior_to: 0
+		connection_id: [u8(1)]
+		stateless_reset_token: []u8{len: stateless_reset_token_length}
+	}, now, mut result)!
+}
+
+// Retire Prior To 1 retires the peer's initial CID (sequence 0). Silently
+// ignoring that state transition would make subsequent packets use a CID
+// the peer has required us to stop using.
+fn test_new_connection_id_rejects_unsupported_retirement() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut result := PollResult{}
+	c.dispatch_one_rtt_frame(NewConnectionIdFrame{
+		sequence_number: 1
+		retire_prior_to: 1
+		connection_id: [u8(1)]
+		stateless_reset_token: []u8{len: stateless_reset_token_length}
+	}, now, mut result) or {
+		assert err.code() == int(quic_error_internal_error)
+		assert err.msg().contains('connection-ID rotation is not supported')
+		return
+	}
+	assert false, 'expected retirement of the in-use peer CID to be rejected'
+}
+
+// RFC 9000 §19.16 requires a PROTOCOL_VIOLATION when the peer retires a
+// sequence greater than any this endpoint issued. v1 only has the initial
+// local CID, sequence 0.
+fn test_retire_connection_id_rejects_unissued_sequence() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut result := PollResult{}
+	c.dispatch_one_rtt_frame(RetireConnectionIdFrame{
+		sequence_number: 1
+	}, now, mut result) or {
+		assert err.code() == int(quic_error_protocol_violation)
+		assert err.msg().contains('exceeds largest issued sequence 0')
+		return
+	}
+	assert false, 'expected an unissued CID sequence to be rejected'
+}
+
+// Sequence 0 passes the RFC upper-bound validation but cannot safely be
+// processed without issuing a replacement CID, which v1 cannot yet do.
+fn test_retire_connection_id_rejects_unsupported_initial_cid_retirement() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut result := PollResult{}
+	c.dispatch_one_rtt_frame(RetireConnectionIdFrame{
+		sequence_number: 0
+	}, now, mut result) or {
+		assert err.code() == int(quic_error_internal_error)
+		assert err.msg().contains('connection-ID rotation is not supported')
+		return
+	}
+	assert false, 'expected retirement of the sole local CID to be rejected'
+}
