@@ -288,8 +288,8 @@ fn test_rewrite_windows_path_arg_rewrites_path_like_values() {
 }
 
 fn test_cc_uses_short_windows_paths() {
-	// tcc and the MinGW gcc toolchain both read response files with the ANSI
-	// C runtime, so both need ASCII 8.3 short paths on Windows (see issue #28126).
+	// tcc and the MinGW gcc toolchain both read response files with the ANSI C
+	// runtime, so both prefer ASCII 8.3 short paths on Windows (see issue #28126).
 	assert cc_uses_short_windows_paths(.tcc)
 	assert cc_uses_short_windows_paths(.gcc)
 	// clang, msvc, icc, emcc and unknown compilers are excluded:
@@ -300,4 +300,33 @@ fn test_cc_uses_short_windows_paths() {
 	assert !cc_uses_short_windows_paths(.icc)
 	assert !cc_uses_short_windows_paths(.emcc)
 	assert !cc_uses_short_windows_paths(.unknown)
+}
+
+fn test_gcc_rsp_args_require_ascii_paths() {
+	assert gcc_rsp_args_are_ascii([
+		r'-o "C:\PROGRA~1\main.exe"',
+		r'"C:\Users\RUNNER~1\main.c"',
+	])
+	assert !gcc_rsp_args_are_ascii([r'-o "D:\a\_temp\工作目录\main.exe"'])
+}
+
+fn test_windows_gcc_compiles_in_a_non_ascii_directory() {
+	if os.user_os() != 'windows' {
+		return
+	}
+	gcc := os.find_abs_path_of_executable('gcc') or { return }
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_gcc_工作目录_${os.getpid()}')
+	source_path := os.join_path(test_root, 'main.v')
+	exe_path := os.join_path(test_root, 'main.exe')
+	os.mkdir_all(test_root) or { panic(err) }
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	os.write_file(source_path, "fn main() { println('unicode-path-ok') }\n") or { panic(err) }
+	res :=
+		execute_tcc_retry_test_command('${os.quoted_path(@VEXE)} -cc ${os.quoted_path(gcc)} -gc none -no-retry-compilation -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}')
+	assert res.exit_code == 0, res.output
+	run := os.execute(os.quoted_path(exe_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'unicode-path-ok', run.output
 }

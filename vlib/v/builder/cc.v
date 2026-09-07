@@ -1574,7 +1574,8 @@ fn rewrite_windows_path_arg(arg string, resolver WindowsPathResolver) string {
 // first. Both tcc and the MinGW gcc toolchain read response file contents
 // with the ANSI C runtime: non-ASCII characters in paths get mangled on
 // Windows setups, whose active code page can not represent them (or whose
-// compiler expects UTF-8), so V passes them only as pure ASCII short paths.
+// compiler expects UTF-8). V therefore prefers pure ASCII short paths and,
+// for gcc, falls back to the Unicode command line when no short name exists.
 fn cc_uses_short_windows_paths(cc CC) bool {
 	return cc in [.gcc, .tcc]
 }
@@ -1601,7 +1602,8 @@ fn (v &Builder) tcc_windows_path(p string) string {
 // the broader rewrite_windows_path_arg, while gcc gets only its real
 // filesystem operands rewritten: gcc argument vectors can contain user
 // `CFLAGS` with path looking values (e.g. `-DROOT="C:\Program Files\SDK"`),
-// which must not be altered.
+// which must not be altered. If an 8.3 alias is unavailable, should_use_rsp
+// sends gcc's remaining Unicode arguments through CreateProcessW instead.
 fn (v &Builder) tcc_windows_path_arg(arg string) string {
 	$if windows {
 		if v.ccoptions.cc == .tcc {
@@ -1631,12 +1633,24 @@ fn shell_safe_cc_arg(arg string) string {
 	return arg
 }
 
+fn gcc_rsp_args_are_ascii(args []string) bool {
+	return args.all(it.is_ascii())
+}
+
 fn (v &Builder) should_use_rsp(rsp_args []string) bool {
 	if v.pref.no_rsp || v.pref.os == .termux {
 		return false
 	}
 	for arg in rsp_args {
 		if arg.contains("'\\''") || arg.contains('\n') || arg.contains('\r') {
+			return false
+		}
+	}
+	$if windows {
+		// os.short_path returns its input when the volume has 8.3 aliases disabled.
+		// An ANSI response file would replace those remaining Unicode characters
+		// with `?`, while the direct command line is passed through CreateProcessW.
+		if v.ccoptions.cc == .gcc && !gcc_rsp_args_are_ascii(rsp_args) {
 			return false
 		}
 	}
