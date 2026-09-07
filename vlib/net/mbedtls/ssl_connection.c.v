@@ -649,7 +649,7 @@ fn (mut s SSLConn) init() ! {
 	if s.config.in_memory_verification {
 		if s.config.verify != '' {
 			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, s.config.verify.str, s.config.verify.len + 1)
-		} else {
+		} else if s.config.validate {
 			// This is the CLIENT connect path only (new_ssl_conn/dial --
 			// SSLListener.accept() never calls this function, it reuses the
 			// listener's own already-configured mbedtls_ssl_config instead).
@@ -674,7 +674,7 @@ fn (mut s SSLConn) init() ! {
 	} else {
 		if s.config.verify != '' {
 			ret = C.mbedtls_x509_crt_parse_file(&s.certs.cacert, &char(s.config.verify.str))
-		} else {
+		} else if s.config.validate {
 			ca_bundle_pem := system_or_default_ca_bundle_pem()
 			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, ca_bundle_pem.str, ca_bundle_pem.len + 1)
 		}

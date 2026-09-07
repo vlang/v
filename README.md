@@ -359,6 +359,11 @@ response := http.fetch(
 )!
 ```
 
+The default Windows SChannel backend does not use `verify` or
+`in_memory_verification`. Install private CAs in the Windows certificate store,
+or compile with `-d no_vschannel` to use the bundled mbedTLS backend with a
+private CA file or PEM data.
+
 As a temporary compatibility measure, `validate: false` disables certificate validation
 for HTTP/1.1 and HTTP/2 requests. HTTP/3 currently requires validation and rejects that
 setting. Disabling validation is insecure and should not be used in production.
