@@ -1,3 +1,4 @@
+// vtest build: started_mysqld?
 module mysql
 
 fn test_local_infile_connect_options() {
