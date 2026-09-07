@@ -84,3 +84,16 @@ fn test_intel_decimal_int_min_literal_with_clang() {
 	}
 	assert result == -2147483648
 }
+
+fn test_intel_movq_vector_transfer_with_clang() {
+	input := i64(42)
+	mut result := i64(0)
+	asm amd64 intel {
+		movq xmm0, input
+		movq result, xmm0
+		; =r (result)
+		; r (input)
+		; xmm0
+	}
+	assert result == 42
+}

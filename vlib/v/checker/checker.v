@@ -4438,6 +4438,7 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 		}
 		name = name.all_after(' ')
 	}
+	is_movq := name == 'movq'
 	same_width_instructions := ['mov', 'movbe', 'add', 'adc', 'adcx', 'adox', 'sub', 'sbb', 'and',
 		'andn', 'or', 'xor', 'cmp', 'test', 'xchg', 'xadd', 'cmpxchg', 'imul', 'bsf', 'bsr', 'bt',
 		'btc', 'btr', 'bts', 'bextr', 'blsi', 'blsmsk', 'blsr', 'bzhi', 'mulx', 'pdep', 'pext',
@@ -4470,6 +4471,12 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	}
 	for i, arg in template.args {
 		if arg is ast.AsmRegister && arg.size > 0 && arg.size != native_width * 8 {
+			// MOVQ transfers between a native-width GPR and an MMX/XMM register are valid;
+			// the vector register's container size is not the scalar operand width.
+			if is_movq && native_width == 8
+				&& (arg.name.starts_with('mm') || arg.name.starts_with('xmm')) {
+				continue
+			}
 			// The final SHLD/SHRD operand is an immediate or the 8-bit CL register.
 			if name in ['shld', 'shrd'] && i == 2 {
 				continue
