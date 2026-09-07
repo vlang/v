@@ -291,11 +291,15 @@ fn test_x86_inline_asm_segment_address_reaches_c_lowering() {
 }
 
 fn generate_inline_asm_c(name string, source string) (os.Result, string) {
+	return generate_inline_asm_c_for_arch(name, source, 'amd64')
+}
+
+fn generate_inline_asm_c_for_arch(name string, source string, arch string) (os.Result, string) {
 	v3_bin := build_v3_inline_asm()
 	source_path := '${inline_asm_tmp_path(name)}.v'
 	c_path := '${inline_asm_tmp_path(name)}.c'
 	os.write_file(source_path, source) or { panic(err) }
-	result := os.execute('${v3_bin} -os linux -arch amd64 -cc clang -o ${c_path} ${source_path}')
+	result := os.execute('${v3_bin} -os linux -arch ${arch} -cc clang -o ${c_path} ${source_path}')
 	c_source := os.read_file(c_path) or { '' }
 	return result, c_source
 }
@@ -379,6 +383,21 @@ fn test_intel_asm_accepts_size_qualified_memory_operands() {
 ')
 	assert generate.exit_code == 0, generate.output
 	assert c_source.contains('"mov eax, dword ptr [rbx]\\n\\t"'), c_source
+}
+
+fn test_arm64_asm_accepts_operand_keywords() {
+	generate, c_source := generate_inline_asm_c_for_arch('arm64_operand_keywords_program', 'fn main() {
+	asm arm64 {
+		dmb sy
+		add x0, x1, x2, lsr 3
+		add x0, x1, w2, sxtw
+		csel x0, x1, x2, eq
+	}
+}
+', 'arm64')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"dmb sy\\n\\t"'), c_source
+	assert c_source.contains('"add x0, x1, x2, lsr 3\\n\\t"'), c_source
 }
 
 fn test_misspelled_asm_registers_are_reported_with_suggestions() {
