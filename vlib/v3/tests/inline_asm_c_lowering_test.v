@@ -39,11 +39,13 @@ fn update_local() u64 {
 }
 
 struct AsmOperand {
+	mut:
 	index int
 	ptr   &AsmNestedOperand
 }
 
 struct AsmNestedOperand {
+	mut:
 	index int
 }
 
@@ -122,11 +124,13 @@ fn update_local() u64 {
 }
 
 struct AsmOperand {
+	mut:
 	index int
 	ptr   &AsmNestedOperand
 }
 
 struct AsmNestedOperand {
+	mut:
 	index int
 }
 
@@ -376,6 +380,50 @@ fn test_intel_asm_rejects_memory_capable_constraints() {
 	assert generate.output.contains('constraint `m` is not supported for operands in structured `intel` assembly'), generate.output
 }
 
+fn test_inline_asm_rejects_immutable_outputs_for_every_constraint_spelling() {
+	for index, constraint in ['', '+r'] {
+		generate, _ := generate_inline_asm_c('immutable_asm_output_${index}', 'fn main() {
+	value := u64(1)
+	asm amd64 intel {
+		inc value
+		; ${constraint} (value)
+	}
+}
+')
+		assert generate.exit_code != 0, generate.output
+		assert generate.output.contains('`value` is immutable, declare it with `mut` to make it mutable'), generate.output
+	}
+	non_lvalue, _ := generate_inline_asm_c('non_lvalue_asm_output', 'fn main() {
+	asm amd64 intel {
+		nop
+		; (u64(1))
+	}
+}
+')
+	assert non_lvalue.exit_code != 0, non_lvalue.output
+	assert non_lvalue.output.contains('inline assembly output must be an lvalue'), non_lvalue.output
+}
+
+fn test_intel_asm_rejects_constraints_in_the_wrong_operand_section() {
+	generate, _ := generate_inline_asm_c('intel_constraint_section_program', 'fn main() {
+	mut output := u64(0)
+	a := u64(1)
+	b := u64(2)
+	c := u64(3)
+	asm amd64 intel {
+		nop
+		; r (output)
+		; =r (a) +r (b) &r (c)
+	}
+}
+')
+	assert generate.exit_code != 0, generate.output
+	assert generate.output.contains('output constraint `r` must start with `=` or `+`'), generate.output
+	for constraint in ['=r', '+r', '&r'] {
+		assert generate.output.contains('input constraint `${constraint}` cannot use output modifiers'), generate.output
+	}
+}
+
 fn test_intel_asm_accepts_size_qualified_memory_operands() {
 	generate, c_source := generate_inline_asm_c('intel_memory_size_program', 'fn main() {
 	asm amd64 intel {
@@ -473,6 +521,8 @@ fn test_arm64_asm_accepts_sme_za_register() {
 		zero {za}
 		zero {za0.s}
 		zero {za15.b}
+		mov za0h.s[w12, 0], p0/m, z0.s
+		mov za15v.s[w12, 0], p0/m, z0.s
 		zero {zt0}
 		ptrue pn8.b
 		ptrue pn15.b
@@ -483,6 +533,8 @@ fn test_arm64_asm_accepts_sme_za_register() {
 	assert c_source.contains('"zero {za}\\n\\t"'), c_source
 	assert c_source.contains('"zero {za0.s}\\n\\t"'), c_source
 	assert c_source.contains('"zero {za15.b}\\n\\t"'), c_source
+	assert c_source.contains('"mov za0h.s[w12, 0], p0/m, z0.s\\n\\t"'), c_source
+	assert c_source.contains('"mov za15v.s[w12, 0], p0/m, z0.s\\n\\t"'), c_source
 	assert c_source.contains('"zero {zt0}\\n\\t"'), c_source
 	assert c_source.contains('"ptrue pn8.b\\n\\t"'), c_source
 	assert c_source.contains('"ptrue pn15.b\\n\\t"'), c_source

@@ -57,6 +57,13 @@ fn (mut tc TypeChecker) check_inline_asm_block(id flat.NodeId, node flat.Node, s
 	header := util.parse_inline_asm_header(block[..open])
 	registers := util.asm_register_names(header.arch)
 	sections := inline_asm_section_ranges(block, open + 1, close)
+	if sections.len > 1 {
+		for index, _ in inline_asm_ios(block, sections[1]) {
+			if index < int(node.children_count) {
+				tc.check_inline_asm_output_lvalue(tc.a.child(&node, index))
+			}
+		}
+	}
 	if header.is_intel && !header.is_raw {
 		mut child_offset := 0
 		for index in 1 .. 3 {
@@ -89,6 +96,14 @@ fn (mut tc TypeChecker) check_inline_asm_block(id flat.NodeId, node flat.Node, s
 	}
 }
 
+fn (mut tc TypeChecker) check_inline_asm_output_lvalue(id flat.NodeId) {
+	if !tc.expr_can_take_address(id) {
+		tc.record_error_at(.assignment_mismatch, 'inline assembly output must be an lvalue', id, tc.a.node(id).pos)
+		return
+	}
+	tc.check_lvalue_mutability(id)
+}
+
 // check_inline_asm_intel_ios rejects the operand constraints that a structured `intel`
 // block cannot express, because compilers still format those placeholders as AT&T.
 fn (mut tc TypeChecker) check_inline_asm_intel_ios(id flat.NodeId, node flat.Node, base int, ios []InlineAsmIOSpan, child_offset int, is_output bool) {
@@ -97,6 +112,14 @@ fn (mut tc TypeChecker) check_inline_asm_intel_ios(id flat.NodeId, node flat.Nod
 			if is_output { '+r' } else { 'r' }
 		} else {
 			io.constraint
+		}
+		if is_output && constraint[0] !in [`=`, `+`] {
+			tc.record_error_at(.compile_error, 'output constraint `${constraint}` must start with `=` or `+`', id, token.new_span(node.pos.id, base + io.start, base + io.end))
+			continue
+		}
+		if !is_output && constraint.bytes().any(it in [`=`, `+`, `&`]) {
+			tc.record_error_at(.compile_error, 'input constraint `${constraint}` cannot use output modifiers `=`, `+`, or `&`', id, token.new_span(node.pos.id, base + io.start, base + io.end))
+			continue
 		}
 		if constraint.trim_left('=+&%*') == 'r' {
 			child_index := child_offset + index

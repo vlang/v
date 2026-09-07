@@ -2051,9 +2051,7 @@ pub const arm_with_number_register_list = {
 pub const arm64_no_number_register_list = {
 	16: ['pn8', 'pn9', 'pn10', 'pn11', 'pn12', 'pn13', 'pn14', 'pn15']
 	32: ['wsp', 'wzr']
-	64: ['sp', 'lr', 'fp', 'pc', 'xzr', 'nzcv', 'fpcr', 'fpsr', 'daif', 'za', 'za0', 'za1',
-		'za2', 'za3', 'za4', 'za5', 'za6', 'za7', 'za8', 'za9', 'za10', 'za11', 'za12', 'za13',
-		'za14', 'za15', 'zt0']
+	64: ['sp', 'lr', 'fp', 'pc', 'xzr', 'nzcv', 'fpcr', 'fpsr', 'daif', 'za', 'zt0']
 }
 
 // no comments because maps do not support comments
@@ -2074,8 +2072,11 @@ pub const arm64_with_number_register_list = {
 		's#': 32
 	}
 	64:  {
-		'x#': 32
-		'd#': 32
+		'x#':   32
+		'd#':   32
+		'za#':  16
+		'za#h': 16
+		'za#v': 16
 	}
 	128: {
 		'q#': 32

@@ -110,6 +110,8 @@ pub fn arm64_asm_register_names() []string {
 	for i in 0 .. 16 {
 		names << 'p${i}'
 		names << 'za${i}'
+		names << 'za${i}h'
+		names << 'za${i}v'
 	}
 	for i in 8 .. 16 {
 		names << 'pn${i}'

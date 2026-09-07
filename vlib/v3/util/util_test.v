@@ -75,6 +75,8 @@ fn test_asm_register_names_cover_the_supported_architectures() {
 	assert 'za' in arm64
 	assert 'za0' in arm64
 	assert 'za15' in arm64
+	assert 'za0h' in arm64
+	assert 'za15v' in arm64
 	assert 'zt0' in arm64
 	assert 'pn8' in arm64
 	assert 'pn15' in arm64
