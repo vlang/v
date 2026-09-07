@@ -93,13 +93,27 @@ fn test_big_mod_pow_against_known_values() {
 }
 
 fn test_big_mod_pow_matches_mod_pow() {
+	exponents := [u64(2), 3, 17, 65537, 4294967311, (u64(1) << digit_bits) + 65537]
 	for ms in test_moduli {
 		m := parse(ms)
 		b := parse('123456789012345678901234567890') % m
-		for e in [u64(2), 3, 17, 65537, 4294967311] {
+		for e in exponents {
 			assert b.big_mod_pow(integer_from_u64(e), m)! == b.mod_pow(e, m), '${ms} ${e}'
 		}
 	}
+}
+
+fn test_mont_mul_at_subquadratic_threshold() {
+	m := one_int.left_shift(u32(montgomery_subquadratic_limit * digit_bits)) - integer_from_int(59)
+	ctx := m.montgomery()
+	x := parse('1234567890123456789012345678901234567890')
+	y := parse('9876543210987654321098765432109876543210')
+	xm := x.to_mont(ctx)
+	ym := y.to_mont(ctx)
+	product := xm.mont_mul(ym, ctx)
+	assert ctx.ni != zero_int
+	assert product == xm.mont_mul_cios(ym, ctx)
+	assert product.from_mont(ctx) == (x * y) % m
 }
 
 fn test_fermat_little_theorem() {

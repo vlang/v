@@ -49,6 +49,28 @@ fn (a Integer) mont_mul(b Integer, ctx MontgomeryContext) Integer {
 	if a.digits.len > s || b.digits.len > s {
 		return zero_int
 	}
+	if s >= montgomery_subquadratic_limit {
+		return a.mont_mul_subquadratic(b, ctx)
+	}
+	return a.mont_mul_cios(b, ctx)
+}
+
+// mont_mul_subquadratic uses Integer's Karatsuba/Toom multiplication paths for large moduli.
+fn (a Integer) mont_mul_subquadratic(b Integer, ctx MontgomeryContext) Integer {
+	r_bits := u32(ctx.n.digits.len * digit_bits)
+	t := a * b
+	m := (t.mask_bits(r_bits) * ctx.ni).mask_bits(r_bits)
+	r := (t + m * ctx.n).right_shift(r_bits)
+	if r.abs_cmp(ctx.n) >= 0 {
+		return r - ctx.n
+	}
+	return r
+}
+
+// mont_mul_cios interleaves multiplication and reduction without materialising the product.
+@[direct_array_access]
+fn (a Integer) mont_mul_cios(b Integer, ctx MontgomeryContext) Integer {
+	s := ctx.n.digits.len
 	n := ctx.n.digits
 	mut t := []u64{len: s + 2}
 	for i in 0 .. s {

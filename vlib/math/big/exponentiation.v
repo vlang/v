@@ -8,9 +8,14 @@ are based on refer to https://github.com/vlang/v/pull/18461
 // internal struct to make passing montgomery values simpler
 struct MontgomeryContext {
 	n     Integer // |modulus|
+	ni    Integer // (R^-1 * R - 1) / n, used by the multiplication-based reduction
 	rr    Integer // R^2 mod n, for conversions into montgomery form
 	n0inv u64 // -n[0]^-1 mod 2^digit_bits, the reduction multiplier
 }
+
+// Switch to the multiplication-based reduction when Integer multiplication starts using
+// Karatsuba. CIOS remains faster below this point and avoids its intermediate allocations.
+const montgomery_subquadratic_limit = karatsuba_multiplication_limit
 
 // montgomery calculates a montgomery context for reductions to montgomery space based on
 // the modulus provided in the integer `m`; assume m is odd and m != 0
@@ -24,9 +29,15 @@ fn (m Integer) montgomery() MontgomeryContext {
 	// R is the smallest power of the base above n, so that reduction is a
 	// digit-wise shift rather than a bit-wise one.
 	r_bits := u32(n.digits.len * digit_bits)
+	mut ni := zero_int
+	if n.digits.len >= montgomery_subquadratic_limit {
+		r := one_int.left_shift(r_bits)
+		ni = (r.mod_inv(n) * r - one_int) / n
+	}
 
 	return MontgomeryContext{
 		n: n
+		ni: ni
 		rr: one_int.left_shift(r_bits * 2) % n
 		// n * n0inv == -1 (mod base), which is what makes the low digit of
 		// t + m * n vanish during reduction.
