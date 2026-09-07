@@ -1587,13 +1587,13 @@ fn rewrite_windows_path_arg(arg string, resolver WindowsPathResolver) string {
 
 // cc_uses_short_windows_paths reports whether the given C compiler needs the
 // Windows paths passed to it to be rewritten to their ASCII 8.3 short forms
-// first. Both tcc and the MinGW gcc toolchain read response file contents
+// first. Both tcc and the MinGW GCC toolchain, including its C++ drivers, read response file contents
 // with the ANSI C runtime: non-ASCII characters in paths get mangled on
 // Windows setups, whose active code page can not represent them (or whose
 // compiler expects UTF-8). V therefore prefers pure ASCII short paths and,
 // for gcc, falls back to the Unicode command line when no short name exists.
-fn cc_uses_short_windows_paths(cc CC) bool {
-	return cc in [.gcc, .tcc]
+fn cc_uses_short_windows_paths(cc CC, compiler_type pref.CompilerType) bool {
+	return cc in [.gcc, .tcc] || compiler_type == .cplusplus
 }
 
 fn short_windows_path(path string) string {
@@ -1605,7 +1605,7 @@ fn short_windows_path(path string) string {
 
 fn (v &Builder) tcc_windows_path(p string) string {
 	$if windows {
-		if cc_uses_short_windows_paths(v.ccoptions.cc) {
+		if cc_uses_short_windows_paths(v.ccoptions.cc, v.pref.ccompiler_type) {
 			return short_windows_path(p)
 		}
 	}
@@ -1613,9 +1613,9 @@ fn (v &Builder) tcc_windows_path(p string) string {
 }
 
 // tcc_windows_path_arg rewrites the Windows path arguments of tcc and the
-// MinGW gcc toolchain to ASCII 8.3 short paths, so that non-ASCII project
+// MinGW GCC toolchain to ASCII 8.3 short paths, so that non-ASCII project
 // paths survive the ANSI response file encoding (see issue #28126). tcc keeps
-// the broader rewrite_windows_path_arg, while gcc gets only its real
+// the broader rewrite_windows_path_arg, while GCC and its C++ drivers get only their real
 // filesystem operands rewritten: gcc argument vectors can contain user
 // `CFLAGS` with path looking values (e.g. `-DROOT="C:\Program Files\SDK"`),
 // which must not be altered. If an 8.3 alias is unavailable, should_use_rsp
@@ -1625,7 +1625,7 @@ fn (v &Builder) tcc_windows_path_arg(arg string) string {
 		if v.ccoptions.cc == .tcc {
 			return rewrite_windows_path_arg(arg, short_windows_path)
 		}
-		if v.ccoptions.cc == .gcc {
+		if v.ccoptions.cc == .gcc || v.pref.ccompiler_type == .cplusplus {
 			return rewrite_windows_path_operand_arg(arg, short_windows_path)
 		}
 	}
@@ -1666,7 +1666,8 @@ fn (v &Builder) should_use_rsp(rsp_args []string) bool {
 		// os.short_path returns its input when the volume has 8.3 aliases disabled.
 		// An ANSI response file would replace those remaining Unicode characters
 		// with `?`, while the direct command line is passed through CreateProcessW.
-		if v.ccoptions.cc == .gcc && !gcc_rsp_args_are_ascii(rsp_args) {
+		if (v.ccoptions.cc == .gcc || v.pref.ccompiler_type == .cplusplus)
+			&& !gcc_rsp_args_are_ascii(rsp_args) {
 			return false
 		}
 	}
