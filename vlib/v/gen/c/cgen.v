@@ -9064,6 +9064,11 @@ fn (mut g Gen) type_needs_deep_scope_gc_pin(typ ast.Type) bool {
 }
 
 fn (mut g Gen) c_type_has_ptr(typ ast.Type) bool {
+	mut memo := map[ast.Type]bool{}
+	return g.c_type_has_ptr_memo(typ, mut memo)
+}
+
+fn (mut g Gen) c_type_has_ptr_memo(typ ast.Type, mut memo map[ast.Type]bool) bool {
 	if typ == 0 {
 		return false
 	}
@@ -9072,40 +9077,59 @@ fn (mut g Gen) c_type_has_ptr(typ ast.Type) bool {
 		|| unaliased_typ.is_ptr() {
 		return true
 	}
+	if unaliased_typ in memo {
+		return memo[unaliased_typ]
+	}
+	memo[unaliased_typ] = false
 	sym := g.table.final_sym(unaliased_typ)
 	if sym.is_pointer() {
+		memo[unaliased_typ] = true
 		return true
 	}
-	match sym.kind {
+	result := match sym.kind {
 		.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char,
 		.rune, .bool, .enum {
-			return false
+			false
 		}
 		.array_fixed {
 			info := sym.info as ast.ArrayFixed
-			return g.c_type_has_ptr(info.elem_type)
+			g.c_type_has_ptr_memo(info.elem_type, mut memo)
 		}
 		.struct {
 			info := sym.info as ast.Struct
+			mut has_ptr := false
 			for embed in info.embeds {
-				if g.c_type_has_ptr(embed) {
-					return true
+				if g.c_type_has_ptr_memo(embed, mut memo) {
+					has_ptr = true
+					break
 				}
 			}
-			for field in info.fields {
-				if g.c_type_has_ptr(field.typ) {
-					return true
+			if !has_ptr {
+				for field in info.fields {
+					if g.c_type_has_ptr_memo(field.typ, mut memo) {
+						has_ptr = true
+						break
+					}
 				}
 			}
-			return false
+			has_ptr
 		}
 		else {
-			return true
+			true
 		}
 	}
+	memo[unaliased_typ] = result
+	return result
 }
 
 fn (mut g Gen) type_has_pointer_bearing_c_union(typ ast.Type) bool {
+	mut memo := map[ast.Type]bool{}
+	mut ptr_memo := map[ast.Type]bool{}
+	return g.type_has_pointer_bearing_c_union_memo(typ, mut memo, mut ptr_memo)
+}
+
+fn (mut g Gen) type_has_pointer_bearing_c_union_memo(typ ast.Type, mut memo map[ast.Type]bool,
+	mut ptr_memo map[ast.Type]bool) bool {
 	if typ == 0 || typ.has_option_or_result() || typ.is_any_kind_of_pointer() || typ.is_ptr() {
 		return false
 	}
@@ -9118,31 +9142,45 @@ fn (mut g Gen) type_has_pointer_bearing_c_union(typ ast.Type) bool {
 		|| resolved_typ.is_any_kind_of_pointer() || resolved_typ.is_ptr() {
 		return false
 	}
+	if resolved_typ in memo {
+		return memo[resolved_typ]
+	}
+	memo[resolved_typ] = false
 	sym := g.table.final_sym(resolved_typ)
-	match sym.kind {
+	result := match sym.kind {
 		.array_fixed {
 			info := sym.info as ast.ArrayFixed
-			return g.type_has_pointer_bearing_c_union(info.elem_type)
+			g.type_has_pointer_bearing_c_union_memo(info.elem_type, mut memo, mut ptr_memo)
 		}
 		.struct {
 			info := sym.info as ast.Struct
-			if sym.language != .v && info.is_union && g.c_type_has_ptr(resolved_typ) {
-				return true
-			}
-			for embed in info.embeds {
-				if g.type_has_pointer_bearing_c_union(embed) {
-					return true
+			mut has_pointer_bearing_c_union := sym.language != .v && info.is_union
+				&& g.c_type_has_ptr_memo(resolved_typ, mut ptr_memo)
+			if !has_pointer_bearing_c_union {
+				for embed in info.embeds {
+					if g.type_has_pointer_bearing_c_union_memo(embed, mut memo, mut ptr_memo) {
+						has_pointer_bearing_c_union = true
+						break
+					}
 				}
 			}
-			for field in info.fields {
-				if g.type_has_pointer_bearing_c_union(field.typ) {
-					return true
+			if !has_pointer_bearing_c_union {
+				for field in info.fields {
+					if g.type_has_pointer_bearing_c_union_memo(field.typ, mut memo,
+							mut ptr_memo) {
+						has_pointer_bearing_c_union = true
+						break
+					}
 				}
 			}
+			has_pointer_bearing_c_union
 		}
-		else {}
+		else {
+			false
+		}
 	}
-	return false
+	memo[resolved_typ] = result
+	return result
 }
 
 fn (mut g Gen) scope_var_needs_deep_gc_pin(obj ast.Var) bool {
