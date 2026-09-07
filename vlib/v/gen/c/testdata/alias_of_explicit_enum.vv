@@ -1,0 +1,15 @@
+enum RasterizationMode as u32 {
+	default  = 0
+	max_enum = max_int
+}
+
+type RasterizationModeExt = RasterizationMode
+
+struct Config {
+	mode RasterizationModeExt
+}
+
+fn main() {
+	config := Config{}
+	println(u32(config.mode))
+}
