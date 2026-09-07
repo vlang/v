@@ -603,15 +603,25 @@ fn cgen_attrs(attrs []ast.Attr) []string {
 	mut res := []string{cap: attrs.len}
 	for attr in attrs {
 		mut s := attr.name
+		mut s_opaque_pos := attr.name_opaque_pos.clone()
 		if attr.has_arg {
 			mut arg := attr.arg
+			mut arg_opaque_pos := attr.arg_opaque_pos.clone()
 			if attr.kind == .string {
 				quote := if attr.quote == `"` { '"' } else { "'" }
 				arg = '${quote}${arg}${quote}'
+				// shift for the opening quote char just prepended above
+				for i in 0 .. arg_opaque_pos.len {
+					arg_opaque_pos[i] += quote.len
+				}
+			}
+			prefix_len := s.len + ': '.len
+			for pos in arg_opaque_pos {
+				s_opaque_pos << prefix_len + pos
 			}
 			s += ': ${arg}'
 		}
-		res << '_S("${cescape_nonascii(util.smart_quote(s, false))}")'
+		res << '_S("${cescape_nonascii(util.smart_quote(s, false, s_opaque_pos))}")'
 	}
 	return res
 }
@@ -619,8 +629,8 @@ fn cgen_attrs(attrs []ast.Attr) []string {
 fn cgen_vattrs(attrs []ast.Attr) []string {
 	mut res := []string{cap: attrs.len}
 	for attr in attrs {
-		name := cescape_nonascii(util.smart_quote(attr.name, false))
-		arg := cescape_nonascii(util.smart_quote(attr.arg, false))
+		name := cescape_nonascii(util.smart_quote(attr.name, false, attr.name_opaque_pos))
+		arg := cescape_nonascii(util.smart_quote(attr.arg, false, attr.arg_opaque_pos))
 		res << '((VAttribute){.name=_S("${name}"),.has_arg=${attr.has_arg},.arg=_S("${arg}"),.kind=AttributeKind__${attr.kind}})'
 	}
 	return res
@@ -628,7 +638,7 @@ fn cgen_vattrs(attrs []ast.Attr) []string {
 
 fn (mut g Gen) comptime_at(node ast.AtExpr) {
 	if node.kind == .vmod_file {
-		val := cescape_nonascii(util.smart_quote(node.val, false))
+		val := cescape_nonascii(util.smart_quote(node.val, false, []int{}))
 		g.write('_S("${val}")')
 	} else {
 		val := node.val.replace('\\', '\\\\')
@@ -1503,9 +1513,9 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.comptime.comptime_for_attr_var = node.val_var
 				g.comptime.comptime_for_attr_value = attr
 				g.writeln('/* attribute ${i} : ${attr.name} */ {')
-				g.writeln('\t${node.val_var}.name = _S("${attr.name}");')
+				g.writeln('\t${node.val_var}.name = _S("${util.smart_quote(attr.name, false, attr.name_opaque_pos)}");')
 				g.writeln('\t${node.val_var}.has_arg = ${attr.has_arg};')
-				g.writeln('\t${node.val_var}.arg = _S("${util.smart_quote(attr.arg, false)}");')
+				g.writeln('\t${node.val_var}.arg = _S("${util.smart_quote(attr.arg, false, attr.arg_opaque_pos)}");')
 				g.writeln('\t${node.val_var}.kind = AttributeKind__${attr.kind};')
 				g.stmts(node.stmts)
 				g.write_defer_stmts(node.scope, false, node.pos)
