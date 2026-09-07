@@ -336,6 +336,54 @@ fn (mut d Decoder) text() !string {
 	return out.bytestr()
 }
 
+// skip_response_text consumes an unmodelled response without leaving literal
+// payloads behind to be mistaken for the next response. A literal marker ends
+// its physical line; the response continues after exactly the announced
+// number of octets.
+fn (mut d Decoder) skip_response_text() ! {
+	for {
+		line := d.text()!
+		has_literal, size := literal_suffix_size(line)!
+		if !has_literal {
+			return
+		}
+		if size > max_literal_size {
+			return error('imap: the server announced a ${size} octet literal, over the ${max_literal_size} limit')
+		}
+		d.crlf()!
+		d.read_n(int(size))!
+	}
+}
+
+fn literal_suffix_size(line string) !(bool, u32) {
+	if !line.ends_with('}') {
+		return false, 0
+	}
+	brace := line.last_index_u8(`{`)
+	if brace < 0 {
+		return false, 0
+	}
+	mut digits_end := line.len - 1
+	if digits_end > brace + 1 && line[digits_end - 1] == `+` {
+		digits_end--
+	}
+	if digits_end == brace + 1 {
+		return false, 0
+	}
+	mut size := u64(0)
+	for i in brace + 1 .. digits_end {
+		ch := line[i]
+		if ch < `0` || ch > `9` {
+			return false, 0
+		}
+		size = size * 10 + u64(ch - `0`)
+		if size > 0xffffffff {
+			return error('imap: a literal size in an extension response overflows 32 bits')
+		}
+	}
+	return true, u32(size)
+}
+
 // accept_nil consumes the atom NIL where a parenthesised value could stand,
 // and reports whether it did. NIL is how a server says a header the message
 // never carried, or a content type with no parameters.

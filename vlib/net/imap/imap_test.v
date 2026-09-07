@@ -146,6 +146,9 @@ fn mock_reply(tag string, cmd string, line string) string {
 	if cmd == 'LOGOUT' {
 		return '* BYE mock signing off\r\n${tag} OK LOGOUT completed\r\n'
 	}
+	if cmd == 'BYE' {
+		return '* BYE server going away\r\n'
+	}
 	if cmd in ['CREATE', 'DELETE', 'RENAME', 'CHECK', 'SUBSCRIBE', 'UNSUBSCRIBE', 'UNSELECT', 'COPY',
 		'MOVE'] {
 		return '${tag} OK ${cmd} completed\r\n'
@@ -363,11 +366,10 @@ fn test_unsolicited_updates_reach_the_client() {
 	c.noop()!
 	assert c.exists == 9
 	assert c.recent == 2
-	// Two removals with no fresh count behind them, the way Dovecot answers.
-	// The client has to do the arithmetic itself, or it goes on reporting
-	// messages it just watched being taken out.
+	// Leaving the mailbox clears counters that no longer describe a selected
+	// mailbox, even when Dovecot reports removals without a fresh count.
 	c.close_mailbox()!
-	assert c.exists == 7
+	assert c.exists == 0
 	c.close()!
 	th.wait()
 	l.close() or {}
@@ -424,8 +426,14 @@ fn test_a_refused_command_leaves_the_session_usable() {
 	port, th := start(mut l, mock_greeting, seen)!
 
 	mut c := new_client(server: '127.0.0.1', port: port)!
+	c.select_mailbox('INBOX')!
+	assert c.selected == 'INBOX'
+	assert c.exists == 172
 	c.select_mailbox('Nope') or {
 		assert err.msg().contains('Mailbox does not exist')
+		assert c.selected == ''
+		assert c.exists == 0
+		assert c.recent == 0
 		// The failure was the server's answer, not a broken connection, so the
 		// next command must still work.
 		c.noop()!
@@ -481,13 +489,93 @@ fn test_a_preauth_greeting_opens_the_session() {
 	seen := chan string{ cap: 64 }
 	port, th := start(mut l, '* PREAUTH IMAP4rev1 already authenticated', seen)!
 
-	mut c := new_client(server: '127.0.0.1', port: port)!
+	mut c := new_client(server: '127.0.0.1', port: port, username: 'already', password: 'unused')!
 	assert c.is_open
 	c.noop()!
 	c.close()!
 	th.wait()
 	l.close() or {}
-	drain(seen)
+	assert drain(seen) == ['a0001 NOOP', 'a0002 LOGOUT']
+}
+
+fn test_greeting_logindisabled_prevents_sending_credentials() {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	seen := chan string{ cap: 64 }
+	port, th := start(mut l, '* OK [CAPABILITY IMAP4rev1 LOGINDISABLED] no cleartext login', seen)!
+
+	new_client(server: '127.0.0.1', port: port, username: 'bob', password: 'secret') or {
+		assert err.msg().contains('disabled LOGIN')
+		th.wait()
+		l.close() or {}
+		assert drain(seen) == []
+		return
+	}
+	assert false, 'LOGINDISABLED must prevent automatic LOGIN'
+}
+
+fn test_preauth_cannot_bypass_requested_starttls() {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	seen := chan string{ cap: 64 }
+	port, th := start(mut l, '* PREAUTH already authenticated', seen)!
+
+	new_client(server: '127.0.0.1', port: port, starttls: true) or {
+		assert err.msg().contains('before STARTTLS')
+		th.wait()
+		l.close() or {}
+		assert drain(seen) == []
+		return
+	}
+	assert false, 'PREAUTH cannot satisfy a requested STARTTLS upgrade'
+}
+
+fn test_a_refused_starttls_closes_the_transport() {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	seen := chan string{ cap: 64 }
+	port, th := start(mut l, mock_greeting, seen)!
+
+	new_client(server: '127.0.0.1', port: port, starttls: true) or {
+		assert err.msg().contains('unknown command')
+		th.wait()
+		l.close() or {}
+		assert drain(seen) == ['a0001 STARTTLS']
+		return
+	}
+	assert false, 'a refused STARTTLS must fail construction'
+}
+
+fn test_a_failed_automatic_login_closes_the_transport() {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	seen := chan string{ cap: 64 }
+	port, th := start(mut l, mock_greeting, seen)!
+
+	new_client(server: '127.0.0.1', port: port, username: 'bob', password: 'wrong') or {
+		assert err.msg().contains('Invalid credentials')
+		// The mock exits only after its peer closes, so this also verifies that
+		// the setup error did not leave the transport behind.
+		th.wait()
+		l.close() or {}
+		assert drain(seen) == ['a0001 LOGIN "bob" "wrong"']
+		return
+	}
+	assert false, 'a refused automatic login must fail construction'
+}
+
+fn test_an_unsolicited_bye_closes_the_local_transport() {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	seen := chan string{ cap: 64 }
+	port, th := start(mut l, mock_greeting, seen)!
+	mut c := new_client(server: '127.0.0.1', port: port)!
+
+	c.command('BYE') or {
+		assert err.msg().contains('server closed the session')
+		assert !c.is_open
+		assert !c.transport_open
+		th.wait()
+		l.close() or {}
+		assert drain(seen) == ['a0001 BYE']
+		return
+	}
+	assert false, 'an unsolicited BYE must fail the outstanding command'
 }
 
 fn test_ssl_and_starttls_are_mutually_exclusive() {
@@ -586,4 +674,19 @@ fn test_build_args_splits_out_what_must_be_a_literal() {
 	escaped, none_needed := build_args('CREATE', ['od"d\\name'])
 	assert escaped == ['CREATE "od\\"d\\\\name"']
 	assert none_needed.len == 0
+}
+
+fn test_append_dates_are_rendered_as_utc() {
+	local := time.Time{
+		year: 2026
+		month: 9
+		day: 7
+		hour: 12
+		minute: 34
+		second: 56
+		is_local: true
+	}
+	utc := local.local_to_utc()
+	expected := '${utc.day:02}-${month_names[utc.month - 1]}-${utc.year:04} ${utc.hour:02}:${utc.minute:02}:${utc.second:02} +0000'
+	assert format_internal_date(local) == expected
 }

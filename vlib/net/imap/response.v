@@ -212,6 +212,11 @@ fn (mut c Client) read_response(tag string) !Response {
 			d.sp()!
 			c.read_untagged(mut d, mut out)!
 			d.crlf()!
+			if !c.is_open && !c.logging_out {
+				text := out.text
+				c.shutdown()
+				return error('imap: the server closed the session: ${text}')
+			}
 			continue
 		}
 		got := d.astring()!
@@ -277,8 +282,9 @@ fn (mut c Client) read_untagged(mut d Decoder, mut out Response) ! {
 		}
 		else {
 			// An extension this module does not model. Its line is skipped
-			// whole rather than half read.
-			d.text()!
+			// whole rather than half read, including any literal payloads and
+			// the continuation of the response behind them.
+			d.skip_response_text()!
 		}
 	}
 }
@@ -838,19 +844,51 @@ fn parse_internal_date(s string) !time.Time {
 	if clock.len != 3 {
 		return error('imap: `${s}` has no hour, minute and second')
 	}
+	if day_parts[0].len == 0 || day_parts[0].len > 2 || day_parts[2].len != 4 || clock[0].len != 2 || clock[1].len != 2 || clock[2].len != 2 {
+		return error('imap: `${s}` does not use the internal date field widths')
+	}
+	day := parse_decimal(day_parts[0], 'day')!
+	year := parse_decimal(day_parts[2], 'year')!
+	hour := parse_decimal(clock[0], 'hour')!
+	minute := parse_decimal(clock[1], 'minute')!
+	second := parse_decimal(clock[2], 'second')!
 	month := month_number(day_parts[1])!
 	zone := parse_zone(parts[2])!
+	if year < 1 || year > 9999 {
+		return error('imap: `${s}` has a year outside 1..9999')
+	}
+	max_day := time.days_in_month(month, year)!
+	if day < 1 || day > max_day {
+		return error('imap: `${s}` has a day outside 1..${max_day}')
+	}
+	if hour > 23 || minute > 59 || second > 59 {
+		return error('imap: `${s}` has a time outside 00:00:00..23:59:59')
+	}
 	stamp := time.new(
-		year: day_parts[2].int()
+		year: year
 		month: month
-		day: day_parts[0].int()
-		hour: clock[0].int()
-		minute: clock[1].int()
-		second: clock[2].int()
+		day: day
+		hour: hour
+		minute: minute
+		second: second
 	)
 	// The stamp is local to the sender's zone, so the offset is taken back off
 	// to land on the same instant everywhere.
 	return time.unix(stamp.unix() - zone)
+}
+
+fn parse_decimal(s string, name string) !int {
+	if s == '' {
+		return error('imap: an internal date has an empty ${name}')
+	}
+	mut n := 0
+	for ch in s {
+		if ch < `0` || ch > `9` {
+			return error('imap: `${s}` is not a numeric ${name}')
+		}
+		n = n * 10 + int(ch - `0`)
+	}
+	return n
 }
 
 // The month names the protocol spells its dates with: read here, and written
@@ -872,8 +910,11 @@ fn parse_zone(s string) !i64 {
 	if s.len != 5 || (s[0] != `+` && s[0] != `-`) {
 		return error('imap: `${s}` is not a time zone offset')
 	}
-	hours := s[1..3].int()
-	minutes := s[3..5].int()
+	hours := parse_decimal(s[1..3], 'time zone hour')!
+	minutes := parse_decimal(s[3..5], 'time zone minute')!
+	if hours > 23 || minutes > 59 {
+		return error('imap: `${s}` is not a valid time zone offset')
+	}
 	seconds := i64(hours) * 3600 + i64(minutes) * 60
 	if s[0] == `-` {
 		return -seconds

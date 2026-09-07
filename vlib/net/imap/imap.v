@@ -72,6 +72,12 @@ mut:
 	ssl_conn &ssl.SSLConn = unsafe { nil }
 	dec      ?&Decoder
 	tag_seq  int
+	// transport_open is separate from is_open: an unsolicited BYE makes the
+	// session unusable before the local socket has necessarily been closed.
+	transport_open      bool
+	authenticated       bool
+	logging_out         bool
+	server_capabilities []string
 pub mut:
 	is_open   bool
 	encrypted bool
@@ -94,7 +100,10 @@ pub fn new_client(config Config) !&Client {
 		Config: config
 	}
 	c.connect()!
-	c.login()!
+	c.login() or {
+		c.shutdown()
+		return err
+	}
 	return c
 }
 
@@ -102,37 +111,53 @@ pub fn new_client(config Config) !&Client {
 // in. `new_client` calls it; call it directly only to drive a session by hand.
 pub fn (mut c Client) connect() ! {
 	c.conn = net.dial_tcp('${c.server}:${c.effective_port()}')!
+	c.transport_open = true
+	c.is_open = true
+	c.finish_connect() or {
+		c.shutdown()
+		return err
+	}
+}
+
+// finish_connect performs every setup step after the socket has opened. Its
+// caller owns the single cleanup path for any error from these operations.
+fn (mut c Client) finish_connect() ! {
 	if c.timeout != 0 {
 		c.conn.set_read_timeout(c.timeout)
 		c.conn.set_write_timeout(c.timeout)
 	}
 	c.dec = decoder_on(io.new_buffered_reader(reader: c.conn))
-	c.is_open = true
 
 	if c.ssl {
 		c.upgrade_to_tls()!
 	}
-	// A greeting that turns the connection away leaves nothing to say goodbye
-	// to, so the socket goes rather than being left for the server to time
-	// out.
-	c.read_greeting() or {
-		c.shutdown()
-		return err
-	}
+	greeting := c.read_greeting()!
+	c.authenticated = greeting.status == .preauth
+	c.server_capabilities = greeting.capabilities.clone()
 	if c.starttls {
+		if c.authenticated {
+			return error('imap: the server preauthenticated before STARTTLS could be negotiated')
+		}
 		c.run('STARTTLS')!
 		c.upgrade_to_tls()!
+		// RFC 3501 allows capabilities to change after STARTTLS. The greeting's
+		// list must not be used to make decisions about the protected session.
+		c.server_capabilities.clear()
 	}
 }
 
 // login authenticates with the LOGIN command, and does nothing when no
 // username was configured.
 pub fn (mut c Client) login() ! {
-	if c.username == '' {
+	if c.username == '' || c.authenticated {
 		return
+	}
+	if c.has_capability('LOGINDISABLED') {
+		return error('imap: the server disabled LOGIN in its greeting')
 	}
 	text, literals := build_args('LOGIN', [c.username, c.password])
 	c.send(text, literals)!
+	c.authenticated = true
 }
 
 // login_plain authenticates with the SASL PLAIN mechanism instead, which some
@@ -149,7 +174,9 @@ pub fn (mut c Client) login_plain() ! {
 
 // capability returns the extensions the server advertises.
 pub fn (mut c Client) capability() ![]string {
-	return c.run('CAPABILITY')!.capabilities
+	capabilities := c.run('CAPABILITY')!.capabilities
+	c.server_capabilities = capabilities.clone()
+	return capabilities
 }
 
 // supports reports whether the server advertises `name`, which is how an
@@ -367,7 +394,7 @@ pub fn (mut c Client) check() ! {
 // flagged `\Deleted` on the way out.
 pub fn (mut c Client) close_mailbox() ! {
 	c.run('CLOSE')!
-	c.selected = ''
+	c.clear_selected()
 }
 
 // unselect leaves the selected mailbox without expunging anything (RFC 3691),
@@ -376,35 +403,54 @@ pub fn (mut c Client) close_mailbox() ! {
 // It needs the UNSELECT capability.
 pub fn (mut c Client) unselect() ! {
 	c.run('UNSELECT')!
-	c.selected = ''
+	c.clear_selected()
 }
 
 // logout ends the session politely, giving the server the chance to close the
 // connection itself.
 pub fn (mut c Client) logout() ! {
-	c.run('LOGOUT')!
+	if !c.is_open {
+		c.shutdown()
+		return
+	}
+	c.logging_out = true
+	c.run('LOGOUT') or {
+		c.logging_out = false
+		c.shutdown()
+		return err
+	}
+	c.logging_out = false
+	c.shutdown()
 }
 
 // close logs out and tears down the connection. It is safe to call on a
 // session that is already closed.
 pub fn (mut c Client) close() ! {
-	if !c.is_open {
+	if !c.transport_open {
 		return
 	}
-	c.logout() or {}
+	if c.is_open {
+		c.logout() or {}
+		return
+	}
 	c.shutdown()
 }
 
 // shutdown tears the transport down without saying goodbye, which is what a
 // session that never opened properly is left with.
 fn (mut c Client) shutdown() {
+	if !c.transport_open {
+		return
+	}
+	c.transport_open = false
 	if c.encrypted {
 		c.ssl_conn.shutdown() or {}
 		c.encrypted = false
 	}
 	c.conn.close() or {}
 	c.is_open = false
-	c.selected = ''
+	c.authenticated = false
+	c.clear_selected()
 }
 
 // command sends one command with a fresh tag and returns the completion text,
@@ -460,6 +506,11 @@ fn (mut c Client) await_continuation(tag string) ! {
 			c.read_untagged(mut d, mut res)!
 			d.crlf()!
 			c.absorb(res)
+			if !c.is_open {
+				text := res.text
+				c.shutdown()
+				return error('imap: the server closed the session: ${text}')
+			}
 			continue
 		}
 		// A tagged completion here means the command was refused before the
@@ -477,7 +528,7 @@ fn (mut c Client) await_continuation(tag string) ! {
 }
 
 // read_greeting reads the untagged response a server opens with.
-fn (mut c Client) read_greeting() ! {
+fn (mut c Client) read_greeting() !Response {
 	mut d := c.decoder()!
 	d.expect(`*`)!
 	d.sp()!
@@ -494,6 +545,7 @@ fn (mut c Client) read_greeting() ! {
 	if status != .ok && status != .preauth {
 		return error('imap: unexpected greeting: ${status} ${res.text}')
 	}
+	return res
 }
 
 // absorb takes the mailbox updates out of a response. A server reports new
@@ -515,6 +567,9 @@ fn (mut c Client) absorb(res Response) {
 	}
 	if res.has_recent {
 		c.recent = res.recent
+	}
+	if res.capabilities.len > 0 {
+		c.server_capabilities = res.capabilities.clone()
 	}
 }
 
@@ -564,6 +619,9 @@ fn (mut c Client) run_transfer(verb string, set SeqSet, dest string) !Response {
 // open_mailbox runs SELECT or EXAMINE and reads back the state the server
 // reports alongside it.
 fn (mut c Client) open_mailbox(verb string, name string) !Mailbox {
+	// A selection attempt returns the session to authenticated state if it
+	// fails, so the old mailbox and its counters stop being current up front.
+	c.clear_selected()
 	res := c.run_with_mailbox(verb, name)!
 	c.selected = name
 	c.exists = res.exists
@@ -581,6 +639,21 @@ fn (mut c Client) open_mailbox(verb string, name string) !Mailbox {
 		// read-only mailbox to a SELECT as well.
 		read_only: res.read_only || verb == 'EXAMINE'
 	}
+}
+
+fn (mut c Client) clear_selected() {
+	c.selected = ''
+	c.exists = 0
+	c.recent = 0
+}
+
+fn (c &Client) has_capability(name string) bool {
+	for capability in c.server_capabilities {
+		if capability.to_upper() == name.to_upper() {
+			return true
+		}
+	}
+	return false
 }
 
 fn (c &Client) effective_port() int {
@@ -684,5 +757,6 @@ fn quote_arg(s string) string {
 // format_internal_date renders a time the way APPEND wants it, which is a
 // fixed two digit day and an English month.
 fn format_internal_date(t time.Time) string {
-	return '${t.day:02}-${month_names[t.month - 1]}-${t.year:04} ${t.hour:02}:${t.minute:02}:${t.second:02} +0000'
+	utc := t.local_to_utc()
+	return '${utc.day:02}-${month_names[utc.month - 1]}-${utc.year:04} ${utc.hour:02}:${utc.minute:02}:${utc.second:02} +0000'
 }

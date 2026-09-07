@@ -11,8 +11,9 @@ module imap
 // Zero is not a valid message number, which leaves it free to mean `*`.
 const seq_star = u32(0)
 
-// The value `*` stands for while a set is being merged.
-const seq_max = u32(0xffffffff)
+// The value `*` stands for while a set is being merged. It is one past the
+// full u32 range so the largest valid IMAP number remains distinct.
+const seq_bound_star = u64(0x100000000)
 
 // SeqRange is one number or one range of them. A single number has `start`
 // equal to `stop`. A `stop` of zero means `*`, so `{5, 0}` reads `5:*` and
@@ -115,11 +116,11 @@ pub fn (s &SeqSet) numbers() ![]u32 {
 	mut out := []u32{}
 	for r in s.ranges {
 		lo, hi := bounds(r)
-		if hi == seq_max {
+		if hi == seq_bound_star {
 			return error('imap: a set holding `*` cannot be expanded by the client')
 		}
 		for n := lo; n <= hi; n++ {
-			out << n
+			out << u32(n)
 		}
 	}
 	return out
@@ -156,28 +157,28 @@ pub fn (r SeqRange) str() string {
 // bounds maps a range onto the plain interval it denotes, `*` becoming the
 // largest number there is. Merging is then ordinary interval arithmetic rather
 // than a nest of special cases.
-fn bounds(r SeqRange) (u32, u32) {
+fn bounds(r SeqRange) (u64, u64) {
 	return to_bound(r.start), to_bound(r.stop)
 }
 
-fn to_bound(n u32) u32 {
+fn to_bound(n u32) u64 {
 	if n == seq_star {
-		return seq_max
+		return seq_bound_star
 	}
-	return n
+	return u64(n)
 }
 
-fn from_bound(n u32) u32 {
-	if n == seq_max {
+fn from_bound(n u64) u32 {
+	if n == seq_bound_star {
 		return seq_star
 	}
-	return n
+	return u32(n)
 }
 
 // insert places the interval `lo:hi` and folds in every range it touches,
 // which is what keeps `1,2,3,4` from ever being sent when `1:4` says the same
 // thing.
-fn (mut s SeqSet) insert(lo u32, hi u32) {
+fn (mut s SeqSet) insert(lo u64, hi u64) {
 	// Bisect for the first range that reaches far enough to touch this one.
 	mut first := 0
 	mut last := s.ranges.len
@@ -197,7 +198,7 @@ fn (mut s SeqSet) insert(lo u32, hi u32) {
 	for after < s.ranges.len {
 		r_lo, r_hi := bounds(s.ranges[after])
 		// Touching counts: 1:3 and 4:6 are the single range 1:6.
-		if new_hi != seq_max && r_lo > new_hi + 1 {
+		if new_hi != seq_bound_star && r_lo > new_hi + 1 {
 			break
 		}
 		if r_lo < new_lo {

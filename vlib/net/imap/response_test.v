@@ -307,8 +307,27 @@ fn test_a_completion_for_another_tag_is_an_error() {
 
 fn test_an_untagged_bye_closes_the_session() {
 	mut c := client_over('* BYE Autologout; idle for too long\r\na1 OK done\r\n')
-	c.read_response('a1')!
-	assert !c.is_open
+	c.read_response('a1') or {
+		assert err.msg().contains('server closed the session')
+		assert !c.is_open
+		return
+	}
+	assert false, 'an unsolicited BYE must end the outstanding command'
+}
+
+fn test_an_unknown_untagged_response_skips_its_literals() {
+	mut c := client_over('* XDATA {3}\r\nabc\r\na1 OK done\r\n')
+	assert c.read_response('a1')!.status == .ok
+}
+
+fn test_malformed_internal_dates_return_errors() {
+	for stamp in ['32-Jan-2026 00:00:00 +0000', '29-Feb-2025 00:00:00 +0000',
+		'01-Jan-2026 24:00:00 +0000', '01-Jan-2026 00:60:00 +0000', '01-Jan-2026 00:00:60 +0000',
+		'01-Jan-2026 00:00:00 +2460', 'xx-Jan-2026 00:00:00 +0000', '01-Jan-20x6 00:00:00 +0000'] {
+		mut c := client_over('* 1 FETCH (INTERNALDATE "${stamp}")\r\na1 OK done\r\n')
+		c.read_response('a1') or { continue }
+		assert false, '`${stamp}` must be reported as a malformed INTERNALDATE'
+	}
 }
 
 fn test_a_completion_with_no_text_is_tolerated() {

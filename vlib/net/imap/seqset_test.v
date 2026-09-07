@@ -44,6 +44,11 @@ fn test_the_star_stands_for_the_last_message() {
 	assert seq_range(seq_star, 5).str() == '5:*'
 }
 
+fn test_the_largest_number_is_not_the_star() {
+	assert parse_seq_set('4294967295')!.str() == '4294967295'
+	assert seq_set([u32(0xffffffff)]).str() == '4294967295'
+}
+
 fn test_an_open_range_swallows_what_follows_it() {
 	mut s := seq_range(5, seq_star)
 	s.add(9)
