@@ -231,8 +231,9 @@ fn test_type_cache_overlay_rebinds_resolution_type_views() {
 	tc.type_cache.parse_enabled = true
 	tc.cur_file = 'main.v'
 	tc.cur_module = 'main'
+	tc.structs['Item'] = []StructField{}
 
-	assert tc.parse_resolution_type('int').name() == 'int'
+	assert tc.parse_resolution_type('Item').name() == 'Item'
 	base := tc.type_cache
 	base_view := tc.resolution_type_views.by_file['main.v'] or { panic('missing base view') }
 	assert base_view.type_cache == base
@@ -242,14 +243,14 @@ fn test_type_cache_overlay_rebinds_resolution_type_views() {
 	assert overlay != base
 	assert overlay.base == base
 	assert tc.resolution_type_views.by_file.len == 0
-	assert tc.parse_resolution_type('string').name() == 'string'
+	assert tc.parse_resolution_type('[]Item').name() == '[]Item'
 	overlay_view := tc.resolution_type_views.by_file['main.v'] or { panic('missing overlay view') }
 	assert overlay_view.type_cache == overlay
 
 	tc.unfreeze_type_cache_after_forks()
 	assert tc.type_cache == base
 	assert tc.resolution_type_views.by_file.len == 0
-	assert tc.parse_resolution_type('bool').name() == 'bool'
+	assert tc.parse_resolution_type('?Item').name() == '?Item'
 	restored_view := tc.resolution_type_views.by_file['main.v'] or {
 		panic('missing restored view')
 	}

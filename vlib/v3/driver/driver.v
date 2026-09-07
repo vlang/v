@@ -6516,6 +6516,19 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	return if target.os in ['macos', 'ios'] { 'clang' } else { 'gcc' }
 }
 
+fn v3_should_prefer_bundled_tcc_for_selfhost(building_v bool, backend string, c_only bool, is_prod bool, is_c_debug bool, c_compiler_explicit bool, target pref.Target, bundled_tcc_available bool) bool {
+	if !building_v || backend != 'c' || c_only || is_prod || is_c_debug || c_compiler_explicit
+		|| !bundled_tcc_available {
+		return false
+	}
+	host := pref.host_target()
+	return target.os == host.os && target.arch == host.arch
+}
+
+fn v3_should_regenerate_for_cc_fallback(prefer_bundled_tcc bool, tried_tcc bool, tcc_exit_code int) bool {
+	return prefer_bundled_tcc && (!tried_tcc || tcc_exit_code != 0)
+}
+
 struct V3TestBuildConstraint {
 	expression string
 	line       int
@@ -8976,19 +8989,27 @@ pub fn run(args []string) {
 	} else {
 		resolve_vroot_for_input(prefs.vroot, input_file)
 	}
+	bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	bundled_tcc_available := os.is_executable(bundled_tcc)
 	if !c_compiler_explicit && os.user_os() == 'windows' && target.os == 'windows' {
-		bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 		if os.is_executable(bundled_tcc) {
 			c_compiler = bundled_tcc
 		}
 	}
+	// The non-production C path tries bundled TCC before its `cc` fallback. Select
+	// TinyCC compile-time branches for a self-host too, so system headers and inline
+	// assembly intended for Clang do not prevent that first attempt.
+	prefer_bundled_tcc := retry_compilation
+		&& v3_should_prefer_bundled_tcc_for_selfhost(building_v, backend, c_only, is_prod, is_c_debug, c_compiler_explicit, target, bundled_tcc_available)
 	effective_c_compiler := if backend == 'arm64' {
+		'tinyc'
+	} else if prefer_bundled_tcc {
 		'tinyc'
 	} else {
 		effective_c_compiler_name(c_compiler, target)
 	}
 	explicit_tcc = c_compiler_explicit && effective_c_compiler == 'tinyc'
-	add_v3_tcc_compat_defines(mut user_defines, target.os, target.arch, is_shared, explicit_tcc)
+	add_v3_tcc_compat_defines(mut user_defines, target.os, target.arch, is_shared, explicit_tcc || prefer_bundled_tcc)
 	if os.getenv('FASTC_BENCH_PHASES') != '' {
 		eprintln('fastc-phase driver.defines ${driver_sw.elapsed().microseconds()}us')
 	}
@@ -9001,7 +9022,6 @@ pub fn run(args []string) {
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = expand_v3_module_search_paths(module_search_path_spec, prefs.vroot)
 	if explicit_tcc && c_compiler in ['tcc', 'tinyc'] {
-		bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 		if os.is_executable(bundled_tcc) {
 			c_compiler = bundled_tcc
 		}
@@ -11846,6 +11866,20 @@ pub fn run(args []string) {
 			result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
 			show_v3_c_compiler_output(show_c_output, tcc_path, result)
 			used_tcc = result.exit_code == 0
+		}
+		if v3_should_regenerate_for_cc_fallback(prefer_bundled_tcc, tried_tcc, result.exit_code) {
+			fallback := 'cc'
+			eprintln('warning: bundled tcc could not build the generated unit, regenerating with ${fallback}')
+			retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
+			cleanup_c_build_dir(cc_dir)
+			retry_result := cmdexec.run(os.executable(), retry_args)
+			if retry_result.output.len > 0 {
+				print(retry_result.output)
+			}
+			if retry_result.exit_code != 0 {
+				exit(retry_result.exit_code)
+			}
+			return
 		}
 		if is_prod || !tried_tcc || result.exit_code != 0 {
 			used_tcc = false
