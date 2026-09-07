@@ -4285,8 +4285,13 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 	aliases2 := c.asm_ios(mut stmt.input, mut stmt.scope, false)
 	aliases << aliases2
 	if stmt.is_intel && !stmt.is_raw {
+		errors_before := c.errors.len
 		c.check_asm_intel_ios(stmt.output)
 		c.check_asm_intel_ios(stmt.input)
+		if c.errors.len == errors_before {
+			// an unsupported constraint already makes the operand's width moot
+			c.check_asm_intel_operand_widths(stmt, aliases)
+		}
 	}
 	for mut template in stmt.templates {
 		if stmt.is_raw {
@@ -4351,6 +4356,63 @@ fn (mut c Checker) check_asm_intel_ios(ios []ast.AsmIO) {
 		if constraint != 'r' {
 			c.error('constraint `${io.constraint}` is not supported for operands in structured `intel` assembly; use a register-only `r` constraint or a `raw` template with explicit operand modifiers',
 				io.pos)
+		}
+	}
+}
+
+// x86_register_bit_width returns the width of a fixed width x86 register name,
+// or none when `name` does not denote one.
+fn x86_register_bit_width(name string) ?int {
+	for width, names in ast.x86_no_number_register_list {
+		if name in names {
+			return width
+		}
+	}
+	// `r8`..`r15` and their `b`/`w`/`d` sub registers
+	if name.len > 1 && name[0] == `r` && name[1].is_digit() {
+		suffix := name[name.len - 1]
+		if suffix.is_digit() {
+			return 64
+		}
+		return match suffix {
+			`b` { 8 }
+			`w` { 16 }
+			`d` { 32 }
+			else { none }
+		}
+	}
+	return none
+}
+
+// check_asm_intel_operand_widths rejects an instruction that mixes a named operand
+// with a hard register narrower than 64 bits. V substitutes named operands with the
+// GNU `%V` modifier, which is the only one that omits AT&T's `%` prefix - as
+// `.intel_syntax noprefix` requires - but it always prints the full 64-bit register.
+// `mov eax, some_int` therefore reaches the assembler as `mov eax, rcx`, which it
+// rejects with a confusing `invalid operand for instruction`.
+fn (mut c Checker) check_asm_intel_operand_widths(stmt ast.AsmStmt, aliases []string) {
+	if stmt.arch !in [.amd64, .i386] {
+		return
+	}
+	for template in stmt.templates {
+		if template.is_directive || template.is_label {
+			continue
+		}
+		if !template.args.any(it is ast.AsmAlias && it.name in aliases) {
+			continue
+		}
+		for arg in template.args {
+			if arg !is ast.AsmRegister {
+				continue
+			}
+			reg := arg as ast.AsmRegister
+			width := x86_register_bit_width(reg.name) or { continue }
+			if width == 64 {
+				continue
+			}
+			c.error('a named operand in a structured `intel` block is always substituted as a 64-bit register, so it cannot share an instruction with the ${width}-bit register `${reg.name}`; use the 64-bit register instead, or a `raw intel` block with explicit operand modifiers',
+				template.pos)
+			break
 		}
 	}
 }

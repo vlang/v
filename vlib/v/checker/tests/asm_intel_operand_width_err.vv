@@ -1,0 +1,15 @@
+fn intel_sub(a int, b int) int {
+	mut res := 0
+	asm amd64 intel {
+		mov eax, a
+		mov res, eax
+		; +r (res)
+		; r (a)
+		  r (b)
+	}
+	return res
+}
+
+fn main() {
+	println(intel_sub(50, 8))
+}
