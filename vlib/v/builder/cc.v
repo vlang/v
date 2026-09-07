@@ -1874,8 +1874,32 @@ fn resolved_windows_ccompiler_path(ccompiler string) string {
 	return name
 }
 
+fn execute_windows_batch_ccompiler(cmd string) os.Result {
+	$if windows {
+		// `os.execute` expands percent-delimited environment variables before starting
+		// cmd.exe. Expand this indirection once inside cmd.exe instead, so percent signs
+		// carried by compiler arguments are not scanned again.
+		command_env_name := 'V_CCOMPILER_BATCH_COMMAND_${os.getpid()}'
+		old_command := os.getenv_opt(command_env_name)
+		os.setenv(command_env_name, cmd, true)
+		defer {
+			if previous := old_command {
+				os.setenv(command_env_name, previous, true)
+			} else {
+				os.unsetenv(command_env_name)
+			}
+		}
+		command_interpreter := os.getenv_opt('COMSPEC') or { 'cmd.exe' }
+		return os.exec([command_interpreter, '/d', '/v:off', '/s', '/c', '%${command_env_name}%'])
+	}
+	return os.execute(cmd)
+}
+
 fn (v &Builder) execute_ccompiler(ccompiler string, cmd string, exec_args []string) os.Result {
-	if exec_args.len > 0 && !ccompiler_is_windows_batch_file(ccompiler) {
+	if exec_args.len > 0 {
+		if ccompiler_is_windows_batch_file(ccompiler) {
+			return execute_windows_batch_ccompiler(cmd)
+		}
 		return os.exec(exec_args)
 	}
 	return os.execute(cmd)

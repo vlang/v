@@ -366,6 +366,33 @@ fn test_windows_batch_compilers_keep_the_command_interpreter_path() {
 	}
 }
 
+fn test_windows_batch_execution_preserves_percent_literals() {
+	$if windows {
+		test_root := os.join_path(os.vtmp_dir(), 'v_gcc_batch_percent_${os.getpid()}')
+		wrapper := os.join_path(test_root, 'v-gcc-wrapper.cmd')
+		os.mkdir_all(test_root) or { panic(err) }
+		defer {
+			os.rmdir_all(test_root) or {}
+		}
+		os.write_file(wrapper, '@echo off\r\necho %*\r\n') or { panic(err) }
+		old_keep := os.getenv_opt('KEEP')
+		os.setenv('KEEP', 'expanded', true)
+		defer {
+			if keep := old_keep {
+				os.setenv('KEEP', keep, true)
+			} else {
+				os.unsetenv('KEEP')
+			}
+		}
+		arg := r'-DROOT=D:\工作\%KEEP%\main.c'
+		cmd := '${windows_quote_exec_arg(wrapper)} ${windows_quote_exec_arg(arg)}'
+		res := execute_windows_batch_ccompiler(cmd)
+		assert res.exit_code == 0, res.output
+		assert res.output.contains(r'%KEEP%'), res.output
+		assert !res.output.contains('expanded'), res.output
+	}
+}
+
 fn test_gcc_unicode_response_plan_keeps_large_ascii_runs_out_of_the_command_line() {
 	mut args := []string{}
 	for i in 0 .. 2000 {
