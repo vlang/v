@@ -4283,7 +4283,9 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 	}
 	mut aliases := c.asm_ios(mut stmt.output, mut stmt.scope, true)
 	aliases2 := c.asm_ios(mut stmt.input, mut stmt.scope, false)
-	aliases << aliases2
+	for alias, typ in aliases2 {
+		aliases[alias] = typ
+	}
 	if stmt.is_intel && !stmt.is_raw {
 		errors_before := c.errors.len
 		c.check_asm_intel_ios(stmt.output)
@@ -4360,60 +4362,44 @@ fn (mut c Checker) check_asm_intel_ios(ios []ast.AsmIO) {
 	}
 }
 
-// x86_register_bit_width returns the width of a fixed width x86 register name,
-// or none when `name` does not denote one.
-fn x86_register_bit_width(name string) ?int {
-	for width, names in ast.x86_no_number_register_list {
-		if name in names {
-			return width
-		}
-	}
-	// `r8`..`r15` and their `b`/`w`/`d` sub registers
-	if name.len > 1 && name[0] == `r` && name[1].is_digit() {
-		suffix := name[name.len - 1]
-		if suffix.is_digit() {
-			return 64
-		}
-		return match suffix {
-			`b` { 8 }
-			`w` { 16 }
-			`d` { 32 }
-			else { none }
-		}
-	}
-	return none
-}
-
-// check_asm_intel_operand_widths rejects an instruction that mixes a named operand
-// with a hard register narrower than 64 bits. V substitutes named operands with the
-// GNU `%V` modifier, which is the only one that omits AT&T's `%` prefix - as
-// `.intel_syntax noprefix` requires - but it always prints the full 64-bit register.
-// `mov eax, some_int` therefore reaches the assembler as `mov eax, rcx`, which it
-// rejects with a confusing `invalid operand for instruction`.
-fn (mut c Checker) check_asm_intel_operand_widths(stmt ast.AsmStmt, aliases []string) {
+// check_asm_intel_operand_widths rejects named operands whose V type is not the
+// target's native register width. The GNU `%V` modifier used by structured Intel
+// blocks always substitutes a target-native register, independently of the V type.
+fn (mut c Checker) check_asm_intel_operand_widths(stmt ast.AsmStmt, aliases map[string]ast.Type) {
 	if stmt.arch !in [.amd64, .i386] {
 		return
 	}
+	native_width := if stmt.arch == .amd64 { 8 } else { 4 }
 	for template in stmt.templates {
 		if template.is_directive || template.is_label {
 			continue
 		}
-		if !template.args.any(it is ast.AsmAlias && it.name in aliases) {
-			continue
-		}
 		for arg in template.args {
-			if arg !is ast.AsmRegister {
-				continue
-			}
-			reg := arg as ast.AsmRegister
-			width := x86_register_bit_width(reg.name) or { continue }
-			if width == 64 {
-				continue
-			}
-			c.error('a named operand in a structured `intel` block is always substituted as a 64-bit register, so it cannot share an instruction with the ${width}-bit register `${reg.name}`; use the 64-bit register instead, or a `raw intel` block with explicit operand modifiers',
-				template.pos)
-			break
+			c.check_asm_intel_arg_width(arg, aliases, native_width, stmt.arch, template.pos)
 		}
+	}
+}
+
+fn (mut c Checker) check_asm_intel_arg_width(arg ast.AsmArg, aliases map[string]ast.Type,
+	native_width int, arch pref.Arch, pos token.Pos) {
+	match arg {
+		ast.AsmAlias {
+			if arg.name !in aliases {
+				return
+			}
+			typ := aliases[arg.name]
+			type_width, _ := c.table.type_size(typ)
+			if type_width != native_width {
+				c.error('named operand `${arg.name}` has ${type_width * 8}-bit type `${c.table.type_str(typ)}`, but structured `intel` assembly substitutes named operands with a ${native_width * 8}-bit register on ${arch}; use a ${native_width * 8}-bit operand, or a `raw intel` block with explicit operand modifiers',
+					pos)
+			}
+		}
+		ast.AsmAddressing {
+			c.check_asm_intel_arg_width(arg.displacement, aliases, native_width, arch, pos)
+			c.check_asm_intel_arg_width(arg.base, aliases, native_width, arch, pos)
+			c.check_asm_intel_arg_width(arg.index, aliases, native_width, arch, pos)
+		}
+		else {}
 	}
 }
 
@@ -4458,7 +4444,7 @@ fn asm_expected_operand_count(arch pref.Arch, name string) ?int {
 	}
 }
 
-fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
+fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases map[string]ast.Type) {
 	match arg {
 		ast.AsmAlias {
 			if arg.name !in aliases && arg.name !in stmt.local_labels
@@ -4487,15 +4473,15 @@ fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
 	}
 }
 
-fn (mut c Checker) asm_ios(mut ios []ast.AsmIO, mut scope ast.Scope, output bool) []string {
-	mut aliases := []string{}
+fn (mut c Checker) asm_ios(mut ios []ast.AsmIO, mut scope ast.Scope, output bool) map[string]ast.Type {
+	mut aliases := map[string]ast.Type{}
 	for mut io in ios {
 		typ := c.expr(mut io.expr)
 		if output {
 			c.fail_if_immutable(mut io.expr)
 		}
 		if io.alias != '' {
-			aliases << io.alias
+			aliases[io.alias] = typ
 			if io.alias in scope.objects {
 				scope.objects[io.alias] = ast.Var{
 					name:      io.alias

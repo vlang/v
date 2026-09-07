@@ -10,6 +10,15 @@ fn intel_sub(a int, b int) int {
 	return res
 }
 
+fn intel_shift(value int) int {
+	mut result := value
+	asm amd64 intel {
+		sar result, 1
+		; +r (result)
+	}
+	return result
+}
+
 fn main() {
 	println(intel_sub(50, 8))
 }
