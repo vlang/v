@@ -74,3 +74,13 @@ fn test_intel_wide_enum_operand_with_clang() {
 	}
 	assert result == 42
 }
+
+fn test_intel_decimal_int_min_literal_with_clang() {
+	mut result := i64(0)
+	asm amd64 intel {
+		mov result, value
+		; =r (result)
+		; r (-2147483648) as value
+	}
+	assert result == -2147483648
+}

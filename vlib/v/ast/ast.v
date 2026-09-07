@@ -247,21 +247,25 @@ pub:
 
 // concrete_type returns the integer type used to emit this literal in C.
 pub fn (node IntegerLiteral) concrete_type() Type {
-	if node.val.starts_with('-') {
-		uval := node.val.i64()
-		high32 := u32(uval >> 32)
-		low32 := u32(uval)
-		return if high32 == u32(0xFFFFFFFF) && (low32 & u32(0x80000000)) != 0 {
-			i32_type
-		} else {
-			i64_type
-		}
+	is_negative := node.val.starts_with('-')
+	literal := if is_negative { node.val[1..] } else { node.val }
+	uval := literal.u64()
+	if uval <= u64(0x7FFFFFFF) {
+		return i32_type
 	}
-	uval := node.val.u64()
-	if (uval & u64(0xFFFFFFFF00000000)) == 0 {
-		return if (u32(uval) & u32(0x80000000)) == 0 { i32_type } else { u32_type }
+	is_non_decimal := literal.starts_with('0x') || literal.starts_with('0X')
+		|| literal.starts_with('0o') || literal.starts_with('0O') || literal.starts_with('0b')
+		|| literal.starts_with('0B')
+	// The sign is a unary operator in C. Decimal 2147483648 therefore already has
+	// a 64-bit signed type in `-2147483648`, while non-decimal constants may use
+	// the unsigned 32-bit candidate.
+	if (!is_negative || is_non_decimal) && uval <= u64(0xFFFFFFFF) {
+		return u32_type
 	}
-	return if (uval & u64(0x8000000000000000)) == 0 { i64_type } else { u64_type }
+	if uval <= u64(0x7FFFFFFFFFFFFFFF) || (is_negative && !is_non_decimal) {
+		return i64_type
+	}
+	return u64_type
 }
 
 pub struct FloatLiteral {
