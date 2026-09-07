@@ -44,6 +44,7 @@ fn test_asm_register_names_cover_the_supported_architectures() {
 	assert 'r15d' in amd64
 	assert 'zmm31' in amd64
 	assert 'k7' in amd64
+	assert 'tmm7' in amd64
 	assert 'st' in amd64
 
 	i386 := asm_register_names('i386')

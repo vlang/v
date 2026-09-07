@@ -3239,7 +3239,7 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 	if open < 0 || close <= open {
 		return none
 	}
-	header := source[..open].fields()
+	header := strip_c_inline_asm_comments(source[..open]).fields()
 	mut arch := ''
 	mut is_volatile := false
 	mut is_raw := false
@@ -3859,7 +3859,7 @@ fn is_c_inline_asm_x86_register(name string) bool {
 	if name.len == 2 && name[0] == `k` && name[1] >= `0` && name[1] <= `7` {
 		return true
 	}
-	for prefix in ['r', 'xmm', 'ymm', 'zmm', 'mm', 'st'] {
+	for prefix in ['r', 'xmm', 'ymm', 'zmm', 'mm', 'st', 'tmm'] {
 		if name.starts_with(prefix) && name.len > prefix.len {
 			mut end := name.len
 			if prefix == 'r' && name[end - 1] in [`b`, `w`, `d`] {

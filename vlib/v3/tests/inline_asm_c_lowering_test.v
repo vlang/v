@@ -389,6 +389,28 @@ fn test_intel_asm_accepts_size_qualified_memory_operands() {
 	assert c_source.contains('"fadd st, st(1)\\n\\t"'), c_source
 }
 
+fn test_inline_asm_header_comments_do_not_enable_raw_mode() {
+	generate, c_source := generate_inline_asm_c('header_comment_program', 'fn main() {
+	asm amd64 /* raw */ {
+		mov rax, rbx
+	}
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"mov %rbx, %rax\\n\\t"'), c_source
+}
+
+fn test_intel_asm_accepts_amx_tile_registers() {
+	generate, c_source := generate_inline_asm_c('intel_amx_program', 'fn main() {
+	asm amd64 intel {
+		tilezero tmm0
+	}
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"tilezero tmm0\\n\\t"'), c_source
+}
+
 fn test_intel_asm_rejects_narrow_register_operands() {
 	generate, _ := generate_inline_asm_c('intel_narrow_register_program', 'fn main() {
 	value := u32(7)

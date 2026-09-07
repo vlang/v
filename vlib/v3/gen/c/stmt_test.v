@@ -659,9 +659,24 @@ fn test_inline_asm_block_reads_raw_and_intel_modifiers() {
 	assert intel.templates == ['add value, increment']
 }
 
+fn test_inline_asm_header_comments_do_not_enable_modifiers() {
+	block := parse_c_inline_asm_block('asm amd64 /* raw intel */ {
+	mov rax, rbx
+}') or {
+		assert false
+		return
+	}
+	assert block.arch == 'amd64'
+	assert !block.is_raw
+	assert !block.is_intel
+	assert block.templates == ['mov rax, rbx']
+}
+
 fn test_inline_asm_x86_registers_include_avx512_mask_registers() {
 	assert is_c_inline_asm_x86_register('k0')
 	assert is_c_inline_asm_x86_register('k7')
 	assert !is_c_inline_asm_x86_register('k8')
 	assert !is_c_inline_asm_x86_register('kernel')
+	assert is_c_inline_asm_x86_register('tmm0')
+	assert is_c_inline_asm_x86_register('tmm7')
 }

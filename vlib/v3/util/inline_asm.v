@@ -70,6 +70,7 @@ pub fn x86_asm_register_names() []string {
 		'rax', 'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip']
 	for i in 0 .. 8 {
 		names << 'k${i}'
+		names << 'tmm${i}'
 	}
 	for i in 0 .. 16 {
 		names << 'r${i}'
