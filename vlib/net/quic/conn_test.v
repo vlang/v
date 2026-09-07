@@ -1613,6 +1613,35 @@ fn test_new_connection_id_enforces_default_active_limit() {
 	assert false, 'expected the default active CID limit to be enforced'
 }
 
+// RFC 9000 §5.1.1 assigns the preferred-address CID sequence 1 and says it
+// consumes one slot in active_connection_id_limit. With the default limit of
+// two, the initial and preferred-address CIDs leave no room for sequence 2.
+fn test_preferred_address_connection_id_enforces_default_active_limit() {
+	mut peer_params := generous_transport_params()
+	preferred_cid := [u8(0x91), 0x92, 0x93, 0x94]
+	preferred_token := []u8{len: stateless_reset_token_length, init: 0x51}
+	peer_params.preferred_address = PreferredAddress{
+		connection_id: preferred_cid
+		stateless_reset_token: preferred_token
+	}
+	mut c, _, now := drive_to_established(generous_transport_params(), peer_params)!
+	defer {
+		c.handshake.free()
+	}
+	assert c.peer_connection_ids.len == 2
+	assert c.peer_connection_ids[1].connection_id == preferred_cid
+	assert c.peer_connection_ids[1].stateless_reset_token == preferred_token
+
+	mut result := PollResult{}
+	c.dispatch_one_rtt_frame(peer_connection_id_for_test(2, [u8(2)], 0x22), now, mut result) or {
+		assert err.code() == int(quic_error_connection_id_limit_error)
+		assert err.msg().contains('active_connection_id_limit of 2')
+		assert c.peer_connection_ids.len == 2
+		return
+	}
+	assert false, 'expected the preferred-address CID to count against the default active CID limit'
+}
+
 // Retire Prior To 1 retires the peer's initial CID (sequence 0). Silently
 // ignoring that state transition would make subsequent packets use a CID
 // the peer has required us to stop using.

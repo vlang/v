@@ -1438,6 +1438,16 @@ fn (mut c QuicConn) dispatch_handshake_message(msg HandshakeMessage, framed []u8
 				c.update_initial_peer_connection_id(c.peer_scid, token)!
 				c.stateless_reset.record_token(c.peer_scid, token)!
 			}
+			if preferred := peer_params.preferred_address {
+				// RFC 9000 §5.1.1 assigns the preferred-address CID sequence 1
+				// and counts it against active_connection_id_limit even before use.
+				c.handle_new_connection_id(NewConnectionIdFrame{
+					sequence_number: 1
+					connection_id: preferred.connection_id
+					stateless_reset_token: preferred.stateless_reset_token
+				})!
+				c.stateless_reset.record_token(preferred.connection_id, preferred.stateless_reset_token)!
+			}
 		}
 		.wait_certificate {
 			c.handshake.process_certificate_or_request(msg, framed)!

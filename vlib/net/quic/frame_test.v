@@ -777,6 +777,18 @@ fn test_new_token_frame_rejects_zero_length_token() {
 	assert false, 'expected a zero-length NEW_TOKEN token to be rejected'
 }
 
+fn test_new_token_frame_rejects_truncated_token_as_frame_encoding_error() {
+	mut buf := encode_varint(frame_type_new_token)!
+	buf << encode_varint(u64(5))!
+	buf << [u8(1), 2]
+	parse_frame(buf) or {
+		assert err.code() == int(quic_error_frame_encoding_error)
+		assert err.msg().contains('exceeds remaining buffer')
+		return
+	}
+	assert false, 'expected a truncated NEW_TOKEN token to be rejected'
+}
+
 // test_new_connection_id_frame_round_trip covers the exact real-world
 // shape that motivated adding this frame type, same as NEW_TOKEN above --
 // confirmed sent by Google's QUIC endpoints as standard practice

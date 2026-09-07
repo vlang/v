@@ -527,7 +527,7 @@ fn parse_new_token_frame(buf []u8, start int) !(QuicFrame, int) {
 		return error_with_code('quic: NEW_TOKEN frame: token must not be empty (RFC 9000 §19.7 FRAME_ENCODING_ERROR)', int(quic_error_frame_encoding_error))
 	}
 	if u64(offset) + length > u64(buf.len) {
-		return error('quic: NEW_TOKEN frame: length ${length} exceeds remaining buffer')
+		return error_with_code('quic: NEW_TOKEN frame: length ${length} exceeds remaining buffer (RFC 9000 §19.7 FRAME_ENCODING_ERROR)', int(quic_error_frame_encoding_error))
 	}
 	token := buf[offset..offset + int(length)].clone()
 	offset += int(length)
