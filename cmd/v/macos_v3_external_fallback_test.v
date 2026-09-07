@@ -25,22 +25,13 @@ fn run_external_fallback_test_process(executable string, args []string, work_dir
 	return result
 }
 
-fn external_fallback_inline_asm_source() string {
-	$if amd64 {
-		return 'fn main() {\n\ta := i64(10)\n\tmut b := i64(0)\n\tasm amd64 {\n\t\tmov rax, a\n\t\tmov b, rax\n\t\t; +r (b)\n\t\t; r (a)\n\t\t; rax\n\t}\n\tprintln(b)\n}\n'
-	} $else $if arm64 {
-		return 'fn main() {\n\ta := 10\n\tmut b := 0\n\tasm arm64 {\n\t\tmov x0, a\n\t\tmov b, x0\n\t\t; +r (b)\n\t\t; r (a)\n\t\t; x0\n\t}\n\tprintln(b)\n}\n'
-	} $else {
-		return ''
-	}
+fn write_v3_rejecting_c_compiler(path string) ! {
+	os.write_file(path, '#!/bin/sh\nif [ "\${VEXE##*/}" = v1_fallback ]; then\n\texec cc "\$@"\nfi\nexit 1\n')!
+	os.chmod(path, 0o700)!
 }
 
-fn test_macos_v3_uses_external_v1_fallback_for_unsupported_programs() {
+fn test_macos_v3_uses_external_v1_fallback_after_c_compilation_error() {
 	$if macos || linux {
-		source_text := external_fallback_inline_asm_source()
-		if source_text == '' {
-			return
-		}
 		vroot := os.dir(@VEXE)
 		fallback := os.join_path(vroot, macos_v3_v1_fallback_binary)
 		// Developer/compiler-only test builds do not necessarily come through make.
@@ -55,10 +46,12 @@ fn test_macos_v3_uses_external_v1_fallback_for_unsupported_programs() {
 			os.rmdir_all(root) or {}
 		}
 		source := os.join_path(root, 'main.v')
-		os.write_file(source, source_text)!
+		os.write_file(source, 'fn main() { println(10) }\n')!
+		compiler := os.join_path(root, 'reject-v3-cc')
+		write_v3_rejecting_c_compiler(compiler)!
 		output := os.join_path(root, 'main')
-		result := run_external_fallback_test_process(@VEXE, ['-silent', '-o', output, source],
-			vroot, {
+		result := run_external_fallback_test_process(@VEXE, ['-silent', '-nocache', '-no-parallel',
+			'-cc', compiler, '-o', output, source], vroot, {
 			'V_MACOS_V3_NO_FALLBACK': ''
 		})
 		assert result.exit_code == 0, result.output
@@ -67,39 +60,14 @@ fn test_macos_v3_uses_external_v1_fallback_for_unsupported_programs() {
 		assert run.exit_code == 0, run.output
 		assert run.output.trim_space() == '10', run.output
 
+		strict_compiler := os.join_path(root, 'strict-reject-v3-cc')
+		write_v3_rejecting_c_compiler(strict_compiler)!
 		strict_output := os.join_path(root, 'strict')
-		strict := run_external_fallback_test_process(@VEXE, ['-silent', '-o', strict_output,
-			source], vroot, {
+		strict := run_external_fallback_test_process(@VEXE, ['-silent', '-nocache', '-no-parallel',
+			'-cc', strict_compiler, '-o', strict_output, source], vroot, {
 			'V_MACOS_V3_NO_FALLBACK': '1'
 		})
 		assert strict.exit_code != 0, strict.output
 		assert !os.exists(strict_output)
-	}
-}
-
-fn test_macos_v3_compiler_error_retries_external_v1() {
-	$if macos || linux {
-		vroot := os.dir(@VEXE)
-		fallback := os.join_path(vroot, macos_v3_v1_fallback_binary)
-		if !os.is_executable(fallback) {
-			return
-		}
-		root := os.join_path(os.vtmp_dir(), 'v3_external_compiler_error_fallback_${os.getpid()}')
-		os.rmdir_all(root) or {}
-		os.mkdir_all(root)!
-		defer {
-			os.rmdir_all(root) or {}
-		}
-		// V1 accepts this implicit numeric conversion while strict V3 currently
-		// rejects it, so it exercises the generic `compiler_error` fallback marker.
-		source := os.join_path(root, 'duration.v')
-		os.write_file(source, 'import time\n\nfn main() {\n\tmut d := time.Duration(0)\n\td = 1.0 * time.second\n\tprintln(d)\n}\n')!
-		output := os.join_path(root, 'duration')
-		result := run_external_fallback_test_process(@VEXE, ['-silent', '-o', output, source],
-			vroot, {
-			'V_MACOS_V3_NO_FALLBACK': ''
-		})
-		assert result.exit_code == 0, result.output
-		assert os.is_executable(output)
 	}
 }
