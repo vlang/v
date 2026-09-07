@@ -808,6 +808,12 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 			C.mbedtls_ssl_free(&s.ssl)
 			C.mbedtls_ssl_config_free(&s.conf)
 			free_rng(mut s.ctr_drbg, mut s.entropy)
+			if s.alpn_list != unsafe { nil } {
+				unsafe {
+					C.free(s.alpn_list)
+					s.alpn_list = nil
+				}
+			}
 			s.handle = 0
 			s.owns_socket = false
 			s.cleanup_done = true

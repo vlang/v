@@ -9,6 +9,21 @@ fn test_unconnected_ssl_conn_shutdown_is_safe_and_idempotent() {
 	assert conn.cleanup_done
 }
 
+fn test_failed_dial_frees_alpn_storage_before_marking_cleanup_done() {
+	mut conn := new_ssl_conn(
+		validate: false
+		alpn_protocols: ['h2', 'http/1.1']
+	)!
+	assert conn.alpn_list != unsafe { nil }
+	conn.dial('127.0.0.1', 0) or {
+		assert conn.cleanup_done
+		assert conn.alpn_list == unsafe { nil }
+		conn.shutdown()!
+		return
+	}
+	assert false, 'expected a TLS dial to port 0 to fail'
+}
+
 fn test_client_certificate_failure_uses_nonretryable_net_code() {
 	err := mbedtls_client_handshake_error('certificate rejected', C.MBEDTLS_ERR_X509_CERT_VERIFY_FAILED)
 	assert err.code() == net.err_tls_certificate_invalid_code
