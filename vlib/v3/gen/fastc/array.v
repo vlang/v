@@ -115,16 +115,16 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 			else {}
 		}
 	}
-	mut closure_type := if closure_or > 0 {
-		vt := g.option_value_type_for_expression(closure_tokens[..closure_or])
-		fastc_normalize_inferred_type(if vt != '' {
-			vt
-		} else {
-			g.infer_expression_type(closure_tokens[..closure_or]) or { '' }
-		})
+	mut inferred_closure_type := ''
+	if closure_or > 0 {
+		inferred_closure_type = g.option_value_type_for_expression(closure_tokens[..closure_or])
+		if inferred_closure_type == '' {
+			inferred_closure_type = g.infer_expression_type(closure_tokens[..closure_or]) or { '' }
+		}
 	} else {
-		fastc_normalize_inferred_type(g.infer_expression_type(closure_tokens) or { '' })
+		inferred_closure_type = g.infer_expression_type(closure_tokens) or { '' }
 	}
+	mut closure_type := fastc_normalize_inferred_type(inferred_closure_type)
 	// A bare function is applied to each element (`items.map(convert)`).
 	if closure_tokens.len == 1 && closure_tokens[0].tok == .name
 		&& closure_tokens[0].lit != it_name {

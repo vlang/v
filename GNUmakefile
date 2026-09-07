@@ -160,12 +160,10 @@ ifneq ($(BOOTSTRAP_VC_UNSAFE_OPTFLAGS),)
 endif
 endif
 endif
-ifdef V1_FALLBACK_BUILD
-	# Recent vc snapshots use the lean V3 dispatcher on macOS and Linux. Build
-	# the temporary v1 as the full compatibility compiler so it can create v2
-	# before either the embedded V3 driver or v1_fallback exists.
-	BOOTSTRAP_VC_CC_CFLAGS += -DCUSTOM_DEFINE_v1_fallback
-endif
+# A vc snapshot may use the lean V3 dispatcher when its generated C is built
+# on a Unix-like host. Keep the temporary v1 on the full compatibility path so
+# it can create v2 before either the embedded V3 driver or v1_fallback exists.
+BOOTSTRAP_VC_CC_CFLAGS += -DCUSTOM_DEFINE_v1_fallback
 BOOTSTRAP_TCC_REQUESTED := $(or $(findstring -cc tcc,$(strip $(VFLAGS))),$(findstring -cc=tcc,$(strip $(VFLAGS))))
 BOOTSTRAP_CCOMPILER_VFLAG :=
 BOOTSTRAP_VC_CCOMPILER_VFLAG :=
