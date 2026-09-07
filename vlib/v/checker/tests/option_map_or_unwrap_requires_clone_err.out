@@ -17,19 +17,26 @@ vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:38:14: error: ca
    37 |     opt := get_opt()
    38 |     variable := opt or { panic('none') }
       |                 ~~~
-   39 |     // A fresh Result-returning call does not copy a stored map and remains valid.
-   40 |     result_call := get_result() or { panic(err) }
-vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:45:18: error: cannot copy map: unwrapping a map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)
-   43 |         'k': get_opt()
-   44 |     }
-   45 |     index := m['k'] or { panic('none') }
+   39 |     parenthesized := (opt or { panic('none') })
+   40 |     // A fresh Result-returning call does not copy a stored map and remains valid.
+vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:39:19: error: cannot copy map: unwrapping a map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)
+   37 |     opt := get_opt()
+   38 |     variable := opt or { panic('none') }
+   39 |     parenthesized := (opt or { panic('none') })
+      |                      ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   40 |     // A fresh Result-returning call does not copy a stored map and remains valid.
+   41 |     result_call := get_result() or { panic(err) }
+vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:46:18: error: cannot copy map: unwrapping a map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)
+   44 |         'k': get_opt()
+   45 |     }
+   46 |     index := m['k'] or { panic('none') }
       |                     ~~~~~~~~~~~~~~~~~~~~
-   46 |     map_ch := chan map[string]int{}
-   47 |     channel_receive := <-map_ch or { panic(err) }
-vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:47:21: error: cannot copy map: unwrapping a map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)
-   45 |     index := m['k'] or { panic('none') }
-   46 |     map_ch := chan map[string]int{}
-   47 |     channel_receive := <-map_ch or { panic(err) }
+   47 |     map_ch := chan map[string]int{}
+   48 |     channel_receive := <-map_ch or { panic(err) }
+vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:48:21: error: cannot copy map: unwrapping a map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)
+   46 |     index := m['k'] or { panic('none') }
+   47 |     map_ch := chan map[string]int{}
+   48 |     channel_receive := <-map_ch or { panic(err) }
       |                        ~~
-   48 |
-   49 |     println(field)
+   49 |
+   50 |     println(field)

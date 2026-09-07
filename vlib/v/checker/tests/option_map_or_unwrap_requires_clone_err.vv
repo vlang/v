@@ -36,6 +36,7 @@ fn main() {
 
 	opt := get_opt()
 	variable := opt or { panic('none') }
+	parenthesized := (opt or { panic('none') })
 	// A fresh Result-returning call does not copy a stored map and remains valid.
 	result_call := get_result() or { panic(err) }
 
@@ -48,6 +49,7 @@ fn main() {
 
 	println(field)
 	println(variable)
+	println(parenthesized)
 	println(result_call)
 	println(index)
 	println(channel_receive)

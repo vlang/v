@@ -899,9 +899,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			&& (!right_type.is_ptr() || (right is ast.Ident && assign_expr_is_auto_deref(right))) {
 			// Do not allow `a = b`
 			if expr_is_or_unwrapped(right) {
-				// `x := stored_map or { ... }` is still a copy of the wrapped map, so the guard
-				// applies (see #27870), but `.clone()` has to be applied to the whole
-				// or-expression rather than to the option/result itself.
+				// `x := stored_map or { ... }` is still a map copy, so the guard applies
+				// (see #27867), but `.clone()` has to be applied to the whole or-expression.
 				c.error('cannot copy map: unwrapping a map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)',
 					right.pos())
 			} else {
@@ -1405,8 +1404,7 @@ fn (mut c Checker) change_flags_if_comptime_expr(mut left ast.Ident, right ast.E
 	}
 }
 
-// expr_is_or_unwrapped reports whether `expr` is an option/result access that was
-// unwrapped in place with an `or {}` block.
+// expr_is_or_unwrapped reports whether `expr` was unwrapped in place with an `or {}` block.
 fn expr_is_or_unwrapped(expr ast.Expr) bool {
 	return match expr {
 		ast.SelectorExpr { expr.or_block.kind == .block }
@@ -1414,6 +1412,7 @@ fn expr_is_or_unwrapped(expr ast.Expr) bool {
 		ast.Ident { expr.or_expr.kind == .block }
 		ast.IndexExpr { expr.or_expr.kind == .block }
 		ast.PrefixExpr { expr.or_block.kind == .block }
+		ast.ParExpr { expr_is_or_unwrapped(expr.expr) }
 		else { false }
 	}
 }
