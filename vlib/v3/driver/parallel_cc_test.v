@@ -46,6 +46,28 @@ fn test_v3_parallel_cc_compiles_and_runs_multiple_c_units() {
 	}
 }
 
+fn test_v3_parallel_cc_keeps_test_binaries_in_one_unit() {
+	$if macos || linux {
+		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_test_harness_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path_single(root, 'harness_test.v')
+		output := os.join_path_single(root, 'harness')
+		os.write_file(source, 'fn twice(value int) int { return value * 2 }\n\nfn test_twice() { assert twice(21) == 42 }\n')!
+		// The harness counters `assert` writes are `static` definitions inside the
+		// program body, so a split unit that only references them would not
+		// compile. The build has to stay in one translation unit.
+		build := cmdexec.run(@VEXE, ['-parallel-cc', '-nocache', '-showcc', '-o', output, source])
+		assert build.exit_code == 0, build.output
+		assert !build.output.contains('unit_1.c'), build.output
+		run_result := cmdexec.run(output, [])
+		assert run_result.exit_code == 0, run_result.output
+	}
+}
+
 fn test_v3_parallel_cc_does_not_shadow_user_parallel_header() {
 	$if macos || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_header_${os.getpid()}')
@@ -133,8 +155,7 @@ fn test_v3_parallel_cc_falls_back_for_macro_generated_function_local_static_stat
 DEF(v3_parallel_macro_next)
 ')!
 		os.write_file(source, '#flag -I @DIR\n#include "state.h"\n\nfn C.v3_parallel_macro_next() int\n\nfn first() int { return C.v3_parallel_macro_next() }\nfn second() int { return C.v3_parallel_macro_next() }\nfn main() { println(first())\nprintln(second()) }\n')!
-		build := cmdexec.run(@VEXE, ['-parallel-cc', '-nocache', '-showcc', '-o', output,
-			source])
+		build := cmdexec.run(@VEXE, ['-parallel-cc', '-nocache', '-showcc', '-o', output, source])
 		assert build.exit_code == 0, build.output
 		assert !build.output.contains('unit_0.c'), build.output
 		assert build.output.contains('src.c'), build.output

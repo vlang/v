@@ -1222,7 +1222,7 @@ fn reserve_parallel_transform_ast_with_cache_mode(mut a flat.FlatAst, skip_gener
 	if grow_nodes {
 		old_nodes := a.nodes
 		a.nodes = []flat.Node{cap: nodes_cap}
-		a.file_node_ids = []int{}
+		a.file_node_ids = []i32{}
 		a.nodes << old_nodes
 	}
 	if grow_children {
@@ -3389,15 +3389,15 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 	// ((previous top-level decl of ANY kind, fn_idx]); the shared-base parallel
 	// transform relies on those ranges being disjoint per item.
 	use_checker_tl := t.tc.top_level_idx.len > 0 && t.tc.top_level_idx_nodes_len == t.a.nodes.len
-	mut rebuilt_tl := []int{}
+	mut rebuilt_tl := []i32{}
 	if !use_checker_tl {
 		// Hand-built test ASTs and transforms after declaration synthesis do not
 		// have a current checker index. Rebuild only in that uncommon case.
-		rebuilt_tl = []int{cap: 1024}
+		rebuilt_tl = []i32{cap: 1024}
 		for i, node in t.a.nodes {
 			if node.kind in [.file, .module_decl, .struct_decl, .type_decl, .interface_decl,
 				.enum_decl, .import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl] {
-				rebuilt_tl << i
+				rebuilt_tl << i32(i)
 			}
 		}
 	}
@@ -5007,7 +5007,7 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names &[]string, names_star
 	late_scan_ids := if t.building_v && t.tc.top_level_idx.len > 0 {
 		t.tc.top_level_idx
 	} else {
-		[]int{}
+		[]i32{}
 	}
 	scan_count := if late_scan_ids.len > 0 { late_scan_ids.len } else { limit }
 	for scan_pos in 0 .. scan_count {
@@ -9683,6 +9683,14 @@ fn (mut t Transformer) simple_nested_string_interpolation(value string) ?flat.No
 		if inner.len == 0 || string_has_interp_start_bytes(inner) || string_has_newline_byte(inner) {
 			return none
 		}
+		if nested_interp_text_reads_it(inner) {
+			// `it` is owned by an enclosing `map`/`filter`, which renames it while
+			// lowering its body. A real nested interpolation of `it` reaches this
+			// transform as a parsed part rather than as literal text, so an `it`
+			// still encoded in the text here has no binding to rename and expanding
+			// it would emit an undeclared identifier.
+			return none
+		}
 		expr, typ := t.simple_nested_interp_expr(inner) or { return none }
 		parts << t.wrap_string_conversion(expr, typ)
 		i = end + 1
@@ -9952,6 +9960,46 @@ fn nested_interp_closing_brace(value string, start int) ?int {
 		}
 	}
 	return none
+}
+
+// nested_interp_text_reads_it reports whether an interpolation encoded in literal
+// text reads the implicit `it` binding, ignoring `it` used as a field name or
+// inside a quoted string.
+fn nested_interp_text_reads_it(inner string) bool {
+	mut quote := u8(0)
+	mut i := 0
+	for i < inner.len {
+		c := inner[i]
+		if quote != 0 {
+			if c == `\\` && i + 1 < inner.len {
+				i += 2
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if c == `'` || c == `"` || c == `\`` {
+			quote = c
+			i++
+			continue
+		}
+		if c.is_letter() || c == `_` {
+			mut j := i
+			for j < inner.len && (inner[j].is_alnum() || inner[j] == `_`) {
+				j++
+			}
+			if inner[i..j] == 'it' && (i == 0 || inner[i - 1] != `.`) {
+				return true
+			}
+			i = j
+			continue
+		}
+		i++
+	}
+	return false
 }
 
 fn nested_interp_literal_inner(value string) ?string {

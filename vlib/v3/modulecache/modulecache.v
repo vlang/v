@@ -120,10 +120,10 @@ pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values 
 		}
 	})
 	return Manager{
-		dir:                   os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
-		enabled:               enabled
-		salt:                  salt
-		build_pseudo_values:   build_pseudo_values
+		dir: os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
+		enabled: enabled
+		salt: salt
+		build_pseudo_values: build_pseudo_values
 		version_pseudo_values: version_pseudo_values
 	}
 }
@@ -147,11 +147,11 @@ pub fn (m &Manager) entry(module_name string, source_files []string) Entry {
 	}
 	id := '${sanitize_name(module_name)}_${hash_text(source_root)}'
 	return Entry{
-		header:       os.join_path(m.dir, '${id}.vh')
-		object:       os.join_path(m.dir, '${id}.o')
+		header: os.join_path(m.dir, '${id}.vh')
+		object: os.join_path(m.dir, '${id}.o')
 		header_stamp: os.join_path(m.dir, '${id}.vh.stamp')
 		object_stamp: os.join_path(m.dir, '${id}.body.stamp')
-		c_source:     os.join_path(m.dir, '${id}.c')
+		c_source: os.join_path(m.dir, '${id}.c')
 	}
 }
 
@@ -161,11 +161,11 @@ pub fn (m &Manager) object_entry(module_name string, source_files []string, comp
 	key := hash_text(compile_signature)
 	base := entry.object.all_before_last('.o')
 	return Entry{
-		header:       entry.header
-		object:       '${base}_${key}.o'
+		header: entry.header
+		object: '${base}_${key}.o'
 		header_stamp: entry.header_stamp
 		object_stamp: '${base}_${key}.o.stamp'
-		c_source:     '${base}_${key}.c'
+		c_source: '${base}_${key}.c'
 	}
 }
 
@@ -176,14 +176,14 @@ pub fn (m &Manager) cgen_entry(source_files []string) CgenEntry {
 	id := hash_text(paths.join('\n'))
 	base := os.join_path(m.dir, 'program_${id}')
 	return CgenEntry{
-		source:           '${base}.c'
-		metadata:         '${base}.cflags'
-		stamp:            '${base}.c.stamp'
-		prepared_main:    '${base}.main.c'
-		prepared_tcc:     '${base}.tcc.c'
-		prepared_prefix:  '${base}.prefix.c'
+		source: '${base}.c'
+		metadata: '${base}.cflags'
+		stamp: '${base}.c.stamp'
+		prepared_main: '${base}.main.c'
+		prepared_tcc: '${base}.tcc.c'
+		prepared_prefix: '${base}.prefix.c'
 		prepared_objects: '${base}.objects'
-		prepared_stamp:   '${base}.prepared.stamp'
+		prepared_stamp: '${base}.prepared.stamp'
 	}
 }
 
@@ -191,14 +191,14 @@ fn (m &Manager) generic_program_entry(source_files []string) GenericProgramEntry
 	cgen := m.cgen_entry(source_files)
 	base := cgen.source.all_before_last('.c')
 	return GenericProgramEntry{
-		specs:        '${base}.generic.specs'
-		used:         '${base}.generic.used'
-		prefix:       '${base}.generic.prefix.c'
+		specs: '${base}.generic.specs'
+		used: '${base}.generic.used'
+		prefix: '${base}.generic.prefix.c'
 		declarations: '${base}.generic.declarations.c'
-		body:         '${base}.generic.body.c'
-		literals:     '${base}.generic.literals'
-		metadata:     '${base}.generic.metadata'
-		stamp:        '${base}.generic.stamp'
+		body: '${base}.generic.body.c'
+		literals: '${base}.generic.literals'
+		metadata: '${base}.generic.metadata'
+		stamp: '${base}.generic.stamp'
 	}
 }
 
@@ -206,16 +206,16 @@ fn (m &Manager) incremental_program_entry(source_files []string) IncrementalProg
 	cgen := m.cgen_entry(source_files)
 	base := cgen.source.all_before_last('.c')
 	return IncrementalProgramEntry{
-		manifest:         '${base}.incremental.manifest'
-		body:             '${base}.incremental.body.c'
-		used:             '${base}.incremental.used'
-		specs:            '${base}.incremental.specs'
-		prefix:           '${base}.incremental.prefix.c'
-		declarations:     '${base}.incremental.declarations.c'
+		manifest: '${base}.incremental.manifest'
+		body: '${base}.incremental.body.c'
+		used: '${base}.incremental.used'
+		specs: '${base}.incremental.specs'
+		prefix: '${base}.incremental.prefix.c'
+		declarations: '${base}.incremental.declarations.c'
 		tcc_declarations: '${base}.incremental.tcc.declarations.c'
-		objects:          '${base}.incremental.objects'
-		metadata:         '${base}.incremental.metadata'
-		stamp:            '${base}.incremental.stamp'
+		objects: '${base}.incremental.objects'
+		metadata: '${base}.incremental.metadata'
+		stamp: '${base}.incremental.stamp'
 	}
 }
 
@@ -266,8 +266,7 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 			'@BUILD_TIMESTAMP',
 			'@BUILD_DATE',
 			'@BUILD_TIME',
-		])
-		{
+		]) {
 			uses_build_pseudo = true
 		}
 		if source_uses_pseudo(source, ['@VHASH', '@VCURRENTHASH']) {
@@ -345,8 +344,8 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 		hash = hash_bytes(hash, [u8(0xff)])
 	}
 	return SourceSignatureDetails{
-		signature:      hash.hex()
-		validation:     validation
+		signature: hash.hex()
+		validation: validation
 		source_digests: source_digests
 	}
 }
@@ -569,15 +568,13 @@ fn (m &Manager) source_signature(source_files []string) string {
 }
 
 fn (m &Manager) source_signature_details(source_files []string) SourceSignatureDetails {
-	return cached_source_signature_details_with_build_values(m.dir, 'module', source_files,
-		m.build_pseudo_values, m.version_pseudo_values)
+	return cached_source_signature_details_with_build_values(m.dir, 'module', source_files, m.build_pseudo_values, m.version_pseudo_values)
 }
 
 // cached_source_signature returns a content signature while using precise file
 // metadata to avoid rereading unchanged inputs on subsequent compiler runs.
 pub fn cached_source_signature(cache_dir string, namespace string, source_files []string) string {
-	return cached_source_signature_details_with_build_values(cache_dir, namespace, source_files,
-		'', '').signature
+	return cached_source_signature_details_with_build_values(cache_dir, namespace, source_files, '', '').signature
 }
 
 fn cached_source_signature_details_with_build_values(cache_dir string, namespace string, source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
@@ -588,9 +585,7 @@ fn cached_source_signature_details_with_build_values(cache_dir string, namespace
 	metadata := source_files_metadata_signature(paths)
 	if metadata.len > 0 {
 		cached := os.read_file(cache_path) or { '' }
-		if details := valid_cached_source_signature(cached, metadata, build_pseudo_values,
-			version_pseudo_values, paths.len)
-		{
+		if details := valid_cached_source_signature(cached, metadata, build_pseudo_values, version_pseudo_values, paths.len) {
 			return details
 		}
 	}
@@ -612,8 +607,7 @@ fn source_signature_cache_content(metadata string, fresh_metadata string, detail
 	if metadata.len == 0 || fresh_metadata != metadata {
 		return none
 	}
-	mut out := strings.new_builder(192 + details.validation.len * 96 +
-		details.source_digests.len * 72)
+	mut out := strings.new_builder(192 + details.validation.len * 96 + details.source_digests.len * 72)
 	out.writeln('format=${source_signature_cache_format}')
 	out.writeln('metadata=${metadata}')
 	for input in details.validation {
@@ -735,7 +729,7 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 		return none
 	}
 	return SourceSignatureDetails{
-		signature:      signature
+		signature: signature
 		source_digests: source_digests
 	}
 }
@@ -820,7 +814,10 @@ fn compile_time_env_names(source string) []string {
 		}
 		arg_pos = skip_signature_space_and_comments(source, arg_pos + 1)
 		mut is_raw := false
-		if arg_pos + 1 < source.len && source[arg_pos] == `r` && source[arg_pos + 1] in [`'`, `"`] {
+		if arg_pos + 1 < source.len && source[arg_pos] == `r` && source[arg_pos + 1] in [
+			`'`,
+			`"`,
+		] {
 			is_raw = true
 			arg_pos++
 		}
@@ -1016,9 +1013,9 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 	}
 	return Entry{
 		...entry
-		source_bodies:       source_bodies
+		source_bodies: source_bodies
 		source_bodies_known: true
-		source_digests:      source_digest_map(source_files, source_details.source_digests)
+		source_digests: source_digest_map(source_files, source_details.source_digests)
 	}
 }
 
@@ -1043,9 +1040,9 @@ pub fn (m &Manager) valid_header(module_name string, source_files []string) ?Ent
 	source_bodies := header_stamp_source_bodies(stamp, expected) or { return none }
 	return Entry{
 		...entry
-		source_bodies:       source_bodies
+		source_bodies: source_bodies
 		source_bodies_known: true
-		source_digests:      source_digest_map(source_files, source_details.source_digests)
+		source_digests: source_digest_map(source_files, source_details.source_digests)
 	}
 }
 
@@ -1084,8 +1081,7 @@ pub fn (m &Manager) write_entry(module_name string, source_files []string, heade
 	}
 	entry := m.entry(module_name, source_files)
 	write_atomic(entry.header, header)!
-	write_atomic(entry.header_stamp, header_entry_stamp(m.salt, m.source_signature(source_files),
-		header))!
+	write_atomic(entry.header_stamp, header_entry_stamp(m.salt, m.source_signature(source_files), header))!
 	return entry
 }
 
@@ -1096,8 +1092,7 @@ pub fn (m &Manager) write_header(module_name string, source_files []string, head
 	}
 	entry := m.entry(module_name, source_files)
 	write_atomic(entry.header, header)!
-	write_atomic(entry.header_stamp, header_entry_stamp(m.salt, m.source_signature(source_files),
-		header))!
+	write_atomic(entry.header_stamp, header_entry_stamp(m.salt, m.source_signature(source_files), header))!
 	return entry
 }
 
@@ -1133,8 +1128,7 @@ pub fn (m &Manager) valid_cgen(source_files []string, generation_signature strin
 		return none
 	}
 	stamp := os.read_file(entry.stamp) or { return none }
-	expected := cgen_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs,
-		generation_signature)
+	expected := cgen_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs, generation_signature)
 	if stamp != expected {
 		return none
 	}
@@ -1163,10 +1157,8 @@ pub fn (m &Manager) cached_cgen_dependency_inputs(source_files []string, generat
 		return none
 	}
 	stamp := os.read_file(entry.stamp) or { return none }
-	expected_head := entry_stamp(m.salt, m.source_signature(source_files)) +
-		'generation=${hash_text(generation_signature)}\n'
-	return cached_dependency_inputs_from_stamp(stamp, expected_head, fixed_dependencies,
-		restored_prefixes)
+	expected_head := entry_stamp(m.salt, m.source_signature(source_files)) + 'generation=${hash_text(generation_signature)}\n'
+	return cached_dependency_inputs_from_stamp(stamp, expected_head, fixed_dependencies, restored_prefixes)
 }
 
 // cached_incremental_dependency_inputs restores dependency records from a
@@ -1185,10 +1177,8 @@ pub fn (m &Manager) cached_incremental_dependency_inputs(source_files []string, 
 		trace_dependency_restore_miss('incremental stamp cannot be read')
 		return none
 	}
-	expected_head := entry_stamp(m.salt, declaration_signature) +
-		'generation=${hash_text('incremental-v5\n${generation_signature}')}\n'
-	return cached_dependency_inputs_from_stamp(stamp, expected_head, fixed_dependencies,
-		restored_prefixes)
+	expected_head := entry_stamp(m.salt, declaration_signature) + 'generation=${hash_text('incremental-v5\n${generation_signature}')}\n'
+	return cached_dependency_inputs_from_stamp(stamp, expected_head, fixed_dependencies, restored_prefixes)
 }
 
 fn cached_dependency_inputs_from_stamp(stamp string, expected_head string, fixed_dependencies map[string]string, restored_prefixes []string) ?map[string]string {
@@ -1257,8 +1247,7 @@ pub fn (m &Manager) valid_generic_program(source_files []string, semantic_signat
 		return none
 	}
 	stamp := os.read_file(entry.stamp) or { return none }
-	expected := cgen_entry_stamp(m.salt, semantic_signature, dependency_inputs,
-		'generic-v6\n${generation_signature}')
+	expected := cgen_entry_stamp(m.salt, semantic_signature, dependency_inputs, 'generic-v6\n${generation_signature}')
 	if stamp != expected {
 		return none
 	}
@@ -1277,8 +1266,7 @@ pub fn (m &Manager) write_cgen(source_files []string, generation_signature strin
 	os.rm(entry.prepared_stamp) or {}
 	write_atomic(entry.source, source)!
 	write_atomic(entry.metadata, metadata)!
-	stamp := cgen_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs,
-		generation_signature)
+	stamp := cgen_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs, generation_signature)
 	write_atomic(entry.stamp, stamp)!
 	return entry
 }
@@ -1298,8 +1286,7 @@ pub fn (m &Manager) write_generic_program(source_files []string, semantic_signat
 	write_atomic(entry.body, body)!
 	write_atomic(entry.literals, literals)!
 	write_atomic(entry.metadata, metadata)!
-	stamp := cgen_entry_stamp(m.salt, semantic_signature, dependency_inputs,
-		'generic-v6\n${generation_signature}')
+	stamp := cgen_entry_stamp(m.salt, semantic_signature, dependency_inputs, 'generic-v6\n${generation_signature}')
 	write_atomic(entry.stamp, stamp)!
 	return entry
 }
@@ -1331,8 +1318,7 @@ pub fn (m &Manager) valid_incremental_program(source_files []string, declaration
 		trace_incremental_cache_miss('stamp cannot be read')
 		return none
 	}
-	expected := cgen_entry_stamp(m.salt, declaration_signature, dependency_inputs,
-		'incremental-v5\n${generation_signature}')
+	expected := cgen_entry_stamp(m.salt, declaration_signature, dependency_inputs, 'incremental-v5\n${generation_signature}')
 	if stamp != expected {
 		if os.getenv('V3_CACHE_TRACE') != '' {
 			actual_lines := stamp.split_into_lines()
@@ -1374,8 +1360,7 @@ pub fn (m &Manager) write_incremental_program(source_files []string, declaration
 	write_atomic(entry.tcc_declarations, tcc_declarations)!
 	write_atomic(entry.objects, objects.join('\n'))!
 	write_atomic(entry.metadata, metadata)!
-	stamp := cgen_entry_stamp(m.salt, declaration_signature, dependency_inputs,
-		'incremental-v5\n${generation_signature}')
+	stamp := cgen_entry_stamp(m.salt, declaration_signature, dependency_inputs, 'incremental-v5\n${generation_signature}')
 	write_atomic(entry.stamp, stamp)!
 	return entry
 }
@@ -1392,8 +1377,8 @@ pub fn (m &Manager) valid_cgen_prepared(entry CgenEntry) ?CgenPreparedEntry {
 		return none
 	}
 	return CgenPreparedEntry{
-		main:   entry.prepared_main
-		tcc:    entry.prepared_tcc
+		main: entry.prepared_main
+		tcc: entry.prepared_tcc
 		prefix: entry.prepared_prefix
 	}
 }
@@ -1441,8 +1426,7 @@ pub fn (m &Manager) write_cgen_prepared_objects(entry CgenEntry, compile_signatu
 pub fn (m &Manager) write_stamp(module_name string, source_files []string, dependency_inputs map[string]string, compile_signature string) ! {
 	entry := m.entry(module_name, source_files)
 	object_entry := m.object_entry(module_name, source_files, compile_signature)
-	stamp := object_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs,
-		compile_signature)
+	stamp := object_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs, compile_signature)
 	write_atomic(object_entry.object_stamp, stamp)!
 	write_atomic(entry.object_stamp, stamp)!
 }
@@ -1464,8 +1448,7 @@ fn entry_stamp(salt string, source_hash string) string {
 }
 
 fn header_entry_stamp(salt string, source_hash string, header string) string {
-	return entry_stamp(salt, source_hash) +
-		'source_bodies=${int(header.contains(source_body_marker))}\n'
+	return entry_stamp(salt, source_hash) + 'source_bodies=${int(header.contains(source_body_marker))}\n'
 }
 
 fn header_stamp_source_bodies(stamp string, expected_entry string) ?bool {
@@ -1575,9 +1558,9 @@ fn parse_object_stamp_dependency(line string) ?ObjectStampDependency {
 		return none
 	}
 	return ObjectStampDependency{
-		path:      path_and_signature[..signature_tab]
+		path: path_and_signature[..signature_tab]
 		signature: path_and_signature[signature_tab + 1..]
-		metadata:  value[metadata_tab + 1..]
+		metadata: value[metadata_tab + 1..]
 	}
 }
 
@@ -1686,7 +1669,7 @@ pub fn split_generated_c(source string) !CSplit {
 		modules[name] = segments.join('')
 	}
 	return CSplit{
-		prefix:  prefix
+		prefix: prefix
 		modules: modules
 	}
 }
@@ -1698,16 +1681,16 @@ pub fn declaration_header(prefix string) string {
 	sections := [
 		CDeclarationSection{
 			begin: c_native_directives_begin
-			end:   c_native_directives_end
-			keep:  true
+			end: c_native_directives_end
+			keep: true
 		},
 		CDeclarationSection{
 			begin: c_source_directives_begin
-			end:   c_source_directives_end
+			end: c_source_directives_end
 		},
 		CDeclarationSection{
 			begin: c_late_directives_begin
-			end:   c_late_directives_end
+			end: c_late_directives_end
 		},
 	]
 	mut out := strings.new_builder(prefix.len / 2)
@@ -2144,8 +2127,8 @@ fn c_native_localize_function_definitions(source string) string {
 		if brace_depth == 0 {
 			if pending.len == 0
 				&& (in_block_comment || trimmed.len == 0 || trimmed.starts_with('//')
-				|| trimmed.starts_with('#')
-				|| trim_leading_c_comments(trimmed).len == 0) {
+					|| trimmed.starts_with('#')
+					|| trim_leading_c_comments(trimmed).len == 0) {
 				out.writeln(raw_line)
 				in_block_comment = next_comment
 				continue
@@ -2251,9 +2234,7 @@ fn c_source_function_identifiers_mode(source string, static_only bool) (map[stri
 			head :=
 				trim_leading_c_comments(declaration[..current_line_start + first_open].trim_space())
 			if c_static_declaration_head_is_function(head) {
-				if identifier := c_function_declaration_identifier_with_parameter_macros(head,
-					parameter_macros)
-				{
+				if identifier := c_function_declaration_identifier_with_parameter_macros(head, parameter_macros) {
 					is_ambiguous := c_function_declaration_identifier_is_ambiguous(head, identifier)
 					if !static_only || c_has_static_storage_class(head) {
 						identifiers[identifier] = true
@@ -2728,16 +2709,18 @@ fn c_function_declaration_identifier_with_parameter_macros(head string, paramete
 					mut name := head[start..end]
 					mut name_start := start
 					if parameter_macros[name]
-						&& name !in ['__attribute', '__attribute__', '__declspec', '__declspec__', '__asm', '__asm__', '_Alignas', 'alignas']
-						&& last_top_level_identifier == name
+						&& name !in ['__attribute', '__attribute__', '__declspec', '__declspec__',
+							'__asm', '__asm__', '_Alignas', 'alignas'] && last_top_level_identifier == name
 						&& previous_top_level_identifier.len > 0
-						&& previous_top_level_identifier !in ['auto', 'char', 'const', 'double', 'enum', 'extern', 'float', 'inline', 'int', 'long', 'register', 'short', 'signed', 'static', 'struct', 'typedef', 'union', 'unsigned', 'void', 'volatile', '_Bool']
-						&& c_function_candidate_has_return_type(head, previous_top_level_identifier_start) {
+						&& previous_top_level_identifier !in ['auto', 'char', 'const', 'double',
+							'enum', 'extern', 'float', 'inline', 'int', 'long', 'register', 'short',
+							'signed', 'static', 'struct', 'typedef', 'union', 'unsigned', 'void',
+							'volatile', '_Bool'] && c_function_candidate_has_return_type(head, previous_top_level_identifier_start) {
 						name = previous_top_level_identifier
 						name_start = previous_top_level_identifier_start
 					}
-					if name !in ['__attribute', '__attribute__', '__declspec', '__declspec__',
-						'__asm', '__asm__', '_Alignas', 'alignas'] {
+					if name !in ['__attribute', '__attribute__', '__declspec', '__declspec__', '__asm',
+						'__asm__', '_Alignas', 'alignas'] {
 						is_suffix := candidate.len > 0 && candidate_tail_end >= 0
 							&& trim_leading_c_comments(head[candidate_tail_end + 1..i].trim_space()).trim_space() == name
 							&& c_function_candidate_has_return_type(head, candidate_start)
@@ -2753,9 +2736,7 @@ fn c_function_declaration_identifier_with_parameter_macros(head string, paramete
 		} else if c == `)` && paren_depth > 0 {
 			paren_depth--
 			if paren_depth == 0 {
-				if identifier := c_parenthesized_function_declarator_identifier(head,
-					top_level_open, i)
-				{
+				if identifier := c_parenthesized_function_declarator_identifier(head, top_level_open, i) {
 					candidate = identifier
 					candidate_start = top_level_open
 					candidate_tail_end = i
@@ -2854,8 +2835,7 @@ pub fn c_source_static_variable_identifiers(source string) (map[string]bool, boo
 			}
 			if os.getenv('V3_CACHE_TRACE') != '' {
 				trace_declaration := declaration.trim_space().replace('\n', ' ')
-				eprintln('  V3 module cache incomplete static braced item: ${trace_declaration[..int_min(trace_declaration.len,
-					400)]}')
+				eprintln('  V3 module cache incomplete static braced item: ${trace_declaration[..int_min(trace_declaration.len, 400)]}')
 			}
 			complete = false
 			pending.clear()
@@ -2878,8 +2858,7 @@ pub fn c_source_static_variable_identifiers(source string) (map[string]bool, boo
 			declaration_identifiers := c_static_variable_declaration_identifiers(declaration)
 			if declaration_identifiers.len == 0 {
 				if os.getenv('V3_CACHE_TRACE') != '' {
-					eprintln('  V3 module cache incomplete static variable declaration: ${declaration.trim_space().replace('\n',
-						' ')}')
+					eprintln('  V3 module cache incomplete static variable declaration: ${declaration.trim_space().replace('\n', ' ')}')
 				}
 				complete = false
 			}
@@ -2976,7 +2955,9 @@ fn c_static_variable_declarator_identifier(declarator string) ?string {
 		candidate = clean_declarator[start..i]
 	}
 	if candidate.len == 0
-		|| candidate in ['auto', 'char', 'const', 'double', 'enum', 'extern', 'float', 'inline', 'int', 'long', 'register', 'short', 'signed', 'static', 'struct', 'typedef', 'union', 'unsigned', 'void', 'volatile', '_Bool'] {
+		|| candidate in ['auto', 'char', 'const', 'double', 'enum', 'extern', 'float', 'inline',
+			'int', 'long', 'register', 'short', 'signed', 'static', 'struct', 'typedef', 'union',
+			'unsigned', 'void', 'volatile', '_Bool'] {
 		return none
 	}
 	return candidate
@@ -3892,8 +3873,8 @@ fn c_extern_c_block(item string) ?CExternBlock {
 	}
 	return CExternBlock{
 		before: item[..open + 1]
-		inner:  item[open + 1..close]
-		after:  item[close..]
+		inner: item[open + 1..close]
+		after: item[close..]
 	}
 }
 
@@ -4071,7 +4052,7 @@ fn c_tag_declaration_is_type_only(value string, has_brace bool) bool {
 	tail := value[close + 1..].trim_space().trim_right(';').trim_space()
 	return tail.len == 0
 		|| ((tail.starts_with('__attribute__') || tail.starts_with('__declspec'))
-		&& tail.ends_with(')'))
+			&& tail.ends_with(')'))
 }
 
 fn c_tag_declaration_keyword_len(value string) int {
@@ -4423,8 +4404,8 @@ fn module_header_const_replacements(a &flat.FlatAst, module_name string, const_o
 				}
 				files[int(id)] = file_node.value
 				declarations << ModuleHeaderConstDecl{
-					id:      id
-					rank:    rank
+					id: id
+					rank: rank
 					ordinal: declarations.len
 				}
 			}
@@ -4453,8 +4434,7 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 	mut out := strings.new_builder(4096)
 	out.writeln('module ${module_name.all_after_last('.')}')
 	generic_specialization_callees := generic_specialization_callee_names(tc)
-	needs_source_bodies := module_needs_source_bodies(a, tc, module_name,
-		generic_specialization_callees)
+	needs_source_bodies := module_needs_source_bodies(a, tc, module_name, generic_specialization_callees)
 	mut source_cache := map[string]string{}
 	embed_source_bodies := needs_source_bodies
 		&& module_source_bodies_are_embeddable(a, tc, module_name, generic_specialization_callees, mut source_cache)
@@ -4509,10 +4489,8 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 					|| node_creates_generic_specialization(a, tc, effective_id, generic_specialization_callees)
 				source_embedded := embed_source_bodies && needs_declaration_source
 					&& declaration_node_source_is_embeddable(a, effective_id)
-				source_attrs_text := declaration_source_attrs_text(a, node, source_file, mut
-					source_cache)
-				source_is_public := declaration_source_is_public(a, node, source_file, mut
-					source_cache)
+				source_attrs_text := declaration_source_attrs_text(a, node, source_file, mut source_cache)
+				source_is_public := declaration_source_is_public(a, node, source_file, mut source_cache)
 				mut effective_attrs := attrs.attrs.clone()
 				for source_attr in declaration_source_attr_values(source_attrs_text) {
 					if source_attr !in effective_attrs {
@@ -4520,13 +4498,10 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 					}
 				}
 				mut text := if source_embedded {
-					raw_source := declaration_source_with_line(a, node, source_file, mut
-						source_cache) or { CachedDeclarationSource{} }
-					cached_embedded_declaration_source(raw_source.text, vroot, source_file,
-						raw_source.line)
+					raw_source := declaration_source_with_line(a, node, source_file, mut source_cache) or { CachedDeclarationSource{} }
+					cached_embedded_declaration_source(raw_source.text, vroot, source_file, raw_source.line)
 				} else {
-					decl_text(a, tc, module_name, node, vroot, source_file, import_paths,
-						effective_attrs, source_is_public)
+					decl_text(a, tc, module_name, node, vroot, source_file, import_paths, effective_attrs, source_is_public)
 				}
 				if text.len == 0 {
 					continue
@@ -4891,8 +4866,8 @@ fn cached_embedded_directive_edit(source string, start int, vroot string, source
 		return none
 	}
 	return CachedSourcePathEdit{
-		start:       value_start
-		end:         line_end
+		start: value_start
+		end: line_end
 		replacement: resolved
 	}
 }
@@ -5037,8 +5012,8 @@ fn cached_source_pseudo_edit(source string, start int, source_file string, line_
 		}
 	}
 	return CachedSourcePathEdit{
-		start:       start
-		end:         end
+		start: start
+		end: end
 		replacement: "'${escape_v_string(value)}'"
 	}
 }
@@ -5066,8 +5041,8 @@ fn cached_embed_file_path_edit(source string, start int, vroot string, source_fi
 		}
 		path := os.real_path(source_file)
 		return CachedSourcePathEdit{
-			start:       argument_start
-			end:         end
+			start: argument_start
+			end: end
 			replacement: "'${escape_v_string(path)}'"
 		}
 	}
@@ -5102,8 +5077,8 @@ fn cached_embed_file_path_edit(source string, start int, vroot string, source_fi
 	path_value := if is_raw { raw_path } else { cached_unescape_v_string(raw_path) }
 	path := cached_resolve_embedded_source_path(path_value, vroot, source_file) or { return none }
 	return CachedSourcePathEdit{
-		start:       argument_start
-		end:         content_end + 1
+		start: argument_start
+		end: content_end + 1
 		replacement: "'${escape_v_string(path)}'"
 	}
 }
@@ -5334,7 +5309,7 @@ fn declaration_source_line_matches(line string, kind flat.NodeKind) bool {
 			clean.starts_with('__global')
 		}
 		.comptime_if {
-			clean.starts_with('$if ')
+			clean.starts_with('\$if ')
 		}
 		else {
 			false
@@ -5673,7 +5648,7 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 	if node.generic_params().len > 0 || fn_decl_has_generic_receiver(a, node)
 		|| declaration_contains_fn_literal(a, node)
 		|| (node.kind in [.const_decl, .struct_decl, .global_decl]
-		&& declaration_has_unserializable_initializer(a, node))
+			&& declaration_has_unserializable_initializer(a, node))
 		|| node.kind == .comptime_if
 		|| (node.kind == .struct_decl && struct_has_unserializable_children(a, node)) {
 		return true
@@ -6494,8 +6469,7 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 			'${expr_text(a, a.child(&node, 0))}${op_text(node.op)}'
 		}
 		.infix {
-			'${expr_text(a, a.child(&node, 0))} ${op_text(node.op)} ${expr_text(a,
-				a.child(&node, 1))}'
+			'${expr_text(a, a.child(&node, 0))} ${op_text(node.op)} ${expr_text(a, a.child(&node, 1))}'
 		}
 		.selector {
 			if node.children_count > 0 {
@@ -6567,8 +6541,7 @@ fn expr_can_serialize(a &flat.FlatAst, id flat.NodeId) bool {
 	}
 	node := a.nodes[int(id)]
 	return match node.kind {
-		.int_literal, .float_literal, .bool_literal, .ident, .char_literal, .string_literal,
-		.nil_literal, .none_expr, .enum_val, .sizeof_expr {
+		.int_literal, .float_literal, .bool_literal, .ident, .char_literal, .string_literal, .nil_literal, .none_expr, .enum_val, .sizeof_expr {
 			true
 		}
 		.paren, .prefix, .postfix, .typeof_expr {

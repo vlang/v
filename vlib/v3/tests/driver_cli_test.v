@@ -275,7 +275,8 @@ fn main() {
 	selective_binary := os.join_path(root, 'profile_selective')
 	selective_profile := os.join_path(root, 'profile_selective.txt')
 	selective_compile := cmdexec.run(v3_bin, ['-silent', '-profile-fns', 'main__selected',
-		'-profile-no-inline', '-profile', selective_profile, '-o', selective_binary, selective_source])
+		'-profile-no-inline', '-profile', selective_profile, '-o', selective_binary,
+		selective_source])
 	assert selective_compile.exit_code == 0, selective_compile.output
 	selective_run := cmdexec.run(selective_binary, [])
 	assert selective_run.exit_code == 0, selective_run.output
@@ -361,8 +362,8 @@ fn test_v3_build_rejects_garbage_collectors() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	for mode in ['boehm', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt',
-		'boehm_leak', 'vgc'] {
+	for mode in ['boehm', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt', 'boehm_leak',
+		'vgc'] {
 		output := os.join_path(root, 'v3_${mode}')
 		result := cmdexec.run(@VEXE, ['-old-compiler', '-gc', mode, '-path',
 			'${driver_cli_vlib_dir}|@vlib|@vmodules', '-o', output, driver_cli_v3_src])
@@ -396,17 +397,13 @@ fn test_standard_v3_excludes_ownership_checker() {
 	c_stat_output := os.join_path(root, 'c_stat')
 	c_stat_compile := cmdexec.run(v3_bin, ['-o', c_stat_output, c_stat_source])
 	assert c_stat_compile.exit_code == 0, c_stat_compile.output
-	assert_driver_cli_failure(v3_bin, ['-ownership', source],
-		'ownership support is not compiled into this v3 executable')
-	assert_driver_cli_failure(v3_bin, ['-d', 'ownership', source],
-		'ownership support is not compiled into this v3 executable')
-	assert_driver_cli_failure(v3_bin, ['-downership', source],
-		'ownership support is not compiled into this v3 executable')
+	assert_driver_cli_failure(v3_bin, ['-ownership', source], 'ownership support is not compiled into this v3 executable')
+	assert_driver_cli_failure(v3_bin, ['-d', 'ownership', source], 'ownership support is not compiled into this v3 executable')
+	assert_driver_cli_failure(v3_bin, ['-downership', source], 'ownership support is not compiled into this v3 executable')
 	unrelated_v3_source := os.join_path(root, 'v3.v')
 	os.write_file(unrelated_v3_source, 'fn main() {}\n')!
-	assert_driver_cli_failure(v3_bin, ['-d', 'ownership', '-o',
-		os.join_path(root, 'unrelated_v3'), unrelated_v3_source],
-		'ownership support is not compiled into this v3 executable')
+	assert_driver_cli_failure(v3_bin, ['-d', 'ownership', '-o', os.join_path(root, 'unrelated_v3'),
+		unrelated_v3_source], 'ownership support is not compiled into this v3 executable')
 }
 
 fn test_explicit_arm64_import_unskips_ssa_dependencies() {
@@ -544,8 +541,8 @@ fn main() {
 	warm_run := cmdexec.run(v3_bin, ['-silent', 'run', source])
 	assert warm_run.exit_code == 0, warm_run.output
 	assert warm_run.output.trim_space() == '73'
-	cached_missing := cmdexec.run(v3_bin, ['-silent', '-ldflags', '-lv3_missing_link_library',
-		'run', source])
+	cached_missing := cmdexec.run(v3_bin, ['-silent', '-ldflags', '-lv3_missing_link_library', 'run',
+		source])
 	assert cached_missing.exit_code != 0, cached_missing.output
 
 	assert_driver_cli_failure(v3_bin, ['-ldflags'], 'option `-ldflags` requires a value')
@@ -571,7 +568,7 @@ fn collect_driver_process_result(mut process os.Process) os.Result {
 	process.close()
 	return os.Result{
 		exit_code: exit_code
-		output:    output
+		output: output
 	}
 }
 
@@ -709,8 +706,7 @@ fn main() {
 	assert c99_run.output == '99\n', c99_run.output
 
 	native_object := os.join_path(root, 'compat_c99.o')
-	native_object_compile := cmdexec.run('cc',
-		['-std=c99', '-c', c99_c_source, '-o', native_object])
+	native_object_compile := cmdexec.run('cc', ['-std=c99', '-c', c99_c_source, '-o', native_object])
 	assert native_object_compile.exit_code == 0, native_object_compile.output
 	object_source := os.join_path(root, 'compat_object.v')
 	os.write_file(object_source, '#flag @DIR/compat_c99.o
@@ -826,16 +822,14 @@ fn test_driver_doc_detection_skips_all_option_values() {
 	for define_option in ['-d', '-define'] {
 		define_case := os.join_path(root, define_option.trim_left('-'))
 		os.mkdir_all(define_case)!
-		define := run_driver_in_work_folder(v3_bin,
-			['-silent', define_option, 'doc', 'run', source], define_case)
+		define := run_driver_in_work_folder(v3_bin, ['-silent', define_option, 'doc', 'run', source], define_case)
 		assert define.exit_code == 0, '${define_option}: ${define.output}'
 		assert define.output == 'option-value-doc\n', define.output
 	}
 
 	project_case := os.join_path(root, 'project_case')
 	os.mkdir_all(project_case)!
-	project := run_driver_in_work_folder(v3_bin, ['-silent', '-generate-c-project', 'doc', source],
-		project_case)
+	project := run_driver_in_work_folder(v3_bin, ['-silent', '-generate-c-project', 'doc', source], project_case)
 	assert project.exit_code == 0, project.output
 	assert os.is_file(os.join_path(project_case, 'doc', 'app.c'))
 
@@ -850,8 +844,7 @@ fn test_driver_doc_detection_skips_all_option_values() {
 
 	file_list_case := os.join_path(root, 'file_list_case')
 	os.mkdir_all(os.join_path(file_list_case, 'doc'))!
-	os.write_file(os.join_path(file_list_case, 'doc', 'extra.v'),
-		"module main\n\nfn doc_option_value() string { return 'option-value-doc' }\n")!
+	os.write_file(os.join_path(file_list_case, 'doc', 'extra.v'), "module main\n\nfn doc_option_value() string { return 'option-value-doc' }\n")!
 	file_list_main := os.join_path(file_list_case, 'main.v')
 	os.write_file(file_list_main, 'module main\n\nfn main() { println(doc_option_value()) }\n')!
 	file_list := run_driver_in_work_folder(v3_bin, ['-silent', '-file-list', 'doc', '-o', 'out',
@@ -865,8 +858,7 @@ fn test_driver_doc_detection_skips_all_option_values() {
 		option_case := os.join_path(root, option.trim_left('-'))
 		os.mkdir_all(option_case)!
 		output := os.join_path(option_case, 'out')
-		result := run_driver_in_work_folder(v3_bin,
-			['-silent', option, 'doc', '-o', output, source], option_case)
+		result := run_driver_in_work_folder(v3_bin, ['-silent', option, 'doc', '-o', output, source], option_case)
 		assert result.exit_code == 0, '${option}: ${result.output}'
 		assert os.is_file(output), option
 		assert option != '-dump-c-flags' || os.is_file(os.join_path(option_case, 'doc'))
@@ -888,14 +880,12 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 	environment['V3CACHE'] = os.join_path(root, 'cache')
 
 	cold_output := os.join_path(root, 'cold')
-	cold := run_driver_with_environment(v3_bin, ['-no-parallel', '-o', cold_output, source],
-		environment)
+	cold := run_driver_with_environment(v3_bin, ['-no-parallel', '-o', cold_output, source], environment)
 	assert cold.exit_code == 0, cold.output
 	assert !cold.output.contains('(cached)'), cold.output
 
 	warm_output := os.join_path(root, 'warm')
-	warm := run_driver_with_environment(v3_bin, ['-no-parallel', '-o', warm_output, source],
-		environment)
+	warm := run_driver_with_environment(v3_bin, ['-no-parallel', '-o', warm_output, source], environment)
 	assert warm.exit_code == 0, warm.output
 	assert warm.output.contains('cgen (cached)'), warm.output
 
@@ -963,8 +953,7 @@ fn test_driver_explicit_silent_define_is_distinct_from_internal_quiet_mode() {
 	}
 	v3_bin := build_driver_cli_v3(root)
 	source := os.join_path(root, 'main.v')
-	os.write_file(source,
-		"@[if silent ?]\nfn print_silent_attribute() {\n\tprintln('attribute silent')\n}\n\nfn main() {\n\t\$if silent ? {\n\t\tprintln('silent')\n\t} \$else {\n\t\tprintln('not silent')\n\t}\n\tprint_silent_attribute()\n}\n")!
+	os.write_file(source, "@[if silent ?]\nfn print_silent_attribute() {\n\tprintln('attribute silent')\n}\n\nfn main() {\n\t\$if silent ? {\n\t\tprintln('silent')\n\t} \$else {\n\t\tprintln('not silent')\n\t}\n\tprint_silent_attribute()\n}\n")!
 
 	for option, expected in {
 		'-silent':                  'silent\nattribute silent\n'
@@ -1401,8 +1390,7 @@ fn main() {
 	println(value)
 }
 ")!
-	assert_driver_cli_failure(v3_bin, ['-d', 'feature', '-silent', '-no-parallel', invalid_source],
-		'i64 literal expected, found "true"')
+	assert_driver_cli_failure(v3_bin, ['-d', 'feature', '-silent', '-no-parallel', invalid_source], 'i64 literal expected, found "true"')
 }
 
 fn test_delegated_driver_preserves_invoking_vroot() {
@@ -1468,11 +1456,9 @@ fn test_explicit_c_backend_retains_complete_cached_translation_unit() {
 	v3_bin := build_driver_cli_v3(root)
 	module_dir := os.join_path(root, 'retainedmod')
 	os.mkdir_all(module_dir) or { panic(err) }
-	os.write_file(os.join_path(module_dir, 'retainedmod.v'),
-		"module retainedmod\n\npub fn message() string {\n\treturn 'complete cached translation unit'\n}\n")!
+	os.write_file(os.join_path(module_dir, 'retainedmod.v'), "module retainedmod\n\npub fn message() string {\n\treturn 'complete cached translation unit'\n}\n")!
 	source := os.join_path(root, 'main.v')
-	os.write_file(source,
-		'module main\n\nimport retainedmod\n\nfn main() {\n\tprintln(retainedmod.message())\n}\n')!
+	os.write_file(source, 'module main\n\nimport retainedmod\n\nfn main() {\n\tprintln(retainedmod.message())\n}\n')!
 	mut environment := os.environ()
 	environment['V3CACHE'] = os.join_path(root, 'cache')
 	mut retained_c := ''
@@ -1681,8 +1667,7 @@ println(os.args[1..].join('|'))
 	compat_run := cmdexec.run(script_binary, [])
 	assert compat_run.exit_code == 0, compat_run.output
 	assert compat_run.output == 'compatibility binary\n', compat_run.output
-	rebound_v3_run := cmdexec.run(v3_bin,
-		['-silent', '-no-parallel', source, 'after-compatibility'])
+	rebound_v3_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'after-compatibility'])
 	assert rebound_v3_run.exit_code == 0, rebound_v3_run.output
 	assert rebound_v3_run.output == 'false\ncached module\nafter-compatibility\n', rebound_v3_run.output
 	cache_stamp := os.file_last_mod_unix(script_binary) + 3600
@@ -1715,8 +1700,7 @@ pub fn message() string {
 
 os.write_file('${run_marker}', 'ran')!
 ")!
-	skip_run := cmdexec.run(v3_bin,
-		['-silent', '-no-parallel', '-skip-running', compile_only_source])
+	skip_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-skip-running', compile_only_source])
 	assert skip_run.exit_code == 0, skip_run.output
 	assert os.is_file(compile_only_binary)
 	assert !os.exists(run_marker)
@@ -1791,8 +1775,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(default_dir, 'target_wasm32_emscripten.v'),
-		'module main\n\nfn wasm_os_selected() {}\n') or { panic(err) }
+	os.write_file(os.join_path(default_dir, 'target_wasm32_emscripten.v'), 'module main\n\nfn wasm_os_selected() {}\n') or { panic(err) }
 	default_output := os.join_path(root, 'default_target.wasm')
 	default_compile := cmdexec.run(v3_bin, ['-b', 'wasm', '-o', default_output, default_dir])
 	assert default_compile.exit_code == 0, default_compile.output
@@ -1801,13 +1784,11 @@ fn main() {
 	host := pref.host_target()
 	explicit_dir := os.join_path(root, 'explicit_target')
 	os.mkdir_all(explicit_dir) or { panic(err) }
-	os.write_file(os.join_path(explicit_dir, 'main.v'),
-		'module main\n\nfn main() { host_os_selected() }\n') or { panic(err) }
-	os.write_file(os.join_path(explicit_dir, 'target_${host.os}.v'),
-		'module main\n\nfn host_os_selected() {}\n') or { panic(err) }
+	os.write_file(os.join_path(explicit_dir, 'main.v'), 'module main\n\nfn main() { host_os_selected() }\n') or { panic(err) }
+	os.write_file(os.join_path(explicit_dir, 'target_${host.os}.v'), 'module main\n\nfn host_os_selected() {}\n') or { panic(err) }
 	explicit_output := os.join_path(root, 'explicit_target.wasm')
-	explicit_compile := cmdexec.run(v3_bin, ['-b', 'wasm', '-os', host.os, '-arch', host.arch,
-		'-o', explicit_output, explicit_dir])
+	explicit_compile := cmdexec.run(v3_bin, ['-b', 'wasm', '-os', host.os, '-arch', host.arch, '-o',
+		explicit_output, explicit_dir])
 	assert explicit_compile.exit_code == 0, explicit_compile.output
 	assert_driver_wasm_output(explicit_output)
 }
@@ -1857,13 +1838,11 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	assert compat_compile.exit_code == 0, compat_compile.output
 	assert os.is_file(compat_output)
 	assert !os.exists(compat_output + '.c')
-	new_kept_files := kept_c_files(os.vtmp_dir()).filter(it !in kept_before
-		&& os.file_name(it).starts_with('hello_compat.'))
+	new_kept_files := kept_c_files(os.vtmp_dir()).filter(it !in kept_before && os.file_name(it).starts_with('hello_compat.'))
 	assert new_kept_files.len == 1, new_kept_files.str()
 	os.rm(new_kept_files[0])!
 	debug_source := os.join_path(root, 'debug_comptime.v')
-	os.write_file(debug_source,
-		"fn main() {\n\t\$if debug {\n\t\tprintln('debug')\n\t} \$else {\n\t\tprintln('release')\n\t}\n}\n") or {
+	os.write_file(debug_source, "fn main() {\n\t\$if debug {\n\t\tprintln('debug')\n\t} \$else {\n\t\tprintln('release')\n\t}\n}\n") or {
 		panic(err)
 	}
 	release_output := os.join_path(root, 'debug_comptime_release')
@@ -1904,15 +1883,11 @@ fn main() {
 	file_list_dir := os.join_path(root, 'file_list_sources')
 	file_list_nested_dir := os.join_path(file_list_dir, 'parts', 'nested')
 	os.mkdir_all(file_list_nested_dir) or { panic(err) }
-	os.write_file(os.join_path(file_list_dir, 'v.mod'),
-		"Module {\n\tname: 'file_list_sources'\n\tsubdirs: ['parts']\n}\n") or { panic(err) }
-	os.write_file(os.join_path(file_list_dir, 'root.v'),
-		'module main\n\nfn file_list_root_value() int { return 20 }\n') or { panic(err) }
-	os.write_file(os.join_path(file_list_nested_dir, 'nested.v'),
-		'module main\n\nfn file_list_nested_value() int { return 22 }\n') or { panic(err) }
+	os.write_file(os.join_path(file_list_dir, 'v.mod'), "Module {\n\tname: 'file_list_sources'\n\tsubdirs: ['parts']\n}\n") or { panic(err) }
+	os.write_file(os.join_path(file_list_dir, 'root.v'), 'module main\n\nfn file_list_root_value() int { return 20 }\n') or { panic(err) }
+	os.write_file(os.join_path(file_list_nested_dir, 'nested.v'), 'module main\n\nfn file_list_nested_value() int { return 22 }\n') or { panic(err) }
 	file_list_main := os.join_path(root, 'file_list_main.v')
-	os.write_file(file_list_main,
-		'module main\n\nfn main() { println(file_list_root_value() + file_list_nested_value()) }\n') or {
+	os.write_file(file_list_main, 'module main\n\nfn main() { println(file_list_root_value() + file_list_nested_value()) }\n') or {
 		panic(err)
 	}
 	file_list_output := os.join_path(root, 'file_list_output')
@@ -1926,15 +1901,11 @@ fn main() {
 	assert_driver_cli_failure(v3_bin, ['--bogus'], 'unknown option `--bogus`')
 	assert_driver_cli_failure(v3_bin, ['-o'], 'option `-o` requires a value')
 	assert_driver_cli_failure(v3_bin, ['-b', 'bogus', source], 'unknown backend `bogus`')
-	assert_driver_cli_failure(v3_bin, ['-gc', 'boehm', source],
-		'currently supports only `-gc none`')
-	assert_driver_cli_failure(v3_bin, ['-d', 'gcboehm', source],
-		'v3 programs must not use a garbage collector')
-	assert_driver_cli_failure(v3_bin, ['-dvgc', source],
-		'v3 programs must not use a garbage collector')
+	assert_driver_cli_failure(v3_bin, ['-gc', 'boehm', source], 'currently supports only `-gc none`')
+	assert_driver_cli_failure(v3_bin, ['-d', 'gcboehm', source], 'v3 programs must not use a garbage collector')
+	assert_driver_cli_failure(v3_bin, ['-dvgc', source], 'v3 programs must not use a garbage collector')
 	assert_driver_cli_failure(v3_bin, [source, source], 'multiple input paths are not supported')
-	assert_driver_cli_failure(v3_bin, ['-compile-backend', 'bogus', source],
-		'unknown compile backend `bogus`')
+	assert_driver_cli_failure(v3_bin, ['-compile-backend', 'bogus', source], 'unknown compile backend `bogus`')
 
 	if false_exe := os.find_abs_path_of_executable('false') {
 		cc_result := cmdexec.run(v3_bin, ['-prod', '-showcc', '-cc', false_exe, source, '-o',
@@ -1956,8 +1927,7 @@ fn main() {
 	os.mkdir_all(os.join_path(project, 'one')) or { panic(err) }
 	os.mkdir_all(os.join_path(project, 'two')) or { panic(err) }
 	os.mkdir_all(work_dir) or { panic(err) }
-	os.write_file(os.join_path(project, 'v.mod'), 'Module {\n' + "  name: 'driver_cli'\n" +
-		"  description: 'subdirs: [wrong, value]'\n" + "  subdirs: ['one', 'two']\n" + '}\n') or {
+	os.write_file(os.join_path(project, 'v.mod'), 'Module {\n' + "  name: 'driver_cli'\n" + "  description: 'subdirs: [wrong, value]'\n" + "  subdirs: ['one', 'two']\n" + '}\n') or {
 		panic(err)
 	}
 	os.write_file(os.join_path(project, 'main.v'), 'module main
@@ -1976,10 +1946,8 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(project, 'one', 'one.v'),
-		'module main\n\nfn one() int { return 40 }\n') or { panic(err) }
-	os.write_file(os.join_path(project, 'two', 'two.v'),
-		'module main\n\nfn two() int { return 2 }\n') or { panic(err) }
+	os.write_file(os.join_path(project, 'one', 'one.v'), 'module main\n\nfn one() int { return 40 }\n') or { panic(err) }
+	os.write_file(os.join_path(project, 'two', 'two.v'), 'module main\n\nfn two() int { return 2 }\n') or { panic(err) }
 	collision_dir := os.join_path(project, 'collision')
 	os.mkdir_all(collision_dir) or { panic(err) }
 	os.write_file(os.join_path(collision_dir, 'collision.v'), 'module collision

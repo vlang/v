@@ -31,6 +31,8 @@ fn run_macos_v3_test_process(executable string, args []string, work_dir string, 
 fn test_macos_v3_embedded_driver_matches_target_selection() {
 	$if cross ? {
 		assert !macos_v3_driver_is_available()
+	} $else $if musl ? {
+		assert !macos_v3_driver_is_available()
 	} $else $if macos || linux {
 		assert macos_v3_driver_is_available()
 	} $else {
@@ -82,36 +84,45 @@ fn test_macos_v3_relevant_command_owns_every_direct_c_build() {
 
 fn test_macos_v3_cmd_source_unlinks_v1_on_supported_hosts() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v', 'v.v'))!
-	assert source.contains('\$if !macos && !linux {')
+	assert source.contains('\$if v1_fallback ? {')
+	assert source.contains('} \$else \$if !macos && !linux {')
 	assert source.contains('import v.builder')
 	assert source.contains('import v.builder.cbuilder')
-	assert source.contains('this V executable contains only the V3 compiler') == false
-	dispatch := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v', 'macos_v3_dispatch.c.v'))!
-	assert dispatch.contains('this V executable contains only the V3 compiler')
-	assert !dispatch.contains('falling back to V1')
+	assert source.contains('\$if v1_fallback ? {\n\t\t\tbuilder.compile')
+	driver := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v',
+		'macos_v3_driver_notd_cross.v'))!
+	assert driver.contains('\$if v1_fallback ? {')
+	assert driver.contains('fn macos_v3_driver_is_available() bool')
 }
 
-fn test_macos_v3_old_compiler_is_rejected_without_retry() {
+fn test_macos_v3_old_compiler_uses_external_v1_command() {
 	$if macos || linux {
-		root := os.join_path(os.vtmp_dir(), 'v3_only_old_compiler_${os.getpid()}')
+		fallback := os.join_path(macos_v3_test_vroot, macos_v3_v1_fallback_binary)
+		if !os.is_executable(fallback) {
+			return
+		}
+		root := os.join_path(os.vtmp_dir(), 'v3_external_old_compiler_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
 		defer {
 			os.rmdir_all(root) or {}
 		}
 		source := os.join_path(root, 'main.v')
-		os.write_file(source, 'fn main() {}\n')!
-		result := run_macos_v3_test_process(@VEXE, ['-old-compiler', '-o',
-			os.join_path(root, 'main'), source], macos_v3_test_vroot, {})
-		assert result.exit_code == 1, result.output
-		assert result.output.contains('contains only the V3 compiler'), result.output
-		assert !result.output.contains('stable compiler instead'), result.output
+		os.write_file(source, 'fn main() { println("v1") }\n')!
+		output := os.join_path(root, 'main')
+		result := run_macos_v3_test_process(@VEXE, ['-old-compiler', '-o', output, source],
+			macos_v3_test_vroot, {})
+		assert result.exit_code == 0, result.output
+		assert os.is_executable(output)
+		run := os.execute(os.quoted_path(output))
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'v1', run.output
 	}
 }
 
-fn test_macos_v3_compile_error_does_not_fall_back() {
+fn test_macos_v3_invalid_program_still_reports_an_error_after_v1_retry() {
 	$if macos || linux {
-		root := os.join_path(os.vtmp_dir(), 'v3_only_compile_error_${os.getpid()}')
+		root := os.join_path(os.vtmp_dir(), 'v3_invalid_program_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
 		defer {
@@ -126,7 +137,6 @@ fn test_macos_v3_compile_error_does_not_fall_back() {
 		})
 		assert result.exit_code == 1, result.output
 		assert result.output.contains('missing_name'), result.output
-		assert !result.output.contains('stable compiler instead'), result.output
 		assert !os.exists(os.join_path(root, 'stale_fallback'))
 	}
 }

@@ -1320,7 +1320,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 				t.a.nodes.flags.set(.nofree)
 			}
 			t.a.nodes = nodes
-			t.a.file_node_ids = []int{}
+			t.a.file_node_ids = []i32{}
 		}
 		if !merge_in_place && t.a.children.data == original_children_data {
 			children := clone_monomorph_child_region(t.a.children, base_children, base_children, merged_children_cap)
@@ -1667,7 +1667,7 @@ fn (mut t Transformer) detach_monomorph_worker_region(base_nodes int, base_child
 		t.a.children.flags.set(.nofree)
 	}
 	t.a.nodes = nodes
-	t.a.file_node_ids = []int{}
+	t.a.file_node_ids = []i32{}
 	t.a.children = children
 }
 
@@ -1906,7 +1906,7 @@ fn (mut t Transformer) promote_scoped_ast_storage(scope voidptr) {
 		mut nodes := []flat.Node{cap: t.a.nodes.len + t.a.nodes.len / 4 + 1024}
 		nodes << t.a.nodes
 		t.a.nodes = nodes
-		t.a.file_node_ids = []int{}
+		t.a.file_node_ids = []i32{}
 	}
 	if owns_children {
 		mut children := []flat.NodeId{cap: t.a.children.len + t.a.children.len / 4 + 1024}
@@ -2883,7 +2883,18 @@ fn transform_job_count(n_runtime_jobs int, n_items int, scoped_selfhost bool) in
 	}
 	mut n := n_runtime_jobs
 	limit := if scoped_selfhost {
-		max_selfhost_transform_jobs
+		if ast_snapshots_supported() {
+			// A copy-on-write lane shares the base AST's pages until it rewrites
+			// them, so it costs the pages it touches rather than a whole clone and
+			// the count can follow the core count. Going from 7 lanes to one per
+			// core took the transform phase of the self-host from 235 ms to 148 ms
+			// for 23 MiB of extra peak RSS. clamp_transform_jobs_to_clone_budget
+			// still bounds it by the size of the base AST, which also covers a
+			// snapshot that fails at runtime and falls back to a real copy.
+			n_runtime_jobs
+		} else {
+			max_selfhost_transform_jobs
+		}
 	} else {
 		max_parallel_transform_jobs
 	}
