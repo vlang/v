@@ -552,6 +552,8 @@ fn test_arm64_asm_accepts_operand_keywords() {
 		ptrue p0.b, vl1
 		ptrue p1.b, vl256
 		ptrue p2.b, pow2
+		smstart sm
+		smstop sm
 	}
 }
 ', 'arm64')
@@ -561,6 +563,8 @@ fn test_arm64_asm_accepts_operand_keywords() {
 	assert c_source.contains('"ptrue p0.b, vl1\\n\\t"'), c_source
 	assert c_source.contains('"ptrue p1.b, vl256\\n\\t"'), c_source
 	assert c_source.contains('"ptrue p2.b, pow2\\n\\t"'), c_source
+	assert c_source.contains('"smstart sm\\n\\t"'), c_source
+	assert c_source.contains('"smstop sm\\n\\t"'), c_source
 }
 
 fn test_misspelled_asm_registers_are_reported_with_suggestions() {

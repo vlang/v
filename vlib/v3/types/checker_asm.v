@@ -41,7 +41,7 @@ const inline_asm_arm64_operand_keywords = ['lsl', 'lsr', 'asr', 'ror', 'msl', 'u
 	'uxtx', 'sxtb', 'sxth', 'sxtw', 'sxtx', 'eq', 'ne', 'cs', 'hs', 'cc', 'lo', 'mi', 'pl', 'vs',
 	'vc', 'hi', 'ls', 'ge', 'lt', 'gt', 'le', 'al', 'nv', 'sy', 'st', 'ld', 'osh', 'oshst', 'oshld',
 	'nsh', 'nshst', 'nshld', 'ish', 'ishst', 'ishld', 'mul', 'vl', 'b', 'h', 's', 'd', 'q', 'z',
-	'm', 'pow2', 'mul3', 'mul4', 'all']
+	'm', 'sm', 'pow2', 'mul3', 'mul4', 'all']
 
 // check_inline_asm_block reports the assembly diagnostics that only need the block's
 // preserved source: unsupported operand constraints in structured `intel` blocks, and
