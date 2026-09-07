@@ -1653,6 +1653,57 @@ fn gcc_rsp_args_are_ascii(args []string) bool {
 	return args.all(it.is_ascii())
 }
 
+// ccompiler_exec_args turns the builder's shell-formatted option fragments into the
+// exact argument vector expected by os.exec, without corrupting non-ASCII bytes.
+fn ccompiler_exec_args(ccompiler string, args []string) []string {
+	mut exact_args := [ccompiler]
+	mut current := []u8{}
+	mut quote := u8(0)
+	mut has_arg := false
+	for ch in args.join(' ').bytes() {
+		if quote == 0 && ch.is_space() {
+			if has_arg {
+				exact_args << current.bytestr()
+				current = []u8{}
+				has_arg = false
+			}
+			continue
+		}
+		if ch in [`"`, `'`] {
+			if quote == 0 {
+				quote = ch
+				has_arg = true
+				continue
+			}
+			if quote == ch {
+				quote = 0
+				continue
+			}
+		}
+		current << ch
+		has_arg = true
+	}
+	if has_arg {
+		exact_args << current.bytestr()
+	}
+	return exact_args
+}
+
+fn (v &Builder) windows_gcc_needs_direct_exec(args []string) bool {
+	$if windows {
+		return (v.ccoptions.cc == .gcc || v.pref.ccompiler_type == .cplusplus)
+			&& !gcc_rsp_args_are_ascii(args)
+	}
+	return false
+}
+
+fn (v &Builder) execute_ccompiler(ccompiler string, args []string, cmd string) os.Result {
+	if v.windows_gcc_needs_direct_exec(args) {
+		return os.exec(ccompiler_exec_args(ccompiler, args))
+	}
+	return os.execute(cmd)
+}
+
 fn (v &Builder) should_use_rsp(rsp_args []string) bool {
 	if v.pref.no_rsp || v.pref.os == .termux {
 		return false
@@ -1662,14 +1713,10 @@ fn (v &Builder) should_use_rsp(rsp_args []string) bool {
 			return false
 		}
 	}
-	$if windows {
-		// os.short_path returns its input when the volume has 8.3 aliases disabled.
-		// An ANSI response file would replace those remaining Unicode characters
-		// with `?`, while the direct command line is passed through CreateProcessW.
-		if (v.ccoptions.cc == .gcc || v.pref.ccompiler_type == .cplusplus)
-			&& !gcc_rsp_args_are_ascii(rsp_args) {
-			return false
-		}
+	// os.short_path returns its input when a Windows volume has 8.3 aliases disabled.
+	// An ANSI response file would replace those remaining Unicode characters with `?`.
+	if v.windows_gcc_needs_direct_exec(rsp_args) {
+		return false
 	}
 	return true
 }
@@ -2080,7 +2127,7 @@ pub fn (mut v Builder) cc() {
 		// Run
 		ccompiler_label := 'C ${os.file_name(ccompiler):3}'
 		util.timing_start(ccompiler_label)
-		res := os.execute(cmd)
+		res := v.execute_ccompiler(ccompiler, rsp_args, cmd)
 		util.timing_measure(ccompiler_label)
 		if v.pref.show_c_output {
 			v.show_c_compiler_output(ccompiler, res)
@@ -2237,7 +2284,7 @@ fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler st
 			return ''
 		}
 		util.timing_start('C object')
-		res := os.execute(cmd)
+		res := v.execute_ccompiler(ccompiler, rsp_args, cmd)
 		util.timing_measure('C object')
 		os.chdir(original_pwd) or {}
 		if v.pref.show_c_output {

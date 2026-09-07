@@ -320,6 +320,19 @@ fn test_gcc_rsp_args_require_ascii_paths() {
 	assert !gcc_rsp_args_are_ascii([r'-o "D:\a\_temp\工作目录\main.exe"'])
 }
 
+fn test_ccompiler_exec_args_split_shell_formatted_options() {
+	assert ccompiler_exec_args('gcc', [r'-o "C:\Users\工作\main.exe"', r'"C:\Users\工作\main.c"',
+		r'-I"C:\Program Files\SDK"', '-DFOO=1 -DBAR=2']) == [
+		'gcc',
+		'-o',
+		r'C:\Users\工作\main.exe',
+		r'C:\Users\工作\main.c',
+		r'-IC:\Program Files\SDK',
+		'-DFOO=1',
+		'-DBAR=2',
+	]
+}
+
 fn test_windows_gnu_compilers_compile_in_a_non_ascii_directory() {
 	if os.user_os() != 'windows' {
 		return
@@ -333,7 +346,13 @@ fn test_windows_gnu_compilers_compile_in_a_non_ascii_directory() {
 		defer {
 			os.rmdir_all(test_root) or {}
 		}
-		os.write_file(source_path, "fn main() { println('unicode-path-ok') }\n") or {
+		mut source := ''
+		for i in 0 .. 400 {
+			source += '#flag -DV_WINDOWS_UNICODE_PATH_LONG_COMMAND_${i}=1\n'
+		}
+		source += "fn main() { println('unicode-path-ok') }\n"
+		assert source.len > 8191
+		os.write_file(source_path, source) or {
 			panic(err)
 		}
 		res :=
