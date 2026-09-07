@@ -278,6 +278,13 @@ fn test_rewrite_windows_path_operand_arg_leaves_path_like_values_alone() {
 	}
 }
 
+fn test_rewrite_windows_path_operand_arg_leaves_compound_environment_flags_alone() {
+	for arg in [r'-IC:\sdk -DFOO=1', r'-I"C:\Program Files\SDK" -DFOO=1', r'-LC:\sdk -lfoo',
+		r'"C:\sdk\input.o" -DFOO=1'] {
+		assert rewrite_windows_path_operand_arg(arg, fake_windows_short_path) == arg
+	}
+}
+
 fn test_rewrite_windows_path_arg_rewrites_path_like_values() {
 	// the broader tcc rewrite still rewrites quoted path substrings, even in
 	// data bearing options; only rewrite_windows_path_operand_arg (gcc) leaves

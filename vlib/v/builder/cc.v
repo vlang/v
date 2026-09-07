@@ -1529,21 +1529,37 @@ fn looks_like_windows_path(value string) bool {
 // Option values that merely contain a path looking substring are left
 // untouched, so that e.g. `-DROOT="C:\Program Files\SDK"` keeps its exact
 // macro value after the rewrite.
+fn single_windows_path_operand(value string) ?string {
+	trimmed := value.trim_space()
+	if trimmed.len >= 2 && trimmed[0] == `"` {
+		if trimmed[trimmed.len - 1] != `"` {
+			return none
+		}
+		return trimmed[1..trimmed.len - 1]
+	}
+	if trimmed.bytes().any(it.is_space()) {
+		return none
+	}
+	return trimmed
+}
+
 fn rewrite_windows_path_operand_arg(arg string, resolver WindowsPathResolver) string {
 	if arg == '' {
 		return ''
 	}
 	for prefix in ['-I', '-L', '-B', '-o ', '-c '] {
 		if arg.starts_with(prefix) {
-			path := arg[prefix.len..].trim_space().trim('"')
+			path := single_windows_path_operand(arg[prefix.len..]) or { return arg }
 			if looks_like_windows_path(path) {
 				return prefix + '"${resolver(path)}"'
 			}
 		}
 	}
-	trimmed := arg.trim_space().trim('"')
-	if !arg.starts_with('-') && looks_like_windows_path(trimmed) {
-		return '"${resolver(trimmed)}"'
+	if !arg.starts_with('-') {
+		path := single_windows_path_operand(arg) or { return arg }
+		if looks_like_windows_path(path) {
+			return '"${resolver(path)}"'
+		}
 	}
 	return arg
 }
