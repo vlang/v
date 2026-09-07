@@ -32,7 +32,8 @@ const inline_asm_instruction_prefixes = ['lock', 'rep', 'repe', 'repz', 'repne',
 // Intel memory operands can use these words to select an address, distance or
 // explicit operand size. They are syntax, not possible misspellings of registers.
 const inline_asm_intel_operand_keywords = ['ptr', 'byte', 'word', 'dword', 'qword', 'tbyte', 'oword',
-	'xmmword', 'ymmword', 'zmmword', 'short', 'near', 'far', 'offset', 'rel', 'abs']
+	'xmmword', 'ymmword', 'zmmword', 'short', 'near', 'far', 'offset', 'rel', 'abs', 'rn', 'rd',
+	'ru', 'rz', 'sae']
 
 // Arm64 uses identifiers for shift and extension operators, condition codes,
 // barrier domains, and vector/predicate qualifiers inside otherwise structured operands.
@@ -57,9 +58,12 @@ fn (mut tc TypeChecker) check_inline_asm_block(id flat.NodeId, node flat.Node, s
 	registers := util.asm_register_names(header.arch)
 	sections := inline_asm_section_ranges(block, open + 1, close)
 	if header.is_intel && !header.is_raw {
+		mut child_offset := 0
 		for index in 1 .. 3 {
 			if index < sections.len {
-				tc.check_inline_asm_intel_ios(id, node, block, start, sections[index])
+				ios := inline_asm_ios(block, sections[index])
+				tc.check_inline_asm_intel_ios(id, node, start, ios, child_offset)
+				child_offset += ios.len
 			}
 		}
 	}
@@ -87,12 +91,40 @@ fn (mut tc TypeChecker) check_inline_asm_block(id flat.NodeId, node flat.Node, s
 
 // check_inline_asm_intel_ios rejects the operand constraints that a structured `intel`
 // block cannot express, because compilers still format those placeholders as AT&T.
-fn (mut tc TypeChecker) check_inline_asm_intel_ios(id flat.NodeId, node flat.Node, block string, base int, section InlineAsmRange) {
-	for io in inline_asm_ios(block, section) {
+fn (mut tc TypeChecker) check_inline_asm_intel_ios(id flat.NodeId, node flat.Node, base int, ios []InlineAsmIOSpan, child_offset int) {
+	for index, io in ios {
 		if io.constraint.trim_left('=+&%*') == 'r' {
+			child_index := child_offset + index
+			if child_index < int(node.children_count) {
+				child_id := tc.a.child(&node, child_index)
+				if width := inline_asm_intel_operand_width(tc.resolve_type(child_id)) {
+					if width != platform_int_bits() {
+						tc.record_error(.assignment_mismatch, 'structured `intel` assembly cannot represent a ${width}-bit register operand; use a ${platform_int_bits()}-bit operand or a `raw` template with an explicit modifier', child_id)
+					}
+				}
+			}
 			continue
 		}
 		tc.record_error_at(.compile_error, 'constraint `${io.constraint}` is not supported for operands in structured `intel` assembly; use a register-only `r` constraint or a `raw` template with explicit operand modifiers', id, token.new_span(node.pos.id, base + io.start, base + io.end))
+	}
+}
+
+fn inline_asm_intel_operand_width(typ Type) ?int {
+	clean := unalias_type(typ)
+	return match clean {
+		Primitive {
+			if clean.props.has(.boolean) {
+				8
+			} else if clean.props.has(.integer) || clean.props.has(.float) {
+				if clean.size == 0 { platform_int_bits() } else { int(clean.size) }
+			} else {
+				none
+			}
+		}
+		Char { 8 }
+		Rune { 32 }
+		ISize, USize, Pointer { platform_int_bits() }
+		else { none }
 	}
 }
 

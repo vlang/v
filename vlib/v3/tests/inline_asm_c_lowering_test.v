@@ -378,11 +378,28 @@ fn test_intel_asm_accepts_size_qualified_memory_operands() {
 	generate, c_source := generate_inline_asm_c('intel_memory_size_program', 'fn main() {
 	asm amd64 intel {
 		mov eax, dword ptr [rbx]
+		vaddss xmm0, xmm1, xmm2, {rn-sae}
+		fadd st, st(1)
 	}
 }
 ')
 	assert generate.exit_code == 0, generate.output
 	assert c_source.contains('"mov eax, dword ptr [rbx]\\n\\t"'), c_source
+	assert c_source.contains('"vaddss xmm0, xmm1, xmm2, {rn-sae}\\n\\t"'), c_source
+	assert c_source.contains('"fadd st, st(1)\\n\\t"'), c_source
+}
+
+fn test_intel_asm_rejects_narrow_register_operands() {
+	generate, _ := generate_inline_asm_c('intel_narrow_register_program', 'fn main() {
+	value := u32(7)
+	asm amd64 intel {
+		mov eax, value
+		; ; r (value)
+	}
+}
+')
+	assert generate.exit_code != 0, generate.output
+	assert generate.output.contains('structured `intel` assembly cannot represent a 32-bit register operand'), generate.output
 }
 
 fn test_arm64_asm_accepts_operand_keywords() {

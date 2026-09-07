@@ -66,8 +66,8 @@ pub fn x86_asm_register_names() []string {
 	mut names := ['al', 'ah', 'bl', 'bh', 'cl', 'ch', 'dl', 'dh', 'bpl', 'sil', 'dil', 'spl', 'ax',
 		'bx', 'cx', 'dx', 'bp', 'si', 'di', 'sp', 'cs', 'ss', 'ds', 'es', 'fs', 'gs', 'flags', 'ip',
 		'gdtr', 'idtr', 'tr', 'ldtr', 'cw', 'sw', 'tw', 'fp_ip', 'fp_dp', 'fp_cs', 'fp_ds', 'fp_opc',
-		'eax', 'ebx', 'ecx', 'edx', 'ebp', 'esi', 'edi', 'esp', 'eflags', 'eip', 'mxcsr', 'rax',
-		'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip']
+		'st', 'eax', 'ebx', 'ecx', 'edx', 'ebp', 'esi', 'edi', 'esp', 'eflags', 'eip', 'mxcsr',
+		'rax', 'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip']
 	for i in 0 .. 8 {
 		names << 'k${i}'
 	}
