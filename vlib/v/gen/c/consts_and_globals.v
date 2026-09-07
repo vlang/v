@@ -537,7 +537,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		attributes += 'VV_EXP '
 	}
 	if attr := node.attrs.find_first('_linker_section') {
-		attributes += '__attribute__ ((section ("${attr.arg}"))) '
+		escaped_section := util.smart_quote(attr.arg, false, attr.arg_opaque_pos)
+		attributes += '__attribute__ ((section ("${escaped_section}"))) '
 	}
 	for field in node.fields {
 		name := c_name(field.name)

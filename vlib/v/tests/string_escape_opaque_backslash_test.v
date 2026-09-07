@@ -38,6 +38,13 @@ fn test_interpolated_string_with_decoded_backslash() {
 	assert s.bytes() == [u8(65), 92, 110, 52, 50, 66]
 }
 
+fn test_line_continuation_before_decoded_backslash() {
+	s := 'A\
+\x5cnB'
+	assert s.len == 4
+	assert s.bytes() == [u8(65), 92, 110, 66]
+}
+
 // regression test for a gap found by adversarial review of the fix above: the transformer's
 // simplify_nested_interpolation_in_sb splits an interpolated string into per-segment literals
 // for @[expand_simple_interpolation] calls (like strings.Builder.write_string/writeln), and

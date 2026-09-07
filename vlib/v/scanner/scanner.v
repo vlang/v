@@ -1314,7 +1314,10 @@ pub fn (mut s Scanner) ident_string() string {
 				s.u32_escapes_pos << s.pos - 1
 			}
 			// Unknown escape sequence
-			if !util.is_escape_sequence(c) && !digit_table[c] && c != `\n` {
+			is_crlf_line_break := c == b_cr && s.pos + 1 < s.text.len
+				&& s.text[s.pos + 1] == b_lf
+			if !util.is_escape_sequence(c) && !digit_table[c] && c != b_lf
+				&& !is_crlf_line_break {
 				s.error('`${c.ascii_str()}` unknown escape sequence')
 			}
 		}
@@ -1394,16 +1397,10 @@ pub fn (mut s Scanner) ident_string() string {
 		}
 
 		if n_cr_chars > 0 {
-			string_so_far = string_so_far.replace('\r', '')
-			// '\r' removal shifts every byte offset after it; bail out on the rare
-			// literal that mixes a hex/unicode escape with raw '\r' bytes, instead of
-			// risking marking the wrong byte as opaque.
-			opaque_pos.clear()
+			string_so_far, opaque_pos = remove_cr_chars(string_so_far, opaque_pos)
 		}
 		if !is_raw && string_so_far.contains('\\\n') {
-			lit = trim_slash_line_break(string_so_far)
-			// same reasoning as above: line-continuation trimming can also shift offsets.
-			opaque_pos.clear()
+			lit, opaque_pos = trim_slash_line_break(string_so_far, opaque_pos)
 		} else {
 			lit = string_so_far
 		}
@@ -1537,29 +1534,74 @@ fn (mut s Scanner) decode_u32erune(str string) string {
 	return ss.join('')
 }
 
-fn trim_slash_line_break(s string) string {
+fn remove_cr_chars(s string, opaque_pos []int) (string, []int) {
+	mut bytes := []u8{cap: s.len}
+	mut adjusted_opaque_pos := []int{cap: opaque_pos.len}
+	mut opaque_idx := 0
+	for i, b in s {
+		is_opaque := opaque_idx < opaque_pos.len && opaque_pos[opaque_idx] == i
+		// Only source CR bytes are normalized away. A CR produced by a decoded escape
+		// is already resolved data and must remain in the literal.
+		if b == b_cr && !is_opaque {
+			continue
+		}
+		if is_opaque {
+			adjusted_opaque_pos << bytes.len
+			opaque_idx++
+		}
+		bytes << b
+	}
+	return bytes.bytestr(), adjusted_opaque_pos
+}
+
+fn remove_string_range(s string, opaque_pos []int, start int, end int) (string, []int) {
+	mut adjusted_opaque_pos := []int{cap: opaque_pos.len}
+	for pos in opaque_pos {
+		if pos < start {
+			adjusted_opaque_pos << pos
+		} else if pos >= end {
+			adjusted_opaque_pos << pos - (end - start)
+		}
+	}
+	return s[..start] + s[end..], adjusted_opaque_pos
+}
+
+fn trim_slash_line_break(s string, opaque_pos []int) (string, []int) {
 	mut start := 0
 	mut ret_str := s
+	mut adjusted_opaque_pos := opaque_pos.clone()
 	for {
 		// find the position of the first `\` followed by a newline, after `start`:
 		idx := ret_str.index_after('\\\n', start) or { break }
 		start = idx
+		// Decoded backslashes/newlines are literal data, not continuation syntax.
+		if idx in adjusted_opaque_pos || idx + 1 in adjusted_opaque_pos {
+			start++
+			continue
+		}
 		// Here, ret_str[idx] is \, and ret_str[idx+1] is newline.
 		// Depending on the number of backslashes before the newline, we should either
 		// treat the last one and the whitespace after it as line-break, or just ignore it:
 		mut nbackslashes := 0
-		for eidx := idx; eidx >= 0 && ret_str[eidx] == `\\`; eidx-- {
+		for eidx := idx; eidx >= 0 && ret_str[eidx] == `\\`
+			&& eidx !in adjusted_opaque_pos; eidx-- {
 			nbackslashes++
 		}
 		// eprintln('>> start: ${start:-5} | nbackslashes: ${nbackslashes:-5} | ret_str: $ret_str')
 		if idx == 0 || (nbackslashes & 1) == 1 {
-			ret_str = ret_str[..idx] + ret_str[idx + 2..].trim_left(' \n\t\v\f\r')
+			mut end := idx + 2
+			for end < ret_str.len && ret_str[end] in [` `, `\n`, `\t`, `\v`, `\f`, `\r`]
+				&& end !in adjusted_opaque_pos {
+				end++
+			}
+			ret_str, adjusted_opaque_pos = remove_string_range(ret_str, adjusted_opaque_pos,
+				idx, end)
 		} else {
 			// ensure the loop will terminate, when we could not strip anything:
 			start++
 		}
 	}
-	return ret_str
+	return ret_str, adjusted_opaque_pos
 }
 
 /// ident_char is called when a backtick "single-char" is parsed from the code

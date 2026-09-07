@@ -1448,7 +1448,8 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.definitions.write_string('void')
 	}
 	if attr := node.attrs.find_first('_linker_section') {
-		g.definitions.writeln(') __attribute__ ((section ("${attr.arg}")));')
+		escaped_section := util.smart_quote(attr.arg, false, attr.arg_opaque_pos)
+		g.definitions.writeln(') __attribute__ ((section ("${escaped_section}")));')
 	} else {
 		g.definitions.writeln(');')
 	}
