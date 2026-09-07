@@ -452,6 +452,7 @@ pub fn run(args []string) {
 			fastc.generate_files_with_source_paths([real_input], prefs) or { fail(err.msg()) }
 		}
 	}
+	mut total_sw := time.new_stopwatch()
 	mut sw := time.new_stopwatch()
 	generation := fastc.generate_files_with_source_paths([real_input], prefs) or { fail(err.msg()) }
 	if bench && repeat == 1 {
@@ -499,7 +500,10 @@ pub fn run(args []string) {
 	mut link_cache_key := ''
 	mut link_cache_restored := false
 	if unit_paths.len > 1 {
-		prepared_units := fastc.fastc_prepare_c_units(tcc, cc_args, unit_paths, prefs.building_v)
+		// The end-to-end benchmark must actually run TinyCC; otherwise a warm
+		// executable cache hit would report copying a prior binary as compile time.
+		prepared_units := fastc.fastc_prepare_c_units(tcc, cc_args, unit_paths, prefs.building_v
+			&& !bench)
 		link_inputs := prepared_units.objects.clone()
 		link_cache_key = fastc.fastc_link_cache_key(prepared_units.cache_key, link_libs)
 		if fastc.fastc_restore_link_cache(link_cache_key, staged_output) {
@@ -567,5 +571,11 @@ pub fn run(args []string) {
 		}
 	} else {
 		os.rm(c_path) or {}
+	}
+	if bench {
+		total_us := total_sw.elapsed().microseconds()
+		total_lines := fastc_bench_source_line_count(generation.source_paths)
+		mloc_per_s := f64(total_lines) / f64(total_us)
+		eprintln('fastc-bench-total: files=${generation.source_paths.len} lines=${total_lines} total=${f64(total_us) / 1000.0:.2f}ms throughput=${mloc_per_s:.3f} MLOC/s (includes TinyCC)')
 	}
 }

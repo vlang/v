@@ -572,3 +572,44 @@ fn main() {
 ')
 	assert unrelated_out == '4'
 }
+
+fn test_nearest_mixed_branch_smartcasts() {
+	v3_bin := loop_smartcast_build_v3()
+	output := loop_smartcast_run_good(v3_bin, 'nearest_mixed_branch_smartcasts', 'struct A { value int }
+struct B {}
+struct C {}
+type Inner = A | B
+type Outer = C | Inner
+fn from_if(v Outer) int {
+ if v is Inner {
+  match v {
+   A { return v.value }
+   else {}
+  }
+ }
+ return 0
+}
+fn from_match(v Outer) int {
+ match v {
+  Inner {
+   if v is A { return v.value }
+  }
+  else {}
+ }
+ return 0
+}
+fn from_loop(v Outer) int {
+ if v is Inner {
+  for v is A { return v.value }
+ }
+ return 0
+}
+fn main() {
+ a := Outer(Inner(A{value: 42}))
+ println(from_if(a))
+ println(from_match(a))
+ println(from_loop(a))
+}
+')
+	assert output == '42\n42\n42'
+}

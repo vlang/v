@@ -27,6 +27,60 @@ fn test_native_declaration_api_macro_definition_is_not_localized() {
 	assert declarations.contains('static int helper(void) {')
 }
 
+fn test_declaration_header_keeps_macro_static_inline_function() {
+	source := '#ifdef _MSC_VER
+#define V_TEST_STATIC_INLINE static __inline
+#else
+#define V_TEST_STATIC_INLINE static inline
+#endif
+V_TEST_STATIC_INLINE int local_helper(void) {
+	return 42;
+}
+int external_helper(void) {
+	return local_helper();
+}
+'
+	header := declaration_header(source)
+	assert header.contains('V_TEST_STATIC_INLINE int local_helper(void) {')
+	assert header.contains('return 42;')
+	assert header.contains('int external_helper(void);')
+	assert !header.contains('return local_helper();')
+}
+
+fn test_replicated_function_static_storage_detection() {
+	assert c_source_replicated_function_has_static_storage('static inline int next_value(void) {
+	static int state = 0;
+	return ++state;
+}
+')
+	assert c_source_replicated_function_has_static_storage('#define LOCAL_STORAGE static
+static inline int next_value(void) {
+	LOCAL_STORAGE int state = 0;
+	return ++state;
+}
+')
+	assert c_source_replicated_function_has_static_storage('extern "C" { static inline int next_value(void) { static int state; return ++state; } }
+')
+	assert c_source_replicated_function_has_static_storage('#define DEF(name) \\
+	static inline int name(void) { \\
+		static int state; \\
+		return ++state; \\
+	}
+DEF(next_value)
+')
+	assert !c_source_replicated_function_has_static_storage('int next_value(void) {
+	static int state = 0;
+	return ++state;
+}
+')
+	assert !c_source_replicated_function_has_static_storage('static inline int next_value(void) {
+	// static int comment_state;
+	const char *text = "static int string_state";
+	return text[0];
+}
+')
+}
+
 fn test_cached_file_line_uses_source_file_name() {
 	source := 'return [@FILE, @FILE_LINE, @LINE]'
 	source_file := os.join_path(os.vtmp_dir(), 'nested', 'origin.v')

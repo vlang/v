@@ -5107,7 +5107,7 @@ fn test_parallel_escape_precheck_preserves_candidate_across_local_type_decl() {
 			a.close_workers()
 		}
 		mut tc := types.TypeChecker.new(&a)
-		tc.top_level_idx = [0, 2, 3, 5, 6]
+		tc.top_level_idx = [i32(0), 2, 3, 5, 6]
 		tc.top_level_idx_nodes_len = a.nodes.len
 		tc.synthetic_top_level_type_ids = [2]
 		mut t := new_transformer(mut a, &tc, map[string]bool{})

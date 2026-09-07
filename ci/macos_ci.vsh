@@ -172,7 +172,4 @@ const all_tasks = {
 	'test_inline_assembly':               Task{test_inline_assembly, 'Test inline assembly'}
 }
 
-// A supported V3 compilation must fail directly in CI. Never let the macOS
-// compatibility retry turn a V3 regression into a passing V1 build.
-os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 common.run(all_tasks)

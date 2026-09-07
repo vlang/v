@@ -77,4 +77,21 @@ jobs:
 
       - name: Deploy
         if: github.event_name == 'push' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
-        run: git -C vc push || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Two pushes can regenerate in parallel and finish out of order. Publishing the
+          # older commit's C then rewinds vc to a compiler that predates master, and the
+          # Windows CI jobs, which bootstrap from vc/v_win.c, fail until the next run.
+          # Only deploy when this commit is ahead of what vc already holds.
+          COMMIT_HASH="$(git rev-parse HEAD)"
+          ./v retry -- git -C vc fetch --depth=1 origin master
+          published="$(git -C vc log -1 --pretty='%s' FETCH_HEAD | sed -n 's/^\[v:master\] \([0-9a-f]\{7,40\}\) .*/\1/p')"
+          if [ -n "$published" ] && [ "$published" != "$COMMIT_HASH" ]; then
+            status="$(gh api "repos/${{ github.repository }}/compare/${published}...${COMMIT_HASH}" --jq '.status' || echo unknown)"
+            if [ "$status" != "ahead" ]; then
+              echo "vc already holds ${published}; ${COMMIT_HASH} is '${status}' relative to it, so it is not published"
+              exit 0
+            fi
+          fi
+          git -C vc push || true

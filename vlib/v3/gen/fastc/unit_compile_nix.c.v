@@ -1,6 +1,7 @@
 module fastc
 
 import os
+import strings
 import time
 
 fn C.v_os_exec_capture_start(argv &&char, child_pid &int, read_fd &int) int
@@ -99,9 +100,64 @@ fn fastc_render_unit_stdin(fd int, worker thread string) {
 	fastc_write_unit_stdin(fd, source)
 }
 
+@[inline]
+fn fastc_append_c_unit_piece(mut out strings.Builder, text string) {
+	if text.len > 0 {
+		out.write_string(text)
+	}
+}
+
 fn fastc_render_c_unit_stdin(fd int, pieces []string, units &FastcUnitLayout, g int, first_unit int, end_unit int) {
-	source := fastc_render_c_unit(pieces, units, g, first_unit, end_unit)
-	fastc_write_unit_stdin(fd, source)
+	mut out := strings.new_builder(512 * 1024)
+	for k in 0 .. units.head_end {
+		if units.prototype_start < units.prototype_end && k >= units.prototype_start
+			&& k < units.prototype_end {
+			continue
+		}
+		mut piece := pieces[k]
+		for e, index in units.extern_indexes {
+			if index == k {
+				piece = if g > 0 { units.extern_texts[e] } else { units.define_texts[e] }
+				break
+			}
+		}
+		fastc_append_c_unit_piece(mut out, piece)
+	}
+	if units.prototype_start < units.prototype_end && units.prototype_texts.len > 0
+		&& units.unit_ref_starts.len == units.unit_starts.len {
+		mut needed := []bool{len: units.prototype_texts.len}
+		if g == 0 {
+			for id in units.solo_prototype_ids {
+				needed[id] = true
+			}
+		}
+		for u in first_unit .. end_unit {
+			for r in units.unit_ref_starts[u] .. units.unit_ref_starts[u + 1] {
+				needed[units.unit_ref_ids[r]] = true
+			}
+		}
+		if end_unit == units.unit_starts.len - 1 {
+			for id in units.tail_prototype_ids {
+				needed[id] = true
+			}
+		}
+		for id, include_prototype in needed {
+			if include_prototype {
+				fastc_append_c_unit_piece(mut out, units.prototype_texts[id])
+			}
+		}
+	}
+	if g == 0 {
+		for k in units.head_end .. units.solo_end {
+			fastc_append_c_unit_piece(mut out, pieces[k])
+		}
+	}
+	fastc_append_c_unit_piece(mut out, '\n')
+	for k in units.unit_starts[first_unit] .. units.unit_starts[end_unit] {
+		fastc_append_c_unit_piece(mut out, pieces[k])
+	}
+	C.v_os_fd_write_all(fd, &char(out.data), usize(out.len))
+	C.close(fd)
 }
 
 // fastc_prestart_c_units starts TinyCC processes that wait for their source on

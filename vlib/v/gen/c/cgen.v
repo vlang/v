@@ -115,6 +115,7 @@ mut:
 	is_sql                               bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
 	is_shared                            bool // for initialization of hidden mutex in `[rw]shared` literals
 	is_vlines_enabled                    bool // is it safe to generate #line directives when -g is passed
+	vlines_pending_nl                    bool // the output ends with an unterminated `#line` directive
 	is_autofree                          bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree
 	is_autofree_tmp                      bool // when generating autofree temporary variables
 	is_builtin_mod                       bool
@@ -6437,7 +6438,9 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 		ast.AsmRegister {
 			if stmt.is_intel {
 				g.write(arg.name)
-			} else if stmt.arch in [.rv64, .rv32] {
+			} else if stmt.arch in [.rv64, .rv32, .arm64, .arm32] {
+				// ARM and RISC-V assembly write register names plainly; the `%`
+				// prefix below is x86/AT&T syntax.
 				g.write('${arg.name}')
 			} else if stmt.arch == .loongarch64 {
 				g.write('$${arg.name}')

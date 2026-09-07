@@ -265,9 +265,9 @@ fn is_local_repository(query string) bool {
 			// local repository. This keeps `v install vsl@<tag>` working when
 			// cwd happens to be the vmodules directory (the test setup for
 			// versioned installs does exactly this).
-			abs := os.real_path(path)
+			abs_path := os.real_path(path)
 			vmodules_real := os.real_path(settings.vmodules_path)
-			if abs.starts_with(vmodules_real + os.path_separator) || abs == vmodules_real {
+			if abs_path.starts_with(vmodules_real + os.path_separator) || abs_path == vmodules_real {
 				continue
 			}
 			return true

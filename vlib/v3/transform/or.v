@@ -1098,6 +1098,13 @@ fn (t &Transformer) specialized_or_expr_types(expr_type string) (string, string)
 
 fn (t &Transformer) qualify_specialized_or_expr_value_type(typ string) string {
 	clean := typ.trim_space()
+	if clean.starts_with('(') && clean.ends_with(')') {
+		mut qualified_items := []string{}
+		for item in split_generic_args(clean[1..clean.len - 1]) {
+			qualified_items << t.qualify_specialized_or_expr_value_type(item)
+		}
+		return '(${qualified_items.join(', ')})'
+	}
 	if clean.starts_with('&') {
 		return '&' + t.qualify_specialized_or_expr_value_type(clean[1..])
 	}

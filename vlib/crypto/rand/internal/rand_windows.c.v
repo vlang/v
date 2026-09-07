@@ -1,11 +1,12 @@
 // Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
-module rand
+module internal
 
 #flag windows -Llibraries/bcrypt
+
 #flag windows -lbcrypt
+
 #include <bcrypt.h>
 
 const status_success = 0x00000000

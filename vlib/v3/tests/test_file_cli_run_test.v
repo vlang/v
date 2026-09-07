@@ -62,6 +62,49 @@ fn test_implicit_result_propagation() {
 	assert propagation_test.exit_code == 0, propagation_test.output
 }
 
+// A test beside a source in a v.mod `subdirs` directory needs every source in
+// that virtual module, not only files in the test's physical directory.
+fn test_direct_test_file_in_virtual_module_directory_includes_sibling_subdirs() {
+	v3_bin := build_v3_test_file_cli_runner()
+	root := os.join_path(os.temp_dir(), 'v3_virtual_module_test_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'ui'))!
+	os.mkdir_all(os.join_path(root, 'platform'))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+
+	os.write_file(os.join_path(root, 'v.mod'), "Module {
+	name: 'virtual_module_test'
+	subdirs: ['ui', 'platform']
+}
+")!
+	os.write_file(os.join_path(root, 'ui', 'ui.v'), 'module virtual_module_test
+
+fn ui_value() int {
+	return 40
+}
+')!
+	os.write_file(os.join_path(root, 'platform', 'platform.v'), 'module virtual_module_test
+
+fn platform_value() int {
+	return 2
+}
+')!
+	test_file := os.join_path(root, 'ui', 'ui_test.v')
+	os.write_file(test_file, 'module virtual_module_test
+
+fn test_virtual_module_sources_are_available() {
+	assert ui_value() + platform_value() == 42
+}
+')!
+	test_bin := os.join_path(root, 'virtual_module_test')
+	build := os.execute('${os.quoted_path(v3_bin)} -o ${os.quoted_path(test_bin)} ${os.quoted_path(test_file)}')
+	assert build.exit_code == 0, build.output
+	run := os.execute(os.quoted_path(test_bin))
+	assert run.exit_code == 0, run.output
+}
+
 fn test_directory_test_command_sets_test_define_before_collecting_inputs() {
 	v3_bin := build_v3_test_file_cli_runner()
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_test_directory_define_${os.getpid()}')

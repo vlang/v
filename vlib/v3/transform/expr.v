@@ -242,6 +242,23 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 			effective_rhs_raw_type = map_value_type
 		}
 	}
+	// An `is` smartcast narrows the operand, but an index/selector node keeps its
+	// declared sum type. Prefer the narrowed type, so that
+	// `if a[0] is [3]f64 { a[0] == [1.0, 1.5, 2.0]! }` lowers as a fixed array
+	// comparison, instead of falling through to the sum type's equality helper -
+	// which would then be handed a raw fixed array and emit uncompilable C.
+	if !t.is_fixed_array_type(t.membership_container_type(effective_lhs_raw_type)) {
+		smartcast_lhs_type := t.smartcast_node_type(lhs_id)
+		if t.is_fixed_array_type(t.membership_container_type(smartcast_lhs_type)) {
+			effective_lhs_raw_type = smartcast_lhs_type
+		}
+	}
+	if !t.is_fixed_array_type(t.membership_container_type(effective_rhs_raw_type)) {
+		smartcast_rhs_type := t.smartcast_node_type(rhs_id)
+		if t.is_fixed_array_type(t.membership_container_type(smartcast_rhs_type)) {
+			effective_rhs_raw_type = smartcast_rhs_type
+		}
+	}
 	lhs_is_array_ptr := t.equality_type_is_array_pointer(effective_lhs_raw_type)
 	rhs_is_array_ptr := t.equality_type_is_array_pointer(effective_rhs_raw_type)
 	if lhs_is_array_ptr && rhs_is_array_ptr {
@@ -1206,6 +1223,19 @@ fn (t &Transformer) checker_node_type(id flat.NodeId) string {
 		return ''
 	}
 	return t.normalize_type_alias(name)
+}
+
+// smartcast_node_type is the type `id` was narrowed to by an enclosing `is` check,
+// or '' when it is not smartcast.
+fn (t &Transformer) smartcast_node_type(id flat.NodeId) string {
+	if isnil(t.tc) || int(id) < 0 {
+		return ''
+	}
+	name := t.tc.smartcast_type_name(id)
+	if name.len == 0 || name == 'void' {
+		return ''
+	}
+	return name
 }
 
 fn (t &Transformer) raw_checker_node_type(id flat.NodeId) string {

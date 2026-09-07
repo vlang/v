@@ -1733,9 +1733,15 @@ fn fastc_source_scan_flags(source string) FastcSourceScanFlags {
 			for end < source.len && fastc_identifier_byte(source[end]) {
 				end++
 			}
-			if !flags.has_constants || !flags.has_type_keywords || !flags.has_global_declarations
-				|| !flags.has_interfaces || !flags.has_generic_fn_syntax || !flags.has_select {
-				fastc_source_scan_word_flags(source, i, c, mut flags)
+			match c {
+				`_`, `c`, `e`, `f`, `i`, `s`, `t`, `u` {
+					if !flags.has_constants || !flags.has_type_keywords
+						|| !flags.has_global_declarations || !flags.has_interfaces
+						|| !flags.has_generic_fn_syntax || !flags.has_select {
+						fastc_source_scan_word_flags(source, i, c, mut flags)
+					}
+				}
+				else {}
 			}
 			i = end
 			continue

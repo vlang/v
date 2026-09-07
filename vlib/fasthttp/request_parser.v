@@ -526,7 +526,9 @@ fn parse_transfer_encoding(buf []u8, value Slice, mut state TransferEncodingStat
 		if pos == token_start {
 			return false
 		}
-		is_chunked := pos - token_start == 7 && ascii_ci_eq(&buf[token_start], c'chunked', 7)
+		// The cast is load bearing: the parameter is `&u8`, and handing a C `char[]`
+		// straight to it is a pointer sign mismatch that `-cstrict` rejects.
+		is_chunked := pos - token_start == 7 && ascii_ci_eq(&buf[token_start], &u8(c'chunked'), 7)
 		state.seen = true
 		state.final_chunked = is_chunked
 		state.chunked_seen = is_chunked
