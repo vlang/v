@@ -1543,6 +1543,14 @@ fn single_windows_path_operand(value string) ?string {
 	return trimmed
 }
 
+fn quote_windows_gcc_path_operand(path string) string {
+	mut trailing_separators := 0
+	for i := path.len - 1; i >= 0 && path[i] == `\\`; i-- {
+		trailing_separators++
+	}
+	return '"${path}${'\\'.repeat(trailing_separators)}"'
+}
+
 fn rewrite_windows_path_operand_arg(arg string, resolver WindowsPathResolver) string {
 	if arg == '' {
 		return ''
@@ -1551,14 +1559,14 @@ fn rewrite_windows_path_operand_arg(arg string, resolver WindowsPathResolver) st
 		if arg.starts_with(prefix) {
 			path := single_windows_path_operand(arg[prefix.len..]) or { return arg }
 			if looks_like_windows_path(path) {
-				return prefix + '"${resolver(path)}"'
+				return prefix + quote_windows_gcc_path_operand(resolver(path))
 			}
 		}
 	}
 	if !arg.starts_with('-') {
 		path := single_windows_path_operand(arg) or { return arg }
 		if looks_like_windows_path(path) {
-			return '"${resolver(path)}"'
+			return quote_windows_gcc_path_operand(resolver(path))
 		}
 	}
 	return arg
@@ -1660,33 +1668,79 @@ fn ccompiler_exec_args(ccompiler string, args []string) []string {
 	mut current := []u8{}
 	mut quote := u8(0)
 	mut has_arg := false
-	for ch in args.join(' ').bytes() {
+	input := args.join(' ')
+	mut i := 0
+	for i < input.len {
+		ch := input[i]
 		if quote == 0 && ch.is_space() {
 			if has_arg {
 				exact_args << current.bytestr()
 				current = []u8{}
 				has_arg = false
 			}
+			i++
+			continue
+		}
+		if ch == `\\` {
+			start := i
+			for i < input.len && input[i] == `\\` {
+				i++
+			}
+			count := i - start
+			if i < input.len && input[i] == `"` {
+				for _ in 0 .. count / 2 {
+					current << `\\`
+				}
+				if count % 2 == 1 {
+					current << `"`
+				} else {
+					quote = if quote == `"` { u8(0) } else { u8(`"`) }
+				}
+				has_arg = true
+				i++
+				continue
+			}
+			for _ in 0 .. count {
+				current << `\\`
+			}
+			has_arg = true
 			continue
 		}
 		if ch in [`"`, `'`] {
 			if quote == 0 {
 				quote = ch
 				has_arg = true
+				i++
 				continue
 			}
 			if quote == ch {
 				quote = 0
+				i++
 				continue
 			}
 		}
 		current << ch
 		has_arg = true
+		i++
 	}
 	if has_arg {
 		exact_args << current.bytestr()
 	}
 	return exact_args
+}
+
+fn gcc_response_file_content(args []string) string {
+	exact_args := ccompiler_exec_args('', args)[1..]
+	return exact_args.map('"' + it.replace('\\', '\\\\').replace('"', '\\"') + '"').join(' ')
+}
+
+fn (v &Builder) ccompiler_response_file_content(args []string, formatted string) string {
+	$if windows {
+		if v.ccoptions.cc == .gcc || v.pref.ccompiler_type == .cplusplus {
+			return gcc_response_file_content(args)
+		}
+	}
+	return formatted.replace('\\', '\\\\')
 }
 
 fn (v &Builder) windows_gcc_needs_direct_exec(args []string) bool {
@@ -2102,7 +2156,7 @@ pub fn (mut v Builder) cc() {
 		mut response_file_content := str_args
 		if should_use_rsp {
 			response_file = '${v.out_name_c}.rsp'
-			response_file_content = str_args.replace('\\', '\\\\')
+			response_file_content = v.ccompiler_response_file_content(rsp_args, str_args)
 			write_response_file(response_file, response_file_content)
 			rspexpr := '@${v.tcc_windows_path(response_file)}'
 			cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'
@@ -2272,7 +2326,7 @@ fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler st
 		mut response_file_content := str_args
 		if should_use_rsp {
 			response_file = '${temporary_object}.rsp'
-			response_file_content = str_args.replace('\\', '\\\\')
+			response_file_content = v.ccompiler_response_file_content(rsp_args, str_args)
 			write_response_file(response_file, response_file_content)
 			rspexpr := '@${v.tcc_windows_path(response_file)}'
 			cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'

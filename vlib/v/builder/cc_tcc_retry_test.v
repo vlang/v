@@ -269,6 +269,7 @@ fn test_rewrite_windows_path_operand_arg_rewrites_path_operands() {
 	expected := r'"C:\Users\LEO~1\.vmodules\.cache\bc\artifact.o"'
 	assert rewrite_windows_path_operand_arg(obj, fake_windows_short_path) == expected
 	assert rewrite_windows_path_operand_arg(r"'C:\Users\Léo\input.o'", fake_windows_short_path) == r'"C:\Users\LEO~1\input.o"'
+	assert rewrite_windows_path_operand_arg(r'-B"C:\toolchain\"', fake_windows_short_path) == r'-B"C:\toolchain\\"'
 }
 
 fn test_rewrite_windows_path_operand_arg_leaves_path_like_values_alone() {
@@ -322,7 +323,7 @@ fn test_gcc_rsp_args_require_ascii_paths() {
 
 fn test_ccompiler_exec_args_split_shell_formatted_options() {
 	assert ccompiler_exec_args('gcc', [r'-o "C:\Users\工作\main.exe"', r'"C:\Users\工作\main.c"',
-		r'-I"C:\Program Files\SDK"', '-DFOO=1 -DBAR=2']) == [
+		r'-I"C:\Program Files\SDK"', '-DFOO=1 -DBAR=2', r'-B"C:\toolchain\\"', r'-DNAME=\"foo\"']) == [
 		'gcc',
 		'-o',
 		r'C:\Users\工作\main.exe',
@@ -330,7 +331,13 @@ fn test_ccompiler_exec_args_split_shell_formatted_options() {
 		r'-IC:\Program Files\SDK',
 		'-DFOO=1',
 		'-DBAR=2',
+		r'-BC:\toolchain\',
+		r'-DNAME="foo"',
 	]
+}
+
+fn test_gcc_response_file_content_quotes_exact_arguments() {
+	assert gcc_response_file_content([r'-B"C:\toolchain\\"', r'-DNAME=\"foo\"']) == r'"-BC:\\toolchain\\" "-DNAME=\"foo\""'
 }
 
 fn test_windows_gnu_compilers_compile_in_a_non_ascii_directory() {
