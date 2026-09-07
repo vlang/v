@@ -49,12 +49,15 @@ fn test_map_delete_reclaims_dense_array_tail() {
 }
 
 fn test_empty_map_defers_storage_until_first_write() {
-	mut m := map[string]int{}
+	// Use pointer-containing keys and values so this exercises the regular map
+	// initializer. Under gcboehm_opt, pointer-free storage uses eager no-scan
+	// allocations by design.
+	mut m := map[string]string{}
 	raw := unsafe { &MapLayoutForTest(&m) }
 	assert raw.metas == unsafe { nil }
 	assert raw.key_values.keys == unsafe { nil }
 	assert raw.key_values.values == unsafe { nil }
-	assert m['absent'] == 0
+	assert m['absent'] == ''
 	assert 'absent' !in m
 	assert m.keys().len == 0
 	assert m.values().len == 0
@@ -63,27 +66,27 @@ fn test_empty_map_defers_storage_until_first_write() {
 	m.reserve(0)
 	mut copy := m.clone()
 	assert raw.metas == unsafe { nil }
-	copy['copy'] += 2
+	copy['copy'] += '2'
 	assert copy == {
-		'copy': 2
+		'copy': '2'
 	}
 	assert m.len == 0
-	m['original']++
+	m['original'] += '1'
 	assert m == {
-		'original': 1
+		'original': '1'
 	}
 	assert copy == {
-		'copy': 2
+		'copy': '2'
 	}
 	assert raw.metas != unsafe { nil }
 	unsafe { copy.free() }
 	m.clear()
-	m['reused'] = 3
+	m['reused'] = '3'
 	assert m == {
-		'reused': 3
+		'reused': '3'
 	}
 	unsafe { m.free() }
-	mut empty := map[string]int{}
+	mut empty := map[string]string{}
 	unsafe { empty.free() }
 }
 

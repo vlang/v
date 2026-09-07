@@ -7,7 +7,7 @@ senders.
 Choose the message sender whose return and argument types exactly match the Objective-C method.
 For example:
 
-```v oksyntax
+```v ignore
 import macos
 
 value := macos.msg_id_range(
