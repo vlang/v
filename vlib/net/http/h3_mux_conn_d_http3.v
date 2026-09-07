@@ -127,6 +127,7 @@ mut:
 	ended         bool
 	err           string
 	err_code      u64 // set only on a request_error/reset failure; 0 otherwise
+	local_err_code int // set only for an implementation-defined, non-peer-controlled failure
 	retryable     bool
 	// sent_headers is set once start_request's send_request_headers call
 	// succeeds -- the H3 mirror of H2MuxStream.sent_headers, used by
@@ -151,6 +152,17 @@ fn (mut s H3MuxStream) fail(msg string, retryable bool) {
 	if !s.ended {
 		s.err = msg
 		s.retryable = retryable
+		s.ended = true
+		s.cv.signal()
+	}
+	s.mu.unlock()
+}
+
+fn (mut s H3MuxStream) fail_with_code(msg string, code int) {
+	s.mu.lock()
+	if !s.ended {
+		s.err = msg
+		s.local_err_code = code
 		s.ended = true
 		s.cv.signal()
 	}
@@ -190,6 +202,7 @@ mut:
 	goaway_received bool
 	shutting_down   bool
 	conn_err        string
+	conn_err_code   int
 	idle_since      time.Time
 	// refs mirrors H2MuxConn.refs's shape (the pool's own +1, plus one per
 	// caller between do() and release()) for structural parity and future
@@ -288,7 +301,11 @@ pub fn (mut c H3MuxConn) do(req H3ClientRequest) !H3ClientResponse {
 	c.qmu.lock()
 	if c.closed {
 		reason := if c.conn_err != '' { c.conn_err } else { 'connection is closed' }
+		err_code := c.conn_err_code
 		c.qmu.unlock()
+		if err_code != 0 {
+			return error_with_code(reason, err_code)
+		}
 		return h3_retryable_error(reason)
 	}
 	if c.goaway_received || c.shutting_down {
@@ -406,6 +423,7 @@ fn (mut c H3MuxConn) wait_response(mut s H3MuxStream, req H3ClientRequest) !H3Cl
 		ended := s.ended
 		serr := s.err
 		serr_code := s.err_code
+		local_err_code := s.local_err_code
 		retryable := s.retryable
 		if ended {
 			for f in s.resp_trailers {
@@ -413,6 +431,9 @@ fn (mut c H3MuxConn) wait_response(mut s H3MuxStream, req H3ClientRequest) !H3Cl
 			}
 			s.mu.unlock()
 			if serr != '' {
+				if local_err_code != 0 {
+					return error_with_code(serr, local_err_code)
+				}
 				if retryable {
 					return h3_retryable_error(serr)
 				}
@@ -700,7 +721,13 @@ fn (mut c H3MuxConn) dispatch_h3_event(ev quic.H3Event) {
 		}
 		.connection_error {
 			reason := if ev.reason != '' { ev.reason } else { 'h3 connection closed' }
-			c.fail_conn(reason)
+			code := ev.error_code or { u64(0) }
+			local_err_code := h3_http_connection_error_code(code)
+			if local_err_code != 0 {
+				c.fail_conn_with_code(reason, local_err_code)
+			} else {
+				c.fail_conn(reason)
+			}
 		}
 		.response_headers {
 			stream_id := ev.stream_id or { return }
@@ -810,6 +837,10 @@ fn (mut c H3MuxConn) lookup_stream(stream_id u64) &H3MuxStream {
 // approved Phase 12 plan's own top-ranked risk callout for this
 // sub-phase).
 fn (mut c H3MuxConn) fail_conn(msg string) {
+	c.fail_conn_with_code(msg, 0)
+}
+
+fn (mut c H3MuxConn) fail_conn_with_code(msg string, code int) {
 	c.qmu.lock()
 	if c.closed {
 		c.qmu.unlock()
@@ -817,6 +848,7 @@ fn (mut c H3MuxConn) fail_conn(msg string) {
 	}
 	c.closed = true
 	c.conn_err = msg
+	c.conn_err_code = code
 	mut open := []&H3MuxStream{}
 	for _, s in c.streams {
 		open << s
@@ -834,6 +866,10 @@ fn (mut c H3MuxConn) fail_conn(msg string) {
 		c.h3.free()
 	}
 	for mut s in open {
+		if code != 0 {
+			s.fail_with_code(msg, code)
+			continue
+		}
 		s.mu.lock()
 		retryable := !s.sent_headers
 		s.mu.unlock()

@@ -55,6 +55,7 @@ fn test_openssl_rejects_self_signed_certificate_when_validation_is_enabled() {
 		validate: true
 	) or {
 		server.wait()
+		assert err.code() == net.err_tls_certificate_invalid_code, 'unexpected error ${err.code()}: ${err.msg()}'
 		return
 	}
 	server.wait()
@@ -71,6 +72,7 @@ fn test_openssl_rejects_trusted_certificate_for_wrong_host() {
 		verify: openssl_validation_cert_path
 	) or {
 		server.wait()
+		assert err.code() == net.err_tls_certificate_invalid_code, 'unexpected error ${err.code()}: ${err.msg()}'
 		return
 	}
 	server.wait()

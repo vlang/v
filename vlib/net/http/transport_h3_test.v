@@ -1,6 +1,8 @@
 // vtest vflags: -d http3
 module http
 
+import net
+import net.quic
 import sync
 import time
 
@@ -83,6 +85,15 @@ fn test_h3_round_trip_rejects_validate_false() {
 		return
 	}
 	assert false, 'expected h3_round_trip to reject a request with validate: false'
+}
+
+fn test_h3_certificate_alert_is_nonretryable_at_http_boundary() {
+	bad_certificate := int(quic.tls_alert_to_quic_error(.bad_certificate))
+	assert h3_http_dial_error_code(bad_certificate) == net.err_tls_certificate_invalid_code
+	assert is_no_need_retry_error(h3_http_dial_error_code(bad_certificate))
+	assert h3_http_dial_error_code(123) == 123
+	assert h3_http_connection_error_code(u64(bad_certificate)) == net.err_tls_certificate_invalid_code
+	assert h3_http_connection_error_code(123) == 0
 }
 
 // new_test_h3_mux_conn_for_pool_test builds a bare H3MuxConn suitable only

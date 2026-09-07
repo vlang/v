@@ -19,6 +19,14 @@ pub const err_timed_out = error_with_code('net: op timed out', errors_base + 9)
 pub const err_timed_out_code = errors_base + 9
 pub const err_connection_refused = error_with_code('net: connection refused', errors_base + 10)
 
+// tls_errors_base reserves negative codes for portable TLS failures, separate
+// from the platform socket error values used by the constants above.
+const tls_errors_base = -20100
+
+// err_tls_certificate_invalid_code identifies a deterministic TLS peer-certificate
+// validation failure. Callers can use it to avoid retrying the same invalid peer.
+pub const err_tls_certificate_invalid_code = tls_errors_base + 1
+
 pub fn socket_error_message(potential_code int, s string) !int {
 	return socket_error(potential_code) or { return error('${err.msg()}; ${s}') }
 }

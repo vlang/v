@@ -30,6 +30,13 @@ fn free_rng(mut ctr_drbg C.mbedtls_ctr_drbg_context, mut entropy C.mbedtls_entro
 	C.mbedtls_entropy_free(&entropy)
 }
 
+fn mbedtls_client_handshake_error(message string, ret int) IError {
+	if ret == C.MBEDTLS_ERR_X509_CERT_VERIFY_FAILED {
+		return error_with_code(message, net.err_tls_certificate_invalid_code)
+	}
+	return error_with_code(message, ret)
+}
+
 // SSLCerts represents a pair of CA and client certificates + key
 pub struct SSLCerts {
 pub mut:
@@ -751,7 +758,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 		ret = C.mbedtls_ssl_handshake(&s.ssl)
 	}
 	if ret != 0 {
-		return error_with_code('net.mbedtls SSLConn.connect, mbedtls_ssl_handshake failed 2; ret: ${ret}', ret)
+		return mbedtls_client_handshake_error('net.mbedtls SSLConn.connect, mbedtls_ssl_handshake failed 2; ret: ${ret}', ret)
 	}
 	s.opened = true
 }
@@ -803,7 +810,7 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 		ret = C.mbedtls_ssl_handshake(&s.ssl)
 	}
 	if ret != 0 {
-		return error_with_code('net.mbedtls SSLConn.dial, mbedtls_ssl_handshake failed 3; ret: ${ret}', ret)
+		return mbedtls_client_handshake_error('net.mbedtls SSLConn.dial, mbedtls_ssl_handshake failed 3; ret: ${ret}', ret)
 	}
 	s.opened = true
 	connected = true

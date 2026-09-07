@@ -186,6 +186,19 @@ fn test_do_rejects_when_closed_with_the_stored_reason() {
 	assert false, 'expected do() to reject a closed connection'
 }
 
+fn test_do_preserves_closed_connection_certificate_error_code() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	c.closed = true
+	c.conn_err = 'certificate rejected'
+	c.conn_err_code = net.err_tls_certificate_invalid_code
+	c.do(H3ClientRequest{ authority: 'example.com' }) or {
+		assert err.code() == net.err_tls_certificate_invalid_code
+		assert err.msg().contains('certificate rejected')
+		return
+	}
+	assert false, 'expected do() to preserve the certificate failure code'
+}
+
 fn test_do_rejects_when_goaway_received() {
 	mut c := new_test_h3_mux_conn_no_driver()
 	c.goaway_received = true
@@ -249,6 +262,31 @@ fn test_fail_conn_is_idempotent() {
 	c.fail_conn('first')
 	c.fail_conn('second')
 	assert c.conn_err == 'first'
+}
+
+fn test_connection_certificate_error_fails_pending_request_without_retry() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	c.pending << PendingH3Request{
+		req: H3ClientRequest{
+			authority: 'example.com'
+		}
+		stream: s
+	}
+	c.dispatch_h3_event(quic.H3Event{
+		kind: .connection_error
+		error_code: quic.tls_alert_to_quic_error(.bad_certificate)
+		reason: 'certificate rejected'
+	})
+	s.mu.lock()
+	ended := s.ended
+	retryable := s.retryable
+	local_err_code := s.local_err_code
+	s.mu.unlock()
+	assert ended
+	assert !retryable
+	assert local_err_code == net.err_tls_certificate_invalid_code
+	assert c.conn_err_code == net.err_tls_certificate_invalid_code
 }
 
 // --- real driver thread: no-hang guarantee under a dying transport -----

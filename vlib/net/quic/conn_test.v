@@ -1526,18 +1526,91 @@ fn test_path_challenge_queues_a_path_response() {
 // A peer may advertise spare CIDs without forcing this connection to use
 // them. This is the real-server shape that motivated NEW_CONNECTION_ID
 // parsing and remains safe even though v1 has no CID pool.
+fn peer_connection_id_for_test(sequence u64, connection_id []u8, token_byte u8) NewConnectionIdFrame {
+	return NewConnectionIdFrame{
+		sequence_number: sequence
+		retire_prior_to: 0
+		connection_id: connection_id
+		stateless_reset_token: []u8{len: stateless_reset_token_length, init: token_byte}
+	}
+}
+
 fn test_new_connection_id_without_retirement_is_tolerated() {
 	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
 		c.handshake.free()
 	}
 	mut result := PollResult{}
-	c.dispatch_one_rtt_frame(NewConnectionIdFrame{
-		sequence_number: 1
-		retire_prior_to: 0
-		connection_id: [u8(1)]
-		stateless_reset_token: []u8{len: stateless_reset_token_length}
-	}, now, mut result)!
+	frame := peer_connection_id_for_test(1, [u8(1)], 0x11)
+	c.dispatch_one_rtt_frame(frame, now, mut result)!
+	c.dispatch_one_rtt_frame(frame, now, mut result)!
+	assert c.peer_connection_ids.len == 2
+}
+
+fn test_new_connection_id_rejects_repeated_sequence_with_different_cid() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut result := PollResult{}
+	c.dispatch_one_rtt_frame(peer_connection_id_for_test(1, [u8(1)], 0x11), now, mut result)!
+	c.dispatch_one_rtt_frame(peer_connection_id_for_test(1, [u8(2)], 0x11), now, mut result) or {
+		assert err.code() == int(quic_error_protocol_violation)
+		assert err.msg().contains('repeated with different')
+		return
+	}
+	assert false, 'expected a repeated sequence with a different CID to be rejected'
+}
+
+fn test_new_connection_id_rejects_repeated_sequence_with_different_token() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut result := PollResult{}
+	c.dispatch_one_rtt_frame(peer_connection_id_for_test(1, [u8(1)], 0x11), now, mut result)!
+	c.dispatch_one_rtt_frame(peer_connection_id_for_test(1, [u8(1)], 0x22), now, mut result) or {
+		assert err.code() == int(quic_error_protocol_violation)
+		assert err.msg().contains('repeated with different')
+		return
+	}
+	assert false, 'expected a repeated sequence with a different token to be rejected'
+}
+
+fn test_new_connection_id_rejects_same_cid_under_different_sequences() {
+	mut params := generous_transport_params()
+	params.active_connection_id_limit = 3
+	mut c, _, now := drive_to_established(params, generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut result := PollResult{}
+	c.dispatch_one_rtt_frame(peer_connection_id_for_test(1, [u8(1)], 0x11), now, mut result)!
+	c.dispatch_one_rtt_frame(peer_connection_id_for_test(2, [u8(1)], 0x22), now, mut result) or {
+		assert err.code() == int(quic_error_protocol_violation)
+		assert err.msg().contains('issued under both sequence')
+		return
+	}
+	assert false, 'expected one CID under different sequences to be rejected'
+}
+
+// Omitting active_connection_id_limit advertises RFC 9000's default of 2,
+// including the peer's initial sequence-0 CID. Therefore only one distinct
+// NEW_CONNECTION_ID may remain active while retirement stays unsupported.
+fn test_new_connection_id_enforces_default_active_limit() {
+	mut c, _, now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut result := PollResult{}
+	c.dispatch_one_rtt_frame(peer_connection_id_for_test(1, [u8(1)], 0x11), now, mut result)!
+	c.dispatch_one_rtt_frame(peer_connection_id_for_test(2, [u8(2)], 0x22), now, mut result) or {
+		assert err.code() == int(quic_error_connection_id_limit_error)
+		assert err.msg().contains('active_connection_id_limit of 2')
+		assert c.peer_connection_ids.len == 2
+		return
+	}
+	assert false, 'expected the default active CID limit to be enforced'
 }
 
 // Retire Prior To 1 retires the peer's initial CID (sequence 0). Silently
@@ -1557,6 +1630,7 @@ fn test_new_connection_id_rejects_unsupported_retirement() {
 	}, now, mut result) or {
 		assert err.code() == int(quic_error_internal_error)
 		assert err.msg().contains('connection-ID rotation is not supported')
+		assert c.peer_connection_ids.len == 1
 		return
 	}
 	assert false, 'expected retirement of the in-use peer CID to be rejected'

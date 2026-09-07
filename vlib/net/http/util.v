@@ -53,6 +53,14 @@ fn vschannel_should_report_connect_failure(err_code int) bool {
 	return false
 }
 
+fn vschannel_is_certificate_error(err_code int) bool {
+	code := u32(err_code)
+	// Certificate Services CERT_E_* policy failures, plus the SSPI
+	// certificate statuses that can be returned directly by a handshake.
+	return (code >= u32(0x800b0101) && code <= u32(0x800b0114))
+		|| code in [u32(0x80090322), u32(0x80090325), u32(0x80090327), u32(0x80090328)]
+}
+
 fn vschannel_looks_like_connect_failure_response(response_text string) bool {
 	trimmed := response_text.trim_space()
 	return trimmed.starts_with('Error ') && (trimmed.contains('sending data to server')
@@ -60,6 +68,9 @@ fn vschannel_looks_like_connect_failure_response(response_text string) bool {
 }
 
 fn vschannel_request_error(err_code int) IError {
+	if vschannel_is_certificate_error(err_code) {
+		return error_with_code('http: vschannel certificate validation failed: ${vschannel_error_message(err_code)}', net.err_tls_certificate_invalid_code)
+	}
 	if vschannel_should_report_connect_failure(err_code) {
 		return vschannel_connect_error(err_code)
 	}
@@ -69,6 +80,9 @@ fn vschannel_request_error(err_code int) IError {
 
 fn vschannel_parse_response(response_text string, err_code int) !Response {
 	if response_text.len < 5 || response_text[..5].to_lower() != 'http/' {
+		if vschannel_is_certificate_error(err_code) {
+			return vschannel_request_error(err_code)
+		}
 		if vschannel_should_report_connect_failure(err_code)
 			|| vschannel_looks_like_connect_failure_response(response_text) {
 			return vschannel_connect_error(err_code)

@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module http
 
+import net
 import net.quic
 import os
 import sync
@@ -295,7 +296,7 @@ fn (mut t Transport) h3_dial_and_do(req &Request, key string, method Method, hos
 // error can still decide whether to give up early.
 fn (mut t Transport) h3_dial_failed(key string, mut call H3DialCall, dial_err IError) IError {
 	msg := dial_err.msg()
-	code := dial_err.code()
+	code := h3_http_dial_error_code(dial_err.code())
 	t.mu.lock()
 	t.h3_dialing.delete(key)
 	t.mu.unlock()
@@ -309,6 +310,20 @@ fn (mut t Transport) h3_dial_failed(key string, mut call H3DialCall, dial_err IE
 		return error_with_code(msg, code)
 	}
 	return error(msg)
+}
+
+fn h3_http_dial_error_code(code int) int {
+	if code == int(quic.tls_alert_to_quic_error(.bad_certificate)) {
+		return net.err_tls_certificate_invalid_code
+	}
+	return code
+}
+
+fn h3_http_connection_error_code(code u64) int {
+	if code == quic.tls_alert_to_quic_error(.bad_certificate) {
+		return net.err_tls_certificate_invalid_code
+	}
+	return 0
 }
 
 // h3_await_dial waits for an in-flight singleflight dial to finish, then

@@ -897,6 +897,19 @@ fn test_path_challenge_and_response_frame_round_trip() {
 	}
 }
 
+fn test_path_challenge_and_response_reject_truncated_data_as_frame_encoding_error() {
+	for typ in [frame_type_path_challenge, frame_type_path_response] {
+		mut buf := encode_varint(typ)!
+		buf << []u8{len: path_challenge_data_length - 1}
+		parse_frame(buf) or {
+			assert err.code() == int(quic_error_frame_encoding_error)
+			assert err.msg().contains('FRAME_ENCODING_ERROR')
+			continue
+		}
+		assert false, 'expected a truncated path validation frame to be rejected'
+	}
+}
+
 fn test_encode_path_response_frame_round_trip() {
 	data := [u8(1), 2, 3, 4, 5, 6, 7, 8]
 	encoded := encode_path_response_frame(data)!

@@ -314,7 +314,15 @@ fn (mut s SSLConn) complete_connect() ! {
 			break
 		}
 
-		err_res := ssl_error(res, s.ssl)!
+		err_res := ssl_error(res, s.ssl) or {
+			if s.config.validate {
+				verify_result := C.SSL_get_verify_result(voidptr(s.ssl))
+				if verify_result != C.X509_V_OK {
+					return error_with_code('net.openssl SSLConn.complete_connect, peer certificate validation failed (OpenSSL SSL_get_verify_result = ${verify_result})', net.err_tls_certificate_invalid_code)
+				}
+			}
+			return err
+		}
 		if err_res == .ssl_error_want_read {
 			s.wait_for_read(ssl_remaining_timeout(deadline))!
 			continue
@@ -322,6 +330,12 @@ fn (mut s SSLConn) complete_connect() ! {
 		if err_res == .ssl_error_want_write {
 			s.wait_for_write(ssl_remaining_timeout(deadline))!
 			continue
+		}
+		if s.config.validate {
+			verify_result := C.SSL_get_verify_result(voidptr(s.ssl))
+			if verify_result != C.X509_V_OK {
+				return error_with_code('net.openssl SSLConn.complete_connect, peer certificate validation failed (OpenSSL SSL_get_verify_result = ${verify_result})', net.err_tls_certificate_invalid_code)
+			}
 		}
 		return error('net.openssl SSLConn.complete_connect, could not connect using SSL. (${err_res}),err')
 	}
@@ -336,13 +350,23 @@ fn (mut s SSLConn) complete_connect() ! {
 				break
 			}
 
-			err_res := ssl_error(res, s.ssl)!
+			err_res := ssl_error(res, s.ssl) or {
+				verify_result := C.SSL_get_verify_result(voidptr(s.ssl))
+				if verify_result != C.X509_V_OK {
+					return error_with_code('net.openssl SSLConn.complete_connect, peer certificate validation failed (OpenSSL SSL_get_verify_result = ${verify_result})', net.err_tls_certificate_invalid_code)
+				}
+				return err
+			}
 			if err_res == .ssl_error_want_read {
 				s.wait_for_read(ssl_remaining_timeout(deadline))!
 				continue
 			} else if err_res == .ssl_error_want_write {
 				s.wait_for_write(ssl_remaining_timeout(deadline))!
 				continue
+			}
+			verify_result := C.SSL_get_verify_result(voidptr(s.ssl))
+			if verify_result != C.X509_V_OK {
+				return error_with_code('net.openssl SSLConn.complete_connect, peer certificate validation failed (OpenSSL SSL_get_verify_result = ${verify_result})', net.err_tls_certificate_invalid_code)
 			}
 			return error('net.openssl SSLConn.complete_connect, could not validate SSL certificate. (${err_res}),err')
 		}
@@ -354,7 +378,7 @@ fn (mut s SSLConn) complete_connect() ! {
 		}
 		res := C.SSL_get_verify_result(voidptr(s.ssl))
 		if res != C.X509_V_OK {
-			return error('net.openssl SSLConn.complete_connect, failed SSL handshake (OpenSSL SSL_get_verify_result = ${res})')
+			return error_with_code('net.openssl SSLConn.complete_connect, peer certificate validation failed (OpenSSL SSL_get_verify_result = ${res})', net.err_tls_certificate_invalid_code)
 		}
 	}
 }

@@ -76,6 +76,7 @@ fn test_vschannel_rejects_self_signed_certificate_when_validation_is_enabled() {
 		validate: true
 	) or {
 		server.wait()
+		assert err.code() == net.err_tls_certificate_invalid_code, 'unexpected error ${err.code()}: ${err.msg()}'
 		return
 	}
 	server.wait()

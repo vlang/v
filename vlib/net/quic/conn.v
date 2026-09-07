@@ -26,8 +26,9 @@ import crypto.rand
 //
 // Connection ID rotation/migration is explicitly out of v1 scope (not
 // deferred -- stateless_reset.v/pmtu.v both already say so independently):
-// exactly one local `scid` and one tracked peer `dcid`, no active CID set,
-// no NEW_CONNECTION_ID/RETIRE_CONNECTION_ID.
+// exactly one local `scid` and one used peer `dcid`. Peer CID advertisements
+// are tracked only to enforce NEW_CONNECTION_ID's consistency and active-ID
+// limit requirements; this client does not switch to them.
 
 // local_cid_len is this client's own chosen connection-ID length -- within
 // RFC 9000 §17.2's 20-byte v1 limit, matching common real-world practice
@@ -47,6 +48,10 @@ const quic_error_protocol_violation = u64(0x0a)
 // quic_error_internal_error is used when the peer requests a legal state
 // transition that this v1 implementation cannot safely perform.
 const quic_error_internal_error = u64(0x01)
+
+// quic_error_connection_id_limit_error is RFC 9000 §20.1's
+// CONNECTION_ID_LIMIT_ERROR.
+const quic_error_connection_id_limit_error = u64(0x09)
 
 // default_max_ack_delay is RFC 9000 §18.2's stated default for the
 // max_ack_delay transport parameter, used until the peer's own value (if
@@ -109,6 +114,12 @@ pub:
 	transport_parameters QuicTransportParameters
 }
 
+struct PeerConnectionId {
+mut:
+	connection_id         []u8
+	stateless_reset_token []u8
+}
+
 @[heap]
 pub struct QuicConn {
 mut:
@@ -125,6 +136,8 @@ mut:
 	dcid                          []u8
 	scid                          []u8
 	peer_scid                     []u8
+	peer_active_cid_limit         u64
+	peer_connection_ids           map[u64]PeerConnectionId
 	token                         []u8
 	retry_accepted                bool
 	processed_first_server_packet bool
@@ -455,6 +468,13 @@ pub fn dial(params DialParams, now u64) !(&QuicConn, QuicDatagram) {
 	initial_keys_server := derive_packet_protection_keys(initial_secrets.server)!
 
 	own_max_idle_timeout_ms := own_params.max_idle_timeout or { u64(0) }
+	peer_active_cid_limit := own_params.active_connection_id_limit or {
+		min_active_connection_id_limit
+	}
+	mut peer_connection_ids := map[u64]PeerConnectionId{}
+	// RFC 9000 §5.1.1 assigns sequence 0 to the peer's initial source CID.
+	// Its value arrives in the first authenticated packet below.
+	peer_connection_ids[0] = PeerConnectionId{}
 
 	mut c := &QuicConn{
 		role: .client
@@ -463,6 +483,8 @@ pub fn dial(params DialParams, now u64) !(&QuicConn, QuicDatagram) {
 		dcid: original_dcid.clone()
 		scid: scid
 		peer_scid: []u8{}
+		peer_active_cid_limit: peer_active_cid_limit
+		peer_connection_ids: peer_connection_ids
 		token: []u8{}
 		handshake: handshake
 		handshake_completion: new_handshake_completion_state()
@@ -666,6 +688,7 @@ fn (mut c QuicConn) process_retry(raw []u8) ! {
 	c.retry_scid = retry.scid.clone()
 	c.dcid = retry.scid.clone()
 	c.peer_scid = retry.scid.clone()
+	c.update_initial_peer_connection_id(retry.scid, []u8{})!
 	c.token = retry.retry_token.clone()
 
 	// RFC 9001 §5.2: Initial secrets change to key off the new DCID. The
@@ -756,6 +779,7 @@ fn (mut c QuicConn) process_initial_or_handshake(space QuicPacketNumberSpace, ra
 		// successfully authenticated packet -- never from a spoofed one.
 		c.peer_scid = header.scid.clone()
 		c.dcid = header.scid.clone()
+		c.update_initial_peer_connection_id(header.scid, []u8{})!
 	}
 
 	frames := parse_frames(unprotected.payload)!
@@ -1064,6 +1088,7 @@ fn (mut c QuicConn) dispatch_one_rtt_frame(frame QuicFrame, now u64, mut result 
 			if frame.retire_prior_to > 0 {
 				return error_with_code('quic: NEW_CONNECTION_ID requires retiring the in-use connection ID, but connection-ID rotation is not supported', int(quic_error_internal_error))
 			}
+			c.handle_new_connection_id(frame)!
 		}
 		RetireConnectionIdFrame {
 			// RFC 9000 §19.16: naming a sequence number greater than any this
@@ -1132,6 +1157,56 @@ fn (mut c QuicConn) note_peer_stream_discovered(stream_id u64, mut result PollRe
 			kind: .peer_stream_opened
 			stream_id: stream_id
 		}
+	}
+}
+
+fn (mut c QuicConn) update_initial_peer_connection_id(connection_id []u8, stateless_reset_token []u8) ! {
+	mut initial := c.peer_connection_ids[u64(0)] or { PeerConnectionId{} }
+	if initial.connection_id.len > 0 && connection_id.len > 0
+		&& initial.connection_id != connection_id {
+		return error_with_code('quic: PROTOCOL_VIOLATION: peer changed connection ID for sequence 0', int(quic_error_protocol_violation))
+	}
+	if initial.stateless_reset_token.len > 0 && stateless_reset_token.len > 0
+		&& initial.stateless_reset_token != stateless_reset_token {
+		return error_with_code('quic: PROTOCOL_VIOLATION: peer changed stateless reset token for connection ID sequence 0', int(quic_error_protocol_violation))
+	}
+	if connection_id.len > 0 {
+		initial.connection_id = connection_id.clone()
+	}
+	if stateless_reset_token.len > 0 {
+		initial.stateless_reset_token = stateless_reset_token.clone()
+	}
+	c.peer_connection_ids[0] = initial
+}
+
+fn (mut c QuicConn) handle_new_connection_id(frame NewConnectionIdFrame) ! {
+	// A retransmission of the same sequence is valid only when both values
+	// are identical (RFC 9000 §5.1.1). Sequence 0 starts partially known:
+	// its CID comes from the first authenticated header and its token from
+	// transport parameters, so fill either missing value before comparing.
+	if mut existing := c.peer_connection_ids[frame.sequence_number] {
+		if frame.sequence_number == 0 {
+			c.update_initial_peer_connection_id(frame.connection_id, frame.stateless_reset_token)!
+			return
+		}
+		if existing.connection_id != frame.connection_id
+			|| existing.stateless_reset_token != frame.stateless_reset_token {
+			return error_with_code('quic: PROTOCOL_VIOLATION: NEW_CONNECTION_ID sequence ${frame.sequence_number} was repeated with different connection ID or stateless reset token', int(quic_error_protocol_violation))
+		}
+		return
+	}
+
+	for sequence, existing in c.peer_connection_ids {
+		if existing.connection_id.len > 0 && existing.connection_id == frame.connection_id {
+			return error_with_code('quic: PROTOCOL_VIOLATION: connection ID was issued under both sequence ${sequence} and ${frame.sequence_number}', int(quic_error_protocol_violation))
+		}
+	}
+	if u64(c.peer_connection_ids.len) >= c.peer_active_cid_limit {
+		return error_with_code('quic: CONNECTION_ID_LIMIT_ERROR: peer advertised more than the active_connection_id_limit of ${c.peer_active_cid_limit}', int(quic_error_connection_id_limit_error))
+	}
+	c.peer_connection_ids[frame.sequence_number] = PeerConnectionId{
+		connection_id: frame.connection_id.clone()
+		stateless_reset_token: frame.stateless_reset_token.clone()
 	}
 }
 
@@ -1360,6 +1435,7 @@ fn (mut c QuicConn) dispatch_handshake_message(msg HandshakeMessage, framed []u8
 			c.peer_max_streams_bidi = peer_params.initial_max_streams_bidi or { u64(0) }
 			c.peer_max_streams_uni = peer_params.initial_max_streams_uni or { u64(0) }
 			if token := peer_params.stateless_reset_token {
+				c.update_initial_peer_connection_id(c.peer_scid, token)!
 				c.stateless_reset.record_token(c.peer_scid, token)!
 			}
 		}

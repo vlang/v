@@ -607,7 +607,7 @@ fn parse_retire_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
 // decode to.
 fn parse_path_challenge_or_response_frame(buf []u8, start int, is_response bool) !(QuicFrame, int) {
 	if start + path_challenge_data_length > buf.len {
-		return error('quic: PATH_CHALLENGE/PATH_RESPONSE frame: data field exceeds remaining buffer')
+		return error_with_code('quic: PATH_CHALLENGE/PATH_RESPONSE frame: data field exceeds remaining buffer (RFC 9000 §19.17/§19.18 FRAME_ENCODING_ERROR)', int(quic_error_frame_encoding_error))
 	}
 	data := buf[start..start + path_challenge_data_length].clone()
 	end := start + path_challenge_data_length

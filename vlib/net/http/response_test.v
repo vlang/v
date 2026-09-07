@@ -3,6 +3,7 @@ module http
 import compress.brotli
 import compress.gzip
 import compress.zlib
+import net
 
 fn test_response_bytestr_1() {
 	resp := new_response(
@@ -174,6 +175,27 @@ fn test_vschannel_request_error_keeps_other_codes() {
 	err := vschannel_request_error(42)
 	assert err.msg() == 'http: vschannel request failed: 42'
 	assert err.code() == 42
+}
+
+fn test_vschannel_request_error_normalizes_certificate_failures() {
+	cert_e_untrusted_root := int(i32(u32(0x800b0109)))
+	err := vschannel_request_error(cert_e_untrusted_root)
+	assert err.msg().contains('certificate validation failed')
+	assert err.msg().contains('0x800b0109')
+	assert err.code() == net.err_tls_certificate_invalid_code
+}
+
+fn test_vschannel_parse_response_preserves_nonretryable_certificate_code() {
+	cert_e_cn_no_match := int(i32(u32(0x800b010f)))
+	vschannel_parse_response('Error performing handshake', cert_e_cn_no_match) or {
+		assert err.code() == net.err_tls_certificate_invalid_code
+		return
+	}
+	assert false, 'expected the certificate policy failure to be returned'
+}
+
+fn test_certificate_validation_failure_is_not_retried() {
+	assert is_no_need_retry_error(net.err_tls_certificate_invalid_code)
 }
 
 fn test_vschannel_parse_response_normalizes_connect_failure_output() {
