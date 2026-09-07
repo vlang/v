@@ -4369,13 +4369,16 @@ fn (mut c Checker) check_asm_intel_operand_widths(stmt ast.AsmStmt, aliases map[
 	if stmt.arch !in [.amd64, .i386] {
 		return
 	}
-	native_width := if stmt.arch == .amd64 { 8 } else { 4 }
+	// `%V` is expanded by the C compiler for its target, not for the architecture
+	// declared on the V assembly block. Prefer that target when both are x86.
+	target_arch := if c.pref.arch in [.amd64, .i386] { c.pref.arch } else { stmt.arch }
+	native_width := if target_arch == .amd64 { 8 } else { 4 }
 	for template in stmt.templates {
 		if template.is_directive || template.is_label {
 			continue
 		}
 		for arg in template.args {
-			c.check_asm_intel_arg_width(arg, aliases, native_width, stmt.arch, template.pos)
+			c.check_asm_intel_arg_width(arg, aliases, native_width, target_arch, template.pos)
 		}
 	}
 }
