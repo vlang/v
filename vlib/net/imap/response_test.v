@@ -230,7 +230,7 @@ fn test_the_rfc822_spellings_map_onto_sections() {
 
 fn test_an_unknown_fetch_item_does_not_derail_the_rest() {
 	// An extension this module does not model sits between two it does.
-	mut c := client_over('* 1 FETCH (UID 5 MODSEQ (12345) X-GM-LABELS ("a" "b") FLAGS (\\Seen))\r\n' + 'a1 OK done\r\n')
+	mut c := client_over('* 1 FETCH (UID 5 MODSEQ (12345) X-GM-LABELS (\\Inbox "Custom") FLAGS (\\Seen))\r\n' + 'a1 OK done\r\n')
 	msg := c.read_response('a1')!.messages[0]
 	assert msg.uid == 5
 	assert msg.flags == ['\\Seen']

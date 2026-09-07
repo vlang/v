@@ -136,6 +136,9 @@ fn (mut c Client) authenticate() ! {
 // connect opens the transport and reads the server greeting, without logging
 // in. `new_client` calls it; call it directly only to drive a session by hand.
 pub fn (mut c Client) connect() ! {
+	if c.transport_open {
+		return error('imap: client is already connected')
+	}
 	c.conn = net.dial_tcp('${c.server}:${c.effective_port()}')!
 	c.transport_open = true
 	c.is_open = true

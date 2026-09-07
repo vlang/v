@@ -462,6 +462,10 @@ fn (mut d Decoder) skip_value() ! {
 		d.string_value()!
 		return
 	}
+	if ch == `\\` {
+		d.flag()!
+		return
+	}
 	if ch != `(` {
 		d.atom()!
 		return

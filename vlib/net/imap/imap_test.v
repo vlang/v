@@ -609,6 +609,23 @@ fn test_a_failed_automatic_login_closes_the_transport() {
 	assert false, 'a refused automatic login must fail construction'
 }
 
+fn test_connect_rejects_replacing_a_live_transport() {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	seen := chan string{ cap: 64 }
+	port, th := start(mut l, mock_greeting, seen)!
+	mut c := new_client(server: '127.0.0.1', port: port)!
+	c.connect() or {
+		assert err.msg().contains('already connected')
+		c.noop()!
+		c.close()!
+		th.wait()
+		l.close() or {}
+		assert drain(seen) == ['a0001 NOOP', 'a0002 LOGOUT']
+		return
+	}
+	assert false, 'connect must not replace an open transport'
+}
+
 fn test_sasl_plain_can_be_selected_during_construction() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
 	seen := chan string{ cap: 64 }
