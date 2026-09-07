@@ -2209,7 +2209,7 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 			return none
 		}
 		for type_name in t.static_assoc_type_candidates(base.value) {
-			name := '${type_name}.${method}'
+			name := '${type_name}__static__${method}'
 			if t.is_known_fn_name(name) {
 				return name
 			}
@@ -2219,7 +2219,7 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 		if inner.kind == .ident {
 			type_ident := '${inner.value}.${base.value}'
 			for type_name in t.static_assoc_type_candidates(type_ident) {
-				name := '${type_name}.${method}'
+				name := '${type_name}__static__${method}'
 				if t.is_known_fn_name(name) {
 					return name
 				}

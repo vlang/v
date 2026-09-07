@@ -576,7 +576,11 @@ fn (t &Transformer) explicit_generic_fn_value_decl_candidates(id flat.NodeId, ba
 }
 
 fn (mut t Transformer) request_generic_fn_specialization(decl GenericFnDecl, args []string) {
-	concrete_args := t.canonical_generic_specialization_args(args)
+	// Callers pass the canonical arguments used to form `clone_value`. Canonicalizing
+	// them again here can run in the imported declaration's module and rebind a bare
+	// caller-owned type to the declaration's same-named type, leaving the function
+	// name and its registered ABI in disagreement (`..._Context` with `veb.Context`).
+	concrete_args := args.clone()
 	key := t.generic_specialization_progress_key(decl, concrete_args)
 	t.record_monomorph_cache_spec(key, decl.key, decl.module, concrete_args)
 	if key in t.generic_fn_spec_nodes || t.generic_fn_specs_in_progress[key]
@@ -3603,7 +3607,9 @@ fn (mut t Transformer) collect_node_subtree_flags(id flat.NodeId, mut nodes []bo
 }
 
 fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args []string) flat.NodeId {
-	concrete_args := t.canonical_generic_specialization_args(args)
+	// Queueing/inference has already canonicalized these arguments in the caller's
+	// module. Preserve that identity while entering the imported declaration.
+	concrete_args := args.clone()
 	spec_key := t.generic_specialization_progress_key(decl, concrete_args)
 	if clone_id := t.generic_fn_spec_nodes[spec_key] {
 		return clone_id
@@ -4310,7 +4316,10 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 	old_tc_file := if isnil(t.tc) { '' } else { t.tc.cur_file }
 	old_specialization_args := t.active_specialization_args
 	mut old_specialization_main_types := t.active_specialization_main_types.move()
-	concrete_args := t.canonical_generic_specialization_args(args)
+	// The specialization name and queue key were already formed from these canonical
+	// arguments in the caller's context. Re-resolving them here under another active
+	// module can change a bare nominal type without changing `clone_value`.
+	concrete_args := args.clone()
 	t.active_specialization_args = concrete_args
 	mut caller_main_types := t.specialization_main_type_closure(concrete_args)
 	if old_module in ['', 'main'] {

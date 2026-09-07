@@ -1129,6 +1129,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 	mut receiver_type := ''
 	mut receiver_is_mut := false
 	mut is_method := false
+	mut is_static_type_method := false
 
 	// method receiver: fn (mut r Type) name()
 	if p.tok == .lpar {
@@ -1228,13 +1229,18 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 				receiver_type = name
 				name = second
 				is_method = true
+				is_static_type_method = true
 			}
 		}
 	}
 
 	if is_method && receiver_type.len > 0 {
 		clean_type := method_receiver_type_name(receiver_type)
-		name = '${clean_type}.${name}'
+		name = if is_static_type_method {
+			'${clean_type}__static__${name}'
+		} else {
+			'${clean_type}.${name}'
+		}
 	}
 
 	return p.fn_decl_body(name, receiver_name, receiver_type, receiver_is_mut, is_method, '', name_pos)

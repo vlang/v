@@ -109,6 +109,61 @@ fn main() {
 	assert out.split_into_lines() == ['true', 'true']
 }
 
+// A static associated function and an instance method may intentionally share
+// their source-level name. Their internal symbols and ABIs must remain distinct.
+fn test_static_and_instance_method_with_same_name() {
+	out := selfhost_regression_run('static_instance_same_name', 'struct Form {
+	value string
+}
+
+struct Post {
+	id int
+}
+
+@[params]
+struct FormOptions {
+	id     int
+	action string
+}
+
+fn Post.form_for(opts FormOptions) Form {
+	return Form{
+		value: "static:\${opts.id}:\${opts.action}"
+	}
+}
+
+fn (post Post) form_for(action string) Form {
+	return Post.form_for(id: post.id, action: action)
+}
+
+fn main() {
+	println(Post{7}.form_for("edit").value)
+	println(Post.form_for(id: 9, action: "new").value)
+}
+')
+	assert out.split_into_lines() == ['static:7:edit', 'static:9:new']
+}
+
+// A non-capturing fn literal passed to an imported generic must remain a cgen root.
+// The large-project failure called this as `__anon_fn_0` without emitting its body.
+fn test_imported_generic_keeps_non_capturing_fn_literal() {
+	out := selfhost_regression_run('generic_fn_literal_root', 'import arrays
+
+struct Table {
+	name string
+}
+
+fn main() {
+	tables := [Table{name: "users"}, Table{name: "posts"}]
+	result := arrays.find_first(tables, fn (table Table) bool {
+		return table.name == "posts"
+	}) or { panic("missing") }
+	println(result.name)
+}
+')
+	assert out == 'posts'
+}
+
 // Only `for k, mut v in m` binds the map value by reference. A container that is merely a map
 // reference (`m &map[string]bool`) still binds a plain value copy, so the binding must not be
 // typed `&V` — that made every use of it emit a dereference of a non-pointer local.

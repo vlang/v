@@ -237,7 +237,8 @@ fn (g &Gen) collect_json_migration_declarations(ids []flat.NodeId, mut declared_
 			for field_id in g.a.children_of(n) {
 				declared_names[g.a.node(field_id).value] = true
 			}
-		} else if n.kind == .fn_decl && !n.value.contains('.') {
+		} else if n.kind == .fn_decl && !n.value.contains('.')
+			&& !n.value.contains('__static__') {
 			declared_names[n.value] = true
 		} else if n.kind == .c_fn_decl && n.value.starts_with('V:') && !n.value[2..].contains('.') {
 			declared_names[n.value[2..]] = true
@@ -3026,6 +3027,10 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 		} else {
 			g.write('C.${name}')
 		}
+	} else if name.contains('__static__') {
+		g.write(name.all_before('__static__'))
+		g.write('.')
+		g.write(name.all_after('__static__'))
 	} else {
 		g.write(name)
 	}

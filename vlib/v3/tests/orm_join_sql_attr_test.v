@@ -69,6 +69,49 @@ fn orm_join_sql_attr_run_project(v3_bin string, name string, files map[string]st
 	return run.output.trim_space()
 }
 
+fn test_v3_orm_update_function_call_value() {
+	v3_bin := orm_join_sql_attr_build_v3()
+	out := orm_join_sql_attr_run(v3_bin, 'orm_update_function_call_value', "import db.sqlite
+import encoding.html
+
+// `Table` intentionally collides with orm.Table. The generic specialization
+// must retain this main-module type while lowering the query.
+struct Table {
+	id int @[primary]
+	name string
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+
+	sql db {
+		create table Table
+	}!
+
+	user := Table{
+		id: 1
+		name: '<Ada>'
+	}
+	sql db {
+		insert user into Table
+	}!
+
+	sql db {
+		update Table set name = html.escape(user.name) where id == user.id
+	}!
+	rows := sql db {
+		select from Table where id == 1
+	}!
+	assert rows.len == 1
+	assert rows[0].name == '&lt;Ada&gt;'
+}
+")
+	assert out == ''
+}
+
 fn test_v3_static_where_and_join_sql_attribute_regressions() {
 	v3_bin := orm_join_sql_attr_build_v3()
 	limit_out := orm_join_sql_attr_run(v3_bin, 'orm_limit_zero', "import db.sqlite

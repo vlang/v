@@ -80,6 +80,13 @@ pub fn (mut p Point) inc(dx int) int {
 '
 }
 
+fn test_formatter_preserves_static_associated_function_syntax() {
+	source := 'struct Widget {}\n\nfn Widget.make() Widget {\n\treturn Widget{}\n}\n'
+	out := vfmt('static_associated_function', source)
+	assert out == source, out
+	assert vfmt('static_associated_function_twice', out) == out
+}
+
 fn test_formatter_preserves_blank_lines_between_statements() {
 	source := "fn spaced() {\n\tprintln('a')\n\tprintln('b')\n\n\tprintln('c')\n\n\tif true {\n\t\tprintln('d')\n\t}\n\n\tdump('e')\n}\n"
 	out := vfmt('statement_blank_lines', source)

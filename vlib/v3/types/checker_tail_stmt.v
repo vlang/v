@@ -7971,15 +7971,14 @@ fn (tc &TypeChecker) static_assoc_fn_key_for_base(type_ident string, method stri
 		return none
 	}
 	for type_name in [type_ident, tc.qualify_name(type_ident)] {
-		key := '${type_name}.${method}'
-		if tc.fn_signature_known(key) && tc.fn_key_is_static_associated(key) {
+		key := '${type_name}__static__${method}'
+		if tc.fn_signature_known(key) {
 			return key
 		}
 	}
 	for type_name in tc.static_assoc_type_candidates(type_ident) {
-		key := '${type_name}.${method}'
-		if (tc.fn_signature_known(key) || key in tc.fn_ret_types)
-			&& tc.fn_key_is_static_associated(key) {
+		key := '${type_name}__static__${method}'
+		if tc.fn_signature_known(key) || key in tc.fn_ret_types {
 			return key
 		}
 	}

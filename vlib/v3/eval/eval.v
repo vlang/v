@@ -748,6 +748,10 @@ fn (mut e Eval) register_function(module_name string, file_name string, id flat.
 		short := node.value.all_after_last('.')
 		receiver := node.value.all_before_last('.').all_after_last('.')
 		e.functions[module_name]['${receiver}.${short}'] = def
+	} else if node.value.contains('__static__') {
+		receiver := node.value.all_before('__static__').all_after_last('.')
+		short := node.value.all_after('__static__')
+		e.functions[module_name]['${receiver}.${short}'] = def
 	}
 }
 
