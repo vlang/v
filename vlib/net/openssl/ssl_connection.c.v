@@ -162,7 +162,17 @@ fn (mut s SSLConn) init() ! {
 		return error('net.openssl Could not get ssl context')
 	}
 
+	mut res := 0
 	if s.config.validate {
+		// SSL_get_verify_result alone does not initiate verification: when the
+		// context remains in SSL_VERIFY_NONE it reports X509_V_OK even for an
+		// untrusted peer. Enable verification before SSL_new, and use OpenSSL's
+		// platform-configured default trust paths unless the caller supplied a
+		// custom CA file below.
+		res = C.v_net_openssl_configure_peer_verification(s.sslctx, int(s.config.verify == ''))
+		if res != 1 {
+			return error('net.openssl SSLConn.init, SSL_CTX_set_default_verify_paths failed')
+		}
 		C.SSL_CTX_set_verify_depth(s.sslctx, 4)
 		C.SSL_CTX_set_options(s.sslctx, C.SSL_OP_NO_COMPRESSION)
 	}
@@ -171,8 +181,6 @@ fn (mut s SSLConn) init() ! {
 	if s.ssl == 0 {
 		return error('net.openssl Could not create OpenSSL instance')
 	}
-
-	mut res := 0
 
 	// Advertise ALPN protocols (e.g. ['h2', 'http/1.1']) when requested.
 	// OpenSSL expects the length-prefixed wire format: each protocol is a
@@ -251,6 +259,10 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	mut res := C.SSL_set_tlsext_host_name(voidptr(s.ssl), voidptr(hostname.str))
 	if res != 1 {
 		return error('net.openssl SSLConn.connect, could not set host name')
+	}
+	if s.config.validate
+		&& C.v_net_openssl_configure_peer_name_verification(s.ssl, &char(hostname.str)) != 1 {
+		return error('net.openssl SSLConn.connect, could not configure peer name verification')
 	}
 	if C.SSL_set_fd(voidptr(s.ssl), tcp_conn.sock.handle) != 1 {
 		return error('net.openssl SSLConn.connect, could not assign ssl to socket.')

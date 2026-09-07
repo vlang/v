@@ -11,6 +11,41 @@ static int v_net_openssl_init_ssl(void) {
 }
 #endif
 
+// SSL_CTX_set_verify is a macro on some OpenSSL-compatible versions and its
+// callback type is awkward to express through V's C interop. Keep the exact
+// peer-verification setup behind a stable, version-independent shim.
+static int v_net_openssl_configure_peer_verification(SSL_CTX *ctx, int load_default_paths) {
+	SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
+	if (load_default_paths) {
+		return SSL_CTX_set_default_verify_paths(ctx);
+	}
+	return 1;
+}
+
+// Chain verification does not verify that the certificate belongs to the
+// requested server. Configure OpenSSL's built-in IP SAN or hostname check
+// before the handshake where that API is available. Fail closed on older
+// versions: validation must never silently omit identity verification.
+#if defined(LIBRESSL_VERSION_NUMBER) || (defined(OPENSSL_VERSION_NUMBER) \
+	&& OPENSSL_VERSION_NUMBER >= 0x10002000L)
+static int v_net_openssl_configure_peer_name_verification(SSL *ssl, const char *hostname) {
+	X509_VERIFY_PARAM *param = SSL_get0_param(ssl);
+	if (param == NULL) {
+		return 0;
+	}
+	if (X509_VERIFY_PARAM_set1_ip_asc(param, hostname) == 1) {
+		return 1;
+	}
+	return X509_VERIFY_PARAM_set1_host(param, hostname, 0);
+}
+#else
+static int v_net_openssl_configure_peer_name_verification(SSL *ssl, const char *hostname) {
+	(void)ssl;
+	(void)hostname;
+	return 0;
+}
+#endif
+
 // SSL_get1_peer_certificate is only available in OpenSSL 3.x.
 #if defined(LIBRESSL_VERSION_NUMBER) || !defined(OPENSSL_VERSION_NUMBER) \
 	|| OPENSSL_VERSION_NUMBER < 0x30000000L

@@ -692,7 +692,19 @@ fn (mut s SSLConn) init() ! {
 	}
 
 	C.mbedtls_ssl_conf_ca_chain(&s.conf, &s.certs.cacert, 0)
-	C.mbedtls_ssl_conf_own_cert(&s.conf, &s.certs.client_cert, &s.certs.client_key)
+	// An initialized-but-empty mbedtls_x509_crt/mbedtls_pk_context is not a
+	// usable client credential. Registering it makes an optional server
+	// CertificateRequest take the broken "send a certificate" path instead
+	// of the legal empty-certificate-list path. Only register a complete pair.
+	if (s.config.cert == '') != (s.config.cert_key == '') {
+		return error('net.mbedtls SSLConn.init, both cert and cert_key are required for a client certificate')
+	}
+	if s.config.cert != '' {
+		ret = C.mbedtls_ssl_conf_own_cert(&s.conf, &s.certs.client_cert, &s.certs.client_key)
+		if ret != 0 {
+			return error_with_code("net.mbedtls SSLConn.init, mbedtls_ssl_conf_own_cert can't load client certificate ret: ${ret}", ret)
+		}
+	}
 
 	if s.config.validate {
 		C.mbedtls_ssl_conf_authmode(&s.conf, C.MBEDTLS_SSL_VERIFY_REQUIRED)

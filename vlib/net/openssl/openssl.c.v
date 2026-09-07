@@ -105,6 +105,10 @@ fn C.SSL_CTX_set_verify_depth(s &C.SSL_CTX, depth i32)
 
 fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, const_file &char, const_ca_path &char) i32
 
+fn C.v_net_openssl_configure_peer_verification(ctx &C.SSL_CTX, load_default_paths i32) i32
+
+fn C.v_net_openssl_configure_peer_name_verification(ssl &C.SSL, hostname &char) i32
+
 fn C.SSL_CTX_free(ctx &C.SSL_CTX)
 
 fn C.SSL_CTX_use_certificate_file(ctx &C.SSL_CTX, const_file &char, file_type i32) i32
