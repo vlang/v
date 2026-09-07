@@ -1,6 +1,7 @@
 module quic
 
 import encoding.hex
+import crypto.ecdsa
 
 // RFC 8446 §4.4.3's own worked example: transcript hash = 32 bytes of
 // 0x01, server context -> this exact 130-byte signed content. Extracted
@@ -218,4 +219,134 @@ fn test_parse_certificate_verify_rejects_truncated_header() {
 		return
 	}
 	assert false, 'expected an error for a header shorter than 4 bytes'
+}
+
+// encode_certificate / encode_certificate_verify (Phase 13a, server-role
+// construction). Round-tripped through this same file's own
+// parse_certificate/parse_certificate_verify, the same real cross-check
+// discipline as tls13_server_hello_test.v's build_server_hello tests.
+
+fn test_encode_certificate_round_trips_through_parse_certificate() {
+	entries := [
+		CertificateEntry{
+			cert_data: []u8{len: 300, init: 0x30}
+		},
+		CertificateEntry{
+			cert_data: []u8{len: 150, init: 0x31}
+		},
+	]
+	msg := encode_certificate(entries)!
+	parsed_msg, consumed := parse_handshake_message(msg)!
+	assert consumed == msg.len
+	assert parsed_msg.typ == .certificate
+	result := parse_certificate(parsed_msg.body)!
+	assert result.certificate_request_context.len == 0
+	assert result.certificate_list.len == 2
+	assert result.certificate_list[0].cert_data == entries[0].cert_data
+	assert result.certificate_list[1].cert_data == entries[1].cert_data
+}
+
+fn test_encode_certificate_rejects_empty_list() {
+	encode_certificate([]CertificateEntry{}) or {
+		assert err.msg().contains('must not be empty')
+		return
+	}
+	assert false, 'expected an error for an empty certificate_list'
+}
+
+fn test_encode_certificate_rejects_entry_with_extensions() {
+	entries := [
+		CertificateEntry{
+			cert_data:  []u8{len: 10, init: 0x30}
+			extensions: [TlsExtension{
+				typ:  0x1234
+				data: []u8{}
+			}]
+		},
+	]
+	encode_certificate(entries) or {
+		assert err.msg().contains('extensions must be empty')
+		return
+	}
+	assert false, 'expected an error for a CertificateEntry carrying extensions'
+}
+
+// test_encode_certificate_verify_round_trips_through_parse_certificate_verify
+// verifies the WIRE FRAMING (algorithm field, signature length prefix) is
+// correct AND cryptographically verifies the produced signature via
+// crypto.ecdsa's own PublicKey.verify() -- proving encode_certificate_verify
+// actually signs the right content (certificate_verify_signed_content's
+// output) with the right key, not just that it produces plausible-looking
+// bytes. This is a same-library round trip (OpenSSL signs, OpenSSL
+// verifies), not independent-library cross-verification the way this
+// module's client-side chain verification eventually gets from a real
+// peer's mbedTLS -- this repo has no EC certificate fixture to build an
+// mbedtls_pk_context from for that, the same gap Phase 2c's own
+// x509_standalone_signature_test.v documents for the identical reason. What
+// IS proven here: the signed content, the key, and the DER encoding all
+// actually agree -- the exact seam this function's own code introduces, as
+// opposed to crypto.ecdsa's sign/verify primitives themselves, which are
+// pre-existing and already used elsewhere in this codebase.
+fn test_encode_certificate_verify_round_trips_through_parse_certificate_verify() {
+	pub_key, priv_key := ecdsa.generate_key()!
+	transcript_hash := []u8{len: 32, init: 0x01}
+
+	msg := encode_certificate_verify(sig_scheme_ecdsa_secp256r1_sha256, priv_key, transcript_hash)!
+	parsed_msg, consumed := parse_handshake_message(msg)!
+	assert consumed == msg.len
+	assert parsed_msg.typ == .certificate_verify
+
+	result := parse_certificate_verify(parsed_msg.body)!
+	assert result.algorithm == sig_scheme_ecdsa_secp256r1_sha256
+	assert result.signature.len > 0
+
+	signed_content := certificate_verify_signed_content(.server, transcript_hash)
+	assert pub_key.verify(signed_content, result.signature, hash_config: .with_recommended_hash)!
+
+	other_transcript_hash := []u8{len: 32, init: 0x02}
+	other_msg := encode_certificate_verify(sig_scheme_ecdsa_secp256r1_sha256, priv_key,
+		other_transcript_hash)!
+	_, other_consumed := parse_handshake_message(other_msg)!
+	other_parsed, _ := parse_handshake_message(other_msg)!
+	other_result := parse_certificate_verify(other_parsed.body)!
+	assert other_consumed == other_msg.len
+	assert other_result.signature != result.signature
+
+	other_signed_content := certificate_verify_signed_content(.server, other_transcript_hash)
+	assert pub_key.verify(other_signed_content, other_result.signature,
+		hash_config: .with_recommended_hash
+	)!
+	// Cross-wired inputs must NOT verify -- confirms verify() is actually
+	// checking the content, not just the key/signature pair in isolation.
+	assert !pub_key.verify(signed_content, other_result.signature,
+		hash_config: .with_recommended_hash
+	)!
+}
+
+// test_encode_certificate_verify_signature_rejected_by_wrong_public_key
+// confirms a signature this function produces is rejected by a DIFFERENT
+// key's public half -- the negative-space complement to the positive
+// verification above, ruling out a verify() that accepts anything.
+fn test_encode_certificate_verify_signature_rejected_by_wrong_public_key() {
+	_, priv_key := ecdsa.generate_key()!
+	other_pub_key, _ := ecdsa.generate_key()!
+	transcript_hash := []u8{len: 32, init: 0x03}
+
+	msg := encode_certificate_verify(sig_scheme_ecdsa_secp256r1_sha256, priv_key, transcript_hash)!
+	parsed_msg, _ := parse_handshake_message(msg)!
+	result := parse_certificate_verify(parsed_msg.body)!
+
+	signed_content := certificate_verify_signed_content(.server, transcript_hash)
+	assert !other_pub_key.verify(signed_content, result.signature,
+		hash_config: .with_recommended_hash
+	)!
+}
+
+fn test_encode_certificate_verify_rejects_unimplemented_algorithm() {
+	_, priv_key := ecdsa.generate_key()!
+	encode_certificate_verify(sig_scheme_rsa_pss_rsae_sha256, priv_key, []u8{len: 32}) or {
+		assert err.msg().contains('not implemented yet')
+		return
+	}
+	assert false, 'expected an error for an unimplemented signing algorithm'
 }

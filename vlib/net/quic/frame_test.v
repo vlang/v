@@ -259,14 +259,14 @@ fn test_scaled_ack_delay_micros_saturates_at_exponent_ge_64() {
 }
 
 fn test_parse_frame_rejects_unimplemented_frame_type() {
-	// 0x18 (NEW_CONNECTION_ID) is a real, valid QUIC frame type this module
-	// simply doesn't implement yet -- connection ID rotation/migration is
-	// explicitly out of v1 scope (see stateless_reset.v's own doc comment)
-	// -- must be a clear "not implemented" error, not a wire-format error
-	// or a panic. (0x08 STREAM and 0x1e HANDSHAKE_DONE, both used here
-	// before their respective phases implemented them, would no longer
-	// demonstrate this.)
-	parse_frame([u8(0x18)]) or {
+	// 0x1a (PATH_CHALLENGE) is a real, valid QUIC frame type this module
+	// simply doesn't implement yet -- connection migration is explicitly a
+	// separate, deferrable follow-up (see PROGRESS.md's Phase 13 notes) --
+	// must be a clear "not implemented" error, not a wire-format error or
+	// a panic. (0x08 STREAM, 0x18 NEW_CONNECTION_ID, and 0x1e
+	// HANDSHAKE_DONE, all used here before their respective phases
+	// implemented them, would no longer demonstrate this.)
+	parse_frame([u8(0x1a)]) or {
 		assert err.msg().contains('not yet implemented')
 		return
 	}
@@ -733,6 +733,130 @@ fn test_streams_blocked_frame_round_trip_both_directions() {
 		}
 		else {
 			assert false, 'expected a StreamsBlockedFrame'
+		}
+	}
+}
+
+fn test_new_connection_id_frame_round_trip() {
+	cid := [u8(1), 2, 3, 4, 5, 6, 7, 8]
+	token := []u8{len: 16, init: 0xab}
+	encoded := encode_new_connection_id_frame(3, 1, cid, token)!
+	assert encoded[0] == 0x18
+	frame, n := parse_frame(encoded)!
+	assert n == encoded.len
+	match frame {
+		NewConnectionIdFrame {
+			assert frame.sequence_number == 3
+			assert frame.retire_prior_to == 1
+			assert frame.connection_id == cid
+			assert frame.stateless_reset_token == token
+		}
+		else {
+			assert false, 'expected a NewConnectionIdFrame'
+		}
+	}
+}
+
+fn test_new_connection_id_frame_round_trip_at_max_cid_length() {
+	cid := []u8{len: quic_v1_max_cid_len, init: 0x42}
+	token := []u8{len: 16, init: 0}
+	encoded := encode_new_connection_id_frame(0, 0, cid, token)!
+	frame, _ := parse_frame(encoded)!
+	match frame {
+		NewConnectionIdFrame {
+			assert frame.connection_id == cid
+		}
+		else {
+			assert false, 'expected a NewConnectionIdFrame'
+		}
+	}
+}
+
+fn test_encode_new_connection_id_frame_rejects_retire_prior_to_above_sequence_number() {
+	encode_new_connection_id_frame(1, 2, [u8(1)], []u8{len: 16}) or {
+		assert err.msg().contains('retire_prior_to')
+		return
+	}
+	assert false, 'expected retire_prior_to > sequence_number to be rejected'
+}
+
+fn test_parse_new_connection_id_frame_rejects_retire_prior_to_above_sequence_number() {
+	mut buf := encode_varint(frame_type_new_connection_id)!
+	buf << encode_varint(u64(1))! // sequence_number
+	buf << encode_varint(u64(2))! // retire_prior_to > sequence_number
+	buf << u8(1)
+	buf << [u8(0xff)]
+	buf << []u8{len: 16}
+	parse_frame(buf) or {
+		assert err.msg().contains('retire_prior_to')
+		return
+	}
+	assert false, 'expected retire_prior_to > sequence_number to be rejected'
+}
+
+fn test_encode_new_connection_id_frame_rejects_zero_length_connection_id() {
+	encode_new_connection_id_frame(0, 0, []u8{}, []u8{len: 16}) or {
+		assert err.msg().contains('connection ID length')
+		return
+	}
+	assert false, 'expected a zero-length connection ID to be rejected'
+}
+
+fn test_encode_new_connection_id_frame_rejects_connection_id_above_20_bytes() {
+	encode_new_connection_id_frame(0, 0, []u8{len: quic_v1_max_cid_len + 1}, []u8{len: 16}) or {
+		assert err.msg().contains('connection ID length')
+		return
+	}
+	assert false, 'expected a connection ID longer than 20 bytes to be rejected'
+}
+
+fn test_parse_new_connection_id_frame_rejects_length_above_20_bytes() {
+	mut buf := encode_varint(frame_type_new_connection_id)!
+	buf << encode_varint(u64(0))!
+	buf << encode_varint(u64(0))!
+	buf << u8(21) // declares an invalid, over-20-byte connection ID length
+	buf << []u8{len: 21}
+	buf << []u8{len: 16}
+	parse_frame(buf) or {
+		assert err.msg().contains('connection ID length')
+		return
+	}
+	assert false, 'expected a declared length above 20 bytes to be rejected'
+}
+
+fn test_encode_new_connection_id_frame_rejects_wrong_token_length() {
+	encode_new_connection_id_frame(0, 0, [u8(1)], []u8{len: 15}) or {
+		assert err.msg().contains('16 bytes')
+		return
+	}
+	assert false, 'expected a non-16-byte stateless reset token to be rejected'
+}
+
+fn test_parse_new_connection_id_frame_rejects_truncated_token() {
+	mut buf := encode_varint(frame_type_new_connection_id)!
+	buf << encode_varint(u64(0))!
+	buf << encode_varint(u64(0))!
+	buf << u8(1)
+	buf << [u8(0xff)]
+	buf << []u8{len: 10} // short of the required 16-byte token
+	parse_frame(buf) or {
+		assert err.msg().contains('stateless reset token')
+		return
+	}
+	assert false, 'expected a truncated stateless reset token to be rejected'
+}
+
+fn test_retire_connection_id_frame_round_trip() {
+	encoded := encode_retire_connection_id_frame(7)!
+	assert encoded[0] == 0x19
+	frame, n := parse_frame(encoded)!
+	assert n == encoded.len
+	match frame {
+		RetireConnectionIdFrame {
+			assert frame.sequence_number == 7
+		}
+		else {
+			assert false, 'expected a RetireConnectionIdFrame'
 		}
 	}
 }

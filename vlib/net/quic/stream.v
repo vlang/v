@@ -21,10 +21,9 @@ pub enum StreamDirection {
 // QuicRole distinguishes which side of the connection THIS endpoint is --
 // needed because "is this stream mine to have opened" and "am I allowed
 // to send on this uni stream" depend on who's asking, not just the ID
-// itself. v1 only ever runs as .client (server support is Phase 13, out
-// of committed scope) -- this enum exists now so stream.v doesn't need
-// reshaping when that phase lands, matching QuicConn's own planned
-// `role`-field design.
+// itself. Both roles are real as of Phase 13d's accept() (accept.v),
+// which constructs .server-role connections -- matching QuicConn's own
+// `role` field.
 pub enum QuicRole {
 	client
 	server
