@@ -41,7 +41,7 @@ const inline_asm_arm64_operand_keywords = ['lsl', 'lsr', 'asr', 'ror', 'msl', 'u
 	'uxtx', 'sxtb', 'sxth', 'sxtw', 'sxtx', 'eq', 'ne', 'cs', 'hs', 'cc', 'lo', 'mi', 'pl', 'vs',
 	'vc', 'hi', 'ls', 'ge', 'lt', 'gt', 'le', 'al', 'nv', 'sy', 'st', 'ld', 'osh', 'oshst', 'oshld',
 	'nsh', 'nshst', 'nshld', 'ish', 'ishst', 'ishld', 'mul', 'vl', 'b', 'h', 's', 'd', 'q', 'z',
-	'm', 'sm', 'pow2', 'mul3', 'mul4', 'all']
+	'm', 'sm', 'c', 'j', 'jc', 'fpmr', 'pow2', 'mul3', 'mul4', 'all']
 
 // check_inline_asm_block reports the assembly diagnostics that only need the block's
 // preserved source: unsupported operand constraints in structured `intel` blocks, and
@@ -176,19 +176,32 @@ fn (mut tc TypeChecker) check_inline_asm_templates(id flat.NodeId, node flat.Nod
 	labels := inline_asm_template_labels(block, section)
 	for line in inline_asm_lines(block, section) {
 		trimmed := block[line.start..line.end].trim_space()
-		if trimmed.len == 0 || trimmed.ends_with(':') || trimmed.starts_with('.') {
+		if trimmed.len == 0 {
 			continue
 		}
+		instruction_start := inline_asm_skip_leading_label(block, line)
+		if instruction_start >= line.end || (instruction_start == line.start
+			&& trimmed.starts_with('.')) {
+			continue
+		}
+		instruction_line := InlineAsmRange{
+			start: instruction_start
+			end: line.end
+		}
 		// Only operands can name a register; the mnemonic itself never does.
-		mut operand_start := inline_asm_skip_mnemonic(block, line)
-		if block[line.start..operand_start].trim_space() in inline_asm_instruction_prefixes {
+		mut operand_start := inline_asm_skip_mnemonic(block, instruction_line)
+		if block[instruction_start..operand_start].trim_space().to_lower_ascii() in inline_asm_instruction_prefixes {
 			operand_start = inline_asm_skip_mnemonic(block, InlineAsmRange{
 				start: operand_start
 				end: line.end
 			})
 		}
 		for word in inline_asm_words(block, InlineAsmRange{ start: operand_start, end: line.end }) {
-			register_word := if is_intel { word.text.to_lower_ascii() } else { word.text }
+			register_word := if is_intel || arch in ['arm64', 'aarch64'] {
+				word.text.to_lower_ascii()
+			} else {
+				word.text
+			}
 			if aliases[word.text] || word.text in labels || register_word in registers
 				|| inline_asm_operand_is_keyword(register_word, arch, is_intel) {
 				continue
@@ -308,6 +321,32 @@ fn inline_asm_skip_mnemonic(block string, line InlineAsmRange) int {
 		i++
 	}
 	for i < line.end && !block[i].is_space() {
+		i++
+	}
+	return i
+}
+
+// inline_asm_skip_leading_label returns the start of an instruction after an optional
+// leading local label, or the original line start when there is no label.
+fn inline_asm_skip_leading_label(block string, line InlineAsmRange) int {
+	mut i := line.start
+	for i < line.end && block[i].is_space() {
+		i++
+	}
+	if i < line.end && block[i] == `.` {
+		i++
+	}
+	if i >= line.end || !inline_asm_is_ident_start(block[i]) {
+		return line.start
+	}
+	for i < line.end && inline_asm_is_ident_char(block[i]) {
+		i++
+	}
+	if i >= line.end || block[i] != `:` {
+		return line.start
+	}
+	i++
+	for i < line.end && block[i].is_space() {
 		i++
 	}
 	return i

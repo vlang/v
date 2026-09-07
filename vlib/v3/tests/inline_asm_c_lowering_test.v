@@ -457,18 +457,22 @@ fn test_inline_asm_accepts_dotted_local_labels() {
 	asm amd64 {
 		.L0: nop
 		jmp .L0
+		loop: ldr rax
 	}
 }
 ')
 	assert generate.exit_code == 0, generate.output
 	assert c_source.contains('"jmp .L0\\n\\t"'), c_source
 	assert c_source.contains('".L0: nop\\n\\t"'), c_source
+	assert c_source.contains('"loop: ldr %rax\\n\\t"'), c_source
 }
 
 fn test_arm64_asm_accepts_sme_za_register() {
 	generate, c_source := generate_inline_asm_c_for_arch('arm64_sme_za_program', 'fn main() {
 	asm arm64 {
 		zero {za}
+		zero {za0.s}
+		zero {za15.b}
 		zero {zt0}
 		ptrue pn8.b
 		ptrue pn15.b
@@ -477,6 +481,8 @@ fn test_arm64_asm_accepts_sme_za_register() {
 ', 'arm64')
 	assert generate.exit_code == 0, generate.output
 	assert c_source.contains('"zero {za}\\n\\t"'), c_source
+	assert c_source.contains('"zero {za0.s}\\n\\t"'), c_source
+	assert c_source.contains('"zero {za15.b}\\n\\t"'), c_source
 	assert c_source.contains('"zero {zt0}\\n\\t"'), c_source
 	assert c_source.contains('"ptrue pn8.b\\n\\t"'), c_source
 	assert c_source.contains('"ptrue pn15.b\\n\\t"'), c_source
@@ -552,6 +558,11 @@ fn test_arm64_asm_accepts_operand_keywords() {
 		ptrue p0.b, vl1
 		ptrue p1.b, vl256
 		ptrue p2.b, pow2
+		bti c
+		bti j
+		bti jc
+		mrs x0, fpmr
+		ADD X0, X1, X2, LSL 1
 		smstart sm
 		smstop sm
 		sys #0, c7, c8, #0, x0
@@ -564,6 +575,10 @@ fn test_arm64_asm_accepts_operand_keywords() {
 	assert c_source.contains('"ptrue p0.b, vl1\\n\\t"'), c_source
 	assert c_source.contains('"ptrue p1.b, vl256\\n\\t"'), c_source
 	assert c_source.contains('"ptrue p2.b, pow2\\n\\t"'), c_source
+	assert c_source.contains('"bti c\\n\\t"'), c_source
+	assert c_source.contains('"bti jc\\n\\t"'), c_source
+	assert c_source.contains('"mrs x0, fpmr\\n\\t"'), c_source
+	assert c_source.contains('"ADD X0, X1, X2, LSL 1\\n\\t"'), c_source
 	assert c_source.contains('"smstart sm\\n\\t"'), c_source
 	assert c_source.contains('"smstop sm\\n\\t"'), c_source
 	assert c_source.contains('"sys #0, c7, c8, #0, x0\\n\\t"'), c_source
@@ -600,6 +615,7 @@ fn test_raw_asm_keeps_avx512_mask_syntax_and_clobbers() {
 		  k1
 		  bnd0
 		  bnd3
+		  redzone
 	}
 }
 ')
@@ -609,4 +625,5 @@ fn test_raw_asm_keeps_avx512_mask_syntax_and_clobbers() {
 	assert c_source.contains('"k1"'), c_source
 	assert c_source.contains('"bnd0"'), c_source
 	assert c_source.contains('"bnd3"'), c_source
+	assert c_source.contains('"redzone"'), c_source
 }

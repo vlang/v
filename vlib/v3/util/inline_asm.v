@@ -77,15 +77,19 @@ pub fn x86_asm_register_names() []string {
 	for i in 0 .. 4 {
 		names << 'bnd${i}'
 	}
-	for i in 0 .. 16 {
+	for i in 8 .. 32 {
 		names << 'r${i}'
 		names << 'r${i}b'
 		names << 'r${i}w'
 		names << 'r${i}d'
+	}
+	for i in 0 .. 8 {
 		names << 'mm${i}'
+		names << 'st${i}'
+	}
+	for i in 0 .. 16 {
 		names << 'cr${i}'
 		names << 'dr${i}'
-		names << 'st${i}'
 	}
 	for i in 0 .. 32 {
 		names << 'xmm${i}'
@@ -105,6 +109,7 @@ pub fn arm64_asm_register_names() []string {
 	}
 	for i in 0 .. 16 {
 		names << 'p${i}'
+		names << 'za${i}'
 	}
 	for i in 8 .. 16 {
 		names << 'pn${i}'
@@ -124,7 +129,7 @@ pub fn arm64_asm_register_names() []string {
 // asm_clobber_is_special reports whether name is one of the GNU pseudo clobbers that
 // never name a register.
 pub fn asm_clobber_is_special(name string) bool {
-	return name in ['cc', 'memory', 'dirflag', 'fpsr', 'flags']
+	return name in ['cc', 'memory', 'dirflag', 'fpsr', 'flags', 'redzone']
 }
 
 // closest_asm_register returns the register in registers that name was most likely

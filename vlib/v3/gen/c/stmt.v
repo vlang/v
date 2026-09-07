@@ -3860,7 +3860,7 @@ fn is_c_inline_asm_x86_register(name string) bool {
 	if name in ['al', 'ah', 'ax', 'eax', 'rax', 'bl', 'bh', 'bx', 'ebx', 'rbx', 'cl', 'ch', 'cx',
 		'ecx', 'rcx', 'dl', 'dh', 'dx', 'edx', 'rdx', 'sil', 'si', 'esi', 'rsi', 'dil', 'di', 'edi',
 		'rdi', 'spl', 'sp', 'esp', 'rsp', 'bpl', 'bp', 'ebp', 'rbp', 'rip', 'eiz', 'riz', 'eflags',
-		'flags'] {
+		'flags', 'cs', 'ss', 'ds', 'es', 'fs', 'gs', 'st'] {
 		return true
 	}
 	// AVX-512 opmask registers: k0 through k7.
@@ -3870,14 +3870,25 @@ fn is_c_inline_asm_x86_register(name string) bool {
 	if name.len == 4 && name.starts_with('bnd') && name[3] >= `0` && name[3] <= `3` {
 		return true
 	}
-	for prefix in ['r', 'xmm', 'ymm', 'zmm', 'mm', 'st', 'tmm'] {
+	for prefix, bounds in {
+		'r':   [8, 32]
+		'xmm': [0, 32]
+		'ymm': [0, 32]
+		'zmm': [0, 32]
+		'mm':  [0, 8]
+		'st':  [0, 8]
+		'tmm': [0, 8]
+		'cr':  [0, 16]
+		'dr':  [0, 16]
+	} {
 		if name.starts_with(prefix) && name.len > prefix.len {
 			mut end := name.len
 			if prefix == 'r' && name[end - 1] in [`b`, `w`, `d`] {
 				end--
 			}
 			if end > prefix.len && name[prefix.len..end].bytes().all(it.is_digit()) {
-				return true
+				number := name[prefix.len..end].int()
+				return number >= bounds[0] && number < bounds[1]
 			}
 		}
 	}

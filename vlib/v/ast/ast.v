@@ -1995,30 +1995,30 @@ pub const x86_no_number_register_list = {
 	64: ['rax', 'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip', 'riz']
 }
 // no comments because maps do not support comments
-// r#*: gp registers added in 64-bit extensions, can only be from 8-15 actually
+// r#*: gp registers added in 64-bit extensions, from r8 through APX's r31
 // *mm#: vector/simd registers
 // st#: floating point numbers
 // cr#: control/status registers
 // dr#: debug registers
 pub const x86_with_number_register_list = {
 	8:   {
-		'r#b': 16
+		'r#b': 32
 	}
 	16:  {
-		'r#w': 16
+		'r#w': 32
 	}
 	32:  {
-		'r#d': 16
+		'r#d': 32
 	}
 	64:  {
-		'r#':  16
-		'mm#': 16
+		'r#':  32
+		'mm#': 8
 		'cr#': 16
 		'dr#': 16
 		'k#':  8
 	}
 	80:  {
-		'st#': 16
+		'st#': 8
 	}
 	128: {
 		'bnd#': 4
@@ -2051,7 +2051,9 @@ pub const arm_with_number_register_list = {
 pub const arm64_no_number_register_list = {
 	16: ['pn8', 'pn9', 'pn10', 'pn11', 'pn12', 'pn13', 'pn14', 'pn15']
 	32: ['wsp', 'wzr']
-	64: ['sp', 'lr', 'fp', 'pc', 'xzr', 'nzcv', 'fpcr', 'fpsr', 'daif', 'za', 'zt0']
+	64: ['sp', 'lr', 'fp', 'pc', 'xzr', 'nzcv', 'fpcr', 'fpsr', 'daif', 'za', 'za0', 'za1',
+		'za2', 'za3', 'za4', 'za5', 'za6', 'za7', 'za8', 'za9', 'za10', 'za11', 'za12', 'za13',
+		'za14', 'za15', 'zt0']
 }
 
 // no comments because maps do not support comments
@@ -3321,7 +3323,8 @@ fn gen_all_sized_registers(mut t Table, without_numbers map[int][]string, with_n
 	for bit_size, array in with_numbers {
 		for name, max_num in array {
 			hash_index := name.index('#') or { panic('all_registers: no hashtag found') }
-			for i in 0 .. max_num {
+			min_num := if name.starts_with('r#') { 8 } else { 0 }
+			for i in min_num .. max_num {
 				assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
 				res[assembled_name] = AsmRegister{
 					name: assembled_name

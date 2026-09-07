@@ -51,6 +51,14 @@ fn test_asm_register_names_cover_the_supported_architectures() {
 	assert 'bnd0' in amd64
 	assert 'bnd3' in amd64
 	assert 'bnd4' !in amd64
+	assert 'r7' !in amd64
+	assert 'r16' in amd64
+	assert 'r31d' in amd64
+	assert 'r32' !in amd64
+	assert 'mm7' in amd64
+	assert 'mm8' !in amd64
+	assert 'st7' in amd64
+	assert 'st8' !in amd64
 
 	i386 := asm_register_names('i386')
 	assert 'eax' in i386
@@ -65,12 +73,20 @@ fn test_asm_register_names_cover_the_supported_architectures() {
 	assert 'fpsr' in arm64
 	assert 'daif' in arm64
 	assert 'za' in arm64
+	assert 'za0' in arm64
+	assert 'za15' in arm64
 	assert 'zt0' in arm64
 	assert 'pn8' in arm64
 	assert 'pn15' in arm64
 	assert 'rax' in asm_register_names('x86_64')
 
 	assert asm_register_names('ppc64le').len == 0
+}
+
+fn test_asm_clobber_special_names() {
+	assert asm_clobber_is_special('cc')
+	assert asm_clobber_is_special('memory')
+	assert asm_clobber_is_special('redzone')
 }
 
 fn test_closest_asm_register_only_suggests_near_matches() {
