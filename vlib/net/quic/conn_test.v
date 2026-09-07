@@ -1594,6 +1594,23 @@ fn test_new_connection_id_rejects_same_cid_under_different_sequences() {
 	assert false, 'expected one CID under different sequences to be rejected'
 }
 
+fn test_new_connection_id_rejects_same_reset_token_for_different_cids() {
+	mut params := generous_transport_params()
+	params.active_connection_id_limit = 3
+	mut c, _, now := drive_to_established(params, generous_transport_params())!
+	defer {
+		c.handshake.free()
+	}
+	mut result := PollResult{}
+	c.dispatch_one_rtt_frame(peer_connection_id_for_test(1, [u8(1)], 0x11), now, mut result)!
+	c.dispatch_one_rtt_frame(peer_connection_id_for_test(2, [u8(2)], 0x11), now, mut result) or {
+		assert err.code() == int(quic_error_protocol_violation)
+		assert err.msg().contains('stateless reset token was reused')
+		return
+	}
+	assert false, 'expected one stateless reset token under different sequences to be rejected'
+}
+
 // Omitting active_connection_id_limit advertises RFC 9000's default of 2,
 // including the peer's initial sequence-0 CID. Therefore only one distinct
 // NEW_CONNECTION_ID may remain active while retirement stays unsupported.

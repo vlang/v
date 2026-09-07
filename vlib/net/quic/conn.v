@@ -1180,6 +1180,21 @@ fn (mut c QuicConn) update_initial_peer_connection_id(connection_id []u8, statel
 }
 
 fn (mut c QuicConn) handle_new_connection_id(frame NewConnectionIdFrame) ! {
+	// RFC 9000 §5.1.1 requires both connection IDs and their stateless
+	// reset tokens to be unique across sequence numbers.
+	for sequence, existing in c.peer_connection_ids {
+		if sequence == frame.sequence_number {
+			continue
+		}
+		if existing.connection_id.len > 0 && existing.connection_id == frame.connection_id {
+			return error_with_code('quic: PROTOCOL_VIOLATION: connection ID was issued under both sequence ${sequence} and ${frame.sequence_number}', int(quic_error_protocol_violation))
+		}
+		if existing.stateless_reset_token.len > 0
+			&& existing.stateless_reset_token == frame.stateless_reset_token {
+			return error_with_code('quic: PROTOCOL_VIOLATION: stateless reset token was reused for connection ID sequences ${sequence} and ${frame.sequence_number}', int(quic_error_protocol_violation))
+		}
+	}
+
 	// A retransmission of the same sequence is valid only when both values
 	// are identical (RFC 9000 §5.1.1). Sequence 0 starts partially known:
 	// its CID comes from the first authenticated header and its token from
@@ -1196,11 +1211,6 @@ fn (mut c QuicConn) handle_new_connection_id(frame NewConnectionIdFrame) ! {
 		return
 	}
 
-	for sequence, existing in c.peer_connection_ids {
-		if existing.connection_id.len > 0 && existing.connection_id == frame.connection_id {
-			return error_with_code('quic: PROTOCOL_VIOLATION: connection ID was issued under both sequence ${sequence} and ${frame.sequence_number}', int(quic_error_protocol_violation))
-		}
-	}
 	if u64(c.peer_connection_ids.len) >= c.peer_active_cid_limit {
 		return error_with_code('quic: CONNECTION_ID_LIMIT_ERROR: peer advertised more than the active_connection_id_limit of ${c.peer_active_cid_limit}', int(quic_error_connection_id_limit_error))
 	}
