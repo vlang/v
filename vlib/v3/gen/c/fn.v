@@ -15501,12 +15501,16 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			// differ from V's (notably C `int` vs V's i64 for platform `int`) needs an
 			// ABI thunk, not a bare function-pointer cast: casting the pointer does not
 			// convert the arguments the C library passes. Emit the adapter when one is
-			// required; otherwise fall through to the plain C-ABI cast below.
+			// required; otherwise fall through to the plain C-ABI cast below. Direct C
+			// functions already have their exact ABI in the included header, including
+			// qualifiers that cannot be expressed by their `fn C.` declarations.
 			if arg_idx >= 0 && arg_idx < typed_param_count {
 				if cb_fn := fn_type_from(param_types[arg_idx]) {
-					if thunk := g.c_call_callback_abi_thunk(arg_id, cb_fn) {
-						g.write(thunk)
-						continue
+					if !g.is_c_extern_fn_name_arg(arg_id) {
+						if thunk := g.c_call_callback_abi_thunk(arg_id, cb_fn) {
+							g.write(thunk)
+							continue
+						}
 					}
 				}
 			}

@@ -25,6 +25,8 @@ fn extern_cb_write_source() string {
 
 fn C.native_send(voidptr, &u8, usize) i32
 fn C.native_register(fn (voidptr, &u8, usize) i32) i32
+fn C.native_send_int(voidptr, &u8, int) i32
+fn C.native_register_int(fn (voidptr, &u8, int) i32) i32
 
 fn v_send(ctx voidptr, buf &u8, len usize) i32 {
 	return i32(len) + i32(unsafe { buf[0] }) + i32(ctx != unsafe { nil })
@@ -35,6 +37,8 @@ fn main() {
 	println(C.native_register((C.native_send)))
 	println(C.native_register(voidptr(C.native_send)))
 	println(C.native_register(v_send))
+	println(C.native_register_int(C.native_send_int))
+	println(C.native_register_int((C.native_send_int)))
 }
 ') or { panic(err) }
 	return src
@@ -66,4 +70,9 @@ fn test_c_extern_fn_callback_arg_is_not_cast() {
 	// A V function still needs the C-ABI cast: C has no declaration of its own for
 	// it, so the fn-pointer typedef is what gives the argument a type.
 	assert compact.count('native_register((_fn_ptr_') == 2, c_code
+	// A C function with platform `int` in its callback ABI must not be routed
+	// through a V adapter; its header declaration remains the source of truth.
+	assert compact.contains('native_register_int(native_send_int)'), c_code
+	assert compact.contains('native_register_int((native_send_int))'), c_code
+	assert !compact.contains('__v3_callback_wrap_native_send_int'), c_code
 }
