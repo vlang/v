@@ -280,6 +280,27 @@ fn main() {
 	assert out == '2'
 }
 
+// A generic call result is still unknown when the template is first
+// transformed. Revisit the literal after monomorphization gives the cloned
+// call a concrete result type.
+fn test_generic_inferred_anonymous_struct_is_materialized_after_specialization() {
+	out := selfhost_regression_run('generic_inferred_anonymous_struct', 'fn produce[T](value T) T {
+	return value
+}
+
+fn wrap[T](value T) T {
+	result := struct { item: produce(value) }
+	return result.item
+}
+
+fn main() {
+	println(wrap(41))
+	println(wrap("ok"))
+}
+')
+	assert out.split_into_lines() == ['41', 'ok']
+}
+
 // A non-capturing fn literal passed to an imported generic must remain a cgen root.
 // The large-project failure called this as `__anon_fn_0` without emitting its body.
 fn test_imported_generic_keeps_non_capturing_fn_literal() {

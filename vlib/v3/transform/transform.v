@@ -1523,6 +1523,10 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 			break
 		}
 	}
+	// Calls that depend on a generic parameter have concrete result types only in
+	// the specialized clones. Give their inferred anonymous literals concrete
+	// declarations before cgen sees the cloned bodies.
+	t.materialize_inferred_anonymous_structs()
 	t.erase_generic_fn_decls(t.cached_generic_fn_decls())
 	t.materialize_generic_structs(true)
 	t.monomorph_profile('mono wrapper structs: ${time.ticks() - debug_started} ms')

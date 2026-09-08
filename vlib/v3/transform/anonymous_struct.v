@@ -19,8 +19,9 @@ pub fn materialize_inferred_anonymous_structs_before_prepare(mut a flat.FlatAst,
 // materialize_inferred_anonymous_structs gives a concrete declaration to an
 // inferred `struct { field: expression }` literal whose field expressions were
 // not syntactically typed by the parser. Semantic checking has resolved those
-// expressions by this point. Do this before parallel transform preparation so
-// all workers and cgen see one immutable set of aggregate declarations.
+// expressions by this point. Run this before parallel transform preparation,
+// then again after generic specialization for literals whose field types only
+// become concrete in a cloned body.
 fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 	if isnil(t.tc) {
 		return false
