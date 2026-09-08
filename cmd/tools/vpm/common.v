@@ -377,9 +377,7 @@ fn get_path_of_existing_module(mod_name string) ?string {
 	if is_url {
 		publisher, name := get_ident_from_url(mod_name) or { '', '' }
 		if publisher != '' && name != '' {
-			rel_path := direct_install_mod_path(publisher, name)
-			path := os.real_path(os.join_path(settings.vmodules_path, rel_path))
-			if os.exists(path) && os.is_dir(path) {
+			if path := get_path_of_existing_url_module(settings.vmodules_path, publisher, name) {
 				verbose_println_more(@FILE_LINE, @FN, 'mod_name: ${mod_name}, found path: ${path}')
 				return path
 			}
@@ -401,7 +399,20 @@ fn get_path_of_existing_module(mod_name string) ?string {
 }
 
 fn direct_install_mod_path(publisher string, manifest_name string) string {
-	return normalize_mod_path(os.join_path(publisher, manifest_name.replace('.', os.path_separator)))
+	return normalize_mod_path(os.join_path(publisher.replace('.', os.path_separator), manifest_name.replace('.',
+		os.path_separator)))
+}
+
+fn get_path_of_existing_url_module(vmodules_path string, publisher string, name string) ?string {
+	new_path := direct_install_mod_path(publisher, name)
+	legacy_path := normalize_mod_path(os.join_path(publisher, name))
+	for rel_path in [new_path, legacy_path] {
+		path := os.real_path(os.join_path(vmodules_path, rel_path))
+		if os.exists(path) && os.is_dir(path) {
+			return path
+		}
+	}
+	return none
 }
 
 fn cleanup_empty_module_parent_dirs(module_path string) {

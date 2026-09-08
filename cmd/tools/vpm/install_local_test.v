@@ -250,6 +250,17 @@ fn test_publisher_prefix_does_not_look_like_name_normalization() {
 	assert !registered.normalized_name_warning_details('isaiahpatton.iui').contains('Consider renaming')
 	assert direct_install_mod_path('publisher', 'foo.bar') == os.join_path('publisher', 'foo',
 		'bar')
+	assert direct_install_mod_path('acme.inc', 'my-mod') == os.join_path('acme', 'inc', 'my_mod')
+}
+
+fn test_url_lookup_preserves_legacy_dotted_layout() {
+	vmodules_path := os.join_path(test_path, 'vmodules_legacy_url_layout')
+	legacy_path := os.join_path(vmodules_path, 'publisher', 'foo.bar')
+	os.mkdir_all(legacy_path) or { panic(err) }
+	found := get_path_of_existing_url_module(vmodules_path, 'publisher', 'foo.bar') or {
+		panic(err)
+	}
+	assert found == os.real_path(legacy_path)
 }
 
 fn test_import_path_canonicalizes_the_installed_leaf() {
