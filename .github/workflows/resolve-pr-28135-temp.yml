@@ -1,0 +1,37 @@
+name: Diagnose PR 28135 conflict
+
+on:
+  push:
+    branches:
+      - resolve-pr-28135
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: resolve-pr-28135
+          fetch-depth: 0
+      - name: Show exact conflicts
+        shell: bash
+        run: |
+          set -uo pipefail
+          git fetch https://github.com/guweigang/vlang.git fix-params-fields-owner:refs/remotes/fork/pr-head
+          git checkout --detach refs/remotes/fork/pr-head
+          git merge --no-commit --no-ff origin/master
+          status=$?
+          echo "merge_status=$status"
+          echo '--- conflicted paths ---'
+          git diff --name-only --diff-filter=U
+          echo '--- conflict hunks ---'
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            echo "===== $path ====="
+            git diff --cc --unified=100 -- "$path" || true
+          done < <(git diff --name-only --diff-filter=U)
+          git merge --abort || true
+          exit 0
