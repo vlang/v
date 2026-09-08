@@ -9075,6 +9075,24 @@ without AT&T's `%` prefix. Memory-capable constraints such as `m` are rejected b
 can still format those placeholders with AT&T addressing. In a `raw intel` block, the template is
 passed through unchanged, so use the selected C compiler's explicit operand modifiers.
 
+`%V` is the only operand modifier that omits the `%` prefix, and it prints the compilation
+target's native register: 64 bits for 64-bit machine code and 32 bits for 32-bit machine code,
+including when `-m32` overrides an explicit architecture. This is independent of the architecture
+declared on the assembly block. For instructions whose register operands must have the same width,
+V rejects a named operand combined with an explicit hard register of a different width. For
+example, in a 64-bit build, `mov eax, some_value` would reach the assembler as `mov eax, rcx`, so V
+rejects it at compile time. Named operands may still use narrower V types for operations that
+preserve their low-width result, such as an alias-only `add` whose flags are not observed later in
+the block. V rejects narrower operands where the instruction meaning changes with width, including
+shifts, rotates, implicit multiply and divide, bit counts, bit tests, byte swaps, and CRC32 sources.
+It also rejects narrower signed operands of `cmp` and `test`, and narrow arithmetic when a later
+instruction observes its flags. Named operands cannot be sources of `movsx`, `movsxd`, or `movzx`.
+Addressed sources of `movsx` and `movzx` are also rejected because structured assembly cannot
+specify their data width. Named shift counts are not supported because the `r` constraint cannot
+select `cl`. Effective addresses cannot contain three register operands, and signed address
+components must have the target's native width. Use a `raw intel` block to pick operand widths
+explicitly with `%k`, `%w` and related modifiers.
+
 The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the C backend. MSVC
 does not support this form of inline assembly on 64-bit targets, and individual instructions or
 constraints can still depend on the selected C compiler and target architecture.
