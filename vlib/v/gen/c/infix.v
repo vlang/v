@@ -561,8 +561,13 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 							&& node.left.op == .amp && node.left.right.is_lvalue()
 						right_is_addr_of_lvalue := node.right is ast.PrefixExpr
 							&& node.right.op == .amp && node.right.right.is_lvalue()
+						left_is_ref_param := node.left is ast.Ident && node.left.obj is ast.Var
+							&& node.left.obj.is_arg && !node.left.obj.is_auto_deref
+						right_is_ref_param := node.right is ast.Ident && node.right.obj is ast.Var
+							&& node.right.obj.is_arg && !node.right.obj.is_auto_deref
 						if left.typ.is_ptr() && right.typ.is_ptr()
-							&& (left_is_addr_of_lvalue || right_is_addr_of_lvalue) {
+							&& (left_is_addr_of_lvalue || right_is_addr_of_lvalue
+								|| left_is_ref_param || right_is_ref_param) {
 							g.gen_plain_infix_expr(node)
 						} else {
 							g.gen_struct_pointer_eq_op(node, left_type, right_type, ptr_typ)

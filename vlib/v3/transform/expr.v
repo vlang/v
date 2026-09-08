@@ -1003,6 +1003,10 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 		return none
 	}
 	if lhs_is_ptr && rhs_is_ptr {
+		if t.infix_operand_requests_pointer_identity(lhs_id)
+			|| t.infix_operand_requests_pointer_identity(rhs_id) {
+			return none
+		}
 		return t.transform_struct_pointer_eq(node, lhs_id, rhs_id, lhs_type, rhs_type, lhs_clean,
 			rhs_clean)
 	}
@@ -1018,6 +1022,51 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 	}
 	if eq := t.transform_transformed_struct_eq(node, lhs, rhs) {
 		return eq
+	}
+	return none
+}
+
+fn (t &Transformer) infix_operand_requests_pointer_identity(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	if node.kind == .ident {
+		return t.var_is_ref_param(node.value)
+	}
+	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+		return false
+	}
+	child_id := t.source_unary_expr_child(id, node) or { return false }
+	return t.source_expr_is_plain_lvalue(child_id)
+}
+
+fn (t &Transformer) source_expr_is_plain_lvalue(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	if node.kind == .ident {
+		return node.value.len > 0
+	}
+	if node.kind != .selector || node.children_count == 0 {
+		return false
+	}
+	child_id := t.source_unary_expr_child(id, node) or { return false }
+	return t.source_expr_is_plain_lvalue(child_id)
+}
+
+fn (t &Transformer) source_unary_expr_child(id flat.NodeId, node &flat.Node) ?flat.NodeId {
+	child_id := t.a.child(node, 0)
+	if int(child_id) >= 0 {
+		return child_id
+	}
+	// In-place transform passes can consume a source child slot. Source nodes are
+	// built post-order, so the direct child of a unary expression immediately
+	// precedes it and remains linked by the immutable source-parent index.
+	source_child := int(id) - 1
+	if source_child >= 0 && t.source_parent_id(source_child) == int(id) {
+		return flat.NodeId(source_child)
 	}
 	return none
 }

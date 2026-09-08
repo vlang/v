@@ -823,6 +823,8 @@ struct VarTypeBinding {
 	typ             string
 	raw_typ         string
 	is_implicit_err bool
+mut:
+	is_ref_param bool
 }
 
 struct BoundMethodArrayInfo {
@@ -2445,6 +2447,18 @@ fn (mut t Transformer) set_var_type(name string, typ string) {
 
 fn (mut t Transformer) set_implicit_err_var_type() {
 	t.set_var_type_binding('err', 'IError', 'IError', true)
+}
+
+fn (mut t Transformer) mark_var_as_ref_param(name string) {
+	i := t.var_type_index(name)
+	if i >= 0 {
+		t.var_types[i].is_ref_param = true
+	}
+}
+
+fn (t &Transformer) var_is_ref_param(name string) bool {
+	i := t.var_type_index(name)
+	return i >= 0 && t.var_types[i].is_ref_param
 }
 
 fn (t &Transformer) implicit_err_binding_active() bool {
@@ -8771,6 +8785,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		}
 		if typ.len > 0 {
 			t.set_var_type_with_raw(child.value, typ, raw_source_typ)
+			if !child.is_mut && raw_source_typ.starts_with('&') {
+				t.mark_var_as_ref_param(child.value)
+			}
 			if t.is_fixed_array_type(typ) {
 				t.fixed_array_param_values[child.value] = true
 			}

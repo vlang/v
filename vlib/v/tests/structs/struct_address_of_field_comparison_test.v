@@ -25,3 +25,20 @@ fn test_address_of_field_compares_addresses() {
 	// Different addresses with structurally equal contents must still be unequal.
 	assert &other != &t.buf
 }
+
+fn references_are_equal(a &Data, b &Data) bool {
+	return a == b
+}
+
+fn test_reference_parameters_compare_addresses() {
+	a := Data{}
+	b := Data{}
+	assert !references_are_equal(a, b)
+	assert references_are_equal(a, a)
+
+	compare := fn (left &Data, right &Data) bool {
+		return left == right
+	}
+	assert !compare(a, b)
+	assert compare(a, a)
+}
