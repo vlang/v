@@ -8306,7 +8306,12 @@ fn (mut p Parser) track_inline_asm_mnemonic(state InlineAsmMnemonicState, is_x86
 	if p.current_token_is_newline_semicolon() {
 		return .expect_mnemonic
 	}
-	match state {
+	current_state := if p.inline_asm_source_gap_has_newline() {
+		InlineAsmMnemonicState.expect_mnemonic
+	} else {
+		state
+	}
+	match current_state {
 		.expect_mnemonic {
 			if p.tok == .dot {
 				return .after_dot
@@ -8333,6 +8338,18 @@ fn (mut p Parser) track_inline_asm_mnemonic(state InlineAsmMnemonicState, is_x86
 			return .operands
 		}
 	}
+}
+
+fn (p &Parser) inline_asm_source_gap_has_newline() bool {
+	if p.prev_tok_end < 0 || p.prev_tok_end >= p.tok_pos || p.tok_pos > p.s.src.len {
+		return false
+	}
+	for i := p.prev_tok_end; i < p.tok_pos; i++ {
+		if p.s.src[i] == `\n` {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut p Parser) validate_inline_asm_lock_instruction() {

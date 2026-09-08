@@ -56,3 +56,16 @@ fn test_inline_asm_lock_label_is_not_treated_as_prefix() {
 ')
 	assert diagnostics.len == 0, diagnostics.str()
 }
+
+fn test_inline_asm_lock_after_multiline_comment_reports_error() {
+	diagnostics := parse_amd64_asm_diagnostics('lock_after_multiline_comment', 'fn main() {
+	asm amd64 {
+		nop /*
+		comment
+		*/ lock mov rax, rbx
+	}
+}
+')
+	assert diagnostics.len == 1, diagnostics.str()
+	assert diagnostics[0].message == 'The lock prefix cannot be used on this instruction'
+}
