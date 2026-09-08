@@ -323,7 +323,19 @@ fn test_installed_module_discovery_ignores_unrelated_vcs_directories() {
 	unrelated_path := os.join_path(vmodules_path, 'cache', 'unrelated')
 	os.mkdir_all(unrelated_path) or { panic(err) }
 	cmd_ok(@LOCATION, 'git init ${os.quoted_path(unrelated_path)}')
+	cmd_ok(@LOCATION,
+		'git -C ${os.quoted_path(unrelated_path)} remote add origin https://github.com/other/repository')
 	assert 'cache.unrelated' !in get_installed_modules_in(vmodules_path)
+}
+
+fn test_installed_module_discovery_preserves_manifestless_registered_checkout() {
+	vmodules_path := os.join_path(test_path, 'vmodules_manifestless_registered')
+	module_path := os.join_path(vmodules_path, 'spytheman', 'regex')
+	os.mkdir_all(module_path) or { panic(err) }
+	cmd_ok(@LOCATION, 'git init ${os.quoted_path(module_path)}')
+	cmd_ok(@LOCATION,
+		'git -C ${os.quoted_path(module_path)} remote add origin https://github.com/spytheman/v-regex')
+	assert 'spytheman.regex' in get_installed_modules_in(vmodules_path)
 }
 
 // A publisher directory added for a direct HTTP install is intentional and does not mean that

@@ -380,14 +380,39 @@ fn collect_installed_modules(path string, prefix string, is_root bool, mut modul
 			continue
 		}
 		module_name := if prefix == '' { dir } else { '${prefix}.${dir}' }
-		if vcs_used_in_dir(module_path) != none {
-			if os.is_file(os.join_path(module_path, 'v.mod')) {
+		if vcs := vcs_used_in_dir(module_path) {
+			if os.is_file(os.join_path(module_path, 'v.mod'))
+				|| is_manifestless_registered_checkout(module_path, module_name, vcs) {
 				modules << module_name
 			}
 			continue
 		}
 		collect_installed_modules(module_path, module_name, false, mut modules, mut visited)
 	}
+}
+
+fn is_manifestless_registered_checkout(module_path string, module_name string, vcs VCS) bool {
+	parts := module_name.split('.')
+	if parts.len != 2 {
+		return false
+	}
+	remote := match vcs {
+		.git {
+			result := os.execute_opt('git -C ${os.quoted_path(module_path)} remote get-url origin') or {
+				return false
+			}
+			result.output.trim_space()
+		}
+		.hg {
+			result := os.execute_opt('hg -R ${os.quoted_path(module_path)} paths default') or {
+				return false
+			}
+			result.output.trim_space()
+		}
+	}
+	publisher, _ := get_ident_from_url(remote) or { return false }
+	remote_owner := publisher.split('/')[0]
+	return normalize_mod_path(remote_owner) == normalize_mod_path(parts[0])
 }
 
 fn get_path_of_existing_module(mod_name string) ?string {
