@@ -416,6 +416,175 @@ fn test_cached_source_signature_keeps_per_file_sha256_digests() {
 	assert cached.source_digests == details.source_digests
 }
 
+fn test_cached_source_signature_tracks_qml_inputs() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_qml_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	qml := os.join_path(root, 'form.qml')
+	os.write_file(source, "module main\n\nfn build() { _ = \$qml('form.qml') }\n")!
+	os.write_file(qml, 'Label { text: "A" }')!
+	cache_dir := os.join_path(root, 'cache')
+
+	first := cached_source_signature(cache_dir, 'qml', [source])
+	assert first.len > 0
+	assert source_signature_details([source], '', '').cacheable
+	os.write_file(qml, 'Label { text: "Changed" }')!
+	second := cached_source_signature(cache_dir, 'qml', [source])
+	assert second.len > 0
+	assert second != first
+	ignored_paths, ignored_lookups, ignored_candidates, ignored_unresolved := compile_time_qml_paths(
+		"// \$qml('ignored.qml')\nconst s = \"\$qml('also_ignored.qml')\"", source)
+	assert ignored_paths.len == 0
+	assert ignored_lookups.len == 0
+	assert ignored_candidates.len == 0
+	assert !ignored_unresolved
+
+	os.write_file(source,
+		"module main\n\nconst form_path = 'form.qml'\nfn build() { _ = \$qml(form_path) }\n")!
+	before_cache_entries := os.ls(cache_dir)!.len
+	dynamic := cached_source_signature_details_with_build_values(cache_dir, 'dynamic-qml', [
+		source,
+	], '', '')
+	assert dynamic.signature.len > 0
+	assert !dynamic.cacheable
+	assert os.ls(cache_dir)!.len == before_cache_entries
+	dynamic_paths, dynamic_lookups, dynamic_candidates, dynamic_unresolved := compile_time_qml_paths(
+		os.read_file(source)!, source)
+	assert dynamic_paths.len == 0
+	assert dynamic_lookups.len == 0
+	assert dynamic_candidates.len == 0
+	assert dynamic_unresolved
+	concat_paths, concat_lookups, concat_candidates, concat_unresolved := compile_time_qml_paths(
+		"fn build() { _ = \$qml(template_dir + '/form.qml') }", source)
+	assert concat_paths.len == 0
+	assert concat_lookups.len == 0
+	assert concat_candidates.len == 0
+	assert concat_unresolved
+	os.write_file(os.join_path(root, 'form'), 'not the selected template')!
+	os.write_file(source, "module main\n\nfn build() { _ = \$qml('form' + '.qml') }\n")!
+	literal_concat := source_signature_details([source], '', '')
+	assert literal_concat.signature.len > 0
+	assert !literal_concat.cacheable
+	literal_paths, literal_lookups, literal_candidates, literal_unresolved := compile_time_qml_paths(
+		os.read_file(source)!, source)
+	assert literal_paths.len == 0
+	assert literal_lookups.len == 0
+	assert literal_candidates.len == 0
+	assert literal_unresolved
+	manager := Manager{
+		dir: os.join_path(root, 'module-cache')
+		enabled: true
+		salt: 'dynamic-qml-test'
+	}
+	manager.write_header('dynamic_qml', [source], '// generated header')!
+	if _ := manager.valid_header('dynamic_qml', [source]) {
+		assert false, 'an unresolved compile-time QML path must disable cache reuse'
+	}
+}
+
+fn test_qml_signature_scanner_preserves_raw_paths() {
+	call := r'$' + r"qml(r'C:\views\form.qml')"
+	raw_path, next_pos, ok, is_raw := signature_string_call_arg(call, 4)
+	assert ok
+	assert is_raw
+	assert next_pos == call.len
+	assert raw_path == r'C:\views\form.qml'
+
+	target, expected_candidates := resolve_signature_qml_path(raw_path, @FILE)
+	paths, lookups, candidates, unresolved := compile_time_qml_paths(call, @FILE)
+	assert paths == [os.real_path(target)]
+	assert lookups == [target]
+	assert candidates == expected_candidates.map(os.real_path(it))
+	assert !unresolved
+
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_qml_raw_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	relative_call := r'$' + r"qml(r'views\form.qml')"
+	os.write_file(source, 'module main\n\nfn build() { _ = ' + relative_call + ' }\n')!
+	qml_path, _ := resolve_signature_qml_path(r'views\form.qml', source)
+	os.mkdir_all(os.dir(qml_path))!
+	os.write_file(qml_path, 'Label { text: "Raw" }')!
+	cache_dir := os.join_path(root, 'cache')
+	first := cached_source_signature(cache_dir, 'qml-raw', [source])
+	assert first.len > 0
+	assert source_signature_details([source], '', '').cacheable
+	assert cached_source_signature(cache_dir, 'qml-raw', [source]) == first
+}
+
+fn test_cached_source_signature_tracks_shadowing_qml_paths() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_qml_shadow_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'templates')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	direct_qml := os.join_path(root, 'form.qml')
+	direct_candidate := os.join_path(os.real_path(root), 'form.qml')
+	template_qml := os.join_path(root, 'templates', 'form.qml')
+	os.write_file(source, "module main\n\nfn build() { _ = \$qml('form.qml') }\n")!
+	os.write_file(template_qml, 'Label { text: "Template" }')!
+	cache_dir := os.join_path(root, 'cache')
+
+	first := cached_source_signature(cache_dir, 'qml-shadow', [source])
+	assert first.len > 0
+	paths, lookups, candidates, unresolved := compile_time_qml_paths(os.read_file(source)!, source)
+	assert paths == [os.real_path(template_qml)]
+	assert lookups == [os.join_path(os.real_path(root), 'templates', 'form.qml')]
+	assert candidates == [direct_candidate]
+	assert !unresolved
+	details := source_signature_details([source], '', '')
+	assert details.validation.any(it == 'qmlcandidate=${direct_candidate}\tmissing')
+
+	os.write_file(direct_qml, 'Label { text: "Direct" }')!
+	second := cached_source_signature(cache_dir, 'qml-shadow', [source])
+	assert second.len > 0
+	assert second != first
+	shadowing_paths, shadowing_lookups, shadowing_candidates, _ := compile_time_qml_paths(os.read_file(source)!, source)
+	assert shadowing_paths == [os.real_path(direct_qml)]
+	assert shadowing_lookups == [direct_candidate]
+	assert shadowing_candidates.len == 0
+}
+
+fn test_cached_source_signature_tracks_qml_symlink_target() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_qml_symlink_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	first_target := os.join_path(root, 'first.qml')
+	second_target := os.join_path(root, 'second.qml')
+	qml_link := os.join_path(root, 'form.qml')
+	os.write_file(source, "module main\n\nfn build() { _ = \$qml('form.qml') }\n")!
+	os.write_file(first_target, 'Label { text: "First" }')!
+	os.write_file(second_target, 'Label { text: "Second" }')!
+	os.symlink(first_target, qml_link) or { return }
+	cache_dir := os.join_path(root, 'cache')
+
+	first := cached_source_signature(cache_dir, 'qml-symlink', [source])
+	assert first.len > 0
+	lookup_path := os.join_path(os.real_path(root), 'form.qml')
+	details := source_signature_details([source], '', '')
+	assert details.validation.any(it.starts_with('qmllookup=${lookup_path}\t${os.real_path(first_target)}\t'))
+
+	os.rm(qml_link)!
+	os.symlink(second_target, qml_link)!
+	second := cached_source_signature(cache_dir, 'qml-symlink', [source])
+	assert second.len > 0
+	assert second != first
+}
+
 fn test_version_pseudo_signature_ignores_build_clock() {
 	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_version_pseudo_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -441,6 +610,7 @@ fn test_source_uses_pseudo_in_quoted_compile_time_paths() {
 	assert source_uses_pseudo('module m\n\n#include "@VMODROOT/header.h"', roots)
 	assert source_uses_pseudo('module m\n\n#flag -I "@VMODROOT/include"', roots)
 	assert source_uses_pseudo('module m\n\nconst p = \$embed_file(r"@VROOT/x")', roots)
+	assert source_uses_pseudo("module m\n\nconst p = \$tmpl('@VMODROOT' + '/x.html')", roots)
 	// a pseudo after a string containing `//` must still be seen
 	assert source_uses_pseudo("module m\n\nconst u = 'http://x' + \$embed_file('@VMODROOT/y')",
 		roots)

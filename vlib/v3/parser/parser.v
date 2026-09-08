@@ -5752,6 +5752,9 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	if p.tok == .name && p.lit == 'embed_file' {
 		return p.parse_embed_file_expr()
 	}
+	if p.tok == .name && p.lit == 'qml' {
+		return p.parse_qml_template_expr(dollar_pos)
+	}
 	if p.tok == .name && p.lit in ['zero', 'new'] {
 		name := p.lit
 		p.next()

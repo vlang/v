@@ -16936,7 +16936,7 @@ fn resolve_project_or_pref_module_path_cached(prefs &pref.Preferences, mod_name 
 
 fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string, importing_file string, project_root string, mut cache map[string]string) string {
 	mod_path := mod_name.replace('.', os.path_separator)
-	local_path := resolve_local_or_project_module_path(mod_name, mod_path, importing_file, project_root)
+	local_path := resolve_local_or_project_module_path(prefs, mod_name, mod_path, importing_file, project_root)
 	if local_path.len > 0 {
 		return local_path
 	}
@@ -16959,7 +16959,7 @@ fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string,
 	return prefs.get_module_path(mod_name, importing_file)
 }
 
-fn resolve_local_or_project_module_path(mod_name string, mod_path string, importing_file string, project_root string) string {
+fn resolve_local_or_project_module_path(prefs &pref.Preferences, mod_name string, mod_path string, importing_file string, project_root string) string {
 	top_name := mod_name.all_before('.')
 	if importing_file.len > 0 {
 		importer_dir := os.dir(importing_file)
@@ -16971,7 +16971,7 @@ fn resolve_local_or_project_module_path(mod_name string, mod_path string, import
 			return alias_path
 		}
 		local_modules_path := os.join_path_single(local_modules_root, mod_path)
-		if module_path_has_v_sources(local_modules_path) {
+		if module_path_has_v_sources(local_modules_path, prefs) {
 			return local_modules_path
 		}
 	}
@@ -16980,7 +16980,7 @@ fn resolve_local_or_project_module_path(mod_name string, mod_path string, import
 			return alias_path
 		}
 		project_path := os.join_path_single(project_root, mod_path)
-		if module_path_has_v_sources(project_path) {
+		if module_path_has_v_sources(project_path, prefs) {
 			return project_path
 		}
 	}
@@ -16988,7 +16988,7 @@ fn resolve_local_or_project_module_path(mod_name string, mod_path string, import
 	// project-root modules precede a module beside the importing file.
 	if importing_file.len > 0 {
 		relative_path := os.join_path_single(os.dir(importing_file), mod_path)
-		if module_path_has_v_sources(relative_path) {
+		if module_path_has_v_sources(relative_path, prefs) {
 			return relative_path
 		}
 	}
@@ -17048,17 +17048,56 @@ fn resolve_global_module_path(prefs &pref.Preferences, mod_name string, mod_path
 			return alias_path
 		}
 		module_path := os.join_path_single(root, mod_path)
-		if module_path_has_v_sources(module_path) {
+		if module_path_has_v_sources(module_path, prefs) {
 			return module_path
 		}
 	}
 	return ''
 }
 
-fn module_path_has_v_sources(path string) bool {
+fn module_path_has_v_sources(path string, prefs &pref.Preferences) bool {
 	if path.len == 0 || !os.is_dir(path) {
 		return false
 	}
-	entries := os.ls(path) or { return false }
-	return entries.any(it.ends_with('.v'))
+	source_root := v3_directory_source_root(path)
+	if pref.get_v_files_from_dir_for_target(source_root, prefs.user_defines, prefs.target).len > 0 {
+		return true
+	}
+	// A v.mod can expose one logical module from source-only subdirectories. The
+	// importer must accept that root before v3_directory_user_files can expand it.
+	module_root := os.real_path(source_root)
+	mut seen_dirs := map[string]bool{}
+	for subdir in vmod_subdirs(path) or { []string{} } {
+		subdir_path := os.join_path_single(source_root, subdir)
+		if module_subdir_has_v_sources(module_root, subdir_path, prefs, mut seen_dirs) {
+			return true
+		}
+	}
+	return false
+}
+
+fn module_subdir_has_v_sources(module_root string, dir string, prefs &pref.Preferences, mut seen_dirs map[string]bool) bool {
+	if !os.is_dir(dir) {
+		return false
+	}
+	real_dir := os.real_path(dir)
+	if seen_dirs[real_dir] {
+		return false
+	}
+	seen_dirs[real_dir] = true
+	if real_dir != module_root && os.is_file(os.join_path_single(real_dir, 'v.mod')) {
+		return false
+	}
+	if pref.get_v_files_from_dir_for_target(real_dir, prefs.user_defines, prefs.target).len > 0 {
+		return true
+	}
+	entries := os.ls(real_dir) or { return false }
+	for entry in entries {
+		entry_path := os.join_path_single(real_dir, entry)
+		if os.is_dir(entry_path)
+			&& module_subdir_has_v_sources(module_root, entry_path, prefs, mut seen_dirs) {
+			return true
+		}
+	}
+	return false
 }

@@ -3224,6 +3224,44 @@ fn main() {
 		'compile-time error: present method selected')
 }
 
+fn test_generic_method_reflection_preserves_main_specialization_origin() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'generic_method_reflection_main_origin', {
+		'v.mod':     "Module { name: 'generic_method_reflection_main_origin' }\n"
+		'pkg/pkg.v': 'module pkg
+
+pub struct App {}
+
+fn (app App) package_method() {
+	_ = app
+}
+
+pub fn method_names[T]() string {
+	mut names := []string{}
+	$for method in T.methods {
+		names << method.name
+	}
+	return names.join(",")
+}
+'
+		'main.v':    'module main
+
+import pkg
+
+struct App {}
+
+fn (app App) main_method() {
+	_ = app
+}
+
+fn main() {
+	println(pkg.method_names[App]())
+}
+'
+	}, 'main.v')
+	assert out == 'main_method'
+}
+
 fn test_selected_comptime_if_expression_keeps_setup_statements() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'comptime_if_expr_setup_statements', "fn main() {

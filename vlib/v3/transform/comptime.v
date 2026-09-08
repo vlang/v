@@ -1143,6 +1143,7 @@ fn (t &Transformer) comptime_method_source_type(raw string) string {
 fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 	requested := t.comptime_method_source_type(base_type)
 	normalized := t.comptime_normalize_type_alias_chain(requested)
+	requested_module := t.comptime_method_requested_module(requested)
 	mut module_name := ''
 	mut file_name := ''
 	mut methods := []MethodMeta{}
@@ -1164,7 +1165,8 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 		}
 		first := t.a.child_node(&node, 0)
 		if first.kind != .param || first.op != .dot || first.value.len == 0
-			|| !comptime_method_receiver_matches(first.typ, requested, normalized, module_name, t.cur_module) {
+			|| !comptime_method_receiver_matches(first.typ, requested, normalized, module_name,
+				requested_module) {
 			continue
 		}
 		name := node.value.all_after_last('.')
@@ -1214,6 +1216,38 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 		}
 	}
 	return methods
+}
+
+fn (t &Transformer) comptime_method_requested_module(raw string) string {
+	name := comptime_method_receiver_base(raw)
+	if name.starts_with('main.') {
+		return 'main'
+	}
+	if name.contains('.') {
+		return name.all_before_last('.')
+	}
+	// Generic specializations retain the caller-owned main types that were passed
+	// into an imported declaration. Prefer that provenance over a same-named type
+	// declared beside the generic function.
+	if t.active_specialization_main_types[name] {
+		return 'main'
+	}
+	if !isnil(t.tc) {
+		local := if t.cur_module in ['', 'main', 'builtin'] {
+			name
+		} else {
+			'${t.cur_module}.${name}'
+		}
+		if local in t.tc.structs || local in t.tc.sum_types {
+			return t.cur_module
+		}
+		// Main-module types are stored without a qualifier. A generic function in
+		// another module can therefore receive `App`, not `main.App`.
+		if name in t.tc.structs || name in t.tc.sum_types {
+			return 'main'
+		}
+	}
+	return t.cur_module
 }
 
 fn (t &Transformer) comptime_method_receiver_generic_args(receiver string, requested string, normalized string) ([]string, []string) {
