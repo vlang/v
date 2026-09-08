@@ -399,7 +399,8 @@ fn (mut c Client) send_mailto(to string) ! {
 }
 
 // split_recipient_list splits the module's semicolon-delimited mailbox list
-// without treating semicolons inside RFC 5322 quoted strings as delimiters.
+// without treating semicolons inside RFC 5322 quoted strings or comments as
+// delimiters.
 fn split_recipient_list(raw string) []string {
 	mut recipients := []string{}
 	mut start := 0
@@ -407,6 +408,10 @@ fn split_recipient_list(raw string) []string {
 	for i < raw.len {
 		if raw[i] == `"` {
 			i = skip_quoted_string(raw, i)
+			continue
+		}
+		if raw[i] == `(` {
+			i = skip_comment(raw, i)
 			continue
 		}
 		if raw[i] == `;` {

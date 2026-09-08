@@ -341,6 +341,11 @@ fn test_format_addr_list() {
 	assert format_addr_list('"Doe, John" <john.doe@ex.com>; "Roe, Jane" <jane@ex.com>') == '"Doe, John" <john.doe@ex.com>, "Roe, Jane" <jane@ex.com>'
 	assert format_addr_list('"Doe; John" <john.doe@ex.com>; next@ex.com') == '"Doe; John" <john.doe@ex.com>, <next@ex.com>'
 	assert format_addr_list('"semi;colon"@ex.com; next@ex.com') == '<"semi;colon"@ex.com>, <next@ex.com>'
+	commented := 'John (sales; (east; coast)) <john@ex.com>; next@ex.com'
+	parts := split_recipient_list(commented)
+	assert parts.len == 2
+	assert envelope_addr(parts[0]) == 'john@ex.com'
+	assert envelope_addr(parts[1]) == 'next@ex.com'
 
 	// each non-ASCII display name is encoded independently
 	assert format_addr_list('Иван Петров <ivan@ex.com>') == '=?utf-8?B?0JjQstCw0L0g0J/QtdGC0YDQvtCy?= <ivan@ex.com>'
