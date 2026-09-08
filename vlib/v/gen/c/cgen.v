@@ -9636,6 +9636,20 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 	g.write('}')
 }
 
+fn (mut g Gen) enum_field_expr(expr ast.Expr) string {
+	expr_str := g.expr_string(expr)
+	if expr is ast.Ident && expr.kind == .constant {
+		const_def := g.global_const_defs[util.no_dots(expr.name)]
+		if const_def.def.starts_with('#define') {
+			return const_def.def.all_after(' ').all_after(' ').all_before('//').trim_space()
+		}
+		if const_def.def.contains('const ') {
+			return const_def.def.all_after_last('=').all_before_last(';')
+		}
+	}
+	return expr_str
+}
+
 fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	enum_name := util.no_dots(node.name)
 	is_flag := node.is_flag
@@ -9666,7 +9680,16 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	}
 	// Explicit-size enums are emitted as typedef + defines, so all C compilers
 	// (including tinyc) respect the selected storage size.
-	if g.is_cc_msvc || node.typ != ast.int_type {
+	mut needs_define_style := g.is_cc_msvc || node.typ != ast.int_type
+	if !needs_define_style {
+		for field in node.fields {
+			if field.has_expr && g.enum_field_expr(field.expr).contains('v__') {
+				needs_define_style = true
+				break
+			}
+		}
+	}
+	if needs_define_style {
 		mut last_value := '0'
 		enum_typ_name := g.table.get_type_name(node.typ)
 		if g.pref.skip_unused && node.enum_typ !in g.table.used_features.used_syms {
@@ -9679,7 +9702,7 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 			if is_flag {
 				g.enum_typedefs.write_string2((u64(1) << i).str(), 'ULL')
 			} else if field.has_expr {
-				expr_str := g.expr_string(field.expr)
+				expr_str := g.enum_field_expr(field.expr)
 				g.enum_typedefs.write_string(expr_str)
 				last_value = expr_str
 			} else {
@@ -9706,19 +9729,8 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		g.enum_typedefs.write_string('\t${enum_name}__${field.name}')
 		if field.has_expr {
 			g.enum_typedefs.write_string(' = ')
-			expr_str := g.expr_string(field.expr)
-			if field.expr is ast.Ident && field.expr.kind == .constant {
-				const_def := g.global_const_defs[util.no_dots(field.expr.name)]
-				if const_def.def.starts_with('#define') {
-					g.enum_typedefs.write_string(const_def.def.all_after_last(' '))
-				} else if const_def.def.contains('const ') {
-					g.enum_typedefs.write_string(const_def.def.all_after_last('=').all_before_last(';'))
-				} else {
-					g.enum_typedefs.write_string(expr_str)
-				}
-			} else {
-				g.enum_typedefs.write_string(expr_str)
-			}
+			expr_str := g.enum_field_expr(field.expr)
+			g.enum_typedefs.write_string(expr_str)
 			cur_enum_expr = expr_str
 			cur_enum_offset = 0
 		} else if is_flag {

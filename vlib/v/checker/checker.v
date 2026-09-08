@@ -3137,7 +3137,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 	}
 	field_name := node.field_name
-	mut sym := c.table.sym(typ)
+	mut sym := c.table.final_sym(typ)
 	mut final_sym := c.table.final_sym(typ)
 	if (typ.has_flag(.variadic) || final_sym.kind == .array_fixed) && field_name == 'len' {
 		node.typ = ast.int_type
