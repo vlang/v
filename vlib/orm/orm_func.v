@@ -505,7 +505,7 @@ fn (qb_ &QueryBuilder[T]) add_where_condition(condition string, params []Primiti
 		if scope.len == 0 {
 			continue
 		}
-		filter := query_data_for_scope[T](parsed, field_scopes, scope)
+		filter := query_data_for_scope[T](parsed, field_scopes, scope)!
 		path := canonical_include_path[T](scope.split('.'))!
 		qb.add_include_filter(path, filter, is_and)
 	}
@@ -518,6 +518,7 @@ fn (qb_ &QueryBuilder[T]) add_where_condition(condition string, params []Primiti
 fn (qb &QueryBuilder[T]) exists_wrapped_conditions(parsed QueryData, field_scopes []string) !QueryData {
 	mut out := QueryData{}
 	mut connectors := []bool{}
+	relationship_expression := project_query_boolean(parsed, field_scopes.map(it.len > 0))!
 	// position of each parsed term in `out`, plus the subquery run it belongs to and
 	// the markers delimiting that run, so parentheses can be re-anchored
 	mut position_start := []int{len: parsed.fields.len}
@@ -542,8 +543,8 @@ fn (qb &QueryBuilder[T]) exists_wrapped_conditions(parsed QueryData, field_scope
 		// ANDed root predicates can stay inside the correlated subquery, allowing later
 		// terms of this branch to keep matching the same related row.
 		mut scan := i
+		mut relationship_position := relationship_expression.term_indexes.index(i)
 		for scan + 1 < parsed.fields.len {
-			connector := query_data_connector(parsed, scan)
 			scan++
 			next := field_scopes[scan]
 			if next.len == 0 {
@@ -552,6 +553,13 @@ fn (qb &QueryBuilder[T]) exists_wrapped_conditions(parsed QueryData, field_scope
 			if next.all_before('.') != branch {
 				break
 			}
+			connector := if relationship_position >= 0
+				&& relationship_position < relationship_expression.is_and.len {
+				relationship_expression.is_and[relationship_position]
+			} else {
+				true
+			}
+			relationship_position++
 			if next != deepest && !next.starts_with('${deepest}.')
 				&& !deepest.starts_with('${next}.') {
 				if connector {
@@ -653,6 +661,146 @@ fn (qb &QueryBuilder[T]) groupable_condition(data QueryData) QueryData {
 
 fn query_data_connector(data QueryData, index int) bool {
 	return if index < data.is_and.len { data.is_and[index] } else { true }
+}
+
+enum QueryBooleanKind {
+	term
+	conjunction
+	disjunction
+}
+
+struct QueryBooleanNode {
+	kind       QueryBooleanKind
+	term_index int = -1
+	left       int = -1
+	right      int = -1
+}
+
+struct QueryBooleanTree {
+mut:
+	nodes []QueryBooleanNode
+	root  int = -1
+}
+
+struct ProjectedQueryBoolean {
+mut:
+	term_indexes []int
+	is_and       []bool
+	parentheses  [][]int
+}
+
+fn query_boolean_tree(data QueryData) !QueryBooleanTree {
+	mut tree := QueryBooleanTree{}
+	mut operands := []int{}
+	mut operator_stack := []int{}
+	for i in 0 .. data.fields.len {
+		for _ in 0 .. data.parentheses.count(it.len == 2 && it[0] == i) {
+			operator_stack << -1
+		}
+		tree.nodes << QueryBooleanNode{
+			kind:       .term
+			term_index: i
+		}
+		operands << tree.nodes.len - 1
+		for _ in 0 .. data.parentheses.count(it.len == 2 && it[1] == i) {
+			for operator_stack.len > 0 && operator_stack.last() >= 0 {
+				reduce_query_boolean_operator(mut tree, mut operands, operator_stack.pop())!
+			}
+			if operator_stack.len == 0 {
+				return error('${@FN}(): unbalanced parentheses')
+			}
+			operator_stack.pop()
+		}
+		if i + 1 < data.fields.len {
+			current_operator := if query_data_connector(data, i) { 1 } else { 0 }
+			for operator_stack.len > 0 && operator_stack.last() >= current_operator {
+				reduce_query_boolean_operator(mut tree, mut operands, operator_stack.pop())!
+			}
+			operator_stack << current_operator
+		}
+	}
+	for operator_stack.len > 0 {
+		current_operator := operator_stack.pop()
+		if current_operator < 0 {
+			return error('${@FN}(): unbalanced parentheses')
+		}
+		reduce_query_boolean_operator(mut tree, mut operands, current_operator)!
+	}
+	if operands.len != 1 {
+		return error('${@FN}(): invalid boolean expression')
+	}
+	tree.root = operands[0]
+	return tree
+}
+
+fn reduce_query_boolean_operator(mut tree QueryBooleanTree, mut operands []int, operator int) ! {
+	if operands.len < 2 {
+		return error('${@FN}(): missing boolean operand')
+	}
+	right := operands.pop()
+	left := operands.pop()
+	tree.nodes << QueryBooleanNode{
+		kind:  if operator == 1 { .conjunction } else { .disjunction }
+		left:  left
+		right: right
+	}
+	operands << tree.nodes.len - 1
+}
+
+fn project_query_boolean(data QueryData, keep []bool) !ProjectedQueryBoolean {
+	source := query_boolean_tree(data)!
+	mut projected := QueryBooleanTree{}
+	projected.root = project_query_boolean_node(source, source.root, keep, mut projected)
+	if projected.root < 0 {
+		return ProjectedQueryBoolean{}
+	}
+	mut result := ProjectedQueryBoolean{}
+	flatten_query_boolean_node(projected, projected.root, mut result)
+	return result
+}
+
+fn project_query_boolean_node(source QueryBooleanTree, node_index int, keep []bool, mut projected QueryBooleanTree) int {
+	if node_index < 0 || node_index >= source.nodes.len {
+		return -1
+	}
+	node := source.nodes[node_index]
+	if node.kind == .term {
+		if node.term_index < 0 || node.term_index >= keep.len || !keep[node.term_index] {
+			return -1
+		}
+		projected.nodes << node
+		return projected.nodes.len - 1
+	}
+	left := project_query_boolean_node(source, node.left, keep, mut projected)
+	right := project_query_boolean_node(source, node.right, keep, mut projected)
+	if left < 0 {
+		return right
+	}
+	if right < 0 {
+		return left
+	}
+	projected.nodes << QueryBooleanNode{
+		kind:  node.kind
+		left:  left
+		right: right
+	}
+	return projected.nodes.len - 1
+}
+
+fn flatten_query_boolean_node(tree QueryBooleanTree, node_index int, mut result ProjectedQueryBoolean) {
+	node := tree.nodes[node_index]
+	if node.kind == .term {
+		result.term_indexes << node.term_index
+		return
+	}
+	start := result.term_indexes.len
+	flatten_query_boolean_node(tree, node.left, mut result)
+	result.is_and << node.kind == .conjunction
+	flatten_query_boolean_node(tree, node.right, mut result)
+	end := result.term_indexes.len - 1
+	if end > start {
+		result.parentheses << [start, end]
+	}
 }
 
 // exists_scope_alias names the table alias a scoped condition refers to inside its subquery.
@@ -814,70 +962,36 @@ fn append_query_data(existing QueryData, addition QueryData, is_and bool) QueryD
 // query_data_for_scope extracts the terms belonging to exactly one relationship scope,
 // stripping the relationship prefix so they can filter that relationship while it is
 // hydrated. `field_scopes` holds the resolved scope of each term of `data`.
-fn query_data_for_scope[T](data QueryData, field_scopes []string, scope string) QueryData {
-	if scope.len > 0 && field_scopes.len == data.fields.len && field_scopes.all(it == scope) {
-		// the whole condition belongs to this relationship, so its grouping is kept
-		mut scoped := clone_query_data(data)
-		for i, field in scoped.fields {
-			scoped.fields[i] = relationship_terminal_field[T](field, scope)
-		}
-		return scoped
-	}
-	mut filtered := QueryData{}
+fn query_data_for_scope[T](data QueryData, field_scopes []string, scope string) !QueryData {
+	keep := field_scopes.map(it == scope)
+	projection := project_query_boolean(data, keep)!
+	mut data_indexes := []int{len: data.fields.len, init: -1}
 	mut data_index := 0
-	mut selected_indexes := []int{}
-	for i, field in data.fields {
-		kind := data.kinds[i]
-		if i < field_scopes.len && field_scopes[i] == scope {
-			field_name := if scope.len == 0 {
-				field
-			} else {
-				relationship_terminal_field[T](field, scope)
-			}
-			selected_indexes << i
-			filtered.fields << field_name
-			filtered.kinds << kind
-			if !kind.is_unary() {
-				filtered.data << data.data[data_index]
-				if data_index < data.types.len {
-					filtered.types << data.types[data_index]
-				}
-			}
-		}
+	for i, kind in data.kinds {
 		if !kind.is_unary() {
+			data_indexes[i] = data_index
 			data_index++
 		}
 	}
-	if selected_indexes.len > 1 {
-		for i in 0 .. selected_indexes.len - 1 {
-			start := selected_indexes[i]
-			end := selected_indexes[i + 1]
-			mut is_and := true
-			for connector in start .. end {
-				if !query_data_connector(data, connector) {
-					is_and = false
-					break
-				}
-			}
-			filtered.is_and << is_and
-		}
+	mut filtered := QueryData{
+		is_and:      projection.is_and.clone()
+		parentheses: projection.parentheses.map(it.clone())
 	}
-	for span in data.parentheses {
-		if span.len != 2 {
-			continue
+	for term_index in projection.term_indexes {
+		field := data.fields[term_index]
+		kind := data.kinds[term_index]
+		filtered.fields << if scope.len == 0 {
+			field
+		} else {
+			relationship_terminal_field[T](field, scope)
 		}
-		mut start := -1
-		mut end := -1
-		for i, selected in selected_indexes {
-			if selected >= span[0] && selected <= span[1] {
-				if start < 0 {
-					start = i
-				}
-				end = i
+		filtered.kinds << kind
+		primitive_index := data_indexes[term_index]
+		if primitive_index >= 0 {
+			filtered.data << data.data[primitive_index]
+			if primitive_index < data.types.len {
+				filtered.types << data.types[primitive_index]
 			}
-		}
-		if start >= 0 && end > start {
-			filtered.parentheses << [start, end]
 		}
 	}
 	return filtered

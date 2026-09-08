@@ -14,6 +14,7 @@ struct IncludeChild {
 	id         int @[primary; sql: serial]
 	parent_id  int
 	name       string
+	active     bool
 	grandkids  []IncludeGrandkid  @[fkey: 'child_id']
 	grandkids2 []IncludeGrandkid2 @[fkey: 'child_id']
 }
@@ -243,6 +244,7 @@ fn new_include_database() !sqlite.DB {
 	children.insert(IncludeChild{
 		parent_id: parent_id
 		name:      'child'
+		active:    true
 	})!
 	child_id := children.last_id()
 	grandkids.insert(IncludeGrandkid{
@@ -908,6 +910,39 @@ fn test_where_keeps_sibling_or_branches_with_a_trailing_ancestor_constraint() {
 	empty := parents.where('(children.grandkids.name = ? || children.grandkids2.name = ?) && children.id = ?',
 		'grandkid', 'missing', 999)!.query()!
 	assert empty.len == 0
+}
+
+fn test_where_accepts_sibling_or_branches_separated_by_a_root_term() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	rows := parents.where('children.grandkids.name = ? || (name = ? && children.grandkids2.name = ?)',
+		'grandkid', 'missing', 'missing')!.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'parent'
+}
+
+fn test_where_preserves_trailing_and_when_projecting_a_hydration_filter() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+	mut children := orm.new_query[IncludeChild](db)
+	children.insert(IncludeChild{
+		parent_id: 1
+		name:      'child'
+		active:    false
+	})!
+
+	rows := parents.include('children')!.where('(children.name = ? || name = ?) && children.active = ?',
+		'child', 'missing', true)!.query()!
+	assert rows.len == 1
+	assert rows[0].children.len == 1
+	assert rows[0].children[0].active
 }
 
 fn test_where_deep_is_null_requires_a_real_descendant() {
