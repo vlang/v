@@ -34,6 +34,13 @@ fn (mut node Node) replace_through_function(next Node) {
 	replace_node(mut node, next)
 }
 
+fn (mut node Node) expose_receiver_address() {
+	unsafe {
+		p := &node
+		_ = p
+	}
+}
+
 interface Element {
 	Node
 }
@@ -48,4 +55,5 @@ fn main() {
 	element.replace_through_method(Node(Item{}))
 	element.replace_through_condition(Node(Item{}))
 	element.replace_through_function(Node(Item{}))
+	element.expose_receiver_address()
 }

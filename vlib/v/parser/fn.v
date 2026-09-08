@@ -37,6 +37,7 @@ struct ReceiverReassignmentInfo {
 mut:
 	directly_reassigned bool
 	passed_mut          bool
+	address_taken       bool
 	method_calls        []string
 }
 
@@ -79,6 +80,13 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 			match node {
 				ast.AnonFn, ast.LambdaExpr {
 					return
+				}
+				ast.PrefixExpr {
+					mut right := node.right
+					right = right.remove_par()
+					if node.op == .amp && right is ast.Ident && right.name == name {
+						info.address_taken = true
+					}
 				}
 				ast.CallExpr {
 					mut left := node.left
@@ -1199,6 +1207,7 @@ run them via `v file.v` instead',
 		}
 		type_sym.methods[type_sym_method_idx].receiver_reassigned = receiver_info.directly_reassigned
 		type_sym.methods[type_sym_method_idx].receiver_passed_mut = receiver_info.passed_mut
+		type_sym.methods[type_sym_method_idx].receiver_address_taken = receiver_info.address_taken
 		type_sym.methods[type_sym_method_idx].receiver_method_calls = receiver_info.method_calls
 	}
 	if !no_body && are_params_type_only {

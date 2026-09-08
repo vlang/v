@@ -742,6 +742,7 @@ pub mut:
 	// true for mutable receiver methods loaded from a .vh file, whose body cannot be inspected
 	receiver_reassignment_unknown bool
 	receiver_passed_mut           bool
+	receiver_address_taken        bool
 	receiver_method_calls         []string
 	//
 	is_expand_simple_interpolation bool // for tagging b.f(s string), which is then called with `b.f('some ${x} ${y}')`,

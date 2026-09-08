@@ -3066,7 +3066,7 @@ fn (mut c Checker) lower_fixed_array_call_arg_to_array(mut arg ast.CallArg, expe
 
 fn (mut c Checker) method_can_replace_receiver(receiver_sym &ast.TypeSymbol, method ast.Fn, mut seen map[string]bool) bool {
 	if method.receiver_reassigned || method.receiver_reassignment_unknown
-		|| method.receiver_passed_mut {
+		|| method.receiver_passed_mut || method.receiver_address_taken {
 		return true
 	}
 	method_key := method.fkey()
@@ -3638,6 +3638,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				'its body is unavailable and may replace its receiver'
 			} else if method.receiver_passed_mut || method.receiver_method_calls.len > 0 {
 				'it can replace its receiver through a mutable call'
+			} else if method.receiver_address_taken {
+				'its receiver address escapes and can be used to replace it'
 			} else {
 				'it can replace its receiver'
 			}
