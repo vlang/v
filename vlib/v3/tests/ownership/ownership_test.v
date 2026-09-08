@@ -2915,6 +2915,25 @@ fn main() {
 	assert fail_fields.output.contains('use of moved value: `plain_cfg.s`'), fail_fields.output
 	assert fail_fields.output.contains('use of moved value: `cfgs[0].s`'), fail_fields.output
 
+	fail_later_variadic := run_ownership_check(v3_bin, 'collapsed_later_variadic_owned_field', '
+struct PlainCfg {
+	s string
+}
+
+fn dup_variadic(cfgs ...PlainCfg) {
+	t := cfgs[1].s
+	println(cfgs[1].s)
+	_ = t
+}
+
+fn main() {
+	owned := "later".to_owned()
+	dup_variadic(PlainCfg{s: "first"}, s: owned)
+}
+')
+	assert fail_later_variadic.exit_code != 0
+	assert fail_later_variadic.output.contains('use of moved value: `cfgs[1].s`'), fail_later_variadic.output
+
 	fail_return := run_ownership_check(v3_bin, 'collapsed_variadic_return_field', "
 struct Cfg {
 	s string

@@ -7262,7 +7262,7 @@ fn (tc &TypeChecker) call_arg_expected_type(info CallInfo, param_idx int) Type {
 	return expected
 }
 
-fn (tc &TypeChecker) collapsed_call_arg_param_idx(node flat.Node, info CallInfo) int {
+fn (tc &TypeChecker) collapsed_call_arg_raw_param_idx(node flat.Node, info CallInfo) int {
 	mut field_init_args := 0
 	mut first_field := -1
 	for i in 1 + info.arg_offset .. node.children_count {
@@ -7285,6 +7285,26 @@ fn (tc &TypeChecker) collapsed_call_arg_param_idx(node flat.Node, info CallInfo)
 	ctx_omitted := ctx_count > 0 && actual_count < info.params.len
 	arg_shift := if ctx_omitted { ctx_count } else { 0 }
 	return first_field - 1 - info.arg_offset + recv_extra + arg_shift
+}
+
+fn (tc &TypeChecker) collapsed_call_arg_param_idx(node flat.Node, info CallInfo) int {
+	param_idx := tc.collapsed_call_arg_raw_param_idx(node, info)
+	if info.is_variadic && info.params.len > 0 && param_idx >= info.params.len - 1 {
+		return info.params.len - 1
+	}
+	return param_idx
+}
+
+fn (tc &TypeChecker) collapsed_call_arg_variadic_elem_idx(node flat.Node, info CallInfo) int {
+	if !info.is_variadic || info.params.len == 0 {
+		return -1
+	}
+	raw_param_idx := tc.collapsed_call_arg_raw_param_idx(node, info)
+	variadic_param_idx := info.params.len - 1
+	if raw_param_idx < variadic_param_idx {
+		return -1
+	}
+	return raw_param_idx - variadic_param_idx
 }
 
 fn (tc &TypeChecker) collapsed_call_arg_type(node flat.Node, info CallInfo) ?Type {

@@ -1480,6 +1480,19 @@ fn main() {
 }
 ',
 		'cannot assign to field `x`: expected `int`, not `string`')
+	run_bad(v3_bin, 'bad_later_variadic_collapsed_struct_field_type', 'struct Point {
+	x int
+}
+
+fn total(points ...Point) int {
+	return points.len
+}
+
+fn main() {
+	_ := total(Point{x: 1}, x: "bad")
+}
+',
+		'cannot assign to field `x`: expected `int`, not `string`')
 	run_bad(v3_bin, 'bad_collapsed_fn_field_uses_target_diagnostic', 'struct Context {
 	callback fn (string)
 }

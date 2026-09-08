@@ -4738,10 +4738,9 @@ fn (tc &TypeChecker) ownership_call_collapsed_struct_decl_param_idx(node flat.No
 }
 
 fn (tc &TypeChecker) ownership_collapsed_field_suffix(node flat.Node, info CallInfo, field_name string) string {
-	type_param_idx := tc.collapsed_call_arg_param_idx(node, info)
-	if info.is_variadic && type_param_idx == info.params.len - 1 && type_param_idx >= 0
-		&& info.params[type_param_idx] is Array {
-		return '[0].${field_name}'
+	variadic_elem_idx := tc.collapsed_call_arg_variadic_elem_idx(node, info)
+	if variadic_elem_idx >= 0 {
+		return '[${variadic_elem_idx}].${field_name}'
 	}
 	return '.${field_name}'
 }
