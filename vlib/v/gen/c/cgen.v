@@ -13931,10 +13931,10 @@ fn (mut g Gen) as_cast_option_payload_expr_from_expr(typ ast.Type, expr ast.Expr
 	return g.as_cast_option_payload_expr(typ, g.expr_string(expr), false)
 }
 
-fn (mut g Gen) write_as_cast_call_start(styp string, sym ast.TypeSymbol, target_is_ptr bool) {
+fn (mut g Gen) write_as_cast_call_start(styp string, sym ast.TypeSymbol, payload_is_direct_ptr bool) {
 	if sym.info is ast.FnType {
 		g.write('(${styp})')
-	} else if target_is_ptr {
+	} else if payload_is_direct_ptr {
 		g.write('(${styp})')
 	} else if g.inside_smartcast {
 		g.write('(${styp}*)')
@@ -14056,7 +14056,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			}
 			obj_expr := '(${expr_str})${dot}_${payload_member}'
 			tag_expr := '(${expr_str})${dot}_typ'
-			g.write_as_cast_call_start(styp, sym, unwrapped_node_typ.is_ptr())
+			g.write_as_cast_call_start(styp, sym, false)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		} else {
 			expr_str := if expr_is_option {
@@ -14066,7 +14066,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			}
 			obj_expr := '(${expr_str})${dot}_${payload_member}'
 			tag_expr := '(${expr_str})${dot}_typ'
-			g.write_as_cast_call_start(styp, sym, unwrapped_node_typ.is_ptr())
+			g.write_as_cast_call_start(styp, sym, false)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		}
 
