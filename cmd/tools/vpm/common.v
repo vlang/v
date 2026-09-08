@@ -336,27 +336,30 @@ fn normalize_repo_lookup_url(raw_url string) !string {
 }
 
 fn get_installed_modules() []string {
-	dirs := os.ls(settings.vmodules_path) or { return [] }
+	return get_installed_modules_in(settings.vmodules_path)
+}
+
+fn get_installed_modules_in(vmodules_path string) []string {
 	mut modules := []string{}
-	for dir in dirs {
-		adir := os.join_path(settings.vmodules_path, dir)
-		if dir in excluded_dirs || !os.is_dir(adir) {
-			continue
-		}
-		if os.exists(os.join_path(adir, 'v.mod')) && os.exists(os.join_path(adir, '.git', 'config')) {
-			// an official vlang module with a short module name, like `vsl`, `ui` or `markdown`
-			modules << dir
-			continue
-		}
-		author := dir
-		mods := os.ls(adir) or { continue }
-		for m in mods {
-			vcs_used_in_dir(os.join_path(adir, m)) or { continue }
-			modules << '${author}.${m}'
-		}
-	}
+	collect_installed_modules(vmodules_path, '', true, mut modules)
 	verbose_println_more(@FILE_LINE, @FN, 'found modules: ${modules}')
 	return modules
+}
+
+fn collect_installed_modules(path string, prefix string, is_root bool, mut modules []string) {
+	dirs := os.ls(path) or { return }
+	for dir in dirs {
+		module_path := os.join_path(path, dir)
+		if (is_root && dir in excluded_dirs) || !os.is_dir(module_path) || os.is_link(module_path) {
+			continue
+		}
+		module_name := if prefix == '' { dir } else { '${prefix}.${dir}' }
+		if vcs_used_in_dir(module_path) != none {
+			modules << module_name
+			continue
+		}
+		collect_installed_modules(module_path, module_name, false, mut modules)
+	}
 }
 
 fn get_path_of_existing_module(mod_name string) ?string {

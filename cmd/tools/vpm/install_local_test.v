@@ -133,13 +133,14 @@ fn test_install_maps_manifest_dots_to_import_directories() {
 	vmodules_path := os.join_path(test_path, 'vmodules_dotted_name')
 	test_utils.set_test_env(vmodules_path)
 	repo_path := os.join_path(test_path, 'dotted_repo')
-	create_local_git_module(repo_path, 'Foo.bar')
+	create_local_git_module(repo_path, 'Foo.bar.baz')
 
 	res := cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
-	assert res.output.contains('`Foo.bar` is not a valid V import path, it was installed as `foo.bar`.'), res.output
+	assert res.output.contains('`Foo.bar.baz` is not a valid V import path, it was installed as `foo.bar.baz`.'), res.output
 
-	assert res.output.contains('Use `foo.bar` as the normalized import prefix'), res.output
-	assert os.exists(os.join_path(vmodules_path, 'foo', 'bar', 'v.mod'))
+	assert res.output.contains('Use `foo.bar.baz` as the normalized import prefix'), res.output
+	assert os.exists(os.join_path(vmodules_path, 'foo', 'bar', 'baz', 'v.mod'))
+	assert 'foo.bar.baz' in get_installed_modules_in(vmodules_path)
 }
 
 // A publisher directory added for a direct HTTP install is intentional and does not mean that
