@@ -2937,6 +2937,11 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 			static_name := flat.encode_static_type_method_name(left.name.all_after_last('.'),
 				callee.value)
 			static_module := e.type_value_module_name(left)
+			if value := e.disabled_function_zero_value(static_module, static_name, node) {
+				return FlowSignal{
+					values: [value]
+				}
+			}
 			expected_types := if target := e.function_def(static_module, static_name) {
 				e.function_param_type_names(target, 0)
 			} else {

@@ -87,6 +87,33 @@ fn main() {
 	assert e.stdout() == '0\n'
 }
 
+fn test_eval_disabled_static_method_call_skips_arguments() {
+	mut e := create()
+	e.run_text('
+__global hit int
+
+struct Trace {}
+
+@[if trace ?]
+fn Trace.write(x int) int {
+	return x
+}
+
+fn side_effect() int {
+	hit = 99
+	return 1
+}
+
+fn main() {
+	println(int_str(Trace.write(side_effect())))
+	println(int_str(hit))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '0\n0\n'
+}
+
 fn test_eval_labeled_for_in_flow_targets_named_loop() {
 	mut e := create()
 	e.run_text('
