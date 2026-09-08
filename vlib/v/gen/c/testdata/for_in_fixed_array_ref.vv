@@ -9,11 +9,23 @@ struct Holder {
 	buf [3]Point
 }
 
+struct PointerHolder {
+	buf [2]&Point
+}
+
 fn main() {
 	h := Holder{
-		buf: [Point{1, 2}, Point{3, 4}, Point{5, 6}]
+		buf: [Point{1, 2}, Point{3, 4}, Point{5, 6}]!
 	}
 	for i in &h.buf {
 		println(i.x)
+	}
+	first := &Point{7, 8}
+	second := &Point{9, 10}
+	pointers := PointerHolder{
+		buf: [first, second]!
+	}
+	for point in &pointers.buf {
+		println(point.x)
 	}
 }
