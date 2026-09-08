@@ -4420,11 +4420,9 @@ fn (tc &TypeChecker) source_fn_alias_type_text(name string) ?string {
 			}
 			qualified := qualify_decl_name_in_module(node.value, module_name)
 			if node.value == lookup_target || qualified == lookup_target {
-				mut source_type := tc.source_type_alias_rhs(tc.cur_file, node.value) or { '' }
-				if source_type.len == 0 {
-					if file := tc.a.source_files[node.pos.id] {
-						source_type = tc.source_type_alias_rhs(file.name, node.value) or { '' }
-					}
+				mut source_type := ''
+				if file := tc.a.source_files[node.pos.id] {
+					source_type = tc.source_type_alias_rhs(file.name, node.value) or { '' }
 				}
 				found = if source_type.starts_with('fn(') || source_type.starts_with('fn (') {
 					source_type
