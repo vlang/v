@@ -15,8 +15,6 @@ import rand
 
 const recv_size = 128
 
-const recipient_separator = ';'
-
 enum ReplyCode {
 	ready      = 220
 	close      = 221
@@ -363,7 +361,7 @@ fn (mut c Client) send_mailfrom(from string) ! {
 }
 
 fn (mut c Client) send_mailto(to string) ! {
-	for rcpt in to.split(recipient_separator) {
+	for rcpt in split_recipient_list(to) {
 		addr := envelope_addr(rcpt)
 		if addr == '' {
 			continue
@@ -371,6 +369,27 @@ fn (mut c Client) send_mailto(to string) ! {
 		c.send_str('RCPT TO:<${addr}>\r\n')!
 		c.expect_reply(.action_ok)!
 	}
+}
+
+// split_recipient_list splits the module's semicolon-delimited mailbox list
+// without treating semicolons inside RFC 5322 quoted strings as delimiters.
+fn split_recipient_list(raw string) []string {
+	mut recipients := []string{}
+	mut start := 0
+	mut i := 0
+	for i < raw.len {
+		if raw[i] == `"` {
+			i = skip_quoted_string(raw, i)
+			continue
+		}
+		if raw[i] == `;` {
+			recipients << raw[start..i]
+			start = i + 1
+		}
+		i++
+	}
+	recipients << raw[start..]
+	return recipients
 }
 
 fn (mut c Client) send_data() ! {
@@ -455,7 +474,7 @@ fn format_addr_list(raw string) string {
 	if raw.trim_space() == '' {
 		return ''
 	}
-	parts := raw.split(recipient_separator)
+	parts := split_recipient_list(raw)
 	mut result := []string{}
 	for part in parts {
 		formatted := format_addr(part)

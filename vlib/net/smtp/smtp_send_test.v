@@ -58,7 +58,7 @@ fn test_send_includes_to_cc_and_bcc_in_envelope() ! {
 	client.send(Mail{
 		from: 'sender@example.com'
 		to: ' ;;User <a@ex.com> ;   ; b@ex.com; '
-		cc: ' ;; cc@ex.com ; ; '
+		cc: ' ;; "Doe; John" <john@ex.com>; cc@ex.com ; ; '
 		bcc: ' ;; Bcc Two <bcc@ex.com> ; ; '
 		subject: 'test'
 	})!
@@ -67,6 +67,7 @@ fn test_send_includes_to_cc_and_bcc_in_envelope() ! {
 	expected := [
 		'RCPT TO:<a@ex.com>',
 		'RCPT TO:<b@ex.com>',
+		'RCPT TO:<john@ex.com>',
 		'RCPT TO:<cc@ex.com>',
 		'RCPT TO:<bcc@ex.com>',
 	]

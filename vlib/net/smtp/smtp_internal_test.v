@@ -304,6 +304,8 @@ fn test_format_addr_list() {
 	// a comma inside a quoted display name must survive formatting
 	assert format_addr_list('"Doe, John" <john.doe@ex.com>') == '"Doe, John" <john.doe@ex.com>'
 	assert format_addr_list('"Doe, John" <john.doe@ex.com>; "Roe, Jane" <jane@ex.com>') == '"Doe, John" <john.doe@ex.com>, "Roe, Jane" <jane@ex.com>'
+	assert format_addr_list('"Doe; John" <john.doe@ex.com>; next@ex.com') == '"Doe; John" <john.doe@ex.com>, <next@ex.com>'
+	assert format_addr_list('"semi;colon"@ex.com; next@ex.com') == '<"semi;colon"@ex.com>, <next@ex.com>'
 
 	// each non-ASCII display name is encoded independently
 	assert format_addr_list('Иван Петров <ivan@ex.com>') == '=?utf-8?B?0JjQstCw0L0g0J/QtdGC0YDQvtCy?= <ivan@ex.com>'
