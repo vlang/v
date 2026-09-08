@@ -264,37 +264,37 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
-		qml_paths, qml_lookup_paths, qml_lookup_candidates, has_unresolved_qml_path := compile_time_qml_paths(
+		vml_paths, vml_lookup_paths, vml_lookup_candidates, has_unresolved_vml_path := compile_time_vml_paths(
 			source, path)
-		if has_unresolved_qml_path {
+		if has_unresolved_vml_path {
 			cacheable = false
 		}
-		for lookup_path in qml_lookup_paths {
+		for lookup_path in vml_lookup_paths {
 			resolved := os.real_path(lookup_path)
 			metadata := optional_file_metadata_signature(lookup_path)
-			validation << 'qmllookup=${lookup_path}\t${resolved}\t${metadata}'
+			validation << 'vmllookup=${lookup_path}\t${resolved}\t${metadata}'
 			hash = hash_bytes(hash, [u8(0xf7)])
 			hash = hash_bytes(hash, lookup_path.bytes())
 			hash = hash_bytes(hash, [u8(0)])
 			hash = hash_bytes(hash, resolved.bytes())
 			hash = hash_bytes(hash, [u8(0xff)])
 		}
-		for candidate in qml_lookup_candidates {
+		for candidate in vml_lookup_candidates {
 			metadata := optional_file_metadata_signature(candidate)
-			validation << 'qmlcandidate=${candidate}\t${metadata}'
+			validation << 'vmlcandidate=${candidate}\t${metadata}'
 			hash = hash_bytes(hash, [u8(0xf6)])
 			hash = hash_bytes(hash, candidate.bytes())
 			hash = hash_bytes(hash, [u8(0)])
 			hash = hash_bytes(hash, metadata.bytes())
 			hash = hash_bytes(hash, [u8(0xff)])
 		}
-		for qml_path in qml_paths {
-			qml_content := os.read_bytes(qml_path) or { return SourceSignatureDetails{} }
-			validation << 'qml=${qml_path}\t${file_metadata_signature(qml_path)}'
+		for vml_path in vml_paths {
+			vml_content := os.read_bytes(vml_path) or { return SourceSignatureDetails{} }
+			validation << 'vml=${vml_path}\t${file_metadata_signature(vml_path)}'
 			hash = hash_bytes(hash, [u8(0xf8)])
-			hash = hash_bytes(hash, qml_path.bytes())
+			hash = hash_bytes(hash, vml_path.bytes())
 			hash = hash_bytes(hash, [u8(0)])
-			hash = hash_bytes(hash, qml_content)
+			hash = hash_bytes(hash, vml_content)
 			hash = hash_bytes(hash, [u8(0xff)])
 		}
 		if source_uses_pseudo(source, [
@@ -380,7 +380,7 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 	}
 	if !cacheable {
 		// Keep repeated queries consistent inside one compiler process, while
-		// ensuring another process cannot reuse an artifact whose QML input path
+		// ensuring another process cannot reuse an artifact whose VML input path
 		// could not be extracted from source text.
 		hash = hash_bytes(hash, [u8(0xf7)])
 		hash = hash_bytes(hash, os.getpid().str().bytes())
@@ -746,24 +746,24 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 			}
 			continue
 		}
-		if line.starts_with('qml=') {
-			parts := line['qml='.len..].split('\t')
+		if line.starts_with('vml=') {
+			parts := line['vml='.len..].split('\t')
 			if parts.len != 2 || parts[0].len == 0
 				|| file_metadata_signature(parts[0]) != parts[1] {
 				return none
 			}
 			continue
 		}
-		if line.starts_with('qmlcandidate=') {
-			parts := line['qmlcandidate='.len..].split('\t')
+		if line.starts_with('vmlcandidate=') {
+			parts := line['vmlcandidate='.len..].split('\t')
 			if parts.len != 2 || parts[0].len == 0
 				|| optional_file_metadata_signature(parts[0]) != parts[1] {
 				return none
 			}
 			continue
 		}
-		if line.starts_with('qmllookup=') {
-			parts := line['qmllookup='.len..].split('\t')
+		if line.starts_with('vmllookup=') {
+			parts := line['vmllookup='.len..].split('\t')
 			if parts.len != 3 || parts[0].len == 0 || os.real_path(parts[0]) != parts[1]
 				|| optional_file_metadata_signature(parts[0]) != parts[2] {
 				return none
@@ -1001,8 +1001,8 @@ fn signature_string_call_arg_prefix(source string, start int) (string, int, bool
 	return '', source.len, false, false
 }
 
-fn compile_time_qml_paths(source string, source_file string) ([]string, []string, []string, bool) {
-	if !source.contains('\$qml') {
+fn compile_time_vml_paths(source string, source_file string) ([]string, []string, []string, bool) {
+	if !source.contains('\$vml') {
 		return []string{}, []string{}, []string{}, false
 	}
 	mut paths := map[string]bool{}
@@ -1024,7 +1024,7 @@ fn compile_time_qml_paths(source string, source_file string) ([]string, []string
 			pos = skip_signature_quoted_text(source, pos + 1, true)
 			continue
 		}
-		if pos + 4 > source.len || source[pos..pos + 4] != '\$qml'
+		if pos + 4 > source.len || source[pos..pos + 4] != '\$vml'
 			|| (pos + 4 < source.len && signature_name_char(source[pos + 4])) {
 			pos++
 			continue
@@ -1032,7 +1032,7 @@ fn compile_time_qml_paths(source string, source_file string) ([]string, []string
 		raw_path, next_pos, ok, is_raw := signature_string_call_arg(source, pos + 4)
 		if ok {
 			path_value := if is_raw { raw_path } else { cached_unescape_v_string(raw_path) }
-			path, candidates := resolve_signature_qml_path(path_value, source_file)
+			path, candidates := resolve_signature_vml_path(path_value, source_file)
 			paths[os.real_path(path)] = true
 			lookup_paths[path] = true
 			for candidate in candidates {
@@ -1052,7 +1052,7 @@ fn compile_time_qml_paths(source string, source_file string) ([]string, []string
 	return result, lookups, candidates, has_unresolved_path
 }
 
-fn resolve_signature_qml_path(path string, source_file string) (string, []string) {
+fn resolve_signature_vml_path(path string, source_file string) (string, []string) {
 	if os.is_abs_path(path) {
 		return path, []string{}
 	}
@@ -1173,7 +1173,7 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 	}
 	source_details := m.source_signature_details(source_files)
 	if !source_details.cacheable {
-		cache_trace_module_miss(module_name, 'source has an unresolved compile-time QML path')
+		cache_trace_module_miss(module_name, 'source has an unresolved compile-time VML path')
 		return none
 	}
 	expected := entry_stamp(m.salt, source_details.signature)
