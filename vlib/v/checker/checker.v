@@ -4468,6 +4468,8 @@ fn (mut c Checker) check_asm_intel_narrow_data_aliases(template ast.AsmTemplate,
 			&& c.asm_intel_named_operand_is_narrow(arg.name, aliases, native_width) {
 			is_width_dependent := match instruction {
 				'movbe' { i in [0, 1] }
+				'div', 'idiv', 'mul' { i == 0 }
+				'imul' { template.args.len == 1 && i == 0 }
 				'bt', 'btc', 'btr', 'bts' { i == 0 }
 				'bzhi', 'rorx', 'sarx', 'shlx', 'shrx', 'lzcnt', 'tzcnt' { i == 1 }
 				'shld', 'shrd' { i in [0, 1] }
@@ -4510,6 +4512,20 @@ fn (mut c Checker) check_asm_intel_extension_move_source(template ast.AsmTemplat
 	}
 }
 
+fn (mut c Checker) check_asm_intel_extension_move_address_source(template ast.AsmTemplate,
+	instruction string) bool {
+	if instruction == 'movsxd' || template.args.len < 2 {
+		return false
+	}
+	source := template.args[1]
+	if source is ast.AsmAddressing {
+		c.error('addressed source in instruction `${template.name}` has no explicit data width in structured `intel` assembly; use a hard source register of the required width, or a `raw intel` block with an explicit source size',
+			template.pos)
+		return true
+	}
+	return false
+}
+
 fn asm_intel_crc32_source_width_is_valid(source_width int, native_width int) bool {
 	return source_width == 8 || source_width == native_width * 8
 		|| (native_width == 4 && source_width == 16)
@@ -4524,9 +4540,10 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	is_movq := name == 'movq'
 	is_extension_move := name in ['movsx', 'movsxd', 'movzx']
 	same_width_instructions := ['mov', 'movbe', 'add', 'adc', 'adcx', 'adox', 'sub', 'sbb', 'and',
-		'andn', 'or', 'xor', 'cmp', 'test', 'xchg', 'xadd', 'cmpxchg', 'imul', 'bsf', 'bsr', 'bt',
-		'btc', 'btr', 'bts', 'bextr', 'blsi', 'blsmsk', 'blsr', 'bzhi', 'mulx', 'pdep', 'pext',
-		'rorx', 'sarx', 'shlx', 'shrx', 'shld', 'shrd', 'popcnt', 'lzcnt', 'tzcnt', 'crc32']
+		'andn', 'or', 'xor', 'cmp', 'test', 'xchg', 'xadd', 'cmpxchg', 'div', 'idiv', 'imul',
+		'mul', 'bsf', 'bsr', 'bt', 'btc', 'btr', 'bts', 'bextr', 'blsi', 'blsmsk', 'blsr',
+		'bzhi', 'mulx', 'pdep', 'pext', 'rorx', 'sarx', 'shlx', 'shrx', 'shld', 'shrd',
+		'popcnt', 'lzcnt', 'tzcnt', 'crc32']
 	width_sensitive_instructions := ['bswap', 'rcl', 'rcr', 'rol', 'ror', 'sal', 'sar', 'shl',
 		'shr']
 	mut is_same_width := name in same_width_instructions
@@ -4552,6 +4569,10 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 		is_width_sensitive = name in width_sensitive_instructions
 	}
 	if !is_same_width && !is_width_sensitive && !name.starts_with('cmov') && !is_extension_move {
+		return
+	}
+	if is_extension_move
+		&& c.check_asm_intel_extension_move_address_source(template, name) {
 		return
 	}
 	mut has_named_alias := false
@@ -4598,7 +4619,7 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 			if arg is ast.AsmAlias && arg.name in aliases
 				&& c.asm_intel_named_operand_is_narrow(arg.name, aliases, native_width) {
 				typ := c.unwrap_generic(aliases[arg.name])
-				if c.table.unaliased_type(typ).is_signed() {
+				if c.asm_intel_type_is_signed(typ) {
 					c.error('named operand `${arg.name}` has ${c.asm_intel_type_width(typ) * 8}-bit signed type `${c.table.type_str(typ)}`, but instruction `${template.name}` sets flags from the ${native_width * 8}-bit register substituted by structured `intel` assembly; use native-width operands, or a `raw intel` block with explicit operand modifiers',
 						template.pos)
 					return
@@ -4689,6 +4710,18 @@ fn (c &Checker) asm_intel_type_width(typ ast.Type) int {
 	}
 	width, _ := c.table.type_size(typ)
 	return width
+}
+
+fn (c &Checker) asm_intel_type_is_signed(typ ast.Type) bool {
+	if typ.nr_muls() > 0 || typ.has_option_or_result() {
+		return false
+	}
+	unaliased_typ := c.table.unaliased_type(typ)
+	sym := c.table.sym(unaliased_typ)
+	if sym.info is ast.Enum {
+		return c.table.unaliased_type(sym.info.typ).is_signed()
+	}
+	return unaliased_typ.is_signed()
 }
 
 fn closest_asm_register(name string, registers map[string]ast.ScopeObject) ?string {

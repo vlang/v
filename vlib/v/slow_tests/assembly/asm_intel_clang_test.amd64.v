@@ -45,6 +45,18 @@ fn test_intel_mixed_width_hard_registers_with_clang() {
 	assert sign_extended == -1
 }
 
+fn test_intel_movsxd_memory_source_with_clang() {
+	value := i32(-1)
+	base := &value
+	mut result := i64(0)
+	asm amd64 intel {
+		movsxd result, [base]
+		; =r (result)
+		; r (base)
+	}
+	assert result == -1
+}
+
 fn intel_generic_add[T](value T, increment T) T {
 	mut result := value
 	asm amd64 intel {

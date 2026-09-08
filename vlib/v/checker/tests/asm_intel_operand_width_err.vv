@@ -167,6 +167,20 @@ fn intel_signed_test(value int) {
 	}
 }
 
+enum IntelSignedNarrow as i8 {
+	negative = -1
+	positive = 1
+}
+
+fn intel_signed_enum_compare(left IntelSignedNarrow, right IntelSignedNarrow) {
+	asm amd64 intel {
+		cmp left, right
+		; ; r (left)
+		  r (right)
+		; cc
+	}
+}
+
 fn intel_named_shift_count(count i64) {
 	asm amd64 intel {
 		shl rax, count
@@ -188,6 +202,31 @@ fn intel_extension_move_named_sources(value i64) {
 		  =r (sign_extended)
 		  =r (sign_extended_dword)
 		; r (value)
+	}
+}
+
+fn intel_extension_move_address_sources(base &u8) {
+	mut zero_extended := i64(0)
+	mut sign_extended := i64(0)
+	asm amd64 intel {
+		movzx zero_extended, [base]
+		movsx sign_extended, [base]
+		; =r (zero_extended)
+		  =r (sign_extended)
+		; r (base)
+	}
+}
+
+fn intel_narrow_implicit_arithmetic(value int) {
+	asm amd64 intel {
+		div value
+		idiv value
+		mul value
+		imul value
+		; ; r (value)
+		; rax
+		  rdx
+		  cc
 	}
 }
 
