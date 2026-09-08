@@ -741,6 +741,8 @@ pub mut:
 	receiver_reassigned bool     // the method body can replace its mutable receiver
 	// true for mutable receiver methods loaded from a .vh file, whose body cannot be inspected
 	receiver_reassignment_unknown bool
+	receiver_passed_mut           bool
+	receiver_method_calls         []string
 	//
 	is_expand_simple_interpolation bool // for tagging b.f(s string), which is then called with `b.f('some ${x} ${y}')`,
 	// when that call, should be expanded to `b.f('some '); b.f(x); b.f(' '); b.f(y);`

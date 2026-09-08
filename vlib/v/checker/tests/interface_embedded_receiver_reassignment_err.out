@@ -1,20 +1,41 @@
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:23:10: error: cannot call mutable method `Node.replace` through embedded interface `Element` because it can replace its receiver
-   21 | fn main() {
-   22 |     mut element := Element(Item{})
-   23 |     element.replace(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:45:10: error: cannot call mutable method `Node.replace` through embedded interface `Element` because it can replace its receiver
+   43 | fn main() {
+   44 |     mut element := Element(Item{})
+   45 |     element.replace(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~
-   24 |     element.replace_in_for_init(Node(Item{}))
-   25 |     element.replace_in_for_increment(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:24:10: error: cannot call mutable method `Node.replace_in_for_init` through embedded interface `Element` because it can replace its receiver
-   22 |     mut element := Element(Item{})
-   23 |     element.replace(Node(Item{}))
-   24 |     element.replace_in_for_init(Node(Item{}))
+   46 |     element.replace_in_for_init(Node(Item{}))
+   47 |     element.replace_in_for_increment(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:46:10: error: cannot call mutable method `Node.replace_in_for_init` through embedded interface `Element` because it can replace its receiver
+   44 |     mut element := Element(Item{})
+   45 |     element.replace(Node(Item{}))
+   46 |     element.replace_in_for_init(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   25 |     element.replace_in_for_increment(Node(Item{}))
-   26 | }
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:25:10: error: cannot call mutable method `Node.replace_in_for_increment` through embedded interface `Element` because it can replace its receiver
-   23 |     element.replace(Node(Item{}))
-   24 |     element.replace_in_for_init(Node(Item{}))
-   25 |     element.replace_in_for_increment(Node(Item{}))
+   47 |     element.replace_in_for_increment(Node(Item{}))
+   48 |     element.replace_through_method(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:47:10: error: cannot call mutable method `Node.replace_in_for_increment` through embedded interface `Element` because it can replace its receiver
+   45 |     element.replace(Node(Item{}))
+   46 |     element.replace_in_for_init(Node(Item{}))
+   47 |     element.replace_in_for_increment(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   26 | }
+   48 |     element.replace_through_method(Node(Item{}))
+   49 |     element.replace_through_condition(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:48:10: error: cannot call mutable method `Node.replace_through_method` through embedded interface `Element` because it can replace its receiver through a mutable call
+   46 |     element.replace_in_for_init(Node(Item{}))
+   47 |     element.replace_in_for_increment(Node(Item{}))
+   48 |     element.replace_through_method(Node(Item{}))
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   49 |     element.replace_through_condition(Node(Item{}))
+   50 |     element.replace_through_function(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:49:10: error: cannot call mutable method `Node.replace_through_condition` through embedded interface `Element` because it can replace its receiver through a mutable call
+   47 |     element.replace_in_for_increment(Node(Item{}))
+   48 |     element.replace_through_method(Node(Item{}))
+   49 |     element.replace_through_condition(Node(Item{}))
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   50 |     element.replace_through_function(Node(Item{}))
+   51 | }
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:50:10: error: cannot call mutable method `Node.replace_through_function` through embedded interface `Element` because it can replace its receiver through a mutable call
+   48 |     element.replace_through_method(Node(Item{}))
+   49 |     element.replace_through_condition(Node(Item{}))
+   50 |     element.replace_through_function(Node(Item{}))
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   51 | }

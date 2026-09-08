@@ -33,42 +33,80 @@ fn type_method_name_pos(sym &ast.TypeSymbol, name string, fallback token.Pos) to
 	return fallback
 }
 
-fn node_reassigns_ident(node ast.Node, name string) bool {
+struct ReceiverReassignmentInfo {
+mut:
+	directly_reassigned bool
+	passed_mut          bool
+	method_calls        []string
+}
+
+fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReassignmentInfo) {
 	match node {
 		ast.Stmt {
 			if node is ast.FnDecl {
-				return false
+				return
+			}
+			if node is ast.ForStmt && !node.is_inf {
+				scan_receiver_reassignment(node.cond, name, mut info)
+			}
+			if node is ast.ForInStmt {
+				scan_receiver_reassignment(node.cond, name, mut info)
+				if node.is_range {
+					scan_receiver_reassignment(node.high, name, mut info)
+				}
 			}
 			if node is ast.ForCStmt {
-				if (node.has_init && node_reassigns_ident(node.init, name))
-					|| (node.has_inc && node_reassigns_ident(node.inc, name)) {
-					return true
+				if node.has_init {
+					scan_receiver_reassignment(node.init, name, mut info)
+				}
+				if node.has_cond {
+					scan_receiver_reassignment(node.cond, name, mut info)
+				}
+				if node.has_inc {
+					scan_receiver_reassignment(node.inc, name, mut info)
 				}
 			}
 			if node is ast.AssignStmt {
 				for left in node.left {
 					reduced := left.remove_par()
 					if reduced is ast.Ident && reduced.name == name {
-						return true
+						info.directly_reassigned = true
 					}
 				}
 			}
 		}
 		ast.Expr {
 			match node {
-				ast.AnonFn, ast.LambdaExpr { return false }
+				ast.AnonFn, ast.LambdaExpr {
+					return
+				}
+				ast.CallExpr {
+					mut left := node.left
+					left = left.remove_par()
+					if node.is_method && left is ast.Ident && left.name == name
+						&& node.name !in info.method_calls {
+						info.method_calls << node.name
+					}
+					for arg in node.args {
+						mut arg_expr := arg.expr
+						arg_expr = arg_expr.remove_par()
+						if arg.is_mut && arg_expr is ast.Ident && arg_expr.name == name {
+							info.passed_mut = true
+						}
+					}
+				}
 				else {}
 			}
+		}
+		ast.IfBranch {
+			scan_receiver_reassignment(node.cond, name, mut info)
 		}
 		else {}
 	}
 
 	for child in node.children() {
-		if node_reassigns_ident(child, name) {
-			return true
-		}
+		scan_receiver_reassignment(child, name, mut info)
 	}
-	return false
 }
 
 fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
@@ -1155,8 +1193,13 @@ run them via `v file.v` instead',
 	}
 	p.cur_fn_name = keep_fn_name
 	if is_method && rec.is_mut && type_sym_method_idx < type_sym.methods.len {
-		type_sym.methods[type_sym_method_idx].receiver_reassigned = stmts.any(node_reassigns_ident(it,
-			rec.name))
+		mut receiver_info := ReceiverReassignmentInfo{}
+		for stmt in stmts {
+			scan_receiver_reassignment(stmt, rec.name, mut receiver_info)
+		}
+		type_sym.methods[type_sym_method_idx].receiver_reassigned = receiver_info.directly_reassigned
+		type_sym.methods[type_sym_method_idx].receiver_passed_mut = receiver_info.passed_mut
+		type_sym.methods[type_sym_method_idx].receiver_method_calls = receiver_info.method_calls
 	}
 	if !no_body && are_params_type_only {
 		p.error_with_pos('functions with type only params can not have bodies', body_start_pos)

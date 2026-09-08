@@ -9,6 +9,10 @@ fn (mut node Node) append_child(child &Node) {
 	node.children << child
 }
 
+fn (mut node Node) append_child_through_method(child &Node) {
+	node.append_child(child)
+}
+
 fn (node &Node) check() bool {
 	return true
 }
@@ -76,6 +80,16 @@ fn test_receiver_method_on_embedded_interface() {
 	} else {
 		assert false, 'child should be Text'
 	}
+}
+
+fn test_field_mutation_through_delegated_receiver_method_on_embedded_interface() {
+	mut element := &Element(&HTMLBodyElement{
+		name: 'body'
+	})
+	element.append_child_through_method(new_child('delegated'))
+
+	assert element.children.len == 1
+	assert element.children[0].name == 'delegated'
 }
 
 fn test_non_addressable_receiver_method_on_embedded_interface() {

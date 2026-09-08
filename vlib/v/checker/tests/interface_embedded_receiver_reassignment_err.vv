@@ -12,6 +12,28 @@ fn (mut node Node) replace_in_for_increment(next Node) {
 	for ; false; node = next {}
 }
 
+fn (mut node Node) replace_through_method(next Node) {
+	node.replace(next)
+}
+
+fn (mut node Node) replace_and_stop(next Node) bool {
+	node = next
+	return false
+}
+
+fn (mut node Node) replace_through_condition(next Node) {
+	if node.replace_and_stop(next) {
+	}
+}
+
+fn replace_node(mut node Node, next Node) {
+	node = next
+}
+
+fn (mut node Node) replace_through_function(next Node) {
+	replace_node(mut node, next)
+}
+
 interface Element {
 	Node
 }
@@ -23,4 +45,7 @@ fn main() {
 	element.replace(Node(Item{}))
 	element.replace_in_for_init(Node(Item{}))
 	element.replace_in_for_increment(Node(Item{}))
+	element.replace_through_method(Node(Item{}))
+	element.replace_through_condition(Node(Item{}))
+	element.replace_through_function(Node(Item{}))
 }

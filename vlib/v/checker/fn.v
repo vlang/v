@@ -3064,6 +3064,26 @@ fn (mut c Checker) lower_fixed_array_call_arg_to_array(mut arg ast.CallArg, expe
 	return arg.typ
 }
 
+fn (mut c Checker) method_can_replace_receiver(receiver_sym &ast.TypeSymbol, method ast.Fn, mut seen map[string]bool) bool {
+	if method.receiver_reassigned || method.receiver_reassignment_unknown
+		|| method.receiver_passed_mut {
+		return true
+	}
+	method_key := method.fkey()
+	if method_key in seen {
+		return false
+	}
+	seen[method_key] = true
+	for called_name in method.receiver_method_calls {
+		called_method := c.table.find_method_with_embeds(receiver_sym, called_name) or { continue }
+		if called_method.params.len > 0 && called_method.params[0].is_mut
+			&& c.method_can_replace_receiver(receiver_sym, called_method, mut seen) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	// `(if true { 'foo.bar' } else { 'foo.bar.baz' }).all_after('foo.')`
 	node.concrete_types = node.raw_concrete_types.clone()
@@ -3611,15 +3631,19 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	requires_mut_receiver := method.params[0].is_mut
 		&& (!is_used_outside_receiver_module || c.fn_has_visible_mutation_for_param(method, 0))
 	if is_method_from_embed && left_sym.kind == .interface && rec_sym.kind == .interface
-		&& requires_mut_receiver
-		&& (method.receiver_reassigned || method.receiver_reassignment_unknown) {
-		reason := if method.receiver_reassignment_unknown {
-			'its body is unavailable and may replace its receiver'
-		} else {
-			'it can replace its receiver'
+		&& requires_mut_receiver {
+		mut seen_receiver_methods := map[string]bool{}
+		if c.method_can_replace_receiver(rec_sym, method, mut seen_receiver_methods) {
+			reason := if method.receiver_reassignment_unknown {
+				'its body is unavailable and may replace its receiver'
+			} else if method.receiver_passed_mut || method.receiver_method_calls.len > 0 {
+				'it can replace its receiver through a mutable call'
+			} else {
+				'it can replace its receiver'
+			}
+			c.error('cannot call mutable method `${rec_sym.name}.${method_name}` through embedded interface `${left_sym.name}` because ${reason}',
+				node.pos)
 		}
-		c.error('cannot call mutable method `${rec_sym.name}.${method_name}` through embedded interface `${left_sym.name}` because ${reason}',
-			node.pos)
 	}
 	if requires_mut_receiver {
 		to_lock, pos := c.check_for_mut_receiver(mut node.left)
