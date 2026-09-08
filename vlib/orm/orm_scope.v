@@ -121,15 +121,50 @@ fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fi
 	if !scope.enabled || scope.filters.len == 0 {
 		return qd
 	}
+	mut result := apply_data_scope_to_exists(scope, qd, scope_skip_fields)!
 	if table_ignores_data_scope(table) {
-		return qd
+		return result
 	}
-	mut result := clone_query_data(qd)
-	field_to_column := table_field_to_column_map(table)
+	root_filters := data_scope_filters_for_table(scope, table, scope_skip_fields, has_joins)!
+	if root_filters.fields.len == 0 {
+		return result
+	}
 	// Wrap original WHERE clause in parentheses once, before adding scope filters
 	if result.fields.len > 1 {
 		result.parentheses << [0, result.fields.len - 1]
 	}
+	return append_query_data_and(result, root_filters)
+}
+
+fn apply_data_scope_to_exists(scope DataScope, qd QueryData, scope_skip_fields []string) !QueryData {
+	mut result := clone_query_data(qd)
+	for i := result.fields.len - 1; i >= 0; i-- {
+		if result.kinds[i] != .exists_close {
+			continue
+		}
+		clause_index := exists_clause_index(result.fields[i]) or { continue }
+		if clause_index < 0 || clause_index >= result.exists.len {
+			continue
+		}
+		clause := result.exists[clause_index]
+		mut filters := data_scope_filters_for_table(scope, clause.table, scope_skip_fields, true)!
+		for join in clause.joins {
+			filters = append_query_data_and(filters, data_scope_filters_for_table(scope,
+				join.table, scope_skip_fields, true)!)
+		}
+		if filters.fields.len > 0 {
+			result = insert_query_data_before(result, i, filters)
+		}
+	}
+	return result
+}
+
+fn data_scope_filters_for_table(scope DataScope, table Table, scope_skip_fields []string, qualified bool) !QueryData {
+	if table_ignores_data_scope(table) {
+		return QueryData{}
+	}
+	mut result := QueryData{}
+	field_to_column := table_field_to_column_map(table)
 	for filter in scope.filters {
 		if filter.mode == .unset {
 			return error('orm.DataScope: QueryFilter.mode must be explicitly set. .static is not yet implemented — use .dynamic. Got .unset for field `${filter.field}`')
@@ -160,13 +195,15 @@ fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fi
 			column_name = resolved
 		}
 		// Qualify with table name when joins are present to avoid ambiguity
-		if has_joins && table.name != '' {
+		if qualified && table.name != '' {
 			column_name = table_qualified_field(table.name, column_name)
 		}
 		// Note: we do NOT skip when column_name is already in result.fields.
 		// The scope filter is always appended as an additional AND condition
 		// to prevent bypassing tenant isolation.
-		result.is_and << true
+		if result.fields.len > 0 {
+			result.is_and << true
+		}
 		result.fields << column_name.clone()
 		if !filter.operator.is_unary() {
 			result.data << filter.value
@@ -311,8 +348,7 @@ fn primitive_array_len(value Primitive) int {
 // select fetches rows through the wrapped connection, with DataScope applied.
 pub fn (mut db DB) select(config SelectConfig, data QueryData, where QueryData) ![][]Primitive {
 	mut cfg := config
-	if db.scope.enabled && db.scope.filters.len > 0 && !db.skip_all_scopes
-		&& !table_ignores_data_scope(cfg.table) {
+	if db.scope.enabled && db.scope.filters.len > 0 && !db.skip_all_scopes {
 		where_scoped := apply_data_scope(db.scope, cfg.table, where, db.skip_fields,
 			cfg.joins.len > 0)!
 		if where_scoped.fields.len > where.fields.len {
@@ -336,8 +372,7 @@ pub fn (mut db DB) insert(table Table, data QueryData) ! {
 // update updates rows through the wrapped connection, with DataScope applied.
 pub fn (mut db DB) update(table Table, data QueryData, where QueryData) ! {
 	mut where_scoped := where
-	if db.scope.enabled && db.scope.filters.len > 0 && !db.skip_all_scopes
-		&& !table_ignores_data_scope(table) {
+	if db.scope.enabled && db.scope.filters.len > 0 && !db.skip_all_scopes {
 		where_scoped = apply_data_scope(db.scope, table, where, db.skip_fields, false)!
 	}
 	return db.conn.update(table, data, where_scoped)
@@ -346,8 +381,7 @@ pub fn (mut db DB) update(table Table, data QueryData, where QueryData) ! {
 // delete deletes rows through the wrapped connection, with DataScope applied.
 pub fn (mut db DB) delete(table Table, where QueryData) ! {
 	mut where_scoped := where
-	if db.scope.enabled && db.scope.filters.len > 0 && !db.skip_all_scopes
-		&& !table_ignores_data_scope(table) {
+	if db.scope.enabled && db.scope.filters.len > 0 && !db.skip_all_scopes {
 		where_scoped = apply_data_scope(db.scope, table, where, db.skip_fields, false)!
 	}
 	return db.conn.delete(table, where_scoped)

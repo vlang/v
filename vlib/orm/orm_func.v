@@ -621,7 +621,7 @@ fn exists_scope_table(clause ExistsClause, scope string) string {
 	if depth > 1 && depth - 2 < clause.joins.len {
 		return clause.joins[depth - 2].table.name
 	}
-	return clause.table
+	return clause.table.name
 }
 
 fn (qb &QueryBuilder[T]) scoped_condition_fields(condition string) ![]string {
@@ -744,18 +744,55 @@ fn query_data_for_scope(data QueryData, field_scopes []string, scope string) Que
 	}
 	mut filtered := QueryData{}
 	mut data_index := 0
+	mut selected_indexes := []int{}
 	for i, field in data.fields {
 		kind := data.kinds[i]
 		if i < field_scopes.len && field_scopes[i] == scope {
 			field_name := if scope.len == 0 { field } else { field.all_after_last('.') }
-			filtered = v_sql_query_data_add(filtered, field_name, kind, if kind.is_unary() {
-				Primitive(Null{})
-			} else {
-				data.data[data_index]
-			}, true)
+			selected_indexes << i
+			filtered.fields << field_name
+			filtered.kinds << kind
+			if !kind.is_unary() {
+				filtered.data << data.data[data_index]
+				if data_index < data.types.len {
+					filtered.types << data.types[data_index]
+				}
+			}
 		}
 		if !kind.is_unary() {
 			data_index++
+		}
+	}
+	if selected_indexes.len > 1 {
+		for i in 0 .. selected_indexes.len - 1 {
+			start := selected_indexes[i]
+			end := selected_indexes[i + 1]
+			mut is_and := true
+			for connector in start .. end {
+				if !query_data_connector(data, connector) {
+					is_and = false
+					break
+				}
+			}
+			filtered.is_and << is_and
+		}
+	}
+	for span in data.parentheses {
+		if span.len != 2 {
+			continue
+		}
+		mut start := -1
+		mut end := -1
+		for i, selected in selected_indexes {
+			if selected >= span[0] && selected <= span[1] {
+				if start < 0 {
+					start = i
+				}
+				end = i
+			}
+		}
+		if start >= 0 && end > start {
+			filtered.parentheses << [start, end]
 		}
 	}
 	return filtered
@@ -1835,7 +1872,7 @@ fn exists_clause_for_path[T](path []string, meta []TableField) !ExistsClause {
 fn exists_clause_from_array[U](path []string, fkey string, parent_key string, _ []U) !ExistsClause {
 	table := table_from_struct[U](struct_meta[U]())
 	return ExistsClause{
-		table:      table.name
+		table:      table
 		fkey:       fkey
 		parent_key: parent_key
 		joins:      exists_relation_joins[U](path, table.name)!

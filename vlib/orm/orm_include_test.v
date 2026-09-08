@@ -153,6 +153,33 @@ struct IncludeKeylessLeaf {
 	name         string
 }
 
+@[table: 'orm_include_scoped_parents']
+@[unscoped]
+@[ignore_tenant_filter]
+struct IncludeScopedParent {
+	id        int @[primary; sql: serial]
+	tenant_id int
+	name      string
+	children  []IncludeScopedChild @[fkey: 'parent_id']
+}
+
+@[table: 'orm_include_scoped_children']
+struct IncludeScopedChild {
+	id        int @[primary; sql: serial]
+	parent_id int
+	tenant_id int
+	name      string
+	grandkids []IncludeScopedGrandkid @[fkey: 'child_id']
+}
+
+@[table: 'orm_include_scoped_grandkids']
+struct IncludeScopedGrandkid {
+	id        int @[primary; sql: serial]
+	child_id  int
+	tenant_id int
+	name      string
+}
+
 fn new_include_database() !sqlite.DB {
 	mut db := sqlite.connect(':memory:')!
 	mut parents := orm.new_query[IncludeParent](db)
@@ -190,6 +217,41 @@ fn new_include_database() !sqlite.DB {
 	toys.insert(IncludeToy{
 		grandkid_id: grandkid_id
 		name:        'toy'
+	})!
+	return db
+}
+
+fn new_scoped_include_database() !sqlite.DB {
+	mut db := sqlite.connect(':memory:')!
+	mut parents := orm.new_query[IncludeScopedParent](db)
+	mut children := orm.new_query[IncludeScopedChild](db)
+	mut grandkids := orm.new_query[IncludeScopedGrandkid](db)
+	parents.create()!
+	children.create()!
+	grandkids.create()!
+	parents.insert(IncludeScopedParent{
+		tenant_id: 1
+		name:      'tenant parent'
+	})!
+	children.insert(IncludeScopedChild{
+		parent_id: 1
+		tenant_id: 1
+		name:      'visible child'
+	})!
+	children.insert(IncludeScopedChild{
+		parent_id: 1
+		tenant_id: 2
+		name:      'hidden child'
+	})!
+	grandkids.insert(IncludeScopedGrandkid{
+		child_id:  1
+		tenant_id: 1
+		name:      'visible grandkid'
+	})!
+	grandkids.insert(IncludeScopedGrandkid{
+		child_id:  1
+		tenant_id: 2
+		name:      'hidden grandkid'
 	})!
 	return db
 }
@@ -506,6 +568,20 @@ fn test_where_keeps_boolean_expressions_within_an_included_relationship() {
 	assert rows[0].children.len == 1
 	assert rows[0].children[0].grandkids.len == 1
 	assert rows[0].children[0].grandkids[0].name == 'grandkid'
+}
+
+fn test_where_preserves_relationship_or_when_the_condition_also_has_a_root_term() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	rows := parents.include('children')!.where('name = ? && (children.name = ? || children.name = ?)',
+		'parent', 'missing', 'child')!.query()!
+	assert rows.len == 1
+	assert rows[0].children.len == 1
+	assert rows[0].children[0].name == 'child'
 }
 
 fn test_where_filters_an_optional_array_relationship() {
@@ -1086,4 +1162,60 @@ fn test_aggregates_apply_relationship_predicates_without_multiplying_rows() {
 	total := parents.where('children.parent_id = ?', 1)!.sum('id')!
 	assert total.has_value
 	assert total.value as int == 1
+}
+
+fn test_data_scope_applies_to_every_table_in_relationship_predicates() {
+	mut raw_db := new_scoped_include_database()!
+	defer {
+		raw_db.close() or {}
+	}
+	mut scoped_db := orm.new_db(raw_db, orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive(1)
+				mode:  .dynamic
+			},
+		]
+	})
+	mut parents := orm.new_query[IncludeScopedParent](scoped_db)
+
+	assert parents.where('children.name = ?', 'visible child')!.count()! == 1
+	assert parents.where('children.grandkids.name = ?', 'visible grandkid')!.count()! == 1
+	assert parents.where('children.name = ?', 'hidden child')!.count()! == 0
+	assert parents.where('children.grandkids.name = ?', 'hidden grandkid')!.count()! == 0
+
+	parents.where('children.name = ?', 'hidden child')!.set('name = ?', 'updated')!.update()!
+	parents.where('children.grandkids.name = ?', 'hidden grandkid')!.delete()!
+	mut unscoped_parents := orm.new_query[IncludeScopedParent](raw_db)
+	rows := unscoped_parents.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'tenant parent'
+}
+
+fn test_legacy_tenant_scope_applies_to_every_table_in_relationship_predicates() {
+	mut db := new_scoped_include_database()!
+	defer {
+		orm.clear_current_tenant_id()
+		orm.set_tenant_filter_enabled(false)
+		db.close() or {}
+	}
+	orm.configure_tenant_filter(orm.TenantFilterConfig{
+		enabled:    true
+		field_name: 'tenant_id'
+	})
+	orm.set_current_tenant_id(orm.Primitive(1))
+	mut parents := orm.new_query[IncludeScopedParent](db)
+
+	assert parents.where('children.name = ?', 'visible child')!.count()! == 1
+	assert parents.where('children.grandkids.name = ?', 'visible grandkid')!.count()! == 1
+	assert parents.where('children.name = ?', 'hidden child')!.count()! == 0
+	assert parents.where('children.grandkids.name = ?', 'hidden grandkid')!.count()! == 0
+
+	parents.where('children.name = ?', 'hidden child')!.set('name = ?', 'updated')!.update()!
+	parents.where('children.grandkids.name = ?', 'hidden grandkid')!.delete()!
+	orm.set_tenant_filter_enabled(false)
+	rows := parents.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'tenant parent'
 }

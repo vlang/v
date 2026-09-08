@@ -244,7 +244,7 @@ pub mut:
 // the subquery, so the root query still returns one row per root entity.
 pub struct ExistsClause {
 pub mut:
-	table      string // table of the first relationship hop
+	table      Table  // table of the first relationship hop
 	fkey       string // column of `table` referencing the root table
 	parent_key string // root column referenced by `fkey`
 	// joins are the remaining hops, each joined onto the previous one
@@ -470,14 +470,14 @@ pub fn apply_tenant_filter(table Table, where QueryData) QueryData {
 	if !tenant_filter_state.enabled || !tenant_filter_state.has_current_tenant {
 		return where
 	}
+	mut where_with_tenant := apply_tenant_filter_to_exists(where)
 	if table_ignores_tenant_filter(table) {
-		return where
+		return where_with_tenant
 	}
 	tenant_field_name := table_tenant_filter_field_name(table)
-	if tenant_field_name == '' || tenant_field_name in where.fields {
-		return where
+	if tenant_field_name == '' || tenant_field_name in where_with_tenant.fields {
+		return where_with_tenant
 	}
-	mut where_with_tenant := clone_query_data(where)
 	original_fields_len := where_with_tenant.fields.len
 	if original_fields_len > 1 {
 		// Preserve original WHERE precedence before appending `AND tenant = ...`.
@@ -491,6 +491,44 @@ pub fn apply_tenant_filter(table Table, where QueryData) QueryData {
 	where_with_tenant.types << tenant_filter_primitive_type(tenant_filter_state.current_tenant)
 	where_with_tenant.kinds << .eq
 	return where_with_tenant
+}
+
+fn apply_tenant_filter_to_exists(where QueryData) QueryData {
+	mut result := clone_query_data(where)
+	for i := result.fields.len - 1; i >= 0; i-- {
+		if result.kinds[i] != .exists_close {
+			continue
+		}
+		clause_index := exists_clause_index(result.fields[i]) or { continue }
+		if clause_index < 0 || clause_index >= result.exists.len {
+			continue
+		}
+		clause := result.exists[clause_index]
+		mut filters := tenant_filter_for_related_table(clause.table)
+		for join in clause.joins {
+			filters = append_query_data_and(filters, tenant_filter_for_related_table(join.table))
+		}
+		if filters.fields.len > 0 {
+			result = insert_query_data_before(result, i, filters)
+		}
+	}
+	return result
+}
+
+fn tenant_filter_for_related_table(table Table) QueryData {
+	if table_ignores_tenant_filter(table) {
+		return QueryData{}
+	}
+	field := table_tenant_filter_field_name(table)
+	if field == '' {
+		return QueryData{}
+	}
+	return QueryData{
+		fields: [table_qualified_field(table.name, field)]
+		data:   [tenant_filter_state.current_tenant]
+		types:  [tenant_filter_primitive_type(tenant_filter_state.current_tenant)]
+		kinds:  [.eq]
+	}
 }
 
 fn tenant_filter_scope_snapshot() TenantFilterScopeState {
@@ -852,6 +890,85 @@ fn clone_query_data(data QueryData) QueryData {
 		batch_key:   data.batch_key
 		exists:      data.exists.clone()
 	}
+}
+
+fn append_query_data_and(left QueryData, right QueryData) QueryData {
+	if left.fields.len == 0 {
+		return clone_query_data(right)
+	}
+	if right.fields.len == 0 {
+		return clone_query_data(left)
+	}
+	mut result := clone_query_data(left)
+	result.is_and << true
+	result.fields << right.fields
+	for item in right.data {
+		result.data << item
+	}
+	result.types << right.types
+	result.kinds << right.kinds
+	result.is_and << right.is_and
+	return result
+}
+
+// insert_query_data_before inserts an AND-connected condition before one field while
+// keeping the flattened field/data arrays and parentheses aligned.
+fn insert_query_data_before(data QueryData, field_index int, addition QueryData) QueryData {
+	if addition.fields.len == 0 || field_index < 0 || field_index >= data.fields.len {
+		return clone_query_data(data)
+	}
+	mut data_index := 0
+	for i in 0 .. field_index {
+		if !data.kinds[i].is_unary() {
+			data_index++
+		}
+	}
+	mut result := clone_query_data(data)
+	result.fields = data.fields[..field_index].clone()
+	result.fields << addition.fields
+	result.fields << data.fields[field_index..]
+	result.kinds = data.kinds[..field_index].clone()
+	result.kinds << addition.kinds
+	result.kinds << data.kinds[field_index..]
+	result.data = data.data[..data_index].clone()
+	for item in addition.data {
+		result.data << item
+	}
+	for item in data.data[data_index..] {
+		result.data << item
+	}
+	if data.types.len == data.data.len {
+		result.types = data.types[..data_index].clone()
+		result.types << addition.types
+		result.types << data.types[data_index..]
+	} else {
+		result.types << addition.types
+	}
+	result.parentheses = [][]int{cap: data.parentheses.len}
+	for span in data.parentheses {
+		if span.len == 2 {
+			result.parentheses << [if span[0] >= field_index {
+				span[0] + addition.fields.len
+			} else {
+				span[0]
+			}, if span[1] >= field_index {
+				span[1] + addition.fields.len
+			} else {
+				span[1]
+			}]
+		}
+	}
+	result.is_and = []bool{cap: result.fields.len - 1}
+	if field_index > 1 {
+		result.is_and << data.is_and[..field_index - 1]
+	}
+	result.is_and << true
+	result.is_and << addition.is_and
+	result.is_and << true
+	if field_index < data.is_and.len {
+		result.is_and << data.is_and[field_index..]
+	}
+	return result
 }
 
 // Generates an sql stmt, from universal parameter
@@ -1362,11 +1479,11 @@ fn gen_exists_header(where QueryData, field string, root_table string, q string)
 		return ''
 	}
 	clause := where.exists[index]
-	mut str := 'EXISTS (SELECT 1 FROM ${q}${clause.table}${q}'
+	mut str := 'EXISTS (SELECT 1 FROM ${q}${clause.table.name}${q}'
 	for join in clause.joins {
-		str += gen_join_clause(join, clause.table, q)
+		str += gen_join_clause(join, clause.table.name, q)
 	}
-	str += ' WHERE ${q}${clause.table}${q}.${q}${clause.fkey}${q}'
+	str += ' WHERE ${q}${clause.table.name}${q}.${q}${clause.fkey}${q}'
 	str += ' = ${q}${root_table}${q}.${q}${clause.parent_key}${q}'
 	return str
 }
