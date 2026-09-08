@@ -262,12 +262,7 @@ pub fn new_h3_conn(mut qc QuicConn, params H3ConnParams) &H3Conn {
 // free releases native resources owned by the wrapped QUIC connection.
 // It is idempotent and must be called once the H3Conn will no longer be polled.
 pub fn (mut h H3Conn) free() {
-	if mut handshake := h.qc.handshake {
-		handshake.free()
-	}
-	if mut server_handshake := h.qc.server_handshake {
-		server_handshake.free()
-	}
+	h.qc.free()
 }
 
 // established reports whether the wrapped QuicConn has reached RFC 9000's

@@ -28,7 +28,11 @@ the exact dependency `net.quic` needs is already proven to build and pass on
 Linux, macOS, and Windows. **Decision: P-256 ECDH is a hard dependency of
 `net.quic`.** No opt-out build flag, no reduced-interop fallback mode.
 
-## HTTP/3 connection lifetime
+## Connection lifetime
+
+Callers that manage a `QuicConn` returned by `dial` or `accept` directly must call
+`QuicConn.free` after it will no longer be polled. A `QuicListener` performs this cleanup when
+it retires a closed connection.
 
 Callers that construct an HTTP/3 connection directly with `new_h3_conn` must call `H3Conn.free`
 after the connection will no longer be polled. This releases the OpenSSL and mbedTLS resources

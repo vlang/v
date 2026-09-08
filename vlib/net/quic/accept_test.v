@@ -220,6 +220,84 @@ fn test_dial_and_accept_full_handshake_and_stream_exchange() {
 	assert client_read.bytestr() == 'hello from server'
 }
 
+fn test_server_retransmits_lost_handshake_crypto_on_pto() {
+	mut signing_key := ecdsa.new_key_from_seed(accept_test_key_seed, fixed_size: true)!
+	defer {
+		signing_key.free()
+	}
+	mut client, client_dg := dial(DialParams{
+		server_name: 'localhost'
+		ca_bundle_pem: accept_test_cert_pem
+		alpn_protocols: ['h3']
+		transport_parameters: accept_test_transport_parameters()
+	}, 0) or { panic('dial failed: ${err}') }
+	defer {
+		client.free()
+	}
+	mut server, server_result := accept(client_dg.bytes, AcceptParams{
+		transport_parameters: accept_test_transport_parameters()
+		alpn_protocols: ['h3']
+		certificate_chain: [
+			CertificateEntry{
+				cert_data: accept_test_pem_to_der(accept_test_cert_pem)
+			},
+		]
+		signing_key: signing_key
+	}, 0) or { panic('accept failed: ${err}') }
+	defer {
+		server.free()
+	}
+	assert server_result.outgoing.len >= 2
+	assert server.handshake_crypto_sent_pns.len == 1
+	original_send_offset := server.handshake_crypto_send_offset
+
+	// Deliver the Initial-space packets and drop the final Handshake packet
+	// containing the rest of the server flight. Return the client's Initial
+	// ACK so Handshake is the only packet-number space awaiting recovery.
+	mut client_initial_outgoing := []QuicDatagram{}
+	for dg in server_result.outgoing[..server_result.outgoing.len - 1] {
+		client_initial := client.poll(dg.bytes, 10) or {
+			panic('client failed to process the server Initial flight: ${err}')
+		}
+		client_initial_outgoing << client_initial.outgoing
+	}
+	assert client_initial_outgoing.len > 0
+	mut server_after_ack := PollResult{}
+	for dg in client_initial_outgoing {
+		server_after_ack = server.poll(dg.bytes, 20) or {
+			panic('server failed to process Initial ACK: ${err}')
+		}
+	}
+	deadline := server_after_ack.next_timeout or { panic('expected a Handshake PTO deadline') }
+	pto := server.process_timeouts(deadline) or { panic('server PTO failed: ${err}') }
+	assert pto.outgoing.len == 1
+	assert server.handshake_crypto_sent_pns.len == 2
+	assert server.handshake_crypto_send_offset == original_send_offset
+
+	mut client_outgoing := []QuicDatagram{}
+	for dg in pto.outgoing {
+		result := client.poll(dg.bytes, deadline + 1) or {
+			panic('client failed to process retransmitted Handshake: ${err}')
+		}
+		client_outgoing << result.outgoing
+	}
+	assert client_outgoing.len > 0
+	mut server_outgoing := []QuicDatagram{}
+	for dg in client_outgoing {
+		result := server.poll(dg.bytes, deadline + 2) or {
+			panic('server failed to process client Finished: ${err}')
+		}
+		server_outgoing << result.outgoing
+	}
+	for dg in server_outgoing {
+		client.poll(dg.bytes, deadline + 3) or {
+			panic('client failed to process HANDSHAKE_DONE: ${err}')
+		}
+	}
+	assert client.state() == .established
+	assert server.state() == .established
+}
+
 // test_accept_rejects_undersized_initial_datagram is a regression test for
 // RFC 9000 §14.1's anti-amplification floor, a gap 13d-1's own adversarial
 // review found: accept() never checked the incoming datagram's length

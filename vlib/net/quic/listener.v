@@ -294,7 +294,7 @@ pub fn (mut l QuicListener) poll(datagram []u8, peer []u8, now u64) !QuicListene
 		// value, and silently dropping the reply outright would be worse).
 		reply_peer := l.peers[key] or { peer }
 		l.merge_conn_result(mut result, c, r, reply_peer)
-		l.retire_if_closed(key, c)
+		l.retire_if_closed(key, mut c)
 	} else {
 		header := find_first_initial_header(datagram) or { return result }
 		l.handle_new_attempt(header, datagram, peer, now, mut result)!
@@ -358,7 +358,7 @@ pub fn (mut l QuicListener) process_timeouts(now u64) !QuicListenerPollResult {
 		peer := l.peers[key] or { continue }
 		r := c.process_timeouts(now)!
 		l.merge_conn_result(mut result, c, r, peer)
-		l.retire_if_closed(key, c)
+		l.retire_if_closed(key, mut c)
 	}
 	return result
 }
@@ -395,8 +395,8 @@ fn (mut l QuicListener) merge_conn_result(mut result QuicListenerPollResult, c &
 	}
 	for ev in r.events {
 		result.events << QuicListenerEvent{
-			conn:  c
-			peer:  peer.clone()
+			conn: c
+			peer: peer.clone()
 			event: ev
 		}
 	}
@@ -416,8 +416,9 @@ fn (mut l QuicListener) merge_conn_result(mut result QuicListenerPollResult, c &
 // elapsed) -- without this, every connection this listener ever accepts
 // stays in `conns`/`peers` forever, an unbounded memory leak for any
 // long-running server.
-fn (mut l QuicListener) retire_if_closed(key string, c &QuicConn) {
+fn (mut l QuicListener) retire_if_closed(key string, mut c QuicConn) {
 	if c.state() == .closed {
+		c.free()
 		bootstrap_key := l.bootstrap_dcid[key] or { '' }
 		if bootstrap_key != '' {
 			l.pending_by_dcid.delete(bootstrap_key)
@@ -463,7 +464,7 @@ fn (mut l QuicListener) handle_new_attempt(header QuicLongHeader, datagram []u8,
 			r := c.poll(datagram, now)!
 			reply_peer := l.peers[existing_key] or { peer }
 			l.merge_conn_result(mut result, c, r, reply_peer)
-			l.retire_if_closed(existing_key, c)
+			l.retire_if_closed(existing_key, mut c)
 			return
 		}
 		// Stale index entry (should not happen -- retire_if_closed keeps
@@ -499,8 +500,7 @@ fn (mut l QuicListener) handle_new_attempt(header QuicLongHeader, datagram []u8,
 		// test_h3_server_real_udp_request_response_round_trip after that
 		// unrelated fix (PR #28164, github.com/vlang/v/pull/28164#issuecomment-5440010074).
 		now_ms := now / 1_000_000
-		claims := validate_retry_token_for_attempt(l.params.retry_token_key, header.token, peer,
-			now_ms, l.params.retry_token_max_age_ms) or {
+		claims := validate_retry_token_for_attempt(l.params.retry_token_key, header.token, peer, now_ms, l.params.retry_token_max_age_ms) or {
 			// RFC 9000 §8.1.2: "In response to processing an Initial
 			// packet containing a token that was provided in a Retry
 			// packet, a server cannot send another Retry packet; it can
@@ -556,12 +556,12 @@ fn (mut l QuicListener) send_retry(header QuicLongHeader, peer []u8, now u64, mu
 	// its own doc comment for why: RetryPacketParams.issued_at_ms is
 	// genuinely millisecond-scale, unlike this function's own `now`.
 	retry_bytes := encode_retry_packet(RetryPacketParams{
-		client_scid:   header.scid
-		server_scid:   server_scid
+		client_scid: header.scid
+		server_scid: server_scid
 		original_dcid: header.dcid
-		token_key:     l.params.retry_token_key
-		client_addr:   peer
-		issued_at_ms:  now / 1_000_000
+		token_key: l.params.retry_token_key
+		client_addr: peer
+		issued_at_ms: now / 1_000_000
 	}) or {
 		// Two distinct ways this can fail, neither worth propagating as
 		// an error for the WHOLE poll() call (some other, unrelated
@@ -580,7 +580,7 @@ fn (mut l QuicListener) send_retry(header QuicLongHeader, peer []u8, now u64, mu
 	}
 	result.outgoing << QuicListenerDatagram{
 		bytes: retry_bytes
-		peer:  peer.clone()
+		peer: peer.clone()
 	}
 }
 
@@ -605,14 +605,14 @@ fn (mut l QuicListener) do_accept(header QuicLongHeader, datagram []u8, peer []u
 		retry_scid_param = header.dcid.clone()
 	}
 	accept_params := AcceptParams{
-		transport_parameters:       l.params.transport_parameters
-		alpn_protocols:             l.params.alpn_protocols
-		certificate_chain:          l.params.certificate_chain
-		signing_key:                l.params.signing_key
+		transport_parameters: l.params.transport_parameters
+		alpn_protocols: l.params.alpn_protocols
+		certificate_chain: l.params.certificate_chain
+		signing_key: l.params.signing_key
 		retry_source_connection_id: retry_scid_param
-		original_dcid_override:     original_dcid_for_tp
+		original_dcid_override: original_dcid_for_tp
 	}
-	c, r := accept(datagram, accept_params, now) or {
+	mut c, r := accept(datagram, accept_params, now) or {
 		// A malformed or otherwise-invalid connection attempt -- RFC 9000
 		// consistently frames this class of failure as "MUST/SHOULD
 		// discard," never a listener-level error; one bad attempt must
@@ -626,5 +626,5 @@ fn (mut l QuicListener) do_accept(header QuicLongHeader, datagram []u8, peer []u
 	l.bootstrap_dcid[key] = bootstrap_key
 	l.pending_by_dcid[bootstrap_key] = key
 	l.merge_conn_result(mut result, c, r, peer)
-	l.retire_if_closed(key, c)
+	l.retire_if_closed(key, mut c)
 }

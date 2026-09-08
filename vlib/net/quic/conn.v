@@ -212,9 +212,13 @@ mut:
 	handshake_crypto_consumed    u64
 	handshake_crypto_send_offset u64
 
-	client_hello             []u8
-	pending_initial_crypto   ?[]u8
-	pending_handshake_crypto ?[]u8
+	client_hello                []u8
+	pending_initial_crypto      ?[]u8
+	pending_handshake_crypto    ?[]u8
+	pending_handshake_offset    u64
+	handshake_crypto_needs_send bool
+	handshake_crypto_sent_pns   map[u64]bool
+	resources_freed             bool
 
 	loss_detection     &QuicLossDetectionTimer
 	congestion_control NewRenoCongestionControl
@@ -360,6 +364,20 @@ pub fn (c &QuicConn) negotiated_alpn() ?string {
 		return none
 	}
 	return c.server_negotiated_alpn
+}
+
+// free releases native resources owned by this connection. It is idempotent.
+pub fn (mut c QuicConn) free() {
+	if c.resources_freed {
+		return
+	}
+	c.resources_freed = true
+	if mut handshake := c.handshake {
+		handshake.free()
+	}
+	if mut server_handshake := c.server_handshake {
+		server_handshake.free()
+	}
 }
 
 // peer_transport_parameters returns whichever handshake object is active
@@ -758,6 +776,10 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 			loss_timer_due = now >= deadline
 		}
 		if loss_timer_due {
+			mut loss_space := QuicPacketNumberSpace.initial
+			if _, space := c.loss_detection.loss_time_and_space() {
+				loss_space = space
+			}
 			timeout_result := c.loss_detection.on_loss_detection_timeout(now, handshake_confirmed, max_ack_delay)
 			if timeout_result.pto_fired {
 				c.send_pto_probe(timeout_result.pto_space, now, mut result) or {
@@ -769,6 +791,7 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 					c.close_with_error(code, err.msg(), false, now, mut result)
 				}
 			} else if timeout_result.lost.len > 0 {
+				c.note_handshake_crypto_delivery(loss_space, []SentPacketInfo{}, timeout_result.lost)
 				c.congestion_control.on_packets_lost(timeout_result.lost, false, now)
 			}
 		}
@@ -1549,12 +1572,41 @@ fn (mut c QuicConn) handle_ack_frame(space QuicPacketNumberSpace, frame AckFrame
 	}
 
 	result := c.loss_detection.on_ack_received(space, frame, peer_ack_delay_exponent, max_ack_delay, handshake_confirmed, now)
+	c.note_handshake_crypto_delivery(space, result.newly_acked, result.lost)
 	c.congestion_control.on_packets_acked(result.newly_acked)
 	if result.lost.len > 0 {
 		c.congestion_control.on_packets_lost(result.lost, result.persistent_congestion, now)
 	}
 	if counts := frame.ecn_counts {
 		c.ecn.note_ack_ecn_counts(counts)
+	}
+}
+
+fn (mut c QuicConn) queue_handshake_crypto(data []u8) {
+	c.pending_handshake_crypto = data
+	c.pending_handshake_offset = c.handshake_crypto_send_offset
+	c.handshake_crypto_send_offset += u64(data.len)
+	c.handshake_crypto_needs_send = true
+	c.handshake_crypto_sent_pns = map[u64]bool{}
+}
+
+fn (mut c QuicConn) note_handshake_crypto_delivery(space QuicPacketNumberSpace, acked []SentPacketInfo, lost []SentPacketInfo) {
+	if space != .handshake || c.pending_handshake_crypto == none {
+		return
+	}
+	for packet in acked {
+		if packet.packet_number in c.handshake_crypto_sent_pns {
+			c.pending_handshake_crypto = none
+			c.handshake_crypto_needs_send = false
+			c.handshake_crypto_sent_pns = map[u64]bool{}
+			return
+		}
+	}
+	for packet in lost {
+		if packet.packet_number in c.handshake_crypto_sent_pns {
+			c.handshake_crypto_sent_pns.delete(packet.packet_number)
+			c.handshake_crypto_needs_send = true
+		}
 	}
 }
 
@@ -1649,7 +1701,7 @@ fn (mut c QuicConn) dispatch_handshake_message(msg HandshakeMessage, framed []u8
 			c.app_write_generation = 0
 			c.app_read_keys = new_key_update_state(app_secrets.server_secret)!
 			c.handshake_completion.mark_peer_finished_verified()
-			c.pending_handshake_crypto = client_finished
+			c.queue_handshake_crypto(client_finished)
 		}
 		.connected {
 			return error('quic: unexpected handshake message after the handshake completed')
@@ -1696,7 +1748,7 @@ fn (mut c QuicConn) dispatch_server_handshake_message(msg HandshakeMessage, fram
 		c.app_read_keys = new_key_update_state(flight.application_secrets.client_secret)!
 		c.server_negotiated_alpn = flight.negotiated_alpn
 		c.pending_initial_crypto = flight.server_hello
-		c.pending_handshake_crypto = flight.handshake_messages
+		c.queue_handshake_crypto(flight.handshake_messages)
 		peer_params := hs.peer_transport_parameters
 		// RFC 9000 §7.3: initial_source_connection_id's mandatory-presence
 		// half is already enforced inside respond_to_client_hello
@@ -1776,6 +1828,8 @@ fn (mut c QuicConn) discard_handshake_keys() {
 	c.handshake_received_pns = map[u64]bool{}
 	c.handshake_ack_eliciting_pending = false
 	c.pending_handshake_crypto = none
+	c.handshake_crypto_needs_send = false
+	c.handshake_crypto_sent_pns = map[u64]bool{}
 }
 
 // -------------------------------------------------------------------------
@@ -1879,13 +1933,15 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 		// Initial retransmissions keep raising `received` -- and
 		// therefore this budget -- every round trip until the flight
 		// finally fits).
-		crypto_frame := encode_crypto_frame(c.handshake_crypto_send_offset, data)!
-		if c.has_amplification_budget_for(.handshake, crypto_frame.len) {
-			c.handshake_crypto_send_offset += u64(data.len)
+		crypto_frame := encode_crypto_frame(c.pending_handshake_offset, data)!
+		if c.handshake_crypto_needs_send
+			&& c.has_amplification_budget_for(.handshake, crypto_frame.len) {
+			pn := c.pn_spaces.handshake.next_send_pn
 			datagram := c.build_handshake_packet(crypto_frame, true, now)!
 			result.outgoing << datagram
 			c.record_amplification_sent(datagram.bytes.len)
-			c.pending_handshake_crypto = none
+			c.handshake_crypto_sent_pns[pn] = true
+			c.handshake_crypto_needs_send = false
 			c.handshake_completion.mark_own_finished_sent()
 		}
 	}
@@ -2266,12 +2322,9 @@ fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, no
 	}
 }
 
-// send_pto_probe sends a minimal, always-legal RFC 9002 §6.2 PTO probe
-// (a PING frame) in the space the timer identified. v1 scope
-// simplification: always probes with PING rather than retransmitting
-// specific unacked data -- correct (RFC 9002 explicitly permits this) but
-// not the most bandwidth-efficient choice; a real send/retransmission
-// buffer is a documented follow-up, not a Phase 9a blocker.
+// send_pto_probe sends an RFC 9002 §6.2 PTO probe in the space the timer
+// identified. An unacknowledged Handshake CRYPTO flight is retransmitted so
+// loss cannot stall the TLS handshake; other spaces use an always-legal PING.
 //
 // Every arm is gated on has_amplification_budget_for()/record_amplification_
 // sent() -- the SAME RFC 9000 §8.1 3x-received budget drain_outgoing's own
@@ -2291,6 +2344,25 @@ fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, no
 // budget lets the next-armed PTO actually send. (Codex review, PR #28164
 // pullrequestreview-5044139767.)
 fn (mut c QuicConn) send_pto_probe(space QuicPacketNumberSpace, now u64, mut result PollResult) ! {
+	if space == .handshake {
+		if data := c.pending_handshake_crypto {
+			if c.handshake_keys_discarded {
+				return
+			}
+			_ := c.own_handshake_keys() or { return }
+			crypto_frame := encode_crypto_frame(c.pending_handshake_offset, data)!
+			if !c.has_amplification_budget_for(.handshake, crypto_frame.len) {
+				return
+			}
+			pn := c.pn_spaces.handshake.next_send_pn
+			datagram := c.build_handshake_packet(crypto_frame, true, now)!
+			result.outgoing << datagram
+			c.record_amplification_sent(datagram.bytes.len)
+			c.handshake_crypto_sent_pns[pn] = true
+			c.handshake_crypto_needs_send = false
+			return
+		}
+	}
 	ping := encode_varint(frame_type_ping)!
 	if !c.has_amplification_budget_for(space, ping.len) {
 		return

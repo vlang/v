@@ -396,10 +396,8 @@ fn test_listener_retires_closed_connection() {
 	// the SERVER's own freshly-generated scid, not client.scid -- those
 	// are two unrelated values) since connection_count()==1 already
 	// guarantees exactly one entry.
-	for key in listener.conns.keys() {
-		mut server_conn := listener.conns[key] or { continue }
-		server_conn.close(0, 'test done')
-	}
+	mut retired_conn := listener.conns.values()[0]
+	retired_conn.close(0, 'test done')
 
 	// A small `now` first: enough to flush the queued close() into an
 	// actual outgoing CONNECTION_CLOSE (drain_pending_close) without
@@ -416,6 +414,10 @@ fn test_listener_retires_closed_connection() {
 	far_future := u64(1) << 40
 	listener.process_timeouts(far_future)!
 	assert listener.connection_count() == 0
+	assert retired_conn.resources_freed
+	if server_handshake := retired_conn.server_handshake {
+		assert server_handshake.freed
+	}
 }
 
 // test_listener_deduplicates_retransmitted_new_attempt is a regression test
