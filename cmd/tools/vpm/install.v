@@ -125,8 +125,7 @@ fn (m Module) normalized_name_warning_details(import_path string) string {
 }
 
 fn (m Module) name_was_normalized() bool {
-	normalized_name :=
-		normalize_mod_path(m.name.replace('.', os.path_separator)).replace(os.path_separator, '.')
+	normalized_name := direct_install_mod_path('', m.name).replace(os.path_separator, '.')
 	return normalized_name != m.name
 }
 
@@ -134,8 +133,7 @@ fn (m Module) manifest_name_was_normalized() bool {
 	if m.manifest.name == '' {
 		return false
 	}
-	normalized_name :=
-		normalize_mod_path(m.manifest.name.replace('.', os.path_separator)).replace(os.path_separator, '.')
+	normalized_name := direct_install_mod_path('', m.manifest.name).replace(os.path_separator, '.')
 	return normalized_name != m.manifest.name
 }
 

@@ -143,6 +143,18 @@ fn test_install_maps_manifest_dots_to_import_directories() {
 	assert 'foo.bar.baz' in get_installed_modules_in(vmodules_path)
 }
 
+fn test_install_warns_when_repeated_dots_are_collapsed() {
+	vmodules_path := os.join_path(test_path, 'vmodules_repeated_dots')
+	test_utils.set_test_env(vmodules_path)
+	repo_path := os.join_path(test_path, 'repeated_dots_repo')
+	create_local_git_module(repo_path, 'foo..bar')
+
+	res := cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
+	assert res.output.contains('`foo..bar` is not a valid V import path, it was installed as `foo.bar`.'), res.output
+
+	assert os.exists(os.join_path(vmodules_path, 'foo', 'bar', 'v.mod'))
+}
+
 fn test_dotted_install_does_not_nest_inside_existing_module() {
 	vmodules_path := os.join_path(test_path, 'vmodules_nested_module')
 	test_utils.set_test_env(vmodules_path)
