@@ -1550,6 +1550,42 @@ pub fn cc_from_string(s string) CompilerType {
 	}
 }
 
+fn ccompiler_can_assemble(ccompiler string) bool {
+	real_name := os.file_name(os.real_path(ccompiler)).to_lower_ascii()
+	if real_name.contains('tcc') || real_name.contains('tinyc') || real_name.contains('msvc')
+		|| real_name in ['cl', 'cl.exe'] {
+		return false
+	}
+	quoted_ccompiler := os.quoted_path(ccompiler)
+	for version_flag in ['--version', '-v'] {
+		res := os.execute('${quoted_ccompiler} ${version_flag} 2>&1')
+		output := res.output.to_lower_ascii()
+		if output.contains('tiny c compiler') || output.contains('tinycc')
+			|| output.contains('tinygcc') || output.contains('tiny_gcc')
+			|| output.contains('tiny-gcc') || output.contains('\ntcc') || output.starts_with('tcc')
+			|| output.contains('microsoft c/c++') || output.contains('msvc') {
+			return false
+		}
+		if output.contains('clang') || output.contains('gcc version') || output.contains('(gcc)')
+			|| output.contains('free software foundation') || output.contains('gcc ') {
+			return true
+		}
+	}
+	return false
+}
+
+// find_system_assembler returns a GCC- or Clang-compatible compiler that can assemble preprocessed .S files.
+pub fn find_system_assembler() ?string {
+	for candidate in ['clang', 'gcc', 'cc'] {
+		if path := os.find_abs_path_of_executable(candidate) {
+			if ccompiler_can_assemble(path) {
+				return path
+			}
+		}
+	}
+	return none
+}
+
 fn (mut prefs Preferences) parse_compile_value(define string) {
 	if !define.contains('=') {
 		eprintln_exit('V error: Define argument value missing for ${define}.')

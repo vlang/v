@@ -1983,17 +1983,6 @@ fn linux_cross_target_for_arch(arch pref.Arch) !LinuxCrossTarget {
 	}
 }
 
-fn find_system_assembler() ?string {
-	// Raw `as` is excluded: it doesn't preprocess #if directives in .S files
-	// and has no -c flag. We need a compiler (clang/gcc/cc) that can do both.
-	for candidate in ['clang', 'gcc', 'cc'] {
-		if path := os.find_abs_path_of_executable(candidate) {
-			return path
-		}
-	}
-	return none
-}
-
 fn split_embed_asm_flags(value string) []string {
 	mut parts := []string{}
 	mut buf := []u8{}
@@ -2078,7 +2067,7 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 	b.pref.ccompiler_type = resolve_ccompiler_type(b.pref.ccompiler, b.pref.ccompiler_type)
 	mut asm_cc := b.pref.ccompiler
 	if b.pref.ccompiler_type in [.tinyc, .msvc] {
-		asm_cc = find_system_assembler() or {
+		asm_cc = pref.find_system_assembler() or {
 			verror('no assembler found for embedded files (${b.pref.ccompiler_type} cannot assemble .S files); install clang, gcc, or cc')
 		}
 	}

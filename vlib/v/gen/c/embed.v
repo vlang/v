@@ -54,14 +54,7 @@ fn (g &Gen) should_use_incbin_embed() bool {
 		// that can handle preprocessor directives in .S files and accepts -c.
 		// Raw `as` is excluded: it doesn't preprocess #if directives and has no -c flag.
 		// If none is found, fall back to C hex arrays (slower compile, but correct).
-		if _ := os.find_abs_path_of_executable('clang') {
-			return true
-		} else if _ := os.find_abs_path_of_executable('gcc') {
-			return true
-		} else if _ := os.find_abs_path_of_executable('cc') {
-			return true
-		}
-		return false
+		return pref.find_system_assembler() != none
 	}
 	return false
 }
