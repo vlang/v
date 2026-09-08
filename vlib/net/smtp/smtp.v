@@ -663,6 +663,10 @@ fn format_rfc2047_phrase(s string) ?string {
 			formatted << if unquoted.is_ascii() { word } else { encode_rfc2047(unquoted) }
 			continue
 		}
+		if !word.is_ascii() {
+			formatted << encode_rfc2047(word)
+			continue
+		}
 		if !word.bytes().all(is_rfc5322_atext(it)) {
 			return none
 		}
