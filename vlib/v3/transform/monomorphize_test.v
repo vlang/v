@@ -284,6 +284,13 @@ fn test_imported_generic_alias_target_uses_declaration_module() {
 	}
 
 	assert t.normalize_type_alias('a.Box[int]') == 'a.Inner[int]'
+	tc.type_aliases['Inner'] = 'fn (T)'
+	tc.type_alias_generic_params['Inner'] = ['T']
+	tc.type_aliases['a.Handler'] = 'fn (&T)'
+	tc.type_alias_generic_params['a.Handler'] = ['T']
+	tc.type_aliases['a.Outer'] = 'Handler[T]'
+	tc.type_alias_generic_params['a.Outer'] = ['T']
+	assert t.normalize_type_alias('a.Outer[int]') == 'fn (&int)'
 	decls := {
 		'a.Inner': GenericStructDecl{
 			id:     inner_id

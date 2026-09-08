@@ -2012,6 +2012,16 @@ fn test_fn_literal_nested_c_abi_const_mode_matches_alias_inside_generic_fn() {
 		'main.v': 'module main\n\nimport m\n\nstruct C.native_event {}\ntype Outer[T] = fn (const_event &T)\nstruct Router {}\nfn (mut r Router) accept(handler m.Outer[C.native_event]) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n'
 		'm/m.v':  'module m\n\npub type OuterExtra[T] = fn (const_event &T)\npub type Outer[T] = fn (event &T)\n'
 	}, 'main.v', 'cannot use')
+	alias_chain_collision := run_good_project(v3_bin,
+		'good_imported_generic_const_alias_chain_ignores_caller_homonym', {
+		'main.v': 'module main\n\nimport m\n\nstruct C.native_event {}\ntype Inner[T] = fn (event &T)\nstruct Router {}\nfn (mut r Router) accept(handler m.Outer[C.native_event]) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n'
+		'm/m.v':  'module m\n\npub type Inner[T] = fn (const_event &T)\npub type Outer[T] = Inner[T]\n'
+	}, 'main.v')
+	assert alias_chain_collision == 'true'
+	run_bad_project(v3_bin, 'bad_imported_generic_plain_alias_chain_ignores_caller_homonym', {
+		'main.v': 'module main\n\nimport m\n\nstruct C.native_event {}\ntype Inner[T] = fn (const_event &T)\nstruct Router {}\nfn (mut r Router) accept(handler m.Outer[C.native_event]) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n'
+		'm/m.v':  'module m\n\npub type Inner[T] = fn (event &T)\npub type Outer[T] = Inner[T]\n'
+	}, 'main.v', 'cannot use')
 	run_check_good_project(v3_bin, 'good_generic_param_does_not_replace_qualified_member', {
 		'main.v':    'module main\n\nimport foo\n\nstruct C.native_event {}\ntype Outer[T] = fn (item foo.T, callback T)\nstruct Router {}\nfn (mut r Router) accept(handler Outer[fn (const_event &C.native_event)]) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (item foo.T, callback fn (const_event &C.native_event)) {})\n}\nfn main() {\n\tstartup[int]()\n}\n'
 		'foo/foo.v': 'module foo\n\npub struct T {}\n'

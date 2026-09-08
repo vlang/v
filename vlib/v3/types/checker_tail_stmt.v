@@ -4445,7 +4445,10 @@ fn (tc &TypeChecker) source_fn_alias_type_text(name string) ?string {
 			}
 			return clean
 		}
-		target = clean
+		params := tc.type_alias_generic_params[found_name] or {
+			tc.type_alias_generic_params[found_name.all_after_last('.')] or { []string{} }
+		}
+		target = tc.qualify_c_abi_alias_source_type_text(clean, module_name, params)
 	}
 	return none
 }

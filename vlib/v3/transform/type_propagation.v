@@ -1559,6 +1559,16 @@ fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) st
 	}
 	base, args, is_generic_app := generic_app_parts(clean)
 	if is_generic_app {
+		qualified_base := if base.contains('.') || mod.len == 0 || mod in ['main', 'builtin'] {
+			base
+		} else {
+			'${mod}.${base}'
+		}
+		if expanded := t.expand_generic_type_alias('${qualified_base}[${args.join(', ')}]') {
+			if expanded != clean {
+				return t.normalize_type_in_module(expanded, mod)
+			}
+		}
 		mut normalized_args := []string{cap: args.len}
 		for arg in args {
 			normalized_args << t.normalize_type_in_module(arg, mod)
