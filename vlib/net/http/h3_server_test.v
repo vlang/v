@@ -164,6 +164,19 @@ fn test_h3_server_strips_content_length_from_204_headers_and_trailers() {
 	assert trailer_fields.any(it.name == 'x-trailer' && it.value == 'kept')
 }
 
+fn test_h3_server_filters_forbidden_response_header_values() {
+	mut header := new_header()
+	header.add_custom('x-good', 'kept')!
+	header.add_custom('x-nul', 'bad\x00value')!
+	header.add_custom('x-cr', 'bad\rvalue')!
+	header.add_custom('x-lf', 'bad\nvalue')!
+	fields := h3_outbound_response_fields(200, header)
+	assert fields.any(it.name == 'x-good' && it.value == 'kept')
+	assert !fields.any(it.name == 'x-nul')
+	assert !fields.any(it.name == 'x-cr')
+	assert !fields.any(it.name == 'x-lf')
+}
+
 fn test_h3_server_rejects_informational_terminal_response() {
 	assert h3_final_response_status(0)! == 200
 	assert h3_final_response_status(204)! == 204
@@ -211,11 +224,14 @@ fn test_h3_server_handler_work_does_not_block_dispatch_or_completion_queue() {
 		}
 	}
 	mut completed := &H3ServerCompletedResponseQueue{}
+	mut admission := &H3ServerHandlerAdmission{
+		limit: 2
+	}
 	handler := H3ServerTestConcurrentHandler{
 		slow_started: slow_started
 		release_slow: release_slow
 	}
-	h3_server_dispatch_handler(handler, Request{ url: '/slow' }, 'conn', 0, .get, mut completed)
+	assert h3_server_dispatch_handler(handler, Request{ url: '/slow' }, 'conn', 0, .get, mut completed, mut admission)
 	select {
 		_ := <-slow_started {
 		}
@@ -225,7 +241,7 @@ fn test_h3_server_handler_work_does_not_block_dispatch_or_completion_queue() {
 	}
 
 	// A second handler must run to completion while the first remains blocked.
-	h3_server_dispatch_handler(handler, Request{ url: '/fast' }, 'conn', 4, .get, mut completed)
+	assert h3_server_dispatch_handler(handler, Request{ url: '/fast' }, 'conn', 4, .get, mut completed, mut admission)
 	mut fast_completed := false
 	for _ in 0 .. 2000 {
 		for item in completed.drain() {
@@ -255,6 +271,43 @@ fn test_h3_server_handler_work_does_not_block_dispatch_or_completion_queue() {
 		time.sleep(time.millisecond)
 	}
 	assert slow_completed
+}
+
+fn test_h3_server_bounds_handler_worker_admission() {
+	slow_started := chan bool{ cap: 1 }
+	release_slow := chan bool{ cap: 1 }
+	mut slow_released := false
+	defer {
+		if !slow_released {
+			release_slow <- true
+		}
+	}
+	mut completed := &H3ServerCompletedResponseQueue{}
+	mut admission := &H3ServerHandlerAdmission{
+		limit: 1
+	}
+	handler := H3ServerTestConcurrentHandler{
+		slow_started: slow_started
+		release_slow: release_slow
+	}
+	assert h3_server_dispatch_handler(handler, Request{ url: '/slow' }, 'conn', 0, .get, mut completed, mut admission)
+	select {
+		_ := <-slow_started {
+		}
+		2 * time.second {
+			assert false, 'slow handler did not start'
+		}
+	}
+	assert !h3_server_dispatch_handler(handler, Request{ url: '/fast' }, 'conn', 4, .get, mut completed, mut admission)
+	release_slow <- true
+	slow_released = true
+	for _ in 0 .. 2000 {
+		if completed.drain().any(it.stream_id == 0) {
+			return
+		}
+		time.sleep(time.millisecond)
+	}
+	assert false, 'admitted handler did not finish'
 }
 
 // h3_server_test_run is a NAMED function (not a closure) for the spawned

@@ -713,3 +713,51 @@ fn test_h3_conn_blocked_headers_retry_after_delayed_encoder_instruction() {
 	assert headers_ev[0].headers[0].name == 'x-blocked'
 	assert headers_ev[0].headers[0].value == 'later'
 }
+
+fn test_h3_conn_malformed_qpack_section_propagates_decompression_failure() {
+	mut c, mut h, _, _ := h3_test_conn()!
+	defer {
+		mut c_hs := c.client_handshake()
+		c_hs.free()
+	}
+	mut result := H3PollResult{}
+	h.decode_or_queue_headers(0, [u8(0)], false, mut result) or {
+		assert err.code() == int(QpackErrorCode.decompression_failed)
+		assert !result.events.any(it.kind == .request_error)
+		return
+	}
+	assert false, 'expected a truncated QPACK field-section prefix to fail the connection'
+}
+
+fn test_h3_conn_malformed_blocked_qpack_retry_propagates_decompression_failure() {
+	mut c, mut h, _, _ := h3_test_conn()!
+	defer {
+		mut c_hs := c.client_handshake()
+		c_hs.free()
+	}
+	mut peer_encoder := new_qpack_encoder()
+	set_capacity := peer_encoder.set_capacity(4096, 4096)!
+	h.qpack_decoder.apply_encoder_instruction(set_capacity)!
+	encoded := peer_encoder.encode_field_section(0, [
+		QpackFieldLine{
+			name: 'x-blocked'
+			value: 'later'
+		},
+	])!
+	mut malformed := encoded.field_section.clone()
+	// The decoder does not examine this invalid static-table reference until
+	// the preceding dynamic reference becomes available and the blocked section
+	// is retried.
+	malformed << encode_indexed_static(999)
+	mut initial_result := H3PollResult{}
+	h.decode_or_queue_headers(0, malformed, false, mut initial_result)!
+	assert h.blocked_sections.len == 1
+	h.qpack_decoder.apply_encoder_instruction(encoded.encoder_instructions)!
+	mut retry_result := H3PollResult{}
+	h.retry_blocked_sections(mut retry_result) or {
+		assert err.code() == int(QpackErrorCode.decompression_failed)
+		assert !retry_result.events.any(it.kind == .request_error)
+		return
+	}
+	assert false, 'expected malformed QPACK data discovered on retry to fail the connection'
+}

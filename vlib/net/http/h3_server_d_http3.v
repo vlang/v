@@ -68,6 +68,11 @@ const h3_server_max_request_body = 8 * 1024 * 1024
 // near-limit body.
 const h3_server_max_buffered_request_body_per_connection = h3_server_max_request_body
 
+// h3_server_max_handler_workers bounds handler executions that may outlive
+// their request's QUIC connection. Admission is global to one H3Server, so
+// opening and abandoning more connections cannot accumulate more workers.
+const h3_server_max_handler_workers = 64
+
 // h3_server_stream_key builds the composite key H3Server's own per-
 // request-stream buffering table (H3Server.streams) is keyed by --
 // composite because ONE H3Server manages MANY connections at once (unlike
@@ -137,6 +142,34 @@ fn (mut q H3ServerCompletedResponseQueue) drain() []H3ServerCompletedResponse {
 	q.items = []H3ServerCompletedResponse{}
 	q.mu.unlock()
 	return items
+}
+
+// H3ServerHandlerAdmission is a non-blocking semaphore for handler workers.
+// The transport loop must never wait for capacity: an overloaded request gets
+// a 503 response instead, leaving the loop free to drive every connection.
+@[heap]
+struct H3ServerHandlerAdmission {
+	limit int
+mut:
+	mu     &sync.Mutex = sync.new_mutex()
+	active int
+}
+
+fn (mut a H3ServerHandlerAdmission) try_acquire() bool {
+	a.mu.lock()
+	if a.active >= a.limit {
+		a.mu.unlock()
+		return false
+	}
+	a.active++
+	a.mu.unlock()
+	return true
+}
+
+fn (mut a H3ServerHandlerAdmission) release() {
+	a.mu.lock()
+	a.active--
+	a.mu.unlock()
 }
 
 fn (mut s H3ServerStream) append_body(data []u8) bool {
@@ -248,6 +281,9 @@ mut:
 	// Handler completions share only this queue with the server's transport
 	// state. It is drained and applied to h3_conns exclusively by serve().
 	completed_responses &H3ServerCompletedResponseQueue
+	// handler_admission bounds detached handler executions without ever
+	// blocking the transport-owning serve loop.
+	handler_admission &H3ServerHandlerAdmission
 	// shutdown_mu/closing let close() (typically called from a DIFFERENT
 	// thread than the one running serve()'s own loop -- e.g. a signal
 	// handler, or the owning goroutine's caller) tell that loop to stop
@@ -294,6 +330,9 @@ pub fn new_h3_server(listen_addr string, params H3ServerParams) !&H3Server {
 		}
 		handler: params.handler
 		completed_responses: &H3ServerCompletedResponseQueue{}
+		handler_admission: &H3ServerHandlerAdmission{
+			limit: h3_server_max_handler_workers
+		}
 	}
 }
 
@@ -684,17 +723,26 @@ fn (mut s H3Server) run_request(conn_id string, mut h3c quic.H3Conn, stream_id u
 		s.send_error_response(mut h3c, stream_id, 400)
 		return
 	}
-	h3_server_dispatch_handler(s.handler, req, conn_id, stream_id, req.method, mut s.completed_responses)
+	if !h3_server_dispatch_handler(s.handler, req, conn_id, stream_id, req.method, mut s.completed_responses, mut s.handler_admission) {
+		s.send_error_response(mut h3c, stream_id, 503)
+	}
 }
 
-fn h3_server_dispatch_handler(handler Handler, req Request, conn_id string, stream_id u64, method Method, mut completed H3ServerCompletedResponseQueue) {
-	spawn h3_server_run_handler(handler, req, conn_id, stream_id, method, mut completed)
+fn h3_server_dispatch_handler(handler Handler, req Request, conn_id string, stream_id u64, method Method, mut completed H3ServerCompletedResponseQueue, mut admission H3ServerHandlerAdmission) bool {
+	if !admission.try_acquire() {
+		return false
+	}
+	spawn h3_server_run_handler(handler, req, conn_id, stream_id, method, mut completed, mut admission)
+	return true
 }
 
 // h3_server_run_handler runs outside serve() and queues only plain response
 // data. Keeping H3Conn out of this signature makes the single-owner transport
 // boundary explicit and mechanically difficult to violate.
-fn h3_server_run_handler(handler Handler, req Request, conn_id string, stream_id u64, method Method, mut completed H3ServerCompletedResponseQueue) {
+fn h3_server_run_handler(handler Handler, req Request, conn_id string, stream_id u64, method Method, mut completed H3ServerCompletedResponseQueue, mut admission H3ServerHandlerAdmission) {
+	defer {
+		admission.release()
+	}
 	mut worker_handler := handler
 	response := worker_handler.handle(req)
 	completed.push(H3ServerCompletedResponse{
@@ -936,6 +984,9 @@ fn h3_outbound_response_fields(status int, header Header) []quic.QpackFieldLine 
 			continue
 		}
 		for val in header.custom_values(key) {
+			if h2_field_value_has_forbidden_octet(val) {
+				continue
+			}
 			fields << quic.QpackFieldLine{
 				name: lkey
 				value: val

@@ -656,14 +656,10 @@ pub fn (mut h H3Conn) send_response_data(stream_id u64, data []u8, fin bool) ! {
 // dispatch_request_stream_frames reads any new bytes on `stream_id`,
 // decodes as many complete frames as are available, and drives both
 // h3_request_stream.v's message-framing state machine and QPACK field-
-// section decoding for each. A message-framing or QPACK decompression
-// failure on THIS stream is request-scoped (RFC 9204 §2.2.3 explicitly
-// calls a field-section decode failure "a stream error of type
-// QPACK_DECOMPRESSION_FAILED" -- QPACK's dynamic table is mutated only by
-// separate encoder-stream instructions, already applied independently, so
-// a decode failure on one section does not desync it the way an HPACK
-// failure would) -- reported as a request_error event and the stream
-// marked dead, never propagated as a connection-level error.
+// section decoding for each. HTTP message-framing failures are request-scoped,
+// but RFC 9204 §2.2.3 requires a field-section decompression failure to close
+// the connection with QPACK_DECOMPRESSION_FAILED. decode_or_queue_headers and
+// retry_blocked_sections therefore propagate malformed QPACK sections.
 fn (mut h H3Conn) dispatch_request_stream_frames(stream_id u64, mut result H3PollResult) ! {
 	mut decoder := h.request_decoders[stream_id] or { return }
 	new_bytes := h.qc.read_stream(stream_id)!
@@ -756,14 +752,24 @@ fn (mut h H3Conn) dispatch_request_stream_frames(stream_id u64, mut result H3Pol
 // if QPACK reports the section blocked (RFC 9204 §2.1.2/§2.2.1).
 fn (mut h H3Conn) decode_or_queue_headers(stream_id u64, buf []u8, is_trailers bool, mut result H3PollResult) ! {
 	decoded := h.qpack_decoder.decode_field_section(stream_id, buf) or {
-		h.fail_request_stream(stream_id, u64(err.code()), err.msg(), mut result)
-		return
+		if err.code() == int(H3ErrorCode.excessive_load) {
+			h.fail_request_stream(stream_id, H3ErrorCode.excessive_load.code(), err.msg(), mut result)
+			return
+		}
+		return h3_qpack_decompression_error(err)
 	}
 	if decoded.blocked {
 		h.queue_blocked_section(stream_id, buf, is_trailers)!
 		return
 	}
 	h.deliver_decoded_headers(stream_id, decoded, is_trailers, mut result)!
+}
+
+// h3_qpack_decompression_error normalizes low-level prefix/field-line parser
+// errors, which do not all carry their wire code, to RFC 9204's mandatory
+// QPACK_DECOMPRESSION_FAILED connection error.
+fn h3_qpack_decompression_error(err IError) IError {
+	return error_with_code(err.msg(), int(QpackErrorCode.decompression_failed))
 }
 
 // h3_blocked_field_section_budget_allows reports whether another encoded
@@ -906,8 +912,11 @@ fn (mut h H3Conn) retry_blocked_sections(mut result H3PollResult) ! {
 			continue
 		}
 		decoded := h.qpack_decoder.decode_field_section(section.stream_id, section.buf) or {
-			h.fail_request_stream(section.stream_id, u64(err.code()), err.msg(), mut result)
-			continue
+			if err.code() == int(H3ErrorCode.excessive_load) {
+				h.fail_request_stream(section.stream_id, H3ErrorCode.excessive_load.code(), err.msg(), mut result)
+				continue
+			}
+			return h3_qpack_decompression_error(err)
 		}
 		if decoded.blocked {
 			still_blocked << section
