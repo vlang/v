@@ -16,4 +16,38 @@ fn main() {
 	for i in 999999999999999999999999 .. 0 {
 		println(i)
 	}
+
+	// Operator overloads cannot be evaluated as built-in arithmetic.
+	for i in int(OverloadedRangeBound(2) + OverloadedRangeBound(2)) .. 1 {
+		println(i)
+	}
+
+	// Signed right shifts preserve the sign bit.
+	for i in unsafe { i64(-4) >> 1 } .. i64(0) {
+		println(i)
+	}
+
+	// f32 precision applies at comptime function argument and return boundaries.
+	for i in int(identity_f32(16777217.0)) .. 16777217 {
+		println(i)
+	}
+	for i in int(return_f32()) .. 16777217 {
+		println(i)
+	}
+}
+
+type OverloadedRangeBound = u8
+
+fn (a OverloadedRangeBound) + (b OverloadedRangeBound) OverloadedRangeBound {
+	return a - b
+}
+
+@[comptime]
+fn identity_f32(x f32) f32 {
+	return x
+}
+
+@[comptime]
+fn return_f32() f32 {
+	return 16777217.0
 }

@@ -1020,10 +1020,13 @@ fn (mut c Checker) eval_comptime_fn_decl_value_with_locals(fn_decl ast.FnDecl, n
 			if stmt.exprs.len != 1 {
 				return none
 			}
-			return c.eval_comptime_const_expr_with_locals(stmt.exprs[0], nlevel + 1, local_values)
+			value :=
+				c.eval_comptime_const_expr_with_locals(stmt.exprs[0], nlevel + 1, local_values)?
+			return c.convert_comptime_const_value(value, fn_decl.return_type)
 		}
 		ast.ExprStmt {
-			return c.eval_comptime_const_expr_with_locals(stmt.expr, nlevel + 1, local_values)
+			value := c.eval_comptime_const_expr_with_locals(stmt.expr, nlevel + 1, local_values)?
+			return c.convert_comptime_const_value(value, fn_decl.return_type)
 		}
 		else {
 			return none
@@ -1048,7 +1051,7 @@ fn (mut c Checker) eval_comptime_fn_call_expr_with_locals(node ast.CallExpr, nle
 	for idx, param in func.params {
 		arg_value := c.eval_comptime_const_expr_with_locals(node.args[idx].expr, nlevel + 1,
 			local_values) or { return none }
-		local_args[param.name] = arg_value
+		local_args[param.name] = c.convert_comptime_const_value(arg_value, param.typ)?
 	}
 	return c.eval_comptime_fn_decl_value_with_locals(fn_decl, nlevel + 1, local_args)
 }
@@ -1079,6 +1082,14 @@ fn (c &Checker) wrap_comptime_int(raw i64, typ ast.Type) ast.ComptTimeConstValue
 		4 { return if signed { i32(raw) } else { u32(raw) } }
 		else { return if signed { raw } else { u64(raw) } }
 	}
+}
+
+fn (mut c Checker) convert_comptime_const_value(value ast.ComptTimeConstValue, typ ast.Type) ?ast.ComptTimeConstValue {
+	converted_type := c.table.fully_unaliased_type(typ).clear_flags()
+	if converted_type.is_pure_int() || converted_type.is_pure_float() {
+		return c.eval_comptime_const_cast_value(value, converted_type)
+	}
+	return value
 }
 
 fn (mut c Checker) eval_comptime_const_cast_value(value ast.ComptTimeConstValue, typ ast.Type) ?ast.ComptTimeConstValue {
@@ -1207,6 +1218,12 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 			return c.eval_comptime_fn_call_expr_with_locals(expr, nlevel, local_values)
 		}
 		ast.InfixExpr {
+			left_sym := c.table.sym(expr.left_type)
+			right_sym := c.table.sym(expr.right_type)
+			if left_sym.has_method_with_generic_parent(expr.op.str())
+				|| right_sym.has_method_with_generic_parent(expr.op.str()) {
+				return none
+			}
 			left := c.eval_comptime_const_expr_with_locals(expr.left, nlevel + 1, local_values)?
 			saved_expected_type := c.expected_type
 			if expr.left is ast.EnumVal {
@@ -1339,7 +1356,7 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 									result = i64(u64(left_raw) << right_raw)
 								}
 								.right_shift {
-									result = i64(u64(left_raw) >> right_raw)
+									result = left_raw >> right_raw
 								}
 								.unsigned_right_shift {
 									result = i64(u64(left_raw) >>> right_raw)
