@@ -62,6 +62,9 @@ pub mut:
 }
 
 // Mail stores the message headers and MIME payload sent by Client.send.
+// `to`, `cc`, and `bcc` are semicolon-separated mailbox lists. Client.send
+// uses all three lists as SMTP envelope recipients, writes `To` and non-empty
+// `Cc` headers, and omits `Bcc` from the message data.
 pub struct Mail {
 pub:
 	from        string
@@ -130,7 +133,9 @@ pub fn (mut c Client) reconnect() ! {
 	c.is_open = true
 }
 
-// send sends an email
+// send sends an email to every mailbox in config.to, config.cc, and config.bcc.
+// Recipient lists are semicolon-separated; Bcc mailboxes are envelope-only and
+// are not exposed in the message headers.
 pub fn (mut c Client) send(config Mail) ! {
 	if !c.is_open {
 		return error('Disconnected from server')
@@ -200,7 +205,7 @@ fn (mut c Client) expect_reply(expected ReplyCode) ! {
 		}
 	}
 
-	$if smtp_debug? {
+	$if smtp_debug ? {
 		eprintln('\n\n[RECV]')
 		eprint(str)
 	}
@@ -217,7 +222,7 @@ fn (mut c Client) expect_reply(expected ReplyCode) ! {
 
 @[inline]
 fn (mut c Client) send_str(s string) ! {
-	$if smtp_debug? {
+	$if smtp_debug ? {
 		eprintln('\n\n[SEND START]')
 		eprint(s.trim_space())
 		eprintln('\n[SEND END]')
