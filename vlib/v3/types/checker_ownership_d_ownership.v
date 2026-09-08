@@ -4546,7 +4546,7 @@ fn (mut tc TypeChecker) ownership_prescan_call_info(node flat.Node, local_types 
 				}
 			}
 			qbase := tc.qualify_name(base_node.value)
-			static_name := '${qbase}.${fn_node.value}'
+			static_name := flat.encode_static_type_method_name(qbase, fn_node.value)
 			if static_name in tc.fn_ret_types && (qbase in tc.structs
 				|| qbase in tc.enum_names || qbase in tc.sum_types
 				|| qbase in tc.interface_names || qbase in tc.type_aliases) {
