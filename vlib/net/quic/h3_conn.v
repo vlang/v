@@ -481,6 +481,7 @@ fn (mut h H3Conn) drain_known_peer_streams(mut result H3PollResult) ! {
 	if dec_id := h.peer_qpack_decoder_stream_id {
 		h.drive_peer_qpack_decoder_stream(dec_id)!
 	}
+	h.require_peer_critical_streams_open()!
 	// ignored_peer_streams (push/reserved/unknown uni streams) are
 	// deliberately never read again -- see the field's own doc comment; no
 	// loop over it belongs here at all.
@@ -491,6 +492,23 @@ fn (mut h H3Conn) drain_known_peer_streams(mut result H3PollResult) ! {
 		h.dispatch_request_stream_frames(stream_id, mut result)!
 	}
 	h.retry_blocked_sections(mut result)!
+}
+
+// require_peer_critical_streams_open enforces RFC 9114 §6.2.1 and RFC 9204
+// §4.2: once the peer's control or either QPACK stream has been identified,
+// a FIN or RESET on it is a connection error. Run this after draining their
+// latest bytes so a terminal STREAM frame cannot leave the connection usable
+// or leave request field sections blocked forever.
+fn (h &H3Conn) require_peer_critical_streams_open() ! {
+	critical_streams := [h.peer_control_stream_id, h.peer_qpack_encoder_stream_id,
+		h.peer_qpack_decoder_stream_id]
+	for stream_id_opt in critical_streams {
+		stream_id := stream_id_opt or { continue }
+		status := h.qc.stream_recv_status(stream_id) or { continue }
+		if status.state != .open {
+			return error_with_code('h3: peer closed critical stream ${stream_id}', int(H3ErrorCode.closed_critical_stream))
+		}
+	}
 }
 
 // pump_pending_uni_header reads any new bytes on a not-yet-classified

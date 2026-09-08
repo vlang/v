@@ -283,6 +283,11 @@ const frame_type_connection_close_transport = u64(0x1c)
 const frame_type_connection_close_application = u64(0x1d)
 const frame_type_handshake_done = u64(0x1e)
 
+// quic_error_frame_encoding is RFC 9000 §20.1's FRAME_ENCODING_ERROR.
+// Keep malformed peer frame fields distinct from the generic protocol-
+// violation fallback used for uncoded parser errors in QuicConn.poll.
+const quic_error_frame_encoding = u64(0x07)
+
 // parse_frame parses exactly one frame from the start of `buf`, returning
 // the frame and the number of bytes consumed. A run of consecutive PADDING
 // bytes is consumed as a single PaddingFrame (see its own doc comment).
@@ -654,7 +659,7 @@ fn parse_new_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
 	// that in the Sequence Number field MUST be treated as a connection
 	// error of type FRAME_ENCODING_ERROR."
 	if retire_prior_to > sequence_number {
-		return error('quic: NEW_CONNECTION_ID frame: retire_prior_to ${retire_prior_to} exceeds sequence_number ${sequence_number} (RFC 9000 §19.15)')
+		return error_with_code('quic: NEW_CONNECTION_ID frame: retire_prior_to ${retire_prior_to} exceeds sequence_number ${sequence_number} (RFC 9000 §19.15)', int(quic_error_frame_encoding))
 	}
 
 	if offset >= buf.len {
@@ -666,7 +671,7 @@ fn parse_new_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
 	// and MUST be treated as a connection error of type
 	// FRAME_ENCODING_ERROR." 20 is quic_v1_max_cid_len (header.v).
 	if length < 1 || length > quic_v1_max_cid_len {
-		return error('quic: NEW_CONNECTION_ID frame: connection ID length ${length} is outside the valid 1-${quic_v1_max_cid_len} range (RFC 9000 §19.15)')
+		return error_with_code('quic: NEW_CONNECTION_ID frame: connection ID length ${length} is outside the valid 1-${quic_v1_max_cid_len} range (RFC 9000 §19.15)', int(quic_error_frame_encoding))
 	}
 	if offset + length > buf.len {
 		return error('quic: NEW_CONNECTION_ID frame: declares a ${length}-byte connection ID exceeding the remaining buffer')
@@ -681,9 +686,9 @@ fn parse_new_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
 	offset += 16
 
 	return QuicFrame(NewConnectionIdFrame{
-		sequence_number:       sequence_number
-		retire_prior_to:       retire_prior_to
-		connection_id:         connection_id
+		sequence_number: sequence_number
+		retire_prior_to: retire_prior_to
+		connection_id: connection_id
 		stateless_reset_token: stateless_reset_token
 	}), offset
 }

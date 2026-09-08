@@ -118,6 +118,27 @@ fn test_h3_server_caps_aggregate_inflight_body_per_connection() {
 	assert 'peer' !in budget.by_conn
 }
 
+fn test_h3_server_caps_and_releases_aggregate_inflight_headers_per_connection() {
+	mut budget := H3ServerHeadersBudget{}
+	first := h3_server_max_buffered_request_headers_per_connection - 1
+	assert budget.retain('peer', first)
+	assert !budget.retain('peer', 2)
+	assert budget.by_conn['peer'] == first
+
+	budget.release('peer', first)
+	assert budget.retain('peer', 2)
+	assert budget.by_conn['peer'] == 2
+	budget.release('peer', 2)
+	assert 'peer' !in budget.by_conn
+
+	assert h3_server_decoded_header_list_size([
+		quic.QpackFieldLine{
+			name: 'x-test'
+			value: 'value'
+		},
+	]) == 'x-test'.len + 'value'.len + 32
+}
+
 fn test_h3_server_validates_request_trailers() {
 	h3_validate_request_trailers([
 		quic.QpackFieldLine{

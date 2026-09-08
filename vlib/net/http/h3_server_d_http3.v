@@ -68,6 +68,12 @@ const h3_server_max_request_body = 8 * 1024 * 1024
 // near-limit body.
 const h3_server_max_buffered_request_body_per_connection = h3_server_max_request_body
 
+// h3_server_max_buffered_request_headers_per_connection bounds decoded
+// initial field sections retained across all unfinished requests from one
+// peer. QPACK's per-section limit alone would otherwise allow each of the
+// default 100 request streams to pin a separate near-1 MiB header list.
+const h3_server_max_buffered_request_headers_per_connection = 1024 * 1024
+
 // h3_server_max_handler_workers bounds handler executions that may outlive
 // their request's QUIC connection. Admission is global to one H3Server, so
 // opening and abandoning more connections cannot accumulate more workers.
@@ -100,12 +106,18 @@ fn h3_server_stream_key(conn_id string, stream_id u64) string {
 // HTTP/3's wire format at all).
 struct H3ServerStream {
 mut:
-	headers  []quic.QpackFieldLine
-	body     []u8
-	rejected bool
+	headers      []quic.QpackFieldLine
+	headers_size int
+	body         []u8
+	rejected     bool
 }
 
 struct H3ServerBodyBudget {
+mut:
+	by_conn map[string]int
+}
+
+struct H3ServerHeadersBudget {
 mut:
 	by_conn map[string]int
 }
@@ -215,6 +227,36 @@ fn (mut b H3ServerBodyBudget) append(conn_id string, mut stream H3ServerStream, 
 	return true
 }
 
+fn h3_server_decoded_header_list_size(headers []quic.QpackFieldLine) int {
+	mut size := 0
+	for field in headers {
+		// RFC 9114 §4.1.1 uses the same name + value + 32 accounting as
+		// QPACK's per-section decoder limit.
+		size += field.name.len + field.value.len + 32
+	}
+	return size
+}
+
+fn (mut b H3ServerHeadersBudget) retain(conn_id string, amount int) bool {
+	current := b.by_conn[conn_id]
+	if current > h3_server_max_buffered_request_headers_per_connection
+		|| amount > h3_server_max_buffered_request_headers_per_connection - current {
+		return false
+	}
+	b.by_conn[conn_id] = current + amount
+	return true
+}
+
+fn (mut b H3ServerHeadersBudget) release(conn_id string, amount int) {
+	current := b.by_conn[conn_id]
+	remaining := current - amount
+	if remaining > 0 {
+		b.by_conn[conn_id] = remaining
+	} else {
+		b.by_conn.delete(conn_id)
+	}
+}
+
 // H3ServerParams configures a new H3Server for its whole lifetime --
 // mirrors quic.QuicListenerParams (which this wraps) plus the Handler
 // every fully-buffered request is dispatched to.
@@ -260,7 +302,8 @@ mut:
 	streams   map[string]&H3ServerStream
 	// body_budget accounts only bytes retained in streams; entries are released
 	// on completion, rejection, reset, or connection close.
-	body_budget H3ServerBodyBudget
+	body_budget    H3ServerBodyBudget
+	headers_budget H3ServerHeadersBudget
 	// peer_by_str recovers a real net.Addr from the opaque []u8 peer
 	// identifier quic.QuicListener's own outgoing datagrams carry (that
 	// module is deliberately transport-agnostic -- see listener.v's own
@@ -372,6 +415,7 @@ fn (mut s H3Server) free_all_conns() {
 	s.h3_conns = map[string]&quic.H3Conn{}
 	s.streams = map[string]&H3ServerStream{}
 	s.body_budget = H3ServerBodyBudget{}
+	s.headers_budget = H3ServerHeadersBudget{}
 }
 
 // serve runs this server's single-threaded accept/demux/dispatch loop
@@ -568,6 +612,7 @@ fn (mut s H3Server) prune_streams_for_conn(conn_id string) {
 		s.streams.delete(key)
 	}
 	s.body_budget.by_conn.delete(conn_id)
+	s.headers_budget.by_conn.delete(conn_id)
 }
 
 // handle_h3_event actions one H3Event from a server-role H3Conn: buffers
@@ -604,21 +649,39 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 					new_st
 				}
 				s.body_budget.release(conn_id, st.body.len)
+				s.headers_budget.release(conn_id, st.headers_size)
 				st.body.clear()
+				st.headers.clear()
+				st.headers_size = 0
 				st.rejected = true
 				s.send_error_response(mut h3c, stream_id, 400)
 				return
 			}
-			if mut st := s.streams[key] {
-				if st.rejected {
-					return
-				}
-				st.headers = ev.headers
-			} else {
-				s.streams[key] = &H3ServerStream{
-					headers: ev.headers
-				}
+			headers_size := h3_server_decoded_header_list_size(ev.headers)
+			mut st := s.streams[key] or {
+				new_st := &H3ServerStream{}
+				s.streams[key] = new_st
+				new_st
 			}
+			if st.headers_size != 0 {
+				s.body_budget.release(conn_id, st.body.len)
+				s.headers_budget.release(conn_id, st.headers_size)
+				st.body.clear()
+				st.headers.clear()
+				st.headers_size = 0
+				st.rejected = true
+				s.send_error_response(mut h3c, stream_id, 400)
+				return
+			}
+			if !s.headers_budget.retain(conn_id, headers_size) {
+				s.body_budget.release(conn_id, st.body.len)
+				st.body.clear()
+				st.rejected = true
+				s.send_error_response(mut h3c, stream_id, 431)
+				return
+			}
+			st.headers = ev.headers
+			st.headers_size = headers_size
 		}
 		.request_data {
 			// Mirrors request_headers' own lazy-creation above: a DATA
@@ -640,6 +703,9 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 				if was_rejected {
 					return
 				}
+				s.headers_budget.release(conn_id, st.headers_size)
+				st.headers.clear()
+				st.headers_size = 0
 				s.send_error_response(mut h3c, stream_id, 413)
 				return
 			}
@@ -658,6 +724,9 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 			h3_validate_request_trailers(ev.headers) or {
 				s.body_budget.release(conn_id, st.body.len)
 				st.body.clear()
+				s.headers_budget.release(conn_id, st.headers_size)
+				st.headers.clear()
+				st.headers_size = 0
 				st.rejected = true
 				s.send_error_response(mut h3c, stream_id, 400)
 				return
@@ -673,6 +742,7 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 			}
 			s.run_request(conn_id, mut h3c, stream_id, st)
 			s.body_budget.release(conn_id, st.body.len)
+			s.headers_budget.release(conn_id, st.headers_size)
 			s.streams.delete(key)
 		}
 		.request_error {
@@ -685,6 +755,7 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 			key := h3_server_stream_key(conn_id, stream_id)
 			if st := s.streams[key] {
 				s.body_budget.release(conn_id, st.body.len)
+				s.headers_budget.release(conn_id, st.headers_size)
 			}
 			s.streams.delete(key)
 		}

@@ -789,6 +789,7 @@ fn test_parse_new_connection_id_frame_rejects_retire_prior_to_above_sequence_num
 	buf << []u8{len: 16}
 	parse_frame(buf) or {
 		assert err.msg().contains('retire_prior_to')
+		assert err.code() == int(quic_error_frame_encoding)
 		return
 	}
 	assert false, 'expected retire_prior_to > sequence_number to be rejected'
@@ -819,6 +820,7 @@ fn test_parse_new_connection_id_frame_rejects_length_above_20_bytes() {
 	buf << []u8{len: 16}
 	parse_frame(buf) or {
 		assert err.msg().contains('connection ID length')
+		assert err.code() == int(quic_error_frame_encoding)
 		return
 	}
 	assert false, 'expected a declared length above 20 bytes to be rejected'

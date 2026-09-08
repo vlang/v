@@ -350,11 +350,11 @@ fn h3_test_conn() !(&QuicConn, &H3Conn, []u8, u64) {
 
 // server_uni_stream_frame builds a STREAM frame for the `n`th server-
 // initiated unidirectional stream (RFC 9000 §2.1: base 3, step 4) carrying
-// `payload` at offset 0, FIN'd -- for tests that send exactly one shot per
-// fake stream.
+// `payload` at offset 0. Critical HTTP/3 streams are deliberately left open;
+// tests that close one must do so explicitly and assert the required error.
 fn server_uni_stream_frame(n u64, payload []u8) ![]u8 {
 	stream_id := u64(3) + n * 4
-	return encode_stream_frame(stream_id, 0, payload, true, true)
+	return encode_stream_frame(stream_id, 0, payload, false, true)
 }
 
 // server_uni_stream_continuation_frame builds a NON-FIN STREAM frame for
@@ -429,6 +429,58 @@ fn test_h3_conn_peer_control_stream_settings_accepted_and_settings_received_even
 	datagram := build_fake_one_rtt_packet(c.scid, 0, frame, read_keys(mut c), false)!
 	result := h.poll(datagram.bytes, now)!
 	assert result.events.any(it.kind == .settings_received)
+}
+
+fn test_h3_conn_rejects_peer_control_stream_fin() {
+	mut c, mut h, _, now := h3_test_conn()!
+	defer {
+		mut c_hs := c.client_handshake()
+		c_hs.free()
+	}
+	mut buf := encode_h3_control_stream_header()!
+	buf << encode_settings_frame([]H3Setting{})!
+	frame := encode_stream_frame(3, 0, buf, true, true)!
+	datagram := build_fake_one_rtt_packet(c.scid, 0, frame, read_keys(mut c), false)!
+	h.poll(datagram.bytes, now) or {
+		assert err.code() == int(H3ErrorCode.closed_critical_stream)
+		return
+	}
+	assert false, 'closing the peer control stream must close the HTTP/3 connection'
+}
+
+fn test_h3_conn_rejects_peer_qpack_encoder_stream_reset() {
+	mut c, mut h, _, now := h3_test_conn()!
+	defer {
+		mut c_hs := c.client_handshake()
+		c_hs.free()
+	}
+	header := encode_qpack_encoder_stream_header()!
+	open_frame := encode_stream_frame(3, 0, header, false, true)!
+	open_datagram := build_fake_one_rtt_packet(c.scid, 0, open_frame, read_keys(mut c), false)!
+	h.poll(open_datagram.bytes, now)!
+	reset_frame := encode_reset_stream_frame(3, H3ErrorCode.no_error.code(), u64(header.len))!
+	reset_datagram := build_fake_one_rtt_packet(c.scid, 1, reset_frame, read_keys(mut c), false)!
+	h.poll(reset_datagram.bytes, now + 1) or {
+		assert err.code() == int(H3ErrorCode.closed_critical_stream)
+		return
+	}
+	assert false, 'resetting the peer QPACK encoder stream must close the HTTP/3 connection'
+}
+
+fn test_h3_conn_rejects_peer_qpack_decoder_stream_fin() {
+	mut c, mut h, _, now := h3_test_conn()!
+	defer {
+		mut c_hs := c.client_handshake()
+		c_hs.free()
+	}
+	header := encode_qpack_decoder_stream_header()!
+	frame := encode_stream_frame(3, 0, header, true, true)!
+	datagram := build_fake_one_rtt_packet(c.scid, 0, frame, read_keys(mut c), false)!
+	h.poll(datagram.bytes, now) or {
+		assert err.code() == int(H3ErrorCode.closed_critical_stream)
+		return
+	}
+	assert false, 'closing the peer QPACK decoder stream must close the HTTP/3 connection'
 }
 
 fn test_h3_conn_rejects_push_promise_on_control_stream() {
