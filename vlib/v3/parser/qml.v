@@ -70,19 +70,13 @@ fn (mut l QmlLexer) skip_space() {
 }
 
 fn qml_is_name_char(c u8) bool {
-	return c.is_alnum() || c in [`_`, `-`, `.`, `#`]
+	return c.is_alnum() || c in [`_`, `.`, `#`]
 }
 
 fn (mut l QmlLexer) read_name() QmlToken {
 	start := l.pos
 	line := l.line
 	for l.pos < l.source.len && qml_is_name_char(l.source[l.pos]) {
-		if l.source[l.pos] == `-` && l.pos > start {
-			prefix := l.source[start..l.pos]
-			if prefix.contains('.') || prefix == 'index' {
-				break
-			}
-		}
 		l.pos++
 	}
 	return QmlToken{.name, l.source[start..l.pos], line}
@@ -235,13 +229,17 @@ enum QmlExprKind {
 
 struct QmlInterpolationPart {
 	text string
+	// A nil expression marks a literal-text part. V requires `unsafe` only to
+	// declare that sentinel pointer default; interpolation logic checks it before use.
 	expr &QmlExpr = unsafe { nil }
 }
 
 struct QmlExpr {
-	kind   QmlExprKind
-	value  string
-	line   int
+	kind  QmlExprKind
+	value string
+	line  int
+	// The tagged expression tree is recursive. Nil marks child links unused by
+	// the current kind, and V requires `unsafe` only for those pointer defaults.
 	left   &QmlExpr = unsafe { nil }
 	right  &QmlExpr = unsafe { nil }
 	third  &QmlExpr = unsafe { nil }
@@ -491,6 +489,36 @@ fn (mut p QmlSourceParser) parse_primary() !&QmlExpr {
 	}
 }
 
+fn qml_interpolation_end(value string, start int) ?int {
+	mut quoted := false
+	mut escaped := false
+	mut nested_braces := 0
+	for i := start; i < value.len; i++ {
+		ch := value[i]
+		if quoted {
+			if escaped {
+				escaped = false
+			} else if ch == `\\` {
+				escaped = true
+			} else if ch == `"` {
+				quoted = false
+			}
+			continue
+		}
+		if ch == `"` {
+			quoted = true
+		} else if ch == `{` {
+			nested_braces++
+		} else if ch == `}` {
+			if nested_braces == 0 {
+				return i
+			}
+			nested_braces--
+		}
+	}
+	return none
+}
+
 fn parse_qml_interpolation(value string, line int) !&QmlExpr {
 	if !value.contains(r'${') {
 		return &QmlExpr{ kind: .literal, value: value, line: line, quoted: true }
@@ -506,10 +534,9 @@ fn parse_qml_interpolation(value string, line int) !&QmlExpr {
 		if start > cursor {
 			parts << QmlInterpolationPart{ text: value[cursor..start] }
 		}
-		end_relative := value[start + 2..].index('}') or {
+		end := qml_interpolation_end(value, start + 2) or {
 			return error('unterminated interpolation at line ${line}')
 		}
-		end := start + 2 + end_relative
 		tokens := tokenize_qml(value[start + 2..end])!
 		mut parser := QmlSourceParser{ tokens: tokens }
 		parts << QmlInterpolationPart{ expr: parser.parse_expression()! }
@@ -848,13 +875,10 @@ fn (c &QmlCompiler) expr(expr &QmlExpr, scope QmlScope, use QmlExprUse) string {
 				if expr.value.starts_with('#') && expr.value.len == 7 {
 					return 'u32(0x${expr.value[1..]})'
 				}
-				if known && resolved != expr.value {
-					return resolved
-				}
 				if !known {
 					return 'u32(0xffffff)'
 				}
-				return 'ui2.parse_hex_color(${qml_stringify(resolved)})'
+				return qml_color_call(resolved)
 			}
 			if use == .string_ {
 				if !known {
@@ -1103,6 +1127,15 @@ fn (mut c QmlCompiler) write_action_type_checks(node &QmlNode, suffix string, sc
 		// that its argument has the declared type.
 		c.out.writeln('\tif false {')
 		c.out.writeln('\t\tmut ${check_name} := *app')
+		// The runtime dispatcher exposes public methods only. Reflection makes a
+		// same-module private method a compile error before its action is serialized.
+		c.out.writeln('\t\t\$for method in ${check_name}.methods {')
+		c.out.writeln('\t\t\t\$if method.name == ${qml_quote(method_name)} {')
+		c.out.writeln('\t\t\t\t\$if !method.is_pub {')
+		c.out.writeln('\t\t\t\t\t\$compile_error(${qml_quote('QML action method `${method_name}` must be public')})')
+		c.out.writeln('\t\t\t\t}')
+		c.out.writeln('\t\t\t}')
+		c.out.writeln('\t\t}')
 		c.out.writeln('\t\t${check_name}.${method_name}(${arguments})')
 		c.out.writeln('\t}')
 	}

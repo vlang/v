@@ -95,6 +95,10 @@ pub fn (mut app App) choose(value string) {
 	app.location = value
 }
 
+fn (mut app App) private_action() {
+	app.selected = -1
+}
+
 fn build(app &App) ui2.Element {
 	return \$qml('form.qml')
 }
@@ -222,6 +226,28 @@ fn main() {
 	custom_run := os.execute(bin)
 	assert custom_run.exit_code == 0, custom_run.output
 	assert custom_run.output.trim_space() == 'chosen 0.5', custom_run.output
+	os.write_file(os.join_path(root, 'expressions.qml'), r'Screen {
+	Repeater {
+		model: app.values
+		key: item
+		Label { text: item-1 }
+	}
+	Repeater {
+		model: app.items
+		key: item.value
+		Rectangle { background: item.color }
+	}
+	Label { text: "${app.label(\"}\")}" }
+}') or { panic(err) }
+	expressions_path := os.join_path(root, 'expressions.v')
+	os.write_file(expressions_path, "module main\n\nimport ui2\n\nstruct Item {\n\tvalue int\n\tcolor string\n}\n\nstruct App {\n\tvalues []int\n\titems []Item\n}\n\nfn (app &App) label(value string) string {\n\t_ = app\n\treturn value\n}\n\nfn build(app &App) ui2.Element {\n\treturn \$qml('expressions.qml')\n}\n\nfn main() {\n\tapp := App{values: [10], items: [Item{value: 1, color: '#112233'}]}\n\troot := build(&app)\n\tprintln(root.children[0].text + ' ' + root.children[1].box.bg.str() + ' ' + root.children[2].text)\n}\n") or {
+		panic(err)
+	}
+	expressions_compile := os.execute('${v3_bin} -nocache -path "${root}|${qml_codegen_vlib_dir}" -b c -o ${bin} ${expressions_path}')
+	assert expressions_compile.exit_code == 0, expressions_compile.output
+	expressions_run := os.execute(bin)
+	assert expressions_run.exit_code == 0, expressions_run.output
+	assert expressions_run.output.trim_space() == '9 1122867 }', expressions_run.output
 	os.write_file(os.join_path(root, 'form.qml'), 'Screen { MessageBox { Button { on_tap: app.missing() } } }') or { panic(err) }
 	invalid := os.execute('${v3_bin} -nocache -path "${root}|${qml_codegen_vlib_dir}" -b c -o ${bin} ${main_path}')
 	assert invalid.exit_code != 0, invalid.output
@@ -230,6 +256,10 @@ fn main() {
 	invalid_menu := os.execute('${v3_bin} -nocache -path "${root}|${qml_codegen_vlib_dir}" -b c -o ${bin} ${main_path}')
 	assert invalid_menu.exit_code != 0, invalid_menu.output
 	assert invalid_menu.output.contains('missing'), invalid_menu.output
+	os.write_file(os.join_path(root, 'form.qml'), 'Screen { Button { on_tap: app.private_action() } }') or { panic(err) }
+	invalid_private := os.execute('${v3_bin} -nocache -path "${root}|${qml_codegen_vlib_dir}" -b c -o ${bin} ${main_path}')
+	assert invalid_private.exit_code != 0, invalid_private.output
+	assert invalid_private.output.contains('must be public'), invalid_private.output
 }
 
 /* MOCK_UI2
