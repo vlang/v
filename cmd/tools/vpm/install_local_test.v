@@ -155,6 +155,22 @@ fn test_dotted_install_does_not_nest_inside_existing_module() {
 	assert !os.exists(os.join_path(vmodules_path, 'foo', 'bar'))
 }
 
+fn test_root_install_does_not_replace_existing_module_namespace() {
+	vmodules_path := os.join_path(test_path, 'vmodules_existing_namespace')
+	test_utils.set_test_env(vmodules_path)
+	nested_repo_path := os.join_path(test_path, 'existing_namespace_nested_repo')
+	create_local_git_module(nested_repo_path, 'foo.bar')
+	cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(nested_repo_path)}')
+	root_repo_path := os.join_path(test_path, 'existing_namespace_root_repo')
+	create_local_git_module(root_repo_path, 'foo')
+
+	res := cmd_fail(@LOCATION, '${vexe} install ${os.quoted_path(root_repo_path)}')
+	assert res.output.contains('refusing to install `foo`: destination'), res.output
+	assert os.exists(os.join_path(vmodules_path, 'foo', 'bar', 'v.mod'))
+	entries := os.ls(os.join_path(vmodules_path, 'foo')) or { panic(err) }
+	assert entries == ['bar']
+}
+
 fn test_installed_module_discovery_preserves_vcs_links() {
 	$if !windows {
 		vmodules_path := os.join_path(test_path, 'vmodules_linked_module')

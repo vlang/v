@@ -177,6 +177,10 @@ fn (m Module) install() InstallResult {
 			return .skipped
 		}
 	}
+	if os.exists(m.install_path) {
+		vpm_error('refusing to install `${m.name}`: destination `${m.install_path_fmted}` already exists.')
+		return .failed
+	}
 	println('Installing `${m.name}`...')
 	// When the module should be relocated into a subdirectory we need to make sure
 	// it exists to not run into permission errors.
