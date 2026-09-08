@@ -21,6 +21,8 @@ type IntHandler = fn (int) int
 
 type HandlerOrString = IntHandler | string
 
+type StringPairOrInt = [2]string | int
+
 interface Widget {}
 
 interface ResizableWidget {
@@ -49,6 +51,10 @@ fn addressed_widget() &ResizableWidget {
 		return &(widget as ResizableWidget)
 	}
 	panic('WidgetImpl should implement ResizableWidget')
+}
+
+fn string_pair() StringPairOrInt {
+	return ['left', 'right']!
 }
 
 fn test_main() {
@@ -88,6 +94,9 @@ fn test_main() {
 	}
 	escaped_widget := addressed_widget()
 	assert escaped_widget.resize(4, 5) == 20
+	pair_ptr := &(string_pair() as [2]string)
+	assert (*pair_ptr)[0] == 'left'
+	assert (*pair_ptr)[1] == 'right'
 	arr1 := [(fbs.last() as Foo)]
 	arr2 := [&(fbs.last() as Foo)]
 	arr3 := [&(get_foo_bar() as Foo)]

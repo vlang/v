@@ -7235,10 +7235,12 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				}
 				mut is_as_cast_heap := false
 				mut as_cast_heap_type := ast.Type(0)
+				mut as_cast_heap_is_fixed_array := false
 				if direct_amp_expr is ast.AsCast && node.op == .amp
 					&& g.as_cast_address_needs_heap(direct_amp_expr) {
 					is_as_cast_heap = true
 					as_cast_heap_type = direct_amp_expr.typ
+					as_cast_heap_is_fixed_array = g.table.final_sym(as_cast_heap_type).info is ast.ArrayFixed
 				}
 				mut has_slice_call := false
 				// When taking the address of an auto-deref variable (e.g. `&receiver`
@@ -7281,7 +7283,12 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					g.write('*')
 				}
 				if is_as_cast_heap {
-					g.write_heap_alloc(g.styp(as_cast_heap_type), as_cast_heap_type)
+					if as_cast_heap_is_fixed_array {
+						as_cast_heap_styp := g.styp(as_cast_heap_type)
+						g.write('(${as_cast_heap_styp}*)builtin__memdup((void*)&(')
+					} else {
+						g.write_heap_alloc(g.styp(as_cast_heap_type), as_cast_heap_type)
+					}
 				}
 				// Keep nested unary +/- parenthesized so C does not collapse them into ++/--
 				// when the parser has preserved a nested prefix node or folded a signed literal.
@@ -7297,7 +7304,11 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					g.write(')')
 				}
 				if is_as_cast_heap {
-					g.write_heap_alloc_close(as_cast_heap_type)
+					if as_cast_heap_is_fixed_array {
+						g.write('), sizeof(${g.styp(as_cast_heap_type)}))')
+					} else {
+						g.write_heap_alloc_close(as_cast_heap_type)
+					}
 				}
 				if has_slice_call {
 					g.write(')')
