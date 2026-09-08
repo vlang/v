@@ -5,8 +5,11 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
-const params_struct_v3_bin = os.join_path(os.temp_dir(),
-	'v3_params_struct_codegen_test_${os.getpid()}')
+const params_struct_v3_bin = os.join_path(os.temp_dir(), 'v3_params_struct_codegen_test_${os.getpid()}')
+
+fn testsuite_begin() {
+	os.rm(params_struct_v3_bin) or {}
+}
 
 // build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
@@ -66,12 +69,10 @@ fn test_params_fields_belong_to_params_struct() {
 	project_dir := os.join_path(os.temp_dir(), 'v3_params_field_owner_project')
 	os.rmdir_all(project_dir) or {}
 	os.mkdir_all(os.join_path(project_dir, 'fixture')) or { panic(err) }
-	os.write_file(os.join_path(project_dir, 'main.v'),
-		"module main\n\nimport fixture\n\nstruct CliOptions {\n\truntime_profile string\n}\n\nfn main() {\n\topts := CliOptions{runtime_profile: 'node'}\n\tctx := &fixture.Context{}\n\tprintln(fixture.compile(ctx, 'entry', runtime_profile: opts.runtime_profile, retries: 3))\n}\n") or {
+	os.write_file(os.join_path(project_dir, 'main.v'), "module main\n\nimport fixture\n\nstruct CliOptions {\n\truntime_profile string\n}\n\nfn main() {\n\topts := CliOptions{runtime_profile: 'node'}\n\tctx := &fixture.Context{}\n\tprintln(fixture.compile(ctx, 'entry', runtime_profile: opts.runtime_profile, retries: 3))\n}\n") or {
 		panic(err)
 	}
-	os.write_file(os.join_path(project_dir, 'fixture', 'fixture.v'),
-		"module fixture\n\npub struct Context {\npub:\n\tretries string\nmut:\n\truntime_profile string\n}\n\n@[params]\npub struct Options {\npub:\n\truntime_profile string\n\tretries         int\n}\n\npub fn compile(ctx &Context, path string, options Options) string {\n\t_ = ctx\n\treturn '\${path}:\${options.runtime_profile}:\${options.retries}'\n}\n") or {
+	os.write_file(os.join_path(project_dir, 'fixture', 'fixture.v'), "module fixture\n\npub struct Context {\npub:\n\tretries string\nmut:\n\truntime_profile string\n}\n\n@[params]\npub struct Options {\npub:\n\truntime_profile string\n\tretries         int\n}\n\npub fn compile(ctx &Context, path string, options Options) string {\n\t_ = ctx\n\treturn '\${path}:\${options.runtime_profile}:\${options.retries}'\n}\n") or {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_params_field_owner')
