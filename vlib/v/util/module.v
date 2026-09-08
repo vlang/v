@@ -295,6 +295,34 @@ fn source_file_module_name(path string) ?string {
 			}
 			continue
 		}
+		if start + 1 < source.len && source[start] == `@` && source[start + 1] == `[` {
+			start += 2
+			mut brackets := 1
+			mut quote := u8(0)
+			for start < source.len && brackets > 0 {
+				ch := source[start]
+				if quote != 0 {
+					if ch == `\\` && start + 1 < source.len {
+						start += 2
+						continue
+					}
+					if ch == quote {
+						quote = 0
+					}
+				} else if ch in [`'`, `"`] {
+					quote = ch
+				} else if ch == `[` {
+					brackets++
+				} else if ch == `]` {
+					brackets--
+				}
+				start++
+			}
+			if brackets > 0 {
+				return none
+			}
+			continue
+		}
 		break
 	}
 	if start + 6 >= source.len || source[start..start + 6] != 'module'
