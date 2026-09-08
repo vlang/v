@@ -14,22 +14,16 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() {
 	}
 	t.tc.ensure_private_transform_structs()
 	original_node_count := t.a.nodes.len
-	mut cur_file := ''
-	mut cur_module := ''
 	for idx in 0 .. original_node_count {
 		node := t.a.nodes[idx]
 		match node.kind {
-			.file {
-				cur_file = node.value
-				cur_module = t.tc.file_modules[cur_file] or { '' }
-			}
-			.module_decl {
-				cur_module = node.value
-			}
 			.struct_init {
 				if node.value != 'struct' || node.children_count == 0 {
 					continue
 				}
+				source_file := t.a.source_files[node.pos.id] or { continue }
+				cur_file := source_file.name
+				cur_module := t.tc.file_modules[cur_file] or { '' }
 				// Contextual checking may already have selected one of the declared
 				// anonymous structs with this field shape. Keep that nominal identity;
 				// transform_struct_init will apply it when this literal is lowered.

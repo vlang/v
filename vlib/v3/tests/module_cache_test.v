@@ -113,6 +113,39 @@ fn test_program_support() {
 	assert run_module_cache_binary(output) == ''
 }
 
+fn test_inferred_anonymous_struct_stays_in_its_source_module() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_anonymous_struct_owner_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'cachedanon/cachedanon.v', "module cachedanon
+
+fn produce() string {
+	return 'owned'
+}
+
+pub fn result() string {
+	value := struct { item: produce() }
+	return value.item
+}
+")
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import cachedanon
+
+fn main() {
+	println(cachedanon.result())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	assert run_cached_module_cache_project(v3_bin, cache_dir, main_file) == 'owned'
+	assert run_cached_module_cache_project(v3_bin, cache_dir, main_file) == 'owned'
+}
+
 fn test_print_v_files_includes_warm_cached_module_sources() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_print_cached_v_files_${os.getpid()}')
