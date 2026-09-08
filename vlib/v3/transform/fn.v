@@ -1135,14 +1135,18 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		arg_node := t.a.nodes[int(arg_id)]
 		param_type := if param_idx < param_type_names.len { param_type_names[param_idx] } else { '' }
 		if t.validating_generic_spec && has_concrete_generic_params {
-			if source_type := t.fn_literal_source_type_text(arg_id) {
-				if type_text_has_source_only_mode(param_type)
-					|| type_text_has_source_only_mode(source_type) {
-					actual_type := t.specialized_expr_type_name(arg_id)
-					if !t.resolved_receiver_arg_compatible(arg_id, actual_type, param_type) {
-						t.record_monomorph_error('cannot use `${actual_type}` as argument ${
-							arg_idx + 1} to `${call_name}`; expected `${param_type}`')
-					}
+			source_types := t.fn_literal_source_type_texts(arg_id)
+			mut needs_source_mode_validation := type_text_has_source_only_mode(param_type)
+			for source_type in source_types {
+				if type_text_has_source_only_mode(source_type) {
+					needs_source_mode_validation = true
+					break
+				}
+			}
+			if source_types.len > 0 && needs_source_mode_validation {
+				actual_type := t.specialized_expr_type_name(arg_id)
+				if !t.resolved_receiver_arg_compatible(arg_id, actual_type, param_type) {
+					t.record_monomorph_error('cannot use `${actual_type}` as argument ${arg_idx + 1} to `${call_name}`; expected `${param_type}`')
 				}
 			}
 		}
@@ -12293,7 +12297,9 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	}
 	actual := t.normalize_type_alias(actual_type)
 	expected := t.normalize_type_alias(expected_type)
-	if source_fn_type := t.fn_literal_source_type_text(arg_id) {
+	source_fn_types := t.fn_literal_source_type_texts(arg_id)
+	mut every_source_type_exact := source_fn_types.len > 0
+	for source_fn_type in source_fn_types {
 		mut mode_expected := expected
 		mut matched_sum_variant := false
 		if t.is_sum_type_name(expected_type) {
@@ -12314,22 +12320,26 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 				return false
 			}
 			if mode_expected.starts_with('fn(') || mode_expected.starts_with('fn (') {
-				return true
+				continue
 			}
 		}
 		if matched_sum_variant {
-			return true
+			continue
 		}
 		if !isnil(t.tc) {
 			if actual_c_abi := t.tc.c_abi_fn_signature_for_type_text(source_fn_type) {
 				if expected_c_abi := t.tc.c_abi_fn_signature_for_type_text(expected_type) {
 					if actual_c_abi == expected_c_abi
 						&& t.fn_type_texts_signature_compatible_without_c_abi_names_resolving_aliases(actual, expected) {
-						return true
+						continue
 					}
 				}
 			}
 		}
+		every_source_type_exact = false
+	}
+	if every_source_type_exact {
+		return true
 	}
 	if t.is_integer_type_name(expected) {
 		if literal := t.specialized_int_literal(arg_id) {
@@ -12440,7 +12450,16 @@ fn (t &Transformer) fn_literal_c_abi_signature_compatible(arg_id flat.NodeId, ex
 	if isnil(t.tc) {
 		return true
 	}
-	actual_text := t.fn_literal_source_type_text(arg_id) or { return true }
+	actual_texts := t.fn_literal_source_type_texts(arg_id)
+	for actual_text in actual_texts {
+		if !t.fn_literal_source_c_abi_signature_compatible(actual_text, expected_type) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (t &Transformer) fn_literal_source_c_abi_signature_compatible(actual_text string, expected_type string) bool {
 	actual_abi := t.tc.c_abi_fn_signature_for_type_text(actual_text)
 	if t.is_sum_type_name(expected_type) {
 		if compatible := t.fn_literal_sum_variant_c_abi_compatible(actual_text, actual_abi,
@@ -12510,16 +12529,41 @@ fn (t &Transformer) sum_type_has_shared_fn_variant(expected_type string) bool {
 	return false
 }
 
-fn (t &Transformer) fn_literal_source_type_text(arg_id flat.NodeId) ?string {
+fn (t &Transformer) fn_literal_source_type_texts(arg_id flat.NodeId) []string {
+	mut result := []string{}
+	t.collect_fn_literal_source_type_texts(arg_id, mut result)
+	return result
+}
+
+fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut result []string) {
 	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
-		return none
+		return
 	}
 	node := t.a.nodes[int(arg_id)]
-	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
-		return t.fn_literal_source_type_text(t.a.child(&node, 0))
+	match node.kind {
+		.paren, .cast_expr, .expr_stmt {
+			if node.children_count == 1 {
+				t.collect_fn_literal_source_type_texts(t.a.child(&node, 0), mut result)
+			}
+			return
+		}
+		.block, .match_branch {
+			if node.children_count > 0 {
+				t.collect_fn_literal_source_type_texts(t.a.child(&node, node.children_count - 1), mut
+					result)
+			}
+			return
+		}
+		.if_expr, .match_stmt {
+			for i in 1 .. node.children_count {
+				t.collect_fn_literal_source_type_texts(t.a.child(&node, i), mut result)
+			}
+			return
+		}
+		else {}
 	}
 	if node.kind != .fn_literal {
-		return none
+		return
 	}
 	mut params := []string{}
 	for i in 0 .. node.children_count {
@@ -12531,7 +12575,7 @@ fn (t &Transformer) fn_literal_source_type_text(arg_id flat.NodeId) ?string {
 		params << '${mode}${param.value} ${param.typ}'
 	}
 	ret := if node.typ.len > 0 && node.typ != 'void' { ' ${node.typ}' } else { '' }
-	return 'fn (${params.join(', ')})${ret}'
+	result << 'fn (${params.join(', ')})${ret}'
 }
 
 struct SpecializedIntLiteral {

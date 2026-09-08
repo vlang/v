@@ -1871,6 +1871,15 @@ fn test_fn_literal_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_parenthesized_direct_generic_const_fn_param',
 		'struct C.native_event {}\nfn apply[T](handler fn (const_event &T)) {}\nfn startup[U]() {\n\tapply[C.native_event]((fn (event &C.native_event) {}))\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	conditional := run_good(v3_bin, 'good_conditional_const_fn_param_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler ConstHandler) bool {\n\treturn true\n}\nfn startup[T](flag bool) bool {\n\tr := Router{}\n\treturn r.accept(if flag {\n\t\tfn (const_event &C.native_event) {}\n\t} else {\n\t\tfn (const_event &C.native_event) {}\n\t})\n}\nfn main() {\n\tprintln(startup[int](true).str())\n}\n')
+	assert conditional == 'true'
+	run_bad(v3_bin, 'bad_if_expr_const_fn_param_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler PlainHandler) {}\nfn startup[T](flag bool) {\n\tr := Router{}\n\tr.accept(if flag {\n\t\tfn (const_event &C.native_event) {}\n\t} else {\n\t\tfn (const_event &C.native_event) {}\n\t})\n}\nfn main() {\n\tstartup[int](true)\n}\n',
+		'cannot use')
+	run_bad(v3_bin, 'bad_match_expr_const_fn_param_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler PlainHandler) {}\nfn startup[T](flag bool) {\n\tr := Router{}\n\tr.accept(match flag {\n\t\ttrue { fn (const_event &C.native_event) {} }\n\t\telse { fn (const_event &C.native_event) {} }\n\t})\n}\nfn main() {\n\tstartup[int](true)\n}\n',
+		'cannot use')
 	params_field := run_good(v3_bin, 'good_generic_receiver_params_const_fn_field',
 		'struct C.native_event {\n\tvalue int\n}\n@[params]\nstruct OpenOptions {\n\thandler fn (const_event &C.native_event)\n}\nstruct Service {}\nfn (s Service) open(opts OpenOptions) bool {\n\tevent := C.native_event{\n\t\tvalue: 1\n\t}\n\topts.handler(&event)\n\treturn true\n}\nfn startup[T](service T) bool {\n\treturn service.open(handler: fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup(Service{}).str())\n}\n')
 	assert params_field == 'true'
