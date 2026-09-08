@@ -226,9 +226,18 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 		}
 		normalized_abs_pref_path := os.real_path(abs_pref_path)
 		abs_pref_base := if os.is_dir(normalized_abs_pref_path) {
-			normalized_abs_pref_path
+			if compilation_path_is_module_root(normalized_abs_pref_path) {
+				os.dir(normalized_abs_pref_path)
+			} else {
+				normalized_abs_pref_path
+			}
 		} else {
-			os.dir(normalized_abs_pref_path)
+			pref_file_dir := os.dir(normalized_abs_pref_path)
+			if compilation_path_is_module_root(normalized_abs_pref_path) {
+				os.dir(pref_file_dir)
+			} else {
+				pref_file_dir
+			}
 		}
 		prefix := abs_pref_base + os.path_separator
 		if path.starts_with(prefix) {
@@ -237,6 +246,73 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 		}
 	}
 	return error('module not found')
+}
+
+fn compilation_path_is_module_root(path string) bool {
+	module_dir := if os.is_dir(path) { path } else { os.dir(path) }
+	expected_module := os.base(module_dir)
+	if expected_module == '' || expected_module == 'main' {
+		return false
+	}
+	if os.is_file(path) {
+		return source_file_module_name(path) or { '' } == expected_module
+	}
+	entries := os.ls(path) or { return false }
+	for entry in entries {
+		if !entry.ends_with('.v') {
+			continue
+		}
+		if source_file_module_name(os.join_path(path, entry)) or { '' } == expected_module {
+			return true
+		}
+	}
+	return false
+}
+
+fn source_file_module_name(path string) ?string {
+	source := os.read_file(path) or { return none }
+	mut start := 0
+	for start < source.len {
+		if source[start] in [` `, `\t`, `\v`, `\f`, `\n`, `\r`] {
+			start++
+			continue
+		}
+		if start + 1 < source.len && source[start] == `/` && source[start + 1] == `/` {
+			start += 2
+			for start < source.len && source[start] !in [`\n`, `\r`] {
+				start++
+			}
+			continue
+		}
+		if start + 1 < source.len && source[start] == `/` && source[start + 1] == `*` {
+			start += 2
+			for start + 1 < source.len {
+				if source[start] == `*` && source[start + 1] == `/` {
+					start += 2
+					break
+				}
+				start++
+			}
+			continue
+		}
+		break
+	}
+	if start + 6 >= source.len || source[start..start + 6] != 'module'
+		|| source[start + 6] !in [` `, `\t`, `\v`, `\f`] {
+		return none
+	}
+	mut name_start := start + 7
+	for name_start < source.len && source[name_start] in [` `, `\t`, `\v`, `\f`] {
+		name_start++
+	}
+	mut name_end := name_start
+	for name_end < source.len && source[name_end] !in [` `, `\t`, `\v`, `\f`, `\n`, `\r`] {
+		name_end++
+	}
+	if name_start == name_end {
+		return none
+	}
+	return source[name_start..name_end]
 }
 
 fn module_name_has_empty_part(name string) bool {
