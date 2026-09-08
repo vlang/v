@@ -285,6 +285,7 @@ fn test_format_addr() {
 	// a display name is quoted and angle-wrapped
 	assert format_addr('User <user@ex.com>') == '"User" <user@ex.com>'
 	assert format_addr('John Smith <john@ex.com>') == '"John Smith" <john@ex.com>'
+	assert format_addr('John "Q." Public <john@example.com>') == '"John Q. Public" <john@example.com>'
 	assert format_addr('=?UTF-8?B?Sm9zw6k=?= <jose@example.com>') == '=?UTF-8?B?Sm9zw6k=?= <jose@example.com>'
 	assert format_addr('=?UTF-8?Q?Jos=C3=A9?= =?UTF-8?Q?_Silva?= <jose@example.com>') == '=?UTF-8?Q?Jos=C3=A9?=\r\n =?UTF-8?Q?_Silva?= <jose@example.com>'
 	assert format_addr('=?UTF-8?B?Sm9zw6k=?= Silva <jose@example.com>') == '=?UTF-8?B?Sm9zw6k=?=\r\n Silva <jose@example.com>'
@@ -295,8 +296,10 @@ fn test_format_addr() {
 		assert line.len <= 998
 	}
 
-	// embedded quotes and backslashes inside the display name are escaped
-	assert format_addr('John "The Boss" <john@ex.com>') == '"John \\"The Boss\\"" <john@ex.com>'
+	// Quotes around a phrase word are syntax and do not become visible text.
+	assert format_addr('John "The Boss" <john@ex.com>') == '"John The Boss" <john@ex.com>'
+	// Literal quotes can be represented as quoted-pairs inside a quoted name.
+	assert format_addr('"John \\"The Boss\\"" <john@ex.com>') == '"John \\"The Boss\\"" <john@ex.com>'
 
 	assert format_addr('C:\\Users <user@ex.com>') == '"C:\\\\Users" <user@ex.com>'
 	// Comments outside the quoted display name stay comments semantically: they

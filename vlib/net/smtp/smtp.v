@@ -286,7 +286,13 @@ fn split_mailbox(s string) (?string, string) {
 		return none, trimmed
 	}
 	addr := trimmed[open_at + 1..close_at].trim_space()
-	name := unquote_name(strip_unquoted_comments(trimmed[..open_at]))
+	raw_name := strip_unquoted_comments(trimmed[..open_at])
+	unquoted_name := unquote_name(raw_name)
+	name := if unquoted_name != raw_name {
+		unquoted_name
+	} else {
+		decode_rfc5322_quoted_phrase(raw_name) or { raw_name }
+	}
 	display_name := if name == '' { none } else { name }
 	return display_name, addr
 }
@@ -635,6 +641,37 @@ fn split_rfc5322_phrase_words(s string) ?[]string {
 		words << s[start..i]
 	}
 	return words
+}
+
+// decode_rfc5322_quoted_phrase returns the semantic text of a valid plain
+// phrase containing at least one quoted-string word. Atoms are preserved and
+// quoted-pairs inside quoted strings are decoded by unquote_name.
+fn decode_rfc5322_quoted_phrase(s string) ?string {
+	words := split_rfc5322_phrase_words(s) or { return none }
+	mut decoded := []string{cap: words.len}
+	mut has_quoted_string := false
+	for word in words {
+		if is_rfc2047_encoded_word(word) {
+			return none
+		}
+		if word.starts_with('"') {
+			unquoted := unquote_name(word)
+			if unquoted == word {
+				return none
+			}
+			decoded << unquoted
+			has_quoted_string = true
+			continue
+		}
+		if !word.bytes().all(is_rfc5322_atext(it)) {
+			return none
+		}
+		decoded << word
+	}
+	if !has_quoted_string {
+		return none
+	}
+	return decoded.join(' ')
 }
 
 fn is_rfc2047_encoded_word(word string) bool {
