@@ -11839,7 +11839,16 @@ fn (t &Transformer) lookup_struct_field_source_type(type_name string, field_name
 			continue
 		}
 		raw := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
-		specialized := t.normalize_field_type(raw, lookup.owner_type)
+		mut specialized := raw
+		owner_base, owner_args, owner_is_generic := generic_app_parts(lookup.owner_type)
+		if owner_is_generic {
+			params := t.generic_struct_param_names_for_base(owner_base)
+			specialized = if params.len > 0 {
+				substitute_generic_type_text_with_params(raw, owner_args, params)
+			} else {
+				substitute_generic_type_text(raw, owner_args)
+			}
+		}
 		mut decl_name := lookup.info.name
 		if lookup.info.module.len > 0 && lookup.info.module !in ['main', 'builtin']
 			&& !decl_name.contains('.') {
@@ -12564,6 +12573,26 @@ fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId,
 			}
 			if !t.fn_literal_container_element_mode_compatible(t.a.child(child, 0),
 				element_expected) {
+				return false
+			}
+		}
+		return true
+	}
+	if node.kind == .struct_init {
+		struct_type := if node.value.len > 0 { node.value } else { source_expected }
+		for i in 0 .. node.children_count {
+			field := t.a.child_node(&node, i)
+			if field.kind != .field_init || field.children_count == 0 {
+				continue
+			}
+			field_type := t.lookup_struct_field_type(struct_type, field.value) or { continue }
+			source_field_type := t.lookup_struct_field_source_type(struct_type, field.value) or {
+				field_type
+			}
+			expected_field_type := t.fn_type_with_compatible_source_modes(source_field_type,
+				field_type)
+			if !t.fn_literal_container_element_mode_compatible(t.a.child(field, 0),
+				expected_field_type) {
 				return false
 			}
 		}
