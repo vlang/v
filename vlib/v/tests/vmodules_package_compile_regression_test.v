@@ -303,7 +303,7 @@ fn test_issue_27281_marker_bounded_module_directory_keeps_prefix() {
 	os.mkdir_all(bar_dir) or { panic(err) }
 	parent_vmod := ['Module {', "\tname: 'parent'", '}'].join_lines() + '\n'
 	foo_test_source :=
-		['@[has_globals]', 'module foo', '', 'import foo.bar', '', 'fn test_module_names() {', "\tassert @MOD == 'foo'", "\tassert bar.module_name() == 'foo.bar'", '}'].join_lines() +
+		['@[has_globals]', 'module foo;', '', 'import foo.bar', '', 'fn test_module_names() {', "\tassert @MOD == 'foo'", "\tassert bar.module_name() == 'foo.bar'", '}'].join_lines() +
 		'\n'
 	bar_source :=
 		['module bar', '', 'pub fn module_name() string {', '\treturn @MOD', '}'].join_lines() +
@@ -314,4 +314,16 @@ fn test_issue_27281_marker_bounded_module_directory_keeps_prefix() {
 	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'), bar_source)
 	res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(foo_dir)}')
 	assert res.exit_code == 0, res.output
+	project_link := os.join_path(workspace, 'project_link')
+	os.symlink(project_dir, project_link) or {
+		$if windows {
+			return
+		} $else {
+			panic(err)
+		}
+	}
+	linked_foo_dir := os.join_path(project_link, 'foo')
+	link_res :=
+		os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(linked_foo_dir)}')
+	assert link_res.exit_code == 0, link_res.output
 }

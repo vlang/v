@@ -523,6 +523,7 @@ pub fn (mut ts TestSession) test() {
 			os.rmdir_all(ts.vtmp_dir) or {}
 		}
 	}
+	os.rm(os.join_path(ts.vtmp_dir, '.v.mod.stop')) or {}
 	if os.ls(ts.vtmp_dir) or { [] }.len == 0 {
 		os.rmdir_all(ts.vtmp_dir) or {}
 	}

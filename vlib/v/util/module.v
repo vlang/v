@@ -239,9 +239,10 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 				pref_file_dir
 			}
 		}
+		normalized_path := os.real_path(path)
 		prefix := abs_pref_base + os.path_separator
-		if path.starts_with(prefix) {
-			rel_mod_path := path.all_after(prefix)
+		if normalized_path.starts_with(prefix) {
+			rel_mod_path := normalized_path.all_after(prefix)
 			return normalize_base_url_mod_name(rel_mod_path.replace(os.path_separator, '.'), path)
 		}
 	}
@@ -334,7 +335,7 @@ fn source_file_module_name(path string) ?string {
 		name_start++
 	}
 	mut name_end := name_start
-	for name_end < source.len && source[name_end] !in [` `, `\t`, `\v`, `\f`, `\n`, `\r`] {
+	for name_end < source.len && source[name_end] !in [` `, `\t`, `\v`, `\f`, `\n`, `\r`, `;`] {
 		name_end++
 	}
 	if name_start == name_end {
