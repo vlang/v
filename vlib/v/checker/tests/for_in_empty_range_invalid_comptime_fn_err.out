@@ -1,0 +1,7 @@
+vlib/v/checker/tests/for_in_empty_range_invalid_comptime_fn_err.vv:3:14: error: shift count for type `int literal` too large (maximum: 64 bits)
+    1 | @[comptime]
+    2 | fn invalid_range_high() int {
+    3 |     return 1 << 99
+      |                 ~~
+    4 | }
+    5 |

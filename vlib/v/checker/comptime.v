@@ -2,7 +2,6 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
-import math
 import os
 import v.ast
 import v.pref
@@ -61,10 +60,6 @@ fn comptime_power_u64(base u64, exponent i64) u64 {
 		exp >>= 1
 	}
 	return value
-}
-
-fn comptime_power_f64(base f64, exponent f64) f64 {
-	return math.pow(base, exponent)
 }
 
 fn comptime_compare_i64_values(op token.Kind, left i64, right i64) ?bool {
@@ -1024,6 +1019,17 @@ fn (c &Checker) find_comptime_eval_fn_decl(func ast.Fn) ?ast.FnDecl {
 	return none
 }
 
+fn (c &Checker) comptime_eval_fn_decl_has_error(fn_decl ast.FnDecl) bool {
+	for checker_error in c.errors {
+		if checker_error.file_path == fn_decl.file
+			&& checker_error.pos.line_nr >= fn_decl.pos.line_nr
+			&& checker_error.pos.line_nr <= fn_decl.end_pos.line_nr {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut c Checker) eval_comptime_fn_decl_value_with_locals(fn_decl ast.FnDecl, nlevel int, local_values map[string]ast.ComptTimeConstValue) ?ast.ComptTimeConstValue {
 	mut stmts := fn_decl.stmts.clone()
 	if stmts.len == 1 && stmts[0] is ast.Block {
@@ -1068,6 +1074,9 @@ fn (mut c Checker) eval_comptime_fn_call_expr_with_locals(node ast.CallExpr, nle
 		return none
 	}
 	fn_decl := c.find_comptime_eval_fn_decl(func) or { return none }
+	if c.comptime_eval_fn_decl_has_error(fn_decl) {
+		return none
+	}
 	mut local_args := map[string]ast.ComptTimeConstValue{}
 	for idx, param in func.params {
 		arg_value := c.eval_comptime_const_expr_with_locals(node.args[idx].expr, nlevel + 1,
@@ -1323,12 +1332,9 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 								}
 							}
 							.power {
-								if promoted_type == ast.f32_type {
-									// powf results can vary between C math libraries, so do not
-									// use them to emit a compile-time empty-range error.
-									return none
-								}
-								result = comptime_power_f64(lf, rf)
+								// pow/powf results can vary between the host and target C math
+								// libraries, so do not use them for compile-time diagnostics.
+								return none
 							}
 							else {
 								return none

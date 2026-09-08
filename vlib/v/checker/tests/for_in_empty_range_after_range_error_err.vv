@@ -118,6 +118,11 @@ fn main() {
 	for i in u64(-1.0) .. 1 {
 		println(i)
 	}
+
+	// Floating-point powers depend on the target C math library.
+	for i in int(f64(2.0) ** f64(2.0)) .. 4 {
+		println(i)
+	}
 }
 
 type OverloadedRangeBound = u8
