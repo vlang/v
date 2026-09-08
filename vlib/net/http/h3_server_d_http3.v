@@ -171,21 +171,21 @@ pub fn new_h3_server(listen_addr string, params H3ServerParams) !&H3Server {
 	}
 	listener := quic.new_quic_listener(quic.QuicListenerParams{
 		transport_parameters: params.transport_parameters
-		alpn_protocols:       params.alpn_protocols
-		certificate_chain:    params.certificate_chain
-		signing_key:          params.signing_key
-		retry_token_key:      retry_key
-		always_retry:         params.always_retry
+		alpn_protocols: params.alpn_protocols
+		certificate_chain: params.certificate_chain
+		signing_key: params.signing_key
+		retry_token_key: retry_key
+		always_retry: params.always_retry
 	})!
 	socket := net.listen_udp(listen_addr)!
 	return &H3Server{
-		socket:    socket
-		listener:  listener
+		socket: socket
+		listener: listener
 		h3_params: quic.H3ConnParams{
-			settings:                     h3_default_own_settings()
+			settings: h3_default_own_settings()
 			own_qpack_max_table_capacity: h3_default_own_qpack_max_table_capacity
 		}
-		handler:   params.handler
+		handler: params.handler
 	}
 }
 
@@ -210,10 +210,29 @@ pub fn (mut s H3Server) close() ! {
 	s.socket.close()!
 }
 
+// free_all_conns releases every currently-tracked H3Conn (each holds a
+// native ECDHE private key via its Tls13ServerHandshake, the same
+// resource the per-connection close/error paths in serve()'s own loop
+// already free). Deliberately called only from serve()'s own thread, at
+// its loop-exit point below -- s.h3_conns/s.streams are single-threaded
+// state owned by that loop (see this file's own module doc comment);
+// close() itself runs on a DIFFERENT thread by design (its own doc
+// comment), so mutating these maps there would race serve()'s loop.
+fn (mut s H3Server) free_all_conns() {
+	for _, mut h3c in s.h3_conns {
+		h3c.free()
+	}
+	s.h3_conns = map[string]&quic.H3Conn{}
+	s.streams = map[string]&H3ServerStream{}
+}
+
 // serve runs this server's single-threaded accept/demux/dispatch loop
 // (see this file's own module doc comment) until close() is called or the
 // socket errors. Blocks the calling thread.
 pub fn (mut s H3Server) serve() ! {
+	defer {
+		s.free_all_conns()
+	}
 	mut buf := []u8{len: h3_datagram_buf_size}
 	mut next_timeout := ?u64(none)
 	for {
@@ -331,6 +350,7 @@ fn (mut s H3Server) absorb_and_dispatch(result quic.QuicListenerPollResult) {
 				quic.H3ErrorCode.general_protocol_error.code()
 			}
 			qc.close(code, err.msg())
+			h3c.free()
 			s.h3_conns.delete(key)
 			s.prune_streams_for_conn(key)
 			continue
@@ -339,6 +359,7 @@ fn (mut s H3Server) absorb_and_dispatch(result quic.QuicListenerPollResult) {
 			s.handle_h3_event(key, mut h3c, hev)
 		}
 		if h3c.closed() {
+			h3c.free()
 			s.h3_conns.delete(key)
 			s.prune_streams_for_conn(key)
 		}
@@ -379,16 +400,39 @@ fn (mut s H3Server) prune_streams_for_conn(conn_id string) {
 fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic.H3Event) {
 	match ev.kind {
 		.request_headers {
+			// A compliant peer's HEADERS can be QPACK-blocked (an in-flight
+			// dynamic-table reference not yet resolved) -- H3Conn delays
+			// this event until it resolves, but DATA frames on the SAME
+			// stream carry no such dependency and can arrive first. If
+			// request_data already lazily created this stream's entry
+			// (below) to avoid dropping that early body, preserve it and
+			// only attach headers -- overwriting the whole struct here
+			// would silently discard the body already buffered.
 			stream_id := ev.stream_id or { return }
 			key := h3_server_stream_key(conn_id, stream_id)
-			s.streams[key] = &H3ServerStream{
-				headers: ev.headers
+			if mut st := s.streams[key] {
+				st.headers = ev.headers
+			} else {
+				s.streams[key] = &H3ServerStream{
+					headers: ev.headers
+				}
 			}
 		}
 		.request_data {
+			// Mirrors request_headers' own lazy-creation above: a DATA
+			// frame can arrive before its stream's HEADERS section
+			// resolves (QPACK-blocked, see request_headers' own comment),
+			// so no entry may exist yet. Create one instead of dropping
+			// the body -- request_headers fills in .headers once it
+			// finally arrives, preserving whatever body already
+			// accumulated here.
 			stream_id := ev.stream_id or { return }
 			key := h3_server_stream_key(conn_id, stream_id)
-			mut st := s.streams[key] or { return }
+			mut st := s.streams[key] or {
+				new_st := &H3ServerStream{}
+				s.streams[key] = new_st
+				new_st
+			}
 			if st.body.len + ev.data.len > h3_server_max_request_body {
 				s.send_error_response(mut h3c, stream_id, 413)
 				s.streams.delete(key)
@@ -442,7 +486,7 @@ fn h3_build_request(st &H3ServerStream) !Request {
 	h3_validate_request_pseudo(st.headers)!
 	mut req := Request{
 		version: .v3_0
-		header:  new_header()
+		header: new_header()
 	}
 	mut method := ''
 	mut path := ''
@@ -614,7 +658,7 @@ fn (mut s H3Server) send_response(mut h3c quic.H3Conn, stream_id u64, resp Respo
 	status := if resp.status_code == 0 { 200 } else { resp.status_code }
 	mut fields := [
 		quic.QpackFieldLine{
-			name:  ':status'
+			name: ':status'
 			value: status.str()
 		},
 	]
@@ -625,7 +669,7 @@ fn (mut s H3Server) send_response(mut h3c quic.H3Conn, stream_id u64, resp Respo
 		}
 		for val in resp.header.custom_values(key) {
 			fields << quic.QpackFieldLine{
-				name:  lkey
+				name: lkey
 				value: val
 			}
 		}
@@ -658,7 +702,7 @@ fn (mut s H3Server) send_response(mut h3c quic.H3Conn, stream_id u64, resp Respo
 fn (mut s H3Server) send_error_response(mut h3c quic.H3Conn, stream_id u64, status int) {
 	h3c.send_response_headers(stream_id, [
 		quic.QpackFieldLine{
-			name:  ':status'
+			name: ':status'
 			value: status.str()
 		},
 	], true) or {}
@@ -685,7 +729,7 @@ fn h3_outbound_trailer_fields(trailers Header) []quic.QpackFieldLine {
 				continue
 			}
 			fields << quic.QpackFieldLine{
-				name:  lkey
+				name: lkey
 				value: val
 			}
 		}

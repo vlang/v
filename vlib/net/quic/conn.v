@@ -1691,6 +1691,24 @@ fn (mut c QuicConn) dispatch_server_handshake_message(msg HandshakeMessage, fram
 		c.pending_initial_crypto = flight.server_hello
 		c.pending_handshake_crypto = flight.handshake_messages
 		peer_params := hs.peer_transport_parameters
+		// RFC 9000 §7.3: initial_source_connection_id's mandatory-presence
+		// half is already enforced inside respond_to_client_hello
+		// (tls13_server_handshake.v) -- but presence alone isn't the whole
+		// requirement. The value itself MUST match the Source Connection
+		// ID this client actually used on its first Initial packet
+		// (c.peer_scid, latched at accept() time from that packet's own
+		// header), the same anti-tampering binding already enforced on
+		// the CLIENT side for original_destination_connection_id/
+		// retry_source_connection_id (process_encrypted_extensions). A
+		// mismatch here means either a confused/buggy client or an
+		// off-path attacker's forged transport parameters; either way,
+		// TRANSPORT_PARAMETER_ERROR before any of these parameters are
+		// applied below.
+		if isc := peer_params.initial_source_connection_id {
+			if isc != c.peer_scid {
+				return transport_parameter_error('quic: ClientHello initial_source_connection_id does not match the Source Connection ID of its first Initial packet')
+			}
+		}
 		c.conn_send_window.raise_limit(peer_params.initial_max_data or { u64(0) })
 		c.peer_max_streams_bidi = peer_params.initial_max_streams_bidi or { u64(0) }
 		c.peer_max_streams_uni = peer_params.initial_max_streams_uni or { u64(0) }
