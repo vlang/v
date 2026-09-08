@@ -2022,7 +2022,10 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 		obj_path := asm_path.replace('.S', '.o')
 		mut asm_args := []string{}
 		asm_args << '-c'
-		if b.pref.os == .windows && pref.get_host_arch() == .amd64 && b.pref.arch == .i386 {
+		host_os := pref.get_host_os()
+		host_arch := pref.get_host_arch()
+		native_i386_multilib := host_os == b.pref.os && host_arch == .amd64 && b.pref.arch == .i386
+		if native_i386_multilib {
 			asm_args << '-m32'
 		}
 
@@ -2031,11 +2034,7 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 		// assembled for the target, not the host. Without -target, the assembler
 		// produces a host-arch .o that fails to link into the target binary.
 		if b.pref.os == .linux {
-			host_arch := pref.get_host_arch()
-			host_os := pref.get_host_os()
-			if host_os == .linux && host_arch == .amd64 && b.pref.arch == .i386 {
-				asm_args << '-m32'
-			} else if host_os != .linux || host_arch != b.pref.arch {
+			if !native_i386_multilib && (host_os != .linux || host_arch != b.pref.arch) {
 				cross_target := linux_cross_target_for_arch(b.pref.arch) or {
 					verror('failed to determine linux cross target for embedded assembly: ${err.msg()}')
 					return

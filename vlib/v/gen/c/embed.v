@@ -260,6 +260,7 @@ fn (mut g Gen) gen_embedded_asm_file(emfile ast.EmbeddedFile) {
 	sb.writeln('#if defined(__APPLE__)')
 	sb.writeln('    .section __TEXT,__const')
 	sb.writeln('    .globl __v_embed_blob_${ef_hash}')
+	sb.writeln('    .private_extern __v_embed_blob_${ef_hash}')
 	sb.writeln('__v_embed_blob_${ef_hash}:')
 	sb.writeln('#elif defined(_WIN32) && (defined(__i386__) || defined(_M_IX86))')
 	sb.writeln('    .section .rdata')
