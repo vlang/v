@@ -2071,6 +2071,12 @@ fn test_fn_literal_container_callback_modes_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_receiver_array_literal_const_fn_param_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) apply(handlers []PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tr.apply([fn (const_event &C.native_event) {}])\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	map_matching := run_good(v3_bin, 'good_map_literal_const_fn_param_in_generic',
+		"struct C.native_event {}\nfn apply[T](handlers map[string]fn (const_event &T)) bool {\n\treturn handlers.len == 1\n}\nfn startup[T]() bool {\n\treturn apply[C.native_event]({'event': fn (const_event &C.native_event) {}})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n")
+	assert map_matching == 'true'
+	run_bad(v3_bin, 'bad_map_literal_const_fn_param_in_generic',
+		"struct C.native_event {}\nfn apply[T](handlers map[string]fn (event &T)) {}\nfn startup[T]() {\n\tapply[C.native_event]({'event': fn (const_event &C.native_event) {}})\n}\nfn main() {\n\tstartup[int]()\n}\n",
+		'cannot use')
 }
 
 fn test_fn_literal_callback_alias_lookup_uses_declaration_module() {

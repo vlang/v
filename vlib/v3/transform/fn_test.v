@@ -76,6 +76,8 @@ fn test_type_text_has_shared_mode_finds_nested_callback_parameters() {
 	assert type_text_has_shared_mode('[]fn (value fn (shared item State))')
 	assert !type_text_has_shared_mode('fn (cb fn (value State))')
 	assert !type_text_has_shared_mode('fn (shared_state State)')
+	assert type_text_has_c_abi_const_mode('map[string]fn (const_event &C.native_event)')
+	assert !type_text_has_c_abi_const_mode('map[string]fn (event &C.native_event)')
 }
 
 fn test_fn_type_texts_signature_compatible_preserves_compound_type_boundaries() {

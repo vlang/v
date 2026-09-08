@@ -4361,7 +4361,9 @@ fn type_text_has_shared_mode(text string) bool {
 }
 
 fn type_text_has_c_abi_const_mode(text string) bool {
-	normalized := normalize_fn_param_text(text)
+	normalized := normalize_nested_fn_or_container_type_text(text) or {
+		normalize_fn_param_text(text)
+	}
 	return normalized.contains('const &') || normalized.contains('const&')
 }
 

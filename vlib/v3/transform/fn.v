@@ -1160,7 +1160,9 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 				}
 			}
 			mut handled_container_modes := false
-			if container_compatible := t.fn_literal_array_modes_compatible(arg_id, mode_param_type) {
+			if container_compatible := t.fn_literal_container_modes_compatible(arg_id,
+				mode_param_type)
+			{
 				handled_container_modes = true
 				if !container_compatible {
 					actual_type := t.specialized_expr_type_name(arg_id)
@@ -12343,7 +12345,7 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	if expected_type.contains('unknown') {
 		return true
 	}
-	if container_compatible := t.fn_literal_array_modes_compatible(arg_id, expected_type) {
+	if container_compatible := t.fn_literal_container_modes_compatible(arg_id, expected_type) {
 		return container_compatible
 	}
 	if !t.fn_literal_c_abi_signature_compatible(arg_id, expected_type) {
@@ -12513,34 +12515,51 @@ fn (t &Transformer) fn_literal_c_abi_signature_compatible(arg_id flat.NodeId, ex
 	return true
 }
 
-fn (mut t Transformer) fn_literal_array_modes_compatible(arg_id flat.NodeId, expected_type string) ?bool {
+fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId, expected_type string) ?bool {
 	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
 		return none
 	}
 	node := t.a.nodes[int(arg_id)]
-	if node.kind != .array_literal {
-		return none
-	}
 	source_expected := expected_type.trim_space()
 	normalized_expected := t.normalize_type_alias(source_expected)
-	mut element_expected := ''
-	if source_expected.starts_with('[]') {
-		element_expected = source_expected[2..]
-	} else if normalized_expected.starts_with('[]') {
-		element_expected = normalized_expected[2..]
-	} else {
-		return none
-	}
-	for i in 0 .. node.children_count {
-		child_id := t.a.child(&node, i)
-		if !t.fn_literal_array_element_mode_compatible(child_id, element_expected) {
-			return false
+	if node.kind == .array_literal {
+		element_expected := if source_expected.starts_with('[]') {
+			source_expected[2..]
+		} else if normalized_expected.starts_with('[]') {
+			normalized_expected[2..]
+		} else {
+			return none
 		}
+		for i in 0 .. node.children_count {
+			if !t.fn_literal_container_element_mode_compatible(t.a.child(&node, i),
+				element_expected) {
+				return false
+			}
+		}
+		return true
 	}
-	return true
+	if node.kind == .map_init {
+		map_expected := if source_expected.starts_with('map[') {
+			source_expected
+		} else if normalized_expected.starts_with('map[') {
+			normalized_expected
+		} else {
+			return none
+		}
+		key_expected := t.map_key_type(map_expected)
+		value_expected := t.map_value_type(map_expected)
+		for i := 0; i + 1 < node.children_count; i += 2 {
+			if !t.fn_literal_container_element_mode_compatible(t.a.child(&node, i), key_expected)
+				|| !t.fn_literal_container_element_mode_compatible(t.a.child(&node, i + 1), value_expected) {
+				return false
+			}
+		}
+		return true
+	}
+	return none
 }
 
-fn (mut t Transformer) fn_literal_array_element_mode_compatible(id flat.NodeId, expected_type string) bool {
+fn (mut t Transformer) fn_literal_container_element_mode_compatible(id flat.NodeId, expected_type string) bool {
 	actual_type := t.specialized_expr_type_name(id)
 	return t.resolved_receiver_arg_compatible(id, actual_type, expected_type)
 }
