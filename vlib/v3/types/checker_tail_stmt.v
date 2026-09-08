@@ -14841,6 +14841,19 @@ fn (tc &TypeChecker) c_abi_fn_signature_for_type_text_inner(typ string, mut seen
 	}
 	base, args, is_generic := generic_type_application_parts(typ)
 	if is_generic {
+		mut signatures := []string{}
+		mut has_c_abi_arg := false
+		for arg in args {
+			mut arg_seen := seen.clone()
+			signature := tc.c_abi_fn_signature_for_type_text_inner(arg, mut arg_seen) or { '' }
+			signatures << signature
+			if signature.len > 0 {
+				has_c_abi_arg = true
+			}
+		}
+		if has_c_abi_arg {
+			return 'generic(${base}|${signatures.join('|')})'
+		}
 		for name in [tc.qualify_name(base), base] {
 			params := tc.type_alias_generic_params[name] or { continue }
 			if params.len != args.len {

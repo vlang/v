@@ -11959,6 +11959,22 @@ fn normalize_nested_fn_or_container_type_text(text string) ?string {
 			return '(${parts.join(',')})'
 		}
 	}
+	base, args, is_generic := generic_app_parts(clean)
+	if is_generic {
+		mut normalized_args := []string{}
+		mut has_nested_fn := false
+		for arg in args {
+			if nested := normalize_nested_fn_or_container_type_text(arg) {
+				normalized_args << nested
+				has_nested_fn = true
+			} else {
+				normalized_args << arg.trim_space()
+			}
+		}
+		if has_nested_fn {
+			return '${base}[${normalized_args.join(',')}]'
+		}
+	}
 	return none
 }
 

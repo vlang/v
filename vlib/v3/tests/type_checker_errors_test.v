@@ -76,6 +76,14 @@ fn run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
+fn run_check_good(v3_bin string, name string, src string) {
+	out := unique_temp_path(name)
+	good_src := out + '.v'
+	os.write_file(good_src, src) or { panic(err) }
+	check := os.execute('${v3_bin} -nocache -check ${good_src}')
+	assert check.exit_code == 0, '${name}: check failed: ${check.output}'
+}
+
 fn run_runtime_bad(v3_bin string, name string, src string, expected string) {
 	out := unique_temp_path(name)
 	src_path := out + '.v'
@@ -1880,6 +1888,11 @@ fn test_fn_literal_nested_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	assert tuple_factory == 'true'
 	run_bad(v3_bin, 'bad_tuple_returned_const_callback_alias_in_generic',
 		'type Factory = fn () (fn (const_event &C.native_event), int)\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(factory Factory) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn () (fn (event &C.native_event), int) {\n\t\treturn fn (event &C.native_event) {}, 1\n\t})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	run_check_good(v3_bin, 'good_generic_wrapped_const_callback_alias_in_generic',
+		'struct C.native_event {}\nstruct Box[T] {\n\tvalue T\n}\ntype Outer = fn (box Box[fn (const_event &C.native_event)])\nstruct Router {}\nfn (mut r Router) accept(handler Outer) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (box Box[fn (const_event &C.native_event)]) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	run_bad(v3_bin, 'bad_generic_wrapped_const_callback_alias_in_generic',
+		'struct C.native_event {}\nstruct Box[T] {\n\tvalue T\n}\ntype Outer = fn (box Box[fn (const_event &C.native_event)])\nstruct Router {}\nfn (mut r Router) accept(handler Outer) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (box Box[fn (event &C.native_event)]) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
 }
 
