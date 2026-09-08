@@ -651,6 +651,53 @@ fn test_where_keeps_a_parenthesized_relationship_or_in_one_exists() {
 	assert matched.len == 1
 }
 
+fn test_where_applies_trailing_constraints_to_mixed_depth_or_branches() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+	mut children := orm.new_query[IncludeChild](db)
+	children.insert(IncludeChild{
+		parent_id: 1
+		name:      'other child'
+	})!
+
+	crossed := parents.where('(children.name = ? || children.grandkids.name = ?) && children.id = ?',
+		'child', 'missing', 2)!.query()!
+	assert crossed.len == 0
+	matched := parents.where('(children.name = ? || children.grandkids.name = ?) && children.id = ?',
+		'missing', 'grandkid', 1)!.query()!
+	assert matched.len == 1
+}
+
+fn test_or_where_preserves_the_connector_after_relationship_aliases_are_canonicalized() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeAliasParent](db)
+	mut children := orm.new_query[IncludeAliasChild](db)
+	parents.create()!
+	children.create()!
+	parents.insert(IncludeAliasParent{
+		name: 'parent'
+	})!
+	children.insert(IncludeAliasChild{
+		parent_id: 1
+		name:      'first'
+	})!
+	children.insert(IncludeAliasChild{
+		parent_id: 1
+		name:      'second'
+	})!
+
+	rows := parents.include('children')!.where('children.name = ?', 'first')!.or_where('offspring.name = ?',
+		'second')!.query()!
+	assert rows.len == 1
+	assert rows[0].children.len == 2
+}
+
 fn test_where_keeps_same_relationship_terms_together_across_a_root_term() {
 	mut db := new_include_database()!
 	defer {

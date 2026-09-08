@@ -19,8 +19,9 @@ enum RelationLoadMode {
 
 struct IncludeFilter {
 mut:
-	path  []string
-	where QueryData
+	path   []string
+	where  QueryData
+	is_and bool
 }
 
 @[heap]
@@ -505,7 +506,8 @@ fn (qb_ &QueryBuilder[T]) add_where_condition(condition string, params []Primiti
 			continue
 		}
 		filter := query_data_for_scope(parsed, field_scopes, scope)
-		qb.add_include_filter(scope.split('.'), filter, is_and)
+		path := canonical_include_path[T](scope.split('.'))!
+		qb.add_include_filter(path, filter, is_and)
 	}
 }
 
@@ -554,9 +556,6 @@ fn (qb &QueryBuilder[T]) exists_wrapped_conditions(parsed QueryData, field_scope
 				break
 			}
 			if crossed_root && !connector {
-				break
-			}
-			if !connector && next != deepest {
 				break
 			}
 			if next != deepest && !next.starts_with('${deepest}.')
@@ -713,8 +712,9 @@ fn (qb_ &QueryBuilder[T]) add_include_filter(path []string, filter QueryData, is
 		}
 	}
 	qb.include_filters << IncludeFilter{
-		path:  path
-		where: filter
+		path:   path
+		where:  filter
+		is_and: is_and
 	}
 }
 
@@ -2020,13 +2020,14 @@ fn canonical_include_filters[T](filters []IncludeFilter) ![]IncludeFilter {
 		}
 		if index < 0 {
 			canonical << IncludeFilter{
-				path:  resolved
-				where: filter.where
+				path:   resolved
+				where:  filter.where
+				is_and: filter.is_and
 			}
 			continue
 		}
 		canonical[index].where = append_query_data(v_sql_query_data_parentheses(canonical[index].where, 0),
-			v_sql_query_data_parentheses(filter.where, 0), true)
+			v_sql_query_data_parentheses(filter.where, 0), filter.is_and)
 	}
 	return canonical
 }
@@ -2163,8 +2164,9 @@ fn include_child_filters(filters []IncludeFilter, field string) []IncludeFilter 
 	for filter in filters {
 		if filter.path.len > 1 && filter.path[0] == field {
 			children << IncludeFilter{
-				path:  filter.path[1..]
-				where: filter.where
+				path:   filter.path[1..]
+				where:  filter.where
+				is_and: filter.is_and
 			}
 		}
 	}
