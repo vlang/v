@@ -206,6 +206,22 @@ fn main() {
 	geometry_color_run := os.execute(bin)
 	assert geometry_color_run.exit_code == 0, geometry_color_run.output
 	assert geometry_color_run.output.trim_space() == '100.0:100.0:1122867 4478310', geometry_color_run.output
+	os.write_file(os.join_path(root, 'custom.qml'), 'Screen {
+	id: root
+	property Item selected: app.item
+	property f32 ratio: 1 / 2
+	Label { text: root.selected.name }
+	Rectangle { width: root.ratio }
+}') or { panic(err) }
+	custom_path := os.join_path(root, 'custom.v')
+	os.write_file(custom_path, "module main\n\nimport ui2\n\nstruct Item {\n\tname string\n}\n\nstruct App {\n\titem Item\n}\n\nfn build(app &App) ui2.Element {\n\treturn \$qml('custom.qml')\n}\n\nfn main() {\n\tapp := App{item: Item{name: 'chosen'}}\n\troot := build(&app)\n\tprintln(root.children[0].text + ' ' + root.children[1].frame.width.str())\n}\n") or {
+		panic(err)
+	}
+	custom_compile := os.execute('${v3_bin} -nocache -path "${root}|${qml_codegen_vlib_dir}" -b c -o ${bin} ${custom_path}')
+	assert custom_compile.exit_code == 0, custom_compile.output
+	custom_run := os.execute(bin)
+	assert custom_run.exit_code == 0, custom_run.output
+	assert custom_run.output.trim_space() == 'chosen 0.5', custom_run.output
 	os.write_file(os.join_path(root, 'form.qml'), 'Screen { MessageBox { Button { on_tap: app.missing() } } }') or { panic(err) }
 	invalid := os.execute('${v3_bin} -nocache -path "${root}|${qml_codegen_vlib_dir}" -b c -o ${bin} ${main_path}')
 	assert invalid.exit_code != 0, invalid.output

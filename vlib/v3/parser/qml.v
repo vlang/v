@@ -810,10 +810,12 @@ fn (c &QmlCompiler) resolve_path(path string, scope QmlScope) (string, bool) {
 		return replacement + if parts.len > 1 { '.' + parts[1..].join('.') } else { '' }, true
 	}
 	if named := scope.ids[parts[0]] {
-		if parts.len == 2 {
+		if parts.len >= 2 {
 			if prop := named.props[parts[1]] {
-				return prop, true
+				return prop + if parts.len > 2 { '.' + parts[2..].join('.') } else { '' }, true
 			}
+		}
+		if parts.len == 2 {
 			if parts[1] in ['x', 'y', 'width', 'height'] {
 				return '${named.frame}.${parts[1]}', true
 			}
@@ -1015,8 +1017,11 @@ fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, in
 		}
 		name := 'qml_property_${suffix}_${qml_var(property.name)}'
 		property_use := qml_property_use(property)
-		value := if property.declared_type in ['f32', 'int'] {
+		value := if property.declared_type == 'int' {
 			numeric_value := c.expr(property.expr, scope, .raw)
+			qml_numeric_cast(property.declared_type, numeric_value)
+		} else if property.declared_type == 'f32' {
+			numeric_value := c.expr(property.expr, scope, .number)
 			qml_numeric_cast(property.declared_type, numeric_value)
 		} else {
 			c.expr(property.expr, scope, property_use)
