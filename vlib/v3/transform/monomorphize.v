@@ -11232,9 +11232,13 @@ fn subst_generic_fn_type_text(clean string, args []string, params []string) ?str
 fn subst_generic_fn_type_param_text(param string, args []string, params []string) string {
 	mut text := param.trim_space()
 	mut is_mut := false
+	mut is_shared := false
 	if text.starts_with('mut ') {
 		is_mut = true
 		text = text[4..].trim_space()
+	} else if text.starts_with('shared ') {
+		is_shared = true
+		text = text[7..].trim_space()
 	}
 	space := generic_top_level_space_index(text)
 	if space > 0 {
@@ -11245,6 +11249,9 @@ fn subst_generic_fn_type_param_text(param string, args []string, params []string
 			if is_mut && sub.len > 0 && !sub.starts_with('&') {
 				return '${head} &${sub}'
 			}
+			if is_shared {
+				return 'shared ${head} ${sub}'
+			}
 			return '${head} ${sub}'
 		}
 	}
@@ -11252,7 +11259,7 @@ fn subst_generic_fn_type_param_text(param string, args []string, params []string
 	if is_mut && sub.len > 0 && !sub.starts_with('&') {
 		return '&${sub}'
 	}
-	return sub
+	return if is_shared { 'shared ${sub}' } else { sub }
 }
 
 fn generic_top_level_space_index(s string) int {

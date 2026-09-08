@@ -11867,6 +11867,13 @@ fn (t &Transformer) normalize_fn_signature_component_aliases(text string, depth 
 		}
 		return '(${parts.join(',')})'
 	}
+	if expanded_generic := t.expand_generic_type_alias(clean) {
+		return t.normalize_fn_signature_component_aliases(expanded_generic, depth + 1)
+	}
+	expanded := t.normalize_type_alias(clean)
+	if expanded != clean {
+		return t.normalize_fn_signature_component_aliases(expanded, depth + 1)
+	}
 	base, args, is_generic := generic_app_parts(clean)
 	if is_generic {
 		mut normalized_args := []string{cap: args.len}
@@ -11874,10 +11881,6 @@ fn (t &Transformer) normalize_fn_signature_component_aliases(text string, depth 
 			normalized_args << t.normalize_fn_signature_component_aliases(arg, depth + 1)
 		}
 		return '${t.normalize_type_alias(base)}[${normalized_args.join(',')}]'
-	}
-	expanded := t.normalize_type_alias(clean)
-	if expanded != clean {
-		return t.normalize_fn_signature_component_aliases(expanded, depth + 1)
 	}
 	return clean
 }
@@ -12209,7 +12212,7 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 			if actual_c_abi := t.tc.c_abi_fn_signature_for_type_text(source_fn_type) {
 				if expected_c_abi := t.tc.c_abi_fn_signature_for_type_text(expected_type) {
 					if actual_c_abi == expected_c_abi
-						&& fn_type_texts_signature_compatible_without_c_abi_names(actual, expected) {
+						&& t.fn_type_texts_signature_compatible_without_c_abi_names_resolving_aliases(actual, expected) {
 						return true
 					}
 				}
