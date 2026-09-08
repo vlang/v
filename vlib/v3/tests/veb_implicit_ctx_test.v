@@ -62,6 +62,43 @@ fn main() {
 	assert c_code.contains('App__show(app, ctx, 5)'), c_code
 }
 
+// Route handlers that omit their context parameter can still use the implicit
+// mutable `ctx` binding in their body, including when all declared route
+// parameters are unnamed.
+fn test_veb_implicit_ctx_binding_with_unnamed_route_params() {
+	v3_bin := build_v3()
+	src := '
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+fn (mut ctx Context) coming_soon() veb.Result {
+	return ctx.text("coming soon")
+}
+
+@["/@/:author_slug/:post_slug/bookmark"; get]
+pub fn (app App) bookmark(_ string, _ string) veb.Result {
+	_ = app
+	return ctx.coming_soon()
+}
+
+fn main() {
+	mut app := &App{}
+	veb.run_at[App, Context](mut app, port: 0) or { panic(err) }
+}
+'
+	src_file := os.join_path(os.temp_dir(), 'v3_veb_implicit_ctx_unnamed_route.v')
+	os.write_file(src_file, src) or { panic(err) }
+	bin_out := os.join_path(os.temp_dir(), 'v3_veb_implicit_ctx_unnamed_route')
+	os.rm(bin_out) or {}
+	compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${bin_out}')
+	assert compile.exit_code == 0, compile.output
+}
+
 // A route parameter whose imported type leaf is `Context` but which is not a veb
 // context (here `other.Context` aliases `string`) must not be mistaken for the
 // request context. The handler still receives the hidden `Context`, so its
