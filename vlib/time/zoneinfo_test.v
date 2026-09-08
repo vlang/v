@@ -273,6 +273,10 @@ fn test_load_location_non_m_posix_future_rule() {
 	assert end_of_year.name == '+01'
 	assert end_of_year.offset == 3_600
 	assert end_of_year.is_dst == true
+	local_new_year := loc.zone_at(2_556_138_600)! // 2050-12-31 22:30 UTC
+	assert local_new_year.name == '+01'
+	assert local_new_year.offset == 3_600
+	assert local_new_year.is_dst == true
 }
 
 fn test_fixed_offset_etc_gmt() {

@@ -727,13 +727,25 @@ fn (rule PosixZoneRule) zone_at(unix_time i64) Zone {
 			offset: rule.std_offset
 		}
 	}
-	year := unix(unix_time).year
-	start := rule.transition_utc(year, rule.start, rule.std_offset)
-	end := rule.transition_utc(year, rule.end, rule.dst_offset)
-	is_dst := if start <= end {
-		unix_time >= start && unix_time < end
-	} else {
-		unix_time >= start || unix_time < end
+	// A rule at local New Year can fall in the adjacent UTC year. Find the
+	// latest applicable transition around the candidate standard-time year.
+	local_year := unix(unix_time + i64(rule.std_offset)).year
+	mut has_transition := false
+	mut latest_transition := i64(0)
+	mut is_dst := false
+	for year in local_year - 2 .. local_year + 2 {
+		start := rule.transition_utc(year, rule.start, rule.std_offset)
+		if start <= unix_time && (!has_transition || start >= latest_transition) {
+			has_transition = true
+			latest_transition = start
+			is_dst = true
+		}
+		end := rule.transition_utc(year, rule.end, rule.dst_offset)
+		if end <= unix_time && (!has_transition || end >= latest_transition) {
+			has_transition = true
+			latest_transition = end
+			is_dst = false
+		}
 	}
 	if is_dst {
 		return Zone{

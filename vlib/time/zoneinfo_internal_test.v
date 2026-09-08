@@ -11,7 +11,7 @@ fn test_parse_posix_tail_without_dst() {
 }
 
 fn test_parse_posix_tail_julian_and_day_of_year_rules() {
-	rule := parse_posix_zone_rule('<+00>0<+01>-1,0/0,J365/23')!
+	rule := parse_posix_zone_rule('<+02>-2<+01>-1,0/0,J365/23')!
 	start_of_year := rule.zone_at(2_524_608_000) // 2050-01-01 00:00 UTC
 	end_of_year := rule.zone_at(2_556_057_600) // 2050-12-31 00:00 UTC
 	assert start_of_year.name == '+01'
@@ -20,6 +20,10 @@ fn test_parse_posix_tail_julian_and_day_of_year_rules() {
 	assert end_of_year.name == '+01'
 	assert end_of_year.offset == 3_600
 	assert end_of_year.is_dst == true
+	local_new_year := rule.zone_at(2_556_138_600) // 2050-12-31 22:30 UTC
+	assert local_new_year.name == '+01'
+	assert local_new_year.offset == 3_600
+	assert local_new_year.is_dst == true
 }
 
 fn test_posix_last_weekday_stays_in_month() {
