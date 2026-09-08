@@ -143,6 +143,10 @@ fn (m Module) install() InstallResult {
 	defer {
 		os.rmdir_all(m.tmp_path) or {}
 	}
+	if ancestor := vcs_backed_install_ancestor(m.install_path, settings.vmodules_path) {
+		vpm_error('refusing to install `${m.name}` inside existing module `${fmt_mod_path(ancestor)}`.')
+		return .failed
+	}
 	// Run this check unconditionally — `m.is_installed` is computed via
 	// `git ls-remote`, which itself fails when `.git` is corrupted or
 	// inaccessible, so relying on it here would skip the guard in exactly
@@ -188,6 +192,22 @@ fn (m Module) install() InstallResult {
 		return .failed
 	}
 	return .installed
+}
+
+fn vcs_backed_install_ancestor(install_path string, vmodules_path string) ?string {
+	vmodules_root := os.real_path(vmodules_path)
+	mut parent := os.real_path(os.dir(install_path))
+	for parent != vmodules_root && parent.starts_with(vmodules_root + os.path_separator) {
+		if vcs_used_in_dir(parent) != none {
+			return parent
+		}
+		next := os.dir(parent)
+		if next == parent {
+			break
+		}
+		parent = next
+	}
+	return none
 }
 
 fn (m Module) confirm_install() bool {

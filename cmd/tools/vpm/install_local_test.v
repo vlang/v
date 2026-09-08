@@ -3,7 +3,7 @@ module main
 import os
 import rand
 import v.vmod
-import test_utils { cmd_ok }
+import test_utils { cmd_fail, cmd_ok }
 
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_local_test_${rand.ulid()}')
 
@@ -141,6 +141,18 @@ fn test_install_maps_manifest_dots_to_import_directories() {
 	assert res.output.contains('Use `foo.bar.baz` as the normalized import prefix'), res.output
 	assert os.exists(os.join_path(vmodules_path, 'foo', 'bar', 'baz', 'v.mod'))
 	assert 'foo.bar.baz' in get_installed_modules_in(vmodules_path)
+}
+
+fn test_dotted_install_does_not_nest_inside_existing_module() {
+	vmodules_path := os.join_path(test_path, 'vmodules_nested_module')
+	test_utils.set_test_env(vmodules_path)
+	create_local_git_module(os.join_path(vmodules_path, 'foo'), 'foo')
+	repo_path := os.join_path(test_path, 'nested_dotted_repo')
+	create_local_git_module(repo_path, 'foo.bar')
+
+	res := cmd_fail(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
+	assert res.output.contains('refusing to install `foo.bar` inside existing module'), res.output
+	assert !os.exists(os.join_path(vmodules_path, 'foo', 'bar'))
 }
 
 fn test_installed_module_discovery_preserves_vcs_links() {
