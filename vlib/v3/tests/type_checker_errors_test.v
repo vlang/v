@@ -1862,6 +1862,15 @@ fn test_fn_literal_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_generic_receiver_direct_const_fn_param',
 		'struct C.native_event {}\nstruct Router[T] {}\nfn (mut r Router[T]) accept(handler fn (const_event &T)) {}\nfn startup[U]() {\n\tmut r := Router[C.native_event]{}\n\tr.accept(fn (event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	direct_generic := run_good(v3_bin, 'good_parenthesized_direct_generic_const_fn_param',
+		'struct C.native_event {\n\tvalue int\n}\nfn apply[T](handler fn (const_event &T), event &T) bool {\n\thandler(event)\n\treturn true\n}\nfn startup[U]() bool {\n\tevent := C.native_event{\n\t\tvalue: 1\n\t}\n\treturn apply[C.native_event]((fn (const_event &C.native_event) {}), &event)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert direct_generic == 'true'
+	run_bad(v3_bin, 'bad_direct_generic_literal_only_const_fn_param',
+		'struct C.native_event {}\nfn apply[T](handler fn (event &T)) {}\nfn startup[U]() {\n\tapply[C.native_event](fn (const_event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	run_bad(v3_bin, 'bad_parenthesized_direct_generic_const_fn_param',
+		'struct C.native_event {}\nfn apply[T](handler fn (const_event &T)) {}\nfn startup[U]() {\n\tapply[C.native_event]((fn (event &C.native_event) {}))\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 	params_field := run_good(v3_bin, 'good_generic_receiver_params_const_fn_field',
 		'struct C.native_event {\n\tvalue int\n}\n@[params]\nstruct OpenOptions {\n\thandler fn (const_event &C.native_event)\n}\nstruct Service {}\nfn (s Service) open(opts OpenOptions) bool {\n\tevent := C.native_event{\n\t\tvalue: 1\n\t}\n\topts.handler(&event)\n\treturn true\n}\nfn startup[T](service T) bool {\n\treturn service.open(handler: fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup(Service{}).str())\n}\n')
 	assert params_field == 'true'

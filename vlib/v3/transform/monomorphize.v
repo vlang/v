@@ -4315,8 +4315,7 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 	if locked != substituted && qualified.contains('main.') {
 		return qualified
 	}
-	has_source_only_mode := type_text_has_shared_mode(qualified)
-		|| type_text_has_c_abi_const_mode(qualified)
+	has_source_only_mode := type_text_has_source_only_mode(qualified)
 	if isnil(t.tc) {
 		return qualified
 	}
@@ -4364,6 +4363,10 @@ fn type_text_has_shared_mode(text string) bool {
 fn type_text_has_c_abi_const_mode(text string) bool {
 	normalized := normalize_fn_param_text(text)
 	return normalized.contains('const &') || normalized.contains('const&')
+}
+
+fn type_text_has_source_only_mode(text string) bool {
+	return type_text_has_shared_mode(text) || type_text_has_c_abi_const_mode(text)
 }
 
 fn (t &Transformer) pin_direct_main_generic_arg_type_text(typ string) string {

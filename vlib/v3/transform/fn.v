@@ -1134,11 +1134,16 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		arg_id := t.a.child(&node, i)
 		arg_node := t.a.nodes[int(arg_id)]
 		param_type := if param_idx < param_type_names.len { param_type_names[param_idx] } else { '' }
-		if t.validating_generic_spec && has_concrete_generic_params && arg_node.kind == .fn_literal
-			&& (type_text_has_shared_mode(param_type) || type_text_has_c_abi_const_mode(param_type)) {
-			actual_type := t.specialized_expr_type_name(arg_id)
-			if !t.resolved_receiver_arg_compatible(arg_id, actual_type, param_type) {
-				t.record_monomorph_error('cannot use `${actual_type}` as argument ${arg_idx + 1} to `${call_name}`; expected `${param_type}`')
+		if t.validating_generic_spec && has_concrete_generic_params {
+			if source_type := t.fn_literal_source_type_text(arg_id) {
+				if type_text_has_source_only_mode(param_type)
+					|| type_text_has_source_only_mode(source_type) {
+					actual_type := t.specialized_expr_type_name(arg_id)
+					if !t.resolved_receiver_arg_compatible(arg_id, actual_type, param_type) {
+						t.record_monomorph_error('cannot use `${actual_type}` as argument ${
+							arg_idx + 1} to `${call_name}`; expected `${param_type}`')
+					}
+				}
 			}
 		}
 		if spread_args := t.transform_spread_arg_over_fixed_variadic_tail(arg_node, param_idx,
