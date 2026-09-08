@@ -980,7 +980,7 @@ fn h3_outbound_response_fields(status int, header Header) []quic.QpackFieldLine 
 	]
 	for key in header.keys() {
 		lkey := key.to_lower()
-		if lkey in h2_conn_specific_headers || (status == 204 && lkey == 'content-length') {
+		if lkey in h2_conn_specific_headers || (status in [204, 205] && lkey == 'content-length') {
 			continue
 		}
 		for val in header.custom_values(key) {
@@ -997,8 +997,8 @@ fn h3_outbound_response_fields(status int, header Header) []quic.QpackFieldLine 
 }
 
 // h3_response_allows_body applies the response cases that never carry
-// content. send_response separately removes Content-Length from 204, where
-// RFC 9110 forbids the field entirely rather than merely suppressing content.
+// content. send_response separately removes Content-Length from 204 and 205,
+// where advertising a nonzero body length would violate the response framing.
 fn h3_response_allows_body(method Method, status int) bool {
 	return method != .head && status != 204 && status != 205 && status != 304
 }
@@ -1046,7 +1046,7 @@ fn h3_outbound_trailer_fields(trailers Header, status int) []quic.QpackFieldLine
 	for key in trailers.keys() {
 		lkey := key.to_lower()
 		if lkey.starts_with(':') || lkey in h2_conn_specific_headers
-			|| (status == 204 && lkey == 'content-length') {
+			|| (status in [204, 205] && lkey == 'content-length') {
 			continue
 		}
 		for val in trailers.custom_values(key) {

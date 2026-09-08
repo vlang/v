@@ -148,20 +148,22 @@ fn test_h3_server_suppresses_forbidden_response_content() {
 	assert h3_response_allows_body(.get, 200)
 }
 
-fn test_h3_server_strips_content_length_from_204_headers_and_trailers() {
-	mut header := new_header()
-	header.add(.content_length, '99')
-	header.add_custom('x-response', 'kept')!
-	fields := h3_outbound_response_fields(204, header)
-	assert !fields.any(it.name == 'content-length')
-	assert fields.any(it.name == 'x-response' && it.value == 'kept')
+fn test_h3_server_strips_content_length_from_204_and_205_headers_and_trailers() {
+	for status in [204, 205] {
+		mut header := new_header()
+		header.add(.content_length, '99')
+		header.add_custom('x-response', 'kept')!
+		fields := h3_outbound_response_fields(status, header)
+		assert !fields.any(it.name == 'content-length')
+		assert fields.any(it.name == 'x-response' && it.value == 'kept')
 
-	mut trailers := new_header()
-	trailers.add(.content_length, '42')
-	trailers.add_custom('x-trailer', 'kept')!
-	trailer_fields := h3_outbound_trailer_fields(trailers, 204)
-	assert !trailer_fields.any(it.name == 'content-length')
-	assert trailer_fields.any(it.name == 'x-trailer' && it.value == 'kept')
+		mut trailers := new_header()
+		trailers.add(.content_length, '42')
+		trailers.add_custom('x-trailer', 'kept')!
+		trailer_fields := h3_outbound_trailer_fields(trailers, status)
+		assert !trailer_fields.any(it.name == 'content-length')
+		assert trailer_fields.any(it.name == 'x-trailer' && it.value == 'kept')
+	}
 }
 
 fn test_h3_server_filters_forbidden_response_header_values() {
