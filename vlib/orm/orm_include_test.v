@@ -613,6 +613,21 @@ fn test_where_preserves_relationship_or_when_the_condition_also_has_a_root_term(
 	assert rows[0].children[0].name == 'child'
 }
 
+fn test_where_correlates_every_unparenthesized_relationship_or_branch() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+	parents.insert(IncludeParent{
+		name: 'childless parent'
+	})!
+
+	rows := parents.where('children.name = ? || children.name = ?', 'missing', 'child')!.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'parent'
+}
+
 fn test_or_where_preserves_the_connector_when_hydrating_a_relationship() {
 	mut db := new_include_database()!
 	defer {
@@ -668,6 +683,24 @@ fn test_where_applies_trailing_constraints_to_mixed_depth_or_branches() {
 	assert crossed.len == 0
 	matched := parents.where('(children.name = ? || children.grandkids.name = ?) && children.id = ?',
 		'missing', 'grandkid', 1)!.query()!
+	assert matched.len == 1
+	shallow := parents.where('children.name = ? || children.grandkids.name = ?', 'other child',
+		'missing')!.query()!
+	assert shallow.len == 1
+}
+
+fn test_where_applies_trailing_constraints_to_root_interleaved_or_branches() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	crossed := parents.where('(children.name = ? && name = ? || children.id = ?) && children.parent_id = ?',
+		'child', 'parent', 1, 999)!.query()!
+	assert crossed.len == 0
+	matched := parents.where('(children.name = ? && name = ? || children.id = ?) && children.parent_id = ?',
+		'child', 'parent', 1, 1)!.query()!
 	assert matched.len == 1
 }
 

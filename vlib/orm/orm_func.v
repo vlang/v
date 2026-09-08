@@ -540,22 +540,14 @@ fn (qb &QueryBuilder[T]) exists_wrapped_conditions(parsed QueryData, field_scope
 		// ANDed root predicates can stay inside the correlated subquery, allowing later
 		// terms of this branch to keep matching the same related row.
 		mut scan := i
-		mut crossed_root := false
 		for scan + 1 < parsed.fields.len {
 			connector := query_data_connector(parsed, scan)
 			scan++
 			next := field_scopes[scan]
 			if next.len == 0 {
-				if !connector {
-					break
-				}
-				crossed_root = true
 				continue
 			}
 			if next.all_before('.') != branch {
-				break
-			}
-			if crossed_root && !connector {
 				break
 			}
 			if next != deepest && !next.starts_with('${deepest}.')
@@ -566,7 +558,6 @@ fn (qb &QueryBuilder[T]) exists_wrapped_conditions(parsed QueryData, field_scope
 				break
 			}
 			last = scan
-			crossed_root = false
 			if next.len > deepest.len {
 				deepest = next
 			}
@@ -595,6 +586,7 @@ fn (qb &QueryBuilder[T]) exists_wrapped_conditions(parsed QueryData, field_scope
 		}
 		// Parentheses from the parsed relationship group are remapped below.
 		run_close << out.fields.len
+		out.parentheses << [run_open[run] + 1, run_close[run] - 1]
 		out.fields << exists_clause_field(clause_index)
 		out.kinds << .exists_close
 		connectors << query_data_connector(parsed, last)
@@ -1957,7 +1949,7 @@ fn exists_join_step[U](path []string, left_table string, left_key string, fkey s
 	table := table_from_struct[U](struct_meta[U]())
 	mut joins := [
 		JoinConfig{
-			kind:          .inner
+			kind:          .left
 			table:         table
 			on_left_table: left_table
 			on_left_col:   left_key
