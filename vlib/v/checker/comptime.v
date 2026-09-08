@@ -22,7 +22,7 @@ fn comptime_power_i64(base i64, exponent i64) i64 {
 		if base == 0 {
 			return -1
 		}
-		return if base * base != 1 {
+		return if base != 1 && base != -1 {
 			0
 		} else {
 			if exp & 1 > 0 {

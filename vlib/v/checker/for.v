@@ -112,7 +112,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.val_type = high_type
 		}
 		if !range_error {
-			c.check_for_empty_range(node.cond, node.high, node.val_type)
+			c.check_for_empty_range(node.cond, node.high, node.val_type, high_type)
 		}
 
 		node.high_type = high_type
@@ -384,32 +384,59 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 }
 
 // Check for empty range with comptime constant integer bounds
-fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, val_type ast.Type) {
-	comparison_type := if val_type == ast.int_literal_type { ast.int_type } else { val_type }
+fn (mut c Checker) range_comparison_operand_type(typ ast.Type) ?ast.Type {
+	unaliased_type := c.table.fully_unaliased_type(typ).clear_flags()
+	if unaliased_type == ast.int_literal_type || unaliased_type == ast.rune_type
+		|| unaliased_type.idx() in ast.int_promoted_type_idxs {
+		return ast.int_type
+	}
+	if !unaliased_type.is_pure_int() {
+		return none
+	}
+	return unaliased_type
+}
+
+fn (mut c Checker) range_comparison_type(left_type ast.Type, right_type ast.Type) ?ast.Type {
+	left := c.range_comparison_operand_type(left_type)?
+	right := c.range_comparison_operand_type(right_type)?
+	left_size, _ := c.table.type_size(left)
+	right_size, _ := c.table.type_size(right)
+	if left.is_signed() == right.is_signed() {
+		return if left_size >= right_size { left } else { right }
+	}
+	unsigned_type, unsigned_size, signed_type, signed_size := if left.is_signed() {
+		right, right_size, left, left_size
+	} else {
+		left, left_size, right, right_size
+	}
+	return if unsigned_size >= signed_size { unsigned_type } else { signed_type }
+}
+
+fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, val_type ast.Type, high_type ast.Type) {
+	assignment_type := if val_type == ast.int_literal_type { ast.int_type } else { val_type }
 	if evaluated_low := c.eval_comptime_const_expr(low, 0) {
 		if evaluated_high := c.eval_comptime_const_expr(high, 0) {
-			low_val := c.eval_comptime_const_cast_value(evaluated_low, comparison_type) or {
+			assigned_low := c.eval_comptime_const_cast_value(evaluated_low, assignment_type) or {
 				return
 			}
-			high_val := evaluated_high
-			low_i := low_val.i64()
-			high_i := high_val.i64()
-
-			if low_i != none && high_i != none {
+			comparison_type := c.range_comparison_type(assignment_type, high_type) or { return }
+			low_val := c.eval_comptime_const_cast_value(assigned_low, comparison_type) or { return }
+			high_val := c.eval_comptime_const_cast_value(evaluated_high, comparison_type) or {
+				return
+			}
+			if comparison_type.is_signed() {
+				low_i := low_val.i64() or { return }
+				high_i := high_val.i64() or { return }
 				if low_i >= high_i {
 					c.error('empty range: `${low_i} .. ${high_i}` will never execute',
 						low.pos().extend(high.pos()))
 				}
 			} else {
-				// Fall back to an unsigned comparison for literals that overflow i64
-				low_u := low_val.u64()
-				high_u := high_val.u64()
-
-				if low_u != none && high_u != none {
-					if low_u >= high_u {
-						c.error('empty range: `${low_u} .. ${high_u}` will never execute',
-							low.pos().extend(high.pos()))
-					}
+				low_u := low_val.u64() or { return }
+				high_u := high_val.u64() or { return }
+				if low_u >= high_u {
+					c.error('empty range: `${low_u} .. ${high_u}` will never execute',
+						low.pos().extend(high.pos()))
 				}
 			}
 		}

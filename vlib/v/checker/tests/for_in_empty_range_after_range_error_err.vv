@@ -67,6 +67,16 @@ fn main() {
 	for i in u8(250) .. 256 {
 		println(i)
 	}
+
+	// Apply the usual signed/unsigned promotions to the comparison.
+	for i in u32(4294967294) .. int(0 - 1) {
+		println(i)
+	}
+
+	// Negative signed powers only preserve bases 1 and -1.
+	for i in i64(max_i64) ** (0 - 1) .. 1 {
+		println(i)
+	}
 }
 
 type OverloadedRangeBound = u8
