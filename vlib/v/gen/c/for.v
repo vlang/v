@@ -902,9 +902,14 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} != ${info.size}; ${plus_plus_idx}) {')
 		if node.val_var != '_' {
 			val_sym := g.table.sym(node.val_type)
+			base_elem_type := g.unwrap_generic(info.elem_type)
+			base_elem_sym := g.table.sym(base_elem_type)
+			loop_var_added_ref := node.val_type.nr_muls() > base_elem_type.nr_muls()
+			base_elem_is_concrete_fn := base_elem_sym.info is ast.FnType
+				&& base_elem_sym.info.has_decl
 			is_fixed_array := val_sym.kind == .array_fixed && !node.val_is_mut
 				&& !node.val_type.has_flag(.option)
-			if val_sym.info is ast.FnType {
+			if val_sym.info is ast.FnType && (!loop_var_added_ref || base_elem_is_concrete_fn) {
 				g.write('\t')
 				tcc_bug := c_name(node.val_var)
 				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
@@ -917,13 +922,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				g.write('\t${styp} ${c_name(node.val_var)}')
 			}
 			if !is_fixed_array {
-				base_elem_type := g.unwrap_generic(info.elem_type)
-				elem_type := g.table.fully_unaliased_type(g.unwrap_generic(info.elem_type))
-				elem_sym := g.table.sym(elem_type)
-				loop_var_added_ref := node.val_type.nr_muls() > base_elem_type.nr_muls()
 				addr := if (node.val_is_mut || node.val_is_ref)
 					&& (node.val_type.has_flag(.option_mut_param_t)
-					|| (loop_var_added_ref && elem_sym.info !is ast.FnType)) {
+					|| (loop_var_added_ref && !base_elem_is_concrete_fn)) {
 					'&'
 				} else {
 					''

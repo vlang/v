@@ -15,6 +15,13 @@ struct PointerHolder {
 
 type PointPtr = &Point
 
+type Callback = fn (int) int
+
+struct AliasCallbackHolder {
+mut:
+	buf [2]Callback
+}
+
 struct AliasPointerHolder {
 mut:
 	buf [2]PointPtr
@@ -48,6 +55,12 @@ fn main() {
 	}
 	for mut point_ref in alias_pointers.buf {
 		_ = point_ref
+	}
+	mut alias_callbacks := AliasCallbackHolder{
+		buf: [Callback(increment), Callback(double)]!
+	}
+	for mut callback_alias in alias_callbacks.buf {
+		_ = callback_alias
 	}
 	callbacks := [increment, double]!
 	unsafe {
