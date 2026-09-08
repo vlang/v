@@ -8317,7 +8317,8 @@ fn (mut p Parser) track_inline_asm_mnemonic(state InlineAsmMnemonicState, is_x86
 				return .after_dot
 			}
 			if is_x86 && p.tok == .key_lock {
-				if p.peek() == .colon {
+				if p.peek() == .colon
+					&& !p.inline_asm_source_gap_has_newline(p.tok_end, p.peek_pos) {
 					return .maybe_label
 				}
 				p.validate_inline_asm_lock_instruction()
