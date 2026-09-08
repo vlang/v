@@ -542,7 +542,7 @@ fn validate_compiled_qml_node(node &QmlNode) ! {
 				return error('`${property.name}` must target a mutable top-level app field at line ${property.expr.line}')
 			}
 		}
-		if property.name in ['on_tap', 'on_change', 'on_active', 'on_submit']
+		if property.name in ['on_tap', 'on_change', 'on_active', 'on_text', 'on_submit']
 			&& property.expr.kind == .call {
 			if !property.expr.value.starts_with('app.') || property.expr.value.count('.') != 1 {
 				return error('event handlers must call an app action at line ${property.expr.line}')
@@ -764,7 +764,8 @@ fn qml_property_use(property QmlProperty) QmlExprUse {
 	}
 	if property.name in ['checked', 'hidden', 'enabled', 'native', 'editable', 'emit_change', 'secure',
 		'clickable', 'draggable', 'long_press', 'swipe_left', 'persistent', 'autocorrect', 'bold',
-		'italic', 'underline', 'strikethrough', 'shadow', 'outline', 'value_track', 'active']
+		'italic', 'underline', 'strikethrough', 'shadow', 'outline', 'value_track', 'active',
+		'text_autoupdate']
 		|| property.name in ['bind.checked', 'bind.active'] {
 		return .bool_
 	}
@@ -918,7 +919,7 @@ fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, in
 	mut properties := map[string]string{}
 	for property in node.properties {
 		if property.name == 'id'
-			|| property.name in ['on_tap', 'on_change', 'on_active', 'on_submit'] {
+			|| property.name in ['on_tap', 'on_change', 'on_active', 'on_text', 'on_submit'] {
 			continue
 		}
 		name := 'qml_property_${suffix}_${qml_var(property.name)}'
@@ -938,7 +939,7 @@ fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, in
 	children := 'qml_children_${suffix}'
 	container := node.tag in ['Screen', 'View', 'Rectangle', 'Column', 'Row', 'Scroll']
 		|| node.tag !in ['Label', 'Image', 'Button', 'MessageBox', 'Checkbox', 'Dropdown', 'TextArea',
-			'TextField', 'ProgressBar', 'Slider', 'Switch']
+			'TextField', 'ProgressBar', 'Slider', 'Switch', 'Spinner']
 	visible_children := if container {
 		node.children.filter(it.tag !in ['MenuItem', 'Option'])
 	} else {
@@ -972,7 +973,7 @@ fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, in
 
 fn (mut c QmlCompiler) write_action_type_checks(node &QmlNode, suffix string, scope QmlScope) {
 	for property in node.properties {
-		if property.name !in ['on_tap', 'on_change', 'on_active', 'on_submit'] || property.expr.kind != .call {
+		if property.name !in ['on_tap', 'on_change', 'on_active', 'on_text', 'on_submit'] || property.expr.kind != .call {
 			continue
 		}
 		method_name := property.expr.value.all_after('app.')
@@ -1072,6 +1073,9 @@ fn qml_binding_for_event(node &QmlNode, event_name string) ?QmlProperty {
 	if event_name == 'on_active' {
 		return qml_find_property(node, 'bind.active')
 	}
+	if event_name == 'on_text' {
+		return qml_find_property(node, 'bind.text')
+	}
 	return none
 }
 
@@ -1155,7 +1159,7 @@ fn (c &QmlCompiler) menu_value(node &QmlNode, scope QmlScope) string {
 		}
 		return '[]ui2.MenuEntry{${entries.join(', ')}}'
 	}
-	if node.tag == 'Dropdown' {
+	if node.tag in ['Dropdown', 'Spinner'] {
 		mut entries := []string{}
 		for option in node.children {
 			if option.tag != 'Option' {
@@ -1171,6 +1175,22 @@ fn (c &QmlCompiler) menu_value(node &QmlNode, scope QmlScope) string {
 		return '[]ui2.MenuEntry{${entries.join(', ')}}'
 	}
 	return '[]ui2.MenuEntry{}'
+}
+
+fn (c &QmlCompiler) option_values(node &QmlNode, scope QmlScope) string {
+	mut values := []string{}
+	for option in node.children {
+		if option.tag != 'Option' {
+			continue
+		}
+		value := if property := qml_find_property(option, 'text') {
+			c.expr(property.expr, scope, .string_)
+		} else {
+			"''"
+		}
+		values << value
+	}
+	return '[]string{${values.join(', ')}}'
 }
 
 fn (mut c QmlCompiler) compile_element(node &QmlNode, suffix string, frame string, children string, properties map[string]string, scope QmlScope, default_key string) {
@@ -1190,12 +1210,16 @@ fn (mut c QmlCompiler) compile_element(node &QmlNode, suffix string, frame strin
 	on_tap := c.compiled_event_value(node, 'on_tap', scope, id)
 	on_change := c.compiled_event_value(node, 'on_change', scope, id)
 	on_active := c.compiled_event_value(node, 'on_active', scope, id)
+	on_text := c.compiled_event_value(node, 'on_text', scope, id)
 	on_submit := c.compiled_event_value(node, 'on_submit', scope, id)
 	action := match node.tag {
 		'Button', 'Checkbox' { on_tap }
 		'Dropdown', 'Slider' { 'if ${on_change}.len > 0 { ${on_change} } else { ${on_tap} }' }
 		'Switch' {
 			'if ${on_active}.len > 0 { ${on_active} } else if ${on_change}.len > 0 { ${on_change} } else { ${on_tap} }'
+		}
+		'Spinner' {
+			'if ${on_text}.len > 0 { ${on_text} } else if ${on_change}.len > 0 { ${on_change} } else { ${on_tap} }'
 		}
 		'TextArea', 'TextField' { on_change }
 		else { on_tap }
@@ -1214,6 +1238,10 @@ fn (mut c QmlCompiler) compile_element(node &QmlNode, suffix string, frame strin
 	}
 	if node.tag == 'Switch' {
 		c.compile_switch(node, suffix, frame, properties, scope, key, action)
+		return
+	}
+	if node.tag == 'Spinner' {
+		c.compile_spinner(node, suffix, frame, properties, scope, key, action)
 		return
 	}
 	kind := match node.tag {
@@ -1376,6 +1404,29 @@ fn (mut c QmlCompiler) compile_switch(node &QmlNode, suffix string, frame string
 	c.out.writeln('\t\tframe: ${frame}')
 	c.out.writeln('\t\tactive: ${qml_value(properties, 'active', 'bind.active', 'false')}')
 	c.out.writeln('\t\tstyle: ${style}')
+	c.out.writeln('\t)')
+	c.out.writeln('\tqml_element_${suffix} := ui2.Element{')
+	c.out.writeln('\t\t...${base}')
+	c.out.writeln('\t\tkey: ${key}')
+	c.write_common_fields(node, properties, scope, '${base}.accessibility_role', '${base}.accessibility_label', '${base}.accessibility_value')
+	c.out.writeln('\t}')
+}
+
+fn (mut c QmlCompiler) compile_spinner(node &QmlNode, suffix string, frame string, properties map[string]string, scope QmlScope, key string, action string) {
+	base := 'qml_spinner_${suffix}'
+	box := '${base}_box'
+	text_style := '${base}_text_style'
+	c.out.writeln('\t${box} := ${c.box_style(properties)}')
+	c.out.writeln('\t${text_style} := ${c.text_style(properties)}')
+	c.out.writeln('\t${base} := ui2.spinner(')
+	c.out.writeln('\t\tid: ${qml_quote(node.id)}')
+	c.out.writeln('\t\taction_id: ${action}')
+	c.out.writeln('\t\tframe: ${frame}')
+	c.out.writeln('\t\ttext: ${qml_value(properties, 'text', 'bind.text', "''")}')
+	c.out.writeln('\t\tvalues: ${c.option_values(node, scope)}')
+	c.out.writeln('\t\ttext_autoupdate: ${qml_prop(properties, 'text_autoupdate', 'false')}')
+	c.out.writeln('\t\tbox: ${box}')
+	c.out.writeln('\t\ttext_style: ${text_style}')
 	c.out.writeln('\t)')
 	c.out.writeln('\tqml_element_${suffix} := ui2.Element{')
 	c.out.writeln('\t\t...${base}')

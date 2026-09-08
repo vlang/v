@@ -56,6 +56,14 @@ fn test_qml_lowers_to_direct_ui2_elements() {
 		on_change: app.select(4)
 	}
 	Switch { id: notifications bind.active: app.enabled on_active: app.select(5) }
+	Spinner {
+		id: location
+		bind.text: app.location
+		text_autoupdate: true
+		on_text: app.choose("Work")
+		Option { text: "Home" }
+		Option { text: "Work" }
+	}
 	Checkbox { text: "Ready" checked: true }
 	Rectangle { border_width: 2 border_right: 4 }
 	Button { text: "Select" on_tap: app.select(app.selected) }
@@ -75,10 +83,15 @@ pub mut:
 	selected int
 	level    f64
 	enabled  bool
+	location string
 }
 
 pub fn (mut app App) select(id int) {
 	app.selected = id
+}
+
+pub fn (mut app App) choose(value string) {
+	app.location = value
 }
 
 fn build(app &App) ui2.Element {
@@ -86,7 +99,7 @@ fn build(app &App) ui2.Element {
 }
 
 fn main() {
-	app := App{items: [Item{id: 7, name: 'a'}, Item{id: 8, name: 'b'}], level: 12.5}
+	app := App{items: [Item{id: 7, name: 'a'}, Item{id: 8, name: 'b'}], level: 12.5, location: 'Home'}
 	root := build(&app)
 	mut mutable_app := app
 	ui2.dispatch[App](mut mutable_app, 'select', 9) or { panic(err) }
@@ -94,7 +107,8 @@ fn main() {
 	println(mutable_app.selected.str() + ' ' + root.children[2].accessibility_role)
 	println(root.children[3].accessibility_role + ' ' + root.children[3].value.str() + ':' + root.children[3].min_value.str() + ':' + root.children[3].max_value.str() + ' ' + root.children[3].action_id)
 	println(root.children[4].accessibility_role + ' ' + root.children[4].checked.str() + ' ' + root.children[4].action_id)
-	println(root.children[5].accessibility_role + ' ' + root.children[6].box.border_left.str() + ':' + root.children[6].box.border_right.str() + ' ' + root.children[7].action_id)
+	println(root.children[5].accessibility_role + ' ' + root.children[5].text + ' ' + root.children[5].action_id)
+	println(root.children[6].accessibility_role + ' ' + root.children[7].box.border_left.str() + ':' + root.children[7].box.border_right.str() + ' ' + root.children[8].action_id)
 }
 "
 	main_path := os.join_path(root, 'main.v')
@@ -105,7 +119,7 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '8 a:0 7 select:7\n9 progressbar\nslider 12.5:0.0:100.0 select:4\nswitch false select:5\ncheckbox 2.0:4.0 select:app.selected', run.output
+	assert run.output.trim_space() == '9 a:0 7 select:7\n9 progressbar\nslider 12.5:0.0:100.0 select:4\nswitch false select:5\ncombobox Home choose:Work\ncheckbox 2.0:4.0 select:app.selected', run.output
 	os.write_file(os.join_path(root, 'form.qml'), 'Screen { Button { on_tap: app.missing() } }') or { panic(err) }
 	invalid := os.execute('${v3_bin} -nocache -path "${root}|${qml_codegen_vlib_dir}" -b c -o ${bin} ${main_path}')
 	assert invalid.exit_code != 0, invalid.output
@@ -136,6 +150,8 @@ pub struct SliderConfig { pub: id string action_id string frame Rect min f64 max
 pub fn slider(config SliderConfig) Element { return Element{kind: .slider, id: config.id, action_id: config.action_id, frame: config.frame, value: config.value, min_value: config.min, max_value: config.max, step: config.step, orientation: config.orientation, padding: config.padding, value_track: config.value_track, slider_style: config.style, accessibility_role: 'slider', accessibility_label: 'Slider', accessibility_value: config.value.str()} }
 pub struct SwitchConfig { pub: id string action_id string frame Rect active bool style SwitchStyle }
 pub fn switch_control(config SwitchConfig) Element { return Element{kind: .switch_control, id: config.id, action_id: config.action_id, frame: config.frame, checked: config.active, switch_style: config.style, accessibility_role: 'switch', accessibility_label: 'Switch', accessibility_value: if config.active { 'on' } else { 'off' }} }
+pub struct SpinnerConfig { pub: id string action_id string frame Rect text string values []string text_autoupdate bool box BoxStyle text_style TextStyle }
+pub fn spinner(config SpinnerConfig) Element { return Element{kind: .dropdown, id: config.id, action_id: config.action_id, frame: config.frame, text: if config.text_autoupdate && config.values.len > 0 { config.values[0] } else { config.text }, box: config.box, text_style: config.text_style, accessibility_role: 'combobox', accessibility_label: 'Spinner'} }
 pub fn compiled_qml_event(_ string, _ string, _ string, action string) string { return action }
 pub fn compiled_qml_event_arg(_ string, _ string, _ string, action string, argument string) string { return action + ':' + argument }
 pub fn compiled_qml_event_arg_path(_ string, _ string, _ string, action string, path string) string { return action + ':' + path }
