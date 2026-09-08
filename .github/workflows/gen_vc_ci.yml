@@ -55,14 +55,20 @@ jobs:
 
           rm -rf vc/v.c vc/v_win.c
           ./v -o vc/v.c     -cross               cmd/v
-          ./v -o vc/v_win.c -os windows -cc msvc cmd/v
+          ./v -o vc/v_win.c -cross -os windows -cc msvc cmd/v
 
           sed -i "1s/^/#define V_COMMIT_HASH \"$COMMIT_HASH\"\n/" vc/v.c
           sed -i "1s/^/#define V_COMMIT_HASH \"$COMMIT_HASH\"\n/" vc/v_win.c
 
-          # do some sanity checks for the generated v.c file:
+          # do some sanity checks for the generated v.c/v_win.c files. `-cross` makes `$if cross ?`
+          # (and the `?`-guarded v1_fallback/musl branches that key off it, e.g. in
+          # cmd/v/macos_v3_driver_notd_cross.v) resolve statically instead of compiling out empty,
+          # which is what lets GNUmakefile later recompile these snapshots with
+          # -DCUSTOM_DEFINE_v1_fallback to build v1$(EXE_EXT).
           grep 'Turned ON custom defines: no_backtrace,cross'  vc/v.c
           grep '#define CUSTOM_DEFINE_cross' vc/v.c
+          grep 'Turned ON custom defines: no_backtrace,cross'  vc/v_win.c
+          grep '#define CUSTOM_DEFINE_cross' vc/v_win.c
 
           # ensure the generated C files for the compiler, are over 5000 lines long, as a safety measure
           [ "$(wc -l < vc/v.c)" -gt 5000 ]
