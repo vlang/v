@@ -12,6 +12,10 @@ import v3.util
 
 const max_parse_diagnostics = 100
 
+// https://www.felixcloutier.com/x86/lock
+const inline_asm_allowed_lock_instructions = ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpxchg',
+	'cmpxchg8b', 'cmpxchg16b', 'dec', 'inc', 'neg', 'not', 'or', 'sbb', 'sub', 'xor', 'xadd', 'xchg']
+
 const sql_query_data_alias_reserved_tokens = [
 	'select',
 	'from',
@@ -8373,6 +8377,16 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 					io_exprs << p.expr(.lowest)
 				}
 				p.check(.rpar)
+				continue
+			} else if depth == 1 && section == 0 && p.tok == .key_lock
+				&& pref.normalized_arch(asm_arch) in ['amd64', 'x86'] {
+				p.next()
+				has_suffix := p.lit.len > 0 && p.lit[p.lit.len - 1] in [`b`, `w`, `l`, `q`]
+				if !(p.lit in inline_asm_allowed_lock_instructions
+					|| (has_suffix
+						&& p.lit[..p.lit.len - 1] in inline_asm_allowed_lock_instructions)) {
+					p.record_diagnostic_span('The lock prefix cannot be used on this instruction', p.tok_pos, p.tok_end)
+				}
 				continue
 			} else if depth == 1 && p.tok != .semicolon {
 				if is_raw && section == 0 && !p.prefs.is_fmt {
