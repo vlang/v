@@ -327,3 +327,33 @@ fn test_issue_27281_marker_bounded_module_directory_keeps_prefix() {
 		os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(linked_foo_dir)}')
 	assert link_res.exit_code == 0, link_res.output
 }
+
+fn test_issue_27281_marker_bounded_external_test_file_keeps_prefix() {
+	workspace := os.join_path(os.vtmp_dir(), 'issue_27281_external_test_file')
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	project_dir := os.join_path(workspace, 'project')
+	foo_dir := os.join_path(project_dir, 'foo')
+	bar_dir := os.join_path(foo_dir, 'bar')
+	os.rmdir_all(workspace) or {}
+	os.mkdir_all(bar_dir) or { panic(err) }
+	foo_source :=
+		['module foo/* adjacent comment */', '', 'pub const present = true'].join_lines() + '\n'
+	foo_test_source :=
+		['module foo_test', '', 'import foo.bar', '', 'fn test_nested_module_name() {', "\tassert bar.module_name() == 'foo.bar'", '}'].join_lines() +
+		'\n'
+	bar_source :=
+		['module bar', '', 'pub fn module_name() string {', '\treturn @MOD', '}'].join_lines() +
+		'\n'
+	issue_20147_write_file(os.join_path(project_dir, '.v.mod.stop'), '')
+	issue_20147_write_file(os.join_path(foo_dir, 'foo.v'), foo_source)
+	foo_test_file := os.join_path(foo_dir, 'foo_test.v')
+	issue_20147_write_file(foo_test_file, foo_test_source)
+	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'), bar_source)
+	dir_res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(foo_dir)}')
+	assert dir_res.exit_code == 0, dir_res.output
+	file_res :=
+		os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(foo_test_file)}')
+	assert file_res.exit_code == 0, file_res.output
+}
