@@ -11814,7 +11814,7 @@ fn normalize_fn_param_text(text string) string {
 	mut clean := text.trim_space()
 	if clean.starts_with('mut ') {
 		clean = clean[4..].trim_space()
-		if !clean.starts_with('&') {
+		if !clean.starts_with('&') && clean !in ['voidptr', 'byteptr', 'charptr'] {
 			clean = '&' + clean
 		}
 	}

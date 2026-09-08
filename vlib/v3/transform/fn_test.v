@@ -41,6 +41,12 @@ fn test_fn_type_texts_signature_compatible_preserves_compound_type_boundaries() 
 fn test_fn_type_texts_signature_compatible_does_not_double_mut_pointer() {
 	assert fn_type_texts_signature_compatible('fn (&Item)', 'fn (mut &Item)')
 	assert !fn_type_texts_signature_compatible('fn (&&Item)', 'fn (mut &Item)')
+	for pointer_type in ['voidptr', 'byteptr', 'charptr'] {
+		assert fn_type_texts_signature_compatible('fn (${pointer_type})',
+			'fn (mut ${pointer_type})')
+		assert !fn_type_texts_signature_compatible('fn (&${pointer_type})',
+			'fn (mut ${pointer_type})')
+	}
 }
 
 fn test_normalize_type_in_module_cache_tracks_current_file() {
