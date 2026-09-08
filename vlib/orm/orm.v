@@ -248,7 +248,9 @@ pub mut:
 	fkey       string // column of `table` referencing the root table
 	parent_key string // root column referenced by `fkey`
 	// joins are the remaining hops, each joined onto the previous one
-	joins []JoinConfig
+	joins             []JoinConfig
+	scopes            []string // canonical relationship path for every generated alias
+	join_left_aliases []int    // alias index on the left side of each join
 }
 
 pub struct InfixType {
@@ -504,13 +506,18 @@ fn apply_tenant_filter_to_exists(where QueryData) QueryData {
 			continue
 		}
 		clause := result.exists[clause_index]
-		mut filters := tenant_filter_for_related_table(clause.table, exists_table_alias(0))
+		base_filters := tenant_filter_for_related_table(clause.table, exists_table_alias(0))
+		mut join_filters := QueryData{}
 		for j, join in clause.joins {
-			filters = append_query_data_and(filters, tenant_filter_for_related_table(join.table, exists_table_alias(
-				j + 1)))
+			filter := tenant_filter_for_related_table(join.table, '')
+			join_filters = append_query_data_and(join_filters, as_exists_join_filters(filter, j))
 		}
-		if filters.fields.len > 0 {
-			result = insert_query_data_before(result, i, filters)
+		if base_filters.fields.len > 0 {
+			result = insert_query_data_before(result, i, base_filters)
+		}
+		if join_filters.fields.len > 0 {
+			open_index := exists_open_before(result, i, clause_index) or { continue }
+			result = insert_query_data_before(result, open_index + 1, join_filters)
 		}
 	}
 	return result
@@ -525,7 +532,7 @@ fn tenant_filter_for_related_table(table Table, qualifier string) QueryData {
 		return QueryData{}
 	}
 	return QueryData{
-		fields: [table_qualified_field(qualifier, field)]
+		fields: [if qualifier == '' { field } else { table_qualified_field(qualifier, field) }]
 		data:   [tenant_filter_state.current_tenant]
 		types:  [tenant_filter_primitive_type(tenant_filter_state.current_tenant)]
 		kinds:  [.eq]
@@ -1417,6 +1424,12 @@ fn gen_where_clause(where QueryData, root_table string, q string, qm string, num
 	mut str := ''
 	mut data_idx := 0
 	for i, field in where.fields {
+		if _, _ := exists_join_filter_parts(field) {
+			if !where.kinds[i].is_unary() {
+				data_idx++
+			}
+			continue
+		}
 		current_pre_par := where.parentheses.count(it[0] == i)
 		current_post_par := where.parentheses.count(it[1] == i)
 
@@ -1424,36 +1437,14 @@ fn gen_where_clause(where QueryData, root_table string, q string, qm string, num
 			str += ' ( '.repeat(current_pre_par)
 		}
 		if where.kinds[i] == .exists_open {
-			str += gen_exists_header(where, field, root_table, q)
+			str += gen_exists_header(where, i, root_table, q, qm, num, mut c, data_idx)
 		} else if where.kinds[i] == .exists_close {
 			str += ' )'
 		} else {
 			str += gen_qualified_field(field, q) + ' ${where.kinds[i].to_str()}'
 		}
 		if !where.kinds[i].is_unary() {
-			expand_array := where.kinds[i] in [.in, .not_in]!
-			array_len := if expand_array && where.data.len > data_idx {
-				primitive_array_len(where.data[data_idx])
-			} else {
-				-1
-			}
-			if array_len >= 0 {
-				mut tmp := []string{len: array_len}
-				for j in 0 .. array_len {
-					tmp[j] = '${qm}'
-					if num {
-						tmp[j] += '${c.position}'
-						c.position++
-					}
-				}
-				str += ' (${tmp.join(', ')})'
-			} else {
-				str += ' ${qm}'
-				if num {
-					str += '${c.position}'
-					c.position++
-				}
-			}
+			str += gen_where_placeholder(where.kinds[i], where.data, data_idx, qm, num, mut c)
 			data_idx++
 		}
 		if current_post_par > 0 {
@@ -1471,11 +1462,37 @@ fn gen_where_clause(where QueryData, root_table string, q string, qm string, num
 	return str
 }
 
+fn gen_where_placeholder(kind OperationKind, data []Primitive, data_idx int, qm string, num bool, mut c PlaceholderCounter) string {
+	expand_array := kind in [.in, .not_in]!
+	array_len := if expand_array && data.len > data_idx {
+		primitive_array_len(data[data_idx])
+	} else {
+		-1
+	}
+	if array_len >= 0 {
+		mut tmp := []string{len: array_len}
+		for j in 0 .. array_len {
+			tmp[j] = '${qm}'
+			if num {
+				tmp[j] += '${c.position}'
+				c.position++
+			}
+		}
+		return ' (${tmp.join(', ')})'
+	}
+	mut result := ' ${qm}'
+	if num {
+		result += '${c.position}'
+		c.position++
+	}
+	return result
+}
+
 // gen_exists_header renders everything of a correlated subquery up to and including
 // the correlation predicate. The conditions that follow it are rendered by the
 // regular loop and closed by the matching `.exists_close` marker.
-fn gen_exists_header(where QueryData, field string, root_table string, q string) string {
-	index := exists_clause_index(field) or { return '' }
+fn gen_exists_header(where QueryData, field_index int, root_table string, q string, qm string, num bool, mut c PlaceholderCounter, data_idx int) string {
+	index := exists_clause_index(where.fields[field_index]) or { return '' }
 	if index < 0 || index >= where.exists.len {
 		return ''
 	}
@@ -1483,7 +1500,25 @@ fn gen_exists_header(where QueryData, field string, root_table string, q string)
 	first_alias := exists_table_alias(0)
 	mut str := 'EXISTS (SELECT 1 FROM ${q}${clause.table.name}${q} AS ${q}${first_alias}${q}'
 	for j, join in clause.joins {
-		str += gen_exists_join_clause(join, exists_table_alias(j), exists_table_alias(j + 1), q)
+		left_index := if j < clause.join_left_aliases.len { clause.join_left_aliases[j] } else { j }
+		str += gen_exists_join_clause(join, exists_table_alias(left_index),
+			exists_table_alias(j + 1), q)
+		mut filter_data_idx := data_idx
+		mut k := field_index + 1
+		for k < where.fields.len {
+			filter_join, column := exists_join_filter_parts(where.fields[k]) or { break }
+			if filter_join == j {
+				str += ' AND ${q}${exists_table_alias(j + 1)}${q}.${q}${column}${q} ${where.kinds[k].to_str()}'
+				if !where.kinds[k].is_unary() {
+					str += gen_where_placeholder(where.kinds[k], where.data, filter_data_idx, qm,
+						num, mut c)
+				}
+			}
+			if !where.kinds[k].is_unary() {
+				filter_data_idx++
+			}
+			k++
+		}
 	}
 	str += ' WHERE ${q}${first_alias}${q}.${q}${clause.fkey}${q}'
 	str += ' = ${q}${root_table}${q}.${q}${clause.parent_key}${q}'
@@ -1508,6 +1543,7 @@ fn gen_join_clause(join JoinConfig, default_left_table string, q string) string 
 }
 
 const exists_clause_marker = '::v_orm_exists::'
+const exists_join_filter_marker = '::v_orm_exists_join_filter::'
 
 fn exists_clause_field(index int) string {
 	return '${exists_clause_marker}${index}'
@@ -1518,6 +1554,41 @@ fn exists_clause_index(field string) ?int {
 		return none
 	}
 	return field[exists_clause_marker.len..].int()
+}
+
+fn exists_open_before(data QueryData, close_index int, clause_index int) ?int {
+	mut i := close_index - 1
+	for i >= 0 {
+		if data.kinds[i] == .exists_open {
+			index := exists_clause_index(data.fields[i]) or { -1 }
+			if index == clause_index {
+				return i
+			}
+		}
+		i--
+	}
+	return none
+}
+
+fn exists_join_filter_field(join_index int, column string) string {
+	return '${exists_join_filter_marker}${join_index}::${column}'
+}
+
+fn exists_join_filter_parts(field string) ?(int, string) {
+	if !field.starts_with(exists_join_filter_marker) {
+		return none
+	}
+	rest := field[exists_join_filter_marker.len..]
+	separator := rest.index('::') or { return none }
+	return rest[..separator].int(), rest[separator + 2..]
+}
+
+fn as_exists_join_filters(data QueryData, join_index int) QueryData {
+	mut result := clone_query_data(data)
+	for i, field in result.fields {
+		result.fields[i] = exists_join_filter_field(join_index, field)
+	}
+	return result
 }
 
 // gen_qualified_field renders a field name with the given quote character q.

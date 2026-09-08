@@ -151,14 +151,19 @@ fn apply_data_scope_to_exists(scope DataScope, qd QueryData, scope_skip_fields [
 			continue
 		}
 		clause := result.exists[clause_index]
-		mut filters := data_scope_filters_for_table(scope, clause.table, scope_skip_fields,
+		base_filters := data_scope_filters_for_table(scope, clause.table, scope_skip_fields,
 			exists_table_alias(0))!
+		mut join_filters := QueryData{}
 		for j, join in clause.joins {
-			filters = append_query_data_and(filters, data_scope_filters_for_table(scope,
-				join.table, scope_skip_fields, exists_table_alias(j + 1))!)
+			filter := data_scope_filters_for_table(scope, join.table, scope_skip_fields, '')!
+			join_filters = append_query_data_and(join_filters, as_exists_join_filters(filter, j))
 		}
-		if filters.fields.len > 0 {
-			result = insert_query_data_before(result, i, filters)
+		if base_filters.fields.len > 0 {
+			result = insert_query_data_before(result, i, base_filters)
+		}
+		if join_filters.fields.len > 0 {
+			open_index := exists_open_before(result, i, clause_index) or { continue }
+			result = insert_query_data_before(result, open_index + 1, join_filters)
 		}
 	}
 	return result

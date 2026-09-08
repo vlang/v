@@ -23,6 +23,7 @@ struct IncludeGrandkid {
 	id       int @[primary; sql: serial]
 	child_id int
 	name     string
+	nickname ?string
 	toys     []IncludeToy @[fkey: 'grandkid_id']
 }
 
@@ -209,6 +210,20 @@ struct IncludeSelfNode {
 	children  []IncludeSelfNode @[fkey: 'parent_id']
 }
 
+@[table: 'orm_include_embedded_parents']
+struct IncludeEmbeddedParent {
+	id       int @[primary; sql: serial]
+	name     string
+	children []IncludeEmbeddedChild @[fkey: 'parent_id']
+}
+
+@[table: 'orm_include_embedded_children']
+struct IncludeEmbeddedChild {
+	id            int @[primary; sql: serial]
+	parent_id     int
+	details_label string @[sql: 'IncludeEmbeddedDetails.label']
+}
+
 fn new_include_database() !sqlite.DB {
 	mut db := sqlite.connect(':memory:')!
 	mut parents := orm.new_query[IncludeParent](db)
@@ -271,6 +286,11 @@ fn new_scoped_include_database() !sqlite.DB {
 		parent_id: 1
 		tenant_id: 2
 		name:      'hidden child'
+	})!
+	children.insert(IncludeScopedChild{
+		parent_id: 1
+		tenant_id: 1
+		name:      'shallow child'
 	})!
 	grandkids.insert(IncludeScopedGrandkid{
 		child_id:  1
@@ -874,6 +894,68 @@ fn test_where_ors_conditions_on_sibling_relationships() {
 	assert empty.len == 0
 }
 
+fn test_where_keeps_sibling_or_branches_with_a_trailing_ancestor_constraint() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	rows := parents.where('(children.grandkids.name = ? || children.grandkids2.name = ?) && children.id = ?',
+		'grandkid', 'missing', 1)!.query()!
+	assert rows.len == 1
+
+	empty := parents.where('(children.grandkids.name = ? || children.grandkids2.name = ?) && children.id = ?',
+		'grandkid', 'missing', 999)!.query()!
+	assert empty.len == 0
+}
+
+fn test_where_deep_is_null_requires_a_real_descendant() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+	mut children := orm.new_query[IncludeChild](db)
+	parents.insert(IncludeParent{
+		name: 'no grandkids'
+	})!
+	children.insert(IncludeChild{
+		parent_id: parents.last_id()
+		name:      'child without grandkids'
+	})!
+
+	rows := parents.where('children.grandkids.nickname IS NULL')!.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'parent'
+}
+
+fn test_where_resolves_an_embedded_terminal_field_after_a_relationship_path() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeEmbeddedParent](db)
+	mut children := orm.new_query[IncludeEmbeddedChild](db)
+	parents.create()!
+	children.create()!
+	parents.insert(IncludeEmbeddedParent{
+		name: 'embedded parent'
+	})!
+	children.insert(IncludeEmbeddedChild{
+		parent_id:     parents.last_id()
+		details_label: 'embedded label'
+	})!
+
+	rows := parents.include('children')!.where('children.IncludeEmbeddedDetails.label = ?',
+		'embedded label')!.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'embedded parent'
+	assert rows[0].children.len == 1
+	assert rows[0].children[0].details_label == 'embedded label'
+	assert parents.where('children.IncludeEmbeddedDetails.label = ?', 'missing')!.count()! == 0
+}
+
 fn test_where_rejects_and_between_sibling_relationships_in_one_call() {
 	mut db := new_include_database()!
 	defer {
@@ -1408,6 +1490,8 @@ fn test_data_scope_applies_to_every_table_in_relationship_predicates() {
 	assert parents.where('children.grandkids.name = ?', 'visible grandkid')!.count()! == 1
 	assert parents.where('children.name = ?', 'hidden child')!.count()! == 0
 	assert parents.where('children.grandkids.name = ?', 'hidden grandkid')!.count()! == 0
+	assert parents.where('children.name = ? || children.grandkids.name = ?', 'shallow child',
+		'missing')!.count()! == 1
 
 	parents.where('children.name = ?', 'hidden child')!.set('name = ?', 'updated')!.update()!
 	parents.where('children.grandkids.name = ?', 'hidden grandkid')!.delete()!
@@ -1435,6 +1519,8 @@ fn test_legacy_tenant_scope_applies_to_every_table_in_relationship_predicates() 
 	assert parents.where('children.grandkids.name = ?', 'visible grandkid')!.count()! == 1
 	assert parents.where('children.name = ?', 'hidden child')!.count()! == 0
 	assert parents.where('children.grandkids.name = ?', 'hidden grandkid')!.count()! == 0
+	assert parents.where('children.name = ? || children.grandkids.name = ?', 'shallow child',
+		'missing')!.count()! == 1
 
 	parents.where('children.name = ?', 'hidden child')!.set('name = ?', 'updated')!.update()!
 	parents.where('children.grandkids.name = ?', 'hidden grandkid')!.delete()!
