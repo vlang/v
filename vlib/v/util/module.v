@@ -230,26 +230,39 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 		} else {
 			os.join_path_single(os.getwd(), pref_.path)
 		}
-		normalized_abs_pref_path := os.real_path(abs_pref_path)
+		logical_abs_pref_path := os.norm_path(abs_pref_path)
+		normalized_abs_pref_path := os.real_path(logical_abs_pref_path)
+		mut pref_module_prefix := ''
 		abs_pref_base := if os.is_dir(normalized_abs_pref_path) {
-			if compilation_path_is_module_root(pref_, normalized_abs_pref_path) {
-				os.dir(normalized_abs_pref_path)
-			} else {
-				normalized_abs_pref_path
+			if compilation_path_is_module_root(pref_, logical_abs_pref_path) {
+				pref_module_prefix = os.base(logical_abs_pref_path)
 			}
+			normalized_abs_pref_path
 		} else {
 			pref_file_dir := os.dir(normalized_abs_pref_path)
-			if compilation_path_is_module_root(pref_, normalized_abs_pref_path) {
-				os.dir(pref_file_dir)
-			} else {
-				pref_file_dir
+			if compilation_path_is_module_root(pref_, logical_abs_pref_path) {
+				pref_module_prefix = os.base(os.dir(logical_abs_pref_path))
 			}
+			pref_file_dir
 		}
 		normalized_path := os.real_path(path)
-		prefix := abs_pref_base + os.path_separator
-		if normalized_path.starts_with(prefix) {
-			rel_mod_path := normalized_path.all_after(prefix)
-			return normalize_base_url_mod_name(rel_mod_path.replace(os.path_separator, '.'), path)
+		mut rel_mod_path := ''
+		if normalized_path != abs_pref_base {
+			prefix := abs_pref_base + os.path_separator
+			if !normalized_path.starts_with(prefix) {
+				return error('module not found')
+			}
+			rel_mod_path = normalized_path.all_after(prefix).replace(os.path_separator, '.')
+		}
+		if pref_module_prefix != '' {
+			rel_mod_path = if rel_mod_path == '' {
+				pref_module_prefix
+			} else {
+				'${pref_module_prefix}.${rel_mod_path}'
+			}
+		}
+		if rel_mod_path != '' {
+			return normalize_base_url_mod_name(rel_mod_path, path)
 		}
 	}
 	return error('module not found')
@@ -281,7 +294,7 @@ fn compilation_path_is_module_root(pref_ &pref.Preferences, path string) bool {
 		return false
 	}
 	entries := os.ls(path) or { return false }
-	for source_path in active_module_source_files(pref_, path, entries, true) {
+	for source_path in active_module_source_files(pref_, path, entries, pref_.is_test) {
 		if source_file_module_name(source_path) or { '' } == expected_module {
 			return true
 		}
@@ -343,6 +356,12 @@ fn source_file_module_name(path string) ?string {
 			mut brackets := 1
 			mut quote := u8(0)
 			for start < source.len && brackets > 0 {
+				if quote == 0 {
+					start = skip_source_space_and_comments(source, start) or { return none }
+					if start >= source.len {
+						break
+					}
+				}
 				ch := source[start]
 				if quote != 0 {
 					if ch == `\\` && start + 1 < source.len {

@@ -310,7 +310,7 @@ fn test_issue_27281_marker_bounded_module_directory_keeps_prefix() {
 	os.mkdir_all(ancestor_bar_dir) or { panic(err) }
 	parent_vmod := ['Module {', "\tname: 'parent'", '}'].join_lines() + '\n'
 	foo_test_source :=
-		['\xef\xbb\xbf/* outer /* nested */ outer */', '@[has_globals]', 'module foo;', '', 'import foo.bar', '', 'fn test_module_names() {', "\tassert @MOD == 'foo'", "\tassert bar.module_name() == 'foo.bar'", '}'].join_lines() +
+		['\xef\xbb\xbf/* outer /* nested */ outer */', "@[has_globals // don't remove [", ']', 'module foo;', '', 'import foo.bar', '', 'fn test_module_names() {', "\tassert @MOD == 'foo'", "\tassert bar.module_name() == 'foo.bar'", '}'].join_lines() +
 		'\n'
 	bar_source :=
 		['module bar', '', 'pub fn module_name() string {', '\treturn @MOD', '}'].join_lines() +
@@ -387,8 +387,41 @@ fn test_issue_27281_marker_bounded_directory_ignores_inactive_module_sources() {
 	issue_20147_write_file(os.join_path(project_dir, '.v.mod.stop'), '')
 	issue_20147_write_file(os.join_path(foo_dir, 'main.c.v'), main_source)
 	issue_20147_write_file(os.join_path(foo_dir, 'foo.js.v'), inactive_source)
+	issue_20147_write_file(os.join_path(foo_dir, 'foo_test.v'), 'module foo\n')
 	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'), bar_source)
 	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(foo_dir)}')
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'bar', res.output
+}
+
+fn test_issue_27281_marker_bounded_symlinked_module_root_keeps_logical_name() {
+	workspace := os.join_path(os.vtmp_dir(), 'issue_27281_symlinked_module_root')
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	project_dir := os.join_path(workspace, 'project')
+	physical_foo_dir := os.join_path(project_dir, 'sources', 'package')
+	bar_dir := os.join_path(physical_foo_dir, 'bar')
+	logical_foo_dir := os.join_path(project_dir, 'foo')
+	os.rmdir_all(workspace) or {}
+	os.mkdir_all(bar_dir) or { panic(err) }
+	foo_source :=
+		['module foo', '', 'import foo.bar', '', 'pub fn nested_module_name() string {', '\treturn bar.module_name()', '}'].join_lines() +
+		'\n'
+	bar_source :=
+		['module bar', '', 'pub fn module_name() string {', '\treturn @MOD', '}'].join_lines() +
+		'\n'
+	issue_20147_write_file(os.join_path(project_dir, '.v.mod.stop'), '')
+	issue_20147_write_file(os.join_path(physical_foo_dir, 'foo.v'), foo_source)
+	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'), bar_source)
+	os.symlink(physical_foo_dir, logical_foo_dir) or {
+		$if windows {
+			return
+		} $else {
+			panic(err)
+		}
+	}
+	res :=
+		os.execute('${os.quoted_path(issue_20147_vexe)} -shared -check ${os.quoted_path(logical_foo_dir)}')
+	assert res.exit_code == 0, res.output
 }
