@@ -150,6 +150,25 @@ fn intel_rip_relative_named_displacement(offset i64) {
 	}
 }
 
+fn intel_signed_compare(left int, right int) {
+	asm amd64 intel {
+		cmp left, right
+		; ; r (left)
+		  r (right)
+		; cc
+	}
+}
+
+fn intel_vsib_vector_index(base &i32) {
+	asm amd64 intel {
+		vpgatherdd xmm1, [base + xmm2 * 4 + 0], xmm3
+		; ; r (base)
+		; xmm1
+		  xmm2
+		  xmm3
+	}
+}
+
 fn intel_label_alias_collisions(value i64) {
 	asm amd64 intel {
 	local_width_label:

@@ -4386,7 +4386,7 @@ fn (mut c Checker) check_asm_intel_operand_widths(stmt ast.AsmStmt,
 		}
 		for arg in template.args {
 			c.check_asm_intel_address_register_widths(arg, operand_aliases, native_width,
-				template.pos)
+				template.name, template.pos)
 		}
 		c.check_asm_intel_hard_register_widths(template, operand_aliases, native_width)
 	}
@@ -4406,7 +4406,7 @@ fn (c &Checker) asm_intel_arg_has_named_alias(arg ast.AsmArg,
 }
 
 fn (mut c Checker) check_asm_intel_address_register_widths(arg ast.AsmArg,
-	aliases map[string]ast.Type, native_width int, pos token.Pos) {
+	aliases map[string]ast.Type, native_width int, instruction string, pos token.Pos) {
 	if arg is ast.AsmAddressing && c.asm_intel_arg_has_named_alias(arg, aliases) {
 		if arg.mode == .rip_plus_displacement
 			&& c.asm_intel_arg_has_named_alias(arg.displacement, aliases) {
@@ -4414,9 +4414,17 @@ fn (mut c Checker) check_asm_intel_address_register_widths(arg ast.AsmArg,
 				pos)
 			return
 		}
-		for address_arg in [arg.base, arg.index, arg.displacement] {
+		name := asm_intel_normalized_instruction_name(instruction)
+		is_vsib := name in ['vpgatherdd', 'vpgatherdq', 'vpgatherqd', 'vpgatherqq', 'vgatherdps',
+			'vgatherdpd', 'vgatherqps', 'vgatherqpd', 'vpscatterdd', 'vpscatterdq', 'vpscatterqd',
+			'vpscatterqq', 'vscatterdps', 'vscatterdpd', 'vscatterqps', 'vscatterqpd']
+		for i, address_arg in [arg.base, arg.index, arg.displacement] {
 			if address_arg is ast.AsmRegister && address_arg.size > 0
 				&& address_arg.size != native_width * 8 {
+				if is_vsib && i == 1 && (address_arg.name.starts_with('xmm')
+					|| address_arg.name.starts_with('ymm') || address_arg.name.starts_with('zmm')) {
+					continue
+				}
 				c.error('hard register `${address_arg.name}` is ${address_arg.size}-bit, but named operands in the same structured `intel` address expand to ${native_width * 8}-bit registers for the current compilation target; use matching address-register widths, or a `raw intel` block with explicit operand modifiers',
 					pos)
 			}
@@ -4424,12 +4432,8 @@ fn (mut c Checker) check_asm_intel_address_register_widths(arg ast.AsmArg,
 	}
 }
 
-fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate,
-	aliases map[string]ast.Type, native_width int) {
-	// These integer instructions require their register operands to have the same
-	// width. Intentional mixed-width forms such as `movzx` and shift counts are
-	// deliberately absent.
-	mut name := template.name.to_lower_ascii()
+fn asm_intel_normalized_instruction_name(instruction string) string {
+	mut name := instruction.to_lower_ascii()
 	for name.contains(' ') {
 		prefix := name.all_before(' ')
 		if prefix !in ['lock', 'rex', 'vex', 'xop'] && !prefix.starts_with('rex.')
@@ -4438,6 +4442,15 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 		}
 		name = name.all_after(' ')
 	}
+	return name
+}
+
+fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate,
+	aliases map[string]ast.Type, native_width int) {
+	// These integer instructions require their register operands to have the same
+	// width. Intentional mixed-width forms such as `movzx` and shift counts are
+	// deliberately absent.
+	mut name := asm_intel_normalized_instruction_name(template.name)
 	is_movq := name == 'movq'
 	same_width_instructions := ['mov', 'movbe', 'add', 'adc', 'adcx', 'adox', 'sub', 'sbb', 'and',
 		'andn', 'or', 'xor', 'cmp', 'test', 'xchg', 'xadd', 'cmpxchg', 'imul', 'bsf', 'bsr', 'bt',
@@ -4491,6 +4504,19 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 			return
 		}
 	}
+	if name == 'cmp' {
+		for arg in template.args {
+			if arg is ast.AsmAlias && arg.name in aliases
+				&& c.asm_intel_named_operand_is_narrow(arg.name, aliases, native_width) {
+				typ := c.unwrap_generic(aliases[arg.name])
+				if c.table.unaliased_type(typ).is_signed() {
+					c.error('named operand `${arg.name}` has ${c.asm_intel_type_width(typ) * 8}-bit signed type `${c.table.type_str(typ)}`, but instruction `${template.name}` compares the ${native_width * 8}-bit register substituted by structured `intel` assembly; use native-width operands, or a `raw intel` block with explicit operand modifiers',
+						template.pos)
+					return
+				}
+			}
+		}
+	}
 	if is_width_sensitive {
 		if template.args.len > 0 {
 			destination := template.args[0]
@@ -4542,6 +4568,15 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 				template.pos)
 		}
 	}
+}
+
+fn (mut c Checker) asm_intel_named_operand_is_narrow(alias string,
+	aliases map[string]ast.Type, native_width int) bool {
+	typ := c.unwrap_generic(aliases[alias])
+	if typ == 0 || typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(typ) {
+		return false
+	}
+	return c.asm_intel_type_width(typ) != native_width
 }
 
 fn (c &Checker) asm_intel_type_width(typ ast.Type) int {

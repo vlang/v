@@ -132,3 +132,25 @@ fn test_intel_native_width_address_registers_with_clang() {
 	}
 	assert result == 42
 }
+
+fn intel_vsib_vector_index_with_clang(base &i32) {
+	asm amd64 intel {
+		vpgatherdd xmm1, [base + xmm2 * 4 + 0], xmm3
+		; ; r (base)
+		; xmm1
+		  xmm2
+		  xmm3
+	}
+}
+
+@[noinline]
+fn can_run_intel_vsib_test() bool {
+	return false
+}
+
+fn test_intel_vsib_vector_index_compiles_with_clang() {
+	if can_run_intel_vsib_test() {
+		value := i32(0)
+		intel_vsib_vector_index_with_clang(&value)
+	}
+}

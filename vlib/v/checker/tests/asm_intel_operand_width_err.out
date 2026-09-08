@@ -124,3 +124,10 @@ vlib/v/checker/tests/asm_intel_operand_width_err.vv:147:3: error: named operands
       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~
   148 |         ; =r (result)
   149 |         ; r (offset)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:155:3: error: named operand `left` has 32-bit signed type `int`, but instruction `cmp` compares the 64-bit register substituted by structured `intel` assembly; use native-width operands, or a `raw intel` block with explicit operand modifiers
+  153 | fn intel_signed_compare(left int, right int) {
+  154 |     asm amd64 intel {
+  155 |         cmp left, right
+      |         ~~~~~~~~~~~~~~~
+  156 |         ; ; r (left)
+  157 |           r (right)

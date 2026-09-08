@@ -9074,8 +9074,8 @@ V rejects a named operand combined with an explicit hard register of a different
 example, in a 64-bit build, `mov eax, some_value` would reach the assembler as `mov eax, rcx`, so V
 rejects it at compile time. Named operands may still use narrower V types when no conflicting hard
 register is present, except as the destination of shifts and rotates whose semantics depend on the
-register width. Use a `raw intel` block to pick operand widths explicitly with `%k`, `%w` and
-related modifiers.
+register width, or as a signed comparison operand. Use a `raw intel` block to pick operand widths
+explicitly with `%k`, `%w` and related modifiers.
 
 The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the C backend. MSVC
 does not support this form of inline assembly on 64-bit targets, and individual instructions or
