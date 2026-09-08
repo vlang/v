@@ -1871,6 +1871,15 @@ fn test_fn_literal_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_parenthesized_direct_generic_const_fn_param',
 		'struct C.native_event {}\nfn apply[T](handler fn (const_event &T)) {}\nfn startup[U]() {\n\tapply[C.native_event]((fn (event &C.native_event) {}))\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	direct_alias := run_good(v3_bin, 'good_direct_generic_const_fn_alias_param',
+		'type Handler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn apply[T](handler Handler) bool {\n\treturn true\n}\nfn startup[U]() bool {\n\treturn apply[int](fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert direct_alias == 'true'
+	run_bad(v3_bin, 'bad_direct_generic_const_fn_alias_param',
+		'type Handler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn apply[T](handler Handler) {}\nfn startup[U]() {\n\tapply[int](fn (event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	run_bad(v3_bin, 'bad_direct_generic_const_fn_sum_param',
+		'type Handler = fn (const_event &C.native_event)\ntype Value = Handler | int\nstruct C.native_event {}\nfn apply[T](value Value) {}\nfn startup[U]() {\n\tapply[int](fn (event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 	direct_variadic := run_good(v3_bin, 'good_direct_generic_variadic_const_fn_param',
 		'struct C.native_event {}\nfn apply[T](handlers ...fn (const_event &T)) bool {\n\treturn handlers.len == 2\n}\nfn startup[U]() bool {\n\treturn apply[C.native_event](fn (const_event &C.native_event) {}, fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	assert direct_variadic == 'true'

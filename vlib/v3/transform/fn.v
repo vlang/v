@@ -1143,7 +1143,16 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		}
 		if t.validating_generic_spec && has_concrete_generic_params {
 			source_types := t.fn_literal_source_type_texts(arg_id)
-			mut needs_source_mode_validation := type_text_has_source_only_mode(mode_param_type)
+			resolved_mode_param_type :=
+				t.normalize_fn_signature_component_aliases(mode_param_type, 0)
+			mut needs_source_mode_validation :=
+				type_text_has_source_only_mode(resolved_mode_param_type)
+				|| t.sum_type_has_source_only_fn_variant(mode_param_type)
+			if !isnil(t.tc) {
+				if _ := t.tc.c_abi_fn_signature_for_type_text(mode_param_type) {
+					needs_source_mode_validation = true
+				}
+			}
 			for source_type in source_types {
 				if type_text_has_source_only_mode(source_type) {
 					needs_source_mode_validation = true
@@ -12531,6 +12540,22 @@ fn (t &Transformer) sum_type_has_shared_fn_variant(expected_type string) bool {
 		if (variant_type.starts_with('fn(') || variant_type.starts_with('fn ('))
 			&& type_text_has_shared_mode(variant_type) {
 			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) sum_type_has_source_only_fn_variant(expected_type string) bool {
+	for variant in t.sum_type_variants_for_index(expected_type) {
+		variant_type := t.normalize_fn_signature_component_aliases(variant, 0)
+		if (variant_type.starts_with('fn(') || variant_type.starts_with('fn ('))
+			&& type_text_has_source_only_mode(variant_type) {
+			return true
+		}
+		if !isnil(t.tc) {
+			if _ := t.tc.c_abi_fn_signature_for_type_text(variant) {
+				return true
+			}
 		}
 	}
 	return false
