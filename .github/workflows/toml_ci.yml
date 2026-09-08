@@ -29,13 +29,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Cache V build
+        id: cache-v
         uses: actions/cache@v4
         with:
           path: v
-          key: v-toml-${{ runner.os }}-${{ hashFiles('cmd/**', 'vlib/**', 'thirdparty/**', 'make*', '.github/actions/setup-v/**') }}
-          restore-keys: |
-            v-toml-${{ runner.os }}-
+          key: v-toml-${{ runner.os }}-${{ hashFiles('cmd/**', 'vlib/**', 'thirdparty/**', 'GNUmakefile', 'Makefile', '.github/actions/setup-v/**') }}
       - uses: ./.github/actions/setup-v
+        if: steps.cache-v.outputs.cache-hit != 'true'
+        with:
+          symlink: false
+      - name: Symlink V
+        run: ./v symlink
       - name: Install dependencies
         run: |
           v retry -- v download https://github.com/jqlang/jq/releases/download/jq-1.6/jq-linux64
