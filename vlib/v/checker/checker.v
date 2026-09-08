@@ -4445,6 +4445,20 @@ fn asm_intel_normalized_instruction_name(instruction string) string {
 	return name
 }
 
+fn (mut c Checker) check_asm_intel_named_shift_count(template ast.AsmTemplate,
+	aliases map[string]ast.Type, count_index int) bool {
+	if template.args.len <= count_index {
+		return false
+	}
+	count := template.args[count_index]
+	if count is ast.AsmAlias && count.name in aliases {
+		c.error('named shift count `${count.name}` expands to a native-width register in structured `intel` assembly, but instruction `${template.name}` requires an immediate or `cl`; use a hard `cl` register, or a `raw intel` block with an explicit operand modifier',
+			template.pos)
+		return true
+	}
+	return false
+}
+
 fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate,
 	aliases map[string]ast.Type, native_width int) {
 	// These integer instructions require their register operands to have the same
@@ -4504,13 +4518,13 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 			return
 		}
 	}
-	if name == 'cmp' {
+	if name in ['cmp', 'test'] {
 		for arg in template.args {
 			if arg is ast.AsmAlias && arg.name in aliases
 				&& c.asm_intel_named_operand_is_narrow(arg.name, aliases, native_width) {
 				typ := c.unwrap_generic(aliases[arg.name])
 				if c.table.unaliased_type(typ).is_signed() {
-					c.error('named operand `${arg.name}` has ${c.asm_intel_type_width(typ) * 8}-bit signed type `${c.table.type_str(typ)}`, but instruction `${template.name}` compares the ${native_width * 8}-bit register substituted by structured `intel` assembly; use native-width operands, or a `raw intel` block with explicit operand modifiers',
+					c.error('named operand `${arg.name}` has ${c.asm_intel_type_width(typ) * 8}-bit signed type `${c.table.type_str(typ)}`, but instruction `${template.name}` sets flags from the ${native_width * 8}-bit register substituted by structured `intel` assembly; use native-width operands, or a `raw intel` block with explicit operand modifiers',
 						template.pos)
 					return
 				}
@@ -4532,6 +4546,10 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 				}
 			}
 		}
+		c.check_asm_intel_named_shift_count(template, aliases, 1)
+		return
+	}
+	if name in ['shld', 'shrd'] && c.check_asm_intel_named_shift_count(template, aliases, 2) {
 		return
 	}
 	for i, arg in template.args {

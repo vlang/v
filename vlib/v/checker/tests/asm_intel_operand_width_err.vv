@@ -159,6 +159,23 @@ fn intel_signed_compare(left int, right int) {
 	}
 }
 
+fn intel_signed_test(value int) {
+	asm amd64 intel {
+		test value, value
+		; ; r (value)
+		; cc
+	}
+}
+
+fn intel_named_shift_count(count i64) {
+	asm amd64 intel {
+		shl rax, count
+		; ; r (count)
+		; rax
+		  cc
+	}
+}
+
 fn intel_vsib_vector_index(base &i32) {
 	asm amd64 intel {
 		vpgatherdd xmm1, [base + xmm2 * 4 + 0], xmm3

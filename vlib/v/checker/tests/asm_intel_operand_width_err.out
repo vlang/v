@@ -124,10 +124,24 @@ vlib/v/checker/tests/asm_intel_operand_width_err.vv:147:3: error: named operands
       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~
   148 |         ; =r (result)
   149 |         ; r (offset)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:155:3: error: named operand `left` has 32-bit signed type `int`, but instruction `cmp` compares the 64-bit register substituted by structured `intel` assembly; use native-width operands, or a `raw intel` block with explicit operand modifiers
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:155:3: error: named operand `left` has 32-bit signed type `int`, but instruction `cmp` sets flags from the 64-bit register substituted by structured `intel` assembly; use native-width operands, or a `raw intel` block with explicit operand modifiers
   153 | fn intel_signed_compare(left int, right int) {
   154 |     asm amd64 intel {
   155 |         cmp left, right
       |         ~~~~~~~~~~~~~~~
   156 |         ; ; r (left)
   157 |           r (right)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:164:3: error: named operand `value` has 32-bit signed type `int`, but instruction `test` sets flags from the 64-bit register substituted by structured `intel` assembly; use native-width operands, or a `raw intel` block with explicit operand modifiers
+  162 | fn intel_signed_test(value int) {
+  163 |     asm amd64 intel {
+  164 |         test value, value
+      |         ~~~~~~~~~~~~~~~~~
+  165 |         ; ; r (value)
+  166 |         ; cc
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:172:3: error: named shift count `count` expands to a native-width register in structured `intel` assembly, but instruction `shl` requires an immediate or `cl`; use a hard `cl` register, or a `raw intel` block with an explicit operand modifier
+  170 | fn intel_named_shift_count(count i64) {
+  171 |     asm amd64 intel {
+  172 |         shl rax, count
+      |         ~~~~~~~~~~~~~~
+  173 |         ; ; r (count)
+  174 |         ; rax
