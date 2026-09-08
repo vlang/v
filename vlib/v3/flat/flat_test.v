@@ -38,6 +38,7 @@ fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 		op:                   .plus
 		is_mut:               true
 		skip_ownership_drops: true
+		is_static_type_method: true
 	}
 	cloned := node.clone_owned()
 	assert cloned.value == node.value
@@ -49,6 +50,7 @@ fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 	assert cloned.op == node.op
 	assert cloned.is_mut
 	assert cloned.skip_ownership_drops
+	assert cloned.is_static_type_method
 }
 
 fn test_clone_text_table_owned_detaches_scoped_storage() {

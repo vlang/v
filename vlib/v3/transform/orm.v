@@ -1468,16 +1468,7 @@ fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) fl
 		return index_expr
 	}
 	if fn_name, args := sql_value_call_parts(token) {
-		mut arg_ids := []flat.NodeId{cap: args.len}
-		for arg in args {
-			arg_ids << t.sql_expr_from_token(arg)
-		}
-		t.mark_fn_used_name(fn_name)
-		call := t.make_call_typed(fn_name, arg_ids, if typ.len > 0 { typ } else { '' })
-		// Run the reconstructed call through ordinary lowering so omitted `@[params]`
-		// arguments, aliases, and argument conversions are handled exactly as they
-		// are outside an SQL block.
-		return t.transform_expr(call)
+		return t.sql_value_call_expr(fn_name, args, typ)
 	}
 	if token in ['none', 'nil'] {
 		return t.make_struct_init('orm.Null')
@@ -1496,8 +1487,7 @@ fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) fl
 	}
 	if sql_token_is_no_arg_call(token) {
 		fn_name := token[..token.len - 2]
-		t.mark_fn_used_name(fn_name)
-		return t.make_call_typed(fn_name, []flat.NodeId{}, if typ.len > 0 { typ } else { '' })
+		return t.sql_value_call_expr(fn_name, []string{}, typ)
 	}
 	if token.starts_with('.') && typ.len > 0 {
 		return t.a.add_node(flat.Node{
@@ -1515,6 +1505,45 @@ fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) fl
 		})
 	}
 	return t.sql_value_name_expr(token)
+}
+
+fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, typ string) flat.NodeId {
+	mut arg_ids := []flat.NodeId{cap: args.len}
+	for arg in args {
+		arg_ids << t.sql_expr_from_token(arg)
+	}
+	if args.len == 1
+		&& (is_plain_builtin_alias_type(callee_name) || t.is_known_type_name(callee_name)) {
+		return t.transform_expr(t.make_cast(callee_name, arg_ids[0], callee_name))
+	}
+	callee := t.sql_value_call_callee(callee_name)
+	call := t.make_call_expr_typed(callee, arg_ids, if typ.len > 0 { typ } else { '' })
+	// Preserve the source call shape so ordinary lowering can distinguish module
+	// functions, receiver methods, and static associated functions.
+	return t.transform_expr(call)
+}
+
+fn (mut t Transformer) sql_value_call_callee(callee_name string) flat.NodeId {
+	parts := callee_name.split('.')
+	if parts.len < 2 {
+		return t.make_ident(callee_name)
+	}
+	mut receiver_type := t.sql_root_value_type_name(parts[0])
+	if receiver_type.len == 0 {
+		return t.sql_qualified_selector(callee_name)
+	}
+	mut receiver := t.make_ident(parts[0])
+	t.set_node_typ(int(receiver), receiver_type)
+	for field in parts[1..parts.len - 1] {
+		field_type := t.lookup_struct_field_type(receiver_type, field) or {
+			t.builtin_selector_type(receiver_type, field) or { '' }
+		}
+		receiver = t.make_selector(receiver, field, field_type)
+		if field_type.len > 0 {
+			receiver_type = field_type
+		}
+	}
+	return t.make_selector(receiver, parts.last(), '')
 }
 
 fn sql_value_call_parts(token string) ?(string, []string) {

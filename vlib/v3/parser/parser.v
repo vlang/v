@@ -1378,6 +1378,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 
 fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type string, receiver_is_mut bool, is_method bool, interop_prefix string, name_pos int) flat.NodeId {
 	is_c_decl := interop_prefix.len > 0
+	is_static_type_method := is_method && receiver_name.len == 0 && !is_c_decl
 	is_pub := p.pending_decl_pub
 	p.pending_decl_pub = false
 	// Capture & clear here so it applies only to this function (not nested closures
@@ -1457,6 +1458,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			payload: flat.node_payload(generic_params)
 			children_start: start
 			children_count: flat.child_count(param_ids.len)
+			is_static_type_method: is_static_type_method
 			// Function nodes do not otherwise use is_mut. On a .vh declaration it
 			// records that the body lives in a cached object and must not be emitted;
 			// on a C declaration it preserves the parser's implicit unsafe/trusted state.
@@ -1551,6 +1553,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		payload: flat.node_payload(generic_params)
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
+		is_static_type_method: is_static_type_method
 	})
 	if p.prefs.is_fmt && formatter_end > 0 {
 		p.a.formatter_node_ends[int(id)] = formatter_end

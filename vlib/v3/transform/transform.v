@@ -8848,6 +8848,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			typ: fn_node.typ
 			payload: fn_node.payload
 			skip_ownership_drops: fn_node.skip_ownership_drops
+			is_static_type_method: fn_node.is_static_type_method
 		})
 	}
 	t.smartcast_stack.clear()

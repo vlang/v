@@ -136,12 +136,43 @@ fn (post Post) form_for(action string) Form {
 	return Post.form_for(id: post.id, action: action)
 }
 
+fn cache__static__reset() string {
+	return "ordinary"
+}
+
 fn main() {
 	println(Post{7}.form_for("edit").value)
 	println(Post.form_for(id: 9, action: "new").value)
+	println(cache__static__reset())
 }
 ')
-	assert out.split_into_lines() == ['static:7:edit', 'static:9:new']
+	assert out.split_into_lines() == ['static:7:edit', 'static:9:new', 'ordinary']
+}
+
+// An unresolved literal field shape may be shared by several declared anonymous
+// structs. Keep the exact type selected from the call parameter context.
+fn test_contextual_anonymous_struct_call_field_keeps_declared_type() {
+	out := selfhost_regression_run('contextual_anonymous_struct_call_field', 'fn produce() string {
+	return "contextual"
+}
+
+fn take_int(value struct {
+	item int
+}) string {
+	return value.item.str()
+}
+
+fn take_string(value struct {
+	item string
+}) string {
+	return value.item
+}
+
+fn main() {
+	println(take_string(struct { item: produce() }))
+}
+')
+	assert out == 'contextual'
 }
 
 // A non-capturing fn literal passed to an imported generic must remain a cgen root.

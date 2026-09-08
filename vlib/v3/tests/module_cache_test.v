@@ -5096,6 +5096,46 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '0'
 }
 
+fn test_cached_module_preserves_static_declaration_marker_distinction() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_static_marker_distinction_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'factory/factory.v', 'module factory
+
+pub struct Factory {}
+
+pub fn Factory.make() string {
+	return "static"
+}
+
+pub fn cache__static__reset() string {
+	return "ordinary"
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import factory
+
+fn main() {
+	println(factory.Factory.make())
+	println(factory.cache__static__reset())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == 'static\nordinary'
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == 'static\nordinary'
+}
+
 fn test_cached_global_with_unsupported_initializer_is_embedded() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_global_index_${os.getpid()}')

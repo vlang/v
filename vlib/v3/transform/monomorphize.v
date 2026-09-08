@@ -3714,6 +3714,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 			children_count: cloned_fn.children_count
 			is_mut: cloned_fn.is_mut
 			skip_ownership_drops: true
+			is_static_type_method: cloned_fn.is_static_type_method
 		})
 	}
 	t.a.specialized_fn_nodes[int(clone_id)] = true
@@ -9951,6 +9952,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			typ: cloned_typ
 			value: t.subst_node_value(node, args)
 			is_mut: node.is_mut
+			is_static_type_method: node.is_static_type_method
 		})
 		if node.kind == .ident && t.mut_param_values[node.value] {
 			t.mut_value_ident_nodes[int(clone_id)] = true
@@ -10021,6 +10023,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		typ: final_typ
 		value: cloned_value
 		is_mut: node.is_mut
+		is_static_type_method: node.is_static_type_method
 	})
 	if t.specialization_node_start >= 0 && node.kind == .decl_assign && children.len >= 2 {
 		lhs := t.a.nodes[int(children[0])]

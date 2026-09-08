@@ -30,6 +30,14 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() {
 				if node.value != 'struct' || node.children_count == 0 {
 					continue
 				}
+				// Contextual checking may already have selected one of the declared
+				// anonymous structs with this field shape. Keep that nominal identity;
+				// transform_struct_init will apply it when this literal is lowered.
+				if checked_type := t.tc.expr_type(flat.NodeId(idx)) {
+					if transform_is_anonymous_struct_name(t.tc.type_name(checked_type)) {
+						continue
+					}
+				}
 				mut semantic_fields := []types.StructField{cap: int(node.children_count)}
 				mut valid := true
 				for fi in 0 .. node.children_count {

@@ -188,16 +188,17 @@ pub fn node_payload(generic_params []string) &NodePayload {
 // Node represents node data used by flat.
 pub struct Node {
 pub mut:
-	value                string
-	typ                  string
-	payload              &NodePayload = unsafe { nil }
-	children_start       i32
-	is_mut               bool
-	kind                 NodeKind
-	op                   Op
-	skip_ownership_drops bool
-	children_count       i32
-	pos                  token.Pos
+	value                 string
+	typ                   string
+	payload               &NodePayload = unsafe { nil }
+	children_start        i32
+	is_mut                bool
+	kind                  NodeKind
+	op                    Op
+	skip_ownership_drops  bool
+	is_static_type_method bool
+	children_count        i32
+	pos                   token.Pos
 }
 
 // type_text_id returns the compact canonical identity carried in this node's
@@ -739,6 +740,7 @@ pub fn (n Node) with_shifted_children(shift i32) Node {
 		op:                   n.op
 		is_mut:               n.is_mut
 		skip_ownership_drops: n.skip_ownership_drops
+		is_static_type_method: n.is_static_type_method
 	}
 }
 
@@ -755,6 +757,7 @@ pub fn (n Node) with_pos(pos token.Pos) Node {
 		op:                   n.op
 		is_mut:               n.is_mut
 		skip_ownership_drops: n.skip_ownership_drops
+		is_static_type_method: n.is_static_type_method
 	}
 }
 
@@ -775,6 +778,7 @@ pub fn (n Node) clone_owned() Node {
 		op:                   n.op
 		is_mut:               n.is_mut
 		skip_ownership_drops: n.skip_ownership_drops
+		is_static_type_method: n.is_static_type_method
 	}
 }
 

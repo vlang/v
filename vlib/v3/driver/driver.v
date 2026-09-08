@@ -5321,7 +5321,7 @@ fn c_hash_monomorph_node(initial u64, a &flat.FlatAst, id flat.NodeId, cacheable
 	}
 	node := a.nodes[idx]
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
-		u8(node.skip_ownership_drops)])
+		u8(node.skip_ownership_drops), u8(node.is_static_type_method)])
 	hash = c_hash_tag(hash, node.children_count)
 	hash = c_hash_bytes(hash, node.typ.bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
@@ -5431,7 +5431,7 @@ fn incremental_qualified_fn_name(module_name string, name string) string {
 
 fn incremental_hash_node_header(initial u64, node &flat.Node, include_value bool) u64 {
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
-		u8(node.skip_ownership_drops)])
+		u8(node.skip_ownership_drops), u8(node.is_static_type_method)])
 	hash = c_hash_tag(hash, node.children_count)
 	hash = c_hash_bytes(hash, node.typ.bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
@@ -5448,7 +5448,7 @@ fn incremental_hash_node_header(initial u64, node &flat.Node, include_value bool
 
 fn incremental_hash_fn_declaration(initial u64, node &flat.Node) u64 {
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
-		u8(node.skip_ownership_drops)])
+		u8(node.skip_ownership_drops), u8(node.is_static_type_method)])
 	hash = c_hash_bytes(hash, node.typ.bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
 	hash = c_hash_bytes(hash, node.value.bytes())

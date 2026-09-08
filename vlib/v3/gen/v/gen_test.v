@@ -87,6 +87,13 @@ fn test_formatter_preserves_static_associated_function_syntax() {
 	assert vfmt('static_associated_function_twice', out) == out
 }
 
+fn test_formatter_preserves_static_marker_in_ordinary_function_name() {
+	source := 'fn cache__static__reset() {}\n'
+	out := vfmt('ordinary_function_with_static_marker', source)
+	assert out == source, out
+	assert vfmt('ordinary_function_with_static_marker_twice', out) == out
+}
+
 fn test_formatter_preserves_blank_lines_between_statements() {
 	source := "fn spaced() {\n\tprintln('a')\n\tprintln('b')\n\n\tprintln('c')\n\n\tif true {\n\t\tprintln('d')\n\t}\n\n\tdump('e')\n}\n"
 	out := vfmt('statement_blank_lines', source)
