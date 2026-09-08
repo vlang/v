@@ -10716,7 +10716,7 @@ fn (mut t Transformer) retarget_cloned_static_assoc_call(node flat.Node, mut chi
 	}
 	owner := t.resolve_substituted_type_text(t.subst_type(args[idx], args))
 	for type_name in t.static_assoc_type_candidates(owner) {
-		static_fn := '${type_name}__static__${callee.value}'
+		static_fn := flat.encode_static_type_method_name(type_name, callee.value)
 		if t.is_known_fn_name(static_fn) {
 			children[0] = t.make_ident(static_fn)
 			return t.receiver_method_return_type(static_fn, t.subst_type(node.typ, args))

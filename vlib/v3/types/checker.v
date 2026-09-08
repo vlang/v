@@ -9237,7 +9237,9 @@ fn (mut tc TypeChecker) check_fn_declaration_name(id flat.NodeId, node flat.Node
 	tc.check_imported_module_prefix(id, node.value, 'fn')
 	mut name := node.value.all_after_last('.')
 	if node.is_static_type_method {
-		name = name.all_after('__static__')
+		if _, method := flat.decode_static_type_method_name(node.value) {
+			name = method
+		}
 	}
 	if !node.value.contains('.') && !node.is_static_type_method
 		&& tc.cur_module in ['', 'main'] && is_builtin_type_name(name) {
@@ -10929,7 +10931,11 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 	if node.kind == .fn_decl && (node.value.contains('.') || node.is_static_type_method) {
 		is_marked_static := node.is_static_type_method
 		receiver_name := if is_marked_static {
-			node.value.all_before('__static__').all_after_last('.')
+			if receiver, _ := flat.decode_static_type_method_name(node.value) {
+				receiver.all_after_last('.')
+			} else {
+				''
+			}
 		} else {
 			node.value.all_before_last('.').all_after_last('.')
 		}

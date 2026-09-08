@@ -81,7 +81,7 @@ pub fn (mut p Point) inc(dx int) int {
 }
 
 fn test_formatter_preserves_static_associated_function_syntax() {
-	source := 'struct Widget {}\n\nfn Widget.make() Widget {\n\treturn Widget{}\n}\n'
+	source := 'struct Widget {}\n\nfn Widget.make() Widget {\n\treturn Widget{}\n}\n\nstruct Cache__static__State {}\n\nfn Cache__static__State.reset__static__now() {}\n'
 	out := vfmt('static_associated_function', source)
 	assert out == source, out
 	assert vfmt('static_associated_function_twice', out) == out

@@ -1237,7 +1237,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 	if is_method && receiver_type.len > 0 {
 		clean_type := method_receiver_type_name(receiver_type)
 		name = if is_static_type_method {
-			'${clean_type}__static__${name}'
+			flat.encode_static_type_method_name(clean_type, name)
 		} else {
 			'${clean_type}.${name}'
 		}

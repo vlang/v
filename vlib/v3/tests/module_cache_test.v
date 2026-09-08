@@ -5115,6 +5115,12 @@ pub fn Factory.make() string {
 pub fn cache__static__reset() string {
 	return "ordinary"
 }
+
+pub struct Cache__static__State {}
+
+pub fn Cache__static__State.reset__static__now() string {
+	return "reversible"
+}
 ')
 	main_file := os.join_path(root, 'main.v')
 	write_module_cache_file(root, 'main.v', 'module main
@@ -5124,16 +5130,17 @@ import factory
 fn main() {
 	println(factory.Factory.make())
 	println(factory.cache__static__reset())
+	println(factory.Cache__static__State.reset__static__now())
 }
 ')
 	cache_dir := os.join_path(root, 'cache')
 	first_output := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
-	assert run_module_cache_binary(first_output) == 'static\nordinary'
+	assert run_module_cache_binary(first_output) == 'static\nordinary\nreversible'
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
-	assert run_module_cache_binary(second_output) == 'static\nordinary'
+	assert run_module_cache_binary(second_output) == 'static\nordinary\nreversible'
 }
 
 fn test_cached_global_with_unsupported_initializer_is_embedded() {

@@ -3027,9 +3027,11 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 			g.write('C.${name}')
 		}
 	} else if n.is_static_type_method {
-		g.write(name.all_before('__static__'))
-		g.write('.')
-		g.write(name.all_after('__static__'))
+		if receiver, method := flat.decode_static_type_method_name(name) {
+			g.write('${receiver}.${method}')
+		} else {
+			g.write(name)
+		}
 	} else {
 		g.write(name)
 	}

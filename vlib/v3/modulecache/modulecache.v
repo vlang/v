@@ -5996,7 +5996,11 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 	}
 	decl_name := node.value
 	name := if node.is_static_type_method {
-		'${decl_name.all_before('__static__')}.${decl_name.all_after('__static__')}'
+		if receiver, method := flat.decode_static_type_method_name(decl_name) {
+			'${receiver}.${method}'
+		} else {
+			decl_name
+		}
 	} else {
 		decl_name
 	}

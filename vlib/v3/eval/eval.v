@@ -745,9 +745,9 @@ fn (mut e Eval) register_function(module_name string, file_name string, id flat.
 		e.functions[module_name]['${module_name}.${node.value}'] = def
 	}
 	if node.is_static_type_method {
-		receiver := node.value.all_before('__static__').all_after_last('.')
-		short := node.value.all_after('__static__')
-		e.functions[module_name]['${receiver}.${short}'] = def
+		if receiver, method := flat.decode_static_type_method_name(node.value) {
+			e.functions[module_name]['${receiver.all_after_last('.')}.${method}'] = def
+		}
 	} else if node.value.contains('.') {
 		short := node.value.all_after_last('.')
 		receiver := node.value.all_before_last('.').all_after_last('.')
