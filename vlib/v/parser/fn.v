@@ -41,6 +41,22 @@ mut:
 	method_calls        []string
 }
 
+fn scan_receiver_sql_query_data(items []ast.SqlQueryDataItem, name string, mut info ReceiverReassignmentInfo) {
+	for item in items {
+		match item {
+			ast.SqlQueryDataLeaf {
+				scan_receiver_reassignment(item.expr, name, mut info)
+			}
+			ast.SqlQueryDataIf {
+				for branch in item.branches {
+					scan_receiver_reassignment(branch.cond, name, mut info)
+					scan_receiver_sql_query_data(branch.items, name, mut info)
+				}
+			}
+		}
+	}
+}
+
 fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReassignmentInfo) {
 	match node {
 		ast.Stmt {
@@ -75,6 +91,32 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 					}
 				}
 			}
+			// Visit statement payloads that are not exposed by Node.children().
+			if node is ast.AssertStmt && node.extra !is ast.EmptyExpr {
+				scan_receiver_reassignment(node.extra, name, mut info)
+			}
+			if node is ast.AsmStmt {
+				for asm_io in node.input {
+					scan_receiver_reassignment(asm_io.expr, name, mut info)
+				}
+				for asm_io in node.output {
+					scan_receiver_reassignment(asm_io.expr, name, mut info)
+				}
+			}
+			if node is ast.ComptimeFor {
+				scan_receiver_reassignment(node.expr, name, mut info)
+			}
+			if node is ast.SqlStmt {
+				scan_receiver_reassignment(node.db_expr, name, mut info)
+				scan_receiver_reassignment(node.or_expr, name, mut info)
+				for line in node.lines {
+					scan_receiver_reassignment(line.where_expr, name, mut info)
+					for update_expr in line.update_exprs {
+						scan_receiver_reassignment(update_expr, name, mut info)
+					}
+					scan_receiver_reassignment(line.update_data_expr, name, mut info)
+				}
+			}
 		}
 		ast.Expr {
 			match node {
@@ -87,6 +129,7 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 					if node.op == .amp && right is ast.Ident && right.name == name {
 						info.address_taken = true
 					}
+					scan_receiver_reassignment(node.or_block, name, mut info)
 				}
 				ast.CallExpr {
 					mut left := node.left
@@ -101,6 +144,78 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 						if arg.is_mut && arg_expr is ast.Ident && arg_expr.name == name {
 							info.passed_mut = true
 						}
+					}
+				}
+				// Visit expression payloads that are not exposed by Node.children().
+				ast.ArrayInit {
+					for extra_expr in [node.len_expr, node.cap_expr, node.init_expr, node.elem_type_expr,
+						node.update_expr] {
+						scan_receiver_reassignment(extra_expr, name, mut info)
+					}
+				}
+				ast.ComptimeCall {
+					for arg in node.args {
+						scan_receiver_reassignment(arg.expr, name, mut info)
+					}
+					scan_receiver_reassignment(node.or_block, name, mut info)
+				}
+				ast.ComptimeSelector {
+					scan_receiver_reassignment(node.field_expr, name, mut info)
+					scan_receiver_reassignment(node.or_block, name, mut info)
+				}
+				ast.CTempVar {
+					scan_receiver_reassignment(node.orig, name, mut info)
+				}
+				ast.DumpExpr {
+					scan_receiver_reassignment(node.expr, name, mut info)
+				}
+				ast.GoExpr {
+					scan_receiver_reassignment(node.call_expr, name, mut info)
+				}
+				ast.SpawnExpr {
+					scan_receiver_reassignment(node.call_expr, name, mut info)
+				}
+				ast.Ident {
+					scan_receiver_reassignment(node.or_expr, name, mut info)
+				}
+				ast.IndexExpr {
+					scan_receiver_reassignment(node.or_expr, name, mut info)
+				}
+				ast.InfixExpr {
+					scan_receiver_reassignment(node.or_block, name, mut info)
+				}
+				ast.IsRefType {
+					scan_receiver_reassignment(node.expr, name, mut info)
+				}
+				ast.LockExpr {
+					for locked in node.lockeds {
+						scan_receiver_reassignment(locked, name, mut info)
+					}
+				}
+				ast.MapInit {
+					if node.has_update_expr {
+						scan_receiver_reassignment(node.update_expr, name, mut info)
+					}
+				}
+				ast.SelectorExpr {
+					scan_receiver_reassignment(node.or_block, name, mut info)
+				}
+				ast.SqlExpr {
+					for sql_expr in [node.db_expr, node.where_expr, node.order_expr, node.limit_expr,
+						node.offset_expr, ast.Expr(node.or_expr)] {
+						scan_receiver_reassignment(sql_expr, name, mut info)
+					}
+					for join in node.joins {
+						scan_receiver_reassignment(join.on_expr, name, mut info)
+					}
+				}
+				ast.SqlQueryDataExpr {
+					scan_receiver_sql_query_data(node.items, name, mut info)
+				}
+				ast.StructInit {
+					scan_receiver_reassignment(node.typ_expr, name, mut info)
+					if node.has_update_expr {
+						scan_receiver_reassignment(node.update_expr, name, mut info)
 					}
 				}
 				else {}

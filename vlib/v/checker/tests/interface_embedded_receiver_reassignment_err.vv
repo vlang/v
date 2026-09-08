@@ -1,7 +1,8 @@
 interface Node {}
 
-fn (mut node Node) replace(next Node) {
+fn (mut node Node) replace(next Node) bool {
 	node = next
+	return true
 }
 
 fn (mut node Node) replace_in_for_init(next Node) {
@@ -24,6 +25,10 @@ fn (mut node Node) replace_and_stop(next Node) bool {
 fn (mut node Node) replace_through_condition(next Node) {
 	if node.replace_and_stop(next) {
 	}
+}
+
+fn (mut node Node) replace_through_dump(next Node) {
+	dump(node.replace(next))
 }
 
 fn replace_node(mut node Node, next Node) {
@@ -54,6 +59,7 @@ fn main() {
 	element.replace_in_for_increment(Node(Item{}))
 	element.replace_through_method(Node(Item{}))
 	element.replace_through_condition(Node(Item{}))
+	element.replace_through_dump(Node(Item{}))
 	element.replace_through_function(Node(Item{}))
 	element.expose_receiver_address()
 }
