@@ -4796,13 +4796,22 @@ fn (mut g Gen) expr_with_fixed_array(expr ast.Expr, got_type_raw ast.Type, expec
 }
 
 fn (mut g Gen) gen_interface_to_interface_conversion(expr ast.Expr, expr_type ast.Type, to_type ast.Type) {
-	mut expr_type_sym := g.table.sym(expr_type)
+	is_shared := expr_type.has_flag(.shared_f)
+	conversion_type := if is_shared {
+		expr_type.clear_flag(.shared_f).set_nr_muls(0)
+	} else {
+		expr_type
+	}
+	mut expr_type_sym := g.table.sym(conversion_type)
 	to_sym := g.table.sym(to_type)
 	g.write('I_${expr_type_sym.cname}_as_I_${to_sym.cname}(')
-	if expr_type.is_ptr() {
+	if !is_shared && expr_type.is_ptr() {
 		g.write('*')
 	}
 	g.expr(expr)
+	if is_shared {
+		g.write('->val')
+	}
 	g.write(')')
 
 	mut info := expr_type_sym.info as ast.Interface

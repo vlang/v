@@ -5462,7 +5462,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.write(embed_name)
 			}
 		}
-		if left_type.has_flag(.shared_f) && g.styp(left_type) != g.styp(receiver_type) {
+		if left_type.has_flag(.shared_f) && g.styp(left_type) != g.styp(receiver_type)
+			&& !(is_interface && node.from_embed_types.len > 0) {
 			g.write('->val')
 		}
 	}

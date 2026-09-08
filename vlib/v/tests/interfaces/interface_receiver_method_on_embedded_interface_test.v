@@ -123,3 +123,12 @@ fn test_loop_condition_receiver_method_on_embedded_interface() {
 	}
 	assert counter.calls == 4
 }
+
+fn test_shared_receiver_method_on_embedded_interface() {
+	shared element := Element(&HTMLBodyElement{
+		name: 'shared body'
+	})
+	lock element {
+		assert element.check()
+	}
+}
