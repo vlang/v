@@ -2047,6 +2047,7 @@ fn filter_embed_asm_target_flags(value string) []string {
 	return filtered
 }
 
+// compile_embedded_asm_files assembles generated files containing embedded data and records their object paths.
 pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 	if asm_files.len == 0 {
 		return
@@ -2074,7 +2075,7 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 			verror('could not write embed assembly file: ${err}')
 		}
 
-		obj_path := asm_path.replace('.S', '.o')
+		obj_path := asm_path.trim_string_right('.S') + '.o'
 		mut asm_args := []string{}
 		asm_args << '-c'
 		env_cflags := os.getenv('CFLAGS').replace('\n', ' ')

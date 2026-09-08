@@ -7030,6 +7030,13 @@ it will make it more self contained and thus easier to distribute.
 When that happens (the default), `embedded_file.data()` will cause *no IO*,
 and it will always return the same data.
 
+For final native links with GCC, Clang, MinGW, or TCC plus a system assembler,
+V embeds large files efficiently with the assembler's `.incbin` directive.
+Modes that cannot link a separate assembly object use generated C byte arrays
+instead and may warn for files of about 5 MB or larger. These modes include
+MSVC, iOS and WebAssembly builds, generated-C and object output, cached modules,
+and cross-compiling to Windows from another host OS.
+
 `$embed_file` supports compression of the embedded file when compiling with `-prod`.
 Currently only one compression type is supported: `zlib`.
 
