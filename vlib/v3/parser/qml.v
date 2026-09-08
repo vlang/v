@@ -883,7 +883,8 @@ fn (c &QmlCompiler) expr(expr &QmlExpr, scope QmlScope, use QmlExprUse) string {
 		}
 		.binary {
 			if expr.value in ['&&', '||'] {
-				return '${c.expr(expr.left, scope, .bool_)} ${expr.value} ${c.expr(expr.right, scope, .bool_)}'
+				result := '(${c.expr(expr.left, scope, .bool_)} ${expr.value} ${c.expr(expr.right, scope, .bool_)})'
+				return if use == .string_ { qml_stringify(result) } else { result }
 			}
 			if expr.value in ['==', '!=', '<', '<=', '>', '>='] {
 				operand_use := if qml_expr_is_string(expr.left) || qml_expr_is_string(expr.right) {
@@ -891,7 +892,8 @@ fn (c &QmlCompiler) expr(expr &QmlExpr, scope QmlScope, use QmlExprUse) string {
 				} else {
 					QmlExprUse.raw
 				}
-				return '${c.expr(expr.left, scope, operand_use)} ${expr.value} ${c.expr(expr.right, scope, operand_use)}'
+				result := '(${c.expr(expr.left, scope, operand_use)} ${expr.value} ${c.expr(expr.right, scope, operand_use)})'
+				return if use == .string_ { qml_stringify(result) } else { result }
 			}
 			if use == .raw {
 				return '(${c.expr(expr.left, scope, .raw)} ${expr.value} ${c.expr(expr.right, scope, .raw)})'
@@ -1049,7 +1051,7 @@ fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, in
 			continue
 		}
 		if child.tag == 'Repeater' {
-			c.compile_repeater(child, child_path, frame, node.tag, properties, cursor, scope, children)
+			c.compile_repeater(child, child_path, frame, node.tag, properties, cursor, scope, children, '')
 			continue
 		}
 		child_input := 'qml_input_${qml_var(child_path)}'
@@ -1104,7 +1106,7 @@ fn qml_advance_cursor(mut out strings.Builder, tag string, cursor string, child_
 	}
 }
 
-fn (mut c QmlCompiler) compile_repeater(node &QmlNode, path string, parent_frame string, parent_tag string, parent_properties map[string]string, cursor string, incoming QmlScope, output string) {
+fn (mut c QmlCompiler) compile_repeater(node &QmlNode, path string, parent_frame string, parent_tag string, parent_properties map[string]string, cursor string, incoming QmlScope, output string, outer_key string) {
 	model := qml_find_property(node, 'model') or { return }
 	key := qml_find_property(node, 'key') or { return }
 	suffix := qml_var(path)
@@ -1115,7 +1117,14 @@ fn (mut c QmlCompiler) compile_repeater(node &QmlNode, path string, parent_frame
 	mut scope := qml_clone_scope(incoming)
 	scope.special['item'] = item_name
 	scope.special['index'] = index_name
-	c.out.writeln('\t\t${key_name} := ${c.expr(key.expr, scope, .string_)}')
+	key_value := c.expr(key.expr, scope, .string_)
+	if outer_key.len > 0 {
+		local_key_name := '${key_name}_local'
+		c.out.writeln('\t\t${local_key_name} := ${key_value}')
+		c.out.writeln("\t\t${key_name} := ${outer_key} + ':' + ${local_key_name}")
+	} else {
+		c.out.writeln('\t\t${key_name} := ${key_value}')
+	}
 	visible_count := node.children.filter(it.tag !in ['MenuItem', 'Option']).len
 	mut visible_index := 0
 	for child_index, child in node.children {
@@ -1124,7 +1133,7 @@ fn (mut c QmlCompiler) compile_repeater(node &QmlNode, path string, parent_frame
 		}
 		child_path := '${path}.${child_index}'
 		if child.tag == 'Repeater' {
-			c.compile_repeater(child, child_path, parent_frame, parent_tag, parent_properties, cursor, scope, output)
+			c.compile_repeater(child, child_path, parent_frame, parent_tag, parent_properties, cursor, scope, output, key_name)
 			continue
 		}
 		child_input := 'qml_input_${qml_var(child_path)}'
