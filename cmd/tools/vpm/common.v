@@ -346,7 +346,8 @@ fn normalize_clone_source_url(raw_url string) !string {
 	}
 	host := url.hostname().trim_space().to_lower()
 	port := url.port()
-	path := url.path.trim_space().trim_right('/').trim_left('/').trim_string_right('.git')
+	raw_path := url.path.trim_space().trim_right('/').trim_left('/').trim_string_right('.git')
+	path := if host == 'github.com' { raw_path.to_lower() } else { raw_path }
 	if host == '' || path == '' {
 		return error('failed to normalize module URL `${raw_url}`.')
 	}
@@ -360,12 +361,18 @@ fn get_installed_modules() []string {
 
 fn get_installed_modules_in(vmodules_path string) []string {
 	mut modules := []string{}
-	collect_installed_modules(vmodules_path, '', true, mut modules)
+	mut visited := map[string]bool{}
+	collect_installed_modules(vmodules_path, '', true, mut modules, mut visited)
 	verbose_println_more(@FILE_LINE, @FN, 'found modules: ${modules}')
 	return modules
 }
 
-fn collect_installed_modules(path string, prefix string, is_root bool, mut modules []string) {
+fn collect_installed_modules(path string, prefix string, is_root bool, mut modules []string, mut visited map[string]bool) {
+	real_path := os.real_path(path)
+	if real_path in visited {
+		return
+	}
+	visited[real_path] = true
 	dirs := os.ls(path) or { return }
 	for dir in dirs {
 		module_path := os.join_path(path, dir)
@@ -373,17 +380,13 @@ fn collect_installed_modules(path string, prefix string, is_root bool, mut modul
 			continue
 		}
 		module_name := if prefix == '' { dir } else { '${prefix}.${dir}' }
-		if os.is_link(module_path) {
-			if vcs_used_in_dir(module_path) != none {
+		if vcs_used_in_dir(module_path) != none {
+			if os.is_file(os.join_path(module_path, 'v.mod')) {
 				modules << module_name
 			}
 			continue
 		}
-		if vcs_used_in_dir(module_path) != none {
-			modules << module_name
-			continue
-		}
-		collect_installed_modules(module_path, module_name, false, mut modules)
+		collect_installed_modules(module_path, module_name, false, mut modules, mut visited)
 	}
 }
 
@@ -437,8 +440,7 @@ fn get_path_of_existing_url_module(vmodules_path string, publisher string, name 
 fn cleanup_empty_module_parent_dirs(module_path string) {
 	vmodules_path := real_path_with_missing_suffix(settings.vmodules_path)
 	mut parent := real_path_with_missing_suffix(os.dir(module_path))
-	for parent != vmodules_path && parent.starts_with(vmodules_path + os.path_separator)
-		&& parent != os.dir(parent) {
+	for path_is_below(parent, vmodules_path) && parent != os.dir(parent) {
 		if !os.is_dir(parent) || !os.is_dir_empty(parent) {
 			break
 		}

@@ -163,7 +163,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) 
 			name:         final_name
 			url:          ident
 			version:      version
-			install_path: os.real_path(os.join_path(settings.vmodules_path, mod_path))
+			install_path: os.abs_path(os.join_path(settings.vmodules_path, mod_path))
 			is_external:  true
 			tmp_path:     tmp_path
 			manifest:     manifest
@@ -222,7 +222,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) 
 			url:          info.url
 			version:      version
 			vcs:          vcs
-			install_path: os.real_path(os.join_path(settings.vmodules_path, mod_path))
+			install_path: os.abs_path(os.join_path(settings.vmodules_path, mod_path))
 			tmp_path:     tmp_path
 			manifest:     manifest
 		}

@@ -241,6 +241,8 @@ fn test_clone_source_identity_preserves_repository_path_case_and_port() {
 	assert base == normalized_clone_source('git@example.com:Owner/Repo.git')
 	assert base != normalized_clone_source('https://example.com/owner/repo.git')
 	assert base != normalized_clone_source('https://example.com:8443/Owner/Repo.git')
+	github := normalized_clone_source('https://github.com/Owner/Repo.git')
+	assert github == normalized_clone_source('git@github.com:owner/repo.git')
 }
 
 fn test_dotted_install_does_not_follow_linked_namespace() {
@@ -258,6 +260,23 @@ fn test_dotted_install_does_not_follow_linked_namespace() {
 		assert res.output.contains('refusing to install `foo.bar` outside the V modules directory'), res.output
 
 		assert !os.exists(os.join_path(linked_repo_path, 'bar'))
+	}
+}
+
+fn test_dotted_install_rejects_linked_namespace_inside_vmodules() {
+	$if !windows {
+		vmodules_path := os.join_path(test_path, 'vmodules_internal_linked_namespace')
+		test_utils.set_test_env(vmodules_path)
+		real_namespace := os.join_path(vmodules_path, 'real_namespace')
+		os.mkdir_all(real_namespace) or { panic(err) }
+		os.symlink(real_namespace, os.join_path(vmodules_path, 'foo')) or { panic(err) }
+		repo_path := os.join_path(test_path, 'internal_linked_namespace_repo')
+		create_local_git_module(repo_path, 'foo.bar')
+
+		res := cmd_fail(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
+		assert res.output.contains('refusing to install `foo.bar` inside a symlinked module namespace'), res.output
+
+		assert !os.exists(os.join_path(real_namespace, 'bar'))
 	}
 }
 
@@ -282,6 +301,29 @@ fn test_installed_module_discovery_preserves_vcs_links() {
 		os.symlink(repo_path, os.join_path(publisher_path, 'linked')) or { panic(err) }
 		assert 'author.linked' in get_installed_modules_in(vmodules_path)
 	}
+}
+
+fn test_installed_module_discovery_follows_linked_namespaces_without_cycles() {
+	$if !windows {
+		vmodules_path := os.join_path(test_path, 'vmodules_linked_discovery_namespace')
+		namespace_path := os.join_path(test_path, 'linked_discovery_namespace')
+		create_local_git_module(os.join_path(namespace_path, 'pkg'), 'author.pkg')
+		os.symlink(namespace_path, os.join_path(namespace_path, 'cycle')) or { panic(err) }
+		os.mkdir_all(vmodules_path) or { panic(err) }
+		os.symlink(namespace_path, os.join_path(vmodules_path, 'author')) or { panic(err) }
+
+		modules := get_installed_modules_in(vmodules_path)
+		assert 'author.pkg' in modules
+		assert modules.len == 1
+	}
+}
+
+fn test_installed_module_discovery_ignores_unrelated_vcs_directories() {
+	vmodules_path := os.join_path(test_path, 'vmodules_unrelated_repository')
+	unrelated_path := os.join_path(vmodules_path, 'cache', 'unrelated')
+	os.mkdir_all(unrelated_path) or { panic(err) }
+	cmd_ok(@LOCATION, 'git init ${os.quoted_path(unrelated_path)}')
+	assert 'cache.unrelated' !in get_installed_modules_in(vmodules_path)
 }
 
 // A publisher directory added for a direct HTTP install is intentional and does not mean that

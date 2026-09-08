@@ -145,6 +145,10 @@ fn (m Module) install() InstallResult {
 		vpm_error('refusing to install `${m.name}` outside the V modules directory.')
 		return .failed
 	}
+	if install_path_has_symlinked_ancestor(m.install_path, settings.vmodules_path) {
+		vpm_error('refusing to install `${m.name}` inside a symlinked module namespace.')
+		return .failed
+	}
 	if ancestor := vcs_backed_install_ancestor(m.install_path, settings.vmodules_path) {
 		vpm_error('refusing to install `${m.name}` inside existing module `${fmt_mod_path(ancestor)}`.')
 		return .failed
@@ -212,6 +216,22 @@ fn path_is_below(path string, root string) bool {
 	}
 	boundary := if root.ends_with(os.path_separator) { root } else { root + os.path_separator }
 	return path.starts_with(boundary)
+}
+
+fn install_path_has_symlinked_ancestor(install_path string, vmodules_path string) bool {
+	vmodules_root := os.abs_path(vmodules_path)
+	mut parent := os.dir(os.abs_path(install_path))
+	for path_is_below(parent, vmodules_root) {
+		if os.is_link(parent) {
+			return true
+		}
+		next := os.dir(parent)
+		if next == parent {
+			break
+		}
+		parent = next
+	}
+	return false
 }
 
 fn vcs_backed_install_ancestor(install_path string, vmodules_path string) ?string {
