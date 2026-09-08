@@ -286,6 +286,26 @@ fn test_recursive_callback_alias_parses_once_and_keeps_its_abi() {
 	assert tc.type_cache.alias_parse_stack.len == 0
 }
 
+fn test_recursive_generic_callback_alias_parses_once() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.type_aliases['Handlers'] = 'map[string]fn (Handlers[T])'
+	tc.type_alias_generic_params['Handlers'] = ['T']
+	tc.type_cache.parse_enabled = true
+
+	typ := tc.parse_type('Handlers[int]')
+	assert typ is Alias
+	alias := typ as Alias
+	assert alias.name == 'Handlers[int]'
+	assert alias.base_type is Map
+	callback := (alias.base_type as Map).value_type
+	assert callback is FnType
+	param := (callback as FnType).params[0]
+	assert param is Alias
+	assert (param as Alias).name == 'Handlers[int]'
+	assert tc.type_cache.alias_parse_stack.len == 0
+}
+
 fn test_fn_type_with_spaced_empty_parameter_list_has_no_void_parameter() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)

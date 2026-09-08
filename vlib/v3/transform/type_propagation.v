@@ -1488,7 +1488,13 @@ fn (t &Transformer) normalize_type_in_module(typ string, mod string) string {
 		cache.put_recent(typ, cached)
 		return cached
 	}
+	normalizing_key := '${mod}\n${t.cur_file}\n${typ}'
+	if normalizing_key in cache.normalizing {
+		return typ
+	}
+	cache.normalizing[normalizing_key] = true
 	result := t.normalize_type_in_module_uncached(typ, mod)
+	cache.normalizing.delete(normalizing_key)
 	cache.entries[typ] = result
 	cache.put_recent(typ, result)
 	return result

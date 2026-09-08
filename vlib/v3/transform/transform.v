@@ -474,6 +474,7 @@ mut:
 	canonical_types    [1024]string
 	canonical_results  [1024]string
 	entries            map[string]string
+	normalizing        map[string]bool
 }
 
 @[inline]

@@ -2591,6 +2591,9 @@ fn test_recursive_alias_review_regressions() {
 	valid_callback := run_good(v3_bin, 'good_callback_guarded_recursive_alias',
 		'type Handlers = map[string]fn (Handlers)\n\nfn main() {\n\thandlers := Handlers{}\n\tprintln(int_str(handlers.len))\n}\n')
 	assert valid_callback == '0'
+	valid_generic_callback := run_good(v3_bin, 'good_callback_guarded_recursive_generic_alias',
+		'type Handlers[T] = map[string]fn (Handlers[T])\n\nfn main() {\n\thandlers := Handlers[int]{}\n\tprintln(int_str(handlers.len))\n}\n')
+	assert valid_generic_callback == '0'
 }
 
 fn test_if_guard_rejects_or_handled_value() {

@@ -13681,15 +13681,9 @@ fn (tc &TypeChecker) parse_generic_alias_application(name string, args []string,
 		tc.type_alias_generic_params[name.all_after_last('.')] or { []string{} }
 	}
 	if params.len == args.len && params.len > 0 {
-		return Type(Alias{
-			name:      name + suffix
-			base_type: tc.parse_type(subst_generic_text(target, args, params))
-		})
+		return tc.parse_alias_type(name + suffix, subst_generic_text(target, args, params))
 	}
-	return Type(Alias{
-		name:      name
-		base_type: tc.parse_type(target)
-	})
+	return tc.parse_alias_type(name, target)
 }
 
 // parse_type_uncached reads parse type uncached input for types.

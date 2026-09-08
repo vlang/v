@@ -114,6 +114,21 @@ fn test_normalize_type_in_module_cache_tracks_current_file() {
 	assert t.normalize_type_in_module('dep.Type', 'shared') == 'beta.Type'
 }
 
+fn test_normalize_type_in_module_stops_recursive_generic_alias_at_callback() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['Handlers'] = 'map[string]fn (Handlers[T])'
+	tc.type_alias_generic_params['Handlers'] = ['T']
+	t := Transformer{
+		tc:                &tc
+		cur_module:        'main'
+		module_type_cache: &AliasCache{}
+	}
+
+	assert t.normalize_type_in_module('Handlers[int]', 'main') == 'map[string]fn (Handlers[int])'
+	assert t.module_type_cache.normalizing.len == 0
+}
+
 fn test_flattened_generic_receiver_short_variants() {
 	assert flattened_generic_receiver_short_variants('foo__Bar_baz__Qux') == [
 		'Bar_Qux',
