@@ -726,18 +726,19 @@ pub:
 	name_pos              token.Pos
 	return_type_pos       token.Pos
 pub mut:
-	return_type        Type
-	receiver_type      Type // != 0, when .is_method == true
-	name               string
-	params             []Param
-	source_fn          voidptr // set in the checker, while processing fn declarations // TODO: get rid of voidptr
-	usages             int
-	generic_names      []string
-	dep_names          []string // globals or consts dependent names
-	attrs              []Attr   // all fn attributes
-	is_conditional     bool     // true for `[if abc]fn(){}`
-	ctdefine_idx       int      // the index of the attribute, containing the compile time define [if mytag]
-	from_embedded_type Type     // for interface only, fn from the embedded interface
+	return_type         Type
+	receiver_type       Type // != 0, when .is_method == true
+	name                string
+	params              []Param
+	source_fn           voidptr // set in the checker, while processing fn declarations // TODO: get rid of voidptr
+	usages              int
+	generic_names       []string
+	dep_names           []string // globals or consts dependent names
+	attrs               []Attr   // all fn attributes
+	is_conditional      bool     // true for `[if abc]fn(){}`
+	ctdefine_idx        int      // the index of the attribute, containing the compile time define [if mytag]
+	from_embedded_type  Type     // for interface only, fn from the embedded interface
+	receiver_reassigned bool     // the method body can replace its mutable receiver
 	//
 	is_expand_simple_interpolation bool // for tagging b.f(s string), which is then called with `b.f('some ${x} ${y}')`,
 	// when that call, should be expanded to `b.f('some '); b.f(x); b.f(' '); b.f(y);`

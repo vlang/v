@@ -33,6 +33,38 @@ fn type_method_name_pos(sym &ast.TypeSymbol, name string, fallback token.Pos) to
 	return fallback
 }
 
+fn node_reassigns_ident(node ast.Node, name string) bool {
+	match node {
+		ast.Stmt {
+			if node is ast.FnDecl {
+				return false
+			}
+			if node is ast.AssignStmt {
+				for left in node.left {
+					reduced := left.remove_par()
+					if reduced is ast.Ident && reduced.name == name {
+						return true
+					}
+				}
+			}
+		}
+		ast.Expr {
+			match node {
+				ast.AnonFn, ast.LambdaExpr { return false }
+				else {}
+			}
+		}
+		else {}
+	}
+
+	for child in node.children() {
+		if node_reassigns_ident(child, name) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
 	mut name := if language == .js { p.check_js_name() } else { p.check_name() }
@@ -1115,6 +1147,10 @@ run them via `v file.v` instead',
 		p.inside_fn = false
 	}
 	p.cur_fn_name = keep_fn_name
+	if is_method && rec.is_mut && type_sym_method_idx < type_sym.methods.len {
+		type_sym.methods[type_sym_method_idx].receiver_reassigned = stmts.any(node_reassigns_ident(it,
+			rec.name))
+	}
 	if !no_body && are_params_type_only {
 		p.error_with_pos('functions with type only params can not have bodies', body_start_pos)
 		return ast.FnDecl{

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:15:10: error: cannot call mutable method `Node.replace` through embedded interface `Element` because it can replace its receiver
+   13 | fn main() {
+   14 |     mut element := Element(Item{})
+   15 |     element.replace(Node(Item{}))
+      |             ~~~~~~~~~~~~~~~~~~~~~
+   16 | }

@@ -1,0 +1,16 @@
+interface Node {}
+
+fn (mut node Node) replace(next Node) {
+	node = next
+}
+
+interface Element {
+	Node
+}
+
+struct Item {}
+
+fn main() {
+	mut element := Element(Item{})
+	element.replace(Node(Item{}))
+}
