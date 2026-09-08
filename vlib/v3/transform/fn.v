@@ -11547,7 +11547,11 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			return none
 		}
 		if field_type := t.lookup_struct_field_type(base_type, method) {
-			if !t.validate_specialized_fn_field_call(id, node, base_id, field_type) {
+			source_field_type := t.lookup_struct_field_source_type(base_type, method) or {
+				field_type
+			}
+			if !t.validate_specialized_fn_field_call(id, node, base_id, field_type,
+				source_field_type) {
 				return t.make_empty()
 			}
 			return none
@@ -11698,8 +11702,16 @@ fn (mut t Transformer) validate_resolved_receiver_method_args(node flat.Node, ba
 		}
 		actual_name := t.specialized_expr_type_name(arg_id)
 		expected_name := t.semantic_type_name(expected)
-		expected_validation_name := if param_idx < source_param_types.len {
-			t.fn_type_with_compatible_source_modes(source_param_types[param_idx], expected_name)
+		mut source_expected := if param_idx < source_param_types.len {
+			source_param_types[param_idx]
+		} else {
+			''
+		}
+		if is_variadic && param_idx >= params.len - 1 && source_expected.starts_with('...') {
+			source_expected = source_expected[3..]
+		}
+		expected_validation_name := if source_expected.len > 0 {
+			t.fn_type_with_compatible_source_modes(source_expected, expected_name)
 		} else {
 			expected_name
 		}
@@ -11753,7 +11765,20 @@ fn (mut t Transformer) validate_specialized_struct_field_args(node flat.Node, fi
 	return valid
 }
 
-fn (mut t Transformer) validate_specialized_fn_field_call(id flat.NodeId, node flat.Node, base_id flat.NodeId, field_type string) bool {
+fn (t &Transformer) lookup_struct_field_source_type(type_name string, field_name string) ?string {
+	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
+	for field in lookup.info.fields {
+		if field.name != field_name {
+			continue
+		}
+		raw := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
+		specialized := t.normalize_field_type(raw, lookup.owner_type)
+		return t.decl_param_type_in_module(specialized, lookup.info.module)
+	}
+	return none
+}
+
+fn (mut t Transformer) validate_specialized_fn_field_call(id flat.NodeId, node flat.Node, base_id flat.NodeId, field_type string, source_field_type string) bool {
 	display_name := t.resolved_receiver_call_display_name(node, base_id, '')
 	if isnil(t.tc) {
 		return true
@@ -11767,16 +11792,25 @@ fn (mut t Transformer) validate_specialized_fn_field_call(id flat.NodeId, node f
 		t.record_monomorph_error('argument count mismatch for `${display_name}`: expected ${fn_type.params.len}, got ${actual_count}')
 		return false
 	}
+	mut source_param_types := []string{}
+	if source_params, _ := fn_type_text_parts(source_field_type) {
+		source_param_types = source_params.clone()
+	}
 	mut valid := true
 	for i in 0 .. actual_count {
 		arg_id := t.a.child(&node, i + 1)
 		actual_type := t.specialized_expr_type_name(arg_id)
 		expected_type := t.semantic_type_name(fn_type.params[i])
-		if t.resolved_receiver_arg_compatible(arg_id, actual_type, expected_type) {
+		expected_validation_type := if i < source_param_types.len {
+			t.fn_type_with_compatible_source_modes(source_param_types[i], expected_type)
+		} else {
+			expected_type
+		}
+		if t.resolved_receiver_arg_compatible(arg_id, actual_type, expected_validation_type) {
 			continue
 		}
-		if t.fn_literal_c_abi_signature_compatible(arg_id, expected_type)
-			&& t.fn_field_arg_compatible(actual_type, expected_type) {
+		if t.fn_literal_c_abi_signature_compatible(arg_id, expected_validation_type)
+			&& t.fn_field_arg_compatible(actual_type, expected_validation_type) {
 			continue
 		}
 		t.record_monomorph_error('cannot use `${actual_type}` as argument ${i + 1} to `${display_name}`; expected `${expected_type}`')

@@ -1856,6 +1856,18 @@ fn test_fn_literal_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_direct_const_fn_param_in_generic',
 		'struct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler fn (const_event &C.native_event)) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	variadic := run_good(v3_bin, 'good_direct_variadic_const_fn_param_in_generic',
+		'struct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handlers ...fn (const_event &C.native_event)) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert variadic == 'true'
+	run_bad(v3_bin, 'bad_direct_variadic_const_fn_param_in_generic',
+		'struct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handlers ...fn (const_event &C.native_event)) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	field := run_good(v3_bin, 'good_direct_field_const_fn_param_in_generic',
+		'struct C.native_event {}\nstruct Dispatcher {\n\tcall fn (handler fn (const_event &C.native_event)) bool\n}\nfn dispatch(handler fn (const_event &C.native_event)) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\td := Dispatcher{\n\t\tcall: dispatch\n\t}\n\treturn d.call(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert field == 'true'
+	run_bad(v3_bin, 'bad_direct_field_const_fn_param_in_generic',
+		'struct C.native_event {}\nstruct Dispatcher {\n\tcall fn (handler fn (const_event &C.native_event))\n}\nfn dispatch(handler fn (const_event &C.native_event)) {}\nfn startup[T]() {\n\td := Dispatcher{\n\t\tcall: dispatch\n\t}\n\td.call(fn (event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 	matching := run_good(v3_bin, 'good_const_fn_literal_alias_in_generic',
 		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler ConstHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	assert matching == 'true'
