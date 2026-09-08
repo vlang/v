@@ -125,8 +125,32 @@ fn test_install_warns_about_normalized_module_name() {
 
 	res := cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
 	assert res.output.contains('`my-mod` is not a valid V import path, it was installed as `my_mod`.'), res.output
-	assert res.output.contains('Use `import my_mod` to import it.'), res.output
+	assert res.output.contains('Use `my_mod` as the normalized import prefix'), res.output
 	assert os.exists(os.join_path(vmodules_path, 'my_mod', 'v.mod'))
+}
+
+// A publisher directory added for a direct HTTP install is intentional and does not mean that
+// the manifest name itself was normalized.
+fn test_publisher_prefix_does_not_look_like_name_normalization() {
+	m := Module{
+		name:         'hashmap'
+		install_path: os.join_path(settings.vmodules_path, 'wertzui123', 'hashmap')
+	}
+	assert !m.name_was_normalized()
+	assert Module{
+		name: 'my-mod'
+	}.name_was_normalized()
+}
+
+fn test_import_path_canonicalizes_the_installed_leaf() {
+	$if !windows {
+		real_vmodules := os.join_path(test_path, 'canonical_vmodules')
+		linked_vmodules := os.join_path(test_path, 'linked_vmodules')
+		installed_path := os.join_path(real_vmodules, 'my_mod')
+		os.mkdir_all(installed_path) or { panic(err) }
+		os.symlink(real_vmodules, linked_vmodules) or { panic(err) }
+		assert import_path_relative_to(os.join_path(linked_vmodules, 'my_mod'), linked_vmodules) == 'my_mod'
+	}
 }
 
 // Counterpart of the test above: a module name that is already a valid import

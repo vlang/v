@@ -105,13 +105,21 @@ fn install_modules(modules []Module, selected_server_url string) {
 // Those are normalized away when the module is placed into `vmodules`, so point out
 // the resulting import path instead of leaving the mismatch for the compiler to report.
 fn (m Module) warn_on_normalized_name() {
-	import_path := import_path_of(m.install_path)
-	if import_path == m.name {
+	// Direct HTTP installs intentionally add the repository owner to the install path. That prefix
+	// is not a normalization of the manifest name and should not trigger this warning on its own.
+	if !m.name_was_normalized() {
 		return
 	}
+	import_path := import_path_of(m.install_path)
 	vpm_warn('`${m.name}` is not a valid V import path, it was installed as `${import_path}`.',
-		details: 'Use `import ${import_path}` to import it.\nConsider renaming the `name` field in the `v.mod` of the module.'
+		details: 'Use `${import_path}` as the normalized import prefix (for example, `import ${import_path}` when the package root is a module).\nConsider renaming the `name` field in the `v.mod` of the module.'
 	)
+}
+
+fn (m Module) name_was_normalized() bool {
+	normalized_name :=
+		normalize_mod_path(m.name.replace('.', os.path_separator)).replace(os.path_separator, '.')
+	return normalized_name != m.name
 }
 
 fn (m Module) install() InstallResult {

@@ -235,8 +235,14 @@ fn normalize_mod_path(path string) string {
 // Normalize both sides via `real_path` so macOS's `/tmp` -> `/private/tmp`
 // resolution doesn't leave the prefix unstripped.
 fn import_path_of(install_path string) string {
-	vmodules_real := os.real_path(settings.vmodules_path)
-	rel_install_path := install_path.trim_string_left(vmodules_real).trim_left(os.path_separator)
+	return import_path_relative_to(install_path, settings.vmodules_path)
+}
+
+fn import_path_relative_to(install_path string, vmodules_path string) string {
+	vmodules_real := os.real_path(vmodules_path)
+	install_path_real := os.real_path(install_path)
+	rel_install_path :=
+		install_path_real.trim_string_left(vmodules_real).trim_left(os.path_separator)
 	return rel_install_path.replace(os.path_separator, '.')
 }
 

@@ -6229,9 +6229,11 @@ to the publisher part of a VPM package name, so `Some-Publisher.repo` is
 installed as `~/.vmodules/some_publisher/repo` and imported with
 `import some_publisher.repo`.
 
-`v install` prints a warning with the resulting import path whenever it
-has to normalize a name. If you publish a package, prefer a `name` in
-`v.mod` that is already a valid import path.
+`v install` prints a warning with the resulting import prefix whenever it
+has to normalize a name. A package may contain only nested modules, so append
+the nested module path when needed (for example, `import my_mod.json`). If you
+publish a package, prefer a `name` in `v.mod` that is already a valid import
+path.
 
 ### Package commands
 
