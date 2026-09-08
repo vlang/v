@@ -171,3 +171,57 @@ fn test_zoneinfo_loader_registry_supports_concurrent_access() {
 	threads.wait()
 	assert zoneinfo_loaders_snapshot().len == initial_count + 100
 }
+
+fn test_windows_year_transitions_use_supplied_rules() {
+	$if windows {
+		mut loc := &Location{
+			name:  'Local'
+			zones: [Zone{
+				name:   'EST'
+				offset: -5 * seconds_per_hour
+			}]
+		}
+		mut old_rules := TimeZoneInformation{
+			bias:          300
+			standard_date: SystemTime{
+				month:       10
+				day:         5
+				day_of_week: 0
+				hour:        2
+			}
+			daylight_date: SystemTime{
+				month:       4
+				day:         1
+				day_of_week: 0
+				hour:        2
+			}
+			daylight_bias: -60
+		}
+		mut new_rules := TimeZoneInformation{
+			bias:          300
+			standard_date: SystemTime{
+				month:       11
+				day:         1
+				day_of_week: 0
+				hour:        2
+			}
+			daylight_date: SystemTime{
+				month:       3
+				day:         2
+				day_of_week: 0
+				hour:        2
+			}
+			daylight_bias: -60
+		}
+		old_rules.standard_name[0] = u16(`E`)
+		old_rules.daylight_name[0] = u16(`E`)
+		new_rules.standard_name[0] = u16(`E`)
+		new_rules.daylight_name[0] = u16(`E`)
+		loc.add_windows_year_transitions(2006, old_rules)
+		loc.add_windows_year_transitions(2007, new_rules)
+		assert loc.transitions[0].when == windows_transition_utc(2006, old_rules.daylight_date,
+			-5 * seconds_per_hour)
+		assert loc.transitions[2].when == windows_transition_utc(2007, new_rules.daylight_date,
+			-5 * seconds_per_hour)
+	}
+}

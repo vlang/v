@@ -13,7 +13,24 @@ pub mut:
 	daylight_bias i32
 }
 
+struct DynamicTimeZoneInformation {
+pub mut:
+	bias                              i32
+	standard_name                     [32]u16
+	standard_date                     SystemTime
+	standard_bias                     i32
+	daylight_name                     [32]u16
+	daylight_date                     SystemTime
+	daylight_bias                     i32
+	time_zone_key_name                [128]u16
+	dynamic_daylight_time_is_disabled u8
+}
+
 fn C.GetTimeZoneInformation(&TimeZoneInformation) u32
+
+fn C.GetDynamicTimeZoneInformation(&DynamicTimeZoneInformation) u32
+
+fn C.GetTimeZoneInformationForYear(u16, &DynamicTimeZoneInformation, &TimeZoneInformation) C.BOOL
 
 fn local_location() !&Location {
 	tz := os.getenv('TZ')
@@ -24,64 +41,104 @@ fn local_location() !&Location {
 	}
 	mut info := TimeZoneInformation{}
 	C.GetTimeZoneInformation(&info)
+	std_zone, dst_zone := windows_zones(info)
+	mut loc := &Location{
+		name:  'Local'
+		zones: [std_zone]
+	}
+	if windows_has_daylight(info) {
+		loc.zones << dst_zone
+		loc.posix = windows_posix_rule(std_zone, dst_zone, info)
+		loc.has_posix = true
+	}
+	mut dynamic_info := DynamicTimeZoneInformation{}
+	dynamic_status := C.GetDynamicTimeZoneInformation(&dynamic_info)
+	has_dynamic_info := dynamic_status != u32(0xffff_ffff)
+		&& dynamic_info.dynamic_daylight_time_is_disabled == 0
+	current_year := utc().year
+	for year in current_year - 100 .. current_year + 101 {
+		mut year_info := info
+		if has_dynamic_info {
+			mut candidate := TimeZoneInformation{}
+			if C.GetTimeZoneInformationForYear(u16(year), &dynamic_info, &candidate) != 0 {
+				year_info = candidate
+			}
+		}
+		loc.add_windows_year_transitions(year, year_info)
+	}
+	return loc
+}
+
+fn windows_has_daylight(info TimeZoneInformation) bool {
+	dst_name := unsafe { string_from_wide(&u16(&info.daylight_name[0])) }
+	return info.daylight_date.month != 0 && info.standard_date.month != 0 && dst_name != ''
+}
+
+fn windows_zones(info TimeZoneInformation) (Zone, Zone) {
 	std_name := unsafe { string_from_wide(&u16(&info.standard_name[0])) }
 	dst_name := unsafe { string_from_wide(&u16(&info.daylight_name[0])) }
 	abbr := windows_abbr(std_name)
 	std_abbr := if abbr.std != '' { abbr.std } else { windows_abbr_from_name(std_name) }
 	dst_abbr := if abbr.dst != '' { abbr.dst } else { windows_abbr_from_name(dst_name) }
-	if info.daylight_date.month == 0 || info.standard_date.month == 0 || dst_name == '' {
-		return &Location{
-			name:  'Local'
-			zones: [
-				Zone{
-					name:   if std_abbr == '' { 'Local' } else { std_abbr }
-					offset: -int(info.bias) * seconds_per_minute
-				},
-			]
-		}
-	}
-	std_offset := -int(info.bias + info.standard_bias) * seconds_per_minute
-	dst_offset := -int(info.bias + info.daylight_bias) * seconds_per_minute
-	std_zone := Zone{
-		name:   if std_abbr == '' { 'Standard' } else { std_abbr }
-		offset: std_offset
-	}
-	dst_zone := Zone{
+	return Zone{
+		name:   if std_abbr == '' { 'Local' } else { std_abbr }
+		offset: -int(info.bias + info.standard_bias) * seconds_per_minute
+	}, Zone{
 		name:   if dst_abbr == '' { 'Daylight' } else { dst_abbr }
-		offset: dst_offset
+		offset: -int(info.bias + info.daylight_bias) * seconds_per_minute
 		is_dst: true
 	}
-	mut loc := &Location{
-		name:      'Local'
-		zones:     [std_zone, dst_zone]
-		posix:     windows_posix_rule(std_zone, dst_zone, info)
-		has_posix: true
-	}
-	current_year := utc().year
-	for year in current_year - 100 .. current_year + 101 {
-		dst_start := windows_transition_utc(year, info.daylight_date, std_offset)
-		std_start := windows_transition_utc(year, info.standard_date, dst_offset)
-		if dst_start < std_start {
+}
+
+fn (mut loc Location) add_windows_year_transitions(year int, info TimeZoneInformation) {
+	std_zone, dst_zone := windows_zones(info)
+	std_index := loc.windows_zone_index(std_zone)
+	if !windows_has_daylight(info) {
+		if loc.transitions.len > 0 && loc.transitions.last().index != std_index {
 			loc.transitions << ZoneTransition{
-				when:  dst_start
-				index: 1
-			}
-			loc.transitions << ZoneTransition{
-				when:  std_start
-				index: 0
-			}
-		} else {
-			loc.transitions << ZoneTransition{
-				when:  std_start
-				index: 0
-			}
-			loc.transitions << ZoneTransition{
-				when:  dst_start
-				index: 1
+				when:  time_fields_to_unix(Time{
+					year:  year
+					month: 1
+					day:   1
+				}) - i64(std_zone.offset)
+				index: std_index
 			}
 		}
+		return
 	}
-	return loc
+	dst_index := loc.windows_zone_index(dst_zone)
+	dst_start := windows_transition_utc(year, info.daylight_date, std_zone.offset)
+	std_start := windows_transition_utc(year, info.standard_date, dst_zone.offset)
+	if dst_start < std_start {
+		loc.transitions << ZoneTransition{
+			when:  dst_start
+			index: dst_index
+		}
+		loc.transitions << ZoneTransition{
+			when:  std_start
+			index: std_index
+		}
+	} else {
+		loc.transitions << ZoneTransition{
+			when:  std_start
+			index: std_index
+		}
+		loc.transitions << ZoneTransition{
+			when:  dst_start
+			index: dst_index
+		}
+	}
+}
+
+fn (mut loc Location) windows_zone_index(zone Zone) int {
+	for i, existing in loc.zones {
+		if existing.name == zone.name && existing.offset == zone.offset
+			&& existing.is_dst == zone.is_dst {
+			return i
+		}
+	}
+	loc.zones << zone
+	return loc.zones.len - 1
 }
 
 fn windows_posix_rule(std_zone Zone, dst_zone Zone, info TimeZoneInformation) PosixZoneRule {

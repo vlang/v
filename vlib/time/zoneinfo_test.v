@@ -269,6 +269,15 @@ fn test_location_time_is_not_is_local() {
 	assert local == time.unix(1_704_067_200)
 }
 
+fn test_location_time_local_uses_stored_instant() {
+	$if windows {
+		loc := time.load_location('Asia/Shanghai')!
+		utc_time := time.unix_nanosecond(1_704_067_200, 123_000_000)
+		zoned := utc_time.in(loc)!
+		assert zoned.local() == utc_time.local()
+	}
+}
+
 fn test_unknown_location_name() {
 	if _ := time.load_location('Not/ARealZone') {
 		assert false
