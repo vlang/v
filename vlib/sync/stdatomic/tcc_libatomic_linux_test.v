@@ -43,6 +43,9 @@ fn test_tcc_can_link_sync_stdatomic_programs_on_linux() {
 		panic('tcc compilation of a sync.stdatomic program failed (fallback to another compiler is disabled):\ncmd: ${compile_cmd}\noutput:\n${compile_res.output}')
 	}
 	assert !compile_res.output.contains('falling back to cc')
+	$if !musl ? {
+		assert !compile_res.output.contains('libatomic.a')
+	}
 
 	run_res := os.execute(os.quoted_path(out))
 	assert run_res.exit_code == 0
