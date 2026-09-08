@@ -703,11 +703,16 @@ fn h3_validate_request_trailers(headers []quic.QpackFieldLine) ! {
 		if f.name.starts_with(':') {
 			return error('pseudo-header "${f.name}" is forbidden in request trailers')
 		}
-		reason := h2_request_field_error(f.name, f.value)
+		reason := h3_request_field_error(f.name, f.value)
 		if reason != '' {
 			return error(reason)
 		}
 	}
+}
+
+fn h3_request_field_error(name string, value string) string {
+	is_valid(name) or { return 'invalid header field name "${name}"' }
+	return h2_request_field_error(name, value)
 }
 
 // run_request validates and builds a Request from a fully-buffered
@@ -824,7 +829,7 @@ fn h3_build_request(st &H3ServerStream) !Request {
 					}
 					content_length = cl
 				}
-				req.header.add_custom(f.name, f.value) or {}
+				req.header.add_custom(f.name, f.value)!
 			}
 		}
 	}
@@ -857,10 +862,9 @@ fn h3_build_request(st &H3ServerStream) !Request {
 // side: "RFC 9114 §4.1.1 intentionally mirrors RFC 9113 §8.1.2.2 here, so
 // there is nothing HTTP/3-specific to re-derive"): only the request
 // pseudo-headers, each at most once, all appearing before any regular
-// field. Every regular field is validated via h2_request_field_error
-// (h2_server.v), reused directly for the identical reason -- RFC 9114 §4.2
-// mirrors RFC 9113 §8.2.2's forbidden-octet/connection-specific-field/TE
-// rules verbatim.
+// field. Every regular field is validated via h3_request_field_error, which
+// adds token syntax to h2_request_field_error's shared RFC 9113/RFC 9114
+// forbidden-octet, connection-specific-field, and TE rules.
 //
 // This Handler API only represents the Method enum and dispatches after the
 // request stream ends. Reject extension methods that the enum cannot preserve,
@@ -927,7 +931,7 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 			}
 		} else {
 			seen_regular = true
-			reason := h2_request_field_error(f.name, f.value)
+			reason := h3_request_field_error(f.name, f.value)
 			if reason != '' {
 				return error(reason)
 			}
@@ -970,10 +974,10 @@ fn (mut s H3Server) send_response(mut h3c quic.H3Conn, stream_id u64, method Met
 		s.send_error_response(mut h3c, stream_id, 500)
 		return
 	}
-	mut fields := h3_outbound_response_fields(status, resp.header)
 	body := resp.body.bytes()
 	has_body := body.len > 0 && h3_response_allows_body(method, status)
-	trailer_fields := h3_outbound_trailer_fields(resp.trailers, status)
+	mut fields := h3_outbound_response_fields(status, method, if has_body { body.len } else { 0 }, resp.header)
+	trailer_fields := h3_outbound_trailer_fields(resp.trailers)
 	has_trailers := trailer_fields.len > 0
 
 	if !has_body && has_trailers {
@@ -990,16 +994,34 @@ fn (mut s H3Server) send_response(mut h3c quic.H3Conn, stream_id u64, method Met
 	}
 }
 
-fn h3_outbound_response_fields(status int, header Header) []quic.QpackFieldLine {
+// h3_outbound_response_fields makes an authored Content-Length agree with the
+// DATA bytes this response will emit, while preserving valid HEAD/304 metadata.
+fn h3_outbound_response_fields(status int, method Method, emitted_body_len int, header Header) []quic.QpackFieldLine {
 	mut fields := [
 		quic.QpackFieldLine{
 			name: ':status'
 			value: status.str()
 		},
 	]
+	mut wrote_content_length := false
 	for key in header.keys() {
 		lkey := key.to_lower()
-		if lkey in h2_conn_specific_headers || (status in [204, 205] && lkey == 'content-length') {
+		if lkey in h2_conn_specific_headers {
+			continue
+		}
+		if lkey == 'content-length' {
+			if wrote_content_length || status in [204, 205] {
+				continue
+			}
+			wrote_content_length = true
+			mut value := emitted_body_len.str()
+			if !h3_response_allows_body(method, status) {
+				value = h3_preserved_content_length(header.values(.content_length)) or { continue }
+			}
+			fields << quic.QpackFieldLine{
+				name: 'content-length'
+				value: value
+			}
 			continue
 		}
 		for val in header.custom_values(key) {
@@ -1013,6 +1035,20 @@ fn h3_outbound_response_fields(status int, header Header) []quic.QpackFieldLine 
 		}
 	}
 	return fields
+}
+
+// h3_preserved_content_length keeps optional HEAD/304 representation metadata
+// only when every handler-supplied value is a valid, consistent decimal value.
+fn h3_preserved_content_length(values []string) ?string {
+	if values.len == 0 || !h2_all_digits(values[0]) {
+		return none
+	}
+	for i in 1 .. values.len {
+		if values[i] != values[0] || !h2_all_digits(values[i]) {
+			return none
+		}
+	}
+	return values[0]
 }
 
 // h3_response_allows_body applies the response cases that never carry
@@ -1056,16 +1092,15 @@ fn (mut s H3Server) send_error_response(mut h3c quic.H3Conn, stream_id u64, stat
 // h2_outbound_trailer_fields (not reused directly despite doing the
 // identical filtering: that function returns []H2HeaderField, not
 // []quic.QpackFieldLine, and its receiver -- an H2ServerConn -- has no h3
-// equivalent to construct just to call it; the underlying rule set is
-// identical, so both apply the same RFC 9113 §8.2.2/RFC 9114 §4.2
-// hop-by-hop filter, the same pseudo-header guard, and the same forbidden-
-// octet check).
-fn h3_outbound_trailer_fields(trailers Header, status int) []quic.QpackFieldLine {
+// equivalent to construct just to call it. Both apply the same RFC 9113
+// §8.2.2/RFC 9114 §4.2 hop-by-hop filter, pseudo-header guard, and forbidden-
+// octet check; this path also excludes Content-Length because framing fields
+// cannot be trailers.
+fn h3_outbound_trailer_fields(trailers Header) []quic.QpackFieldLine {
 	mut fields := []quic.QpackFieldLine{}
 	for key in trailers.keys() {
 		lkey := key.to_lower()
-		if lkey.starts_with(':') || lkey in h2_conn_specific_headers
-			|| (status in [204, 205] && lkey == 'content-length') {
+		if lkey.starts_with(':') || lkey in h2_conn_specific_headers || lkey == 'content-length' {
 			continue
 		}
 		for val in trailers.custom_values(key) {

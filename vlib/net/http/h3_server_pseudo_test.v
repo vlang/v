@@ -216,6 +216,35 @@ fn test_h3_build_request_uses_host_when_authority_is_omitted() {
 	assert req.host == 'example.com'
 }
 
+fn test_h3_validate_request_pseudo_rejects_non_token_regular_field_name() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'GET'
+		},
+		quic.QpackFieldLine{
+			name: ':path'
+			value: '/'
+		},
+		quic.QpackFieldLine{
+			name: ':scheme'
+			value: 'https'
+		},
+		quic.QpackFieldLine{
+			name: ':authority'
+			value: 'example.com'
+		},
+		quic.QpackFieldLine{
+			name: 'bad name'
+			value: 'silently dropped before this fix'
+		},
+	]) or {
+		assert err.msg().contains('invalid header field name')
+		return
+	}
+	assert false, 'expected a non-token regular field name to be rejected'
+}
+
 fn test_h3_build_request_canonicalizes_host_to_authority() {
 	st := &H3ServerStream{
 		headers: [

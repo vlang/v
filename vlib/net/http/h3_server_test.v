@@ -134,6 +134,10 @@ fn test_h3_server_validates_request_trailers() {
 			name: 'connection'
 			value: 'close'
 		},
+		quic.QpackFieldLine{
+			name: 'bad name'
+			value: 'value'
+		},
 	] {
 		h3_validate_request_trailers([invalid]) or { continue }
 		assert false, 'expected request trailer ${invalid.name} to be rejected'
@@ -153,17 +157,17 @@ fn test_h3_server_strips_content_length_from_204_and_205_headers_and_trailers() 
 		mut header := new_header()
 		header.add(.content_length, '99')
 		header.add_custom('x-response', 'kept')!
-		fields := h3_outbound_response_fields(status, header)
+		fields := h3_outbound_response_fields(status, .get, 0, header)
 		assert !fields.any(it.name == 'content-length')
 		assert fields.any(it.name == 'x-response' && it.value == 'kept')
-
-		mut trailers := new_header()
-		trailers.add(.content_length, '42')
-		trailers.add_custom('x-trailer', 'kept')!
-		trailer_fields := h3_outbound_trailer_fields(trailers, status)
-		assert !trailer_fields.any(it.name == 'content-length')
-		assert trailer_fields.any(it.name == 'x-trailer' && it.value == 'kept')
 	}
+
+	mut trailers := new_header()
+	trailers.add(.content_length, '42')
+	trailers.add_custom('x-trailer', 'kept')!
+	trailer_fields := h3_outbound_trailer_fields(trailers)
+	assert !trailer_fields.any(it.name == 'content-length')
+	assert trailer_fields.any(it.name == 'x-trailer' && it.value == 'kept')
 }
 
 fn test_h3_server_filters_forbidden_response_header_values() {
@@ -172,11 +176,37 @@ fn test_h3_server_filters_forbidden_response_header_values() {
 	header.add_custom('x-nul', 'bad\x00value')!
 	header.add_custom('x-cr', 'bad\rvalue')!
 	header.add_custom('x-lf', 'bad\nvalue')!
-	fields := h3_outbound_response_fields(200, header)
+	fields := h3_outbound_response_fields(200, .get, 0, header)
 	assert fields.any(it.name == 'x-good' && it.value == 'kept')
 	assert !fields.any(it.name == 'x-nul')
 	assert !fields.any(it.name == 'x-cr')
 	assert !fields.any(it.name == 'x-lf')
+}
+
+fn test_h3_server_normalizes_content_length_to_emitted_body() {
+	mut header := new_header()
+	header.add(.content_length, '99')
+	header.add(.content_length, '7')
+	header.add_custom('x-response', 'kept')!
+	fields := h3_outbound_response_fields(200, .post, 3, header)
+	content_lengths := fields.filter(it.name == 'content-length')
+	assert content_lengths.len == 1
+	assert content_lengths[0].value == '3'
+	assert fields.any(it.name == 'x-response' && it.value == 'kept')
+
+	mut metadata_header := new_header()
+	metadata_header.add(.content_length, '42')
+	metadata_header.add(.content_length, '42')
+	head_fields := h3_outbound_response_fields(200, .head, 0, metadata_header)
+	assert head_fields.filter(it.name == 'content-length' && it.value == '42').len == 1
+	not_modified_fields := h3_outbound_response_fields(304, .get, 0, metadata_header)
+	assert not_modified_fields.filter(it.name == 'content-length' && it.value == '42').len == 1
+
+	mut conflicting_metadata := new_header()
+	conflicting_metadata.add(.content_length, '42')
+	conflicting_metadata.add(.content_length, '43')
+	assert !h3_outbound_response_fields(200, .head, 0, conflicting_metadata).any(it.name == 'content-length')
+	assert !h3_outbound_response_fields(304, .get, 0, conflicting_metadata).any(it.name == 'content-length')
 }
 
 fn test_h3_server_rejects_informational_terminal_response() {
