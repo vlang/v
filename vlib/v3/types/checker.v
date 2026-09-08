@@ -8900,11 +8900,16 @@ fn (mut tc TypeChecker) check_duplicate_fn_declarations() {
 			&& tc.node_is_in_selected_input_file(flat.NodeId(it))) {
 			continue
 		}
-		display_name := tc.a.nodes[indexes[0]].value
-		if display_name.all_after_last('.') == 'init'
-			|| tc.fn_group_name_conflicts_with_import(indexes, display_name.all_after_last('.'))
+		stored_name := tc.a.nodes[indexes[0]].value
+		if stored_name.all_after_last('.') == 'init'
+			|| tc.fn_group_name_conflicts_with_import(indexes, stored_name.all_after_last('.'))
 			|| tc.fn_group_contains_builtin_declaration(indexes) {
 			continue
+		}
+		display_name := if receiver, method := flat.decode_static_type_method_name(stored_name) {
+			'${receiver}.${method}'
+		} else {
+			stored_name
 		}
 		tc.errors << TypeError{
 			msg: 'redefinition of function `${display_name}`'

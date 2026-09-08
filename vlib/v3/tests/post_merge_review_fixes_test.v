@@ -7099,6 +7099,22 @@ fn unrelated() int {
 	assert tc.errors.any(it.msg.contains('cannot use `string` as type `int` in return argument')), tc.errors.str()
 }
 
+fn test_duplicate_static_function_diagnostic_uses_source_name() {
+	check_src := '${tmp_test_path('duplicate_static_fn')}.v'
+	os.write_file(check_src, 'struct Widget {}\n\nfn Widget.make() {}\n\nfn Widget.make(value int) {}\n') or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(check_src)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.any(it.severity == 'builder error:'
+		&& it.msg == 'redefinition of function `Widget.make`'), tc.errors.str()
+	assert !tc.errors.any(it.msg.contains('@static@')), tc.errors.str()
+}
+
 fn test_repeated_template_lines_keep_distinct_diagnostic_positions() {
 	v3_bin := build_v3()
 	root := '${tmp_test_path('repeated_template_line_diagnostics')}_project'
