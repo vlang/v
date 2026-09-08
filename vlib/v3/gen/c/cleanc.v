@@ -14659,6 +14659,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.paren {
 			g.write('(')
 			g.gen_expr(g.a.child(node, 0))
+			if node.value == ownership_propagation_sync_expr_value {
+				_ = g.take_propagation_ownership_drops()
+			}
 			g.write(')')
 		}
 		.selector {

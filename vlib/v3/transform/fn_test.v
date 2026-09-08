@@ -658,6 +658,102 @@ fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
 	assert !t.call_param_types_prepared
 }
 
+fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.file, 'implicit_veb_call_params_test.v')
+	a.add_val(.module_decl, 'main')
+	receiver_param := a.add_node(flat.Node{
+		kind: .param
+		value: 'app'
+		typ: 'App'
+	})
+	value_param := a.add_node(flat.Node{
+		kind: .param
+		value: 'value'
+		typ: 'string'
+	})
+	decl_children := a.children.len
+	a.children << receiver_param
+	a.children << value_param
+	a.add_node(flat.Node{
+		kind: .fn_decl
+		value: 'App.show'
+		children_start: decl_children
+		children_count: 2
+	})
+	receiver := a.add_node(flat.Node{
+		kind: .ident
+		value: 'app'
+		typ: 'App'
+	})
+	normal_selector_children := a.children.len
+	a.children << receiver
+	normal_selector := a.add_node(flat.Node{
+		kind: .selector
+		value: 'show'
+		children_start: normal_selector_children
+		children_count: 1
+	})
+	normal_arg := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'value'
+		typ: 'string'
+	})
+	normal_call_children := a.children.len
+	a.children << normal_selector
+	a.children << normal_arg
+	normal_call := a.add_node(flat.Node{
+		kind: .call
+		children_start: normal_call_children
+		children_count: 2
+	})
+	reflected_selector_children := a.children.len
+	a.children << receiver
+	reflected_selector := a.add_node(flat.Node{
+		kind: .selector
+		value: 'show'
+		children_start: reflected_selector_children
+		children_count: 1
+		payload: flat.node_payload([comptime_method_selector_marker])
+	})
+	ctx_arg := a.add_node(flat.Node{
+		kind: .ident
+		value: 'ctx'
+		typ: '&Context'
+	})
+	reflected_arg := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'value'
+		typ: 'string'
+	})
+	reflected_call_children := a.children.len
+	a.children << reflected_selector
+	a.children << ctx_arg
+	a.children << reflected_arg
+	reflected_call := a.add_node(flat.Node{
+		kind: .call
+		children_start: reflected_call_children
+		children_count: 3
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['App'] = []types.StructField{}
+	tc.fn_implicit_veb_ctx['App.show'] = true
+	tc.fn_param_types['App.show'] = [types.Type(types.Struct{ name: 'App' }),
+		tc.parse_type('mut Context'), types.Type(types.String{})]
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	normal_params := t.call_param_types_for_node('App.show', a.node(normal_call))
+	assert normal_params.len == 3
+	assert normal_params[0] is types.Struct
+	assert normal_params[1] is types.Pointer
+	assert normal_params[2] is types.String
+	assert t.call_param_offset_for_node('App.show', a.node(normal_call), normal_params) == 2
+	reflected_params := t.call_param_types_for_node('App.show', a.node(reflected_call))
+	assert reflected_params.len == 3
+	assert reflected_params[1] is types.Pointer
+	assert reflected_params[2] is types.String
+	assert t.call_param_offset_for_node('App.show', a.node(reflected_call), reflected_params) == 1
+}
+
 fn test_pending_generic_specialization_keys_are_private_initialized_maps() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

@@ -2104,7 +2104,7 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 fn (t &Transformer) call_param_offset_for_node(call_name string, node flat.Node, params []types.Type) int {
 	mut param_offset := t.call_param_offset(call_name, node, params)
 	if param_offset != 0 || call_name.len == 0 || params.len == 0 {
-		return param_offset
+		return param_offset + t.implicit_veb_ctx_param_offset(call_name, node, params)
 	}
 	selector_id := t.call_selector_callee_id(node) or { return param_offset }
 	selector := t.a.nodes[int(selector_id)]
@@ -2127,7 +2127,19 @@ fn (t &Transformer) call_param_offset_for_node(call_name string, node flat.Node,
 		// call_param_offset cannot recognize it; keep explicit args aligned.
 		param_offset = 1
 	}
-	return param_offset
+	return param_offset + t.implicit_veb_ctx_param_offset(call_name, node, params)
+}
+
+fn (t &Transformer) implicit_veb_ctx_param_offset(call_name string, node flat.Node, params []types.Type) int {
+	// Reflected veb calls supply the context explicitly; ordinary source calls omit it.
+	if t.receiver_call_uses_comptime_method_selector(node) {
+		return 0
+	}
+	abi_params := t.implicit_veb_call_param_types(call_name) or { return 0 }
+	if params.len != abi_params.len {
+		return 0
+	}
+	return 1
 }
 
 fn (t &Transformer) call_selector_callee_id(node flat.Node) ?flat.NodeId {
