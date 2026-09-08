@@ -2870,6 +2870,111 @@ fn main() {
 	assert ok.exit_code == 0, ok.output
 }
 
+fn test_ownership_collapsed_struct_field_arguments() {
+	v3_bin := ownership_build_v3()
+	fail_fields := run_ownership_check(v3_bin, 'collapsed_struct_owned_fields', '
+@[params]
+struct ParamsCfg {
+	s string
+}
+
+struct PlainCfg {
+	s string
+}
+
+fn dup_params(params_cfg ParamsCfg) {
+	t := params_cfg.s
+	println(params_cfg.s)
+	_ = t
+}
+
+fn dup_plain(plain_cfg PlainCfg) {
+	t := plain_cfg.s
+	println(plain_cfg.s)
+	_ = t
+}
+
+fn dup_variadic(cfgs ...PlainCfg) {
+	t := cfgs[0].s
+	println(cfgs[0].s)
+	_ = t
+}
+
+fn main() {
+	params_owned := "params".to_owned()
+	plain_owned := "plain".to_owned()
+	variadic_owned := "variadic".to_owned()
+	dup_params(s: params_owned)
+	dup_plain(s: plain_owned)
+	dup_variadic(s: variadic_owned)
+}
+')
+	assert fail_fields.exit_code != 0
+	assert fail_fields.output.contains('use of moved value: `params_cfg.s`'), fail_fields.output
+	assert fail_fields.output.contains('use of moved value: `plain_cfg.s`'), fail_fields.output
+	assert fail_fields.output.contains('use of moved value: `cfgs[0].s`'), fail_fields.output
+
+	fail_later_variadic := run_ownership_check(v3_bin, 'collapsed_later_variadic_owned_field', '
+struct PlainCfg {
+	s string
+}
+
+fn dup_variadic(cfgs ...PlainCfg) {
+	t := cfgs[1].s
+	println(cfgs[1].s)
+	_ = t
+}
+
+fn main() {
+	owned := "later".to_owned()
+	dup_variadic(PlainCfg{s: "first"}, s: owned)
+}
+')
+	assert fail_later_variadic.exit_code != 0
+	assert fail_later_variadic.output.contains('use of moved value: `cfgs[1].s`'), fail_later_variadic.output
+
+	fail_return := run_ownership_check(v3_bin, 'collapsed_variadic_return_field', "
+struct Cfg {
+	s string
+}
+
+fn get(cfgs ...Cfg) string {
+	return cfgs[1].s
+}
+
+fn main() {
+	owned := 'field'.to_owned()
+	x := get(Cfg{s: 'first'}, s: owned)
+	y := x
+	println(x)
+	_ = y
+}
+")
+	assert fail_return.exit_code != 0
+	assert fail_return.output.contains('use of moved value: `x`'), fail_return.output
+
+	fail_pointer_alias := run_ownership_check(v3_bin, 'collapsed_pointer_alias_owned_field', '
+@[params]
+struct Config {
+	s string
+}
+
+type ConfigRef = &Config
+
+fn take(config ConfigRef) {
+	_ = config
+}
+
+fn main() {
+	owned := "field".to_owned()
+	take(s: owned)
+	println(owned)
+}
+')
+	assert fail_pointer_alias.exit_code != 0
+	assert fail_pointer_alias.output.contains('use of moved value: `owned`'), fail_pointer_alias.output
+}
+
 fn test_ownership_callee_params_are_order_independent() {
 	v3_bin := ownership_build_v3()
 	fail := run_ownership_check(v3_bin, 'callee_before_owned_call', "
