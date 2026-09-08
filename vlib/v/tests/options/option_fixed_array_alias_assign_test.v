@@ -23,3 +23,26 @@ fn test_option_fixed_array_alias_assign_plain_ident() {
 	a = plain
 	assert a != none
 }
+
+struct IndexCounter {
+mut:
+	calls int
+}
+
+fn next_index(mut counter IndexCounter) int {
+	counter.calls++
+	return 0
+}
+
+fn test_indexed_option_fixed_array_alias_assignment() {
+	mut values := []?Arr{len: 1}
+	mut counter := IndexCounter{}
+
+	values[next_index(mut counter)] = Arr{}
+	assert counter.calls == 1
+	assert values[0] != none
+
+	values[next_index(mut counter)] = ?Arr(none)
+	assert counter.calls == 2
+	assert values[0] == none
+}
