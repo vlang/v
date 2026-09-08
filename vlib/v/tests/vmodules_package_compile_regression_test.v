@@ -304,8 +304,10 @@ fn test_issue_27281_marker_bounded_module_directory_keeps_prefix() {
 	project_dir := os.join_path(workspace, 'parent', 'project')
 	foo_dir := os.join_path(project_dir, 'foo')
 	bar_dir := os.join_path(foo_dir, 'bar')
+	ancestor_bar_dir := os.join_path(workspace, 'parent', 'bar')
 	os.rmdir_all(workspace) or {}
 	os.mkdir_all(bar_dir) or { panic(err) }
+	os.mkdir_all(ancestor_bar_dir) or { panic(err) }
 	parent_vmod := ['Module {', "\tname: 'parent'", '}'].join_lines() + '\n'
 	foo_test_source :=
 		['\xef\xbb\xbf/* outer /* nested */ outer */', '@[has_globals]', 'module foo;', '', 'import foo.bar', '', 'fn test_module_names() {', "\tassert @MOD == 'foo'", "\tassert bar.module_name() == 'foo.bar'", '}'].join_lines() +
@@ -317,6 +319,7 @@ fn test_issue_27281_marker_bounded_module_directory_keeps_prefix() {
 	issue_20147_write_file(os.join_path(project_dir, '.v.mod.stop'), '')
 	issue_20147_write_file(os.join_path(foo_dir, 'foo_test.v'), foo_test_source)
 	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'), bar_source)
+	issue_20147_write_file(os.join_path(ancestor_bar_dir, 'bar.v'), bar_source)
 	res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(foo_dir)}')
 	assert res.exit_code == 0, res.output
 	project_link := os.join_path(workspace, 'project_link')

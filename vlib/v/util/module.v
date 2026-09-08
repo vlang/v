@@ -188,6 +188,7 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 				mut try_path_parts := try_path.split(os.path_separator)
 				// last index in try_path_parts that contains a `v.mod`
 				mut last_v_mod := -1
+				mut hit_project_boundary := false
 				for j := try_path_parts.len; j > 0; j-- {
 					parent := try_path_parts[0..j].join(os.path_separator)
 					if ls := os.ls(parent) {
@@ -199,6 +200,7 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 							break
 						}
 						if has_vmod_boundary_marker(ls) {
+							hit_project_boundary = true
 							break
 						}
 						continue
@@ -214,6 +216,10 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 					if !module_name_has_empty_part(mod_full_name) {
 						return mod_full_name
 					}
+				}
+				if hit_project_boundary {
+					// Do not construct candidates above the current checkout/project.
+					break
 				}
 			}
 		}
