@@ -12110,9 +12110,23 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	actual := t.normalize_type_alias(actual_type)
 	expected := t.normalize_type_alias(expected_type)
 	if source_fn_type := t.fn_literal_source_type_text(arg_id) {
-		if (type_text_has_shared_mode(source_fn_type) || type_text_has_shared_mode(expected))
-			&& !fn_type_texts_signature_compatible(source_fn_type, expected) {
+		mut mode_expected := expected
+		mut matched_sum_variant := false
+		if t.is_sum_type_name(expected_type) {
+			if variant_type := t.fn_literal_matching_sum_variant_type(source_fn_type, expected_type) {
+				mode_expected = variant_type
+				matched_sum_variant = true
+			} else if type_text_has_shared_mode(source_fn_type)
+				|| t.sum_type_has_shared_fn_variant(expected_type) {
+				return false
+			}
+		}
+		if (type_text_has_shared_mode(source_fn_type) || type_text_has_shared_mode(mode_expected))
+			&& !fn_type_texts_signature_compatible(source_fn_type, mode_expected) {
 			return false
+		}
+		if matched_sum_variant {
+			return true
 		}
 		if !isnil(t.tc) {
 			if actual_c_abi := t.tc.c_abi_fn_signature_for_type_text(source_fn_type) {
@@ -12279,6 +12293,28 @@ fn (t &Transformer) fn_literal_sum_variant_c_abi_compatible(actual_text string, 
 		return false
 	}
 	return none
+}
+
+fn (t &Transformer) fn_literal_matching_sum_variant_type(actual_text string, expected_type string) ?string {
+	for variant in t.sum_type_variants_for_index(expected_type) {
+		variant_type := t.normalize_type_alias(variant)
+		if (variant_type.starts_with('fn(') || variant_type.starts_with('fn ('))
+			&& fn_type_texts_signature_compatible_without_c_abi_names(actual_text, variant_type) {
+			return variant_type
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) sum_type_has_shared_fn_variant(expected_type string) bool {
+	for variant in t.sum_type_variants_for_index(expected_type) {
+		variant_type := t.normalize_type_alias(variant)
+		if (variant_type.starts_with('fn(') || variant_type.starts_with('fn ('))
+			&& type_text_has_shared_mode(variant_type) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) fn_literal_source_type_text(arg_id flat.NodeId) ?string {

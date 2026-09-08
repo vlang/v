@@ -1931,6 +1931,11 @@ fn test_fn_literal_nested_shared_callback_param_matches_alias_inside_generic_fn(
 	parenthesized := run_good(v3_bin, 'good_parenthesized_shared_callback_param_in_generic',
 		'type SharedHandler = fn (shared value State)\nstruct State {}\nstruct Router {}\nfn (mut r Router) accept(handler SharedHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept((fn (shared value State) {}))\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	assert parenthesized == 'true'
+	run_check_good(v3_bin, 'good_sum_shared_callback_alias_in_generic',
+		'type SharedHandler = fn (shared value State)\ntype Value = SharedHandler | int\nstruct State {}\nstruct Router {}\nfn (mut r Router) accept(value Value) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (shared value State) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	run_bad(v3_bin, 'bad_sum_shared_callback_alias_in_generic',
+		'type SharedHandler = fn (shared value State)\ntype Value = SharedHandler | int\nstruct State {}\nstruct Router {}\nfn (mut r Router) accept(value Value) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (value State) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 }
 
 fn test_fn_field_call_preserves_callback_c_abi_mismatch_inside_generic_fn() {

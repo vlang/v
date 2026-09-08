@@ -14839,21 +14839,8 @@ fn (tc &TypeChecker) c_abi_fn_signature_for_type_text_inner(typ string, mut seen
 	if c_abi_fn := tc.c_abi_fn_ptr_type_from_text_inner(typ, mut seen, true) {
 		return c_abi_fn
 	}
-	base, args, is_generic := generic_type_application_parts(typ)
+	base, args, is_generic := c_abi_generic_type_application_parts(typ)
 	if is_generic {
-		mut signatures := []string{}
-		mut has_c_abi_arg := false
-		for arg in args {
-			mut arg_seen := seen.clone()
-			signature := tc.c_abi_fn_signature_for_type_text_inner(arg, mut arg_seen) or { '' }
-			signatures << signature
-			if signature.len > 0 {
-				has_c_abi_arg = true
-			}
-		}
-		if has_c_abi_arg {
-			return 'generic(${tc.qualify_name(base)}|${signatures.join('|')})'
-		}
 		for name in [tc.qualify_name(base), base] {
 			params := tc.type_alias_generic_params[name] or { continue }
 			if params.len != args.len {
@@ -14867,6 +14854,19 @@ fn (tc &TypeChecker) c_abi_fn_signature_for_type_text_inner(typ string, mut seen
 			if c_abi_signature := tc.c_abi_fn_signature_for_type_text_inner(instantiated, mut seen) {
 				return c_abi_signature
 			}
+		}
+		mut signatures := []string{}
+		mut has_c_abi_arg := false
+		for arg in args {
+			mut arg_seen := seen.clone()
+			signature := tc.c_abi_fn_signature_for_type_text_inner(arg, mut arg_seen) or { '' }
+			signatures << signature
+			if signature.len > 0 {
+				has_c_abi_arg = true
+			}
+		}
+		if has_c_abi_arg {
+			return 'generic(${tc.qualify_name(base)}|${signatures.join('|')})'
 		}
 	}
 	for name in [tc.qualify_name(typ), typ] {
@@ -14883,6 +14883,29 @@ fn (tc &TypeChecker) c_abi_fn_signature_for_type_text_inner(typ string, mut seen
 		}
 	}
 	return none
+}
+
+fn c_abi_generic_type_application_parts(typ string) (string, []string, bool) {
+	base, args, is_generic := generic_type_application_parts(typ)
+	if is_generic {
+		return base, args, true
+	}
+	bracket := typ.index_u8(`[`)
+	if bracket <= 0 {
+		return '', []string{}, false
+	}
+	bracket_end := find_matching_bracket(typ, bracket)
+	if bracket_end <= bracket || bracket_end >= typ.len {
+		return '', []string{}, false
+	}
+	if typ[bracket_end + 1..].trim_space().len > 0 {
+		return '', []string{}, false
+	}
+	inner := typ[bracket + 1..bracket_end].trim_space()
+	if !inner.starts_with('fn(') && !inner.starts_with('fn (') {
+		return '', []string{}, false
+	}
+	return typ[..bracket], [inner], true
 }
 
 fn substitute_c_abi_signature_type_text(text string, args []string, params []string) string {

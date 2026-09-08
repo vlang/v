@@ -48,6 +48,23 @@ fn test_fn_type_texts_signature_compatible_without_c_abi_names_handles_nested_ca
 		'fn (fn (&C.other_event))')
 }
 
+fn test_generic_callback_alias_instantiates_before_argument_abi_encoding() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['Outer'] = 'fn (cb T)'
+	tc.type_alias_generic_params['Outer'] = ['T']
+	tc.structs['C.native_event'] = []types.StructField{}
+	expected := tc.c_abi_fn_signature_for_type_text('Outer[fn (const_event &C.native_event)]') or {
+		assert false, 'missing instantiated generic alias ABI signature'
+		return
+	}
+	actual := tc.c_abi_fn_signature_for_type_text('fn (callback fn (const_event &C.native_event))') or {
+		assert false, 'missing inline callback ABI signature'
+		return
+	}
+	assert expected == actual
+}
+
 fn test_fn_type_texts_signature_compatible_normalizes_nested_parameter_names() {
 	assert fn_type_texts_signature_compatible('fn (fn (Item))', 'fn (cb fn (value Item))')
 	assert fn_type_texts_signature_compatible('fn (callback fn (item Item) bool)',
