@@ -13,6 +13,13 @@ struct PointerHolder {
 	buf [2]&Point
 }
 
+type PointPtr = &Point
+
+struct AliasPointerHolder {
+mut:
+	buf [2]PointPtr
+}
+
 fn increment(value int) int {
 	return value + 1
 }
@@ -35,6 +42,12 @@ fn main() {
 	}
 	for point in &pointers.buf {
 		println(point.x)
+	}
+	mut alias_pointers := AliasPointerHolder{
+		buf: [PointPtr(first), PointPtr(second)]!
+	}
+	for mut point_ref in alias_pointers.buf {
+		_ = point_ref
 	}
 	callbacks := [increment, double]!
 	unsafe {

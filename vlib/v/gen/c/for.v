@@ -917,11 +917,13 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				g.write('\t${styp} ${c_name(node.val_var)}')
 			}
 			if !is_fixed_array {
+				base_elem_type := g.unwrap_generic(info.elem_type)
 				elem_type := g.table.fully_unaliased_type(g.unwrap_generic(info.elem_type))
 				elem_sym := g.table.sym(elem_type)
+				loop_var_added_ref := node.val_type.nr_muls() > base_elem_type.nr_muls()
 				addr := if (node.val_is_mut || node.val_is_ref)
 					&& (node.val_type.has_flag(.option_mut_param_t)
-					|| (!elem_type.is_any_kind_of_pointer() && elem_sym.info !is ast.FnType)) {
+					|| (loop_var_added_ref && elem_sym.info !is ast.FnType)) {
 					'&'
 				} else {
 					''

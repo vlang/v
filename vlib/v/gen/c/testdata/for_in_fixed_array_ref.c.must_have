@@ -1,3 +1,4 @@
 main__Point* i = &(*
 main__Point* point = (*
+main__PointPtr* point_ref = &alias_pointers.buf[
 int (*callback) (int value) = (*
