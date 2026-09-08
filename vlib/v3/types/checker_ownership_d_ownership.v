@@ -10306,8 +10306,10 @@ fn (tc &TypeChecker) ownership_call_arg_for_return_param_source_info(node flat.N
 			return none
 		}
 	}
-	field_suffix := if source_suffix.starts_with('[0].') {
-		source_suffix[3..]
+	collapsed_variadic_elem_idx := tc.collapsed_call_arg_variadic_elem_idx(node, info)
+	variadic_prefix := ownership_call_arg_variadic_suffix(collapsed_variadic_elem_idx)
+	field_suffix := if variadic_prefix.len > 0 && source_suffix.starts_with('${variadic_prefix}.') {
+		source_suffix[variadic_prefix.len..]
 	} else {
 		source_suffix
 	}

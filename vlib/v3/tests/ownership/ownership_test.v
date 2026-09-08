@@ -2940,12 +2940,12 @@ struct Cfg {
 }
 
 fn get(cfgs ...Cfg) string {
-	return cfgs[0].s
+	return cfgs[1].s
 }
 
 fn main() {
 	owned := 'field'.to_owned()
-	x := get(s: owned)
+	x := get(Cfg{s: 'first'}, s: owned)
 	y := x
 	println(x)
 	_ = y
