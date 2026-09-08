@@ -34,6 +34,24 @@ fn main() {
 	for i in int(return_f32()) .. 16777217 {
 		println(i)
 	}
+
+	// Untyped integer arithmetic uses signed semantics.
+	for i in 0 - 1 .. 0 {
+		println(i)
+	}
+
+	// Do not evaluate the one overflowing signed division/modulo pair.
+	for i in i64(min_i64) / i64(-1) .. 1 {
+		println(i)
+	}
+	for i in i64(min_i64) % i64(-1) .. 1 {
+		println(i)
+	}
+
+	// Unsigned powers keep the base unsigned when the exponent becomes negative.
+	for i in u64(max_u64) ** u64(max_u64) .. 1 {
+		println(i)
+	}
 }
 
 type OverloadedRangeBound = u8

@@ -42,6 +42,27 @@ fn comptime_power_i64(base i64, exponent i64) i64 {
 	return value
 }
 
+@[ignore_overflow]
+fn comptime_power_u64(base u64, exponent i64) u64 {
+	mut exp := exponent
+	mut power := base
+	mut value := u64(1)
+	if exp < 0 {
+		if base == 0 {
+			return max_u64
+		}
+		return if base == 1 { u64(1) } else { u64(0) }
+	}
+	for exp > 0 {
+		if exp & 1 > 0 {
+			value *= power
+		}
+		power *= power
+		exp >>= 1
+	}
+	return value
+}
+
 fn comptime_power_f64(base f64, exponent f64) f64 {
 	return math.pow(base, exponent)
 }
@@ -1318,7 +1339,8 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 					if _likely_(left_raw != none && right_raw != none) {
 						mut result := i64(0)
 
-						if promoted_type.is_signed() {
+						is_untyped_int := promoted_type == ast.int_literal_type
+						if is_untyped_int || promoted_type.is_signed() {
 							match expr.op {
 								.plus {
 									result = left_raw + right_raw
@@ -1330,14 +1352,16 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 									result = left_raw * right_raw
 								}
 								.div {
-									if _unlikely_(right_raw == 0) {
+									if _unlikely_(right_raw == 0
+										|| (left_raw == min_i64 && right_raw == -1)) {
 										return none
 									} else {
 										result = left_raw / right_raw
 									}
 								}
 								.mod {
-									if _unlikely_(right_raw == 0) {
+									if _unlikely_(right_raw == 0
+										|| (left_raw == min_i64 && right_raw == -1)) {
 										return none
 									} else {
 										result = left_raw % right_raw
@@ -1417,7 +1441,7 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 									result = i64(left_u >>> right_u)
 								}
 								.power {
-									result = comptime_power_i64(i64(left_u), i64(right_u))
+									result = i64(comptime_power_u64(left_u, i64(right_u)))
 								}
 								else {
 									return none
@@ -1425,7 +1449,11 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 							}
 						}
 
-						return c.wrap_comptime_int(result, promoted_type)
+						return if is_untyped_int {
+							result
+						} else {
+							c.wrap_comptime_int(result, promoted_type)
+						}
 					}
 				}
 			}
