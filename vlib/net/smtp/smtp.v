@@ -501,12 +501,35 @@ fn format_addr(addr string) string {
 		return '<${addr_spec}>'
 	}
 
+	if is_rfc2047_encoded_phrase(name) {
+		return '${name} <${addr_spec}>'
+	}
 	if !name.is_ascii() {
 		return '${encode_rfc2047(name)} <${addr_spec}>'
 	}
 
 	escaped := name.replace('\\', '\\\\').replace('"', '\\"')
 	return '"${escaped}" <${addr_spec}>'
+}
+
+// is_rfc2047_encoded_phrase reports whether s consists only of RFC 2047
+// encoded-words separated by whitespace.
+fn is_rfc2047_encoded_phrase(s string) bool {
+	words := s.fields()
+	if words.len == 0 {
+		return false
+	}
+	for word in words {
+		if word.len < 8 || !word.starts_with('=?') || !word.ends_with('?=') {
+			return false
+		}
+		parts := word[2..word.len - 2].split('?')
+		if parts.len != 3 || parts[0] == '' || parts[2] == ''
+			|| parts[1].to_upper() !in ['B', 'Q'] {
+			return false
+		}
+	}
+	return true
 }
 
 // encode_rfc2047 encodes s as one or more RFC 2047 encoded-words
@@ -534,7 +557,9 @@ fn encode_rfc2047(s string) string {
 		words << '=?utf-8?B?${base64.encode_str(s[start..end])}?='
 		start = end
 	}
-	return words.join(' ')
+	// Use a folded whitespace separator so arbitrarily many encoded-words never
+	// create a physical header line over RFC 5322's 998-character hard limit.
+	return words.join('\r\n ')
 }
 
 struct MimePart {

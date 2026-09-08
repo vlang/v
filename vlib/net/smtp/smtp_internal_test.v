@@ -238,7 +238,7 @@ fn test_mail_message_data_encodes_non_ascii_subject() {
 fn test_encode_rfc2047_splits_long_utf8_without_cutting_characters() {
 	original := 'Привет мир '.repeat(12)
 	encoded := encode_rfc2047(original)
-	words := encoded.split(' ')
+	words := encoded.split('\r\n ')
 	assert words.len > 1
 	mut decoded := ''
 	for word in words {
@@ -250,6 +250,19 @@ fn test_encode_rfc2047_splits_long_utf8_without_cutting_characters() {
 	assert decoded == original
 }
 
+fn test_long_encoded_headers_are_folded_below_the_hard_line_limit() {
+	mail := Mail{
+		from: 'Ж'.repeat(315) + ' <sender@example.com>'
+		to: 'receiver@example.com'
+		subject: 'Ж'.repeat(315)
+	}
+	message := mail.message_data()
+	assert message.contains('\r\n =?utf-8?B?')
+	for line in message.split('\r\n') {
+		assert line.len <= 998
+	}
+}
+
 fn test_format_addr() {
 	// a bare or already angle-wrapped address keeps its addr-spec
 	assert format_addr('user@ex.com') == '<user@ex.com>'
@@ -258,6 +271,8 @@ fn test_format_addr() {
 	// a display name is quoted and angle-wrapped
 	assert format_addr('User <user@ex.com>') == '"User" <user@ex.com>'
 	assert format_addr('John Smith <john@ex.com>') == '"John Smith" <john@ex.com>'
+	assert format_addr('=?UTF-8?B?Sm9zw6k=?= <jose@example.com>') == '=?UTF-8?B?Sm9zw6k=?= <jose@example.com>'
+	assert format_addr('=?UTF-8?Q?Jos=C3=A9?= =?UTF-8?Q?_Silva?= <jose@example.com>') == '=?UTF-8?Q?Jos=C3=A9?= =?UTF-8?Q?_Silva?= <jose@example.com>'
 
 	// embedded quotes and backslashes inside the display name are escaped
 	assert format_addr('John "The Boss" <john@ex.com>') == '"John \\"The Boss\\"" <john@ex.com>'
