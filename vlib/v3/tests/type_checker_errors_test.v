@@ -2034,6 +2034,20 @@ fn test_fn_literal_nested_c_abi_const_mode_matches_alias_inside_generic_fn() {
 		'cannot use')
 }
 
+fn test_fn_literal_callback_alias_lookup_uses_declaration_module() {
+	v3_bin := build_v3()
+	local_alias_collision := run_good_project(v3_bin,
+		'good_local_generic_plain_alias_ignores_imported_homonym', {
+		'main.v': 'module main\n\nimport m\n\nstruct C.native_event {}\ntype Handler[T] = fn (event &T)\nfn apply[T](handler Handler[C.native_event]) bool {\n\treturn true\n}\nfn startup[U]() bool {\n\treturn apply[int](fn (event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n\tprintln(m.value)\n}\n'
+		'm/m.v':  'module m\n\npub const value = 1\npub type Handler[T] = fn (const_event &T)\n'
+	}, 'main.v')
+	assert local_alias_collision == 'true\n1'
+	run_bad_project(v3_bin, 'bad_local_generic_const_alias_ignores_imported_homonym', {
+		'main.v': 'module main\n\nimport m\n\nstruct C.native_event {}\ntype Handler[T] = fn (const_event &T)\nfn apply[T](handler Handler[C.native_event]) {}\nfn startup[U]() {\n\tapply[int](fn (event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n\tprintln(m.value)\n}\n'
+		'm/m.v':  'module m\n\npub const value = 1\npub type Handler[T] = fn (event &T)\n'
+	}, 'main.v', 'cannot use')
+}
+
 fn test_fn_literal_nested_shared_callback_param_matches_alias_inside_generic_fn() {
 	v3_bin := build_v3()
 	matching := run_good(v3_bin, 'good_nested_shared_callback_param_in_generic',

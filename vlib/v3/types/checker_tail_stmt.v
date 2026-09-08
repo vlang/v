@@ -4406,11 +4406,20 @@ fn (tc &TypeChecker) source_fn_alias_type_text(name string) ?string {
 	for _ in 0 .. 8 {
 		target_base, target_args, target_is_generic := generic_type_application_parts(target)
 		lookup_target := if target_is_generic { target_base } else { target }
+		lookup_module := if lookup_target.contains('.') {
+			''
+		} else {
+			tc.type_alias_modules[lookup_target] or { tc.cur_module }
+		}
 		mut module_name := ''
 		mut found := ''
 		mut found_name := ''
 		for index in tc.top_level_idx {
 			node := tc.a.node(flat.NodeId(index))
+			if node.kind == .file {
+				module_name = ''
+				continue
+			}
 			if node.kind == .module_decl {
 				module_name = node.value
 				continue
@@ -4419,7 +4428,14 @@ fn (tc &TypeChecker) source_fn_alias_type_text(name string) ?string {
 				continue
 			}
 			qualified := qualify_decl_name_in_module(node.value, module_name)
-			if node.value == lookup_target || qualified == lookup_target {
+			same_module := module_name == lookup_module
+				|| (module_name in ['', 'main'] && lookup_module in ['', 'main'])
+			matches_target := if lookup_target.contains('.') {
+				qualified == lookup_target
+			} else {
+				node.value == lookup_target && same_module
+			}
+			if matches_target {
 				source_type := tc.source_type_alias_rhs(node) or { '' }
 				found = if source_type.starts_with('fn(') || source_type.starts_with('fn (') {
 					source_type
