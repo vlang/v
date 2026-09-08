@@ -339,7 +339,7 @@ fn parse_tzif_location(name string, data []u8) !&Location {
 	pos += 44
 	if header.version == `2` || header.version == `3` || header.version == `4` {
 		size := tzif_data_size(header, 4)!
-		if pos + size > data.len {
+		if pos > data.len || size > data.len - pos {
 			return error('truncated TZif data for "${name}"')
 		}
 		pos += size
@@ -361,7 +361,7 @@ struct TzifHeader {
 }
 
 fn read_tzif_header(data []u8, offset int) !TzifHeader {
-	if offset + 44 > data.len || data[offset..offset + 4].bytestr() != 'TZif' {
+	if offset < 0 || offset > data.len - 44 || data[offset..offset + 4].bytestr() != 'TZif' {
 		return error('invalid TZif data')
 	}
 	header := TzifHeader{
@@ -395,7 +395,7 @@ fn parse_tzif_data(name string, data []u8, start int, header TzifHeader, time_si
 		return error('time zone location "${name}" has no zone rules')
 	}
 	size := tzif_data_size(header, time_size)!
-	if start + size > data.len {
+	if start < 0 || start > data.len || size > data.len - start {
 		return error('truncated TZif data for "${name}"')
 	}
 	mut pos := start

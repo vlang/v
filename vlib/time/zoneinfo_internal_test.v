@@ -122,6 +122,33 @@ fn test_tzif_rejects_negative_counts() {
 	}
 }
 
+fn test_tzif_rejects_block_sizes_that_overflow_int_offsets() {
+	mut data := []u8{len: 44}
+	copy(mut data[0..4], 'TZif'.bytes())
+	data[4] = `2`
+	// 429496722 transition records occupy max_int - 37 bytes on 32-bit targets;
+	// adding the 44-byte header would overflow an int offset.
+	data[32] = 0x19
+	data[33] = 0x99
+	data[34] = 0x99
+	data[35] = 0x92
+	if _ := parse_tzif_location('Bad/Zone', data) {
+		assert false
+	} else {
+		assert err.msg().contains('truncated TZif data')
+	}
+
+	header := TzifHeader{
+		time: 429_496_720
+		typ:  1
+	}
+	if _ := parse_tzif_data('Bad/Zone', data, 44, header, 4) {
+		assert false
+	} else {
+		assert err.msg().contains('truncated TZif data')
+	}
+}
+
 fn test_tzif_v4_uses_64bit_data_and_posix_tail() {
 	mut data := load_zoneinfo_from_source(zoneinfo_vroot_zip, 'Europe/London')!
 	data[4] = `4`
