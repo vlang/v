@@ -391,9 +391,7 @@ fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, val_type a
 			low_val := c.eval_comptime_const_cast_value(evaluated_low, comparison_type) or {
 				return
 			}
-			high_val := c.eval_comptime_const_cast_value(evaluated_high, comparison_type) or {
-				return
-			}
+			high_val := evaluated_high
 			low_i := low_val.i64()
 			high_i := high_val.i64()
 
