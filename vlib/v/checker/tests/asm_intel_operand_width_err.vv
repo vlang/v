@@ -176,6 +176,121 @@ fn intel_named_shift_count(count i64) {
 	}
 }
 
+fn intel_extension_move_named_sources(value i64) {
+	mut zero_extended := i64(0)
+	mut sign_extended := i64(0)
+	mut sign_extended_dword := i64(0)
+	asm amd64 intel {
+		movzx zero_extended, value
+		movsx sign_extended, value
+		movsxd sign_extended_dword, value
+		; =r (zero_extended)
+		  =r (sign_extended)
+		  =r (sign_extended_dword)
+		; r (value)
+	}
+}
+
+fn intel_crc32_memory_source(base &u16, checksum u64) u64 {
+	mut result := checksum
+	asm amd64 intel {
+		crc32w result, [base]
+		; +r (result)
+		; r (base)
+	}
+	return result
+}
+
+fn intel_lzcnt_narrow_source(value u32) i64 {
+	mut result := i64(0)
+	asm amd64 intel {
+		lzcnt result, value
+		; =r (result)
+		; r (value)
+	}
+	return result
+}
+
+fn intel_shld_narrow_data(value u32, source u32) u32 {
+	mut result := value
+	asm amd64 intel {
+		shld result, source, 1
+		; +r (result)
+		; r (source)
+	}
+	return result
+}
+
+fn intel_rorx_narrow_source(value u32) i64 {
+	mut result := i64(0)
+	asm amd64 intel {
+		rorx result, value, 1
+		; =r (result)
+		; r (value)
+	}
+	return result
+}
+
+fn intel_rorx_named_count(value i64, count i64) i64 {
+	mut result := i64(0)
+	asm amd64 intel {
+		rorx result, value, count
+		; =r (result)
+		; r (value)
+		  r (count)
+	}
+	return result
+}
+
+fn intel_crc32_narrow_source(value u32, checksum u64) u64 {
+	mut result := checksum
+	asm amd64 intel {
+		crc32 result, value
+		; +r (result)
+		; r (value)
+	}
+	return result
+}
+
+fn intel_movbe_narrow_load(base &u32) u32 {
+	mut result := u32(0)
+	asm amd64 intel {
+		movbe result, [base]
+		; =r (result)
+		; r (base)
+	}
+	return result
+}
+
+fn intel_narrow_bit_test(value u32) {
+	asm amd64 intel {
+		bt value, 40
+		; ; r (value)
+		; cc
+	}
+}
+
+fn intel_narrow_bswap(value u32) u32 {
+	mut result := value
+	asm amd64 intel {
+		bswap result
+		; +r (result)
+	}
+	return result
+}
+
+fn intel_mulx_narrow_source(value u32) {
+	mut high := i64(0)
+	mut low := i64(0)
+	asm amd64 intel {
+		mulx high, low, value
+		; =r (high)
+		  =r (low)
+		; r (value)
+		; rdx
+	}
+}
+
 fn intel_vsib_vector_index(base &i32) {
 	asm amd64 intel {
 		vpgatherdd xmm1, [base + xmm2 * 4 + 0], xmm3

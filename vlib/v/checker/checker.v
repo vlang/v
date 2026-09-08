@@ -4446,17 +4446,73 @@ fn asm_intel_normalized_instruction_name(instruction string) string {
 }
 
 fn (mut c Checker) check_asm_intel_named_shift_count(template ast.AsmTemplate,
-	aliases map[string]ast.Type, count_index int) bool {
+	aliases map[string]ast.Type, count_index int, cl_allowed bool) bool {
 	if template.args.len <= count_index {
 		return false
 	}
 	count := template.args[count_index]
 	if count is ast.AsmAlias && count.name in aliases {
-		c.error('named shift count `${count.name}` expands to a native-width register in structured `intel` assembly, but instruction `${template.name}` requires an immediate or `cl`; use a hard `cl` register, or a `raw intel` block with an explicit operand modifier',
+		requirement := if cl_allowed { 'an immediate or `cl`' } else { 'an immediate' }
+		remedy := if cl_allowed { 'a hard `cl` register' } else { 'a literal count' }
+		c.error('named shift count `${count.name}` expands to a native-width register in structured `intel` assembly, but instruction `${template.name}` requires ${requirement}; use ${remedy}, or a `raw intel` block with an explicit operand modifier',
 			template.pos)
 		return true
 	}
 	return false
+}
+
+fn (mut c Checker) check_asm_intel_narrow_data_aliases(template ast.AsmTemplate,
+	aliases map[string]ast.Type, native_width int, instruction string) bool {
+	for i, arg in template.args {
+		if arg is ast.AsmAlias && arg.name in aliases
+			&& c.asm_intel_named_operand_is_narrow(arg.name, aliases, native_width) {
+			is_width_dependent := match instruction {
+				'movbe' { i in [0, 1] }
+				'bt', 'btc', 'btr', 'bts' { i == 0 }
+				'bzhi', 'rorx', 'sarx', 'shlx', 'shrx', 'lzcnt', 'tzcnt' { i == 1 }
+				'shld', 'shrd' { i in [0, 1] }
+				'mulx' { i == 2 }
+				'crc32' { i == 1 }
+				else { false }
+			}
+			if is_width_dependent {
+				typ := c.unwrap_generic(aliases[arg.name])
+				c.error('named operand `${arg.name}` has ${c.asm_intel_type_width(typ) * 8}-bit type `${c.table.type_str(typ)}`, but instruction `${template.name}` operates on the ${native_width * 8}-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers',
+					template.pos)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) check_asm_intel_extension_move_source(template ast.AsmTemplate,
+	aliases map[string]ast.Type, native_width int, instruction string) {
+	if template.args.len < 2 {
+		return
+	}
+	source := template.args[1]
+	if source is ast.AsmAlias && source.name in aliases {
+		c.error('named source `${source.name}` expands to a ${native_width * 8}-bit register in structured `intel` assembly, but instruction `${template.name}` requires a narrower source; use a hard source register of the required width, or a `raw intel` block with an explicit operand modifier',
+			template.pos)
+		return
+	}
+	if source is ast.AsmRegister {
+		is_valid_source := if instruction == 'movsxd' {
+			native_width == 8 && source.size == 32
+		} else {
+			source.size in [8, 16]
+		}
+		if !is_valid_source {
+			c.error('hard source register `${source.name}` is ${source.size}-bit, but instruction `${template.name}` requires a source narrower than its ${native_width * 8}-bit named destination; use a hard source register of the required width, or a `raw intel` block with explicit operand modifiers',
+				template.pos)
+		}
+	}
+}
+
+fn asm_intel_crc32_source_width_is_valid(source_width int, native_width int) bool {
+	return source_width == 8 || source_width == native_width * 8
+		|| (native_width == 4 && source_width == 16)
 }
 
 fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate,
@@ -4466,11 +4522,13 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	// deliberately absent.
 	mut name := asm_intel_normalized_instruction_name(template.name)
 	is_movq := name == 'movq'
+	is_extension_move := name in ['movsx', 'movsxd', 'movzx']
 	same_width_instructions := ['mov', 'movbe', 'add', 'adc', 'adcx', 'adox', 'sub', 'sbb', 'and',
 		'andn', 'or', 'xor', 'cmp', 'test', 'xchg', 'xadd', 'cmpxchg', 'imul', 'bsf', 'bsr', 'bt',
 		'btc', 'btr', 'bts', 'bextr', 'blsi', 'blsmsk', 'blsr', 'bzhi', 'mulx', 'pdep', 'pext',
 		'rorx', 'sarx', 'shlx', 'shrx', 'shld', 'shrd', 'popcnt', 'lzcnt', 'tzcnt', 'crc32']
-	width_sensitive_instructions := ['rcl', 'rcr', 'rol', 'ror', 'sal', 'sar', 'shl', 'shr']
+	width_sensitive_instructions := ['bswap', 'rcl', 'rcr', 'rol', 'ror', 'sal', 'sar', 'shl',
+		'shr']
 	mut is_same_width := name in same_width_instructions
 	mut is_width_sensitive := name in width_sensitive_instructions
 	mut explicit_width := 0
@@ -4493,7 +4551,7 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 		is_same_width = true
 		is_width_sensitive = name in width_sensitive_instructions
 	}
-	if !is_same_width && !is_width_sensitive && !name.starts_with('cmov') {
+	if !is_same_width && !is_width_sensitive && !name.starts_with('cmov') && !is_extension_move {
 		return
 	}
 	mut has_named_alias := false
@@ -4506,17 +4564,34 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	if !has_named_alias {
 		return
 	}
-	if explicit_width > 0 && explicit_width != native_width * 8 {
-		mut suffix_applies_to_alias := name != 'crc32'
-		if name == 'crc32' && template.args.len > 1 {
-			source := template.args[1]
-			suffix_applies_to_alias = source is ast.AsmAlias && source.name in aliases
-		}
-		if suffix_applies_to_alias {
+	if explicit_width > 0 {
+		if name != 'crc32' && explicit_width != native_width * 8 {
 			c.error('instruction `${template.name}` selects ${explicit_width}-bit operands, but named operands in structured `intel` assembly expand to ${native_width * 8}-bit registers for the current compilation target; use a matching instruction width, or a `raw intel` block with explicit operand modifiers',
 				template.pos)
 			return
 		}
+		if name == 'crc32' && template.args.len > 1 {
+			source := template.args[1]
+			if source is ast.AsmAlias && source.name in aliases
+				&& explicit_width != native_width * 8 {
+				c.error('instruction `${template.name}` selects a ${explicit_width}-bit source, but named source `${source.name}` expands to a ${native_width * 8}-bit register in structured `intel` assembly; use a matching instruction width, or a `raw intel` block with an explicit operand modifier',
+					template.pos)
+				return
+			}
+			if source is ast.AsmAddressing
+				&& !asm_intel_crc32_source_width_is_valid(explicit_width, native_width) {
+				c.error('instruction `${template.name}` selects a ${explicit_width}-bit memory source, which is incompatible with the ${native_width * 8}-bit named destination in structured `intel` assembly; use a valid CRC32 source width, or a `raw intel` block with explicit operand modifiers',
+					template.pos)
+				return
+			}
+		}
+	}
+	if is_extension_move {
+		c.check_asm_intel_extension_move_source(template, aliases, native_width, name)
+		return
+	}
+	if c.check_asm_intel_narrow_data_aliases(template, aliases, native_width, name) {
+		return
 	}
 	if name in ['cmp', 'test'] {
 		for arg in template.args {
@@ -4546,10 +4621,14 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 				}
 			}
 		}
-		c.check_asm_intel_named_shift_count(template, aliases, 1)
+		c.check_asm_intel_named_shift_count(template, aliases, 1, true)
 		return
 	}
-	if name in ['shld', 'shrd'] && c.check_asm_intel_named_shift_count(template, aliases, 2) {
+	if name in ['shld', 'shrd']
+		&& c.check_asm_intel_named_shift_count(template, aliases, 2, true) {
+		return
+	}
+	if name == 'rorx' && c.check_asm_intel_named_shift_count(template, aliases, 2, false) {
 		return
 	}
 	for i, arg in template.args {

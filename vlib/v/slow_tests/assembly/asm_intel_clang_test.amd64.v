@@ -22,15 +22,19 @@ fn test_intel_mixed_width_hard_registers_with_clang() {
 	mut double_shifted := i64(21)
 	shift_source := i64(-1)
 	mut extended := i64(0)
+	mut sign_extended := i64(0)
 	asm amd64 intel {
 		mov cl, 1
 		shl shifted, cl
 		shld double_shifted, shift_source, cl
 		mov al, 42
 		movzx extended, al
+		mov eax, -1
+		movsxd sign_extended, eax
 		; +r (shifted)
 		  +r (double_shifted)
 		  =r (extended)
+		  =r (sign_extended)
 		; r (shift_source)
 		; rax
 		  rcx
@@ -38,6 +42,7 @@ fn test_intel_mixed_width_hard_registers_with_clang() {
 	assert shifted == 42
 	assert double_shifted == 43
 	assert extended == 42
+	assert sign_extended == -1
 }
 
 fn intel_generic_add[T](value T, increment T) T {
@@ -108,6 +113,26 @@ fn intel_crc32_narrow_source_with_clang(value i64) i64 {
 	return result
 }
 
+fn intel_crc32_byte_memory_source_with_clang(base &u8, checksum u64) u64 {
+	mut result := checksum
+	asm amd64 intel {
+		crc32b result, [base]
+		; +r (result)
+		; r (base)
+	}
+	return result
+}
+
+fn intel_crc32_native_memory_source_with_clang(base &u64, checksum u64) u64 {
+	mut result := checksum
+	asm amd64 intel {
+		crc32q result, [base]
+		; +r (result)
+		; r (base)
+	}
+	return result
+}
+
 @[noinline]
 fn can_run_intel_crc32_test() bool {
 	return false
@@ -116,6 +141,10 @@ fn can_run_intel_crc32_test() bool {
 fn test_intel_crc32_narrow_source_compiles_with_clang() {
 	if can_run_intel_crc32_test() {
 		assert intel_crc32_narrow_source_with_clang(42) != 0
+		byte_value := u8(42)
+		native_value := u64(42)
+		assert intel_crc32_byte_memory_source_with_clang(&byte_value, 0) != 0
+		assert intel_crc32_native_memory_source_with_clang(&native_value, 0) != 0
 	}
 }
 
