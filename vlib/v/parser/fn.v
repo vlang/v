@@ -38,6 +38,7 @@ mut:
 	directly_reassigned bool
 	passed_mut          bool
 	address_taken       bool
+	captured_mut        bool
 	method_calls        []string
 }
 
@@ -120,7 +121,13 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 		}
 		ast.Expr {
 			match node {
-				ast.AnonFn, ast.LambdaExpr {
+				ast.AnonFn {
+					if node.inherited_vars.any(it.name == name && it.is_mut) {
+						info.captured_mut = true
+					}
+					return
+				}
+				ast.LambdaExpr {
 					return
 				}
 				ast.PrefixExpr {
@@ -1323,6 +1330,7 @@ run them via `v file.v` instead',
 		type_sym.methods[type_sym_method_idx].receiver_reassigned = receiver_info.directly_reassigned
 		type_sym.methods[type_sym_method_idx].receiver_passed_mut = receiver_info.passed_mut
 		type_sym.methods[type_sym_method_idx].receiver_address_taken = receiver_info.address_taken
+		type_sym.methods[type_sym_method_idx].receiver_captured_mut = receiver_info.captured_mut
 		type_sym.methods[type_sym_method_idx].receiver_method_calls = receiver_info.method_calls
 	}
 	if !no_body && are_params_type_only {
