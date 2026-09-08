@@ -351,6 +351,24 @@ fn test_h3_conn_server_rejects_oversized_data_from_header_only() {
 	assert errors[0].error_code? == H3ErrorCode.excessive_load.code()
 }
 
+fn test_h3_conn_server_rejects_client_push_promise_as_connection_error() {
+	_, mut client_h3, _, mut server_h3, now0 := h3_server_test_pair()!
+	defer {
+		client_h3.free()
+		server_h3.free()
+	}
+	_, _, now1 := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now0)!
+	stream_id := client_h3.open_request_stream()!
+	push_id := encode_varint(0)!
+	push_promise := encode_h3_frame_envelope(h3_frame_push_promise, push_id)!
+	client_h3.qc.write_stream(stream_id, push_promise, true)!
+	if _, _, _ := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now1) {
+		assert false, 'expected a client-sent PUSH_PROMISE to close the connection'
+	} else {
+		assert err.code() == int(H3ErrorCode.frame_unexpected)
+	}
+}
+
 fn test_h3_conn_server_buffers_data_while_initial_headers_are_qpack_blocked() {
 	mut client, mut client_h3, mut server, mut server_h3, now0 := h3_server_test_pair()!
 	defer {

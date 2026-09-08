@@ -101,6 +101,23 @@ fn test_h3_server_stream_stays_rejected_after_body_limit() {
 	assert stream.body.len == 0
 }
 
+fn test_h3_server_caps_aggregate_inflight_body_per_connection() {
+	mut budget := H3ServerBodyBudget{}
+	budget.by_conn['peer'] = h3_server_max_buffered_request_body_per_connection - 1
+	mut stream := H3ServerStream{}
+	assert !budget.append('peer', mut stream, 'xx'.bytes())
+	assert stream.rejected
+	assert stream.body.len == 0
+	assert budget.by_conn['peer'] == h3_server_max_buffered_request_body_per_connection - 1
+
+	budget.release('peer', h3_server_max_buffered_request_body_per_connection - 1)
+	mut next_stream := H3ServerStream{}
+	assert budget.append('peer', mut next_stream, 'xx'.bytes())
+	assert budget.by_conn['peer'] == 2
+	budget.release('peer', next_stream.body.len)
+	assert 'peer' !in budget.by_conn
+}
+
 fn test_h3_server_validates_request_trailers() {
 	h3_validate_request_trailers([
 		quic.QpackFieldLine{

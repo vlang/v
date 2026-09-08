@@ -660,13 +660,13 @@ fn (mut h H3Conn) dispatch_request_stream_frames(stream_id u64, mut result H3Pol
 		h.require_valid_frame_for_role(decoded.frame, .request)!
 		match decoded.frame {
 			PushPromiseFrame {
-				// Table-1-legal on a request stream, but neither role ever
-				// authorizes push (this file's own module doc comment) --
-				// request-scoped here (tied to this one exchange), unlike the
-				// identical rejection on the control stream, which is
-				// connection-scoped (MAX_PUSH_ID there implies a peer that
-				// may be confused about push in general, not just this
-				// request).
+				if h.is_server_role() {
+					return error_with_code('h3: a client cannot send PUSH_PROMISE', int(H3ErrorCode.frame_unexpected))
+				}
+				// Client role does not authorize push in this v1 implementation
+				// (this file's own module doc comment), so reject that promised
+				// exchange. Server role has already returned the mandatory
+				// connection-level FRAME_UNEXPECTED error above.
 				h.fail_request_stream(stream_id, H3ErrorCode.id_error.code(), 'push is not authorized on this connection', mut result)
 				return
 			}

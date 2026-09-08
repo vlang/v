@@ -61,6 +61,12 @@ import sync
 // h2_server.v's identical h2_server_max_request_body reasoning and value.
 const h3_server_max_request_body = 8 * 1024 * 1024
 
+// h3_server_max_buffered_request_body_per_connection also bounds the sum of
+// unfinished request bodies retained by one peer. Without an aggregate cap,
+// each of the default 100 bidirectional streams could independently retain a
+// near-limit body.
+const h3_server_max_buffered_request_body_per_connection = h3_server_max_request_body
+
 // h3_server_stream_key builds the composite key H3Server's own per-
 // request-stream buffering table (H3Server.streams) is keyed by --
 // composite because ONE H3Server manages MANY connections at once (unlike
@@ -93,6 +99,11 @@ mut:
 	rejected bool
 }
 
+struct H3ServerBodyBudget {
+mut:
+	by_conn map[string]int
+}
+
 fn (mut s H3ServerStream) append_body(data []u8) bool {
 	if s.rejected {
 		return false
@@ -103,6 +114,36 @@ fn (mut s H3ServerStream) append_body(data []u8) bool {
 		return false
 	}
 	s.body << data
+	return true
+}
+
+fn (mut b H3ServerBodyBudget) release(conn_id string, amount int) {
+	current := b.by_conn[conn_id]
+	remaining := current - amount
+	if remaining > 0 {
+		b.by_conn[conn_id] = remaining
+	} else {
+		b.by_conn.delete(conn_id)
+	}
+}
+
+fn (mut b H3ServerBodyBudget) append(conn_id string, mut stream H3ServerStream, data []u8) bool {
+	if stream.rejected {
+		return false
+	}
+	current := b.by_conn[conn_id]
+	if data.len > h3_server_max_buffered_request_body_per_connection - current {
+		b.release(conn_id, stream.body.len)
+		stream.body.clear()
+		stream.rejected = true
+		return false
+	}
+	previous_len := stream.body.len
+	if !stream.append_body(data) {
+		b.release(conn_id, previous_len)
+		return false
+	}
+	b.by_conn[conn_id] = current + data.len
 	return true
 }
 
@@ -149,6 +190,9 @@ mut:
 	h3_params quic.H3ConnParams
 	h3_conns  map[string]&quic.H3Conn
 	streams   map[string]&H3ServerStream
+	// body_budget accounts only bytes retained in streams; entries are released
+	// on completion, rejection, reset, or connection close.
+	body_budget H3ServerBodyBudget
 	// peer_by_str recovers a real net.Addr from the opaque []u8 peer
 	// identifier quic.QuicListener's own outgoing datagrams carry (that
 	// module is deliberately transport-agnostic -- see listener.v's own
@@ -249,6 +293,7 @@ fn (mut s H3Server) free_all_conns() {
 	}
 	s.h3_conns = map[string]&quic.H3Conn{}
 	s.streams = map[string]&H3ServerStream{}
+	s.body_budget = H3ServerBodyBudget{}
 }
 
 // serve runs this server's single-threaded accept/demux/dispatch loop
@@ -421,6 +466,7 @@ fn (mut s H3Server) prune_streams_for_conn(conn_id string) {
 	for key in dead {
 		s.streams.delete(key)
 	}
+	s.body_budget.by_conn.delete(conn_id)
 }
 
 // handle_h3_event actions one H3Event from a server-role H3Conn: buffers
@@ -472,7 +518,7 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 				new_st
 			}
 			was_rejected := st.rejected
-			if !st.append_body(ev.data) {
+			if !s.body_budget.append(conn_id, mut st, ev.data) {
 				if was_rejected {
 					return
 				}
@@ -492,6 +538,7 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 				return
 			}
 			h3_validate_request_trailers(ev.headers) or {
+				s.body_budget.release(conn_id, st.body.len)
 				st.body.clear()
 				st.rejected = true
 				s.send_error_response(mut h3c, stream_id, 400)
@@ -507,6 +554,7 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 				return
 			}
 			s.run_request(mut h3c, stream_id, st)
+			s.body_budget.release(conn_id, st.body.len)
 			s.streams.delete(key)
 		}
 		.request_error {
@@ -516,7 +564,11 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 					s.send_error_response(mut h3c, stream_id, 413)
 				}
 			}
-			s.streams.delete(h3_server_stream_key(conn_id, stream_id))
+			key := h3_server_stream_key(conn_id, stream_id)
+			if st := s.streams[key] {
+				s.body_budget.release(conn_id, st.body.len)
+			}
+			s.streams.delete(key)
 		}
 		else {
 			// settings_received/goaway/connection_error: nothing for this

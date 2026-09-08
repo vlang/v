@@ -54,7 +54,8 @@ Direct `H3Conn` users can set `H3ConnParams.max_inbound_data_frame_payload` to r
 oversized request-stream DATA frame as soon as its declared length is available, before the
 payload is buffered. Zero keeps the generic connection default unrestricted. The `net.http`
 HTTP/3 server sets this to its 8 MiB request-body limit and also enforces the cumulative limit
-across complete DATA frames.
+across complete DATA frames, plus an 8 MiB aggregate limit across unfinished requests on each
+connection.
 
 CertificateVerify signature verification (ECDSA and RSA-PSS) and certificate
 chain-of-trust validation (including RSA-PKCS1v1.5-signed certificates, still
