@@ -14904,10 +14904,46 @@ fn c_abi_generic_type_application_parts(typ string) (string, []string, bool) {
 		return '', []string{}, false
 	}
 	inner := typ[bracket + 1..bracket_end].trim_space()
-	if !inner.starts_with('fn(') && !inner.starts_with('fn (') {
+	if !c_abi_type_text_contains_callback(inner) {
 		return '', []string{}, false
 	}
 	return typ[..bracket], [inner], true
+}
+
+fn c_abi_type_text_contains_callback(typ string) bool {
+	clean := typ.trim_space()
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		return true
+	}
+	for prefix in ['?', '!', '[]', '...', '&', 'shared ', 'atomic ', 'chan ', 'thread '] {
+		if clean.starts_with(prefix) && clean.len > prefix.len {
+			return c_abi_type_text_contains_callback(clean[prefix.len..])
+		}
+	}
+	if clean.starts_with('map[') {
+		bracket_end := find_matching_bracket(clean, 3)
+		if bracket_end > 3 && bracket_end < clean.len {
+			return c_abi_type_text_contains_callback(clean[4..bracket_end])
+				|| c_abi_type_text_contains_callback(clean[bracket_end + 1..])
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := find_matching_bracket(clean, 0)
+		if bracket_end > 0 && bracket_end + 1 < clean.len {
+			return c_abi_type_text_contains_callback(clean[bracket_end + 1..])
+		}
+	}
+	if clean.starts_with('(') && clean.ends_with(')') && clean.contains(',') {
+		return split_params(clean[1..clean.len - 1]).any(c_abi_type_text_contains_callback(it))
+	}
+	bracket := clean.index_u8(`[`)
+	if bracket > 0 {
+		bracket_end := find_matching_bracket(clean, bracket)
+		if bracket_end == clean.len - 1 {
+			return split_params(clean[bracket + 1..bracket_end]).any(c_abi_type_text_contains_callback(it))
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) qualify_c_abi_alias_source_type_text(text string, module_name string, generic_params []string) string {

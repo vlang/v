@@ -1908,6 +1908,11 @@ fn test_fn_literal_nested_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_generic_wrapped_const_callback_alias_in_generic',
 		'struct C.native_event {}\nstruct Box[T] {\n\tvalue T\n}\ntype Outer = fn (box Box[fn (const_event &C.native_event)])\nstruct Router {}\nfn (mut r Router) accept(handler Outer) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (box Box[fn (event &C.native_event)]) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	run_check_good(v3_bin, 'good_optional_callback_generic_argument',
+		'struct C.native_event {}\nstruct Box[T] {\n\tvalue T\n}\ntype Outer = fn (box Box[?fn (const_event &C.native_event)])\nstruct Router {}\nfn (mut r Router) accept(handler Outer) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (box Box[?fn (const_event &C.native_event)]) {})\n}\nfn main() {\n\tstartup[int]()\n}\n')
+	run_bad(v3_bin, 'bad_optional_callback_generic_argument',
+		'struct C.native_event {}\nstruct Box[T] {\n\tvalue T\n}\ntype Outer = fn (box Box[?fn (const_event &C.native_event)])\nstruct Router {}\nfn (mut r Router) accept(handler Outer) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (box Box[?fn (event &C.native_event)]) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 	run_check_good_project(v3_bin, 'good_qualified_generic_wrapped_const_callback', {
 		'main.v': 'module main\n\nimport m\n\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler m.Outer) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (box m.Box[fn (const_event &C.native_event)]) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n'
 		'm/m.v':  'module m\n\npub struct Box[T] {\npub:\n\tvalue T\n}\n\npub type Outer = fn (box Box[fn (const_event &C.native_event)])\n'
