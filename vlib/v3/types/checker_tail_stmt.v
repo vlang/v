@@ -4414,6 +4414,7 @@ fn (tc &TypeChecker) source_fn_alias_type_text(name string) ?string {
 		mut module_name := ''
 		mut found := ''
 		mut found_name := ''
+		mut found_file := ''
 		for index in tc.top_level_idx {
 			node := tc.a.node(flat.NodeId(index))
 			if node.kind == .file {
@@ -4443,6 +4444,9 @@ fn (tc &TypeChecker) source_fn_alias_type_text(name string) ?string {
 					node.typ
 				}
 				found_name = if qualified == lookup_target { qualified } else { node.value }
+				if file := tc.a.source_files[node.pos.id] {
+					found_file = file.name
+				}
 				break
 			}
 		}
@@ -4450,21 +4454,20 @@ fn (tc &TypeChecker) source_fn_alias_type_text(name string) ?string {
 			return none
 		}
 		clean := trimmed_space(found)
-		if clean.starts_with('fn(') || clean.starts_with('fn (') {
-			if target_is_generic {
-				params := tc.type_alias_generic_params[found_name] or {
-					tc.type_alias_generic_params[found_name.all_after_last('.')] or { []string{} }
-				}
-				if params.len == target_args.len {
-					return subst_generic_diagnostic_fn_text(clean, target_args, params)
-				}
-			}
-			return clean
-		}
 		params := tc.type_alias_generic_params[found_name] or {
 			tc.type_alias_generic_params[found_name.all_after_last('.')] or { []string{} }
 		}
-		target = tc.qualify_c_abi_alias_source_type_text(clean, module_name, params)
+		if clean.starts_with('fn(') || clean.starts_with('fn (') {
+			qualified_clean := tc.qualify_c_abi_alias_source_type_text(clean, module_name, params,
+				found_file)
+			if target_is_generic {
+				if params.len == target_args.len {
+					return subst_generic_diagnostic_fn_text(qualified_clean, target_args, params)
+				}
+			}
+			return qualified_clean
+		}
+		target = tc.qualify_c_abi_alias_source_type_text(clean, module_name, params, found_file)
 	}
 	return none
 }
@@ -14868,7 +14871,7 @@ fn (tc &TypeChecker) c_abi_fn_signature_for_type_text_inner(typ string, mut seen
 			if target.len == 0 {
 				target = tc.type_aliases[name] or { continue }
 			} else if module_name := tc.type_alias_modules[name] {
-				target = tc.qualify_c_abi_alias_source_type_text(target, module_name, params)
+				target = tc.qualify_c_abi_alias_source_type_text(target, module_name, params, '')
 			}
 			instantiated := substitute_c_abi_signature_type_text(target, args, params)
 			if c_abi_signature := tc.c_abi_fn_signature_for_type_text_inner(instantiated, mut seen) {
@@ -14964,10 +14967,7 @@ fn c_abi_type_text_contains_callback(typ string) bool {
 	return false
 }
 
-fn (tc &TypeChecker) qualify_c_abi_alias_source_type_text(text string, module_name string, generic_params []string) string {
-	if module_name.len == 0 || module_name in ['main', 'builtin'] {
-		return text
-	}
+fn (tc &TypeChecker) qualify_c_abi_alias_source_type_text(text string, module_name string, generic_params []string, file string) string {
 	mut out := []u8{cap: text.len}
 	mut start := 0
 	mut i := 0
@@ -14982,7 +14982,14 @@ fn (tc &TypeChecker) qualify_c_abi_alias_source_type_text(text string, module_na
 			word := text[start..i]
 			qualified := '${module_name}.${word}'
 			is_bare := start == 0 || text[start - 1] != `.`
-			if is_bare && word !in generic_params && (qualified in tc.structs
+			if is_bare && word !in generic_params && i < text.len && text[i] == `.`
+				&& file_import_key(file, word) in tc.file_imports {
+				out << tc.file_imports[file_import_key(file, word)].bytes()
+			} else if is_bare && word !in generic_params
+				&& file_import_key(file, word) in tc.file_selective_imports {
+				resolved := tc.resolve_selective_import_type_symbol_in_file(word, file) or { word }
+				out << resolved.bytes()
+			} else if is_bare && word !in generic_params && (qualified in tc.structs
 				|| qualified in tc.type_aliases || qualified in tc.interface_names
 				|| qualified in tc.sum_types || qualified in tc.enum_names
 				|| qualified in tc.flag_enums) {

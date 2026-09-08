@@ -2046,6 +2046,20 @@ fn test_fn_literal_callback_alias_lookup_uses_declaration_module() {
 		'main.v': 'module main\n\nimport m\n\nstruct C.native_event {}\ntype Handler[T] = fn (const_event &T)\nfn apply[T](handler Handler[C.native_event]) {}\nfn startup[U]() {\n\tapply[int](fn (event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n\tprintln(m.value)\n}\n'
 		'm/m.v':  'module m\n\npub const value = 1\npub type Handler[T] = fn (event &T)\n'
 	}, 'main.v', 'cannot use')
+	selective_import := run_good_project(v3_bin,
+		'good_callback_alias_resolves_selective_import_in_declaration_file', {
+		'main.v':    'module main\n\nimport dep\nimport m\n\nstruct Event {}\nfn apply[T](handler m.Outer[int]) bool {\n\treturn true\n}\nfn startup[U]() bool {\n\treturn apply[int](fn (const_event &dep.Event, cb int) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n'
+		'dep/dep.v': 'module dep\n\npub struct Event {}\n'
+		'm/m.v':     'module m\n\nimport dep { Event }\n\npub type Outer[T] = fn (const_event &Event, cb T)\n'
+	}, 'main.v')
+	assert selective_import == 'true'
+	aliased_import := run_good_project(v3_bin,
+		'good_callback_alias_resolves_aliased_import_in_declaration_file', {
+		'main.v':    'module main\n\nimport dep\nimport m\n\nstruct Event {}\nfn apply[T](handler m.Outer[int]) bool {\n\treturn true\n}\nfn startup[U]() bool {\n\treturn apply[int](fn (const_event &dep.Event, cb int) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n'
+		'dep/dep.v': 'module dep\n\npub struct Event {}\n'
+		'm/m.v':     'module m\n\nimport dep as d\n\npub type Outer[T] = fn (const_event &d.Event, cb T)\n'
+	}, 'main.v')
+	assert aliased_import == 'true'
 }
 
 fn test_fn_literal_nested_shared_callback_param_matches_alias_inside_generic_fn() {
