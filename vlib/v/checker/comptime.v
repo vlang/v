@@ -1449,11 +1449,14 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 							}
 						}
 
-						return if is_untyped_int {
-							result
-						} else {
-							c.wrap_comptime_int(result, promoted_type)
+						if is_untyped_int {
+							return if expr.op == .power {
+								c.wrap_comptime_int(result, ast.int_type)
+							} else {
+								result
+							}
 						}
+						return c.wrap_comptime_int(result, promoted_type)
 					}
 				}
 			}

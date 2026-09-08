@@ -106,15 +106,15 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 
 		range_error := low_bound_has_error || high_bound_has_error
 			|| c.errors.len > errors_before_range_checks
-		if !range_error {
-			c.check_for_empty_range(node.cond, node.high)
-		}
-
 		if high_type in [ast.int_type, ast.int_literal_type] {
 			node.val_type = typ
 		} else {
 			node.val_type = high_type
 		}
+		if !range_error {
+			c.check_for_empty_range(node.cond, node.high, node.val_type)
+		}
+
 		node.high_type = high_type
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
@@ -384,9 +384,16 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 }
 
 // Check for empty range with comptime constant integer bounds
-fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr) {
-	if low_val := c.eval_comptime_const_expr(low, 0) {
-		if high_val := c.eval_comptime_const_expr(high, 0) {
+fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, val_type ast.Type) {
+	comparison_type := if val_type == ast.int_literal_type { ast.int_type } else { val_type }
+	if evaluated_low := c.eval_comptime_const_expr(low, 0) {
+		if evaluated_high := c.eval_comptime_const_expr(high, 0) {
+			low_val := c.eval_comptime_const_cast_value(evaluated_low, comparison_type) or {
+				return
+			}
+			high_val := c.eval_comptime_const_cast_value(evaluated_high, comparison_type) or {
+				return
+			}
 			low_i := low_val.i64()
 			high_i := high_val.i64()
 

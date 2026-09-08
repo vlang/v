@@ -52,6 +52,16 @@ fn main() {
 	for i in u64(max_u64) ** u64(max_u64) .. 1 {
 		println(i)
 	}
+
+	// Compare bounds after converting them to the induction variable type.
+	for i in i64(256) .. u8(1) {
+		println(i)
+	}
+
+	// Untyped power results are converted to runtime int width.
+	for i in 65536 ** 2 .. 1 {
+		println(i)
+	}
 }
 
 type OverloadedRangeBound = u8
