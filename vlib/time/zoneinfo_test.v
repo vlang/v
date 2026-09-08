@@ -132,6 +132,20 @@ fn test_location_time_strftime_uses_location_zone_directives() {
 	assert local.strftime('%%Z %Z') == '%Z EDT'
 }
 
+fn test_location_time_custom_format_uses_location_offset() {
+	shanghai := time.load_location('Asia/Shanghai')!
+	shanghai_time := time.unix(1_704_067_200).in(shanghai)!
+	assert shanghai_time.custom_format('YYYY-MM-DD HH:mm Z ZZ ZZZ') == '2024-01-01 08:00 +8 +0800 +08:00'
+
+	kathmandu := time.load_location('Asia/Kathmandu')!
+	kathmandu_time := time.unix(1_704_067_200).in(kathmandu)!
+	assert kathmandu_time.custom_format('YYYY-MM-DD HH:mm Z ZZ ZZZ') == '2024-01-01 05:45 +5 +0545 +05:45'
+
+	new_york := time.load_location('America/New_York')!
+	new_york_time := time.unix(1_710_054_000).in(new_york)!
+	assert new_york_time.custom_format('YYYY-MM-DD HH:mm Z ZZ ZZZ') == '2024-03-10 03:00 -4 -0400 -04:00'
+}
+
 fn test_location_time_is_not_utc() {
 	loc := time.load_location('Asia/Shanghai')!
 	local := time.unix(1_704_067_200).in(loc)!

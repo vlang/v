@@ -395,8 +395,8 @@ const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
 // |       Second     | s     | 0 1 ... 58 59                          |
 // |                  | ss    | 00 01 ... 58 59                        |
 // |       Offset     | Z     | -7 -6 ... +5 +6                        |
-// |                  | ZZ    | -0700 -0600 ... +0500 +0600            |
-// |                  | ZZZ   | -07:00 -06:00 ... +05:00 +06:00        |
+// |                  | ZZ    | -0700 -0630 ... +0545 +0600            |
+// |                  | ZZZ   | -07:00 -06:30 ... +05:45 +06:00        |
 //
 // Usage:
 // ```v
@@ -546,33 +546,13 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('Anno Domini')
 			}
 			'Z' {
-				mut hours := offset() / seconds_per_hour
-				if hours >= 0 {
-					sb.write_string('+${hours}')
-				} else {
-					hours = -hours
-					sb.write_string('-${hours}')
-				}
+				sb.write_string(t.custom_format_zone_offset(token))
 			}
 			'ZZ' {
-				// TODO: update if minute differs?
-				mut hours := offset() / seconds_per_hour
-				if hours >= 0 {
-					sb.write_string('+${hours:02}00')
-				} else {
-					hours = -hours
-					sb.write_string('-${hours:02}00')
-				}
+				sb.write_string(t.custom_format_zone_offset(token))
 			}
 			'ZZZ' {
-				// TODO: update if minute differs?
-				mut hours := offset() / seconds_per_hour
-				if hours >= 0 {
-					sb.write_string('+${hours:02}:00')
-				} else {
-					hours = -hours
-					sb.write_string('-${hours:02}:00')
-				}
+				sb.write_string(t.custom_format_zone_offset(token))
 			}
 			'a' {
 				if t.hour < 12 {
@@ -594,6 +574,21 @@ pub fn (t Time) custom_format(s string) string {
 		}
 	}
 	return sb.str()
+}
+
+fn (t Time) custom_format_zone_offset(token string) string {
+	zone_offset := if t.has_location() { (t.zone() or { Zone{} }).offset } else { offset() }
+	sign := if zone_offset < 0 { '-' } else { '+' }
+	abs_offset := if zone_offset < 0 { -zone_offset } else { zone_offset }
+	hours := abs_offset / seconds_per_hour
+	if token == 'Z' {
+		return '${sign}${hours}'
+	}
+	minutes := (abs_offset % seconds_per_hour) / seconds_per_minute
+	if token == 'ZZ' {
+		return '${sign}${hours:02}${minutes:02}'
+	}
+	return '${sign}${hours:02}:${minutes:02}'
 }
 
 // clean returns a date string in a clean form.
