@@ -170,11 +170,23 @@ fn test_location_time_add_seconds_keeps_unix_epoch() {
 	assert added.second == 1
 }
 
-fn test_location_time_equals_same_instant() {
+fn test_location_time_equals_same_location_and_instant() {
 	loc := time.load_location('Asia/Shanghai')!
 	utc_time := time.unix_nanosecond(1_704_067_200, 123_456_789)
-	local := utc_time.in(loc)!
-	assert utc_time == local
+	zoned := utc_time.in(loc)!
+	zoned_again := utc_time.in(loc)!
+	assert zoned == zoned_again
+	assert utc_time != zoned
+}
+
+fn test_location_time_equality_is_transitive() {
+	loc := time.load_location('Asia/Shanghai')!
+	utc_time := time.unix_nanosecond(1_704_067_200, 123_456_789)
+	local := utc_time.utc_to_local()
+	zoned := utc_time.in(loc)!
+	assert utc_time != local
+	assert local != zoned
+	assert utc_time != zoned
 }
 
 fn test_zero_time_has_no_location_and_compares_equal() {
@@ -265,8 +277,8 @@ fn test_location_time_is_not_is_local() {
 	local := time.unix(1_704_067_200).in(loc)!
 	assert local.is_local == false
 	assert local.location() != none
-	// Same absolute instant as UTC; equality compares the unix epoch.
-	assert local == time.unix(1_704_067_200)
+	// Zoned and plain UTC values remain distinct representations.
+	assert local != time.unix(1_704_067_200)
 }
 
 fn test_location_time_local_uses_stored_instant() {
