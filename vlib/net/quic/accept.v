@@ -154,7 +154,7 @@ pub fn accept(raw_datagram []u8, params AcceptParams, now u64) !(&QuicConn, Poll
 	initial_keys_server := derive_packet_protection_keys(initial_secrets.server)!
 
 	scid := rand.bytes(local_cid_len) or {
-		return error('quic: accept: failed to generate this server\'s own connection ID: ${err.msg()}')
+		return error("quic: accept: failed to generate this server's own connection ID: ${err.msg()}")
 	}
 	server_hello_random := rand.bytes(32) or {
 		return error('quic: accept: failed to generate ServerHello random: ${err.msg()}')
@@ -189,38 +189,44 @@ pub fn accept(raw_datagram []u8, params AcceptParams, now u64) !(&QuicConn, Poll
 	own_max_idle_timeout_ms := own_params.max_idle_timeout or { u64(0) }
 
 	mut c := &QuicConn{
-		role:                     .server
-		state:                    .handshaking
-		original_dcid:            header.dcid.clone()
-		dcid:                     header.scid.clone()
-		scid:                     scid
-		peer_scid:                header.scid.clone()
-		token:                    []u8{}
-		server_handshake:         none
-		server_accept_params:     ServerHandshakeParams{
-			transport_parameters:     own_params
+		role: .server
+		state: .handshaking
+		original_dcid: header.dcid.clone()
+		dcid: header.scid.clone()
+		scid: scid
+		peer_scid: header.scid.clone()
+		token: []u8{}
+		server_handshake: none
+		server_accept_params: ServerHandshakeParams{
+			transport_parameters: own_params
 			supported_alpn_protocols: params.alpn_protocols
-			certificate_chain:        params.certificate_chain
-			signing_key:              params.signing_key
-			server_hello_random:      server_hello_random
+			certificate_chain: params.certificate_chain
+			signing_key: params.signing_key
+			server_hello_random: server_hello_random
 		}
-		handshake_completion:     new_handshake_completion_state()
-		pn_spaces:                new_packet_number_spaces()
-		initial_keys_client:      initial_keys_client
-		initial_keys_server:      initial_keys_server
-		initial_crypto:           new_crypto_stream_reassembler()
-		handshake_crypto:         new_crypto_stream_reassembler()
-		loss_detection:           new_quic_loss_detection_timer()
-		congestion_control:       new_newreno_congestion_control()
-		own_max_idle_timeout_ms:  own_max_idle_timeout_ms
-		stateless_reset:          new_stateless_reset_tracker()
-		connection_start:         now
+		handshake_completion: new_handshake_completion_state()
+		pn_spaces: new_packet_number_spaces()
+		initial_keys_client: initial_keys_client
+		initial_keys_server: initial_keys_server
+		initial_crypto: new_crypto_stream_reassembler()
+		handshake_crypto: new_crypto_stream_reassembler()
+		loss_detection: new_quic_loss_detection_timer()
+		congestion_control: new_newreno_congestion_control()
+		own_max_idle_timeout_ms: own_max_idle_timeout_ms
+		stateless_reset: new_stateless_reset_tracker()
+		connection_start: now
 		own_transport_parameters: own_params
-		streams:                  new_quic_stream_set(.server)
-		conn_send_window:         new_flow_control_window(0)
-		conn_recv_window:         new_receive_window(own_params.initial_max_data or { u64(0) })
-		local_max_streams_bidi:   own_params.initial_max_streams_bidi or { u64(0) }
-		local_max_streams_uni:    own_params.initial_max_streams_uni or { u64(0) }
+		streams: new_quic_stream_set(.server)
+		conn_send_window: new_flow_control_window(0)
+		conn_recv_window: new_receive_window(own_params.initial_max_data or { u64(0) })
+		local_max_streams_bidi: own_params.initial_max_streams_bidi or { u64(0) }
+		local_max_streams_uni: own_params.initial_max_streams_uni or { u64(0) }
+	}
+	// A valid Retry token authenticates the client's source address before
+	// accept() constructs the connection, so RFC 9000's anti-amplification cap
+	// no longer applies to this response flight.
+	if params.retry_source_connection_id != none {
+		c.amplification.mark_validated()
 	}
 
 	result := c.poll(raw_datagram, now)!

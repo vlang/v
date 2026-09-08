@@ -1361,21 +1361,16 @@ fn test_write_stream_splits_large_writes_into_datagram_sized_chunks() {
 	write_keys := c.app_write_keys or { panic('unreachable: established asserts this') }
 	mut received := []u8{}
 	mut received_fin := false
-	mut rounds := 0
-	for !received_fin && rounds < 10 {
-		rounds++
-		result := c.process_timeouts(now)!
-		for dg in result.outgoing {
-			assert u64(dg.bytes.len) <= max_datagram_size
-			frames := conn_test_decrypt_one_rtt(dg.bytes, server_initial_scid.len, write_keys)!
-			for frame in frames {
-				if frame is StreamFrame && frame.stream_id == stream_id {
-					received << frame.data
-					received_fin = frame.fin
-				}
+	result := c.process_timeouts(now)!
+	for dg in result.outgoing {
+		assert u64(dg.bytes.len) <= max_datagram_size
+		frames := conn_test_decrypt_one_rtt(dg.bytes, server_initial_scid.len, write_keys)!
+		for frame in frames {
+			if frame is StreamFrame && frame.stream_id == stream_id {
+				received << frame.data
+				received_fin = frame.fin
 			}
 		}
-		now += 10
 	}
 	assert received_fin
 	assert received == payload

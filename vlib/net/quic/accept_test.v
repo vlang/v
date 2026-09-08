@@ -265,3 +265,39 @@ fn test_accept_rejects_undersized_initial_datagram() {
 	}
 	assert false, 'accept() must reject a datagram under the 1200-byte anti-amplification floor'
 }
+
+fn test_accept_after_retry_starts_address_validated() {
+	dial_params := DialParams{
+		server_name: 'localhost'
+		ca_bundle_pem: accept_test_cert_pem
+		alpn_protocols: ['h3']
+		transport_parameters: accept_test_transport_parameters()
+	}
+	mut client, client_dg := dial(dial_params, 0)!
+	mut client_hs := client.client_handshake()
+	defer {
+		client_hs.free()
+	}
+	mut signing_key := ecdsa.new_key_from_seed(accept_test_key_seed, fixed_size: true)!
+	defer {
+		signing_key.free()
+	}
+	mut server, _ := accept(client_dg.bytes, AcceptParams{
+		transport_parameters: accept_test_transport_parameters()
+		alpn_protocols: ['h3']
+		certificate_chain: [
+			CertificateEntry{
+				cert_data: accept_test_pem_to_der(accept_test_cert_pem)
+			},
+		]
+		signing_key: signing_key
+		retry_source_connection_id: [u8(1), 2, 3, 4]
+		original_dcid_override: client.original_dcid.clone()
+	}, 0)!
+	defer {
+		if mut sh := server.server_handshake {
+			sh.free()
+		}
+	}
+	assert server.amplification.is_validated()
+}

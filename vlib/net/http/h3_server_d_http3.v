@@ -423,9 +423,9 @@ fn (mut s H3Server) prune_streams_for_conn(conn_id string) {
 }
 
 // handle_h3_event actions one H3Event from a server-role H3Conn: buffers
-// request_headers/request_data, and runs the completed request through
-// this server's Handler once request_ended fires. request_trailers is
-// deliberately NOT delivered anywhere (a documented v1 scope limit,
+// request_headers/request_data, validates request_trailers, and runs the
+// completed request through this server's Handler once request_ended fires.
+// Valid request trailers are deliberately NOT delivered anywhere (a v1 limit,
 // mirroring several other "the wire-level machinery exists, the
 // caller-facing delivery does not yet" notes already accepted throughout
 // this module -- request trailers are rare in practice, unlike RESPONSE
@@ -479,6 +479,24 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 				return
 			}
 		}
+		.request_trailers {
+			stream_id := ev.stream_id or { return }
+			key := h3_server_stream_key(conn_id, stream_id)
+			mut st := s.streams[key] or {
+				new_st := &H3ServerStream{}
+				s.streams[key] = new_st
+				new_st
+			}
+			if st.rejected {
+				return
+			}
+			h3_validate_request_trailers(ev.headers) or {
+				st.body.clear()
+				st.rejected = true
+				s.send_error_response(mut h3c, stream_id, 400)
+				return
+			}
+		}
 		.request_ended {
 			stream_id := ev.stream_id or { return }
 			key := h3_server_stream_key(conn_id, stream_id)
@@ -500,6 +518,18 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 			// check (connection_error) -- and response_*/response_ended
 			// never fire on a server-role connection at all (h3_conn.v's
 			// own module doc comment).
+		}
+	}
+}
+
+fn h3_validate_request_trailers(headers []quic.QpackFieldLine) ! {
+	for f in headers {
+		if f.name.starts_with(':') {
+			return error('pseudo-header "${f.name}" is forbidden in request trailers')
+		}
+		reason := h2_request_field_error(f.name, f.value)
+		if reason != '' {
+			return error(reason)
 		}
 	}
 }

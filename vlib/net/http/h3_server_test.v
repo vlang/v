@@ -101,6 +101,28 @@ fn test_h3_server_stream_stays_rejected_after_body_limit() {
 	assert stream.body.len == 0
 }
 
+fn test_h3_server_validates_request_trailers() {
+	h3_validate_request_trailers([
+		quic.QpackFieldLine{
+			name: 'x-checksum'
+			value: 'ok'
+		},
+	])!
+	for invalid in [
+		quic.QpackFieldLine{
+			name: ':path'
+			value: '/late'
+		},
+		quic.QpackFieldLine{
+			name: 'connection'
+			value: 'close'
+		},
+	] {
+		h3_validate_request_trailers([invalid]) or { continue }
+		assert false, 'expected request trailer ${invalid.name} to be rejected'
+	}
+}
+
 // H3ServerTestEchoHandler answers every request with a fixed 200 response
 // -- this test only needs to prove the request reached the Handler and the
 // response reached the client, not exercise Handler-authoring variety.
