@@ -12,6 +12,13 @@ vlib/v/checker/tests/asm_intel_operand_width_err.vv:9:3: error: hard register `e
       |         ~~~~~~~~~~~~
    10 |         ; +r (res)
    11 |         ; r (a)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:20:3: error: named destination `result` has 32-bit type `int`, but instruction `sar` operates on the 64-bit register substituted by structured `intel` assembly; use a native-width destination, or a `raw intel` block with an explicit operand modifier
+   18 |     mut result := value
+   19 |     asm amd64 intel {
+   20 |         sar result, 1
+      |         ~~~~~~~~~~~~~
+   21 |         ; +r (result)
+   22 |     }
 vlib/v/checker/tests/asm_intel_operand_width_err.vv:35:3: error: hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers for the current compilation target; use matching register widths, or a `raw intel` block with explicit operand modifiers
    33 | fn intel_hard_register(value i64) {
    34 |     asm amd64 intel {

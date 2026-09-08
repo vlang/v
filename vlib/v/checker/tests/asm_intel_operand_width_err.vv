@@ -154,6 +154,20 @@ fn intel_label_alias_collisions(value i64) {
 	}
 }
 
+asm amd64 {
+	.global file_width_label
+file_width_label:
+	nop
+}
+
+fn intel_file_label_alias_collision(value i64) {
+	asm amd64 intel {
+		mov eax, file_width_label
+		; ; r (value) as file_width_label
+		; eax
+	}
+}
+
 fn main() {
 	println(intel_sub(50, 8))
 }
