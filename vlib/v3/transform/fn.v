@@ -11847,6 +11847,9 @@ fn normalize_fn_param_text(text string) string {
 	} else {
 		clean = generic_fn_type_param_payload(clean)
 	}
+	if nested := normalize_nested_fn_type_text(clean) {
+		clean = nested
+	}
 	if is_mut {
 		if !clean.starts_with('&') && clean !in ['voidptr', 'byteptr', 'charptr'] {
 			clean = '&' + clean
@@ -11868,6 +11871,19 @@ fn normalize_fn_param_text(text string) string {
 	}
 	const_mode := if is_c_abi_const { 'const ' } else { '' }
 	return mode + const_mode + normalized.bytestr()
+}
+
+fn normalize_nested_fn_type_text(text string) ?string {
+	if !text.starts_with('fn(') && !text.starts_with('fn (') {
+		return none
+	}
+	params, ret := fn_type_text_parts(text) or { return none }
+	mut normalized_params := []string{cap: params.len}
+	for param in params {
+		normalized_params << normalize_fn_param_text(param)
+	}
+	normalized_ret := if ret.len > 0 { normalize_fn_param_text(ret) } else { '' }
+	return 'fn(${normalized_params.join(',')})${normalized_ret}'
 }
 
 fn fn_type_text_ident_char(ch u8) bool {
@@ -12113,7 +12129,6 @@ fn (t &Transformer) fn_literal_c_abi_signature_compatible(arg_id flat.NodeId, ex
 	if node.kind != .fn_literal {
 		return true
 	}
-	expected_abi := t.tc.c_abi_fn_ptr_type_for_type_text(expected_type) or { return true }
 	mut params := []string{}
 	for i in 0 .. node.children_count {
 		param := t.a.child_node(&node, i)
@@ -12125,8 +12140,17 @@ fn (t &Transformer) fn_literal_c_abi_signature_compatible(arg_id flat.NodeId, ex
 	}
 	ret := if node.typ.len > 0 && node.typ != 'void' { ' ${node.typ}' } else { '' }
 	actual_text := 'fn (${params.join(', ')})${ret}'
-	actual_abi := t.tc.c_abi_fn_ptr_type_for_type_text(actual_text) or { return false }
-	return actual_abi == expected_abi
+	actual_abi := t.tc.c_abi_fn_ptr_type_for_type_text(actual_text)
+	expected_abi := t.tc.c_abi_fn_ptr_type_for_type_text(expected_type)
+	if actual_abi == none && expected_abi == none {
+		return true
+	}
+	if actual_abi == none || expected_abi == none {
+		return false
+	}
+	actual_value := actual_abi or { return false }
+	expected_value := expected_abi or { return false }
+	return actual_value == expected_value
 }
 
 struct SpecializedIntLiteral {

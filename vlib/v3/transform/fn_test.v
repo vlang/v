@@ -41,6 +41,12 @@ fn test_fn_type_texts_signature_compatible_preserves_c_abi_const_parameter() {
 		'fn (event &C.native_event)')
 }
 
+fn test_fn_type_texts_signature_compatible_normalizes_nested_parameter_names() {
+	assert fn_type_texts_signature_compatible('fn (fn (Item))', 'fn (cb fn (value Item))')
+	assert fn_type_texts_signature_compatible('fn (callback fn (item Item) bool)',
+		'fn (fn (Item) bool)')
+}
+
 fn test_fn_type_texts_signature_compatible_preserves_compound_type_boundaries() {
 	assert fn_type_texts_signature_compatible('fn (fn (Item) bool)', 'fn(fn(Item)bool)')
 	assert fn_type_texts_signature_compatible('fn (chan foo.Item)', 'fn(chan foo.Item)')
