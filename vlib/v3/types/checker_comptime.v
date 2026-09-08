@@ -8759,7 +8759,7 @@ fn (tc &TypeChecker) or_block_call_display_name(call &flat.Node) string {
 			if base.kind == .ident && base.value.len > 0 && base.value[0].is_capital()
 				&& tc.resolve_enum_name(base.value) == none
 				&& !tc.ident_resolves_to_value(base.value) {
-				return '${base.value}__static__${callee.value}'
+				return flat.encode_static_type_method_name(base.value, callee.value)
 			}
 		}
 	}

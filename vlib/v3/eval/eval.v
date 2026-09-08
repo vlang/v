@@ -744,7 +744,7 @@ fn (mut e Eval) register_function(module_name string, file_name string, id flat.
 	if module_name != 'main' && module_name != 'builtin' {
 		e.functions[module_name]['${module_name}.${node.value}'] = def
 	}
-	if node.value.contains('.') {
+	if !node.is_static_type_method && node.value.contains('.') {
 		short := node.value.all_after_last('.')
 		receiver := node.value.all_before_last('.').all_after_last('.')
 		e.functions[module_name]['${receiver}.${short}'] = def
@@ -2934,8 +2934,14 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 			}
 		}
 		if left is TypeValue {
-			static_name := '${left.name.all_after_last('.')}.${callee.value}'
+			static_name := flat.encode_static_type_method_name(left.name.all_after_last('.'),
+				callee.value)
 			static_module := e.type_value_module_name(left)
+			if value := e.disabled_function_zero_value(static_module, static_name, node) {
+				return FlowSignal{
+					values: [value]
+				}
+			}
 			expected_types := if target := e.function_def(static_module, static_name) {
 				e.function_param_type_names(target, 0)
 			} else {

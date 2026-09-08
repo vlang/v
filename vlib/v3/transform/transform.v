@@ -917,6 +917,12 @@ pub fn transform_prepared_selfhost_owned(mut prepared PreparedSelfhostTransform,
 	t.tc = unsafe { tc }
 	t.used_fns = used_fns.clone()
 	configure_transformer(mut t, true, true, true, true, true, stage_scope)
+	if t.materialize_inferred_anonymous_structs() {
+		// Preparation overlapped markused against the checked AST. Materialization
+		// appends declarations and assigns their concrete types, so rebuild the
+		// indexes before workers consume that changed AST.
+		t.prepare_with_pre_scans()
+	}
 	augmented, was_parallel, errors, owned_base_nodes, retained_regions := transform_after_prepare(mut t, mut a, used_fns, true, true)
 	prepared.ready = false
 	return augmented, was_parallel, errors, owned_base_nodes, retained_regions
@@ -977,6 +983,7 @@ pub fn transform_with_used_opt_config_scoped_workers_checked_owned(mut a flat.Fl
 pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, selected map[string]bool) (map[string]bool, []string, []string) {
 	mut t := new_transformer(mut a, tc, selected)
 	t.skip_generics = true
+	t.materialize_inferred_anonymous_structs()
 	t.prepare()
 	t.collect_exclusive_closure_return_fns()
 	base_node_count := t.a.nodes.len
@@ -1024,6 +1031,7 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 	mut impl_sw := time.new_stopwatch()
 	mut t := new_transformer(mut a, tc, used_fns)
 	configure_transformer(mut t, want_parallel, skip_generics, scope_parallel_workers, building_v, retain_worker_results, stage_scope)
+	t.materialize_inferred_anonymous_structs()
 	t.prepare_with_pre_scans()
 	t.timing_profile('  [ttime] new+prepare        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	return transform_after_prepare(mut t, mut a, used_fns, want_parallel, skip_generics)
@@ -1515,6 +1523,10 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 			break
 		}
 	}
+	// Calls that depend on a generic parameter have concrete result types only in
+	// the specialized clones. Give their inferred anonymous literals concrete
+	// declarations before cgen sees the cloned bodies.
+	t.materialize_inferred_anonymous_structs()
 	t.erase_generic_fn_decls(t.cached_generic_fn_decls())
 	t.materialize_generic_structs(true)
 	t.monomorph_profile('mono wrapper structs: ${time.ticks() - debug_started} ms')
@@ -8846,6 +8858,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			typ: fn_node.typ
 			payload: fn_node.payload
 			skip_ownership_drops: fn_node.skip_ownership_drops
+			is_static_type_method: fn_node.is_static_type_method
 		})
 	}
 	t.smartcast_stack.clear()

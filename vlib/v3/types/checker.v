@@ -1968,9 +1968,9 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 		if qname !in tc.declaration_param_mutability {
 			tc.declaration_param_mutability[qname] = param_mutability
 		}
-		if node.value.contains('.') {
-			is_static := node.children_count == 0 || a.child_node(&node, 0).kind != .param
-				|| a.child_node(&node, 0).op != .dot
+		if node.value.contains('.') || node.is_static_type_method {
+			is_static := node.is_static_type_method || node.children_count == 0
+				|| a.child_node(&node, 0).kind != .param || a.child_node(&node, 0).op != .dot
 			if node.value !in tc.static_associated_fn_keys {
 				tc.static_associated_fn_keys[node.value] = is_static
 			}
@@ -6752,7 +6752,7 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 		if node.kind == .fn_decl {
 			if node.op == .arrow || node.value in ['main', 'init', 'cleanup']
 				|| is_v_test_fn_name(node.value) || node.value.starts_with('__anon_fn_')
-				|| node.value.contains('.') {
+				|| node.value.contains('.') || node.is_static_type_method {
 				continue
 			}
 			if tc.declaration_contains_error(node) {
@@ -9235,8 +9235,14 @@ fn (mut tc TypeChecker) check_fn_declaration_name(id flat.NodeId, node flat.Node
 	}
 	tc.check_fn_if_attribute_return(id, node)
 	tc.check_imported_module_prefix(id, node.value, 'fn')
-	name := node.value.all_after_last('.')
-	if !node.value.contains('.') && tc.cur_module in ['', 'main'] && is_builtin_type_name(name) {
+	mut name := node.value.all_after_last('.')
+	if node.is_static_type_method {
+		if _, method := flat.decode_static_type_method_name(node.value) {
+			name = method
+		}
+	}
+	if !node.value.contains('.') && !node.is_static_type_method
+		&& tc.cur_module in ['', 'main'] && is_builtin_type_name(name) {
 		tc.record_error_at(.duplicate_decl, 'top level declaration cannot shadow builtin type', id, tc.fn_declaration_diagnostic_pos(node))
 	}
 	// V1 treats os and strconv like builtin modules. Their long-standing private
@@ -9252,7 +9258,7 @@ fn (mut tc TypeChecker) check_fn_declaration_name(id flat.NodeId, node flat.Node
 	if name.len == 0 || (!name[0].is_letter() && name[0] != `_`) || snake_case_name_is_valid(name) {
 		return
 	}
-	tc.check_snake_case_name(id, name, if node.value.contains('.') {
+	tc.check_snake_case_name(id, name, if node.value.contains('.') || node.is_static_type_method {
 		'method name'
 	} else {
 		'function name'
@@ -10922,12 +10928,21 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 		&& (node.children_count > 0 || split_sum_variant_texts(node.typ).len > 1) {
 		tc.check_sum_type_decl(node_id, node)
 	}
-	if node.kind == .fn_decl && node.value.contains('.') {
-		receiver_name := node.value.all_before_last('.').all_after_last('.')
-		mut is_static := node.children_count == 0
+	if node.kind == .fn_decl && (node.value.contains('.') || node.is_static_type_method) {
+		is_marked_static := node.is_static_type_method
+		receiver_name := if is_marked_static {
+			if receiver, _ := flat.decode_static_type_method_name(node.value) {
+				receiver.all_after_last('.')
+			} else {
+				''
+			}
+		} else {
+			node.value.all_before_last('.').all_after_last('.')
+		}
+		mut is_static := is_marked_static || node.children_count == 0
 		if node.children_count > 0 {
 			first := tc.a.child_node(&node, 0)
-			is_static = first.kind != .param || first.op != .dot
+			is_static = is_marked_static || first.kind != .param || first.op != .dot
 		}
 		if is_static && !tc.type_name_known(receiver_name) {
 			tc.record_error_at(.unknown_type, 'unknown type `${receiver_name}`', node_id, tc.type_diagnostic_pos(node_id, receiver_name))

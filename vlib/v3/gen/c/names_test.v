@@ -33,7 +33,8 @@ fn test_c_name_pre_sanitized_classifier() {
 fn test_cached_cname_fast_paths_match_canonical_naming() {
 	mut g := FlatGen.new()
 	for name in ['run', 'int', 'send', 'malloc', 'int_str', 'exit', '_str_42', '_str_value',
-		'main.run', 'foo.Bar.method', 'C.printf', 'C.SSL_CTX.str', 'Point.<=', 'pkg.Box[int].value'] {
+		'main.run', 'foo.Bar.method', 'C.printf', 'C.SSL_CTX.str', 'Point.<=', 'pkg.Box[int].value',
+		'int@static@tag', '__v3_internal_symbol_source'] {
 		assert g.cname(name) == c_name(name)
 	}
 }

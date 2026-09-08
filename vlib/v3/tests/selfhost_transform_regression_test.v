@@ -109,6 +109,218 @@ fn main() {
 	assert out.split_into_lines() == ['true', 'true']
 }
 
+// A static associated function and an instance method may intentionally share
+// their source-level name. Their internal symbols and ABIs must remain distinct.
+fn test_static_and_instance_method_with_same_name() {
+	out := selfhost_regression_run('static_instance_same_name', 'struct Form {
+	value string
+}
+
+struct Post {
+	id int
+}
+
+@[params]
+struct FormOptions {
+	id     int
+	action string
+}
+
+fn Post.form_for(opts FormOptions) Form {
+	return Form{
+		value: "static:\${opts.id}:\${opts.action}"
+	}
+}
+
+fn (post Post) form_for(action string) Form {
+	return Post.form_for(id: post.id, action: action)
+}
+
+fn cache__static__reset() string {
+	return "ordinary"
+}
+
+struct Cache__static__State {}
+
+fn Cache__static__State.reset__static__now() string {
+	return "reversible"
+}
+
+@[markused]
+fn int.tag() string {
+	return "static-int"
+}
+
+fn int__static__tag__static__3() string {
+	return "ordinary-int"
+}
+
+fn main() {
+	println(Post{7}.form_for("edit").value)
+	println(Post.form_for(id: 9, action: "new").value)
+	println(cache__static__reset())
+	println(Cache__static__State.reset__static__now())
+	println(int__static__tag__static__3())
+}
+')
+	assert out.split_into_lines() == ['static:7:edit', 'static:9:new', 'ordinary', 'reversible',
+		'ordinary-int']
+}
+
+// A static call through a generic type parameter is resolved only after the
+// generic body is cloned. Retarget it to the concrete encoded declaration.
+fn test_generic_static_assoc_call_retargets_encoded_declaration() {
+	out := selfhost_regression_run('generic_static_assoc_call', 'struct Parser {}
+
+fn Parser.parse() string {
+	return "parsed"
+}
+
+fn read[T]() string {
+	return T.parse()
+}
+
+fn main() {
+	println(read[Parser]())
+}
+')
+	assert out == 'parsed'
+}
+
+fn test_generic_static_assoc_declaration_uses_encoded_lookup_key() {
+	out := selfhost_regression_run('generic_static_assoc_declaration', 'struct Box[T] {
+	value T
+}
+
+fn Box.new[T](value T) Box[T] {
+	return Box[T]{
+		value: value
+	}
+}
+
+fn main() {
+	explicit := Box.new[int](41)
+	inferred := Box.new("ok")
+	println(explicit.value + 1)
+	println(inferred.value)
+}
+')
+	assert out.split_into_lines() == ['42', 'ok']
+}
+
+fn test_static_method_pseudo_variables_use_source_name() {
+	name := 'static_method_pseudo_vars'
+	src := os.join_path(os.temp_dir(), 'v3_selfhost_regression_${name}.v')
+	source_path_literal := src.replace('\\', '\\\\')
+	out := selfhost_regression_run(name, 'struct Cache__static__State {}
+
+fn Cache__static__State.report__static__now() {
+	\$if @FN != \'report__static__now\' {
+		\$compile_error(\'incorrect @FN\')
+	}
+	\$if @METHOD != \'Cache__static__State.report__static__now\' {
+		\$compile_error(\'incorrect @METHOD\')
+	}
+	\$if @LOCATION != \'${source_path_literal}:10, main.Cache__static__State.report__static__now (static)\' {
+		\$compile_error(\'incorrect @LOCATION\')
+	}
+	println(@FN)
+	println(@METHOD)
+	println(@LOCATION)
+}
+
+fn main() {
+	Cache__static__State.report__static__now()
+}
+')
+	lines := out.split_into_lines()
+	assert lines[0] == 'report__static__now'
+	assert lines[1] == 'Cache__static__State.report__static__now'
+	assert lines[2].ends_with(', main.Cache__static__State.report__static__now (static)')
+}
+
+// An unresolved literal field shape may be shared by several declared anonymous
+// structs. Keep the exact type selected from the call parameter context.
+fn test_contextual_anonymous_struct_call_field_keeps_declared_type() {
+	out := selfhost_regression_run('contextual_anonymous_struct_call_field', 'fn produce() string {
+	return "contextual"
+}
+
+fn take_int(value struct {
+	item int
+}) string {
+	return value.item.str()
+}
+
+fn take_string(value struct {
+	item string
+}) string {
+	return value.item
+}
+
+fn main() {
+	println(take_string(struct { item: produce() }))
+}
+')
+	assert out == 'contextual'
+}
+
+// Literals whose call-valued fields resolve to the same semantic shape must
+// share a concrete anonymous type when an enclosing expression unifies them.
+fn test_inferred_anonymous_struct_call_fields_reuse_semantic_shape() {
+	out := selfhost_regression_run('inferred_anonymous_struct_shape_reuse', 'fn produce(n int) int {
+	return n
+}
+
+fn main() {
+	values := [struct { item: produce(1) }, struct { item: produce(2) }]
+	println(int_str(values.len))
+}
+')
+	assert out == '2'
+}
+
+// A generic call result is still unknown when the template is first
+// transformed. Revisit the literal after monomorphization gives the cloned
+// call a concrete result type.
+fn test_generic_inferred_anonymous_struct_is_materialized_after_specialization() {
+	out := selfhost_regression_run('generic_inferred_anonymous_struct', 'fn produce[T](value T) T {
+	return value
+}
+
+fn wrap[T](value T) T {
+	result := struct { item: produce(value) }
+	return result.item
+}
+
+fn main() {
+	println(wrap(41))
+	println(wrap("ok"))
+}
+')
+	assert out.split_into_lines() == ['41', 'ok']
+}
+
+// A non-capturing fn literal passed to an imported generic must remain a cgen root.
+// The large-project failure called this as `__anon_fn_0` without emitting its body.
+fn test_imported_generic_keeps_non_capturing_fn_literal() {
+	out := selfhost_regression_run('generic_fn_literal_root', 'import arrays
+
+struct Table {
+	name string
+}
+
+fn main() {
+	tables := [Table{name: "users"}, Table{name: "posts"}]
+	result := arrays.find_first(tables, fn (table Table) bool {
+		return table.name == "posts"
+	}) or { panic("missing") }
+	println(result.name)
+}
+')
+	assert out == 'posts'
+}
+
 // Only `for k, mut v in m` binds the map value by reference. A container that is merely a map
 // reference (`m &map[string]bool`) still binds a plain value copy, so the binding must not be
 // typed `&V` — that made every use of it emit a dereference of a non-pointer local.

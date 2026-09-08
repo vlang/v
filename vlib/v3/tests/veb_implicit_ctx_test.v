@@ -117,6 +117,7 @@ import veb
 
 pub struct Context {
 	veb.Context
+	msgs []string
 }
 
 pub struct App {}
@@ -124,7 +125,13 @@ pub struct App {}
 pub fn (ctx &Context) before_request() {}
 
 pub fn (mut app App) index(mut ctx Context) veb.Result {
-	return ctx.text("ok")
+	info := struct {
+		profile: map[string]string{
+			"slug": "v3"
+		}
+		messages: ctx.msgs
+	}
+	return ctx.json_pretty(info)
 }
 
 fn main() {
@@ -141,4 +148,10 @@ fn main() {
 	c_code := os.read_file(c_out) or { '' }
 	assert c_code.contains('Context__before_request(user_context)'), c_code
 	assert !c_code.contains('Context__before_request(&user_context->veb__Context)'), c_code
+	assert c_code.contains('AnonStruct_v3_inferred_'), c_code
+	assert !c_code.contains('v_struct'), c_code
+	bin_out := os.join_path(os.temp_dir(), 'v3_veb_complete_context_receiver')
+	os.rm(bin_out) or {}
+	native_compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${bin_out}')
+	assert native_compile.exit_code == 0, native_compile.output
 }

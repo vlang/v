@@ -3536,7 +3536,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			if callee.children_count > 0 {
 				base := tc.a.child_node(callee, 0)
 				if base.kind == .ident && !tc.has_active_import(base.value)
-					&& !tc.ident_resolves_to_value(base.value) {
+					&& !tc.ident_resolves_to_value(base.value)
+					&& tc.static_assoc_fn_key_for_base(base.value, callee.value) == none {
 					for type_name in [base.value, tc.qualify_name(base.value)] {
 						key := '${type_name}.${callee.value}'
 						if tc.fn_signature_known(key) && !tc.fn_key_is_static_associated(key)
@@ -4440,7 +4441,12 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 				name_pos.offset, node.pos.end))
 			return true
 		}
-		tc.record_error_at(.unknown_fn, 'function `${info.name}` is private', id, node.pos)
+		display_name := if receiver, method := flat.decode_static_type_method_name(info.name) {
+			'${receiver}.${method}'
+		} else {
+			info.name
+		}
+		tc.record_error_at(.unknown_fn, 'function `${display_name}` is private', id, node.pos)
 		return true
 	}
 	return false
@@ -13353,7 +13359,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 							base := tc.a.child_node(callee, 0)
 							if base.kind == .ident
 								&& tc.source_declares_type_in_scope(base.value, tc.cur_file, tc.cur_module) {
-								target_name = '${base.value}__static__${callee.value}'
+								target_name = flat.encode_static_type_method_name(base.value,
+									callee.value)
 							}
 							if info.has_receiver {
 								target_name = callee.value
@@ -18111,6 +18118,9 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 			if base_node.value == 'C' {
 				return true
 			}
+			if _ := tc.static_assoc_fn_key_for_base(base_node.value, fn_node.value) {
+				return true
+			}
 			if resolved_mod := tc.resolve_import_alias(base_node.value) {
 				mod_name := '${resolved_mod}.${fn_node.value}'
 				if mod_name in tc.fn_ret_types || mod_name in tc.sum_types || mod_name in tc.structs
@@ -18135,6 +18145,11 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 			inner := tc.a.child_node(base_node, 0)
 			if inner.kind == .ident {
 				mod_name := tc.resolve_import_alias(inner.value) or { inner.value }
+				if _ := tc.static_assoc_fn_key_for_base('${mod_name}.${base_node.value}',
+					fn_node.value)
+				{
+					return true
+				}
 				if '${mod_name}.${base_node.value}.${fn_node.value}' in tc.fn_ret_types {
 					return true
 				}

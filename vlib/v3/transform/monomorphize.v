@@ -576,7 +576,11 @@ fn (t &Transformer) explicit_generic_fn_value_decl_candidates(id flat.NodeId, ba
 }
 
 fn (mut t Transformer) request_generic_fn_specialization(decl GenericFnDecl, args []string) {
-	concrete_args := t.canonical_generic_specialization_args(args)
+	// Callers pass the canonical arguments used to form `clone_value`. Canonicalizing
+	// them again here can run in the imported declaration's module and rebind a bare
+	// caller-owned type to the declaration's same-named type, leaving the function
+	// name and its registered ABI in disagreement (`..._Context` with `veb.Context`).
+	concrete_args := args.clone()
 	key := t.generic_specialization_progress_key(decl, concrete_args)
 	t.record_monomorph_cache_spec(key, decl.key, decl.module, concrete_args)
 	if key in t.generic_fn_spec_nodes || t.generic_fn_specs_in_progress[key]
@@ -3603,7 +3607,9 @@ fn (mut t Transformer) collect_node_subtree_flags(id flat.NodeId, mut nodes []bo
 }
 
 fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args []string) flat.NodeId {
-	concrete_args := t.canonical_generic_specialization_args(args)
+	// Queueing/inference has already canonicalized these arguments in the caller's
+	// module. Preserve that identity while entering the imported declaration.
+	concrete_args := args.clone()
 	spec_key := t.generic_specialization_progress_key(decl, concrete_args)
 	if clone_id := t.generic_fn_spec_nodes[spec_key] {
 		return clone_id
@@ -3708,6 +3714,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 			children_count: cloned_fn.children_count
 			is_mut: cloned_fn.is_mut
 			skip_ownership_drops: true
+			is_static_type_method: cloned_fn.is_static_type_method
 		})
 	}
 	t.a.specialized_fn_nodes[int(clone_id)] = true
@@ -4310,7 +4317,10 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 	old_tc_file := if isnil(t.tc) { '' } else { t.tc.cur_file }
 	old_specialization_args := t.active_specialization_args
 	mut old_specialization_main_types := t.active_specialization_main_types.move()
-	concrete_args := t.canonical_generic_specialization_args(args)
+	// The specialization name and queue key were already formed from these canonical
+	// arguments in the caller's context. Re-resolving them here under another active
+	// module can change a bare nominal type without changing `clone_value`.
+	concrete_args := args.clone()
 	t.active_specialization_args = concrete_args
 	mut caller_main_types := t.specialization_main_type_closure(concrete_args)
 	if old_module in ['', 'main'] {
@@ -6817,7 +6827,8 @@ fn (t &Transformer) generic_static_assoc_call_decl_key(base_id flat.NodeId, meth
 	}
 	for type_name in t.generic_static_assoc_type_candidates(base_id) {
 		for method_spelling in generic_call_name_spellings(method) {
-			key := generic_fn_decl_base_value('${type_name}.${method_spelling}')
+			key := generic_fn_decl_base_value(flat.encode_static_type_method_name(type_name,
+				method_spelling))
 			if key in decls {
 				return key
 			}
@@ -6827,23 +6838,26 @@ fn (t &Transformer) generic_static_assoc_call_decl_key(base_id flat.NodeId, meth
 }
 
 fn (t &Transformer) generic_call_is_static_assoc_selector(node flat.Node, decl GenericFnDecl) bool {
-	if node.children_count == 0 || !decl.node.value.contains('.') {
+	if node.children_count == 0 {
 		return false
 	}
+	decl_value := generic_fn_decl_base_value(decl.node.value)
+	_, method := flat.decode_static_type_method_name(decl_value) or { return false }
 	callee_id := t.a.child(&node, 0)
 	callee := t.a.nodes[int(callee_id)]
 	if callee.kind != .selector || callee.children_count == 0 {
 		return false
 	}
-	method := decl.node.value.all_after_last('.')
 	if callee.value !in generic_call_name_spellings(method) {
 		return false
 	}
 	base_id := t.a.child(callee, 0)
 	for type_name in t.generic_static_assoc_type_candidates(base_id) {
 		for method_spelling in generic_call_name_spellings(method) {
-			key := generic_fn_decl_base_value('${type_name}.${method_spelling}')
-			if key == decl.key || key == generic_fn_decl_base_value(decl.node.value) {
+			key := generic_fn_decl_base_value(flat.encode_static_type_method_name(type_name,
+				method_spelling))
+			if key == decl.key || key == decl_value
+				|| transform_qualified_fn_name(decl.module, key) == decl.key {
 				return true
 			}
 		}
@@ -9942,6 +9956,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			typ: cloned_typ
 			value: t.subst_node_value(node, args)
 			is_mut: node.is_mut
+			is_static_type_method: node.is_static_type_method
 		})
 		if node.kind == .ident && t.mut_param_values[node.value] {
 			t.mut_value_ident_nodes[int(clone_id)] = true
@@ -10012,6 +10027,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		typ: final_typ
 		value: cloned_value
 		is_mut: node.is_mut
+		is_static_type_method: node.is_static_type_method
 	})
 	if t.specialization_node_start >= 0 && node.kind == .decl_assign && children.len >= 2 {
 		lhs := t.a.nodes[int(children[0])]
@@ -10704,7 +10720,7 @@ fn (mut t Transformer) retarget_cloned_static_assoc_call(node flat.Node, mut chi
 	}
 	owner := t.resolve_substituted_type_text(t.subst_type(args[idx], args))
 	for type_name in t.static_assoc_type_candidates(owner) {
-		static_fn := '${type_name}.${callee.value}'
+		static_fn := flat.encode_static_type_method_name(type_name, callee.value)
 		if t.is_known_fn_name(static_fn) {
 			children[0] = t.make_ident(static_fn)
 			return t.receiver_method_return_type(static_fn, t.subst_type(node.typ, args))
@@ -11207,6 +11223,13 @@ fn generic_fn_receiver_application_is_structured(value string) bool {
 }
 
 fn generic_fn_decl_base_value(value string) string {
+	if receiver, method := flat.decode_static_type_method_name(value) {
+		base, _, ok := generic_app_parts(receiver)
+		if ok {
+			return flat.encode_static_type_method_name(base, method)
+		}
+		return value
+	}
 	if !value.contains('.') {
 		return value
 	}

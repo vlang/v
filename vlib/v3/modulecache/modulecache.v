@@ -5994,11 +5994,20 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 			params << child
 		}
 	}
-	mut name := node.value
+	decl_name := node.value
+	name := if node.is_static_type_method {
+		if receiver, method := flat.decode_static_type_method_name(decl_name) {
+			'${receiver}.${method}'
+		} else {
+			decl_name
+		}
+	} else {
+		decl_name
+	}
 	visibility := if !is_c && (node.op == .arrow || source_is_public) { 'pub ' } else { '' }
 	mut head := if is_c { 'fn C.${name}' } else { '${visibility}fn ${name}' }
 	mut param_start := 0
-	if !is_c && name.contains('.') && params.len > 0 {
+	if !is_c && !node.is_static_type_method && name.contains('.') && params.len > 0 {
 		receiver_type := name.all_before_last('.')
 		first_type := clean_receiver_type(params[0].typ)
 		if first_type == receiver_type
@@ -6047,17 +6056,17 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 		head += ' ${node.typ}'
 	}
 	mut attr_lines := []string{}
-	if fn_is_disabled(a, module_name, name) {
+	if fn_is_disabled(a, module_name, decl_name) {
 		attr_lines << '@[if false]'
 	}
 	mut attrs := []string{}
 	if !cached_declaration_has_attr(declaration_attrs, 'export') {
-		if export_name := fn_export_name(a, module_name, name) {
+		if export_name := fn_export_name(a, module_name, decl_name) {
 			attrs << "export: '${escape_v_string(export_name)}'"
 		}
 	}
 	if !cached_declaration_has_attr(declaration_attrs, 'noreturn')
-		&& fn_is_noreturn(a, module_name, name) {
+		&& fn_is_noreturn(a, module_name, decl_name) {
 		attrs << 'noreturn'
 	}
 	if attrs.len > 0 {

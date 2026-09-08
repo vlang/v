@@ -1129,6 +1129,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 	mut receiver_type := ''
 	mut receiver_is_mut := false
 	mut is_method := false
+	mut is_static_type_method := false
 
 	// method receiver: fn (mut r Type) name()
 	if p.tok == .lpar {
@@ -1228,13 +1229,18 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 				receiver_type = name
 				name = second
 				is_method = true
+				is_static_type_method = true
 			}
 		}
 	}
 
 	if is_method && receiver_type.len > 0 {
 		clean_type := method_receiver_type_name(receiver_type)
-		name = '${clean_type}.${name}'
+		name = if is_static_type_method {
+			flat.encode_static_type_method_name(clean_type, name)
+		} else {
+			'${clean_type}.${name}'
+		}
 	}
 
 	return p.fn_decl_body(name, receiver_name, receiver_type, receiver_is_mut, is_method, '', name_pos)
@@ -1372,6 +1378,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 
 fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type string, receiver_is_mut bool, is_method bool, interop_prefix string, name_pos int) flat.NodeId {
 	is_c_decl := interop_prefix.len > 0
+	is_static_type_method := is_method && receiver_name.len == 0 && !is_c_decl
 	is_pub := p.pending_decl_pub
 	p.pending_decl_pub = false
 	// Capture & clear here so it applies only to this function (not nested closures
@@ -1451,6 +1458,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			payload: flat.node_payload(generic_params)
 			children_start: start
 			children_count: flat.child_count(param_ids.len)
+			is_static_type_method: is_static_type_method
 			// Function nodes do not otherwise use is_mut. On a .vh declaration it
 			// records that the body lives in a cached object and must not be emitted;
 			// on a C declaration it preserves the parser's implicit unsafe/trusted state.
@@ -1545,6 +1553,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		payload: flat.node_payload(generic_params)
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
+		is_static_type_method: is_static_type_method
 	})
 	if p.prefs.is_fmt && formatter_end > 0 {
 		p.a.formatter_node_ends[int(id)] = formatter_end
@@ -3857,9 +3866,19 @@ fn (mut p Parser) resolve_comptime_at_values(cond string) string {
 	return p.resolve_comptime_at_values_at(cond, p.tok_pos)
 }
 
+fn (p &Parser) current_source_fn_name() string {
+	if p.cur_method_is_static {
+		_, method := flat.decode_static_type_method_name(p.cur_fn) or {
+			return p.cur_fn.all_after_last('.')
+		}
+		return method
+	}
+	return p.cur_fn.all_after_last('.')
+}
+
 fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) string {
 	module_name := if p.cur_module.len > 0 { p.cur_module } else { 'main' }
-	fn_name := p.cur_fn.all_after_last('.')
+	fn_name := p.current_source_fn_name()
 	method_name := if p.cur_struct.len > 0 { '${p.cur_struct}.${fn_name}' } else { fn_name }
 	mut out := strings.new_builder(cond.len)
 	mut i := 0
@@ -9555,13 +9574,14 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.add_val_id(5, p.cur_module)
 			}
 			if name == '@FN' {
-				return p.add_val_id(5, p.cur_fn.all_after_last('.'))
+				return p.add_val_id(5, p.current_source_fn_name())
 			}
 			if name == '@METHOD' {
+				fn_name := p.current_source_fn_name()
 				return p.add_val_id(5, if p.cur_struct.len > 0 {
-					'${p.cur_struct}.${p.cur_fn.all_after_last('.')}'
+					'${p.cur_struct}.${fn_name}'
 				} else {
-					p.cur_fn.all_after_last('.')
+					fn_name
 				})
 			}
 			if name == '@STRUCT' {
@@ -9569,7 +9589,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			}
 			if name == '@LOCATION' {
 				module_name := if p.cur_module.len > 0 { p.cur_module } else { 'main' }
-				fn_name := p.cur_fn.all_after_last('.')
+				fn_name := p.current_source_fn_name()
 				mut method_name := '${module_name}.${fn_name}'
 				if p.cur_struct.len > 0 {
 					if p.cur_method_is_static {

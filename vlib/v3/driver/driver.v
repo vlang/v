@@ -5321,7 +5321,7 @@ fn c_hash_monomorph_node(initial u64, a &flat.FlatAst, id flat.NodeId, cacheable
 	}
 	node := a.nodes[idx]
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
-		u8(node.skip_ownership_drops)])
+		u8(node.skip_ownership_drops), u8(node.is_static_type_method)])
 	hash = c_hash_tag(hash, node.children_count)
 	hash = c_hash_bytes(hash, node.typ.bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
@@ -5431,7 +5431,7 @@ fn incremental_qualified_fn_name(module_name string, name string) string {
 
 fn incremental_hash_node_header(initial u64, node &flat.Node, include_value bool) u64 {
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
-		u8(node.skip_ownership_drops)])
+		u8(node.skip_ownership_drops), u8(node.is_static_type_method)])
 	hash = c_hash_tag(hash, node.children_count)
 	hash = c_hash_bytes(hash, node.typ.bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
@@ -5448,7 +5448,7 @@ fn incremental_hash_node_header(initial u64, node &flat.Node, include_value bool
 
 fn incremental_hash_fn_declaration(initial u64, node &flat.Node) u64 {
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
-		u8(node.skip_ownership_drops)])
+		u8(node.skip_ownership_drops), u8(node.is_static_type_method)])
 	hash = c_hash_bytes(hash, node.typ.bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
 	hash = c_hash_bytes(hash, node.value.bytes())
@@ -6359,7 +6359,7 @@ fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	tc.interface_abstract_methods = clone_string_list_map(tc.interface_abstract_methods)
 }
 
-fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst, scope voidptr, generated_start int) {
+fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst, scope voidptr, generated_start int, rewritten_base_nodes []int) {
 	// The per-id loops write disjoint slots and only allocate clones, so fan
 	// them out over the worker pool; fall back to the serial walk without one.
 	if !transform.promote_scoped_checker_node_caches_parallel(mut tc, a, scope, generated_start) {
@@ -6379,6 +6379,15 @@ fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst,
 			if idx >= generated_start && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 				tc.expr_type_values[idx] = types.clone_owned_type(tc.expr_type_values[idx])
 			}
+		}
+	}
+	// A transform can attach a newly allocated semantic type to a source node.
+	// The dense cache slot predates generated_start, but its replacement payload
+	// still belongs to the disposable stage scope.
+	for idx in rewritten_base_nodes {
+		if idx >= 0 && idx < tc.expr_type_set.len && tc.expr_type_set[idx]
+			&& idx < tc.expr_type_values.len {
+			tc.expr_type_values[idx] = types.clone_owned_type(tc.expr_type_values[idx])
 		}
 	}
 	// The dense caches are reserved in the parent arena, but an unexpectedly
@@ -10243,6 +10252,9 @@ pub fn run(args []string) {
 		prepare_transform_overlap := building_v && current_parallel_transform
 			&& scope_prealloc_transform && !incremental_cache_hit && !generic_cache_hit
 			&& !cache_state.manager.enabled
+		if prepare_transform_overlap {
+			transform.materialize_inferred_anonymous_structs_before_prepare(mut a, &pre_tc)
+		}
 		prepared_transform_thread := spawn transform.prepare_selfhost_transform(a, &pre_tc, prepare_transform_overlap)
 		// Mark used functions (dead-code elimination). This is done before transform
 		// so the transformer can skip function bodies that the C backend will prune.
@@ -10587,7 +10599,7 @@ pub fn run(args []string) {
 					eprintln('  [ttime] promote ast nodes  ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 					post_sw.restart()
 				}
-				promote_scoped_checker_node_caches(mut pre_tc, a, transform_scope, base_transform_nodes)
+				promote_scoped_checker_node_caches(mut pre_tc, a, transform_scope, base_transform_nodes, scoped_owned_base_nodes)
 				if verbose {
 					eprintln('  [ttime]   pc node caches   ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 					post_sw.restart()
@@ -10847,7 +10859,7 @@ pub fn run(args []string) {
 				a.specialized_fn_modules = clone_int_string_map(a.specialized_fn_modules)
 				a.specialized_fn_files = clone_int_string_map(a.specialized_fn_files)
 			}
-			promote_scoped_checker_node_caches(mut pre_tc, a, monomorph_scope, base_monomorph_nodes)
+			promote_scoped_checker_node_caches(mut pre_tc, a, monomorph_scope, base_monomorph_nodes, []int{})
 			pre_tc.rebuild_scoped_transform_signature_maps()
 			pre_tc.rebuild_fn_param_suffix_index()
 			pre_tc.promote_scoped_transform_interners(0, 0, monomorph_scope)

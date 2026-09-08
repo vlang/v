@@ -1467,6 +1467,9 @@ fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) fl
 	if index_expr := t.sql_index_expr_from_token_for_type(token, typ) {
 		return index_expr
 	}
+	if fn_name, args := sql_value_call_parts(token) {
+		return t.sql_value_call_expr(fn_name, args, typ)
+	}
 	if token in ['none', 'nil'] {
 		return t.make_struct_init('orm.Null')
 	}
@@ -1484,8 +1487,7 @@ fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) fl
 	}
 	if sql_token_is_no_arg_call(token) {
 		fn_name := token[..token.len - 2]
-		t.mark_fn_used_name(fn_name)
-		return t.make_call_typed(fn_name, []flat.NodeId{}, if typ.len > 0 { typ } else { '' })
+		return t.sql_value_call_expr(fn_name, []string{}, typ)
 	}
 	if token.starts_with('.') && typ.len > 0 {
 		return t.a.add_node(flat.Node{
@@ -1503,6 +1505,99 @@ fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) fl
 		})
 	}
 	return t.sql_value_name_expr(token)
+}
+
+fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, typ string) flat.NodeId {
+	mut arg_ids := []flat.NodeId{cap: args.len}
+	for arg in args {
+		arg_ids << t.sql_expr_from_token(arg)
+	}
+	if args.len == 1
+		&& (is_plain_builtin_alias_type(callee_name) || t.is_known_type_name(callee_name)) {
+		return t.transform_expr(t.make_cast(callee_name, arg_ids[0], callee_name))
+	}
+	callee := t.sql_value_call_callee(callee_name)
+	call := t.make_call_expr_typed(callee, arg_ids, if typ.len > 0 { typ } else { '' })
+	// Preserve the source call shape so ordinary lowering can distinguish module
+	// functions, receiver methods, and static associated functions.
+	return t.transform_expr(call)
+}
+
+fn (mut t Transformer) sql_value_call_callee(callee_name string) flat.NodeId {
+	parts := callee_name.split('.')
+	if parts.len < 2 {
+		return t.make_ident(callee_name)
+	}
+	mut receiver_type := t.sql_root_value_type_name(parts[0])
+	if receiver_type.len == 0 {
+		return t.sql_qualified_selector(callee_name)
+	}
+	mut receiver := t.make_ident(parts[0])
+	t.set_node_typ(int(receiver), receiver_type)
+	for field in parts[1..parts.len - 1] {
+		field_type := t.lookup_struct_field_type(receiver_type, field) or {
+			t.builtin_selector_type(receiver_type, field) or { '' }
+		}
+		receiver = t.make_selector(receiver, field, field_type)
+		if field_type.len > 0 {
+			receiver_type = field_type
+		}
+	}
+	return t.make_selector(receiver, parts.last(), '')
+}
+
+fn sql_value_call_parts(token string) ?(string, []string) {
+	clean := sql_trim_outer_empty(sql_clean_tokens(token.split(' ')))
+	if clean.len < 3 || clean[clean.len - 1] != ')' {
+		return none
+	}
+	mut open_idx := -1
+	for i, part in clean {
+		if part == '(' {
+			open_idx = i
+			break
+		}
+	}
+	if open_idx <= 0 {
+		return none
+	}
+	callee_name := sql_value_token_text(clean[..open_idx]).replace(' ', '')
+	name_parts := callee_name.split('.')
+	if name_parts.len == 0 {
+		return none
+	}
+	for part in name_parts {
+		if !sql_token_is_plain_ident(part) {
+			return none
+		}
+	}
+	close_idx := sql_matching_pair(clean, open_idx, '(', ')') or { return none }
+	if close_idx != clean.len - 1 {
+		return none
+	}
+	mut args := []string{}
+	mut arg_start := open_idx + 1
+	mut depth := 0
+	for i in open_idx + 1 .. close_idx {
+		part := clean[i]
+		if part in ['(', '[', '{'] {
+			depth++
+		} else if part in [')', ']', '}'] {
+			depth--
+		} else if part == ',' && depth == 0 {
+			if i == arg_start {
+				return none
+			}
+			args << sql_value_token_text(clean[arg_start..i])
+			arg_start = i + 1
+		}
+	}
+	if arg_start < close_idx {
+		args << sql_value_token_text(clean[arg_start..close_idx])
+	} else if arg_start > open_idx + 1 {
+		return none
+	}
+	return name_parts.join('.'), args
 }
 
 fn (mut t Transformer) sql_index_expr_from_token_for_type(token string, typ string) ?flat.NodeId {

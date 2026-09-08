@@ -15,6 +15,23 @@ pub const empty_node = NodeId(-1)
 pub const method_value_borrow_receiver_marker = '__v3_method_value_borrow_receiver'
 pub const method_value_clone_receiver_marker_prefix = '__v3_method_value_clone_receiver:'
 
+const static_type_method_name_marker = '@static@'
+
+// encode_static_type_method_name makes a reversible internal name for a static type method.
+pub fn encode_static_type_method_name(receiver string, method string) string {
+	return '${receiver}${static_type_method_name_marker}${method}'
+}
+
+// decode_static_type_method_name recovers the receiver and method from an internal static name.
+pub fn decode_static_type_method_name(name string) ?(string, string) {
+	marker := name.index(static_type_method_name_marker) or { return none }
+	method_start := marker + static_type_method_name_marker.len
+	if marker == 0 || method_start >= name.len {
+		return none
+	}
+	return name[..marker], name[method_start..]
+}
+
 const empty_node_value = Node{}
 
 // NodeKind lists node kind values used by flat.
@@ -188,16 +205,17 @@ pub fn node_payload(generic_params []string) &NodePayload {
 // Node represents node data used by flat.
 pub struct Node {
 pub mut:
-	value                string
-	typ                  string
-	payload              &NodePayload = unsafe { nil }
-	children_start       i32
-	is_mut               bool
-	kind                 NodeKind
-	op                   Op
-	skip_ownership_drops bool
-	children_count       i32
-	pos                  token.Pos
+	value                 string
+	typ                   string
+	payload               &NodePayload = unsafe { nil }
+	children_start        i32
+	is_mut                bool
+	kind                  NodeKind
+	op                    Op
+	skip_ownership_drops  bool
+	is_static_type_method bool
+	children_count        i32
+	pos                   token.Pos
 }
 
 // type_text_id returns the compact canonical identity carried in this node's
@@ -739,6 +757,7 @@ pub fn (n Node) with_shifted_children(shift i32) Node {
 		op:                   n.op
 		is_mut:               n.is_mut
 		skip_ownership_drops: n.skip_ownership_drops
+		is_static_type_method: n.is_static_type_method
 	}
 }
 
@@ -755,6 +774,7 @@ pub fn (n Node) with_pos(pos token.Pos) Node {
 		op:                   n.op
 		is_mut:               n.is_mut
 		skip_ownership_drops: n.skip_ownership_drops
+		is_static_type_method: n.is_static_type_method
 	}
 }
 
@@ -775,6 +795,7 @@ pub fn (n Node) clone_owned() Node {
 		op:                   n.op
 		is_mut:               n.is_mut
 		skip_ownership_drops: n.skip_ownership_drops
+		is_static_type_method: n.is_static_type_method
 	}
 }
 
