@@ -5,12 +5,16 @@ on:
     branches:
       - resolve-pr-28135
 
+concurrency:
+  group: resolve-pr-28135
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
 jobs:
   resolve:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
         with:
