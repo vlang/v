@@ -387,8 +387,12 @@ fn source_file_module_name(path string) ?string {
 		}
 		break
 	}
-	if start + 6 >= source.len || source[start..start + 6] != 'module'
-		|| source[start + 6] !in [` `, `\t`, `\v`, `\f`] {
+	if start + 6 >= source.len || source[start..start + 6] != 'module' {
+		return none
+	}
+	module_suffix := source[start + 6]
+	if module_suffix !in [` `, `\t`, `\v`, `\f`] && !(module_suffix == `/` && start + 7 < source.len
+		&& source[start + 7] in [`/`, `*`]) {
 		return none
 	}
 	name_start := skip_source_space_and_comments(source, start + 6) or { return none }

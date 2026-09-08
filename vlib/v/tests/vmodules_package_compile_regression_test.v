@@ -347,7 +347,7 @@ fn test_issue_27281_marker_bounded_external_test_file_keeps_prefix() {
 	os.rmdir_all(workspace) or {}
 	os.mkdir_all(bar_dir) or { panic(err) }
 	foo_source :=
-		['#!/usr/bin/env -S v run', 'module /* before name */ foo/* adjacent comment */', '', 'pub const present = true'].join_lines() +
+		['#!/usr/bin/env -S v run', 'module/* before name */ foo/* adjacent comment */', '', 'pub const present = true'].join_lines() +
 		'\n'
 	foo_test_source :=
 		['module foo_test', '', 'import foo.bar', '', 'fn test_nested_module_name() {', "\tassert bar.module_name() == 'foo.bar'", '}'].join_lines() +
