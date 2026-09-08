@@ -98,11 +98,14 @@ fn main() {
 		println(i)
 	}
 
-	// Do not fold untyped u64 division with signed semantics.
+	// Preserve represented unsigned semantics when folding untyped u64 division.
 	for i in 1 .. 18446744073709551615 / 2 {
 		println(i)
 	}
 	for i in 1 .. i64(18446744073709551615 / 2) {
+		println(i)
+	}
+	for i in 1 .. half_max_u64() {
 		println(i)
 	}
 
@@ -126,4 +129,9 @@ fn identity_f32(x f32) f32 {
 @[comptime]
 fn return_f32() f32 {
 	return 16777217.0
+}
+
+@[comptime]
+fn half_max_u64() u64 {
+	return 18446744073709551615 / 2
 }

@@ -451,40 +451,6 @@ fn (mut c Checker) range_literal_expr_type(expr ast.Expr) ?ast.Type {
 	}
 }
 
-fn (mut c Checker) range_literal_expr_has_unsigned_i64_division(expr ast.Expr) bool {
-	match expr {
-		ast.ParExpr {
-			return c.range_literal_expr_has_unsigned_i64_division(expr.expr)
-		}
-		ast.PrefixExpr {
-			return c.range_literal_expr_has_unsigned_i64_division(expr.right)
-		}
-		ast.CastExpr {
-			return c.range_literal_expr_has_unsigned_i64_division(expr.expr)
-		}
-		ast.Ident {
-			if expr.obj is ast.ConstField {
-				return c.range_literal_expr_has_unsigned_i64_division(expr.obj.expr)
-			}
-			return false
-		}
-		ast.InfixExpr {
-			if expr.op in [.div, .mod] {
-				if typ := c.range_literal_expr_type(expr) {
-					if typ == ast.u64_type {
-						return true
-					}
-				}
-			}
-			return c.range_literal_expr_has_unsigned_i64_division(expr.left)
-				|| c.range_literal_expr_has_unsigned_i64_division(expr.right)
-		}
-		else {
-			return false
-		}
-	}
-}
-
 fn (mut c Checker) range_comparison_operand_type(expr ast.Expr, typ ast.Type) ?ast.Type {
 	unaliased_type := c.table.fully_unaliased_type(typ).clear_flags()
 	if unaliased_type == ast.int_literal_type {
@@ -509,12 +475,6 @@ fn (mut c Checker) range_comparison_type(left_expr ast.Expr, left_type ast.Type,
 }
 
 fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, val_type ast.Type, high_type ast.Type) {
-	// The general constant evaluator uses signed arithmetic for untyped expressions.
-	// Decline to compare when a represented u64 division would therefore fold differently.
-	if c.range_literal_expr_has_unsigned_i64_division(low)
-		|| c.range_literal_expr_has_unsigned_i64_division(high) {
-		return
-	}
 	assignment_type := if val_type == ast.int_literal_type { ast.int_type } else { val_type }
 	if evaluated_low := c.eval_comptime_const_expr(low, 0) {
 		if evaluated_high := c.eval_comptime_const_expr(high, 0) {

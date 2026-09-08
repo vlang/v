@@ -1250,8 +1250,9 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 		ast.InfixExpr {
 			left_sym := c.table.sym(expr.left_type)
 			right_sym := c.table.sym(expr.right_type)
-			if left_sym.has_method_with_generic_parent(expr.op.str())
-				|| right_sym.has_method_with_generic_parent(expr.op.str()) {
+			if (!left_sym.is_builtin() && left_sym.has_method_with_generic_parent(expr.op.str()))
+				|| (!right_sym.is_builtin()
+				&& right_sym.has_method_with_generic_parent(expr.op.str())) {
 				return none
 			}
 			left := c.eval_comptime_const_expr_with_locals(expr.left, nlevel + 1, local_values)?
@@ -1354,7 +1355,13 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 						mut result := i64(0)
 
 						is_untyped_int := promoted_type == ast.int_literal_type
-						if is_untyped_int || promoted_type.is_signed() {
+						mut use_signed_arithmetic := is_untyped_int || promoted_type.is_signed()
+						if is_untyped_int && expr.op in [.div, .mod] {
+							if literal_type := c.range_literal_expr_type(expr) {
+								use_signed_arithmetic = literal_type.is_signed()
+							}
+						}
+						if use_signed_arithmetic {
 							match expr.op {
 								.plus {
 									result = left_raw + right_raw
