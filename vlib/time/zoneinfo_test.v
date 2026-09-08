@@ -330,6 +330,23 @@ fn test_load_location_local_ignores_tz_local() {
 	assert loc.name.len > 0
 }
 
+fn test_load_location_local_empty_tz_is_utc() {
+	old_tz := os.getenv_opt('TZ')
+	os.setenv('TZ', '', true)
+	defer {
+		if old := old_tz {
+			os.setenv('TZ', old, true)
+		} else {
+			os.unsetenv('TZ')
+		}
+	}
+	loc := time.load_location('Local')!
+	zone := loc.zone_at(1_704_067_200)!
+	assert loc.name == 'UTC'
+	assert zone.name == 'UTC'
+	assert zone.offset == 0
+}
+
 fn test_load_location_local_posix_tz() {
 	old_tz := os.getenv_opt('TZ')
 	os.setenv('TZ', 'EST5EDT,M3.2.0,M11.1.0', true)

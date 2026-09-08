@@ -223,9 +223,46 @@ fn test_windows_year_transitions_use_supplied_rules() {
 		new_rules.daylight_name[0] = u16(`E`)
 		loc.add_windows_year_transitions(2006, old_rules)
 		loc.add_windows_year_transitions(2007, new_rules)
-		assert loc.transitions[0].when == windows_transition_utc(2006, old_rules.daylight_date,
+		assert loc.transitions[1].when == windows_transition_utc(2006, old_rules.daylight_date,
 			-5 * seconds_per_hour)
-		assert loc.transitions[2].when == windows_transition_utc(2007, new_rules.daylight_date,
+		assert loc.transitions[3].when == windows_transition_utc(2007, new_rules.daylight_date,
 			-5 * seconds_per_hour)
+	}
+}
+
+fn test_windows_no_dst_offset_changes_add_year_boundaries() {
+	$if windows {
+		mut loc := &Location{
+			name:  'Local'
+			zones: [
+				Zone{
+					name:   'Current'
+					offset: -3 * seconds_per_hour
+				},
+			]
+		}
+		mut old_rules := TimeZoneInformation{
+			bias: 300
+		}
+		mut new_rules := TimeZoneInformation{
+			bias: 240
+		}
+		old_rules.standard_name[0] = u16(`O`)
+		new_rules.standard_name[0] = u16(`N`)
+		loc.add_windows_year_transitions(2006, old_rules)
+		loc.add_windows_year_transitions(2007, new_rules)
+		assert loc.transitions.len == 2
+		assert loc.transitions[0].when == time_fields_to_unix(Time{
+			year:  2006
+			month: 1
+			day:   1
+		}) + 5 * seconds_per_hour
+		assert loc.transitions[1].when == time_fields_to_unix(Time{
+			year:  2007
+			month: 1
+			day:   1
+		}) + 4 * seconds_per_hour
+		assert loc.zones[loc.transitions[0].index].offset == -5 * seconds_per_hour
+		assert loc.zones[loc.transitions[1].index].offset == -4 * seconds_per_hour
 	}
 }

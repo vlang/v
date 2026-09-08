@@ -93,22 +93,34 @@ fn windows_zones(info TimeZoneInformation) (Zone, Zone) {
 fn (mut loc Location) add_windows_year_transitions(year int, info TimeZoneInformation) {
 	std_zone, dst_zone := windows_zones(info)
 	std_index := loc.windows_zone_index(std_zone)
-	if !windows_has_daylight(info) {
-		if loc.transitions.len > 0 && loc.transitions.last().index != std_index {
-			loc.transitions << ZoneTransition{
-				when:  time_fields_to_unix(Time{
-					year:  year
-					month: 1
-					day:   1
-				}) - i64(std_zone.offset)
-				index: std_index
-			}
+	has_daylight := windows_has_daylight(info)
+	mut dst_index := -1
+	mut dst_start := i64(0)
+	mut std_start := i64(0)
+	mut year_start_index := std_index
+	mut year_start_offset := std_zone.offset
+	if has_daylight {
+		dst_index = loc.windows_zone_index(dst_zone)
+		dst_start = windows_transition_utc(year, info.daylight_date, std_zone.offset)
+		std_start = windows_transition_utc(year, info.standard_date, dst_zone.offset)
+		if std_start < dst_start {
+			year_start_index = dst_index
+			year_start_offset = dst_zone.offset
 		}
+	}
+	if loc.transitions.len == 0 || loc.transitions.last().index != year_start_index {
+		loc.transitions << ZoneTransition{
+			when:  time_fields_to_unix(Time{
+				year:  year
+				month: 1
+				day:   1
+			}) - i64(year_start_offset)
+			index: year_start_index
+		}
+	}
+	if !has_daylight {
 		return
 	}
-	dst_index := loc.windows_zone_index(dst_zone)
-	dst_start := windows_transition_utc(year, info.daylight_date, std_zone.offset)
-	std_start := windows_transition_utc(year, info.standard_date, dst_zone.offset)
 	if dst_start < std_start {
 		loc.transitions << ZoneTransition{
 			when:  dst_start

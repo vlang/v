@@ -3,8 +3,10 @@ module time
 import os
 
 fn local_location() !&Location {
-	tz := os.getenv('TZ')
-	if tz != '' {
+	if tz := os.getenv_opt('TZ') {
+		if tz == '' {
+			return load_location('UTC')
+		}
 		if tz.starts_with(':') {
 			path := tz[1..]
 			if path != '' {
