@@ -40,6 +40,9 @@ jobs:
         if: steps.cache-v.outputs.cache-hit != 'true'
         with:
           symlink: false
+      - name: Register problem matchers
+        if: steps.cache-v.outputs.cache-hit == 'true'
+        run: ./v run .github/problem-matchers/register_all.vsh
       - name: Symlink V
         run: ./v symlink
       - name: Install dependencies
