@@ -271,6 +271,24 @@ fn test_context_lookup_cache_tracks_source_file_imports() {
 	assert g.enum_selector_base_name('kind.Kind')? == 'second.token.Kind'
 }
 
+fn test_transformed_module_call_namespace_arguments() {
+	mut a := flat.FlatAst.new()
+	mut g := FlatGen.new()
+	g.a = &a
+	callee := a.add_val(.ident, 'net.flags.read')
+	for name in ['net.flags', 'flags', 'net.flags.flags', 'other.flags', 'lags', 'net.flagsxflags'] {
+		arg := a.add_val(.ident, name)
+		start := a.begin_children()
+		a.add_child(callee)
+		a.add_child(arg)
+		call := flat.Node{ kind: .call, children_start: start, children_count: 2 }
+		expected := if name in ['net.flags', 'flags', 'net.flags.flags'] { 2 } else { 1 }
+		assert g.target_module_call_arg_start('net.flags.read', call) == expected, name
+		a.nodes[int(arg)].kind = .string_literal
+		assert g.target_module_call_arg_start('net.flags.read', call) == 1
+	}
+}
+
 fn test_cgen_flattened_generic_receiver_short_variants() {
 	assert cgen_flattened_generic_receiver_short_variants('foo__Bar_baz__Qux') == [
 		'Bar_Qux',
@@ -406,32 +424,32 @@ fn test_system_libc_preamble_identifies_glibc_before_manual_stdio_declarations()
 	assert features < manual_stdio
 }
 
-fn test_known_c_header_metadata_avoids_conflicting_fallback_declarations() {
-	mut g := FlatGen.new()
-	g.compiler_vroot = '/vroot'
-	g.collect_known_c_header_metadata('<pwd.h>')
-	g.collect_known_c_header_metadata('<mbedtls/net_sockets.h>')
-	g.collect_known_c_header_metadata('<mbedtls/ssl.h>')
-	g.collect_known_c_header_metadata('"/vroot/vlib/compress/brotli/brotli_dl.h"')
-	assert g.inlined_c_structs['passwd']
-	for name in ['getpwnam', 'getpwuid', 'mbedtls_net_bind', 'mbedtls_pk_parse_key',
-		'mbedtls_ssl_write', 'v_brotli_msan_unpoison'] {
-		assert !g.should_emit_c_extern_decl(name)
-	}
-	assert c_include_arg_is_vroot_header('"@VEXEROOT/vlib/compress/brotli/brotli_dl.h"', '', '/vlib/compress/brotli/brotli_dl.h')
+fn test_header_backed_c_declarations_skip_generated_prototypes() {
+	source := '/project/user.v'
+	header_source := '/project/bindings.c.v'
 
-	mut quoted := FlatGen.new()
-	quoted.compiler_vroot = '/vroot'
-	for header in ['"pwd.h"', '"mbedtls/net_sockets.h"', '"mbedtls/entropy.h"', '"mbedtls/ctr_drbg.h"',
-		'"mbedtls/error.h"', '"mbedtls/ssl.h"', '"/vroot/vlib/compress/brotli/brotli_dl.h"'] {
-		quoted.collect_known_c_header_metadata(header)
-	}
-	assert quoted.inlined_c_structs['passwd']
-	for name in ['getpwnam', 'getpwuid', 'mbedtls_net_bind', 'mbedtls_entropy_init',
-		'mbedtls_ctr_drbg_seed', 'mbedtls_high_level_strerr', 'mbedtls_ssl_write',
-		'v_brotli_msan_unpoison'] {
-		assert !quoted.should_emit_c_extern_decl(name)
-	}
+	// A `fn C.` declaration in a file that includes a header is already declared by
+	// that header; a generated prototype would only conflict with it.
+	mut g := FlatGen.new()
+	g.note_c_include_directive('bindings', header_source)
+	assert !g.should_emit_c_extern_decl_from_file('mbedtls_ssl_write', header_source, 'bindings')
+
+	// A file that links a C source or object ships no header, so it keeps its
+	// prototype, and so does a module that only links a C library.
+	mut linked := FlatGen.new()
+	linked.note_c_flag_directive('bindings', header_source, '@VMODROOT/helper.o')
+	assert linked.should_emit_c_extern_decl_from_file('helper_fn', header_source, 'bindings')
+
+	mut lib_only := FlatGen.new()
+	lib_only.note_c_flag_directive('bindings', source, '-lfoo')
+	assert lib_only.should_emit_c_extern_decl_from_file('foo_open', source, 'bindings')
+	lib_only.note_c_include_directive('bindings', '/project/other.c.v')
+	assert !lib_only.should_emit_c_extern_decl_from_file('foo_open', source, 'bindings')
+
+	// Nothing links and nothing includes: the symbol has to come from somewhere else,
+	// so V3 stays out of the way, exactly like the V1 backend.
+	mut bare := FlatGen.new()
+	assert !bare.should_emit_c_extern_decl_from_file('unrelated_api', source, 'main')
 }
 
 fn test_apple_framework_include_does_not_match_x11() {
@@ -585,4 +603,58 @@ fn test_specialized_generic_abi_name_does_not_classify_array_receivers() {
 	assert g.name_uses_specialized_generic_abi('pick[int]')
 	assert !g.name_uses_specialized_generic_abi('cli.[]Flag.get_int')
 	assert !g.name_uses_specialized_generic_abi('[]Flag.get_int')
+}
+
+// test_scratch_lookup_caches_keep_batch_entries_out_of_the_generator covers the
+// crash where a `forward_decls` batch memoized a struct C type into the master's
+// cache: both the key and the map node were owned by the batch's scratch arena,
+// so the next batch's lookup compared against freed memory.
+fn test_scratch_lookup_caches_keep_batch_entries_out_of_the_generator() {
+	mut g := FlatGen.new()
+	own_unique_struct_ct_cache := g.unique_struct_ct_cache
+	own_struct_cname_cache := g.struct_cname_cache
+	own_generic_app_cache := g.generic_app_cache
+	own_import_type_cache := g.import_type_cache
+	saved := g.begin_scratch_lookup_caches()
+	assert voidptr(g.unique_struct_ct_cache) != voidptr(own_unique_struct_ct_cache)
+	assert voidptr(g.struct_cname_cache) != voidptr(own_struct_cname_cache)
+	assert voidptr(g.generic_app_cache) != voidptr(own_generic_app_cache)
+	assert voidptr(g.import_type_cache) != voidptr(own_import_type_cache)
+	// The frozen entries stay readable through the overlay's base.
+	assert voidptr(g.generic_app_cache.base) == voidptr(own_generic_app_cache)
+	g.unique_struct_ct_cache.put('Batch', 'main__Batch')
+	g.param_types_cache['batch'] = [types.Type(types.void_)]
+	g.import_type_cache.unqualified_texts['Batch'] = 'main.Batch'
+	mut batch_file := g.import_type_cache.for_file('batch.v')
+	batch_file.texts['Batch'] = 'main.Batch'
+	batch_file.parsed['Batch'] = types.Type(types.void_)
+	g.restore_scratch_lookup_caches(saved)
+	assert voidptr(g.unique_struct_ct_cache) == voidptr(own_unique_struct_ct_cache)
+	assert voidptr(g.struct_cname_cache) == voidptr(own_struct_cname_cache)
+	assert voidptr(g.generic_app_cache) == voidptr(own_generic_app_cache)
+	assert voidptr(g.import_type_cache) == voidptr(own_import_type_cache)
+	assert g.unique_struct_ct_cache.get('Batch') == none
+	assert 'batch' !in g.param_types_cache
+	// The per-file child cache the batch created is dropped with it.
+	assert g.import_type_cache.unqualified_texts.len == 0
+	assert g.import_type_cache.by_file.len == 0
+	assert isnil(g.import_type_cache.last)
+}
+
+// test_scratch_lookup_caches_leave_disabled_caches_disabled keeps the swap about
+// where entries are written, never about whether a generator memoizes at all.
+fn test_scratch_lookup_caches_leave_disabled_caches_disabled() {
+	mut g := FlatGen.new()
+	g.import_type_cache = unsafe { nil }
+	assert isnil(g.local_typedef_shadow_facts)
+	assert isnil(g.struct_decl_pref_cache)
+	saved := g.begin_scratch_lookup_caches()
+	assert isnil(g.local_typedef_shadow_facts)
+	assert isnil(g.struct_decl_pref_cache)
+	assert isnil(g.import_type_cache)
+	assert !isnil(g.mut_recv_facts)
+	g.restore_scratch_lookup_caches(saved)
+	assert isnil(g.local_typedef_shadow_facts)
+	assert isnil(g.struct_decl_pref_cache)
+	assert isnil(g.import_type_cache)
 }

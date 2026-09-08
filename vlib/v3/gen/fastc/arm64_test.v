@@ -231,7 +231,7 @@ fn main() {
 	mut fixed := [2]int{}
 	fixed[0] += 2
 	fixed[1] = 3
-	if sizeof(fixed) != 8 || fixed_array_sum(fixed) != 5 || fixed_array_sum([2]int{}) != 0 {
+	if sizeof(fixed) != 16 || fixed_array_sum(fixed) != 5 || fixed_array_sum([2]int{}) != 0 {
 		println("wrong fixed array literal")
 		return
 	}
@@ -2167,5 +2167,41 @@ fn test_fastc_arm64_rejects_imported_source_output() {
 		}
 		assert rejected
 		assert os.read_file(dependency_path) or { '' } == dependency_source
+	}
+}
+
+fn test_fastc_arm64_platform_int_and_if_guard() {
+	$if arm64 ? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_selfhost_regressions_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, 'fn is_wide_int(value int) bool {
+	return value > 0xffffffff
+}
+
+fn main() {
+	mut values := [u8(1)]
+	for values.len < 1024 {
+		values << u8(1)
+	}
+	labels := {"backend": "native"}
+	selected := if label := labels["backend"] { label } else { "missing" }
+	if is_wide_int(0x100000000) {
+		println("\${selected}:\${values.cap}")
+	}
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native:1024\n'
 	}
 }

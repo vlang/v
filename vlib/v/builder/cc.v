@@ -14,6 +14,7 @@ import v.pref
 import v.util
 import v.vcache
 import term
+import strings
 
 const c_std = 'c99'
 const cpp_std = 'c++17'
@@ -1529,6 +1530,60 @@ fn looks_like_windows_path(value string) bool {
 	return value.contains('\\') || value.contains('/') || (value.len > 1 && value[1] == `:`)
 }
 
+// rewrite_windows_path_operand_arg rewrites only the path value of compiler
+// arguments that take a filesystem operand: the path bearing options `-I`,
+// `-L`, `-B`, `-o ` and `-c `, and bare source/object/archive file paths.
+// Option values that merely contain a path looking substring are left
+// untouched, so that e.g. `-DROOT="C:\Program Files\SDK"` keeps its exact
+// macro value after the rewrite.
+fn single_windows_path_operand(value string) ?string {
+	trimmed := value.trim_space()
+	if trimmed.len >= 2 && trimmed[0] in [`"`, `'`] {
+		if trimmed[trimmed.len - 1] != trimmed[0] {
+			return none
+		}
+		return trimmed[1..trimmed.len - 1]
+	}
+	if trimmed.bytes().any(it.is_space()) {
+		return none
+	}
+	return trimmed
+}
+
+fn quote_windows_gcc_path_operand(path string) string {
+	mut trailing_separators := 0
+	for i := path.len - 1; i >= 0 && path[i] == `\\`; i-- {
+		trailing_separators++
+	}
+	return '"${path}${'\\'.repeat(trailing_separators)}"'
+}
+
+fn rewrite_windows_path_operand_arg(arg string, resolver WindowsPathResolver) string {
+	if arg == '' {
+		return ''
+	}
+	for prefix in ['-I', '-L', '-B', '-o ', '-c '] {
+		if arg.starts_with(prefix) {
+			path := single_windows_path_operand(arg[prefix.len..]) or { return arg }
+			if looks_like_windows_path(path) {
+				return prefix + quote_windows_gcc_path_operand(resolver(path))
+			}
+		}
+	}
+	if !arg.starts_with('-') {
+		path := single_windows_path_operand(arg) or { return arg }
+		if looks_like_windows_path(path) {
+			return quote_windows_gcc_path_operand(resolver(path))
+		}
+	}
+	return arg
+}
+
+// rewrite_windows_path_arg rewrites any quoted path substring of a compiler
+// argument, in addition to the whole path operands handled by
+// rewrite_windows_path_operand_arg. tcc keeps this broader, pre-existing
+// rewrite, so its whole argument vector stays ASCII on Windows; the narrower
+// operand only rewrite is used for gcc, see tcc_windows_path_arg.
 fn rewrite_windows_path_arg(arg string, resolver WindowsPathResolver) string {
 	if arg == '' {
 		return ''
@@ -1542,19 +1597,18 @@ fn rewrite_windows_path_arg(arg string, resolver WindowsPathResolver) string {
 			}
 		}
 	}
-	for prefix in ['-I', '-L', '-B', '-o ', '-c '] {
-		if arg.starts_with(prefix) {
-			path := arg[prefix.len..].trim_space().trim('"')
-			if looks_like_windows_path(path) {
-				return prefix + '"${resolver(path)}"'
-			}
-		}
-	}
-	trimmed := arg.trim_space().trim('"')
-	if !arg.starts_with('-') && looks_like_windows_path(trimmed) {
-		return '"${resolver(trimmed)}"'
-	}
-	return arg
+	return rewrite_windows_path_operand_arg(arg, resolver)
+}
+
+// cc_uses_short_windows_paths reports whether the given C compiler needs the
+// Windows paths passed to it to be rewritten to their ASCII 8.3 short forms
+// first. Both tcc and the MinGW GCC toolchain, including its C++ drivers, read response file contents
+// with the ANSI C runtime: non-ASCII characters in paths get mangled on
+// Windows setups, whose active code page can not represent them (or whose
+// compiler expects UTF-8). V therefore prefers pure ASCII short paths and,
+// for gcc, falls back to the Unicode command line when no short name exists.
+fn cc_uses_short_windows_paths(cc CC, compiler_type pref.CompilerType) bool {
+	return cc in [.gcc, .tcc] || compiler_type == .cplusplus
 }
 
 fn short_windows_path(path string) string {
@@ -1566,17 +1620,28 @@ fn short_windows_path(path string) string {
 
 fn (v &Builder) tcc_windows_path(p string) string {
 	$if windows {
-		if v.ccoptions.cc == .tcc {
+		if cc_uses_short_windows_paths(v.ccoptions.cc, v.pref.ccompiler_type) {
 			return short_windows_path(p)
 		}
 	}
 	return p
 }
 
+// tcc_windows_path_arg rewrites the Windows path arguments of tcc and the
+// MinGW GCC toolchain to ASCII 8.3 short paths, so that non-ASCII project
+// paths survive the ANSI response file encoding (see issue #28126). tcc keeps
+// the broader rewrite_windows_path_arg, while GCC and its C++ drivers get only their real
+// filesystem operands rewritten: gcc argument vectors can contain user
+// `CFLAGS` with path looking values (e.g. `-DROOT="C:\Program Files\SDK"`),
+// which must not be altered. If an 8.3 alias is unavailable, should_use_rsp
+// sends gcc's remaining Unicode arguments through CreateProcessW instead.
 fn (v &Builder) tcc_windows_path_arg(arg string) string {
 	$if windows {
 		if v.ccoptions.cc == .tcc {
 			return rewrite_windows_path_arg(arg, short_windows_path)
+		}
+		if v.ccoptions.cc == .gcc || v.pref.ccompiler_type == .cplusplus {
+			return rewrite_windows_path_operand_arg(arg, short_windows_path)
 		}
 	}
 	return arg
@@ -1599,7 +1664,339 @@ fn shell_safe_cc_arg(arg string) string {
 	return arg
 }
 
-fn (v &Builder) should_use_rsp(rsp_args []string) bool {
+fn gcc_rsp_args_are_ascii(args []string) bool {
+	return args.all(it.is_ascii())
+}
+
+// ccompiler_exec_args turns the builder's shell-formatted option fragments into the
+// exact argument vector expected by os.exec, without corrupting non-ASCII bytes.
+fn ccompiler_exec_args(ccompiler string, args []string) []string {
+	mut exact_args := [ccompiler]
+	mut current := []u8{}
+	mut quote := u8(0)
+	mut has_arg := false
+	input := args.join(' ')
+	mut i := 0
+	for i < input.len {
+		ch := input[i]
+		if quote == 0 && ch.is_space() {
+			if has_arg {
+				exact_args << current.bytestr()
+				current = []u8{}
+				has_arg = false
+			}
+			i++
+			continue
+		}
+		if ch == `\\` {
+			start := i
+			for i < input.len && input[i] == `\\` {
+				i++
+			}
+			count := i - start
+			if i < input.len && input[i] == `"` {
+				for _ in 0 .. count / 2 {
+					current << `\\`
+				}
+				if count % 2 == 1 {
+					current << `"`
+				} else {
+					quote = if quote == `"` { u8(0) } else { u8(`"`) }
+				}
+				has_arg = true
+				i++
+				continue
+			}
+			for _ in 0 .. count {
+				current << `\\`
+			}
+			has_arg = true
+			continue
+		}
+		if ch in [`"`, `'`] {
+			if quote == 0 {
+				quote = ch
+				has_arg = true
+				i++
+				continue
+			}
+			if quote == ch {
+				quote = 0
+				i++
+				continue
+			}
+		}
+		current << ch
+		has_arg = true
+		i++
+	}
+	if has_arg {
+		exact_args << current.bytestr()
+	}
+	return exact_args
+}
+
+fn gcc_response_file_content(args []string) string {
+	exact_args := ccompiler_exec_args('', args)[1..]
+	return gcc_response_file_content_for_exact_args(exact_args)
+}
+
+fn gcc_response_file_content_for_exact_args(args []string) string {
+	return args.map('"' + it.replace('\\', '\\\\').replace('"', '\\"') + '"').join(' ')
+}
+
+fn windows_quote_exec_arg(arg string) string {
+	if arg.len == 0 {
+		return '""'
+	}
+	quote_char := `"`
+	backslash := `\\`
+	mut quoted := strings.new_builder(arg.len + 8)
+	quoted.write_u8(quote_char)
+	mut pending_backslashes := 0
+	for ch in arg.bytes() {
+		if ch == backslash {
+			pending_backslashes++
+			continue
+		}
+		if ch == quote_char {
+			for _ in 0 .. pending_backslashes * 2 + 1 {
+				quoted.write_u8(backslash)
+			}
+			quoted.write_u8(quote_char)
+			pending_backslashes = 0
+			continue
+		}
+		for _ in 0 .. pending_backslashes {
+			quoted.write_u8(backslash)
+		}
+		pending_backslashes = 0
+		quoted.write_u8(ch)
+	}
+	for _ in 0 .. pending_backslashes * 2 {
+		quoted.write_u8(backslash)
+	}
+	quoted.write_u8(quote_char)
+	return quoted.str()
+}
+
+struct GccUnicodeResponsePlan {
+mut:
+	args                   []string
+	response_files         []string
+	response_contents      []string
+	response_encoding      GccResponseFileEncoding
+	requires_full_response bool
+	full_response_content  string
+}
+
+enum GccResponseFileEncoding {
+	ascii
+	ansi
+	utf8
+}
+
+fn (mut plan GccUnicodeResponsePlan) add_ascii_run(response_file string, args []string) {
+	file := '${response_file}.${plan.response_files.len}'
+	plan.args << '@${file}'
+	plan.response_files << file
+	plan.response_contents << gcc_response_file_content_for_exact_args(args)
+}
+
+fn gcc_unicode_response_plan(response_file string, args []string, max_command_bytes int) GccUnicodeResponsePlan {
+	exact_args := ccompiler_exec_args('', args)[1..]
+	mut plan := GccUnicodeResponsePlan{
+		response_encoding: .ascii
+	}
+	mut ascii_run := []string{}
+	for arg in exact_args {
+		if arg.is_ascii() {
+			ascii_run << arg
+			continue
+		}
+		if ascii_run.len > 0 {
+			plan.add_ascii_run(response_file, ascii_run)
+			ascii_run = []string{}
+		}
+		plan.args << arg
+	}
+	if ascii_run.len > 0 {
+		plan.add_ascii_run(response_file, ascii_run)
+	}
+	mut quoted_command_bytes := 0
+	for arg in plan.args {
+		// Account for the exact backslash+quote expansion used by CreateProcessW.
+		quoted_command_bytes += windows_quote_exec_arg(arg).len + 1
+	}
+	if quoted_command_bytes > max_command_bytes {
+		plan.requires_full_response = true
+		plan.full_response_content = gcc_response_file_content_for_exact_args(exact_args)
+	}
+	return plan
+}
+
+fn gcc_unicode_full_response_plan(response_file string, content string, encoding GccResponseFileEncoding) GccUnicodeResponsePlan {
+	return GccUnicodeResponsePlan{
+		args: ['@${response_file}']
+		response_files: [response_file]
+		response_contents: [content]
+		response_encoding: encoding
+	}
+}
+
+fn response_file_content_is_ansi_lossless(content string) bool {
+	$if windows {
+		ansi := string_to_ansi_not_null_terminated(content)
+		ansi_text := ansi.bytestr()
+		decoded := unsafe { string_from_wide(ansi_text.to_wide(from_ansi: true)) }
+		return decoded == content
+	}
+	return true
+}
+
+fn gcc_response_file_encoding_from_probes(utf8_supported bool, ansi_supported bool, ansi_preserves_content bool) !GccResponseFileEncoding {
+	if utf8_supported {
+		return .utf8
+	}
+	if ansi_supported && ansi_preserves_content {
+		return .ansi
+	}
+	return error('the Windows GCC command has too many non-ASCII arguments for the command line, and the selected driver accepts neither a compatible UTF-8 response file nor a lossless active-code-page response file; enable 8.3 short paths or use a Unicode-capable GCC or Clang toolchain')
+}
+
+fn first_non_ascii_response_rune(content string) string {
+	for character in content.runes() {
+		if character > 127 {
+			return character.str()
+		}
+	}
+	return ''
+}
+
+fn (mut v Builder) windows_gcc_response_file_probe(ccompiler string, response_file string, marker string, encoding GccResponseFileEncoding) bool {
+	$if windows {
+		probe_id := '${os.getpid()}_${time.sys_mono_now()}'
+		probe_source := '${response_file}.${probe_id}_${marker}.c'
+		probe_response := '${response_file}.${probe_id}.encoding_probe'
+		defer {
+			os.rm(probe_source) or {}
+			os.rm(probe_response) or {}
+		}
+		transport_source := v.tcc_windows_path(probe_source)
+		// Resolve the production path transport before creating the leaf so the
+		// non-ASCII marker remains available to distinguish the driver's decoder.
+		os.write_file(probe_source, '') or { return false }
+		probe_content := gcc_response_file_content_for_exact_args(['-fsyntax-only', '-x', 'c',
+			transport_source])
+		if encoding == .utf8 {
+			os.write_file(probe_response, probe_content) or { return false }
+		} else {
+			os.write_file_array(probe_response, string_to_ansi_not_null_terminated(probe_content)) or {
+				return false
+			}
+		}
+		probe_arg := '@${v.tcc_windows_path(probe_response)}'
+		probe_cmd := '${v.quote_compiler_name(ccompiler)} ${windows_quote_exec_arg(probe_arg)}'
+		probe_result := v.execute_ccompiler(ccompiler, probe_cmd, [ccompiler, probe_arg])
+		return probe_result.exit_code == 0
+	}
+	return false
+}
+
+fn (mut v Builder) windows_gcc_response_file_encoding(ccompiler string, response_file string, content string) !GccResponseFileEncoding {
+	marker := first_non_ascii_response_rune(content)
+	if marker == '' {
+		return .ascii
+	}
+	utf8_supported := v.windows_gcc_response_file_probe(ccompiler, response_file, marker, .utf8)
+	ansi_preserves_content := response_file_content_is_ansi_lossless(content)
+	mut ansi_supported := false
+	if !utf8_supported && ansi_preserves_content {
+		ansi_supported = v.windows_gcc_response_file_probe(ccompiler, response_file, marker, .ansi)
+	}
+	return gcc_response_file_encoding_from_probes(utf8_supported, ansi_supported, ansi_preserves_content)
+}
+
+fn write_gcc_response_file(response_file string, response_file_content string, encoding GccResponseFileEncoding) {
+	if encoding == .utf8 {
+		os.write_file(response_file, response_file_content) or {
+			write_response_file_error(response_file, err)
+		}
+		return
+	}
+	write_response_file(response_file, response_file_content)
+}
+
+fn (v &Builder) ccompiler_response_file_content(args []string, formatted string) string {
+	$if windows {
+		if v.ccoptions.cc == .gcc || v.pref.ccompiler_type == .cplusplus {
+			return gcc_response_file_content(args)
+		}
+	}
+	return formatted.replace('\\', '\\\\')
+}
+
+fn (v &Builder) windows_gcc_needs_direct_exec(args []string) bool {
+	$if windows {
+		return (v.ccoptions.cc == .gcc || v.pref.ccompiler_type == .cplusplus)
+			&& !gcc_rsp_args_are_ascii(args)
+	}
+	return false
+}
+
+fn ccompiler_is_windows_batch_file(ccompiler string) bool {
+	name := resolved_windows_ccompiler_path(ccompiler).to_lower_ascii()
+	return name.ends_with('.bat') || name.ends_with('.cmd')
+}
+
+fn resolved_windows_ccompiler_path(ccompiler string) string {
+	name := ccompiler.trim_space().trim('"').trim("'")
+	$if windows {
+		if os.file_ext(name) == '' && (name.contains('/') || name.contains('\\')) {
+			for suffix in ['.exe', '.bat', '.cmd', ''] {
+				candidate := name + suffix
+				if os.is_file(candidate) {
+					return os.abs_path(candidate)
+				}
+			}
+		}
+		return os.find_abs_path_of_executable(name) or { name }
+	}
+	return name
+}
+
+fn execute_windows_batch_ccompiler(cmd string) os.Result {
+	$if windows {
+		// `os.execute` expands percent-delimited environment variables before starting
+		// cmd.exe. Expand this indirection once inside cmd.exe instead, so percent signs
+		// carried by compiler arguments are not scanned again.
+		command_env_name := 'V_CCOMPILER_BATCH_COMMAND_${os.getpid()}'
+		old_command := os.getenv_opt(command_env_name)
+		os.setenv(command_env_name, cmd, true)
+		defer {
+			if previous := old_command {
+				os.setenv(command_env_name, previous, true)
+			} else {
+				os.unsetenv(command_env_name)
+			}
+		}
+		command_interpreter := os.getenv_opt('COMSPEC') or { 'cmd.exe' }
+		return os.exec([command_interpreter, '/d', '/v:off', '/s', '/c', '%${command_env_name}%'])
+	}
+	return os.execute(cmd)
+}
+
+fn (v &Builder) execute_ccompiler(ccompiler string, cmd string, exec_args []string) os.Result {
+	if exec_args.len > 0 {
+		if ccompiler_is_windows_batch_file(ccompiler) {
+			return execute_windows_batch_ccompiler(cmd)
+		}
+		return os.exec(exec_args)
+	}
+	return os.execute(cmd)
+}
+
+fn (v &Builder) response_files_are_allowed(rsp_args []string) bool {
 	if v.pref.no_rsp || v.pref.os == .termux {
 		return false
 	}
@@ -1607,6 +2004,18 @@ fn (v &Builder) should_use_rsp(rsp_args []string) bool {
 		if arg.contains("'\\''") || arg.contains('\n') || arg.contains('\r') {
 			return false
 		}
+	}
+	return true
+}
+
+fn (v &Builder) should_use_rsp(rsp_args []string) bool {
+	if !v.response_files_are_allowed(rsp_args) {
+		return false
+	}
+	// os.short_path returns its input when a Windows volume has 8.3 aliases disabled.
+	// An ANSI response file would replace those remaining Unicode characters with `?`.
+	if v.windows_gcc_needs_direct_exec(rsp_args) {
+		return false
 	}
 	return true
 }
@@ -1975,6 +2384,8 @@ pub fn (mut v Builder) cc() {
 		v.dump_c_options(all_args)
 		mut rsp_args := all_args.map(v.rsp_safe_arg(it))
 		rsp_args = rsp_args.map(v.tcc_windows_path_arg(it))
+		use_unicode_rsp := v.response_files_are_allowed(rsp_args)
+			&& v.windows_gcc_needs_direct_exec(rsp_args)
 		mut should_use_rsp := v.should_use_rsp(rsp_args)
 		mut str_args := if !should_use_rsp {
 			rsp_args.map(shell_safe_cc_arg(it)).join(' ').replace('\n', ' ')
@@ -1990,9 +2401,38 @@ pub fn (mut v Builder) cc() {
 		}
 		mut response_file := ''
 		mut response_file_content := str_args
-		if should_use_rsp {
+		mut compiler_exec_args := []string{}
+		if use_unicode_rsp {
 			response_file = '${v.out_name_c}.rsp'
-			response_file_content = str_args.replace('\\', '\\\\')
+			max_command_bytes := if ccompiler_is_windows_batch_file(ccompiler) {
+				7000
+			} else {
+				30000
+			}
+			mut plan := gcc_unicode_response_plan(response_file, rsp_args, max_command_bytes)
+			if plan.requires_full_response {
+				response_encoding := v.windows_gcc_response_file_encoding(ccompiler, response_file, plan.full_response_content) or { verror(err.msg()) }
+				plan = gcc_unicode_full_response_plan(response_file, plan.full_response_content, response_encoding)
+			}
+			mut transport_args := plan.args.clone()
+			for i, arg in transport_args {
+				if arg.starts_with('@') {
+					transport_args[i] = '@${v.tcc_windows_path(arg[1..])}'
+				}
+			}
+			for i, file in plan.response_files {
+				write_gcc_response_file(file, plan.response_contents[i], plan.response_encoding)
+			}
+			response_file_content = plan.response_contents.join('\n')
+			compiler_exec_args = [ccompiler]
+			compiler_exec_args << transport_args
+			cmd = '${v.quote_compiler_name(ccompiler)} ${transport_args.map(windows_quote_exec_arg(it)).join(' ')}'
+			if !v.ccoptions.debug_mode {
+				v.pref.cleanup_files << plan.response_files
+			}
+		} else if should_use_rsp {
+			response_file = '${v.out_name_c}.rsp'
+			response_file_content = v.ccompiler_response_file_content(rsp_args, str_args)
 			write_response_file(response_file, response_file_content)
 			rspexpr := '@${v.tcc_windows_path(response_file)}'
 			cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'
@@ -2017,7 +2457,10 @@ pub fn (mut v Builder) cc() {
 		// Run
 		ccompiler_label := 'C ${os.file_name(ccompiler):3}'
 		util.timing_start(ccompiler_label)
-		res := os.execute(cmd)
+		if compiler_exec_args.len == 0 && v.windows_gcc_needs_direct_exec(rsp_args) {
+			compiler_exec_args = ccompiler_exec_args(ccompiler, rsp_args)
+		}
+		res := v.execute_ccompiler(ccompiler, cmd, compiler_exec_args)
 		util.timing_measure(ccompiler_label)
 		if v.pref.show_c_output {
 			v.show_c_compiler_output(ccompiler, res)
@@ -2162,7 +2605,7 @@ fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler st
 		mut response_file_content := str_args
 		if should_use_rsp {
 			response_file = '${temporary_object}.rsp'
-			response_file_content = str_args.replace('\\', '\\\\')
+			response_file_content = v.ccompiler_response_file_content(rsp_args, str_args)
 			write_response_file(response_file, response_file_content)
 			rspexpr := '@${v.tcc_windows_path(response_file)}'
 			cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'
@@ -2174,7 +2617,7 @@ fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler st
 			return ''
 		}
 		util.timing_start('C object')
-		res := os.execute(cmd)
+		res := v.execute_ccompiler(ccompiler, cmd, []string{})
 		util.timing_measure('C object')
 		os.chdir(original_pwd) or {}
 		if v.pref.show_c_output {

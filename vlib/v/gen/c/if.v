@@ -4,6 +4,7 @@
 module c
 
 import v.ast
+import v.token
 
 // write_option_wrapper_if_assignment_smartcast handles an option variable that
 // carries an assignment smartcast (recorded when a non-option value was assigned
@@ -969,6 +970,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				}
 			}
 		} else if branch.cond is ast.IfGuardExpr {
+			previous_index_error_pos := g.discarded_index_error_pos
+			g.discarded_index_error_pos = token.Pos{}
+			if !guard_else_uses_err[i] && branch.cond.expr is ast.IndexExpr {
+				// Only the guard's outer lookup discards its error. Nested index
+				// expressions can still expose their own error in an or block.
+				g.discarded_index_error_pos = branch.cond.expr.pos
+			}
 			mut var_name := guard_vars[i]
 			mut short_opt := false
 			g.left_is_opt = true
@@ -1136,6 +1144,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					}
 				}
 			}
+			g.discarded_index_error_pos = previous_index_error_pos
 		} else {
 			if i == 0 && node.branches.len > 1 && !needs_tmp_var && needs_conds_order {
 				cond_var_name := g.new_tmp_var()

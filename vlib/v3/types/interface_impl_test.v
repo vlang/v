@@ -61,6 +61,27 @@ fn test_stable_interface_type_ids_preserve_existing_ids_after_late_collisions() 
 	assert after['Tnndxrxb'] != before['Twvlzleh']
 }
 
+fn test_codegen_fork_keeps_frozen_interface_ids_after_late_collision() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.interface_names['Any'] = true
+	tc.structs['Twvlzleh'] = []StructField{}
+	tc.prepare_interface_query_indexes()
+	tc.freeze_pre_transform_interface_impl_names()
+	before := tc.interface_type_ids('Any')
+
+	// The late name sorts first, but must not take the frozen type's ID.
+	tc.structs['Tnndxrxb'] = []StructField{}
+	tc.invalidate_short_type_name_index()
+	tc.clear_interface_impl_cache()
+	expected := tc.interface_type_ids('Any')
+	assert expected['Twvlzleh'] == before['Twvlzleh']
+	assert expected['Tnndxrxb'] != expected['Twvlzleh']
+	worker := tc.fork_for_parallel_codegen()
+	assert worker.interface_type_ids('Any') == expected
+	assert worker.interface_impl_names('Any') == tc.interface_impl_names('Any')
+}
+
 fn test_short_type_name_ambiguity_remains_sticky() {
 	mut index := map[string]string{}
 	index_short_type_name('first.Event', mut index)

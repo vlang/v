@@ -28,7 +28,15 @@ fn test_c_abi_prelude_matches_host_headers() {
 	exe_path := os.join_path_single(test_dir, 'abi_check')
 	os.write_file(source_path, source) or { panic(err) }
 	tcc_lib := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib')
-	mut args := ['-std=gnu11', '-B${tcc_lib}', '-I${os.join_path_single(tcc_lib, 'include')}',
+	// tcc resolves its own headers and libtcc1.a under `-B`. The bundle keeps them in
+	// `lib` on macOS but in `lib/tcc` on Linux, so point `-B` at whichever one has them;
+	// `-L` stays on `lib`, which is where libgc/libtcc live in both layouts.
+	tcc_base := if os.is_file(os.join_path(tcc_lib, 'tcc', 'include', 'stddef.h')) {
+		os.join_path_single(tcc_lib, 'tcc')
+	} else {
+		tcc_lib
+	}
+	mut args := ['-std=gnu11', '-B${tcc_base}', '-I${os.join_path_single(tcc_base, 'include')}',
 		'-L${tcc_lib}', '-I/usr/local/include', '-L/usr/local/lib']
 	if host_os == 'macos' {
 		mut sdk_root := os.getenv('SDKROOT')

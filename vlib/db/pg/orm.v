@@ -311,9 +311,14 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []i32, mut formats 
 			formats << 1
 		}
 		u8 {
-			types << u32(Oid.t_char)
-			vals << &char(&data)
-			lens << i32(sizeof(u8))
+			// `u8` columns are declared as SMALLINT (int2) by pg_type_from_v(), so
+			// they have to be bound as int2 too. Binding them as the internal
+			// `"char"` type (Oid.t_char) makes PostgreSQL reject the statement with
+			// `column ... is of type smallint but expression is of type "char"`.
+			types << u32(Oid.t_int2)
+			num := conv.hton16(u16(data))
+			vals << &char(&num)
+			lens << i32(sizeof(u16))
 			formats << 1
 		}
 		u16 {
@@ -338,9 +343,11 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []i32, mut formats 
 			formats << 1
 		}
 		i8 {
-			types << u32(Oid.t_char)
-			vals << &char(&data)
-			lens << i32(sizeof(i8))
+			// See the `u8` branch above: `i8` columns are SMALLINT (int2) as well.
+			types << u32(Oid.t_int2)
+			num := conv.hton16(u16(i16(data)))
+			vals << &char(&num)
+			lens << i32(sizeof(i16))
 			formats << 1
 		}
 		i16 {
@@ -687,8 +694,10 @@ fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 			}
 			// u8
 			orm.type_idx['u8'] {
-				data := str.i8()
-				return orm.Primitive(*unsafe { &u8(&data) })
+				// `u8` columns are SMALLINT, and are bound as a non negative int2,
+				// so the text PostgreSQL returns spans the full 0..255 range;
+				// parsing it as an i8 would saturate everything above 127.
+				return orm.Primitive(str.u8())
 			}
 			// u16
 			orm.type_idx['u16'] {
