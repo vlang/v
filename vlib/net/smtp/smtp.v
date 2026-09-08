@@ -648,22 +648,30 @@ fn format_rfc2047_phrase(s string) ?string {
 		return none
 	}
 	mut has_encoded_word := false
+	mut formatted := []string{cap: words.len}
 	for word in words {
 		if is_rfc2047_encoded_word(word) {
 			has_encoded_word = true
+			formatted << word
 			continue
 		}
 		if word.starts_with('"') {
+			unquoted := unquote_name(word)
+			if unquoted == word {
+				return none
+			}
+			formatted << if unquoted.is_ascii() { word } else { encode_rfc2047(unquoted) }
 			continue
 		}
 		if !word.bytes().all(is_rfc5322_atext(it)) {
 			return none
 		}
+		formatted << word
 	}
 	if !has_encoded_word {
 		return none
 	}
-	return words.join('\r\n ')
+	return formatted.join('\r\n ')
 }
 
 fn split_rfc5322_phrase_words(s string) ?[]string {
