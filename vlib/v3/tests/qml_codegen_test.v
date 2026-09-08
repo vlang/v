@@ -34,6 +34,7 @@ fn test_qml_lowers_to_direct_ui2_elements() {
 	}
 	os.write_file(os.join_path(root, 'form.qml'), 'Screen {
     id: root
+    width: root.half
     property f64 half: root.width / 2
     Repeater {
         model: app.items
@@ -120,7 +121,7 @@ fn main() {
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '9 a:0 7 select:7\n9 progressbar\nslider 12.5:0.0:100.0 select:4\nswitch false select:5\ncombobox Home choose:Work\ncheckbox 2.0:4.0 select:app.selected', run.output
-	os.write_file(os.join_path(root, 'form.qml'), 'Screen { Button { on_tap: app.missing() } }') or { panic(err) }
+	os.write_file(os.join_path(root, 'form.qml'), 'Screen { MessageBox { Button { on_tap: app.missing() } } }') or { panic(err) }
 	invalid := os.execute('${v3_bin} -nocache -path "${root}|${qml_codegen_vlib_dir}" -b c -o ${bin} ${main_path}')
 	assert invalid.exit_code != 0, invalid.output
 	assert invalid.output.contains('missing'), invalid.output
@@ -152,6 +153,9 @@ pub struct SwitchConfig { pub: id string action_id string frame Rect active bool
 pub fn switch_control(config SwitchConfig) Element { return Element{kind: .switch_control, id: config.id, action_id: config.action_id, frame: config.frame, checked: config.active, switch_style: config.style, accessibility_role: 'switch', accessibility_label: 'Switch', accessibility_value: if config.active { 'on' } else { 'off' }} }
 pub struct SpinnerConfig { pub: id string action_id string frame Rect text string values []string text_autoupdate bool box BoxStyle text_style TextStyle }
 pub fn spinner(config SpinnerConfig) Element { return Element{kind: .dropdown, id: config.id, action_id: config.action_id, frame: config.frame, text: if config.text_autoupdate && config.values.len > 0 { config.values[0] } else { config.text }, box: config.box, text_style: config.text_style, accessibility_role: 'combobox', accessibility_label: 'Spinner'} }
+pub struct MessageBoxAction { pub: id string action_id string title string }
+pub struct MessageBoxConfig { pub: id string frame Rect title string text string hidden bool width f64 height f64 actions []MessageBoxAction }
+pub fn custom_message_box(config MessageBoxConfig) Element { return Element{kind: .view, id: config.id, frame: config.frame, text: config.text, hidden: config.hidden} }
 pub fn compiled_qml_event(_ string, _ string, _ string, action string) string { return action }
 pub fn compiled_qml_event_arg(_ string, _ string, _ string, action string, argument string) string { return action + ':' + argument }
 pub fn compiled_qml_event_arg_path(_ string, _ string, _ string, action string, path string) string { return action + ':' + path }

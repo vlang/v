@@ -913,11 +913,21 @@ fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, in
 	c.out.writeln('\t_ = ${input}')
 	mut scope := qml_clone_scope(incoming)
 	mut named_props := map[string]string{}
+	// Register every declared property before resolving expressions, then emit
+	// those declarations before ordinary bindings. This lets an earlier binding
+	// such as `width: root.half` refer to a custom property declared later.
+	for property in node.properties {
+		if property.declared_type.len > 0 {
+			named_props[property.name] = 'qml_property_${suffix}_${qml_var(property.name)}'
+		}
+	}
 	if node.id.len > 0 {
-		scope.ids[node.id] = QmlNamedValue{ frame: input, props: named_props }
+		scope.ids[node.id] = QmlNamedValue{ frame: input, props: named_props.clone() }
 	}
 	mut properties := map[string]string{}
-	for property in node.properties {
+	mut ordered_properties := node.properties.filter(it.declared_type.len > 0)
+	ordered_properties << node.properties.filter(it.declared_type.len == 0)
+	for property in ordered_properties {
 		if property.name == 'id'
 			|| property.name in ['on_tap', 'on_change', 'on_active', 'on_text', 'on_submit'] {
 			continue
@@ -925,10 +935,6 @@ fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, in
 		name := 'qml_property_${suffix}_${qml_var(property.name)}'
 		c.out.writeln('\t${name} := ${c.expr(property.expr, scope, qml_property_use(property))}')
 		properties[property.name] = name
-		if property.declared_type.len > 0 && node.id.len > 0 {
-			named_props[property.name] = name
-			scope.ids[node.id] = QmlNamedValue{ frame: input, props: named_props.clone() }
-		}
 	}
 	frame := 'qml_frame_${suffix}'
 	c.out.writeln('\t${frame} := ui2.rect(${qml_prop(properties, 'x', input + '.x')}, ${qml_prop(properties, 'y', input + '.y')}, ${qml_prop(properties, 'width', input + '.width')}, ${qml_prop(properties, 'height', input + '.height')})')
@@ -1437,10 +1443,11 @@ fn (mut c QmlCompiler) compile_spinner(node &QmlNode, suffix string, frame strin
 
 fn (mut c QmlCompiler) compile_message_box(node &QmlNode, suffix string, frame string, properties map[string]string, scope QmlScope, key string, action string) {
 	mut actions := []string{}
-	for child in node.children {
+	for child_index, child in node.children {
 		if child.tag != 'Button' {
 			continue
 		}
+		c.write_action_type_checks(child, '${suffix}_message_action_${child_index}', scope)
 		child_id := qml_quote(child.id)
 		child_action := c.compiled_event_value(child, 'on_tap', scope, child_id)
 		text := if property := qml_find_property(child, 'text') {

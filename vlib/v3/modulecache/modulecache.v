@@ -23,7 +23,7 @@ const c_source_directives_end = '/* V3CACHE_SOURCE_DIRECTIVES_END */'
 const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
-const source_signature_cache_format = 'v3-source-signature-cache-5'
+const source_signature_cache_format = 'v3-source-signature-cache-6'
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
@@ -240,6 +240,7 @@ struct SourceSignatureDetails {
 	signature      string
 	validation     []string
 	source_digests []string
+	cacheable      bool
 }
 
 fn source_signature_details(source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
@@ -250,6 +251,7 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 	mut pkgconfig_names := map[string]bool{}
 	mut uses_build_pseudo := false
 	mut uses_version_pseudo := false
+	mut cacheable := true
 	mut validation := []string{}
 	mut source_digests := []string{cap: files.len}
 	for file in files {
@@ -262,7 +264,11 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
-		for qml_path in compile_time_qml_paths(source, path) {
+		qml_paths, has_unresolved_qml_path := compile_time_qml_paths(source, path)
+		if has_unresolved_qml_path {
+			cacheable = false
+		}
+		for qml_path in qml_paths {
 			qml_content := os.read_bytes(qml_path) or { return SourceSignatureDetails{} }
 			validation << 'qml=${qml_path}\t${file_metadata_signature(qml_path)}'
 			hash = hash_bytes(hash, [u8(0xf8)])
@@ -352,10 +358,18 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 		hash = hash_bytes(hash, [u8(if available { 1 } else { 0 })])
 		hash = hash_bytes(hash, [u8(0xff)])
 	}
+	if !cacheable {
+		// Keep repeated queries consistent inside one compiler process, while
+		// ensuring another process cannot reuse an artifact whose QML input path
+		// could not be extracted from source text.
+		hash = hash_bytes(hash, [u8(0xf7)])
+		hash = hash_bytes(hash, os.getpid().str().bytes())
+	}
 	return SourceSignatureDetails{
 		signature: hash.hex()
 		validation: validation
 		source_digests: source_digests
+		cacheable: cacheable
 	}
 }
 
@@ -576,6 +590,14 @@ fn (m &Manager) source_signature(source_files []string) string {
 	return m.source_signature_details(source_files).signature
 }
 
+fn (m &Manager) cacheable_source_signature(source_files []string) ?string {
+	details := m.source_signature_details(source_files)
+	if !details.cacheable {
+		return none
+	}
+	return details.signature
+}
+
 fn (m &Manager) source_signature_details(source_files []string) SourceSignatureDetails {
 	return cached_source_signature_details_with_build_values(m.dir, 'module', source_files, m.build_pseudo_values, m.version_pseudo_values)
 }
@@ -599,7 +621,7 @@ fn cached_source_signature_details_with_build_values(cache_dir string, namespace
 		}
 	}
 	details := source_signature_details(paths, build_pseudo_values, version_pseudo_values)
-	if details.signature.len == 0 {
+	if details.signature.len == 0 || !details.cacheable {
 		return details
 	}
 	fresh_metadata := source_files_metadata_signature(paths)
@@ -748,6 +770,7 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 	return SourceSignatureDetails{
 		signature: signature
 		source_digests: source_digests
+		cacheable: true
 	}
 }
 
@@ -930,11 +953,12 @@ fn signature_string_call_arg(source string, start int) (string, int, bool) {
 	return '', source.len, false
 }
 
-fn compile_time_qml_paths(source string, source_file string) []string {
+fn compile_time_qml_paths(source string, source_file string) ([]string, bool) {
 	if !source.contains('\$qml') {
-		return []
+		return []string{}, false
 	}
 	mut paths := map[string]bool{}
+	mut has_unresolved_path := false
 	mut pos := 0
 	for pos < source.len {
 		if source[pos] == `/` && pos + 1 < source.len
@@ -959,12 +983,14 @@ fn compile_time_qml_paths(source string, source_file string) []string {
 		if ok {
 			path := resolve_signature_qml_path(cached_unescape_v_string(raw_path), source_file)
 			paths[os.real_path(path)] = true
+		} else {
+			has_unresolved_path = true
 		}
 		pos = if next_pos > pos { next_pos } else { pos + 4 }
 	}
 	mut result := paths.keys()
 	result.sort()
-	return result
+	return result, has_unresolved_path
 }
 
 fn resolve_signature_qml_path(path string, source_file string) string {
@@ -1079,6 +1105,10 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 		return none
 	}
 	source_details := m.source_signature_details(source_files)
+	if !source_details.cacheable {
+		cache_trace_module_miss(module_name, 'source has an unresolved compile-time QML path')
+		return none
+	}
 	expected := entry_stamp(m.salt, source_details.signature)
 	source_bodies := header_stamp_source_bodies(stamp, expected) or {
 		cache_trace_module_miss(module_name, 'source signature changed')
@@ -1117,6 +1147,9 @@ pub fn (m &Manager) valid_header(module_name string, source_files []string) ?Ent
 	}
 	stamp := os.read_file(entry.header_stamp) or { return none }
 	source_details := m.source_signature_details(source_files)
+	if !source_details.cacheable {
+		return none
+	}
 	expected := entry_stamp(m.salt, source_details.signature)
 	source_bodies := header_stamp_source_bodies(stamp, expected) or { return none }
 	return Entry{
@@ -1148,7 +1181,8 @@ pub fn (m &Manager) valid_object(cache_name string, source_files []string) ?Entr
 		return none
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
-	if !object_stamp_valid(stamp, entry_stamp(m.salt, m.source_signature(source_files))) {
+	source_hash := m.cacheable_source_signature(source_files) or { return none }
+	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_hash)) {
 		cache_trace_module_miss(cache_name, 'object source or dependency changed')
 		return none
 	}
@@ -1185,7 +1219,8 @@ pub fn (m &Manager) valid_object_for_compile_signature(cache_name string, source
 		return none
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
-	if !object_stamp_valid(stamp, entry_stamp(m.salt, m.source_signature(source_files))) {
+	source_hash := m.cacheable_source_signature(source_files) or { return none }
+	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_hash)) {
 		return none
 	}
 	expected := 'compile=${hash_text(compile_signature)}'
@@ -1209,7 +1244,8 @@ pub fn (m &Manager) valid_cgen(source_files []string, generation_signature strin
 		return none
 	}
 	stamp := os.read_file(entry.stamp) or { return none }
-	expected := cgen_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs, generation_signature)
+	source_hash := m.cacheable_source_signature(source_files) or { return none }
+	expected := cgen_entry_stamp(m.salt, source_hash, dependency_inputs, generation_signature)
 	if stamp != expected {
 		return none
 	}
@@ -1238,7 +1274,8 @@ pub fn (m &Manager) cached_cgen_dependency_inputs(source_files []string, generat
 		return none
 	}
 	stamp := os.read_file(entry.stamp) or { return none }
-	expected_head := entry_stamp(m.salt, m.source_signature(source_files)) + 'generation=${hash_text(generation_signature)}\n'
+	source_hash := m.cacheable_source_signature(source_files) or { return none }
+	expected_head := entry_stamp(m.salt, source_hash) + 'generation=${hash_text(generation_signature)}\n'
 	return cached_dependency_inputs_from_stamp(stamp, expected_head, fixed_dependencies, restored_prefixes)
 }
 

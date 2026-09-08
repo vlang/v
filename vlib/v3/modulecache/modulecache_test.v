@@ -431,12 +431,41 @@ fn test_cached_source_signature_tracks_qml_inputs() {
 
 	first := cached_source_signature(cache_dir, 'qml', [source])
 	assert first.len > 0
+	assert source_signature_details([source], '', '').cacheable
 	os.write_file(qml, 'Label { text: "Changed" }')!
 	second := cached_source_signature(cache_dir, 'qml', [source])
 	assert second.len > 0
 	assert second != first
-	assert compile_time_qml_paths("// \$qml('ignored.qml')\nconst s = \"\$qml('also_ignored.qml')\"",
-		source).len == 0
+	ignored_paths, ignored_unresolved := compile_time_qml_paths("// \$qml('ignored.qml')\nconst s = \"\$qml('also_ignored.qml')\"",
+		source)
+	assert ignored_paths.len == 0
+	assert !ignored_unresolved
+
+	os.write_file(source,
+		"module main\n\nconst form_path = 'form.qml'\nfn build() { _ = \$qml(form_path) }\n")!
+	before_cache_entries := os.ls(cache_dir)!.len
+	dynamic := cached_source_signature_details_with_build_values(cache_dir, 'dynamic-qml', [
+		source,
+	], '', '')
+	assert dynamic.signature.len > 0
+	assert !dynamic.cacheable
+	assert os.ls(cache_dir)!.len == before_cache_entries
+	dynamic_paths, dynamic_unresolved := compile_time_qml_paths(os.read_file(source)!, source)
+	assert dynamic_paths.len == 0
+	assert dynamic_unresolved
+	concat_paths, concat_unresolved := compile_time_qml_paths(
+		"fn build() { _ = \$qml(template_dir + '/form.qml') }", source)
+	assert concat_paths.len == 0
+	assert concat_unresolved
+	manager := Manager{
+		dir: os.join_path(root, 'module-cache')
+		enabled: true
+		salt: 'dynamic-qml-test'
+	}
+	manager.write_header('dynamic_qml', [source], '// generated header')!
+	if _ := manager.valid_header('dynamic_qml', [source]) {
+		assert false, 'an unresolved compile-time QML path must disable cache reuse'
+	}
 }
 
 fn test_version_pseudo_signature_ignores_build_clock() {
