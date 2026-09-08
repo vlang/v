@@ -2118,6 +2118,52 @@ fn main() {
 	assert fail_fn_literal_return.output.contains('use of moved value: `s`'), fail_fn_literal_return.output
 }
 
+fn test_ownership_static_call_return_metadata_reaches_wrapper() {
+	v3_bin := ownership_build_v3()
+	fail := run_ownership_check(v3_bin, 'static_call_return_metadata', "
+struct Factory {}
+
+fn Factory.make() string {
+	return 'hello'.to_owned()
+}
+
+fn wrap() string {
+	return Factory.make()
+}
+
+fn main() {
+	s1 := wrap()
+	s2 := s1
+	println(s1)
+	_ = s2
+}
+")
+	assert fail.exit_code != 0
+	assert fail.output.contains('use of moved value: `s1`'), fail.output
+
+	fail_param := run_ownership_check(v3_bin, 'static_call_return_param_metadata', "
+struct Factory {}
+
+fn Factory.pass(value string) string {
+	return value
+}
+
+fn wrap(value string) string {
+	return Factory.pass(value)
+}
+
+fn main() {
+	owned := 'hello'.to_owned()
+	s1 := wrap(owned)
+	s2 := s1
+	println(s1)
+	_ = s2
+}
+")
+	assert fail_param.exit_code != 0
+	assert fail_param.output.contains('use of moved value: `s1`'), fail_param.output
+}
+
 fn test_ownership_assignment_to_storage_consumes_rhs() {
 	v3_bin := ownership_build_v3()
 	fail_field := run_ownership_check(v3_bin, 'assign_field', '
