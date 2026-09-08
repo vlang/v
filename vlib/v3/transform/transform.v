@@ -917,6 +917,12 @@ pub fn transform_prepared_selfhost_owned(mut prepared PreparedSelfhostTransform,
 	t.tc = unsafe { tc }
 	t.used_fns = used_fns.clone()
 	configure_transformer(mut t, true, true, true, true, true, stage_scope)
+	if t.materialize_inferred_anonymous_structs() {
+		// Preparation overlapped markused against the checked AST. Materialization
+		// appends declarations and assigns their concrete types, so rebuild the
+		// indexes before workers consume that changed AST.
+		t.prepare_with_pre_scans()
+	}
 	augmented, was_parallel, errors, owned_base_nodes, retained_regions := transform_after_prepare(mut t, mut a, used_fns, true, true)
 	prepared.ready = false
 	return augmented, was_parallel, errors, owned_base_nodes, retained_regions

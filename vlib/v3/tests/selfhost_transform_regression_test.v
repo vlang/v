@@ -244,6 +244,21 @@ fn main() {
 	assert out == 'contextual'
 }
 
+// Literals whose call-valued fields resolve to the same semantic shape must
+// share a concrete anonymous type when an enclosing expression unifies them.
+fn test_inferred_anonymous_struct_call_fields_reuse_semantic_shape() {
+	out := selfhost_regression_run('inferred_anonymous_struct_shape_reuse', 'fn produce(n int) int {
+	return n
+}
+
+fn main() {
+	values := [struct { item: produce(1) }, struct { item: produce(2) }]
+	println(int_str(values.len))
+}
+')
+	assert out == '2'
+}
+
 // A non-capturing fn literal passed to an imported generic must remain a cgen root.
 // The large-project failure called this as `__anon_fn_0` without emitting its body.
 fn test_imported_generic_keeps_non_capturing_fn_literal() {

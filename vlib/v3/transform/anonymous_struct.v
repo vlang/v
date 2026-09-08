@@ -8,11 +8,13 @@ import v3.types
 // not syntactically typed by the parser. Semantic checking has resolved those
 // expressions by this point. Do this before parallel transform preparation so
 // all workers and cgen see one immutable set of aggregate declarations.
-fn (mut t Transformer) materialize_inferred_anonymous_structs() {
+fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 	if isnil(t.tc) {
-		return
+		return false
 	}
 	t.tc.ensure_private_transform_structs()
+	mut materialized := false
+	mut inferred_by_shape := map[string]string{}
 	original_node_count := t.a.nodes.len
 	for idx in 0 .. original_node_count {
 		node := t.a.nodes[idx]
@@ -55,6 +57,20 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() {
 					}
 				}
 				if !valid {
+					continue
+				}
+				mut shape_parts := []string{cap: semantic_fields.len}
+				for semantic_field in semantic_fields {
+					field_type_name := t.tc.type_name(semantic_field.typ)
+					shape_parts << '${semantic_field.name.len}:${semantic_field.name}:${field_type_name.len}:${field_type_name}'
+				}
+				shape := '${cur_module.len}:${cur_module}:${shape_parts.join(',')}'
+				if semantic_name := inferred_by_shape[shape] {
+					t.a.nodes[idx].value = semantic_name.all_after_last('.')
+					t.a.nodes[idx].typ = semantic_name
+					t.tc.register_synth_type(flat.NodeId(idx), types.Struct{
+						name: semantic_name
+					})
 					continue
 				}
 				mut field_ids := []flat.NodeId{cap: semantic_fields.len}
@@ -100,13 +116,16 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() {
 				t.tc.struct_modules[semantic_name] = cur_module
 				t.tc.struct_files[semantic_name] = cur_file
 				t.tc.register_short_type_name(semantic_name)
+				inferred_by_shape[shape] = semantic_name
 				t.a.nodes[idx].value = name
 				t.a.nodes[idx].typ = semantic_name
 				t.tc.register_synth_type(flat.NodeId(idx), types.Struct{
 					name: semantic_name
 				})
+				materialized = true
 			}
 			else {}
 		}
 	}
+	return materialized
 }
