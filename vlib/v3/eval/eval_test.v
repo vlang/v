@@ -835,6 +835,45 @@ fn main() {
 	assert e.stdout() == '7\n'
 }
 
+fn test_eval_static_and_instance_methods_with_same_name_do_not_collide() {
+	mut e := create()
+	e.run_text('
+struct StaticFirst {
+	n int
+}
+
+fn StaticFirst.value() int {
+	return 11
+}
+
+fn (s StaticFirst) value() int {
+	return s.n
+}
+
+struct InstanceFirst {
+	n int
+}
+
+fn (i InstanceFirst) value() int {
+	return i.n
+}
+
+fn InstanceFirst.value() int {
+	return 33
+}
+
+fn main() {
+	println(int_str(StaticFirst.value()))
+	println(int_str(StaticFirst{n: 22}.value()))
+	println(int_str(InstanceFirst.value()))
+	println(int_str(InstanceFirst{n: 44}.value()))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '11\n22\n33\n44\n'
+}
+
 fn test_eval_overloaded_plus_operator_dispatches_method() {
 	mut e := create()
 	e.run_text('
