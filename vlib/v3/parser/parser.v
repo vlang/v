@@ -12,6 +12,14 @@ import v3.util
 
 const max_parse_diagnostics = 100
 
+// https://www.felixcloutier.com/x86/lock
+const inline_asm_allowed_lock_instructions = ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpxchg',
+	'cmpxchg8b', 'cmpxchg16b', 'dec', 'inc', 'neg', 'not', 'or', 'sbb', 'sub', 'xor', 'xadd', 'xchg']
+
+const inline_asm_prefixes_before_mnemonic = ['rep', 'repe', 'repz', 'repne', 'repnz']
+
+const inline_asm_encoding_prefixes_before_mnemonic = ['rex', 'vex', 'xop']
+
 const sql_query_data_alias_reserved_tokens = [
 	'select',
 	'from',
@@ -159,6 +167,15 @@ struct ParsedFieldAttrs {
 	attrs   []string
 	kinds   []int
 	sources []string
+}
+
+enum InlineAsmMnemonicState {
+	expect_mnemonic
+	after_dot
+	encoding_prefix
+	encoding_prefix_dot
+	maybe_label
+	operands
 }
 
 // new creates a Parser value for parser.
@@ -1129,6 +1146,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 	mut receiver_type := ''
 	mut receiver_is_mut := false
 	mut is_method := false
+	mut is_static_type_method := false
 
 	// method receiver: fn (mut r Type) name()
 	if p.tok == .lpar {
@@ -1228,13 +1246,18 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 				receiver_type = name
 				name = second
 				is_method = true
+				is_static_type_method = true
 			}
 		}
 	}
 
 	if is_method && receiver_type.len > 0 {
 		clean_type := method_receiver_type_name(receiver_type)
-		name = '${clean_type}.${name}'
+		name = if is_static_type_method {
+			flat.encode_static_type_method_name(clean_type, name)
+		} else {
+			'${clean_type}.${name}'
+		}
 	}
 
 	return p.fn_decl_body(name, receiver_name, receiver_type, receiver_is_mut, is_method, '', name_pos)
@@ -1372,6 +1395,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 
 fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type string, receiver_is_mut bool, is_method bool, interop_prefix string, name_pos int) flat.NodeId {
 	is_c_decl := interop_prefix.len > 0
+	is_static_type_method := is_method && receiver_name.len == 0 && !is_c_decl
 	is_pub := p.pending_decl_pub
 	p.pending_decl_pub = false
 	// Capture & clear here so it applies only to this function (not nested closures
@@ -1451,6 +1475,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			payload: flat.node_payload(generic_params)
 			children_start: start
 			children_count: flat.child_count(param_ids.len)
+			is_static_type_method: is_static_type_method
 			// Function nodes do not otherwise use is_mut. On a .vh declaration it
 			// records that the body lives in a cached object and must not be emitted;
 			// on a C declaration it preserves the parser's implicit unsafe/trusted state.
@@ -1545,6 +1570,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		payload: flat.node_payload(generic_params)
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
+		is_static_type_method: is_static_type_method
 	})
 	if p.prefs.is_fmt && formatter_end > 0 {
 		p.a.formatter_node_ends[int(id)] = formatter_end
@@ -3857,9 +3883,19 @@ fn (mut p Parser) resolve_comptime_at_values(cond string) string {
 	return p.resolve_comptime_at_values_at(cond, p.tok_pos)
 }
 
+fn (p &Parser) current_source_fn_name() string {
+	if p.cur_method_is_static {
+		_, method := flat.decode_static_type_method_name(p.cur_fn) or {
+			return p.cur_fn.all_after_last('.')
+		}
+		return method
+	}
+	return p.cur_fn.all_after_last('.')
+}
+
 fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) string {
 	module_name := if p.cur_module.len > 0 { p.cur_module } else { 'main' }
-	fn_name := p.cur_fn.all_after_last('.')
+	fn_name := p.current_source_fn_name()
 	method_name := if p.cur_struct.len > 0 { '${p.cur_struct}.${fn_name}' } else { fn_name }
 	mut out := strings.new_builder(cond.len)
 	mut i := 0
@@ -4517,7 +4553,13 @@ fn source_contains_target_inline_asm(source string, target_arch string) bool {
 			for offset < source.len && inline_asm_ident_char(source[offset]) {
 				offset++
 			}
-			ident := source[start..offset]
+			mut ident_end := offset
+			if source[start..offset] == 'ia' && offset + 3 <= source.len
+				&& source[offset..offset + 3] == '-32' {
+				ident_end += 3
+			}
+			ident := source[start..ident_end]
+			offset = ident_end
 			if ident == 'r' && offset < source.len && source[offset] in [`'`, `"`] {
 				offset = inline_asm_skip_quoted(source, offset, source[offset], true)
 				sequence = 0
@@ -4543,6 +4585,8 @@ fn source_contains_target_inline_asm(source string, target_arch string) bool {
 				} else {
 					0
 				}
+			} else if sequence == 3 && ident in ['raw', 'intel'] {
+				// Keep waiting for the opening brace after optional asm modifiers.
 			} else {
 				sequence = if ident == 'asm' { 1 } else { 0 }
 			}
@@ -4870,10 +4914,22 @@ fn inline_asm_tokens_match_target(tokens []InlineAsmScanToken, start int, end in
 	if i < end && tokens[i].kind == .key_volatile {
 		i++
 	}
-	if i >= end || !comptime_flag_is_target_arch(tokens[i].lit, target_arch) {
+	if i >= end {
+		return false
+	}
+	mut asm_arch := tokens[i].lit
+	if asm_arch == 'ia' && i + 2 < end && tokens[i + 1].kind == .minus
+		&& tokens[i + 2].kind == .number && tokens[i + 2].lit == '32' {
+		asm_arch = 'ia-32'
+		i += 2
+	}
+	if !comptime_flag_is_target_arch(asm_arch, target_arch) {
 		return false
 	}
 	i++
+	for i < end && tokens[i].kind == .name && tokens[i].lit in ['raw', 'intel'] {
+		i++
+	}
 	return i < end && tokens[i].kind == .lcbr
 }
 
@@ -4971,7 +5027,7 @@ fn comptime_flag_is_target_arch(name string, target_arch string) bool {
 	return match target_arch {
 		'amd64' { name in ['amd64', 'x64', 'x86_64'] }
 		'arm64' { name in ['arm64', 'aarch64'] }
-		'x86' { name in ['x86', 'i386'] }
+		'x86' { name in ['x86', 'i386', 'i486', 'i586', 'i686', 'x86_32', 'ia-32', 'ia32'] }
 		'riscv64' { name in ['riscv64', 'rv64'] }
 		else { name == target_arch }
 	}
@@ -5713,8 +5769,8 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	if p.tok == .name && p.lit == 'embed_file' {
 		return p.parse_embed_file_expr()
 	}
-	if p.tok == .name && p.lit == 'qml' {
-		return p.parse_qml_template_expr(dollar_pos)
+	if p.tok == .name && p.lit == 'vml' {
+		return p.parse_vml_template_expr(dollar_pos)
 	}
 	if p.tok == .name && p.lit in ['zero', 'new'] {
 		name := p.lit
@@ -8250,6 +8306,91 @@ fn (mut p Parser) goto_stmt() flat.NodeId {
 	})
 }
 
+fn (mut p Parser) track_inline_asm_mnemonic(state InlineAsmMnemonicState, is_x86 bool, is_amd64 bool) InlineAsmMnemonicState {
+	if p.current_token_is_newline_semicolon() {
+		return .expect_mnemonic
+	}
+	mut current_state := if p.inline_asm_source_gap_has_newline(p.prev_tok_end, p.tok_pos) {
+		InlineAsmMnemonicState.expect_mnemonic
+	} else {
+		state
+	}
+	if current_state == .encoding_prefix && p.tok != .dot {
+		current_state = .expect_mnemonic
+	}
+	match current_state {
+		.expect_mnemonic {
+			if p.tok == .dot {
+				return .after_dot
+			}
+			if is_x86 && p.tok == .key_lock {
+				if p.inline_asm_token_is_same_line_label() {
+					return .maybe_label
+				}
+				p.validate_inline_asm_lock_instruction()
+				return .expect_mnemonic
+			}
+			if is_amd64 && p.lit in inline_asm_encoding_prefixes_before_mnemonic {
+				if p.inline_asm_token_is_same_line_label() {
+					return .maybe_label
+				}
+				return .encoding_prefix
+			}
+			if is_x86 && p.lit in inline_asm_prefixes_before_mnemonic {
+				if p.inline_asm_token_is_same_line_label() {
+					return .maybe_label
+				}
+				return .expect_mnemonic
+			}
+			return .maybe_label
+		}
+		.after_dot {
+			return .maybe_label
+		}
+		.encoding_prefix {
+			return .encoding_prefix_dot
+		}
+		.encoding_prefix_dot {
+			return .encoding_prefix
+		}
+		.maybe_label {
+			return if p.tok == .colon { .expect_mnemonic } else { .operands }
+		}
+		.operands {
+			return .operands
+		}
+	}
+}
+
+fn (mut p Parser) inline_asm_token_is_same_line_label() bool {
+	return p.peek() == .colon
+		&& !p.inline_asm_source_gap_has_newline(p.tok_end, p.peek_pos)
+}
+
+fn (p &Parser) inline_asm_source_gap_has_newline(start int, end int) bool {
+	if start < 0 || start >= end || end > p.s.src.len {
+		return false
+	}
+	for i := start; i < end; i++ {
+		if p.s.src[i] == `\n` {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut p Parser) validate_inline_asm_lock_instruction() {
+	p.peek()
+	has_suffix := p.peek_lit.len > 0
+		&& p.peek_lit[p.peek_lit.len - 1] in [`b`, `w`, `l`, `q`]
+	if p.inline_asm_source_gap_has_newline(p.tok_end, p.peek_pos)
+		|| !(p.peek_lit in inline_asm_allowed_lock_instructions
+			|| (has_suffix
+				&& p.peek_lit[..p.peek_lit.len - 1] in inline_asm_allowed_lock_instructions)) {
+		p.record_diagnostic_span('The lock prefix cannot be used on this instruction', p.peek_pos, p.peek_end)
+	}
+}
+
 fn (mut p Parser) asm_stmt() flat.NodeId {
 	asm_pos := p.tok_pos
 	p.next() // skip 'asm'
@@ -8257,13 +8398,51 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	if p.tok == .key_volatile || (p.tok == .name && p.lit == 'volatile') {
 		p.next()
 	}
-	// V assembly blocks name their instruction set before `{` (`asm arm64 { ... }`).
+	// V assembly blocks name their instruction set before `{` (`asm arm64 { ... }`), then
+	// optionally the `raw` and `intel` template modifiers (`asm amd64 raw intel { ... }`).
 	mut asm_arch := ''
+	mut is_raw := false
+	mut is_intel := false
+	if p.tok == .name {
+		asm_arch = p.lit
+		p.next()
+		if asm_arch == 'ia' && p.tok == .minus && p.peek() == .number && p.peek_lit == '32' {
+			asm_arch = 'ia-32'
+			p.next()
+			p.next()
+		}
+	}
 	for p.tok == .name {
-		if asm_arch.len == 0 {
-			asm_arch = p.lit
+		modifier_pos := p.tok_pos
+		match p.lit {
+			'raw' {
+				if is_raw {
+					p.record_diagnostic('duplicate `raw` assembly modifier', modifier_pos)
+				}
+				is_raw = true
+			}
+			'intel' {
+				if is_intel {
+					p.record_diagnostic('duplicate `intel` assembly modifier', modifier_pos)
+				}
+				is_intel = true
+			}
+			else {}
 		}
 		p.next()
+	}
+	if !p.prefs.is_fmt {
+		if is_intel && pref.normalized_arch(asm_arch) !in ['amd64', 'x86'] {
+			p.record_diagnostic('the `intel` assembly modifier is only supported for i386 and amd64', asm_pos)
+		}
+		if p.prefs.backend != 'c' {
+			if is_raw {
+				p.record_diagnostic('the `raw` assembly modifier is only supported by the C backend', asm_pos)
+			}
+			if is_intel {
+				p.record_diagnostic('the `intel` assembly modifier is only supported by the C backend', asm_pos)
+			}
+		}
 	}
 	// Consume the asm block while retaining its exact source. Inline assembly uses
 	// a line-sensitive syntax that cannot be reconstructed from the normal token
@@ -8272,10 +8451,17 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	mut has_unsupported_content := false
 	mut section := 0
 	mut io_exprs := []flat.NodeId{}
+	mut mnemonic_state := InlineAsmMnemonicState.expect_mnemonic
+	normalized_asm_arch := pref.normalized_arch(asm_arch)
+	is_x86_asm := normalized_asm_arch in ['amd64', 'x86']
+	is_amd64_asm := normalized_asm_arch == 'amd64'
 	if p.tok == .lcbr {
 		mut depth := 1
 		p.next()
 		for depth > 0 && p.tok != .eof {
+			if depth == 1 && section == 0 {
+				mnemonic_state = p.track_inline_asm_mnemonic(mnemonic_state, is_x86_asm, is_amd64_asm)
+			}
 			if p.tok == .lcbr {
 				depth++
 			} else if p.tok == .rcbr {
@@ -8298,6 +8484,13 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 				p.check(.rpar)
 				continue
 			} else if depth == 1 && p.tok != .semicolon {
+				if is_raw && section == 0 && !p.prefs.is_fmt {
+					if p.tok != .string {
+						p.record_diagnostic('raw assembly templates must contain only double-quoted string literals', p.tok_pos)
+					} else if !p.lit.starts_with('"') {
+						p.record_diagnostic('raw assembly templates must use double-quoted string literals', p.tok_pos)
+					}
+				}
 				if p.tok == .name && p.lit == 'memory' {
 					has_memory_clobber = true
 				} else {
@@ -9493,13 +9686,14 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.add_val_id(5, p.cur_module)
 			}
 			if name == '@FN' {
-				return p.add_val_id(5, p.cur_fn.all_after_last('.'))
+				return p.add_val_id(5, p.current_source_fn_name())
 			}
 			if name == '@METHOD' {
+				fn_name := p.current_source_fn_name()
 				return p.add_val_id(5, if p.cur_struct.len > 0 {
-					'${p.cur_struct}.${p.cur_fn.all_after_last('.')}'
+					'${p.cur_struct}.${fn_name}'
 				} else {
-					p.cur_fn.all_after_last('.')
+					fn_name
 				})
 			}
 			if name == '@STRUCT' {
@@ -9507,7 +9701,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			}
 			if name == '@LOCATION' {
 				module_name := if p.cur_module.len > 0 { p.cur_module } else { 'main' }
-				fn_name := p.cur_fn.all_after_last('.')
+				fn_name := p.current_source_fn_name()
 				mut method_name := '${module_name}.${fn_name}'
 				if p.cur_struct.len > 0 {
 					if p.cur_method_is_static {

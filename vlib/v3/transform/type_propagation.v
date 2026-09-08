@@ -185,7 +185,7 @@ fn map_value_starts_with_fixed_array(typ string) bool {
 }
 
 fn decl_type_is_usable(typ string) bool {
-	if typ.len == 0 || typ in ['unknown', 'array', 'map'] || typ.contains('unknown') {
+	if typ.len == 0 || typ in ['unknown', 'array', 'map', 'struct'] || typ.contains('unknown') {
 		return false
 	}
 	if types.type_text_contains_typeof(typ) {

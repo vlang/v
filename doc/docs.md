@@ -5919,6 +5919,14 @@ final output). That's why this approach is *unsafe* and should be avoided!
 
 (This is still in an alpha state)
 
+> **Deprecation notice:** the Function Call API (`orm_fn`;
+> `orm.new_query[T]` / `QueryBuilder`) is deprecated and will be removed
+> from the standard library after **2027-08-17**, to be maintained in a
+> separate repository. Prefer the built-in `sql` ORM syntax shown below
+> for new code. Compiler deprecation warnings begin on **2027-02-18**;
+> until then the compiler emits a migration notice. See
+> https://github.com/vlang/v/issues/27001 for details.
+
 V has a built-in ORM (object-relational mapping) which supports SQLite, MySQL and Postgres,
 but soon it will support MS SQL and Oracle.
 
@@ -6238,6 +6246,23 @@ folder containing `v.mod`.
 
 V packages are installed normally in your `~/.vmodules` folder. That
 location can be overridden by setting the env variable `VMODULES`.
+
+### Package names and import paths
+
+A package name can contain characters that are not valid in a V import
+path, for example `-` or uppercase letters. Such names are normalized
+when the package is installed: `-` becomes `_` and the name is
+lowercased. A package named `my-mod` is therefore installed as
+`~/.vmodules/my_mod` and imported with `import my_mod`. The same applies
+to the publisher part of a VPM package name, so `Some-Publisher.repo` is
+installed as `~/.vmodules/some_publisher/repo` and imported with
+`import some_publisher.repo`.
+
+`v install` prints a warning with the resulting import prefix whenever it
+has to normalize a name. A package may contain only nested modules, so append
+the nested module path when needed (for example, `import my_mod.json`). If you
+publish a package, prefer a `name` in `v.mod` that is already a valid import
+path.
 
 ### Package commands
 
@@ -7172,6 +7197,67 @@ numbers: [1, 2, 3]
 ```
 
 See more [details](https://github.com/vlang/v/blob/master/vlib/v/TEMPLATES.md)
+
+#### `$vml` for compiling UI2 interfaces
+
+The V3 compiler can compile a VML file directly into an `ui2.Element` expression with
+`$vml(path)`. The VML is parsed while the application is compiled; the resulting program
+constructs UI2 elements directly and does not parse the VML file at runtime.
+
+```v ignore
+import ui2
+
+struct App {
+pub mut:
+	name string
+}
+
+pub fn (mut app App) save() {}
+
+fn view(app &App) ui2.Element {
+	return $vml('views/profile.vml')
+}
+```
+
+`views/profile.vml`:
+
+```vml
+Screen {
+    id: root
+    background: "#f8fafc"
+    Column {
+        Label { text: "Hello ${app.name}" }
+        Button { text: "Save" on_tap: app.save() }
+    }
+}
+```
+
+The path must be a compile-time string. String literals, constants, compile-time local
+bindings, and `+` concatenations of those forms are supported. Absolute paths are used as
+given. A relative path is searched for in this order:
+
+1. relative to the V source file;
+2. in a `templates` directory next to the V source file;
+3. relative to the nearest parent directory containing `v.mod`;
+4. in that module root's `templates` directory.
+
+The compiled VML subset supports these UI2 elements:
+
+- `Screen`, `View`, `Rectangle`, `Column`, `Row`, and `Scroll` containers;
+- `Label`, `Image`, `Button`, `Checkbox`, `Dropdown`, `TextField`, and `TextArea`;
+- `ProgressBar`, `Slider`, `Switch`, `Spinner`, and `MessageBox`;
+- `Repeater` delegates, `MenuItem` entries, and `Option` entries.
+
+Properties can use literals, arithmetic and boolean expressions, conditional expressions,
+string interpolation, an enclosing `app` value, and geometry or custom properties exposed
+by an `id`. An ID on an earlier node is available to following nodes in the same component.
+Both quoted and unquoted `#RRGGBB` color values are accepted. A `Repeater` requires `model`
+and stable `key` properties and exposes `item` and `index` inside its delegate.
+
+The `bind.text`, `bind.checked`, `bind.active`, and `bind.value` properties create two-way
+bindings to mutable top-level fields on `app`. Event properties `on_tap`, `on_change`,
+`on_active`, `on_text`, and `on_submit` call an `app` method with zero or one argument. These
+methods and their argument types are checked while the generated V code is compiled.
 
 #### `$env`
 
@@ -8978,6 +9064,14 @@ println('b: ${b}') // 20
 println('c: ${c}') // 120
 ```
 
+Structured `amd64` and `x86` blocks validate the `lock` prefix. The prefix and its instruction
+must be on the same source line. It may precede `add`, `adc`, `and`, `btc`, `btr`, `bts`,
+`cmpxchg`, `cmpxchg8b`, `cmpxchg16b`, `dec`, `inc`, `neg`, `not`, `or`, `sbb`, `sub`, `xor`,
+`xadd`, or `xchg`. The `b`, `w`, `l`, and `q` size suffixes are also recognized, for example
+`addq` and `cmpxchgq`. Without a permitted same-line instruction, the parser reports
+`The lock prefix cannot be used on this instruction`. A same-line `lock:` remains valid as a
+label; a newline inside a comment also separates the prefix, instruction, or label colon.
+
 The C backend also supports raw GNU assembly templates. In a `raw` block, V passes each
 double-quoted template string through unchanged and still checks the output, input, and clobber
 lists. Operands can use GNU's named form or V's `constraint (expression) as alias` form:
@@ -9013,6 +9107,24 @@ operands. V uses the GNU x86 `%V` operand modifier so GCC and Clang substitute r
 without AT&T's `%` prefix. Memory-capable constraints such as `m` are rejected because compilers
 can still format those placeholders with AT&T addressing. In a `raw intel` block, the template is
 passed through unchanged, so use the selected C compiler's explicit operand modifiers.
+
+`%V` is the only operand modifier that omits the `%` prefix, and it prints the compilation
+target's native register: 64 bits for 64-bit machine code and 32 bits for 32-bit machine code,
+including when `-m32` overrides an explicit architecture. This is independent of the architecture
+declared on the assembly block. For instructions whose register operands must have the same width,
+V rejects a named operand combined with an explicit hard register of a different width. For
+example, in a 64-bit build, `mov eax, some_value` would reach the assembler as `mov eax, rcx`, so V
+rejects it at compile time. Named operands may still use narrower V types for operations that
+preserve their low-width result, such as an alias-only `add` whose flags are not observed later in
+the block. V rejects narrower operands where the instruction meaning changes with width, including
+shifts, rotates, implicit multiply and divide, bit counts, bit tests, byte swaps, and CRC32 sources.
+It also rejects narrower signed operands of `cmp` and `test`, and narrow arithmetic when a later
+instruction observes its flags. Named operands cannot be sources of `movsx`, `movsxd`, or `movzx`.
+Addressed sources of `movsx` and `movzx` are also rejected because structured assembly cannot
+specify their data width. Named shift counts are not supported because the `r` constraint cannot
+select `cl`. Effective addresses cannot contain three register operands, and signed address
+components must have the target's native width. Use a `raw intel` block to pick operand widths
+explicitly with `%k`, `%w` and related modifiers.
 
 The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the C backend. MSVC
 does not support this form of inline assembly on 64-bit targets, and individual instructions or

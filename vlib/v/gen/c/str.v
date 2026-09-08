@@ -6,7 +6,7 @@ import v.ast
 import v.util
 
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
-	escaped_val := cescape_nonascii(util.smart_quote(node.val, node.is_raw))
+	escaped_val := cescape_nonascii(util.smart_quote(node.val, node.is_raw, node.opaque_pos))
 	if node.language == .c {
 		g.write(cescaped_string_literal(escaped_val))
 	} else {
@@ -89,7 +89,8 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 	g.writeln('// sb inter opt')
 	is_nl := call_expr.name == 'writeln'
 	for i, val in node.vals {
-		escaped_val := cescape_nonascii(util.smart_quote(val, false))
+		val_opaque_pos := if i < node.opaque_pos.len { node.opaque_pos[i] } else { []int{} }
+		escaped_val := cescape_nonascii(util.smart_quote(val, false, val_opaque_pos))
 		g.write('strings__Builder_write_string(&')
 		g.expr(call_expr.left)
 		g.write2(', _S("', escaped_val)

@@ -254,16 +254,18 @@ pub:
 @[minify]
 pub struct StringLiteral {
 pub:
-	val      string
-	is_raw   bool
-	language Language
-	pos      token.Pos
+	val        string
+	is_raw     bool
+	language   Language
+	pos        token.Pos
+	opaque_pos []int // byte offsets in `val` already resolved from a \xXX/\uXXXX/\UXXXXXXXX escape - see Scanner.string_opaque_pos
 }
 
 // 'name: ${name}'
 pub struct StringInterLiteral {
 pub:
 	vals       []string
+	opaque_pos [][]int // opaque_pos[i] are the resolved-escape byte offsets in vals[i] - see StringLiteral.opaque_pos
 	fwidths    []int
 	precisions []int
 	pluss      []bool
@@ -1998,38 +2000,40 @@ pub const x86_no_number_register_list = {
 		'edi',
 		'esp',
 		'eflags',
-		'eip', // CSR register
+		'eip',
+		'eiz', // CSR registers
 		'mxcsr', // 32-bit FP core registers 'fp_dp', 'fp_ip' (TODO: why are there duplicates?)
 	]
-	64: ['rax', 'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip']
+	64: ['rax', 'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip', 'riz']
 }
 // no comments because maps do not support comments
-// r#*: gp registers added in 64-bit extensions, can only be from 8-15 actually
+// r#*: gp registers added in 64-bit extensions, from r8 through APX's r31
 // *mm#: vector/simd registers
 // st#: floating point numbers
 // cr#: control/status registers
 // dr#: debug registers
 pub const x86_with_number_register_list = {
 	8:   {
-		'r#b': 16
+		'r#b': 32
 	}
 	16:  {
-		'r#w': 16
+		'r#w': 32
 	}
 	32:  {
-		'r#d': 16
+		'r#d': 32
 	}
 	64:  {
-		'r#':  16
-		'mm#': 16
+		'r#':  32
+		'mm#': 8
 		'cr#': 16
 		'dr#': 16
 		'k#':  8
 	}
 	80:  {
-		'st#': 16
+		'st#': 8
 	}
 	128: {
+		'bnd#': 4
 		'xmm#': 32
 	}
 	256: {
@@ -2052,15 +2056,45 @@ pub const arm_with_number_register_list = {
 	'r#': 16
 }
 
-// AArch64 names its general purpose registers `x0`-`x30` (64-bit) and `w0`-`w30`
-// (their 32-bit views); the `r0`-`r15` names above are ARM32 only.
-pub const arm64_no_number_register_list = ['sp', 'lr', 'fp', 'xzr']
-pub const arm64_with_number_register_list = {
-	'x#': 31
+// AArch64 shares none of arm32's `r#` register names: its general purpose registers are
+// `x0`-`x31` with 32-bit `w0`-`w31` views, and its SIMD registers are named after the
+// element width they are accessed through.
+// 'sp' takes the x31 encoding slot, 'lr' is x30 and 'fp' is x29.
+pub const arm64_no_number_register_list = {
+	16: ['pn8', 'pn9', 'pn10', 'pn11', 'pn12', 'pn13', 'pn14', 'pn15']
+	32: ['wsp', 'wzr']
+	64: ['sp', 'lr', 'fp', 'pc', 'xzr', 'nzcv', 'fpcr', 'fpsr', 'daif', 'za', 'zt0']
 }
-pub const arm64_32bit_no_number_register_list = ['wsp', 'wzr']
-pub const arm64_32bit_with_number_register_list = {
-	'w#': 31
+
+// no comments because maps do not support comments
+// x#/w#: general purpose registers; x31/w31 share the encoding used by sp/wsp and xzr/wzr
+// b#/h#/s#/d#/q#: the 8, 16, 32, 64 and 128 bit views of the SIMD registers
+// v#: a whole SIMD register, addressed as a vector
+// z#/p#: SVE vector and predicate registers, sized here at the 128-bit minimum vector length
+pub const arm64_with_number_register_list = {
+	8:   {
+		'b#': 32
+	}
+	16:  {
+		'h#': 32
+		'p#': 16
+	}
+	32:  {
+		'w#': 32
+		's#': 32
+	}
+	64:  {
+		'x#':   32
+		'd#':   32
+		'za#':  16
+		'za#h': 16
+		'za#v': 16
+	}
+	128: {
+		'q#': 32
+		'v#': 32
+		'z#': 32
+	}
 }
 
 pub const riscv_no_number_register_list = ['zero', 'ra', 'sp', 'gp', 'tp']
@@ -3217,29 +3251,9 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			return all_registers(mut t, .amd64)
 		}
 		.amd64, .i386 {
-			for bit_size, array in x86_no_number_register_list {
-				for name in array {
-					res[name] = AsmRegister{
-						name: name
-						typ: t.bitsize_to_type(bit_size)
-						size: bit_size
-					}
-				}
-			}
-			for bit_size, array in x86_with_number_register_list {
-				for name, max_num in array {
-					for i in 0 .. max_num {
-						hash_index := name.index('#') or {
-							panic('all_registers: no hashtag found')
-						}
-						assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
-						res[assembled_name] = AsmRegister{
-							name: assembled_name
-							typ: t.bitsize_to_type(bit_size)
-							size: bit_size
-						}
-					}
-				}
+			x86 := gen_all_sized_registers(mut t, x86_no_number_register_list, x86_with_number_register_list)
+			for k, v in x86 {
+				res[k] = v
 			}
 		}
 		.arm32 {
@@ -3249,12 +3263,8 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			}
 		}
 		.arm64 {
-			arm64 := gen_all_registers(mut t, arm64_no_number_register_list, arm64_with_number_register_list, 64)
+			arm64 := gen_all_sized_registers(mut t, arm64_no_number_register_list, arm64_with_number_register_list)
 			for k, v in arm64 {
-				res[k] = v
-			}
-			arm64_32bit := gen_all_registers(mut t, arm64_32bit_no_number_register_list, arm64_32bit_with_number_register_list, 32)
-			for k, v in arm64_32bit {
 				res[k] = v
 			}
 		}
@@ -3299,7 +3309,36 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 	return res
 }
 
-// only for arm and riscv because x86 has different sized registers
+// for x86 and arm64, whose register names are grouped by the bit size they address
+fn gen_all_sized_registers(mut t Table, without_numbers map[int][]string, with_numbers map[int]map[string]int) map[string]ScopeObject {
+	mut res := map[string]ScopeObject{}
+	for bit_size, array in without_numbers {
+		for name in array {
+			res[name] = AsmRegister{
+				name: name
+				typ: t.bitsize_to_type(bit_size)
+				size: bit_size
+			}
+		}
+	}
+	for bit_size, array in with_numbers {
+		for name, max_num in array {
+			hash_index := name.index('#') or { panic('all_registers: no hashtag found') }
+			min_num := if name.starts_with('r#') { 8 } else { 0 }
+			for i in min_num .. max_num {
+				assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
+				res[assembled_name] = AsmRegister{
+					name: assembled_name
+					typ: t.bitsize_to_type(bit_size)
+					size: bit_size
+				}
+			}
+		}
+	}
+	return res
+}
+
+// only for arm32 and riscv because x86 and arm64 have different sized registers
 fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[string]int, bit_size int) map[string]ScopeObject {
 	mut res := map[string]ScopeObject{}
 	for name in without_numbers {

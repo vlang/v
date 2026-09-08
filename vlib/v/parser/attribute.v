@@ -14,33 +14,35 @@ fn (p &Parser) current_attr_string_quote() u8 {
 	return `'`
 }
 
-fn (mut p Parser) parse_attr_arg(err_context string) (ast.AttrKind, string, u8) {
+fn (mut p Parser) parse_attr_arg(err_context string) (ast.AttrKind, string, u8, []int) {
 	if p.tok.kind == .name { // `name: arg`
-		return ast.AttrKind.plain, p.check_name(), `'`
+		return ast.AttrKind.plain, p.check_name(), `'`, []int{}
 	} else if p.tok.kind == .number { // `name: 123`
 		arg := p.tok.lit
 		p.next()
-		return ast.AttrKind.number, arg, `'`
+		return ast.AttrKind.number, arg, `'`, []int{}
 	} else if p.tok.kind == .string { // `name: 'arg'`
 		arg := p.tok.lit
+		arg_opaque_pos := p.scanner.string_opaque_pos[p.tok.tidx]
 		quote := p.current_attr_string_quote()
 		p.next()
-		return ast.AttrKind.string, arg, quote
+		return ast.AttrKind.string, arg, quote, arg_opaque_pos
 	} else if p.tok.kind == .key_true || p.tok.kind == .key_false { // `name: true`
 		arg := p.tok.kind.str()
 		p.next()
-		return ast.AttrKind.bool, arg, `'`
+		return ast.AttrKind.bool, arg, `'`, []int{}
 	} else if token.is_key(p.tok.lit) { // `name: keyword`
-		return ast.AttrKind.plain, p.check_name(), `'`
+		return ast.AttrKind.plain, p.check_name(), `'`, []int{}
 	}
 	p.unexpected(additional_msg: 'an argument is expected${err_context}')
-	return ast.AttrKind.plain, '', `'`
+	return ast.AttrKind.plain, '', `'`, []int{}
 }
 
 fn (mut p Parser) parse_attr_call(name string, is_at bool, apos token.Pos) []ast.Attr {
 	p.check(.lpar)
 	mut base_kind := ast.AttrKind.plain
 	mut base_arg := ''
+	mut base_arg_opaque_pos := []int{}
 	mut base_quote := u8(`'`)
 	mut base_arg_name := ''
 	mut base_call_arg_idx := -1
@@ -58,7 +60,7 @@ fn (mut p Parser) parse_attr_call(name string, is_at bool, apos token.Pos) []ast
 			p.next()
 			p.check(.colon)
 		}
-		kind, arg, quote := p.parse_attr_arg(' in `(...)`')
+		kind, arg, quote, arg_opaque_pos := p.parse_attr_arg(' in `(...)`')
 		if is_named {
 			if name == 'deprecated' && arg_name == 'msg' {
 				if has_base_arg {
@@ -67,6 +69,7 @@ fn (mut p Parser) parse_attr_call(name string, is_at bool, apos token.Pos) []ast
 				}
 				base_has_arg = true
 				base_arg = arg
+				base_arg_opaque_pos = arg_opaque_pos.clone()
 				base_kind = kind
 				base_quote = quote
 				base_arg_name = arg_name
@@ -74,21 +77,23 @@ fn (mut p Parser) parse_attr_call(name string, is_at bool, apos token.Pos) []ast
 				has_base_arg = true
 			} else {
 				attrs << ast.Attr{
-					name:          '${name}_${arg_name}'
-					has_arg:       true
-					arg:           arg
-					kind:          kind
-					quote:         quote
-					pos:           apos.extend(p.prev_tok.pos())
-					has_at:        is_at
-					call_name:     name
-					call_arg_name: arg_name
-					call_arg_idx:  call_arg_idx
+					name:           '${name}_${arg_name}'
+					has_arg:        true
+					arg:            arg
+					arg_opaque_pos: arg_opaque_pos
+					kind:           kind
+					quote:          quote
+					pos:            apos.extend(p.prev_tok.pos())
+					has_at:         is_at
+					call_name:      name
+					call_arg_name:  arg_name
+					call_arg_idx:   call_arg_idx
 				}
 			}
 		} else if !has_base_arg {
 			base_has_arg = true
 			base_arg = arg
+			base_arg_opaque_pos = arg_opaque_pos.clone()
 			base_kind = kind
 			base_quote = quote
 			base_arg_name = arg_name
@@ -96,15 +101,16 @@ fn (mut p Parser) parse_attr_call(name string, is_at bool, apos token.Pos) []ast
 			has_base_arg = true
 		} else {
 			attrs << ast.Attr{
-				name:         '${name}_${positional_arg_idx}'
-				has_arg:      true
-				arg:          arg
-				kind:         kind
-				quote:        quote
-				pos:          apos.extend(p.prev_tok.pos())
-				has_at:       is_at
-				call_name:    name
-				call_arg_idx: call_arg_idx
+				name:           '${name}_${positional_arg_idx}'
+				has_arg:        true
+				arg:            arg
+				arg_opaque_pos: arg_opaque_pos
+				kind:           kind
+				quote:          quote
+				pos:            apos.extend(p.prev_tok.pos())
+				has_at:         is_at
+				call_name:      name
+				call_arg_idx:   call_arg_idx
 			}
 			positional_arg_idx++
 		}
@@ -117,16 +123,17 @@ fn (mut p Parser) parse_attr_call(name string, is_at bool, apos token.Pos) []ast
 	}
 	p.check(.rpar)
 	base_attr := ast.Attr{
-		name:          name
-		has_arg:       base_has_arg
-		arg:           base_arg
-		kind:          base_kind
-		quote:         base_quote
-		pos:           apos.extend(p.prev_tok.pos())
-		has_at:        is_at
-		call_name:     name
-		call_arg_name: base_arg_name
-		call_arg_idx:  base_call_arg_idx
+		name:           name
+		has_arg:        base_has_arg
+		arg:            base_arg
+		arg_opaque_pos: base_arg_opaque_pos
+		kind:           base_kind
+		quote:          base_quote
+		pos:            apos.extend(p.prev_tok.pos())
+		has_at:         is_at
+		call_name:      name
+		call_arg_name:  base_arg_name
+		call_arg_idx:   base_call_arg_idx
 	}
 	attrs.insert(0, base_attr)
 	return attrs
@@ -158,8 +165,10 @@ fn (mut p Parser) parse_attr(is_at bool) []ast.Attr {
 		]
 	}
 	mut name := ''
+	mut name_opaque_pos := []int{}
 	mut has_arg := false
 	mut arg := ''
+	mut arg_opaque_pos := []int{}
 	mut quote := u8(`'`)
 	mut comptime_cond := ast.empty_expr
 	mut comptime_cond_opt := false
@@ -179,6 +188,7 @@ fn (mut p Parser) parse_attr(is_at bool) []ast.Attr {
 		name = comptime_cond.str()
 	} else if p.tok.kind == .string {
 		name = p.tok.lit
+		name_opaque_pos = p.scanner.string_opaque_pos[p.tok.tidx]
 		quote = p.current_attr_string_quote()
 		kind = .string
 		p.next()
@@ -193,22 +203,24 @@ fn (mut p Parser) parse_attr(is_at bool) []ast.Attr {
 		if p.tok.kind == .colon {
 			has_arg = true
 			p.next()
-			kind, arg, quote = p.parse_attr_arg(' after `:`')
+			kind, arg, quote, arg_opaque_pos = p.parse_attr_arg(' after `:`')
 		} else if p.tok.kind == .lpar {
 			return p.parse_attr_call(name, is_at, apos)
 		}
 	}
 	return [
 		ast.Attr{
-			name:    name
-			has_arg: has_arg
-			arg:     arg
-			kind:    kind
-			quote:   quote
-			ct_expr: comptime_cond
-			ct_opt:  comptime_cond_opt
-			pos:     apos.extend(p.tok.pos())
-			has_at:  is_at
+			name:            name
+			name_opaque_pos: name_opaque_pos
+			has_arg:         has_arg
+			arg:             arg
+			arg_opaque_pos:  arg_opaque_pos
+			kind:            kind
+			quote:           quote
+			ct_expr:         comptime_cond
+			ct_opt:          comptime_cond_opt
+			pos:             apos.extend(p.tok.pos())
+			has_at:          is_at
 		},
 	]
 }

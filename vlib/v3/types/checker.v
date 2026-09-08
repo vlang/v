@@ -1968,9 +1968,9 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 		if qname !in tc.declaration_param_mutability {
 			tc.declaration_param_mutability[qname] = param_mutability
 		}
-		if node.value.contains('.') {
-			is_static := node.children_count == 0 || a.child_node(&node, 0).kind != .param
-				|| a.child_node(&node, 0).op != .dot
+		if node.value.contains('.') || node.is_static_type_method {
+			is_static := node.is_static_type_method || node.children_count == 0
+				|| a.child_node(&node, 0).kind != .param || a.child_node(&node, 0).op != .dot
 			if node.value !in tc.static_associated_fn_keys {
 				tc.static_associated_fn_keys[node.value] = is_static
 			}
@@ -6752,7 +6752,7 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 		if node.kind == .fn_decl {
 			if node.op == .arrow || node.value in ['main', 'init', 'cleanup']
 				|| is_v_test_fn_name(node.value) || node.value.starts_with('__anon_fn_')
-				|| node.value.contains('.') {
+				|| node.value.contains('.') || node.is_static_type_method {
 				continue
 			}
 			if tc.declaration_contains_error(node) {
@@ -7422,12 +7422,13 @@ fn (mut tc TypeChecker) annotate_call_expected_exprs(id flat.NodeId, node flat.N
 	}
 	ctx_count := if info.has_implicit_veb_ctx { 1 } else { 0 }
 	ctx_omitted := ctx_count > 0 && actual_count < info.params.len
+	collapsed_target := tc.collapsed_call_arg_type(node, info) or { Type(void_) }
 	mut expanded_arg_offset := 0
 	for i in 1 + info.arg_offset .. node.children_count {
 		raw_arg := tc.a.child_node(&node, i)
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		if raw_arg.kind == .field_init {
-			tc.annotate_params_field_expected_expr(arg_id, raw_arg.value, info)
+			tc.annotate_collapsed_field_expected_expr(arg_id, raw_arg.value, collapsed_target)
 			continue
 		}
 		arg_shift := if ctx_omitted { ctx_count } else { 0 }
@@ -7474,39 +7475,93 @@ fn (tc &TypeChecker) call_arg_expected_type(info CallInfo, param_idx int) Type {
 	return expected
 }
 
-fn (mut tc TypeChecker) annotate_params_field_expected_expr(arg_id flat.NodeId, field_name string, info CallInfo) {
-	if expected := tc.params_field_expected_type(field_name, info) {
+fn (tc &TypeChecker) collapsed_call_arg_raw_param_idx(node flat.Node, info CallInfo) int {
+	mut field_init_args := 0
+	mut first_field := -1
+	for i in 1 + info.arg_offset .. node.children_count {
+		if tc.a.child_node(&node, i).kind != .field_init {
+			continue
+		}
+		field_init_args++
+		if first_field < 0 {
+			first_field = i
+		}
+	}
+	if first_field < 0 {
+		return -1
+	}
+	recv_extra := if info.has_receiver { 1 } else { 0 }
+	collapsed := if field_init_args > 0 { 1 } else { 0 }
+	actual_count := node.children_count - 1 - info.arg_offset - field_init_args + collapsed +
+		recv_extra
+	ctx_count := if info.has_implicit_veb_ctx { 1 } else { 0 }
+	ctx_omitted := ctx_count > 0 && actual_count < info.params.len
+	arg_shift := if ctx_omitted { ctx_count } else { 0 }
+	return first_field - 1 - info.arg_offset + recv_extra + arg_shift
+}
+
+fn (tc &TypeChecker) collapsed_call_arg_param_idx(node flat.Node, info CallInfo) int {
+	param_idx := tc.collapsed_call_arg_raw_param_idx(node, info)
+	if info.is_variadic && info.params.len > 0 && param_idx >= info.params.len - 1 {
+		return info.params.len - 1
+	}
+	return param_idx
+}
+
+fn (tc &TypeChecker) collapsed_call_arg_variadic_elem_idx(node flat.Node, info CallInfo) int {
+	if !info.is_variadic || info.params.len == 0 {
+		return -1
+	}
+	raw_param_idx := tc.collapsed_call_arg_raw_param_idx(node, info)
+	variadic_param_idx := info.params.len - 1
+	if raw_param_idx < variadic_param_idx {
+		return -1
+	}
+	return raw_param_idx - variadic_param_idx
+}
+
+fn (tc &TypeChecker) collapsed_call_arg_type(node flat.Node, info CallInfo) ?Type {
+	param_idx := tc.collapsed_call_arg_param_idx(node, info)
+	if param_idx < 0 || param_idx >= info.params.len {
+		return none
+	}
+	target := info.params[param_idx]
+	if info.is_variadic && param_idx == info.params.len - 1 && target is Array {
+		return target.elem_type
+	}
+	return target
+}
+
+fn (mut tc TypeChecker) annotate_collapsed_field_expected_expr(arg_id flat.NodeId, field_name string, target Type) {
+	if expected := tc.collapsed_field_expected_type(field_name, target) {
 		tc.annotate_expected_expr(arg_id, expected)
 	}
 }
 
-fn (tc &TypeChecker) params_field_expected_type(field_name string, info CallInfo) ?Type {
+fn (tc &TypeChecker) collapsed_field_expected_type(field_name string, target Type) ?Type {
 	if field_name.len == 0 {
 		return none
 	}
-	for param in info.params {
-		param_struct := struct_type_from_type(unwrap_pointer(param)) or { continue }
-		if expected := tc.struct_field_type(param_struct.name, field_name) {
-			return expected
-		}
+	param_struct := collapsed_field_struct_type(target) or { return none }
+	return tc.struct_field_type(param_struct.name, field_name)
+}
+
+fn (tc &TypeChecker) collapsed_field_owner(field_name string, target Type) ?string {
+	if field_name.len == 0 {
+		return none
+	}
+	param_struct := collapsed_field_struct_type(target) or { return none }
+	if tc.struct_field_type(param_struct.name, field_name) != none {
+		return param_struct.name
 	}
 	return none
 }
 
-fn (tc &TypeChecker) params_field_owner(field_name string, info CallInfo) ?string {
-	if field_name.len == 0 {
-		return none
-	}
-	for param in info.params {
-		param_struct := struct_type_from_type(unwrap_pointer(param)) or { continue }
-		if tc.struct_field_type(param_struct.name, field_name) != none {
-			return param_struct.name
-		}
-	}
-	return none
+fn collapsed_field_struct_type(target Type) ?Struct {
+	return struct_type_from_type(unalias_and_unwrap_pointer_type(target))
 }
 
-fn params_field_owner_display(owner string) string {
+fn collapsed_field_owner_display(owner string) string {
 	parts := owner.split('.')
 	if parts.len > 1 {
 		return parts[parts.len - 2..].join('.')
@@ -8900,11 +8955,16 @@ fn (mut tc TypeChecker) check_duplicate_fn_declarations() {
 			&& tc.node_is_in_selected_input_file(flat.NodeId(it))) {
 			continue
 		}
-		display_name := tc.a.nodes[indexes[0]].value
-		if display_name.all_after_last('.') == 'init'
-			|| tc.fn_group_name_conflicts_with_import(indexes, display_name.all_after_last('.'))
+		stored_name := tc.a.nodes[indexes[0]].value
+		if stored_name.all_after_last('.') == 'init'
+			|| tc.fn_group_name_conflicts_with_import(indexes, stored_name.all_after_last('.'))
 			|| tc.fn_group_contains_builtin_declaration(indexes) {
 			continue
+		}
+		display_name := if receiver, method := flat.decode_static_type_method_name(stored_name) {
+			'${receiver}.${method}'
+		} else {
+			stored_name
 		}
 		tc.errors << TypeError{
 			msg: 'redefinition of function `${display_name}`'
@@ -9235,8 +9295,14 @@ fn (mut tc TypeChecker) check_fn_declaration_name(id flat.NodeId, node flat.Node
 	}
 	tc.check_fn_if_attribute_return(id, node)
 	tc.check_imported_module_prefix(id, node.value, 'fn')
-	name := node.value.all_after_last('.')
-	if !node.value.contains('.') && tc.cur_module in ['', 'main'] && is_builtin_type_name(name) {
+	mut name := node.value.all_after_last('.')
+	if node.is_static_type_method {
+		if _, method := flat.decode_static_type_method_name(node.value) {
+			name = method
+		}
+	}
+	if !node.value.contains('.') && !node.is_static_type_method
+		&& tc.cur_module in ['', 'main'] && is_builtin_type_name(name) {
 		tc.record_error_at(.duplicate_decl, 'top level declaration cannot shadow builtin type', id, tc.fn_declaration_diagnostic_pos(node))
 	}
 	// V1 treats os and strconv like builtin modules. Their long-standing private
@@ -9252,7 +9318,7 @@ fn (mut tc TypeChecker) check_fn_declaration_name(id flat.NodeId, node flat.Node
 	if name.len == 0 || (!name[0].is_letter() && name[0] != `_`) || snake_case_name_is_valid(name) {
 		return
 	}
-	tc.check_snake_case_name(id, name, if node.value.contains('.') {
+	tc.check_snake_case_name(id, name, if node.value.contains('.') || node.is_static_type_method {
 		'method name'
 	} else {
 		'function name'
@@ -10922,12 +10988,21 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 		&& (node.children_count > 0 || split_sum_variant_texts(node.typ).len > 1) {
 		tc.check_sum_type_decl(node_id, node)
 	}
-	if node.kind == .fn_decl && node.value.contains('.') {
-		receiver_name := node.value.all_before_last('.').all_after_last('.')
-		mut is_static := node.children_count == 0
+	if node.kind == .fn_decl && (node.value.contains('.') || node.is_static_type_method) {
+		is_marked_static := node.is_static_type_method
+		receiver_name := if is_marked_static {
+			if receiver, _ := flat.decode_static_type_method_name(node.value) {
+				receiver.all_after_last('.')
+			} else {
+				''
+			}
+		} else {
+			node.value.all_before_last('.').all_after_last('.')
+		}
+		mut is_static := is_marked_static || node.children_count == 0
 		if node.children_count > 0 {
 			first := tc.a.child_node(&node, 0)
-			is_static = first.kind != .param || first.op != .dot
+			is_static = is_marked_static || first.kind != .param || first.op != .dot
 		}
 		if is_static && !tc.type_name_known(receiver_name) {
 			tc.record_error_at(.unknown_type, 'unknown type `${receiver_name}`', node_id, tc.type_diagnostic_pos(node_id, receiver_name))

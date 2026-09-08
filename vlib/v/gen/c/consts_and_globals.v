@@ -227,7 +227,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, cname string, fie
 					write_octal_escape(mut sb, u8(rune_code))
 					sb.str()
 				} else {
-					util.smart_quote(u8(rune_code).ascii_str(), false)
+					util.smart_quote(u8(rune_code).ascii_str(), false, []int{})
 				}
 
 				g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
@@ -240,7 +240,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, cname string, fie
 			}
 		}
 		string {
-			escaped_val := util.smart_quote(ct_value, false)
+			escaped_val := util.smart_quote(ct_value, false, []int{})
 			// g.const_decl_write_precomputed(line_nr, styp, cname, '_S("${escaped_val}")')
 			// TODO: ^ the above for strings, cause:
 			// `error C2099: initializer is not a constant` errors in MSVC,
@@ -537,7 +537,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		attributes += 'VV_EXP '
 	}
 	if attr := node.attrs.find_first('_linker_section') {
-		attributes += '__attribute__ ((section ("${attr.arg}"))) '
+		escaped_section := util.smart_quote(attr.arg, false, attr.arg_opaque_pos)
+		attributes += '__attribute__ ((section ("${escaped_section}"))) '
 	}
 	for field in node.fields {
 		name := c_name(field.name)

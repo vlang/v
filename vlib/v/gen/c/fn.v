@@ -1448,7 +1448,8 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.definitions.write_string('void')
 	}
 	if attr := node.attrs.find_first('_linker_section') {
-		g.definitions.writeln(') __attribute__ ((section ("${attr.arg}")));')
+		escaped_section := util.smart_quote(attr.arg, false, attr.arg_opaque_pos)
+		g.definitions.writeln(') __attribute__ ((section ("${escaped_section}")));')
 	} else {
 		g.definitions.writeln(');')
 	}
@@ -3912,7 +3913,11 @@ fn (mut g Gen) update_generic_call_concrete_types_from_fn_types(generic_names []
 	}
 	if param_fn.func.return_type.has_flag(.generic) {
 		gt_name := g.table.sym(param_fn.func.return_type).name
-		mut return_type := arg_fn.func.return_type
+		mut return_type := if param_fn.func.return_type.has_option_or_result() {
+			arg_fn.func.return_type.clear_option_and_result()
+		} else {
+			arg_fn.func.return_type
+		}
 		if arg.expr is ast.LambdaExpr && return_type.has_flag(.generic) {
 			return_type = g.type_resolver.unwrap_generic_expr(arg.expr.expr, return_type)
 			if return_type.has_flag(.generic) {

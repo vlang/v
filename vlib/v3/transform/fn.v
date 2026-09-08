@@ -368,6 +368,22 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type stri
 		if method_name := t.resolve_imported_flattened_generic_receiver_method(clean_type, method) {
 			return method_name
 		}
+		// A bare receiver type inside a dependency module denotes that module's
+		// declaration before any same-named type from the importing program. The
+		// global signature index is keyed by short receiver names too, so querying
+		// it first can bind (for example) `veb.Context.not_found` to
+		// `main.Context.not_found`.
+		if !clean_type.contains('.') && t.cur_module.len > 0
+			&& t.cur_module !in ['main', 'builtin'] {
+			qualified_type := '${t.cur_module}.${clean_type}'
+			if isnil(t.tc) || qualified_type in t.tc.structs
+				|| qualified_type in t.tc.interface_names || qualified_type in t.tc.type_aliases {
+				qualified_method := '${qualified_type}.${method}'
+				if t.is_known_fn_name(qualified_method) {
+					return qualified_method
+				}
+			}
+		}
 		if !isnil(t.tc) {
 			if method_name := t.tc.concrete_method_signature_key(clean_type, method) {
 				if t.is_known_fn_name(method_name) {
@@ -2088,7 +2104,7 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 fn (t &Transformer) call_param_offset_for_node(call_name string, node flat.Node, params []types.Type) int {
 	mut param_offset := t.call_param_offset(call_name, node, params)
 	if param_offset != 0 || call_name.len == 0 || params.len == 0 {
-		return param_offset
+		return param_offset + t.implicit_veb_ctx_param_offset(call_name, node, params)
 	}
 	selector_id := t.call_selector_callee_id(node) or { return param_offset }
 	selector := t.a.nodes[int(selector_id)]
@@ -2111,7 +2127,19 @@ fn (t &Transformer) call_param_offset_for_node(call_name string, node flat.Node,
 		// call_param_offset cannot recognize it; keep explicit args aligned.
 		param_offset = 1
 	}
-	return param_offset
+	return param_offset + t.implicit_veb_ctx_param_offset(call_name, node, params)
+}
+
+fn (t &Transformer) implicit_veb_ctx_param_offset(call_name string, node flat.Node, params []types.Type) int {
+	// Reflected veb calls supply the context explicitly; ordinary source calls omit it.
+	if t.receiver_call_uses_comptime_method_selector(node) {
+		return 0
+	}
+	abi_params := t.implicit_veb_call_param_types(call_name) or { return 0 }
+	if params.len != abi_params.len {
+		return 0
+	}
+	return 1
 }
 
 fn (t &Transformer) call_selector_callee_id(node flat.Node) ?flat.NodeId {
@@ -2209,7 +2237,7 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 			return none
 		}
 		for type_name in t.static_assoc_type_candidates(base.value) {
-			name := '${type_name}.${method}'
+			name := flat.encode_static_type_method_name(type_name, method)
 			if t.is_known_fn_name(name) {
 				return name
 			}
@@ -2219,7 +2247,7 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 		if inner.kind == .ident {
 			type_ident := '${inner.value}.${base.value}'
 			for type_name in t.static_assoc_type_candidates(type_ident) {
-				name := '${type_name}.${method}'
+				name := flat.encode_static_type_method_name(type_name, method)
 				if t.is_known_fn_name(name) {
 					return name
 				}
@@ -2399,6 +2427,9 @@ fn (mut t Transformer) call_param_types(call_name string) []types.Type {
 	if call_name.len == 0 || isnil(t.tc) {
 		return []types.Type{}
 	}
+	if params := t.implicit_veb_call_param_types(call_name) {
+		return params
+	}
 	if params := t.call_param_types_from_decl(call_name) {
 		return params
 	}
@@ -2407,6 +2438,9 @@ fn (mut t Transformer) call_param_types(call_name string) []types.Type {
 }
 
 fn (mut t Transformer) call_param_types_for_node(call_name string, node flat.Node) []types.Type {
+	if params := t.implicit_veb_call_param_types(call_name) {
+		return params
+	}
 	if params := t.call_param_types_from_decl(call_name) {
 		return params
 	}
@@ -2446,6 +2480,20 @@ fn (mut t Transformer) call_param_types_for_node(call_name string, node flat.Nod
 		}
 	}
 	return t.call_param_types(call_name)
+}
+
+fn (t &Transformer) implicit_veb_call_param_types(call_name string) ?[]types.Type {
+	if call_name.len == 0 || isnil(t.tc) || t.tc.fn_implicit_veb_ctx.len == 0 {
+		return none
+	}
+	for name in [call_name, c_name(call_name)] {
+		if t.tc.fn_implicit_veb_ctx[name] {
+			if params := t.tc.fn_param_types[name] {
+				return params
+			}
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) call_callee_fn_type(fn_id flat.NodeId) ?types.FnType {
@@ -3550,7 +3598,8 @@ fn (mut t Transformer) lift_fn_literal_for_fn_param(_id flat.NodeId, node flat.N
 			body_ids << child_id
 		}
 	}
-	if param_ids.len >= fn_type.params.len {
+	if param_ids.len > fn_type.params.len
+		|| (param_ids.len == fn_type.params.len && node.generic_params().len == 0) {
 		return none
 	}
 	mut children := []flat.NodeId{cap: capture_ids.len + fn_type.params.len + body_ids.len}
@@ -3584,7 +3633,7 @@ fn (mut t Transformer) lift_fn_literal_for_fn_param(_id flat.NodeId, node flat.N
 	for child in children {
 		t.a.children << child
 	}
-	ret_type := if node.typ.len > 0 && node.typ != 'void' {
+	ret_type := if node.generic_params().len == 0 && node.typ.len > 0 && node.typ != 'void' {
 		node.typ
 	} else {
 		t.semantic_type_name(fn_type.return_type)

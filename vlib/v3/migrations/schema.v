@@ -416,14 +416,16 @@ pub fn (mut ctx Context) remove_foreign_key(table string, name string) ! {
 
 // create_orm_table creates the table represented by T through V's ORM metadata.
 pub fn create_orm_table[T](mut ctx Context) ! {
-	mut query := orm.new_query[T](ctx)
-	query.create()!
+	sql ctx {
+		create table T
+	}!
 }
 
 // drop_orm_table drops the table represented by T through V's ORM metadata.
 pub fn drop_orm_table[T](mut ctx Context) ! {
-	mut query := orm.new_query[T](ctx)
-	query.drop()!
+	sql ctx {
+		drop table T
+	}!
 }
 
 // select forwards ORM queries through the migration connection.

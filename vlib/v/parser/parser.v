@@ -4068,21 +4068,24 @@ fn (mut p Parser) string_expr() ast.Expr {
 	mut pos := p.tok.pos()
 	pos.last_line = pos.line_nr + val.count('\n')
 	if p.peek_tok.kind != .str_dollar {
+		val_opaque_pos := p.scanner.string_opaque_pos[p.tok.tidx]
 		p.next()
 		node = ast.StringLiteral{
-			val:      val
-			is_raw:   is_raw
-			language: match true {
+			val:        val
+			is_raw:     is_raw
+			language:   match true {
 				is_cstr { ast.Language.c }
 				is_js_str { ast.Language.js }
 				else { ast.Language.v }
 			}
-			pos:      pos
+			pos:        pos
+			opaque_pos: val_opaque_pos
 		}
 		return node
 	}
 	mut exprs := []ast.Expr{}
 	mut vals := []string{}
+	mut vals_opaque_pos := [][]int{}
 	mut has_fmts := []bool{}
 	mut fwidths := []int{}
 	mut precisions := []int{}
@@ -4096,6 +4099,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	p.inside_str_interp = true
 	for p.tok.kind == .string {
 		vals << p.tok.lit
+		vals_opaque_pos << p.scanner.string_opaque_pos[p.tok.tidx]
 		p.next()
 		if p.tok.kind != .str_dollar {
 			break
@@ -4186,6 +4190,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	pos = pos.extend(p.prev_tok.pos())
 	node = ast.StringInterLiteral{
 		vals:            vals
+		opaque_pos:      vals_opaque_pos
 		exprs:           exprs
 		has_fmts:        has_fmts.clone()
 		need_fmts:       has_fmts

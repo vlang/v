@@ -10,6 +10,7 @@ const direct_optional_forward_return_value = '__direct_optional_forward'
 const optional_success_return_value = '__optional_success_return'
 const transformed_return_value_prefix = '__transformed_return:'
 const transformed_direct_optional_forward_value_prefix = '__transformed_direct_optional_forward:'
+const ownership_propagation_sync_expr_value = '__v3_ownership_propagation_sync'
 const pending_loop_label_marker = '__v_pending_loop_label:'
 const skip_scope_drops_block_value = '__v3_skip_scope_drops'
 const prefix_scope_drops_block_value = '__v3_prefix_scope_drops'
@@ -23,6 +24,8 @@ struct CInlineAsmIO {
 struct CInlineAsmBlock {
 	arch          string
 	is_volatile   bool
+	is_raw        bool
+	is_intel      bool
 	templates     []string
 	output        []CInlineAsmIO
 	input         []CInlineAsmIO
@@ -3050,11 +3053,24 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 	g.indent++
 	if block.templates.len == 0 {
 		g.writeln('""')
-	} else {
-		for template in block.templates {
-			lowered := lower_c_inline_asm_template(template, block.arch, aliases, is_extended)
-			g.writeln('"${c_escape(lowered + '\n\t')}"')
+	}
+	if block.is_intel {
+		g.writeln('".intel_syntax noprefix\\n\\t"')
+	}
+	for template in block.templates {
+		if block.is_raw {
+			g.writeln('"${template}"')
+			continue
 		}
+		lowered := if block.is_intel {
+			lower_c_inline_asm_intel_template(template, aliases, is_extended)
+		} else {
+			lower_c_inline_asm_template(template, block.arch, aliases, is_extended)
+		}
+		g.writeln('"${c_escape(lowered + '\n\t')}"')
+	}
+	if block.is_intel {
+		g.writeln('".att_syntax prefix\\n\\t"')
 	}
 	if block.section_count > 1 {
 		g.write(': ')
@@ -3181,15 +3197,25 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 	if open < 0 || close <= open {
 		return none
 	}
-	header := source[..open].fields()
+	header := strip_c_inline_asm_comments(source[..open]).fields()
 	mut arch := ''
 	mut is_volatile := false
+	mut is_raw := false
+	mut is_intel := false
 	for word in header {
 		if word == 'asm' {
 			continue
 		}
 		if word == 'volatile' {
 			is_volatile = true
+			continue
+		}
+		if arch.len > 0 && word == 'raw' {
+			is_raw = true
+			continue
+		}
+		if arch.len > 0 && word == 'intel' {
+			is_intel = true
 			continue
 		}
 		if arch.len == 0 {
@@ -3200,10 +3226,16 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 	sections := split_c_inline_asm_sections(body)
 	mut templates := []string{}
 	if sections.len > 0 {
-		for line in sections[0].split_into_lines() {
-			trimmed := line.trim_space()
-			if trimmed.len > 0 {
-				templates << trimmed
+		if is_raw {
+			// A raw block passes each double-quoted template through to the C compiler
+			// verbatim, so the template text is taken straight from the V source.
+			templates = parse_c_inline_asm_raw_templates(sections[0])
+		} else {
+			for line in sections[0].split_into_lines() {
+				trimmed := line.trim_space()
+				if trimmed.len > 0 {
+					templates << trimmed
+				}
 			}
 		}
 	}
@@ -3216,12 +3248,42 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 	return CInlineAsmBlock{
 		arch: arch
 		is_volatile: is_volatile
+		is_raw: is_raw
+		is_intel: is_intel
 		templates: templates
 		output: if sections.len > 1 { parse_c_inline_asm_ios(sections[1], true) } else { [] }
 		input: if sections.len > 2 { parse_c_inline_asm_ios(sections[2], false) } else { [] }
 		clobbered: clobbered
 		section_count: sections.len
 	}
+}
+
+// parse_c_inline_asm_raw_templates returns the verbatim text of every double-quoted
+// template in a `raw` assembly block, keeping the escape sequences the C compiler expects.
+fn parse_c_inline_asm_raw_templates(source string) []string {
+	mut templates := []string{}
+	mut i := 0
+	for i < source.len {
+		if source[i] != `"` {
+			i++
+			continue
+		}
+		start := i + 1
+		i++
+		for i < source.len && source[i] != `"` {
+			if source[i] == `\\` && i + 1 < source.len {
+				i += 2
+				continue
+			}
+			i++
+		}
+		if i >= source.len {
+			break
+		}
+		templates << source[start..i]
+		i++
+	}
+	return templates
 }
 
 fn strip_c_inline_asm_comments(source string) string {
@@ -3327,13 +3389,26 @@ fn parse_c_inline_asm_ios(source string, is_output bool) []CInlineAsmIO {
 		if i >= source.len {
 			break
 		}
+		// GNU's named operand form: `[alias] "constraint" (expression)`.
+		mut named_alias := ''
+		if source[i] == `[` {
+			close := source.index_after(']', i + 1) or { break }
+			named_alias = source[i + 1..close].trim_space()
+			i = close + 1
+			for i < source.len && source[i].is_space() {
+				i++
+			}
+			if i >= source.len {
+				break
+			}
+		}
 		mut constraint := if is_output { '+r' } else { 'r' }
 		if source[i] != `(` {
 			constraint_start := i
 			for i < source.len && !source[i].is_space() && source[i] != `(` {
 				i++
 			}
-			constraint = source[constraint_start..i]
+			constraint = strip_c_inline_asm_quotes(source[constraint_start..i])
 			for i < source.len && source[i].is_space() {
 				i++
 			}
@@ -3375,8 +3450,14 @@ fn parse_c_inline_asm_ios(source string, is_output bool) []CInlineAsmIO {
 		for i < source.len && source[i].is_space() {
 			i++
 		}
-		mut alias := if is_c_inline_asm_ident(expr) { expr } else { '' }
-		if i + 2 <= source.len && source[i..i + 2] == 'as'
+		mut alias := if named_alias.len > 0 {
+			named_alias
+		} else if is_c_inline_asm_ident(expr) {
+			expr
+		} else {
+			''
+		}
+		if named_alias.len == 0 && i + 2 <= source.len && source[i..i + 2] == 'as'
 			&& (i + 2 == source.len || source[i + 2].is_space()) {
 			i += 2
 			for i < source.len && source[i].is_space() {
@@ -3421,10 +3502,10 @@ fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bo
 	}
 	mut operands := split_c_inline_asm_operands(operands_source)
 	is_directive := instruction.starts_with('.')
+	// V's structured x86 assembly is destination-first; AT&T wants the reverse order,
+	// which for three-operand forms such as `imul dst, src, imm` is a full reversal.
 	if is_c_inline_asm_x86_arch(arch) && !is_directive && operands.len > 1 {
-		last := operands.last()
-		operands.delete(operands.len - 1)
-		operands.prepend(last)
+		operands.reverse_in_place()
 	}
 	mut lowered := []string{cap: operands.len}
 	for operand in operands {
@@ -3435,6 +3516,101 @@ fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bo
 		lowered << lowered_operand
 	}
 	return instruction + ' ' + lowered.join(', ')
+}
+
+// lower_c_inline_asm_intel_template keeps V's destination-first structured syntax as
+// written, since the block is wrapped in `.intel_syntax noprefix`. Only the operand
+// aliases become GNU placeholders.
+fn lower_c_inline_asm_intel_template(source string, aliases map[string]bool, is_extended bool) string {
+	line := source.trim_space()
+	if line.len == 0 || line.ends_with(':') {
+		return line
+	}
+	mut split := 0
+	for split < line.len && !line[split].is_space() {
+		split++
+	}
+	mut instruction := line[..split]
+	mut operands_source := line[split..].trim_space()
+	if instruction == 'lock' && operands_source.len > 0 {
+		mut next := 0
+		for next < operands_source.len && !operands_source[next].is_space() {
+			next++
+		}
+		instruction += ' ' + operands_source[..next]
+		operands_source = operands_source[next..].trim_space()
+	}
+	if operands_source.len == 0 {
+		return instruction
+	}
+	operands := split_c_inline_asm_operands(operands_source)
+	mut lowered := []string{cap: operands.len}
+	for operand in operands {
+		lowered << lower_c_inline_asm_intel_operand(operand, aliases, is_extended)
+	}
+	return instruction + ' ' + lowered.join(', ')
+}
+
+fn lower_c_inline_asm_intel_operand(source string, aliases map[string]bool, is_extended bool) string {
+	operand := source.trim_space()
+	if operand.len >= 2 && operand[0] == `\`` && operand[operand.len - 1] == `\`` {
+		return "'${operand[1..operand.len - 1]}'"
+	}
+	if label := c_inline_asm_quoted_label(operand) {
+		return label
+	}
+	return lower_c_inline_asm_intel_atoms(operand, aliases, is_extended)
+}
+
+fn lower_c_inline_asm_intel_atoms(source string, aliases map[string]bool, is_extended bool) string {
+	mut out := strings.new_builder(source.len + 8)
+	mut i := 0
+	mut quote := u8(0)
+	for i < source.len {
+		c := source[i]
+		if quote != 0 {
+			out.write_u8(c)
+			if c == `\\` && i + 1 < source.len {
+				i++
+				out.write_u8(source[i])
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if c in [`'`, `"`] {
+			quote = c
+			out.write_u8(c)
+			i++
+			continue
+		}
+		if is_extended && c in [`{`, `|`, `}`] {
+			out.write_u8(`%`)
+			out.write_u8(c)
+			i++
+			continue
+		}
+		if c_inline_asm_ident_start(c) {
+			start := i
+			i++
+			for i < source.len && c_inline_asm_ident_char(source[i]) {
+				i++
+			}
+			word := source[start..i]
+			if aliases[word] {
+				// `%V` asks GCC and Clang to substitute an x86 register without the
+				// `%` prefix that AT&T syntax requires.
+				out.write_string('%V[${word}]')
+			} else {
+				out.write_string(word)
+			}
+			continue
+		}
+		out.write_u8(c)
+		i++
+	}
+	return out.str()
 }
 
 fn is_c_inline_asm_indirect_x86_branch_operand(instruction string, operand string, arch string, aliases map[string]bool) bool {
@@ -3630,27 +3806,54 @@ fn lower_c_inline_asm_atoms(source string, arch string, aliases map[string]bool,
 }
 
 fn is_c_inline_asm_x86_arch(arch string) bool {
-	return arch in ['amd64', 'i386']
+	return arch in ['amd64', 'x64', 'x86_64', 'i386', 'i486', 'i586', 'i686', 'x86', 'x86_32', 'ia-32',
+		'ia32']
 }
 
 fn is_c_inline_asm_x86_register(name string) bool {
 	if name in ['al', 'ah', 'ax', 'eax', 'rax', 'bl', 'bh', 'bx', 'ebx', 'rbx', 'cl', 'ch', 'cx',
 		'ecx', 'rcx', 'dl', 'dh', 'dx', 'edx', 'rdx', 'sil', 'si', 'esi', 'rsi', 'dil', 'di', 'edi',
-		'rdi', 'spl', 'sp', 'esp', 'rsp', 'bpl', 'bp', 'ebp', 'rbp', 'rip', 'eflags', 'flags'] {
+		'rdi', 'spl', 'sp', 'esp', 'rsp', 'bpl', 'bp', 'ebp', 'rbp', 'rip', 'eiz', 'riz', 'eflags',
+		'flags', 'cs', 'ss', 'ds', 'es', 'fs', 'gs', 'st'] {
 		return true
 	}
-	for prefix in ['r', 'xmm', 'ymm', 'zmm', 'mm', 'st'] {
+	// AVX-512 opmask registers: k0 through k7.
+	if name.len == 2 && name[0] == `k` && name[1] >= `0` && name[1] <= `7` {
+		return true
+	}
+	if name.len == 4 && name.starts_with('bnd') && name[3] >= `0` && name[3] <= `3` {
+		return true
+	}
+	for prefix, bounds in {
+		'r':   [8, 32]
+		'xmm': [0, 32]
+		'ymm': [0, 32]
+		'zmm': [0, 32]
+		'mm':  [0, 8]
+		'st':  [0, 8]
+		'tmm': [0, 8]
+		'cr':  [0, 16]
+		'dr':  [0, 16]
+	} {
 		if name.starts_with(prefix) && name.len > prefix.len {
 			mut end := name.len
 			if prefix == 'r' && name[end - 1] in [`b`, `w`, `d`] {
 				end--
 			}
 			if end > prefix.len && name[prefix.len..end].bytes().all(it.is_digit()) {
-				return true
+				number := name[prefix.len..end].int()
+				return number >= bounds[0] && number < bounds[1]
 			}
 		}
 	}
 	return false
+}
+
+fn strip_c_inline_asm_quotes(source string) string {
+	if source.len >= 2 && source[0] in [`'`, `"`] && source[source.len - 1] == source[0] {
+		return source[1..source.len - 1]
+	}
+	return source
 }
 
 fn is_c_inline_asm_ident(source string) bool {

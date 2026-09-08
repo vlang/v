@@ -205,6 +205,7 @@ fn main() {
 	if prefs.is_help {
 		invoke_help_and_exit(args)
 	}
+	validate_windows_c_compiler_for_unknown_command(prefs)
 
 	other_commands := ['run', 'crun', 'build', 'build-module', 'help', 'version', 'new', 'init',
 		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',

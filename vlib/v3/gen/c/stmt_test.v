@@ -7,8 +7,8 @@ fn stmt_test_node(mut a flat.FlatAst, kind flat.NodeKind, value string, children
 	start := a.children.len
 	a.children << children
 	return a.add_node(flat.Node{
-		kind:           kind
-		value:          value
+		kind: kind
+		value: value
 		children_start: i32(start)
 		children_count: flat.child_count(children.len)
 	})
@@ -18,8 +18,8 @@ fn stmt_test_prefix(mut a flat.FlatAst, op flat.Op, child flat.NodeId) flat.Node
 	start := a.children.len
 	a.children << child
 	return a.add_node(flat.Node{
-		kind:           .prefix
-		op:             op
+		kind: .prefix
+		op: op
 		children_start: i32(start)
 		children_count: 1
 	})
@@ -103,9 +103,9 @@ fn test_lowered_storage_dereference_prefers_annotated_pointer_type() {
 	children_start := a.children.len
 	a.children << value_id
 	deref_id := a.add_node(flat.Node{
-		kind:           .prefix
-		op:             .mul
-		typ:            '&int'
+		kind: .prefix
+		op: .mul
+		typ: '&int'
 		children_start: i32(children_start)
 		children_count: 1
 	})
@@ -126,16 +126,16 @@ fn test_primitive_fixed_array_zero_initializer_is_compact() {
 
 	large := types.ArrayFixed{
 		elem_type: types.Type(types.u8_)
-		len:       65536
+		len: 65536
 	}
 	assert g.empty_fixed_array_initializer_string(large) == '{0}'
 
 	nested := types.ArrayFixed{
 		elem_type: types.Type(types.ArrayFixed{
 			elem_type: types.Type(types.i32_)
-			len:       32
+			len: 32
 		})
-		len:       32
+		len: 32
 	}
 	assert g.empty_fixed_array_initializer_string(nested) == '{0}'
 
@@ -143,7 +143,7 @@ fn test_primitive_fixed_array_zero_initializer_is_compact() {
 		elem_type: types.Type(types.Array{
 			elem_type: types.Type(types.int_)
 		})
-		len:       2
+		len: 2
 	}
 	dynamic_init := g.empty_fixed_array_initializer_string(dynamic_arrays)
 	assert dynamic_init.count('array_new(') == 2
@@ -152,17 +152,15 @@ fn test_primitive_fixed_array_zero_initializer_is_compact() {
 fn test_fixed_array_optional_abi_conversions_use_memcpy() {
 	fixed := types.Type(types.ArrayFixed{
 		elem_type: types.Type(types.int_)
-		len:       2
+		len: 2
 	})
 	mut forward_gen := FlatGen.new()
-	forward := forward_gen.optional_forward_return_abi_wrap_expr('Optional_source',
-		'Optional_destination', fixed, 'source()')
+	forward := forward_gen.optional_forward_return_abi_wrap_expr('Optional_source', 'Optional_destination', fixed, 'source()')
 	assert forward.contains('if (_t1.ok) { memcpy(_t2.value, _t1.value, sizeof(_t2.value)); }'), forward
 	assert !forward.contains('.value = _t1.value'), forward
 
 	mut interface_gen := FlatGen.new()
-	interface_gen.gen_interface_dispatch_optional_abi_value_return('Optional_destination',
-		'_iface_result', fixed)
+	interface_gen.gen_interface_dispatch_optional_abi_value_return('Optional_destination', '_iface_result', fixed)
 	interface_output := interface_gen.sb.str()
 	assert interface_output.contains('if (_iface_result.ok) {'), interface_output
 	copy_statement := 'memcpy(_iface_abi_result_out_0.value, _iface_result.value, sizeof(_iface_abi_result_out_0.value));'
@@ -218,7 +216,7 @@ fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 	g.tc = &tc
 	fixed_type := types.Type(types.ArrayFixed{
 		elem_type: types.Type(types.u8_)
-		len:       2
+		len: 2
 	})
 	byte_pointer := types.Type(types.Pointer{
 		base_type: types.Type(types.u8_)
@@ -236,12 +234,11 @@ fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 	assign_gen.a = &a
 	assign_gen.tc = &tc
 	p_id := stmt_test_node(mut a, .ident, 'p', [])
-	assert assign_gen.gen_fixed_array_address_to_byte_pointer_assign(p_id, rhs_id, byte_pointer,
-		fixed_pointer)
+	assert assign_gen.gen_fixed_array_address_to_byte_pointer_assign(p_id, rhs_id, byte_pointer, fixed_pointer)
 	assert assign_gen.sb.str() == 'p = ((u8*)(buf));\n'
 	int_fixed_type := types.Type(types.ArrayFixed{
 		elem_type: types.Type(types.i32_)
-		len:       2
+		len: 2
 	})
 	tc.cur_scope.insert('int_buf', int_fixed_type)
 	int_buf_id := stmt_test_node(mut a, .ident, 'int_buf', [])
@@ -252,8 +249,7 @@ fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 	mut rejected_gen := FlatGen.new()
 	rejected_gen.a = &a
 	rejected_gen.tc = &tc
-	assert !rejected_gen.gen_fixed_array_address_to_byte_pointer_assign(p_id, int_rhs_id,
-		byte_pointer, int_fixed_pointer)
+	assert !rejected_gen.gen_fixed_array_address_to_byte_pointer_assign(p_id, int_rhs_id, byte_pointer, int_fixed_pointer)
 	assert rejected_gen.sb.str() == ''
 	tc.pop_scope()
 }
@@ -280,8 +276,8 @@ fn test_mut_parameter_power_assign_uses_scalar_result_type() {
 	a.children << arg_id
 	a.children << exponent_id
 	g.gen_assign(flat.Node{
-		kind:           .assign
-		op:             .power_assign
+		kind: .assign
+		op: .power_assign
 		children_start: i32(children_start)
 		children_count: 2
 	})
@@ -385,7 +381,7 @@ fn test_local_pointer_alias_branch_assignment_merges_outer_markers() {
 	arg_id := stmt_test_node(mut a, .ident, 'arg', [])
 	amp_arg := stmt_test_prefix(mut a, .amp, arg_id)
 	g.track_local_pointer_alias_assign(flat.Node{
-		kind:  .ident
+		kind: .ident
 		value: 'p'
 	}, amp_arg)
 	assert g.local_pointer_alias_source('p') or { '' } == 'x'
@@ -399,7 +395,7 @@ fn test_local_pointer_alias_branch_assignment_merges_outer_markers() {
 	x_id := stmt_test_node(mut a, .ident, 'x', [])
 	amp_x := stmt_test_prefix(mut a, .amp, x_id)
 	g.track_local_pointer_alias_assign(flat.Node{
-		kind:  .ident
+		kind: .ident
 		value: 'maybe'
 	}, amp_x)
 	assert g.local_pointer_alias_source('maybe') or { '' } == ''
@@ -411,7 +407,7 @@ fn test_local_pointer_alias_branch_assignment_merges_outer_markers() {
 	tc.push_scope()
 	g.enter_conditional_branch(true)
 	g.track_local_pointer_alias_assign(flat.Node{
-		kind:  .ident
+		kind: .ident
 		value: 'p'
 	}, amp_x)
 	assert g.local_pointer_alias_source('p') or { '' } == 'arg'
@@ -440,7 +436,7 @@ fn test_local_pointer_alias_branch_assignment_without_outer_marker_stays_conditi
 	x_id := stmt_test_node(mut a, .ident, 'x', [])
 	amp_x := stmt_test_prefix(mut a, .amp, x_id)
 	g.track_local_pointer_alias_assign(flat.Node{
-		kind:  .ident
+		kind: .ident
 		value: 'p'
 	}, amp_x)
 	assert g.local_pointer_alias_source('p') or { '' } == ''
@@ -467,7 +463,7 @@ fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
 	x_id := stmt_test_node(mut a, .ident, 'x', [])
 	amp_x := stmt_test_prefix(mut a, .amp, x_id)
 	g.track_local_pointer_alias_source(flat.Node{
-		kind:  .ident
+		kind: .ident
 		value: 'p'
 	}, p_owner, amp_x, ptr_type)
 	assert g.local_pointer_alias_source('p') or { '' } == 'x'
@@ -476,7 +472,7 @@ fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
 	q_owner := tc.cur_scope.insert_with_owner('q', ptr_type)
 	p_id := stmt_test_node(mut a, .ident, 'p', [])
 	g.track_local_pointer_alias_source(flat.Node{
-		kind:  .ident
+		kind: .ident
 		value: 'q'
 	}, q_owner, p_id, ptr_type)
 	assert g.local_pointer_alias_source('q') or { '' } == 'x'
@@ -485,7 +481,7 @@ fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
 	assigned_owner := tc.cur_scope.insert_with_owner('assigned', ptr_type)
 	g.declare_local_pointer_alias_source(assigned_owner, '')
 	g.track_local_pointer_alias_assign(flat.Node{
-		kind:  .ident
+		kind: .ident
 		value: 'assigned'
 	}, p_id)
 	assert g.local_pointer_alias_source('assigned') or { '' } == 'x'
@@ -495,7 +491,7 @@ fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
 	mut_id := stmt_test_node(mut a, .ident, 'mut_alias', [])
 	mut_copy_owner := tc.cur_scope.insert_with_owner('mut_copy', ptr_type)
 	g.track_local_pointer_alias_source(flat.Node{
-		kind:  .ident
+		kind: .ident
 		value: 'mut_copy'
 	}, mut_copy_owner, mut_id, ptr_type)
 	assert g.local_pointer_alias_source('mut_copy') or { '' } == 'x'
@@ -510,7 +506,7 @@ fn test_heap_local_memdup_expr_uses_aligned_memdup_for_aligned_structs() {
 	g.tc = &tc
 	g.register_struct_decl_info('Aligned', 'Aligned', 'main', '', flat.Node{
 		value: 'Aligned'
-		typ:   'aligned=64'
+		typ: 'aligned=64'
 	})
 	aligned_type := types.Type(types.Struct{
 		name: 'Aligned'
@@ -567,7 +563,7 @@ fn test_heap_local_address_expr_copies_selector_from_stack_alias() {
 	})
 	tc.structs['S'] = [types.StructField{
 		name: 'x'
-		typ:  int_type
+		typ: int_type
 	}]
 	tc.push_scope()
 	tc.cur_scope.insert_with_owner('s', struct_type)
@@ -594,4 +590,108 @@ fn test_heap_local_address_expr_copies_selector_from_stack_alias() {
 	}
 	assert external_expr == '&p->x'
 	tc.pop_scope()
+}
+
+fn test_inline_asm_x86_reverses_every_structured_operand() {
+	aliases := {
+		'dst': true
+		'src': true
+	}
+	assert lower_c_inline_asm_template('imul dst, src, 7', 'amd64', aliases, true) == 'imul \$7, %[src], %[dst]'
+	assert lower_c_inline_asm_template('mov dst, src', 'amd64', aliases, true) == 'mov %[src], %[dst]'
+}
+
+fn test_inline_asm_intel_templates_keep_destination_first_order() {
+	aliases := {
+		'value':     true
+		'increment': true
+	}
+	assert lower_c_inline_asm_intel_template('add value, increment', aliases, false) == 'add %V[value], %V[increment]'
+	assert lower_c_inline_asm_intel_template('mov rax, 7', aliases, false) == 'mov rax, 7'
+	assert lower_c_inline_asm_intel_template('mov rax, [value + rcx*4 + 8]', aliases, false) == 'mov rax, [%V[value] + rcx*4 + 8]'
+	assert lower_c_inline_asm_intel_template('mov rax, `A`', aliases, false) == "mov rax, 'A'"
+	assert lower_c_inline_asm_intel_template('loop_start:', aliases, false) == 'loop_start:'
+	assert lower_c_inline_asm_intel_template('vpxord zmm0{k1}{z}, zmm0, zmm0', aliases, true) == 'vpxord zmm0%{k1%}%{z%}, zmm0, zmm0'
+}
+
+fn test_inline_asm_raw_templates_are_taken_verbatim() {
+	source := '"addl %[increment], %[value]\\n\\t"
+"nop%{%%k1%}\\n\\t" // trailing comment
+'
+	assert parse_c_inline_asm_raw_templates(source) == [
+		'addl %[increment], %[value]\\n\\t',
+		'nop%{%%k1%}\\n\\t',
+	]
+}
+
+fn test_inline_asm_block_reads_raw_and_intel_modifiers() {
+	raw := parse_c_inline_asm_block('asm amd64 raw {
+	"nop\\n\\t"
+	; [out] "=r" (result)
+	; [lhs] "r" (lhs)
+	; cc
+}') or {
+		assert false
+		return
+	}
+	assert raw.arch == 'amd64'
+	assert raw.is_raw
+	assert !raw.is_intel
+	assert raw.templates == ['nop\\n\\t']
+	assert raw.output.map(it.constraint) == ['=r']
+	assert raw.output.map(it.alias) == ['out']
+	assert raw.input.map(it.alias) == ['lhs']
+	assert raw.clobbered == ['cc']
+
+	intel := parse_c_inline_asm_block('asm amd64 intel {
+	add value, increment
+	; +r (value)
+}') or {
+		assert false
+		return
+	}
+	assert intel.arch == 'amd64'
+	assert intel.is_intel
+	assert !intel.is_raw
+	assert intel.templates == ['add value, increment']
+}
+
+fn test_inline_asm_header_comments_do_not_enable_modifiers() {
+	block := parse_c_inline_asm_block('asm amd64 /* raw intel */ {
+	mov rax, rbx
+}') or {
+		assert false
+		return
+	}
+	assert block.arch == 'amd64'
+	assert !block.is_raw
+	assert !block.is_intel
+	assert block.templates == ['mov rax, rbx']
+}
+
+fn test_inline_asm_x86_registers_include_avx512_mask_registers() {
+	assert is_c_inline_asm_x86_register('k0')
+	assert is_c_inline_asm_x86_register('k7')
+	assert !is_c_inline_asm_x86_register('k8')
+	assert !is_c_inline_asm_x86_register('kernel')
+	assert is_c_inline_asm_x86_register('tmm0')
+	assert is_c_inline_asm_x86_register('tmm7')
+	assert is_c_inline_asm_x86_register('bnd0')
+	assert is_c_inline_asm_x86_register('bnd3')
+	assert !is_c_inline_asm_x86_register('bnd4')
+	assert is_c_inline_asm_x86_register('cs')
+	assert is_c_inline_asm_x86_register('cr15')
+	assert is_c_inline_asm_x86_register('dr0')
+	assert is_c_inline_asm_x86_register('st')
+	assert is_c_inline_asm_x86_register('r16')
+	assert is_c_inline_asm_x86_register('r31d')
+	assert !is_c_inline_asm_x86_register('r7')
+	assert !is_c_inline_asm_x86_register('r32')
+	assert is_c_inline_asm_x86_register('mm7')
+	assert !is_c_inline_asm_x86_register('mm8')
+	assert !is_c_inline_asm_x86_register('st8')
+	assert !is_c_inline_asm_x86_register('tmm8')
+	assert !is_c_inline_asm_x86_register('xmm32')
+	assert !is_c_inline_asm_x86_register('r999')
+	assert lower_c_inline_asm_template('mov ax, cs', 'amd64', map[string]bool{}, false) == 'mov %cs, %ax'
 }

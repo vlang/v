@@ -23,7 +23,7 @@ const c_source_directives_end = '/* V3CACHE_SOURCE_DIRECTIVES_END */'
 const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
-const source_signature_cache_format = 'v3-source-signature-cache-5'
+const source_signature_cache_format = 'v3-source-signature-cache-9'
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
@@ -240,6 +240,7 @@ struct SourceSignatureDetails {
 	signature      string
 	validation     []string
 	source_digests []string
+	cacheable      bool
 }
 
 fn source_signature_details(source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
@@ -250,6 +251,7 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 	mut pkgconfig_names := map[string]bool{}
 	mut uses_build_pseudo := false
 	mut uses_version_pseudo := false
+	mut cacheable := true
 	mut validation := []string{}
 	mut source_digests := []string{cap: files.len}
 	for file in files {
@@ -262,13 +264,36 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
-		for qml_path in compile_time_qml_paths(source, path) {
-			qml_content := os.read_bytes(qml_path) or { return SourceSignatureDetails{} }
-			validation << 'qml=${qml_path}\t${file_metadata_signature(qml_path)}'
-			hash = hash_bytes(hash, [u8(0xf8)])
-			hash = hash_bytes(hash, qml_path.bytes())
+		vml_paths, vml_lookup_paths, vml_lookup_candidates, has_unresolved_vml_path := compile_time_vml_paths(source, path)
+		if has_unresolved_vml_path {
+			cacheable = false
+		}
+		for lookup_path in vml_lookup_paths {
+			resolved := os.real_path(lookup_path)
+			metadata := optional_file_metadata_signature(lookup_path)
+			validation << 'vmllookup=${lookup_path}\t${resolved}\t${metadata}'
+			hash = hash_bytes(hash, [u8(0xf7)])
+			hash = hash_bytes(hash, lookup_path.bytes())
 			hash = hash_bytes(hash, [u8(0)])
-			hash = hash_bytes(hash, qml_content)
+			hash = hash_bytes(hash, resolved.bytes())
+			hash = hash_bytes(hash, [u8(0xff)])
+		}
+		for candidate in vml_lookup_candidates {
+			metadata := optional_file_metadata_signature(candidate)
+			validation << 'vmlcandidate=${candidate}\t${metadata}'
+			hash = hash_bytes(hash, [u8(0xf6)])
+			hash = hash_bytes(hash, candidate.bytes())
+			hash = hash_bytes(hash, [u8(0)])
+			hash = hash_bytes(hash, metadata.bytes())
+			hash = hash_bytes(hash, [u8(0xff)])
+		}
+		for vml_path in vml_paths {
+			vml_content := os.read_bytes(vml_path) or { return SourceSignatureDetails{} }
+			validation << 'vml=${vml_path}\t${file_metadata_signature(vml_path)}'
+			hash = hash_bytes(hash, [u8(0xf8)])
+			hash = hash_bytes(hash, vml_path.bytes())
+			hash = hash_bytes(hash, [u8(0)])
+			hash = hash_bytes(hash, vml_content)
 			hash = hash_bytes(hash, [u8(0xff)])
 		}
 		if source_uses_pseudo(source, [
@@ -352,10 +377,18 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 		hash = hash_bytes(hash, [u8(if available { 1 } else { 0 })])
 		hash = hash_bytes(hash, [u8(0xff)])
 	}
+	if !cacheable {
+		// Keep repeated queries consistent inside one compiler process, while
+		// ensuring another process cannot reuse an artifact whose VML input path
+		// could not be extracted from source text.
+		hash = hash_bytes(hash, [u8(0xf7)])
+		hash = hash_bytes(hash, os.getpid().str().bytes())
+	}
 	return SourceSignatureDetails{
 		signature: hash.hex()
 		validation: validation
 		source_digests: source_digests
+		cacheable: cacheable
 	}
 }
 
@@ -403,7 +436,7 @@ fn source_uses_pseudo(source string, names []string) bool {
 					|| (name_end < source.len && signature_name_char(source[name_end])) {
 					continue
 				}
-				value, next_pos, ok := signature_string_call_arg(source, name_end)
+				value, next_pos, ok, _ := signature_string_call_arg_prefix(source, name_end)
 				if ok {
 					if quoted_text_mentions_pseudo(value, 0, value.len, names) {
 						return true
@@ -576,6 +609,14 @@ fn (m &Manager) source_signature(source_files []string) string {
 	return m.source_signature_details(source_files).signature
 }
 
+fn (m &Manager) cacheable_source_signature(source_files []string) ?string {
+	details := m.source_signature_details(source_files)
+	if !details.cacheable {
+		return none
+	}
+	return details.signature
+}
+
 fn (m &Manager) source_signature_details(source_files []string) SourceSignatureDetails {
 	return cached_source_signature_details_with_build_values(m.dir, 'module', source_files, m.build_pseudo_values, m.version_pseudo_values)
 }
@@ -599,7 +640,7 @@ fn cached_source_signature_details_with_build_values(cache_dir string, namespace
 		}
 	}
 	details := source_signature_details(paths, build_pseudo_values, version_pseudo_values)
-	if details.signature.len == 0 {
+	if details.signature.len == 0 || !details.cacheable {
 		return details
 	}
 	fresh_metadata := source_files_metadata_signature(paths)
@@ -704,10 +745,26 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 			}
 			continue
 		}
-		if line.starts_with('qml=') {
-			parts := line['qml='.len..].split('\t')
+		if line.starts_with('vml=') {
+			parts := line['vml='.len..].split('\t')
 			if parts.len != 2 || parts[0].len == 0
 				|| file_metadata_signature(parts[0]) != parts[1] {
+				return none
+			}
+			continue
+		}
+		if line.starts_with('vmlcandidate=') {
+			parts := line['vmlcandidate='.len..].split('\t')
+			if parts.len != 2 || parts[0].len == 0
+				|| optional_file_metadata_signature(parts[0]) != parts[1] {
+				return none
+			}
+			continue
+		}
+		if line.starts_with('vmllookup=') {
+			parts := line['vmllookup='.len..].split('\t')
+			if parts.len != 3 || parts[0].len == 0 || os.real_path(parts[0]) != parts[1]
+				|| optional_file_metadata_signature(parts[0]) != parts[2] {
 				return none
 			}
 			continue
@@ -748,6 +805,7 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 	return SourceSignatureDetails{
 		signature: signature
 		source_digests: source_digests
+		cacheable: true
 	}
 }
 
@@ -889,7 +947,7 @@ fn compile_time_pkgconfig_names(source string) []string {
 			pos++
 			continue
 		}
-		name, next_pos, ok := signature_string_call_arg(source, pos + 9)
+		name, next_pos, ok, _ := signature_string_call_arg(source, pos + 9)
 		if ok && signature_pkgconfig_name_is_safe(name) {
 			names[name] = true
 		}
@@ -900,10 +958,22 @@ fn compile_time_pkgconfig_names(source string) []string {
 	return result
 }
 
-fn signature_string_call_arg(source string, start int) (string, int, bool) {
+fn signature_string_call_arg(source string, start int) (string, int, bool, bool) {
+	value, literal_end, ok, is_raw := signature_string_call_arg_prefix(source, start)
+	if !ok {
+		return '', literal_end, false, false
+	}
+	end := skip_signature_space_and_comments(source, literal_end)
+	if end >= source.len || source[end] != `)` {
+		return '', end, false, false
+	}
+	return value, end + 1, true, is_raw
+}
+
+fn signature_string_call_arg_prefix(source string, start int) (string, int, bool, bool) {
 	mut pos := skip_signature_space_and_comments(source, start)
 	if pos >= source.len || source[pos] != `(` {
-		return '', start, false
+		return '', start, false, false
 	}
 	pos = skip_signature_space_and_comments(source, pos + 1)
 	mut is_raw := false
@@ -912,7 +982,7 @@ fn signature_string_call_arg(source string, start int) (string, int, bool) {
 		pos++
 	}
 	if pos >= source.len || source[pos] !in [`'`, `"`] {
-		return '', start, false
+		return '', start, false, false
 	}
 	quote := source[pos]
 	value_start := pos + 1
@@ -923,18 +993,21 @@ fn signature_string_call_arg(source string, start int) (string, int, bool) {
 			continue
 		}
 		if source[value_end] == quote {
-			return source[value_start..value_end], value_end + 1, true
+			return source[value_start..value_end], value_end + 1, true, is_raw
 		}
 		value_end++
 	}
-	return '', source.len, false
+	return '', source.len, false, false
 }
 
-fn compile_time_qml_paths(source string, source_file string) []string {
-	if !source.contains('\$qml') {
-		return []
+fn compile_time_vml_paths(source string, source_file string) ([]string, []string, []string, bool) {
+	if !source.contains('\$vml') {
+		return []string{}, []string{}, []string{}, false
 	}
 	mut paths := map[string]bool{}
+	mut lookup_paths := map[string]bool{}
+	mut lookup_candidates := map[string]bool{}
+	mut has_unresolved_path := false
 	mut pos := 0
 	for pos < source.len {
 		if source[pos] == `/` && pos + 1 < source.len
@@ -950,48 +1023,67 @@ fn compile_time_qml_paths(source string, source_file string) []string {
 			pos = skip_signature_quoted_text(source, pos + 1, true)
 			continue
 		}
-		if pos + 4 > source.len || source[pos..pos + 4] != '\$qml'
+		if pos + 4 > source.len || source[pos..pos + 4] != '\$vml'
 			|| (pos + 4 < source.len && signature_name_char(source[pos + 4])) {
 			pos++
 			continue
 		}
-		raw_path, next_pos, ok := signature_string_call_arg(source, pos + 4)
+		raw_path, next_pos, ok, is_raw := signature_string_call_arg(source, pos + 4)
 		if ok {
-			path := resolve_signature_qml_path(cached_unescape_v_string(raw_path), source_file)
+			path_value := if is_raw { raw_path } else { cached_unescape_v_string(raw_path) }
+			path, candidates := resolve_signature_vml_path(path_value, source_file)
 			paths[os.real_path(path)] = true
+			lookup_paths[path] = true
+			for candidate in candidates {
+				lookup_candidates[os.real_path(candidate)] = true
+			}
+		} else {
+			has_unresolved_path = true
 		}
 		pos = if next_pos > pos { next_pos } else { pos + 4 }
 	}
 	mut result := paths.keys()
 	result.sort()
-	return result
+	mut lookups := lookup_paths.keys()
+	lookups.sort()
+	mut candidates := lookup_candidates.keys()
+	candidates.sort()
+	return result, lookups, candidates, has_unresolved_path
 }
 
-fn resolve_signature_qml_path(path string, source_file string) string {
+fn resolve_signature_vml_path(path string, source_file string) (string, []string) {
 	if os.is_abs_path(path) {
-		return path
+		return path, []string{}
 	}
 	dir := os.dir(os.real_path(source_file))
 	direct := os.join_path_single(dir, path)
 	if os.exists(direct) {
-		return direct
+		return direct, []string{}
 	}
+	mut candidates := [direct]
 	in_templates := os.join_path(dir, 'templates', path)
 	if os.exists(in_templates) {
-		return in_templates
+		return in_templates, candidates
 	}
+	candidates << in_templates
 	root, _ := signature_vmod_root(source_file)
 	if root != dir {
 		vmod_direct := os.join_path_single(root, path)
 		if os.exists(vmod_direct) {
-			return vmod_direct
+			return vmod_direct, candidates
 		}
+		candidates << vmod_direct
 		vmod_templates := os.join_path(root, 'templates', path)
 		if os.exists(vmod_templates) {
-			return vmod_templates
+			return vmod_templates, candidates
 		}
 	}
-	return direct
+	return direct, []string{}
+}
+
+fn optional_file_metadata_signature(path string) string {
+	metadata := file_metadata_signature(path)
+	return if metadata.len > 0 { metadata } else { 'missing' }
 }
 
 fn signature_name_char(c u8) bool {
@@ -1079,6 +1171,10 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 		return none
 	}
 	source_details := m.source_signature_details(source_files)
+	if !source_details.cacheable {
+		cache_trace_module_miss(module_name, 'source has an unresolved compile-time VML path')
+		return none
+	}
 	expected := entry_stamp(m.salt, source_details.signature)
 	source_bodies := header_stamp_source_bodies(stamp, expected) or {
 		cache_trace_module_miss(module_name, 'source signature changed')
@@ -1117,6 +1213,9 @@ pub fn (m &Manager) valid_header(module_name string, source_files []string) ?Ent
 	}
 	stamp := os.read_file(entry.header_stamp) or { return none }
 	source_details := m.source_signature_details(source_files)
+	if !source_details.cacheable {
+		return none
+	}
 	expected := entry_stamp(m.salt, source_details.signature)
 	source_bodies := header_stamp_source_bodies(stamp, expected) or { return none }
 	return Entry{
@@ -1148,7 +1247,8 @@ pub fn (m &Manager) valid_object(cache_name string, source_files []string) ?Entr
 		return none
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
-	if !object_stamp_valid(stamp, entry_stamp(m.salt, m.source_signature(source_files))) {
+	source_hash := m.cacheable_source_signature(source_files) or { return none }
+	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_hash)) {
 		cache_trace_module_miss(cache_name, 'object source or dependency changed')
 		return none
 	}
@@ -1185,7 +1285,8 @@ pub fn (m &Manager) valid_object_for_compile_signature(cache_name string, source
 		return none
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
-	if !object_stamp_valid(stamp, entry_stamp(m.salt, m.source_signature(source_files))) {
+	source_hash := m.cacheable_source_signature(source_files) or { return none }
+	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_hash)) {
 		return none
 	}
 	expected := 'compile=${hash_text(compile_signature)}'
@@ -1209,7 +1310,8 @@ pub fn (m &Manager) valid_cgen(source_files []string, generation_signature strin
 		return none
 	}
 	stamp := os.read_file(entry.stamp) or { return none }
-	expected := cgen_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs, generation_signature)
+	source_hash := m.cacheable_source_signature(source_files) or { return none }
+	expected := cgen_entry_stamp(m.salt, source_hash, dependency_inputs, generation_signature)
 	if stamp != expected {
 		return none
 	}
@@ -1238,7 +1340,8 @@ pub fn (m &Manager) cached_cgen_dependency_inputs(source_files []string, generat
 		return none
 	}
 	stamp := os.read_file(entry.stamp) or { return none }
-	expected_head := entry_stamp(m.salt, m.source_signature(source_files)) + 'generation=${hash_text(generation_signature)}\n'
+	source_hash := m.cacheable_source_signature(source_files) or { return none }
+	expected_head := entry_stamp(m.salt, source_hash) + 'generation=${hash_text(generation_signature)}\n'
 	return cached_dependency_inputs_from_stamp(stamp, expected_head, fixed_dependencies, restored_prefixes)
 }
 
@@ -6075,11 +6178,20 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 			params << child
 		}
 	}
-	mut name := node.value
+	decl_name := node.value
+	name := if node.is_static_type_method {
+		if receiver, method := flat.decode_static_type_method_name(decl_name) {
+			'${receiver}.${method}'
+		} else {
+			decl_name
+		}
+	} else {
+		decl_name
+	}
 	visibility := if !is_c && (node.op == .arrow || source_is_public) { 'pub ' } else { '' }
 	mut head := if is_c { 'fn C.${name}' } else { '${visibility}fn ${name}' }
 	mut param_start := 0
-	if !is_c && name.contains('.') && params.len > 0 {
+	if !is_c && !node.is_static_type_method && name.contains('.') && params.len > 0 {
 		receiver_type := name.all_before_last('.')
 		first_type := clean_receiver_type(params[0].typ)
 		if first_type == receiver_type
@@ -6128,17 +6240,17 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 		head += ' ${node.typ}'
 	}
 	mut attr_lines := []string{}
-	if fn_is_disabled(a, module_name, name) {
+	if fn_is_disabled(a, module_name, decl_name) {
 		attr_lines << '@[if false]'
 	}
 	mut attrs := []string{}
 	if !cached_declaration_has_attr(declaration_attrs, 'export') {
-		if export_name := fn_export_name(a, module_name, name) {
+		if export_name := fn_export_name(a, module_name, decl_name) {
 			attrs << "export: '${escape_v_string(export_name)}'"
 		}
 	}
 	if !cached_declaration_has_attr(declaration_attrs, 'noreturn')
-		&& fn_is_noreturn(a, module_name, name) {
+		&& fn_is_noreturn(a, module_name, decl_name) {
 		attrs << 'noreturn'
 	}
 	if attrs.len > 0 {

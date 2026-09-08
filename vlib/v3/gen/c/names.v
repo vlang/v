@@ -469,13 +469,15 @@ fn (g &FlatGen) cname(name string) string {
 		cache.last_value = cached
 		return cached
 	}
-	if c_name_is_pre_sanitized(name) {
+	needs_internal_namespace := naming.c_name_needs_internal_namespace(name)
+	if !needs_internal_namespace && c_name_is_pre_sanitized(name) {
 		cache.last_name = name
 		cache.last_value = name
 		cache.remember(name, name)
 		return name
 	}
-	if naming.is_plain_identifier(name) && name != 'malloc' && name != 'int_str' && name != 'exit'
+	if !needs_internal_namespace && naming.is_plain_identifier(name) && name != 'malloc'
+		&& name != 'int_str' && name != 'exit'
 		&& !c_name_is_string_literal_symbol(name) && !naming.is_reserved_word(name)
 		&& !naming.is_libc_collision(name) {
 		cache.last_name = name
@@ -503,7 +505,7 @@ fn (g &FlatGen) cname(name string) string {
 			return cached
 		}
 	}
-	if !name.starts_with('C.') && c_name_is_plain_dotted(name) {
+	if !needs_internal_namespace && !name.starts_with('C.') && c_name_is_plain_dotted(name) {
 		result := naming.sanitize(name)
 		cache.entries[name] = result
 		cache.last_name = name

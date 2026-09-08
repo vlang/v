@@ -6092,6 +6092,15 @@ fn test_imported_private_free_function_is_rejected() {
 	}, ['main.v'], 'function `other.hidden` is private')
 }
 
+fn test_imported_private_static_function_uses_source_name_in_diagnostic() {
+	v3_bin := build_v3()
+	run_bad_project(v3_bin, 'review_imported_private_static_function', {
+		'v.mod':     "Module { name: 'review_imported_private_static_function' }\n"
+		'dep/dep.v': 'module dep\n\npub struct Widget {}\n\nfn Widget.make() Widget {\n\treturn Widget{}\n}\n'
+		'main.v':    'module main\n\nimport dep\n\nfn main() {\n\t_ = dep.Widget.make()\n}\n'
+	}, ['main.v'], 'function `dep.Widget.make` is private')
+}
+
 fn test_private_declarations_in_main_module_accept_empty_module_alias() {
 	v3_bin := build_v3()
 	out := run_good_project(v3_bin, 'review_main_module_private_alias', {
@@ -7088,6 +7097,22 @@ fn unrelated() int {
 	assert tc.errors.filter(it.severity == 'conflicting declaration:'
 		&& it.node_value == 'duplicate').len == 2, tc.errors.str()
 	assert tc.errors.any(it.msg.contains('cannot use `string` as type `int` in return argument')), tc.errors.str()
+}
+
+fn test_duplicate_static_function_diagnostic_uses_source_name() {
+	check_src := '${tmp_test_path('duplicate_static_fn')}.v'
+	os.write_file(check_src, 'struct Widget {}\n\nfn Widget.make() {}\n\nfn Widget.make(value int) {}\n') or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(check_src)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.any(it.severity == 'builder error:'
+		&& it.msg == 'redefinition of function `Widget.make`'), tc.errors.str()
+	assert !tc.errors.any(it.msg.contains('@static@')), tc.errors.str()
 }
 
 fn test_repeated_template_lines_keep_distinct_diagnostic_positions() {

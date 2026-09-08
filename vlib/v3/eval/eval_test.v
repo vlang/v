@@ -87,6 +87,33 @@ fn main() {
 	assert e.stdout() == '0\n'
 }
 
+fn test_eval_disabled_static_method_call_skips_arguments() {
+	mut e := create()
+	e.run_text('
+__global hit int
+
+struct Trace {}
+
+@[if trace ?]
+fn Trace.write(x int) int {
+	return x
+}
+
+fn side_effect() int {
+	hit = 99
+	return 1
+}
+
+fn main() {
+	println(int_str(Trace.write(side_effect())))
+	println(int_str(hit))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '0\n0\n'
+}
+
 fn test_eval_labeled_for_in_flow_targets_named_loop() {
 	mut e := create()
 	e.run_text('
@@ -833,6 +860,45 @@ fn main() {
 		panic(err)
 	}
 	assert e.stdout() == '7\n'
+}
+
+fn test_eval_static_and_instance_methods_with_same_name_do_not_collide() {
+	mut e := create()
+	e.run_text('
+struct StaticFirst {
+	n int
+}
+
+fn StaticFirst.value() int {
+	return 11
+}
+
+fn (s StaticFirst) value() int {
+	return s.n
+}
+
+struct InstanceFirst {
+	n int
+}
+
+fn (i InstanceFirst) value() int {
+	return i.n
+}
+
+fn InstanceFirst.value() int {
+	return 33
+}
+
+fn main() {
+	println(int_str(StaticFirst.value()))
+	println(int_str(StaticFirst{n: 22}.value()))
+	println(int_str(InstanceFirst.value()))
+	println(int_str(InstanceFirst{n: 44}.value()))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '11\n22\n33\n44\n'
 }
 
 fn test_eval_overloaded_plus_operator_dispatches_method() {

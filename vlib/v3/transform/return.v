@@ -7,6 +7,7 @@ const direct_optional_forward_return_value = '__direct_optional_forward'
 const optional_success_return_value = '__optional_success_return'
 const transformed_return_value_prefix = '__transformed_return:'
 const transformed_direct_optional_forward_value_prefix = '__transformed_direct_optional_forward:'
+const ownership_propagation_sync_expr_value = '__v3_ownership_propagation_sync'
 
 // transform_return_with_sumtype_wrap checks if a return statement returns a
 // variant value where the function's return type is a sum type. In that case,
@@ -244,18 +245,38 @@ fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.N
 	if node.children_count != 1 || !t.is_optional_type_name(t.cur_fn_ret_type) {
 		return none
 	}
-	child_id := t.a.child(&node, 0)
+	mut child_id := t.a.child(&node, 0)
 	child := t.a.nodes[int(child_id)]
-	if child.kind == .none_expr || !t.return_expr_is_optional_result(child_id) {
+	if child.kind == .none_expr {
 		return none
+	}
+	mut skipped_propagation := false
+	if !t.return_expr_is_optional_result(child_id) {
+		// `return call()!` is represented as an or-expression whose semantic type
+		// is the successful payload. When the surrounding function returns the
+		// same Result, forward the source wrapper directly. Lowering the synthetic
+		// propagation body first can otherwise stage the payload using the wrapper
+		// type after generic specialization.
+		if child.kind != .or_expr || child.value !in ['!', '?']
+			|| child.children_count == 0 {
+			return none
+		}
+		child_id = t.a.child(&child, 0)
+		skipped_propagation = true
 	}
 	ret_type := t.qualify_optional_type(t.cur_fn_ret_type)
 	expr_type := t.qualify_optional_type(t.optional_result_expr_type_name(child_id))
 	if !t.optional_types_match(ret_type, expr_type) {
 		return none
 	}
-	new_expr := t.transform_expr(child_id)
+	mut new_expr := t.transform_expr(child_id)
 	t.set_node_typ(int(new_expr), ret_type)
+	if skipped_propagation {
+		// Keep CGen's positional ownership records aligned after removing the or-expression.
+		new_expr = t.make_paren(new_expr)
+		t.set_node_value(int(new_expr), ownership_propagation_sync_expr_value)
+		t.set_node_typ(int(new_expr), ret_type)
+	}
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
 	result << t.make_direct_optional_forward_return(new_expr, ret_type)

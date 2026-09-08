@@ -80,6 +80,20 @@ pub fn (mut p Point) inc(dx int) int {
 '
 }
 
+fn test_formatter_preserves_static_associated_function_syntax() {
+	source := 'struct Widget {}\n\nfn Widget.make() Widget {\n\treturn Widget{}\n}\n\nstruct Cache__static__State {}\n\nfn Cache__static__State.reset__static__now() {}\n\nfn int.tag() {}\n\nfn int__static__tag__static__3() {}\n'
+	out := vfmt('static_associated_function', source)
+	assert out == source, out
+	assert vfmt('static_associated_function_twice', out) == out
+}
+
+fn test_formatter_preserves_static_marker_in_ordinary_function_name() {
+	source := 'fn cache__static__reset() {}\n'
+	out := vfmt('ordinary_function_with_static_marker', source)
+	assert out == source, out
+	assert vfmt('ordinary_function_with_static_marker_twice', out) == out
+}
+
 fn test_formatter_preserves_blank_lines_between_statements() {
 	source := "fn spaced() {\n\tprintln('a')\n\tprintln('b')\n\n\tprintln('c')\n\n\tif true {\n\t\tprintln('d')\n\t}\n\n\tdump('e')\n}\n"
 	out := vfmt('statement_blank_lines', source)

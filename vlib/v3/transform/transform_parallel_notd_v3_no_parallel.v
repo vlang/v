@@ -2204,6 +2204,7 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 						op: write.node.op
 						is_mut: write.node.is_mut
 						skip_ownership_drops: write.node.skip_ownership_drops
+						is_static_type_method: write.node.is_static_type_method
 					}
 				}
 			}

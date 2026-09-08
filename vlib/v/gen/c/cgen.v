@@ -685,6 +685,15 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 				// Temporary hack to make toml work with -usecache TODO remove
 				continue
 			}
+			if sym.cname.contains('[') {
+				// Anonymous sum-type symbols (e.g. ORM's `[]Primitive | []bool | …`)
+				// carry a cname with literal `[]`, which is not a valid C identifier —
+				// emitting it produces uncompilable C and broke `v build-module` for any
+				// module importing orm (cx #520). Such a cname can never be *referenced*
+				// through `_v_type_idx_<cname>()` either (the call site would be equally
+				// invalid C), so skipping the emission loses nothing.
+				continue
+			}
 			if sym.cname in emitted_cache_type_idx_cnames {
 				continue
 			}
@@ -698,6 +707,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 				continue
 			}
 			if is_toml && sym.cname.contains('map[string]') {
+				continue
+			}
+			if sym.cname.contains('[') {
+				// See the build_module loop above — invalid-C-identifier cnames (cx #520).
 				continue
 			}
 			if sym.cname in emitted_cache_type_idx_cnames {
@@ -6420,9 +6433,8 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 		ast.AsmRegister {
 			if stmt.is_intel {
 				g.write(arg.name)
-			} else if stmt.arch in [.arm64, .arm32, .rv64, .rv32] {
-				// ARM and RISC-V assembly write register names plainly; the `%`
-				// prefix below is x86/AT&T syntax.
+			} else if stmt.arch in [.rv64, .rv32, .arm32, .arm64] {
+				// ARM and RISC-V spell their registers without AT&T's `%` prefix
 				g.write('${arg.name}')
 			} else if stmt.arch == .loongarch64 {
 				g.write('\$${arg.name}')
@@ -9046,8 +9058,7 @@ fn (mut g Gen) c_type_has_ptr_memo(typ ast.Type, mut memo map[ast.Type]bool) boo
 		return true
 	}
 	result := match sym.kind {
-		.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char,
-		.rune, .bool, .enum {
+		.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char, .rune, .bool, .enum {
 			false
 		}
 		.array_fixed {
@@ -9109,8 +9120,7 @@ fn (mut g Gen) type_has_pointer_bearing_nested_c_aggregate_memo(typ ast.Type, is
 	result := match sym.kind {
 		.array_fixed {
 			info := sym.info as ast.ArrayFixed
-			g.type_has_pointer_bearing_nested_c_aggregate_memo(info.elem_type, true, mut memo,
-				mut ptr_memo)
+			g.type_has_pointer_bearing_nested_c_aggregate_memo(info.elem_type, true, mut memo, mut ptr_memo)
 		}
 		.struct {
 			info := sym.info as ast.Struct
@@ -9118,8 +9128,7 @@ fn (mut g Gen) type_has_pointer_bearing_nested_c_aggregate_memo(typ ast.Type, is
 				&& g.c_type_has_ptr_memo(resolved_typ, mut ptr_memo)
 			if !has_pointer_bearing_nested_c_aggregate {
 				for embed in info.embeds {
-					if g.type_has_pointer_bearing_nested_c_aggregate_memo(embed, true, mut memo,
-							mut ptr_memo) {
+					if g.type_has_pointer_bearing_nested_c_aggregate_memo(embed, true, mut memo, mut ptr_memo) {
 						has_pointer_bearing_nested_c_aggregate = true
 						break
 					}
@@ -9127,8 +9136,7 @@ fn (mut g Gen) type_has_pointer_bearing_nested_c_aggregate_memo(typ ast.Type, is
 			}
 			if !has_pointer_bearing_nested_c_aggregate {
 				for field in info.fields {
-					if g.type_has_pointer_bearing_nested_c_aggregate_memo(field.typ, true, mut memo,
-							mut ptr_memo) {
+					if g.type_has_pointer_bearing_nested_c_aggregate_memo(field.typ, true, mut memo, mut ptr_memo) {
 						has_pointer_bearing_nested_c_aggregate = true
 						break
 					}
@@ -9643,6 +9651,20 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 	g.write('}')
 }
 
+fn (mut g Gen) enum_field_expr(expr ast.Expr) string {
+	expr_str := g.expr_string(expr)
+	if expr is ast.Ident && expr.kind == .constant {
+		const_def := g.global_const_defs[util.no_dots(expr.name)]
+		if const_def.def.starts_with('#define') {
+			return const_def.def.all_after(' ').all_after(' ').all_before('//').trim_space()
+		}
+		if const_def.def.contains('const ') {
+			return const_def.def.all_after_last('=').all_before_last(';')
+		}
+	}
+	return expr_str
+}
+
 fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	enum_name := util.no_dots(node.name)
 	is_flag := node.is_flag
@@ -9673,7 +9695,16 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	}
 	// Explicit-size enums are emitted as typedef + defines, so all C compilers
 	// (including tinyc) respect the selected storage size.
-	if g.is_cc_msvc || node.typ != ast.int_type {
+	mut needs_define_style := g.is_cc_msvc || node.typ != ast.int_type
+	if !needs_define_style {
+		for field in node.fields {
+			if field.has_expr && g.enum_field_expr(field.expr).contains('v__') {
+				needs_define_style = true
+				break
+			}
+		}
+	}
+	if needs_define_style {
 		mut last_value := '0'
 		enum_typ_name := g.table.get_type_name(node.typ)
 		if g.pref.skip_unused && node.enum_typ !in g.table.used_features.used_syms {
@@ -9686,7 +9717,7 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 			if is_flag {
 				g.enum_typedefs.write_string2((u64(1) << i).str(), 'ULL')
 			} else if field.has_expr {
-				expr_str := g.expr_string(field.expr)
+				expr_str := g.enum_field_expr(field.expr)
 				g.enum_typedefs.write_string(expr_str)
 				last_value = expr_str
 			} else {
@@ -9713,19 +9744,8 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		g.enum_typedefs.write_string('\t${enum_name}__${field.name}')
 		if field.has_expr {
 			g.enum_typedefs.write_string(' = ')
-			expr_str := g.expr_string(field.expr)
-			if field.expr is ast.Ident && field.expr.kind == .constant {
-				const_def := g.global_const_defs[util.no_dots(field.expr.name)]
-				if const_def.def.starts_with('#define') {
-					g.enum_typedefs.write_string(const_def.def.all_after_last(' '))
-				} else if const_def.def.contains('const ') {
-					g.enum_typedefs.write_string(const_def.def.all_after_last('=').all_before_last(';'))
-				} else {
-					g.enum_typedefs.write_string(expr_str)
-				}
-			} else {
-				g.enum_typedefs.write_string(expr_str)
-			}
+			expr_str := g.enum_field_expr(field.expr)
+			g.enum_typedefs.write_string(expr_str)
 			cur_enum_expr = expr_str
 			cur_enum_offset = 0
 		} else if is_flag {
@@ -14083,8 +14103,10 @@ fn (mut g Gen) as_cast_option_payload_expr_from_expr(typ ast.Type, expr ast.Expr
 	return g.as_cast_option_payload_expr(typ, g.expr_string(expr), false)
 }
 
-fn (mut g Gen) write_as_cast_call_start(styp string, sym ast.TypeSymbol) {
+fn (mut g Gen) write_as_cast_call_start(styp string, sym ast.TypeSymbol, payload_is_direct_ptr bool) {
 	if sym.info is ast.FnType {
+		g.write('(${styp})')
+	} else if payload_is_direct_ptr {
 		g.write('(${styp})')
 	} else if g.inside_smartcast {
 		g.write('(${styp}*)')
@@ -14205,7 +14227,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			}
 			obj_expr := '(${expr_str})${dot}_${payload_member}'
 			tag_expr := '(${expr_str})${dot}_typ'
-			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call_start(styp, sym, false)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		} else {
 			expr_str := if expr_is_option {
@@ -14215,7 +14237,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			}
 			obj_expr := '(${expr_str})${dot}_${payload_member}'
 			tag_expr := '(${expr_str})${dot}_typ'
-			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call_start(styp, sym, false)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		}
 
@@ -14259,21 +14281,26 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		expr_type_sym.info = info
 	} else if expr_type_sym.info is ast.Interface && node.expr_type != node.typ {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-		matching_variants := g.matching_interface_variant_types(expr_type_sym, unwrapped_node_typ)
+		runtime_target_type := if unwrapped_node_typ.is_ptr() {
+			unwrapped_node_typ.deref()
+		} else {
+			unwrapped_node_typ
+		}
+		matching_variants := g.matching_interface_variant_types(expr_type_sym, runtime_target_type)
 		index_exprs := g.type_idx_exprs_for_types(matching_variants)
-		payload_sym := g.table.sym(g.as_cast_payload_type(unwrapped_node_typ, matching_variants))
-		sidx := g.type_sidx(unwrapped_node_typ)
+		payload_sym := g.table.sym(g.as_cast_payload_type(runtime_target_type, matching_variants))
+		sidx := g.type_sidx(runtime_target_type)
 		if as_cast_operand_needs_tmp_eval(node.expr) {
 			tmp_var := g.expr_to_ctemp_before_stmt(node.expr, node.expr_type).name
 			obj_expr := '${tmp_var}${dot}_${payload_sym.cname}'
 			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}(_V_INTERFACE_TYPE_INDEX(${tmp_var}${dot}_typ))'
-			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call_start(styp, sym, unwrapped_node_typ.is_ptr())
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		} else {
 			expr_str := g.expr_string(node.expr)
 			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
 			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}(_V_INTERFACE_TYPE_INDEX((${expr_str})${dot}_typ))'
-			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call_start(styp, sym, unwrapped_node_typ.is_ptr())
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		}
 
@@ -14290,7 +14317,17 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		mut is_optional_ident_var := false
 		mut wrap_in_addr := false
 		if g.inside_smartcast {
-			if node.expr.is_lvalue() {
+			if expr_type_sym.kind == .interface && sym.kind != .interface {
+				// For interface → concrete smartcast (e.g. after `assert err is MyError`),
+				// emit (T*)(expr._object) instead of &expr (which would take the address
+				// of the interface box, giving garbage field reads).
+				dot := if node.expr_type.is_ptr() { '->' } else { '.' }
+				cast_type := if node.typ.is_ptr() { styp } else { '${styp}*' }
+				g.write('(${cast_type})(')
+				g.expr(node.expr)
+				g.write('${dot}_object)')
+				is_optional_ident_var = true
+			} else if node.expr.is_lvalue() {
 				g.write('&')
 			} else {
 				wrap_in_addr = true

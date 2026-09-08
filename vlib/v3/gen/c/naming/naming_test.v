@@ -16,3 +16,11 @@ fn test_sanitize_dotted_name_autofree() {
 	result := sanitize('alpha.beta')
 	assert result == 'alpha__beta'
 }
+
+fn test_static_type_method_c_name_is_disjoint_from_source_names() {
+	static_name := c_name('int@static@tag')
+	assert static_name.starts_with('${internal_symbol_c_prefix}static_')
+	assert static_name != c_name('int_v_static_v_tag')
+	assert static_name != c_name(static_name)
+	assert c_name(static_name).starts_with('${internal_symbol_c_prefix}source_')
+}

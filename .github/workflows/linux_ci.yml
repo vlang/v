@@ -125,6 +125,7 @@ jobs:
       # Ordinary CI builds exercise the production V3->V1 compatibility path.
       # The explicit canary below overrides this to 1 to keep direct V3 coverage strict.
       V_MACOS_V3_NO_FALLBACK: 0
+      V_MULTIWINDOW_COMPILER: ./v1_fallback
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
@@ -487,15 +488,15 @@ jobs:
           chmod +x "$RUNNER_TEMP/multiwindow_weston_command.sh"
       - name: Multiwindow portable and mock regressions
         # These regressions intentionally cover compatibility paths that V3 does not
-        # support yet. Keep the direct canary strict while allowing this lane to
-        # verify that the stable-compiler fallback works.
+        # support yet. Run them on the stable compiler while keeping the direct
+        # canary strict.
         env:
           V_MACOS_V3_NO_FALLBACK: 0
         run: |
           set -euo pipefail
 
           env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
-            ./v -cc gcc test vlib/gg/legacy_import_multiwindow_isolation_test.v
+            "$V_MULTIWINDOW_COMPILER" -cc gcc test vlib/gg/legacy_import_multiwindow_isolation_test.v
 
           tests=(
             vlib/x/multiwindow/event_sequence_exhaustion_test.v
@@ -517,12 +518,12 @@ jobs:
           for test in "${tests[@]}"; do
             "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
               env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
-              ./v -no-memory-limit -cc gcc -d gg_multiwindow test "$test"
+              "$V_MULTIWINDOW_COMPILER" -no-memory-limit -cc gcc -d gg_multiwindow test "$test"
           done
 
-          ./v -cc gcc -d gg_multiwindow \
+          "$V_MULTIWINDOW_COMPILER" -cc gcc -d gg_multiwindow \
             -o /tmp/gg_multiwindow_default examples/gg/multiwindow.v
-          ./v -cc gcc -d gg_multiwindow \
+          "$V_MULTIWINDOW_COMPILER" -cc gcc -d gg_multiwindow \
             -o /tmp/gg_multiwindow_render_runtime_default examples/gg/multiwindow_render_runtime.v
 
           env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
@@ -540,9 +541,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          ./v -cc gcc -d gg_multiwindow -d x_multiwindow_x11 \
+          "$V_MULTIWINDOW_COMPILER" -cc gcc -d gg_multiwindow -d x_multiwindow_x11 \
             -o /tmp/gg_multiwindow_x11 examples/gg/multiwindow.v
-          ./v -cc gcc -d gg_multiwindow -d x_multiwindow_x11 \
+          "$V_MULTIWINDOW_COMPILER" -cc gcc -d gg_multiwindow -d x_multiwindow_x11 \
             -o /tmp/gg_multiwindow_render_runtime_x11 examples/gg/multiwindow_render_runtime.v
 
           tests=(
@@ -566,7 +567,7 @@ jobs:
             "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
               "$RUNNER_TEMP/multiwindow_x11_command.sh" \
               env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true \
-              ./v -no-memory-limit -cc gcc -d gg_multiwindow -d x_multiwindow_x11 test "$test"
+              "$V_MULTIWINDOW_COMPILER" -no-memory-limit -cc gcc -d gg_multiwindow -d x_multiwindow_x11 test "$test"
           done
 
           "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
@@ -590,9 +591,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          ./v -cc gcc -d gg_multiwindow -d sokol_wayland \
+          "$V_MULTIWINDOW_COMPILER" -cc gcc -d gg_multiwindow -d sokol_wayland \
             -o /tmp/gg_multiwindow_wayland examples/gg/multiwindow.v
-          ./v -cc gcc -d gg_multiwindow -d sokol_wayland \
+          "$V_MULTIWINDOW_COMPILER" -cc gcc -d gg_multiwindow -d sokol_wayland \
             -o /tmp/gg_multiwindow_render_runtime_wayland examples/gg/multiwindow_render_runtime.v
 
           tests=(
@@ -615,7 +616,7 @@ jobs:
           for test in "${tests[@]}"; do
             "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
               "$RUNNER_TEMP/multiwindow_weston_command.sh" \
-              ./v -no-memory-limit -cc gcc -d gg_multiwindow -d sokol_wayland test "$test"
+              "$V_MULTIWINDOW_COMPILER" -no-memory-limit -cc gcc -d gg_multiwindow -d sokol_wayland test "$test"
           done
 
           "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
@@ -768,6 +769,9 @@ jobs:
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+      # These runtime-heavy C interop regressions stay on the stable compiler while
+      # the separate Linux canary keeps direct V3 coverage strict.
+      V_MULTIWINDOW_COMPILER: ./v1_fallback
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
@@ -1108,11 +1112,11 @@ jobs:
 
           compiler="${{ matrix.compiler }}"
           env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
-            ./v -cc "$compiler" test vlib/gg/legacy_import_multiwindow_isolation_test.v
+            "$V_MULTIWINDOW_COMPILER" -cc "$compiler" test vlib/gg/legacy_import_multiwindow_isolation_test.v
 
           "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
             env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
-            ./v -cc "$compiler" test vlib/gg/multiwindow_services_contract_test.v
+            "$V_MULTIWINDOW_COMPILER" -cc "$compiler" test vlib/gg/multiwindow_services_contract_test.v
 
           tests=(
             vlib/x/multiwindow/event_sequence_exhaustion_test.v
@@ -1136,12 +1140,12 @@ jobs:
           for test in "${tests[@]}"; do
             "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
               env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
-              ./v -no-memory-limit -cc "$compiler" -d gg_multiwindow test "$test"
+              "$V_MULTIWINDOW_COMPILER" -no-memory-limit -cc "$compiler" -d gg_multiwindow test "$test"
           done
 
-          ./v -cc "$compiler" -d gg_multiwindow \
+          "$V_MULTIWINDOW_COMPILER" -cc "$compiler" -d gg_multiwindow \
             -o "/tmp/gg_multiwindow_default_$compiler" examples/gg/multiwindow.v
-          ./v -cc "$compiler" -d gg_multiwindow \
+          "$V_MULTIWINDOW_COMPILER" -cc "$compiler" -d gg_multiwindow \
             -o "/tmp/gg_multiwindow_render_runtime_default_$compiler" \
             examples/gg/multiwindow_render_runtime.v
 
@@ -1160,9 +1164,9 @@ jobs:
           set -euo pipefail
 
           compiler="${{ matrix.compiler }}"
-          ./v -cc "$compiler" -d gg_multiwindow -d x_multiwindow_x11 \
+          "$V_MULTIWINDOW_COMPILER" -cc "$compiler" -d gg_multiwindow -d x_multiwindow_x11 \
             -o "/tmp/gg_multiwindow_x11_$compiler" examples/gg/multiwindow.v
-          ./v -cc "$compiler" -d gg_multiwindow -d x_multiwindow_x11 \
+          "$V_MULTIWINDOW_COMPILER" -cc "$compiler" -d gg_multiwindow -d x_multiwindow_x11 \
             -o "/tmp/gg_multiwindow_render_runtime_x11_$compiler" \
             examples/gg/multiwindow_render_runtime.v
 
@@ -1188,7 +1192,7 @@ jobs:
             "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
               "$RUNNER_TEMP/multiwindow_x11_command.sh" \
               env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true \
-              ./v -no-memory-limit -cc "$compiler" -d gg_multiwindow -d x_multiwindow_x11 test "$test"
+              "$V_MULTIWINDOW_COMPILER" -no-memory-limit -cc "$compiler" -d gg_multiwindow -d x_multiwindow_x11 test "$test"
           done
 
           "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
@@ -1212,9 +1216,9 @@ jobs:
           set -euo pipefail
 
           compiler="${{ matrix.compiler }}"
-          ./v -cc "$compiler" -d gg_multiwindow -d sokol_wayland \
+          "$V_MULTIWINDOW_COMPILER" -cc "$compiler" -d gg_multiwindow -d sokol_wayland \
             -o "/tmp/gg_multiwindow_wayland_$compiler" examples/gg/multiwindow.v
-          ./v -cc "$compiler" -d gg_multiwindow -d sokol_wayland \
+          "$V_MULTIWINDOW_COMPILER" -cc "$compiler" -d gg_multiwindow -d sokol_wayland \
             -o "/tmp/gg_multiwindow_render_runtime_wayland_$compiler" \
             examples/gg/multiwindow_render_runtime.v
 
@@ -1240,7 +1244,7 @@ jobs:
           for test in "${tests[@]}"; do
             "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
               "$RUNNER_TEMP/multiwindow_weston_command.sh" \
-              ./v -no-memory-limit -cc "$compiler" -d gg_multiwindow -d sokol_wayland test "$test"
+              "$V_MULTIWINDOW_COMPILER" -no-memory-limit -cc "$compiler" -d gg_multiwindow -d sokol_wayland test "$test"
           done
 
           "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \

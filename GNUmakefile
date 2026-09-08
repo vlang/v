@@ -36,6 +36,10 @@ _SYS := $(patsubst MINGW%,MinGW,$(_SYS))
 ifneq ($(filter $(_SYS),MSYS MinGW),)
 WIN32 := 1
 EXE_EXT := .exe
+# vc/v.c is generated with `-cross` targeting the host OS that ran gen_vc_ci.yml
+# (Linux), so it only guards *nix headers/APIs, not Windows. The dedicated
+# `-os windows` snapshot lives in vc/v_win.c; that is the one Windows needs.
+VCFILE := v_win.c
 # GNU make defaults CC to `cc`, but mingw32-make installations often only
 # provide `gcc`. Switch only the implicit default and preserve explicit CC=...
 ifneq ($(filter $(origin CC),default file),)
@@ -218,8 +222,8 @@ ifdef WIN32
 	$(RM) v2$(EXE_EXT)
 else
 ifdef LEGACY
-	$(MAKE) -C $(TMPLEGACY) CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)'
-	$(MAKE) -C $(TMPLEGACY) PREFIX=$(realpath $(LEGACYLIBS)) CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)' install
+	'$(MAKE)' -C $(TMPLEGACY) CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)'
+	'$(MAKE)' -C $(TMPLEGACY) PREFIX=$(realpath $(LEGACYLIBS)) CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)' install
 	rm -rf $(TMPLEGACY)
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
@@ -320,13 +324,13 @@ else
 endif
 endif
 ifneq (,$(wildcard ./tcc.exe))
-	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
+	@'$(MAKE)' --quiet check_for_working_tcc 2> /dev/null
 endif
 
 else
 latest_tcc:
 	@echo "Using local tcc"
-	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
+	@'$(MAKE)' --quiet check_for_working_tcc 2> /dev/null
 endif
 
 # Rebuild the bundled TCC in-place from upstream tinycc, while preserving the
@@ -346,7 +350,7 @@ ifeq ($(TCCOS),linux)
 else
 	@TCC_FOLDER='$(TMPTCC)' $(if $(strip $(TCC_COMMIT)),TCC_COMMIT='$(TCC_COMMIT)') CC='$(CC)' bash '$(TCCBUILDSCRIPT)'
 endif
-	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
+	@'$(MAKE)' --quiet check_for_working_tcc 2> /dev/null
 else
 	@echo 'No upstream TinyCC build script is available for thirdparty-$(TCCOS)-$(TCCARCH).'
 	@echo 'Use `make latest_tcc` to refresh the prebuilt bundle from $(TCCREPO).'
@@ -387,9 +391,9 @@ ifeq ($(HAS_GIT),1)
 		fi; \
 		if ! "$(TMPTCC)/tcc.exe" --version > /dev/null 2> /dev/null; then \
 			echo "Pre-built TCC bundle $$selected_branch did not run; V will use the system compiler: $(CC)"; \
-			$(MAKE) --quiet check_for_working_tcc 2> /dev/null; \
+			'$(MAKE)' --quiet check_for_working_tcc 2> /dev/null; \
 		else \
-			$(MAKE) --quiet check_for_working_tcc 2> /dev/null; \
+			'$(MAKE)' --quiet check_for_working_tcc 2> /dev/null; \
 		fi; \
 	fi
 else
@@ -399,7 +403,7 @@ endif
 endif
 else
 	@echo "Using local tccbin"
-	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
+	@'$(MAKE)' --quiet check_for_working_tcc 2> /dev/null
 endif
 
 ifndef local
@@ -445,10 +449,10 @@ endif
 $(TMPTCC)/.git/config:
 ifeq ($(TCCOS),linux)
 	@bash '$(GIT_ARGV_RUNNER)' check
-	$(MAKE) fresh_tcc
+	'$(MAKE)' fresh_tcc
 else
 ifeq ($(HAS_GIT),1)
-	$(MAKE) fresh_tcc
+	'$(MAKE)' fresh_tcc
 else
 	@echo "git not found; skipping bootstrap of $(TMPTCC), system compiler $(CC) will be used"
 endif
@@ -457,7 +461,7 @@ endif
 $(VC)/.git/config:
 ifeq ($(TCCOS),linux)
 	@if bash '$(GIT_ARGV_RUNNER)' check > /dev/null 2>&1; then \
-		$(MAKE) fresh_vc; \
+		'$(MAKE)' fresh_vc; \
 	elif [ -f "$(VC)/$(VCFILE)" ]; then \
 		echo "git not found; using existing $(VC)/$(VCFILE)"; \
 	else \
@@ -466,7 +470,7 @@ ifeq ($(TCCOS),linux)
 	fi
 else
 ifeq ($(HAS_GIT),1)
-	$(MAKE) fresh_vc
+	'$(MAKE)' fresh_vc
 else
 	@if [ -f "$(VC)/$(VCFILE)" ]; then \
 		echo "git not found; using existing $(VC)/$(VCFILE)"; \
@@ -481,7 +485,7 @@ $(TMPLEGACY)/.git/config:
 ifdef LEGACY
 ifeq ($(TCCOS),linux)
 	@if bash '$(GIT_ARGV_RUNNER)' check > /dev/null 2>&1; then \
-		$(MAKE) fresh_legacy; \
+		'$(MAKE)' fresh_legacy; \
 	elif [ -d "$(TMPLEGACY)" ]; then \
 		echo "git not found; using existing $(TMPLEGACY)"; \
 	else \
@@ -490,7 +494,7 @@ ifeq ($(TCCOS),linux)
 	fi
 else
 ifeq ($(HAS_GIT),1)
-	$(MAKE) fresh_legacy
+	'$(MAKE)' fresh_legacy
 else
 	@if [ -d "$(TMPLEGACY)" ]; then \
 		echo "git not found; using existing $(TMPLEGACY)"; \
@@ -503,7 +507,7 @@ endif
 endif
 
 asan:
-	$(MAKE) all CFLAGS='-fsanitize=address,undefined'
+	'$(MAKE)' all CFLAGS='-fsanitize=address,undefined'
 
 selfcompile:
 	$(VEXE)$(EXE_EXT) -cg -o v cmd/v
