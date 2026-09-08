@@ -388,22 +388,24 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 	v.post_process_c_compiler_output_with_report(ccompiler, res, ccompiler, res)
 }
 
+// cleanup_build_artifacts removes temporary files after a successful link.
+pub fn (v &Builder) cleanup_build_artifacts() {
+	if v.pref.reuse_tmpc || os.getenv('V_NO_RM_CLEANUP_FILES') != '' {
+		return
+	}
+	for tmpfile in v.pref.cleanup_files {
+		if os.is_file(tmpfile) {
+			if v.pref.is_verbose {
+				eprintln('>> remove tmp file: ${tmpfile}')
+			}
+			os.rm(tmpfile) or {}
+		}
+	}
+}
+
 fn (mut v Builder) post_process_c_compiler_output_with_report(ccompiler string, res os.Result, report_ccompiler string, report_res os.Result) {
 	if res.exit_code == 0 {
-		if v.pref.reuse_tmpc {
-			return
-		}
-		if os.getenv('V_NO_RM_CLEANUP_FILES') != '' {
-			return
-		}
-		for tmpfile in v.pref.cleanup_files {
-			if os.is_file(tmpfile) {
-				if v.pref.is_verbose {
-					eprintln('>> remove tmp file: ${tmpfile}')
-				}
-				os.rm(tmpfile) or {}
-			}
-		}
+		v.cleanup_build_artifacts()
 		return
 	}
 	libatomic_marker := c_error_missing_libatomic_marker(res.output)
@@ -2034,7 +2036,7 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 		// assembled for the target, not the host. Without -target, the assembler
 		// produces a host-arch .o that fails to link into the target binary.
 		if b.pref.os == .linux {
-			if !native_i386_multilib && (host_os != .linux || host_arch != b.pref.arch) {
+			if host_os != .linux {
 				cross_target := linux_cross_target_for_arch(b.pref.arch) or {
 					verror('failed to determine linux cross target for embedded assembly: ${err.msg()}')
 					return
@@ -2050,6 +2052,9 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 			arch_name := darwin_target_arch_name(b.pref.arch)
 			if arch_name != '' {
 				asm_args << ['-arch', arch_name]
+			}
+			if b.pref.macosx_version_min != '0' {
+				asm_args << '-mmacosx-version-min=${b.pref.macosx_version_min}'
 			}
 		}
 
@@ -2237,6 +2242,7 @@ fn (mut b Builder) cc_linux_cross() {
 		verror(res.output)
 		return
 	}
+	b.cleanup_build_artifacts()
 	println(out_name + ' has been successfully cross compiled for linux.')
 }
 
@@ -2323,6 +2329,7 @@ fn (mut b Builder) cc_freebsd_cross() {
 		verror(res.output)
 		return
 	}
+	b.cleanup_build_artifacts()
 	println(out_name + ' has been successfully cross compiled for FreeBSD.')
 }
 

@@ -181,16 +181,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	if link_res.exit_code != 0 || link_failed_with_tcc_dup {
 		return error_with_code('failed to link after parallel C compilation', 1)
 	}
-	if !b.pref.reuse_tmpc && os.getenv('V_NO_RM_CLEANUP_FILES') == '' {
-		for tmpfile in b.pref.cleanup_files {
-			if os.is_file(tmpfile) {
-				if b.pref.is_verbose {
-					eprintln('>> remove tmp file: ${tmpfile}')
-				}
-				os.rm(tmpfile) or {}
-			}
-		}
-	}
+	b.cleanup_build_artifacts()
 }
 
 fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, _wid int) voidptr {
