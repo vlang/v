@@ -4316,6 +4316,8 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 		return qualified
 	}
 	is_shared := qualified.trim_space().starts_with('shared ')
+	fn_params, _ := fn_type_text_parts(qualified) or { []string{}, '' }
+	fn_has_shared_param := fn_params.any(it.trim_space().starts_with('shared '))
 	if isnil(t.tc) {
 		return qualified
 	}
@@ -4335,7 +4337,7 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 	if parsed is types.Unknown {
 		return qualified
 	}
-	if is_shared {
+	if is_shared || fn_has_shared_param {
 		return qualified
 	}
 	return specialized_signature_storage_type_name(parsed)

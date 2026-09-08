@@ -3080,13 +3080,18 @@ fn (mut t Transformer) lift_fn_literal_for_fn_param(_id flat.NodeId, node flat.N
 	for i, param_id in param_ids {
 		param_type_name := t.semantic_type_name(fn_type.params[i])
 		param := t.a.nodes[int(param_id)]
-		if param.typ == param_type_name {
+		resolved_param_type := if param.typ.trim_space().starts_with('shared ') {
+			'shared ${param_type_name}'
+		} else {
+			param_type_name
+		}
+		if param.typ == resolved_param_type {
 			children << param_id
 		} else {
 			children << t.a.add_node(flat.Node{
 				kind:   .param
 				value:  param.value
-				typ:    param_type_name
+				typ:    resolved_param_type
 				op:     if param_type_name.starts_with('&') { .amp } else { param.op }
 				is_mut: param.is_mut
 			})
@@ -10122,11 +10127,16 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	mut fn_value_param_type_texts := []string{cap: param_types.len}
 	for i, param_type in param_types {
 		raw_type := if i < param_type_texts.len { param_type_texts[i] } else { '' }
-		fn_value_param_type_texts << if raw_type.contains('main.') {
+		mut fn_value_param_type_text := if raw_type.contains('main.') {
 			raw_type
 		} else {
 			param_type.name()
 		}
+		if raw_type.trim_space().starts_with('shared ')
+			&& !fn_value_param_type_text.trim_space().starts_with('shared ') {
+			fn_value_param_type_text = 'shared ${fn_value_param_type_text}'
+		}
+		fn_value_param_type_texts << fn_value_param_type_text
 	}
 	fn_value_type := fn_literal_value_type_text_from_text(fn_value_param_type_texts, ret_type)
 	mut ident := flat.empty_node
@@ -11812,8 +11822,18 @@ fn fn_type_texts_signature_compatible(actual string, expected string) bool {
 // as `chan Item` remain significant.
 fn normalize_fn_param_text(text string) string {
 	mut clean := text.trim_space()
+	mut mode := ''
+	if clean.starts_with('shared ') {
+		mode = 'shared '
+		clean = clean[7..].trim_space()
+	}
+	mut is_mut := false
 	if clean.starts_with('mut ') {
+		is_mut = true
 		clean = clean[4..].trim_space()
+	}
+	clean = generic_fn_type_param_payload(clean)
+	if is_mut {
 		if !clean.starts_with('&') && clean !in ['voidptr', 'byteptr', 'charptr'] {
 			clean = '&' + clean
 		}
@@ -11832,7 +11852,7 @@ fn normalize_fn_param_text(text string) string {
 		normalized << ch
 		pending_space = false
 	}
-	return normalized.bytestr()
+	return mode + normalized.bytestr()
 }
 
 fn fn_type_text_ident_char(ch u8) bool {

@@ -1810,6 +1810,16 @@ fn test_pr_review_codegen_batch_fourteen() {
 	assert stored == '2'
 }
 
+fn test_fn_literal_shared_mode_matches_alias_inside_generic_fn() {
+	v3_bin := build_v3()
+	matching := run_good(v3_bin, 'good_shared_fn_literal_alias_in_generic',
+		'type SharedHandler = fn (shared value State)\nstruct State {}\nstruct Router {}\nfn (mut r Router) accept(handler SharedHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (shared value State) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert matching == 'true'
+	run_bad(v3_bin, 'bad_shared_fn_literal_non_shared_alias_in_generic',
+		'type PlainHandler = fn (value State)\nstruct State {}\nstruct Router {}\nfn (mut r Router) accept(handler PlainHandler) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (shared value State) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+}
+
 fn test_pr_review_codegen_batch_fifteen() {
 	v3_bin := build_v3()
 	// The string length evaluator folds with the same operator precedence as the v3 parser
