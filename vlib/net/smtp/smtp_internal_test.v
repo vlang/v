@@ -288,6 +288,7 @@ fn test_format_addr() {
 	assert format_addr('=?UTF-8?B?Sm9zw6k=?= <jose@example.com>') == '=?UTF-8?B?Sm9zw6k=?= <jose@example.com>'
 	assert format_addr('=?UTF-8?Q?Jos=C3=A9?= =?UTF-8?Q?_Silva?= <jose@example.com>') == '=?UTF-8?Q?Jos=C3=A9?=\r\n =?UTF-8?Q?_Silva?= <jose@example.com>'
 	assert format_addr('=?UTF-8?B?Sm9zw6k=?= Silva <jose@example.com>') == '=?UTF-8?B?Sm9zw6k=?=\r\n Silva <jose@example.com>'
+	assert format_addr('=?UTF-8?B?Sm9zw6k=?= "da Silva" <jose@example.com>') == '=?UTF-8?B?Sm9zw6k=?=\r\n "da Silva" <jose@example.com>'
 	encoded_word := '=?UTF-8?B?Sm9zw6k=?='
 	long_encoded_name := []string{len: 50, init: encoded_word}.join(' ')
 	for line in format_addr('${long_encoded_name} <jose@example.com>').split('\r\n') {
@@ -298,6 +299,10 @@ fn test_format_addr() {
 	assert format_addr('John "The Boss" <john@ex.com>') == '"John \\"The Boss\\"" <john@ex.com>'
 
 	assert format_addr('C:\\Users <user@ex.com>') == '"C:\\\\Users" <user@ex.com>'
+	// Comments outside the quoted display name stay comments semantically: they
+	// are removed rather than folded into the generated quoted-string.
+	assert format_addr('John (manager) <john@example.com>') == '"John" <john@example.com>'
+	assert format_addr('"John (manager)" <john@example.com>') == '"John (manager)" <john@example.com>'
 
 	// an even number of backslashes before the closing quote must not defeat
 	// quote stripping; quoted-pairs are decoded to their underlying character

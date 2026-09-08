@@ -286,7 +286,7 @@ fn split_mailbox(s string) (?string, string) {
 		return none, trimmed
 	}
 	addr := trimmed[open_at + 1..close_at].trim_space()
-	name := unquote_name(trimmed[..open_at])
+	name := unquote_name(strip_unquoted_comments(trimmed[..open_at]))
 	display_name := if name == '' { none } else { name }
 	return display_name, addr
 }
@@ -338,6 +338,37 @@ fn skip_comment(s string, start int) int {
 		}
 	}
 	return s.len
+}
+
+// strip_unquoted_comments removes RFC 5322 comments from a display-name
+// phrase while preserving parentheses that were inside a quoted-string.
+fn strip_unquoted_comments(s string) string {
+	mut out := []u8{cap: s.len}
+	mut i := 0
+	for i < s.len {
+		if s[i] == `"` {
+			end := skip_quoted_string(s, i)
+			out << s[i..end].bytes()
+			i = end
+			continue
+		}
+		if s[i] == `(` {
+			for out.len > 0 && out.last() in [` `, `\t`] {
+				out.delete_last()
+			}
+			i = skip_comment(s, i)
+			for i < s.len && s[i] in [` `, `\t`] {
+				i++
+			}
+			if out.len > 0 && i < s.len {
+				out << ` `
+			}
+			continue
+		}
+		out << s[i]
+		i++
+	}
+	return out.bytestr().trim_space()
 }
 
 // unquote_name decodes a display name that is a single quoted-string,
@@ -549,11 +580,12 @@ fn format_addr(addr string) string {
 }
 
 // format_rfc2047_phrase preserves an RFC 5322 phrase containing at least one
-// RFC 2047 encoded-word. Plain atom words may be mixed into the phrase. Folding
-// every word boundary keeps caller-supplied encoded sequences below the hard
-// physical-line limit, just like encode_rfc2047's generated output.
+// RFC 2047 encoded-word. Plain atoms and quoted-string words may be mixed into
+// the phrase. Folding every word boundary keeps caller-supplied encoded
+// sequences below the hard physical-line limit, just like encode_rfc2047's
+// generated output.
 fn format_rfc2047_phrase(s string) ?string {
-	words := s.fields()
+	words := split_rfc5322_phrase_words(s) or { return none }
 	if words.len == 0 {
 		return none
 	}
@@ -561,6 +593,9 @@ fn format_rfc2047_phrase(s string) ?string {
 	for word in words {
 		if is_rfc2047_encoded_word(word) {
 			has_encoded_word = true
+			continue
+		}
+		if word.starts_with('"') {
 			continue
 		}
 		if !word.bytes().all(is_rfc5322_atext(it)) {
@@ -571,6 +606,35 @@ fn format_rfc2047_phrase(s string) ?string {
 		return none
 	}
 	return words.join('\r\n ')
+}
+
+fn split_rfc5322_phrase_words(s string) ?[]string {
+	mut words := []string{}
+	mut i := 0
+	for i < s.len {
+		for i < s.len && s[i] in [` `, `\t`, `\r`, `\n`] {
+			i++
+		}
+		if i == s.len {
+			break
+		}
+		start := i
+		if s[i] == `"` {
+			i = skip_quoted_string(s, i)
+			if i == s.len && s[i - 1] != `"` {
+				return none
+			}
+			if i < s.len && s[i] !in [` `, `\t`, `\r`, `\n`] {
+				return none
+			}
+		} else {
+			for i < s.len && s[i] !in [` `, `\t`, `\r`, `\n`] {
+				i++
+			}
+		}
+		words << s[start..i]
+	}
+	return words
 }
 
 fn is_rfc2047_encoded_word(word string) bool {
