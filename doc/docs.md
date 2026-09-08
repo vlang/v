@@ -7198,11 +7198,11 @@ numbers: [1, 2, 3]
 
 See more [details](https://github.com/vlang/v/blob/master/vlib/v/TEMPLATES.md)
 
-#### `$qml` for compiling UI2 interfaces
+#### `$vml` for compiling UI2 interfaces
 
-The V3 compiler can compile a QML file directly into an `ui2.Element` expression with
-`$qml(path)`. The QML is parsed while the application is compiled; the resulting program
-constructs UI2 elements directly and does not parse the QML file at runtime.
+The V3 compiler can compile a VML file directly into an `ui2.Element` expression with
+`$vml(path)`. The VML is parsed while the application is compiled; the resulting program
+constructs UI2 elements directly and does not parse the VML file at runtime.
 
 ```v ignore
 import ui2
@@ -7215,13 +7215,13 @@ pub mut:
 pub fn (mut app App) save() {}
 
 fn view(app &App) ui2.Element {
-	return $qml('views/profile.qml')
+	return $vml('views/profile.vml')
 }
 ```
 
-`views/profile.qml`:
+`views/profile.vml`:
 
-```qml
+```vml
 Screen {
     id: root
     background: "#f8fafc"
@@ -7241,7 +7241,7 @@ given. A relative path is searched for in this order:
 3. relative to the nearest parent directory containing `v.mod`;
 4. in that module root's `templates` directory.
 
-The compiled QML subset supports these UI2 elements:
+The compiled VML subset supports these UI2 elements:
 
 - `Screen`, `View`, `Rectangle`, `Column`, `Row`, and `Scroll` containers;
 - `Label`, `Image`, `Button`, `Checkbox`, `Dropdown`, `TextField`, and `TextArea`;
