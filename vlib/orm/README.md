@@ -13,6 +13,8 @@ H2-backed connections with the built-in ORM dialect helpers.
 > deprecated and will be removed from the standard library after
 > **2027-08-17**, to be maintained in a separate repository. Prefer the
 > built-in `sql` ORM syntax for new code.
+> Compiler deprecation warnings begin on **2027-02-18**, six months before
+> the removal date; until then the compiler emits a migration notice.
 > See https://github.com/vlang/v/issues/27001 for details.
 
 ## Nullable
@@ -534,7 +536,9 @@ fn main() {
 > `orm.new_query[T]` / `QueryBuilder`). It is deprecated and will be
 > removed from the standard library after **2027-08-17**, to be maintained
 > in a separate repository. Prefer the built-in `sql` ORM syntax for new
-> code. See https://github.com/vlang/v/issues/27001 for details.
+> code. Compiler warnings begin on **2027-02-18**; until then the compiler
+> emits a migration notice. See https://github.com/vlang/v/issues/27001 for
+> details.
 
 You can utilize the `Function Call API` to work with `ORM`. It provides the
 capability to dynamically construct SQL statements. The Function Call API
