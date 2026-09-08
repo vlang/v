@@ -339,7 +339,8 @@ fn test_issue_27281_marker_bounded_external_test_file_keeps_prefix() {
 	os.rmdir_all(workspace) or {}
 	os.mkdir_all(bar_dir) or { panic(err) }
 	foo_source :=
-		['module foo/* adjacent comment */', '', 'pub const present = true'].join_lines() + '\n'
+		['#!/usr/bin/env -S v run', 'module foo/* adjacent comment */', '', 'pub const present = true'].join_lines() +
+		'\n'
 	foo_test_source :=
 		['module foo_test', '', 'import foo.bar', '', 'fn test_nested_module_name() {', "\tassert bar.module_name() == 'foo.bar'", '}'].join_lines() +
 		'\n'
@@ -348,7 +349,7 @@ fn test_issue_27281_marker_bounded_external_test_file_keeps_prefix() {
 		'\n'
 	issue_20147_write_file(os.join_path(project_dir, '.v.mod.stop'), '')
 	issue_20147_write_file(os.join_path(foo_dir, 'foo.v'), foo_source)
-	foo_test_file := os.join_path(foo_dir, 'foo_test.v')
+	foo_test_file := os.join_path(foo_dir, 'foo_test.c.v')
 	issue_20147_write_file(foo_test_file, foo_test_source)
 	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'), bar_source)
 	dir_res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(foo_dir)}')

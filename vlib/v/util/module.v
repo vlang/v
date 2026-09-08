@@ -262,9 +262,10 @@ fn compilation_path_is_module_root(pref_ &pref.Preferences, path string) bool {
 		}
 		// External tests use `module foo_test`, while the production sources in
 		// the same directory still define the module root as `foo`.
-		if !os.base(path).ends_with('_test.v') || source_module != '${expected_module}_test' {
+		if source_module != '${expected_module}_test' {
 			return false
 		}
+		_ := test_source_filter_alias(os.base(path)) or { return false }
 		entries := os.ls(module_dir) or { return false }
 		for source_path in active_module_source_files(pref_, module_dir, entries, false) {
 			if source_file_module_name(source_path) or { '' } == expected_module {
@@ -323,6 +324,12 @@ fn test_source_filter_alias(file string) ?string {
 fn source_file_module_name(path string) ?string {
 	source := read_file(path) or { return none }
 	mut start := 0
+	if source.len >= 2 && source[0] == `#` && source[1] == `!` {
+		start = 2
+		for start < source.len && source[start] !in [`\n`, `\r`] {
+			start++
+		}
+	}
 	for start < source.len {
 		if source[start] in [` `, `\t`, `\v`, `\f`, `\n`, `\r`] {
 			start++
