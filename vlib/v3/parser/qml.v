@@ -810,9 +810,6 @@ fn (c &QmlCompiler) resolve_path(path string, scope QmlScope) (string, bool) {
 }
 
 fn (c &QmlCompiler) expr(expr &QmlExpr, scope QmlScope, use QmlExprUse) string {
-	if use == .string_ && expr.kind == .call {
-		return qml_quote(qml_expr_text(expr))
-	}
 	match expr.kind {
 		.literal {
 			if expr.quoted {
@@ -858,7 +855,8 @@ fn (c &QmlCompiler) expr(expr &QmlExpr, scope QmlScope, use QmlExprUse) string {
 		.call {
 			args := expr.args.map(c.expr(it, scope, .raw)).join(', ')
 			resolved, _ := c.resolve_path(expr.value, scope)
-			return '${resolved}(${args})'
+			call := '${resolved}(${args})'
+			return if use == .string_ { qml_stringify(call) } else { call }
 		}
 		.unary {
 			operand_use := if expr.value == '!' { QmlExprUse.bool_ } else { .number }
@@ -880,7 +878,10 @@ fn (c &QmlCompiler) expr(expr &QmlExpr, scope QmlScope, use QmlExprUse) string {
 				return '(${c.expr(expr.left, scope, .raw)} ${expr.value} ${c.expr(expr.right, scope, .raw)})'
 			}
 			if expr.value == '+' && use == .string_ {
-				return '(${c.expr(expr.left, scope, .string_)} + ${c.expr(expr.right, scope, .string_)})'
+				if qml_expr_is_string(expr.left) || qml_expr_is_string(expr.right) {
+					return '(${c.expr(expr.left, scope, .string_)} + ${c.expr(expr.right, scope, .string_)})'
+				}
+				return qml_stringify('(${c.expr(expr.left, scope, .raw)} + ${c.expr(expr.right, scope, .raw)})')
 			}
 			if expr.value == '%' {
 				return 'f64(int(${c.expr(expr.left, scope, .number)}) % int(${c.expr(expr.right, scope, .number)}))'
