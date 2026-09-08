@@ -141,6 +141,20 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	return run.output.trim_space()
 }
 
+fn run_check_good_project(v3_bin string, name string, files map[string]string, input string) {
+	root := unique_temp_path('${name}_project')
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
+	check := os.execute('${v3_bin} -nocache -check ${input_path}')
+	assert check.exit_code == 0, '${name}: check failed: ${check.output}'
+}
+
 // gen_c_project emits c project output for v3 tests.
 fn gen_c_project(v3_bin string, name string, files map[string]string, input string) string {
 	root := unique_temp_path('${name}_project')
@@ -1893,6 +1907,16 @@ fn test_fn_literal_nested_c_abi_const_mode_matches_alias_inside_generic_fn() {
 		'struct C.native_event {}\nstruct Box[T] {\n\tvalue T\n}\ntype Outer = fn (box Box[fn (const_event &C.native_event)])\nstruct Router {}\nfn (mut r Router) accept(handler Outer) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (box Box[fn (const_event &C.native_event)]) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	run_bad(v3_bin, 'bad_generic_wrapped_const_callback_alias_in_generic',
 		'struct C.native_event {}\nstruct Box[T] {\n\tvalue T\n}\ntype Outer = fn (box Box[fn (const_event &C.native_event)])\nstruct Router {}\nfn (mut r Router) accept(handler Outer) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (box Box[fn (event &C.native_event)]) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	run_check_good_project(v3_bin, 'good_qualified_generic_wrapped_const_callback', {
+		'main.v': 'module main\n\nimport m\n\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler m.Outer) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (box m.Box[fn (const_event &C.native_event)]) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n'
+		'm/m.v':  'module m\n\npub struct Box[T] {\npub:\n\tvalue T\n}\n\npub type Outer = fn (box Box[fn (const_event &C.native_event)])\n'
+	}, 'main.v')
+	sum_handler := run_good(v3_bin, 'good_sum_const_callback_alias_in_generic',
+		'type Handler = fn (const_event &C.native_event)\ntype Value = Handler | int\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(value Value) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert sum_handler == 'true'
+	run_bad(v3_bin, 'bad_sum_const_callback_alias_in_generic',
+		'type Handler = fn (const_event &C.native_event)\ntype Value = Handler | int\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(value Value) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
 }
 

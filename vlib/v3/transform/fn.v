@@ -12235,6 +12235,13 @@ fn (t &Transformer) fn_literal_c_abi_signature_compatible(arg_id flat.NodeId, ex
 	}
 	actual_text := t.fn_literal_source_type_text(arg_id) or { return true }
 	actual_abi := t.tc.c_abi_fn_signature_for_type_text(actual_text)
+	if t.is_sum_type_name(expected_type) {
+		if compatible := t.fn_literal_sum_variant_c_abi_compatible(actual_text, actual_abi,
+			expected_type)
+		{
+			return compatible
+		}
+	}
 	expected_abi := t.tc.c_abi_fn_signature_for_type_text(expected_type)
 	if actual_abi == none && expected_abi == none {
 		return true
@@ -12245,6 +12252,33 @@ fn (t &Transformer) fn_literal_c_abi_signature_compatible(arg_id flat.NodeId, ex
 	actual_value := actual_abi or { return false }
 	expected_value := expected_abi or { return false }
 	return actual_value == expected_value
+}
+
+fn (t &Transformer) fn_literal_sum_variant_c_abi_compatible(actual_text string, actual_abi ?string, expected_type string) ?bool {
+	mut found_matching_fn_variant := false
+	for variant in t.sum_type_variants_for_index(expected_type) {
+		variant_type := t.normalize_type_alias(variant)
+		if (!variant_type.starts_with('fn(') && !variant_type.starts_with('fn ('))
+			|| !fn_type_texts_signature_compatible_without_c_abi_names(actual_text, variant_type) {
+			continue
+		}
+		found_matching_fn_variant = true
+		variant_abi := t.tc.c_abi_fn_signature_for_type_text(variant)
+		if actual_abi == none && variant_abi == none {
+			return true
+		}
+		if actual_value := actual_abi {
+			if variant_value := variant_abi {
+				if actual_value == variant_value {
+					return true
+				}
+			}
+		}
+	}
+	if found_matching_fn_variant {
+		return false
+	}
+	return none
 }
 
 fn (t &Transformer) fn_literal_source_type_text(arg_id flat.NodeId) ?string {

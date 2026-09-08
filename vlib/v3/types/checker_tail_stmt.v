@@ -14852,7 +14852,7 @@ fn (tc &TypeChecker) c_abi_fn_signature_for_type_text_inner(typ string, mut seen
 			}
 		}
 		if has_c_abi_arg {
-			return 'generic(${base}|${signatures.join('|')})'
+			return 'generic(${tc.qualify_name(base)}|${signatures.join('|')})'
 		}
 		for name in [tc.qualify_name(base), base] {
 			params := tc.type_alias_generic_params[name] or { continue }
