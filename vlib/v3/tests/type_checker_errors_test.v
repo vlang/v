@@ -2077,6 +2077,12 @@ fn test_fn_literal_container_callback_modes_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_map_literal_const_fn_param_in_generic',
 		"struct C.native_event {}\nfn apply[T](handlers map[string]fn (event &T)) {}\nfn startup[T]() {\n\tapply[C.native_event]({'event': fn (const_event &C.native_event) {}})\n}\nfn main() {\n\tstartup[int]()\n}\n",
 		'cannot use')
+	fixed_init_matching := run_good(v3_bin, 'good_fixed_array_init_const_fn_param_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn apply[T](handlers [2]ConstHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\treturn apply[int]([2]ConstHandler{init: fn (const_event &C.native_event) {}})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert fixed_init_matching == 'true'
+	run_bad(v3_bin, 'bad_fixed_array_init_const_fn_param_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nfn apply[T](handlers [2]PlainHandler) {}\nfn startup[T]() {\n\tapply[int]([2]PlainHandler{init: fn (const_event &C.native_event) {}})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 }
 
 fn test_fn_literal_callback_alias_lookup_uses_declaration_module() {

@@ -12538,6 +12538,26 @@ fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId,
 		}
 		return true
 	}
+	if node.kind == .array_init {
+		element_expected := if t.is_fixed_array_type(source_expected) {
+			fixed_array_elem_type(source_expected)
+		} else if t.is_fixed_array_type(normalized_expected) {
+			fixed_array_elem_type(normalized_expected)
+		} else {
+			return none
+		}
+		for i in 0 .. node.children_count {
+			child := t.a.child_node(&node, i)
+			if child.kind != .field_init || child.value != 'init' || child.children_count == 0 {
+				continue
+			}
+			if !t.fn_literal_container_element_mode_compatible(t.a.child(child, 0),
+				element_expected) {
+				return false
+			}
+		}
+		return true
+	}
 	if node.kind == .map_init {
 		map_expected := if source_expected.starts_with('map[') {
 			source_expected
