@@ -91,7 +91,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     env:
-      VFLAGS: -cc clang -cflags -fno-omit-frame-pointer
+      VFLAGS: -old-compiler -cc clang -cflags -fno-omit-frame-pointer
       VJOBS: 1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
       VNATIVE_SKIP_LIBC_VV: 1
@@ -127,7 +127,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 150
     env:
-      VFLAGS: -cc gcc -cflags -fno-omit-frame-pointer
+      VFLAGS: -old-compiler -cc gcc -cflags -fno-omit-frame-pointer
       VJOBS: 1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
       VNATIVE_SKIP_LIBC_VV: 1
@@ -162,7 +162,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:
-      VFLAGS: -cc clang -cflags -fno-omit-frame-pointer
+      VFLAGS: -old-compiler -cc clang -cflags -fno-omit-frame-pointer
       VJOBS: 1
       ASAN_OPTIONS: detect_leaks=1
       LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
@@ -230,7 +230,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:
-      VFLAGS: -cc gcc -cflags -fno-omit-frame-pointer
+      VFLAGS: -old-compiler -cc gcc -cflags -fno-omit-frame-pointer
       VJOBS: 1
       ASAN_OPTIONS: detect_leaks=1
       LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
@@ -269,7 +269,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:
-      VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
+      VFLAGS: -old-compiler -cc clang -gc none -cflags -fno-omit-frame-pointer
       VJOBS: 1
       VNATIVE_SKIP_LIBC_VV: 1
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
@@ -300,7 +300,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:
-      VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
+      VFLAGS: -old-compiler -cc clang -gc none -cflags -fno-omit-frame-pointer
       VJOBS: 1
       VNATIVE_SKIP_LIBC_VV: 1
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
@@ -332,7 +332,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:
-      VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
+      VFLAGS: -old-compiler -cc clang -gc none -cflags -fno-omit-frame-pointer
       VJOBS: 1
       LSAN_OPTIONS: detect_leaks=0
       VNATIVE_SKIP_LIBC_VV: 1

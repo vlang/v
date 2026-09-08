@@ -31,7 +31,7 @@ fn run_bad(v3_bin string, name string, src string, expected string) {
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
 	result := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
-	assert result.exit_code != 0
+	assert result.exit_code != 0, '${name}: unexpectedly compiled: ${result.output}'
 	assert result.output.contains(expected), '${name}: missing `${expected}` in ${result.output}'
 	assert !result.output.contains('C compilation failed')
 }

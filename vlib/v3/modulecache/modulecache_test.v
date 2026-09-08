@@ -1,6 +1,7 @@
 module modulecache
 
 import os
+import crypto.sha256
 
 fn test_cached_relative_flag_paths_preserve_path_selection_expressions() {
 	base_dir := os.join_path(os.vtmp_dir(), 'v3_modulecache_flags')
@@ -24,6 +25,60 @@ fn test_native_declaration_api_macro_definition_is_not_localized() {
 	assert declarations.contains('LIB_API_DECL void exported(void) {')
 	assert !declarations.contains('static LIB_API_DECL void exported(void) {')
 	assert declarations.contains('static int helper(void) {')
+}
+
+fn test_declaration_header_keeps_macro_static_inline_function() {
+	source := '#ifdef _MSC_VER
+#define V_TEST_STATIC_INLINE static __inline
+#else
+#define V_TEST_STATIC_INLINE static inline
+#endif
+V_TEST_STATIC_INLINE int local_helper(void) {
+	return 42;
+}
+int external_helper(void) {
+	return local_helper();
+}
+'
+	header := declaration_header(source)
+	assert header.contains('V_TEST_STATIC_INLINE int local_helper(void) {')
+	assert header.contains('return 42;')
+	assert header.contains('int external_helper(void);')
+	assert !header.contains('return local_helper();')
+}
+
+fn test_replicated_function_static_storage_detection() {
+	assert c_source_replicated_function_has_static_storage('static inline int next_value(void) {
+	static int state = 0;
+	return ++state;
+}
+')
+	assert c_source_replicated_function_has_static_storage('#define LOCAL_STORAGE static
+static inline int next_value(void) {
+	LOCAL_STORAGE int state = 0;
+	return ++state;
+}
+')
+	assert c_source_replicated_function_has_static_storage('extern "C" { static inline int next_value(void) { static int state; return ++state; } }
+')
+	assert c_source_replicated_function_has_static_storage('#define DEF(name) \\
+	static inline int name(void) { \\
+		static int state; \\
+		return ++state; \\
+	}
+DEF(next_value)
+')
+	assert !c_source_replicated_function_has_static_storage('int next_value(void) {
+	static int state = 0;
+	return ++state;
+}
+')
+	assert !c_source_replicated_function_has_static_storage('static inline int next_value(void) {
+	// static int comment_state;
+	const char *text = "static int string_state";
+	return text[0];
+}
+')
 }
 
 fn test_cached_file_line_uses_source_file_name() {
@@ -108,6 +163,12 @@ fn test_source_typedef_identifiers_ignore_comments_and_parse_declarators() {
 	assert !identifiers['MacroOnly']
 	assert !identifiers['MacroArgument']
 	assert !identifiers['StringOnly']
+}
+
+fn test_source_typedef_identifiers_resume_after_macro_decorated_function() {
+	source := 'SOKOL_API_IMPL void draw(void) { if (1) { while (0) {} } }\ntypedef unsigned AfterBody;\n'
+	identifiers := c_source_typedef_identifiers(source)
+	assert identifiers['AfterBody']
 }
 
 fn test_static_variable_identifiers_ignore_asm_labels() {
@@ -301,9 +362,11 @@ fn test_macro_identifiers_referencing_static_helpers() {
 }
 
 fn test_source_signature_cache_content_requires_stable_metadata() {
+	expected_digest := 'a'.repeat(sha256.size * 2)
 	details := SourceSignatureDetails{
-		signature:  'content-signature'
-		validation: ['env=NAME\tvalue']
+		signature:      'content-signature'
+		validation:     ['env=NAME\tvalue']
+		source_digests: [expected_digest]
 	}
 	if _ := source_signature_cache_content('before', 'after', details) {
 		assert false, 'changed metadata must prevent source signature caching'
@@ -317,8 +380,40 @@ fn test_source_signature_cache_content_requires_stable_metadata() {
 		return
 	}
 	assert content.contains('metadata=stable\n')
+	assert content.contains('digest=${expected_digest}\n')
 	assert content.contains('source=content-signature\n')
 	assert content.ends_with('complete=1\n')
+}
+
+fn test_cached_source_signature_keeps_per_file_sha256_digests() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_source_digests_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	first_path := os.join_path(root, 'first.v')
+	second_path := os.join_path(root, 'second.v')
+	first_source := 'module sample\n\npub fn first() {}\n'
+	second_source := 'module sample\n\npub fn second() {}\n'
+	os.write_file(first_path, first_source)!
+	os.write_file(second_path, second_source)!
+	cache_dir := os.join_path(root, 'cache')
+	details := cached_source_signature_details_with_build_values(cache_dir, 'digests', [
+		second_path,
+		first_path,
+	], '', '')
+	assert details.signature.len > 0
+	assert details.source_digests == [sha256.hexhash(first_source),
+		sha256.hexhash(second_source)]
+	// The metadata-valid fast path must restore the same per-file digests without
+	// dropping them from the cache validity result.
+	cached := cached_source_signature_details_with_build_values(cache_dir, 'digests', [
+		second_path,
+		first_path,
+	], '', '')
+	assert cached.signature == details.signature
+	assert cached.source_digests == details.source_digests
 }
 
 fn test_version_pseudo_signature_ignores_build_clock() {

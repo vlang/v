@@ -78,16 +78,16 @@ pub fn parse_h3_unidirectional_stream_header(buf []u8) ?H3UnidirectionalStreamHe
 	if kind == .push {
 		push_id, id_len := decode_varint(buf[type_len..]) or { return none }
 		return H3UnidirectionalStreamHeader{
-			kind:     .push
+			kind: .push
 			raw_type: raw_type
-			push_id:  push_id
+			push_id: push_id
 			consumed: type_len + id_len
 		}
 	}
 	return H3UnidirectionalStreamHeader{
-		kind:     kind
+		kind: kind
 		raw_type: raw_type
-		push_id:  none
+		push_id: none
 		consumed: type_len
 	}
 }

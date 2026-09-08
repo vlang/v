@@ -1,5 +1,6 @@
 import os
 import strings
+import crypto.sha256
 import v3.flat
 import v3.parser
 import v3.pref
@@ -43,6 +44,22 @@ fn test_source_larger_than_eight_mib_is_parsed_completely() {
 		if node.kind == .fn_decl && node.value == 'observed_after_old_limit' {
 			found = true
 			break
+		}
+	}
+	assert found
+}
+
+fn test_parser_file_keeps_digest_of_parsed_source() {
+	source := 'module main\nfn main() { println(42) }\n'
+	a, diagnostics := parse_source_with_diagnostics('source_digest', source)
+	assert diagnostics.len == 0, diagnostics.str()
+	mut found := false
+	for _, file in a.source_files {
+		if file.name.contains('v3_source_integrity_source_digest_') {
+			digest := file.source_sha256()
+			assert file.has_source_sha256()
+			assert digest[..].hex() == sha256.hexhash(source)
+			found = true
 		}
 	}
 	assert found

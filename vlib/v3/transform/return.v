@@ -16,11 +16,11 @@ const transformed_direct_optional_forward_value_prefix = '__transformed_direct_o
 // This is a hook for future sum type return wrapping at the transform level.
 fn (mut t Transformer) transform_return_with_sumtype_wrap(id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count == 0 {
-		return arr1(id)
+		return [id]
 	}
 	// Check if current function returns a sum type
 	if t.cur_fn_ret_type.len == 0 || t.cur_fn_ret_type !in t.sum_types {
-		return arr1(id)
+		return [id]
 	}
 	// Check if the return value is a struct init whose type is a variant
 	child_id := t.a.child(&node, 0)
@@ -32,11 +32,11 @@ fn (mut t Transformer) transform_return_with_sumtype_wrap(id flat.NodeId, node f
 				// This is a variant being returned as a sum type.
 				// For now, pass through - C gen handles the wrapping.
 				// TODO: Generate explicit sum type wrapping here.
-				return arr1(id)
+				return [id]
 			}
 		}
 	}
-	return arr1(id)
+	return [id]
 }
 
 // branch_tail_expr extracts the tail EXPRESSION id from a branch block,
@@ -60,7 +60,7 @@ fn (t &Transformer) branch_tail_expr(block_id flat.NodeId) flat.NodeId {
 
 // make_return builds a `return <val>` statement node with the given type.
 fn (mut t Transformer) make_return(val flat.NodeId, ret_typ string) flat.NodeId {
-	return t.make_return_values(arr1(val), ret_typ)
+	return t.make_return_values([val], ret_typ)
 }
 
 fn (mut t Transformer) make_direct_optional_forward_return(val flat.NodeId, ret_typ string) flat.NodeId {
@@ -145,7 +145,7 @@ fn (mut t Transformer) mark_transformed_return(ret_id flat.NodeId, source_id fla
 }
 
 fn (mut t Transformer) make_transformed_return(val flat.NodeId, ret_typ string, source_id flat.NodeId) flat.NodeId {
-	return t.make_transformed_return_values(arr1(val), ret_typ, source_id)
+	return t.make_transformed_return_values([val], ret_typ, source_id)
 }
 
 fn (mut t Transformer) make_transformed_return_values(vals []flat.NodeId, ret_typ string, source_id flat.NodeId) flat.NodeId {
@@ -304,12 +304,12 @@ fn (mut t Transformer) try_expand_return_optional_expr(source_return_id flat.Nod
 	value := t.make_selector(t.make_ident(tmp_name), 'value', t.optional_base_type(expr_type))
 	then_block := t.try_convert_forwarded_wrapped_multi_return(value, expr_type, ret_type,
 		source_return_id) or {
-		t.make_block(arr1(t.make_transformed_return(value, ret_type, source_return_id)))
+		t.make_block([t.make_transformed_return(value, ret_type, source_return_id)])
 	}
 	err_expr := t.make_selector(t.make_ident(tmp_name), 'err', 'IError')
 	err_return := t.make_none_return_stmt_with_err_expr(err_expr)
 	t.mark_transformed_return(err_return, source_return_id)
-	else_block := t.make_block(arr1(err_return))
+	else_block := t.make_block([err_return])
 	result << t.make_if(ok_cond, then_block, else_block)
 	return result
 }
@@ -451,47 +451,68 @@ fn (mut t Transformer) try_expand_forwarded_multi_return(source_return_id flat.N
 }
 
 fn (mut t Transformer) transform_forwarded_return_slot(value_id flat.NodeId, actual types.Type, expected types.Type) flat.NodeId {
+	clone_borrowed := t.borrowed_projection_clone_required(value_id, t.semantic_type_name(actual))
+	return t.transform_forwarded_return_slot_inner(value_id, actual, expected, clone_borrowed)
+}
+
+fn (mut t Transformer) transform_forwarded_return_slot_inner(value_id flat.NodeId, actual types.Type, expected types.Type, clone_borrowed bool) flat.NodeId {
 	if !t.forwarded_slot_conversion_supported(actual, expected) {
-		return t.transform_expr(value_id)
+		value := t.transform_expr(value_id)
+		return t.clone_forwarded_return_value(value, actual, clone_borrowed)
 	}
 	actual_base := forwarded_return_unalias_type(actual)
 	expected_base := forwarded_return_unalias_type(expected)
 	if actual_base is types.OptionType && expected_base is types.OptionType
 		&& t.semantic_type_name(actual_base.base_type) != t.semantic_type_name(expected_base.base_type) {
 		return t.convert_forwarded_optional_result(value_id, actual, actual_base.base_type,
-			expected, expected_base, expected_base.base_type)
+			expected, expected_base, expected_base.base_type, clone_borrowed)
 	}
 	if actual_base is types.ResultType && expected_base is types.ResultType
 		&& t.semantic_type_name(actual_base.base_type) != t.semantic_type_name(expected_base.base_type) {
 		return t.convert_forwarded_optional_result(value_id, actual, actual_base.base_type,
-			expected, expected_base, expected_base.base_type)
+			expected, expected_base, expected_base.base_type, clone_borrowed)
 	}
 	if expected_base is types.Array {
 		if actual_base is types.Array
 			&& t.semantic_type_name(actual_base.elem_type) != t.semantic_type_name(expected_base.elem_type)
 			&& !forwarded_array_elems_storage_identical(actual_base.elem_type, expected_base.elem_type) {
-			return t.convert_forwarded_array_to_dynamic(value_id, actual, actual_base.elem_type,
-				expected, expected_base.elem_type, false)
+			return t.convert_forwarded_array_to_dynamic_with_borrowed(value_id, actual,
+				actual_base.elem_type, expected, expected_base.elem_type, false, clone_borrowed)
 		}
 		if actual_base is types.ArrayFixed {
-			return t.convert_forwarded_array_to_dynamic(value_id, actual, actual_base.elem_type,
-				expected, expected_base.elem_type, true)
+			return t.convert_forwarded_array_to_dynamic_with_borrowed(value_id, actual,
+				actual_base.elem_type, expected, expected_base.elem_type, true, clone_borrowed)
 		}
 	}
 	if actual_base is types.ArrayFixed && expected_base is types.ArrayFixed
 		&& t.semantic_type_name(actual_base.elem_type) != t.semantic_type_name(expected_base.elem_type) {
 		return t.convert_forwarded_fixed_array(value_id, actual, actual_base, expected,
-			expected_base)
+			expected_base, clone_borrowed)
 	}
 	if actual_base is types.Map && expected_base is types.Map&& (t.semantic_type_name(actual_base.key_type) != t.semantic_type_name(expected_base.key_type)
 		|| t.semantic_type_name(actual_base.value_type) != t.semantic_type_name(expected_base.value_type)) {
-		return t.convert_forwarded_map(value_id, actual, actual_base, expected, expected_base)
+		return t.convert_forwarded_map(value_id, actual, actual_base, expected, expected_base,
+			clone_borrowed)
 	}
+	mut value := flat.empty_node
 	if expected_base is types.SumType
 		&& t.sum_target_accepts_variant_type(expected_base.name, t.semantic_type_name(actual_base)) {
-		return t.wrap_sum_value(value_id, expected_base.name)
+		value = t.wrap_sum_value(value_id, expected_base.name)
+	} else {
+		value = t.transform_expr_for_type(value_id, t.semantic_type_name(expected))
 	}
-	return t.transform_expr_for_type(value_id, t.semantic_type_name(expected))
+	return t.clone_forwarded_return_value(value, expected, clone_borrowed)
+}
+
+fn (mut t Transformer) clone_forwarded_return_value(value flat.NodeId, typ types.Type, required bool) flat.NodeId {
+	if !required {
+		return value
+	}
+	typ_name := t.semantic_type_name(typ)
+	if !t.compiler_default_clone_type_needs_work(typ_name) {
+		return value
+	}
+	return t.make_compiler_default_borrowed_clone_value(value, typ_name, true)
 }
 
 fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expected types.Type) bool {
@@ -579,17 +600,23 @@ fn forwarded_return_type_is_unresolved(typ types.Type) bool {
 	return false
 }
 
-fn (mut t Transformer) convert_forwarded_optional_result(value_id flat.NodeId, actual_type types.Type, actual_payload types.Type, expected_type types.Type, expected_wrapper types.Type, expected_payload types.Type) flat.NodeId {
+fn (mut t Transformer) convert_forwarded_optional_result(value_id flat.NodeId, actual_type types.Type, actual_payload types.Type, expected_type types.Type, expected_wrapper types.Type, expected_payload types.Type, clone_borrowed bool) flat.NodeId {
 	source := t.stable_transformed_expr_for_reuse(t.transform_expr(value_id),
 		t.semantic_type_name(actual_type), 'return_optional')
 	result_name := t.new_temp('return_optional')
 	err := t.make_selector(source, 'err', 'IError')
-	initial := t.make_optional_none_with_err(t.semantic_type_name(expected_wrapper), err)
+	return_err := if clone_borrowed {
+		t.make_call_typed('__v3_clone_owned_ierror', [err], 'IError')
+	} else {
+		err
+	}
+	initial := t.make_optional_none_with_err(t.semantic_type_name(expected_wrapper), return_err)
 	t.pending_stmts << t.make_decl_assign_typed(result_name, initial,
 		t.semantic_type_name(expected_type))
 	pending_start := t.pending_stmts.len
 	payload := t.make_selector(source, 'value', t.semantic_type_name(actual_payload))
-	converted := t.transform_forwarded_return_slot(payload, actual_payload, expected_payload)
+	converted := t.transform_forwarded_return_slot_inner(payload, actual_payload, expected_payload,
+		clone_borrowed)
 	mut then_body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	wrapped := t.make_optional_some(converted, t.semantic_type_name(expected_wrapper))
@@ -642,7 +669,15 @@ fn forwarded_array_elems_storage_identical(actual_elem types.Type, expected_elem
 }
 
 fn (mut t Transformer) convert_forwarded_array_to_dynamic(value_id flat.NodeId, actual_type types.Type, actual_elem types.Type, expected_type types.Type, expected_elem types.Type, actual_is_fixed bool) flat.NodeId {
+	clone_borrowed := t.borrowed_projection_clone_required(value_id,
+		t.semantic_type_name(actual_type))
+	return t.convert_forwarded_array_to_dynamic_with_borrowed(value_id, actual_type, actual_elem,
+		expected_type, expected_elem, actual_is_fixed, clone_borrowed)
+}
+
+fn (mut t Transformer) convert_forwarded_array_to_dynamic_with_borrowed(value_id flat.NodeId, actual_type types.Type, actual_elem types.Type, expected_type types.Type, expected_elem types.Type, actual_is_fixed bool, clone_borrowed bool) flat.NodeId {
 	src := t.a.nodes[int(value_id)]
+	actual_elem_type := t.semantic_type_name(actual_elem)
 	pending_start := t.pending_stmts.len
 	base := t.stable_transformed_expr_for_reuse(t.transform_expr(value_id),
 		t.semantic_type_name(actual_type), 'return_array')
@@ -661,18 +696,21 @@ fn (mut t Transformer) convert_forwarded_array_to_dynamic(value_id flat.NodeId, 
 	cond := t.make_infix(.lt, t.make_ident(idx_name), len_expr)
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	elem := if actual_is_fixed {
-		t.make_index(base, t.make_ident(idx_name), t.semantic_type_name(actual_elem))
+		t.make_index(base, t.make_ident(idx_name), actual_elem_type)
 	} else {
-		t.array_get_value(base, t.make_ident(idx_name), t.semantic_type_name(actual_elem))
+		t.array_get_value(base, t.make_ident(idx_name), actual_elem_type)
 	}
 	body_pending_start := t.pending_stmts.len
-	converted := t.transform_forwarded_return_slot(elem, actual_elem, expected_elem)
+	converted := t.transform_forwarded_return_slot_inner(elem, actual_elem, expected_elem,
+		clone_borrowed)
 	mut body := t.pending_stmts[body_pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..body_pending_start].clone()
 	value_name := t.new_temp('return_array_value')
 	body << t.make_decl_assign_typed(value_name, converted, t.semantic_type_name(expected_elem))
-	body << t.make_expr_stmt(t.make_call_typed('array_push', arr2(t.make_prefix(.amp,
-		t.make_ident(out_name)), t.make_prefix(.amp, t.make_ident(value_name))), 'void'))
+	body << t.make_expr_stmt(t.make_call_typed('array_push', [
+		t.make_prefix(.amp, t.make_ident(out_name)),
+		t.make_prefix(.amp, t.make_ident(value_name)),
+	], 'void'))
 	prefix << t.make_for_stmt(init, cond, post, body, src)
 	for stmt in prefix {
 		t.pending_stmts << stmt
@@ -682,7 +720,7 @@ fn (mut t Transformer) convert_forwarded_array_to_dynamic(value_id flat.NodeId, 
 	return result
 }
 
-fn (mut t Transformer) convert_forwarded_fixed_array(value_id flat.NodeId, actual_type types.Type, actual types.ArrayFixed, expected_type types.Type, expected types.ArrayFixed) flat.NodeId {
+fn (mut t Transformer) convert_forwarded_fixed_array(value_id flat.NodeId, actual_type types.Type, actual types.ArrayFixed, expected_type types.Type, expected types.ArrayFixed, clone_borrowed bool) flat.NodeId {
 	if isnil(t.tc) {
 		return t.transform_expr_for_type(value_id, t.semantic_type_name(expected_type))
 	}
@@ -694,12 +732,13 @@ fn (mut t Transformer) convert_forwarded_fixed_array(value_id flat.NodeId, actua
 	mut values := []flat.NodeId{cap: len}
 	for i in 0 .. len {
 		elem := t.make_index(base, t.make_int_literal(i), t.semantic_type_name(actual.elem_type))
-		values << t.transform_forwarded_return_slot(elem, actual.elem_type, expected.elem_type)
+		values << t.transform_forwarded_return_slot_inner(elem, actual.elem_type,
+			expected.elem_type, clone_borrowed)
 	}
 	return t.make_array_literal_typed(values, t.semantic_type_name(expected_type))
 }
 
-fn (mut t Transformer) convert_forwarded_map(value_id flat.NodeId, actual_type types.Type, actual types.Map, expected_type types.Type, expected types.Map) flat.NodeId {
+fn (mut t Transformer) convert_forwarded_map(value_id flat.NodeId, actual_type types.Type, actual types.Map, expected_type types.Type, expected types.Map, clone_borrowed bool) flat.NodeId {
 	src := t.a.nodes[int(value_id)]
 	pending_start := t.pending_stmts.len
 	base := t.stable_transformed_expr_for_reuse(t.transform_expr(value_id),
@@ -725,8 +764,7 @@ fn (mut t Transformer) convert_forwarded_map(value_id flat.NodeId, actual_type t
 	keys_type := '[]${actual_key_storage}'
 	prefix << t.make_decl_assign_typed(out_name, t.make_new_map_call(expected_map_type),
 		t.semantic_type_name(expected_type))
-	keys_call := t.make_call_typed('map__keys', arr1(t.runtime_addr(base, actual_map_type)),
-		keys_type)
+	keys_call := t.make_call_typed('map__keys', [t.runtime_addr(base, actual_map_type)], keys_type)
 	prefix << t.make_decl_assign_typed(keys_name, keys_call, keys_type)
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(t.make_ident(keys_name),
@@ -747,10 +785,10 @@ fn (mut t Transformer) convert_forwarded_map(value_id flat.NodeId, actual_type t
 	} else {
 		t.make_cast(actual_key_type, t.make_ident(source_key_name), actual_key_type)
 	}
-	converted_key := t.transform_forwarded_return_slot(logical_source_key, actual.key_type,
-		expected.key_type)
-	converted_value := t.transform_forwarded_return_slot(t.make_ident(source_value_name),
-		actual.value_type, expected.value_type)
+	converted_key := t.transform_forwarded_return_slot_inner(logical_source_key, actual.key_type,
+		expected.key_type, false)
+	converted_value := t.transform_forwarded_return_slot_inner(t.make_ident(source_value_name),
+		actual.value_type, expected.value_type, clone_borrowed)
 	body_pending := t.pending_stmts[body_pending_start..].clone()
 	for stmt in body_pending {
 		body << stmt
@@ -855,6 +893,11 @@ fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ s
 // chain) into an if-statement whose branch tails are `return` statements.
 fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string, extra_return_vals []flat.NodeId, source_return_id flat.NodeId) flat.NodeId {
 	if_node := t.a.nodes[int(if_id)]
+	if expanded := t.build_return_map_index_if_guard_chain(if_node, ret_typ, extra_return_vals,
+		source_return_id)
+	{
+		return expanded
+	}
 	cond_id := t.a.child(&if_node, 0)
 	cond_smartcasts := t.extract_all_is_exprs(cond_id)
 	new_cond := t.transform_and_chain_smartcasts(cond_id)
@@ -875,7 +918,7 @@ fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string, 
 		if else_node.kind == .if_expr {
 			// else-if chain: recurse, wrap resulting if-stmt in a block
 			inner := t.build_return_if_chain(else_id, ret_typ, extra_return_vals, source_return_id)
-			else_block = t.make_block(arr1(inner))
+			else_block = t.make_block([inner])
 		} else {
 			else_block = t.return_block_from_branch(else_id, ret_typ, extra_return_vals,
 				source_return_id)
@@ -887,6 +930,75 @@ fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string, 
 	}
 	cond_prelude << new_if
 	return t.make_block(cond_prelude)
+}
+
+// build_return_map_index_if_guard_chain preserves the presence check while lowering a map
+// lookup guard whose branches become returns. Transforming the guard condition as an ordinary
+// index expression would replace it with `map__get` before C generation and lose the lookup's
+// optional state.
+fn (mut t Transformer) build_return_map_index_if_guard_chain(if_node flat.Node, ret_typ string, extra_return_vals []flat.NodeId, source_return_id flat.NodeId) ?flat.NodeId {
+	if if_node.kind != .if_expr || if_node.children_count < 2 {
+		return none
+	}
+	cond_id := t.a.child(&if_node, 0)
+	cond := t.a.nodes[int(cond_id)]
+	if cond.kind != .decl_assign || cond.children_count < 2 {
+		return none
+	}
+	lhs_ids := t.multi_assign_lhs_ids(cond)
+	if lhs_ids.len != 1 {
+		return none
+	}
+	lhs_id := lhs_ids[0]
+	lhs := t.a.nodes[int(lhs_id)]
+	if lhs.kind != .ident || lhs.value.len == 0 {
+		return none
+	}
+	rhs_id := t.a.child(&cond, 1)
+	info := t.map_index_info(rhs_id) or { return none }
+
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	map_expr := t.stable_expr_for_reuse(info.base_id)
+	key_name := t.new_temp('map_key')
+	ptr_name := t.new_temp('map_ptr')
+	key_expr := t.transform_expr_for_type(info.key_id, info.key_type)
+	mut result := []flat.NodeId{}
+	t.drain_pending(mut result)
+	result << t.make_decl_assign_typed(key_name, key_expr, info.key_storage_type)
+	result << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr,
+		info.base_type, key_name), 'voidptr')
+	found_cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
+
+	saved_var_types := t.var_types.clone()
+	mut then_children := []flat.NodeId{}
+	if lhs.value != '_' {
+		ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type}', t.make_ident(ptr_name),
+			'&${info.value_type}'))
+		then_children << t.make_decl_assign_typed(lhs.value, ptr_value, info.value_type)
+		t.set_var_type(lhs.value, info.value_type)
+	}
+	then_id := t.a.child(&if_node, 1)
+	then_block0 := t.return_block_from_branch(then_id, ret_typ, extra_return_vals, source_return_id)
+	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
+	then_block := t.make_block_prefix_scope_drops(then_children)
+	t.restore_var_types(saved_var_types)
+
+	mut else_block := flat.empty_node
+	if if_node.children_count >= 3 {
+		else_id := t.a.child(&if_node, 2)
+		else_node := t.a.nodes[int(else_id)]
+		else_block = if else_node.kind == .if_expr {
+			t.make_block([
+				t.build_return_if_chain(else_id, ret_typ, extra_return_vals, source_return_id),
+			])
+		} else {
+			t.return_block_from_branch(else_id, ret_typ, extra_return_vals, source_return_id)
+		}
+	}
+	t.pending_stmts = outer_pending
+	result << t.make_if(found_cond, then_block, else_block)
+	return t.make_block(result)
 }
 
 // try_expand_return_if detects a `return if cond { a } else { b }` pattern
@@ -917,7 +1029,9 @@ fn (mut t Transformer) try_expand_return_if(source_return_id flat.NodeId, node f
 		extra_return_vals << t.a.child(&node, i)
 	}
 	ret_typ := if t.cur_fn_ret_type.len > 0 { t.cur_fn_ret_type } else { node.typ }
-	return arr1(t.build_return_if_chain(val_id, ret_typ, extra_return_vals, source_return_id))
+	return [
+		t.build_return_if_chain(val_id, ret_typ, extra_return_vals, source_return_id),
+	]
 }
 
 fn (t &Transformer) match_branch_tuple_parts(branch flat.Node, body_start_idx int, count int) ?TupleBlockParts {

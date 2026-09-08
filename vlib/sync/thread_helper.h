@@ -18,8 +18,10 @@ static inline int v_sync_thread_create_detached(void *start, void *arg) {
 	return 0;
 }
 #else
+#ifndef V_FASTC_NO_HEADERS
 #include <pthread.h>
 #include <stdlib.h>
+#endif
 
 static inline int v_sync_thread_create_detached(void *start, void *arg) {
 	pthread_attr_t attr;

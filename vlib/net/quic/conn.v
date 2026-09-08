@@ -1,7 +1,7 @@
 module quic
 
 import time
-import rand
+import crypto.rand
 
 // RFC 9000/9001 — QuicConn is the top-level connection struct wiring
 // together every independently-built piece from Phases 0-8: packet/header
@@ -67,16 +67,18 @@ pub:
 pub enum QuicEventKind {
 	handshake_confirmed
 	connection_closed
+	peer_stream_opened
 }
 
 // QuicEvent reports one thing that happened during a poll()/
 // process_timeouts() call. `error_code`/`reason` are set only for
-// connection_closed.
+// connection_closed; `stream_id` is set only for peer_stream_opened.
 pub struct QuicEvent {
 pub:
 	kind       QuicEventKind
 	error_code ?u64
 	reason     string
+	stream_id  ?u64
 }
 
 // PollResult reports everything one poll()/process_timeouts() call
@@ -187,6 +189,16 @@ mut:
 	pending_stream_write map[u64]PendingStreamWrite
 	pending_stream_reset map[u64]u64 // stream_id -> error_code, queued RESET_STREAM frames
 	conn_bytes_read      u64
+	// Every peer-initiated stream ID a peer_stream_opened event has already
+	// been reported for. Keyed on the specific ID handle_stream_frame/
+	// handle_reset_stream_frame were actually called with, NEVER derived
+	// from c.streams' own existence map -- get_or_create silently
+	// auto-creates every lower-numbered same-category sibling as an empty
+	// filler (RFC 9000 §2.1), so an out-of-order arrival (ordinary over
+	// UDP) would otherwise cause a real stream's own later STREAM/
+	// RESET_STREAM frame to hit the fast already-exists path and never be
+	// announced. See note_peer_stream_discovered.
+	announced_peer_streams map[u64]bool
 
 	conn_send_window FlowControlWindow
 	conn_recv_window ReceiveWindow
@@ -245,6 +257,15 @@ pub fn (c &QuicConn) state() ConnectionState {
 // .client (see stream.v's QuicRole doc comment).
 pub fn (c &QuicConn) role() QuicRole {
 	return c.role
+}
+
+// negotiated_alpn reports the ALPN protocol the server selected, or none
+// before EncryptedExtensions has been processed (i.e. before
+// handshake_confirmed can even fire -- ALPN is settled well before the
+// handshake completes, so a caller checking this after handshake_confirmed
+// always gets a value, never none).
+pub fn (c &QuicConn) negotiated_alpn() ?string {
+	return c.handshake.negotiated_alpn()
 }
 
 // -------------------------------------------------------------------------
@@ -382,8 +403,8 @@ pub fn (mut c QuicConn) close(error_code u64, reason string) {
 		return
 	}
 	c.pending_close = PendingClose{
-		error_code:           error_code
-		reason:               reason
+		error_code: error_code
+		reason: reason
 		is_application_error: true
 	}
 }
@@ -407,11 +428,11 @@ pub fn dial(params DialParams, now u64) !(&QuicConn, QuicDatagram) {
 	own_params.initial_source_connection_id = scid.clone()
 
 	handshake, client_hello := Tls13ClientHandshake.start(ClientHandshakeParams{
-		random:               client_random
-		server_name:          params.server_name
+		random: client_random
+		server_name: params.server_name
 		transport_parameters: own_params
-		ca_bundle_pem:        params.ca_bundle_pem
-		alpn_protocols:       params.alpn_protocols
+		ca_bundle_pem: params.ca_bundle_pem
+		alpn_protocols: params.alpn_protocols
 	})!
 
 	initial_secrets := derive_initial_secrets(original_dcid)!
@@ -421,32 +442,32 @@ pub fn dial(params DialParams, now u64) !(&QuicConn, QuicDatagram) {
 	own_max_idle_timeout_ms := own_params.max_idle_timeout or { u64(0) }
 
 	mut c := &QuicConn{
-		role:                     .client
-		state:                    .handshaking
-		original_dcid:            original_dcid
-		dcid:                     original_dcid.clone()
-		scid:                     scid
-		peer_scid:                []u8{}
-		token:                    []u8{}
-		handshake:                handshake
-		handshake_completion:     new_handshake_completion_state()
-		pn_spaces:                new_packet_number_spaces()
-		initial_keys_client:      initial_keys_client
-		initial_keys_server:      initial_keys_server
-		initial_crypto:           new_crypto_stream_reassembler()
-		handshake_crypto:         new_crypto_stream_reassembler()
-		client_hello:             client_hello
-		loss_detection:           new_quic_loss_detection_timer()
-		congestion_control:       new_newreno_congestion_control()
-		own_max_idle_timeout_ms:  own_max_idle_timeout_ms
-		stateless_reset:          new_stateless_reset_tracker()
-		connection_start:         now
+		role: .client
+		state: .handshaking
+		original_dcid: original_dcid
+		dcid: original_dcid.clone()
+		scid: scid
+		peer_scid: []u8{}
+		token: []u8{}
+		handshake: handshake
+		handshake_completion: new_handshake_completion_state()
+		pn_spaces: new_packet_number_spaces()
+		initial_keys_client: initial_keys_client
+		initial_keys_server: initial_keys_server
+		initial_crypto: new_crypto_stream_reassembler()
+		handshake_crypto: new_crypto_stream_reassembler()
+		client_hello: client_hello
+		loss_detection: new_quic_loss_detection_timer()
+		congestion_control: new_newreno_congestion_control()
+		own_max_idle_timeout_ms: own_max_idle_timeout_ms
+		stateless_reset: new_stateless_reset_tracker()
+		connection_start: now
 		own_transport_parameters: own_params
-		streams:                  new_quic_stream_set(.client)
-		conn_send_window:         new_flow_control_window(0)
-		conn_recv_window:         new_receive_window(own_params.initial_max_data or { u64(0) })
-		local_max_streams_bidi:   own_params.initial_max_streams_bidi or { u64(0) }
-		local_max_streams_uni:    own_params.initial_max_streams_uni or { u64(0) }
+		streams: new_quic_stream_set(.client)
+		conn_send_window: new_flow_control_window(0)
+		conn_recv_window: new_receive_window(own_params.initial_max_data or { u64(0) })
+		local_max_streams_bidi: own_params.initial_max_streams_bidi or { u64(0) }
+		local_max_streams_uni: own_params.initial_max_streams_uni or { u64(0) }
 	}
 
 	crypto_frame := encode_crypto_frame(0, client_hello)!
@@ -508,7 +529,7 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 		if now >= deadline {
 			c.state = .closed
 			result.events << QuicEvent{
-				kind:   .connection_closed
+				kind: .connection_closed
 				reason: 'idle timeout'
 			}
 			return result
@@ -519,7 +540,7 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 			if now >= deadline {
 				c.state = .closed
 				result.events << QuicEvent{
-					kind:   .connection_closed
+					kind: .connection_closed
 					reason: 'closing/draining period elapsed'
 				}
 				return result
@@ -531,11 +552,14 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 	if c.state == .handshaking || c.state == .established {
 		handshake_confirmed := c.handshake_completion.is_confirmed()
 		max_ack_delay := c.effective_max_ack_delay()
-		timeout_result := c.loss_detection.on_loss_detection_timeout(now, handshake_confirmed,
-			max_ack_delay)
+		timeout_result := c.loss_detection.on_loss_detection_timeout(now, handshake_confirmed, max_ack_delay)
 		if timeout_result.pto_fired {
 			c.send_pto_probe(timeout_result.pto_space, now, mut result) or {
-				code := if err.code() != 0 { u64(err.code()) } else { quic_error_protocol_violation }
+				code := if err.code() != 0 {
+					u64(err.code())
+				} else {
+					quic_error_protocol_violation
+				}
 				c.close_with_error(code, err.msg(), false, now, mut result)
 			}
 		} else if timeout_result.lost.len > 0 {
@@ -680,10 +704,22 @@ fn (mut c QuicConn) process_initial_or_handshake(space QuicPacketNumberSpace, ra
 	if c.peer_scid.len != 0 && header.scid != c.peer_scid {
 		return
 	}
-	keys := if space == .initial {
-		c.initial_keys_server
+	// Deliberately an if/else STATEMENT with an explicit assignment in each
+	// branch, not `keys := if ... { A } else { B }` -- that if-EXPRESSION
+	// form, with an `or {}`-block branch value, hits a cgen bug where the
+	// emitted `#line` directive glues onto the following line with no
+	// newline, so the C preprocessor swallows the expression as trailing
+	// directive tokens and gcc fails with "expected expression before '}'
+	// token" (same `#line`-emission family as vlang/v#27495, filed
+	// upstream as vlang/v#28163). Only reproduces under CI's exact
+	// toolchain (gcc-linux/Windows), not local clang -- keep this shape
+	// regardless, since the workaround is free and the bug can't be
+	// worked around at the call site once it's an if-expression.
+	mut keys := QuicPacketProtectionKeys{}
+	if space == .initial {
+		keys = c.initial_keys_server
 	} else {
-		c.handshake_keys_server or { return }
+		keys = c.handshake_keys_server or { return }
 	}
 	mut packet := raw.clone()
 	largest_pn := if space == .initial {
@@ -754,7 +790,7 @@ fn (mut c QuicConn) note_one_rtt_processing_failed(raw []u8, now u64, mut result
 	if c.stateless_reset.is_stateless_reset(c.peer_scid, raw) {
 		c.enter_draining(now)
 		result.events << QuicEvent{
-			kind:   .connection_closed
+			kind: .connection_closed
 			reason: 'stateless reset received'
 		}
 	}
@@ -806,8 +842,7 @@ fn (mut c QuicConn) process_one_rtt_packet(raw []u8, now u64, mut result PollRes
 	for i in 0 .. pn_length {
 		truncated = (truncated << 8) | u64(packet[offset + i])
 	}
-	full_pn := decode_packet_number(truncated, pn_length,
-		c.pn_spaces.application_data.largest_received) or {
+	full_pn := decode_packet_number(truncated, pn_length, c.pn_spaces.application_data.largest_received) or {
 		c.note_one_rtt_processing_failed(raw, now, mut result)
 		return
 	}
@@ -969,10 +1004,10 @@ fn (mut c QuicConn) dispatch_one_rtt_frame(frame QuicFrame, now u64, mut result 
 			// handler for it. Legal on the wire, silently not acted upon.
 		}
 		StreamFrame {
-			c.handle_stream_frame(frame)!
+			c.handle_stream_frame(frame, mut result)!
 		}
 		ResetStreamFrame {
-			c.handle_reset_stream_frame(frame)!
+			c.handle_reset_stream_frame(frame, mut result)!
 		}
 		StopSendingFrame {
 			c.handle_stop_sending_frame(frame)
@@ -1004,7 +1039,98 @@ fn (mut c QuicConn) dispatch_one_rtt_frame(frame QuicFrame, now u64, mut result 
 	}
 }
 
-fn (mut c QuicConn) handle_stream_frame(frame StreamFrame) ! {
+// note_peer_stream_discovered queues a peer_stream_opened event the first
+// time this connection ever observes `stream_id` NAMED DIRECTLY by an
+// incoming frame -- but only when `stream_id` is genuinely in a
+// peer-initiated ID category (StreamId.is_locally_initiated == false).
+// This distinction is load-bearing, not defensive: get_or_create's fast
+// path (`if existing := s.streams[raw_id] { return existing }`) returns
+// early for ANY already-known ID without re-checking who initiated it, so
+// a peer's reply on a stream THIS endpoint opened via open_stream() -- an
+// entirely ordinary bidi-stream exchange -- reaches this function too;
+// without the category check it would be wrongly reported as a
+// peer-opened stream every time a first reply arrives on our own stream.
+//
+// Deliberately NOT keyed on "was `stream_id` newly inserted into
+// c.streams" either: get_or_create's RFC 9000 §2.1 sibling-auto-creation
+// would otherwise let an out-of-order arrival (ordinary over UDP) silently
+// pre-create a lower-numbered peer stream's entry as an empty filler, and
+// that stream's own later, explicitly-addressed frame would then hit the
+// fast already-exists path and never be announced at all.
+//
+// Idempotent past the first call for a given ID (a stream can be named by
+// many frames over its lifetime).
+fn (mut c QuicConn) note_peer_stream_discovered(stream_id u64, mut result PollResult) {
+	id := StreamId{
+		value: stream_id
+	}
+	if id.is_locally_initiated(c.role) {
+		return
+	}
+	if stream_id !in c.announced_peer_streams {
+		c.announced_peer_streams[stream_id] = true
+		result.events << QuicEvent{
+			kind: .peer_stream_opened
+			stream_id: stream_id
+		}
+	}
+}
+
+// StreamRecvTerminalState is a simplified view of RecvStreamState (stream.v)
+// for callers that only care whether a stream's receive side has reached a
+// terminal condition, not the full 6-state machine -- collapses recv into
+// open, and both size_known/data_recvd (a FIN has been observed, whether or
+// not every byte has actually arrived yet) into fin_received, since for a
+// caller checking "did this critical stream close" (RFC 9114 §4.2/§6.2.1),
+// the FIN itself is what matters, not full byte-level completion.
+pub enum StreamRecvTerminalState {
+	open
+	fin_received
+	reset_received
+}
+
+// StreamRecvStatus is stream_recv_status's return shape.
+pub struct StreamRecvStatus {
+pub:
+	state       StreamRecvTerminalState
+	reset_error ?u64 // set only when state == .reset_received
+}
+
+// stream_recv_status reports `stream_id`'s current receive-side terminal
+// status, or none if the ID is unknown to this connection (never seen in
+// any frame, and never locally opened) or has no receive side at all (a
+// locally-initiated unidirectional stream). reset_recvd/reset_read always
+// win over size_known/data_recvd if both have occurred (RFC 9000 §3.2
+// permits a RESET_STREAM after all data was already received, and
+// mark_reset_recvd applies unconditionally in that case -- see its own doc
+// comment), so checking reset first below matches the underlying state
+// machine's own precedence, not just this function's own guess at it.
+pub fn (c &QuicConn) stream_recv_status(stream_id u64) ?StreamRecvStatus {
+	stream := c.streams.get(stream_id) or { return none }
+	if !stream.has_recv() {
+		return none
+	}
+	match stream.recv.state {
+		.reset_recvd, .reset_read {
+			return StreamRecvStatus{
+				state: .reset_received
+				reset_error: stream.recv.error_code
+			}
+		}
+		.size_known, .data_recvd, .data_read {
+			return StreamRecvStatus{
+				state: .fin_received
+			}
+		}
+		.recv {
+			return StreamRecvStatus{
+				state: .open
+			}
+		}
+	}
+}
+
+fn (mut c QuicConn) handle_stream_frame(frame StreamFrame, mut result PollResult) ! {
 	id := StreamId{
 		value: frame.stream_id
 	}
@@ -1014,6 +1140,7 @@ fn (mut c QuicConn) handle_stream_frame(frame StreamFrame) ! {
 		c.local_max_streams_bidi
 	}
 	mut stream := c.streams.get_or_create(frame.stream_id, max_streams)!
+	c.note_peer_stream_discovered(frame.stream_id, mut result)
 	if !stream.has_recv() {
 		return error('quic: STREAM_STATE_ERROR: received STREAM frame for send-only stream ${frame.stream_id}')
 	}
@@ -1036,7 +1163,7 @@ fn (mut c QuicConn) handle_stream_frame(frame StreamFrame) ! {
 	}
 }
 
-fn (mut c QuicConn) handle_reset_stream_frame(frame ResetStreamFrame) ! {
+fn (mut c QuicConn) handle_reset_stream_frame(frame ResetStreamFrame, mut result PollResult) ! {
 	id := StreamId{
 		value: frame.stream_id
 	}
@@ -1046,6 +1173,7 @@ fn (mut c QuicConn) handle_reset_stream_frame(frame ResetStreamFrame) ! {
 		c.local_max_streams_bidi
 	}
 	mut stream := c.streams.get_or_create(frame.stream_id, max_streams)!
+	c.note_peer_stream_discovered(frame.stream_id, mut result)
 	if !stream.has_recv() {
 		return error('quic: STREAM_STATE_ERROR: received RESET_STREAM for send-only stream ${frame.stream_id}')
 	}
@@ -1096,8 +1224,7 @@ fn (mut c QuicConn) handle_ack_frame(space QuicPacketNumberSpace, frame AckFrame
 		default_ack_delay_exponent
 	}
 
-	result := c.loss_detection.on_ack_received(space, frame, peer_ack_delay_exponent,
-		max_ack_delay, handshake_confirmed, now)
+	result := c.loss_detection.on_ack_received(space, frame, peer_ack_delay_exponent, max_ack_delay, handshake_confirmed, now)
 	c.congestion_control.on_packets_acked(result.newly_acked)
 	if result.lost.len > 0 {
 		c.congestion_control.on_packets_lost(result.lost, result.persistent_congestion, now)
@@ -1120,9 +1247,9 @@ fn (mut c QuicConn) handle_crypto_frame(space QuicPacketNumberSpace, frame Crypt
 fn (mut c QuicConn) handle_peer_connection_close(frame ConnectionCloseFrame, now u64, mut result PollResult) {
 	c.enter_draining(now)
 	result.events << QuicEvent{
-		kind:       .connection_closed
+		kind: .connection_closed
 		error_code: frame.error_code
-		reason:     frame.reason
+		reason: frame.reason
 	}
 }
 
@@ -1168,8 +1295,7 @@ fn (mut c QuicConn) dispatch_handshake_message(msg HandshakeMessage, framed []u8
 			c.handshake_keys_server = derive_packet_protection_keys(hs.server_secret)!
 		}
 		.wait_encrypted_extensions {
-			c.handshake.process_encrypted_extensions(msg, framed, c.peer_scid, c.original_dcid,
-				c.retry_scid)!
+			c.handshake.process_encrypted_extensions(msg, framed, c.peer_scid, c.original_dcid, c.retry_scid)!
 			peer_params := c.handshake.peer_transport_parameters
 			c.conn_send_window.raise_limit(peer_params.initial_max_data or { u64(0) })
 			c.peer_max_streams_bidi = peer_params.initial_max_streams_bidi or { u64(0) }
@@ -1418,7 +1544,7 @@ fn ranges_from_received_pns(pns []u64) []AckRange {
 		}
 		ranges << AckRange{
 			smallest: smallest
-			largest:  largest
+			largest: largest
 		}
 		i--
 	}
@@ -1435,23 +1561,23 @@ fn (mut c QuicConn) build_initial_packet(payload []u8, is_ack_eliciting bool, no
 	pn_bytes, pn_length := encode_packet_number(pn, c.pn_spaces.initial.largest_acked_by_peer)!
 
 	h_probe := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    c.dcid
-		scid:    c.scid
-		token:   c.token
-		length:  u64(pn_length) + u64(payload.len) + aead_tag_len
+		dcid: c.dcid
+		scid: c.scid
+		token: c.token
+		length: u64(pn_length) + u64(payload.len) + aead_tag_len
 	}
 	header_probe := encode_long_header(h_probe, 0, u8(pn_length - 1))!
 	padded_payload := pad_initial_payload(payload, header_probe.len + pn_length, aead_tag_len)
 
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    c.dcid
-		scid:    c.scid
-		token:   c.token
-		length:  u64(pn_length) + u64(padded_payload.len) + aead_tag_len
+		dcid: c.dcid
+		scid: c.scid
+		token: c.token
+		length: u64(pn_length) + u64(padded_payload.len) + aead_tag_len
 	}
 	mut header := encode_long_header(h, 0, u8(pn_length - 1))!
 	header << pn_bytes
@@ -1476,12 +1602,12 @@ fn (mut c QuicConn) build_handshake_packet(payload []u8, is_ack_eliciting bool, 
 	pn_bytes, pn_length := encode_packet_number(pn, c.pn_spaces.handshake.largest_acked_by_peer)!
 
 	h := QuicLongHeader{
-		typ:     .handshake
+		typ: .handshake
 		version: quic_v1
-		dcid:    c.dcid
-		scid:    c.scid
-		token:   []u8{}
-		length:  u64(pn_length) + u64(payload.len) + aead_tag_len
+		dcid: c.dcid
+		scid: c.scid
+		token: []u8{}
+		length: u64(pn_length) + u64(payload.len) + aead_tag_len
 	}
 	mut header := encode_long_header(h, 0, u8(pn_length - 1))!
 	header << pn_bytes
@@ -1489,8 +1615,7 @@ fn (mut c QuicConn) build_handshake_packet(payload []u8, is_ack_eliciting bool, 
 	protected := protect_packet(header, .long, pn, pn_length, payload, keys)!
 
 	in_flight := is_ack_eliciting
-	c.loss_detection.on_packet_sent(.handshake, pn, u64(protected.len), is_ack_eliciting,
-		in_flight, now)
+	c.loss_detection.on_packet_sent(.handshake, pn, u64(protected.len), is_ack_eliciting, in_flight, now)
 	if in_flight {
 		c.congestion_control.on_packet_sent_cc(u64(protected.len))
 	}
@@ -1513,8 +1638,7 @@ fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, no
 	}
 
 	pn := c.pn_spaces.application_data.next_packet_number()!
-	pn_bytes, pn_length := encode_packet_number(pn,
-		c.pn_spaces.application_data.largest_acked_by_peer)!
+	pn_bytes, pn_length := encode_packet_number(pn, c.pn_spaces.application_data.largest_acked_by_peer)!
 
 	// key_phase reflects app_write_generation's parity -- generation 0 is
 	// phase false (RFC 9000 §17.3.1's own initial value), toggling each
@@ -1530,8 +1654,7 @@ fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, no
 	protected := protect_packet(header, .short, pn, pn_length, payload, write_keys)!
 
 	in_flight := is_ack_eliciting
-	c.loss_detection.on_packet_sent(.application_data, pn, u64(protected.len), is_ack_eliciting,
-		in_flight, now)
+	c.loss_detection.on_packet_sent(.application_data, pn, u64(protected.len), is_ack_eliciting, in_flight, now)
 	if in_flight {
 		c.congestion_control.on_packet_sent_cc(u64(protected.len))
 	}
@@ -1651,26 +1774,26 @@ fn (mut c QuicConn) close_with_error(error_code u64, reason string, is_applicati
 	}
 	frame := encode_connection_close_frame(wire_is_application_error, error_code, 0, wire_reason) or {
 		result.events << QuicEvent{
-			kind:       .connection_closed
+			kind: .connection_closed
 			error_code: error_code
-			reason:     reason
+			reason: reason
 		}
 		return
 	}
 	datagram := c.build_best_effort_close_packet(frame, now) or {
 		result.events << QuicEvent{
-			kind:       .connection_closed
+			kind: .connection_closed
 			error_code: error_code
-			reason:     reason
+			reason: reason
 		}
 		return
 	}
 	c.sent_close_payload = frame
 	result.outgoing << datagram
 	result.events << QuicEvent{
-		kind:       .connection_closed
+		kind: .connection_closed
 		error_code: error_code
-		reason:     reason
+		reason: reason
 	}
 }
 
@@ -1726,9 +1849,7 @@ fn (mut c QuicConn) compute_next_timeout() ?u64 {
 	handshake_confirmed := c.handshake_completion.is_confirmed()
 	max_ack_delay := c.effective_max_ack_delay()
 	mut deadline := ?u64(none)
-	if t, _ := c.loss_detection.next_timeout(handshake_confirmed, max_ack_delay,
-		c.congestion_control.bytes_in_flight)
-	{
+	if t, _ := c.loss_detection.next_timeout(handshake_confirmed, max_ack_delay, c.congestion_control.bytes_in_flight) {
 		deadline = t
 	}
 	if idle_deadline := c.idle_timeout_deadline() {

@@ -213,7 +213,7 @@ fn main() {
 
 	assert generated.contains('gr__Inner_Array_string__str'), generated
 	assert generated.contains('Array __arr_str_it_'), generated
-	assert !generated.contains('int __arr_str_it_'), generated
+	assert !generated.contains('i64 __arr_str_it_'), generated
 	assert !generated.contains('Inner_T__str'), generated
 }
 
@@ -271,8 +271,8 @@ fn main() {
 	assert left_body.len > 0, generated
 	assert right_body.len > 0, generated
 	assert left_body.contains('Array __arr_str_it_'), left_body
-	assert !left_body.contains('int __arr_str_it_'), left_body
-	assert right_body.contains('int __arr_str_it_'), right_body
+	assert !left_body.contains('i64 __arr_str_it_'), left_body
+	assert right_body.contains('i64 __arr_str_it_'), right_body
 	assert !right_body.contains('Array __arr_str_it_'), right_body
 	assert !generated.contains('a__Box_int__str'), generated
 	assert !generated.contains('b__Box_Array_string__str'), generated
@@ -360,7 +360,7 @@ fn main() {
 	assert generated.contains('gr__WrapperQueue_Array_string__str'), generated
 	assert body.contains('Array __arr_str_it_'), body
 	assert body.contains('Array_string__str(__arr_str_it_'), body
-	assert !body.contains('int __arr_str_it_'), body
+	assert !body.contains('i64 __arr_str_it_'), body
 	assert !generated.contains('WrapperQueue_T__str'), generated
 	assert !generated.contains('LinkList_T__str'), generated
 }

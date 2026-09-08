@@ -31,4 +31,6 @@ fn test_noreturn_attr_generation_does_not_depend_on_stdnoreturn_h() {
 	assert generated_c.contains('#if defined(__TINYC__)')
 	assert generated_c.contains('#define VNORETURN __attribute__((noreturn))')
 	assert !generated_c.contains('#include <stdnoreturn.h>')
+	assert generated_c.contains('VNORETURN void terminate(')
+		|| generated_c.contains('VNORETURN VV_LOC void main__terminate(')
 }

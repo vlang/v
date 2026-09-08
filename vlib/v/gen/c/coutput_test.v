@@ -214,8 +214,65 @@ fn test_c_must_have_files() {
 	assert total_errors == 0
 }
 
+fn test_fontstash_boehm_prealloc_copy_uses_atomic_allocator() {
+	old_wd := os.getwd()
+	os.chdir(vroot) or { panic(err) }
+	defer {
+		os.chdir(old_wd) or { panic(err) }
+	}
+	path := os.join_path(testdata_folder, 'fontstash_boehm_prealloc_copy.vv')
+	file_options := get_file_options(path)
+	alloptions := '-o - ${file_options.vflags}'
+	cmd := '${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert !generated_c_uses_v3_codegen(compilation.output)
+	allocator_call := 'GC_MALLOC_ATOMIC('
+	mut matching_lines := []string{}
+	for raw_line in compilation.output.split_into_lines() {
+		line := raw_line.trim_space()
+		if line.starts_with('owned =') && line.contains(allocator_call)
+			&& line.all_after(allocator_call).contains('data_len') {
+			matching_lines << line
+		}
+	}
+	assert matching_lines.len == 1, 'expected 1 fontstash atomic ownership line, got ${matching_lines.len}'
+	matching_line := matching_lines[0]
+	allocator_count := matching_line.count(allocator_call)
+	data_len_count := matching_line.count('data_len')
+	assert allocator_count == 1, 'expected 1 allocator call, got ${allocator_count}'
+	assert data_len_count == 1, 'expected 1 data_len argument, got ${data_len_count}'
+	assert matching_line.ends_with(';'), 'fontstash atomic ownership line must end with semicolon'
+}
+
 fn generated_c_uses_v3_codegen(generated_c string) bool {
 	return !generated_c.contains('#define VV_LOC')
+}
+
+fn test_map_guard_without_observed_error_does_not_allocate_error() {
+	os.chdir(vroot) or {}
+	path := os.join_path(testdata_folder, 'if_guard_map_missing_key_cleanup.vv')
+	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(path)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	if generated_c_uses_v3_codegen(compilation.output) {
+		return
+	}
+	mut body := ''
+	mut in_function := false
+	for line in compilation.output.split_into_lines() {
+		if line.contains('main__has_value(') && line.ends_with('{') {
+			in_function = true
+		}
+		if in_function {
+			body += line + '\n'
+			if line == '}' {
+				break
+			}
+		}
+	}
+	assert body.contains('.err = _const_none__')
+	assert !body.contains('builtin___v_error(')
 }
 
 fn test_or_block_err_var_collision_does_not_emit_self_referential_err() {
@@ -472,6 +529,36 @@ fn main() {
 	assert !compilation.output.contains('__atomic_fetch_add')
 }
 
+fn test_windows_closure_virtualprotect_uses_native_dword_pointer() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_windows_closure_virtualprotect.vv')
+	os.write_file(test_source, 'module main
+
+fn main() {
+	value := 41
+	add := fn [value] (delta int) int {
+		return value + delta
+	}
+	println(add(1))
+}
+')!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -old-compiler -o - -os windows ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert compilation.output.contains('#define C__DWORD DWORD')
+	assert compilation.output.contains('C__DWORD tmp = ((C__DWORD)(0));')
+	assert !compilation.output.contains('u32 tmp = ((u32)(0));')
+	assert compilation.output.contains('C__DWORD chars_written = ((C__DWORD)(0));')
+	assert !compilation.output.contains('u32 chars_written = ((u32)(0));')
+	assert compilation.output.contains('WriteConsoleW(console_handle, wide_ptr, ((C__DWORD)(remaining_chars)), &chars_written, ((void*)0))')
+	assert !compilation.output.contains('WriteConsoleW(console_handle, wide_ptr, ((u32)(remaining_chars)), &chars_written, ((void*)0))')
+	assert compilation.output.contains('VirtualProtect(ptr, size, PAGE_EXECUTE_READ, &tmp);')
+	assert compilation.output.contains('VirtualProtect(ptr, size, PAGE_READWRITE, &tmp);')
+}
+
 fn test_windows_tcc_boehm_prod_does_not_emit_gc_remove_roots() {
 	os.chdir(vroot) or {}
 	cc := windows_tcc_ccompiler_for_coutput_test()
@@ -689,11 +776,8 @@ pub fn call() {
 	cmd := '${os.quoted_path(vexe)} -shared -o - coutput_sdl'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
-	if generated_c_uses_v3_codegen(compilation.output) {
-		assert compilation.output.contains('foreign_bool c_helper_decl(void);')
-	} else {
-		assert compilation.output.contains('#include "${header_include_path}"')
-	}
+	// V3 leaves headers to the C compiler instead of scanning and inlining them.
+	assert compilation.output.contains('#include "${header_include_path}"')
 	assert !compilation.output.contains('extern bool c_helper_decl(')
 }
 
@@ -817,7 +901,7 @@ fn test_array_sort_with_compare_uses_stable_sort_adapters() {
 
 fn test_array_sort_expression_key_avoids_sanitized_name_collisions() {
 	os.chdir(vroot) or {}
-	test_dir := os.join_path(os.vtmp_dir(), 'coutput_array_sort_expr_collision_${os.getpid()}')
+	test_dir := os.join_path(os.temp_dir(), 'coutput_array_sort_expr_collision_${os.getpid()}')
 	os.mkdir_all(test_dir)!
 	defer {
 		os.rmdir_all(test_dir) or {}
@@ -922,6 +1006,32 @@ fn test_auxiliary_c_symbols_use_stable_type_hashes() {
 	assert keepalive_a.len > 0
 	assert compare_a == compare_b
 	assert keepalive_a == keepalive_b
+}
+
+fn test_boehm_scope_pin_does_not_walk_array_elements() {
+	$if windows {
+		$if tinyc {
+			eprintln('> skipping ${@FN} on windows-tcc, since deep GC scope pins are not emitted there')
+			return
+		}
+	}
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_boehm_constant_time_array_pin.v')
+	os.write_file(test_source,
+		['module main', '', 'struct Item {', '\tname string', '\tdata []u8', '}', '', 'fn sink(_ int) {}', '', 'fn hot(items []Item) {', '\tsink(items.len)', '}', '', 'fn main() {', '\thot([])', '}'].join('\n') +
+		'\n')!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -old-compiler -prod -gc boehm_full_opt -o - ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert !generated_c_uses_v3_codegen(compilation.output)
+	helper_signature := '_Array_main__Item(Array_main__Item* it, voidptr* out, int idx) {'
+	assert compilation.output.contains(helper_signature)
+	helper_body := compilation.output.all_after(helper_signature).all_before('\n}')
+	assert helper_body.contains('voidptr _v_keep_root = it->data;')
+	assert !helper_body.contains('_v_keep_i')
 }
 
 fn test_veb_implicit_ctx_alias_uses_user_context_name() {

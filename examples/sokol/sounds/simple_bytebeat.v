@@ -5,13 +5,15 @@
 import time
 import sokol.audio
 
-fn audio_callback(mut soundbuffer &f32, num_frames int, num_channels int, mut frame_0 &i32) {
-	for frame := 0; frame < num_frames; frame++ {
-		t := i32(f32(*frame_0 + frame) * 0.245)
+fn audio_callback(mut soundbuffer &f32, num_frames i32, num_channels i32, mut frame_0 &i32) {
+	frame_count := int(num_frames)
+	channel_count := int(num_channels)
+	for frame := 0; frame < frame_count; frame++ {
+		t := i32(f32(int(*frame_0) + frame) * 0.245)
 		y := (t * (((t / 10 | 0) ^ ((t / 10 | 0) - 1280)) % 11) / 2 & 127) +
 			(t * (((t / 640 | 0) ^ ((t / 640 | 0) - 2)) % 13) / 2 & 127)
-		for ch := 0; ch < num_channels; ch++ {
-			idx := frame * num_channels + ch
+		for ch := 0; ch < channel_count; ch++ {
+			idx := frame * channel_count + ch
 			a := f32(y - 127) / 255.0
 			soundbuffer[idx] = a
 		}

@@ -108,9 +108,9 @@ fn main() {
 	assert !shape_c.contains('[max_items]'), shape_c
 	assert !shape_c.contains('[rows]'), shape_c
 	assert !shape_c.contains('[cols]'), shape_c
-	assert shape_c.contains('typedef int Array_fixed_int_8[8];'), shape_c
-	assert shape_c.contains('typedef int Array_fixed_int_16[16];'), shape_c
-	assert shape_c.contains('typedef Array_fixed_int_16 Array_fixed_Array_fixed_int_16_6[6];'), shape_c
+	assert shape_c.contains('typedef i64 Array_fixed_i64_8[8];'), shape_c
+	assert shape_c.contains('typedef i64 Array_fixed_i64_16[16];'), shape_c
+	assert shape_c.contains('typedef Array_fixed_i64_16 Array_fixed_Array_fixed_i64_16_6[6];'), shape_c
 }
 
 fn test_fixed_array_typedefs_keep_declaring_module_with_unrelated_math_import() {
@@ -265,7 +265,7 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '13', run.output
+	assert run.output.trim_space() == '17', run.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	size_pos := generated.index('struct fixture__ZSize {') or { -1 }
 	typedef_pos := generated.index('typedef u8 Array_fixed_u8_sizeof_fixture__ZSize') or { -1 }

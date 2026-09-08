@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_decode_prefixed_int_single_byte() {

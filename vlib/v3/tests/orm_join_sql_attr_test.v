@@ -17,10 +17,15 @@ fn orm_join_sql_attr_build_v3() string {
 }
 
 fn orm_join_sql_attr_run(v3_bin string, name string, src string) string {
-	src_path := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+	root := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src_path := os.join_path(root, 'main.v')
 	os.write_file(src_path, src) or { panic(err) }
-	bin_path := os.join_path(os.temp_dir(), 'v3_${name}_program_${os.getpid()}')
-	os.rm(bin_path) or {}
+	bin_path := os.join_path(root, 'program')
 	compile := os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin_path)
@@ -29,10 +34,15 @@ fn orm_join_sql_attr_run(v3_bin string, name string, src string) string {
 }
 
 fn orm_join_sql_attr_compile(v3_bin string, name string, src string) os.Result {
-	src_path := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+	root := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src_path := os.join_path(root, 'main.v')
 	os.write_file(src_path, src) or { panic(err) }
-	bin_path := os.join_path(os.temp_dir(), 'v3_${name}_program_${os.getpid()}')
-	os.rm(bin_path) or {}
+	bin_path := os.join_path(root, 'program')
 	return os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
 }
 

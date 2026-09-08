@@ -6,7 +6,9 @@ import v.pref
 fn execute_tcc_retry_test_command(cmd string) os.Result {
 	old_vflags := os.getenv_opt('VFLAGS')
 	old_vosargs := os.getenv_opt('VOSARGS')
-	os.unsetenv('VFLAGS')
+	// These tests exercise the established C builder's TinyCC retry path. Linux
+	// now defaults to V3, so select V1 explicitly after isolating ambient flags.
+	os.setenv('VFLAGS', '-old-compiler', true)
 	os.unsetenv('VOSARGS')
 	defer {
 		if vflags := old_vflags {
@@ -236,7 +238,7 @@ fn test_tcc_retry_preserves_shared_and_enable_globals_flags() {
 }
 
 fn fake_windows_short_path(path string) string {
-	return path.replace(r'C:\Users\Léo', r'C:\Users\LEO~1')
+	return path.replace(r'C:\Program Files', r'C:\PROGRA~1').replace(r'C:\Users\Léo', r'C:\Users\LEO~1')
 }
 
 fn test_rewrite_windows_path_arg_rewrites_quoted_object_paths() {
@@ -254,5 +256,266 @@ fn test_rewrite_windows_path_arg_rewrites_prefixed_paths() {
 fn test_rewrite_windows_path_arg_leaves_non_paths_alone() {
 	for arg in ['-bt25', '-std=c99', '-D_DEFAULT_SOURCE'] {
 		assert rewrite_windows_path_arg(arg, fake_windows_short_path) == arg
+	}
+}
+
+fn test_rewrite_windows_path_operand_arg_rewrites_path_operands() {
+	assert rewrite_windows_path_operand_arg(r'-I"C:\Users\Léo\include"', fake_windows_short_path) == r'-I"C:\Users\LEO~1\include"'
+	assert rewrite_windows_path_operand_arg(r"-I'C:\Users\Léo\include'", fake_windows_short_path) == r'-I"C:\Users\LEO~1\include"'
+	assert rewrite_windows_path_operand_arg(r'-L"C:\Users\Léo\lib"', fake_windows_short_path) == r'-L"C:\Users\LEO~1\lib"'
+	assert rewrite_windows_path_operand_arg(r'-B"C:\Users\Léo\bin"', fake_windows_short_path) == r'-B"C:\Users\LEO~1\bin"'
+	assert rewrite_windows_path_operand_arg(r'-o "C:\Users\Léo\bin\tool.exe"', fake_windows_short_path) == r'-o "C:\Users\LEO~1\bin\tool.exe"'
+	obj := r'"C:\Users\Léo\.vmodules\.cache\bc\artifact.o"'
+	expected := r'"C:\Users\LEO~1\.vmodules\.cache\bc\artifact.o"'
+	assert rewrite_windows_path_operand_arg(obj, fake_windows_short_path) == expected
+	assert rewrite_windows_path_operand_arg(r"'C:\Users\Léo\input.o'", fake_windows_short_path) == r'"C:\Users\LEO~1\input.o"'
+	assert rewrite_windows_path_operand_arg(r'-B"C:\toolchain\"', fake_windows_short_path) == r'-B"C:\toolchain\\"'
+}
+
+fn test_rewrite_windows_path_operand_arg_leaves_path_like_values_alone() {
+	// `-DROOT="C:\Program Files\SDK"` is macro data, not a filesystem operand:
+	// rewriting it would silently change the compiled macro value (see the
+	// review of issue #28126), so it must be left byte for byte untouched.
+	for arg in [r'-DROOT="C:\Program Files\SDK"', '-D_DEFAULT_SOURCE', '-std=c99', '-bt25'] {
+		assert rewrite_windows_path_operand_arg(arg, fake_windows_short_path) == arg
+	}
+}
+
+fn test_rewrite_windows_path_operand_arg_leaves_compound_environment_flags_alone() {
+	for arg in [r'-IC:\sdk -DFOO=1', r'-I"C:\Program Files\SDK" -DFOO=1', r'-LC:\sdk -lfoo',
+		r'"C:\sdk\input.o" -DFOO=1'] {
+		assert rewrite_windows_path_operand_arg(arg, fake_windows_short_path) == arg
+	}
+}
+
+fn test_rewrite_windows_path_arg_rewrites_path_like_values() {
+	// the broader tcc rewrite still rewrites quoted path substrings, even in
+	// data bearing options; only rewrite_windows_path_operand_arg (gcc) leaves
+	// them alone
+	arg := r'-DROOT="C:\Program Files\SDK"'
+	expected := r'-DROOT="C:\PROGRA~1\SDK"'
+	assert rewrite_windows_path_arg(arg, fake_windows_short_path) == expected
+}
+
+fn test_cc_uses_short_windows_paths() {
+	// tcc and the MinGW GCC toolchain both read response files with the ANSI C
+	// runtime, so both prefer ASCII 8.3 short paths on Windows (see issue #28126).
+	assert cc_uses_short_windows_paths(.tcc, .tinyc)
+	assert cc_uses_short_windows_paths(.gcc, .gcc)
+	assert cc_uses_short_windows_paths(.unknown, .cplusplus)
+	// clang, msvc, icc, emcc and unknown compilers are excluded:
+	// msvc uses the wide CreateProcessW command line directly, while the
+	// clang/LLVM toolchain handles Unicode paths on its own.
+	assert !cc_uses_short_windows_paths(.clang, .clang)
+	assert !cc_uses_short_windows_paths(.msvc, .msvc)
+	assert !cc_uses_short_windows_paths(.icc, .gcc)
+	assert !cc_uses_short_windows_paths(.emcc, .emcc)
+	assert !cc_uses_short_windows_paths(.unknown, .gcc)
+}
+
+fn test_gcc_rsp_args_require_ascii_paths() {
+	assert gcc_rsp_args_are_ascii([
+		r'-o "C:\PROGRA~1\main.exe"',
+		r'"C:\Users\RUNNER~1\main.c"',
+	])
+	assert !gcc_rsp_args_are_ascii([r'-o "D:\a\_temp\工作目录\main.exe"'])
+}
+
+fn test_ccompiler_exec_args_split_shell_formatted_options() {
+	assert ccompiler_exec_args('gcc', [r'-o "C:\Users\工作\main.exe"', r'"C:\Users\工作\main.c"',
+		r'-I"C:\Program Files\SDK"', '-DFOO=1 -DBAR=2', r'-B"C:\toolchain\\"', r'-DNAME=\"foo\"']) == [
+		'gcc',
+		'-o',
+		r'C:\Users\工作\main.exe',
+		r'C:\Users\工作\main.c',
+		r'-IC:\Program Files\SDK',
+		'-DFOO=1',
+		'-DBAR=2',
+		r'-BC:\toolchain\',
+		r'-DNAME="foo"',
+	]
+}
+
+fn test_gcc_response_file_content_quotes_exact_arguments() {
+	assert gcc_response_file_content([r'-B"C:\toolchain\\"', r'-DNAME=\"foo\"']) == r'"-BC:\\toolchain\\" "-DNAME=\"foo\""'
+}
+
+fn test_windows_exec_arg_escaping_preserves_embedded_quotes() {
+	assert windows_quote_exec_arg(r'-DNAME="café"') == r'"-DNAME=\"café\""'
+	assert windows_quote_exec_arg(r'C:\work\') == r'"C:\work\\"'
+}
+
+fn test_windows_batch_compilers_keep_the_command_interpreter_path() {
+	assert ccompiler_is_windows_batch_file(r'C:\toolchains\gcc-wrapper.cmd')
+	assert ccompiler_is_windows_batch_file(r'"C:\Program Files\GCC\gcc-wrapper.BAT"')
+	assert !ccompiler_is_windows_batch_file(r'C:\toolchains\gcc.exe')
+	$if windows {
+		test_root := os.join_path(os.vtmp_dir(), 'v_gcc_batch_resolve_${os.getpid()}')
+		wrapper := os.join_path(test_root, 'v-gcc-wrapper.cmd')
+		os.mkdir_all(test_root) or { panic(err) }
+		defer {
+			os.rmdir_all(test_root) or {}
+		}
+		os.write_file(wrapper, '@echo off\r\nexit /b 0\r\n') or { panic(err) }
+		old_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', old_path, true)
+		}
+		os.setenv('PATH', test_root + os.path_delimiter + old_path, true)
+		assert ccompiler_is_windows_batch_file('v-gcc-wrapper')
+	}
+}
+
+fn test_windows_batch_execution_preserves_percent_literals() {
+	$if windows {
+		test_root := os.join_path(os.vtmp_dir(), 'v_gcc_batch_percent_${os.getpid()}')
+		wrapper := os.join_path(test_root, 'v-gcc-wrapper.cmd')
+		os.mkdir_all(test_root) or { panic(err) }
+		defer {
+			os.rmdir_all(test_root) or {}
+		}
+		os.write_file(wrapper, '@echo off\r\necho %*\r\n') or { panic(err) }
+		old_keep := os.getenv_opt('KEEP')
+		os.setenv('KEEP', 'expanded', true)
+		defer {
+			if keep := old_keep {
+				os.setenv('KEEP', keep, true)
+			} else {
+				os.unsetenv('KEEP')
+			}
+		}
+		arg := r'-DROOT=D:\工作\%KEEP%\main.c'
+		cmd := '${windows_quote_exec_arg(wrapper)} ${windows_quote_exec_arg(arg)}'
+		res := execute_windows_batch_ccompiler(cmd)
+		assert res.exit_code == 0, res.output
+		assert res.output.contains(r'%KEEP%'), res.output
+		assert !res.output.contains('expanded'), res.output
+	}
+}
+
+fn test_gcc_unicode_response_plan_keeps_large_ascii_runs_out_of_the_command_line() {
+	mut args := []string{}
+	for i in 0 .. 2000 {
+		args << '-DV_WINDOWS_UNICODE_PATH_LONG_COMMAND_${i}=1'
+	}
+	assert args.join(' ').len > 32767
+	args << r'-o "D:\工作目录\main.exe"'
+	args << r'"D:\工作目录\main.c"'
+	args << '-lm'
+	plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000)
+	assert plan.args == [
+		r'@D:\工作目录\main.c.rsp.0',
+		r'D:\工作目录\main.exe',
+		r'D:\工作目录\main.c',
+		r'@D:\工作目录\main.c.rsp.1',
+	]
+	assert plan.response_files == [r'D:\工作目录\main.c.rsp.0', r'D:\工作目录\main.c.rsp.1']
+	assert plan.response_contents[0].contains('V_WINDOWS_UNICODE_PATH_LONG_COMMAND_1999')
+	assert plan.response_contents[1] == '"-lm"'
+	assert plan.args.join(' ').len < 8191
+	assert !plan.requires_full_response
+}
+
+fn test_gcc_unicode_response_plan_uses_ansi_when_it_preserves_oversized_unicode_runs() {
+	mut args := [r'-o "D:\工作目录\main.exe"']
+	for i in 0 .. 1200 {
+		args << '"D:\\工作目录\\cached_${i}.o"'
+	}
+	assert args.join(' ').len > 32767
+	split_plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000)
+	assert split_plan.requires_full_response
+	plan := gcc_unicode_full_response_plan(r'D:\工作目录\main.c.rsp',
+		split_plan.full_response_content, .ansi)
+	assert plan.args == [r'@D:\工作目录\main.c.rsp']
+	assert plan.response_files == [r'D:\工作目录\main.c.rsp']
+	assert plan.response_contents[0].contains(r'D:\\工作目录\\cached_1199.o')
+	assert plan.response_encoding == .ansi
+}
+
+fn test_gcc_unicode_response_plan_uses_utf8_when_the_driver_accepts_it() {
+	mut args := []string{}
+	for i in 0 .. 1200 {
+		args << '"D:\\工作目录\\cached_${i}.o"'
+	}
+	split_plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000)
+	assert split_plan.requires_full_response
+	plan := gcc_unicode_full_response_plan(r'D:\工作目录\main.c.rsp',
+		split_plan.full_response_content, .utf8)
+	assert plan.args == [r'@D:\工作目录\main.c.rsp']
+	assert plan.response_encoding == .utf8
+	assert plan.response_contents[0].contains(r'D:\\工作目录\\cached_1199.o')
+}
+
+fn test_gcc_unicode_response_plan_sizes_windows_escaped_arguments() {
+	arg := r'-DNAME=\"工作\"'
+	exact_arg := ccompiler_exec_args('', [arg])[1]
+	split_plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', [arg], exact_arg.len + 3)
+	assert split_plan.requires_full_response
+	plan := gcc_unicode_full_response_plan(r'D:\工作目录\main.c.rsp',
+		split_plan.full_response_content, .ansi)
+	assert plan.args == [r'@D:\工作目录\main.c.rsp']
+}
+
+fn test_gcc_response_file_encoding_prefers_the_selected_drivers_utf8_support() {
+	assert gcc_response_file_encoding_from_probes(true, false, false)! == .utf8
+	assert gcc_response_file_encoding_from_probes(true, true, true)! == .utf8
+}
+
+fn test_gcc_response_file_encoding_uses_only_lossless_supported_ansi() {
+	assert gcc_response_file_encoding_from_probes(false, true, true)! == .ansi
+	for probe in [[true, false], [false, true], [false, false]] {
+		if encoding := gcc_response_file_encoding_from_probes(false, probe[0], probe[1]) {
+			assert false, '${encoding}'
+		} else {
+			assert err.msg().contains('lossless active-code-page response file')
+		}
+	}
+}
+
+fn test_write_gcc_response_file_honors_the_selected_encoding() {
+	$if windows {
+		test_root := os.join_path(os.vtmp_dir(), 'v_gcc_rsp_encoding_${os.getpid()}')
+		utf8_file := os.join_path(test_root, 'utf8.rsp')
+		ansi_file := os.join_path(test_root, 'ansi.rsp')
+		content := '"café 工作"'
+		os.mkdir_all(test_root) or { panic(err) }
+		defer {
+			os.rmdir_all(test_root) or {}
+		}
+		write_gcc_response_file(utf8_file, content, .utf8)
+		write_gcc_response_file(ansi_file, content, .ansi)
+		assert os.read_bytes(utf8_file)! == content.bytes()
+		assert os.read_bytes(ansi_file)! == string_to_ansi_not_null_terminated(content)
+	}
+}
+
+fn test_windows_gnu_compilers_compile_in_a_non_ascii_directory() {
+	if os.user_os() != 'windows' {
+		return
+	}
+	for compiler_name in ['gcc', 'g++', 'c++'] {
+		compiler := os.find_abs_path_of_executable(compiler_name) or { continue }
+		test_root := os.join_path(os.vtmp_dir(), 'v_builder_${compiler_name}_工作目录_${os.getpid()}')
+		source_path := os.join_path(test_root, 'main.v')
+		exe_path := os.join_path(test_root, 'main.exe')
+		os.mkdir_all(test_root) or { panic(err) }
+		defer {
+			os.rmdir_all(test_root) or {}
+		}
+		mut source := ''
+		for i in 0 .. 400 {
+			source += '#flag -DV_WINDOWS_UNICODE_PATH_LONG_COMMAND_${i}=1\n'
+		}
+		source += "fn main() { println('unicode-path-ok') }\n"
+		assert source.len > 8191
+		os.write_file(source_path, source) or {
+			panic(err)
+		}
+		res :=
+			execute_tcc_retry_test_command('${os.quoted_path(@VEXE)} -cc ${os.quoted_path(compiler)} -gc none -no-retry-compilation -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}')
+		assert res.exit_code == 0, '${compiler_name}: ${res.output}'
+		run := os.execute(os.quoted_path(exe_path))
+		assert run.exit_code == 0, '${compiler_name}: ${run.output}'
+		assert run.output.trim_space() == 'unicode-path-ok', '${compiler_name}: ${run.output}'
 	}
 }

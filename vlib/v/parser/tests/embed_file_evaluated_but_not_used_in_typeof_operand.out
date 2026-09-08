@@ -1,0 +1,5 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_typeof_operand.vv:2:29: error: expression evaluated but not used
+    1 | fn main() {
+    2 |     typeof($embed_file(@FILE)).name == ''
+      |                                ~~~~~~~~~~
+    3 | }

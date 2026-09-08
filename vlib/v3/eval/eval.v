@@ -5974,7 +5974,6 @@ fn (e &Eval) sizeof_type_name(name string) i64 {
 		'bool', 'i8', 'u8', 'byte', 'char' { i64(1) }
 		'i16', 'u16' { i64(2) }
 		'int', 'i32', 'u32', 'rune', 'f32' { i64(4) }
-		'i64', 'u64', 'isize', 'usize', 'f64' { i64(8) }
 		else { i64(8) }
 	}
 }

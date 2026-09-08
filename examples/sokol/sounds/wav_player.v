@@ -39,8 +39,8 @@ fn play_sounds(files []string) ! {
 }
 
 //
-fn audio_player_callback(mut buffer &f32, num_frames int, num_channels int, mut p Player) {
-	ntotal := num_channels * num_frames
+fn audio_player_callback(mut buffer &f32, num_frames i32, num_channels i32, mut p Player) {
+	ntotal := int(num_channels) * int(num_frames)
 	unsafe { vmemset(buffer, 0, ntotal * 4) }
 	if p.finished {
 		return
@@ -125,7 +125,7 @@ fn read_wav_file_samples(fpath string) ![]f32 {
 	mut res := []f32{}
 	// eprintln('> read_wav_file_samples: ${fpath} -------------------------------------------------')
 	mut bytes := os.read_bytes(fpath)!
-	mut pbytes := &u8(bytes.data)
+	mut pbytes := unsafe { &u8(bytes.data) }
 	mut offset := u32(0)
 	rh := unsafe { &RIFFHeader(pbytes) }
 	// eprintln('rh: ${rh}')

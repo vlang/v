@@ -6,8 +6,7 @@ import v3.pref
 import v3.types
 
 fn test_late_source_does_not_reemit_multiline_header_context() {
-	header := '#if defined(HEADER_IMPL)\n' + 'typedef struct { int value; } header_value;\n' +
-		'#endif'
+	header := '#if defined(HEADER_IMPL)\n' + 'typedef struct { int value; } header_value;\n' + '#endif'
 	directives := [
 		header,
 		'#ifdef __APPLE__',
@@ -27,34 +26,111 @@ fn test_late_source_does_not_reemit_multiline_header_context() {
 
 fn test_multiline_inlined_c_function_definition_is_collected() {
 	mut g := FlatGen.new()
-	g.collect_inlined_c_fns('bool qrcodegen_encodeText(const char *text, uint8_t tempBuffer[],\n' +
-		'\tenum qrcodegen_Ecc ecl, bool boostEcl) {\n' + '\treturn text != 0 && boostEcl;\n' + '}')
+	g.collect_inlined_c_fns('bool qrcodegen_encodeText(const char *text, uint8_t tempBuffer[],\n' + '\tenum qrcodegen_Ecc ecl, bool boostEcl) {\n' + '\treturn text != 0 && boostEcl;\n' + '}')
 	g.collect_inlined_c_fns('void declared_with_anon_param(\n' + '\tstruct { int value; } item);')
 
 	assert 'qrcodegen_encodeText' in g.inlined_c_fns
 	assert 'declared_with_anon_param' !in g.inlined_c_fns
 }
 
-fn test_preserved_header_trees_scan_shared_files_once() {
-	root := os.join_path(os.vtmp_dir(), 'v3_preserved_headers_${os.getpid()}')
+fn test_header_backed_declarations_do_not_get_a_second_prototype() {
+	root := os.join_path(os.vtmp_dir(), 'v3_postinclude_prototype_${os.getpid()}')
 	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+	os.mkdir_all(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	shared_header := os.join_path(root, 'shared.h')
-	first := os.join_path(root, 'first.h')
-	second := os.join_path(root, 'second.h')
-	os.write_file(shared_header, 'int shared_header_fn(void);\n')!
-	os.write_file(first, '#include "shared.h"\n')!
-	os.write_file(second, '#include "shared.h"\n')!
+	header := os.join_path(root, 'api.h')
+	source := os.join_path(root, 'main.v')
+	os.write_file(header, 'int postinclude_api(void);\n')!
+	os.write_file(source, 'fn main() {}\n')!
+
+	// A postincluded header is emitted after every declaration and call site, so it
+	// cannot be the declaration they use and the prototype has to stay.
+	mut postinclude_g := FlatGen.new()
+	postinclude_g.collect_c_directive('main', flat.Node{
+		kind: .directive
+		value: 'postinclude'
+		typ: '"${header}"'
+	}, source, false)
+	assert 'postinclude_api' !in postinclude_g.inlined_c_declared_fns
+	assert '#include "${header}"' in postinclude_g.postinclude_directives
+	assert postinclude_g.should_emit_c_extern_decl_from_file('postinclude_api', source, 'main')
+
+	// A preincluded header comes first, so it owns what it declares.
+	mut preinclude_g := FlatGen.new()
+	preinclude_g.collect_c_directive('main', flat.Node{
+		kind: .directive
+		value: 'preinclude'
+		typ: '"${header}"'
+	}, source, false)
+	assert 'postinclude_api' !in preinclude_g.inlined_c_declared_fns
+	assert !preinclude_g.should_emit_c_extern_decl_from_file('postinclude_api', source, 'main')
+	assert '#include "${header}"' in preinclude_g.preinclude_directives
+}
+
+fn test_include_preserves_header_without_scanning_declarations() {
+	root := os.join_path(os.vtmp_dir(), 'v3_unscanned_header_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	header := os.join_path(root, 'api.h')
+	os.write_file(source, 'fn main() {}\n')!
+	os.write_file(header, 'typedef struct api_type api_type;\nint header_api(void);\n')!
 
 	mut g := FlatGen.new()
-	g.collect_preserved_header_file(first, [root])
-	g.collect_preserved_header_file(second, [root])
+	g.collect_c_directive('main', flat.Node{
+		kind: .directive
+		value: 'include'
+		typ: '"${header}"'
+	}, source, false)
 
-	assert 'shared_header_fn' in g.inlined_c_declared_fns
-	assert g.preserved_header_files_seen.len == 3
+	assert g.c_directives.len == 1
+	assert g.c_directives[0].text == '#include "${header}"'
+	assert 'api_type' !in g.inlined_c_typedef_names
+	assert 'header_api' !in g.inlined_c_declared_fns
+	// The header is not scanned, so V3 cannot tell `header_api` from `unrelated_api`.
+	// It declares neither: whatever the file includes owns both names.
+	assert !g.should_emit_c_extern_decl_from_file('unrelated_api', source, 'main')
+	assert !g.should_emit_c_extern_decl_from_file('header_api', source, 'main')
+
+	// The same declaration in a file that links a C object instead keeps its prototype.
+	mut linked := FlatGen.new()
+	linked.note_c_flag_directive('main', source, '@VMODROOT/api.o')
+	assert linked.should_emit_c_extern_decl_from_file('header_api', source, 'main')
+}
+
+fn test_preinclude_does_not_scan_macro_state() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preinclude_macro_state_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	config_header := os.join_path(root, 'config.h')
+	api_header := os.join_path(root, 'api.h')
+	source := os.join_path(root, 'main.v')
+	os.write_file(config_header, '#define ENABLE_CHAINED_API 1\n')!
+	os.write_file(api_header, '#ifdef ENABLE_CHAINED_API\n#define chained_api(x) ((x) + 1)\n#endif\n')!
+	os.write_file(source, 'fn main() {}\n')!
+
+	mut g := FlatGen.new()
+	g.collect_c_directive('main', flat.Node{
+		kind: .directive
+		value: 'preinclude'
+		typ: '"${config_header}"'
+	}, source, false)
+	g.collect_c_directive('main', flat.Node{
+		kind: .directive
+		value: 'preinclude'
+		typ: '"${api_header}"'
+	}, source, false)
+
+	assert 'chained_api' !in g.inlined_c_active_macros
+	assert g.preinclude_directives == ['#include "${config_header}"', '#include "${api_header}"']
 }
 
 fn collect_external_input_tree_status(root string, entry string, ambient_ambiguous bool) (bool, []string) {
@@ -64,13 +140,12 @@ fn collect_external_input_tree_status(root string, entry string, ambient_ambiguo
 	mut files := []string{}
 	mut include_macros := map[string][]string{}
 	mut dynamic_include_macros := map[string]bool{}
+	mut literal_include_macros := map[string][]string{}
 	mut resolution_dirs := map[string]bool{}
 	mut missing_resolution_paths := map[string]bool{}
 	mut active_static_storage_paths := map[string]bool{}
-	untracked := c_collect_external_input_tree(entry, '', [root], mut active_paths, mut
-		collected_paths, mut ambiguous_collected_paths, mut files, mut include_macros, mut
-		dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths, mut
-		active_static_storage_paths, 'main', ambient_ambiguous, false)
+	mut captured_input_digests := map[string]string{}
+	untracked := c_collect_external_input_tree(entry, '', [root], mut active_paths, mut collected_paths, mut ambiguous_collected_paths, mut files, mut include_macros, mut dynamic_include_macros, mut literal_include_macros, mut resolution_dirs, mut missing_resolution_paths, mut active_static_storage_paths, mut captured_input_digests, 'main', ambient_ambiguous, false)
 	return untracked, files
 }
 
@@ -83,8 +158,7 @@ fn test_diamond_guarded_reinclude_stays_cacheable() {
 	}
 	os.write_file(os.join_path(root, 'shared.h'), '#pragma once\nint shared_diamond_fn(void);\n')!
 	os.write_file(os.join_path(root, 'left.h'), '#include "shared.h"\nint left_diamond_fn(void);\n')!
-	os.write_file(os.join_path(root, 'right.h'),
-		'#include "shared.h"\nint right_diamond_fn(void);\n')!
+	os.write_file(os.join_path(root, 'right.h'), '#include "shared.h"\nint right_diamond_fn(void);\n')!
 	top := os.join_path(root, 'top.h')
 	os.write_file(top, '#include "left.h"\n#include "right.h"\n')!
 
@@ -107,10 +181,8 @@ fn test_ambiguous_guarded_reinclude_disables_cache() {
 	os.write_file(os.join_path(root, 'shared.h'), '#pragma once\nint shared_ambiguous_fn(void);\n')!
 	// The first traversal reaches the guarded header through an uncertain macro branch,
 	// so whether its guard actually defined leaves the repeat include indeterminate.
-	os.write_file(os.join_path(root, 'left.h'),
-		'#ifdef V3_UNKNOWN_TOGGLE\n#include "shared.h"\n#endif\nint left_ambiguous_fn(void);\n')!
-	os.write_file(os.join_path(root, 'right.h'),
-		'#include "shared.h"\nint right_ambiguous_fn(void);\n')!
+	os.write_file(os.join_path(root, 'left.h'), '#ifdef V3_UNKNOWN_TOGGLE\n#include "shared.h"\n#endif\nint left_ambiguous_fn(void);\n')!
+	os.write_file(os.join_path(root, 'right.h'), '#include "shared.h"\nint right_ambiguous_fn(void);\n')!
 	top := os.join_path(root, 'top.h')
 	os.write_file(top, '#include "left.h"\n#include "right.h"\n')!
 
@@ -128,14 +200,12 @@ fn test_reinclude_after_undef_rescans_new_dependencies() {
 	os.write_file(os.join_path(root, 'extra.h'), '#pragma once\nint extra_fn(void);\n')!
 	// A whole-file-guarded header whose body pulls in extra.h unless SKIP_EXTRA is
 	// defined. With SKIP_EXTRA defined the include is statically inactive.
-	os.write_file(os.join_path(root, 'a.h'),
-		'#ifndef A_H\n#define A_H\n#ifndef SKIP_EXTRA\n#include "extra.h"\n#endif\n#endif\n')!
+	os.write_file(os.join_path(root, 'a.h'), '#ifndef A_H\n#define A_H\n#ifndef SKIP_EXTRA\n#include "extra.h"\n#endif\n#endif\n')!
 	// The first include skips extra.h (SKIP_EXTRA defined). The root then undefines the
 	// header guard and SKIP_EXTRA and includes a.h again: the real preprocessor traverses
 	// it a second time and now selects extra.h, which the scanner must collect too.
 	top := os.join_path(root, 'top.h')
-	os.write_file(top,
-		'#define SKIP_EXTRA\n#include "a.h"\n#undef A_H\n#undef SKIP_EXTRA\n#include "a.h"\n')!
+	os.write_file(top, '#define SKIP_EXTRA\n#include "a.h"\n#undef A_H\n#undef SKIP_EXTRA\n#include "a.h"\n')!
 
 	_, files := collect_external_input_tree_status(root, top, false)
 	extra_path := os.real_path(os.join_path(root, 'extra.h'))
@@ -150,15 +220,13 @@ fn test_reinclude_after_ambiguous_undef_rescans_new_dependencies() {
 		os.rmdir_all(root) or {}
 	}
 	os.write_file(os.join_path(root, 'extra.h'), '#pragma once\nint extra_fn(void);\n')!
-	os.write_file(os.join_path(root, 'a.h'),
-		'#ifndef A_H\n#define A_H\n#ifndef SKIP_EXTRA\n#include "extra.h"\n#endif\n#endif\n')!
+	os.write_file(os.join_path(root, 'a.h'), '#ifndef A_H\n#define A_H\n#ifndef SKIP_EXTRA\n#include "extra.h"\n#endif\n#endif\n')!
 	// The guard and selection macro are undefined under an unresolved `#if`, so their
 	// defined state becomes ambiguous (`dynamic_include_macros[NAME] == false`) rather
 	// than definitely defined. The preprocessor may still traverse a.h a second time and
 	// select extra.h, so a membership-only guard test would wrongly skip and omit it.
 	top := os.join_path(root, 'top.h')
-	os.write_file(top,
-		'#define SKIP_EXTRA\n#include "a.h"\n#if V3_UNKNOWN_TOGGLE\n#undef A_H\n#undef SKIP_EXTRA\n#endif\n#include "a.h"\n')!
+	os.write_file(top, '#define SKIP_EXTRA\n#include "a.h"\n#if V3_UNKNOWN_TOGGLE\n#undef A_H\n#undef SKIP_EXTRA\n#endif\n#include "a.h"\n')!
 
 	_, files := collect_external_input_tree_status(root, top, false)
 	extra_path := os.real_path(os.join_path(root, 'extra.h'))
@@ -191,13 +259,10 @@ fn test_builtin_abi_helper_matches_only_exact_headers() {
 	// active VROOT (`@VEXEROOT/...` in the directive expands to `vroot` + suffix).
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/builtin/prealloc_atomics.h"', root)
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/os/filelock/filelock_helpers.h"', root)
-	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/tcc_compat_aliases.h"',
-		root)
-	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/stdatomic_include_after_compat.h"',
-		root)
+	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/tcc_compat_aliases.h"', root)
+	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/stdatomic_include_after_compat.h"', root)
 	assert c_include_arg_is_builtin_abi_helper('"/root/thirdparty/stdatomic/nix/atomic.h"', root)
-	assert c_include_arg_is_builtin_abi_helper('"C:\\root\\thirdparty\\stdatomic\\win\\atomic.h"',
-		'C:\\root')
+	assert c_include_arg_is_builtin_abi_helper('"C:\\root\\thirdparty\\stdatomic\\win\\atomic.h"', 'C:\\root')
 	// A trailing slash on VROOT resolves to the same anchored path.
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/builtin/prealloc_atomics.h"', '/root/')
 	// When VROOT is unknown the unexpanded pseudo-path still identifies the helper.
@@ -207,8 +272,7 @@ fn test_builtin_abi_helper_matches_only_exact_headers() {
 	// but lives outside the active VROOT, keeps its declarations.
 	assert !c_include_arg_is_builtin_abi_helper('"/tmp/vlib/os/filelock/filelock_helpers.h"', root)
 	// The same header under a different VROOT is likewise not the active helper.
-	assert !c_include_arg_is_builtin_abi_helper('"/root/vlib/os/filelock/filelock_helpers.h"',
-		'/other')
+	assert !c_include_arg_is_builtin_abi_helper('"/root/vlib/os/filelock/filelock_helpers.h"', '/other')
 
 	// A user header that merely shares a basename must not be dropped, even when the
 	// basename is exactly one of V's helper headers.
@@ -217,34 +281,9 @@ fn test_builtin_abi_helper_matches_only_exact_headers() {
 	assert !c_include_arg_is_builtin_abi_helper('"my_stdatomic_wrapper.h"', root)
 	assert !c_include_arg_is_builtin_abi_helper('"vendor/atomic.h"', root)
 	// The `/` boundary keeps a `.../myvlib/...` path from matching `/vlib/...`.
-	assert !c_include_arg_is_builtin_abi_helper('"/home/user/myvlib/os/filelock/filelock_helpers.h"',
-		root)
+	assert !c_include_arg_is_builtin_abi_helper('"/home/user/myvlib/os/filelock/filelock_helpers.h"', root)
 	// The real system header is not one of the superseded inline helpers either.
 	assert !c_include_arg_is_builtin_abi_helper('<stdatomic.h>', root)
-}
-
-fn test_large_nested_angle_header_stays_an_include() {
-	root := os.join_path(os.vtmp_dir(), 'v3_nested_large_header_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	large_header := os.join_path(root, 'large.h')
-	wrapper_header := os.join_path(root, 'wrapper.h')
-	os.write_file(large_header, '#ifndef LARGE_H\n#define LARGE_H\n' + ' '.repeat(263_000) +
-		'\nint large_header_fn(void);\n#endif\n')!
-	os.write_file(wrapper_header, '#include <large.h>\nint wrapper_header_fn(void);\n')!
-
-	header := c_inline_header_text('"${wrapper_header}"', '', wrapper_header, [root], false) or {
-		panic('failed to inline wrapper header')
-	}
-
-	assert header.text.contains('#include <large.h>')
-	assert !header.text.contains('int large_header_fn(void);')
-	assert header.text.contains('int wrapper_header_fn(void);')
-	assert header.preserved_headers.len == 1
-	assert header.preserved_headers[0].include_arg == '<large.h>'
 }
 
 fn test_cache_tracks_omitted_native_function_definitions() {
@@ -254,18 +293,12 @@ fn test_cache_tracks_omitted_native_function_definitions() {
 	g.cache_split = true
 	g.collect_inlined_c_fns_for_cache('int native_source_fn(void) { return 1; }', true, false)
 	g.collect_inlined_c_fns_for_cache('int native_header_fn(void) { return 2; }', false, true)
-	g.collect_inlined_c_fns_for_cache('#ifdef FONTSTASH_IMPLEMENTATION\nint omitted_header_fn(void) { return 4; }\n#endif',
-		false, true)
-	g.collect_inlined_c_fns_for_cache('#ifndef FOO_IMPLEMENTATION\nint else_implementation_fn(void);\n#else\nint else_implementation_fn(void) { return 5; }\n#endif',
-		false, true)
-	g.collect_inlined_c_fns_for_cache('#if !defined(BAR_IMPLEMENTATION)\nint negated_guard_fn(void);\n#else\nint negated_guard_fn(void) { return 6; }\n#endif',
-		false, true)
-	g.collect_inlined_c_fns_for_cache('#if ( ! defined ( BAZ_IMPLEMENTATION ) )\nint spaced_negated_guard_fn(void);\n#else\nint spaced_negated_guard_fn(void) { return 7; }\n#endif',
-		false, true)
-	g.collect_inlined_c_fns_for_cache('static int native_static_fn(void) { return 3; }', false,
-		true)
-	g.collect_inlined_c_fns_for_cache('static int static_source_fn(void) { return 8; }', true,
-		false)
+	g.collect_inlined_c_fns_for_cache('#ifdef FONTSTASH_IMPLEMENTATION\nint omitted_header_fn(void) { return 4; }\n#endif', false, true)
+	g.collect_inlined_c_fns_for_cache('#ifndef FOO_IMPLEMENTATION\nint else_implementation_fn(void);\n#else\nint else_implementation_fn(void) { return 5; }\n#endif', false, true)
+	g.collect_inlined_c_fns_for_cache('#if !defined(BAR_IMPLEMENTATION)\nint negated_guard_fn(void);\n#else\nint negated_guard_fn(void) { return 6; }\n#endif', false, true)
+	g.collect_inlined_c_fns_for_cache('#if ( ! defined ( BAZ_IMPLEMENTATION ) )\nint spaced_negated_guard_fn(void);\n#else\nint spaced_negated_guard_fn(void) { return 7; }\n#endif', false, true)
+	g.collect_inlined_c_fns_for_cache('static int native_static_fn(void) { return 3; }', false, true)
+	g.collect_inlined_c_fns_for_cache('static int static_source_fn(void) { return 8; }', true, false)
 
 	assert 'native_source_fn' in g.cache_omitted_c_fns
 	assert 'native_header_fn' !in g.cache_omitted_c_fns
@@ -326,8 +359,7 @@ fn test_linux_family_system_libc_owns_itimerspec_and_semaphore_declarations() {
 		g := posix_declaration_filter_gen(target_os, true)
 		assert g.c_directives_use_system_libc()
 		assert g.skip_builtin_struct('C.itimerspec'), target_os
-		for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait',
-			'sem_wait'] {
+		for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait', 'sem_wait'] {
 			assert !g.should_emit_c_extern_decl(name), '${target_os}: ${name}'
 		}
 	}
@@ -338,8 +370,7 @@ fn test_headerless_and_cross_target_keep_itimerspec_and_semaphore_declarations()
 		headerless := posix_declaration_filter_gen(target_os, false)
 		assert !headerless.c_directives_use_system_libc()
 		assert !headerless.skip_builtin_struct('C.itimerspec'), target_os
-		for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait',
-			'sem_wait'] {
+		for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait', 'sem_wait'] {
 			assert headerless.should_emit_c_extern_decl(name), '${target_os}: ${name}'
 		}
 	}
@@ -358,15 +389,59 @@ fn test_cache_split_uses_system_sigaction_declaration() {
 	assert g.skip_builtin_struct('C.sigaction')
 }
 
+fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_c_struct_source_owner_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	header_backed_file := os.join_path(dir, 'header_backed.v')
+	headerless_file := os.join_path(dir, 'headerless.v')
+	os.write_file(header_backed_file, 'module main\n#include "types.h"\n')!
+	os.write_file(headerless_file, 'module main\n')!
+
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', 'ui_darwin.c.v', flat.Node{})
+	assert g.skip_builtin_struct('C.NSFont')
+
+	g.register_struct_decl_info('C.HeaderOwned', 'C.HeaderOwned', 'main', header_backed_file, flat.Node{})
+	assert g.skip_builtin_struct('C.HeaderOwned')
+
+	g.register_struct_decl_info('C.Local', 'C.Local', 'main', headerless_file, flat.Node{})
+	assert !g.skip_builtin_struct('C.Local')
+
+	g.register_struct_decl_info('C.Alias', 'C.Alias', 'main', headerless_file, flat.Node{})
+	tc.c_typedef_structs['C.Alias'] = true
+	assert g.skip_builtin_struct('C.Alias')
+}
+
+fn test_top_level_include_deduplication_resets_after_preprocessor_state_changes() {
+	macro_directives := dedupe_top_level_c_includes(['#include <types.h>', '#include <types.h>',
+		'#define FEATURE 1', '#include <types.h>'])
+	assert macro_directives == ['#include <types.h>', '#define FEATURE 1', '#include <types.h>']
+
+	conditional_directives := dedupe_top_level_c_includes(['#include <types.h>', '#if FEATURE',
+		'#include <types.h>', '#endif', '#include <types.h>'])
+	assert conditional_directives == ['#include <types.h>', '#if FEATURE', '#include <types.h>',
+		'#endif', '#include <types.h>']
+}
+
 fn test_headerless_preamble_keeps_explicit_puts_declaration() {
 	mut headerless := FlatGen.new()
 	assert !headerless.c_directives_use_system_libc()
 	assert headerless.should_emit_c_extern_decl('puts')
+	assert headerless.should_emit_c_extern_decl('sendfile')
 
 	mut system_libc := FlatGen.new()
 	system_libc.add_c_directive('main', '#include <stdio.h>', false)
 	assert system_libc.c_directives_use_system_libc()
 	assert !system_libc.should_emit_c_extern_decl('puts')
+	assert !system_libc.should_emit_c_extern_decl('sendfile')
 }
 
 fn test_builtin_boehm_directives_use_system_libc() {
@@ -397,16 +472,55 @@ fn test_preprocessor_scan_tracks_comments_after_source_code() {
 	first, in_comment := c_preprocessor_directive_scan_line('int value; /* comment starts', false)
 	assert first == ''
 	assert in_comment
-	commented, still_in_comment := c_preprocessor_directive_scan_line('  #define HIDDEN 1',
-		in_comment)
+	commented, still_in_comment := c_preprocessor_directive_scan_line('  #define HIDDEN 1', in_comment)
 	assert commented == ''
 	assert still_in_comment
-	visible, comment_ended := c_preprocessor_directive_scan_line('*/ #define VISIBLE "//" // tail',
-		still_in_comment)
+	visible, comment_ended := c_preprocessor_directive_scan_line('*/ #define VISIBLE "//" // tail', still_in_comment)
 	assert visible == '#define VISIBLE "//"'
 	assert !comment_ended
 	trailing, _ := c_preprocessor_directive_scan_line('#if defined(ENABLED) // explanation', false)
 	assert trailing == '#if defined(ENABLED)'
 	not_a_directive, _ := c_preprocessor_directive_scan_line('int other; #define LATE 1', false)
 	assert not_a_directive == ''
+}
+
+// A `#include linux <x.h>` is dropped when building for another target, so it must
+// not make the file look header backed there and swallow the prototype of a
+// declaration that only a linked C source can supply.
+fn test_target_inactive_include_does_not_claim_header_ownership() {
+	root := os.join_path(os.vtmp_dir(), 'v3_inactive_include_ownership_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() {}\n')!
+	inactive_target := if os.user_os() == 'windows' { 'linux' } else { 'windows' }
+
+	mut g := FlatGen.new()
+	g.set_target(pref.target_from(os.user_os(), 'amd64') or { panic(err) })
+	g.note_c_flag_directive('main', source, '@VMODROOT/helper.o')
+	for kind in ['include', 'preinclude'] {
+		g.collect_c_directive('main', flat.Node{
+			kind: .directive
+			value: kind
+			typ: '${inactive_target} <ownership_probe.h>'
+		}, source, false)
+	}
+	assert source !in g.files_with_c_includes
+	assert 'main' !in g.mods_with_c_includes
+	assert g.should_emit_c_extern_decl_from_file('helper_fn', source, 'main')
+
+	// The same include for the target being built does claim ownership.
+	mut active_g := FlatGen.new()
+	active_g.set_target(pref.target_from(os.user_os(), 'amd64') or { panic(err) })
+	active_g.note_c_flag_directive('main', source, '@VMODROOT/helper.o')
+	active_g.collect_c_directive('main', flat.Node{
+		kind: .directive
+		value: 'include'
+		typ: '${os.user_os()} <ownership_probe.h>'
+	}, source, false)
+	assert source in active_g.files_with_c_includes
+	assert !active_g.should_emit_c_extern_decl_from_file('helper_fn', source, 'main')
 }

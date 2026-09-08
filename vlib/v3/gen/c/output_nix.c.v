@@ -5,12 +5,15 @@ import os
 #include <sys/mman.h>
 #include <unistd.h>
 
-fn write_c_output_sequential(mut file os.File, prefix []u8, segments []string, tail string) ! {
+fn write_c_output_sequential(mut file os.File, prefix []u8, segments []string, tail string, separator string) ! {
 	if prefix.len > 0 {
 		unsafe { file.write_full_buffer(prefix.data, usize(prefix.len))! }
 	}
 	for segment in segments {
 		if segment.len > 0 {
+			if separator.len > 0 {
+				file.write_string(separator)!
+			}
 			file.write_string(segment)!
 		}
 	}
@@ -19,14 +22,18 @@ fn write_c_output_sequential(mut file os.File, prefix []u8, segments []string, t
 	}
 }
 
-fn write_c_output_mapped(path string, prefix []u8, segments []string, tail string) ! {
+// separator is written ahead of every non-empty segment, which is how a split C
+// build marks the boundaries its units are cut at.
+fn write_c_output_mapped(path string, prefix []u8, segments []string, tail string, separator string) ! {
 	mut total := prefix.len + tail.len
 	for segment in segments {
-		total += segment.len
+		if segment.len > 0 {
+			total += segment.len + separator.len
+		}
 	}
 	mut file := os.open_file(path, 'w+b') or {
 		mut sequential_file := os.open_file(path, 'wb')!
-		write_c_output_sequential(mut sequential_file, prefix, segments, tail) or {
+		write_c_output_sequential(mut sequential_file, prefix, segments, tail, separator) or {
 			sequential_file.close()
 			return err
 		}
@@ -38,7 +45,7 @@ fn write_c_output_mapped(path string, prefix []u8, segments []string, tail strin
 		return
 	}
 	if C.ftruncate(file.fd, u64(total)) != 0 {
-		write_c_output_sequential(mut file, prefix, segments, tail) or {
+		write_c_output_sequential(mut file, prefix, segments, tail, separator) or {
 			file.close()
 			return err
 		}
@@ -49,7 +56,7 @@ fn write_c_output_mapped(path string, prefix []u8, segments []string, tail strin
 		C.mmap(nil, usize(total), C.PROT_READ | C.PROT_WRITE, C.MAP_SHARED, file.fd, 0)
 	}
 	if mapped == voidptr(-1) {
-		write_c_output_sequential(mut file, prefix, segments, tail) or {
+		write_c_output_sequential(mut file, prefix, segments, tail, separator) or {
 			file.close()
 			return err
 		}
@@ -64,6 +71,10 @@ fn write_c_output_mapped(path string, prefix []u8, segments []string, tail strin
 		}
 		for segment in segments {
 			if segment.len > 0 {
+				if separator.len > 0 {
+					vmemcpy(&u8(mapped) + offset, separator.str, separator.len)
+					offset += separator.len
+				}
 				vmemcpy(&u8(mapped) + offset, segment.str, segment.len)
 				offset += segment.len
 			}

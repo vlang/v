@@ -8,7 +8,9 @@ const map_for_mut_v3_src = os.join_path(map_for_mut_v3_dir, 'v3.v')
 
 fn map_for_mut_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_map_for_mut_snapshot_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${map_for_mut_vexe} -gc none -path "${map_for_mut_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${map_for_mut_v3_src}')
 	assert build.exit_code == 0, build.output
@@ -21,7 +23,7 @@ fn map_for_mut_run_good(v3_bin string, name string, source string) string {
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.execute('${v3_bin} -enable-globals -b c -o ${bin} ${src}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(bin)
@@ -45,6 +47,31 @@ fn test_mut_map_iteration_snapshot_updates_original_values() {
 	b := m["b"] or { 0 }
 	assert a == 2
 	assert b == 2
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
+fn test_mut_pointer_map_iteration_replaces_stored_pointer() {
+	v3_bin := map_for_mut_build_v3()
+	out := map_for_mut_run_good(v3_bin, 'map_for_mut_pointer_replaces_slot', 'struct Item {
+	value int
+}
+
+fn main() {
+	first := &Item{value: 1}
+	replacement := &Item{value: 2}
+	mut values := map[string]&Item{}
+	values["item"] = first
+	for _, mut item in values {
+		assert item.value == 1
+		item = replacement
+		assert item.value == 2
+	}
+	stored := values["item"] or { &Item{} }
+	assert stored == replacement
+	assert stored.value == 2
 	println("ok")
 }
 ')

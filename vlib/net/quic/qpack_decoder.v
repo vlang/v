@@ -82,50 +82,42 @@ pub fn (mut d QpackDecoder) apply_encoder_instruction(buf []u8) !QpackApplyInstr
 	match instr {
 		QpackSetDynamicTableCapacity {
 			if u64(instr.capacity) > u64(qpack_max_dynamic_table_capacity_bytes) {
-				return error_with_code('qpack: capacity ${instr.capacity} exceeds implementation limit',
-					int(QpackErrorCode.encoder_stream_error))
+				return error_with_code('qpack: capacity ${instr.capacity} exceeds implementation limit', int(QpackErrorCode.encoder_stream_error))
 			}
 			if u64(instr.capacity) > d.max_table_capacity {
-				return error_with_code('qpack: capacity ${instr.capacity} exceeds this endpoint\'s configured maximum ${d.max_table_capacity}',
-					int(QpackErrorCode.encoder_stream_error))
+				return error_with_code("qpack: capacity ${instr.capacity} exceeds this endpoint's configured maximum ${d.max_table_capacity}", int(QpackErrorCode.encoder_stream_error))
 			}
 			d.dynamic_table.set_capacity(int(instr.capacity))
 		}
 		QpackInsertWithNameRef {
 			name := if instr.is_static {
 				e := qpack_static_lookup(int(instr.name_index)) or {
-					return error_with_code('qpack: ${err.msg()}',
-						int(QpackErrorCode.encoder_stream_error))
+					return error_with_code('qpack: ${err.msg()}', int(QpackErrorCode.encoder_stream_error))
 				}
 				e.name
 			} else {
 				abs := d.dynamic_table.resolve_relative_from_insert_count(instr.name_index) or {
-					return error_with_code('qpack: ${err.msg()}',
-						int(QpackErrorCode.encoder_stream_error))
+					return error_with_code('qpack: ${err.msg()}', int(QpackErrorCode.encoder_stream_error))
 				}
 				e := d.dynamic_table.get(abs) or {
-					return error_with_code('qpack: ${err.msg()}',
-						int(QpackErrorCode.encoder_stream_error))
+					return error_with_code('qpack: ${err.msg()}', int(QpackErrorCode.encoder_stream_error))
 				}
 				e.name
 			}
 			d.dynamic_table.insert(name, instr.value) or {
-				return error_with_code('qpack: ${err.msg()}',
-					int(QpackErrorCode.encoder_stream_error))
+				return error_with_code('qpack: ${err.msg()}', int(QpackErrorCode.encoder_stream_error))
 			}
 			inserted = true
 		}
 		QpackInsertWithLiteralName {
 			d.dynamic_table.insert(instr.name, instr.value) or {
-				return error_with_code('qpack: ${err.msg()}',
-					int(QpackErrorCode.encoder_stream_error))
+				return error_with_code('qpack: ${err.msg()}', int(QpackErrorCode.encoder_stream_error))
 			}
 			inserted = true
 		}
 		QpackDuplicate {
 			d.dynamic_table.duplicate(instr.rel_index) or {
-				return error_with_code('qpack: ${err.msg()}',
-					int(QpackErrorCode.encoder_stream_error))
+				return error_with_code('qpack: ${err.msg()}', int(QpackErrorCode.encoder_stream_error))
 			}
 			inserted = true
 		}
@@ -135,8 +127,8 @@ pub fn (mut d QpackDecoder) apply_encoder_instruction(buf []u8) !QpackApplyInstr
 		decoder_instructions = encode_qpack_insert_count_increment(1)
 	}
 	return QpackApplyInstructionResult{
-		applied:              true
-		consumed:             consumed
+		applied: true
+		consumed: consumed
 		decoder_instructions: decoder_instructions
 	}
 }
@@ -156,8 +148,7 @@ pub fn (mut d QpackDecoder) apply_encoder_instruction(buf []u8) !QpackApplyInstr
 // established preference for a stricter reading of an offered MAY used
 // elsewhere in this codebase's QUIC/HTTP-3 work).
 pub fn (mut d QpackDecoder) decode_field_section(stream_id u64, buf []u8) !QpackDecodeFieldSectionResult {
-	prefix, prefix_len := decode_field_section_prefix(buf, u64(d.dynamic_table.insert_count()),
-		d.max_table_capacity)!
+	prefix, prefix_len := decode_field_section_prefix(buf, u64(d.dynamic_table.insert_count()), d.max_table_capacity)!
 	if prefix.required_insert_count > u64(d.dynamic_table.insert_count()) {
 		return QpackDecodeFieldSectionResult{
 			blocked: true
@@ -171,8 +162,7 @@ pub fn (mut d QpackDecoder) decode_field_section(stream_id u64, buf []u8) !Qpack
 		lines << decoded.line
 		if idx := decoded.referenced_index {
 			if idx >= prefix.required_insert_count {
-				return error_with_code('qpack: field line references an entry beyond the declared Required Insert Count',
-					int(QpackErrorCode.decompression_failed))
+				return error_with_code('qpack: field line references an entry beyond the declared Required Insert Count', int(QpackErrorCode.decompression_failed))
 			}
 			if int(idx) > max_ref {
 				max_ref = int(idx)
@@ -181,15 +171,14 @@ pub fn (mut d QpackDecoder) decode_field_section(stream_id u64, buf []u8) !Qpack
 		pos += decoded.consumed
 	}
 	if u64(max_ref + 1) != prefix.required_insert_count {
-		return error_with_code("qpack: declared Required Insert Count does not match the field section's actual references",
-			int(QpackErrorCode.decompression_failed))
+		return error_with_code("qpack: declared Required Insert Count does not match the field section's actual references", int(QpackErrorCode.decompression_failed))
 	}
 	mut decoder_instructions := []u8{}
 	if prefix.required_insert_count != 0 {
 		decoder_instructions = encode_qpack_section_ack(stream_id)
 	}
 	return QpackDecodeFieldSectionResult{
-		lines:                lines
+		lines: lines
 		decoder_instructions: decoder_instructions
 	}
 }

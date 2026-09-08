@@ -10,8 +10,14 @@ import v.help
 import v.pref
 import v.util
 import v.util.version
-import v.builder
-import v.builder.cbuilder
+
+$if v1_fallback ?|| cross ?|| ( !macos && !linux ) {
+	// The compatibility compiler, portable cross snapshots, and non-V3 targets
+	// all need the V1 builder. Keep this as one import site: a compatibility
+	// compiler generating a cross target can satisfy multiple parts of the condition.
+	import v.builder
+	import v.builder.cbuilder
+}
 
 @[markused]
 const external_tools = [
@@ -66,13 +72,6 @@ const external_tools = [
 	'where',
 ]
 
-struct MacosV3CErrorReport {
-	ccompiler  string
-	c_output   string
-	c_file     string
-	report_dir string
-}
-
 @[unsafe]
 fn timers_pointer(p &util.Timers) &util.Timers {
 	// TODO: the static variable here is used as a workaround for the current incompatibility of -usecache and globals in the main module:
@@ -95,7 +94,7 @@ fn main() {
 	mut timers := unsafe {
 		timers_pointer(util.new_timers(
 			should_print: timers_should_print
-			label:        'main'
+			label: 'main'
 		))
 	}
 	timers.start('v start')
@@ -121,11 +120,16 @@ fn main() {
 		util.launch_tool(false, 'vrepl', os.args[1..])
 		return
 	}
-	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
-	prefs, command := pref.parse_args_for_launcher(external_tools, args_and_flags, true)
+	mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
+	prefs, command, command_idx := pref.parse_args_for_launcher_with_command_index(external_tools, args_and_flags, true)
 	maybe_delegate_to_vvmrc(command, prefs)
-	maybe_delegate_to_ownership(command, prefs, args_and_flags)
-	macos_v3_c_error_report := maybe_delegate_to_macos_v3(command, prefs)
+	$if v1_fallback ?|| cross ? {
+		// This binary is a stable compatibility compiler, including portable VC
+		// snapshots. Never delegate back to embedded V3 or the ownership compiler.
+	} $else {
+		maybe_delegate_to_ownership(command, prefs, args_and_flags)
+		maybe_delegate_to_macos_v3(command, prefs)
+	}
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
@@ -138,12 +142,23 @@ fn main() {
 	// Note for future contributors: Please add new subcommands in the `match` block below.
 	if command in external_tools {
 		// External tools
-		util.launch_tool(prefs.is_verbose, 'v' + command, os.args[1..])
+		mut tool_args := os.args[1..].clone()
+		if command == 'self' {
+			// vself forwards compiler flags to the compiler it builds. Pass merged
+			// VFLAGS once as arguments, then keep them out of vself's own recompilation.
+			// Preserve the parser's authoritative command boundary so vself never
+			// interprets a flag value as one of its positional arguments.
+			tool_args = args_and_flags.clone()
+			os.setenv('VSELF_COMMAND_INDEX', command_idx.str(), true)
+			os.unsetenv('VFLAGS')
+			os.unsetenv('VOSARGS')
+		}
+		util.launch_tool(prefs.is_verbose, 'v' + command, tool_args)
 		return
 	}
 	match command {
 		'run', 'crun', 'build', 'build-module' {
-			rebuild(prefs, macos_v3_c_error_report)
+			rebuild(prefs)
 			return
 		}
 		'help' {
@@ -157,8 +172,7 @@ fn main() {
 			util.launch_tool(prefs.is_verbose, 'vcreate', os.args[1..])
 			return
 		}
-		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
-		'upgrade' {
+		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update', 'upgrade' {
 			util.launch_tool(prefs.is_verbose, 'vpm', os.args[1..])
 			return
 		}
@@ -182,7 +196,7 @@ fn main() {
 			if command.ends_with('.v') || os.exists(command) {
 				// println('command')
 				// println(prefs.path)
-				rebuild(prefs, macos_v3_c_error_report)
+				rebuild(prefs)
 				return
 			}
 		}
@@ -219,32 +233,36 @@ fn invoke_help_and_exit(remaining []string) {
 fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_args []string) {
 	is_ownership := '-ownership' in merged_args
 	is_autofree := prefs.autofree
-	if !ownership_delegation_is_requested(is_ownership, is_autofree, prefs.old_compiler,
-		os.user_os()) {
+	if prefs.is_fastc {
+		// FastC owns its whole invocation and must never launch the AST-based
+		// ownership compiler. Its direct parser reports unsupported modes.
 		return
 	}
-	if is_autofree && !is_ownership && (autofree_requires_standard_compiler(prefs)
-		|| autofree_args_require_standard_compiler(merged_args, command)) {
+	if !ownership_delegation_is_requested(is_ownership, is_autofree, prefs.old_compiler, prefs.new_compiler, os.user_os()) {
+		return
+	}
+	if is_autofree && !is_ownership && (autofree_has_unsupported_ownership_preferences(prefs)
+		|| autofree_args_have_unsupported_ownership_option(merged_args, command)) {
 		return
 	}
 	if !is_ownership_relevant_command(command, prefs) {
-		// `-autofree` is also an established option for command modes such as
-		// `run` and `test`. Leave modes that do not compile directly on the regular
+		// `-autofree` is also an established option for command modes such as `test`.
+		// Leave modes that do not compile one target directly on the regular
 		// command path instead of rejecting them in the ownership dispatcher.
 		if is_autofree && !is_ownership {
 			return
 		}
 		mode := if is_autofree { '-autofree' } else { '-ownership' }
-		eprintln('v: `${mode}` currently supports direct compilation only. Use `v ${mode} module_dir`.')
+		eprintln('v: `${mode}` currently supports direct compilation and `run` only. Use `v ${mode} module_dir`.')
 		exit(1)
 	}
 	ownership_args := v3_ownership_forwarded_args(prefs, merged_args)
 	launch_v3_ownership_compiler(prefs.is_verbose, ownership_args)
 }
 
-fn autofree_args_require_standard_compiler(args []string, command string) bool {
+fn autofree_args_have_unsupported_ownership_option(args []string, command string) bool {
 	$if macos {
-		return macos_v3_has_v1_only_leading_option(args, command)
+		return macos_v3_has_unsupported_leading_option(args, command)
 	}
 	return false
 }
@@ -273,29 +291,32 @@ fn v3_args_have_ownership_define(args []string) bool {
 	return false
 }
 
-fn autofree_requires_standard_compiler(prefs &pref.Preferences) bool {
-	// Autofree selects no-GC by default, but an explicit collector still belongs
-	// to V1 until ownership mode implements it.
-	return v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc)
+fn autofree_has_unsupported_ownership_preferences(prefs &pref.Preferences) bool {
+	// Autofree selects no-GC by default, but the ownership-enabled V3 compiler
+	// does not yet implement explicit collectors or these compatibility modes.
+	return v3_has_unsupported_preferences(prefs)
+		|| (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc)
 }
 
-fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
+fn v3_has_unsupported_preferences(prefs &pref.Preferences) bool {
 	if prefs.cmain.len > 0 || prefs.custom_prelude.len > 0 || prefs.is_check_return
 		|| prefs.div_by_zero_is_zero || prefs.obfuscate_removed || prefs.no_std
-		|| prefs.is_vls || prefs.new_transform || prefs.show_asserts
-		|| prefs.show_callgraph || prefs.show_depgraph || prefs.hide_auto_str
-		|| prefs.no_rsp || prefs.message_limit != 200 || prefs.warn_about_allocs
+		|| prefs.is_vls || prefs.new_transform || prefs.is_livemain
+		|| prefs.is_liveshared || prefs.show_asserts || prefs.show_callgraph
+		|| prefs.show_depgraph || prefs.hide_auto_str || prefs.no_rsp
+		|| prefs.message_limit != 200 || prefs.warn_about_allocs
 		|| prefs.c_error_bug_report_url.len > 0 || prefs.wasm_validate
 		|| prefs.wasm_stack_top != 1024 + (16 * 1024) || prefs.line_info.len > 0
 		|| prefs.use_coroutines || prefs.checker_match_exhaustive_cutoff_limit != 12
-		|| (prefs.backend == .c && prefs.os !in [._auto, .macos])
+		|| (prefs.backend == .c && !prefs.is_fastc && prefs.os != ._auto
+			&& prefs.os != pref.get_host_os())
 		|| prefs.build_options.any(it.starts_with('-debug-tcc')) || prefs.is_musl
 		|| prefs.build_options.any(it in ['-musl', '-glibc']) || !prefs.relaxed_gcc14 {
 		return true
 	}
-	return prefs.sanitize || prefs.is_livemain || prefs.is_liveshared
-		|| prefs.output_cross_c || prefs.experimental || prefs.use_os_system_to_run
-		|| prefs.is_apk || prefs.json_errors || prefs.no_preludes || prefs.is_quiet
+	return prefs.sanitize || prefs.output_cross_c || prefs.experimental
+		|| prefs.use_os_system_to_run || prefs.is_apk || prefs.is_vsh
+		|| prefs.json_errors || prefs.no_preludes || prefs.is_quiet
 		|| prefs.skip_warnings || prefs.skip_notes || prefs.fatal_errors
 		|| prefs.print_watched_files || prefs.dump_modules.len > 0
 		|| prefs.dump_files.len > 0 || prefs.dump_defines.len > 0
@@ -309,19 +330,27 @@ fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 		|| (prefs.backend == .wasm && prefs.is_run) || prefs.path.ends_with('.vv')
 }
 
-fn ownership_delegation_is_requested(is_ownership bool, is_autofree bool, old_compiler bool, host_os string) bool {
+fn ownership_delegation_is_requested(is_ownership bool, is_autofree bool, old_compiler bool, new_compiler bool, host_os string) bool {
 	if old_compiler {
 		return false
 	}
 	if is_ownership {
 		return true
 	}
-	return is_autofree && host_os == 'macos'
+	// Let the embedded dispatcher reject the unsupported explicit combination;
+	// ownership delegation would otherwise strip -new-compiler before it can do so.
+	if new_compiler {
+		return false
+	}
+	return is_autofree && host_os in ['macos', 'linux']
 }
 
 fn is_ownership_relevant_command(command string, prefs &pref.Preferences) bool {
-	if prefs.path == '' || prefs.is_run || prefs.is_crun {
+	if prefs.path == '' || prefs.is_crun {
 		return false
+	}
+	if prefs.is_run {
+		return command == 'run' && (prefs.path.ends_with('.v') || os.exists(prefs.path))
 	}
 	return prefs.path == command && (command.ends_with('.v') || os.exists(command))
 }
@@ -341,7 +370,7 @@ fn launch_v3_ownership_compiler(is_verbose bool, args []string) {
 		exit(1)
 	}
 	if util.should_recompile_tool(vexe, v3_src_dir, tool_name, v3_exe) {
-		compilation_command := '${os.quoted_path(vexe)} -nocache -gc none -d ownership -o ${os.quoted_path(v3_exe)} ${os.quoted_path(v3_main_source)}'
+		compilation_command := '${os.quoted_path(vexe)} -no-parallel -nocache -gc none -d ownership -o ${os.quoted_path(v3_exe)} ${os.quoted_path(v3_main_source)}'
 		if is_verbose {
 			println('Compiling ${tool_name} with: "${compilation_command}"')
 		}
@@ -386,33 +415,34 @@ fn launch_v3_ownership_compiler(is_verbose bool, args []string) {
 
 fn cached_v3_ownership_executable_path(vroot string) string {
 	vroot_hash := hash.sum64_string(os.real_path(vroot), 0).hex_full()
-	return util.path_of_executable(os.join_path(os.vtmp_dir(), 'v', 'delegated_v3', vroot_hash,
-		'v3_ownership'))
+	return util.path_of_executable(os.join_path(os.vtmp_dir(), 'v', 'delegated_v3', vroot_hash, 'v3_ownership'))
 }
 
-fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport) {
+fn rebuild(prefs &pref.Preferences) {
 	match prefs.backend {
 		.c {
-			$if no_bootstrapv ? {
+			$if v1_fallback ?|| cross ? {
+				builder.compile('build', prefs, cbuilder.compile_c)
+			} $else $if macos || linux {
+
+				// Every C-backend build is dispatched to V3 before this point. Keeping
+				// this path fatal prevents an accidental dependency on the unlinked V1
+				// builder from being hidden behind an external tool bootstrap.
+				eprintln('internal error: C-backend compilation was not dispatched to V3')
+				exit(1)
+			} $else $if no_bootstrapv ? {
+
 				// TODO: improve the bootstrapping with a split C backend here.
 				// C code generated by `VEXE=v cmd/tools/builders/c_builder -os cross -o c.c cmd/tools/builders/c_builder.v`
 				// is enough to bootstrap the C backend, and thus the rest, but currently bootstrapping relies on
 				// `v -os cross -o v.c cmd/v` having a functional C codegen inside instead.
 				util.launch_tool(prefs.is_verbose, 'builders/c_builder', os.args[1..])
-			}
-			if failed := macos_v3_c_error_report {
-				builder.compile_with_external_c_error_report('build', prefs, cbuilder.compile_c, builder.ExternalCErrorBugReport{
-					ccompiler:   failed.ccompiler
-					c_output:    failed.c_output
-					c_file:      failed.c_file
-					tag:         'V3'
-					cleanup_dir: failed.report_dir
-				})
-			} else {
+			} $else {
 				builder.compile('build', prefs, cbuilder.compile_c)
 			}
 		}
 		.js_node, .js_freestanding, .js_browser {
+			// Non-C backends remain external tools and are not linked into cmd/v.
 			util.launch_tool(prefs.is_verbose, 'builders/js_builder', os.args[1..])
 		}
 		.interpret {

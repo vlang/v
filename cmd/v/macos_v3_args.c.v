@@ -1,6 +1,5 @@
 module main
 
-import os
 import v.pref
 
 const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
@@ -10,8 +9,8 @@ const macos_v3_internal_quiet_flag = '-macos-v3-internal-quiet'
 // (or a directory) but are NOT compilation commands the V3 driver understands —
 // it only knows `run`/`build`/`test`. An unrecognized command token such as
 // `crun` or `build-module` would otherwise become V3's first input path and then
-// collide with the real target. Both dispatch gates exclude these; keep the list
-// in one place so they cannot drift. `test` is handled separately by each gate.
+// collide with the real target. The dispatcher excludes these before entering
+// V3. `test` is handled separately because vtest owns discovery and aggregation.
 @[markused]
 fn macos_v3_non_compilation_command(command string) bool {
 	return command in ['build-module', 'crun', 'help', 'version', 'new', 'init', 'install', 'link',
@@ -19,36 +18,29 @@ fn macos_v3_non_compilation_command(command string) bool {
 		'interpret', 'get', 'translate']
 }
 
-// macos_v3_force_requested reports whether `-new-compiler` should hand this
-// invocation to the embedded V3 compiler. It gates on `-old-compiler`
-// precedence, options/modes V3 cannot honor yet, and whether the command is an
-// actual compilation command (never `test`, external tools, or the `cmd/v` /
-// `vlib/v3/v3.v` bootstrap). Both the Darwin dispatcher (where it overrides the
-// default heuristic) and the non-macOS dispatcher (where it is the sole gate)
-// rely on it, so it must stay platform neutral.
 @[markused]
-fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
-	if !prefs.new_compiler || prefs.old_compiler {
-		return false
+fn macos_v3_explicit_autofree_is_unsupported(prefs &pref.Preferences) bool {
+	return prefs.new_compiler && !prefs.old_compiler && prefs.autofree
+		&& !macos_v3_fastc_requested(prefs)
+}
+
+fn macos_v3_fastc_requested(prefs &pref.Preferences) bool {
+	return prefs.is_fastc
+}
+
+// macos_v3_fastc_incompatibility reports why an explicit FastC selection cannot
+// be honored before entering its deliberately smaller frontend.
+fn macos_v3_fastc_incompatibility(prefs &pref.Preferences) ?string {
+	if !prefs.is_fastc {
+		return none
 	}
-	if v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) {
-		return false
+	if prefs.gc_set_by_flag && prefs.gc_mode != .no_gc {
+		return '`-b fastc` only supports `-gc none`; remove the explicit collector or select `-b c`.'
 	}
-	if prefs.autofree && prefs.is_run {
-		return false
+	if v3_has_unsupported_preferences(prefs) {
+		return '`-b fastc` cannot be combined with an option that V3 does not support.'
 	}
-	if prefs.path == '' || command == 'test' || macos_v3_non_compilation_command(command)
-		|| command in external_tools {
-		return false
-	}
-	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
-	if normalized_path == 'cmd/v' || normalized_path.starts_with('cmd/v/')
-		|| normalized_path.contains('/cmd/v/') || normalized_path.ends_with('/cmd/v')
-		|| normalized_path == 'vlib/v3/v3.v' || normalized_path.ends_with('/vlib/v3/v3.v') {
-		return false
-	}
-	return command in ['run', 'build'] || prefs.is_script || os.is_dir(prefs.path)
-		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
+	return none
 }
 
 // These helpers are shared by the native Darwin dispatcher and the default
@@ -58,7 +50,7 @@ fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
 // while rebuilding V on macOS. `markused` suppresses unused-declaration notices
 // when V3 compiles this file for other platforms.
 @[markused]
-fn macos_v3_has_v1_only_leading_option(args []string, command string) bool {
+fn macos_v3_has_unsupported_leading_option(args []string, command string) bool {
 	mut i := 0
 	for i < args.len {
 		arg := args[i]
@@ -99,7 +91,19 @@ fn macos_v3_leading_option_consumes_value(option string) bool {
 fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string {
 	// `-new-compiler` is consumed by cmd/v to select V3; it must not reach the V3
 	// driver, which is already running and would reject it as an unknown option.
-	mut forwarded_args := raw_args.filter(it != '-new-compiler')
+	// The parser keeps every argument after a `run` target in `run_args`; those
+	// belong to the program, so do not consume their compiler-like spellings.
+	mut compiler_args_len := raw_args.len
+	if prefs.run_args.len <= raw_args.len {
+		compiler_args_len -= prefs.run_args.len
+	}
+	mut forwarded_args := []string{cap: raw_args.len}
+	for i, arg in raw_args {
+		if arg == '-new-compiler' && i < compiler_args_len {
+			continue
+		}
+		forwarded_args << arg
+	}
 	if prefs.enable_globals {
 		for i, arg in forwarded_args {
 			if arg == '--enable-globals' {
@@ -122,8 +126,7 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 	if prefs.skip_running && '-skip-running' !in forwarded_args {
 		forwarded_args.insert(0, '-skip-running')
 	}
-	if !prefs.is_verbose && !prefs.is_stats && !prefs.show_timings && '-silent' !in forwarded_args
-		&& macos_v3_internal_quiet_flag !in forwarded_args {
+	if !prefs.is_verbose && !prefs.is_stats && !prefs.show_timings && '-silent' !in forwarded_args && macos_v3_internal_quiet_flag !in forwarded_args {
 		forwarded_args.insert(0, macos_v3_internal_quiet_flag)
 	}
 	return forwarded_args

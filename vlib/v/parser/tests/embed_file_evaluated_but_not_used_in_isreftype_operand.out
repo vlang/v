@@ -1,0 +1,5 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_isreftype_operand.vv:2:12: error: expression evaluated but not used
+    1 | fn main() {
+    2 |     isreftype($embed_file(@FILE)) == false
+      |               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    3 | }

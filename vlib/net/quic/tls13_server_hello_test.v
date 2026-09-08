@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 import encoding.hex
@@ -24,6 +23,7 @@ fn test_parse_server_hello_matches_rfc8448_vector() {
 			assert result.cipher_suite == cipher_suite_tls_aes_128_gcm_sha256
 			assert result.selected_version == tls_version_1_3
 			assert result.key_share_group == 0x001d // x25519, per RFC 8448's own trace
+
 			assert result.key_share_key_exchange == hex.decode(rfc8448_server_hello_x25519_key_exchange)!
 			assert result.extensions.len == 2
 		}
@@ -368,6 +368,7 @@ fn test_parse_encrypted_extensions_rejects_key_share() {
 	body << ext
 	parse_encrypted_extensions(body) or {
 		assert err.msg().contains('0x0033') // ext_key_share == 0x33
+
 		assert err.code() == int(tls_alert_to_quic_error(.unsupported_extension))
 		return
 	}
@@ -468,6 +469,7 @@ fn test_parse_server_hello_rejects_unsolicited_alpn() {
 	body := build_test_server_hello([]u8{len: 32}, ks_ext, alpn_ext)
 	parse_server_hello(body) or {
 		assert err.msg().contains('0x0010') // ext_alpn == 0x10
+
 		assert err.code() == int(tls_alert_to_quic_error(.unsupported_extension))
 		return
 	}

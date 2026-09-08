@@ -928,6 +928,24 @@ fn (mut g Gen) write_orm_insert(node &ast.SqlStmtLine, table_name string, connec
 		result_var_name, '', '', or_expr)
 }
 
+// orm_object_var_c_name escapes a top-level ORM object variable (the `x` in
+// `insert x into T` / `upsert x into T`, or the array in a bulk `insert xs into T`)
+// so a variable named after a C/C++ reserved word matches its escaped C
+// declaration. Sub-struct and array object vars are already-built C expressions
+// (they contain `.`, `*`, `(`, ...), i.e. not bare identifiers, so they are
+// returned unchanged.
+fn orm_object_var_c_name(object_var string) string {
+	if object_var == '' {
+		return object_var
+	}
+	for ch in object_var {
+		if !util.is_name_char(ch) {
+			return object_var
+		}
+	}
+	return c_name(object_var)
+}
+
 fn (mut g Gen) write_orm_bulk_insert(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string, or_expr &ast.OrExpr) {
 	fields := g.orm_non_array_fields(node.fields)
 	auto_fields := get_auto_field_idxs(fields)
@@ -935,8 +953,11 @@ fn (mut g Gen) write_orm_bulk_insert(node &ast.SqlStmtLine, table_name string, c
 	row_var := g.new_tmp_var()
 	idx_var := g.new_tmp_var()
 	data_var := g.new_tmp_var()
+	// Escape the top-level array variable so a variable named after a C/C++ reserved
+	// word matches its escaped C declaration (see write_orm_insert_with_last_ids).
+	object_var := orm_object_var_c_name(node.object_var)
 	g.writeln('${result_name}_void ${result_var_name};')
-	g.writeln('if (${node.object_var}.len == 0) {')
+	g.writeln('if (${object_var}.len == 0) {')
 	g.indent++
 	g.writeln('${result_var_name} = (${result_name}_void){0};')
 	g.indent--
@@ -944,9 +965,9 @@ fn (mut g Gen) write_orm_bulk_insert(node &ast.SqlStmtLine, table_name string, c
 	g.indent++
 	if auto_fields.len > 0 {
 		g.writeln('${result_var_name} = (${result_name}_void){0};')
-		g.writeln('for (${ast.int_type_name} ${idx_var} = 0; ${idx_var} < ${node.object_var}.len; ${idx_var}++) {')
+		g.writeln('for (${ast.int_type_name} ${idx_var} = 0; ${idx_var} < ${object_var}.len; ${idx_var}++) {')
 		g.indent++
-		g.writeln('${row_type} ${row_var} = (*(${row_type}*)builtin__array_get(${node.object_var}, ${idx_var}));')
+		g.writeln('${row_type} ${row_var} = (*(${row_type}*)builtin__array_get(${object_var}, ${idx_var}));')
 		row_result_var := g.new_tmp_var()
 		mut row_node := *node
 		row_node.object_var = row_var
@@ -962,9 +983,9 @@ fn (mut g Gen) write_orm_bulk_insert(node &ast.SqlStmtLine, table_name string, c
 		return
 	}
 	g.writeln('Array_orm__Primitive ${data_var} = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
-	g.writeln('for (${ast.int_type_name} ${idx_var} = 0; ${idx_var} < ${node.object_var}.len; ${idx_var}++) {')
+	g.writeln('for (${ast.int_type_name} ${idx_var} = 0; ${idx_var} < ${object_var}.len; ${idx_var}++) {')
 	g.indent++
-	g.writeln('${row_type} ${row_var} = (*(${row_type}*)builtin__array_get(${node.object_var}, ${idx_var}));')
+	g.writeln('${row_type} ${row_var} = (*(${row_type}*)builtin__array_get(${object_var}, ${idx_var}));')
 	for field in fields {
 		g.write('builtin__array_push(&${data_var}, _MOV((orm__Primitive[1]){')
 		g.write_orm_field_access_to_primitive(field, row_var, node.table_expr.typ,
@@ -1013,7 +1034,7 @@ fn (mut g Gen) write_orm_bulk_insert(node &ast.SqlStmtLine, table_name string, c
 	g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 	g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
 	g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
-	g.writeln('.batch_rows = ${node.object_var}.len,')
+	g.writeln('.batch_rows = ${object_var}.len,')
 	g.indent--
 	g.writeln('}')
 	g.indent--
@@ -1029,6 +1050,9 @@ fn (mut g Gen) write_orm_upsert(node &ast.SqlStmtLine, table_name string, connec
 	auto_fields := get_auto_field_idxs(fields)
 	mut inserting_object_type := ast.void_type
 	mut member_access_type := '.'
+	// See write_orm_insert_with_last_ids: escape the top-level object var so a
+	// variable named after a C/C++ reserved word matches its escaped C declaration.
+	object_var := orm_object_var_c_name(node.object_var)
 	if node.scope != unsafe { nil } {
 		if inserting_object := node.scope.find(node.object_var) {
 			if inserting_object.typ.is_ptr() {
@@ -1065,12 +1089,12 @@ fn (mut g Gen) write_orm_upsert(node &ast.SqlStmtLine, table_name string, connec
 			mut typ := g.orm_primitive_field_name(field.typ)
 			mut ctyp := sym.cname
 			typ = vint2int(typ)
-			var := '${node.object_var}${member_access_type}${orm_field_access_name(field.name)}'
+			var := '${object_var}${member_access_type}${orm_field_access_name(field.name)}'
 			if final_field_typ.has_flag(.option) {
 				g.writeln('${var}.state == 2 ? _const_orm__null_primitive : orm__${typ}_to_primitive(*(${ctyp}*)(${var}.data)),')
 			} else if inserting_object_sym.kind == .sum_type {
 				table_sym := g.table.sym(node.table_expr.typ)
-				sum_type_var := '(*${node.object_var}._${table_sym.cname})${member_access_type}${orm_field_access_name(field.name)}'
+				sum_type_var := '(*${object_var}._${table_sym.cname})${member_access_type}${orm_field_access_name(field.name)}'
 				g.writeln('orm__${typ}_to_primitive(${sum_type_var}),')
 			} else {
 				g.writeln('orm__${typ}_to_primitive(${var}),')
@@ -1501,6 +1525,12 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 
 	mut inserting_object_type := ast.void_type
 	mut member_access_type := '.'
+	// The top-level insert variable (e.g. `insert explicit into T`) is a plain V
+	// identifier, so its C name must be escaped the same way its declaration is,
+	// otherwise a variable named after a C/C++ reserved word (`new`, `explicit`, ...)
+	// won't match. Sub-struct/array object vars are already-built C expressions, so
+	// orm_object_var_c_name leaves them untouched.
+	object_var := orm_object_var_c_name(node.object_var)
 	if node.scope != unsafe { nil } {
 		if inserting_object := node.scope.find(node.object_var) {
 			if inserting_object.typ.is_ptr() {
@@ -1514,13 +1544,16 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 
 	inserting_object_sym := g.table.sym(inserting_object_type)
 	for i, mut sub in subs {
+		// The relation field name is stored verbatim, so escape it like any other
+		// struct member (a field named after a reserved word is declared __v_<name>).
+		sub_field := orm_field_access_name(sub.object_var)
 		if subs_unwrapped_c_typ[i].len > 0 {
-			var := '${node.object_var}${member_access_type}${sub.object_var}'
+			var := '${object_var}${member_access_type}${sub_field}'
 			g.writeln('if(${var}.state == 0) {')
 			g.indent++
-			sub.object_var = '(*(${subs_unwrapped_c_typ[i]}*)${node.object_var}${member_access_type}${sub.object_var}.data)'
+			sub.object_var = '(*(${subs_unwrapped_c_typ[i]}*)${object_var}${member_access_type}${sub_field}.data)'
 		} else {
-			sub.object_var = '${node.object_var}${member_access_type}${sub.object_var}'
+			sub.object_var = '${object_var}${member_access_type}${sub_field}'
 		}
 		g.sql_stmt_line(sub, connection_var_name, or_expr)
 		g.writeln('builtin__array_push(&${last_ids_arr}, _MOV((orm__Primitive[1]){')
@@ -1581,12 +1614,12 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			}
 			// fields processed hereafter can be NULL...
 			typ = vint2int(typ)
-			var := '${node.object_var}${member_access_type}${orm_field_access_name(field.name)}'
+			var := '${object_var}${member_access_type}${orm_field_access_name(field.name)}'
 			if final_field_typ.has_flag(.option) {
 				g.writeln('${var}.state == 2? _const_orm__null_primitive : orm__${typ}_to_primitive(*(${ctyp}*)(${var}.data)),')
 			} else if inserting_object_sym.kind == .sum_type {
 				table_sym := g.table.sym(node.table_expr.typ)
-				sum_type_var := '(*${node.object_var}._${table_sym.cname})${member_access_type}${orm_field_access_name(field.name)}'
+				sum_type_var := '(*${object_var}._${table_sym.cname})${member_access_type}${orm_field_access_name(field.name)}'
 				g.writeln('orm__${typ}_to_primitive(${sum_type_var}),')
 			} else {
 				g.writeln('orm__${typ}_to_primitive(${var}),')
@@ -1630,16 +1663,20 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			// else use the primary key value
 			mut typ := g.orm_primitive_field_name(primary_field.typ)
 			typ = vint2int(typ)
-			g.writeln('orm__Primitive ${id_name} = orm__${typ}_to_primitive(${node.object_var}${member_access_type}${orm_field_access_name(primary_field.name)});')
+			g.writeln('orm__Primitive ${id_name} = orm__${typ}_to_primitive(${object_var}${member_access_type}${orm_field_access_name(primary_field.name)});')
 		}
 		for i, mut arr in arrs {
 			idx := g.new_tmp_var()
 			ctyp := g.styp(arr.table_expr.typ)
 			is_option := opt_fields.contains(i)
+			// The array relation field name is stored verbatim, so escape it like any
+			// other struct member (a field named after a reserved word is declared
+			// __v_<name>).
+			arr_field := orm_field_access_name(arr.object_var)
 			if is_option {
-				g.writeln('for (${ast.int_type_name} ${idx} = 0; ${node.object_var}${member_access_type}${arr.object_var}.state != 2 && ${idx} < (*(Array_${ctyp}*)${node.object_var}${member_access_type}${arr.object_var}.data).len; ${idx}++) {')
+				g.writeln('for (${ast.int_type_name} ${idx} = 0; ${object_var}${member_access_type}${arr_field}.state != 2 && ${idx} < (*(Array_${ctyp}*)${object_var}${member_access_type}${arr_field}.data).len; ${idx}++) {')
 			} else {
-				g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} < ${node.object_var}${member_access_type}${arr.object_var}.len; ${idx}++) {')
+				g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} < ${object_var}${member_access_type}${arr_field}.len; ${idx}++) {')
 			}
 			g.indent++
 			last_ids := g.new_tmp_var()
@@ -1647,9 +1684,9 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			tmp_var := g.new_tmp_var()
 			g.writeln('Array_orm__Primitive ${last_ids} = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
 			if is_option {
-				g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)builtin__array_get(*(Array_${ctyp}*)${node.object_var}${member_access_type}${arr.object_var}.data, ${idx}));')
+				g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)builtin__array_get(*(Array_${ctyp}*)${object_var}${member_access_type}${arr_field}.data, ${idx}));')
 			} else {
-				g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)builtin__array_get(${node.object_var}${member_access_type}${arr.object_var}, ${idx}));')
+				g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)builtin__array_get(${object_var}${member_access_type}${arr_field}, ${idx}));')
 			}
 			arr.object_var = tmp_var
 			mut fff := []ast.StructField{}
@@ -1820,7 +1857,7 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 			}
 		}
 
-		g.writeln(' .operator = ${kind},')
+		g.writeln(' .${c_name('operator')} = ${kind},')
 		g.write(' .right = ')
 		g.write_orm_expr_to_primitive(expr.right)
 		g.indent--

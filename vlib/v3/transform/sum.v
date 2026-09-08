@@ -132,8 +132,7 @@ fn (t &Transformer) resolve_sum_name(sum_name string) string {
 	}
 	recent_slot := alias_cache_slot(sum_name)
 	if c.recent_generations[recent_slot] == c.recent_generation
-		&& unsafe { c.recent_types[recent_slot].str == sum_name.str }
-		&& c.recent_types[recent_slot].len == sum_name.len {
+		&& same_transform_text(c.recent_types[recent_slot], sum_name) {
 		return c.recent_results[recent_slot]
 	}
 	if cached := c.entries[sum_name] {
@@ -597,22 +596,27 @@ fn (t &Transformer) sum_type_index(sum_name string, variant string) int {
 }
 
 fn (t &Transformer) sum_type_variants_for_index(sum_name string) []string {
+	_, variants := t.concrete_sum_name_and_variants(sum_name)
+	return variants
+}
+
+fn (t &Transformer) concrete_sum_name_and_variants(sum_name string) (string, []string) {
 	for candidate in t.sum_subject_type_candidates(sum_name) {
 		variants := t.concrete_sum_variants_for_candidate(candidate)
 		if variants.len > 0 {
-			return variants
+			return candidate, variants
 		}
 	}
 	resolved_sum := t.resolve_sum_name(sum_name)
 	if variants := t.sum_types[resolved_sum] {
-		return variants
+		return resolved_sum, variants
 	}
 	if !isnil(t.tc) {
 		if variants := t.tc.sum_types[resolved_sum] {
-			return variants
+			return resolved_sum, variants
 		}
 	}
-	return []string{}
+	return resolved_sum, []string{}
 }
 
 fn (t &Transformer) concrete_sum_variants_for_candidate(sum_name string) []string {
@@ -769,7 +773,11 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	if clean_type.len == 0 || resolved_clean_type !in t.sum_types {
 		return t.make_bool_literal(true)
 	}
-	new_expr := t.transform_expr(expr_id)
+	// Route a value-context `match`/`if` subject (e.g. `(match n { First { make_circle()!
+	// } else { make_square()! } }) is Circle`) through value lowering so a propagating
+	// branch tail is materialized as a value instead of in a value-less statement context.
+	// `transform_value_operand` is a no-op for the common non-branch subjects.
+	new_expr := t.transform_value_operand(expr_id)
 	// Mutable array/map loop bindings are storage pointers, but their rvalue
 	// transform above already loads the sum value. Build the tag/path checks from
 	// the transformed storage type so the value is not dereferenced twice.
@@ -853,7 +861,7 @@ fn (mut t Transformer) smartcasted_sum_is_expr_check(expr_id flat.NodeId, patter
 		return none
 	}
 	sc := t.find_smartcast(key) or { return none }
-	raw_sum := t.trim_pointer_type(t.original_expr_type(expr_id))
+	raw_sum := t.trim_pointer_type(t.raw_expr_type_without_smartcast(expr_id))
 	resolved_sum := t.resolve_sum_name(raw_sum)
 	if resolved_sum.len == 0 || resolved_sum !in t.sum_types
 		|| t.resolve_sum_name(sc.sum_type_name) != resolved_sum {
@@ -1050,8 +1058,8 @@ fn (t &Transformer) interface_impl_type_id_iface_candidates(iface string) []stri
 
 fn (t &Transformer) interface_impl_type_ids(iface_name string, concrete_name string) []int {
 	mut ids := []int{}
-	for candidate in t.interface_alias_equivalent_names(concrete_name) {
-		id := t.interface_impl_type_id(iface_name, candidate) or { continue }
+	for equivalent_name in t.interface_alias_equivalent_names(concrete_name) {
+		id := t.interface_impl_type_id(iface_name, equivalent_name) or { continue }
 		if id !in ids {
 			ids << id
 		}
@@ -1297,6 +1305,31 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 	if node.children_count == 0 {
 		return id
 	}
+	first_child := t.a.child(&node, 0)
+	if t.is_value_match_or_if_operand(first_child) {
+		// A `match`/`if` operand of an `as` cast, e.g. `(match x { ... }) as Variant`,
+		// is a value expression whose (possibly propagating) branch tails must be
+		// lowered as values. Materialize it into a value temp first, then re-run the
+		// `as` conversion over that temp (mirrors the option-source path below).
+		mut operand_type := t.raw_expr_type_without_smartcast(first_child)
+		if operand_type.len == 0 {
+			operand_type = t.node_type(first_child)
+		}
+		if operand_type.len == 0 {
+			operand_type = t.resolve_expr_type(first_child)
+		}
+		value := t.transform_expr_for_type(first_child, operand_type)
+		start := t.a.children.len
+		t.a.children << value
+		return t.transform_as_expr(id, flat.Node{
+			kind:           .as_expr
+			value:          node.value
+			typ:            node.typ
+			children_start: start
+			children_count: 1
+			pos:            node.pos
+		})
+	}
 	expr_id := t.a.child(&node, 0)
 	// `as` converts from the expression's storage type. Inside an `is` branch,
 	// `node_type` reports the smartcast target instead; using that here makes an
@@ -1308,6 +1341,11 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 	}
 	if t.is_optional_type_name(expr_type) {
 		optional_type := t.qualify_optional_type(expr_type)
+		target_type := t.qualify_optional_type(node.value)
+		if t.is_optional_type_name(target_type)
+			&& t.normalize_type_alias(optional_type) == t.normalize_type_alias(target_type) {
+			return t.make_plain_expr_for_smartcast(expr_id)
+		}
 		payload_type := t.optional_base_type(optional_type)
 		// `as` starts from the option's storage value. Inside nested `x != none`
 		// and `x is Variant` branches, transforming `x` normally would apply both
@@ -1349,7 +1387,9 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 	}
 	clean_type0 := t.trim_pointer_type(expr_type)
 	if t.is_interface_type_name(clean_type0) {
-		if target_iface := t.resolve_interface_pattern_interface(node.value) {
+		target_is_pointer := node.value.starts_with('&')
+		target_pattern := t.trim_pointer_type(node.value)
+		if target_iface := t.resolve_interface_pattern_interface(target_pattern) {
 			// Use the raw interface expression here. Applying the active smartcast
 			// first would build the target interface once, then the explicit `as`
 			// conversion would incorrectly treat that value as the original source
@@ -1360,6 +1400,9 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 				t.transform_expr(expr_id)
 			}
 			if converted := t.convert_interface_expr_to_interface(child, expr_type, target_iface) {
+				if target_is_pointer {
+					return t.heap_copy_interface_expr(converted, target_iface, node.value)
+				}
 				return converted
 			}
 		}
@@ -1391,8 +1434,9 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 				actual_type_id := t.make_selector_op(source, '_typ', 'int', field_op)
 				mismatch := t.make_infix(.ne, actual_type_id, t.make_int_literal(type_id))
 				message := 'as cast: cannot cast interface value to `${target_type}`'
-				t.pending_stmts << t.make_if(mismatch,
-					t.make_block(arr1(t.make_panic_stmt(message))), t.make_empty())
+				t.pending_stmts << t.make_if(mismatch, t.make_block([
+					t.make_panic_stmt(message),
+				]), t.make_empty())
 				object := t.make_selector_op(source, '_object', 'voidptr', field_op)
 				cast := t.make_cast('&${target_type}', object, '&${target_type}')
 				current := t.make_prefix(.mul, cast)
@@ -1582,7 +1626,15 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 			}
 		}
 		if expr.kind == .selector {
-			selector_type := t.resolve_selector_type(expr)
+			selector_type := t.raw_selector_type_without_smartcast(expr_id)
+			if t.resolve_sum_name(t.trim_pointer_type(selector_type)) == resolved_sum {
+				// A smartcast narrows the selector's expression type to its active
+				// variant, but the field still stores the complete sum value. Preserve
+				// that storage when the surrounding context expects the same sum.
+				plain := t.make_plain_expr_for_smartcast(expr_id)
+				t.set_node_typ(int(plain), storage_sum)
+				return plain
+			}
 			if selector_type.len > 0
 				&& t.sum_target_accepts_variant_type(resolved_sum, selector_type) {
 				expr_type = selector_type
@@ -1854,13 +1906,20 @@ fn (mut t Transformer) ensure_sum_variant_ref(value flat.NodeId, variant string)
 
 // make_default_sum_value initializes a sum type with the zero value of its first variant.
 fn (mut t Transformer) make_default_sum_value(typ string) ?flat.NodeId {
-	resolved_sum := t.resolve_sum_name(t.normalize_type_alias(typ))
-	variants := t.sum_types[resolved_sum] or { return none }
+	resolved_sum, variants := t.concrete_sum_name_and_variants(t.normalize_type_alias(typ))
 	if variants.len == 0 {
 		return none
 	}
 	variant := variants[0]
-	return t.make_sum_literal(resolved_sum, variant, t.zero_value_for_type(variant))
+	mut value := t.zero_value_for_type(variant)
+	value_node := t.a.nodes[int(value)]
+	if value_node.kind == .struct_init && value_node.children_count == 0 {
+		// A sum's default variant is a real zero-initialized V value, including
+		// defaults declared on the variant's fields. The synthetic empty literal is
+		// created after the ordinary expression walk, so expand those defaults here.
+		value = t.transform_struct_init(value, value_node)
+	}
+	return t.make_sum_literal(resolved_sum, variant, value)
 }
 
 // make_sum_literal builds make sum literal data for transform.

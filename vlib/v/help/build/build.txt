@@ -15,6 +15,31 @@ then run `./myfile -param1 abcde` and exit with its exit code".
 
 When compiling packages, V ignores files that end in '_test.v'.
 
+The default compiler:
+  On macOS and Linux, `v` compiles with the experimental V3 compiler (vlib/v3)
+  by default. When V3 cannot yet build an eligible program, V automatically falls
+  back to the established compiler in vlib/v, so builds keep working. Unless the
+  environment variable V_C_ERROR_BUG_REPORT_DISABLED=1 is set, a reportable
+  fallback also sends the V version, target, and build options to
+  https://bugs.vlang.io, plus a bounded snippet of the failing V source when one
+  is available. Any snippet is a strict subset and the whole file is never
+  uploaded. An internal V3 compiler error on a short program or a directory build
+  such as `v .` submits metadata only. If the input selected for a source excerpt
+  changes after V3 parses it, that report also submits metadata only, rather than
+  source V3 did not parse. Before submitting, the stable compiler verifies that
+  it parsed the same bytes for every captured project input; otherwise no fallback
+  report is submitted. An unchanged input mapped from a generated-C error can still
+  upload a strict-subset excerpt of it, even for a short file.
+  Inline-assembly fallbacks and reports that cannot fit safely through the retry
+  environment are notice-only; test compilations and GitHub CI also submit no
+  report to the default endpoint. A custom fallback URL set with
+  V_C_ERROR_BUG_REPORT_URL remains active in CI. The -bug-report-url option
+  selects the established compiler and configures only its reports. Pass
+  `-old-compiler` (see `v help build-c`) to always use the established compiler
+  and skip the V3 attempt and its fallback reporting. The established compiler
+  can still report its own eligible generated-C failures; set
+  V_C_ERROR_BUG_REPORT_DISABLED=1 to disable all such submissions.
+
 Use `v build script.vsh` to compile a `.vsh` script without running it.
 `v -skip-running script.vsh` works too.
 
@@ -43,6 +68,8 @@ NB: the build flags are shared with the run command too:
     Specifies the backend that will be used for building the executable.
     Current list of supported backends:
     * `c` (default)       - V outputs C source code, which is then passed to a C compiler.
+    * `fastc`             - V parses supported source directly to C without an AST; available only
+                            on macOS and Linux hosts in V builds that embed V3.
     * `go`                - V outputs Go source code, which is then passed to a Go compiler.
     * `js`                - V outputs JS source code which can be passed to NodeJS to be ran.
     * `js_browser`        - V outputs JS source code ready for the browser.

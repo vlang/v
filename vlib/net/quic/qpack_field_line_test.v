@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_encode_decode_ric_roundtrip() {
@@ -81,8 +80,7 @@ fn test_decode_base_rejects_negative_result() {
 }
 
 fn test_encode_decode_base_roundtrip() {
-	cases := [[u64(10), u64(15)], [u64(9), u64(6)], [u64(5), u64(5)],
-		[u64(0), u64(0)]]
+	cases := [[u64(10), u64(15)], [u64(9), u64(6)], [u64(5), u64(5)], [u64(0), u64(0)]]
 	for c in cases {
 		req_insert_count, base := c[0], c[1]
 		sign, delta := encode_base(base, req_insert_count)

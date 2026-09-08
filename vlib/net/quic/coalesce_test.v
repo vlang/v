@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 import encoding.hex
@@ -104,12 +103,12 @@ fn test_split_coalesced_datagram_discards_packet_claiming_length_exceeding_buffe
 	// only thing in the datagram, so the result is an empty (not erroring)
 	// packet list.
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    []u8{len: 8}
-		scid:    []u8{len: 8}
-		token:   []u8{}
-		length:  1000 // claims far more than actually follows
+		dcid: []u8{len: 8}
+		scid: []u8{len: 8}
+		token: []u8{}
+		length: 1000 // claims far more than actually follows
 	}
 	mut buf := encode_long_header(h, 0, 0)!
 	buf << [u8(0x01), 0x02, 0x03] // a few bytes, nowhere near 1000
@@ -124,23 +123,23 @@ fn test_split_coalesced_datagram_keeps_valid_leading_packet_despite_trailing_len
 	// (here, a Length field claiming more than remains) must still yield
 	// the leading packet, not lose it to a whole-datagram error.
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    []u8{len: 8}
-		scid:    []u8{len: 8}
-		token:   []u8{}
-		length:  2
+		dcid: []u8{len: 8}
+		scid: []u8{len: 8}
+		token: []u8{}
+		length: 2
 	}
 	mut buf := encode_long_header(h, 0, 0)!
 	buf << [u8(0x00), 0x00]
 
 	bad_h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    []u8{len: 8}
-		scid:    []u8{len: 8}
-		token:   []u8{}
-		length:  1000
+		dcid: []u8{len: 8}
+		scid: []u8{len: 8}
+		token: []u8{}
+		length: 1000
 	}
 	mut bad_buf := encode_long_header(bad_h, 0, 0)!
 	bad_buf << [u8(0x01), 0x02, 0x03]
@@ -175,12 +174,12 @@ fn test_split_coalesced_datagram_keeps_valid_leading_packet_despite_trailing_gar
 	// packet (here, an unsupported version) must still be returned, not
 	// lost to a whole-datagram error.
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    []u8{len: 8}
-		scid:    []u8{len: 8}
-		token:   []u8{}
-		length:  2
+		dcid: []u8{len: 8}
+		scid: []u8{len: 8}
+		token: []u8{}
+		length: 2
 	}
 	mut buf := encode_long_header(h, 0, 0)!
 	buf << [u8(0x00), 0x00]
@@ -200,12 +199,12 @@ fn test_split_coalesced_datagram_rejects_version_negotiation_after_another_packe
 	// cannot come from a compliant sender -- reject it rather than treating
 	// the tail as a genuine VN packet.
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    []u8{len: 8}
-		scid:    []u8{len: 8}
-		token:   []u8{}
-		length:  2 // 1-byte packet number + 1 byte of "payload"
+		dcid: []u8{len: 8}
+		scid: []u8{len: 8}
+		token: []u8{}
+		length: 2 // 1-byte packet number + 1 byte of "payload"
 	}
 	mut buf := encode_long_header(h, 0, 0)!
 	buf << [u8(0x00), 0x00] // pn byte + one payload byte, matching length: 2
@@ -232,22 +231,22 @@ fn test_split_coalesced_datagram_rejects_retry_after_another_packet() {
 	// symmetrically -- a real (small) Initial packet followed by
 	// Retry-shaped bytes cannot come from a compliant sender either.
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    []u8{len: 8}
-		scid:    []u8{len: 8}
-		token:   []u8{}
-		length:  2
+		dcid: []u8{len: 8}
+		scid: []u8{len: 8}
+		token: []u8{}
+		length: 2
 	}
 	mut buf := encode_long_header(h, 0, 0)!
 	buf << [u8(0x00), 0x00]
 
 	retry_h := QuicLongHeader{
-		typ:     .retry
+		typ: .retry
 		version: quic_v1
-		dcid:    []u8{len: 8}
-		scid:    []u8{len: 8}
-		token:   []u8{}
+		dcid: []u8{len: 8}
+		scid: []u8{len: 8}
+		token: []u8{}
 	}
 	mut retry_buf := encode_long_header(retry_h, 0, 0)!
 	retry_buf << 'sometoken'.bytes()
@@ -268,35 +267,35 @@ fn test_split_coalesced_datagram_ignores_packet_with_mismatched_dcid() {
 	// connection is excluded from the result, not treated as a datagram-
 	// wide error -- and scanning still continues past it.
 	h1 := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    [u8(1), 1, 1, 1, 1, 1, 1, 1]
-		scid:    []u8{len: 8}
-		token:   []u8{}
-		length:  2
+		dcid: [u8(1), 1, 1, 1, 1, 1, 1, 1]
+		scid: []u8{len: 8}
+		token: []u8{}
+		length: 2
 	}
 	mut buf := encode_long_header(h1, 0, 0)!
 	buf << [u8(0x00), 0x00]
 
 	h2 := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    [u8(2), 2, 2, 2, 2, 2, 2, 2] // different connection
-		scid:    []u8{len: 8}
-		token:   []u8{}
-		length:  2
+		dcid: [u8(2), 2, 2, 2, 2, 2, 2, 2] // different connection
+		scid: []u8{len: 8}
+		token: []u8{}
+		length: 2
 	}
 	mut buf2 := encode_long_header(h2, 0, 0)!
 	buf2 << [u8(0x00), 0x00]
 	buf << buf2
 
 	h3 := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    h1.dcid // back to the first connection
-		scid:    []u8{len: 8}
-		token:   []u8{}
-		length:  2
+		dcid: h1.dcid // back to the first connection
+		scid: []u8{len: 8}
+		token: []u8{}
+		length: 2
 	}
 	mut buf3 := encode_long_header(h3, 0, 0)!
 	buf3 << [u8(0x00), 0x00]
@@ -304,6 +303,7 @@ fn test_split_coalesced_datagram_ignores_packet_with_mismatched_dcid() {
 
 	packets := split_coalesced_datagram(buf)!
 	assert packets.len == 2 // the mismatched middle packet is excluded
+
 	h_first, _ := parse_long_header(packets[0].bytes)!
 	h_last, _ := parse_long_header(packets[1].bytes)!
 	assert h_first.dcid == h1.dcid

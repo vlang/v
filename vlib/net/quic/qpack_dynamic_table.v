@@ -39,7 +39,7 @@ pub fn qpack_entry_size(name string, value string) int {
 pub struct QpackDynamicTable {
 mut:
 	entries  []QpackDynamicTableEntry // FIFO; entries[0] is the oldest entry still present
-	dropped  int                      // count of entries evicted so far == absolute index of entries[0], if any
+	dropped  int // count of entries evicted so far == absolute index of entries[0], if any
 	capacity int
 	cur_size int
 }
@@ -105,7 +105,7 @@ pub fn (mut t QpackDynamicTable) insert(name string, value string) !int {
 		t.dropped++
 	}
 	t.entries << QpackDynamicTableEntry{
-		name:  name
+		name: name
 		value: value
 	}
 	t.cur_size += needed

@@ -28,12 +28,12 @@ fn (mut t Transformer) begin_node_type_memo(lo int, hi int) {
 		memo.filled = []u8{len: n}
 	} else {
 		if n <= memo.values.len {
-			memo.values = memo.values[..n]
-			memo.filled = memo.filled[..n]
+			memo.values.trim(n)
+			memo.filled.trim(n)
 		} else {
 			unsafe {
-				memo.values.grow_len(n)
-				memo.filled.grow_len(n)
+				memo.values.grow_len(n - memo.values.len)
+				memo.filled.grow_len(n - memo.filled.len)
 			}
 		}
 		if n > 0 {
@@ -354,6 +354,15 @@ fn (t &Transformer) fn_value_type_name(id flat.NodeId) ?string {
 			return t.normalize_type_alias(name)
 		}
 	}
+	if node.kind == .ident {
+		if name := fn_value_type_name_from_type(t.tc.resolve_type(id)) {
+			return t.normalize_type_alias(name)
+		}
+		fn_name := t.tc.resolved_fn_value_name(id) or { node.value }
+		params := t.tc.fn_param_types[fn_name] or { return none }
+		ret := t.tc.fn_ret_types[fn_name] or { return none }
+		return fn_literal_value_type_text(params, ret.name())
+	}
 	if node.kind == .lambda_expr {
 		typ := t.tc.resolve_type(id)
 		if name := fn_value_type_name_from_type(typ) {
@@ -414,6 +423,30 @@ fn fn_value_type_name_from_type(typ types.Type) ?string {
 		}
 	}
 	return none
+}
+
+fn fn_call_value_type_name_from_type(typ types.Type) ?string {
+	if typ is types.FnType {
+		for i, param in typ.params {
+			if i < typ.params_mut.len && typ.params_mut[i] && param is types.Pointer {
+				return fn_literal_value_type_text(typ.params, typ.return_type.name())
+			}
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) checker_call_fn_value_return_type(id flat.NodeId) ?string {
+	if isnil(t.tc) || int(id) < 0 {
+		return none
+	}
+	name := t.tc.resolved_call_name(id) or { return none }
+	ret_type := t.tc.fn_ret_types[name] or { return none }
+	fn_value_type := fn_call_value_type_name_from_type(ret_type) or { return none }
+	if t.generic_arg_is_unresolved(fn_value_type) {
+		return none
+	}
+	return t.normalize_type_alias(fn_value_type)
 }
 
 fn (t &Transformer) concrete_node_type_name(node flat.Node) string {
@@ -551,6 +584,11 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) string {
 			return typ
 		}
 		return ''
+	}
+	if !isnil(t.tc) {
+		if typ := t.tc.selector_const_type(node) {
+			return t.normalize_type_alias(typ.name())
+		}
 	}
 	field_name := node.value
 	if field_name.len == 0 {
@@ -1102,9 +1140,8 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 	}
 	mut c := t.alias_cache
 	recent_slot := alias_cache_slot(typ)
-	if c.canonical_types[recent_slot].len == typ.len
-		&& unsafe { c.canonical_types[recent_slot].str == typ.str } {
-		return c.canonical_results[recent_slot]
+	if same_transform_text(c.canonical_types[recent_slot], typ) {
+		return c.canonical_types[recent_slot]
 	}
 	if !same_transform_text(c.module, t.cur_module) || !same_transform_text(c.file, t.cur_file) {
 		c.module = t.cur_module
@@ -1113,8 +1150,7 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 		c.clear_recent()
 	}
 	if c.recent_generations[recent_slot] == c.recent_generation
-		&& unsafe { c.recent_types[recent_slot].str == typ.str }
-		&& c.recent_types[recent_slot].len == typ.len {
+		&& same_transform_text(c.recent_types[recent_slot], typ) {
 		return c.recent_results[recent_slot]
 	}
 	if cached := c.entries[typ] {
@@ -1125,7 +1161,6 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 		c.entries[typ] = fast
 		c.put_recent(typ, fast)
 		c.canonical_types[recent_slot] = typ
-		c.canonical_results[recent_slot] = fast
 		return fast
 	}
 	result := t.normalize_type_alias_uncached(typ)
@@ -1447,8 +1482,7 @@ fn (t &Transformer) normalize_type_in_module(typ string, mod string) string {
 	}
 	recent_slot := alias_cache_slot(typ)
 	if cache.recent_generations[recent_slot] == cache.recent_generation
-		&& unsafe { cache.recent_types[recent_slot].str == typ.str }
-		&& cache.recent_types[recent_slot].len == typ.len {
+		&& same_transform_text(cache.recent_types[recent_slot], typ) {
 		return cache.recent_results[recent_slot]
 	}
 	if cached := cache.entries[typ] {

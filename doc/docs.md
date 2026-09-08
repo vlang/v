@@ -73,6 +73,23 @@ Both `0.4.12` and `v0.4.12` are accepted. The special aliases `latest` and
 V searches for `.vvmrc` from the target path upward and stops at repository and
 project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
 
+## The default compiler
+
+On macOS and Linux, the top-level `v` executable contains only the experimental
+**V3** C compiler (whose source lives in `vlib/v3`). Every direct C build,
+including compiler self-builds, is compiled by V3 in-process. The CLI and tool
+commands remain in `cmd/v`; commands such as `test` and `fmt` are external tools,
+and non-C backends remain separate builder tools.
+
+V3 compilation errors are returned directly. These builds do not silently retry
+with the established compiler, and `-old-compiler` reports that the executable
+contains only V3. `-new-compiler` remains accepted for command-line compatibility
+and selects the same embedded driver.
+
+On platforms that do not embed V3, `cmd/v` still contains the established
+compiler from `vlib/v`. There, `-new-compiler` reports that the current build does
+not include V3.
+
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
 
@@ -6133,6 +6150,10 @@ A vfmt run is usually pretty cheap (takes <30ms).
 
 Always run `v fmt -w file.v` before pushing your code.
 
+During the transition to the V3 formatter, `v fmt -verify` and `v fmt -c` accept
+files matching either V3 or legacy vfmt output. `v fmt -w` uses V3 formatting,
+so it may rewrite a file accepted by either check mode.
+
 #### Disabling the formatting locally
 
 To disable formatting for a block of code, wrap it with `// vfmt off` and
@@ -8956,6 +8977,46 @@ println('a: ${a}') // 100
 println('b: ${b}') // 20
 println('c: ${c}') // 120
 ```
+
+The C backend also supports raw GNU assembly templates. In a `raw` block, V passes each
+double-quoted template string through unchanged and still checks the output, input, and clobber
+lists. Operands can use GNU's named form or V's `constraint (expression) as alias` form:
+
+```v ignore
+mut value := 40
+increment := 2
+asm amd64 raw {
+    "addl %[increment], %[value]\n\t"
+    ; [value] "+r" (value)
+    ; [increment] "r" (increment)
+    ; cc
+}
+assert value == 42
+```
+
+Use `intel` for destination-first structured x86 assembly. V surrounds the generated template
+with `.intel_syntax noprefix` and `.att_syntax prefix`, and does not reorder its operands:
+
+```v ignore
+mut value := 40
+increment := 2
+asm amd64 intel {
+    add value, increment
+    ; +r (value)
+    ; r (increment)
+    ; cc
+}
+```
+
+Structured `intel` blocks support only register-only `r` constraints for input and output
+operands. V uses the GNU x86 `%V` operand modifier so GCC and Clang substitute register names
+without AT&T's `%` prefix. Memory-capable constraints such as `m` are rejected because compilers
+can still format those placeholders with AT&T addressing. In a `raw intel` block, the template is
+passed through unchanged, so use the selected C compiler's explicit operand modifiers.
+
+The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the C backend. MSVC
+does not support this form of inline assembly on 64-bit targets, and individual instructions or
+constraints can still depend on the selected C compiler and target architecture.
 
 For more examples, see
 [vlib/v/slow_tests/assembly/asm_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/slow_tests/assembly/asm_test.amd64.v)

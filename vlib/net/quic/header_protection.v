@@ -38,7 +38,7 @@ fn header_protection_mask(hp_key []u8, sample []u8) ![]u8 {
 	if sample.len != header_protection_sample_size {
 		return error('quic: header protection sample must be ${header_protection_sample_size} bytes, got ${sample.len}')
 	}
-	block := aes.new_cipher(hp_key)
+	block := aes.new_cipher(hp_key)!
 	mut mask := []u8{len: header_protection_sample_size}
 	block.encrypt(mut mask, sample)
 	return mask
@@ -75,8 +75,7 @@ pub fn protect_header(mut packet []u8, pn_offset int, pn_length int, hp_key []u8
 		return error('quic: invalid packet number length ${pn_length}, must be 1-4')
 	}
 	if pn_offset < 0 || pn_offset + pn_max_length + header_protection_sample_size > packet.len {
-		return error('quic: packet too short to sample for header protection (need ${pn_offset +
-			pn_max_length + header_protection_sample_size} bytes, have ${packet.len})')
+		return error('quic: packet too short to sample for header protection (need ${pn_offset + pn_max_length + header_protection_sample_size} bytes, have ${packet.len})')
 	}
 	sample_offset := pn_offset + pn_max_length
 	sample := unsafe { packet[sample_offset..sample_offset + header_protection_sample_size] }
@@ -107,8 +106,7 @@ pub fn protect_header(mut packet []u8, pn_offset int, pn_length int, hp_key []u8
 // module's other errors.
 pub fn unprotect_header(mut packet []u8, pn_offset int, hp_key []u8, form HeaderForm) !int {
 	if pn_offset < 0 || pn_offset + pn_max_length + header_protection_sample_size > packet.len {
-		return error('quic: packet too short to sample for header protection (need ${pn_offset +
-			pn_max_length + header_protection_sample_size} bytes, have ${packet.len})')
+		return error('quic: packet too short to sample for header protection (need ${pn_offset + pn_max_length + header_protection_sample_size} bytes, have ${packet.len})')
 	}
 	sample_offset := pn_offset + pn_max_length
 	sample := unsafe { packet[sample_offset..sample_offset + header_protection_sample_size] }

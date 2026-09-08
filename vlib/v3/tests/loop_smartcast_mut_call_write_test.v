@@ -8,7 +8,9 @@ const loop_smartcast_v3_src = os.join_path(loop_smartcast_v3_dir, 'v3.v')
 
 fn loop_smartcast_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_loop_smartcast_mut_call_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${loop_smartcast_vexe} -gc none -path "${loop_smartcast_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${loop_smartcast_v3_src}')
 	assert build.exit_code == 0, build.output
@@ -569,4 +571,45 @@ fn main() {
 }
 ')
 	assert unrelated_out == '4'
+}
+
+fn test_nearest_mixed_branch_smartcasts() {
+	v3_bin := loop_smartcast_build_v3()
+	output := loop_smartcast_run_good(v3_bin, 'nearest_mixed_branch_smartcasts', 'struct A { value int }
+struct B {}
+struct C {}
+type Inner = A | B
+type Outer = C | Inner
+fn from_if(v Outer) int {
+ if v is Inner {
+  match v {
+   A { return v.value }
+   else {}
+  }
+ }
+ return 0
+}
+fn from_match(v Outer) int {
+ match v {
+  Inner {
+   if v is A { return v.value }
+  }
+  else {}
+ }
+ return 0
+}
+fn from_loop(v Outer) int {
+ if v is Inner {
+  for v is A { return v.value }
+ }
+ return 0
+}
+fn main() {
+ a := Outer(Inner(A{value: 42}))
+ println(from_if(a))
+ println(from_match(a))
+ println(from_loop(a))
+}
+')
+	assert output == '42\n42\n42'
 }

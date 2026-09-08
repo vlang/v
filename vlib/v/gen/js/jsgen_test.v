@@ -53,7 +53,7 @@ fn test_example_compilation() {
 		if should_create_source_map {
 			if there_is_grep_available {
 				grep_code_sourcemap_found :=
-					os.system('grep -q -E "//#\\ssourceMappingURL=data:application/json;base64,[-A-Za-z0-9+/=]+$" ${os.quoted_path(jsfile)}')
+					os.system('grep -q -E "//#\\ssourceMappingURL=data:application/json;base64,[-A-Za-z0-9+/=]+\$" ${os.quoted_path(jsfile)}')
 				assert grep_code_sourcemap_found == 0
 				println('file has a source map embedded')
 			} else {
@@ -88,6 +88,21 @@ fn test_issue_20667_js_can_compile_game_of_life_example() {
 	assert os.exists(output)
 }
 
+fn test_issue_28253_js_dom_examples_do_not_read_native_prototype_accessors() {
+	vexe := os.getenv('VEXE')
+	os.chdir(os.dir(vexe)) or {}
+	os.mkdir_all(output_dir) or { panic(err) }
+	for example in ['js_dom_cube/cube.js.v', 'js_dom_draw/draw.js.v'] {
+		program := os.join_path('examples', example)
+		output := os.join_path(output_dir, '${os.file_name(example)}.js')
+		res := os.execute('${os.quoted_path(vexe)} -b js_browser -o ${os.quoted_path(output)} ${os.quoted_path(program)}')
+		assert res.exit_code == 0, res.output
+		js := os.read_file(output) or { panic(err) }
+		assert !js.contains('...WebGL2RenderingContext.prototype')
+		assert js.contains('Object.getOwnPropertyDescriptor(WebGL2RenderingContext.prototype, key)')
+	}
+}
+
 fn test_issue_23554_js_browser_interpolated_at_exprs_do_not_emit_nested_templates() {
 	vexe := os.getenv('VEXE')
 	os.chdir(os.dir(vexe)) or {}
@@ -107,7 +122,7 @@ fn test_issue_23554_js_browser_interpolated_at_exprs_do_not_emit_nested_template
 		os.execute('${os.quoted_path(vexe)} -b js_browser -o ${os.quoted_path(output)} ${os.quoted_path(program)}')
 	assert res.exit_code == 0, res.output
 	js := os.read_file(output) or { panic(err) }
-	assert !js.contains('new string(`' + '$' + '{"')
+	assert !js.contains('new string(`' + '\$' + '{"')
 	assert os.exists(output)
 }
 

@@ -899,6 +899,12 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		cond_sym := g.table.final_sym(node.cond_type)
 		info := cond_sym.info as ast.ArrayFixed
+		elem_sym := g.table.sym(info.elem_type)
+		elem_is_direct_fn := if elem_sym.info is ast.FnType {
+			elem_sym.info.has_decl
+		} else {
+			false
+		}
 		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} != ${info.size}; ${plus_plus_idx}) {')
 		if node.val_var != '_' {
 			val_sym := g.table.sym(node.val_type)
@@ -907,17 +913,32 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			if val_sym.info is ast.FnType {
 				g.write('\t')
 				tcc_bug := c_name(node.val_var)
-				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
+				if elem_is_direct_fn {
+					g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
+				} else {
+					g.write_fntype_decl(tcc_bug, val_sym.info, node.val_type.nr_muls())
+				}
 			} else if is_fixed_array {
 				styp := g.styp(node.val_type)
 				g.writeln('\t${styp} ${c_name(node.val_var)};')
 				g.writeln('\tmemcpy(*(${styp}*)${c_name(node.val_var)}, (byte*)${cond_var}[${idx}], sizeof(${styp}));')
 			} else {
-				styp := g.styp(node.val_type)
+				styp := if node.val_type.has_flag(.option_mut_param_t) {
+					'${g.styp(node.val_type.clear_flag(.option_mut_param_t))}*'
+				} else {
+					g.styp(node.val_type)
+				}
 				g.write('\t${styp} ${c_name(node.val_var)}')
 			}
 			if !is_fixed_array {
-				addr := if node.val_is_mut { '&' } else { '' }
+				val_was_promoted_to_ref := node.val_type.nr_muls() > info.elem_type.nr_muls()
+					|| node.val_type.has_flag(.option_mut_param_t)
+				addr := if (node.val_is_mut || node.val_is_ref) && val_was_promoted_to_ref
+					&& !elem_is_direct_fn {
+					'&'
+				} else {
+					''
+				}
 				if cond_type_is_ptr {
 					g.writeln(' = ${addr}(*${cond_var})[${idx}];')
 				} else if cond_is_literal {

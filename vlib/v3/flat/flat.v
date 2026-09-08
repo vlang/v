@@ -4,7 +4,9 @@ import v3.token
 import v3.workers
 
 // NodeId aliases node id values used by flat.
-pub type NodeId = int
+// Node ids index `FlatAst.nodes`, so i32 is ample and keeps `children` (one entry
+// per AST edge) and every node-id side table half the size of a 64-bit `int`.
+pub type NodeId = i32
 
 // TextId is the stable identity of one canonical AST text value.
 pub type TextId = u32
@@ -166,6 +168,13 @@ pub:
 	generic_params []string
 }
 
+// Comment retains source comments for syntax-preserving tools such as vfmt.
+pub struct Comment {
+pub:
+	text string
+	pos  token.Pos
+}
+
 // node_payload creates an uncommon node payload, or nil for an empty list.
 pub fn node_payload(generic_params []string) &NodePayload {
 	if generic_params.len == 0 {
@@ -231,6 +240,27 @@ pub mut:
 	export_fn_names map[string]string
 	noreturn_fns    map[string]bool
 	source_files    map[int]&token.File
+	comments        []Comment
+	// formatter_sources retains exact source spans or prefixes for constructs whose
+	// source syntax is intentionally opaque to compiler backends.
+	formatter_sources      map[int]string
+	formatter_file_sources map[int]string
+	// formatter_node_ends retains the full source end for nodes whose compiler-facing
+	// position deliberately covers only their name or another diagnostic token.
+	formatter_node_ends map[int]int
+	// formatter_expanded_calls records calls whose arguments started on the next line
+	// and ended with a trailing comma.
+	formatter_expanded_calls map[int]bool
+	// formatter_assignment_ops retains compound operator spellings that share one flat op.
+	formatter_assignment_ops map[int]string
+	// formatter_param_list_end retains the closing-parenthesis offset for parameter lists.
+	formatter_param_list_end map[int]int
+	// formatter_for_in_mut retains which for-in binder carried `mut`:
+	// bit 0 is the first binder and bit 1 is the second binder.
+	formatter_for_in_mut map[int]u8
+	// formatter_local_sels records selectors whose direct receiver is a lexical binding.
+	formatter_local_sels    map[int]bool
+	formatter_migrate_json2 bool
 	// Template-generated nodes keep their original template source location while
 	// retaining the comptime call site used for v1-compatible diagnostic stacks.
 	template_call_sites map[int]token.Pos
@@ -243,8 +273,12 @@ pub mut:
 	// its top-level index without a full node scan. Stages that renumber
 	// nodes clear the list; consumers fall back to scanning when it is empty
 	// or file_index_incomplete is set (a source file failed to read).
-	file_node_ids         []int
+	file_node_ids         []i32
 	file_index_incomplete bool
+	// has_vsh_source records that at least one parsed source file is a `.vsh`
+	// script. V script mode makes the `os` module global inside such files, and
+	// the checker only pays for that lookup when this flag is set.
+	has_vsh_source bool
 	// source_buffers owns the storage behind zero-copy scanner strings retained
 	// by AST nodes. Keeping the buffers on the AST makes the lifetime boundary
 	// explicit and lets parser workers transfer ownership with their nodes.
@@ -317,19 +351,27 @@ pub fn (mut a FlatAst) set_node_is_mut(id NodeId, is_mut bool) {
 // new creates a FlatAst value for flat.
 pub fn FlatAst.new() FlatAst {
 	return FlatAst{
-		nodes:                  []Node{cap: 256}
-		children:               []NodeId{cap: 512}
-		disabled_fns:           map[string]bool{}
-		export_fn_names:        map[string]string{}
-		noreturn_fns:           map[string]bool{}
-		source_files:           map[int]&token.File{}
-		template_call_sites:    map[int]token.Pos{}
-		template_actions:       map[int]string{}
-		missing_imports:        map[int]string{}
-		text_ids:               map[string]TextId{}
-		specialized_fn_nodes:   map[int]bool{}
-		specialized_fn_modules: map[int]string{}
-		specialized_fn_files:   map[int]string{}
+		nodes:                    []Node{cap: 256}
+		children:                 []NodeId{cap: 512}
+		disabled_fns:             map[string]bool{}
+		export_fn_names:          map[string]string{}
+		noreturn_fns:             map[string]bool{}
+		source_files:             map[int]&token.File{}
+		template_call_sites:      map[int]token.Pos{}
+		template_actions:         map[int]string{}
+		missing_imports:          map[int]string{}
+		formatter_sources:        map[int]string{}
+		formatter_file_sources:   map[int]string{}
+		formatter_node_ends:      map[int]int{}
+		formatter_expanded_calls: map[int]bool{}
+		formatter_assignment_ops: map[int]string{}
+		formatter_param_list_end: map[int]int{}
+		formatter_for_in_mut:     map[int]u8{}
+		formatter_local_sels:     map[int]bool{}
+		text_ids:                 map[string]TextId{}
+		specialized_fn_nodes:     map[int]bool{}
+		specialized_fn_modules:   map[int]string{}
+		specialized_fn_files:     map[int]string{}
 	}
 }
 

@@ -6,6 +6,10 @@ TMPDIR ?= /tmp
 VROOT  ?= .
 VC     ?= ./vc
 VEXE   ?= ./v
+V1_FALLBACK_EXE := $(dir $(VEXE))v1_fallback
+# Portable VC snapshots do not embed V3. Keep their v1 executable on the full
+# compatibility compiler path even when the generated C is built on macOS/Linux.
+VC_BOOTSTRAP_DEFINE := -DCUSTOM_DEFINE_v1_fallback
 VCREPO ?= https://github.com/vlang/vc
 TCCREPO ?= https://github.com/vlang/tccbin
 LEGACYREPO ?= https://github.com/macports/macports-legacy-support
@@ -43,6 +47,7 @@ endif
 
 ifeq ($(_SYS),Linux)
 LINUX := 1
+V1_FALLBACK_BUILD := 1
 TCCOS := linux
 ifneq ($(shell ldd --version 2>&1 | grep -i musl),)
 TCCOS := linuxmusl
@@ -51,6 +56,7 @@ endif
 
 ifeq ($(_SYS),Darwin)
 MAC := 1
+V1_FALLBACK_BUILD := 1
 TCCOS := macos
 ifeq ($(shell expr $(shell uname -r | cut -d. -f1) \<= 16), 1)
 LEGACY := 1
@@ -83,6 +89,7 @@ endif
 ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
+undefine V1_FALLBACK_BUILD
 TCCOS := android
 ifneq ($(wildcard $(PREFIX)/lib/libexecinfo.*),)
 LDFLAGS += -lexecinfo
@@ -156,6 +163,10 @@ ifneq ($(BOOTSTRAP_VC_UNSAFE_OPTFLAGS),)
 endif
 endif
 endif
+# A vc snapshot may use the lean V3 dispatcher when its generated C is built
+# on a Unix-like host. Keep the temporary v1 on the full compatibility path so
+# it can create v2 before either the embedded V3 driver or v1_fallback exists.
+BOOTSTRAP_VC_CC_CFLAGS += -DCUSTOM_DEFINE_v1_fallback
 BOOTSTRAP_TCC_REQUESTED := $(or $(findstring -cc tcc,$(strip $(VFLAGS))),$(findstring -cc=tcc,$(strip $(VFLAGS))))
 BOOTSTRAP_CCOMPILER_VFLAG :=
 BOOTSTRAP_VC_CCOMPILER_VFLAG :=
@@ -200,7 +211,7 @@ BOOTSTRAP_VFLAGS := $(BOOTSTRAP_CCOMPILER_VFLAG) $(if $(strip $(BOOTSTRAP_CFLAGS
 
 all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
-	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
+	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
 	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
 	./v2$(EXE_EXT) -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	$(RM) v1$(EXE_EXT)
@@ -212,13 +223,16 @@ ifdef LEGACY
 	rm -rf $(TMPLEGACY)
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
-	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) -std=c99 -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
+	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
 ifdef NETBSD
 	paxctl +m v1$(EXE_EXT)
 endif
 	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
 ifdef NETBSD
 	paxctl +m v2$(EXE_EXT)
+endif
+ifdef V1_FALLBACK_BUILD
+	./v1$(EXE_EXT) -no-parallel -d v1_fallback -o $(V1_FALLBACK_EXE) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
 endif
 	./v2$(EXE_EXT) -nocache -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 ifdef NETBSD
@@ -423,7 +437,7 @@ else
 ifeq ($(HAS_GIT),1)
 	$(GITFASTCLONE) $(LEGACYREPO) $(TMPLEGACY)
 else
-	@echo "git is required to clone $(LEGACYREPO)"
+	@echo "git is required to download legacy support sources ($(LEGACYREPO))"
 	@exit 1
 endif
 endif

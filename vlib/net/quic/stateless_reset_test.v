@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn make_token(fill u8) []u8 {

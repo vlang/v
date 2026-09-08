@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_data_frame_roundtrip() {
@@ -116,11 +115,11 @@ fn test_settings_frame_roundtrip_and_preserves_order() {
 	settings := [
 		H3Setting{
 			identifier: 0x06
-			value:      16384
+			value: 16384
 		},
 		H3Setting{
 			identifier: 0x21 // grease -- must round-trip, not be dropped
-			value:      0
+			value: 0
 		},
 	]
 	encoded := encode_settings_frame(settings)!
@@ -297,22 +296,34 @@ fn test_h3_frame_decoder_handles_multiple_frames_in_one_push() {
 	r1 := d.next()!
 	assert r1.has_frame
 	match r1.frame {
-		DataFrame { assert r1.frame.data == [u8(1)] }
-		else { assert false, 'expected DataFrame first' }
+		DataFrame {
+			assert r1.frame.data == [u8(1)]
+		}
+		else {
+			assert false, 'expected DataFrame first'
+		}
 	}
 
 	r2 := d.next()!
 	assert r2.has_frame
 	match r2.frame {
-		CancelPushFrame { assert r2.frame.push_id == 5 }
-		else { assert false, 'expected CancelPushFrame second' }
+		CancelPushFrame {
+			assert r2.frame.push_id == 5
+		}
+		else {
+			assert false, 'expected CancelPushFrame second'
+		}
 	}
 
 	r3 := d.next()!
 	assert r3.has_frame
 	match r3.frame {
-		MaxPushIdFrame { assert r3.frame.push_id == 9 }
-		else { assert false, 'expected MaxPushIdFrame third' }
+		MaxPushIdFrame {
+			assert r3.frame.push_id == 9
+		}
+		else {
+			assert false, 'expected MaxPushIdFrame third'
+		}
 	}
 
 	r4 := d.next()!
@@ -352,7 +363,7 @@ fn test_h3_frame_decoder_settings_split_across_pushes_mid_payload() {
 	full := encode_settings_frame([
 		H3Setting{
 			identifier: 0x06
-			value:      42
+			value: 42
 		},
 	])!
 	mut d := new_h3_frame_decoder()

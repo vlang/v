@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 import encoding.base64
@@ -36,9 +35,9 @@ fn test_verify_server_certificate_chain_end_to_end() {
 	der := chain_test_pem_to_der(chain_test_cert_pem)
 	parsed := ParsedCertificate{
 		certificate_request_context: []u8{}
-		certificate_list:            [
+		certificate_list: [
 			CertificateEntry{
-				cert_data:  der
+				cert_data: der
 				extensions: []TlsExtension{}
 			},
 		]
@@ -54,9 +53,9 @@ fn test_verify_server_certificate_chain_end_to_end() {
 fn test_verify_server_certificate_chain_rejects_malformed_der() {
 	parsed := ParsedCertificate{
 		certificate_request_context: []u8{}
-		certificate_list:            [
+		certificate_list: [
 			CertificateEntry{
-				cert_data:  [u8(0xff), 0xff, 0xff, 0xff]
+				cert_data: [u8(0xff), 0xff, 0xff, 0xff]
 				extensions: []TlsExtension{}
 			},
 		]
@@ -228,7 +227,9 @@ fn test_check_server_cert_usage_accepts_existing_test_certs() {
 	cert_msg_bytes := hex.decode(chain_test_p256_certificate_msg)!
 	cert_msg, _ := parse_handshake_message(cert_msg_bytes)!
 	parsed_cert := parse_certificate(cert_msg.body)!
-	p256_chain := mbedtls.build_certificate_chain([parsed_cert.certificate_list[0].cert_data])!
+	p256_chain := mbedtls.build_certificate_chain([
+		parsed_cert.certificate_list[0].cert_data,
+	])!
 	defer {
 		mbedtls.free_certificate_chain(p256_chain)
 	}
@@ -245,7 +246,9 @@ fn test_public_key_curve_is_secp256r1_true() {
 	cert_msg_bytes := hex.decode(chain_test_p256_certificate_msg)!
 	cert_msg, _ := parse_handshake_message(cert_msg_bytes)!
 	parsed_cert := parse_certificate(cert_msg.body)!
-	chain := mbedtls.build_certificate_chain([parsed_cert.certificate_list[0].cert_data])!
+	chain := mbedtls.build_certificate_chain([
+		parsed_cert.certificate_list[0].cert_data,
+	])!
 	defer {
 		mbedtls.free_certificate_chain(chain)
 	}

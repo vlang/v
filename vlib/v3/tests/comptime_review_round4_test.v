@@ -1787,6 +1787,38 @@ fn main() {
 	assert out == 'params:empty|args:one'
 }
 
+fn test_comptime_method_calls_accept_spread_and_variadic_arity() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'method_call_spread_and_variadic_arity', 'struct Calls {}
+
+fn (calls Calls) fixed(value string, count int) string {
+	_ = calls
+	return value.repeat(count)
+}
+
+fn (calls Calls) variadic(values ...string) string {
+	_ = calls
+	return values.join("")
+}
+
+fn main() {
+	calls := Calls{}
+	mut rows := []string{}
+	$for method in Calls.methods {
+		$if method.name == "fixed" {
+			args := ["x", "3"]
+			rows << calls.$method(...args)
+		}
+		$if method.name == "variadic" {
+			rows << calls.$method("a", "b")
+		}
+	}
+	println(rows.join("|"))
+}
+')
+	assert out == 'xxx|ab'
+}
+
 fn test_method_metadata_locations_are_materialized() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'method_metadata_location', 'struct Located {}

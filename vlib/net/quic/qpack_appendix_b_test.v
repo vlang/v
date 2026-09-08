@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 // This file replays RFC 9204 Appendix B's worked examples byte-for-byte:
@@ -93,8 +92,7 @@ fn test_appendix_b4_duplicate_and_stream_cancellation() {
 	dec.apply_encoder_instruction(encode_qpack_insert_with_name_ref(true, 1, '/sample/path')) or {
 		panic('${err}')
 	}
-	dec.apply_encoder_instruction(encode_qpack_insert_with_literal_name('custom-key',
-		'custom-value')) or { panic('${err}') }
+	dec.apply_encoder_instruction(encode_qpack_insert_with_literal_name('custom-key', 'custom-value')) or { panic('${err}') }
 
 	dup := encode_qpack_duplicate(2)
 	assert dup == [u8(0x02)]
@@ -132,8 +130,7 @@ fn test_appendix_b5_dynamic_table_insert_eviction() {
 	dec.apply_encoder_instruction(encode_qpack_insert_with_name_ref(true, 1, '/sample/path')) or {
 		panic('${err}')
 	}
-	dec.apply_encoder_instruction(encode_qpack_insert_with_literal_name('custom-key',
-		'custom-value')) or { panic('${err}') }
+	dec.apply_encoder_instruction(encode_qpack_insert_with_literal_name('custom-key', 'custom-value')) or { panic('${err}') }
 	dec.apply_encoder_instruction(encode_qpack_duplicate(2)) or { panic('${err}') }
 
 	// This is the RFC's own literal wire bytes for this instruction, used as

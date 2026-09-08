@@ -188,8 +188,7 @@ pub type H3Frame = CancelPushFrame
 // H3_FRAME_ERROR per §7.1's generic rule.
 pub fn decode_h3_frame_payload(frame_type u64, payload []u8) !H3Frame {
 	if is_h3_reserved_h2_carryover_frame_type(frame_type) {
-		return error_with_code('h3: frame type 0x${frame_type.hex()} is reserved (HTTP/2 carryover) and MUST NOT be sent',
-			int(H3ErrorCode.frame_unexpected))
+		return error_with_code('h3: frame type 0x${frame_type.hex()} is reserved (HTTP/2 carryover) and MUST NOT be sent', int(H3ErrorCode.frame_unexpected))
 	}
 	match frame_type {
 		h3_frame_data {
@@ -204,12 +203,10 @@ pub fn decode_h3_frame_payload(frame_type u64, payload []u8) !H3Frame {
 		}
 		h3_frame_cancel_push {
 			push_id, n := decode_varint(payload) or {
-				return error_with_code('h3: CANCEL_PUSH frame payload does not contain a valid push ID: ${err.msg()}',
-					int(H3ErrorCode.frame_error))
+				return error_with_code('h3: CANCEL_PUSH frame payload does not contain a valid push ID: ${err.msg()}', int(H3ErrorCode.frame_error))
 			}
 			if n != payload.len {
-				return error_with_code('h3: CANCEL_PUSH frame payload has ${payload.len - n} trailing byte(s) after its push ID',
-					int(H3ErrorCode.frame_error))
+				return error_with_code('h3: CANCEL_PUSH frame payload has ${payload.len - n} trailing byte(s) after its push ID', int(H3ErrorCode.frame_error))
 			}
 			return CancelPushFrame{
 				push_id: push_id
@@ -220,22 +217,19 @@ pub fn decode_h3_frame_payload(frame_type u64, payload []u8) !H3Frame {
 		}
 		h3_frame_push_promise {
 			push_id, n := decode_varint(payload) or {
-				return error_with_code('h3: PUSH_PROMISE frame payload does not contain a valid push ID: ${err.msg()}',
-					int(H3ErrorCode.frame_error))
+				return error_with_code('h3: PUSH_PROMISE frame payload does not contain a valid push ID: ${err.msg()}', int(H3ErrorCode.frame_error))
 			}
 			return PushPromiseFrame{
-				push_id:               push_id
+				push_id: push_id
 				encoded_field_section: payload[n..].clone()
 			}
 		}
 		h3_frame_goaway {
 			id, n := decode_varint(payload) or {
-				return error_with_code('h3: GOAWAY frame payload does not contain a valid stream/push ID: ${err.msg()}',
-					int(H3ErrorCode.frame_error))
+				return error_with_code('h3: GOAWAY frame payload does not contain a valid stream/push ID: ${err.msg()}', int(H3ErrorCode.frame_error))
 			}
 			if n != payload.len {
-				return error_with_code('h3: GOAWAY frame payload has ${payload.len - n} trailing byte(s) after its ID',
-					int(H3ErrorCode.frame_error))
+				return error_with_code('h3: GOAWAY frame payload has ${payload.len - n} trailing byte(s) after its ID', int(H3ErrorCode.frame_error))
 			}
 			return GoawayFrame{
 				id: id
@@ -243,12 +237,10 @@ pub fn decode_h3_frame_payload(frame_type u64, payload []u8) !H3Frame {
 		}
 		h3_frame_max_push_id {
 			push_id, n := decode_varint(payload) or {
-				return error_with_code('h3: MAX_PUSH_ID frame payload does not contain a valid push ID: ${err.msg()}',
-					int(H3ErrorCode.frame_error))
+				return error_with_code('h3: MAX_PUSH_ID frame payload does not contain a valid push ID: ${err.msg()}', int(H3ErrorCode.frame_error))
 			}
 			if n != payload.len {
-				return error_with_code('h3: MAX_PUSH_ID frame payload has ${payload.len - n} trailing byte(s) after its push ID',
-					int(H3ErrorCode.frame_error))
+				return error_with_code('h3: MAX_PUSH_ID frame payload has ${payload.len - n} trailing byte(s) after its push ID', int(H3ErrorCode.frame_error))
 			}
 			return MaxPushIdFrame{
 				push_id: push_id
@@ -257,7 +249,7 @@ pub fn decode_h3_frame_payload(frame_type u64, payload []u8) !H3Frame {
 		else {
 			return H3RawFrame{
 				frame_type: frame_type
-				payload:    payload.clone()
+				payload: payload.clone()
 			}
 		}
 	}
@@ -285,25 +277,21 @@ fn decode_h3_settings_payload(payload []u8) !SettingsFrame {
 	mut offset := 0
 	for offset < payload.len {
 		identifier, id_len := decode_varint(payload[offset..]) or {
-			return error_with_code('h3: SETTINGS frame payload has a truncated setting identifier at offset ${offset}: ${err.msg()}',
-				int(H3ErrorCode.frame_error))
+			return error_with_code('h3: SETTINGS frame payload has a truncated setting identifier at offset ${offset}: ${err.msg()}', int(H3ErrorCode.frame_error))
 		}
 		value, value_len := decode_varint(payload[offset + id_len..]) or {
-			return error_with_code('h3: SETTINGS frame payload has a truncated setting value at offset ${
-				offset + id_len}: ${err.msg()}', int(H3ErrorCode.frame_error))
+			return error_with_code('h3: SETTINGS frame payload has a truncated setting value at offset ${offset + id_len}: ${err.msg()}', int(H3ErrorCode.frame_error))
 		}
 		if is_h3_settings_reserved_h2_carryover_id(identifier) {
-			return error_with_code('h3: SETTINGS frame contains reserved (HTTP/2 carryover) identifier 0x${identifier.hex()}',
-				int(H3ErrorCode.settings_error))
+			return error_with_code('h3: SETTINGS frame contains reserved (HTTP/2 carryover) identifier 0x${identifier.hex()}', int(H3ErrorCode.settings_error))
 		}
 		if seen_ids[identifier] {
-			return error_with_code('h3: SETTINGS frame contains duplicate identifier 0x${identifier.hex()}',
-				int(H3ErrorCode.settings_error))
+			return error_with_code('h3: SETTINGS frame contains duplicate identifier 0x${identifier.hex()}', int(H3ErrorCode.settings_error))
 		}
 		seen_ids[identifier] = true
 		settings << H3Setting{
 			identifier: identifier
-			value:      value
+			value: value
 		}
 		offset += id_len + value_len
 	}
@@ -453,8 +441,8 @@ pub fn (mut d H3FrameDecoder) next() !H3FrameDecodeResult {
 	d.pending.delete_many(0, total)
 	return H3FrameDecodeResult{
 		has_frame: true
-		frame:     frame
-		consumed:  total
+		frame: frame
+		consumed: total
 	}
 }
 

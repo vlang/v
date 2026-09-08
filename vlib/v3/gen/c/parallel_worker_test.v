@@ -1,7 +1,9 @@
 module c
 
 import v3.flat
+import v3.pref
 import v3.types
+import v3.workers
 
 fn parallel_worker_test_gen(scoped bool) (&FlatGen, &types.TypeChecker) {
 	mut ast := &flat.FlatAst{}
@@ -17,6 +19,45 @@ fn test_parallel_dispatch_worker_owns_checker_outside_scoped_batching() {
 	g, tc := parallel_worker_test_gen(false)
 	w := g.new_parallel_dispatch_worker(1)
 	assert w.tc != tc
+}
+
+fn test_implicit_veb_context_call_lookup_accepts_source_and_c_names() {
+	g, mut tc := parallel_worker_test_gen(false)
+	assert !g.call_has_implicit_veb_ctx(['', 'app.index'])
+	tc.fn_implicit_veb_ctx['app.index'] = true
+	assert g.call_has_implicit_veb_ctx(['missing', 'app.index'])
+	assert !g.call_has_implicit_veb_ctx(['missing'])
+	tc.fn_implicit_veb_ctx.clear()
+	tc.fn_implicit_veb_ctx['app__index'] = true
+	assert g.call_has_implicit_veb_ctx(['', 'app.index'])
+	tc.fn_implicit_veb_ctx['app__index'] = false
+	assert !g.call_has_implicit_veb_ctx(['app.index'])
+}
+
+fn test_shared_param_index_skips_all_false_signatures() {
+	mut g, mut tc := parallel_worker_test_gen(true)
+	tc.fn_shared_params['plain'] = [false, false]
+	tc.fn_shared_params['empty'] = []bool{}
+	g.precompute_shared_param_index()
+	assert g.shared_param_index_empty
+	assert g.fn_shared_params_resolved.len == 0
+	assert !g.fn_param_is_shared('plain', 0)
+	assert !g.fn_param_is_shared_for_call(0, 'plain', 'empty', '', '')
+	w := g.new_parallel_worker(1)
+	assert w.shared_param_index_empty
+	assert !w.fn_param_is_shared_for_call(1, 'plain', '', '', '')
+
+	// A single shared signature keeps exact false entries authoritative over
+	// shared short-name fallbacks, including when the index is prepared again.
+	tc.fn_shared_params['send'] = [true]
+	tc.fn_shared_params['dep.send'] = [true]
+	g.fn_decl_shared_params['dep.send'] = [false]
+	g.precompute_shared_param_index()
+	assert !g.shared_param_index_empty
+	assert g.fn_param_is_shared_for_call(0, 'send', '', '', '')
+	assert !g.fn_param_is_shared_for_call(0, 'dep.send', '', '', '')
+	assert !g.fn_param_is_shared_for_call(1, 'send', '', '', '')
+	assert !g.fn_param_is_shared_for_call(0, 'plain', '', '', '')
 }
 
 fn test_parallel_dispatch_worker_shares_checker_as_scoped_accumulator() {
@@ -37,6 +78,24 @@ fn test_scoped_parallel_dispatch_worker_owns_string_snapshot() {
 	assert g.str_lits == ['source', 'master generated']
 }
 
+fn test_scoped_parallel_dispatch_workers_detach_shared_string_snapshot() {
+	mut g, _ := parallel_worker_test_gen(true)
+	assert g.intern_string('source') == 0
+	g.str_lits_shared = true
+	mut first := g.new_parallel_dispatch_worker(1)
+	mut second := g.new_parallel_dispatch_worker(2)
+	assert first.str_lits_shared
+	assert second.str_lits_shared
+	assert g.intern_string('master generated') == 1
+	assert first.str_lits == ['source']
+	assert first.intern_string('first generated') == 1
+	assert second.str_lits == ['source']
+	assert second.intern_string('second generated') == 1
+	assert g.str_lits == ['source', 'master generated']
+	assert first.str_lits == ['source', 'first generated']
+	assert second.str_lits == ['source', 'second generated']
+}
+
 fn test_scoped_parallel_worker_reuses_preselected_functions_and_c_extern_refs() {
 	mut g, _ := parallel_worker_test_gen(true)
 	g.fn_gen_items = [FlatFnGenItem{
@@ -52,6 +111,38 @@ fn test_scoped_parallel_worker_reuses_preselected_functions_and_c_extern_refs() 
 		'puts': true
 	}
 	assert w.c_extern_refs_ready
+}
+
+fn test_parallel_worker_shares_precomputed_const_short_index() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.const_vals = {
+		'moda.only':   flat.NodeId(0)
+		'moda.answer': flat.NodeId(1)
+		'modb.answer': flat.NodeId(2)
+	}
+	g.precompute_const_short_index()
+	assert g.const_short_index.built
+	assert g.const_short_index.entries['only'] == 'moda.only'
+	assert g.const_short_index.entries['answer'] == ''
+
+	w := g.new_parallel_worker(1)
+	assert w.const_short_index == g.const_short_index
+	assert w.unique_const_ref_name('only') or { '' } == 'moda.only'
+	assert w.unique_const_ref_name('answer') == none
+}
+
+fn test_parallel_worker_preserves_test_assertion_stats_mode() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.show_test_stats = true
+	w := g.new_parallel_worker(1)
+	assert w.show_test_stats
+}
+
+fn test_parallel_worker_preserves_target() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.target = pref.target_from('linux', 'x86') or { panic(err) }
+	w := g.new_parallel_worker(1)
+	assert w.target == g.target
 }
 
 fn test_windows_filelock_method_preseeds_parallel_compat_helpers() {
@@ -70,6 +161,18 @@ fn test_windows_filelock_method_preseeds_parallel_compat_helpers() {
 	c_code := g.sb.str()
 	assert c_code.contains('static inline int v_filelock_lock(HANDLE handle'), c_code
 	assert c_code.contains('static inline int v_filelock_unlock(HANDLE handle'), c_code
+}
+
+fn test_builtin_gettid_preseeds_parallel_compat_helper() {
+	mut g, _ := parallel_worker_test_gen(true)
+	mut used := {
+		'v_gettid': true
+	}
+	g.used_fns = &used
+	// Isolate used-function reachability from the later function-body reference scan.
+	g.c_extern_refs_ready = true
+	g.preseed_libc_compat_fns()
+	assert g.libc_compat_fns['gettid']
 }
 
 fn test_parallel_tail_worker_preserves_runtime_init_module_order() {
@@ -197,12 +300,12 @@ fn test_fused_parallel_prep_interns_body_string_literals() {
 	mut g, _ := parallel_worker_test_gen(false)
 	g.a.nodes = [
 		flat.Node{
-			kind:           .fn_decl
+			kind: .fn_decl
 			children_start: 0
 			children_count: 1
 		},
 		flat.Node{
-			kind:  .string_literal
+			kind: .string_literal
 			value: 'worker literal'
 		},
 	]
@@ -214,21 +317,31 @@ fn test_fused_parallel_prep_interns_body_string_literals() {
 	assert g.str_lit_ids['worker literal'] == 0
 }
 
+fn test_serial_prep_interns_ast_string_literals_in_source_order() {
+	mut g, _ := parallel_worker_test_gen(false)
+	g.ast_string_literals = ['first', 'second']
+	g.ast_string_literals_ready = true
+	g.prepare_serial_fn_tables()
+	assert g.str_lits == ['first', 'second']
+	assert g.str_lit_ids['first'] == 0
+	assert g.str_lit_ids['second'] == 1
+}
+
 fn test_scoped_pre_dispatch_preserves_direct_array_access_flag() {
 	mut g, _ := parallel_worker_test_gen(true)
 	fn_id := g.a.add_node(flat.Node{
-		kind:  .fn_decl
+		kind: .fn_decl
 		value: 'unchecked_index'
 	})
 	g.fn_gen_items = [
 		FlatFnGenItem{
-			node_id:             fn_id
-			file:                'direct_array_access.v'
-			module:              'main'
-			c_name:              'main__unchecked_index'
-			cost:                1
+			node_id: fn_id
+			file: 'direct_array_access.v'
+			module: 'main'
+			c_name: 'main__unchecked_index'
+			cost: 1
 			direct_array_access: true
-			ignore_overflow:     true
+			ignore_overflow: true
 		},
 	]
 	g.prepare_pre_dispatch_master()
@@ -236,6 +349,25 @@ fn test_scoped_pre_dispatch_preserves_direct_array_access_flag() {
 	assert g.fn_gen_items[0].direct_array_access
 	assert g.fn_gen_items[0].ignore_overflow
 	g.release_scoped_fn_items()
+}
+
+fn test_retained_selection_scope_does_not_own_scope_list() {
+	$if prealloc {
+		mut g, mut tc := parallel_worker_test_gen(true)
+		tc.building_v_fast = true
+		g.a.worker_pool = workers.new(8)
+		defer { g.a.worker_pool.close() }
+		for _ in 0 .. 2048 {
+			g.a.add_node(flat.Node{ kind: .module_decl, value: 'main' })
+		}
+		g.prepare_pre_dispatch_master()
+		assert g.parallel_worker_scopes.len > 1
+		for scope in g.parallel_worker_scopes {
+			assert !cgen_scope_owns(scope, g.parallel_worker_scopes.data)
+		}
+		g.free_parallel_worker_scopes()
+		assert g.parallel_worker_scopes.len == 0
+	}
 }
 
 fn test_parallel_generic_app_cache_uses_frozen_base_and_private_overlays() {
@@ -266,6 +398,18 @@ fn test_parallel_generic_app_cache_uses_frozen_base_and_private_overlays() {
 	assert 'Shared[string]' !in frozen.entries
 }
 
+fn test_open_generic_receiver_template_bypasses_stale_generic_app_cache() {
+	mut g, _ := parallel_worker_test_gen(true)
+	mut cache := g.generic_app_cache
+	cache.entries['AtomicVal[T]'] = GenericAppInfo{}
+	node := flat.Node{
+		kind: .fn_decl
+		value: 'AtomicVal[T].load'
+	}
+	assert g.fn_node_is_open_generic_template(node, 'stdatomic')
+	assert !g.should_emit_fn_node_in_module_known(node, 'stdatomic', 'atomic.v', 'stdatomic__AtomicVal_T__load', true)
+}
+
 fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {
 	mut g, _ := parallel_worker_test_gen(true)
 	g.parallel_type_decls = '/* precomputed type declarations */\n'.clone()
@@ -279,6 +423,18 @@ fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {
 	assert precomputed_idx >= 0
 	assert typedef_idx > precomputed_idx
 	assert g.emitted_fn_ptr_typedefs[encoded]
+}
+
+fn test_parallel_type_declarations_preseed_function_type_aliases() {
+	mut g, mut tc := parallel_worker_test_gen(true)
+	tc.type_aliases['Callback'] = 'fn (int)'
+	callback_type := tc.parse_type(tc.type_aliases['Callback'])
+	encoded := tc.c_type(callback_type)
+	assert encoded.starts_with('fn_ptr:')
+	assert encoded !in g.fn_ptr_types
+
+	g.preseed_type_alias_fn_ptr_types()
+	assert encoded in g.fn_ptr_types
 }
 
 fn test_dynamic_parallel_merge_preserves_chunk_order() {
@@ -305,13 +461,13 @@ fn test_dynamic_parallel_merge_replays_wrapper_defs_in_chunk_order() {
 	high.parallel_chunk_wrapper_defs = [
 		ParallelChunkWrapperDefs{
 			chunk_idx: 3
-			spawn:     ['spawn-3-typedef;', 'spawn-3-trampoline;', 'spawn-shared;']
-			callback:  ['callback-3;']
+			spawn: ['spawn-3-typedef;', 'spawn-3-trampoline;', 'spawn-shared;']
+			callback: ['callback-3;']
 		},
 		ParallelChunkWrapperDefs{
 			chunk_idx: 2
-			spawn:     ['spawn-2-typedef;', 'spawn-2-trampoline;']
-			callback:  ['callback-2;']
+			spawn: ['spawn-2-typedef;', 'spawn-2-trampoline;']
+			callback: ['callback-2;']
 		},
 	]
 
@@ -321,13 +477,13 @@ fn test_dynamic_parallel_merge_replays_wrapper_defs_in_chunk_order() {
 	low.parallel_chunk_wrapper_defs = [
 		ParallelChunkWrapperDefs{
 			chunk_idx: 1
-			spawn:     ['spawn-1-typedef;', 'spawn-1-trampoline;']
-			callback:  ['callback-1;']
+			spawn: ['spawn-1-typedef;', 'spawn-1-trampoline;']
+			callback: ['callback-1;']
 		},
 		ParallelChunkWrapperDefs{
 			chunk_idx: 0
-			spawn:     ['spawn-0-typedef;', 'spawn-0-trampoline;', 'spawn-shared;']
-			callback:  ['callback-0;']
+			spawn: ['spawn-0-typedef;', 'spawn-0-trampoline;', 'spawn-shared;']
+			callback: ['callback-0;']
 		},
 	]
 
@@ -360,4 +516,24 @@ fn test_dynamic_parallel_chunk_capture_keeps_deduplicated_wrapper_attempts() {
 	assert g.callback_wrapper_defs == ['callback-shared;']
 	assert g.parallel_chunk_wrapper_defs[0].spawn == ['spawn-shared;', 'spawn-shared;']
 	assert g.parallel_chunk_wrapper_defs[0].callback == ['callback-shared;', 'callback-shared;']
+}
+
+// c_extern_forward_decls() runs inside a disposable worker in scoped mode, so the
+// worker must inherit the header/linkage state the emission rule reads. Without it
+// every `fn C.` declaration looks header backed and silently loses its prototype.
+fn test_scoped_c_extern_worker_inherits_header_and_linkage_state() {
+	mut g, _ := parallel_worker_test_gen(true)
+	linked_file := '/project/linked.c.v'
+	lib_file := '/project/lib_only.c.v'
+	header_file := '/project/wrapped.c.v'
+	g.note_c_flag_directive('linked', linked_file, '@VMODROOT/helper.o')
+	g.note_c_flag_directive('lib_only', lib_file, '-lfoo')
+	g.note_c_include_directive('wrapped', header_file)
+
+	mut worker := g.new_parallel_worker(8)
+	g.configure_c_extern_scan_worker(mut worker)
+
+	assert worker.should_emit_c_extern_decl_from_file('helper_fn', linked_file, 'linked')
+	assert worker.should_emit_c_extern_decl_from_file('foo_open', lib_file, 'lib_only')
+	assert !worker.should_emit_c_extern_decl_from_file('wrapped_fn', header_file, 'wrapped')
 }

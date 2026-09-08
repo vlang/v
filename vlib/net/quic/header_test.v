@@ -1,14 +1,13 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_long_header_initial_round_trip() {
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    [u8(1), 2, 3, 4, 5, 6, 7, 8]
-		scid:    [u8(9), 10, 11, 12]
-		token:   [u8(0xAA), 0xBB, 0xCC]
-		length:  1200
+		dcid: [u8(1), 2, 3, 4, 5, 6, 7, 8]
+		scid: [u8(9), 10, 11, 12]
+		token: [u8(0xAA), 0xBB, 0xCC]
+		length: 1200
 	}
 	encoded := encode_long_header(h, 0, 3)!
 	parsed, consumed := parse_long_header(encoded)!
@@ -23,11 +22,11 @@ fn test_long_header_initial_round_trip() {
 
 fn test_long_header_handshake_has_no_token() {
 	h := QuicLongHeader{
-		typ:     .handshake
+		typ: .handshake
 		version: quic_v1
-		dcid:    [u8(1), 2, 3, 4]
-		scid:    [u8(5), 6, 7, 8]
-		length:  512
+		dcid: [u8(1), 2, 3, 4]
+		scid: [u8(5), 6, 7, 8]
+		length: 512
 	}
 	encoded := encode_long_header(h, 0, 1)!
 	parsed, consumed := parse_long_header(encoded)!
@@ -40,11 +39,11 @@ fn test_long_header_handshake_has_no_token() {
 fn test_long_header_zero_length_connection_ids() {
 	// RFC 9000 §17.2 explicitly permits 0-length DCID/SCID.
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    []u8{}
-		scid:    []u8{}
-		length:  100
+		dcid: []u8{}
+		scid: []u8{}
+		length: 100
 	}
 	encoded := encode_long_header(h, 0, 0)!
 	parsed, _ := parse_long_header(encoded)!
@@ -56,11 +55,11 @@ fn test_long_header_type_bits_round_trip_all_types() {
 	types := [LongPacketType.initial, LongPacketType.zero_rtt, LongPacketType.handshake]
 	for t in types {
 		h := QuicLongHeader{
-			typ:     t
+			typ: t
 			version: quic_v1
-			dcid:    [u8(1)]
-			scid:    [u8(2)]
-			length:  10
+			dcid: [u8(1)]
+			scid: [u8(2)]
+			length: 10
 		}
 		encoded := encode_long_header(h, 0, 0)!
 		parsed, _ := parse_long_header(encoded)!
@@ -147,11 +146,11 @@ fn test_short_header_rejects_clear_fixed_bit() {
 
 fn test_encode_long_header_rejects_v1_cid_over_20_bytes() {
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    []u8{len: 21, init: 0xAB}
-		scid:    []u8{len: 4}
-		length:  1200
+		dcid: []u8{len: 21, init: 0xAB}
+		scid: []u8{len: 4}
+		length: 1200
 	}
 	encode_long_header(h, 0, 3) or {
 		assert err.msg().contains('20')
@@ -209,11 +208,11 @@ fn test_parse_long_header_rejects_unsupported_version() {
 // outright (test_parse_long_header_rejects_unsupported_version above).
 fn test_encode_long_header_rejects_unsupported_version() {
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: u32(0x6b3343cf) // QUIC v2's registered version value
-		dcid:    [u8(1), 2, 3, 4]
-		scid:    [u8(5), 6, 7, 8]
-		length:  10
+		dcid: [u8(1), 2, 3, 4]
+		scid: [u8(5), 6, 7, 8]
+		length: 10
 	}
 	encode_long_header(h, 0, 0) or {
 		assert err.msg().contains('unsupported')
@@ -233,11 +232,11 @@ fn test_encode_long_header_rejects_unsupported_version() {
 // landing inside the packet number field instead of past it.
 fn test_encode_long_header_rejects_length_shorter_than_packet_number() {
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    [u8(1), 2, 3, 4]
-		scid:    [u8(5), 6, 7, 8]
-		length:  1
+		dcid: [u8(1), 2, 3, 4]
+		scid: [u8(5), 6, 7, 8]
+		length: 1
 	}
 	encode_long_header(h, 0, 3) or {
 		assert err.msg().contains('must be at least')
@@ -252,11 +251,11 @@ fn test_encode_long_header_rejects_length_shorter_than_packet_number() {
 // larger.
 fn test_encode_long_header_accepts_length_equal_to_packet_number() {
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    [u8(1), 2, 3, 4]
-		scid:    [u8(5), 6, 7, 8]
-		length:  4
+		dcid: [u8(1), 2, 3, 4]
+		scid: [u8(5), 6, 7, 8]
+		length: 4
 	}
 	encoded := encode_long_header(h, 0, 3)!
 	assert encoded.len > 0
@@ -287,9 +286,13 @@ fn test_encode_short_header_round_trips_through_parse() {
 	// function assumes header protection has already been removed and would
 	// reject these reserved bits as nonzero.
 	assert encoded[0] & 0x40 != 0 // Fixed Bit always set
+
 	assert encoded[0] & 0x20 != 0 // spin_bit
+
 	assert encoded[0] & 0x04 != 0 // key_phase
+
 	assert encoded[0] & 0x03 == 0x3 // pn_length_bits
+
 	assert encoded[1..] == dcid
 
 	encoded_off := encode_short_header(dcid, false, 0, false, 0)!
@@ -393,11 +396,11 @@ fn test_version_negotiation_parse() {
 
 fn test_version_negotiation_rejects_nonzero_version() {
 	h := QuicLongHeader{
-		typ:     .initial
+		typ: .initial
 		version: quic_v1
-		dcid:    [u8(1)]
-		scid:    [u8(2)]
-		length:  10
+		dcid: [u8(1)]
+		scid: [u8(2)]
+		length: 10
 	}
 	encoded := encode_long_header(h, 0, 0)!
 	parse_version_negotiation(encoded) or {
