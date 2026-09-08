@@ -263,3 +263,30 @@ fn test_issue_27281_temp_project_allows_uppercase_base_url() {
 	assert dot_run_res.output.trim_space() == 'base-url-ok', dot_run_res.output
 	assert dot_test_res.exit_code == 0, dot_test_res.output
 }
+
+fn test_issue_27281_temp_project_allows_uppercase_entry_folder() {
+	workspace := os.join_path(os.vtmp_dir(), 'issue_27281_uppercase_entry')
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	cmd_dir := os.join_path(workspace, 'Cmd')
+	module_dir := os.join_path(workspace, 'dep', 'mymod')
+	os.rmdir_all(workspace) or {}
+	os.mkdir_all(cmd_dir) or { panic(err) }
+	os.mkdir_all(module_dir) or { panic(err) }
+	root_vmod := ['Module {', "\tname: 'app'", '}'].join_lines() + '\n'
+	dep_vmod := ['Module {', "\tname: 'dep'", '}'].join_lines() + '\n'
+	main_source :=
+		['module main', '', 'import dep.mymod', '', 'fn main() {', '\tprintln(mymod.value())', '}'].join_lines() +
+		'\n'
+	module_source :=
+		['module mymod', '', 'pub fn value() string {', "\treturn 'uppercase-entry-ok'", '}'].join_lines() +
+		'\n'
+	issue_20147_write_file(os.join_path(workspace, 'v.mod'), root_vmod)
+	issue_20147_write_file(os.join_path(workspace, 'dep', 'v.mod'), dep_vmod)
+	issue_20147_write_file(os.join_path(cmd_dir, 'main.v'), main_source)
+	issue_20147_write_file(os.join_path(module_dir, 'mymod.v'), module_source)
+	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(cmd_dir)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == 'uppercase-entry-ok', res.output
+}

@@ -196,8 +196,8 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 						if 'v.mod' in ls
 							&& (try_path_parts.len > i && try_path_parts[i] != 'v' && 'vlib' !in ls) {
 							// Reject v.mod files in or above the system temp
-							// directory when the path contains uppercase
-							// letters (e.g. ULID-based test session dirs),
+							// directory when the path contains a V test
+							// session folder with an uppercase ULID,
 							// as they are likely unrelated to the project.
 							if j < i && is_unrelated_vmod_in_temp_dir(parent, try_path_parts[j..i]) {
 								continue
@@ -286,8 +286,8 @@ fn project_root_vmod_folder(pref_ &pref.Preferences) string {
 	for {
 		if os.is_file(os.join_path(cfolder, 'v.mod')) {
 			// Reject v.mod files in or above the system temp directory
-			// when the path contains uppercase letters (e.g. ULID-based
-			// test session dirs), as they are likely unrelated.
+			// when the path contains a V test session folder with an
+			// uppercase ULID, as they are likely unrelated.
 			if cfolder != start_folder {
 				rel := start_folder.all_after(cfolder + os.path_separator)
 				if is_unrelated_vmod_in_temp_dir(cfolder, rel.split(os.path_separator)) {
@@ -317,9 +317,9 @@ fn project_root_vmod_folder(pref_ &pref.Preferences) string {
 
 // is_unrelated_vmod_in_temp_dir returns true when `vmod_folder` is in or
 // above the system temp directory and `rel_parts` (the path segments between
-// the v.mod and the source file) contain uppercase letters. This pattern
-// indicates the v.mod belongs to an unrelated project that happens to live
-// in a shared temp location, not to the current compilation.
+// the v.mod and the source file) contain a V test session folder. This pattern
+// indicates the v.mod belongs to an unrelated project that happens to live in
+// a shared temp location, not to the current compilation.
 fn is_unrelated_vmod_in_temp_dir(vmod_folder string, rel_parts []string) bool {
 	temp_dir := os.real_path(os.temp_dir())
 	normalized_vmod_folder := os.real_path(vmod_folder)
@@ -333,7 +333,11 @@ fn is_unrelated_vmod_in_temp_dir(vmod_folder string, rel_parts []string) bool {
 	if vmod_base_url_matches_rel_parts(normalized_vmod_folder, filtered_rel_parts) {
 		return false
 	}
-	return filtered_rel_parts.any(contains_capital(it))
+	return filtered_rel_parts.any(is_vtest_session_folder(it))
+}
+
+fn is_vtest_session_folder(name string) bool {
+	return name.starts_with('tsession_') && contains_capital(name)
 }
 
 fn vmod_base_url_matches_rel_parts(vmod_folder string, rel_parts []string) bool {
