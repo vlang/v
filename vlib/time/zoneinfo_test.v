@@ -142,6 +142,14 @@ fn test_location_time_strftime_uses_location_zone_directives() {
 	assert local.strftime('%12s|%10Z|%10z|%EZ|%Oz') == '  1710054000|       EDT|     -0400|EDT|-0400'
 }
 
+fn test_location_time_strftime_alternate_zone_case() {
+	loc := time.load_location('Pacific/Guam')!
+	local := loc.unix_to_local(1_704_067_200)!
+	assert local.strftime('%Z') == 'ChST'
+	assert local.strftime('%#Z') == 'chst'
+	assert local.strftime('%^Z') == 'CHST'
+}
+
 fn test_location_time_custom_format_uses_location_offset() {
 	shanghai := time.load_location('Asia/Shanghai')!
 	shanghai_time := time.unix(1_704_067_200).in(shanghai)!

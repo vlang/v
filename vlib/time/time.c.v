@@ -174,7 +174,7 @@ fn strftime_location_format(fmt string, zone_name string, zone_offset string, un
 		mut no_padding := false
 		mut padding := ` `
 		mut uppercase := false
-		mut swap_case := false
+		mut alternate_case := false
 		for i < fmt.len {
 			match fmt[i] {
 				`-` {
@@ -192,7 +192,7 @@ fn strftime_location_format(fmt string, zone_name string, zone_offset string, un
 					uppercase = true
 				}
 				`#` {
-					swap_case = true
+					alternate_case = true
 				}
 				else {
 					break
@@ -228,24 +228,20 @@ fn strftime_location_format(fmt string, zone_name string, zone_offset string, un
 			}
 		}
 		formatted := strftime_location_value(value, width, no_padding, padding, uppercase,
-			swap_case)
+			alternate_case)
 		// The value is inserted into the libc format as a literal.
 		out.write_string(formatted.replace('%', '%%'))
 	}
 	return out.str()
 }
 
-fn strftime_location_value(value string, width int, no_padding bool, padding u8, uppercase bool, swap_case bool) string {
+fn strftime_location_value(value string, width int, no_padding bool, padding u8, uppercase bool, alternate_case bool) string {
 	mut formatted := value
 	if uppercase {
 		formatted = formatted.to_upper()
 	}
-	if swap_case {
-		formatted = if formatted == formatted.to_upper() {
-			formatted.to_lower()
-		} else {
-			formatted.to_upper()
-		}
+	if alternate_case {
+		formatted = formatted.to_lower()
 	}
 	if no_padding || formatted.len >= width {
 		return formatted

@@ -256,7 +256,7 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if prefs.os == .all {
 		return true
 	}
-	if file.ends_with('_native.v') {
+	if file.ends_with('.native.v') {
 		return false
 	}
 	if prefs.building_v && prefs.output_cross_c && file.ends_with('_windows.v') {
@@ -365,7 +365,7 @@ pub fn (prefs &Preferences) should_compile_asm(path string) bool {
 }
 
 pub fn (prefs &Preferences) should_compile_js(file string) bool {
-	if file.ends_with('_native.v') {
+	if file.ends_with('.native.v') {
 		return false
 	}
 	if !file.ends_with('.js.v') && file.split('.').len > 2 {
@@ -376,7 +376,7 @@ pub fn (prefs &Preferences) should_compile_js(file string) bool {
 }
 
 pub fn (prefs &Preferences) should_compile_wasm(file string) bool {
-	if file.ends_with('_native.v') {
+	if file.ends_with('.native.v') {
 		return false
 	}
 	if !file.ends_with('.wasm.v') && file.count('.') >= 2 {
