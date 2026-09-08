@@ -212,6 +212,11 @@ fn test_issue_27281_git_dir_marker_stops_fallback_parent_vmod_scan() {
 	issue_27281_assert_boundary_marker_stops_parent_vmod('git_dir', '.git', true)
 }
 
+fn test_issue_27281_other_vcs_dir_markers_stop_fallback_parent_vmod_scan() {
+	issue_27281_assert_boundary_marker_stops_parent_vmod('hg_dir', '.hg', true)
+	issue_27281_assert_boundary_marker_stops_parent_vmod('svn_dir', '.svn', true)
+}
+
 fn test_issue_27281_vmod_stop_marker_stops_fallback_parent_vmod_scan() {
 	issue_27281_assert_boundary_marker_stops_parent_vmod('vmod_stop', '.v.mod.stop', false)
 }
