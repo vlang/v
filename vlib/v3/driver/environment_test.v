@@ -3,9 +3,9 @@ module driver
 import os
 import crypto.sha256
 import v3.ansi
-import v3.flat
 import v3.parser
 import v3.pref
+import v3.types
 
 fn restore_driver_environment(name string, old_value string, was_set bool) {
 	if was_set {
@@ -55,6 +55,39 @@ fn test_v3_environment_show_test_stats_reads_vtest_show_asserts() {
 	assert v3_environment_show_test_stats()
 }
 
+fn test_single_moduleless_test_does_not_duplicate_a_resolvable_same_dir_module() {
+	root := os.join_path(os.temp_dir(), 'v3_same_dir_test_import_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	module_dir := os.join_path(root, 'vlib', 'sample')
+	os.mkdir_all(module_dir)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	test_file := os.join_path(module_dir, 'sample_test.v')
+	module_file := os.join_path(module_dir, 'sample.v')
+	os.write_file(test_file, 'import sample\n\nfn test_sample() {}\n')!
+	os.write_file(module_file, 'module sample\n\npub fn value() int { return 1 }\n')!
+	mut prefs := pref.new_preferences()
+	prefs.vroot = root
+	assert same_dir_module_source_files(test_file, '', prefs) == []
+}
+
+fn test_single_moduleless_test_keeps_an_unresolvable_same_dir_fixture_module() {
+	root := os.join_path(os.temp_dir(), 'v3_same_dir_test_fixture_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	test_file := os.join_path(root, 'fixture_test.v')
+	module_file := os.join_path(root, 'helper.v')
+	os.write_file(test_file, 'import helper\n\nfn test_helper() {}\n')!
+	os.write_file(module_file, 'module helper\n\npub fn value() int { return 1 }\n')!
+	mut prefs := pref.new_preferences()
+	prefs.vroot = os.join_path(root, 'toolchain')
+	assert same_dir_module_source_files(test_file, '', prefs) == [module_file]
+}
+
 fn test_v3_diagnostic_color_option() {
 	defer {
 		apply_v3_diagnostic_color_option('-color')
@@ -81,6 +114,21 @@ fn test_v3_default_diagnostic_color_uses_environment() {
 	assert ansi.red('error') == '\x1b[31merror\x1b[39m'
 }
 
+fn test_release_unused_diagnostic_scope_rebinds_notices() {
+	mut notices := []types.TypeError{cap: 1}
+	scope := prealloc_scope_begin_for_v3()
+	notices << types.TypeError{ msg: 'first' }
+	notices << types.TypeError{ msg: 'second' }
+	$if prealloc {
+		assert scoped_value_owned(scope, notices.data)
+	}
+	release_unused_diagnostic_scope(mut notices, scope)
+	assert notices.len == 0
+	assert notices.cap == 0
+	notices << types.TypeError{ msg: 'parent owned' }
+	assert notices[0].msg == 'parent owned'
+}
+
 fn test_macos_v3_fallback_payload_validation() {
 	assert macos_v3_fallback_payload_is_valid('compiler_error\nsemantic checking')
 	assert macos_v3_fallback_payload_is_valid('compiler_error')
@@ -99,8 +147,7 @@ fn test_macos_v3_fallback_report_sources_keep_parser_digests() {
 		os.rmdir_all(root) or {}
 	}
 	path := os.join_path(root, 'main.v')
-	backend_builtin_path := os.join_path(root, 'vlib', 'builtin',
-		'ownership_interface_d_v3_backend.v')
+	backend_builtin_path := os.join_path(root, 'vlib', 'builtin', 'ownership_interface_d_v3_backend.v')
 	shared_builtin_path := os.join_path(root, 'vlib', 'builtin', 'internal.v')
 	prealloc_builtin_path := os.join_path(root, 'vlib', 'builtin', 'prealloc.c.v')
 	shared_vlib_path := os.join_path(root, 'vlib', 'os', 'shared.v')
@@ -153,11 +200,10 @@ fn test_macos_v3_fallback_report_sources_keep_parser_digests() {
 	staged_paths := os.read_file(os.join_path(report_dir, macos_v3_c_error_v_sources_file))!
 	staged_digests :=
 		os.read_file(os.join_path(report_dir, macos_v3_c_error_v_source_digests_file))!
-	assert staged_paths == [os.real_path(cached_source), real_path, os.real_path(shared_builtin_path),
-		os.real_path(shared_vlib_path)].join('\x00')
-	assert staged_digests == [sha256.hexhash(cached_source_text),
-		sha256.hexhash(parsed_source), sha256.hexhash(shared_builtin_source),
-		sha256.hexhash(shared_vlib_source)].join('\x00')
+	assert staged_paths == [os.real_path(cached_source), real_path,
+		os.real_path(shared_builtin_path), os.real_path(shared_vlib_path)].join('\x00')
+	assert staged_digests == [sha256.hexhash(cached_source_text), sha256.hexhash(parsed_source),
+		sha256.hexhash(shared_builtin_source), sha256.hexhash(shared_vlib_source)].join('\x00')
 }
 
 fn test_macos_v3_fallback_report_inputs_snapshot_native_dependencies() {
@@ -175,37 +221,56 @@ fn test_macos_v3_fallback_report_inputs_snapshot_native_dependencies() {
 	os.write_file(source_candidate, native_source)!
 	header_path := os.real_path(header_candidate)
 	source_path := os.real_path(source_candidate)
+	header_digest := sha256.hexhash(header_source)
+	source_digest := sha256.hexhash(native_source)
 	state := V3ModuleCacheState{
-		module_external_inputs:   {
+		module_external_inputs: {
 			'main': [header_path, source_path]
 		}
-		module_native_roots:      {
+		module_native_roots: {
 			'main': [source_path]
 		}
-		external_inputs_ready:    true
+		external_input_digests: {
+			header_path: header_digest
+			source_path: source_digest
+		}
+		external_inputs_ready: true
 		external_inputs_complete: true
 	}
+	// A watcher can replace a root after traversal. The fallback manifest must retain
+	// the digest captured from the bytes that selected the original dependency tree.
+	os.write_file(header_path, '#include "late.h"\n#define PROJECT_VALUE 42\n')!
 	inputs := macos_v3_fallback_report_inputs({
 		'/project/main.v': sha256.hexhash('module main')
 	}, &state)
 	assert inputs['/project/main.v'] == sha256.hexhash('module main')
 	assert inputs[v3_fallback_native_manifest_key] == sha256.hexhash(v3_fallback_native_manifest_value)
-	assert inputs['${v3_fallback_native_input_prefix}${header_path}'] == sha256.hexhash(header_source)
-	assert inputs['${v3_fallback_native_input_prefix}${source_path}'] == sha256.hexhash(native_source)
-	// The snapshot remains tied to the bytes V3 resolved, even if a watcher rewrites a
-	// dependency before the compatibility compiler runs.
-	os.write_file(header_path, '#define PROJECT_VALUE 42\n')!
+	assert inputs['${v3_fallback_native_input_prefix}${header_path}'] == header_digest
+	assert inputs['${v3_fallback_native_input_prefix}${source_path}'] == source_digest
 	assert inputs['${v3_fallback_native_input_prefix}${header_path}'] != sha256.hexhash(os.read_file(header_path)!)
+}
+
+fn test_should_overlap_v3_native_inputs() {
+	// Large user builds without native typedefs can hide native-input discovery
+	// behind declaration collection.
+	assert should_overlap_v3_native_inputs('c', false, false, false, false, true)
+	// Self-hosting retains its existing overlap when native inputs are needed.
+	assert should_overlap_v3_native_inputs('c', false, false, true, true, false)
+	assert !should_overlap_v3_native_inputs('c', false, false, true, false, true)
+	assert !should_overlap_v3_native_inputs('c', false, false, false, false, false)
+	assert !should_overlap_v3_native_inputs('c', true, false, false, false, true)
+	assert !should_overlap_v3_native_inputs('c', false, true, false, false, true)
+	assert !should_overlap_v3_native_inputs('wasm', false, false, false, false, true)
 }
 
 fn test_v3_fallback_ignores_only_warmup_only_module_sources() {
 	hash_source := os.real_path(os.join_path(os.vtmp_dir(), 'v3_fallback_hash.v'))
 	mut state := V3ModuleCacheState{
-		module_sources:            {
+		module_sources: {
 			'hash': [hash_source]
 		}
 		fallback_required_modules: map[string]bool{}
-		fallback_warmup_modules:   {
+		fallback_warmup_modules: {
 			'hash': true
 		}
 	}
@@ -216,32 +281,8 @@ fn test_v3_fallback_ignores_only_warmup_only_module_sources() {
 	assert hash_source !in v3_fallback_ignored_warmup_source_paths(state)
 }
 
-fn test_parallel_cc_external_definition_precheck_uses_active_ast_directives() {
-	root := os.join_path(os.temp_dir(), 'v3_parallel_cc_active_directive_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root)!
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn main() {}\n')!
-	os.write_file(os.join_path(root, 'windows_impl.h'), 'int windows_impl(void) { return 1; }\n')!
-	mut a := &flat.FlatAst{
-		nodes: [
-			flat.Node{
-				kind:  .file
-				value: source
-			},
-			flat.Node{
-				kind:  .directive
-				value: 'include'
-				typ:   '"@DIR/windows_impl.h"'
-			},
-		]
-	}
-	assert v3_parallel_cc_active_sources_include_external_definition(a, [source])
-	a.nodes[1] = flat.Node{}
-	assert !v3_parallel_cc_active_sources_include_external_definition(a, [source])
+fn test_embedded_vroot_uses_baked_root_for_a_moved_compiler() {
+	assert embedded_vroot(@VEXEROOT, '/private/tmp/moved-v', '/private/tmp/main.v') == @VEXEROOT
 }
 
 fn test_impure_v_diagnostics_inspect_ast_nodes_in_every_pure_v_file() {
@@ -256,8 +297,7 @@ fn test_impure_v_diagnostics_inspect_ast_nodes_in_every_pure_v_file() {
 	js_file := os.join_path(root, 'js_usage.v')
 	allowed_c_file := os.join_path(root, 'allowed.c.v')
 	allowed_js_file := os.join_path(root, 'allowed.js.v')
-	os.write_file(clean_file,
-		"// C.comment() and JS.comment()\nfn clean() { println('C.foo JS.bar') }\n")!
+	os.write_file(clean_file, "// C.comment() and JS.comment()\nfn clean() { println('C.foo JS.bar') }\n")!
 	os.write_file(c_file, 'fn C.do_work()\nfn use_c(value &C.Widget) { C.do_work() }\n')!
 	os.write_file(js_file, 'fn JS.do_work()\nfn use_js(value JS.Number) { JS.do_work() }\n')!
 	os.write_file(allowed_c_file, 'fn C.allowed()\nfn use_c() { C.allowed() }\n')!
@@ -288,8 +328,7 @@ fn test_wayland_gg_precheck_inspects_parsed_imports_in_every_user_file() {
 	gg_file := os.join_path(root, 'gg.v')
 	sapp_file := os.join_path(root, 'sapp.v')
 	os.write_file(comment_file, 'module main\n// import gg\nfn comment_only() {}\n')!
-	os.write_file(string_file,
-		"module main\nconst import_text = 'import sokol.sapp'\nfn string_only() {}\n")!
+	os.write_file(string_file, "module main\nconst import_text = 'import sokol.sapp'\nfn string_only() {}\n")!
 	os.write_file(gg_file, 'module main\nimport gg\nfn gg_import() {}\n')!
 	os.write_file(sapp_file, 'module main\nimport sokol.sapp\nfn sapp_import() {}\n')!
 	prefs := pref.new_preferences()
@@ -327,13 +366,128 @@ fn test_v3_effective_warns_are_errors_includes_prod() {
 	assert v3_effective_warns_are_errors(true, true)
 }
 
+fn test_v3_test_openssl_probe_matches_windows_ci_suppression() {
+	assert !v3_test_openssl_probe_allowed('windows-test', 'windows')
+	assert v3_test_openssl_probe_allowed('', 'windows')
+	assert v3_test_openssl_probe_allowed('linux-test', 'linux')
+}
+
+fn test_v3_test_openssl_probe_uses_version_subcommand() {
+	probe := v3_test_openssl_dependency_probe('openssl', 'openssl')
+	assert probe.command == 'openssl'
+	assert probe.args == ['version']
+	assert probe.pkgconfig_name == 'openssl'
+}
+
+fn test_v3_test_standard_dependency_probes_match_test_runner() {
+	node := v3_test_standard_dependency_probe('present_node') or { panic('missing Node probe') }
+	assert node.command == 'node'
+	assert node.args == ['--version']
+	assert node.pkgconfig_name == ''
+
+	python := v3_test_standard_dependency_probe('present_python') or {
+		panic('missing Python probe')
+	}
+	assert python.command == 'python'
+	assert python.args == ['--version']
+	assert python.pkgconfig_name == 'python3'
+
+	ruby := v3_test_standard_dependency_probe('present_ruby') or { panic('missing Ruby probe') }
+	assert ruby.command == 'ruby'
+	assert ruby.args == ['--version']
+	assert ruby.pkgconfig_name == 'ruby'
+
+	go_probe := v3_test_standard_dependency_probe('present_go') or { panic('missing Go probe') }
+	assert go_probe.command == 'go'
+	assert go_probe.args == ['version']
+	assert go_probe.pkgconfig_name == ''
+}
+
+fn test_v3_test_build_defines_populates_referenced_standard_dependencies() {
+	name := 'VBUILD_DEFINES'
+	old_value := os.getenv(name)
+	was_set := name in os.environ()
+	defer {
+		restore_driver_environment(name, old_value, was_set)
+	}
+	os.unsetenv(name)
+	for define in ['present_node', 'present_python', 'present_ruby', 'present_go'] {
+		probe := v3_test_standard_dependency_probe(define) or {
+			assert false, 'missing dependency probe for ${define}'
+			continue
+		}
+		defines := v3_test_build_defines('${define}?', [])
+		assert (define in defines) == v3_test_dependency_probe_present(probe)
+	}
+}
+
+fn test_v3_build_constraints_are_evaluated_only_for_direct_tests() {
+	root := os.join_path(os.temp_dir(), 'v3_test_constraint_routing_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	malformed_file := os.join_path(root, 'ordinary.v')
+	false_test_file := os.join_path(root, 'false_test.v')
+	os.write_file(malformed_file, '// vtest build: ((malformed\nmodule main\n')!
+	os.write_file(false_test_file, '// vtest build: windows && linux\nmodule main\n')!
+	target := pref.host_target()
+	assert !v3_direct_test_input_is_incompatible(false, malformed_file, 'c', target, 'clang', false, [])
+	assert v3_direct_test_input_is_incompatible(true, false_test_file, 'c', target, 'clang', false, [])
+}
+
+fn test_v3_test_sqlite_present_uses_bundled_windows_source() {
+	root := os.join_path(os.temp_dir(), 'v3_test_sqlite_present_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'thirdparty', 'sqlite'))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	assert !v3_test_sqlite_present('windows', root)
+	os.write_file(os.join_path(root, 'thirdparty', 'sqlite', 'sqlite3.c'), '')!
+	assert v3_test_sqlite_present('windows', root)
+}
+
 fn test_v3_prod_c_optimization_flags_skip_lto_for_tcc() {
-	assert v3_prod_c_optimization_flags(true, false, false, false, false) == ['-O3', '-flto']
-	assert v3_prod_c_optimization_flags(true, false, false, false, true) == ['-O3']
-	assert v3_prod_c_optimization_flags(true, false, true, false, false) == ['-O3']
-	assert v3_prod_c_optimization_flags(true, false, false, true, false) == ['-O3']
-	assert v3_prod_c_optimization_flags(false, false, false, false, false) == []
-	assert v3_prod_c_optimization_flags(true, true, false, false, false) == []
+	assert v3_prod_c_optimization_flags(true, false, false, false, false, false, false) == [
+		'-O3',
+		'-flto',
+	]
+	assert v3_prod_c_optimization_flags(true, false, false, false, true, false, false) == [
+		'-O2',
+		'-flto',
+	]
+	assert v3_prod_c_optimization_flags(true, false, false, false, true, true, false) == [
+		'-O2',
+		'-flto',
+		'-mllvm',
+		'-inline-threshold=75',
+	]
+	assert v3_prod_c_optimization_flags(true, false, false, false, false, false, true) == [
+		'-O3',
+	]
+	assert v3_prod_c_optimization_flags(true, false, true, false, false, false, false) == [
+		'-O3',
+	]
+	assert v3_prod_c_optimization_flags(true, false, false, true, false, false, false) == [
+		'-O3',
+	]
+	assert v3_prod_c_optimization_flags(false, false, false, false, false, false, false) == []
+	assert v3_prod_c_optimization_flags(true, true, false, false, false, false, false) == []
+	assert !v3_is_large_prod_c_unit(v3_large_prod_c_unit_threshold - 1)
+	assert v3_is_large_prod_c_unit(v3_large_prod_c_unit_threshold)
+}
+
+fn test_v3_prod_c_object_optimization_flags_keep_cached_objects_out_of_lto() {
+	assert v3_prod_c_object_optimization_flags(true, false, false, false, false) == [
+		'-O3',
+	]
+	assert v3_prod_c_object_optimization_flags(true, false, false, true, false) == [
+		'-O3',
+	]
+	assert v3_prod_c_object_optimization_flags(false, false, false, false, false) == []
+	assert v3_prod_c_object_optimization_flags(true, true, false, false, false) == []
 }
 
 fn test_effective_c_compiler_name_detects_path_valued_tcc() {

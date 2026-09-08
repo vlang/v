@@ -367,13 +367,13 @@ fn (mut g FlatGen) string_literals_from(start int) {
 		for s in literals {
 			i := g.str_lit_ids[s]
 			escaped := c_escape(s)
-			g.writeln('static string _str_${i} = {"${escaped}", ${s.len}, 1};')
+			g.writeln('static const string _str_${i} = {"${escaped}", ${s.len}, 1};')
 		}
 	} else {
 		for i := start; i < g.str_lits.len; i++ {
 			s := g.str_lits[i]
 			escaped := c_escape(s)
-			g.writeln('string _str_${i} = {"${escaped}", ${s.len}, 1};')
+			g.writeln('static const string _str_${i} = {"${escaped}", ${s.len}, 1};')
 		}
 	}
 	if g.str_lits.len > start {

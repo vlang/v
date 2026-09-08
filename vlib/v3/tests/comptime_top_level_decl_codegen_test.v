@@ -110,12 +110,12 @@ fn test_top_level_decls_inside_active_comptime_branch_are_codegen_visible() {
 	else_choice := comptime_decl_struct_body(else_c, 'Choice')
 	assert comptime_decl_count(else_c, 'struct main__Choice {') == 1, else_c
 	assert else_choice.contains('_dummy'), else_c
-	assert !else_choice.contains('int x;'), else_c
+	assert !else_choice.contains('i64 x;'), else_c
 
 	feature_c := comptime_decl_gen_c(v3_bin, 'feature_branch', true)
 	feature_choice := comptime_decl_struct_body(feature_c, 'Choice')
 	assert comptime_decl_count(feature_c, 'struct main__Choice {') == 1, feature_c
-	assert feature_choice.contains('int x;'), feature_c
+	assert feature_choice.contains('i64 x;'), feature_c
 	assert !feature_choice.contains('_dummy'), feature_c
 }
 

@@ -131,7 +131,7 @@ pub fn parse_long_header(buf []u8) !(QuicLongHeader, int) {
 	dcid_len := int(buf[offset])
 	offset += 1
 	if dcid_len > quic_v1_max_cid_len {
-		return error('long header dcid_len ${dcid_len} exceeds QUIC v1\'s ${quic_v1_max_cid_len}-byte connection-ID limit')
+		return error("long header dcid_len ${dcid_len} exceeds QUIC v1's ${quic_v1_max_cid_len}-byte connection-ID limit")
 	}
 	if offset + dcid_len > buf.len {
 		return error('truncated long header: dcid_len ${dcid_len} exceeds remaining buffer')
@@ -145,7 +145,7 @@ pub fn parse_long_header(buf []u8) !(QuicLongHeader, int) {
 	scid_len := int(buf[offset])
 	offset += 1
 	if scid_len > quic_v1_max_cid_len {
-		return error('long header scid_len ${scid_len} exceeds QUIC v1\'s ${quic_v1_max_cid_len}-byte connection-ID limit')
+		return error("long header scid_len ${scid_len} exceeds QUIC v1's ${quic_v1_max_cid_len}-byte connection-ID limit")
 	}
 	if offset + scid_len > buf.len {
 		return error('truncated long header: scid_len ${scid_len} exceeds remaining buffer')
@@ -174,11 +174,11 @@ pub fn parse_long_header(buf []u8) !(QuicLongHeader, int) {
 		// should use parse_retry_header (retry.v, Phase 4) for the token +
 		// integrity tag that follow.
 		return QuicLongHeader{
-			typ:     typ
+			typ: typ
 			version: version
-			dcid:    dcid
-			scid:    scid
-			token:   token
+			dcid: dcid
+			scid: scid
+			token: token
 		}, offset
 	}
 
@@ -186,12 +186,12 @@ pub fn parse_long_header(buf []u8) !(QuicLongHeader, int) {
 	offset += length_bytes
 
 	return QuicLongHeader{
-		typ:     typ
+		typ: typ
 		version: version
-		dcid:    dcid
-		scid:    scid
-		token:   token
-		length:  length
+		dcid: dcid
+		scid: scid
+		token: token
+		length: length
 	}, offset
 }
 
@@ -253,8 +253,7 @@ pub fn encode_long_header(h QuicLongHeader, reserved_bits u8, pn_length_bits u8)
 	// `h.typ != .retry` guard around the Length varint below), so this
 	// check is scoped the same way.
 	if h.typ != .retry && h.length < u64(pn_length_bits) + 1 {
-		return error('long header Length (${h.length}) must be at least ${u64(pn_length_bits) + 1} bytes to cover the ${
-			pn_length_bits + 1}-byte packet number field it precedes')
+		return error('long header Length (${h.length}) must be at least ${u64(pn_length_bits) + 1} bytes to cover the ${pn_length_bits + 1}-byte packet number field it precedes')
 	}
 
 	type_bits := match h.typ {
@@ -340,9 +339,9 @@ pub fn parse_short_header(buf []u8, dcid_len int) !(QuicShortHeader, int) {
 	// this struct's own doc comment) -- callers must not call this before
 	// that step, same caveat as reserved/pn-length bits.
 	return QuicShortHeader{
-		spin_bit:  buf[0] & 0x20 != 0
+		spin_bit: buf[0] & 0x20 != 0
 		key_phase: buf[0] & 0x04 != 0
-		dcid:      dcid
+		dcid: dcid
 	}, 1 + dcid_len
 }
 
@@ -452,8 +451,8 @@ pub fn parse_version_negotiation(buf []u8) !QuicVersionNegotiation {
 	}
 
 	return QuicVersionNegotiation{
-		dcid:     dcid
-		scid:     scid
+		dcid: dcid
+		scid: scid
 		versions: versions
 	}
 }

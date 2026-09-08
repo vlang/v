@@ -468,6 +468,9 @@ fn test_type_checker_reports_core_semantic_errors() {
 	nested_embedded_method_out := run_good(v3_bin, 'nested_embedded_method',
 		'struct Leaf {}\n\nfn (leaf Leaf) value() int {\n\treturn 9\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{}\n\tprintln(int_str(outer.value()))\n}\n')
 	assert nested_embedded_method_out == '9'
+	aliased_embedded_method_out := run_good(v3_bin, 'aliased_embedded_method',
+		'struct Leaf {}\n\nfn (leaf Leaf) value() int {\n\treturn 11\n}\n\nstruct Outer {\n\tLeaf\n}\n\ntype AliasOuter = Outer\n\nfn main() {\n\touter := AliasOuter{}\n\tprintln(int_str(outer.value()))\n}\n')
+	assert aliased_embedded_method_out == '11'
 	nested_embedded_field_out := run_good(v3_bin, 'nested_embedded_field',
 		'struct Leaf {\n\tx int\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{\n\t\tMiddle: Middle{\n\t\t\tLeaf: Leaf{\n\t\t\t\tx: 12\n\t\t\t}\n\t\t}\n\t}\n\tprintln(int_str(outer.x))\n}\n')
 	assert nested_embedded_field_out == '12'
@@ -1209,12 +1212,12 @@ fn test_statement_if_branch_tails_are_not_value_checked() {
 	run_bad(v3_bin, 'bad_if_branch_value_pointer_mismatch',
 		'struct Foo {}\n\nfn main() {\n\tc := true\n\t_ := if c { Foo{} } else { &Foo{} }\n}\n',
 		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'bad_option_if_error_branch',
-		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {}\n",
-		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'bad_option_const_if_error_branch',
-		"fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {}\n",
-		'if-expression branch type mismatch')
+	option_if_error := run_good(v3_bin, 'good_option_if_error_branch',
+		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {\n\tprintln(int_str(f(false) or { -1 }))\n\t_ := f(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
+	assert option_if_error == '1\nbad'
+	option_const_if_error := run_good(v3_bin, 'good_option_const_if_error_branch',
+		"fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {\n\t_ := f() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
+	assert option_const_if_error == 'bad'
 	run_bad(v3_bin, 'bad_option_return_error',
 		"fn f() ?int {\n\treturn error('bad')\n}\nfn main() {}\n",
 		'Option and Result types have been split')

@@ -62,13 +62,12 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 
 	// out_0.c
 	out0 := '//out0\n' + result.out_str[..result.out_fn_start_pos[0]]
-	os.write_file('${tmp_dir}/out_0.c', '#include "out.h"\n' + out0 + '\n//X:\n' + result.out0_str) or {
+	os.write_file('${tmp_dir}/out_0.c', '#define V_PARALLEL_CC\n#define V_PARALLEL_CC_OUT_0\n#include "out.h"\n' + out0 + '\n//X:\n' + result.out0_str) or {
 		panic(err)
 	}
 
 	// out_x.c
-	os.write_file('${tmp_dir}/out_x.c', '#include "out.h"\n\n' + result.extern_str + '\n' +
-		result.out_str[result.out_fn_start_pos.last()..]) or { panic(err) }
+	os.write_file('${tmp_dir}/out_x.c', '#define V_PARALLEL_CC\n#include "out.h"\n\n' + result.extern_str + '\n' + result.out_str[result.out_fn_start_pos.last()..]) or { panic(err) }
 
 	mut prev_fn_pos := 0
 	mut out_files := []os.File{len: c_files}
@@ -80,7 +79,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 		out_files[i] = os.create(fname) or { panic(err) }
 
 		// Common .c file code
-		out_files[i].writeln('#include "out.h"\n') or { panic(err) }
+		out_files[i].writeln('#define V_PARALLEL_CC\n#include "out.h"\n') or { panic(err) }
 		out_files[i].writeln(result.extern_str) or { panic(err) }
 	}
 
@@ -139,8 +138,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 		}
 	}
 	scompile_args_for_linker := compile_args.filter(it != '-x objective-c').join(' ')
-	compile_args = parallel_cc_compile_driver_args(compile_args, b.has_pkgconfig_pthread(),
-		b.ccoptions.cc, b.pref.ccompiler_type)
+	compile_args = parallel_cc_compile_driver_args(compile_args, b.has_pkgconfig_pthread(), b.ccoptions.cc, b.pref.ccompiler_type)
 	scompile_args := compile_args.join(' ')
 	slinker_args := linker_args.map(parallel_cc_shell_safe_linker_arg(it)).join(' ')
 
@@ -163,8 +161,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	for result_ptr in pp.get_result_pointers() {
 		failed += if isnil(result_ptr) { 0 } else { 1 }
 	}
-	eprint_time(sw,
-		'C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands, failed: ${failed}')
+	eprint_time(sw, 'C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands, failed: ${failed}')
 	if failed > 0 {
 		return error_with_code('failed parallel C compilation', failed)
 	}

@@ -4,6 +4,7 @@ module checker
 
 import os
 import strconv
+import strings
 import v.ast
 import v.vmod
 import v.token
@@ -313,10 +314,11 @@ fn (mut c Checker) refresh_generic_scope_var_type_for_use(mut v ast.Var, use_pos
 		c.inside_recheck = saved_inside_recheck
 		c.anon_struct_should_be_mut = saved_anon_struct_should_be_mut
 	}
-	c.expected_type = ast.void_type
+	// Recheck local initializers in the same consumed-value context as declaration RHS.
+	c.expected_type = ast.none_type
 	c.expected_or_type = ast.void_type
 	c.expected_expr_type = ast.void_type
-	c.inside_assign = false
+	c.inside_assign = true
 	c.inside_decl_rhs = false
 	c.inside_selector_expr = false
 	c.inside_fn_arg = false
@@ -3135,7 +3137,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 	}
 	field_name := node.field_name
-	mut sym := c.table.sym(typ)
+	mut sym := c.table.final_sym(typ)
 	mut final_sym := c.table.final_sym(typ)
 	if (typ.has_flag(.variadic) || final_sym.kind == .array_fixed) && field_name == 'len' {
 		node.typ = ast.int_type
@@ -4064,7 +4066,11 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			}
 		}
 		ast.NodeError {}
-		ast.DebuggerStmt {}
+		ast.DebuggerStmt {
+			if c.fn_level == 0 && !c.inside_anon_fn {
+				c.error('`\$dbg` can only be used inside functions', node.pos)
+			}
+		}
 		ast.AsmStmt {
 			c.asm_stmt(mut node)
 		}
@@ -4278,7 +4284,14 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 	mut aliases := c.asm_ios(mut stmt.output, mut stmt.scope, true)
 	aliases2 := c.asm_ios(mut stmt.input, mut stmt.scope, false)
 	aliases << aliases2
+	if stmt.is_intel && !stmt.is_raw {
+		c.check_asm_intel_ios(stmt.output)
+		c.check_asm_intel_ios(stmt.input)
+	}
 	for mut template in stmt.templates {
+		if stmt.is_raw {
+			continue
+		}
 		if template.is_directive {
 			/*
 			align n[,value]
@@ -4318,9 +4331,59 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 			c.asm_arg(arg, stmt, aliases)
 		}
 	}
-	for mut clob in stmt.clobbered {
-		c.asm_arg(clob.reg, stmt, aliases)
+	for clob in stmt.clobbered {
+		if clob.reg.name in ['cc', 'memory', 'dirflag', 'fpsr', 'flags'] {
+			continue
+		}
+		if clob.reg.name !in stmt.scope.objects {
+			mut msg := 'unknown clobbered register `${clob.reg.name}`'
+			if suggestion := closest_asm_register(clob.reg.name, stmt.scope.objects) {
+				msg += '; did you mean `${suggestion}`?'
+			}
+			c.error(msg, clob.reg.pos)
+		}
 	}
+}
+
+fn (mut c Checker) check_asm_intel_ios(ios []ast.AsmIO) {
+	for io in ios {
+		constraint := io.constraint.trim_left('=+&%*')
+		if constraint != 'r' {
+			c.error('constraint `${io.constraint}` is not supported for operands in structured `intel` assembly; use a register-only `r` constraint or a `raw` template with explicit operand modifiers',
+				io.pos)
+		}
+	}
+}
+
+fn closest_asm_register(name string, registers map[string]ast.ScopeObject) ?string {
+	mut digit_start := -1
+	for i, character in name {
+		if character.is_digit() {
+			digit_start = i
+			break
+		}
+	}
+	if digit_start > 0 && name[digit_start..].bytes().all(it.is_digit()) {
+		normalized := name[..digit_start] + name[digit_start..].int().str()
+		if normalized in registers {
+			return normalized
+		}
+	}
+	mut candidates := registers.keys()
+	candidates.sort()
+	mut closest := ''
+	mut closest_distance := 3
+	for candidate in candidates {
+		distance := strings.levenshtein_distance(name, candidate)
+		if distance < closest_distance {
+			closest = candidate
+			closest_distance = distance
+		}
+	}
+	if closest != '' && closest_distance <= if name.len <= 4 { 1 } else { 2 } {
+		return closest
+	}
+	return none
 }
 
 fn asm_expected_operand_count(arch pref.Arch, name string) ?int {
@@ -4335,7 +4398,15 @@ fn asm_expected_operand_count(arch pref.Arch, name string) ?int {
 
 fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
 	match arg {
-		ast.AsmAlias {}
+		ast.AsmAlias {
+			if arg.name !in aliases && arg.name !in stmt.local_labels
+				&& arg.name !in stmt.global_labels {
+				if suggestion := closest_asm_register(arg.name, stmt.scope.objects) {
+					c.error('unknown register `${arg.name}`; did you mean `${suggestion}`?',
+						arg.pos)
+				}
+			}
+		}
 		ast.AsmAddressing {
 			if arg.scale !in [-1, 1, 2, 4, 8] {
 				c.error('scale must be one of 1, 2, 4, or 8', arg.pos)
@@ -4668,6 +4739,35 @@ fn (mut c Checker) stmts(mut stmts []ast.Stmt) {
 //    `x := if cond { stmt1 stmt2 ExprStmt } else { stmt2 stmt3 ExprStmt }`,
 //    `x := match expr { Type1 { stmt1 stmt2 ExprStmt } else { stmt2 stmt3 ExprStmt }`.
 fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_or_type ast.Type) {
+	c.stmts_ending_with_expression_until(mut stmts, expected_or_type, stmts.len)
+}
+
+fn (mut c Checker) stmts_before_branch_expr(mut stmts []ast.Stmt) {
+	if stmts.len > 0 {
+		last_stmt := stmts.last()
+		if last_stmt is ast.ExprStmt && branch_expr_needs_expected_type(last_stmt.expr) {
+			c.stmts_ending_with_expression_until(mut stmts, ast.void_type, stmts.len - 1)
+			return
+		}
+	}
+	c.stmts_ending_with_expression_until(mut stmts, c.expected_or_type, stmts.len)
+}
+
+fn branch_expr_needs_expected_type(expr ast.Expr) bool {
+	match expr {
+		ast.IfExpr, ast.MatchExpr, ast.LockExpr, ast.UnsafeExpr {
+			return true
+		}
+		ast.ParExpr {
+			return branch_expr_needs_expected_type(expr.expr)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut c Checker) stmts_ending_with_expression_until(mut stmts []ast.Stmt, expected_or_type ast.Type, end int) {
 	if stmts.len == 0 {
 		c.scope_returns = false
 		return
@@ -4682,6 +4782,9 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_o
 	}
 	c.stmt_level++
 	for i, mut stmt in stmts {
+		if i >= end {
+			break
+		}
 		c.is_last_stmt = i == stmts.len - 1
 		if c.scope_returns && unreachable.line_nr == -1 && stmt !is ast.SemicolonStmt
 			&& stmt !is ast.EmptyStmt {
@@ -4701,7 +4804,14 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_o
 			c.scope_returns = false
 		}
 		if c.should_abort {
+			c.stmt_level--
 			return
+		}
+	}
+	if end < stmts.len && c.scope_returns && unreachable.line_nr == -1 {
+		stmt := stmts[end]
+		if stmt !is ast.SemicolonStmt && stmt !is ast.EmptyStmt {
+			unreachable = stmt.pos
 		}
 	}
 	c.stmt_level--

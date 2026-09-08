@@ -153,8 +153,8 @@ fn parse_status_line(line string) !(string, int, string) {
 		return error('response does not start with HTTP/, line: `${line}`')
 	}
 	data := line.split_nth(' ', 3)
-	if data.len != 3 {
-		return error('expected at least 3 tokens, but found: ${data.len}')
+	if data.len < 2 {
+		return error('expected at least 2 tokens, but found: ${data.len}')
 	}
 	version := data[0].substr(5, data[0].len)
 	// validate version is 1*DIGIT "." 1*DIGIT
@@ -167,7 +167,10 @@ fn parse_status_line(line string) !(string, int, string) {
 			return error('HTTP version must contain only integers, found: `${digit}`')
 		}
 	}
-	return version, strconv.atoi(data[1])!, data[2]
+	// RFC 9112 §4: the reason-phrase is optional, and servers that omit it
+	// sometimes omit the SP before it too.
+	reason := if data.len == 3 { data[2] } else { '' }
+	return version, strconv.atoi(data[1])!, reason
 }
 
 // cookies parses the Set-Cookie headers into Cookie objects

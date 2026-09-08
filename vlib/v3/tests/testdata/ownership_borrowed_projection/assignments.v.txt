@@ -1,0 +1,311 @@
+fn test_reassign(holder &Holder) {
+	mut target := Payload{
+		values: ["old"]
+	}
+	target = holder.left
+	target.values[0] = "changed"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_mut_receiver_field_read_is_cloned() {
+	mut holder := RotatingHolder{
+		current: Payload{
+			values: ["original"]
+		}
+	}
+	mut snapshot := holder.snapshot_and_replace()
+	snapshot.values[0] = "snapshot"
+	assert holder.current.values[0] == "replacement"
+}
+
+fn test_mut_value_param_borrowed_reassign(holder &Holder) {
+	mut target := Payload{
+		values: ["old"]
+	}
+	replace_borrowed_payload(mut target, holder)
+	assert target.values[0] == "changed through mut parameter"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_multi_assign(holder &Holder) {
+	mut left := Payload{
+		values: ["old-left"]
+	}
+	mut right := Payload{
+		values: ["old-right"]
+	}
+	left, right = holder.left, holder.right
+	left.values[0] = "changed-left"
+	right.values[0] = "changed-right"
+	assert holder.left.values[0] == "left"
+	assert holder.right.values[0] == "right"
+}
+
+fn test_pointer_dereferences_are_cloned(holder &Holder) {
+	left_pointer := &holder.left
+	mut left_copy := *left_pointer
+	left_copy.values[0] = "dereference copy"
+	assert holder.left.values[0] == "left"
+
+	mut right_copy := copy_payload_pointer(&holder.right)
+	right_copy.values[0] = "return copy"
+	assert holder.right.values[0] == "right"
+}
+
+fn test_conditional_borrowed_branches_are_cloned(holder &Holder) {
+	mut left := select_payload(holder, true)
+	left.values[0] = "conditional left"
+	assert holder.left.values[0] == "left"
+
+	mut right := select_payload(holder, false)
+	right.values[0] = "conditional right"
+	assert holder.right.values[0] == "right"
+}
+
+fn test_multi_conditional_borrowed_branches_are_cloned(holder &Holder, cond bool) {
+	mut first := Payload{
+		values: ["first"]
+	}
+	mut second := Payload{
+		values: ["second"]
+	}
+	first, second = if cond {
+		holder.left
+		holder.right
+	} else {
+		holder.right
+		holder.left
+	}
+	first.values[0] = "conditional first"
+	second.values[0] = "conditional second"
+	assert holder.left.values[0] == "left"
+	assert holder.right.values[0] == "right"
+}
+
+fn test_borrowed_or_fallback_is_cloned(holder &Holder) {
+	mut fallback := maybe_payload() or { holder.left }
+	fallback.values[0] = "fallback copy"
+	assert holder.left.values[0] == "left"
+
+	mut entry := maybe_entry() or { holder.right }
+	mut entry_payload := &(entry as Payload)
+	entry_payload.values[0] = "sum fallback copy"
+	assert holder.right.values[0] == "right"
+
+	mut first, mut second := maybe_payload_pair() or { holder.left, holder.right }
+	first.values[0] = "first fallback copy"
+	second.values[0] = "second fallback copy"
+	assert holder.left.values[0] == "left"
+	assert holder.right.values[0] == "right"
+}
+
+fn test_borrowed_or_success_is_cloned() {
+	mut clones := 0
+	holder := &ObservedOptionalHolder{
+		value: ObservedPayload{
+			values: ["success"]
+			clones: &clones
+		}
+	}
+	mut copied := holder.value or {
+		ObservedPayload{
+			values: ["fallback"]
+			clones: &clones
+		}
+	}
+	assert clones == 1
+	copied.values[0] = "success copy"
+	assert copied.values[0] == "success copy"
+}
+
+fn test_borrowed_or_success_scopes_default_clone_temps() {
+	mut drops := 0
+	holder := &DefaultCloneOptionalHolder{
+		value: DefaultClonePayload{
+			values: [DropObservedPayload{
+				values: ["original"]
+				drops:  &drops
+			}]
+		}
+	}
+	mut copied := holder.value or { DefaultClonePayload{} }
+	copied.values[0].values[0] = "copy"
+	assert copied.values[0].values[0] == "copy"
+	original := holder.value or { panic("missing original") }
+	assert original.values[0].values[0] == "original"
+}
+
+fn test_optional_selector_assignment_clones_borrowed_rhs() {
+	mut clones := 0
+	mut target := ObservedAssignmentTarget{
+		payload: ObservedPayload{
+			values: ["old"]
+			clones: &clones
+		}
+	}
+	node := &ObservedOptionalNode{
+		parent: &target
+	}
+	holder := &ObservedPair{
+		left: ObservedPayload{
+			values: ["source"]
+			clones: &clones
+		}
+		right: ObservedPayload{
+			values: ["other"]
+			clones: &clones
+		}
+	}
+	node.parent or { return }.payload = holder.left
+	assert clones == 1
+	target.payload.values[0] = "assigned"
+	assert holder.left.values[0] == "source"
+}
+
+fn test_sum_shared_field_assignment_clones_borrowed_rhs() {
+	mut clones := 0
+	holder := &ObservedPair{
+		left: ObservedPayload{
+			values: ["source"]
+			clones: &clones
+		}
+		right: ObservedPayload{
+			values: ["other"]
+			clones: &clones
+		}
+	}
+	mut entry := ObservedSharedEntry(ObservedSharedLeft{
+		payload: ObservedPayload{
+			values: ["old"]
+			clones: &clones
+		}
+	})
+	entry.payload = holder.left
+	assert clones == 1
+	if mut entry is ObservedSharedLeft {
+		entry.payload.values[0] = "assigned"
+	}
+	assert holder.left.values[0] == "source"
+}
+
+fn test_interface_field_assignment_clones_borrowed_rhs() {
+	mut clones := 0
+	holder := &ObservedPair{
+		left: ObservedPayload{
+			values: ["source"]
+			clones: &clones
+		}
+		right: ObservedPayload{
+			values: ["other"]
+			clones: &clones
+		}
+	}
+	mut target := ObservedPayloadTarget(ObservedInterfaceTarget{
+		payload: ObservedPayload{
+			values: ["old"]
+			clones: &clones
+		}
+	})
+	clones_before_assignment := clones
+	target.payload = holder.left
+	assert clones == clones_before_assignment + 1
+	if mut target is ObservedInterfaceTarget {
+		target.payload.values[0] = "assigned"
+		assert target.payload.values[0] == "assigned"
+	}
+	assert holder.left.values[0] == "source"
+}
+
+fn test_borrowed_sum_projection_is_cloned() {
+	holder := &EntryHolder{
+		entry: Payload{
+			values: ["original"]
+		}
+	}
+	mut copied := EntryCopy{
+		entry: holder.entry
+	}
+	mut copied_payload := &(copied.entry as Payload)
+	copied_payload.values[0] = "struct copy"
+	assert (holder.entry as Payload).values[0] == "original"
+
+	mut returned := get_entry(holder)
+	mut returned_payload := &(returned as Payload)
+	returned_payload.values[0] = "return copy"
+	assert (holder.entry as Payload).values[0] == "original"
+
+	mut optional := get_optional_entry(holder) or { panic(err) }
+	mut optional_payload := &(optional as Payload)
+	optional_payload.values[0] = "optional copy"
+	assert (holder.entry as Payload).values[0] == "original"
+}
+
+fn test_owned_rvalue_sum_projection_is_moved() {
+	mut payload := make_owned_entry() as Payload
+	payload.values[0] = "moved"
+	assert payload.values[0] == "moved"
+}
+
+fn test_owned_rvalue_slice_projection_is_consumed() {
+	mut clones := 0
+	mut drops := 0
+	consume_owned_rvalue_slice(&clones, &drops)
+	assert clones == 1
+	assert drops == 2
+}
+
+fn test_nonaddressable_borrowed_projections_are_stable() {
+	mut sum_drops := 0
+	entry := DefaultCloneEntry(DefaultClonePayload{
+		values: [DropObservedPayload{
+			values: ["sum original"]
+			drops:  &sum_drops
+		}]
+	})
+	mut copied_entry := entry as DefaultClonePayload
+	assert sum_drops == 0
+	copied_entry.values[0].values[0] = "sum copy"
+	assert (entry as DefaultClonePayload).values[0].values[0] == "sum original"
+
+	mut slice_drops := 0
+	holder := &DefaultCloneArrayHolder{
+		items: [DefaultClonePayload{
+			values: [DropObservedPayload{
+				values: ["slice original"]
+				drops:  &slice_drops
+			}]
+		}]
+	}
+	mut copied_items := holder.items[..]
+	assert slice_drops == 0
+	copied_items[0].values[0].values[0] = "slice copy"
+	assert holder.items[0].values[0].values[0] == "slice original"
+}
+
+fn main() {
+	holder := &Holder{
+		left: Payload{
+			values: ["left"]
+		}
+		right: Payload{
+			values: ["right"]
+		}
+	}
+	test_reassign(holder)
+	test_mut_receiver_field_read_is_cloned()
+	test_mut_value_param_borrowed_reassign(holder)
+	test_multi_assign(holder)
+	test_pointer_dereferences_are_cloned(holder)
+	test_conditional_borrowed_branches_are_cloned(holder)
+	test_multi_conditional_borrowed_branches_are_cloned(holder, true)
+	test_borrowed_or_fallback_is_cloned(holder)
+	test_borrowed_or_success_is_cloned()
+	test_borrowed_or_success_scopes_default_clone_temps()
+	test_optional_selector_assignment_clones_borrowed_rhs()
+	test_sum_shared_field_assignment_clones_borrowed_rhs()
+	test_interface_field_assignment_clones_borrowed_rhs()
+	test_borrowed_sum_projection_is_cloned()
+	test_owned_rvalue_sum_projection_is_moved()
+	test_owned_rvalue_slice_projection_is_consumed()
+	test_nonaddressable_borrowed_projections_are_stable()
+}

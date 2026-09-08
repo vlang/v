@@ -21,8 +21,8 @@ import crypto.aes
 // (testdata/tls13_vectors/) were captured from.
 const retry_integrity_key = [u8(0xbe), 0x0c, 0x69, 0x0b, 0x9f, 0x66, 0x57, 0x5a, 0x1d, 0x76, 0x6b,
 	0x54, 0xe3, 0x68, 0xc8, 0x4e]!
-const retry_integrity_nonce = [u8(0x46), 0x15, 0x99, 0xd3, 0x5d, 0x63, 0x2b, 0xf2, 0x23, 0x98,
-	0x25, 0xbb]!
+const retry_integrity_nonce = [u8(0x46), 0x15, 0x99, 0xd3, 0x5d, 0x63, 0x2b, 0xf2, 0x23, 0x98, 0x25,
+	0xbb]!
 
 pub const retry_integrity_tag_len = 16
 
@@ -99,10 +99,10 @@ pub fn parse_retry_packet(buf []u8, original_dcid []u8, original_scid []u8) !Qui
 	}
 	integrity_tag := buf[buf.len - retry_integrity_tag_len..].clone()
 	return QuicRetryPacket{
-		version:       header.version
-		dcid:          header.dcid
-		scid:          header.scid
-		retry_token:   retry_token
+		version: header.version
+		dcid: header.dcid
+		scid: header.scid
+		retry_token: retry_token
 		integrity_tag: integrity_tag
 	}
 }

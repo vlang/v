@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_flow_control_window_available_and_consume() {
@@ -53,6 +52,7 @@ fn test_receive_window_auto_growth_heuristic() {
 	assert w.should_advertise_more() == false
 	w.note_read(40)
 	assert w.should_advertise_more() == false // less than half
+
 	w.note_read(50)
 	assert w.should_advertise_more() == true // >= half (50/100)
 
@@ -93,14 +93,14 @@ fn test_receive_window_mark_advertised_never_regresses() {
 // (e.g. "returns SOME value") would never catch.
 fn test_initial_stream_limits_hand_derived_client_perspective() {
 	peer_params := QuicTransportParameters{
-		initial_max_stream_data_bidi_local:  1000 // server's own: how much CLIENT may send on SERVER-opened bidi streams
+		initial_max_stream_data_bidi_local: 1000 // server's own: how much CLIENT may send on SERVER-opened bidi streams
 		initial_max_stream_data_bidi_remote: 2000 // server's own: how much CLIENT may send on CLIENT-opened bidi streams
-		initial_max_stream_data_uni:         3000 // server's own: how much CLIENT may send on CLIENT-opened uni streams
+		initial_max_stream_data_uni: 3000 // server's own: how much CLIENT may send on CLIENT-opened uni streams
 	}
 	own_params := QuicTransportParameters{
-		initial_max_stream_data_bidi_local:  4000 // client's own: how much SERVER may send on CLIENT-opened bidi streams
+		initial_max_stream_data_bidi_local: 4000 // client's own: how much SERVER may send on CLIENT-opened bidi streams
 		initial_max_stream_data_bidi_remote: 5000 // client's own: how much SERVER may send on SERVER-opened bidi streams
-		initial_max_stream_data_uni:         6000 // client's own: how much SERVER may send on SERVER-opened uni streams
+		initial_max_stream_data_uni: 6000 // client's own: how much SERVER may send on SERVER-opened uni streams
 	}
 
 	client_bidi := StreamId{
@@ -119,13 +119,17 @@ fn test_initial_stream_limits_hand_derived_client_perspective() {
 	// SEND limits (how much the CLIENT may send), governed by the SERVER's
 	// (peer's) parameters:
 	assert initial_send_limit_for_stream(client_bidi, .client, peer_params) == 2000 // peer's _bidi_remote
+
 	assert initial_send_limit_for_stream(server_bidi, .client, peer_params) == 1000 // peer's _bidi_local
+
 	assert initial_send_limit_for_stream(client_uni, .client, peer_params) == 3000 // peer's _uni
 
 	// RECEIVE limits (how much the CLIENT has told the server it may
 	// send), governed by the CLIENT's OWN parameters:
 	assert initial_receive_limit_for_stream(client_bidi, .client, own_params) == 4000 // own _bidi_local
+
 	assert initial_receive_limit_for_stream(server_bidi, .client, own_params) == 5000 // own _bidi_remote
+
 	assert initial_receive_limit_for_stream(server_uni, .client, own_params) == 6000 // own _uni
 }
 

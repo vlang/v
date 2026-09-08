@@ -43,7 +43,7 @@ pub mut:
 pub fn new_rtt_estimator() RttEstimator {
 	return RttEstimator{
 		smoothed_rtt: initial_rtt
-		rttvar:       initial_rtt / 2
+		rttvar: initial_rtt / 2
 	}
 }
 

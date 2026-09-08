@@ -20,7 +20,7 @@ fn vpm_update(query []string) {
 	idents := if query.len == 0 { get_installed_modules() } else { query.clone() }
 	mut pp := pool.new_pool_processor(callback: update_module)
 	ctx := UpdateSession{idents}
-	pp.set_shared_context(ctx)
+	pp.set_shared_context(&ctx)
 	pp.work_on_items(idents)
 	mut errors := 0
 	for res in pp.get_results[UpdateResult]() {

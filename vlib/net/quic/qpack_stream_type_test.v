@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_classify_qpack_stream_type() {

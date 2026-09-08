@@ -1,8 +1,21 @@
 module multiwindow
 
+#flag windows -DV_MULTIWINDOW_WIN32_SERVICE_TEST
+
 $if windows {
+	#include "@VMODROOT/vlib/x/multiwindow/testdata/win32_monitor_enumeration_test_storage.h"
 	#insert "@VMODROOT/vlib/x/multiwindow/testdata/event_sequence_exhaustion_helpers.h"
 
+	fn C.v_multiwindow_test_win32_monitor_enumeration_use_empty()
+	fn C.v_multiwindow_test_win32_monitor_enumeration_reset()
+	fn C.v_multiwindow_test_win32_windowposchanged_reason3_reset()
+	fn C.v_multiwindow_test_win32_windowposchanged_reason3_arm()
+	fn C.v_multiwindow_test_win32_windowposchanged_reason3_is_armed() int
+	fn C.v_multiwindow_test_win32_windowposchanged_reason3_consumed() int
+	fn C.v_multiwindow_test_win32_windowposchanged_reason3_uint64_max_observed() int
+	fn C.v_multiwindow_test_win32_windowposchanged_reason3_move_succeeded() int
+	fn C.v_multiwindow_test_win32_windowposchanged_reason3_hwnd() voidptr
+	fn C.v_multiwindow_test_win32_windowposchanged_reason3_hwnd_is_window() int
 	fn C.v_multiwindow_test_event_sequence_current() u64
 	fn C.v_multiwindow_test_event_sequence_exhausted() int
 	fn C.v_multiwindow_test_set_event_sequence(sequence u64, exhausted int)
@@ -147,6 +160,65 @@ fn test_win32_native_sequence_exhaustion_is_sticky_without_wrapped_admission() {
 			win32: native
 		}
 		assert_sequence_terminal_replays_for_poll_and_operation(mut backend)
+	}
+}
+
+fn win32_w3_cold_start_exhaustion_cleanup() ! {
+	$if windows {
+		saved_sequence := C.v_multiwindow_test_event_sequence_current()
+		saved_exhausted := C.v_multiwindow_test_event_sequence_exhausted()
+		defer {
+			C.v_multiwindow_test_set_event_sequence(saved_sequence, saved_exhausted)
+		}
+
+		C.v_multiwindow_test_win32_monitor_enumeration_use_empty()
+		defer {
+			C.v_multiwindow_test_win32_monitor_enumeration_reset()
+		}
+		mut app := new_app(backend: .win32)!
+		C.v_multiwindow_test_win32_monitor_enumeration_reset()
+		defer {
+			app.stop() or {}
+		}
+		defer {
+			C.v_multiwindow_test_win32_windowposchanged_reason3_reset()
+		}
+
+		C.v_multiwindow_test_win32_windowposchanged_reason3_arm()
+
+		mut create_error := ''
+		if _ := app.create_window(
+			title:    'W3 exhausted cold-start cleanup'
+			visible:  false
+			high_dpi: false
+		)
+		{
+			assert false, 'armed Win32 create did not reach terminal sequence exhaustion'
+		} else {
+			create_error = err.msg()
+		}
+		assert create_error == err_backend_event_sequence_exhausted
+		assert C.v_multiwindow_test_event_sequence_current() == 0
+		assert C.v_multiwindow_test_event_sequence_exhausted() == 1
+		assert C.v_multiwindow_test_win32_windowposchanged_reason3_consumed() == 1
+		assert C.v_multiwindow_test_win32_windowposchanged_reason3_is_armed() == 0
+		assert C.v_multiwindow_test_win32_windowposchanged_reason3_uint64_max_observed() == 1
+		assert C.v_multiwindow_test_win32_windowposchanged_reason3_move_succeeded() == 1
+		assert C.v_multiwindow_test_win32_windowposchanged_reason3_hwnd() != unsafe { nil }
+		assert app.backend.win32.windows.len == 0, 'terminal Win32 create retained native ownership'
+		assert C.v_multiwindow_test_win32_windowposchanged_reason3_hwnd_is_window() == 0
+	} $else {
+		return error(err_backend_unsupported)
+	}
+}
+
+fn test_win32_w3_cold_start_sequence_exhaustion_releases_native_ownership() {
+	$if windows {
+		sequence_before := C.v_multiwindow_test_event_sequence_current()
+		exhausted_before := C.v_multiwindow_test_event_sequence_exhausted()
+		win32_w3_cold_start_exhaustion_cleanup()!
+		assert C.v_multiwindow_test_event_sequence_current() == sequence_before
+		assert C.v_multiwindow_test_event_sequence_exhausted() == exhausted_before
 	}
 }
 

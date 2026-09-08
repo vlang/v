@@ -70,10 +70,10 @@ pub fn decode_qpack_decoder_instruction(buf []u8) !QpackDecodedDecoderInstructio
 		}
 		return QpackDecodedDecoderInstruction{
 			has_instruction: true
-			instr:           QpackDecoderInstruction(QpackSectionAck{
+			instr: QpackDecoderInstruction(QpackSectionAck{
 				stream_id: stream_id
 			})
-			consumed:        len
+			consumed: len
 		}
 	}
 	if first & 0x40 != 0 {
@@ -85,10 +85,10 @@ pub fn decode_qpack_decoder_instruction(buf []u8) !QpackDecodedDecoderInstructio
 		}
 		return QpackDecodedDecoderInstruction{
 			has_instruction: true
-			instr:           QpackDecoderInstruction(QpackStreamCancellation{
+			instr: QpackDecoderInstruction(QpackStreamCancellation{
 				stream_id: stream_id
 			})
-			consumed:        len
+			consumed: len
 		}
 	}
 	increment, len := decode_prefixed_int(buf, 6) or {
@@ -99,10 +99,10 @@ pub fn decode_qpack_decoder_instruction(buf []u8) !QpackDecodedDecoderInstructio
 	}
 	return QpackDecodedDecoderInstruction{
 		has_instruction: true
-		instr:           QpackDecoderInstruction(QpackInsertCountIncrement{
+		instr: QpackDecoderInstruction(QpackInsertCountIncrement{
 			increment: increment
 		})
-		consumed:        len
+		consumed: len
 	}
 }
 

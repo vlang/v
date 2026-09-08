@@ -111,7 +111,7 @@ fn test_imported_module_fn_short_name_does_not_pollute_builtin_return_type() {
 	assert run.output.trim_space() == 'ok'
 
 	generated := os.read_file(out + '.c') or { panic(err) }
-	assert generated.contains('DenseArray new_dense_array(int key_bytes, int value_bytes);'), generated
+	assert generated.contains('DenseArray new_dense_array(i64 key_bytes, i64 value_bytes);'), generated
 	assert generated.contains('.key_values = new_dense_array(key_bytes, value_bytes)'), generated
 	assert generated.contains('collisionmod__new_dense_array_T_v_int'), generated
 	assert generated.contains('localmod__helper()'), generated

@@ -468,6 +468,21 @@ fn main() {
 	assert used['default_target']
 }
 
+fn test_non_generic_repeated_calls_keep_each_modules_dependencies() {
+	a, tc := parse_checked_project('repeated_module_edges_${os.getpid()}', {
+		'main.v':    'module main\nimport one\nimport two\nfn main() { one.first() one.second() two.first() two.second() }'
+		'one/one.v': 'module one\npub fn first() { leaf() }\npub fn second() { leaf() }\nfn leaf() { tail() }\nfn tail() {}\nfn unused() {}'
+		'two/two.v': 'module two\npub fn first() { leaf() }\npub fn second() { leaf() }\nfn leaf() { tail() }\nfn tail() {}\nfn unused() {}'
+	}, 'main.v')
+	used := markused.mark_used_without_generic_detection(a, tc)
+	for mod in ['one', 'two'] {
+		for name in ['first', 'second', 'leaf', 'tail'] {
+			assert used['${mod}.${name}']
+		}
+		assert !used['${mod}.unused']
+	}
+}
+
 fn test_self_typed_default_collects_explicit_initializer_calls() {
 	used := mark_used_source('self_typed_default_explicit_call', '
 interface Value {}
@@ -1434,7 +1449,7 @@ fn test_reachable_main_fn_literal_is_emitted_after_used_filter_transform() {
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('int __anon_fn_')
+	assert c_code.contains('i64 __anon_fn_')
 	assert c_code.contains('callback_value(__anon_fn_')
 }
 
@@ -1761,7 +1776,7 @@ fn main() {
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('new_map(sizeof(string), sizeof(int)')
+	assert c_code.contains('new_map(sizeof(string), sizeof(i64)')
 }
 
 // test_optional_map_or_lowers_to_new_map_after_used_filter_transform
@@ -1785,7 +1800,7 @@ fn main() {
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('new_map(sizeof(string), sizeof(int)')
+	assert c_code.contains('new_map(sizeof(string), sizeof(i64)')
 }
 
 // test_string_membership_lowers_to_contains_after_used_filter_transform

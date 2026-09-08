@@ -210,7 +210,7 @@ fn main() {
 }
 ')
 	good_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_good_${os.getpid()}')
-	good_compile := os.execute('${v3_bin} ${good_src} -b c -o ${good_out}')
+	good_compile := os.execute('${v3_bin} -enable-globals ${good_src} -b c -o ${good_out}')
 	assert good_compile.exit_code == 0, good_compile.output
 	run := os.execute(good_out)
 	assert run.exit_code == 0, run.output
@@ -244,7 +244,8 @@ fn main() {
 	assert !generated.contains('direct_callback_adapter'), generated
 
 	autofree_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_autofree_${os.getpid()}')
-	autofree_compile := os.execute('${v3_bin} -autofree ${good_src} -b c -o ${autofree_out}')
+	autofree_compile :=
+		os.execute('${v3_bin} -enable-globals -autofree ${good_src} -b c -o ${autofree_out}')
 	assert autofree_compile.exit_code == 0, autofree_compile.output
 	autofree_run := os.execute(autofree_out)
 	assert autofree_run.exit_code == 0, autofree_run.output
@@ -320,6 +321,10 @@ fn main() {
 ')
 	primitive_param_compile := callback_compile(v3_bin, wrong_primitive_param,
 		'wrong_primitive_param')
+	// `fn (int)` and `fn (i64)` are distinct source types even though platform `int`
+	// currently shares i64's C width on 64-bit targets; assigning one to the other
+	// stays a type error (function-type identity is independent of the emitted C
+	// spelling and target width).
 	assert primitive_param_compile.exit_code != 0, primitive_param_compile.output
 
 	homonym_root := os.join_path(os.temp_dir(), 'v3_callback_userdata_homonym_${os.getpid()}')

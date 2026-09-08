@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_is_h3_frame_valid_on_stream_table1_data_and_headers() {

@@ -1,0 +1,47 @@
+fn zero() int {
+	return 0
+}
+
+fn main() {
+	fallback := $embed_file(@FILE)
+	ok := true
+	other := true
+	text_if := if ok {
+		(if other {
+			$embed_file(@FILE)
+		} else {
+			fallback
+		}).to_string()
+	} else {
+		''
+	}
+	text_match := if ok {
+		(match zero() {
+			0 {
+				$embed_file(@FILE)
+			}
+			else {
+				fallback
+			}
+		}).to_string()
+	} else {
+		''
+	}
+
+	(if ok {
+		$embed_file(@FILE)
+	} else {
+		fallback
+	}).to_string()
+
+	(match zero() {
+		0 {
+			$embed_file(@FILE)
+		}
+		else {
+			fallback
+		}
+	}).to_string()
+	assert text_if.len > 0
+	assert text_match.len > 0
+}

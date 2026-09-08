@@ -2195,7 +2195,11 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 				sym := g.table.sym(ty)
 
 				if sym.name == node.name {
-					g.writeln('...${g.js_name(iface)}.prototype,')
+					js_iface := g.js_name(iface)
+					g.writeln('...Object.fromEntries(Reflect.ownKeys(${js_iface}.prototype)')
+					g.writeln('\t.map((key) => [key, Object.getOwnPropertyDescriptor(${js_iface}.prototype, key)])')
+					g.writeln("\t.filter(([, descriptor]) => descriptor.enumerable && 'value' in descriptor)")
+					g.writeln('\t.map(([key, descriptor]) => [key, descriptor.value])),')
 				}
 			}
 		}

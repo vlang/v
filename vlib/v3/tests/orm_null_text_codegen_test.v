@@ -18,10 +18,15 @@ fn orm_null_text_build_v3() string {
 }
 
 fn orm_null_text_gen_c(v3_bin string, name string, src string) string {
-	src_path := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+	root := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src_path := os.join_path(root, 'main.v')
 	os.write_file(src_path, src) or { panic(err) }
-	c_path := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.c')
-	os.rm(c_path) or {}
+	c_path := os.join_path(root, 'main.c')
 	result := os.execute('${v3_bin} ${src_path} -o ${c_path}')
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_path) or { panic(err) }
@@ -172,6 +177,37 @@ fn main() {
 ')
 	assert !c_code.contains('INSERT INTO "User"'), c_code
 	assert !c_code.contains('(users).name'), c_code
+}
+
+fn test_multi_statement_sql_keeps_heap_promoted_db_pointer() {
+	v3_bin := orm_null_text_build_v3()
+	c_code := orm_null_text_gen_c(v3_bin, 'orm_heap_promoted_multi_statement_db', "import db.sqlite
+
+struct User {
+	id int @[primary]
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+	first := User{1}
+	second := User{2}
+	sql db {
+		insert first into User
+		insert second into User
+	}!
+}
+")
+	mut found_stable_db := false
+	for line in c_code.split_into_lines() {
+		assert !(line.contains('sqlite__DB* __sql_db_') && line.contains(' = *db;')), line
+		if line.contains('sqlite__DB __sql_db_') && line.contains(' = *db;') {
+			found_stable_db = true
+		}
+	}
+	assert found_stable_db, c_code
 }
 
 fn test_orm_insert_requires_qualified_value_type_match() {

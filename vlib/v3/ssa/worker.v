@@ -142,6 +142,8 @@ pub fn (mut m Module) merge_worker_module(w &Module, func_data []FuncSSAData, se
 			ret_type:    remap_t(wt.ret_type, type_remap, seed_types)
 			is_c_struct: wt.is_c_struct
 			is_union:    wt.is_union
+			is_packed:   wt.is_packed
+			alignment:   wt.alignment
 		}
 		new_id := m.type_store.register(new_type)
 		if cache_key.len > 0 {

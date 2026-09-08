@@ -220,6 +220,53 @@ fn main() {
 	assert run_module_cache_binary(second_output) == 'V3_CACHE_SYNC_OK'
 }
 
+fn test_warm_cached_module_preserves_runtime_const_dependency_order() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_runtime_const_order_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'ordered/a_consumer.v', 'module ordered
+
+const value = make_value()
+
+fn make_value() int {
+	return dependency + 1
+}
+
+pub fn result() int {
+	return value
+}
+')
+	write_module_cache_file(root, 'ordered/z_dependency.v', 'module ordered
+
+const dependency = make_dependency()
+
+fn make_dependency() int {
+	return 41
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import ordered
+
+fn main() {
+	println(ordered.result())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_cached_program_preserves_selective_import_call_target() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_cached_selective_import_${os.getpid()}')
@@ -1656,6 +1703,49 @@ fn main() {
 	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
 	assert run_module_cache_binary(output) == '42'
 	assert module_cache_artifact(cache_dir, 'owner_', '.o').len > 0
+}
+
+fn test_conventional_native_implementation_macro_is_restored_in_owner() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_conventional_impl_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'owner/native.h', '#ifdef SOKOL_TEST_IMPL
+int v3_conventional_impl_value(void) { return 42; }
+#endif
+')
+	write_module_cache_file(root, 'owner/owner.v', 'module owner
+
+#define SOKOL_TEST_IMPL
+#insert "@DIR/native.h"
+
+fn C.v3_conventional_impl_value() int
+
+pub fn value() int {
+	return C.v3_conventional_impl_value()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import owner
+
+fn main() {
+	println(owner.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	assert module_cache_artifact(cache_dir, 'owner_', '.o').len > 0
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
 }
 
 fn test_unconditional_native_definition_disables_module_cache_split() {
@@ -4395,6 +4485,84 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '7'
 }
 
+fn test_cold_module_cache_preserves_parallel_interface_indexes() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_parallel_interfaces_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'contract/contract.v', 'module contract
+
+pub interface JsonEncoder {
+	to_json() string
+}
+
+pub interface A {
+	a() int
+}
+
+pub interface B {
+	b() int
+}
+
+pub interface C {
+	c() int
+}
+
+pub struct Null {}
+
+pub fn (null Null) to_json() string {
+	_ = null
+	return "null"
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import contract
+
+fn main() {
+	println("hi")
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'app')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert run_module_cache_binary(output) == 'hi'
+}
+
+fn test_cold_module_cache_preserves_parallel_monomorph_specs() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_parallel_monomorph_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import x.json2
+
+struct Result {
+	success bool
+	values  []string
+}
+
+fn main() {
+	result := json2.decode[Result](r\'{"success":true,"values":["A","B"]}\')!
+	println(result.success)
+	println(result.values.join(","))
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'app')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert run_module_cache_binary(output) == 'true\nA,B'
+}
+
 fn test_cached_interface_implementer_with_embedded_body_has_forward_declaration() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_interface_embedded_body_${os.getpid()}')
@@ -4878,7 +5046,12 @@ fn main() {
 	second :=
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} V3_CACHE_DISABLE_INCREMENTAL=1 ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
 	assert second.exit_code == 0, second.output
-	assert second.output.contains('monomorphize (dependency cache)'), second.output
+	$if macos {
+		// The generic-program development cache is currently enabled only on macOS.
+		assert second.output.contains('monomorphize (dependency cache)'), second.output
+	} $else {
+		assert !second.output.contains('monomorphize (dependency cache)'), second.output
+	}
 	assert run_module_cache_binary(second_output) == 'ok'
 }
 

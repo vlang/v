@@ -59,6 +59,9 @@ $if macos {
 		#flag darwin -DSOKOL_GLCORE -framework OpenGL -framework Cocoa -framework QuartzCore
 	} $else {
 		#flag -DSOKOL_METAL
+		$if gg_multiwindow ? {
+			#flag darwin -DV_SOKOL_MTL_END_PASS_HOOK
+		}
 		#flag -framework Metal -framework Cocoa -framework MetalKit -framework QuartzCore
 	}
 }

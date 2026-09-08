@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 import crypto.ecdsa
@@ -52,8 +51,7 @@ fn conn_test_sign_certificate_verify(signed_content []u8) ![]u8 {
 		C.mbedtls_pk_free(&pk)
 	}
 	unsafe {
-		parse_ret := C.mbedtls_pk_parse_key(&pk, conn_test_key_pem.str, conn_test_key_pem.len + 1,
-			0, 0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+		parse_ret := C.mbedtls_pk_parse_key(&pk, conn_test_key_pem.str, conn_test_key_pem.len + 1, 0, 0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
 		if parse_ret != 0 {
 			return error('test: failed to parse RSA private key, mbedtls ret: ${parse_ret}')
 		}
@@ -61,8 +59,7 @@ fn conn_test_sign_certificate_verify(signed_content []u8) ![]u8 {
 	// pk_type 6 = MBEDTLS_PK_RSASSA_PSS, md_alg 9 = MBEDTLS_MD_SHA256.
 	mut sig := []u8{len: 600}
 	mut sig_len := usize(0)
-	ret := C.mbedtls_pk_sign_ext(6, &pk, 9, hash.data, usize(hash.len), sig.data, usize(sig.len),
-		&sig_len, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+	ret := C.mbedtls_pk_sign_ext(6, &pk, 9, hash.data, usize(hash.len), sig.data, usize(sig.len), &sig_len, C.mbedtls_ctr_drbg_random, &ctr_drbg)
 	if ret != 0 {
 		return error('test: mbedtls_pk_sign_ext failed, mbedtls ret: ${ret}')
 	}
@@ -212,12 +209,12 @@ fn conn_test_concat_bytes(a []u8, b []u8) []u8 {
 // they care about.
 fn generous_transport_params() QuicTransportParameters {
 	return QuicTransportParameters{
-		initial_max_data:                    1_000_000
-		initial_max_stream_data_bidi_local:  100_000
+		initial_max_data: 1_000_000
+		initial_max_stream_data_bidi_local: 100_000
 		initial_max_stream_data_bidi_remote: 100_000
-		initial_max_stream_data_uni:         100_000
-		initial_max_streams_bidi:            10
-		initial_max_streams_uni:             10
+		initial_max_stream_data_uni: 100_000
+		initial_max_streams_bidi: 10
+		initial_max_streams_uni: 10
 	}
 }
 
@@ -232,12 +229,12 @@ fn generous_transport_params() QuicTransportParameters {
 fn build_fake_long_header_packet(typ LongPacketType, dcid []u8, scid []u8, pn u64, payload []u8, keys QuicPacketProtectionKeys) !QuicDatagram {
 	pn_length := 2
 	h := QuicLongHeader{
-		typ:     typ
+		typ: typ
 		version: quic_v1
-		dcid:    dcid
-		scid:    scid
-		token:   []u8{}
-		length:  u64(pn_length) + u64(payload.len) + aead_tag_len
+		dcid: dcid
+		scid: scid
+		token: []u8{}
+		length: u64(pn_length) + u64(payload.len) + aead_tag_len
 	}
 	mut header := encode_long_header(h, 0, u8(pn_length - 1))!
 	header << [u8(pn >> 8), u8(pn)]
@@ -304,9 +301,9 @@ fn conn_test_decrypt_one_rtt(datagram []u8, dcid_len int, keys QuicPacketProtect
 fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTransportParameters) !(&QuicConn, []u8, u64) {
 	mut now := u64(1000)
 	mut c, initial_dg := dial(DialParams{
-		server_name:          'example.com'
-		ca_bundle_pem:        conn_test_cert_pem
-		alpn_protocols:       ['h3']
+		server_name: 'example.com'
+		ca_bundle_pem: conn_test_cert_pem
+		alpn_protocols: ['h3']
 		transport_parameters: own_params
 	}, now)!
 	assert initial_dg.bytes.len >= min_initial_datagram_size
@@ -327,18 +324,15 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 		client_pub.free()
 	}
 	server_shared_secret := server_priv.derive_shared_secret(client_pub)!
-	server_hello_framed := conn_test_build_fake_server_hello(server_random,
-		server_ecdhe_public_bytes)!
+	server_hello_framed := conn_test_build_fake_server_hello(server_random, server_ecdhe_public_bytes)!
 
 	early_secret := derive_early_secret()!
 	ch_sh_hash := sha256.sum256(conn_test_concat_bytes(c.client_hello, server_hello_framed))
-	server_handshake_secrets := derive_handshake_secrets(early_secret, server_shared_secret,
-		ch_sh_hash)!
+	server_handshake_secrets := derive_handshake_secrets(early_secret, server_shared_secret, ch_sh_hash)!
 
 	// --- Deliver ServerHello as a real, protected Initial packet ---
 	sh_payload := encode_crypto_frame(0, server_hello_framed)!
-	sh_datagram := build_fake_long_header_packet(.initial, c.scid, server_initial_scid, 0,
-		sh_payload, c.initial_keys_server)!
+	sh_datagram := build_fake_long_header_packet(.initial, c.scid, server_initial_scid, 0, sh_payload, c.initial_keys_server)!
 	result1 := c.poll(sh_datagram.bytes, now)!
 	assert result1.events.len == 0
 	assert c.handshake.state() == .wait_encrypted_extensions
@@ -351,8 +345,7 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 	ee_params.original_destination_connection_id = c.original_dcid
 	ee_framed := conn_test_build_fake_encrypted_extensions(ee_params)!
 	ee_payload := encode_crypto_frame(0, ee_framed)!
-	ee_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 0,
-		ee_payload, hs_keys_server)!
+	ee_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 0, ee_payload, hs_keys_server)!
 	result2 := c.poll(ee_datagram.bytes, now)!
 	assert result2.events.len == 0
 	assert c.handshake.state() == .wait_certificate
@@ -377,8 +370,7 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 	c.handshake.certificate_transcript_hash = c.handshake.transcript_hash()
 	c.handshake.state = .wait_certificate_verify
 
-	signed_content := certificate_verify_signed_content(.server,
-		c.handshake.certificate_transcript_hash)
+	signed_content := certificate_verify_signed_content(.server, c.handshake.certificate_transcript_hash)
 	sig := conn_test_sign_certificate_verify(signed_content)!
 	cv_framed := conn_test_build_fake_certificate_verify(sig_scheme_rsa_pss_rsae_sha256, sig)!
 	cv_msg, _ := parse_handshake_message(cv_framed)!
@@ -386,12 +378,10 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 	assert c.handshake.state() == .wait_finished
 
 	// --- Deliver Finished as a real, protected Handshake packet ---
-	finished_verify_data := compute_finished_verify_data(server_handshake_secrets.server_secret,
-		c.handshake.transcript_hash())!
+	finished_verify_data := compute_finished_verify_data(server_handshake_secrets.server_secret, c.handshake.transcript_hash())!
 	finished_framed := encode_handshake_message(.finished, finished_verify_data)!
 	finished_payload := encode_crypto_frame(u64(ee_framed.len), finished_framed)!
-	finished_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 1,
-		finished_payload, hs_keys_server)!
+	finished_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 1, finished_payload, hs_keys_server)!
 	result3 := c.poll(finished_datagram.bytes, now)!
 	assert result3.events.len == 0
 	assert c.handshake.state() == .connected
@@ -407,8 +397,7 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 	// anywhere, silently ignored).
 	mut hs_done_payload := [u8(frame_type_handshake_done)]
 	hs_done_payload << [u8(0), 0, 0, 0]
-	hs_done_datagram := build_fake_one_rtt_packet(c.scid, 0, hs_done_payload, server_app_keys,
-		false)!
+	hs_done_datagram := build_fake_one_rtt_packet(c.scid, 0, hs_done_payload, server_app_keys, false)!
 	result4 := c.poll(hs_done_datagram.bytes, now)!
 	assert result4.events.any(it.kind == .handshake_confirmed)
 	assert c.state() == .established
@@ -426,9 +415,9 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 // of that same pipeline produces the same result).
 fn test_dial_produces_a_valid_padded_initial_datagram() {
 	mut c, dg := dial(DialParams{
-		server_name:          'example.com'
-		ca_bundle_pem:        conn_test_cert_pem
-		alpn_protocols:       ['h3']
+		server_name: 'example.com'
+		ca_bundle_pem: conn_test_cert_pem
+		alpn_protocols: ['h3']
 		transport_parameters: QuicTransportParameters{}
 	}, u64(0))!
 	defer {
@@ -494,22 +483,21 @@ fn (c &QuicConn) handshake_completion_is_complete() bool {
 // drive_to_established) and read_stream's INCOMING path (fed a real,
 // protected STREAM frame from the fake server).
 fn test_stream_write_read_round_trip_over_fake_transport() {
-	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(),
-		generous_transport_params())!
+	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
 		c.handshake.free()
 	}
 
 	stream_id := c.open_stream(true)!
 	assert stream_id == 0 // first client-initiated bidi stream id, RFC 9000 §2.1
+
 	c.write_stream(stream_id, 'hello from client'.bytes(), true)!
 	result := c.poll(none, now)!
 	assert result.outgoing.len > 0
 	now += 10
 
 	write_keys := c.app_write_keys or { panic('unreachable: established asserts this') }
-	frames := conn_test_decrypt_one_rtt(result.outgoing[0].bytes, server_initial_scid.len,
-		write_keys)!
+	frames := conn_test_decrypt_one_rtt(result.outgoing[0].bytes, server_initial_scid.len, write_keys)!
 	mut found_stream_frame := false
 	for f in frames {
 		if f is StreamFrame {
@@ -557,8 +545,7 @@ fn test_open_stream_respects_peer_max_streams_and_streams_blocked() {
 	assert result.outgoing.len > 0
 	now += 10
 	write_keys := c.app_write_keys or { panic('unreachable: established asserts this') }
-	frames := conn_test_decrypt_one_rtt(result.outgoing[0].bytes, server_initial_scid.len,
-		write_keys)!
+	frames := conn_test_decrypt_one_rtt(result.outgoing[0].bytes, server_initial_scid.len, write_keys)!
 	mut found_blocked := false
 	for f in frames {
 		if f is StreamsBlockedFrame {
@@ -586,21 +573,20 @@ fn test_open_stream_respects_peer_max_streams_and_streams_blocked() {
 // comment): nothing happens until the next poll() call, which then builds
 // and sends a real, protected CONNECTION_CLOSE and transitions to .closing.
 fn test_close_sends_connection_close_and_transitions_to_closing() {
-	mut c, server_initial_scid, now := drive_to_established(generous_transport_params(),
-		generous_transport_params())!
+	mut c, server_initial_scid, now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
 		c.handshake.free()
 	}
 
 	c.close(42, 'bye')
 	assert c.state() == .established // deferred -- nothing happens synchronously
+
 	result := c.poll(none, now)!
 	assert c.state() == .closing
 	assert result.outgoing.len > 0
 
 	write_keys := c.app_write_keys or { panic('unreachable: established asserts this') }
-	frames := conn_test_decrypt_one_rtt(result.outgoing[0].bytes, server_initial_scid.len,
-		write_keys)!
+	frames := conn_test_decrypt_one_rtt(result.outgoing[0].bytes, server_initial_scid.len, write_keys)!
 	mut found_close := false
 	for f in frames {
 		if f is ConnectionCloseFrame {
@@ -627,9 +613,9 @@ fn test_close_sends_connection_close_and_transitions_to_closing() {
 fn test_close_before_one_rtt_keys_downgrades_to_transport_connection_close() {
 	mut now := u64(1000)
 	mut c, initial_dg := dial(DialParams{
-		server_name:          'example.com'
-		ca_bundle_pem:        conn_test_cert_pem
-		alpn_protocols:       ['h3']
+		server_name: 'example.com'
+		ca_bundle_pem: conn_test_cert_pem
+		alpn_protocols: ['h3']
 		transport_parameters: QuicTransportParameters{}
 	}, now)!
 	defer {
@@ -652,12 +638,10 @@ fn test_close_before_one_rtt_keys_downgrades_to_transport_connection_close() {
 		client_pub.free()
 	}
 	server_shared_secret := server_priv.derive_shared_secret(client_pub)!
-	server_hello_framed := conn_test_build_fake_server_hello(server_random,
-		server_ecdhe_public_bytes)!
+	server_hello_framed := conn_test_build_fake_server_hello(server_random, server_ecdhe_public_bytes)!
 
 	sh_payload := encode_crypto_frame(0, server_hello_framed)!
-	sh_datagram := build_fake_long_header_packet(.initial, c.scid, server_initial_scid, 0,
-		sh_payload, c.initial_keys_server)!
+	sh_datagram := build_fake_long_header_packet(.initial, c.scid, server_initial_scid, 0, sh_payload, c.initial_keys_server)!
 	result1 := c.poll(sh_datagram.bytes, now)!
 	assert result1.events.len == 0
 	now += 10
@@ -668,12 +652,12 @@ fn test_close_before_one_rtt_keys_downgrades_to_transport_connection_close() {
 	ee_params.original_destination_connection_id = c.original_dcid
 	ee_framed := conn_test_build_fake_encrypted_extensions(ee_params)!
 	ee_payload := encode_crypto_frame(0, ee_framed)!
-	ee_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 0,
-		ee_payload, hs_keys_server)!
+	ee_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 0, ee_payload, hs_keys_server)!
 	result2 := c.poll(ee_datagram.bytes, now)!
 	assert result2.events.len == 0
 	assert c.handshake.state() == .wait_certificate
 	assert c.app_write_keys == none // still pre-1-RTT -- the window this bug lives in
+
 	now += 10
 
 	c.close(99, 'application-level reason that must not leak')
@@ -715,7 +699,7 @@ fn test_non_ack_eliciting_packet_does_not_elicit_an_ack() {
 	server_app_keys := read_keys.current_keys
 	ack_only_payload := encode_ack_frame([AckRange{
 		smallest: 0
-		largest:  0
+		largest: 0
 	}], 0, none)!
 	incoming := build_fake_one_rtt_packet(c.scid, 0, ack_only_payload, server_app_keys, false)!
 	result := c.poll(incoming.bytes, now)!
@@ -751,10 +735,10 @@ fn test_handle_ack_frame_uses_peer_advertised_ack_delay_exponent() {
 	c.loss_detection.on_packet_sent(.application_data, 100, 50, true, true, now)
 	first_ack := AckFrame{
 		largest_acknowledged: 100
-		ack_delay:            0
-		ranges:               [AckRange{
+		ack_delay: 0
+		ranges: [AckRange{
 			smallest: 100
-			largest:  100
+			largest: 100
 		}]
 	}
 	c.handle_ack_frame(.application_data, first_ack, now + 10_000_000)
@@ -768,10 +752,10 @@ fn test_handle_ack_frame_uses_peer_advertised_ack_delay_exponent() {
 	c.loss_detection.on_packet_sent(.application_data, 101, 50, true, true, now + 20_000_000)
 	second_ack := AckFrame{
 		largest_acknowledged: 101
-		ack_delay:            5
-		ranges:               [AckRange{
+		ack_delay: 5
+		ranges: [AckRange{
 			smallest: 101
-			largest:  101
+			largest: 101
 		}]
 	}
 	c.handle_ack_frame(.application_data, second_ack, now + 20_000_000 + 130_000_000)
@@ -803,8 +787,7 @@ fn test_handle_ack_frame_uses_peer_advertised_ack_delay_exponent() {
 // stayed on generation 0 forever, which RFC 9001 §6.2's last paragraph
 // permits the SERVER to treat as a fatal KEY_UPDATE_ERROR.
 fn test_client_follows_server_initiated_key_update() {
-	mut c, server_initial_scid, now := drive_to_established(generous_transport_params(),
-		generous_transport_params())!
+	mut c, server_initial_scid, now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
 		c.handshake.free()
 	}
@@ -836,8 +819,7 @@ fn test_client_follows_server_initiated_key_update() {
 	// from c.app_write_keys, distinguishes the two.
 	assert result.outgoing.len > 0
 	write_keys := c.app_write_keys or { panic('unreachable: established asserts this') }
-	frames := conn_test_decrypt_one_rtt(result.outgoing[0].bytes, server_initial_scid.len,
-		write_keys)!
+	frames := conn_test_decrypt_one_rtt(result.outgoing[0].bytes, server_initial_scid.len, write_keys)!
 	mut found_ack := false
 	for f in frames {
 		if f is AckFrame {
@@ -999,8 +981,7 @@ fn test_idle_timeout_mechanism_fires_after_configured_window() {
 // gap). Calling process_one_rtt_packet directly, before drain_outgoing ever
 // runs, is the only way to observe the receive-side effect in isolation.
 fn test_process_one_rtt_packet_resets_idle_timer_on_receive() {
-	mut c, _, mut now := drive_to_established(generous_transport_params(),
-		generous_transport_params())!
+	mut c, _, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
 		c.handshake.free()
 	}
@@ -1063,8 +1044,7 @@ fn test_handshake_done_rejected_when_role_is_server() {
 // resets it to a fresh map, and only a successfully-processed packet in
 // that space would repopulate it.
 fn test_discarded_initial_keys_reject_further_packets() {
-	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(),
-		generous_transport_params())!
+	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
 		c.handshake.free()
 	}
@@ -1082,8 +1062,7 @@ fn test_discarded_initial_keys_reject_further_packets() {
 	// PADDING frames (0x00, RFC 9000 §19.1 -- legal anywhere).
 	mut ping_payload := [u8(frame_type_ping)]
 	ping_payload << [u8(0), 0, 0, 0]
-	stale_datagram := build_fake_long_header_packet(.initial, c.scid, server_initial_scid, 5,
-		ping_payload, c.initial_keys_server)!
+	stale_datagram := build_fake_long_header_packet(.initial, c.scid, server_initial_scid, 5, ping_payload, c.initial_keys_server)!
 	result := c.poll(stale_datagram.bytes, now)!
 	assert result.events.len == 0
 	assert c.initial_received_pns.len == 0
@@ -1094,8 +1073,7 @@ fn test_discarded_initial_keys_reject_further_packets() {
 // finding, same RFC 9001 §4.9 requirement, same gap in
 // process_initial_or_handshake's .handshake branch.
 fn test_discarded_handshake_keys_reject_further_packets() {
-	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(),
-		generous_transport_params())!
+	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
 		c.handshake.free()
 	}
@@ -1110,8 +1088,7 @@ fn test_discarded_handshake_keys_reject_further_packets() {
 	// PADDING frames (0x00, RFC 9000 §19.1 -- legal anywhere).
 	mut ping_payload := [u8(frame_type_ping)]
 	ping_payload << [u8(0), 0, 0, 0]
-	stale_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 5,
-		ping_payload, hs_keys_server)!
+	stale_datagram := build_fake_long_header_packet(.handshake, c.scid, server_initial_scid, 5, ping_payload, hs_keys_server)!
 	result := c.poll(stale_datagram.bytes, now)!
 	assert result.events.len == 0
 	assert c.handshake_received_pns.len == 0
@@ -1131,9 +1108,9 @@ fn test_discarded_handshake_keys_reject_further_packets() {
 // observable via c.peer_scid/c.dcid changing from empty.
 fn test_wrong_destination_cid_rejected_on_long_header() {
 	mut c, initial_dg := dial(DialParams{
-		server_name:          'example.com'
-		ca_bundle_pem:        conn_test_cert_pem
-		alpn_protocols:       ['h3']
+		server_name: 'example.com'
+		ca_bundle_pem: conn_test_cert_pem
+		alpn_protocols: ['h3']
 		transport_parameters: QuicTransportParameters{}
 	}, u64(0))!
 	defer {
@@ -1150,8 +1127,7 @@ fn test_wrong_destination_cid_rejected_on_long_header() {
 	attacker_scid := [u8(0x99), 0x99, 0x99, 0x99]
 	mut forged_payload := [u8(frame_type_ping)]
 	forged_payload << [u8(0), 0, 0, 0]
-	forged_datagram := build_fake_long_header_packet(.initial, wrong_dcid, attacker_scid, 0,
-		forged_payload, c.initial_keys_server)!
+	forged_datagram := build_fake_long_header_packet(.initial, wrong_dcid, attacker_scid, 0, forged_payload, c.initial_keys_server)!
 	result := c.poll(forged_datagram.bytes, u64(10))!
 	assert result.events.len == 0
 	assert c.peer_scid.len == 0
@@ -1163,8 +1139,7 @@ fn test_wrong_destination_cid_rejected_on_long_header() {
 // same missing check, in process_one_rtt_packet's use of parse_short_header's
 // discarded header return value (previously `_, offset := ...`).
 fn test_wrong_destination_cid_rejected_on_short_header() {
-	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(),
-		generous_transport_params())!
+	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
 		c.handshake.free()
 	}
@@ -1178,8 +1153,7 @@ fn test_wrong_destination_cid_rejected_on_short_header() {
 	// mismatch), which would fail for an unrelated reason.
 	wrong_dcid := []u8{len: c.scid.len, init: 0xde}
 	stream_frame := encode_stream_frame(1, 0, 'forged'.bytes(), false, false)!
-	forged_datagram := build_fake_one_rtt_packet(wrong_dcid, 0, stream_frame, server_app_keys,
-		false)!
+	forged_datagram := build_fake_one_rtt_packet(wrong_dcid, 0, stream_frame, server_app_keys, false)!
 	result := c.poll(forged_datagram.bytes, now)!
 	assert result.events.len == 0
 	assert c.streams.len() == 0
@@ -1210,9 +1184,9 @@ fn test_wrong_destination_cid_rejected_on_short_header() {
 // practically-exploitable subset.)
 fn test_wrong_source_cid_rejected_after_peer_scid_established() {
 	mut c, initial_dg := dial(DialParams{
-		server_name:          'example.com'
-		ca_bundle_pem:        conn_test_cert_pem
-		alpn_protocols:       ['h3']
+		server_name: 'example.com'
+		ca_bundle_pem: conn_test_cert_pem
+		alpn_protocols: ['h3']
 		transport_parameters: QuicTransportParameters{}
 	}, u64(0))!
 	defer {
@@ -1234,11 +1208,9 @@ fn test_wrong_source_cid_rejected_after_peer_scid_established() {
 		client_pub.free()
 	}
 	_ := server_priv.derive_shared_secret(client_pub)!
-	server_hello_framed := conn_test_build_fake_server_hello(server_random,
-		server_ecdhe_public_bytes)!
+	server_hello_framed := conn_test_build_fake_server_hello(server_random, server_ecdhe_public_bytes)!
 	sh_payload := encode_crypto_frame(0, server_hello_framed)!
-	sh_datagram := build_fake_long_header_packet(.initial, c.scid, real_server_scid, 0, sh_payload,
-		c.initial_keys_server)!
+	sh_datagram := build_fake_long_header_packet(.initial, c.scid, real_server_scid, 0, sh_payload, c.initial_keys_server)!
 	result1 := c.poll(sh_datagram.bytes, u64(10))!
 	assert result1.events.len == 0
 	assert c.peer_scid == real_server_scid
@@ -1250,8 +1222,7 @@ fn test_wrong_source_cid_rejected_after_peer_scid_established() {
 	forged_scid := [u8(0x99), 0x99, 0x99, 0x99]
 	mut forged_payload := [u8(frame_type_ping)]
 	forged_payload << [u8(0), 0, 0, 0]
-	forged_datagram := build_fake_long_header_packet(.initial, c.scid, forged_scid, 1,
-		forged_payload, c.initial_keys_server)!
+	forged_datagram := build_fake_long_header_packet(.initial, c.scid, forged_scid, 1, forged_payload, c.initial_keys_server)!
 	result2 := c.poll(forged_datagram.bytes, u64(20))!
 	assert result2.events.len == 0
 	assert c.peer_scid == real_server_scid
@@ -1283,9 +1254,9 @@ fn test_wrong_source_cid_rejected_after_peer_scid_established() {
 // describes.
 fn test_compute_next_timeout_includes_closing_deadline() {
 	mut c, _ := dial(DialParams{
-		server_name:          'example.com'
-		ca_bundle_pem:        conn_test_cert_pem
-		alpn_protocols:       ['h3']
+		server_name: 'example.com'
+		ca_bundle_pem: conn_test_cert_pem
+		alpn_protocols: ['h3']
 		transport_parameters: QuicTransportParameters{}
 	}, u64(0))!
 	defer {
@@ -1312,8 +1283,7 @@ fn test_compute_next_timeout_includes_closing_deadline() {
 // always missed), silently and permanently -- no error, no event, just a
 // write that never reaches the wire.
 fn test_write_stream_on_auto_created_sibling_stream_is_not_stuck() {
-	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(),
-		generous_transport_params())!
+	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
 		c.handshake.free()
 	}
@@ -1370,9 +1340,9 @@ fn test_write_stream_on_auto_created_sibling_stream_is_not_stuck() {
 // caller would check to confirm h3 was actually negotiated.
 fn test_negotiated_alpn_is_none_before_established_and_selected_value_after() {
 	mut fresh, _ := dial(DialParams{
-		server_name:          'example.com'
-		ca_bundle_pem:        conn_test_cert_pem
-		alpn_protocols:       ['h3']
+		server_name: 'example.com'
+		ca_bundle_pem: conn_test_cert_pem
+		alpn_protocols: ['h3']
 		transport_parameters: QuicTransportParameters{}
 	}, u64(0))!
 	defer {
@@ -1399,8 +1369,7 @@ fn test_negotiated_alpn_is_none_before_established_and_selected_value_after() {
 // StreamId.is_locally_initiated before ever firing) is what this test
 // pins down.
 fn test_peer_stream_opened_never_fires_for_a_locally_opened_stream() {
-	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(),
-		generous_transport_params())!
+	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
 		c.handshake.free()
 	}
@@ -1431,8 +1400,7 @@ fn test_peer_stream_opened_never_fires_for_a_locally_opened_stream() {
 // own later, real STREAM frame would then hit get_or_create's fast
 // already-exists path and never be announced at all.
 fn test_peer_stream_opened_survives_reordering_past_an_auto_created_filler() {
-	mut c, _, mut now := drive_to_established(generous_transport_params(),
-		generous_transport_params())!
+	mut c, _, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
 	defer {
 		c.handshake.free()
 	}

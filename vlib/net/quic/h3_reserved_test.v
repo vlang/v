@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_is_h3_reserved_codepoint_matches_known_grease_values() {
@@ -26,13 +25,21 @@ fn test_is_h3_reserved_codepoint_rejects_defined_values() {
 	// None of the values this phase actually assigns meaning to may ever
 	// collide with the grease sequence -- spot-check the ones in scope.
 	assert !is_h3_reserved_codepoint(0x00) // DATA / control stream type
+
 	assert !is_h3_reserved_codepoint(0x01) // HEADERS / push stream type
+
 	assert !is_h3_reserved_codepoint(0x03) // CANCEL_PUSH
+
 	assert !is_h3_reserved_codepoint(0x04) // SETTINGS
+
 	assert !is_h3_reserved_codepoint(0x06) // MAX_FIELD_SECTION_SIZE setting
+
 	assert !is_h3_reserved_codepoint(0x07) // GOAWAY
+
 	assert !is_h3_reserved_codepoint(0x0d) // MAX_PUSH_ID
+
 	assert !is_h3_reserved_codepoint(0x0100) // H3_NO_ERROR
+
 	assert !is_h3_reserved_codepoint(0x0110) // H3_VERSION_FALLBACK
 }
 

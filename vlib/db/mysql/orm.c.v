@@ -404,7 +404,18 @@ fn data_pointers_to_primitives(is_null []C.v_mysql_bool, data_pointers []&u8, ty
 				orm.type_idx['i16'] {
 					primitive = *(unsafe { &i16(data) })
 				}
-				orm.type_idx['int'], orm.serial {
+				orm.type_idx['int'] {
+					$if new_int ? && x64 {
+						primitive = match field_types[i] {
+							.type_long { orm.Primitive(int(*(unsafe { &i32(data) }))) }
+							.type_longlong { orm.Primitive(int(*(unsafe { &i64(data) }))) }
+							else { return error('Unsupported MySQL field type ${field_types[i]} for V int') }
+						}
+					} $else {
+						primitive = *(unsafe { &int(data) })
+					}
+				}
+				orm.serial {
 					primitive = *(unsafe { &int(data) })
 				}
 				orm.type_idx['i64'] {
@@ -437,7 +448,7 @@ fn data_pointers_to_primitives(is_null []C.v_mysql_bool, data_pointers []&u8, ty
 				orm.time_ {
 					match field_types[i] {
 						.type_long {
-							timestamp := *(unsafe { &int(data) })
+							timestamp := int(*(unsafe { &i32(data) }))
 							primitive = time.unix(timestamp)
 						}
 						.type_datetime, .type_timestamp {
@@ -509,7 +520,14 @@ fn mysql_type_from_v(typ int) !string {
 		orm.type_idx['i16'], orm.type_idx['u16'] {
 			'SMALLINT'
 		}
-		orm.type_idx['int'], orm.type_idx['u32'], orm.time_ {
+		orm.type_idx['int'] {
+			$if new_int ? && x64 {
+				'BIGINT'
+			} $else {
+				'INT'
+			}
+		}
+		orm.type_idx['u32'], orm.time_ {
 			'INT'
 		}
 		orm.type_idx['i64'], orm.type_idx['u64'], orm.enum_ {

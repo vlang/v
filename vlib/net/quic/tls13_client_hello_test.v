@@ -1,4 +1,4 @@
-// vtest build: present_openssl? && !sanitize-memory-clang
+// vtest build: !sanitize-memory-clang
 module quic
 
 import encoding.hex
@@ -74,8 +74,8 @@ fn test_encode_supported_groups_extension_wire_format() {
 fn test_encode_signature_algorithms_extension_wire_format() {
 	got := encode_signature_algorithms_extension()!
 	// type=000d, ext_data_len=000a (2+8), list_len=0008 (4 schemes x 2 bytes)
-	assert got == [u8(0x00), 0x0d, 0x00, 0x0a, 0x00, 0x08, 0x04, 0x03, 0x08, 0x04, 0x08, 0x05,
-		0x08, 0x06]
+	assert got == [u8(0x00), 0x0d, 0x00, 0x0a, 0x00, 0x08, 0x04, 0x03, 0x08, 0x04, 0x08, 0x05, 0x08,
+		0x06]
 }
 
 // test_encode_signature_algorithms_cert_extension_wire_format is a
@@ -95,8 +95,8 @@ fn test_encode_signature_algorithms_cert_extension_wire_format() {
 	// ecdsa_secp384r1_sha384, ecdsa_secp521r1_sha512 (the latter two added
 	// for a Codex finding, vlang/v#27680 pullrequestreview-4806500473),
 	// rsa_pss_rsae_sha256/384/512, rsa_pkcs1_sha256/384/512.
-	assert got == [u8(0x00), 0x32, 0x00, 0x14, 0x00, 0x12, 0x04, 0x03, 0x05, 0x03, 0x06, 0x03,
-		0x08, 0x04, 0x08, 0x05, 0x08, 0x06, 0x04, 0x01, 0x05, 0x01, 0x06, 0x01]
+	assert got == [u8(0x00), 0x32, 0x00, 0x14, 0x00, 0x12, 0x04, 0x03, 0x05, 0x03, 0x06, 0x03, 0x08,
+		0x04, 0x08, 0x05, 0x08, 0x06, 0x04, 0x01, 0x05, 0x01, 0x06, 0x01]
 }
 
 fn test_encode_key_share_extension_wire_format() {
@@ -150,8 +150,8 @@ fn test_build_client_hello_rejects_wrong_random_length() {
 // silently producing an ALPN-less ClientHello.
 fn test_build_client_hello_rejects_empty_alpn_protocols() {
 	build_client_hello(ClientHelloParams{
-		random:           []u8{len: 32}
-		server_name:      'example.com'
+		random: []u8{len: 32}
+		server_name: 'example.com'
 		ecdhe_public_key: []u8{len: 65, init: 0x04}
 	}) or {
 		assert err.msg().contains('ALPN')
@@ -170,10 +170,10 @@ fn test_build_client_hello_rejects_empty_alpn_protocols() {
 // matter how many times it appears.
 fn test_build_client_hello_rejects_duplicate_alpn_protocols() {
 	build_client_hello(ClientHelloParams{
-		random:               []u8{len: 32}
-		server_name:          'example.com'
-		ecdhe_public_key:     []u8{len: 65, init: 0x04}
-		alpn_protocols:       ['h3', 'h3']
+		random: []u8{len: 32}
+		server_name: 'example.com'
+		ecdhe_public_key: []u8{len: 65, init: 0x04}
+		alpn_protocols: ['h3', 'h3']
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: [u8(1), 2, 3, 4]
 		}
@@ -189,10 +189,10 @@ fn test_build_client_hello_rejects_duplicate_alpn_protocols() {
 // unaffected by the duplicate check above.
 fn test_build_client_hello_accepts_distinct_alpn_protocols() {
 	client_hello := build_client_hello(ClientHelloParams{
-		random:               []u8{len: 32}
-		server_name:          'example.com'
-		ecdhe_public_key:     []u8{len: 65, init: 0x04}
-		alpn_protocols:       ['h3', 'http/1.1']
+		random: []u8{len: 32}
+		server_name: 'example.com'
+		ecdhe_public_key: []u8{len: 65, init: 0x04}
+		alpn_protocols: ['h3', 'http/1.1']
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: [u8(1), 2, 3, 4]
 		}
@@ -210,10 +210,10 @@ fn test_build_client_hello_accepts_distinct_alpn_protocols() {
 // MUST treat as TRANSPORT_PARAMETER_ERROR.
 fn test_build_client_hello_rejects_missing_initial_source_connection_id() {
 	build_client_hello(ClientHelloParams{
-		random:           []u8{len: 32}
-		server_name:      'example.com'
+		random: []u8{len: 32}
+		server_name: 'example.com'
 		ecdhe_public_key: []u8{len: 65, init: 0x04}
-		alpn_protocols:   ['h3']
+		alpn_protocols: ['h3']
 	}) or {
 		assert err.msg().contains('initial_source_connection_id')
 		return
@@ -223,12 +223,12 @@ fn test_build_client_hello_rejects_missing_initial_source_connection_id() {
 
 fn test_build_client_hello_rejects_original_destination_connection_id() {
 	p := ClientHelloParams{
-		random:               []u8{len: 32}
-		server_name:          'example.com'
-		ecdhe_public_key:     []u8{len: 65, init: 0x04}
-		alpn_protocols:       ['h3']
+		random: []u8{len: 32}
+		server_name: 'example.com'
+		ecdhe_public_key: []u8{len: 65, init: 0x04}
+		alpn_protocols: ['h3']
 		transport_parameters: QuicTransportParameters{
-			initial_source_connection_id:       [u8(1), 2, 3, 4]
+			initial_source_connection_id: [u8(1), 2, 3, 4]
 			original_destination_connection_id: [u8(1), 2, 3]
 		}
 	}
@@ -241,13 +241,13 @@ fn test_build_client_hello_rejects_original_destination_connection_id() {
 
 fn test_build_client_hello_rejects_stateless_reset_token() {
 	p := ClientHelloParams{
-		random:               []u8{len: 32}
-		server_name:          'example.com'
-		ecdhe_public_key:     []u8{len: 65, init: 0x04}
-		alpn_protocols:       ['h3']
+		random: []u8{len: 32}
+		server_name: 'example.com'
+		ecdhe_public_key: []u8{len: 65, init: 0x04}
+		alpn_protocols: ['h3']
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: [u8(1), 2, 3, 4]
-			stateless_reset_token:        []u8{len: 16}
+			stateless_reset_token: []u8{len: 16}
 		}
 	}
 	build_client_hello(p) or {
@@ -259,14 +259,14 @@ fn test_build_client_hello_rejects_stateless_reset_token() {
 
 fn test_build_client_hello_rejects_preferred_address() {
 	p := ClientHelloParams{
-		random:               []u8{len: 32}
-		server_name:          'example.com'
-		ecdhe_public_key:     []u8{len: 65, init: 0x04}
-		alpn_protocols:       ['h3']
+		random: []u8{len: 32}
+		server_name: 'example.com'
+		ecdhe_public_key: []u8{len: 65, init: 0x04}
+		alpn_protocols: ['h3']
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: [u8(1), 2, 3, 4]
-			preferred_address:            PreferredAddress{
-				connection_id:         [u8(1), 2, 3]
+			preferred_address: PreferredAddress{
+				connection_id: [u8(1), 2, 3]
 				stateless_reset_token: []u8{len: 16}
 			}
 		}
@@ -280,13 +280,13 @@ fn test_build_client_hello_rejects_preferred_address() {
 
 fn test_build_client_hello_rejects_retry_source_connection_id() {
 	p := ClientHelloParams{
-		random:               []u8{len: 32}
-		server_name:          'example.com'
-		ecdhe_public_key:     []u8{len: 65, init: 0x04}
-		alpn_protocols:       ['h3']
+		random: []u8{len: 32}
+		server_name: 'example.com'
+		ecdhe_public_key: []u8{len: 65, init: 0x04}
+		alpn_protocols: ['h3']
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: [u8(1), 2, 3, 4]
-			retry_source_connection_id:   [u8(1), 2, 3]
+			retry_source_connection_id: [u8(1), 2, 3]
 		}
 	}
 	build_client_hello(p) or {
@@ -314,10 +314,10 @@ fn test_build_client_hello_structure() {
 	random := []u8{len: 32, init: 0xab}
 
 	params := ClientHelloParams{
-		random:               random
-		server_name:          'example.com'
-		ecdhe_public_key:     ecdhe_public_key
-		alpn_protocols:       ['h3']
+		random: random
+		server_name: 'example.com'
+		ecdhe_public_key: ecdhe_public_key
+		alpn_protocols: ['h3']
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: [u8(1), 2, 3, 4]
 		}
@@ -331,6 +331,7 @@ fn test_build_client_hello_structure() {
 	body := msg.body
 	mut cursor := 0
 	assert body[cursor] == 0x03 && body[cursor + 1] == 0x03 // legacy_version
+
 	cursor += 2
 	assert body[cursor..cursor + 32] == random
 	cursor += 32
@@ -341,6 +342,7 @@ fn test_build_client_hello_structure() {
 	assert cipher_suites_len == 2
 	cursor += 2
 	assert body[cursor] == 0x13 && body[cursor + 1] == 0x01 // TLS_AES_128_GCM_SHA256
+
 	cursor += cipher_suites_len
 	compression_len := int(body[cursor])
 	assert compression_len == 1
@@ -382,5 +384,6 @@ fn test_build_client_hello_structure() {
 	list_len := (u32(alpn_data[0]) << 8) | u32(alpn_data[1])
 	assert list_len == 3
 	assert alpn_data[2] == 2 // protocol name length
+
 	assert alpn_data[3..5].bytestr() == 'h3'
 }

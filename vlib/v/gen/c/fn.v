@@ -3050,6 +3050,10 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr, unwrapped_rec_type ast.
 			return true
 		}
 	}
+	if node.from_embed_types.len > 0 {
+		g.gen_expr_to_string(left_node, rec_type)
+		return true
+	}
 	rec_sym := g.table.sym(rec_type)
 	if g.alias_uses_parent_str(rec_sym) {
 		rec_type = (rec_sym.info as ast.Alias).parent_type
@@ -4796,6 +4800,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	left_sym := g.table.sym(left_type)
 	final_left_sym := g.table.final_sym(left_type)
+	left_storage_type := g.table.fully_unaliased_type(left_type)
+	left_type_is_ptr := left_type.is_ptr() || left_storage_type.is_ptr()
 	// In generic functions node.from_embed_types may be stale: the checker overwrites
 	// it on each instantiation pass, so the state of the last checked concrete type
 	// wins (including a possibly empty state). Re-resolve it for the current
@@ -4903,7 +4909,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		name = 'sync__Channel_${method_name}'
 	}
 	mut is_range_slice := false
-	if receiver_type.is_ptr() && !left_type.is_ptr() {
+	if receiver_type.is_ptr() && !left_type_is_ptr {
 		if node.left is ast.IndexExpr {
 			idx := node.left.index
 			if idx is ast.RangeExpr {
@@ -5476,7 +5482,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 	mut free_receiver_heap_copy := ''
-	if is_free_method && has_method && node.left is ast.Ident && !left_type.is_ptr()
+	if is_free_method && has_method && node.left is ast.Ident && !left_type_is_ptr
 		&& free_method_calls_free_on_receiver(full_method) {
 		left_ident := node.left as ast.Ident
 		if !g.resolved_ident_is_auto_heap(left_ident) {
@@ -5489,17 +5495,17 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write(stmt_line)
 		}
 	}
+	receiver_storage_type := g.table.fully_unaliased_type(receiver_type)
 	receiver_needs_ref := receiver_type.is_ptr() || receiver_is_mut
 	// g.generate_tmp_autofree_arg_vars(node, name)
-	if !receiver_needs_ref && left_type.is_ptr() && node.kind == .str {
+	if !receiver_needs_ref && left_type_is_ptr && node.kind == .str {
 		if left_type.is_int_valptr() {
 			g.write('builtin__ptr_str(')
 		} else {
 			g.gen_expr_to_string(node.left, left_type)
 			return
 		}
-	} else if receiver_needs_ref && left_type.is_ptr() && node.kind == .str
-		&& !left_sym.has_method('str') {
+	} else if receiver_needs_ref && left_type_is_ptr && node.kind == .str && !has_method {
 		g.gen_expr_to_string(node.left, left_type)
 		return
 	} else {
@@ -5524,7 +5530,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		else {}
 	}
 
-	if free_receiver_heap_copy == '' && receiver_needs_ref && (!left_type.is_ptr()
+	if free_receiver_heap_copy == '' && receiver_needs_ref && (!left_type_is_ptr
 		|| effective_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.kind != .str)) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
@@ -5552,14 +5558,17 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				cast_n++
 			}
 		}
-	} else if free_receiver_heap_copy == '' && !receiver_needs_ref && left_type.is_ptr()
+	} else if free_receiver_heap_copy == '' && !receiver_needs_ref && left_type_is_ptr
 		&& node.kind != .str && effective_embed_types.len == 0 {
 		if !left_type.has_flag(.shared_f) {
-			g.write('*'.repeat(left_type.nr_muls()))
+			diff := left_storage_type.nr_muls() - receiver_storage_type.nr_muls()
+			if diff > 0 {
+				g.write('*'.repeat(diff))
+			}
 		}
 	} else if free_receiver_heap_copy == '' && !is_range_slice && effective_embed_types.len == 0
 		&& node.kind != .str {
-		diff := left_type.nr_muls() - receiver_type.nr_muls()
+		diff := left_storage_type.nr_muls() - receiver_storage_type.nr_muls()
 		if diff > 0 {
 			g.write('*'.repeat(diff))
 		}

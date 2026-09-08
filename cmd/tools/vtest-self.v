@@ -271,6 +271,11 @@ const skip_on_ubuntu_musl = [
 	'vlib/gg/draw_rect_empty_test.v', // sokol.sapp needs X11/Xlib.h, not installed in the musl Docker image
 	'vlib/gg/text_rendering_test.v',
 	'vlib/gg/multiwindow_render_runtime_contract_test.v', // same sokol.sapp/X11/Xlib.h gap as the two entries above
+	'vlib/gg/multiwindow_services_contract_test.v',
+	'vlib/gg/multiwindow_gl_readback_helpers_d_gg_multiwindow_test.v',
+	'vlib/gg/multiwindow_wayland_services_d_gg_multiwindow_test.v',
+	'vlib/x/multiwindow/service_native_win32_no_flag_test.v',
+	'vlib/sokol/gfx/metal_private_hook_contract_test.v',
 	'vlib/orm/orm_test.v',
 	'vlib/orm/orm_sql_or_blocks_test.v',
 	'vlib/orm/orm_create_and_drop_test.v',

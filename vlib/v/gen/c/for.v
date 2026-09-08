@@ -29,7 +29,7 @@ fn for_in_val_type(base_type ast.Type, is_mut bool, is_ref bool) ast.Type {
 
 fn (mut g Gen) write_for_in_array_value_decl(node ast.ForInStmt, styp string, val_sym_ ast.TypeSymbol) {
 	mut val_sym := val_sym_
-	if mut val_sym.info is ast.FnType {
+	if val_sym.info is ast.FnType {
 		g.writeln('${g.fn_ptr_decl_str(val_sym.info, c_name(node.val_var))};')
 		return
 	}
@@ -48,7 +48,7 @@ fn (mut g Gen) write_for_in_array_value_decl(node ast.ForInStmt, styp string, va
 
 fn (mut g Gen) write_for_in_array_value_assign(node ast.ForInStmt, styp string, val_sym_ ast.TypeSymbol, cond_var string, op_field string, idx string, cond_is_option bool, opt_expr string) {
 	mut val_sym := val_sym_
-	if mut val_sym.info is ast.FnType {
+	if val_sym.info is ast.FnType {
 		g.writeln('\t${c_name(node.val_var)} = ((voidptr*)${cond_var}${op_field}data)[${idx}];')
 		return
 	}
@@ -151,11 +151,13 @@ fn (mut g Gen) for_c_unsigned_overflow_guard(node ast.ForCStmt) ?ForCOverflowGua
 	limit_expr := match postfix.op {
 		.inc { '(${g.styp(unaliased_typ)})-1' }
 		.dec { '(${g.styp(unaliased_typ)})0' }
-		else { return none }
+		else {
+			return none
+		}
 	}
 
 	return ForCOverflowGuard{
-		cname:      c_name(postfix_var_name)
+		cname: c_name(postfix_var_name)
 		limit_expr: limit_expr
 	}
 }
@@ -306,8 +308,7 @@ fn (mut g Gen) write_loop_scope_cleanup_after_defer(scope &ast.Scope, pos token.
 		g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, pos.line_nr, false, -1)
 	}
 	if g.fn_decl != unsafe { nil } {
-		g.cleanup_local_closure_vars2(scope, scope.start_pos, scope.end_pos, pos.line_nr, false,
-			-1, stmts)
+		g.cleanup_local_closure_vars2(scope, scope.start_pos, scope.end_pos, pos.line_nr, false, -1, stmts)
 	}
 }
 
@@ -354,21 +355,18 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			g.writeln('{')
 		}
 		autofree_keep_start := g.push_for_c_init_autofree_keep_vars(init_autofree_vars)
-		preserve_start := g.push_local_closure_cleanup_preserve_vars(init_closure_vars,
-			node.pos.pos)
+		preserve_start := g.push_local_closure_cleanup_preserve_vars(init_closure_vars, node.pos.pos)
 		skip_cleanup_start := g.push_skip_scope_cleanup(node.scope)
 		ends_with_branch := g.stmts_with_tmp_var(node.stmts, '')
 		g.pop_skip_scope_cleanup(skip_cleanup_start)
 		if node.label.len > 0 {
 			g.write_defer_stmts(node.scope, false, node.pos)
-			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
-				ends_with_branch)
+			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 			g.writeln('}')
 			g.writeln('${g.user_goto_label_control_name(node.label, 'continue')}: {}')
 		} else {
 			g.write_defer_stmts(node.scope, false, node.pos)
-			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
-				ends_with_branch)
+			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 		}
 		g.pop_local_closure_cleanup_preserve_vars(preserve_start)
 		g.pop_for_c_init_autofree_keep_vars(autofree_keep_start)
@@ -451,21 +449,18 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			g.writeln('{')
 		}
 		autofree_keep_start := g.push_for_c_init_autofree_keep_vars(init_autofree_vars)
-		preserve_start := g.push_local_closure_cleanup_preserve_vars(init_closure_vars,
-			node.pos.pos)
+		preserve_start := g.push_local_closure_cleanup_preserve_vars(init_closure_vars, node.pos.pos)
 		skip_cleanup_start := g.push_skip_scope_cleanup(node.scope)
 		ends_with_branch := g.stmts_with_tmp_var(node.stmts, '')
 		g.pop_skip_scope_cleanup(skip_cleanup_start)
 		if node.label.len > 0 {
 			g.write_defer_stmts(node.scope, false, node.pos)
-			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
-				ends_with_branch)
+			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 			g.writeln('}')
 			g.writeln('${g.user_goto_label_control_name(node.label, 'continue')}: {}')
 		} else {
 			g.write_defer_stmts(node.scope, false, node.pos)
-			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
-				ends_with_branch)
+			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 		}
 		g.pop_local_closure_cleanup_preserve_vars(preserve_start)
 		g.pop_for_c_init_autofree_keep_vars(autofree_keep_start)
@@ -718,7 +713,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		// `for x in 1..10 {`
 		i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
 		plus_plus_i := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				'${i}=builtin__overflow__add_i64(${i},1)'
 			} $else {
 				'${i}=builtin__overflow__add_i32(${i},1)'
@@ -802,7 +797,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		plus_plus_i := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				'${i}=builtin__overflow__add_i64(${i},1)'
 			} $else {
 				'${i}=builtin__overflow__add_i32(${i},1)'
@@ -829,9 +824,8 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${cond_expr}; ${plus_plus_i}) {')
 		if node.val_var != '_' {
 			if array_debug_value_scope_opened {
-				g.write_for_in_array_value_assign(node, styp, val_sym, cond_var, op_field, i,
-					cond_is_option, opt_expr)
-			} else if mut val_sym.info is ast.FnType {
+				g.write_for_in_array_value_assign(node, styp, val_sym, cond_var, op_field, i, cond_is_option, opt_expr)
+			} else if val_sym.info is ast.FnType {
 				g.write('\t')
 				tcc_bug := c_name(node.val_var)
 				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
@@ -889,7 +883,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		plus_plus_idx := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				'${idx}=builtin__overflow__add_i64(${idx},1)'
 			} $else {
 				'${idx}=builtin__overflow__add_i32(${idx},1)'
@@ -899,6 +893,12 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		cond_sym := g.table.final_sym(node.cond_type)
 		info := cond_sym.info as ast.ArrayFixed
+		elem_sym := g.table.sym(info.elem_type)
+		elem_is_direct_fn := if elem_sym.info is ast.FnType {
+			elem_sym.info.has_decl
+		} else {
+			false
+		}
 		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} != ${info.size}; ${plus_plus_idx}) {')
 		if node.val_var != '_' {
 			val_sym := g.table.sym(node.val_type)
@@ -912,19 +912,27 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			if val_sym.info is ast.FnType && (!loop_var_added_ref || base_elem_is_concrete_fn) {
 				g.write('\t')
 				tcc_bug := c_name(node.val_var)
-				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
+				if elem_is_direct_fn {
+					g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
+				} else {
+					g.write_fntype_decl(tcc_bug, val_sym.info, node.val_type.nr_muls())
+				}
 			} else if is_fixed_array {
 				styp := g.styp(node.val_type)
 				g.writeln('\t${styp} ${c_name(node.val_var)};')
 				g.writeln('\tmemcpy(*(${styp}*)${c_name(node.val_var)}, (byte*)${cond_var}[${idx}], sizeof(${styp}));')
 			} else {
-				styp := g.styp(node.val_type)
+				styp := if node.val_type.has_flag(.option_mut_param_t) {
+					'${g.styp(node.val_type.clear_flag(.option_mut_param_t))}*'
+				} else {
+					g.styp(node.val_type)
+				}
 				g.write('\t${styp} ${c_name(node.val_var)}')
 			}
 			if !is_fixed_array {
 				addr := if (node.val_is_mut || node.val_is_ref)
 					&& (node.val_type.has_flag(.option_mut_param_t)
-					|| (loop_var_added_ref && !base_elem_is_concrete_fn)) {
+						|| (loop_var_added_ref && !base_elem_is_concrete_fn)) {
 					'&'
 				} else {
 					''
@@ -979,7 +987,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		idx := g.new_tmp_var()
 		plus_plus_idx := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				'${idx}=builtin__overflow__add_i64(${idx},1)'
 			} $else {
 				'${idx}=builtin__overflow__add_i32(${idx},1)'
@@ -1068,7 +1076,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		field_accessor := if node.cond_type.is_ptr() { '->' } else { '.' }
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		plus_plus_i := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				'${i}=builtin__overflow__add_i64(${i},1)'
 			} $else {
 				'${i}=builtin__overflow__add_i32(${i},1)'
@@ -1123,7 +1131,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln(';')
 		i := node.key_var
 		plus_plus_i := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				'${i}=builtin__overflow__add_i64(${i},1)'
 			} $else {
 				'${i}=builtin__overflow__add_i32(${i},1)'
@@ -1189,12 +1197,12 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		node.scope.update_var_type(node.val_var, val_type)
 
 		g.for_in_stmt(ast.ForInStmt{
-			cond:       node.cond
-			cond_type:  for_type
-			kind:       g.table.sym(for_type).kind
-			stmts:      node.stmts
-			val_type:   val_type
-			val_var:    node.val_var
+			cond: node.cond
+			cond_type: for_type
+			kind: g.table.sym(for_type).kind
+			stmts: node.stmts
+			val_type: val_type
+			val_var: node.val_var
 			val_is_mut: node.val_is_mut
 			val_is_ref: node.val_is_ref
 		})

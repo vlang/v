@@ -39,7 +39,7 @@ pub enum ColumnType {
 pub struct Column {
 pub:
 	name           string
-	kind           ColumnType
+	kind           ColumnType @[required]
 	limit          int
 	precision      int
 	scale          int
@@ -206,8 +206,8 @@ pub fn (mut ctx Context) rename_column(table string, from string, to string) ! {
 // change_column changes a column definition. SQLite requires a table rebuild.
 // PostgreSQL supports type-related fields only and rejects constraint changes
 // before executing SQL; use execute for explicit PostgreSQL constraint DDL.
-// MySQL requires nullable, default_sql, and auto_increment to be supplied because
-// MODIFY COLUMN replaces those attributes. Omitted key options are preserved.
+// MySQL is rejected because MODIFY COLUMN replaces server-side attributes that
+// the portable Column type cannot represent safely.
 pub fn (mut ctx Context) change_column(table string, column Column) ! {
 	validate_identifier_for_dialect(ctx.dialect, table, 'table')!
 	match ctx.dialect {
@@ -225,16 +225,9 @@ pub fn (mut ctx Context) change_column(table string, column Column) ! {
 				column.name)} TYPE ${column_type_sql(ctx.dialect, column)!};')!
 		}
 		.mysql {
-			removals := mysql_change_column_unsupported_key_removals(column)
-			if removals.len > 0 {
-				return error('MySQL change_column cannot remove key constraints; unsupported false options: ${removals.join(', ')}; use remove_index() or ctx.execute()')
-			}
-			missing := mysql_change_column_missing_options(column)
-			if missing.len > 0 {
-				return error('MySQL change_column requires a complete column definition; missing options: ${missing.join(', ')}')
-			}
-			definition := mysql_change_column_sql(column)!
-			ctx.execute('ALTER TABLE ${quote_identifier(ctx.dialect, table)} MODIFY COLUMN ${definition};')!
+			validate_unqualified_identifier_for_dialect(.mysql, column.name, 'column')!
+			column_type_sql(.mysql, column)!
+			return error('MySQL change_column cannot safely preserve attributes outside Column; use ctx.execute() with a complete MODIFY COLUMN definition')
 		}
 	}
 }

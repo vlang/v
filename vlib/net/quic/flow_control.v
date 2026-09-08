@@ -75,7 +75,7 @@ mut:
 // initially advertising `initial_limit` to the peer.
 pub fn new_receive_window(initial_limit u64) ReceiveWindow {
 	return ReceiveWindow{
-		advertised:    initial_limit
+		advertised: initial_limit
 		initial_limit: initial_limit
 	}
 }

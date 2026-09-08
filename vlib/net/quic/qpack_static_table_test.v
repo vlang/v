@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_qpack_static_table_has_exactly_99_entries() {

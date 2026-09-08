@@ -27,6 +27,7 @@ pub struct Scanner {
 mut:
 	file        &token.File = unsafe { nil }
 	insert_semi bool
+	after_dot   bool
 pub mut:
 	src                 string
 	offset              int
@@ -37,6 +38,8 @@ pub mut:
 	in_str_inter_format bool
 	str_inter_cbr_depth int
 	str_quote           u8
+	str_parent_quotes   []u8
+	str_parent_depths   []int
 	diagnostics         []Diagnostic
 }
 
@@ -61,17 +64,32 @@ pub fn new_scanner(prefs &pref.Preferences, mode Mode) Scanner {
 	}
 }
 
+// skip_block_to resumes scanning at `offset`, right after the `}` that closes
+// a top-level block whose contents the caller does not need to lex (the
+// FastC declaration passes record function bodies once and skip them in the
+// later passes); the scanner state is what scanning that `}` leaves.
+pub fn (mut s Scanner) skip_block_to(offset int) {
+	s.offset = offset
+	s.pos = offset - 1
+	s.lit = ''
+	s.insert_semi = true
+	s.after_dot = false
+}
+
 // init supports init handling for Scanner.
 pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.offset = 0
 	s.pos = 0
 	s.lit = ''
 	s.insert_semi = false
+	s.after_dot = false
 	s.in_str_incomplete = false
 	s.in_str_inter = false
 	s.in_str_inter_format = false
 	s.str_inter_cbr_depth = 0
 	s.str_quote = 0
+	s.str_parent_quotes = []u8{}
+	s.str_parent_depths = []int{}
 	s.diagnostics = []Diagnostic{}
 	s.file = unsafe { file }
 	s.src = src
@@ -151,8 +169,13 @@ pub fn (mut s Scanner) scan() token.Token {
 		s.pos = s.offset
 		s.string_literal(false, s.str_quote)
 		s.lit = s.source_lit(s.pos, s.offset)
+		if !s.in_str_inter {
+			s.restore_parent_string_interpolation()
+		}
 		return .string
 	}
+	follows_dot := s.after_dot
+	s.after_dot = false
 	start:
 	s.whitespace()
 	if s.offset >= s.src.len {
@@ -233,19 +256,43 @@ pub fn (mut s Scanner) scan() token.Token {
 			s.insert_semi = true
 			return .string
 		}
+		if s.lit == 'js' && s.offset < s.src.len
+			&& (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
+			quote := s.src[s.offset]
+			s.offset++
+			nested_interpolation := s.in_str_inter && !s.skip_interpolation
+			if nested_interpolation {
+				s.begin_nested_string_interpolation(quote)
+			} else if !s.in_str_inter {
+				s.str_quote = quote
+			}
+			s.string_literal(false, quote)
+			s.lit = s.source_lit(s.pos, s.offset)
+			if nested_interpolation && !s.in_str_inter {
+				s.restore_parent_string_interpolation()
+			}
+			s.insert_semi = true
+			return .string
+		}
 		tok := token.Token.from_string_tinyv(s.lit)
-		if tok in [.key_break, .key_continue, .key_nil, .key_none, .key_return, .key_false, .key_true,
-			.name] {
+		if tok in [.key_break, .key_continue, .key_nil, .key_none, .key_return, .key_false, .key_true, .name]
+			|| (follows_dot && tok.is_keyword()) {
 			s.insert_semi = true
 		}
 		return tok
 	} else if c == `'` || c == `"` {
 		s.offset++
-		if !s.in_str_inter {
+		nested_interpolation := s.in_str_inter && !s.skip_interpolation
+		if nested_interpolation {
+			s.begin_nested_string_interpolation(c)
+		} else if !s.in_str_inter {
 			s.str_quote = c
 		}
 		s.string_literal(s.in_str_inter || (s.offset >= 2 && s.src[s.offset - 2] == `r`), c)
 		s.lit = s.source_lit(s.pos, s.offset)
+		if nested_interpolation && !s.in_str_inter {
+			s.restore_parent_string_interpolation()
+		}
 		s.insert_semi = true
 		return .string
 	} else if c == `\`` {
@@ -268,6 +315,7 @@ pub fn (mut s Scanner) scan() token.Token {
 				}
 				return .dotdot
 			}
+			s.after_dot = true
 			return .dot
 		}
 		`:` {
@@ -639,6 +687,26 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 	s.error('unfinished string literal', s.src.len)
 }
 
+fn (mut s Scanner) begin_nested_string_interpolation(quote u8) {
+	s.str_parent_quotes << s.str_quote
+	s.str_parent_depths << s.str_inter_cbr_depth
+	s.in_str_inter = false
+	s.str_inter_cbr_depth = 0
+	s.str_quote = quote
+}
+
+fn (mut s Scanner) restore_parent_string_interpolation() {
+	if s.str_parent_quotes.len == 0 {
+		return
+	}
+	last := s.str_parent_quotes.len - 1
+	s.str_quote = s.str_parent_quotes[last]
+	s.str_inter_cbr_depth = s.str_parent_depths[last]
+	s.str_parent_quotes.delete_last()
+	s.str_parent_depths.delete_last()
+	s.in_str_inter = true
+}
+
 fn (mut s Scanner) check_string_escape(backslash_offset int) {
 	escape_offset := backslash_offset + 1
 	escape := s.src[escape_offset]
@@ -847,7 +915,15 @@ fn (mut s Scanner) consume_digits(base int) int {
 	mut previous_underscore := false
 	for s.offset < s.src.len {
 		c := s.src[s.offset]
-		if digit_value(c) < base {
+		// Decimal digits are by far the most common case, so test them inline
+		// instead of paying a digit_value call per byte.
+		mut is_digit := false
+		if c >= `0` && c <= `9` {
+			is_digit = int(c - `0`) < base
+		} else if base == 16 {
+			is_digit = (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
+		}
+		if is_digit {
 			digits++
 			previous_underscore = false
 			s.offset++

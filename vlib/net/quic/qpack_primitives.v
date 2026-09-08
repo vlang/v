@@ -54,8 +54,7 @@ pub fn decode_prefixed_int(buf []u8, prefix_bits int) !(u64, int) {
 	mut m := 0
 	for {
 		if consumed >= buf.len {
-			return error_with_code('qpack: prefixed integer continuation truncated',
-				qpack_err_need_more_data)
+			return error_with_code('qpack: prefixed integer continuation truncated', qpack_err_need_more_data)
 		}
 		b := buf[consumed]
 		consumed++
@@ -120,8 +119,7 @@ pub fn decode_prefixed_string(buf []u8, length_prefix_bits int) !(string, bool, 
 	if n > buf.len - len_consumed {
 		// The declared length is itself within limits; we simply don't have
 		// all of it buffered yet -- genuine truncation, not malformed data.
-		return error_with_code('qpack: string literal length exceeds buffer',
-			qpack_err_need_more_data)
+		return error_with_code('qpack: string literal length exceeds buffer', qpack_err_need_more_data)
 	}
 	raw := buf[len_consumed..len_consumed + n]
 	consumed := len_consumed + n
@@ -146,8 +144,7 @@ pub fn encode_prefixed_string(mut out []u8, s string, length_prefix_bits int, hi
 	raw := s.bytes()
 	huff := qpack_huffman_encode(raw)
 	if huff.len < raw.len {
-		encode_prefixed_int(mut out, u64(huff.len), length_prefix_bits,
-			high_bits | (u8(1) << u32(length_prefix_bits)))
+		encode_prefixed_int(mut out, u64(huff.len), length_prefix_bits, high_bits | (u8(1) << u32(length_prefix_bits)))
 		out << huff
 	} else {
 		encode_prefixed_int(mut out, u64(raw.len), length_prefix_bits, high_bits)

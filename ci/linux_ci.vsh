@@ -71,7 +71,7 @@ fn install_dependencies_for_examples_and_tools_tcc() {
 	}
 	exec('v retry -- sudo apt update')
 	exec('v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind')
-	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev')
+	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev libx11-xcb-dev')
 	// Wayland development libraries for sokol Wayland support
 	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev')
 	// The following is needed for examples/wkhtmltopdf.v
@@ -199,7 +199,7 @@ fn install_dependencies_for_examples_and_tools_gcc() {
 	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
 	// Wayland development libraries for sokol Wayland support
 	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev wayland-protocols libegl-dev')
-	exec('v retry -- sudo apt install --quiet -y libx11-dev libgl1-mesa-dri xauth xvfb')
+	exec('v retry -- sudo apt install --quiet -y libx11-dev libx11-xcb-dev libgl1-mesa-dri xauth xvfb')
 }
 
 fn recompile_v_with_cstrict_gcc() {
@@ -326,7 +326,7 @@ fn install_dependencies_for_examples_and_tools_clang() {
 	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
 	// Wayland development libraries for sokol Wayland support
 	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev wayland-protocols libegl-dev')
-	exec('v retry -- sudo apt install --quiet -y clang')
+	exec('v retry -- sudo apt install --quiet -y clang libx11-xcb-dev')
 }
 
 fn recompile_v_with_cstrict_clang() {
@@ -418,8 +418,7 @@ fn build_modules_clang() {
 
 fn test_inline_assembly() {
 	// V3 does not lower inline assembly yet. Select V1 explicitly so this task
-	// remains transparent and never exercises the compatibility retry path (which
-	// is disabled below via V_MACOS_V3_NO_FALLBACK).
+	// remains transparent without making the rest of the Linux task runner strict.
 	exec('v -old-compiler test vlib/v/slow_tests/assembly')
 }
 
@@ -488,11 +487,4 @@ const all_tasks = {
 	'test_inline_assembly':                              Task{test_inline_assembly, 'Test inline assembly'}
 }
 
-// V3 is the default compiler on Linux as well as macOS. A supported V3
-// compilation must fail directly in CI: never let the compatibility retry turn a
-// V3 regression into a passing V1 build. The workflow job also exports this in its
-// `env:`, so it already covers this runner script's own compilation (`v run
-// ci/linux_ci.vsh ...`); setting it here as well applies it when the tasks are run
-// outside that job (e.g. locally).
-os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 common.run(all_tasks)

@@ -232,3 +232,27 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '17'
 }
+
+fn test_pointer_to_voidptr_return_keeps_pointer_value() {
+	v3_bin := pointer_voidptr_build_v3()
+	source := 'fn make_values() voidptr {
+	unsafe {
+		values := &voidptr(malloc(64))
+		values[1] = voidptr(17)
+		return values
+	}
+}
+
+fn main() {
+	unsafe {
+		values := &voidptr(make_values())
+		println(usize(values[1]))
+		free(values)
+	}
+}
+'
+	out := pointer_voidptr_run_good(v3_bin, 'pointer_to_voidptr_return', source)
+	assert out == '17'
+	c_source := pointer_voidptr_gen_c(v3_bin, 'pointer_to_voidptr_return_c', source)
+	assert !c_source.contains('return *values;'), c_source
+}

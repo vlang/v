@@ -1,7 +1,12 @@
 #include <Cocoa/Cocoa.h>
+#include <CoreGraphics/CoreGraphics.h>
 #include <IOKit/hidsystem/IOLLEvent.h>
 #include <Metal/Metal.h>
 #include <QuartzCore/CAMetalLayer.h>
+#if defined(V_MULTIWINDOW_APPKIT_READBACK_TEST_PROBE)
+#include <dispatch/dispatch.h>
+#endif
+#include <limits.h>
 #include <math.h>
 #if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST)
 #include <pthread.h>
@@ -300,8 +305,98 @@ v_multiwindow_test_appkit_oracle_record_get(uint64_t index) {
 #define V_MULTIWINDOW_CURSOR_SHAPE_NWSE_RESIZE 14
 #define V_MULTIWINDOW_CURSOR_SHAPE_GRAB 15
 #define V_MULTIWINDOW_CURSOR_SHAPE_GRABBING 16
+#define V_MULTIWINDOW_CURSOR_SHAPE_TEXT 17
+#define V_MULTIWINDOW_CURSOR_SHAPE_CROSSHAIR 18
+#define V_MULTIWINDOW_CURSOR_SHAPE_NOT_ALLOWED 19
+#define V_MULTIWINDOW_CURSOR_SHAPE_RESIZE_ALL 20
+
+#define V_MULTIWINDOW_APPKIT_SERVICE_ABI_VERSION UINT32_C(1)
+#define V_MULTIWINDOW_APPKIT_SERVICE_CLIPBOARD_MAX_BYTES (16u * 1024u * 1024u)
+#define V_MULTIWINDOW_APPKIT_SERVICE_BOOL_OFF 1
+#define V_MULTIWINDOW_APPKIT_SERVICE_BOOL_ON 2
+#define V_MULTIWINDOW_APPKIT_SERVICE_MAPPING_UNMAPPED 1
+#define V_MULTIWINDOW_APPKIT_SERVICE_MAPPING_MAPPED 2
+#define V_MULTIWINDOW_APPKIT_SERVICE_VISIBILITY_HIDDEN 1
+#define V_MULTIWINDOW_APPKIT_SERVICE_VISIBILITY_VISIBLE 2
+#define V_MULTIWINDOW_APPKIT_SERVICE_VISIBILITY_OCCLUDED 3
+#define V_MULTIWINDOW_APPKIT_SERVICE_SHOW 0
+#define V_MULTIWINDOW_APPKIT_SERVICE_HIDE 1
+#define V_MULTIWINDOW_APPKIT_SERVICE_FOCUS 2
+#define V_MULTIWINDOW_APPKIT_SERVICE_RAISE 3
+#define V_MULTIWINDOW_APPKIT_SERVICE_POSITION 4
+#define V_MULTIWINDOW_APPKIT_SERVICE_MINIMIZE 5
+#define V_MULTIWINDOW_APPKIT_SERVICE_MAXIMIZE 6
+#define V_MULTIWINDOW_APPKIT_SERVICE_RESTORE 7
+#define V_MULTIWINDOW_APPKIT_SERVICE_FULLSCREEN 8
+#define V_MULTIWINDOW_APPKIT_SERVICE_CLIPBOARD_READ 9
+#define V_MULTIWINDOW_APPKIT_SERVICE_CLIPBOARD_WRITE 10
+#define V_MULTIWINDOW_APPKIT_SERVICE_PORTAL_PARENT 11
+#define V_MULTIWINDOW_APPKIT_SERVICE_NATIVE_BORROW 12
+#define V_MULTIWINDOW_APPKIT_SERVICE_MOUSE_LOCK 13
+#define V_MULTIWINDOW_APPKIT_SERVICE_TITLEBAR_APPEARANCE 14
+#define V_MULTIWINDOW_APPKIT_SERVICE_IMAGE_READBACK 15
+#define V_MULTIWINDOW_APPKIT_SERVICE_WINDOW_CAPTURE 16
+#define V_MULTIWINDOW_APPKIT_READBACK_READY 1
+#define V_MULTIWINDOW_APPKIT_READBACK_FAILED 3
 
 @class VMultiwindowAppKitWindowState;
+
+#if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+// Keep the typedef separate: V3's C scanner treats the final NS_ENUM member as an alias.
+typedef NSInteger VMultiwindowAppKitReadbackKind;
+enum {
+	VMultiwindowAppKitReadbackWindow = 1,
+	VMultiwindowAppKitReadbackImage = 2,
+};
+
+@interface VMultiwindowAppKitReadbackRecord : NSObject
+@property(assign) uint64_t request;
+@property(assign) VMultiwindowAppKitReadbackKind kind;
+@property(assign) NSUInteger x;
+@property(assign) NSUInteger y;
+@property(assign) NSUInteger width;
+@property(assign) NSUInteger height;
+@property(assign) NSUInteger publicBytesPerRow;
+@property(assign) NSUInteger gpuBytesPerRow;
+@property(assign) MTLPixelFormat sourcePixelFormat;
+@property(assign) uint64_t producingFrame;
+@property(assign) uint64_t submittedFrame;
+@property(assign) int status;
+@property(assign) BOOL encoded;
+@property(assign) BOOL submissionResolved;
+@property(assign) BOOL submissionSucceeded;
+@property(assign) BOOL gpuCompleted;
+@property(assign) BOOL gpuSucceeded;
+@property(assign) BOOL encodingFailed;
+@property(assign) BOOL cancelRequested;
+@property(assign) BOOL taken;
+@property(assign) BOOL copied;
+@property(assign) BOOL released;
+@property(strong) id<MTLTexture> sourceTexture;
+@property(strong) id<MTLBuffer> stagingBuffer;
+@property(strong) NSData *publicPixels;
+- (void)resolveSubmissionFrame:(uint64_t)submittedFrame succeeded:(BOOL)succeeded;
+- (void)completeCommandBuffer:(id<MTLCommandBuffer>)commandBuffer
+	 source:(id<MTLTexture>)source
+	 buffer:(id<MTLBuffer>)buffer;
+- (BOOL)cancel;
+@end
+
+@interface VMultiwindowAppKitOffscreenReadbackSlot : NSObject
+@property(weak) VMultiwindowAppKitWindowState *state;
+@property(assign) uint64_t stateGeneration;
+@property(assign) uint64_t passSerial;
+@property(assign) uint64_t producingFrame;
+@property(strong) id<MTLTexture> expectedTexture;
+@end
+#endif
+
+@interface VMultiwindowAppKitServiceObserver : NSObject
+- (void)screenParametersDidChange
+	:(NSNotification *)notification;
+- (void)windowBackingDidChange:(NSNotification *)notification;
+- (void)applicationStateDidChange:(NSNotification *)notification;
+@end
 
 @interface VMultiwindowAppKitView : NSView <NSDraggingDestination>
 @property(weak) VMultiwindowAppKitWindowState *state;
@@ -332,6 +427,31 @@ v_multiwindow_test_appkit_oracle_record_get(uint64_t index) {
 @property(assign) int framebufferWidth;
 @property(assign) int framebufferHeight;
 @property(assign) int cursorShape;
+@property(assign) BOOL serviceMapped;
+@property(assign) BOOL serviceVisible;
+@property(assign) BOOL serviceOccluded;
+@property(assign) BOOL serviceActive;
+@property(assign) BOOL serviceFocused;
+@property(assign) BOOL serviceMinimized;
+@property(assign) BOOL serviceMaximized;
+@property(assign) BOOL serviceFullscreen;
+@property(assign) BOOL servicePositionKnown;
+@property(assign) NSPoint servicePosition;
+@property(assign) uint64_t serviceMonitorNativeId;
+@property(assign) CGFloat serviceScale;
+@property(assign) BOOL serviceMouseLocked;
+@property(assign) BOOL serviceMouseDisassociated;
+@property(assign) BOOL serviceCursorHidden;
+@property(assign) BOOL serviceReleased;
+@property(weak) VMultiwindowAppKitWindowState *serviceOwner;
+@property(assign) BOOL serviceModal;
+@property(strong) NSData *serviceClipboardSnapshot;
+#if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+@property(assign) BOOL serviceCaptureCapable;
+@property(assign) BOOL serviceReadbackQuiesced;
+@property(assign) uint64_t serviceReadbackGeneration;
+@property(strong) NSMutableArray<VMultiwindowAppKitReadbackRecord *> *serviceReadbacks;
+#endif
 #if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST)
 @property(assign) BOOL nativeProofHeadlessOcclusionOverride;
 #endif
@@ -340,6 +460,9 @@ v_multiwindow_test_appkit_oracle_record_get(uint64_t index) {
 - (void)queueLifecycleEvent:(int)kind;
 - (void)queueResizeEvents;
 - (void)queueInputEvent:(VMultiwindowAppKitQueuedEvent)event;
+- (void)queueServiceSnapshotKind:(int)kind operation:(int)operation;
+- (void)queueServiceStateForOperation:(int)operation;
+- (void)queueServiceMetricsSnapshot;
 - (void)queueKeyEvent:(int)kind keyCode:(int)keyCode repeat:(BOOL)repeat modifiers:(uint32_t)modifiers;
 - (void)queueCharEventsFromString:(NSString *)characters repeat:(BOOL)repeat modifiers:(uint32_t)modifiers;
 - (void)queueTouchEvent:(int)kind changedPhase:(NSTouchPhase)phase event:(NSEvent *)event view:(NSView *)view;
@@ -349,7 +472,42 @@ v_multiwindow_test_appkit_oracle_record_get(uint64_t index) {
 - (void)clearKeyDownState;
 - (void)clearQueuedEvents;
 - (void)applyCursorShape;
+- (BOOL)hasMouseLockAuthority;
+- (void)refreshServiceObservation;
+- (BOOL)acquireMouseLock;
+- (BOOL)releaseMouseLock;
+- (void)detachOwnerRelationship;
+- (void)detachOwnedRelationships;
+- (void)detachAccessibility;
+#if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+- (BOOL)registerReadbackHook;
+- (void)unregisterReadbackHook;
+- (void)encodeReadbacksWithCommandBuffer:(id<MTLCommandBuffer>)commandBuffer
+	 drawable:(id<CAMetalDrawable>)drawable
+	 expectedTexture:(id<MTLTexture>)expectedTexture
+	 producingFrame:(uint64_t)producingFrame;
+- (void)quiesceReadbacks;
+#endif
+- (void)releaseServices;
 @end
+
+static VMultiwindowAppKitServiceObserver *v_multiwindow_appkit_service_observer;
+static __weak VMultiwindowAppKitWindowState *v_multiwindow_appkit_mouse_lock_owner;
+static uint64_t v_multiwindow_appkit_monitor_revision = UINT64_C(1);
+#if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+static NSHashTable<VMultiwindowAppKitWindowState *> *v_multiwindow_appkit_readback_states;
+static char v_multiwindow_appkit_readback_hook_owner;
+static BOOL v_multiwindow_appkit_readback_hook_installed;
+static VMultiwindowAppKitOffscreenReadbackSlot *v_multiwindow_appkit_offscreen_readback_slot;
+#if defined(V_MULTIWINDOW_APPKIT_READBACK_TEST_PROBE)
+static dispatch_semaphore_t v_multiwindow_appkit_readback_test_completion_entered;
+static dispatch_semaphore_t v_multiwindow_appkit_readback_test_completion_release;
+static BOOL v_multiwindow_appkit_readback_test_completion_paused;
+#endif
+
+static void v_multiwindow_appkit_readback_end_pass_hook(const void *command_buffer,
+	const void *drawable, void *user_data);
+#endif
 
 #if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST)
 @interface VMultiwindowAppKitPhysicalNilDrawableLayer : CAMetalLayer
@@ -403,6 +561,14 @@ static NSCursor *v_multiwindow_appkit_cursor_for_shape(int shape) {
 		return [NSCursor openHandCursor];
 	case V_MULTIWINDOW_CURSOR_SHAPE_GRABBING:
 		return [NSCursor closedHandCursor];
+	case V_MULTIWINDOW_CURSOR_SHAPE_TEXT:
+		return [NSCursor IBeamCursor];
+	case V_MULTIWINDOW_CURSOR_SHAPE_CROSSHAIR:
+		return [NSCursor crosshairCursor];
+	case V_MULTIWINDOW_CURSOR_SHAPE_NOT_ALLOWED:
+		return [NSCursor operationNotAllowedCursor];
+	case V_MULTIWINDOW_CURSOR_SHAPE_RESIZE_ALL:
+		return [NSCursor openHandCursor];
 	case V_MULTIWINDOW_CURSOR_SHAPE_N_RESIZE:
 	case V_MULTIWINDOW_CURSOR_SHAPE_S_RESIZE:
 	case V_MULTIWINDOW_CURSOR_SHAPE_NS_RESIZE:
@@ -714,17 +880,504 @@ static void v_multiwindow_appkit_fill_touch_point(VMultiwindowAppKitWindowState 
 	event->touch_changed[index] = changed ? 1 : 0;
 }
 
+static int v_multiwindow_appkit_clamped_int(CGFloat value) {
+	if (value >= (CGFloat)INT_MAX) {
+		return INT_MAX;
+	}
+	if (value <= (CGFloat)INT_MIN) {
+		return INT_MIN;
+	}
+	return (int)llround(value);
+}
+
+static NSArray<NSScreen *> *v_multiwindow_appkit_screens(void) {
+	return [NSScreen screens];
+}
+
+static BOOL v_multiwindow_appkit_primary_screen_top(CGFloat *out_top) {
+	NSArray<NSScreen *> *screens = v_multiwindow_appkit_screens();
+	if (out_top == NULL || screens.count == 0) {
+		return NO;
+	}
+	*out_top = NSMaxY(screens[0].frame);
+	return YES;
+}
+
+static BOOL v_multiwindow_appkit_screen_native_id(NSScreen *screen, uint64_t *out_native_id) {
+	if (screen == nil || out_native_id == NULL) {
+		return NO;
+	}
+	NSNumber *number = screen.deviceDescription[@"NSScreenNumber"];
+	if (number == nil) {
+		return NO;
+	}
+	*out_native_id = number.unsignedLongLongValue;
+	return *out_native_id != 0;
+}
+
+static BOOL v_multiwindow_appkit_top_left_rect(NSRect frame, NSRect *out_rect) {
+	CGFloat primary_top = 0.0;
+	if (out_rect == NULL || !v_multiwindow_appkit_primary_screen_top(&primary_top)) {
+		return NO;
+	}
+	*out_rect = NSMakeRect(NSMinX(frame), primary_top - NSMaxY(frame),
+		NSWidth(frame), NSHeight(frame));
+	return YES;
+}
+
+static NSString *v_multiwindow_appkit_screen_name(NSScreen *screen, uint64_t native_id) {
+	if (screen == nil) {
+		return nil;
+	}
+	if (@available(macOS 10.15, *)) {
+		NSString *localized_name = screen.localizedName;
+		if (localized_name.length > 0) {
+			return localized_name;
+		}
+	}
+	return [NSString stringWithFormat:@"Display %llu", (unsigned long long)native_id];
+}
+
+static void v_multiwindow_appkit_queue_service_windows_metrics(void) {
+	if (![NSThread isMainThread] || NSApp == nil) {
+		return;
+	}
+	for (NSWindow *window in NSApp.windows) {
+		id delegate = window.delegate;
+		if ([delegate isKindOfClass:VMultiwindowAppKitWindowState.class]) {
+			[(VMultiwindowAppKitWindowState *)delegate queueServiceMetricsSnapshot];
+		}
+	}
+}
+
+static void v_multiwindow_appkit_queue_service_windows(int operation) {
+	if (![NSThread isMainThread] || NSApp == nil) {
+		return;
+	}
+	for (NSWindow *window in NSApp.windows) {
+		id delegate = window.delegate;
+		if ([delegate isKindOfClass:VMultiwindowAppKitWindowState.class]) {
+			[(VMultiwindowAppKitWindowState *)delegate
+				queueServiceStateForOperation:operation];
+		}
+	}
+}
+
+static void v_multiwindow_appkit_ensure_service_observer(void) {
+	if (![NSThread isMainThread] || v_multiwindow_appkit_service_observer != nil) {
+		return;
+	}
+	v_multiwindow_appkit_service_observer = [[VMultiwindowAppKitServiceObserver alloc] init];
+	NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+	[center addObserver:v_multiwindow_appkit_service_observer
+		selector:@selector(screenParametersDidChange:)
+		name:NSApplicationDidChangeScreenParametersNotification object:nil];
+	[center addObserver:v_multiwindow_appkit_service_observer
+		selector:@selector(windowBackingDidChange:)
+		name:NSWindowDidChangeBackingPropertiesNotification object:nil];
+	[center addObserver:v_multiwindow_appkit_service_observer
+		selector:@selector(applicationStateDidChange:)
+		name:NSApplicationDidBecomeActiveNotification object:nil];
+	[center addObserver:v_multiwindow_appkit_service_observer
+		selector:@selector(applicationStateDidChange:)
+		name:NSApplicationDidResignActiveNotification object:nil];
+	[center addObserver:v_multiwindow_appkit_service_observer
+		selector:@selector(applicationStateDidChange:)
+		name:NSApplicationDidHideNotification object:nil];
+	[center addObserver:v_multiwindow_appkit_service_observer
+		selector:@selector(applicationStateDidChange:)
+		name:NSApplicationDidUnhideNotification object:nil];
+}
+
+#if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+static BOOL v_multiwindow_appkit_checked_multiply(NSUInteger left, NSUInteger right,
+		NSUInteger *out_value) {
+	if (out_value == NULL || (left != 0 && right > SIZE_MAX / left)) {
+		return NO;
+	}
+	*out_value = left * right;
+	return YES;
+}
+
+static BOOL v_multiwindow_appkit_readback_pixel_format(MTLPixelFormat format) {
+	return format == MTLPixelFormatBGRA8Unorm
+		|| format == MTLPixelFormatBGRA8Unorm_sRGB
+		|| format == MTLPixelFormatRGBA8Unorm
+		|| format == MTLPixelFormatRGBA8Unorm_sRGB;
+}
+
+static BOOL v_multiwindow_appkit_readback_is_bgra(MTLPixelFormat format) {
+	return format == MTLPixelFormatBGRA8Unorm
+		|| format == MTLPixelFormatBGRA8Unorm_sRGB;
+}
+
+static NSData *v_multiwindow_appkit_bgra_to_rgba(const void *source_bytes,
+		NSUInteger source_bytes_per_row, NSUInteger width, NSUInteger height,
+		MTLPixelFormat source_format) {
+	if (source_bytes == NULL || width == 0 || height == 0
+			|| !v_multiwindow_appkit_readback_pixel_format(source_format)) {
+		return nil;
+	}
+	NSUInteger compact_bytes_per_row = 0;
+	NSUInteger compact_byte_length = 0;
+	if (!v_multiwindow_appkit_checked_multiply(width, 4, &compact_bytes_per_row)
+			|| source_bytes_per_row < compact_bytes_per_row
+			|| !v_multiwindow_appkit_checked_multiply(compact_bytes_per_row, height,
+				&compact_byte_length)) {
+		return nil;
+	}
+	NSMutableData *pixels = [NSMutableData dataWithLength:compact_byte_length];
+	if (pixels == nil || pixels.mutableBytes == NULL) {
+		return nil;
+	}
+	const uint8_t *source = (const uint8_t *)source_bytes;
+	uint8_t *destination = (uint8_t *)pixels.mutableBytes;
+	BOOL bgra = v_multiwindow_appkit_readback_is_bgra(source_format);
+	for (NSUInteger row = 0; row < height; row++) {
+		const uint8_t *source_row = source + row * source_bytes_per_row;
+		uint8_t *destination_row = destination + row * compact_bytes_per_row;
+		if (!bgra) {
+			memcpy(destination_row, source_row, compact_bytes_per_row);
+			continue;
+		}
+		for (NSUInteger column = 0; column < width; column++) {
+			const uint8_t *source_pixel = source_row + column * 4;
+			uint8_t *destination_pixel = destination_row + column * 4;
+			destination_pixel[0] = source_pixel[2];
+			destination_pixel[1] = source_pixel[1];
+			destination_pixel[2] = source_pixel[0];
+			destination_pixel[3] = source_pixel[3];
+		}
+	}
+	return pixels;
+}
+
+static void v_multiwindow_appkit_readback_publish_locked(
+		VMultiwindowAppKitReadbackRecord *record) {
+	if (record.status != 0 || !record.submissionResolved) {
+		return;
+	}
+	if (!record.submissionSucceeded || record.encodingFailed || !record.encoded) {
+		record.status = V_MULTIWINDOW_APPKIT_READBACK_FAILED;
+		return;
+	}
+	if (!record.gpuCompleted) {
+		return;
+	}
+	record.status = record.gpuSucceeded && record.publicPixels != nil
+		? V_MULTIWINDOW_APPKIT_READBACK_READY
+		: V_MULTIWINDOW_APPKIT_READBACK_FAILED;
+}
+
+@implementation VMultiwindowAppKitOffscreenReadbackSlot
+@end
+
+static void v_multiwindow_appkit_clear_offscreen_readback_slot_for_state(
+		VMultiwindowAppKitWindowState *state) {
+	if (v_multiwindow_appkit_offscreen_readback_slot != nil
+			&& v_multiwindow_appkit_offscreen_readback_slot.state == state) {
+		v_multiwindow_appkit_offscreen_readback_slot = nil;
+	}
+}
+
+static BOOL v_multiwindow_appkit_offscreen_slot_has_active_record(
+		VMultiwindowAppKitWindowState *state) {
+	VMultiwindowAppKitOffscreenReadbackSlot *slot =
+		v_multiwindow_appkit_offscreen_readback_slot;
+	if (state == nil || slot == nil || slot.state != state
+			|| slot.stateGeneration != state.serviceReadbackGeneration) {
+		return NO;
+	}
+	for (VMultiwindowAppKitReadbackRecord *record in state.serviceReadbacks) {
+		@synchronized (record) {
+			if (record.kind == VMultiwindowAppKitReadbackImage && !record.released
+					&& !record.cancelRequested && record.status == 0 && !record.encoded
+					&& record.sourceTexture == slot.expectedTexture
+					&& record.producingFrame == slot.producingFrame) {
+				return YES;
+			}
+		}
+	}
+	return NO;
+}
+
+@implementation VMultiwindowAppKitReadbackRecord
+- (void)resolveSubmissionFrame:(uint64_t)submittedFrame succeeded:(BOOL)succeeded {
+	@synchronized (self) {
+		if (self.released || self.status != 0 || self.submissionResolved) {
+			return;
+		}
+		self.submittedFrame = succeeded ? submittedFrame : 0;
+		self.submissionResolved = YES;
+		self.submissionSucceeded = succeeded;
+		v_multiwindow_appkit_readback_publish_locked(self);
+		if (self.status == V_MULTIWINDOW_APPKIT_READBACK_FAILED) {
+			self.publicPixels = nil;
+		}
+	}
+}
+
+- (void)completeCommandBuffer:(id<MTLCommandBuffer>)commandBuffer
+	 source:(id<MTLTexture>)source
+	 buffer:(id<MTLBuffer>)buffer {
+	BOOL should_normalize = NO;
+	BOOL gpu_succeeded = commandBuffer != nil
+		&& commandBuffer.status == MTLCommandBufferStatusCompleted;
+	@synchronized (self) {
+		should_normalize = !self.released && !self.cancelRequested && self.status == 0
+			&& gpu_succeeded && source != nil && buffer != nil;
+	}
+#if defined(V_MULTIWINDOW_APPKIT_READBACK_TEST_PROBE)
+	if (v_multiwindow_appkit_readback_test_completion_paused) {
+		dispatch_semaphore_signal(v_multiwindow_appkit_readback_test_completion_entered);
+		dispatch_semaphore_wait(v_multiwindow_appkit_readback_test_completion_release,
+			DISPATCH_TIME_FOREVER);
+	}
+#endif
+	NSData *pixels = should_normalize
+		? v_multiwindow_appkit_bgra_to_rgba(buffer.contents, self.gpuBytesPerRow,
+			self.width, self.height, self.sourcePixelFormat)
+		: nil;
+	@synchronized (self) {
+		if (!self.released && !self.cancelRequested && self.status == 0) {
+			self.publicPixels = pixels;
+			self.gpuSucceeded = gpu_succeeded && pixels != nil;
+			self.gpuCompleted = YES;
+			v_multiwindow_appkit_readback_publish_locked(self);
+		}
+		self.sourceTexture = nil;
+		self.stagingBuffer = nil;
+	}
+}
+
+- (BOOL)cancel {
+	@synchronized (self) {
+		if (self.released || self.cancelRequested) {
+			return NO;
+		}
+		self.cancelRequested = YES;
+		self.released = YES;
+		self.status = 0;
+		self.publicPixels = nil;
+		self.sourceTexture = nil;
+		self.stagingBuffer = nil;
+		return YES;
+	}
+}
+@end
+
+static void v_multiwindow_appkit_readback_end_pass_hook(const void *command_buffer,
+		const void *drawable, void *user_data) {
+	if (command_buffer == NULL || ![NSThread isMainThread]
+			|| user_data != &v_multiwindow_appkit_readback_hook_owner) {
+		return;
+	}
+	id<MTLCommandBuffer> native_command_buffer =
+		(__bridge id<MTLCommandBuffer>)command_buffer;
+	if (drawable == NULL) {
+		VMultiwindowAppKitOffscreenReadbackSlot *pending_offscreen =
+			v_multiwindow_appkit_offscreen_readback_slot;
+		v_multiwindow_appkit_offscreen_readback_slot = nil;
+		VMultiwindowAppKitWindowState *state = pending_offscreen.state;
+		if (pending_offscreen == nil || state == nil || state.serviceReleased
+				|| state.serviceReadbackQuiesced || !state.serviceCaptureCapable
+				|| state.serviceReadbackGeneration != pending_offscreen.stateGeneration
+				|| pending_offscreen.passSerial == 0
+				|| pending_offscreen.producingFrame == 0
+				|| pending_offscreen.expectedTexture == nil) {
+			return;
+		}
+		[state encodeReadbacksWithCommandBuffer:native_command_buffer
+			drawable:nil expectedTexture:pending_offscreen.expectedTexture
+			producingFrame:pending_offscreen.producingFrame];
+		return;
+	}
+	id<CAMetalDrawable> native_drawable = (__bridge id<CAMetalDrawable>)drawable;
+	NSArray<VMultiwindowAppKitWindowState *> *states =
+		v_multiwindow_appkit_readback_states.allObjects;
+	for (VMultiwindowAppKitWindowState *state in states) {
+		if (!state.serviceReadbackQuiesced && state.currentDrawable == native_drawable) {
+			[state encodeReadbacksWithCommandBuffer:native_command_buffer
+				drawable:native_drawable expectedTexture:nil producingFrame:0];
+		}
+	}
+}
+#endif
+
 @implementation VMultiwindowAppKitWindowState
 - (instancetype)init {
 	self = [super init];
 	if (self != nil) {
 		self.queuedEvents = [NSMutableArray array];
+#if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+		self.serviceReadbacks = [NSMutableArray array];
+		self.serviceReadbackGeneration = UINT64_C(1);
+#endif
 #if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST)
 		self.nativeProofHeadlessOcclusionOverride = NO;
 #endif
 	}
 	return self;
 }
+
+#if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+- (BOOL)registerReadbackHook {
+	if (![NSThread isMainThread] || self.serviceReadbackQuiesced) {
+		return NO;
+	}
+	if (v_multiwindow_appkit_readback_states == nil) {
+		v_multiwindow_appkit_readback_states = [NSHashTable weakObjectsHashTable];
+	}
+	if (v_multiwindow_appkit_readback_hook_installed) {
+		(void)v_sokol_mtl_set_end_pass_hook(NULL,
+			&v_multiwindow_appkit_readback_hook_owner);
+		v_multiwindow_appkit_readback_hook_installed = NO;
+	}
+	if (!v_sokol_mtl_set_end_pass_hook(v_multiwindow_appkit_readback_end_pass_hook,
+			&v_multiwindow_appkit_readback_hook_owner)) {
+		for (VMultiwindowAppKitWindowState *state
+				in v_multiwindow_appkit_readback_states.allObjects) {
+			state.serviceCaptureCapable = NO;
+		}
+		return NO;
+	}
+	v_multiwindow_appkit_readback_hook_installed = YES;
+	[v_multiwindow_appkit_readback_states addObject:self];
+	for (VMultiwindowAppKitWindowState *state
+			in v_multiwindow_appkit_readback_states.allObjects) {
+		if (!state.serviceReadbackQuiesced && !state.serviceReleased) {
+			state.serviceCaptureCapable = YES;
+		}
+	}
+	return [v_multiwindow_appkit_readback_states containsObject:self];
+}
+
+- (void)unregisterReadbackHook {
+	if (![NSThread isMainThread] || v_multiwindow_appkit_readback_states == nil) {
+		return;
+	}
+	[v_multiwindow_appkit_readback_states removeObject:self];
+	if (v_multiwindow_appkit_readback_hook_installed
+			&& v_multiwindow_appkit_readback_states.allObjects.count == 0) {
+		(void)v_sokol_mtl_set_end_pass_hook(NULL,
+			&v_multiwindow_appkit_readback_hook_owner);
+		v_multiwindow_appkit_readback_hook_installed = NO;
+	}
+}
+
+- (void)encodeReadbacksWithCommandBuffer:(id<MTLCommandBuffer>)commandBuffer
+		drawable:(id<CAMetalDrawable>)drawable
+		expectedTexture:(id<MTLTexture>)expectedTexture
+		producingFrame:(uint64_t)producingFrame {
+	BOOL window_pass = drawable != nil;
+	if (![NSThread isMainThread] || commandBuffer == nil
+			|| self.serviceReadbackQuiesced || !self.serviceCaptureCapable
+			|| (window_pass && self.currentDrawable != drawable)
+			|| (!window_pass && (expectedTexture == nil || producingFrame == 0))) {
+		return;
+	}
+	id<MTLDevice> device = commandBuffer.commandQueue.device;
+	if (device == nil || (window_pass && drawable.texture.device != device)
+			|| (!window_pass && expectedTexture.device != device)) {
+		return;
+	}
+	NSArray<VMultiwindowAppKitReadbackRecord *> *records = [self.serviceReadbacks copy];
+	for (VMultiwindowAppKitReadbackRecord *record in records) {
+		BOOL pending = NO;
+		@synchronized (record) {
+			pending = !record.released && !record.cancelRequested && record.status == 0
+				&& !record.encoded;
+		}
+		if (!pending) {
+			continue;
+		}
+		BOOL reserved_for_offscreen =
+			v_multiwindow_appkit_offscreen_readback_slot.state == self
+			&& v_multiwindow_appkit_offscreen_readback_slot.stateGeneration
+				== self.serviceReadbackGeneration
+			&& v_multiwindow_appkit_offscreen_readback_slot.producingFrame
+				== record.producingFrame
+			&& v_multiwindow_appkit_offscreen_readback_slot.expectedTexture
+				== record.sourceTexture;
+		if ((window_pass && record.kind == VMultiwindowAppKitReadbackImage
+					&& reserved_for_offscreen)
+				|| (!window_pass && (record.kind != VMultiwindowAppKitReadbackImage
+					|| record.sourceTexture != expectedTexture
+					|| record.producingFrame != producingFrame))) {
+			continue;
+		}
+		id<MTLTexture> source = record.kind == VMultiwindowAppKitReadbackWindow
+			? drawable.texture : record.sourceTexture;
+		BOOL valid = source != nil && source.device == device
+			&& v_multiwindow_appkit_readback_pixel_format(source.pixelFormat)
+			&& record.width > 0 && record.height > 0
+			&& record.x <= source.width && record.y <= source.height
+			&& record.width <= source.width - record.x
+			&& record.height <= source.height - record.y;
+		NSUInteger public_bytes_per_row = 0;
+		NSUInteger allocation_byte_length = 0;
+		valid = valid
+			&& v_multiwindow_appkit_checked_multiply(record.width, 4,
+				&public_bytes_per_row)
+			&& v_multiwindow_appkit_checked_multiply(public_bytes_per_row, record.height,
+				&allocation_byte_length);
+		id<MTLBuffer> buffer = valid
+			? [device newBufferWithLength:allocation_byte_length
+				options:MTLResourceStorageModeShared] : nil;
+		id<MTLBlitCommandEncoder> blit = buffer != nil
+			? [commandBuffer blitCommandEncoder] : nil;
+		if (blit == nil) {
+			@synchronized (record) {
+				if (record.status == 0 && !record.cancelRequested && !record.released) {
+					record.encodingFailed = YES;
+				}
+			}
+			continue;
+		}
+		[blit copyFromTexture:source
+			sourceSlice:0
+			sourceLevel:0
+			sourceOrigin:MTLOriginMake(record.x, record.y, 0)
+			sourceSize:MTLSizeMake(record.width, record.height, 1)
+			toBuffer:buffer
+			destinationOffset:0
+			destinationBytesPerRow:public_bytes_per_row
+			destinationBytesPerImage:0];
+		[blit endEncoding];
+		@synchronized (record) {
+			record.publicBytesPerRow = public_bytes_per_row;
+			record.gpuBytesPerRow = public_bytes_per_row;
+			record.sourcePixelFormat = source.pixelFormat;
+			record.sourceTexture = source;
+			record.stagingBuffer = buffer;
+			record.encoded = YES;
+		}
+		VMultiwindowAppKitReadbackRecord *completion_record = record;
+		id<MTLTexture> completion_source = source;
+		id<MTLBuffer> completion_buffer = buffer;
+		[commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
+			[completion_record completeCommandBuffer:completed
+				source:completion_source buffer:completion_buffer];
+		}];
+	}
+}
+
+- (void)quiesceReadbacks {
+	if (![NSThread isMainThread] || self.serviceReadbackQuiesced) {
+		return;
+	}
+	self.serviceReadbackQuiesced = YES;
+	self.serviceCaptureCapable = NO;
+	v_multiwindow_appkit_clear_offscreen_readback_slot_for_state(self);
+	self.serviceReadbackGeneration = self.serviceReadbackGeneration < UINT64_MAX
+		? self.serviceReadbackGeneration + UINT64_C(1) : UINT64_C(0);
+	[self unregisterReadbackHook];
+	for (VMultiwindowAppKitReadbackRecord *record in [self.serviceReadbacks copy]) {
+		(void)[record cancel];
+	}
+	[self.serviceReadbacks removeAllObjects];
+}
+#endif
 
 - (void)updateDimensions {
 	NSView *content = self.window.contentView != nil ? self.window.contentView : self.view;
@@ -761,6 +1414,198 @@ static void v_multiwindow_appkit_fill_touch_point(VMultiwindowAppKitWindowState 
 		}
 		self.layer.contentsScale = scale;
 		self.layer.drawableSize = CGSizeMake((CGFloat)framebuffer_width, (CGFloat)framebuffer_height);
+	}
+}
+
+- (void)refreshServiceObservation {
+	NSWindow *window = self.window;
+	if (window == nil) {
+		self.serviceMapped = NO;
+		self.serviceVisible = NO;
+		self.serviceOccluded = NO;
+		self.serviceActive = NO;
+		self.serviceFocused = NO;
+		self.serviceMinimized = NO;
+		self.serviceMaximized = NO;
+		self.serviceFullscreen = NO;
+		self.servicePositionKnown = NO;
+		self.serviceMonitorNativeId = 0;
+		self.serviceScale = 0.0;
+		return;
+	}
+	BOOL minimized = window.isMiniaturized;
+	BOOL visible = window.isVisible && !minimized && (NSApp == nil || !NSApp.isHidden);
+	self.serviceMapped = window.isVisible || minimized;
+	self.serviceVisible = visible;
+	self.serviceOccluded = visible &&
+		((window.occlusionState & NSWindowOcclusionStateVisible) == 0);
+	self.serviceActive = NSApp != nil && NSApp.isActive && window.isMainWindow;
+	self.serviceFocused = window.isKeyWindow;
+	self.serviceMinimized = minimized;
+	self.serviceMaximized = window.isZoomed;
+	self.serviceFullscreen = (window.styleMask & NSWindowStyleMaskFullScreen) != 0;
+	NSRect top_left_frame = NSZeroRect;
+	self.servicePositionKnown = v_multiwindow_appkit_top_left_rect(window.frame,
+		&top_left_frame);
+	if (self.servicePositionKnown) {
+		self.servicePosition = top_left_frame.origin;
+	}
+	NSScreen *screen = window.screen;
+	uint64_t native_id = 0;
+	self.serviceMonitorNativeId = v_multiwindow_appkit_screen_native_id(screen,
+		&native_id) ? native_id : 0;
+	self.serviceScale = screen != nil ? screen.backingScaleFactor : 0.0;
+}
+
+- (BOOL)hasMouseLockAuthority {
+	return self.serviceMouseLocked || self.serviceMouseDisassociated ||
+		self.serviceCursorHidden || v_multiwindow_appkit_mouse_lock_owner == self;
+}
+
+- (BOOL)acquireMouseLock {
+	if (self.serviceMouseLocked) {
+		return YES;
+	}
+	if (self.window == nil || self.serviceReleased || !self.window.isVisible ||
+		self.window.isMiniaturized || !self.window.isKeyWindow) {
+		return NO;
+	}
+	if ([self hasMouseLockAuthority] && ![self releaseMouseLock]) {
+		return NO;
+	}
+	VMultiwindowAppKitWindowState *owner = v_multiwindow_appkit_mouse_lock_owner;
+	if (owner != nil && owner != self && [owner hasMouseLockAuthority]) {
+		return NO;
+	}
+	v_multiwindow_appkit_mouse_lock_owner = self;
+	if (CGAssociateMouseAndMouseCursorPosition(false) != kCGErrorSuccess) {
+		v_multiwindow_appkit_mouse_lock_owner = nil;
+		return NO;
+	}
+	self.serviceMouseDisassociated = YES;
+	if (CGDisplayHideCursor(kCGDirectMainDisplay) != kCGErrorSuccess) {
+		(void)[self releaseMouseLock];
+		return NO;
+	}
+	self.serviceCursorHidden = YES;
+	self.serviceMouseLocked = YES;
+	self.mouseDx = 0.0f;
+	self.mouseDy = 0.0f;
+	return YES;
+}
+
+- (BOOL)releaseMouseLock {
+	if (self.serviceMouseDisassociated) {
+		if (CGAssociateMouseAndMouseCursorPosition(true) == kCGErrorSuccess) {
+			self.serviceMouseDisassociated = NO;
+		} else {
+			return NO;
+		}
+	}
+	if (self.serviceCursorHidden) {
+		if (CGDisplayShowCursor(kCGDirectMainDisplay) == kCGErrorSuccess) {
+			self.serviceCursorHidden = NO;
+		} else {
+			return NO;
+		}
+	}
+	if (!self.serviceCursorHidden && !self.serviceMouseDisassociated) {
+		self.serviceMouseLocked = NO;
+		self.mouseDx = 0.0f;
+		self.mouseDy = 0.0f;
+		if (v_multiwindow_appkit_mouse_lock_owner == self) {
+			v_multiwindow_appkit_mouse_lock_owner = nil;
+		}
+	}
+	return ![self hasMouseLockAuthority];
+}
+
+- (void)detachOwnerRelationship {
+	NSWindow *window = self.window;
+	if (window != nil) {
+		NSWindow *sheet_parent = window.sheetParent;
+		if (sheet_parent != nil) {
+			[sheet_parent endSheet:window];
+		}
+		NSWindow *parent = window.parentWindow;
+		if (parent != nil) {
+			[parent removeChildWindow:window];
+		}
+	}
+	self.serviceOwner = nil;
+	self.serviceModal = NO;
+}
+
+- (void)detachOwnedRelationships {
+	NSWindow *window = self.window;
+	if (window == nil) {
+		return;
+	}
+	NSArray<NSWindow *> *sheets = [window.sheets copy];
+	for (NSWindow *sheet in sheets.reverseObjectEnumerator) {
+		[window endSheet:sheet];
+		id delegate = sheet.delegate;
+		if ([delegate isKindOfClass:VMultiwindowAppKitWindowState.class]) {
+			VMultiwindowAppKitWindowState *child = delegate;
+			child.serviceOwner = nil;
+			child.serviceModal = NO;
+		}
+	}
+	NSArray<NSWindow *> *children = [window.childWindows copy];
+	for (NSWindow *child_window in children.reverseObjectEnumerator) {
+		[window removeChildWindow:child_window];
+		id delegate = child_window.delegate;
+		if ([delegate isKindOfClass:VMultiwindowAppKitWindowState.class]) {
+			VMultiwindowAppKitWindowState *child = delegate;
+			child.serviceOwner = nil;
+			child.serviceModal = NO;
+		}
+	}
+}
+
+- (void)detachAccessibility {
+	NSMutableOrderedSet *roots = [NSMutableOrderedSet orderedSet];
+	if (self.window != nil) {
+		NSArray *children = self.window.accessibilityChildren;
+		if (children != nil) {
+			[roots addObjectsFromArray:children];
+		}
+	}
+	if (self.view != nil) {
+		NSArray *children = self.view.accessibilityChildren;
+		if (children != nil) {
+			[roots addObjectsFromArray:children];
+		}
+	}
+	for (id root in roots) {
+		if ([root respondsToSelector:@selector(setAccessibilityParent:)]) {
+			[root setAccessibilityParent:nil];
+		}
+	}
+	if (self.window != nil) {
+		[self.window setAccessibilityChildren:nil];
+	}
+	if (self.view != nil) {
+		[self.view setAccessibilityChildren:nil];
+	}
+}
+
+- (void)releaseServices {
+	if (![NSThread isMainThread]) {
+		return;
+	}
+#if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+	[self quiesceReadbacks];
+#endif
+	if (![self releaseMouseLock]) {
+		return;
+	}
+	if (!self.serviceReleased) {
+		[self detachOwnedRelationships];
+		[self detachOwnerRelationship];
+		[self detachAccessibility];
+		self.serviceClipboardSnapshot = nil;
+		self.serviceReleased = YES;
 	}
 }
 
@@ -832,6 +1677,63 @@ static void v_multiwindow_appkit_fill_touch_point(VMultiwindowAppKitWindowState 
 	event.event_kind = V_MULTIWINDOW_APPKIT_EVENT_INPUT;
 	[self fillDimensionsForEvent:&event];
 	[self queueEvent:event];
+}
+
+- (void)queueServiceSnapshotKind:(int)kind operation:(int)operation {
+	if (![NSThread isMainThread] || self.window == nil || self.serviceReleased) {
+		return;
+	}
+	[self refreshServiceObservation];
+	VMultiwindowAppKitQueuedEvent event = v_multiwindow_appkit_zero_event();
+	event.event_kind = V_MULTIWINDOW_APPKIT_EVENT_SERVICE;
+	event.service_snapshot_valid = 1;
+	event.service_kind = kind;
+	event.service_operation = operation;
+	event.service_mapping = self.serviceMapped
+		? V_MULTIWINDOW_APPKIT_SERVICE_MAPPING_MAPPED
+		: V_MULTIWINDOW_APPKIT_SERVICE_MAPPING_UNMAPPED;
+	event.service_visibility = !self.serviceVisible
+		? V_MULTIWINDOW_APPKIT_SERVICE_VISIBILITY_HIDDEN
+		: (self.serviceOccluded
+			? V_MULTIWINDOW_APPKIT_SERVICE_VISIBILITY_OCCLUDED
+			: V_MULTIWINDOW_APPKIT_SERVICE_VISIBILITY_VISIBLE);
+	event.service_active = self.serviceActive
+		? V_MULTIWINDOW_APPKIT_SERVICE_BOOL_ON
+		: V_MULTIWINDOW_APPKIT_SERVICE_BOOL_OFF;
+	event.service_focused = self.serviceFocused
+		? V_MULTIWINDOW_APPKIT_SERVICE_BOOL_ON
+		: V_MULTIWINDOW_APPKIT_SERVICE_BOOL_OFF;
+	event.service_minimized = self.serviceMinimized
+		? V_MULTIWINDOW_APPKIT_SERVICE_BOOL_ON
+		: V_MULTIWINDOW_APPKIT_SERVICE_BOOL_OFF;
+	event.service_maximized = self.serviceMaximized
+		? V_MULTIWINDOW_APPKIT_SERVICE_BOOL_ON
+		: V_MULTIWINDOW_APPKIT_SERVICE_BOOL_OFF;
+	event.service_fullscreen = self.serviceFullscreen
+		? V_MULTIWINDOW_APPKIT_SERVICE_BOOL_ON
+		: V_MULTIWINDOW_APPKIT_SERVICE_BOOL_OFF;
+	event.service_mouse_locked = self.serviceMouseLocked
+		? V_MULTIWINDOW_APPKIT_SERVICE_BOOL_ON
+		: V_MULTIWINDOW_APPKIT_SERVICE_BOOL_OFF;
+	event.service_position_known = self.servicePositionKnown ? 1 : 0;
+	event.service_x = self.servicePositionKnown
+		? v_multiwindow_appkit_clamped_int(self.servicePosition.x) : 0;
+	event.service_y = self.servicePositionKnown
+		? v_multiwindow_appkit_clamped_int(self.servicePosition.y) : 0;
+	event.service_monitor_native_id = self.serviceMonitorNativeId;
+	event.service_scale = (float)self.serviceScale;
+	[self fillDimensionsForEvent:&event];
+	[self queueEvent:event];
+}
+
+- (void)queueServiceStateForOperation:(int)operation {
+	[self queueServiceSnapshotKind:V_MULTIWINDOW_APPKIT_SERVICE_EVENT_STATE
+		operation:operation];
+}
+
+- (void)queueServiceMetricsSnapshot {
+	[self queueServiceSnapshotKind:V_MULTIWINDOW_APPKIT_SERVICE_EVENT_METRICS
+		operation:V_MULTIWINDOW_APPKIT_SERVICE_SHOW];
 }
 
 - (void)queueKeyEvent:(int)kind keyCode:(int)keyCode repeat:(BOOL)repeat modifiers:(uint32_t)modifiers {
@@ -913,6 +1815,17 @@ static void v_multiwindow_appkit_fill_touch_point(VMultiwindowAppKitWindowState 
 }
 
 - (void)updateMousePositionFromEvent:(NSEvent *)event clearDelta:(BOOL)clearDelta {
+	if (self.serviceMouseLocked) {
+		NSView *content = self.window.contentView != nil ? self.window.contentView : self.view;
+		NSRect bounds = content != nil ? content.bounds : NSMakeRect(0, 0, self.width, self.height);
+		CGFloat logical_width = NSWidth(bounds) > 0 ? NSWidth(bounds) : (CGFloat)self.width;
+		CGFloat logical_height = NSHeight(bounds) > 0 ? NSHeight(bounds) : (CGFloat)self.height;
+		CGFloat scale_x = logical_width > 0 ? ((CGFloat)self.framebufferWidth / logical_width) : 1.0;
+		CGFloat scale_y = logical_height > 0 ? ((CGFloat)self.framebufferHeight / logical_height) : 1.0;
+		self.mouseDx = clearDelta ? 0.0f : (float)(event.deltaX * scale_x);
+		self.mouseDy = clearDelta ? 0.0f : (float)(event.deltaY * scale_y);
+		return;
+	}
 	NSPoint point = event.locationInWindow;
 	[self updateMousePositionFromWindowPoint:point clearDelta:clearDelta];
 }
@@ -964,6 +1877,9 @@ static void v_multiwindow_appkit_fill_touch_point(VMultiwindowAppKitWindowState 
 }
 
 - (void)dealloc {
+	if ([NSThread isMainThread]) {
+		[self releaseServices];
+	}
 	[self clearQueuedEvents];
 }
 
@@ -980,6 +1896,7 @@ static void v_multiwindow_appkit_fill_touch_point(VMultiwindowAppKitWindowState 
 - (void)windowWillClose:(NSNotification *)notification {
 	(void)notification;
 	self.depthTexture = nil;
+	[self refreshServiceObservation];
 	[self queueLifecycleEvent:V_MULTIWINDOW_APPKIT_LIFECYCLE_DESTROYED];
 }
 
@@ -998,6 +1915,7 @@ static void v_multiwindow_appkit_fill_touch_point(VMultiwindowAppKitWindowState 
 			[self queueResizeEvents];
 		}
 	}
+	[self refreshServiceObservation];
 }
 
 - (void)windowDidChangeBackingProperties:(NSNotification *)notification {
@@ -1008,12 +1926,17 @@ static void v_multiwindow_appkit_fill_touch_point(VMultiwindowAppKitWindowState 
 	int old_framebuffer_height = self.framebufferHeight;
 	[self updateDimensions];
 	self.depthTexture = nil;
-	if (self.width != old_width || self.height != old_height ||
-	    self.framebufferWidth != old_framebuffer_width ||
-	    self.framebufferHeight != old_framebuffer_height) {
+	BOOL dimensions_changed = self.width != old_width || self.height != old_height ||
+		self.framebufferWidth != old_framebuffer_width ||
+		self.framebufferHeight != old_framebuffer_height;
+	if (dimensions_changed) {
 		if (!self.suppressResizeEvent) {
 			[self queueResizeEvents];
+		} else {
+			[self refreshServiceObservation];
 		}
+	} else {
+		[self queueServiceMetricsSnapshot];
 	}
 }
 
@@ -1025,12 +1948,17 @@ static void v_multiwindow_appkit_fill_touch_point(VMultiwindowAppKitWindowState 
 	int old_framebuffer_height = self.framebufferHeight;
 	[self updateDimensions];
 	self.depthTexture = nil;
-	if (self.width != old_width || self.height != old_height ||
-	    self.framebufferWidth != old_framebuffer_width ||
-	    self.framebufferHeight != old_framebuffer_height) {
+	BOOL dimensions_changed = self.width != old_width || self.height != old_height ||
+		self.framebufferWidth != old_framebuffer_width ||
+		self.framebufferHeight != old_framebuffer_height;
+	if (dimensions_changed) {
 		if (!self.suppressResizeEvent) {
 			[self queueResizeEvents];
+		} else {
+			[self refreshServiceObservation];
 		}
+	} else {
+		[self queueServiceMetricsSnapshot];
 	}
 }
 
@@ -1042,24 +1970,29 @@ static void v_multiwindow_appkit_fill_touch_point(VMultiwindowAppKitWindowState 
 	event.input_kind = V_MULTIWINDOW_APPKIT_INPUT_FOCUSED;
 	event.modifiers = v_multiwindow_appkit_modifiers(nil);
 	[self queueInputEvent:event];
+	[self refreshServiceObservation];
 }
 
 - (void)windowDidResignKey:(NSNotification *)notification {
 	(void)notification;
+	(void)[self releaseMouseLock];
 	[self clearKeyDownState];
 	self.flagsChangedStore = (uint32_t)NSEvent.modifierFlags;
 	VMultiwindowAppKitQueuedEvent event = v_multiwindow_appkit_zero_event();
 	event.input_kind = V_MULTIWINDOW_APPKIT_INPUT_UNFOCUSED;
 	event.modifiers = v_multiwindow_appkit_modifiers(nil);
 	[self queueInputEvent:event];
+	[self refreshServiceObservation];
 }
 
 - (void)windowDidMiniaturize:(NSNotification *)notification {
 	(void)notification;
+	(void)[self releaseMouseLock];
 	VMultiwindowAppKitQueuedEvent event = v_multiwindow_appkit_zero_event();
 	event.input_kind = V_MULTIWINDOW_APPKIT_INPUT_ICONIFIED;
 	event.modifiers = v_multiwindow_appkit_modifiers(nil);
 	[self queueInputEvent:event];
+	[self refreshServiceObservation];
 }
 
 - (void)windowDidDeminiaturize:(NSNotification *)notification {
@@ -1068,6 +2001,90 @@ static void v_multiwindow_appkit_fill_touch_point(VMultiwindowAppKitWindowState 
 	event.input_kind = V_MULTIWINDOW_APPKIT_INPUT_RESTORED;
 	event.modifiers = v_multiwindow_appkit_modifiers(nil);
 	[self queueInputEvent:event];
+	[self refreshServiceObservation];
+}
+
+- (void)windowDidMove:(NSNotification *)notification {
+	(void)notification;
+	[self queueServiceStateForOperation:V_MULTIWINDOW_APPKIT_SERVICE_POSITION];
+}
+
+- (void)windowDidBecomeMain:(NSNotification *)notification {
+	(void)notification;
+	[self queueServiceStateForOperation:V_MULTIWINDOW_APPKIT_SERVICE_RAISE];
+}
+
+- (void)windowDidResignMain:(NSNotification *)notification {
+	(void)notification;
+	[self queueServiceStateForOperation:V_MULTIWINDOW_APPKIT_SERVICE_RAISE];
+}
+
+- (void)windowDidEnterFullScreen:(NSNotification *)notification {
+	(void)notification;
+	[self queueServiceStateForOperation:V_MULTIWINDOW_APPKIT_SERVICE_FULLSCREEN];
+}
+
+- (void)windowDidExitFullScreen:(NSNotification *)notification {
+	(void)notification;
+	[self queueServiceStateForOperation:V_MULTIWINDOW_APPKIT_SERVICE_RESTORE];
+}
+
+- (void)windowDidFailToEnterFullScreen:(NSWindow *)window {
+	if (window != self.window) {
+		return;
+	}
+	[self queueServiceStateForOperation:V_MULTIWINDOW_APPKIT_SERVICE_FULLSCREEN];
+}
+
+- (void)windowDidFailToExitFullScreen:(NSWindow *)window {
+	if (window != self.window) {
+		return;
+	}
+	[self queueServiceStateForOperation:V_MULTIWINDOW_APPKIT_SERVICE_FULLSCREEN];
+}
+
+- (void)windowDidChangeOcclusionState:(NSNotification *)notification {
+	(void)notification;
+	[self queueServiceStateForOperation:V_MULTIWINDOW_APPKIT_SERVICE_SHOW];
+}
+@end
+
+@implementation VMultiwindowAppKitServiceObserver
+- (void)screenParametersDidChange:(NSNotification *)notification {
+	(void)notification;
+	if (![NSThread isMainThread]) {
+		return;
+	}
+	if (v_multiwindow_appkit_monitor_revision == UINT64_MAX) {
+		v_multiwindow_appkit_monitor_revision = UINT64_C(1);
+	} else {
+		v_multiwindow_appkit_monitor_revision++;
+	}
+	v_multiwindow_appkit_queue_service_windows_metrics();
+}
+
+- (void)windowBackingDidChange:(NSNotification *)notification {
+	if (![NSThread isMainThread]) {
+		return;
+	}
+	NSWindow *window = notification.object;
+	id delegate = window.delegate;
+	if ([delegate isKindOfClass:VMultiwindowAppKitWindowState.class]) {
+		[(VMultiwindowAppKitWindowState *)delegate refreshServiceObservation];
+	}
+}
+
+- (void)applicationStateDidChange:(NSNotification *)notification {
+	if (![NSThread isMainThread]) {
+		return;
+	}
+	int operation = V_MULTIWINDOW_APPKIT_SERVICE_RAISE;
+	if ([notification.name isEqualToString:NSApplicationDidHideNotification]) {
+		operation = V_MULTIWINDOW_APPKIT_SERVICE_HIDE;
+	} else if ([notification.name isEqualToString:NSApplicationDidUnhideNotification]) {
+		operation = V_MULTIWINDOW_APPKIT_SERVICE_SHOW;
+	}
+	v_multiwindow_appkit_queue_service_windows(operation);
 }
 @end
 
@@ -1671,6 +2688,7 @@ int v_multiwindow_appkit_prepare_application(void) {
 			return 0;
 		}
 		[NSApplication sharedApplication];
+		v_multiwindow_appkit_ensure_service_observer();
 		if (NSApp.activationPolicy == NSApplicationActivationPolicyProhibited) {
 			[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 		}
@@ -1741,7 +2759,7 @@ VMultiwindowNativePrimitive v_multiwindow_appkit_release_metal_device(void *devi
 			released_subject = V_MULTIWINDOW_APPKIT_SIDE_EFFECT_SUBJECT_DEVICE_ROOT;
 		}
 #endif
-		CFBridgingRelease(device);
+		CFRelease(device);
 #if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST)
 		v_multiwindow_appkit_side_effect_append(
 			V_MULTIWINDOW_APPKIT_SIDE_EFFECT_BRIDGE_RELEASE,
@@ -1789,6 +2807,13 @@ static CAMetalLayer *v_multiwindow_appkit_configure_layer(VMultiwindowAppKitWind
 	if (state.layer != layer || state.view.layer != layer || layer.device != device) {
 		return nil;
 	}
+#if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+	state.serviceReadbackQuiesced = NO;
+	state.serviceCaptureCapable = [state registerReadbackHook];
+	if (state.serviceCaptureCapable) {
+		layer.framebufferOnly = NO;
+	}
+#endif
 	return layer;
 }
 
@@ -1898,6 +2923,7 @@ VMultiwindowNativePrimitive v_multiwindow_appkit_create_window(void *device_ptr,
 		if (fullscreen) {
 			[window toggleFullScreen:nil];
 		}
+		[state refreshServiceObservation];
 		if (out_width != NULL) {
 			*out_width = state.width;
 		}
@@ -2105,6 +3131,7 @@ VMultiwindowNativePrimitive v_multiwindow_appkit_destroy_window(void *state_ptr)
 			return result;
 		}
 		VMultiwindowAppKitWindowState *state = (__bridge VMultiwindowAppKitWindowState *)state_ptr;
+		[state releaseServices];
 #if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST)
 		const uint64_t drawable_before =
 			(uint64_t)(uintptr_t)(__bridge void *)state.currentDrawable;
@@ -2150,7 +3177,7 @@ VMultiwindowNativePrimitive v_multiwindow_appkit_release_window(void *state_ptr)
 		const uint64_t released_subject =
 			v_multiwindow_appkit_side_effect_root_subject(released_identity);
 #endif
-		CFBridgingRelease(state_ptr);
+		CFRelease(state_ptr);
 #if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST)
 		v_multiwindow_appkit_side_effect_append(
 			V_MULTIWINDOW_APPKIT_SIDE_EFFECT_BRIDGE_RELEASE,
@@ -2179,7 +3206,7 @@ int v_multiwindow_appkit_set_cursor_shape(void *state_ptr, int shape) {
 	@autoreleasepool {
 		if (state_ptr == NULL || ![NSThread isMainThread] ||
 		    shape < V_MULTIWINDOW_CURSOR_SHAPE_DEFAULT ||
-		    shape > V_MULTIWINDOW_CURSOR_SHAPE_GRABBING) {
+		    shape > V_MULTIWINDOW_CURSOR_SHAPE_RESIZE_ALL) {
 			return 0;
 		}
 		VMultiwindowAppKitWindowState *state = (__bridge VMultiwindowAppKitWindowState *)state_ptr;
@@ -2219,6 +3246,1312 @@ int v_multiwindow_appkit_resize_window(void *state_ptr, int width, int height, i
 			*out_framebuffer_height = state.framebufferHeight;
 		}
 		return 1;
+	}
+}
+
+static VMultiwindowAppKitWindowState *v_multiwindow_appkit_live_service_state(void *state_ptr) {
+	if (state_ptr == NULL || ![NSThread isMainThread]) {
+		return nil;
+	}
+	VMultiwindowAppKitWindowState *state = (__bridge VMultiwindowAppKitWindowState *)state_ptr;
+	if (state.window == nil || state.serviceReleased) {
+		return nil;
+	}
+	return state;
+}
+
+uint32_t v_multiwindow_appkit_service_abi_version(void) {
+	return V_MULTIWINDOW_APPKIT_SERVICE_ABI_VERSION;
+}
+
+int v_multiwindow_appkit_service_capability(void *state_ptr, int operation,
+		int renderer_ready) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil) {
+			return 0;
+		}
+		[state refreshServiceObservation];
+		switch (operation) {
+		case V_MULTIWINDOW_APPKIT_SERVICE_SHOW:
+		case V_MULTIWINDOW_APPKIT_SERVICE_HIDE:
+		case V_MULTIWINDOW_APPKIT_SERVICE_RAISE:
+		case V_MULTIWINDOW_APPKIT_SERVICE_RESTORE:
+		case V_MULTIWINDOW_APPKIT_SERVICE_CLIPBOARD_READ:
+		case V_MULTIWINDOW_APPKIT_SERVICE_CLIPBOARD_WRITE:
+		case V_MULTIWINDOW_APPKIT_SERVICE_NATIVE_BORROW:
+			return 1;
+		case V_MULTIWINDOW_APPKIT_SERVICE_FOCUS:
+			return state.window.canBecomeKeyWindow ? 1 : 0;
+		case V_MULTIWINDOW_APPKIT_SERVICE_POSITION:
+			return state.window.isMovable ? 1 : 0;
+		case V_MULTIWINDOW_APPKIT_SERVICE_MINIMIZE:
+			return (state.window.styleMask & NSWindowStyleMaskMiniaturizable) != 0 ? 1 : 0;
+		case V_MULTIWINDOW_APPKIT_SERVICE_MAXIMIZE:
+			return (state.window.styleMask & NSWindowStyleMaskResizable) != 0 ? 1 : 0;
+		case V_MULTIWINDOW_APPKIT_SERVICE_FULLSCREEN:
+			return (state.window.collectionBehavior & NSWindowCollectionBehaviorFullScreenNone) == 0
+				? 1 : 0;
+		case V_MULTIWINDOW_APPKIT_SERVICE_MOUSE_LOCK:
+			return state.window.canBecomeKeyWindow ? 2 : 0;
+		case V_MULTIWINDOW_APPKIT_SERVICE_TITLEBAR_APPEARANCE:
+			return (state.window.styleMask & NSWindowStyleMaskTitled) != 0 ? 1 : 0;
+		case V_MULTIWINDOW_APPKIT_SERVICE_IMAGE_READBACK:
+		case V_MULTIWINDOW_APPKIT_SERVICE_WINDOW_CAPTURE:
+#if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+			return renderer_ready && state.serviceCaptureCapable
+				&& !state.serviceReadbackQuiesced && state.layer != nil
+				&& state.layer.device != nil && !state.layer.framebufferOnly ? 1 : 0;
+#else
+			(void)(renderer_ready);
+			return 0;
+#endif
+		case V_MULTIWINDOW_APPKIT_SERVICE_PORTAL_PARENT:
+		default:
+			return 0;
+		}
+	}
+}
+
+int v_multiwindow_appkit_service_window_state(void *state_ptr, int *out_mapping,
+		int *out_visibility, int *out_active, int *out_focused,
+		int *out_minimized, int *out_maximized, int *out_fullscreen,
+		int *out_mouse_locked, int *out_position_known, int *out_x, int *out_y,
+		uint64_t *out_monitor_native_id, float *out_scale) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil) {
+			return 0;
+		}
+		[state refreshServiceObservation];
+		if (out_mapping != NULL) {
+			*out_mapping = state.serviceMapped
+				? V_MULTIWINDOW_APPKIT_SERVICE_MAPPING_MAPPED
+				: V_MULTIWINDOW_APPKIT_SERVICE_MAPPING_UNMAPPED;
+		}
+		if (out_visibility != NULL) {
+			*out_visibility = !state.serviceVisible
+				? V_MULTIWINDOW_APPKIT_SERVICE_VISIBILITY_HIDDEN
+				: (state.serviceOccluded
+					? V_MULTIWINDOW_APPKIT_SERVICE_VISIBILITY_OCCLUDED
+					: V_MULTIWINDOW_APPKIT_SERVICE_VISIBILITY_VISIBLE);
+		}
+		if (out_active != NULL) {
+			*out_active = state.serviceActive
+				? V_MULTIWINDOW_APPKIT_SERVICE_BOOL_ON
+				: V_MULTIWINDOW_APPKIT_SERVICE_BOOL_OFF;
+		}
+		if (out_focused != NULL) {
+			*out_focused = state.serviceFocused
+				? V_MULTIWINDOW_APPKIT_SERVICE_BOOL_ON
+				: V_MULTIWINDOW_APPKIT_SERVICE_BOOL_OFF;
+		}
+		if (out_minimized != NULL) {
+			*out_minimized = state.serviceMinimized
+				? V_MULTIWINDOW_APPKIT_SERVICE_BOOL_ON
+				: V_MULTIWINDOW_APPKIT_SERVICE_BOOL_OFF;
+		}
+		if (out_maximized != NULL) {
+			*out_maximized = state.serviceMaximized
+				? V_MULTIWINDOW_APPKIT_SERVICE_BOOL_ON
+				: V_MULTIWINDOW_APPKIT_SERVICE_BOOL_OFF;
+		}
+		if (out_fullscreen != NULL) {
+			*out_fullscreen = state.serviceFullscreen
+				? V_MULTIWINDOW_APPKIT_SERVICE_BOOL_ON
+				: V_MULTIWINDOW_APPKIT_SERVICE_BOOL_OFF;
+		}
+		if (out_mouse_locked != NULL) {
+			*out_mouse_locked = state.serviceMouseLocked
+				? V_MULTIWINDOW_APPKIT_SERVICE_BOOL_ON
+				: V_MULTIWINDOW_APPKIT_SERVICE_BOOL_OFF;
+		}
+		if (out_position_known != NULL) {
+			*out_position_known = state.servicePositionKnown ? 1 : 0;
+		}
+		if (out_x != NULL) {
+			*out_x = state.servicePositionKnown
+				? v_multiwindow_appkit_clamped_int(state.servicePosition.x) : 0;
+		}
+		if (out_y != NULL) {
+			*out_y = state.servicePositionKnown
+				? v_multiwindow_appkit_clamped_int(state.servicePosition.y) : 0;
+		}
+		if (out_monitor_native_id != NULL) {
+			*out_monitor_native_id = state.serviceMonitorNativeId;
+		}
+		if (out_scale != NULL) {
+			*out_scale = (float)state.serviceScale;
+		}
+		return 1;
+	}
+}
+
+int v_multiwindow_appkit_service_show_window(void *state_ptr) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil) {
+			return 0;
+		}
+		[state.window orderFront:nil];
+		[state refreshServiceObservation];
+		return 1;
+	}
+}
+
+int v_multiwindow_appkit_service_hide_window(void *state_ptr) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil) {
+			return 0;
+		}
+		BOOL unlocked = [state releaseMouseLock];
+		if (!unlocked) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+		}
+		[state.window orderOut:nil];
+		[state refreshServiceObservation];
+		return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK;
+	}
+}
+
+int v_multiwindow_appkit_service_focus_window(void *state_ptr) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil) {
+			return 0;
+		}
+		if (!state.window.canBecomeKeyWindow) {
+			return 0;
+		}
+		if (state.window.isMiniaturized) {
+			[state.window deminiaturize:nil];
+		}
+		[NSApp activateIgnoringOtherApps:YES];
+		[state.window makeKeyAndOrderFront:nil];
+		return 1;
+	}
+}
+
+int v_multiwindow_appkit_service_raise_window(void *state_ptr) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil) {
+			return 0;
+		}
+		[state.window orderFront:nil];
+		[state refreshServiceObservation];
+		return 1;
+	}
+}
+
+int v_multiwindow_appkit_service_set_window_position(void *state_ptr, int x, int y) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		CGFloat primary_top = 0.0;
+		if (state == nil || !v_multiwindow_appkit_primary_screen_top(&primary_top)) {
+			return 0;
+		}
+		NSRect frame = state.window.frame;
+		NSPoint origin = NSMakePoint((CGFloat)x,
+			primary_top - (CGFloat)y - NSHeight(frame));
+		[state.window setFrameOrigin:origin];
+		[state refreshServiceObservation];
+		return 1;
+	}
+}
+
+int v_multiwindow_appkit_service_minimize_window(void *state_ptr) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil) {
+			return 0;
+		}
+		if (![state releaseMouseLock]) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+		}
+		if (!state.window.isMiniaturized) {
+			[state.window miniaturize:nil];
+		}
+		[state refreshServiceObservation];
+		return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK;
+	}
+}
+
+int v_multiwindow_appkit_service_maximize_window(void *state_ptr) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil ||
+			(state.window.styleMask & NSWindowStyleMaskResizable) == 0) {
+			return 0;
+		}
+		if (state.window.isMiniaturized) {
+			[state.window deminiaturize:nil];
+		}
+		if (!state.window.isZoomed &&
+			(state.window.styleMask & NSWindowStyleMaskFullScreen) == 0) {
+			[state.window zoom:nil];
+		}
+		[state refreshServiceObservation];
+		return 1;
+	}
+}
+
+int v_multiwindow_appkit_service_restore_window(void *state_ptr) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil) {
+			return 0;
+		}
+		if (state.window.isMiniaturized) {
+			[state.window deminiaturize:nil];
+		} else if ((state.window.styleMask & NSWindowStyleMaskFullScreen) != 0) {
+			if (![state releaseMouseLock]) {
+				return -1;
+			}
+			[state.window toggleFullScreen:nil];
+		} else if (state.window.isZoomed) {
+			[state.window zoom:nil];
+		}
+		[state refreshServiceObservation];
+		return 1;
+	}
+}
+
+int v_multiwindow_appkit_service_set_fullscreen(void *state_ptr, int enabled) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil || (enabled != 0 && enabled != 1)) {
+			return 0;
+		}
+		BOOL fullscreen =
+			(state.window.styleMask & NSWindowStyleMaskFullScreen) != 0;
+		if (fullscreen != (enabled != 0)) {
+			if (![state releaseMouseLock]) {
+				return -1;
+			}
+			[state.window toggleFullScreen:nil];
+		}
+		[state refreshServiceObservation];
+		return 1;
+	}
+}
+
+uint64_t v_multiwindow_appkit_service_monitor_revision(void) {
+	if (![NSThread isMainThread]) {
+		return 0;
+	}
+	v_multiwindow_appkit_ensure_service_observer();
+	return v_multiwindow_appkit_monitor_revision;
+}
+
+int v_multiwindow_appkit_service_monitor_count(void) {
+	@autoreleasepool {
+		if (![NSThread isMainThread]) {
+			return -1;
+		}
+		v_multiwindow_appkit_ensure_service_observer();
+		NSUInteger count = v_multiwindow_appkit_screens().count;
+		return count <= (NSUInteger)INT_MAX ? (int)count : -1;
+	}
+}
+
+int v_multiwindow_appkit_service_monitor_info(int index, uint64_t *out_native_id,
+		int *out_x, int *out_y, int *out_width, int *out_height, int *out_work_x,
+		int *out_work_y, int *out_work_width, int *out_work_height, float *out_scale,
+		int *out_primary, size_t *out_name_length) {
+	@autoreleasepool {
+		if (![NSThread isMainThread] || index < 0) {
+			return 0;
+		}
+		NSArray<NSScreen *> *screens = v_multiwindow_appkit_screens();
+		if ((NSUInteger)index >= screens.count) {
+			return 0;
+		}
+		NSScreen *screen = screens[(NSUInteger)index];
+		uint64_t native_id = 0;
+		NSRect geometry = NSZeroRect;
+		NSRect work_area = NSZeroRect;
+		if (!v_multiwindow_appkit_screen_native_id(screen, &native_id) ||
+			!v_multiwindow_appkit_top_left_rect(screen.frame, &geometry) ||
+			!v_multiwindow_appkit_top_left_rect(screen.visibleFrame, &work_area)) {
+			return 0;
+		}
+		NSString *name = v_multiwindow_appkit_screen_name(screen, native_id);
+		NSData *name_data = [name dataUsingEncoding:NSUTF8StringEncoding
+			allowLossyConversion:NO];
+		if (name_data == nil) {
+			return 0;
+		}
+		if (out_native_id != NULL) *out_native_id = native_id;
+		if (out_x != NULL) *out_x = v_multiwindow_appkit_clamped_int(NSMinX(geometry));
+		if (out_y != NULL) *out_y = v_multiwindow_appkit_clamped_int(NSMinY(geometry));
+		if (out_width != NULL) *out_width = v_multiwindow_appkit_clamped_int(NSWidth(geometry));
+		if (out_height != NULL) *out_height = v_multiwindow_appkit_clamped_int(NSHeight(geometry));
+		if (out_work_x != NULL) *out_work_x = v_multiwindow_appkit_clamped_int(NSMinX(work_area));
+		if (out_work_y != NULL) *out_work_y = v_multiwindow_appkit_clamped_int(NSMinY(work_area));
+		if (out_work_width != NULL) *out_work_width = v_multiwindow_appkit_clamped_int(NSWidth(work_area));
+		if (out_work_height != NULL) *out_work_height = v_multiwindow_appkit_clamped_int(NSHeight(work_area));
+		if (out_scale != NULL) *out_scale = (float)screen.backingScaleFactor;
+		if (out_primary != NULL) {
+			*out_primary = index == 0
+				? V_MULTIWINDOW_APPKIT_SERVICE_BOOL_ON
+				: V_MULTIWINDOW_APPKIT_SERVICE_BOOL_OFF;
+		}
+		if (out_name_length != NULL) *out_name_length = name_data.length;
+		return 1;
+	}
+}
+
+int v_multiwindow_appkit_service_copy_monitor_name(int index, char *out_name,
+		size_t capacity) {
+	@autoreleasepool {
+		if (![NSThread isMainThread] || index < 0 || out_name == NULL) {
+			return 0;
+		}
+		NSArray<NSScreen *> *screens = v_multiwindow_appkit_screens();
+		if ((NSUInteger)index >= screens.count) {
+			return 0;
+		}
+		uint64_t native_id = 0;
+		NSScreen *screen = screens[(NSUInteger)index];
+		if (!v_multiwindow_appkit_screen_native_id(screen, &native_id)) {
+			return 0;
+		}
+		NSData *data = [v_multiwindow_appkit_screen_name(screen, native_id)
+			dataUsingEncoding:NSUTF8StringEncoding allowLossyConversion:NO];
+		if (data == nil || data.length >= capacity) {
+			return 0;
+		}
+		if (data.length > 0) {
+			memcpy(out_name, data.bytes, data.length);
+		}
+		out_name[data.length] = '\0';
+		return 1;
+	}
+}
+
+static int v_multiwindow_appkit_clipboard_utf8_data(
+		VMultiwindowAppKitWindowState *state, NSData **out_data) {
+	if (state == nil || state.window == nil || state.serviceReleased || out_data == NULL) {
+		return 0;
+	}
+	NSString *text = [[NSPasteboard generalPasteboard]
+		stringForType:NSPasteboardTypeString];
+	if (text == nil) {
+		*out_data = [NSData data];
+		return 1;
+	}
+	NSData *data = [text dataUsingEncoding:NSUTF8StringEncoding
+		allowLossyConversion:NO];
+	if (data == nil) {
+		return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+	}
+	if (data.length > V_MULTIWINDOW_APPKIT_SERVICE_CLIPBOARD_MAX_BYTES) {
+		return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_CAPACITY;
+	}
+	*out_data = data;
+	return 1;
+}
+
+#define V_MULTIWINDOW_APPKIT_SERVICE_CLIPBOARD_SNAPSHOT_MAX_ITEMS 256U
+#define V_MULTIWINDOW_APPKIT_SERVICE_CLIPBOARD_SNAPSHOT_MAX_TYPES 4096U
+
+static int v_multiwindow_appkit_snapshot_pasteboard(NSPasteboard *pasteboard,
+		NSArray<NSPasteboardItem *> **out_items) {
+	if (pasteboard == nil || out_items == NULL) {
+		return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+	}
+	NSArray<NSPasteboardItem *> *source_items = pasteboard.pasteboardItems;
+	if (source_items == nil) {
+		if (pasteboard.types.count != 0) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+		}
+		source_items = @[];
+	}
+	if (source_items.count > V_MULTIWINDOW_APPKIT_SERVICE_CLIPBOARD_SNAPSHOT_MAX_ITEMS) {
+		return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_CAPACITY;
+	}
+	NSMutableArray<NSPasteboardItem *> *snapshot =
+		[NSMutableArray arrayWithCapacity:source_items.count];
+	size_t total_bytes = 0;
+	size_t total_types = 0;
+	for (NSPasteboardItem *source in source_items) {
+		NSArray<NSPasteboardType> *types = source.types;
+		if (types == nil || types.count >
+				V_MULTIWINDOW_APPKIT_SERVICE_CLIPBOARD_SNAPSHOT_MAX_TYPES - total_types) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_CAPACITY;
+		}
+		total_types += types.count;
+		NSPasteboardItem *copy = [[NSPasteboardItem alloc] init];
+		if (copy == nil) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+		}
+		for (NSPasteboardType type in types) {
+			NSData *data = [source dataForType:type];
+			NSData *type_data = [type dataUsingEncoding:NSUTF8StringEncoding
+				allowLossyConversion:NO];
+			if (data == nil || type_data == nil
+					|| data.length > V_MULTIWINDOW_APPKIT_SERVICE_CLIPBOARD_MAX_BYTES - total_bytes
+					|| type_data.length > V_MULTIWINDOW_APPKIT_SERVICE_CLIPBOARD_MAX_BYTES
+						- total_bytes - data.length) {
+				return data == nil || type_data == nil
+					? V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED
+					: V_MULTIWINDOW_APPKIT_SERVICE_RESULT_CAPACITY;
+			}
+			total_bytes += data.length + type_data.length;
+			if (![copy setData:[data copy] forType:type]) {
+				return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+			}
+		}
+		[snapshot addObject:copy];
+	}
+	*out_items = [snapshot copy];
+	return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK;
+}
+
+static BOOL v_multiwindow_appkit_pasteboard_matches_snapshot(NSPasteboard *pasteboard,
+		NSArray<NSPasteboardItem *> *snapshot) {
+	NSArray<NSPasteboardItem *> *actual = pasteboard.pasteboardItems;
+	if (actual == nil) {
+		actual = @[];
+	}
+	if (actual.count != snapshot.count) {
+		return NO;
+	}
+	for (NSUInteger item_index = 0; item_index < snapshot.count; item_index++) {
+		NSPasteboardItem *expected_item = snapshot[item_index];
+		NSPasteboardItem *actual_item = actual[item_index];
+		NSArray<NSPasteboardType> *expected_types = expected_item.types;
+		NSArray<NSPasteboardType> *actual_types = actual_item.types;
+		if (![expected_types isEqualToArray:actual_types]) {
+			return NO;
+		}
+		for (NSPasteboardType type in expected_types) {
+			NSData *expected_data = [expected_item dataForType:type];
+			NSData *actual_data = [actual_item dataForType:type];
+			if (expected_data == nil || actual_data == nil
+					|| ![expected_data isEqualToData:actual_data]) {
+				return NO;
+			}
+		}
+	}
+	return YES;
+}
+
+static BOOL v_multiwindow_appkit_restore_pasteboard_snapshot(NSPasteboard *pasteboard,
+		NSArray<NSPasteboardItem *> *snapshot, NSInteger expected_change_count) {
+	if (pasteboard == nil || snapshot == nil
+			|| pasteboard.changeCount != expected_change_count) {
+		return NO;
+	}
+	@try {
+		[pasteboard clearContents];
+		if (snapshot.count != 0 && ![pasteboard writeObjects:snapshot]) {
+			return NO;
+		}
+		return v_multiwindow_appkit_pasteboard_matches_snapshot(pasteboard, snapshot);
+	} @catch (NSException *exception) {
+		(void)exception;
+		return NO;
+	}
+}
+
+int v_multiwindow_appkit_service_set_clipboard_text(void *state_ptr,
+		const char *text, size_t text_length) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil || (text == NULL && text_length != 0)) {
+			return 0;
+		}
+		if (text_length > V_MULTIWINDOW_APPKIT_SERVICE_CLIPBOARD_MAX_BYTES) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_CAPACITY;
+		}
+		NSString *value = text_length == 0 ? @"" :
+			[[NSString alloc] initWithBytes:text length:text_length
+				encoding:NSUTF8StringEncoding];
+		if (value == nil) {
+			return 0;
+		}
+		NSPasteboard *pasteboard = nil;
+		NSArray<NSPasteboardItem *> *snapshot = nil;
+		int snapshot_status = V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+		NSData *read_snapshot = nil;
+		NSInteger owned_change_count = 0;
+		BOOL clear_attempted = NO;
+		@try {
+			pasteboard = [NSPasteboard generalPasteboard];
+			if (pasteboard == nil) {
+				return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+			}
+			read_snapshot = state.serviceClipboardSnapshot;
+			owned_change_count = pasteboard.changeCount;
+			snapshot_status = v_multiwindow_appkit_snapshot_pasteboard(pasteboard, &snapshot);
+			if (snapshot_status != V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK) {
+				return snapshot_status;
+			}
+			clear_attempted = YES;
+			owned_change_count = [pasteboard clearContents];
+			if ([pasteboard setString:value forType:NSPasteboardTypeString]) {
+				state.serviceClipboardSnapshot = nil;
+				return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK;
+			}
+			if (v_multiwindow_appkit_restore_pasteboard_snapshot(pasteboard, snapshot,
+					owned_change_count)) {
+				state.serviceClipboardSnapshot = read_snapshot;
+				return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+			}
+			state.serviceClipboardSnapshot = nil;
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_INDETERMINATE;
+		} @catch (NSException *exception) {
+			(void)exception;
+			if (!clear_attempted) {
+				return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+			}
+			if (snapshot_status == V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK
+					&& v_multiwindow_appkit_restore_pasteboard_snapshot(pasteboard, snapshot,
+						owned_change_count)) {
+				state.serviceClipboardSnapshot = read_snapshot;
+				return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+			}
+			state.serviceClipboardSnapshot = nil;
+			return snapshot_status == V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK
+				? V_MULTIWINDOW_APPKIT_SERVICE_RESULT_INDETERMINATE
+				: V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+		}
+	}
+}
+
+int v_multiwindow_appkit_service_clipboard_text_length(void *state_ptr,
+		size_t *out_length) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil || out_length == NULL) {
+			return 0;
+		}
+		@try {
+			NSData *data = nil;
+			int status = v_multiwindow_appkit_clipboard_utf8_data(state, &data);
+			if (status != 1) {
+				return status;
+			}
+			state.serviceClipboardSnapshot = [data copy];
+			*out_length = data.length;
+			if (data.length == 0) {
+				state.serviceClipboardSnapshot = nil;
+			}
+			return 1;
+		} @catch (NSException *exception) {
+			(void)exception;
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+		}
+	}
+}
+
+int v_multiwindow_appkit_service_copy_clipboard_text(void *state_ptr,
+		char *out_text, size_t capacity) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil || out_text == NULL) {
+			return 0;
+		}
+		@try {
+			NSData *data = state.serviceClipboardSnapshot;
+			if (data == nil) {
+				int status = v_multiwindow_appkit_clipboard_utf8_data(state, &data);
+				if (status != 1) {
+					return status;
+				}
+			}
+			if (data.length >= capacity) {
+				return 0;
+			}
+			if (data.length > 0) {
+				memcpy(out_text, data.bytes, data.length);
+			}
+			out_text[data.length] = '\0';
+			state.serviceClipboardSnapshot = nil;
+			return 1;
+		} @catch (NSException *exception) {
+			(void)exception;
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+		}
+	}
+}
+
+int v_multiwindow_appkit_service_set_owner(void *state_ptr, void *owner_state_ptr,
+		int modal) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		VMultiwindowAppKitWindowState *owner =
+			v_multiwindow_appkit_live_service_state(owner_state_ptr);
+		if (state == nil || owner == nil || state == owner ||
+			(modal != 0 && modal != 1)) {
+			return 0;
+		}
+		for (NSWindow *ancestor = owner.window; ancestor != nil;) {
+			if (ancestor == state.window) {
+				return 0;
+			}
+			ancestor = ancestor.sheetParent != nil
+				? ancestor.sheetParent : ancestor.parentWindow;
+		}
+		BOOL wants_modal = modal != 0;
+		BOOL already_attached = wants_modal
+			? state.window.sheetParent == owner.window
+			: state.window.parentWindow == owner.window;
+		if (state.serviceOwner == owner && state.serviceModal == wants_modal &&
+			already_attached) {
+			return 1;
+		}
+		@try {
+			[state detachOwnerRelationship];
+			if (wants_modal) {
+				[state.window orderOut:nil];
+				[owner.window beginSheet:state.window completionHandler:nil];
+			} else {
+				[owner.window addChildWindow:state.window ordered:NSWindowAbove];
+			}
+			state.serviceOwner = owner;
+			state.serviceModal = wants_modal;
+			[state refreshServiceObservation];
+			[owner refreshServiceObservation];
+			return 1;
+		} @catch (NSException *exception) {
+			(void)exception;
+			[state detachOwnerRelationship];
+			return -1;
+		}
+	}
+}
+
+int v_multiwindow_appkit_service_clear_owner(void *state_ptr) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil) {
+			return 0;
+		}
+		@try {
+			[state detachOwnerRelationship];
+			[state refreshServiceObservation];
+			return 1;
+		} @catch (NSException *exception) {
+			(void)exception;
+			return -1;
+		}
+	}
+}
+
+static void *v_multiwindow_appkit_native_window(void *state_ptr) {
+	VMultiwindowAppKitWindowState *state =
+		v_multiwindow_appkit_live_service_state(state_ptr);
+	return state != nil ? (__bridge void *)state.window : NULL;
+}
+
+void *v_multiwindow_appkit_service_native_window(void *state_ptr) {
+	@autoreleasepool {
+		return v_multiwindow_appkit_native_window(state_ptr);
+	}
+}
+
+int v_multiwindow_appkit_service_set_mouse_lock(void *state_ptr, int enabled) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil || (enabled != 0 && enabled != 1)) {
+			return 0;
+		}
+		BOOL success = enabled != 0
+			? [state acquireMouseLock] : [state releaseMouseLock];
+		[state refreshServiceObservation];
+		return success ? 1 : -1;
+	}
+}
+
+int v_multiwindow_appkit_service_set_titlebar_appearance(void *state_ptr,
+		int appearance) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_live_service_state(state_ptr);
+		if (state == nil || appearance < 0 || appearance > 2 ||
+			(state.window.styleMask & NSWindowStyleMaskTitled) == 0) {
+			return 0;
+		}
+		if (appearance == 0) {
+			state.window.appearance = nil;
+			(void)state.window.effectiveAppearance;
+			return 1;
+		}
+		NSAppearance *native_appearance = nil;
+		if (appearance == 1) {
+			native_appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+		} else if (@available(macOS 10.14, *)) {
+			native_appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+		}
+		if (native_appearance == nil) {
+			return 0;
+		}
+		state.window.appearance = native_appearance;
+		return 1;
+	}
+}
+
+int v_multiwindow_appkit_service_detach_accessibility(void *state_ptr) {
+	@autoreleasepool {
+		if (state_ptr == NULL || ![NSThread isMainThread]) {
+			return 0;
+		}
+		VMultiwindowAppKitWindowState *state =
+			(__bridge VMultiwindowAppKitWindowState *)state_ptr;
+		[state detachAccessibility];
+		return 1;
+	}
+}
+
+#if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+static VMultiwindowAppKitWindowState *v_multiwindow_appkit_readback_state(
+		void *state_ptr) {
+	if (state_ptr == NULL || ![NSThread isMainThread]) {
+		return nil;
+	}
+	return (__bridge VMultiwindowAppKitWindowState *)state_ptr;
+}
+
+static VMultiwindowAppKitReadbackRecord *v_multiwindow_appkit_readback_record(
+		VMultiwindowAppKitWindowState *state, uint64_t request) {
+	if (state == nil || request == 0) {
+		return nil;
+	}
+	for (VMultiwindowAppKitReadbackRecord *record in state.serviceReadbacks) {
+		if (record.request == request) {
+			return record;
+		}
+	}
+	return nil;
+}
+
+#if defined(V_MULTIWINDOW_APPKIT_READBACK_TEST_PROBE)
+int v_multiwindow_appkit_readback_test_pause_completion(void) {
+	if (![NSThread isMainThread] || v_multiwindow_appkit_readback_test_completion_paused) {
+		return 0;
+	}
+	v_multiwindow_appkit_readback_test_completion_entered = dispatch_semaphore_create(0);
+	v_multiwindow_appkit_readback_test_completion_release = dispatch_semaphore_create(0);
+	if (v_multiwindow_appkit_readback_test_completion_entered == nil
+			|| v_multiwindow_appkit_readback_test_completion_release == nil) {
+		return 0;
+	}
+	v_multiwindow_appkit_readback_test_completion_paused = YES;
+	return 1;
+}
+
+int v_multiwindow_appkit_readback_test_wait_completion_paused(void) {
+	if (!v_multiwindow_appkit_readback_test_completion_paused
+			|| v_multiwindow_appkit_readback_test_completion_entered == nil) {
+		return 0;
+	}
+	return dispatch_semaphore_wait(v_multiwindow_appkit_readback_test_completion_entered,
+		dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)) == 0 ? 1 : 0;
+}
+
+void v_multiwindow_appkit_readback_test_release_completion(void) {
+	if (v_multiwindow_appkit_readback_test_completion_paused
+			&& v_multiwindow_appkit_readback_test_completion_release != nil) {
+		v_multiwindow_appkit_readback_test_completion_paused = NO;
+		dispatch_semaphore_signal(v_multiwindow_appkit_readback_test_completion_release);
+	}
+}
+
+int v_multiwindow_appkit_readback_test_invoke_end_pass(void *command_buffer,
+		void *drawable) {
+	if (command_buffer == NULL || ![NSThread isMainThread]) {
+		return 0;
+	}
+	v_multiwindow_appkit_readback_end_pass_hook(command_buffer, drawable,
+		&v_multiwindow_appkit_readback_hook_owner);
+	return 1;
+}
+
+int v_multiwindow_appkit_readback_test_record_count(void *state_ptr) {
+	VMultiwindowAppKitWindowState *state = v_multiwindow_appkit_readback_state(state_ptr);
+	return state != nil ? (int)state.serviceReadbacks.count : -1;
+}
+
+int v_multiwindow_appkit_readback_test_ready_count(void *state_ptr) {
+	VMultiwindowAppKitWindowState *state = v_multiwindow_appkit_readback_state(state_ptr);
+	if (state == nil) {
+		return -1;
+	}
+	int count = 0;
+	for (VMultiwindowAppKitReadbackRecord *record in state.serviceReadbacks) {
+		@synchronized (record) {
+			if (record.status == V_MULTIWINDOW_APPKIT_READBACK_READY && !record.taken
+					&& !record.released) {
+				count++;
+			}
+		}
+	}
+	return count;
+}
+
+int v_multiwindow_appkit_readback_test_gpu_completed(void *state_ptr, uint64_t request) {
+	VMultiwindowAppKitWindowState *state = v_multiwindow_appkit_readback_state(state_ptr);
+	VMultiwindowAppKitReadbackRecord *record =
+		v_multiwindow_appkit_readback_record(state, request);
+	if (record == nil) {
+		return -1;
+	}
+	@synchronized (record) {
+		return record.gpuCompleted ? 1 : 0;
+	}
+}
+
+int v_multiwindow_appkit_readback_test_mark_encoding_failed(void *state_ptr,
+		uint64_t request) {
+	VMultiwindowAppKitWindowState *state = v_multiwindow_appkit_readback_state(state_ptr);
+	VMultiwindowAppKitReadbackRecord *record =
+		v_multiwindow_appkit_readback_record(state, request);
+	if (record == nil) {
+		return 0;
+	}
+	@synchronized (record) {
+		if (record.released || record.status != 0 || record.submissionResolved) {
+			return 0;
+		}
+		record.encodingFailed = YES;
+		return 1;
+	}
+}
+
+int v_multiwindow_appkit_readback_test_make_offscreen_slot_stale(void) {
+	if (![NSThread isMainThread] || v_multiwindow_appkit_offscreen_readback_slot == nil) {
+		return 0;
+	}
+	v_multiwindow_appkit_offscreen_readback_slot.stateGeneration =
+		v_multiwindow_appkit_offscreen_readback_slot.stateGeneration < UINT64_MAX
+		? v_multiwindow_appkit_offscreen_readback_slot.stateGeneration + UINT64_C(1)
+		: UINT64_C(0);
+	return 1;
+}
+
+int v_multiwindow_appkit_readback_test_offscreen_slot_present(void) {
+	return v_multiwindow_appkit_offscreen_readback_slot != nil ? 1 : 0;
+}
+#endif
+
+static int v_multiwindow_appkit_stage_readback(
+		VMultiwindowAppKitWindowState *state,
+		VMultiwindowAppKitReadbackKind kind, id<MTLTexture> source,
+		uint64_t request, int x, int y, int width, int height,
+		uint64_t producing_frame) {
+	if (state == nil || state.window == nil || state.serviceReleased
+			|| state.serviceReadbackQuiesced || !state.serviceCaptureCapable
+			|| state.layer == nil || state.layer.framebufferOnly || request == 0
+			|| producing_frame == 0 || x < 0 || y < 0 || width <= 0 || height <= 0
+			|| v_multiwindow_appkit_readback_record(state, request) != nil) {
+		return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+	}
+	NSUInteger source_width = kind == VMultiwindowAppKitReadbackWindow
+		? (NSUInteger)state.framebufferWidth : source.width;
+	NSUInteger source_height = kind == VMultiwindowAppKitReadbackWindow
+		? (NSUInteger)state.framebufferHeight : source.height;
+	if ((kind == VMultiwindowAppKitReadbackImage
+			&& (source == nil || source.device != state.layer.device
+				|| !v_multiwindow_appkit_readback_pixel_format(source.pixelFormat)))
+			|| (NSUInteger)x > source_width || (NSUInteger)y > source_height
+			|| (NSUInteger)width > source_width - (NSUInteger)x
+			|| (NSUInteger)height > source_height - (NSUInteger)y) {
+		return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+	}
+	VMultiwindowAppKitReadbackRecord *record =
+		[[VMultiwindowAppKitReadbackRecord alloc] init];
+	if (record == nil) {
+		return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+	}
+	record.request = request;
+	record.kind = kind;
+	record.x = (NSUInteger)x;
+	record.y = (NSUInteger)y;
+	record.width = (NSUInteger)width;
+	record.height = (NSUInteger)height;
+	record.producingFrame = producing_frame;
+	record.sourceTexture = source;
+	[state.serviceReadbacks addObject:record];
+	return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK;
+}
+
+int v_multiwindow_appkit_service_arm_offscreen_readback_pass(void *state_ptr,
+		void *texture_ptr, uint64_t pass_serial, uint64_t producing_frame) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_readback_state(state_ptr);
+		id<MTLTexture> texture = texture_ptr != NULL
+			? (__bridge id<MTLTexture>)texture_ptr : nil;
+		if (state == nil || state.window == nil || state.serviceReleased
+				|| state.serviceReadbackQuiesced || !state.serviceCaptureCapable
+				|| state.serviceReadbackGeneration == 0 || state.layer == nil
+				|| texture == nil || texture.device != state.layer.device
+				|| pass_serial == 0 || producing_frame == 0) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+		}
+		BOOL has_request = NO;
+		for (VMultiwindowAppKitReadbackRecord *record in state.serviceReadbacks) {
+			@synchronized (record) {
+				if (!record.released && !record.cancelRequested && record.status == 0
+						&& !record.encoded && record.kind == VMultiwindowAppKitReadbackImage
+						&& record.sourceTexture == texture
+						&& record.producingFrame == producing_frame) {
+					has_request = YES;
+					break;
+				}
+			}
+		}
+		if (!has_request) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+		}
+		VMultiwindowAppKitOffscreenReadbackSlot *slot =
+			v_multiwindow_appkit_offscreen_readback_slot;
+		if (slot != nil) {
+			VMultiwindowAppKitWindowState *slot_state = slot.state;
+			if (slot_state == nil || slot_state.serviceReleased
+					|| slot_state.serviceReadbackQuiesced
+					|| slot.stateGeneration != slot_state.serviceReadbackGeneration) {
+				v_multiwindow_appkit_offscreen_readback_slot = nil;
+				slot = nil;
+			}
+		}
+		if (slot != nil) {
+			BOOL same = slot.state == state
+				&& slot.stateGeneration == state.serviceReadbackGeneration
+				&& slot.passSerial == pass_serial
+				&& slot.producingFrame == producing_frame
+				&& slot.expectedTexture == texture;
+			return same ? V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK
+				: V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+		}
+		slot = [[VMultiwindowAppKitOffscreenReadbackSlot alloc] init];
+		if (slot == nil) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+		}
+		slot.state = state;
+		slot.stateGeneration = state.serviceReadbackGeneration;
+		slot.passSerial = pass_serial;
+		slot.producingFrame = producing_frame;
+		slot.expectedTexture = texture;
+		v_multiwindow_appkit_offscreen_readback_slot = slot;
+		return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK;
+	}
+}
+
+int v_multiwindow_appkit_service_stage_window_readback(void *state_ptr,
+		uint64_t request, int x, int y, int width, int height,
+		uint64_t producing_frame) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_readback_state(state_ptr);
+		return v_multiwindow_appkit_stage_readback(state,
+			VMultiwindowAppKitReadbackWindow, nil, request, x, y, width, height,
+			producing_frame);
+	}
+}
+
+int v_multiwindow_appkit_service_stage_image_readback(void *state_ptr,
+		void *texture_ptr, uint64_t request, int x, int y, int width, int height,
+		uint64_t producing_frame) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_readback_state(state_ptr);
+		id<MTLTexture> texture = texture_ptr != NULL
+			? (__bridge id<MTLTexture>)texture_ptr : nil;
+		return v_multiwindow_appkit_stage_readback(state,
+			VMultiwindowAppKitReadbackImage, texture, request, x, y, width, height,
+			producing_frame);
+	}
+}
+
+int v_multiwindow_appkit_service_resolve_readbacks_after_submit(void *state_ptr,
+		uint64_t submitted_frame, int submission_succeeded) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_readback_state(state_ptr);
+		if (state == nil || submitted_frame == 0
+				|| (submission_succeeded != 0 && submission_succeeded != 1)) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+		}
+		BOOL matched = NO;
+		for (VMultiwindowAppKitReadbackRecord *record in [state.serviceReadbacks copy]) {
+			if (record.producingFrame == submitted_frame) {
+				matched = YES;
+				[record resolveSubmissionFrame:submitted_frame
+					succeeded:submission_succeeded != 0];
+			}
+		}
+		if (v_multiwindow_appkit_offscreen_readback_slot.state == state
+				&& v_multiwindow_appkit_offscreen_readback_slot.producingFrame
+					== submitted_frame) {
+			v_multiwindow_appkit_offscreen_readback_slot = nil;
+		}
+		return matched ? V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK
+			: V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+	}
+}
+
+int v_multiwindow_appkit_service_take_readback_result(void *state_ptr,
+		uint64_t *out_request, int *out_status, int *out_width, int *out_height,
+		int *out_stride, uint64_t *out_submitted_frame, size_t *out_byte_length) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_readback_state(state_ptr);
+		if (state == nil || out_request == NULL || out_status == NULL
+				|| out_width == NULL || out_height == NULL || out_stride == NULL
+				|| out_submitted_frame == NULL || out_byte_length == NULL) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+		}
+		for (VMultiwindowAppKitReadbackRecord *record in state.serviceReadbacks) {
+			@synchronized (record) {
+				if (record.status == 0 || record.taken || record.released) {
+					continue;
+				}
+				record.taken = YES;
+				*out_request = record.request;
+				*out_status = record.status;
+				*out_width = (int)record.width;
+				*out_height = (int)record.height;
+				*out_stride = (int)record.publicBytesPerRow;
+				*out_submitted_frame = record.submittedFrame;
+				*out_byte_length = record.publicPixels != nil
+					? record.publicPixels.length : 0;
+				return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK;
+			}
+		}
+		return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+	}
+}
+
+int v_multiwindow_appkit_service_copy_readback_pixels(void *state_ptr,
+		uint64_t request, uint8_t *out_pixels, size_t capacity) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_readback_state(state_ptr);
+		VMultiwindowAppKitReadbackRecord *record =
+			v_multiwindow_appkit_readback_record(state, request);
+		if (record == nil || out_pixels == NULL) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+		}
+		@synchronized (record) {
+			if (record.status != V_MULTIWINDOW_APPKIT_READBACK_READY || !record.taken
+					|| record.copied || record.released || record.publicPixels == nil) {
+				return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+			}
+			if (capacity < record.publicPixels.length) {
+				return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_CAPACITY;
+			}
+			memcpy(out_pixels, record.publicPixels.bytes, record.publicPixels.length);
+			record.copied = YES;
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK;
+		}
+	}
+}
+
+int v_multiwindow_appkit_service_release_readback_result(void *state_ptr,
+		uint64_t request) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_readback_state(state_ptr);
+		VMultiwindowAppKitReadbackRecord *record =
+			v_multiwindow_appkit_readback_record(state, request);
+		if (record == nil) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+		}
+		@synchronized (record) {
+			if (!record.taken || record.released) {
+				return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+			}
+			record.released = YES;
+			record.publicPixels = nil;
+			record.sourceTexture = nil;
+			record.stagingBuffer = nil;
+		}
+		[state.serviceReadbacks removeObjectIdenticalTo:record];
+		return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK;
+	}
+}
+
+int v_multiwindow_appkit_service_cancel_readback(void *state_ptr,
+		uint64_t request) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_readback_state(state_ptr);
+		VMultiwindowAppKitReadbackRecord *record =
+			v_multiwindow_appkit_readback_record(state, request);
+		if (record == nil) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+		}
+		BOOL clears_slot = v_multiwindow_appkit_offscreen_readback_slot.state == state
+			&& record.kind == VMultiwindowAppKitReadbackImage
+			&& v_multiwindow_appkit_offscreen_readback_slot.producingFrame
+				== record.producingFrame
+			&& v_multiwindow_appkit_offscreen_readback_slot.expectedTexture
+				== record.sourceTexture;
+		if (![record cancel]) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+		}
+		[state.serviceReadbacks removeObjectIdenticalTo:record];
+		if (clears_slot
+				&& !v_multiwindow_appkit_offscreen_slot_has_active_record(state)) {
+			v_multiwindow_appkit_offscreen_readback_slot = nil;
+		}
+		return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK;
+	}
+}
+
+int v_multiwindow_appkit_service_cancel_all_readbacks(void *state_ptr) {
+	@autoreleasepool {
+		VMultiwindowAppKitWindowState *state =
+			v_multiwindow_appkit_readback_state(state_ptr);
+		if (state == nil) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+		}
+		int cancelled = 0;
+		for (VMultiwindowAppKitReadbackRecord *record in [state.serviceReadbacks copy]) {
+			if ([record cancel]) {
+				cancelled++;
+			}
+		}
+		v_multiwindow_appkit_clear_offscreen_readback_slot_for_state(state);
+		[state.serviceReadbacks removeAllObjects];
+		return cancelled;
+	}
+}
+#else
+int v_multiwindow_appkit_service_arm_offscreen_readback_pass(void *state_ptr,
+		void *texture_ptr, uint64_t pass_serial, uint64_t producing_frame) {
+	(void)state_ptr;
+	(void)texture_ptr;
+	(void)pass_serial;
+	(void)producing_frame;
+	return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+}
+
+int v_multiwindow_appkit_service_stage_window_readback(void *state_ptr,
+		uint64_t request, int x, int y, int width, int height,
+		uint64_t producing_frame) {
+	(void)state_ptr;
+	(void)request;
+	(void)x;
+	(void)y;
+	(void)width;
+	(void)height;
+	(void)producing_frame;
+	return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+}
+
+int v_multiwindow_appkit_service_stage_image_readback(void *state_ptr,
+		void *texture_ptr, uint64_t request, int x, int y, int width, int height,
+		uint64_t producing_frame) {
+	(void)state_ptr;
+	(void)texture_ptr;
+	(void)request;
+	(void)x;
+	(void)y;
+	(void)width;
+	(void)height;
+	(void)producing_frame;
+	return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+}
+
+int v_multiwindow_appkit_service_resolve_readbacks_after_submit(void *state_ptr,
+		uint64_t submitted_frame, int submission_succeeded) {
+	(void)state_ptr;
+	(void)submitted_frame;
+	(void)submission_succeeded;
+	return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+}
+
+int v_multiwindow_appkit_service_take_readback_result(void *state_ptr,
+		uint64_t *out_request, int *out_status, int *out_width, int *out_height,
+		int *out_stride, uint64_t *out_submitted_frame, size_t *out_byte_length) {
+	(void)state_ptr;
+	if (out_request != NULL) {
+		*out_request = 0;
+	}
+	if (out_status != NULL) {
+		*out_status = 0;
+	}
+	if (out_width != NULL) {
+		*out_width = 0;
+	}
+	if (out_height != NULL) {
+		*out_height = 0;
+	}
+	if (out_stride != NULL) {
+		*out_stride = 0;
+	}
+	if (out_submitted_frame != NULL) {
+		*out_submitted_frame = 0;
+	}
+	if (out_byte_length != NULL) {
+		*out_byte_length = 0;
+	}
+	return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+}
+
+int v_multiwindow_appkit_service_copy_readback_pixels(void *state_ptr,
+		uint64_t request, uint8_t *out_pixels, size_t capacity) {
+	(void)state_ptr;
+	(void)request;
+	(void)out_pixels;
+	(void)capacity;
+	return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+}
+
+int v_multiwindow_appkit_service_release_readback_result(void *state_ptr,
+		uint64_t request) {
+	(void)state_ptr;
+	(void)request;
+	return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+}
+
+int v_multiwindow_appkit_service_cancel_readback(void *state_ptr,
+		uint64_t request) {
+	(void)state_ptr;
+	(void)request;
+	return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+}
+
+int v_multiwindow_appkit_service_cancel_all_readbacks(void *state_ptr) {
+	(void)state_ptr;
+	return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_UNAVAILABLE;
+}
+#endif
+
+int v_multiwindow_appkit_service_release_window_services(void *state_ptr) {
+	@autoreleasepool {
+		if (state_ptr == NULL || ![NSThread isMainThread]) {
+			return 0;
+		}
+		VMultiwindowAppKitWindowState *state =
+			(__bridge VMultiwindowAppKitWindowState *)state_ptr;
+		[state releaseServices];
+		return [state hasMouseLockAuthority]
+			? V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED
+			: V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK;
 	}
 }
 

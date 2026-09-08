@@ -51,15 +51,45 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	} else {
 		p.next()
 	}
+	mut is_raw := false
+	mut is_intel := false
+	for p.tok.kind == .name && p.tok.lit in ['raw', 'intel'] {
+		modifier_pos := p.tok.pos()
+		match p.tok.lit {
+			'raw' {
+				if is_raw {
+					p.error_with_pos('duplicate `raw` assembly modifier', modifier_pos)
+				}
+				is_raw = true
+			}
+			'intel' {
+				if is_intel {
+					p.error_with_pos('duplicate `intel` assembly modifier', modifier_pos)
+				}
+				is_intel = true
+			}
+			else {}
+		}
+		p.next()
+	}
+	if is_intel && arch !in [.amd64, .i386] && !p.pref.is_fmt {
+		p.error('the `intel` assembly modifier is only supported for i386 and amd64')
+	}
+	if is_raw && p.pref.backend != .c && !p.pref.is_fmt {
+		p.error('the `raw` assembly modifier is only supported by the C backend')
+	}
+	if is_intel && p.pref.backend != .c && !p.pref.is_fmt {
+		p.error('the `intel` assembly modifier is only supported by the C backend')
+	}
 
 	p.check_for_impure_v(ast.pref_arch_to_table_language(arch), p.prev_tok.pos())
 
 	p.check(.lcbr)
 	p.scope = &ast.Scope{
-		parent:               unsafe { nil } // you shouldn't be able to reference other variables in assembly blocks
+		parent: unsafe { nil } // you shouldn't be able to reference other variables in assembly blocks
 		detached_from_parent: true
-		start_pos:            p.tok.pos
-		objects:              ast.all_registers(mut p.table, arch) //
+		start_pos: p.tok.pos
+		objects: ast.all_registers(mut p.table, arch) //
 	}
 
 	mut local_labels := []string{}
@@ -67,7 +97,31 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	// x86: https://www.felixcloutier.com/x86/
 	// arm: https://developer.arm.com/documentation/dui0068/b/arm-instruction-reference
 	mut templates := []ast.AsmTemplate{}
-	for p.tok.kind !in [.semicolon, .rcbr, .eof] {
+	if is_raw {
+		for p.tok.kind !in [.semicolon, .rcbr, .eof] {
+			template_pos := p.tok.pos()
+			if p.tok.kind != .string {
+				p.error('raw assembly templates must contain only double-quoted string literals')
+				break
+			}
+			if p.tok.pos < 0 || p.tok.pos >= p.scanner.text.len
+				|| p.scanner.text[p.tok.pos] != `"` {
+				p.error('raw assembly templates must use double-quoted string literals')
+			}
+			raw_template := p.tok.lit
+			p.next()
+			mut comments := []ast.Comment{}
+			for p.tok.kind == .comment {
+				comments << p.comment()
+			}
+			templates << ast.AsmTemplate{
+				raw_template: raw_template
+				comments: comments
+				pos: template_pos.extend(p.prev_tok.pos())
+			}
+		}
+	}
+	for !is_raw && p.tok.kind !in [.semicolon, .rcbr, .eof] {
 		template_pos := p.tok.pos()
 		mut name := ''
 		mut comments := []ast.Comment{}
@@ -224,12 +278,12 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 			}
 		}
 		templates << ast.AsmTemplate{
-			name:         name
-			args:         args
-			comments:     comments
-			is_label:     is_label
+			name: name
+			args: args
+			comments: comments
+			is_label: is_label
 			is_directive: is_directive
-			pos:          template_pos.extend(p.tok.pos())
+			pos: template_pos.extend(p.tok.pos())
 		}
 	}
 	mut scope := p.scope
@@ -250,8 +304,9 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 				for p.tok.kind == .name {
 					reg := ast.AsmRegister{
 						name: p.tok.lit
-						typ:  0
+						typ: 0
 						size: -1
+						pos: p.tok.pos()
 					}
 					p.next()
 
@@ -260,7 +315,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 						comments << p.comment()
 					}
 					clobbered << ast.AsmClobbered{
-						reg:      reg
+						reg: reg
 						comments: comments
 					}
 
@@ -289,18 +344,20 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	scope.end_pos = p.prev_tok.pos
 
 	return ast.AsmStmt{
-		arch:          arch
-		is_goto:       is_goto
-		is_volatile:   is_volatile
-		templates:     templates
-		output:        output
-		input:         input
-		clobbered:     clobbered
-		pos:           pos.extend(p.prev_tok.pos())
-		is_basic:      is_top_level || output.len + input.len + clobbered.len == 0
-		scope:         scope
+		arch: arch
+		is_goto: is_goto
+		is_volatile: is_volatile
+		is_raw: is_raw
+		is_intel: is_intel
+		templates: templates
+		output: output
+		input: input
+		clobbered: clobbered
+		pos: pos.extend(p.prev_tok.pos())
+		is_basic: is_top_level || output.len + input.len + clobbered.len == 0
+		scope: scope
 		global_labels: global_labels
-		local_labels:  local_labels
+		local_labels: local_labels
 	}
 }
 
@@ -322,7 +379,7 @@ fn (mut p Parser) reg_or_alias() ast.AsmArg {
 	} else {
 		return ast.AsmAlias{
 			name: p.prev_tok.lit
-			pos:  p.prev_tok.pos()
+			pos: p.prev_tok.pos()
 		}
 	}
 }
@@ -420,7 +477,7 @@ fn (mut p Parser) reg_or_alias() ast.AsmArg {
 fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 	pos := p.tok.pos()
 	p.check(.lsbr)
-	unknown_addressing_mode := 'unknown addressing mode. supported ones are [displacement],	[base], [base + displacement], [index ∗ scale + displacement], [base + index ∗ scale + displacement], [base + index + displacement], [rip + displacement]'
+	unknown_addressing_mode := 'unknown addressing mode. supported ones are [displacement],\t[base], [base + displacement], [index ∗ scale + displacement], [base + index ∗ scale + displacement], [base + index + displacement], [rip + displacement]'
 	// this mess used to look much cleaner before the removal of peek_tok2/3, see above code for cleaner version
 	if p.peek_tok.kind == .rsbr { // [displacement] or [base]
 		if p.tok.kind == .name {
@@ -429,7 +486,7 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			return ast.AsmAddressing{
 				mode: .base
 				base: base
-				pos:  pos.extend(p.prev_tok.pos())
+				pos: pos.extend(p.prev_tok.pos())
 			}
 		} else if p.tok.kind == .number {
 			displacement := if p.tok.kind == .name {
@@ -444,9 +501,9 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			}
 			p.check(.rsbr)
 			return ast.AsmAddressing{
-				mode:         .displacement
+				mode: .displacement
 				displacement: displacement
-				pos:          pos.extend(p.prev_tok.pos())
+				pos: pos.extend(p.prev_tok.pos())
 			}
 		} else {
 			p.error(unknown_addressing_mode)
@@ -469,10 +526,10 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			}
 			p.check(.rsbr)
 			return ast.AsmAddressing{
-				mode:         .rip_plus_displacement
-				base:         rip
+				mode: .rip_plus_displacement
+				base: rip
 				displacement: displacement
-				pos:          pos.extend(p.prev_tok.pos())
+				pos: pos.extend(p.prev_tok.pos())
 			}
 		}
 		base := p.reg_or_alias()
@@ -491,10 +548,10 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 				}
 				p.check(.rsbr)
 				return ast.AsmAddressing{
-					mode:         .base_plus_displacement
-					base:         base
+					mode: .base_plus_displacement
+					base: base
 					displacement: displacement
-					pos:          pos.extend(p.prev_tok.pos())
+					pos: pos.extend(p.prev_tok.pos())
 				}
 			} else {
 				p.error(unknown_addressing_mode)
@@ -518,12 +575,12 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			}
 			p.check(.rsbr)
 			return ast.AsmAddressing{
-				mode:         .base_plus_index_times_scale_plus_displacement
-				base:         base
-				index:        index
-				scale:        scale
+				mode: .base_plus_index_times_scale_plus_displacement
+				base: base
+				index: index
+				scale: scale
 				displacement: displacement
-				pos:          pos.extend(p.prev_tok.pos())
+				pos: pos.extend(p.prev_tok.pos())
 			}
 		} else if p.tok.kind == .plus {
 			p.next()
@@ -539,11 +596,11 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			}
 			p.check(.rsbr)
 			return ast.AsmAddressing{
-				mode:         .base_plus_index_plus_displacement
-				base:         base
-				index:        index
+				mode: .base_plus_index_plus_displacement
+				base: base
+				index: index
 				displacement: displacement
-				pos:          pos.extend(p.prev_tok.pos())
+				pos: pos.extend(p.prev_tok.pos())
 			}
 		}
 	}
@@ -565,11 +622,11 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 		}
 		p.check(.rsbr)
 		return ast.AsmAddressing{
-			mode:         .index_times_scale_plus_displacement
-			index:        index
-			scale:        scale
+			mode: .index_times_scale_plus_displacement
+			index: index
+			scale: scale
 			displacement: displacement
-			pos:          pos.extend(p.prev_tok.pos())
+			pos: pos.extend(p.prev_tok.pos())
 		}
 	}
 	p.error(unknown_addressing_mode)
@@ -590,7 +647,22 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 		pos := p.tok.pos()
 
 		mut constraint := ''
-		if p.tok.kind == .lpar {
+		mut alias := ''
+		if p.tok.kind == .lsbr {
+			p.next()
+			alias = p.check_name()
+			p.check(.rsbr)
+			if p.tok.kind != .string {
+				p.error('quoted assembly constraint expected after `[${alias}]`')
+				return []
+			}
+			constraint = p.tok.lit
+			p.next()
+			if output && !constraint.starts_with('=') && !constraint.starts_with('+') {
+				p.error_with_pos('Output constraint must starts with `=` or `+`', pos)
+				return []
+			}
+		} else if p.tok.kind == .lpar {
 			constraint = if output { '+r' } else { 'r' } // default constraint, though vfmt fmts to `+r` and `r`
 		} else {
 			// https://gcc.gnu.org/onlinedocs/gcc/Modifiers.html
@@ -648,12 +720,11 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 			return []
 		}
 		expr = next_expr
-		mut alias := ''
-		if p.tok.kind == .key_as {
+		if alias == '' && p.tok.kind == .key_as {
 			p.next()
 			alias = p.tok.lit
 			p.check(.name)
-		} else if mut expr is ast.Ident {
+		} else if alias == '' && mut expr is ast.Ident {
 			alias = expr.name
 		}
 		// for constraints like `a`, no alias is needed, it is referred to as rcx
@@ -663,11 +734,11 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 		}
 
 		res << ast.AsmIO{
-			alias:      alias
+			alias: alias
 			constraint: constraint
-			expr:       expr
-			comments:   comments
-			pos:        pos.extend(p.prev_tok.pos())
+			expr: expr
+			comments: comments
+			pos: pos.extend(p.prev_tok.pos())
 		}
 		p.n_asm++
 		if p.tok.kind in [.semicolon, .rcbr] {

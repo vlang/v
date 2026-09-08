@@ -44,6 +44,8 @@ fn main() {
 	assert generated.contains('#elif defined(__arm__)'), generated
 	assert generated.contains('#elif defined(__riscv) && __riscv_xlen == 64'), generated
 	assert generated.contains('#elif defined(__loongarch_lp64)'), generated
+	assert generated.contains('#elif defined(__s390x__)'), generated
+	assert generated.contains('#define SYS_gettid 236'), generated
 	assert generated.contains('#error unsupported Linux gettid syscall number for this architecture'), generated
 	assert generated.contains('long syscall(long number, ...);'), generated
 	assert generated.contains('syscall(SYS_gettid)'), generated

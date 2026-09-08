@@ -243,7 +243,11 @@ pub fn (mut stmt Stmt) bind_u16(b &u16) {
 
 // bind_int binds a single int value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_int(b &int) {
-	stmt.bind(mysql_type_long, b, 0)
+	$if new_int ? && x64 {
+		stmt.bind(mysql_type_longlong, b, 0)
+	} $else {
+		stmt.bind(mysql_type_long, b, 0)
+	}
 }
 
 // bind_u32 binds a single u32 value to the statement `stmt`
