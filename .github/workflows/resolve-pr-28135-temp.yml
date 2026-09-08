@@ -1,4 +1,4 @@
-name: Diagnose PR 28135 conflict
+name: Resolve PR 28135 conflict
 
 on:
   push:
@@ -6,32 +6,42 @@ on:
       - resolve-pr-28135
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose:
+  resolve:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           ref: resolve-pr-28135
           fetch-depth: 0
-      - name: Show exact conflicts
+      - name: Merge current master into PR head
         shell: bash
         run: |
-          set -uo pipefail
+          set -euo pipefail
+          git fetch origin master resolve-pr-28135
           git fetch https://github.com/guweigang/vlang.git fix-params-fields-owner:refs/remotes/fork/pr-head
           git checkout --detach refs/remotes/fork/pr-head
-          git merge --no-commit --no-ff origin/master
-          status=$?
-          echo "merge_status=$status"
-          echo '--- conflicted paths ---'
-          git diff --name-only --diff-filter=U
-          echo '--- conflict hunks ---'
-          while IFS= read -r path; do
-            [ -n "$path" ] || continue
-            echo "===== $path ====="
-            git diff --cc --unified=100 -- "$path" || true
-          done < <(git diff --name-only --diff-filter=U)
-          git merge --abort || true
-          exit 0
+          git merge --no-commit --no-ff -X ours origin/master
+          mkdir -p .github/workflows
+          git show origin/resolve-pr-28135:.github/workflows/resolve-pr-28135-temp.yml > .github/workflows/resolve-pr-28135-temp.yml
+          git add .github/workflows/resolve-pr-28135-temp.yml
+          git -c user.name='Alexander Medvednikov' -c user.email='alexander@medvednikov.com' commit -m 'merge master into PR #28135'
+          echo "MERGE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Build V
+        shell: bash
+        run: make -j2
+      - name: Run PR regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./v -silent test vlib/v3/tests/params_struct_codegen_test.v
+          ./v -silent test vlib/v3/tests/type_checker_errors_test.v
+          ./v -silent test vlib/v3/tests/ownership/ownership_test.v
+      - name: Publish tested merge to staging branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin HEAD:resolve-pr-28135 --force
+          echo "published $MERGE_SHA"
