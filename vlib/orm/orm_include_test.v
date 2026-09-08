@@ -7,6 +7,7 @@ struct IncludeParent {
 	id       int @[primary; sql: serial]
 	name     string
 	children []IncludeChild @[fkey: 'parent_id']
+	pets     []IncludePet   @[fkey: 'parent_id']
 }
 
 @[table: 'orm_include_children']
@@ -40,6 +41,13 @@ struct IncludeToy {
 	id          int @[primary; sql: serial]
 	grandkid_id int
 	name        string
+}
+
+@[table: 'orm_include_pets']
+struct IncludePet {
+	id        int @[primary; sql: serial]
+	parent_id int
+	name      string
 }
 
 @[table: 'orm_include_optional_parents']
@@ -232,11 +240,13 @@ fn new_include_database() !sqlite.DB {
 	mut grandkids := orm.new_query[IncludeGrandkid](db)
 	mut grandkids2 := orm.new_query[IncludeGrandkid2](db)
 	mut toys := orm.new_query[IncludeToy](db)
+	mut pets := orm.new_query[IncludePet](db)
 	parents.create()!
 	children.create()!
 	grandkids.create()!
 	grandkids2.create()!
 	toys.create()!
+	pets.create()!
 	parents.insert(IncludeParent{
 		name: 'parent'
 	})!
@@ -921,6 +931,56 @@ fn test_where_accepts_sibling_or_branches_separated_by_a_root_term() {
 
 	rows := parents.where('children.grandkids.name = ? || (name = ? && children.grandkids2.name = ?)',
 		'grandkid', 'missing', 'missing')!.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'parent'
+}
+
+fn repeated_branch_query(parents &orm.QueryBuilder[IncludeParent], condition string) ![]IncludeParent {
+	return parents.where(condition, 'child', 'missing', 2)!.query()!
+}
+
+fn repeated_branch_update(parents &orm.QueryBuilder[IncludeParent], condition string) ! {
+	parents.where(condition, 'child', 'missing', 2)!.set('name = ?', 'updated')!.update()!
+}
+
+fn repeated_branch_delete(parents &orm.QueryBuilder[IncludeParent], condition string) ! {
+	parents.where(condition, 'child', 'missing', 2)!.delete()!
+}
+
+fn test_where_rejects_an_anded_relationship_repeated_across_another_branch() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut children := orm.new_query[IncludeChild](db)
+	children.insert(IncludeChild{
+		parent_id: 1
+		name:      'other child'
+		active:    true
+	})!
+	condition := '(children.name = ? || pets.name = ?) && children.id = ?'
+
+	mut query_parents := orm.new_query[IncludeParent](db)
+	if _ := repeated_branch_query(query_parents, condition) {
+		assert false
+	} else {
+		assert err.msg().contains('relationship `children` is repeated')
+	}
+	mut update_parents := orm.new_query[IncludeParent](db)
+	if _ := repeated_branch_update(update_parents, condition) {
+		assert false
+	} else {
+		assert err.msg().contains('relationship `children` is repeated')
+	}
+	mut delete_parents := orm.new_query[IncludeParent](db)
+	if _ := repeated_branch_delete(delete_parents, condition) {
+		assert false
+	} else {
+		assert err.msg().contains('relationship `children` is repeated')
+	}
+
+	mut parents := orm.new_query[IncludeParent](db)
+	rows := parents.query()!
 	assert rows.len == 1
 	assert rows[0].name == 'parent'
 }

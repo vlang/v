@@ -538,10 +538,12 @@ fn (qb &QueryBuilder[T]) exists_wrapped_conditions(parsed QueryData, field_scope
 			continue
 		}
 		branch := field_scopes[i].all_before('.')
+		branch_expression := project_query_boolean(parsed, field_scopes.map(it.len > 0
+			&& it.all_before('.') == branch))!
 		mut last := i
 		mut deepest := field_scopes[i]
-		// ANDed root predicates can stay inside the correlated subquery, allowing later
-		// terms of this branch to keep matching the same related row.
+		// Root predicates can stay inside the correlated subquery, allowing later terms
+		// of this branch to keep matching the same related row.
 		mut scan := i
 		mut relationship_position := relationship_expression.term_indexes.index(i)
 		for scan + 1 < parsed.fields.len {
@@ -551,6 +553,13 @@ fn (qb &QueryBuilder[T]) exists_wrapped_conditions(parsed QueryData, field_scope
 				continue
 			}
 			if next.all_before('.') != branch {
+				// Splitting an AND-connected repeat into another EXISTS would let its
+				// predicates match different rows of the same relationship.
+				if repeated_relationship_branch_is_anded(branch_expression, field_scopes, branch,
+					last, scan + 1)
+				{
+					return error('${@FN}(): relationship `${branch}` is repeated across another relationship with `AND`; use separate `where` calls')
+				}
 				break
 			}
 			connector := if relationship_position >= 0
@@ -801,6 +810,24 @@ fn flatten_query_boolean_node(tree QueryBooleanTree, node_index int, mut result 
 	if end > start {
 		result.parentheses << [start, end]
 	}
+}
+
+fn repeated_relationship_branch_is_anded(expression ProjectedQueryBoolean, field_scopes []string, branch string, previous int, search_start int) bool {
+	mut repeated := -1
+	for i in search_start .. field_scopes.len {
+		if field_scopes[i].len > 0 && field_scopes[i].all_before('.') == branch {
+			repeated = i
+			break
+		}
+	}
+	if repeated < 0 {
+		return false
+	}
+	previous_position := expression.term_indexes.index(previous)
+	return previous_position >= 0 && previous_position < expression.is_and.len
+		&& previous_position + 1 < expression.term_indexes.len
+		&& expression.term_indexes[previous_position + 1] == repeated
+		&& expression.is_and[previous_position]
 }
 
 // exists_scope_alias names the table alias a scoped condition refers to inside its subquery.
