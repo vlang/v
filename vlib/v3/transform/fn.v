@@ -12579,11 +12579,24 @@ fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId,
 		}
 		key_expected := t.map_key_type(map_expected)
 		value_expected := t.map_value_type(map_expected)
-		for i := 0; i + 1 < node.children_count; i += 2 {
-			if !t.fn_literal_container_element_mode_compatible(t.a.child(&node, i), key_expected)
+		mut i := 0
+		for i < node.children_count {
+			child_id := t.a.child(&node, i)
+			child := t.a.nodes[int(child_id)]
+			if child.kind == .prefix && child.value == '...' && child.children_count > 0 {
+				if !t.fn_literal_container_element_mode_compatible(t.a.child(&child, 0),
+					map_expected) {
+					return false
+				}
+				i++
+				continue
+			}
+			if i + 1 >= node.children_count
+				|| !t.fn_literal_container_element_mode_compatible(child_id, key_expected)
 				|| !t.fn_literal_container_element_mode_compatible(t.a.child(&node, i + 1), value_expected) {
 				return false
 			}
+			i += 2
 		}
 		return true
 	}
