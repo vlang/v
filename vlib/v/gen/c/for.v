@@ -893,12 +893,6 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		cond_sym := g.table.final_sym(node.cond_type)
 		info := cond_sym.info as ast.ArrayFixed
-		elem_sym := g.table.sym(info.elem_type)
-		elem_is_direct_fn := if elem_sym.info is ast.FnType {
-			elem_sym.info.has_decl
-		} else {
-			false
-		}
 		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} != ${info.size}; ${plus_plus_idx}) {')
 		if node.val_var != '_' {
 			val_sym := g.table.sym(node.val_type)
@@ -912,7 +906,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			if val_sym.info is ast.FnType && (!loop_var_added_ref || base_elem_is_concrete_fn) {
 				g.write('\t')
 				tcc_bug := c_name(node.val_var)
-				if elem_is_direct_fn {
+				if base_elem_is_concrete_fn {
 					g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
 				} else {
 					g.write_fntype_decl(tcc_bug, val_sym.info, node.val_type.nr_muls())

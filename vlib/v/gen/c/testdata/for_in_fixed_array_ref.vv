@@ -35,6 +35,14 @@ fn double(value int) int {
 	return value * 2
 }
 
+fn visit[T](items [2]T) {
+	unsafe {
+		for generic_callback in &items {
+			_ = generic_callback
+		}
+	}
+}
+
 fn main() {
 	h := Holder{
 		buf: [Point{1, 2}, Point{3, 4}, Point{5, 6}]!
@@ -68,4 +76,5 @@ fn main() {
 			_ = callback
 		}
 	}
+	visit([increment, double]!)
 }
