@@ -188,17 +188,17 @@ struct IncludeAliasedFkeyParent {
 
 @[table: 'orm_include_aliased_fkey_children']
 struct IncludeAliasedFkeyChild {
-	id        int @[primary; sql: serial]
-	parent_id int @[sql: 'owner_id']
-	name      string
+	id        int                          @[primary; sql: serial]
+	parent_id int                          @[sql: 'owner_id']
+	name      string                       @[sql: 'display_name']
 	grandkids []IncludeAliasedFkeyGrandkid @[fkey: 'child_id']
 }
 
 @[table: 'orm_include_aliased_fkey_grandkids']
 struct IncludeAliasedFkeyGrandkid {
-	id       int @[primary; sql: serial]
-	child_id int @[sql: 'owner_child_id']
-	name     string
+	id       int    @[primary; sql: serial]
+	child_id int    @[sql: 'owner_child_id']
+	name     string @[sql: 'display_name']
 }
 
 @[table: 'orm_include_self_nodes']
@@ -611,6 +611,44 @@ fn test_where_preserves_relationship_or_when_the_condition_also_has_a_root_term(
 	assert rows.len == 1
 	assert rows[0].children.len == 1
 	assert rows[0].children[0].name == 'child'
+}
+
+fn test_or_where_preserves_the_connector_when_hydrating_a_relationship() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+	mut children := orm.new_query[IncludeChild](db)
+	children.insert(IncludeChild{
+		parent_id: 1
+		name:      'other child'
+	})!
+
+	rows := parents.include('children')!.where('children.name = ?', 'child')!.or_where('children.name = ?',
+		'other child')!.query()!
+	assert rows.len == 1
+	assert rows[0].children.len == 2
+}
+
+fn test_where_keeps_a_parenthesized_relationship_or_in_one_exists() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+	mut children := orm.new_query[IncludeChild](db)
+	children.insert(IncludeChild{
+		parent_id: 1
+		name:      'other child'
+	})!
+
+	crossed := parents.where('(children.name = ? || children.name = ?) && children.id = ?',
+		'child', 'missing', 2)!.query()!
+	assert crossed.len == 0
+	matched := parents.where('(children.name = ? || children.name = ?) && children.id = ?',
+		'missing', 'other child', 2)!.query()!
+	assert matched.len == 1
 }
 
 fn test_where_keeps_same_relationship_terms_together_across_a_root_term() {

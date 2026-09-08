@@ -419,7 +419,8 @@ fn (qb &QueryBuilder[T]) v_sql_field_name(field string) string {
 
 fn orm_table_sql_field_name(table Table, field string) string {
 	for i, name in table.fields {
-		if name == field || (i < table.columns.len && table.columns[i] == field) {
+		if name == field || name.ends_with('.${field}')
+			|| (i < table.columns.len && table.columns[i] == field) {
 			if i < table.columns.len && table.columns[i].len > 0 {
 				return table.columns[i]
 			}
@@ -504,7 +505,7 @@ fn (qb_ &QueryBuilder[T]) add_where_condition(condition string, params []Primiti
 			continue
 		}
 		filter := query_data_for_scope(parsed, field_scopes, scope)
-		qb.add_include_filter(scope.split('.'), filter)
+		qb.add_include_filter(scope.split('.'), filter, is_and)
 	}
 }
 
@@ -537,20 +538,36 @@ fn (qb &QueryBuilder[T]) exists_wrapped_conditions(parsed QueryData, field_scope
 		// ANDed root predicates can stay inside the correlated subquery, allowing later
 		// terms of this branch to keep matching the same related row.
 		mut scan := i
-		for scan + 1 < parsed.fields.len && query_data_connector(parsed, scan) {
+		mut crossed_root := false
+		for scan + 1 < parsed.fields.len {
+			connector := query_data_connector(parsed, scan)
 			scan++
 			next := field_scopes[scan]
 			if next.len == 0 {
+				if !connector {
+					break
+				}
+				crossed_root = true
 				continue
 			}
 			if next.all_before('.') != branch {
 				break
 			}
+			if crossed_root && !connector {
+				break
+			}
+			if !connector && next != deepest {
+				break
+			}
 			if next != deepest && !next.starts_with('${deepest}.')
 				&& !deepest.starts_with('${next}.') {
-				return error('${@FN}(): `${deepest}` and `${next}` are sibling relationships; `AND` between them needs separate `where` calls')
+				if connector {
+					return error('${@FN}(): `${deepest}` and `${next}` are sibling relationships; `AND` between them needs separate `where` calls')
+				}
+				break
 			}
 			last = scan
+			crossed_root = false
 			if next.len > deepest.len {
 				deepest = next
 			}
@@ -569,14 +586,15 @@ fn (qb &QueryBuilder[T]) exists_wrapped_conditions(parsed QueryData, field_scope
 			if field_scopes[k].len == 0 {
 				out.fields << table_qualified_field(qb.config.table.name, parsed.fields[k])
 			} else {
-				out.fields << table_qualified_field(exists_scope_table(clause, field_scopes[k]),
-					parsed.fields[k].all_after_last('.'))
+				table := exists_scope_table(clause, field_scopes[k])
+				out.fields << table_qualified_field(exists_scope_alias(field_scopes[k]), orm_table_sql_field_name(table,
+					parsed.fields[k].all_after_last('.')))
 			}
 			out.kinds << parsed.kinds[k]
 			connectors << query_data_connector(parsed, k)
 			i++
 		}
-		// a run only ever grows across `AND`, so its terms need no grouping of their own
+		// Parentheses from the parsed relationship group are remapped below.
 		run_close << out.fields.len
 		out.fields << exists_clause_field(clause_index)
 		out.kinds << .exists_close
@@ -625,13 +643,18 @@ fn query_data_connector(data QueryData, index int) bool {
 	return if index < data.is_and.len { data.is_and[index] } else { true }
 }
 
-// exists_scope_table names the table alias a scoped condition refers to inside its subquery.
-fn exists_scope_table(clause ExistsClause, scope string) string {
+// exists_scope_alias names the table alias a scoped condition refers to inside its subquery.
+fn exists_scope_alias(scope string) string {
+	depth := scope.split('.').len
+	return exists_table_alias(depth - 1)
+}
+
+fn exists_scope_table(clause ExistsClause, scope string) Table {
 	depth := scope.split('.').len
 	if depth > 1 && depth - 2 < clause.joins.len {
-		return exists_table_alias(depth - 1)
+		return clause.joins[depth - 2].table
 	}
-	return exists_table_alias(0)
+	return clause.table
 }
 
 fn (qb &QueryBuilder[T]) scoped_condition_fields(condition string) ![]string {
@@ -680,12 +703,12 @@ fn (qb &QueryBuilder[T]) condition_field_scope(field string) !string {
 	return error('${@FN}(): relationship field `${field}` must start with `${last_relationship}.` or a relationship of `${qb.config.table.name}`')
 }
 
-fn (qb_ &QueryBuilder[T]) add_include_filter(path []string, filter QueryData) {
+fn (qb_ &QueryBuilder[T]) add_include_filter(path []string, filter QueryData, is_and bool) {
 	mut qb := unsafe { qb_ }
 	for i in 0 .. qb.include_filters.len {
 		if qb.include_filters[i].path == path {
 			qb.include_filters[i].where = append_query_data(v_sql_query_data_parentheses(qb.include_filters[i].where, 0),
-				v_sql_query_data_parentheses(filter, 0), true)
+				v_sql_query_data_parentheses(filter, 0), is_and)
 			return
 		}
 	}
