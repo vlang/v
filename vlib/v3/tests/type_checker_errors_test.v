@@ -1831,6 +1831,9 @@ fn test_fn_literal_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_non_const_fn_literal_const_alias_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler PlainHandler) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	run_bad(v3_bin, 'bad_parenthesized_const_fn_literal_plain_alias_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler PlainHandler) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept((fn (const_event &C.native_event) {}))\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 }
 
 fn test_fn_literal_nested_named_callback_param_matches_alias_inside_generic_fn() {
@@ -1848,6 +1851,9 @@ fn test_fn_literal_nested_shared_callback_param_matches_alias_inside_generic_fn(
 	run_bad(v3_bin, 'bad_nested_shared_callback_param_in_generic',
 		'struct State {}\ntype NestedPlainHandler = fn (cb fn (value State))\nstruct Router {}\nfn (mut r Router) accept(handler NestedPlainHandler) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (callback fn (shared value State)) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	parenthesized := run_good(v3_bin, 'good_parenthesized_shared_callback_param_in_generic',
+		'type SharedHandler = fn (shared value State)\nstruct State {}\nstruct Router {}\nfn (mut r Router) accept(handler SharedHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept((fn (shared value State) {}))\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert parenthesized == 'true'
 }
 
 fn test_fn_field_call_preserves_callback_c_abi_mismatch_inside_generic_fn() {

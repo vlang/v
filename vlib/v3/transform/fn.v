@@ -12018,6 +12018,12 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	}
 	actual := t.normalize_type_alias(actual_type)
 	expected := t.normalize_type_alias(expected_type)
+	if source_fn_type := t.fn_literal_source_type_text(arg_id) {
+		if (type_text_has_shared_mode(source_fn_type) || type_text_has_shared_mode(expected))
+			&& !fn_type_texts_signature_compatible(source_fn_type, expected) {
+			return false
+		}
+	}
 	if t.is_integer_type_name(expected) {
 		if literal := t.specialized_int_literal(arg_id) {
 			return specialized_int_literal_fits_type(literal, expected)
@@ -12123,24 +12129,10 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 }
 
 fn (t &Transformer) fn_literal_c_abi_signature_compatible(arg_id flat.NodeId, expected_type string) bool {
-	if isnil(t.tc) || int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
+	if isnil(t.tc) {
 		return true
 	}
-	node := t.a.nodes[int(arg_id)]
-	if node.kind != .fn_literal {
-		return true
-	}
-	mut params := []string{}
-	for i in 0 .. node.children_count {
-		param := t.a.child_node(&node, i)
-		if param.kind != .param {
-			continue
-		}
-		mode := if param.is_mut { 'mut ' } else { '' }
-		params << '${mode}${param.value} ${param.typ}'
-	}
-	ret := if node.typ.len > 0 && node.typ != 'void' { ' ${node.typ}' } else { '' }
-	actual_text := 'fn (${params.join(', ')})${ret}'
+	actual_text := t.fn_literal_source_type_text(arg_id) or { return true }
 	actual_abi := t.tc.c_abi_fn_ptr_type_for_type_text(actual_text)
 	expected_abi := t.tc.c_abi_fn_ptr_type_for_type_text(expected_type)
 	if actual_abi == none && expected_abi == none {
@@ -12152,6 +12144,30 @@ fn (t &Transformer) fn_literal_c_abi_signature_compatible(arg_id flat.NodeId, ex
 	actual_value := actual_abi or { return false }
 	expected_value := expected_abi or { return false }
 	return actual_value == expected_value
+}
+
+fn (t &Transformer) fn_literal_source_type_text(arg_id flat.NodeId) ?string {
+	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(arg_id)]
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return t.fn_literal_source_type_text(t.a.child(&node, 0))
+	}
+	if node.kind != .fn_literal {
+		return none
+	}
+	mut params := []string{}
+	for i in 0 .. node.children_count {
+		param := t.a.child_node(&node, i)
+		if param.kind != .param {
+			continue
+		}
+		mode := if param.is_mut { 'mut ' } else { '' }
+		params << '${mode}${param.value} ${param.typ}'
+	}
+	ret := if node.typ.len > 0 && node.typ != 'void' { ' ${node.typ}' } else { '' }
+	return 'fn (${params.join(', ')})${ret}'
 }
 
 struct SpecializedIntLiteral {
