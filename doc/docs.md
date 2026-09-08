@@ -9073,13 +9073,16 @@ declared on the assembly block. For instructions whose register operands must ha
 V rejects a named operand combined with an explicit hard register of a different width. For
 example, in a 64-bit build, `mov eax, some_value` would reach the assembler as `mov eax, rcx`, so V
 rejects it at compile time. Named operands may still use narrower V types for operations that
-preserve their low-width result, such as an alias-only `add`. V rejects narrower operands where the
-instruction meaning changes with width, including shifts, rotates, implicit multiply and divide,
-bit counts, bit tests, byte swaps, and CRC32 sources. It also rejects narrower signed operands of
-`cmp` and `test`. Named operands cannot be sources of `movsx`, `movsxd`, or `movzx`. Addressed
-sources of `movsx` and `movzx` are also rejected because structured assembly cannot specify their
-data width. Named shift counts are not supported because the `r` constraint cannot select `cl`.
-Use a `raw intel` block to pick operand widths explicitly with `%k`, `%w` and related modifiers.
+preserve their low-width result, such as an alias-only `add` whose flags are not observed later in
+the block. V rejects narrower operands where the instruction meaning changes with width, including
+shifts, rotates, implicit multiply and divide, bit counts, bit tests, byte swaps, and CRC32 sources.
+It also rejects narrower signed operands of `cmp` and `test`, and narrow arithmetic when a later
+instruction observes its flags. Named operands cannot be sources of `movsx`, `movsxd`, or `movzx`.
+Addressed sources of `movsx` and `movzx` are also rejected because structured assembly cannot
+specify their data width. Named shift counts are not supported because the `r` constraint cannot
+select `cl`. Effective addresses cannot contain three register operands, and signed address
+components must have the target's native width. Use a `raw intel` block to pick operand widths
+explicitly with `%k`, `%w` and related modifiers.
 
 The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the C backend. MSVC
 does not support this form of inline assembly on 64-bit targets, and individual instructions or

@@ -71,6 +71,59 @@ fn test_intel_generic_native_width_operands_with_clang() {
 	assert intel_generic_add[i64](19, 23) == 42
 }
 
+fn test_intel_narrow_add_without_observed_flags_with_clang() {
+	increment := 23
+	mut result := 19
+	asm amd64 intel {
+		add result, increment
+		; +r (result)
+		; r (increment)
+		; cc
+	}
+	assert result == 42
+}
+
+fn test_intel_unsigned_narrow_address_index_with_clang() {
+	values := [u8(41), 42]
+	base := &values[0]
+	index := u32(1)
+	mut result := i64(0)
+	asm amd64 intel {
+		mov al, [base + index + 0]
+		movzx result, al
+		; =r (result)
+		; r (base)
+		  r (index)
+		; rax
+	}
+	assert result == 42
+}
+
+fn intel_sized_implicit_arithmetic_memory_with_clang(base &u64) {
+	asm amd64 intel {
+		divq [base]
+		idivq [base]
+		mulq [base]
+		imulq [base]
+		; ; r (base)
+		; rax
+		  rdx
+		  cc
+	}
+}
+
+@[noinline]
+fn can_run_intel_sized_implicit_arithmetic_test() bool {
+	return false
+}
+
+fn test_intel_sized_implicit_arithmetic_memory_compiles_with_clang() {
+	if can_run_intel_sized_implicit_arithmetic_test() {
+		value := u64(1)
+		intel_sized_implicit_arithmetic_memory_with_clang(&value)
+	}
+}
+
 fn test_intel_segment_register_move_with_clang() {
 	mut value := i64(0)
 	asm amd64 intel {

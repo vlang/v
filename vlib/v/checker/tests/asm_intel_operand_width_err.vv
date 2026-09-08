@@ -230,6 +230,49 @@ fn intel_narrow_implicit_arithmetic(value int) {
 	}
 }
 
+fn intel_implicit_arithmetic_address(base &u64) {
+	asm amd64 intel {
+		div [base]
+		idiv [base]
+		mul [base]
+		imul [base]
+		; ; r (base)
+		; rax
+		  rdx
+		  cc
+	}
+}
+
+fn intel_three_register_address(base &u8, index i64, displacement i64) {
+	asm amd64 intel {
+		mov al, [base + index + displacement]
+		; ; r (base)
+		  r (index)
+		  r (displacement)
+		; al
+	}
+}
+
+fn intel_signed_narrow_address(base &u8, index int) {
+	asm amd64 intel {
+		mov al, [base + index + 0]
+		; ; r (base)
+		  r (index)
+		; al
+	}
+}
+
+fn intel_narrow_arithmetic_flags(value int) {
+	mut result := value
+	asm amd64 intel {
+		add result, 1
+		seto al
+		; +r (result)
+		; ; rax
+		  cc
+	}
+}
+
 fn intel_crc32_memory_source(base &u16, checksum u64) u64 {
 	mut result := checksum
 	asm amd64 intel {
