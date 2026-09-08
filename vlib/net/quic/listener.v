@@ -256,6 +256,14 @@ fn peek_datagram_dcid(raw []u8) ?[]u8 {
 	return raw[1..1 + local_cid_len].clone()
 }
 
+fn is_undersized_initial_datagram(datagram []u8) bool {
+	if datagram.len >= min_initial_datagram_size {
+		return false
+	}
+	find_first_initial_header(datagram) or { return false }
+	return true
+}
+
 // poll processes one incoming datagram from `peer`: routes it to an
 // already-known connection by Destination Connection ID, or -- for an
 // unrecognized DCID carrying a valid Initial packet -- runs the
@@ -280,6 +288,17 @@ pub fn (mut l QuicListener) poll(datagram []u8, peer []u8, now u64) !QuicListene
 			return result
 		}
 		mut c := l.conns[key] or { return result }
+		// RFC 9000 §14.1 applies to every server-received datagram carrying
+		// an Initial, including later Initial packets for an accepted DCID.
+		if is_undersized_initial_datagram(datagram) {
+			// The packet is discarded, but this same-peer, matching-DCID
+			// datagram is still uniquely attributable for §8.1 accounting.
+			if c.state != .draining {
+				c.amplification.note_received(u64(datagram.len))
+			}
+			l.merge_all_connections_next_timeout(mut result)
+			return result
+		}
 		r := c.poll(datagram, now)!
 		// reply_peer is this connection's address from accept time. The
 		// source match above pins both incoming processing and outgoing

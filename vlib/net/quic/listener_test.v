@@ -81,6 +81,22 @@ fn listener_test_params(signing_key ecdsa.PrivateKey) QuicListenerParams {
 	}
 }
 
+fn listener_test_build_small_long_packet(typ LongPacketType, dcid []u8, scid []u8, pn u64, keys QuicPacketProtectionKeys) ![]u8 {
+	pn_length := 2
+	payload := [u8(frame_type_ping), 0, 0, 0]
+	header_fields := QuicLongHeader{
+		typ: typ
+		version: quic_v1
+		dcid: dcid
+		scid: scid
+		token: []u8{}
+		length: u64(pn_length + payload.len + aead_tag_len)
+	}
+	mut header := encode_long_header(header_fields, 0, u8(pn_length - 1))!
+	header << [u8(pn >> 8), u8(pn)]
+	return protect_packet(header, .long, pn, pn_length, payload, keys)!
+}
+
 fn test_derive_retry_scid_is_deterministic_and_key_dependent() {
 	key_a := [u8(1), 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 	key_b := [u8(16), 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
@@ -477,6 +493,55 @@ fn test_listener_deduplicates_retransmitted_new_attempt() {
 	assert wrong_peer_result.outgoing.len == 0
 	assert wrong_peer_result.events.len == 0
 	assert accepted_conn.amplification.received == received_before
+}
+
+fn test_listener_discards_undersized_initial_for_known_connection_only() {
+	mut signing_key := ecdsa.new_key_from_seed(listener_test_key_seed, fixed_size: true)!
+	defer {
+		signing_key.free()
+	}
+	params := QuicListenerParams{
+		...listener_test_params(signing_key)
+		always_retry: false
+	}
+	mut client, client_dg := dial(DialParams{
+		server_name: 'localhost'
+		ca_bundle_pem: listener_test_cert_pem
+		alpn_protocols: ['h3']
+		transport_parameters: listener_test_transport_parameters()
+	}, 0)!
+	mut client_hs := client.client_handshake()
+	defer {
+		client_hs.free()
+	}
+
+	mut listener := new_quic_listener(params)!
+	peer := 'known-initial-peer'.bytes()
+	listener.poll(client_dg.bytes, peer, 0)!
+	assert listener.connection_count() == 1
+	conn_key := listener.conns.keys()[0]
+	accepted := listener.conns[conn_key] or { panic('accepted connection disappeared') }
+
+	initial_before := accepted.initial_received_pns.len
+	received_before := accepted.amplification.received
+	undersized_initial := listener_test_build_small_long_packet(.initial, accepted.scid, client.scid, 1, client.initial_keys_client)!
+	assert undersized_initial.len < min_initial_datagram_size
+	assert is_undersized_initial_datagram(undersized_initial)
+	initial_result := listener.poll(undersized_initial, peer, 1)!
+	assert initial_result.events.len == 0
+	assert initial_result.outgoing.len == 0
+	assert accepted.initial_received_pns.len == initial_before
+	assert accepted.amplification.received == received_before + u64(undersized_initial.len)
+
+	handshake_keys := accepted.handshake_keys_client or {
+		panic('server did not derive client Handshake keys')
+	}
+	undersized_handshake := listener_test_build_small_long_packet(.handshake, accepted.scid, client.scid, 0, handshake_keys)!
+	assert undersized_handshake.len < min_initial_datagram_size
+	assert !is_undersized_initial_datagram(undersized_handshake)
+	received_after_initial := accepted.amplification.received
+	listener.poll(undersized_handshake, peer, 2)!
+	assert accepted.amplification.received == received_after_initial + u64(undersized_handshake.len)
 }
 
 // test_listener_discards_packets_from_a_different_peer is a regression
