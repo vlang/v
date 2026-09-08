@@ -217,7 +217,7 @@ jobs:
             ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
           fi
       - name: Build examples (V compiled with -fsanitize=address)
-        if: ${{ matrix.sanitizer == 'address' }}
+        if: ${{ matrix.name == 'address-clang' || matrix.name == 'address-gcc' }}
         run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v -silent build-examples
       - name: Self tests (-fsanitize=memory)
         if: ${{ matrix.name == 'memory-clang' }}
