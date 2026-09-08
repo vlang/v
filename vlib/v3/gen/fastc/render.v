@@ -2153,7 +2153,7 @@ fn (g &Parser) render_sum_type_equality(left_tokens []FastcExpressionToken, righ
 }
 
 // render_sum_type_value_equality lowers `a == b` where both `a` and `b` are values of the same
-// sum type (`node.stmt == ast.empty_stmt`). The boxed `{_object,_typ,_methods}` struct cannot be
+// sum type (`node.stmt == ast.empty_stmt`). The boxed `{_object,_typ}` struct cannot be
 // compared with C `==`, so the tags are compared first and, when equal, the concrete variant's
 // contents through a switch. A variant whose element-wise equality is not expressible (e.g. it
 // holds an option/map/further sum type) falls back to a tag-only match.
@@ -2181,7 +2181,7 @@ fn (g &Parser) render_sum_type_value_equality(left_tokens []FastcExpressionToken
 }
 
 // render_as_cast_expression lowers `<boxed> as Type`. A boxed sum-type / interface
-// value shares the `{_object, _typ, _methods}` layout and dispatches by `_typ`, so a
+// value shares the `{_object, _typ}` layout and dispatches by `_typ`, so a
 // downcast to ANOTHER interface / sum type just re-boxes the same object under the
 // target type, and a cast to a CONCRETE type unboxes the stored object. Returns none
 // unless `as` is the top-level operator, the right side is a declared type, and the
@@ -2438,7 +2438,7 @@ fn (g &Parser) render_as_cast_expression(tokens []FastcExpressionToken) ?FastcRe
 	src := '__vf_as_src'
 	if g.is_boxed_type(target_c) {
 		return FastcRenderedExpression{
-			source: '({ ${left_type} ${src} = (${left_source}); (${target_c}){._object = ${src}${access}_object, ._typ = ${src}${access}_typ, ._methods = ${src}${access}_methods}; })'
+			source: '({ ${left_type} ${src} = (${left_source}); (${target_c}){._object = ${src}${access}_object, ._typ = ${src}${access}_typ}; })'
 			typ: target_c
 		}
 	}
@@ -3599,7 +3599,7 @@ fn fastc_map_literal_entries(tokens []FastcExpressionToken, start int, end int) 
 	return entries
 }
 
-// is_boxed_type reports whether a type uses the boxed `{_object, _typ, _methods}`
+// is_boxed_type reports whether a type uses the boxed `{_object, _typ}`
 // representation: interfaces and sum types. A concrete struct used where such a
 // type is expected is boxed with its type id (see interface_value_expression).
 fn (g &Parser) is_boxed_type(c_type string) bool {

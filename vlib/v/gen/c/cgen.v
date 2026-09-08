@@ -3185,8 +3185,10 @@ pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 		}
 	}
 	g.type_definitions.writeln('\t};')
-	g.type_definitions.writeln('\tu32 _typ;')
-	g.type_definitions.writeln('\tvoid* _methods;')
+	// The type index is the first field of the methods table entry. Keeping only
+	// its pointer here makes ordinary interfaces two words without losing the
+	// per-module dispatch table needed by plugins.
+	g.type_definitions.writeln('\tvoid* _typ;')
 	for field in info.fields {
 		styp := g.styp(field.typ)
 		cname := c_name(field.name)
@@ -8287,7 +8289,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				if node.expr is ast.Ident && sym.info is ast.Interface {
 					methods_struct_name := g.interface_methods_struct_name(node.expr_type)
 					dot := g.dot_or_ptr(node.expr_type)
-					g.write('((${methods_struct_name}*)(${node.expr.name}${dot}_methods))->_method_${m.name}')
+					g.write('((${methods_struct_name}*)(${node.expr.name}${dot}_typ))->_method_${m.name}')
 				} else {
 					g.write('${g.styp(node.expr_type.idx_type())}_${m.name}')
 				}
@@ -8752,7 +8754,7 @@ fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
 	}
 	if rec_sym.info is ast.Interface && rec_sym.info.get_methods().contains(method_name) {
 		methods_struct_name := g.interface_methods_struct_name(receiver.typ)
-		sb.write_string('((${methods_struct_name}*)a0->_methods)->_method_${method_name}(')
+		sb.write_string('((${methods_struct_name}*)a0->_typ)->_method_${method_name}(')
 		sb.write_string('a0->_object')
 		for i in 1 .. m.params.len {
 			sb.write_string(', ')
@@ -13547,7 +13549,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 		if g.file.mod.name == 'main' && (g.fn_decl == unsafe { nil } || g.fn_decl.is_main) {
 			// In main(), an `opt()!` call is sugar for `opt() or { panic(err) }`
 			g.write_defer_stmts(or_block.scope, true, or_block.pos)
-			err_msg := 'IError_name_table[${cvar_name}${tmp_op}err._typ]._method_msg(${cvar_name}${tmp_op}err._object)'
+			err_msg := '((struct _IError_interface_methods*)${cvar_name}${tmp_op}err._typ)->_method_msg(${cvar_name}${tmp_op}err._object)'
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 				g.writeln('builtin__panic_debug(${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"), ${err_msg});')
@@ -13592,7 +13594,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 		if g.file.mod.name == 'main' && (g.fn_decl == unsafe { nil } || g.fn_decl.is_main) {
 			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
 			g.write_defer_stmts(or_block.scope, true, or_block.pos)
-			err_msg := 'IError_name_table[${cvar_name}${tmp_op}err._typ]._method_msg(${cvar_name}${tmp_op}err._object)'
+			err_msg := '((struct _IError_interface_methods*)${cvar_name}${tmp_op}err._typ)->_method_msg(${cvar_name}${tmp_op}err._object)'
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 				g.writeln('builtin__panic_debug(${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"), ${err_msg}.len == 0 ? _S("option not set ()") : ${err_msg});')
@@ -14264,13 +14266,13 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		if as_cast_operand_needs_tmp_eval(node.expr) {
 			tmp_var := g.expr_to_ctemp_before_stmt(node.expr, node.expr_type).name
 			obj_expr := '${tmp_var}${dot}_${payload_sym.cname}'
-			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}(${tmp_var}${dot}_typ)'
+			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}(_V_INTERFACE_TYPE_INDEX(${tmp_var}${dot}_typ))'
 			g.write_as_cast_call_start(styp, sym)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		} else {
 			expr_str := g.expr_string(node.expr)
 			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
-			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}((${expr_str})${dot}_typ)'
+			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}(_V_INTERFACE_TYPE_INDEX((${expr_str})${dot}_typ))'
 			g.write_as_cast_call_start(styp, sym)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		}
@@ -14464,6 +14466,7 @@ fn (mut g Gen) interface_table() string {
 		methods_struct_name := 'struct _${interface_name}_interface_methods'
 		mut methods_struct_def := strings.new_builder(100)
 		methods_struct_def.writeln('${methods_struct_name} {')
+		methods_struct_def.writeln('\tu32 _typ;')
 		mut inter_methods := inter_info.get_methods()
 		inter_methods.sort(a < b)
 		mut methodidx := map[string]int{}
@@ -14568,13 +14571,8 @@ fn (mut g Gen) interface_table() string {
 			mut cast_struct := strings.new_builder(100)
 			cast_struct.writeln('(${interface_name}) {')
 			cast_struct.writeln('\t\t._${cctype2} = x,')
-			cast_struct.writeln('\t\t._typ = ${interface_index_name},')
-			methods_ptr := if inter_methods.len > 0 {
-				'&${interface_name}_name_table[${interface_index_name}]'
-			} else {
-				'0'
-			}
-			cast_struct.writeln('\t\t._methods = ${methods_ptr},')
+			methods_ptr := '&${interface_name}_name_table[${interface_index_name}]'
+			cast_struct.writeln('\t\t._typ = ${methods_ptr},')
 			if cctype == cctype2 {
 				for field in inter_info.fields {
 					cname := c_name(field.name)
@@ -14623,7 +14621,7 @@ return ${cast_struct_str};
 static inline ${interface_name} ${clone_fn_name}(void* x) {
 return ${clone_expr};
 }')
-				clone_cases.writeln('\tif (x._typ == ${interface_index_name}) {')
+				clone_cases.writeln('\tif (_V_INTERFACE_TYPE_INDEX(x._typ) == ${interface_index_name}) {')
 				clone_cases.writeln('\t\treturn ${clone_fn_name}(x._object);')
 				clone_cases.writeln('\t}')
 			}
@@ -14636,8 +14634,7 @@ return ${clone_expr};
 				cast_shared_struct.writeln('\t\t.mtx = {0},')
 				cast_shared_struct.writeln('\t\t.val = {')
 				cast_shared_struct.writeln('\t\t\t._${cctype} = &x->val,')
-				cast_shared_struct.writeln('\t\t\t._typ = ${interface_index_name},')
-				cast_shared_struct.writeln('\t\t\t._methods = ${methods_ptr},')
+				cast_shared_struct.writeln('\t\t\t._typ = ${methods_ptr},')
 				cast_shared_struct.writeln('\t\t}')
 				cast_shared_struct.write_string('\t}')
 				cast_shared_struct_str := cast_shared_struct.str()
@@ -14649,7 +14646,7 @@ return ${cast_shared_struct_str};
 				if shared_interface_mtx_helper_needed {
 					mtx_expr := '&(((__shared__${cctype}*)((char*)x->val._${cctype} - __offsetof(__shared__${cctype}, val)))->mtx)'
 					if g.pref.build_mode == .build_module {
-						shared_interface_mtx_cases.writeln('\tif (x->val._typ == ${interface_index_name}) {')
+						shared_interface_mtx_cases.writeln('\tif (_V_INTERFACE_TYPE_INDEX(x->val._typ) == ${interface_index_name}) {')
 						shared_interface_mtx_cases.writeln('\t\treturn ${mtx_expr};')
 						shared_interface_mtx_cases.writeln('\t}')
 					} else {
@@ -14661,6 +14658,7 @@ return ${cast_shared_struct_str};
 
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t{')
+				methods_struct.writeln('\t\t._typ = ${interface_index_name},')
 			}
 			if st == ast.voidptr_type || st == ast.nil_type {
 				mut mnames := methodidx.keys()
@@ -14955,7 +14953,7 @@ return ${cast_shared_struct_str};
 					if i > 0 {
 						conversion_functions.write_string(' || ')
 					}
-					conversion_functions.write_string('(x._typ == _${interface_name}_${variant_sym.cname}_index)')
+					conversion_functions.write_string('(_V_INTERFACE_TYPE_INDEX(x._typ) == _${interface_name}_${variant_sym.cname}_index)')
 				}
 				conversion_functions.writeln(';\n}')
 			}
@@ -14964,12 +14962,12 @@ return ${cast_shared_struct_str};
 			for variant in variants {
 				variant_sym := g.table.sym(variant)
 				if variant_sym.kind == .interface {
-					conversion_functions.writeln('\tif (x._typ == _${interface_name}_${variant_sym.cname}_index) return I_${variant_sym.cname}_as_I_${vsym.cname}(x._${variant_sym.cname});')
+					conversion_functions.writeln('\tif (_V_INTERFACE_TYPE_INDEX(x._typ) == _${interface_name}_${variant_sym.cname}_index) return I_${variant_sym.cname}_as_I_${vsym.cname}(x._${variant_sym.cname});')
 				} else {
-					conversion_functions.writeln('\tif (x._typ == _${interface_name}_${variant_sym.cname}_index) return I_${variant_sym.cname}_to_Interface_${vsym.cname}(x._${variant_sym.cname});')
+					conversion_functions.writeln('\tif (_V_INTERFACE_TYPE_INDEX(x._typ) == _${interface_name}_${variant_sym.cname}_index) return I_${variant_sym.cname}_to_Interface_${vsym.cname}(x._${variant_sym.cname});')
 				}
 			}
-			pmessage := 'builtin__string__plus(builtin__string__plus(_S("`as_cast`: cannot convert "), builtin__tos3(v_typeof_interface_${interface_name}(x._typ))), _S(" to ${util.strip_main_name(vsym.name)}"))'
+			pmessage := 'builtin__string__plus(builtin__string__plus(_S("`as_cast`: cannot convert "), builtin__tos3(v_typeof_interface_${interface_name}(_V_INTERFACE_TYPE_INDEX(x._typ)))), _S(" to ${util.strip_main_name(vsym.name)}"))'
 			if g.pref.is_debug {
 				// TODO: actually return a valid position here
 				conversion_functions.write_string2('\tbuiltin__panic_debug(1, builtin__tos3("builtin.v"), builtin__tos3("builtin"), builtin__tos3("__as_cast"), ', pmessage)
@@ -14992,10 +14990,8 @@ return ${cast_shared_struct_str};
 		}
 		// add line return after interface index declarations
 		sb.writeln('')
-		if inter_methods.len > 0 {
-			sb.writeln2(methods_wrapper.str(), methods_struct_def.str())
-			sb.writeln(methods_struct.str())
-		}
+		sb.writeln2(methods_wrapper.str(), methods_struct_def.str())
+		sb.writeln(methods_struct.str())
 		if shared_interface_mtx_helper_needed {
 			cast_functions.writeln('
 static inline sync__RwMutex* ${shared_interface_mtx_helper_name}(__shared__${interface_name}* x) {')
@@ -15004,7 +15000,7 @@ static inline sync__RwMutex* ${shared_interface_mtx_helper_name}(__shared__${int
 					cast_functions.write_string(shared_interface_mtx_cases.str())
 					cast_functions.writeln('\treturn &x->mtx;')
 				} else {
-					cast_functions.writeln('\tswitch (x->val._typ) {')
+					cast_functions.writeln('\tswitch (_V_INTERFACE_TYPE_INDEX(x->val._typ)) {')
 					cast_functions.write_string(shared_interface_mtx_cases.str())
 					cast_functions.writeln('\t\tdefault:')
 					cast_functions.writeln('\t\t\treturn &x->mtx;')

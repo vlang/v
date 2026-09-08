@@ -1117,7 +1117,7 @@ fn (g &Parser) interface_value_expression(interface_type string, actual_type str
 	} else {
 		fastc_box_expression(actual_base, expression)
 	}
-	return '(${interface_type}){._object=${object}, ._typ=__v_typeid_${fastc_c_declared_type_name(actual_key)}, ._methods=NULL}'
+	return '(${interface_type}){._object=${object}, ._typ=__v_typeid_${fastc_c_declared_type_name(actual_key)}}'
 }
 
 // parse_lock_statement lowers a `lock`/`rlock` statement to a plain scoped block.

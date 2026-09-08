@@ -1156,7 +1156,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		} else if receiver_sym.info is ast.Interface {
 			left_cc_type := g.cc_type(g.table.unaliased_type(unwrapped_cond_type), false)
 			left_type_name := util.no_dots(left_cc_type)
-			fn_name = '${c_name(left_type_name)}_name_table[${t_expr}._typ]._method_next'
+			fn_name = '((struct _${c_name(left_type_name)}_interface_methods*)${t_expr}._typ)->_method_next'
 		} else {
 			fn_name = g.specialized_method_name_from_receiver(next_fn, unwrapped_cond_type, fn_name)
 		}

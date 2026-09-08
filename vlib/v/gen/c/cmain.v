@@ -309,8 +309,8 @@ pub fn (mut g Gen) gen_failing_error_propagation_for_test_fn(or_block ast.OrExpr
 	g.write_defer_stmts_when_needed(or_block.scope, true, or_block.pos)
 	paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 	dot_or_ptr := if cvar_name in g.tmp_var_ptr { '->' } else { '.' }
-	err_msg := 'IError_name_table[${cvar_name}${dot_or_ptr}err._typ]._method_msg(${cvar_name}${dot_or_ptr}err._object)'
-	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, ${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"), ${err_msg} );')
+	err_msg := '((struct _IError_interface_methods*)${cvar_name}${dot_or_ptr}err._typ)->_method_msg(${cvar_name}${dot_or_ptr}err._object)'
+	g.writeln('\t((struct _main__TestRunner_interface_methods*)test_runner._typ)->_method_fn_error(test_runner._object, ${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"), ${err_msg} );')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
@@ -321,8 +321,8 @@ pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, 
 	g.write_defer_stmts_when_needed(return_stmt.scope, true, return_stmt.pos)
 	paline, pafile, pamod, pafn := g.panic_debug_info(return_stmt.pos)
 	dot_or_ptr := if cvar_name in g.tmp_var_ptr { '->' } else { '.' }
-	err_msg := 'IError_name_table[${cvar_name}${dot_or_ptr}err._typ]._method_msg(${cvar_name}${dot_or_ptr}err._object)'
-	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, ${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"), ${err_msg} );')
+	err_msg := '((struct _IError_interface_methods*)${cvar_name}${dot_or_ptr}err._typ)->_method_msg(${cvar_name}${dot_or_ptr}err._object)'
+	g.writeln('\t((struct _main__TestRunner_interface_methods*)test_runner._typ)->_method_fn_error(test_runner._object, ${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"), ${err_msg} );')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
@@ -381,8 +381,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	if g.pref.show_asserts {
 		g.writeln('\tmain__BenchedTests bt = main__start_testing(${all_tfuncs.len}, v_test_file);')
 	}
-	g.writeln2('',
-		'\tstruct _main__TestRunner_interface_methods _vtrunner = main__TestRunner_name_table[test_runner._typ];')
+	g.writeln2('', '\tstruct _main__TestRunner_interface_methods _vtrunner = *(struct _main__TestRunner_interface_methods*)test_runner._typ;')
 	g.writeln2('\tvoid * _vtobj = test_runner._object;', '')
 	g.writeln('\tmain__VTestFileMetaInfo_free(test_runner.file_test_info);')
 	g.writeln('\t*(test_runner.file_test_info) = main__vtest_new_filemetainfo(v_test_file, ${all_tfuncs.len});')

@@ -477,8 +477,7 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 				{_S("${clean_interface_v_type_name}("), ${si_s_code}, {.d_s = ${func_name}()}, 0, 0, 0},
 				{_S(")"), 0, {0}, 0, 0, 0}
 			}))'
-			fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
-				' return ${res};\n')
+			fn_builder.write_string2('\tif (_V_INTERFACE_TYPE_INDEX(x._typ) == _${styp}_${sub_sym.cname}_index)', ' return ${res};\n')
 			continue
 		}
 		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
@@ -492,8 +491,7 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 				{_S("${clean_interface_v_type_name}(\'"), ${si_s_code}, {.d_s = ${val}}, 0, 0, 0},
 				{_S("\')"), 0, {0}, 0, 0, 0}
 			}))'
-			fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
-				' return ${res};')
+			fn_builder.write_string2('\tif (_V_INTERFACE_TYPE_INDEX(x._typ) == _${styp}_${sub_sym.cname}_index)', ' return ${res};')
 		} else {
 			if !(sub_sym.kind == .array && g.table.sym(g.table.value_type(typ)).cname == styp) {
 				mut val := '${func_name}(${deref}(${sub_sym.cname}*)x._${sub_sym.cname}'
@@ -507,7 +505,7 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 				}))'
 				if should_use_indent_func(sub_sym.kind) {
 					tmpvar := g.new_tmp_var()
-					fn_builder.writeln('\tif (x._typ == _${styp}_${sub_sym.cname}_index) {')
+					fn_builder.writeln('\tif (_V_INTERFACE_TYPE_INDEX(x._typ) == _${styp}_${sub_sym.cname}_index) {')
 					fn_builder.writeln('\t\tif (builtin__isnil(x._object) || builtin__autostr_addr_in_stack(x._object)) {')
 					fn_builder.writeln('\t\t\treturn builtin__isnil(x._object) ? _S("nil") : _S("<circular>");')
 					fn_builder.writeln('\t\t}')
@@ -517,12 +515,10 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 					fn_builder.writeln('\t\treturn ${tmpvar};')
 					fn_builder.writeln('\t}')
 				} else {
-					fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
-						' return ${res};\n')
+					fn_builder.write_string2('\tif (_V_INTERFACE_TYPE_INDEX(x._typ) == _${styp}_${sub_sym.cname}_index)', ' return ${res};\n')
 				}
 			} else {
-				fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
-					' return _S("<circular>");\n')
+				fn_builder.write_string2('\tif (_V_INTERFACE_TYPE_INDEX(x._typ) == _${styp}_${sub_sym.cname}_index)', ' return _S("<circular>");\n')
 			}
 		}
 	}
@@ -1469,7 +1465,8 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 			if sym.kind == .interface && (sym.info as ast.Interface).defines_method('str') {
 				iface_obj := '${prefix}it${op}${final_field_name}${sufix}'
 				dot := if field_type.is_ptr() { '->' } else { '.' }
-				return '${fn_name.trim_string_right('_str')}_name_table[${iface_obj}${dot}_typ]._method_str(${iface_obj}${dot}_object)', true
+				iface_name := fn_name.trim_string_right('_str')
+				return '((struct _${iface_name}_interface_methods*)${iface_obj}${dot}_typ)->_method_str(${iface_obj}${dot}_object)', true
 			}
 			return '${fn_name}(${obj})', true
 		}

@@ -3588,8 +3588,30 @@ fn main() {
 }
 ", 'constant_interface_cast.v', prefs) or { panic(err) }
 	assert c_source.contains('main__sentinel = (Failure){._object=(void*)('), c_source
-	assert c_source.contains('._typ=__v_typeid_Message, ._methods=NULL};'), c_source
+	assert c_source.contains('._typ=__v_typeid_Message};'), c_source
 	assert !c_source.contains('main__sentinel = ((Failure)('), c_source
+}
+
+fn test_selfhost_interface_uses_two_word_layout() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+interface Speaker {
+	speak() string
+}
+
+struct Cat {}
+
+fn (_ Cat) speak() string {
+	return "meow"
+}
+
+fn main() {
+	_ := Speaker(Cat{})
+}
+', 'interface_two_word_layout.v', prefs) or { panic(err) }
+	assert c_source.contains('struct Speaker { void *_object; uintptr_t _typ; };'), c_source
 }
 
 fn test_interface_receiver_mutability_is_validated() {
@@ -3752,7 +3774,7 @@ fn main() {
 	_ := Named(Good{})
 }
 ', 'valid_interface_fields.v', prefs) or { panic(err) }
-	assert c_source.contains('struct Named { void *_object; u32 _typ; void *_methods; };'), c_source
+	assert c_source.contains('struct Named { void *_object; uintptr_t _typ; };'), c_source
 }
 
 fn test_disabled_function_attributes_emit_empty_stubs() {
@@ -3989,7 +4011,7 @@ fn main() {
 	assert c_source.contains('#define Mode__selected ((Mode)0)'), c_source
 	assert c_source.contains('typedef int ChoiceId;'), c_source
 	assert c_source.contains('union Payload {\n\tint number;'), c_source
-	assert c_source.contains('struct Named { void *_object; u32 _typ; void *_methods; };'), c_source
+	assert c_source.contains('struct Named { void *_object; uintptr_t _typ; };'), c_source
 	assert c_source.contains('Named_name(Named value) {'), c_source
 	assert c_source.contains('__typeof__((({ __typeof__((42)) __vf_sf_0 = (42); (Choice){.value=(__vf_sf_0)}; }))) choice'), c_source
 }
@@ -6878,7 +6900,7 @@ type Any = int
 
 fn main() {}
 ', 'multiline_sum_type.v', prefs) or { panic(err) }
-	assert c_source.contains('typedef struct { void *_object; u32 _typ; void *_methods; } Any;'), c_source
+	assert c_source.contains('typedef struct { void *_object; uintptr_t _typ; } Any;'), c_source
 }
 
 fn test_selfhost_composite_ordering_moves_one_line_interfaces_before_fields() {
@@ -8335,7 +8357,7 @@ fn main() {
 ', 'sum_type_dispatch.v', prefs) or { panic(err) }
 	// A sum type shares the boxed layout with interfaces so construction, match
 	// dispatch and smart-casting reuse the interface machinery.
-	assert c_source.contains('typedef struct { void *_object; u32 _typ; void *_methods; } Animal;'), c_source
+	assert c_source.contains('typedef struct { void *_object; uintptr_t _typ; } Animal;'), c_source
 	// Construction boxes the concrete variant with its type id.
 	assert c_source.contains('._typ=__v_typeid_Dog'), c_source
 	assert c_source.contains('Dog __vf_bv ='), c_source
@@ -9171,7 +9193,7 @@ fn main() {
 }
 ', 'selfhost_sum_field_default.v', prefs) or { panic(err) }
 	// A variant literal defaulting a sum-type field is boxed, not left as the bare
-	// variant struct which is not assignable to the boxed `{_object,_typ,_methods}`.
+	// variant struct which is not assignable to the boxed `{_object,_typ}`.
 	assert c_source.contains('.value=('), c_source
 	assert c_source.contains('._typ=__v_typeid_Null'), c_source
 }

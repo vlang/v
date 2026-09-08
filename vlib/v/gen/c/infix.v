@@ -1247,10 +1247,19 @@ fn (mut g Gen) type_tag_expr_for_is_left(node ast.InfixExpr, is_aggregate bool, 
 		'(${left_expr})'
 	}
 	dot_or_ptr := if node.left_type.is_ptr() { '->' } else { '.' }
-	return '${left_value_expr}${dot_or_ptr}_typ'
+	tag_expr := '${left_value_expr}${dot_or_ptr}_typ'
+	left_sym := g.table.final_sym(g.unwrap_generic(node.left_type))
+	if left_sym.kind == .interface {
+		return '_V_INTERFACE_TYPE_INDEX(${tag_expr})'
+	}
+	return tag_expr
 }
 
 fn (mut g Gen) write_type_tag_expr_for_is_left(node ast.InfixExpr, is_aggregate bool, is_orig_sumtype bool) {
+	left_sym := g.table.final_sym(g.unwrap_generic(node.left_type))
+	if left_sym.kind == .interface {
+		g.write('_V_INTERFACE_TYPE_INDEX(')
+	}
 	g.write('(')
 	if node.left_type.nr_muls() > 1 {
 		g.write('*'.repeat(node.left_type.nr_muls() - 1))
@@ -1270,6 +1279,9 @@ fn (mut g Gen) write_type_tag_expr_for_is_left(node ast.InfixExpr, is_aggregate 
 		g.write('.')
 	}
 	g.write('_typ')
+	if left_sym.kind == .interface {
+		g.write(')')
+	}
 }
 
 fn (mut g Gen) write_is_type_tag_condition(node ast.InfixExpr, is_aggregate bool, is_orig_sumtype bool, cmp_op string, index_exprs []string) {

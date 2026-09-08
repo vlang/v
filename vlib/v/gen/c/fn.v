@@ -4768,7 +4768,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 		dot := g.dot_or_ptr(left_type)
 		mname := c_fn_name(method_name)
-		g.write('${dot}_methods))->_method_${mname}(')
+		g.write('${dot}_typ))->_method_${mname}(')
 		if node.left.is_auto_deref_var() && left_type.nr_muls() > 1 {
 			g.write2('(', '*'.repeat(left_type.nr_muls() - 1))
 			g.expr(node.left)
@@ -4862,15 +4862,20 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 						')', node)
 					return
 				} else if left_sym.kind == .interface {
-					g.conversion_function_call('builtin__charptr_vstring_literal(v_typeof_interface_${typ_sym.cname}',
-						')', node)
+					g.conversion_function_call('builtin__charptr_vstring_literal(v_typeof_interface_${typ_sym.cname}(_V_INTERFACE_TYPE_INDEX',
+						'))', node)
 					return
 				}
 			}
 			.type_idx {
 				if left_sym.kind in [.sum_type, .interface] {
-					g.conversion_function_call('v_typeof_${prefix_name}_idx_${typ_sym.cname}', '',
-						node)
+					if left_sym.kind == .interface {
+						g.conversion_function_call('v_typeof_interface_idx_${typ_sym.cname}(_V_INTERFACE_TYPE_INDEX',
+							')', node)
+					} else {
+						g.conversion_function_call('v_typeof_${prefix_name}_idx_${typ_sym.cname}',
+							'', node)
+					}
 					return
 				}
 			}
@@ -6004,20 +6009,21 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				&& (g.is_autofree || g.pref.gc_mode == .boehm_leak)
 			if typ_sym.kind == .interface && (typ_sym.info as ast.Interface).defines_method('str') {
 				rec_type_name := util.no_dots(g.cc_type(typ, false))
+				methods_struct_name := 'struct _${c_name(rec_type_name)}_interface_methods'
 				dot := if typ.is_ptr() { '->' } else { '.' }
 				if needs_tmp_string {
 					tmp := g.new_tmp_var()
-					g.write('string ${tmp} = ${c_name(rec_type_name)}_name_table[')
+					g.write('string ${tmp} = ((${methods_struct_name}*)')
 					g.expr(expr)
-					g.write('${dot}_typ]._method_str(')
+					g.write('${dot}_typ)->_method_str(')
 					g.expr(expr)
 					g.write('${dot}_object')
 					g.writeln('); builtin__${c_fn_name(print_method)}(${tmp}); builtin__string_free(&${tmp});')
 				} else {
 					g.write('builtin__${c_fn_name(print_method)}(')
-					g.write('${c_name(rec_type_name)}_name_table[')
+					g.write('((${methods_struct_name}*)')
 					g.expr(expr)
-					g.write('${dot}_typ]._method_str(')
+					g.write('${dot}_typ)->_method_str(')
 					g.expr(expr)
 					g.write('${dot}_object')
 					g.writeln('));')
