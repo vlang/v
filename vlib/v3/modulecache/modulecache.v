@@ -23,7 +23,7 @@ const c_source_directives_end = '/* V3CACHE_SOURCE_DIRECTIVES_END */'
 const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
-const source_signature_cache_format = 'v3-source-signature-cache-6'
+const source_signature_cache_format = 'v3-source-signature-cache-7'
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
@@ -264,9 +264,19 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
-		qml_paths, has_unresolved_qml_path := compile_time_qml_paths(source, path)
+		qml_paths, qml_lookup_candidates, has_unresolved_qml_path := compile_time_qml_paths(source,
+			path)
 		if has_unresolved_qml_path {
 			cacheable = false
+		}
+		for candidate in qml_lookup_candidates {
+			metadata := optional_file_metadata_signature(candidate)
+			validation << 'qmlcandidate=${candidate}\t${metadata}'
+			hash = hash_bytes(hash, [u8(0xf6)])
+			hash = hash_bytes(hash, candidate.bytes())
+			hash = hash_bytes(hash, [u8(0)])
+			hash = hash_bytes(hash, metadata.bytes())
+			hash = hash_bytes(hash, [u8(0xff)])
 		}
 		for qml_path in qml_paths {
 			qml_content := os.read_bytes(qml_path) or { return SourceSignatureDetails{} }
@@ -734,6 +744,14 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 			}
 			continue
 		}
+		if line.starts_with('qmlcandidate=') {
+			parts := line['qmlcandidate='.len..].split('\t')
+			if parts.len != 2 || parts[0].len == 0
+				|| optional_file_metadata_signature(parts[0]) != parts[1] {
+				return none
+			}
+			continue
+		}
 		if line.starts_with('vmod=') {
 			parts := line['vmod='.len..].split('\t')
 			if parts.len != 4 || parts[0].len == 0 {
@@ -953,11 +971,12 @@ fn signature_string_call_arg(source string, start int) (string, int, bool) {
 	return '', source.len, false
 }
 
-fn compile_time_qml_paths(source string, source_file string) ([]string, bool) {
+fn compile_time_qml_paths(source string, source_file string) ([]string, []string, bool) {
 	if !source.contains('\$qml') {
-		return []string{}, false
+		return []string{}, []string{}, false
 	}
 	mut paths := map[string]bool{}
+	mut lookup_candidates := map[string]bool{}
 	mut has_unresolved_path := false
 	mut pos := 0
 	for pos < source.len {
@@ -981,8 +1000,12 @@ fn compile_time_qml_paths(source string, source_file string) ([]string, bool) {
 		}
 		raw_path, next_pos, ok := signature_string_call_arg(source, pos + 4)
 		if ok {
-			path := resolve_signature_qml_path(cached_unescape_v_string(raw_path), source_file)
+			path, candidates := resolve_signature_qml_path(cached_unescape_v_string(raw_path),
+				source_file)
 			paths[os.real_path(path)] = true
+			for candidate in candidates {
+				lookup_candidates[os.real_path(candidate)] = true
+			}
 		} else {
 			has_unresolved_path = true
 		}
@@ -990,34 +1013,44 @@ fn compile_time_qml_paths(source string, source_file string) ([]string, bool) {
 	}
 	mut result := paths.keys()
 	result.sort()
-	return result, has_unresolved_path
+	mut candidates := lookup_candidates.keys()
+	candidates.sort()
+	return result, candidates, has_unresolved_path
 }
 
-fn resolve_signature_qml_path(path string, source_file string) string {
+fn resolve_signature_qml_path(path string, source_file string) (string, []string) {
 	if os.is_abs_path(path) {
-		return path
+		return path, []string{}
 	}
 	dir := os.dir(os.real_path(source_file))
 	direct := os.join_path_single(dir, path)
 	if os.exists(direct) {
-		return direct
+		return direct, []string{}
 	}
+	mut candidates := [direct]
 	in_templates := os.join_path(dir, 'templates', path)
 	if os.exists(in_templates) {
-		return in_templates
+		return in_templates, candidates
 	}
+	candidates << in_templates
 	root, _ := signature_vmod_root(source_file)
 	if root != dir {
 		vmod_direct := os.join_path_single(root, path)
 		if os.exists(vmod_direct) {
-			return vmod_direct
+			return vmod_direct, candidates
 		}
+		candidates << vmod_direct
 		vmod_templates := os.join_path(root, 'templates', path)
 		if os.exists(vmod_templates) {
-			return vmod_templates
+			return vmod_templates, candidates
 		}
 	}
-	return direct
+	return direct, []string{}
+}
+
+fn optional_file_metadata_signature(path string) string {
+	metadata := file_metadata_signature(path)
+	return if metadata.len > 0 { metadata } else { 'missing' }
 }
 
 fn signature_name_char(c u8) bool {

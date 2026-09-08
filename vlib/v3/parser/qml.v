@@ -876,6 +876,9 @@ fn (c &QmlCompiler) expr(expr &QmlExpr, scope QmlScope, use QmlExprUse) string {
 				}
 				return '${c.expr(expr.left, scope, operand_use)} ${expr.value} ${c.expr(expr.right, scope, operand_use)}'
 			}
+			if use == .raw {
+				return '(${c.expr(expr.left, scope, .raw)} ${expr.value} ${c.expr(expr.right, scope, .raw)})'
+			}
 			if expr.value == '+' && use == .string_ {
 				return '(${c.expr(expr.left, scope, .string_)} + ${c.expr(expr.right, scope, .string_)})'
 			}
@@ -1068,7 +1071,10 @@ fn (mut c QmlCompiler) compile_repeater(node &QmlNode, path string, parent_frame
 		} else {
 			"'" + r'$' + '{' + key_name + '}' + ':${visible_index}' + "'"
 		}
-		c.compile_node(child, child_path, child_input, scope, default_key)
+		child_scope := c.compile_node(child, child_path, child_input, scope, default_key)
+		for id, named in child_scope.ids {
+			scope.ids[id] = named
+		}
 		c.out.writeln('\t\t${output} << qml_element_${qml_var(child_path)}')
 		qml_advance_cursor(mut c.out, parent_tag, cursor, child_path, parent_properties)
 		visible_index++
@@ -1126,7 +1132,7 @@ fn (c &QmlCompiler) compiled_event_value(node &QmlNode, event_name string, scope
 		if property.expr.kind == .call {
 			action_name = property.expr.value.all_after('app.')
 			for argument in property.expr.args {
-				arguments << c.expr(argument, scope, .string_)
+				arguments << qml_stringify(c.expr(argument, scope, .raw))
 			}
 		}
 	}
