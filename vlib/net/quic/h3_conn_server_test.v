@@ -404,6 +404,24 @@ fn test_h3_conn_server_rejects_client_push_promise_as_connection_error() {
 	}
 }
 
+fn test_h3_conn_server_rejects_client_initiated_push_stream() {
+	_, mut client_h3, _, mut server_h3, now0 := h3_server_test_pair()!
+	defer {
+		client_h3.free()
+		server_h3.free()
+	}
+	_, _, now1 := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now0)!
+	stream_id := client_h3.qc.open_stream(false)!
+	// The stream type alone is sufficient for a server to reject it; no Push
+	// ID needs to arrive before the role violation becomes known.
+	client_h3.qc.write_stream(stream_id, encode_varint(h3_push_stream_type)!, false)!
+	if _, _, _ := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now1) {
+		assert false, 'expected a client-initiated push stream to close the connection'
+	} else {
+		assert err.code() == int(H3ErrorCode.stream_creation_error)
+	}
+}
+
 fn test_h3_conn_server_enforces_advertised_qpack_blocked_stream_limit() {
 	_, mut client_h3, _, mut server_h3, _ := h3_server_test_pair()!
 	defer {

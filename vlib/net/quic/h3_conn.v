@@ -509,6 +509,20 @@ fn (mut h H3Conn) pump_pending_uni_header(stream_id u64) ! {
 	if u64(buf.len) > max_h3_uni_stream_header_buffered_bytes {
 		return error_with_code('h3: peer unidirectional stream ${stream_id} sent more than ${max_h3_uni_stream_header_buffered_bytes} bytes without completing its type header', int(H3ErrorCode.general_protocol_error))
 	}
+	// RFC 9114 §6.2.2 permits only servers to initiate push streams. Reject
+	// one from a client as soon as its Stream Type varint is complete; waiting
+	// for the following Push ID would needlessly retain attacker-controlled
+	// header bytes for a stream that can never be valid in the server role.
+	if h.is_server_role() {
+		raw_type, _ := decode_varint(buf) or {
+			h.pending_peer_uni_headers[stream_id] = buf
+			return
+		}
+		if raw_type == h3_push_stream_type {
+			h.pending_peer_uni_headers.delete(stream_id)
+			return error_with_code('h3: a client cannot initiate a push stream', int(H3ErrorCode.stream_creation_error))
+		}
+	}
 	kind, consumed := classify_peer_uni_stream_header(buf) or {
 		h.pending_peer_uni_headers[stream_id] = buf
 		return
