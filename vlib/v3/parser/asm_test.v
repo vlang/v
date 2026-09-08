@@ -95,3 +95,16 @@ fn test_inline_asm_lock_label_colon_must_be_on_same_line() {
 	assert diagnostics.len == 1, diagnostics.str()
 	assert diagnostics[0].message == 'The lock prefix cannot be used on this instruction'
 }
+
+fn test_inline_asm_prefix_named_labels_keep_mnemonic_position() {
+	for label in inline_asm_prefixes_before_mnemonic {
+		diagnostics := parse_amd64_asm_diagnostics('${label}_label', 'fn main() {
+	asm amd64 {
+		${label}: lock mov rax, rbx
+	}
+}
+')
+		assert diagnostics.len == 1, '${label}: ${diagnostics.str()}'
+		assert diagnostics[0].message == 'The lock prefix cannot be used on this instruction'
+	}
+}

@@ -8317,14 +8317,16 @@ fn (mut p Parser) track_inline_asm_mnemonic(state InlineAsmMnemonicState, is_x86
 				return .after_dot
 			}
 			if is_x86 && p.tok == .key_lock {
-				if p.peek() == .colon
-					&& !p.inline_asm_source_gap_has_newline(p.tok_end, p.peek_pos) {
+				if p.inline_asm_token_is_same_line_label() {
 					return .maybe_label
 				}
 				p.validate_inline_asm_lock_instruction()
 				return .expect_mnemonic
 			}
 			if is_x86 && p.lit in inline_asm_prefixes_before_mnemonic {
+				if p.inline_asm_token_is_same_line_label() {
+					return .maybe_label
+				}
 				return .expect_mnemonic
 			}
 			return .maybe_label
@@ -8339,6 +8341,11 @@ fn (mut p Parser) track_inline_asm_mnemonic(state InlineAsmMnemonicState, is_x86
 			return .operands
 		}
 	}
+}
+
+fn (mut p Parser) inline_asm_token_is_same_line_label() bool {
+	return p.peek() == .colon
+		&& !p.inline_asm_source_gap_has_newline(p.tok_end, p.peek_pos)
 }
 
 fn (p &Parser) inline_asm_source_gap_has_newline(start int, end int) bool {
