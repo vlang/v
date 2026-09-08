@@ -2047,6 +2047,16 @@ fn test_fn_literal_or_expr_callback_modes_inside_generic_fn() {
 		'cannot use')
 }
 
+fn test_fn_literal_lock_expr_callback_modes_inside_generic_fn() {
+	v3_bin := build_v3()
+	matching := run_good(v3_bin, 'good_lock_expr_const_fn_param_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler ConstHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tshared state := 0\n\tr := Router{}\n\treturn r.accept(lock state { fn (const_event &C.native_event) {} })\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert matching == 'true'
+	run_bad(v3_bin, 'bad_lock_expr_const_fn_param_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler PlainHandler) {}\nfn startup[T]() {\n\tshared state := 0\n\tr := Router{}\n\tr.accept(lock state { fn (const_event &C.native_event) {} })\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+}
+
 fn test_fn_literal_callback_alias_lookup_uses_declaration_module() {
 	v3_bin := build_v3()
 	local_alias_collision := run_good_project(v3_bin,

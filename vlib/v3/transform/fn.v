@@ -12603,7 +12603,7 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 			}
 			return
 		}
-		.block, .match_branch {
+		.block, .match_branch, .lock_expr {
 			if node.children_count > 0 {
 				t.collect_fn_literal_source_type_texts(t.a.child(&node, node.children_count - 1), mut
 					result)
