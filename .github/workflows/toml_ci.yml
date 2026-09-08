@@ -28,11 +28,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - name: Cache V build
+      - name: Cache V toolchain
         id: cache-v
         uses: actions/cache@v4
         with:
-          path: v
+          path: |
+            v
+            thirdparty/tcc
           key: v-toml-${{ runner.os }}-${{ hashFiles('cmd/**', 'vlib/**', 'thirdparty/**', 'GNUmakefile', 'Makefile', '.github/actions/setup-v/**') }}
       - uses: ./.github/actions/setup-v
         if: steps.cache-v.outputs.cache-hit != 'true'
