@@ -10837,6 +10837,7 @@ fn (mut tc TypeChecker) check_asm_stmt(id flat.NodeId, node flat.Node) {
 	source := tc.source_texts_by_file[file.name] or { return }
 	start := int_max(0, node.pos.offset)
 	end := int_min(source.len, node.pos.end)
+	tc.check_inline_asm_block(id, node, source, start, end)
 	mut line_start := start
 	for line_start < end {
 		line_end := source.index_after('\n', line_start) or { end }
@@ -10849,28 +10850,6 @@ fn (mut tc TypeChecker) check_asm_stmt(id flat.NodeId, node flat.Node) {
 				'asm instruction `mov` expects 2 operands, but got 0', id, token.new_span(node.pos.id,
 
 				line_start + relative, line_start + relative + 'mov'.len))
-		}
-		if trimmed.starts_with(';') && trimmed.contains('=') {
-			open := line.index_u8(`(`)
-			close := if open >= 0 { line.index_after(')', open + 1) or { -1 } } else { -1 }
-			if open >= 0 && close > open + 1 {
-				mut name_start := open + 1
-				for name_start < close && line[name_start] in [` `, `\t`] {
-					name_start++
-				}
-				mut name_end := close
-				for name_end > name_start && line[name_end - 1] in [` `, `\t`] {
-					name_end--
-				}
-				name := line[name_start..name_end]
-				if name.len > 0 && tc.cur_scope.lookup(name) != none
-					&& !tc.ident_is_mutable_lvalue(name) {
-					tc.record_error_at(.assignment_mismatch,
-						'`${name}` is immutable, declare it with `mut` to make it mutable', id, token.new_span(node.pos.id,
-
-						line_start + name_start, line_start + name_end))
-				}
-			}
 		}
 		if line_end >= end {
 			break

@@ -4517,7 +4517,13 @@ fn source_contains_target_inline_asm(source string, target_arch string) bool {
 			for offset < source.len && inline_asm_ident_char(source[offset]) {
 				offset++
 			}
-			ident := source[start..offset]
+			mut ident_end := offset
+			if source[start..offset] == 'ia' && offset + 3 <= source.len
+				&& source[offset..offset + 3] == '-32' {
+				ident_end += 3
+			}
+			ident := source[start..ident_end]
+			offset = ident_end
 			if ident == 'r' && offset < source.len && source[offset] in [`'`, `"`] {
 				offset = inline_asm_skip_quoted(source, offset, source[offset], true)
 				sequence = 0
@@ -4543,6 +4549,8 @@ fn source_contains_target_inline_asm(source string, target_arch string) bool {
 				} else {
 					0
 				}
+			} else if sequence == 3 && ident in ['raw', 'intel'] {
+				// Keep waiting for the opening brace after optional asm modifiers.
 			} else {
 				sequence = if ident == 'asm' { 1 } else { 0 }
 			}
@@ -4870,10 +4878,22 @@ fn inline_asm_tokens_match_target(tokens []InlineAsmScanToken, start int, end in
 	if i < end && tokens[i].kind == .key_volatile {
 		i++
 	}
-	if i >= end || !comptime_flag_is_target_arch(tokens[i].lit, target_arch) {
+	if i >= end {
+		return false
+	}
+	mut asm_arch := tokens[i].lit
+	if asm_arch == 'ia' && i + 2 < end && tokens[i + 1].kind == .minus
+		&& tokens[i + 2].kind == .number && tokens[i + 2].lit == '32' {
+		asm_arch = 'ia-32'
+		i += 2
+	}
+	if !comptime_flag_is_target_arch(asm_arch, target_arch) {
 		return false
 	}
 	i++
+	for i < end && tokens[i].kind == .name && tokens[i].lit in ['raw', 'intel'] {
+		i++
+	}
 	return i < end && tokens[i].kind == .lcbr
 }
 
@@ -4971,7 +4991,7 @@ fn comptime_flag_is_target_arch(name string, target_arch string) bool {
 	return match target_arch {
 		'amd64' { name in ['amd64', 'x64', 'x86_64'] }
 		'arm64' { name in ['arm64', 'aarch64'] }
-		'x86' { name in ['x86', 'i386'] }
+		'x86' { name in ['x86', 'i386', 'i486', 'i586', 'i686', 'x86_32', 'ia-32', 'ia32'] }
 		'riscv64' { name in ['riscv64', 'rv64'] }
 		else { name == target_arch }
 	}
@@ -8254,13 +8274,51 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	if p.tok == .key_volatile || (p.tok == .name && p.lit == 'volatile') {
 		p.next()
 	}
-	// V assembly blocks name their instruction set before `{` (`asm arm64 { ... }`).
+	// V assembly blocks name their instruction set before `{` (`asm arm64 { ... }`), then
+	// optionally the `raw` and `intel` template modifiers (`asm amd64 raw intel { ... }`).
 	mut asm_arch := ''
+	mut is_raw := false
+	mut is_intel := false
+	if p.tok == .name {
+		asm_arch = p.lit
+		p.next()
+		if asm_arch == 'ia' && p.tok == .minus && p.peek() == .number && p.peek_lit == '32' {
+			asm_arch = 'ia-32'
+			p.next()
+			p.next()
+		}
+	}
 	for p.tok == .name {
-		if asm_arch.len == 0 {
-			asm_arch = p.lit
+		modifier_pos := p.tok_pos
+		match p.lit {
+			'raw' {
+				if is_raw {
+					p.record_diagnostic('duplicate `raw` assembly modifier', modifier_pos)
+				}
+				is_raw = true
+			}
+			'intel' {
+				if is_intel {
+					p.record_diagnostic('duplicate `intel` assembly modifier', modifier_pos)
+				}
+				is_intel = true
+			}
+			else {}
 		}
 		p.next()
+	}
+	if !p.prefs.is_fmt {
+		if is_intel && pref.normalized_arch(asm_arch) !in ['amd64', 'x86'] {
+			p.record_diagnostic('the `intel` assembly modifier is only supported for i386 and amd64', asm_pos)
+		}
+		if p.prefs.backend != 'c' {
+			if is_raw {
+				p.record_diagnostic('the `raw` assembly modifier is only supported by the C backend', asm_pos)
+			}
+			if is_intel {
+				p.record_diagnostic('the `intel` assembly modifier is only supported by the C backend', asm_pos)
+			}
+		}
 	}
 	// Consume the asm block while retaining its exact source. Inline assembly uses
 	// a line-sensitive syntax that cannot be reconstructed from the normal token
@@ -8295,6 +8353,13 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 				p.check(.rpar)
 				continue
 			} else if depth == 1 && p.tok != .semicolon {
+				if is_raw && section == 0 && !p.prefs.is_fmt {
+					if p.tok != .string {
+						p.record_diagnostic('raw assembly templates must contain only double-quoted string literals', p.tok_pos)
+					} else if !p.lit.starts_with('"') {
+						p.record_diagnostic('raw assembly templates must use double-quoted string literals', p.tok_pos)
+					}
+				}
 				if p.tok == .name && p.lit == 'memory' {
 					has_memory_clobber = true
 				} else {

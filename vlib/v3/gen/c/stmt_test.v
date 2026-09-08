@@ -595,3 +595,108 @@ fn test_heap_local_address_expr_copies_selector_from_stack_alias() {
 	assert external_expr == '&p->x'
 	tc.pop_scope()
 }
+
+fn test_inline_asm_x86_reverses_every_structured_operand() {
+	aliases := {
+		'dst': true
+		'src': true
+	}
+	assert lower_c_inline_asm_template('imul dst, src, 7', 'amd64', aliases, true) == 'imul \$7, %[src], %[dst]'
+	assert lower_c_inline_asm_template('mov dst, src', 'amd64', aliases, true) == 'mov %[src], %[dst]'
+}
+
+fn test_inline_asm_intel_templates_keep_destination_first_order() {
+	aliases := {
+		'value':     true
+		'increment': true
+	}
+	assert lower_c_inline_asm_intel_template('add value, increment', aliases, false) == 'add %V[value], %V[increment]'
+	assert lower_c_inline_asm_intel_template('mov rax, 7', aliases, false) == 'mov rax, 7'
+	assert lower_c_inline_asm_intel_template('mov rax, [value + rcx*4 + 8]', aliases, false) == 'mov rax, [%V[value] + rcx*4 + 8]'
+	assert lower_c_inline_asm_intel_template('mov rax, `A`', aliases, false) == "mov rax, 'A'"
+	assert lower_c_inline_asm_intel_template('loop_start:', aliases, false) == 'loop_start:'
+	assert lower_c_inline_asm_intel_template('vpxord zmm0{k1}{z}, zmm0, zmm0',
+		aliases, true) == 'vpxord zmm0%{k1%}%{z%}, zmm0, zmm0'
+}
+
+fn test_inline_asm_raw_templates_are_taken_verbatim() {
+	source := '"addl %[increment], %[value]\\n\\t"
+"nop%{%%k1%}\\n\\t" // trailing comment
+'
+	assert parse_c_inline_asm_raw_templates(source) == [
+		'addl %[increment], %[value]\\n\\t',
+		'nop%{%%k1%}\\n\\t',
+	]
+}
+
+fn test_inline_asm_block_reads_raw_and_intel_modifiers() {
+	raw := parse_c_inline_asm_block('asm amd64 raw {
+	"nop\\n\\t"
+	; [out] "=r" (result)
+	; [lhs] "r" (lhs)
+	; cc
+}') or {
+		assert false
+		return
+	}
+	assert raw.arch == 'amd64'
+	assert raw.is_raw
+	assert !raw.is_intel
+	assert raw.templates == ['nop\\n\\t']
+	assert raw.output.map(it.constraint) == ['=r']
+	assert raw.output.map(it.alias) == ['out']
+	assert raw.input.map(it.alias) == ['lhs']
+	assert raw.clobbered == ['cc']
+
+	intel := parse_c_inline_asm_block('asm amd64 intel {
+	add value, increment
+	; +r (value)
+}') or {
+		assert false
+		return
+	}
+	assert intel.arch == 'amd64'
+	assert intel.is_intel
+	assert !intel.is_raw
+	assert intel.templates == ['add value, increment']
+}
+
+fn test_inline_asm_header_comments_do_not_enable_modifiers() {
+	block := parse_c_inline_asm_block('asm amd64 /* raw intel */ {
+	mov rax, rbx
+}') or {
+		assert false
+		return
+	}
+	assert block.arch == 'amd64'
+	assert !block.is_raw
+	assert !block.is_intel
+	assert block.templates == ['mov rax, rbx']
+}
+
+fn test_inline_asm_x86_registers_include_avx512_mask_registers() {
+	assert is_c_inline_asm_x86_register('k0')
+	assert is_c_inline_asm_x86_register('k7')
+	assert !is_c_inline_asm_x86_register('k8')
+	assert !is_c_inline_asm_x86_register('kernel')
+	assert is_c_inline_asm_x86_register('tmm0')
+	assert is_c_inline_asm_x86_register('tmm7')
+	assert is_c_inline_asm_x86_register('bnd0')
+	assert is_c_inline_asm_x86_register('bnd3')
+	assert !is_c_inline_asm_x86_register('bnd4')
+	assert is_c_inline_asm_x86_register('cs')
+	assert is_c_inline_asm_x86_register('cr15')
+	assert is_c_inline_asm_x86_register('dr0')
+	assert is_c_inline_asm_x86_register('st')
+	assert is_c_inline_asm_x86_register('r16')
+	assert is_c_inline_asm_x86_register('r31d')
+	assert !is_c_inline_asm_x86_register('r7')
+	assert !is_c_inline_asm_x86_register('r32')
+	assert is_c_inline_asm_x86_register('mm7')
+	assert !is_c_inline_asm_x86_register('mm8')
+	assert !is_c_inline_asm_x86_register('st8')
+	assert !is_c_inline_asm_x86_register('tmm8')
+	assert !is_c_inline_asm_x86_register('xmm32')
+	assert !is_c_inline_asm_x86_register('r999')
+	assert lower_c_inline_asm_template('mov ax, cs', 'amd64', map[string]bool{}, false) == 'mov %cs, %ax'
+}
