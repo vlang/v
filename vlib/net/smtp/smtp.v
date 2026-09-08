@@ -287,9 +287,10 @@ fn split_mailbox(s string) (?string, string) {
 	}
 	addr := strip_addr_spec_comments(trimmed[open_at + 1..close_at])
 	raw_name := strip_unquoted_comments(trimmed[..open_at])
-	unquoted_name := unquote_name(raw_name)
-	name := if unquoted_name != raw_name {
-		unquoted_name
+	name := if unquote_name(raw_name) != raw_name {
+		// Preserve the enclosing quoted-string until formatting so encoded-word
+		// looking text inside it cannot be mistaken for RFC 2047 syntax.
+		raw_name
 	} else {
 		decode_rfc5322_quoted_phrase(raw_name) or { raw_name }
 	}
@@ -624,6 +625,14 @@ fn format_addr(addr string) string {
 	display_name, addr_spec := split_mailbox(trimmed)
 	name := display_name or {
 		return '<${addr_spec}>'
+	}
+	unquoted_name := unquote_name(name)
+	if unquoted_name != name {
+		if !unquoted_name.is_ascii() {
+			return '${encode_rfc2047(unquoted_name)} <${addr_spec}>'
+		}
+		escaped_name := unquoted_name.replace('\\', '\\\\').replace('"', '\\"')
+		return '"${escaped_name}" <${addr_spec}>'
 	}
 
 	if encoded_phrase := format_rfc2047_phrase(name) {
