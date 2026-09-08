@@ -760,6 +760,25 @@ fn h3_server_run_handler(handler Handler, req Request, conn_id string, stream_id
 // its headers validated independently of building the request from them.
 fn h3_build_request(st &H3ServerStream) !Request {
 	h3_validate_request_pseudo(st.headers)!
+	mut regular_header_slots := 0
+	mut has_authority := false
+	mut has_host := false
+	for f in st.headers {
+		if f.name == ':authority' {
+			has_authority = f.value != ''
+		} else if !f.name.starts_with(':') {
+			regular_header_slots++
+			has_host = has_host || f.name == 'host'
+		}
+	}
+	// A nonempty :authority without a Host field is materialized as Host for
+	// the Handler API, so reserve that slot before filling Header's fixed store.
+	if has_authority && !has_host {
+		regular_header_slots++
+	}
+	if regular_header_slots > max_headers {
+		return error('h3 server: too many request header fields (${regular_header_slots} > ${max_headers})')
+	}
 	mut req := Request{
 		version: .v3_0
 		header: new_header()

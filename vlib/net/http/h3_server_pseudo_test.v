@@ -246,6 +246,48 @@ fn test_h3_build_request_canonicalizes_host_to_authority() {
 	assert req.header.get(.host)? == 'authority.example'
 }
 
+fn test_h3_build_request_checks_fixed_header_capacity_before_insertion() {
+	mut headers := [
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'GET'
+		},
+		quic.QpackFieldLine{
+			name: ':path'
+			value: '/'
+		},
+		quic.QpackFieldLine{
+			name: ':scheme'
+			value: 'https'
+		},
+		quic.QpackFieldLine{
+			name: ':authority'
+			value: 'example.com'
+		},
+	]
+	// Repeated fields consume distinct Header slots just like distinct names.
+	for _ in 0 .. max_headers {
+		headers << quic.QpackFieldLine{
+			name: 'x-field'
+			value: 'value'
+		}
+	}
+	accepted_st := &H3ServerStream{
+		headers: headers[..headers.len - 1].clone()
+	}
+	accepted_req := h3_build_request(accepted_st)!
+	assert accepted_req.header.get(.host)? == 'example.com'
+
+	st := &H3ServerStream{
+		headers: headers
+	}
+	h3_build_request(st) or {
+		assert err.msg().contains('too many request header fields')
+		return
+	}
+	assert false, 'expected regular headers plus synthesized Host to exceed Header capacity'
+}
+
 fn test_h3_build_request_rejects_overflowing_content_length() {
 	st := &H3ServerStream{
 		headers: [
