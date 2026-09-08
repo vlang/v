@@ -6092,6 +6092,15 @@ fn test_imported_private_free_function_is_rejected() {
 	}, ['main.v'], 'function `other.hidden` is private')
 }
 
+fn test_imported_private_static_function_uses_source_name_in_diagnostic() {
+	v3_bin := build_v3()
+	run_bad_project(v3_bin, 'review_imported_private_static_function', {
+		'v.mod':     "Module { name: 'review_imported_private_static_function' }\n"
+		'dep/dep.v': 'module dep\n\npub struct Widget {}\n\nfn Widget.make() Widget {\n\treturn Widget{}\n}\n'
+		'main.v':    'module main\n\nimport dep\n\nfn main() {\n\t_ = dep.Widget.make()\n}\n'
+	}, ['main.v'], 'function `dep.Widget.make` is private')
+}
+
 fn test_private_declarations_in_main_module_accept_empty_module_alias() {
 	v3_bin := build_v3()
 	out := run_good_project(v3_bin, 'review_main_module_private_alias', {

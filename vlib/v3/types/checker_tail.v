@@ -4441,7 +4441,12 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 				name_pos.offset, node.pos.end))
 			return true
 		}
-		tc.record_error_at(.unknown_fn, 'function `${info.name}` is private', id, node.pos)
+		display_name := if receiver, method := flat.decode_static_type_method_name(info.name) {
+			'${receiver}.${method}'
+		} else {
+			info.name
+		}
+		tc.record_error_at(.unknown_fn, 'function `${display_name}` is private', id, node.pos)
 		return true
 	}
 	return false
