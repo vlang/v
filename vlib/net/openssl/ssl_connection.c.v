@@ -169,6 +169,9 @@ fn (mut s SSLConn) init() ! {
 	if (s.config.cert == '') != (s.config.cert_key == '') {
 		return error_with_code('net.openssl SSLConn.init, both cert and cert_key are required for a client certificate', net.err_tls_certificate_invalid_code)
 	}
+	if s.config.validate && C.v_net_openssl_has_x509_identity_checks() != 1 {
+		return error('net.openssl SSLConn.init, certificate identity validation requires OpenSSL 1.0.2 or newer')
+	}
 	s.sslctx = unsafe { C.SSL_CTX_new(C.SSLv23_client_method()) }
 	if s.sslctx == 0 {
 		return error('net.openssl Could not get ssl context')
@@ -180,7 +183,10 @@ fn (mut s SSLConn) init() ! {
 		// context remains in SSL_VERIFY_NONE it reports X509_V_OK even for an
 		// untrusted peer. Enable verification before SSL_new, and use OpenSSL's
 		// platform-configured default trust paths unless the caller supplied a
-		// custom CA file below.
+		// custom CA file below. Supersedes upstream master's plain
+		// SSL_CTX_set_verify+set_verify_depth(4) here (merge 2026-09-07): this
+		// helper already enables SSL_VERIFY_PEER, and the fixed depth-4 limit
+		// was found arbitrary and removed earlier on this same PR.
 		res = C.v_net_openssl_configure_peer_verification(s.sslctx, int(s.config.verify == ''))
 		if res != 1 {
 			return error_with_code('net.openssl SSLConn.init, SSL_CTX_set_default_verify_paths failed', net.err_tls_certificate_invalid_code)
@@ -236,6 +242,11 @@ fn (mut s SSLConn) init() ! {
 			if s.config.validate && res != 1 {
 				return error_with_code('net.openssl SSLConn.init, SSL_CTX_load_verify_locations failed', net.err_tls_certificate_invalid_code)
 			}
+		} else {
+			res = C.SSL_CTX_set_default_verify_paths(s.sslctx)
+			if res != 1 {
+				return error('net.openssl SSLConn.init, SSL_CTX_set_default_verify_paths failed')
+			}
 		}
 		if s.config.cert != '' {
 			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str),
@@ -265,6 +276,20 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} hostname: ${hostname}')
 	}
+	mut connected := false
+	defer {
+		if !connected {
+			if s.ssl != 0 {
+				unsafe { C.SSL_free(voidptr(s.ssl)) }
+				s.ssl = unsafe { nil }
+			}
+			if s.sslctx != 0 {
+				C.SSL_CTX_free(s.sslctx)
+				s.sslctx = unsafe { nil }
+			}
+			s.handle = 0
+		}
+	}
 	s.handle = tcp_conn.sock.handle
 	s.duration = tcp_conn.read_timeout()
 	mut res := C.SSL_set_tlsext_host_name(voidptr(s.ssl), voidptr(hostname.str))
@@ -282,6 +307,31 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 		return error('net.openssl SSLConn.connect, could not assign ssl to socket.')
 	}
 	s.complete_connect()!
+	s.verify_hostname(hostname)!
+	connected = true
+}
+
+fn (s &SSLConn) verify_hostname(hostname string) ! {
+	if !s.config.validate {
+		return
+	}
+	cert := C.v_net_openssl_get1_peer_certificate(s.ssl)
+	if cert == unsafe { nil } {
+		return error('net.openssl SSLConn.verify_hostname, the peer sent no certificate')
+	}
+	defer {
+		C.X509_free(cert)
+	}
+	ip_result := C.v_net_openssl_x509_check_ip_asc(cert, &char(hostname.str), 0)
+	verified := if ip_result == -2 {
+		C.v_net_openssl_x509_check_host(cert, &char(hostname.str), usize(hostname.len), 0,
+			unsafe { nil }) == 1
+	} else {
+		ip_result == 1
+	}
+	if !verified {
+		return error('net.openssl SSLConn.verify_hostname, the certificate is not valid for `${hostname}`')
+	}
 }
 
 // dial opens an ssl connection on hostname:port

@@ -4965,6 +4965,9 @@ fn (tc &TypeChecker) qualify_resolution_type_text(typ string) string {
 // generic arguments from another module.
 pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
 	clean := trimmed_space(typ)
+	if context_independent_type_text(clean) {
+		return tc.parse_type(clean)
+	}
 	// Generic specialization uses `main.Type` as an internal lock for a
 	// caller-owned program type. Resolve that lock before qualification strips
 	// `main.` and lets a same-named import in the declaration file capture the

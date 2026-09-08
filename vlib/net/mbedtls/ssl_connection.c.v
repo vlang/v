@@ -764,6 +764,27 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	if s.opened {
 		return error('net.mbedtls SSLConn.connect, ssl connection was already open')
 	}
+	mut connected := false
+	defer {
+		if !connected {
+			if unsafe { s.certs != nil } {
+				C.mbedtls_x509_crt_free(&s.certs.cacert)
+				C.mbedtls_x509_crt_free(&s.certs.client_cert)
+				C.mbedtls_pk_free(&s.certs.client_key)
+				s.certs = unsafe { nil }
+			}
+			C.mbedtls_ssl_free(&s.ssl)
+			C.mbedtls_ssl_config_free(&s.conf)
+			free_rng(mut s.ctr_drbg, mut s.entropy)
+			if s.alpn_list != unsafe { nil } {
+				unsafe {
+					C.free(s.alpn_list)
+					s.alpn_list = nil
+				}
+			}
+			s.handle = 0
+		}
+	}
 	s.handle = tcp_conn.sock.handle
 	s.set_read_timeout(tcp_conn.read_timeout())
 	mut ret := C.mbedtls_ssl_set_hostname(&s.ssl, &char(hostname.str))
@@ -785,6 +806,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 		return mbedtls_client_handshake_error('net.mbedtls SSLConn.connect, mbedtls_ssl_handshake failed 2; ret: ${ret}', ret)
 	}
 	s.opened = true
+	connected = true
 }
 
 // dial opens an ssl connection on hostname:port

@@ -326,7 +326,9 @@ fn map_free_nop(_ voidptr) {
 fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > int(sizeof(voidptr))
-	return map{
+	// Keep this as a local before returning it. Alpine's x86_64 TCC can leave fields
+	// uninitialized when this large nested struct is returned as a compound literal.
+	result := map{
 		key_bytes: key_bytes
 		value_bytes: value_bytes
 		even_index: init_even_index
@@ -342,6 +344,7 @@ fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn,
 		clone_fn: clone_fn
 		free_fn: free_fn
 	}
+	return result
 }
 
 fn new_map_init(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int,

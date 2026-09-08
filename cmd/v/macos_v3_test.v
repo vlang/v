@@ -84,15 +84,25 @@ fn test_macos_v3_relevant_command_owns_every_direct_c_build() {
 
 fn test_macos_v3_cmd_source_unlinks_v1_on_supported_hosts() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v', 'v.v'))!
-	assert source.contains('\$if v1_fallback ? {')
-	assert source.contains('} \$else \$if !macos && !linux {')
+	assert source.contains('\$if v1_fallback ?|| cross ?|| ( !macos && !linux ) {')
 	assert source.contains('import v.builder')
 	assert source.contains('import v.builder.cbuilder')
-	assert source.contains('\$if v1_fallback ? {\n\t\t\tbuilder.compile')
-	driver := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v',
-		'macos_v3_driver_notd_cross.v'))!
+	assert source.contains('\$if v1_fallback ?|| cross ? {\n\t\t\t\tbuilder.compile')
+	driver := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v', 'macos_v3_driver_notd_cross.v'))!
 	assert driver.contains('\$if v1_fallback ? {')
 	assert driver.contains('fn macos_v3_driver_is_available() bool')
+}
+
+fn test_vc_bootstrap_builds_a_v1_compatibility_compiler() {
+	for path in [
+		'GNUmakefile',
+		'Makefile',
+		'cmd/tools/vself.v',
+		'thirdparty/tccbin_automation/bootstrap/bootstrap.sh',
+	] {
+		source := os.read_file(os.join_path(macos_v3_test_vroot, path))!
+		assert source.contains('-DCUSTOM_DEFINE_v1_fallback'), path
+	}
 }
 
 fn test_macos_v3_old_compiler_uses_external_v1_command() {
@@ -110,8 +120,7 @@ fn test_macos_v3_old_compiler_uses_external_v1_command() {
 		source := os.join_path(root, 'main.v')
 		os.write_file(source, 'fn main() { println("v1") }\n')!
 		output := os.join_path(root, 'main')
-		result := run_macos_v3_test_process(@VEXE, ['-old-compiler', '-o', output, source],
-			macos_v3_test_vroot, {})
+		result := run_macos_v3_test_process(@VEXE, ['-old-compiler', '-o', output, source], macos_v3_test_vroot, {})
 		assert result.exit_code == 0, result.output
 		assert os.is_executable(output)
 		run := os.execute(os.quoted_path(output))

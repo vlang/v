@@ -618,6 +618,8 @@ fn initial_bootstrap_args(args []string) []string {
 fn bootstrap_c_cmd(cc string, out_binary string, vc_source string) string {
 	mut parts := []string{cap: 8}
 	parts << os.quoted_path(cc)
+	// Portable VC snapshots have the full V1 compiler but no embedded V3 driver.
+	parts << '-DCUSTOM_DEFINE_v1_fallback'
 	if os.user_os() == 'windows' {
 		parts << ['-std=c99', '-municode', '-w', '-o', os.quoted_path(out_binary),
 			os.quoted_path(vc_source), '-lws2_32']
