@@ -311,6 +311,18 @@ fn intel_narrow_arithmetic_carry_survives_inc(value int) {
 	}
 }
 
+fn intel_narrow_arithmetic_carry_flows_through_cmc(value u32) {
+	mut result := value
+	asm amd64 intel {
+		add result, 1
+		cmc
+		setc al
+		; +r (result)
+		; ; rax
+		  cc
+	}
+}
+
 fn intel_crc32_memory_source(base &u16, checksum u64) u64 {
 	mut result := checksum
 	asm amd64 intel {

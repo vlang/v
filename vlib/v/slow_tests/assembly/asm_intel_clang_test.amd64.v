@@ -97,6 +97,32 @@ fn test_intel_narrow_add_flags_overwritten_by_inc_with_clang() {
 	assert result == 42
 }
 
+fn test_intel_narrow_add_flags_overwritten_by_shift_with_clang() {
+	mut result := 19
+	asm amd64 intel {
+		add result, 23
+		shl rax, 1
+		seto al
+		; +r (result)
+		; ; rax
+		  cc
+	}
+	assert result == 42
+}
+
+fn test_intel_narrow_add_flags_overwritten_by_rotate_with_clang() {
+	mut result := 19
+	asm amd64 intel {
+		add result, 23
+		rol rax, 1
+		seto al
+		; +r (result)
+		; ; rax
+		  cc
+	}
+	assert result == 42
+}
+
 fn test_intel_unsigned_narrow_address_index_with_clang() {
 	values := [u8(41), 42]
 	base := &values[0]

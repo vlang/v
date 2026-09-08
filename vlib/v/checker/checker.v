@@ -4518,6 +4518,9 @@ fn asm_intel_condition_flags(instruction string) u8 {
 
 fn asm_intel_instruction_read_flags(instruction string) u8 {
 	name := asm_intel_normalized_instruction_name(instruction)
+	if name == 'cmc' {
+		return asm_intel_flag_cf
+	}
 	if asm_intel_mnemonic_is_one_of(name, ['adc', 'adcx', 'sbb', 'rcl', 'rcr']) {
 		return asm_intel_flag_cf
 	}
@@ -4586,8 +4589,22 @@ fn asm_intel_instruction_set_flags(instruction string) u8 {
 	return 0
 }
 
-fn asm_intel_instruction_overwritten_flags(instruction string) u8 {
-	name := asm_intel_normalized_instruction_name(instruction)
+fn asm_intel_static_shift_count(template ast.AsmTemplate, instruction string) int {
+	is_double_shift := asm_intel_mnemonic_is_one_of(instruction, ['shld', 'shrd'])
+	if !is_double_shift && template.args.len == 1 {
+		return 1
+	}
+	if template.args.len > 0 {
+		count := template.args.last()
+		if count is ast.IntegerLiteral {
+			return count.val.int()
+		}
+	}
+	return 0
+}
+
+fn asm_intel_instruction_overwritten_flags(template ast.AsmTemplate) u8 {
+	name := asm_intel_normalized_instruction_name(template.name)
 	if name in ['popf', 'popfd', 'popfq'] {
 		return asm_intel_status_flags
 	}
@@ -4608,6 +4625,15 @@ fn asm_intel_instruction_overwritten_flags(instruction string) u8 {
 	}
 	if asm_intel_mnemonic_is_one_of(name, ['div', 'idiv']) {
 		return asm_intel_status_flags
+	}
+	shift_count := asm_intel_static_shift_count(template, name)
+	if shift_count > 0 && shift_count < 32 {
+		if asm_intel_mnemonic_is_one_of(name, ['rol', 'ror', 'rcl', 'rcr']) {
+			return asm_intel_flag_cf | if shift_count == 1 { asm_intel_flag_of } else { u8(0) }
+		}
+		if asm_intel_mnemonic_is_one_of(name, ['sal', 'sar', 'shl', 'shr', 'shld', 'shrd']) {
+			return asm_intel_status_flags
+		}
 	}
 	if asm_intel_instruction_set_flags(name) != 0 {
 		return asm_intel_status_flags
@@ -4631,7 +4657,7 @@ fn asm_intel_flags_are_observed_after(templates []ast.AsmTemplate, template_inde
 		if name in ['jmp', 'jmpl', 'jmpq', 'ljmp'] {
 			return true
 		}
-		remaining_flags &= asm_intel_status_flags ^ asm_intel_instruction_overwritten_flags(name)
+		remaining_flags &= asm_intel_status_flags ^ asm_intel_instruction_overwritten_flags(templates[i])
 		if remaining_flags == 0 {
 			return false
 		}
