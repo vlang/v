@@ -7230,12 +7230,13 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					g.write('(${g.base_type(node.right_type)}*)')
 				}
 				mut tmp_var := ''
-				if node.op == .amp {
-					if node.right is ast.ParExpr && node.right.expr is ast.AsCast
-						&& (node.right.expr as ast.AsCast).expr is ast.CallExpr {
+				if node.op == .amp && node.right is ast.ParExpr && node.right.expr is ast.AsCast {
+					as_cast := node.right.expr as ast.AsCast
+					as_cast_sym := g.table.sym(g.unwrap_generic(as_cast.typ))
+					if as_cast.expr is ast.CallExpr || as_cast_sym.info is ast.FnType {
 						str := g.go_before_last_stmt()
 						g.empty_line = true
-						typ := g.styp(((node.right as ast.ParExpr).expr as ast.AsCast).typ)
+						typ := g.styp(as_cast.typ)
 						tmp_var = g.new_tmp_var()
 						g.writeln('${typ} ${tmp_var};')
 						mut stmts := []ast.Stmt{cap: 1}

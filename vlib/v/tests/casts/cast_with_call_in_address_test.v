@@ -17,6 +17,14 @@ mut:
 
 type FooBarSum = Bar | Foo
 
+type IntHandler = fn (int) int
+
+type HandlerOrString = IntHandler | string
+
+fn double(value int) int {
+	return value * 2
+}
+
 fn test_main() {
 	mut fbs := []&FooBar{}
 	fbs << &Foo{1}
@@ -30,6 +38,10 @@ fn test_main() {
 	sum := FooBarSum(Foo{2})
 	sum_field_ptr := &((sum as Foo).val)
 	assert *sum_field_ptr == 2
+	handler_sum := HandlerOrString(IntHandler(double))
+	handler_ptr := &(handler_sum as IntHandler)
+	handler := *handler_ptr
+	assert handler(3) == 6
 	arr1 := [(fbs.last() as Foo)]
 	arr2 := [&(fbs.last() as Foo)]
 	arr3 := [&(get_foo_bar() as Foo)]
