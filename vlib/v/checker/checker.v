@@ -4507,6 +4507,10 @@ fn asm_intel_flags_are_observed_after(templates []ast.AsmTemplate, template_inde
 		if asm_intel_instruction_reads_flags(templates[i].name) {
 			return true
 		}
+		name := asm_intel_normalized_instruction_name(templates[i].name)
+		if name in ['jmp', 'jmpl', 'jmpq', 'ljmp'] {
+			return true
+		}
 		if asm_intel_instruction_overwrites_flags(templates[i].name) {
 			return false
 		}

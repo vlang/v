@@ -266,6 +266,9 @@ fn intel_narrow_arithmetic_flags(value int) {
 	mut result := value
 	asm amd64 intel {
 		add result, 1
+		jmp flags_ready
+		xor rax, rax
+	flags_ready:
 		seto al
 		; +r (result)
 		; ; rax

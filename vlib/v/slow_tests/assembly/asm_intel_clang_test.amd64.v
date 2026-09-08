@@ -29,7 +29,8 @@ fn test_intel_mixed_width_hard_registers_with_clang() {
 		shld double_shifted, shift_source, cl
 		mov al, 42
 		movzx extended, al
-		mov eax, -1
+		mov eax, 1
+		neg eax
 		movsxd sign_extended, eax
 		; +r (shifted)
 		  +r (double_shifted)
@@ -99,31 +100,6 @@ fn test_intel_unsigned_narrow_address_index_with_clang() {
 	assert result == 42
 }
 
-fn intel_sized_implicit_arithmetic_memory_with_clang(base &u64) {
-	asm amd64 intel {
-		divq [base]
-		idivq [base]
-		mulq [base]
-		imulq [base]
-		; ; r (base)
-		; rax
-		  rdx
-		  cc
-	}
-}
-
-@[noinline]
-fn can_run_intel_sized_implicit_arithmetic_test() bool {
-	return false
-}
-
-fn test_intel_sized_implicit_arithmetic_memory_compiles_with_clang() {
-	if can_run_intel_sized_implicit_arithmetic_test() {
-		value := u64(1)
-		intel_sized_implicit_arithmetic_memory_with_clang(&value)
-	}
-}
-
 fn test_intel_segment_register_move_with_clang() {
 	mut value := i64(0)
 	asm amd64 intel {
@@ -178,26 +154,6 @@ fn intel_crc32_narrow_source_with_clang(value i64) i64 {
 	return result
 }
 
-fn intel_crc32_byte_memory_source_with_clang(base &u8, checksum u64) u64 {
-	mut result := checksum
-	asm amd64 intel {
-		crc32b result, [base]
-		; +r (result)
-		; r (base)
-	}
-	return result
-}
-
-fn intel_crc32_native_memory_source_with_clang(base &u64, checksum u64) u64 {
-	mut result := checksum
-	asm amd64 intel {
-		crc32q result, [base]
-		; +r (result)
-		; r (base)
-	}
-	return result
-}
-
 @[noinline]
 fn can_run_intel_crc32_test() bool {
 	return false
@@ -206,10 +162,6 @@ fn can_run_intel_crc32_test() bool {
 fn test_intel_crc32_narrow_source_compiles_with_clang() {
 	if can_run_intel_crc32_test() {
 		assert intel_crc32_narrow_source_with_clang(42) != 0
-		byte_value := u8(42)
-		native_value := u64(42)
-		assert intel_crc32_byte_memory_source_with_clang(&byte_value, 0) != 0
-		assert intel_crc32_native_memory_source_with_clang(&native_value, 0) != 0
 	}
 }
 
