@@ -143,6 +143,18 @@ fn test_install_maps_manifest_dots_to_import_directories() {
 	assert 'foo.bar.baz' in get_installed_modules_in(vmodules_path)
 }
 
+fn test_installed_module_discovery_preserves_vcs_links() {
+	$if !windows {
+		vmodules_path := os.join_path(test_path, 'vmodules_linked_module')
+		repo_path := os.join_path(test_path, 'linked_module_repo')
+		create_local_git_module(repo_path, 'author.linked')
+		publisher_path := os.join_path(vmodules_path, 'author')
+		os.mkdir_all(publisher_path) or { panic(err) }
+		os.symlink(repo_path, os.join_path(publisher_path, 'linked')) or { panic(err) }
+		assert 'author.linked' in get_installed_modules_in(vmodules_path)
+	}
+}
+
 // A publisher directory added for a direct HTTP install is intentional and does not mean that
 // the manifest name itself was normalized.
 fn test_publisher_prefix_does_not_look_like_name_normalization() {

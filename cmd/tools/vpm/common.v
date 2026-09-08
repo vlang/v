@@ -350,10 +350,16 @@ fn collect_installed_modules(path string, prefix string, is_root bool, mut modul
 	dirs := os.ls(path) or { return }
 	for dir in dirs {
 		module_path := os.join_path(path, dir)
-		if (is_root && dir in excluded_dirs) || !os.is_dir(module_path) || os.is_link(module_path) {
+		if (is_root && dir in excluded_dirs) || !os.is_dir(module_path) {
 			continue
 		}
 		module_name := if prefix == '' { dir } else { '${prefix}.${dir}' }
+		if os.is_link(module_path) {
+			if vcs_used_in_dir(module_path) != none {
+				modules << module_name
+			}
+			continue
+		}
 		if vcs_used_in_dir(module_path) != none {
 			modules << module_name
 			continue
