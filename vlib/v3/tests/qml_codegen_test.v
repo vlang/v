@@ -193,6 +193,19 @@ fn main() {
 	nested_run := os.execute(bin)
 	assert nested_run.exit_code == 0, nested_run.output
 	assert nested_run.output.trim_space() == '10:1 20:1', nested_run.output
+	os.write_file(os.join_path(root, 'geometry_color.qml'), 'Screen {
+	Rectangle { id: box width: 100 height: box.width background: app.theme_color() }
+	Rectangle { background: app.numeric_color() }
+}') or { panic(err) }
+	geometry_color_path := os.join_path(root, 'geometry_color.v')
+	os.write_file(geometry_color_path, "module main\n\nimport ui2\n\nstruct App {}\n\npub fn (app &App) theme_color() string {\n\treturn '#112233'\n}\n\npub fn (app &App) numeric_color() u32 {\n\treturn u32(0x445566)\n}\n\nfn build(app &App) ui2.Element {\n\treturn \$qml('geometry_color.qml')\n}\n\nfn main() {\n\tapp := App{}\n\troot := build(&app)\n\tprintln(root.children[0].frame.width.str() + ':' + root.children[0].frame.height.str() + ':' + root.children[0].box.bg.str() + ' ' + root.children[1].box.bg.str())\n}\n") or {
+		panic(err)
+	}
+	geometry_color_compile := os.execute('${v3_bin} -nocache -path "${root}|${qml_codegen_vlib_dir}" -b c -o ${bin} ${geometry_color_path}')
+	assert geometry_color_compile.exit_code == 0, geometry_color_compile.output
+	geometry_color_run := os.execute(bin)
+	assert geometry_color_run.exit_code == 0, geometry_color_run.output
+	assert geometry_color_run.output.trim_space() == '100.0:100.0:1122867 4478310', geometry_color_run.output
 	os.write_file(os.join_path(root, 'form.qml'), 'Screen { MessageBox { Button { on_tap: app.missing() } } }') or { panic(err) }
 	invalid := os.execute('${v3_bin} -nocache -path "${root}|${qml_codegen_vlib_dir}" -b c -o ${bin} ${main_path}')
 	assert invalid.exit_code != 0, invalid.output
@@ -220,7 +233,7 @@ pub const keyboard_default = 0
 pub const keyboard_decimal = 8
 pub fn bounds() Rect { return Rect{width: 800, height: 600} }
 pub fn rect(x f64, y f64, width f64, height f64) Rect { return Rect{x, y, width, height} }
-pub fn parse_hex_color(_ string) u32 { return 0 }
+pub fn parse_hex_color(value string) u32 { return if value == '#112233' { u32(0x112233) } else { u32(0) } }
 pub struct ProgressBarConfig { pub: id string frame Rect value f64 max f64 = 100 background u32 color u32 radius f64 }
 pub fn progress_bar(config ProgressBarConfig) Element { return Element{kind: .view, id: config.id, frame: config.frame, accessibility_role: 'progressbar', accessibility_label: 'Progress', accessibility_value: '${config.value} of ${config.max}'} }
 pub struct SliderConfig { pub: id string action_id string frame Rect min f64 max f64 = 100 value f64 step f64 orientation Orientation padding f64 value_track bool style SliderStyle }

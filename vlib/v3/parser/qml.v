@@ -733,6 +733,11 @@ fn qml_stringify(expression string) string {
 	return "'" + r'$' + '{' + expression + "}'"
 }
 
+fn qml_color_call(expression string) string {
+	value := qml_stringify(expression)
+	return "(if typeof(${expression}).name == 'string' { ui2.parse_hex_color(${value}) } else { u32(${value}.u64()) })"
+}
+
 fn qml_numeric_cast(type_name string, expression string) string {
 	if expression.starts_with('(') && expression.ends_with(')') {
 		return type_name + expression
@@ -805,12 +810,12 @@ fn (c &QmlCompiler) resolve_path(path string, scope QmlScope) (string, bool) {
 		return replacement + if parts.len > 1 { '.' + parts[1..].join('.') } else { '' }, true
 	}
 	if named := scope.ids[parts[0]] {
-		if parts.len == 2 && parts[1] in ['x', 'y', 'width', 'height'] {
-			return '${named.frame}.${parts[1]}', true
-		}
 		if parts.len == 2 {
 			if prop := named.props[parts[1]] {
 				return prop, true
+			}
+			if parts[1] in ['x', 'y', 'width', 'height'] {
+				return '${named.frame}.${parts[1]}', true
 			}
 		}
 	}
@@ -867,6 +872,7 @@ fn (c &QmlCompiler) expr(expr &QmlExpr, scope QmlScope, use QmlExprUse) string {
 			return match use {
 				.string_ { qml_stringify(call) }
 				.number { 'f64(${call})' }
+				.color { qml_color_call(call) }
 				else { call }
 			}
 		}
@@ -942,8 +948,12 @@ fn qml_prop(properties map[string]string, name string, default_ string) string {
 	return properties[name] or { default_ }
 }
 
-fn qml_order_declared_properties(properties []QmlProperty, node_id string) []QmlProperty {
-	mut remaining := properties.filter(it.declared_type.len > 0)
+fn qml_property_is_geometry(property QmlProperty) bool {
+	return property.name in ['x', 'y', 'width', 'height']
+}
+
+fn qml_order_properties_by_dependencies(properties []QmlProperty, node_id string) []QmlProperty {
+	mut remaining := properties.clone()
 	if node_id.len == 0 || remaining.len < 2 {
 		return remaining
 	}
@@ -981,9 +991,9 @@ fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, in
 	c.out.writeln('\t_ = ${input}')
 	mut scope := qml_clone_scope(incoming)
 	mut named_props := map[string]string{}
-	// Register every declared property before resolving expressions, then emit
-	// those declarations before ordinary bindings. This lets an earlier binding
-	// such as `width: root.half` refer to a custom property declared later.
+	// Declared properties are visible before expressions are resolved. Geometry
+	// bindings are added after they are emitted below, so self-geometry can use an
+	// earlier computed binding while declared properties can still read the input.
 	for property in node.properties {
 		if property.declared_type.len > 0 {
 			named_props[property.name] = 'qml_property_${suffix}_${qml_var(property.name)}'
@@ -993,8 +1003,11 @@ fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, in
 		scope.ids[node.id] = QmlNamedValue{ frame: input, props: named_props.clone() }
 	}
 	mut properties := map[string]string{}
-	mut ordered_properties := qml_order_declared_properties(node.properties, node.id)
-	ordered_properties << node.properties.filter(it.declared_type.len == 0)
+	mut ordered_properties := qml_order_properties_by_dependencies(node.properties.filter(it.declared_type.len > 0), node.id)
+	ordered_properties << qml_order_properties_by_dependencies(node.properties.filter(it.declared_type.len == 0
+		&& qml_property_is_geometry(it)), node.id)
+	ordered_properties << node.properties.filter(it.declared_type.len == 0
+		&& !qml_property_is_geometry(it))
 	for property in ordered_properties {
 		if property.name == 'id'
 			|| property.name in ['on_tap', 'on_change', 'on_active', 'on_text', 'on_submit'] {
@@ -1017,6 +1030,12 @@ fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, in
 		}
 		c.out.writeln('\t${name} := ${value}')
 		properties[property.name] = name
+		if property.declared_type.len == 0 && qml_property_is_geometry(property) {
+			named_props[property.name] = name
+			if node.id.len > 0 {
+				scope.ids[node.id] = QmlNamedValue{ frame: input, props: named_props.clone() }
+			}
+		}
 	}
 	frame := 'qml_frame_${suffix}'
 	c.out.writeln('\t${frame} := ui2.rect(${qml_prop(properties, 'x', input + '.x')}, ${qml_prop(properties, 'y', input + '.y')}, ${qml_prop(properties, 'width', input + '.width')}, ${qml_prop(properties, 'height', input + '.height')})')
