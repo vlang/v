@@ -108,3 +108,18 @@ fn test_inline_asm_prefix_named_labels_keep_mnemonic_position() {
 		assert diagnostics[0].message == 'The lock prefix cannot be used on this instruction'
 	}
 }
+
+fn test_inline_asm_encoding_prefixes_keep_mnemonic_position() {
+	for prefix in ['rex', 'vex', 'xop'] {
+		for encoding_prefix in [prefix, '${prefix}.w'] {
+			diagnostics := parse_amd64_asm_diagnostics('${encoding_prefix}_prefix', 'fn main() {
+	asm amd64 {
+		${encoding_prefix} lock push rax
+	}
+}
+')
+			assert diagnostics.len == 1, '${encoding_prefix}: ${diagnostics.str()}'
+			assert diagnostics[0].message == 'The lock prefix cannot be used on this instruction'
+		}
+	}
+}

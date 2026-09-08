@@ -18,6 +18,8 @@ const inline_asm_allowed_lock_instructions = ['add', 'adc', 'and', 'btc', 'btr',
 
 const inline_asm_prefixes_before_mnemonic = ['rep', 'repe', 'repz', 'repne', 'repnz']
 
+const inline_asm_encoding_prefixes_before_mnemonic = ['rex', 'vex', 'xop']
+
 const sql_query_data_alias_reserved_tokens = [
 	'select',
 	'from',
@@ -170,6 +172,8 @@ struct ParsedFieldAttrs {
 enum InlineAsmMnemonicState {
 	expect_mnemonic
 	after_dot
+	encoding_prefix
+	encoding_prefix_dot
 	maybe_label
 	operands
 }
@@ -8302,14 +8306,17 @@ fn (mut p Parser) goto_stmt() flat.NodeId {
 	})
 }
 
-fn (mut p Parser) track_inline_asm_mnemonic(state InlineAsmMnemonicState, is_x86 bool) InlineAsmMnemonicState {
+fn (mut p Parser) track_inline_asm_mnemonic(state InlineAsmMnemonicState, is_x86 bool, is_amd64 bool) InlineAsmMnemonicState {
 	if p.current_token_is_newline_semicolon() {
 		return .expect_mnemonic
 	}
-	current_state := if p.inline_asm_source_gap_has_newline(p.prev_tok_end, p.tok_pos) {
+	mut current_state := if p.inline_asm_source_gap_has_newline(p.prev_tok_end, p.tok_pos) {
 		InlineAsmMnemonicState.expect_mnemonic
 	} else {
 		state
+	}
+	if current_state == .encoding_prefix && p.tok != .dot {
+		current_state = .expect_mnemonic
 	}
 	match current_state {
 		.expect_mnemonic {
@@ -8323,6 +8330,12 @@ fn (mut p Parser) track_inline_asm_mnemonic(state InlineAsmMnemonicState, is_x86
 				p.validate_inline_asm_lock_instruction()
 				return .expect_mnemonic
 			}
+			if is_amd64 && p.lit in inline_asm_encoding_prefixes_before_mnemonic {
+				if p.inline_asm_token_is_same_line_label() {
+					return .maybe_label
+				}
+				return .encoding_prefix
+			}
 			if is_x86 && p.lit in inline_asm_prefixes_before_mnemonic {
 				if p.inline_asm_token_is_same_line_label() {
 					return .maybe_label
@@ -8333,6 +8346,12 @@ fn (mut p Parser) track_inline_asm_mnemonic(state InlineAsmMnemonicState, is_x86
 		}
 		.after_dot {
 			return .maybe_label
+		}
+		.encoding_prefix {
+			return .encoding_prefix_dot
+		}
+		.encoding_prefix_dot {
+			return .encoding_prefix
 		}
 		.maybe_label {
 			return if p.tok == .colon { .expect_mnemonic } else { .operands }
@@ -8433,13 +8452,15 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	mut section := 0
 	mut io_exprs := []flat.NodeId{}
 	mut mnemonic_state := InlineAsmMnemonicState.expect_mnemonic
-	is_x86_asm := pref.normalized_arch(asm_arch) in ['amd64', 'x86']
+	normalized_asm_arch := pref.normalized_arch(asm_arch)
+	is_x86_asm := normalized_asm_arch in ['amd64', 'x86']
+	is_amd64_asm := normalized_asm_arch == 'amd64'
 	if p.tok == .lcbr {
 		mut depth := 1
 		p.next()
 		for depth > 0 && p.tok != .eof {
 			if depth == 1 && section == 0 {
-				mnemonic_state = p.track_inline_asm_mnemonic(mnemonic_state, is_x86_asm)
+				mnemonic_state = p.track_inline_asm_mnemonic(mnemonic_state, is_x86_asm, is_amd64_asm)
 			}
 			if p.tok == .lcbr {
 				depth++
