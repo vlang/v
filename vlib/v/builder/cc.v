@@ -2022,6 +2022,9 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 		obj_path := asm_path.replace('.S', '.o')
 		mut asm_args := []string{}
 		asm_args << '-c'
+		if b.pref.os == .windows && pref.get_host_arch() == .amd64 && b.pref.arch == .i386 {
+			asm_args << '-m32'
+		}
 
 		// Cross-compilation target flags
 		// When the target OS/arch differs from the host, the .S file must be
