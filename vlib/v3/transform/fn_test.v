@@ -24,6 +24,14 @@ fn test_normalize_function_type_preserves_mut_parameter() {
 	assert t.normalize_type_in_module('fn (mut item Item) bool', 'main') == 'fn (&Item) bool'
 }
 
+fn test_fn_type_texts_signature_compatible_preserves_shared_parameter() {
+	assert fn_type_texts_signature_compatible('fn (mut Item)', 'fn (&Item)')
+	assert fn_type_texts_signature_compatible('fn (shared Item)', 'fn (shared Item)')
+	assert !fn_type_texts_signature_compatible('fn (shared Item)', 'fn (Item)')
+	assert !fn_type_texts_signature_compatible('fn (Item)', 'fn (shared Item)')
+	assert !fn_type_texts_signature_compatible('fn (shared Item)', 'fn (&Item)')
+}
+
 fn test_normalize_type_in_module_cache_tracks_current_file() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
