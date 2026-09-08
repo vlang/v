@@ -16,19 +16,19 @@ import net.quic
 fn test_h3_validate_request_pseudo_accepts_an_ordinary_get() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name:  ':method'
+			name: ':method'
 			value: 'GET'
 		},
 		quic.QpackFieldLine{
-			name:  ':path'
+			name: ':path'
 			value: '/'
 		},
 		quic.QpackFieldLine{
-			name:  ':scheme'
+			name: ':scheme'
 			value: 'https'
 		},
 		quic.QpackFieldLine{
-			name:  ':authority'
+			name: ':authority'
 			value: 'example.com'
 		},
 	])!
@@ -37,11 +37,11 @@ fn test_h3_validate_request_pseudo_accepts_an_ordinary_get() {
 fn test_h3_validate_request_pseudo_rejects_ordinary_request_missing_scheme() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name:  ':method'
+			name: ':method'
 			value: 'GET'
 		},
 		quic.QpackFieldLine{
-			name:  ':path'
+			name: ':path'
 			value: '/'
 		},
 	]) or { return }
@@ -57,11 +57,11 @@ fn test_h3_validate_request_pseudo_rejects_ordinary_request_missing_scheme() {
 fn test_h3_validate_request_pseudo_accepts_a_conforming_connect() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name:  ':method'
+			name: ':method'
 			value: 'CONNECT'
 		},
 		quic.QpackFieldLine{
-			name:  ':authority'
+			name: ':authority'
 			value: 'example.com:443'
 		},
 	])!
@@ -70,15 +70,15 @@ fn test_h3_validate_request_pseudo_accepts_a_conforming_connect() {
 fn test_h3_validate_request_pseudo_rejects_connect_with_scheme() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name:  ':method'
+			name: ':method'
 			value: 'CONNECT'
 		},
 		quic.QpackFieldLine{
-			name:  ':scheme'
+			name: ':scheme'
 			value: 'https'
 		},
 		quic.QpackFieldLine{
-			name:  ':authority'
+			name: ':authority'
 			value: 'example.com:443'
 		},
 	]) or { return }
@@ -88,15 +88,15 @@ fn test_h3_validate_request_pseudo_rejects_connect_with_scheme() {
 fn test_h3_validate_request_pseudo_rejects_connect_with_path() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name:  ':method'
+			name: ':method'
 			value: 'CONNECT'
 		},
 		quic.QpackFieldLine{
-			name:  ':path'
+			name: ':path'
 			value: '/'
 		},
 		quic.QpackFieldLine{
-			name:  ':authority'
+			name: ':authority'
 			value: 'example.com:443'
 		},
 	]) or { return }
@@ -106,11 +106,27 @@ fn test_h3_validate_request_pseudo_rejects_connect_with_path() {
 fn test_h3_validate_request_pseudo_rejects_connect_missing_authority() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name:  ':method'
+			name: ':method'
 			value: 'CONNECT'
 		},
 	]) or { return }
 	assert false, 'expected an error for a CONNECT request missing :authority'
+}
+
+fn test_h3_validate_request_pseudo_rejects_connect_empty_authority() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'CONNECT'
+		},
+		quic.QpackFieldLine{
+			name: ':authority'
+		},
+	]) or {
+		assert err.msg().contains(':authority')
+		return
+	}
+	assert false, 'expected an error for a CONNECT request with an empty :authority'
 }
 
 // Extended CONNECT (RFC 9220-style WebSockets-over-HTTP/3, a `:protocol`
@@ -126,15 +142,15 @@ fn test_h3_validate_request_pseudo_rejects_connect_missing_authority() {
 fn test_h3_validate_request_pseudo_rejects_protocol_pseudo_header() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name:  ':method'
+			name: ':method'
 			value: 'CONNECT'
 		},
 		quic.QpackFieldLine{
-			name:  ':protocol'
+			name: ':protocol'
 			value: 'websocket'
 		},
 		quic.QpackFieldLine{
-			name:  ':authority'
+			name: ':authority'
 			value: 'example.com:443'
 		},
 	]) or { return }
@@ -148,11 +164,11 @@ fn test_h3_build_request_connect_yields_connect_method_and_empty_url() {
 	st := &H3ServerStream{
 		headers: [
 			quic.QpackFieldLine{
-				name:  ':method'
+				name: ':method'
 				value: 'CONNECT'
 			},
 			quic.QpackFieldLine{
-				name:  ':authority'
+				name: ':authority'
 				value: 'example.com:443'
 			},
 		]

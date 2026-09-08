@@ -666,9 +666,14 @@ fn (mut h H3Conn) dispatch_request_stream_frames(stream_id u64, mut result H3Pol
 			}
 			DataFrame {
 				mut state := h.request_streams[stream_id] or { return }
-				state.note_frame_kind(false, true) or {
-					h.fail_request_stream(stream_id, u64(err.code()), err.msg(), mut result)
-					return
+				initial_request_headers_blocked := h.is_server_role()
+					&& state.phase() == .awaiting_response_headers
+					&& h.has_blocked_section_for(stream_id)
+				if !initial_request_headers_blocked {
+					state.note_frame_kind(false, true) or {
+						h.fail_request_stream(stream_id, u64(err.code()), err.msg(), mut result)
+						return
+					}
 				}
 				result.events << H3Event{
 					kind: if h.is_server_role() {

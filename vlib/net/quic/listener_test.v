@@ -629,13 +629,10 @@ fn test_listener_direct_accept_enforces_anti_amplification_limit() {
 // accepted connection's OWN remaining budget to exactly zero (module-
 // private field, reachable since this file is `module quic` -- avoids
 // depending on a specific certificate size coincidentally leaving zero
-// headroom after one poll(), which the coarse has_amplification_budget()
-// check -- "is there ANY budget at all", same imprecision drain_outgoing's
-// own doc comment already accepts elsewhere -- would otherwise still
-// legitimately let a small enough PING through), then drives
+// headroom after one poll()). Leaves exactly one byte available, then drives
 // process_timeouts() far enough past accept to guarantee a PTO has fired,
-// and asserts NOTHING new went out. Pre-fix, this would see a PING-only
-// Initial/Handshake datagram from send_pto_probe despite zero budget.
+// and asserts NOTHING new went out. Pre-fix, the positive-budget predicate
+// would authorize a full PING-only Initial/Handshake datagram.
 // (Codex review, PR #28164 pullrequestreview-5044139767.)
 fn test_pto_probe_respects_anti_amplification_limit() {
 	mut signing_key := ecdsa.new_key_from_seed(listener_test_key_seed, fixed_size: true)!
@@ -666,10 +663,9 @@ fn test_pto_probe_respects_anti_amplification_limit() {
 	assert accept_result.touched_conns.len == 1
 	mut c := accept_result.touched_conns[0]
 	remaining := c.amplification.available_to_send()
-	if remaining > 0 {
-		c.amplification.note_sent_unconditional(remaining)
-	}
-	assert c.amplification.available_to_send() == 0
+	assert remaining > 1
+	c.amplification.note_sent_unconditional(remaining - 1)
+	assert c.amplification.available_to_send() == 1
 
 	// 10 real seconds (nanosecond-scale `now`, this module's own
 	// convention) is far past any first-PTO deadline for a connection
@@ -678,6 +674,12 @@ fn test_pto_probe_respects_anti_amplification_limit() {
 	far_future := u64(10) * 1_000_000_000
 	timeout_result := listener.process_timeouts(far_future)!
 	assert timeout_result.outgoing.len == 0
+
+	// A locally queued close is subject to the same complete-datagram check.
+	c.close(0, 'budget exhausted')
+	close_result := listener.process_timeouts(far_future + 1)!
+	assert close_result.outgoing.len == 0
+	assert c.state() == .closing
 }
 
 // test_pto_probe_fires_with_positive_budget is the positive-case sibling

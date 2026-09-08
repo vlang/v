@@ -47,7 +47,7 @@ const aead_tag_len = 16
 // CRYPTO frame's own encoded length: 1 (flags) + 4 (version) + 1 (dcid
 // len) + up to 20 (dcid, RFC 9000 v1's own max, though this module only
 // ever uses local_cid_len=8 -- the extra headroom is intentional, not an
-// oversight) + 1 (scid len) + up to 20 (scid) + up to 4 (Length varint) +
+// oversight) + 1 (scid len) + up to 20 (scid) + up to 8 (Length varint) +
 // up to 4 (packet number -- encode_packet_number always chooses the full
 // 4-byte encoding when largest_acked_by_peer is none, which it always is
 // for THIS connection's very first Handshake-space send) + aead_tag_len.
@@ -55,7 +55,15 @@ const aead_tag_len = 16
 // Handshake-CRYPTO-flush amplification check) -- overestimating here means
 // occasionally deferring a send that would actually still have fit, never
 // the reverse (letting one through that doesn't).
-const long_header_packet_overhead_estimate = 1 + 4 + 1 + 20 + 1 + 20 + 4 + 4 + aead_tag_len
+const long_header_packet_overhead_estimate = 1 + 4 + 1 + 20 + 1 + 20 + 8 + 4 + aead_tag_len
+
+// initial_token_overhead_estimate covers Initial's token-length varint;
+// the token bytes themselves are added by estimated_datagram_size.
+const initial_token_overhead_estimate = 8
+
+// short_header_packet_overhead_estimate bounds flags, DCID, packet number,
+// and the AEAD tag for a 1-RTT packet.
+const short_header_packet_overhead_estimate = 1 + 20 + 4 + aead_tag_len
 
 // quic_error_protocol_violation is RFC 9000 §20.1's PROTOCOL_VIOLATION --
 // the fallback CONNECTION_CLOSE error code for an internal failure that
@@ -811,6 +819,7 @@ fn (mut c QuicConn) process_datagram(datagram []u8, now u64, mut result PollResu
 		if frame := c.sent_close_payload {
 			retransmit := c.build_best_effort_close_packet(frame, now) or { return }
 			result.outgoing << retransmit
+			c.record_amplification_sent(retransmit.bytes.len)
 		}
 	}
 }
@@ -1775,45 +1784,40 @@ fn (mut c QuicConn) discard_handshake_keys() {
 // Outgoing packet construction
 // -------------------------------------------------------------------------
 
-// has_amplification_budget reports whether this connection may still send
-// right now under RFC 9000 §8.1's server-side 3x cap -- always true for a
-// client role (the limit is server-only, RFC 9000 §21.1.1.1) or once
-// mark_validated() has fired. A coarse, packet-granularity gate: checked
-// BEFORE building the next datagram (not against that datagram's actual
-// size, which isn't known until AFTER building -- protect_packet's AEAD tag
-// and padding aren't computed yet), so a connection sitting at exactly 1
-// byte of remaining budget can still emit one more full packet before this
-// next reports false. This mirrors how every other RFC 9000 §8.1
-// implementation reasons about the limit (it bounds AMPLIFICATION
-// MAGNITUDE across a connection's lifetime, not a byte-exact ceiling on any
-// single packet) and, more concretely, HAS to work this way here: the
-// alternative -- building the packet first, THEN deciding whether to keep
-// it -- would leave loss_detection/congestion_control's own
-// on_packet_sent() bookkeeping (already called unconditionally inside
-// build_initial_packet/build_handshake_packet by the time a caller could
-// inspect the built size) believing a packet was transmitted that was then
-// silently discarded, desyncing retransmission timers from what actually
-// went on the wire -- exactly the failure mode already documented on the
-// Initial-key-discard-timing fix earlier in this file.
-fn (c &QuicConn) has_amplification_budget() bool {
-	return c.role != .server || c.amplification.available_to_send() > 0
+// estimated_datagram_size returns a safe upper bound for a packet before
+// packet-number allocation and loss/congestion bookkeeping mutate state.
+fn (c &QuicConn) estimated_datagram_size(space QuicPacketNumberSpace, payload_len int) u64 {
+	match space {
+		.initial {
+			estimated := u64(payload_len + long_header_packet_overhead_estimate + initial_token_overhead_estimate + c.token.len)
+			return if estimated < min_initial_datagram_size {
+				u64(min_initial_datagram_size)
+			} else {
+				estimated
+			}
+		}
+		.handshake {
+			return u64(payload_len + long_header_packet_overhead_estimate)
+		}
+		.application_data {
+			return u64(payload_len + short_header_packet_overhead_estimate)
+		}
+	}
+}
+
+// has_amplification_budget_for reports whether the complete next datagram
+// fits within RFC 9000 §8.1's server-side 3x cap. It is always true for a
+// client role or a validated server connection.
+fn (c &QuicConn) has_amplification_budget_for(space QuicPacketNumberSpace, payload_len int) bool {
+	return c.role != .server
+		|| c.amplification.available_to_send() >= c.estimated_datagram_size(space, payload_len)
 }
 
 // record_amplification_sent updates the §8.1 send tally after a datagram
 // has ALREADY been built and queued -- a no-op for a client role. Never
 // itself vetoes the send (that already happened; see
-// has_amplification_budget's own doc comment for why the check must come
-// BEFORE building, not after). Uses note_sent_unconditional, not note_sent
-// -- this call site's whole reason for existing is the coarse-grained
-// overshoot has_amplification_budget's own doc comment describes (a send
-// whose exact size wasn't knowable until after building can end up
-// slightly over budget even though the pre-build check passed); recording
-// anything less than the ACTUAL bytes sent here (note_sent's own
-// behavior, which silently drops the update on its error path) would
-// leave available_to_send() reporting stale, too-generous budget for
-// every later send this same drain_outgoing call -- or a future one --
-// still checks against, turning one small overshoot into an unbounded,
-// compounding one (13d-2's own adversarial review, verify pass).
+// has_amplification_budget_for's own doc comment for why the check occurs
+// before building). The size bound guarantees this update cannot overshoot.
 fn (mut c QuicConn) record_amplification_sent(n int) {
 	if c.role == .server {
 		c.amplification.note_sent_unconditional(u64(n))
@@ -1822,8 +1826,8 @@ fn (mut c QuicConn) record_amplification_sent(n int) {
 
 fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 	if data := c.pending_initial_crypto {
-		if c.has_amplification_budget() {
-			crypto_frame := encode_crypto_frame(0, data)!
+		crypto_frame := encode_crypto_frame(0, data)!
+		if c.has_amplification_budget_for(.initial, crypto_frame.len) {
 			datagram := c.build_initial_packet(crypto_frame, true, now)!
 			result.outgoing << datagram
 			c.record_amplification_sent(datagram.bytes.len)
@@ -1837,13 +1841,15 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 	// reply; its packet number stays in *_received_pns to be included
 	// once an ack-eliciting packet DOES trigger one.
 	if !c.initial_keys_discarded && c.initial_received_pns.len > 0
-		&& c.initial_ack_eliciting_pending && c.has_amplification_budget() {
+		&& c.initial_ack_eliciting_pending {
 		ack_frame := c.build_ack_frame_for(.initial)!
-		datagram := c.build_initial_packet(ack_frame, false, now)!
-		result.outgoing << datagram
-		c.record_amplification_sent(datagram.bytes.len)
-		c.initial_received_pns = map[u64]bool{}
-		c.initial_ack_eliciting_pending = false
+		if c.has_amplification_budget_for(.initial, ack_frame.len) {
+			datagram := c.build_initial_packet(ack_frame, false, now)!
+			result.outgoing << datagram
+			c.record_amplification_sent(datagram.bytes.len)
+			c.initial_received_pns = map[u64]bool{}
+			c.initial_ack_eliciting_pending = false
+		}
 	}
 
 	if data := c.pending_handshake_crypto {
@@ -1855,11 +1861,8 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 		// this function whose size can genuinely dwarf a small client's
 		// starting amplification budget (3x of however many bytes it has
 		// sent so far, which could be as little as the RFC 9000 §14.1
-		// floor of 1200). The coarse has_amplification_budget() check
-		// used everywhere else in this function ("is there ANY budget at
-		// all") isn't precise enough here -- a single build could still
-		// blow through the whole budget in one shot. Checked instead
-		// against the ALREADY-ENCODED frame's own length (encode_crypto_frame
+		// floor of 1200). It is checked against the ALREADY-ENCODED frame's
+		// own length (encode_crypto_frame
 		// has no loss-detection/congestion-control side effects of its
 		// own, unlike build_handshake_packet -- computing it first to
 		// learn the real size before deciding whether to build is safe),
@@ -1879,8 +1882,7 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 		// therefore this budget -- every round trip until the flight
 		// finally fits).
 		crypto_frame := encode_crypto_frame(c.handshake_crypto_send_offset, data)!
-		estimated_packet_size := u64(crypto_frame.len) + u64(long_header_packet_overhead_estimate)
-		if c.role != .server || c.amplification.available_to_send() >= estimated_packet_size {
+		if c.has_amplification_budget_for(.handshake, crypto_frame.len) {
 			c.handshake_crypto_send_offset += u64(data.len)
 			datagram := c.build_handshake_packet(crypto_frame, true, now)!
 			result.outgoing << datagram
@@ -1892,13 +1894,15 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 	if hs_keys := c.own_handshake_keys() {
 		_ := hs_keys
 		if !c.handshake_keys_discarded && c.handshake_received_pns.len > 0
-			&& c.handshake_ack_eliciting_pending && c.has_amplification_budget() {
+			&& c.handshake_ack_eliciting_pending {
 			ack_frame := c.build_ack_frame_for(.handshake)!
-			datagram := c.build_handshake_packet(ack_frame, false, now)!
-			result.outgoing << datagram
-			c.record_amplification_sent(datagram.bytes.len)
-			c.handshake_received_pns = map[u64]bool{}
-			c.handshake_ack_eliciting_pending = false
+			if c.has_amplification_budget_for(.handshake, ack_frame.len) {
+				datagram := c.build_handshake_packet(ack_frame, false, now)!
+				result.outgoing << datagram
+				c.record_amplification_sent(datagram.bytes.len)
+				c.handshake_received_pns = map[u64]bool{}
+				c.handshake_ack_eliciting_pending = false
+			}
 		}
 	}
 
@@ -1912,40 +1916,36 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 		// (confirmation depends on this send, not the other way around).
 		// handshake_done_sent guards this to fire at most once, the same
 		// one-shot shape as streams_blocked_sent_bidi/uni.
-		if c.role == .server && c.handshake_completion.is_complete() && !c.handshake_done_sent
-			&& c.has_amplification_budget() {
+		if c.role == .server && c.handshake_completion.is_complete() && !c.handshake_done_sent {
 			frame := encode_handshake_done_frame()!
-			datagram := c.build_one_rtt_packet(frame, true, now)!
-			result.outgoing << datagram
-			c.record_amplification_sent(datagram.bytes.len)
-			c.handshake_done_sent = true
-			c.on_handshake_confirmed(mut result)
+			if c.has_amplification_budget_for(.application_data, frame.len) {
+				datagram := c.build_one_rtt_packet(frame, true, now)!
+				result.outgoing << datagram
+				c.record_amplification_sent(datagram.bytes.len)
+				c.handshake_done_sent = true
+				c.on_handshake_confirmed(mut result)
+			}
 		}
-		if c.app_received_pns.len > 0 && c.app_ack_eliciting_pending && c.has_amplification_budget() {
+		if c.app_received_pns.len > 0 && c.app_ack_eliciting_pending {
 			ack_frame := c.build_ack_frame_for(.application_data)!
-			datagram := c.build_one_rtt_packet(ack_frame, false, now)!
-			result.outgoing << datagram
-			c.record_amplification_sent(datagram.bytes.len)
-			c.app_received_pns = map[u64]bool{}
-			c.app_ack_eliciting_pending = false
+			if c.has_amplification_budget_for(.application_data, ack_frame.len) {
+				datagram := c.build_one_rtt_packet(ack_frame, false, now)!
+				result.outgoing << datagram
+				c.record_amplification_sent(datagram.bytes.len)
+				c.app_received_pns = map[u64]bool{}
+				c.app_ack_eliciting_pending = false
+			}
 		}
-		if c.has_amplification_budget() {
-			c.drain_pending_stream_writes(now, mut result)!
-			c.drain_pending_stream_resets(now, mut result)!
-			c.drain_pending_streams_blocked(now, mut result)!
-			// Not reachable pre-validation with today's state machine (a
-			// server's own receive-window growth needs 1-RTT keys, which
-			// this connection only reaches after processing the client's
-			// Handshake-space Finished -- the SAME event that already
-			// fires mark_validated()) -- gated anyway, for the same
-			// reason every OTHER send in this block is: consistency with
-			// this function's own stated invariant ("every send this
-			// connection makes while unvalidated is gated"), and so a
-			// future codepath that lets app-space windows advance before
-			// validation (0-RTT, say) doesn't silently reintroduce this
-			// gap (13d-2's own adversarial review, verify pass).
-			c.drain_flow_control_raises(now, mut result)!
-		}
+		c.drain_pending_stream_writes(now, mut result)!
+		c.drain_pending_stream_resets(now, mut result)!
+		c.drain_pending_streams_blocked(now, mut result)!
+		// Not reachable pre-validation with today's state machine (a
+		// server's own receive-window growth needs 1-RTT keys, which
+		// this connection only reaches after processing the client's
+		// Handshake-space Finished -- the SAME event that already
+		// fires mark_validated()) -- gated anyway so a future 0-RTT path
+		// cannot silently bypass amplification accounting.
+		c.drain_flow_control_raises(now, mut result)!
 	}
 }
 
@@ -1970,8 +1970,12 @@ fn (mut c QuicConn) drain_pending_stream_writes(now u64, mut result PollResult) 
 		mut stream := c.streams.get(stream_id) or { continue }
 		offset := stream.send.offset
 		stream_frame := encode_stream_frame(stream_id, offset, pending.data, pending.fin, true)!
+		if !c.has_amplification_budget_for(.application_data, stream_frame.len) {
+			continue
+		}
 		datagram := c.build_one_rtt_packet(stream_frame, true, now)!
 		result.outgoing << datagram
+		c.record_amplification_sent(datagram.bytes.len)
 		send_window.consume(needed)!
 		c.conn_send_window.consume(needed)!
 		stream.send.mark_data_queued()
@@ -1992,8 +1996,12 @@ fn (mut c QuicConn) drain_pending_stream_resets(now u64, mut result PollResult) 
 	for stream_id, error_code in c.pending_stream_reset {
 		stream := c.streams.get(stream_id) or { continue }
 		reset_frame := encode_reset_stream_frame(stream_id, error_code, stream.send.offset)!
+		if !c.has_amplification_budget_for(.application_data, reset_frame.len) {
+			continue
+		}
 		datagram := c.build_one_rtt_packet(reset_frame, true, now)!
 		result.outgoing << datagram
+		c.record_amplification_sent(datagram.bytes.len)
 		c.pending_stream_reset.delete(stream_id)
 	}
 }
@@ -2001,6 +2009,7 @@ fn (mut c QuicConn) drain_pending_stream_resets(now u64, mut result PollResult) 
 // drain_pending_streams_blocked sends the STREAMS_BLOCKED frames
 // open_stream() queued when it was rejected by the peer's current limit.
 fn (mut c QuicConn) drain_pending_streams_blocked(now u64, mut result PollResult) ! {
+	mut unsent := []StreamDirection{}
 	for direction in c.pending_streams_blocked {
 		limit := if direction == .bidirectional {
 			c.peer_max_streams_bidi
@@ -2008,10 +2017,15 @@ fn (mut c QuicConn) drain_pending_streams_blocked(now u64, mut result PollResult
 			c.peer_max_streams_uni
 		}
 		blocked_frame := encode_streams_blocked_frame(direction, limit)!
+		if !c.has_amplification_budget_for(.application_data, blocked_frame.len) {
+			unsent << direction
+			continue
+		}
 		datagram := c.build_one_rtt_packet(blocked_frame, true, now)!
 		result.outgoing << datagram
+		c.record_amplification_sent(datagram.bytes.len)
 	}
-	c.pending_streams_blocked = []StreamDirection{}
+	c.pending_streams_blocked = unsent
 }
 
 // drain_flow_control_raises sends MAX_DATA/MAX_STREAM_DATA once this
@@ -2022,9 +2036,12 @@ fn (mut c QuicConn) drain_flow_control_raises(now u64, mut result PollResult) ! 
 	if c.conn_recv_window.should_advertise_more() {
 		new_limit := c.conn_recv_window.next_advertised_limit()
 		max_data_frame := encode_max_data_frame(new_limit)!
-		datagram := c.build_one_rtt_packet(max_data_frame, true, now)!
-		result.outgoing << datagram
-		c.conn_recv_window.mark_advertised(new_limit)
+		if c.has_amplification_budget_for(.application_data, max_data_frame.len) {
+			datagram := c.build_one_rtt_packet(max_data_frame, true, now)!
+			result.outgoing << datagram
+			c.record_amplification_sent(datagram.bytes.len)
+			c.conn_recv_window.mark_advertised(new_limit)
+		}
 	}
 	// Deliberately `c.stream_recv_windows.keys()` + a per-key lookup, NOT
 	// `for stream_id, mut recv_window in c.stream_recv_windows` -- the
@@ -2038,8 +2055,12 @@ fn (mut c QuicConn) drain_flow_control_raises(now u64, mut result PollResult) ! 
 		if recv_window.should_advertise_more() {
 			new_limit := recv_window.next_advertised_limit()
 			msd_frame := encode_max_stream_data_frame(stream_id, new_limit)!
+			if !c.has_amplification_budget_for(.application_data, msd_frame.len) {
+				continue
+			}
 			datagram := c.build_one_rtt_packet(msd_frame, true, now)!
 			result.outgoing << datagram
+			c.record_amplification_sent(datagram.bytes.len)
 			recv_window.mark_advertised(new_limit)
 		}
 	}
@@ -2220,7 +2241,7 @@ fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, no
 // not the most bandwidth-efficient choice; a real send/retransmission
 // buffer is a documented follow-up, not a Phase 9a blocker.
 //
-// Every arm is gated on has_amplification_budget()/record_amplification_
+// Every arm is gated on has_amplification_budget_for()/record_amplification_
 // sent() -- the SAME RFC 9000 §8.1 3x-received budget drain_outgoing's own
 // sends are gated on (a no-op check/record for a client role; see both
 // functions' own doc comments). Missed in an earlier version: a server
@@ -2238,10 +2259,10 @@ fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, no
 // budget lets the next-armed PTO actually send. (Codex review, PR #28164
 // pullrequestreview-5044139767.)
 fn (mut c QuicConn) send_pto_probe(space QuicPacketNumberSpace, now u64, mut result PollResult) ! {
-	if !c.has_amplification_budget() {
+	ping := encode_varint(frame_type_ping)!
+	if !c.has_amplification_budget_for(space, ping.len) {
 		return
 	}
-	ping := encode_varint(frame_type_ping)!
 	match space {
 		.initial {
 			if c.initial_keys_discarded {
@@ -2353,6 +2374,7 @@ fn (mut c QuicConn) close_with_error(error_code u64, reason string, is_applicati
 		}
 		return
 	}
+	c.sent_close_payload = frame
 	datagram := c.build_best_effort_close_packet(frame, now) or {
 		result.events << QuicEvent{
 			kind: .connection_closed
@@ -2361,8 +2383,8 @@ fn (mut c QuicConn) close_with_error(error_code u64, reason string, is_applicati
 		}
 		return
 	}
-	c.sent_close_payload = frame
 	result.outgoing << datagram
+	c.record_amplification_sent(datagram.bytes.len)
 	result.events << QuicEvent{
 		kind: .connection_closed
 		error_code: error_code
@@ -2372,14 +2394,23 @@ fn (mut c QuicConn) close_with_error(error_code u64, reason string, is_applicati
 
 fn (mut c QuicConn) build_best_effort_close_packet(frame []u8, now u64) !QuicDatagram {
 	if _ := c.app_write_keys {
+		if !c.has_amplification_budget_for(.application_data, frame.len) {
+			return error('quic: insufficient anti-amplification budget for CONNECTION_CLOSE')
+		}
 		return c.build_one_rtt_packet(frame, false, now)
 	}
 	if !c.handshake_keys_discarded {
 		if _ := c.own_handshake_keys() {
+			if !c.has_amplification_budget_for(.handshake, frame.len) {
+				return error('quic: insufficient anti-amplification budget for CONNECTION_CLOSE')
+			}
 			return c.build_handshake_packet(frame, false, now)
 		}
 	}
 	if !c.initial_keys_discarded {
+		if !c.has_amplification_budget_for(.initial, frame.len) {
+			return error('quic: insufficient anti-amplification budget for CONNECTION_CLOSE')
+		}
 		return c.build_initial_packet(frame, false, now)
 	}
 	return error('quic: no packet protection keys available to send CONNECTION_CLOSE')

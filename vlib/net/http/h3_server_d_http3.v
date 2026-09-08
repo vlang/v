@@ -578,6 +578,7 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 	mut has_scheme := false
 	mut has_authority := false
 	mut method := ''
+	mut authority := ''
 	for f in headers {
 		if f.name.starts_with(':') {
 			if seen_regular {
@@ -620,6 +621,7 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 						return error('duplicate :authority pseudo-header')
 					}
 					has_authority = true
+					authority = f.value
 				}
 				else {
 					return error('unknown request pseudo-header "${f.name}"')
@@ -637,7 +639,7 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 		if has_scheme || has_path {
 			return error('CONNECT request must omit :scheme and :path (RFC 9114 §4.4)')
 		}
-		if !has_authority {
+		if !has_authority || authority == '' {
 			return error('CONNECT request omits mandatory :authority pseudo-header (RFC 9114 §4.4)')
 		}
 		return

@@ -319,6 +319,50 @@ fn test_h3_conn_server_role_receives_request_and_sends_response() {
 	assert resp_ended_ev.len == 1
 }
 
+fn test_h3_conn_server_buffers_data_while_initial_headers_are_qpack_blocked() {
+	mut client, mut client_h3, mut server, mut server_h3, now0 := h3_server_test_pair()!
+	defer {
+		mut client_hs := client.client_handshake()
+		client_hs.free()
+		if mut sh := server.server_handshake {
+			sh.free()
+		}
+	}
+
+	_, _, now1 := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now0)!
+	mut peer_encoder := new_qpack_encoder()
+	set_capacity := peer_encoder.set_capacity(4096, 4096)!
+	encoder_stream_id := client_h3.own_qpack_encoder_stream_id or {
+		panic('client QPACK encoder stream was not opened')
+	}
+	client.write_stream(encoder_stream_id, set_capacity, false)!
+	_, _, now2 := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now1)!
+
+	encoded := peer_encoder.encode_field_section(0, [
+		QpackFieldLine{
+			name: 'x-blocked'
+			value: 'later'
+		},
+	])!
+	stream_id := client_h3.open_request_stream()!
+	mut request_bytes := encode_headers_frame(encoded.field_section)!
+	request_bytes << encode_data_frame('buffer me'.bytes())!
+	client.write_stream(stream_id, request_bytes, true)!
+	_, blocked_events, now3 := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now2)!
+	assert !blocked_events.any(it.kind == .request_error), blocked_events.str()
+	assert !blocked_events.any(it.kind == .request_headers), blocked_events.str()
+	assert !blocked_events.any(it.kind == .request_ended), blocked_events.str()
+	data_events := blocked_events.filter(it.kind == .request_data)
+	assert data_events.len == 1, blocked_events.str()
+	assert data_events[0].data.bytestr() == 'buffer me'
+
+	client.write_stream(encoder_stream_id, encoded.encoder_instructions, false)!
+	_, resolved_events, _ := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now3)!
+	assert !resolved_events.any(it.kind == .request_error), resolved_events.str()
+	assert resolved_events.filter(it.kind == .request_headers).len == 1, resolved_events.str()
+	assert resolved_events.filter(it.kind == .request_ended).len == 1, resolved_events.str()
+}
+
 // test_h3_conn_open_request_stream_rejected_on_server_role is a regression
 // test for open_request_stream's new role guard: RFC 9114 §6.1 request
 // streams are always client-initiated, so a server calling this on its own
