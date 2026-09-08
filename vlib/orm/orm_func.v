@@ -534,17 +534,23 @@ fn (qb &QueryBuilder[T]) exists_wrapped_conditions(parsed QueryData, field_scope
 		branch := field_scopes[i].all_before('.')
 		mut last := i
 		mut deepest := field_scopes[i]
-		// terms of the same branch share one subquery only while they are `AND`ed, since
-		// requiring the same related row is meaningless across an `OR`
-		for last + 1 < parsed.fields.len && field_scopes[last + 1].len > 0
-			&& field_scopes[last + 1].all_before('.') == branch
-			&& query_data_connector(parsed, last) {
-			next := field_scopes[last + 1]
+		// ANDed root predicates can stay inside the correlated subquery, allowing later
+		// terms of this branch to keep matching the same related row.
+		mut scan := i
+		for scan + 1 < parsed.fields.len && query_data_connector(parsed, scan) {
+			scan++
+			next := field_scopes[scan]
+			if next.len == 0 {
+				continue
+			}
+			if next.all_before('.') != branch {
+				break
+			}
 			if next != deepest && !next.starts_with('${deepest}.')
 				&& !deepest.starts_with('${next}.') {
 				return error('${@FN}(): `${deepest}` and `${next}` are sibling relationships; `AND` between them needs separate `where` calls')
 			}
-			last++
+			last = scan
 			if next.len > deepest.len {
 				deepest = next
 			}
@@ -560,8 +566,12 @@ fn (qb &QueryBuilder[T]) exists_wrapped_conditions(parsed QueryData, field_scope
 		for k in i .. last + 1 {
 			position[k] = out.fields.len
 			run_of[k] = run
-			out.fields << table_qualified_field(exists_scope_table(clause, field_scopes[k]),
-				parsed.fields[k].all_after_last('.'))
+			if field_scopes[k].len == 0 {
+				out.fields << table_qualified_field(qb.config.table.name, parsed.fields[k])
+			} else {
+				out.fields << table_qualified_field(exists_scope_table(clause, field_scopes[k]),
+					parsed.fields[k].all_after_last('.'))
+			}
 			out.kinds << parsed.kinds[k]
 			connectors << query_data_connector(parsed, k)
 			i++
@@ -615,13 +625,13 @@ fn query_data_connector(data QueryData, index int) bool {
 	return if index < data.is_and.len { data.is_and[index] } else { true }
 }
 
-// exists_scope_table names the table a scoped condition refers to inside its subquery.
+// exists_scope_table names the table alias a scoped condition refers to inside its subquery.
 fn exists_scope_table(clause ExistsClause, scope string) string {
 	depth := scope.split('.').len
 	if depth > 1 && depth - 2 < clause.joins.len {
-		return clause.joins[depth - 2].table.name
+		return exists_table_alias(depth - 1)
 	}
-	return clause.table.name
+	return exists_table_alias(0)
 }
 
 fn (qb &QueryBuilder[T]) scoped_condition_fields(condition string) ![]string {
@@ -1873,7 +1883,7 @@ fn exists_clause_from_array[U](path []string, fkey string, parent_key string, _ 
 	table := table_from_struct[U](struct_meta[U]())
 	return ExistsClause{
 		table:      table
-		fkey:       fkey
+		fkey:       orm_table_sql_field_name(table, fkey)
 		parent_key: parent_key
 		joins:      exists_relation_joins[U](path, table.name)!
 	}
@@ -1928,7 +1938,7 @@ fn exists_join_step[U](path []string, left_table string, left_key string, fkey s
 			table:         table
 			on_left_table: left_table
 			on_left_col:   left_key
-			on_right_col:  fkey
+			on_right_col:  orm_table_sql_field_name(table, fkey)
 		},
 	]
 	joins << exists_relation_joins[U](path, table.name)!

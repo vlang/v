@@ -504,9 +504,10 @@ fn apply_tenant_filter_to_exists(where QueryData) QueryData {
 			continue
 		}
 		clause := result.exists[clause_index]
-		mut filters := tenant_filter_for_related_table(clause.table)
-		for join in clause.joins {
-			filters = append_query_data_and(filters, tenant_filter_for_related_table(join.table))
+		mut filters := tenant_filter_for_related_table(clause.table, exists_table_alias(0))
+		for j, join in clause.joins {
+			filters = append_query_data_and(filters, tenant_filter_for_related_table(join.table, exists_table_alias(
+				j + 1)))
 		}
 		if filters.fields.len > 0 {
 			result = insert_query_data_before(result, i, filters)
@@ -515,7 +516,7 @@ fn apply_tenant_filter_to_exists(where QueryData) QueryData {
 	return result
 }
 
-fn tenant_filter_for_related_table(table Table) QueryData {
+fn tenant_filter_for_related_table(table Table, qualifier string) QueryData {
 	if table_ignores_tenant_filter(table) {
 		return QueryData{}
 	}
@@ -524,7 +525,7 @@ fn tenant_filter_for_related_table(table Table) QueryData {
 		return QueryData{}
 	}
 	return QueryData{
-		fields: [table_qualified_field(table.name, field)]
+		fields: [table_qualified_field(qualifier, field)]
 		data:   [tenant_filter_state.current_tenant]
 		types:  [tenant_filter_primitive_type(tenant_filter_state.current_tenant)]
 		kinds:  [.eq]
@@ -1479,13 +1480,24 @@ fn gen_exists_header(where QueryData, field string, root_table string, q string)
 		return ''
 	}
 	clause := where.exists[index]
-	mut str := 'EXISTS (SELECT 1 FROM ${q}${clause.table.name}${q}'
-	for join in clause.joins {
-		str += gen_join_clause(join, clause.table.name, q)
+	first_alias := exists_table_alias(0)
+	mut str := 'EXISTS (SELECT 1 FROM ${q}${clause.table.name}${q} AS ${q}${first_alias}${q}'
+	for j, join in clause.joins {
+		str += gen_exists_join_clause(join, exists_table_alias(j), exists_table_alias(j + 1), q)
 	}
-	str += ' WHERE ${q}${clause.table.name}${q}.${q}${clause.fkey}${q}'
+	str += ' WHERE ${q}${first_alias}${q}.${q}${clause.fkey}${q}'
 	str += ' = ${q}${root_table}${q}.${q}${clause.parent_key}${q}'
 	return str
+}
+
+fn gen_exists_join_clause(join JoinConfig, left_alias string, right_alias string, q string) string {
+	return ' ${join.kind.to_str()} ${q}${join.table.name}${q} AS ${q}${right_alias}${q}' +
+		' ON ${q}${left_alias}${q}.${q}${join.on_left_col}${q}' +
+		' = ${q}${right_alias}${q}.${q}${join.on_right_col}${q}'
+}
+
+fn exists_table_alias(depth int) string {
+	return '__v_orm_rel_${depth}'
 }
 
 fn gen_join_clause(join JoinConfig, default_left_table string, q string) string {

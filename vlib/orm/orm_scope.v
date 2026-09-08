@@ -125,7 +125,11 @@ fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fi
 	if table_ignores_data_scope(table) {
 		return result
 	}
-	root_filters := data_scope_filters_for_table(scope, table, scope_skip_fields, has_joins)!
+	root_filters := data_scope_filters_for_table(scope, table, scope_skip_fields, if has_joins {
+		table.name
+	} else {
+		''
+	})!
 	if root_filters.fields.len == 0 {
 		return result
 	}
@@ -147,10 +151,11 @@ fn apply_data_scope_to_exists(scope DataScope, qd QueryData, scope_skip_fields [
 			continue
 		}
 		clause := result.exists[clause_index]
-		mut filters := data_scope_filters_for_table(scope, clause.table, scope_skip_fields, true)!
-		for join in clause.joins {
+		mut filters := data_scope_filters_for_table(scope, clause.table, scope_skip_fields,
+			exists_table_alias(0))!
+		for j, join in clause.joins {
 			filters = append_query_data_and(filters, data_scope_filters_for_table(scope,
-				join.table, scope_skip_fields, true)!)
+				join.table, scope_skip_fields, exists_table_alias(j + 1))!)
 		}
 		if filters.fields.len > 0 {
 			result = insert_query_data_before(result, i, filters)
@@ -159,7 +164,7 @@ fn apply_data_scope_to_exists(scope DataScope, qd QueryData, scope_skip_fields [
 	return result
 }
 
-fn data_scope_filters_for_table(scope DataScope, table Table, scope_skip_fields []string, qualified bool) !QueryData {
+fn data_scope_filters_for_table(scope DataScope, table Table, scope_skip_fields []string, qualifier string) !QueryData {
 	if table_ignores_data_scope(table) {
 		return QueryData{}
 	}
@@ -195,8 +200,8 @@ fn data_scope_filters_for_table(scope DataScope, table Table, scope_skip_fields 
 			column_name = resolved
 		}
 		// Qualify with table name when joins are present to avoid ambiguity
-		if qualified && table.name != '' {
-			column_name = table_qualified_field(table.name, column_name)
+		if qualifier != '' {
+			column_name = table_qualified_field(qualifier, column_name)
 		}
 		// Note: we do NOT skip when column_name is already in result.fields.
 		// The scope filter is always appended as an additional AND condition

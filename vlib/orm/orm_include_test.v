@@ -154,8 +154,7 @@ struct IncludeKeylessLeaf {
 }
 
 @[table: 'orm_include_scoped_parents']
-@[unscoped]
-@[ignore_tenant_filter]
+@[ignore_tenant_filter; unscoped]
 struct IncludeScopedParent {
 	id        int @[primary; sql: serial]
 	tenant_id int
@@ -178,6 +177,36 @@ struct IncludeScopedGrandkid {
 	child_id  int
 	tenant_id int
 	name      string
+}
+
+@[table: 'orm_include_aliased_fkey_parents']
+struct IncludeAliasedFkeyParent {
+	id       int @[primary; sql: serial]
+	name     string
+	children []IncludeAliasedFkeyChild @[fkey: 'parent_id']
+}
+
+@[table: 'orm_include_aliased_fkey_children']
+struct IncludeAliasedFkeyChild {
+	id        int @[primary; sql: serial]
+	parent_id int @[sql: 'owner_id']
+	name      string
+	grandkids []IncludeAliasedFkeyGrandkid @[fkey: 'child_id']
+}
+
+@[table: 'orm_include_aliased_fkey_grandkids']
+struct IncludeAliasedFkeyGrandkid {
+	id       int @[primary; sql: serial]
+	child_id int @[sql: 'owner_child_id']
+	name     string
+}
+
+@[table: 'orm_include_self_nodes']
+struct IncludeSelfNode {
+	id        int @[primary; sql: serial]
+	parent_id int
+	name      string
+	children  []IncludeSelfNode @[fkey: 'parent_id']
 }
 
 fn new_include_database() !sqlite.DB {
@@ -582,6 +611,83 @@ fn test_where_preserves_relationship_or_when_the_condition_also_has_a_root_term(
 	assert rows.len == 1
 	assert rows[0].children.len == 1
 	assert rows[0].children[0].name == 'child'
+}
+
+fn test_where_keeps_same_relationship_terms_together_across_a_root_term() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+	mut children := orm.new_query[IncludeChild](db)
+	children.insert(IncludeChild{
+		parent_id: 1
+		name:      'other child'
+	})!
+
+	crossed :=
+		parents.where('children.name = ? && name = ? && children.id = ?', 'child', 'parent', 2)!.query()!
+	assert crossed.len == 0
+	matched :=
+		parents.where('children.name = ? && name = ? && children.id = ?', 'child', 'parent', 1)!.query()!
+	assert matched.len == 1
+}
+
+fn test_where_resolves_aliased_fkeys_in_relationship_predicates() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeAliasedFkeyParent](db)
+	mut children := orm.new_query[IncludeAliasedFkeyChild](db)
+	mut grandkids := orm.new_query[IncludeAliasedFkeyGrandkid](db)
+	parents.create()!
+	children.create()!
+	grandkids.create()!
+	parents.insert(IncludeAliasedFkeyParent{
+		name: 'parent'
+	})!
+	children.insert(IncludeAliasedFkeyChild{
+		parent_id: 1
+		name:      'child'
+	})!
+	grandkids.insert(IncludeAliasedFkeyGrandkid{
+		child_id: 1
+		name:     'grandkid'
+	})!
+
+	assert parents.where('children.name = ?', 'child')!.count()! == 1
+	assert parents.where('children.grandkids.name = ?', 'grandkid')!.count()! == 1
+}
+
+fn test_where_aliases_each_hop_of_a_self_referential_relationship() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	mut nodes := orm.new_query[IncludeSelfNode](db)
+	nodes.create()!
+	nodes.insert(IncludeSelfNode{
+		name: 'root'
+	})!
+	nodes.insert(IncludeSelfNode{
+		name: 'other root'
+	})!
+	nodes.insert(IncludeSelfNode{
+		parent_id: 1
+		name:      'child'
+	})!
+	nodes.insert(IncludeSelfNode{
+		parent_id: 3
+		name:      'grandchild'
+	})!
+
+	direct := nodes.where('children.name = ?', 'child')!.query()!
+	assert direct.len == 1
+	assert direct[0].name == 'root'
+	deep := nodes.where('children.children.name = ?', 'grandchild')!.query()!
+	assert deep.len == 1
+	assert deep[0].name == 'root'
 }
 
 fn test_where_filters_an_optional_array_relationship() {
