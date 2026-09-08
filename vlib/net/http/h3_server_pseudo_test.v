@@ -246,6 +246,67 @@ fn test_h3_build_request_canonicalizes_host_to_authority() {
 	assert req.header.get(.host)? == 'authority.example'
 }
 
+fn test_h3_build_request_rejects_overflowing_content_length() {
+	st := &H3ServerStream{
+		headers: [
+			quic.QpackFieldLine{
+				name: ':method'
+				value: 'GET'
+			},
+			quic.QpackFieldLine{
+				name: ':path'
+				value: '/'
+			},
+			quic.QpackFieldLine{
+				name: ':scheme'
+				value: 'https'
+			},
+			quic.QpackFieldLine{
+				name: ':authority'
+				value: 'example.com'
+			},
+			quic.QpackFieldLine{
+				name: 'content-length'
+				value: '99999999999999999999'
+			},
+		]
+	}
+	h3_build_request(st) or {
+		assert err.msg().contains('outside the supported range')
+		return
+	}
+	assert false, 'expected an overflowing content-length to be rejected'
+}
+
+fn test_h3_validate_request_pseudo_rejects_duplicate_host_fields() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'GET'
+		},
+		quic.QpackFieldLine{
+			name: ':path'
+			value: '/'
+		},
+		quic.QpackFieldLine{
+			name: ':scheme'
+			value: 'https'
+		},
+		quic.QpackFieldLine{
+			name: 'host'
+			value: 'first.example'
+		},
+		quic.QpackFieldLine{
+			name: 'host'
+			value: 'second.example'
+		},
+	]) or {
+		assert err.msg().contains('duplicate host')
+		return
+	}
+	assert false, 'expected duplicate host fields to be rejected'
+}
+
 fn test_h3_validate_request_pseudo_rejects_missing_authority_and_host() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{

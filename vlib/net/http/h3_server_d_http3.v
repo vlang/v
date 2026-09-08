@@ -7,6 +7,7 @@ import net
 import net.quic
 import crypto.ecdsa
 import crypto.rand
+import strconv
 import sync
 
 // This file is gated behind `-d http3`, same as h3_client_d_http3.v/
@@ -675,7 +676,12 @@ fn h3_build_request(st &H3ServerStream) !Request {
 					if !h2_all_digits(f.value) {
 						return error('h3 server: malformed content-length "${f.value}"')
 					}
-					cl := f.value.int()
+					cl := strconv.atoi(f.value) or {
+						return error('h3 server: content-length is outside the supported range')
+					}
+					if cl > h3_server_max_request_body {
+						return error('h3 server: content-length ${cl} exceeds the ${h3_server_max_request_body}-byte request-body limit')
+					}
 					// RFC 9110 §8.6: multiple content-length fields with
 					// differing values are malformed -- validate every
 					// occurrence, not just the last.
@@ -734,6 +740,7 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 	mut has_scheme := false
 	mut seen_authority := false
 	mut has_authority := false
+	mut seen_host := false
 	mut has_host := false
 	mut method := ''
 	for f in headers {
@@ -790,8 +797,12 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 			if reason != '' {
 				return error(reason)
 			}
-			if f.name == 'host' && f.value != '' {
-				has_host = true
+			if f.name == 'host' {
+				if seen_host {
+					return error('duplicate host field')
+				}
+				seen_host = true
+				has_host = f.value != ''
 			}
 		}
 	}
