@@ -1834,6 +1834,12 @@ fn test_pr_review_codegen_batch_fourteen() {
 
 fn test_fn_literal_shared_mode_matches_alias_inside_generic_fn() {
 	v3_bin := build_v3()
+	direct := run_good(v3_bin, 'good_direct_shared_fn_param_in_generic',
+		'type State = int\nstruct Router {}\nfn (mut r Router) accept(handler fn (shared value State)) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (shared value State) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert direct == 'true'
+	run_bad(v3_bin, 'bad_direct_shared_fn_param_in_generic',
+		'type State = int\nstruct Router {}\nfn (mut r Router) accept(handler fn (shared value State)) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (value State) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 	matching := run_good(v3_bin, 'good_shared_fn_literal_alias_in_generic',
 		'type SharedHandler = fn (shared value State)\nstruct State {}\nstruct Router {}\nfn (mut r Router) accept(handler SharedHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (shared value State) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	assert matching == 'true'
@@ -1844,6 +1850,12 @@ fn test_fn_literal_shared_mode_matches_alias_inside_generic_fn() {
 
 fn test_fn_literal_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	v3_bin := build_v3()
+	direct := run_good(v3_bin, 'good_direct_const_fn_param_in_generic',
+		'struct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler fn (const_event &C.native_event)) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert direct == 'true'
+	run_bad(v3_bin, 'bad_direct_const_fn_param_in_generic',
+		'struct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler fn (const_event &C.native_event)) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 	matching := run_good(v3_bin, 'good_const_fn_literal_alias_in_generic',
 		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler ConstHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	assert matching == 'true'

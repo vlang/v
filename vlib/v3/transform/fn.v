@@ -2084,6 +2084,27 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 	return params
 }
 
+fn (mut t Transformer) call_param_source_types_from_decl(call_name string) ?[]string {
+	if call_name.len == 0 || isnil(t.tc) {
+		return none
+	}
+	t.ensure_call_param_types_decl_index()
+	decl := t.call_param_types_decl_index[call_name] or { return none }
+	node := t.a.nodes[decl.idx]
+	mut params := []string{}
+	for i in 0 .. node.children_count {
+		child := t.a.child_node(&node, i)
+		if child.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
+			continue
+		}
+		params << t.decl_param_type_in_module(child.typ, decl.module)
+	}
+	return params
+}
+
 fn (mut t Transformer) ensure_call_param_types_decl_index() {
 	if t.call_param_types_index_ready {
 		return
@@ -2287,16 +2308,25 @@ fn (t &Transformer) decl_fn_type_in_module(typ string, module_name string) ?stri
 
 fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name string) string {
 	mut text := param.trim_space()
+	mut mode := ''
+	if text.starts_with('shared ') {
+		mode = 'shared '
+		text = text[7..].trim_space()
+	}
 	mut is_mut := false
 	if text.starts_with('mut ') {
 		is_mut = true
 		text = text[4..].trim_space()
 	}
+	mut c_abi_name := ''
 	space := generic_top_level_space_index(text)
 	if space > 0 {
 		head := text[..space].trim_space()
 		tail := text[space + 1..].trim_space()
-		if generic_fn_type_param_head_is_name(head, tail) {
+		if head.starts_with('const_') && tail.starts_with('&') {
+			c_abi_name = head + ' '
+			text = tail
+		} else if generic_fn_type_param_head_is_name(head, tail) {
 			text = tail
 		}
 	}
@@ -2314,9 +2344,9 @@ fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name strin
 	}
 	scoped := t.decl_param_type_in_module(text, module_name)
 	if is_mut && scoped.len > 0 && !scoped.starts_with('&') {
-		return '&' + scoped
+		return mode + c_abi_name + '&' + scoped
 	}
-	return scoped
+	return mode + c_abi_name + scoped
 }
 
 // call_is_variadic updates call is variadic state for Transformer.
@@ -11588,6 +11618,7 @@ fn (mut t Transformer) validate_resolved_receiver_method_args(node flat.Node, ba
 	if params.len == 0 {
 		return true
 	}
+	source_param_types := t.call_param_source_types_from_decl(method_name) or { []string{} }
 	param_offset := t.receiver_method_param_offset(base_id, node, params, method_name)
 	if param_offset == 0 {
 		return true
@@ -11667,7 +11698,12 @@ fn (mut t Transformer) validate_resolved_receiver_method_args(node flat.Node, ba
 		}
 		actual_name := t.specialized_expr_type_name(arg_id)
 		expected_name := t.semantic_type_name(expected)
-		if t.resolved_receiver_arg_compatible(arg_id, actual_name, expected_name) {
+		expected_validation_name := if param_idx < source_param_types.len {
+			t.fn_type_with_compatible_source_modes(source_param_types[param_idx], expected_name)
+		} else {
+			expected_name
+		}
+		if t.resolved_receiver_arg_compatible(arg_id, actual_name, expected_validation_name) {
 			child_idx++
 			arg_idx++
 			continue
@@ -11825,6 +11861,23 @@ fn (t &Transformer) fn_type_texts_signature_compatible_without_c_abi_names_resol
 	expected_resolved :=
 		t.normalize_fn_signature_component_aliases(expected, 0).replace('const&', '&').replace('const &', '&')
 	return actual_resolved == expected_resolved
+}
+
+fn (t &Transformer) fn_type_with_compatible_source_modes(source string, semantic string) string {
+	if (!source.contains('fn(') && !source.contains('fn ('))
+		|| (!semantic.contains('fn(') && !semantic.contains('fn (')) {
+		return semantic
+	}
+	source_normalized := t.normalize_fn_signature_component_aliases(source, 0)
+	semantic_normalized := t.normalize_fn_signature_component_aliases(semantic, 0)
+	source_shape :=
+		source_normalized.replace('shared ', '').replace('const&', '&').replace('const &', '&')
+	semantic_shape :=
+		semantic_normalized.replace('shared ', '').replace('const&', '&').replace('const &', '&')
+	if source_shape == semantic_shape {
+		return source
+	}
+	return semantic
 }
 
 fn (t &Transformer) normalize_fn_signature_component_aliases(text string, depth int) string {
