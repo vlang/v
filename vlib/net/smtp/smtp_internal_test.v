@@ -233,6 +233,16 @@ fn test_mail_message_data_encodes_non_ascii_subject() {
 	}
 	message2 := mail2.message_data()
 	assert message2.contains('Subject: =?utf-8?B?0J/RgNC40LLQtdGCINC80LjRgA==?=\r\n')
+
+	// ASCII controls are encoded so they cannot inject additional headers.
+	mail3 := Mail{
+		from: 'sender@example.com'
+		to: 'receiver@example.com'
+		subject: 'Hello\r\nBcc: injected@example.com'
+	}
+	message3 := mail3.message_data()
+	assert message3.contains('Subject: =?utf-8?B?')
+	assert !message3.contains('\r\nBcc: injected@example.com')
 }
 
 fn test_encode_rfc2047_splits_long_utf8_without_cutting_characters() {

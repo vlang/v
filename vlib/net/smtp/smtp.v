@@ -424,7 +424,11 @@ fn (cfg &Mail) message_data() string {
 	date := cfg.date.custom_format('ddd, D MMM YYYY HH:mm ZZ')
 	sb.write_string('Date: ${date}\r\n')
 
-	subject := if cfg.subject.is_ascii() { cfg.subject } else { encode_rfc2047(cfg.subject) }
+	subject := if cfg.subject.is_ascii() && !cfg.subject.bytes().any(it < 32 || it == 127) {
+		cfg.subject
+	} else {
+		encode_rfc2047(cfg.subject)
+	}
 	sb.write_string('Subject: ${subject}\r\n')
 
 	if parts.len > 1 || attachments.len > 0 {
