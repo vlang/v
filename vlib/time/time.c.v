@@ -144,15 +144,10 @@ fn convert_ctime(t C.tm, nanosecond int) Time {
 pub fn (t Time) strftime(fmt string) string {
 	mut strftime_fmt := fmt
 	mut strftime_unix := t.unix
-	mut zone_name := ''
-	mut zone_offset := ''
-	mut unix_time := ''
 	if loc := t.location() {
 		zone := loc.zone_at(t.unix) or { Zone{} }
-		zone_name = zone.name
-		zone_offset = strftime_zone_offset(zone.offset)
-		unix_time = t.unix.str()
-		strftime_fmt = strftime_location_format(fmt)
+		strftime_fmt = strftime_location_format(fmt, zone.name, strftime_zone_offset(zone.offset),
+			t.unix.str())
 		strftime_unix = t.local_unix()
 	}
 	mut tm := &C.tm{}
@@ -164,43 +159,99 @@ pub fn (t Time) strftime(fmt string) string {
 	mut buf := [1024]char{}
 	fmt_c := unsafe { &char(strftime_fmt.str) }
 	C.strftime(&buf[0], usize(sizeof(buf)), fmt_c, tm)
-	res := unsafe { cstring_to_vstring(&buf[0]) }
-	if zone_name != '' || zone_offset != '' || unix_time != '' {
-		return res.replace(strftime_zone_name_placeholder, zone_name).replace(strftime_zone_offset_placeholder,
-			zone_offset).replace(strftime_unix_placeholder, unix_time)
-	}
-	return res
+	return unsafe { cstring_to_vstring(&buf[0]) }
 }
 
-const strftime_zone_name_placeholder = '@V_STRFTIME_ZONE_NAME@'
-const strftime_zone_offset_placeholder = '@V_STRFTIME_ZONE_OFFSET@'
-const strftime_unix_placeholder = '@V_STRFTIME_UNIX@'
-
-fn strftime_location_format(fmt string) string {
+fn strftime_location_format(fmt string, zone_name string, zone_offset string, unix_time string) string {
 	mut out := strings.new_builder(fmt.len)
 	for i := 0; i < fmt.len; i++ {
 		if fmt[i] != `%` || i + 1 >= fmt.len {
 			out.write_u8(fmt[i])
 			continue
 		}
+		directive_start := i
 		i++
-		match fmt[i] {
+		mut no_padding := false
+		mut padding := ` `
+		mut uppercase := false
+		mut swap_case := false
+		for i < fmt.len {
+			match fmt[i] {
+				`-` {
+					no_padding = true
+				}
+				`_` {
+					no_padding = false
+					padding = ` `
+				}
+				`0` {
+					no_padding = false
+					padding = `0`
+				}
+				`^` {
+					uppercase = true
+				}
+				`#` {
+					swap_case = true
+				}
+				else {
+					break
+				}
+			}
+			i++
+		}
+		mut width := 0
+		for i < fmt.len && fmt[i] >= `0` && fmt[i] <= `9` {
+			width = width * 10 + int(fmt[i] - `0`)
+			i++
+		}
+		if i < fmt.len && (fmt[i] == `E` || fmt[i] == `O`) {
+			i++
+		}
+		if i >= fmt.len {
+			out.write_string(fmt[directive_start..])
+			break
+		}
+		value := match fmt[i] {
 			`Z` {
-				out.write_string(strftime_zone_name_placeholder)
+				zone_name
 			}
 			`z` {
-				out.write_string(strftime_zone_offset_placeholder)
+				zone_offset
 			}
 			`s` {
-				out.write_string(strftime_unix_placeholder)
+				unix_time
 			}
 			else {
-				out.write_u8(`%`)
-				out.write_u8(fmt[i])
+				out.write_string(fmt[directive_start..i + 1])
+				continue
 			}
 		}
+		formatted := strftime_location_value(value, width, no_padding, padding, uppercase,
+			swap_case)
+		// The value is inserted into the libc format as a literal.
+		out.write_string(formatted.replace('%', '%%'))
 	}
 	return out.str()
+}
+
+fn strftime_location_value(value string, width int, no_padding bool, padding u8, uppercase bool, swap_case bool) string {
+	mut formatted := value
+	if uppercase {
+		formatted = formatted.to_upper()
+	}
+	if swap_case {
+		formatted = if formatted == formatted.to_upper() {
+			formatted.to_lower()
+		} else {
+			formatted.to_upper()
+		}
+	}
+	if no_padding || formatted.len >= width {
+		return formatted
+	}
+	pad := if padding == `0` { '0' } else { ' ' }
+	return pad.repeat(width - formatted.len) + formatted
 }
 
 fn strftime_zone_offset(offset int) string {

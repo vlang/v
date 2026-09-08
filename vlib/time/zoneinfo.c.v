@@ -113,7 +113,7 @@ pub fn (t Time) in(loc &Location) !Time {
 
 // location returns the IANA location associated with `t`, if any.
 pub fn (t Time) location() ?&Location {
-	if unsafe { t.loc == nil } {
+	if !t.has_location() {
 		return none
 	}
 	return t.loc
@@ -639,34 +639,34 @@ fn parse_posix_rule(text string) !PosixRule {
 	}
 }
 
-fn posix_rule_month_day(year int, rule PosixRule) (int, int) {
+fn posix_rule_date(year int, rule PosixRule) (int, int, int) {
 	match rule.kind {
 		.month_week_day {
-			return rule.month, posix_month_week_day(year, rule)
+			return year, rule.month, posix_month_week_day(year, rule)
 		}
 		.julian_no_leap {
 			mut ordinal := rule.day
 			if is_leap_year(year) && ordinal >= 60 {
 				ordinal++
 			}
-			return month_day_from_year_day(year, ordinal)
+			return date_from_year_day(year, ordinal)
 		}
 		.day_of_year {
-			return month_day_from_year_day(year, rule.day + 1)
+			return date_from_year_day(year, rule.day + 1)
 		}
 	}
 }
 
-fn month_day_from_year_day(year int, ordinal int) (int, int) {
+fn date_from_year_day(year int, ordinal int) (int, int, int) {
 	mut day := ordinal
 	for month in 1 .. 13 {
 		days := month_days[month - 1] + if month == 2 && is_leap_year(year) { 1 } else { 0 }
 		if day <= days {
-			return month, day
+			return year, month, day
 		}
 		day -= days
 	}
-	return 12, 31
+	return year + 1, 1, day
 }
 
 fn parse_posix_time(text string) !int {
@@ -761,9 +761,9 @@ fn (rule PosixZoneRule) zone_at(unix_time i64) Zone {
 }
 
 fn (rule PosixZoneRule) transition_utc(year int, date_rule PosixRule, offset_before int) i64 {
-	month, day := posix_rule_month_day(year, date_rule)
+	transition_year, month, day := posix_rule_date(year, date_rule)
 	local := time_fields_to_unix(Time{
-		year:  year
+		year:  transition_year
 		month: month
 		day:   day
 	})

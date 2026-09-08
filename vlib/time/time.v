@@ -38,7 +38,9 @@ pub const days_before = [
 @[markused]
 pub struct Time {
 	unix i64
-	loc  &Location = unsafe { nil }
+	// loc uses nil so existing Time literals remain unzoned; V requires unsafe
+	// to initialize a reference field with that sentinel.
+	loc &Location = unsafe { nil }
 pub:
 	year       int
 	month      int
@@ -52,6 +54,7 @@ pub:
 
 @[inline]
 fn (t Time) has_location() bool {
+	// V requires unsafe to construct the nil reference used by loc's sentinel.
 	return t.loc != unsafe { nil }
 }
 

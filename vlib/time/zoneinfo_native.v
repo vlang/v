@@ -37,7 +37,7 @@ pub fn (t Time) in(loc &Location) !Time {
 
 // location returns the IANA location associated with `t`, if any.
 pub fn (t Time) location() ?&Location {
-	if unsafe { t.loc == nil } {
+	if !t.has_location() {
 		return none
 	}
 	return t.loc

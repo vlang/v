@@ -130,6 +130,7 @@ fn test_location_time_strftime_uses_location_zone_directives() {
 	assert local.strftime('%Y-%m-%d %H:%M:%S %Z %z') == '2024-03-10 03:00:00 EDT -0400'
 	assert local.strftime('%s') == '1710054000'
 	assert local.strftime('%%Z %Z') == '%Z EDT'
+	assert local.strftime('%12s|%10Z|%10z|%EZ|%Oz') == '  1710054000|       EDT|     -0400|EDT|-0400'
 }
 
 fn test_location_time_custom_format_uses_location_offset() {

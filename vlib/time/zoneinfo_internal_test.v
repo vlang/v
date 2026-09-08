@@ -88,6 +88,29 @@ fn test_parse_posix_negative_transition_time_with_minutes() {
 	assert transition == expected
 }
 
+fn test_posix_day_365_rolls_into_next_non_leap_year() {
+	rule := parse_posix_zone_rule('STD0DST,365/0,365/12')!
+	start := rule.transition_utc(2050, rule.start, rule.std_offset)
+	end := rule.transition_utc(2050, rule.end, rule.dst_offset)
+	assert start == time_fields_to_unix(Time{
+		year:  2051
+		month: 1
+		day:   1
+	})
+	assert end == time_fields_to_unix(Time{
+		year:  2051
+		month: 1
+		day:   1
+		hour:  11
+	})
+	leap_start := rule.transition_utc(2052, rule.start, rule.std_offset)
+	assert leap_start == time_fields_to_unix(Time{
+		year:  2052
+		month: 12
+		day:   31
+	})
+}
+
 fn test_tzif_rejects_negative_counts() {
 	mut data := []u8{len: 44}
 	copy(mut data[0..4], 'TZif'.bytes())
