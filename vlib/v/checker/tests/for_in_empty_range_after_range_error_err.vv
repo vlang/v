@@ -109,6 +109,11 @@ fn main() {
 		println(i)
 	}
 
+	// Apply represented widths after nested untyped subexpressions.
+	for i in (4294967295 + 1) / 4294967295 .. 1 {
+		println(i)
+	}
+
 	// Float-to-u64 casts saturate negative values to zero.
 	for i in u64(-1.0) .. 1 {
 		println(i)

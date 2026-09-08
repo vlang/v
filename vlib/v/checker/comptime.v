@@ -1355,11 +1355,14 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 						mut result := i64(0)
 
 						is_untyped_int := promoted_type == ast.int_literal_type
+						literal_runtime_type := if is_untyped_int {
+							c.range_literal_expr_type(expr) or { ast.i64_type }
+						} else {
+							promoted_type
+						}
 						mut use_signed_arithmetic := is_untyped_int || promoted_type.is_signed()
 						if is_untyped_int && expr.op in [.div, .mod] {
-							if literal_type := c.range_literal_expr_type(expr) {
-								use_signed_arithmetic = literal_type.is_signed()
-							}
+							use_signed_arithmetic = literal_runtime_type.is_signed()
 						}
 						if use_signed_arithmetic {
 							match expr.op {
@@ -1471,11 +1474,7 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 						}
 
 						if is_untyped_int {
-							return if expr.op == .power {
-								c.wrap_comptime_int(result, ast.int_type)
-							} else {
-								result
-							}
+							return c.wrap_comptime_int(result, literal_runtime_type)
 						}
 						return c.wrap_comptime_int(result, promoted_type)
 					}
