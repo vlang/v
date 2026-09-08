@@ -117,3 +117,10 @@ vlib/v/checker/tests/asm_intel_operand_width_err.vv:139:3: error: hard register 
       |         ~~~~~~~~~~~~~~~~~~~~~~~~~
   140 |         ; ; r (base)
   141 |     }
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:147:3: error: named operands cannot be used as RIP-relative displacements in structured `intel` assembly; use a literal or label displacement, or a `raw intel` block with an explicit operand modifier
+  145 |     mut result := i64(0)
+  146 |     asm amd64 intel {
+  147 |         mov result, [rip + offset]
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~
+  148 |         ; =r (result)
+  149 |         ; r (offset)

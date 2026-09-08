@@ -141,6 +141,15 @@ fn intel_address_hard_displacement(base i64) {
 	}
 }
 
+fn intel_rip_relative_named_displacement(offset i64) {
+	mut result := i64(0)
+	asm amd64 intel {
+		mov result, [rip + offset]
+		; =r (result)
+		; r (offset)
+	}
+}
+
 fn intel_label_alias_collisions(value i64) {
 	asm amd64 intel {
 	local_width_label:

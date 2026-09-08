@@ -4408,6 +4408,12 @@ fn (c &Checker) asm_intel_arg_has_named_alias(arg ast.AsmArg,
 fn (mut c Checker) check_asm_intel_address_register_widths(arg ast.AsmArg,
 	aliases map[string]ast.Type, native_width int, pos token.Pos) {
 	if arg is ast.AsmAddressing && c.asm_intel_arg_has_named_alias(arg, aliases) {
+		if arg.mode == .rip_plus_displacement
+			&& c.asm_intel_arg_has_named_alias(arg.displacement, aliases) {
+			c.error('named operands cannot be used as RIP-relative displacements in structured `intel` assembly; use a literal or label displacement, or a `raw intel` block with an explicit operand modifier',
+				pos)
+			return
+		}
 		for address_arg in [arg.base, arg.index, arg.displacement] {
 			if address_arg is ast.AsmRegister && address_arg.size > 0
 				&& address_arg.size != native_width * 8 {
