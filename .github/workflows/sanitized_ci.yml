@@ -145,6 +145,7 @@ jobs:
             lsan_options: detect_leaks=0
     name: sanitize-${{ matrix.name }}
     env:
+      SANITIZER_GITHUB_JOB: sanitize-${{ matrix.name }}
       VFLAGS: ${{ matrix.vflags }}
       VJOBS: 1
       UBSAN_OPTIONS: ${{ matrix.ubsan_options }}
@@ -161,12 +162,13 @@ jobs:
         run: make -j4 && ./v symlink
       - name: V doctor
         if: ${{ matrix.name != 'memory-clang-compiler' }}
-        run: ./v doctor
+        run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v doctor
       - name: Ensure code is well formatted
         if: ${{ matrix.name != 'memory-clang-compiler' }}
-        run: ./v -silent test-cleancode
+        run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v -silent test-cleancode
       - name: Install dependencies
         run: |
+          export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
@@ -174,6 +176,7 @@ jobs:
           ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
       - name: Recompile V with -cstrict
         run: |
+          export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
           if [ "${{ matrix.sanitizer }}" = "memory" ]; then
             ./v -cc clang -cg -cstrict -o v cmd/v
           else
@@ -182,14 +185,16 @@ jobs:
       - name: Self tests (-fsanitize=undefined)
         if: ${{ matrix.sanitizer == 'undefined' }}
         run: |
+          export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
           ./v -cflags -fsanitize=undefined -o v2 cmd/v
           ./v2 -cflags -fsanitize=undefined -silent test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
         if: ${{ matrix.sanitizer == 'undefined' }}
-        run: ./v2 -silent build-examples
+        run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v2 -silent build-examples
       - name: Self tests (-fsanitize=address)
         if: ${{ matrix.sanitizer == 'address' && matrix.name != 'memory-clang-compiler' && matrix.name != 'memory-clang' }}
         run: |
+          export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
           if [ "${{ matrix.cc }}" = "clang" ] && [ "${{ matrix.name }}" = "address-clang" ]; then
             ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -silent test-self vlib
           elif [ "${{ matrix.cc }}" = "gcc" ] && [ "${{ matrix.name }}" = "address-gcc" ]; then
@@ -200,6 +205,7 @@ jobs:
       - name: Test vlib/v/tests/ (V compiled with -fsanitize=address)
         if: ${{ matrix.sanitizer == 'address' && (matrix.name == 'address-clang' || matrix.name == 'address-gcc') }}
         run: |
+          export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
           if [ "${{ matrix.name }}" = "address-clang" ]; then
             ./v -cflags -fsanitize=address -o v cmd/v
             ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
@@ -208,11 +214,11 @@ jobs:
             ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
           fi
       - name: Build examples (V compiled with -fsanitize=address)
-        if: ${{ matrix.sanitizer == 'address' }}
-        run: ./v -silent build-examples
+        if: ${{ matrix.name == 'address-clang' || matrix.name == 'address-gcc' }}
+        run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v -silent build-examples
       - name: Self tests (-fsanitize=memory)
         if: ${{ matrix.name == 'memory-clang' }}
-        run: ./v -cflags -fsanitize=memory -silent test-self -msan-compiler vlib
+        run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v -cflags -fsanitize=memory -silent test-self -msan-compiler vlib
       - name: Test vlib/v/tests/ (V compiled with -fsanitize=memory)
         if: ${{ matrix.name == 'memory-clang-compiler' }}
         run: |
