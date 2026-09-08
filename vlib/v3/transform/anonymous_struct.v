@@ -8,6 +8,14 @@ fn inferred_anonymous_struct_type_exists(tc &types.TypeChecker, name string) boo
 		|| name in tc.enum_names || name in tc.interface_names
 }
 
+// materialize_inferred_anonymous_structs_before_prepare gives unresolved
+// anonymous struct literals concrete types before reusable transform indexes
+// are built.
+pub fn materialize_inferred_anonymous_structs_before_prepare(mut a flat.FlatAst, tc &types.TypeChecker) bool {
+	mut t := new_transformer(mut a, tc, map[string]bool{})
+	return t.materialize_inferred_anonymous_structs()
+}
+
 // materialize_inferred_anonymous_structs gives a concrete declaration to an
 // inferred `struct { field: expression }` literal whose field expressions were
 // not syntactically typed by the parser. Semantic checking has resolved those
@@ -73,6 +81,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 				if semantic_name := inferred_by_shape[shape] {
 					t.a.nodes[idx].value = semantic_name.all_after_last('.')
 					t.a.nodes[idx].typ = semantic_name
+					t.mark_scoped_owned_base_node(idx)
 					t.tc.register_synth_type(flat.NodeId(idx), types.Struct{
 						name: semantic_name
 					})
@@ -133,6 +142,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 				inferred_by_shape[shape] = semantic_name
 				t.a.nodes[idx].value = name
 				t.a.nodes[idx].typ = semantic_name
+				t.mark_scoped_owned_base_node(idx)
 				t.tc.register_synth_type(flat.NodeId(idx), types.Struct{
 					name: semantic_name
 				})

@@ -76,6 +76,11 @@ fn test_inferred_anonymous_structs_reuse_their_semantic_shape() {
 	a.source_files[1] = token.File.unindexed(main_file, 1)
 	first_struct_id, first_value_id := add_inferred_anonymous_struct(mut a, 1)
 	second_struct_id, second_value_id := add_inferred_anonymous_struct(mut a, 1)
+	different_struct_id, different_value_id := add_inferred_anonymous_struct(mut a, 1)
+	// Calls are the unresolved syntax that reaches this post-check prepass.
+	a.nodes[int(first_value_id)].kind = .call
+	a.nodes[int(second_value_id)].kind = .call
+	a.nodes[int(different_value_id)].kind = .call
 	a.add_node(flat.Node{
 		kind: .file
 		value: main_file
@@ -85,12 +90,14 @@ fn test_inferred_anonymous_structs_reuse_their_semantic_shape() {
 	tc.file_modules[main_file] = 'main'
 	tc.register_synth_type(first_value_id, types.Type(types.int_))
 	tc.register_synth_type(second_value_id, types.Type(types.int_))
+	tc.register_synth_type(different_value_id, types.Type(types.string_))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	assert t.materialize_inferred_anonymous_structs()
 
 	shared_name := 'AnonStruct_v3_inferred_${first_struct_id}'
 	assert a.nodes[int(first_struct_id)].typ == shared_name
 	assert a.nodes[int(second_struct_id)].typ == shared_name
+	assert a.nodes[int(different_struct_id)].typ != shared_name
 	mut synthesized_declarations := 0
 	for node in a.nodes {
 		if node.kind == .struct_decl && node.value == shared_name {
@@ -133,7 +140,7 @@ fn test_inferred_anonymous_struct_name_does_not_replace_user_struct() {
 	assert tc.structs[generated_name][0].name == 'item'
 }
 
-fn test_prepared_selfhost_transform_materializes_before_repreparing() {
+fn test_prepared_selfhost_transform_materializes_before_preparing() {
 	mut a := flat.FlatAst.new()
 	main_file := '/tmp/project/main.v'
 	a.source_files[1] = token.File.unindexed(main_file, 1)
@@ -146,12 +153,14 @@ fn test_prepared_selfhost_transform_materializes_before_repreparing() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.file_modules[main_file] = 'main'
 	tc.register_synth_type(value_id, types.Type(types.int_))
+	assert materialize_inferred_anonymous_structs_before_prepare(mut a, &tc)
+	name := 'AnonStruct_v3_inferred_${struct_id}'
 	mut prepared := prepare_selfhost_transform(&a, &tc, true)
-	_, _, errors, _, _ := transform_prepared_selfhost_owned(mut prepared, mut a, &tc,
-		map[string]bool{}, unsafe { nil })
+	assert name in prepared.transformer.structs
+	_, _, errors, _, _ := transform_prepared_selfhost_owned(mut prepared, mut a, &tc, map[string]bool{}, unsafe { nil })
+	transform_worker_scope_free(prepared.take_scope())
 
 	assert errors.len == 0
-	name := 'AnonStruct_v3_inferred_${struct_id}'
 	assert a.nodes[int(struct_id)].typ == name
-	assert name in prepared.transformer.structs
+	assert name in tc.structs
 }
