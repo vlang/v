@@ -276,7 +276,7 @@ fn is_local_repository(query string) bool {
 }
 
 fn (mut m Module) get_installed() {
-	if m.is_external && !m.existing_checkout_matches_source() {
+	if m.url != '' && !m.existing_checkout_matches_source() {
 		return
 	}
 	refs := os.execute_opt('git ls-remote --refs ${m.install_path}') or { return }
@@ -303,7 +303,8 @@ fn (m Module) existing_checkout_matches_source() bool {
 	if !os.is_dir(m.install_path) {
 		return false
 	}
-	existing_url := match settings.vcs {
+	vcs := m.vcs or { settings.vcs }
+	existing_url := match vcs {
 		.git {
 			result := os.execute_opt('git -C ${os.quoted_path(m.install_path)} remote get-url origin') or {
 				return false

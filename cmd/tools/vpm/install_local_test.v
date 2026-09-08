@@ -209,10 +209,18 @@ fn test_direct_install_rejects_different_repository_at_same_path() {
 	create_local_git_module(first_repo_path, 'foo.bar')
 	create_local_git_module(second_repo_path, 'foo.bar')
 	cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(first_repo_path)}')
+	installed_path := os.join_path(vmodules_path, 'foo', 'bar')
+	mut registered_mod := Module{
+		name:         'foo.bar'
+		url:          second_repo_path
+		install_path: installed_path
+		vcs:          VCS.git
+	}
+	registered_mod.get_installed()
+	assert !registered_mod.is_installed
 
 	res := cmd_fail(@LOCATION, '${vexe} install ${os.quoted_path(second_repo_path)}')
 	assert res.output.contains('refusing to install `foo.bar`: destination'), res.output
-	installed_path := os.join_path(vmodules_path, 'foo', 'bar')
 	remote :=
 		cmd_ok(@LOCATION, 'git -C ${os.quoted_path(installed_path)} remote get-url origin').output.trim_space()
 	assert os.real_path(remote) == os.real_path(first_repo_path)
