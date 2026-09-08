@@ -155,6 +155,16 @@ fn test_install_warns_when_repeated_dots_are_collapsed() {
 	assert os.exists(os.join_path(vmodules_path, 'foo', 'bar', 'v.mod'))
 }
 
+fn test_install_path_containment_supports_filesystem_roots() {
+	mut filesystem_root := os.real_path(os.getwd())
+	for os.dir(filesystem_root) != filesystem_root {
+		filesystem_root = os.dir(filesystem_root)
+	}
+	assert install_path_is_in_vmodules(os.join_path(filesystem_root, 'vpm_test_module'),
+		filesystem_root)
+	assert !install_path_is_in_vmodules(filesystem_root, filesystem_root)
+}
+
 fn test_dotted_install_does_not_nest_inside_existing_module() {
 	vmodules_path := os.join_path(test_path, 'vmodules_nested_module')
 	test_utils.set_test_env(vmodules_path)

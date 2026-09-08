@@ -203,13 +203,21 @@ fn (m Module) install() InstallResult {
 fn install_path_is_in_vmodules(install_path string, vmodules_path string) bool {
 	vmodules_root := real_path_with_missing_suffix(vmodules_path)
 	resolved_install_path := real_path_with_missing_suffix(install_path)
-	return resolved_install_path.starts_with(vmodules_root + os.path_separator)
+	return path_is_below(resolved_install_path, vmodules_root)
+}
+
+fn path_is_below(path string, root string) bool {
+	if path == root {
+		return false
+	}
+	boundary := if root.ends_with(os.path_separator) { root } else { root + os.path_separator }
+	return path.starts_with(boundary)
 }
 
 fn vcs_backed_install_ancestor(install_path string, vmodules_path string) ?string {
 	vmodules_root := real_path_with_missing_suffix(vmodules_path)
 	mut parent := real_path_with_missing_suffix(os.dir(install_path))
-	for parent != vmodules_root && parent.starts_with(vmodules_root + os.path_separator) {
+	for path_is_below(parent, vmodules_root) {
 		if vcs_used_in_dir(parent) != none {
 			return parent
 		}
