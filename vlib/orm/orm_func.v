@@ -53,6 +53,7 @@ mut:
 	relation_load_mode RelationLoadMode
 	include_paths      [][]string
 	include_filters    []IncludeFilter
+	hydration_where    QueryData
 	last_include_path  []string
 	hydration_primary  string
 	hydration_fields   []string
@@ -92,6 +93,7 @@ pub fn (qb_ &QueryBuilder[T]) reset() &QueryBuilder[T] {
 	qb.relation_load_mode = .explicit
 	qb.include_paths = [][]string{}
 	qb.include_filters = []IncludeFilter{}
+	qb.hydration_where = QueryData{}
 	qb.last_include_path = []string{}
 	qb.hydration_primary = ''
 	qb.hydration_fields = []string{}
@@ -506,32 +508,58 @@ fn (qb_ &QueryBuilder[T]) add_where_condition(condition string, params []Primiti
 	parsed := qb.where
 	qb.where = old_where
 	qb.valid_sql_field_names = old_valid_fields
+	grouped := qb.groupable_condition(parsed)
 	if scoped_fields.len == 0 {
-		qb.where = append_query_data(qb.where, qb.groupable_condition(parsed), is_and)
+		qb.where = append_query_data(qb.where, grouped, is_and)
+		hydration_condition := if parsed.fields.len > 1 {
+			v_sql_query_data_parentheses(parsed, 0)
+		} else {
+			parsed
+		}
+		qb.hydration_where = append_query_data(qb.hydration_where, hydration_condition, is_and)
+		qb.rebuild_include_filters()!
 		qb.config.has_where = qb.where.fields.len > 0
 		return
 	}
-	mut scopes := []string{}
 	mut field_scopes := []string{cap: parsed.fields.len}
-	for field in parsed.fields {
+	mut resolved_parsed := clone_query_data(parsed)
+	for i, field in parsed.fields {
+		scope, resolved_field := qb.condition_field_scope_and_field(field)!
+		field_scopes << scope
+		resolved_parsed.fields[i] = resolved_field
+	}
+	hydration_condition := if resolved_parsed.fields.len > 1 {
+		v_sql_query_data_parentheses(resolved_parsed, 0)
+	} else {
+		resolved_parsed
+	}
+	qb.hydration_where = append_query_data(qb.hydration_where, hydration_condition, is_and)
+	// relationship terms filter the root through a correlated subquery, and filter the
+	// hydrated rows of that relationship when it is also included
+	qb.where = append_query_data(qb.where, qb.groupable_condition(qb.exists_wrapped_conditions(resolved_parsed,
+		field_scopes)!), is_and)
+	qb.config.has_where = qb.where.fields.len > 0
+	qb.rebuild_include_filters()!
+}
+
+fn (qb_ &QueryBuilder[T]) rebuild_include_filters() ! {
+	mut qb := unsafe { qb_ }
+	mut scopes := []string{}
+	mut field_scopes := []string{cap: qb.hydration_where.fields.len}
+	for field in qb.hydration_where.fields {
 		scope := qb.condition_field_scope(field)!
 		field_scopes << scope
-		if scope !in scopes {
+		if scope.len > 0 && scope !in scopes {
 			scopes << scope
 		}
 	}
-	// relationship terms filter the root through a correlated subquery, and filter the
-	// hydrated rows of that relationship when it is also included
-	qb.where = append_query_data(qb.where, qb.groupable_condition(qb.exists_wrapped_conditions(parsed,
-		field_scopes)!), is_and)
-	qb.config.has_where = qb.where.fields.len > 0
+	qb.include_filters = []IncludeFilter{}
 	for scope in scopes {
-		if scope.len == 0 {
-			continue
+		qb.include_filters << IncludeFilter{
+			path:   canonical_include_path[T](scope.split('.'))!
+			where:  query_data_for_scope[T](qb.hydration_where, field_scopes, scope)!
+			is_and: true
 		}
-		filter := query_data_for_scope[T](parsed, field_scopes, scope)!
-		path := canonical_include_path[T](scope.split('.'))!
-		qb.add_include_filter(path, filter, is_and)
 	}
 }
 
@@ -917,14 +945,19 @@ fn (qb &QueryBuilder[T]) scoped_condition_fields(condition string) ![]string {
 }
 
 fn (qb &QueryBuilder[T]) condition_field_scope(field string) !string {
+	scope, _ := qb.condition_field_scope_and_field(field)!
+	return scope
+}
+
+fn (qb &QueryBuilder[T]) condition_field_scope_and_field(field string) !(string, string) {
 	if !field.contains('.') {
-		return ''
+		return '', field
 	}
 	if qb.v_sql_field_name(field) in qb.valid_sql_field_names {
-		return ''
+		return '', field
 	}
 	if scope := relationship_scope_for_field[T](field) {
-		return scope
+		return scope, field
 	}
 	// a path rooted at a `@[fkey]` relationship of this table addresses that
 	// relationship directly, whether or not it was included
@@ -943,7 +976,7 @@ fn (qb &QueryBuilder[T]) condition_field_scope(field string) !string {
 	if field.starts_with('${last_relationship}.') {
 		expanded := '${full_path}.${field.all_after('.')}'
 		if scope := relationship_scope_for_field[T](expanded) {
-			return scope
+			return scope, expanded
 		}
 	}
 	return error('${@FN}(): relationship field `${field}` must start with `${last_relationship}.` or a relationship of `${qb.config.table.name}`')
@@ -977,22 +1010,6 @@ fn relationship_terminal_field[T](field string, scope string) string {
 		return parts[1..].join('.')
 	}
 	return field.all_after_last('.')
-}
-
-fn (qb_ &QueryBuilder[T]) add_include_filter(path []string, filter QueryData, is_and bool) {
-	mut qb := unsafe { qb_ }
-	for i in 0 .. qb.include_filters.len {
-		if qb.include_filters[i].path == path {
-			qb.include_filters[i].where = append_query_data(v_sql_query_data_parentheses(qb.include_filters[i].where, 0),
-				v_sql_query_data_parentheses(filter, 0), is_and)
-			return
-		}
-	}
-	qb.include_filters << IncludeFilter{
-		path:   path
-		where:  filter
-		is_and: is_and
-	}
 }
 
 // reject_relationship_filters_for_insert guards the terminals that ignore `where`
@@ -3701,9 +3718,10 @@ fn query_relation_array[U](mut conn Connection, key Primitive, fkey string) ![]U
 
 fn (qb_ &QueryBuilder[T]) add_hydration_filter(data QueryData) ! {
 	mut qb := unsafe { qb_ }
-	mut field_scopes := []string{cap: data.fields.len}
+	mapped := qb.v_sql_mapped_query_data(data)
+	mut field_scopes := []string{cap: mapped.fields.len}
 	mut has_relationship := false
-	for field in data.fields {
+	for field in mapped.fields {
 		if is_include_guard_filter(field) {
 			return error('relationship hydration reached an unresolved ancestor guard')
 		}
@@ -3712,9 +3730,9 @@ fn (qb_ &QueryBuilder[T]) add_hydration_filter(data QueryData) ! {
 		has_relationship = has_relationship || scope.len > 0
 	}
 	condition := if has_relationship {
-		qb.exists_wrapped_conditions(data, field_scopes)!
+		qb.exists_wrapped_conditions(mapped, field_scopes)!
 	} else {
-		data
+		mapped
 	}
 	qb.where = append_query_data(qb.where, qb.groupable_condition(condition), true)
 	qb.config.has_where = qb.where.fields.len > 0

@@ -542,6 +542,20 @@ fn test_where_accepts_the_full_path_of_the_last_included_relationship() {
 	assert rows[0].children[0].grandkids[0].name == 'grandkid'
 }
 
+fn test_where_expands_a_short_path_before_resolving_its_terminal_field() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	rows := parents.include('children')!.then_include('grandkids')!.where('grandkids.toys.name = ?',
+		'toy')!.query()!
+	assert rows.len == 1
+	assert rows[0].children.len == 1
+	assert rows[0].children[0].grandkids.len == 2
+}
+
 fn test_where_accumulates_filters_on_the_same_included_relationship() {
 	mut db := new_include_database()!
 	defer {
@@ -763,6 +777,35 @@ fn test_or_where_preserves_the_connector_after_relationship_aliases_are_canonica
 	assert rows[0].children.len == 2
 }
 
+fn test_or_where_preserves_root_only_branches_in_hydration_filters() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+	mut children := orm.new_query[IncludeChild](db)
+	parents.insert(IncludeParent{
+		name: 'special'
+	})!
+	for name in ['first', 'second'] {
+		children.insert(IncludeChild{
+			parent_id: 2
+			name:      name
+		})!
+	}
+
+	rows := parents.include('children')!.where('children.name = ?', 'missing')!.or_where('name = ?',
+		'special')!.query()!
+	assert rows.len == 1
+	assert rows[0].children.len == 2
+
+	mut root_first := orm.new_query[IncludeParent](db)
+	reversed := root_first.include('children')!.where('name = ?', 'special')!.or_where('children.name = ?',
+		'missing')!.query()!
+	assert reversed.len == 1
+	assert reversed[0].children.len == 2
+}
+
 fn test_where_keeps_same_relationship_terms_together_across_a_root_term() {
 	mut db := new_include_database()!
 	defer {
@@ -808,6 +851,10 @@ fn test_where_resolves_aliased_fkeys_in_relationship_predicates() {
 
 	assert parents.where('children.name = ?', 'child')!.count()! == 1
 	assert parents.where('children.grandkids.name = ?', 'grandkid')!.count()! == 1
+	rows := parents.include('children')!.where('children.name = ?', 'child')!.query()!
+	assert rows.len == 1
+	assert rows[0].children.len == 1
+	assert rows[0].children[0].name == 'child'
 }
 
 fn test_where_aliases_each_hop_of_a_self_referential_relationship() {
