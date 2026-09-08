@@ -501,8 +501,8 @@ fn format_addr(addr string) string {
 		return '<${addr_spec}>'
 	}
 
-	if is_rfc2047_encoded_phrase(name) {
-		return '${name} <${addr_spec}>'
+	if encoded_phrase := format_rfc2047_phrase(name) {
+		return '${encoded_phrase} <${addr_spec}>'
 	}
 	if !name.is_ascii() {
 		return '${encode_rfc2047(name)} <${addr_spec}>'
@@ -512,24 +512,43 @@ fn format_addr(addr string) string {
 	return '"${escaped}" <${addr_spec}>'
 }
 
-// is_rfc2047_encoded_phrase reports whether s consists only of RFC 2047
-// encoded-words separated by whitespace.
-fn is_rfc2047_encoded_phrase(s string) bool {
+// format_rfc2047_phrase preserves an RFC 5322 phrase containing at least one
+// RFC 2047 encoded-word. Plain atom words may be mixed into the phrase. Folding
+// every word boundary keeps caller-supplied encoded sequences below the hard
+// physical-line limit, just like encode_rfc2047's generated output.
+fn format_rfc2047_phrase(s string) ?string {
 	words := s.fields()
 	if words.len == 0 {
+		return none
+	}
+	mut has_encoded_word := false
+	for word in words {
+		if is_rfc2047_encoded_word(word) {
+			has_encoded_word = true
+			continue
+		}
+		if !word.bytes().all(is_rfc5322_atext(it)) {
+			return none
+		}
+	}
+	if !has_encoded_word {
+		return none
+	}
+	return words.join('\r\n ')
+}
+
+fn is_rfc2047_encoded_word(word string) bool {
+	if word.len < 8 || word.len > 75 || !word.starts_with('=?') || !word.ends_with('?=') {
 		return false
 	}
-	for word in words {
-		if word.len < 8 || !word.starts_with('=?') || !word.ends_with('?=') {
-			return false
-		}
-		parts := word[2..word.len - 2].split('?')
-		if parts.len != 3 || parts[0] == '' || parts[2] == ''
-			|| parts[1].to_upper() !in ['B', 'Q'] {
-			return false
-		}
-	}
-	return true
+	parts := word[2..word.len - 2].split('?')
+	return parts.len == 3 && parts[0] != '' && parts[2] != ''
+		&& parts[1].to_upper() in ['B', 'Q']
+}
+
+fn is_rfc5322_atext(ch u8) bool {
+	return ch.is_alnum() || ch in [`!`, `#`, `$`, `%`, `&`, `'`, `*`, `+`, `-`, `/`, `=`, `?`, `^`,
+		`_`, `\``, `{`, `|`, `}`, `~`]
 }
 
 // encode_rfc2047 encodes s as one or more RFC 2047 encoded-words
