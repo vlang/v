@@ -254,16 +254,18 @@ pub:
 @[minify]
 pub struct StringLiteral {
 pub:
-	val      string
-	is_raw   bool
-	language Language
-	pos      token.Pos
+	val        string
+	is_raw     bool
+	language   Language
+	pos        token.Pos
+	opaque_pos []int // byte offsets in `val` already resolved from a \xXX/\uXXXX/\UXXXXXXXX escape - see Scanner.string_opaque_pos
 }
 
 // 'name: ${name}'
 pub struct StringInterLiteral {
 pub:
 	vals       []string
+	opaque_pos [][]int // opaque_pos[i] are the resolved-escape byte offsets in vals[i] - see StringLiteral.opaque_pos
 	fwidths    []int
 	precisions []int
 	pluss      []bool

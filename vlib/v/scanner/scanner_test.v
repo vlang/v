@@ -350,6 +350,46 @@ fn test_dollar_sign_is_literal_without_braces() {
 	assert result[0].lit == 'a$b'
 }
 
+fn scan_string_with_opaque_pos(source string) (token.Token, []int) {
+	mut scanner := new_plain_scanner(source, .skip_comments, &pref.Preferences{})
+	tok := scanner.text_scan()
+	return tok, scanner.string_opaque_pos[tok.tidx]
+}
+
+fn test_string_opaque_positions_survive_source_normalization() {
+	lf_tok, lf_opaque_pos := scan_string_with_opaque_pos([u8(39), 65, 92, 10, 92, 120, 53,
+		99, 110, 66, 39].bytestr())
+	assert lf_tok.lit.bytes() == [u8(65), 92, 110, 66]
+	assert lf_opaque_pos == [1]
+
+	crlf_tok, crlf_opaque_pos := scan_string_with_opaque_pos([u8(39), 65, 92, 13, 10, 92,
+		120, 53, 99, 110, 66, 39].bytestr())
+	assert crlf_tok.lit.bytes() == [u8(65), 92, 110, 66]
+	assert crlf_opaque_pos == [1]
+
+	cr_tok, cr_opaque_pos := scan_string_with_opaque_pos([u8(39), 65, 13, 92, 120, 53,
+		99, 110, 66, 39].bytestr())
+	assert cr_tok.lit.bytes() == [u8(65), 92, 110, 66]
+	assert cr_opaque_pos == [1]
+}
+
+fn test_source_normalization_does_not_remove_decoded_bytes() {
+	decoded_cr_tok, decoded_cr_opaque_pos := scan_string_with_opaque_pos([u8(39), 65, 92,
+		120, 48, 100, 66, 13, 67, 39].bytestr())
+	assert decoded_cr_tok.lit.bytes() == [u8(65), 13, 66, 67]
+	assert decoded_cr_opaque_pos == [1]
+
+	decoded_slash_tok, decoded_slash_opaque_pos := scan_string_with_opaque_pos([u8(39), 65,
+		92, 120, 53, 99, 10, 66, 39].bytestr())
+	assert decoded_slash_tok.lit.bytes() == [u8(65), 92, 10, 66]
+	assert decoded_slash_opaque_pos == [1]
+
+	decoded_space_tok, decoded_space_opaque_pos := scan_string_with_opaque_pos([u8(39), 65,
+		92, 10, 92, 120, 50, 48, 66, 39].bytestr())
+	assert decoded_space_tok.lit.bytes() == [u8(65), 32, 66]
+	assert decoded_space_opaque_pos == [1]
+}
+
 fn test_comment_string() {
 	mut result := scan_tokens('// single line comment will get an \\x01 prepended')
 	assert result[0].kind == .comment

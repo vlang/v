@@ -25,6 +25,11 @@ pub:
 	ct_opt  bool // true for [if user_defined_name?]
 	pos     token.Pos
 	has_at  bool // new syntax `@[attr]`
+	// byte offsets in `name`/`arg` already resolved from a \xXX/\uXXXX/\UXXXXXXXX escape -
+	// see ast.StringLiteral.opaque_pos. name_opaque_pos only applies when kind == .string
+	// (i.e. `name` itself is a quoted string, e.g. `@['A\x5cnB']`).
+	name_opaque_pos []int
+	arg_opaque_pos  []int
 	// original call-style metadata for `@[foo(...)]`, used by vfmt
 	call_name     string
 	call_arg_name string
