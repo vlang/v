@@ -129,6 +129,19 @@ fn test_install_warns_about_normalized_module_name() {
 	assert os.exists(os.join_path(vmodules_path, 'my_mod', 'v.mod'))
 }
 
+fn test_install_maps_manifest_dots_to_import_directories() {
+	vmodules_path := os.join_path(test_path, 'vmodules_dotted_name')
+	test_utils.set_test_env(vmodules_path)
+	repo_path := os.join_path(test_path, 'dotted_repo')
+	create_local_git_module(repo_path, 'Foo.bar')
+
+	res := cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
+	assert res.output.contains('`Foo.bar` is not a valid V import path, it was installed as `foo.bar`.'), res.output
+
+	assert res.output.contains('Use `foo.bar` as the normalized import prefix'), res.output
+	assert os.exists(os.join_path(vmodules_path, 'foo', 'bar', 'v.mod'))
+}
+
 // A publisher directory added for a direct HTTP install is intentional and does not mean that
 // the manifest name itself was normalized.
 fn test_publisher_prefix_does_not_look_like_name_normalization() {

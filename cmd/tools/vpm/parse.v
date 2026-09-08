@@ -157,8 +157,8 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) 
 		mod_path := if registered_name != '' {
 			normalize_mod_path(final_name.replace('.', os.path_separator))
 		} else {
-			normalize_mod_path(os.join_path(if kind == .http { publisher } else { '' },
-				manifest.name))
+			normalize_mod_path(os.join_path(if kind == .http { publisher } else { '' }, manifest.name.replace('.',
+				os.path_separator)))
 		}
 		Module{
 			name:         final_name
