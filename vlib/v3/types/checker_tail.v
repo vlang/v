@@ -10123,9 +10123,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	// Trailing `key: value` args collapse into one ordinary or `@[params]` struct argument.
 	// field_init args only appear for this syntax, so they are a reliable signal.
 	mut field_init_args := 0
+	mut first_field_arg_idx := -1
 	for i in 1 .. node.children_count {
 		if tc.a.child_node(&node, i).kind == .field_init {
 			field_init_args++
+			if first_field_arg_idx < 0 {
+				first_field_arg_idx = i
+			}
 		}
 	}
 	collapsed := if field_init_args > 0 { 1 } else { 0 }
@@ -10170,14 +10174,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		param_idx := tc.collapsed_call_arg_param_idx(node, info)
 		if param_idx >= 0 && param_idx < info.params.len {
 			if target := tc.collapsed_call_arg_type(node, info) {
-				clean_target := if target is Alias { target.base_type } else { target }
+				clean_target := unalias_and_unwrap_pointer_type(target)
 				if clean_target is Interface {
-					first_field := param_idx - recv_extra + 1 + info.arg_offset -
-						(if ctx_omitted { ctx_count } else { 0 })
-					first_field_node := tc.a.child_node(&node, first_field)
+					first_field_node := tc.a.child_node(&node, first_field_arg_idx)
 					tc.record_error_at(.assignment_mismatch,
 						'cannot instantiate interface `${clean_target.name.all_after_last('.')}`', tc.a.child(&node,
-						first_field), first_field_node.pos)
+						first_field_arg_idx), first_field_node.pos)
 					return
 				}
 				if clean_target is Array || clean_target is ArrayFixed || clean_target is Map

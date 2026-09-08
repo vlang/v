@@ -4733,7 +4733,7 @@ fn (tc &TypeChecker) ownership_call_collapsed_struct_decl_param_idx(node flat.No
 		return -1
 	}
 	target := tc.collapsed_call_arg_type(node, info) or { return -1 }
-	_ := struct_type_from_type(unwrap_pointer(target)) or { return -1 }
+	_ := struct_type_from_type(unalias_and_unwrap_pointer_type(target)) or { return -1 }
 	return type_param_idx - tc.ownership_call_arg_shift(node, info)
 }
 

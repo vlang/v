@@ -1545,6 +1545,26 @@ fn main() {
 }
 ',
 		'cannot assign to field `count`: expected `int`, not `string`')
+	run_bad(v3_bin, 'bad_pointer_alias_collapsed_field_type', 'struct Earlier {
+	count int
+}
+
+struct Config {
+	count int
+}
+
+type ConfigRef = &Config
+
+fn use(earlier Earlier, config ConfigRef) {
+	_ = earlier
+	_ = config
+}
+
+fn main() {
+	use(Earlier{}, count: "bad")
+}
+',
+		'cannot assign to field `count`: expected `int`, not `string`')
 	run_bad(v3_bin, 'bad_generic_collapsed_field_type', 'struct Config[T] {
 	value T
 }
@@ -1588,6 +1608,30 @@ fn main() {
 }
 ',
 		'cannot instantiate interface `Runnable`')
+	interface_src := 'interface Runnable {
+	run()
+}
+
+struct Impl {}
+
+fn (Impl) run() {}
+
+fn use(values ...Runnable) {
+	_ = values
+}
+
+fn main() {
+	use(Impl{}, value: 1)
+}
+'
+	interface_out := unique_temp_path('bad_later_variadic_collapsed_interface')
+	interface_src_path := interface_out + '.v'
+	os.write_file(interface_src_path, interface_src) or { panic(err) }
+	interface_result :=
+		os.execute('${v3_bin} -nocache ${interface_src_path} -b c -o ${interface_out}')
+	assert interface_result.exit_code != 0, interface_result.output
+	assert interface_result.output.contains(':14:14: error: cannot instantiate interface `Runnable`'), interface_result.output
+
 	run_bad_project(v3_bin, 'bad_collapsed_private_target_field', {
 		'v.mod':             "Module { name: 'collapsed_private_target' }\n"
 		'main.v':            'module main\n\nimport fixture\n\nfn main() {\n\tfixture.use(secret: 1)\n}\n'

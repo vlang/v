@@ -7329,7 +7329,9 @@ fn (tc &TypeChecker) collapsed_field_expected_type(field_name string, target Typ
 	if field_name.len == 0 {
 		return none
 	}
-	param_struct := struct_type_from_type(unwrap_pointer(target)) or { return none }
+	param_struct := struct_type_from_type(unalias_and_unwrap_pointer_type(target)) or {
+		return none
+	}
 	return tc.struct_field_type(param_struct.name, field_name)
 }
 
@@ -7337,7 +7339,9 @@ fn (tc &TypeChecker) collapsed_field_owner(field_name string, target Type) ?stri
 	if field_name.len == 0 {
 		return none
 	}
-	param_struct := struct_type_from_type(unwrap_pointer(target)) or { return none }
+	param_struct := struct_type_from_type(unalias_and_unwrap_pointer_type(target)) or {
+		return none
+	}
 	if tc.struct_field_type(param_struct.name, field_name) != none {
 		return param_struct.name
 	}

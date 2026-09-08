@@ -2953,6 +2953,27 @@ fn main() {
 ")
 	assert fail_return.exit_code != 0
 	assert fail_return.output.contains('use of moved value: `x`'), fail_return.output
+
+	fail_pointer_alias := run_ownership_check(v3_bin, 'collapsed_pointer_alias_owned_field', '
+@[params]
+struct Config {
+	s string
+}
+
+type ConfigRef = &Config
+
+fn take(config ConfigRef) {
+	_ = config
+}
+
+fn main() {
+	owned := "field".to_owned()
+	take(s: owned)
+	println(owned)
+}
+')
+	assert fail_pointer_alias.exit_code != 0
+	assert fail_pointer_alias.output.contains('use of moved value: `owned`'), fail_pointer_alias.output
 }
 
 fn test_ownership_callee_params_are_order_independent() {
