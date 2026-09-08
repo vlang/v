@@ -35,7 +35,7 @@ jobs:
           path: |
             v
             thirdparty/tcc
-          key: v-toml-${{ runner.os }}-${{ hashFiles('cmd/**', 'vlib/**', 'thirdparty/**', 'GNUmakefile', 'Makefile', '.github/actions/setup-v/**') }}
+          key: v-toml-${{ runner.os }}-${{ hashFiles('cmd/**', 'vlib/**', 'thirdparty/**', 'GNUmakefile', 'Makefile', '.github/actions/setup-v/**', '.github/workflows/toml_ci.yml') }}
       - uses: ./.github/actions/setup-v
         if: steps.cache-v.outputs.cache-hit != 'true'
         with:
