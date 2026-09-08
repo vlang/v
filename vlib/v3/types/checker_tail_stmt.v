@@ -4420,10 +4420,7 @@ fn (tc &TypeChecker) source_fn_alias_type_text(name string) ?string {
 			}
 			qualified := qualify_decl_name_in_module(node.value, module_name)
 			if node.value == lookup_target || qualified == lookup_target {
-				mut source_type := ''
-				if file := tc.a.source_files[node.pos.id] {
-					source_type = tc.source_type_alias_rhs(file.name, node.value) or { '' }
-				}
+				source_type := tc.source_type_alias_rhs(node) or { '' }
 				found = if source_type.starts_with('fn(') || source_type.starts_with('fn (') {
 					source_type
 				} else {
@@ -4487,15 +4484,19 @@ fn subst_generic_diagnostic_fn_text(raw string, args []string, params []string) 
 	}}'
 }
 
-fn (tc &TypeChecker) source_type_alias_rhs(file_name string, alias_name string) ?string {
-	if file_name.len == 0 || alias_name.len == 0 {
+fn (tc &TypeChecker) source_type_alias_rhs(node flat.Node) ?string {
+	file := tc.a.source_files[node.pos.id] or { return none }
+	source := tc.source_texts_by_file[file.name] or { os.read_file(file.name) or { return none } }
+	start := int_min(int_max(node.pos.offset, 0), source.len)
+	end := int_min(int_max(node.pos.end, start), source.len)
+	if end <= start {
 		return none
 	}
-	source := tc.source_texts_by_file[file_name] or { os.read_file(file_name) or { return none } }
-	decl_start := source.index('type ${alias_name}') or { return none }
-	line_end := source.index_after('\n', decl_start) or { source.len }
-	assign := source[decl_start..line_end].index('=') or { return none }
-	return source[decl_start + assign + 1..line_end].trim_space()
+	mut raw := source[start..end].trim_space()
+	if raw.ends_with(';') {
+		raw = raw[..raw.len - 1].trim_space()
+	}
+	return raw
 }
 
 fn (tc &TypeChecker) expr_diagnostic_fn_type(id flat.NodeId) ?string {
