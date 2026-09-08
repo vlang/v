@@ -1030,6 +1030,23 @@ fn (c &Checker) comptime_eval_fn_decl_has_error(fn_decl ast.FnDecl) bool {
 	return false
 }
 
+fn (c &Checker) comptime_eval_const_field_has_error(field ast.ConstField) bool {
+	field_pos := field.pos
+	expr_pos := field.expr.pos()
+	file_path := if field_pos.file_idx < 0 {
+		c.file.path
+	} else {
+		c.table.filelist[field_pos.file_idx]
+	}
+	for checker_error in c.errors {
+		if checker_error.file_path == file_path && checker_error.pos.line_nr >= field_pos.line_nr
+			&& checker_error.pos.line_nr <= expr_pos.last_line {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut c Checker) eval_comptime_fn_decl_value_with_locals(fn_decl ast.FnDecl, nlevel int, local_values map[string]ast.ComptTimeConstValue) ?ast.ComptTimeConstValue {
 	mut stmts := fn_decl.stmts.clone()
 	if stmts.len == 1 && stmts[0] is ast.Block {
@@ -1231,6 +1248,9 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 				return value
 			}
 			if expr.obj is ast.ConstField {
+				if c.comptime_eval_const_field_has_error(expr.obj) {
+					return none
+				}
 				// an existing constant?
 				return c.eval_comptime_const_expr_with_locals(expr.obj.expr, nlevel + 1,
 					local_values)

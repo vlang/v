@@ -1,0 +1,5 @@
+vlib/v/checker/tests/for_in_empty_range_invalid_const_err.vv:1:33: error: shift count for type `int literal` too large (maximum: 64 bits)
+    1 | const invalid_range_high = 1 << 99
+      |                                 ~~
+    2 | 
+    3 | fn main() {

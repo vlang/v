@@ -1,0 +1,7 @@
+const invalid_range_high = 1 << 99
+
+fn main() {
+	for i in 1 .. invalid_range_high {
+		println(i)
+	}
+}
