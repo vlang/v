@@ -123,6 +123,15 @@ fn main() {
 	for i in int(f64(2.0) ** f64(2.0)) .. 4 {
 		println(i)
 	}
+
+	// Do not guess the runtime width of an untyped comptime if expression.
+	for _ in 0 .. ($if linux {
+		4294967295
+	} $else {
+		1
+	}) {
+		break
+	}
 }
 
 type OverloadedRangeBound = u8

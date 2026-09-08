@@ -454,7 +454,7 @@ fn (mut c Checker) range_literal_expr_type(expr ast.Expr) ?ast.Type {
 fn (mut c Checker) range_comparison_operand_type(expr ast.Expr, typ ast.Type) ?ast.Type {
 	unaliased_type := c.table.fully_unaliased_type(typ).clear_flags()
 	if unaliased_type == ast.int_literal_type {
-		return c.range_literal_expr_type(expr) or { ast.int_type }
+		return c.range_literal_expr_type(expr)
 	}
 	if unaliased_type == ast.rune_type {
 		return ast.u32_type
