@@ -14821,6 +14821,21 @@ fn (tc &TypeChecker) c_abi_fn_signature_for_type_text_inner(typ string, mut seen
 			}
 		}
 	}
+	if typ.starts_with('(') && typ.ends_with(')') && typ.contains(',') {
+		mut signatures := []string{}
+		mut has_c_abi_element := false
+		for part in split_params(typ[1..typ.len - 1]) {
+			mut part_seen := seen.clone()
+			signature := tc.c_abi_fn_signature_for_type_text_inner(part, mut part_seen) or { '' }
+			signatures << signature
+			if signature.len > 0 {
+				has_c_abi_element = true
+			}
+		}
+		if has_c_abi_element {
+			return 'tuple(${signatures.join('|')})'
+		}
+	}
 	if c_abi_fn := tc.c_abi_fn_ptr_type_from_text_inner(typ, mut seen, true) {
 		return c_abi_fn
 	}

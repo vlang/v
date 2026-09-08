@@ -11944,6 +11944,21 @@ fn normalize_nested_fn_or_container_type_text(text string) ?string {
 			}
 		}
 	}
+	if clean.starts_with('(') && clean.ends_with(')') && clean.contains(',') {
+		mut parts := []string{}
+		mut has_nested_fn := false
+		for part in split_generic_args(clean[1..clean.len - 1]) {
+			if nested := normalize_nested_fn_or_container_type_text(part) {
+				parts << nested
+				has_nested_fn = true
+			} else {
+				parts << part.trim_space()
+			}
+		}
+		if has_nested_fn {
+			return '(${parts.join(',')})'
+		}
+	}
 	return none
 }
 
