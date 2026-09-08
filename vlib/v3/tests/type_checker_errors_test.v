@@ -1840,6 +1840,23 @@ fn test_fn_literal_nested_named_callback_param_matches_alias_inside_generic_fn()
 	assert matching == 'true'
 }
 
+fn test_fn_literal_nested_shared_callback_param_matches_alias_inside_generic_fn() {
+	v3_bin := build_v3()
+	matching := run_good(v3_bin, 'good_nested_shared_callback_param_in_generic',
+		'struct State {}\ntype NestedSharedHandler = fn (cb fn (shared value State))\nstruct Router {}\nfn (mut r Router) accept(handler NestedSharedHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (callback fn (shared value State)) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert matching == 'true'
+	run_bad(v3_bin, 'bad_nested_shared_callback_param_in_generic',
+		'struct State {}\ntype NestedPlainHandler = fn (cb fn (value State))\nstruct Router {}\nfn (mut r Router) accept(handler NestedPlainHandler) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (callback fn (shared value State)) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+}
+
+fn test_fn_field_call_preserves_callback_c_abi_mismatch_inside_generic_fn() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_fn_field_callback_c_abi_in_generic',
+		'type Event = C.native_event\nstruct C.native_event {}\nstruct Dispatcher {\n\tcall fn (handler fn (event &Event))\n}\nfn invoke(handler fn (event &Event)) {}\nfn startup[T]() {\n\td := Dispatcher{\n\t\tcall: invoke\n\t}\n\td.call(fn (mut event Event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+}
+
 fn test_pr_review_codegen_batch_fifteen() {
 	v3_bin := build_v3()
 	// The string length evaluator folds with the same operator precedence as the v3 parser

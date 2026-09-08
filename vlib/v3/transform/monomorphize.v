@@ -4315,9 +4315,7 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 	if locked != substituted && qualified.contains('main.') {
 		return qualified
 	}
-	is_shared := qualified.trim_space().starts_with('shared ')
-	fn_params, _ := fn_type_text_parts(qualified) or { []string{}, '' }
-	fn_has_shared_param := fn_params.any(it.trim_space().starts_with('shared '))
+	has_shared_mode := type_text_has_shared_mode(qualified)
 	if isnil(t.tc) {
 		return qualified
 	}
@@ -4337,10 +4335,29 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 	if parsed is types.Unknown {
 		return qualified
 	}
-	if is_shared || fn_has_shared_param {
+	if has_shared_mode {
 		return qualified
 	}
 	return specialized_signature_storage_type_name(parsed)
+}
+
+fn type_text_has_shared_mode(text string) bool {
+	if text.len < 'shared'.len {
+		return false
+	}
+	for i in 0 .. text.len - 'shared'.len + 1 {
+		if text[i..i + 'shared'.len] != 'shared' {
+			continue
+		}
+		if i > 0 && fn_type_text_ident_char(text[i - 1]) {
+			continue
+		}
+		next := i + 'shared'.len
+		if next < text.len && text[next] in [` `, `\t`, `\r`, `\n`] {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) pin_direct_main_generic_arg_type_text(typ string) string {

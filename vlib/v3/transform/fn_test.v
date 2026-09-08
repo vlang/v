@@ -47,6 +47,13 @@ fn test_fn_type_texts_signature_compatible_normalizes_nested_parameter_names() {
 		'fn (fn (Item) bool)')
 }
 
+fn test_type_text_has_shared_mode_finds_nested_callback_parameters() {
+	assert type_text_has_shared_mode('fn (cb fn (shared value State))')
+	assert type_text_has_shared_mode('[]fn (value fn (shared item State))')
+	assert !type_text_has_shared_mode('fn (cb fn (value State))')
+	assert !type_text_has_shared_mode('fn (shared_state State)')
+}
+
 fn test_fn_type_texts_signature_compatible_preserves_compound_type_boundaries() {
 	assert fn_type_texts_signature_compatible('fn (fn (Item) bool)', 'fn(fn(Item)bool)')
 	assert fn_type_texts_signature_compatible('fn (chan foo.Item)', 'fn(chan foo.Item)')

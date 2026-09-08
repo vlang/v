@@ -11739,7 +11739,8 @@ fn (mut t Transformer) validate_specialized_fn_field_call(id flat.NodeId, node f
 		if t.resolved_receiver_arg_compatible(arg_id, actual_type, expected_type) {
 			continue
 		}
-		if t.fn_field_arg_compatible(actual_type, expected_type) {
+		if t.fn_literal_c_abi_signature_compatible(arg_id, expected_type)
+			&& t.fn_field_arg_compatible(actual_type, expected_type) {
 			continue
 		}
 		t.record_monomorph_error('cannot use `${actual_type}` as argument ${i + 1} to `${display_name}`; expected `${expected_type}`')
