@@ -10415,6 +10415,14 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 					tc.check_node(arg_id)
 				}
 			}
+			if param_struct := collapsed_field_struct_type(collapsed_target) {
+				if tc.struct_field_type(param_struct.name, raw_arg.value) == none {
+					tc.record_error_at(.unknown_field, tc.struct_literal_unknown_field_message(param_struct.name,
+						raw_arg.value, tc.struct_fields_for_init(param_struct.name)), tc.a.child(&node,
+						i), raw_arg.pos)
+					continue
+				}
+			}
 			if tc.unsafe_depth == 0 {
 				if owner := tc.collapsed_field_owner(raw_arg.value, collapsed_target) {
 					if !is_anonymous_struct_name(owner) {

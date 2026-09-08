@@ -1449,6 +1449,24 @@ fn main() {
 }
 ',
 		'cannot assign to field `retries`: expected `int`, not `string`')
+	run_bad(v3_bin, 'bad_collapsed_unknown_field_ignores_earlier_struct', 'struct Context {
+	retries string
+}
+
+struct Target {
+	count int
+}
+
+fn compile(context Context, target Target) {
+	_ = context
+	_ = target
+}
+
+fn main() {
+	compile(Context{}, retries: 3)
+}
+',
+		'unknown field `retries` in struct literal of type `Target`')
 	run_bad(v3_bin, 'bad_method_collapsed_field_ignores_receiver', 'struct Builder {
 	cap string
 }
