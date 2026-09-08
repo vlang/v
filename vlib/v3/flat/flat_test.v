@@ -56,6 +56,7 @@ fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 fn test_static_type_method_name_round_trip_with_marker_in_both_parts() {
 	encoded := encode_static_type_method_name('models.Cache__static__State',
 		'reset__static__now')
+	assert encode_static_type_method_name('int', 'tag') != 'int__static__tag__static__3'
 	receiver, method := decode_static_type_method_name(encoded) or { panic('invalid encoding') }
 	assert receiver == 'models.Cache__static__State'
 	assert method == 'reset__static__now'

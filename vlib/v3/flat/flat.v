@@ -15,33 +15,21 @@ pub const empty_node = NodeId(-1)
 pub const method_value_borrow_receiver_marker = '__v3_method_value_borrow_receiver'
 pub const method_value_clone_receiver_marker_prefix = '__v3_method_value_clone_receiver:'
 
-const static_type_method_name_marker = '__static__'
+const static_type_method_name_marker = '@static@'
 
 // encode_static_type_method_name makes a reversible internal name for a static type method.
 pub fn encode_static_type_method_name(receiver string, method string) string {
-	return '${receiver}${static_type_method_name_marker}${method}${static_type_method_name_marker}${method.len}'
+	return '${receiver}${static_type_method_name_marker}${method}'
 }
 
 // decode_static_type_method_name recovers the receiver and method from an internal static name.
 pub fn decode_static_type_method_name(name string) ?(string, string) {
-	length_marker := name.last_index(static_type_method_name_marker) or { return none }
-	length_start := length_marker + static_type_method_name_marker.len
-	if length_start >= name.len {
+	marker := name.index(static_type_method_name_marker) or { return none }
+	method_start := marker + static_type_method_name_marker.len
+	if marker == 0 || method_start >= name.len {
 		return none
 	}
-	for digit in name[length_start..] {
-		if digit < `0` || digit > `9` {
-			return none
-		}
-	}
-	method_len := name[length_start..].int()
-	method_start := length_marker - method_len
-	receiver_end := method_start - static_type_method_name_marker.len
-	if receiver_end < 0 || method_start < 0
-		|| name[receiver_end..method_start] != static_type_method_name_marker {
-		return none
-	}
-	return name[..receiver_end], name[method_start..length_marker]
+	return name[..marker], name[method_start..]
 }
 
 const empty_node_value = Node{}

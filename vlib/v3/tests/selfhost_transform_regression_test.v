@@ -146,14 +146,24 @@ fn Cache__static__State.reset__static__now() string {
 	return "reversible"
 }
 
+fn int.tag() string {
+	return "static-int"
+}
+
+fn int__static__tag__static__3() string {
+	return "ordinary-int"
+}
+
 fn main() {
 	println(Post{7}.form_for("edit").value)
 	println(Post.form_for(id: 9, action: "new").value)
 	println(cache__static__reset())
 	println(Cache__static__State.reset__static__now())
+	println(int__static__tag__static__3())
 }
 ')
-	assert out.split_into_lines() == ['static:7:edit', 'static:9:new', 'ordinary', 'reversible']
+	assert out.split_into_lines() == ['static:7:edit', 'static:9:new', 'ordinary', 'reversible',
+		'ordinary-int']
 }
 
 // A static call through a generic type parameter is resolved only after the
