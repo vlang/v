@@ -331,38 +331,7 @@ fn source_file_module_name(path string) ?string {
 		}
 	}
 	for start < source.len {
-		if source[start] in [` `, `\t`, `\v`, `\f`, `\n`, `\r`] {
-			start++
-			continue
-		}
-		if start + 1 < source.len && source[start] == `/` && source[start + 1] == `/` {
-			start += 2
-			for start < source.len && source[start] !in [`\n`, `\r`] {
-				start++
-			}
-			continue
-		}
-		if start + 1 < source.len && source[start] == `/` && source[start + 1] == `*` {
-			start += 2
-			mut depth := 1
-			for start + 1 < source.len && depth > 0 {
-				if source[start] == `/` && source[start + 1] == `*` {
-					depth++
-					start += 2
-					continue
-				}
-				if source[start] == `*` && source[start + 1] == `/` {
-					depth--
-					start += 2
-					continue
-				}
-				start++
-			}
-			if depth > 0 {
-				return none
-			}
-			continue
-		}
+		start = skip_source_space_and_comments(source, start) or { return none }
 		if start + 1 < source.len && source[start] == `@` && source[start + 1] == `[` {
 			start += 2
 			mut brackets := 1
@@ -397,10 +366,7 @@ fn source_file_module_name(path string) ?string {
 		|| source[start + 6] !in [` `, `\t`, `\v`, `\f`] {
 		return none
 	}
-	mut name_start := start + 7
-	for name_start < source.len && source[name_start] in [` `, `\t`, `\v`, `\f`] {
-		name_start++
-	}
+	name_start := skip_source_space_and_comments(source, start + 6) or { return none }
 	mut name_end := name_start
 	for name_end < source.len && source[name_end] !in [` `, `\t`, `\v`, `\f`, `\n`, `\r`, `;`, `/`] {
 		name_end++
@@ -409,6 +375,46 @@ fn source_file_module_name(path string) ?string {
 		return none
 	}
 	return source[name_start..name_end]
+}
+
+fn skip_source_space_and_comments(source string, pos int) ?int {
+	mut start := pos
+	for start < source.len {
+		if source[start] in [` `, `\t`, `\v`, `\f`, `\n`, `\r`] {
+			start++
+			continue
+		}
+		if start + 1 < source.len && source[start] == `/` && source[start + 1] == `/` {
+			start += 2
+			for start < source.len && source[start] !in [`\n`, `\r`] {
+				start++
+			}
+			continue
+		}
+		if start + 1 < source.len && source[start] == `/` && source[start + 1] == `*` {
+			start += 2
+			mut depth := 1
+			for start + 1 < source.len && depth > 0 {
+				if source[start] == `/` && source[start + 1] == `*` {
+					depth++
+					start += 2
+					continue
+				}
+				if source[start] == `*` && source[start + 1] == `/` {
+					depth--
+					start += 2
+					continue
+				}
+				start++
+			}
+			if depth > 0 {
+				return none
+			}
+			continue
+		}
+		break
+	}
+	return start
 }
 
 fn module_name_has_empty_part(name string) bool {
