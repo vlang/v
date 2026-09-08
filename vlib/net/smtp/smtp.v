@@ -280,12 +280,12 @@ fn envelope_addr(s string) string {
 fn split_mailbox(s string) (?string, string) {
 	trimmed := strip_crlf(s.trim_space())
 	open_at := index_unquoted(trimmed, `<`, 0) or {
-		return none, trimmed
+		return none, strip_addr_spec_comments(trimmed)
 	}
 	close_at := index_unquoted(trimmed, `>`, open_at + 1) or {
 		return none, trimmed
 	}
-	addr := trimmed[open_at + 1..close_at].trim_space()
+	addr := strip_addr_spec_comments(trimmed[open_at + 1..close_at])
 	raw_name := strip_unquoted_comments(trimmed[..open_at])
 	unquoted_name := unquote_name(raw_name)
 	name := if unquoted_name != raw_name {
@@ -375,6 +375,58 @@ fn strip_unquoted_comments(s string) string {
 		i++
 	}
 	return out.bytestr().trim_space()
+}
+
+// strip_addr_spec_comments removes comments and their surrounding whitespace
+// outside quoted strings so an RFC 5322 mailbox can be used as an RFC 5321
+// envelope address.
+fn strip_addr_spec_comments(s string) string {
+	mut out := []u8{cap: s.len}
+	mut i := 0
+	mut had_comment := false
+	for i < s.len {
+		if s[i] == `"` {
+			end := skip_quoted_string(s, i)
+			out << s[i..end].bytes()
+			i = end
+			continue
+		}
+		if s[i] == `(` {
+			had_comment = true
+			for out.len > 0 && out.last() in [` `, `\t`, `\r`, `\n`] {
+				out.delete_last()
+			}
+			i = skip_comment(s, i)
+			for i < s.len && s[i] in [` `, `\t`, `\r`, `\n`] {
+				i++
+			}
+			continue
+		}
+		out << s[i]
+		i++
+	}
+	if !had_comment {
+		return out.bytestr()
+	}
+	// CFWS can surround addr-spec tokens as well as comments. Once a comment
+	// establishes that this is an RFC 5322 form, compact the remaining external
+	// whitespace for its RFC 5321 envelope spelling.
+	without_comments := out.bytestr()
+	mut compact := []u8{cap: out.len}
+	i = 0
+	for i < without_comments.len {
+		if without_comments[i] == `"` {
+			end := skip_quoted_string(without_comments, i)
+			compact << without_comments[i..end].bytes()
+			i = end
+			continue
+		}
+		if without_comments[i] !in [` `, `\t`, `\r`, `\n`] {
+			compact << without_comments[i]
+		}
+		i++
+	}
+	return compact.bytestr()
 }
 
 // unquote_name decodes a display name that is a single quoted-string,

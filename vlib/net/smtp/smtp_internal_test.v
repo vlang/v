@@ -92,6 +92,9 @@ fn test_envelope_addr_strips_display_name() {
 	assert envelope_addr('<ivan@example.com>') == 'ivan@example.com'
 	assert envelope_addr('Ivan Petrov <ivan@example.com>') == 'ivan@example.com'
 	assert envelope_addr('"Petrov, Ivan" <ivan@example.com>') == 'ivan@example.com'
+	assert envelope_addr('copy@example.com (team)') == 'copy@example.com'
+	assert envelope_addr('copy(comment) @ example.com') == 'copy@example.com'
+	assert envelope_addr('"copy (team)"@example.com') == '"copy (team)"@example.com'
 	// Quoted local-parts may legitimately contain '<'. Without a trailing '>',
 	// the input is not an angle-addr wrapper and must pass through unchanged.
 	assert envelope_addr('"a<b"@example.com') == '"a<b"@example.com'
