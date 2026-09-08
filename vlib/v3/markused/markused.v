@@ -8451,6 +8451,9 @@ fn markused_type_name_or_empty(t types.Type, unwrap_optional_result bool) string
 
 // markused_c_name returns the C identifier used for a V symbol or type name.
 fn markused_c_name(name string) string {
+	if naming.c_name_needs_internal_namespace(name) {
+		return naming.c_name(name)
+	}
 	if name.starts_with('C.') {
 		return name[2..]
 	}

@@ -146,6 +146,7 @@ fn Cache__static__State.reset__static__now() string {
 	return "reversible"
 }
 
+@[markused]
 fn int.tag() string {
 	return "static-int"
 }
