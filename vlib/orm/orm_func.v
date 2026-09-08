@@ -6,6 +6,8 @@ import strings.textscanner
 const operators = ['=', '!=', '<>', '>=', '<=', '>', '<', 'LIKE', 'ILIKE', 'IS NULL', 'IS NOT NULL',
 	'IN', 'NOT IN']!
 
+const include_root_filter_prefix = '::v_orm_root_filter::'
+
 pub struct AggregateValue {
 pub:
 	has_value bool
@@ -33,6 +35,7 @@ mut:
 	include_filters    []IncludeFilter
 	last_include_path  []string
 	hydration_primary  string
+	hydration_fields   []string
 pub mut:
 	meta                  []TableField
 	valid_sql_field_names []string
@@ -71,6 +74,7 @@ pub fn (qb_ &QueryBuilder[T]) reset() &QueryBuilder[T] {
 	qb.include_filters = []IncludeFilter{}
 	qb.last_include_path = []string{}
 	qb.hydration_primary = ''
+	qb.hydration_fields = []string{}
 	qb.builder_error = ''
 	return qb
 }
@@ -674,6 +678,7 @@ fn query_data_connector(data QueryData, index int) bool {
 
 enum QueryBooleanKind {
 	term
+	constant
 	conjunction
 	disjunction
 }
@@ -683,6 +688,7 @@ struct QueryBooleanNode {
 	term_index int = -1
 	left       int = -1
 	right      int = -1
+	value      bool
 }
 
 struct QueryBooleanTree {
@@ -810,6 +816,34 @@ fn flatten_query_boolean_node(tree QueryBooleanTree, node_index int, mut result 
 	if end > start {
 		result.parentheses << [start, end]
 	}
+}
+
+fn query_data_from_projection(data QueryData, projection ProjectedQueryBoolean, fields []string) QueryData {
+	mut data_indexes := []int{len: data.fields.len, init: -1}
+	mut data_index := 0
+	for i, kind in data.kinds {
+		if !kind.is_unary() {
+			data_indexes[i] = data_index
+			data_index++
+		}
+	}
+	mut filtered := QueryData{
+		is_and:      projection.is_and.clone()
+		parentheses: projection.parentheses.map(it.clone())
+	}
+	for term_index in projection.term_indexes {
+		filtered.fields << fields[term_index]
+		kind := data.kinds[term_index]
+		filtered.kinds << kind
+		primitive_index := data_indexes[term_index]
+		if primitive_index >= 0 {
+			filtered.data << data.data[primitive_index]
+			if primitive_index < data.types.len {
+				filtered.types << data.types[primitive_index]
+			}
+		}
+	}
+	return filtered
 }
 
 fn repeated_relationship_branch_is_anded(expression ProjectedQueryBoolean, field_scopes []string, branch string, previous int, search_start int) bool {
@@ -986,12 +1020,39 @@ fn append_query_data(existing QueryData, addition QueryData, is_and bool) QueryD
 	return combined
 }
 
-// query_data_for_scope extracts the terms belonging to exactly one relationship scope,
-// stripping the relationship prefix so they can filter that relationship while it is
-// hydrated. `field_scopes` holds the resolved scope of each term of `data`.
+// query_data_for_scope extracts the terms belonging to one relationship scope and the
+// root terms that guard them. Root terms use an internal marker so hydration can resolve
+// them against each concrete parent before the relationship query is run.
 fn query_data_for_scope[T](data QueryData, field_scopes []string, scope string) !QueryData {
-	keep := field_scopes.map(it == scope)
+	keep := field_scopes.map(it == scope || it.len == 0)
 	projection := project_query_boolean(data, keep)!
+	mut fields := data.fields.clone()
+	for i, field in fields {
+		fields[i] = if field_scopes[i].len == 0 {
+			include_root_filter_prefix + field
+		} else {
+			relationship_terminal_field[T](field, scope)
+		}
+	}
+	return query_data_from_projection(data, projection, fields)
+}
+
+fn resolve_include_filters_for_row(filters []IncludeFilter, row []Primitive, fields []string) ![]IncludeFilter {
+	mut resolved := []IncludeFilter{cap: filters.len}
+	for filter in filters {
+		resolved << IncludeFilter{
+			path:   filter.path.clone()
+			where:  resolve_include_filter_for_row(filter.where, row, fields)!
+			is_and: filter.is_and
+		}
+	}
+	return resolved
+}
+
+fn resolve_include_filter_for_row(data QueryData, row []Primitive, fields []string) !QueryData {
+	if !data.fields.any(it.starts_with(include_root_filter_prefix)) {
+		return clone_query_data(data)
+	}
 	mut data_indexes := []int{len: data.fields.len, init: -1}
 	mut data_index := 0
 	for i, kind in data.kinds {
@@ -1000,28 +1061,260 @@ fn query_data_for_scope[T](data QueryData, field_scopes []string, scope string) 
 			data_index++
 		}
 	}
-	mut filtered := QueryData{
-		is_and:      projection.is_and.clone()
-		parentheses: projection.parentheses.map(it.clone())
-	}
-	for term_index in projection.term_indexes {
-		field := data.fields[term_index]
-		kind := data.kinds[term_index]
-		filtered.fields << if scope.len == 0 {
-			field
-		} else {
-			relationship_terminal_field[T](field, scope)
+	source := query_boolean_tree(data)!
+	mut resolved := QueryBooleanTree{}
+	resolved.root = resolve_include_filter_node(source, source.root, data, data_indexes, row,
+		fields, mut resolved)!
+	root := resolved.nodes[resolved.root]
+	if root.kind == .constant {
+		if root.value {
+			return QueryData{}
 		}
-		filtered.kinds << kind
-		primitive_index := data_indexes[term_index]
-		if primitive_index >= 0 {
-			filtered.data << data.data[primitive_index]
-			if primitive_index < data.types.len {
-				filtered.types << data.types[primitive_index]
+		// `column = NULL` is false for every SQL row. Reusing a real relationship
+		// field also keeps the sentinel valid across every database dialect.
+		field := data.fields.filter(!it.starts_with(include_root_filter_prefix))[0]
+		return QueryData{
+			fields: [field]
+			data:   [Primitive(Null{})]
+			types:  [type_idx['string']]
+			kinds:  [.eq]
+		}
+	}
+	mut projection := ProjectedQueryBoolean{}
+	flatten_query_boolean_node(resolved, resolved.root, mut projection)
+	return query_data_from_projection(data, projection, data.fields)
+}
+
+fn resolve_include_filter_node(source QueryBooleanTree, node_index int, data QueryData, data_indexes []int, row []Primitive, fields []string, mut resolved QueryBooleanTree) !int {
+	node := source.nodes[node_index]
+	if node.kind == .term {
+		field := data.fields[node.term_index]
+		if !field.starts_with(include_root_filter_prefix) {
+			resolved.nodes << node
+			return resolved.nodes.len - 1
+		}
+		root_field := field[include_root_filter_prefix.len..]
+		row_index := fields.index(root_field)
+		if row_index < 0 || row_index >= row.len {
+			return error('root guard field `${root_field}` was not selected for relationship hydration')
+		}
+		left := row[row_index]
+		primitive_index := data_indexes[node.term_index]
+		right := if primitive_index >= 0 { data.data[primitive_index] } else { Primitive(Null{}) }
+		matches := include_filter_root_condition_matches(left, data.kinds[node.term_index], right) or {
+			return error('cannot evaluate root guard `${root_field}` during relationship hydration: ${err}')
+		}
+		resolved.nodes << QueryBooleanNode{
+			kind:  .constant
+			value: matches
+		}
+		return resolved.nodes.len - 1
+	}
+	left := resolve_include_filter_node(source, node.left, data, data_indexes, row, fields, mut
+		resolved)!
+	right := resolve_include_filter_node(source, node.right, data, data_indexes, row, fields, mut
+		resolved)!
+	left_node := resolved.nodes[left]
+	right_node := resolved.nodes[right]
+	if node.kind == .conjunction {
+		if left_node.kind == .constant {
+			return if left_node.value { right } else { left }
+		}
+		if right_node.kind == .constant {
+			return if right_node.value { left } else { right }
+		}
+	} else {
+		if left_node.kind == .constant {
+			return if left_node.value { left } else { right }
+		}
+		if right_node.kind == .constant {
+			return if right_node.value { right } else { left }
+		}
+	}
+	resolved.nodes << QueryBooleanNode{
+		kind:  node.kind
+		left:  left
+		right: right
+	}
+	return resolved.nodes.len - 1
+}
+
+fn include_filter_root_condition_matches(left Primitive, kind OperationKind, right Primitive) !bool {
+	if kind == .is_null {
+		return left == Primitive(Null{})
+	}
+	if kind == .is_not_null {
+		return left != Primitive(Null{})
+	}
+	if kind in [.orm_like, .orm_ilike] {
+		return error('`${kind.to_str()}` root guards are not supported')
+	}
+	if kind in [.in, .not_in] {
+		if left == Primitive(Null{}) {
+			return false
+		}
+		values := match right {
+			[]Primitive { right }
+			else { return error('`${kind.to_str()}` requires an array parameter') }
+		}
+		mut found := false
+		mut has_null := false
+		for value in values {
+			if value == Primitive(Null{}) {
+				has_null = true
+				continue
+			}
+			if include_filter_primitive_compare(left, value)! == 0 {
+				found = true
+				break
 			}
 		}
+		return if kind == .in { found } else { !found && !has_null }
 	}
-	return filtered
+	if left == Primitive(Null{}) || right == Primitive(Null{}) {
+		return false
+	}
+	comparison := include_filter_primitive_compare(left, right)!
+	return match kind {
+		.eq { comparison == 0 }
+		.neq { comparison != 0 }
+		.gt { comparison > 0 }
+		.lt { comparison < 0 }
+		.ge { comparison >= 0 }
+		.le { comparison <= 0 }
+		else { error('`${kind.to_str()}` is not a scalar comparison') }
+	}
+}
+
+fn include_filter_primitive_compare(left Primitive, right Primitive) !int {
+	if include_filter_primitive_is_numeric(left) && include_filter_primitive_is_numeric(right) {
+		if include_filter_primitive_is_float(left) || include_filter_primitive_is_float(right) {
+			if !include_filter_primitive_is_float(left) || !include_filter_primitive_is_float(right) {
+				return error('cannot safely compare integer and floating-point root guards')
+			}
+			left_number := primitive_to_f64(left)
+			right_number := primitive_to_f64(right)
+			return compare_f64(left_number, right_number)
+		}
+		if include_filter_primitive_is_signed(left) {
+			left_number := include_filter_primitive_to_i64(left)
+			if include_filter_primitive_is_signed(right) {
+				return compare_i64(left_number, include_filter_primitive_to_i64(right))
+			}
+			if left_number < 0 {
+				return -1
+			}
+			return compare_u64(u64(left_number), include_filter_primitive_to_u64(right))
+		}
+		left_number := include_filter_primitive_to_u64(left)
+		if include_filter_primitive_is_signed(right) {
+			right_number := include_filter_primitive_to_i64(right)
+			if right_number < 0 {
+				return 1
+			}
+			return compare_u64(left_number, u64(right_number))
+		}
+		return compare_u64(left_number, include_filter_primitive_to_u64(right))
+	}
+	return match left {
+		string {
+			if right is string {
+				if left < right {
+					-1
+				} else if left > right {
+					1
+				} else {
+					0
+				}
+			} else {
+				error('cannot compare string with `${right.type_name()}`')
+			}
+		}
+		time.Time {
+			if right is time.Time {
+				left_time := left.unix_nano()
+				right_time := right.unix_nano()
+				if left_time < right_time {
+					-1
+				} else if left_time > right_time {
+					1
+				} else {
+					0
+				}
+			} else {
+				error('cannot compare time.Time with `${right.type_name()}`')
+			}
+		}
+		else {
+			error('`${left.type_name()}` is not a supported scalar root guard')
+		}
+	}
+}
+
+fn include_filter_primitive_is_numeric(value Primitive) bool {
+	return match value {
+		bool, f32, f64, i8, i16, int, i64, u8, u16, u32, u64 { true }
+		else { false }
+	}
+}
+
+fn include_filter_primitive_is_float(value Primitive) bool {
+	return value is f32 || value is f64
+}
+
+fn include_filter_primitive_is_signed(value Primitive) bool {
+	return value is i8 || value is i16 || value is int || value is i64
+}
+
+fn include_filter_primitive_to_i64(value Primitive) i64 {
+	return match value {
+		i8 { i64(value) }
+		i16 { i64(value) }
+		int { i64(value) }
+		i64 { value }
+		else { 0 }
+	}
+}
+
+fn include_filter_primitive_to_u64(value Primitive) u64 {
+	return match value {
+		bool { u64(int(value)) }
+		u8 { u64(value) }
+		u16 { u64(value) }
+		u32 { u64(value) }
+		u64 { value }
+		else { 0 }
+	}
+}
+
+fn compare_i64(left i64, right i64) int {
+	return if left < right {
+		-1
+	} else if left > right {
+		1
+	} else {
+		0
+	}
+}
+
+fn compare_u64(left u64, right u64) int {
+	return if left < right {
+		-1
+	} else if left > right {
+		1
+	} else {
+		0
+	}
+}
+
+fn compare_f64(left f64, right f64) int {
+	return if left < right {
+		-1
+	} else if left > right {
+		1
+	} else {
+		0
+	}
 }
 
 fn normalize_primitive_arguments(params []Primitive) []Primitive {
@@ -1614,7 +1907,8 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 				if mm.len != 0 {
 					m = mm[0]
 					index := qb.config.fields.index(sql_field_name(m))
-					if index >= 0 && sql_field_name(m) != qb.hydration_primary {
+					if index >= 0 && sql_field_name(m) != qb.hydration_primary
+						&& sql_field_name(m) !in qb.hydration_fields {
 						value := row[index]
 
 						if value != Primitive(Null{}) {
@@ -1805,7 +2099,8 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 			if mm.len != 0 {
 				m = mm[0]
 				index := qb.config.fields.index(sql_field_name(m))
-				if index >= 0 && sql_field_name(m) != qb.hydration_primary {
+				if index >= 0 && sql_field_name(m) != qb.hydration_primary
+					&& sql_field_name(m) !in qb.hydration_fields {
 					value := row[index]
 
 					$if field.typ is $option {
@@ -1998,8 +2293,10 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 	parent_key := qb.selected_primary_value(row) or { Primitive(Null{}) }
 	mut conn := qb.conn
 	if parent_key != Primitive(Null{}) {
+		resolved_filters := resolve_include_filters_for_row(qb.include_filters, row,
+			qb.config.fields)!
 		hydrate_array_relationships(mut conn, mut instance, parent_key, qb.relation_load_mode,
-			qb.include_paths, qb.include_filters)!
+			qb.include_paths, resolved_filters)!
 	}
 	$for field in T.fields {
 		field_type_name := typeof(field).name
@@ -2305,6 +2602,9 @@ fn validate_include_filter_fields[T](where QueryData) ! {
 	meta := struct_meta[T]()
 	table := table_from_struct[T](meta)
 	for field in where.fields {
+		if field.starts_with(include_root_filter_prefix) {
+			continue
+		}
 		if !meta.any(it.name == field || sql_field_name(it) == field) {
 			return error("${@FN}(): table `${table.name}` has no field's name: `${field}`")
 		}
@@ -2401,6 +2701,7 @@ fn (qb_ &QueryBuilder[T]) prepare() ! {
 		return error(qb.builder_error)
 	}
 	qb.ensure_primary_key_for_includes()!
+	qb.ensure_root_guard_fields_for_includes()
 
 	// check for mismatch `(` and `)`
 	for p in qb.where.parentheses {
@@ -2469,6 +2770,28 @@ fn (qb_ &QueryBuilder[T]) ensure_primary_key_for_includes() ! {
 	mut qb := unsafe { qb_ }
 	qb.config.fields << primary
 	qb.hydration_primary = primary
+}
+
+fn (qb_ &QueryBuilder[T]) ensure_root_guard_fields_for_includes() {
+	if qb_.config.fields.len == 0
+		|| (qb_.include_paths.len == 0 && qb_.relation_load_mode != .implicit) {
+		return
+	}
+	mut qb := unsafe { qb_ }
+	for filter in qb.include_filters {
+		for field in filter.where.fields {
+			if !field.starts_with(include_root_filter_prefix) {
+				continue
+			}
+			name := field[include_root_filter_prefix.len..]
+			meta_field := qb.get_meta_field_by_any_name(name) or { continue }
+			sql_name := sql_field_name(meta_field)
+			if sql_name !in qb.config.fields {
+				qb.config.fields << sql_name
+				qb.hydration_fields << sql_name
+			}
+		}
+	}
 }
 
 fn (qb &QueryBuilder[T]) get_meta_field_by_sql_name(field string) ?TableField {

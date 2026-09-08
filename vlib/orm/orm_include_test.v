@@ -1005,6 +1005,60 @@ fn test_where_preserves_trailing_and_when_projecting_a_hydration_filter() {
 	assert rows[0].children[0].active
 }
 
+fn test_where_preserves_root_guards_in_projected_hydration_filters() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+	mut children := orm.new_query[IncludeChild](db)
+	children.insert(IncludeChild{
+		parent_id: 1
+		name:      'guarded child'
+		active:    true
+	})!
+	parents.insert(IncludeParent{
+		name: 'special'
+	})!
+	for name in ['child', 'guarded child'] {
+		children.insert(IncludeChild{
+			parent_id: 2
+			name:      name
+			active:    true
+		})!
+	}
+
+	rows := parents.include('children')!.where('children.name = ? || (name = ? && children.name = ?)',
+		'child', 'special', 'guarded child')!.query()!
+	assert rows.len == 2
+	regular := rows.filter(it.name == 'parent')[0]
+	assert regular.children.len == 1
+	assert regular.children[0].name == 'child'
+	special := rows.filter(it.name == 'special')[0]
+	assert special.children.len == 2
+
+	mut selected_parents := orm.new_query[IncludeParent](db)
+	selected := selected_parents.select('id')!.include('children')!.where('children.name = ? || (name = ? && children.name = ?)',
+		'child', 'special', 'guarded child')!.query()!
+	assert selected.len == 2
+	assert selected[0].name == ''
+	assert selected.filter(it.id == 1)[0].children.len == 1
+	assert selected.filter(it.id == 2)[0].children.len == 2
+
+	mut pets := orm.new_query[IncludePet](db)
+	pets.insert(IncludePet{
+		parent_id: 1
+		name:      'pet'
+	})!
+	mut guarded_parents := orm.new_query[IncludeParent](db)
+	guarded := guarded_parents.include('children')!.where('(name = ? && children.name = ?) || pets.name = ?',
+		'special', 'guarded child', 'pet')!.query()!
+	assert guarded.len == 2
+	assert guarded.filter(it.name == 'parent')[0].children.len == 0
+	assert guarded.filter(it.name == 'special')[0].children.len == 1
+	assert guarded.filter(it.name == 'special')[0].children[0].name == 'guarded child'
+}
+
 fn test_where_deep_is_null_requires_a_real_descendant() {
 	mut db := new_include_database()!
 	defer {
