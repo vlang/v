@@ -669,7 +669,12 @@ fn (mut h H3Conn) dispatch_request_stream_frames(stream_id u64, mut result H3Pol
 				initial_request_headers_blocked := h.is_server_role()
 					&& state.phase() == .awaiting_response_headers
 					&& h.has_blocked_section_for(stream_id)
-				if !initial_request_headers_blocked {
+				if initial_request_headers_blocked {
+					state.note_data_behind_blocked_headers() or {
+						h.fail_request_stream(stream_id, u64(err.code()), err.msg(), mut result)
+						return
+					}
+				} else {
 					state.note_frame_kind(false, true) or {
 						h.fail_request_stream(stream_id, u64(err.code()), err.msg(), mut result)
 						return
@@ -687,6 +692,21 @@ fn (mut h H3Conn) dispatch_request_stream_frames(stream_id u64, mut result H3Pol
 			}
 			HeadersFrame {
 				mut state := h.request_streams[stream_id] or { return }
+				initial_request_headers_blocked := h.is_server_role()
+					&& state.phase() == .awaiting_response_headers
+					&& h.has_blocked_section_for(stream_id)
+				if initial_request_headers_blocked {
+					state.note_trailers_behind_blocked_headers() or {
+						h.fail_request_stream(stream_id, u64(err.code()), err.msg(), mut result)
+						return
+					}
+					h.blocked_sections << BlockedFieldSection{
+						stream_id: stream_id
+						buf: decoded.frame.encoded_field_section.clone()
+						is_trailers: true
+					}
+					continue
+				}
 				is_trailers := state.phase() == .in_body
 				state.note_frame_kind(true, false) or {
 					h.fail_request_stream(stream_id, u64(err.code()), err.msg(), mut result)
@@ -812,8 +832,13 @@ fn (mut h H3Conn) retry_blocked_sections(mut result H3PollResult) ! {
 	}
 	mut still_blocked := []BlockedFieldSection{}
 	mut resolved_streams := []u64{}
+	mut blocked_initial_by_stream := map[u64]bool{}
 	for section in h.blocked_sections {
 		if section.stream_id in h.dead_request_streams {
+			continue
+		}
+		if section.is_trailers && section.stream_id in blocked_initial_by_stream {
+			still_blocked << section
 			continue
 		}
 		decoded := h.qpack_decoder.decode_field_section(section.stream_id, section.buf) or {
@@ -822,6 +847,9 @@ fn (mut h H3Conn) retry_blocked_sections(mut result H3PollResult) ! {
 		}
 		if decoded.blocked {
 			still_blocked << section
+			if !section.is_trailers {
+				blocked_initial_by_stream[section.stream_id] = true
+			}
 			continue
 		}
 		h.deliver_decoded_headers(section.stream_id, decoded, section.is_trailers, mut result)!

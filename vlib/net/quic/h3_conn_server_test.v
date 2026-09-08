@@ -363,6 +363,76 @@ fn test_h3_conn_server_buffers_data_while_initial_headers_are_qpack_blocked() {
 	assert resolved_events.filter(it.kind == .request_ended).len == 1, resolved_events.str()
 }
 
+fn test_h3_conn_server_preserves_trailers_behind_qpack_blocked_initial_headers() {
+	mut client, mut client_h3, mut server, mut server_h3, now0 := h3_server_test_pair()!
+	defer {
+		mut client_hs := client.client_handshake()
+		client_hs.free()
+		if mut sh := server.server_handshake {
+			sh.free()
+		}
+	}
+
+	_, _, now1 := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now0)!
+	mut peer_encoder := new_qpack_encoder()
+	set_capacity := peer_encoder.set_capacity(4096, 4096)!
+	encoder_stream_id := client_h3.own_qpack_encoder_stream_id or {
+		panic('client QPACK encoder stream was not opened')
+	}
+	client.write_stream(encoder_stream_id, set_capacity, false)!
+	_, _, now2 := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now1)!
+
+	initial := peer_encoder.encode_field_section(0, [
+		QpackFieldLine{
+			name: 'x-blocked'
+			value: 'initial'
+		},
+	])!
+	trailers := peer_encoder.encode_field_section(0, [
+		QpackFieldLine{
+			name: 'x-trailer'
+			value: 'final'
+		},
+	])!
+	stream_id := client_h3.open_request_stream()!
+	mut request_bytes := encode_headers_frame(initial.field_section)!
+	request_bytes << encode_data_frame('body'.bytes())!
+	request_bytes << encode_headers_frame(trailers.field_section)!
+	client.write_stream(stream_id, request_bytes, true)!
+	_, blocked_events, now3 := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now2)!
+	assert !blocked_events.any(it.kind == .request_error), blocked_events.str()
+	assert blocked_events.filter(it.kind == .request_data).len == 1, blocked_events.str()
+	assert !blocked_events.any(it.kind in [.request_headers, .request_trailers, .request_ended]), blocked_events.str()
+
+	mut instructions := initial.encoder_instructions.clone()
+	instructions << trailers.encoder_instructions
+	client.write_stream(encoder_stream_id, instructions, false)!
+	_, resolved_events, _ := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now3)!
+	assert !resolved_events.any(it.kind == .request_error), resolved_events.str()
+	mut header_index := -1
+	mut trailer_index := -1
+	mut ended_index := -1
+	for i, event in resolved_events {
+		match event.kind {
+			.request_headers {
+				header_index = i
+			}
+			.request_trailers {
+				trailer_index = i
+			}
+			.request_ended {
+				ended_index = i
+			}
+			else {}
+		}
+	}
+	assert header_index >= 0, resolved_events.str()
+	assert trailer_index > header_index, resolved_events.str()
+	assert ended_index > trailer_index, resolved_events.str()
+	assert resolved_events[header_index].headers[0].name == 'x-blocked'
+	assert resolved_events[trailer_index].headers[0].name == 'x-trailer'
+}
+
 // test_h3_conn_open_request_stream_rejected_on_server_role is a regression
 // test for open_request_stream's new role guard: RFC 9114 §6.1 request
 // streams are always client-initiated, so a server calling this on its own

@@ -34,7 +34,8 @@ pub enum H3RequestStreamPhase {
 @[heap]
 pub struct H3RequestStreamState {
 mut:
-	phase H3RequestStreamPhase
+	phase                                  H3RequestStreamPhase
+	trailers_queued_behind_blocked_headers bool
 }
 
 // new_h3_request_stream_state returns a tracker for a request stream that
@@ -123,8 +124,30 @@ pub fn (mut s H3RequestStreamState) note_frame_kind(frame_is_headers bool, frame
 // assuming that ordering.
 pub fn (mut s H3RequestStreamState) note_final_response_headers() {
 	if s.phase == .awaiting_response_headers {
-		s.phase = .in_body
+		s.phase = if s.trailers_queued_behind_blocked_headers {
+			.trailers_received
+		} else {
+			.in_body
+		}
 	}
+}
+
+// note_data_behind_blocked_headers validates DATA received after a server's
+// initial HEADERS frame but before that field section can be QPACK-decoded.
+fn (mut s H3RequestStreamState) note_data_behind_blocked_headers() ! {
+	if s.phase != .awaiting_response_headers || s.trailers_queued_behind_blocked_headers {
+		return error_with_code('h3: received DATA after trailing HEADERS', int(H3ErrorCode.frame_unexpected))
+	}
+}
+
+// note_trailers_behind_blocked_headers records a trailing HEADERS frame whose
+// initial request headers are still QPACK-blocked. The decoder keeps the
+// section queued until the initial section resolves, preserving wire order.
+fn (mut s H3RequestStreamState) note_trailers_behind_blocked_headers() ! {
+	if s.phase != .awaiting_response_headers || s.trailers_queued_behind_blocked_headers {
+		return error_with_code('h3: received more than one trailing HEADERS section', int(H3ErrorCode.frame_unexpected))
+	}
+	s.trailers_queued_behind_blocked_headers = true
 }
 
 // note_fin marks this stream done -- called once the caller has both (a)

@@ -1348,6 +1348,39 @@ fn test_write_stream_on_auto_created_sibling_stream_is_not_stuck() {
 	assert found_sibling_stream_frame
 }
 
+fn test_write_stream_splits_large_writes_into_datagram_sized_chunks() {
+	mut c, server_initial_scid, mut now := drive_to_established(generous_transport_params(), generous_transport_params())!
+	defer {
+		mut c_hs := c.client_handshake()
+		c_hs.free()
+	}
+
+	stream_id := c.open_stream(true)!
+	payload := []u8{len: int(max_datagram_size) * 3, init: 0x5a}
+	c.write_stream(stream_id, payload, true)!
+	write_keys := c.app_write_keys or { panic('unreachable: established asserts this') }
+	mut received := []u8{}
+	mut received_fin := false
+	mut rounds := 0
+	for !received_fin && rounds < 10 {
+		rounds++
+		result := c.process_timeouts(now)!
+		for dg in result.outgoing {
+			assert u64(dg.bytes.len) <= max_datagram_size
+			frames := conn_test_decrypt_one_rtt(dg.bytes, server_initial_scid.len, write_keys)!
+			for frame in frames {
+				if frame is StreamFrame && frame.stream_id == stream_id {
+					received << frame.data
+					received_fin = frame.fin
+				}
+			}
+		}
+		now += 10
+	}
+	assert received_fin
+	assert received == payload
+}
+
 // -----------------------------------------------------------------------
 // Phase 12a: negotiated_alpn(), peer_stream_opened, stream_recv_status()
 // -----------------------------------------------------------------------

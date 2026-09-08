@@ -73,6 +73,23 @@ fn h3_server_test_transport_parameters() quic.QuicTransportParameters {
 	}
 }
 
+fn test_h3_server_params_have_usable_default_transport_limits() {
+	mut signing_key := ecdsa.new_key_from_seed(h3_server_test_key_seed, fixed_size: true)!
+	defer {
+		signing_key.free()
+	}
+	params := H3ServerParams{
+		signing_key: signing_key
+		handler: H3ServerTestEchoHandler{}
+	}
+	transport := params.transport_parameters
+	assert transport.initial_max_data or { 0 } > 0
+	assert transport.initial_max_stream_data_bidi_remote or { 0 } > 0
+	assert transport.initial_max_stream_data_uni or { 0 } > 0
+	assert transport.initial_max_streams_bidi or { 0 } > 0
+	assert transport.initial_max_streams_uni or { 0 } >= 3
+}
+
 // H3ServerTestEchoHandler answers every request with a fixed 200 response
 // -- this test only needs to prove the request reached the Handler and the
 // response reached the client, not exercise Handler-authoring variety.

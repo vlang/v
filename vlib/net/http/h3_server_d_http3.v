@@ -108,9 +108,19 @@ pub:
 	// themselves; a caller that DOES want to pin/persist it across
 	// restarts (e.g. so a token issued just before a restart is still
 	// honored just after) may still set it explicitly.
-	retry_token_key      []u8
-	always_retry         bool = true
-	transport_parameters quic.QuicTransportParameters
+	retry_token_key []u8
+	always_retry    bool = true
+	// The defaults permit ordinary requests plus HTTP/3's required control
+	// and QPACK streams. Callers can still replace the complete parameter set.
+	transport_parameters quic.QuicTransportParameters = quic.QuicTransportParameters{
+		max_idle_timeout: 30_000
+		initial_max_data: 10_000_000
+		initial_max_stream_data_bidi_local: 1_000_000
+		initial_max_stream_data_bidi_remote: 1_000_000
+		initial_max_stream_data_uni: 1_000_000
+		initial_max_streams_bidi: 100
+		initial_max_streams_uni: 100
+	}
 	handler              Handler
 }
 
@@ -260,9 +270,19 @@ pub fn (mut s H3Server) serve() ! {
 		} else {
 			result = s.listener.process_timeouts(now)!
 		}
-		next_timeout = result.next_timeout
 		s.absorb_and_dispatch(result)
 		for dg in result.outgoing {
+			peer := s.peer_by_str[dg.peer.bytestr()] or { continue }
+			s.socket.write_to(peer, dg.bytes) or { continue }
+		}
+
+		// Drive timers after every read, not only after a socket timeout. This
+		// also flushes writes queued by absorb_and_dispatch above in the same
+		// loop iteration, even while unrelated datagrams keep the socket busy.
+		followup := s.listener.process_timeouts(now)!
+		next_timeout = followup.next_timeout
+		s.absorb_and_dispatch(followup)
+		for dg in followup.outgoing {
 			peer := s.peer_by_str[dg.peer.bytestr()] or { continue }
 			s.socket.write_to(peer, dg.bytes) or { continue }
 		}

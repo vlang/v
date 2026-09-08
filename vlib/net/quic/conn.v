@@ -1949,41 +1949,62 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 	}
 }
 
-// drain_pending_stream_writes sends whatever write_stream() has queued that
-// currently fits within BOTH this stream's own send window and the
-// connection-level one -- v1 simplification: a queued write that does NOT
-// fully fit is left queued whole rather than partially sent (no splitting
-// at an arbitrary flow-control boundary), retried on a later drain once
-// more budget exists (a MAX_DATA/MAX_STREAM_DATA raise from the peer).
-// Documented follow-up, not a Phase 9b blocker -- bandwidth efficiency, not
-// correctness.
+// drain_pending_stream_writes sends one packet-sized chunk per writable stream.
+// Splitting here is required for correctness: waiting for a complete queued
+// write to fit can deadlock behind a smaller flow-control window, and placing a
+// complete large write in one packet can exceed the path datagram limit.
 fn (mut c QuicConn) drain_pending_stream_writes(now u64, mut result PollResult) ! {
 	for stream_id, pending in c.pending_stream_write {
 		if pending.data.len == 0 && !pending.fin {
 			continue
 		}
 		mut send_window := c.stream_send_windows[stream_id] or { continue }
-		needed := u64(pending.data.len)
-		if needed > send_window.available() || needed > c.conn_send_window.available() {
+		mut chunk_len := pending.data.len
+		stream_available := send_window.available()
+		conn_available := c.conn_send_window.available()
+		if u64(chunk_len) > stream_available {
+			chunk_len = int(stream_available)
+		}
+		if u64(chunk_len) > conn_available {
+			chunk_len = int(conn_available)
+		}
+		// STREAM's type, id, offset, and length can each consume an eight-byte
+		// varint. Combined with the worst-case short header, this conservative
+		// cap keeps every resulting datagram within max_datagram_size.
+		max_chunk_len := int(max_datagram_size) - short_header_packet_overhead_estimate - 25
+		if chunk_len > max_chunk_len {
+			chunk_len = max_chunk_len
+		}
+		if pending.data.len > 0 && chunk_len == 0 {
 			continue
 		}
 		mut stream := c.streams.get(stream_id) or { continue }
 		offset := stream.send.offset
-		stream_frame := encode_stream_frame(stream_id, offset, pending.data, pending.fin, true)!
+		chunk_fin := pending.fin && chunk_len == pending.data.len
+		chunk := pending.data[..chunk_len]
+		stream_frame := encode_stream_frame(stream_id, offset, chunk, chunk_fin, true)!
 		if !c.has_amplification_budget_for(.application_data, stream_frame.len) {
 			continue
 		}
 		datagram := c.build_one_rtt_packet(stream_frame, true, now)!
 		result.outgoing << datagram
 		c.record_amplification_sent(datagram.bytes.len)
+		needed := u64(chunk_len)
 		send_window.consume(needed)!
 		c.conn_send_window.consume(needed)!
 		stream.send.mark_data_queued()
 		stream.send.offset = offset + needed
-		if pending.fin {
+		if chunk_fin {
 			stream.send.mark_fin_sent(stream.send.offset)
 		}
-		c.pending_stream_write.delete(stream_id)
+		if chunk_len == pending.data.len {
+			c.pending_stream_write.delete(stream_id)
+		} else {
+			c.pending_stream_write[stream_id] = PendingStreamWrite{
+				data: pending.data[chunk_len..].clone()
+				fin: pending.fin
+			}
+		}
 	}
 }
 
