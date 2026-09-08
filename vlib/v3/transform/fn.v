@@ -11807,14 +11807,34 @@ fn fn_type_texts_signature_compatible(actual string, expected string) bool {
 // &ResponseWriter)`, where a `mut` parameter is stringified as `&T`) matches the
 // declared fn-type alias spelling (`fn(&Request, mut ResponseWriter)`, where a
 // `mut` parameter is spelled `mut T`). A `mut` parameter denotes reference
-// passing, so it canonicalizes to `&T`. Interior whitespace is removed so
-// `fn (T)` and `fn(T)` compare equal.
+// passing, so it canonicalizes to `&T`. Whitespace beside type punctuation is
+// removed so `fn (T)` and `fn(T)` compare equal, while keyword boundaries such
+// as `chan Item` remain significant.
 fn normalize_fn_param_text(text string) string {
 	mut clean := text.trim_space()
 	if clean.starts_with('mut ') {
 		clean = '&' + clean[4..].trim_space()
 	}
-	return clean.replace(' ', '')
+	mut normalized := []u8{cap: clean.len}
+	mut pending_space := false
+	for ch in clean.bytes() {
+		if ch in [` `, `\t`, `\r`, `\n`] {
+			pending_space = true
+			continue
+		}
+		if pending_space && normalized.len > 0 && fn_type_text_ident_char(normalized.last())
+			&& fn_type_text_ident_char(ch) {
+			normalized << ` `
+		}
+		normalized << ch
+		pending_space = false
+	}
+	return normalized.bytestr()
+}
+
+fn fn_type_text_ident_char(ch u8) bool {
+	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
+		|| (ch >= `0` && ch <= `9`) || ch == `_`
 }
 
 fn (mut t Transformer) validate_specialized_call_result(id flat.NodeId, actual_type string) bool {
