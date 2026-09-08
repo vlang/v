@@ -66,7 +66,10 @@ pub fn build_c(mut b builder.Builder, v_files []string, out_file string) {
 	if b.pref.is_vlines {
 		output2 = c.fix_reset_dbg_line(output2, out_file)
 	}
-	os.write_file_array(out_file, output2) or { panic(err) }
+	os.write_file_array(out_file, output2) or {
+		b.cleanup_build_artifacts()
+		panic(err)
+	}
 	if b.pref.is_stats {
 		b.stats_lines = output2.count(it == `\n`) + 1
 		b.stats_bytes = output2.len
@@ -75,10 +78,6 @@ pub fn build_c(mut b builder.Builder, v_files []string, out_file string) {
 	// (skip if parallel_cc already compiled them in gen_c)
 	if b.embedded_asm.len > 0 && b.embedded_o_files.len == 0 {
 		b.compile_embedded_asm_files(b.embedded_asm)
-	}
-	// Schedule compressed temp files for cleanup
-	for temp_file in b.embedded_temp_files {
-		b.pref.cleanup_files << temp_file
 	}
 }
 
@@ -101,14 +100,15 @@ pub fn gen_c(mut b builder.Builder, v_files []string) strings.Builder {
 	if result.embedded_temp_files.len > 0 {
 		b.embedded_temp_files = result.embedded_temp_files
 	}
+	// Schedule embed snapshots before assembly, C compilation, or linking can fail.
+	for temp_file in b.embedded_temp_files {
+		b.pref.cleanup_files << temp_file
+	}
 
 	// When parallel_cc is active, we must compile embed .S files now
 	// because parallel_cc runs inside gen_c() before build_c() gets a chance.
 	if b.pref.parallel_cc && b.embedded_asm.len > 0 {
 		b.compile_embedded_asm_files(b.embedded_asm)
-		for temp_file in b.embedded_temp_files {
-			b.pref.cleanup_files << temp_file
-		}
 	}
 
 	if b.pref.parallel_cc {

@@ -127,6 +127,9 @@ fn (mut v Builder) new_c_error_bug_report_with_vlines(ccompiler string) ?CErrorB
 	// Keep the original `.tmp.c` so that it can be restored afterwards (e.g. for `-keepc`).
 	original_c := os.read_file(v.out_name_c) or { return none }
 	goutput := cgen.gen(v.parsed_files, mut v.table, v.pref)
+	defer {
+		v.cleanup_embedded_temp_files(goutput.embedded_temp_files)
+	}
 	mut c_builder := goutput.res_builder
 	c_builder = cgen.fix_reset_dbg_line(c_builder, v.out_name_c)
 	os.write_file_array(v.out_name_c, c_builder) or { return none }

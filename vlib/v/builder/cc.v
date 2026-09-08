@@ -403,6 +403,20 @@ pub fn (v &Builder) cleanup_build_artifacts() {
 	}
 }
 
+fn (b &Builder) cleanup_embedded_temp_files(paths []string) {
+	if b.pref.reuse_tmpc || os.getenv('V_NO_RM_CLEANUP_FILES') != '' {
+		return
+	}
+	for path in paths {
+		os.rm(path) or {}
+	}
+}
+
+fn (b &Builder) cleanup_failed_embedded_assembly() {
+	b.cleanup_embedded_temp_files(b.embedded_temp_files)
+	b.cleanup_build_artifacts()
+}
+
 fn (mut v Builder) post_process_c_compiler_output_with_report(ccompiler string, res os.Result, report_ccompiler string, report_res os.Result) {
 	if res.exit_code == 0 {
 		v.cleanup_build_artifacts()
@@ -2057,9 +2071,11 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 	// Safety checks: these should never trigger (should_use_incbin_embed guards
 	// at codegen), but are kept as defense-in-depth.
 	if b.pref.os in [.wasm32, .wasm32_emscripten, .wasm32_wasi] {
+		b.cleanup_failed_embedded_assembly()
 		verror('embedded file .incbin is not supported on wasm targets')
 	}
 	if b.pref.build_mode == .build_module {
+		b.cleanup_failed_embedded_assembly()
 		verror('embedded file .incbin is not supported in build_module mode (separate .o cannot be merged into cached module)')
 	}
 	vtmp := os.vtmp_dir()
@@ -2068,17 +2084,23 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 	mut asm_cc := b.pref.ccompiler
 	if b.pref.ccompiler_type in [.tinyc, .msvc] {
 		asm_cc = pref.find_system_assembler() or {
+			b.cleanup_failed_embedded_assembly()
 			verror('no assembler found for embedded files (${b.pref.ccompiler_type} cannot assemble .S files); install clang, gcc, or cc')
 		}
 	}
 
 	for asm_filename, asm_content in asm_files {
 		asm_path := os.join_path(vtmp, asm_filename)
+		obj_path := asm_path.trim_string_right('.S') + '.o'
+		if !b.ccoptions.debug_mode {
+			b.pref.cleanup_files << asm_path
+			b.pref.cleanup_files << obj_path
+		}
 		os.write_file(asm_path, asm_content) or {
+			b.cleanup_failed_embedded_assembly()
 			verror('could not write embed assembly file: ${err}')
 		}
 
-		obj_path := asm_path.trim_string_right('.S') + '.o'
 		mut asm_args := []string{}
 		asm_args << '-c'
 		env_cflags := os.getenv('CFLAGS').replace('\n', ' ')
@@ -2097,6 +2119,7 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 		if b.pref.os == .linux {
 			if host_os != .linux {
 				cross_target := linux_cross_target_for_arch(b.pref.arch) or {
+					b.cleanup_failed_embedded_assembly()
 					verror('failed to determine linux cross target for embedded assembly: ${err.msg()}')
 					return
 				}
@@ -2125,17 +2148,13 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 		}
 		res := os.execute(cmd)
 		if res.exit_code != 0 {
+			b.cleanup_failed_embedded_assembly()
 			verror('Failed to compile embedded file assembly ${asm_filename}:\n${res.output}')
 		}
 
 		b.embedded_o_files << obj_path
-
-		// Schedule cleanup
-		if !b.ccoptions.debug_mode {
-			b.pref.cleanup_files << asm_path
-			b.pref.cleanup_files << obj_path
-		}
 	}
+	b.cleanup_embedded_temp_files(b.embedded_temp_files)
 }
 
 fn (mut b Builder) cc_linux_cross() {
