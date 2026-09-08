@@ -11813,6 +11813,75 @@ fn fn_type_texts_signature_compatible(actual string, expected string) bool {
 	return normalize_fn_param_text(actual_ret) == normalize_fn_param_text(expected_ret)
 }
 
+fn (t &Transformer) fn_type_texts_signature_compatible_without_c_abi_names_resolving_aliases(actual string, expected string) bool {
+	actual_resolved :=
+		t.normalize_fn_signature_component_aliases(actual, 0).replace('const&', '&').replace('const &', '&')
+	expected_resolved :=
+		t.normalize_fn_signature_component_aliases(expected, 0).replace('const&', '&').replace('const &', '&')
+	return actual_resolved == expected_resolved
+}
+
+fn (t &Transformer) normalize_fn_signature_component_aliases(text string, depth int) string {
+	clean := normalize_fn_param_text(text)
+	if clean.len == 0 || depth >= 16 {
+		return clean
+	}
+	for prefix in ['shared ', '?', '!', '[]', '...', '&', 'atomic ', 'chan ', 'thread '] {
+		if clean.starts_with(prefix) && clean.len > prefix.len {
+			return prefix + t.normalize_fn_signature_component_aliases(clean[prefix.len..], depth +
+				1)
+		}
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		params, ret := fn_type_text_parts(clean) or { return clean }
+		mut normalized_params := []string{cap: params.len}
+		for param in params {
+			normalized_params << t.normalize_fn_signature_component_aliases(param, depth + 1)
+		}
+		normalized_ret := if ret.len > 0 {
+			t.normalize_fn_signature_component_aliases(ret, depth + 1)
+		} else {
+			''
+		}
+		return 'fn(${normalized_params.join(',')})${normalized_ret}'
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end > 3 && bracket_end < clean.len {
+			key := t.normalize_fn_signature_component_aliases(clean[4..bracket_end], depth + 1)
+			value := t.normalize_fn_signature_component_aliases(clean[bracket_end + 1..], depth + 1)
+			return 'map[${key}]${value}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end > 0 && bracket_end + 1 < clean.len {
+			return clean[..bracket_end + 1] +
+				t.normalize_fn_signature_component_aliases(clean[bracket_end + 1..], depth + 1)
+		}
+	}
+	if clean.starts_with('(') && clean.ends_with(')') && clean.contains(',') {
+		mut parts := []string{}
+		for part in split_generic_args(clean[1..clean.len - 1]) {
+			parts << t.normalize_fn_signature_component_aliases(part, depth + 1)
+		}
+		return '(${parts.join(',')})'
+	}
+	base, args, is_generic := generic_app_parts(clean)
+	if is_generic {
+		mut normalized_args := []string{cap: args.len}
+		for arg in args {
+			normalized_args << t.normalize_fn_signature_component_aliases(arg, depth + 1)
+		}
+		return '${t.normalize_type_alias(base)}[${normalized_args.join(',')}]'
+	}
+	expanded := t.normalize_type_alias(clean)
+	if expanded != clean {
+		return t.normalize_fn_signature_component_aliases(expanded, depth + 1)
+	}
+	return clean
+}
+
 fn fn_type_texts_signature_compatible_without_c_abi_names(actual string, expected string) bool {
 	actual_params, actual_ret := fn_type_text_parts(actual) or { return false }
 	expected_params, expected_ret := fn_type_text_parts(expected) or { return false }
@@ -12121,9 +12190,17 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 				return false
 			}
 		}
-		if (type_text_has_shared_mode(source_fn_type) || type_text_has_shared_mode(mode_expected))
-			&& !fn_type_texts_signature_compatible(source_fn_type, mode_expected) {
-			return false
+		source_mode_type := t.normalize_fn_signature_component_aliases(source_fn_type, 0)
+		expected_mode_type := t.normalize_fn_signature_component_aliases(mode_expected, 0)
+		has_shared_mode := type_text_has_shared_mode(source_mode_type)
+			|| type_text_has_shared_mode(expected_mode_type)
+		if has_shared_mode {
+			if source_mode_type != expected_mode_type {
+				return false
+			}
+			if mode_expected.starts_with('fn(') || mode_expected.starts_with('fn (') {
+				return true
+			}
 		}
 		if matched_sum_variant {
 			return true
@@ -12273,7 +12350,7 @@ fn (t &Transformer) fn_literal_sum_variant_c_abi_compatible(actual_text string, 
 	for variant in t.sum_type_variants_for_index(expected_type) {
 		variant_type := t.normalize_type_alias(variant)
 		if (!variant_type.starts_with('fn(') && !variant_type.starts_with('fn ('))
-			|| !fn_type_texts_signature_compatible_without_c_abi_names(actual_text, variant_type) {
+			|| !t.fn_type_texts_signature_compatible_without_c_abi_names_resolving_aliases(actual_text, variant_type) {
 			continue
 		}
 		found_matching_fn_variant = true
@@ -12299,7 +12376,7 @@ fn (t &Transformer) fn_literal_matching_sum_variant_type(actual_text string, exp
 	for variant in t.sum_type_variants_for_index(expected_type) {
 		variant_type := t.normalize_type_alias(variant)
 		if (variant_type.starts_with('fn(') || variant_type.starts_with('fn ('))
-			&& fn_type_texts_signature_compatible_without_c_abi_names(actual_text, variant_type) {
+			&& t.fn_type_texts_signature_compatible_without_c_abi_names_resolving_aliases(actual_text, variant_type) {
 			return variant_type
 		}
 	}

@@ -1938,6 +1938,12 @@ fn test_fn_literal_nested_shared_callback_param_matches_alias_inside_generic_fn(
 	matching := run_good(v3_bin, 'good_nested_shared_callback_param_in_generic',
 		'struct State {}\ntype NestedSharedHandler = fn (cb fn (shared value State))\nstruct Router {}\nfn (mut r Router) accept(handler NestedSharedHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (callback fn (shared value State)) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	assert matching == 'true'
+	nested_alias := run_good(v3_bin, 'good_nested_shared_callback_alias_in_generic',
+		'struct State {}\ntype Inner = fn (shared value State)\ntype Outer = fn (callback Inner)\nstruct Router {}\nfn (mut r Router) accept(handler Outer) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (callback fn (shared value State)) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert nested_alias == 'true'
+	run_bad(v3_bin, 'bad_nested_shared_callback_alias_in_generic',
+		'struct State {}\ntype Inner = fn (shared value State)\ntype Outer = fn (callback Inner)\nstruct Router {}\nfn (mut r Router) accept(handler Outer) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (callback fn (value State)) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 	run_bad(v3_bin, 'bad_nested_shared_callback_param_in_generic',
 		'struct State {}\ntype NestedPlainHandler = fn (cb fn (value State))\nstruct Router {}\nfn (mut r Router) accept(handler NestedPlainHandler) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (callback fn (shared value State)) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
