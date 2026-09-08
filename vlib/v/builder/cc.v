@@ -1994,6 +1994,59 @@ fn find_system_assembler() ?string {
 	return none
 }
 
+fn split_embed_asm_flags(value string) []string {
+	mut parts := []string{}
+	mut buf := []u8{}
+	mut quote := u8(0)
+	for ch in value {
+		if quote == 0 && ch in [`"`, `'`] {
+			quote = ch
+			continue
+		}
+		if ch == quote {
+			quote = 0
+			continue
+		}
+		if quote == 0 && ch in [` `, `\t`] {
+			if buf.len > 0 {
+				parts << buf.bytestr()
+				buf = []u8{}
+			}
+			continue
+		}
+		buf << ch
+	}
+	if buf.len > 0 {
+		parts << buf.bytestr()
+	}
+	return parts
+}
+
+fn filter_embed_asm_target_flags(value string) []string {
+	parts := split_embed_asm_flags(value)
+	mut filtered := []string{}
+	mut i := 0
+	for i < parts.len {
+		flag := parts[i]
+		if flag in ['-target', '--target', '-arch', '-isysroot', '--sysroot', '-B', '-Xassembler',
+			'-mllvm', '-march', '-mcpu', '-mtune', '-mabi', '-mfpu', '-mfloat-abi', '-mcmodel'] {
+			filtered << flag
+			if i + 1 < parts.len {
+				i++
+				filtered << parts[i]
+			}
+		} else if flag.starts_with('-m') || flag.starts_with('-target=')
+			|| flag.starts_with('--target=') || flag.starts_with('-isysroot=')
+			|| flag.starts_with('--sysroot=')
+			|| (flag.starts_with('-B') && flag.len > 2) || flag.starts_with('-Wa,')
+			|| flag in ['-EB', '-EL'] {
+			filtered << flag
+		}
+		i++
+	}
+	return filtered
+}
+
 pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 	if asm_files.len == 0 {
 		return
@@ -2026,10 +2079,10 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 		asm_args << '-c'
 		env_cflags := os.getenv('CFLAGS').replace('\n', ' ')
 		if env_cflags != '' {
-			asm_args << env_cflags
+			asm_args << filter_embed_asm_target_flags(env_cflags).map(os.quoted_path(it))
 		}
 		if b.pref.cflags != '' {
-			asm_args << b.pref.cflags
+			asm_args << filter_embed_asm_target_flags(b.pref.cflags).map(os.quoted_path(it))
 		}
 		host_os := pref.get_host_os()
 
