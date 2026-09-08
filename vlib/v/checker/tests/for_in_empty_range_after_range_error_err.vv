@@ -102,6 +102,9 @@ fn main() {
 	for i in 1 .. 18446744073709551615 / 2 {
 		println(i)
 	}
+	for i in 1 .. i64(18446744073709551615 / 2) {
+		println(i)
+	}
 }
 
 type OverloadedRangeBound = u8

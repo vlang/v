@@ -459,6 +459,9 @@ fn (mut c Checker) range_literal_expr_has_unsigned_i64_division(expr ast.Expr) b
 		ast.PrefixExpr {
 			return c.range_literal_expr_has_unsigned_i64_division(expr.right)
 		}
+		ast.CastExpr {
+			return c.range_literal_expr_has_unsigned_i64_division(expr.expr)
+		}
 		ast.Ident {
 			if expr.obj is ast.ConstField {
 				return c.range_literal_expr_has_unsigned_i64_division(expr.obj.expr)
