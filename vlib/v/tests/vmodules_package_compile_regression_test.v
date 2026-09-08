@@ -357,3 +357,29 @@ fn test_issue_27281_marker_bounded_external_test_file_keeps_prefix() {
 		os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(foo_test_file)}')
 	assert file_res.exit_code == 0, file_res.output
 }
+
+fn test_issue_27281_marker_bounded_directory_ignores_inactive_module_sources() {
+	workspace := os.join_path(os.vtmp_dir(), 'issue_27281_inactive_module_source')
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	project_dir := os.join_path(workspace, 'project')
+	foo_dir := os.join_path(project_dir, 'foo')
+	bar_dir := os.join_path(foo_dir, 'bar')
+	os.rmdir_all(workspace) or {}
+	os.mkdir_all(bar_dir) or { panic(err) }
+	main_source :=
+		['module main', '', 'import bar', '', 'fn main() {', '\tprintln(bar.module_name())', '}'].join_lines() +
+		'\n'
+	inactive_source := 'module foo\n'
+	bar_source :=
+		['module bar', '', 'pub fn module_name() string {', '\treturn @MOD', '}'].join_lines() +
+		'\n'
+	issue_20147_write_file(os.join_path(project_dir, '.v.mod.stop'), '')
+	issue_20147_write_file(os.join_path(foo_dir, 'main.c.v'), main_source)
+	issue_20147_write_file(os.join_path(foo_dir, 'foo.js.v'), inactive_source)
+	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'), bar_source)
+	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(foo_dir)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == 'bar', res.output
+}

@@ -226,14 +226,14 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 		}
 		normalized_abs_pref_path := os.real_path(abs_pref_path)
 		abs_pref_base := if os.is_dir(normalized_abs_pref_path) {
-			if compilation_path_is_module_root(normalized_abs_pref_path) {
+			if compilation_path_is_module_root(pref_, normalized_abs_pref_path) {
 				os.dir(normalized_abs_pref_path)
 			} else {
 				normalized_abs_pref_path
 			}
 		} else {
 			pref_file_dir := os.dir(normalized_abs_pref_path)
-			if compilation_path_is_module_root(normalized_abs_pref_path) {
+			if compilation_path_is_module_root(pref_, normalized_abs_pref_path) {
 				os.dir(pref_file_dir)
 			} else {
 				pref_file_dir
@@ -249,7 +249,7 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 	return error('module not found')
 }
 
-fn compilation_path_is_module_root(path string) bool {
+fn compilation_path_is_module_root(pref_ &pref.Preferences, path string) bool {
 	module_dir := if os.is_dir(path) { path } else { os.dir(path) }
 	expected_module := os.base(module_dir)
 	if expected_module == '' || expected_module == 'main' {
@@ -266,26 +266,58 @@ fn compilation_path_is_module_root(path string) bool {
 			return false
 		}
 		entries := os.ls(module_dir) or { return false }
-		for entry in entries {
-			if entry.ends_with('_test.v') || !entry.ends_with('.v') {
-				continue
-			}
-			if source_file_module_name(os.join_path(module_dir, entry)) or { '' } == expected_module {
+		for source_path in active_module_source_files(pref_, module_dir, entries, false) {
+			if source_file_module_name(source_path) or { '' } == expected_module {
 				return true
 			}
 		}
 		return false
 	}
 	entries := os.ls(path) or { return false }
-	for entry in entries {
-		if !entry.ends_with('.v') {
-			continue
-		}
-		if source_file_module_name(os.join_path(path, entry)) or { '' } == expected_module {
+	for source_path in active_module_source_files(pref_, path, entries, true) {
+		if source_file_module_name(source_path) or { '' } == expected_module {
 			return true
 		}
 	}
 	return false
+}
+
+fn active_module_source_files(pref_ &pref.Preferences, dir string, entries []string, include_tests bool) []string {
+	mut sources := pref_.should_compile_filtered_files(dir, entries)
+	if !include_tests {
+		return sources
+	}
+	mut test_files_by_alias := map[string][]string{}
+	mut test_aliases := []string{}
+	for entry in entries {
+		alias := test_source_filter_alias(entry) or { continue }
+		test_aliases << alias
+		test_files_by_alias[alias] << entry
+	}
+	for alias_path in pref_.should_compile_filtered_files(dir, test_aliases) {
+		for test_file in test_files_by_alias[os.base(alias_path)] {
+			sources << os.join_path(dir, test_file)
+		}
+	}
+	return sources
+}
+
+fn test_source_filter_alias(file string) ?string {
+	if file.ends_with('_test.v') {
+		return file[..file.len - '_test.v'.len] + '.v'
+	}
+	if !file.ends_with('.v') {
+		return none
+	}
+	stem := file.all_before_last('.v')
+	if !stem.contains('.') {
+		return none
+	}
+	base := stem.all_before_last('.')
+	if !base.ends_with('_test') {
+		return none
+	}
+	return base[..base.len - '_test'.len] + '.' + stem.all_after_last('.') + '.v'
 }
 
 fn source_file_module_name(path string) ?string {
