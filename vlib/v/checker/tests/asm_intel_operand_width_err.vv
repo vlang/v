@@ -323,6 +323,21 @@ fn intel_narrow_arithmetic_carry_flows_through_cmc(value u32) {
 	}
 }
 
+fn intel_narrow_arithmetic_carry_across_jrcxz(value u32) {
+	mut result := value
+	asm amd64 intel {
+		add result, 1
+		jrcxz flags_ready
+		xor eax, eax
+	flags_ready:
+		setc al
+		; +r (result)
+		; ; rax
+		  rcx
+		  cc
+	}
+}
+
 fn intel_crc32_memory_source(base &u16, checksum u64) u64 {
 	mut result := checksum
 	asm amd64 intel {

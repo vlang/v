@@ -4641,6 +4641,11 @@ fn asm_intel_instruction_overwritten_flags(template ast.AsmTemplate) u8 {
 	return 0
 }
 
+fn asm_intel_instruction_changes_control_flow(instruction string) bool {
+	name := asm_intel_normalized_instruction_name(instruction)
+	return name.starts_with('j') || name == 'ljmp' || name.starts_with('loop')
+}
+
 fn asm_intel_flags_are_observed_after(templates []ast.AsmTemplate, template_index int) bool {
 	mut remaining_flags := asm_intel_instruction_set_flags(templates[template_index].name)
 	if remaining_flags == 0 {
@@ -4653,8 +4658,7 @@ fn asm_intel_flags_are_observed_after(templates []ast.AsmTemplate, template_inde
 		if asm_intel_instruction_read_flags(templates[i].name) & remaining_flags != 0 {
 			return true
 		}
-		name := asm_intel_normalized_instruction_name(templates[i].name)
-		if name in ['jmp', 'jmpl', 'jmpq', 'ljmp'] {
+		if asm_intel_instruction_changes_control_flow(templates[i].name) {
 			return true
 		}
 		remaining_flags &= asm_intel_status_flags ^ asm_intel_instruction_overwritten_flags(templates[i])

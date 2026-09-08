@@ -313,73 +313,80 @@ vlib/v/checker/tests/asm_intel_operand_width_err.vv:317:3: error: named operand 
       |         ~~~~~~~~~~~~~
   318 |         cmc
   319 |         setc al
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:329:3: error: instruction `crc32w` selects a 16-bit memory source, which is incompatible with the 64-bit named destination in structured `intel` assembly; use a valid CRC32 source width, or a `raw intel` block with explicit operand modifiers
-  327 |     mut result := checksum
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:329:3: error: named operand `result` has 32-bit type `u32`, but instruction `add` sets 64-bit flags that are observed later in this structured `intel` block; use native-width operands, or a `raw intel` block with explicit operand modifiers
+  327 |     mut result := value
   328 |     asm amd64 intel {
-  329 |         crc32w result, [base]
+  329 |         add result, 1
+      |         ~~~~~~~~~~~~~
+  330 |         jrcxz flags_ready
+  331 |         xor eax, eax
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:344:3: error: instruction `crc32w` selects a 16-bit memory source, which is incompatible with the 64-bit named destination in structured `intel` assembly; use a valid CRC32 source width, or a `raw intel` block with explicit operand modifiers
+  342 |     mut result := checksum
+  343 |     asm amd64 intel {
+  344 |         crc32w result, [base]
       |         ~~~~~~~~~~~~~~~~~~~~~
-  330 |         ; +r (result)
-  331 |         ; r (base)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:339:3: error: named operand `value` has 32-bit type `u32`, but instruction `lzcnt` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  337 |     mut result := i64(0)
-  338 |     asm amd64 intel {
-  339 |         lzcnt result, value
+  345 |         ; +r (result)
+  346 |         ; r (base)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:354:3: error: named operand `value` has 32-bit type `u32`, but instruction `lzcnt` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  352 |     mut result := i64(0)
+  353 |     asm amd64 intel {
+  354 |         lzcnt result, value
       |         ~~~~~~~~~~~~~~~~~~~
-  340 |         ; =r (result)
-  341 |         ; r (value)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:349:3: error: named operand `result` has 32-bit type `u32`, but instruction `shld` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  347 |     mut result := value
-  348 |     asm amd64 intel {
-  349 |         shld result, source, 1
+  355 |         ; =r (result)
+  356 |         ; r (value)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:364:3: error: named operand `result` has 32-bit type `u32`, but instruction `shld` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  362 |     mut result := value
+  363 |     asm amd64 intel {
+  364 |         shld result, source, 1
       |         ~~~~~~~~~~~~~~~~~~~~~~
-  350 |         ; +r (result)
-  351 |         ; r (source)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:359:3: error: named operand `value` has 32-bit type `u32`, but instruction `rorx` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  357 |     mut result := i64(0)
-  358 |     asm amd64 intel {
-  359 |         rorx result, value, 1
+  365 |         ; +r (result)
+  366 |         ; r (source)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:374:3: error: named operand `value` has 32-bit type `u32`, but instruction `rorx` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  372 |     mut result := i64(0)
+  373 |     asm amd64 intel {
+  374 |         rorx result, value, 1
       |         ~~~~~~~~~~~~~~~~~~~~~
-  360 |         ; =r (result)
-  361 |         ; r (value)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:369:3: error: named shift count `count` expands to a native-width register in structured `intel` assembly, but instruction `rorx` requires an immediate; use a literal count, or a `raw intel` block with an explicit operand modifier
-  367 |     mut result := i64(0)
-  368 |     asm amd64 intel {
-  369 |         rorx result, value, count
+  375 |         ; =r (result)
+  376 |         ; r (value)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:384:3: error: named shift count `count` expands to a native-width register in structured `intel` assembly, but instruction `rorx` requires an immediate; use a literal count, or a `raw intel` block with an explicit operand modifier
+  382 |     mut result := i64(0)
+  383 |     asm amd64 intel {
+  384 |         rorx result, value, count
       |         ~~~~~~~~~~~~~~~~~~~~~~~~~
-  370 |         ; =r (result)
-  371 |         ; r (value)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:380:3: error: named operand `value` has 32-bit type `u32`, but instruction `crc32` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  378 |     mut result := checksum
-  379 |     asm amd64 intel {
-  380 |         crc32 result, value
+  385 |         ; =r (result)
+  386 |         ; r (value)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:395:3: error: named operand `value` has 32-bit type `u32`, but instruction `crc32` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  393 |     mut result := checksum
+  394 |     asm amd64 intel {
+  395 |         crc32 result, value
       |         ~~~~~~~~~~~~~~~~~~~
-  381 |         ; +r (result)
-  382 |         ; r (value)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:390:3: error: named operand `result` has 32-bit type `u32`, but instruction `movbe` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  388 |     mut result := u32(0)
-  389 |     asm amd64 intel {
-  390 |         movbe result, [base]
+  396 |         ; +r (result)
+  397 |         ; r (value)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:405:3: error: named operand `result` has 32-bit type `u32`, but instruction `movbe` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  403 |     mut result := u32(0)
+  404 |     asm amd64 intel {
+  405 |         movbe result, [base]
       |         ~~~~~~~~~~~~~~~~~~~~
-  391 |         ; =r (result)
-  392 |         ; r (base)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:399:3: error: named operand `value` has 32-bit type `u32`, but instruction `bt` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  397 | fn intel_narrow_bit_test(value u32) {
-  398 |     asm amd64 intel {
-  399 |         bt value, 40
+  406 |         ; =r (result)
+  407 |         ; r (base)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:414:3: error: named operand `value` has 32-bit type `u32`, but instruction `bt` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  412 | fn intel_narrow_bit_test(value u32) {
+  413 |     asm amd64 intel {
+  414 |         bt value, 40
       |         ~~~~~~~~~~~~
-  400 |         ; ; r (value)
-  401 |         ; cc
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:408:3: error: named destination `result` has 32-bit type `u32`, but instruction `bswap` operates on the 64-bit register substituted by structured `intel` assembly; use a native-width destination, or a `raw intel` block with an explicit operand modifier
-  406 |     mut result := value
-  407 |     asm amd64 intel {
-  408 |         bswap result
+  415 |         ; ; r (value)
+  416 |         ; cc
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:423:3: error: named destination `result` has 32-bit type `u32`, but instruction `bswap` operates on the 64-bit register substituted by structured `intel` assembly; use a native-width destination, or a `raw intel` block with an explicit operand modifier
+  421 |     mut result := value
+  422 |     asm amd64 intel {
+  423 |         bswap result
       |         ~~~~~~~~~~~~
-  409 |         ; +r (result)
-  410 |     }
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:418:3: error: named operand `value` has 32-bit type `u32`, but instruction `mulx` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  416 |     mut low := i64(0)
-  417 |     asm amd64 intel {
-  418 |         mulx high, low, value
+  424 |         ; +r (result)
+  425 |     }
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:433:3: error: named operand `value` has 32-bit type `u32`, but instruction `mulx` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  431 |     mut low := i64(0)
+  432 |     asm amd64 intel {
+  433 |         mulx high, low, value
       |         ~~~~~~~~~~~~~~~~~~~~~
-  419 |         ; =r (high)
-  420 |           =r (low)
+  434 |         ; =r (high)
+  435 |           =r (low)
