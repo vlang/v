@@ -1528,8 +1528,8 @@ fn test_stream_recv_status_reports_all_three_terminal_states() {
 	read_keys := c.app_read_keys or { panic('unreachable: established asserts this') }
 	server_app_keys := read_keys.current_keys
 
-	// Stream 1: open (a non-FIN STREAM frame -- data arrived, no terminal
-	// condition yet) -> fin_received via a later FIN-carrying STREAM frame.
+	// Stream 1: a reordered FIN leaves a gap, so the simplified status remains
+	// open until the missing bytes arrive and reassembly reaches the final size.
 	mid_frame := encode_stream_frame(1, 0, 'partial'.bytes(), false, true)!
 	mid_datagram := build_fake_one_rtt_packet(c.scid, 0, mid_frame, server_app_keys, false)!
 	c.poll(mid_datagram.bytes, now)!
@@ -1537,9 +1537,15 @@ fn test_stream_recv_status_reports_all_three_terminal_states() {
 	assert open_status.state == .open
 	assert open_status.reset_error == none
 
-	fin_frame := encode_stream_frame(1, u64('partial'.len), 'complete'.bytes(), true, true)!
+	fin_frame := encode_stream_frame(1, u64('partial-gap'.len), 'complete'.bytes(), true, true)!
 	fin_datagram := build_fake_one_rtt_packet(c.scid, 0, fin_frame, server_app_keys, false)!
 	c.poll(fin_datagram.bytes, now)!
+	gap_status := c.stream_recv_status(1) or { panic('expected a status for a known stream') }
+	assert gap_status.state == .open
+
+	gap_frame := encode_stream_frame(1, u64('partial'.len), '-gap'.bytes(), false, true)!
+	gap_datagram := build_fake_one_rtt_packet(c.scid, 0, gap_frame, server_app_keys, false)!
+	c.poll(gap_datagram.bytes, now)!
 	fin_status := c.stream_recv_status(1) or { panic('expected a status for a known stream') }
 	assert fin_status.state == .fin_received
 	assert fin_status.reset_error == none

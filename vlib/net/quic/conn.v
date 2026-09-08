@@ -1404,11 +1404,9 @@ fn (mut c QuicConn) note_peer_stream_discovered(stream_id u64, mut result PollRe
 
 // StreamRecvTerminalState is a simplified view of RecvStreamState (stream.v)
 // for callers that only care whether a stream's receive side has reached a
-// terminal condition, not the full 6-state machine -- collapses recv into
-// open, and both size_known/data_recvd (a FIN has been observed, whether or
-// not every byte has actually arrived yet) into fin_received, since for a
-// caller checking "did this critical stream close" (RFC 9114 §4.2/§6.2.1),
-// the FIN itself is what matters, not full byte-level completion.
+// terminal condition, not the full 6-state machine. A reordered FIN only
+// moves the receive half to size_known; it remains open here until all bytes
+// through the final size have arrived and the receive half reaches data_recvd.
 pub enum StreamRecvTerminalState {
 	open
 	fin_received
@@ -1426,7 +1424,7 @@ pub:
 // status, or none if the ID is unknown to this connection (never seen in
 // any frame, and never locally opened) or has no receive side at all (a
 // locally-initiated unidirectional stream). reset_recvd/reset_read always
-// win over size_known/data_recvd if both have occurred (RFC 9000 §3.2
+// win over data_recvd if both have occurred (RFC 9000 §3.2
 // permits a RESET_STREAM after all data was already received, and
 // mark_reset_recvd applies unconditionally in that case -- see its own doc
 // comment), so checking reset first below matches the underlying state
@@ -1443,12 +1441,12 @@ pub fn (c &QuicConn) stream_recv_status(stream_id u64) ?StreamRecvStatus {
 				reset_error: stream.recv.error_code
 			}
 		}
-		.size_known, .data_recvd, .data_read {
+		.data_recvd, .data_read {
 			return StreamRecvStatus{
 				state: .fin_received
 			}
 		}
-		.recv {
+		.recv, .size_known {
 			return StreamRecvStatus{
 				state: .open
 			}

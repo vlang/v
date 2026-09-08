@@ -31,11 +31,9 @@ module quic
 // check -- see deliver_decoded_headers).
 //
 // Scope decision, documented here and in PROGRESS.md/the conformance
-// matrix: NEITHER role ever sends MAX_PUSH_ID, so RFC 9114 §7.2.7's
-// push-authorization precondition is never satisfied for either -- any
-// PUSH_PROMISE/CANCEL_PUSH this connection receives is therefore always a
-// protocol violation (H3_ID_ERROR), and no push-ID/max-push-id tracking
-// state exists anywhere in this file. CONNECT is similarly out of scope --
+// matrix: this implementation never creates pushes. A server still accepts
+// and tracks a client's legal MAX_PUSH_ID increases; PUSH_PROMISE and
+// CANCEL_PUSH remain unsupported. CONNECT is similarly out of scope --
 // nothing in H3ClientRequest (net.http, Phase 12d) or the Phase 13e server
 // path ever constructs or accepts one.
 
@@ -221,6 +219,7 @@ mut:
 	peer_qpack_decoder_stream_id ?u64
 	peer_qpack_encoder_buf       []u8
 	peer_qpack_decoder_buf       []u8
+	peer_max_push_id             ?u64
 	qpack_stream_registry        QpackStreamRegistry
 	// Every OTHER classified-but-uninteresting peer uni stream (push,
 	// reserved/grease, or genuinely unknown -- RFC 9114 §6.2/§6.2.3/§9 all
@@ -957,7 +956,7 @@ fn (mut h H3Conn) fail_request_stream(stream_id u64, error_code u64, reason stri
 
 // prune_terminal_dead_streams drops any dead_request_streams entry whose
 // underlying QUIC receive side has itself reached a terminal state
-// (reset_recvd/reset_read or size_known/data_recvd/data_read): once that
+// (reset_recvd/reset_read or data_recvd/data_read): once that
 // has happened, the transport guarantees no further STREAM frames for that
 // ID can ever arrive (RFC 9000 -- a stream ID is never reused within a
 // connection), so this layer no longer needs to remember it was locally

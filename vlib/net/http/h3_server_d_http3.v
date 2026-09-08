@@ -88,8 +88,22 @@ fn h3_server_stream_key(conn_id string, stream_id u64) string {
 // HTTP/3's wire format at all).
 struct H3ServerStream {
 mut:
-	headers []quic.QpackFieldLine
-	body    []u8
+	headers  []quic.QpackFieldLine
+	body     []u8
+	rejected bool
+}
+
+fn (mut s H3ServerStream) append_body(data []u8) bool {
+	if s.rejected {
+		return false
+	}
+	if s.body.len + data.len > h3_server_max_request_body {
+		s.body.clear()
+		s.rejected = true
+		return false
+	}
+	s.body << data
+	return true
 }
 
 // H3ServerParams configures a new H3Server for its whole lifetime --
@@ -431,6 +445,9 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 			stream_id := ev.stream_id or { return }
 			key := h3_server_stream_key(conn_id, stream_id)
 			if mut st := s.streams[key] {
+				if st.rejected {
+					return
+				}
 				st.headers = ev.headers
 			} else {
 				s.streams[key] = &H3ServerStream{
@@ -453,17 +470,23 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 				s.streams[key] = new_st
 				new_st
 			}
-			if st.body.len + ev.data.len > h3_server_max_request_body {
+			was_rejected := st.rejected
+			if !st.append_body(ev.data) {
+				if was_rejected {
+					return
+				}
 				s.send_error_response(mut h3c, stream_id, 413)
-				s.streams.delete(key)
 				return
 			}
-			st.body << ev.data
 		}
 		.request_ended {
 			stream_id := ev.stream_id or { return }
 			key := h3_server_stream_key(conn_id, stream_id)
 			st := s.streams[key] or { return }
+			if st.rejected {
+				s.streams.delete(key)
+				return
+			}
 			s.run_request(mut h3c, stream_id, st)
 			s.streams.delete(key)
 		}

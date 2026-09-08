@@ -395,12 +395,32 @@ pub fn parse_key_share_extension_client(data []u8) ![]ClientKeyShareEntry {
 			return error('quic: key_share (client) KeyShareEntry key_exchange must not be empty (opaque key_exchange<1..2^16-1>)')
 		}
 		entries << ClientKeyShareEntry{
-			group:        group
+			group: group
 			key_exchange: data[cursor..cursor + ke_len].clone()
 		}
 		cursor += ke_len
 	}
 	return entries
+}
+
+// parse_supported_groups_extension_client parses the client's RFC 8446
+// NamedGroupList: a two-byte byte length followed by non-empty u16 groups.
+fn parse_supported_groups_extension_client(data []u8) ![]u16 {
+	if data.len < 2 {
+		return error('quic: supported_groups (client) truncated: need at least 2 bytes, have ${data.len}')
+	}
+	list_len := int((u32(data[0]) << 8) | u32(data[1]))
+	if 2 + list_len != data.len {
+		return error('quic: supported_groups (client) list length ${list_len} does not match remaining data ${data.len - 2}')
+	}
+	if list_len == 0 || list_len % 2 != 0 {
+		return error('quic: supported_groups (client) list length ${list_len} must be a non-zero, even number of bytes')
+	}
+	mut groups := []u16{cap: list_len / 2}
+	for cursor := 2; cursor < data.len; cursor += 2 {
+		groups << u16((u32(data[cursor]) << 8) | u32(data[cursor + 1]))
+	}
+	return groups
 }
 
 // parse_signature_algorithms_extension_client parses a client's
@@ -583,8 +603,7 @@ pub fn parse_client_hello(body []u8) !ParsedClientHello {
 	session_id_len := int(body[cursor])
 	cursor += 1
 	if session_id_len != 0 {
-		return error_with_code('quic: ClientHello legacy_session_id must be empty (RFC 9001 §8.4)',
-			int(quic_error_protocol_violation))
+		return error_with_code('quic: ClientHello legacy_session_id must be empty (RFC 9001 §8.4)', int(quic_error_protocol_violation))
 	}
 
 	if body.len < cursor + 2 {
@@ -635,8 +654,8 @@ pub fn parse_client_hello(body []u8) !ParsedClientHello {
 	extensions := parse_extension_list(body[cursor..])!
 
 	return ParsedClientHello{
-		random:        random
+		random: random
 		cipher_suites: cipher_suites
-		extensions:    extensions
+		extensions: extensions
 	}
 }

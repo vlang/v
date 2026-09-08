@@ -10,13 +10,13 @@ import crypto.sha256
 // actually testing.
 fn server_handshake_test_client_params() ClientHandshakeParams {
 	return ClientHandshakeParams{
-		random:               []u8{len: 32, init: 0x11}
-		server_name:          'example.com'
+		random: []u8{len: 32, init: 0x11}
+		server_name: 'example.com'
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: []u8{len: 8, init: 0xaa}
 		}
-		ca_bundle_pem:        ''
-		alpn_protocols:       ['h3']
+		ca_bundle_pem: ''
+		alpn_protocols: ['h3']
 	}
 }
 
@@ -27,18 +27,18 @@ fn server_handshake_test_client_params() ClientHandshakeParams {
 fn server_handshake_test_server_params() !ServerHandshakeParams {
 	_, signing_key := ecdsa.generate_key()!
 	return ServerHandshakeParams{
-		transport_parameters:     QuicTransportParameters{
-			initial_source_connection_id:       []u8{len: 8, init: 0xbb}
+		transport_parameters: QuicTransportParameters{
+			initial_source_connection_id: []u8{len: 8, init: 0xbb}
 			original_destination_connection_id: []u8{len: 8, init: 0xaa}
 		}
 		supported_alpn_protocols: ['h3']
-		certificate_chain:        [
+		certificate_chain: [
 			CertificateEntry{
 				cert_data: []u8{len: 200, init: 0x30}
 			},
 		]
-		signing_key:              signing_key
-		server_hello_random:      []u8{len: 32, init: 0x22}
+		signing_key: signing_key
+		server_hello_random: []u8{len: 32, init: 0x22}
 	}
 }
 
@@ -54,6 +54,10 @@ fn server_handshake_test_server_params() !ServerHandshakeParams {
 // (that's the RECEIVING side's job, per its own doc comment) -- which is
 // exactly what makes this possible.
 fn build_test_client_hello_body(transport_parameters QuicTransportParameters) ![]u8 {
+	return build_test_client_hello_body_with_group_extensions(transport_parameters, encode_supported_groups_extension()!, encode_key_share_extension(named_group_secp256r1, []u8{len: 65, init: 0x04})!)
+}
+
+fn build_test_client_hello_body_with_group_extensions(transport_parameters QuicTransportParameters, supported_groups_extension []u8, key_share_extension []u8) ![]u8 {
 	mut body := []u8{}
 	body << u8(0x03)
 	body << u8(0x03)
@@ -68,9 +72,10 @@ fn build_test_client_hello_body(transport_parameters QuicTransportParameters) ![
 
 	mut extensions := []u8{}
 	extensions << encode_supported_versions_extension()!
+	extensions << supported_groups_extension
 	extensions << encode_signature_algorithms_extension()!
 	extensions << encode_alpn_extension(['h3'])!
-	extensions << encode_key_share_extension(named_group_secp256r1, []u8{len: 65, init: 0x04})!
+	extensions << key_share_extension
 	extensions << encode_quic_transport_parameters_extension(transport_parameters)!
 
 	body << u8(extensions.len >> 8)
@@ -111,8 +116,7 @@ fn test_server_handshake_full_flow_agrees_with_real_client() {
 	assert ch_consumed == client_hello.len
 
 	server_params := server_handshake_test_server_params()!
-	mut server_h, flight := Tls13ServerHandshake.respond_to_client_hello(ch_msg, client_hello,
-		server_params)!
+	mut server_h, flight := Tls13ServerHandshake.respond_to_client_hello(ch_msg, client_hello, server_params)!
 	defer {
 		server_h.free()
 	}
@@ -163,8 +167,7 @@ fn test_server_handshake_full_flow_agrees_with_real_client() {
 	// client transport parameters' own values, matching what a real
 	// caller would have observed on the wire (the packet header SCID/DCID)
 	// rather than trusted blindly from the transport parameters alone.
-	client_h.process_encrypted_extensions(ee_msg, ee_framed, []u8{len: 8, init: 0xbb},
-		[]u8{len: 8, init: 0xaa}, none)!
+	client_h.process_encrypted_extensions(ee_msg, ee_framed, []u8{len: 8, init: 0xbb}, []u8{len: 8, init: 0xaa}, none)!
 	assert client_h.negotiated_alpn()? == 'h3'
 	assert client_h.state() == .wait_certificate
 
@@ -178,16 +181,14 @@ fn test_server_handshake_full_flow_agrees_with_real_client() {
 	transcript_before_finished << ee_framed
 	transcript_before_finished << cert_framed
 	transcript_before_finished << cv_framed
-	ok := verify_finished(flight.handshake_secrets.server_secret,
-		sha256.sum256(transcript_before_finished), fin_msg.body)!
+	ok := verify_finished(flight.handshake_secrets.server_secret, sha256.sum256(transcript_before_finished), fin_msg.body)!
 	assert ok
 
 	// Cross-check #4: a real client Finished, built via build_finished
 	// (the same function under test on the server's own side, applied to
 	// the CLIENT's secret this time), is accepted by the server's own
 	// process_finished -- closing the loop on both directions.
-	client_finished := build_finished(flight.handshake_secrets.client_secret,
-		sha256.sum256(server_h.transcript))!
+	client_finished := build_finished(flight.handshake_secrets.client_secret, sha256.sum256(server_h.transcript))!
 	cf_msg, cf_consumed := parse_handshake_message(client_finished)!
 	assert cf_consumed == client_finished.len
 	server_h.process_finished(cf_msg, client_finished)!
@@ -201,14 +202,12 @@ fn test_server_handshake_process_finished_rejects_tampered_verify_data() {
 	}
 	ch_msg, _ := parse_handshake_message(client_hello)!
 	server_params := server_handshake_test_server_params()!
-	mut server_h, flight := Tls13ServerHandshake.respond_to_client_hello(ch_msg, client_hello,
-		server_params)!
+	mut server_h, flight := Tls13ServerHandshake.respond_to_client_hello(ch_msg, client_hello, server_params)!
 	defer {
 		server_h.free()
 	}
 
-	mut tampered := build_finished(flight.handshake_secrets.client_secret,
-		sha256.sum256(server_h.transcript))!
+	mut tampered := build_finished(flight.handshake_secrets.client_secret, sha256.sum256(server_h.transcript))!
 	tampered[tampered.len - 1] ^= 0xff
 	cf_msg, _ := parse_handshake_message(tampered)!
 	server_h.process_finished(cf_msg, tampered) or {
@@ -231,7 +230,7 @@ fn test_server_handshake_rejects_unoffered_cipher_suite() {
 	bad_body[37] = 0x13
 	bad_body[38] = 0x02 // TLS_AES_256_GCM_SHA384, never offered/supported here
 	bad_msg := HandshakeMessage{
-		typ:  .client_hello
+		typ: .client_hello
 		body: bad_body
 	}
 	bad_framed := encode_handshake_message(.client_hello, bad_body)!
@@ -243,15 +242,65 @@ fn test_server_handshake_rejects_unoffered_cipher_suite() {
 	assert false, 'expected an error for a ClientHello offering no supported cipher suite'
 }
 
+fn test_server_handshake_rejects_key_share_absent_from_supported_groups() {
+	supported_groups := encode_extension(ext_supported_groups, [u8(0), 2, 0, 0x1d])!
+	key_share := encode_key_share_extension(named_group_secp256r1, []u8{len: 65, init: 0x04})!
+	body := build_test_client_hello_body_with_group_extensions(QuicTransportParameters{
+		initial_source_connection_id: []u8{len: 8}
+	}, supported_groups, key_share)!
+	msg := HandshakeMessage{
+		typ: .client_hello
+		body: body
+	}
+	framed := encode_handshake_message(.client_hello, body)!
+	server_params := server_handshake_test_server_params()!
+	Tls13ServerHandshake.respond_to_client_hello(msg, framed, server_params) or {
+		assert err.code() == int(tls_alert_to_quic_error(.illegal_parameter))
+		assert err.msg().contains('absent from supported_groups')
+		return
+	}
+	assert false, 'expected an error for an undeclared key-share group'
+}
+
+fn test_server_handshake_rejects_duplicate_key_share_groups() {
+	key := []u8{len: 65, init: 0x04}
+	mut entry := []u8{cap: 4 + key.len}
+	entry << u8(named_group_secp256r1 >> 8)
+	entry << u8(named_group_secp256r1)
+	entry << u8(key.len >> 8)
+	entry << u8(key.len)
+	entry << key
+	list_len := entry.len * 2
+	mut key_share_data := [u8(list_len >> 8), u8(list_len)]
+	key_share_data << entry
+	key_share_data << entry
+	key_share := encode_extension(ext_key_share, key_share_data)!
+	body := build_test_client_hello_body_with_group_extensions(QuicTransportParameters{
+		initial_source_connection_id: []u8{len: 8}
+	}, encode_supported_groups_extension()!, key_share)!
+	msg := HandshakeMessage{
+		typ: .client_hello
+		body: body
+	}
+	framed := encode_handshake_message(.client_hello, body)!
+	server_params := server_handshake_test_server_params()!
+	Tls13ServerHandshake.respond_to_client_hello(msg, framed, server_params) or {
+		assert err.code() == int(tls_alert_to_quic_error(.illegal_parameter)), '${err.code()}: ${err.msg()}'
+		assert err.msg().contains('duplicate group')
+		return
+	}
+	assert false, 'expected an error for duplicate key-share groups'
+}
+
 fn test_server_handshake_rejects_alpn_mismatch() {
 	client_hello := build_client_hello(
-		random:               []u8{len: 32}
-		server_name:          'example.com'
-		ecdhe_public_key:     []u8{len: 65, init: 0x04}
+		random: []u8{len: 32}
+		server_name: 'example.com'
+		ecdhe_public_key: []u8{len: 65, init: 0x04}
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: []u8{len: 8}
 		}
-		alpn_protocols:       ['h2'] // this server (below) only supports 'h3'
+		alpn_protocols: ['h2'] // this server (below) only supports 'h3'
 	)!
 	msg, _ := parse_handshake_message(client_hello)!
 	server_params := server_handshake_test_server_params()!
@@ -265,10 +314,10 @@ fn test_server_handshake_rejects_alpn_mismatch() {
 fn test_server_handshake_rejects_server_only_transport_parameter_from_client() {
 	body := build_test_client_hello_body(QuicTransportParameters{
 		initial_source_connection_id: []u8{len: 8}
-		stateless_reset_token:        []u8{len: 16, init: 0x01} // client MUST NOT send this
+		stateless_reset_token: []u8{len: 16, init: 0x01} // client MUST NOT send this
 	})!
 	msg := HandshakeMessage{
-		typ:  .client_hello
+		typ: .client_hello
 		body: body
 	}
 	framed := encode_handshake_message(.client_hello, body)!
@@ -303,7 +352,7 @@ fn test_server_handshake_propagates_nonempty_session_id_error_code() {
 	body << u8(0)
 	body << u8(0)
 	msg := HandshakeMessage{
-		typ:  .client_hello
+		typ: .client_hello
 		body: body
 	}
 	framed := encode_handshake_message(.client_hello, body)!

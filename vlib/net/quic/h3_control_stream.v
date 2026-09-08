@@ -5,9 +5,9 @@ module quic
 // ordering via H3ControlStreamState (Phase 10), and acting on the ones a
 // v1 client role must: applying recognized SETTINGS (RFC 9204 §5's QPACK
 // pair; anything else is recognized-but-inert per h3_frame.v's own SETTINGS
-// doc comment), validating and surfacing GOAWAY, and rejecting CANCEL_PUSH/
-// PUSH_PROMISE/MAX_PUSH_ID outright per this connection's push-disabled
-// scope decision (h3_conn.v's module doc comment). Driving THIS endpoint's
+// doc comment), validating and surfacing GOAWAY, accepting MAX_PUSH_ID in
+// the server role, and rejecting unsupported push operations per this
+// connection's push-disabled scope decision. Driving THIS endpoint's
 // own outgoing control stream is just the one-shot header+SETTINGS write in
 // h3_conn.v's open_own_streams_if_ready -- nothing else is ever sent on it.
 
@@ -53,13 +53,20 @@ fn (mut h H3Conn) apply_control_frame(frame H3Frame, mut result H3PollResult) ! 
 				goaway_id: frame.id
 			}
 		}
-		CancelPushFrame, PushPromiseFrame, MaxPushIdFrame {
+		MaxPushIdFrame {
+			if !h.is_server_role() {
+				return error_with_code('h3: a client received MAX_PUSH_ID', int(H3ErrorCode.frame_unexpected))
+			}
+			if previous := h.peer_max_push_id {
+				if frame.push_id <= previous {
+					return error_with_code('h3: MAX_PUSH_ID did not increase the peer limit', int(H3ErrorCode.id_error))
+				}
+			}
+			h.peer_max_push_id = frame.push_id
+		}
+		CancelPushFrame, PushPromiseFrame {
 			// Push is never authorized in v1 (no MAX_PUSH_ID is ever sent by
-			// this client) -- any of these three is therefore always a
-			// protocol violation. MaxPushIdFrame specifically: RFC 9114
-			// §7.2.7 "A client MUST treat the receipt of a MAX_PUSH_ID frame
-			// as a connection error of type H3_FRAME_UNEXPECTED" (a SERVER
-			// is the only endpoint that should ever see one FROM a client).
+			// this client) -- these operations are therefore violations.
 			return error_with_code('h3: received a push-related frame on the control stream, but this client never authorizes push', int(H3ErrorCode.id_error))
 		}
 		DataFrame, HeadersFrame {

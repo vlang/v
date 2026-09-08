@@ -90,6 +90,17 @@ fn test_h3_server_params_have_usable_default_transport_limits() {
 	assert transport.initial_max_streams_uni or { 0 } >= 3
 }
 
+fn test_h3_server_stream_stays_rejected_after_body_limit() {
+	mut stream := H3ServerStream{}
+	assert stream.append_body('prefix'.bytes())
+	assert !stream.append_body([]u8{len: h3_server_max_request_body})
+	assert stream.rejected
+	assert stream.body.len == 0
+	assert !stream.append_body('later'.bytes())
+	assert stream.rejected
+	assert stream.body.len == 0
+}
+
 // H3ServerTestEchoHandler answers every request with a fixed 200 response
 // -- this test only needs to prove the request reached the Handler and the
 // response reached the client, not exercise Handler-authoring variety.

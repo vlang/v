@@ -433,6 +433,40 @@ fn test_h3_conn_server_preserves_trailers_behind_qpack_blocked_initial_headers()
 	assert resolved_events[trailer_index].headers[0].name == 'x-trailer'
 }
 
+fn test_h3_conn_server_accepts_increasing_client_max_push_id() {
+	mut client, mut client_h3, mut server, mut server_h3, _ := h3_server_test_pair()!
+	defer {
+		mut client_hs := client.client_handshake()
+		client_hs.free()
+		if mut sh := server.server_handshake {
+			sh.free()
+		}
+	}
+	mut result := H3PollResult{}
+	server_h3.apply_control_frame(MaxPushIdFrame{
+		push_id: 3
+	}, mut result)!
+	assert server_h3.peer_max_push_id? == u64(3)
+	server_h3.apply_control_frame(MaxPushIdFrame{
+		push_id: 7
+	}, mut result)!
+	assert server_h3.peer_max_push_id? == u64(7)
+	if _ := server_h3.apply_control_frame(MaxPushIdFrame{
+		push_id: 7
+	}, mut result) {
+		assert false, 'a repeated MAX_PUSH_ID must be rejected'
+	} else {
+		assert err.code() == int(H3ErrorCode.id_error)
+	}
+	if _ := client_h3.apply_control_frame(MaxPushIdFrame{
+		push_id: 1
+	}, mut result) {
+		assert false, 'a client must reject MAX_PUSH_ID'
+	} else {
+		assert err.code() == int(H3ErrorCode.frame_unexpected)
+	}
+}
+
 // test_h3_conn_open_request_stream_rejected_on_server_role is a regression
 // test for open_request_stream's new role guard: RFC 9114 §6.1 request
 // streams are always client-initiated, so a server calling this on its own

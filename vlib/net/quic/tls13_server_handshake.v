@@ -156,13 +156,11 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 	}
 
 	if cipher_suite_tls_aes_128_gcm_sha256 !in parsed.cipher_suites {
-		return handshake_error(.handshake_failure,
-			'quic: ClientHello did not offer TLS_AES_128_GCM_SHA256, the only cipher suite this server supports')
+		return handshake_error(.handshake_failure, 'quic: ClientHello did not offer TLS_AES_128_GCM_SHA256, the only cipher suite this server supports')
 	}
 
 	sv_ext := find_extension(parsed.extensions, ext_supported_versions) or {
-		return handshake_error(.missing_extension,
-			'quic: ClientHello missing mandatory supported_versions extension')
+		return handshake_error(.missing_extension, 'quic: ClientHello missing mandatory supported_versions extension')
 	}
 	offered_versions := parse_supported_versions_from_client(sv_ext.data) or {
 		return handshake_error(.decode_error, err.msg())
@@ -171,30 +169,43 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 		return handshake_error(.handshake_failure, 'quic: ClientHello did not offer TLS 1.3')
 	}
 
+	sg_ext := find_extension(parsed.extensions, ext_supported_groups) or {
+		return handshake_error(.missing_extension, 'quic: ClientHello missing mandatory supported_groups extension')
+	}
+	offered_groups := parse_supported_groups_extension_client(sg_ext.data) or {
+		return handshake_error(.decode_error, err.msg())
+	}
+
 	ks_ext := find_extension(parsed.extensions, ext_key_share) or {
-		return handshake_error(.missing_extension,
-			'quic: ClientHello missing mandatory key_share extension')
+		return handshake_error(.missing_extension, 'quic: ClientHello missing mandatory key_share extension')
 	}
 	offered_shares := parse_key_share_extension_client(ks_ext.data) or {
 		return handshake_error(.decode_error, err.msg())
 	}
 	mut client_key_exchange := []u8{}
 	mut found_group := false
+	mut seen_key_share_groups := map[u16]bool{}
 	for entry in offered_shares {
+		if seen_key_share_groups[entry.group] {
+			return handshake_error(.illegal_parameter, 'quic: ClientHello key_share contains duplicate group 0x${entry.group:04x}')
+		}
+		seen_key_share_groups[entry.group] = true
+		if entry.group !in offered_groups {
+			return handshake_error(.illegal_parameter, 'quic: ClientHello key_share group 0x${entry.group:04x} is absent from supported_groups')
+		}
 		if entry.group == named_group_secp256r1 {
-			client_key_exchange = entry.key_exchange.clone()
-			found_group = true
-			break
+			if !found_group {
+				client_key_exchange = entry.key_exchange.clone()
+				found_group = true
+			}
 		}
 	}
 	if !found_group {
-		return handshake_error(.handshake_failure,
-			'quic: ClientHello did not offer secp256r1 in key_share, and HelloRetryRequest-based group correction is not yet implemented')
+		return handshake_error(.handshake_failure, 'quic: ClientHello did not offer secp256r1 in key_share, and HelloRetryRequest-based group correction is not yet implemented')
 	}
 
 	sa_ext := find_extension(parsed.extensions, ext_signature_algorithms) or {
-		return handshake_error(.missing_extension,
-			'quic: ClientHello missing mandatory signature_algorithms extension')
+		return handshake_error(.missing_extension, 'quic: ClientHello missing mandatory signature_algorithms extension')
 	}
 	offered_sig_algs := parse_signature_algorithms_extension_client(sa_ext.data) or {
 		return handshake_error(.decode_error, err.msg())
@@ -204,13 +215,11 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 	// algorithm MUST be one offered in the [client's] 'signature_
 	// algorithms' extension."
 	if sig_scheme_ecdsa_secp256r1_sha256 !in offered_sig_algs {
-		return handshake_error(.handshake_failure,
-			'quic: ClientHello signature_algorithms does not include ecdsa_secp256r1_sha256, the only CertificateVerify algorithm this server can sign with')
+		return handshake_error(.handshake_failure, 'quic: ClientHello signature_algorithms does not include ecdsa_secp256r1_sha256, the only CertificateVerify algorithm this server can sign with')
 	}
 
 	alpn_ext := find_extension(parsed.extensions, ext_alpn) or {
-		return handshake_error(.no_application_protocol,
-			'quic: ClientHello missing mandatory alpn extension')
+		return handshake_error(.no_application_protocol, 'quic: ClientHello missing mandatory alpn extension')
 	}
 	offered_alpn := decode_alpn_offer(alpn_ext.data) or {
 		return handshake_error(.decode_error, err.msg())
@@ -223,13 +232,11 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 		}
 	}
 	if negotiated_alpn == '' {
-		return handshake_error(.no_application_protocol,
-			'quic: no ALPN protocol in common between this server and the ClientHello offer')
+		return handshake_error(.no_application_protocol, 'quic: no ALPN protocol in common between this server and the ClientHello offer')
 	}
 
 	tp_ext := find_extension(parsed.extensions, ext_quic_transport_parameters) or {
-		return handshake_error(.missing_extension,
-			'quic: ClientHello missing mandatory quic_transport_parameters extension')
+		return handshake_error(.missing_extension, 'quic: ClientHello missing mandatory quic_transport_parameters extension')
 	}
 	peer_params := decode_transport_parameters(tp_ext.data) or {
 		return transport_parameter_error('quic: malformed quic_transport_parameters: ${err.msg()}')
@@ -262,16 +269,14 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 	// remain possible from here on, matching Tls13ClientHandshake.start's
 	// identical validate-then-allocate ordering.
 	ecdhe_public, ecdhe_private := ecdsa.generate_key(nid: .prime256v1) or {
-		return handshake_error(.handshake_failure,
-			'quic: failed to generate ephemeral ECDHE keypair: ${err.msg()}')
+		return handshake_error(.handshake_failure, 'quic: failed to generate ephemeral ECDHE keypair: ${err.msg()}')
 	}
 	defer {
 		ecdhe_public.free()
 	}
 	ecdhe_public_bytes := ecdhe_public.uncompressed_bytes() or {
 		ecdhe_private.free()
-		return handshake_error(.handshake_failure,
-			'quic: failed to encode ephemeral ECDHE public key: ${err.msg()}')
+		return handshake_error(.handshake_failure, 'quic: failed to encode ephemeral ECDHE public key: ${err.msg()}')
 	}
 
 	client_public := ecdsa.PublicKey.from_uncompressed_bytes(client_key_exchange,
@@ -285,19 +290,17 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 	}
 	shared_secret := ecdhe_private.derive_shared_secret(client_public) or {
 		ecdhe_private.free()
-		return handshake_error(.decrypt_error,
-			'quic: ECDHE shared secret derivation failed: ${err.msg()}')
+		return handshake_error(.decrypt_error, 'quic: ECDHE shared secret derivation failed: ${err.msg()}')
 	}
 
 	mut transcript := framed_client_hello.clone()
 
 	server_hello := build_server_hello(
-		random:           params.server_hello_random
+		random: params.server_hello_random
 		ecdhe_public_key: ecdhe_public_bytes
 	) or {
 		ecdhe_private.free()
-		return handshake_error(.handshake_failure,
-			'quic: failed to build ServerHello: ${err.msg()}')
+		return handshake_error(.handshake_failure, 'quic: failed to build ServerHello: ${err.msg()}')
 	}
 	transcript << server_hello
 
@@ -305,8 +308,7 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 		ecdhe_private.free()
 		return handshake_error(.handshake_failure, err.msg())
 	}
-	handshake_secrets := derive_handshake_secrets(early_secret, shared_secret,
-		sha256.sum256(transcript)) or {
+	handshake_secrets := derive_handshake_secrets(early_secret, shared_secret, sha256.sum256(transcript)) or {
 		ecdhe_private.free()
 		return handshake_error(.handshake_failure, err.msg())
 	}
@@ -317,20 +319,18 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 	}
 
 	encrypted_extensions := build_encrypted_extensions(
-		transport_parameters:    params.transport_parameters
-		selected_alpn:           negotiated_alpn
+		transport_parameters: params.transport_parameters
+		selected_alpn: negotiated_alpn
 		acknowledge_server_name: acknowledge_server_name
 	) or {
 		ecdhe_private.free()
-		return handshake_error(.handshake_failure,
-			'quic: failed to build EncryptedExtensions: ${err.msg()}')
+		return handshake_error(.handshake_failure, 'quic: failed to build EncryptedExtensions: ${err.msg()}')
 	}
 	transcript << encrypted_extensions
 
 	certificate := encode_certificate(params.certificate_chain) or {
 		ecdhe_private.free()
-		return handshake_error(.handshake_failure,
-			'quic: failed to build Certificate: ${err.msg()}')
+		return handshake_error(.handshake_failure, 'quic: failed to build Certificate: ${err.msg()}')
 	}
 	transcript << certificate
 	// Transcript-Hash(ClientHello...Certificate) -- RFC 8446 §4.4.3's
@@ -340,11 +340,9 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 	// certificate_transcript_hash when processing the server's Certificate.
 	certificate_transcript_hash := sha256.sum256(transcript)
 
-	certificate_verify := encode_certificate_verify(sig_scheme_ecdsa_secp256r1_sha256,
-		params.signing_key, certificate_transcript_hash) or {
+	certificate_verify := encode_certificate_verify(sig_scheme_ecdsa_secp256r1_sha256, params.signing_key, certificate_transcript_hash) or {
 		ecdhe_private.free()
-		return handshake_error(.handshake_failure,
-			'quic: failed to build CertificateVerify: ${err.msg()}')
+		return handshake_error(.handshake_failure, 'quic: failed to build CertificateVerify: ${err.msg()}')
 	}
 	transcript << certificate_verify
 
@@ -361,17 +359,16 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 	// application data (RFC 8446 §4.4.4) before the handshake fully
 	// completes; this state machine doesn't build a Half-RTT sender, but
 	// the underlying key-derivation timing is the same fact.
-	application_secrets := derive_application_secrets(handshake_secrets.handshake_secret,
-		sha256.sum256(transcript)) or {
+	application_secrets := derive_application_secrets(handshake_secrets.handshake_secret, sha256.sum256(transcript)) or {
 		ecdhe_private.free()
 		return handshake_error(.handshake_failure, err.msg())
 	}
 
 	mut h := &Tls13ServerHandshake{
-		state:                     .wait_finished
-		transcript:                transcript
-		ecdhe_private:             ecdhe_private
-		handshake_secrets:         handshake_secrets
+		state: .wait_finished
+		transcript: transcript
+		ecdhe_private: ecdhe_private
+		handshake_secrets: handshake_secrets
 		peer_transport_parameters: peer_params
 	}
 
@@ -382,11 +379,11 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 	handshake_messages << server_finished
 
 	return h, ServerHandshakeFlight{
-		server_hello:        server_hello
-		handshake_messages:  handshake_messages
-		handshake_secrets:   handshake_secrets
+		server_hello: server_hello
+		handshake_messages: handshake_messages
+		handshake_secrets: handshake_secrets
 		application_secrets: application_secrets
-		negotiated_alpn:     negotiated_alpn
+		negotiated_alpn: negotiated_alpn
 	}
 }
 
@@ -404,8 +401,7 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 // frame is the caller's job, not this state machine's).
 pub fn (mut h Tls13ServerHandshake) process_finished(msg HandshakeMessage, framed_message []u8) ! {
 	if h.state != .wait_finished {
-		return handshake_error(.unexpected_message,
-			'quic: received Finished while in state ${h.state}')
+		return handshake_error(.unexpected_message, 'quic: received Finished while in state ${h.state}')
 	}
 	if msg.typ != .finished {
 		return handshake_error(.unexpected_message, 'quic: expected Finished, got ${msg.typ}')
