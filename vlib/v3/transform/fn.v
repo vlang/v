@@ -1159,7 +1159,15 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 					break
 				}
 			}
-			if source_types.len > 0 && needs_source_mode_validation {
+			mut handled_container_modes := false
+			if container_compatible := t.fn_literal_array_modes_compatible(arg_id, mode_param_type) {
+				handled_container_modes = true
+				if !container_compatible {
+					actual_type := t.specialized_expr_type_name(arg_id)
+					t.record_monomorph_error('cannot use `${actual_type}` as argument ${arg_idx + 1} to `${call_name}`; expected `${mode_param_type}`')
+				}
+			}
+			if !handled_container_modes && source_types.len > 0 && needs_source_mode_validation {
 				actual_type := t.specialized_expr_type_name(arg_id)
 				if !t.resolved_receiver_arg_compatible(arg_id, actual_type, mode_param_type) {
 					t.record_monomorph_error('cannot use `${actual_type}` as argument ${arg_idx + 1} to `${call_name}`; expected `${mode_param_type}`')
@@ -11961,12 +11969,15 @@ fn (t &Transformer) fn_type_texts_signature_compatible_without_c_abi_names_resol
 }
 
 fn (t &Transformer) fn_type_with_compatible_source_modes(source string, semantic string) string {
-	if (!source.contains('fn(') && !source.contains('fn ('))
-		|| (!semantic.contains('fn(') && !semantic.contains('fn (')) {
+	if source.len == 0 || semantic.len == 0 {
 		return semantic
 	}
 	source_normalized := t.normalize_fn_signature_component_aliases(source, 0)
 	semantic_normalized := t.normalize_fn_signature_component_aliases(semantic, 0)
+	if (!source_normalized.contains('fn(') && !source_normalized.contains('fn ('))
+		|| (!semantic_normalized.contains('fn(') && !semantic_normalized.contains('fn (')) {
+		return semantic
+	}
 	source_shape :=
 		source_normalized.replace('shared ', '').replace('const&', '&').replace('const &', '&')
 	semantic_shape :=
@@ -12332,6 +12343,9 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	if expected_type.contains('unknown') {
 		return true
 	}
+	if container_compatible := t.fn_literal_array_modes_compatible(arg_id, expected_type) {
+		return container_compatible
+	}
 	if !t.fn_literal_c_abi_signature_compatible(arg_id, expected_type) {
 		return false
 	}
@@ -12497,6 +12511,38 @@ fn (t &Transformer) fn_literal_c_abi_signature_compatible(arg_id flat.NodeId, ex
 		}
 	}
 	return true
+}
+
+fn (mut t Transformer) fn_literal_array_modes_compatible(arg_id flat.NodeId, expected_type string) ?bool {
+	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(arg_id)]
+	if node.kind != .array_literal {
+		return none
+	}
+	source_expected := expected_type.trim_space()
+	normalized_expected := t.normalize_type_alias(source_expected)
+	mut element_expected := ''
+	if source_expected.starts_with('[]') {
+		element_expected = source_expected[2..]
+	} else if normalized_expected.starts_with('[]') {
+		element_expected = normalized_expected[2..]
+	} else {
+		return none
+	}
+	for i in 0 .. node.children_count {
+		child_id := t.a.child(&node, i)
+		if !t.fn_literal_array_element_mode_compatible(child_id, element_expected) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut t Transformer) fn_literal_array_element_mode_compatible(id flat.NodeId, expected_type string) bool {
+	actual_type := t.specialized_expr_type_name(id)
+	return t.resolved_receiver_arg_compatible(id, actual_type, expected_type)
 }
 
 fn (t &Transformer) fn_literal_source_c_abi_signature_compatible(actual_text string, expected_type string) bool {

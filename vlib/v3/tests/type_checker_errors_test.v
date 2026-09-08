@@ -2057,6 +2057,22 @@ fn test_fn_literal_lock_expr_callback_modes_inside_generic_fn() {
 		'cannot use')
 }
 
+fn test_fn_literal_container_callback_modes_inside_generic_fn() {
+	v3_bin := build_v3()
+	matching := run_good(v3_bin, 'good_array_literal_const_fn_param_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn apply[T](handlers []ConstHandler) bool {\n\treturn handlers.len == 1\n}\nfn startup[T]() bool {\n\treturn apply[int]([fn (const_event &C.native_event) {}])\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert matching == 'true'
+	run_bad(v3_bin, 'bad_array_literal_const_fn_param_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nfn apply[T](handlers []PlainHandler) {}\nfn startup[T]() {\n\tapply[int]([fn (const_event &C.native_event) {}])\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	receiver_matching := run_good(v3_bin, 'good_receiver_array_literal_const_fn_param_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) apply(handlers []ConstHandler) bool {\n\treturn handlers.len == 1\n}\nfn startup[T]() bool {\n\tr := Router{}\n\treturn r.apply([fn (const_event &C.native_event) {}])\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert receiver_matching == 'true'
+	run_bad(v3_bin, 'bad_receiver_array_literal_const_fn_param_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) apply(handlers []PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tr.apply([fn (const_event &C.native_event) {}])\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+}
+
 fn test_fn_literal_callback_alias_lookup_uses_declaration_module() {
 	v3_bin := build_v3()
 	local_alias_collision := run_good_project(v3_bin,
