@@ -491,6 +491,23 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 			// would silently discard the body already buffered.
 			stream_id := ev.stream_id or { return }
 			key := h3_server_stream_key(conn_id, stream_id)
+			if st := s.streams[key] {
+				if st.rejected {
+					return
+				}
+			}
+			h3_validate_request_pseudo(ev.headers) or {
+				mut st := s.streams[key] or {
+					new_st := &H3ServerStream{}
+					s.streams[key] = new_st
+					new_st
+				}
+				s.body_budget.release(conn_id, st.body.len)
+				st.body.clear()
+				st.rejected = true
+				s.send_error_response(mut h3c, stream_id, 400)
+				return
+			}
 			if mut st := s.streams[key] {
 				if st.rejected {
 					return
@@ -686,22 +703,11 @@ fn h3_build_request(st &H3ServerStream) !Request {
 // mirrors RFC 9113 §8.2.2's forbidden-octet/connection-specific-field/TE
 // rules verbatim.
 //
-// Mandatory-pseudo-header shape depends on :method (RFC 9114 §4.4, "The
-// CONNECT Method" -- mirrors RFC 9113 §8.5 exactly, same precedent as
-// above): an ORDINARY request needs :method/:path/:scheme, but a CONNECT
-// request "MUST omit" :scheme and :path entirely and instead needs
-// :authority ("contains the host and port to connect to") -- "A CONNECT
-// request that does not conform to these restrictions is malformed."
-// Extended CONNECT (RFC 9220's `:protocol`, e.g. WebSockets-over-HTTP/3)
-// is NOT handled here -- a documented v1 scope limit, not an oversight:
-// this function only avoids REJECTING a conforming plain CONNECT's
-// pseudo-header shape, it doesn't implement CONNECT tunneling itself
-// (h3_server.v has no Handler-visible CONNECT semantics yet either).
-// Missed in an earlier version: EVERY request, CONNECT included, was
-// required to carry :path and :scheme, so a conforming CONNECT request
-// was unconditionally classified malformed and answered 400 instead of
-// ever reaching the Handler. (Codex review, PR #28164
-// pullrequestreview-5044139767.)
+// This Handler API only represents the Method enum and dispatches after the
+// request stream ends. Reject extension methods that the enum cannot preserve,
+// and reject CONNECT because a conforming tunnel request waits for a response
+// without ending its request stream. Extended CONNECT (`:protocol`) remains
+// unsupported as well.
 fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 	mut seen_regular := false
 	mut has_method := false
@@ -709,7 +715,6 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 	mut has_scheme := false
 	mut has_authority := false
 	mut method := ''
-	mut authority := ''
 	for f in headers {
 		if f.name.starts_with(':') {
 			if seen_regular {
@@ -752,7 +757,6 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 						return error('duplicate :authority pseudo-header')
 					}
 					has_authority = true
-					authority = f.value
 				}
 				else {
 					return error('unknown request pseudo-header "${f.name}"')
@@ -766,16 +770,17 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 			}
 		}
 	}
-	if method == 'CONNECT' {
-		if has_scheme || has_path {
-			return error('CONNECT request must omit :scheme and :path (RFC 9114 §4.4)')
-		}
-		if !has_authority || authority == '' {
-			return error('CONNECT request omits mandatory :authority pseudo-header (RFC 9114 §4.4)')
-		}
-		return
+	if !has_method {
+		return error('request omits a mandatory pseudo-header (:method/:path/:scheme)')
 	}
-	if !has_method || !has_path || !has_scheme {
+	parsed_method := method_from_str(method)
+	if parsed_method.str() != method {
+		return error('request uses unsupported method "${method}"')
+	}
+	if parsed_method == .connect {
+		return error('CONNECT is unsupported by this HTTP/3 server')
+	}
+	if !has_path || !has_scheme {
 		return error('request omits a mandatory pseudo-header (:method/:path/:scheme)')
 	}
 }
@@ -788,7 +793,10 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 // never propagated as a connection- or server-wide failure -- see this
 // file's own module doc comment.
 fn (mut s H3Server) send_response(mut h3c quic.H3Conn, stream_id u64, method Method, resp Response) {
-	status := if resp.status_code == 0 { 200 } else { resp.status_code }
+	status := h3_final_response_status(resp.status_code) or {
+		s.send_error_response(mut h3c, stream_id, 500)
+		return
+	}
 	mut fields := [
 		quic.QpackFieldLine{
 			name: ':status'
@@ -830,6 +838,17 @@ fn (mut s H3Server) send_response(mut h3c quic.H3Conn, stream_id u64, method Met
 // content. Content-Length remains metadata and is left in the header block.
 fn h3_response_allows_body(method Method, status int) bool {
 	return method != .head && status != 204 && status != 304
+}
+
+// h3_final_response_status normalizes the default status and rejects
+// informational responses, which this single-response Handler API cannot
+// follow with the mandatory final response.
+fn h3_final_response_status(status_code int) !int {
+	status := if status_code == 0 { 200 } else { status_code }
+	if status >= 100 && status < 200 {
+		return error('informational status ${status} cannot be a final response')
+	}
+	return status
 }
 
 // send_error_response answers `stream_id` with a minimal, bodyless

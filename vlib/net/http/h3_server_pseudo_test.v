@@ -8,10 +8,9 @@ module http
 import net.quic
 
 // h3_validate_request_pseudo's own doc comment (h3_server.v) covers the
-// full RFC 9114 §4.3.1/§4.4 shape it enforces; these are pure, fast unit
-// tests for it directly, independent of h3_server_test.v's real-socket
-// end-to-end coverage -- in particular the CONNECT-specific branch, which
-// nothing else in this module exercises.
+// full RFC 9114 §4.3.1 shape it enforces; these are pure, fast unit tests
+// for it directly, independent of h3_server_test.v's real-socket end-to-end
+// coverage.
 
 fn test_h3_validate_request_pseudo_accepts_an_ordinary_get() {
 	h3_validate_request_pseudo([
@@ -44,17 +43,14 @@ fn test_h3_validate_request_pseudo_rejects_ordinary_request_missing_scheme() {
 			name: ':path'
 			value: '/'
 		},
-	]) or { return }
+	]) or {
+		assert err.msg().contains('mandatory pseudo-header')
+		return
+	}
 	assert false, 'expected an error for a GET request missing :scheme'
 }
 
-// A conforming CONNECT request (RFC 9114 §4.4): :method=CONNECT,
-// :authority present, :scheme and :path both OMITTED. Regression test for
-// a real bug: an earlier version of h3_validate_request_pseudo required
-// :path/:scheme unconditionally, so this exact conforming shape was
-// rejected as malformed and never reached the Handler. (Codex review, PR
-// #28164 pullrequestreview-5044139767.)
-fn test_h3_validate_request_pseudo_accepts_a_conforming_connect() {
+fn test_h3_validate_request_pseudo_rejects_connect_until_tunnels_are_supported() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
 			name: ':method'
@@ -64,10 +60,14 @@ fn test_h3_validate_request_pseudo_accepts_a_conforming_connect() {
 			name: ':authority'
 			value: 'example.com:443'
 		},
-	])!
+	]) or {
+		assert err.msg().contains('CONNECT is unsupported')
+		return
+	}
+	assert false, 'expected CONNECT to be rejected until tunnel dispatch is supported'
 }
 
-fn test_h3_validate_request_pseudo_rejects_connect_with_scheme() {
+fn test_h3_validate_request_pseudo_rejects_connect_even_with_scheme() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
 			name: ':method'
@@ -81,11 +81,14 @@ fn test_h3_validate_request_pseudo_rejects_connect_with_scheme() {
 			name: ':authority'
 			value: 'example.com:443'
 		},
-	]) or { return }
-	assert false, 'expected an error for a CONNECT request carrying :scheme'
+	]) or {
+		assert err.msg().contains('CONNECT is unsupported')
+		return
+	}
+	assert false, 'expected CONNECT to remain unsupported when :scheme is present'
 }
 
-fn test_h3_validate_request_pseudo_rejects_connect_with_path() {
+fn test_h3_validate_request_pseudo_rejects_connect_even_with_path() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
 			name: ':method'
@@ -99,21 +102,27 @@ fn test_h3_validate_request_pseudo_rejects_connect_with_path() {
 			name: ':authority'
 			value: 'example.com:443'
 		},
-	]) or { return }
-	assert false, 'expected an error for a CONNECT request carrying :path'
+	]) or {
+		assert err.msg().contains('CONNECT is unsupported')
+		return
+	}
+	assert false, 'expected CONNECT to remain unsupported when :path is present'
 }
 
-fn test_h3_validate_request_pseudo_rejects_connect_missing_authority() {
+fn test_h3_validate_request_pseudo_rejects_connect_without_authority() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
 			name: ':method'
 			value: 'CONNECT'
 		},
-	]) or { return }
-	assert false, 'expected an error for a CONNECT request missing :authority'
+	]) or {
+		assert err.msg().contains('CONNECT is unsupported')
+		return
+	}
+	assert false, 'expected CONNECT without :authority to remain unsupported'
 }
 
-fn test_h3_validate_request_pseudo_rejects_connect_empty_authority() {
+fn test_h3_validate_request_pseudo_rejects_connect_with_empty_authority() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
 			name: ':method'
@@ -123,10 +132,10 @@ fn test_h3_validate_request_pseudo_rejects_connect_empty_authority() {
 			name: ':authority'
 		},
 	]) or {
-		assert err.msg().contains(':authority')
+		assert err.msg().contains('CONNECT is unsupported')
 		return
 	}
-	assert false, 'expected an error for a CONNECT request with an empty :authority'
+	assert false, 'expected CONNECT with an empty :authority to remain unsupported'
 }
 
 // Extended CONNECT (RFC 9220-style WebSockets-over-HTTP/3, a `:protocol`
@@ -157,23 +166,26 @@ fn test_h3_validate_request_pseudo_rejects_protocol_pseudo_header() {
 	assert false, 'expected an error for a request carrying the unimplemented :protocol pseudo-header'
 }
 
-// h3_build_request end-to-end for CONNECT: method decodes correctly and
-// url stays empty (there is no :path to populate it from) -- the Handler,
-// not this layer, is responsible for CONNECT-specific behavior.
-fn test_h3_build_request_connect_yields_connect_method_and_empty_url() {
+fn test_h3_build_request_rejects_unknown_method_before_get_conversion() {
 	st := &H3ServerStream{
 		headers: [
 			quic.QpackFieldLine{
 				name: ':method'
-				value: 'CONNECT'
+				value: 'FOO'
 			},
 			quic.QpackFieldLine{
-				name: ':authority'
-				value: 'example.com:443'
+				name: ':path'
+				value: '/'
+			},
+			quic.QpackFieldLine{
+				name: ':scheme'
+				value: 'https'
 			},
 		]
 	}
-	req := h3_build_request(st)!
-	assert req.method == .connect
-	assert req.url == ''
+	h3_build_request(st) or {
+		assert err.msg().contains('unsupported method')
+		return
+	}
+	assert false, 'expected an unknown method to be rejected before conversion to GET'
 }

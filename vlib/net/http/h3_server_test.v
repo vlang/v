@@ -147,6 +147,13 @@ fn test_h3_server_suppresses_forbidden_response_content() {
 	assert h3_response_allows_body(.get, 200)
 }
 
+fn test_h3_server_rejects_informational_terminal_response() {
+	assert h3_final_response_status(0)! == 200
+	assert h3_final_response_status(204)! == 204
+	h3_final_response_status(103) or { return }
+	assert false, 'expected an informational terminal response to be rejected'
+}
+
 // H3ServerTestEchoHandler answers every request with a fixed 200 response
 // -- this test only needs to prove the request reached the Handler and the
 // response reached the client, not exercise Handler-authoring variety.
