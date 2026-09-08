@@ -317,6 +317,12 @@ pub fn (mut s H3Server) serve() ! {
 
 		n, addr := s.socket.read(mut buf) or {
 			if err.code() != net.err_timed_out_code {
+				s.shutdown_mu.lock()
+				is_closing := s.closing
+				s.shutdown_mu.unlock()
+				if h3_server_should_propagate_read_error(err.code(), is_closing) {
+					return err
+				}
 				return
 			}
 			0, net.Addr{}
@@ -347,6 +353,12 @@ pub fn (mut s H3Server) serve() ! {
 			s.socket.write_to(peer, dg.bytes) or { continue }
 		}
 	}
+}
+
+// h3_server_should_propagate_read_error distinguishes an expected timeout or
+// shutdown wakeup from an unexpected UDP failure that serve must return.
+fn h3_server_should_propagate_read_error(error_code int, is_closing bool) bool {
+	return error_code != net.err_timed_out_code && !is_closing
 }
 
 // absorb_and_dispatch groups one quic.QuicListenerPollResult's events by
@@ -682,12 +694,17 @@ fn h3_build_request(st &H3ServerStream) !Request {
 		return error('h3 server: content-length ${content_length} != DATA length ${st.body.len}')
 	}
 	req.method = method_from_str(method)
-	if authority != '' && !req.header.contains(.host) {
+	mut request_host := authority
+	if request_host == '' {
+		request_host = req.header.get(.host) or {
+			return error('h3 server: request omits both :authority and host')
+		}
+	} else if !req.header.contains(.host) {
 		req.header.add(.host, authority)
 	}
 	req.url = path
 	req.data = st.body.bytestr()
-	req.host = authority
+	req.host = request_host
 	return req
 }
 
@@ -713,7 +730,9 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 	mut has_method := false
 	mut has_path := false
 	mut has_scheme := false
+	mut seen_authority := false
 	mut has_authority := false
+	mut has_host := false
 	mut method := ''
 	for f in headers {
 		if f.name.starts_with(':') {
@@ -753,10 +772,11 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 					has_scheme = true
 				}
 				':authority' {
-					if has_authority {
+					if seen_authority {
 						return error('duplicate :authority pseudo-header')
 					}
-					has_authority = true
+					seen_authority = true
+					has_authority = f.value != ''
 				}
 				else {
 					return error('unknown request pseudo-header "${f.name}"')
@@ -767,6 +787,9 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 			reason := h2_request_field_error(f.name, f.value)
 			if reason != '' {
 				return error(reason)
+			}
+			if f.name == 'host' && f.value != '' {
+				has_host = true
 			}
 		}
 	}
@@ -782,6 +805,9 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 	}
 	if !has_path || !has_scheme {
 		return error('request omits a mandatory pseudo-header (:method/:path/:scheme)')
+	}
+	if !has_authority && !has_host {
+		return error('request omits both :authority and host')
 	}
 }
 

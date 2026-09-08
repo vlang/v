@@ -53,6 +53,12 @@ pub const max_h3_control_plane_buffered_bytes = u64(65536)
 // one-megabyte received header-block bound.
 const max_h3_request_headers_frame_payload = u64(1024 * 1024)
 
+// max_h3_blocked_field_section_bytes bounds the aggregate encoded field
+// sections retained while waiting for QPACK inserts. The peer-controlled
+// blocked-stream setting limits distinct streams, but one stream can also
+// queue trailers, so a separate connection-wide byte budget is required.
+const max_h3_blocked_field_section_bytes = u64(8 * 1024 * 1024)
+
 // max_h3_uni_stream_header_buffered_bytes bounds how many bytes this
 // connection will buffer for a peer-initiated unidirectional stream whose
 // TYPE has not yet been determined (the Stream Type varint, plus a Push
@@ -205,6 +211,7 @@ mut:
 
 	own_settings                   []H3Setting
 	own_qpack_max_table_capacity   u64
+	own_qpack_blocked_streams      u64
 	max_inbound_data_frame_payload u64
 
 	own_control_stream_id       ?u64
@@ -258,6 +265,7 @@ pub fn new_h3_conn(mut qc QuicConn, params H3ConnParams) &H3Conn {
 		qc: qc
 		own_settings: params.settings
 		own_qpack_max_table_capacity: params.own_qpack_max_table_capacity
+		own_qpack_blocked_streams: qpack_blocked_streams_from_settings(params.settings)
 		max_inbound_data_frame_payload: params.max_inbound_data_frame_payload
 		peer_control_decoder: new_h3_frame_decoder()
 		qpack_decoder: new_qpack_decoder(params.own_qpack_max_table_capacity)
@@ -708,11 +716,7 @@ fn (mut h H3Conn) dispatch_request_stream_frames(stream_id u64, mut result H3Pol
 						h.fail_request_stream(stream_id, u64(err.code()), err.msg(), mut result)
 						return
 					}
-					h.blocked_sections << BlockedFieldSection{
-						stream_id: stream_id
-						buf: decoded.frame.encoded_field_section.clone()
-						is_trailers: true
-					}
+					h.queue_blocked_section(stream_id, decoded.frame.encoded_field_section.clone(), true)!
 					continue
 				}
 				is_trailers := state.phase() == .in_body
@@ -742,14 +746,52 @@ fn (mut h H3Conn) decode_or_queue_headers(stream_id u64, buf []u8, is_trailers b
 		return
 	}
 	if decoded.blocked {
-		h.blocked_sections << BlockedFieldSection{
-			stream_id: stream_id
-			buf: buf
-			is_trailers: is_trailers
-		}
+		h.queue_blocked_section(stream_id, buf, is_trailers)!
 		return
 	}
 	h.deliver_decoded_headers(stream_id, decoded, is_trailers, mut result)!
+}
+
+// h3_blocked_field_section_budget_allows reports whether another encoded
+// field section fits without overflowing the connection-wide retention cap.
+fn h3_blocked_field_section_budget_allows(retained u64, incoming u64) bool {
+	return retained <= max_h3_blocked_field_section_bytes
+		&& incoming <= max_h3_blocked_field_section_bytes - retained
+}
+
+// queue_blocked_section retains one QPACK-blocked field section while
+// enforcing both this endpoint's advertised distinct-stream limit and a
+// separate aggregate byte budget.
+fn (mut h H3Conn) queue_blocked_section(stream_id u64, buf []u8, is_trailers bool) ! {
+	if !h.has_blocked_section_for(stream_id) {
+		mut blocked_streams := u64(0)
+		mut seen := map[u64]bool{}
+		for section in h.blocked_sections {
+			if section.stream_id !in seen {
+				seen[section.stream_id] = true
+				blocked_streams++
+			}
+		}
+		if blocked_streams >= h.own_qpack_blocked_streams {
+			return error_with_code('qpack: blocked field section exceeds the advertised ${h.own_qpack_blocked_streams}-stream limit', int(QpackErrorCode.decompression_failed))
+		}
+	}
+	mut retained := u64(0)
+	for section in h.blocked_sections {
+		section_len := u64(section.buf.len)
+		if !h3_blocked_field_section_budget_allows(retained, section_len) {
+			return error_with_code('qpack: blocked field sections exceed the ${max_h3_blocked_field_section_bytes}-byte retention limit', int(QpackErrorCode.decompression_failed))
+		}
+		retained += section_len
+	}
+	if !h3_blocked_field_section_budget_allows(retained, u64(buf.len)) {
+		return error_with_code('qpack: blocked field sections exceed the ${max_h3_blocked_field_section_bytes}-byte retention limit', int(QpackErrorCode.decompression_failed))
+	}
+	h.blocked_sections << BlockedFieldSection{
+		stream_id: stream_id
+		buf: buf
+		is_trailers: is_trailers
+	}
 }
 
 // deliver_decoded_headers relays a successfully decoded field section's

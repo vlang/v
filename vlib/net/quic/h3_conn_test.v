@@ -333,6 +333,10 @@ fn h3_test_conn() !(&QuicConn, &H3Conn, []u8, u64) {
 				identifier: qpack_settings_max_table_capacity_id
 				value: 4096
 			},
+			H3Setting{
+				identifier: qpack_settings_blocked_streams_id
+				value: 1
+			},
 		]
 		own_qpack_max_table_capacity: 4096
 	})

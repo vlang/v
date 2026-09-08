@@ -5,6 +5,7 @@
 // that can be found in the LICENSE file.
 module http
 
+import net
 import net.quic
 
 // h3_validate_request_pseudo's own doc comment (h3_server.v) covers the
@@ -188,4 +189,56 @@ fn test_h3_build_request_rejects_unknown_method_before_get_conversion() {
 		return
 	}
 	assert false, 'expected an unknown method to be rejected before conversion to GET'
+}
+
+fn test_h3_build_request_uses_host_when_authority_is_omitted() {
+	st := &H3ServerStream{
+		headers: [
+			quic.QpackFieldLine{
+				name: ':method'
+				value: 'GET'
+			},
+			quic.QpackFieldLine{
+				name: ':path'
+				value: '/'
+			},
+			quic.QpackFieldLine{
+				name: ':scheme'
+				value: 'https'
+			},
+			quic.QpackFieldLine{
+				name: 'host'
+				value: 'example.com'
+			},
+		]
+	}
+	req := h3_build_request(st)!
+	assert req.host == 'example.com'
+}
+
+fn test_h3_validate_request_pseudo_rejects_missing_authority_and_host() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'GET'
+		},
+		quic.QpackFieldLine{
+			name: ':path'
+			value: '/'
+		},
+		quic.QpackFieldLine{
+			name: ':scheme'
+			value: 'https'
+		},
+	]) or {
+		assert err.msg().contains(':authority and host')
+		return
+	}
+	assert false, 'expected an ordinary request without :authority or host to be rejected'
+}
+
+fn test_h3_server_propagates_only_unexpected_udp_read_errors() {
+	assert !h3_server_should_propagate_read_error(net.err_timed_out_code, false)
+	assert !h3_server_should_propagate_read_error(123, true)
+	assert h3_server_should_propagate_read_error(123, false)
 }

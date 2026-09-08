@@ -404,6 +404,40 @@ fn test_h3_conn_server_rejects_client_push_promise_as_connection_error() {
 	}
 }
 
+fn test_h3_conn_server_enforces_advertised_qpack_blocked_stream_limit() {
+	_, mut client_h3, _, mut server_h3, _ := h3_server_test_pair()!
+	defer {
+		client_h3.free()
+		server_h3.free()
+	}
+	server_h3.own_qpack_blocked_streams = 1
+	server_h3.queue_blocked_section(0, [u8(1)], false)!
+	server_h3.queue_blocked_section(0, [u8(2)], true)!
+	mut rejected := false
+	server_h3.queue_blocked_section(4, [u8(3)], false) or {
+		assert err.code() == int(QpackErrorCode.decompression_failed)
+		rejected = true
+	}
+	assert rejected, 'expected a second blocked stream to exceed the advertised limit'
+}
+
+fn test_h3_conn_server_bounds_aggregate_qpack_blocked_bytes() {
+	_, mut client_h3, _, mut server_h3, _ := h3_server_test_pair()!
+	defer {
+		client_h3.free()
+		server_h3.free()
+	}
+	server_h3.own_qpack_blocked_streams = 9
+	for stream_index in 0 .. 8 {
+		server_h3.queue_blocked_section(u64(stream_index * 4), []u8{len: int(max_h3_request_headers_frame_payload)}, false)!
+	}
+	server_h3.queue_blocked_section(32, [u8(1)], false) or {
+		assert err.code() == int(QpackErrorCode.decompression_failed)
+		return
+	}
+	assert false, 'expected blocked field sections to exceed the aggregate byte budget'
+}
+
 fn test_h3_conn_server_buffers_data_while_initial_headers_are_qpack_blocked() {
 	mut client, mut client_h3, mut server, mut server_h3, now0 := h3_server_test_pair()!
 	defer {
