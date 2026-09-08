@@ -327,7 +327,7 @@ fn normalized_clone_source(raw_source string) string {
 		|| raw.starts_with('../') || raw.starts_with('~/') || os.exists(local_path) {
 		return 'file://' + os.real_path(local_path)
 	}
-	return normalize_repo_lookup_url(raw) or { raw.trim_string_right('.git').to_lower() }
+	return normalize_clone_source_url(raw) or { raw.trim_string_right('.git') }
 }
 
 fn get_tmp_path(relative_path string) !string {

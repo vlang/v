@@ -218,6 +218,13 @@ fn test_direct_install_rejects_different_repository_at_same_path() {
 	assert os.real_path(remote) == os.real_path(first_repo_path)
 }
 
+fn test_clone_source_identity_preserves_repository_path_case_and_port() {
+	base := normalized_clone_source('https://example.com/Owner/Repo.git')
+	assert base == normalized_clone_source('git@example.com:Owner/Repo.git')
+	assert base != normalized_clone_source('https://example.com/owner/repo.git')
+	assert base != normalized_clone_source('https://example.com:8443/Owner/Repo.git')
+}
+
 fn test_dotted_install_does_not_follow_linked_namespace() {
 	$if !windows {
 		vmodules_path := os.join_path(test_path, 'vmodules_linked_namespace')

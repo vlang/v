@@ -335,6 +335,25 @@ fn normalize_repo_lookup_url(raw_url string) !string {
 	return '${host}/${path}'
 }
 
+fn normalize_clone_source_url(raw_url string) !string {
+	normalized_url := if raw_url.starts_with('git@') {
+		'ssh://' + raw_url['git@'.len..].replace(':', '/')
+	} else {
+		raw_url
+	}
+	url := urllib.parse(normalized_url) or {
+		return error('failed to parse module URL `${raw_url}`.')
+	}
+	host := url.hostname().trim_space().to_lower()
+	port := url.port()
+	path := url.path.trim_space().trim_right('/').trim_left('/').trim_string_right('.git')
+	if host == '' || path == '' {
+		return error('failed to normalize module URL `${raw_url}`.')
+	}
+	authority := if port == '' { host } else { '${host}:${port}' }
+	return '${authority}/${path}'
+}
+
 fn get_installed_modules() []string {
 	return get_installed_modules_in(settings.vmodules_path)
 }
