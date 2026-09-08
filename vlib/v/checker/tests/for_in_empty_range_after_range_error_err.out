@@ -18,3 +18,10 @@ vlib/v/checker/tests/for_in_empty_range_after_range_error_err.vv:10:21: error: s
       |                        ~~
    11 |         println(i)
    12 |     }
+vlib/v/checker/tests/for_in_empty_range_after_range_error_err.vv:16:11: error: integer literal 999999999999999999999999 overflows int
+   14 |     // Do not fold a bound after checking it already reported an error.
+   15 |     // The overflowed literal must not cause a second empty-range error.
+   16 |     for i in 999999999999999999999999 .. 0 {
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~
+   17 |         println(i)
+   18 |     }

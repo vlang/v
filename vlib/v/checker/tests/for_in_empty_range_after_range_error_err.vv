@@ -10,4 +10,10 @@ fn main() {
 	for i in 0 .. 1 << 99 {
 		println(i)
 	}
+
+	// Do not fold a bound after checking it already reported an error.
+	// The overflowed literal must not cause a second empty-range error.
+	for i in 999999999999999999999999 .. 0 {
+		println(i)
+	}
 }

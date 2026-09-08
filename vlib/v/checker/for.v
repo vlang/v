@@ -48,7 +48,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	prev_loop_labels := c.loop_labels
 	cond_pos := node.cond.pos()
 	high_pos := node.high.pos()
+	errors_before_low_bound := c.errors.len
 	mut typ := c.expr(mut node.cond)
+	low_bound_has_error := c.errors.len > errors_before_low_bound
 	if node.key_var.len > 0 && node.key_var != '_' {
 		c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
 		if reserved_type_names_chk.matches(node.key_var) {
@@ -71,7 +73,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 
 	if node.is_range {
 		typ_idx := typ.idx()
+		errors_before_high_bound := c.errors.len
 		high_type := c.expr(mut node.high)
+		high_bound_has_error := c.errors.len > errors_before_high_bound
 		high_type_idx := high_type.idx()
 		errors_before_range_checks := c.errors.len
 		if typ_idx in ast.integer_type_idxs && high_type_idx !in ast.integer_type_idxs
@@ -100,7 +104,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				high_pos)
 		}
 
-		range_error := c.errors.len > errors_before_range_checks
+		range_error := low_bound_has_error || high_bound_has_error
+			|| c.errors.len > errors_before_range_checks
 		if !range_error {
 			c.check_for_empty_range(node.cond, node.high)
 		}
