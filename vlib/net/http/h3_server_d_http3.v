@@ -105,6 +105,40 @@ mut:
 	by_conn map[string]int
 }
 
+// H3ServerCompletedResponse is the only data a handler worker sends back to
+// serve()'s transport-owning thread. Workers never receive or mutate a
+// quic.H3Conn, QuicListener, or any H3Server connection/stream map.
+struct H3ServerCompletedResponse {
+	conn_id   string
+	stream_id u64
+	method    Method
+	response  Response
+}
+
+// H3ServerCompletedResponseQueue is deliberately mutex-backed instead of a
+// channel: a handler completing during shutdown must never block forever
+// trying to send to a serve loop that has already exited.
+@[heap]
+struct H3ServerCompletedResponseQueue {
+mut:
+	mu    &sync.Mutex = sync.new_mutex()
+	items []H3ServerCompletedResponse
+}
+
+fn (mut q H3ServerCompletedResponseQueue) push(item H3ServerCompletedResponse) {
+	q.mu.lock()
+	q.items << item
+	q.mu.unlock()
+}
+
+fn (mut q H3ServerCompletedResponseQueue) drain() []H3ServerCompletedResponse {
+	q.mu.lock()
+	items := q.items.clone()
+	q.items = []H3ServerCompletedResponse{}
+	q.mu.unlock()
+	return items
+}
+
 fn (mut s H3ServerStream) append_body(data []u8) bool {
 	if s.rejected {
 		return false
@@ -211,6 +245,9 @@ mut:
 	// disproportionate amplification.
 	peer_by_str map[string]net.Addr
 	handler     Handler
+	// Handler completions share only this queue with the server's transport
+	// state. It is drained and applied to h3_conns exclusively by serve().
+	completed_responses &H3ServerCompletedResponseQueue
 	// shutdown_mu/closing let close() (typically called from a DIFFERENT
 	// thread than the one running serve()'s own loop -- e.g. a signal
 	// handler, or the owning goroutine's caller) tell that loop to stop
@@ -256,6 +293,7 @@ pub fn new_h3_server(listen_addr string, params H3ServerParams) !&H3Server {
 			max_inbound_data_frame_payload: h3_server_max_request_body
 		}
 		handler: params.handler
+		completed_responses: &H3ServerCompletedResponseQueue{}
 	}
 }
 
@@ -313,6 +351,7 @@ pub fn (mut s H3Server) serve() ! {
 		if should_stop {
 			return
 		}
+		s.drain_completed_responses()
 		wait := h3_driver_next_wait(next_timeout, h3_now_ns(), h3_driver_poll_interval)
 		s.socket.set_read_timeout(wait)
 
@@ -353,6 +392,16 @@ pub fn (mut s H3Server) serve() ! {
 			peer := s.peer_by_str[dg.peer.bytestr()] or { continue }
 			s.socket.write_to(peer, dg.bytes) or { continue }
 		}
+	}
+}
+
+// drain_completed_responses is called only by serve()'s transport thread. A
+// response whose connection closed while its handler was running is discarded;
+// no worker ever dereferences stale H3/QUIC state.
+fn (mut s H3Server) drain_completed_responses() {
+	for completed in s.completed_responses.drain() {
+		mut h3c := s.h3_conns[completed.conn_id] or { continue }
+		s.send_response(mut h3c, completed.stream_id, completed.method, completed.response)
 	}
 }
 
@@ -583,7 +632,7 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 				s.streams.delete(key)
 				return
 			}
-			s.run_request(mut h3c, stream_id, st)
+			s.run_request(conn_id, mut h3c, stream_id, st)
 			s.body_budget.release(conn_id, st.body.len)
 			s.streams.delete(key)
 		}
@@ -623,19 +672,37 @@ fn h3_validate_request_trailers(headers []quic.QpackFieldLine) ! {
 }
 
 // run_request validates and builds a Request from a fully-buffered
-// H3ServerStream, runs it through the Handler, and sends the resulting
-// Response back -- mirrors h2_server.v's run_request. Never fails
-// outward: a malformed request answers with a best-effort 400 instead of
+// H3ServerStream, then dispatches it to a handler worker. The completed
+// Response returns through completed_responses for serve() to send without
+// sharing H3/QUIC state across threads. Never fails outward: a malformed
+// request answers with a best-effort 400 instead of
 // resetting the stream, since quic.H3Conn has no per-stream RST_STREAM/
 // STOP_SENDING send API yet (h3_conn.v's own fail_request_stream doc
 // comment documents this as an existing, separate scope limit).
-fn (mut s H3Server) run_request(mut h3c quic.H3Conn, stream_id u64, st &H3ServerStream) {
+fn (mut s H3Server) run_request(conn_id string, mut h3c quic.H3Conn, stream_id u64, st &H3ServerStream) {
 	req := h3_build_request(st) or {
 		s.send_error_response(mut h3c, stream_id, 400)
 		return
 	}
-	resp := s.handler.handle(req)
-	s.send_response(mut h3c, stream_id, req.method, resp)
+	h3_server_dispatch_handler(s.handler, req, conn_id, stream_id, req.method, mut s.completed_responses)
+}
+
+fn h3_server_dispatch_handler(handler Handler, req Request, conn_id string, stream_id u64, method Method, mut completed H3ServerCompletedResponseQueue) {
+	spawn h3_server_run_handler(handler, req, conn_id, stream_id, method, mut completed)
+}
+
+// h3_server_run_handler runs outside serve() and queues only plain response
+// data. Keeping H3Conn out of this signature makes the single-owner transport
+// boundary explicit and mechanically difficult to violate.
+fn h3_server_run_handler(handler Handler, req Request, conn_id string, stream_id u64, method Method, mut completed H3ServerCompletedResponseQueue) {
+	mut worker_handler := handler
+	response := worker_handler.handle(req)
+	completed.push(H3ServerCompletedResponse{
+		conn_id: conn_id
+		stream_id: stream_id
+		method: method
+		response: response
+	})
 }
 
 // h3_build_request validates st's pseudo-headers (RFC 9114 §4.3.1) and
@@ -836,27 +903,10 @@ fn (mut s H3Server) send_response(mut h3c quic.H3Conn, stream_id u64, method Met
 		s.send_error_response(mut h3c, stream_id, 500)
 		return
 	}
-	mut fields := [
-		quic.QpackFieldLine{
-			name: ':status'
-			value: status.str()
-		},
-	]
-	for key in resp.header.keys() {
-		lkey := key.to_lower()
-		if lkey in h2_conn_specific_headers {
-			continue
-		}
-		for val in resp.header.custom_values(key) {
-			fields << quic.QpackFieldLine{
-				name: lkey
-				value: val
-			}
-		}
-	}
+	mut fields := h3_outbound_response_fields(status, resp.header)
 	body := resp.body.bytes()
 	has_body := body.len > 0 && h3_response_allows_body(method, status)
-	trailer_fields := h3_outbound_trailer_fields(resp.trailers)
+	trailer_fields := h3_outbound_trailer_fields(resp.trailers, status)
 	has_trailers := trailer_fields.len > 0
 
 	if !has_body && has_trailers {
@@ -873,8 +923,31 @@ fn (mut s H3Server) send_response(mut h3c quic.H3Conn, stream_id u64, method Met
 	}
 }
 
+fn h3_outbound_response_fields(status int, header Header) []quic.QpackFieldLine {
+	mut fields := [
+		quic.QpackFieldLine{
+			name: ':status'
+			value: status.str()
+		},
+	]
+	for key in header.keys() {
+		lkey := key.to_lower()
+		if lkey in h2_conn_specific_headers || (status == 204 && lkey == 'content-length') {
+			continue
+		}
+		for val in header.custom_values(key) {
+			fields << quic.QpackFieldLine{
+				name: lkey
+				value: val
+			}
+		}
+	}
+	return fields
+}
+
 // h3_response_allows_body applies the response cases that never carry
-// content. Content-Length remains metadata and is left in the header block.
+// content. send_response separately removes Content-Length from 204, where
+// RFC 9110 forbids the field entirely rather than merely suppressing content.
 fn h3_response_allows_body(method Method, status int) bool {
 	return method != .head && status != 204 && status != 205 && status != 304
 }
@@ -917,11 +990,12 @@ fn (mut s H3Server) send_error_response(mut h3c quic.H3Conn, stream_id u64, stat
 // identical, so both apply the same RFC 9113 §8.2.2/RFC 9114 §4.2
 // hop-by-hop filter, the same pseudo-header guard, and the same forbidden-
 // octet check).
-fn h3_outbound_trailer_fields(trailers Header) []quic.QpackFieldLine {
+fn h3_outbound_trailer_fields(trailers Header, status int) []quic.QpackFieldLine {
 	mut fields := []quic.QpackFieldLine{}
 	for key in trailers.keys() {
 		lkey := key.to_lower()
-		if lkey.starts_with(':') || lkey in h2_conn_specific_headers {
+		if lkey.starts_with(':') || lkey in h2_conn_specific_headers
+			|| (status == 204 && lkey == 'content-length') {
 			continue
 		}
 		for val in trailers.custom_values(key) {

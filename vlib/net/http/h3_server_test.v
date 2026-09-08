@@ -148,6 +148,22 @@ fn test_h3_server_suppresses_forbidden_response_content() {
 	assert h3_response_allows_body(.get, 200)
 }
 
+fn test_h3_server_strips_content_length_from_204_headers_and_trailers() {
+	mut header := new_header()
+	header.add(.content_length, '99')
+	header.add_custom('x-response', 'kept')!
+	fields := h3_outbound_response_fields(204, header)
+	assert !fields.any(it.name == 'content-length')
+	assert fields.any(it.name == 'x-response' && it.value == 'kept')
+
+	mut trailers := new_header()
+	trailers.add(.content_length, '42')
+	trailers.add_custom('x-trailer', 'kept')!
+	trailer_fields := h3_outbound_trailer_fields(trailers, 204)
+	assert !trailer_fields.any(it.name == 'content-length')
+	assert trailer_fields.any(it.name == 'x-trailer' && it.value == 'kept')
+}
+
 fn test_h3_server_rejects_informational_terminal_response() {
 	assert h3_final_response_status(0)! == 200
 	assert h3_final_response_status(204)! == 204
@@ -167,6 +183,78 @@ fn (mut h H3ServerTestEchoHandler) handle(req Request) Response {
 		status_code: 200
 		body: 'pong:${req.data}'
 	}
+}
+
+struct H3ServerTestConcurrentHandler {
+	slow_started chan bool
+	release_slow chan bool
+}
+
+fn (mut h H3ServerTestConcurrentHandler) handle(req Request) Response {
+	if req.url == '/slow' {
+		h.slow_started <- true
+		<-h.release_slow
+	}
+	return Response{
+		status_code: 200
+		body: req.url
+	}
+}
+
+fn test_h3_server_handler_work_does_not_block_dispatch_or_completion_queue() {
+	slow_started := chan bool{ cap: 1 }
+	release_slow := chan bool{ cap: 1 }
+	mut slow_released := false
+	defer {
+		if !slow_released {
+			release_slow <- true
+		}
+	}
+	mut completed := &H3ServerCompletedResponseQueue{}
+	handler := H3ServerTestConcurrentHandler{
+		slow_started: slow_started
+		release_slow: release_slow
+	}
+	h3_server_dispatch_handler(handler, Request{ url: '/slow' }, 'conn', 0, .get, mut completed)
+	select {
+		_ := <-slow_started {
+		}
+		2 * time.second {
+			assert false, 'slow handler did not start'
+		}
+	}
+
+	// A second handler must run to completion while the first remains blocked.
+	h3_server_dispatch_handler(handler, Request{ url: '/fast' }, 'conn', 4, .get, mut completed)
+	mut fast_completed := false
+	for _ in 0 .. 2000 {
+		for item in completed.drain() {
+			if item.stream_id == 4 && item.response.body == '/fast' {
+				fast_completed = true
+			}
+		}
+		if fast_completed {
+			break
+		}
+		time.sleep(time.millisecond)
+	}
+	assert fast_completed, 'fast handler completion was blocked behind the slow handler'
+
+	release_slow <- true
+	slow_released = true
+	mut slow_completed := false
+	for _ in 0 .. 2000 {
+		for item in completed.drain() {
+			if item.stream_id == 0 && item.response.body == '/slow' {
+				slow_completed = true
+			}
+		}
+		if slow_completed {
+			break
+		}
+		time.sleep(time.millisecond)
+	}
+	assert slow_completed
 }
 
 // h3_server_test_run is a NAMED function (not a closure) for the spawned
