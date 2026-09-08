@@ -23,7 +23,7 @@ const c_source_directives_end = '/* V3CACHE_SOURCE_DIRECTIVES_END */'
 const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
-const source_signature_cache_format = 'v3-source-signature-cache-4'
+const source_signature_cache_format = 'v3-source-signature-cache-5'
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
@@ -262,6 +262,15 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
+		for qml_path in compile_time_qml_paths(source, path) {
+			qml_content := os.read_bytes(qml_path) or { return SourceSignatureDetails{} }
+			validation << 'qml=${qml_path}\t${file_metadata_signature(qml_path)}'
+			hash = hash_bytes(hash, [u8(0xf8)])
+			hash = hash_bytes(hash, qml_path.bytes())
+			hash = hash_bytes(hash, [u8(0)])
+			hash = hash_bytes(hash, qml_content)
+			hash = hash_bytes(hash, [u8(0xff)])
+		}
 		if source_uses_pseudo(source, [
 			'@BUILD_TIMESTAMP',
 			'@BUILD_DATE',
@@ -695,6 +704,14 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 			}
 			continue
 		}
+		if line.starts_with('qml=') {
+			parts := line['qml='.len..].split('\t')
+			if parts.len != 2 || parts[0].len == 0
+				|| file_metadata_signature(parts[0]) != parts[1] {
+				return none
+			}
+			continue
+		}
 		if line.starts_with('vmod=') {
 			parts := line['vmod='.len..].split('\t')
 			if parts.len != 4 || parts[0].len == 0 {
@@ -911,6 +928,70 @@ fn signature_string_call_arg(source string, start int) (string, int, bool) {
 		value_end++
 	}
 	return '', source.len, false
+}
+
+fn compile_time_qml_paths(source string, source_file string) []string {
+	if !source.contains('\$qml') {
+		return []
+	}
+	mut paths := map[string]bool{}
+	mut pos := 0
+	for pos < source.len {
+		if source[pos] == `/` && pos + 1 < source.len
+			&& (source[pos + 1] == `/` || source[pos + 1] == `*`) {
+			pos = skip_signature_space_and_comments(source, pos)
+			continue
+		}
+		if source[pos] in [`'`, `"`, `\``] {
+			pos = skip_signature_quoted_text(source, pos, false)
+			continue
+		}
+		if source[pos] == `r` && pos + 1 < source.len && source[pos + 1] in [`'`, `"`] {
+			pos = skip_signature_quoted_text(source, pos + 1, true)
+			continue
+		}
+		if pos + 4 > source.len || source[pos..pos + 4] != '\$qml'
+			|| (pos + 4 < source.len && signature_name_char(source[pos + 4])) {
+			pos++
+			continue
+		}
+		raw_path, next_pos, ok := signature_string_call_arg(source, pos + 4)
+		if ok {
+			path := resolve_signature_qml_path(cached_unescape_v_string(raw_path), source_file)
+			paths[os.real_path(path)] = true
+		}
+		pos = if next_pos > pos { next_pos } else { pos + 4 }
+	}
+	mut result := paths.keys()
+	result.sort()
+	return result
+}
+
+fn resolve_signature_qml_path(path string, source_file string) string {
+	if os.is_abs_path(path) {
+		return path
+	}
+	dir := os.dir(os.real_path(source_file))
+	direct := os.join_path_single(dir, path)
+	if os.exists(direct) {
+		return direct
+	}
+	in_templates := os.join_path(dir, 'templates', path)
+	if os.exists(in_templates) {
+		return in_templates
+	}
+	root, _ := signature_vmod_root(source_file)
+	if root != dir {
+		vmod_direct := os.join_path_single(root, path)
+		if os.exists(vmod_direct) {
+			return vmod_direct
+		}
+		vmod_templates := os.join_path(root, 'templates', path)
+		if os.exists(vmod_templates) {
+			return vmod_templates
+		}
+	}
+	return direct
 }
 
 fn signature_name_char(c u8) bool {

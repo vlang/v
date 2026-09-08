@@ -416,6 +416,29 @@ fn test_cached_source_signature_keeps_per_file_sha256_digests() {
 	assert cached.source_digests == details.source_digests
 }
 
+fn test_cached_source_signature_tracks_qml_inputs() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_qml_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	qml := os.join_path(root, 'form.qml')
+	os.write_file(source, "module main\n\nfn build() { _ = \$qml('form.qml') }\n")!
+	os.write_file(qml, 'Label { text: "A" }')!
+	cache_dir := os.join_path(root, 'cache')
+
+	first := cached_source_signature(cache_dir, 'qml', [source])
+	assert first.len > 0
+	os.write_file(qml, 'Label { text: "Changed" }')!
+	second := cached_source_signature(cache_dir, 'qml', [source])
+	assert second.len > 0
+	assert second != first
+	assert compile_time_qml_paths("// \$qml('ignored.qml')\nconst s = \"\$qml('also_ignored.qml')\"",
+		source).len == 0
+}
+
 fn test_version_pseudo_signature_ignores_build_clock() {
 	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_version_pseudo_${os.getpid()}')
 	os.rmdir_all(root) or {}
