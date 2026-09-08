@@ -39,6 +39,12 @@ fn node_reassigns_ident(node ast.Node, name string) bool {
 			if node is ast.FnDecl {
 				return false
 			}
+			if node is ast.ForCStmt {
+				if (node.has_init && node_reassigns_ident(node.init, name))
+					|| (node.has_inc && node_reassigns_ident(node.inc, name)) {
+					return true
+				}
+			}
 			if node is ast.AssignStmt {
 				for left in node.left {
 					reduced := left.remove_par()
@@ -1021,7 +1027,7 @@ run them via `v file.v` instead',
 				scope: unsafe { nil }
 			}
 		}
-		method := ast.Fn{
+		mut method := ast.Fn{
 			name:          name
 			file_mode:     file_mode
 			params:        params
@@ -1052,6 +1058,7 @@ run them via `v file.v` instead',
 			//
 			is_expand_simple_interpolation: is_expand_simple_interpolation
 		}
+		method.receiver_reassignment_unknown = no_body && rec.is_mut && p.file_path.ends_with('.vh')
 		type_sym_method_idx = type_sym.register_method(method)
 		p.table.register_structured_receiver_method(method)
 	} else {

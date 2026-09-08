@@ -1,6 +1,20 @@
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:15:10: error: cannot call mutable method `Node.replace` through embedded interface `Element` because it can replace its receiver
-   13 | fn main() {
-   14 |     mut element := Element(Item{})
-   15 |     element.replace(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:23:10: error: cannot call mutable method `Node.replace` through embedded interface `Element` because it can replace its receiver
+   21 | fn main() {
+   22 |     mut element := Element(Item{})
+   23 |     element.replace(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~
-   16 | }
+   24 |     element.replace_in_for_init(Node(Item{}))
+   25 |     element.replace_in_for_increment(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:24:10: error: cannot call mutable method `Node.replace_in_for_init` through embedded interface `Element` because it can replace its receiver
+   22 |     mut element := Element(Item{})
+   23 |     element.replace(Node(Item{}))
+   24 |     element.replace_in_for_init(Node(Item{}))
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   25 |     element.replace_in_for_increment(Node(Item{}))
+   26 | }
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:25:10: error: cannot call mutable method `Node.replace_in_for_increment` through embedded interface `Element` because it can replace its receiver
+   23 |     element.replace(Node(Item{}))
+   24 |     element.replace_in_for_init(Node(Item{}))
+   25 |     element.replace_in_for_increment(Node(Item{}))
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   26 | }

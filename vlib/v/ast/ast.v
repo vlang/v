@@ -739,6 +739,8 @@ pub mut:
 	ctdefine_idx        int      // the index of the attribute, containing the compile time define [if mytag]
 	from_embedded_type  Type     // for interface only, fn from the embedded interface
 	receiver_reassigned bool     // the method body can replace its mutable receiver
+	// true for mutable receiver methods loaded from a .vh file, whose body cannot be inspected
+	receiver_reassignment_unknown bool
 	//
 	is_expand_simple_interpolation bool // for tagging b.f(s string), which is then called with `b.f('some ${x} ${y}')`,
 	// when that call, should be expanded to `b.f('some '); b.f(x); b.f(' '); b.f(y);`

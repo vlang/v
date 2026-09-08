@@ -4,6 +4,14 @@ fn (mut node Node) replace(next Node) {
 	node = next
 }
 
+fn (mut node Node) replace_in_for_init(next Node) {
+	for node = next; false; {}
+}
+
+fn (mut node Node) replace_in_for_increment(next Node) {
+	for ; false; node = next {}
+}
+
 interface Element {
 	Node
 }
@@ -13,4 +21,6 @@ struct Item {}
 fn main() {
 	mut element := Element(Item{})
 	element.replace(Node(Item{}))
+	element.replace_in_for_init(Node(Item{}))
+	element.replace_in_for_increment(Node(Item{}))
 }

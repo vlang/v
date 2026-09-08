@@ -3611,8 +3611,14 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	requires_mut_receiver := method.params[0].is_mut
 		&& (!is_used_outside_receiver_module || c.fn_has_visible_mutation_for_param(method, 0))
 	if is_method_from_embed && left_sym.kind == .interface && rec_sym.kind == .interface
-		&& method.receiver_reassigned {
-		c.error('cannot call mutable method `${rec_sym.name}.${method_name}` through embedded interface `${left_sym.name}` because it can replace its receiver',
+		&& requires_mut_receiver
+		&& (method.receiver_reassigned || method.receiver_reassignment_unknown) {
+		reason := if method.receiver_reassignment_unknown {
+			'its body is unavailable and may replace its receiver'
+		} else {
+			'it can replace its receiver'
+		}
+		c.error('cannot call mutable method `${rec_sym.name}.${method_name}` through embedded interface `${left_sym.name}` because ${reason}',
 			node.pos)
 	}
 	if requires_mut_receiver {
