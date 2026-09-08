@@ -3866,9 +3866,19 @@ fn (mut p Parser) resolve_comptime_at_values(cond string) string {
 	return p.resolve_comptime_at_values_at(cond, p.tok_pos)
 }
 
+fn (p &Parser) current_source_fn_name() string {
+	if p.cur_method_is_static {
+		_, method := flat.decode_static_type_method_name(p.cur_fn) or {
+			return p.cur_fn.all_after_last('.')
+		}
+		return method
+	}
+	return p.cur_fn.all_after_last('.')
+}
+
 fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) string {
 	module_name := if p.cur_module.len > 0 { p.cur_module } else { 'main' }
-	fn_name := p.cur_fn.all_after_last('.')
+	fn_name := p.current_source_fn_name()
 	method_name := if p.cur_struct.len > 0 { '${p.cur_struct}.${fn_name}' } else { fn_name }
 	mut out := strings.new_builder(cond.len)
 	mut i := 0
@@ -9499,13 +9509,14 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.add_val_id(5, p.cur_module)
 			}
 			if name == '@FN' {
-				return p.add_val_id(5, p.cur_fn.all_after_last('.'))
+				return p.add_val_id(5, p.current_source_fn_name())
 			}
 			if name == '@METHOD' {
+				fn_name := p.current_source_fn_name()
 				return p.add_val_id(5, if p.cur_struct.len > 0 {
-					'${p.cur_struct}.${p.cur_fn.all_after_last('.')}'
+					'${p.cur_struct}.${fn_name}'
 				} else {
-					p.cur_fn.all_after_last('.')
+					fn_name
 				})
 			}
 			if name == '@STRUCT' {
@@ -9513,7 +9524,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			}
 			if name == '@LOCATION' {
 				module_name := if p.cur_module.len > 0 { p.cur_module } else { 'main' }
-				fn_name := p.cur_fn.all_after_last('.')
+				fn_name := p.current_source_fn_name()
 				mut method_name := '${module_name}.${fn_name}'
 				if p.cur_struct.len > 0 {
 					if p.cur_method_is_static {

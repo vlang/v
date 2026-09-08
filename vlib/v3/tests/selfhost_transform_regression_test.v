@@ -187,6 +187,37 @@ fn main() {
 	assert out == 'parsed'
 }
 
+fn test_static_method_pseudo_variables_use_source_name() {
+	name := 'static_method_pseudo_vars'
+	src := os.join_path(os.temp_dir(), 'v3_selfhost_regression_${name}.v')
+	source_path_literal := src.replace('\\', '\\\\')
+	out := selfhost_regression_run(name, 'struct Cache__static__State {}
+
+fn Cache__static__State.report__static__now() {
+	\$if @FN != \'report__static__now\' {
+		\$compile_error(\'incorrect @FN\')
+	}
+	\$if @METHOD != \'Cache__static__State.report__static__now\' {
+		\$compile_error(\'incorrect @METHOD\')
+	}
+	\$if @LOCATION != \'${source_path_literal}:10, main.Cache__static__State.report__static__now (static)\' {
+		\$compile_error(\'incorrect @LOCATION\')
+	}
+	println(@FN)
+	println(@METHOD)
+	println(@LOCATION)
+}
+
+fn main() {
+	Cache__static__State.report__static__now()
+}
+')
+	lines := out.split_into_lines()
+	assert lines[0] == 'report__static__now'
+	assert lines[1] == 'Cache__static__State.report__static__now'
+	assert lines[2].ends_with(', main.Cache__static__State.report__static__now (static)')
+}
+
 // An unresolved literal field shape may be shared by several declared anonymous
 // structs. Keep the exact type selected from the call parameter context.
 fn test_contextual_anonymous_struct_call_field_keeps_declared_type() {
