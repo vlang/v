@@ -1116,10 +1116,19 @@ fn (mut c Checker) convert_comptime_const_value(value ast.ComptTimeConstValue, t
 fn (mut c Checker) eval_comptime_const_cast_value(value ast.ComptTimeConstValue, typ ast.Type) ?ast.ComptTimeConstValue {
 	cast_typ := c.table.fully_unaliased_type(typ).clear_flags()
 	if cast_typ.is_pure_int() {
-		// A numeric cast always truncates/reinterprets bits, matching the generated
-		// code - it never rejects an out-of-range value. For example `u64(min_i64)`
-		// must reinterpret to `9223372036854775808`, not fail just because the value
-		// is negative and therefore doesn't "fit" as unsigned.
+		if cast_typ == ast.u64_type && (value is f32 || value is f64) {
+			float_value := value.f64()?
+			if !(float_value >= 0) {
+				return u64(0)
+			}
+			if float_value >= 18446744073709551616.0 {
+				return u64(max_u64)
+			}
+			return u64(float_value)
+		}
+		// Other numeric casts truncate/reinterpret bits, matching the generated code.
+		// For example `u64(min_i64)` must reinterpret to `9223372036854775808`, not
+		// fail just because the integer value does not independently fit as unsigned.
 		if raw := value.i64() {
 			return c.wrap_comptime_int(raw, cast_typ)
 		}

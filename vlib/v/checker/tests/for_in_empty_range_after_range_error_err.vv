@@ -105,6 +105,11 @@ fn main() {
 	for i in 1 .. i64(18446744073709551615 / 2) {
 		println(i)
 	}
+
+	// Float-to-u64 casts saturate negative values to zero.
+	for i in u64(-1.0) .. 1 {
+		println(i)
+	}
 }
 
 type OverloadedRangeBound = u8
