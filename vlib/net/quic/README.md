@@ -48,6 +48,12 @@ defer {
 The `net.http` HTTP/3 transport performs this cleanup itself; this requirement applies to direct
 `net.quic` users.
 
+## Listener address pinning
+
+`QuicListener` does not implement connection migration. After accepting a connection, it drops
+datagrams whose source address differs from the address recorded at acceptance. Callers must pass
+a stable, unambiguous address representation in `peer` on every `poll` call.
+
 ## HTTP/3 inbound DATA limits
 
 Direct `H3Conn` users can set `H3ConnParams.max_inbound_data_frame_payload` to reject an

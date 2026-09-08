@@ -107,7 +107,8 @@ pub:
 // Distinguishing the two, and validating a received stream-ID-flavored
 // GOAWAY, needs connection role context this layer doesn't have -- see
 // `goaway_id_is_valid_client_initiated_bidi_stream_id` for the one piece
-// of that validation that IS pure/role-independent.
+// of that validation that IS pure/role-independent; h3_control_stream.v
+// applies it only when the receiving endpoint is a client.
 pub struct GoawayFrame {
 pub:
 	id u64
@@ -125,11 +126,9 @@ pub fn goaway_id_is_valid_client_initiated_bidi_stream_id(id u64) bool {
 	return id % 4 == 0
 }
 
-// MaxPushIdFrame sets the maximum push ID a server may use (§7.2.7). A v1
-// client role only ever ENCODES this; decoding exists only so a client can
-// recognize (and, at Phase 12, reject per §7.2.7 "A client MUST treat the
-// receipt of a MAX_PUSH_ID frame as a connection error of type
-// H3_FRAME_UNEXPECTED") a server that incorrectly sends one.
+// MaxPushIdFrame sets the maximum push ID a server may use (§7.2.7). A
+// server accepts non-decreasing values from its client; a client rejects a
+// received MAX_PUSH_ID with H3_FRAME_UNEXPECTED.
 pub struct MaxPushIdFrame {
 pub:
 	push_id u64

@@ -466,20 +466,24 @@ fn test_listener_deduplicates_retransmitted_new_attempt() {
 	result2 := listener.poll(client_dg.bytes, peer, 5)!
 	assert listener.connection_count() == 1
 	assert result2.outgoing.len > 0
+
+	// The same authenticated Initial from another source address must not
+	// be processed. Otherwise its bytes replenish the anti-amplification
+	// budget of the connection whose replies remain pinned to `peer`.
+	conn_key := listener.conns.keys()[0]
+	accepted_conn := listener.conns[conn_key] or { panic('accepted connection disappeared') }
+	received_before := accepted_conn.amplification.received
+	wrong_peer_result := listener.poll(client_dg.bytes, 'different-address'.bytes(), 6)!
+	assert wrong_peer_result.outgoing.len == 0
+	assert wrong_peer_result.events.len == 0
+	assert accepted_conn.amplification.received == received_before
 }
 
-// test_listener_always_replies_to_originally_recorded_peer is a regression
-// test for a real bug 13d-2's own adversarial review found: poll()'s
-// known-connection fast path used to address every outgoing datagram to
-// whatever `peer` value THAT call happened to be invoked with, instead of
-// the address recorded at accept() time -- letting anyone holding a real,
-// legitimately-established connection redirect the server's own replies
-// (ACKs, retransmissions, application data) toward an arbitrary spoofed
-// address on demand, defeating the entire point of address validation at
-// accept() time. This test drives a connection through a normal accept,
-// then polls it again with a DIFFERENT peer value and confirms the reply
-// still targets the connection's ORIGINAL address.
-fn test_listener_always_replies_to_originally_recorded_peer() {
+// test_listener_discards_packets_from_a_different_peer is a regression
+// test for address pinning: migration is not implemented, so a datagram
+// for a known connection from any address other than the one recorded at
+// accept time must be discarded before QuicConn processes it.
+fn test_listener_discards_packets_from_a_different_peer() {
 	mut signing_key := ecdsa.new_key_from_seed(listener_test_key_seed, fixed_size: true)!
 	defer {
 		signing_key.free()
@@ -550,16 +554,11 @@ fn test_listener_always_replies_to_originally_recorded_peer() {
 	now += 10
 	client_to_server := client.poll(none, now)!
 	assert client_to_server.outgoing.len > 0
-	mut spoofed_reply_count := 0
 	for dg in client_to_server.outgoing {
 		spoofed_result := listener.poll(dg.bytes, spoofed_peer, now)!
-		for out in spoofed_result.outgoing {
-			spoofed_reply_count += 1
-			assert out.peer.bytestr() == real_peer.bytestr()
-			assert out.peer.bytestr() != spoofed_peer.bytestr()
-		}
+		assert spoofed_result.outgoing.len == 0
+		assert spoofed_result.events.len == 0
 	}
-	assert spoofed_reply_count > 0, 'expected at least one reply to the spoofed-source datagram to actually check its peer'
 }
 
 // test_listener_direct_accept_enforces_anti_amplification_limit is a

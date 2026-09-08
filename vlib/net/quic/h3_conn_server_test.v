@@ -501,10 +501,14 @@ fn test_h3_conn_server_accepts_increasing_client_max_push_id() {
 		push_id: 7
 	}, mut result)!
 	assert server_h3.peer_max_push_id? == u64(7)
-	if _ := server_h3.apply_control_frame(MaxPushIdFrame{
+	server_h3.apply_control_frame(MaxPushIdFrame{
 		push_id: 7
+	}, mut result)!
+	assert server_h3.peer_max_push_id? == u64(7)
+	if _ := server_h3.apply_control_frame(MaxPushIdFrame{
+		push_id: 6
 	}, mut result) {
-		assert false, 'a repeated MAX_PUSH_ID must be rejected'
+		assert false, 'a decreasing MAX_PUSH_ID must be rejected'
 	} else {
 		assert err.code() == int(H3ErrorCode.id_error)
 	}
@@ -514,6 +518,33 @@ fn test_h3_conn_server_accepts_increasing_client_max_push_id() {
 		assert false, 'a client must reject MAX_PUSH_ID'
 	} else {
 		assert err.code() == int(H3ErrorCode.frame_unexpected)
+	}
+}
+
+fn test_h3_conn_server_interprets_client_goaway_id_as_push_id() {
+	mut client, mut client_h3, mut server, mut server_h3, _ := h3_server_test_pair()!
+	defer {
+		mut client_hs := client.client_handshake()
+		client_hs.free()
+		if mut sh := server.server_handshake {
+			sh.free()
+		}
+	}
+	mut server_result := H3PollResult{}
+	server_h3.apply_control_frame(GoawayFrame{
+		id: 3
+	}, mut server_result)!
+	assert server_result.events.len == 1
+	assert server_result.events[0].kind == .goaway
+	assert server_result.events[0].goaway_id? == u64(3)
+
+	mut client_result := H3PollResult{}
+	if _ := client_h3.apply_control_frame(GoawayFrame{
+		id: 3
+	}, mut client_result) {
+		assert false, 'a client must interpret GOAWAY id 3 as an invalid request stream ID'
+	} else {
+		assert err.code() == int(H3ErrorCode.id_error)
 	}
 }
 

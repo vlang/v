@@ -45,7 +45,10 @@ fn (mut h H3Conn) apply_control_frame(frame H3Frame, mut result H3PollResult) ! 
 			}
 		}
 		GoawayFrame {
-			if !goaway_id_is_valid_client_initiated_bidi_stream_id(frame.id) {
+			// Server-to-client GOAWAY identifies a client-initiated request
+			// stream. Client-to-server GOAWAY identifies a Push ID instead.
+			if !h.is_server_role()
+				&& !goaway_id_is_valid_client_initiated_bidi_stream_id(frame.id) {
 				return error_with_code('h3: GOAWAY id ${frame.id} is not a valid client-initiated bidirectional stream id', int(H3ErrorCode.id_error))
 			}
 			result.events << H3Event{
@@ -58,8 +61,8 @@ fn (mut h H3Conn) apply_control_frame(frame H3Frame, mut result H3PollResult) ! 
 				return error_with_code('h3: a client received MAX_PUSH_ID', int(H3ErrorCode.frame_unexpected))
 			}
 			if previous := h.peer_max_push_id {
-				if frame.push_id <= previous {
-					return error_with_code('h3: MAX_PUSH_ID did not increase the peer limit', int(H3ErrorCode.id_error))
+				if frame.push_id < previous {
+					return error_with_code('h3: MAX_PUSH_ID reduced the peer limit', int(H3ErrorCode.id_error))
 				}
 			}
 			h.peer_max_push_id = frame.push_id

@@ -140,14 +140,12 @@ mut:
 	// live (not yet .closed) connection this listener has accepted.
 	conns map[string]&QuicConn
 	// Same keys as conns: the peer address recorded at accept() time,
-	// reused for every subsequent outgoing datagram on that connection
-	// regardless of which address a later incoming datagram claims to be
-	// from -- v1 has no connection migration (PROGRESS.md's own scope
-	// note), so an address change on a later packet is never treated as
-	// authoritative for WHERE to reply; incoming processing itself is
-	// still address-independent (QUIC's per-packet AEAD authentication is
-	// what actually protects it, not the claimed source address), only
-	// the reply destination is pinned. Deliberately NOT stored as a field
+	// reused as the destination of every subsequent outgoing datagram.
+	// v1 has no connection migration (PROGRESS.md's own scope
+	// note), so a later packet claiming a different source address is
+	// discarded before connection processing. Pinning both input and output
+	// prevents bytes from another address replenishing the recorded peer's
+	// anti-amplification budget. Deliberately NOT stored as a field
 	// on QuicConn itself -- QuicConn stays transport-agnostic, matching
 	// every other role in this module (dial()'s own caller, h3_mux_conn.v,
 	// owns ITS OWN address bookkeeping externally too).
@@ -273,26 +271,19 @@ pub fn (mut l QuicListener) poll(datagram []u8, peer []u8, now u64) !QuicListene
 	dcid := peek_datagram_dcid(datagram) or { return result }
 	key := dcid.bytestr()
 	if key in l.conns {
+		// Connection migration is not implemented. In particular, do not
+		// let a packet from a different address replenish the pinned peer's
+		// anti-amplification budget before address validation.
+		reply_peer := l.peers[key] or { return result }
+		if reply_peer.bytestr() != peer.bytestr() {
+			l.merge_all_connections_next_timeout(mut result)
+			return result
+		}
 		mut c := l.conns[key] or { return result }
 		r := c.poll(datagram, now)!
-		// l.peers[key] -- this connection's ORIGINALLY recorded address at
-		// accept() time -- not the `peer` this specific call was invoked
-		// with. v1 has no connection migration (PROGRESS.md's own scope
-		// note): a later datagram claiming a DIFFERENT source address for
-		// an already-demuxed connection (correct DCID, so it decrypts
-		// fine -- QUIC's per-packet AEAD authentication is what actually
-		// protects processing it, not the claimed source) must never be
-		// trusted as WHERE to reply; doing so would let anyone who owns a
-		// legitimately-established connection redirect the server's own
-		// replies toward an arbitrary spoofed victim on demand, a
-		// post-handshake reflection primitive that would otherwise defeat
-		// the entire point of Retry-based address validation at accept()
-		// time. Falls back to the call's own `peer` only if this entry's
-		// recorded address is somehow missing (should not happen in
-		// practice -- do_accept always populates it in the same call that
-		// creates the conns entry -- but merge_conn_result needs SOME
-		// value, and silently dropping the reply outright would be worse).
-		reply_peer := l.peers[key] or { peer }
+		// reply_peer is this connection's address from accept time. The
+		// source match above pins both incoming processing and outgoing
+		// delivery until connection migration is implemented.
 		l.merge_conn_result(mut result, c, r, reply_peer)
 		l.retire_if_closed(key, mut c)
 	} else {
@@ -460,9 +451,12 @@ fn (mut l QuicListener) handle_new_attempt(header QuicLongHeader, datagram []u8,
 	if bootstrap_key in l.pending_by_dcid {
 		existing_key := l.pending_by_dcid[bootstrap_key] or { '' }
 		if existing_key in l.conns {
+			reply_peer := l.peers[existing_key] or { return }
+			if reply_peer.bytestr() != peer.bytestr() {
+				return
+			}
 			mut c := l.conns[existing_key] or { return }
 			r := c.poll(datagram, now)!
-			reply_peer := l.peers[existing_key] or { peer }
 			l.merge_conn_result(mut result, c, r, reply_peer)
 			l.retire_if_closed(existing_key, mut c)
 			return
