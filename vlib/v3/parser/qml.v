@@ -863,7 +863,11 @@ fn (c &QmlCompiler) expr(expr &QmlExpr, scope QmlScope, use QmlExprUse) string {
 			args := expr.args.map(c.expr(it, scope, .raw)).join(', ')
 			resolved, _ := c.resolve_path(expr.value, scope)
 			call := '${resolved}(${args})'
-			return if use == .string_ { qml_stringify(call) } else { call }
+			return match use {
+				.string_ { qml_stringify(call) }
+				.number { 'f64(${call})' }
+				else { call }
+			}
 		}
 		.unary {
 			operand_use := if expr.value == '!' { QmlExprUse.bool_ } else { .number }

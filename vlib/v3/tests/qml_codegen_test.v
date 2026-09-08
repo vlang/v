@@ -141,16 +141,17 @@ fn main() {
 	Label { text: "count:" + app.count }
 	Label { text: app.display_name() }
 	Button { on_tap: app.select(review_root.custom_selected) }
+	Rectangle { width: app.content_width() }
 }') or { panic(err) }
 	review_path := os.join_path(root, 'review.v')
-	os.write_file(review_path, "module main\n\nimport ui2\n\nstruct App {\n\titems []int\n\tcount int\npub mut:\n\tselected int\n}\n\npub fn (mut app App) select(value int) {\n\tapp.selected = value\n}\n\npub fn (app &App) display_name() string {\n\treturn 'display:\${app.count}'\n}\n\nfn build(app &App) ui2.Element {\n\treturn \$qml('review.qml')\n}\n\nfn main() {\n\tapp := App{items: [10], count: 2}\n\troot := build(&app)\n\tprintln(root.children[4].frame.width.str() + ' ' + root.box.bg.str() + ' ' + root.children[1].frame.width.str() + ' ' + root.children[3].frame.width.str() + ' ' + root.children[3].action_id + ' ' + root.children[4].text + ' ' + root.children[5].text + ' ' + root.children[6].text + ' ' + root.children[7].text + ' ' + root.children[8].action_id)\n}\n") or {
+	os.write_file(review_path, "module main\n\nimport ui2\n\nstruct App {\n\titems []int\n\tcount int\npub mut:\n\tselected int\n}\n\npub fn (mut app App) select(value int) {\n\tapp.selected = value\n}\n\npub fn (app &App) display_name() string {\n\treturn 'display:\${app.count}'\n}\n\npub fn (app &App) content_width() int {\n\treturn 88\n}\n\nfn build(app &App) ui2.Element {\n\treturn \$qml('review.qml')\n}\n\nfn main() {\n\tapp := App{items: [10], count: 2}\n\troot := build(&app)\n\tprintln(root.children[4].frame.width.str() + ' ' + root.box.bg.str() + ' ' + root.children[1].frame.width.str() + ' ' + root.children[3].frame.width.str() + ' ' + root.children[3].action_id + ' ' + root.children[4].text + ' ' + root.children[5].text + ' ' + root.children[6].text + ' ' + root.children[7].text + ' ' + root.children[8].action_id + ' ' + root.children[9].frame.width.str())\n}\n") or {
 		panic(err)
 	}
 	review_compile := os.execute('${v3_bin} -nocache -path "${root}|${qml_codegen_vlib_dir}" -b c -o ${bin} ${review_path}')
 	assert review_compile.exit_code == 0, review_compile.output
 	review_run := os.execute(bin)
 	assert review_run.exit_code == 0, review_run.output
-	assert review_run.output.trim_space() == '50.0 16711680 123.0 77.0 select:1 3 3 count:2 display:2 select:1', review_run.output
+	assert review_run.output.trim_space() == '50.0 16711680 123.0 77.0 select:1 3 3 count:2 display:2 select:1 88.0', review_run.output
 	os.write_file(os.join_path(root, 'form.qml'), 'Screen { MessageBox { Button { on_tap: app.missing() } } }') or { panic(err) }
 	invalid := os.execute('${v3_bin} -nocache -path "${root}|${qml_codegen_vlib_dir}" -b c -o ${bin} ${main_path}')
 	assert invalid.exit_code != 0, invalid.output

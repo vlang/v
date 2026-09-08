@@ -1226,6 +1226,12 @@ fn (t &Transformer) comptime_method_requested_module(raw string) string {
 	if name.contains('.') {
 		return name.all_before_last('.')
 	}
+	// Generic specializations retain the caller-owned main types that were passed
+	// into an imported declaration. Prefer that provenance over a same-named type
+	// declared beside the generic function.
+	if t.active_specialization_main_types[name] {
+		return 'main'
+	}
 	if !isnil(t.tc) {
 		local := if t.cur_module in ['', 'main', 'builtin'] {
 			name
