@@ -40,6 +40,7 @@ fn test_mbedtls_ssl_listener_infers_hostname_family() ! {
 		defer {
 			listener.shutdown() or {}
 		}
-		assert net.addr_from_socket_handle(listener.server_fd.fd).family() == addrs[0].family()
+		family := net.addr_from_socket_handle(listener.server_fd.fd).family()
+		assert addrs.any(it.family() == family)
 	}
 }

@@ -227,19 +227,33 @@ pub fn (mut l SSLListener) shutdown() ! {
 	}
 }
 
-fn ssl_listener_family(saddr string, family net.AddrFamily) net.AddrFamily {
+fn listen_ssl_tcp(saddr string, family net.AddrFamily, options net.ListenOptions) !&net.TcpListener {
 	if family != .unspec {
-		return family
+		return net.listen_tcp(family, saddr, options)
 	}
-	address, _ := net.split_address(saddr) or { return .ip }
-	if address == '' || address == '::' || address.contains(':') {
-		return .ip6
+	address, _ := net.split_address(saddr)!
+	if address == '' || address == '::' {
+		return net.listen_tcp(.ip6, saddr, options)
 	}
-	addrs := net.resolve_addrs(saddr, .unspec, .tcp) or { return .ip }
-	if addrs.len > 0 {
-		return addrs[0].family()
+	addrs := net.resolve_addrs(saddr, .unspec, .tcp)!
+	mut attempted := []net.AddrFamily{}
+	mut errors := []IError{}
+	for addr in addrs {
+		candidate := addr.family()
+		if candidate in attempted {
+			continue
+		}
+		attempted << candidate
+		listener := net.listen_tcp(candidate, saddr, options) or {
+			errors << err
+			continue
+		}
+		return listener
 	}
-	return .ip
+	if errors.len > 0 {
+		return errors[errors.len - 1]
+	}
+	return error('net.mbedtls SSLListener.init, no addresses resolved for ${saddr}')
 }
 
 // internal function to init and bind the listener
@@ -284,7 +298,7 @@ fn (mut l SSLListener) init() ! {
 		C.mbedtls_ssl_conf_authmode(&l.conf, C.MBEDTLS_SSL_VERIFY_REQUIRED)
 	}
 
-	tcp_listener := net.listen_tcp(ssl_listener_family(l.saddr, l.options.family), l.saddr, net.ListenOptions{
+	tcp_listener := listen_ssl_tcp(l.saddr, l.options.family, net.ListenOptions{
 		backlog: C.MBEDTLS_NET_LISTEN_BACKLOG
 	}) or { return error('net.mbedtls SSLListener.init, listen_tcp failed for ${l.saddr}: ${err}') }
 	l.server_fd.fd = tcp_listener.sock.handle

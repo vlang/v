@@ -87,7 +87,8 @@ fn test_ssl_listener_infers_hostname_family() ! {
 		defer {
 			listener.shutdown() or {}
 		}
-		assert listener.tcp_listener.addr()!.family() == addrs[0].family()
+		family := listener.tcp_listener.addr()!.family()
+		assert addrs.any(it.family() == family)
 	}
 }
 

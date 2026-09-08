@@ -30,19 +30,33 @@ pub fn new_ssl_listener(saddr string, config SSLConnectConfig, options SSLListen
 	return listener
 }
 
-fn ssl_listener_family(saddr string, family net.AddrFamily) net.AddrFamily {
+fn listen_ssl_tcp(saddr string, family net.AddrFamily, options net.ListenOptions) !&net.TcpListener {
 	if family != .unspec {
-		return family
+		return net.listen_tcp(family, saddr, options)
 	}
-	address, _ := net.split_address(saddr) or { return .ip }
-	if address == '' || address == '::' || address.contains(':') {
-		return .ip6
+	address, _ := net.split_address(saddr)!
+	if address == '' || address == '::' {
+		return net.listen_tcp(.ip6, saddr, options)
 	}
-	addrs := net.resolve_addrs(saddr, .unspec, .tcp) or { return .ip }
-	if addrs.len > 0 {
-		return addrs[0].family()
+	addrs := net.resolve_addrs(saddr, .unspec, .tcp)!
+	mut attempted := []net.AddrFamily{}
+	mut errors := []IError{}
+	for addr in addrs {
+		candidate := addr.family()
+		if candidate in attempted {
+			continue
+		}
+		attempted << candidate
+		listener := net.listen_tcp(candidate, saddr, options) or {
+			errors << err
+			continue
+		}
+		return listener
 	}
-	return .ip
+	if errors.len > 0 {
+		return errors[errors.len - 1]
+	}
+	return error('net.openssl SSLListener.init, no addresses resolved for ${saddr}')
 }
 
 fn (mut l SSLListener) init() ! {
@@ -53,8 +67,7 @@ fn (mut l SSLListener) init() ! {
 		return error('net.openssl SSLListener.init, no root CA provided')
 	}
 
-	l.tcp_listener =
-		net.listen_tcp(ssl_listener_family(l.saddr, l.options.family), l.saddr, net.ListenOptions{})!
+	l.tcp_listener = listen_ssl_tcp(l.saddr, l.options.family, net.ListenOptions{})!
 
 	l.sslctx = unsafe { C.SSL_CTX_new(C.v_net_openssl_TLS_server_method()) }
 	if l.sslctx == 0 {
