@@ -741,7 +741,7 @@ fn test_sasl_plain_can_be_selected_during_construction() {
 	l.close() or {}
 	assert drain(seen) == [
 		'a0001 AUTHENTICATE PLAIN',
-		base64.encode_str('\0bob\0hunter2'),
+		base64.encode_str('\x00bob\x00hunter2'),
 		'a0002 LOGOUT',
 	]
 }
@@ -751,7 +751,7 @@ fn test_authentication_debug_lines_are_redacted() {
 	assert login == 'a0001 LOGIN <credentials redacted>'
 	assert !login.contains('bob')
 	assert !login.contains('hunter2')
-	plain := imap_debug_line(base64.encode_str('\0bob\0hunter2'), true)
+	plain := imap_debug_line(base64.encode_str('\x00bob\x00hunter2'), true)
 	assert plain == '<authentication data redacted>'
 	assert imap_debug_line('a0002 NOOP', false) == 'a0002 NOOP'
 }

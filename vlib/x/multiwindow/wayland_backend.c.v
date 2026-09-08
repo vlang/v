@@ -1009,7 +1009,7 @@ $if linux && sokol_wayland ? {
 	fn C.poll(fds &C.pollfd, nfds u64, timeout int) int
 	fn C.strcmp(a &char, b &char) int
 	fn C.close(fd int) int
-	fn C.pipe(fds &int) int
+	fn C.pipe(fds &i32) int
 	fn C.read(fd int, buf voidptr, count usize) isize
 	fn C.write(fd int, buf voidptr, count usize) isize
 	fn C.mmap(addr voidptr, length usize, prot int, flags int, fd int, offset i64) voidptr
@@ -2602,6 +2602,18 @@ $if linux && sokol_wayland ? {
 
 fn new_wayland_backend() WaylandBackend {
 	return WaylandBackend{}
+}
+
+fn wayland_pipe() ![2]int {
+	$if linux && sokol_wayland ? {
+		// pipe(2) writes two C ints, which are always 32-bit even when V int is 64-bit.
+		mut native_fds := [2]i32{}
+		if C.pipe(&native_fds[0]) == -1 {
+			return error(err_capability_unsupported)
+		}
+		return [int(native_fds[0]), int(native_fds[1])]!
+	}
+	return error(err_backend_unsupported)
 }
 
 fn (backend &WaylandBackend) native_app_id() string {
@@ -7375,10 +7387,7 @@ fn (mut backend WaylandBackend) begin_pending_data_offer_drop() bool {
 		if backend.data_offer == unsafe { nil } || backend.pending_drop_offer != unsafe { nil } {
 			return false
 		}
-		mut fds := [2]int{}
-		if C.pipe(&fds[0]) == -1 {
-			return false
-		}
+		fds := wayland_pipe() or { return false }
 		if C.v_multiwindow_wayland_fd_set_nonblocking(fds[0]) == 0 {
 			C.close(fds[0])
 			C.close(fds[1])
@@ -8606,10 +8615,7 @@ fn (mut backend WaylandBackend) service_request_clipboard_text(id WindowId, requ
 		if backend.clipboard_read_active {
 			return error(err_clipboard_capacity)
 		}
-		mut fds := [-1, -1]!
-		if C.pipe(&fds[0]) == -1 {
-			return error(err_capability_unsupported)
-		}
+		fds := wayland_pipe() or { return error(err_capability_unsupported) }
 		if C.v_multiwindow_wayland_fd_set_nonblocking(fds[0]) == 0 {
 			C.close(fds[0])
 			C.close(fds[1])

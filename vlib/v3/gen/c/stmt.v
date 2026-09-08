@@ -3246,14 +3246,14 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 		}
 	}
 	return CInlineAsmBlock{
-		arch:          arch
-		is_volatile:   is_volatile
-		is_raw:        is_raw
-		is_intel:      is_intel
-		templates:     templates
-		output:        if sections.len > 1 { parse_c_inline_asm_ios(sections[1], true) } else { [] }
-		input:         if sections.len > 2 { parse_c_inline_asm_ios(sections[2], false) } else { [] }
-		clobbered:     clobbered
+		arch: arch
+		is_volatile: is_volatile
+		is_raw: is_raw
+		is_intel: is_intel
+		templates: templates
+		output: if sections.len > 1 { parse_c_inline_asm_ios(sections[1], true) } else { [] }
+		input: if sections.len > 2 { parse_c_inline_asm_ios(sections[2], false) } else { [] }
+		clobbered: clobbered
 		section_count: sections.len
 	}
 }
@@ -3806,8 +3806,8 @@ fn lower_c_inline_asm_atoms(source string, arch string, aliases map[string]bool,
 }
 
 fn is_c_inline_asm_x86_arch(arch string) bool {
-	return arch in ['amd64', 'x64', 'x86_64', 'i386', 'i486', 'i586', 'i686', 'x86', 'x86_32',
-		'ia-32', 'ia32']
+	return arch in ['amd64', 'x64', 'x86_64', 'i386', 'i486', 'i586', 'i686', 'x86', 'x86_32', 'ia-32',
+		'ia32']
 }
 
 fn is_c_inline_asm_x86_register(name string) bool {

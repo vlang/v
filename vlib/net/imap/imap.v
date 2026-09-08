@@ -229,7 +229,7 @@ pub fn (mut c Client) login_plain() ! {
 	}
 	// RFC 4616: an authorisation identity, an authentication identity and a
 	// password, joined by NUL bytes.
-	c.write_line(base64.encode_str('\0${c.username}\0${c.password}'), true) or {
+	c.write_line(base64.encode_str('\x00${c.username}\x00${c.password}'), true) or {
 		c.shutdown()
 		return err
 	}
@@ -804,7 +804,7 @@ fn (mut c Client) next_tag() string {
 
 fn (mut c Client) write_line(line string, redact bool) ! {
 	_ = redact
-	$if imap_debug? {
+	$if imap_debug ? {
 		eprintln('[imap send] ${imap_debug_line(line, redact)}')
 	}
 	c.write_raw('${line}\r\n'.bytes())!

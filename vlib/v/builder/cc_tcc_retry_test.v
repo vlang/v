@@ -68,8 +68,7 @@ fn test_tcc_retry_warning_is_visible() {
 	defer {
 		os.rmdir_all(test_root) or {}
 	}
-	os.write_file(fake_tcc,
-		'#!/bin/sh\necho "tcc: error: _Thread_local is not implemented"\nexit 1\n') or {
+	os.write_file(fake_tcc, '#!/bin/sh\necho "tcc: error: _Thread_local is not implemented"\nexit 1\n') or {
 		panic(err)
 	}
 	os.chmod(fake_tcc, 0o700) or { panic(err) }
@@ -84,9 +83,9 @@ fn test_tcc_retry_inserts_fallback_flags_before_implicit_vsh_script() {
 	script_path := os.join_path(os.vtmp_dir(), 'implicit_retry_script.vsh')
 	builder := &Builder{
 		pref: &pref.Preferences{
-			is_crun:  true
-			is_vsh:   true
-			path:     script_path
+			is_crun: true
+			is_vsh: true
+			path: script_path
 			run_args: ['script-argument']
 		}
 	}
@@ -100,8 +99,8 @@ fn test_tcc_retry_finds_run_boundary_for_executable_alias() {
 	executable_path := os.join_path(os.vtmp_dir(), 'retry_executable_alias')
 	builder := &Builder{
 		pref: &pref.Preferences{
-			is_run:   true
-			path:     '${executable_path}.v'
+			is_run: true
+			path: '${executable_path}.v'
 			run_args: ['program-argument']
 		}
 	}
@@ -114,7 +113,7 @@ fn test_tcc_retry_filters_build_module_compilers_after_target() {
 	builder := &Builder{
 		pref: &pref.Preferences{
 			build_mode: .build_module
-			path:       module_path
+			path: module_path
 		}
 	}
 	args := ['-cc=tcc', 'build-module', module_path, '-d', 'retry_feature', '-cc', 'tcc']
@@ -167,8 +166,7 @@ fn test_tcc_retry_forwards_corrected_dump_c_flags() {
 		panic(err)
 	}
 	os.chmod(fake_tcc, 0o700) or { panic(err) }
-	os.write_file(source_path,
-		'$if tinyc {\n\t#flag -D V_RETRY_TINYC_CFLAGS\n} $else {\n\t#flag -D V_RETRY_SYSTEM_CFLAGS\n}\n\nfn main() {}\n') or {
+	os.write_file(source_path, '\$if tinyc {\n\t#flag -D V_RETRY_TINYC_CFLAGS\n} \$else {\n\t#flag -D V_RETRY_SYSTEM_CFLAGS\n}\n\nfn main() {}\n') or {
 		panic(err)
 	}
 	res :=
@@ -226,8 +224,7 @@ fn test_tcc_retry_preserves_shared_and_enable_globals_flags() {
 		panic(err)
 	}
 	os.chmod(fake_tcc, 0o700) or { panic(err) }
-	os.write_file(source_path,
-		'__global (\n\tretry_value = 7\n)\n\n@[export: "tcc_retry_value"]\npub fn tcc_retry_value() int {\n\treturn retry_value\n}\n') or {
+	os.write_file(source_path, '__global (\n\tretry_value = 7\n)\n\n@[export: "tcc_retry_value"]\npub fn tcc_retry_value() int {\n\treturn retry_value\n}\n') or {
 		panic(err)
 	}
 	res :=
@@ -424,8 +421,7 @@ fn test_gcc_unicode_response_plan_uses_ansi_when_it_preserves_oversized_unicode_
 	assert args.join(' ').len > 32767
 	split_plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000)
 	assert split_plan.requires_full_response
-	plan := gcc_unicode_full_response_plan(r'D:\工作目录\main.c.rsp',
-		split_plan.full_response_content, .ansi)
+	plan := gcc_unicode_full_response_plan(r'D:\工作目录\main.c.rsp', split_plan.full_response_content, .ansi)
 	assert plan.args == [r'@D:\工作目录\main.c.rsp']
 	assert plan.response_files == [r'D:\工作目录\main.c.rsp']
 	assert plan.response_contents[0].contains(r'D:\\工作目录\\cached_1199.o')
@@ -439,8 +435,7 @@ fn test_gcc_unicode_response_plan_uses_utf8_when_the_driver_accepts_it() {
 	}
 	split_plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', args, 30000)
 	assert split_plan.requires_full_response
-	plan := gcc_unicode_full_response_plan(r'D:\工作目录\main.c.rsp',
-		split_plan.full_response_content, .utf8)
+	plan := gcc_unicode_full_response_plan(r'D:\工作目录\main.c.rsp', split_plan.full_response_content, .utf8)
 	assert plan.args == [r'@D:\工作目录\main.c.rsp']
 	assert plan.response_encoding == .utf8
 	assert plan.response_contents[0].contains(r'D:\\工作目录\\cached_1199.o')
@@ -451,8 +446,7 @@ fn test_gcc_unicode_response_plan_sizes_windows_escaped_arguments() {
 	exact_arg := ccompiler_exec_args('', [arg])[1]
 	split_plan := gcc_unicode_response_plan(r'D:\工作目录\main.c.rsp', [arg], exact_arg.len + 3)
 	assert split_plan.requires_full_response
-	plan := gcc_unicode_full_response_plan(r'D:\工作目录\main.c.rsp',
-		split_plan.full_response_content, .ansi)
+	plan := gcc_unicode_full_response_plan(r'D:\工作目录\main.c.rsp', split_plan.full_response_content, .ansi)
 	assert plan.args == [r'@D:\工作目录\main.c.rsp']
 }
 

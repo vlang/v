@@ -364,8 +364,8 @@ fn test_macro_identifiers_referencing_static_helpers() {
 fn test_source_signature_cache_content_requires_stable_metadata() {
 	expected_digest := 'a'.repeat(sha256.size * 2)
 	details := SourceSignatureDetails{
-		signature:      'content-signature'
-		validation:     ['env=NAME\tvalue']
+		signature: 'content-signature'
+		validation: ['env=NAME\tvalue']
 		source_digests: [expected_digest]
 	}
 	if _ := source_signature_cache_content('before', 'after', details) {
@@ -404,8 +404,7 @@ fn test_cached_source_signature_keeps_per_file_sha256_digests() {
 		first_path,
 	], '', '')
 	assert details.signature.len > 0
-	assert details.source_digests == [sha256.hexhash(first_source),
-		sha256.hexhash(second_source)]
+	assert details.source_digests == [sha256.hexhash(first_source), sha256.hexhash(second_source)]
 	// The metadata-valid fast path must restore the same per-file digests without
 	// dropping them from the cache validity result.
 	cached := cached_source_signature_details_with_build_values(cache_dir, 'digests', [
@@ -436,15 +435,13 @@ fn test_cached_source_signature_tracks_vml_inputs() {
 	second := cached_source_signature(cache_dir, 'vml', [source])
 	assert second.len > 0
 	assert second != first
-	ignored_paths, ignored_lookups, ignored_candidates, ignored_unresolved := compile_time_vml_paths(
-		"// \$vml('ignored.vml')\nconst s = \"\$vml('also_ignored.vml')\"", source)
+	ignored_paths, ignored_lookups, ignored_candidates, ignored_unresolved := compile_time_vml_paths('// \$vml(\'ignored.vml\')\nconst s = "\$vml(\'also_ignored.vml\')"', source)
 	assert ignored_paths.len == 0
 	assert ignored_lookups.len == 0
 	assert ignored_candidates.len == 0
 	assert !ignored_unresolved
 
-	os.write_file(source,
-		"module main\n\nconst form_path = 'form.vml'\nfn build() { _ = \$vml(form_path) }\n")!
+	os.write_file(source, "module main\n\nconst form_path = 'form.vml'\nfn build() { _ = \$vml(form_path) }\n")!
 	before_cache_entries := os.ls(cache_dir)!.len
 	dynamic := cached_source_signature_details_with_build_values(cache_dir, 'dynamic-vml', [
 		source,
@@ -452,14 +449,12 @@ fn test_cached_source_signature_tracks_vml_inputs() {
 	assert dynamic.signature.len > 0
 	assert !dynamic.cacheable
 	assert os.ls(cache_dir)!.len == before_cache_entries
-	dynamic_paths, dynamic_lookups, dynamic_candidates, dynamic_unresolved := compile_time_vml_paths(
-		os.read_file(source)!, source)
+	dynamic_paths, dynamic_lookups, dynamic_candidates, dynamic_unresolved := compile_time_vml_paths(os.read_file(source)!, source)
 	assert dynamic_paths.len == 0
 	assert dynamic_lookups.len == 0
 	assert dynamic_candidates.len == 0
 	assert dynamic_unresolved
-	concat_paths, concat_lookups, concat_candidates, concat_unresolved := compile_time_vml_paths(
-		"fn build() { _ = \$vml(template_dir + '/form.vml') }", source)
+	concat_paths, concat_lookups, concat_candidates, concat_unresolved := compile_time_vml_paths("fn build() { _ = \$vml(template_dir + '/form.vml') }", source)
 	assert concat_paths.len == 0
 	assert concat_lookups.len == 0
 	assert concat_candidates.len == 0
@@ -469,8 +464,7 @@ fn test_cached_source_signature_tracks_vml_inputs() {
 	literal_concat := source_signature_details([source], '', '')
 	assert literal_concat.signature.len > 0
 	assert !literal_concat.cacheable
-	literal_paths, literal_lookups, literal_candidates, literal_unresolved := compile_time_vml_paths(
-		os.read_file(source)!, source)
+	literal_paths, literal_lookups, literal_candidates, literal_unresolved := compile_time_vml_paths(os.read_file(source)!, source)
 	assert literal_paths.len == 0
 	assert literal_lookups.len == 0
 	assert literal_candidates.len == 0
@@ -612,8 +606,7 @@ fn test_source_uses_pseudo_in_quoted_compile_time_paths() {
 	assert source_uses_pseudo('module m\n\nconst p = \$embed_file(r"@VROOT/x")', roots)
 	assert source_uses_pseudo("module m\n\nconst p = \$tmpl('@VMODROOT' + '/x.html')", roots)
 	// a pseudo after a string containing `//` must still be seen
-	assert source_uses_pseudo("module m\n\nconst u = 'http://x' + \$embed_file('@VMODROOT/y')",
-		roots)
+	assert source_uses_pseudo("module m\n\nconst u = 'http://x' + \$embed_file('@VMODROOT/y')", roots)
 	// comments stay inert
 	assert !source_uses_pseudo('module m\n\n// mentions @VMODROOT only in a comment', roots)
 	assert !source_uses_pseudo("module m\n\nconst s = 'plain text'", roots)
@@ -630,16 +623,12 @@ fn test_source_uses_pseudo_in_quoted_compile_time_paths() {
 	assert source_uses_pseudo('module m\n\npub const build_hash = @VHASH', build)
 	assert source_uses_pseudo('module m\n\npub const current_hash = @VCURRENTHASH', build)
 	assert source_uses_pseudo(r"module m\n\npub const stamp = 'built ${@BUILD_TIMESTAMP}'", build)
-	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'literal @BUILD_TIMESTAMP ${1}'",
-		build)
+	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'literal @BUILD_TIMESTAMP ${1}'", build)
 	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'built \${@BUILD_TIMESTAMP}'", build)
 	assert !source_uses_pseudo(r"module m\n\npub const stamp = r'built ${@BUILD_TIMESTAMP}'", build)
-	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'built ${/* @BUILD_TIMESTAMP */ 1}'",
-		build)
-	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'built ${'@BUILD_TIMESTAMP'}'",
-		build)
-	assert source_uses_pseudo(r"module m\n\npub const stamp = 'built ${if ok { @BUILD_TIMESTAMP } else { 0 }}'",
-		build)
+	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'built ${/* @BUILD_TIMESTAMP */ 1}'", build)
+	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'built ${'@BUILD_TIMESTAMP'}'", build)
+	assert source_uses_pseudo(r"module m\n\npub const stamp = 'built ${if ok { @BUILD_TIMESTAMP } else { 0 }}'", build)
 	assert source_uses_pseudo(r"module m\n\npub const root = 'root ${@VMODROOT}'", roots)
 }
 

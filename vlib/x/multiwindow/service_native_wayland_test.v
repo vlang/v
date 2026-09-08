@@ -1756,8 +1756,7 @@ fn test_wayland_clipboard_read_timeout_is_terminal_exactly_once() {
 			owner: backend
 		}
 		backend.windows << record
-		mut fds := [-1, -1]!
-		assert C.pipe(&fds[0]) == 0
+		fds := wayland_pipe()!
 		assert C.v_multiwindow_wayland_fd_set_nonblocking(fds[0]) == 1
 		backend.clipboard_read = WaylandClipboardRead{
 			request: ServiceRequestId{
@@ -1918,10 +1917,8 @@ fn test_wayland_fatal_dispatch_cleans_nonterminal_resources_once_and_preserves_r
 		assert backend.pending_service_events.len == 1
 		assert backend.pending_service_events[0].event.service.portal_parent.status == .ready
 		ready_portal.exported = unsafe { nil }
-		mut send_a := [-1, -1]!
-		mut send_b := [-1, -1]!
-		assert C.pipe(&send_a[0]) == 0
-		assert C.pipe(&send_b[0]) == 0
+		send_a := wayland_pipe()!
+		send_b := wayland_pipe()!
 		backend.clipboard_sends << WaylandClipboardSend{
 			fd:      send_a[1]
 			payload: 'a'
@@ -1932,8 +1929,7 @@ fn test_wayland_fatal_dispatch_cleans_nonterminal_resources_once_and_preserves_r
 		}
 		backend.clipboard_send_cursor = 1
 		backend.clipboard_send_snapshot_bytes = 3
-		mut drop_fds := [-1, -1]!
-		assert C.pipe(&drop_fds[0]) == 0
+		drop_fds := wayland_pipe()!
 		offer := voidptr(usize(0x22))
 		backend.data_offer = offer
 		backend.data_offer_has_uri_list = true
@@ -2027,10 +2023,8 @@ fn test_wayland_fatal_dispatch_cleans_nonterminal_resources_once_and_preserves_r
 			}
 			owner:   nonfatal_backend
 		}
-		mut nonfatal_send := [-1, -1]!
-		mut nonfatal_drop := [-1, -1]!
-		assert C.pipe(&nonfatal_send[0]) == 0
-		assert C.pipe(&nonfatal_drop[0]) == 0
+		nonfatal_send := wayland_pipe()!
+		nonfatal_drop := wayland_pipe()!
 		nonfatal_backend.clipboard_sends << WaylandClipboardSend{
 			fd:      nonfatal_send[1]
 			payload: 'retained'
@@ -2200,8 +2194,7 @@ fn wayland_assert_clipboard_replacement_preflight_failure(fail_listener bool) {
 		if fail_listener {
 			new_source = voidptr(usize(0x22))
 		}
-		mut fds := [-1, -1]!
-		assert C.pipe(&fds[0]) == 0
+		fds := wayland_pipe() or { panic(err) }
 		backend.clipboard_source = old_source
 		backend.clipboard_text = 'previous clipboard'
 		backend.clipboard_sends << WaylandClipboardSend{
@@ -2287,8 +2280,7 @@ fn test_wayland_clipboard_transport_plan_exhaustion_has_no_ghost_and_flush_failu
 		}
 		record.store_user_action_serial(41, backend.poll_generation)
 		backend.windows << record
-		mut fds := [-1, -1]!
-		assert C.pipe(&fds[0]) == 0
+		fds := wayland_pipe()!
 		backend.clipboard_sends << WaylandClipboardSend{
 			fd:          fds[1]
 			payload:     'old clipboard'
@@ -2527,8 +2519,7 @@ fn test_wayland_clipboard_selection_replacement_cancels_read_exactly_once() {
 			owner: backend
 		}
 		backend.windows << record
-		mut fds := [-1, -1]!
-		assert C.pipe(&fds[0]) == 0
+		fds := wayland_pipe()!
 		backend.clipboard_read = WaylandClipboardRead{
 			request:     ServiceRequestId{
 				app_instance: 1
@@ -2570,8 +2561,7 @@ fn wayland_test_begin_clipboard_read(mut backend WaylandBackend, serial u64, buf
 		owner: backend
 	}
 	backend.windows << record
-	mut fds := [-1, -1]!
-	assert C.pipe(&fds[0]) == 0
+	fds := wayland_pipe() or { panic(err) }
 	backend.clipboard_read = WaylandClipboardRead{
 		request:     ServiceRequestId{
 			app_instance: 1
@@ -2724,8 +2714,7 @@ fn test_wayland_file_drop_poll_and_read_eintr_preserve_transaction_until_exact_t
 			height: 30
 		}
 		backend.windows << record
-		mut fds := [-1, -1]!
-		assert C.pipe(&fds[0]) == 0
+		fds := wayland_pipe()!
 		assert C.v_multiwindow_wayland_fd_set_nonblocking(fds[0]) == 1
 		payload := 'file:///tmp/eintr-proof\n'
 		assert C.write(fds[1], payload.str, usize(payload.len)) == payload.len
@@ -2778,8 +2767,7 @@ fn test_wayland_file_drop_empty_open_pipe_expires_without_terminal_event() {
 			owner: backend
 		}
 		backend.windows << record
-		mut fds := [-1, -1]!
-		assert C.pipe(&fds[0]) == 0
+		fds := wayland_pipe()!
 		assert C.v_multiwindow_wayland_fd_set_nonblocking(fds[0]) == 1
 		offer := voidptr(usize(0x94))
 		backend.data_offer = offer
@@ -2819,8 +2807,7 @@ fn test_wayland_file_drop_exact_capacity_requires_eof_and_rejects_one_extra_byte
 				owner: backend
 			}
 			backend.windows << record
-			mut fds := [-1, -1]!
-			assert C.pipe(&fds[0]) == 0
+			fds := wayland_pipe()!
 			assert C.v_multiwindow_wayland_fd_set_nonblocking(fds[0]) == 1
 			prefix := 'file:///tmp/'
 			payload := prefix + 'a'.repeat(wayland_uri_list_buffer_size - prefix.len - 1) + '\n'
@@ -2877,10 +2864,8 @@ fn test_wayland_clipboard_send_is_fair_when_first_consumer_is_backpressured() {
 		source := voidptr(usize(0x61))
 		backend.clipboard_source = source
 		backend.clipboard_text = 'bounded clipboard payload'
-		mut first := [-1, -1]!
-		mut second := [-1, -1]!
-		assert C.pipe(&first[0]) == 0
-		assert C.pipe(&second[0]) == 0
+		first := wayland_pipe()!
+		second := wayland_pipe()!
 		assert C.v_multiwindow_wayland_fd_set_nonblocking(first[1]) == 1
 		mut fill := [4096]u8{}
 		mut saturated := false
@@ -2910,8 +2895,7 @@ fn test_wayland_clipboard_send_is_fair_when_first_consumer_is_backpressured() {
 
 fn test_wayland_clipboard_send_progress_refreshes_inactivity_deadline_before_eagain() {
 	$if linux && sokol_wayland ? {
-		mut fds := [-1, -1]!
-		assert C.pipe(&fds[0]) == 0
+		fds := wayland_pipe()!
 		assert C.v_multiwindow_wayland_fd_set_nonblocking(fds[1]) == 1
 		mut fill := [4096]u8{}
 		mut saturated := false
@@ -2982,10 +2966,8 @@ fn test_wayland_clipboard_send_snapshots_survive_replacement_and_cancel() {
 		}
 		record.store_user_action_serial(31, backend.poll_generation)
 		backend.windows << record
-		mut old_pipe := [-1, -1]!
-		mut new_pipe := [-1, -1]!
-		assert C.pipe(&old_pipe[0]) == 0
-		assert C.pipe(&new_pipe[0]) == 0
+		old_pipe := wayland_pipe()!
+		new_pipe := wayland_pipe()!
 		wayland_data_source_send(backend, old_source, c'text/plain', old_pipe[1])
 		assert backend.clipboard_sends.len == 1
 
@@ -3020,10 +3002,8 @@ fn test_wayland_clipboard_send_expired_writable_progress_and_teardown_are_indepe
 		source := voidptr(usize(0x81))
 		backend.clipboard_source = source
 		backend.clipboard_text = 'still delivered'
-		mut expired := [-1, -1]!
-		mut live := [-1, -1]!
-		assert C.pipe(&expired[0]) == 0
-		assert C.pipe(&live[0]) == 0
+		expired := wayland_pipe()!
+		live := wayland_pipe()!
 		wayland_data_source_send(backend, source, c'text/plain', expired[1])
 		wayland_data_source_send(backend, source, c'text/plain', live[1])
 		assert backend.clipboard_sends.len == 2
@@ -3035,8 +3015,7 @@ fn test_wayland_clipboard_send_expired_writable_progress_and_teardown_are_indepe
 		C.close(expired[0])
 		C.close(live[0])
 
-		mut teardown := [-1, -1]!
-		assert C.pipe(&teardown[0]) == 0
+		teardown := wayland_pipe()!
 		wayland_data_source_send(backend, source, c'text/plain', teardown[1])
 		assert backend.clipboard_sends.len == 1
 		backend.close_all_clipboard_sends()
@@ -3055,10 +3034,8 @@ fn test_wayland_clipboard_send_expired_backpressure_closes_only_that_transfer() 
 		source := voidptr(usize(0x82))
 		backend.clipboard_source = source
 		backend.clipboard_text = 'independent live payload'
-		mut expired := [-1, -1]!
-		mut live := [-1, -1]!
-		assert C.pipe(&expired[0]) == 0
-		assert C.pipe(&live[0]) == 0
+		expired := wayland_pipe()!
+		live := wayland_pipe()!
 		assert C.v_multiwindow_wayland_fd_set_nonblocking(expired[1]) == 1
 		mut fill := [4096]u8{}
 		mut saturated := false
@@ -3096,14 +3073,10 @@ fn test_wayland_clipboard_send_rejects_invalid_and_bounded_admissions_only() {
 		source := voidptr(usize(0xa1))
 		backend.clipboard_source = source
 		backend.clipboard_text = 'x'
-		mut invalid_source := [-1, -1]!
-		mut invalid_mime := [-1, -1]!
-		mut byte_limit := [-1, -1]!
-		mut count_limit := [-1, -1]!
-		assert C.pipe(&invalid_source[0]) == 0
-		assert C.pipe(&invalid_mime[0]) == 0
-		assert C.pipe(&byte_limit[0]) == 0
-		assert C.pipe(&count_limit[0]) == 0
+		invalid_source := wayland_pipe()!
+		invalid_mime := wayland_pipe()!
+		byte_limit := wayland_pipe()!
+		count_limit := wayland_pipe()!
 
 		wayland_data_source_send(backend, voidptr(usize(0xa2)), c'text/plain', invalid_source[1])
 		wayland_data_source_send(backend, source, c'application/octet-stream', invalid_mime[1])

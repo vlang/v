@@ -6827,8 +6827,7 @@ fn (t &Transformer) generic_static_assoc_call_decl_key(base_id flat.NodeId, meth
 	}
 	for type_name in t.generic_static_assoc_type_candidates(base_id) {
 		for method_spelling in generic_call_name_spellings(method) {
-			key := generic_fn_decl_base_value(flat.encode_static_type_method_name(type_name,
-				method_spelling))
+			key := generic_fn_decl_base_value(flat.encode_static_type_method_name(type_name, method_spelling))
 			if key in decls {
 				return key
 			}
@@ -6854,8 +6853,7 @@ fn (t &Transformer) generic_call_is_static_assoc_selector(node flat.Node, decl G
 	base_id := t.a.child(callee, 0)
 	for type_name in t.generic_static_assoc_type_candidates(base_id) {
 		for method_spelling in generic_call_name_spellings(method) {
-			key := generic_fn_decl_base_value(flat.encode_static_type_method_name(type_name,
-				method_spelling))
+			key := generic_fn_decl_base_value(flat.encode_static_type_method_name(type_name, method_spelling))
 			if key == decl.key || key == decl_value
 				|| transform_qualified_fn_name(decl.module, key) == decl.key {
 				return true

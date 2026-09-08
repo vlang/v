@@ -78,22 +78,28 @@ fn test_control_characters_are_encoded() {
 fn test_malformed_input_is_rejected() {
 	// A shift that never ends.
 	assert fails(fn () ! {
-		utf7_decode('&AOk')!})
+		utf7_decode('&AOk')!
+	})
 	// A character outside the base64 alphabet.
 	assert fails(fn () ! {
-		utf7_decode('&A!k-')!})
+		utf7_decode('&A!k-')!
+	})
 	// `/` belongs to standard base64, not this one.
 	assert fails(fn () ! {
-		utf7_decode('&A/k-')!})
+		utf7_decode('&A/k-')!
+	})
 	// A run holding half a UTF-16 unit.
 	assert fails(fn () ! {
-		utf7_decode('&AAAA-')!})
+		utf7_decode('&AAAA-')!
+	})
 	// A high surrogate with nothing after it.
 	assert fails(fn () ! {
-		utf7_decode('&2D0-')!})
+		utf7_decode('&2D0-')!
+	})
 	// A low surrogate on its own.
 	assert fails(fn () ! {
-		utf7_decode('&3Og-')!})
+		utf7_decode('&3Og-')!
+	})
 }
 
 fn test_raw_utf8_is_tolerated_on_the_way_in() {
@@ -104,7 +110,7 @@ fn test_raw_utf8_is_tolerated_on_the_way_in() {
 
 // fails reports whether `f` returned an error, which keeps the negative cases
 // above to one line each.
-fn fails(f fn() !) bool {
+fn fails(f fn () !) bool {
 	f() or { return true }
 	return false
 }

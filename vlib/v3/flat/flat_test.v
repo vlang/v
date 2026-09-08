@@ -29,14 +29,14 @@ fn test_node_uses_compact_header_and_uncommon_payload() {
 
 fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 	node := Node{
-		value:                'value'
-		typ:                  '[]string'
-		payload:              node_payload(['T'])
-		children_start:       12
-		children_count:       3
-		kind:                 .for_stmt
-		op:                   .plus
-		is_mut:               true
+		value: 'value'
+		typ: '[]string'
+		payload: node_payload(['T'])
+		children_start: 12
+		children_count: 3
+		kind: .for_stmt
+		op: .plus
+		is_mut: true
 		skip_ownership_drops: true
 		is_static_type_method: true
 	}
@@ -54,13 +54,14 @@ fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 }
 
 fn test_static_type_method_name_round_trip_with_marker_in_both_parts() {
-	encoded := encode_static_type_method_name('models.Cache__static__State',
-		'reset__static__now')
+	encoded := encode_static_type_method_name('models.Cache__static__State', 'reset__static__now')
 	assert encode_static_type_method_name('int', 'tag') != 'int__static__tag__static__3'
 	receiver, method := decode_static_type_method_name(encoded) or { panic('invalid encoding') }
 	assert receiver == 'models.Cache__static__State'
 	assert method == 'reset__static__now'
-	assert decode_static_type_method_name('cache__static__reset') == none
+	if _, _ := decode_static_type_method_name('cache__static__reset') {
+		assert false
+	}
 }
 
 fn test_clone_text_table_owned_detaches_scoped_storage() {
