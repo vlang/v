@@ -63,7 +63,7 @@ pub mut:
 
 // Mail stores the message headers and MIME payload sent by Client.send.
 // `to`, `cc`, and `bcc` are semicolon-separated mailbox lists. Client.send
-// uses all three lists as SMTP envelope recipients, writes `To` and non-empty
+// uses all three lists as SMTP envelope recipients, writes non-empty `To` and
 // `Cc` headers, and omits `Bcc` from the message data.
 pub struct Mail {
 pub:
@@ -391,7 +391,10 @@ fn (cfg &Mail) message_data() string {
 	mut sb := strings.new_builder(200 + message_body_len + attachments_len * 200)
 
 	sb.write_string('From: ${format_addr(cfg.from)}\r\n')
-	sb.write_string('To: ${format_addr_list(cfg.to)}\r\n')
+	to := format_addr_list(cfg.to)
+	if to != '' {
+		sb.write_string('To: ${to}\r\n')
+	}
 
 	// Bcc addresses are not added here. They are delivered as envelope recipients.
 	cc := format_addr_list(cfg.cc)
@@ -487,13 +490,32 @@ fn format_addr(addr string) string {
 	return '"${escaped}" <${addr_spec}>'
 }
 
-// encode_rfc2047 encodes s as an RFC 2047 encoded-word ('=?utf-8?B?<base64>?=')
-// for use in a message header.
-//
-// Note: folding an over-long value into several encoded-words is not
-// implemented yet, so such a value may exceed the 75-character limit.
+// encode_rfc2047 encodes s as one or more RFC 2047 encoded-words
+// ('=?utf-8?B?<base64>?=') for use in a message header.
 fn encode_rfc2047(s string) string {
-	return '=?utf-8?B?${base64.encode_str(s)}?='
+	if s.len == 0 {
+		return '=?utf-8?B??='
+	}
+	// The wrapper occupies 12 of the allowed 75 characters. Base64 output is a
+	// multiple of four, so 45 input bytes produce the largest fitting payload
+	// (60 characters). Move boundaries back over UTF-8 continuation bytes.
+	max_chunk_bytes := 45
+	mut words := []string{cap: s.len / max_chunk_bytes + 1}
+	mut start := 0
+	for start < s.len {
+		mut end := if start + max_chunk_bytes < s.len { start + max_chunk_bytes } else { s.len }
+		for end > start && end < s.len && s[end] & 0xc0 == 0x80 {
+			end--
+		}
+		if end == start {
+			// Invalid UTF-8 should still make progress; valid code points are at
+			// most four bytes and cannot exhaust a 45-byte chunk.
+			end = if start + max_chunk_bytes < s.len { start + max_chunk_bytes } else { s.len }
+		}
+		words << '=?utf-8?B?${base64.encode_str(s[start..end])}?='
+		start = end
+	}
+	return words.join(' ')
 }
 
 struct MimePart {

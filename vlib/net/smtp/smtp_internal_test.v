@@ -165,6 +165,19 @@ fn test_mail_message_data_omits_empty_cc_and_bcc_headers() {
 	assert !message.contains('Bcc:')
 }
 
+fn test_mail_message_data_omits_empty_to_for_bcc_only_mail() {
+	mail := Mail{
+		from: 'sender@example.com'
+		bcc: 'hidden@example.com'
+		subject: 'Bcc-only test'
+	}
+
+	message := mail.message_data()
+
+	assert !message.contains('To:')
+	assert !message.contains('Bcc:')
+}
+
 fn test_mail_message_data_includes_cc_header_but_omits_bcc() {
 	mail := Mail{
 		from: 'sender@example.com'
@@ -220,6 +233,21 @@ fn test_mail_message_data_encodes_non_ascii_subject() {
 	}
 	message2 := mail2.message_data()
 	assert message2.contains('Subject: =?utf-8?B?0J/RgNC40LLQtdGCINC80LjRgA==?=\r\n')
+}
+
+fn test_encode_rfc2047_splits_long_utf8_without_cutting_characters() {
+	original := 'Привет мир '.repeat(12)
+	encoded := encode_rfc2047(original)
+	words := encoded.split(' ')
+	assert words.len > 1
+	mut decoded := ''
+	for word in words {
+		assert word.starts_with('=?utf-8?B?')
+		assert word.ends_with('?=')
+		assert word.len <= 75
+		decoded += base64.decode_str(word[10..word.len - 2])
+	}
+	assert decoded == original
 }
 
 fn test_format_addr() {
