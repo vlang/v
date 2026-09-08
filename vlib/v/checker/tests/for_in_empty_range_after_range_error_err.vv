@@ -82,6 +82,11 @@ fn main() {
 	for i in int(f32(5.01590028e28) ** f32(0.230928734)) .. 4243608 {
 		println(i)
 	}
+
+	// Preserve the represented type of a wide integer literal during comparison.
+	for i in 0 .. 4294967295 {
+		println(i)
+	}
 }
 
 type OverloadedRangeBound = u8

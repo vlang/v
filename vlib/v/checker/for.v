@@ -384,10 +384,37 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 }
 
 // Check for empty range with comptime constant integer bounds
-fn (mut c Checker) range_comparison_operand_type(typ ast.Type) ?ast.Type {
+fn range_integer_literal_type(expr ast.Expr) ?ast.Type {
+	match expr {
+		ast.IntegerLiteral {
+			if expr.val.starts_with('-') {
+				value := expr.val.i64()
+				return if value >= min_i32 { ast.i32_type } else { ast.i64_type }
+			}
+			value := expr.val.u64()
+			if value <= u64(max_i32) {
+				return ast.i32_type
+			}
+			if value <= u64(max_u32) {
+				return ast.u32_type
+			}
+			return if value <= u64(max_i64) { ast.i64_type } else { ast.u64_type }
+		}
+		ast.ParExpr {
+			return range_integer_literal_type(expr.expr)
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (mut c Checker) range_comparison_operand_type(expr ast.Expr, typ ast.Type) ?ast.Type {
 	unaliased_type := c.table.fully_unaliased_type(typ).clear_flags()
-	if unaliased_type == ast.int_literal_type || unaliased_type == ast.rune_type
-		|| unaliased_type.idx() in ast.int_promoted_type_idxs {
+	if unaliased_type == ast.int_literal_type {
+		return range_integer_literal_type(expr) or { ast.int_type }
+	}
+	if unaliased_type == ast.rune_type || unaliased_type.idx() in ast.int_promoted_type_idxs {
 		return ast.int_type
 	}
 	if !unaliased_type.is_pure_int() {
@@ -396,9 +423,9 @@ fn (mut c Checker) range_comparison_operand_type(typ ast.Type) ?ast.Type {
 	return unaliased_type
 }
 
-fn (mut c Checker) range_comparison_type(left_type ast.Type, right_type ast.Type) ?ast.Type {
-	left := c.range_comparison_operand_type(left_type)?
-	right := c.range_comparison_operand_type(right_type)?
+fn (mut c Checker) range_comparison_type(left_expr ast.Expr, left_type ast.Type, right_expr ast.Expr, right_type ast.Type) ?ast.Type {
+	left := c.range_comparison_operand_type(left_expr, left_type)?
+	right := c.range_comparison_operand_type(right_expr, right_type)?
 	left_size, _ := c.table.type_size(left)
 	right_size, _ := c.table.type_size(right)
 	if left.is_signed() == right.is_signed() {
@@ -419,7 +446,9 @@ fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, val_type a
 			assigned_low := c.eval_comptime_const_cast_value(evaluated_low, assignment_type) or {
 				return
 			}
-			comparison_type := c.range_comparison_type(assignment_type, high_type) or { return }
+			comparison_type := c.range_comparison_type(low, assignment_type, high, high_type) or {
+				return
+			}
 			low_val := c.eval_comptime_const_cast_value(assigned_low, comparison_type) or { return }
 			high_val := c.eval_comptime_const_cast_value(evaluated_high, comparison_type) or {
 				return
