@@ -40,6 +40,7 @@ mut:
 	address_taken       bool
 	captured_mut        bool
 	method_calls        []string
+	arg_calls           []ast.ReceiverArgCall
 }
 
 fn scan_receiver_sql_query_data(items []ast.SqlQueryDataItem, name string, mut info ReceiverReassignmentInfo) {
@@ -145,11 +146,26 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 						&& node.name !in info.method_calls {
 						info.method_calls << node.name
 					}
-					for arg in node.args {
+					mut receiver_type := node.left_type
+					if node.is_method && receiver_type == 0 && node.scope != unsafe { nil }
+						&& left is ast.Ident {
+						if receiver_var := node.scope.find_var(left.name) {
+							receiver_type = receiver_var.typ
+						}
+					}
+					for i, arg in node.args {
 						mut arg_expr := arg.expr
 						arg_expr = arg_expr.remove_par()
-						if arg.is_mut && arg_expr is ast.Ident && arg_expr.name == name {
-							info.passed_mut = true
+						if arg_expr is ast.Ident && arg_expr.name == name {
+							info.arg_calls << ast.ReceiverArgCall{
+								name:          node.name
+								arg_idx:       i
+								is_method:     node.is_method
+								receiver_type: receiver_type
+							}
+							if arg.is_mut {
+								info.passed_mut = true
+							}
 						}
 					}
 				}
@@ -1332,6 +1348,7 @@ run them via `v file.v` instead',
 		type_sym.methods[type_sym_method_idx].receiver_address_taken = receiver_info.address_taken
 		type_sym.methods[type_sym_method_idx].receiver_captured_mut = receiver_info.captured_mut
 		type_sym.methods[type_sym_method_idx].receiver_method_calls = receiver_info.method_calls
+		type_sym.methods[type_sym_method_idx].receiver_arg_calls = receiver_info.arg_calls
 	}
 	if !no_body && are_params_type_only {
 		p.error_with_pos('functions with type only params can not have bodies', body_start_pos)

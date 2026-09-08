@@ -63,6 +63,48 @@ fn (mut c Checker) record_receiver_mut_argument(param ast.Param, arg ast.CallArg
 	}
 }
 
+fn (mut c Checker) receiver_arg_call_fn(method ast.Fn, call ast.ReceiverArgCall) ?ast.Fn {
+	if call.is_method {
+		if call.receiver_type == 0 {
+			return none
+		}
+		receiver_sym := c.table.final_sym(call.receiver_type)
+		if called_method := c.table.find_method_with_embeds(receiver_sym, call.name) {
+			return called_method
+		}
+		return none
+	}
+	if called_fn := c.table.find_fn(call.name) {
+		return called_fn
+	}
+	if !call.name.contains('.') {
+		if called_fn := c.table.find_fn('${method.mod}.${call.name}') {
+			return called_fn
+		}
+		return c.table.find_fn('builtin.${call.name}')
+	}
+	return none
+}
+
+fn (mut c Checker) record_receiver_mut_arguments_before_check() {
+	for mut sym in c.table.type_symbols {
+		for mut method in sym.methods {
+			if method.params.len == 0 || !method.params[0].is_mut || method.receiver_passed_mut {
+				continue
+			}
+			for call in method.receiver_arg_calls {
+				called_fn := c.receiver_arg_call_fn(method, call) or { continue }
+				param_idx := c.call_arg_param_index(called_fn, call.arg_idx)
+				if param_idx >= 0 && param_idx < called_fn.params.len
+					&& called_fn.params[param_idx].is_mut {
+					method.receiver_passed_mut = true
+					break
+				}
+			}
+		}
+	}
+}
+
 fn (mut c Checker) check_os_raw_io_call(node &ast.CallExpr, func &ast.Fn, concrete_types []ast.Type, arg_offset int) {
 	if func.mod != 'os' || !func.is_method {
 		return

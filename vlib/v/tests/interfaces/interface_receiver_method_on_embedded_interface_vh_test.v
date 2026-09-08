@@ -68,7 +68,7 @@ fn test_implicitly_mutable_receiver_argument_is_rejected() {
 	os.mkdir_all(root)!
 	os.write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'implicit_mut_iface'\n}\n")!
 	os.write_file(os.join_path(root, 'main.v'),
-		'module main\n\ninterface Node {}\n\nfn replace_node(mut node Node, next Node) {\n\tnode = next\n}\n\nfn (mut node Node) replace_implicitly(next Node) {\n\treplace_node(node, next)\n}\n\ninterface Element {\n\tNode\n}\n\nstruct Item {}\n\nfn main() {\n\tmut element := Element(Item{})\n\telement.replace_implicitly(Node(Item{}))\n}\n')!
+		'module main\n\ninterface Node {}\n\ninterface Element {\n\tNode\n}\n\nstruct Item {}\n\nfn main() {\n\tmut element := Element(Item{})\n\telement.replace_implicitly(Node(Item{}))\n}\n\nfn replace_node(mut node Node, next Node) {\n\tnode = next\n}\n\nfn (mut node Node) replace_implicitly(next Node) {\n\treplace_node(node, next)\n}\n')!
 	run_result := run_v_in_dir(root, ['-gc', 'none', '-disable-explicit-mutability', '-check',
 		'.'])
 	assert run_result.exit_code == 1, run_result.output

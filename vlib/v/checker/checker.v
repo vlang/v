@@ -697,6 +697,7 @@ pub fn (mut c Checker) change_current_file(file &ast.File) {
 pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	// println('check_files')
 	// c.files = ast_files
+	c.record_receiver_mut_arguments_before_check()
 	mut has_main_mod_file := false
 	mut has_no_main_mod_file := false
 	mut has_main_fn := false
