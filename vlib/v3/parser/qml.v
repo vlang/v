@@ -754,6 +754,7 @@ fn qml_property_use(property QmlProperty) QmlExprUse {
 			'f64', 'f32', 'int' { .number }
 			'bool' { .bool_ }
 			'string' { .string_ }
+			'color' { .color }
 			else { .raw }
 		}
 	}
@@ -870,8 +871,15 @@ fn (c &QmlCompiler) expr(expr &QmlExpr, scope QmlScope, use QmlExprUse) string {
 			}
 		}
 		.unary {
-			operand_use := if expr.value == '!' { QmlExprUse.bool_ } else { .number }
-			return '(${expr.value}${c.expr(expr.left, scope, operand_use)})'
+			operand_use := if use in [.raw, .string_] {
+				QmlExprUse.raw
+			} else if expr.value == '!' {
+				QmlExprUse.bool_
+			} else {
+				QmlExprUse.number
+			}
+			result := '(${expr.value}${c.expr(expr.left, scope, operand_use)})'
+			return if use == .string_ { qml_stringify(result) } else { result }
 		}
 		.binary {
 			if expr.value in ['&&', '||'] {
@@ -893,6 +901,9 @@ fn (c &QmlCompiler) expr(expr &QmlExpr, scope QmlScope, use QmlExprUse) string {
 					return '(${c.expr(expr.left, scope, .string_)} + ${c.expr(expr.right, scope, .string_)})'
 				}
 				return qml_stringify('(${c.expr(expr.left, scope, .raw)} + ${c.expr(expr.right, scope, .raw)})')
+			}
+			if use == .string_ && expr.value in ['-', '*', '/', '%'] {
+				return qml_stringify('(${c.expr(expr.left, scope, .raw)} ${expr.value} ${c.expr(expr.right, scope, .raw)})')
 			}
 			if expr.value == '%' {
 				return 'f64(int(${c.expr(expr.left, scope, .number)}) % int(${c.expr(expr.right, scope, .number)}))'
@@ -995,7 +1006,8 @@ fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, in
 		} else {
 			c.expr(property.expr, scope, property_use)
 		}
-		if property_use == .color && property.expr.kind in [.literal, .path]
+		if property.declared_type.len == 0 && property_use == .color
+			&& property.expr.kind in [.literal, .path]
 			&& property.expr.value.starts_with('#') && property.expr.value.len == 7 {
 			// Static colors can be used directly without a generated local.
 			properties[property.name] = value
@@ -1297,6 +1309,7 @@ fn (mut c QmlCompiler) compile_element(node &QmlNode, suffix string, frame strin
 	on_active := c.compiled_event_value(node, 'on_active', scope, id)
 	on_text := c.compiled_event_value(node, 'on_text', scope, id)
 	on_submit := c.compiled_event_value(node, 'on_submit', scope, id)
+	text_action := if qml_find_property(node, 'on_text') != none { on_text } else { on_change }
 	action := match node.tag {
 		'Button', 'Checkbox' { on_tap }
 		'Dropdown', 'Slider' { 'if ${on_change}.len > 0 { ${on_change} } else { ${on_tap} }' }
@@ -1306,7 +1319,7 @@ fn (mut c QmlCompiler) compile_element(node &QmlNode, suffix string, frame strin
 		'Spinner' {
 			'if ${on_text}.len > 0 { ${on_text} } else if ${on_change}.len > 0 { ${on_change} } else { ${on_tap} }'
 		}
-		'TextArea', 'TextField' { on_change }
+		'TextArea', 'TextField' { text_action }
 		else { on_tap }
 	}
 	if node.tag == 'MessageBox' {
@@ -1363,11 +1376,11 @@ fn (mut c QmlCompiler) compile_element(node &QmlNode, suffix string, frame strin
 		c.out.writeln('\t\tplaceholder: ${qml_prop(properties, 'placeholder', "''")}')
 		keyboard := qml_prop(properties, 'keyboard', "''")
 		c.out.writeln("\t\tkeyboard: if ${keyboard} in ['decimal', 'numeric', 'number'] { ui2.keyboard_decimal } else { ui2.keyboard_default }")
-		c.out.writeln('\t\temit_change: ${qml_prop(properties, 'emit_change', 'false')} || ${on_change}.len > 0')
+		c.out.writeln('\t\temit_change: ${qml_prop(properties, 'emit_change', 'false')} || ${text_action}.len > 0')
 	}
 	if node.tag == 'TextArea' {
 		c.out.writeln('\t\treadonly: ${qml_prop(properties, 'editable', 'true')} == false')
-		c.out.writeln('\t\temit_change: ${on_change}.len > 0')
+		c.out.writeln('\t\temit_change: ${text_action}.len > 0')
 	}
 	if node.tag == 'Screen' {
 		c.out.writeln('\t\tbox: ui2.BoxStyle{bg: ${qml_prop(properties, 'background', 'u32(0xffffff)')}}')
