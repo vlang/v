@@ -7,8 +7,8 @@ fn local_location() !&Location {
 		if tz == '' {
 			return load_location('UTC')
 		}
-		if tz.starts_with(':') {
-			path := tz[1..]
+		if tz.starts_with(':') || os.is_abs_path(tz) {
+			path := if tz.starts_with(':') { tz[1..] } else { tz }
 			if path != '' {
 				if data := os.read_bytes(path) {
 					return parse_tzif_location('Local', data) or { fixed_local_location() }

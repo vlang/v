@@ -199,6 +199,30 @@ fn test_zoneinfo_search_continues_after_invalid_tzif_data() {
 	assert loc.offset_at(1_704_067_200)! == 0
 }
 
+fn test_local_location_loads_unprefixed_absolute_tz_path() {
+	$if !windows {
+		temp_dir := os.join_path(os.vtmp_dir(), 'zoneinfo_absolute_tz_path')
+		zone_file := os.join_path(temp_dir, 'new_york.tzif')
+		old_tz := os.getenv_opt('TZ')
+		os.rmdir_all(temp_dir) or {}
+		defer {
+			if old := old_tz {
+				os.setenv('TZ', old, true)
+			} else {
+				os.unsetenv('TZ')
+			}
+			os.rmdir_all(temp_dir) or {}
+		}
+		os.mkdir_all(temp_dir)!
+		data := load_zoneinfo_from_source(zoneinfo_vroot_zip, 'America/New_York')!
+		os.write_file_array(zone_file, data)!
+		os.setenv('TZ', zone_file, true)
+		loc := local_location()!
+		assert loc.offset_at(1_704_067_200)! == -18_000
+		assert loc.offset_at(1_719_792_000)! == -14_400
+	}
+}
+
 fn unavailable_test_zoneinfo_loader(name string) ![]u8 {
 	return error('no test zoneinfo for "${name}"')
 }
