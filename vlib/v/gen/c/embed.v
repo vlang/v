@@ -14,7 +14,8 @@ fn (g &Gen) should_really_embed_file() bool {
 }
 
 fn (g &Gen) should_use_incbin_embed() bool {
-	if g.pref.out_name.ends_with('.c') || g.pref.generate_c_project != '' || g.pref.should_output_to_stdout() {
+	if g.pref.out_name.ends_with('.c') || g.pref.generate_c_project != ''
+		|| g.pref.should_output_to_stdout() {
 		return false
 	}
 	if g.pref.is_o {
@@ -33,6 +34,11 @@ fn (g &Gen) should_use_incbin_embed() bool {
 		return false
 	}
 	if g.pref.os == .windows && pref.get_host_os() != .windows {
+		return false
+	}
+	// iOS compilation needs SDK and deployment-target flags that are not
+	// currently forwarded to the separate assembler invocation.
+	if g.pref.os == .ios {
 		return false
 	}
 	// wasm targets use a different object format; our .S files have ELF/Mach-O
@@ -268,6 +274,9 @@ fn (mut g Gen) gen_embedded_asm_file(emfile ast.EmbeddedFile) {
 	sb.writeln('    .incbin "${cestring(incbin_path)}"')
 	sb.writeln('#if !defined(__APPLE__) && !defined(_WIN32)')
 	sb.writeln('    .size _v_embed_blob_${ef_hash}, ${emfile.bytes.len}')
+	sb.writeln('#endif')
+	sb.writeln('#if defined(__linux__)')
+	sb.writeln('    .section .note.GNU-stack,"",%progbits')
 	sb.writeln('#endif')
 
 	g.embedded_asm[asm_filename] = sb.str()

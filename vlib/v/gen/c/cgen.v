@@ -244,9 +244,9 @@ mut:
 	hotcode_fn_names                     []string
 	hotcode_fpaths                       []string
 	embedded_files                       []ast.EmbeddedFile
-	embedded_asm                         map[string]string  // generated .S file content (filename → content)
-	embedded_temp_files                  []string           // compressed .bin temp files for cleanup
-	embed_build_id                       string             // random suffix for .S/.o filenames to avoid parallel-build collisions
+	embedded_asm                         map[string]string // generated .S file content (filename → content)
+	embedded_temp_files                  []string          // compressed .bin temp files for cleanup
+	embed_build_id                       string            // random suffix for .S/.o filenames to avoid parallel-build collisions
 	sql_i                                int
 	sql_stmt_name                        string
 	sql_bind_name                        string
@@ -341,14 +341,14 @@ mut:
 pub struct GenOutput {
 pub:
 	header              string
-	res_builder         strings.Builder // produced output (complete)
-	out_str             string          // produced output from g.out
-	out0_str            string          // helpers output (auto fns, dump fns) for out_0.c (-parallel-cc)
-	extern_str          string          // extern chunk for (-parallel-cc)
-	out_fn_start_pos    []int           // fn decl positions
-	embedded_asm        map[string]string  // filename → .S file content
-	embedded_temp_files []string           // temp .bin files for cleanup
-		embed_build_id     string             // random suffix for .S/.o filenames to avoid parallel-build collisions
+	res_builder         strings.Builder   // produced output (complete)
+	out_str             string            // produced output from g.out
+	out0_str            string            // helpers output (auto fns, dump fns) for out_0.c (-parallel-cc)
+	extern_str          string            // extern chunk for (-parallel-cc)
+	out_fn_start_pos    []int             // fn decl positions
+	embedded_asm        map[string]string // filename → .S file content
+	embedded_temp_files []string          // temp .bin files for cleanup
+	embed_build_id      string            // random suffix for .S/.o filenames to avoid parallel-build collisions
 }
 
 pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenOutput {
@@ -423,7 +423,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		use_segfault_handler:          pref_.should_use_segfault_handler()
 		static_modifier:               if pref_.parallel_cc || pref_.is_o { 'static ' } else { '' }
 		static_non_parallel:           if !pref_.parallel_cc { 'static ' } else { '' }
-		embed_build_id:     rand.ulid()
+		embed_build_id:                rand.ulid()
 		has_reflection:                'v.reflection' in table.modules
 		has_debugger:                  'v.debug' in table.modules
 		reflection_strings:            &reflection_strings
@@ -477,6 +477,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		util.timing_start('cgen unification')
 		for g in pp.get_results_ref[Gen]() {
 			global_g.embedded_files << g.embedded_files
+			global_g.embedded_temp_files << g.embedded_temp_files
 			global_g.out << g.out
 			global_g.cheaders << g.cheaders
 			global_g.preincludes << g.preincludes
@@ -1005,7 +1006,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		out_fn_start_pos:    out_fn_start_pos
 		embedded_asm:        g.embedded_asm
 		embedded_temp_files: g.embedded_temp_files
-		embed_build_id:     g.embed_build_id
+		embed_build_id:      g.embed_build_id
 	}
 }
 
@@ -1057,7 +1058,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		module_built:                       global_g.module_built
 		static_non_parallel:                global_g.static_non_parallel
 		static_modifier:                    global_g.static_modifier
-		embed_build_id:     global_g.embed_build_id
+		embed_build_id:                     global_g.embed_build_id
 		timers:                             util.new_timers(
 			should_print: global_g.timers_should_print
 			label:        'cgen_process_one_file_cb idx: ${idx}, wid: ${wid}'
@@ -1168,6 +1169,8 @@ pub fn (mut g Gen) gen_file() {
 	for path in g.file.embedded_files {
 		if g.embedded_files.all(it.hash() != path.hash()) {
 			g.embedded_files << path
+		} else if path.compressed_temp_path != '' {
+			g.embedded_temp_files << path.compressed_temp_path
 		}
 	}
 	g.timers.show('cgen_file ${g.file.path}')
