@@ -244,10 +244,22 @@ fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.N
 	if node.children_count != 1 || !t.is_optional_type_name(t.cur_fn_ret_type) {
 		return none
 	}
-	child_id := t.a.child(&node, 0)
+	mut child_id := t.a.child(&node, 0)
 	child := t.a.nodes[int(child_id)]
-	if child.kind == .none_expr || !t.return_expr_is_optional_result(child_id) {
+	if child.kind == .none_expr {
 		return none
+	}
+	if !t.return_expr_is_optional_result(child_id) {
+		// `return call()!` is represented as an or-expression whose semantic type
+		// is the successful payload. When the surrounding function returns the
+		// same Result, forward the source wrapper directly. Lowering the synthetic
+		// propagation body first can otherwise stage the payload using the wrapper
+		// type after generic specialization.
+		if child.kind != .or_expr || child.value !in ['!', '?']
+			|| child.children_count == 0 {
+			return none
+		}
+		child_id = t.a.child(&child, 0)
 	}
 	ret_type := t.qualify_optional_type(t.cur_fn_ret_type)
 	expr_type := t.qualify_optional_type(t.optional_result_expr_type_name(child_id))

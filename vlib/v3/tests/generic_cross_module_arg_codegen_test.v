@@ -141,6 +141,15 @@ fn test_generic_struct_interface_dispatch_emits_required_methods() {
 	assert out == '29'
 }
 
+fn test_generic_interface_result_call_keeps_specialized_symbol_and_wrapper() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_interface_result_call', {
+		'store/store.v': 'module store\n\npub interface Store[T] {\nmut:\n\tget() !T\n}\n\npub struct Sessions[T] {\npub mut:\n\tstore Store[T]\n}\n\npub fn (mut sessions Sessions[T]) get[X](_ X) !T {\n\treturn sessions.store.get()!\n}\n'
+		'main.v':        'module main\n\nimport store\n\nstruct User {\n\tname string\n}\n\nstruct MemoryStore {}\n\nfn (mut memory MemoryStore) get() !User {\n\t_ = memory\n\treturn User{\n\t\tname: "ok"\n\t}\n}\n\nfn main() {\n\tmut sessions := store.Sessions[User]{\n\t\tstore: MemoryStore{}\n\t}\n\tprintln(sessions.get(0)!.name)\n}\n'
+	})
+	assert out == 'ok'
+}
+
 fn test_generic_comptime_if_uses_interface_implementation() {
 	v3_bin := generic_cross_build_v3()
 	out := generic_cross_run_project(v3_bin, 'generic_comptime_interface_impl', {

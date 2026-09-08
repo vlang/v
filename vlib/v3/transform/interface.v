@@ -141,9 +141,9 @@ fn (t &Transformer) resolve_interface_type_name(name string) string {
 
 fn (t &Transformer) resolve_interface_type_name_uncached(name string) string {
 	raw_clean := t.trim_pointer_type(name)
-	raw_base, _, raw_is_generic := generic_app_parts(raw_clean)
+	raw_base, raw_args, raw_is_generic := generic_app_parts(raw_clean)
 	if raw_is_generic && raw_base in t.tc.interface_names {
-		return raw_base
+		return '${raw_base}[${raw_args.join(', ')}]'
 	}
 	if raw_clean in t.tc.interface_names {
 		return raw_clean
@@ -967,10 +967,24 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 			base_id := t.a.child(callee, 0)
 			interface_base = base_id
 			mut receiver_source_type := t.original_expr_type(base_id)
+			if t.active_specialization_args.len > 0 {
+				receiver_source_type = t.subst_type(receiver_source_type,
+					t.active_specialization_args)
+			}
 			interface_name = t.resolve_interface_type_name(receiver_source_type)
 			if interface_name.len == 0 {
 				receiver_source_type = t.node_type(base_id)
+				if t.active_specialization_args.len > 0 {
+					receiver_source_type = t.subst_type(receiver_source_type,
+						t.active_specialization_args)
+				}
 				interface_name = t.resolve_interface_type_name(receiver_source_type)
+			}
+			receiver_base, receiver_args, receiver_is_generic := generic_app_parts(t.trim_pointer_type(receiver_source_type))
+			if receiver_is_generic && receiver_args.len > 0
+				&& interface_name == receiver_base
+				&& !receiver_args.any(t.generic_arg_is_unresolved(it)) {
+				interface_name = '${receiver_base}[${receiver_args.join(', ')}]'
 			}
 			if interface_name.len > 0 {
 				interface_receiver_type = interface_type_with_pointer_depth(receiver_source_type,

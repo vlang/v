@@ -155,3 +155,55 @@ fn main() {
 	native_compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${bin_out}')
 	assert native_compile.exit_code == 0, native_compile.output
 }
+
+// Reflected calls pass the hidden veb context explicitly. Their source method
+// metadata still omits that hidden parameter, so argument spreading must use
+// the checker's ABI signature and must not insert the context a second time.
+// The same program also ensures a framework method binds to `veb.Context`
+// rather than a same-named program receiver.
+fn test_veb_reflected_implicit_ctx_call_uses_abi_params() {
+	v3_bin := build_v3()
+	src := '
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+fn (mut ctx Context) not_found() veb.Result {
+	return ctx.text("program")
+}
+
+fn (app App) bookmark(kind string, id string) veb.Result {
+	_ = app
+	println(kind + ":" + id)
+	return veb.Result{}
+}
+
+fn dispatch[A, X](app A, mut ctx X, args []string) {
+	$for method in A.methods {
+		$if method.return_type is veb.Result {
+			app.$method(mut ctx, ...args)
+		}
+	}
+}
+
+fn main() {
+	mut framework_ctx := veb.Context{}
+	_ := framework_ctx.file(@FILE)
+	mut ctx := Context{}
+	dispatch(App{}, mut ctx, ["first", "second"])
+}
+'
+	src_file := os.join_path(os.temp_dir(), 'v3_veb_reflected_implicit_ctx.v')
+	os.write_file(src_file, src) or { panic(err) }
+	bin_out := os.join_path(os.temp_dir(), 'v3_veb_reflected_implicit_ctx')
+	os.rm(bin_out) or {}
+	compile := os.execute('${v3_bin} -no-memory-limit -b c ${src_file} -o ${bin_out}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin_out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'first:second', run.output
+}
