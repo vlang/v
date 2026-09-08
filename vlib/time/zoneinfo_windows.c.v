@@ -2,6 +2,8 @@ module time
 
 import os
 
+const windows_min_system_year = 1601
+
 struct TimeZoneInformation {
 pub mut:
 	bias          i32
@@ -43,11 +45,9 @@ fn local_location() !&Location {
 	C.GetTimeZoneInformation(&info)
 	std_zone, dst_zone := windows_zones(info)
 	mut loc := &Location{
-		name:  'Local'
-		zones: [std_zone]
+		name: 'Local'
 	}
 	if windows_has_daylight(info) {
-		loc.zones << dst_zone
 		loc.posix = windows_posix_rule(std_zone, dst_zone, info)
 		loc.has_posix = true
 	}
@@ -55,16 +55,26 @@ fn local_location() !&Location {
 	dynamic_status := C.GetDynamicTimeZoneInformation(&dynamic_info)
 	has_dynamic_info := dynamic_status != u32(0xffff_ffff)
 		&& dynamic_info.dynamic_daylight_time_is_disabled == 0
-	current_year := utc().year
-	for year in current_year - 100 .. current_year + 101 {
-		mut year_info := info
-		if has_dynamic_info {
+	current_year := now().year
+	if has_dynamic_info {
+		// Windows SYSTEMTIME values start at 1601. Query the complete representable
+		// history so old dynamic rules do not silently fall back to today's offset.
+		for year in windows_min_system_year .. current_year + 1 {
 			mut candidate := TimeZoneInformation{}
-			if C.GetTimeZoneInformationForYear(u16(year), &dynamic_info, &candidate) != 0 {
-				year_info = candidate
+			if C.GetTimeZoneInformationForYear(u16(year), &dynamic_info, &candidate) == 0 {
+				continue
 			}
+			loc.add_windows_year_transitions(year, candidate)
 		}
-		loc.add_windows_year_transitions(year, year_info)
+	}
+	if loc.zones.len == 0 {
+		loc.zones << std_zone
+		if windows_has_daylight(info) {
+			loc.zones << dst_zone
+		}
+		for year in current_year - 100 .. current_year + 101 {
+			loc.add_windows_year_transitions(year, info)
+		}
 	}
 	return loc
 }

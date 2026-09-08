@@ -343,6 +343,44 @@ fn test_windows_year_transitions_use_supplied_rules() {
 	}
 }
 
+fn test_windows_historical_daylight_transition() {
+	$if windows {
+		mut loc := &Location{
+			name: 'Local'
+		}
+		mut rules := TimeZoneInformation{
+			standard_date: SystemTime{
+				month:       10
+				day:         1
+				day_of_week: 0
+				hour:        3
+			}
+			daylight_date: SystemTime{
+				month:       5
+				day:         3
+				day_of_week: 0
+				hour:        2
+			}
+			daylight_bias: -60
+		}
+		rules.standard_name[0] = u16(`G`)
+		rules.daylight_name[0] = u16(`B`)
+		loc.add_windows_year_transitions(1916, rules)
+		winter := time_fields_to_unix(Time{
+			year:  1916
+			month: 2
+			day:   1
+		})
+		summer := time_fields_to_unix(Time{
+			year:  1916
+			month: 7
+			day:   1
+		})
+		assert loc.zone_at(winter)!.offset == 0
+		assert loc.zone_at(summer)!.offset == seconds_per_hour
+	}
+}
+
 fn test_windows_no_dst_offset_changes_add_year_boundaries() {
 	$if windows {
 		mut loc := &Location{
