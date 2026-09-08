@@ -21,6 +21,19 @@ type IntHandler = fn (int) int
 
 type HandlerOrString = IntHandler | string
 
+interface Widget {}
+
+interface ResizableWidget {
+	Widget
+	resize(x int, y int) int
+}
+
+struct WidgetImpl {}
+
+fn (_ WidgetImpl) resize(x int, y int) int {
+	return x * y
+}
+
 fn double(value int) int {
 	return value * 2
 }
@@ -42,6 +55,13 @@ fn test_main() {
 	handler_ptr := &(handler_sum as IntHandler)
 	handler := *handler_ptr
 	assert handler(3) == 6
+	widget := Widget(WidgetImpl{})
+	if widget is ResizableWidget {
+		widget_ptr := &(widget as ResizableWidget)
+		assert widget_ptr.resize(2, 3) == 6
+	} else {
+		assert false
+	}
 	arr1 := [(fbs.last() as Foo)]
 	arr2 := [&(fbs.last() as Foo)]
 	arr3 := [&(get_foo_bar() as Foo)]

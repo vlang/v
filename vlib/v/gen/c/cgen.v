@@ -7233,7 +7233,11 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				if node.op == .amp && node.right is ast.ParExpr && node.right.expr is ast.AsCast {
 					as_cast := node.right.expr as ast.AsCast
 					as_cast_sym := g.table.sym(g.unwrap_generic(as_cast.typ))
-					if as_cast.expr is ast.CallExpr || as_cast_sym.info is ast.FnType {
+					as_cast_expr_sym := g.table.sym(g.unwrap_generic(as_cast.expr_type))
+					is_interface_conversion := as_cast_sym.info is ast.Interface
+						&& as_cast_expr_sym.info is ast.Interface
+					if as_cast.expr is ast.CallExpr || as_cast_sym.info is ast.FnType
+						|| is_interface_conversion {
 						str := g.go_before_last_stmt()
 						g.empty_line = true
 						typ := g.styp(as_cast.typ)
@@ -13832,15 +13836,18 @@ fn as_cast_operand_needs_tmp_eval(expr ast.Expr) bool {
 
 fn (mut g Gen) as_cast_will_use_ptr(node ast.AsCast) bool {
 	unwrapped_node_typ := g.unwrap_generic(node.typ)
+	node_type_sym := g.table.sym(unwrapped_node_typ)
 	unwrapped_expr_type := g.unwrap_generic(node.expr_type)
 	expr_type_without_option := unwrapped_expr_type.clear_flag(.option)
 	expr_type_sym := g.table.sym(unwrapped_expr_type)
 	if expr_type_sym.kind == .sum_type && expr_type_without_option == unwrapped_node_typ {
 		return false
 	}
-	if expr_type_sym.info is ast.SumType
-		|| (expr_type_sym.info is ast.Interface && node.expr_type != node.typ) {
+	if expr_type_sym.info is ast.SumType {
 		return true
+	}
+	if expr_type_sym.info is ast.Interface && node.expr_type != node.typ {
+		return node_type_sym.info !is ast.Interface
 	}
 	return false
 }
