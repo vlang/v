@@ -694,11 +694,8 @@ fn split_rfc5322_phrase_words(s string) ?[]string {
 			if i == s.len && s[i - 1] != `"` {
 				return none
 			}
-			if i < s.len && s[i] !in [` `, `\t`, `\r`, `\n`] {
-				return none
-			}
 		} else {
-			for i < s.len && s[i] !in [` `, `\t`, `\r`, `\n`] {
+			for i < s.len && s[i] !in [` `, `\t`, `\r`, `\n`, `"`] {
 				i++
 			}
 		}
@@ -723,7 +720,7 @@ fn decode_rfc5322_quoted_phrase(s string) ?string {
 			if unquoted == word {
 				return none
 			}
-			decoded << unquoted
+			decoded << unquoted.trim_space()
 			has_quoted_string = true
 			continue
 		}
