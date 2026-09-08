@@ -271,7 +271,7 @@ fn compilation_path_is_module_root(path string) bool {
 }
 
 fn source_file_module_name(path string) ?string {
-	source := os.read_file(path) or { return none }
+	source := read_file(path) or { return none }
 	mut start := 0
 	for start < source.len {
 		if source[start] in [` `, `\t`, `\v`, `\f`, `\n`, `\r`] {
