@@ -74,6 +74,12 @@ fn (mut c Checker) receiver_arg_call_fn(method ast.Fn, call ast.ReceiverArgCall)
 		}
 		return none
 	}
+	if call.callee_type != 0 {
+		callee_sym := c.table.final_sym(call.callee_type)
+		if callee_sym.info is ast.FnType {
+			return callee_sym.info.func
+		}
+	}
 	if called_fn := c.table.find_fn(call.name) {
 		return called_fn
 	}

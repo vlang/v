@@ -153,6 +153,12 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 							receiver_type = receiver_var.typ
 						}
 					}
+					mut callee_type := ast.no_type
+					if !node.is_method && node.scope != unsafe { nil } {
+						if callee_var := node.scope.find_var(node.name) {
+							callee_type = callee_var.typ
+						}
+					}
 					for i, arg in node.args {
 						mut arg_expr := arg.expr
 						arg_expr = arg_expr.remove_par()
@@ -162,6 +168,7 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 								arg_idx:       i
 								is_method:     node.is_method
 								receiver_type: receiver_type
+								callee_type:   callee_type
 							}
 							if arg.is_mut {
 								info.passed_mut = true

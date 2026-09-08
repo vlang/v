@@ -75,6 +75,25 @@ fn test_implicitly_mutable_receiver_argument_is_rejected() {
 	assert run_result.output.contains('it can replace its receiver through a mutable call'), run_result.output
 }
 
+fn test_implicitly_mutable_receiver_callback_argument_is_rejected() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'implicit_mut_interface_callback_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(root)!
+	os.write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'implicit_mut_callback'\n}\n")!
+	os.write_file(os.join_path(root, 'main.v'),
+		'module main\n\ninterface Node {}\n\ninterface Element {\n\tNode\n}\n\nstruct Item {}\n\nfn main() {\n\tmut element := Element(Item{})\n\telement.replace_with(replace_node, Node(Item{}))\n}\n\nfn replace_node(mut node Node, next Node) {\n\tnode = next\n}\n\nfn (mut node Node) replace_with(callback fn (mut Node, Node), next Node) {\n\tcallback(node, next)\n}\n')!
+	run_result := run_v_in_dir(root, ['-gc', 'none', '-disable-explicit-mutability', '-check',
+		'.'])
+	assert run_result.exit_code == 1, run_result.output
+	assert run_result.output.contains('it can replace its receiver through a mutable call'), run_result.output
+}
+
 fn test_external_closure_receiver_replacement_is_rejected() {
 	$if windows {
 		return

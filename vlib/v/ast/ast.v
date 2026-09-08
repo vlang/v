@@ -705,6 +705,7 @@ pub:
 	arg_idx       int
 	is_method     bool
 	receiver_type Type
+	callee_type   Type
 }
 
 @[minify]
