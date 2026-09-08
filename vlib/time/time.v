@@ -424,7 +424,9 @@ pub fn (t Time) week_of_year() int {
 	//    week_number = (thursday's day_of_year - 1) / 7 + 1
 	dow := t.day_of_week()
 	days_to_thursday := 4 - dow
-	thursday_date := t.add_days(days_to_thursday)
+	// Shift calendar dates rather than absolute 24-hour periods, which can cross
+	// a zone transition without reaching the intended local Thursday.
+	thursday_date := date_from_days_after_unix_epoch(t.days_from_unix_epoch() + days_to_thursday)
 	thursday_day_of_year := thursday_date.year_day()
 	week_number := (thursday_day_of_year - 1) / 7 + 1
 	return week_number

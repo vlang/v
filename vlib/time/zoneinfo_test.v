@@ -159,6 +159,12 @@ fn test_location_time_strftime_alternate_zone_case() {
 	assert local.strftime('%^Z') == 'CHST'
 }
 
+fn test_location_time_week_of_year_across_fall_back() {
+	loc := time.load_location('America/New_York')!
+	local := loc.unix_to_local(1_636_344_000)! // 2021-11-07 23:00 EST
+	assert local.week_of_year() == 44
+}
+
 fn test_location_time_custom_format_uses_location_offset() {
 	shanghai := time.load_location('Asia/Shanghai')!
 	shanghai_time := time.unix(1_704_067_200).in(shanghai)!
