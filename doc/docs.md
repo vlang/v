@@ -9120,6 +9120,14 @@ asm amd64 raw {
 assert value == 42
 ```
 
+SIMD kernels use the same named operands. A pointer to a fixed array, such as `&[16]u8` or
+`&[4]u32`, can use an `r` constraint and an explicit byte offset; an `m` constraint is useful when
+the compiler should choose the memory form. Keep alignment requirements in the kernel contract.
+List every vector register that the template overwrites, including `xmm6` through `xmm15` on
+Win64: GCC and Clang use those registers as nonvolatile and can preserve them when they are listed
+as clobbers. MSVC x64 does not support GNU inline assembly, so GNU raw fixtures use `!msvc` guards.
+Instructions such as `pclmulqdq` and ARM64 `pmull` are optional CPU features; tests that execute
+them must check the host feature before entering the raw block.
 `asm goto` emits GNU `asm goto` and is available only with the C backend. Its fifth semicolon
 section lists the V labels that the assembly may branch to. Use the label name in a structured
 branch instruction; a `raw` template uses GNU's `%l[label]` form. Targets cannot enter or leave a
