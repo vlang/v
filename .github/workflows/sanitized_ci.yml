@@ -158,10 +158,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
-      - name: Build V
-        run: |
-          export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
-          make -j4 && ./v symlink
+        with:
+          profile: sanitizers
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: true
       - name: V doctor
         if: ${{ matrix.name != 'memory-clang-compiler' }}
         run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v doctor
