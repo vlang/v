@@ -105,6 +105,23 @@ fn test_vc_bootstrap_builds_a_v1_compatibility_compiler() {
 	}
 }
 
+fn test_v1_fallback_can_bootstrap_cmd_v_without_target_define() {
+	$if macos || linux {
+		fallback := os.join_path(macos_v3_test_vroot, macos_v3_v1_fallback_binary)
+		if !os.is_executable(fallback) {
+			return
+		}
+		compiler := os.join_path(os.vtmp_dir(), 'v1_bootstrap_cmd_v_${os.getpid()}')
+		defer {
+			os.rm(compiler) or {}
+		}
+		result := run_macos_v3_test_process(fallback, ['-no-parallel', '-nocache', '-gc', 'none',
+			'-o', compiler, 'cmd/v'], macos_v3_test_vroot, {})
+		assert result.exit_code == 0, result.output
+		assert os.is_executable(compiler)
+	}
+}
+
 fn test_macos_v3_old_compiler_uses_external_v1_command() {
 	$if macos || linux {
 		fallback := os.join_path(macos_v3_test_vroot, macos_v3_v1_fallback_binary)
