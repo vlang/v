@@ -88,6 +88,20 @@ fn test_parse_posix_negative_transition_time_with_minutes() {
 	assert transition == expected
 }
 
+fn test_posix_transition_time_accepts_full_hour_167() {
+	text := 'EST5EDT,M3.2.0/167:59:59,M11.1.0/2'
+	rule := parse_posix_zone_rule(text)!
+	assert rule.start.seconds == max_posix_transition_seconds
+	tail_rule, has_tail_rule := parse_posix_tail('\n${text}\n'.bytes(), 0)
+	assert has_tail_rule
+	assert tail_rule.start.seconds == max_posix_transition_seconds
+	if _ := parse_posix_zone_rule('EST5EDT,M3.2.0/168,M11.1.0/2') {
+		assert false
+	} else {
+		assert err.msg().contains('POSIX')
+	}
+}
+
 fn test_posix_transition_time_basis_suffixes() {
 	wall_rule := parse_posix_zone_rule('EST5EDT,M3.2.0/2w,M11.1.0/2w')!
 	standard_rule := parse_posix_zone_rule('EST5EDT,M3.2.0/2s,M11.1.0/2s')!

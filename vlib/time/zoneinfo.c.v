@@ -12,6 +12,8 @@ const zoneinfo_unix_sources = [
 
 const zoneinfo_vroot_zip = os.join_path(@VEXEROOT, 'vlib', 'time', 'tzdata', 'zoneinfo.zip')
 
+const max_posix_transition_seconds = 167 * seconds_per_hour + 59 * seconds_per_minute + 59
+
 __global zoneinfo_loaders shared []ZoneinfoLoaderFn
 
 // register_zoneinfo_loader registers a fallback loader for IANA time zone data.
@@ -712,7 +714,7 @@ fn parse_posix_time(text string) !(int, PosixTimeBasis) {
 		return error('unsupported POSIX time "${text}"')
 	}
 	seconds := hour_value * seconds_per_hour + minute_value * seconds_per_minute + second_value
-	if seconds > 167 * seconds_per_hour {
+	if seconds > max_posix_transition_seconds {
 		return error('unsupported POSIX time "${text}"')
 	}
 	return sign * seconds, basis
