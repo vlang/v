@@ -245,16 +245,20 @@ fn (mut g Gen) gen_embedded_data() {
 }
 
 fn (mut g Gen) gen_embedded_asm_file(emfile ast.EmbeddedFile) {
-	mut incbin_path := emfile.apath
-	if emfile.is_compressed {
-		incbin_path = emfile.compressed_temp_path
-	}
-
 	ef_hash := emfile.hash()
 	// Include a per-build random suffix in the filename to prevent collisions
 	// when two V processes embed the same file concurrently (parallel `v test`).
 	// The symbol names stay deterministic (based on hash only).
 	asm_filename := '_v_embed_blob_${ef_hash}_${g.embed_build_id}.S'
+	mut incbin_path := emfile.compressed_temp_path
+	if !emfile.is_compressed {
+		// Assemble the bytes captured during code generation, even if the source
+		// file is modified before the separate assembler process starts.
+		incbin_path = os.join_path(os.vtmp_dir(), asm_filename.trim_string_right('.S') + '.bin')
+		os.write_file_array(incbin_path, emfile.bytes) or {
+			panic('unable to write embedded file snapshot `${incbin_path}`: ${err}')
+		}
+	}
 	mut sb := strings.new_builder(512)
 	sb.writeln('// V embedded file (hash ${ef_hash}, uncompressed size ${emfile.len})')
 	sb.writeln('#if defined(__APPLE__)')
@@ -287,9 +291,7 @@ fn (mut g Gen) gen_embedded_asm_file(emfile ast.EmbeddedFile) {
 
 	g.embedded_asm[asm_filename] = sb.str()
 
-	if emfile.is_compressed {
-		g.embedded_temp_files << emfile.compressed_temp_path
-	}
+	g.embedded_temp_files << incbin_path
 }
 
 fn asm_string_escape(s string) string {

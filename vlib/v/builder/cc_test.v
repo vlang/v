@@ -548,7 +548,7 @@ fn test_should_not_use_rsp_for_args_with_embedded_single_quotes() {
 
 fn test_filter_embed_asm_target_flags() {
 	flags :=
-		filter_embed_asm_target_flags('-include config.h -DAPP=1 -m32 --target=aarch64-linux-gnu -isysroot "/sdk path" -mcpu cortex-a72 -Wa,-mimplicit-it=always')
+		filter_embed_asm_target_flags('-include config.h -DAPP=1 -m32 --target=aarch64-linux-gnu -isysroot "/sdk path" --sysroot=/opt/SDK\\ Path -mcpu cortex-a72 -Wa,-mimplicit-it=always')
 	assert '-include' !in flags
 	assert 'config.h' !in flags
 	assert '-DAPP=1' !in flags
@@ -556,6 +556,7 @@ fn test_filter_embed_asm_target_flags() {
 	assert '--target=aarch64-linux-gnu' in flags
 	assert '-isysroot' in flags
 	assert '/sdk path' in flags
+	assert '--sysroot=/opt/SDK Path' in flags
 	assert '-mcpu' in flags
 	assert 'cortex-a72' in flags
 	assert '-Wa,-mimplicit-it=always' in flags

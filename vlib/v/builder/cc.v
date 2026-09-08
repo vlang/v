@@ -1998,13 +1998,24 @@ fn split_embed_asm_flags(value string) []string {
 	mut parts := []string{}
 	mut buf := []u8{}
 	mut quote := u8(0)
-	for ch in value {
+	mut i := 0
+	for i < value.len {
+		ch := value[i]
+		if ch == `\\` && quote != `'` && i + 1 < value.len
+			&& value[i + 1] in [` `, `\t`, `"`, `'`, `\\`] {
+			i++
+			buf << value[i]
+			i++
+			continue
+		}
 		if quote == 0 && ch in [`"`, `'`] {
 			quote = ch
+			i++
 			continue
 		}
 		if ch == quote {
 			quote = 0
+			i++
 			continue
 		}
 		if quote == 0 && ch in [` `, `\t`] {
@@ -2012,9 +2023,11 @@ fn split_embed_asm_flags(value string) []string {
 				parts << buf.bytestr()
 				buf = []u8{}
 			}
+			i++
 			continue
 		}
 		buf << ch
+		i++
 	}
 	if buf.len > 0 {
 		parts << buf.bytestr()
@@ -2062,10 +2075,11 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 	}
 	vtmp := os.vtmp_dir()
 
+	b.pref.ccompiler_type = resolve_ccompiler_type(b.pref.ccompiler, b.pref.ccompiler_type)
 	mut asm_cc := b.pref.ccompiler
-	if b.pref.ccompiler_type == .tinyc {
+	if b.pref.ccompiler_type in [.tinyc, .msvc] {
 		asm_cc = find_system_assembler() or {
-			verror('no assembler found for embedded files (TCC cannot assemble .S files); install clang, gcc, cc, or as')
+			verror('no assembler found for embedded files (${b.pref.ccompiler_type} cannot assemble .S files); install clang, gcc, or cc')
 		}
 	}
 
