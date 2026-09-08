@@ -3249,8 +3249,7 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			return all_registers(mut t, .amd64)
 		}
 		.amd64, .i386 {
-			x86 := gen_all_sized_registers(mut t, x86_no_number_register_list,
-				x86_with_number_register_list)
+			x86 := gen_all_sized_registers(mut t, x86_no_number_register_list, x86_with_number_register_list)
 			for k, v in x86 {
 				res[k] = v
 			}
@@ -3262,13 +3261,8 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			}
 		}
 		.arm64 {
-			arm64 := gen_all_sized_registers(mut t, arm64_no_number_register_list,
-				arm64_with_number_register_list)
+			arm64 := gen_all_sized_registers(mut t, arm64_no_number_register_list, arm64_with_number_register_list)
 			for k, v in arm64 {
-				res[k] = v
-			}
-			arm64_32bit := gen_all_registers(mut t, arm64_32bit_no_number_register_list, arm64_32bit_with_number_register_list, 32)
-			for k, v in arm64_32bit {
 				res[k] = v
 			}
 		}
@@ -3320,7 +3314,7 @@ fn gen_all_sized_registers(mut t Table, without_numbers map[int][]string, with_n
 		for name in array {
 			res[name] = AsmRegister{
 				name: name
-				typ:  t.bitsize_to_type(bit_size)
+				typ: t.bitsize_to_type(bit_size)
 				size: bit_size
 			}
 		}
@@ -3333,7 +3327,7 @@ fn gen_all_sized_registers(mut t Table, without_numbers map[int][]string, with_n
 				assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
 				res[assembled_name] = AsmRegister{
 					name: assembled_name
-					typ:  t.bitsize_to_type(bit_size)
+					typ: t.bitsize_to_type(bit_size)
 					size: bit_size
 				}
 			}
