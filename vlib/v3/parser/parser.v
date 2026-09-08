@@ -8312,6 +8312,9 @@ fn (mut p Parser) track_inline_asm_mnemonic(state InlineAsmMnemonicState, is_x86
 				return .after_dot
 			}
 			if is_x86 && p.tok == .key_lock {
+				if p.peek() == .colon {
+					return .maybe_label
+				}
 				p.validate_inline_asm_lock_instruction()
 				return .expect_mnemonic
 			}

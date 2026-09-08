@@ -45,3 +45,14 @@ fn test_inline_asm_lock_named_operand_is_not_treated_as_prefix() {
 ')
 	assert diagnostics.len == 0, diagnostics.str()
 }
+
+fn test_inline_asm_lock_label_is_not_treated_as_prefix() {
+	diagnostics := parse_amd64_asm_diagnostics('lock_label', 'fn main() {
+	asm amd64 {
+		lock:
+		jmp lock
+	}
+}
+')
+	assert diagnostics.len == 0, diagnostics.str()
+}
