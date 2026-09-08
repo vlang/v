@@ -11819,7 +11819,8 @@ fn fn_type_texts_signature_compatible(actual string, expected string) bool {
 // `mut` parameter is spelled `mut T`). A `mut` parameter denotes reference
 // passing, so it canonicalizes to `&T`. Whitespace beside type punctuation is
 // removed so `fn (T)` and `fn(T)` compare equal, while keyword boundaries such
-// as `chan Item` remain significant.
+// as `chan Item` remain significant. A `const_` parameter name on a pointer is
+// retained as C ABI metadata while ordinary parameter names are discarded.
 fn normalize_fn_param_text(text string) string {
 	mut clean := text.trim_space()
 	mut mode := ''
@@ -11832,7 +11833,20 @@ fn normalize_fn_param_text(text string) string {
 		is_mut = true
 		clean = clean[4..].trim_space()
 	}
-	clean = generic_fn_type_param_payload(clean)
+	mut is_c_abi_const := false
+	space := generic_top_level_space_index(clean)
+	if space > 0 {
+		head := clean[..space].trim_space()
+		tail := clean[space + 1..].trim_space()
+		if head.starts_with('const_') && tail.starts_with('&') {
+			is_c_abi_const = true
+			clean = tail
+		} else {
+			clean = generic_fn_type_param_payload(clean)
+		}
+	} else {
+		clean = generic_fn_type_param_payload(clean)
+	}
 	if is_mut {
 		if !clean.starts_with('&') && clean !in ['voidptr', 'byteptr', 'charptr'] {
 			clean = '&' + clean
@@ -11852,7 +11866,8 @@ fn normalize_fn_param_text(text string) string {
 		normalized << ch
 		pending_space = false
 	}
-	return mode + normalized.bytestr()
+	const_mode := if is_c_abi_const { 'const ' } else { '' }
+	return mode + const_mode + normalized.bytestr()
 }
 
 fn fn_type_text_ident_char(ch u8) bool {
@@ -11981,6 +11996,9 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	if expected_type.contains('unknown') {
 		return true
 	}
+	if !t.fn_literal_c_abi_signature_compatible(arg_id, expected_type) {
+		return false
+	}
 	actual := t.normalize_type_alias(actual_type)
 	expected := t.normalize_type_alias(expected_type)
 	if t.is_integer_type_name(expected) {
@@ -12085,6 +12103,30 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		return true
 	}
 	return false
+}
+
+fn (t &Transformer) fn_literal_c_abi_signature_compatible(arg_id flat.NodeId, expected_type string) bool {
+	if isnil(t.tc) || int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
+		return true
+	}
+	node := t.a.nodes[int(arg_id)]
+	if node.kind != .fn_literal {
+		return true
+	}
+	expected_abi := t.tc.c_abi_fn_ptr_type_for_type_text(expected_type) or { return true }
+	mut params := []string{}
+	for i in 0 .. node.children_count {
+		param := t.a.child_node(&node, i)
+		if param.kind != .param {
+			continue
+		}
+		mode := if param.is_mut { 'mut ' } else { '' }
+		params << '${mode}${param.value} ${param.typ}'
+	}
+	ret := if node.typ.len > 0 && node.typ != 'void' { ' ${node.typ}' } else { '' }
+	actual_text := 'fn (${params.join(', ')})${ret}'
+	actual_abi := t.tc.c_abi_fn_ptr_type_for_type_text(actual_text) or { return false }
+	return actual_abi == expected_abi
 }
 
 struct SpecializedIntLiteral {

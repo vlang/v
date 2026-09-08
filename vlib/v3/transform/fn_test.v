@@ -32,6 +32,15 @@ fn test_fn_type_texts_signature_compatible_preserves_shared_parameter() {
 	assert !fn_type_texts_signature_compatible('fn (shared Item)', 'fn (&Item)')
 }
 
+fn test_fn_type_texts_signature_compatible_preserves_c_abi_const_parameter() {
+	assert fn_type_texts_signature_compatible('fn (const_event &C.native_event)',
+		'fn (const_value &C.native_event)')
+	assert !fn_type_texts_signature_compatible('fn (event &C.native_event)',
+		'fn (const_event &C.native_event)')
+	assert !fn_type_texts_signature_compatible('fn (const_event &C.native_event)',
+		'fn (event &C.native_event)')
+}
+
 fn test_fn_type_texts_signature_compatible_preserves_compound_type_boundaries() {
 	assert fn_type_texts_signature_compatible('fn (fn (Item) bool)', 'fn(fn(Item)bool)')
 	assert fn_type_texts_signature_compatible('fn (chan foo.Item)', 'fn(chan foo.Item)')

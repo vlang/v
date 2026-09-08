@@ -1820,6 +1820,16 @@ fn test_fn_literal_shared_mode_matches_alias_inside_generic_fn() {
 		'cannot use')
 }
 
+fn test_fn_literal_c_abi_const_mode_matches_alias_inside_generic_fn() {
+	v3_bin := build_v3()
+	matching := run_good(v3_bin, 'good_const_fn_literal_alias_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler ConstHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert matching == 'true'
+	run_bad(v3_bin, 'bad_const_fn_literal_non_const_alias_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler ConstHandler) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+}
+
 fn test_pr_review_codegen_batch_fifteen() {
 	v3_bin := build_v3()
 	// The string length evaluator folds with the same operator precedence as the v3 parser
