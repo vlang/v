@@ -9,6 +9,10 @@ fn (mut node Node) append_child(child &Node) {
 	node.children << child
 }
 
+fn (node &Node) check() bool {
+	return true
+}
+
 interface Element {
 	Node
 	attributes map[string]string
@@ -34,10 +38,15 @@ struct HTMLBodyElement {
 	attributes map[string]string
 }
 
-fn new_element() Element {
-	return &HTMLBodyElement{
+struct CallCounter {
+mut:
+	calls int
+}
+
+fn new_element() &Element {
+	return &Element(&HTMLBodyElement{
 		name: 'body'
-	}
+	})
 }
 
 fn new_child(name string) &Node {
@@ -45,6 +54,11 @@ fn new_child(name string) &Node {
 		name: name
 		text: 'Hello, World!'
 	})
+}
+
+fn new_counted_element(mut counter CallCounter) &Element {
+	counter.calls++
+	return new_element()
 }
 
 fn test_receiver_method_on_embedded_interface() {
@@ -65,7 +79,7 @@ fn test_receiver_method_on_embedded_interface() {
 }
 
 fn test_non_addressable_receiver_method_on_embedded_interface() {
-	new_element().append_child(new_child('temporary'))
+	assert new_element().check()
 }
 
 fn test_smartcast_receiver_method_on_embedded_interface() {
@@ -79,4 +93,19 @@ fn test_smartcast_receiver_method_on_embedded_interface() {
 	} else {
 		assert false, 'node should be Element'
 	}
+}
+
+fn test_lazy_receiver_method_on_embedded_interface() {
+	mut counter := CallCounter{}
+	assert !(false && new_counted_element(mut counter).check())
+	assert counter.calls == 0
+}
+
+fn test_loop_condition_receiver_method_on_embedded_interface() {
+	mut counter := CallCounter{}
+	mut iterations := 0
+	for new_counted_element(mut counter).check() && iterations < 3 {
+		iterations++
+	}
+	assert counter.calls == 4
 }

@@ -5418,18 +5418,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			embed_type := node.from_embed_types.last()
 			embed_value_type := embed_type.set_nr_muls(0)
 			if receiver_needs_ref {
-				// Mutating receiver: create a temporary converted interface value,
-				// whose field pointers refer to the same underlying object, and pass
-				// its address. Modifications through those pointers are visible.
-				stmt_str := g.go_before_last_stmt()
-				g.empty_line = true
-				tmp := g.new_tmp_var()
-				g.write('${g.styp(embed_value_type)} ${tmp} = ')
+				// Keep conversion at the call site so lazy expressions and loop
+				// conditions preserve their evaluation semantics.
+				g.write('ADDR(${g.styp(embed_value_type)}, ')
 				g.gen_interface_to_interface_conversion(ast.Expr(node.left), left_type,
 					embed_value_type)
-				g.writeln(';')
-				g.write(stmt_str)
-				g.write('&${tmp}')
+				g.write(')')
 			} else {
 				g.gen_interface_to_interface_conversion(ast.Expr(node.left), left_type,
 					embed_value_type)
