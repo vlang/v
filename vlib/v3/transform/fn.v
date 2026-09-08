@@ -2134,7 +2134,7 @@ fn (mut t Transformer) call_param_source_types_from_decl(call_name string) ?[]st
 			}
 			continue
 		}
-		params << t.decl_param_type_in_module(child.typ, decl.module)
+		params << t.decl_param_type_in_file(child.typ, decl.module, decl.file)
 	}
 	return params
 }
@@ -2241,7 +2241,7 @@ fn (mut t Transformer) add_call_param_types_decl_key(key string, idx int, file s
 }
 
 fn (mut t Transformer) parse_decl_param_type(typ string, module_name string, file_name string) types.Type {
-	scoped := t.decl_param_type_in_module(typ, module_name)
+	scoped := t.decl_param_type_in_file(typ, module_name, file_name)
 	old_file := t.tc.cur_file
 	old_module := t.tc.cur_module
 	t.tc.cur_file = file_name
@@ -2253,51 +2253,55 @@ fn (mut t Transformer) parse_decl_param_type(typ string, module_name string, fil
 }
 
 fn (t &Transformer) decl_param_type_in_module(typ string, module_name string) string {
+	return t.decl_param_type_in_file(typ, module_name, '')
+}
+
+fn (t &Transformer) decl_param_type_in_file(typ string, module_name string, file_name string) string {
 	clean := typ.trim_space()
 	if clean.len == 0 {
 		return clean
 	}
 	if clean.starts_with('&') {
-		return '&' + t.decl_param_type_in_module(clean[1..], module_name)
+		return '&' + t.decl_param_type_in_file(clean[1..], module_name, file_name)
 	}
 	if clean.starts_with('mut ') {
-		return 'mut ' + t.decl_param_type_in_module(clean[4..], module_name)
+		return 'mut ' + t.decl_param_type_in_file(clean[4..], module_name, file_name)
 	}
 	if clean.starts_with('shared ') {
-		return 'shared ' + t.decl_param_type_in_module(clean[7..], module_name)
+		return 'shared ' + t.decl_param_type_in_file(clean[7..], module_name, file_name)
 	}
 	if clean.starts_with('atomic ') {
-		return 'atomic ' + t.decl_param_type_in_module(clean[7..], module_name)
+		return 'atomic ' + t.decl_param_type_in_file(clean[7..], module_name, file_name)
 	}
 	if clean.starts_with('?') {
-		return '?' + t.decl_param_type_in_module(clean[1..], module_name)
+		return '?' + t.decl_param_type_in_file(clean[1..], module_name, file_name)
 	}
 	if clean.starts_with('!') {
-		return '!' + t.decl_param_type_in_module(clean[1..], module_name)
+		return '!' + t.decl_param_type_in_file(clean[1..], module_name, file_name)
 	}
 	if clean.starts_with('...') {
-		return '...' + t.decl_param_type_in_module(clean[3..], module_name)
+		return '...' + t.decl_param_type_in_file(clean[3..], module_name, file_name)
 	}
 	if clean.starts_with('[]') {
-		return '[]' + t.decl_param_type_in_module(clean[2..], module_name)
+		return '[]' + t.decl_param_type_in_file(clean[2..], module_name, file_name)
 	}
 	if clean.starts_with('map[') {
 		bracket_end := generic_matching_bracket(clean, 3)
 		if bracket_end < clean.len {
-			key := t.decl_param_type_in_module(clean[4..bracket_end], module_name)
-			value := t.decl_param_type_in_module(clean[bracket_end + 1..], module_name)
+			key := t.decl_param_type_in_file(clean[4..bracket_end], module_name, file_name)
+			value := t.decl_param_type_in_file(clean[bracket_end + 1..], module_name, file_name)
 			return 'map[${key}]${value}'
 		}
 	}
 	if clean.starts_with('[') {
 		bracket_end := generic_matching_bracket(clean, 0)
 		if bracket_end < clean.len {
-			return clean[..bracket_end + 1] + t.decl_param_type_in_module(clean[bracket_end +
-				1..], module_name)
+			return clean[..bracket_end + 1] + t.decl_param_type_in_file(clean[bracket_end +
+				1..], module_name, file_name)
 		}
 	}
 	if clean.starts_with('fn(') || clean.starts_with('fn (') {
-		if scoped_fn_type := t.decl_fn_type_in_module(clean, module_name) {
+		if scoped_fn_type := t.decl_fn_type_in_module(clean, module_name, file_name) {
 			return scoped_fn_type
 		}
 		return clean
@@ -2306,10 +2310,23 @@ fn (t &Transformer) decl_param_type_in_module(typ string, module_name string) st
 	if ok {
 		mut scoped_args := []string{}
 		for arg in args {
-			scoped_args << t.decl_param_type_in_module(arg, module_name)
+			scoped_args << t.decl_param_type_in_file(arg, module_name, file_name)
 		}
-		scoped_base := t.decl_param_type_in_module(base, module_name)
+		scoped_base := t.decl_param_type_in_file(base, module_name, file_name)
 		return scoped_base + '[' + scoped_args.join(', ') + ']'
+	}
+	if !isnil(t.tc) && file_name.len > 0 {
+		resolved := t.tc.resolve_imported_type_text_in_file(clean, file_name)
+		if resolved != clean {
+			return resolved
+		}
+		for candidate in t.tc.file_selective_imports[file_import_key(file_name, clean)] or {
+			[]string{}
+		} {
+			if t.type_authority_has(candidate) {
+				return candidate
+			}
+		}
 	}
 	if clean.contains('.') || module_name.len == 0 || module_name == 'main'
 		|| module_name == 'builtin' || types.is_builtin_type_name(clean)
@@ -2328,19 +2345,20 @@ fn (t &Transformer) decl_param_type_in_module(typ string, module_name string) st
 	return clean
 }
 
-fn (t &Transformer) decl_fn_type_in_module(typ string, module_name string) ?string {
+fn (t &Transformer) decl_fn_type_in_module(typ string, module_name string, file_name string) ?string {
 	params, ret := fn_type_text_parts(typ) or { return none }
 	mut scoped_params := []string{cap: params.len}
 	for param in params {
-		scoped_params << t.decl_fn_type_param_in_module(param, module_name)
+		scoped_params << t.decl_fn_type_param_in_module(param, module_name, file_name)
 	}
 	if ret.len > 0 {
-		return 'fn(${scoped_params.join(', ')}) ${t.decl_param_type_in_module(ret, module_name)}'
+		return 'fn(${scoped_params.join(', ')}) ${t.decl_param_type_in_file(ret, module_name,
+			file_name)}'
 	}
 	return 'fn(${scoped_params.join(', ')})'
 }
 
-fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name string) string {
+fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name string, file_name string) string {
 	mut text := param.trim_space()
 	mut mode := ''
 	if text.starts_with('shared ') {
@@ -2376,7 +2394,7 @@ fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name strin
 		}
 		break
 	}
-	scoped := t.decl_param_type_in_module(text, module_name)
+	scoped := t.decl_param_type_in_file(text, module_name, file_name)
 	if is_mut && scoped.len > 0 && !scoped.starts_with('&') {
 		return mode + c_abi_name + '&' + scoped
 	}

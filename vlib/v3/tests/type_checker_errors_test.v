@@ -2060,6 +2060,20 @@ fn test_fn_literal_callback_alias_lookup_uses_declaration_module() {
 		'm/m.v':     'module m\n\nimport dep as d\n\npub type Outer[T] = fn (const_event &d.Event, cb T)\n'
 	}, 'main.v')
 	assert aliased_import == 'true'
+	direct_selective_import := run_good_project(v3_bin,
+		'good_direct_callback_resolves_selective_import_in_declaration_file', {
+		'main.v':    'module main\n\nimport dep\nimport m\n\nfn startup[T]() bool {\n\tmut r := m.Router{}\n\treturn r.accept(fn (const_event &dep.Event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n'
+		'dep/dep.v': 'module dep\n\npub struct Event {}\n'
+		'm/m.v':     'module m\n\nimport dep { Event }\n\npub struct Router {}\npub fn (mut r Router) accept(handler fn (const_event &Event)) bool {\n\treturn true\n}\n'
+	}, 'main.v')
+	assert direct_selective_import == 'true'
+	direct_aliased_import := run_good_project(v3_bin,
+		'good_direct_callback_resolves_aliased_import_in_declaration_file', {
+		'main.v':    'module main\n\nimport dep\nimport m\n\nfn startup[T]() bool {\n\tmut r := m.Router{}\n\treturn r.accept(fn (const_event &dep.Event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n'
+		'dep/dep.v': 'module dep\n\npub struct Event {}\n'
+		'm/m.v':     'module m\n\nimport dep as d\n\npub struct Router {}\npub fn (mut r Router) accept(handler fn (const_event &d.Event)) bool {\n\treturn true\n}\n'
+	}, 'main.v')
+	assert direct_aliased_import == 'true'
 }
 
 fn test_fn_literal_nested_shared_callback_param_matches_alias_inside_generic_fn() {
