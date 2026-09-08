@@ -12520,31 +12520,42 @@ fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId,
 		return none
 	}
 	node := t.a.nodes[int(arg_id)]
+	if node.kind == .postfix && node.children_count == 1 {
+		return t.fn_literal_container_modes_compatible(t.a.child(&node, 0), expected_type)
+	}
 	source_expected := expected_type.trim_space()
 	normalized_expected := t.normalize_type_alias(source_expected)
-	if node.kind == .array_literal {
+	if node.kind in [.array_literal, .array_init] {
+		mut array_expected := source_expected
 		element_expected := if source_expected.starts_with('[]') {
 			source_expected[2..]
-		} else if normalized_expected.starts_with('[]') {
-			normalized_expected[2..]
-		} else {
-			return none
-		}
-		for i in 0 .. node.children_count {
-			if !t.fn_literal_container_element_mode_compatible(t.a.child(&node, i),
-				element_expected) {
-				return false
-			}
-		}
-		return true
-	}
-	if node.kind == .array_init {
-		element_expected := if t.is_fixed_array_type(source_expected) {
+		} else if t.is_fixed_array_type(source_expected) {
 			fixed_array_elem_type(source_expected)
+		} else if normalized_expected.starts_with('[]') {
+			array_expected = normalized_expected
+			normalized_expected[2..]
 		} else if t.is_fixed_array_type(normalized_expected) {
+			array_expected = normalized_expected
 			fixed_array_elem_type(normalized_expected)
 		} else {
 			return none
+		}
+		if node.kind == .array_literal {
+			for i in 0 .. node.children_count {
+				child_id := t.a.child(&node, i)
+				child := t.a.nodes[int(child_id)]
+				if child.kind == .prefix && child.value == '...' && child.children_count > 0 {
+					if !t.fn_literal_container_element_mode_compatible(t.a.child(&child, 0),
+						array_expected) {
+						return false
+					}
+					continue
+				}
+				if !t.fn_literal_container_element_mode_compatible(child_id, element_expected) {
+					return false
+				}
+			}
+			return true
 		}
 		for i in 0 .. node.children_count {
 			child := t.a.child_node(&node, i)

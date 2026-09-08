@@ -2083,6 +2083,22 @@ fn test_fn_literal_container_callback_modes_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_fixed_array_init_const_fn_param_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nfn apply[T](handlers [2]PlainHandler) {}\nfn startup[T]() {\n\tapply[int]([2]PlainHandler{init: fn (const_event &C.native_event) {}})\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	spread_matching := run_good(v3_bin, 'good_array_literal_spread_in_generic',
+		'fn consume[T](items []T) int {\n\treturn items.len\n}\nfn main() {\n\titems := [1]\n\tprintln(consume[int]([...items]))\n}\n')
+	assert spread_matching == '1'
+	fixed_literal_matching := run_good(v3_bin,
+		'good_fixed_array_literal_const_fn_param_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn apply[T](handlers [1]ConstHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\treturn apply[int]([fn (const_event &C.native_event) {}]!)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert fixed_literal_matching == 'true'
+	run_bad(v3_bin, 'bad_fixed_array_literal_const_fn_param_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nfn apply[T](handlers [1]PlainHandler) {}\nfn startup[T]() {\n\tapply[int]([fn (const_event &C.native_event) {}]!)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	dynamic_init_matching := run_good(v3_bin, 'good_dynamic_array_init_const_fn_param_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn apply[T](handlers []ConstHandler) bool {\n\treturn handlers.len == 1\n}\nfn startup[T]() bool {\n\treturn apply[int]([]ConstHandler{len: 1, init: fn (const_event &C.native_event) {}})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert dynamic_init_matching == 'true'
+	run_bad(v3_bin, 'bad_dynamic_array_init_const_fn_param_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nfn apply[T](handlers []PlainHandler) {}\nfn startup[T]() {\n\tapply[int]([]PlainHandler{len: 1, init: fn (const_event &C.native_event) {}})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 }
 
 fn test_fn_literal_callback_alias_lookup_uses_declaration_module() {
