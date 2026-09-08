@@ -143,6 +143,7 @@ fn test_h3_server_validates_request_trailers() {
 fn test_h3_server_suppresses_forbidden_response_content() {
 	assert !h3_response_allows_body(.head, 200)
 	assert !h3_response_allows_body(.get, 204)
+	assert !h3_response_allows_body(.get, 205)
 	assert !h3_response_allows_body(.get, 304)
 	assert h3_response_allows_body(.get, 200)
 }

@@ -837,7 +837,7 @@ fn (mut s H3Server) send_response(mut h3c quic.H3Conn, stream_id u64, method Met
 // h3_response_allows_body applies the response cases that never carry
 // content. Content-Length remains metadata and is left in the header block.
 fn h3_response_allows_body(method Method, status int) bool {
-	return method != .head && status != 204 && status != 304
+	return method != .head && status != 204 && status != 205 && status != 304
 }
 
 // h3_final_response_status normalizes the default status and rejects

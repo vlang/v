@@ -899,6 +899,10 @@ fn (mut h H3Conn) finalize_request_stream_if_done(stream_id u64, mut result H3Po
 			if state.phase() == .done {
 				return
 			}
+			if h.is_server_role() && state.phase() == .awaiting_response_headers {
+				h.fail_request_stream(stream_id, H3ErrorCode.request_incomplete.code(), 'request stream ended before its initial HEADERS', mut result)
+				return
+			}
 			state.note_fin()
 			result.events << H3Event{
 				kind: if h.is_server_role() {

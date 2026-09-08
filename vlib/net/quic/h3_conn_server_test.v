@@ -351,6 +351,22 @@ fn test_h3_conn_server_rejects_oversized_data_from_header_only() {
 	assert errors[0].error_code? == H3ErrorCode.excessive_load.code()
 }
 
+fn test_h3_conn_server_rejects_fin_before_request_headers() {
+	_, mut client_h3, _, mut server_h3, now0 := h3_server_test_pair()!
+	defer {
+		client_h3.free()
+		server_h3.free()
+	}
+	_, _, now1 := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now0)!
+	stream_id := client_h3.open_request_stream()!
+	client_h3.qc.write_stream(stream_id, []u8{}, true)!
+	_, server_events, _ := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now1)!
+	errors := server_events.filter(it.kind == .request_error)
+	assert errors.len == 1
+	assert errors[0].error_code? == H3ErrorCode.request_incomplete.code()
+	assert !server_events.any(it.kind == .request_ended)
+}
+
 fn test_h3_conn_server_rejects_oversized_headers_from_header_only() {
 	_, mut client_h3, _, mut server_h3, now0 := h3_server_test_pair()!
 	defer {
