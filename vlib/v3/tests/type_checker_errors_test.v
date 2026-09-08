@@ -1854,6 +1854,15 @@ fn test_fn_literal_nested_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_nested_const_fn_literal_alias_in_generic',
 		'type Outer = fn (cb fn (const_event &C.native_event))\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler Outer) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (callback fn (event &C.native_event)) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	g_alias := run_good(v3_bin, 'good_generic_const_fn_alias_in_generic',
+		'type Handler[T] = fn (const_event &T)\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler Handler[C.native_event]) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert g_alias == 'true'
+	factory := run_good(v3_bin, 'good_returned_const_callback_alias_in_generic',
+		'type Factory = fn () fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(factory Factory) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn () fn (const_event &C.native_event) {\n\t\treturn fn (const_event &C.native_event) {}\n\t})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert factory == 'true'
+	run_bad(v3_bin, 'bad_returned_const_callback_alias_in_generic',
+		'type Factory = fn () fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(factory Factory) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn () fn (event &C.native_event) {\n\t\treturn fn (event &C.native_event) {}\n\t})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 }
 
 fn test_fn_literal_nested_shared_callback_param_matches_alias_inside_generic_fn() {

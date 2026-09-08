@@ -14722,11 +14722,18 @@ fn (tc &TypeChecker) c_abi_fn_ptr_type_from_text_inner(clean string, mut seen ma
 			}
 		}
 	}
+	ret_type := if ret_str.len > 0 { tc.parse_type(ret_str) } else { Type(Void{}) }
+	mut ret_ct := tc.fn_ptr_return_c_type(ret_type)
+	if recursive && ret_str.len > 0 {
+		mut nested_seen := seen.clone()
+		if nested_c_abi := tc.c_abi_fn_signature_for_type_text_inner(ret_str, mut nested_seen) {
+			ret_ct = 'nested(${nested_c_abi})'
+			has_c_abi_param = true
+		}
+	}
 	if !has_c_abi_param {
 		return none
 	}
-	ret_type := if ret_str.len > 0 { tc.parse_type(ret_str) } else { Type(Void{}) }
-	ret_ct := tc.fn_ptr_return_c_type(ret_type)
 	params_ct := if params.len == 0 { 'void' } else { params.join(', ') }
 	return 'fn_ptr:${ret_ct}|${params_ct}'
 }
@@ -14786,6 +14793,23 @@ fn (tc &TypeChecker) c_abi_fn_signature_for_type_text_inner(typ string, mut seen
 	if c_abi_fn := tc.c_abi_fn_ptr_type_from_text_inner(typ, mut seen, true) {
 		return c_abi_fn
 	}
+	base, args, is_generic := generic_type_application_parts(typ)
+	if is_generic {
+		for name in [tc.qualify_name(base), base] {
+			params := tc.type_alias_generic_params[name] or { continue }
+			if params.len != args.len {
+				continue
+			}
+			mut target := tc.source_fn_alias_type_text(name) or { '' }
+			if target.len == 0 {
+				target = tc.type_aliases[name] or { continue }
+			}
+			instantiated := substitute_c_abi_signature_type_text(target, args, params)
+			if c_abi_signature := tc.c_abi_fn_signature_for_type_text_inner(instantiated, mut seen) {
+				return c_abi_signature
+			}
+		}
+	}
 	for name in [tc.qualify_name(typ), typ] {
 		if name.len == 0 {
 			continue
@@ -14800,6 +14824,36 @@ fn (tc &TypeChecker) c_abi_fn_signature_for_type_text_inner(typ string, mut seen
 		}
 	}
 	return none
+}
+
+fn substitute_c_abi_signature_type_text(text string, args []string, params []string) string {
+	mut out := []u8{cap: text.len}
+	mut start := 0
+	mut i := 0
+	for i <= text.len {
+		if i < text.len && ((text[i] >= `a` && text[i] <= `z`)
+			|| (text[i] >= `A` && text[i] <= `Z`)
+			|| (text[i] >= `0` && text[i] <= `9`) || text[i] == `_`) {
+			i++
+			continue
+		}
+		if start < i {
+			word := text[start..i]
+			index := params.index(word)
+			if index >= 0 {
+				out << args[index].bytes()
+			} else {
+				out << word.bytes()
+			}
+		}
+		if i == text.len {
+			break
+		}
+		out << text[i]
+		i++
+		start = i
+	}
+	return out.bytestr()
 }
 
 fn (tc &TypeChecker) c_abi_fn_param_type(param string) (string, bool) {
