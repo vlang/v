@@ -62,6 +62,43 @@ fn main() {
 	assert c_code.contains('App__show(app, ctx, 5)'), c_code
 }
 
+// Route handlers that omit their context parameter can still use the implicit
+// mutable `ctx` binding in their body, including when all declared route
+// parameters are unnamed.
+fn test_veb_implicit_ctx_binding_with_unnamed_route_params() {
+	v3_bin := build_v3()
+	src := '
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+fn (mut ctx Context) coming_soon() veb.Result {
+	return ctx.text("coming soon")
+}
+
+@["/@/:author_slug/:post_slug/bookmark"; get]
+pub fn (app App) bookmark(_ string, _ string) veb.Result {
+	_ = app
+	return ctx.coming_soon()
+}
+
+fn main() {
+	mut app := &App{}
+	veb.run_at[App, Context](mut app, port: 0) or { panic(err) }
+}
+'
+	src_file := os.join_path(os.temp_dir(), 'v3_veb_implicit_ctx_unnamed_route.v')
+	os.write_file(src_file, src) or { panic(err) }
+	bin_out := os.join_path(os.temp_dir(), 'v3_veb_implicit_ctx_unnamed_route')
+	os.rm(bin_out) or {}
+	compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${bin_out}')
+	assert compile.exit_code == 0, compile.output
+}
+
 // A route parameter whose imported type leaf is `Context` but which is not a veb
 // context (here `other.Context` aliases `string`) must not be mistaken for the
 // request context. The handler still receives the hidden `Context`, so its
@@ -154,4 +191,56 @@ fn main() {
 	os.rm(bin_out) or {}
 	native_compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${bin_out}')
 	assert native_compile.exit_code == 0, native_compile.output
+}
+
+// Reflected calls pass the hidden veb context explicitly. Their source method
+// metadata still omits that hidden parameter, so argument spreading must use
+// the checker's ABI signature and must not insert the context a second time.
+// The same program also ensures a framework method binds to `veb.Context`
+// rather than a same-named program receiver.
+fn test_veb_reflected_implicit_ctx_call_uses_abi_params() {
+	v3_bin := build_v3()
+	src := '
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+fn (mut ctx Context) not_found() veb.Result {
+	return ctx.text("program")
+}
+
+fn (app App) bookmark(kind string, id string) veb.Result {
+	_ = app
+	println(kind + ":" + id)
+	return veb.Result{}
+}
+
+fn dispatch[A, X](app A, mut ctx X, args []string) {
+	$for method in A.methods {
+		$if method.return_type is veb.Result {
+			app.$method(mut ctx, ...args)
+		}
+	}
+}
+
+fn main() {
+	mut framework_ctx := veb.Context{}
+	_ := framework_ctx.file(@FILE)
+	mut ctx := Context{}
+	dispatch(App{}, mut ctx, ["first", "second"])
+}
+'
+	src_file := os.join_path(os.temp_dir(), 'v3_veb_reflected_implicit_ctx.v')
+	os.write_file(src_file, src) or { panic(err) }
+	bin_out := os.join_path(os.temp_dir(), 'v3_veb_reflected_implicit_ctx')
+	os.rm(bin_out) or {}
+	compile := os.execute('${v3_bin} -no-memory-limit -b c ${src_file} -o ${bin_out}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin_out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'first:second', run.output
 }

@@ -321,6 +321,27 @@ fn main() {
 	assert out == 'posts'
 }
 
+// A generic fn literal can already spell the callback's full parameter list
+// while its parameter types still need contextual specialization. Lift the
+// concrete callback, not the unresolved template name left on the call.
+fn test_imported_generic_specializes_generic_fn_literal() {
+	out := selfhost_regression_run('generic_generic_fn_literal_root', 'import arrays
+
+struct Table {
+	name string
+}
+
+fn main() {
+	tables := [Table{name: "users"}, Table{name: "posts"}]
+	result := arrays.find_first(tables, fn [T](table T) bool {
+		return table.name == "posts"
+	}) or { panic("missing") }
+	println(result.name)
+}
+')
+	assert out == 'posts'
+}
+
 // Only `for k, mut v in m` binds the map value by reference. A container that is merely a map
 // reference (`m &map[string]bool`) still binds a plain value copy, so the binding must not be
 // typed `&V` — that made every use of it emit a dereference of a non-pointer local.

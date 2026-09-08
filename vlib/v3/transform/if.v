@@ -204,6 +204,11 @@ fn (mut t Transformer) optional_result_expr_type_name(id flat.NodeId) string {
 			if decode_ret := t.json_decode_or_expr_type(id, node) {
 				return decode_ret
 			}
+			if specialized_ret := t.specialized_interface_method_call_return_type(id, node) {
+				if t.is_optional_type_name(specialized_ret) {
+					return specialized_ret
+				}
+			}
 			concrete_ret := t.concrete_generic_call_return_type(id, node)
 			if t.is_optional_type_name(concrete_ret) {
 				return concrete_ret
