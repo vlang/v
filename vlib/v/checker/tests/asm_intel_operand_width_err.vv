@@ -341,6 +341,7 @@ fn intel_narrow_arithmetic_carry_across_jrcxz(value u32) {
 fn intel_crc32_memory_source(base &u16, checksum u64) u64 {
 	mut result := checksum
 	asm amd64 intel {
+		crc32 result, [base]
 		crc32w result, [base]
 		; +r (result)
 		; r (base)

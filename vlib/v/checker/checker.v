@@ -4837,6 +4837,12 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 		&& c.check_asm_intel_extension_move_address_source(template, name) {
 		return
 	}
+	if name == 'crc32' && explicit_width == 0 && template.args.len > 1
+		&& template.args[1] is ast.AsmAddressing {
+		c.error('addressed source in instruction `${template.name}` has no explicit data width in structured `intel` assembly; use an explicitly suffixed instruction, or a `raw intel` block with an explicit source size',
+			template.pos)
+		return
+	}
 	mut has_named_alias := false
 	for arg in template.args {
 		if arg is ast.AsmAlias && arg.name in aliases {
