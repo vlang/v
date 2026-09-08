@@ -605,7 +605,7 @@ fn (mut s H3Server) run_request(mut h3c quic.H3Conn, stream_id u64, st &H3Server
 		return
 	}
 	resp := s.handler.handle(req)
-	s.send_response(mut h3c, stream_id, resp)
+	s.send_response(mut h3c, stream_id, req.method, resp)
 }
 
 // h3_build_request validates st's pseudo-headers (RFC 9114 §4.3.1) and
@@ -787,7 +787,7 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 // is lost (the peer sees an incomplete/truncated response and can retry),
 // never propagated as a connection- or server-wide failure -- see this
 // file's own module doc comment.
-fn (mut s H3Server) send_response(mut h3c quic.H3Conn, stream_id u64, resp Response) {
+fn (mut s H3Server) send_response(mut h3c quic.H3Conn, stream_id u64, method Method, resp Response) {
 	status := if resp.status_code == 0 { 200 } else { resp.status_code }
 	mut fields := [
 		quic.QpackFieldLine{
@@ -808,7 +808,7 @@ fn (mut s H3Server) send_response(mut h3c quic.H3Conn, stream_id u64, resp Respo
 		}
 	}
 	body := resp.body.bytes()
-	has_body := body.len > 0
+	has_body := body.len > 0 && h3_response_allows_body(method, status)
 	trailer_fields := h3_outbound_trailer_fields(resp.trailers)
 	has_trailers := trailer_fields.len > 0
 
@@ -824,6 +824,12 @@ fn (mut s H3Server) send_response(mut h3c quic.H3Conn, stream_id u64, resp Respo
 	if has_trailers {
 		h3c.send_response_headers(stream_id, trailer_fields, true) or {}
 	}
+}
+
+// h3_response_allows_body applies the response cases that never carry
+// content. Content-Length remains metadata and is left in the header block.
+fn h3_response_allows_body(method Method, status int) bool {
+	return method != .head && status != 204 && status != 304
 }
 
 // send_error_response answers `stream_id` with a minimal, bodyless

@@ -140,6 +140,13 @@ fn test_h3_server_validates_request_trailers() {
 	}
 }
 
+fn test_h3_server_suppresses_forbidden_response_content() {
+	assert !h3_response_allows_body(.head, 200)
+	assert !h3_response_allows_body(.get, 204)
+	assert !h3_response_allows_body(.get, 304)
+	assert h3_response_allows_body(.get, 200)
+}
+
 // H3ServerTestEchoHandler answers every request with a fixed 200 response
 // -- this test only needs to prove the request reached the Handler and the
 // response reached the client, not exercise Handler-authoring variety.
