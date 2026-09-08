@@ -60,6 +60,9 @@ fn main() {
 	mut executables := os.ls(session.vtmp_dir)!
 	executables.sort()
 	for texe in executables {
+		if texe == '.v.mod.stop' {
+			continue
+		}
 		tname := texe.replace(os.file_ext(texe), '')
 		if tname in non_packaged_tools {
 			continue
