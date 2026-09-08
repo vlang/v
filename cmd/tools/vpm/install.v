@@ -112,14 +112,31 @@ fn (m Module) warn_on_normalized_name() {
 	}
 	import_path := import_path_of(m.install_path)
 	vpm_warn('`${m.name}` is not a valid V import path, it was installed as `${import_path}`.',
-		details: 'Use `${import_path}` as the normalized import prefix (for example, `import ${import_path}` when the package root is a module).\nConsider renaming the `name` field in the `v.mod` of the module.'
+		details: m.normalized_name_warning_details(import_path)
 	)
+}
+
+fn (m Module) normalized_name_warning_details(import_path string) string {
+	mut details := 'Use `${import_path}` as the normalized import prefix (for example, `import ${import_path}` when the package root is a module).'
+	if m.manifest_name_was_normalized() {
+		details += '\nConsider renaming the `name` field in the `v.mod` of the module.'
+	}
+	return details
 }
 
 fn (m Module) name_was_normalized() bool {
 	normalized_name :=
 		normalize_mod_path(m.name.replace('.', os.path_separator)).replace(os.path_separator, '.')
 	return normalized_name != m.name
+}
+
+fn (m Module) manifest_name_was_normalized() bool {
+	if m.manifest.name == '' {
+		return false
+	}
+	normalized_name :=
+		normalize_mod_path(m.manifest.name.replace('.', os.path_separator)).replace(os.path_separator, '.')
+	return normalized_name != m.manifest.name
 }
 
 fn (m Module) install() InstallResult {

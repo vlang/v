@@ -371,7 +371,7 @@ fn get_path_of_existing_module(mod_name string) ?string {
 	if is_url {
 		publisher, name := get_ident_from_url(mod_name) or { '', '' }
 		if publisher != '' && name != '' {
-			rel_path := normalize_mod_path(os.join_path(publisher, name))
+			rel_path := direct_install_mod_path(publisher, name)
 			path := os.real_path(os.join_path(settings.vmodules_path, rel_path))
 			if os.exists(path) && os.is_dir(path) {
 				verbose_println_more(@FILE_LINE, @FN, 'mod_name: ${mod_name}, found path: ${path}')
@@ -392,6 +392,10 @@ fn get_path_of_existing_module(mod_name string) ?string {
 	}
 	verbose_println_more(@FILE_LINE, @FN, 'mod_name: ${mod_name}, found path: ${path}')
 	return path
+}
+
+fn direct_install_mod_path(publisher string, manifest_name string) string {
+	return normalize_mod_path(os.join_path(publisher, manifest_name.replace('.', os.path_separator)))
 }
 
 fn get_working_server_url() string {

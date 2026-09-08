@@ -154,6 +154,15 @@ fn test_publisher_prefix_does_not_look_like_name_normalization() {
 	assert Module{
 		name: 'my-mod'
 	}.name_was_normalized()
+	registered := Module{
+		name:     'IsaiahPatton.iui'
+		manifest: vmod.Manifest{
+			name: 'iui'
+		}
+	}
+	assert !registered.normalized_name_warning_details('isaiahpatton.iui').contains('Consider renaming')
+	assert direct_install_mod_path('publisher', 'foo.bar') == os.join_path('publisher', 'foo',
+		'bar')
 }
 
 fn test_import_path_canonicalizes_the_installed_leaf() {
