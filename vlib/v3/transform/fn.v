@@ -11785,7 +11785,8 @@ fn (mut t Transformer) fn_field_arg_compatible(actual_type string, expected_type
 		return true
 	}
 	if (actual.starts_with('fn(') || actual.starts_with('fn (')) && (expected.starts_with('fn(')
-		|| expected.starts_with('fn (')) && fn_type_texts_signature_compatible(actual, expected) {
+		|| expected.starts_with('fn ('))
+		&& t.fn_type_texts_signature_compatible_resolving_aliases(actual, expected) {
 		return true
 	}
 	return false
@@ -11811,6 +11812,11 @@ fn fn_type_texts_signature_compatible(actual string, expected string) bool {
 		}
 	}
 	return normalize_fn_param_text(actual_ret) == normalize_fn_param_text(expected_ret)
+}
+
+fn (t &Transformer) fn_type_texts_signature_compatible_resolving_aliases(actual string, expected string) bool {
+	return t.normalize_fn_signature_component_aliases(actual, 0) == t.normalize_fn_signature_component_aliases(expected,
+		0)
 }
 
 fn (t &Transformer) fn_type_texts_signature_compatible_without_c_abi_names_resolving_aliases(actual string, expected string) bool {
@@ -12257,7 +12263,8 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	// texts with `mut`/whitespace normalized instead of requiring byte-equal
 	// spelling.
 	if (actual.starts_with('fn(') || actual.starts_with('fn (')) && (expected.starts_with('fn(')
-		|| expected.starts_with('fn (')) && fn_type_texts_signature_compatible(actual, expected) {
+		|| expected.starts_with('fn ('))
+		&& t.fn_type_texts_signature_compatible_resolving_aliases(actual, expected) {
 		return true
 	}
 	// Any pointer converts to voidptr.

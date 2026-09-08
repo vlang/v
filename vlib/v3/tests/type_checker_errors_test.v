@@ -1863,6 +1863,9 @@ fn test_fn_literal_nested_named_callback_param_matches_alias_inside_generic_fn()
 	matching := run_good(v3_bin, 'good_nested_named_callback_param_in_generic',
 		'struct Item {}\ntype NestedHandler = fn (cb fn (value Item))\nstruct Router {}\nfn (mut r Router) accept(handler NestedHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (callback fn (Item)) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	assert matching == 'true'
+	aliased := run_good(v3_bin, 'good_callback_param_type_alias_in_generic',
+		'struct Item {}\ntype ItemAlias = Item\ntype Handler = fn (value ItemAlias)\nstruct Router {}\nfn (mut r Router) accept(handler Handler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (value Item) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert aliased == 'true'
 }
 
 fn test_fn_literal_nested_c_abi_const_mode_matches_alias_inside_generic_fn() {
