@@ -2034,6 +2034,19 @@ fn test_fn_literal_nested_c_abi_const_mode_matches_alias_inside_generic_fn() {
 		'cannot use')
 }
 
+fn test_fn_literal_or_expr_callback_modes_inside_generic_fn() {
+	v3_bin := build_v3()
+	matching := run_good(v3_bin, 'good_option_or_fallback_const_fn_param_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler ConstHandler) bool {\n\treturn true\n}\nfn maybe_handler() ?ConstHandler {\n\treturn none\n}\nfn startup[T]() bool {\n\tr := Router{}\n\treturn r.accept(maybe_handler() or { fn (const_event &C.native_event) {} })\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert matching == 'true'
+	run_bad(v3_bin, 'bad_option_or_fallback_const_fn_param_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler PlainHandler) {}\nfn maybe_handler() ?PlainHandler {\n\treturn none\n}\nfn startup[T]() {\n\tr := Router{}\n\tr.accept(maybe_handler() or { fn (const_event &C.native_event) {} })\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	run_bad(v3_bin, 'bad_result_or_fallback_const_fn_param_in_generic',
+		"type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler PlainHandler) {}\nfn maybe_handler() !PlainHandler {\n\treturn error('no handler')\n}\nfn startup[T]() {\n\tr := Router{}\n\tr.accept(maybe_handler() or { fn (const_event &C.native_event) {} })\n}\nfn main() {\n\tstartup[int]()\n}\n",
+		'cannot use')
+}
+
 fn test_fn_literal_callback_alias_lookup_uses_declaration_module() {
 	v3_bin := build_v3()
 	local_alias_collision := run_good_project(v3_bin,
@@ -2074,6 +2087,20 @@ fn test_fn_literal_callback_alias_lookup_uses_declaration_module() {
 		'm/m.v':     'module m\n\nimport dep as d\n\npub struct Router {}\npub fn (mut r Router) accept(handler fn (const_event &d.Event)) bool {\n\treturn true\n}\n'
 	}, 'main.v')
 	assert direct_aliased_import == 'true'
+	field_selective_import := run_good_project(v3_bin,
+		'good_callback_field_resolves_selective_import_in_declaration_file', {
+		'main.v':    'module main\n\nimport dep\nimport m\n\nfn startup[T](service T) bool {\n\treturn service.open(handler: fn (const_event &dep.Event) {})\n}\nfn main() {\n\tprintln(startup(m.Service{}).str())\n}\n'
+		'dep/dep.v': 'module dep\n\npub struct Event {}\n'
+		'm/m.v':     'module m\n\nimport dep { Event }\n\n@[params]\npub struct Options {\npub:\n\thandler fn (const_event &Event)\n}\npub struct Service {}\npub fn (s Service) open(opts Options) bool {\n\treturn true\n}\n'
+	}, 'main.v')
+	assert field_selective_import == 'true'
+	field_aliased_import := run_good_project(v3_bin,
+		'good_callback_field_resolves_aliased_import_in_declaration_file', {
+		'main.v':    'module main\n\nimport dep\nimport m\n\nfn startup[T](service T) bool {\n\treturn service.open(handler: fn (const_event &dep.Event) {})\n}\nfn main() {\n\tprintln(startup(m.Service{}).str())\n}\n'
+		'dep/dep.v': 'module dep\n\npub struct Event {}\n'
+		'm/m.v':     'module m\n\nimport dep as d\n\n@[params]\npub struct Options {\npub:\n\thandler fn (const_event &d.Event)\n}\npub struct Service {}\npub fn (s Service) open(opts Options) bool {\n\treturn true\n}\n'
+	}, 'main.v')
+	assert field_aliased_import == 'true'
 }
 
 fn test_fn_literal_nested_shared_callback_param_matches_alias_inside_generic_fn() {

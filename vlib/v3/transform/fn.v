@@ -11830,7 +11830,13 @@ fn (t &Transformer) lookup_struct_field_source_type(type_name string, field_name
 		}
 		raw := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
 		specialized := t.normalize_field_type(raw, lookup.owner_type)
-		return t.decl_param_type_in_module(specialized, lookup.info.module)
+		mut decl_name := lookup.info.name
+		if lookup.info.module.len > 0 && lookup.info.module !in ['main', 'builtin']
+			&& !decl_name.contains('.') {
+			decl_name = '${lookup.info.module}.${decl_name}'
+		}
+		decl_file := if isnil(t.tc) { '' } else { t.tc.struct_files[decl_name] or { '' } }
+		return t.decl_param_type_in_file(specialized, lookup.info.module, decl_file)
 	}
 	return none
 }
@@ -12606,6 +12612,12 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 		}
 		.if_expr, .match_stmt {
 			for i in 1 .. node.children_count {
+				t.collect_fn_literal_source_type_texts(t.a.child(&node, i), mut result)
+			}
+			return
+		}
+		.or_expr {
+			for i in 0 .. node.children_count {
 				t.collect_fn_literal_source_type_texts(t.a.child(&node, i), mut result)
 			}
 			return
