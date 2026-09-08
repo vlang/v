@@ -110,6 +110,19 @@ fn test_intel_narrow_add_flags_overwritten_by_shift_with_clang() {
 	assert result == 42
 }
 
+fn test_intel_narrow_add_flags_overwritten_by_large_shift_with_clang() {
+	mut result := 19
+	asm amd64 intel {
+		add result, 23
+		shl rax, 33
+		setc al
+		; +r (result)
+		; ; rax
+		  cc
+	}
+	assert result == 42
+}
+
 fn test_intel_narrow_add_flags_overwritten_by_rotate_with_clang() {
 	mut result := 19
 	asm amd64 intel {

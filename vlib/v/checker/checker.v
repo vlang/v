@@ -4398,7 +4398,7 @@ fn (mut c Checker) check_asm_intel_operand_widths(stmt ast.AsmStmt,
 				template.name, template.pos)
 		}
 		c.check_asm_intel_hard_register_widths(template, operand_aliases, native_width,
-			asm_intel_flags_are_observed_after(stmt.templates, i))
+			asm_intel_flags_are_observed_after(stmt.templates, i, native_width))
 	}
 }
 
@@ -4589,7 +4589,8 @@ fn asm_intel_instruction_set_flags(instruction string) u8 {
 	return 0
 }
 
-fn asm_intel_static_shift_count(template ast.AsmTemplate, instruction string) int {
+fn asm_intel_static_shift_count(template ast.AsmTemplate, instruction string,
+	native_width int) int {
 	is_double_shift := asm_intel_mnemonic_is_one_of(instruction, ['shld', 'shrd'])
 	if !is_double_shift && template.args.len == 1 {
 		return 1
@@ -4597,13 +4598,27 @@ fn asm_intel_static_shift_count(template ast.AsmTemplate, instruction string) in
 	if template.args.len > 0 {
 		count := template.args.last()
 		if count is ast.IntegerLiteral {
-			return count.val.int()
+			mut operand_width := native_width * 8
+			destination := template.args[0]
+			if destination is ast.AsmRegister && destination.size > 0 {
+				operand_width = destination.size
+			} else if instruction.len > 1
+				&& instruction[instruction.len - 1] in [`b`, `w`, `l`, `q`] {
+				operand_width = match instruction[instruction.len - 1] {
+					`b` { 8 }
+					`w` { 16 }
+					`l` { 32 }
+					else { 64 }
+				}
+			}
+			count_mask := if operand_width == 64 { 63 } else { 31 }
+			return count.val.int() & count_mask
 		}
 	}
 	return 0
 }
 
-fn asm_intel_instruction_overwritten_flags(template ast.AsmTemplate) u8 {
+fn asm_intel_instruction_overwritten_flags(template ast.AsmTemplate, native_width int) u8 {
 	name := asm_intel_normalized_instruction_name(template.name)
 	if name in ['popf', 'popfd', 'popfq'] {
 		return asm_intel_status_flags
@@ -4626,8 +4641,8 @@ fn asm_intel_instruction_overwritten_flags(template ast.AsmTemplate) u8 {
 	if asm_intel_mnemonic_is_one_of(name, ['div', 'idiv']) {
 		return asm_intel_status_flags
 	}
-	shift_count := asm_intel_static_shift_count(template, name)
-	if shift_count > 0 && shift_count < 32 {
+	shift_count := asm_intel_static_shift_count(template, name, native_width)
+	if shift_count > 0 {
 		if asm_intel_mnemonic_is_one_of(name, ['rol', 'ror', 'rcl', 'rcr']) {
 			return asm_intel_flag_cf | if shift_count == 1 { asm_intel_flag_of } else { u8(0) }
 		}
@@ -4646,7 +4661,8 @@ fn asm_intel_instruction_changes_control_flow(instruction string) bool {
 	return name.starts_with('j') || name == 'ljmp' || name.starts_with('loop')
 }
 
-fn asm_intel_flags_are_observed_after(templates []ast.AsmTemplate, template_index int) bool {
+fn asm_intel_flags_are_observed_after(templates []ast.AsmTemplate, template_index int,
+	native_width int) bool {
 	mut remaining_flags := asm_intel_instruction_set_flags(templates[template_index].name)
 	if remaining_flags == 0 {
 		return false
@@ -4661,7 +4677,8 @@ fn asm_intel_flags_are_observed_after(templates []ast.AsmTemplate, template_inde
 		if asm_intel_instruction_changes_control_flow(templates[i].name) {
 			return true
 		}
-		remaining_flags &= asm_intel_status_flags ^ asm_intel_instruction_overwritten_flags(templates[i])
+		remaining_flags &= asm_intel_status_flags ^ asm_intel_instruction_overwritten_flags(templates[i],
+			native_width)
 		if remaining_flags == 0 {
 			return false
 		}
@@ -4704,6 +4721,62 @@ fn (mut c Checker) check_asm_intel_narrow_data_aliases(template ast.AsmTemplate,
 			if is_width_dependent {
 				typ := c.unwrap_generic(aliases[arg.name])
 				c.error('named operand `${arg.name}` has ${c.asm_intel_type_width(typ) * 8}-bit type `${c.table.type_str(typ)}`, but instruction `${template.name}` operates on the ${native_width * 8}-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers',
+					template.pos)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn asm_intel_operand_is_data_source(instruction string, operand_index int) bool {
+	return match instruction {
+		'bt', 'btc', 'btr', 'bts' { false }
+		'bextr', 'bzhi', 'rorx', 'shld', 'shrd' { operand_index == 1 }
+		'mulx' { operand_index == 2 }
+		else { operand_index > 0 }
+	}
+}
+
+fn (mut c Checker) check_asm_intel_signed_narrow_sources(template ast.AsmTemplate,
+	aliases map[string]ast.Type, instruction string, explicit_width int) bool {
+	if template.args.len < 2 {
+		return false
+	}
+	destination := template.args[0]
+	destination_width := if explicit_width > 0 {
+		explicit_width
+	} else {
+		match destination {
+			ast.AsmAlias {
+				typ := c.unwrap_generic(aliases[destination.name])
+				if typ == 0 || typ.has_flag(.generic)
+					|| c.type_has_unresolved_generic_parts(typ) {
+					0
+				} else {
+					c.asm_intel_type_width(typ) * 8
+				}
+			}
+			ast.AsmRegister { destination.size }
+			else { 0 }
+		}
+	}
+	if destination_width <= 0 {
+		return false
+	}
+	for i, source in template.args {
+		if !asm_intel_operand_is_data_source(instruction, i) {
+			continue
+		}
+		if source is ast.AsmAlias && source.name in aliases {
+			typ := c.unwrap_generic(aliases[source.name])
+			if typ == 0 || typ.has_flag(.generic) || c.type_has_unresolved_generic_parts(typ) {
+				continue
+			}
+			source_width := c.asm_intel_type_width(typ) * 8
+			if source_width > 0 && source_width < destination_width
+				&& c.asm_intel_type_is_signed(typ) {
+				c.error('named source `${source.name}` has ${source_width}-bit signed type `${c.table.type_str(typ)}`, but instruction `${template.name}` consumes the wider ${destination_width}-bit register substituted by structured `intel` assembly without sign extension; use operands of matching width, explicitly sign-extend into a hard register, or use a `raw intel` block with an explicit operand modifier',
 					template.pos)
 				return true
 			}
@@ -4890,6 +4963,10 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 		return
 	}
 	if c.check_asm_intel_narrow_data_aliases(template, aliases, native_width, name) {
+		return
+	}
+	if (is_same_width || name.starts_with('cmov'))
+		&& c.check_asm_intel_signed_narrow_sources(template, aliases, name, explicit_width) {
 		return
 	}
 	if name in ['cmp', 'test'] {

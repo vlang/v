@@ -338,6 +338,29 @@ fn intel_narrow_arithmetic_carry_across_jrcxz(value u32) {
 	}
 }
 
+fn intel_signed_narrow_wide_sources(increment int) {
+	mut result := i64(1)
+	asm amd64 intel {
+		mov result, increment
+		add result, increment
+		; +r (result)
+		; r (increment)
+		; cc
+	}
+}
+
+fn intel_narrow_arithmetic_flags_survive_masked_zero_shift(value u32) {
+	mut result := value
+	asm amd64 intel {
+		add result, 1
+		shl rax, 64
+		setc al
+		; +r (result)
+		; ; rax
+		  cc
+	}
+}
+
 fn intel_crc32_memory_source(base &u16, checksum u64) u64 {
 	mut result := checksum
 	asm amd64 intel {
