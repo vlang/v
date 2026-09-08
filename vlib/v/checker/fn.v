@@ -72,6 +72,12 @@ fn (mut c Checker) receiver_arg_call_fn(method ast.Fn, call ast.ReceiverArgCall)
 		if called_method := c.table.find_method_with_embeds(receiver_sym, call.name) {
 			return called_method
 		}
+		if callable_field := c.table.find_field_with_embeds(receiver_sym, call.name) {
+			field_sym := c.table.final_sym(callable_field.typ)
+			if field_sym.info is ast.FnType {
+				return field_sym.info.func
+			}
+		}
 		return none
 	}
 	if call.callee_type != 0 {
