@@ -11765,7 +11765,12 @@ fn (mut t Transformer) validate_specialized_struct_field_args(node flat.Node, fi
 		}
 		value_id := t.a.child(field, 0)
 		actual_type := t.specialized_expr_type_name(value_id)
-		if !t.resolved_receiver_arg_compatible(value_id, actual_type, field_type) {
+		source_field_type := t.lookup_struct_field_source_type(struct_type, field.value) or {
+			field_type
+		}
+		expected_validation_type := t.fn_type_with_compatible_source_modes(source_field_type,
+			field_type)
+		if !t.resolved_receiver_arg_compatible(value_id, actual_type, expected_validation_type) {
 			t.record_monomorph_error('cannot initialize field `${field.value}` with `${actual_type}`; expected `${field_type}`')
 			valid = false
 		}
