@@ -187,6 +187,27 @@ fn main() {
 	assert out == 'parsed'
 }
 
+fn test_generic_static_assoc_declaration_uses_encoded_lookup_key() {
+	out := selfhost_regression_run('generic_static_assoc_declaration', 'struct Box[T] {
+	value T
+}
+
+fn Box.new[T](value T) Box[T] {
+	return Box[T]{
+		value: value
+	}
+}
+
+fn main() {
+	explicit := Box.new[int](41)
+	inferred := Box.new("ok")
+	println(explicit.value + 1)
+	println(inferred.value)
+}
+')
+	assert out.split_into_lines() == ['42', 'ok']
+}
+
 fn test_static_method_pseudo_variables_use_source_name() {
 	name := 'static_method_pseudo_vars'
 	src := os.join_path(os.temp_dir(), 'v3_selfhost_regression_${name}.v')

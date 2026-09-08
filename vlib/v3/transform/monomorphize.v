@@ -6827,7 +6827,8 @@ fn (t &Transformer) generic_static_assoc_call_decl_key(base_id flat.NodeId, meth
 	}
 	for type_name in t.generic_static_assoc_type_candidates(base_id) {
 		for method_spelling in generic_call_name_spellings(method) {
-			key := generic_fn_decl_base_value('${type_name}.${method_spelling}')
+			key := generic_fn_decl_base_value(flat.encode_static_type_method_name(type_name,
+				method_spelling))
 			if key in decls {
 				return key
 			}
@@ -6837,23 +6838,26 @@ fn (t &Transformer) generic_static_assoc_call_decl_key(base_id flat.NodeId, meth
 }
 
 fn (t &Transformer) generic_call_is_static_assoc_selector(node flat.Node, decl GenericFnDecl) bool {
-	if node.children_count == 0 || !decl.node.value.contains('.') {
+	if node.children_count == 0 {
 		return false
 	}
+	decl_value := generic_fn_decl_base_value(decl.node.value)
+	_, method := flat.decode_static_type_method_name(decl_value) or { return false }
 	callee_id := t.a.child(&node, 0)
 	callee := t.a.nodes[int(callee_id)]
 	if callee.kind != .selector || callee.children_count == 0 {
 		return false
 	}
-	method := decl.node.value.all_after_last('.')
 	if callee.value !in generic_call_name_spellings(method) {
 		return false
 	}
 	base_id := t.a.child(callee, 0)
 	for type_name in t.generic_static_assoc_type_candidates(base_id) {
 		for method_spelling in generic_call_name_spellings(method) {
-			key := generic_fn_decl_base_value('${type_name}.${method_spelling}')
-			if key == decl.key || key == generic_fn_decl_base_value(decl.node.value) {
+			key := generic_fn_decl_base_value(flat.encode_static_type_method_name(type_name,
+				method_spelling))
+			if key == decl.key || key == decl_value
+				|| transform_qualified_fn_name(decl.module, key) == decl.key {
 				return true
 			}
 		}
@@ -11219,6 +11223,13 @@ fn generic_fn_receiver_application_is_structured(value string) bool {
 }
 
 fn generic_fn_decl_base_value(value string) string {
+	if receiver, method := flat.decode_static_type_method_name(value) {
+		base, _, ok := generic_app_parts(receiver)
+		if ok {
+			return flat.encode_static_type_method_name(base, method)
+		}
+		return value
+	}
 	if !value.contains('.') {
 		return value
 	}
