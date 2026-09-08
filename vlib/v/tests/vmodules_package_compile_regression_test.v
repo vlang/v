@@ -264,12 +264,12 @@ fn test_issue_27281_temp_project_allows_uppercase_base_url() {
 	assert dot_test_res.exit_code == 0, dot_test_res.output
 }
 
-fn test_issue_27281_temp_project_allows_uppercase_entry_folder() {
-	workspace := os.join_path(os.vtmp_dir(), 'issue_27281_uppercase_entry')
+fn test_issue_27281_temp_project_allows_session_shaped_entry_folder() {
+	workspace := os.join_path(os.vtmp_dir(), 'issue_27281_session_entry')
 	defer {
 		os.rmdir_all(workspace) or {}
 	}
-	cmd_dir := os.join_path(workspace, 'Cmd')
+	cmd_dir := os.join_path(workspace, 'tsession_01ABCDEF23456789', 'Cmd')
 	module_dir := os.join_path(workspace, 'dep', 'mymod')
 	os.rmdir_all(workspace) or {}
 	os.mkdir_all(cmd_dir) or { panic(err) }

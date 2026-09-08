@@ -1029,12 +1029,16 @@ fn filter_args_for_v2(compile_options []string) string {
 	return out.join(' ')
 }
 
-// setup_new_vtmp_folder creates a new nested folder inside VTMP, then resets VTMP to it,
-// so that V programs/tests will write their temporary files to new location.
+// setup_new_vtmp_folder creates a new isolated folder inside VTMP, then resets VTMP to it,
+// so that V programs/tests will write their temporary files to the new location.
 // The new nested folder, and its contents, will get removed after all tests/programs succeed.
 pub fn setup_new_vtmp_folder(hash string) string {
 	new_vtmp_dir := os.join_path(os.vtmp_dir(), 'tsession_${hash}')
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
+	// A test session must not inherit an unrelated v.mod from the shared temp
+	// directory. Use the standard explicit project-boundary marker instead of
+	// inferring ownership from temporary directory names.
+	os.write_file(os.join_path(new_vtmp_dir, '.v.mod.stop'), '') or { panic(err) }
 	os.setenv('VTMP', new_vtmp_dir, true)
 	return new_vtmp_dir
 }
