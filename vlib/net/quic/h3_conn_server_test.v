@@ -319,6 +319,38 @@ fn test_h3_conn_server_role_receives_request_and_sends_response() {
 	assert resp_ended_ev.len == 1
 }
 
+fn test_h3_conn_server_rejects_oversized_data_from_header_only() {
+	_, mut client_h3, _, mut server_h3, now0 := h3_server_test_pair()!
+	defer {
+		client_h3.free()
+		server_h3.free()
+	}
+	server_h3.max_inbound_data_frame_payload = 8
+	_, _, now1 := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now0)!
+	stream_id := client_h3.open_request_stream()!
+	client_h3.send_request_headers(stream_id, [
+		QpackFieldLine{
+			name: ':method'
+			value: 'POST'
+		},
+		QpackFieldLine{
+			name: ':scheme'
+			value: 'https'
+		},
+		QpackFieldLine{
+			name: ':path'
+			value: '/'
+		},
+	], false)!
+	mut oversized_data_header := encode_varint(h3_frame_data)!
+	oversized_data_header << encode_varint(9)!
+	client_h3.qc.write_stream(stream_id, oversized_data_header, false)!
+	_, server_events, _ := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now1)!
+	errors := server_events.filter(it.kind == .request_error)
+	assert errors.len == 1
+	assert errors[0].error_code? == H3ErrorCode.excessive_load.code()
+}
+
 fn test_h3_conn_server_buffers_data_while_initial_headers_are_qpack_blocked() {
 	mut client, mut client_h3, mut server, mut server_h3, now0 := h3_server_test_pair()!
 	defer {

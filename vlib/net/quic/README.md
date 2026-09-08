@@ -48,6 +48,14 @@ defer {
 The `net.http` HTTP/3 transport performs this cleanup itself; this requirement applies to direct
 `net.quic` users.
 
+## HTTP/3 inbound DATA limits
+
+Direct `H3Conn` users can set `H3ConnParams.max_inbound_data_frame_payload` to reject an
+oversized request-stream DATA frame as soon as its declared length is available, before the
+payload is buffered. Zero keeps the generic connection default unrestricted. The `net.http`
+HTTP/3 server sets this to its 8 MiB request-body limit and also enforces the cumulative limit
+across complete DATA frames.
+
 CertificateVerify signature verification (ECDSA and RSA-PSS) and certificate
 chain-of-trust validation (including RSA-PKCS1v1.5-signed certificates, still
 common among real-world CAs — `net.quic` advertises this via the

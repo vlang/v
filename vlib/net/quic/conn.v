@@ -212,13 +212,17 @@ mut:
 	handshake_crypto_consumed    u64
 	handshake_crypto_send_offset u64
 
-	client_hello                []u8
-	pending_initial_crypto      ?[]u8
-	pending_handshake_crypto    ?[]u8
-	pending_handshake_offset    u64
-	handshake_crypto_needs_send bool
-	handshake_crypto_sent_pns   map[u64]bool
-	resources_freed             bool
+	client_hello             []u8
+	pending_initial_crypto   ?[]u8
+	pending_handshake_crypto ?[]u8
+	pending_handshake_offset u64
+	resources_freed          bool
+
+	next_retransmittable_id  u64
+	retransmittable_payloads map[u64]RetransmittablePayload
+	initial_payload_by_pn    map[u64]u64
+	handshake_payload_by_pn  map[u64]u64
+	app_payload_by_pn        map[u64]u64
 
 	loss_detection     &QuicLossDetectionTimer
 	congestion_control NewRenoCongestionControl
@@ -290,13 +294,10 @@ mut:
 	sent_close_payload ?[]u8
 	closing_deadline   ?u64
 
-	// handshake_done_sent guards drain_outgoing's server-role HANDSHAKE_DONE
-	// send (RFC 9001 §4.1.2: sent exactly once, "as soon as the handshake
-	// is complete") against re-sending on every later poll() call once the
-	// handshake stays complete -- the same one-shot-flag shape as
-	// streams_blocked_sent_bidi/uni above, RFC 9000 §19.20's decode-side
-	// mirror of the send-once requirement enforced there by construction
-	// (a server sends it, at most, the one time this flag transitions).
+	// handshake_done_sent guards creation of the server's HANDSHAKE_DONE
+	// payload once the handshake completes. Its retransmittable-payload entry
+	// remains live until ACK and can send that same frame under later packet
+	// numbers after loss or PTO.
 	handshake_done_sent bool
 }
 
@@ -308,6 +309,17 @@ struct PendingStreamWrite {
 mut:
 	data []u8
 	fin  bool
+}
+
+// RetransmittablePayload retains one ack-eliciting packet's plaintext frames
+// until any transmission carrying them is acknowledged. The same payload can
+// have several packet numbers after PTO/loss recovery.
+struct RetransmittablePayload {
+	space QuicPacketNumberSpace
+	data  []u8
+mut:
+	sent_pns   map[u64]bool
+	needs_send bool
 }
 
 // PendingClose is set by the public close() API and drained by the next
@@ -791,7 +803,7 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 					c.close_with_error(code, err.msg(), false, now, mut result)
 				}
 			} else if timeout_result.lost.len > 0 {
-				c.note_handshake_crypto_delivery(loss_space, []SentPacketInfo{}, timeout_result.lost)
+				c.note_retransmittable_delivery(loss_space, []SentPacketInfo{}, timeout_result.lost)
 				c.congestion_control.on_packets_lost(timeout_result.lost, false, now)
 			}
 		}
@@ -953,6 +965,7 @@ fn (mut c QuicConn) process_retry(raw []u8) ! {
 	c.initial_keys_server = derive_packet_protection_keys(new_secrets.server)!
 	c.pn_spaces.initial = PacketNumberSpaceState{}
 	c.loss_detection.initial = LossDetectionSpaceState{}
+	c.discard_retransmittable_payloads(.initial)
 	c.initial_received_pns = map[u64]bool{}
 	c.pending_initial_crypto = c.client_hello
 }
@@ -1572,7 +1585,7 @@ fn (mut c QuicConn) handle_ack_frame(space QuicPacketNumberSpace, frame AckFrame
 	}
 
 	result := c.loss_detection.on_ack_received(space, frame, peer_ack_delay_exponent, max_ack_delay, handshake_confirmed, now)
-	c.note_handshake_crypto_delivery(space, result.newly_acked, result.lost)
+	c.note_retransmittable_delivery(space, result.newly_acked, result.lost)
 	c.congestion_control.on_packets_acked(result.newly_acked)
 	if result.lost.len > 0 {
 		c.congestion_control.on_packets_lost(result.lost, result.persistent_congestion, now)
@@ -1586,27 +1599,101 @@ fn (mut c QuicConn) queue_handshake_crypto(data []u8) {
 	c.pending_handshake_crypto = data
 	c.pending_handshake_offset = c.handshake_crypto_send_offset
 	c.handshake_crypto_send_offset += u64(data.len)
-	c.handshake_crypto_needs_send = true
-	c.handshake_crypto_sent_pns = map[u64]bool{}
 }
 
-fn (mut c QuicConn) note_handshake_crypto_delivery(space QuicPacketNumberSpace, acked []SentPacketInfo, lost []SentPacketInfo) {
-	if space != .handshake || c.pending_handshake_crypto == none {
-		return
-	}
-	for packet in acked {
-		if packet.packet_number in c.handshake_crypto_sent_pns {
-			c.pending_handshake_crypto = none
-			c.handshake_crypto_needs_send = false
-			c.handshake_crypto_sent_pns = map[u64]bool{}
-			return
+fn (c &QuicConn) retransmittable_id_for_packet(space QuicPacketNumberSpace, pn u64) ?u64 {
+	match space {
+		.initial {
+			if id := c.initial_payload_by_pn[pn] {
+				return id
+			}
 		}
+		.handshake {
+			if id := c.handshake_payload_by_pn[pn] {
+				return id
+			}
+		}
+		.application_data {
+			if id := c.app_payload_by_pn[pn] {
+				return id
+			}
+		}
+	}
+	return none
+}
+
+fn (mut c QuicConn) set_retransmittable_packet(space QuicPacketNumberSpace, pn u64, id u64) {
+	match space {
+		.initial {
+			c.initial_payload_by_pn[pn] = id
+		}
+		.handshake {
+			c.handshake_payload_by_pn[pn] = id
+		}
+		.application_data {
+			c.app_payload_by_pn[pn] = id
+		}
+	}
+}
+
+fn (mut c QuicConn) delete_retransmittable_packet(space QuicPacketNumberSpace, pn u64) {
+	match space {
+		.initial { c.initial_payload_by_pn.delete(pn) }
+		.handshake { c.handshake_payload_by_pn.delete(pn) }
+		.application_data { c.app_payload_by_pn.delete(pn) }
+	}
+}
+
+fn (mut c QuicConn) track_retransmittable_payload(space QuicPacketNumberSpace, pn u64, data []u8, existing_id u64) {
+	mut id := existing_id
+	if id == 0 {
+		c.next_retransmittable_id++
+		id = c.next_retransmittable_id
+		c.retransmittable_payloads[id] = RetransmittablePayload{
+			space: space
+			data: data.clone()
+			sent_pns: map[u64]bool{}
+		}
+	}
+	mut payload := c.retransmittable_payloads[id] or { return }
+	payload.sent_pns[pn] = true
+	payload.needs_send = false
+	c.retransmittable_payloads[id] = payload
+	c.set_retransmittable_packet(space, pn, id)
+}
+
+fn (mut c QuicConn) forget_retransmittable_payload(id u64) {
+	payload := c.retransmittable_payloads[id] or { return }
+	for pn in payload.sent_pns.keys() {
+		c.delete_retransmittable_packet(payload.space, pn)
+	}
+	c.retransmittable_payloads.delete(id)
+}
+
+fn (mut c QuicConn) note_retransmittable_delivery(space QuicPacketNumberSpace, acked []SentPacketInfo, lost []SentPacketInfo) {
+	for packet in acked {
+		id := c.retransmittable_id_for_packet(space, packet.packet_number) or { continue }
+		c.forget_retransmittable_payload(id)
 	}
 	for packet in lost {
-		if packet.packet_number in c.handshake_crypto_sent_pns {
-			c.handshake_crypto_sent_pns.delete(packet.packet_number)
-			c.handshake_crypto_needs_send = true
+		id := c.retransmittable_id_for_packet(space, packet.packet_number) or { continue }
+		mut payload := c.retransmittable_payloads[id] or { continue }
+		c.delete_retransmittable_packet(space, packet.packet_number)
+		payload.sent_pns.delete(packet.packet_number)
+		payload.needs_send = true
+		c.retransmittable_payloads[id] = payload
+	}
+}
+
+fn (mut c QuicConn) discard_retransmittable_payloads(space QuicPacketNumberSpace) {
+	mut ids := []u64{}
+	for id, payload in c.retransmittable_payloads {
+		if payload.space == space {
+			ids << id
 		}
+	}
+	for id in ids {
+		c.forget_retransmittable_payload(id)
 	}
 }
 
@@ -1817,6 +1904,7 @@ fn (mut c QuicConn) discard_initial_keys() {
 	c.initial_received_pns = map[u64]bool{}
 	c.initial_ack_eliciting_pending = false
 	c.pending_initial_crypto = none
+	c.discard_retransmittable_payloads(.initial)
 }
 
 // discard_handshake_keys implements RFC 9001 §4.9.2 -- same v1 scope note
@@ -1828,8 +1916,7 @@ fn (mut c QuicConn) discard_handshake_keys() {
 	c.handshake_received_pns = map[u64]bool{}
 	c.handshake_ack_eliciting_pending = false
 	c.pending_handshake_crypto = none
-	c.handshake_crypto_needs_send = false
-	c.handshake_crypto_sent_pns = map[u64]bool{}
+	c.discard_retransmittable_payloads(.handshake)
 }
 
 // -------------------------------------------------------------------------
@@ -1877,6 +1964,7 @@ fn (mut c QuicConn) record_amplification_sent(n int) {
 }
 
 fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
+	c.drain_lost_retransmittable_payloads(now, mut result)!
 	if data := c.pending_initial_crypto {
 		crypto_frame := encode_crypto_frame(0, data)!
 		if c.has_amplification_budget_for(.initial, crypto_frame.len) {
@@ -1934,14 +2022,11 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 		// therefore this budget -- every round trip until the flight
 		// finally fits).
 		crypto_frame := encode_crypto_frame(c.pending_handshake_offset, data)!
-		if c.handshake_crypto_needs_send
-			&& c.has_amplification_budget_for(.handshake, crypto_frame.len) {
-			pn := c.pn_spaces.handshake.next_send_pn
+		if c.has_amplification_budget_for(.handshake, crypto_frame.len) {
 			datagram := c.build_handshake_packet(crypto_frame, true, now)!
 			result.outgoing << datagram
 			c.record_amplification_sent(datagram.bytes.len)
-			c.handshake_crypto_sent_pns[pn] = true
-			c.handshake_crypto_needs_send = false
+			c.pending_handshake_crypto = none
 			c.handshake_completion.mark_own_finished_sent()
 		}
 	}
@@ -2197,6 +2282,10 @@ fn ranges_from_received_pns(pns []u64) []AckRange {
 // purposes (ack-eliciting OR contains PADDING), regardless of whether
 // `is_ack_eliciting` itself is true.
 fn (mut c QuicConn) build_initial_packet(payload []u8, is_ack_eliciting bool, now u64) !QuicDatagram {
+	return c.build_initial_packet_tracked(payload, is_ack_eliciting, now, 0)
+}
+
+fn (mut c QuicConn) build_initial_packet_tracked(payload []u8, is_ack_eliciting bool, now u64, retransmittable_id u64) !QuicDatagram {
 	pn := c.pn_spaces.initial.next_packet_number()!
 	pn_bytes, pn_length := encode_packet_number(pn, c.pn_spaces.initial.largest_acked_by_peer)!
 
@@ -2225,6 +2314,9 @@ fn (mut c QuicConn) build_initial_packet(payload []u8, is_ack_eliciting bool, no
 	protected := protect_packet(header, .long, pn, pn_length, padded_payload, c.own_initial_keys())!
 
 	c.loss_detection.on_packet_sent(.initial, pn, u64(protected.len), is_ack_eliciting, true, now)
+	if is_ack_eliciting {
+		c.track_retransmittable_payload(.initial, pn, payload, retransmittable_id)
+	}
 	c.congestion_control.on_packet_sent_cc(u64(protected.len))
 	c.idle_timeout.note_packet_sent(now)
 	return QuicDatagram{
@@ -2233,6 +2325,10 @@ fn (mut c QuicConn) build_initial_packet(payload []u8, is_ack_eliciting bool, no
 }
 
 fn (mut c QuicConn) build_handshake_packet(payload []u8, is_ack_eliciting bool, now u64) !QuicDatagram {
+	return c.build_handshake_packet_tracked(payload, is_ack_eliciting, now, 0)
+}
+
+fn (mut c QuicConn) build_handshake_packet_tracked(payload []u8, is_ack_eliciting bool, now u64, retransmittable_id u64) !QuicDatagram {
 	keys := c.own_handshake_keys() or {
 		return error('quic: internal error: no Handshake write keys available yet')
 	}
@@ -2255,6 +2351,9 @@ fn (mut c QuicConn) build_handshake_packet(payload []u8, is_ack_eliciting bool, 
 
 	in_flight := is_ack_eliciting
 	c.loss_detection.on_packet_sent(.handshake, pn, u64(protected.len), is_ack_eliciting, in_flight, now)
+	if is_ack_eliciting {
+		c.track_retransmittable_payload(.handshake, pn, payload, retransmittable_id)
+	}
 	if in_flight {
 		c.congestion_control.on_packet_sent_cc(u64(protected.len))
 	}
@@ -2291,6 +2390,10 @@ fn (mut c QuicConn) build_handshake_packet(payload []u8, is_ack_eliciting bool, 
 }
 
 fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, now u64) !QuicDatagram {
+	return c.build_one_rtt_packet_tracked(payload, is_ack_eliciting, now, 0)
+}
+
+fn (mut c QuicConn) build_one_rtt_packet_tracked(payload []u8, is_ack_eliciting bool, now u64, retransmittable_id u64) !QuicDatagram {
 	write_keys := c.app_write_keys or {
 		return error('quic: internal error: no 1-RTT write keys available yet')
 	}
@@ -2313,6 +2416,9 @@ fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, no
 
 	in_flight := is_ack_eliciting
 	c.loss_detection.on_packet_sent(.application_data, pn, u64(protected.len), is_ack_eliciting, in_flight, now)
+	if is_ack_eliciting {
+		c.track_retransmittable_payload(.application_data, pn, payload, retransmittable_id)
+	}
 	if in_flight {
 		c.congestion_control.on_packet_sent_cc(u64(protected.len))
 	}
@@ -2322,9 +2428,71 @@ fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, no
 	}
 }
 
+fn (c &QuicConn) oldest_retransmittable_payload(space QuicPacketNumberSpace) ?u64 {
+	mut oldest := u64(0)
+	for id, payload in c.retransmittable_payloads {
+		if payload.space == space && (oldest == 0 || id < oldest) {
+			oldest = id
+		}
+	}
+	if oldest == 0 {
+		return none
+	}
+	return oldest
+}
+
+fn (mut c QuicConn) send_retransmittable_payload(id u64, now u64, respect_congestion_window bool, mut result PollResult) !bool {
+	payload := c.retransmittable_payloads[id] or { return false }
+	if !c.has_amplification_budget_for(payload.space, payload.data.len) {
+		return false
+	}
+	if respect_congestion_window {
+		estimated_size := c.estimated_datagram_size(payload.space, payload.data.len)
+		if c.congestion_control.bytes_in_flight >= c.congestion_control.congestion_window
+			|| estimated_size > c.congestion_control.congestion_window - c.congestion_control.bytes_in_flight {
+			return false
+		}
+	}
+	datagram := match payload.space {
+		.initial {
+			if c.initial_keys_discarded {
+				return false
+			}
+			c.build_initial_packet_tracked(payload.data, true, now, id)!
+		}
+		.handshake {
+			if c.handshake_keys_discarded {
+				return false
+			}
+			_ := c.own_handshake_keys() or { return false }
+			c.build_handshake_packet_tracked(payload.data, true, now, id)!
+		}
+		.application_data {
+			_ := c.app_write_keys or { return false }
+			c.build_one_rtt_packet_tracked(payload.data, true, now, id)!
+		}
+	}
+	result.outgoing << datagram
+	c.record_amplification_sent(datagram.bytes.len)
+	return true
+}
+
+fn (mut c QuicConn) drain_lost_retransmittable_payloads(now u64, mut result PollResult) ! {
+	mut ids := []u64{}
+	for id, payload in c.retransmittable_payloads {
+		if payload.needs_send {
+			ids << id
+		}
+	}
+	ids.sort()
+	for id in ids {
+		c.send_retransmittable_payload(id, now, true, mut result)!
+	}
+}
+
 // send_pto_probe sends an RFC 9002 §6.2 PTO probe in the space the timer
-// identified. An unacknowledged Handshake CRYPTO flight is retransmitted so
-// loss cannot stall the TLS handshake; other spaces use an always-legal PING.
+// identified. The oldest unacknowledged ack-eliciting payload in that space is
+// retransmitted; a connection with no retained payload uses an always-legal PING.
 //
 // Every arm is gated on has_amplification_budget_for()/record_amplification_
 // sent() -- the SAME RFC 9000 §8.1 3x-received budget drain_outgoing's own
@@ -2344,22 +2512,8 @@ fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, no
 // budget lets the next-armed PTO actually send. (Codex review, PR #28164
 // pullrequestreview-5044139767.)
 fn (mut c QuicConn) send_pto_probe(space QuicPacketNumberSpace, now u64, mut result PollResult) ! {
-	if space == .handshake {
-		if data := c.pending_handshake_crypto {
-			if c.handshake_keys_discarded {
-				return
-			}
-			_ := c.own_handshake_keys() or { return }
-			crypto_frame := encode_crypto_frame(c.pending_handshake_offset, data)!
-			if !c.has_amplification_budget_for(.handshake, crypto_frame.len) {
-				return
-			}
-			pn := c.pn_spaces.handshake.next_send_pn
-			datagram := c.build_handshake_packet(crypto_frame, true, now)!
-			result.outgoing << datagram
-			c.record_amplification_sent(datagram.bytes.len)
-			c.handshake_crypto_sent_pns[pn] = true
-			c.handshake_crypto_needs_send = false
+	if id := c.oldest_retransmittable_payload(space) {
+		if c.send_retransmittable_payload(id, now, false, mut result)! {
 			return
 		}
 	}

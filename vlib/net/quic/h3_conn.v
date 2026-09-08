@@ -129,6 +129,10 @@ pub:
 	// only carries the WIRE bytes) since new_qpack_decoder needs the raw
 	// value, not a re-parse of what this connection just encoded.
 	own_qpack_max_table_capacity u64
+	// max_inbound_data_frame_payload rejects an incoming request-stream DATA
+	// frame as soon as its declared length is decoded, before its payload is
+	// buffered. Zero leaves the payload size unrestricted.
+	max_inbound_data_frame_payload u64
 }
 
 // UniStreamKind classifies a peer-initiated unidirectional stream once
@@ -198,8 +202,9 @@ pub struct H3Conn {
 mut:
 	qc &QuicConn
 
-	own_settings                 []H3Setting
-	own_qpack_max_table_capacity u64
+	own_settings                   []H3Setting
+	own_qpack_max_table_capacity   u64
+	max_inbound_data_frame_payload u64
 
 	own_control_stream_id       ?u64
 	own_qpack_encoder_stream_id ?u64
@@ -251,6 +256,7 @@ pub fn new_h3_conn(mut qc QuicConn, params H3ConnParams) &H3Conn {
 		qc: qc
 		own_settings: params.settings
 		own_qpack_max_table_capacity: params.own_qpack_max_table_capacity
+		max_inbound_data_frame_payload: params.max_inbound_data_frame_payload
 		peer_control_decoder: new_h3_frame_decoder()
 		qpack_decoder: new_qpack_decoder(params.own_qpack_max_table_capacity)
 		qpack_encoder: new_qpack_encoder()
@@ -641,7 +647,13 @@ fn (mut h H3Conn) dispatch_request_stream_frames(stream_id u64, mut result H3Pol
 		decoder.push(new_bytes)
 	}
 	for {
-		decoded := decoder.next()!
+		decoded := decoder.next_with_data_payload_limit(h.max_inbound_data_frame_payload) or {
+			if err.code() != int(H3ErrorCode.excessive_load) {
+				return err
+			}
+			h.fail_request_stream(stream_id, H3ErrorCode.excessive_load.code(), err.msg(), mut result)
+			return
+		}
 		if !decoded.has_frame {
 			break
 		}

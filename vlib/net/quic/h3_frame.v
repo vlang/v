@@ -418,8 +418,15 @@ pub fn (mut d H3FrameDecoder) push(data []u8) {
 // such error is a CONNECTION error: the caller's real obligation is to
 // close the whole HTTP/3 connection, not to keep feeding this decoder.
 pub fn (mut d H3FrameDecoder) next() !H3FrameDecodeResult {
+	return d.next_with_data_payload_limit(0)
+}
+
+fn (mut d H3FrameDecoder) next_with_data_payload_limit(max_data_payload u64) !H3FrameDecodeResult {
 	frame_type, type_len := decode_varint(d.pending) or { return H3FrameDecodeResult{} }
 	length, length_len := decode_varint(d.pending[type_len..]) or { return H3FrameDecodeResult{} }
+	if max_data_payload > 0 && frame_type == h3_frame_data && length > max_data_payload {
+		return error_with_code('h3: DATA frame length ${length} exceeds the configured ${max_data_payload}-byte limit', int(H3ErrorCode.excessive_load))
+	}
 	header_len := type_len + length_len
 	// `length` is attacker-controlled and can legally be up to 2^62-1
 	// (RFC 9000 §16's varint range) -- e.g. a genuinely huge DATA frame
@@ -448,11 +455,9 @@ pub fn (mut d H3FrameDecoder) next() !H3FrameDecodeResult {
 
 // pending_len returns how many not-yet-decoded bytes are currently
 // buffered -- useful for a caller wanting to bound how much unconsumed
-// data it will let a peer accumulate before a complete frame arrives
-// (mirrors crypto_stream.v's max_crypto_stream_buffered_bytes rationale;
-// no such cap is enforced BY this file itself -- see the "Known design
-// notes" row this phase's matrix section adds on why DATA frames in
-// particular must stay uncapped here).
+// data it will let a peer accumulate before a complete frame arrives.
+// H3Conn's bounded decode path can reject an oversized DATA declaration
+// before that payload is buffered; the public next() path remains uncapped.
 pub fn (d &H3FrameDecoder) pending_len() int {
 	return d.pending.len
 }

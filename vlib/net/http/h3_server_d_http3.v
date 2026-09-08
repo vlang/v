@@ -208,6 +208,7 @@ pub fn new_h3_server(listen_addr string, params H3ServerParams) !&H3Server {
 		h3_params: quic.H3ConnParams{
 			settings: h3_default_own_settings()
 			own_qpack_max_table_capacity: h3_default_own_qpack_max_table_capacity
+			max_inbound_data_frame_payload: h3_server_max_request_body
 		}
 		handler: params.handler
 	}
@@ -510,6 +511,11 @@ fn (mut s H3Server) handle_h3_event(conn_id string, mut h3c quic.H3Conn, ev quic
 		}
 		.request_error {
 			stream_id := ev.stream_id or { return }
+			if code := ev.error_code {
+				if code == quic.H3ErrorCode.excessive_load.code() {
+					s.send_error_response(mut h3c, stream_id, 413)
+				}
+			}
 			s.streams.delete(h3_server_stream_key(conn_id, stream_id))
 		}
 		else {

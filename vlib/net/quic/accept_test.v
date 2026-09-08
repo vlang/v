@@ -248,7 +248,7 @@ fn test_server_retransmits_lost_handshake_crypto_on_pto() {
 		server.free()
 	}
 	assert server_result.outgoing.len >= 2
-	assert server.handshake_crypto_sent_pns.len == 1
+	assert server.handshake_payload_by_pn.len == 1
 	original_send_offset := server.handshake_crypto_send_offset
 
 	// Deliver the Initial-space packets and drop the final Handshake packet
@@ -271,7 +271,7 @@ fn test_server_retransmits_lost_handshake_crypto_on_pto() {
 	deadline := server_after_ack.next_timeout or { panic('expected a Handshake PTO deadline') }
 	pto := server.process_timeouts(deadline) or { panic('server PTO failed: ${err}') }
 	assert pto.outgoing.len == 1
-	assert server.handshake_crypto_sent_pns.len == 2
+	assert server.handshake_payload_by_pn.len == 2
 	assert server.handshake_crypto_send_offset == original_send_offset
 
 	mut client_outgoing := []QuicDatagram{}
@@ -283,16 +283,106 @@ fn test_server_retransmits_lost_handshake_crypto_on_pto() {
 	}
 	assert client_outgoing.len > 0
 	mut server_outgoing := []QuicDatagram{}
+	mut server_after_finished := PollResult{}
 	for dg in client_outgoing {
-		result := server.poll(dg.bytes, deadline + 2) or {
+		server_after_finished = server.poll(dg.bytes, deadline + 2) or {
 			panic('server failed to process client Finished: ${err}')
 		}
-		server_outgoing << result.outgoing
+		server_outgoing << server_after_finished.outgoing
 	}
-	for dg in server_outgoing {
-		client.poll(dg.bytes, deadline + 3) or {
-			panic('client failed to process HANDSHAKE_DONE: ${err}')
+	assert server_outgoing.len > 0
+	assert server.app_payload_by_pn.len == 1
+	// Drop the first HANDSHAKE_DONE and recover it from the application-data PTO.
+	handshake_done_deadline := server_after_finished.next_timeout or {
+		panic('expected an application-data PTO deadline')
+	}
+	handshake_done_pto := server.process_timeouts(handshake_done_deadline) or {
+		panic('server HANDSHAKE_DONE PTO failed: ${err}')
+	}
+	assert handshake_done_pto.outgoing.len == 1
+	mut client_ack := []QuicDatagram{}
+	for dg in handshake_done_pto.outgoing {
+		client_result := client.poll(dg.bytes, handshake_done_deadline + 1) or {
+			panic('client failed to process retransmitted HANDSHAKE_DONE: ${err}')
 		}
+		client_ack << client_result.outgoing
+	}
+	for dg in client_ack {
+		server.poll(dg.bytes, handshake_done_deadline + 2) or {
+			panic('server failed to process the HANDSHAKE_DONE ACK: ${err}')
+		}
+	}
+	assert client.state() == .established
+	assert server.state() == .established
+
+	// A lost 1-RTT STREAM frame retains its original offset/data/FIN and is
+	// retransmitted rather than replaced by a PING-only probe.
+	stream_id := server.open_stream(true)!
+	server.write_stream(stream_id, 'recovered response'.bytes(), true)!
+	stream_flush := server.poll(none, handshake_done_deadline + 3)!
+	assert stream_flush.outgoing.len == 1
+	stream_deadline := stream_flush.next_timeout or { panic('expected a STREAM PTO deadline') }
+	stream_pto := server.process_timeouts(stream_deadline)!
+	assert stream_pto.outgoing.len == 1
+	for dg in stream_pto.outgoing {
+		client.poll(dg.bytes, stream_deadline + 1)!
+	}
+	assert client.read_stream(stream_id)!.bytestr() == 'recovered response'
+}
+
+fn test_server_retransmits_lost_initial_crypto_on_pto() {
+	mut signing_key := ecdsa.new_key_from_seed(accept_test_key_seed, fixed_size: true)!
+	defer {
+		signing_key.free()
+	}
+	mut client, client_dg := dial(DialParams{
+		server_name: 'localhost'
+		ca_bundle_pem: accept_test_cert_pem
+		alpn_protocols: ['h3']
+		transport_parameters: accept_test_transport_parameters()
+	}, 0)!
+	defer {
+		client.free()
+	}
+	mut server, server_result := accept(client_dg.bytes, AcceptParams{
+		transport_parameters: accept_test_transport_parameters()
+		alpn_protocols: ['h3']
+		certificate_chain: [
+			CertificateEntry{
+				cert_data: accept_test_pem_to_der(accept_test_cert_pem)
+			},
+		]
+		signing_key: signing_key
+	}, 0)!
+	defer {
+		server.free()
+	}
+	assert server_result.outgoing.len >= 2
+	assert server.initial_payload_by_pn.len == 1
+	// A real client whose first flight receives no reply retransmits its padded
+	// Initial, raising the server's anti-amplification budget enough for a probe.
+	server.poll(client_dg.bytes, 1)!
+	deadline := server_result.next_timeout or { panic('expected an Initial PTO deadline') }
+	initial_pto := server.process_timeouts(deadline)!
+	assert initial_pto.outgoing.len == 1, 'PTO produced no Initial retransmission; retained=${server.initial_payload_by_pn.len}, amplification_budget=${server.amplification.available_to_send()}, retransmittable=${server.retransmittable_payloads.len}'
+	header, _ := parse_long_header(initial_pto.outgoing[0].bytes)!
+	assert header.typ == .initial
+
+	mut client_outgoing := []QuicDatagram{}
+	for dg in initial_pto.outgoing {
+		client_outgoing << client.poll(dg.bytes, deadline + 1)!.outgoing
+	}
+	// The original Handshake packet was retained by the test while its Initial
+	// sibling was dropped. It becomes decryptable after the recovered ServerHello.
+	for dg in server_result.outgoing[1..] {
+		client_outgoing << client.poll(dg.bytes, deadline + 2)!.outgoing
+	}
+	mut final_server_outgoing := []QuicDatagram{}
+	for dg in client_outgoing {
+		final_server_outgoing << server.poll(dg.bytes, deadline + 3)!.outgoing
+	}
+	for dg in final_server_outgoing {
+		client.poll(dg.bytes, deadline + 4)!
 	}
 	assert client.state() == .established
 	assert server.state() == .established
