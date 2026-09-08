@@ -277,7 +277,7 @@ fn (mut g Gen) gen_embedded_asm_file(emfile ast.EmbeddedFile) {
 	sb.writeln('    .type _v_embed_blob_${ef_hash}, %object')
 	sb.writeln('_v_embed_blob_${ef_hash}:')
 	sb.writeln('#endif')
-	sb.writeln('    .incbin "${cestring(incbin_path)}"')
+	sb.writeln('    .incbin "${asm_string_escape(incbin_path)}"')
 	sb.writeln('#if !defined(__APPLE__) && !defined(_WIN32)')
 	sb.writeln('    .size _v_embed_blob_${ef_hash}, ${emfile.bytes.len}')
 	sb.writeln('#endif')
@@ -290,4 +290,8 @@ fn (mut g Gen) gen_embedded_asm_file(emfile ast.EmbeddedFile) {
 	if emfile.is_compressed {
 		g.embedded_temp_files << emfile.compressed_temp_path
 	}
+}
+
+fn asm_string_escape(s string) string {
+	return s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r')
 }

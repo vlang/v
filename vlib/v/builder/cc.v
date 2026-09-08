@@ -2024,12 +2024,14 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 		obj_path := asm_path.replace('.S', '.o')
 		mut asm_args := []string{}
 		asm_args << '-c'
-		host_os := pref.get_host_os()
-		host_arch := pref.get_host_arch()
-		native_i386_multilib := host_os == b.pref.os && host_arch == .amd64 && b.pref.arch == .i386
-		if native_i386_multilib {
-			asm_args << '-m32'
+		env_cflags := os.getenv('CFLAGS').replace('\n', ' ')
+		if env_cflags != '' {
+			asm_args << env_cflags
 		}
+		if b.pref.cflags != '' {
+			asm_args << b.pref.cflags
+		}
+		host_os := pref.get_host_os()
 
 		// Cross-compilation target flags
 		// When the target OS/arch differs from the host, the .S file must be
