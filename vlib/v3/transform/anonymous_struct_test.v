@@ -100,6 +100,39 @@ fn test_inferred_anonymous_structs_reuse_their_semantic_shape() {
 	assert synthesized_declarations == 1
 }
 
+fn test_inferred_anonymous_struct_name_does_not_replace_user_struct() {
+	mut a := flat.FlatAst.new()
+	main_file := '/tmp/project/main.v'
+	a.source_files[1] = token.File.unindexed(main_file, 1)
+	struct_id, value_id := add_inferred_anonymous_struct(mut a, 1)
+	colliding_name := 'AnonStruct_v3_inferred_${struct_id}'
+	a.add_node(flat.Node{
+		kind: .struct_decl
+		value: colliding_name
+		pos: token.new_pos(1, 0)
+	})
+	a.add_node(flat.Node{
+		kind: .file
+		value: main_file
+	})
+
+	user_fields := [types.StructField{
+		name: 'user_field'
+		typ: types.Type(types.string_)
+	}]
+	mut tc := types.TypeChecker.new(&a)
+	tc.file_modules[main_file] = 'main'
+	tc.structs[colliding_name] = user_fields
+	tc.register_synth_type(value_id, types.Type(types.int_))
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.materialize_inferred_anonymous_structs()
+
+	generated_name := '${colliding_name}_1'
+	assert a.nodes[int(struct_id)].typ == generated_name
+	assert tc.structs[colliding_name] == user_fields
+	assert tc.structs[generated_name][0].name == 'item'
+}
+
 fn test_prepared_selfhost_transform_materializes_before_repreparing() {
 	mut a := flat.FlatAst.new()
 	main_file := '/tmp/project/main.v'

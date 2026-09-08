@@ -3,6 +3,11 @@ module transform
 import v3.flat
 import v3.types
 
+fn inferred_anonymous_struct_type_exists(tc &types.TypeChecker, name string) bool {
+	return name in tc.structs || name in tc.type_aliases || name in tc.sum_types
+		|| name in tc.enum_names || name in tc.interface_names
+}
+
 // materialize_inferred_anonymous_structs gives a concrete declaration to an
 // inferred `struct { field: expression }` literal whose field expressions were
 // not syntactically typed by the parser. Semantic checking has resolved those
@@ -83,7 +88,21 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 						pos: source_field.pos
 					})
 				}
-				name := 'AnonStruct_v3_inferred_${idx}'
+				base_name := 'AnonStruct_v3_inferred_${idx}'
+				mut name := base_name
+				mut semantic_name := name
+				if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
+					semantic_name = '${cur_module}.${name}'
+				}
+				mut collision_suffix := 1
+				for inferred_anonymous_struct_type_exists(t.tc, semantic_name) {
+					name = '${base_name}_${collision_suffix}'
+					semantic_name = name
+					if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
+						semantic_name = '${cur_module}.${name}'
+					}
+					collision_suffix++
+				}
 				if cur_file.len > 0 {
 					t.a.add_node(flat.Node{
 						kind: .file
@@ -107,11 +126,6 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 					children_count: flat.child_count(field_ids.len)
 					pos: node.pos
 				})
-				semantic_name := if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
-					'${cur_module}.${name}'
-				} else {
-					name
-				}
 				t.tc.structs[semantic_name] = semantic_fields
 				t.tc.struct_modules[semantic_name] = cur_module
 				t.tc.struct_files[semantic_name] = cur_file
