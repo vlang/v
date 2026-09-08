@@ -292,7 +292,13 @@ fn split_mailbox(s string) (?string, string) {
 		// looking text inside it cannot be mistaken for RFC 2047 syntax.
 		raw_name
 	} else {
-		decode_rfc5322_quoted_phrase(raw_name) or { raw_name }
+		if decoded := decode_rfc5322_quoted_phrase(raw_name) {
+			// Keep the decoded phrase marked as literal text. In particular, a
+			// quoted word that resembles an encoded-word must not be reinterpreted.
+			quote_name(decoded)
+		} else {
+			raw_name
+		}
 	}
 	display_name := if name == '' { none } else { name }
 	return display_name, addr
@@ -454,6 +460,11 @@ fn unquote_name(name string) string {
 		}
 	}
 	return sb.str()
+}
+
+fn quote_name(name string) string {
+	escaped := name.replace('\\', '\\\\').replace('"', '\\"')
+	return '"${escaped}"'
 }
 
 // skip_quoted_string returns the index just past the quoted-string starting
@@ -631,8 +642,7 @@ fn format_addr(addr string) string {
 		if !unquoted_name.is_ascii() {
 			return '${encode_rfc2047(unquoted_name)} <${addr_spec}>'
 		}
-		escaped_name := unquoted_name.replace('\\', '\\\\').replace('"', '\\"')
-		return '"${escaped_name}" <${addr_spec}>'
+		return '${quote_name(unquoted_name)} <${addr_spec}>'
 	}
 
 	if encoded_phrase := format_rfc2047_phrase(name) {
@@ -642,8 +652,7 @@ fn format_addr(addr string) string {
 		return '${encode_rfc2047(name)} <${addr_spec}>'
 	}
 
-	escaped := name.replace('\\', '\\\\').replace('"', '\\"')
-	return '"${escaped}" <${addr_spec}>'
+	return '${quote_name(name)} <${addr_spec}>'
 }
 
 // format_rfc2047_phrase preserves an RFC 5322 phrase containing at least one
@@ -657,48 +666,117 @@ fn format_rfc2047_phrase(s string) ?string {
 		return none
 	}
 	mut has_encoded_word := false
-	mut formatted := []string{cap: words.len}
+	mut formatted := []Rfc2047PhraseWord{cap: words.len}
 	for word in words {
-		if is_rfc2047_encoded_word(word) {
+		if !word.quoted && is_rfc2047_encoded_word(word.raw) {
 			has_encoded_word = true
-			formatted << word
+			formatted << Rfc2047PhraseWord{
+				value: word.raw
+				semantic: word.raw
+				separated: word.separated
+				encoded: true
+			}
 			continue
 		}
-		if word.starts_with('"') {
-			unquoted := unquote_name(word)
-			if unquoted == word {
+		if word.quoted {
+			unquoted := unquote_name(word.raw)
+			if unquoted == word.raw {
 				return none
 			}
-			formatted << if unquoted.is_ascii() { word } else { encode_rfc2047(unquoted) }
+			formatted << if unquoted.is_ascii() {
+				Rfc2047PhraseWord{
+					value: word.raw
+					semantic: unquoted
+					separated: word.separated
+				}
+			} else {
+				Rfc2047PhraseWord{
+					value: encode_rfc2047(unquoted)
+					semantic: unquoted
+					separated: word.separated
+					encoded: true
+					generated: true
+				}
+			}
 			continue
 		}
-		if !word.is_ascii() {
-			formatted << encode_rfc2047(word)
+		if !word.raw.is_ascii() {
+			formatted << Rfc2047PhraseWord{
+				value: encode_rfc2047(word.raw)
+				semantic: word.raw
+				separated: word.separated
+				encoded: true
+				generated: true
+			}
 			continue
 		}
-		if !word.bytes().all(is_rfc5322_atext(it)) {
+		if !word.raw.bytes().all(is_rfc5322_atext(it)) {
 			return none
 		}
-		formatted << word
+		formatted << Rfc2047PhraseWord{
+			value: word.raw
+			semantic: word.raw
+			separated: word.separated
+		}
 	}
 	if !has_encoded_word {
 		return none
 	}
-	return formatted.join('\r\n ')
+	mut out := strings.new_builder(s.len + formatted.len * 3)
+	for i, word in formatted {
+		mut value := word.value
+		if i > 0 {
+			previous := formatted[i - 1]
+			if word.separated {
+				if previous.encoded && word.encoded && (previous.generated || word.generated) {
+					if word.generated {
+						// Whitespace between adjacent encoded-words is ignored by RFC 2047
+						// decoders, so carry a newly introduced separator in the payload.
+						value = encode_rfc2047(' ${word.semantic}')
+					} else {
+						out.write_string('\r\n =?utf-8?B?IA==?=')
+					}
+				}
+				out.write_string('\r\n ')
+			} else if previous.encoded && word.encoded {
+				// Folding between adjacent encoded-words is semantically invisible.
+				out.write_string('\r\n ')
+			}
+		}
+		out.write_string(value)
+	}
+	return out.str()
 }
 
-fn split_rfc5322_phrase_words(s string) ?[]string {
-	mut words := []string{}
+struct Rfc5322PhraseWord {
+	raw       string
+	separated bool
+	quoted    bool
+}
+
+struct Rfc2047PhraseWord {
+	value     string
+	semantic  string
+	separated bool
+	encoded   bool
+	generated bool
+}
+
+fn split_rfc5322_phrase_words(s string) ?[]Rfc5322PhraseWord {
+	mut words := []Rfc5322PhraseWord{}
 	mut i := 0
 	for i < s.len {
+		mut separated := false
 		for i < s.len && s[i] in [` `, `\t`, `\r`, `\n`] {
+			separated = true
 			i++
 		}
 		if i == s.len {
 			break
 		}
 		start := i
-		if s[i] == `"` {
+		quoted := s[i] == `"`
+		if quoted {
 			i = skip_quoted_string(s, i)
 			if i == s.len && s[i - 1] != `"` {
 				return none
@@ -708,7 +786,11 @@ fn split_rfc5322_phrase_words(s string) ?[]string {
 				i++
 			}
 		}
-		words << s[start..i]
+		words << Rfc5322PhraseWord{
+			raw: s[start..i]
+			separated: words.len > 0 && separated
+			quoted: quoted
+		}
 	}
 	return words
 }
@@ -721,27 +803,34 @@ fn decode_rfc5322_quoted_phrase(s string) ?string {
 	mut decoded := []string{cap: words.len}
 	mut has_quoted_string := false
 	for word in words {
-		if is_rfc2047_encoded_word(word) {
+		if !word.quoted && is_rfc2047_encoded_word(word.raw) {
 			return none
 		}
-		if word.starts_with('"') {
-			unquoted := unquote_name(word)
-			if unquoted == word {
+		if word.quoted {
+			unquoted := unquote_name(word.raw)
+			if unquoted == word.raw {
 				return none
 			}
-			decoded << unquoted.trim_space()
+			decoded << unquoted
 			has_quoted_string = true
 			continue
 		}
-		if !word.bytes().all(is_rfc5322_atext(it)) {
+		if !word.raw.bytes().all(is_rfc5322_atext(it)) {
 			return none
 		}
-		decoded << word
+		decoded << word.raw
 	}
 	if !has_quoted_string {
 		return none
 	}
-	return decoded.join(' ')
+	mut out := strings.new_builder(s.len)
+	for i, word in words {
+		if i > 0 && word.separated {
+			out.write_u8(` `)
+		}
+		out.write_string(decoded[i])
+	}
+	return out.str()
 }
 
 fn is_rfc2047_encoded_word(word string) bool {

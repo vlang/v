@@ -290,13 +290,15 @@ fn test_format_addr() {
 	assert format_addr('John Smith <john@ex.com>') == '"John Smith" <john@ex.com>'
 	assert format_addr('John "Q." Public <john@example.com>') == '"John Q. Public" <john@example.com>'
 	assert format_addr('John" Q." Public <john@example.com>') == '"John Q. Public" <john@example.com>'
+	assert format_addr('John"Q." Public <john@example.com>') == '"JohnQ. Public" <john@example.com>'
 	assert format_addr('=?UTF-8?B?Sm9zw6k=?= <jose@example.com>') == '=?UTF-8?B?Sm9zw6k=?= <jose@example.com>'
 	assert format_addr('"=?UTF-8?B?Sm9zw6k=?=" <jose@example.com>') == '"=?UTF-8?B?Sm9zw6k=?=" <jose@example.com>'
 	assert format_addr('=?UTF-8?Q?Jos=C3=A9?= =?UTF-8?Q?_Silva?= <jose@example.com>') == '=?UTF-8?Q?Jos=C3=A9?=\r\n =?UTF-8?Q?_Silva?= <jose@example.com>'
 	assert format_addr('=?UTF-8?B?Sm9zw6k=?= Silva <jose@example.com>') == '=?UTF-8?B?Sm9zw6k=?=\r\n Silva <jose@example.com>'
 	assert format_addr('=?UTF-8?B?Sm9zw6k=?= "da Silva" <jose@example.com>') == '=?UTF-8?B?Sm9zw6k=?=\r\n "da Silva" <jose@example.com>'
-	assert format_addr('=?UTF-8?B?Sm9zw6k=?= "Иван" <jose@example.com>') == '=?UTF-8?B?Sm9zw6k=?=\r\n =?utf-8?B?0JjQstCw0L0=?= <jose@example.com>'
-	assert format_addr('=?UTF-8?B?Sm9zw6k=?= Иван <jose@example.com>') == '=?UTF-8?B?Sm9zw6k=?=\r\n =?utf-8?B?0JjQstCw0L0=?= <jose@example.com>'
+	assert format_addr('=?UTF-8?B?Sm9zw6k=?= "Иван" <jose@example.com>') == '=?UTF-8?B?Sm9zw6k=?=\r\n =?utf-8?B?INCY0LLQsNC9?= <jose@example.com>'
+	assert format_addr('=?UTF-8?B?Sm9zw6k=?= Иван <jose@example.com>') == '=?UTF-8?B?Sm9zw6k=?=\r\n =?utf-8?B?INCY0LLQsNC9?= <jose@example.com>'
+	assert format_addr('"=?UTF-8?B?Sm9zw6k=?=" Silva <jose@example.com>') == '"=?UTF-8?B?Sm9zw6k=?= Silva" <jose@example.com>'
 	encoded_word := '=?UTF-8?B?Sm9zw6k=?='
 	long_encoded_name := []string{len: 50, init: encoded_word}.join(' ')
 	for line in format_addr('${long_encoded_name} <jose@example.com>').split('\r\n') {
