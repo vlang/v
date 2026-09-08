@@ -51,6 +51,12 @@ fn (mut h H3Conn) apply_control_frame(frame H3Frame, mut result H3PollResult) ! 
 				&& !goaway_id_is_valid_client_initiated_bidi_stream_id(frame.id) {
 				return error_with_code('h3: GOAWAY id ${frame.id} is not a valid client-initiated bidirectional stream id', int(H3ErrorCode.id_error))
 			}
+			if previous := h.peer_goaway_id {
+				if frame.id > previous {
+					return error_with_code('h3: GOAWAY id ${frame.id} increased from ${previous}', int(H3ErrorCode.id_error))
+				}
+			}
+			h.peer_goaway_id = frame.id
 			result.events << H3Event{
 				kind: .goaway
 				goaway_id: frame.id

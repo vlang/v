@@ -58,6 +58,14 @@ fn build_test_client_hello_body(transport_parameters QuicTransportParameters) ![
 }
 
 fn build_test_client_hello_body_with_group_extensions(transport_parameters QuicTransportParameters, supported_groups_extension []u8, key_share_extension []u8) ![]u8 {
+	return build_test_client_hello_body_with_extensions(transport_parameters, supported_groups_extension, key_share_extension, []u8{})
+}
+
+fn build_test_client_hello_body_with_extra_extensions(transport_parameters QuicTransportParameters, extra_extensions []u8) ![]u8 {
+	return build_test_client_hello_body_with_extensions(transport_parameters, encode_supported_groups_extension()!, encode_key_share_extension(named_group_secp256r1, []u8{len: 65, init: 0x04})!, extra_extensions)
+}
+
+fn build_test_client_hello_body_with_extensions(transport_parameters QuicTransportParameters, supported_groups_extension []u8, key_share_extension []u8, extra_extensions []u8) ![]u8 {
 	mut body := []u8{}
 	body << u8(0x03)
 	body << u8(0x03)
@@ -77,11 +85,31 @@ fn build_test_client_hello_body_with_group_extensions(transport_parameters QuicT
 	extensions << encode_alpn_extension(['h3'])!
 	extensions << key_share_extension
 	extensions << encode_quic_transport_parameters_extension(transport_parameters)!
+	extensions << extra_extensions
 
 	body << u8(extensions.len >> 8)
 	body << u8(extensions.len)
 	body << extensions
 	return body
+}
+
+fn test_server_handshake_rejects_malformed_server_name_extension() {
+	malformed_server_name := encode_extension(ext_server_name, []u8{})!
+	body := build_test_client_hello_body_with_extra_extensions(QuicTransportParameters{
+		initial_source_connection_id: []u8{len: 8}
+	}, malformed_server_name)!
+	msg := HandshakeMessage{
+		typ: .client_hello
+		body: body
+	}
+	framed := encode_handshake_message(.client_hello, body)!
+	server_params := server_handshake_test_server_params()!
+	Tls13ServerHandshake.respond_to_client_hello(msg, framed, server_params) or {
+		assert err.code() == int(tls_alert_to_quic_error(.decode_error))
+		assert err.msg().contains('server_name')
+		return
+	}
+	assert false, 'expected malformed server_name to be rejected'
 }
 
 // test_server_handshake_full_flow_agrees_with_real_client is the primary

@@ -264,6 +264,13 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 		return transport_parameter_error('quic: ClientHello transport parameters must not include retry_source_connection_id (server-only)')
 	}
 
+	mut acknowledge_server_name := false
+	if server_name_ext := find_extension(parsed.extensions, ext_server_name) {
+		acknowledge_server_name = parse_server_name_extension_client(server_name_ext.data) or {
+			return handshake_error(.decode_error, err.msg())
+		}
+	}
+
 	// Every peer-input validation above has passed -- only internal
 	// failures (ECDHE keygen, key-schedule/message-construction errors)
 	// remain possible from here on, matching Tls13ClientHandshake.start's
@@ -311,11 +318,6 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 	handshake_secrets := derive_handshake_secrets(early_secret, shared_secret, sha256.sum256(transcript)) or {
 		ecdhe_private.free()
 		return handshake_error(.handshake_failure, err.msg())
-	}
-
-	mut acknowledge_server_name := false
-	if _ := find_extension(parsed.extensions, ext_server_name) {
-		acknowledge_server_name = true
 	}
 
 	encrypted_extensions := build_encrypted_extensions(

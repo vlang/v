@@ -43,14 +43,15 @@ module quic
 // connection error. Mirrors crypto_stream.v's max_crypto_stream_buffered_
 // bytes reasoning exactly: control-plane messages (SETTINGS, GOAWAY,
 // QPACK instructions) never legitimately need anywhere near this much.
-// Deliberately NOT applied to a REQUEST stream's H3FrameDecoder -- DATA
-// frames legitimately carry arbitrarily large bodies (h3_frame.v's own
-// module doc comment), so capping there would incorrectly reject a
-// spec-legal large transfer; H3FrameDecoder.pending_len() exists
-// specifically so a request stream's buffering can instead be reasoned
-// about against QUIC's own per-stream flow-control window (already
-// enforced by QuicConn itself), not an independent byte cap here.
+// DATA uses a caller-configured request-stream limit instead; HEADERS has
+// its own fixed bound below because a decoder must retain the complete
+// QPACK field section before it can process it.
 pub const max_h3_control_plane_buffered_bytes = u64(65536)
+
+// max_h3_request_headers_frame_payload bounds one encoded QPACK field
+// section before H3FrameDecoder buffers its payload. It mirrors HTTP/2's
+// one-megabyte received header-block bound.
+const max_h3_request_headers_frame_payload = u64(1024 * 1024)
 
 // max_h3_uni_stream_header_buffered_bytes bounds how many bytes this
 // connection will buffer for a peer-initiated unidirectional stream whose
@@ -225,6 +226,7 @@ mut:
 	peer_qpack_encoder_buf       []u8
 	peer_qpack_decoder_buf       []u8
 	peer_max_push_id             ?u64
+	peer_goaway_id               ?u64
 	qpack_stream_registry        QpackStreamRegistry
 	// Every OTHER classified-but-uninteresting peer uni stream (push,
 	// reserved/grease, or genuinely unknown -- RFC 9114 §6.2/§6.2.3/§9 all
@@ -647,7 +649,7 @@ fn (mut h H3Conn) dispatch_request_stream_frames(stream_id u64, mut result H3Pol
 		decoder.push(new_bytes)
 	}
 	for {
-		decoded := decoder.next_with_data_payload_limit(h.max_inbound_data_frame_payload) or {
+		decoded := decoder.next_with_payload_limits(h.max_inbound_data_frame_payload, max_h3_request_headers_frame_payload) or {
 			if err.code() != int(H3ErrorCode.excessive_load) {
 				return err
 			}

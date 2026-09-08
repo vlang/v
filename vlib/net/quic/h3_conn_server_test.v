@@ -351,6 +351,25 @@ fn test_h3_conn_server_rejects_oversized_data_from_header_only() {
 	assert errors[0].error_code? == H3ErrorCode.excessive_load.code()
 }
 
+fn test_h3_conn_server_rejects_oversized_headers_from_header_only() {
+	_, mut client_h3, _, mut server_h3, now0 := h3_server_test_pair()!
+	defer {
+		client_h3.free()
+		server_h3.free()
+	}
+	_, _, now1 := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now0)!
+	stream_id := client_h3.open_request_stream()!
+	mut oversized_headers_header := encode_varint(h3_frame_headers)!
+	oversized_headers_header << encode_varint(max_h3_request_headers_frame_payload + 1)!
+	client_h3.qc.write_stream(stream_id, oversized_headers_header, false)!
+	_, server_events, _ := pump_h3_pair_until_quiet(mut client_h3, mut server_h3, now1)!
+	errors := server_events.filter(it.kind == .request_error)
+	assert errors.len == 1
+	assert errors[0].error_code? == H3ErrorCode.excessive_load.code()
+	assert errors[0].reason.contains('HEADERS frame length')
+	assert stream_id !in server_h3.request_decoders
+}
+
 fn test_h3_conn_server_rejects_client_push_promise_as_connection_error() {
 	_, mut client_h3, _, mut server_h3, now0 := h3_server_test_pair()!
 	defer {
@@ -537,12 +556,35 @@ fn test_h3_conn_server_interprets_client_goaway_id_as_push_id() {
 	assert server_result.events.len == 1
 	assert server_result.events[0].kind == .goaway
 	assert server_result.events[0].goaway_id? == u64(3)
+	server_h3.apply_control_frame(GoawayFrame{
+		id: 2
+	}, mut server_result)!
+	if _ := server_h3.apply_control_frame(GoawayFrame{
+		id: 4
+	}, mut server_result) {
+		assert false, 'a server must reject an increasing client GOAWAY Push ID'
+	} else {
+		assert err.code() == int(H3ErrorCode.id_error)
+	}
 
 	mut client_result := H3PollResult{}
 	if _ := client_h3.apply_control_frame(GoawayFrame{
 		id: 3
 	}, mut client_result) {
 		assert false, 'a client must interpret GOAWAY id 3 as an invalid request stream ID'
+	} else {
+		assert err.code() == int(H3ErrorCode.id_error)
+	}
+	client_h3.apply_control_frame(GoawayFrame{
+		id: 8
+	}, mut client_result)!
+	client_h3.apply_control_frame(GoawayFrame{
+		id: 4
+	}, mut client_result)!
+	if _ := client_h3.apply_control_frame(GoawayFrame{
+		id: 8
+	}, mut client_result) {
+		assert false, 'a client must reject an increasing server GOAWAY request stream ID'
 	} else {
 		assert err.code() == int(H3ErrorCode.id_error)
 	}

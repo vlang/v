@@ -54,14 +54,14 @@ The `net.http` HTTP/3 transport performs this cleanup itself; this requirement a
 datagrams whose source address differs from the address recorded at acceptance. Callers must pass
 a stable, unambiguous address representation in `peer` on every `poll` call.
 
-## HTTP/3 inbound DATA limits
+## HTTP/3 inbound frame limits
 
 Direct `H3Conn` users can set `H3ConnParams.max_inbound_data_frame_payload` to reject an
 oversized request-stream DATA frame as soon as its declared length is available, before the
-payload is buffered. Zero keeps the generic connection default unrestricted. The `net.http`
-HTTP/3 server sets this to its 8 MiB request-body limit and also enforces the cumulative limit
-across complete DATA frames, plus an 8 MiB aggregate limit across unfinished requests on each
-connection.
+payload is buffered. Zero keeps DATA unrestricted. Request-stream HEADERS field sections have a
+fixed 1 MiB encoded-payload limit. The `net.http` HTTP/3 server sets the DATA limit to its 8 MiB
+request-body limit and also enforces the cumulative limit across complete DATA frames, plus an
+8 MiB aggregate limit across unfinished requests on each connection.
 
 CertificateVerify signature verification (ECDSA and RSA-PSS) and certificate
 chain-of-trust validation (including RSA-PKCS1v1.5-signed certificates, still

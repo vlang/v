@@ -217,6 +217,48 @@ fn encode_server_name_extension(hostname string) ![]u8 {
 	return encode_extension(ext_server_name, data)
 }
 
+// parse_server_name_extension_client validates RFC 6066's ServerNameList
+// framing and reports whether it contains a host_name entry. Unknown name
+// types remain structurally parseable and are ignored by this v1 server.
+fn parse_server_name_extension_client(data []u8) !bool {
+	if data.len < 2 {
+		return error('quic: server_name (client) truncated: missing ServerNameList length')
+	}
+	list_len := int((u32(data[0]) << 8) | u32(data[1]))
+	if list_len == 0 {
+		return error('quic: server_name (client) ServerNameList must not be empty')
+	}
+	if 2 + list_len != data.len {
+		return error('quic: server_name (client) list length ${list_len} does not match remaining data ${data.len - 2}')
+	}
+	mut cursor := 2
+	mut seen_types := map[u8]bool{}
+	mut has_host_name := false
+	for cursor < data.len {
+		if cursor + 3 > data.len {
+			return error('quic: server_name (client) truncated ServerName entry')
+		}
+		name_type := data[cursor]
+		name_len := int((u32(data[cursor + 1]) << 8) | u32(data[cursor + 2]))
+		cursor += 3
+		if name_len == 0 {
+			return error('quic: server_name (client) name must not be empty')
+		}
+		if cursor + name_len > data.len {
+			return error('quic: server_name (client) name declares ${name_len} bytes exceeding the remaining list')
+		}
+		if seen_types[name_type] {
+			return error('quic: server_name (client) contains duplicate name type ${name_type}')
+		}
+		seen_types[name_type] = true
+		if name_type == 0 {
+			has_host_name = true
+		}
+		cursor += name_len
+	}
+	return has_host_name
+}
+
 fn encode_quic_transport_parameters_extension(params QuicTransportParameters) ![]u8 {
 	encoded := encode_transport_parameters(params)!
 	return encode_extension(ext_quic_transport_parameters, encoded)

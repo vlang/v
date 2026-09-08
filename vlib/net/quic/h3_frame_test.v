@@ -352,7 +352,7 @@ fn test_h3_frame_decoder_rejects_oversized_data_before_buffering_payload() {
 	header << encode_varint(8 * 1024 * 1024 + 1)!
 	mut d := new_h3_frame_decoder()
 	d.push(header)
-	if _ := d.next_with_data_payload_limit(8 * 1024 * 1024) {
+	if _ := d.next_with_payload_limits(8 * 1024 * 1024, 0) {
 		assert false, 'expected oversized DATA to be rejected from its header alone'
 	} else {
 		assert err.code() == int(H3ErrorCode.excessive_load)
