@@ -149,6 +149,26 @@ fn main() {
 	assert out.split_into_lines() == ['static:7:edit', 'static:9:new', 'ordinary']
 }
 
+// A static call through a generic type parameter is resolved only after the
+// generic body is cloned. Retarget it to the concrete encoded declaration.
+fn test_generic_static_assoc_call_retargets_encoded_declaration() {
+	out := selfhost_regression_run('generic_static_assoc_call', 'struct Parser {}
+
+fn Parser.parse() string {
+	return "parsed"
+}
+
+fn read[T]() string {
+	return T.parse()
+}
+
+fn main() {
+	println(read[Parser]())
+}
+')
+	assert out == 'parsed'
+}
+
 // An unresolved literal field shape may be shared by several declared anonymous
 // structs. Keep the exact type selected from the call parameter context.
 fn test_contextual_anonymous_struct_call_field_keeps_declared_type() {
