@@ -815,7 +815,7 @@ fn decode_rfc5322_quoted_phrase(s string) ?string {
 			has_quoted_string = true
 			continue
 		}
-		if !word.raw.bytes().all(is_rfc5322_atext(it)) {
+		if !word.raw.bytes().all(it >= 0x80 || is_rfc5322_atext(it)) {
 			return none
 		}
 		decoded << word.raw

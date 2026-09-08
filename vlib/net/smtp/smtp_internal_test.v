@@ -326,6 +326,7 @@ fn test_format_addr() {
 	// non-ASCII display names become an RFC 2047 encoded-word
 	assert format_addr('Иван Петров <ivan@ex.com>') == '=?utf-8?B?0JjQstCw0L0g0J/QtdGC0YDQvtCy?= <ivan@ex.com>'
 	assert format_addr('"Иван Петров" <ivan@ex.com>') == '=?utf-8?B?0JjQstCw0L0g0J/QtdGC0YDQvtCy?= <ivan@ex.com>'
+	assert format_addr('Иван "Петров" <ivan@ex.com>') == '=?utf-8?B?0JjQstCw0L0g0J/QtdGC0YDQvtCy?= <ivan@ex.com>'
 
 	// CR/LF inside a display name must be stripped to prevent header injection
 	// via SMTP DATA.  Two occurrences verify the replacement covers the whole
