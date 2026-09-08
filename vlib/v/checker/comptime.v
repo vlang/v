@@ -1313,6 +1313,11 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 								}
 							}
 							.power {
+								if promoted_type == ast.f32_type {
+									// powf results can vary between C math libraries, so do not
+									// use them to emit a compile-time empty-range error.
+									return none
+								}
 								result = comptime_power_f64(lf, rf)
 							}
 							else {

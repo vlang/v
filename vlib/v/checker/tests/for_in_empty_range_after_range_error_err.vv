@@ -77,6 +77,11 @@ fn main() {
 	for i in i64(max_i64) ** (0 - 1) .. 1 {
 		println(i)
 	}
+
+	// Do not make diagnostics depend on the platform's powf result.
+	for i in int(f32(5.01590028e28) ** f32(0.230928734)) .. 4243608 {
+		println(i)
+	}
 }
 
 type OverloadedRangeBound = u8
