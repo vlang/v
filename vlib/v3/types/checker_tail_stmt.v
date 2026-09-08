@@ -14790,6 +14790,37 @@ fn (tc &TypeChecker) c_abi_fn_signature_for_type_text_inner(typ string, mut seen
 		return none
 	}
 	seen[typ] = true
+	for prefix in ['?', '!', '[]', '...', '&', 'shared ', 'atomic ', 'chan ', 'thread '] {
+		if typ.starts_with(prefix) && typ.len > prefix.len {
+			if nested := tc.c_abi_fn_signature_for_type_text_inner(typ[prefix.len..].trim_space(), mut
+				seen)
+			{
+				return '${prefix.trim_space()}(${nested})'
+			}
+		}
+	}
+	if typ.starts_with('map[') {
+		bracket_end := find_matching_bracket(typ, 3)
+		if bracket_end < typ.len {
+			mut key_seen := seen.clone()
+			key_signature := tc.c_abi_fn_signature_for_type_text_inner(typ[4..bracket_end], mut
+				key_seen) or { '' }
+			mut value_seen := seen.clone()
+			value_signature := tc.c_abi_fn_signature_for_type_text_inner(typ[bracket_end + 1..], mut
+				value_seen) or { '' }
+			if key_signature.len > 0 || value_signature.len > 0 {
+				return 'map(key:${key_signature}|value:${value_signature})'
+			}
+		}
+	}
+	if typ.starts_with('[') {
+		bracket_end := find_matching_bracket(typ, 0)
+		if bracket_end < typ.len {
+			if nested := tc.c_abi_fn_signature_for_type_text_inner(typ[bracket_end + 1..], mut seen) {
+				return 'fixed${typ[..bracket_end + 1]}(${nested})'
+			}
+		}
+	}
 	if c_abi_fn := tc.c_abi_fn_ptr_type_from_text_inner(typ, mut seen, true) {
 		return c_abi_fn
 	}

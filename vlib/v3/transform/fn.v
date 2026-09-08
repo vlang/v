@@ -11870,7 +11870,7 @@ fn normalize_fn_param_text(text string) string {
 	} else {
 		clean = generic_fn_type_param_payload(clean)
 	}
-	if nested := normalize_nested_fn_type_text(clean) {
+	if nested := normalize_nested_fn_or_container_type_text(clean) {
 		clean = nested
 	}
 	if is_mut {
@@ -11907,6 +11907,44 @@ fn normalize_nested_fn_type_text(text string) ?string {
 	}
 	normalized_ret := if ret.len > 0 { normalize_fn_param_text(ret) } else { '' }
 	return 'fn(${normalized_params.join(',')})${normalized_ret}'
+}
+
+fn normalize_nested_fn_or_container_type_text(text string) ?string {
+	clean := text.trim_space()
+	if nested := normalize_nested_fn_type_text(clean) {
+		return nested
+	}
+	for prefix in ['?', '!', '[]', '...', '&', 'shared ', 'atomic ', 'chan ', 'thread '] {
+		if clean.starts_with(prefix) && clean.len > prefix.len {
+			if nested := normalize_nested_fn_or_container_type_text(clean[prefix.len..]) {
+				return prefix + nested
+			}
+		}
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			key_nested := normalize_nested_fn_or_container_type_text(clean[4..bracket_end])
+			value_nested := normalize_nested_fn_or_container_type_text(clean[bracket_end + 1..])
+			if key_nested == none && value_nested == none {
+				return none
+			}
+			key := key_nested or { clean[4..bracket_end].trim_space() }
+
+			value := value_nested or { clean[bracket_end + 1..].trim_space() }
+
+			return 'map[${key}]${value}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			if nested := normalize_nested_fn_or_container_type_text(clean[bracket_end + 1..]) {
+				return clean[..bracket_end + 1] + nested
+			}
+		}
+	}
+	return none
 }
 
 fn fn_type_text_ident_char(ch u8) bool {
