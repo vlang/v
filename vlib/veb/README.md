@@ -185,6 +185,7 @@ fn main() {
 	veb.run_at[App, Context](mut app,
 		host:       '0.0.0.0'
 		port:       8443
+		family:     .ip
 		ssl_config: openssl.SSLConnectConfig{
 			cert:     'certs/server.crt'
 			cert_key: 'certs/server.key'
