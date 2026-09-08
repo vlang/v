@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   resolve:
-    runs-on: [self-hosted, macOS, gitly-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -25,14 +25,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin master resolve-pr-28135
+          git fetch origin master
           git fetch https://github.com/guweigang/vlang.git fix-params-fields-owner:refs/remotes/fork/pr-head
           git checkout --detach refs/remotes/fork/pr-head
-          git merge --no-commit --no-ff -X ours origin/master
-          mkdir -p .github/workflows
-          git show origin/resolve-pr-28135:.github/workflows/resolve-pr-28135-temp.yml > .github/workflows/resolve-pr-28135-temp.yml
-          git add .github/workflows/resolve-pr-28135-temp.yml
-          git -c user.name='Alexander Medvednikov' -c user.email='alexander@medvednikov.com' commit -m 'merge master into PR #28135'
+          git -c user.name='Alexander Medvednikov' -c user.email='alexander@medvednikov.com' merge --no-ff -X ours -m 'merge master into PR #28135' origin/master
+          git diff --check origin/master...HEAD
           echo "MERGE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Build V
         shell: bash
@@ -44,7 +41,7 @@ jobs:
           ./v -silent test vlib/v3/tests/params_struct_codegen_test.v
           ./v -silent test vlib/v3/tests/type_checker_errors_test.v
           ./v -silent test vlib/v3/tests/ownership/ownership_test.v
-      - name: Publish tested merge to staging branch
+      - name: Publish tested merge
         shell: bash
         run: |
           set -euo pipefail
