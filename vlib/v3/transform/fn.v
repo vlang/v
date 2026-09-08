@@ -1134,9 +1134,16 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		arg_id := t.a.child(&node, i)
 		arg_node := t.a.nodes[int(arg_id)]
 		param_type := if param_idx < param_type_names.len { param_type_names[param_idx] } else { '' }
+		mode_param_type := if variadic_idx >= 0 && param_idx >= variadic_idx
+			&& variadic_idx < param_type_names.len
+			&& param_type_names[variadic_idx].starts_with('...') {
+			param_type_names[variadic_idx][3..]
+		} else {
+			param_type
+		}
 		if t.validating_generic_spec && has_concrete_generic_params {
 			source_types := t.fn_literal_source_type_texts(arg_id)
-			mut needs_source_mode_validation := type_text_has_source_only_mode(param_type)
+			mut needs_source_mode_validation := type_text_has_source_only_mode(mode_param_type)
 			for source_type in source_types {
 				if type_text_has_source_only_mode(source_type) {
 					needs_source_mode_validation = true
@@ -1145,8 +1152,8 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			}
 			if source_types.len > 0 && needs_source_mode_validation {
 				actual_type := t.specialized_expr_type_name(arg_id)
-				if !t.resolved_receiver_arg_compatible(arg_id, actual_type, param_type) {
-					t.record_monomorph_error('cannot use `${actual_type}` as argument ${arg_idx + 1} to `${call_name}`; expected `${param_type}`')
+				if !t.resolved_receiver_arg_compatible(arg_id, actual_type, mode_param_type) {
+					t.record_monomorph_error('cannot use `${actual_type}` as argument ${arg_idx + 1} to `${call_name}`; expected `${mode_param_type}`')
 				}
 			}
 		}

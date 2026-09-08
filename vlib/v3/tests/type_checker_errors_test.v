@@ -1871,6 +1871,12 @@ fn test_fn_literal_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_parenthesized_direct_generic_const_fn_param',
 		'struct C.native_event {}\nfn apply[T](handler fn (const_event &T)) {}\nfn startup[U]() {\n\tapply[C.native_event]((fn (event &C.native_event) {}))\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	direct_variadic := run_good(v3_bin, 'good_direct_generic_variadic_const_fn_param',
+		'struct C.native_event {}\nfn apply[T](handlers ...fn (const_event &T)) bool {\n\treturn handlers.len == 2\n}\nfn startup[U]() bool {\n\treturn apply[C.native_event](fn (const_event &C.native_event) {}, fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert direct_variadic == 'true'
+	run_bad(v3_bin, 'bad_direct_generic_variadic_const_fn_param',
+		'struct C.native_event {}\nfn apply[T](handlers ...fn (const_event &T)) {}\nfn startup[U]() {\n\tapply[C.native_event](fn (event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 	conditional := run_good(v3_bin, 'good_conditional_const_fn_param_in_generic',
 		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler ConstHandler) bool {\n\treturn true\n}\nfn startup[T](flag bool) bool {\n\tr := Router{}\n\treturn r.accept(if flag {\n\t\tfn (const_event &C.native_event) {}\n\t} else {\n\t\tfn (const_event &C.native_event) {}\n\t})\n}\nfn main() {\n\tprintln(startup[int](true).str())\n}\n')
 	assert conditional == 'true'
