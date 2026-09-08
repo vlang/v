@@ -350,7 +350,7 @@ fn (mut state StreamStmtState) close() {
 		state.stmt = unsafe { nil }
 	}
 	if state.lengths != unsafe { nil } {
-		unsafe { free(state.lengths) }
+		C.v_mysql_lengths_free(state.lengths)
 		state.lengths = unsafe { nil }
 	}
 	state.guard.release()

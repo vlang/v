@@ -21,6 +21,10 @@ static inline void *v_mysql_lengths_new(unsigned int count) {
 	return calloc(count, sizeof(unsigned long));
 }
 
+static inline void v_mysql_lengths_free(void *lengths) {
+	free(lengths);
+}
+
 static inline unsigned long long v_mysql_length_at(void *lengths, unsigned int column) {
 	return (unsigned long long)((unsigned long *)lengths)[column];
 }

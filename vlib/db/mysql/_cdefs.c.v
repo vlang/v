@@ -124,6 +124,7 @@ fn C.mysql_fetch_row(res &C.MYSQL_RES) &charptr
 
 fn C.v_mysql_fetch_column_length(res &C.MYSQL_RES, column u32) u64
 fn C.v_mysql_lengths_new(count u32) voidptr
+fn C.v_mysql_lengths_free(lengths voidptr)
 fn C.v_mysql_length_at(lengths voidptr, column u32) u64
 fn C.v_mysql_bind_set_length_at(bind &C.MYSQL_BIND, lengths voidptr, column u32)
 

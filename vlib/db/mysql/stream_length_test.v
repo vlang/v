@@ -11,3 +11,11 @@ fn test_checked_stream_value_length() {
 		assert false
 	}
 }
+
+fn test_c_mysql_lengths_allocator_pair() {
+	lengths := C.v_mysql_lengths_new(2)
+	assert lengths != unsafe { nil }
+	assert C.v_mysql_length_at(lengths, 0) == 0
+	assert C.v_mysql_length_at(lengths, 1) == 0
+	C.v_mysql_lengths_free(lengths)
+}
