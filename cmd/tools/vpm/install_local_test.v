@@ -201,6 +201,23 @@ fn test_root_install_does_not_replace_existing_module_namespace() {
 	assert entries == ['bar']
 }
 
+fn test_direct_install_rejects_different_repository_at_same_path() {
+	vmodules_path := os.join_path(test_path, 'vmodules_repository_collision')
+	test_utils.set_test_env(vmodules_path)
+	first_repo_path := os.join_path(test_path, 'repository_collision_first')
+	second_repo_path := os.join_path(test_path, 'repository_collision_second')
+	create_local_git_module(first_repo_path, 'foo.bar')
+	create_local_git_module(second_repo_path, 'foo.bar')
+	cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(first_repo_path)}')
+
+	res := cmd_fail(@LOCATION, '${vexe} install ${os.quoted_path(second_repo_path)}')
+	assert res.output.contains('refusing to install `foo.bar`: destination'), res.output
+	installed_path := os.join_path(vmodules_path, 'foo', 'bar')
+	remote :=
+		cmd_ok(@LOCATION, 'git -C ${os.quoted_path(installed_path)} remote get-url origin').output.trim_space()
+	assert os.real_path(remote) == os.real_path(first_repo_path)
+}
+
 fn test_dotted_install_does_not_follow_linked_namespace() {
 	$if !windows {
 		vmodules_path := os.join_path(test_path, 'vmodules_linked_namespace')

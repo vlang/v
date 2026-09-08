@@ -276,6 +276,9 @@ fn is_local_repository(query string) bool {
 }
 
 fn (mut m Module) get_installed() {
+	if m.is_external && !m.existing_checkout_matches_source() {
+		return
+	}
 	refs := os.execute_opt('git ls-remote --refs ${m.install_path}') or { return }
 	vpm_log(@FILE_LINE, @FN, 'refs: ${refs}')
 	m.is_installed = true
@@ -294,6 +297,37 @@ fn (mut m Module) get_installed() {
 			m.installed_version = tag
 		}
 	}
+}
+
+fn (m Module) existing_checkout_matches_source() bool {
+	if !os.is_dir(m.install_path) {
+		return false
+	}
+	existing_url := match settings.vcs {
+		.git {
+			result := os.execute_opt('git -C ${os.quoted_path(m.install_path)} remote get-url origin') or {
+				return false
+			}
+			result.output.trim_space()
+		}
+		.hg {
+			result := os.execute_opt('hg -R ${os.quoted_path(m.install_path)} paths default') or {
+				return false
+			}
+			result.output.trim_space()
+		}
+	}
+	return normalized_clone_source(existing_url) == normalized_clone_source(m.url)
+}
+
+fn normalized_clone_source(raw_source string) string {
+	raw := raw_source.trim_space()
+	local_path := os.expand_tilde_to_home(raw.trim_string_left('file://'))
+	if raw.starts_with('file://') || os.is_abs_path(local_path) || raw.starts_with('./')
+		|| raw.starts_with('../') || raw.starts_with('~/') || os.exists(local_path) {
+		return 'file://' + os.real_path(local_path)
+	}
+	return normalize_repo_lookup_url(raw) or { raw.trim_string_right('.git').to_lower() }
 }
 
 fn get_tmp_path(relative_path string) !string {
