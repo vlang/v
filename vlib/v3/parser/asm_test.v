@@ -69,3 +69,16 @@ fn test_inline_asm_lock_after_multiline_comment_reports_error() {
 	assert diagnostics.len == 1, diagnostics.str()
 	assert diagnostics[0].message == 'The lock prefix cannot be used on this instruction'
 }
+
+fn test_inline_asm_lock_before_multiline_comment_reports_error() {
+	diagnostics := parse_amd64_asm_diagnostics('lock_before_multiline_comment', 'fn main() {
+	asm amd64 {
+		lock /*
+		comment
+		*/ add [rax], 1
+	}
+}
+')
+	assert diagnostics.len == 1, diagnostics.str()
+	assert diagnostics[0].message == 'The lock prefix cannot be used on this instruction'
+}

@@ -8306,7 +8306,7 @@ fn (mut p Parser) track_inline_asm_mnemonic(state InlineAsmMnemonicState, is_x86
 	if p.current_token_is_newline_semicolon() {
 		return .expect_mnemonic
 	}
-	current_state := if p.inline_asm_source_gap_has_newline() {
+	current_state := if p.inline_asm_source_gap_has_newline(p.prev_tok_end, p.tok_pos) {
 		InlineAsmMnemonicState.expect_mnemonic
 	} else {
 		state
@@ -8340,11 +8340,11 @@ fn (mut p Parser) track_inline_asm_mnemonic(state InlineAsmMnemonicState, is_x86
 	}
 }
 
-fn (p &Parser) inline_asm_source_gap_has_newline() bool {
-	if p.prev_tok_end < 0 || p.prev_tok_end >= p.tok_pos || p.tok_pos > p.s.src.len {
+fn (p &Parser) inline_asm_source_gap_has_newline(start int, end int) bool {
+	if start < 0 || start >= end || end > p.s.src.len {
 		return false
 	}
-	for i := p.prev_tok_end; i < p.tok_pos; i++ {
+	for i := start; i < end; i++ {
 		if p.s.src[i] == `\n` {
 			return true
 		}
@@ -8356,9 +8356,10 @@ fn (mut p Parser) validate_inline_asm_lock_instruction() {
 	p.peek()
 	has_suffix := p.peek_lit.len > 0
 		&& p.peek_lit[p.peek_lit.len - 1] in [`b`, `w`, `l`, `q`]
-	if !(p.peek_lit in inline_asm_allowed_lock_instructions
-		|| (has_suffix
-			&& p.peek_lit[..p.peek_lit.len - 1] in inline_asm_allowed_lock_instructions)) {
+	if p.inline_asm_source_gap_has_newline(p.tok_end, p.peek_pos)
+		|| !(p.peek_lit in inline_asm_allowed_lock_instructions
+			|| (has_suffix
+				&& p.peek_lit[..p.peek_lit.len - 1] in inline_asm_allowed_lock_instructions)) {
 		p.record_diagnostic_span('The lock prefix cannot be used on this instruction', p.peek_pos, p.peek_end)
 	}
 }
