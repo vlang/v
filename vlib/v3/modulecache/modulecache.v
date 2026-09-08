@@ -23,7 +23,7 @@ const c_source_directives_end = '/* V3CACHE_SOURCE_DIRECTIVES_END */'
 const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
-const source_signature_cache_format = 'v3-source-signature-cache-8'
+const source_signature_cache_format = 'v3-source-signature-cache-9'
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
@@ -437,7 +437,7 @@ fn source_uses_pseudo(source string, names []string) bool {
 					|| (name_end < source.len && signature_name_char(source[name_end])) {
 					continue
 				}
-				value, next_pos, ok, _ := signature_string_call_arg(source, name_end)
+				value, next_pos, ok, _ := signature_string_call_arg_prefix(source, name_end)
 				if ok {
 					if quoted_text_mentions_pseudo(value, 0, value.len, names) {
 						return true
@@ -960,6 +960,18 @@ fn compile_time_pkgconfig_names(source string) []string {
 }
 
 fn signature_string_call_arg(source string, start int) (string, int, bool, bool) {
+	value, literal_end, ok, is_raw := signature_string_call_arg_prefix(source, start)
+	if !ok {
+		return '', literal_end, false, false
+	}
+	end := skip_signature_space_and_comments(source, literal_end)
+	if end >= source.len || source[end] != `)` {
+		return '', end, false, false
+	}
+	return value, end + 1, true, is_raw
+}
+
+fn signature_string_call_arg_prefix(source string, start int) (string, int, bool, bool) {
 	mut pos := skip_signature_space_and_comments(source, start)
 	if pos >= source.len || source[pos] != `(` {
 		return '', start, false, false

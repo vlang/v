@@ -17053,8 +17053,37 @@ fn module_path_has_v_sources(path string) bool {
 	}
 	// A v.mod can expose one logical module from source-only subdirectories. The
 	// importer must accept that root before v3_directory_user_files can expand it.
+	module_root := os.real_path(path)
+	mut seen_dirs := map[string]bool{}
 	for subdir in vmod_subdirs(path) or { []string{} } {
-		if os.walk_ext(os.join_path_single(path, subdir), '.v').len > 0 {
+		subdir_path := os.join_path_single(path, subdir)
+		if module_subdir_has_v_sources(module_root, subdir_path, mut seen_dirs) {
+			return true
+		}
+	}
+	return false
+}
+
+fn module_subdir_has_v_sources(module_root string, dir string, mut seen_dirs map[string]bool) bool {
+	if !os.is_dir(dir) {
+		return false
+	}
+	real_dir := os.real_path(dir)
+	if seen_dirs[real_dir] {
+		return false
+	}
+	seen_dirs[real_dir] = true
+	if real_dir != module_root && os.is_file(os.join_path_single(real_dir, 'v.mod')) {
+		return false
+	}
+	entries := os.ls(real_dir) or { return false }
+	for entry in entries {
+		entry_path := os.join_path_single(real_dir, entry)
+		if os.is_file(entry_path) && entry.ends_with('.v') {
+			return true
+		}
+		if os.is_dir(entry_path)
+			&& module_subdir_has_v_sources(module_root, entry_path, mut seen_dirs) {
 			return true
 		}
 	}

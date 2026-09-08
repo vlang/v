@@ -464,6 +464,17 @@ fn test_cached_source_signature_tracks_qml_inputs() {
 	assert concat_lookups.len == 0
 	assert concat_candidates.len == 0
 	assert concat_unresolved
+	os.write_file(os.join_path(root, 'form'), 'not the selected template')!
+	os.write_file(source, "module main\n\nfn build() { _ = \$qml('form' + '.qml') }\n")!
+	literal_concat := source_signature_details([source], '', '')
+	assert literal_concat.signature.len > 0
+	assert !literal_concat.cacheable
+	literal_paths, literal_lookups, literal_candidates, literal_unresolved := compile_time_qml_paths(
+		os.read_file(source)!, source)
+	assert literal_paths.len == 0
+	assert literal_lookups.len == 0
+	assert literal_candidates.len == 0
+	assert literal_unresolved
 	manager := Manager{
 		dir: os.join_path(root, 'module-cache')
 		enabled: true
@@ -480,8 +491,7 @@ fn test_qml_signature_scanner_preserves_raw_paths() {
 	raw_path, next_pos, ok, is_raw := signature_string_call_arg(call, 4)
 	assert ok
 	assert is_raw
-	assert next_pos == call.len - 1
-	assert call[next_pos] == `)`
+	assert next_pos == call.len
 	assert raw_path == r'C:\views\form.qml'
 
 	target, expected_candidates := resolve_signature_qml_path(raw_path, @FILE)
@@ -600,6 +610,7 @@ fn test_source_uses_pseudo_in_quoted_compile_time_paths() {
 	assert source_uses_pseudo('module m\n\n#include "@VMODROOT/header.h"', roots)
 	assert source_uses_pseudo('module m\n\n#flag -I "@VMODROOT/include"', roots)
 	assert source_uses_pseudo('module m\n\nconst p = \$embed_file(r"@VROOT/x")', roots)
+	assert source_uses_pseudo("module m\n\nconst p = \$tmpl('@VMODROOT' + '/x.html')", roots)
 	// a pseudo after a string containing `//` must still be seen
 	assert source_uses_pseudo("module m\n\nconst u = 'http://x' + \$embed_file('@VMODROOT/y')",
 		roots)

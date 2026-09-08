@@ -733,6 +733,13 @@ fn qml_stringify(expression string) string {
 	return "'" + r'$' + '{' + expression + "}'"
 }
 
+fn qml_numeric_cast(type_name string, expression string) string {
+	if expression.starts_with('(') && expression.ends_with(')') {
+		return type_name + expression
+	}
+	return '${type_name}(${expression})'
+}
+
 enum QmlExprUse {
 	raw
 	number
@@ -918,6 +925,40 @@ fn qml_prop(properties map[string]string, name string, default_ string) string {
 	return properties[name] or { default_ }
 }
 
+fn qml_order_declared_properties(properties []QmlProperty, node_id string) []QmlProperty {
+	mut remaining := properties.filter(it.declared_type.len > 0)
+	if node_id.len == 0 || remaining.len < 2 {
+		return remaining
+	}
+	mut ordered := []QmlProperty{cap: remaining.len}
+	for remaining.len > 0 {
+		mut deferred := []QmlProperty{cap: remaining.len}
+		for property in remaining {
+			mut has_pending_dependency := false
+			for candidate in remaining {
+				if candidate.name != property.name
+					&& qml_expr_uses_path(property.expr, '${node_id}.${candidate.name}') {
+					has_pending_dependency = true
+					break
+				}
+			}
+			if has_pending_dependency {
+				deferred << property
+			} else {
+				ordered << property
+			}
+		}
+		if deferred.len == remaining.len {
+			// Preserve source order for a dependency cycle; generated V will report
+			// the invalid forward reference without making this pass loop forever.
+			ordered << deferred
+			break
+		}
+		remaining = deferred.clone()
+	}
+	return ordered
+}
+
 fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, incoming QmlScope, default_key string) QmlScope {
 	suffix := qml_var(path)
 	c.out.writeln('\t_ = ${input}')
@@ -935,7 +976,7 @@ fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, in
 		scope.ids[node.id] = QmlNamedValue{ frame: input, props: named_props.clone() }
 	}
 	mut properties := map[string]string{}
-	mut ordered_properties := node.properties.filter(it.declared_type.len > 0)
+	mut ordered_properties := qml_order_declared_properties(node.properties, node.id)
 	ordered_properties << node.properties.filter(it.declared_type.len == 0)
 	for property in ordered_properties {
 		if property.name == 'id'
@@ -944,7 +985,12 @@ fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, in
 		}
 		name := 'qml_property_${suffix}_${qml_var(property.name)}'
 		property_use := qml_property_use(property)
-		value := c.expr(property.expr, scope, property_use)
+		value := if property.declared_type in ['f32', 'int'] {
+			numeric_value := c.expr(property.expr, scope, .raw)
+			qml_numeric_cast(property.declared_type, numeric_value)
+		} else {
+			c.expr(property.expr, scope, property_use)
+		}
 		if property_use == .color && property.expr.kind in [.literal, .path]
 			&& property.expr.value.starts_with('#') && property.expr.value.len == 7 {
 			// Static colors can be used directly without a generated local.
