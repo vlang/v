@@ -7229,34 +7229,16 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				if g.is_option_auto_heap {
 					g.write('(${g.base_type(node.right_type)}*)')
 				}
-				mut tmp_var := ''
-				if node.op == .amp && node.right is ast.ParExpr && node.right.expr is ast.AsCast {
-					as_cast := node.right.expr as ast.AsCast
-					as_cast_sym := g.table.sym(g.unwrap_generic(as_cast.typ))
-					as_cast_expr_sym := g.table.sym(g.unwrap_generic(as_cast.expr_type))
-					is_interface_conversion := as_cast_sym.info is ast.Interface
-						&& as_cast_expr_sym.info is ast.Interface
-					if as_cast.expr is ast.CallExpr || as_cast_sym.info is ast.FnType
-						|| is_interface_conversion {
-						str := g.go_before_last_stmt()
-						g.empty_line = true
-						typ := g.styp(as_cast.typ)
-						tmp_var = g.new_tmp_var()
-						g.writeln('${typ} ${tmp_var};')
-						mut stmts := []ast.Stmt{cap: 1}
-						stmts << ast.ExprStmt{
-							pos:  node.pos
-							expr: node.right
-						}
-						// This tmp var is local to this `&(...)`; don't inherit an enclosing
-						// if/match's `.ret_arr` decision (only if/match set this flag).
-						prev_ret_arr := g.if_match_tmp_is_fn_ret_arr
-						g.if_match_tmp_is_fn_ret_arr = none
-						g.stmts_with_tmp_var(stmts, tmp_var)
-						g.if_match_tmp_is_fn_ret_arr = prev_ret_arr
-						g.set_current_pos_as_last_stmt_pos()
-						g.write(str)
-					}
+				mut direct_amp_expr := node.right
+				if node.op == .amp {
+					direct_amp_expr = unwrap_par_expr(node.right)
+				}
+				mut is_as_cast_heap := false
+				mut as_cast_heap_type := ast.Type(0)
+				if direct_amp_expr is ast.AsCast && node.op == .amp
+					&& g.as_cast_address_needs_heap(direct_amp_expr) {
+					is_as_cast_heap = true
+					as_cast_heap_type = direct_amp_expr.typ
 				}
 				mut has_slice_call := false
 				// When taking the address of an auto-deref variable (e.g. `&receiver`
@@ -7267,20 +7249,16 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				if !g.is_option_auto_heap {
 					has_slice_call = node.op == .amp && node.right is ast.IndexExpr
 						&& node.right.index is ast.RangeExpr
-					if node.op == .amp && tmp_var == '' {
-						mut right_expr := node.right
-						if right_expr is ast.ParExpr {
-							right_expr = right_expr.expr
-						}
-						if right_expr is ast.AsCast {
-							if g.as_cast_will_use_ptr(right_expr) {
+					if node.op == .amp && !is_as_cast_heap {
+						if direct_amp_expr is ast.AsCast {
+							if g.as_cast_will_use_ptr(direct_amp_expr) {
 								is_as_cast_ptr = true
 							}
 						}
 					}
 					if has_slice_call {
 						g.write('ADDR(${g.styp(node.right_type)}, ')
-					} else if !is_amp_auto_deref && !is_as_cast_ptr {
+					} else if !is_amp_auto_deref && !is_as_cast_ptr && !is_as_cast_heap {
 						g.write(node.op.str())
 					}
 				}
@@ -7302,22 +7280,24 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				if node.right.is_auto_deref_var() && node.op !in [.amp, .mul, .arrow] {
 					g.write('*')
 				}
+				if is_as_cast_heap {
+					g.write_heap_alloc(g.styp(as_cast_heap_type), as_cast_heap_type)
+				}
 				// Keep nested unary +/- parenthesized so C does not collapse them into ++/--
 				// when the parser has preserved a nested prefix node or folded a signed literal.
 				needs_nested_prefix_parens := prefix_expr_operand_needs_parens(node)
 				if needs_nested_prefix_parens {
 					g.write('(')
 				}
-				if tmp_var == '' {
-					old_is_direct_amp_as_cast := g.is_direct_amp_as_cast
-					g.is_direct_amp_as_cast = is_as_cast_ptr
-					g.expr(node.right)
-					g.is_direct_amp_as_cast = old_is_direct_amp_as_cast
-				} else {
-					g.write(tmp_var)
-				}
+				old_is_direct_amp_as_cast := g.is_direct_amp_as_cast
+				g.is_direct_amp_as_cast = is_as_cast_ptr
+				g.expr(node.right)
+				g.is_direct_amp_as_cast = old_is_direct_amp_as_cast
 				if needs_nested_prefix_parens {
 					g.write(')')
+				}
+				if is_as_cast_heap {
+					g.write_heap_alloc_close(as_cast_heap_type)
 				}
 				if has_slice_call {
 					g.write(')')
@@ -11400,7 +11380,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 	}
 	return_needs_local_closure_cleanup := g.return_needs_local_closure_cleanup(node)
-	return_expr0 := unwrap_paren_call_expr(expr0)
+	return_expr0 := unwrap_par_expr(expr0)
 	return_call_needs_closure_lifetime_arg_tmp := match return_expr0 {
 		ast.CallExpr { g.call_needs_closure_lifetime_arg_tmp(return_expr0) }
 		else { false }
@@ -11861,7 +11841,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		} else {
 			if ret_type.has_flag(.option) {
-				inner_expr := unwrap_paren_call_expr(expr0)
+				inner_expr := unwrap_par_expr(expr0)
 				expr0_is_alias_fn_ret := inner_expr is ast.CallExpr && type0.has_flag(.option)
 					&& g.table.type_kind(type0) in [.placeholder, .alias]
 				// return foo() (or `return (foo())`) where foo() returns a
@@ -11872,13 +11852,13 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.expr_with_opt(expr0, type0, ret_type)
 				}
 			} else if ret_type.has_flag(.result) && type0.has_flag(.result) && type0 != ret_type
-				&& unwrap_paren_call_expr(expr0) is ast.CallExpr
+				&& unwrap_par_expr(expr0) is ast.CallExpr
 				&& g.table.are_payloads_alias_compatible(type0.clear_flag(.result), ret_type.clear_flag(.result)) {
 				// return foo() (or `return (foo())`) where foo() returns a different
 				// but layout-equivalent result alias (e.g. `!Aa` vs `!Bb` with
 				// `type Aa = Bb`, or `![]Aa` vs `![]Bb`). The two C structs are
 				// distinct, so emit a memcpy-based clone.
-				g.expr_result_with_alias(unwrap_paren_call_expr(expr0), type0, ret_type)
+				g.expr_result_with_alias(unwrap_par_expr(expr0), type0, ret_type)
 			} else {
 				if fn_return_is_fixed_array && !type0.has_option_or_result() {
 					if node.exprs[0] is ast.Ident {
@@ -11938,10 +11918,8 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 }
 
-// unwrap_paren_call_expr strips redundant `ParExpr` wrappers from `expr` and
-// returns the inner expression. Used by the result-alias return path to
-// recognize `return (foo())` as equivalent to `return foo()`.
-fn unwrap_paren_call_expr(expr ast.Expr) ast.Expr {
+// unwrap_par_expr strips redundant `ParExpr` wrappers from `expr`.
+fn unwrap_par_expr(expr ast.Expr) ast.Expr {
 	mut e := expr
 	for e is ast.ParExpr {
 		e = e.expr
@@ -13832,6 +13810,18 @@ fn as_cast_operand_needs_tmp_eval(expr ast.Expr) bool {
 			false
 		}
 	}
+}
+
+fn (mut g Gen) as_cast_address_needs_heap(node ast.AsCast) bool {
+	if node.expr is ast.CallExpr {
+		return true
+	}
+	target_sym := g.table.sym(g.unwrap_generic(node.typ))
+	if target_sym.info is ast.FnType {
+		return true
+	}
+	expr_type_sym := g.table.sym(g.unwrap_generic(node.expr_type))
+	return target_sym.info is ast.Interface && expr_type_sym.info is ast.Interface
 }
 
 fn (mut g Gen) as_cast_will_use_ptr(node ast.AsCast) bool {

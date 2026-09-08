@@ -38,6 +38,19 @@ fn double(value int) int {
 	return value * 2
 }
 
+fn addressed_handler() &IntHandler {
+	handler_sum := HandlerOrString(IntHandler(double))
+	return &(handler_sum as IntHandler)
+}
+
+fn addressed_widget() &ResizableWidget {
+	widget := Widget(WidgetImpl{})
+	if widget is ResizableWidget {
+		return &(widget as ResizableWidget)
+	}
+	panic('WidgetImpl should implement ResizableWidget')
+}
+
 fn test_main() {
 	mut fbs := []&FooBar{}
 	fbs << &Foo{1}
@@ -55,13 +68,26 @@ fn test_main() {
 	handler_ptr := &(handler_sum as IntHandler)
 	handler := *handler_ptr
 	assert handler(3) == 6
+	// vfmt off
+	nested_handler_ptr := &((handler_sum as IntHandler))
+	// vfmt on
+	nested_handler := *nested_handler_ptr
+	assert nested_handler(4) == 8
+	escaped_handler := *addressed_handler()
+	assert escaped_handler(5) == 10
 	widget := Widget(WidgetImpl{})
 	if widget is ResizableWidget {
 		widget_ptr := &(widget as ResizableWidget)
 		assert widget_ptr.resize(2, 3) == 6
+		// vfmt off
+		nested_widget_ptr := &((widget as ResizableWidget))
+		// vfmt on
+		assert nested_widget_ptr.resize(3, 4) == 12
 	} else {
 		assert false
 	}
+	escaped_widget := addressed_widget()
+	assert escaped_widget.resize(4, 5) == 20
 	arr1 := [(fbs.last() as Foo)]
 	arr2 := [&(fbs.last() as Foo)]
 	arr3 := [&(get_foo_bar() as Foo)]
