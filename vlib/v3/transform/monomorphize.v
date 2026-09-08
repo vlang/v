@@ -4315,7 +4315,8 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 	if locked != substituted && qualified.contains('main.') {
 		return qualified
 	}
-	has_shared_mode := type_text_has_shared_mode(qualified)
+	has_source_only_mode := type_text_has_shared_mode(qualified)
+		|| type_text_has_c_abi_const_mode(qualified)
 	if isnil(t.tc) {
 		return qualified
 	}
@@ -4335,7 +4336,7 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 	if parsed is types.Unknown {
 		return qualified
 	}
-	if has_shared_mode {
+	if has_source_only_mode {
 		return qualified
 	}
 	return specialized_signature_storage_type_name(parsed)
@@ -4358,6 +4359,11 @@ fn type_text_has_shared_mode(text string) bool {
 		}
 	}
 	return false
+}
+
+fn type_text_has_c_abi_const_mode(text string) bool {
+	normalized := normalize_fn_param_text(text)
+	return normalized.contains('const &') || normalized.contains('const&')
 }
 
 fn (t &Transformer) pin_direct_main_generic_arg_type_text(typ string) string {
@@ -4467,7 +4473,7 @@ fn (t &Transformer) qualify_specialized_signature_type_text(typ string, decl Gen
 		params, ret := fn_type_text_parts(clean) or { return clean }
 		mut qualified_params := []string{cap: params.len}
 		for param in params {
-			qualified_params << t.qualify_specialized_signature_type_text(generic_fn_type_param_payload(param), decl)
+			qualified_params << t.qualify_specialized_fn_param_type_text(param, decl)
 		}
 		qualified_ret := t.qualify_specialized_signature_type_text(ret, decl)
 		return if qualified_ret.len > 0 {
@@ -4521,6 +4527,39 @@ fn (t &Transformer) qualify_specialized_signature_type_text(typ string, decl Gen
 		return selective
 	}
 	return clean
+}
+
+fn (t &Transformer) qualify_specialized_fn_param_type_text(param string, decl GenericFnDecl) string {
+	prefix, payload := generic_fn_type_param_source_parts(param)
+	qualified := t.qualify_specialized_signature_type_text(payload, decl)
+	if prefix == 'mut ' {
+		return qualified
+	}
+	return prefix + qualified
+}
+
+fn generic_fn_type_param_source_parts(param string) (string, string) {
+	mut text := param.trim_space()
+	mut prefix := ''
+	if text.starts_with('shared ') {
+		prefix = 'shared '
+		text = text[7..].trim_space()
+	} else if text.starts_with('mut ') {
+		prefix = 'mut '
+		text = text[4..].trim_space()
+	}
+	space := generic_top_level_space_index(text)
+	if space > 0 {
+		head := text[..space].trim_space()
+		tail := text[space + 1..].trim_space()
+		if head.starts_with('const_') && tail.starts_with('&') {
+			return prefix + head + ' ', tail
+		}
+		if generic_fn_type_param_head_is_name(head, tail) {
+			text = tail
+		}
+	}
+	return prefix, text
 }
 
 fn (t &Transformer) selective_signature_type_symbol(file string, name string) ?string {
@@ -11544,16 +11583,20 @@ fn (t &Transformer) lock_colliding_main_substitution_type_text(original string, 
 					if source_params.len == concrete_params.len {
 						mut locked_params := []string{cap: concrete_params.len}
 						for i, concrete_param in concrete_params {
-							source_param := source_params[i].trim_space()
-							source_is_mut := source_param.starts_with('mut ')
-							source_payload := generic_fn_type_param_payload(source_param)
+							source_prefix, source_payload :=
+								generic_fn_type_param_source_parts(source_params[i])
+							source_is_mut := source_prefix == 'mut '
 							mut concrete_payload := generic_fn_type_param_payload(concrete_param)
 							if source_is_mut && concrete_payload.starts_with('&') {
 								concrete_payload = concrete_payload[1..]
 							}
 							locked := t.lock_colliding_main_substitution_type_text(source_payload,
 								concrete_payload, module_name, generic_params)
-							locked_params << if source_is_mut { 'mut ${locked}' } else { locked }
+							locked_params << if source_is_mut {
+								'mut ${locked}'
+							} else {
+								source_prefix + locked
+							}
 						}
 						locked_ret := t.lock_colliding_main_substitution_type_text(source_ret,
 							concrete_ret, module_name, generic_params)

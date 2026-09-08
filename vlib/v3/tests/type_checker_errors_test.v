@@ -1856,6 +1856,12 @@ fn test_fn_literal_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_direct_const_fn_param_in_generic',
 		'struct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler fn (const_event &C.native_event)) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	generic_receiver := run_good(v3_bin, 'good_generic_receiver_direct_const_fn_param',
+		'struct C.native_event {\n\tvalue int\n}\nstruct Router[T] {}\nfn (mut r Router[T]) accept(handler fn (const_event &T), event &T) bool {\n\thandler(event)\n\treturn true\n}\nfn startup[U]() bool {\n\tmut r := Router[C.native_event]{}\n\tevent := C.native_event{\n\t\tvalue: 1\n\t}\n\treturn r.accept(fn (const_event &C.native_event) {}, &event)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert generic_receiver == 'true'
+	run_bad(v3_bin, 'bad_generic_receiver_direct_const_fn_param',
+		'struct C.native_event {}\nstruct Router[T] {}\nfn (mut r Router[T]) accept(handler fn (const_event &T)) {}\nfn startup[U]() {\n\tmut r := Router[C.native_event]{}\n\tr.accept(fn (event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 	variadic := run_good(v3_bin, 'good_direct_variadic_const_fn_param_in_generic',
 		'struct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handlers ...fn (const_event &C.native_event)) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	assert variadic == 'true'
