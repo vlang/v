@@ -699,15 +699,6 @@ pub:
 	is_fn_var   bool
 }
 
-pub struct ReceiverArgCall {
-pub:
-	name          string
-	arg_idx       int
-	is_method     bool
-	receiver_type Type
-	callee_type   Type
-}
-
 @[minify]
 pub struct Fn {
 pub:
@@ -754,7 +745,6 @@ pub mut:
 	receiver_address_taken        bool
 	receiver_captured_mut         bool
 	receiver_method_calls         []string
-	receiver_arg_calls            []ReceiverArgCall
 	//
 	is_expand_simple_interpolation bool // for tagging b.f(s string), which is then called with `b.f('some ${x} ${y}')`,
 	// when that call, should be expanded to `b.f('some '); b.f(x); b.f(' '); b.f(y);`

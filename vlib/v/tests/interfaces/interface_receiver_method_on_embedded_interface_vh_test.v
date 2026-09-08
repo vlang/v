@@ -114,6 +114,26 @@ fn test_implicitly_mutable_receiver_function_field_argument_is_rejected() {
 	assert run_result.output.contains('it can replace its receiver through a mutable call'), run_result.output
 }
 
+fn test_implicitly_mutable_receiver_nested_function_field_argument_is_rejected() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(),
+		'implicit_mut_interface_nested_function_field_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(root)!
+	os.write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'implicit_mut_nested_field'\n}\n")!
+	os.write_file(os.join_path(root, 'main.v'),
+		'module main\n\ninterface Node {}\n\ninterface Element {\n\tNode\n}\n\nstruct Item {}\n\nstruct Callbacks {\n\treplace fn (mut Node, Node)\n}\n\nstruct Holder {\n\tcallbacks Callbacks\n}\n\nfn main() {\n\tmut element := Element(Item{})\n\tholder := Holder{callbacks: Callbacks{replace: replace_node}}\n\telement.replace_with_nested_field(holder, Node(Item{}))\n}\n\nfn replace_node(mut node Node, next Node) {\n\tnode = next\n}\n\nfn (mut node Node) replace_with_nested_field(holder Holder, next Node) {\n\tholder.callbacks.replace(node, next)\n}\n')!
+	run_result := run_v_in_dir(root, ['-gc', 'none', '-disable-explicit-mutability', '-check',
+		'.'])
+	assert run_result.exit_code == 1, run_result.output
+	assert run_result.output.contains('it can replace its receiver through a mutable call'), run_result.output
+}
+
 fn test_external_closure_receiver_replacement_is_rejected() {
 	$if windows {
 		return

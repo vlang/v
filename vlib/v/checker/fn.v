@@ -8,6 +8,14 @@ import os
 
 const print_everything_fns = ['println', 'print', 'eprintln', 'eprint', 'panic']
 
+struct PendingEmbeddedReceiverCall {
+	file          &ast.File = unsafe { nil }
+	receiver_type ast.Type
+	method_name   string
+	outer_name    string
+	pos           token.Pos
+}
+
 fn first_attr_by_name(attrs []ast.Attr, name string) (ast.Attr, bool) {
 	for attr in attrs {
 		if attr.name == name {
@@ -59,60 +67,6 @@ fn (mut c Checker) record_receiver_mut_argument(param ast.Param, arg ast.CallArg
 		method_idx := c.table.cur_fn.method_idx
 		if method_idx >= 0 && method_idx < receiver_sym.methods.len {
 			receiver_sym.methods[method_idx].receiver_passed_mut = true
-		}
-	}
-}
-
-fn (mut c Checker) receiver_arg_call_fn(method ast.Fn, call ast.ReceiverArgCall) ?ast.Fn {
-	if call.is_method {
-		if call.receiver_type == 0 {
-			return none
-		}
-		receiver_sym := c.table.final_sym(call.receiver_type)
-		if called_method := c.table.find_method_with_embeds(receiver_sym, call.name) {
-			return called_method
-		}
-		if callable_field := c.table.find_field_with_embeds(receiver_sym, call.name) {
-			field_sym := c.table.final_sym(callable_field.typ)
-			if field_sym.info is ast.FnType {
-				return field_sym.info.func
-			}
-		}
-		return none
-	}
-	if call.callee_type != 0 {
-		callee_sym := c.table.final_sym(call.callee_type)
-		if callee_sym.info is ast.FnType {
-			return callee_sym.info.func
-		}
-	}
-	if called_fn := c.table.find_fn(call.name) {
-		return called_fn
-	}
-	if !call.name.contains('.') {
-		if called_fn := c.table.find_fn('${method.mod}.${call.name}') {
-			return called_fn
-		}
-		return c.table.find_fn('builtin.${call.name}')
-	}
-	return none
-}
-
-fn (mut c Checker) record_receiver_mut_arguments_before_check() {
-	for mut sym in c.table.type_symbols {
-		for mut method in sym.methods {
-			if method.params.len == 0 || !method.params[0].is_mut || method.receiver_passed_mut {
-				continue
-			}
-			for call in method.receiver_arg_calls {
-				called_fn := c.receiver_arg_call_fn(method, call) or { continue }
-				param_idx := c.call_arg_param_index(called_fn, call.arg_idx)
-				if param_idx >= 0 && param_idx < called_fn.params.len
-					&& called_fn.params[param_idx].is_mut {
-					method.receiver_passed_mut = true
-					break
-				}
-			}
 		}
 	}
 }
@@ -3159,6 +3113,37 @@ fn (mut c Checker) method_can_replace_receiver(receiver_sym &ast.TypeSymbol, met
 	return false
 }
 
+fn receiver_replacement_reason(method ast.Fn) string {
+	if method.receiver_reassignment_unknown {
+		return 'its body is unavailable and may replace its receiver'
+	}
+	if method.receiver_passed_mut || method.receiver_method_calls.len > 0 {
+		return 'it can replace its receiver through a mutable call'
+	}
+	if method.receiver_address_taken {
+		return 'its receiver address escapes and can be used to replace it'
+	}
+	if method.receiver_captured_mut {
+		return 'it captures its receiver mutably and can replace it'
+	}
+	return 'it can replace its receiver'
+}
+
+fn (mut c Checker) check_pending_embedded_receiver_calls() {
+	for pending in c.pending_embedded_receiver_calls {
+		receiver_sym := c.table.final_sym(pending.receiver_type)
+		method := c.table.find_method_with_embeds(receiver_sym, pending.method_name) or { continue }
+		mut seen_receiver_methods := map[string]bool{}
+		if c.method_can_replace_receiver(receiver_sym, method, mut seen_receiver_methods) {
+			c.change_current_file(pending.file)
+			reason := receiver_replacement_reason(method)
+			c.error('cannot call mutable method `${receiver_sym.name}.${pending.method_name}` through embedded interface `${pending.outer_name}` because ${reason}',
+				pending.pos)
+		}
+	}
+	c.pending_embedded_receiver_calls.clear()
+}
+
 fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	// `(if true { 'foo.bar' } else { 'foo.bar.baz' }).all_after('foo.')`
 	node.concrete_types = node.raw_concrete_types.clone()
@@ -3714,20 +3699,19 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		mut seen_receiver_methods := map[string]bool{}
 		if c.method_can_replace_receiver(rec_sym, receiver_method, mut seen_receiver_methods) {
-			reason := if receiver_method.receiver_reassignment_unknown {
-				'its body is unavailable and may replace its receiver'
-			} else if receiver_method.receiver_passed_mut
-				|| receiver_method.receiver_method_calls.len > 0 {
-				'it can replace its receiver through a mutable call'
-			} else if receiver_method.receiver_address_taken {
-				'its receiver address escapes and can be used to replace it'
-			} else if receiver_method.receiver_captured_mut {
-				'it captures its receiver mutably and can replace it'
-			} else {
-				'it can replace its receiver'
-			}
+			reason := receiver_replacement_reason(receiver_method)
 			c.error('cannot call mutable method `${rec_sym.name}.${method_name}` through embedded interface `${left_sym.name}` because ${reason}',
 				node.pos)
+		} else if c.file != unsafe { nil }
+			&& !c.pending_embedded_receiver_calls.any(it.file.path == c.file.path
+			&& it.pos.pos == node.pos.pos && it.method_name == method_name) {
+			c.pending_embedded_receiver_calls << PendingEmbeddedReceiverCall{
+				file:          c.file
+				receiver_type: node.from_embed_types.last()
+				method_name:   method_name
+				outer_name:    left_sym.name
+				pos:           node.pos
+			}
 		}
 	}
 	if requires_mut_receiver {

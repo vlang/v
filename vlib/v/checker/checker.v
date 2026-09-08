@@ -175,6 +175,7 @@ mut:
 	immutable_alias_analysis_in_progress map[string]bool
 	always_error_fn_cache                map[string]bool
 	always_error_fn_in_progress          map[string]bool
+	pending_embedded_receiver_calls      []PendingEmbeddedReceiverCall
 	generic_parts_cache                  []i8 // type idx -> 0 unknown, 1 false, 2 true
 
 	v_current_commit_hash string // same as old C.V_CURRENT_COMMIT_HASH
@@ -697,7 +698,6 @@ pub fn (mut c Checker) change_current_file(file &ast.File) {
 pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	// println('check_files')
 	// c.files = ast_files
-	c.record_receiver_mut_arguments_before_check()
 	mut has_main_mod_file := false
 	mut has_no_main_mod_file := false
 	mut has_main_fn := false
@@ -810,6 +810,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	$if trace_post_process_generic_fns_loop ? {
 		eprintln('>>>>>>>>> recheck_generic_fns loop done, iteration: ${post_process_generic_fns_iterations}')
 	}
+	c.check_pending_embedded_receiver_calls()
 	// restore the original c.file && c.mod after post processing
 	c.change_current_file(last_file)
 	c.timers.show('checker_post_process_generic_fns')
