@@ -4506,7 +4506,7 @@ fn (mut t Table) specialize_generic_fn_type_methods(parent_type Type, mut concre
 	concrete_type := idx_to_type(concrete_sym.idx)
 	concrete_sym.methods = []Fn{}
 	for method in parent_sym.methods {
-		mut concrete_method := method.new_method_with_receiver_type(concrete_type)
+		mut concrete_method := method.new_method_with_receiver_type(concrete_type, true)
 		concrete_method.generic_names = method.generic_names.clone()
 		concrete_method.return_type = t.specialize_generic_fn_method_type(method.return_type,
 			parent_type, concrete_type, generic_names, concrete_types)

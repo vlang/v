@@ -776,7 +776,9 @@ pub fn (p &Param) specifier() string {
 	}
 }
 
-pub fn (f &Fn) new_method_with_receiver_type(new_type_ Type) Fn {
+// new_method_with_receiver_type returns a copy of `f` with a new receiver type. When
+// `transform_self_params` is true, parameters matching the old receiver type are transformed too.
+pub fn (f &Fn) new_method_with_receiver_type(new_type_ Type, transform_self_params bool) Fn {
 	recv_type := if f.params[0].typ.is_ptr() && !new_type_.is_ptr() {
 		new_type_.ref()
 	} else {
@@ -785,11 +787,7 @@ pub fn (f &Fn) new_method_with_receiver_type(new_type_ Type) Fn {
 	unsafe {
 		mut new_method := f
 		new_method.params = f.params.clone()
-		// Only transform self-referential parameters for interface method declarations
-		// (no_body == true). For concrete receiver methods defined outside the interface,
-		// the parameters keep their original types, so methods like
-		// `fn (mut n Node) add(child &Node)` stay valid when Node is embedded.
-		if f.no_body {
+		if transform_self_params {
 			for i in 1 .. new_method.params.len {
 				if new_method.params[i].typ == new_method.params[0].typ {
 					new_method.params[i].typ = recv_type

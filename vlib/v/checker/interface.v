@@ -62,13 +62,15 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				for m in isym_info.methods {
 					if !emnames_ds_info[m.name] {
 						emnames_ds_info[m.name] = true
-						decl_sym.info.methods << m.new_method_with_receiver_type(node.typ)
+						decl_sym.info.methods << m.new_method_with_receiver_type(node.typ, true)
 					}
 				}
 				for m in isym.methods {
 					if !emnames_ds[m.name] {
 						emnames_ds[m.name] = true
-						decl_sym.methods << m.new_method_with_receiver_type(node.typ)
+						is_interface_decl := isym_info.methods.any(it.name == m.name)
+						decl_sym.methods << m.new_method_with_receiver_type(node.typ,
+							is_interface_decl)
 					}
 				}
 				if embed_decl := c.table.interfaces[embed.typ] {

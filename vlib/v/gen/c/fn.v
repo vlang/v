@@ -5338,7 +5338,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// Add `&` automatically.
 		// TODO: same logic in call_args()
 		if !is_range_slice {
-			if !receiver_expr_is_addressable {
+			if is_interface && node.from_embed_types.len > 0 {
+				// Converted below, where mutable receivers use a temporary value.
+			} else if !receiver_expr_is_addressable {
 				if node.left.is_as_cast() {
 					g.inside_smartcast = true
 					if node.left is ast.SelectorExpr && !left_type.is_ptr() {
@@ -5413,9 +5415,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			// Calling a method defined on an embedded interface. The embedded
 			// interface has a different C struct layout than the outer interface,
 			// so we must convert (not reinterpret-cast) the receiver.
-			if g.out.last_n(1) == '&' {
-				g.go_back(1)
-			}
 			embed_type := node.from_embed_types.last()
 			embed_value_type := embed_type.set_nr_muls(0)
 			if receiver_needs_ref {
