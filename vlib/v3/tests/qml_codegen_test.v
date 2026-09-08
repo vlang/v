@@ -121,10 +121,28 @@ fn main() {
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '9 a:0 7 select:7\n9 progressbar\nslider 12.5:0.0:100.0 select:4\nswitch false select:5\ncombobox Home choose:Work\ncheckbox 2.0:4.0 select:app.selected', run.output
+	os.write_file(os.join_path(root, 'review.qml'), 'Screen {
+	background: "#ff0000"
+	Rectangle { id: first width: 123 }
+	Label { width: first.width }
+}') or { panic(err) }
+	review_path := os.join_path(root, 'review.v')
+	os.write_file(review_path, "module main\n\nimport ui2\n\nfn main() {\n\troot := \$qml('review.qml')\n\tprintln(root.box.bg.str() + ' ' + root.children[1].frame.width.str())\n}\n") or {
+		panic(err)
+	}
+	review_compile := os.execute('${v3_bin} -nocache -path "${root}|${qml_codegen_vlib_dir}" -b c -o ${bin} ${review_path}')
+	assert review_compile.exit_code == 0, review_compile.output
+	review_run := os.execute(bin)
+	assert review_run.exit_code == 0, review_run.output
+	assert review_run.output.trim_space() == '16711680 123.0', review_run.output
 	os.write_file(os.join_path(root, 'form.qml'), 'Screen { MessageBox { Button { on_tap: app.missing() } } }') or { panic(err) }
 	invalid := os.execute('${v3_bin} -nocache -path "${root}|${qml_codegen_vlib_dir}" -b c -o ${bin} ${main_path}')
 	assert invalid.exit_code != 0, invalid.output
 	assert invalid.output.contains('missing'), invalid.output
+	os.write_file(os.join_path(root, 'form.qml'), 'Screen { Button { MenuItem { on_tap: app.missing() } } }') or { panic(err) }
+	invalid_menu := os.execute('${v3_bin} -nocache -path "${root}|${qml_codegen_vlib_dir}" -b c -o ${bin} ${main_path}')
+	assert invalid_menu.exit_code != 0, invalid_menu.output
+	assert invalid_menu.output.contains('missing'), invalid_menu.output
 }
 
 /* MOCK_UI2

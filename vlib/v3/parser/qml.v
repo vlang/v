@@ -816,6 +816,12 @@ fn (c &QmlCompiler) expr(expr &QmlExpr, scope QmlScope, use QmlExprUse) string {
 	match expr.kind {
 		.literal {
 			if expr.quoted {
+				if use == .color {
+					if expr.value.starts_with('#') && expr.value.len == 7 {
+						return 'u32(0x${expr.value[1..]})'
+					}
+					return 'ui2.parse_hex_color(${qml_quote(expr.value)})'
+				}
 				return qml_quote(expr.value)
 			}
 			return match use {
@@ -908,7 +914,7 @@ fn qml_prop(properties map[string]string, name string, default_ string) string {
 	return properties[name] or { default_ }
 }
 
-fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, incoming QmlScope, default_key string) {
+fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, incoming QmlScope, default_key string) QmlScope {
 	suffix := qml_var(path)
 	c.out.writeln('\t_ = ${input}')
 	mut scope := qml_clone_scope(incoming)
@@ -933,7 +939,15 @@ fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, in
 			continue
 		}
 		name := 'qml_property_${suffix}_${qml_var(property.name)}'
-		c.out.writeln('\t${name} := ${c.expr(property.expr, scope, qml_property_use(property))}')
+		property_use := qml_property_use(property)
+		value := c.expr(property.expr, scope, property_use)
+		if property_use == .color && property.expr.kind in [.literal, .path]
+			&& property.expr.value.starts_with('#') && property.expr.value.len == 7 {
+			// Static colors can be used directly without a generated local.
+			properties[property.name] = value
+			continue
+		}
+		c.out.writeln('\t${name} := ${value}')
 		properties[property.name] = name
 	}
 	frame := 'qml_frame_${suffix}'
@@ -960,21 +974,29 @@ fn (mut c QmlCompiler) compile_node(node &QmlNode, path string, input string, in
 		c.out.writeln('\tmut ${cursor} := ${qml_prop(properties, 'padding', 'f64(0)')}')
 	}
 	for child_index, child in node.children {
-		if !container || child.tag in ['MenuItem', 'Option'] {
+		child_path := '${path}.${child_index}'
+		if child.tag == 'MenuItem' {
+			c.write_action_type_checks(child, '${qml_var(child_path)}_menu_action', scope)
 			continue
 		}
-		child_path := '${path}.${child_index}'
+		if !container || child.tag == 'Option' {
+			continue
+		}
 		if child.tag == 'Repeater' {
 			c.compile_repeater(child, child_path, frame, node.tag, properties, cursor, scope, children)
 			continue
 		}
 		child_input := 'qml_input_${qml_var(child_path)}'
 		c.out.writeln('\t${child_input} := ${qml_child_input(node.tag, frame, properties, cursor)}')
-		c.compile_node(child, child_path, child_input, scope, '')
+		child_scope := c.compile_node(child, child_path, child_input, scope, '')
+		for id, named in child_scope.ids {
+			scope.ids[id] = named
+		}
 		c.out.writeln('\t${children} << qml_element_${qml_var(child_path)}')
 		qml_advance_cursor(mut c.out, node.tag, cursor, child_path, properties)
 	}
 	c.compile_element(node, suffix, frame, children, properties, scope, default_key)
+	return scope
 }
 
 fn (mut c QmlCompiler) write_action_type_checks(node &QmlNode, suffix string, scope QmlScope) {
