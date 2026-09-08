@@ -44,6 +44,25 @@ fn (c &Checker) implicit_mut_call_arg(param ast.Param, arg ast.CallArg) ast.Call
 	}
 }
 
+fn (mut c Checker) record_receiver_mut_argument(param ast.Param, arg ast.CallArg) {
+	if !param.is_mut || !arg.is_mut || c.table.cur_fn == unsafe { nil } || !c.table.cur_fn.is_method
+		|| !c.table.cur_fn.rec_mut {
+		return
+	}
+	mut arg_expr := arg.expr
+	arg_expr = arg_expr.remove_par()
+	if arg_expr is ast.Ident {
+		if arg_expr.name != c.table.cur_fn.receiver.name {
+			return
+		}
+		mut receiver_sym := c.table.sym(c.table.cur_fn.receiver.typ)
+		method_idx := c.table.cur_fn.method_idx
+		if method_idx >= 0 && method_idx < receiver_sym.methods.len {
+			receiver_sym.methods[method_idx].receiver_passed_mut = true
+		}
+	}
+}
+
 fn (mut c Checker) check_os_raw_io_call(node &ast.CallExpr, func &ast.Fn, concrete_types []ast.Type, arg_offset int) {
 	if func.mod != 'os' || !func.is_method {
 		return
@@ -2428,6 +2447,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 		call_arg = c.implicit_mut_call_arg(param, call_arg)
 		node.args[i] = call_arg
+		c.record_receiver_mut_argument(param, call_arg)
 		if call_arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(mut call_arg.expr)
 			call_arg_expr_pos := call_arg.expr.pos()
@@ -3410,6 +3430,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					}
 					arg = c.implicit_mut_call_arg(param, arg)
 					node.args[i] = arg
+					c.record_receiver_mut_argument(param, arg)
 					if arg.is_mut {
 						to_lock, pos := c.fail_if_immutable(mut arg.expr)
 						if !param.is_mut {
@@ -3632,16 +3653,21 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	requires_mut_receiver := method.params[0].is_mut
 		&& (!is_used_outside_receiver_module || c.fn_has_visible_mutation_for_param(method, 0))
 	if is_method_from_embed && left_sym.kind == .interface && rec_sym.kind == .interface
-		&& requires_mut_receiver {
+		&& method.params[0].is_mut {
+		mut receiver_method := method
+		if current_method := c.table.find_method_with_embeds(rec_sym, method_name) {
+			receiver_method = current_method
+		}
 		mut seen_receiver_methods := map[string]bool{}
-		if c.method_can_replace_receiver(rec_sym, method, mut seen_receiver_methods) {
-			reason := if method.receiver_reassignment_unknown {
+		if c.method_can_replace_receiver(rec_sym, receiver_method, mut seen_receiver_methods) {
+			reason := if receiver_method.receiver_reassignment_unknown {
 				'its body is unavailable and may replace its receiver'
-			} else if method.receiver_passed_mut || method.receiver_method_calls.len > 0 {
+			} else if receiver_method.receiver_passed_mut
+				|| receiver_method.receiver_method_calls.len > 0 {
 				'it can replace its receiver through a mutable call'
-			} else if method.receiver_address_taken {
+			} else if receiver_method.receiver_address_taken {
 				'its receiver address escapes and can be used to replace it'
-			} else if method.receiver_captured_mut {
+			} else if receiver_method.receiver_captured_mut {
 				'it captures its receiver mutably and can replace it'
 			} else {
 				'it can replace its receiver'
@@ -3816,6 +3842,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		arg = c.implicit_mut_call_arg(param, arg)
 		node.args[i] = arg
+		c.record_receiver_mut_argument(param, arg)
 		if arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(mut arg.expr)
 			if !param_is_mut {
