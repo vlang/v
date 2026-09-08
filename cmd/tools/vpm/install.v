@@ -143,6 +143,10 @@ fn (m Module) install() InstallResult {
 	defer {
 		os.rmdir_all(m.tmp_path) or {}
 	}
+	if !install_path_is_in_vmodules(m.install_path, settings.vmodules_path) {
+		vpm_error('refusing to install `${m.name}` outside the V modules directory.')
+		return .failed
+	}
 	if ancestor := vcs_backed_install_ancestor(m.install_path, settings.vmodules_path) {
 		vpm_error('refusing to install `${m.name}` inside existing module `${fmt_mod_path(ancestor)}`.')
 		return .failed
@@ -198,9 +202,15 @@ fn (m Module) install() InstallResult {
 	return .installed
 }
 
+fn install_path_is_in_vmodules(install_path string, vmodules_path string) bool {
+	vmodules_root := real_path_with_missing_suffix(vmodules_path)
+	resolved_install_path := real_path_with_missing_suffix(install_path)
+	return resolved_install_path.starts_with(vmodules_root + os.path_separator)
+}
+
 fn vcs_backed_install_ancestor(install_path string, vmodules_path string) ?string {
-	vmodules_root := os.real_path(vmodules_path)
-	mut parent := os.real_path(os.dir(install_path))
+	vmodules_root := real_path_with_missing_suffix(vmodules_path)
+	mut parent := real_path_with_missing_suffix(os.dir(install_path))
 	for parent != vmodules_root && parent.starts_with(vmodules_root + os.path_separator) {
 		if vcs_used_in_dir(parent) != none {
 			return parent
@@ -212,6 +222,24 @@ fn vcs_backed_install_ancestor(install_path string, vmodules_path string) ?strin
 		parent = next
 	}
 	return none
+}
+
+fn real_path_with_missing_suffix(path string) string {
+	mut existing := path
+	mut missing := []string{}
+	for !os.exists(existing) {
+		parent := os.dir(existing)
+		if parent == existing {
+			break
+		}
+		missing << os.file_name(existing)
+		existing = parent
+	}
+	mut resolved := os.real_path(existing)
+	for i := missing.len - 1; i >= 0; i-- {
+		resolved = os.join_path(resolved, missing[i])
+	}
+	return resolved
 }
 
 fn (m Module) confirm_install() bool {

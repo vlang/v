@@ -171,6 +171,35 @@ fn test_root_install_does_not_replace_existing_module_namespace() {
 	assert entries == ['bar']
 }
 
+fn test_dotted_install_does_not_follow_linked_namespace() {
+	$if !windows {
+		vmodules_path := os.join_path(test_path, 'vmodules_linked_namespace')
+		test_utils.set_test_env(vmodules_path)
+		os.mkdir_all(vmodules_path) or { panic(err) }
+		linked_repo_path := os.join_path(test_path, 'linked_namespace_repo')
+		create_local_git_module(linked_repo_path, 'foo')
+		os.symlink(linked_repo_path, os.join_path(vmodules_path, 'foo')) or { panic(err) }
+		nested_repo_path := os.join_path(test_path, 'linked_namespace_nested_repo')
+		create_local_git_module(nested_repo_path, 'foo.bar')
+
+		res := cmd_fail(@LOCATION, '${vexe} install ${os.quoted_path(nested_repo_path)}')
+		assert res.output.contains('refusing to install `foo.bar` outside the V modules directory'), res.output
+
+		assert !os.exists(os.join_path(linked_repo_path, 'bar'))
+	}
+}
+
+fn test_remove_prunes_deep_empty_module_namespaces() {
+	vmodules_path := os.join_path(test_path, 'vmodules_remove_namespaces')
+	test_utils.set_test_env(vmodules_path)
+	repo_path := os.join_path(test_path, 'remove_namespaces_repo')
+	create_local_git_module(repo_path, 'foo.bar.baz')
+	cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
+
+	cmd_ok(@LOCATION, '${vexe} remove foo.bar.baz')
+	assert !os.exists(os.join_path(vmodules_path, 'foo'))
+}
+
 fn test_installed_module_discovery_preserves_vcs_links() {
 	$if !windows {
 		vmodules_path := os.join_path(test_path, 'vmodules_linked_module')

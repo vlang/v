@@ -404,6 +404,19 @@ fn direct_install_mod_path(publisher string, manifest_name string) string {
 	return normalize_mod_path(os.join_path(publisher, manifest_name.replace('.', os.path_separator)))
 }
 
+fn cleanup_empty_module_parent_dirs(module_path string) {
+	vmodules_path := real_path_with_missing_suffix(settings.vmodules_path)
+	mut parent := real_path_with_missing_suffix(os.dir(module_path))
+	for parent != vmodules_path && parent.starts_with(vmodules_path + os.path_separator)
+		&& parent != os.dir(parent) {
+		if !os.is_dir(parent) || !os.is_dir_empty(parent) {
+			break
+		}
+		os.rmdir(parent) or { break }
+		parent = os.dir(parent)
+	}
+}
+
 fn get_working_server_url() string {
 	is_initial_selection := selected_server_url(false, '') == ''
 	for url in active_server_urls() {
