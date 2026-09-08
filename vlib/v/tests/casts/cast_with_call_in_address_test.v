@@ -53,6 +53,12 @@ fn addressed_widget() &ResizableWidget {
 	panic('WidgetImpl should implement ResizableWidget')
 }
 
+fn addressed_foo_from_parenthesized_call() &Foo {
+	// vfmt off
+	return &(((get_foo_bar()) as Foo))
+	// vfmt on
+}
+
 fn string_pair() StringPairOrInt {
 	return ['left', 'right']!
 }
@@ -94,6 +100,8 @@ fn test_main() {
 	}
 	escaped_widget := addressed_widget()
 	assert escaped_widget.resize(4, 5) == 20
+	escaped_foo := addressed_foo_from_parenthesized_call()
+	assert escaped_foo.val == 1
 	pair_ptr := &(string_pair() as [2]string)
 	assert (*pair_ptr)[0] == 'left'
 	assert (*pair_ptr)[1] == 'right'

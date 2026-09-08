@@ -13824,7 +13824,7 @@ fn as_cast_operand_needs_tmp_eval(expr ast.Expr) bool {
 }
 
 fn (mut g Gen) as_cast_address_needs_heap(node ast.AsCast) bool {
-	if node.expr is ast.CallExpr {
+	if unwrap_par_expr(node.expr) is ast.CallExpr {
 		return true
 	}
 	target_sym := g.table.sym(g.unwrap_generic(node.typ))
