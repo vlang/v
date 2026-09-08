@@ -303,7 +303,7 @@ fn test_issue_27281_marker_bounded_module_directory_keeps_prefix() {
 	os.mkdir_all(bar_dir) or { panic(err) }
 	parent_vmod := ['Module {', "\tname: 'parent'", '}'].join_lines() + '\n'
 	foo_test_source :=
-		['\xef\xbb\xbf@[has_globals]', 'module foo;', '', 'import foo.bar', '', 'fn test_module_names() {', "\tassert @MOD == 'foo'", "\tassert bar.module_name() == 'foo.bar'", '}'].join_lines() +
+		['\xef\xbb\xbf/* outer /* nested */ outer */', '@[has_globals]', 'module foo;', '', 'import foo.bar', '', 'fn test_module_names() {', "\tassert @MOD == 'foo'", "\tassert bar.module_name() == 'foo.bar'", '}'].join_lines() +
 		'\n'
 	bar_source :=
 		['module bar', '', 'pub fn module_name() string {', '\treturn @MOD', '}'].join_lines() +

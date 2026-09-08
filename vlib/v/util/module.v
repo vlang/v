@@ -287,12 +287,22 @@ fn source_file_module_name(path string) ?string {
 		}
 		if start + 1 < source.len && source[start] == `/` && source[start + 1] == `*` {
 			start += 2
-			for start + 1 < source.len {
-				if source[start] == `*` && source[start + 1] == `/` {
+			mut depth := 1
+			for start + 1 < source.len && depth > 0 {
+				if source[start] == `/` && source[start + 1] == `*` {
+					depth++
 					start += 2
-					break
+					continue
+				}
+				if source[start] == `*` && source[start + 1] == `/` {
+					depth--
+					start += 2
+					continue
 				}
 				start++
+			}
+			if depth > 0 {
+				return none
 			}
 			continue
 		}
