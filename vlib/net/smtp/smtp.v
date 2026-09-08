@@ -271,7 +271,7 @@ fn envelope_addr(s string) string {
 }
 
 // split_mailbox splits an RFC 5322 mailbox into a (display_name, addr_spec) pair.
-// An angle-addr `<addr>` NOT inside a quoted string is the separator.
+// An angle-addr `<addr>` outside quoted strings and comments is the separator.
 //
 //   'User <a@ex.com>'            ->  Option('User'), 'a@ex.com'
 //   'a@ex.com'                   ->  Option(none), 'a@ex.com'
@@ -297,13 +297,15 @@ fn strip_crlf(s string) string {
 	return s.replace('\r', '').replace('\n', '')
 }
 
-// index_unquoted returns the index of the first byte `what` not inside a
-// quoted-string, starting from `start`. Returns none if not found.
+// index_unquoted returns the index of the first byte `what` outside quoted
+// strings and comments, starting from `start`. Returns none if not found.
 fn index_unquoted(s string, what u8, start int) ?int {
 	mut i := start
 	for i < s.len {
 		if s[i] == `"` {
 			i = skip_quoted_string(s, i)
+		} else if s[i] == `(` {
+			i = skip_comment(s, i)
 		} else if s[i] == what {
 			return i
 		} else {
@@ -311,6 +313,31 @@ fn index_unquoted(s string, what u8, start int) ?int {
 		}
 	}
 	return none
+}
+
+// skip_comment returns the index just past the RFC 5322 comment starting at
+// s[start], honoring nested comments and quoted-pairs. Returns s.len if the
+// comment is unterminated.
+fn skip_comment(s string, start int) int {
+	mut depth := 1
+	mut i := start + 1
+	for i < s.len {
+		if s[i] == `\\` && i + 1 < s.len {
+			i += 2
+		} else if s[i] == `(` {
+			depth++
+			i++
+		} else if s[i] == `)` {
+			depth--
+			i++
+			if depth == 0 {
+				return i
+			}
+		} else {
+			i++
+		}
+	}
+	return s.len
 }
 
 // unquote_name decodes a display name that is a single quoted-string,

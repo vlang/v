@@ -103,6 +103,10 @@ fn test_envelope_addr_strips_display_name() {
 	// envelope separator — only the outermost '<' / '>' pair counts.
 	assert envelope_addr('User <"a>b"@example.com>') == '"a>b"@example.com'
 	assert envelope_addr('User <"a>b@c<d"@example.com>') == '"a>b@c<d"@example.com'
+	// Angle brackets inside nested comments are not the angle-addr separator.
+	commented := 'John (manager (region <east>) \\) lead) <john@example.com>'
+	assert envelope_addr(commented) == 'john@example.com'
+	assert format_addr(commented).ends_with('<john@example.com>')
 	// Malformed input (no closing '>') passes through; the server can reject.
 	assert envelope_addr('Ivan <ivan@example.com') == 'Ivan <ivan@example.com'
 	// A bare address must still be CRLF-sanitized to keep the newline out of RCPT TO.
