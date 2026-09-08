@@ -11,7 +11,7 @@ pub:
 	config SSLConnectConfig
 pub mut:
 	sslctx   &C.SSL_CTX = unsafe { nil }
-	ssl      &C.SSL     = unsafe { nil }
+	ssl      &C.SSL = unsafe { nil }
 	handle   int
 	duration time.Duration
 
@@ -30,7 +30,7 @@ pub:
 	verify   string // the path to a rootca.pem file, containing trusted CA certificate(s)
 	cert     string // the path to a cert.pem file, containing client certificate(s) for the request
 	cert_key string // the path to a key.pem file, containing private keys for the client certificate(s)
-	validate bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
+	validate bool // set this to true, if you want to stop requests, when their certificates are found to be invalid
 
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 
@@ -45,7 +45,7 @@ pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 	mut conn := &SSLConn{
 		config: config
 		sslctx: unsafe { nil }
-		ssl:    unsafe { nil }
+		ssl: unsafe { nil }
 		handle: 0
 	}
 	conn.init() or {
@@ -249,15 +249,13 @@ fn (mut s SSLConn) init() ! {
 			}
 		}
 		if s.config.cert != '' {
-			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str),
-				C.SSL_FILETYPE_PEM)
+			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str), C.SSL_FILETYPE_PEM)
 			if s.config.validate && res != 1 {
 				return error_with_code('net.openssl SSLConn.init, SSL_CTX_use_certificate_file failed, res: ${res}', net.err_tls_certificate_invalid_code)
 			}
 		}
 		if s.config.cert_key != '' {
-			res = C.SSL_CTX_use_PrivateKey_file(voidptr(s.sslctx), &char(cert_key.str),
-				C.SSL_FILETYPE_PEM)
+			res = C.SSL_CTX_use_PrivateKey_file(voidptr(s.sslctx), &char(cert_key.str), C.SSL_FILETYPE_PEM)
 			if s.config.validate && res != 1 {
 				return error_with_code('net.openssl SSLConn.init, SSL_CTX_use_PrivateKey_file failed, res: ${res}', net.err_tls_certificate_invalid_code)
 			}
@@ -324,8 +322,7 @@ fn (s &SSLConn) verify_hostname(hostname string) ! {
 	}
 	ip_result := C.v_net_openssl_x509_check_ip_asc(cert, &char(hostname.str), 0)
 	verified := if ip_result == -2 {
-		C.v_net_openssl_x509_check_host(cert, &char(hostname.str), usize(hostname.len), 0,
-			unsafe { nil }) == 1
+		C.v_net_openssl_x509_check_host(cert, &char(hostname.str), usize(hostname.len), 0, unsafe { nil }) == 1
 	} else {
 		ip_result == 1
 	}
@@ -576,8 +573,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 				$if trace_ssl ? {
 					eprintln('${@METHOD} ---> res: could not write SSL, err_res: ${err_res}')
 				}
-				return error_with_code('net.openssl SSLConn.write_ptr, could not write. (${err_res}),err',
-					int(err_res))
+				return error_with_code('net.openssl SSLConn.write_ptr, could not write. (${err_res}),err', int(err_res))
 			}
 			total_sent += sent
 			s.last_write_sent = total_sent
@@ -616,7 +612,7 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 		microseconds := (remaining_time % 1000) * 1000
 
 		tt := C.timeval{
-			tv_sec:  u64(seconds)
+			tv_sec: u64(seconds)
 			tv_usec: u64(microseconds)
 		}
 		timeval_timeout := if is_infinite {
