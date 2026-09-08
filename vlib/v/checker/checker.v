@@ -25,6 +25,15 @@ const generic_fn_cutoff_limit_per_fn = 10_000 // how many times post_process_gen
 
 const generic_fn_postprocess_iterations_cutoff_limit = 1_000_000
 
+const asm_intel_flag_cf = u8(1 << 0)
+const asm_intel_flag_pf = u8(1 << 1)
+const asm_intel_flag_af = u8(1 << 2)
+const asm_intel_flag_zf = u8(1 << 3)
+const asm_intel_flag_sf = u8(1 << 4)
+const asm_intel_flag_of = u8(1 << 5)
+const asm_intel_status_flags = asm_intel_flag_cf | asm_intel_flag_pf | asm_intel_flag_af |
+	asm_intel_flag_zf | asm_intel_flag_sf | asm_intel_flag_of
+
 fn has_ascii_upper(s string) bool {
 	for ch in s {
 		if ch >= `A` && ch <= `Z` {
@@ -4477,41 +4486,153 @@ fn asm_intel_mnemonic_is_one_of(name string, mnemonics []string) bool {
 		&& name[..name.len - 1] in mnemonics
 }
 
-fn asm_intel_instruction_reads_flags(instruction string) bool {
+fn asm_intel_condition_flags(instruction string) u8 {
 	name := asm_intel_normalized_instruction_name(instruction)
-	if asm_intel_mnemonic_is_one_of(name, ['adc', 'adcx', 'adox', 'sbb', 'rcl', 'rcr']) {
-		return true
+	mut condition := if name.starts_with('cmov') {
+		name[4..]
+	} else if name.starts_with('set') {
+		name[3..]
+	} else if name.starts_with('j') {
+		name[1..]
+	} else {
+		return 0
 	}
-	if name.starts_with('cmov') || name.starts_with('set') {
-		return true
+	if condition.len > 1 && condition[condition.len - 1] in [`b`, `w`, `l`, `q`]
+		&& condition[..condition.len - 1] in ['a', 'ae', 'b', 'be', 'c', 'e', 'g', 'ge', 'l',
+		'le', 'na', 'nae', 'nb', 'nbe', 'nc', 'ne', 'ng', 'nge', 'nl', 'nle', 'no', 'np',
+		'ns', 'nz', 'o', 'p', 'pe', 'po', 's', 'z'] {
+		condition = condition[..condition.len - 1]
 	}
-	if name.starts_with('j') && name !in ['jmp', 'jmpl', 'jmpq', 'jcxz', 'jecxz', 'jrcxz'] {
-		return true
+	return match condition {
+		'b', 'c', 'nae', 'ae', 'nb', 'nc' { asm_intel_flag_cf }
+		'p', 'pe', 'np', 'po' { asm_intel_flag_pf }
+		'e', 'z', 'ne', 'nz' { asm_intel_flag_zf }
+		'a', 'nbe', 'be', 'na' { asm_intel_flag_cf | asm_intel_flag_zf }
+		's', 'ns' { asm_intel_flag_sf }
+		'o', 'no' { asm_intel_flag_of }
+		'l', 'nge', 'ge', 'nl' { asm_intel_flag_sf | asm_intel_flag_of }
+		'le', 'ng', 'g', 'nle' { asm_intel_flag_zf | asm_intel_flag_sf | asm_intel_flag_of }
+		else { u8(0) }
 	}
-	return name in ['lahf', 'pushf', 'pushfd', 'pushfq'] || name.starts_with('loopz')
-		|| name.starts_with('loope') || name.starts_with('loopnz') || name.starts_with('loopne')
 }
 
-fn asm_intel_instruction_overwrites_flags(instruction string) bool {
+fn asm_intel_instruction_read_flags(instruction string) u8 {
 	name := asm_intel_normalized_instruction_name(instruction)
-	return asm_intel_mnemonic_is_one_of(name, ['add', 'and', 'cmp', 'neg', 'or', 'sub', 'test',
-		'xor'])
-		|| name in ['popf', 'popfd', 'popfq']
+	if asm_intel_mnemonic_is_one_of(name, ['adc', 'adcx', 'sbb', 'rcl', 'rcr']) {
+		return asm_intel_flag_cf
+	}
+	if asm_intel_mnemonic_is_one_of(name, ['adox']) {
+		return asm_intel_flag_of
+	}
+	condition_flags := asm_intel_condition_flags(name)
+	if condition_flags != 0 {
+		return condition_flags
+	}
+	if name == 'lahf' {
+		return asm_intel_status_flags & ~asm_intel_flag_of
+	}
+	if name in ['pushf', 'pushfd', 'pushfq'] {
+		return asm_intel_status_flags
+	}
+	if name.starts_with('loopz') || name.starts_with('loope') || name.starts_with('loopnz')
+		|| name.starts_with('loopne') {
+		return asm_intel_flag_zf
+	}
+	return 0
+}
+
+fn asm_intel_instruction_set_flags(instruction string) u8 {
+	name := asm_intel_normalized_instruction_name(instruction)
+	if asm_intel_mnemonic_is_one_of(name, ['adcx']) {
+		return asm_intel_flag_cf
+	}
+	if asm_intel_mnemonic_is_one_of(name, ['adox']) {
+		return asm_intel_flag_of
+	}
+	if asm_intel_mnemonic_is_one_of(name, ['inc', 'dec']) {
+		return asm_intel_status_flags & ~asm_intel_flag_cf
+	}
+	if asm_intel_mnemonic_is_one_of(name, ['and', 'or', 'test', 'xor']) {
+		return asm_intel_status_flags & ~asm_intel_flag_af
+	}
+	if asm_intel_mnemonic_is_one_of(name, ['andn', 'bextr', 'blsi', 'blsmsk', 'blsr', 'bzhi']) {
+		return asm_intel_flag_cf | asm_intel_flag_zf | asm_intel_flag_sf | asm_intel_flag_of
+	}
+	if asm_intel_mnemonic_is_one_of(name, ['bsf', 'bsr']) {
+		return asm_intel_flag_zf
+	}
+	if asm_intel_mnemonic_is_one_of(name, ['bt', 'btc', 'btr', 'bts']) {
+		return asm_intel_flag_cf
+	}
+	if asm_intel_mnemonic_is_one_of(name, ['lzcnt', 'tzcnt']) {
+		return asm_intel_flag_cf | asm_intel_flag_zf
+	}
+	if asm_intel_mnemonic_is_one_of(name, ['imul', 'mul']) {
+		return asm_intel_flag_cf | asm_intel_flag_of
+	}
+	if asm_intel_mnemonic_is_one_of(name, ['popcnt']) {
+		return asm_intel_status_flags
+	}
+	if name in ['clc', 'cmc', 'stc'] {
+		return asm_intel_flag_cf
+	}
+	if name == 'sahf' {
+		return asm_intel_status_flags & ~asm_intel_flag_of
+	}
+	if asm_intel_mnemonic_is_one_of(name, ['add', 'adc', 'cmp', 'cmpxchg', 'neg', 'sbb', 'sub',
+		'xadd']) {
+		return asm_intel_status_flags
+	}
+	return 0
+}
+
+fn asm_intel_instruction_overwritten_flags(instruction string) u8 {
+	name := asm_intel_normalized_instruction_name(instruction)
+	if name in ['popf', 'popfd', 'popfq'] {
+		return asm_intel_status_flags
+	}
+	if name in ['clc', 'cmc', 'stc'] {
+		return asm_intel_flag_cf
+	}
+	if name == 'sahf' {
+		return asm_intel_status_flags & ~asm_intel_flag_of
+	}
+	if asm_intel_mnemonic_is_one_of(name, ['inc', 'dec']) {
+		return asm_intel_status_flags & ~asm_intel_flag_cf
+	}
+	if asm_intel_mnemonic_is_one_of(name, ['adcx']) {
+		return asm_intel_flag_cf
+	}
+	if asm_intel_mnemonic_is_one_of(name, ['adox']) {
+		return asm_intel_flag_of
+	}
+	if asm_intel_mnemonic_is_one_of(name, ['div', 'idiv']) {
+		return asm_intel_status_flags
+	}
+	if asm_intel_instruction_set_flags(name) != 0 {
+		return asm_intel_status_flags
+	}
+	return 0
 }
 
 fn asm_intel_flags_are_observed_after(templates []ast.AsmTemplate, template_index int) bool {
+	mut remaining_flags := asm_intel_instruction_set_flags(templates[template_index].name)
+	if remaining_flags == 0 {
+		return false
+	}
 	for i in template_index + 1 .. templates.len {
 		if templates[i].is_directive || templates[i].is_label {
 			continue
 		}
-		if asm_intel_instruction_reads_flags(templates[i].name) {
+		if asm_intel_instruction_read_flags(templates[i].name) & remaining_flags != 0 {
 			return true
 		}
 		name := asm_intel_normalized_instruction_name(templates[i].name)
 		if name in ['jmp', 'jmpl', 'jmpq', 'ljmp'] {
 			return true
 		}
-		if asm_intel_instruction_overwrites_flags(templates[i].name) {
+		remaining_flags &= asm_intel_status_flags ^ asm_intel_instruction_overwritten_flags(name)
+		if remaining_flags == 0 {
 			return false
 		}
 	}
@@ -4561,8 +4682,31 @@ fn (mut c Checker) check_asm_intel_narrow_data_aliases(template ast.AsmTemplate,
 	return false
 }
 
+fn asm_intel_extension_move_source_width(instruction string) int {
+	return match instruction {
+		'movzbw', 'movzbl', 'movzbq', 'movsbw', 'movsbl', 'movsbq' { 8 }
+		'movzwl', 'movzwq', 'movswl', 'movswq' { 16 }
+		'movsxd', 'movslq' { 32 }
+		else { 0 }
+	}
+}
+
+fn asm_intel_extension_move_destination_width(instruction string) int {
+	if instruction == 'movsxd' {
+		return 64
+	}
+	if asm_intel_extension_move_source_width(instruction) == 0 {
+		return 0
+	}
+	return match instruction[instruction.len - 1] {
+		`w` { 16 }
+		`l` { 32 }
+		else { 64 }
+	}
+}
+
 fn (mut c Checker) check_asm_intel_extension_move_source(template ast.AsmTemplate,
-	aliases map[string]ast.Type, native_width int, instruction string) {
+	aliases map[string]ast.Type, native_width int, source_width int) {
 	if template.args.len < 2 {
 		return
 	}
@@ -4573,13 +4717,18 @@ fn (mut c Checker) check_asm_intel_extension_move_source(template ast.AsmTemplat
 		return
 	}
 	if source is ast.AsmRegister {
-		is_valid_source := if instruction == 'movsxd' {
-			native_width == 8 && source.size == 32
+		is_valid_source := if source_width > 0 {
+			source.size == source_width
 		} else {
 			source.size in [8, 16]
 		}
 		if !is_valid_source {
-			c.error('hard source register `${source.name}` is ${source.size}-bit, but instruction `${template.name}` requires a source narrower than its ${native_width * 8}-bit named destination; use a hard source register of the required width, or a `raw intel` block with explicit operand modifiers',
+			requirement := if source_width > 0 {
+				'a source register of ${source_width} bits'
+			} else {
+				'a source narrower than its ${native_width * 8}-bit named destination'
+			}
+			c.error('hard source register `${source.name}` is ${source.size}-bit, but instruction `${template.name}` requires ${requirement}; use a hard source register of the required width, or a `raw intel` block with explicit operand modifiers',
 				template.pos)
 		}
 	}
@@ -4587,7 +4736,7 @@ fn (mut c Checker) check_asm_intel_extension_move_source(template ast.AsmTemplat
 
 fn (mut c Checker) check_asm_intel_extension_move_address_source(template ast.AsmTemplate,
 	instruction string) bool {
-	if instruction == 'movsxd' || template.args.len < 2 {
+	if instruction !in ['movsx', 'movzx'] || template.args.len < 2 {
 		return false
 	}
 	source := template.args[1]
@@ -4611,7 +4760,9 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	// deliberately absent.
 	mut name := asm_intel_normalized_instruction_name(template.name)
 	is_movq := name == 'movq'
-	is_extension_move := name in ['movsx', 'movsxd', 'movzx']
+	extension_source_width := asm_intel_extension_move_source_width(name)
+	extension_destination_width := asm_intel_extension_move_destination_width(name)
+	is_extension_move := name in ['movsx', 'movsxd', 'movzx'] || extension_source_width > 0
 	same_width_instructions := ['mov', 'movbe', 'add', 'adc', 'adcx', 'adox', 'sub', 'sbb', 'and',
 		'andn', 'or', 'xor', 'cmp', 'test', 'xchg', 'xadd', 'cmpxchg', 'inc', 'dec', 'neg', 'div',
 		'idiv', 'imul', 'mul', 'bsf', 'bsr', 'bt', 'btc', 'btr', 'bts', 'bextr', 'blsi',
@@ -4666,6 +4817,15 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 	if !has_named_alias {
 		return
 	}
+	if extension_destination_width > 0 && template.args.len > 0 {
+		destination := template.args[0]
+		if destination is ast.AsmAlias && destination.name in aliases
+			&& extension_destination_width != native_width * 8 {
+			c.error('instruction `${template.name}` selects a ${extension_destination_width}-bit destination, but named destination `${destination.name}` expands to a ${native_width * 8}-bit register in structured `intel` assembly; use a matching destination width, or a `raw intel` block with an explicit operand modifier',
+				template.pos)
+			return
+		}
+	}
 	if explicit_width > 0 {
 		if name != 'crc32' && explicit_width != native_width * 8 {
 			c.error('instruction `${template.name}` selects ${explicit_width}-bit operands, but named operands in structured `intel` assembly expand to ${native_width * 8}-bit registers for the current compilation target; use a matching instruction width, or a `raw intel` block with explicit operand modifiers',
@@ -4689,7 +4849,8 @@ fn (mut c Checker) check_asm_intel_hard_register_widths(template ast.AsmTemplate
 		}
 	}
 	if is_extension_move {
-		c.check_asm_intel_extension_move_source(template, aliases, native_width, name)
+		c.check_asm_intel_extension_move_source(template, aliases, native_width,
+			extension_source_width)
 		return
 	}
 	if c.check_asm_intel_narrow_data_aliases(template, aliases, native_width, name) {

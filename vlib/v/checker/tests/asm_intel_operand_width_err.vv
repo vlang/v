@@ -205,6 +205,29 @@ fn intel_extension_move_named_sources(value i64) {
 	}
 }
 
+fn intel_gnu_extension_move_named_sources(value i64) {
+	mut zero_extended := i64(0)
+	mut sign_extended := i64(0)
+	asm amd64 intel {
+		movzbq zero_extended, value
+		movswq sign_extended, value
+		; =r (zero_extended)
+		  =r (sign_extended)
+		; r (value)
+	}
+}
+
+fn intel_gnu_extension_move_widths(value i64) {
+	mut result := i64(0)
+	asm amd64 intel {
+		movzbq result, ax
+		movswq result, al
+		movzbl result, al
+		; =r (result)
+		; r (value)
+	}
+}
+
 fn intel_extension_move_address_sources(base &u8) {
 	mut zero_extended := i64(0)
 	mut sign_extended := i64(0)
@@ -270,6 +293,18 @@ fn intel_narrow_arithmetic_flags(value int) {
 		xor rax, rax
 	flags_ready:
 		seto al
+		; +r (result)
+		; ; rax
+		  cc
+	}
+}
+
+fn intel_narrow_arithmetic_carry_survives_inc(value int) {
+	mut result := value
+	asm amd64 intel {
+		add result, 1
+		inc eax
+		setc al
 		; +r (result)
 		; ; rax
 		  cc

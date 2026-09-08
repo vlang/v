@@ -173,164 +173,206 @@ vlib/v/checker/tests/asm_intel_operand_width_err.vv:200:3: error: named source `
       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   201 |         ; =r (zero_extended)
   202 |           =r (sign_extended)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:212:3: error: addressed source in instruction `movzx` has no explicit data width in structured `intel` assembly; use a hard source register of the required width, or a `raw intel` block with an explicit source size
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:212:3: error: named source `value` expands to a 64-bit register in structured `intel` assembly, but instruction `movzbq` requires a narrower source; use a hard source register of the required width, or a `raw intel` block with an explicit operand modifier
   210 |     mut sign_extended := i64(0)
   211 |     asm amd64 intel {
-  212 |         movzx zero_extended, [base]
+  212 |         movzbq zero_extended, value
       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  213 |         movsx sign_extended, [base]
+  213 |         movswq sign_extended, value
   214 |         ; =r (zero_extended)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:213:3: error: addressed source in instruction `movsx` has no explicit data width in structured `intel` assembly; use a hard source register of the required width, or a `raw intel` block with an explicit source size
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:213:3: error: named source `value` expands to a 64-bit register in structured `intel` assembly, but instruction `movswq` requires a narrower source; use a hard source register of the required width, or a `raw intel` block with an explicit operand modifier
   211 |     asm amd64 intel {
-  212 |         movzx zero_extended, [base]
-  213 |         movsx sign_extended, [base]
+  212 |         movzbq zero_extended, value
+  213 |         movswq sign_extended, value
       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~
   214 |         ; =r (zero_extended)
   215 |           =r (sign_extended)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:222:3: error: named operand `value` has 32-bit type `int`, but instruction `div` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  220 | fn intel_narrow_implicit_arithmetic(value int) {
-  221 |     asm amd64 intel {
-  222 |         div value
-      |         ~~~~~~~~~
-  223 |         idiv value
-  224 |         mul value
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:223:3: error: named operand `value` has 32-bit type `int`, but instruction `idiv` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  221 |     asm amd64 intel {
-  222 |         div value
-  223 |         idiv value
-      |         ~~~~~~~~~~
-  224 |         mul value
-  225 |         imul value
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:224:3: error: named operand `value` has 32-bit type `int`, but instruction `mul` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  222 |         div value
-  223 |         idiv value
-  224 |         mul value
-      |         ~~~~~~~~~
-  225 |         imul value
-  226 |         ; ; r (value)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:225:3: error: named operand `value` has 32-bit type `int`, but instruction `imul` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  223 |         idiv value
-  224 |         mul value
-  225 |         imul value
-      |         ~~~~~~~~~~
-  226 |         ; ; r (value)
-  227 |         ; rax
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:235:3: error: addressed operand in instruction `div` has no explicit data width in structured `intel` assembly; use an explicitly suffixed instruction, or a `raw intel` block with an explicit operand size
-  233 | fn intel_implicit_arithmetic_address(base &u64) {
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:223:3: error: hard source register `ax` is 16-bit, but instruction `movzbq` requires a source register of 8 bits; use a hard source register of the required width, or a `raw intel` block with explicit operand modifiers
+  221 |     mut result := i64(0)
+  222 |     asm amd64 intel {
+  223 |         movzbq result, ax
+      |         ~~~~~~~~~~~~~~~~~
+  224 |         movswq result, al
+  225 |         movzbl result, al
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:224:3: error: hard source register `al` is 8-bit, but instruction `movswq` requires a source register of 16 bits; use a hard source register of the required width, or a `raw intel` block with explicit operand modifiers
+  222 |     asm amd64 intel {
+  223 |         movzbq result, ax
+  224 |         movswq result, al
+      |         ~~~~~~~~~~~~~~~~~
+  225 |         movzbl result, al
+  226 |         ; =r (result)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:225:3: error: instruction `movzbl` selects a 32-bit destination, but named destination `result` expands to a 64-bit register in structured `intel` assembly; use a matching destination width, or a `raw intel` block with an explicit operand modifier
+  223 |         movzbq result, ax
+  224 |         movswq result, al
+  225 |         movzbl result, al
+      |         ~~~~~~~~~~~~~~~~~
+  226 |         ; =r (result)
+  227 |         ; r (value)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:235:3: error: addressed source in instruction `movzx` has no explicit data width in structured `intel` assembly; use a hard source register of the required width, or a `raw intel` block with an explicit source size
+  233 |     mut sign_extended := i64(0)
   234 |     asm amd64 intel {
-  235 |         div [base]
-      |         ~~~~~~~~~~
-  236 |         idiv [base]
-  237 |         mul [base]
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:236:3: error: addressed operand in instruction `idiv` has no explicit data width in structured `intel` assembly; use an explicitly suffixed instruction, or a `raw intel` block with an explicit operand size
+  235 |         movzx zero_extended, [base]
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  236 |         movsx sign_extended, [base]
+  237 |         ; =r (zero_extended)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:236:3: error: addressed source in instruction `movsx` has no explicit data width in structured `intel` assembly; use a hard source register of the required width, or a `raw intel` block with an explicit source size
   234 |     asm amd64 intel {
-  235 |         div [base]
-  236 |         idiv [base]
-      |         ~~~~~~~~~~~
-  237 |         mul [base]
-  238 |         imul [base]
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:237:3: error: addressed operand in instruction `mul` has no explicit data width in structured `intel` assembly; use an explicitly suffixed instruction, or a `raw intel` block with an explicit operand size
-  235 |         div [base]
-  236 |         idiv [base]
-  237 |         mul [base]
+  235 |         movzx zero_extended, [base]
+  236 |         movsx sign_extended, [base]
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  237 |         ; =r (zero_extended)
+  238 |           =r (sign_extended)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:245:3: error: named operand `value` has 32-bit type `int`, but instruction `div` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  243 | fn intel_narrow_implicit_arithmetic(value int) {
+  244 |     asm amd64 intel {
+  245 |         div value
+      |         ~~~~~~~~~
+  246 |         idiv value
+  247 |         mul value
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:246:3: error: named operand `value` has 32-bit type `int`, but instruction `idiv` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  244 |     asm amd64 intel {
+  245 |         div value
+  246 |         idiv value
       |         ~~~~~~~~~~
-  238 |         imul [base]
-  239 |         ; ; r (base)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:238:3: error: addressed operand in instruction `imul` has no explicit data width in structured `intel` assembly; use an explicitly suffixed instruction, or a `raw intel` block with an explicit operand size
-  236 |         idiv [base]
-  237 |         mul [base]
-  238 |         imul [base]
-      |         ~~~~~~~~~~~
-  239 |         ; ; r (base)
-  240 |         ; rax
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:248:3: error: register-valued displacement creates a third address register in structured `intel` assembly; use at most a base and index register, or a `raw intel` block with an explicit address expression
-  246 | fn intel_three_register_address(base &u8, index i64, displacement i64) {
-  247 |     asm amd64 intel {
-  248 |         mov al, [base + index + displacement]
-      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  249 |         ; ; r (base)
-  250 |           r (index)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:258:3: error: address operand `index` has 32-bit signed type `int`, but structured `intel` assembly substitutes a 64-bit register without sign extension; use a native-width address operand, or a `raw intel` block with an explicit operand modifier
-  256 | fn intel_signed_narrow_address(base &u8, index int) {
+  247 |         mul value
+  248 |         imul value
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:247:3: error: named operand `value` has 32-bit type `int`, but instruction `mul` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  245 |         div value
+  246 |         idiv value
+  247 |         mul value
+      |         ~~~~~~~~~
+  248 |         imul value
+  249 |         ; ; r (value)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:248:3: error: named operand `value` has 32-bit type `int`, but instruction `imul` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  246 |         idiv value
+  247 |         mul value
+  248 |         imul value
+      |         ~~~~~~~~~~
+  249 |         ; ; r (value)
+  250 |         ; rax
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:258:3: error: addressed operand in instruction `div` has no explicit data width in structured `intel` assembly; use an explicitly suffixed instruction, or a `raw intel` block with an explicit operand size
+  256 | fn intel_implicit_arithmetic_address(base &u64) {
   257 |     asm amd64 intel {
-  258 |         mov al, [base + index + 0]
+  258 |         div [base]
+      |         ~~~~~~~~~~
+  259 |         idiv [base]
+  260 |         mul [base]
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:259:3: error: addressed operand in instruction `idiv` has no explicit data width in structured `intel` assembly; use an explicitly suffixed instruction, or a `raw intel` block with an explicit operand size
+  257 |     asm amd64 intel {
+  258 |         div [base]
+  259 |         idiv [base]
+      |         ~~~~~~~~~~~
+  260 |         mul [base]
+  261 |         imul [base]
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:260:3: error: addressed operand in instruction `mul` has no explicit data width in structured `intel` assembly; use an explicitly suffixed instruction, or a `raw intel` block with an explicit operand size
+  258 |         div [base]
+  259 |         idiv [base]
+  260 |         mul [base]
+      |         ~~~~~~~~~~
+  261 |         imul [base]
+  262 |         ; ; r (base)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:261:3: error: addressed operand in instruction `imul` has no explicit data width in structured `intel` assembly; use an explicitly suffixed instruction, or a `raw intel` block with an explicit operand size
+  259 |         idiv [base]
+  260 |         mul [base]
+  261 |         imul [base]
+      |         ~~~~~~~~~~~
+  262 |         ; ; r (base)
+  263 |         ; rax
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:271:3: error: register-valued displacement creates a third address register in structured `intel` assembly; use at most a base and index register, or a `raw intel` block with an explicit address expression
+  269 | fn intel_three_register_address(base &u8, index i64, displacement i64) {
+  270 |     asm amd64 intel {
+  271 |         mov al, [base + index + displacement]
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  272 |         ; ; r (base)
+  273 |           r (index)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:281:3: error: address operand `index` has 32-bit signed type `int`, but structured `intel` assembly substitutes a 64-bit register without sign extension; use a native-width address operand, or a `raw intel` block with an explicit operand modifier
+  279 | fn intel_signed_narrow_address(base &u8, index int) {
+  280 |     asm amd64 intel {
+  281 |         mov al, [base + index + 0]
       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~
-  259 |         ; ; r (base)
-  260 |           r (index)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:268:3: error: named operand `result` has 32-bit type `int`, but instruction `add` sets 64-bit flags that are observed later in this structured `intel` block; use native-width operands, or a `raw intel` block with explicit operand modifiers
-  266 |     mut result := value
-  267 |     asm amd64 intel {
-  268 |         add result, 1
+  282 |         ; ; r (base)
+  283 |           r (index)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:291:3: error: named operand `result` has 32-bit type `int`, but instruction `add` sets 64-bit flags that are observed later in this structured `intel` block; use native-width operands, or a `raw intel` block with explicit operand modifiers
+  289 |     mut result := value
+  290 |     asm amd64 intel {
+  291 |         add result, 1
       |         ~~~~~~~~~~~~~
-  269 |         jmp flags_ready
-  270 |         xor rax, rax
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:282:3: error: instruction `crc32w` selects a 16-bit memory source, which is incompatible with the 64-bit named destination in structured `intel` assembly; use a valid CRC32 source width, or a `raw intel` block with explicit operand modifiers
-  280 |     mut result := checksum
-  281 |     asm amd64 intel {
-  282 |         crc32w result, [base]
+  292 |         jmp flags_ready
+  293 |         xor rax, rax
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:305:3: error: named operand `result` has 32-bit type `int`, but instruction `add` sets 64-bit flags that are observed later in this structured `intel` block; use native-width operands, or a `raw intel` block with explicit operand modifiers
+  303 |     mut result := value
+  304 |     asm amd64 intel {
+  305 |         add result, 1
+      |         ~~~~~~~~~~~~~
+  306 |         inc eax
+  307 |         setc al
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:317:3: error: instruction `crc32w` selects a 16-bit memory source, which is incompatible with the 64-bit named destination in structured `intel` assembly; use a valid CRC32 source width, or a `raw intel` block with explicit operand modifiers
+  315 |     mut result := checksum
+  316 |     asm amd64 intel {
+  317 |         crc32w result, [base]
       |         ~~~~~~~~~~~~~~~~~~~~~
-  283 |         ; +r (result)
-  284 |         ; r (base)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:292:3: error: named operand `value` has 32-bit type `u32`, but instruction `lzcnt` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  290 |     mut result := i64(0)
-  291 |     asm amd64 intel {
-  292 |         lzcnt result, value
+  318 |         ; +r (result)
+  319 |         ; r (base)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:327:3: error: named operand `value` has 32-bit type `u32`, but instruction `lzcnt` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  325 |     mut result := i64(0)
+  326 |     asm amd64 intel {
+  327 |         lzcnt result, value
       |         ~~~~~~~~~~~~~~~~~~~
-  293 |         ; =r (result)
-  294 |         ; r (value)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:302:3: error: named operand `result` has 32-bit type `u32`, but instruction `shld` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  300 |     mut result := value
-  301 |     asm amd64 intel {
-  302 |         shld result, source, 1
+  328 |         ; =r (result)
+  329 |         ; r (value)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:337:3: error: named operand `result` has 32-bit type `u32`, but instruction `shld` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  335 |     mut result := value
+  336 |     asm amd64 intel {
+  337 |         shld result, source, 1
       |         ~~~~~~~~~~~~~~~~~~~~~~
-  303 |         ; +r (result)
-  304 |         ; r (source)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:312:3: error: named operand `value` has 32-bit type `u32`, but instruction `rorx` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  310 |     mut result := i64(0)
-  311 |     asm amd64 intel {
-  312 |         rorx result, value, 1
+  338 |         ; +r (result)
+  339 |         ; r (source)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:347:3: error: named operand `value` has 32-bit type `u32`, but instruction `rorx` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  345 |     mut result := i64(0)
+  346 |     asm amd64 intel {
+  347 |         rorx result, value, 1
       |         ~~~~~~~~~~~~~~~~~~~~~
-  313 |         ; =r (result)
-  314 |         ; r (value)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:322:3: error: named shift count `count` expands to a native-width register in structured `intel` assembly, but instruction `rorx` requires an immediate; use a literal count, or a `raw intel` block with an explicit operand modifier
-  320 |     mut result := i64(0)
-  321 |     asm amd64 intel {
-  322 |         rorx result, value, count
+  348 |         ; =r (result)
+  349 |         ; r (value)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:357:3: error: named shift count `count` expands to a native-width register in structured `intel` assembly, but instruction `rorx` requires an immediate; use a literal count, or a `raw intel` block with an explicit operand modifier
+  355 |     mut result := i64(0)
+  356 |     asm amd64 intel {
+  357 |         rorx result, value, count
       |         ~~~~~~~~~~~~~~~~~~~~~~~~~
-  323 |         ; =r (result)
-  324 |         ; r (value)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:333:3: error: named operand `value` has 32-bit type `u32`, but instruction `crc32` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  331 |     mut result := checksum
-  332 |     asm amd64 intel {
-  333 |         crc32 result, value
+  358 |         ; =r (result)
+  359 |         ; r (value)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:368:3: error: named operand `value` has 32-bit type `u32`, but instruction `crc32` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  366 |     mut result := checksum
+  367 |     asm amd64 intel {
+  368 |         crc32 result, value
       |         ~~~~~~~~~~~~~~~~~~~
-  334 |         ; +r (result)
-  335 |         ; r (value)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:343:3: error: named operand `result` has 32-bit type `u32`, but instruction `movbe` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  341 |     mut result := u32(0)
-  342 |     asm amd64 intel {
-  343 |         movbe result, [base]
+  369 |         ; +r (result)
+  370 |         ; r (value)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:378:3: error: named operand `result` has 32-bit type `u32`, but instruction `movbe` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  376 |     mut result := u32(0)
+  377 |     asm amd64 intel {
+  378 |         movbe result, [base]
       |         ~~~~~~~~~~~~~~~~~~~~
-  344 |         ; =r (result)
-  345 |         ; r (base)
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:352:3: error: named operand `value` has 32-bit type `u32`, but instruction `bt` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  350 | fn intel_narrow_bit_test(value u32) {
-  351 |     asm amd64 intel {
-  352 |         bt value, 40
+  379 |         ; =r (result)
+  380 |         ; r (base)
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:387:3: error: named operand `value` has 32-bit type `u32`, but instruction `bt` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  385 | fn intel_narrow_bit_test(value u32) {
+  386 |     asm amd64 intel {
+  387 |         bt value, 40
       |         ~~~~~~~~~~~~
-  353 |         ; ; r (value)
-  354 |         ; cc
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:361:3: error: named destination `result` has 32-bit type `u32`, but instruction `bswap` operates on the 64-bit register substituted by structured `intel` assembly; use a native-width destination, or a `raw intel` block with an explicit operand modifier
-  359 |     mut result := value
-  360 |     asm amd64 intel {
-  361 |         bswap result
+  388 |         ; ; r (value)
+  389 |         ; cc
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:396:3: error: named destination `result` has 32-bit type `u32`, but instruction `bswap` operates on the 64-bit register substituted by structured `intel` assembly; use a native-width destination, or a `raw intel` block with an explicit operand modifier
+  394 |     mut result := value
+  395 |     asm amd64 intel {
+  396 |         bswap result
       |         ~~~~~~~~~~~~
-  362 |         ; +r (result)
-  363 |     }
-vlib/v/checker/tests/asm_intel_operand_width_err.vv:371:3: error: named operand `value` has 32-bit type `u32`, but instruction `mulx` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
-  369 |     mut low := i64(0)
-  370 |     asm amd64 intel {
-  371 |         mulx high, low, value
+  397 |         ; +r (result)
+  398 |     }
+vlib/v/checker/tests/asm_intel_operand_width_err.vv:406:3: error: named operand `value` has 32-bit type `u32`, but instruction `mulx` operates on the 64-bit register substituted by structured `intel` assembly; use native-width data operands, or a `raw intel` block with explicit operand modifiers
+  404 |     mut low := i64(0)
+  405 |     asm amd64 intel {
+  406 |         mulx high, low, value
       |         ~~~~~~~~~~~~~~~~~~~~~
-  372 |         ; =r (high)
-  373 |           =r (low)
+  407 |         ; =r (high)
+  408 |           =r (low)

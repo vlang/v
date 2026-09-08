@@ -84,6 +84,19 @@ fn test_intel_narrow_add_without_observed_flags_with_clang() {
 	assert result == 42
 }
 
+fn test_intel_narrow_add_flags_overwritten_by_inc_with_clang() {
+	mut result := 19
+	asm amd64 intel {
+		add result, 23
+		inc eax
+		seto al
+		; +r (result)
+		; ; rax
+		  cc
+	}
+	assert result == 42
+}
+
 fn test_intel_unsigned_narrow_address_index_with_clang() {
 	values := [u8(41), 42]
 	base := &values[0]
