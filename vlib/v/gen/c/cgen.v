@@ -13931,8 +13931,10 @@ fn (mut g Gen) as_cast_option_payload_expr_from_expr(typ ast.Type, expr ast.Expr
 	return g.as_cast_option_payload_expr(typ, g.expr_string(expr), false)
 }
 
-fn (mut g Gen) write_as_cast_call_start(styp string, sym ast.TypeSymbol) {
+fn (mut g Gen) write_as_cast_call_start(styp string, sym ast.TypeSymbol, target_is_ptr bool) {
 	if sym.info is ast.FnType {
+		g.write('(${styp})')
+	} else if target_is_ptr {
 		g.write('(${styp})')
 	} else if g.inside_smartcast {
 		g.write('(${styp}*)')
@@ -14054,7 +14056,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			}
 			obj_expr := '(${expr_str})${dot}_${payload_member}'
 			tag_expr := '(${expr_str})${dot}_typ'
-			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call_start(styp, sym, unwrapped_node_typ.is_ptr())
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		} else {
 			expr_str := if expr_is_option {
@@ -14064,7 +14066,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			}
 			obj_expr := '(${expr_str})${dot}_${payload_member}'
 			tag_expr := '(${expr_str})${dot}_typ'
-			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call_start(styp, sym, unwrapped_node_typ.is_ptr())
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		}
 
@@ -14109,21 +14111,26 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		expr_type_sym.info = info
 	} else if mut expr_type_sym.info is ast.Interface && node.expr_type != node.typ {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-		matching_variants := g.matching_interface_variant_types(expr_type_sym, unwrapped_node_typ)
+		runtime_target_type := if unwrapped_node_typ.is_ptr() {
+			unwrapped_node_typ.deref()
+		} else {
+			unwrapped_node_typ
+		}
+		matching_variants := g.matching_interface_variant_types(expr_type_sym, runtime_target_type)
 		index_exprs := g.type_idx_exprs_for_types(matching_variants)
-		payload_sym := g.table.sym(g.as_cast_payload_type(unwrapped_node_typ, matching_variants))
-		sidx := g.type_sidx(unwrapped_node_typ)
+		payload_sym := g.table.sym(g.as_cast_payload_type(runtime_target_type, matching_variants))
+		sidx := g.type_sidx(runtime_target_type)
 		if as_cast_operand_needs_tmp_eval(node.expr) {
 			tmp_var := g.expr_to_ctemp_before_stmt(node.expr, node.expr_type).name
 			obj_expr := '${tmp_var}${dot}_${payload_sym.cname}'
 			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}(${tmp_var}${dot}_typ)'
-			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call_start(styp, sym, unwrapped_node_typ.is_ptr())
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		} else {
 			expr_str := g.expr_string(node.expr)
 			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
 			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}((${expr_str})${dot}_typ)'
-			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call_start(styp, sym, unwrapped_node_typ.is_ptr())
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		}
 
@@ -14145,7 +14152,8 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 				// emit (T*)(expr._object) instead of &expr (which would take the address
 				// of the interface box, giving garbage field reads).
 				dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-				g.write('(${styp}*)(')
+				cast_type := if node.typ.is_ptr() { styp } else { '${styp}*' }
+				g.write('(${cast_type})(')
 				g.expr(node.expr)
 				g.write('${dot}_object)')
 				is_optional_ident_var = true
