@@ -155,6 +155,24 @@ fn test_dotted_install_does_not_nest_inside_existing_module() {
 	assert !os.exists(os.join_path(vmodules_path, 'foo', 'bar'))
 }
 
+fn test_dotted_install_does_not_nest_inside_git_worktree() {
+	vmodules_path := os.join_path(test_path, 'vmodules_worktree_ancestor')
+	test_utils.set_test_env(vmodules_path)
+	source_repo_path := os.join_path(test_path, 'worktree_ancestor_source')
+	create_local_git_module(source_repo_path, 'foo')
+	worktree_path := os.join_path(vmodules_path, 'foo')
+	os.mkdir_all(vmodules_path) or { panic(err) }
+	cmd_ok(@LOCATION,
+		'git -C ${os.quoted_path(source_repo_path)} worktree add -b vpm-test ${os.quoted_path(worktree_path)}')
+	assert os.is_file(os.join_path(worktree_path, '.git'))
+	nested_repo_path := os.join_path(test_path, 'worktree_ancestor_nested')
+	create_local_git_module(nested_repo_path, 'foo.bar')
+
+	res := cmd_fail(@LOCATION, '${vexe} install ${os.quoted_path(nested_repo_path)}')
+	assert res.output.contains('refusing to install `foo.bar` inside existing module'), res.output
+	assert !os.exists(os.join_path(worktree_path, 'bar'))
+}
+
 fn test_root_install_does_not_replace_existing_module_namespace() {
 	vmodules_path := os.join_path(test_path, 'vmodules_existing_namespace')
 	test_utils.set_test_env(vmodules_path)
