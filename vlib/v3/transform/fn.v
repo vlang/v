@@ -12046,8 +12046,8 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 			return false
 		}
 		if !isnil(t.tc) {
-			if actual_c_abi := t.tc.c_abi_fn_ptr_type_for_type_text(source_fn_type) {
-				if expected_c_abi := t.tc.c_abi_fn_ptr_type_for_type_text(expected_type) {
+			if actual_c_abi := t.tc.c_abi_fn_signature_for_type_text(source_fn_type) {
+				if expected_c_abi := t.tc.c_abi_fn_signature_for_type_text(expected_type) {
 					if actual_c_abi == expected_c_abi
 						&& fn_type_texts_signature_compatible_without_c_abi_names(actual, expected) {
 						return true
@@ -12165,8 +12165,8 @@ fn (t &Transformer) fn_literal_c_abi_signature_compatible(arg_id flat.NodeId, ex
 		return true
 	}
 	actual_text := t.fn_literal_source_type_text(arg_id) or { return true }
-	actual_abi := t.tc.c_abi_fn_ptr_type_for_type_text(actual_text)
-	expected_abi := t.tc.c_abi_fn_ptr_type_for_type_text(expected_type)
+	actual_abi := t.tc.c_abi_fn_signature_for_type_text(actual_text)
+	expected_abi := t.tc.c_abi_fn_signature_for_type_text(expected_type)
 	if actual_abi == none && expected_abi == none {
 		return true
 	}

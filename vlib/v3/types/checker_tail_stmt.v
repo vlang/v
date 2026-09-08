@@ -14672,10 +14672,10 @@ fn (tc &TypeChecker) c_abi_fn_ptr_type_from_text(typ string) ?string {
 	clean := trimmed_space(typ)
 	mut seen := map[string]bool{}
 	seen[clean] = true
-	return tc.c_abi_fn_ptr_type_from_text_inner(clean, mut seen)
+	return tc.c_abi_fn_ptr_type_from_text_inner(clean, mut seen, false)
 }
 
-fn (tc &TypeChecker) c_abi_fn_ptr_type_from_text_inner(clean string, mut seen map[string]bool) ?string {
+fn (tc &TypeChecker) c_abi_fn_ptr_type_from_text_inner(clean string, mut seen map[string]bool, recursive bool) ?string {
 	if !clean.starts_with('fn(') && !clean.starts_with('fn (') {
 		return none
 	}
@@ -14702,12 +14702,18 @@ fn (tc &TypeChecker) c_abi_fn_ptr_type_from_text_inner(clean string, mut seen ma
 	mut has_c_abi_param := false
 	if trimmed_space(params_str).len > 0 {
 		for part in split_params(params_str) {
-			param_type := normalize_fn_type_param_text(part)
-			mut nested_seen := seen.clone()
-			if nested_c_abi := tc.c_abi_fn_ptr_type_for_type_text_inner(param_type, mut nested_seen) {
-				params << 'nested:${nested_c_abi}'
-				has_c_abi_param = true
-				continue
+			if recursive {
+				param_type := normalize_fn_type_param_text(part)
+				mut nested_seen := seen.clone()
+				if nested_c_abi := tc.c_abi_fn_signature_for_type_text_inner(param_type, mut
+					nested_seen)
+				{
+					// This representation is comparison-only. It must never be passed to
+					// C typedef generation, whose fn_ptr encoding has no nesting delimiter.
+					params << 'nested(${nested_c_abi})'
+					has_c_abi_param = true
+					continue
+				}
 			}
 			ct, is_c_abi := tc.c_abi_fn_param_type(part)
 			params << ct
@@ -14738,7 +14744,7 @@ fn (tc &TypeChecker) c_abi_fn_ptr_type_for_type_text_inner(typ string, mut seen 
 		return none
 	}
 	seen[typ] = true
-	if c_abi_fn := tc.c_abi_fn_ptr_type_from_text_inner(typ, mut seen) {
+	if c_abi_fn := tc.c_abi_fn_ptr_type_from_text_inner(typ, mut seen, false) {
 		return c_abi_fn
 	}
 	for name in [tc.qualify_name(typ), typ] {
@@ -14751,6 +14757,45 @@ fn (tc &TypeChecker) c_abi_fn_ptr_type_for_type_text_inner(typ string, mut seen 
 		if target := tc.type_aliases[name] {
 			if c_abi_fn := tc.c_abi_fn_ptr_type_for_type_text_inner(target, mut seen) {
 				return c_abi_fn
+			}
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) c_abi_fn_signature_from_text(typ string) ?string {
+	clean := trimmed_space(typ)
+	mut seen := map[string]bool{}
+	seen[clean] = true
+	return tc.c_abi_fn_ptr_type_from_text_inner(clean, mut seen, true)
+}
+
+// c_abi_fn_signature_for_type_text returns comparison-only C ABI metadata,
+// recursively including nested callback parameters. Unlike
+// c_abi_fn_ptr_type_for_type_text, its result is never consumed by C codegen.
+pub fn (tc &TypeChecker) c_abi_fn_signature_for_type_text(typ string) ?string {
+	mut seen := map[string]bool{}
+	return tc.c_abi_fn_signature_for_type_text_inner(trimmed_space(typ), mut seen)
+}
+
+fn (tc &TypeChecker) c_abi_fn_signature_for_type_text_inner(typ string, mut seen map[string]bool) ?string {
+	if typ.len == 0 || seen[typ] {
+		return none
+	}
+	seen[typ] = true
+	if c_abi_fn := tc.c_abi_fn_ptr_type_from_text_inner(typ, mut seen, true) {
+		return c_abi_fn
+	}
+	for name in [tc.qualify_name(typ), typ] {
+		if name.len == 0 {
+			continue
+		}
+		if c_abi_signature := tc.type_alias_c_abi_signatures[name] {
+			return c_abi_signature
+		}
+		if target := tc.type_aliases[name] {
+			if c_abi_signature := tc.c_abi_fn_signature_for_type_text_inner(target, mut seen) {
+				return c_abi_signature
 			}
 		}
 	}

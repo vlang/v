@@ -718,6 +718,7 @@ pub mut:
 	type_alias_modules                    map[string]string
 	type_alias_generic_params             map[string][]string // generic alias base name -> type-param names
 	type_alias_c_abi_fns                  map[string]string
+	type_alias_c_abi_signatures           map[string]string
 	recursive_alias_names                 map[string]bool
 	sum_types                             map[string][]string
 	sum_generic_params                    map[string][]string // generic sum type base name -> type-param names (e.g. Tree -> [T])
@@ -1023,6 +1024,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		type_alias_modules:                    map[string]string{}
 		type_alias_generic_params:             map[string][]string{}
 		type_alias_c_abi_fns:                  map[string]string{}
+		type_alias_c_abi_signatures:           map[string]string{}
 		sum_types:                             map[string][]string{}
 		sum_generic_params:                    map[string][]string{}
 		enum_names:                            map[string]bool{}
@@ -1181,6 +1183,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		type_alias_modules:                 tc.type_alias_modules
 		type_alias_generic_params:          tc.type_alias_generic_params
 		type_alias_c_abi_fns:               tc.type_alias_c_abi_fns
+		type_alias_c_abi_signatures:        tc.type_alias_c_abi_signatures
 		sum_types:                          tc.sum_types
 		sum_generic_params:                 tc.sum_generic_params
 		enum_names:                         tc.enum_names
@@ -3196,6 +3199,9 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 					if c_abi_fn := tc.c_abi_fn_ptr_type_from_text(node.typ) {
 						tc.type_alias_c_abi_fns[qname] = c_abi_fn
 					}
+					if c_abi_signature := tc.c_abi_fn_signature_from_text(node.typ) {
+						tc.type_alias_c_abi_signatures[qname] = c_abi_signature
+					}
 					if tc.cur_module in ['', 'main', 'builtin'] && node.value !in tc.type_aliases {
 						tc.type_aliases[node.value] = alias_target
 						tc.type_alias_modules[node.value] = tc.cur_module
@@ -3204,6 +3210,9 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 						}
 						if c_abi_fn := tc.c_abi_fn_ptr_type_from_text(node.typ) {
 							tc.type_alias_c_abi_fns[node.value] = c_abi_fn
+						}
+						if c_abi_signature := tc.c_abi_fn_signature_from_text(node.typ) {
+							tc.type_alias_c_abi_signatures[node.value] = c_abi_signature
 						}
 					}
 				}

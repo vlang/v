@@ -1848,6 +1848,9 @@ fn test_fn_literal_nested_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	matching := run_good(v3_bin, 'good_nested_const_fn_literal_alias_in_generic',
 		'type Outer = fn (cb fn (const_event &C.native_event))\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler Outer) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (callback fn (const_event &C.native_event)) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	assert matching == 'true'
+	field := run_good(v3_bin, 'good_struct_field_nested_const_callback_codegen',
+		'struct C.native_event {}\nstruct Dispatcher {\n\tcall fn (cb fn (const_event &C.native_event))\n}\nfn dispatch(callback fn (const_event &C.native_event)) {}\nfn main() {\n\td := Dispatcher{\n\t\tcall: dispatch\n\t}\n\td.call(fn (const_event &C.native_event) {})\n\tprintln("ok")\n}\n')
+	assert field == 'ok'
 	run_bad(v3_bin, 'bad_nested_const_fn_literal_alias_in_generic',
 		'type Outer = fn (cb fn (const_event &C.native_event))\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler Outer) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (callback fn (event &C.native_event)) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
