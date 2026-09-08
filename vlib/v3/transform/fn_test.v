@@ -38,6 +38,11 @@ fn test_fn_type_texts_signature_compatible_preserves_compound_type_boundaries() 
 	assert !fn_type_texts_signature_compatible('fn (chan foo.Item)', 'fn (chanfoo.Item)')
 }
 
+fn test_fn_type_texts_signature_compatible_does_not_double_mut_pointer() {
+	assert fn_type_texts_signature_compatible('fn (&Item)', 'fn (mut &Item)')
+	assert !fn_type_texts_signature_compatible('fn (&&Item)', 'fn (mut &Item)')
+}
+
 fn test_normalize_type_in_module_cache_tracks_current_file() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

@@ -11813,7 +11813,10 @@ fn fn_type_texts_signature_compatible(actual string, expected string) bool {
 fn normalize_fn_param_text(text string) string {
 	mut clean := text.trim_space()
 	if clean.starts_with('mut ') {
-		clean = '&' + clean[4..].trim_space()
+		clean = clean[4..].trim_space()
+		if !clean.starts_with('&') {
+			clean = '&' + clean
+		}
 	}
 	mut normalized := []u8{cap: clean.len}
 	mut pending_space := false
