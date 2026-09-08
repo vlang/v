@@ -1,4 +1,5 @@
 // vtest build: present_openssl? && !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
+// vtest vflags: -d use_openssl
 module ecdsa
 
 import encoding.hex

@@ -21,3 +21,18 @@ fn test_ctemp_hoisting_preserves_vline_directive_spaces() {
 		}
 	}
 }
+
+fn test_array_push_result_keeps_vline_directive_on_own_line() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'ctempvars_result_line_info_test_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(os.real_path(tmp_dir), 'ctempvars_result_line_info.vv')
+	os.write_file(source_path,
+		'fn parse() !int {\n\treturn 1\n}\n\nfn parse_all() ![]int {\n\tmut parsed := []int{}\n\tparsed << parse()!\n\treturn parsed\n}\n\nfn main() {\n\tassert parse_all()! == [1]\n}\n')!
+	cmd := '${os.quoted_path(ctempvars_line_info_vexe)} -g -o - ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+	assert !res.output.contains('{#line'), res.output
+}

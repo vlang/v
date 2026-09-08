@@ -99,21 +99,21 @@ jobs:
             sanitizer: undefined
             gc: default
             timeout: 120
-            vflags: -cc clang -cflags -fno-omit-frame-pointer
+            vflags: -old-compiler -cc clang -cflags -fno-omit-frame-pointer
             ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
           - name: undefined-gcc
             cc: gcc
             sanitizer: undefined
             gc: default
             timeout: 150
-            vflags: -cc gcc -cflags -fno-omit-frame-pointer
+            vflags: -old-compiler -cc gcc -cflags -fno-omit-frame-pointer
             ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
           - name: address-clang
             cc: clang
             sanitizer: address
             gc: default
             timeout: 300
-            vflags: -cc clang -cflags -fno-omit-frame-pointer
+            vflags: -old-compiler -cc clang -cflags -fno-omit-frame-pointer
             asan_options: detect_leaks=1
             lsan_options: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
           - name: address-gcc
@@ -121,7 +121,7 @@ jobs:
             sanitizer: address
             gc: default
             timeout: 300
-            vflags: -cc gcc -cflags -fno-omit-frame-pointer
+            vflags: -old-compiler -cc gcc -cflags -fno-omit-frame-pointer
             asan_options: detect_leaks=1
             lsan_options: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
           - name: memory-clang
@@ -129,19 +129,19 @@ jobs:
             sanitizer: memory
             gc: none
             timeout: 300
-            vflags: -cc clang -gc none -cflags -fno-omit-frame-pointer
+            vflags: -old-compiler -cc clang -gc none -cflags -fno-omit-frame-pointer
           - name: memory-clang-compiler
             cc: clang
             sanitizer: memory
             gc: none
             timeout: 300
-            vflags: -cc clang -gc none -cflags -fno-omit-frame-pointer
+            vflags: -old-compiler -cc clang -gc none -cflags -fno-omit-frame-pointer
           - name: address-clang-without-gc
             cc: clang
             sanitizer: address
             gc: none
             timeout: 300
-            vflags: -cc clang -gc none -cflags -fno-omit-frame-pointer
+            vflags: -old-compiler -cc clang -gc none -cflags -fno-omit-frame-pointer
             lsan_options: detect_leaks=0
     name: sanitize-${{ matrix.name }}
     env:

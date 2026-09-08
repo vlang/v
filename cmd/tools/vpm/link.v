@@ -73,7 +73,7 @@ fn vpm_unlink(query []string) {
 		vpm_error('failed to unlink `${project.name}`.', details: err.msg())
 		exit(1)
 	}
-	cleanup_empty_link_parent_dirs(project.link_path)
+	cleanup_empty_module_parent_dirs(project.link_path)
 	println('Unlinked `${project.name}` from `${fmt_mod_path(project.link_path)}`.')
 }
 
@@ -118,21 +118,5 @@ fn remove_symlink(path string) ! {
 		} $else {
 			return err
 		}
-	}
-}
-
-fn cleanup_empty_link_parent_dirs(link_path string) {
-	vmodules_path := if os.is_dir(settings.vmodules_path) {
-		os.real_path(settings.vmodules_path)
-	} else {
-		settings.vmodules_path
-	}
-	mut parent := os.dir(link_path)
-	for parent != vmodules_path && parent != os.dir(parent) {
-		if !os.is_dir(parent) || !os.is_dir_empty(parent) {
-			break
-		}
-		os.rmdir(parent) or { break }
-		parent = os.dir(parent)
 	}
 }

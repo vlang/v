@@ -1,0 +1,27 @@
+type Handler = fn (int) int
+
+type EquivalentHandler = fn (int) int
+
+interface CallbackConsumer {
+	set_callback(Handler)
+}
+
+struct PointerCallbackConsumer {}
+
+fn (_ PointerCallbackConsumer) set_callback(_ &EquivalentHandler) {}
+
+interface CallbackProvider {
+	callback() Handler
+}
+
+struct PointerCallbackProvider {}
+
+fn (_ PointerCallbackProvider) callback() &EquivalentHandler {
+	// The callback is never called; nil only supplies the deliberately mismatched return value.
+	return unsafe { nil }
+}
+
+fn main() {
+	_ := CallbackConsumer(PointerCallbackConsumer{})
+	_ := CallbackProvider(PointerCallbackProvider{})
+}

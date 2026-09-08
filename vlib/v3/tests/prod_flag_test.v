@@ -25,7 +25,7 @@ fn test_prod_flag_before_input_uses_optimized_c_compile() {
 	out_bin := os.join_path(os.temp_dir(), 'v3_prod_hello')
 	compile := os.execute('${v3_bin} -prod ${hello_src} -o ${out_bin}')
 	assert compile.exit_code == 0, compile.output
-	assert compile.output.contains('cc -std=gnu11 -O2')
+	assert compile.output.contains('cc -std=gnu11 -O3')
 	assert !compile.output.contains('tcc.exe')
 
 	run := os.execute(out_bin)
@@ -42,7 +42,7 @@ fn test_c99_flag_uses_c99_c_compile_mode() {
 	out_bin := os.join_path(os.temp_dir(), 'v3_c99_hello')
 	compile := os.execute('${v3_bin} -prod -c99 ${hello_src} -o ${out_bin}')
 	assert compile.exit_code == 0, compile.output
-	assert compile.output.contains('cc -std=c99 -O2')
+	assert compile.output.contains('cc -std=c99 -O3')
 	assert !compile.output.contains('cc -std=gnu11')
 	assert !compile.output.contains('tcc.exe')
 

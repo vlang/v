@@ -1,0 +1,5 @@
+fn main() {
+	unsafe {
+		$embed_file(@FILE)
+	}
+}

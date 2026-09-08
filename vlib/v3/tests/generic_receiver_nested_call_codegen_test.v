@@ -19,6 +19,7 @@ fn generic_receiver_nested_write_project() string {
 	root := os.join_path(os.temp_dir(), 'v3_generic_receiver_nested_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(os.join_path(root, 'gr')) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'models')) or { panic(err) }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'generic_receiver_nested' }\n") or {
 		panic(err)
 	}
@@ -67,12 +68,36 @@ pub fn (mut outer Outer[T]) pop() !T {
 pub fn (outer Outer[T]) is_empty() bool {
 	return outer.inner.is_empty()
 }
+
+pub struct Runner {}
+
+fn (mut runner Runner) echo[T](value T) T {
+	return value
+}
+
+pub fn (mut runner Runner) roundtrip[T](value T) T {
+	return runner.echo(value)
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'models/models.v'), 'module models
+
+pub struct Animal {
+pub:
+	age int
+}
 ') or {
 		panic(err)
 	}
 	os.write_file(os.join_path(root, 'main.v'), "module main
 
 import gr
+import models
+
+struct Animal {
+	name string
+}
 
 fn main() {
 	mut outer := gr.Outer[[]string]{}
@@ -81,6 +106,15 @@ fn main() {
 	got := outer.pop() or { panic(err) }
 	assert got[0] == 'A'
 	assert outer.is_empty()
+	mut runner := gr.Runner{}
+	local := runner.roundtrip(Animal{
+		name: 'local'
+	})
+	assert local.name == 'local'
+	imported := runner.roundtrip(models.Animal{
+		age: 7
+	})
+	assert imported.age == 7
 	println('ok')
 }
 ") or {
@@ -106,8 +140,10 @@ fn test_generic_receiver_nested_calls_use_specialized_receiver_methods() {
 	generated := os.read_file(out + '.c') or { panic(err) }
 	assert generated.contains('gr__Inner_Array_string__push'), generated
 	assert generated.contains('gr__Inner_Array_string__pop'), generated
+	assert generated.contains('gr__Runner_Animal__echo'), generated
+	assert generated.contains('gr__Runner_models__Animal__echo'), generated
 	assert generated.contains('Optional_Array'), generated
 	assert !generated.contains('Inner_T__'), generated
 	assert !generated.contains('Outer_T__'), generated
-	assert !generated.contains('Optional_int __return_opt'), generated
+	assert !generated.contains('Optional_i64 __return_opt'), generated
 }

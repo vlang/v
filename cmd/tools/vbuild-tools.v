@@ -67,23 +67,30 @@ fn main() {
 		//
 		tpath := os.join_path(session.vtmp_dir, texe)
 		if texe.ends_with('_builder') || texe.ends_with('_builder.exe') {
-			os.mv_by_cp(tpath, os.join_path(tfolder, 'builders', texe)) or { panic(err) }
+			move_tool_executable(tpath, os.join_path(tfolder, 'builders', texe)) or { panic(err) }
 			continue
 		}
 		if tname in tools_in_subfolders {
-			os.mv_by_cp(tpath, os.join_path(tfolder, tname, texe)) or { panic(err) }
+			move_tool_executable(tpath, os.join_path(tfolder, tname, texe)) or { panic(err) }
 			continue
 		}
 		if os.is_dir(tpath) {
 			continue
 		}
 		target_path := os.join_path(tfolder, texe)
-		os.mv_by_cp(tpath, target_path) or {
+		move_tool_executable(tpath, target_path) or {
 			emsg := err.msg()
 			if !emsg.contains('vbuild-tools') && !emsg.contains('vtest-all') {
 				eprintln('error while moving ${tpath} to ${target_path}: ${emsg}')
 			}
 			continue
 		}
+	}
+}
+
+fn move_tool_executable(source string, target string) ! {
+	os.mv_by_cp(source, target)!
+	$if !windows {
+		os.chmod(target, 0o755)!
 	}
 }

@@ -848,7 +848,19 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	}
 	is_opt_or_result := inferred_typ.has_option_or_result()
 	is_array_fixed := g.table.final_sym(inferred_typ).kind == .array_fixed
-	line := if node.is_expr && inferred_typ != ast.void_type {
+	// `gen_as_expr` controls the result temp: whether it is declared here and
+	// referenced at the end. It is only needed when the if is used as an
+	// expression and some branch yields a concrete (non-void) value type.
+	// Whether an *individual* branch assigns to that temp is decided per branch
+	// below, from the branch's own final statement - a branch that ends in a
+	// void/noreturn expression (e.g. `panic(err)`) is emitted as a plain
+	// statement even when another retained branch supplies the value type (as
+	// happens in `-cross`/`output_cross_c` mode, where non-selected branches are
+	// kept). Without this, such a branch would emit `${tmp_var} = <void>` (or,
+	// when the value branch is pruned as dead code, reference an undeclared temp
+	// entirely). See issue #28022.
+	gen_as_expr := node.is_expr && inferred_typ != ast.void_type
+	line := if gen_as_expr {
 		stmt_str := g.go_before_last_stmt()
 		g.write(util.tabs(g.indent))
 		styp := g.styp(inferred_typ)
@@ -914,8 +926,21 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			}
 			g.defer_ifdef += expr_str
 		}
-		if node.is_expr {
-			if is_true.val {
+		// Decide, for this specific branch, whether its final statement produces
+		// a value to assign to the result temp. A void/noreturn last statement
+		// (e.g. `panic(err)`) must be emitted as a plain statement even when the
+		// overall if yields a value type from a different retained branch.
+		mut branch_produces_value := false
+		if gen_as_expr && branch.stmts.len > 0 {
+			branch_last := branch.stmts.last()
+			if branch_last is ast.ExprStmt {
+				branch_typ := g.type_resolver.get_type_or_default(branch_last.expr, branch_last.typ)
+				branch_produces_value = branch_typ != ast.void_type
+					&& !branch_typ.has_flag(.generic)
+			}
+		}
+		if branch_produces_value {
+			if is_true.val || g.pref.output_cross_c {
 				g.bind_comptime_if_generic_types(branch.cond)
 				len := branch.stmts.len
 				if len > 0 {
@@ -994,7 +1019,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	}
 	g.defer_ifdef = ''
 	g.writeln('#endif')
-	if node.is_expr {
+	if gen_as_expr {
 		g.write('${line}${tmp_var}')
 	}
 }

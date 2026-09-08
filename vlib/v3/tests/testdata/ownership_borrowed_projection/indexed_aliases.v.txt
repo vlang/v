@@ -1,0 +1,221 @@
+fn test_distinct_dynamic_map_keys() {
+	mut entries := {
+		"left":  Entry(Payload{
+			values: ["left"]
+		})
+		"right": Entry(Payload{
+			values: ["right"]
+		})
+	}
+	left_key := "left"
+	right_key := "right"
+	alias := &(entries[left_key] as Payload)
+	entries[right_key] = alias
+	mut replacement := &(entries[right_key] as Payload)
+	replacement.values[0] = "replacement"
+	assert (entries[left_key] as Payload).values[0] == "left"
+}
+
+fn test_distinct_static_map_keys() {
+	mut entries := {
+		"left":  Entry(Payload{
+			values: ["left"]
+		})
+		"right": Entry(Payload{
+			values: ["right"]
+		})
+	}
+	alias := &(entries["left"] as Payload)
+	entries["right"] = alias
+	mut replacement := &(entries["right"] as Payload)
+	replacement.values[0] = "replacement"
+	assert (entries["left"] as Payload).values[0] == "left"
+}
+
+fn test_function_alias_scope() {
+	mut entries := {
+		"old": Entry(Payload{
+			values: ["old"]
+		})
+	}
+	remember_alias(mut entries, "old")
+	replace_after_alias_function(mut entries, "old", Entry(Payload{
+		values: ["new"]
+	}))
+	assert (entries["old"] as Payload).values[0] == "new"
+}
+
+fn test_sibling_branch_alias_scope() {
+	mut entries := {
+		"old": Entry(Payload{
+			values: ["old"]
+		})
+	}
+	mut replacement := Entry(Payload{
+		values: ["new"]
+	})
+	replace_in_sibling_branch(mut entries, "old", mut replacement, false)
+	assert (entries["old"] as Payload).values[0] == "new"
+}
+
+fn test_branch_alias_merge_is_conservative() {
+	mut entries := {
+		"old": Entry(Payload{
+			values: ["old"]
+		})
+	}
+	mut replacement := Entry(Payload{
+		values: ["new"]
+	})
+	replace_after_branch_merge(mut entries, "old", mut replacement, false)
+	assert (entries["old"] as Payload).values[0] == "new"
+}
+
+fn test_copied_index_alias_is_cloned() {
+	mut entries := {
+		"item": Entry(Payload{
+			values: ["retained"]
+		})
+	}
+	key := "item"
+	alias := &(entries[key] as Payload)
+	alias2 := alias
+	entries[key] = alias2
+	assert (entries[key] as Payload).values[0] == "retained"
+}
+
+fn test_long_index_alias_chain_is_cloned() {
+	mut entries := {
+		"item": Entry(Payload{
+			values: ["retained"]
+		})
+	}
+	key := "item"
+	p0 := &(entries[key] as Payload)
+	p1 := p0
+	p2 := p1
+	p3 := p2
+	p4 := p3
+	p5 := p4
+	p6 := p5
+	p7 := p6
+	p8 := p7
+	entries[key] = p8
+	assert (entries[key] as Payload).values[0] == "retained"
+}
+
+fn test_shadowed_index_alias_is_restored() {
+	mut entries := {
+		"item": Entry(Payload{
+			values: ["retained"]
+		})
+	}
+	key := "item"
+	alias := &(entries[key] as Payload)
+	{
+		alias := &Payload{
+			values: ["shadow"]
+		}
+		assert alias.values[0] == "shadow"
+	}
+	entries[key] = alias
+	assert (entries[key] as Payload).values[0] == "retained"
+}
+
+fn test_multi_assigned_index_alias_is_cloned() {
+	mut entries := {
+		"item": Entry(Payload{
+			values: ["retained"]
+		})
+	}
+	key := "item"
+	mut alias := &Payload{
+		values: ["placeholder"]
+	}
+	mut n := 0
+	alias, n = &(entries[key] as Payload), 1
+	assert n == 1
+	entries[key] = alias
+	assert (entries[key] as Payload).values[0] == "retained"
+}
+
+fn test_fn_literal_captured_index_alias_is_cloned() {
+	mut entries := {
+		"item": Entry(Payload{
+			values: ["retained"]
+		})
+	}
+	key := "item"
+	alias := &(entries[key] as Payload)
+	callback := fn [mut entries, alias, key] () {
+		entries[key] = alias
+		assert (entries[key] as Payload).values[0] == "retained"
+	}
+	callback()
+}
+
+fn test_lambda_captured_index_alias_is_cloned() {
+	mut entries := {
+		"item": Entry(Payload{
+			values: ["retained"]
+		})
+	}
+	key := "item"
+	alias := &(entries[key] as Payload)
+	apply_entry_map(mut entries, |mut entries| {
+		entries[key] = alias
+		assert (entries[key] as Payload).values[0] == "retained"
+	})
+}
+
+fn test_distinct_dynamic_moved_map_slot_is_dropped() {
+	mut left_drops := 0
+	mut right_drops := 0
+	mut replacement_drops := 0
+	mut entries := TrackedMap(map[string]Tracked{})
+	left_key := "left"
+	right_key := "right"
+	entries[left_key] = Tracked{
+		id:    1
+		drops: &left_drops
+	}
+	entries[right_key] = Tracked{
+		id:    2
+		drops: &right_drops
+	}
+	assert left_drops == 0
+	assert right_drops == 0
+	moved := entries[left_key]
+	replacement := Tracked{
+		id:    3
+		drops: &replacement_drops
+	}
+	entries[right_key] = replacement
+	assert moved.id == 1
+	assert left_drops == 0
+	assert right_drops == 1
+	assert replacement_drops == 0
+}
+
+fn main() {
+	holder := &Holder{
+		left: Payload{
+			values: ["left"]
+		}
+		right: Payload{
+			values: ["right"]
+		}
+	}
+	test_distinct_dynamic_map_keys()
+	test_distinct_static_map_keys()
+	test_function_alias_scope()
+	test_sibling_branch_alias_scope()
+	test_branch_alias_merge_is_conservative()
+	test_copied_index_alias_is_cloned()
+	test_long_index_alias_chain_is_cloned()
+	test_shadowed_index_alias_is_restored()
+	test_multi_assigned_index_alias_is_cloned()
+	test_fn_literal_captured_index_alias_is_cloned()
+	test_lambda_captured_index_alias_is_cloned()
+	test_distinct_dynamic_moved_map_slot_is_dropped()
+}

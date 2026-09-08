@@ -1,0 +1,9 @@
+struct User {
+	id int
+}
+
+fn main() {
+	(sql db {
+		select from User limit $embed_file(@FILE).len
+	} or { []User{} }).len
+}

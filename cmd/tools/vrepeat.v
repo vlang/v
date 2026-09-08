@@ -149,6 +149,22 @@ fn flushed_print(s string) {
 	flush_stdout()
 }
 
+fn (context &Context) verbose_command(cmd string) {
+	if context.verbose {
+		println('\n> ${cmd}')
+	}
+}
+
+fn (context &Context) verbose_result(result os.Result) {
+	if !context.verbose {
+		return
+	}
+	println('  exit code: ${result.exit_code}')
+	if result.output != '' {
+		println(result.output.trim_right('\r\n'))
+	}
+}
+
 fn (mut context Context) clear_line() {
 	if context.is_silent {
 		return
@@ -207,9 +223,11 @@ fn (mut context Context) run() {
 			if context.warmup > 0 {
 				for i in 0 .. context.warmup {
 					context.flushed_print('${line_prefix}, warm up run: ${i + 1:4}/${context.warmup:-4}, took: ${f64(duration) / 1000:6.1f}ms ...')
+					context.verbose_command(cmd)
 					mut sw := time.new_stopwatch()
 					res := os.execute(cmd)
 					duration = i64(sw.elapsed().microseconds())
+					context.verbose_result(res)
 					mut should_show_fail_output := false
 					if res.exit_code != 0 && !context.ignore_failed {
 						if context.fail_count[cmd] == 0 {
@@ -226,9 +244,11 @@ fn (mut context Context) run() {
 				}
 			}
 			for i in 0 .. context.run_count {
+				context.verbose_command(cmd)
 				mut sw := time.new_stopwatch()
 				res := os.execute(cmd)
 				duration = i64(sw.elapsed().microseconds())
+				context.verbose_result(res)
 				//
 				mut should_show_fail_output := false
 				if res.exit_code != 0 && !context.ignore_failed {
@@ -443,7 +463,8 @@ fn (mut context Context) parse_options() ! {
 	}
 	context.show_output = fp.bool('output', `O`, false,
 		'Show command stdout/stderr in the progress indicator for each command. Note: slower, for verbose commands.')
-	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
+	context.verbose = fp.bool('verbose', `v`, false,
+		'Print each command, its exit code, and its output.')
 	context.fail_on_maxtime = fp.int('max_time', `m`, max_time,
 		'Fail with exit code 2, when first cmd takes above M milliseconds (regression). Default: ${max_time}')
 	context.fail_on_regress_percent = fp.int('fail_percent', `f`, max_fail_percent,

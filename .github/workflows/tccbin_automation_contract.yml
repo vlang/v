@@ -1,0 +1,107 @@
+name: TCC bundle automation contract
+
+on:
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tccbin-automation-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract-worker:
+    name: Contract worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout the tested revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout the immutable VC bootstrap snapshot
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: vlang/vc
+          ref: dfc458a13ba8923ebc249e262c331f8169aa728b
+          path: vc
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Configure the immutable VC bootstrap snapshot
+        run: git -C vc config --local core.autocrlf false
+      - name: Checkout the immutable TCC bootstrap bundle
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: vlang/tccbin
+          ref: ece46f06fbe6eb701d52442f11dd59c48d166cae
+          path: thirdparty/tcc
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Configure and verify the immutable TCC bootstrap bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C thirdparty/tcc config --local core.autocrlf false
+          test "$(git -C thirdparty/tcc rev-parse HEAD)" = "ece46f06fbe6eb701d52442f11dd59c48d166cae"
+          tcc_symbolic_ref_rc=0
+          git -C thirdparty/tcc symbolic-ref --quiet HEAD >/dev/null || tcc_symbolic_ref_rc=$?
+          test "$tcc_symbolic_ref_rc" -eq 1
+          tcc_status="$(git -C thirdparty/tcc status --porcelain --untracked-files=all)"
+          test -z "$tcc_status"
+          test "$(git -C thirdparty/tcc config --local --get core.autocrlf)" = "false"
+          test -x thirdparty/tcc/tcc.exe
+          test -f thirdparty/tcc/lib/libgc.a
+          thirdparty/tcc/tcc.exe --version
+      - name: Build the local compiler
+        run: |
+          make local=1
+          ./v -o ./vnew cmd/v
+      - name: Validate schemas, fixtures, and pure control-plane models
+        run: |
+          ./vnew -silent test thirdparty/tccbin_automation/tests/
+          ./vnew run thirdparty/tccbin_automation/bin/cmd contract
+
+  contract:
+    name: tccbin-automation-contract
+    needs: contract-worker
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require an exact successful worker result
+        env:
+          WORKER_RESULT: ${{ needs.contract-worker.result }}
+        run: test "$WORKER_RESULT" = success
+
+  dry-run-worker:
+    name: Dry-run worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout the tested revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build the local compiler
+        run: |
+          make
+          ./v -o ./vnew cmd/v
+      - name: Exercise the no-write execution path
+        run: ./vnew run thirdparty/tccbin_automation/bin/cmd dry-run
+
+  dry-run:
+    name: tccbin-automation-dry-run
+    needs: dry-run-worker
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require an exact successful worker result
+        env:
+          WORKER_RESULT: ${{ needs.dry-run-worker.result }}
+        run: test "$WORKER_RESULT" = success

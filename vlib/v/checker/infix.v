@@ -516,15 +516,21 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			left_sym = c.table.sym(unwrapped_left_type)
 			unwrapped_right_type := c.unwrap_generic(right_type)
 			right_sym = c.table.sym(unwrapped_right_type)
-			if mut right_sym.info is ast.Alias && (right_sym.info.language != .c
-				&& c.mod == c.table.type_to_str(unwrapped_right_type).split('.')[0]
-				&& (right_final_sym.is_primitive() || right_final_sym.kind == .enum)) {
-				right_sym = unsafe { right_final_sym }
+			if mut right_sym.info is ast.Alias {
+				right_type_name := c.table.type_to_str(unwrapped_right_type)
+				right_type_module := right_type_name.all_before('.')
+				if right_sym.info.language != .c && c.mod == right_type_module
+					&& (right_final_sym.is_primitive() || right_final_sym.kind == .enum) {
+					right_sym = unsafe { right_final_sym }
+				}
 			}
-			if mut left_sym.info is ast.Alias && (left_sym.info.language != .c
-				&& c.mod == c.table.type_to_str(unwrapped_left_type).split('.')[0]
-				&& (left_final_sym.is_primitive() || left_final_sym.kind == .enum)) {
-				left_sym = unsafe { left_final_sym }
+			if mut left_sym.info is ast.Alias {
+				left_type_name := c.table.type_to_str(unwrapped_left_type)
+				left_type_module := left_type_name.all_before('.')
+				if left_sym.info.language != .c && c.mod == left_type_module
+					&& (left_final_sym.is_primitive() || left_final_sym.kind == .enum) {
+					left_sym = unsafe { left_final_sym }
+				}
 			}
 			op_str := node.op.str()
 			if c.pref.translated && node.op in [.plus, .minus, .mul]

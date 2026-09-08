@@ -67,6 +67,7 @@ __global (
 	ch        chan f64
 	mys       shared MyStruct
 	sem       sync.Semaphore
+	sem_ready sync.Semaphore
 	shmap     shared map[string]f64
 	mtx       sync.RwMutex
 	f1        = f64(545 / (sizeof(f64) + f32(8))) // directly initialized
@@ -97,6 +98,7 @@ fn init() {
 	// reasons they cannot have a "default constructor" at the moment and must
 	// be initialized "manually"
 	sem.init(0)
+	sem_ready.init(0)
 	mtx.init()
 }
 
@@ -107,12 +109,21 @@ mut:
 }
 
 fn switch() {
+	mut announced := false
 	for !sem.try_wait() {
 		lock mys {
 			if mys.x == 13.0 {
 				mys.x = 13.75
+				if !announced {
+					announced = true
+					sem_ready.post()
+				}
 			} else if mys.y == 13.0 {
 				mys.y = 13.75
+				if !announced {
+					announced = true
+					sem_ready.post()
+				}
 			}
 		}
 		lock mys {
@@ -127,6 +138,7 @@ fn test_global_shared() {
 		mys.y = -35.125
 	}
 	t := spawn switch()
+	sem_ready.wait()
 	for _ in 0 .. 2500000 {
 		lock mys {
 			mys.x, mys.y = mys.y, mys.x

@@ -376,45 +376,64 @@ fn filter(libs []string, prefix string, prefix2 string) string {
 
 fn parse_options(mut fp flag.FlagParser) (&MainOptions, bool) {
 	mut state := MainActionState{}
+	// NB: the flags below must be consumed *before* `fp.args` is read, so that
+	// `args` only contains the leftover package names. Evaluate each option into
+	// a local variable in a fixed order first, then snapshot `fp.args` last;
+	// capturing `fp.args` inside the struct literal is sensitive to field
+	// evaluation order and can leave stray/empty entries in `args`.
+	description := parse_action_bool(mut fp, mut state, 'description', `d`,
+		'show pkg module description')
+	modversion := parse_action_bool(mut fp, mut state, 'modversion', `V`, 'show version of module')
+	help := parse_action_bool(mut fp, mut state, 'help', `h`, 'show this help message')
+	debug := fp.bool('debug', `D`, false, 'show debug information')
+	listall := parse_action_bool(mut fp, mut state, 'list-all', `p`, 'list all pkgmodules')
+	exists := parse_action_bool(mut fp, mut state, 'exists', `e`, 'return 0 if pkg exists')
+	variables := parse_action_bool(mut fp, mut state, 'print-variables', `P`,
+		'display variable names')
+	requires := parse_action_bool(mut fp, mut state, 'print-requires', `r`,
+		'display requires of the module')
+	atleastver := parse_action_string(mut fp, mut state, 'atleast-version', `a`,
+		'return 0 if pkg version is at least the given one')
+	atleastpc := parse_action_string(mut fp, mut state, 'atleast-pkgconfig-version', `A`,
+		'return 0 if pkgconfig version is at least the given one')
+	exactversion := parse_action_string(mut fp, mut state, 'exact-version', ` `,
+		'return 0 if pkg version is at least the given one')
+	version_ := parse_action_bool(mut fp, mut state, 'version', `v`, 'show version of this tool')
+	cflags := parse_action_bool(mut fp, mut state, 'cflags', `c`,
+		'output all pre-processor and compiler flags')
+	cflags_only_path := parse_action_bool(mut fp, mut state, 'cflags-only-I', `I`,
+		'show only -I flags from CFLAGS')
+	cflags_only_other := parse_action_bool(mut fp, mut state, 'cflags-only-other', ` `,
+		'show cflags without -I')
+	stat1c := fp.bool('static', `s`, false, 'show --libs for static linking')
+	libs := parse_action_bool(mut fp, mut state, 'libs', `l`, 'output all linker flags')
+	libs_only_link := parse_action_bool(mut fp, mut state, 'libs-only-l', ` `,
+		'show only -l from ldflags')
+	libs_only_path := parse_action_bool(mut fp, mut state, 'libs-only-L', `L`,
+		'show only -L from ldflags')
+	libs_only_other := parse_action_bool(mut fp, mut state, 'libs-only-other', ` `,
+		'show flags not containing -l or -L')
 	options := &MainOptions{
-		description:       parse_action_bool(mut fp, mut state, 'description', `d`,
-			'show pkg module description')
-		modversion:        parse_action_bool(mut fp, mut state, 'modversion', `V`,
-			'show version of module')
-		help:              parse_action_bool(mut fp, mut state, 'help', `h`,
-			'show this help message')
-		debug:             fp.bool('debug', `D`, false, 'show debug information')
-		listall:           parse_action_bool(mut fp, mut state, 'list-all', `p`,
-			'list all pkgmodules')
-		exists:            parse_action_bool(mut fp, mut state, 'exists', `e`,
-			'return 0 if pkg exists')
-		variables:         parse_action_bool(mut fp, mut state, 'print-variables', `P`,
-			'display variable names')
-		requires:          parse_action_bool(mut fp, mut state, 'print-requires', `r`,
-			'display requires of the module')
-		atleast:           parse_action_string(mut fp, mut state, 'atleast-version', `a`,
-			'return 0 if pkg version is at least the given one')
-		atleastpc:         parse_action_string(mut fp, mut state, 'atleast-pkgconfig-version', `A`,
-			'return 0 if pkgconfig version is at least the given one')
-		exactversion:      parse_action_string(mut fp, mut state, 'exact-version', ` `,
-			'return 0 if pkg version is at least the given one')
-		version:           parse_action_bool(mut fp, mut state, 'version', `v`,
-			'show version of this tool')
-		cflags:            parse_action_bool(mut fp, mut state, 'cflags', `c`,
-			'output all pre-processor and compiler flags')
-		cflags_only_path:  parse_action_bool(mut fp, mut state, 'cflags-only-I', `I`,
-			'show only -I flags from CFLAGS')
-		cflags_only_other: parse_action_bool(mut fp, mut state, 'cflags-only-other', ` `,
-			'show cflags without -I')
-		stat1c:            fp.bool('static', `s`, false, 'show --libs for static linking')
-		libs:              parse_action_bool(mut fp, mut state, 'libs', `l`,
-			'output all linker flags')
-		libs_only_link:    parse_action_bool(mut fp, mut state, 'libs-only-l', ` `,
-			'show only -l from ldflags')
-		libs_only_path:    parse_action_bool(mut fp, mut state, 'libs-only-L', `L`,
-			'show only -L from ldflags')
-		libs_only_other:   parse_action_bool(mut fp, mut state, 'libs-only-other', ` `,
-			'show flags not containing -l or -L')
+		description:       description
+		modversion:        modversion
+		help:              help
+		debug:             debug
+		listall:           listall
+		exists:            exists
+		variables:         variables
+		requires:          requires
+		atleast:           atleastver
+		atleastpc:         atleastpc
+		exactversion:      exactversion
+		version:           version_
+		cflags:            cflags
+		cflags_only_path:  cflags_only_path
+		cflags_only_other: cflags_only_other
+		stat1c:            stat1c
+		libs:              libs
+		libs_only_link:    libs_only_link
+		libs_only_path:    libs_only_path
+		libs_only_other:   libs_only_other
 		args:              fp.args
 	}
 	return options, state.has_actions

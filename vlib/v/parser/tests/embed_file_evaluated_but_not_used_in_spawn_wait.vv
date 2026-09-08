@@ -1,0 +1,13 @@
+struct Box {
+	path string
+}
+
+fn load(path string) Box {
+	return Box{
+		path: path
+	}
+}
+
+fn main() {
+	(spawn load($embed_file(@FILE).path)).wait().path
+}

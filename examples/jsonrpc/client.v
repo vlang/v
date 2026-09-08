@@ -6,7 +6,7 @@ import net.jsonrpc
 fn main() {
 	addr := '127.0.0.1:42228'
 	mut stream := net.dial_tcp(addr)!
-	mut log_inter := jsonrpc.LoggingInterceptor{}
+	mut log_inter := &jsonrpc.LoggingInterceptor{}
 	mut inters := jsonrpc.Interceptors{
 		event:            [log_inter.on_event]
 		encoded_request:  [log_inter.on_encoded_request]

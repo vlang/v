@@ -10,7 +10,7 @@ fn filelock_helpers_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_filelock_helpers_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${filelock_helpers_vexe} -gc none -path "${filelock_helpers_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${filelock_helpers_v3_src}')
+		os.execute('${filelock_helpers_vexe} -gc none -d parallel -path "${filelock_helpers_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${filelock_helpers_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -56,4 +56,33 @@ fn main() {
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '47'
+
+	method_src := os.join_path(os.temp_dir(), 'v3_filelock_helpers_method_input_${os.getpid()}.v')
+	os.write_file(method_src, 'module main
+
+import os.filelock
+
+fn use(mut file_lock filelock.FileLock) bool {
+	if file_lock.try_acquire() {
+		return file_lock.release()
+	}
+	return false
+}
+
+fn main() {
+	mut file_lock := filelock.new("v3_filelock_helpers_method_input.lock")
+	println(use(mut file_lock))
+}
+	') or {
+		panic(err)
+	}
+	method_bin := os.join_path(os.temp_dir(), 'v3_filelock_helpers_method_input_${os.getpid()}')
+	os.rm(method_bin) or {}
+	os.rm(method_bin + '.c') or {}
+	method_compile := os.execute('${v3_bin} ${method_src} -b c -o ${method_bin}')
+	assert method_compile.exit_code == 0, method_compile.output
+	assert !method_compile.output.contains('C compilation failed'), method_compile.output
+	method_c_code := os.read_file(method_bin + '.c') or { panic(err) }
+	assert method_c_code.contains('\nstatic inline int v_filelock_lock('), method_c_code
+	assert method_c_code.contains('\nstatic inline int v_filelock_unlock('), method_c_code
 }

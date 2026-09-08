@@ -42,7 +42,7 @@ pub fn encode_packet_number(full_pn u64, largest_acked ?u64) !([]u8, int) {
 	}
 	// If nothing has been acknowledged yet, use the full 4-byte encoding —
 	// there's no acked packet number to bound the ambiguity window against.
-	num_unacked := if la := largest_acked {
+	num_unacked := u64(if la := largest_acked {
 		if full_pn > la { full_pn - la } else { u64(0) }
 	} else {
 		// decode_packet_number (below) has no reference point to
@@ -63,7 +63,7 @@ pub fn encode_packet_number(full_pn u64, largest_acked ?u64) !([]u8, int) {
 			return error('quic: packet number ${full_pn} cannot be represented by the 4-byte encoding used for the first packet in a space (no packet acknowledged yet); this exceeds 2^32-1')
 		}
 		u64(0x7FFF_FFFF) // force the 4-byte path below
-	}
+	})
 
 	// A gap the 4-byte encoding can't unambiguously represent falls through
 	// every arm below with no bound left to check -- silently picking 4

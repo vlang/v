@@ -1094,7 +1094,7 @@ pub fn (app &Example) index(mut ctx Context) veb.Result {
 mut example_app := &Example{}
 // set the controllers hostname to 'example.com' and handle all routes starting with '/',
 // we handle requests with any route to 'example.com'
-app.register_controller[Example, Context]('example.com', '/', mut example_app)!
+app.register_host_controller[Example, Context]('example.com', '/', mut example_app)!
 ```
 
 ## Context Methods

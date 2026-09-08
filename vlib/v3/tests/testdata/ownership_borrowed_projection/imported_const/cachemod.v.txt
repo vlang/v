@@ -1,0 +1,17 @@
+module cachemod
+
+pub struct Payload implements IClone {
+pub mut:
+	values []string
+}
+
+pub fn (value &Payload) clone() Payload {
+	println('clone')
+	return Payload{
+		values: value.values.clone()
+	}
+}
+
+pub const cache = Payload{
+	values: ['constant']
+}

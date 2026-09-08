@@ -67,8 +67,8 @@ pub fn derive_handshake_secrets(early_secret []u8, ecdhe_shared_secret []u8, tra
 	server_secret := derive_secret(handshake_secret, 's hs traffic', transcript_hash_ch_sh)!
 	return HandshakeSecrets{
 		handshake_secret: handshake_secret
-		client_secret:    client_secret
-		server_secret:    server_secret
+		client_secret: client_secret
+		server_secret: server_secret
 	}
 }
 

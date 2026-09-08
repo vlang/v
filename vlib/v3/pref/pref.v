@@ -8,6 +8,8 @@ const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
 const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
 const macos_v3_caller_vchild_present_env = 'V_MACOS_V3_CALLER_VCHILD_PRESENT'
+const macos_v3_caller_no_fallback_env = 'V_MACOS_V3_CALLER_NO_FALLBACK'
+const macos_v3_caller_no_fallback_present_env = 'V_MACOS_V3_CALLER_NO_FALLBACK_PRESENT'
 const macos_v3_private_environment_names = [
 	'V_MACOS_V3_FALLBACK_FILE',
 	'V_MACOS_V3_C_ERROR_DIR',
@@ -21,12 +23,15 @@ const macos_v3_private_environment_names = [
 	macos_v3_caller_vexe_present_env,
 	macos_v3_caller_vchild_env,
 	macos_v3_caller_vchild_present_env,
+	macos_v3_caller_no_fallback_env,
+	macos_v3_caller_no_fallback_present_env,
 ]
 
 // Preferences represents preferences data used by pref.
 pub struct Preferences {
 pub mut:
 	verbose               bool
+	no_parallel           bool
 	output_file           string
 	target                Target = host_target()
 	user_defines          []string
@@ -35,6 +40,7 @@ pub mut:
 	ccompiler             string = 'gcc'
 	c99                   bool
 	force_bounds_checking bool
+	enable_globals        bool
 	vroot                 string = detect_vroot()
 	vexe                  string = detect_vexe()
 	vhash                 string
@@ -44,6 +50,8 @@ pub mut:
 	is_prod               bool
 	is_debug              bool
 	is_test               bool // at least one compatible user test file is being compiled
+	is_fmt                bool // preserve source-only syntax needed by the V formatter
+	migrate_json2         bool // rewrite supported legacy json calls while formatting
 	is_livemain           bool
 	is_liveshared         bool
 	is_shared             bool
@@ -53,7 +61,8 @@ pub mut:
 	thread_stack_size     int = 8 * 1024 * 1024
 	// V3 backends currently do not lower V inline-assembly nodes. Keep this an
 	// explicit capability so guarded stdlib assembly selects its software path.
-	supports_inline_asm bool
+	supports_inline_asm            bool
+	preserve_comptime_conditionals bool
 pub:
 	build_date      string
 	build_time      string
@@ -159,11 +168,20 @@ pub fn target_from(os_name string, arch_name string) !Target {
 // new_preferences supports new preferences handling for pref.
 pub fn new_preferences() &Preferences {
 	build_time := target_build_time()
+	// Formatted by hand: the first C strftime call of a process initializes
+	// the timezone data, which costs about half a millisecond per compile.
 	return &Preferences{
-		build_date:      build_time.strftime('%Y-%m-%d')
-		build_time:      build_time.strftime('%H:%M:%S')
+		build_date:      '${build_time.year}-${two_digits(build_time.month)}-${two_digits(build_time.day)}'
+		build_time:      '${two_digits(build_time.hour)}:${two_digits(build_time.minute)}:${two_digits(build_time.second)}'
 		build_timestamp: build_time.unix().str()
 	}
+}
+
+fn two_digits(value int) string {
+	if value < 10 {
+		return '0' + value.str()
+	}
+	return value.str()
 }
 
 // has_macos_v3_caller_environment reports whether the macOS driver transported
@@ -195,6 +213,14 @@ pub fn macos_v3_caller_env_value(name string) string {
 			''
 		}
 	}
+	if name == 'V_MACOS_V3_NO_FALLBACK'
+		&& os.getenv(macos_v3_caller_no_fallback_present_env) in ['0', '1'] {
+		return if os.getenv(macos_v3_caller_no_fallback_present_env) == '1' {
+			os.getenv(macos_v3_caller_no_fallback_env)
+		} else {
+			''
+		}
+	}
 	return os.getenv(name)
 }
 
@@ -206,6 +232,10 @@ pub fn macos_v3_caller_environment() map[string]string {
 			macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
 		restore_macos_v3_caller_environment_value(mut environment, 'VCHILD',
 			macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
+	}
+	if os.getenv(macos_v3_caller_no_fallback_present_env) in ['0', '1'] {
+		restore_macos_v3_caller_environment_value(mut environment, 'V_MACOS_V3_NO_FALLBACK',
+			macos_v3_caller_no_fallback_env, macos_v3_caller_no_fallback_present_env)
 	}
 	for name in macos_v3_private_environment_names {
 		environment.delete(name)
@@ -487,6 +517,50 @@ pub fn file_has_incompatible_os_suffix(file string, current_os string) bool {
 
 // file_has_incompatible_target_suffix reports whether an OS or architecture suffix excludes
 // file from target.
+// file_name_has_marker reports whether `file` contains `marker`. File names
+// are short, so a direct scan beats the general substring search, and it
+// allocates nothing.
+@[direct_array_access]
+fn file_name_has_marker(file string, marker string) bool {
+	if marker.len == 0 || marker.len > file.len {
+		return false
+	}
+	first := marker[0]
+	for i := 0; i + marker.len <= file.len; i++ {
+		if file[i] != first {
+			continue
+		}
+		mut j := 1
+		for j < marker.len && file[i + j] == marker[j] {
+			j++
+		}
+		if j == marker.len {
+			return true
+		}
+	}
+	return false
+}
+
+// file_name_has_arch_marker reports whether `file` contains `.arch.` or
+// `_arch.` without building those marker strings.
+@[direct_array_access]
+fn file_name_has_arch_marker(file string, arch string) bool {
+	for i := 0; i + arch.len + 2 <= file.len; i++ {
+		c := file[i]
+		if (c != `.` && c != `_`) || file[i + arch.len + 1] != `.` {
+			continue
+		}
+		mut j := 0
+		for j < arch.len && file[i + 1 + j] == arch[j] {
+			j++
+		}
+		if j == arch.len {
+			return true
+		}
+	}
+	return false
+}
+
 pub fn file_has_incompatible_target_suffix(file string, target Target) bool {
 	if file_has_incompatible_os_only_suffix(file, target.os) {
 		return true
@@ -494,8 +568,7 @@ pub fn file_has_incompatible_target_suffix(file string, target Target) bool {
 	for arch in ['amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'i386', 'i486', 'i586', 'i686',
 		'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'rv64', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
 		's390x', 'loongarch64', 'wasm32'] {
-		if normalized_arch(arch) != target.arch
-			&& (file.contains('.${arch}.') || file.contains('_${arch}.')) {
+		if normalized_arch(arch) != target.arch && file_name_has_arch_marker(file, arch) {
 			return true
 		}
 	}
@@ -504,57 +577,58 @@ pub fn file_has_incompatible_target_suffix(file string, target Target) bool {
 
 fn file_has_incompatible_os_only_suffix(file string, current_os string) bool {
 	os_name := normalized_os(current_os)
-	if os_name == 'windows' && file.contains('_nix.') {
+	if os_name == 'windows' && file_name_has_marker(file, '_nix.') {
 		return true
 	}
-	if os_name != 'windows' && file.contains('_windows.') {
+	if os_name != 'windows' && file_name_has_marker(file, '_windows.') {
 		return true
 	}
-	if os_name != 'linux' && file.contains('_linux.') {
+	if os_name != 'linux' && file_name_has_marker(file, '_linux.') {
 		return true
 	}
-	if os_name != 'macos' && (file.contains('_macos.') || file.contains('_darwin.')) {
+	if os_name != 'macos' && (file_name_has_marker(file, '_macos.')
+		|| file_name_has_marker(file, '_darwin.')) {
 		return true
 	}
 	if os_name != 'macos' && os_name != 'freebsd' && os_name != 'openbsd' && os_name != 'netbsd'
-		&& os_name != 'dragonfly' && file.contains('_bsd.') {
+		&& os_name != 'dragonfly' && file_name_has_marker(file, '_bsd.') {
 		return true
 	}
-	if file.contains('_android_outside_termux.') {
+	if file_name_has_marker(file, '_android_outside_termux.') {
 		if os_name != 'android' {
 			return true
 		}
-	} else if file.contains('_termux.') {
+	} else if file_name_has_marker(file, '_termux.') {
 		if os_name != 'termux' {
 			return true
 		}
-	} else if file.contains('_android.') && os_name !in ['android', 'termux'] {
+	} else if file_name_has_marker(file, '_android.') && os_name !in ['android', 'termux'] {
 		return true
 	}
-	if os_name != 'ios' && file.contains('_ios.') {
+	if os_name != 'ios' && file_name_has_marker(file, '_ios.') {
 		return true
 	}
-	if os_name != 'freebsd' && file.contains('_freebsd.') {
+	if os_name != 'freebsd' && file_name_has_marker(file, '_freebsd.') {
 		return true
 	}
-	if os_name != 'openbsd' && file.contains('_openbsd.') {
+	if os_name != 'openbsd' && file_name_has_marker(file, '_openbsd.') {
 		return true
 	}
-	if os_name != 'netbsd' && file.contains('_netbsd.') {
+	if os_name != 'netbsd' && file_name_has_marker(file, '_netbsd.') {
 		return true
 	}
-	if os_name != 'dragonfly' && file.contains('_dragonfly.') {
+	if os_name != 'dragonfly' && file_name_has_marker(file, '_dragonfly.') {
 		return true
 	}
-	if os_name != 'solaris' && file.contains('_solaris.') {
+	if os_name != 'solaris' && file_name_has_marker(file, '_solaris.') {
 		return true
 	}
 	for target_os in ['qnx', 'haiku', 'serenity', 'vinix'] {
-		if os_name != target_os && file.contains('_${target_os}.') {
+		if os_name != target_os && file_name_has_marker(file, '_${target_os}.') {
 			return true
 		}
 	}
-	if os_name != 'wasm32_emscripten' && file.contains('_wasm32_emscripten.') {
+	if os_name != 'wasm32_emscripten' && file_name_has_marker(file, '_wasm32_emscripten.') {
 		return true
 	}
 	return false
@@ -575,45 +649,66 @@ pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target
 	all_files := os.ls(dir) or { return []string{} }
 	mut sorted_files := all_files.clone()
 	sorted_files.sort()
+	// The target-dependent parts of the per-file checks are computed once per
+	// directory: the architectures a file suffix may name that are not the
+	// target's, and the OS-specific suffixes of the target OS.
+	mut incompatible_archs := []string{}
+	for arch in ['amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'i386', 'i486', 'i586', 'i686',
+		'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'rv64', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
+		's390x', 'loongarch64', 'wasm32'] {
+		if normalized_arch(arch) != target.arch {
+			incompatible_archs << arch
+		}
+	}
+	os_suffixes := os_specific_suffixes(target.os)
+	// Each file is classified once; both emission groups below reuse the result.
+	mut candidates := []VFileCandidate{cap: sorted_files.len}
 	mut has_os_specific := map[string]bool{}
 	for file in sorted_files {
 		if !file.ends_with('.v') || file.ends_with('.js.v')
-			|| (file.contains('_test.') && !file.contains('_d_test.')
-			&& !file.contains('_notd_test.')) {
+			|| (file_name_has_marker(file, '_test.') && !file_name_has_marker(file, '_d_test.')
+			&& !file_name_has_marker(file, '_notd_test.')) {
 			continue
 		}
-		if file_has_incompatible_target_suffix(file, target) {
+		if file_has_incompatible_os_only_suffix(file, target.os) {
 			continue
 		}
-		if base := os_specific_base(file, target.os) {
+		mut incompatible := false
+		for arch in incompatible_archs {
+			if file_name_has_arch_marker(file, arch) {
+				incompatible = true
+				break
+			}
+		}
+		if incompatible {
+			continue
+		}
+		if base := os_specific_base_for(file, os_suffixes) {
 			has_os_specific[base] = true
+		}
+		candidates << VFileCandidate{
+			file: file
+			is_c: file.ends_with('.c.v')
 		}
 	}
 	mut v_files := []string{}
 	for backend_specific in [false, true] {
-		for file in sorted_files {
-			if file.ends_with('.c.v') != backend_specific {
+		for candidate in candidates {
+			if candidate.is_c != backend_specific {
 				continue
 			}
-			if !file.ends_with('.v') || file.ends_with('.js.v')
-				|| (file.contains('_test.') && !file.contains('_d_test.')
-				&& !file.contains('_notd_test.')) {
-				continue
-			}
-			if file_has_incompatible_target_suffix(file, target) {
-				continue
-			}
+			file := candidate.file
 			if base := default_file_base(file) {
 				if has_os_specific[base] {
 					continue
 				}
 			}
-			if file.contains('_notd_') {
+			if file_name_has_marker(file, '_notd_') {
 				feature := extract_define_feature(file, '_notd_')
 				if feature.len > 0 && feature in user_defines {
 					continue
 				}
-			} else if file.contains('_d_') {
+			} else if file_name_has_marker(file, '_d_') {
 				feature := extract_define_feature(file, '_d_')
 				if feature.len == 0 || feature !in user_defines {
 					continue
@@ -623,6 +718,13 @@ pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target
 		}
 	}
 	return v_files
+}
+
+// VFileCandidate is a source file of a directory that passed the
+// target-independent and target-suffix filters, with its backend group.
+struct VFileCandidate {
+	file string
+	is_c bool
 }
 
 // get_test_v_files_from_dir returns backend/target/define-compatible test files in dir.
@@ -745,9 +847,12 @@ fn default_file_base(file string) ?string {
 
 // os_specific_base supports os specific base handling for pref.
 fn os_specific_base(file string, target_os string) ?string {
-	if _ := default_file_base(file) {
-		return none
-	}
+	return os_specific_base_for(file, os_specific_suffixes(target_os))
+}
+
+// os_specific_suffixes lists the file name suffixes (`_nix`, `_macos`, ...)
+// that mark a file as specific to `target_os`.
+fn os_specific_suffixes(target_os string) []string {
 	mut suffixes := []string{}
 	os_name := normalized_os(target_os)
 	if os_name != 'windows' {
@@ -803,6 +908,15 @@ fn os_specific_base(file string, target_os string) ?string {
 		else {}
 	}
 
+	return suffixes
+}
+
+// os_specific_base_for returns the base name of an OS-specific file whose
+// suffix is one of `suffixes` (see os_specific_suffixes).
+fn os_specific_base_for(file string, suffixes []string) ?string {
+	if _ := default_file_base(file) {
+		return none
+	}
 	for suffix in suffixes {
 		for ext in ['.c.v', '.v'] {
 			marker := suffix + ext
@@ -959,24 +1073,17 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		'test' {
 			return p.is_test
 		}
-		'native' {
-			return p.backend == 'arm64'
-		}
-		'builtin_write_buf_to_fd_should_use_c_write' {
+		'native', 'builtin_write_buf_to_fd_should_use_c_write' {
 			return p.backend == 'arm64'
 		}
 		'gcc', 'clang', 'mingw', 'msvc', 'cplusplus' {
 			return p.backend == 'c' && p.ccompiler == name
 		}
 		'tinyc' {
-			return p.backend == 'arm64' || (p.backend == 'c' && p.ccompiler == 'tinyc')
+			return p.backend == 'arm64' || (p.backend in ['c', 'fastc'] && p.ccompiler == 'tinyc')
 		}
 		'no_backtrace' {
 			return p.backend == 'arm64' || name in p.user_defines
-		}
-		'gcboehm', 'gcboehm_opt', 'prealloc', 'autofree', 'no_bounds_checking', 'freestanding',
-		'nofloat' {
-			return name in p.user_defines
 		}
 		else {
 			return name in p.user_defines
@@ -986,6 +1093,12 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 
 // comptime_optional_flag_value supports comptime optional flag value handling for pref.
 pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
+	// `int` is a 64-bit type on 64-bit targets, so the builtin's `$if new_int ?`
+	// guards (max_int/min_int, `int.str`, str_l overflow bounds) must take the
+	// i64 branch there. This mirrors v3's `int` -> `i64` C lowering.
+	if name == 'new_int' {
+		return p.target.pointer_bits == 64 || name in p.user_defines
+	}
 	// Test mode is added internally to `user_defines` so `_d_test.v` source
 	// selection works, but `$if test ?` only asks whether the user supplied
 	// `-d test`. Explicit `-d` values are recorded in `compile_values`.

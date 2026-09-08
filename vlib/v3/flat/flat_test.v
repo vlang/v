@@ -21,7 +21,10 @@ fn test_node_uses_compact_header_and_uncommon_payload() {
 	assert sizeof(NodeKind) == 1
 	assert sizeof(Op) == 1
 	// The former always-present []string field made Node 96 bytes on 64-bit.
-	assert sizeof(Node) <= 72
+	// `int` is 64-bit now, so the two `string` headers alone are 48 bytes; the
+	// rest of the header (payload pointer, child range, flags and Pos) is 40.
+	assert sizeof(Node) <= 88
+	assert sizeof(NodeId) == 4
 }
 
 fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
@@ -35,6 +38,7 @@ fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 		op:                   .plus
 		is_mut:               true
 		skip_ownership_drops: true
+		is_static_type_method: true
 	}
 	cloned := node.clone_owned()
 	assert cloned.value == node.value
@@ -46,6 +50,17 @@ fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 	assert cloned.op == node.op
 	assert cloned.is_mut
 	assert cloned.skip_ownership_drops
+	assert cloned.is_static_type_method
+}
+
+fn test_static_type_method_name_round_trip_with_marker_in_both_parts() {
+	encoded := encode_static_type_method_name('models.Cache__static__State',
+		'reset__static__now')
+	assert encode_static_type_method_name('int', 'tag') != 'int__static__tag__static__3'
+	receiver, method := decode_static_type_method_name(encoded) or { panic('invalid encoding') }
+	assert receiver == 'models.Cache__static__State'
+	assert method == 'reset__static__now'
+	assert decode_static_type_method_name('cache__static__reset') == none
 }
 
 fn test_clone_text_table_owned_detaches_scoped_storage() {

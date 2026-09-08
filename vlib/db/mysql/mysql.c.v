@@ -96,6 +96,12 @@ pub mut:
 	// `MYSQL_OPT_SSL_MODE` call is made and the libmysqlclient default applies.
 	ssl_mode SslMode
 
+	// local_infile enables `LOAD DATA LOCAL INFILE`, which libmysqlclient 8.x
+	// disables by default. It sets `MYSQL_OPT_LOCAL_INFILE` before connecting and
+	// adds the `.client_local_files` capability flag, since the statement needs
+	// both. The server must also allow it (`local_infile=ON`).
+	local_infile bool
+
 	// SSL params, only valid when set .client_ssl
 	ssl_key    string
 	ssl_cert   string
@@ -137,6 +143,8 @@ pub fn connect(config Config) !DB {
 		db.set_option(C.MYSQL_OPT_SSL_MODE, &ssl_mode)
 	}
 
+	connection_flag := db.apply_local_infile(config)
+
 	if config.flag.has(.client_ssl) {
 		if config.ssl_key.len > 0 {
 			db.set_option(C.MYSQL_OPT_SSL_KEY, config.ssl_key.str)
@@ -156,7 +164,7 @@ pub fn connect(config Config) !DB {
 	}
 
 	connection := C.mysql_real_connect(db.conn, config.host.str, username.str, config.password.str,
-		config.dbname.str, config.port, 0, config.flag)
+		config.dbname.str, config.port, 0, connection_flag)
 
 	if isnil(connection) {
 		db.throw_mysql_error()!
@@ -171,6 +179,16 @@ pub fn connect(config Config) !DB {
 	}
 
 	return db
+}
+
+fn (mut db DB) apply_local_infile(config Config) ConnectionFlag {
+	mut connection_flag := config.flag
+	if config.local_infile {
+		enabled := u32(1)
+		db.set_option(C.MYSQL_OPT_LOCAL_INFILE, &enabled)
+		connection_flag.set(.client_local_files)
+	}
+	return connection_flag
 }
 
 // query executes the SQL statement pointed to by the string `q`.
@@ -887,8 +905,8 @@ pub fn (stmt &StmtHandle) execute_result(params []string) !RowSet {
 		unsafe { metadata.free() }
 	}
 	num_cols := C.mysql_num_fields(query_metadata)
-	mut length := []u32{len: num_cols}
-	mut is_null := []bool{len: num_cols}
+	mut length := []C.v_mysql_ulong{len: num_cols}
+	mut is_null := []C.v_mysql_bool{len: num_cols}
 
 	mut binds := []C.MYSQL_BIND{}
 	for i in 0 .. num_cols {
@@ -917,7 +935,7 @@ pub fn (stmt &StmtHandle) execute_result(params []string) !RowSet {
 			binds[i].buffer = data
 			binds[i].buffer_length = l
 			code = C.mysql_stmt_fetch_column(stmt.stmt, unsafe { &binds[i] }, i, 0)
-			if *(binds[i].is_null) {
+			if is_null[i] != 0 {
 				row.vals << ''
 			} else {
 				row.vals << unsafe { data.vstring() }

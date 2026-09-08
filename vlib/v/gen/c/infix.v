@@ -31,6 +31,57 @@ fn (mut g Gen) gen_safe_shift_expr(node ast.InfixExpr) {
 	g.write(')')
 }
 
+fn (g &Gen) type_is_option_or_option_alias(typ ast.Type) bool {
+	if typ.has_flag(.option) {
+		return true
+	}
+	sym := g.table.sym(typ)
+	return sym.info is ast.Alias && sym.info.parent_type.has_flag(.option)
+}
+
+fn (mut g Gen) option_comparison_operand_names(node ast.InfixExpr, left_type ast.Type, right_type ast.Type) (string, string) {
+	if g.infix_left_var_name.len == 0 {
+		left_tmp := g.expr_to_ctemp_before_stmt(node.left, left_type)
+		right_tmp := g.expr_to_ctemp_before_stmt(node.right, right_type)
+		return left_tmp.name, right_tmp.name
+	}
+
+	mut stmt_str := if g.inside_ternary > 0 {
+		g.go_before_ternary()
+	} else {
+		g.go_before_last_stmt()
+	}
+	stmt_str = g.normalize_extracted_stmt(stmt_str)
+	if g.inside_return && stmt_str.ends_with('return') {
+		stmt_str += ' '
+	}
+	g.empty_line = true
+	guard := g.infix_left_var_name
+	g.infix_left_var_name = ''
+	left_tmp := g.new_ctemp_var(node.left, left_type)
+	right_tmp := g.new_ctemp_var(node.right, right_type)
+	for tmp in [left_tmp, right_tmp] {
+		if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt]
+			&& g.contains_ptr(tmp.typ) {
+			g.write('volatile ')
+		}
+		g.writeln('${g.styp(tmp.typ)} ${tmp.name} = {0};')
+	}
+	g.writeln('if (${guard}) {')
+	g.indent++
+	g.write('${left_tmp.name} = ')
+	g.expr(node.left)
+	g.writeln(';')
+	g.write('${right_tmp.name} = ')
+	g.expr(node.right)
+	g.writeln(';')
+	g.indent--
+	g.writeln('}')
+	g.set_current_pos_as_last_stmt_pos()
+	g.write(stmt_str)
+	return left_tmp.name, right_tmp.name
+}
+
 fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	g.expected_fixed_arr = true
 	defer {
@@ -195,12 +246,8 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.gen_plain_infix_expr(node)
 		return
 	}
-	left_sym := g.table.sym(left_type)
-	right_sym := g.table.sym(right_type)
-	left_is_option := left_type.has_flag(.option) || (left_sym.kind == .alias
-		&& left_sym.info is ast.Alias && left_sym.info.parent_type.has_flag(.option))
-	right_is_option := right_type.has_flag(.option) || (right_sym.kind == .alias
-		&& right_sym.info is ast.Alias && right_sym.info.parent_type.has_flag(.option))
+	left_is_option := g.type_is_option_or_option_alias(left_type)
+	right_is_option := g.type_is_option_or_option_alias(right_type)
 	is_none_check := left_is_option && node.right is ast.None
 	if is_none_check {
 		g.gen_is_none_check(node)
@@ -243,6 +290,59 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			g.expr(ast.Expr(node.right))
 			g.write(')')
 		}
+	} else if has_defined_eq_operator && left_is_option && right_is_option {
+		// `?T == ?T` where the base type `T` has a defined `==` (e.g. string, or a
+		// struct with an operator overload). Compare option-awarely: both none -> equal;
+		// differing none-ness -> not equal; otherwise compare the unwrapped values using
+		// the base type's `==`. (Without this, the eq function name was derived from the
+		// option-wrapped type, producing an undefined `_option_T__eq`.)
+		old_inside_opt_or_res := g.inside_opt_or_res
+		g.inside_opt_or_res = true
+		lv, rv := g.option_comparison_operand_names(node, left_type, right_type)
+		mut method_name := ''
+		if left.sym.kind == .struct && (left.sym.info as ast.Struct).generic_types.len > 0 {
+			concrete_types := (left.sym.info as ast.Struct).concrete_types
+			method_name = '${left.sym.cname}__eq'
+			if left.unaliased_sym.is_builtin() {
+				method_name = 'builtin__${method_name}'
+			}
+			method_name = g.generic_fn_name(concrete_types, method_name)
+		} else {
+			mut mn := if has_alias_eq_op_overload {
+				g.styp(left.typ.clear_flag(.option).set_nr_muls(0))
+			} else {
+				g.styp(left.unaliased.clear_flag(.option).set_nr_muls(0))
+			}
+			mut is_builtin_or_alias_to_builtin := left.sym.is_builtin()
+			if !has_alias_eq_op_overload && !is_builtin_or_alias_to_builtin
+				&& left.sym.info is ast.Alias {
+				parent_sym := g.table.sym((left.sym.info as ast.Alias).parent_type)
+				is_builtin_or_alias_to_builtin = parent_sym.is_builtin()
+			}
+			if is_builtin_or_alias_to_builtin {
+				mn = 'builtin__${mn}'
+			}
+			method_name = '${mn}__eq'
+		}
+		base_styp := g.base_type(left_type)
+		if node.op == .eq {
+			g.write('(')
+		} else {
+			g.write('!(')
+		}
+		g.write('(${lv}.state == 2 && ${rv}.state == 2) || ')
+		g.write('(${lv}.state == ${rv}.state && ${lv}.state != 2 && ')
+		if eq_operator_expects_ptr {
+			if g.table.fully_unaliased_type(left_type.clear_flag(.option)).is_ptr() {
+				g.write('${method_name}(*(${base_styp}*)&${lv}.data, *(${base_styp}*)&${rv}.data)')
+			} else {
+				g.write('${method_name}((${base_styp}*)&${lv}.data, (${base_styp}*)&${rv}.data)')
+			}
+		} else {
+			g.write('${method_name}(*(${base_styp}*)&${lv}.data, *(${base_styp}*)&${rv}.data)')
+		}
+		g.write('))')
+		g.inside_opt_or_res = old_inside_opt_or_res
 	} else if has_defined_eq_operator {
 		if node.op == .ne {
 			g.write('!')
@@ -430,18 +530,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					bare_typ := g.equality_fn(left.unaliased.clear_flag(.option).set_nr_muls(0))
 					old_inside_opt_or_res := g.inside_opt_or_res
 					g.inside_opt_or_res = true
-					inside_and_rhs := g.infix_left_var_name.len > 0
-					mut lv := ''
-					mut rv := ''
-					if inside_and_rhs {
-						lv = g.expr_string(node.left)
-						rv = g.expr_string(node.right)
-					} else {
-						left_tmp := g.expr_to_ctemp_before_stmt(node.left, left_type)
-						right_tmp := g.expr_to_ctemp_before_stmt(node.right, right_type)
-						lv = left_tmp.name
-						rv = right_tmp.name
-					}
+					lv, rv := g.option_comparison_operand_names(node, left_type, right_type)
 					if node.op == .eq {
 						g.write('(')
 					} else {
@@ -552,26 +641,15 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	} else if left_is_option && right_is_option {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
+		lv, rv := g.option_comparison_operand_names(node, left_type, right_type)
 		if node.op == .eq {
 			g.write('(')
 		} else {
 			g.write('!(')
 		}
-		g.write('(')
-		g.expr(node.left)
-		g.write('.state == 2 && ')
-		g.expr(node.right)
-		g.write('.state == 2) || (')
-		g.expr(node.left)
-		g.write('.state == ')
-		g.expr(node.right)
-		g.write('.state && ')
-		g.expr(node.left)
-		g.write('.state != 2 && !memcmp(&')
-		g.expr(node.left)
-		g.write('.data, &')
-		g.expr(node.right)
-		g.write('.data, sizeof(${g.base_type(left_type)}))))')
+		g.write('(${lv}.state == 2 && ${rv}.state == 2) || ')
+		g.write('(${lv}.state == ${rv}.state && ${lv}.state != 2 && ')
+		g.write('!memcmp(&${lv}.data, &${rv}.data, sizeof(${g.base_type(left_type)}))))')
 		g.inside_opt_or_res = old_inside_opt_or_res
 	} else {
 		g.gen_plain_infix_expr(node)

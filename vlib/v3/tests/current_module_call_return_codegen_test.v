@@ -94,8 +94,8 @@ fn test_plain_call_prefers_current_module_return_authority() {
 	// Cached module bodies are emitted into their own translation units, and markused prunes
 	// their private helpers from the program unit. The exported entry signatures plus the runtime
 	// assertion above verify that each body retained its declaring module's return authority.
-	assert generated.contains('int clock__make(void);'), generated
-	assert generated.contains('zz_other__Other zz_other__new(int seed);'), generated
+	assert generated.contains('i64 clock__make(void);'), generated
+	assert generated.contains('zz_other__Other zz_other__new(i64 seed);'), generated
 	assert !generated.contains('zz_other__Other clock__new'), generated
 	assert !generated.contains('void zz_other__Other__add_seconds(clock__Time*'), generated
 }

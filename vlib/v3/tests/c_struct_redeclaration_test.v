@@ -85,10 +85,13 @@ fn test_c_struct_redeclaration_checks_field_signature() {
 		'v.mod':  'Module { name: "shared_header_modules" }\n'
 		'a/a.v':  'module a\n\npub struct C.SharedHeader {\n\tx int\n}\n\npub fn touch_a() int {\n\treturn 1\n}\n'
 		'b/b.v':  'module b\n\npub struct C.SharedHeader {\n\ty byteptr\n}\n\npub fn touch_b() int {\n\treturn 2\n}\n'
-		'main.v': 'module main\n\nimport a\nimport b\n\nfn main() {\n\tprintln(int_str(a.touch_a() + b.touch_b()))\n}\n'
+		'main.v': 'module main\n\nimport a\nimport b\n\nfn main() {\n\t$compile_error("semantic checking continued after C declaration conflict")\n\tprintln(int_str(a.touch_a() + b.touch_b()))\n}\n'
 	})
 	assert cross_module_bad.exit_code != 0, cross_module_bad.output
 	assert cross_module_bad.output.contains('cannot redeclare C struct `C.SharedHeader`'), cross_module_bad.output
+	assert cross_module_bad.output.contains('/b/b.v:3:'), cross_module_bad.output
+	assert !cross_module_bad.output.contains('semantic checking continued after C declaration conflict'), cross_module_bad.output
+
 	assert !cross_module_bad.output.contains('C compilation failed'), cross_module_bad.output
 
 	shared_header_good := run_v3_source_cgen(v3_bin, 'good_cjson_shared_header_redeclaration',

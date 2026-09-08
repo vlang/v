@@ -53,6 +53,7 @@ section in the README.md.
 If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
+This also refreshes the bundled TCC binaries used for fast C compilation.
 
 ## Project-local compiler versions with `.vvmrc`
 
@@ -72,6 +73,23 @@ Both `0.4.12` and `v0.4.12` are accepted. The special aliases `latest` and
 V searches for `.vvmrc` from the target path upward and stops at repository and
 project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
 
+## The default compiler
+
+On macOS and Linux, the top-level `v` executable contains only the experimental
+**V3** C compiler (whose source lives in `vlib/v3`). Every direct C build,
+including compiler self-builds, is compiled by V3 in-process. The CLI and tool
+commands remain in `cmd/v`; commands such as `test` and `fmt` are external tools,
+and non-C backends remain separate builder tools.
+
+V3 compilation errors are returned directly. These builds do not silently retry
+with the established compiler, and `-old-compiler` reports that the executable
+contains only V3. `-new-compiler` remains accepted for command-line compatibility
+and selects the same embedded driver.
+
+On platforms that do not embed V3, `cmd/v` still contains the established
+compiler from `vlib/v`. There, `-new-compiler` reports that the current build does
+not include V3.
+
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
 
@@ -85,6 +103,12 @@ by using any of the following commands in a terminal:
 * `v new --web abcd` → creates a new project in the new folder `abcd`, using the veb template.
 
 The `v new --web` template uses `veb`, V's web framework.
+
+When run in a terminal, `v new` and `v init` interactively prompt for the project's
+description, version and license. When stdin is *not* a terminal (for example when the
+input is piped or redirected, as in CI), the prompts are skipped and the defaults are
+used instead of blocking on input; in that case the project name must be passed as an
+argument, e.g. `v new abc`.
 
 ## Table of Contents
 
@@ -540,7 +564,7 @@ fn foo() (int, int) {
 
 fn main() {
 	c, _ := foo()
-	print(c)
+	println(c)
 	// no warning about unused variable returned by foo.
 }
 ```
@@ -5895,6 +5919,14 @@ final output). That's why this approach is *unsafe* and should be avoided!
 
 (This is still in an alpha state)
 
+> **Deprecation notice:** the Function Call API (`orm_fn`;
+> `orm.new_query[T]` / `QueryBuilder`) is deprecated and will be removed
+> from the standard library after **2027-08-17**, to be maintained in a
+> separate repository. Prefer the built-in `sql` ORM syntax shown below
+> for new code. Compiler deprecation warnings begin on **2027-02-18**;
+> until then the compiler emits a migration notice. See
+> https://github.com/vlang/v/issues/27001 for details.
+
 V has a built-in ORM (object-relational mapping) which supports SQLite, MySQL and Postgres,
 but soon it will support MS SQL and Oracle.
 
@@ -6126,6 +6158,10 @@ A vfmt run is usually pretty cheap (takes <30ms).
 
 Always run `v fmt -w file.v` before pushing your code.
 
+During the transition to the V3 formatter, `v fmt -verify` and `v fmt -c` accept
+files matching either V3 or legacy vfmt output. `v fmt -w` uses V3 formatting,
+so it may rewrite a file accepted by either check mode.
+
 #### Disabling the formatting locally
 
 To disable formatting for a block of code, wrap it with `// vfmt off` and
@@ -6159,10 +6195,22 @@ before using the shader in your code.
 
 ### Profiling
 
-V has good support for profiling your programs: `v -profile profile.txt run file.v`
-That will produce a profile.txt file, which you can then analyze.
+V has good support for profiling your programs: `v -profile profile.txt run file.v`.
+That will produce a `profile.txt` file when the program exits, which you can then
+analyze. If the output file is omitted, as in `v -profile run file.v`, the report
+is written to standard output. `-prof` is an alias for `-profile`.
 
-The generated profile.txt file will have lines with 4 columns:
+The V3 compiler supports profiling with its C backend. Other V3 backends reject
+`-profile`. V3 also supports these V1-compatible selection options:
+
+- `-profile-fns name1,name2` profiles only the named functions and functions
+  called from them. Use the function names shown in profile output, such as
+  `main__work`.
+- `-profile-no-inline` omits functions marked `@[inline]` from the report.
+- `-d no_profile_startup` excludes calls made during module initialization.
+
+Use the selection options together with `-profile`. The generated profile file
+has lines with 5 columns:
 
 1. How many times a function was called.
 2. How much time in total a function took (in ms).
@@ -6171,8 +6219,8 @@ The generated profile.txt file will have lines with 4 columns:
 4. How much time on average, a call to a function took (in ns).
 5. The name of the v function.
 
-You can sort on column 3 (average time per function) using:
-`sort -n -k3 profile.txt|tail`
+You can sort on column 3 (exclusive time per function) using:
+`sort -n -k3 profile.txt | tail`
 
 You can also use stopwatches to measure just portions of your code explicitly:
 
@@ -6198,6 +6246,23 @@ folder containing `v.mod`.
 
 V packages are installed normally in your `~/.vmodules` folder. That
 location can be overridden by setting the env variable `VMODULES`.
+
+### Package names and import paths
+
+A package name can contain characters that are not valid in a V import
+path, for example `-` or uppercase letters. Such names are normalized
+when the package is installed: `-` becomes `_` and the name is
+lowercased. A package named `my-mod` is therefore installed as
+`~/.vmodules/my_mod` and imported with `import my_mod`. The same applies
+to the publisher part of a VPM package name, so `Some-Publisher.repo` is
+installed as `~/.vmodules/some_publisher/repo` and imported with
+`import some_publisher.repo`.
+
+`v install` prints a warning with the resulting import prefix whenever it
+has to normalize a name. A package may contain only nested modules, so append
+the nested module path when needed (for example, `import my_mod.json`). If you
+publish a package, prefer a `name` in `v.mod` that is already a valid import
+path.
 
 ### Package commands
 
@@ -6322,6 +6387,9 @@ Package are up to date.
    Initialising ...
    Complete!
    ```
+
+   The prompts above appear only when running in a terminal; with a non-terminal
+   stdin the defaults are used instead (see [Getting started](#getting-started)).
 
    Example `v.mod`:
    ```v ignore
@@ -7130,6 +7198,67 @@ numbers: [1, 2, 3]
 
 See more [details](https://github.com/vlang/v/blob/master/vlib/v/TEMPLATES.md)
 
+#### `$vml` for compiling UI2 interfaces
+
+The V3 compiler can compile a VML file directly into an `ui2.Element` expression with
+`$vml(path)`. The VML is parsed while the application is compiled; the resulting program
+constructs UI2 elements directly and does not parse the VML file at runtime.
+
+```v ignore
+import ui2
+
+struct App {
+pub mut:
+	name string
+}
+
+pub fn (mut app App) save() {}
+
+fn view(app &App) ui2.Element {
+	return $vml('views/profile.vml')
+}
+```
+
+`views/profile.vml`:
+
+```vml
+Screen {
+    id: root
+    background: "#f8fafc"
+    Column {
+        Label { text: "Hello ${app.name}" }
+        Button { text: "Save" on_tap: app.save() }
+    }
+}
+```
+
+The path must be a compile-time string. String literals, constants, compile-time local
+bindings, and `+` concatenations of those forms are supported. Absolute paths are used as
+given. A relative path is searched for in this order:
+
+1. relative to the V source file;
+2. in a `templates` directory next to the V source file;
+3. relative to the nearest parent directory containing `v.mod`;
+4. in that module root's `templates` directory.
+
+The compiled VML subset supports these UI2 elements:
+
+- `Screen`, `View`, `Rectangle`, `Column`, `Row`, and `Scroll` containers;
+- `Label`, `Image`, `Button`, `Checkbox`, `Dropdown`, `TextField`, and `TextArea`;
+- `ProgressBar`, `Slider`, `Switch`, `Spinner`, and `MessageBox`;
+- `Repeater` delegates, `MenuItem` entries, and `Option` entries.
+
+Properties can use literals, arithmetic and boolean expressions, conditional expressions,
+string interpolation, an enclosing `app` value, and geometry or custom properties exposed
+by an `id`. An ID on an earlier node is available to following nodes in the same component.
+Both quoted and unquoted `#RRGGBB` color values are accepted. A `Repeater` requires `model`
+and stable `key` properties and exposes `item` and `index` inside its delegate.
+
+The `bind.text`, `bind.checked`, `bind.active`, and `bind.value` properties create two-way
+bindings to mutable top-level fields on `app`. Event properties `on_tap`, `on_change`,
+`on_active`, `on_text`, and `on_submit` call an `app` method with zero or one argument. These
+methods and their argument types are checked while the generated V code is compiled.
+
 #### `$env`
 
 ```v
@@ -7150,6 +7279,9 @@ V can bring in values at compile time from environment variables.
 V can bring in values at compile time from `-d ident=value` flag defines, passed on
 the command line to the compiler. You can also pass `-d ident`, which will have the
 same meaning as passing `-d ident=true`.
+
+The `-ownership` compiler mode supplies `ownership` as a target-visible custom option.
+This enables `$if ownership ? {}` branches and includes `*_d_ownership.v` files.
 
 To get the value in your code, use: `$d('ident', default)`, where `default`
 can be `false` for booleans, `0` or `123` for i64 numbers, `0.0` or `113.0`
@@ -8931,6 +9063,64 @@ println('a: ${a}') // 100
 println('b: ${b}') // 20
 println('c: ${c}') // 120
 ```
+
+The C backend also supports raw GNU assembly templates. In a `raw` block, V passes each
+double-quoted template string through unchanged and still checks the output, input, and clobber
+lists. Operands can use GNU's named form or V's `constraint (expression) as alias` form:
+
+```v ignore
+mut value := 40
+increment := 2
+asm amd64 raw {
+    "addl %[increment], %[value]\n\t"
+    ; [value] "+r" (value)
+    ; [increment] "r" (increment)
+    ; cc
+}
+assert value == 42
+```
+
+Use `intel` for destination-first structured x86 assembly. V surrounds the generated template
+with `.intel_syntax noprefix` and `.att_syntax prefix`, and does not reorder its operands:
+
+```v ignore
+mut value := 40
+increment := 2
+asm amd64 intel {
+    add value, increment
+    ; +r (value)
+    ; r (increment)
+    ; cc
+}
+```
+
+Structured `intel` blocks support only register-only `r` constraints for input and output
+operands. V uses the GNU x86 `%V` operand modifier so GCC and Clang substitute register names
+without AT&T's `%` prefix. Memory-capable constraints such as `m` are rejected because compilers
+can still format those placeholders with AT&T addressing. In a `raw intel` block, the template is
+passed through unchanged, so use the selected C compiler's explicit operand modifiers.
+
+`%V` is the only operand modifier that omits the `%` prefix, and it prints the compilation
+target's native register: 64 bits for 64-bit machine code and 32 bits for 32-bit machine code,
+including when `-m32` overrides an explicit architecture. This is independent of the architecture
+declared on the assembly block. For instructions whose register operands must have the same width,
+V rejects a named operand combined with an explicit hard register of a different width. For
+example, in a 64-bit build, `mov eax, some_value` would reach the assembler as `mov eax, rcx`, so V
+rejects it at compile time. Named operands may still use narrower V types for operations that
+preserve their low-width result, such as an alias-only `add` whose flags are not observed later in
+the block. V rejects narrower operands where the instruction meaning changes with width, including
+shifts, rotates, implicit multiply and divide, bit counts, bit tests, byte swaps, and CRC32 sources.
+It also rejects narrower signed operands of `cmp` and `test`, and narrow arithmetic when a later
+instruction observes its flags. Named operands cannot be sources of `movsx`, `movsxd`, or `movzx`.
+Addressed sources of `movsx` and `movzx` are also rejected because structured assembly cannot
+specify their data width. Named shift counts are not supported because the `r` constraint cannot
+select `cl`. Effective addresses cannot contain three register operands, and signed address
+components must have the target's native width. Use a `raw intel` block to pick operand widths
+explicitly with `%k`, `%w` and related modifiers.
+
+The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the C backend. MSVC
+does not support this form of inline assembly on 64-bit targets, and individual instructions or
+constraints can still depend on the selected C compiler and target architecture.
 
 For more examples, see
 [vlib/v/slow_tests/assembly/asm_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/slow_tests/assembly/asm_test.amd64.v)

@@ -52,7 +52,7 @@ jobs:
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y libmariadb-dev
       - name: Run mysql driver tests
-        run: ./v -d network -d started_mysqld -silent test vlib/db/mysql/
+        run: ./v -old-compiler -d network -d started_mysqld -silent test vlib/db/mysql/
 
   postgres-driver-tests:
     runs-on: ubuntu-24.04
@@ -79,7 +79,7 @@ jobs:
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y libpq-dev
       - name: Run postgres driver tests
-        run: ./v -d network -d started_postgres -silent test vlib/db/pg/
+        run: ./v -old-compiler -d network -d started_postgres -silent test vlib/db/pg/
 
   mssql-driver-tests:
     runs-on: ubuntu-24.04
@@ -116,4 +116,4 @@ jobs:
       - name: Run mssql driver tests
         env:
           VMSSQL_CONN_STR: 'Driver={ODBC Driver 18 for SQL Server};Server=127.0.0.1;Port=1433;UID=sa;PWD=Vlang12345678!;Database=master;TrustServerCertificate=yes'
-        run: ./v -d network -d started_mssql -silent test vlib/db/mssql/
+        run: ./v -old-compiler -d network -d started_mssql -silent test vlib/db/mssql/

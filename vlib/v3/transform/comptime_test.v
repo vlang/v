@@ -34,6 +34,11 @@ fn test_comptime_for_base_type_unwraps_storage_indirections() {
 	assert t.comptime_for_base_type('shared websocket.ClientState') == 'websocket.ClientState'
 }
 
+fn test_comptime_method_receiver_name_normalizes_main_qualification() {
+	assert comptime_method_receiver_name('main.App', 'veb') == 'App'
+	assert comptime_method_receiver_matches('App', 'main.App', 'main.App', 'main', 'veb')
+}
+
 fn test_comptime_sum_variants_normalize_main_specialization_lock() {
 	mut a := flat.FlatAst.new()
 	t := Transformer{
