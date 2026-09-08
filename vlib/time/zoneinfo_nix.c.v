@@ -14,7 +14,12 @@ fn local_location() !&Location {
 					return parse_tzif_location('Local', data) or { fixed_local_location() }
 				}
 				if !os.is_abs_path(path) {
-					return load_location(path) or { fixed_local_location() }
+					return load_location(path) or {
+						if rule := parse_posix_zone_rule(path) {
+							return location_from_posix_rule('Local', rule)
+						}
+						fixed_local_location()
+					}
 				}
 			}
 		} else if tz != 'Local' {

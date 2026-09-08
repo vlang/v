@@ -70,6 +70,14 @@ fn test_bundled_zoneinfo_has_future_posix_rules() {
 	assert summer.is_dst == true
 }
 
+fn test_bundled_zoneinfo_preserves_pre_1970_history() {
+	zoneinfo_zip := os.join_path(@VEXEROOT, 'vlib', 'time', 'tzdata', 'zoneinfo.zip')
+	os.setenv('ZONEINFO', zoneinfo_zip, true)
+	loc := time.load_location('Africa/Accra')!
+	zone := loc.zone_at(-931_046_400)! // 1940-07-01 00:00 UTC
+	assert zone.offset == 20 * 60
+}
+
 fn test_load_location_with_dst_transition() {
 	loc := time.load_location('America/New_York')!
 	before := loc.unix_to_local(1_710_053_940)!
@@ -140,6 +148,7 @@ fn test_location_time_strftime_uses_location_zone_directives() {
 	assert local.strftime('%s') == '1710054000'
 	assert local.strftime('%%Z %Z') == '%Z EDT'
 	assert local.strftime('%12s|%10Z|%10z|%EZ|%Oz') == '  1710054000|       EDT|     -0400|EDT|-0400'
+	assert local.strftime('%-12s|%-10Z') == '  1710054000|       EDT'
 }
 
 fn test_location_time_strftime_alternate_zone_case() {
@@ -280,21 +289,21 @@ fn test_load_location_posix_future_dst() {
 	assert summer_local.hour == 1
 }
 
-fn test_load_location_non_m_posix_future_rule() {
-	// Morocco uses a POSIX tail with day-of-year and Julian-no-leap rules.
+fn test_load_location_posix_fixed_future_rule() {
+	// IANA 2025b models Morocco as fixed at +01 after the final explicit transition.
 	loc := time.load_location('Africa/Casablanca')!
 	start_of_year := loc.zone_at(2_524_608_000)! // 2050-01-01 00:00 UTC
 	end_of_year := loc.zone_at(2_556_057_600)! // 2050-12-31 00:00 UTC
 	assert start_of_year.name == '+01'
 	assert start_of_year.offset == 3_600
-	assert start_of_year.is_dst == true
+	assert start_of_year.is_dst == false
 	assert end_of_year.name == '+01'
 	assert end_of_year.offset == 3_600
-	assert end_of_year.is_dst == true
+	assert end_of_year.is_dst == false
 	local_new_year := loc.zone_at(2_556_138_600)! // 2050-12-31 22:30 UTC
 	assert local_new_year.name == '+01'
 	assert local_new_year.offset == 3_600
-	assert local_new_year.is_dst == true
+	assert local_new_year.is_dst == false
 }
 
 fn test_fixed_offset_etc_gmt() {
@@ -386,4 +395,25 @@ fn test_load_location_local_posix_tz() {
 	assert summer.name == 'EDT'
 	assert summer.offset == -14_400
 	assert summer.is_dst == true
+}
+
+fn test_load_location_local_colon_prefixed_posix_tz() {
+	$if !windows {
+		old_tz := os.getenv_opt('TZ')
+		os.setenv('TZ', ':EST5EDT,M3.2.0,M11.1.0', true)
+		defer {
+			if old := old_tz {
+				os.setenv('TZ', old, true)
+			} else {
+				os.unsetenv('TZ')
+			}
+		}
+		loc := time.load_location('Local')!
+		winter := loc.zone_at(1_704_067_200)! // 2024-01-01 00:00 UTC
+		summer := loc.zone_at(1_719_792_000)! // 2024-06-30 20:00 UTC
+		assert winter.name == 'EST'
+		assert winter.offset == -18_000
+		assert summer.name == 'EDT'
+		assert summer.offset == -14_400
+	}
 }

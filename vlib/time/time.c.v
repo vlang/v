@@ -171,21 +171,18 @@ fn strftime_location_format(fmt string, zone_name string, zone_offset string, un
 		}
 		directive_start := i
 		i++
-		mut no_padding := false
 		mut padding := ` `
 		mut uppercase := false
 		mut alternate_case := false
 		for i < fmt.len {
 			match fmt[i] {
 				`-` {
-					no_padding = true
+					padding = ` `
 				}
 				`_` {
-					no_padding = false
 					padding = ` `
 				}
 				`0` {
-					no_padding = false
 					padding = `0`
 				}
 				`^` {
@@ -227,15 +224,14 @@ fn strftime_location_format(fmt string, zone_name string, zone_offset string, un
 				continue
 			}
 		}
-		formatted := strftime_location_value(value, width, no_padding, padding, uppercase,
-			alternate_case)
+		formatted := strftime_location_value(value, width, padding, uppercase, alternate_case)
 		// The value is inserted into the libc format as a literal.
 		out.write_string(formatted.replace('%', '%%'))
 	}
 	return out.str()
 }
 
-fn strftime_location_value(value string, width int, no_padding bool, padding u8, uppercase bool, alternate_case bool) string {
+fn strftime_location_value(value string, width int, padding u8, uppercase bool, alternate_case bool) string {
 	mut formatted := value
 	if uppercase {
 		formatted = formatted.to_upper()
@@ -243,7 +239,7 @@ fn strftime_location_value(value string, width int, no_padding bool, padding u8,
 	if alternate_case {
 		formatted = formatted.to_lower()
 	}
-	if no_padding || formatted.len >= width {
+	if formatted.len >= width {
 		return formatted
 	}
 	pad := if padding == `0` { '0' } else { ' ' }
