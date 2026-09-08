@@ -43,6 +43,12 @@ enum PosixRuleKind {
 	day_of_year
 }
 
+enum PosixTimeBasis {
+	wall
+	standard
+	utc
+}
+
 struct PosixRule {
 	kind    PosixRuleKind
 	month   int
@@ -50,4 +56,5 @@ struct PosixRule {
 	weekday int
 	day     int
 	seconds int
+	basis   PosixTimeBasis
 }

@@ -88,6 +88,37 @@ fn test_parse_posix_negative_transition_time_with_minutes() {
 	assert transition == expected
 }
 
+fn test_posix_transition_time_basis_suffixes() {
+	wall_rule := parse_posix_zone_rule('EST5EDT,M3.2.0/2w,M11.1.0/2w')!
+	standard_rule := parse_posix_zone_rule('EST5EDT,M3.2.0/2s,M11.1.0/2s')!
+	utc_rule := parse_posix_zone_rule('EST5EDT,M3.2.0/2u,M11.1.0/2u')!
+	start_year, start_month, start_day := posix_rule_date(2050, wall_rule.start)
+	start_local := time_fields_to_unix(Time{
+		year:  start_year
+		month: start_month
+		day:   start_day
+		hour:  2
+	})
+	assert wall_rule.transition_utc(2050, wall_rule.start, wall_rule.std_offset) == start_local +
+		5 * seconds_per_hour
+	assert standard_rule.transition_utc(2050, standard_rule.start, standard_rule.std_offset) ==
+		start_local + 5 * seconds_per_hour
+	assert utc_rule.transition_utc(2050, utc_rule.start, utc_rule.std_offset) == start_local
+
+	end_year, end_month, end_day := posix_rule_date(2050, wall_rule.end)
+	end_local := time_fields_to_unix(Time{
+		year:  end_year
+		month: end_month
+		day:   end_day
+		hour:  2
+	})
+	assert wall_rule.transition_utc(2050, wall_rule.end, wall_rule.dst_offset) == end_local +
+		4 * seconds_per_hour
+	assert standard_rule.transition_utc(2050, standard_rule.end, standard_rule.dst_offset) ==
+		end_local + 5 * seconds_per_hour
+	assert utc_rule.transition_utc(2050, utc_rule.end, utc_rule.dst_offset) == end_local
+}
+
 fn test_posix_day_365_rolls_into_next_non_leap_year() {
 	rule := parse_posix_zone_rule('STD0DST,365/0,365/12')!
 	start := rule.transition_utc(2050, rule.start, rule.std_offset)
@@ -220,6 +251,14 @@ fn test_local_location_loads_unprefixed_absolute_tz_path() {
 		loc := local_location()!
 		assert loc.offset_at(1_704_067_200)! == -18_000
 		assert loc.offset_at(1_719_792_000)! == -14_400
+	}
+}
+
+fn test_platform_zoneinfo_sources_prefers_macos_default() {
+	$if macos {
+		sources := platform_zoneinfo_sources()
+		assert sources[0] == '/usr/share/zoneinfo.default'
+		assert sources.index('/usr/share/zoneinfo.default') < sources.index('/usr/share/zoneinfo')
 	}
 }
 

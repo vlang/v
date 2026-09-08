@@ -210,6 +210,9 @@ fn load_zoneinfo_location_from_sources(name string, sources []string, loaders []
 fn platform_zoneinfo_sources() []string {
 	mut sources := []string{}
 	$if !windows {
+		$if macos {
+			sources << '/usr/share/zoneinfo.default'
+		}
 		for source in zoneinfo_unix_sources {
 			sources << source
 		}
@@ -594,10 +597,10 @@ fn parse_posix_rule(text string) !PosixRule {
 		return error('unsupported POSIX time zone date rule "${text}"')
 	}
 	date := rule_parts[0]
-	seconds := if rule_parts.len > 1 {
+	seconds, basis := if rule_parts.len > 1 {
 		parse_posix_time(rule_parts[1])!
 	} else {
-		2 * seconds_per_hour
+		2 * seconds_per_hour, PosixTimeBasis.wall
 	}
 	if date.starts_with('M') {
 		date_parts := date[1..].split('.')
@@ -616,6 +619,7 @@ fn parse_posix_rule(text string) !PosixRule {
 			week:    week
 			weekday: weekday
 			seconds: seconds
+			basis:   basis
 		}
 	}
 	if date.starts_with('J') {
@@ -627,6 +631,7 @@ fn parse_posix_rule(text string) !PosixRule {
 			kind:    .julian_no_leap
 			day:     day
 			seconds: seconds
+			basis:   basis
 		}
 	}
 	day := parse_posix_number_text(date)!
@@ -637,6 +642,7 @@ fn parse_posix_rule(text string) !PosixRule {
 		kind:    .day_of_year
 		day:     day
 		seconds: seconds
+		basis:   basis
 	}
 }
 
@@ -670,7 +676,7 @@ fn date_from_year_day(year int, ordinal int) (int, int, int) {
 	return year + 1, 1, day
 }
 
-fn parse_posix_time(text string) !int {
+fn parse_posix_time(text string) !(int, PosixTimeBasis) {
 	if text == '' {
 		return error('unsupported POSIX time "${text}"')
 	}
@@ -692,6 +698,16 @@ fn parse_posix_time(text string) !int {
 	if pos < text.len && text[pos] == `:` {
 		second_value, pos = parse_posix_number(text, pos + 1)!
 	}
+	mut basis := PosixTimeBasis.wall
+	if pos < text.len {
+		basis = match text[pos] {
+			`w` { PosixTimeBasis.wall }
+			`s` { PosixTimeBasis.standard }
+			`u`, `g`, `z` { PosixTimeBasis.utc }
+			else { return error('unsupported POSIX time "${text}"') }
+		}
+		pos++
+	}
 	if pos != text.len || minute_value > 59 || second_value > 59 {
 		return error('unsupported POSIX time "${text}"')
 	}
@@ -699,7 +715,7 @@ fn parse_posix_time(text string) !int {
 	if seconds > 167 * seconds_per_hour {
 		return error('unsupported POSIX time "${text}"')
 	}
-	return sign * seconds
+	return sign * seconds, basis
 }
 
 fn parse_posix_number(text string, start int) !(int, int) {
@@ -768,7 +784,12 @@ fn (rule PosixZoneRule) transition_utc(year int, date_rule PosixRule, offset_bef
 		month: month
 		day:   day
 	})
-	return local + i64(date_rule.seconds) - i64(offset_before)
+	basis_offset := match date_rule.basis {
+		.wall { offset_before }
+		.standard { rule.std_offset }
+		.utc { 0 }
+	}
+	return local + i64(date_rule.seconds) - i64(basis_offset)
 }
 
 fn posix_month_week_day(year int, rule PosixRule) int {
