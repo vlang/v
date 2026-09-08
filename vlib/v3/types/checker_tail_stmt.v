@@ -14670,6 +14670,12 @@ fn (tc &TypeChecker) parse_fn_type(typ string) Type {
 
 fn (tc &TypeChecker) c_abi_fn_ptr_type_from_text(typ string) ?string {
 	clean := trimmed_space(typ)
+	mut seen := map[string]bool{}
+	seen[clean] = true
+	return tc.c_abi_fn_ptr_type_from_text_inner(clean, mut seen)
+}
+
+fn (tc &TypeChecker) c_abi_fn_ptr_type_from_text_inner(clean string, mut seen map[string]bool) ?string {
 	if !clean.starts_with('fn(') && !clean.starts_with('fn (') {
 		return none
 	}
@@ -14696,6 +14702,13 @@ fn (tc &TypeChecker) c_abi_fn_ptr_type_from_text(typ string) ?string {
 	mut has_c_abi_param := false
 	if trimmed_space(params_str).len > 0 {
 		for part in split_params(params_str) {
+			param_type := normalize_fn_type_param_text(part)
+			mut nested_seen := seen.clone()
+			if nested_c_abi := tc.c_abi_fn_ptr_type_for_type_text_inner(param_type, mut nested_seen) {
+				params << 'nested:${nested_c_abi}'
+				has_c_abi_param = true
+				continue
+			}
 			ct, is_c_abi := tc.c_abi_fn_param_type(part)
 			params << ct
 			if is_c_abi {
@@ -14725,7 +14738,7 @@ fn (tc &TypeChecker) c_abi_fn_ptr_type_for_type_text_inner(typ string, mut seen 
 		return none
 	}
 	seen[typ] = true
-	if c_abi_fn := tc.c_abi_fn_ptr_type_from_text(typ) {
+	if c_abi_fn := tc.c_abi_fn_ptr_type_from_text_inner(typ, mut seen) {
 		return c_abi_fn
 	}
 	for name in [tc.qualify_name(typ), typ] {

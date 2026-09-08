@@ -1843,6 +1843,16 @@ fn test_fn_literal_nested_named_callback_param_matches_alias_inside_generic_fn()
 	assert matching == 'true'
 }
 
+fn test_fn_literal_nested_c_abi_const_mode_matches_alias_inside_generic_fn() {
+	v3_bin := build_v3()
+	matching := run_good(v3_bin, 'good_nested_const_fn_literal_alias_in_generic',
+		'type Outer = fn (cb fn (const_event &C.native_event))\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler Outer) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (callback fn (const_event &C.native_event)) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert matching == 'true'
+	run_bad(v3_bin, 'bad_nested_const_fn_literal_alias_in_generic',
+		'type Outer = fn (cb fn (const_event &C.native_event))\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler Outer) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (callback fn (event &C.native_event)) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+}
+
 fn test_fn_literal_nested_shared_callback_param_matches_alias_inside_generic_fn() {
 	v3_bin := build_v3()
 	matching := run_good(v3_bin, 'good_nested_shared_callback_param_in_generic',

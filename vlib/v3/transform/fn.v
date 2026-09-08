@@ -11813,6 +11813,28 @@ fn fn_type_texts_signature_compatible(actual string, expected string) bool {
 	return normalize_fn_param_text(actual_ret) == normalize_fn_param_text(expected_ret)
 }
 
+fn fn_type_texts_signature_compatible_without_c_abi_names(actual string, expected string) bool {
+	actual_params, actual_ret := fn_type_text_parts(actual) or { return false }
+	expected_params, expected_ret := fn_type_text_parts(expected) or { return false }
+	if actual_params.len != expected_params.len {
+		return false
+	}
+	for i in 0 .. actual_params.len {
+		actual_param := normalize_fn_param_text_without_c_abi_name(actual_params[i])
+		expected_param := normalize_fn_param_text_without_c_abi_name(expected_params[i])
+		if actual_param != expected_param {
+			return false
+		}
+	}
+	actual_return := normalize_fn_param_text_without_c_abi_name(actual_ret)
+	expected_return := normalize_fn_param_text_without_c_abi_name(expected_ret)
+	return actual_return == expected_return
+}
+
+fn normalize_fn_param_text_without_c_abi_name(text string) string {
+	return normalize_fn_param_text(text).replace('const&', '&').replace('const &', '&')
+}
+
 // normalize_fn_param_text maps a fn-type parameter/return text to its canonical
 // type spelling so that a fn literal's stringified form (`fn (&Request,
 // &ResponseWriter)`, where a `mut` parameter is stringified as `&T`) matches the
@@ -12022,6 +12044,16 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		if (type_text_has_shared_mode(source_fn_type) || type_text_has_shared_mode(expected))
 			&& !fn_type_texts_signature_compatible(source_fn_type, expected) {
 			return false
+		}
+		if !isnil(t.tc) {
+			if actual_c_abi := t.tc.c_abi_fn_ptr_type_for_type_text(source_fn_type) {
+				if expected_c_abi := t.tc.c_abi_fn_ptr_type_for_type_text(expected_type) {
+					if actual_c_abi == expected_c_abi
+						&& fn_type_texts_signature_compatible_without_c_abi_names(actual, expected) {
+						return true
+					}
+				}
+			}
 		}
 	}
 	if t.is_integer_type_name(expected) {
