@@ -1,0 +1,8 @@
+const high = 4294967295
+
+fn main() {
+	// The constant's existing overflow error must not cascade to an empty-range error.
+	for i in 0 .. high {
+		println(i)
+	}
+}

@@ -424,6 +424,13 @@ fn (mut c Checker) range_literal_expr_type(expr ast.Expr) ?ast.Type {
 		ast.PrefixExpr {
 			return c.range_literal_expr_type(expr.right)
 		}
+		ast.Ident {
+			if expr.obj is ast.ConstField {
+				// Untyped numeric constants are stored as the C int_literal type.
+				return ast.i64_type
+			}
+			return none
+		}
 		ast.InfixExpr {
 			if expr.op == .power {
 				return ast.int_type
@@ -451,6 +458,12 @@ fn (mut c Checker) range_literal_expr_has_unsigned_i64_division(expr ast.Expr) b
 		}
 		ast.PrefixExpr {
 			return c.range_literal_expr_has_unsigned_i64_division(expr.right)
+		}
+		ast.Ident {
+			if expr.obj is ast.ConstField {
+				return c.range_literal_expr_has_unsigned_i64_division(expr.obj.expr)
+			}
+			return false
 		}
 		ast.InfixExpr {
 			if expr.op in [.div, .mod] {

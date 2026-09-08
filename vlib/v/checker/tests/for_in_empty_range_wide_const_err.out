@@ -1,0 +1,5 @@
+vlib/v/checker/tests/for_in_empty_range_wide_const_err.vv:1:14: error: overflow in implicit type `int`, use explicit type casting instead
+    1 | const high = 4294967295
+      |              ~~~~~~~~~~
+    2 | 
+    3 | fn main() {
