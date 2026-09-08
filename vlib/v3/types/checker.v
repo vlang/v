@@ -3251,6 +3251,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	// declaration table before collecting concrete signatures in pass 2.
 	tc.type_cache.clear_c_type_entries()
 	tc.invalidate_short_type_name_index()
+	tc.rebuild_type_alias_c_abi_metadata(a)
 	tc.check_c_struct_redeclarations(a)
 	tc.check_c_fn_redeclarations(a)
 	tc.timing_profile('  [ttime]     ck c pass1     ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -3693,6 +3694,46 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	}
 	$if ownership ? {
 		tc.ownership_after_collect()
+	}
+}
+
+fn (mut tc TypeChecker) rebuild_type_alias_c_abi_metadata(a &flat.FlatAst) {
+	tc.type_alias_c_abi_fns.clear()
+	tc.type_alias_c_abi_signatures.clear()
+	tc.cur_file = ''
+	tc.cur_module = ''
+	for tl_idx in tc.top_level_idx {
+		node := a.nodes[tl_idx]
+		match node.kind {
+			.file {
+				tc.enter_file(node.value)
+			}
+			.module_decl {
+				tc.enter_module(node.value)
+			}
+			.type_decl {
+				if node.children_count > 0 || node.typ.len == 0
+					|| split_sum_variant_texts(node.typ).len > 1 {
+					continue
+				}
+				qname := tc.qualify_decl_name(node.value)
+				if c_abi_fn := tc.c_abi_fn_ptr_type_from_text(node.typ) {
+					tc.type_alias_c_abi_fns[qname] = c_abi_fn
+				}
+				if c_abi_signature := tc.c_abi_fn_signature_from_text(node.typ) {
+					tc.type_alias_c_abi_signatures[qname] = c_abi_signature
+				}
+				if tc.cur_module in ['', 'main', 'builtin'] && qname != node.value {
+					if c_abi_fn := tc.type_alias_c_abi_fns[qname] {
+						tc.type_alias_c_abi_fns[node.value] = c_abi_fn
+					}
+					if c_abi_signature := tc.type_alias_c_abi_signatures[qname] {
+						tc.type_alias_c_abi_signatures[node.value] = c_abi_signature
+					}
+				}
+			}
+			else {}
+		}
 	}
 }
 
