@@ -384,48 +384,22 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 }
 
 // Check for empty range with comptime constant integer bounds
-fn range_integer_literal_type(expr ast.Expr) ?ast.Type {
-	match expr {
-		ast.IntegerLiteral {
-			if expr.val.starts_with('-') {
-				value := expr.val.i64()
-				return if value >= min_i32 { ast.i32_type } else { ast.i64_type }
-			}
-			value := expr.val.u64()
-			if value <= u64(max_i32) {
-				return ast.i32_type
-			}
-			if value <= u64(max_u32) {
-				return ast.u32_type
-			}
-			return if value <= u64(max_i64) { ast.i64_type } else { ast.u64_type }
-		}
-		ast.ParExpr {
-			return range_integer_literal_type(expr.expr)
-		}
-		else {
-			return none
-		}
+fn range_integer_literal_type(expr ast.IntegerLiteral) ast.Type {
+	if expr.val.starts_with('-') {
+		value := expr.val.i64()
+		return if value >= min_i32 { ast.i32_type } else { ast.i64_type }
 	}
+	value := expr.val.u64()
+	if value <= u64(max_i32) {
+		return ast.i32_type
+	}
+	if value <= u64(max_u32) {
+		return ast.u32_type
+	}
+	return if value <= u64(max_i64) { ast.i64_type } else { ast.u64_type }
 }
 
-fn (mut c Checker) range_comparison_operand_type(expr ast.Expr, typ ast.Type) ?ast.Type {
-	unaliased_type := c.table.fully_unaliased_type(typ).clear_flags()
-	if unaliased_type == ast.int_literal_type {
-		return range_integer_literal_type(expr) or { ast.int_type }
-	}
-	if unaliased_type == ast.rune_type || unaliased_type.idx() in ast.int_promoted_type_idxs {
-		return ast.int_type
-	}
-	if !unaliased_type.is_pure_int() {
-		return none
-	}
-	return unaliased_type
-}
-
-fn (mut c Checker) range_comparison_type(left_expr ast.Expr, left_type ast.Type, right_expr ast.Expr, right_type ast.Type) ?ast.Type {
-	left := c.range_comparison_operand_type(left_expr, left_type)?
-	right := c.range_comparison_operand_type(right_expr, right_type)?
+fn (mut c Checker) range_promoted_integer_type(left ast.Type, right ast.Type) ast.Type {
 	left_size, _ := c.table.type_size(left)
 	right_size, _ := c.table.type_size(right)
 	if left.is_signed() == right.is_signed() {
@@ -439,7 +413,92 @@ fn (mut c Checker) range_comparison_type(left_expr ast.Expr, left_type ast.Type,
 	return if unsigned_size >= signed_size { unsigned_type } else { signed_type }
 }
 
+fn (mut c Checker) range_literal_expr_type(expr ast.Expr) ?ast.Type {
+	match expr {
+		ast.IntegerLiteral {
+			return range_integer_literal_type(expr)
+		}
+		ast.ParExpr {
+			return c.range_literal_expr_type(expr.expr)
+		}
+		ast.PrefixExpr {
+			return c.range_literal_expr_type(expr.right)
+		}
+		ast.InfixExpr {
+			if expr.op == .power {
+				return ast.int_type
+			}
+			if expr.op in [.left_shift, .right_shift, .unsigned_right_shift] {
+				return ast.i64_type
+			}
+			if expr.op !in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor] {
+				return none
+			}
+			left := c.range_literal_expr_type(expr.left)?
+			right := c.range_literal_expr_type(expr.right)?
+			return c.range_promoted_integer_type(left, right)
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (mut c Checker) range_literal_expr_has_unsigned_i64_division(expr ast.Expr) bool {
+	match expr {
+		ast.ParExpr {
+			return c.range_literal_expr_has_unsigned_i64_division(expr.expr)
+		}
+		ast.PrefixExpr {
+			return c.range_literal_expr_has_unsigned_i64_division(expr.right)
+		}
+		ast.InfixExpr {
+			if expr.op in [.div, .mod] {
+				if typ := c.range_literal_expr_type(expr) {
+					if typ == ast.u64_type {
+						return true
+					}
+				}
+			}
+			return c.range_literal_expr_has_unsigned_i64_division(expr.left)
+				|| c.range_literal_expr_has_unsigned_i64_division(expr.right)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut c Checker) range_comparison_operand_type(expr ast.Expr, typ ast.Type) ?ast.Type {
+	unaliased_type := c.table.fully_unaliased_type(typ).clear_flags()
+	if unaliased_type == ast.int_literal_type {
+		return c.range_literal_expr_type(expr) or { ast.int_type }
+	}
+	if unaliased_type == ast.rune_type {
+		return ast.u32_type
+	}
+	if unaliased_type.idx() in ast.int_promoted_type_idxs {
+		return ast.int_type
+	}
+	if !unaliased_type.is_pure_int() {
+		return none
+	}
+	return unaliased_type
+}
+
+fn (mut c Checker) range_comparison_type(left_expr ast.Expr, left_type ast.Type, right_expr ast.Expr, right_type ast.Type) ?ast.Type {
+	left := c.range_comparison_operand_type(left_expr, left_type)?
+	right := c.range_comparison_operand_type(right_expr, right_type)?
+	return c.range_promoted_integer_type(left, right)
+}
+
 fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, val_type ast.Type, high_type ast.Type) {
+	// The general constant evaluator uses signed arithmetic for untyped expressions.
+	// Decline to compare when a represented u64 division would therefore fold differently.
+	if c.range_literal_expr_has_unsigned_i64_division(low)
+		|| c.range_literal_expr_has_unsigned_i64_division(high) {
+		return
+	}
 	assignment_type := if val_type == ast.int_literal_type { ast.int_type } else { val_type }
 	if evaluated_low := c.eval_comptime_const_expr(low, 0) {
 		if evaluated_high := c.eval_comptime_const_expr(high, 0) {
