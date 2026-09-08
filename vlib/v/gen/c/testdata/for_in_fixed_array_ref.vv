@@ -13,6 +13,14 @@ struct PointerHolder {
 	buf [2]&Point
 }
 
+fn increment(value int) int {
+	return value + 1
+}
+
+fn double(value int) int {
+	return value * 2
+}
+
 fn main() {
 	h := Holder{
 		buf: [Point{1, 2}, Point{3, 4}, Point{5, 6}]!
@@ -27,5 +35,11 @@ fn main() {
 	}
 	for point in &pointers.buf {
 		println(point.x)
+	}
+	callbacks := [increment, double]!
+	unsafe {
+		for callback in &callbacks {
+			_ = callback
+		}
 	}
 }

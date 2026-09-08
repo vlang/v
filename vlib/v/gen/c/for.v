@@ -918,8 +918,10 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			}
 			if !is_fixed_array {
 				elem_type := g.table.fully_unaliased_type(g.unwrap_generic(info.elem_type))
+				elem_sym := g.table.sym(elem_type)
 				addr := if (node.val_is_mut || node.val_is_ref)
-					&& !elem_type.is_any_kind_of_pointer() {
+					&& (node.val_type.has_flag(.option_mut_param_t)
+					|| (!elem_type.is_any_kind_of_pointer() && elem_sym.info !is ast.FnType)) {
 					'&'
 				} else {
 					''
