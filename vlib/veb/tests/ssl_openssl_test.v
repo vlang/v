@@ -3,6 +3,7 @@
 import net.http
 import net.openssl
 import os
+import time
 import veb
 
 const https_port = 13014
@@ -43,7 +44,12 @@ fn test_veb_serves_https_requests() ! {
 			cert_key: key_path
 		}
 	)
-	_ := <-app.started
+	select {
+		_ := <-app.started {}
+		5 * time.second {
+			return error('OpenSSL HTTPS server did not start in time')
+		}
+	}
 	res := http.fetch(
 		url:      'https://127.0.0.1:${https_port}/'
 		validate: false

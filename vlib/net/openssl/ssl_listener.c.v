@@ -38,6 +38,10 @@ fn ssl_listener_family(saddr string, family net.AddrFamily) net.AddrFamily {
 	if address == '' || address == '::' || address.contains(':') {
 		return .ip6
 	}
+	addrs := net.resolve_addrs(saddr, .unspec, .tcp) or { return .ip }
+	if addrs.len > 0 {
+		return addrs[0].family()
+	}
 	return .ip
 }
 

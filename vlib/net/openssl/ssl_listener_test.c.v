@@ -75,6 +75,21 @@ fn test_ssl_listener_infers_ipv6_family_from_unspecified_address() ! {
 	}
 }
 
+fn test_ssl_listener_infers_hostname_family() ! {
+	$if macos || linux {
+		addrs := net.resolve_addrs('localhost:0', .unspec, .tcp)!
+		assert addrs.len > 0
+		mut listener := new_ssl_listener('localhost:0', SSLConnectConfig{
+			cert:     os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.crt')
+			cert_key: os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.key')
+		})!
+		defer {
+			listener.shutdown() or {}
+		}
+		assert listener.tcp_listener.addr()!.family() == addrs[0].family()
+	}
+}
+
 fn test_ssl_listener_handshake_honors_timeout() ! {
 	mut listener := new_test_ssl_listener('127.0.0.1:0', .ip)!
 	defer {
