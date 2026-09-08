@@ -1912,6 +1912,14 @@ fn test_fn_literal_nested_c_abi_const_mode_matches_alias_inside_generic_fn() {
 		'main.v': 'module main\n\nimport m\n\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler m.Outer) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (box m.Box[fn (const_event &C.native_event)]) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n'
 		'm/m.v':  'module m\n\npub struct Box[T] {\npub:\n\tvalue T\n}\n\npub type Outer = fn (box Box[fn (const_event &C.native_event)])\n'
 	}, 'main.v')
+	run_check_good_project(v3_bin, 'good_imported_generic_alias_local_type_const_callback', {
+		'main.v': 'module main\n\nimport m\n\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler m.Outer[fn (const_event &C.native_event)]) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (event &m.Event, callback fn (const_event &C.native_event)) {})\n}\nfn main() {\n\tstartup[int]()\n}\n'
+		'm/m.v':  'module m\n\npub type Event = C.native_event\npub type Outer[T] = fn (event &Event, callback T)\n'
+	}, 'main.v')
+	run_check_good_project(v3_bin, 'good_generic_param_does_not_replace_qualified_member', {
+		'main.v':    'module main\n\nimport foo\n\nstruct C.native_event {}\ntype Outer[T] = fn (item foo.T, callback T)\nstruct Router {}\nfn (mut r Router) accept(handler Outer[fn (const_event &C.native_event)]) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(fn (item foo.T, callback fn (const_event &C.native_event)) {})\n}\nfn main() {\n\tstartup[int]()\n}\n'
+		'foo/foo.v': 'module foo\n\npub struct T {}\n'
+	}, 'main.v')
 	sum_handler := run_good(v3_bin, 'good_sum_const_callback_alias_in_generic',
 		'type Handler = fn (const_event &C.native_event)\ntype Value = Handler | int\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(value Value) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	assert sum_handler == 'true'

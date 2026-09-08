@@ -14849,6 +14849,8 @@ fn (tc &TypeChecker) c_abi_fn_signature_for_type_text_inner(typ string, mut seen
 			mut target := tc.source_fn_alias_type_text(name) or { '' }
 			if target.len == 0 {
 				target = tc.type_aliases[name] or { continue }
+			} else if module_name := tc.type_alias_modules[name] {
+				target = tc.qualify_c_abi_alias_source_type_text(target, module_name, params)
 			}
 			instantiated := substitute_c_abi_signature_type_text(target, args, params)
 			if c_abi_signature := tc.c_abi_fn_signature_for_type_text_inner(instantiated, mut seen) {
@@ -14908,6 +14910,43 @@ fn c_abi_generic_type_application_parts(typ string) (string, []string, bool) {
 	return typ[..bracket], [inner], true
 }
 
+fn (tc &TypeChecker) qualify_c_abi_alias_source_type_text(text string, module_name string, generic_params []string) string {
+	if module_name.len == 0 || module_name in ['main', 'builtin'] {
+		return text
+	}
+	mut out := []u8{cap: text.len}
+	mut start := 0
+	mut i := 0
+	for i <= text.len {
+		if i < text.len && ((text[i] >= `a` && text[i] <= `z`)
+			|| (text[i] >= `A` && text[i] <= `Z`)
+			|| (text[i] >= `0` && text[i] <= `9`) || text[i] == `_`) {
+			i++
+			continue
+		}
+		if start < i {
+			word := text[start..i]
+			qualified := '${module_name}.${word}'
+			is_bare := start == 0 || text[start - 1] != `.`
+			if is_bare && word !in generic_params && (qualified in tc.structs
+				|| qualified in tc.type_aliases || qualified in tc.interface_names
+				|| qualified in tc.sum_types || qualified in tc.enum_names
+				|| qualified in tc.flag_enums) {
+				out << qualified.bytes()
+			} else {
+				out << word.bytes()
+			}
+		}
+		if i == text.len {
+			break
+		}
+		out << text[i]
+		i++
+		start = i
+	}
+	return out.bytestr()
+}
+
 fn substitute_c_abi_signature_type_text(text string, args []string, params []string) string {
 	mut out := []u8{cap: text.len}
 	mut start := 0
@@ -14922,7 +14961,7 @@ fn substitute_c_abi_signature_type_text(text string, args []string, params []str
 		if start < i {
 			word := text[start..i]
 			index := params.index(word)
-			if index >= 0 {
+			if index >= 0 && (start == 0 || text[start - 1] != `.`) {
 				out << args[index].bytes()
 			} else {
 				out << word.bytes()
