@@ -16,6 +16,8 @@ const max_parse_diagnostics = 100
 const inline_asm_allowed_lock_instructions = ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpxchg',
 	'cmpxchg8b', 'cmpxchg16b', 'dec', 'inc', 'neg', 'not', 'or', 'sbb', 'sub', 'xor', 'xadd', 'xchg']
 
+const inline_asm_prefixes_before_mnemonic = ['rep', 'repe', 'repz', 'repne', 'repnz']
+
 const sql_query_data_alias_reserved_tokens = [
 	'select',
 	'from',
@@ -163,6 +165,13 @@ struct ParsedFieldAttrs {
 	attrs   []string
 	kinds   []int
 	sources []string
+}
+
+enum InlineAsmMnemonicState {
+	expect_mnemonic
+	after_dot
+	maybe_label
+	operands
 }
 
 // new creates a Parser value for parser.
@@ -8293,6 +8302,47 @@ fn (mut p Parser) goto_stmt() flat.NodeId {
 	})
 }
 
+fn (mut p Parser) track_inline_asm_mnemonic(state InlineAsmMnemonicState, is_x86 bool) InlineAsmMnemonicState {
+	if p.current_token_is_newline_semicolon() {
+		return .expect_mnemonic
+	}
+	match state {
+		.expect_mnemonic {
+			if p.tok == .dot {
+				return .after_dot
+			}
+			if is_x86 && p.tok == .key_lock {
+				p.validate_inline_asm_lock_instruction()
+				return .expect_mnemonic
+			}
+			if is_x86 && p.lit in inline_asm_prefixes_before_mnemonic {
+				return .expect_mnemonic
+			}
+			return .maybe_label
+		}
+		.after_dot {
+			return .maybe_label
+		}
+		.maybe_label {
+			return if p.tok == .colon { .expect_mnemonic } else { .operands }
+		}
+		.operands {
+			return .operands
+		}
+	}
+}
+
+fn (mut p Parser) validate_inline_asm_lock_instruction() {
+	p.peek()
+	has_suffix := p.peek_lit.len > 0
+		&& p.peek_lit[p.peek_lit.len - 1] in [`b`, `w`, `l`, `q`]
+	if !(p.peek_lit in inline_asm_allowed_lock_instructions
+		|| (has_suffix
+			&& p.peek_lit[..p.peek_lit.len - 1] in inline_asm_allowed_lock_instructions)) {
+		p.record_diagnostic_span('The lock prefix cannot be used on this instruction', p.peek_pos, p.peek_end)
+	}
+}
+
 fn (mut p Parser) asm_stmt() flat.NodeId {
 	asm_pos := p.tok_pos
 	p.next() // skip 'asm'
@@ -8353,10 +8403,15 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	mut has_unsupported_content := false
 	mut section := 0
 	mut io_exprs := []flat.NodeId{}
+	mut mnemonic_state := InlineAsmMnemonicState.expect_mnemonic
+	is_x86_asm := pref.normalized_arch(asm_arch) in ['amd64', 'x86']
 	if p.tok == .lcbr {
 		mut depth := 1
 		p.next()
 		for depth > 0 && p.tok != .eof {
+			if depth == 1 && section == 0 {
+				mnemonic_state = p.track_inline_asm_mnemonic(mnemonic_state, is_x86_asm)
+			}
 			if p.tok == .lcbr {
 				depth++
 			} else if p.tok == .rcbr {
@@ -8377,16 +8432,6 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 					io_exprs << p.expr(.lowest)
 				}
 				p.check(.rpar)
-				continue
-			} else if depth == 1 && section == 0 && p.tok == .key_lock
-				&& pref.normalized_arch(asm_arch) in ['amd64', 'x86'] {
-				p.next()
-				has_suffix := p.lit.len > 0 && p.lit[p.lit.len - 1] in [`b`, `w`, `l`, `q`]
-				if !(p.lit in inline_asm_allowed_lock_instructions
-					|| (has_suffix
-						&& p.lit[..p.lit.len - 1] in inline_asm_allowed_lock_instructions)) {
-					p.record_diagnostic_span('The lock prefix cannot be used on this instruction', p.tok_pos, p.tok_end)
-				}
 				continue
 			} else if depth == 1 && p.tok != .semicolon {
 				if is_raw && section == 0 && !p.prefs.is_fmt {

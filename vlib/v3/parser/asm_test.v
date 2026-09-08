@@ -27,7 +27,19 @@ fn test_inline_asm_lock_without_instruction_reports_error() {
 fn test_inline_asm_lock_accepts_supported_suffixed_instruction() {
 	diagnostics := parse_amd64_asm_diagnostics('lock_supported_instruction', 'fn main() {
 	asm amd64 {
-		lock cmpxchgq [rdx], rcx
+		retry: lock cmpxchgq [rdx], rcx
+	}
+}
+')
+	assert diagnostics.len == 0, diagnostics.str()
+}
+
+fn test_inline_asm_lock_named_operand_is_not_treated_as_prefix() {
+	diagnostics := parse_amd64_asm_diagnostics('lock_named_operand', 'fn main() {
+	mut value := 0
+	asm amd64 {
+		add lock, 1
+		; +r (value) as lock
 	}
 }
 ')
