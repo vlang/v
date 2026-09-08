@@ -33,10 +33,11 @@ pub fn load_location(name string) !&Location {
 		return local_location()
 	}
 	if name in ['UTC', 'Etc/UTC', 'Etc/GMT', 'GMT'] {
+		zone_name := if name == 'GMT' || name == 'Etc/GMT' { 'GMT' } else { 'UTC' }
 		return &Location{
 			name:  name
 			zones: [Zone{
-				name:   'UTC'
+				name:   zone_name
 				offset: 0
 			}]
 		}

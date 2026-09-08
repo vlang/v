@@ -19,6 +19,15 @@ fn test_load_location_utc() {
 	assert t.hour == 0
 }
 
+fn test_load_location_gmt_preserves_zone_name() {
+	for name in ['GMT', 'Etc/GMT'] {
+		loc := time.load_location(name)!
+		assert loc.name == name
+		assert (loc.zone_at(1_704_067_200)!).name == 'GMT'
+		assert loc.unix_to_local(1_704_067_200)!.strftime('%Z') == 'GMT'
+	}
+}
+
 fn test_load_location_from_embedded_zoneinfo_zip() {
 	loc := time.load_location('Asia/Shanghai')!
 	assert loc.offset_at(1_704_067_200)! == 28_800
@@ -305,7 +314,9 @@ fn test_location_time_local_uses_stored_instant() {
 		loc := time.load_location('Asia/Shanghai')!
 		utc_time := time.unix_nanosecond(1_704_067_200, 123_000_000)
 		zoned := utc_time.in(loc)!
-		assert zoned.local() == utc_time.local()
+		zoned_local := zoned.local()
+		assert zoned_local.is_local
+		assert zoned_local == utc_time.local()
 	}
 }
 

@@ -142,6 +142,7 @@ pub fn (t Time) local() Time {
 		second:     st_local.second // These are the same
 		nanosecond: int(st_local.millisecond) * 1_000_000
 		unix:       st_local.unix()
+		is_local:   true
 	}
 	return t_local
 }
