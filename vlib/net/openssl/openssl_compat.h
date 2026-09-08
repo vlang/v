@@ -107,6 +107,11 @@ static int v_net_openssl_SSL_CTX_load_verify_memory(SSL_CTX *ctx,
 			BIO_free(bio);
 			return 0;
 		}
+		if (SSL_CTX_add_client_CA(ctx, cert) != 1) {
+			X509_free(cert);
+			BIO_free(bio);
+			return 0;
+		}
 		X509_free(cert);
 		loaded++;
 	}
@@ -116,6 +121,21 @@ static int v_net_openssl_SSL_CTX_load_verify_memory(SSL_CTX *ctx,
 	}
 	BIO_free(bio);
 	return loaded > 0 ? 1 : 0;
+}
+
+static int v_net_openssl_SSL_CTX_load_client_CA_file(SSL_CTX *ctx, const char *file) {
+	STACK_OF(X509_NAME) *names = SSL_load_client_CA_file(file);
+	if (names == NULL) {
+		return 0;
+	}
+	// SSL_CTX_set_client_CA_list takes ownership of names.
+	SSL_CTX_set_client_CA_list(ctx, names);
+	return 1;
+}
+
+static int v_net_openssl_SSL_CTX_client_CA_names_count(SSL_CTX *ctx) {
+	STACK_OF(X509_NAME) *names = SSL_CTX_get_client_CA_list(ctx);
+	return names == NULL ? 0 : sk_X509_NAME_num(names);
 }
 
 // SSL_get1_peer_certificate is only available in OpenSSL 3.x.

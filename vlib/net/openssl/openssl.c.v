@@ -123,6 +123,10 @@ fn C.v_net_openssl_SSL_CTX_use_PrivateKey_memory(ctx &C.SSL_CTX, data &u8, len u
 
 fn C.v_net_openssl_SSL_CTX_load_verify_memory(ctx &C.SSL_CTX, data &u8, len usize) i32
 
+fn C.v_net_openssl_SSL_CTX_load_client_CA_file(ctx &C.SSL_CTX, const_file &char) i32
+
+fn C.v_net_openssl_SSL_CTX_client_CA_names_count(ctx &C.SSL_CTX) int
+
 fn C.SSL_new(&C.SSL_CTX) &C.SSL
 
 fn C.SSL_set_fd(ssl &C.SSL, fd i32) i32

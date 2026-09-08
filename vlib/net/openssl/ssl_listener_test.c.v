@@ -31,7 +31,8 @@ fn accept_one_ssl_connection(mut listener SSLListener) {
 	conn.duration = 500 * time.millisecond
 	mut buffer := []u8{len: 1}
 	_ := conn.read(mut buffer) or { 0 }
-	conn.shutdown() or {}
+	conn.shutdown() or { panic(err) }
+	conn.shutdown() or { panic(err) }
 }
 
 fn close_tcp_connection_after(mut conn net.TcpConn, delay time.Duration) {
@@ -195,6 +196,30 @@ fn test_ssl_listener_allows_duplicate_in_memory_ca_pem() ! {
 		in_memory_verification: true
 	})!
 	listener.shutdown()!
+}
+
+fn test_ssl_listener_advertises_client_ca_names() ! {
+	cert_path := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.crt')
+	key_path := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.key')
+	mut file_listener := new_ssl_listener('127.0.0.1:0', SSLConnectConfig{
+		cert:     cert_path
+		cert_key: key_path
+		verify:   cert_path
+		validate: true
+	})!
+	assert C.v_net_openssl_SSL_CTX_client_CA_names_count(file_listener.sslctx) > 0
+	file_listener.shutdown()!
+
+	cert_pem := load_test_certificate_pem()!
+	mut memory_listener := new_ssl_listener('127.0.0.1:0', SSLConnectConfig{
+		cert:                   cert_pem
+		cert_key:               load_test_private_key_pem()!
+		verify:                 cert_pem
+		validate:               true
+		in_memory_verification: true
+	})!
+	assert C.v_net_openssl_SSL_CTX_client_CA_names_count(memory_listener.sslctx) > 0
+	memory_listener.shutdown()!
 }
 
 fn test_ssl_listener_file_credentials_load_full_certificate_chain() ! {

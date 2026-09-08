@@ -158,6 +158,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 	}
 
 	if s.owns_socket {
+		s.owns_socket = false
 		net.shutdown(s.handle)
 		net.close(s.handle)!
 	}

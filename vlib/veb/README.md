@@ -122,9 +122,10 @@ fn main() {
 ```
 
 `nr_workers` defaults to `1` to preserve the historical single-loop behavior.
-It only affects the default non-SSL picoev backend and currently requires Linux
-or Termux. When running with `-d new_veb`, the fasthttp backend is already
-multi-threaded and ignores `nr_workers`.
+It controls the default non-SSL picoev backend (currently on Linux or Termux).
+With `-d use_openssl`, it also limits concurrent TLS handshakes, so the default
+serializes handshakes. When running with `-d new_veb`, the fasthttp backend is
+already multi-threaded and ignores `nr_workers`.
 
 ## Request-scoped allocation with `-prealloc`
 

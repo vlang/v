@@ -112,6 +112,11 @@ fn (mut l SSLListener) init() ! {
 				l.shutdown() or {}
 				return error('net.openssl SSLListener.init, SSL_CTX_load_verify_locations failed')
 			}
+			res = C.v_net_openssl_SSL_CTX_load_client_CA_file(l.sslctx, &char(l.config.verify.str))
+			if res != 1 {
+				l.shutdown() or {}
+				return error('net.openssl SSLListener.init, SSL_load_client_CA_file failed')
+			}
 		}
 		C.SSL_CTX_set_verify(voidptr(l.sslctx),
 			C.SSL_VERIFY_PEER | C.SSL_VERIFY_FAIL_IF_NO_PEER_CERT, unsafe { nil })
