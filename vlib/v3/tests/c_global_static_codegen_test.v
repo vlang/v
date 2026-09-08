@@ -131,7 +131,7 @@ fn main() {
 	_ := next_value()
 }
 ')
-	assert c_code.contains('static int x = 0;')
+	assert c_code.contains('static i64 x = 0;')
 }
 
 // test_aggregate_globals_are_brace_zero_initialized validates this v3 regression case.
@@ -175,19 +175,21 @@ fn main() {}
 ')
 	assert c_code.contains('Array names = {0};')
 	assert c_code.contains('map lookup = {0};')
+	assert c_code.contains('names = array_new(sizeof(string), 0, 0);')
+	assert c_code.contains('lookup = new_map(')
 	assert c_code.contains('Box box = {0};')
-	assert c_code.contains('int empty[0];')
-	assert c_code.contains('int slots[2] = {0};')
-	assert c_code.contains('\nZeroLeading zero;\n')
-	assert c_code.contains('\nNestedZeroLeading nested;\n')
-	assert c_code.contains('\nZeroLeading zero_slots[2];\n')
+	assert c_code.contains('i64 empty[0];')
+	assert c_code.contains('i64 slots[2] = {0};')
+	assert c_code.contains('\nmain__ZeroLeading zero;\n')
+	assert c_code.contains('\nmain__NestedZeroLeading nested;\n')
+	assert c_code.contains('\nmain__ZeroLeading zero_slots[2];\n')
 	assert c_code.contains('\nint const_empty[0];\n')
-	assert c_code.contains('\nZeroLeadingConst const_zero;\n')
-	assert c_code.contains('\nZeroLeadingConst const_zero_slots[2];\n')
+	assert c_code.contains('\nmain__ZeroLeadingConst const_zero;\n')
+	assert c_code.contains('\nmain__ZeroLeadingConst const_zero_slots[2];\n')
 	assert !c_code.contains('Array names = 0;')
 	assert !c_code.contains('map lookup = 0;')
 	assert !c_code.contains('Box box = 0;')
-	assert !c_code.contains('int empty[0] = {0};')
+	assert !c_code.contains('i64 empty[0] = {0};')
 	assert !c_code.contains('ZeroLeading zero = {0};')
 	assert !c_code.contains('NestedZeroLeading nested = {0};')
 	assert !c_code.contains('ZeroLeading zero_slots[2] = {0};')
@@ -255,6 +257,6 @@ fn main() {
 }
 ',
 		'box', 'Box')
-	assert c_code.contains('box = (Box){0};'), c_code
+	assert c_code.contains('box = (main__Box){0};'), c_code
 	assert !c_code.contains('box = {0};')
 }

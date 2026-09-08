@@ -199,7 +199,7 @@ fn main() {
 	payload_ierror_local_body := c_fn_body(c_code,
 		'Optional_IError payload_ierror_local_err(void) {')
 	assert payload_ierror_local_body.contains('.ok = true, .value = (IError){._typ = '), payload_ierror_local_body
-	assert payload_ierror_local_body.contains('memdup((MyErr[]){\terr}, sizeof(MyErr))'), payload_ierror_local_body
+	assert payload_ierror_local_body.contains('memdup((main__MyErr[]){\terr}, sizeof(main__MyErr))'), payload_ierror_local_body
 	assert !payload_ierror_local_body.contains('.ok = false'), payload_ierror_local_body
 
 	payload_ierror_defer_body := c_fn_body(c_code, 'Optional_IError payload_ierror_defer(void) {')

@@ -5,9 +5,52 @@ import v.pref
 const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
 const macos_v3_internal_quiet_flag = '-macos-v3-internal-quiet'
 
+// macos_v3_non_compilation_command lists the builtin commands that carry a path
+// (or a directory) but are NOT compilation commands the V3 driver understands —
+// it only knows `run`/`build`/`test`. An unrecognized command token such as
+// `crun` or `build-module` would otherwise become V3's first input path and then
+// collide with the real target. The dispatcher excludes these before entering
+// V3. `test` is handled separately because vtest owns discovery and aggregation.
+@[markused]
+fn macos_v3_non_compilation_command(command string) bool {
+	return command in ['build-module', 'crun', 'help', 'version', 'new', 'init', 'install', 'link',
+		'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs',
+		'interpret', 'get', 'translate']
+}
+
+@[markused]
+fn macos_v3_explicit_autofree_is_unsupported(prefs &pref.Preferences) bool {
+	return prefs.new_compiler && !prefs.old_compiler && prefs.autofree
+		&& !macos_v3_fastc_requested(prefs)
+}
+
+fn macos_v3_fastc_requested(prefs &pref.Preferences) bool {
+	return prefs.is_fastc
+}
+
+// macos_v3_fastc_incompatibility reports why an explicit FastC selection cannot
+// be honored before entering its deliberately smaller frontend.
+fn macos_v3_fastc_incompatibility(prefs &pref.Preferences) ?string {
+	if !prefs.is_fastc {
+		return none
+	}
+	if prefs.gc_set_by_flag && prefs.gc_mode != .no_gc {
+		return '`-b fastc` only supports `-gc none`; remove the explicit collector or select `-b c`.'
+	}
+	if v3_has_unsupported_preferences(prefs) {
+		return '`-b fastc` cannot be combined with an option that V3 does not support.'
+	}
+	return none
+}
+
 // These helpers are shared by the native Darwin dispatcher and the default
-// implementation selected while generating cross-platform VC sources.
-fn macos_v3_has_v1_only_leading_option(args []string, command string) bool {
+// implementation selected while generating cross-platform VC sources, so this
+// file has to stay platform neutral (no `_darwin.c.v` suffix). Keep them outside
+// a top-level `$if macos {}` block so older bootstrap compilers can emit them
+// while rebuilding V on macOS. `markused` suppresses unused-declaration notices
+// when V3 compiles this file for other platforms.
+@[markused]
+fn macos_v3_has_unsupported_leading_option(args []string, command string) bool {
 	mut i := 0
 	for i < args.len {
 		arg := args[i]
@@ -31,6 +74,7 @@ fn macos_v3_has_v1_only_leading_option(args []string, command string) bool {
 	return false
 }
 
+@[markused]
 fn macos_v3_leading_option_consumes_value(option string) bool {
 	return option in ['-wasm-stack-top', '-arch', '-assert', '-e', '-subsystem', '-icon', '--icon',
 		'-seticon', '--seticon', '-gc', '-print_autofree_vars_in_fn', '-trace-fns', '-cov',
@@ -43,8 +87,23 @@ fn macos_v3_leading_option_consumes_value(option string) bool {
 		'-raw-vsh-tmp-prefix', '-cmain', '-line-info']
 }
 
+@[markused]
 fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string {
-	mut forwarded_args := raw_args.clone()
+	// `-new-compiler` is consumed by cmd/v to select V3; it must not reach the V3
+	// driver, which is already running and would reject it as an unknown option.
+	// The parser keeps every argument after a `run` target in `run_args`; those
+	// belong to the program, so do not consume their compiler-like spellings.
+	mut compiler_args_len := raw_args.len
+	if prefs.run_args.len <= raw_args.len {
+		compiler_args_len -= prefs.run_args.len
+	}
+	mut forwarded_args := []string{cap: raw_args.len}
+	for i, arg in raw_args {
+		if arg == '-new-compiler' && i < compiler_args_len {
+			continue
+		}
+		forwarded_args << arg
+	}
 	if prefs.enable_globals {
 		for i, arg in forwarded_args {
 			if arg == '--enable-globals' {
@@ -67,14 +126,8 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 	if prefs.skip_running && '-skip-running' !in forwarded_args {
 		forwarded_args.insert(0, '-skip-running')
 	}
-	if !prefs.is_verbose && !prefs.is_stats && !prefs.show_timings && '-silent' !in forwarded_args
-		&& macos_v3_internal_quiet_flag !in forwarded_args {
+	if !prefs.is_verbose && !prefs.is_stats && !prefs.show_timings && '-silent' !in forwarded_args && macos_v3_internal_quiet_flag !in forwarded_args {
 		forwarded_args.insert(0, macos_v3_internal_quiet_flag)
-	}
-	// The compatibility fallback must not select a different compiler merely
-	// because a valid V3 build crosses the standalone driver's safety cap.
-	if '-no-memory-limit' !in forwarded_args && '--no-memory-limit' !in forwarded_args {
-		forwarded_args.insert(0, '-no-memory-limit')
 	}
 	return forwarded_args
 }

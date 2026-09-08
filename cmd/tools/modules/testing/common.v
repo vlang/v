@@ -78,9 +78,185 @@ pub const separator = '-'.repeat(max_header_len) + '\n'
 pub const max_compilation_retries = get_max_compilation_retries()
 
 const c_error_bug_report_disabled_env = 'V_C_ERROR_BUG_REPORT_DISABLED'
+// Each worker compiles a separate test program, so bound automatic parallelism
+// by a conservative memory budget. VJOBS remains an explicit override.
+const test_job_memory_budget = u64(8) * 1024 * 1024 * 1024
+const max_automatic_test_jobs = 4
 
 fn get_max_compilation_retries() int {
 	return os.getenv_opt('VTEST_MAX_COMPILATION_RETRIES') or { '3' }.int()
+}
+
+fn automatic_test_jobs(cpu_jobs int, total_memory u64, configured_jobs int) int {
+	if configured_jobs > 0 {
+		return configured_jobs
+	}
+	mut jobs := if cpu_jobs > 0 { cpu_jobs } else { 1 }
+	mut memory_jobs := int(total_memory / test_job_memory_budget)
+	if memory_jobs < 1 {
+		memory_jobs = 1
+	}
+	if jobs > memory_jobs {
+		jobs = memory_jobs
+	}
+	if jobs > max_automatic_test_jobs {
+		jobs = max_automatic_test_jobs
+	}
+	return jobs
+}
+
+fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
+	mut v2_path := ''
+	mut v1_memory_path := ''
+	for line in cgroups.split_into_lines() {
+		first_separator := line.index(':') or { continue }
+		second_separator := line.index_after(':', first_separator + 1) or { continue }
+		controllers := line[first_separator + 1..second_separator]
+		cgroup_path := line[second_separator + 1..]
+		if controllers == '' {
+			v2_path = cgroup_path
+		} else if 'memory' in controllers.split(',') {
+			v1_memory_path = cgroup_path
+		}
+	}
+	if v1_memory_path != '' {
+		if limit := cgroup_memory_limit_for_hierarchy(mountinfo, v1_memory_path, 'cgroup',
+			'memory.limit_in_bytes')
+		{
+			return limit
+		}
+	}
+	if v2_path != '' {
+		return cgroup_memory_limit_for_hierarchy(mountinfo, v2_path, 'cgroup2', 'memory.max')
+	}
+	return error('no cgroup memory limit found')
+}
+
+fn cgroup_memory_limit_for_hierarchy(mountinfo string, cgroup_path string, fs_type string, limit_file string) !u64 {
+	for line in mountinfo.split_into_lines() {
+		parts := line.split(' - ')
+		if parts.len != 2 {
+			continue
+		}
+		mount_parts := parts[0].fields()
+		fs_parts := parts[1].fields()
+		if mount_parts.len < 5 || fs_parts.len < 3 {
+			continue
+		}
+		mount_root := decode_mountinfo_path(mount_parts[3])
+		mount_point := decode_mountinfo_path(mount_parts[4])
+		if fs_parts[0] != fs_type || (fs_type == 'cgroup' && 'memory' !in fs_parts[2].split(',')) {
+			continue
+		}
+		if limit := cgroup_memory_limit_in_hierarchy(mount_root, mount_point, cgroup_path,
+			limit_file)
+		{
+			return limit
+		}
+	}
+	return error('no cgroup memory limit found')
+}
+
+fn decode_mountinfo_path(path string) string {
+	mut result := strings.new_builder(path.len)
+	mut i := 0
+	for i < path.len {
+		if path[i] == `\\` && i + 3 < path.len && path[i + 1] >= `0` && path[i + 1] <= `7`
+			&& path[i + 2] >= `0` && path[i + 2] <= `7` && path[i + 3] >= `0` && path[i + 3] <= `7` {
+			value := (path[i + 1] - `0`) * 64 + (path[i + 2] - `0`) * 8 + path[i + 3] - `0`
+			result.write_u8(value)
+			i += 4
+			continue
+		}
+		result.write_u8(path[i])
+		i++
+	}
+	return result.str()
+}
+
+fn cgroup_memory_limit_in_hierarchy(mount_root string, mount_point string, cgroup_path string, limit_file string) !u64 {
+	mut relative_path := cgroup_path.trim_left('/')
+	trimmed_root := mount_root.trim_right('/')
+	if trimmed_root != '' {
+		if cgroup_path == trimmed_root {
+			relative_path = ''
+		} else if cgroup_path.starts_with(trimmed_root + '/') {
+			relative_path = cgroup_path[trimmed_root.len..].trim_left('/')
+		}
+		// Otherwise cgroup_path is relative to a cgroup namespace rooted at
+		// mount_root, so relative_path already maps from the visible mount point.
+	}
+	mut current_path := os.join_path(mount_point, relative_path)
+	mut memory_limit := u64(0)
+	for {
+		if content := os.read_file(os.join_path(current_path, limit_file)) {
+			if limit := cgroup_memory_limit_value(content) {
+				if memory_limit == 0 || limit < memory_limit {
+					memory_limit = limit
+				}
+			}
+		}
+		if current_path == mount_point {
+			break
+		}
+		parent_path := os.dir(current_path)
+		if parent_path == current_path || !parent_path.starts_with(mount_point) {
+			break
+		}
+		current_path = parent_path
+	}
+	if memory_limit == 0 {
+		return error('cgroup memory limit is unlimited')
+	}
+	return memory_limit
+}
+
+fn cgroup_memory_limit_value(content string) !u64 {
+	value := content.trim_space()
+	if value == '' || value == 'max' {
+		return error('cgroup memory limit is unlimited')
+	}
+	limit := value.u64()
+	if limit == 0 {
+		return error('invalid cgroup memory limit')
+	}
+	return limit
+}
+
+fn effective_test_memory(physical_memory u64, cgroup_memory_limit u64) u64 {
+	if cgroup_memory_limit > 0 && cgroup_memory_limit < physical_memory {
+		return cgroup_memory_limit
+	}
+	return physical_memory
+}
+
+fn test_runner_memory() !u64 {
+	physical_memory := u64(runtime.total_memory()!)
+	$if linux {
+		cgroup_memory_limit := cgroup_memory_limit_from_contents(os.read_file('/proc/self/cgroup')!,
+			os.read_file('/proc/self/mountinfo')!) or { return physical_memory }
+		return effective_test_memory(physical_memory, cgroup_memory_limit)
+	}
+	return physical_memory
+}
+
+fn test_session_jobs(will_compile bool, cpu_jobs int, total_memory u64, configured_jobs int) int {
+	if !will_compile {
+		return cpu_jobs
+	}
+	return automatic_test_jobs(cpu_jobs, total_memory, configured_jobs)
+}
+
+fn test_runner_jobs(will_compile bool) int {
+	cpu_jobs := runtime.nr_jobs()
+	if !will_compile {
+		return test_session_jobs(false, cpu_jobs, 0, 0)
+	}
+	configured_jobs := os.getenv('VJOBS').int()
+	total_memory := test_runner_memory() or {
+		return test_session_jobs(true, cpu_jobs, 0, configured_jobs)
+	}
+	return test_session_jobs(true, cpu_jobs, total_memory, configured_jobs)
 }
 
 fn get_fail_retry_delay_ms() time.Duration {
@@ -122,6 +298,7 @@ pub struct TestSession {
 pub mut:
 	files         []string
 	skip_files    []string
+	will_compile  bool
 	vexe          string
 	vroot         string
 	vtmp_dir      string
@@ -388,6 +565,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		os.setenv('VCOLORS', 'always', true)
 	}
 	mut ts := TestSession{
+		will_compile:  will_compile
 		vexe:          vexe
 		vroot:         vroot
 		skip_files:    skip_files
@@ -505,12 +683,15 @@ pub fn (mut ts TestSession) test() {
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	mut njobs := runtime.nr_jobs()
+	mut njobs := test_runner_jobs(ts.will_compile)
 	if remaining_files.len < njobs {
 		njobs = remaining_files.len
 	}
 	ts.benchmark.njobs = njobs
-	mut pool_of_test_runners := pool.new_pool_processor(callback: worker_trunner)
+	mut pool_of_test_runners := pool.new_pool_processor(
+		callback: worker_trunner
+		maxjobs:  njobs
+	)
 	// ensure that the nmessages queue/channel, has enough capacity for handling many messages across threads, without blocking
 	ts.nmessages = chan LogMessage{cap: 10000}
 	ts.nmessage_idx = 0
@@ -1065,7 +1246,7 @@ fn get_max_header_len() int {
 }
 
 fn check_openssl_present() bool {
-	if github_job.ends_with('-windows') {
+	if github_job != '' && os.user_os() == 'windows' {
 		// TODO: investigate the https://github.com/vlang/v/actions/runs/18590919000/job/53005499130 failure in more details
 		return false
 	}

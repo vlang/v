@@ -20,32 +20,45 @@ const sendfile_chunk = 1024 * 1024
 // Write-side cap: close a peer that pipelines requests but never drains responses
 // (otherwise the per-connection write buffer would grow without bound).
 const max_pending_write = 8 * 1024 * 1024
+const max_pooled_read_cap = 64 * 1024
+const max_pooled_write_cap = 64 * 1024
+
+enum FlushResult {
+	closed
+	blocked
+	drained
+}
 
 @[heap]
 pub struct Server {
 pub:
 	family                  net.AddrFamily = .ip6
-	port                    int            = 3000
-	max_request_buffer_size int            = 8192
-	timeout_in_seconds      int            = 30
+	host                    string
+	port                    int = 3000
+	max_request_buffer_size int = 8192
+	max_request_body_size   int = default_max_request_body_size
+	timeout_in_seconds      int = 30
 	user_data               voidptr
 mut:
-	listen_fds      []int                          = []int{len: max_thread_pool_size, cap: max_thread_pool_size, init: -1}
-	epoll_fds       []int                          = []int{len: max_thread_pool_size, cap: max_thread_pool_size, init: -1}
-	threads         []thread                       = []thread{len: max_thread_pool_size, cap: max_thread_pool_size}
+	listen_fds      []int = []int{len: max_thread_pool_size, cap: max_thread_pool_size, init: -1}
+	epoll_fds       []int = []int{len: max_thread_pool_size, cap: max_thread_pool_size, init: -1}
+	threads         []thread = []thread{len: max_thread_pool_size, cap: max_thread_pool_size}
 	request_handler fn (HttpRequest) !HttpResponse = unsafe { nil }
-	append_handler  AppendHandler                  = unsafe { nil }
-	make_state      fn () voidptr                  = unsafe { nil }
-	running         &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(false)
-	shutting_down   &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(false)
-	stopped         &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(true)
-	active_requests &stdatomic.AtomicVal[int]      = stdatomic.new_atomic(0)
+	append_handler  AppendHandler = unsafe { nil }
+	make_state      fn () voidptr = unsafe { nil }
+	running         &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
+	shutting_down   &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
+	stopped         &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(true)
+	active_requests &stdatomic.AtomicVal[int] = stdatomic.new_atomic(0)
 }
 
 // new_server creates and initializes a new Server instance.
 pub fn new_server(config ServerConfig) !&Server {
 	if config.max_request_buffer_size <= 0 {
 		return error('max_request_buffer_size must be greater than 0')
+	}
+	if config.max_request_body_size < 0 {
+		return error('max_request_body_size must not be negative')
 	}
 	has_handler := config.handler != unsafe { nil }
 	has_append := config.append_handler != unsafe { nil }
@@ -56,18 +69,20 @@ pub fn new_server(config ServerConfig) !&Server {
 		return error('set only one of `handler` or `append_handler`, not both')
 	}
 	mut server := &Server{
-		family:                  config.family
-		port:                    config.port
+		family: config.family
+		host: config.host
+		port: config.port
 		max_request_buffer_size: config.max_request_buffer_size
-		timeout_in_seconds:      config.timeout_in_seconds
-		user_data:               config.user_data
-		request_handler:         config.handler
-		append_handler:          config.append_handler
-		make_state:              config.make_state
-		running:                 stdatomic.new_atomic(false)
-		shutting_down:           stdatomic.new_atomic(false)
-		stopped:                 stdatomic.new_atomic(true)
-		active_requests:         stdatomic.new_atomic(0)
+		max_request_body_size: config.max_request_body_size
+		timeout_in_seconds: config.timeout_in_seconds
+		user_data: config.user_data
+		request_handler: config.handler
+		append_handler: config.append_handler
+		make_state: config.make_state
+		running: stdatomic.new_atomic(false)
+		shutting_down: stdatomic.new_atomic(false)
+		stopped: stdatomic.new_atomic(true)
+		active_requests: stdatomic.new_atomic(0)
 	}
 	unsafe {
 		server.listen_fds.flags.set(.noslices | .noshrink | .nogrow)
@@ -111,9 +126,10 @@ mut:
 	file_off       i64
 	file_remaining i64
 	should_close   bool // close the connection once the current batch is flushed
+	read_eof       bool // peer half-closed its write side; flush queued responses, then close
 	request_active bool // a response is buffered/parked and counts toward active_requests
-	read_start_ns  i64  // monotonic ns; >0 while a partial request is buffered (408)
-	write_start_ns i64  // monotonic ns; >0 while a batch is parked for writing
+	read_start_ns  i64 // monotonic ns; >0 while a partial request is buffered (408)
+	write_start_ns i64 // monotonic ns; >0 while a batch is parked for writing
 	// request_arena is the -prealloc scope that must be freed once a parked write
 	// completes (the response bytes were copied out of it into write_buf, but the
 	// scope is kept and freed as a unit for symmetry with the non-parked path).
@@ -129,30 +145,33 @@ mut:
 	listen_fd    int
 	conns        []&ConnState
 	free_conns   []&ConnState
-	parked       int     // connections with an armed read/write deadline (gates the sweep)
+	parked       int // connections with an armed read/write deadline (gates the sweep)
 	worker_state voidptr // this worker thread's ServerConfig.make_state value (nil if unset)
 }
 
 fn close_socket(fd int) bool {
 	ret := C.close(fd)
 	if ret == -1 {
-		if C.errno == C.EINTR {
-			// Interrupted by signal, retry is safe
-			return close_socket(fd)
-		}
+		// Linux may already have released fd even when close reports EINTR. Retrying
+		// can close an unrelated descriptor that another thread reused.
 		eprintln('ERROR: close(fd=${fd}) failed with errno=${C.errno}')
 		return false
 	}
 	return true
 }
 
-fn create_server_socket(server &Server) int {
-	// Create a socket with non-blocking mode
-	server_fd := C.socket(i32(server.family), i32(net.SocketType.tcp), 0)
+// create_server_socket binds one worker's listening socket to the already
+// resolved `addr` (see resolve_bind_addr). It returns an error rather than -1 so
+// startup failures propagate out of run() instead of being silently swallowed.
+fn create_server_socket(addr net.Addr) !int {
+	// Create a socket with non-blocking mode. The socket family must match the
+	// resolved address family, which may differ from the configured family (e.g.
+	// an IPv4 host with the default family: .ip6).
+	server_fd := C.socket(i32(addr.family()), i32(net.SocketType.tcp), 0)
 	if server_fd < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'Socket creation failed')
-		return -1
+		return error('socket creation failed')
 	}
 
 	set_blocking(server_fd, false)
@@ -163,32 +182,27 @@ fn create_server_socket(server &Server) int {
 		eprintln(@LOCATION)
 		C.perror(c'setsockopt SO_REUSEADDR failed')
 		close_socket(server_fd)
-		return -1
+		return error('setsockopt SO_REUSEADDR failed')
 	}
 	if C.setsockopt(server_fd, C.SOL_SOCKET, C.SO_REUSEPORT, &opt, sizeof(opt)) < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'setsockopt SO_REUSEPORT failed')
 		close_socket(server_fd)
-		return -1
+		return error('setsockopt SO_REUSEPORT failed')
 	}
 
-	addr := if server.family == .ip6 {
-		net.new_ip6(u16(server.port), [u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]!)
-	} else {
-		net.new_ip(u16(server.port), [u8(0), 0, 0, 0]!)
-	}
 	alen := addr.len()
 	if C.bind(server_fd, voidptr(&addr), alen) < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'Bind failed')
 		close_socket(server_fd)
-		return -1
+		return error('socket bind failed')
 	}
 	if C.listen(server_fd, max_connection_size) < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'Listen failed')
 		close_socket(server_fd)
-		return -1
+		return error('socket listen failed')
 	}
 	return server_fd
 }
@@ -248,7 +262,7 @@ fn state_for(mut w Worker, fd int) &ConnState {
 			return w.conns[fd]
 		}
 		w.conns[fd] = &ConnState{
-			read_buf:  []u8{len: 0, cap: read_buf_cap}
+			read_buf: []u8{len: 0, cap: read_buf_cap}
 			write_buf: []u8{len: 0, cap: write_buf_cap}
 		}
 	}
@@ -302,15 +316,24 @@ fn close_conn(mut w Worker, fd int) {
 					unsafe { prealloc_scope_free_after(cs.request_arena) }
 				}
 			}
-			unsafe {
-				cs.read_buf.len = 0
-				cs.write_buf.len = 0
+			if cs.read_buf.cap > max_pooled_read_cap {
+				unsafe { cs.read_buf.free() }
+				cs.read_buf = []u8{len: 0, cap: read_buf_cap}
+			} else {
+				unsafe { cs.read_buf.len = 0 }
+			}
+			if cs.write_buf.cap > max_pooled_write_cap {
+				unsafe { cs.write_buf.free() }
+				cs.write_buf = []u8{len: 0, cap: write_buf_cap}
+			} else {
+				unsafe { cs.write_buf.len = 0 }
 			}
 			cs.write_off = 0
 			cs.file_fd = -1
 			cs.file_off = 0
 			cs.file_remaining = 0
 			cs.should_close = false
+			cs.read_eof = false
 			cs.read_start_ns = 0
 			cs.write_start_ns = 0
 			cs.request_arena = unsafe { nil }
@@ -357,6 +380,9 @@ fn detach_conn(mut w Worker, fd int) {
 	cs.file_off = 0
 	cs.file_remaining = 0
 	cs.should_close = false
+	cs.read_eof = false
+	cs.read_start_ns = 0
+	cs.write_start_ns = 0
 	cs.request_arena = unsafe { nil }
 	w.conns[fd] = unsafe { nil }
 	w.free_conns << cs
@@ -387,7 +413,7 @@ fn drain_file(fd int, mut cs ConnState) int {
 		} else {
 			usize(cs.file_remaining)
 		}
-		sent := C.sendfile(fd, cs.file_fd, &cs.file_off, want)
+		sent := sendfile_without_sigpipe(fd, cs.file_fd, &cs.file_off, want)
 		if sent > 0 {
 			cs.file_remaining -= i64(sent)
 			continue
@@ -411,12 +437,12 @@ fn drain_file(fd int, mut cs ConnState) int {
 // flush_batch sends all pending response bytes then streams any deferred file
 // body, or parks the remainder for EPOLLOUT. On full completion the write buffer
 // is reset (capacity kept) and the connection is either closed or kept alive.
-// Returns false if the connection was closed (the caller must not touch it).
-fn flush_batch(mut w Worker, fd int, mut cs ConnState) bool {
+// Returns an explicit state so callers cannot mistake a blocked write for a
+// fully drained response and dispatch a later request out of order.
+fn flush_batch(mut w Worker, fd int, mut cs ConnState) FlushResult {
 	// Phase 1: the buffered response bytes (status lines, headers, small bodies).
 	for cs.write_off < cs.write_buf.len {
-		n := C.send(fd, unsafe { &u8(cs.write_buf.data) + cs.write_off },
-			usize(cs.write_buf.len - cs.write_off), C.MSG_NOSIGNAL)
+		n := C.send(fd, unsafe { &u8(cs.write_buf.data) + cs.write_off }, usize(cs.write_buf.len - cs.write_off), C.MSG_NOSIGNAL)
 		if n > 0 {
 			cs.write_off += n
 			continue
@@ -430,7 +456,7 @@ fn flush_batch(mut w Worker, fd int, mut cs ConnState) bool {
 			}
 		}
 		close_conn(mut w, fd)
-		return false
+		return .closed
 	}
 	// Phase 2: stream the deferred file body straight from the page cache. Guard on
 	// file_fd, not file_remaining: a zero-length file leaves an open fd with
@@ -443,7 +469,7 @@ fn flush_batch(mut w Worker, fd int, mut cs ConnState) bool {
 			}
 			-1 {
 				close_conn(mut w, fd)
-				return false
+				return .closed
 			}
 			else {
 				C.close(cs.file_fd)
@@ -469,24 +495,31 @@ fn flush_batch(mut w Worker, fd int, mut cs ConnState) bool {
 	clear_active(mut w, mut cs)
 	if w.server.is_shutting_down() || cs.should_close {
 		close_conn(mut w, fd)
-		return false
+		return .closed
 	}
 	// Keep-alive: make sure the connection is armed only for readability again.
 	mod_fd_in_epoll(w.epoll_fd, fd, u32(C.EPOLLIN | C.EPOLLET))
-	return true
+	return .drained
 }
 
 // park_write arms the write deadline (once), subscribes the fd to EPOLLOUT so the
 // unfinished batch resumes on the next writable edge, and keeps the response
-// counted as in-flight. Always returns true (still alive, just parked).
-fn park_write(mut w Worker, fd int, mut cs ConnState) bool {
+// counted as in-flight.
+fn park_write(mut w Worker, fd int, mut cs ConnState) FlushResult {
 	if w.server.timeout_in_seconds > 0 && cs.write_start_ns == 0 {
 		cs.write_start_ns = time.sys_mono_now()
 		w.parked++
 	}
 	mark_active(mut w, mut cs)
-	mod_fd_in_epoll(w.epoll_fd, fd, u32(C.EPOLLIN | C.EPOLLOUT | C.EPOLLET))
-	return true
+	// Pause reads while this response owns the wire. Re-enabling EPOLLIN after the
+	// write drains produces readiness for bytes that arrived during backpressure.
+	mod_fd_in_epoll(w.epoll_fd, fd, u32(C.EPOLLOUT | C.EPOLLET))
+	return .blocked
+}
+
+@[inline]
+fn has_pending_response(cs &ConnState) bool {
+	return cs.write_off < cs.write_buf.len || cs.file_fd != -1
 }
 
 // compact_read_buf drops the first `pos` consumed bytes, keeping any leftover
@@ -508,6 +541,10 @@ fn compact_read_buf(mut cs ConnState, pos int) {
 // open_deferred_file opens response.file_path for a sendfile(2) body streamed by
 // flush_batch after the buffered bytes, or marks the connection to close on error.
 fn open_deferred_file(mut cs ConnState, file_path string) {
+	if cs.file_fd != -1 {
+		cs.should_close = true
+		return
+	}
 	file_fd := C.open(&char(file_path.str), C.O_RDONLY, 0)
 	if file_fd == -1 {
 		eprintln('ERROR: open file failed: ${file_path}')
@@ -532,27 +569,23 @@ fn open_deferred_file(mut cs ConnState, file_path string) {
 @[direct_array_access]
 fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 	mut pos := 0
-	// max_header bounds the request-head size (→ 413 before the handler runs); the
-	// body is left unbounded here to preserve the legacy no-body-limit behavior.
+	// Header and body limits are independent; the framer rejects either before a
+	// handler sees a partial or ambiguous request.
 	max_header := w.server.max_request_buffer_size
+	max_body := w.server.max_request_body_size
 	for pos < cs.read_buf.len {
-		total := frame_request_length_lim_idx(buf_view(cs.read_buf, pos, cs.read_buf.len - pos),
-			max_header, 0)
+		total := frame_request_length_lim_idx(buf_view(cs.read_buf, pos, cs.read_buf.len - pos), max_header, max_body)
 		if total == -1 {
 			break // incomplete — wait for more bytes
 		}
 		if total < -1 {
 			// Malformed framing (413/431/400 sentinels). Answer once and close.
-			cs.write_buf << if total == frame_err_body || total == frame_err_header {
-				status_413_response
-			} else {
-				tiny_bad_request_response
-			}
+			cs.write_buf << response_for_frame_error(total)
 			pos += cs.read_buf.len - pos // consume the rest; we are closing
 			cs.should_close = true
 			compact_read_buf(mut cs, pos)
 			mark_active(mut w, mut cs)
-			return flush_batch(mut w, fd, mut cs)
+			return flush_batch(mut w, fd, mut cs) != .closed
 		}
 		// A file deferred by an earlier request in this batch must be streamed (in
 		// byte order) before this next response can be appended: flush now. Gate on
@@ -561,8 +594,14 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 		if cs.file_fd != -1 {
 			compact_read_buf(mut cs, pos)
 			mark_active(mut w, mut cs)
-			if !flush_batch(mut w, fd, mut cs) {
-				return false
+			match flush_batch(mut w, fd, mut cs) {
+				.closed {
+					return false
+				}
+				.blocked {
+					return true
+				}
+				.drained {}
 			}
 			pos = 0
 		}
@@ -582,7 +621,7 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 				cs.should_close = true
 				compact_read_buf(mut cs, pos)
 				mark_active(mut w, mut cs)
-				return flush_batch(mut w, fd, mut cs)
+				return flush_batch(mut w, fd, mut cs) != .closed
 			}
 			decoded.client_conn_fd = fd
 			decoded.client_conn_handle = usize(fd)
@@ -621,7 +660,7 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 						cs.should_close = true
 						compact_read_buf(mut cs, pos)
 						mark_active(mut w, mut cs)
-						return flush_batch(mut w, fd, mut cs)
+						return flush_batch(mut w, fd, mut cs) != .closed
 					}
 					continue
 				}
@@ -652,7 +691,7 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 				cs.should_close = true
 				compact_read_buf(mut cs, pos)
 				mark_active(mut w, mut cs)
-				return flush_batch(mut w, fd, mut cs)
+				return flush_batch(mut w, fd, mut cs) != .closed
 			}
 			decoded.client_conn_fd = fd
 			decoded.client_conn_handle = usize(fd)
@@ -667,7 +706,7 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 				cs.should_close = true
 				compact_read_buf(mut cs, pos)
 				mark_active(mut w, mut cs)
-				return flush_batch(mut w, fd, mut cs)
+				return flush_batch(mut w, fd, mut cs) != .closed
 			}
 
 			if resp.takeover_mode != .none && cs.write_buf.len > cs.write_off {
@@ -710,7 +749,7 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 						cs.should_close = true
 						compact_read_buf(mut cs, pos)
 						mark_active(mut w, mut cs)
-						return flush_batch(mut w, fd, mut cs)
+						return flush_batch(mut w, fd, mut cs) != .closed
 					}
 					continue
 				}
@@ -748,13 +787,14 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 			// new edge fires for bytes already in read_buf) until it spuriously times out.
 			compact_read_buf(mut cs, pos)
 			mark_active(mut w, mut cs)
-			if !flush_batch(mut w, fd, mut cs) {
-				return false // connection closed (should_close, or a write error)
-			}
-			// If the flush parked on EPOLLOUT (still pending), stop; handle_writable
-			// resumes and re-drains. Otherwise it fully drained (keep-alive) — carry on.
-			if cs.write_off < cs.write_buf.len || cs.file_remaining > 0 {
-				return true
+			match flush_batch(mut w, fd, mut cs) {
+				.closed {
+					return false
+				}
+				.blocked {
+					return true
+				}
+				.drained {}
 			}
 			pos = 0
 			continue
@@ -764,7 +804,7 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 			cs.should_close = true
 			compact_read_buf(mut cs, pos)
 			mark_active(mut w, mut cs)
-			return flush_batch(mut w, fd, mut cs)
+			return flush_batch(mut w, fd, mut cs) != .closed
 		}
 	}
 	compact_read_buf(mut cs, pos)
@@ -799,9 +839,10 @@ fn serve_conn(mut w Worker, fd int, mut cs ConnState) {
 			return
 		}
 		if n == 0 {
-			// Peer closed (FIN). If there is nothing buffered, this is a clean close.
-			close_conn(mut w, fd)
-			return
+			// FIN closes only the read side. Preserve valid requests/responses already
+			// buffered and close after their output has drained.
+			cs.read_eof = true
+			break
 		}
 		unsafe {
 			cs.read_buf.len += n
@@ -809,24 +850,30 @@ fn serve_conn(mut w Worker, fd int, mut cs ConnState) {
 		if !drain_requests(mut w, fd, mut cs) {
 			return
 		}
-		// Reject a request whose head cannot fit the configured buffer.
-		if cs.read_buf.len > 0 {
-			hl := frame_head_len(cs.read_buf)
-			too_large := (hl < 0 && cs.read_buf.len >= w.server.max_request_buffer_size)
-				|| hl > w.server.max_request_buffer_size
-			if too_large {
-				// Append the 413 after any responses already buffered for earlier
-				// pipelined requests, then flush in order and close (should_close).
-				cs.write_buf << status_413_response
-				cs.should_close = true
-				mark_active(mut w, mut cs)
-				flush_batch(mut w, fd, mut cs)
-				return
-			}
+		// A file or buffered response that hit EAGAIN owns the wire until it drains.
+		// Do not read/dispatch another request across that ordering boundary.
+		if cs.write_start_ns != 0 {
+			return
 		}
 	}
+	if cs.read_eof {
+		if cs.read_buf.len > 0 {
+			// EOF in the middle of a request can never become complete.
+			cs.write_buf << tiny_bad_request_response
+			unsafe { cs.read_buf.len = 0 }
+		}
+		cs.should_close = true
+		mark_read_deadline(mut w, mut cs)
+		if has_pending_response(cs) {
+			mark_active(mut w, mut cs)
+			flush_batch(mut w, fd, mut cs)
+		} else {
+			close_conn(mut w, fd)
+		}
+		return
+	}
 	mark_read_deadline(mut w, mut cs)
-	if cs.write_buf.len > cs.write_off || cs.file_remaining > 0 {
+	if has_pending_response(cs) {
 		mark_active(mut w, mut cs)
 		flush_batch(mut w, fd, mut cs)
 	}
@@ -842,25 +889,35 @@ fn handle_writable(mut w Worker, fd int) {
 	if unsafe { cs == nil } {
 		return
 	}
-	if cs.write_off >= cs.write_buf.len && cs.file_remaining <= 0 {
+	if !has_pending_response(cs) {
 		// Spurious wake — nothing parked; stop watching writability.
 		mod_fd_in_epoll(w.epoll_fd, fd, u32(C.EPOLLIN | C.EPOLLET))
 		return
 	}
-	if !flush_batch(mut w, fd, mut cs) {
-		return
+	match flush_batch(mut w, fd, mut cs) {
+		.closed, .blocked {
+			return
+		}
+		.drained {}
 	}
-	// If the parked batch fully drained (keep-alive) and requests were pipelined
-	// behind it, drain them now: their bytes are already in read_buf, so no new
-	// EPOLLIN edge will fire for them.
-	if cs.write_off >= cs.write_buf.len && cs.file_remaining <= 0 && cs.read_buf.len > 0 {
+	// If a parked batch fully drains, keep processing complete requests already in
+	// read_buf until output blocks again. No new EPOLLIN edge will fire for those
+	// bytes, including when several pipelined responses each contain a file.
+	for cs.read_buf.len > 0 {
 		if !drain_requests(mut w, fd, mut cs) {
 			return
 		}
-		if cs.write_buf.len > cs.write_off || cs.file_remaining > 0 {
-			flush_batch(mut w, fd, mut cs)
+		if !has_pending_response(cs) {
+			break
+		}
+		match flush_batch(mut w, fd, mut cs) {
+			.closed, .blocked {
+				return
+			}
+			.drained {}
 		}
 	}
+	mark_read_deadline(mut w, mut cs)
 }
 
 // handle_accept_loop accepts every pending connection (edge-triggered) and
@@ -926,9 +983,9 @@ fn close_worker_clients(mut w Worker) {
 
 fn process_events(server &Server, epoll_fd int, listen_fd int) {
 	mut w := Worker{
-		epoll_fd:  epoll_fd
+		epoll_fd: epoll_fd
 		listen_fd: listen_fd
-		conns:     []&ConnState{len: conn_table_min, init: unsafe { nil }}
+		conns: []&ConnState{len: conn_table_min, init: unsafe { nil }}
 	}
 	unsafe {
 		w.server = server
@@ -967,11 +1024,9 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 			if ev & u32(C.EPOLLHUP | C.EPOLLERR) != 0 {
 				if fd > 0 {
 					has_pending := fd < w.conns.len && unsafe { w.conns[fd] != nil }
-						&& (w.conns[fd].write_off < w.conns[fd].write_buf.len
-						|| w.conns[fd].file_remaining > 0)
+						&& has_pending_response(w.conns[fd])
 					if !has_pending {
-						C.send(fd, status_444_response.data, status_444_response.len,
-							C.MSG_NOSIGNAL)
+						C.send(fd, status_444_response.data, status_444_response.len, C.MSG_NOSIGNAL)
 					}
 					close_conn(mut w, fd)
 				}
@@ -993,7 +1048,7 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 				mut cs := w.conns[fd]
 				// While a response is still draining for this fd, defer new requests:
 				// reading now would clobber the in-flight write buffer.
-				if cs.write_off < cs.write_buf.len || cs.file_remaining > 0 {
+				if has_pending_response(cs) {
 					continue
 				}
 				if server.is_shutting_down() {
@@ -1026,31 +1081,33 @@ pub fn (mut server Server) run() ! {
 		eprintln('Windows is not supported yet')
 		return
 	}
+	// Resolve the bind address once, up front: each worker binds its own
+	// SO_REUSEPORT socket, so resolving per-worker could round-robin a hostname
+	// onto different addresses. Doing it here also lets an invalid/unresolvable
+	// host fail run() instead of silently leaving the server with no listener.
+	addr := resolve_bind_addr(server.host, server.family, server.port)!
 	for i := 0; i < max_thread_pool_size; i++ {
-		server.listen_fds[i] = create_server_socket(server)
-		if server.listen_fds[i] < 0 {
-			return
-		}
+		server.listen_fds[i] = create_server_socket(addr)!
 
 		server.epoll_fds[i] = C.epoll_create1(0)
 		if server.epoll_fds[i] < 0 {
 			C.perror(c'epoll_create1 failed')
 			close_socket(server.listen_fds[i])
-			return
+			return error('epoll_create1 failed')
 		}
 
 		// Register the listening socket with each worker epoll for distributed accepts (edge-triggered)
 		if add_fd_to_epoll(server.epoll_fds[i], server.listen_fds[i], u32(C.EPOLLIN | C.EPOLLET)) == -1 {
 			close_socket(server.listen_fds[i])
 			close_socket(server.epoll_fds[i])
-			return
+			return error('failed to register listener with epoll')
 		}
 
 		server.threads[i] = spawn process_events(server, server.epoll_fds[i], server.listen_fds[i])
 	}
 
 	server.mark_running()
-	println('listening on http://0.0.0.0:${server.port}/')
+	println('listening on http://${listen_host_display(server.host, server.family)}:${server.port}/')
 	// Main thread waits for workers; accepts are handled in worker epoll loops
 	for i in 0 .. max_thread_pool_size {
 		server.threads[i].wait()

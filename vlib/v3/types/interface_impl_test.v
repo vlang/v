@@ -61,6 +61,27 @@ fn test_stable_interface_type_ids_preserve_existing_ids_after_late_collisions() 
 	assert after['Tnndxrxb'] != before['Twvlzleh']
 }
 
+fn test_codegen_fork_keeps_frozen_interface_ids_after_late_collision() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.interface_names['Any'] = true
+	tc.structs['Twvlzleh'] = []StructField{}
+	tc.prepare_interface_query_indexes()
+	tc.freeze_pre_transform_interface_impl_names()
+	before := tc.interface_type_ids('Any')
+
+	// The late name sorts first, but must not take the frozen type's ID.
+	tc.structs['Tnndxrxb'] = []StructField{}
+	tc.invalidate_short_type_name_index()
+	tc.clear_interface_impl_cache()
+	expected := tc.interface_type_ids('Any')
+	assert expected['Twvlzleh'] == before['Twvlzleh']
+	assert expected['Tnndxrxb'] != expected['Twvlzleh']
+	worker := tc.fork_for_parallel_codegen()
+	assert worker.interface_type_ids('Any') == expected
+	assert worker.interface_impl_names('Any') == tc.interface_impl_names('Any')
+}
+
 fn test_short_type_name_ambiguity_remains_sticky() {
 	mut index := map[string]string{}
 	index_short_type_name('first.Event', mut index)
@@ -78,4 +99,34 @@ fn test_interface_concrete_method_keys_include_dispatch_methods() {
 
 	keys := tc.interface_concrete_method_keys()
 	assert 'orm.TransactionalConnection.select' in keys
+}
+
+fn test_generic_interface_signature_substitutes_named_return_types() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.interface_generic_params['BoxedValue'] = ['T']
+	tc.fn_param_types['BoxedValue.get'] = [
+		Type(Interface{
+			name: 'BoxedValue[T]'
+		}),
+	]
+	tc.fn_ret_types['BoxedValue.get'] = Type(Struct{
+		name: 'Box[T]'
+	})
+
+	struct_params, struct_ret := tc.specialized_interface_method_signature('BoxedValue[int]',
+		'BoxedValue.get')
+	assert struct_params[0].name() == 'BoxedValue[int]'
+	assert struct_ret.name() == 'Box[int]'
+
+	tc.fn_ret_types['BoxedValue.get'] = Type(SumType{
+		name: 'Maybe[T]'
+	})
+	_, sum_ret := tc.specialized_interface_method_signature('BoxedValue[int]', 'BoxedValue.get')
+	assert sum_ret.name() == 'Maybe[int]'
+
+	interface_type := tc.substitute_generic_type(Type(Interface{
+		name: 'BoxedValue[T]'
+	}), ['int'], ['T'])
+	assert interface_type.name() == 'BoxedValue[int]'
 }

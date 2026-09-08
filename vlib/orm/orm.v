@@ -1362,6 +1362,22 @@ fn parse_table_attr_fields(table Table, attr VAttribute, valid_sql_field_names [
 	return attr_fields
 }
 
+// sql_string_literal renders `value` as a quoted SQL string literal.
+// Doubling single quotes is standard SQL, and is understood by every dialect.
+//
+// A backslash has no single MySQL spelling: with the default sql_mode it escapes
+// the next character, so `C:\tmp` has to be written `C:\\tmp`, while under
+// NO_BACKSLASH_ESCAPES that same text is two literal backslashes. orm_table_gen()
+// generates DDL without a connection and cannot know the server's mode, so rather
+// than silently storing one or two backslashes depending on it, a backslash in a
+// MySQL string literal default is rejected.
+fn sql_string_literal(sql_dialect SQLDialect, value string) !string {
+	if sql_dialect == .mysql && value.contains('\\') {
+		return error('orm: a backtick delimited `default:` value cannot contain a backslash on MySQL, because its meaning depends on the NO_BACKSLASH_ESCAPES sql_mode of the server; use `sql_type` with an explicit DEFAULT clause instead')
+	}
+	return "'" + value.replace("'", "''") + "'"
+}
+
 pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) !string,
 	alternative bool) !string {
 	mut str := 'CREATE TABLE IF NOT EXISTS ${q}${table.name}${q} ('
@@ -1417,6 +1433,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		}
 		mut default_val := field.default_val
 		mut has_default := default_val != ''
+		mut default_is_literal := false
 		mut nullable := field.nullable
 		mut is_unique := false
 		mut is_skip := false
@@ -1470,7 +1487,16 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 				'default' {
 					has_default = true
 					if default_val == '' {
-						default_val = attr.arg.trim_space()
+						arg := attr.arg.trim_space()
+						if arg.len >= 2 && arg.starts_with('`') && arg.ends_with('`') {
+							// As documented, a value surrounded by backticks is a plain
+							// string, that has to reach the DB as a quoted SQL literal,
+							// instead of verbatim SQL like `CURRENT_TIME`.
+							default_is_literal = true
+							default_val = arg#[1..-1]
+						} else {
+							default_val = arg
+						}
 					}
 				}
 				'references' {
@@ -1524,7 +1550,9 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		}
 		stmt = '${q}${field_name}${q} ${col_typ}'
 		if defaults && has_default {
-			if default_val != '' {
+			if default_is_literal {
+				stmt += ' DEFAULT ${sql_string_literal(sql_dialect, default_val)!}'
+			} else if default_val != '' {
 				stmt += ' DEFAULT ${default_val}'
 			} else {
 				// Handle @[default: ''] - explicitly set DEFAULT '' for the column

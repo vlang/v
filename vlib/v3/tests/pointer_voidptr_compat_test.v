@@ -160,7 +160,7 @@ fn main() {
 	out := pointer_voidptr_run_good(v3_bin, 'optional_value_to_pointer_return', source)
 	assert out == '47'
 	c_source := pointer_voidptr_gen_c(v3_bin, 'optional_value_to_pointer_return_c', source)
-	assert c_source.contains('memdup(&maybe.value, sizeof(Item))'), c_source
+	assert c_source.contains('memdup(&maybe.value, sizeof(main__Item))'), c_source
 }
 
 fn test_wrapped_multi_return_bare_pointer_slots_are_heap_lowered() {
@@ -198,7 +198,7 @@ fn main() {
 	out := pointer_voidptr_run_good(v3_bin, 'wrapped_multi_return_bare_pointer_slots', source)
 	assert out == '31\n37\n41\n43'
 	c_source := pointer_voidptr_gen_c(v3_bin, 'wrapped_multi_return_bare_pointer_slots_c', source)
-	assert c_source.count('sizeof(Item)') >= 2, c_source
+	assert c_source.count('sizeof(main__Item)') >= 2, c_source
 }
 
 fn test_c_voidptr_struct_argument_passes_its_address() {
@@ -231,4 +231,28 @@ fn main() {
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '17'
+}
+
+fn test_pointer_to_voidptr_return_keeps_pointer_value() {
+	v3_bin := pointer_voidptr_build_v3()
+	source := 'fn make_values() voidptr {
+	unsafe {
+		values := &voidptr(malloc(64))
+		values[1] = voidptr(17)
+		return values
+	}
+}
+
+fn main() {
+	unsafe {
+		values := &voidptr(make_values())
+		println(usize(values[1]))
+		free(values)
+	}
+}
+'
+	out := pointer_voidptr_run_good(v3_bin, 'pointer_to_voidptr_return', source)
+	assert out == '17'
+	c_source := pointer_voidptr_gen_c(v3_bin, 'pointer_to_voidptr_return_c', source)
+	assert !c_source.contains('return *values;'), c_source
 }

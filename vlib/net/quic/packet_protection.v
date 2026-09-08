@@ -38,8 +38,27 @@ pub fn derive_packet_protection_keys(secret []u8) !QuicPacketProtectionKeys {
 	hp := hkdf_expand_label(secret, 'quic hp', []u8{}, aead_key_length)!
 	return QuicPacketProtectionKeys{
 		key: key
-		iv:  iv
-		hp:  hp
+		iv: iv
+		hp: hp
+	}
+}
+
+// derive_updated_packet_protection_keys computes the key/IV for a NEW
+// generation produced by a 1-RTT key update (RFC 9001 §6.1's `next_secret`),
+// while carrying `current_hp` forward UNCHANGED. RFC 9001 §6 is explicit
+// that a key update rotates only the packet-protection key and IV -- the
+// header-protection key is derived once, at the start of the encryption
+// level, and never updates within it (using key_update.v's own
+// derive_updated_secret to also produce a fresh `hp` would desync this
+// side's header-protection key from what a compliant peer keeps, since the
+// peer never rotates its own).
+pub fn derive_updated_packet_protection_keys(next_secret []u8, current_hp []u8) !QuicPacketProtectionKeys {
+	key := hkdf_expand_label(next_secret, 'quic key', []u8{}, aead_key_length)!
+	iv := hkdf_expand_label(next_secret, 'quic iv', []u8{}, aead_iv_length)!
+	return QuicPacketProtectionKeys{
+		key: key
+		iv: iv
+		hp: current_hp
 	}
 }
 
@@ -125,7 +144,7 @@ pub fn protect_packet(header []u8, form HeaderForm, packet_number u64, pn_length
 pub struct UnprotectedPacket {
 pub:
 	header        []u8 // the full header, through the now-plaintext packet number
-	packet_number u64  // full, reconstructed packet number
+	packet_number u64 // full, reconstructed packet number
 	payload       []u8 // decrypted plaintext payload
 }
 
@@ -162,8 +181,8 @@ pub fn unprotect_packet(mut packet []u8, pn_offset int, form HeaderForm, keys Qu
 	ciphertext := unsafe { packet[pn_offset + pn_length..] }
 	payload := decrypt_packet_payload(keys, full_pn, header, ciphertext)!
 	return UnprotectedPacket{
-		header:        header
+		header: header
 		packet_number: full_pn
-		payload:       payload
+		payload: payload
 	}
 }

@@ -520,7 +520,8 @@ fn (mut backend Win32Backend) collect_render_updates() ![]BackendRenderUpdate {
 				}
 				was_resize_pending := record.render_resize_pending
 				if available && visible != 0 && minimized == 0 && width > 0 && height > 0
-					&& framebuffer_width > 0 && framebuffer_height > 0 && was_resize_pending {
+					&& framebuffer_width > 0 && framebuffer_height > 0 && was_resize_pending
+					&& backend.render_health != .uninitialized {
 					resize := backend.ensure_window_render_target(i, NativeOperationSeed{
 						presence_mask:     native_context_has_window | native_context_has_target_generation
 						call_site:         .display_transport

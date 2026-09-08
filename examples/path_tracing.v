@@ -42,6 +42,12 @@ fn (v Vec) norm() Vec {
 	return Vec{v.x * tmp_norm, v.y * tmp_norm, v.z * tmp_norm}
 }
 
+@[inline]
+fn normalized(v vec.Vec3[f64]) Vec {
+	tmp_norm := 1.0 / math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+	return Vec{v.x * tmp_norm, v.y * tmp_norm, v.z * tmp_norm}
+}
+
 //********************************Image**************************************
 struct Image {
 	width  int
@@ -482,7 +488,7 @@ fn ray_trace(w int, h int, samps int, scene_id int) Image {
 
 	cam := Ray{Vec{50, 52, 295.6}, Vec{0, -0.042612, -1}.norm()} // cam position, direction
 	cx := Vec{f64(w) * 0.5135 / f64(h), 0, 0}
-	cy := Vec(cx.cross(cam.d)).norm().mul_scalar(0.5135)
+	cy := normalized(cx.cross(cam.d)).mul_scalar(0.5135)
 	mut r := Vec{}
 
 	// speed-up constants
@@ -512,7 +518,7 @@ fn ray_trace(w int, h int, samps int, scene_id int) Image {
 						d := cx.mul_scalar(((f64(sx) + 0.5 + dx) * 0.5 + f64(x)) * w1 - .5) +
 							cy.mul_scalar(((f64(sy) + 0.5 + dy) * 0.5 + f64(y)) * h1 - .5) + cam.d
 						r = r + radiance(Ray{cam.o +
-							d.mul_scalar(140.0), Vec(d).norm()}, 0, scene_id).mul_scalar(samps1)
+							d.mul_scalar(140.0), normalized(d)}, 0, scene_id).mul_scalar(samps1)
 					}
 					tmp_vec := Vec{clamp(r.x), clamp(r.y), clamp(r.z)}.mul_scalar(.25)
 					unsafe {

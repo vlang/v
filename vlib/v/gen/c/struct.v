@@ -585,10 +585,21 @@ fn (mut g Gen) can_use_direct_heap_struct_init(node ast.StructInit, sym ast.Type
 		|| node.init_fields.len != info.fields.len {
 		return false
 	}
-	for init_field in node.init_fields {
-		// C string literals can initialize arrays only as part of an initializer.
-		// This path assigns fields after allocation, so keep the compound initializer instead.
-		if g.need_tmp_var_in_expr(init_field.expr)
+	for i, init_field in node.init_fields {
+		mut expected_type := init_field.expected_type
+		if expected_type == 0 {
+			field_name := if node.no_keys { info.fields[i].name } else { init_field.name }
+			for field in info.fields {
+				if field.name == field_name {
+					expected_type = g.unwrap_generic(field.typ)
+					break
+				}
+			}
+		}
+		// C arrays can only be initialized as part of a compound initializer; they cannot be
+		// assigned after allocation. Keep the compound initializer path for fixed-array fields.
+		if g.need_tmp_var_in_expr(init_field.expr) || (expected_type != 0
+			&& g.table.final_sym(g.unwrap_generic(expected_type)).kind == .array_fixed)
 			|| g.is_translated_c_string_fixed_char_array_field(init_field) {
 			return false
 		}
@@ -1284,7 +1295,21 @@ fn (mut g Gen) struct_init_field_default(field_unwrap_typ ast.Type, sfield &ast.
 		g.write('/* autoref */&')
 	}
 
-	if (sfield.expected_type.has_flag(.option) && !field_unwrap_typ.has_flag(.option))
+	if sfield.expected_type.has_flag(.option) && field_unwrap_typ.has_flag(.option)
+		&& g.styp(sfield.expected_type) != g.styp(field_unwrap_typ) {
+		expr_base_typ := g.table.unaliased_type(field_unwrap_typ.clear_flag(.option))
+		expected_base_typ := g.table.unaliased_type(sfield.expected_type.clear_flag(.option))
+		expr_base_sym := g.table.final_sym(expr_base_typ)
+		expected_base_sym := g.table.final_sym(expected_base_typ)
+		if expr_base_typ == expected_base_typ
+			|| (expr_base_sym.kind == .function && expected_base_sym.kind == .function) {
+			// Alias-equivalent payloads have the same representation. Clone the complete
+			// option so `none` and error state are preserved along with the payload.
+			g.expr_opt_with_alias(sfield.expr, field_unwrap_typ, sfield.expected_type)
+		} else {
+			g.expr_opt_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
+		}
+	} else if (sfield.expected_type.has_flag(.option) && !field_unwrap_typ.has_flag(.option))
 		|| (sfield.expected_type.has_flag(.result) && !field_unwrap_typ.has_flag(.result)) {
 		g.expr_with_opt(sfield.expr, field_unwrap_typ, sfield.expected_type)
 	} else if sfield.expr is ast.LambdaExpr && sfield.expected_type.has_flag(.option) {

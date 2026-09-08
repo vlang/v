@@ -12,7 +12,7 @@ fn compile_wasm(src string, name string) os.Result {
 	source_path := os.join_path(wrkdir, '${name}.v')
 	output_path := os.join_path(wrkdir, '${name}.wasm')
 	os.write_file(source_path, src) or { panic(err) }
-	return os.execute('${vexe} -b wasm -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}')
+	return os.execute('${vexe} -old-compiler -b wasm -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}')
 }
 
 fn test_scalar_option_return_errors_cleanly() {

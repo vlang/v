@@ -49,6 +49,31 @@ fn test_parse_response() {
 	assert x.body == 'Foo'
 }
 
+fn test_parse_response_without_reason_phrase() {
+	// RFC 9112 §4: the reason-phrase is optional, and some servers omit the
+	// trailing SP before it as well (`HTTP/1.1 200`).
+	content := 'HTTP/1.1 200\r\nContent-Length: 3\r\n\r\nFoo'
+	x := parse_response(content)!
+	assert x.http_version == '1.1'
+	assert x.status_code == 200
+	assert x.status_msg == ''
+	assert x.header.contains(.content_length)
+	assert x.header.get(.content_length)? == '3'
+	assert x.body == 'Foo'
+}
+
+fn test_parse_response_with_empty_reason_phrase() {
+	// trailing SP present, but the reason phrase itself is empty
+	content := 'HTTP/1.1 200 \r\nContent-Length: 3\r\n\r\nFoo'
+	x := parse_response(content)!
+	assert x.http_version == '1.1'
+	assert x.status_code == 200
+	assert x.status_msg == ''
+	assert x.header.contains(.content_length)
+	assert x.header.get(.content_length)? == '3'
+	assert x.body == 'Foo'
+}
+
 fn test_parse_response_with_cookies() {
 	cookie_id := 'v_is_best'
 	content := 'HTTP/1.1 200 OK\r\nSet-Cookie: id=${cookie_id}\r\nContent-Length: 3\r\n\r\nFoo'

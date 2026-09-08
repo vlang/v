@@ -37,7 +37,7 @@ runs:
             packages='postgresql sqlite3 libpq-dev libssl-dev libsqlite3-dev'
             ;;
           graphics)
-            packages='imagemagick openimageio-tools xvfb xsel xclip libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libx11-dev freeglut3-dev mesa-common-dev libgl1-mesa-dev libgl1-mesa-dri xfonts-75dpi xfonts-base'
+            packages='imagemagick openimageio-tools xvfb xsel xclip libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libx11-dev libx11-xcb-dev freeglut3-dev mesa-common-dev libgl1-mesa-dev libgl1-mesa-dri xfonts-75dpi xfonts-base'
             ;;
           sdl)
             packages='libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev libsdl2-net-dev libpng-dev libsamplerate0-dev'
@@ -46,7 +46,7 @@ runs:
             packages='clang valgrind postgresql sqlite3 libpq-dev libssl-dev libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev'
             ;;
           full)
-            packages='expect binutils postgresql sqlite3 clang valgrind imagemagick openimageio-tools xvfb xsel xclip libsodium-dev libpq-dev libssl-dev libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libx11-dev freeglut3-dev mesa-common-dev libgl1-mesa-dev libgl1-mesa-dri libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev libsdl2-net-dev libpng-dev libsamplerate0-dev xfonts-75dpi xfonts-base'
+            packages='expect binutils postgresql sqlite3 clang valgrind imagemagick openimageio-tools xvfb xsel xclip libsodium-dev libpq-dev libssl-dev libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libx11-dev libx11-xcb-dev freeglut3-dev mesa-common-dev libgl1-mesa-dev libgl1-mesa-dri libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev libsdl2-net-dev libpng-dev libsamplerate0-dev xfonts-75dpi xfonts-base'
             ;;
           *)
             echo "Unknown apt package profile: $PROFILE" >&2

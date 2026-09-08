@@ -179,7 +179,7 @@ fn main() {
 	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_array_power_assign.c')) or { panic(err) }
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('array__set(_a0,_i0,&(int[]){((int)__v_pow_i64('), c_code
-	assert compact.contains('array__set(_a1,_i1,&(Exponent[]){Exponent__mul_(*(Exponent*)array_get(*_a1,_i1),'), c_code
+	assert compact.contains('array__set(_a1,_i1,&(main__Exponent[]){Exponent__mul_(*(main__Exponent*)array_get(*_a1,_i1),'), c_code
 	assert compact.contains('IntList__op_index_set('), c_code
 	assert compact.contains('ExponentList__op_index_set('), c_code
 	assert compact.contains('Exponent__mul_('), c_code
@@ -220,7 +220,7 @@ fn main() {
 		panic(err)
 	}
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('box.value=Exponent__mul_(box.value,(Exponent){.value=3});'), c_code
+	assert compact.contains('box.value=Exponent__mul_(box.value,(main__Exponent){.value=3});'), c_code
 }
 
 fn test_mut_parameter_power_assign_uses_scalar_type() {
@@ -715,4 +715,119 @@ fn main() {
 }
 ")
 	assert out == 'after false\ninitialized\nfalse\ninitialized\ntrue'
+}
+
+fn test_recursive_json_sum_generation_is_cycle_safe() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'recursive_json_sum_generation', "import json
+
+type RecursiveAny = []RecursiveAny | int | map[string]RecursiveAny
+
+fn main() {
+	value := RecursiveAny([
+		RecursiveAny(1),
+		RecursiveAny({
+			'two': RecursiveAny(2)
+		}),
+	])
+	println(json.encode(value))
+	mut decode_rejected := false
+	_ := json.decode(RecursiveAny, '[1]') or {
+		decode_rejected = true
+		RecursiveAny(0)
+	}
+	println(decode_rejected)
+}
+")
+	assert out == '[1,{"two":2}]\ntrue'
+}
+
+fn test_json_decode_fixed_array_sum_variant_assigns_elements() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'json_decode_fixed_array_sum_variant', "import json
+
+type Payload = [2]int | string
+
+fn main() {
+	payload := json.decode(Payload, '[4, 5]') or { panic(err) }
+	if payload is [2]int {
+		println('\${payload[0]}:\${payload[1]}')
+	} else {
+		println('wrong variant')
+	}
+}
+")
+	assert out == '4:5'
+}
+
+fn test_json_decode_nested_structs_preserve_skipped_defaults() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'json_decode_nested_struct_defaults', 'import json
+
+struct NestedDefault {
+	hidden int = 7 @[skip]
+}
+
+struct NestedDefaultEnvelope {
+	direct  NestedDefault
+	items   []NestedDefault
+	by_name map[string]NestedDefault
+	pointer &NestedDefault
+}
+
+type NestedDefaultPayload = NestedDefault | string
+
+fn main() {
+	value := json.decode(NestedDefaultEnvelope, \'{"direct":{},"items":[{}],"by_name":{"first":{}},"pointer":{}}\') or {
+		panic(err)
+	}
+	payload := json.decode(NestedDefaultPayload, \'{}\') or { panic(err) }
+	if payload is NestedDefault {
+		println(\'\${value.direct.hidden}:\${value.items[0].hidden}:\${value.by_name[\'first\'].hidden}:\${value.pointer.hidden}:\${payload.hidden}\')
+	} else {
+		println(\'wrong variant\')
+	}
+}
+')
+	assert out == '7:7:7:7:7'
+}
+
+fn test_json_encode_pretty_preserves_exact_integers() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'json_encode_pretty_exact_integers', 'import json
+
+struct ExactNumbers {
+	signed   i64
+	unsigned u64
+	values   []u64
+}
+
+fn main() {
+	println(json.encode_pretty(ExactNumbers{
+		signed: 9007199254740993
+		unsigned: 18446744073709551615
+		values: [u64(9007199254740993), 18446744073709551615]
+	}))
+}
+')
+	assert out == '{\n\t"signed":\t9007199254740993,\n\t"unsigned":\t18446744073709551615,\n\t"values":\t[9007199254740993, 18446744073709551615]\n}'
+}
+
+fn test_recursive_json_value_struct_declines_fast_path() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'recursive_json_value_struct', 'import json
+
+struct ValueNode {
+	value    int
+	children []ValueNode
+}
+
+fn main() {
+	_ := json.decode(ValueNode, \'{"value":1,"children":[{"value":2,"children":[]}]}\') or {
+		ValueNode{}
+	}
+	println(\'compiled\')
+}
+')
+	assert out == 'compiled'
 }

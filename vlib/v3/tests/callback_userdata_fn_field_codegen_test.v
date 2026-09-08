@@ -8,7 +8,7 @@ const callback_vlib_dir = os.dir(callback_v3_dir)
 const callback_v3_src = os.join_path(callback_v3_dir, 'v3.v')
 
 fn callback_build_v3() string {
-	return callback_build_v3_with_flags('serial', '')
+	return callback_build_v3_with_flags('serial', '-d ownership')
 }
 
 fn callback_build_v3_parallel() string {
@@ -55,9 +55,51 @@ fn callback_adapter_names(generated string, prefix string) []string {
 	return names
 }
 
+fn test_autofree_bound_main_method_callback_uses_emitted_symbol() {
+	v3_bin := callback_build_v3()
+	source := callback_write_source('autofree_bound_main_method', 'module main
+
+struct Event {
+	value int
+}
+
+@[heap]
+struct App {
+mut:
+	value int
+}
+
+struct Config {
+	on_event fn (&Event)
+}
+
+fn (mut app App) on_event(event &Event) {
+	app.value = event.value
+}
+
+fn main() {
+	mut app := &App{}
+	config := Config{on_event: app.on_event}
+	config.on_event(&Event{value: 73})
+	println(app.value)
+}
+')
+	out := os.join_path(os.temp_dir(), 'v3_callback_bound_method_autofree_${os.getpid()}')
+	compile := os.execute('${v3_bin} -autofree ${source} -b c -o ${out}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '73'
+	generated := os.read_file(out + '.c') or { panic(err) }
+	assert generated.contains('main__App_on_event('), generated
+	assert !generated.contains('void App__on_event('), generated
+}
+
 fn test_callback_userdata_fn_field_adapters() {
 	v3_bin := callback_build_v3()
 	good_src := callback_write_source('good', 'module main
+
+__global C.user_data voidptr
 
 struct Event {
 	code int
@@ -168,7 +210,7 @@ fn main() {
 }
 ')
 	good_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_good_${os.getpid()}')
-	good_compile := os.execute('${v3_bin} ${good_src} -b c -o ${good_out}')
+	good_compile := os.execute('${v3_bin} -enable-globals ${good_src} -b c -o ${good_out}')
 	assert good_compile.exit_code == 0, good_compile.output
 	run := os.execute(good_out)
 	assert run.exit_code == 0, run.output
@@ -178,8 +220,8 @@ fn main() {
 	assert generated.contains('frame_callback_adapter'), generated
 	assert generated.contains('on_event_callback_adapter'), generated
 	assert generated.contains('erased_event_callback_adapter'), generated
-	assert generated.contains('frame((App*)arg0);'), generated
-	assert generated.contains('on_event(arg0, (App*)arg1);'), generated
+	assert generated.contains('frame((main__App*)arg0);'), generated
+	assert generated.contains('on_event(arg0, (main__App*)arg1);'), generated
 	assert generated.contains('erased_event((void*)arg0, arg1);'), generated
 	assert generated.contains('use_cb(frame_callback_adapter_'), generated
 	assert generated.contains('.alias_frame = frame_callback_adapter_'), generated
@@ -200,6 +242,17 @@ fn main() {
 	assert !generated.contains('use_cb((_fn_ptr'), generated
 	assert !generated.contains('use_cb(frame,'), generated
 	assert !generated.contains('direct_callback_adapter'), generated
+
+	autofree_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_autofree_${os.getpid()}')
+	autofree_compile :=
+		os.execute('${v3_bin} -enable-globals -autofree ${good_src} -b c -o ${autofree_out}')
+	assert autofree_compile.exit_code == 0, autofree_compile.output
+	autofree_run := os.execute(autofree_out)
+	assert autofree_run.exit_code == 0, autofree_run.output
+	assert autofree_run.output.trim_space() == '82'
+	autofree_c := os.read_file(autofree_out + '.c') or { panic(err) }
+	assert autofree_c.contains('main__frame((main__App*)arg0);'), autofree_c
+	assert autofree_c.contains('main__on_event(arg0, (main__App*)arg1);'), autofree_c
 
 	wrong_arity := callback_write_source('wrong_arity', 'module main
 struct Config {
@@ -268,6 +321,10 @@ fn main() {
 ')
 	primitive_param_compile := callback_compile(v3_bin, wrong_primitive_param,
 		'wrong_primitive_param')
+	// `fn (int)` and `fn (i64)` are distinct source types even though platform `int`
+	// currently shares i64's C width on 64-bit targets; assigning one to the other
+	// stays a type error (function-type identity is independent of the emitted C
+	// spelling and target width).
 	assert primitive_param_compile.exit_code != 0, primitive_param_compile.output
 
 	homonym_root := os.join_path(os.temp_dir(), 'v3_callback_userdata_homonym_${os.getpid()}')

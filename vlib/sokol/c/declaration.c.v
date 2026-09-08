@@ -10,7 +10,7 @@ import sokol.memory as _
 // Platform-specific library linking
 // X11 is the default on Linux
 // Use `-d sokol_wayland` to enable Wayland support
-#flag linux -DSOKOL_GLCORE
+#flag linux -DSOKOL_GLCORE -USOKOL_D3D11 -USOKOL_GLES3 -USOKOL_METAL -USOKOL_VULKAN -USOKOL_WGPU
 $if sokol_wayland ? {
 	#flag linux -lwayland-client -lwayland-egl -lxkbcommon -lxkbcommon-x11 -lEGL -lGL -lpthread -lm -ldl -lX11 -lXi -lXcursor
 } $else {
@@ -59,6 +59,9 @@ $if macos {
 		#flag darwin -DSOKOL_GLCORE -framework OpenGL -framework Cocoa -framework QuartzCore
 	} $else {
 		#flag -DSOKOL_METAL
+		$if gg_multiwindow ? {
+			#flag darwin -DV_SOKOL_MTL_END_PASS_HOOK
+		}
 		#flag -framework Metal -framework Cocoa -framework MetalKit -framework QuartzCore
 	}
 }

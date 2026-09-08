@@ -7,11 +7,11 @@ const max_unix_path = 104
 
 pub struct C.addrinfo {
 mut:
-	ai_family    int
-	ai_socktype  int
-	ai_flags     int
-	ai_protocol  int
-	ai_addrlen   int
+	ai_family    i32
+	ai_socktype  i32
+	ai_flags     i32
+	ai_protocol  i32
+	ai_addrlen   i32
 	ai_addr      voidptr
 	ai_canonname voidptr
 	ai_next      voidptr

@@ -21,14 +21,219 @@ fn test_parse_type_cache_keeps_context_components_without_joined_keys() {
 	assert tc.type_cache.parse_entries.len == 3
 }
 
+fn test_parse_resolution_type_prefers_file_import_over_known_short_symbol() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.structs['token.Pos'] = []StructField{}
+	tc.structs['v.token.Pos'] = []StructField{}
+	tc.structs['Box'] = []StructField{}
+	tc.cur_file = 'ast.v'
+	tc.cur_module = 'v.ast'
+	tc.register_file_import('token', 'v.token')
+
+	assert tc.parse_resolution_type('token.Pos').name() == 'v.token.Pos'
+	assert tc.parse_resolution_type('[]token.Pos').name() == '[]v.token.Pos'
+	assert tc.parse_resolution_type('?token.Pos').name() == '?v.token.Pos'
+	assert tc.parse_resolution_type('Box[token.Pos]').name() == 'Box[v.token.Pos]'
+}
+
+fn test_parse_resolution_type_in_file_does_not_require_an_active_file_cursor() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.structs['token.Pos'] = []StructField{}
+	tc.structs['v3.token.Pos'] = []StructField{}
+	tc.cur_file = 'parser.v'
+	tc.cur_module = 'parser'
+	tc.register_file_import('token', 'v3.token')
+	tc.file_modules['parser.v'] = 'parser'
+	tc.cur_file = ''
+	tc.cur_module = ''
+
+	assert tc.parse_resolution_type_in_file('token.Pos', 'parser.v').name() == 'v3.token.Pos'
+	tc.fn_type_files['parser.read'] = 'parser.v'
+	tc.fn_type_modules['parser.read'] = 'parser'
+	for text in ['', '!', '?', 'int', 'bool', 'string', 'voidptr', '&[]u8', '?int', '![]string'] {
+		fresh := tc.fork_type_parse_view('parser.v', 'parser')
+		expected := fresh.parse_resolution_type(text)
+		assert tc.parse_resolution_type_in_file(text, 'parser.v') == expected
+		assert tc.fn_signature_type('parser.read', text) == expected
+	}
+	assert tc.fn_signature_type('parser.read', 'token.Pos').name() == 'v3.token.Pos'
+}
+
+fn test_parse_thread_type_qualifies_concrete_payloads() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_file = 'fixturetest.v'
+	tc.cur_module = 'fixturetest'
+	tc.structs['fixturetest.FixtureResult'] = []StructField{}
+
+	assert tc.parse_type('thread FixtureResult').name() == 'thread fixturetest.FixtureResult'
+	assert tc.parse_type('thread ?FixtureResult').name() == 'thread ?fixturetest.FixtureResult'
+	assert tc.parse_type('thread T').name() == 'thread T'
+}
+
+fn test_alias_target_parsing_preserves_declaration_module() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'caller'
+	tc.cur_file = 'caller.v'
+	tc.type_alias_modules['dep.Alias'] = 'dep'
+	tc.structs['caller.Item'] = []StructField{}
+	tc.structs['dep.Item'] = []StructField{}
+	for text in ['int', 'string', ' &[]u8 ', '?int', '![]string', 'shared int', 'Item', '&Item'] {
+		fresh := tc.fork_type_parse_view('caller.v', 'dep')
+		expected := if text == 'shared int' {
+			Type(Pointer{ base_type: Type(int_) })
+		} else {
+			fresh.parse_type(text)
+		}
+		parsed := tc.parse_alias_type('dep.Alias', text)
+		assert parsed is Alias
+		assert parsed.name == 'dep.Alias'
+		assert parsed.base_type == expected
+	}
+	assert tc.parse_alias_target_type('dep.Alias', 'Item').name() == 'dep.Item'
+	assert tc.cur_module == 'caller'
+}
+
+fn test_context_independent_container_types_match_declaration_views() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_file = 'caller.v'
+	tc.cur_module = 'caller'
+	tc.file_modules['dep.v'] = 'dep'
+	tc.type_alias_modules['dep.Alias'] = 'dep'
+	tc.fn_type_files['dep.read'] = 'dep.v'
+	tc.fn_type_modules['dep.read'] = 'dep'
+	for text in ['map[string]int', '?map[string][]u8', '[]map[int]&string', '[32]u8', '&[2][3]int',
+		'map[[4]u8][]map[string]bool'] {
+		assert context_independent_type_text(text)
+		fresh := tc.fork_type_parse_view('dep.v', 'dep')
+		expected := fresh.parse_resolution_type(text)
+		assert tc.parse_resolution_type_in_file(text, 'dep.v') == expected
+		assert tc.fn_signature_type('dep.read', text) == expected
+		alias_typ := tc.parse_alias_type('dep.Alias', text)
+		assert alias_typ is Alias
+		assert alias_typ.base_type == fresh.parse_type(text)
+	}
+	for text in ['map', 'array', 'map[string]Item', 'map[Key]int', 'map[string]int ', '[size]int',
+		'[2 + 3]int', '[0x10]int', 'map[string', '[2', '[2]'] {
+		assert !context_independent_type_text(text)
+	}
+}
+
+fn test_parse_resolution_fn_type_preserves_nested_main_type_lock() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.structs['Context'] = []StructField{}
+	tc.structs['veb.Context'] = []StructField{}
+	tc.cur_file = 'veb/middleware.v'
+	tc.cur_module = 'veb'
+
+	locked := tc.parse_resolution_type('fn (mut main.Context) bool')
+	assert locked is FnType
+	assert locked.params.len == 1
+	locked_param := locked.params[0]
+	if locked_param is Pointer {
+		assert locked_param.base_type.name() == 'Context'
+	} else {
+		assert false, locked_param.name()
+	}
+	assert locked.params_mut == [true]
+
+	local := tc.parse_resolution_type('fn (mut Context) bool')
+	assert local is FnType
+	local_param := local.params[0]
+	if local_param is Pointer {
+		assert local_param.base_type.name() == 'veb.Context'
+	} else {
+		assert false, local_param.name()
+	}
+}
+
+fn test_parse_resolution_main_alias_uses_alias_declaration_scope() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.structs['Context'] = []StructField{}
+	tc.struct_modules['Context'] = 'main'
+	tc.structs['veb.Context'] = []StructField{}
+	tc.struct_modules['veb.Context'] = 'veb'
+	tc.type_aliases['AliasContext'] = 'Context'
+	tc.type_alias_modules['AliasContext'] = 'main'
+	tc.cur_file = 'veb/veb.v'
+	tc.cur_module = 'veb'
+
+	locked := tc.parse_resolution_type('main.AliasContext')
+	if locked is Alias {
+		assert locked.name == 'AliasContext'
+		assert locked.base_type is Struct
+		assert locked.base_type.name() == 'Context'
+	} else {
+		assert false, locked.name()
+	}
+	assert tc.c_type(locked) == 'main__Context'
+}
+
+fn test_embedded_field_type_trusts_collected_embed_metadata() {
+	field := StructField{
+		name: 'Middleware[Context]'
+		typ: Type(Struct{
+			name: 'veb.Middleware[veb.Context]'
+		})
+		is_embed: true
+	}
+	embedded := embedded_field_type(field) or { panic('missing embedded field type') }
+	assert embedded.name() == 'veb.Middleware[veb.Context]'
+}
+
+fn test_receiver_embeds_through_alias() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.structs['Context'] = [
+		StructField{
+			name: 'Context'
+			typ: Type(Struct{
+				name: 'veb.Context'
+			})
+			is_embed: true
+		},
+	]
+	actual := Type(Alias{
+		name: 'AliasContext'
+		base_type: Type(Struct{
+			name: 'Context'
+		})
+	})
+	expected := Type(Pointer{
+		base_type: Type(Struct{
+			name: 'veb.Context'
+		})
+	})
+	assert tc.receiver_embeds(actual, expected)
+}
+
+fn test_parse_resolution_type_handles_locked_main_generic_application() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.struct_generic_params['StructType'] = ['T']
+	tc.cur_file = 'decode.v'
+	tc.cur_module = 'json2'
+
+	assert tc.parse_resolution_type('main.StructType[string]').name() == 'StructType[string]'
+	assert tc.parse_resolution_type('main.StructType[main.string]').name() == 'StructType[string]'
+	assert tc.parse_type('main.StructType[string]').name() == 'StructType[string]'
+}
+
 fn test_type_cache_overlay_rebinds_resolution_type_views() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	tc.type_cache.parse_enabled = true
 	tc.cur_file = 'main.v'
 	tc.cur_module = 'main'
+	tc.structs['Item'] = []StructField{}
 
-	assert tc.parse_resolution_type('int').name() == 'int'
+	assert tc.parse_resolution_type('Item').name() == 'Item'
 	base := tc.type_cache
 	base_view := tc.resolution_type_views.by_file['main.v'] or { panic('missing base view') }
 	assert base_view.type_cache == base
@@ -38,14 +243,14 @@ fn test_type_cache_overlay_rebinds_resolution_type_views() {
 	assert overlay != base
 	assert overlay.base == base
 	assert tc.resolution_type_views.by_file.len == 0
-	assert tc.parse_resolution_type('string').name() == 'string'
+	assert tc.parse_resolution_type('[]Item').name() == '[]Item'
 	overlay_view := tc.resolution_type_views.by_file['main.v'] or { panic('missing overlay view') }
 	assert overlay_view.type_cache == overlay
 
 	tc.unfreeze_type_cache_after_forks()
 	assert tc.type_cache == base
 	assert tc.resolution_type_views.by_file.len == 0
-	assert tc.parse_resolution_type('bool').name() == 'bool'
+	assert tc.parse_resolution_type('?Item').name() == '?Item'
 	restored_view := tc.resolution_type_views.by_file['main.v'] or {
 		panic('missing restored view')
 	}
@@ -72,6 +277,25 @@ fn test_type_cache_restore_preserves_disabled_resolution_type_views() {
 	assert isnil(tc.resolution_type_views)
 }
 
+fn test_type_cache_overlay_can_be_discarded_without_publishing_entries() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.type_cache.parse_enabled = true
+	tc.cur_file = 'main.v'
+	tc.cur_module = 'main'
+
+	assert tc.parse_type('int').name() == 'int'
+	base := tc.type_cache
+	base_entries := base.parse_entries.len
+	tc.freeze_type_cache_for_forks()
+	assert tc.parse_type('string').name() == 'string'
+	assert tc.type_cache.parse_entries.len > 0
+
+	tc.discard_type_cache_overlay_after_forks()
+	assert tc.type_cache == base
+	assert base.parse_entries.len == base_entries
+}
+
 fn test_c_type_cache_uses_existing_named_type_identity() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
@@ -83,17 +307,30 @@ fn test_c_type_cache_uses_existing_named_type_identity() {
 	assert tc.type_cache.c_entries.len == 1
 }
 
+fn test_c_type_recent_cache_distinguishes_reassigned_sum_payloads() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	mut typ := Type(Struct{
+		name: 'mcp.Request'
+	})
+	assert tc.c_type(typ) == 'mcp__Request'
+	typ = Type(Struct{
+		name: 'http.Request'
+	})
+	assert tc.c_type(typ) == 'http__Request'
+}
+
 fn test_semantic_type_interner_uses_structural_identity() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	first_id, first := tc.intern_type(Type(Map{
-		key_type:   Type(string_)
+		key_type: Type(string_)
 		value_type: Type(Array{
 			elem_type: Type(int_)
 		})
 	}))
 	second_id, second := tc.intern_type(Type(Map{
-		key_type:   Type(string_)
+		key_type: Type(string_)
 		value_type: Type(Array{
 			elem_type: Type(int_)
 		})
@@ -102,11 +339,11 @@ fn test_semantic_type_interner_uses_structural_identity() {
 	assert semantic_types_equal(first, second)
 
 	int_alias, _ := tc.intern_type(Type(Alias{
-		name:      'sample.Number'
+		name: 'sample.Number'
 		base_type: Type(int_)
 	}))
 	string_alias, _ := tc.intern_type(Type(Alias{
-		name:      'sample.Number'
+		name: 'sample.Number'
 		base_type: Type(string_)
 	}))
 	assert int_alias != string_alias
@@ -116,17 +353,17 @@ fn test_fn_param_mutability_participates_in_type_identity() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	immutable := Type(FnType{
-		params:      [Type(int_)]
-		params_mut:  [false]
+		params: [Type(int_)]
+		params_mut: [false]
 		return_type: Type(void_)
 	})
 	mutable := Type(FnType{
-		params:      [Type(int_)]
-		params_mut:  [true]
+		params: [Type(int_)]
+		params_mut: [true]
 		return_type: Type(void_)
 	})
 	legacy_immutable := Type(FnType{
-		params:      [Type(int_)]
+		params: [Type(int_)]
 		return_type: Type(void_)
 	})
 
@@ -139,6 +376,8 @@ fn test_fn_param_mutability_participates_in_type_identity() {
 	immutable_id, _ := tc.intern_type(immutable)
 	mutable_id, _ := tc.intern_type(mutable)
 	assert immutable_id != mutable_id
+	assert tc.c_type(immutable) == 'fn_ptr:void|i64'
+	assert tc.c_type(mutable) == 'fn_ptr:void|i64*'
 
 	cloned := clone_owned_type(mutable)
 	assert cloned is FnType
@@ -166,7 +405,7 @@ fn test_type_name_is_lazily_cached_by_type_id() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	typ := Type(Map{
-		key_type:   Type(string_)
+		key_type: Type(string_)
 		value_type: Type(Array{
 			elem_type: Type(int_)
 		})
@@ -243,6 +482,13 @@ fn test_generic_text_substitution_recurses_through_wrappers() {
 	assert subst_generic_text('thread T', ['string'], ['T']) == 'thread string'
 	assert subst_generic_text('atomic T', ['u64'], ['T']) == 'atomic u64'
 	assert subst_generic_text('chan ?[]T', ['i16'], ['T']) == 'chan ?[]i16'
+}
+
+fn test_concrete_generic_method_signature_candidates_flatten_nested_pointer_args() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	candidates := tc.concrete_generic_method_signature_candidates('SimpleCache[string, &CacheItem[string, int]]', 'set')
+	assert 'SimpleCache[string, ptr_CacheItem_string_int].set' in candidates
 }
 
 fn test_resolved_symbols_have_stable_ids_and_storage() {

@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "toolchain-profile.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile_id",
+    "target_id",
+    "producer",
+    "validator"
+  ],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "profile_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._\\-]{2,127}$"
+    },
+    "target_id": {"$ref": "common.schema.json#/$defs/target_id"},
+    "producer": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/profile_role"}
+    },
+    "validator": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/profile_role"}
+    }
+  },
+  "$defs": {
+    "profile_role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role_id", "identity_strategy", "identity_policy"],
+      "properties": {
+        "role_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._\\-]{2,63}$"
+        },
+        "identity_strategy": {
+          "type": "string",
+          "enum": ["github-hosted", "cpa-host", "cpa-guest", "github-hosted-msys2"]
+        },
+        "identity_policy": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identity_fact"}
+        }
+      }
+    },
+    "identity_fact": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "match", "value"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._\\-]{1,63}$"
+            },
+            "match": {"type": "string", "enum": ["exact", "release-compatible"]},
+            "value": {"type": "string", "minLength": 1, "maxLength": 512}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "match"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._\\-]{1,63}$"
+            },
+            "match": {"type": "string", "enum": ["present", "sha256"]}
+          }
+        }
+      ]
+    }
+  }
+}

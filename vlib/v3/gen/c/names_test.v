@@ -21,6 +21,24 @@ fn test_c_name_sanitize_escaped_keywords() {
 	assert c_name('Kind.@asm') == 'Kind___v_asm'
 }
 
+fn test_c_name_pre_sanitized_classifier() {
+	assert c_name_is_pre_sanitized('main__run')
+	assert c_name_is_pre_sanitized('foo__Bar__method')
+	assert !c_name_is_pre_sanitized('send')
+	assert !c_name_is_pre_sanitized('C.printf')
+	assert !c_name_is_pre_sanitized('foo__bar-baz')
+	assert !c_name_is_pre_sanitized('_str_1')
+}
+
+fn test_cached_cname_fast_paths_match_canonical_naming() {
+	mut g := FlatGen.new()
+	for name in ['run', 'int', 'send', 'malloc', 'int_str', 'exit', '_str_42', '_str_value',
+		'main.run', 'foo.Bar.method', 'C.printf', 'C.SSL_CTX.str', 'Point.<=', 'pkg.Box[int].value',
+		'int@static@tag', '__v3_internal_symbol_source'] {
+		assert g.cname(name) == c_name(name)
+	}
+}
+
 fn test_c_name_sanitizes_compound_generic_type_arguments() {
 	name :=
 		c_name('json2.StructKeyDecodeResult[fn(&mbedtls.SSLListener, string) !&mbedtls.SSLCerts]')
@@ -39,6 +57,34 @@ fn test_c_name_libc_collision_abs() {
 	assert c_name('log') == 'v_log'
 	assert c_name('C.index') == 'index'
 	assert c_name('C.log') == 'log'
+}
+
+fn test_c_name_preserves_c_receiver_method_namespace() {
+	assert c_name('C.SSL_CTX.str') == 'C__SSL_CTX__str'
+}
+
+fn test_struct_init_main_type_lock_matches_only_a_type_component() {
+	assert struct_init_has_main_type_lock('main.Context')
+	assert struct_init_has_main_type_lock('other.Box[map[other.Key]main.Context]')
+	assert !struct_init_has_main_type_lock('domain.Context')
+	assert !struct_init_has_main_type_lock('some.main.Context')
+}
+
+fn test_struct_init_main_alias_target_keeps_declaration_scope() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Context'] = []types.StructField{}
+	tc.struct_modules['Context'] = 'main'
+	tc.structs['veb.Context'] = []types.StructField{}
+	tc.struct_modules['veb.Context'] = 'veb'
+	tc.type_aliases['AliasContext'] = 'Context'
+	tc.type_alias_modules['AliasContext'] = 'main'
+	tc.cur_module = 'veb'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+
+	assert g.struct_type_alias_target('main.AliasContext') or { '' } == 'main.Context'
 }
 
 fn test_c_name_generated_string_symbol_collision() {
@@ -62,6 +108,152 @@ fn test_direct_call_uses_custom_enum_method_symbol() {
 	assert g.direct_call_name('Kind.str') == 'Kind_str'
 }
 
+fn test_direct_call_does_not_prefix_synthetic_helper_with_owner_module() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'ast'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.non_generic_fn_names_by_module['ast\x01__v3_autostr_ast__Comment'] = true
+	g.non_generic_fn_names_by_module['ast\x01__v3_default_clone_json2__Any'] = true
+
+	assert g.direct_call_name_for_call(flat.empty_node, '__v3_autostr_ast__Comment') == '__v3_autostr_ast__Comment'
+	assert g.direct_call_name_for_call(flat.empty_node, 'ast.__v3_autostr_ast__Comment') == '__v3_autostr_ast__Comment'
+	assert g.direct_call_name_for_call(flat.empty_node, '__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
+	assert g.direct_call_name_for_call(flat.empty_node, 'ast.__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
+	assert g.fn_c_name_in_module('main', '__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
+}
+
+fn test_main_function_is_prefixed_when_preserved_c_header_owns_typedef_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.inlined_c_typedef_names['sqlite3'] = true
+
+	assert g.fn_c_name_in_module('main', 'sqlite3') == 'main__sqlite3'
+	assert g.main_runtime_shadow_fn_c_name('main', 'sqlite3') or { '' } == 'main__sqlite3'
+	assert g.fn_c_name_in_module('database', 'sqlite3') == 'database__sqlite3'
+}
+
+fn test_main_function_is_prefixed_when_declared_c_type_owns_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.structs['C.sqlite3'] = []types.StructField{}
+
+	assert g.fn_c_name_in_module('main', 'sqlite3') == 'main__sqlite3'
+	assert g.main_runtime_shadow_fn_c_name('main', 'sqlite3') or { '' } == 'main__sqlite3'
+	assert g.fn_c_name_in_module('database', 'sqlite3') == 'database__sqlite3'
+}
+
+fn test_collect_cache_native_c_symbols_only_records_type_declarations() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.structs['C.HeaderTag'] = []types.StructField{}
+	tc.structs['C.HeaderAlias'] = []types.StructField{}
+	tc.structs['C.HeaderEnum'] = []types.StructField{}
+	tc.structs['C.HeaderScalar'] = []types.StructField{}
+	tc.structs['C.HeaderOther'] = []types.StructField{}
+	tc.structs['C.CommentOnly'] = []types.StructField{}
+	tc.structs['C.StringOnly'] = []types.StructField{}
+	tc.structs['C.UnrelatedOpaque'] = []types.StructField{}
+	tc.structs['C.HEADER_ENUM_VALUE'] = []types.StructField{}
+	tc.structs['C.BOOL'] = []types.StructField{}
+
+	g.collect_cache_native_c_symbols('// typedef int CommentOnly;\n"typedef int StringOnly;";\nint f(int UnrelatedOpaque);\ntypedef struct HeaderTag { int field_name; } HeaderAlias;\nenum HeaderEnum { HEADER_ENUM_VALUE };\ntypedef int HeaderScalar, HeaderOther;')
+
+	assert g.cache_native_c_symbols['HeaderTag']
+	assert g.cache_native_c_symbols['HeaderAlias']
+	assert g.cache_native_c_symbols['HeaderEnum']
+	assert g.cache_native_c_symbols['HeaderScalar']
+	assert g.cache_native_c_symbols['HeaderOther']
+	assert !g.cache_native_c_symbols['CommentOnly']
+	assert !g.cache_native_c_symbols['StringOnly']
+	assert !g.cache_native_c_symbols['UnrelatedOpaque']
+	assert g.cache_native_c_symbols['HEADER_ENUM_VALUE']
+	assert !g.cache_native_c_symbols['field_name']
+	assert g.skip_builtin_struct('C.HeaderScalar')
+	assert !g.skip_builtin_struct('C.UnrelatedOpaque')
+	g.inlined_c_typedef_names['BOOL'] = true
+	assert g.skip_builtin_struct('C.BOOL')
+}
+
+fn test_collect_cache_native_c_symbols_records_sokol_enum_constants() {
+	mut g := FlatGen.new()
+	header := os.read_file(os.join_path(@VEXEROOT, 'thirdparty', 'sokol', 'sokol_app.h')) or {
+		panic(err)
+	}
+	g.collect_cache_native_c_symbols(header)
+	assert g.cache_native_c_symbols['SAPP_MOUSECURSOR_DEFAULT']
+}
+
+fn test_voidptr_method_value_arg_does_not_panic_for_alias_to_voidptr() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	alias_to_voidptr := types.Type(types.Alias{
+		name: 'Data'
+		base_type: types.Type(types.Pointer{
+			base_type: types.Type(types.void_)
+		})
+	})
+	assert !g.voidptr_method_value_arg(flat.empty_node, alias_to_voidptr)
+}
+
+fn test_same_named_user_context_does_not_route_to_embedded_framework_context() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.cur_module = 'veb'
+	tc.structs['main.Context'] = [
+		types.StructField{
+			name: 'veb.Context'
+			typ: types.Type(types.Struct{
+				name: 'veb.Context'
+			})
+			is_embed: true
+		},
+	]
+
+	base := types.Type(types.Struct{
+		name: 'main.Context'
+	})
+	expected := types.Type(types.Struct{
+		name: 'Context'
+	})
+	assert g.embedded_receiver_path_for_expected(base, expected) == none
+	assert g.emitted_method_belongs_to_receiver(base, 'before_request', 'Context__before_request')
+	assert !g.emitted_method_belongs_to_receiver(base, 'before_request', 'veb__Context__before_request')
+}
+
+fn test_array_receiver_method_is_not_reselected_as_generic() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.generic_method_candidates[generic_method_candidate_key('jsonrpc', 'encode_batch')] = [
+		GenericMethodCandidate{
+			name: 'jsonrpc.[]Request.encode_batch'
+			ret: types.Type(types.string_)
+		},
+	]
+
+	assert g.specialized_generic_method_name_for_call_with_arg_count(flat.empty_node, 'jsonrpc.[]Response.encode_batch', -1) == none
+}
+
 fn test_context_lookup_cache_tracks_source_file_imports() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -78,6 +270,24 @@ fn test_context_lookup_cache_tracks_source_file_imports() {
 	tc.cur_file = 'two.v'
 	assert g.import_alias_module('kind')? == 'second.token'
 	assert g.enum_selector_base_name('kind.Kind')? == 'second.token.Kind'
+}
+
+fn test_transformed_module_call_namespace_arguments() {
+	mut a := flat.FlatAst.new()
+	mut g := FlatGen.new()
+	g.a = &a
+	callee := a.add_val(.ident, 'net.flags.read')
+	for name in ['net.flags', 'flags', 'net.flags.flags', 'other.flags', 'lags', 'net.flagsxflags'] {
+		arg := a.add_val(.ident, name)
+		start := a.begin_children()
+		a.add_child(callee)
+		a.add_child(arg)
+		call := flat.Node{ kind: .call, children_start: start, children_count: 2 }
+		expected := if name in ['net.flags', 'flags', 'net.flags.flags'] { 2 } else { 1 }
+		assert g.target_module_call_arg_start('net.flags.read', call) == expected, name
+		a.nodes[int(arg)].kind = .string_literal
+		assert g.target_module_call_arg_start('net.flags.read', call) == 1
+	}
 }
 
 fn test_cgen_flattened_generic_receiver_short_variants() {
@@ -99,10 +309,10 @@ fn test_cgen_typeof_display_canonicalizes_fixed_array_generic_args() {
 	assert typeof_display_type_name('Box[int][3]') == '[3]Box[int]'
 	fixed_maps := types.Type(types.ArrayFixed{
 		elem_type: types.Type(types.Map{
-			key_type:   types.Type(types.String{})
+			key_type: types.Type(types.String{})
 			value_type: types.Type(types.int_)
 		})
-		len:       3
+		len: 3
 	})
 	assert typeof_display_resolved_type_name(fixed_maps) == '[3]map[string]int'
 }
@@ -129,6 +339,26 @@ fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
 	mut g := FlatGen.new()
 	g.tc = &tc
 	assert g.sum_type_index('tast.Value', 'b.tast.Target') == 0
+}
+
+fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut used := {
+		'main': true
+	}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.used_fns = &used
+	assert g.should_emit_fn_node_in_module_known(flat.Node{
+		kind: .fn_decl
+		value: 'FlatGen.sum_type_index'
+	}, 'c', 'interface.v', 'c__FlatGen__sum_type_index', false)
+	assert !g.should_emit_fn_node_in_module_known(flat.Node{
+		kind: .fn_decl
+		value: 'Transformer.sum_type_index'
+	}, 'transform', 'sum.v', 'transform__Transformer__sum_type_index', false)
 }
 
 fn test_typeof_type_index_fallback_uses_matching_sum_variant() {
@@ -169,21 +399,58 @@ fn test_guarded_preamble_externs_keep_explicit_declarations() {
 	g.c_directives << CDirective{
 		text: '#include <math.h>'
 	}
-	for name in ['accept', 'bind', 'chdir', 'execve', 'getuid', 'gmtime_r', 'ioctl', 'rmdir'] {
+	for name in ['accept', 'accept4', 'bind', 'chdir', 'execve', 'getuid', 'gmtime_r', 'ioctl',
+		'pthread_rwlockattr_destroy', 'pthread_sigmask', 'rmdir', 'sigtimedwait', 'syscall'] {
 		assert !g.should_emit_c_extern_decl(name)
 	}
 }
 
-fn test_preserved_system_include_declarations_are_header_specific() {
-	assert c_preserved_system_include_declared_fns('<stdio.h>').len == 0
-	assert c_preserved_system_include_declared_fns('<openssl/ssl.h>') == ['X509_free']
-	assert c_preserved_system_include_declared_fns('<openssl/x509.h>') == [
-		'X509_free',
-	]
-	assert c_preserved_system_include_declared_fns('<objc/message.h>') == [
-		'objc_msgSend',
-	]
-	assert c_preserved_system_include_struct_names('<poll.h>') == ['pollfd']
+fn test_preinclude_uses_system_libc_preamble() {
+	mut g := FlatGen.new()
+	g.preinclude_directives << '#include <X11/Xlib.h>'
+	assert g.c_directives_use_system_libc()
+}
+
+fn test_system_libc_preamble_identifies_glibc_before_manual_stdio_declarations() {
+	mut g := FlatGen.new()
+	g.c_directives << CDirective{
+		text: '#include <math.h>'
+	}
+	g.preamble()
+	preamble := g.sb.str()
+	features := preamble.index('#include <features.h>') or { -1 }
+	manual_stdio := preamble.index('// c_headers') or { -1 }
+	assert features >= 0
+	assert manual_stdio >= 0
+	assert features < manual_stdio
+}
+
+fn test_header_backed_c_declarations_skip_generated_prototypes() {
+	source := '/project/user.v'
+	header_source := '/project/bindings.c.v'
+
+	// A `fn C.` declaration in a file that includes a header is already declared by
+	// that header; a generated prototype would only conflict with it.
+	mut g := FlatGen.new()
+	g.note_c_include_directive('bindings', header_source)
+	assert !g.should_emit_c_extern_decl_from_file('mbedtls_ssl_write', header_source, 'bindings')
+
+	// A file that links a C source or object ships no header, so it keeps its
+	// prototype, and so does a module that only links a C library.
+	mut linked := FlatGen.new()
+	linked.note_c_flag_directive('bindings', header_source, '@VMODROOT/helper.o')
+	assert linked.should_emit_c_extern_decl_from_file('helper_fn', header_source, 'bindings')
+
+	mut lib_only := FlatGen.new()
+	lib_only.note_c_flag_directive('bindings', source, '-lfoo')
+	assert lib_only.should_emit_c_extern_decl_from_file('foo_open', source, 'bindings')
+	lib_only.note_c_include_directive('bindings', '/project/other.c.v')
+	assert !lib_only.should_emit_c_extern_decl_from_file('foo_open', source, 'bindings')
+
+	// Nothing links and nothing includes: the symbol has to come from somewhere else,
+	// so V3 stays out of the way, exactly like the V1 backend.
+	mut bare := FlatGen.new()
+	assert !bare.should_emit_c_extern_decl_from_file('unrelated_api', source, 'main')
 }
 
 fn test_apple_framework_include_does_not_match_x11() {
@@ -304,32 +571,91 @@ fn test_objective_c_header_detection() {
 	assert !c_header_text_needs_objective_c_for_target('#if !defined(FEATURE)\n@interface Disabled\n@end\n#endif\n', [
 		'-DFEATURE(x)=x',
 	], false, pref.host_target())
+	linux := pref.target_from('linux', 'amd64') or { panic(err) }
+	private_platform_header := '#if defined(__APPLE__)\n#define _LIB_MACOS 1\n#elif defined(__linux__)\n#define _LIB_LINUX 1\n#endif\n#if defined(_LIB_MACOS)\n@interface MacOnly\n@end\n#endif\n'
+	assert !c_header_text_needs_objective_c_for_target(private_platform_header, []string{}, false, linux)
+	assert c_header_text_needs_objective_c_for_target(private_platform_header, [
+		'-D_LIB_MACOS=1',
+	], false, linux)
 	assert c_header_text_needs_objective_c('#if 0\n@interface Disabled\n@end\n#else\n@interface Enabled\n@end\n#endif\n')
 	assert c_header_text_needs_objective_c('#ifdef COMPILER_MACRO\n@interface PossiblyEnabled\n@end\n#endif\n')
-	imports :=
-		c_header_objective_c_framework_imports('#ifdef _WIN32\n#include <windows.h>\n#endif\n#import <Cocoa/Cocoa.h>\n#include <QuartzCore/QuartzCore.h>\n')
-	assert imports == '#import <Cocoa/Cocoa.h>\n#include <QuartzCore/QuartzCore.h>'
-	guarded :=
-		c_header_objective_c_framework_imports('#ifdef __APPLE__\n#include <Cocoa/Cocoa.h>\n#else\n#include <X11/Xlib.h>\n#endif\n')
-	assert guarded == '#ifdef __APPLE__\n#include <Cocoa/Cocoa.h>\n#endif'
 }
 
-fn test_large_transitive_header_tree_is_preserved() {
-	root := os.join_path(os.temp_dir(), 'v3_large_transitive_header_tree_test')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	padding := 'x'.repeat(140_000)
-	os.write_file(os.join_path(root, 'a.h'), '/*${padding}*/\n') or { panic(err) }
-	os.write_file(os.join_path(root, 'b.h'), '/*${padding}*/\n') or { panic(err) }
-	one_path := os.join_path(root, 'one.h')
-	two_path := os.join_path(root, 'two.h')
-	os.write_file(one_path, '#include "a.h"\n') or { panic(err) }
-	os.write_file(two_path, '#include "a.h"\n#include "b.h"\n') or { panic(err) }
-	mut one_size := CHeaderTreeSize{}
-	assert !c_header_tree_exceeds_inline_limit(one_path, '', []string{}, mut one_size)
-	mut two_size := CHeaderTreeSize{}
-	assert c_header_tree_exceeds_inline_limit(two_path, '', []string{}, mut two_size)
+fn test_sokol_header_does_not_select_objective_c_on_linux() {
+	linux := pref.target_from('linux', 'amd64') or { panic(err) }
+	header := os.join_path(@VEXEROOT, 'thirdparty', 'sokol', 'sokol_app.h')
+	assert !cache_native_input_path_needs_objective_c(header, [
+		'-DSOKOL_GLCORE',
+		'-USOKOL_D3D11',
+		'-USOKOL_GLES3',
+		'-USOKOL_METAL',
+		'-USOKOL_VULKAN',
+		'-USOKOL_WGPU',
+		'-DSOKOL_NO_ENTRY',
+	], false, linux)
+}
+
+fn test_specialized_generic_abi_name_does_not_classify_array_receivers() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	assert g.name_uses_specialized_generic_abi('pick[int]')
+	assert !g.name_uses_specialized_generic_abi('cli.[]Flag.get_int')
+	assert !g.name_uses_specialized_generic_abi('[]Flag.get_int')
+}
+
+// test_scratch_lookup_caches_keep_batch_entries_out_of_the_generator covers the
+// crash where a `forward_decls` batch memoized a struct C type into the master's
+// cache: both the key and the map node were owned by the batch's scratch arena,
+// so the next batch's lookup compared against freed memory.
+fn test_scratch_lookup_caches_keep_batch_entries_out_of_the_generator() {
+	mut g := FlatGen.new()
+	own_unique_struct_ct_cache := g.unique_struct_ct_cache
+	own_struct_cname_cache := g.struct_cname_cache
+	own_generic_app_cache := g.generic_app_cache
+	own_import_type_cache := g.import_type_cache
+	saved := g.begin_scratch_lookup_caches()
+	assert voidptr(g.unique_struct_ct_cache) != voidptr(own_unique_struct_ct_cache)
+	assert voidptr(g.struct_cname_cache) != voidptr(own_struct_cname_cache)
+	assert voidptr(g.generic_app_cache) != voidptr(own_generic_app_cache)
+	assert voidptr(g.import_type_cache) != voidptr(own_import_type_cache)
+	// The frozen entries stay readable through the overlay's base.
+	assert voidptr(g.generic_app_cache.base) == voidptr(own_generic_app_cache)
+	g.unique_struct_ct_cache.put('Batch', 'main__Batch')
+	g.param_types_cache['batch'] = [types.Type(types.void_)]
+	g.import_type_cache.unqualified_texts['Batch'] = 'main.Batch'
+	mut batch_file := g.import_type_cache.for_file('batch.v')
+	batch_file.texts['Batch'] = 'main.Batch'
+	batch_file.parsed['Batch'] = types.Type(types.void_)
+	g.restore_scratch_lookup_caches(saved)
+	assert voidptr(g.unique_struct_ct_cache) == voidptr(own_unique_struct_ct_cache)
+	assert voidptr(g.struct_cname_cache) == voidptr(own_struct_cname_cache)
+	assert voidptr(g.generic_app_cache) == voidptr(own_generic_app_cache)
+	assert voidptr(g.import_type_cache) == voidptr(own_import_type_cache)
+	assert g.unique_struct_ct_cache.get('Batch') == none
+	assert 'batch' !in g.param_types_cache
+	// The per-file child cache the batch created is dropped with it.
+	assert g.import_type_cache.unqualified_texts.len == 0
+	assert g.import_type_cache.by_file.len == 0
+	assert isnil(g.import_type_cache.last)
+}
+
+// test_scratch_lookup_caches_leave_disabled_caches_disabled keeps the swap about
+// where entries are written, never about whether a generator memoizes at all.
+fn test_scratch_lookup_caches_leave_disabled_caches_disabled() {
+	mut g := FlatGen.new()
+	g.import_type_cache = unsafe { nil }
+	assert isnil(g.local_typedef_shadow_facts)
+	assert isnil(g.struct_decl_pref_cache)
+	saved := g.begin_scratch_lookup_caches()
+	assert isnil(g.local_typedef_shadow_facts)
+	assert isnil(g.struct_decl_pref_cache)
+	assert isnil(g.import_type_cache)
+	assert !isnil(g.mut_recv_facts)
+	g.restore_scratch_lookup_caches(saved)
+	assert isnil(g.local_typedef_shadow_facts)
+	assert isnil(g.struct_decl_pref_cache)
+	assert isnil(g.import_type_cache)
 }

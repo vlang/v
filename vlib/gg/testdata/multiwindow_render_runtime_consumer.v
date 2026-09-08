@@ -142,7 +142,38 @@ fn consume_window_sgl(mut sgl_context gg.WindowSglContext) ! {
 }
 
 fn consume_native_window(mut lease gg.NativeWindowLease) ! {
-	_ = lease
+	lease.with_win32(fn (handle voidptr) ! {
+		_ = handle
+	})!
+	lease.with_appkit(fn (window voidptr) ! {
+		_ = window
+	})!
+	lease.with_x11(fn (display voidptr, window u64) ! {
+		_ = display
+		_ = window
+	})!
+	lease.with_wayland(fn (display voidptr, surface voidptr) ! {
+		_ = display
+		_ = surface
+	})!
+}
+
+fn consume_win32_native_window(handle voidptr) ! {
+	_ = handle
+}
+
+fn consume_appkit_native_window(window voidptr) ! {
+	_ = window
+}
+
+fn consume_x11_native_window(display voidptr, window u64) ! {
+	_ = display
+	_ = window
+}
+
+fn consume_wayland_native_window(display voidptr, surface voidptr) ! {
+	_ = display
+	_ = surface
 }
 
 fn on_window_init(mut context gg.WindowInitContext) ! {
@@ -248,6 +279,11 @@ fn on_app_input(event gg.WindowInputEvent, mut app gg.App) ! {
 	_ = app.capabilities()
 }
 
+fn on_window_service(event gg.WindowServiceEvent, mut app gg.App) ! {
+	_ = event
+	_ = app.capabilities()
+}
+
 fn consume_app_surface(mut app gg.App, window gg.WindowId) ! {
 	_ = window.str()
 	app.set_window_title(window, 'compile consumer')!
@@ -262,6 +298,31 @@ fn consume_app_surface(mut app gg.App, window gg.WindowId) ! {
 	_ = app.capabilities()
 	_ = app.drain_events()!
 	_ = app.drain_input_events()!
+	_ = app.window_state(window)!
+	monitors := app.monitor_ids()!
+	if monitors.len > 0 {
+		_ = app.monitor_info(monitors[0])!
+	}
+	_ = app.window_operation_capability(window, .native_borrow)!
+	_ = app.supports_window_cursor(window, .text)!
+	app.with_native_window(window, consume_native_window)!
+	app.show_window(window)!
+	app.hide_window(window)!
+	app.request_window_focus(window)!
+	app.raise_window(window)!
+	app.set_window_position(window, 1, 2)!
+	app.minimize_window(window)!
+	app.maximize_window(window)!
+	app.restore_window(window)!
+	app.set_window_fullscreen(window, true)!
+	_ = app.request_clipboard_text(window)!
+	_ = app.set_clipboard_text(window, 'text')!
+	_ = app.request_portal_parent(window)!
+	app.release_portal_parent(gg.PortalParentLeaseId{})!
+	app.set_window_mouse_lock(window, true)!
+	app.set_window_titlebar_appearance(window, .system)!
+	_ = app.drain_window_service_events()!
+	_ = app.drain_window_queued_events()!
 	_ = app.poll_events()!
 	app.post(on_app_job)!
 	app.try_post(on_app_job)!
@@ -281,6 +342,7 @@ fn consume_app_surface(mut app gg.App, window gg.WindowId) ! {
 		app_resource_frame_fn:   on_app_resource_frame
 		app_resource_cleanup_fn: on_app_resource_cleanup
 		readback_fn:             on_readback
+		window_service_fn:       on_window_service
 		max_pending_jobs:        1
 	})!
 	app.destroy_window(window)!
@@ -362,6 +424,15 @@ fn main() {
 	_ = gg.WindowReadbackStatus.ready
 	_ = gg.WindowReadbackStatus.cancelled
 	_ = gg.WindowReadbackStatus.failed
+	_ = gg.WindowSupportLevel.unsupported
+	_ = gg.WindowObservedBool.unknown
+	_ = gg.WindowMappingState.unknown
+	_ = gg.WindowVisibilityState.unknown
+	_ = gg.WindowOperation.native_borrow
+	_ = gg.WindowServiceEventKind.state
+	_ = gg.WindowServiceStatus.ready
+	_ = gg.WindowTitlebarAppearance.system
+	_ = gg.WindowQueuedEventKind.lifecycle
 	_ = gg.AppConfig{
 		backend:          .mock
 		queue_size:       1
@@ -558,6 +629,21 @@ fn main() {
 		pixels_rgba8:    [u8(0), 0, 0, 0]
 		error:           ''
 	}
+	_ = gg.WindowOperationCapability{}
+	_ = gg.WindowMonitorId{}
+	_ = gg.WindowPosition{}
+	_ = gg.WindowRect{}
+	_ = gg.WindowKnownRect{}
+	_ = gg.WindowKnownScale{}
+	_ = gg.WindowMonitorInfo{}
+	_ = gg.WindowState{}
+	_ = gg.ClipboardRequestId{}
+	_ = gg.PortalParentRequestId{}
+	_ = gg.PortalParentLeaseId{}
+	_ = gg.ClipboardResult{}
+	_ = gg.PortalParentResult{}
+	_ = gg.WindowServiceEvent{}
+	_ = gg.WindowQueuedEvent{}
 	_ = gg.NativeWindowLease{}
 	_ = gg.AppJobFn(on_app_job)
 	_ = gg.AppFrameFn(on_legacy_app_frame)
@@ -575,6 +661,11 @@ fn main() {
 	_ = gg.WindowPassFn(consume_window_pass)
 	_ = gg.WindowSglFn(consume_window_sgl)
 	_ = gg.NativeWindowBorrowFn(consume_native_window)
+	_ = gg.Win32NativeWindowFn(consume_win32_native_window)
+	_ = gg.AppKitNativeWindowFn(consume_appkit_native_window)
+	_ = gg.X11NativeWindowFn(consume_x11_native_window)
+	_ = gg.WaylandNativeWindowFn(consume_wayland_native_window)
+	_ = gg.WindowServiceFn(on_window_service)
 	_ = logical_rect
 	_ = consume_app_surface
 	_ = consume_facade_constructors

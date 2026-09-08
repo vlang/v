@@ -108,6 +108,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 
 	fn (mut backend AppKitBackend) destroy_renderer_anchor() ! {
 		$if darwin {
+			backend.invalidate_readback_hook_generation()
 			if backend.render_health.blocks_graphics() {
 				if !backend.release_renderer_lifetime() {
 					return error(err_render_anchor_failed)

@@ -4,6 +4,7 @@ import os
 import os.cmdline
 import testing
 import v.pref
+import v.util.vflags
 
 struct Context {
 mut:
@@ -33,8 +34,19 @@ fn main() {
 	}
 	backend_pos := args_before.index('-b')
 	backend := if backend_pos == -1 { '.c' } else { args_before[backend_pos + 1] }
+	requested_vflags := os.getenv('VFLAGS')
+	mut requested_args := vflags.tokenize_to_args(requested_vflags)
+	requested_args << args_before
+	strict_v3 := '-new-compiler' in requested_args && '-old-compiler' !in requested_args
+	mut session_vargs := args_before.join(' ')
+	if strict_v3 {
+		// Apply strict V3 flags to each top-level test compilation without leaking
+		// compiler-only flags into test binaries and the tools they launch.
+		session_vargs = '${requested_vflags} ${session_vargs}'
+		os.unsetenv('VFLAGS')
+	}
 
-	mut ts := testing.new_test_session(args_before.join(' '), true)
+	mut ts := testing.new_test_session(session_vargs, true)
 	ts.exec_mode = .compile_and_run
 	ts.fail_fast = ctx.fail_fast
 	for targ in args_after {
@@ -66,6 +78,13 @@ fn main() {
 			exit(1)
 		}
 	}
+	if strict_v3 {
+		for file in ts.files {
+			if file.ends_with('.js.v') {
+				ts.skip_files << os.real_path(file)
+			}
+		}
+	}
 	ts.session_start('Testing...')
 	ts.test()
 	ts.session_stop('all V _test.v files')
@@ -86,7 +105,7 @@ fn show_usage() {
 	println('')
 }
 
-pub fn (mut ctx Context) should_test_dir(path string, backend string) ([]string, []string) { // return is (files, skip_files)
+pub fn (ctx &Context) should_test_dir(path string, backend string) ([]string, []string) { // return is (files, skip_files)
 	mut files := os.ls(path) or { return []string{}, []string{} }
 	mut local_path_separator := os.path_separator
 	if path.ends_with(os.path_separator) {
@@ -128,7 +147,7 @@ enum ShouldTestStatus {
 	ignore // just ignore the file, so it will not be printed at all in the list of tests
 }
 
-fn (mut ctx Context) should_test(path string, backend string) ShouldTestStatus {
+fn (ctx &Context) should_test(path string, backend string) ShouldTestStatus {
 	if path.ends_with('_test.v') {
 		return ctx.should_test_when_it_contains_matching_fns(path, backend)
 	}
@@ -171,7 +190,7 @@ fn (mut ctx Context) should_test(path string, backend string) ShouldTestStatus {
 	return .ignore
 }
 
-fn (mut ctx Context) should_test_when_it_contains_matching_fns(path string, _backend string) ShouldTestStatus {
+fn (ctx &Context) should_test_when_it_contains_matching_fns(path string, _backend string) ShouldTestStatus {
 	if ctx.run_only.len == 0 {
 		// no filters set, so just compile and test
 		return .test

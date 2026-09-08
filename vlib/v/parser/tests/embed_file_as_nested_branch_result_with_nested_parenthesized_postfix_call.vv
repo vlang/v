@@ -1,0 +1,24 @@
+fn kind() int {
+	return 0
+}
+
+fn main() {
+	mut sink := 0
+	ok := sink == 0
+	fallback := $embed_file(@FILE)
+	((if ok {
+		$embed_file(@FILE)
+	} else {
+		fallback
+	}).to_string())
+
+	((match kind() {
+		0 {
+			$embed_file(@FILE)
+		}
+		else {
+			fallback
+		}
+	}).to_string())
+	sink = missing_symbol
+}

@@ -93,7 +93,7 @@ pub fn parse_handshake_message(buf []u8) !(HandshakeMessage, int) {
 		return error('quic: truncated handshake message body: need ${total} bytes, have ${buf.len}')
 	}
 	return HandshakeMessage{
-		typ:  typ
+		typ: typ
 		body: buf[4..total].clone()
 	}, total
 }

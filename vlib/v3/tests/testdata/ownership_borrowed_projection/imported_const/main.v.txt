@@ -1,0 +1,23 @@
+module main
+
+import cachemod
+
+fn drop_imported_const_projection() {
+	values := cachemod.cache.values
+	assert values[0] == 'constant'
+}
+
+fn main() {
+	cache := cachemod.Payload{
+		values: ['local']
+	}
+	dst := cache
+	assert dst.values[0] == 'local'
+
+	mut imported := cachemod.cache
+	imported.values[0] = 'selector copy'
+	assert cachemod.cache.values[0] == 'constant'
+
+	drop_imported_const_projection()
+	assert cachemod.cache.values[0] == 'constant'
+}

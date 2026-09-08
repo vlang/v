@@ -160,6 +160,6 @@ fn (mut app App) complete_event_dispatch_current_locked() ! {
 	if state != .in_flight {
 		return error(err_event_delivery_stale)
 	}
-	app.event_deliveries.delete(event.delivery_token)
+	app.complete_queued_delivery_locked(event)
 	app.event_dispatch_index++
 }

@@ -4,7 +4,9 @@ import os
 
 fn execute_without_vflags(cmd string) os.Result {
 	old_vflags := os.getenv_opt('VFLAGS')
-	os.unsetenv('VFLAGS')
+	// These assertions cover flags emitted by the established C builder. Linux
+	// now defaults to V3, so select V1 explicitly after isolating ambient flags.
+	os.setenv('VFLAGS', '-old-compiler', true)
 	res := os.execute(cmd)
 	if vflags := old_vflags {
 		os.setenv('VFLAGS', vflags, true)
