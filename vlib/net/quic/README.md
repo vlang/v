@@ -74,6 +74,10 @@ for either. (An earlier draft of this file added a separate
 as unused dead code once the mbedTLS path above was confirmed to cover the
 same need.)
 
+The server also honors a client's `signature_algorithms_cert` list when
+validating its configured certificate chain, and falls back to
+`signature_algorithms` only when the certificate-specific extension is absent.
+
 ## mbedTLS X.509-only usage (no `mbedtls_ssl_context`)
 
 `net.quic` calls `mbedtls_x509_crt_parse`/`_verify` and `mbedtls_pk_parse_key`/

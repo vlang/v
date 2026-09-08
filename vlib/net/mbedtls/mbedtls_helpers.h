@@ -19,6 +19,58 @@ static inline mbedtls_pk_context *v_mbedtls_x509_crt_get_pk(mbedtls_x509_crt *cr
 	return &crt->pk;
 }
 
+/* These accessors keep mbedtls_x509_crt's MBEDTLS_PRIVATE-wrapped signature
+ * fields opaque to V while allowing the standalone QUIC TLS stack to compare
+ * a configured certificate chain with ClientHello signature scheme offers.
+ */
+static inline int v_mbedtls_x509_crt_get_sig_md(mbedtls_x509_crt *crt)
+{
+	return (int)crt->MBEDTLS_PRIVATE(sig_md);
+}
+
+static inline int v_mbedtls_x509_crt_get_sig_pk(mbedtls_x509_crt *crt)
+{
+	return (int)crt->MBEDTLS_PRIVATE(sig_pk);
+}
+
+static inline int v_mbedtls_x509_crt_get_sig_pss_mgf1_md(mbedtls_x509_crt *crt)
+{
+	if (crt->MBEDTLS_PRIVATE(sig_pk) != MBEDTLS_PK_RSASSA_PSS ||
+		crt->MBEDTLS_PRIVATE(sig_opts) == NULL) {
+		return -1;
+	}
+	mbedtls_pk_rsassa_pss_options *opts =
+		(mbedtls_pk_rsassa_pss_options *)crt->MBEDTLS_PRIVATE(sig_opts);
+	return (int)opts->mgf1_hash_id;
+}
+
+static inline int v_mbedtls_x509_crt_get_sig_pss_salt_len(mbedtls_x509_crt *crt)
+{
+	if (crt->MBEDTLS_PRIVATE(sig_pk) != MBEDTLS_PK_RSASSA_PSS ||
+		crt->MBEDTLS_PRIVATE(sig_opts) == NULL) {
+		return -1;
+	}
+	mbedtls_pk_rsassa_pss_options *opts =
+		(mbedtls_pk_rsassa_pss_options *)crt->MBEDTLS_PRIVATE(sig_opts);
+	return opts->expected_salt_len;
+}
+
+static inline int v_mbedtls_x509_crt_get_public_key_type(mbedtls_x509_crt *crt)
+{
+	return (int)mbedtls_pk_get_type(&crt->pk);
+}
+
+static inline mbedtls_x509_crt *v_mbedtls_x509_crt_get_next(mbedtls_x509_crt *crt)
+{
+	return crt->next;
+}
+
+static inline int v_mbedtls_x509_crt_is_self_issued(mbedtls_x509_crt *crt)
+{
+	return crt->issuer_raw.len == crt->subject_raw.len &&
+		memcmp(crt->issuer_raw.p, crt->subject_raw.p, crt->issuer_raw.len) == 0;
+}
+
 /* v_mbedtls_pk_ec_group_id returns the EC group ID of an EC public-key
  * context (MBEDTLS_ECP_DP_NONE if pk is not an EC key), so a caller can
  * confirm a certificate's ACTUAL curve matches what a TLS 1.3
@@ -49,6 +101,11 @@ static inline int v_mbedtls_pk_ec_group_id(mbedtls_pk_context *pk)
 		return (int)MBEDTLS_ECP_DP_NONE;
 	}
 	return (int)mbedtls_ecp_keypair_get_group_id(kp);
+}
+
+static inline int v_mbedtls_x509_crt_get_public_key_curve_id(mbedtls_x509_crt *crt)
+{
+	return v_mbedtls_pk_ec_group_id(&crt->pk);
 }
 
 /* v_mbedtls_check_server_cert_usage verifies the leaf certificate's

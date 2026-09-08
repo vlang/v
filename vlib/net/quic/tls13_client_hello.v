@@ -475,15 +475,26 @@ fn parse_supported_groups_extension_client(data []u8) ![]u16 {
 // shared generic helper, matching this module's established
 // one-function-per-RFC-field convention.
 fn parse_signature_algorithms_extension_client(data []u8) ![]u16 {
+	return parse_signature_scheme_list_client(data, 'signature_algorithms')
+}
+
+// parse_signature_algorithms_cert_extension_client parses extension 50's
+// byte-identical SignatureScheme vector while retaining its distinct name in
+// malformed-ClientHello diagnostics.
+fn parse_signature_algorithms_cert_extension_client(data []u8) ![]u16 {
+	return parse_signature_scheme_list_client(data, 'signature_algorithms_cert')
+}
+
+fn parse_signature_scheme_list_client(data []u8, extension_name string) ![]u16 {
 	if data.len < 2 {
-		return error('quic: signature_algorithms (client) truncated: need at least 2 bytes, have ${data.len}')
+		return error('quic: ${extension_name} (client) truncated: need at least 2 bytes, have ${data.len}')
 	}
 	list_len := int((u32(data[0]) << 8) | u32(data[1]))
 	if 2 + list_len != data.len {
-		return error('quic: signature_algorithms (client) list length ${list_len} does not match remaining data ${data.len - 2}')
+		return error('quic: ${extension_name} (client) list length ${list_len} does not match remaining data ${data.len - 2}')
 	}
 	if list_len == 0 || list_len % 2 != 0 {
-		return error('quic: signature_algorithms (client) list length ${list_len} must be a non-zero, even number of bytes')
+		return error('quic: ${extension_name} (client) list length ${list_len} must be a non-zero, even number of bytes')
 	}
 	mut schemes := []u16{}
 	mut cursor := 2

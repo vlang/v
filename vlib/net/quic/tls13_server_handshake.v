@@ -217,6 +217,14 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 	if sig_scheme_ecdsa_secp256r1_sha256 !in offered_sig_algs {
 		return handshake_error(.handshake_failure, 'quic: ClientHello signature_algorithms does not include ecdsa_secp256r1_sha256, the only CertificateVerify algorithm this server can sign with')
 	}
+	mut offered_cert_sig_algs := offered_sig_algs.clone()
+	mut cert_sig_offer_name := 'signature_algorithms (fallback because signature_algorithms_cert is absent)'
+	if sac_ext := find_extension(parsed.extensions, ext_signature_algorithms_cert) {
+		offered_cert_sig_algs = parse_signature_algorithms_cert_extension_client(sac_ext.data) or {
+			return handshake_error(.decode_error, err.msg())
+		}
+		cert_sig_offer_name = 'signature_algorithms_cert'
+	}
 
 	alpn_ext := find_extension(parsed.extensions, ext_alpn) or {
 		return handshake_error(.no_application_protocol, 'quic: ClientHello missing mandatory alpn extension')
@@ -269,6 +277,19 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 		acknowledge_server_name = parse_server_name_extension_client(server_name_ext.data) or {
 			return handshake_error(.decode_error, err.msg())
 		}
+	}
+
+	// RFC 8446 §4.2.3 gives signature_algorithms_cert precedence for
+	// signatures in the Certificate chain and falls back to
+	// signature_algorithms only when extension 50 is absent. This server has
+	// one configured chain rather than a set to select among, so an
+	// incompatible chain ends the handshake before any flight or ECDHE resource
+	// is constructed.
+	validate_certificate_chain_signature_algorithms(params.certificate_chain, offered_cert_sig_algs, cert_sig_offer_name) or {
+		return handshake_error(.handshake_failure, 'quic: configured certificate chain is incompatible with the ClientHello: ${err.msg()}')
+	}
+	certificate := encode_certificate(params.certificate_chain) or {
+		return handshake_error(.handshake_failure, 'quic: failed to build Certificate: ${err.msg()}')
 	}
 
 	// Every peer-input validation above has passed -- only internal
@@ -330,10 +351,6 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 	}
 	transcript << encrypted_extensions
 
-	certificate := encode_certificate(params.certificate_chain) or {
-		ecdhe_private.free()
-		return handshake_error(.handshake_failure, 'quic: failed to build Certificate: ${err.msg()}')
-	}
 	transcript << certificate
 	// Transcript-Hash(ClientHello...Certificate) -- RFC 8446 §4.4.3's
 	// "Transcript-Hash(Handshake Context, Certificate)" input to

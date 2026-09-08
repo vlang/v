@@ -151,8 +151,10 @@ fn test_h3_server_suppresses_forbidden_response_content() {
 fn test_h3_server_rejects_informational_terminal_response() {
 	assert h3_final_response_status(0)! == 200
 	assert h3_final_response_status(204)! == 204
-	h3_final_response_status(103) or { return }
-	assert false, 'expected an informational terminal response to be rejected'
+	for invalid in [-1, 99, 103, 600, 1000] {
+		h3_final_response_status(invalid) or { continue }
+		assert false, 'expected invalid terminal response status ${invalid} to be rejected'
+	}
 }
 
 // H3ServerTestEchoHandler answers every request with a fixed 200 response

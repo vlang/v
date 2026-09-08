@@ -216,6 +216,36 @@ fn test_h3_build_request_uses_host_when_authority_is_omitted() {
 	assert req.host == 'example.com'
 }
 
+fn test_h3_build_request_canonicalizes_host_to_authority() {
+	st := &H3ServerStream{
+		headers: [
+			quic.QpackFieldLine{
+				name: ':method'
+				value: 'GET'
+			},
+			quic.QpackFieldLine{
+				name: ':path'
+				value: '/'
+			},
+			quic.QpackFieldLine{
+				name: ':scheme'
+				value: 'https'
+			},
+			quic.QpackFieldLine{
+				name: ':authority'
+				value: 'authority.example'
+			},
+			quic.QpackFieldLine{
+				name: 'host'
+				value: 'conflicting.example'
+			},
+		]
+	}
+	req := h3_build_request(st)!
+	assert req.host == 'authority.example'
+	assert req.header.get(.host)? == 'authority.example'
+}
+
 fn test_h3_validate_request_pseudo_rejects_missing_authority_and_host() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{

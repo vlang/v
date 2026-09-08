@@ -699,8 +699,10 @@ fn h3_build_request(st &H3ServerStream) !Request {
 		request_host = req.header.get(.host) or {
 			return error('h3 server: request omits both :authority and host')
 		}
-	} else if !req.header.contains(.host) {
-		req.header.add(.host, authority)
+	} else {
+		// :authority is the authoritative request-target value. Keep the
+		// Header view in sync so handlers cannot route on conflicting hosts.
+		req.header.set_custom('host', authority)!
 	}
 	req.url = path
 	req.data = st.body.bytestr()
@@ -871,6 +873,9 @@ fn h3_response_allows_body(method Method, status int) bool {
 // follow with the mandatory final response.
 fn h3_final_response_status(status_code int) !int {
 	status := if status_code == 0 { 200 } else { status_code }
+	if status < 100 || status > 599 {
+		return error('invalid response status ${status}')
+	}
 	if status >= 100 && status < 200 {
 		return error('informational status ${status} cannot be a final response')
 	}

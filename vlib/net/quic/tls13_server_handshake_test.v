@@ -3,6 +3,17 @@ module quic
 
 import crypto.ecdsa
 import crypto.sha256
+import encoding.base64
+import net.mbedtls
+
+// A compact real P-256 leaf/root chain used to exercise certificate-signature
+// selection. The leaf is ECDSA-with-SHA256 signed by the root; the root is
+// terminal and self-issued, so RFC 8446 permits treating it as the trust
+// anchor. These tests stop before client-side CertificateVerify processing,
+// so their independently generated signing key does not need to match this
+// chain; accept_test.v covers a fully matching end-to-end identity.
+const server_handshake_test_leaf_cert_der_base64 = 'MIIBITCBxwIJAPszZeh+2b2QMAoGCCqGSM49BAMCMBsxGTAXBgNVBAMMEFYtUVVJQy10ZXN0LXJvb3QwIBcNMjYwOTA4MDcyNjQ2WhgPMjEyNjA4MTUwNzI2NDZaMBQxEjAQBgNVBAMMCWxvY2FsaG9zdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABPxSk5CETDEek0LCNgKYasy38K0QOL3d3u8oTqH92OABcJA2MkOiaWnuzaqUT0vBEHZD9gUPp+KvYvahkKN31REwCgYIKoZIzj0EAwIDSQAwRgIhAKXsIUeaaJ9RZ51sVA73vFB6CkvMQHwhHJ3QbzERvmV6AiEA5ru++hbk4HbJbVs/pnZ3H7OZXP/WBlHx0j8pKJ4Hjpg='
+const server_handshake_test_root_cert_der_base64 = 'MIIBJjCBzgIJAN+uQ78XPk1wMAoGCCqGSM49BAMCMBsxGTAXBgNVBAMMEFYtUVVJQy10ZXN0LXJvb3QwIBcNMjYwOTA4MDcyNjI3WhgPMjEyNjA4MTUwNzI2MjdaMBsxGTAXBgNVBAMMEFYtUVVJQy10ZXN0LXJvb3QwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASlxkqBRtZT4ny1AEo2YVfJ1K+ut2UGcV302R9oOEi3GE57ZHPYS2M/gvhxgp2mlvDCG5Ri4SZC8HDQWJZcpeYeMAoGCCqGSM49BAMCA0cAMEQCIGH7kvcAlEu3bIl6o5oJ5CICOPgETS9JEwGQpcYTe/QUAiBTd51W5yceV7CiBsTCx9hiLk/GJbTHJaE54D46q3RlVg=='
 
 // server_handshake_test_client_params builds a valid, deterministic
 // ClientHandshakeParams -- the exact same shape a real client would send,
@@ -34,7 +45,10 @@ fn server_handshake_test_server_params() !ServerHandshakeParams {
 		supported_alpn_protocols: ['h3']
 		certificate_chain: [
 			CertificateEntry{
-				cert_data: []u8{len: 200, init: 0x30}
+				cert_data: base64.decode(server_handshake_test_leaf_cert_der_base64)
+			},
+			CertificateEntry{
+				cert_data: base64.decode(server_handshake_test_root_cert_der_base64)
 			},
 		]
 		signing_key: signing_key
@@ -93,6 +107,131 @@ fn build_test_client_hello_body_with_extensions(transport_parameters QuicTranspo
 	return body
 }
 
+fn server_handshake_test_signature_schemes_extension(typ u16, schemes []u16) ![]u8 {
+	mut data := []u8{cap: 2 + schemes.len * 2}
+	data << u8(schemes.len * 2 >> 8)
+	data << u8(schemes.len * 2)
+	for scheme in schemes {
+		data << u8(scheme >> 8)
+		data << u8(scheme)
+	}
+	return encode_extension(typ, data)
+}
+
+// server_handshake_test_valid_client_hello builds a ClientHello with a real
+// P-256 key share but leaves extension 50 under test control. The shared
+// low-level builder always includes signature_algorithms and does not include
+// signature_algorithms_cert by default, which also makes the fallback case
+// directly testable.
+fn server_handshake_test_valid_client_hello(extra_extensions []u8) ![]u8 {
+	client_public, client_private := ecdsa.generate_key(nid: .prime256v1)!
+	defer {
+		client_public.free()
+		client_private.free()
+	}
+	key_exchange := client_public.uncompressed_bytes()!
+	body := build_test_client_hello_body_with_extensions(QuicTransportParameters{
+		initial_source_connection_id: []u8{len: 8}
+	}, encode_supported_groups_extension()!, encode_key_share_extension(named_group_secp256r1, key_exchange)!, extra_extensions)!
+	return encode_handshake_message(.client_hello, body)!
+}
+
+fn test_server_handshake_honors_signature_algorithms_cert_for_the_chain() {
+	// signature_algorithms still offers ECDSA P-256 for CertificateVerify, but
+	// extension 50 deliberately narrows certificate signatures to RSA-PKCS1.
+	// The configured leaf is ECDSA-with-SHA256 and must therefore be rejected.
+	cert_offer := server_handshake_test_signature_schemes_extension(ext_signature_algorithms_cert, [
+		sig_scheme_rsa_pkcs1_sha256,
+	])!
+	client_hello := server_handshake_test_valid_client_hello(cert_offer)!
+	msg, _ := parse_handshake_message(client_hello)!
+	server_params := server_handshake_test_server_params()!
+	defer {
+		server_params.signing_key.free()
+	}
+	Tls13ServerHandshake.respond_to_client_hello(msg, client_hello, server_params) or {
+		assert err.code() == int(tls_alert_to_quic_error(.handshake_failure))
+		assert err.msg().contains('signature_algorithms_cert')
+		assert err.msg().contains('0x0403')
+		return
+	}
+	assert false, 'expected a certificate chain excluded by signature_algorithms_cert to be rejected'
+}
+
+fn test_server_handshake_rejects_malformed_signature_algorithms_cert() {
+	// Its declared one-byte vector is invalid because SignatureScheme values
+	// are exactly two bytes.
+	malformed_cert_offer := encode_extension(ext_signature_algorithms_cert, [u8(0), 1, 4])!
+	client_hello := server_handshake_test_valid_client_hello(malformed_cert_offer)!
+	msg, _ := parse_handshake_message(client_hello)!
+	server_params := server_handshake_test_server_params()!
+	defer {
+		server_params.signing_key.free()
+	}
+	Tls13ServerHandshake.respond_to_client_hello(msg, client_hello, server_params) or {
+		assert err.code() == int(tls_alert_to_quic_error(.decode_error))
+		assert err.msg().contains('signature_algorithms_cert')
+		return
+	}
+	assert false, 'expected malformed signature_algorithms_cert to be rejected'
+}
+
+fn test_certificate_signature_selection_handles_an_omitted_root() {
+	leaf_only := [CertificateEntry{
+		cert_data: base64.decode(server_handshake_test_leaf_cert_der_base64)
+	}]
+	validate_certificate_chain_signature_algorithms(leaf_only, [
+		sig_scheme_ecdsa_secp256r1_sha256,
+	], 'signature_algorithms_cert')!
+	validate_certificate_chain_signature_algorithms(leaf_only, [
+		sig_scheme_rsa_pkcs1_sha256,
+	], 'signature_algorithms_cert') or {
+		assert err.msg().contains('0x0403')
+		return
+	}
+	assert false, 'expected the omitted-root chain to require a compatible ECDSA digest scheme'
+}
+
+fn test_certificate_signature_selection_rejects_nonstandard_pss_parameters() {
+	base := mbedtls.CertificateSignatureInfo{
+		signature_public_key_type: mbedtls_pk_rsassa_pss
+		signature_digest_type: mbedtls_md_sha256
+		signature_pss_mgf1_digest: mbedtls_md_sha256
+		signature_pss_salt_len: 32
+		issuer_public_key_type: mbedtls_pk_rsa
+		issuer_known: true
+	}
+	assert certificate_signature_scheme(base)! == sig_scheme_rsa_pss_rsae_sha256
+	certificate_signature_scheme(mbedtls.CertificateSignatureInfo{
+		...base
+		signature_pss_mgf1_digest: mbedtls_md_sha384
+	}) or {
+		assert err.msg().contains('MGF1 digest')
+		certificate_signature_scheme(mbedtls.CertificateSignatureInfo{
+			...base
+			signature_pss_salt_len: 20
+		}) or {
+			assert err.msg().contains('salt length')
+			return
+		}
+	}
+	assert false, 'expected non-standard RSA-PSS certificate parameters to be rejected'
+}
+
+fn test_server_handshake_falls_back_to_signature_algorithms_for_the_chain() {
+	client_hello := server_handshake_test_valid_client_hello([]u8{})!
+	msg, _ := parse_handshake_message(client_hello)!
+	server_params := server_handshake_test_server_params()!
+	defer {
+		server_params.signing_key.free()
+	}
+	mut handshake, flight := Tls13ServerHandshake.respond_to_client_hello(msg, client_hello, server_params)!
+	defer {
+		handshake.free()
+	}
+	assert flight.handshake_messages.len > 0
+}
+
 fn test_server_handshake_rejects_malformed_server_name_extension() {
 	malformed_server_name := encode_extension(ext_server_name, []u8{})!
 	body := build_test_client_hello_body_with_extra_extensions(QuicTransportParameters{
@@ -123,13 +262,10 @@ fn test_server_handshake_rejects_malformed_server_name_extension() {
 // one matches a canned expected value in isolation.
 //
 // Certificate/CertificateVerify chain verification is NOT exercised here:
-// this repo has no EC self-signed certificate fixture (only an RSA one,
-// used by tls13_handshake_test.v's OWN fake-server tests, which
-// encode_certificate_verify can't sign with -- RSA-PSS signing isn't wired
-// up yet, see that function's own doc comment). This is the SAME documented
-// gap already stated on encode_certificate_verify's own tests
-// (tls13_certificate_test.v) and Phase 2c's x509_standalone_signature_test.v
-// before it -- not silently skipped, stated here for the same reason.
+// this test deliberately focuses on the key schedule and stops before calling
+// the client's process_certificate/process_certificate_verify methods. The
+// real EC fixture above keeps the server parameters valid; accept_test.v
+// covers the complete client-side chain and signature verification path.
 // What IS proven below: real ECDH agreement, Handshake secret agreement,
 // EncryptedExtensions/ALPN/transport-parameter cross-validation via the
 // client's own real process_encrypted_extensions, and both directions'

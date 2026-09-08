@@ -58,8 +58,7 @@ pub fn build_certificate_chain(der_certs [][]u8) !&C.mbedtls_x509_crt {
 		ret := C.mbedtls_x509_crt_parse(chain, der.data, usize(der.len))
 		if ret != 0 {
 			C.mbedtls_x509_crt_free(chain)
-			return error_with_code('net.mbedtls: failed to parse certificate ${i} of ${der_certs.len} in the chain, mbedtls ret: ${ret}',
-				ret)
+			return error_with_code('net.mbedtls: failed to parse certificate ${i} of ${der_certs.len} in the chain, mbedtls ret: ${ret}', ret)
 		}
 	}
 	return chain
@@ -72,6 +71,77 @@ pub fn build_certificate_chain(der_certs [][]u8) !&C.mbedtls_x509_crt {
 // build_certificate_chain call.
 pub fn free_certificate_chain(chain &C.mbedtls_x509_crt) {
 	C.mbedtls_x509_crt_free(chain)
+}
+
+fn C.v_mbedtls_x509_crt_get_sig_md(&C.mbedtls_x509_crt) int
+
+fn C.v_mbedtls_x509_crt_get_sig_pk(&C.mbedtls_x509_crt) int
+
+fn C.v_mbedtls_x509_crt_get_sig_pss_mgf1_md(&C.mbedtls_x509_crt) int
+
+fn C.v_mbedtls_x509_crt_get_sig_pss_salt_len(&C.mbedtls_x509_crt) int
+
+fn C.v_mbedtls_x509_crt_get_public_key_type(&C.mbedtls_x509_crt) int
+
+fn C.v_mbedtls_x509_crt_get_public_key_curve_id(&C.mbedtls_x509_crt) int
+
+fn C.v_mbedtls_x509_crt_get_next(&C.mbedtls_x509_crt) &C.mbedtls_x509_crt
+
+fn C.v_mbedtls_x509_crt_is_self_issued(&C.mbedtls_x509_crt) int
+
+// CertificateSignatureInfo describes one parsed X.509 certificate's signature
+// and, when the issuer is present in the chain (or the certificate is
+// self-issued), the issuer public key that created it. The integer algorithm
+// identifiers are the vendored mbedTLS enum values; callers should map only
+// combinations they explicitly support.
+pub struct CertificateSignatureInfo {
+pub:
+	signature_public_key_type  int
+	signature_digest_type      int
+	signature_pss_mgf1_digest  int
+	signature_pss_salt_len     int
+	issuer_public_key_type     int
+	issuer_public_key_curve_id int
+	issuer_known               bool
+	self_issued                bool
+}
+
+// certificate_signature_infos returns signature metadata for every
+// certificate in a parsed chain, in the same leaf-first order as the input.
+// A terminal non-self-issued certificate has `issuer_known == false`: its
+// issuer key was omitted, so an ECDSA curve or RSA-PSS SPKI type cannot be
+// inferred safely from that certificate's signature OID alone.
+pub fn certificate_signature_infos(chain &C.mbedtls_x509_crt) []CertificateSignatureInfo {
+	mut infos := []CertificateSignatureInfo{}
+	mut current := unsafe { chain }
+	for current != unsafe { nil } {
+		next := C.v_mbedtls_x509_crt_get_next(current)
+		self_issued := C.v_mbedtls_x509_crt_is_self_issued(current) == 1
+		mut issuer_public_key_type := -1
+		mut issuer_public_key_curve_id := -1
+		mut issuer_known := false
+		if next != unsafe { nil } {
+			issuer_public_key_type = C.v_mbedtls_x509_crt_get_public_key_type(next)
+			issuer_public_key_curve_id = C.v_mbedtls_x509_crt_get_public_key_curve_id(next)
+			issuer_known = true
+		} else if self_issued {
+			issuer_public_key_type = C.v_mbedtls_x509_crt_get_public_key_type(current)
+			issuer_public_key_curve_id = C.v_mbedtls_x509_crt_get_public_key_curve_id(current)
+			issuer_known = true
+		}
+		infos << CertificateSignatureInfo{
+			signature_public_key_type: C.v_mbedtls_x509_crt_get_sig_pk(current)
+			signature_digest_type: C.v_mbedtls_x509_crt_get_sig_md(current)
+			signature_pss_mgf1_digest: C.v_mbedtls_x509_crt_get_sig_pss_mgf1_md(current)
+			signature_pss_salt_len: C.v_mbedtls_x509_crt_get_sig_pss_salt_len(current)
+			issuer_public_key_type: issuer_public_key_type
+			issuer_public_key_curve_id: issuer_public_key_curve_id
+			issuer_known: issuer_known
+			self_issued: self_issued
+		}
+		current = unsafe { next }
+	}
+	return infos
 }
 
 // MbedtlsMdType names the subset of mbedtls_md_type_t (md.h) this module's
@@ -138,11 +208,9 @@ pub fn public_key_curve_is_secp256r1(pk &C.mbedtls_pk_context) bool {
 // explicitly accepts MBEDTLS_PK_ECDSA verification requests against an
 // MBEDTLS_PK_ECKEY-typed key, not assumed from the type names alone.
 pub fn verify_ecdsa_signature(pk &C.mbedtls_pk_context, md_alg MbedtlsMdType, hash []u8, signature []u8) ! {
-	ret := C.mbedtls_pk_verify_ext(pk_type_ecdsa, unsafe { nil }, pk, i32(md_alg), hash.data,
-		usize(hash.len), signature.data, usize(signature.len))
+	ret := C.mbedtls_pk_verify_ext(pk_type_ecdsa, unsafe { nil }, pk, i32(md_alg), hash.data, usize(hash.len), signature.data, usize(signature.len))
 	if ret != 0 {
-		return error_with_code('net.mbedtls: ECDSA signature verification failed, mbedtls ret: ${ret}',
-			ret)
+		return error_with_code('net.mbedtls: ECDSA signature verification failed, mbedtls ret: ${ret}', ret)
 	}
 }
 
@@ -165,14 +233,12 @@ pub fn verify_ecdsa_signature(pk &C.mbedtls_pk_context, md_alg MbedtlsMdType, ha
 // PSA_HASH_LENGTH(hash_alg)`), so this isn't a novel usage pattern.
 pub fn verify_rsa_pss_signature(pk &C.mbedtls_pk_context, md_alg MbedtlsMdType, hash []u8, signature []u8) ! {
 	mut opts := C.mbedtls_pk_rsassa_pss_options{
-		mgf1_hash_id:      int(md_alg)
+		mgf1_hash_id: int(md_alg)
 		expected_salt_len: hash.len
 	}
-	ret := C.mbedtls_pk_verify_ext(pk_type_rsassa_pss, &opts, pk, i32(md_alg), hash.data,
-		usize(hash.len), signature.data, usize(signature.len))
+	ret := C.mbedtls_pk_verify_ext(pk_type_rsassa_pss, &opts, pk, i32(md_alg), hash.data, usize(hash.len), signature.data, usize(signature.len))
 	if ret != 0 {
-		return error_with_code('net.mbedtls: RSA-PSS signature verification failed, mbedtls ret: ${ret}',
-			ret)
+		return error_with_code('net.mbedtls: RSA-PSS signature verification failed, mbedtls ret: ${ret}', ret)
 	}
 }
 
@@ -209,8 +275,7 @@ pub fn verify_certificate_chain(chain &C.mbedtls_x509_crt, ca_bundle_pem string,
 	// heap-buffer-overflow in mbedtls_x509_crt_parse). Matches every other
 	// PEM-parsing call site's own convention in this module
 	// (new_sslcerts_in_memory_with_rng et al., which all pass `<string>.str`).
-	parse_ret := C.mbedtls_x509_crt_parse(&ca_chain, ca_bundle_pem.str,
-		usize(ca_bundle_pem.len + 1))
+	parse_ret := C.mbedtls_x509_crt_parse(&ca_chain, ca_bundle_pem.str, usize(ca_bundle_pem.len + 1))
 	// != 0, not < 0: for a PEM bundle specifically (unlike the DER path in
 	// build_certificate_chain), mbedtls_x509_crt_parse can return a
 	// POSITIVE count of certificates it failed to parse when others in the
@@ -219,16 +284,13 @@ pub fn verify_certificate_chain(chain &C.mbedtls_x509_crt, ca_bundle_pem string,
 	// Matches every other PEM-parsing call site's own convention in this
 	// module (new_sslcerts_in_memory_with_rng et al., all `!= 0`).
 	if parse_ret != 0 {
-		return error_with_code('net.mbedtls: failed to parse CA bundle, mbedtls ret: ${parse_ret}',
-			parse_ret)
+		return error_with_code('net.mbedtls: failed to parse CA bundle, mbedtls ret: ${parse_ret}', parse_ret)
 	}
 
 	mut flags := u32(0)
-	verify_ret := C.mbedtls_x509_crt_verify(chain, &ca_chain, unsafe { nil }, &char(hostname.str),
-		&flags, unsafe { nil }, unsafe { nil })
+	verify_ret := C.mbedtls_x509_crt_verify(chain, &ca_chain, unsafe { nil }, &char(hostname.str), &flags, unsafe { nil }, unsafe { nil })
 	if verify_ret != 0 {
-		return error_with_code('net.mbedtls: certificate chain verification failed, mbedtls ret: ${verify_ret}, flags: 0x${flags:x}',
-			verify_ret)
+		return error_with_code('net.mbedtls: certificate chain verification failed, mbedtls ret: ${verify_ret}, flags: 0x${flags:x}', verify_ret)
 	}
 }
 
@@ -251,7 +313,6 @@ fn C.v_mbedtls_check_server_cert_usage(crt &C.mbedtls_x509_crt) int
 pub fn check_server_cert_usage(chain &C.mbedtls_x509_crt) ! {
 	ret := C.v_mbedtls_check_server_cert_usage(chain)
 	if ret != 0 {
-		return error_with_code('net.mbedtls: leaf certificate is not usable as a TLS server signing key (missing digitalSignature KeyUsage or serverAuth ExtendedKeyUsage), mbedtls ret: ${ret}',
-			ret)
+		return error_with_code('net.mbedtls: leaf certificate is not usable as a TLS server signing key (missing digitalSignature KeyUsage or serverAuth ExtendedKeyUsage), mbedtls ret: ${ret}', ret)
 	}
 }
