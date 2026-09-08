@@ -1059,6 +1059,44 @@ fn test_where_preserves_root_guards_in_projected_hydration_filters() {
 	assert guarded.filter(it.name == 'special')[0].children[0].name == 'guarded child'
 }
 
+fn test_where_preserves_ancestor_guards_in_nested_hydration_filters() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	rows := parents.include('children')!.then_include('grandkids')!.where('children.name = ? || children.grandkids.name = ?',
+		'child', 'missing')!.query()!
+	assert rows.len == 1
+	assert rows[0].children.len == 1
+	assert rows[0].children[0].grandkids.len == 2
+
+	mut deep_parents := orm.new_query[IncludeParent](db)
+	deep := deep_parents.include('children')!.then_include('grandkids')!.where('children.name = ? || children.grandkids.name = ?',
+		'missing', 'grandkid')!.query()!
+	assert deep.len == 1
+	assert deep[0].children.len == 1
+	assert deep[0].children[0].grandkids.len == 1
+}
+
+fn test_where_rejects_like_ancestor_guards_before_hydration() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	for operator in ['LIKE', 'ILIKE'] {
+		mut parents := orm.new_query[IncludeParent](db)
+		parents.include('children')!.where('name ${operator} ? || children.name = ?', 'par%',
+			'child')!
+		if _ := parents.query() {
+			assert false
+		} else {
+			assert err.msg().contains('does not support `${operator}` ancestor guards')
+		}
+	}
+}
+
 fn test_where_deep_is_null_requires_a_real_descendant() {
 	mut db := new_include_database()!
 	defer {

@@ -6,7 +6,27 @@ import strings.textscanner
 const operators = ['=', '!=', '<>', '>=', '<=', '>', '<', 'LIKE', 'ILIKE', 'IS NULL', 'IS NOT NULL',
 	'IN', 'NOT IN']!
 
-const include_root_filter_prefix = '::v_orm_root_filter::'
+const include_guard_filter_prefix = '::v_orm_guard_filter::'
+
+fn include_guard_filter_field(depth int, field string) string {
+	return '${include_guard_filter_prefix}${depth}::${field}'
+}
+
+fn include_guard_filter_parts(field string) ?(int, string) {
+	if !field.starts_with(include_guard_filter_prefix) {
+		return none
+	}
+	rest := field[include_guard_filter_prefix.len..]
+	separator := rest.index('::') or { return none }
+	return rest[..separator].int(), rest[separator + 2..]
+}
+
+fn is_include_guard_filter(field string) bool {
+	if _, _ := include_guard_filter_parts(field) {
+		return true
+	}
+	return false
+}
 
 pub struct AggregateValue {
 pub:
@@ -1020,18 +1040,31 @@ fn append_query_data(existing QueryData, addition QueryData, is_and bool) QueryD
 	return combined
 }
 
-// query_data_for_scope extracts the terms belonging to one relationship scope and the
-// root terms that guard them. Root terms use an internal marker so hydration can resolve
-// them against each concrete parent before the relationship query is run.
+// query_data_for_scope extracts one relationship scope and its ancestor guards. Guards
+// carry their distance from the root so each one is resolved at the matching hydration hop.
 fn query_data_for_scope[T](data QueryData, field_scopes []string, scope string) !QueryData {
-	keep := field_scopes.map(it == scope || it.len == 0)
+	keep := field_scopes.map(it == scope || it.len == 0 || scope.starts_with('${it}.')
+		|| it.starts_with('${scope}.'))
 	projection := project_query_boolean(data, keep)!
 	mut fields := data.fields.clone()
 	for i, field in fields {
-		fields[i] = if field_scopes[i].len == 0 {
-			include_root_filter_prefix + field
-		} else {
+		fields[i] = if field_scopes[i] == scope {
 			relationship_terminal_field[T](field, scope)
+		} else if field_scopes[i].starts_with('${scope}.') {
+			descendant_scope := field_scopes[i]
+			target_depth := scope.split('.').len
+			relative_scope := descendant_scope.split('.')[target_depth..].join('.')
+			terminal := relationship_terminal_field[T](field, descendant_scope)
+			'${relative_scope}.${terminal}'
+		} else {
+			guard_scope := field_scopes[i]
+			guard_field := if guard_scope.len == 0 {
+				field
+			} else {
+				relationship_terminal_field[T](field, guard_scope)
+			}
+			depth := if guard_scope.len == 0 { 0 } else { guard_scope.split('.').len }
+			include_guard_filter_field(depth, guard_field)
 		}
 	}
 	return query_data_from_projection(data, projection, fields)
@@ -1050,8 +1083,16 @@ fn resolve_include_filters_for_row(filters []IncludeFilter, row []Primitive, fie
 }
 
 fn resolve_include_filter_for_row(data QueryData, row []Primitive, fields []string) !QueryData {
-	if !data.fields.any(it.starts_with(include_root_filter_prefix)) {
+	if !data.fields.any(is_include_guard_filter(it)) {
 		return clone_query_data(data)
+	}
+	mut resolved_fields := data.fields.clone()
+	for i, field in data.fields {
+		if depth, name := include_guard_filter_parts(field) {
+			if depth > 0 {
+				resolved_fields[i] = include_guard_filter_field(depth - 1, name)
+			}
+		}
 	}
 	mut data_indexes := []int{len: data.fields.len, init: -1}
 	mut data_index := 0
@@ -1072,7 +1113,7 @@ fn resolve_include_filter_for_row(data QueryData, row []Primitive, fields []stri
 		}
 		// `column = NULL` is false for every SQL row. Reusing a real relationship
 		// field also keeps the sentinel valid across every database dialect.
-		field := data.fields.filter(!it.starts_with(include_root_filter_prefix))[0]
+		field := data.fields.filter(!is_include_guard_filter(it))[0]
 		return QueryData{
 			fields: [field]
 			data:   [Primitive(Null{})]
@@ -1082,18 +1123,21 @@ fn resolve_include_filter_for_row(data QueryData, row []Primitive, fields []stri
 	}
 	mut projection := ProjectedQueryBoolean{}
 	flatten_query_boolean_node(resolved, resolved.root, mut projection)
-	return query_data_from_projection(data, projection, data.fields)
+	return query_data_from_projection(data, projection, resolved_fields)
 }
 
 fn resolve_include_filter_node(source QueryBooleanTree, node_index int, data QueryData, data_indexes []int, row []Primitive, fields []string, mut resolved QueryBooleanTree) !int {
 	node := source.nodes[node_index]
 	if node.kind == .term {
 		field := data.fields[node.term_index]
-		if !field.starts_with(include_root_filter_prefix) {
+		depth, root_field := include_guard_filter_parts(field) or {
 			resolved.nodes << node
 			return resolved.nodes.len - 1
 		}
-		root_field := field[include_root_filter_prefix.len..]
+		if depth > 0 {
+			resolved.nodes << node
+			return resolved.nodes.len - 1
+		}
 		row_index := fields.index(root_field)
 		if row_index < 0 || row_index >= row.len {
 			return error('root guard field `${root_field}` was not selected for relationship hydration')
@@ -2602,10 +2646,13 @@ fn validate_include_filter_fields[T](where QueryData) ! {
 	meta := struct_meta[T]()
 	table := table_from_struct[T](meta)
 	for field in where.fields {
-		if field.starts_with(include_root_filter_prefix) {
+		if is_include_guard_filter(field) {
 			continue
 		}
 		if !meta.any(it.name == field || sql_field_name(it) == field) {
+			if _ := relationship_scope_for_field[T](field) {
+				continue
+			}
 			return error("${@FN}(): table `${table.name}` has no field's name: `${field}`")
 		}
 	}
@@ -2700,8 +2747,9 @@ fn (qb_ &QueryBuilder[T]) prepare() ! {
 	if qb.builder_error.len > 0 {
 		return error(qb.builder_error)
 	}
+	qb.validate_include_guard_operators()!
 	qb.ensure_primary_key_for_includes()!
-	qb.ensure_root_guard_fields_for_includes()
+	qb.ensure_guard_fields_for_includes()
 
 	// check for mismatch `(` and `)`
 	for p in qb.where.parentheses {
@@ -2772,7 +2820,20 @@ fn (qb_ &QueryBuilder[T]) ensure_primary_key_for_includes() ! {
 	qb.hydration_primary = primary
 }
 
-fn (qb_ &QueryBuilder[T]) ensure_root_guard_fields_for_includes() {
+fn (qb &QueryBuilder[T]) validate_include_guard_operators() ! {
+	if qb.include_paths.len == 0 && qb.relation_load_mode != .implicit {
+		return
+	}
+	for filter in qb.include_filters {
+		for i, field in filter.where.fields {
+			if is_include_guard_filter(field) && filter.where.kinds[i] in [.orm_like, .orm_ilike] {
+				return error('relationship hydration does not support `${filter.where.kinds[i].to_str()}` ancestor guards')
+			}
+		}
+	}
+}
+
+fn (qb_ &QueryBuilder[T]) ensure_guard_fields_for_includes() {
 	if qb_.config.fields.len == 0
 		|| (qb_.include_paths.len == 0 && qb_.relation_load_mode != .implicit) {
 		return
@@ -2780,10 +2841,10 @@ fn (qb_ &QueryBuilder[T]) ensure_root_guard_fields_for_includes() {
 	mut qb := unsafe { qb_ }
 	for filter in qb.include_filters {
 		for field in filter.where.fields {
-			if !field.starts_with(include_root_filter_prefix) {
+			depth, name := include_guard_filter_parts(field) or { continue }
+			if depth != 0 {
 				continue
 			}
-			name := field[include_root_filter_prefix.len..]
 			meta_field := qb.get_meta_field_by_any_name(name) or { continue }
 			sql_name := sql_field_name(meta_field)
 			if sql_name !in qb.config.fields {
@@ -3638,6 +3699,27 @@ fn query_relation_array[U](mut conn Connection, key Primitive, fkey string) ![]U
 		[]IncludeFilter{}, QueryData{})
 }
 
+fn (qb_ &QueryBuilder[T]) add_hydration_filter(data QueryData) ! {
+	mut qb := unsafe { qb_ }
+	mut field_scopes := []string{cap: data.fields.len}
+	mut has_relationship := false
+	for field in data.fields {
+		if is_include_guard_filter(field) {
+			return error('relationship hydration reached an unresolved ancestor guard')
+		}
+		scope := qb.condition_field_scope(field)!
+		field_scopes << scope
+		has_relationship = has_relationship || scope.len > 0
+	}
+	condition := if has_relationship {
+		qb.exists_wrapped_conditions(data, field_scopes)!
+	} else {
+		data
+	}
+	qb.where = append_query_data(qb.where, qb.groupable_condition(condition), true)
+	qb.config.has_where = qb.where.fields.len > 0
+}
+
 fn query_relation_array_with_includes[U](mut conn Connection, key Primitive, fkey string, mode RelationLoadMode, paths [][]string, filters []IncludeFilter, filter QueryData) ![]U {
 	mut qb := new_query[U](conn)
 	qb.relation_load_mode = mode
@@ -3646,7 +3728,7 @@ fn query_relation_array_with_includes[U](mut conn Connection, key Primitive, fke
 	field_key := primitive_for_field[U](key, fkey)
 	qb.v_sql_where_primitive(fkey, .eq, field_key)
 	if filter.fields.len > 0 {
-		qb.v_sql_where_query_data(v_sql_query_data_parentheses(filter, 0))
+		qb.add_hydration_filter(v_sql_query_data_parentheses(filter, 0))!
 	}
 	return qb.query() or {
 		if err.msg().contains('no such table') {
