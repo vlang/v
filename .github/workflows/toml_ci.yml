@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Cache V toolchain
         id: cache-v
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             v
