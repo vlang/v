@@ -2005,6 +2005,21 @@ fn test_callback_identifier_c_abi_modes_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_as_callback_alias_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\ntype Value = ConstHandler | int\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T](value Value) {\n\tr := Router{}\n\tr.accept(value as ConstHandler)\n}\nfn main() {\n\tstartup[int](ConstHandler(fn (const_event &C.native_event) {}))\n}\n',
 		'cannot use')
+	local_containers_matching := run_good(v3_bin, 'good_local_callback_containers_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn consume_array[T](handlers []ConstHandler) bool {\n\treturn handlers.len == 1\n}\nfn consume_map[T](handlers map[string]ConstHandler) bool {\n\treturn handlers.len == 1\n}\nfn startup[T]() bool {\n\tarray_handlers := [fn (const_event &C.native_event) {}]\n\tmap_handlers := {"event": fn (const_event &C.native_event) {}}\n\treturn consume_array[int](array_handlers) && consume_map[int](map_handlers)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert local_containers_matching == 'true'
+	run_bad(v3_bin, 'bad_local_callback_array_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nfn consume[T](handlers []PlainHandler) {}\nfn startup[T]() {\n\thandlers := [fn (const_event &C.native_event) {}]\n\tconsume[int](handlers)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	run_bad(v3_bin, 'bad_local_callback_map_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nfn consume[T](handlers map[string]PlainHandler) {}\nfn startup[T]() {\n\thandlers := {"event": fn (const_event &C.native_event) {}}\n\tconsume[int](handlers)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	container_param_matching := run_good(v3_bin, 'good_callback_container_param_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn consume[T](handlers []ConstHandler) bool {\n\treturn handlers.len == 1\n}\nfn forward[T](handlers []ConstHandler) bool {\n\treturn consume[int](handlers)\n}\nfn main() {\n\tprintln(forward[int]([fn (const_event &C.native_event) {}]).str())\n}\n')
+	assert container_param_matching == 'true'
+	run_bad(v3_bin, 'bad_callback_container_param_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn consume[T](handlers []PlainHandler) {}\nfn forward[T](handlers []ConstHandler) {\n\tconsume[int](handlers)\n}\nfn main() {\n\tforward[int]([fn (const_event &C.native_event) {}])\n}\n',
+		'cannot use')
 }
 
 fn test_fn_literal_nested_named_callback_param_matches_alias_inside_generic_fn() {

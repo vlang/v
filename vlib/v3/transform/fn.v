@@ -12546,23 +12546,33 @@ fn (t &Transformer) fn_literal_c_abi_signature_compatible(arg_id flat.NodeId, ex
 }
 
 fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId, expected_type string) ?bool {
+	mut seen := map[int]bool{}
+	return t.fn_literal_container_modes_compatible_seen(arg_id, expected_type, mut seen)
+}
+
+fn (mut t Transformer) fn_literal_container_modes_compatible_seen(arg_id flat.NodeId, expected_type string, mut seen map[int]bool) ?bool {
 	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
 		return none
 	}
+	if seen[int(arg_id)] {
+		return none
+	}
+	seen[int(arg_id)] = true
 	node := t.a.nodes[int(arg_id)]
 	if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
-		return t.fn_literal_container_modes_compatible(t.a.child(&node, 0), expected_type)
+		return t.fn_literal_container_modes_compatible_seen(t.a.child(&node, 0), expected_type, mut
+			seen)
 	}
 	if node.kind in [.block, .match_branch, .lock_expr] && node.children_count > 0 {
-		return t.fn_literal_container_modes_compatible(t.a.child(&node, node.children_count - 1),
-			expected_type)
+		return t.fn_literal_container_modes_compatible_seen(t.a.child(&node,
+			node.children_count - 1), expected_type, mut seen)
 	}
 	if node.kind in [.if_expr, .match_stmt, .or_expr] {
 		mut handled := false
 		start := if node.kind == .or_expr { 0 } else { 1 }
 		for i in start .. node.children_count {
-			if compatible := t.fn_literal_container_modes_compatible(t.a.child(&node, i),
-				expected_type)
+			if compatible := t.fn_literal_container_modes_compatible_seen(t.a.child(&node, i),
+				expected_type, mut seen)
 			{
 				handled = true
 				if !compatible {
@@ -12573,11 +12583,41 @@ fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId,
 		return if handled { true } else { none }
 	}
 	if node.kind == .postfix && node.children_count == 1 {
-		return t.fn_literal_container_modes_compatible(t.a.child(&node, 0), expected_type)
+		return t.fn_literal_container_modes_compatible_seen(t.a.child(&node, 0), expected_type, mut
+			seen)
 	}
 	if node.kind == .cast_expr && node.children_count == 1
 		&& t.fn_literal_cast_target_contains_callback(node.value) {
-		return t.fn_literal_container_modes_compatible(t.a.child(&node, 0), node.value)
+		return t.fn_literal_container_modes_compatible_seen(t.a.child(&node, 0), node.value, mut
+			seen)
+	}
+	if node.kind == .ident && t.fn_literal_cast_target_contains_callback(expected_type) {
+		mut handled := false
+		for rhs_id in t.callback_local_reaching_rhs_ids(node.value, arg_id) {
+			if compatible := t.fn_literal_container_modes_compatible_seen(rhs_id, expected_type, mut
+				seen)
+			{
+				handled = true
+				if !compatible {
+					return false
+				}
+			}
+		}
+		if handled {
+			return true
+		}
+		mut actual_source := t.raw_var_type(node.value)
+		if actual_source.len == 0 {
+			actual_source = t.var_type(node.value)
+		}
+		if t.callback_source_type_is_container(actual_source)
+			&& t.callback_source_type_is_container(expected_type) {
+			if compatible := t.callback_container_source_types_compatible(actual_source,
+				expected_type)
+			{
+				return compatible
+			}
+		}
 	}
 	mut source_expected := expected_type.trim_space()
 	for source_expected.starts_with('?') || source_expected.starts_with('!') {
@@ -12694,6 +12734,58 @@ fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId,
 		return true
 	}
 	return none
+}
+
+fn (t &Transformer) callback_container_source_types_compatible(actual_type string, expected_type string) ?bool {
+	if actual_type.len == 0 || expected_type.len == 0 {
+		return none
+	}
+	mut actual := t.callback_source_alias_expansion(actual_type, 0).trim_space()
+	mut expected := t.callback_source_alias_expansion(expected_type, 0).trim_space()
+	for actual.starts_with('?') || actual.starts_with('!') {
+		actual = actual[1..].trim_space()
+	}
+	for expected.starts_with('?') || expected.starts_with('!') {
+		expected = expected[1..].trim_space()
+	}
+	for actual.starts_with('shared ') && expected.starts_with('shared ') {
+		actual = actual[7..].trim_space()
+		expected = expected[7..].trim_space()
+	}
+	for actual.starts_with('&') && expected.starts_with('&') {
+		actual = actual[1..].trim_space()
+		expected = expected[1..].trim_space()
+	}
+	if actual.starts_with('[]') && expected.starts_with('[]') {
+		return t.callback_container_source_types_compatible(actual[2..], expected[2..])
+	}
+	if t.is_fixed_array_type(actual) && t.is_fixed_array_type(expected) {
+		return t.callback_container_source_types_compatible(fixed_array_elem_type(actual),
+			fixed_array_elem_type(expected))
+	}
+	if actual.starts_with('map[') && expected.starts_with('map[') {
+		return t.callback_container_source_types_compatible(t.map_value_type(actual),
+			t.map_value_type(expected))
+	}
+	if (actual.starts_with('fn(') || actual.starts_with('fn (')) && (expected.starts_with('fn(')
+		|| expected.starts_with('fn (')) {
+		return t.fn_literal_source_c_abi_signature_compatible(actual, expected)
+	}
+	return none
+}
+
+fn (t &Transformer) callback_source_type_is_container(type_name string) bool {
+	mut expanded := t.callback_source_alias_expansion(type_name, 0).trim_space()
+	for expanded.starts_with('?') || expanded.starts_with('!') || expanded.starts_with('&')
+		|| expanded.starts_with('shared ') {
+		expanded = if expanded.starts_with('shared ') {
+			expanded[7..].trim_space()
+		} else {
+			expanded[1..].trim_space()
+		}
+	}
+	return expanded.starts_with('[]') || expanded.starts_with('map[')
+		|| t.is_fixed_array_type(expanded)
 }
 
 fn (mut t Transformer) fn_literal_container_element_mode_compatible(id flat.NodeId, expected_type string) bool {
