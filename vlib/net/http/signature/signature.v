@@ -93,17 +93,37 @@ pub fn verify(c Components, sig_input_header string, signature_header string, la
 			reason: 'Signature header has no entry for label "${wanted}"'
 		}
 	}
+	check_registered_param_types(entry)!
 	check_alg_param(entry, key)!
 	base := signature_base_from_entry(c, entry)!
 	verify_base(base.bytes(), sig, key, wanted)!
 	if opts.now_unix > 0 {
 		if exp_v := entry.params['expires'] {
-			if exp_v is i64 {
-				if opts.now_unix >= exp_v {
-					return SignatureExpired{
-						expires: exp_v
-						now:     opts.now_unix
-					}
+			if exp_v is i64 && opts.now_unix >= exp_v {
+				return SignatureExpired{
+					expires: exp_v
+					now:     opts.now_unix
+				}
+			}
+		}
+	}
+}
+
+fn check_registered_param_types(entry SignatureEntry) ! {
+	for name in ['created', 'expires'] {
+		if value := entry.params[name] {
+			if value !is i64 {
+				return MalformedMessage{
+					reason: 'signature parameter "${name}" must be an Integer'
+				}
+			}
+		}
+	}
+	for name in ['nonce', 'alg', 'keyid', 'tag'] {
+		if value := entry.params[name] {
+			if value !is string {
+				return MalformedMessage{
+					reason: 'signature parameter "${name}" must be a String'
 				}
 			}
 		}

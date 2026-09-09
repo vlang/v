@@ -181,6 +181,21 @@ fn test_public_header_serializers_accept_dotted_labels() {
 	assert signature_header_value('sig.v1', 'signature'.bytes())!.starts_with('sig.v1=:')
 }
 
+fn test_verify_rejects_non_integer_expires() {
+	c := Components{
+		method: 'GET'
+	}
+	key := Key.hmac_sha256('shared-secret'.bytes())!
+	if _ := verify(c, 'sig1=("@method");expires="1"', 'sig1=:AA==:', 'sig1', key,
+		now_unix: 2
+	)
+	{
+		assert false, 'expires must be an Integer'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
 fn test_signature_base_string_rejects_duplicate_components() {
 	c := Components{
 		method: 'GET'

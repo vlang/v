@@ -372,10 +372,21 @@ fn test_sign_response_includes_generated_content_length() {
 	}
 	key := Key.hmac_sha256(test_secret.bytes())!
 	sign_response(mut resp, key, components: ['@status', 'content-length'], created: 1)!
+	assert (resp.header.get(.content_length) or { '' }) == '5'
 	mut received := resp
 	received.status_code = 200
-	received.header.set(.content_length, received.body.len.str())
 	verify_response(received, key)!
+}
+
+fn test_response_components_do_not_invent_content_length() {
+	c := response_components(http.Response{
+		body: 'hello'
+	})
+	if _ := c.component_value('content-length') {
+		assert false, 'an absent response Content-Length must remain absent'
+	} else {
+		assert err is MalformedMessage
+	}
 }
 
 fn test_alg_param_must_match_key_algorithm() {

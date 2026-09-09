@@ -121,11 +121,16 @@ pub:
 // it preserves any pre-existing Signature-Input / Signature values
 // and defaults `created` to the current time.
 pub fn sign_response(mut resp http.Response, key Key, opts SignResponseOptions) ! {
-	c := response_components(resp)
 	mut comps := opts.components.clone()
 	if comps.len == 0 {
 		comps = ['@status']
 	}
+	if comps.any(it.to_lower() == 'content-length') && !resp.header.contains(.content_length) {
+		// Insert the field so both HTTP/1.x and HTTP/2 actually transmit the
+		// value covered by the signature.
+		resp.header.set(.content_length, resp.body.len.str())
+	}
+	c := response_components(resp)
 	mut alg := ?string(none)
 	if opts.include_alg {
 		alg = key.algorithm.name()
@@ -330,9 +335,6 @@ fn response_components(resp http.Response) Components {
 		if values.len > 0 {
 			c.fields[k.to_lower()] = values
 		}
-	}
-	if !resp.header.contains(.content_length) {
-		c.fields['content-length'] = [resp.body.len.str()]
 	}
 	return c
 }
