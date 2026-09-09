@@ -43,3 +43,48 @@ fn main() {
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
 }
+
+fn test_indexed_optional_fixed_array_assignment_keeps_the_option_wrapper() {
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_optional_fixed_array_index_assign_test_${pid}')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+
+	src := os.join_path(os.temp_dir(), 'v3_optional_fixed_array_index_assign_input_${pid}.v')
+	os.write_file(src, 'struct Empty {}
+
+type Arr = [2]Empty
+
+struct IndexCounter {
+mut:
+	calls int
+}
+
+fn next_index(mut counter IndexCounter) int {
+	counter.calls++
+	return 0
+}
+
+fn main() {
+	mut values := []?Arr{len: 1}
+	mut counter := IndexCounter{}
+	values[next_index(mut counter)] = Arr{}
+	assert counter.calls == 1
+	assert values[0] != none
+	values[next_index(mut counter)] = ?Arr(none)
+	assert counter.calls == 2
+	assert values[0] == none
+	println("ok")
+}
+')!
+
+	bin := os.join_path(os.temp_dir(), 'v3_optional_fixed_array_index_assign_input_${pid}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok', run.output
+}

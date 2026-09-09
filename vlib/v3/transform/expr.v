@@ -2070,10 +2070,13 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 		}
 		source_id = base_id
 	}
-	raw_type := t.raw_expr_type_without_smartcast(source_id)
-	if t.is_optional_type_name(raw_type) && t.a.nodes[int(id)].kind in [.ident, .selector] {
+	mut raw_type := t.raw_expr_type_without_smartcast(source_id)
+	if !t.is_optional_type_name(raw_type) {
+		raw_type = t.optional_result_expr_type_name(source_id)
+	}
+	if t.is_optional_type_name(raw_type) && t.a.nodes[int(id)].kind in [.ident, .selector, .index] {
 		// `source_id` is already the wrapper expression with any redundant top-level
-		// payload selectors removed. Rebuilding a selector here would transform its
+		// payload selectors removed. Rebuilding it here would transform its
 		// base again and could apply the same assignment smartcast a second time
 		// (`foo?.field` becoming `foo.value.value.field`).
 		plain := source_id
