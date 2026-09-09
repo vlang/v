@@ -90,3 +90,48 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
 }
+
+fn test_optional_map_index_comparison_preserves_evaluation_order() {
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_optional_map_index_compare_test_${pid}')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+
+	src := os.join_path(os.temp_dir(), 'v3_optional_map_index_compare_input_${pid}.v')
+	os.write_file(src, 'struct Trace {
+mut:
+	value int
+}
+
+fn make_map(mut trace Trace) map[string]?int {
+	trace.value = trace.value * 10 + 1
+	return map[string]?int{}
+}
+
+fn make_key(mut trace Trace) string {
+	trace.value = trace.value * 10 + 2
+	return "key"
+}
+
+fn main() {
+	mut trace := Trace{}
+	assert make_map(mut trace)[make_key(mut trace)] == none
+	assert trace.value == 12
+	println("ok")
+}
+')!
+
+	bin := os.join_path(os.temp_dir(), 'v3_optional_map_index_compare_input_${pid}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	c_code := os.read_file(bin + '.c')!
+	map_pos := c_code.index('map __in_lhs_') or { panic('missing map temporary') }
+	key_pos := c_code.index('string __map_key_') or { panic('missing map key temporary') }
+	assert map_pos < key_pos, c_code
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok', run.output
+}

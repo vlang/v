@@ -2076,9 +2076,14 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 	}
 	if t.is_optional_type_name(raw_type) {
 		source := t.a.nodes[int(source_id)]
-		if source.kind == .index && source.op == .gated_index {
-			if lowered := t.lower_gated_scalar_index(source) {
+		if source.kind == .index {
+			if lowered := t.try_lower_map_index_expr(source_id, source) {
 				return t.transform_optional_wrapper_expr(lowered)
+			}
+			if source.op == .gated_index {
+				if lowered := t.lower_gated_scalar_index(source) {
+					return t.transform_optional_wrapper_expr(lowered)
+				}
 			}
 		}
 	}
