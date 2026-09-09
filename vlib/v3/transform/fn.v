@@ -12548,6 +12548,9 @@ fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId,
 		return none
 	}
 	node := t.a.nodes[int(arg_id)]
+	if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
+		return t.fn_literal_container_modes_compatible(t.a.child(&node, 0), expected_type)
+	}
 	if node.kind == .postfix && node.children_count == 1 {
 		return t.fn_literal_container_modes_compatible(t.a.child(&node, 0), expected_type)
 	}
@@ -12555,8 +12558,14 @@ fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId,
 		&& t.fn_literal_cast_target_contains_callback(node.value) {
 		return t.fn_literal_container_modes_compatible(t.a.child(&node, 0), node.value)
 	}
-	source_expected := expected_type.trim_space()
-	normalized_expected := t.normalize_type_alias(source_expected)
+	mut source_expected := expected_type.trim_space()
+	for source_expected.starts_with('?') || source_expected.starts_with('!') {
+		source_expected = source_expected[1..].trim_space()
+	}
+	mut normalized_expected := t.normalize_type_alias(expected_type.trim_space())
+	for normalized_expected.starts_with('?') || normalized_expected.starts_with('!') {
+		normalized_expected = normalized_expected[1..].trim_space()
+	}
 	if node.kind in [.array_literal, .array_init] {
 		mut array_expected := source_expected
 		element_expected := if source_expected.starts_with('[]') {
