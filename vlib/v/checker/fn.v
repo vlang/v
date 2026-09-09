@@ -52,23 +52,56 @@ fn (c &Checker) implicit_mut_call_arg(param ast.Param, arg ast.CallArg) ast.Call
 	}
 }
 
+fn receiver_pointer_argument(expr ast.Expr, receiver_name string) bool {
+	reduced := expr.remove_par()
+	return match reduced {
+		ast.Ident {
+			reduced.name == receiver_name
+		}
+		ast.CastExpr {
+			receiver_pointer_argument(reduced.expr, receiver_name)
+		}
+		ast.AsCast {
+			receiver_pointer_argument(reduced.expr, receiver_name)
+		}
+		ast.UnsafeExpr {
+			receiver_pointer_argument(reduced.expr, receiver_name)
+		}
+		ast.PrefixExpr {
+			if reduced.op == .mul {
+				false
+			} else if reduced.op == .amp {
+				right := reduced.right.remove_par()
+				if right is ast.PrefixExpr && right.op == .mul {
+					receiver_pointer_argument(right.right, receiver_name)
+				} else {
+					receiver_pointer_argument(right, receiver_name)
+				}
+			} else {
+				false
+			}
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (mut c Checker) record_receiver_argument(param ast.Param, arg ast.CallArg) {
 	if c.table.cur_fn == unsafe { nil } || !c.table.cur_fn.is_method
 		|| (!c.table.cur_fn.rec_mut && !c.table.cur_fn.receiver.typ.is_ptr()) {
 		return
 	}
-	mut arg_expr := arg.expr
-	arg_expr = arg_expr.remove_par()
-	if arg_expr is ast.Ident {
-		if arg_expr.name != c.table.cur_fn.receiver.name {
-			return
-		}
+	receiver_name := c.table.cur_fn.receiver.name
+	arg_is_receiver := receiver_pointer_argument(arg.expr, receiver_name)
+	if arg_is_receiver {
 		mut receiver_sym := c.table.sym(c.table.cur_fn.receiver.typ)
 		method_idx := c.table.cur_fn.method_idx
 		if method_idx >= 0 && method_idx < receiver_sym.methods.len {
 			if param.is_mut && arg.is_mut {
 				receiver_sym.methods[method_idx].receiver_passed_mut = true
-			} else if c.table.cur_fn.receiver.typ.is_ptr() && param.typ.is_ptr() {
+			} else if c.table.cur_fn.receiver.typ.is_ptr() && (param.typ.is_any_kind_of_pointer()
+				|| c.table.unaliased_type(param.typ).is_any_kind_of_pointer()) {
 				receiver_sym.methods[method_idx].receiver_address_taken = true
 			}
 		}

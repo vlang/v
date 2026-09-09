@@ -50,7 +50,18 @@ fn contains_receiver_reference(expr ast.Expr, name string) bool {
 			reduced.name == name
 		}
 		ast.PrefixExpr {
-			contains_receiver_reference(reduced.right, name)
+			if reduced.op == .mul {
+				false
+			} else if reduced.op == .amp {
+				right := reduced.right.remove_par()
+				if right is ast.PrefixExpr && right.op == .mul {
+					contains_receiver_reference(right.right, name)
+				} else {
+					contains_receiver_reference(right, name)
+				}
+			} else {
+				false
+			}
 		}
 		ast.CastExpr {
 			contains_receiver_reference(reduced.expr, name)

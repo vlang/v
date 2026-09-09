@@ -111,6 +111,14 @@ fn (node &PointerNode) store_pointer_receiver(mut holder PointerHolder) {
 	}
 }
 
+fn retain_void_pointer(pointer voidptr) {
+	_ = pointer
+}
+
+fn (node &PointerNode) pass_pointer_receiver_as_voidptr() {
+	retain_void_pointer(voidptr(node))
+}
+
 interface Element {
 	Node
 }
@@ -137,4 +145,5 @@ fn main() {
 	_ = pointer_element.return_pointer_receiver()
 	mut holder := PointerHolder{}
 	pointer_element.store_pointer_receiver(mut holder)
+	pointer_element.pass_pointer_receiver_as_voidptr()
 }

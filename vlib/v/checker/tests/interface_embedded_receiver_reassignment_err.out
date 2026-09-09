@@ -1,111 +1,118 @@
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:122:10: error: cannot call mutable method `Node.replace` through embedded interface `Element` because it can replace its receiver
-  120 | fn main() {
-  121 |     mut element := Element(Item{})
-  122 |     element.replace(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:130:10: error: cannot call mutable method `Node.replace` through embedded interface `Element` because it can replace its receiver
+  128 | fn main() {
+  129 |     mut element := Element(Item{})
+  130 |     element.replace(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~
-  123 |     element.replace_in_for_init(Node(Item{}))
-  124 |     element.replace_in_for_increment(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:123:10: error: cannot call mutable method `Node.replace_in_for_init` through embedded interface `Element` because it can replace its receiver
-  121 |     mut element := Element(Item{})
-  122 |     element.replace(Node(Item{}))
-  123 |     element.replace_in_for_init(Node(Item{}))
+  131 |     element.replace_in_for_init(Node(Item{}))
+  132 |     element.replace_in_for_increment(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:131:10: error: cannot call mutable method `Node.replace_in_for_init` through embedded interface `Element` because it can replace its receiver
+  129 |     mut element := Element(Item{})
+  130 |     element.replace(Node(Item{}))
+  131 |     element.replace_in_for_init(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  124 |     element.replace_in_for_increment(Node(Item{}))
-  125 |     element.replace_through_method(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:124:10: error: cannot call mutable method `Node.replace_in_for_increment` through embedded interface `Element` because it can replace its receiver
-  122 |     element.replace(Node(Item{}))
-  123 |     element.replace_in_for_init(Node(Item{}))
-  124 |     element.replace_in_for_increment(Node(Item{}))
+  132 |     element.replace_in_for_increment(Node(Item{}))
+  133 |     element.replace_through_method(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:132:10: error: cannot call mutable method `Node.replace_in_for_increment` through embedded interface `Element` because it can replace its receiver
+  130 |     element.replace(Node(Item{}))
+  131 |     element.replace_in_for_init(Node(Item{}))
+  132 |     element.replace_in_for_increment(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  125 |     element.replace_through_method(Node(Item{}))
-  126 |     element.replace_through_condition(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:125:10: error: cannot call mutable method `Node.replace_through_method` through embedded interface `Element` because it can replace its receiver through a mutable call
-  123 |     element.replace_in_for_init(Node(Item{}))
-  124 |     element.replace_in_for_increment(Node(Item{}))
-  125 |     element.replace_through_method(Node(Item{}))
+  133 |     element.replace_through_method(Node(Item{}))
+  134 |     element.replace_through_condition(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:133:10: error: cannot call mutable method `Node.replace_through_method` through embedded interface `Element` because it can replace its receiver through a mutable call
+  131 |     element.replace_in_for_init(Node(Item{}))
+  132 |     element.replace_in_for_increment(Node(Item{}))
+  133 |     element.replace_through_method(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  126 |     element.replace_through_condition(Node(Item{}))
-  127 |     element.replace_through_dump(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:126:10: error: cannot call mutable method `Node.replace_through_condition` through embedded interface `Element` because it can replace its receiver through a mutable call
-  124 |     element.replace_in_for_increment(Node(Item{}))
-  125 |     element.replace_through_method(Node(Item{}))
-  126 |     element.replace_through_condition(Node(Item{}))
+  134 |     element.replace_through_condition(Node(Item{}))
+  135 |     element.replace_through_dump(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:134:10: error: cannot call mutable method `Node.replace_through_condition` through embedded interface `Element` because it can replace its receiver through a mutable call
+  132 |     element.replace_in_for_increment(Node(Item{}))
+  133 |     element.replace_through_method(Node(Item{}))
+  134 |     element.replace_through_condition(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  127 |     element.replace_through_dump(Node(Item{}))
-  128 |     element.replace_through_function(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:127:10: error: cannot call mutable method `Node.replace_through_dump` through embedded interface `Element` because it can replace its receiver through a mutable call
-  125 |     element.replace_through_method(Node(Item{}))
-  126 |     element.replace_through_condition(Node(Item{}))
-  127 |     element.replace_through_dump(Node(Item{}))
+  135 |     element.replace_through_dump(Node(Item{}))
+  136 |     element.replace_through_function(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:135:10: error: cannot call mutable method `Node.replace_through_dump` through embedded interface `Element` because it can replace its receiver through a mutable call
+  133 |     element.replace_through_method(Node(Item{}))
+  134 |     element.replace_through_condition(Node(Item{}))
+  135 |     element.replace_through_dump(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  128 |     element.replace_through_function(Node(Item{}))
-  129 |     element.expose_receiver_address()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:128:10: error: cannot call mutable method `Node.replace_through_function` through embedded interface `Element` because it can replace its receiver through a mutable call
-  126 |     element.replace_through_condition(Node(Item{}))
-  127 |     element.replace_through_dump(Node(Item{}))
-  128 |     element.replace_through_function(Node(Item{}))
+  136 |     element.replace_through_function(Node(Item{}))
+  137 |     element.expose_receiver_address()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:136:10: error: cannot call mutable method `Node.replace_through_function` through embedded interface `Element` because it can replace its receiver through a mutable call
+  134 |     element.replace_through_condition(Node(Item{}))
+  135 |     element.replace_through_dump(Node(Item{}))
+  136 |     element.replace_through_function(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  129 |     element.expose_receiver_address()
-  130 |     element.replace_through_closure(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:129:10: error: cannot call mutable method `Node.expose_receiver_address` through embedded interface `Element` because its receiver address escapes and can be used to replace it
-  127 |     element.replace_through_dump(Node(Item{}))
-  128 |     element.replace_through_function(Node(Item{}))
-  129 |     element.expose_receiver_address()
+  137 |     element.expose_receiver_address()
+  138 |     element.replace_through_closure(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:137:10: error: cannot call mutable method `Node.expose_receiver_address` through embedded interface `Element` because its receiver address escapes and can be used to replace it
+  135 |     element.replace_through_dump(Node(Item{}))
+  136 |     element.replace_through_function(Node(Item{}))
+  137 |     element.expose_receiver_address()
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~
-  130 |     element.replace_through_closure(Node(Item{}))
-  131 |     element.replace_through_comptime_method(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:130:10: error: cannot call mutable method `Node.replace_through_closure` through embedded interface `Element` because it captures its receiver mutably and can replace it
-  128 |     element.replace_through_function(Node(Item{}))
-  129 |     element.expose_receiver_address()
-  130 |     element.replace_through_closure(Node(Item{}))
+  138 |     element.replace_through_closure(Node(Item{}))
+  139 |     element.replace_through_comptime_method(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:138:10: error: cannot call mutable method `Node.replace_through_closure` through embedded interface `Element` because it captures its receiver mutably and can replace it
+  136 |     element.replace_through_function(Node(Item{}))
+  137 |     element.expose_receiver_address()
+  138 |     element.replace_through_closure(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  131 |     element.replace_through_comptime_method(Node(Item{}))
-  132 |     element.replace_through_pointer(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:131:10: error: cannot call mutable method `Node.replace_through_comptime_method` through embedded interface `Element` because it can replace its receiver through a mutable call
-  129 |     element.expose_receiver_address()
-  130 |     element.replace_through_closure(Node(Item{}))
-  131 |     element.replace_through_comptime_method(Node(Item{}))
+  139 |     element.replace_through_comptime_method(Node(Item{}))
+  140 |     element.replace_through_pointer(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:139:10: error: cannot call mutable method `Node.replace_through_comptime_method` through embedded interface `Element` because it can replace its receiver through a mutable call
+  137 |     element.expose_receiver_address()
+  138 |     element.replace_through_closure(Node(Item{}))
+  139 |     element.replace_through_comptime_method(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  132 |     element.replace_through_pointer(Node(Item{}))
-  133 |     element.replace_through_pointer_closure(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:132:10: error: cannot call pointer-receiver method `Node.replace_through_pointer` through embedded interface `Element` because it can replace its receiver
-  130 |     element.replace_through_closure(Node(Item{}))
-  131 |     element.replace_through_comptime_method(Node(Item{}))
-  132 |     element.replace_through_pointer(Node(Item{}))
+  140 |     element.replace_through_pointer(Node(Item{}))
+  141 |     element.replace_through_pointer_closure(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:140:10: error: cannot call pointer-receiver method `Node.replace_through_pointer` through embedded interface `Element` because it can replace its receiver
+  138 |     element.replace_through_closure(Node(Item{}))
+  139 |     element.replace_through_comptime_method(Node(Item{}))
+  140 |     element.replace_through_pointer(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  133 |     element.replace_through_pointer_closure(Node(Item{}))
-  134 |     element.replace_through_pointer_method(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:133:10: error: cannot call pointer-receiver method `Node.replace_through_pointer_closure` through embedded interface `Element` because it can replace its receiver
-  131 |     element.replace_through_comptime_method(Node(Item{}))
-  132 |     element.replace_through_pointer(Node(Item{}))
-  133 |     element.replace_through_pointer_closure(Node(Item{}))
+  141 |     element.replace_through_pointer_closure(Node(Item{}))
+  142 |     element.replace_through_pointer_method(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:141:10: error: cannot call pointer-receiver method `Node.replace_through_pointer_closure` through embedded interface `Element` because it can replace its receiver
+  139 |     element.replace_through_comptime_method(Node(Item{}))
+  140 |     element.replace_through_pointer(Node(Item{}))
+  141 |     element.replace_through_pointer_closure(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  134 |     element.replace_through_pointer_method(Node(Item{}))
-  135 |     element.replace_through_pointer_argument(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:134:10: error: cannot call mutable method `Node.replace_through_pointer_method` through embedded interface `Element` because it can replace its receiver through a mutable call
-  132 |     element.replace_through_pointer(Node(Item{}))
-  133 |     element.replace_through_pointer_closure(Node(Item{}))
-  134 |     element.replace_through_pointer_method(Node(Item{}))
+  142 |     element.replace_through_pointer_method(Node(Item{}))
+  143 |     element.replace_through_pointer_argument(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:142:10: error: cannot call mutable method `Node.replace_through_pointer_method` through embedded interface `Element` because it can replace its receiver through a mutable call
+  140 |     element.replace_through_pointer(Node(Item{}))
+  141 |     element.replace_through_pointer_closure(Node(Item{}))
+  142 |     element.replace_through_pointer_method(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  135 |     element.replace_through_pointer_argument(Node(Item{}))
-  136 |     mut pointer_element := PointerElement(Item{})
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:135:10: error: cannot call pointer-receiver method `Node.replace_through_pointer_argument` through embedded interface `Element` because its receiver address escapes and can be used to replace it
-  133 |     element.replace_through_pointer_closure(Node(Item{}))
-  134 |     element.replace_through_pointer_method(Node(Item{}))
-  135 |     element.replace_through_pointer_argument(Node(Item{}))
+  143 |     element.replace_through_pointer_argument(Node(Item{}))
+  144 |     mut pointer_element := PointerElement(Item{})
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:143:10: error: cannot call pointer-receiver method `Node.replace_through_pointer_argument` through embedded interface `Element` because its receiver address escapes and can be used to replace it
+  141 |     element.replace_through_pointer_closure(Node(Item{}))
+  142 |     element.replace_through_pointer_method(Node(Item{}))
+  143 |     element.replace_through_pointer_argument(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  136 |     mut pointer_element := PointerElement(Item{})
-  137 |     _ = pointer_element.return_pointer_receiver()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:137:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  135 |     element.replace_through_pointer_argument(Node(Item{}))
-  136 |     mut pointer_element := PointerElement(Item{})
-  137 |     _ = pointer_element.return_pointer_receiver()
+  144 |     mut pointer_element := PointerElement(Item{})
+  145 |     _ = pointer_element.return_pointer_receiver()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:145:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  143 |     element.replace_through_pointer_argument(Node(Item{}))
+  144 |     mut pointer_element := PointerElement(Item{})
+  145 |     _ = pointer_element.return_pointer_receiver()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~
-  138 |     mut holder := PointerHolder{}
-  139 |     pointer_element.store_pointer_receiver(mut holder)
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:139:18: error: cannot call pointer-receiver method `PointerNode.store_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  137 |     _ = pointer_element.return_pointer_receiver()
-  138 |     mut holder := PointerHolder{}
-  139 |     pointer_element.store_pointer_receiver(mut holder)
+  146 |     mut holder := PointerHolder{}
+  147 |     pointer_element.store_pointer_receiver(mut holder)
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:147:18: error: cannot call pointer-receiver method `PointerNode.store_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  145 |     _ = pointer_element.return_pointer_receiver()
+  146 |     mut holder := PointerHolder{}
+  147 |     pointer_element.store_pointer_receiver(mut holder)
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  140 | }
+  148 |     pointer_element.pass_pointer_receiver_as_voidptr()
+  149 | }
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:148:18: error: cannot call pointer-receiver method `PointerNode.pass_pointer_receiver_as_voidptr` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  146 |     mut holder := PointerHolder{}
+  147 |     pointer_element.store_pointer_receiver(mut holder)
+  148 |     pointer_element.pass_pointer_receiver_as_voidptr()
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  149 | }

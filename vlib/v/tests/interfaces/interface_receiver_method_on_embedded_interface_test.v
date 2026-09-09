@@ -25,6 +25,10 @@ fn (node &Node) check() bool {
 	return true
 }
 
+fn (node &Node) copy_value() Node {
+	return unsafe { *node }
+}
+
 interface Element {
 	Node
 	attributes map[string]string
@@ -112,6 +116,12 @@ fn test_field_mutation_through_comptime_receiver_method_on_embedded_interface() 
 
 fn test_non_addressable_receiver_method_on_embedded_interface() {
 	assert new_element().check()
+}
+
+fn test_dereferenced_pointer_receiver_value_does_not_escape() {
+	element := new_element()
+	copy := element.copy_value()
+	assert copy.name == 'body'
 }
 
 fn test_smartcast_receiver_method_on_embedded_interface() {
