@@ -1010,13 +1010,13 @@ fn (mut c Checker) find_comptime_eval_fn(node ast.CallExpr) ?ast.Fn {
 fn (c &Checker) find_comptime_eval_fn_decl(func ast.Fn) ?ast.FnDecl {
 	if func.source_fn != unsafe { nil } {
 		fn_decl := unsafe { &ast.FnDecl(func.source_fn) }
-		if fn_decl != unsafe { nil } {
+		if fn_decl != unsafe { nil } && fn_decl.fkey() == func.fkey() {
 			return *fn_decl
 		}
 	}
 	if c.file != unsafe { nil } {
 		for stmt in c.file.stmts {
-			if stmt is ast.FnDecl && stmt.name == func.name {
+			if stmt is ast.FnDecl && stmt.fkey() == func.fkey() {
 				return stmt
 			}
 		}
@@ -1111,9 +1111,43 @@ fn (mut c Checker) eval_comptime_fn_call_expr_with_locals(node ast.CallExpr, nle
 	return c.eval_comptime_fn_decl_value_with_locals(fn_decl, nlevel + 1, local_args)
 }
 
-fn (c &Checker) find_comptime_eval_infix_method(expr ast.InfixExpr) ?ast.Fn {
+fn (mut c Checker) comptime_eval_expr_type(expr ast.Expr) ast.Type {
+	typ := expr.type()
+	if typ != ast.void_type && typ != ast.no_type {
+		return typ
+	}
+	return match expr {
+		ast.InfixExpr {
+			if method := c.find_comptime_eval_infix_method(expr) {
+				method.return_type
+			} else {
+				left_type := c.comptime_eval_expr_type(expr.left)
+				right_type := c.comptime_eval_expr_type(expr.right)
+				if left_type == ast.void_type || left_type == ast.no_type
+					|| right_type == ast.void_type || right_type == ast.no_type {
+					ast.void_type
+				} else {
+					c.promote(left_type, right_type)
+				}
+			}
+		}
+		else {
+			ast.void_type
+		}
+	}
+}
+
+fn (mut c Checker) find_comptime_eval_infix_method(expr ast.InfixExpr) ?ast.Fn {
 	method_name := expr.op.str()
-	left_sym := c.table.sym(expr.left_type)
+	left_type := if expr.left_type == ast.void_type || expr.left_type == ast.no_type {
+		c.comptime_eval_expr_type(expr.left)
+	} else {
+		expr.left_type
+	}
+	if left_type == ast.void_type || left_type == ast.no_type {
+		return none
+	}
+	left_sym := c.table.sym(left_type)
 	if !left_sym.is_builtin() {
 		if method := left_sym.find_method_with_generic_parent(method_name) {
 			return method

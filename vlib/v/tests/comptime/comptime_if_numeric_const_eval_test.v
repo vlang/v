@@ -76,3 +76,23 @@ type ForwardComptimeAddend = u8
 fn (a ForwardComptimeAddend) + (b ForwardComptimeAddend) ForwardComptimeAddend {
 	return ForwardComptimeAddend(u8(a) + u8(b))
 }
+
+type NestedForwardInnerAddend = u8
+
+fn (a NestedForwardInnerAddend) + (b NestedForwardInnerAddend) NestedForwardInnerAddend {
+	return a
+}
+
+type NestedForwardOuterAddend = u8
+
+fn test_nested_overload_in_forward_overload_comptime_if() {
+	mut value := 0
+	$if NestedForwardOuterAddend(1) + NestedForwardOuterAddend(1) == NestedForwardOuterAddend(1) {
+		value = 1
+	}
+	assert value == 1
+}
+
+fn (a NestedForwardOuterAddend) + (b NestedForwardOuterAddend) NestedForwardOuterAddend {
+	return NestedForwardOuterAddend(NestedForwardInnerAddend(a) + NestedForwardInnerAddend(b) + 1)
+}
