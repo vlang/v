@@ -135,3 +135,34 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
 }
+
+fn test_smartcasted_optional_array_index_keeps_the_wrapper() {
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_smartcasted_optional_array_index_test_${pid}')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+
+	src := os.join_path(os.temp_dir(), 'v3_smartcasted_optional_array_index_input_${pid}.v')
+	os.write_file(src, 'type OptionalInts = []?int
+
+type Values = OptionalInts | string
+
+fn main() {
+	x := Values(OptionalInts([?int(none)]))
+	if x is OptionalInts {
+		assert x[0] == none
+	}
+	println("ok")
+}
+')!
+
+	bin := os.join_path(os.temp_dir(), 'v3_smartcasted_optional_array_index_input_${pid}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok', run.output
+}

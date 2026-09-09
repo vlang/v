@@ -2085,21 +2085,43 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 					return t.transform_optional_wrapper_expr(lowered)
 				}
 			}
+			return t.transform_optional_wrapper_index_expr(source_id, source, raw_type)
 		}
 	}
-	if t.is_optional_type_name(raw_type) && t.a.nodes[int(id)].kind in [.ident, .selector, .index] {
+	if t.is_optional_type_name(raw_type) && t.a.nodes[int(id)].kind in [.ident, .selector] {
 		// `source_id` is already the wrapper expression with any redundant top-level
 		// payload selectors removed. Rebuilding it here would transform its
 		// base again and could apply the same assignment smartcast a second time
 		// (`foo?.field` becoming `foo.value.value.field`).
-		plain := source_id
-		t.set_node_typ(int(plain), raw_type)
-		mut params := t.a.nodes[int(plain)].generic_params().clone()
-		params << optional_wrapper_access_marker
-		t.set_node_generic_params(int(plain), params)
-		return plain
+		return t.mark_optional_wrapper_expr(source_id, raw_type)
 	}
 	return t.transform_expr(id)
+}
+
+fn (mut t Transformer) transform_optional_wrapper_index_expr(id flat.NodeId, node flat.Node, raw_type string) flat.NodeId {
+	key := t.expr_key(id)
+	saved_smartcasts := t.smartcast_stack.clone()
+	if key.len > 0 {
+		mut remaining_smartcasts := []SmartcastContext{cap: saved_smartcasts.len}
+		for smartcast in saved_smartcasts {
+			if smartcast.expr_name == key && smartcast.sum_type_name == option_unwrap_marker {
+				continue
+			}
+			remaining_smartcasts << smartcast
+		}
+		t.smartcast_stack = remaining_smartcasts
+	}
+	transformed := t.transform_index_expr(id, node)
+	t.smartcast_stack = saved_smartcasts
+	return t.mark_optional_wrapper_expr(transformed, raw_type)
+}
+
+fn (mut t Transformer) mark_optional_wrapper_expr(id flat.NodeId, raw_type string) flat.NodeId {
+	t.set_node_typ(int(id), raw_type)
+	mut params := t.a.nodes[int(id)].generic_params().clone()
+	params << optional_wrapper_access_marker
+	t.set_node_generic_params(int(id), params)
+	return id
 }
 
 fn (mut t Transformer) stable_optional_wrapper_expr_for_reuse(id flat.NodeId, typ string, prefix string) flat.NodeId {
