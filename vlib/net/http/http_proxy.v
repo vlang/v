@@ -153,15 +153,9 @@ fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Req
 	if port == 0 {
 		port = if host.scheme == 'https' { 443 } else { 80 }
 	}
-	port_part := if (host.scheme == 'http' && port == 80) || (host.scheme == 'https' && port == 443) {
-		''
-	} else {
-		':${port}'
-	}
-
 	default_port := if host.scheme == 'https' { 443 } else { 80 }
-	s := req.build_request_headers_with(method, host_name, port, default_port,
-		'${host.scheme}://${host_name}${port_part}${path}', data, header)
+	s := req.build_request_headers_with(method, host_name, port, default_port, proxy_request_target(host,
+		port, path), data, header)
 	if host.scheme == 'https' {
 		mut client := pr.ssl_dial('${host_name}:${port}')!
 
@@ -195,6 +189,15 @@ fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Req
 		return parse_received_response(response_text, response_data.info)
 	}
 	return error('Invalid Scheme')
+}
+
+fn proxy_request_target(host urllib.URL, port int, path string) string {
+	port_part := if (host.scheme == 'http' && port == 80) || (host.scheme == 'https' && port == 443) {
+		''
+	} else {
+		':${port}'
+	}
+	return '${host.scheme}://${authority_host(host.hostname())}${port_part}${path}'
 }
 
 fn (pr &HttpProxy) dial(host string) !&net.TcpConn {

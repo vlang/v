@@ -40,13 +40,15 @@ The `now_unix` option rejects signatures created after the supplied time and
 enforces the optional `expires` parameter; pass `0` (the default) to skip time
 validation.
 
-`verify_request` requires `@method`, `@target-uri`, and `@authority` by default.
-For responses, the default is `@status`; a body also requires `content-digest`.
-Likewise, default `sign_response` calls require an existing `Content-Digest`
-field for a body and cover it. Applications must also validate that digest
-against the received body. A different authorization profile can be selected
-explicitly with `required_components`. The lower-level `verify` API performs
-cryptographic verification only unless its `required_components` option is set.
+`verify_request` requires `@method`, `@target-uri`, and `@authority` by default;
+a body also requires `content-digest`. For responses, the default is `@status`,
+again with `content-digest` for a body. Default `sign_request` and
+`sign_response` calls require an existing `Content-Digest` field for a body and
+cover it. Applications must also validate that digest against the received
+body. A different authorization profile can be selected explicitly with
+`components` when signing and `required_components` when verifying. The
+lower-level `verify` API performs cryptographic verification only unless its
+`required_components` option is set.
 
 ## Algorithms
 

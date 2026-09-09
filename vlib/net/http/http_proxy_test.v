@@ -60,6 +60,12 @@ fn test_proxy_headers_authenticated() ? {
 		'Proxy-Connection: Keep-Alive\r\nProxy-Authorization: Basic ${auth_token}\r\n\r\n'
 }
 
+fn test_proxy_request_target_preserves_ipv6_brackets() {
+	host := urllib.parse('http://[2001:db8::1]/')!
+	assert proxy_request_target(host, 80, '/path') == 'http://[2001:db8::1]/path'
+	assert proxy_request_target(host, 8080, '/path') == 'http://[2001:db8::1]:8080/path'
+}
+
 enum ProxyTunnelCopyResult {
 	data
 	timeout

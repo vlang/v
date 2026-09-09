@@ -44,12 +44,19 @@ pub:
 //
 // `created` defaults to `time.now().unix()` when omitted, since
 // RFC 9421 §7.2.1 RECOMMENDS the parameter for replay protection.
-// Pass an explicit `created: 0` only if you know you don't want it.
+// Pass an explicit `created: 0` only if you know you don't want it. The
+// default component profile additionally requires and covers Content-Digest
+// when the request has a body.
 pub fn sign_request(mut req http.Request, key Key, opts SignRequestOptions) ! {
 	ensure_signature_label_available(req.header, opts.label)!
 	c := request_components(req, opts.scheme, .outgoing)!
 	mut comps := opts.components.clone()
 	if comps.len == 0 {
+		if req.data != '' && !req.header.contains_custom('Content-Digest') {
+			return MalformedMessage{
+				reason: 'default signing of a request body requires a Content-Digest field'
+			}
+		}
 		comps = default_request_components(req)
 	}
 	validate_stable_signature_components(comps)!
@@ -81,7 +88,8 @@ pub struct VerifyRequestOptions {
 pub:
 	label    string
 	now_unix i64
-	// required_components defaults to @method, @target-uri, and @authority.
+	// required_components defaults to @method, @target-uri, and @authority,
+	// plus content-digest for a body.
 	required_components []string
 	// scheme — see SignRequestOptions.scheme. Both ends of the
 	// signature must agree on the scheme used to reconstruct the
@@ -91,10 +99,10 @@ pub:
 
 // verify_request verifies a labelled signature on an HTTP request. If
 // `opts.label` is empty and exactly one signature is present, that
-// one is checked. If `opts.now_unix > 0`, the `expires` parameter is
-// also enforced. By default, coverage of @method, @target-uri, and
-// @authority is required; pass an explicit application profile through
-// `required_components` to override that policy.
+// one is checked. If `opts.now_unix > 0`, the signature time bounds are
+// enforced. By default, coverage of @method, @target-uri, and
+// @authority is required, plus content-digest for a body; pass an explicit
+// application profile through `required_components` to override that policy.
 pub fn verify_request(req http.Request, key Key, opts VerifyRequestOptions) ! {
 	c := request_components(req, opts.scheme, .incoming)!
 	sig_input := merged_dict_field(req.header, 'Signature-Input') or {
@@ -109,6 +117,8 @@ pub fn verify_request(req http.Request, key Key, opts VerifyRequestOptions) ! {
 	}
 	required := if opts.required_components.len > 0 {
 		opts.required_components
+	} else if req.data != '' {
+		['@method', '@target-uri', '@authority', 'content-digest']
 	} else {
 		['@method', '@target-uri', '@authority']
 	}
@@ -531,6 +541,9 @@ fn default_request_components(req http.Request) []string {
 	mut comps := ['@method', '@target-uri', '@authority']
 	if req.header.contains_custom('Date') {
 		comps << 'date'
+	}
+	if req.data != '' {
+		comps << 'content-digest'
 	}
 	return comps
 }

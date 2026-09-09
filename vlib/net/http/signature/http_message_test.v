@@ -34,6 +34,44 @@ fn test_sign_and_verify_request_hmac_roundtrip() {
 	verify_request(req, key)!
 }
 
+fn test_request_defaults_require_content_digest_for_body() {
+	mut missing_digest := build_request('https://example.com/upload')
+	missing_digest.data = 'hello'
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_request(mut missing_digest, key, created: 1) {
+		assert false, 'default request signing must require a digest for a body'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !missing_digest.header.contains_custom('Signature')
+
+	mut req := build_request('https://example.com/upload')
+	req.data = 'hello'
+	req.header.add_custom('Content-Digest', 'sha-256=:digest:')!
+	sign_request(mut req, key, created: 1)!
+	signature_input := req.header.get_custom('Signature-Input') or { '' }
+	assert signature_input.contains('"content-digest"')
+	verify_request(req, key)!
+}
+
+fn test_verify_request_requires_content_digest_coverage_for_body_by_default() {
+	mut req := build_request('https://example.com/upload')
+	req.data = 'hello'
+	key := Key.hmac_sha256(test_secret.bytes())!
+	sign_request(mut req, key,
+		components: ['@method', '@target-uri', '@authority']
+		created:    1
+	)!
+	if _ := verify_request(req, key) {
+		assert false, 'default request verification must require digest coverage for a body'
+	} else {
+		assert err is MalformedMessage
+	}
+	verify_request(req, key,
+		required_components: ['@method', '@target-uri', '@authority']
+	)!
+}
+
 fn test_sign_and_verify_request_ed25519_roundtrip() {
 	seed := []u8{len: 32, init: u8(index)}
 	priv_obj := ed25519.new_key_from_seed(seed)
