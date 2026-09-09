@@ -13104,7 +13104,7 @@ fn (mut t Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, 
 	seen[int(arg_id)] = true
 	node := t.a.nodes[int(arg_id)]
 	match node.kind {
-		.paren, .expr_stmt, .dump_expr {
+		.paren, .expr_stmt, .dump_expr, .postfix {
 			if node.children_count == 1 {
 				t.collect_fn_literal_source_type_texts(t.a.child(&node, 0), mut result, mut seen)
 			}

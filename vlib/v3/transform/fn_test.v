@@ -41,6 +41,47 @@ fn test_fn_type_texts_signature_compatible_preserves_c_abi_const_parameter() {
 		'fn (event &C.native_event)')
 }
 
+fn test_callback_source_type_texts_unwraps_postfix_call() {
+	mut a := flat.FlatAst.new()
+	callee_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'make_handler'
+	})
+	call_children_start := a.children.len
+	a.children << callee_id
+	call_id := a.add_node(flat.Node{
+		kind:           .call
+		typ:            'fn (&C.native_event)'
+		children_start: i32(call_children_start)
+		children_count: 1
+	})
+	postfix_children_start := a.children.len
+	a.children << call_id
+	postfix_id := a.add_node(flat.Node{
+		kind:           .postfix
+		typ:            'fn (&C.native_event)'
+		op:             .not
+		children_start: i32(postfix_children_start)
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_ret_type_texts['make_handler'] = 'fn (const_event &C.native_event)'
+	tc.fn_type_modules['make_handler'] = 'main'
+	mut t := Transformer{
+		a:                 &a
+		tc:                &tc
+		cur_module:        'main'
+		module_type_cache: &AliasCache{}
+	}
+
+	assert t.fn_literal_source_type_texts(call_id) == [
+		'fn(const_event &C.native_event)',
+	]
+	assert t.fn_literal_source_type_texts(postfix_id) == [
+		'fn(const_event &C.native_event)',
+	]
+}
+
 fn test_fn_type_texts_signature_compatible_without_c_abi_names_handles_nested_callbacks() {
 	assert fn_type_texts_signature_compatible_without_c_abi_names('fn (callback fn (const_event &C.native_event))',
 		'fn (fn (&C.native_event))')
