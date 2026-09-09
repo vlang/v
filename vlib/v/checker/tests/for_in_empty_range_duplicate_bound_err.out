@@ -1,0 +1,7 @@
+vlib/v/checker/tests/for_in_empty_range_duplicate_bound_err.vv:3:21: error: shift count for type `int literal` too large (maximum: 64 bits)
+    1 | fn main() {
+    2 |     // vfmt off
+    3 |     for i in 1 .. 1 << 99 { println(i) }; for j in 1 .. 1 << 99 { println(j) }
+      |                        ~~
+    4 |     // vfmt on
+    5 | }

@@ -48,9 +48,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	prev_loop_labels := c.loop_labels
 	cond_pos := node.cond.pos()
 	high_pos := node.high.pos()
-	errors_before_low_bound := c.errors.len
+	errors_before_low_bound := c.nr_errors
 	mut typ := c.expr(mut node.cond)
-	low_bound_has_error := c.errors.len > errors_before_low_bound
+	low_bound_has_error := c.nr_errors > errors_before_low_bound
 	if node.key_var.len > 0 && node.key_var != '_' {
 		c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
 		if reserved_type_names_chk.matches(node.key_var) {
@@ -73,11 +73,11 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 
 	if node.is_range {
 		typ_idx := typ.idx()
-		errors_before_high_bound := c.errors.len
+		errors_before_high_bound := c.nr_errors
 		high_type := c.expr(mut node.high)
-		high_bound_has_error := c.errors.len > errors_before_high_bound
+		high_bound_has_error := c.nr_errors > errors_before_high_bound
 		high_type_idx := high_type.idx()
-		errors_before_range_checks := c.errors.len
+		errors_before_range_checks := c.nr_errors
 		if typ_idx in ast.integer_type_idxs && high_type_idx !in ast.integer_type_idxs
 			&& high_type_idx != ast.void_type_idx {
 			c.error('range types do not match', node.cond.pos())
@@ -105,7 +105,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		}
 
 		range_error := low_bound_has_error || high_bound_has_error
-			|| c.errors.len > errors_before_range_checks
+			|| c.nr_errors > errors_before_range_checks
 		if high_type in [ast.int_type, ast.int_literal_type] {
 			node.val_type = typ
 		} else {

@@ -1,0 +1,5 @@
+fn main() {
+	// vfmt off
+	for i in 1 .. 1 << 99 { println(i) }; for j in 1 .. 1 << 99 { println(j) }
+	// vfmt on
+}
