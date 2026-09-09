@@ -12862,7 +12862,7 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 				return
 			}
 			before := result.len
-			if rhs_id := t.callback_local_decl_rhs(node.value, arg_id) {
+			for rhs_id in t.callback_local_reaching_rhs_ids(node.value, arg_id) {
 				t.collect_fn_literal_source_type_texts(rhs_id, mut result, mut seen)
 			}
 			if result.len == before {
@@ -12918,15 +12918,15 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 	result << 'fn (${params.join(', ')})${ret}'
 }
 
-fn (t &Transformer) callback_local_decl_rhs(name string, before_id flat.NodeId) ?flat.NodeId {
+fn (t &Transformer) callback_local_reaching_rhs_ids(name string, before_id flat.NodeId) []flat.NodeId {
 	if name.len == 0 || int(before_id) < 0 || int(before_id) >= t.a.nodes.len {
-		return none
+		return []flat.NodeId{}
 	}
 	before := t.a.nodes[int(before_id)]
 	if !before.pos.is_valid() {
-		return none
+		return []flat.NodeId{}
 	}
-	source_before := t.callback_source_node_id(before_id) or { return none }
+	source_before := t.callback_source_node_id(before_id) or { return []flat.NodeId{} }
 	mut path := [source_before]
 	mut cursor := source_before
 	mut found_fn_scope := false
@@ -12944,11 +12944,16 @@ fn (t &Transformer) callback_local_decl_rhs(name string, before_id flat.NodeId) 
 		cursor = parent_id
 	}
 	if !found_fn_scope {
-		return none
+		return []flat.NodeId{}
 	}
-	mut best_rhs := flat.empty_node
+	mut reaching := []flat.NodeId{}
 	for path_idx := path.len - 1; path_idx > 0; path_idx-- {
 		parent := t.a.nodes[path[path_idx]]
+		// Mutually exclusive sibling branches cannot reach a use inside the active branch.
+		// Its own preceding statements are handled when that branch/block is visited.
+		if parent.kind in [.if_expr, .match_stmt, .for_stmt, .for_in_stmt] {
+			continue
+		}
 		next_id := path[path_idx - 1]
 		for i in 0 .. parent.children_count {
 			child_id := int(t.a.child(&parent, i))
@@ -12958,23 +12963,75 @@ fn (t &Transformer) callback_local_decl_rhs(name string, before_id flat.NodeId) 
 			if child_id < 0 || child_id >= t.a.nodes.len {
 				continue
 			}
-			decl := t.a.nodes[child_id]
-			if decl.kind !in [.decl_assign, .assign] || (decl.kind == .assign && decl.op != .assign) {
+			stmt := t.a.nodes[child_id]
+			if rhs_ids := t.callback_direct_assignment_rhs_ids(stmt, name) {
+				reaching = rhs_ids.clone()
 				continue
 			}
-			for j := 0; j + 1 < decl.children_count; j += 2 {
-				lhs := t.a.child_node(&decl, j)
-				if lhs.kind == .ident && lhs.value == name {
-					best_rhs = t.a.child(&decl, j + 1)
-					break
+			mut nested := []flat.NodeId{}
+			t.collect_callback_nested_assignment_rhs_ids(t.a.child(&parent, i), name, mut nested)
+			for rhs_id in nested {
+				if rhs_id !in reaching {
+					reaching << rhs_id
 				}
 			}
 		}
 	}
-	if best_rhs == flat.empty_node {
+	return reaching
+}
+
+fn (t &Transformer) callback_direct_assignment_rhs_ids(node flat.Node, name string) ?[]flat.NodeId {
+	if node.kind !in [.decl_assign, .assign] || (node.kind == .assign && node.op != .assign) {
 		return none
 	}
-	return best_rhs
+	mut result := []flat.NodeId{}
+	for i := 0; i + 1 < int(node.children_count); i += 2 {
+		lhs := t.a.child_node(&node, i)
+		if lhs.kind == .ident && lhs.value == name {
+			result << t.a.child(&node, i + 1)
+		}
+	}
+	return if result.len > 0 { result } else { none }
+}
+
+fn (t &Transformer) collect_callback_nested_assignment_rhs_ids(id flat.NodeId, name string, mut result []flat.NodeId) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr, .defer_stmt] {
+		return
+	}
+	if node.kind == .decl_assign {
+		return
+	}
+	if node.kind == .assign && node.op == .assign {
+		if rhs_ids := t.callback_direct_assignment_rhs_ids(node, name) {
+			for rhs_id in rhs_ids {
+				if rhs_id !in result {
+					result << rhs_id
+				}
+			}
+			return
+		}
+	}
+	mut name_shadowed := false
+	for i in 0 .. node.children_count {
+		child_id := t.a.child(&node, i)
+		if int(child_id) < 0 || int(child_id) >= t.a.nodes.len {
+			continue
+		}
+		child := t.a.nodes[int(child_id)]
+		if child.kind == .decl_assign {
+			if _ := t.callback_direct_assignment_rhs_ids(child, name) {
+				name_shadowed = true
+			}
+			continue
+		}
+		if !name_shadowed {
+			t.collect_callback_nested_assignment_rhs_ids(child_id, name, mut result)
+		}
+	}
 }
 
 fn (t &Transformer) callback_source_node_id(id flat.NodeId) ?int {

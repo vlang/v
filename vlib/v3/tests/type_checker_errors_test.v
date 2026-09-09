@@ -1983,6 +1983,22 @@ fn test_callback_identifier_c_abi_modes_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_indexed_callback_param_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T](callbacks []ConstHandler) {\n\tr := Router{}\n\tr.accept(callbacks[0])\n}\nfn main() {\n\tstartup[int]([fn (const_event &C.native_event) {}])\n}\n',
 		'cannot use')
+	control_flow_matching := run_good(v3_bin, 'good_control_flow_reassigned_callback_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tr := Router{}\n\tmut callback := PlainHandler(plain_handler)\n\tif true {\n\t\tcallback = PlainHandler(plain_handler)\n\t}\n\tmatch 1 {\n\t\t1 { callback = PlainHandler(plain_handler) }\n\t\telse {}\n\t}\n\tfor _ in 0 .. 1 {\n\t\tcallback = PlainHandler(plain_handler)\n\t}\n\treturn r.accept(callback)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert control_flow_matching == 'true'
+	branch_isolation_matching := run_good(v3_bin,
+		'good_unreachable_sibling_callback_assignment_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) bool {\n\treturn true\n}\nfn startup[T](flag bool) bool {\n\tr := Router{}\n\tmut callback := PlainHandler(plain_handler)\n\tif flag {\n\t\tcallback = ConstHandler(const_handler)\n\t\treturn true\n\t} else {\n\t\treturn r.accept(callback)\n\t}\n}\nfn main() {\n\tprintln(startup[int](false).str())\n}\n')
+	assert branch_isolation_matching == 'true'
+	run_bad(v3_bin, 'bad_if_reassigned_callback_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T](flag bool) {\n\tr := Router{}\n\tmut callback := PlainHandler(plain_handler)\n\tif flag {\n\t\tcallback = ConstHandler(const_handler)\n\t}\n\tr.accept(callback)\n}\nfn main() {\n\tstartup[int](true)\n}\n',
+		'cannot use')
+	run_bad(v3_bin, 'bad_match_reassigned_callback_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T](value int) {\n\tr := Router{}\n\tmut callback := PlainHandler(plain_handler)\n\tmatch value {\n\t\t1 { callback = ConstHandler(const_handler) }\n\t\telse {}\n\t}\n\tr.accept(callback)\n}\nfn main() {\n\tstartup[int](1)\n}\n',
+		'cannot use')
+	run_bad(v3_bin, 'bad_loop_reassigned_callback_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tmut callback := PlainHandler(plain_handler)\n\tfor _ in 0 .. 1 {\n\t\tcallback = ConstHandler(const_handler)\n\t}\n\tr.accept(callback)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 }
 
 fn test_fn_literal_nested_named_callback_param_matches_alias_inside_generic_fn() {
