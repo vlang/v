@@ -635,7 +635,9 @@ fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host
 		// fast-fail signal).
 		return t.h3_round_trip(req, key, method, host, port, path, data, header)
 	}
-	raw := req.build_request_headers_opts(method, host, port, path, data, header, false)
+	default_port := if scheme == 'https' { 443 } else { 80 }
+	raw := req.build_request_headers_opts(method, host, port, default_port, path, data, header,
+		false)
 	$if trace_http_request ? {
 		eprint('> ')
 		eprint(raw)

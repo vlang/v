@@ -17,10 +17,18 @@ const h2_hop_by_hop = ['connection', 'keep-alive', 'proxy-connection', 'transfer
 // h2_authority returns the :authority value for a host and port, omitting the
 // port for the default HTTPS port.
 fn h2_authority(host string, port int) string {
+	wire_host := authority_host(host)
 	if port == 443 || port == 0 {
-		return host
+		return wire_host
 	}
-	return '${host}:${port}'
+	return '${wire_host}:${port}'
+}
+
+fn authority_host(host string) string {
+	if host.contains(':') && !(host.starts_with('[') && host.ends_with(']')) {
+		return '[${host}]'
+	}
+	return host
 }
 
 // to_h2_request builds an HTTP/2 request from this request. Header names are

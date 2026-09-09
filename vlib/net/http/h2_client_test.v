@@ -115,6 +115,8 @@ fn test_h2_authority_omits_default_port() {
 	assert h2_authority('example.com', 443) == 'example.com'
 	assert h2_authority('example.com', 0) == 'example.com'
 	assert h2_authority('example.com', 8443) == 'example.com:8443'
+	assert h2_authority('2001:db8::1', 443) == '[2001:db8::1]'
+	assert h2_authority('2001:db8::1', 8443) == '[2001:db8::1]:8443'
 }
 
 // End-to-end test against a real HTTP/2 server. Run with `-d network`,

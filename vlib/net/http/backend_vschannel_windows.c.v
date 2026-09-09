@@ -45,7 +45,7 @@ fn vschannel_h1_do(req &Request, port int, method Method, host_name string, path
 	C.vschannel_init(&ctx, C.BOOL(if req.validate { 1 } else { 0 }))
 	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }
 	addr := host_name
-	sdata := req.build_request_headers_with(method, host_name, port, path, data, header)
+	sdata := req.build_request_headers_with(method, host_name, port, 443, path, data, header)
 	$if trace_http_request ? {
 		eprintln('> ${sdata}')
 	}
@@ -60,7 +60,7 @@ fn vschannel_h1_do(req &Request, port int, method Method, host_name string, path
 // did not negotiate `h2`. It consumes (and cleans up) `ctx`.
 fn (req &Request) vschannel_h1_on_open(ctx &C.TlsContext, method Method, host_name string, port int, path string, data string, header Header) !Response {
 	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }
-	sdata := req.build_request_headers_with(method, host_name, port, path, data, header)
+	sdata := req.build_request_headers_with(method, host_name, port, 443, path, data, header)
 	$if trace_http_request ? {
 		eprintln('> ${sdata}')
 	}

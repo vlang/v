@@ -15,7 +15,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string,
 
 fn net_ssl_do(req &Request, port int, method Method, host_name string, path string, data string, header Header) !Response {
 	mut retries := 0
-	req_headers := req.build_request_headers_with(method, host_name, port, path, data, header)
+	req_headers := req.build_request_headers_with(method, host_name, port, 443, path, data, header)
 	$if trace_http_request ? {
 		eprint('> ')
 		eprint(req_headers)

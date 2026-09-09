@@ -50,3 +50,19 @@ fn test_build_request_headers_deduplicates_header_name_casing() {
 	assert headers.count('X-Foo:') == 1
 	assert headers.contains('X-Foo: a, b\r\n')
 }
+
+fn test_build_request_headers_preserves_nondefault_port_for_scheme() {
+	req := Request{}
+	http_headers := req.build_request_headers_with(.get, 'example.com', 443, 80, '/', '',
+		new_header())
+	assert http_headers.contains('Host: example.com:443\r\n')
+	https_headers := req.build_request_headers_with(.get, 'example.com', 80, 443, '/', '',
+		new_header())
+	assert https_headers.contains('Host: example.com:80\r\n')
+}
+
+fn test_build_request_headers_brackets_ipv6_authority() {
+	req := Request{}
+	headers := req.build_request_headers_with(.get, '2001:db8::1', 443, 443, '/', '', new_header())
+	assert headers.contains('Host: [2001:db8::1]\r\n')
+}
