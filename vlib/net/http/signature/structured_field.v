@@ -327,7 +327,6 @@ fn (mut p SfParser) parse_params() !map[string]ParamValue {
 	mut m := map[string]ParamValue{}
 	for p.pos < p.src.len && p.src[p.pos] == `;` {
 		p.pos++
-		p.skip_sp()
 		name := p.parse_key()!
 		if name in m {
 			return MalformedMessage{

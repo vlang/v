@@ -140,6 +140,16 @@ fn test_parse_signature_input_rejects_duplicate_signature_parameters() {
 	}
 }
 
+fn test_parse_signature_input_rejects_whitespace_after_parameter_delimiter() {
+	for value in ['sig1=("@method"); created=1', 'sig1=("@method");\tcreated=1'] {
+		if _ := parse_signature_input(value) {
+			assert false, 'a parameter key must immediately follow its semicolon'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+}
+
 fn test_parse_signature_input_rejects_out_of_range_integers() {
 	for value in ['1000000000000000', '-1000000000000000'] {
 		if _ := parse_signature_input('sig1=("@method");created=${value}') {
