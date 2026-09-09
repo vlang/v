@@ -1119,12 +1119,6 @@ fn (c &Checker) find_comptime_eval_infix_method(expr ast.InfixExpr) ?ast.Fn {
 			return method
 		}
 	}
-	right_sym := c.table.sym(expr.right_type)
-	if !right_sym.is_builtin() {
-		if method := right_sym.find_method_with_generic_parent(method_name) {
-			return method
-		}
-	}
 	return none
 }
 

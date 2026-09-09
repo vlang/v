@@ -48,3 +48,17 @@ fn test_overloaded_numeric_operation_result_in_comptime_if() {
 	}
 	assert value == 2
 }
+
+type RightOperandComptimeAddend = u8
+
+fn (a RightOperandComptimeAddend) + (b RightOperandComptimeAddend) RightOperandComptimeAddend {
+	return a - b
+}
+
+fn test_right_operand_overload_is_not_used_in_comptime_if() {
+	mut value := 0
+	$if u8(1) + RightOperandComptimeAddend(2) == RightOperandComptimeAddend(3) {
+		value = 1
+	}
+	assert value == 1
+}
