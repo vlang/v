@@ -37,8 +37,9 @@ pub:
 // serialize_params formats the named parameters in RFC 8941 §3.1.2 form,
 // in the order they were inserted into the map. RFC 9421 does not
 // constrain the order of parameters, but our output mirrors `pairs` so
-// callers control the wire layout.
-pub fn serialize_params(pairs []ParamPair) string {
+// callers control the wire layout. It returns `MalformedMessage` when a
+// string value contains bytes outside the RFC 8941 visible ASCII range.
+pub fn serialize_params(pairs []ParamPair) !string {
 	mut sb := []string{cap: pairs.len * 2}
 	for pair in pairs {
 		sb << ';'
@@ -46,7 +47,7 @@ pub fn serialize_params(pairs []ParamPair) string {
 		sb << '='
 		match pair.value {
 			i64 { sb << pair.value.str() }
-			string { sb << '"' + escape_string(pair.value) + '"' }
+			string { sb << '"' + escape_string(pair.value)! + '"' }
 			bool { sb << if pair.value { '?1' } else { '?0' } }
 		}
 	}
@@ -65,18 +66,26 @@ pub:
 
 // serialize_inner_list returns the canonical Inner List form (parens
 // around space-separated quoted-string items) for the covered
-// components list. Each component name is emitted as a quoted string.
-pub fn serialize_inner_list(items []string) string {
+// components list. Each component name is emitted as a quoted string;
+// invalid Structured Field string bytes return `MalformedMessage`.
+pub fn serialize_inner_list(items []string) !string {
 	mut parts := []string{cap: items.len}
 	for it in items {
-		parts << '"' + escape_string(it) + '"'
+		parts << '"' + escape_string(it)! + '"'
 	}
 	return '(' + parts.join(' ') + ')'
 }
 
 // escape_string applies the RFC 8941 §3.3.3 quoted-string escape rules
 // (backslash and double-quote are the only escape-required characters).
-fn escape_string(s string) string {
+fn escape_string(s string) !string {
+	for c in s {
+		if c < 0x20 || c > 0x7e {
+			return MalformedMessage{
+				reason: 'Structured Field string contains invalid byte ${c}'
+			}
+		}
+	}
 	if !s.contains('\\') && !s.contains('"') {
 		return s
 	}

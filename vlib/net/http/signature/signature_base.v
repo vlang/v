@@ -32,7 +32,7 @@ pub mut:
 // primitive. RFC 9421 §2.5 step 7 forbids duplicate covered components
 // (the verifier rejects them), so we enforce that here too.
 pub fn signature_base_string(c Components, p SignatureParams) !string {
-	return build_signature_base(c, p.components, serialize_signature_params(p))!
+	return build_signature_base(c, p.components, serialize_signature_params(p)!)!
 }
 
 // build_signature_base is the shared core. Both `signature_base_string`
@@ -61,7 +61,8 @@ fn build_signature_base(c Components, components []string, signature_params_valu
 // the Signature-Input header value. Parameter order is fixed
 // (created, expires, nonce, alg, keyid, tag) for diff-stability;
 // RFC 9421 doesn't constrain order and verifiers reparse anyway.
-pub fn serialize_signature_params(p SignatureParams) string {
+// Invalid Structured Field string bytes return `MalformedMessage`.
+pub fn serialize_signature_params(p SignatureParams) !string {
 	mut pairs := []ParamPair{cap: 6}
 	if v := p.created {
 		pairs << ParamPair{
@@ -99,13 +100,14 @@ pub fn serialize_signature_params(p SignatureParams) string {
 			value: v
 		}
 	}
-	return serialize_inner_list(p.components) + serialize_params(pairs)
+	return serialize_inner_list(p.components)! + serialize_params(pairs)!
 }
 
 // signature_input_value returns the full Signature-Input value for
 // `label`, ready to be put into the header `Signature-Input: <…>`.
-pub fn signature_input_value(label string, p SignatureParams) string {
-	return label + '=' + serialize_signature_params(p)
+// Invalid Structured Field string bytes return `MalformedMessage`.
+pub fn signature_input_value(label string, p SignatureParams) !string {
+	return label + '=' + serialize_signature_params(p)!
 }
 
 // signature_header_value returns the full Signature value for `label`,

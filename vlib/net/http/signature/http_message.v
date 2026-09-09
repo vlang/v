@@ -226,8 +226,9 @@ fn request_components(req http.Request, default_scheme string) !Components {
 		method: req.method.str()
 	}
 	is_origin_form := req.url.starts_with('/')
-	c.target_uri = if is_origin_form && authority != '' {
-		'${scheme}://${authority}${req.url}'
+	request_target := parsed.request_uri()
+	c.target_uri = if authority != '' && scheme != '' && (is_origin_form || parsed.host != '') {
+		'${scheme}://${authority}${request_target}'
 	} else {
 		req.url
 	}
@@ -244,12 +245,6 @@ fn request_components(req http.Request, default_scheme string) !Components {
 		c.path = '/'
 	}
 	c.query = if parsed.raw_query != '' { '?' + parsed.raw_query } else { '?' }
-	mut request_target := c.path or { '/' }
-	if rq := c.query {
-		if rq != '?' {
-			request_target += rq
-		}
-	}
 	c.request_target = request_target
 	for k in req.header.keys() {
 		values := req.header.custom_values(k)

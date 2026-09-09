@@ -207,6 +207,28 @@ fn test_request_components_preserve_escaped_path() {
 	assert c.component_value('@request-target')! == '/files/a%2Fb?download=1'
 }
 
+fn test_request_components_normalize_empty_absolute_path() {
+	req := build_request('https://example.com')
+	c := request_components(req, 'https')!
+	assert c.component_value('@target-uri')! == 'https://example.com/'
+	assert c.component_value('@request-target')! == '/'
+}
+
+fn test_sign_request_rejects_control_bytes_in_parameters() {
+	mut req := build_request('https://example.com/')
+	key := Key.hmac_sha256(test_secret.bytes())
+	if _ := sign_request(mut req, key,
+		components: ['@method']
+		keyid:      'safe\r\nInjected: true'
+	)
+	{
+		assert false, 'control bytes in signature parameters must be rejected'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !req.header.contains_custom('Signature-Input')
+}
+
 fn test_append_dict_header_preserves_all_existing_field_lines() {
 	mut header := http.Header{}
 	header.add_custom('Signature-Input', 'sig-a=("@method")')!

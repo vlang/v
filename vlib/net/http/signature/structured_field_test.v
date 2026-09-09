@@ -6,12 +6,12 @@
 module signature
 
 fn test_serialize_inner_list_quotes_each_item() {
-	got := serialize_inner_list(['@method', 'date', '@path'])
+	got := serialize_inner_list(['@method', 'date', '@path'])!
 	assert got == '("@method" "date" "@path")'
 }
 
 fn test_serialize_inner_list_handles_empty() {
-	assert serialize_inner_list([]string{}) == '()'
+	assert serialize_inner_list([]string{})! == '()'
 }
 
 fn test_serialize_params_keeps_input_order() {
@@ -25,7 +25,7 @@ fn test_serialize_params_keeps_input_order() {
 			value: 'k1'
 		},
 	]
-	got := serialize_params(pairs)
+	got := serialize_params(pairs)!
 	assert got == ';created=1;keyid="k1"'
 }
 
@@ -36,7 +36,7 @@ fn test_serialize_params_escapes_quotes_in_strings() {
 			value: 'has"quote'
 		},
 	]
-	assert serialize_params(pairs) == ';tag="has\\"quote"'
+	assert serialize_params(pairs)! == ';tag="has\\"quote"'
 }
 
 fn test_serialize_params_emits_boolean_short_form() {
@@ -50,7 +50,21 @@ fn test_serialize_params_emits_boolean_short_form() {
 			value: false
 		},
 	]
-	assert serialize_params(pairs) == ';flag=?1;other=?0'
+	assert serialize_params(pairs)! == ';flag=?1;other=?0'
+}
+
+fn test_serialize_params_rejects_control_bytes() {
+	pairs := [
+		ParamPair{
+			name:  'keyid'
+			value: 'safe\r\nInjected: true'
+		},
+	]
+	if _ := serialize_params(pairs) {
+		assert false, 'control bytes must not be serialized into a Structured Field string'
+	} else {
+		assert err is MalformedMessage
+	}
 }
 
 fn test_parse_signature_input_single_entry() {
