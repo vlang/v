@@ -2098,6 +2098,17 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		g.validate_expression_stream_token(expression_tokens, stops, allow_mutation_statement, allow_declaration_guard, paren_depth, bracket_depth, brace_depth, unsafe_expression_depth, source_token_count, mut operator_state)!
 		streamed := g.render_expression_stream_token(mut expression_tokens, stops, previous_token, previous_lit, previous_module_separator, shared_is_struct_field, spawn_is_field_name, keyword_is_field_name, brace_depth, previous_was_pointer_cast, next_token_is_mut_argument, source_token_count)!
 		mut piece := streamed.piece
+		if g.tok == .dot {
+			mut selector_lookahead := g.s
+			if selector_lookahead.scan() == .name && selector_lookahead.lit == 'len' {
+				if receiver_type := g.map_receiver_type_before_dot(expression_tokens, expression_tokens.len - 1) {
+					piece = if receiver_type.ends_with('*') { '->data->' } else { '.data->' }
+				}
+			}
+		} else if g.tok == .name && g.lit == 'len' && previous_token == .dot
+			&& g.map_length_receiver_type(expression_tokens, expression_tokens.len - 2) != none {
+			piece = 'count'
+		}
 		if previous_module_separator && expression_tokens.len >= 3
 			&& expression_tokens.last().tok == .name {
 			mut call_lookahead := g.s

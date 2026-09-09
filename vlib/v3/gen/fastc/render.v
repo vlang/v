@@ -4890,6 +4890,14 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 				continue
 			}
 		}
+		if tokens[i + 1].lit == 'len' && g.is_map_type(current_type) {
+			separator := if current_type.ends_with('*') { '->' } else { '.' }
+			source += '${separator}data->count'
+			current_type = 'int'
+			member_path += '.len'
+			i += 2
+			continue
+		}
 		field := g.struct_field_metadata(current_type, tokens[i + 1].lit) or { return none }
 		for storage_name in field.storage_path {
 			separator := if current_type.ends_with('*') { '->' } else { '.' }
