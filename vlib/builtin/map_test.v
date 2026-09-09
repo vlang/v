@@ -597,6 +597,14 @@ fn test_map_move_leaves_source_empty() {
 	assert 'abc' !in original
 	original.clear()
 	assert original.len == 0
+	original.reserve(32)
+	original['def'] = 24
+	assert original == {
+		'def': 24
+	}
+	assert moved == {
+		'abc': 42
+	}
 }
 
 struct MValue {

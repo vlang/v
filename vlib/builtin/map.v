@@ -230,7 +230,7 @@ mut:
 	data &VMapData = unsafe { nil }
 }
 
-// map_empty_data keeps freed and moved-from maps readable without retaining their allocated header.
+// map_empty_data keeps freed maps readable without retaining their allocated header.
 __global map_empty_data = VMapData{
 	metas: unsafe { nil }
 }
@@ -395,7 +395,11 @@ fn new_map_update_init(update &map, n int, key_bytes int, value_bytes int, keys 
 // to an empty map.
 pub fn (mut m map) move() map {
 	r := *m
-	m.data = &map_empty_data
+	if m.data == unsafe { nil } || m.data == &map_empty_data {
+		m.data = &map_empty_data
+	} else {
+		m.data = new_map_data(m.data.key_bytes, m.data.value_bytes, m.data.hash_fn, m.data.key_eq_fn, m.data.clone_fn, m.data.free_fn)
+	}
 	return r
 }
 

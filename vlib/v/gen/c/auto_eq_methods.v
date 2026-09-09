@@ -558,6 +558,10 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('${g.static_non_parallel}inline bool ${ptr_styp}_map_eq(${ptr_styp} a, ${ptr_styp} b) {')
+	if left.typ.has_flag(.option) {
+		fn_builder.writeln('\tif (a.state != b.state) return false;')
+		fn_builder.writeln('\tif (a.state == 2 && a.state == b.state) return true;')
+	}
 	fn_builder.writeln('\tif (${left_len} != ${right_len}) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
