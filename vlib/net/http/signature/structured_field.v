@@ -12,6 +12,8 @@ module signature
 
 import encoding.base64
 
+const sf_integer_max = i64(999_999_999_999_999)
+
 // ParamValue is the typed value of a signature parameter. RFC 9421 §2.3
 // defines the registered parameters as either Integer (`created`,
 // `expires`) or String (`keyid`, `nonce`, `tag`, `alg`). Boolean is
@@ -47,9 +49,16 @@ pub fn serialize_params(pairs []ParamPair) !string {
 		sb << pair.name
 		sb << '='
 		match pair.value {
-			i64 { sb << pair.value.str() }
-			string { sb << '"' + escape_string(pair.value)! + '"' }
-			bool { sb << if pair.value { '?1' } else { '?0' } }
+			i64 {
+				validate_sf_integer(pair.value)!
+				sb << pair.value.str()
+			}
+			string {
+				sb << '"' + escape_string(pair.value)! + '"'
+			}
+			bool {
+				sb << if pair.value { '?1' } else { '?0' }
+			}
 		}
 	}
 	return sb.join('')
@@ -98,6 +107,14 @@ fn escape_string(s string) !string {
 		out << c
 	}
 	return out.bytestr()
+}
+
+fn validate_sf_integer(value i64) ! {
+	if value < -sf_integer_max || value > sf_integer_max {
+		return MalformedMessage{
+			reason: 'Structured Field integer ${value} exceeds the 15-digit range'
+		}
+	}
 }
 
 // parse_signature_input parses one Signature-Input header value into a
@@ -364,6 +381,11 @@ fn (mut p SfParser) parse_string() !string {
 	mut out := []u8{}
 	for p.pos < p.src.len {
 		c := p.src[p.pos]
+		if c < 0x20 || c > 0x7e {
+			return MalformedMessage{
+				reason: 'Structured Field string contains invalid byte ${c} at offset ${p.pos}'
+			}
+		}
 		if c == `"` {
 			p.pos++
 			return out.bytestr()
@@ -407,7 +429,14 @@ fn (mut p SfParser) parse_integer() !i64 {
 			reason: 'integer literal with no digits at offset ${start}'
 		}
 	}
-	return p.src[start..p.pos].i64()
+	if p.pos - digits_start > 15 {
+		return MalformedMessage{
+			reason: 'Structured Field integer exceeds the 15-digit range at offset ${start}'
+		}
+	}
+	value := p.src[start..p.pos].i64()
+	validate_sf_integer(value)!
+	return value
 }
 
 fn (mut p SfParser) parse_byte_sequence() ![]u8 {

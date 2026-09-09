@@ -387,6 +387,19 @@ fn test_sign_request_rejects_http2_removed_covered_field() {
 	assert !req.header.contains_custom('Signature')
 }
 
+fn test_sign_request_rejects_generated_connection_close_coverage() {
+	mut req := build_request('http://example.com/foo')
+	req.disable_connection_reuse = true
+	req.header.set(.connection, 'keep-alive')
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_request(mut req, key, components: ['connection'], created: 1) {
+		assert false, 'a transport-generated Connection: close value cannot be omitted from coverage'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !req.header.contains_custom('Signature')
+}
+
 fn test_sign_request_rejects_http2_filtered_te_value() {
 	mut req := build_request('https://example.com/foo')
 	req.header.add_custom('TE', 'gzip')!

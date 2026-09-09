@@ -38,6 +38,11 @@ pub:
 pub fn sign(c Components, p SignatureParams, key Key, label string) !SignedHeaders {
 	check_label(label)!
 	check_alg_consistency(p, key)!
+	if created := p.created {
+		if expires := p.expires {
+			check_signature_time_order(created, expires)!
+		}
+	}
 	mut p2 := SignatureParams{
 		components: p.components.clone()
 		keyid:      p.keyid
@@ -94,6 +99,15 @@ pub fn verify(c Components, sig_input_header string, signature_header string, la
 		}
 	}
 	check_registered_param_types(entry)!
+	if created := entry.params['created'] {
+		if created is i64 {
+			if expires := entry.params['expires'] {
+				if expires is i64 {
+					check_signature_time_order(created, expires)!
+				}
+			}
+		}
+	}
 	check_alg_param(entry, key)!
 	base := signature_base_from_entry(c, entry)!
 	verify_base(base.bytes(), sig, key, wanted)!
@@ -105,6 +119,14 @@ pub fn verify(c Components, sig_input_header string, signature_header string, la
 					now:     opts.now_unix
 				}
 			}
+		}
+	}
+}
+
+fn check_signature_time_order(created i64, expires i64) ! {
+	if expires <= created {
+		return MalformedMessage{
+			reason: 'signature parameter "expires" must be later than "created"'
 		}
 	}
 }

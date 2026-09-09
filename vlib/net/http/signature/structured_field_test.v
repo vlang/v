@@ -53,6 +53,22 @@ fn test_serialize_params_emits_boolean_short_form() {
 	assert serialize_params(pairs)! == ';flag=?1;other=?0'
 }
 
+fn test_serialize_params_rejects_out_of_range_integers() {
+	for value in [i64(1_000_000_000_000_000), i64(-1_000_000_000_000_000)] {
+		if _ := serialize_params([
+			ParamPair{
+				name:  'created'
+				value: value
+			},
+		])
+		{
+			assert false, 'Structured Field integers are limited to 15 digits'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+}
+
 fn test_serialize_params_rejects_control_bytes() {
 	pairs := [
 		ParamPair{
@@ -111,6 +127,48 @@ fn test_parse_signature_input_rejects_unsupported_component_parameters() {
 fn test_parse_signature_input_rejects_duplicate_signature_parameters() {
 	if _ := parse_signature_input('sig1=("@method");expires=1;expires=9999999999') {
 		assert false, 'duplicate signature parameters must be rejected'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_parse_signature_input_rejects_out_of_range_integers() {
+	for value in ['1000000000000000', '-1000000000000000'] {
+		if _ := parse_signature_input('sig1=("@method");created=${value}') {
+			assert false, 'parsed Structured Field integers are limited to 15 digits'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+}
+
+fn test_parse_signature_input_rejects_invalid_string_bytes() {
+	for value in ['bad\rvalue', 'bad\x7fvalue', 'café'] {
+		if _ := parse_signature_input('sig1=("@method");keyid="${value}"') {
+			assert false, 'Structured Field strings must contain only SP and visible ASCII bytes'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+}
+
+fn test_sign_and_verify_reject_invalid_signature_time_order() {
+	c := Components{
+		method: 'GET'
+	}
+	key := Key.hmac_sha256('shared-secret'.bytes())!
+	p := SignatureParams{
+		components: ['@method']
+		created:    2
+		expires:    2
+	}
+	if _ := sign(c, p, key, 'sig1') {
+		assert false, 'expires must be later than created when signing'
+	} else {
+		assert err is MalformedMessage
+	}
+	if _ := verify(c, 'sig1=("@method");created=2;expires=1', 'sig1=:AA==:', 'sig1', key) {
+		assert false, 'expires must be later than created when verifying'
 	} else {
 		assert err is MalformedMessage
 	}
