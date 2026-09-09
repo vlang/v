@@ -9175,6 +9175,29 @@ The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the 
 does not support this form of inline assembly on 64-bit targets, and individual instructions or
 constraints can still depend on the selected C compiler and target architecture.
 
+### Whole-function assembly
+
+Use an external assembly source when a kernel needs its own prologue, epilogue, stack frame, or
+`call` instructions. Keep the source and the object path together, then expose the ABI entry point
+to V with a C declaration:
+
+```v ignore
+#flag @VMODROOT/vlib/v/slow_tests/assembly/util/v_sha256_block.o
+
+fn C.v_sha256_block(&u32, &u8)
+```
+
+When the object is missing or stale, the C backend can compile a matching `.S` source beside it;
+an existing `.o` can be distributed instead. The assembly function must follow the target C ABI,
+including argument registers, callee-saved registers, stack alignment, and symbol naming. Keep
+separate source files or prebuilt objects for targets with different ABIs. GNU `.S` fixtures need
+a GNU-compatible compiler; MSVC users should provide a MASM-compatible `.obj` or guard the V
+wrapper for other compilers.
+
+The worked example
+[asm_external_sha256_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/slow_tests/assembly/asm_external_sha256_test.amd64.v)
+links a whole-function SHA-256 compression kernel from pure V.
+
 For more examples, see
 [vlib/v/slow_tests/assembly/asm_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/slow_tests/assembly/asm_test.amd64.v)
 
