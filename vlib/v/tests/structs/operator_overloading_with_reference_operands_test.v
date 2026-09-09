@@ -36,9 +36,14 @@ fn (f &Foo) == (o &Foo) bool {
 	return f.id == o.id
 }
 
+fn foo_references_are_equal(a &Foo, b &Foo) bool {
+	return a == b
+}
+
 fn test_eq_operator_with_reference_operands() {
 	a := Foo{1, 4, 5}
 	b := Foo{1, 9, 10}
+	assert foo_references_are_equal(a, b)
 	if a == b {
 		assert true
 		return

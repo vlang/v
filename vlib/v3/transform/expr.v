@@ -1005,6 +1005,22 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 	if lhs_is_ptr && rhs_is_ptr {
 		if t.infix_operand_requests_pointer_identity(lhs_id)
 			|| t.infix_operand_requests_pointer_identity(rhs_id) {
+			// A user-defined equality operator takes precedence over the identity
+			// semantics requested by reference parameters or explicit addresses.
+			if call_info := t.struct_operator_call_info(lhs_struct, node.op) {
+				if t.is_disabled_fn_name(call_info.name) {
+					return t.make_bool_literal(node.op == .ne)
+				}
+				lhs := t.transform_expr_preserving_pointer_value(lhs_id)
+				rhs := t.transform_expr_preserving_pointer_value(rhs_id)
+				args := if call_info.reverse { [rhs, lhs] } else { [lhs, rhs] }
+				t.mark_struct_operator_used_name(call_info.name)
+				call := t.make_call_typed(call_info.name, args, 'bool')
+				if call_info.negate {
+					return t.make_prefix(.not, call)
+				}
+				return call
+			}
 			return none
 		}
 		return t.transform_struct_pointer_eq(node, lhs_id, rhs_id, lhs_type, rhs_type, lhs_clean,
