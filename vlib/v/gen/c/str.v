@@ -228,6 +228,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	}
 	mut option_payload_ref_tmp := false
 	mut option_payload_ref_type := ast.Type(0)
+	mut option_payload_ref_is_alias := false
 	if expr is ast.PrefixExpr {
 		resolved_expr_type := g.unwrap_generic(g.recheck_concrete_type(typ))
 		resolved_right_type := if resolved_expr_type.is_ptr() {
@@ -252,6 +253,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 					}
 					option_sym := g.table.sym(option_type)
 					if option_sym.info is ast.Alias {
+						option_payload_ref_is_alias = true
 						parent_type := option_sym.info.parent_type
 						option_type = if parent_type.has_option_or_result() {
 							parent_type.set_nr_muls(parent_type.nr_muls() + option_type.nr_muls())
@@ -456,7 +458,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 					} else {
 						g.expr(expr)
 					}
-					g.write('.data) ? _S("Option(&nil)") : ')
+					if option_payload_ref_is_alias {
+						g.write('.data) ? _S("Option(none)") : ')
+					} else {
+						g.write('.data) ? _S("Option(&nil)") : ')
+					}
 				}
 			} else {
 				inside_interface_deref_old := g.inside_interface_deref
