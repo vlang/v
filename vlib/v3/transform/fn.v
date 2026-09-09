@@ -11086,7 +11086,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			}
 			t.pointer_value_lvalues.delete(param.value)
 			t.pointer_value_rvalues.delete(param.value)
-			resolved_param_type := t.normalize_type_alias(param.typ)
+			resolved_param_type := t.comptime_normalize_type_alias_chain(param.typ)
 			t.set_var_type_with_raw(param.value, resolved_param_type, param.typ)
 			// An immutable `.amp` parameter was inferred for a pipe lambda and retains
 			// the source language's auto-dereferenced value semantics. Adapted function

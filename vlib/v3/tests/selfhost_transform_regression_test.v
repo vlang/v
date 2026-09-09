@@ -374,6 +374,34 @@ fn main() {
 	assert out.split_into_lines() == ['false', 'true', 'true', 'false']
 }
 
+// Resolve every hop in a function literal parameter alias before deciding whether the parameter
+// has explicit reference semantics.
+fn test_fn_literal_chained_pointer_alias_params_keep_identity() {
+	out := selfhost_regression_run('fn_literal_chained_pointer_alias_identity', 'struct Data {
+	value int
+}
+
+type DataRef = &Data
+type NestedRef = DataRef
+
+fn main() {
+	a := Data{}
+	b := Data{}
+	equal := fn (x NestedRef, y NestedRef) bool {
+		return x == y
+	}
+	not_equal := fn (x NestedRef, y NestedRef) bool {
+		return x != y
+	}
+	println(equal(&a, &b))
+	println(not_equal(&a, &b))
+	println(equal(&a, &a))
+	println(not_equal(&a, &a))
+}
+')
+	assert out.split_into_lines() == ['false', 'true', 'true', 'false']
+}
+
 // Only `for k, mut v in m` binds the map value by reference. A container that is merely a map
 // reference (`m &map[string]bool`) still binds a plain value copy, so the binding must not be
 // typed `&V` — that made every use of it emit a dereference of a non-pointer local.
