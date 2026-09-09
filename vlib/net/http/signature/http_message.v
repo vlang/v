@@ -54,6 +54,7 @@ pub fn sign_request(mut req http.Request, key Key, opts SignRequestOptions) ! {
 	}
 	validate_stable_signature_components(comps)!
 	validate_request_component_coverage(req, comps, opts.scheme)!
+	ensure_signature_header_capacity(req.header, 0)!
 	mut alg := ?string(none)
 	if opts.include_alg {
 		alg = key.algorithm.name()
@@ -131,7 +132,10 @@ pub fn sign_response(mut resp http.Response, key Key, opts SignResponseOptions) 
 	}
 	validate_stable_signature_components(comps)!
 	validate_response_component_coverage(comps)!
-	if comps.any(it.to_lower() == 'content-length') && !resp.header.contains(.content_length) {
+	adds_content_length := comps.any(it.to_lower() == 'content-length')
+		&& !resp.header.contains(.content_length)
+	ensure_signature_header_capacity(resp.header, if adds_content_length { 1 } else { 0 })!
+	if adds_content_length {
 		// Insert the field so both HTTP/1.x and HTTP/2 actually transmit the
 		// value covered by the signature.
 		resp.header.set(.content_length, resp.body.len.str())
@@ -236,6 +240,23 @@ fn ensure_signature_label_available(h http.Header, label string) ! {
 	}
 }
 
+fn ensure_signature_header_capacity(h http.Header, extra_slots int) ! {
+	input_count := h.custom_values('Signature-Input').len
+	signature_count := h.custom_values('Signature').len
+	mut current_slots := 0
+	for key in h.keys() {
+		current_slots += h.custom_values(key, exact: true).len
+	}
+	// Each signature field is collapsed to one slot when appending. Account for
+	// those replacements as well as any earlier mutation sign_response needs.
+	future_slots := current_slots - input_count - signature_count + 2 + extra_slots
+	if future_slots > http.max_headers {
+		return MalformedMessage{
+			reason: 'signing requires ${future_slots} header slots, but http.Header supports ${http.max_headers}'
+		}
+	}
+}
+
 fn validate_stable_signature_components(components []string) ! {
 	for component in components {
 		name := component.to_lower()
@@ -267,6 +288,11 @@ fn validate_request_component_coverage(req http.Request, components []string, de
 	}
 	for component in components {
 		name := component.to_lower()
+		if name == 'host' {
+			return MalformedMessage{
+				reason: 'covered field "host" is replaced by "@authority" during HTTP/2 negotiation'
+			}
+		}
 		if name in ['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'upgrade'] {
 			return MalformedMessage{
 				reason: 'covered field "${name}" may be removed during HTTP/2 negotiation'

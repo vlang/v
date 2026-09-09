@@ -400,6 +400,35 @@ fn test_sign_request_rejects_http2_removed_covered_field() {
 	assert !req.header.contains_custom('Signature')
 }
 
+fn test_sign_request_rejects_http2_replaced_host_field() {
+	mut req := build_request('https://example.com/foo')
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_request(mut req, key, components: ['host'], created: 1) {
+		assert false, 'Host is replaced by @authority during possible HTTP/2 negotiation'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !req.header.contains_custom('Signature')
+}
+
+fn test_sign_request_preflights_both_signature_header_slots() {
+	mut req := http.Request{
+		method: .get
+		url:    'https://example.com/'
+	}
+	for i in 0 .. http.max_headers - 1 {
+		req.header.add_custom('X-Fill-${i}', 'value')!
+	}
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_request(mut req, key, components: ['@method'], created: 1) {
+		assert false, 'signing must reject insufficient capacity before changing either header'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !req.header.contains_custom('Signature-Input')
+	assert !req.header.contains_custom('Signature')
+}
+
 fn test_sign_request_rejects_generated_connection_close_coverage() {
 	mut req := build_request('http://example.com/foo')
 	req.disable_connection_reuse = true
@@ -553,6 +582,23 @@ fn test_sign_response_rejects_http2_removed_covered_field() {
 	} else {
 		assert err is MalformedMessage
 	}
+	assert !resp.header.contains_custom('Signature')
+}
+
+fn test_sign_response_preflights_both_signature_header_slots() {
+	mut resp := http.Response{
+		status_code: 200
+	}
+	for i in 0 .. http.max_headers - 1 {
+		resp.header.add_custom('X-Fill-${i}', 'value')!
+	}
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_response(mut resp, key, components: ['@status'], created: 1) {
+		assert false, 'signing must reject insufficient capacity before changing either header'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !resp.header.contains_custom('Signature-Input')
 	assert !resp.header.contains_custom('Signature')
 }
 
