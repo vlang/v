@@ -402,6 +402,37 @@ fn main() {
 	assert out.split_into_lines() == ['false', 'true', 'true', 'false']
 }
 
+// Regular function parameters need the same complete alias resolution as lifted literals before
+// deciding whether equality has explicit reference semantics.
+fn test_regular_param_chained_pointer_aliases_keep_identity() {
+	out := selfhost_regression_run('regular_param_chained_pointer_alias_identity', 'struct Data {
+	value int
+}
+
+type A = &Data
+type B = A
+type DeepRef = B
+
+fn same(x DeepRef, y DeepRef) bool {
+	return x == y
+}
+
+fn different(x DeepRef, y DeepRef) bool {
+	return x != y
+}
+
+fn main() {
+	a := Data{}
+	b := Data{}
+	println(same(&a, &b))
+	println(different(&a, &b))
+	println(same(&a, &a))
+	println(different(&a, &a))
+}
+')
+	assert out.split_into_lines() == ['false', 'true', 'true', 'false']
+}
+
 // Only `for k, mut v in m` binds the map value by reference. A container that is merely a map
 // reference (`m &map[string]bool`) still binds a plain value copy, so the binding must not be
 // typed `&V` — that made every use of it emit a dereference of a non-pointer local.
