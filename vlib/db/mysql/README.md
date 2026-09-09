@@ -68,6 +68,63 @@ for row in rows {
 db.close()
 ```
 
+## Streaming Results
+
+Use `query_stream()` to read a large result directly from the server in bounded batches:
+
+```v oksyntax
+import db.mysql
+
+fn stream_users(db &mysql.DB) ! {
+	mut stream := db.query_stream('select id, name from users order by id')!
+	defer {
+		stream.close()
+	}
+	for {
+		rows := stream.next_batch(1000)!
+		if rows.len == 0 {
+			break
+		}
+		for row in rows {
+			println(row.vals)
+		}
+	}
+}
+```
+
+Parameterized queries can be streamed with `prepare_stream()`:
+
+```v oksyntax
+import db.mysql
+
+fn stream_users_after(db &mysql.DB, id int) ! {
+	mut stmt := db.prepare_stream('select id, name from users where id > ? order by id')!
+	defer {
+		stmt.close()
+	}
+	stmt.execute([id.str()])!
+	rows := stmt.next_batch(1000)!
+	println(rows)
+}
+```
+
+A stream exclusively holds its MySQL connection until it is exhausted or closed. Consume and
+close it on the thread that created it. Existing `query()` and prepared statement APIs continue
+to return materialized results. Stream batches contain `NullableRow` values, where `val_opt()`
+and the raw `vals` array preserve SQL NULL as `none`. The `val()` and `values()` compatibility
+helpers flatten NULL to an empty string. For multi-statement queries, `query_stream()` exposes the
+first result and discards later results when the stream is exhausted or closed, keeping the
+connection reusable. Use `exec_multi()` when every result is needed.
+
+Copied stream handles refer to the same cursor and share its lifecycle state. Closing any copy
+closes the cursor for all copies, and subsequent `close()` calls are safe.
+
+The legacy `use_result()` method is retained for compatibility and only discards a pending
+result. Use `query_stream()` to read unbuffered rows.
+
+`Result.fields()` and `StreamResult.fields()` expose the server's column metadata. The `length`
+and `max_length` values are unsigned 64-bit integers so large MySQL column widths are preserved.
+
 ## Concurrent Usage
 
 Sharing one `mysql.DB` across threads now serializes connection-level queries safely.
