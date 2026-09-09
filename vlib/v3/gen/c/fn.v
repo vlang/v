@@ -13102,8 +13102,8 @@ fn (mut g FlatGen) gen_callback_fn_value_for_expected_c_abi(arg_id flat.NodeId, 
 // when no adapter is needed (widths already match) or the argument is not a directly
 // resolvable V function (a forwarded/dynamic fn-pointer value falls through to the
 // plain C-ABI cast).
-fn (mut g FlatGen) c_call_callback_abi_thunk(arg_id flat.NodeId, expected_fn types.FnType) ?string {
-	expected := types.Type(expected_fn)
+fn (mut g FlatGen) c_call_callback_abi_thunk(arg_id flat.NodeId, expected types.Type) ?string {
+	expected_fn := fn_type_from(expected) or { return none }
 	actual_name := g.callback_fn_value_name(arg_id, expected) or {
 		g.direct_callback_ident_name(arg_id) or { return none }
 	}
@@ -13111,7 +13111,9 @@ fn (mut g FlatGen) c_call_callback_abi_thunk(arg_id flat.NodeId, expected_fn typ
 		return none
 	}
 	actual_fn := g.callback_fn_value_type(actual_name) or { return none }
-	encoded := g.c_extern_fn_ptr_encoded(expected_fn)
+	encoded := g.tc.c_abi_fn_ptr_type_for_type_text(expected.name()) or {
+		g.c_extern_fn_ptr_encoded(expected_fn)
+	}
 	return g.ensure_callback_userdata_wrapper(actual_name, actual_fn, expected_fn, encoded)
 }
 
@@ -15505,9 +15507,9 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			// functions already have their exact ABI in the included header, including
 			// qualifiers that cannot be expressed by their `fn C.` declarations.
 			if arg_idx >= 0 && arg_idx < typed_param_count {
-				if cb_fn := fn_type_from(param_types[arg_idx]) {
+				if _ := fn_type_from(param_types[arg_idx]) {
 					if !g.is_c_extern_fn_name_arg(arg_id) {
-						if thunk := g.c_call_callback_abi_thunk(arg_id, cb_fn) {
+						if thunk := g.c_call_callback_abi_thunk(arg_id, param_types[arg_idx]) {
 							g.write(thunk)
 							continue
 						}
@@ -17888,6 +17890,9 @@ fn (mut g FlatGen) c_extern_interop_type_name(t types.Type) ?string {
 	if t is types.Alias {
 		// A `type Cb = fn (int)` alias over a function type must still keep C `int`
 		// inside the C ABI; alias-over-`int` likewise. Non-interop bases return none.
+		if encoded := g.tc.c_abi_fn_ptr_type_for_type_text(t.name) {
+			return g.resolve_fn_ptr_type(encoded)
+		}
 		return g.c_extern_interop_type_name(t.base_type)
 	}
 	if t is types.FnType {

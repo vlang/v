@@ -14465,7 +14465,9 @@ fn (tc &TypeChecker) c_abi_fn_ptr_type_from_text(typ string) ?string {
 	return 'fn_ptr:${ret_ct}|${params_ct}'
 }
 
-fn (tc &TypeChecker) c_abi_fn_ptr_type_for_type_text(typ string) ?string {
+// c_abi_fn_ptr_type_for_type_text returns the C ABI function-pointer encoding retained
+// by a source function type or alias, including `const_` pointer parameters.
+pub fn (tc &TypeChecker) c_abi_fn_ptr_type_for_type_text(typ string) ?string {
 	mut seen := map[string]bool{}
 	return tc.c_abi_fn_ptr_type_for_type_text_inner(trimmed_space(typ), mut seen)
 }
