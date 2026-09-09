@@ -1,371 +1,385 @@
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:187:10: error: cannot call mutable method `Node.replace` through embedded interface `Element` because it can replace its receiver
-  185 | fn main() {
-  186 |     mut element := Element(Item{})
-  187 |     element.replace(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:191:10: error: cannot call mutable method `Node.replace` through embedded interface `Element` because it can replace its receiver
+  189 | fn main() {
+  190 |     mut element := Element(Item{})
+  191 |     element.replace(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~
-  188 |     element.replace_in_for_init(Node(Item{}))
-  189 |     element.replace_in_for_increment(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:188:10: error: cannot call mutable method `Node.replace_in_for_init` through embedded interface `Element` because it can replace its receiver
-  186 |     mut element := Element(Item{})
-  187 |     element.replace(Node(Item{}))
-  188 |     element.replace_in_for_init(Node(Item{}))
+  192 |     element.replace_in_for_init(Node(Item{}))
+  193 |     element.replace_in_for_increment(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:192:10: error: cannot call mutable method `Node.replace_in_for_init` through embedded interface `Element` because it can replace its receiver
+  190 |     mut element := Element(Item{})
+  191 |     element.replace(Node(Item{}))
+  192 |     element.replace_in_for_init(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  189 |     element.replace_in_for_increment(Node(Item{}))
-  190 |     element.replace_through_method(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:189:10: error: cannot call mutable method `Node.replace_in_for_increment` through embedded interface `Element` because it can replace its receiver
-  187 |     element.replace(Node(Item{}))
-  188 |     element.replace_in_for_init(Node(Item{}))
-  189 |     element.replace_in_for_increment(Node(Item{}))
+  193 |     element.replace_in_for_increment(Node(Item{}))
+  194 |     element.replace_through_method(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:193:10: error: cannot call mutable method `Node.replace_in_for_increment` through embedded interface `Element` because it can replace its receiver
+  191 |     element.replace(Node(Item{}))
+  192 |     element.replace_in_for_init(Node(Item{}))
+  193 |     element.replace_in_for_increment(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  190 |     element.replace_through_method(Node(Item{}))
-  191 |     element.replace_through_condition(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:190:10: error: cannot call mutable method `Node.replace_through_method` through embedded interface `Element` because it can replace its receiver through a mutable call
-  188 |     element.replace_in_for_init(Node(Item{}))
-  189 |     element.replace_in_for_increment(Node(Item{}))
-  190 |     element.replace_through_method(Node(Item{}))
+  194 |     element.replace_through_method(Node(Item{}))
+  195 |     element.replace_through_condition(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:194:10: error: cannot call mutable method `Node.replace_through_method` through embedded interface `Element` because it can replace its receiver through a mutable call
+  192 |     element.replace_in_for_init(Node(Item{}))
+  193 |     element.replace_in_for_increment(Node(Item{}))
+  194 |     element.replace_through_method(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  191 |     element.replace_through_condition(Node(Item{}))
-  192 |     element.replace_through_dump(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:191:10: error: cannot call mutable method `Node.replace_through_condition` through embedded interface `Element` because it can replace its receiver through a mutable call
-  189 |     element.replace_in_for_increment(Node(Item{}))
-  190 |     element.replace_through_method(Node(Item{}))
-  191 |     element.replace_through_condition(Node(Item{}))
+  195 |     element.replace_through_condition(Node(Item{}))
+  196 |     element.replace_through_dump(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:195:10: error: cannot call mutable method `Node.replace_through_condition` through embedded interface `Element` because it can replace its receiver through a mutable call
+  193 |     element.replace_in_for_increment(Node(Item{}))
+  194 |     element.replace_through_method(Node(Item{}))
+  195 |     element.replace_through_condition(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  192 |     element.replace_through_dump(Node(Item{}))
-  193 |     element.replace_through_function(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:192:10: error: cannot call mutable method `Node.replace_through_dump` through embedded interface `Element` because it can replace its receiver through a mutable call
-  190 |     element.replace_through_method(Node(Item{}))
-  191 |     element.replace_through_condition(Node(Item{}))
-  192 |     element.replace_through_dump(Node(Item{}))
+  196 |     element.replace_through_dump(Node(Item{}))
+  197 |     element.replace_through_function(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:196:10: error: cannot call mutable method `Node.replace_through_dump` through embedded interface `Element` because it can replace its receiver through a mutable call
+  194 |     element.replace_through_method(Node(Item{}))
+  195 |     element.replace_through_condition(Node(Item{}))
+  196 |     element.replace_through_dump(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  193 |     element.replace_through_function(Node(Item{}))
-  194 |     element.expose_receiver_address()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:193:10: error: cannot call mutable method `Node.replace_through_function` through embedded interface `Element` because it can replace its receiver through a mutable call
-  191 |     element.replace_through_condition(Node(Item{}))
-  192 |     element.replace_through_dump(Node(Item{}))
-  193 |     element.replace_through_function(Node(Item{}))
+  197 |     element.replace_through_function(Node(Item{}))
+  198 |     element.expose_receiver_address()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:197:10: error: cannot call mutable method `Node.replace_through_function` through embedded interface `Element` because it can replace its receiver through a mutable call
+  195 |     element.replace_through_condition(Node(Item{}))
+  196 |     element.replace_through_dump(Node(Item{}))
+  197 |     element.replace_through_function(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  194 |     element.expose_receiver_address()
-  195 |     element.replace_through_closure(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:194:10: error: cannot call mutable method `Node.expose_receiver_address` through embedded interface `Element` because its receiver address escapes and can be used to replace it
-  192 |     element.replace_through_dump(Node(Item{}))
-  193 |     element.replace_through_function(Node(Item{}))
-  194 |     element.expose_receiver_address()
+  198 |     element.expose_receiver_address()
+  199 |     element.replace_through_closure(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:198:10: error: cannot call mutable method `Node.expose_receiver_address` through embedded interface `Element` because its receiver address escapes and can be used to replace it
+  196 |     element.replace_through_dump(Node(Item{}))
+  197 |     element.replace_through_function(Node(Item{}))
+  198 |     element.expose_receiver_address()
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~
-  195 |     element.replace_through_closure(Node(Item{}))
-  196 |     element.replace_through_comptime_method(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:195:10: error: cannot call mutable method `Node.replace_through_closure` through embedded interface `Element` because it captures its receiver mutably and can replace it
-  193 |     element.replace_through_function(Node(Item{}))
-  194 |     element.expose_receiver_address()
-  195 |     element.replace_through_closure(Node(Item{}))
+  199 |     element.replace_through_closure(Node(Item{}))
+  200 |     element.replace_through_comptime_method(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:199:10: error: cannot call mutable method `Node.replace_through_closure` through embedded interface `Element` because it captures its receiver mutably and can replace it
+  197 |     element.replace_through_function(Node(Item{}))
+  198 |     element.expose_receiver_address()
+  199 |     element.replace_through_closure(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  196 |     element.replace_through_comptime_method(Node(Item{}))
-  197 |     element.replace_through_pointer(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:196:10: error: cannot call mutable method `Node.replace_through_comptime_method` through embedded interface `Element` because it can replace its receiver through a mutable call
-  194 |     element.expose_receiver_address()
-  195 |     element.replace_through_closure(Node(Item{}))
-  196 |     element.replace_through_comptime_method(Node(Item{}))
+  200 |     element.replace_through_comptime_method(Node(Item{}))
+  201 |     element.replace_through_pointer(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:200:10: error: cannot call mutable method `Node.replace_through_comptime_method` through embedded interface `Element` because it can replace its receiver through a mutable call
+  198 |     element.expose_receiver_address()
+  199 |     element.replace_through_closure(Node(Item{}))
+  200 |     element.replace_through_comptime_method(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  197 |     element.replace_through_pointer(Node(Item{}))
-  198 |     element.replace_through_dereferenced_pointer(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:197:10: error: cannot call pointer-receiver method `Node.replace_through_pointer` through embedded interface `Element` because it can replace its receiver
-  195 |     element.replace_through_closure(Node(Item{}))
-  196 |     element.replace_through_comptime_method(Node(Item{}))
-  197 |     element.replace_through_pointer(Node(Item{}))
+  201 |     element.replace_through_pointer(Node(Item{}))
+  202 |     element.replace_through_dereferenced_pointer(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:201:10: error: cannot call pointer-receiver method `Node.replace_through_pointer` through embedded interface `Element` because it can replace its receiver
+  199 |     element.replace_through_closure(Node(Item{}))
+  200 |     element.replace_through_comptime_method(Node(Item{}))
+  201 |     element.replace_through_pointer(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  198 |     element.replace_through_dereferenced_pointer(Node(Item{}))
-  199 |     element.replace_through_pointer_closure(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:198:10: error: cannot call pointer-receiver method `Node.replace_through_dereferenced_pointer` through embedded interface `Element` because it can replace its receiver through a mutable call
-  196 |     element.replace_through_comptime_method(Node(Item{}))
-  197 |     element.replace_through_pointer(Node(Item{}))
-  198 |     element.replace_through_dereferenced_pointer(Node(Item{}))
+  202 |     element.replace_through_dereferenced_pointer(Node(Item{}))
+  203 |     element.replace_through_pointer_closure(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:202:10: error: cannot call pointer-receiver method `Node.replace_through_dereferenced_pointer` through embedded interface `Element` because it can replace its receiver through a mutable call
+  200 |     element.replace_through_comptime_method(Node(Item{}))
+  201 |     element.replace_through_pointer(Node(Item{}))
+  202 |     element.replace_through_dereferenced_pointer(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  199 |     element.replace_through_pointer_closure(Node(Item{}))
-  200 |     element.replace_through_pointer_method(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:199:10: error: cannot call pointer-receiver method `Node.replace_through_pointer_closure` through embedded interface `Element` because it can replace its receiver
-  197 |     element.replace_through_pointer(Node(Item{}))
-  198 |     element.replace_through_dereferenced_pointer(Node(Item{}))
-  199 |     element.replace_through_pointer_closure(Node(Item{}))
+  203 |     element.replace_through_pointer_closure(Node(Item{}))
+  204 |     element.replace_through_pointer_method(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:203:10: error: cannot call pointer-receiver method `Node.replace_through_pointer_closure` through embedded interface `Element` because it can replace its receiver
+  201 |     element.replace_through_pointer(Node(Item{}))
+  202 |     element.replace_through_dereferenced_pointer(Node(Item{}))
+  203 |     element.replace_through_pointer_closure(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  200 |     element.replace_through_pointer_method(Node(Item{}))
-  201 |     element.replace_through_pointer_argument(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:200:10: error: cannot call mutable method `Node.replace_through_pointer_method` through embedded interface `Element` because it can replace its receiver through a mutable call
-  198 |     element.replace_through_dereferenced_pointer(Node(Item{}))
-  199 |     element.replace_through_pointer_closure(Node(Item{}))
-  200 |     element.replace_through_pointer_method(Node(Item{}))
+  204 |     element.replace_through_pointer_method(Node(Item{}))
+  205 |     element.replace_through_pointer_argument(Node(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:204:10: error: cannot call mutable method `Node.replace_through_pointer_method` through embedded interface `Element` because it can replace its receiver through a mutable call
+  202 |     element.replace_through_dereferenced_pointer(Node(Item{}))
+  203 |     element.replace_through_pointer_closure(Node(Item{}))
+  204 |     element.replace_through_pointer_method(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  201 |     element.replace_through_pointer_argument(Node(Item{}))
-  202 |     mut pointer_element := PointerElement(Item{})
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:201:10: error: cannot call pointer-receiver method `Node.replace_through_pointer_argument` through embedded interface `Element` because its receiver address escapes and can be used to replace it
-  199 |     element.replace_through_pointer_closure(Node(Item{}))
-  200 |     element.replace_through_pointer_method(Node(Item{}))
-  201 |     element.replace_through_pointer_argument(Node(Item{}))
+  205 |     element.replace_through_pointer_argument(Node(Item{}))
+  206 |     mut pointer_element := PointerElement(Item{})
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:205:10: error: cannot call pointer-receiver method `Node.replace_through_pointer_argument` through embedded interface `Element` because its receiver address escapes and can be used to replace it
+  203 |     element.replace_through_pointer_closure(Node(Item{}))
+  204 |     element.replace_through_pointer_method(Node(Item{}))
+  205 |     element.replace_through_pointer_argument(Node(Item{}))
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  202 |     mut pointer_element := PointerElement(Item{})
-  203 |     _ = pointer_element.return_pointer_receiver()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:203:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  201 |     element.replace_through_pointer_argument(Node(Item{}))
-  202 |     mut pointer_element := PointerElement(Item{})
-  203 |     _ = pointer_element.return_pointer_receiver()
+  206 |     mut pointer_element := PointerElement(Item{})
+  207 |     _ = pointer_element.return_pointer_receiver()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:207:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  205 |     element.replace_through_pointer_argument(Node(Item{}))
+  206 |     mut pointer_element := PointerElement(Item{})
+  207 |     _ = pointer_element.return_pointer_receiver()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~
-  204 |     mut holder := PointerHolder{}
-  205 |     pointer_element.store_pointer_receiver(mut holder)
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:205:18: error: cannot call pointer-receiver method `PointerNode.store_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  203 |     _ = pointer_element.return_pointer_receiver()
-  204 |     mut holder := PointerHolder{}
-  205 |     pointer_element.store_pointer_receiver(mut holder)
+  208 |     mut holder := PointerHolder{}
+  209 |     pointer_element.store_pointer_receiver(mut holder)
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:209:18: error: cannot call pointer-receiver method `PointerNode.store_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  207 |     _ = pointer_element.return_pointer_receiver()
+  208 |     mut holder := PointerHolder{}
+  209 |     pointer_element.store_pointer_receiver(mut holder)
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  206 |     pointer_element.pass_pointer_receiver_as_voidptr()
-  207 |     ch := chan &PointerNode{cap: 1}
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:206:18: error: cannot call pointer-receiver method `PointerNode.pass_pointer_receiver_as_voidptr` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  204 |     mut holder := PointerHolder{}
-  205 |     pointer_element.store_pointer_receiver(mut holder)
-  206 |     pointer_element.pass_pointer_receiver_as_voidptr()
+  210 |     pointer_element.pass_pointer_receiver_as_voidptr()
+  211 |     ch := chan &PointerNode{cap: 1}
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:210:18: error: cannot call pointer-receiver method `PointerNode.pass_pointer_receiver_as_voidptr` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  208 |     mut holder := PointerHolder{}
+  209 |     pointer_element.store_pointer_receiver(mut holder)
+  210 |     pointer_element.pass_pointer_receiver_as_voidptr()
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  207 |     ch := chan &PointerNode{cap: 1}
-  208 |     pointer_element.publish_pointer_receiver(ch)
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:208:18: error: cannot call pointer-receiver method `PointerNode.publish_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  206 |     pointer_element.pass_pointer_receiver_as_voidptr()
-  207 |     ch := chan &PointerNode{cap: 1}
-  208 |     pointer_element.publish_pointer_receiver(ch)
+  211 |     ch := chan &PointerNode{cap: 1}
+  212 |     pointer_element.publish_pointer_receiver(ch)
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:212:18: error: cannot call pointer-receiver method `PointerNode.publish_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  210 |     pointer_element.pass_pointer_receiver_as_voidptr()
+  211 |     ch := chan &PointerNode{cap: 1}
+  212 |     pointer_element.publish_pointer_receiver(ch)
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  209 |     reader := pointer_element.capture_pointer_receiver()
-  210 |     _ = reader()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:209:28: error: cannot call pointer-receiver method `PointerNode.capture_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  207 |     ch := chan &PointerNode{cap: 1}
-  208 |     pointer_element.publish_pointer_receiver(ch)
-  209 |     reader := pointer_element.capture_pointer_receiver()
+  213 |     reader := pointer_element.capture_pointer_receiver()
+  214 |     _ = reader()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:213:28: error: cannot call pointer-receiver method `PointerNode.capture_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  211 |     ch := chan &PointerNode{cap: 1}
+  212 |     pointer_element.publish_pointer_receiver(ch)
+  213 |     reader := pointer_element.capture_pointer_receiver()
       |                               ~~~~~~~~~~~~~~~~~~~~~~~~~~
-  210 |     _ = reader()
-  211 |     other := PointerNode(Item{})
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:212:18: error: cannot call pointer-receiver method `PointerNode.pass_alias_before_rebinding` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  210 |     _ = reader()
-  211 |     other := PointerNode(Item{})
-  212 |     pointer_element.pass_alias_before_rebinding(&other)
+  214 |     _ = reader()
+  215 |     other := PointerNode(Item{})
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:216:18: error: cannot call pointer-receiver method `PointerNode.pass_alias_before_rebinding` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  214 |     _ = reader()
+  215 |     other := PointerNode(Item{})
+  216 |     pointer_element.pass_alias_before_rebinding(&other)
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  213 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
-  214 |     pointer_element.pass_local_holder_mut()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:213:18: error: cannot call pointer-receiver method `PointerNode.pass_alias_after_conditional_rebinding` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  211 |     other := PointerNode(Item{})
-  212 |     pointer_element.pass_alias_before_rebinding(&other)
-  213 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
+  217 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
+  218 |     pointer_element.pass_local_holder_mut()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:217:18: error: cannot call pointer-receiver method `PointerNode.pass_alias_after_conditional_rebinding` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  215 |     other := PointerNode(Item{})
+  216 |     pointer_element.pass_alias_before_rebinding(&other)
+  217 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  214 |     pointer_element.pass_local_holder_mut()
-  215 |     pointer_element.pass_local_holder_value()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:214:18: error: cannot call pointer-receiver method `PointerNode.pass_local_holder_mut` through embedded interface `PointerElement` because it can replace its receiver through a mutable call
-  212 |     pointer_element.pass_alias_before_rebinding(&other)
-  213 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
-  214 |     pointer_element.pass_local_holder_mut()
+  218 |     pointer_element.pass_local_holder_mut()
+  219 |     pointer_element.pass_local_holder_value()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:218:18: error: cannot call pointer-receiver method `PointerNode.pass_local_holder_mut` through embedded interface `PointerElement` because it can replace its receiver through a mutable call
+  216 |     pointer_element.pass_alias_before_rebinding(&other)
+  217 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
+  218 |     pointer_element.pass_local_holder_mut()
       |                     ~~~~~~~~~~~~~~~~~~~~~~~
-  215 |     pointer_element.pass_local_holder_value()
-  216 |     pointer_element.pass_local_holder_projection()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:219:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_array` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  217 |     pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
-  218 |     pointer_element.pass_match_pointer(&other, PointerNode(Item{}), 0)
-  219 |     _ = pointer_element.return_pointer_array()
+  219 |     pointer_element.pass_local_holder_value()
+  220 |     pointer_element.pass_local_holder_projection()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:223:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_array` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  221 |     pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
+  222 |     pointer_element.pass_match_pointer(&other, PointerNode(Item{}), 0)
+  223 |     _ = pointer_element.return_pointer_array()
       |                         ~~~~~~~~~~~~~~~~~~~~~~
-  220 |     mut saved := []&PointerNode{cap: 1}
-  221 |     pointer_element.append_to_pointer_array(mut saved)
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:221:18: error: cannot call pointer-receiver method `PointerNode.append_to_pointer_array` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  219 |     _ = pointer_element.return_pointer_array()
-  220 |     mut saved := []&PointerNode{cap: 1}
-  221 |     pointer_element.append_to_pointer_array(mut saved)
+  224 |     mut saved := []&PointerNode{cap: 1}
+  225 |     pointer_element.append_to_pointer_array(mut saved)
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:225:18: error: cannot call pointer-receiver method `PointerNode.append_to_pointer_array` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  223 |     _ = pointer_element.return_pointer_array()
+  224 |     mut saved := []&PointerNode{cap: 1}
+  225 |     pointer_element.append_to_pointer_array(mut saved)
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  222 |     pointer_element.replace_through_pointer_index(PointerNode(Item{}))
-  223 |     pointer_element.replace_through_pointer_alias(PointerNode(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:222:18: error: cannot call pointer-receiver method `PointerNode.replace_through_pointer_index` through embedded interface `PointerElement` because it can replace its receiver
-  220 |     mut saved := []&PointerNode{cap: 1}
-  221 |     pointer_element.append_to_pointer_array(mut saved)
-  222 |     pointer_element.replace_through_pointer_index(PointerNode(Item{}))
+  226 |     pointer_element.replace_through_pointer_index(PointerNode(Item{}))
+  227 |     pointer_element.replace_through_pointer_alias(PointerNode(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:226:18: error: cannot call pointer-receiver method `PointerNode.replace_through_pointer_index` through embedded interface `PointerElement` because it can replace its receiver
+  224 |     mut saved := []&PointerNode{cap: 1}
+  225 |     pointer_element.append_to_pointer_array(mut saved)
+  226 |     pointer_element.replace_through_pointer_index(PointerNode(Item{}))
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  223 |     pointer_element.replace_through_pointer_alias(PointerNode(Item{}))
-  224 |     bound_reader := pointer_element.return_bound_read_method()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:223:18: error: cannot call pointer-receiver method `PointerNode.replace_through_pointer_alias` through embedded interface `PointerElement` because it can replace its receiver
-  221 |     pointer_element.append_to_pointer_array(mut saved)
-  222 |     pointer_element.replace_through_pointer_index(PointerNode(Item{}))
-  223 |     pointer_element.replace_through_pointer_alias(PointerNode(Item{}))
+  227 |     pointer_element.replace_through_pointer_alias(PointerNode(Item{}))
+  228 |     bound_reader := pointer_element.return_bound_read_method()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:227:18: error: cannot call pointer-receiver method `PointerNode.replace_through_pointer_alias` through embedded interface `PointerElement` because it can replace its receiver
+  225 |     pointer_element.append_to_pointer_array(mut saved)
+  226 |     pointer_element.replace_through_pointer_index(PointerNode(Item{}))
+  227 |     pointer_element.replace_through_pointer_alias(PointerNode(Item{}))
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  224 |     bound_reader := pointer_element.return_bound_read_method()
-  225 |     _ = bound_reader()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:226:22: error: cannot call pointer-receiver method `PointerNode.return_or_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  224 |     bound_reader := pointer_element.return_bound_read_method()
-  225 |     _ = bound_reader()
-  226 |     _ = pointer_element.return_or_pointer_receiver()
+  228 |     bound_reader := pointer_element.return_bound_read_method()
+  229 |     _ = bound_reader()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:230:22: error: cannot call pointer-receiver method `PointerNode.return_or_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  228 |     bound_reader := pointer_element.return_bound_read_method()
+  229 |     _ = bound_reader()
+  230 |     _ = pointer_element.return_or_pointer_receiver()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  227 |     _ = pointer_element.return_pointer_holder_through_helper()
-  228 |     pointer_element.pass_nested_pointer_helper()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:230:18: error: cannot call pointer-receiver method `PointerNode.spawn_pointer_read` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  228 |     pointer_element.pass_nested_pointer_helper()
-  229 |     pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
-  230 |     pointer_element.spawn_pointer_read()
+  231 |     _ = pointer_element.return_pointer_holder_through_helper()
+  232 |     pointer_element.pass_nested_pointer_helper()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:234:18: error: cannot call pointer-receiver method `PointerNode.spawn_pointer_read` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  232 |     pointer_element.pass_nested_pointer_helper()
+  233 |     pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
+  234 |     pointer_element.spawn_pointer_read()
       |                     ~~~~~~~~~~~~~~~~~~~~
-  231 |     _ = pointer_element.return_dumped_pointer_receiver()
-  232 |     _ = pointer_element.return_saved_pointer_through_helper()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:231:22: error: cannot call pointer-receiver method `PointerNode.return_dumped_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  229 |     pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
-  230 |     pointer_element.spawn_pointer_read()
-  231 |     _ = pointer_element.return_dumped_pointer_receiver()
+  235 |     _ = pointer_element.return_dumped_pointer_receiver()
+  236 |     _ = pointer_element.return_saved_pointer_through_helper()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:235:22: error: cannot call pointer-receiver method `PointerNode.return_dumped_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  233 |     pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
+  234 |     pointer_element.spawn_pointer_read()
+  235 |     _ = pointer_element.return_dumped_pointer_receiver()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  232 |     _ = pointer_element.return_saved_pointer_through_helper()
-  233 |     _ = pointer_element.return_or_pointer_through_helper()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:234:22: error: cannot call pointer-receiver method `PointerNode.return_ident_or_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  232 |     _ = pointer_element.return_saved_pointer_through_helper()
-  233 |     _ = pointer_element.return_or_pointer_through_helper()
-  234 |     _ = pointer_element.return_ident_or_pointer_receiver()
+  236 |     _ = pointer_element.return_saved_pointer_through_helper()
+  237 |     _ = pointer_element.return_or_pointer_through_helper()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:238:22: error: cannot call pointer-receiver method `PointerNode.return_ident_or_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  236 |     _ = pointer_element.return_saved_pointer_through_helper()
+  237 |     _ = pointer_element.return_or_pointer_through_helper()
+  238 |     _ = pointer_element.return_ident_or_pointer_receiver()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  235 |     pointer_element.replace_through_indexed_method(PointerNode(Item{}))
-  236 |     _ = pointer_element.return_pointer_array_infix()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:235:18: error: cannot call pointer-receiver method `PointerNode.replace_through_indexed_method` through embedded interface `PointerElement` because it can replace its receiver through a mutable call
-  233 |     _ = pointer_element.return_or_pointer_through_helper()
-  234 |     _ = pointer_element.return_ident_or_pointer_receiver()
-  235 |     pointer_element.replace_through_indexed_method(PointerNode(Item{}))
+  239 |     pointer_element.replace_through_indexed_method(PointerNode(Item{}))
+  240 |     _ = pointer_element.return_pointer_array_infix()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:239:18: error: cannot call pointer-receiver method `PointerNode.replace_through_indexed_method` through embedded interface `PointerElement` because it can replace its receiver through a mutable call
+  237 |     _ = pointer_element.return_or_pointer_through_helper()
+  238 |     _ = pointer_element.return_ident_or_pointer_receiver()
+  239 |     pointer_element.replace_through_indexed_method(PointerNode(Item{}))
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  236 |     _ = pointer_element.return_pointer_array_infix()
-  237 |     _ = pointer_element.return_pointer_helper_alias()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:236:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_array_infix` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  234 |     _ = pointer_element.return_ident_or_pointer_receiver()
-  235 |     pointer_element.replace_through_indexed_method(PointerNode(Item{}))
-  236 |     _ = pointer_element.return_pointer_array_infix()
+  240 |     _ = pointer_element.return_pointer_array_infix()
+  241 |     _ = pointer_element.return_pointer_helper_alias()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:240:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_array_infix` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  238 |     _ = pointer_element.return_ident_or_pointer_receiver()
+  239 |     pointer_element.replace_through_indexed_method(PointerNode(Item{}))
+  240 |     _ = pointer_element.return_pointer_array_infix()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  237 |     _ = pointer_element.return_pointer_helper_alias()
-  238 |     _ = pointer_element.return_pointer_callback()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:238:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_callback` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  236 |     _ = pointer_element.return_pointer_array_infix()
-  237 |     _ = pointer_element.return_pointer_helper_alias()
-  238 |     _ = pointer_element.return_pointer_callback()
+  241 |     _ = pointer_element.return_pointer_helper_alias()
+  242 |     _ = pointer_element.return_pointer_callback()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:242:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_callback` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  240 |     _ = pointer_element.return_pointer_array_infix()
+  241 |     _ = pointer_element.return_pointer_helper_alias()
+  242 |     _ = pointer_element.return_pointer_callback()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~
-  239 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
-  240 |     pointer_element.spawn_local_pointer_callback()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:239:18: error: cannot call pointer-receiver method `PointerNode.replace_through_local_pointer_callback` through embedded interface `PointerElement` because it can replace its receiver
-  237 |     _ = pointer_element.return_pointer_helper_alias()
-  238 |     _ = pointer_element.return_pointer_callback()
-  239 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
+  243 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
+  244 |     pointer_element.spawn_local_pointer_callback()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:243:18: error: cannot call pointer-receiver method `PointerNode.replace_through_local_pointer_callback` through embedded interface `PointerElement` because it can replace its receiver
+  241 |     _ = pointer_element.return_pointer_helper_alias()
+  242 |     _ = pointer_element.return_pointer_callback()
+  243 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  240 |     pointer_element.spawn_local_pointer_callback()
-  241 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:240:18: error: cannot call pointer-receiver method `PointerNode.spawn_local_pointer_callback` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  238 |     _ = pointer_element.return_pointer_callback()
-  239 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
-  240 |     pointer_element.spawn_local_pointer_callback()
+  244 |     pointer_element.spawn_local_pointer_callback()
+  245 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:244:18: error: cannot call pointer-receiver method `PointerNode.spawn_local_pointer_callback` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  242 |     _ = pointer_element.return_pointer_callback()
+  243 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
+  244 |     pointer_element.spawn_local_pointer_callback()
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  241 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
-  242 |     pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:241:18: error: cannot call pointer-receiver method `PointerNode.replace_alias_in_alternate_branch` through embedded interface `PointerElement` because it can replace its receiver
-  239 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
-  240 |     pointer_element.spawn_local_pointer_callback()
-  241 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
+  245 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
+  246 |     pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:245:18: error: cannot call pointer-receiver method `PointerNode.replace_alias_in_alternate_branch` through embedded interface `PointerElement` because it can replace its receiver
+  243 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
+  244 |     pointer_element.spawn_local_pointer_callback()
+  245 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  242 |     pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
-  243 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:242:18: error: cannot call pointer-receiver method `PointerNode.replace_alias_after_optional_loop` through embedded interface `PointerElement` because it can replace its receiver
-  240 |     pointer_element.spawn_local_pointer_callback()
-  241 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
-  242 |     pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
+  246 |     pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
+  247 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:246:18: error: cannot call pointer-receiver method `PointerNode.replace_alias_after_optional_loop` through embedded interface `PointerElement` because it can replace its receiver
+  244 |     pointer_element.spawn_local_pointer_callback()
+  245 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
+  246 |     pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  243 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
-  244 |     _ = pointer_element.return_prefixed_pointer_through_helper()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:243:18: error: cannot call pointer-receiver method `PointerNode.replace_through_local_holder_field` through embedded interface `PointerElement` because it can replace its receiver
-  241 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
-  242 |     pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
-  243 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
+  247 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
+  248 |     _ = pointer_element.return_prefixed_pointer_through_helper()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:247:18: error: cannot call pointer-receiver method `PointerNode.replace_through_local_holder_field` through embedded interface `PointerElement` because it can replace its receiver
+  245 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
+  246 |     pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
+  247 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  244 |     _ = pointer_element.return_prefixed_pointer_through_helper()
-  245 |     _ = pointer_element.return_decomposed_pointer_receiver()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:246:22: error: cannot call pointer-receiver method `PointerNode.return_indexed_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  244 |     _ = pointer_element.return_prefixed_pointer_through_helper()
-  245 |     _ = pointer_element.return_decomposed_pointer_receiver()
-  246 |     _ = pointer_element.return_indexed_pointer_receiver()
+  248 |     _ = pointer_element.return_prefixed_pointer_through_helper()
+  249 |     _ = pointer_element.return_decomposed_pointer_receiver()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:250:22: error: cannot call pointer-receiver method `PointerNode.return_indexed_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  248 |     _ = pointer_element.return_prefixed_pointer_through_helper()
+  249 |     _ = pointer_element.return_decomposed_pointer_receiver()
+  250 |     _ = pointer_element.return_indexed_pointer_receiver()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  247 | }
-  248 |
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:215:18: error: cannot call pointer-receiver method `PointerNode.pass_local_holder_value` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  213 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
-  214 |     pointer_element.pass_local_holder_mut()
-  215 |     pointer_element.pass_local_holder_value()
-      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~
-  216 |     pointer_element.pass_local_holder_projection()
-  217 |     pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:216:18: error: cannot call pointer-receiver method `PointerNode.pass_local_holder_projection` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  214 |     pointer_element.pass_local_holder_mut()
-  215 |     pointer_element.pass_local_holder_value()
-  216 |     pointer_element.pass_local_holder_projection()
-      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  217 |     pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
-  218 |     pointer_element.pass_match_pointer(&other, PointerNode(Item{}), 0)
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:217:18: error: cannot call pointer-receiver method `PointerNode.pass_conditional_pointer` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  215 |     pointer_element.pass_local_holder_value()
-  216 |     pointer_element.pass_local_holder_projection()
-  217 |     pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
-      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  218 |     pointer_element.pass_match_pointer(&other, PointerNode(Item{}), 0)
-  219 |     _ = pointer_element.return_pointer_array()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:218:18: error: cannot call pointer-receiver method `PointerNode.pass_match_pointer` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  216 |     pointer_element.pass_local_holder_projection()
-  217 |     pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
-  218 |     pointer_element.pass_match_pointer(&other, PointerNode(Item{}), 0)
-      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  219 |     _ = pointer_element.return_pointer_array()
-  220 |     mut saved := []&PointerNode{cap: 1}
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:224:34: error: cannot call pointer-receiver method `PointerNode.return_bound_read_method` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  222 |     pointer_element.replace_through_pointer_index(PointerNode(Item{}))
-  223 |     pointer_element.replace_through_pointer_alias(PointerNode(Item{}))
-  224 |     bound_reader := pointer_element.return_bound_read_method()
-      |                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~
-  225 |     _ = bound_reader()
-  226 |     _ = pointer_element.return_or_pointer_receiver()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:227:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_holder_through_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  225 |     _ = bound_reader()
-  226 |     _ = pointer_element.return_or_pointer_receiver()
-  227 |     _ = pointer_element.return_pointer_holder_through_helper()
-      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  228 |     pointer_element.pass_nested_pointer_helper()
-  229 |     pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:228:18: error: cannot call pointer-receiver method `PointerNode.pass_nested_pointer_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  226 |     _ = pointer_element.return_or_pointer_receiver()
-  227 |     _ = pointer_element.return_pointer_holder_through_helper()
-  228 |     pointer_element.pass_nested_pointer_helper()
-      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  229 |     pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
-  230 |     pointer_element.spawn_pointer_read()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:229:18: error: cannot call pointer-receiver method `PointerNode.pass_pointer_alias_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  227 |     _ = pointer_element.return_pointer_holder_through_helper()
-  228 |     pointer_element.pass_nested_pointer_helper()
-  229 |     pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
-      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  230 |     pointer_element.spawn_pointer_read()
-  231 |     _ = pointer_element.return_dumped_pointer_receiver()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:232:22: error: cannot call pointer-receiver method `PointerNode.return_saved_pointer_through_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  230 |     pointer_element.spawn_pointer_read()
-  231 |     _ = pointer_element.return_dumped_pointer_receiver()
-  232 |     _ = pointer_element.return_saved_pointer_through_helper()
-      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  233 |     _ = pointer_element.return_or_pointer_through_helper()
-  234 |     _ = pointer_element.return_ident_or_pointer_receiver()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:233:22: error: cannot call pointer-receiver method `PointerNode.return_or_pointer_through_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  231 |     _ = pointer_element.return_dumped_pointer_receiver()
-  232 |     _ = pointer_element.return_saved_pointer_through_helper()
-  233 |     _ = pointer_element.return_or_pointer_through_helper()
-      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  234 |     _ = pointer_element.return_ident_or_pointer_receiver()
-  235 |     pointer_element.replace_through_indexed_method(PointerNode(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:237:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_helper_alias` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  235 |     pointer_element.replace_through_indexed_method(PointerNode(Item{}))
-  236 |     _ = pointer_element.return_pointer_array_infix()
-  237 |     _ = pointer_element.return_pointer_helper_alias()
+  251 |     _ = pointer_element.return_pointer_callback_holder()
+  252 |     _ = pointer_element.return_cloned_pointer_array()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:251:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_callback_holder` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  249 |     _ = pointer_element.return_decomposed_pointer_receiver()
+  250 |     _ = pointer_element.return_indexed_pointer_receiver()
+  251 |     _ = pointer_element.return_pointer_callback_holder()
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  252 |     _ = pointer_element.return_cloned_pointer_array()
+  253 | }
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:252:22: error: cannot call pointer-receiver method `PointerNode.return_cloned_pointer_array` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  250 |     _ = pointer_element.return_indexed_pointer_receiver()
+  251 |     _ = pointer_element.return_pointer_callback_holder()
+  252 |     _ = pointer_element.return_cloned_pointer_array()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  238 |     _ = pointer_element.return_pointer_callback()
-  239 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:244:22: error: cannot call pointer-receiver method `PointerNode.return_prefixed_pointer_through_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  242 |     pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
-  243 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
-  244 |     _ = pointer_element.return_prefixed_pointer_through_helper()
+  253 | }
+  254 |
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:219:18: error: cannot call pointer-receiver method `PointerNode.pass_local_holder_value` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  217 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
+  218 |     pointer_element.pass_local_holder_mut()
+  219 |     pointer_element.pass_local_holder_value()
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~
+  220 |     pointer_element.pass_local_holder_projection()
+  221 |     pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:220:18: error: cannot call pointer-receiver method `PointerNode.pass_local_holder_projection` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  218 |     pointer_element.pass_local_holder_mut()
+  219 |     pointer_element.pass_local_holder_value()
+  220 |     pointer_element.pass_local_holder_projection()
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  221 |     pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
+  222 |     pointer_element.pass_match_pointer(&other, PointerNode(Item{}), 0)
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:221:18: error: cannot call pointer-receiver method `PointerNode.pass_conditional_pointer` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  219 |     pointer_element.pass_local_holder_value()
+  220 |     pointer_element.pass_local_holder_projection()
+  221 |     pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  222 |     pointer_element.pass_match_pointer(&other, PointerNode(Item{}), 0)
+  223 |     _ = pointer_element.return_pointer_array()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:222:18: error: cannot call pointer-receiver method `PointerNode.pass_match_pointer` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  220 |     pointer_element.pass_local_holder_projection()
+  221 |     pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
+  222 |     pointer_element.pass_match_pointer(&other, PointerNode(Item{}), 0)
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  223 |     _ = pointer_element.return_pointer_array()
+  224 |     mut saved := []&PointerNode{cap: 1}
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:228:34: error: cannot call pointer-receiver method `PointerNode.return_bound_read_method` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  226 |     pointer_element.replace_through_pointer_index(PointerNode(Item{}))
+  227 |     pointer_element.replace_through_pointer_alias(PointerNode(Item{}))
+  228 |     bound_reader := pointer_element.return_bound_read_method()
+      |                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~
+  229 |     _ = bound_reader()
+  230 |     _ = pointer_element.return_or_pointer_receiver()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:231:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_holder_through_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  229 |     _ = bound_reader()
+  230 |     _ = pointer_element.return_or_pointer_receiver()
+  231 |     _ = pointer_element.return_pointer_holder_through_helper()
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  232 |     pointer_element.pass_nested_pointer_helper()
+  233 |     pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:232:18: error: cannot call pointer-receiver method `PointerNode.pass_nested_pointer_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  230 |     _ = pointer_element.return_or_pointer_receiver()
+  231 |     _ = pointer_element.return_pointer_holder_through_helper()
+  232 |     pointer_element.pass_nested_pointer_helper()
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  233 |     pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
+  234 |     pointer_element.spawn_pointer_read()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:233:18: error: cannot call pointer-receiver method `PointerNode.pass_pointer_alias_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  231 |     _ = pointer_element.return_pointer_holder_through_helper()
+  232 |     pointer_element.pass_nested_pointer_helper()
+  233 |     pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  234 |     pointer_element.spawn_pointer_read()
+  235 |     _ = pointer_element.return_dumped_pointer_receiver()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:236:22: error: cannot call pointer-receiver method `PointerNode.return_saved_pointer_through_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  234 |     pointer_element.spawn_pointer_read()
+  235 |     _ = pointer_element.return_dumped_pointer_receiver()
+  236 |     _ = pointer_element.return_saved_pointer_through_helper()
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  237 |     _ = pointer_element.return_or_pointer_through_helper()
+  238 |     _ = pointer_element.return_ident_or_pointer_receiver()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:237:22: error: cannot call pointer-receiver method `PointerNode.return_or_pointer_through_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  235 |     _ = pointer_element.return_dumped_pointer_receiver()
+  236 |     _ = pointer_element.return_saved_pointer_through_helper()
+  237 |     _ = pointer_element.return_or_pointer_through_helper()
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  238 |     _ = pointer_element.return_ident_or_pointer_receiver()
+  239 |     pointer_element.replace_through_indexed_method(PointerNode(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:241:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_helper_alias` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  239 |     pointer_element.replace_through_indexed_method(PointerNode(Item{}))
+  240 |     _ = pointer_element.return_pointer_array_infix()
+  241 |     _ = pointer_element.return_pointer_helper_alias()
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  242 |     _ = pointer_element.return_pointer_callback()
+  243 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:248:22: error: cannot call pointer-receiver method `PointerNode.return_prefixed_pointer_through_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  246 |     pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
+  247 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
+  248 |     _ = pointer_element.return_prefixed_pointer_through_helper()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  245 |     _ = pointer_element.return_decomposed_pointer_receiver()
-  246 |     _ = pointer_element.return_indexed_pointer_receiver()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:245:22: error: cannot call pointer-receiver method `PointerNode.return_decomposed_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  243 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
-  244 |     _ = pointer_element.return_prefixed_pointer_through_helper()
-  245 |     _ = pointer_element.return_decomposed_pointer_receiver()
+  249 |     _ = pointer_element.return_decomposed_pointer_receiver()
+  250 |     _ = pointer_element.return_indexed_pointer_receiver()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:249:22: error: cannot call pointer-receiver method `PointerNode.return_decomposed_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  247 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
+  248 |     _ = pointer_element.return_prefixed_pointer_through_helper()
+  249 |     _ = pointer_element.return_decomposed_pointer_receiver()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  246 |     _ = pointer_element.return_indexed_pointer_receiver()
-  247 | }
+  250 |     _ = pointer_element.return_indexed_pointer_receiver()
+  251 |     _ = pointer_element.return_pointer_callback_holder()

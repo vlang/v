@@ -126,7 +126,9 @@ fn contains_receiver_var_reference(expr ast.Expr, name string, var_pos int) bool
 			contains_receiver_var_reference(reduced.expr, name, var_pos)
 		}
 		ast.CallExpr {
-			stmts_return_receiver_var_reference(reduced.or_block.stmts, name, var_pos)
+			(reduced.is_method && reduced.name == 'clone'
+				&& contains_receiver_var_reference(reduced.left, name, var_pos))
+				|| stmts_return_receiver_var_reference(reduced.or_block.stmts, name, var_pos)
 		}
 		ast.IfExpr {
 			reduced.branches.any(stmts_return_receiver_var_reference(it.stmts, name, var_pos))
@@ -281,6 +283,79 @@ fn call_invokes_receiver_closure(call ast.CallExpr, closures []ReceiverClosureAl
 fn expr_is_receiver_closure(expr ast.Expr, closures []ReceiverClosureAlias) bool {
 	reduced := expr.remove_par()
 	return reduced is ast.Ident && receiver_closure_alias_index(reduced, closures) >= 0
+}
+
+fn expr_contains_receiver_closure(expr ast.Expr, closures []ReceiverClosureAlias) bool {
+	reduced := expr.remove_par()
+	return match reduced {
+		ast.Ident {
+			expr_is_receiver_closure(reduced, closures)
+				|| stmts_return_receiver_closure(reduced.or_expr.stmts, closures)
+		}
+		ast.CastExpr {
+			expr_contains_receiver_closure(reduced.expr, closures)
+				|| (reduced.has_arg && expr_contains_receiver_closure(reduced.arg, closures))
+		}
+		ast.AsCast {
+			expr_contains_receiver_closure(reduced.expr, closures)
+		}
+		ast.UnsafeExpr {
+			expr_contains_receiver_closure(reduced.expr, closures)
+		}
+		ast.DumpExpr {
+			expr_contains_receiver_closure(reduced.expr, closures)
+		}
+		ast.CallExpr {
+			stmts_return_receiver_closure(reduced.or_block.stmts, closures)
+		}
+		ast.IfExpr {
+			reduced.branches.any(stmts_return_receiver_closure(it.stmts, closures))
+		}
+		ast.MatchExpr {
+			reduced.branches.any(stmts_return_receiver_closure(it.stmts, closures))
+		}
+		ast.InfixExpr {
+			reduced.op == .plus && (expr_contains_receiver_closure(reduced.left, closures)
+				|| expr_contains_receiver_closure(reduced.right, closures))
+		}
+		ast.ArrayInit {
+			reduced.exprs.any(expr_contains_receiver_closure(it, closures))
+				|| (reduced.has_update_expr
+				&& expr_contains_receiver_closure(reduced.update_expr, closures))
+		}
+		ast.MapInit {
+			reduced.keys.any(expr_contains_receiver_closure(it, closures))
+				|| reduced.vals.any(expr_contains_receiver_closure(it, closures))
+				|| (reduced.has_update_expr
+				&& expr_contains_receiver_closure(reduced.update_expr, closures))
+		}
+		ast.StructInit {
+			reduced.init_fields.any(expr_contains_receiver_closure(it.expr, closures))
+				|| (reduced.has_update_expr
+				&& expr_contains_receiver_closure(reduced.update_expr, closures))
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn stmts_return_receiver_closure(stmts []ast.Stmt, closures []ReceiverClosureAlias) bool {
+	if stmts.len == 0 {
+		return false
+	}
+	last_stmt := stmts.last()
+	return match last_stmt {
+		ast.ExprStmt {
+			expr_contains_receiver_closure(last_stmt.expr, closures)
+		}
+		ast.Return {
+			last_stmt.exprs.any(expr_contains_receiver_closure(it, closures))
+		}
+		else {
+			false
+		}
+	}
 }
 
 fn anon_fn_captures_receiver(anon_fn ast.AnonFn, name string, aliases []ast.ReceiverAlias) bool {
@@ -662,7 +737,7 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 			}
 			if info.receiver_is_ptr && node is ast.Return {
 				if node.exprs.any(contains_receiver_or_alias(it, name, info.receiver_aliases))
-					|| node.exprs.any(expr_is_receiver_closure(it, info.receiver_closures)) {
+					|| node.exprs.any(expr_contains_receiver_closure(it, info.receiver_closures)) {
 					info.address_taken = true
 				}
 			}
@@ -806,7 +881,7 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 					}
 					for arg in node.args {
 						if info.receiver_is_ptr
-							&& expr_is_receiver_closure(arg.expr, info.receiver_closures) {
+							&& expr_contains_receiver_closure(arg.expr, info.receiver_closures) {
 							info.address_taken = true
 						}
 						mut arg_expr := arg.expr

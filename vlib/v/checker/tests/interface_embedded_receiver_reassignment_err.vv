@@ -113,6 +113,10 @@ mut:
 	node &PointerNode = unsafe { nil }
 }
 
+struct PointerCallbackHolder {
+	callback fn () string = unsafe { nil }
+}
+
 fn (node &PointerNode) store_pointer_receiver(mut holder PointerHolder) {
 	unsafe {
 		holder.node = node
@@ -244,6 +248,8 @@ fn main() {
 	_ = pointer_element.return_prefixed_pointer_through_helper()
 	_ = pointer_element.return_decomposed_pointer_receiver()
 	_ = pointer_element.return_indexed_pointer_receiver()
+	_ = pointer_element.return_pointer_callback_holder()
+	_ = pointer_element.return_cloned_pointer_array()
 }
 
 fn replace_pointer_node(node &PointerNode, next PointerNode) {
@@ -496,4 +502,19 @@ fn (node &PointerNode) return_decomposed_pointer_receiver() &PointerNode {
 
 fn (node &PointerNode) return_indexed_pointer_receiver() &PointerNode {
 	return unsafe { &(&[1]PointerNode(node))[0] }
+}
+
+fn (node &PointerNode) return_pointer_callback_holder() PointerCallbackHolder {
+	callback := fn [node] () string {
+		return node.name
+	}
+	return PointerCallbackHolder{
+		callback: callback
+	}
+}
+
+fn (node &PointerNode) return_cloned_pointer_array() []&PointerNode {
+	mut refs := []&PointerNode{}
+	refs << node
+	return refs.clone()
 }
