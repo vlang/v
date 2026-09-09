@@ -4433,7 +4433,8 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 // applicable to situations where the expr_typ does not have `option` and `result`,
 // e.g. field default: "foo ?int = 1", field assign: "foo = 1", field init: "foo: 1"
 fn (mut g Gen) gen_option_payload_ref(expr ast.PrefixExpr, ret_typ ast.Type, tmp_var string) bool {
-	right_type := g.table.fully_unaliased_type(expr.right_type)
+	resolved_right_type := g.unwrap_generic(g.recheck_concrete_type(expr.right_type))
+	right_type := g.table.fully_unaliased_type(resolved_right_type)
 	if expr.op != .amp || !right_type.has_flag(.option) {
 		return false
 	}
@@ -4447,11 +4448,28 @@ fn (mut g Gen) gen_option_payload_ref(expr ast.PrefixExpr, ret_typ ast.Type, tmp
 	}
 
 	opt_ptr_var := g.new_tmp_var()
-	opt_styp := g.styp(expr.right_type).replace('*', '')
+	option_storage_type := if ret_typ.is_ptr() && ret_typ.has_flag(.option) {
+		ret_typ.deref()
+	} else {
+		resolved_right_type
+	}
+	opt_styp := g.styp(option_storage_type).replace('*', '')
 	ret_styp := g.styp(ret_typ).replace('*', '')
 	styp := g.base_type(ret_typ)
-	opt_expr := g.expr_string(expr.right)
-	g.writeln('${opt_styp}* ${opt_ptr_var} = &(${opt_expr});')
+	g.write('${opt_styp}* ${opt_ptr_var} = &(')
+	// Referenced arguments stay heap allocated in generic bodies, while option
+	// expression generation otherwise treats their resolved wrapper as a value.
+	if right_expr is ast.Ident && g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+		&& g.resolved_ident_is_auto_heap(right_expr) {
+		if right_expr.obj is ast.Var {
+			resolved_obj_type := g.unwrap_generic(right_expr.obj.typ)
+			if resolved_obj_type.has_flag(.option) && !resolved_obj_type.is_ptr() {
+				g.write('*')
+			}
+		}
+	}
+	g.expr(expr.right)
+	g.writeln(');')
 	g.writeln('if (${opt_ptr_var}->state != 0) {')
 	g.writeln('\t${tmp_var} = (${ret_styp}){ .state = ${opt_ptr_var}->state, .err = ${opt_ptr_var}->err, .data = {E_STRUCT} };')
 	g.writeln('} else {')

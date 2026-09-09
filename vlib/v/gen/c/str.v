@@ -226,6 +226,47 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			typ = inherited_typ
 		}
 	}
+	mut option_payload_ref_tmp := false
+	mut option_payload_ref_type := ast.Type(0)
+	if expr is ast.PrefixExpr {
+		resolved_expr_type := g.unwrap_generic(g.recheck_concrete_type(typ))
+		resolved_right_type := if resolved_expr_type.is_ptr() {
+			resolved_expr_type.deref()
+		} else {
+			g.unwrap_generic(g.recheck_concrete_type(expr.right_type))
+		}
+		unaliased_right_type := g.table.fully_unaliased_type(resolved_right_type)
+		if expr.op == .amp && unaliased_right_type.has_flag(.option) {
+			right_expr := expr.right.remove_par()
+			option_payload_ref_tmp = match right_expr {
+				ast.Ident, ast.IndexExpr, ast.SelectorExpr { true }
+				else { false }
+			}
+
+			if option_payload_ref_tmp {
+				// Peel only aliases around the option, preserving aliases in its payload.
+				mut option_type := resolved_right_type
+				for _ in 0 .. 64 {
+					if option_type.has_flag(.option) {
+						break
+					}
+					option_sym := g.table.sym(option_type)
+					if option_sym.info is ast.Alias {
+						parent_type := option_sym.info.parent_type
+						option_type = if parent_type.has_option_or_result() {
+							parent_type.set_nr_muls(parent_type.nr_muls() + option_type.nr_muls())
+						} else {
+							parent_type.derive_add_muls(option_type)
+						}
+					} else {
+						break
+					}
+				}
+				payload_type := option_type.clear_option_and_result()
+				option_payload_ref_type = payload_type.ref().set_flag(.option)
+			}
+		}
+	}
 	// `mut ?T` params are passed by pointer in C, but should still stringify as
 	// option values rather than as raw `&...` pointers.
 	resolved_typ := g.table.fully_unaliased_type(typ)
@@ -316,7 +357,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write(stmt_str)
 		}
 		g.write('_S("<none>")')
-	} else if sym.kind == .enum {
+	} else if sym.kind == .enum && !option_payload_ref_tmp {
 		if expr !is ast.EnumVal || sym.has_method('str') {
 			str_fn_name := g.get_str_fn(typ)
 			g.write('${str_fn_name}(')
@@ -333,7 +374,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.enum_expr(expr)
 			g.write('")')
 		}
-	} else if sym_has_str_method
+	} else if option_payload_ref_tmp || sym_has_str_method
 		|| sym.kind in [.array, .array_fixed, .map, .struct, .multi_return, .sum_type, .interface] {
 		unwrap_opt_or_res := match expr {
 			ast.CallExpr, ast.ComptimeCall, ast.ComptimeSelector, ast.InfixExpr, ast.PrefixExpr,
@@ -348,26 +389,19 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			}
 		}
 
-		mut exp_typ := if unwrap_opt_or_res { typ.clear_option_and_result() } else { typ }
+		mut exp_typ := if option_payload_ref_tmp {
+			option_payload_ref_type
+		} else if unwrap_opt_or_res {
+			typ.clear_option_and_result()
+		} else {
+			typ
+		}
 		if unwrap_opt_or_res {
 			typ = exp_typ
 		}
 		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := g.expr_is_auto_deref_var(expr) && !typ.has_flag(.option)
-		mut option_payload_ref_tmp := false
-		if expr is ast.PrefixExpr {
-			right_expr := expr.right.remove_par()
-			right_type := g.table.fully_unaliased_type(expr.right_type)
-			if expr.op == .amp && right_type.has_flag(.option) {
-				option_payload_ref_tmp = match right_expr {
-					ast.Ident, ast.IndexExpr, ast.SelectorExpr { true }
-					else { false }
-				}
-			}
-		}
-		if option_payload_ref_tmp && expr is ast.PrefixExpr {
-			exp_typ =
-				g.table.fully_unaliased_type(expr.right_type).clear_option_and_result().ref().set_flag(.option)
+		if option_payload_ref_tmp {
 			typ = exp_typ
 		}
 		str_fn_name := if mut_arg_option_type != 0 {
