@@ -112,7 +112,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.val_type = high_type
 		}
 		if !range_error {
-			c.check_for_empty_range(node.cond, node.high, node.val_type, high_type)
+			c.check_for_empty_range(node.cond, node.high, typ, node.val_type, high_type)
 		}
 
 		node.high_type = high_type
@@ -474,9 +474,12 @@ fn (mut c Checker) range_comparison_type(left_expr ast.Expr, left_type ast.Type,
 	return c.range_promoted_integer_type(left, right)
 }
 
-fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, val_type ast.Type, high_type ast.Type) {
-	if c.pref.backend == .wasm || c.pref.backend.is_js() {
-		// WASM and JavaScript use backend-specific range conversions instead of C promotions.
+fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, low_type ast.Type, val_type ast.Type, high_type ast.Type) {
+	backend_has_distinct_range_conversions := c.pref.backend == .wasm || c.pref.backend.is_js()
+	unaliased_low_type := c.table.fully_unaliased_type(low_type).clear_flags()
+	unaliased_high_type := c.table.fully_unaliased_type(high_type).clear_flags()
+	if backend_has_distinct_range_conversions && unaliased_low_type != unaliased_high_type {
+		// Mixed bound types are converted differently by the WASM and JavaScript backends.
 		return
 	}
 	was_evaluating_range := c.comptime_eval_for_range
