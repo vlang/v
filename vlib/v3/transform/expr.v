@@ -1003,6 +1003,33 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 		return none
 	}
 	if lhs_is_ptr && rhs_is_ptr {
+		if t.infix_operand_requests_pointer_identity(lhs_id)
+			|| t.infix_operand_requests_pointer_identity(rhs_id) {
+			// A user-defined equality operator takes precedence over the identity
+			// semantics requested by reference parameters or explicit addresses.
+			mut operator_type := lhs_struct
+			mut is_alias_operator := false
+			if alias_type := t.operator_alias_type_for_operand(lhs_id, node.op) {
+				operator_type = alias_type
+				is_alias_operator = true
+			}
+			if call_info := t.struct_operator_call_info_for_operand(operator_type, node.op,
+				is_alias_operator) {
+				if t.is_disabled_fn_name(call_info.name) {
+					return t.make_bool_literal(node.op == .ne)
+				}
+				lhs := t.transform_expr_preserving_pointer_value(lhs_id)
+				rhs := t.transform_expr_preserving_pointer_value(rhs_id)
+				args := if call_info.reverse { [rhs, lhs] } else { [lhs, rhs] }
+				t.mark_struct_operator_used_name(call_info.name)
+				call := t.make_call_typed(call_info.name, args, 'bool')
+				if call_info.negate {
+					return t.make_prefix(.not, call)
+				}
+				return call
+			}
+			return none
+		}
 		return t.transform_struct_pointer_eq(node, lhs_id, rhs_id, lhs_type, rhs_type, lhs_clean,
 			rhs_clean)
 	}
@@ -1018,6 +1045,75 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 	}
 	if eq := t.transform_transformed_struct_eq(node, lhs, rhs) {
 		return eq
+	}
+	return none
+}
+
+fn (t &Transformer) infix_operand_requests_pointer_identity(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	if node.kind == .ident {
+		return t.var_is_ref_param(node.value)
+	}
+	if node.kind == .paren && node.children_count == 1 {
+		child_id := t.source_expr_child(id, node, 0) or { return false }
+		return t.infix_operand_requests_pointer_identity(child_id)
+	}
+	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+		return false
+	}
+	child_id := t.source_expr_child(id, node, 0) or { return false }
+	return t.source_expr_is_plain_lvalue(child_id)
+}
+
+fn (t &Transformer) source_expr_is_plain_lvalue(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	if node.kind == .ident {
+		return node.value.len > 0
+	}
+	if node.kind == .prefix {
+		if node.op != .mul || node.children_count != 1 {
+			return false
+		}
+		child_id := t.source_expr_child(id, node, 0) or { return false }
+		return t.source_expr_is_plain_lvalue(child_id)
+	}
+	if node.kind !in [.selector, .index, .paren] || node.children_count == 0 {
+		return false
+	}
+	if node.kind == .index && node.value == 'range' {
+		return false
+	}
+	child_id := t.source_expr_child(id, node, 0) or { return false }
+	return t.source_expr_is_plain_lvalue(child_id)
+}
+
+fn (t &Transformer) source_expr_child(id flat.NodeId, node &flat.Node, child_idx int) ?flat.NodeId {
+	if child_idx < 0 || child_idx >= int(node.children_count) {
+		return none
+	}
+	child_id := t.a.child(node, child_idx)
+	if int(child_id) >= 0 {
+		return child_id
+	}
+	// In-place transform passes can consume a source child slot. Source nodes are
+	// built post-order, so recover the requested direct child from the immutable
+	// source-parent index. Walking backwards visits direct children right-to-left.
+	target_from_right := int(node.children_count) - 1 - child_idx
+	mut direct_child_from_right := 0
+	for source_child := int(id) - 1; source_child >= 0; source_child-- {
+		if t.source_parent_id(source_child) != int(id) {
+			continue
+		}
+		if direct_child_from_right == target_from_right {
+			return flat.NodeId(source_child)
+		}
+		direct_child_from_right++
 	}
 	return none
 }

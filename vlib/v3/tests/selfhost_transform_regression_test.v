@@ -342,6 +342,97 @@ fn main() {
 	assert out == 'posts'
 }
 
+// A generic fn literal with explicit reference parameters keeps pointer identity after its
+// parameters are specialized to the concrete callback signature. Only inferred pipe-lambda
+// pointer parameters use auto-dereferenced value equality.
+fn test_generic_fn_literal_reference_params_keep_identity() {
+	out := selfhost_regression_run('generic_fn_literal_reference_identity', 'struct Data {
+	value int
+}
+
+fn compare_data(compare fn (&Data, &Data) bool, a &Data, b &Data) bool {
+	return compare(a, b)
+}
+
+fn main() {
+	a := Data{}
+	b := Data{}
+	println(compare_data(fn [T](x &T, y &T) bool {
+		return x == y
+	}, a, b))
+	println(compare_data(fn [T](x &T, y &T) bool {
+		return x != y
+	}, a, b))
+	println(compare_data(fn [T](x &T, y &T) bool {
+		return x == y
+	}, a, a))
+	println(compare_data(fn [T](x &T, y &T) bool {
+		return x != y
+	}, a, a))
+}
+')
+	assert out.split_into_lines() == ['false', 'true', 'true', 'false']
+}
+
+// Resolve every hop in a function literal parameter alias before deciding whether the parameter
+// has explicit reference semantics.
+fn test_fn_literal_chained_pointer_alias_params_keep_identity() {
+	out := selfhost_regression_run('fn_literal_chained_pointer_alias_identity', 'struct Data {
+	value int
+}
+
+type DataRef = &Data
+type NestedRef = DataRef
+
+fn main() {
+	a := Data{}
+	b := Data{}
+	equal := fn (x NestedRef, y NestedRef) bool {
+		return x == y
+	}
+	not_equal := fn (x NestedRef, y NestedRef) bool {
+		return x != y
+	}
+	println(equal(&a, &b))
+	println(not_equal(&a, &b))
+	println(equal(&a, &a))
+	println(not_equal(&a, &a))
+}
+')
+	assert out.split_into_lines() == ['false', 'true', 'true', 'false']
+}
+
+// Regular function parameters need the same complete alias resolution as lifted literals before
+// deciding whether equality has explicit reference semantics.
+fn test_regular_param_chained_pointer_aliases_keep_identity() {
+	out := selfhost_regression_run('regular_param_chained_pointer_alias_identity', 'struct Data {
+	value int
+}
+
+type A = &Data
+type B = A
+type DeepRef = B
+
+fn same(x DeepRef, y DeepRef) bool {
+	return x == y
+}
+
+fn different(x DeepRef, y DeepRef) bool {
+	return x != y
+}
+
+fn main() {
+	a := Data{}
+	b := Data{}
+	println(same(&a, &b))
+	println(different(&a, &b))
+	println(same(&a, &a))
+	println(different(&a, &a))
+}
+')
+	assert out.split_into_lines() == ['false', 'true', 'true', 'false']
+}
+
 // Only `for k, mut v in m` binds the map value by reference. A container that is merely a map
 // reference (`m &map[string]bool`) still binds a plain value copy, so the binding must not be
 // typed `&V` — that made every use of it emit a dereference of a non-pointer local.

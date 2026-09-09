@@ -3614,7 +3614,7 @@ fn (mut t Transformer) lift_fn_literal_for_fn_param(_id flat.NodeId, node flat.N
 				kind: .param
 				value: param.value
 				typ: param_type_name
-				op: if param_type_name.starts_with('&') { .amp } else { param.op }
+				op: param.op
 				is_mut: param.is_mut
 			})
 		}
@@ -3625,7 +3625,7 @@ fn (mut t Transformer) lift_fn_literal_for_fn_param(_id flat.NodeId, node flat.N
 			kind: .param
 			value: '_unused_${i}'
 			typ: param_type_name
-			op: if param_type_name.starts_with('&') { .amp } else { .none }
+			op: .none
 		})
 	}
 	children << body_ids
@@ -10952,6 +10952,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	mut capture_by_ref := map[string]bool{}
 	mut capture_from_context := map[string]bool{}
 	mut capture_from_heap := map[string]bool{}
+	mut capture_is_ref_param := map[string]bool{}
 	mut body_ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
@@ -10972,6 +10973,9 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				continue
 			}
 			if child.value.len > 0 && child.value !in capture_names {
+				if t.var_is_ref_param(child.value) {
+					capture_is_ref_param[child.value] = true
+				}
 				mut capture_type := t.raw_var_type(child.value)
 				if capture_type.len == 0 {
 					capture_type = t.var_type(child.value)
@@ -11082,7 +11086,14 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			}
 			t.pointer_value_lvalues.delete(param.value)
 			t.pointer_value_rvalues.delete(param.value)
-			t.set_var_type(param.value, param.typ)
+			resolved_param_type := t.comptime_normalize_type_alias_chain(param.typ)
+			t.set_var_type_with_raw(param.value, resolved_param_type, param.typ)
+			// An immutable `.amp` parameter was inferred for a pipe lambda and retains
+			// the source language's auto-dereferenced value semantics. Adapted function
+			// literals preserve their source parameter operator instead.
+			if !param.is_mut && param.op != .amp && resolved_param_type.starts_with('&') {
+				t.mark_var_as_ref_param(param.value)
+			}
 			if t.is_fixed_array_type(param.typ) {
 				t.fixed_array_param_values[param.value] = true
 			}
@@ -11143,13 +11154,25 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		}
 		lifted_body << capture_decl
 	}
+	synthetic_decl_count := lifted_body.len
 	for body_id in body_ids {
 		lifted_body << body_id
 	}
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	t.mark_local_closure_cleanup_decls(lifted_body)
-	new_body := t.transform_stmts(lifted_body)
+	mut new_body := []flat.NodeId{}
+	if capture_is_ref_param.len == 0 {
+		new_body = t.transform_stmts(lifted_body)
+	} else {
+		new_body = t.transform_stmts(lifted_body[..synthetic_decl_count])
+		// Transforming the synthetic capture declarations recreates their bindings.
+		// Restore reference-parameter identity before transforming the lifted body.
+		for capture_name, _ in capture_is_ref_param {
+			t.mark_var_as_ref_param(capture_name)
+		}
+		new_body << t.transform_stmts(lifted_body[synthetic_decl_count..])
+	}
 	t.pending_stmts = outer_pending
 	for param_name in param_names {
 		if saved_param_pointer_flags[param_name] or { false } {

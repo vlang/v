@@ -3452,6 +3452,38 @@ fn (foo &Foo) bar() {
 `foo` is still immutable and can't be changed. For that,
 `(mut foo Foo)` must be used.
 
+When immutable reference parameters to structs are compared with `==` or `!=`,
+V compares their addresses, not their fields. Dereference the parameters explicitly
+to compare their values instead:
+
+```v
+struct Point {
+	x int
+}
+
+fn same_reference(a &Point, b &Point) bool {
+	return a == b
+}
+
+fn same_value(a &Point, b &Point) bool {
+	return *a == *b
+}
+
+a := Point{
+	x: 1
+}
+b := Point{
+	x: 1
+}
+assert !same_reference(a, b)
+assert same_reference(a, a)
+assert same_value(a, b)
+```
+
+This address-comparison rule also applies when reference parameters are captured by
+a closure or their reference types are written through aliases. A user-defined `==`
+operator takes precedence over the default address or value comparison.
+
 In general, V's references are similar to Go pointers and C++ references.
 For example, a generic tree structure definition would look like this:
 
