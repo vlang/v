@@ -331,7 +331,13 @@ fn (mut p SfParser) parse_inner_list() ![]string {
 			p.pos++
 			return items
 		}
-		items << p.parse_string()!
+		item := p.parse_string()!
+		if !item.starts_with('@') && item != item.to_lower() {
+			return MalformedMessage{
+				reason: 'HTTP field component identifier "${item}" must be lowercase'
+			}
+		}
+		items << item
 		if p.pos < p.src.len && p.src[p.pos] == `;` {
 			return MalformedMessage{
 				reason: 'covered-component parameters are not supported at offset ${p.pos}'

@@ -288,6 +288,14 @@ fn test_parse_signature_input_rejects_uppercase_label() {
 	}
 }
 
+fn test_parse_signature_input_rejects_uppercase_http_field_component() {
+	if _ := parse_signature_input('sig1=("Content-Type")') {
+		assert false, 'HTTP field component identifiers must be lowercase'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
 fn test_parse_signature_input_preserves_signature_params_value() {
 	src := 'sig1=("@method");created=1618884473;keyid="my-key"'
 	entries := parse_signature_input(src)!

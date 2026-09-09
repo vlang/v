@@ -467,7 +467,7 @@ fn (req &Request) build_request_cookies_header() string {
 
 fn (req &Request) build_request_cookies_header_with_header(header Header) string {
 	value := req.cookie_header_value_with_header(header)
-	if value == '' {
+	if value == '' && !header.contains(.cookie) {
 		return ''
 	}
 	return 'Cookie: ${value}\r\n'

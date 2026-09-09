@@ -60,7 +60,7 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 	// Cookies: the request's own cookie map plus any Cookie header values,
 	// joined into one field (RFC 7540 Section 8.1.2.5 also allows splitting).
 	cookie_value := req.cookie_header_value_with_header(header)
-	if cookie_value != '' {
+	if cookie_value != '' || header.contains(.cookie) {
 		extra << H2HeaderField{'cookie', cookie_value}
 	}
 	return H2ClientRequest{

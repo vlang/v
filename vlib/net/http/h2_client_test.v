@@ -86,6 +86,16 @@ fn test_to_h2_request_collapses_cookies() {
 	assert cookie[0].value.contains('a=1')
 }
 
+fn test_to_h2_request_preserves_present_empty_cookie_field() {
+	mut h := new_header()
+	h.add(.cookie, '')
+	req := Request{}
+	h2req := req.to_h2_request(.get, 'h.example', '/', '', h)
+	cookie := h2req.headers.filter(it.name == 'cookie')
+	assert cookie.len == 1
+	assert cookie[0].value == ''
+}
+
 fn test_h2_response_to_http() {
 	h2resp := H2ClientResponse{
 		status:  200
