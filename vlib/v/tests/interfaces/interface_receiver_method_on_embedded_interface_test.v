@@ -42,6 +42,14 @@ fn (node &Node) read_field_through_pointer_alias_helper() string {
 	return read_node_name_through_alias(node)
 }
 
+fn (node &Node) inspect_through_generic_helper() int {
+	return inspect_value(node)
+}
+
+fn (node &Node) append_child_through_pointer_helper(child &Node) {
+	append_node_child(node, child)
+}
+
 fn (node &Node) unrelated_pointer_array_len() int {
 	return unrelated_pointer_array(node).len
 }
@@ -59,6 +67,16 @@ fn read_node_name(node &Node) string {
 fn read_node_name_through_alias(node &Node) string {
 	alias := unsafe { node }
 	return alias.name
+}
+
+fn inspect_value[T](value T) int {
+	return 1
+}
+
+fn append_node_child(node &Node, child &Node) {
+	unsafe {
+		node.children << child
+	}
 }
 
 fn unrelated_pointer_array(node &Node) []&Node {
@@ -190,6 +208,18 @@ fn test_read_only_pointer_receiver_helper_does_not_escape() {
 fn test_read_only_pointer_receiver_alias_helper_does_not_escape() {
 	element := new_element()
 	assert element.read_field_through_pointer_alias_helper() == 'body'
+}
+
+fn test_generic_pointer_receiver_helper_does_not_escape() {
+	element := new_element()
+	assert element.inspect_through_generic_helper() == 1
+}
+
+fn test_pointer_receiver_helper_can_mutate_fields() {
+	element := new_element()
+	element.append_child_through_pointer_helper(new_child('helper'))
+	assert element.children.len == 1
+	assert element.children[0].name == 'helper'
 }
 
 fn test_unrelated_pointer_helper_return_does_not_escape() {

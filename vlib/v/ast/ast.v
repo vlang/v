@@ -715,6 +715,7 @@ pub:
 	name          string
 	receiver_type Type
 	param_idx     int
+	param_type    Type
 }
 
 @[minify]

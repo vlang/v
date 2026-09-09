@@ -236,11 +236,12 @@ fn (mut c Checker) record_receiver_argument(callee ast.Fn, param_idx int, param 
 				receiver_sym.methods[method_idx].receiver_address_taken = true
 			} else if !receiver_sym.methods[method_idx].receiver_helper_calls.any(
 				it.name == callee.name && it.receiver_type == callee.receiver_type
-				&& it.param_idx == param_idx) {
+				&& it.param_idx == param_idx && it.param_type == param.typ) {
 				receiver_sym.methods[method_idx].receiver_helper_calls << ast.ReceiverHelperCall{
 					name:          callee.name
 					receiver_type: callee.receiver_type
 					param_idx:     param_idx
+					param_type:    param.typ
 				}
 			}
 		}
@@ -3332,7 +3333,7 @@ fn (mut c Checker) method_can_replace_receiver(receiver_sym &ast.TypeSymbol, met
 		} else {
 			c.table.find_fn(helper.name) or { return true }
 		}
-		if c.fn_pointer_param_may_escape_or_mutate(called_fn, helper.param_idx) {
+		if c.fn_pointer_param_may_escape_or_mutate(called_fn, helper.param_idx, helper.param_type) {
 			return true
 		}
 	}

@@ -62,16 +62,27 @@ fn (mut c Checker) fn_decl_has_visible_mutation_for_param(fn_decl &ast.FnDecl, p
 	return false
 }
 
-fn (mut c Checker) fn_pointer_param_may_escape_or_mutate(func ast.Fn, param_idx int) bool {
+fn (mut c Checker) fn_pointer_param_may_escape_or_mutate(func ast.Fn, param_idx int, param_type ast.Type) bool {
+	mut seen := map[string]bool{}
+	return c.fn_param_may_replace_or_escape(func, param_idx, param_type, mut seen)
+}
+
+fn (mut c Checker) fn_param_may_replace_or_escape(func ast.Fn, param_idx int, param_type ast.Type, mut seen map[string]bool) bool {
 	if param_idx < 0 || param_idx >= func.params.len
-		|| !func.params[param_idx].typ.is_any_kind_of_pointer() {
+		|| (!func.params[param_idx].is_mut && !param_type.is_any_kind_of_pointer()
+		&& !c.table.unaliased_type(param_type).is_any_kind_of_pointer()) {
 		return true
 	}
 	if func.source_fn == unsafe { nil } || func.no_body || func.language != .v {
 		return true
 	}
-	if c.fn_has_visible_mutation_for_param(func, param_idx) {
-		return true
+	key := '${func.fkey()}|${param_idx}|${param_type}'
+	if key in seen {
+		return false
+	}
+	seen[key] = true
+	defer {
+		seen.delete(key)
 	}
 	fn_decl := unsafe { &ast.FnDecl(func.source_fn) }
 	if fn_decl == unsafe { nil } || param_idx >= fn_decl.params.len {
@@ -79,7 +90,9 @@ fn (mut c Checker) fn_pointer_param_may_escape_or_mutate(func ast.Fn, param_idx 
 	}
 	mut aliases := [fn_decl.params[param_idx].name]
 	for stmt in fn_decl.stmts {
-		if c.node_captures_or_stores_pointer_param(stmt, fn_decl.params[param_idx].typ, mut aliases) {
+		if c.node_captures_or_stores_pointer_param(stmt, param_type, func.params[param_idx].is_mut, mut
+			aliases, mut seen)
+		{
 			return true
 		}
 	}
@@ -106,13 +119,38 @@ fn (mut c Checker) ident_is_local_pointer_alias(ident ast.Ident) bool {
 	return false
 }
 
-fn (mut c Checker) node_captures_or_stores_pointer_param(node ast.Node, typ ast.Type, mut aliases []string) bool {
+fn (mut c Checker) pointer_param_field_target(expr ast.Expr, typ ast.Type, aliases []string) bool {
+	reduced := expr.remove_par()
+	return match reduced {
+		ast.SelectorExpr {
+			c.expr_references_pointer_param(reduced.expr, typ, aliases)
+				|| c.pointer_param_field_target(reduced.expr, typ, aliases)
+		}
+		ast.IndexExpr {
+			c.pointer_param_field_target(reduced.left, typ, aliases)
+		}
+		ast.CastExpr {
+			c.pointer_param_field_target(reduced.expr, typ, aliases)
+		}
+		ast.AsCast {
+			c.pointer_param_field_target(reduced.expr, typ, aliases)
+		}
+		ast.UnsafeExpr {
+			c.pointer_param_field_target(reduced.expr, typ, aliases)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut c Checker) node_captures_or_stores_pointer_param(node ast.Node, typ ast.Type, root_is_mut bool, mut aliases []string, mut seen map[string]bool) bool {
 	match node {
 		ast.Expr {
 			if node is ast.AnonFn {
 				return node.inherited_vars.any(it.name in aliases)
 			}
-			if node is ast.CallExpr && c.call_escapes_pointer_param(node, typ, aliases) {
+			if node is ast.CallExpr && c.call_escapes_pointer_param(node, typ, aliases, mut seen) {
 				return true
 			}
 		}
@@ -133,9 +171,14 @@ fn (mut c Checker) node_captures_or_stores_pointer_param(node ast.Node, typ ast.
 					}
 					if c.expr_references_pointer_param(left, typ, aliases) {
 						if left is ast.Ident {
+							if root_is_mut && left.name == aliases[0] {
+								return true
+							}
 							continue
 						}
-						return true
+						if !c.pointer_param_field_target(left, typ, aliases) {
+							return true
+						}
 					}
 					if !c.expr_references_pointer_param(right, typ, aliases) {
 						continue
@@ -162,14 +205,14 @@ fn (mut c Checker) node_captures_or_stores_pointer_param(node ast.Node, typ ast.
 	}
 
 	for child in node.children() {
-		if c.node_captures_or_stores_pointer_param(child, typ, mut aliases) {
+		if c.node_captures_or_stores_pointer_param(child, typ, root_is_mut, mut aliases, mut seen) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (mut c Checker) call_escapes_pointer_param(node ast.CallExpr, typ ast.Type, aliases []string) bool {
+fn (mut c Checker) call_escapes_pointer_param(node ast.CallExpr, typ ast.Type, aliases []string, mut seen map[string]bool) bool {
 	called_fn := c.find_called_fn(node) or {
 		if node.is_method && c.expr_references_pointer_param(node.left, typ, aliases) {
 			return true
@@ -177,9 +220,9 @@ fn (mut c Checker) call_escapes_pointer_param(node ast.CallExpr, typ ast.Type, a
 		return node.args.any(c.expr_references_pointer_param(it.expr, typ, aliases))
 	}
 	if node.is_method && called_fn.params.len > 0
-		&& called_fn.params[0].typ.is_any_kind_of_pointer()
+		&& (called_fn.params[0].is_mut || called_fn.params[0].typ.is_any_kind_of_pointer())
 		&& c.expr_references_pointer_param(node.left, typ, aliases)
-		&& c.fn_pointer_param_may_escape_or_mutate(called_fn, 0) {
+		&& c.fn_param_may_replace_or_escape(called_fn, 0, node.left_type, mut seen) {
 		return true
 	}
 	for i, arg in node.args {
@@ -190,8 +233,14 @@ fn (mut c Checker) call_escapes_pointer_param(node ast.CallExpr, typ ast.Type, a
 		if param_idx < 0 || param_idx >= called_fn.params.len {
 			return true
 		}
-		if called_fn.params[param_idx].typ.is_any_kind_of_pointer()
-			&& c.fn_pointer_param_may_escape_or_mutate(called_fn, param_idx) {
+		resolved_type := if arg.typ != ast.no_type {
+			arg.typ
+		} else {
+			called_fn.params[param_idx].typ
+		}
+		if (called_fn.params[param_idx].is_mut || resolved_type.is_any_kind_of_pointer()
+			|| c.table.unaliased_type(resolved_type).is_any_kind_of_pointer())
+			&& c.fn_param_may_replace_or_escape(called_fn, param_idx, resolved_type, mut seen) {
 			return true
 		}
 	}
