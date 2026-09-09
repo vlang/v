@@ -196,6 +196,19 @@ fn test_parse_rejects_duplicate_text_labels() {
 	}
 }
 
+fn test_rejects_duplicate_critical_labels() {
+	for encoded in [
+		hex.decode('a2012602820101')!,
+		hex.decode('a2028261786178617800')!,
+	] {
+		if _ := parse_protected(encoded) {
+			assert false, 'crit labels must be unique'
+		} else {
+			assert err.msg().contains('crit contains duplicate label')
+		}
+	}
+}
+
 fn test_rejects_labels_repeated_across_header_buckets() {
 	mut protected := Headers{}
 	protected.algorithm = .es256

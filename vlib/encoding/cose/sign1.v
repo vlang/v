@@ -114,23 +114,17 @@ pub fn (mut m Sign1Message) sign(key Key, payload []u8, external_aad []u8) ! {
 }
 
 // verify recomputes the Sig_structure from the message's protected
-// headers and the supplied payload, then checks the signature. The
-// algorithm MUST be present in the protected headers per RFC 9052 §3
-// — putting it in `unprotected` would let an attacker substitute it
-// without invalidating the signature.
+// headers and the supplied payload, then checks the signature. An
+// algorithm in the unprotected bucket is accepted only when the key's
+// `alg` constraint binds it to the same value.
 pub fn (m Sign1Message) verify(key Key, payload []u8, external_aad []u8) ! {
 	check_protected_headers(m.protected, m.unprotected)!
-	alg := m.protected.algorithm or {
-		return MalformedMessage{
-			reason: 'algorithm missing from protected header (RFC 9052 §3)'
-		}
-	}
+	alg := verification_algorithm(m.protected, m.unprotected, key, 'Sign1')!
 
 	body_protected := m.protected_bytes()!
 	tbs := sig_structure_sign1(body_protected, external_aad, payload)
 	verify_with_key(alg, key, tbs, m.signature)!
 }
-
 // protected_bytes returns the bytes to feed into the Sig_structure:
 // the ones received on the wire for a decoded message, a canonical
 // encoding of `protected` for one built in memory.

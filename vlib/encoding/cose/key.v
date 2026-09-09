@@ -85,6 +85,8 @@ mut:
 	raw_algorithm_text ?string
 	// raw_curve preserves a valid but unsupported integer curve identifier.
 	raw_curve ?i64
+	// raw_key_ops preserves valid text and future/private integer operations.
+	raw_key_ops []cbor.Value
 }
 
 // Key.ec2_private builds an EC2 private key from raw coordinates and
@@ -167,10 +169,41 @@ pub fn (k Key) encode() ![]u8 {
 			value: cbor.new_text(raw_algorithm_text)
 		}
 	}
-	if k.key_ops.len > 0 {
+	if k.key_ops.len > 0 || k.raw_key_ops.len > 0 {
 		mut ops_arr := cbor.Array{}
+		mut seen_int_ops := []i64{}
+		mut seen_text_ops := []string{}
 		for op in k.key_ops {
-			ops_arr.elements << cbor.new_int(i64(op))
+			code := i64(op)
+			if code in seen_int_ops {
+				return MalformedMessage{
+					reason: 'duplicate key_ops entry ${code}'
+				}
+			}
+			seen_int_ops << code
+			ops_arr.elements << cbor.new_int(code)
+		}
+		for op in k.raw_key_ops {
+			if code := op.as_int() {
+				if code in seen_int_ops {
+					return MalformedMessage{
+						reason: 'duplicate key_ops entry ${code}'
+					}
+				}
+				seen_int_ops << code
+			} else if name := op.as_string() {
+				if name in seen_text_ops {
+					return MalformedMessage{
+						reason: 'duplicate key_ops entry "${name}"'
+					}
+				}
+				seen_text_ops << name
+			} else {
+				return MalformedMessage{
+					reason: 'key_ops entry is neither int nor tstr'
+				}
+			}
+			ops_arr.elements << op
 		}
 		pairs << cbor.MapPair{
 			key:   cbor.new_int(key_label_key_ops)
@@ -331,51 +364,46 @@ pub fn Key.decode(data []u8) !Key {
 					}
 				}
 				mut ops := []KeyOp{cap: items.len}
+				mut raw_ops := []cbor.Value{}
+				mut seen_int_ops := []i64{}
+				mut seen_text_ops := []string{}
 				for it in items {
-					n := it.as_int() or {
-						return MalformedMessage{
-							reason: 'key_ops contains non-int'
-						}
-					}
-					ops << match n {
-						1 {
-							KeyOp.sign
-						}
-						2 {
-							KeyOp.verify
-						}
-						3 {
-							KeyOp.encrypt
-						}
-						4 {
-							KeyOp.decrypt
-						}
-						5 {
-							KeyOp.wrap_key
-						}
-						6 {
-							KeyOp.unwrap_key
-						}
-						7 {
-							KeyOp.derive_key
-						}
-						8 {
-							KeyOp.derive_bits
-						}
-						9 {
-							KeyOp.mac_create
-						}
-						10 {
-							KeyOp.mac_verify
-						}
-						else {
+					if n := it.as_int() {
+						if n in seen_int_ops {
 							return MalformedMessage{
-								reason: 'unknown key_op ${n}'
+								reason: 'duplicate key_ops entry ${n}'
 							}
+						}
+						seen_int_ops << n
+						match n {
+							1 { ops << .sign }
+							2 { ops << .verify }
+							3 { ops << .encrypt }
+							4 { ops << .decrypt }
+							5 { ops << .wrap_key }
+							6 { ops << .unwrap_key }
+							7 { ops << .derive_key }
+							8 { ops << .derive_bits }
+							9 { ops << .mac_create }
+							10 { ops << .mac_verify }
+							else { raw_ops << it }
+						}
+					} else if name := it.as_string() {
+						if name in seen_text_ops {
+							return MalformedMessage{
+								reason: 'duplicate key_ops entry "${name}"'
+							}
+						}
+						seen_text_ops << name
+						raw_ops << it
+					} else {
+						return MalformedMessage{
+							reason: 'key_ops entry is neither int nor tstr'
 						}
 					}
 				}
 				out.key_ops = ops
+				out.raw_key_ops = raw_ops
 			}
 			key_label_base_iv {
 				out.base_iv = pair.value.as_bytes() or {
@@ -487,7 +515,7 @@ fn (k Key) check_algorithm(alg Algorithm) ! {
 
 // check_operation enforces a non-empty key_ops restriction.
 fn (k Key) check_operation(required KeyOp) ! {
-	if k.key_ops.len > 0 && required !in k.key_ops {
+	if (k.key_ops.len > 0 || k.raw_key_ops.len > 0) && required !in k.key_ops {
 		return error('cose: key_ops does not permit ${required}')
 	}
 }

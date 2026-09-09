@@ -20,6 +20,7 @@ const ecdsa_p256_x_b64u = 'usWxHK2PmfnHKwXPS54m0kTcGJ90UiglWiGahtagnv8'
 const ecdsa_p256_y_b64u = 'IBOL-C3BttVivg-lSreASjpkttcsz-1rb7btKLv8EX4'
 const ecdsa_p256_d_b64u = 'V8kgd2ZBRuh2dgyVINBUqpPDr7BOMGcF22CQMIUHtNM'
 const ecdsa_sig01_message = 'D28445A201260300A10442313154546869732069732074686520636F6E74656E742E58406520BBAF2081D7E0ED0F95F76EB0733D667005F7467CEC4B87B9381A6BA1EDE8E00DF29F32A37230F39A842A54821FDD223092819D7728EFB9D3A0080B75380B'
+const key_bound_unprotected_alg_message = 'D28440A201260442313154546869732069732074686520636F6E74656E742E584087DB0D2E5571843B78AC33ECB2830DF7B6E0A4D5B7376DE336B23C591C90C425317E56127FBE04370097CE347087B233BF722B64072BEB4486BDA4031D27244F'
 
 const sample_text = 'This is the content.'
 
@@ -63,6 +64,15 @@ fn test_verify1_accepts_reference_ecdsa_p256_message() {
 	pub_key := Key.ec2_public(.p_256, x, y)
 	msg := hex.decode(ecdsa_sig01_message)!
 	payload := verify1(msg, pub_key)!
+	assert payload == sample_text.bytes()
+}
+
+fn test_verify1_accepts_key_bound_unprotected_algorithm() {
+	x := base64.url_decode(ecdsa_p256_x_b64u)
+	y := base64.url_decode(ecdsa_p256_y_b64u)
+	mut key := Key.ec2_public(.p_256, x, y)
+	key.alg = .es256
+	payload := verify1(hex.decode(key_bound_unprotected_alg_message)!, key)!
 	assert payload == sample_text.bytes()
 }
 

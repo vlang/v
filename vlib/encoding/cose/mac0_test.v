@@ -208,6 +208,32 @@ fn test_text_decoded_key_algorithm_remains_constrained() {
 	}
 }
 
+fn test_key_decode_preserves_future_and_text_operations() {
+	encoded := hex.decode('a3010404830a1903e866637573746f6d205820' + '11'.repeat(32))!
+	key := Key.decode(encoded)!
+	roundtripped := Key.decode(key.encode()!)!
+	roundtripped.check_operation(.mac_verify)!
+	if _ := roundtripped.check_operation(.mac_create) {
+		assert false, 'preserved unknown operations must not remove the key_ops restriction'
+	} else {
+		assert err.msg().contains('key_ops does not permit')
+	}
+	assert roundtripped.raw_key_ops.len == 2
+}
+
+fn test_key_decode_rejects_duplicate_operations() {
+	for encoded in [
+		hex.decode('a3010404820a0a205820' + '11'.repeat(32))!,
+		hex.decode('a30104048261616161205820' + '11'.repeat(32))!,
+	] {
+		if _ := Key.decode(encoded) {
+			assert false, 'key_ops entries must be unique'
+		} else {
+			assert err.msg().contains('duplicate key_ops entry')
+		}
+	}
+}
+
 fn test_key_decode_rejects_duplicate_labels() {
 	for encoded in [
 		hex.decode('a301040104205820' + '11'.repeat(32))!,

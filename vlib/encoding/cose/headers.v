@@ -292,8 +292,18 @@ fn parse_headers_value(v cbor.Value) !Headers {
 						mut crit_text := []string{cap: items.len}
 						for item in items {
 							if c := item.as_int() {
+								if c in crit {
+									return MalformedMessage{
+										reason: 'crit contains duplicate label ${c} (RFC 9052 §3.1)'
+									}
+								}
 								crit << c
 							} else if c := item.as_string() {
+								if c in crit_text {
+									return MalformedMessage{
+										reason: 'crit contains duplicate label "${c}" (RFC 9052 §3.1)'
+									}
+								}
 								crit_text << c
 							} else {
 								return MalformedMessage{
@@ -459,6 +469,29 @@ fn check_header_values(h Headers) ! {
 	}
 }
 
+fn verification_algorithm(protected Headers, unprotected Headers, key Key, context string) !Algorithm {
+	if protected_alg := protected.algorithm {
+		return protected_alg
+	}
+	unprotected_alg := unprotected.algorithm or {
+		return MalformedMessage{
+			reason: 'algorithm missing from ${context} headers'
+		}
+	}
+	key_alg := key.alg or {
+		return MalformedMessage{
+			reason: 'algorithm in unprotected ${context} header requires a matching key alg constraint'
+		}
+	}
+	if key_alg != unprotected_alg {
+		return AlgorithmMismatch{
+			expected: key_alg
+			got:      unprotected_alg
+		}
+	}
+	return unprotected_alg
+}
+
 fn typed_int_header_labels(h Headers) []i64 {
 	mut labels := []i64{cap: 6}
 	if h.algorithm != none {
@@ -489,7 +522,12 @@ fn typed_int_header_labels(h Headers) []i64 {
 // error to avoid silently ignoring a parameter the sender flagged as
 // security-critical.
 fn check_critical(h Headers) ! {
-	for label in h.critical {
+	for i, label in h.critical {
+		if label in h.critical[..i] {
+			return MalformedMessage{
+				reason: 'crit contains duplicate label ${label} (RFC 9052 §3.1)'
+			}
+		}
 		if label == label_crit {
 			return MalformedMessage{
 				reason: 'crit must not list itself (RFC 9052 §3.1)'
@@ -502,7 +540,12 @@ fn check_critical(h Headers) ! {
 			}
 		}
 	}
-	for label in h.critical_text {
+	for i, label in h.critical_text {
+		if label in h.critical_text[..i] {
+			return MalformedMessage{
+				reason: 'crit contains duplicate label "${label}" (RFC 9052 §3.1)'
+			}
+		}
 		return MalformedMessage{
 			reason: 'crit lists unknown label "${label}" (RFC 9052 §3.1)'
 		}

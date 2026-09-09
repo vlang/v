@@ -135,8 +135,8 @@ pub fn mac(payload []u8, key Key, opts MacOptions) ![]u8 {
 }
 
 // verify_mac parses a COSE_Mac, recomputes the MAC tag with `key` and
-// checks it. Returns the payload bytes. The algorithm MUST be present
-// in the protected headers per RFC 9052 §3.
+// checks it. Returns the payload bytes. An algorithm in the unprotected
+// body bucket is accepted only when bound by `key.alg`.
 pub fn verify_mac(message []u8, key Key, opts VerifyMacOptions) ![]u8 {
 	msg := MacMessage.decode(message)!
 	check_protected_headers(msg.protected, msg.unprotected)!
@@ -153,11 +153,7 @@ pub fn verify_mac(message []u8, key Key, opts VerifyMacOptions) ![]u8 {
 			}
 		}
 	}
-	alg := msg.protected.algorithm or {
-		return MalformedMessage{
-			reason: 'algorithm missing from protected header (RFC 9052 §3)'
-		}
-	}
+	alg := verification_algorithm(msg.protected, msg.unprotected, key, 'Mac')!
 
 	body_protected := msg.protected_bytes()!
 	tbm := mac_structure_mac(body_protected, opts.external_aad, pl)

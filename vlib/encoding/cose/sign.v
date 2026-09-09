@@ -112,8 +112,8 @@ pub:
 
 // verify checks the signature at `signer_index` of the message against
 // `key`. By default the payload is taken from `m.payload`; pass
-// `opts.detached_payload` for the detached case. The per-signer
-// algorithm MUST be in that signer's protected header (RFC 9052 §3).
+// `opts.detached_payload` for the detached case. An algorithm in the
+// unprotected signer bucket is accepted only when bound by `key.alg`.
 pub fn (m SignMessage) verify(signer_index int, key Key, opts VerifySignOptions) ! {
 	if signer_index < 0 || signer_index >= m.signatures.len {
 		return error('cose: signer index ${signer_index} out of range (have ${m.signatures.len})')
@@ -121,11 +121,8 @@ pub fn (m SignMessage) verify(signer_index int, key Key, opts VerifySignOptions)
 	entry := m.signatures[signer_index]
 	check_protected_headers(m.protected, m.unprotected)!
 	check_protected_headers(entry.protected, entry.unprotected)!
-	alg := entry.protected.algorithm or {
-		return MalformedMessage{
-			reason: 'signer at index ${signer_index} missing algorithm in protected header'
-		}
-	}
+	alg := verification_algorithm(entry.protected, entry.unprotected, key,
+		'signer at index ${signer_index}')!
 
 	pl := if dp := opts.detached_payload {
 		dp
