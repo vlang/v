@@ -1,7 +1,6 @@
 module picoev
 
 import net
-import os
 import pico_http_parser
 import time
 
@@ -344,15 +343,6 @@ pub fn new(config Config) !&Picoev {
 	}
 	pv.init()
 	pv.add(listening_socket_fd, picoev_read, 0, accept_callback)
-	// A server must not die on a peer RST: any write to a connection the client
-	// already reset delivers SIGPIPE, whose default action terminates the process
-	// SILENTLY (no panic, no crash report). Long-held fds (SSE) make this routine
-	// rather than rare — a subscriber that disconnects between pushes turns the
-	// next push into a process kill. Change the process-wide disposition only
-	// after construction succeeds; writes then report EPIPE and drop the fd.
-	$if !windows {
-		os.signal_ignore(.pipe)
-	}
 	return pv
 }
 
