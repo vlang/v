@@ -2074,6 +2074,14 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 	if !t.is_optional_type_name(raw_type) {
 		raw_type = t.optional_result_expr_type_name(source_id)
 	}
+	if t.is_optional_type_name(raw_type) {
+		source := t.a.nodes[int(source_id)]
+		if source.kind == .index && source.op == .gated_index {
+			if lowered := t.lower_gated_scalar_index(source) {
+				return t.transform_optional_wrapper_expr(lowered)
+			}
+		}
+	}
 	if t.is_optional_type_name(raw_type) && t.a.nodes[int(id)].kind in [.ident, .selector, .index] {
 		// `source_id` is already the wrapper expression with any redundant top-level
 		// payload selectors removed. Rebuilding it here would transform its

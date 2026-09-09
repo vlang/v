@@ -72,9 +72,11 @@ fn main() {
 	values[next_index(mut counter)] = Arr{}
 	assert counter.calls == 1
 	assert values[0] != none
+	assert values#[-1] != none
 	values[next_index(mut counter)] = ?Arr(none)
 	assert counter.calls == 2
 	assert values[0] == none
+	assert values#[-1] == none
 	println("ok")
 }
 ')!
