@@ -12820,6 +12820,15 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 			}
 			return
 		}
+		.call {
+			if !t.fn_literal_cast_target_contains_callback(t.node_type(arg_id)) {
+				return
+			}
+			if source_type := t.callback_call_source_return_type(arg_id, node) {
+				result << source_type
+			}
+			return
+		}
 		.block, .match_branch, .lock_expr {
 			if node.children_count > 0 {
 				t.collect_fn_literal_source_type_texts(t.a.child(&node, node.children_count - 1), mut
@@ -12977,6 +12986,76 @@ fn (t &Transformer) callback_source_node_id(id flat.NodeId) ?int {
 
 fn (t &Transformer) named_callback_source_type(name string) ?string {
 	return t.callback_decl_source_type(name, false)
+}
+
+fn (t &Transformer) callback_call_source_return_type(id flat.NodeId, node flat.Node) ?string {
+	if node.children_count == 0 {
+		return none
+	}
+	callee_id := t.a.child(&node, 0)
+	callee := t.a.nodes[int(callee_id)]
+	if callee.kind == .ident {
+		for local_type in [t.raw_var_type(callee.value), t.var_type(callee.value)] {
+			if return_type := fn_type_return_type_text(local_type) {
+				return t.callback_source_return_expansion(return_type)
+			}
+		}
+	} else if callee.kind == .selector {
+		if local_type := t.raw_selector_field_type(callee_id) {
+			if return_type := fn_type_return_type_text(local_type) {
+				return t.callback_source_return_expansion(return_type)
+			}
+		}
+	}
+	call_name := t.resolve_call_name(node)
+	mut candidates := []string{}
+	if !isnil(t.tc) {
+		if resolved := t.tc.resolved_call_name(id) {
+			candidates << resolved
+		}
+	}
+	if call_name.len > 0 && call_name !in candidates {
+		candidates << call_name
+	}
+	if call_name.len > 0 && !call_name.contains('.') {
+		qualified := transform_qualified_fn_name(t.current_source_module(), call_name)
+		if qualified !in candidates {
+			candidates << qualified
+		}
+	}
+	if !isnil(t.tc) {
+		for candidate in candidates {
+			if raw_return := t.tc.fn_ret_type_texts[candidate] {
+				module_name := t.tc.fn_type_modules[candidate] or { t.current_source_module() }
+				return t.callback_source_return_expansion(t.decl_param_type_in_module(raw_return,
+					module_name))
+			}
+		}
+	}
+	if call_name.len == 0 || t.call_param_types_decl_index.len == 0 {
+		return none
+	}
+	decl := t.call_param_types_decl_index[call_name] or {
+		qualified := transform_qualified_fn_name(t.current_source_module(), call_name)
+		t.call_param_types_decl_index[qualified] or { return none }
+	}
+	if decl.idx < 0 || decl.idx >= t.a.nodes.len {
+		return none
+	}
+	fn_decl := t.a.nodes[decl.idx]
+	if fn_decl.kind != .fn_decl || fn_decl.typ.len == 0 || fn_decl.typ == 'void' {
+		return none
+	}
+	return t.callback_source_return_expansion(t.decl_param_type_in_file(fn_decl.typ, decl.module,
+		decl.file))
+}
+
+fn (t &Transformer) callback_source_return_expansion(type_name string) string {
+	mut expanded := t.callback_source_alias_expansion(type_name, 0)
+	for expanded.starts_with('?') || expanded.starts_with('!') {
+		expanded = expanded[1..].trim_space()
+	}
+	return expanded
 }
 
 fn (t &Transformer) callback_decl_source_type(name string, skip_receiver bool) ?string {

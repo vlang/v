@@ -1959,6 +1959,12 @@ fn test_callback_identifier_c_abi_modes_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_callback_param_shadows_named_fn_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn handler(event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T](handler ConstHandler) {\n\tr := Router{}\n\tr.accept(handler)\n}\nfn main() {\n\tstartup[int](fn (const_event &C.native_event) {})\n}\n',
 		'cannot use')
+	factory_matching := run_good(v3_bin, 'good_callback_factory_result_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn make_handler() PlainHandler {\n\treturn fn (event &C.native_event) {}\n}\nfn (r Router) accept(callback PlainHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tr := Router{}\n\treturn r.accept(make_handler())\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert factory_matching == 'true'
+	run_bad(v3_bin, 'bad_callback_factory_result_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn make_handler() ConstHandler {\n\treturn fn (const_event &C.native_event) {}\n}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tr.accept(make_handler())\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 }
 
 fn test_fn_literal_nested_named_callback_param_matches_alias_inside_generic_fn() {
