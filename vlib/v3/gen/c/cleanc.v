@@ -14813,10 +14813,23 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write(')')
 				}
 				g.write('.len')
-			} else if node.value == 'len' && (base_type_clean is types.Array || base_type_clean is types.Map || (base_type_clean is types.Struct && base_type_clean.name in [
-				'array',
-				'map',
-			])) {
+			} else if node.value == 'len' && (base_type_clean is types.Map
+				|| (base_type_clean is types.Struct && base_type_clean.name == 'map')) {
+				needs_paren := base.kind !in [.ident, .selector]
+				if needs_paren {
+					g.write('(')
+				}
+				g.gen_expr(base_id)
+				if needs_paren {
+					g.write(')')
+				}
+				if base_type0 is types.Pointer {
+					g.write('->data->count')
+				} else {
+					g.write('.data->count')
+				}
+			} else if node.value == 'len' && (base_type_clean is types.Array
+				|| (base_type_clean is types.Struct && base_type_clean.name == 'array')) {
 				// Array accessors such as `last()` are calls in the flat tree, but
 				// emit a dereference expression in C. Parenthesize that value before
 				// selecting `.len`, otherwise the member access binds inside `array_get`.
@@ -19374,14 +19387,14 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('}')
 	g.writeln('static inline string v3_map_str(map m, int key_kind, int val_kind, int val_fixed_len) {')
 	g.writeln('\tstring out = v3_c_lit("{", 1); bool first = true;')
-	g.writeln('\tfor (int i = 0; i < m.key_values.len; ++i) {')
-	g.writeln('\t\tif (m.key_values.deletes != 0 && m.key_values.all_deleted != 0 && m.key_values.all_deleted[i] != 0) continue;')
+	g.writeln('\tfor (int i = 0; i < m.data->key_values.len; ++i) {')
+	g.writeln('\t\tif (m.data->key_values.deletes != 0 && m.data->key_values.all_deleted != 0 && m.data->key_values.all_deleted[i] != 0) continue;')
 	g.writeln('\t\tif (!first) out = string__plus(out, v3_c_lit(", ", 2));')
-	g.writeln('\t\tvoid* key = (void*)(m.key_values.keys + i * m.key_values.key_bytes);')
-	g.writeln('\t\tvoid* val = (void*)(m.key_values.values + i * m.key_values.value_bytes);')
-	g.writeln('\t\tout = string__plus(out, v3_map_str_piece(key, key_kind, m.key_values.key_bytes, 0));')
+	g.writeln('\t\tvoid* key = (void*)(m.data->key_values.keys + i * m.data->key_values.key_bytes);')
+	g.writeln('\t\tvoid* val = (void*)(m.data->key_values.values + i * m.data->key_values.value_bytes);')
+	g.writeln('\t\tout = string__plus(out, v3_map_str_piece(key, key_kind, m.data->key_values.key_bytes, 0));')
 	g.writeln('\t\tout = string__plus(out, v3_c_lit(": ", 2));')
-	g.writeln('\t\tout = string__plus(out, v3_map_str_piece(val, val_kind, m.value_bytes, val_fixed_len));')
+	g.writeln('\t\tout = string__plus(out, v3_map_str_piece(val, val_kind, m.data->value_bytes, val_fixed_len));')
 	g.writeln('\t\tfirst = false;')
 	g.writeln('\t}')
 	g.writeln('\treturn string__plus(out, v3_c_lit("}", 1));')
@@ -19403,7 +19416,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('bool map__exists(map* m, void* key);')
 	g.writeln('static inline bool v3_map_map_eq(map a, map b);')
 	g.writeln('static inline bool v3_map_value_eq(void* a, void* b, int value_bytes) { if (value_bytes == sizeof(string)) { string sa = *(string*)a; string sb = *(string*)b; return sa.len == sb.len && (sa.len == 0 || memcmp(sa.str, sb.str, sa.len) == 0); } if (value_bytes == sizeof(map)) { return v3_map_map_eq(*(map*)a, *(map*)b); } if (value_bytes == sizeof(string) + sizeof(map)) { string sa = *(string*)a; string sb = *(string*)b; if (!(sa.len == sb.len && (sa.len == 0 || memcmp(sa.str, sb.str, sa.len) == 0))) return false; map ma = *(map*)((u8*)a + sizeof(string)); map mb = *(map*)((u8*)b + sizeof(string)); return v3_map_map_eq(ma, mb); } if (value_bytes == sizeof(Array)) { Array aa = *(Array*)a; Array bb = *(Array*)b; if (aa.element_size != bb.element_size) return false; if (aa.element_size == sizeof(string)) return array_eq_string(aa, bb); if (aa.element_size == sizeof(Array)) return array_eq_array(aa, bb, 8); return array_eq_raw(aa, bb, aa.element_size); } return memcmp(a, b, value_bytes) == 0; }')
-	g.writeln('static inline bool v3_map_map_eq(map a, map b) { if (a.len != b.len) return false; for (int i = 0; i < a.key_values.len; ++i) { if (a.key_values.deletes != 0 && a.key_values.all_deleted != 0 && a.key_values.all_deleted[i] != 0) continue; void* ak = (void*)(a.key_values.keys + i * a.key_values.key_bytes); if (!map__exists(&b, ak)) return false; void* av = (void*)(a.key_values.values + i * a.key_values.value_bytes); void* bv = map__get(&b, ak, av); if (!v3_map_value_eq(av, bv, a.value_bytes)) return false; } return true; }')
+	g.writeln('static inline bool v3_map_map_eq(map a, map b) { if (a.data->count != b.data->count) return false; for (int i = 0; i < a.data->key_values.len; ++i) { if (a.data->key_values.deletes != 0 && a.data->key_values.all_deleted != 0 && a.data->key_values.all_deleted[i] != 0) continue; void* ak = (void*)(a.data->key_values.keys + i * a.data->key_values.key_bytes); if (!map__exists(&b, ak)) return false; void* av = (void*)(a.data->key_values.values + i * a.data->key_values.value_bytes); void* bv = map__get(&b, ak, av); if (!v3_map_value_eq(av, bv, a.data->value_bytes)) return false; } return true; }')
 	g.writeln('static inline bool fixed_array_contains_string(const string* a, int len, string val) { for (int i = 0; i < len; i++) if (a[i].len == val.len && memcmp(a[i].str, val.str, val.len) == 0) return true; return false; }')
 	g.writeln('static inline bool fixed_array_contains_u8(const u8* a, int len, u8 val) { for (int i = 0; i < len; i++) if (a[i] == val) return true; return false; }')
 	g.writeln('static inline bool fixed_array_contains_int(const ${g.int_ct}* a, int len, ${g.int_ct} val) { for (int i = 0; i < len; i++) if (a[i] == val) return true; return false; }')

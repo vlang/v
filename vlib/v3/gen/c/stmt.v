@@ -1338,7 +1338,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 			}
 		}
 		types.Map {
-			key_values := '(${expr}).key_values'
+			key_values := '(${expr}).data->key_values'
 			if g.ownership_type_requires_destruction(typ.key_type, depth + 1)
 				|| g.ownership_type_requires_destruction(typ.value_type, depth + 1) {
 				idx := g.tmp_count
@@ -2314,7 +2314,7 @@ fn (mut g FlatGen) gen_select_receive_map_value(expr string, actual types.Type, 
 	g.gen_select_receive_value(source_key, actual_key, expected_key)
 	g.write('; ${expected_value_ct} ${value} = ')
 	g.gen_select_receive_value(source_value, actual_value, expected_value)
-	g.write('; map__set(&${out}, &${key}, &${value}); ${source}.free_fn(&${source_key}); } ')
+	g.write('; map__set(&${out}, &${key}, &${value}); ${source}.data->free_fn(&${source_key}); } ')
 	g.write('array__free(&${keys}); map__free(&${source}); ${out}; })')
 	return true
 }
