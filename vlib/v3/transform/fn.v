@@ -12495,7 +12495,9 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		}
 	}
 	if expected.starts_with('!') {
-		if actual == expected[1..] || t.is_ierror_type(actual) {
+		if actual == expected[1..]
+			|| t.normalize_fn_signature_component_aliases(actual, 0) == t.normalize_fn_signature_component_aliases(expected[1..], 0)
+			|| t.is_ierror_type(actual) {
 			return true
 		}
 	}
@@ -12550,6 +12552,25 @@ fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId,
 	node := t.a.nodes[int(arg_id)]
 	if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
 		return t.fn_literal_container_modes_compatible(t.a.child(&node, 0), expected_type)
+	}
+	if node.kind in [.block, .match_branch, .lock_expr] && node.children_count > 0 {
+		return t.fn_literal_container_modes_compatible(t.a.child(&node, node.children_count - 1),
+			expected_type)
+	}
+	if node.kind in [.if_expr, .match_stmt, .or_expr] {
+		mut handled := false
+		start := if node.kind == .or_expr { 0 } else { 1 }
+		for i in start .. node.children_count {
+			if compatible := t.fn_literal_container_modes_compatible(t.a.child(&node, i),
+				expected_type)
+			{
+				handled = true
+				if !compatible {
+					return false
+				}
+			}
+		}
+		return if handled { true } else { none }
 	}
 	if node.kind == .postfix && node.children_count == 1 {
 		return t.fn_literal_container_modes_compatible(t.a.child(&node, 0), expected_type)
@@ -12679,10 +12700,9 @@ fn (mut t Transformer) fn_literal_container_element_mode_compatible(id flat.Node
 
 fn (t &Transformer) fn_literal_source_c_abi_signature_compatible(actual_text string, expected_type string) bool {
 	actual_abi := t.tc.c_abi_fn_signature_for_type_text(actual_text)
-	abi_expected_type := if expected_type.starts_with('?') {
-		expected_type[1..]
-	} else {
-		expected_type
+	mut abi_expected_type := expected_type.trim_space()
+	for abi_expected_type.starts_with('?') || abi_expected_type.starts_with('!') {
+		abi_expected_type = abi_expected_type[1..].trim_space()
 	}
 	if t.is_sum_type_name(abi_expected_type) {
 		if compatible := t.fn_literal_sum_variant_c_abi_compatible(actual_text, actual_abi,

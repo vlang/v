@@ -2055,6 +2055,12 @@ fn test_fn_literal_optional_promotion_and_interface_cast_modes_inside_generic_fn
 	run_bad(v3_bin, 'bad_optional_promoted_const_fn_literal_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler ?PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tr.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	result := run_good(v3_bin, 'good_result_promoted_const_fn_literal_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler !ConstHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tr := Router{}\n\treturn r.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert result == 'true'
+	run_bad(v3_bin, 'bad_result_promoted_const_fn_literal_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler !PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tr.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 	boxed := run_good(v3_bin, 'good_empty_interface_cast_const_fn_literal_in_generic',
 		'interface Any {}\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(value Any) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tr := Router{}\n\treturn r.accept(Any(fn (const_event &C.native_event) {}))\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	assert boxed == 'true'
@@ -2092,6 +2098,12 @@ fn test_fn_literal_container_callback_modes_inside_generic_fn() {
 	assert receiver_matching == 'true'
 	run_bad(v3_bin, 'bad_receiver_array_literal_const_fn_param_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) apply(handlers []PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tr.apply([fn (const_event &C.native_event) {}])\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	conditional := run_good(v3_bin, 'good_conditional_array_literal_const_fn_param_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) apply(handlers []ConstHandler) bool {\n\treturn handlers.len == 1\n}\nfn startup[T](flag bool) bool {\n\tr := Router{}\n\treturn r.apply(if flag {\n\t\t[fn (const_event &C.native_event) {}]\n\t} else {\n\t\t[]ConstHandler{len: 1, init: fn (const_event &C.native_event) {}}\n\t})\n}\nfn main() {\n\tprintln(startup[int](true).str())\n}\n')
+	assert conditional == 'true'
+	run_bad(v3_bin, 'bad_conditional_array_literal_const_fn_param_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) apply(handlers []PlainHandler) {}\nfn startup[T](flag bool) {\n\tr := Router{}\n\tr.apply(if flag {\n\t\t[fn (const_event &C.native_event) {}]\n\t} else {\n\t\t[]PlainHandler{}\n\t})\n}\nfn main() {\n\tstartup[int](true)\n}\n',
 		'cannot use')
 	parenthesized := run_good(v3_bin, 'good_parenthesized_array_literal_const_fn_param_in_generic',
 		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) apply(handlers []ConstHandler) bool {\n\treturn handlers.len == 1\n}\nfn startup[T]() bool {\n\tr := Router{}\n\treturn r.apply(([fn (const_event &C.native_event) {}]))\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
