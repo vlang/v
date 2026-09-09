@@ -147,12 +147,12 @@ pub fn sign_response(mut resp http.Response, key Key, opts SignResponseOptions) 
 	adds_content_length := comps.any(it.to_lower() == 'content-length')
 		&& !resp.header.contains(.content_length)
 	ensure_signature_header_capacity(resp.header, if adds_content_length { 1 } else { 0 })!
+	mut c := response_components(resp)
 	if adds_content_length {
-		// Insert the field so both HTTP/1.x and HTTP/2 actually transmit the
-		// value covered by the signature.
-		resp.header.set(.content_length, resp.body.len.str())
+		// Sign the value that will be inserted only after signing succeeds, so
+		// an error cannot leave the unsigned response mutated.
+		c.fields['content-length'] = [resp.body.len.str()]
 	}
-	c := response_components(resp)
 	mut alg := ?string(none)
 	if opts.include_alg {
 		alg = key.algorithm.name()
@@ -167,6 +167,9 @@ pub fn sign_response(mut resp http.Response, key Key, opts SignResponseOptions) 
 		tag:        opts.tag
 	}
 	out := sign(c, p, key, opts.label)!
+	if adds_content_length {
+		resp.header.set(.content_length, resp.body.len.str())
+	}
 	append_dict_header(mut resp.header, 'Signature-Input', out.signature_input)!
 	append_dict_header(mut resp.header, 'Signature', out.signature)!
 }
@@ -456,7 +459,7 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 		if !req.header.contains(.user_agent) {
 			c.fields['user-agent'] = [req.user_agent]
 		}
-		if !req.header.contains(.content_length) {
+		if req.method != .trace && !req.header.contains(.content_length) {
 			c.fields['content-length'] = [req.data.len.str()]
 		}
 		cookie_value := req.cookie_header_value()

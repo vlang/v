@@ -436,7 +436,7 @@ fn (req &Request) build_request_headers_opts(method Method, host_name string, po
 		sb.write_string(ua)
 		sb.write_string('\r\n')
 	}
-	if !header.contains(.content_length) {
+	if method != .trace && !header.contains(.content_length) {
 		// Write Content-Length: 0 even if there's no content, since some APIs
 		// stop working without this header.
 		sb.write_string('Content-Length: ')
@@ -448,13 +448,23 @@ fn (req &Request) build_request_headers_opts(method Method, host_name string, po
 		if header_key_eq(key, chkey) {
 			continue
 		}
-		// RFC 9110 §5.2 combines repeated field lines with a comma. This also
-		// keeps HTTP/1.x serialization consistent with the HTTP/2 path.
-		val := header.custom_values(key).map(it.trim_space()).join(', ')
-		sb.write_string(key)
-		sb.write_string(': ')
-		sb.write_string(val)
-		sb.write_string('\r\n')
+		values := header.custom_values(key).map(it.trim_space())
+		if values.len > 1 && values.last() == '' {
+			// A combined trailing empty member would end in OWS, which parsers
+			// remove. Separate lines preserve the empty value for signatures.
+			for value in values {
+				sb.write_string(key)
+				sb.write_string(': ')
+				sb.write_string(value)
+				sb.write_string('\r\n')
+			}
+		} else {
+			// RFC 9110 §5.2 permits combining repeated field lines with a comma.
+			sb.write_string(key)
+			sb.write_string(': ')
+			sb.write_string(values.join(', '))
+			sb.write_string('\r\n')
+		}
 	}
 	sb.write_string(req.build_request_cookies_header_with_header(header))
 	if connection_close {

@@ -30,6 +30,12 @@ fn test_to_h2_request_lowercases_and_keeps_custom_headers() {
 	assert h2req.headers.any(it.name == 'content-length' && it.value == '0')
 }
 
+fn test_to_h2_request_does_not_add_content_length_to_trace() {
+	req := Request{}
+	h2req := req.to_h2_request(.trace, 'h.example', '/', '', new_header())
+	assert !h2req.headers.any(it.name == 'content-length')
+}
+
 fn test_to_h2_request_deduplicates_header_name_casing() {
 	mut h := new_header()
 	h.add_custom('X-Foo', 'a')!

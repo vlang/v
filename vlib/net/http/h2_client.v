@@ -47,7 +47,7 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 	if !header.contains(.user_agent) {
 		extra << H2HeaderField{'user-agent', req.user_agent}
 	}
-	if !header.contains(.content_length) {
+	if method != .trace && !header.contains(.content_length) {
 		extra << H2HeaderField{'content-length', data.len.str()}
 	}
 	for key in header.unique_keys() {

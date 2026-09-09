@@ -26,6 +26,22 @@ fn test_build_request_headers_trims_repeated_fields_before_combining() {
 	assert headers.contains('X-Foo: a, b\r\n')
 }
 
+fn test_build_request_headers_preserves_trailing_empty_repeated_field() {
+	mut req := Request{}
+	req.header.add_custom('X-Foo', 'a')!
+	req.header.add_custom('X-Foo', '')!
+	headers := req.build_request_headers(.get, 'localhost', 80, '/')
+	assert headers.count('X-Foo:') == 2
+	parsed := parse_request_str(headers)!
+	assert parsed.header.custom_values('X-Foo') == ['a', '']
+}
+
+fn test_build_request_headers_does_not_add_content_length_to_trace() {
+	req := Request{}
+	headers := req.build_request_headers(.trace, 'localhost', 80, '/')
+	assert !headers.contains('Content-Length:')
+}
+
 fn test_build_request_headers_semicolon_combines_case_insensitive_cookie_fields() {
 	mut req := Request{}
 	req.header.add_custom('cookie', 'a=1')!

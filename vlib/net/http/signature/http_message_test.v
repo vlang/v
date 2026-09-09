@@ -632,6 +632,39 @@ fn test_sign_response_includes_generated_content_length() {
 	verify_response(received, key)!
 }
 
+fn test_sign_response_failure_does_not_add_generated_content_length() {
+	mut resp := http.Response{
+		body: 'hello'
+	}
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_response(mut resp, key,
+		components: ['@status', 'content-length']
+		created:    2
+		expires:    1
+	)
+	{
+		assert false, 'invalid signature parameters must fail'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !resp.header.contains(.content_length)
+	assert !resp.header.contains_custom('Signature-Input')
+	assert !resp.header.contains_custom('Signature')
+}
+
+fn test_outgoing_trace_components_do_not_synthesize_content_length() {
+	req := http.Request{
+		method: .trace
+		url:    'https://example.com/'
+	}
+	c := request_components(req, 'https', .outgoing)!
+	if _ := c.component_value('content-length') {
+		assert false, 'TRACE must not synthesize a Content-Length field'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
 fn test_sign_response_rejects_existing_label() {
 	mut resp := http.Response{
 		status_code: 200
