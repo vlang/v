@@ -1096,7 +1096,7 @@ fn (mut c Checker) eval_comptime_fn_call_expr_with_locals(node ast.CallExpr, nle
 		return none
 	}
 	fn_decl := c.find_comptime_eval_fn_decl(func) or { return none }
-	if c.comptime_eval_for_range && !c.comptime_eval_checked_fns[fn_decl.name] {
+	if c.comptime_eval_for_range && !c.comptime_eval_checked_fns[func.fkey()] {
 		return none
 	}
 	if c.comptime_eval_for_range && c.comptime_eval_fn_decl_has_error(fn_decl) {
@@ -1128,7 +1128,7 @@ fn (mut c Checker) eval_comptime_infix_method(method ast.Fn, left ast.ComptTimeC
 		return none
 	}
 	fn_decl := c.find_comptime_eval_fn_decl(method) or { return none }
-	if c.comptime_eval_for_range && (!c.comptime_eval_checked_fns[fn_decl.name]
+	if c.comptime_eval_for_range && (!c.comptime_eval_checked_fns[method.fkey()]
 		|| c.comptime_eval_fn_decl_has_error(fn_decl)) {
 		return none
 	}

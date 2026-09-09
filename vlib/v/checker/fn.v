@@ -231,7 +231,7 @@ fn (mut c Checker) check_receiver_decl_generic_name_mentions(node &ast.FnDecl) {
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	nr_errors_before_fn_decl := c.nr_errors
 	defer {
-		c.comptime_eval_checked_fns[node.name] = c.nr_errors == nr_errors_before_fn_decl
+		c.comptime_eval_checked_fns[node.fkey()] = c.nr_errors == nr_errors_before_fn_decl
 	}
 	// handle vls go to definition for method receiver types
 	if c.pref.is_vls {

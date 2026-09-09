@@ -16,6 +16,23 @@ fn test_range_folding_does_not_recheck_nested_comptime_if() {
 	assert result.exit_code == 0, result.output
 }
 
+fn test_range_folding_tracks_checked_overloads_by_receiver() {
+	root := os.join_path(os.vtmp_dir(), 'range_checked_overload_receiver_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	program := os.join_path(root, 'main.v')
+	source := 'type CheckedAddend = u8\n\nfn (a CheckedAddend) + (b CheckedAddend) CheckedAddend {\n\treturn CheckedAddend(u8(a) + u8(b))\n}\n\ntype ForwardInvalidAddend = u8\n\nfn main() {\n\tfor _ in 2 .. int(ForwardInvalidAddend(1) + ForwardInvalidAddend(0)) {}\n}\n\nfn (a ForwardInvalidAddend) + (b ForwardInvalidAddend) int {\n\treturn 1\n}\n'
+	os.write_file(program, source) or { panic(err) }
+	result := os.execute('${range_diagnostic_vexe} -w -check ${os.quoted_path(program)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('operator `+` methods on primitive aliases should return `ForwardInvalidAddend`'), result.output
+
+	assert !result.output.contains('empty range'), result.output
+}
+
 fn test_checked_overflow_range_bound_compiles_and_panics() {
 	root := os.join_path(os.vtmp_dir(), 'range_checked_overflow_${os.getpid()}')
 	os.rmdir_all(root) or {}
