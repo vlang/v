@@ -12998,7 +12998,11 @@ fn (mut t Transformer) fn_literal_container_element_mode_compatible(id flat.Node
 }
 
 fn (t &Transformer) fn_literal_source_c_abi_signature_compatible(actual_text string, expected_type string) bool {
-	actual_abi := t.tc.c_abi_fn_signature_for_type_text(actual_text)
+	mut abi_actual_type := actual_text.trim_space()
+	for abi_actual_type.starts_with('?') || abi_actual_type.starts_with('!') {
+		abi_actual_type = abi_actual_type[1..].trim_space()
+	}
+	actual_abi := t.tc.c_abi_fn_signature_for_type_text(abi_actual_type)
 	mut abi_expected_type := expected_type.trim_space()
 	for abi_expected_type.starts_with('?') || abi_expected_type.starts_with('!') {
 		abi_expected_type = abi_expected_type[1..].trim_space()

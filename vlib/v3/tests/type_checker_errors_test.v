@@ -2297,6 +2297,12 @@ fn test_fn_literal_or_expr_callback_modes_inside_generic_fn() {
 
 fn test_fn_literal_optional_promotion_and_interface_cast_modes_inside_generic_fn() {
 	v3_bin := build_v3()
+	wrapped_option := run_good(v3_bin, 'good_optional_const_callback_argument_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn const_handler(const_event &C.native_event) {}\nfn maybe_handler() ?ConstHandler {\n\treturn ConstHandler(const_handler)\n}\nfn (r Router) accept(handler ?ConstHandler) bool {\n\treturn handler != none\n}\nfn startup[T](handler ?ConstHandler) bool {\n\tr := Router{}\n\treturn r.accept(handler)\n}\nfn main() {\n\tprintln(startup[int](maybe_handler()).str())\n}\n')
+	assert wrapped_option == 'true'
+	wrapped_result := run_good(v3_bin, 'good_result_const_callback_argument_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn const_handler(const_event &C.native_event) {}\nfn make_handler() !ConstHandler {\n\treturn ConstHandler(const_handler)\n}\nfn (r Router) accept(handler !ConstHandler) bool {\n\treturn true\n}\nfn startup[T](handler !ConstHandler) bool {\n\tr := Router{}\n\treturn r.accept(handler)\n}\nfn main() {\n\tprintln(startup[int](make_handler()).str())\n}\n')
+	assert wrapped_result == 'true'
 	matching := run_good(v3_bin, 'good_optional_promoted_const_fn_literal_in_generic',
 		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler ?ConstHandler) bool {\n\treturn handler != none\n}\nfn startup[T]() bool {\n\tr := Router{}\n\treturn r.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	assert matching == 'true'
