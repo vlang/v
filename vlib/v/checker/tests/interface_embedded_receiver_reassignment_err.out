@@ -270,7 +270,14 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:243:18: err
   243 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   244 |     _ = pointer_element.return_prefixed_pointer_through_helper()
-  245 | }
+  245 |     _ = pointer_element.return_decomposed_pointer_receiver()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:246:22: error: cannot call pointer-receiver method `PointerNode.return_indexed_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  244 |     _ = pointer_element.return_prefixed_pointer_through_helper()
+  245 |     _ = pointer_element.return_decomposed_pointer_receiver()
+  246 |     _ = pointer_element.return_indexed_pointer_receiver()
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  247 | }
+  248 |
 vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:215:18: error: cannot call pointer-receiver method `PointerNode.pass_local_holder_value` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
   213 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
   214 |     pointer_element.pass_local_holder_mut()
@@ -353,5 +360,12 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:244:22: err
   243 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
   244 |     _ = pointer_element.return_prefixed_pointer_through_helper()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  245 | }
-  246 |
+  245 |     _ = pointer_element.return_decomposed_pointer_receiver()
+  246 |     _ = pointer_element.return_indexed_pointer_receiver()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:245:22: error: cannot call pointer-receiver method `PointerNode.return_decomposed_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  243 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
+  244 |     _ = pointer_element.return_prefixed_pointer_through_helper()
+  245 |     _ = pointer_element.return_decomposed_pointer_receiver()
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  246 |     _ = pointer_element.return_indexed_pointer_receiver()
+  247 | }

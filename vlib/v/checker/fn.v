@@ -80,6 +80,14 @@ fn receiver_pointer_argument(expr ast.Expr, receiver_name string) bool {
 		ast.MatchExpr {
 			reduced.branches.any(stmts_return_receiver_pointer_argument(it.stmts, receiver_name))
 		}
+		ast.ArrayDecompose {
+			receiver_pointer_argument(reduced.expr, receiver_name)
+		}
+		ast.ArrayInit {
+			reduced.exprs.any(receiver_pointer_argument(it, receiver_name))
+				|| (reduced.has_update_expr
+				&& receiver_pointer_argument(reduced.update_expr, receiver_name))
+		}
 		ast.PrefixExpr {
 			if reduced.op == .mul {
 				false
@@ -154,6 +162,9 @@ fn receiver_alias_argument(expr ast.Expr, alias ast.ReceiverAlias) bool {
 		}
 		ast.CallExpr {
 			stmts_return_receiver_alias_argument(reduced.or_block.stmts, alias)
+		}
+		ast.ArrayDecompose {
+			receiver_alias_argument(reduced.expr, alias)
 		}
 		ast.InfixExpr {
 			reduced.op == .plus && (receiver_alias_argument(reduced.left, alias)
@@ -278,13 +289,26 @@ fn (mut c Checker) record_receiver_argument(callee ast.Fn, param_idx int, param 
 	aliases := receiver_sym.methods[method_idx].receiver_aliases
 	arg_is_receiver_pointer := receiver_pointer_argument(arg.expr, receiver_name)
 		|| aliases.any(receiver_pointer_alias_argument(arg.expr, it))
+	mut receiver_param_type := param.typ
+	if callee.is_variadic && param_idx == callee.params.len - 1 {
+		param_sym := c.table.sym(param.typ)
+		if param_sym.info is ast.Array {
+			receiver_param_type = param_sym.info.elem_type
+		}
+	}
 	if arg_is_receiver_pointer {
 		if param.is_mut && arg.is_mut {
 			receiver_sym.methods[method_idx].receiver_passed_mut = true
-		} else if c.table.cur_fn.receiver.typ.is_ptr() && (param.typ.is_any_kind_of_pointer()
-			|| c.table.unaliased_type(param.typ).is_any_kind_of_pointer()) {
+		} else if c.table.cur_fn.receiver.typ.is_ptr()
+			&& (receiver_param_type.is_any_kind_of_pointer()
+			|| c.table.unaliased_type(receiver_param_type).is_any_kind_of_pointer()) {
 			result_is_local := c.receiver_helper_result_is_local
 				&& c.type_may_share_mutable_storage(callee.return_type)
+			result_alias_var_pos := if result_is_local {
+				c.receiver_helper_result_alias.var_pos
+			} else {
+				-1
+			}
 			if result_is_local {
 				result_alias := c.receiver_helper_result_alias
 				mut alias_idx := -1
@@ -303,22 +327,18 @@ fn (mut c Checker) record_receiver_argument(callee ast.Fn, param_idx int, param 
 			}
 			if arg.expr.remove_par() is ast.CastExpr {
 				receiver_sym.methods[method_idx].receiver_address_taken = true
-			} else if !receiver_sym.methods[method_idx].receiver_helper_calls.any(it.name == callee.name && it.receiver_type == callee.receiver_type && it.param_idx == param_idx && it.param_type == param.typ && it.result_is_local == result_is_local && it.result_alias_var_pos == if result_is_local {
-				c.receiver_helper_result_alias.var_pos
-			} else {
-				-1
-			}) {
+			} else if !receiver_sym.methods[method_idx].receiver_helper_calls.any(
+				it.name == callee.name && it.receiver_type == callee.receiver_type
+				&& it.param_idx == param_idx && it.param_type == receiver_param_type
+				&& it.result_is_local == result_is_local
+				&& it.result_alias_var_pos == result_alias_var_pos) {
 				receiver_sym.methods[method_idx].receiver_helper_calls << ast.ReceiverHelperCall{
 					name:                 callee.name
 					receiver_type:        callee.receiver_type
 					param_idx:            param_idx
-					param_type:           param.typ
+					param_type:           receiver_param_type
 					result_is_local:      result_is_local
-					result_alias_var_pos: if result_is_local {
-						c.receiver_helper_result_alias.var_pos
-					} else {
-						-1
-					}
+					result_alias_var_pos: result_alias_var_pos
 				}
 			}
 		}

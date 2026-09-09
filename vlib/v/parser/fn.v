@@ -138,6 +138,9 @@ fn contains_receiver_var_reference(expr ast.Expr, name string, var_pos int) bool
 			reduced.op == .plus && (contains_receiver_var_reference(reduced.left, name, var_pos)
 				|| contains_receiver_var_reference(reduced.right, name, var_pos))
 		}
+		ast.IndexExpr {
+			contains_receiver_var_reference(reduced.left, name, var_pos)
+		}
 		ast.ArrayDecompose {
 			contains_receiver_var_reference(reduced.expr, name, var_pos)
 		}
@@ -787,7 +790,8 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 				ast.PrefixExpr {
 					mut right := node.right
 					right = right.remove_par()
-					if node.op == .amp && right is ast.Ident && right.name == name {
+					if node.op == .amp
+						&& contains_receiver_or_alias(right, name, info.receiver_aliases) {
 						info.address_taken = true
 					}
 					scan_receiver_reassignment(node.or_block, name, mut info)

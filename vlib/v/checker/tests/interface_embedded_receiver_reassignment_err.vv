@@ -242,6 +242,8 @@ fn main() {
 	pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
 	pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
 	_ = pointer_element.return_prefixed_pointer_through_helper()
+	_ = pointer_element.return_decomposed_pointer_receiver()
+	_ = pointer_element.return_indexed_pointer_receiver()
 }
 
 fn replace_pointer_node(node &PointerNode, next PointerNode) {
@@ -482,4 +484,16 @@ fn return_prefixed_pointer_node(node &PointerNode) &PointerNode {
 
 fn (node &PointerNode) return_prefixed_pointer_through_helper() &PointerNode {
 	return return_prefixed_pointer_node(node)
+}
+
+fn first_variadic_pointer_node(nodes ...&PointerNode) &PointerNode {
+	return nodes[0]
+}
+
+fn (node &PointerNode) return_decomposed_pointer_receiver() &PointerNode {
+	return first_variadic_pointer_node(...[node])
+}
+
+fn (node &PointerNode) return_indexed_pointer_receiver() &PointerNode {
+	return unsafe { &(&[1]PointerNode(node))[0] }
 }
