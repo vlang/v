@@ -49,8 +49,9 @@ fn main() {
 	current_hash_from_filesystem := version.githash(vroot) or { current_v_hash }
 	if !app.skip_current && current_v_hash == current_hash_from_filesystem {
 		println('V is already updated.')
-		if !os.exists(app.current_vexe_path()) {
-			eprintln('`${app.vexe}` is missing, trying `${get_make_cmd_name()}` to restore it...')
+		current_vexe_path := app.current_vexe_path()
+		if !os.exists(current_vexe_path) {
+			eprintln('`${current_vexe_path}` is missing, trying `${get_make_cmd_name()}` to restore it...')
 			if !app.make('') {
 				app.show_current_v_version()
 				eprintln('Recompiling V *failed*.')
@@ -197,7 +198,7 @@ fn (app App) make(_vself string) bool {
 fn (app App) show_current_v_version() {
 	vexe_path := app.current_vexe_path()
 	if !os.exists(vexe_path) {
-		println('Current V version: unavailable (`${app.vexe}` is missing).')
+		println('Current V version: unavailable (`${vexe_path}` is missing).')
 		return
 	}
 	vout := os.execute('${os.quoted_path(vexe_path)} version')
@@ -260,9 +261,7 @@ fn (app App) current_vexe_path() string {
 		} else {
 			'v'
 		})
-		if os.exists(primary_vexe) {
-			return primary_vexe
-		}
+		return primary_vexe
 	}
 	if os.exists(app.vexe) {
 		return app.vexe
