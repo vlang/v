@@ -130,40 +130,40 @@ pub fn (c ClaimsSet) encode() ![]u8 {
 }
 
 fn check_claim_labels(c ClaimsSet) ! {
-	mut seen_int_claims := []i64{cap: 7 + c.extra_int_claims.len}
+	mut seen_int_claims := map[i64]bool{}
 	if c.iss != none {
-		seen_int_claims << claim_iss
+		seen_int_claims[claim_iss] = true
 	}
 	if c.sub != none {
-		seen_int_claims << claim_sub
+		seen_int_claims[claim_sub] = true
 	}
 	if c.aud.len > 0 {
-		seen_int_claims << claim_aud
+		seen_int_claims[claim_aud] = true
 	}
 	if c.exp != none {
-		seen_int_claims << claim_exp
+		seen_int_claims[claim_exp] = true
 	}
 	if c.nbf != none {
-		seen_int_claims << claim_nbf
+		seen_int_claims[claim_nbf] = true
 	}
 	if c.iat != none {
-		seen_int_claims << claim_iat
+		seen_int_claims[claim_iat] = true
 	}
 	if c.cti != none {
-		seen_int_claims << claim_cti
+		seen_int_claims[claim_cti] = true
 	}
 	for entry in c.extra_int_claims {
 		if entry.label in seen_int_claims {
 			return error('cwt: duplicate claim label ${entry.label}')
 		}
-		seen_int_claims << entry.label
+		seen_int_claims[entry.label] = true
 	}
-	mut seen_text_claims := []string{cap: c.extra_text_claims.len}
+	mut seen_text_claims := map[string]bool{}
 	for entry in c.extra_text_claims {
 		if entry.label in seen_text_claims {
 			return error('cwt: duplicate claim label "${entry.label}"')
 		}
-		seen_text_claims << entry.label
+		seen_text_claims[entry.label] = true
 	}
 }
 
@@ -177,14 +177,14 @@ pub fn ClaimsSet.decode(data []u8) !ClaimsSet {
 		return error('cwt: claims set is not a CBOR map')
 	}
 	mut c := ClaimsSet{}
-	mut seen_int_claims := []i64{}
-	mut seen_text_claims := []string{}
+	mut seen_int_claims := map[i64]bool{}
+	mut seen_text_claims := map[string]bool{}
 	for pair in m.pairs {
 		if int_key := pair.key.as_int() {
 			if int_key in seen_int_claims {
 				return error('cwt: duplicate claim label ${int_key}')
 			}
-			seen_int_claims << int_key
+			seen_int_claims[int_key] = true
 			match int_key {
 				claim_iss {
 					c.iss = pair.value.as_string() or { return error('cwt: iss is not text') }
@@ -234,7 +234,7 @@ pub fn ClaimsSet.decode(data []u8) !ClaimsSet {
 			if str_key in seen_text_claims {
 				return error('cwt: duplicate claim label "${str_key}"')
 			}
-			seen_text_claims << str_key
+			seen_text_claims[str_key] = true
 			c.extra_text_claims << TextClaimEntry{
 				label: str_key
 				value: pair.value

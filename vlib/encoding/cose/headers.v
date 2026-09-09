@@ -235,8 +235,8 @@ pub fn parse_headers_map(data []u8) !Headers {
 fn parse_headers_value(v cbor.Value) !Headers {
 	if v is cbor.Map {
 		mut h := Headers{}
-		mut seen_int_labels := []i64{}
-		mut seen_text_labels := []string{}
+		mut seen_int_labels := map[i64]bool{}
+		mut seen_text_labels := map[string]bool{}
 		for pair in v.pairs {
 			if int_key := pair.key.as_int() {
 				if int_key in seen_int_labels {
@@ -244,7 +244,7 @@ fn parse_headers_value(v cbor.Value) !Headers {
 						reason: 'duplicate header label ${int_key} (RFC 9052 §3)'
 					}
 				}
-				seen_int_labels << int_key
+				seen_int_labels[int_key] = true
 				h.decoded_int_labels << int_key
 				match int_key {
 					label_alg {
@@ -290,20 +290,24 @@ fn parse_headers_value(v cbor.Value) !Headers {
 						}
 						mut crit := []i64{cap: items.len}
 						mut crit_text := []string{cap: items.len}
+						mut seen_crit := map[i64]bool{}
+						mut seen_crit_text := map[string]bool{}
 						for item in items {
 							if c := item.as_int() {
-								if c in crit {
+								if c in seen_crit {
 									return MalformedMessage{
 										reason: 'crit contains duplicate label ${c} (RFC 9052 §3.1)'
 									}
 								}
+								seen_crit[c] = true
 								crit << c
 							} else if c := item.as_string() {
-								if c in crit_text {
+								if c in seen_crit_text {
 									return MalformedMessage{
 										reason: 'crit contains duplicate label "${c}" (RFC 9052 §3.1)'
 									}
 								}
+								seen_crit_text[c] = true
 								crit_text << c
 							} else {
 								return MalformedMessage{
@@ -367,7 +371,7 @@ fn parse_headers_value(v cbor.Value) !Headers {
 						reason: 'duplicate header label "${str_key}" (RFC 9052 §3)'
 					}
 				}
-				seen_text_labels << str_key
+				seen_text_labels[str_key] = true
 				h.decoded_text_labels << str_key
 				h.extra_text_labels << TextHeaderEntry{
 					label: str_key
@@ -409,15 +413,17 @@ fn check_protected_headers(protected Headers, unprotected Headers) ! {
 			reason: 'iv and partial iv must not occur in the same security layer (RFC 9052 §3.1)'
 		}
 	}
+	unprotected_int_labels := int_header_label_set(unprotected)
 	for label in int_header_labels(protected) {
-		if has_int_label(unprotected, label) {
+		if label in unprotected_int_labels {
 			return MalformedMessage{
 				reason: 'header label ${label} appears in both protected and unprotected buckets (RFC 9052 §3)'
 			}
 		}
 	}
+	unprotected_text_labels := text_header_label_set(unprotected)
 	for label in text_header_labels(protected) {
-		if has_text_label(unprotected, label) {
+		if label in unprotected_text_labels {
 			return MalformedMessage{
 				reason: 'header label "${label}" appears in both protected and unprotected buckets (RFC 9052 §3)'
 			}
@@ -457,9 +463,9 @@ fn check_decoded_protected_unchanged(raw ?[]u8, current Headers, context string)
 }
 
 fn check_header_values(h Headers) ! {
-	mut seen_int_labels := []i64{}
+	mut seen_int_labels := map[i64]bool{}
 	for label in typed_int_header_labels(h) {
-		seen_int_labels << label
+		seen_int_labels[label] = true
 	}
 	for entry in h.extra_int_labels {
 		if entry.label in seen_int_labels {
@@ -467,16 +473,16 @@ fn check_header_values(h Headers) ! {
 				reason: 'duplicate header label ${entry.label} (RFC 9052 §3)'
 			}
 		}
-		seen_int_labels << entry.label
+		seen_int_labels[entry.label] = true
 	}
-	mut seen_text_labels := []string{}
+	mut seen_text_labels := map[string]bool{}
 	for entry in h.extra_text_labels {
 		if entry.label in seen_text_labels {
 			return MalformedMessage{
 				reason: 'duplicate header label "${entry.label}" (RFC 9052 §3)'
 			}
 		}
-		seen_text_labels << entry.label
+		seen_text_labels[entry.label] = true
 	}
 	if content_type := h.content_type_int {
 		if content_type > 65535 {
@@ -540,12 +546,14 @@ fn typed_int_header_labels(h Headers) []i64 {
 // error to avoid silently ignoring a parameter the sender flagged as
 // security-critical.
 fn check_critical(h Headers) ! {
-	for i, label in h.critical {
-		if label in h.critical[..i] {
+	mut seen_int_labels := map[i64]bool{}
+	for label in h.critical {
+		if label in seen_int_labels {
 			return MalformedMessage{
 				reason: 'crit contains duplicate label ${label} (RFC 9052 §3.1)'
 			}
 		}
+		seen_int_labels[label] = true
 		if label == label_crit {
 			return MalformedMessage{
 				reason: 'crit must not list itself (RFC 9052 §3.1)'
@@ -558,12 +566,14 @@ fn check_critical(h Headers) ! {
 			}
 		}
 	}
-	for i, label in h.critical_text {
-		if label in h.critical_text[..i] {
+	mut seen_text_labels := map[string]bool{}
+	for label in h.critical_text {
+		if label in seen_text_labels {
 			return MalformedMessage{
 				reason: 'crit contains duplicate label "${label}" (RFC 9052 §3.1)'
 			}
 		}
+		seen_text_labels[label] = true
 		return MalformedMessage{
 			reason: 'crit lists unknown label "${label}" (RFC 9052 §3.1)'
 		}
@@ -619,16 +629,25 @@ fn has_int_label(h Headers, label i64) bool {
 }
 
 fn int_header_labels(h Headers) []i64 {
-	mut labels := h.decoded_int_labels.clone()
+	mut labels := []i64{cap: h.decoded_int_labels.len + h.extra_int_labels.len + 6}
+	mut seen := map[i64]bool{}
+	for label in h.decoded_int_labels {
+		if label !in seen {
+			labels << label
+			seen[label] = true
+		}
+	}
 	for label in [label_alg, label_crit, label_content_type, label_kid, label_iv,
 		label_partial_iv] {
-		if has_int_label(h, label) && label !in labels {
+		if has_int_label(h, label) && label !in seen {
 			labels << label
+			seen[label] = true
 		}
 	}
 	for entry in h.extra_int_labels {
-		if entry.label !in labels {
+		if entry.label !in seen {
 			labels << entry.label
+			seen[entry.label] = true
 		}
 	}
 	return labels
@@ -647,11 +666,35 @@ fn has_text_label(h Headers, label string) bool {
 }
 
 fn text_header_labels(h Headers) []string {
-	mut labels := h.decoded_text_labels.clone()
-	for entry in h.extra_text_labels {
-		if entry.label !in labels {
-			labels << entry.label
+	mut labels := []string{cap: h.decoded_text_labels.len + h.extra_text_labels.len}
+	mut seen := map[string]bool{}
+	for label in h.decoded_text_labels {
+		if label !in seen {
+			labels << label
+			seen[label] = true
 		}
+	}
+	for entry in h.extra_text_labels {
+		if entry.label !in seen {
+			labels << entry.label
+			seen[entry.label] = true
+		}
+	}
+	return labels
+}
+
+fn int_header_label_set(h Headers) map[i64]bool {
+	mut labels := map[i64]bool{}
+	for label in int_header_labels(h) {
+		labels[label] = true
+	}
+	return labels
+}
+
+fn text_header_label_set(h Headers) map[string]bool {
+	mut labels := map[string]bool{}
+	for label in text_header_labels(h) {
+		labels[label] = true
 	}
 	return labels
 }

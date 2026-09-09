@@ -139,10 +139,10 @@ fn (m Sign1Message) protected_bytes() ![]u8 {
 // For a message that came from `decode`, the protected bucket is
 // written back exactly as it was received rather than re-serialised, so
 // the bytes under the signature survive a decode/encode cycle. Every
-// other part of the message is re-encoded canonically. A consequence is
-// that mutating `protected` on a decoded message has no effect on the
-// output until `sign()` is called on it again.
+// other part of the message is re-encoded canonically. Mutating `protected`
+// on a decoded message is rejected until `sign()` replaces the stale bytes.
 pub fn (m Sign1Message) encode(tagged bool) ![]u8 {
+	check_decoded_protected_unchanged(m.raw_protected, m.protected, 'Sign1')!
 	check_protected_headers(m.protected, m.unprotected)!
 	body_protected := m.protected_bytes()!
 

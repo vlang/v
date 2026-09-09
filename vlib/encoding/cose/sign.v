@@ -164,17 +164,19 @@ fn (s Signature) protected_bytes() ![]u8 {
 // For a message that came from `decode`, the protected bucket is
 // written back exactly as it was received rather than re-serialised, so
 // the bytes under the signature survive a decode/encode cycle. Every
-// other part of the message is re-encoded canonically. A consequence is
-// that mutating `protected` on a decoded message has no effect on the
-// output until the message is produced again through `sign()`.
+// other part of the message is re-encoded canonically. Mutating a decoded
+// protected view is rejected until the message is produced again by `sign()`.
 pub fn (m SignMessage) encode(tagged bool) ![]u8 {
 	if m.signatures.len == 0 || m.signatures.len > max_signers {
 		return MalformedMessage{
 			reason: 'Sign requires between 1 and ${max_signers} signatures'
 		}
 	}
+	check_decoded_protected_unchanged(m.raw_protected, m.protected, 'Sign body')!
 	check_protected_headers(m.protected, m.unprotected)!
-	for entry in m.signatures {
+	for i, entry in m.signatures {
+		check_decoded_protected_unchanged(entry.raw_protected, entry.protected,
+			'signer at index ${i}')!
 		check_protected_headers(entry.protected, entry.unprotected)!
 	}
 	body_protected := m.protected_bytes()!

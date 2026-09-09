@@ -86,6 +86,11 @@ fn test_verification_rejects_mutated_decoded_protected_headers() {
 	mut signed := Sign1Message.decode(build_sign1_with_protected(nc_sign1_protected,
 		payload, priv)!)!
 	signed.protected.kid = 'changed'.bytes()
+	if _ := signed.encode(true) {
+		assert false, 'Sign1 encoding must reject a mutated protected view'
+	} else {
+		assert err.msg().contains('modified after decoding')
+	}
 	if _ := signed.verify(pub_key, payload, []u8{}) {
 		assert false, 'Sign1 verification must reject a mutated protected view'
 	} else {
@@ -96,6 +101,11 @@ fn test_verification_rejects_mutated_decoded_protected_headers() {
 	mut maced := Mac0Message.decode(build_mac0_with_protected(nc_mac0_protected, payload,
 		key)!)!
 	maced.protected.kid = 'changed'.bytes()
+	if _ := maced.encode(true) {
+		assert false, 'Mac0 encoding must reject a mutated protected view'
+	} else {
+		assert err.msg().contains('modified after decoding')
+	}
 	if _ := maced.verify(key, payload, []u8{}) {
 		assert false, 'Mac0 verification must reject a mutated protected view'
 	} else {
@@ -237,6 +247,11 @@ fn test_sign_uses_the_received_protected_bytes_for_body_and_signer() {
 	assert decoded.encode(true)! == msg
 	mut modified := decoded
 	modified.signatures[0].protected.kid = 'changed'.bytes()
+	if _ := modified.encode(true) {
+		assert false, 'Sign encoding must reject a mutated signer protected view'
+	} else {
+		assert err.msg().contains('modified after decoding')
+	}
 	if _ := modified.verify(0, pub_key) {
 		assert false, 'Sign verification must reject a mutated signer protected view'
 	} else {
@@ -278,4 +293,11 @@ fn test_mac_uses_the_received_protected_bytes_for_body_and_recipient() {
 	assert decoded.protected_bytes()! == nc_mac0_protected
 	assert decoded.recipients[0].protected_bytes()! == nc_body_protected
 	assert decoded.encode(true)! == msg
+	mut modified := decoded
+	modified.recipients[0].protected.kid = 'changed'.bytes()
+	if _ := modified.encode(true) {
+		assert false, 'Mac encoding must reject a mutated recipient protected view'
+	} else {
+		assert err.msg().contains('modified after decoding')
+	}
 }

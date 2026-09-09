@@ -171,8 +171,8 @@ pub fn (k Key) encode() ![]u8 {
 	}
 	if k.key_ops.len > 0 || k.raw_key_ops.len > 0 {
 		mut ops_arr := cbor.Array{}
-		mut seen_int_ops := []i64{}
-		mut seen_text_ops := []string{}
+		mut seen_int_ops := map[i64]bool{}
+		mut seen_text_ops := map[string]bool{}
 		for op in k.key_ops {
 			code := i64(op)
 			if code in seen_int_ops {
@@ -180,7 +180,7 @@ pub fn (k Key) encode() ![]u8 {
 					reason: 'duplicate key_ops entry ${code}'
 				}
 			}
-			seen_int_ops << code
+			seen_int_ops[code] = true
 			ops_arr.elements << cbor.new_int(code)
 		}
 		for op in k.raw_key_ops {
@@ -190,14 +190,14 @@ pub fn (k Key) encode() ![]u8 {
 						reason: 'duplicate key_ops entry ${code}'
 					}
 				}
-				seen_int_ops << code
+				seen_int_ops[code] = true
 			} else if name := op.as_string() {
 				if name in seen_text_ops {
 					return MalformedMessage{
 						reason: 'duplicate key_ops entry "${name}"'
 					}
 				}
-				seen_text_ops << name
+				seen_text_ops[name] = true
 			} else {
 				return MalformedMessage{
 					reason: 'key_ops entry is neither int nor tstr'
@@ -233,14 +233,17 @@ pub fn (k Key) encode() ![]u8 {
 			} else {
 				return error('cose: ${k.kty} key missing crv parameter')
 			}
-			x := k.x or { return error('cose: ${k.kty} key missing x parameter') }
 			pairs << cbor.MapPair{
 				key:   cbor.new_int(key_label_crv)
 				value: cbor.new_int(curve_code)
 			}
-			pairs << cbor.MapPair{
-				key:   cbor.new_int(key_label_x)
-				value: cbor.new_bytes(x)
+			if x := k.x {
+				pairs << cbor.MapPair{
+					key:   cbor.new_int(key_label_x)
+					value: cbor.new_bytes(x)
+				}
+			} else if k.kty == .ec2 || k.d == none {
+				return error('cose: ${k.kty} key missing x parameter')
 			}
 			if k.kty == .ec2 {
 				y := k.y or { return error('cose: EC2 key missing y parameter') }
@@ -279,8 +282,8 @@ pub fn Key.decode(data []u8) !Key {
 
 	mut out := Key{}
 	mut found_kty := false
-	mut seen_int_labels := []i64{}
-	mut seen_text_labels := []string{}
+	mut seen_int_labels := map[i64]bool{}
+	mut seen_text_labels := map[string]bool{}
 	for pair in m.pairs {
 		if text_key := pair.key.as_string() {
 			if text_key in seen_text_labels {
@@ -288,7 +291,7 @@ pub fn Key.decode(data []u8) !Key {
 					reason: 'duplicate COSE_Key label "${text_key}"'
 				}
 			}
-			seen_text_labels << text_key
+			seen_text_labels[text_key] = true
 			continue
 		}
 		int_key := pair.key.as_int() or {
@@ -300,7 +303,7 @@ pub fn Key.decode(data []u8) !Key {
 				reason: 'duplicate COSE_Key label ${int_key}'
 			}
 		}
-		seen_int_labels << int_key
+		seen_int_labels[int_key] = true
 		match int_key {
 			key_label_kty {
 				code := pair.value.as_int() or {
@@ -365,8 +368,8 @@ pub fn Key.decode(data []u8) !Key {
 				}
 				mut ops := []KeyOp{cap: items.len}
 				mut raw_ops := []cbor.Value{}
-				mut seen_int_ops := []i64{}
-				mut seen_text_ops := []string{}
+				mut seen_int_ops := map[i64]bool{}
+				mut seen_text_ops := map[string]bool{}
 				for it in items {
 					if n := it.as_int() {
 						if n in seen_int_ops {
@@ -374,7 +377,7 @@ pub fn Key.decode(data []u8) !Key {
 								reason: 'duplicate key_ops entry ${n}'
 							}
 						}
-						seen_int_ops << n
+						seen_int_ops[n] = true
 						match n {
 							1 { ops << .sign }
 							2 { ops << .verify }
@@ -394,7 +397,7 @@ pub fn Key.decode(data []u8) !Key {
 								reason: 'duplicate key_ops entry "${name}"'
 							}
 						}
-						seen_text_ops << name
+						seen_text_ops[name] = true
 						raw_ops << it
 					} else {
 						return MalformedMessage{

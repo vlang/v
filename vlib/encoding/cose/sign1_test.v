@@ -336,6 +336,16 @@ fn test_sign1_rejects_ed25519_public_key_mismatching_seed() {
 	}
 }
 
+fn test_sign1_derives_public_key_when_private_okp_x_is_absent() {
+	decoded := Key.decode(hex.decode('a301012006235820' + eddsa_d_hex)!)!
+	key := Key.decode(decoded.encode()!)!
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	signed := sign1('payload'.bytes(), key, protected: hp)!
+	public_key := Key.okp_public(.ed25519, hex.decode(eddsa_x_hex)!)
+	assert verify1(signed, public_key)! == 'payload'.bytes()
+}
+
 fn test_sign1_rejects_ec_public_coordinates_mismatching_scalar() {
 	mut x := base64.url_decode(ecdsa_p256_x_b64u)
 	y := base64.url_decode(ecdsa_p256_y_b64u)

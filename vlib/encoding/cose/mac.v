@@ -253,17 +253,19 @@ fn (r Recipient) protected_bytes() ![]u8 {
 // For a message that came from `decode`, the protected bucket is
 // written back exactly as it was received rather than re-serialised, so
 // the bytes under the MAC tag survive a decode/encode cycle. Every
-// other part of the message is re-encoded canonically. A consequence is
-// that mutating `protected` on a decoded message has no effect on the
-// output until the message is produced again through `mac()`.
+// other part of the message is re-encoded canonically. Mutating a decoded
+// protected view is rejected until the message is produced again by `mac()`.
 pub fn (m MacMessage) encode(tagged bool) ![]u8 {
 	if m.recipients.len != 1 {
 		return MalformedMessage{
 			reason: 'direct-mode COSE_Mac requires exactly one recipient'
 		}
 	}
+	check_decoded_protected_unchanged(m.raw_protected, m.protected, 'Mac body')!
 	check_protected_headers(m.protected, m.unprotected)!
-	for recipient in m.recipients {
+	for i, recipient in m.recipients {
+		check_decoded_protected_unchanged(recipient.raw_protected, recipient.protected,
+			'Mac recipient at index ${i}')!
 		check_protected_headers(recipient.protected, recipient.unprotected)!
 		check_direct_recipient(recipient, true)!
 	}
