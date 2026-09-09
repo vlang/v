@@ -206,6 +206,16 @@ fn option_alias_ref_in_generic[T](val MaybeInt, _ T) string {
 	return '${&val}'
 }
 
+struct OptionRefCounter {
+mut:
+	calls int
+}
+
+fn (mut counter OptionRefCounter) next() int {
+	counter.calls++
+	return 0
+}
+
 fn test_string_interpolation_reference_to_option_value() {
 	assert option_ref_string(?int(42)) == '&Option(42)'
 	assert option_ref_string(?int(none)) == '&Option(&nil)'
@@ -220,6 +230,24 @@ fn test_string_interpolation_reference_to_option_value() {
 	assert option_generic_ref_string(?int(none)) == '&Option(&nil)'
 	assert option_generic_ref_string(?OptionRefInt(42)) == '&Option(aliased 42)'
 	assert option_alias_ref_in_generic(?int(42), 0) == '&Option(42)'
+}
+
+fn test_string_interpolation_reference_to_option_value_is_evaluated_lazily() {
+	options := [?int(42)]
+	mut counter := OptionRefCounter{}
+	mut evaluate := false
+
+	assert !(evaluate && '${&options[counter.next()]}' == '&Option(42)')
+	assert counter.calls == 0
+
+	evaluate = true
+	assert evaluate || '${&options[counter.next()]}' == '&Option(42)'
+	assert counter.calls == 0
+	assert evaluate && '${&options[counter.next()]}' == '&Option(42)'
+	assert counter.calls == 1
+	evaluate = false
+	assert evaluate || '${&options[counter.next()]}' == '&Option(42)'
+	assert counter.calls == 2
 }
 
 fn test_int_ref_string_interpolation() {

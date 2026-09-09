@@ -667,6 +667,16 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			return g.need_tmp_var_in_expr(expr.expr)
 		}
 		ast.PrefixExpr {
+			if expr.op == .amp {
+				resolved_right_type := g.unwrap_generic(g.recheck_concrete_type(expr.right_type))
+				if g.table.fully_unaliased_type(resolved_right_type).has_flag(.option) {
+					right_expr := expr.right.remove_par()
+					if right_expr is ast.Ident || right_expr is ast.IndexExpr
+						|| right_expr is ast.SelectorExpr {
+						return true
+					}
+				}
+			}
 			return g.need_tmp_var_in_expr(expr.right)
 		}
 		ast.SelectorExpr {
