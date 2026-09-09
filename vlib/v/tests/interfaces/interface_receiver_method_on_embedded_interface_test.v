@@ -38,6 +38,10 @@ fn (node &Node) read_field_through_pointer_helper() string {
 	return read_node_name(node)
 }
 
+fn (node &Node) unrelated_pointer_array_len() int {
+	return unrelated_pointer_array(node).len
+}
+
 fn (node &Node) read_field_through_rebound_alias(other &Node) string {
 	mut alias := unsafe { node }
 	alias = unsafe { other }
@@ -46,6 +50,10 @@ fn (node &Node) read_field_through_rebound_alias(other &Node) string {
 
 fn read_node_name(node &Node) string {
 	return node.name
+}
+
+fn unrelated_pointer_array(node &Node) []&Node {
+	return []&Node{}
 }
 
 struct LocalNodeHolder {
@@ -168,6 +176,11 @@ fn test_local_pointer_receiver_alias_does_not_escape() {
 fn test_read_only_pointer_receiver_helper_does_not_escape() {
 	element := new_element()
 	assert element.read_field_through_pointer_helper() == 'body'
+}
+
+fn test_unrelated_pointer_helper_return_does_not_escape() {
+	element := new_element()
+	assert element.unrelated_pointer_array_len() == 0
 }
 
 fn test_rebound_pointer_receiver_alias_does_not_escape() {

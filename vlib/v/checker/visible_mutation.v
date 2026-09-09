@@ -70,8 +70,7 @@ fn (mut c Checker) fn_pointer_param_may_escape_or_mutate(func ast.Fn, param_idx 
 	if func.source_fn == unsafe { nil } || func.no_body || func.language != .v {
 		return true
 	}
-	if c.type_may_share_mutable_storage(func.return_type)
-		|| c.fn_has_visible_mutation_for_param(func, param_idx) {
+	if c.fn_has_visible_mutation_for_param(func, param_idx) {
 		return true
 	}
 	fn_decl := unsafe { &ast.FnDecl(func.source_fn) }
@@ -91,6 +90,9 @@ fn (mut c Checker) node_captures_or_stores_pointer_param(node ast.Node, name str
 	match node {
 		ast.Expr {
 			if node is ast.AnonFn && node.inherited_vars.any(it.name == name) {
+				return true
+			}
+			if node is ast.CallExpr && c.call_escapes_pointer_param(node, name, typ) {
 				return true
 			}
 		}
@@ -118,6 +120,36 @@ fn (mut c Checker) node_captures_or_stores_pointer_param(node ast.Node, name str
 
 	for child in node.children() {
 		if c.node_captures_or_stores_pointer_param(child, name, typ) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) call_escapes_pointer_param(node ast.CallExpr, name string, typ ast.Type) bool {
+	called_fn := c.find_called_fn(node) or {
+		if node.is_method
+			&& is_visible_root_mutation(c.expr_mutation_visibility(node.left, name, typ)) {
+			return true
+		}
+		return node.args.any(is_visible_root_mutation(c.expr_mutation_visibility(it.expr, name, typ)))
+	}
+	if node.is_method && called_fn.params.len > 0
+		&& called_fn.params[0].typ.is_any_kind_of_pointer()
+		&& is_visible_root_mutation(c.expr_mutation_visibility(node.left, name, typ))
+		&& c.fn_pointer_param_may_escape_or_mutate(called_fn, 0) {
+		return true
+	}
+	for i, arg in node.args {
+		if !is_visible_root_mutation(c.expr_mutation_visibility(arg.expr, name, typ)) {
+			continue
+		}
+		param_idx := c.call_arg_param_index(called_fn, i)
+		if param_idx < 0 || param_idx >= called_fn.params.len {
+			return true
+		}
+		if called_fn.params[param_idx].typ.is_any_kind_of_pointer()
+			&& c.fn_pointer_param_may_escape_or_mutate(called_fn, param_idx) {
 			return true
 		}
 	}

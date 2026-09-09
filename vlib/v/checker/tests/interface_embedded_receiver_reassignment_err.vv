@@ -225,6 +225,7 @@ fn main() {
 	_ = bound_reader()
 	_ = pointer_element.return_or_pointer_receiver()
 	_ = pointer_element.return_pointer_holder_through_helper()
+	pointer_element.pass_nested_pointer_helper()
 	pointer_element.spawn_pointer_read()
 }
 
@@ -310,4 +311,24 @@ fn wrap_pointer_node(node &PointerNode) PointerHolder {
 	return PointerHolder{
 		node: node
 	}
+}
+
+struct PointerReaderHolder {
+mut:
+	reader fn () string = unsafe { nil }
+}
+
+fn store_pointer_reader(node &PointerNode, mut holder PointerReaderHolder) {
+	holder.reader = fn [node] () string {
+		return node.name
+	}
+}
+
+fn forward_pointer_reader(node &PointerNode, mut holder PointerReaderHolder) {
+	store_pointer_reader(node, mut holder)
+}
+
+fn (node &PointerNode) pass_nested_pointer_helper() {
+	mut holder := PointerReaderHolder{}
+	forward_pointer_reader(node, mut holder)
 }
