@@ -1564,6 +1564,10 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 			if !expr.is_comptime {
 				return none
 			}
+			if c.comptime_eval_for_range {
+				// Range folding must not recheck `$if` conditions and emit diagnostics.
+				return none
+			}
 			for i in 0 .. expr.branches.len {
 				mut branch := expr.branches[i]
 				if !expr.has_else || i < expr.branches.len - 1 {

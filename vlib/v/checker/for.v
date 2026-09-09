@@ -475,8 +475,8 @@ fn (mut c Checker) range_comparison_type(left_expr ast.Expr, left_type ast.Type,
 }
 
 fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, val_type ast.Type, high_type ast.Type) {
-	if c.pref.backend == .wasm {
-		// WASM converts the high bound to the induction type instead of using C promotions.
+	if c.pref.backend == .wasm || c.pref.backend.is_js() {
+		// WASM and JavaScript use backend-specific range conversions instead of C promotions.
 		return
 	}
 	was_evaluating_range := c.comptime_eval_for_range
