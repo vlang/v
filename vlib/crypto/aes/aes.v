@@ -38,15 +38,15 @@ pub fn (mut c AesCipher) free() {
 // The key argument should be the AES key,
 // either 16, 24, or 32 bytes to select
 // AES-128, AES-192, or AES-256.
-pub fn new_cipher(key []u8) cipher.Block {
+// It returns an error (instead of panicking) when the key size is invalid.
+pub fn new_cipher(key []u8) !cipher.Block {
 	k := key.len
 	match k {
 		16, 24, 32 {
 			// break
 		}
 		else {
-			panic('crypto.aes: invalid key size ' + k.str())
-			// return error('crypto.aes: invalid key size ' + k.str())
+			return error('crypto.aes: invalid key size ${k} (must be 16, 24 or 32 bytes)')
 		}
 	}
 

@@ -3,6 +3,7 @@ module main
 import os
 import term
 import time
+import v.util.vflags
 
 type FnCheck = fn () !
 
@@ -24,7 +25,29 @@ const clang_path = os.find_abs_path_of_executable('clang') or { '' }
 
 fn main() {
 	unbuffer_stdout()
-	mut commands := get_all_commands()
+	raw_vflags := os.getenv('VFLAGS')
+	mut requested_args := vflags.tokenize_to_args(raw_vflags)
+	requested_args << vflags.tokenize_to_args(vargs)
+	strict_v3 := '-new-compiler' in requested_args && '-old-compiler' !in requested_args
+	strict_flags := requested_args.map(os.quoted_path(it)).join(' ')
+	if strict_v3 {
+		os.unsetenv('VFLAGS')
+	}
+	mut all_commands := get_all_commands()
+	mut commands := []Command{}
+	for mut cmd in all_commands {
+		if strict_v3 {
+			if !cmd.v3_compatible {
+				eprintln('> strict V3: skipping unsupported check: ${cmd.line}')
+				continue
+			}
+			if cmd.v3_line.len > 0 {
+				cmd.line = cmd.v3_line
+			}
+			cmd.line = cmd.line.replace_once(vexe, '${vexe} ${strict_flags}')
+		}
+		commands << cmd
+	}
 	// summary
 	sw := time.new_stopwatch()
 	for mut cmd in commands {
@@ -56,20 +79,22 @@ enum RunCommandKind {
 
 struct Command {
 mut:
-	line        string
-	label       string // when set, the label will be printed *before* cmd.line is executed
-	ecode       int
-	okmsg       string
-	errmsg      string
-	rmfile      ?OneOrManyStrings
-	runcmd      RunCommandKind = .system
-	expect      ?string
-	starts_with ?string
-	ends_with   ?string
-	contains    ?string
-	output      string
-	before_cb   FnCheck = unsafe { nil }
-	after_cb    FnCheck = unsafe { nil }
+	line          string
+	label         string // when set, the label will be printed *before* cmd.line is executed
+	ecode         int
+	okmsg         string
+	errmsg        string
+	rmfile        ?OneOrManyStrings
+	runcmd        RunCommandKind = .system
+	expect        ?string
+	starts_with   ?string
+	ends_with     ?string
+	contains      ?string
+	output        string
+	before_cb     FnCheck = unsafe { nil }
+	after_cb      FnCheck = unsafe { nil }
+	v3_compatible bool    = true
+	v3_line       string
 }
 
 fn get_all_commands() []Command {
@@ -80,17 +105,19 @@ fn get_all_commands() []Command {
 		rmfile: 'examples/hello_world'
 	}
 	res << Command{
-		line:   '${vexe} -W -Wimpure-v examples/hello_world.v'
-		okmsg:  'V can compile hello world with the stricter `-W -Wimpure-v` mode .'
-		rmfile: 'examples/hello_world'
+		line:          '${vexe} -W -Wimpure-v examples/hello_world.v'
+		okmsg:         'V can compile hello world with the stricter `-W -Wimpure-v` mode .'
+		rmfile:        'examples/hello_world'
+		v3_compatible: false
 	}
 	$if linux {
 		l2w_crosscc := os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc-win32') or { '' }
 		if l2w_crosscc != '' {
 			res << Command{
-				line:   '${vexe} -os windows examples/hello_world.v'
-				okmsg:  'V cross compiles hello_world.v on linux, to a windows .exe file'
-				rmfile: 'examples/hello_world.exe'
+				line:          '${vexe} -os windows examples/hello_world.v'
+				okmsg:         'V cross compiles hello_world.v on linux, to a windows .exe file'
+				rmfile:        'examples/hello_world.exe'
+				v3_compatible: false
 			}
 		} else {
 			eprintln('Testing cross compilation from linux to windows needs x86_64-w64-mingw32-gcc-win32. Skipping hello_world.exe test.')
@@ -111,16 +138,18 @@ fn get_all_commands() []Command {
 		rmfile: 'examples/hello_world'
 	}
 	res << Command{
-		line:   '${vexe} -e "print(84/2)"'
-		okmsg:  'V can run code given after `-e`'
-		runcmd: .execute
-		expect: '42'
+		line:          '${vexe} -e "print(84/2)"'
+		okmsg:         'V can run code given after `-e`'
+		runcmd:        .execute
+		expect:        '42'
+		v3_compatible: false
 	}
 	res << Command{
-		line:   '${vexe} -e "import os; import math; print(os.args#[1..]) print(math.sin(math.pi/2).str())" arg1 arg2'
-		okmsg:  'V can run code with `-e`, that use semicolons and several imports, and that accepts CLI parameters.'
-		runcmd: .execute
-		expect: "['arg1', 'arg2']1.0"
+		line:          '${vexe} -e "import os; import math; print(os.args#[1..]) print(math.sin(math.pi/2).str())" arg1 arg2'
+		okmsg:         'V can run code with `-e`, that use semicolons and several imports, and that accepts CLI parameters.'
+		runcmd:        .execute
+		expect:        "['arg1', 'arg2']1.0"
+		v3_compatible: false
 	}
 	res << Command{
 		line:     '${vexe} -o calling_c.exe run examples/call_c_from_v/main.c.v'
@@ -137,10 +166,11 @@ fn get_all_commands() []Command {
 		}
 		if clang_path != '' {
 			res << Command{
-				line:     '${vexe} -os freebsd -gc none examples/hello_world.v'
-				okmsg:    'V cross compiles hello_world.v, to a FreeBSD executable'
-				rmfile:   'examples/hello_world'
-				after_cb: fn () ! {
+				line:          '${vexe} -os freebsd -gc none examples/hello_world.v'
+				okmsg:         'V cross compiles hello_world.v, to a FreeBSD executable'
+				rmfile:        'examples/hello_world'
+				v3_compatible: false
+				after_cb:      fn () ! {
 					for file in ['examples/hello_world',
 						os.join_path(os.vmodules_dir(), 'freebsdroot/usr/include/stdio.h')] {
 						if !os.exists(file) {
@@ -156,10 +186,11 @@ fn get_all_commands() []Command {
 			for compiler_name in ['clang', 'gcc'] {
 				if _ := os.find_abs_path_of_executable(compiler_name) {
 					res << Command{
-						line:   '${vexe} -cc ${compiler_name} -gc boehm run examples/hello_world.v'
-						okmsg:  '`v -cc ${compiler_name} -gc boehm run examples/hello_world.v` works'
-						runcmd: .execute
-						expect: 'Hello, World!\n'
+						line:          '${vexe} -cc ${compiler_name} -gc boehm run examples/hello_world.v'
+						okmsg:         '`v -cc ${compiler_name} -gc boehm run examples/hello_world.v` works'
+						runcmd:        .execute
+						expect:        'Hello, World!\n'
+						v3_compatible: false
 					}
 				}
 			}
@@ -169,13 +200,15 @@ fn get_all_commands() []Command {
 			okmsg: 'V prints the generated source code to stdout with `-o -` .'
 		}
 		res << Command{
-			line:  '${vexe} run examples/v_script.vsh > /dev/null'
-			okmsg: 'V can run the .VSH script file examples/v_script.vsh'
+			line:          '${vexe} run examples/v_script.vsh > /dev/null'
+			okmsg:         'V can run the .VSH script file examples/v_script.vsh'
+			v3_compatible: false
 		}
 		res << Command{
-			line:   '${vexe} -b js -o hw.js examples/hello_world.v'
-			okmsg:  'V compiles hello_world.v on the JS backend'
-			rmfile: 'hw.js'
+			line:          '${vexe} -b js -o hw.js examples/hello_world.v'
+			okmsg:         'V compiles hello_world.v on the JS backend'
+			rmfile:        'hw.js'
+			v3_compatible: false
 		}
 		res << Command{
 			line:   '${vexe} examples/2048'
@@ -184,9 +217,10 @@ fn get_all_commands() []Command {
 		}
 		if _ := os.find_abs_path_of_executable('emcc') {
 			res << Command{
-				line:   '${vexe} -os wasm32_emscripten examples/2048'
-				okmsg:  'V can compile 2048 with -os wasm32_emscripten, using emcc.'
-				rmfile: 'examples/2048/2048'
+				line:          '${vexe} -os wasm32_emscripten examples/2048'
+				okmsg:         'V can compile 2048 with -os wasm32_emscripten, using emcc.'
+				rmfile:        'examples/2048/2048'
+				v3_compatible: false
 			}
 		} else {
 			println('> emcc not found, skipping `v -os wasm32_emscripten examples/2048`.')
@@ -208,9 +242,10 @@ fn get_all_commands() []Command {
 		rmfile: 'vtmp_werror'
 	}
 	res << Command{
-		line:   '${vexe} -o vtmp_autofree -autofree cmd/v'
-		okmsg:  'V can compile itself with -autofree.'
-		rmfile: 'vtmp_autofree'
+		line:          '${vexe} -o vtmp_autofree -autofree cmd/v'
+		okmsg:         'V can compile itself with -autofree.'
+		rmfile:        'vtmp_autofree'
+		v3_compatible: false
 	}
 	res << Command{
 		line:   '${vexe} -o vtmp_prealloc -prealloc cmd/v'
@@ -218,9 +253,10 @@ fn get_all_commands() []Command {
 		rmfile: 'vtmp_prealloc'
 	}
 	res << Command{
-		line:   '${vexe} -o vtmp_ntransformer -new-transformer cmd/v'
-		okmsg:  'V can compile itself with -new-transformer.'
-		rmfile: 'vtmp_ntransformer'
+		line:          '${vexe} -o vtmp_ntransformer -new-transformer cmd/v'
+		okmsg:         'V can compile itself with -new-transformer.'
+		rmfile:        'vtmp_ntransformer'
+		v3_compatible: false
 	}
 	$if linux {
 		res << Command{
@@ -229,20 +265,23 @@ fn get_all_commands() []Command {
 			rmfile: 'swait'
 		}
 		res << Command{
-			line:   '${vexe} -cc gcc -keepc -freestanding -o bel vlib/os/bare/bare_example_linux.v'
-			okmsg:  'V can compile with -freestanding on Linux with GCC.'
-			rmfile: 'bel'
+			line:          '${vexe} -cc gcc -keepc -freestanding -o bel vlib/os/bare/bare_example_linux.v'
+			okmsg:         'V can compile with -freestanding on Linux with GCC.'
+			rmfile:        'bel'
+			v3_compatible: false
 		}
 
 		res << Command{
-			line:   '${vexe} -cc gcc -keepc -freestanding -o str_array vlib/strconv/bare/str_array_example.v'
-			okmsg:  'V can compile & allocate memory with -freestanding on Linux with GCC.'
-			rmfile: 'str_array'
+			line:          '${vexe} -cc gcc -keepc -freestanding -o str_array vlib/strconv/bare/str_array_example.v'
+			okmsg:         'V can compile & allocate memory with -freestanding on Linux with GCC.'
+			rmfile:        'str_array'
+			v3_compatible: false
 		}
 		res << Command{
-			line:   '${vexe} -cc gcc -keepc -freestanding -o time_now vlib/time/bare/time_now_example.v'
-			okmsg:  'V can compile time.now() with -freestanding on Linux with GCC.'
-			rmfile: 'time_now'
+			line:          '${vexe} -cc gcc -keepc -freestanding -o time_now vlib/time/bare/time_now_example.v'
+			okmsg:         'V can compile time.now() with -freestanding on Linux with GCC.'
+			rmfile:        'time_now'
+			v3_compatible: false
 		}
 	}
 	////////////////////////////////////////////////////////////////////////
@@ -267,9 +306,10 @@ fn get_all_commands() []Command {
 		l2w_crosscc := os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc-win32') or { '' }
 		if l2w_crosscc != '' {
 			res << Command{
-				line:   '${vexe} -os windows ${common_shared_flags}'
-				okmsg:  'V cross compiles library.v with -shared on linux, to a windows library.dll file'
-				rmfile: 'library.dll'
+				line:          '${vexe} -os windows ${common_shared_flags}'
+				okmsg:         'V cross compiles library.v with -shared on linux, to a windows library.dll file'
+				rmfile:        'library.dll'
+				v3_compatible: false
 			}
 		} else {
 			eprintln('Testing cross compilation from linux to windows needs x86_64-w64-mingw32-gcc-win32. Skipping library.dll test.')
@@ -277,8 +317,9 @@ fn get_all_commands() []Command {
 	}
 	////////////////////////////////////////////////////////////////////////
 	res << Command{
-		line:  '${vexe} ${vargs} -progress test-cleancode'
-		okmsg: 'All .v files are invariant when processed with `v fmt`'
+		line:          '${vexe} ${vargs} -progress test-cleancode'
+		okmsg:         'All .v files are invariant when processed with `v fmt`'
+		v3_compatible: false
 	}
 	res << Command{
 		line:  '${vexe} ${vargs} -progress test-fmt'
@@ -289,12 +330,14 @@ fn get_all_commands() []Command {
 		okmsg: 'There are no _test.v file regressions.'
 	}
 	res << Command{
-		line:  '${vexe} ${vargs} -progress -N -W build-tools'
-		okmsg: 'All tools can be compiled.'
+		line:    '${vexe} ${vargs} -progress -N -W build-tools'
+		okmsg:   'All tools can be compiled.'
+		v3_line: '${vexe} ${vargs} -progress build-tools'
 	}
 	res << Command{
-		line:  '${vexe} ${vargs} -progress -N -W build-examples'
-		okmsg: 'All examples can be compiled.'
+		line:    '${vexe} ${vargs} -progress -N -W build-examples'
+		okmsg:   'All examples can be compiled.'
+		v3_line: '${vexe} ${vargs} -progress build-examples'
 	}
 	res << Command{
 		line:  '${vexe} check-md -hide-warnings .'
@@ -306,25 +349,28 @@ fn get_all_commands() []Command {
 		okmsg: '`v install` works.'
 	}
 	res << Command{
-		okmsg:       'Running net.http with -d trace_http_request works.'
-		line:        '${vexe} -d trace_http_request -e \'import net.http; x := http.fetch(url: "https://vpm.url4e.com/some/unknown/url")!; println(x.status_code)\''
-		runcmd:      .execute
-		starts_with: '> GET /some/unknown/url HTTP/1.1'
-		contains:    'User-Agent: v.http'
-		ends_with:   '404\n'
+		okmsg:         'Running net.http with -d trace_http_request works.'
+		line:          '${vexe} -d trace_http_request -e \'import net.http; x := http.fetch(url: "https://vpm.url4e.com/some/unknown/url")!; println(x.status_code)\''
+		runcmd:        .execute
+		starts_with:   '> GET /some/unknown/url HTTP/1.1'
+		contains:      'User-Agent: v.http'
+		ends_with:     '404\n'
+		v3_compatible: false
 	}
 	res << Command{
-		okmsg:       'Running net.http with -d trace_http_response works.'
-		line:        '${vexe} -d trace_http_response -e \'import net.http; x := http.fetch(url: "https://vpm.url4e.com/some/unknown/url")!; println(x.status_code)\''
-		runcmd:      .execute
-		starts_with: '< HTTP/1.1 404 Not Found'
-		contains:    'Server: nginx'
-		ends_with:   '404\n'
+		okmsg:         'Running net.http with -d trace_http_response works.'
+		line:          '${vexe} -d trace_http_response -e \'import net.http; x := http.fetch(url: "https://vpm.url4e.com/some/unknown/url")!; println(x.status_code)\''
+		runcmd:        .execute
+		starts_with:   '< HTTP/1.1 404 Not Found'
+		contains:      'Server: nginx'
+		ends_with:     '404\n'
+		v3_compatible: false
 	}
 	res << Command{
-		line:   '${vexe} -usecache -cg examples/hello_world.v'
-		okmsg:  '`v -usecache -cg` works.'
-		rmfile: 'examples/hello_world'
+		line:          '${vexe} -usecache -cg examples/hello_world.v'
+		okmsg:         '`v -usecache -cg` works.'
+		rmfile:        'examples/hello_world'
+		v3_compatible: false
 	}
 	// Note: test that a program that depends on thirdparty libraries with its
 	// own #flags (tetris depends on gg, which uses sokol) can be compiled
@@ -356,27 +402,30 @@ fn get_all_commands() []Command {
 	}
 	$if linux {
 		res << Command{
-			line:     '${vexe} vlib/v/tests/bench/bench_stbi_load.v && prlimit -v10485760 vlib/v/tests/bench/bench_stbi_load'
-			okmsg:    'STBI load does not leak with GC on, when loading images multiple times (use < 10MB)'
-			runcmd:   .execute
-			contains: 'logo.png 1000 times.'
-			rmfile:   'vlib/v/tests/bench/bench_stbi_load'
+			line:          '${vexe} vlib/v/tests/bench/bench_stbi_load.v && prlimit -v10485760 vlib/v/tests/bench/bench_stbi_load'
+			okmsg:         'STBI load does not leak with GC on, when loading images multiple times (use < 10MB)'
+			runcmd:        .execute
+			contains:      'logo.png 1000 times.'
+			rmfile:        'vlib/v/tests/bench/bench_stbi_load'
+			v3_compatible: false
 		}
 	}
 	$if !windows {
 		res << Command{
-			line:   '${vexe} -raw-vsh-tmp-prefix tmp vlib/v/tests/script_with_no_extension'
-			okmsg:  'V can crun a script, that lacks a .vsh extension'
-			runcmd: .execute
-			expect: 'Test\n'
-			rmfile: 'vlib/v/tests/tmp.script_with_no_extension'
+			line:          '${vexe} -raw-vsh-tmp-prefix tmp vlib/v/tests/script_with_no_extension'
+			okmsg:         'V can crun a script, that lacks a .vsh extension'
+			runcmd:        .execute
+			expect:        'Test\n'
+			rmfile:        'vlib/v/tests/tmp.script_with_no_extension'
+			v3_compatible: false
 		}
 
 		res << Command{
-			line:   '${vexe} -raw-vsh-tmp-prefix tmp run vlib/v/tests/script_with_no_extension'
-			okmsg:  'V can run a script, that lacks a .vsh extension'
-			runcmd: .execute
-			expect: 'Test\n'
+			line:          '${vexe} -raw-vsh-tmp-prefix tmp run vlib/v/tests/script_with_no_extension'
+			okmsg:         'V can run a script, that lacks a .vsh extension'
+			runcmd:        .execute
+			expect:        'Test\n'
+			v3_compatible: false
 		}
 	}
 	return res

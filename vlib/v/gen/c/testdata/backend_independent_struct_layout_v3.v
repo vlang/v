@@ -1,11 +1,11 @@
 module main
 
 struct COutputPoint {
-	x int
-	y int
+	x i64
+	y i64
 }
 
-fn offset_point(point COutputPoint, delta int) COutputPoint {
+fn offset_point(point COutputPoint, delta i64) COutputPoint {
 	return COutputPoint{
 		x: point.x + delta
 		y: point.y

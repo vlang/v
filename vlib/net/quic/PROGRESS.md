@@ -57,7 +57,7 @@ checklist for exact status. Every checked item has passing tests under
       being rejected) and a minor OpenSSL leak in
       `PublicKey.from_uncompressed_bytes`. Both have regression tests.
 
-## Phase 2 — QUIC-scoped TLS 1.3 handshake + key schedule (NOT STARTED)
+## Phase 2 — QUIC-scoped TLS 1.3 handshake + key schedule (done)
 
 The largest, highest-risk phase. Sub-phases, in build order:
 
@@ -102,9 +102,9 @@ The largest, highest-risk phase. Sub-phases, in build order:
       message bytes, no record-layer framing (RFC 8446 §4.4.1 / RFC 9001
       §4), both extracted from the raw RFC text programmatically, not
       hand-transcribed.
-- **2c — Messages + state machine** (`tls13_messages.v`, `tls13_handshake.v`):
+- [x] **2c — Messages + state machine** (`tls13_messages.v`, `tls13_handshake.v`):
   ClientHello…Finished, the `quic_transport_parameters` extension (0x39),
-  client state machine. In progress — sub-items:
+  client state machine. Sub-items:
   - [x] Generic handshake message framing (`HandshakeType` enum — the real
         RFC 8446 §B.3 v1.3 set only, TLS-1.2-era RESERVED values correctly
         rejected, not silently accepted as unused variants —
@@ -471,27 +471,766 @@ The largest, highest-risk phase. Sub-phases, in build order:
       and both header forms (long/short), plus negative tests for tampered
       ciphertext and for decrypting with the wrong direction's keys.
 
-## Phases 4-14 (NOT STARTED)
+## Phase 4 — Initial packet exchange (done)
 
-See the tracking issue for full detail on each. In order:
+- [x] `frame.v` — PADDING/PING/ACK/CRYPTO/CONNECTION_CLOSE parsing and
+      encoding (RFC 9000 §19), scoped to exactly the frame types legal in
+      the Initial/Handshake packet number spaces (§12.4 Table 3). ACK's
+      Gap/ACK Range Length wire encoding is resolved into already-computed
+      `[smallest, largest]` ranges; the gap math was verified against a
+      hand-derived numeric example (not just a self round trip, which
+      can't catch a bug consistently wrong in both directions) with the
+      exact expected wire bytes hardcoded. Every other frame type (STREAM,
+      MAX_DATA, ...) reports "not yet implemented" rather than a
+      wire-format error, since they're real, valid QUIC frames just
+      deferred to later phases.
+- [x] `crypto_stream.v` — per-encryption-level CRYPTO frame reassembly,
+      tolerating out-of-order arrival and overlapping retransmissions (RFC
+      9000 §19.6); a content mismatch on any overlap — including between
+      two not-yet-promoted out-of-order fragments that overlap each other
+      before either touches the contiguous stream — is rejected at the
+      point of overlap via one shared validated-append path, rather than
+      surfacing later as a confusing transcript-hash/Finished-MAC failure.
+- [x] `coalesce.v` — datagram splitting by walking long-header `Length`
+      fields; stops cleanly (not as a fabricated bogus packet) at a short
+      header, a Version Negotiation packet, a Retry packet, or trailing
+      non-packet padding (see the `/vreview` finding below).
+      `pad_initial_payload` pads a sender's own Initial packet to the RFC
+      9000 §14.1 1200-byte minimum via PADDING frames INSIDE the
+      AEAD-protected payload (§14.1's primary mechanism), not raw bytes
+      appended after protection -- see the Codex-round fixes below. A
+      trailing chunk that fails to parse as a legitimate next packet
+      (truncated header, unsupported version, or an overrun Length field)
+      is discarded and splitting stops there -- RFC 9000 §14.1's own
+      "coalesced with invalid packets, which a receiver will discard"
+      allowance -- rather than failing every packet already validated
+      before it. A subsequent long-header packet whose DCID doesn't match
+      the datagram's first packet is likewise excluded from the result,
+      not treated as an error (RFC 9000 §12.2, SHOULD), and scanning
+      continues past it for whatever legitimately-addressed packet may
+      follow.
+      `parse_frames` (frame.v) rejects a packet payload containing zero
+      frames as PROTOCOL_VIOLATION (RFC 9000 §12.4) -- `parse_frame`
+      (singular) already rejected an empty buffer, but the plural
+      reassembly loop's own `for offset < buf.len` guard never even
+      called into it for a genuinely empty payload.
+- [x] `retry.v` — client-side Retry Integrity Tag (RFC 9001 §5.8)
+      compute/verify, using AEAD_AES_128_GCM over an empty plaintext with a
+      FIXED public key/nonce (not derived from the connection's own
+      secrets). The fixed key/nonce were confirmed against two independent
+      sources before trusting them: RFC 9001 §5.8's own text, and
+      Cloudflare quiche's Rust source (`RETRY_INTEGRITY_KEY_V1`/
+      `RETRY_INTEGRITY_NONCE_V1` in `packet.rs`) — the same reference
+      implementation this module's TLS 1.3 test vectors were captured
+      from. An invalid tag returns `false` (discard the packet silently),
+      never an error — an off-path forger is exactly what this check
+      exists to catch, so treating a bad tag as fatal would hand that
+      forger a way to abort a legitimate handshake in progress.
+      Tracking "at most one Retry per connection attempt" (RFC 9000
+      §17.2.5.2) is documented as Phase 9 `QuicConn` state, since this
+      module is a stateless verification primitive.
+- [x] `version_negotiation.v` — a VN packet listing v1 itself MUST be
+      silently discarded (RFC 9000 §6.2), not treated as a protocol
+      violation: the connection attempt continues unchanged. A VN packet
+      without v1 fails the connection attempt cleanly, since this client
+      implements only v1 with no lower-version fallback. Before either
+      check runs, the VN packet's DCID must echo the client's own original
+      SCID (RFC 9000 §17.2.1); a mismatch is discarded as unauthenticated/
+      spoofed rather than treated as a genuine response to this client's
+      Initial packet, mirroring `retry.v`'s analogous anti-spoof CID check.
+- [x] Integration test (`initial_exchange_test.v`): a full simulated
+      Initial round trip tying Phases 2+3+4 together — a real ClientHello
+      (Phase 2), real CRYPTO framing, real packet+header protection (Phase
+      3), "transmitted" over a plain `[]u8` fake transport, then fully
+      reversed on the receive side ending with the reassembled CRYPTO
+      stream reproducing the exact original ClientHello bytes and
+      re-parsing as a valid handshake message. Plus a tampered-datagram
+      negative test.
+- [x] `/vreview` pass: found and fixed three gaps before commit —
+      (1) `split_coalesced_datagram` misinterpreted trailing raw
+      UDP-datagram-level zero-byte padding (the shape a real Initial
+      datagram padded to 1200 bytes has -- this client's own outgoing
+      padding no longer produces this shape, see the Codex-round fixes
+      below, but a received datagram from another implementation must
+      still tolerate it) as a bogus additional coalesced packet, since
+      neither `parse_long_header` nor `parse_short_header` (Phase 1,
+      `header.v`) validated RFC 9000's Fixed Bit (0x40) — caught by the
+      integration test above, then confirmed against the REAL captured
+      server datagram from Phase 3's testdata, which turned out to have
+      been misread as 3 packets instead of 2 real ones + trailing padding
+      (an earlier, less careful reading of that same capture had assumed
+      the third "packet" was genuine); (2) `parse_ack_frame` sized a `cap:`
+      allocation hint directly off the attacker-controlled, unvalidated
+      `ack_range_count` varint (up to 2^62-1) before confirming the buffer
+      could plausibly contain that many ranges — a real DoS vector from a
+      single small ACK frame; (3) `CryptoStreamReassembler` bounded the
+      byte-offset range a fragment may claim but not the NUMBER of distinct
+      out-of-order fragments that can accumulate within that range. All
+      three have regression tests, Phase-R-verified to fail on the pre-fix
+      code (the ACK allocation test needed a second iteration after its
+      first chosen value, 2^40, happened to wrap to exactly 0 when narrowed
+      to a 32-bit `int` and so accidentally exercised a harmless
+      allocation regardless of whether the fix was present).
+- [x] Codex review (vlang/v#27880, pullrequestreview-4836332922) found 9
+      more gaps after the post-#27680-merge rebase, all fixed with
+      regression tests, Phase-R-verified against the pre-fix code:
+      `handle_version_negotiation` treated a VN packet listing v1 as a
+      hard PROTOCOL_VIOLATION instead of the RFC 9000 §6.2-mandated
+      silent discard (an unauthenticated VN packet with a trivial
+      connection-kill primitive for an off-path attacker, if left as an
+      error); Initial-packet padding moved from raw trailing datagram
+      bytes to PADDING frames inside the AEAD-protected payload (RFC 9000
+      §14.1's primary mechanism -- `pad_datagram_for_initial` removed,
+      replaced by `pad_initial_payload`); `QuicRetryPacket`'s `dcid`/`scid`
+      doc comments had the server's-new-CID label on the WRONG field
+      (RFC 9000 §17.2.5.1: it's `scid`, not `dcid`); `parse_retry_packet`
+      now also rejects a zero-length Retry Token (§17.2.5.2) and a Retry
+      whose SCID equals the client's own Initial DCID (§17.2.5.1, an
+      anti-degenerate-loop check found while verifying the other two Retry
+      findings against the primary RFC text, not from Codex);
+      `CryptoStreamReassembler.add` now deduplicates a retransmitted
+      out-of-order fragment already covered by an existing pending one,
+      instead of counting ordinary loss-recovery retransmissions against
+      the distinct-fragment cap; `encode_crypto_frame`/`parse_crypto_frame`
+      now reject offset+length exceeding the 2^62-1 varint limit (RFC 9000
+      §19.6, confirmed verbatim); `scaled_ack_delay_micros` now saturates
+      instead of silently wrapping a u64 left-shift overflow (a legal wire
+      ACK Delay with a legal §18.2-maximum exponent of 20 shifts past bit
+      64); `split_coalesced_datagram` now rejects a Version Negotiation
+      packet coalesced after another packet (RFC 9000 §12.2: "there is no
+      situation where a Retry or Version Negotiation packet is coalesced
+      with another packet"). All RFC citations independently verified
+      against the primary rfc-editor.org text (cached locally at
+      `.claude/skills/code-review/rfc-texts/`, gitignored) rather than
+      trusted from the review comments alone.
 
-4. Initial packet exchange — CRYPTO frame reassembly, core frames, datagram
-   coalescing, Retry/Version Negotiation handling.
-5. Full handshake completion — three independent packet number spaces (a
-   common implementation mistake to conflate), key discard, key update.
-6. Stream layer — STREAM frames, connection+stream flow control interplay.
-   Note: even client-only v1 must receive server-initiated uni streams from
-   day one (HTTP/3's control/QPACK streams need this).
-7. Loss detection & NewReno congestion control (RFC 9002).
-8. Connection lifecycle — idle timeout, CONNECTION_CLOSE, stateless reset,
-   ECN fallback, PMTU (pinned to 1200 bytes for v1).
-9. `QuicConn` — top-level struct, `poll()`/`process_timeouts()` event-loop
-   contract.
-10. HTTP/3 framing (RFC 9114) — incremental/resumable parsing (structurally
-    different from HTTP/2's single-shot framing).
-11. QPACK (RFC 9204) — absolute indexing, encoder/decoder streams, blocked-
-    stream handling. Not HPACK — don't reuse `h2_hpack_static.v`.
-12. HTTP/3 client wiring into `Request`/`Response`/`Transport`.
+## Phase 5 — Full handshake completion (done)
+
+- [x] `packet_number_space.v` — formalizes the THREE INDEPENDENT packet
+      number spaces (Initial/Handshake/Application Data), flagged as the
+      most common implementation mistake to get wrong (treating packet
+      numbers as connection-global breaks ACK-frame interop with any
+      compliant peer). `PacketNumberSpaceState` tracks per-space
+      next-to-send/largest-received/largest-acked-by-peer, feeding directly
+      into Phase 1's `encode_packet_number`/`decode_packet_number` with no
+      adaptation. `QuicPacketNumberSpaces` groups the three as genuinely
+      independent struct fields — no shared mutable state to accidentally
+      conflate.
+- [x] `handshake_confirm.v` — models "complete" (own Finished sent AND
+      peer's Finished verified) and "confirmed" (HANDSHAKE_DONE received)
+      as two distinct checkpoints, each with its own key-discard trigger
+      (RFC 9001 §4.9.1/§4.9.2), plus a third, independent checkpoint for
+      discarding Initial keys (first Handshake-space packet sent). The
+      alternate ack-based confirmation path RFC 9001 permits is
+      deliberately not implemented — v1 always waits for HANDSHAKE_DONE.
+- [x] `key_update.v` — 1-RTT-only key phase bit rotation (RFC 9001 §6),
+      receive side only (client-initiated rotation deferred, per plan).
+      `resolve_read_keys` decides which keys to try decrypting an incoming
+      packet with — matching the current phase, the retained previous
+      phase (a reordered pre-update packet), or a freshly-derived next
+      phase (a genuine new update) — purely from the packet's phase bit
+      and packet number, per RFC 9001 §6.5, and never mutates state or
+      authenticates anything itself. `note_successful_decrypt` commits the
+      outcome only after the caller's own AEAD decryption has actually
+      succeeded. `max_key_updates_accepted` is a coarse, time-independent
+      cap standing in for RFC 9001 §6.1/§6.5's ack-plus-3xPTO pacing, which
+      needs RTT/PTO estimation this module doesn't have yet (Phase 7).
+- [x] `/vreview` pass: found and fixed one gap before commit —
+      `note_successful_decrypt` trusted `resolution.is_new_update`/
+      `is_previous_phase` at face value, but those flags are computed at
+      `resolve_read_keys` time and go stale if a caller resolves more than
+      one packet (e.g. two packets from the same coalesced datagram)
+      before committing either; committing the first packet's genuine
+      update flips the current phase, and a second, now-stale
+      `is_new_update` resolution for a packet that actually matches the
+      just-updated phase would otherwise be mis-committed as a SECOND
+      update, permanently desynchronizing decryption. Fixed by having
+      `note_successful_decrypt` re-derive its classification fresh from
+      the packet's own real phase bit against current state, rather than
+      trusting resolve-time flags — correct regardless of how many
+      resolutions were computed before any commit. Has a regression test,
+      Phase-R-verified to fail on the pre-fix code.
+
+## Phase 6 — Stream layer and flow control (done)
+
+- [x] `frame.v` extended — STREAM (0x08-0x0f, OFF/LEN/FIN bits), RESET_STREAM,
+      STOP_SENDING, MAX_DATA, MAX_STREAM_DATA, MAX_STREAMS (bidi/uni),
+      DATA_BLOCKED, STREAM_DATA_BLOCKED, STREAMS_BLOCKED (bidi/uni). A
+      length-less STREAM frame (LEN bit clear) correctly consumes the rest
+      of `parse_frames`' buffer, matching RFC 9000 §19.8's requirement that
+      it be the last frame in its packet — a natural consequence of the
+      wire format itself, not something requiring separate enforcement.
+- [x] `stream.v` — `StreamId` category derivation (RFC 9000 §2.1),
+      `QuicRole`-aware `is_locally_initiated`, `SendStreamState`/
+      `RecvStreamState` (RFC 9000 §3.1/§3.2) driven by local actions and
+      frame arrival respectively (ACK-driven and application-read-driven
+      transitions are documented hooks for Phase 7/9, not implemented
+      here). `QuicStream.send`/`recv` are nilable pointers (`&StreamSendHalf`/
+      `&StreamRecvHalf`, matching `Tls13ClientHandshake.verified_chain`'s
+      established convention) so every caller mutates the SAME shared half
+      directly — see the `/vreview` finding below for why this replaced an
+      earlier Optional-value design. `QuicStreamSet.get_or_create` auto-creates
+      peer-initiated streams (including every lower-numbered stream in the
+      same category, per RFC 9000 §2.1) while enforcing the caller-supplied
+      `max_streams` limit (STREAM_LIMIT_ERROR) and refusing to fabricate a
+      locally-initiated stream just because a frame references it
+      (STREAM_STATE_ERROR); `open_local_stream` is the send-side mirror,
+      allocating sequential IDs per category.
+- [x] `stream_reassembly.v` — per-stream offset-ordered reassembly, mirroring
+      Phase 4's `crypto_stream.v` design (validated-append + promote_ready,
+      tolerating out-of-order arrival and overlapping retransmissions),
+      extended with `note_final_size` reconciling a stream's final size
+      (from a FIN-carrying STREAM frame or RESET_STREAM) against everything
+      already received or buffered (FINAL_SIZE_ERROR on mismatch, RFC 9000
+      §4.5) — the one genuine difference from CRYPTO streams, which have no
+      final-size concept.
+- [x] `flow_control.v` — `FlowControlWindow` (send-side accounting against a
+      peer-raised limit) and `ReceiveWindow` (receive-side accounting with
+      an auto-growth heuristic: advertise a higher limit once the
+      application has consumed at least half the current window, avoiding
+      a throughput stall). `initial_send_limit_for_stream`/
+      `initial_receive_limit_for_stream` resolve RFC 9000 §4.1's
+      easy-to-invert peer-relative transport-parameter naming
+      (`initial_max_stream_data_bidi_local`/`_remote` mean opposite things
+      depending on whose parameters and which side of the stream you're
+      asking about) in one place, verified against a hand-derived worked
+      example for all 4 stream categories from the client's own
+      perspective, not just structurally.
+- [x] Integration test (`stream_layer_test.v`): three streams — a
+      client-opened bidi stream, a server-opened uni stream (the plan's own
+      "even client-first phase must receive server-initiated unidirectional
+      streams from day one"), and a second client-opened bidi stream — with
+      STREAM frames delivered genuinely interleaved (not grouped by stream),
+      each independently reassembled while one connection-level
+      `ReceiveWindow` tracks the running total across all three.
+- [x] `/vreview` pass: found and fixed one gap before commit —
+      `QuicStream.send`/`recv` were originally Optional VALUE fields
+      (`?StreamSendHalf`/`?StreamRecvHalf`); unwrapping via `s.recv or
+      {...}` copies the struct out, so mutating the copy via
+      `note_data()`/`note_size_known()` looks like in-place mutation but
+      silently doesn't persist unless the caller remembers to explicitly
+      reassign `s.recv = recv` afterward (the reassembler's own data
+      survives regardless, via its internal pointer field, but `state`/
+      `final_size` would silently revert). Fixed by switching to nilable
+      pointers before any real caller could hit this, eliminating the
+      whole bug class by construction rather than documenting the trap.
+      Two mechanical V-compiler quirks surfaced and fixed along the way,
+      unrelated to the finding above: `match` on a repeated array-index
+      expression (`frames[N]`) doesn't reliably narrow a sum type across
+      multiple field accesses within one arm once the sum type has enough
+      variants — affected both new Phase 6 tests and two PRE-EXISTING
+      tests in `frame_test.v`/`initial_exchange_test.v` that had worked
+      fine with fewer variants; fixed by binding to a local variable
+      before matching (the already-idiomatic pattern used everywhere
+      else). Separately, a pre-existing test's "frame type 0x08 is not
+      yet implemented" case became false once Phase 6 implemented STREAM
+      frames at that exact type value; retargeted to 0x1e
+      (HANDSHAKE_DONE), still genuinely unimplemented.
+
+## Phase 7 — Loss detection and NewReno congestion control (done)
+
+- [x] `rtt.v` — `RttEstimator` (RFC 9002 §5.3): first-sample-seeds-directly
+      vs. subsequent-sample-EWMA as two genuinely distinct code paths (not
+      the same formula with a placeholder initial value); ACK Delay
+      unconditionally treated as zero for the Initial/Handshake spaces,
+      decided from the `space` parameter inside `update()` itself rather
+      than trusted to every caller; the peer's `max_ack_delay` clamp
+      applied only once the handshake is confirmed; the ack_delay
+      subtraction itself only applied when it cannot drive the sample
+      below `min_rtt`. `pto_period()` factors out the
+      `smoothed_rtt + max(4*rttvar, kGranularity)` term loss_detection.v
+      scales per space/backoff.
+- [x] `loss_detection.v` — `QuicLossDetectionTimer`: three independent
+      per-space `LossDetectionSpaceState` (packet numbering genuinely is
+      per-space, RFC 9000 §12.3) plus a single connection-wide
+      `RttEstimator`/`pto_count`/PTO timer (the PTO timer is deliberately
+      NOT per-space — sourced from whichever space's own deadline is
+      earliest via `pto_time_and_space`, the plan's own explicitly flagged
+      pitfall, the opposite mistake from treating packet numbers as
+      connection-global). `detect_and_remove_lost_packets` implements
+      RFC 9002 §6.1's packet-threshold (kPacketThreshold=3) OR
+      time-threshold (9/8·max(latest_rtt,smoothed_rtt), floored at
+      kGranularity) rule, either alone sufficient. `is_persistent_congestion`
+      implements RFC 9002 §7.6.2 from a single detection-pass batch (a
+      documented v1 scope choice — see its own doc comment for why this
+      matches the realistic PTO-stall trigger pattern).
+- [x] `congestion_control.v` — `NewRenoCongestionControl` (RFC 9002
+      Appendix B): slow start / congestion avoidance via `is_in_slow_start()`
+      (re-derives `congestion_window < ssthresh` every call — see the
+      `/vreview` finding below for why this can't be shortcut to "has a
+      loss ever happened"), ordinary-loss ssthresh halving via
+      `on_congestion_event`, a distinctly harsher persistent-congestion
+      collapse straight to `kMinimumWindow`, and `in_congestion_recovery`
+      ensuring one recovery episode reacts exactly once regardless of how
+      many packets it takes down. App-limited detection (RFC 9002 §7.8) is
+      a documented v1 scope omission — no real send queue exists yet
+      (Phase 9); spec-legal, only affects how eagerly cwnd grows, not
+      correctness of loss/recovery handling.
+- [x] Tests: first-vs-subsequent RTT formula, ACK-Delay-ignored-for-
+      Initial/Handshake (two identically-seeded estimators, one fed a huge
+      delay, must converge identically), max_ack_delay clamp only after
+      confirmation, packet-threshold-only and time-threshold-only loss
+      (each engineered so the other threshold structurally cannot also
+      fire), single-PTO-timer-sourced-from-earliest-space (including the
+      application_data-excluded-before-confirmation/included-after case),
+      persistent-congestion collapse as its own dedicated test, and
+      single-reaction-per-recovery-episode (multiple losses within one
+      episode react once; a loss from a genuinely later episode reacts
+      again).
+- [x] `/vreview` (full A-G pass) found and fixed two issues before commit:
+      (1) `NewRenoCongestionControl.is_in_slow_start()` originally
+      shortcut to `ssthresh == none` ("a loss has ever happened") instead
+      of RFC 9002's actual `congestion_window < ssthresh` — these diverge
+      after a persistent-congestion collapse, which resets `congestion_window`
+      to `kMinimumWindow` while leaving the larger, just-computed `ssthresh`
+      untouched, so cwnd can legitimately fall back below an already-set
+      ssthresh and must re-enter slow start, not stay in congestion
+      avoidance. Caught via the from-scratch contract restatement, before
+      any test was written against it. (2) A real DoS: `on_ack_received`'s
+      newly-acked extraction originally iterated each ACK range's own
+      `[smallest, largest]` span directly — but `largest_acknowledged` and
+      `first_ack_range` are independent wire varints (RFC 9000 §19.3), so
+      a tiny, well-formed ACK frame can legally claim a range spanning up
+      to 2^62-1 packet numbers with no relationship to the frame's own
+      wire size, and the parser's existing `ack_range_count` bound (against
+      remaining buffer length) does nothing to limit an individual range's
+      span. Fixed by iterating `sent_packets` (bounded by how many packets
+      *we* actually have outstanding) and testing membership against the
+      ranges instead of iterating the peer-supplied span — regression test
+      constructs a `largest_acknowledged = 2^62` range and confirms
+      `on_ack_received` still completes and resolves correctly.
+
+## Phase 8 — Connection lifecycle (done)
+
+- [x] `idle_timeout.v` — `effective_idle_timeout` resolves RFC 9000
+      §10.1's min-of-non-zero rule across all 4 zero/non-zero
+      combinations (0 means "no timeout", not literally zero).
+      `IdleTimeoutState` tracks the deliberately ASYMMETRIC reset rule:
+      an ack-eliciting packet RECEIVED restarts it, a non-ack-eliciting
+      receive does not, but ANY packet SENT restarts it regardless — not
+      "any packet either direction".
+- [x] `connection_close.v` — `ConnectionCloseTracker`: `active` ->
+      `closing` (this endpoint sent its own CONNECTION_CLOSE, may still
+      send a rate-limited retransmission — at most once per received
+      packet, RFC 9000 §10.2.1) -> `draining` (this endpoint received the
+      peer's CONNECTION_CLOSE, or was already closing and then received
+      one; MUST NOT send anything at all, §10.2.2's fully-silent
+      requirement, a one-way absorbing state).
+- [x] `stateless_reset.v` — `StatelessResetTracker` records
+      stateless-reset tokens keyed by connection ID; `is_stateless_reset`
+      is documented as callable ONLY after normal AEAD decryption has
+      already failed (RFC 9000 §10.3.1 — never a first-choice
+      interpretation, since a legitimate packet's ciphertext could
+      coincidentally end in the same 16 bytes as an unrelated token), and
+      compares the trailing 16 bytes via `crypto.subtle`'s
+      constant-time compare (a token is a secret; a variable-time compare
+      would leak a timing side-channel). Scoped-down CID handling: tokens
+      are recorded for matching only, no full NEW_CONNECTION_ID/
+      RETIRE_CONNECTION_ID rotation.
+- [x] `ecn.v` — `EcnState` parses/records a peer's reported ECN counts
+      (frame.v's `EcnCounts`, already implemented) without erroring, but
+      `is_validated()` always reports false — no OS-level ECN socket
+      option exists in V today to mark outgoing datagrams, so there is
+      nothing to validate (a spec-legal fallback, RFC 9000 §13.4.2, not a
+      violation); this is the checkpoint any future congestion-control
+      integration must consult before reacting to an ECN-CE mark, and it
+      can never be true in v1.
+- [x] `pmtu.v` — pinned to the existing 1200-byte safe minimum (reusing
+      `congestion_control.v`'s `max_datagram_size` rather than
+      introducing a third constant for the same number, alongside
+      `coalesce.v`'s `min_initial_datagram_size`), no active DPLPMTUD
+      probing. Connection migration stays explicitly out of scope.
+- [x] Tests: idle-timeout min-of-non-zero across all 4 combinations, the
+      reset asymmetry (ack-eliciting-receive-or-any-send), closing's
+      rate-limited retransmission vs. draining's fully-silent behavior,
+      stateless reset matched only via a previously-recorded token, ECN
+      counts recorded without erroring and never validated, and a runtime
+      assertion pinning the PMTU at exactly 1200 bytes.
+- [x] `/vreview` (full A-G pass) found and fixed one issue before commit:
+      a real integer-overflow bug. `max_idle_timeout` is a peer-supplied
+      transport-parameter varint (RFC 9000 §18.2) that
+      `transport_parameters.v` accepts with NO upper bound (up to the
+      full 2^62-1 varint range) — `effective_idle_timeout` originally
+      multiplied it directly by `time.millisecond`, which overflows the
+      i64 backing `time.Duration` for any peer-supplied value above
+      ~9.2 trillion ms, silently producing a nonsensical (possibly
+      negative) timeout: a hostile or buggy peer could self-inflict a
+      near-immediate teardown, or effectively disable the idle timeout
+      altogether. Fixed by clamping to `max_safe_idle_timeout_ms`
+      (derived from `time.infinite`, i.e. i64::MAX ns, divided by
+      `time.millisecond` — the exact mathematically-necessary bound, not
+      an arbitrary policy number) before scaling; regression test feeds
+      the maximum possible QUIC varint (2^62-1) through both the
+      one-sided and both-sided paths and confirms a large-but-finite,
+      strictly positive `Duration` comes back.
+
+## Phase 9 — QuicConn top-level struct and event loop
+
+No prior phase composes any two of the pieces built so far — every phase
+built independently unit-tested state and deferred wiring to "a future
+QuicConn." `vlib/net/quic/conn.v` is that wiring. Sub-phased like Phase 2,
+landing as one PR:
+
+- [x] **9a — Connection establishment** (`conn.v`): `dial()` picks
+      `scid`/`original_dcid`, derives Initial secrets, builds ClientHello.
+      `poll()`/`process_timeouts()` handle Retry/VN detection (RFC 9000
+      §17.2.5.2's at-most-one-Retry + VN/Retry anti-spoof state, both
+      explicitly documented in `retry.v`/`version_negotiation.v` as this
+      phase's job), Initial/Handshake packet demux→unprotect→frame-parse,
+      driving `Tls13ClientHandshake` through to `process_finished`, key
+      derivation/promotion per level, CRYPTO-frame reassembly via
+      `CryptoStreamReassembler`, ACK generation/processing for
+      Initial/Handshake tied into `loss_detection.v`, idle timeout, and key
+      discard on handshake confirmation (RFC 9001 §4.9).
+- [x] **9b — Steady state**: 1-RTT packet processing (STREAM/ACK/
+      CONNECTION_CLOSE dispatch into `QuicStreamSet` + flow control both
+      directions), `open_stream`/`write_stream`/`read_stream`, full
+      loss-detection↔congestion-control wiring for 1-RTT sends,
+      MAX_STREAMS enforcement on locally-opened streams against the peer's
+      current limit, stateless-reset detection on decrypt failure, ECN
+      count recording, graceful/immediate close, 1-RTT key update rotation
+      (`app_read_keys`/`app_write_keys`).
+- [x] Tests: `conn_test.v`, hand-built ServerHello→Finished fixtures
+      (reusing Phase 2's RFC 8448/quiche vectors, no live server) driving
+      `dial()`+`poll()` to `handshake_confirmed`; STREAM data round-trip
+      through `poll()`; CONNECTION_CLOSE handling; key update.
+- [x] `/vreview` found and fixed two real bugs, both reproduced with a
+      failing test before the fix landed (Phase R): (1) `write_stream`/
+      `read_stream` never called `ensure_stream_windows` for a stream that
+      only exists because RFC 9000 §2.1 auto-created it as a lower-numbered
+      sibling of a peer-referenced higher stream ID — such a stream had no
+      flow-control window, so a local write to it queued forever with no
+      error, never reaching the wire; (2) `handle_peer_connection_close`
+      and the stateless-reset branch of `note_one_rtt_processing_failed`
+      transitioned to `.draining` without setting `closing_deadline` (RFC
+      9000 §10.2.2 requires the draining period to be bounded, same as
+      closing) — a peer-initiated close, the most common real-world close
+      path, left the connection draining forever instead of eventually
+      reaching `.closed`. Fixed with a shared `enter_draining(now)` helper
+      mirroring `close_with_error`'s existing deadline formula.
+
+Connection ID rotation/migration is explicitly OUT of scope (not deferred
+to a later phase — `stateless_reset.v`/`pmtu.v` both say so independently):
+`QuicConn` holds exactly one local `scid` and tracks the peer's current
+`dcid`, no active CID set, no NEW_CONNECTION_ID/RETIRE_CONNECTION_ID.
+
+## Phase 10: HTTP/3 framing (RFC 9114) — CODE COMPLETE, not yet wired to conn.v
+
+Full section-by-section requirements matrix built BEFORE writing any code
+(`.claude/skills/code-review/quic_conformance_matrix.md`, "HTTP/3 framing
+layer" section) — the direct structural response to Phase 9's own
+postmortem ("build the RFC checklist before/during implementation, not
+reactively"). See that section for the complete requirement-by-requirement
+breakdown; summary here.
+
+New files, all in `vlib/net/quic/`:
+
+- [x] `h3_reserved.v` — the single 0x1f*N+0x21 grease-codepoint formula
+      shared identically across frame types (§7.2.8), stream types
+      (§6.2.3), SETTINGS identifiers (§7.2.4.1), and error codes (§8.1) —
+      confirmed byte-for-byte identical wording in all 4 RFC citations
+      before writing one shared helper instead of four copies.
+- [x] `h3_error.v` — `H3ErrorCode` enum, all 17 values (§8.1/Table 4).
+- [x] `h3_stream_type.v` — unidirectional Stream Type header (§6.2/6.2.1/
+      6.2.2/6.2.3): control (0x00), push (0x01 + push ID), reserved,
+      unknown. Incremental (returns `none`, not an error, on a short
+      buffer — RFC places no requirement on how header bytes are split
+      across QUIC STREAM frames).
+- [x] `h3_frame.v` — frame Type/Length envelope (§7.1) + all 7 defined
+      frame types' payloads (DATA/HEADERS/CANCEL_PUSH/SETTINGS/
+      PUSH_PROMISE/GOAWAY/MAX_PUSH_ID, §7.2.1-7.2.7) + the 4 H2-carryover
+      reserved frame types (§7.2.8/Table 2) rejected outright as
+      H3_FRAME_UNEXPECTED, distinct from grease/genuinely-unknown types
+      (§9), which are preserved as `H3RawFrame` and never rejected.
+      `H3FrameDecoder` is the incremental/resumable reader this phase's
+      whole scope centers on — buffers partial bytes across `push()`
+      calls, only ever returns a frame once its FULL declared Length is
+      available. SETTINGS payload parsing rejects duplicate identifiers
+      (a MAY in §7.2.4, chosen to enforce — documented as a choice, not
+      claimed as a literal MUST) and the 5 reserved HTTP/2-carryover
+      setting identifiers (§7.2.4.1/Table 3), while correctly NOT
+      rejecting QPACK's own 0x01/0x07 (RFC 9204, not reserved by 9114
+      itself) so Phase 11 can add them as recognized without touching
+      this reserved set.
+- [x] `h3_message_state.v` — the one piece of §4's message-framing rules
+      that needs only a stream's ROLE, not request/response context:
+      Table 1's per-role frame-type legality (`is_h3_frame_valid_on_stream`)
+      and the control-stream SETTINGS-must-be-first-and-only-once
+      discipline (`H3ControlStreamState`).
+- [x] Tests: one `_test.v` per file, covering round-trips, every reserved/
+      grease/unknown-type boundary, incremental byte-by-byte feeding,
+      truncated/trailing-byte rejection, and a self-caught integer-overflow
+      hardening case (`int(length)` on an attacker-controlled u64 up to
+      2^62-1 could truncate/wrap before ever reaching a real bounds check
+      — fixed and regression-tested before the first real compile, not
+      found by an external round).
+
+**Explicitly deferred to Phase 12** (needs request/response objects, a
+real connection stream registry, or cross-frame state this framing-only
+phase doesn't have — every instance is a matrix row marked `⏳ Phase 12`,
+not a silent gap): §4.1's HEADERS→DATA*→trailer-HEADERS message-content
+sequencing within one request/response; single-request-per-stream
+enforcement; CONNECT's distinct framing; PUSH_PROMISE/CANCEL_PUSH/
+MAX_PUSH_ID cross-frame state (max advertised push ID, push IDs already
+seen); control-stream uniqueness/closure enforcement; unidirectional
+unknown-stream-type abort/discard action; remapping an unrecognized
+received error code to H3_NO_ERROR. **N/A for this v1 client role**
+(confirmed by re-reading which endpoint the requirement binds, not
+assumed): MAX_PUSH_ID's must-not-decrease check (binds a server receiving
+it from a client); a server receiving a client-initiated push stream.
+
+## Phase 11: QPACK (RFC 9204) — CODE COMPLETE, not yet wired to conn.v
+
+Started and finished 2026-08-16, same session as Phase 10's merge — user
+asked to "Start Phase 11 and be very careful on RFC compliance and edge
+details... provide confidence score." New worktree
+`S:\repo\vlang-http3-qpack`, branch `http3-quic-qpack`, cut off
+`upstream/master` (all of 0-10 merged, no stacking needed). Same
+methodology as Phase 10: fetched RFC 9204's full text
+(`rfc-texts/rfc9204.txt`), read all of §1-§8 + Appendix A (static table) +
+Appendix B (worked examples) + Appendix C (sample encoding algorithm) in
+full BEFORE writing any code, built the `quic_conformance_matrix.md`
+"QPACK" section from that reading, THEN implemented against it.
+
+**Scope boundary, mirroring Phase 10's own precedent exactly:** QPACK's
+tables, wire codecs, and the encoder/decoder state machines are all
+self-contained (like Phase 10's `H3ControlStreamState`, they only need to
+be *fed* bytes/events by whatever eventually owns a real QUIC stream) — so
+that whole layer is Phase 11 scope, including the FULL encoder/decoder
+driver state machines (dynamic table with eviction/reference-counting,
+Known Received Count, blocked-stream tracking), not just the wire codecs.
+Deferred to Phase 12: writing encoder-stream bytes onto a real QUIC
+unidirectional stream under real flow control (§2.1.3); blocking/
+unblocking a live HTTP/3 request stream's read progress (§2.2.1 — needs
+Phase 12's request/response objects); applying a peer's actual SETTINGS
+values to a real connection (Phase 11 only provides the pure extraction
+helper, `qpack_settings.v`).
+
+**12 new files**, each with a paired `_test.v` except the trivially small
+`qpack_error.v`: `qpack_primitives.v` (prefixed integer + string literal
+codec, generalized to QPACK's variable prefix widths, algorithm verified
+against the already-shipped, tested `h2_hpack.v` before being written),
+`qpack_huffman_table.v` + `qpack_huffman.v` (verbatim copies of
+`h2_hpack_huffman_table.v`/`h2_hpack_huffman.v` — RFC 9204 §4.1.2 mandates
+byte-identical reuse of RFC 7541 Appendix B's table, so copying a proven
+implementation is strictly safer than a second hand-transcription; the
+copy was verified byte-for-byte identical via a numeric diff before
+trusting it), `qpack_static_table.v` (all 99 entries transcribed from the
+fetched RFC text, indexed from 0 unlike HPACK's 61-entry table indexed
+from 1), `qpack_dynamic_table.v` (insert/evict/duplicate/capacity,
+absolute/relative-from-insert-count/relative-from-Base/post-Base indexing
+as 4 DISTINCT resolution functions — conflating the encoder-instruction
+and field-line relative-index contexts was the most likely transcription
+error here — reference counting for eviction protection),
+`qpack_error.v` (mirrors `h3_error.v`'s shape exactly), `qpack_stream_type.v`
+(0x02/0x03 recognition + a `QpackStreamRegistry` at-most-one-of-each
+tracker, a from-scratch sibling comparison against `H3ControlStreamState`
+done before writing it), `qpack_settings.v` (pure extraction of the 2
+QPACK SETTINGS from an already-decoded `[]H3Setting`),
+`qpack_encoder_instructions.v` + `qpack_decoder_instructions.v` (wire
+codecs for the 4 encoder-stream and 3 decoder-stream instruction types),
+`qpack_field_line.v` (Required Insert Count wraparound math + Base sign/
+delta math, transcribed directly from the RFC's own pseudocode, plus the 6
+field line representation types), `qpack_encoder.v` (the `QpackEncoder`
+driver — chose the RFC-offered "only reference acknowledged entries"
+policy, so it never risks blocking a stream at all; a documented scope
+decision, not an oversight), `qpack_decoder.v` (the `QpackDecoder` driver
+— blocked-field-section detection, invalid-reference rejection, emits
+Insert Count Increment after every insertion as its acknowledgment
+policy).
+
+**Verification, in order of how much confidence each step actually buys:**
+(1) hand-derived every byte of RFC 9204 Appendix B's 5 worked examples
+against my own algorithms WHILE transcribing them (not after) — this
+independently reproduced the RFC's own shown intermediate values (Set
+Dynamic Table Capacity's 3-byte encoding of 220, the running dynamic-table
+Size totals of 106/160/217/215) before a single test ran; (2) then wrote
+those exact byte sequences as `qpack_appendix_b_test.v`, an end-to-end
+test exercising the encoder-instruction codec, dynamic table, field-line
+codec, and decoder driver together against official ground truth — passed
+outright on B.1-B.4, and B.5's one failure was correctly diagnosed as a
+test-design issue (asserting my own encoder reproduce the RFC's
+illustrative, deliberately-non-optimal raw-string choice, when this
+implementation's `encode_prefixed_string` correctly picks the shorter
+Huffman encoding instead) rather than patched around; (3) three more real
+bugs were caught by writing per-file edge-case tests and RE-DERIVING the
+encoder's indexing math by hand before trusting it, not by running code
+and hoping: `encode_field_section` mixed up relative-vs-post-Base indexing
+context for a newly-inserted entry (a field-line reference to an entry
+just inserted during the same call has absolute index >= Base and MUST
+use post-Base indexing, not relative-to-Base), used post-insert
+`insert_count()` instead of pre-insert for an Insert-With-Name-Reference
+instruction's own relative index (an off-by-one, since a decoder resolves
+that index against table state as it stood BEFORE this instruction's own
+insert takes effect), and passed an absolute index directly where a
+Base-relative index was required for a literal-with-existing-dynamic-name
+reference — all three caught and fixed by re-deriving the function's
+contract from scratch before ever compiling it, the same discipline this
+project's own postmortems establish as the highest-yield check available;
+(4) three ordinary test-authoring mistakes (unrealistic RIC/total_inserts
+test combinations outside the protocol's actual usage pattern, a missing
+`u8+u8` concatenation, a test decoder that never received the Set
+Dynamic Table Capacity instruction its paired encoder sent) were found and
+fixed the normal way, by running the suite and reading the failure.
+Full `net.quic` suite green throughout, 52/52 files, zero regressions in
+Phases 0-10.
+
+## Phase 12: HTTP/3 client wiring — COMPLETE (12a/12b/12c/12d all done)
+
+Sub-scoped into 4 sequential sub-phases within one PR (mirroring Phase 2's
+2a/2b/2c and Phase 9's 9a/9b precedent), each a hard dependency of the
+next:
+
+- **12a** (done) — surgical additions to already-merged Phase 9 code
+  (`conn.v`/`tls13_handshake.v`): a negotiated-ALPN accessor (computed
+  during the handshake but previously discarded), a `peer_stream_opened`
+  event for peer-initiated stream discovery (careful to avoid a silent
+  false-negative under UDP reordering caused by `get_or_create`'s
+  RFC 9000 §2.1 sibling-auto-creation behavior), and a
+  `stream_recv_status` query. No new files.
+- **12b** (done) — HTTP/3 + QPACK connection wiring, pure `module quic`:
+  `H3Conn` wraps `QuicConn` with control-stream/QPACK-stream driving, the
+  request-stream message-framing state machine (RFC 9114 §4.1), and the
+  previously-entirely-missing blocked-HEADERS retry/re-queue mechanism.
+  Fixture-testable with no socket, same style as Phase 9's `conn_test.v`.
+- **12c** (done) — UDP transport + `H3MuxConn` threading, `module http`
+  (`h3_udp_dial.v`, `h3_mux_conn.v`): the repo's first UDP socket code and
+  first background-thread-drives-a-non-thread-safe-`poll()`-state-machine
+  code. This does NOT contradict the "single-threaded, caller-driven event
+  loop" scope decision below -- `net.quic`'s own `QuicConn`/`H3Conn` stay
+  exactly that; `H3MuxConn`'s driver thread is simply THE caller, on the
+  `net.http` side, the same relationship `H2MuxConn`'s own background
+  reader thread already has to the (blocking-transport-shaped) `H2Conn`
+  layer. Needs only ONE lock (`qmu`), not `H2MuxConn`'s wmu/fmu/smu split,
+  because there is exactly one thread that ever touches `h3`/the
+  transport -- request threads queue via `do()`/`PendingH3Request` and
+  block on their own condition variable, mirroring `H2MuxConn.wait_
+  response`'s shape for the response half only; the driver thread alone
+  opens streams and sends. `H3UdpTransport` (mirrors `H2Transport`)
+  decouples the driver from a concrete `net.UdpConn`, letting
+  `h3_mux_conn_test.v` drive a REAL driver thread against an in-memory
+  fake and directly regression-test this sub-phase's own top risk: a
+  request queued by `do()` between one driver loop iteration and the next
+  must not be stranded on `cv.wait()` forever if the connection dies in
+  that exact window (`fail_conn` drains `c.pending`, not just
+  `c.streams`). `Transport` (`transport.v`) gained a third pool
+  (`h3_conns`/`h3_dial_id`) folded into the existing shared idle-eviction
+  scan (`evict_oldest_idle_locked`, `close_idle`) alongside h1/h2 -- the
+  actual h3 dial-and-register call site (which would populate them) is
+  12d's job.
+  Deliberately NOT built: a genuinely reactive fake QUIC server for
+  request/response-level testing -- would mean re-deriving a second
+  QUIC/TLS 1.3 server-role implementation from scratch, since `conn_
+  test.v`'s own fixture-handshake bytes are private, test-file-only
+  helpers with no cross-module export. A manual/documented run against a
+  real `quiche`/`ngtcp2` container (non-CI-blocking) remains the
+  recommended pre-merge check for full wire-level behavior; a shared,
+  exported cross-module fixture helper in `net.quic` is a scoped,
+  worthwhile follow-up, not built inline here.
+- **12d** (done) — `Transport`/`Request`/`Response` integration:
+  `req.enable_http3` opt-in (default `false`, no automatic h2/h1
+  fallback), `h3_client.v` (`H3ClientRequest`/`H3ClientResponse`
+  conversion -- the concrete types themselves already exist, defined in
+  12c's `h3_mux_conn.v` since that is what first needed them to compile),
+  `transport_h3.v` (`h3_round_trip`, `H3DialCall` singleflight dial,
+  mirroring `transport_h2.v`'s own shape minus every ALPN-probe-outcome
+  branch h2 needs and h3 doesn't). `Version` gained a `v3_0` case
+  (`version.v`/`response.v`) so `resp.version()` reports something
+  meaningful for an h3 response instead of `.unknown`.
+  **Known v1 limitation, discovered and documented during `/vreview`**:
+  `net.quic`'s TLS 1.3 stack has no OS/default trust-store fallback at
+  all (unlike the h1/h2 `ssl.SSLConn` path) -- `req.verify` is therefore
+  effectively REQUIRED for HTTP/3 today; leaving it unset means every h3
+  request fails certificate verification against every real server. This
+  is documented prominently on `enable_http3`'s own doc comment
+  (`request.v`/`http.v`), not silently left as a surprise. Likewise,
+  `req.validate` (skip-verification) and `req.cert`/`req.cert_key`
+  (mutual TLS) are not honorable on the h3 path in v1, both also
+  documented there.
+
+**Phase A adversarial-verification pass (done)**: a multi-agent Workflow (5
+independent finder lenses — rfc/concurrency/pool-lifecycle/error-edges/
+holistic — each adversarially verified by independent skeptics) reviewed
+the combined 12a-12d diff and surfaced 7 confirmed, real bugs missed by
+each sub-phase's own `/vreview` pass (all were cross-sub-phase interaction
+gaps, invisible to any single sub-phase's own diff-scoped review). All 7
+fixed, tested, and re-reviewed:
+1. **Fresh-dial first-request race** — `driver_loop` drains `c.pending`
+   (opening the first queued request's stream) before that same iteration
+   ever reads/polls the wire, so the very first request on a brand-new
+   connection could hit QUIC's own `STREAM_LIMIT` (peer transport
+   parameters not yet learned) or "QPACK encoder stream not open yet" —
+   and neither `h3_dial_and_do`'s nor `h3_await_dial`'s final call retried
+   on `h3_err_retryable_code`, making `enable_http3` fail on essentially
+   every first request to a fresh origin. Fixed with `h3_do_on_fresh_conn`
+   (`transport_h3.v`), a bounded same-connection retry distinct from
+   `h3_round_trip`'s own different-connection retry.
+2. **RFC 9114 §5.2 GOAWAY draining never implemented** — `dispatch_h3_
+   event`'s `.goaway` case only blocked new admission; it never read
+   `ev.goaway_id` or failed any already-open stream at/above the boundary
+   (unlike `h2_mux_conn.v`'s identical `H2GoawayFrame` handler), so an
+   in-flight request above the boundary could hang indefinitely or later
+   be marked non-retryable by `fail_conn`'s `!sent_headers` heuristic.
+   Fixed: the `.goaway` handler now walks `c.streams` and fails every
+   stream `id >= boundary` retryable, mirroring H2 exactly; `start_request`
+   also gained its own `goaway_received` check to close the narrow
+   admission-race window (a request queued just before GOAWAY, drained
+   just after).
+3. **`H3_REQUEST_REJECTED` (RFC 9114 §8.1) not retryable** — `dispatch_h3_
+   event`'s `.request_error` case hardcoded `retryable = false` for every
+   error code, unlike H2's `REFUSED_STREAM` parity check. Fixed.
+4. **Orphaned pooled connection leak** — `h3_dial_and_do`'s superseded-
+   connection cleanup called only `orphan.release()`, never `orphan.
+   shutdown_when_idle()`; unlike `H2MuxConn.release()`, `H3MuxConn.
+   release()` is a documented no-op for teardown, so the orphan's driver
+   thread + UDP socket leaked for the process's remaining lifetime. Fixed.
+5. **Self-terminated connection never removed from the pool** — unlike
+   `H2MuxConn` (a mandatory `close_transport` self-removal callback),
+   `H3MuxConn` had no way to tell `Transport` it died on its own (idle
+   timeout, fatal UDP error) — the dead entry stayed in `t.h3_conns`,
+   where `evict_oldest_idle_locked`'s h3 scan (checking only `active_
+   streams == 0`, not `can_take_new_request()`) could mistake it for a
+   genuinely idle connection and evict it instead of a real one elsewhere.
+   Fixed with an optional `on_retired` callback on `H3MuxConn`, mirroring
+   H2's pattern but nil-tolerant (H3's teardown doesn't depend on it the
+   way H2's blocked reader does).
+6. **Peer-controlled error code could collide with the retryable
+   sentinel** — a QUIC RESET_STREAM error code is a full peer-controlled
+   62-bit varint; narrowing it to `int` for `error_with_code` could
+   produce `h3_err_retryable_code` itself, causing a non-idempotent
+   request the server explicitly rejected to be silently replayed. Fixed:
+   only a positive `int()` result is trusted as a real error code.
+7. **Unbounded per-connection memory growth** — `H3Conn.request_streams`/
+   `request_decoders` were never pruned once a request finished, growing
+   with the total number of requests ever served by a long-lived pooled
+   connection rather than the number in flight. Fixed: both maps are
+   pruned in `finalize_request_stream_if_done`'s success path and in
+   `fail_request_stream`'s failure path.
+
+Two additional bugs found via this project's own follow-up review of the
+same code (not the Workflow, which hit its session limit before every
+verifier finished): a genuine RFC 9110 §15.2 gap where the request-stream
+message-framing state machine had no concept of 1xx informational
+responses at all, so a `103`-then-`200` sequence delivered the 103 as the
+final status and misdelivered the real 200 response's fields as trailers
+(fixed in `h3_request_stream.v`/`h3_conn.v`: the `.awaiting_response_
+headers` → `.in_body` phase transition is now deferred until the decoded
+`:status` is known non-1xx); and a `:status` pseudo-header validation gap
+in `wait_response` (no length/duplicate/ordering/unknown-pseudo-header
+checks, unlike `h2_mux_conn.v`'s equivalent), now fixed to match.
+
+Two scope decisions made without a response after being flagged for
+sign-off, proceeding with the lower-risk default in each case (revisitable
+during review): server push is permanently disabled for v1 (never sending
+MAX_PUSH_ID means no push is ever authorized per RFC 9114 §7.2.7, so any
+received PUSH_PROMISE/CANCEL_PUSH is unconditionally rejected
+`H3_ID_ERROR` — avoids building real max-push-id/seen-push-id cross-frame
+state for a feature v1 never uses); `enable_http3` has no automatic
+h2/h1 fallback if the h3 attempt fails (UDP has no fast-fail signal the
+way a closed TCP port does, so auto-racing every `https://` request
+against h3 would regress the common case; real happy-eyeballs-style
+fallback is deferred as a separate follow-up feature).
+
 13. Server support — explicitly out of committed scope, but Phases 1-9 are
     designed to need no rework for it (`role` field already present).
 14. 0-RTT — explicitly out of committed scope.

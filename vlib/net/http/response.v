@@ -13,8 +13,14 @@ import strings
 // Response represents the result of the request
 pub struct Response {
 pub mut:
-	body         string
-	header       Header
+	body   string
+	header Header
+	// trailers are emitted as a trailing HEADERS block by the HTTP/2 server
+	// path (net.http.h2_server.v) after the body, e.g. for `grpc-status`.
+	// Ignored by the HTTP/1.1 write path — H1 has no wire mechanism for this
+	// enabled here (chunked-encoding trailers are a separate, unimplemented
+	// feature), so fields set here simply do not appear on an H1 response.
+	trailers     Header
 	status_code  int
 	status_msg   string
 	http_version string
@@ -147,8 +153,8 @@ fn parse_status_line(line string) !(string, int, string) {
 		return error('response does not start with HTTP/, line: `${line}`')
 	}
 	data := line.split_nth(' ', 3)
-	if data.len != 3 {
-		return error('expected at least 3 tokens, but found: ${data.len}')
+	if data.len < 2 {
+		return error('expected at least 2 tokens, but found: ${data.len}')
 	}
 	version := data[0].substr(5, data[0].len)
 	// validate version is 1*DIGIT "." 1*DIGIT
@@ -161,7 +167,10 @@ fn parse_status_line(line string) !(string, int, string) {
 			return error('HTTP version must contain only integers, found: `${digit}`')
 		}
 	}
-	return version, strconv.atoi(data[1])!, data[2]
+	// RFC 9112 §4: the reason-phrase is optional, and servers that omit it
+	// sometimes omit the SP before it too.
+	reason := if data.len == 3 { data[2] } else { '' }
+	return version, strconv.atoi(data[1])!, reason
 }
 
 // cookies parses the Set-Cookie headers into Cookie objects
@@ -190,6 +199,7 @@ pub fn (r Response) version() Version {
 		'1.0' { .v1_0 }
 		'1.1' { .v1_1 }
 		'2.0' { .v2_0 }
+		'3.0' { .v3_0 }
 		else { .unknown }
 	}
 }

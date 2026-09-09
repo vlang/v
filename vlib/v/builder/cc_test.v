@@ -118,6 +118,20 @@ fn test_macos_compile_args_append_macosx_version_min_after_cflags() {
 	]
 }
 
+fn test_macos_clang_cstrict_ignores_trailing_language_reset_warning() {
+	compile_args := macos_compile_args([
+		'-os',
+		'macos',
+		'-cc',
+		'clang',
+		'-cstrict',
+		'-usecache',
+		hello_world_example(),
+	])
+	assert compile_args.contains('-x none')
+	assert compile_args.contains('-Wno-unused-command-line-argument')
+}
+
 fn test_cc_from_string_detects_cl_as_msvc() {
 	assert pref.cc_from_string('cl') == .msvc
 	assert pref.cc_from_string('C:/Program Files/Microsoft Visual Studio/cl.exe') == .msvc
@@ -319,6 +333,17 @@ fn test_linux_cross_target_for_arm64_errors() {
 		assert err.msg().contains('only `-arch amd64`')
 		assert err.msg().contains('linuxroot')
 	}
+}
+
+fn test_linux_cross_compile_include_arg_resolves_sysroot() {
+	sysroot := os.join_path(os.vtmp_dir(), 'cross root', 'linuxroot')
+	sysroot_include := os.join_path(sysroot, 'include')
+	include_arg := linux_cross_compile_include_arg(sysroot)
+	compile_command := 'clang ${include_arg} -c main.c'
+
+	assert include_arg == '-I ${os.quoted_path(sysroot_include)}'
+	assert compile_command.contains(os.quoted_path(sysroot_include))
+	assert !compile_command.contains('\${sysroot}')
 }
 
 fn test_git_symlink_target_path_detects_placeholder_file() {
@@ -585,6 +610,33 @@ fn test_shared_tcc_compile_args_skip_bt25_after_late_compiler_resolution() {
 	builder.setup_ccompiler_options(prefs.ccompiler)
 
 	assert !builder.get_compile_args().contains('-bt25')
+}
+
+fn test_macos_arm64_tcc_compile_args_skip_bt25() {
+	mut builder := new_test_builder([
+		'-os',
+		'macos',
+		'-arch',
+		'arm64',
+		'-cc',
+		'tcc',
+		hello_world_example(),
+	])
+	assert 'no_backtrace' in builder.pref.compile_defines_all
+	assert !builder.get_compile_args().contains('-bt25')
+}
+
+fn test_macos_amd64_tcc_compile_args_keep_bt25() {
+	mut builder := new_test_builder([
+		'-os',
+		'macos',
+		'-arch',
+		'amd64',
+		'-cc',
+		'tcc',
+		hello_world_example(),
+	])
+	assert builder.get_compile_args().contains('-bt25')
 }
 
 fn test_shared_build_module_keeps_shared_linker_flag() {

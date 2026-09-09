@@ -108,7 +108,20 @@ fn test_vschannel_pooled_transport_stable_address() {
 	addr1 := voidptr(&t.ctx)
 	mut buf := []u8{len: 4}
 	t.write([u8(1), 2, 3, 4]) or { assert false, 'write: ${err}' }
-	t.read(mut buf) or { assert false, 'read: ${err}' }
+	mut read_ok := false
+	mut last_read_error := ''
+	for _ in 0 .. 100 {
+		t.read(mut buf) or {
+			last_read_error = err.msg()
+			if is_transport_timeout_error(err) {
+				continue
+			}
+			break
+		}
+		read_ok = true
+		break
+	}
+	assert read_ok, 'read: ${last_read_error}'
 	addr2 := voidptr(&t.ctx)
 	assert addr1 == addr2, 'the embedded TlsContext must not move across calls'
 	t.close()

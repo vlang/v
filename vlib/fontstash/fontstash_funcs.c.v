@@ -4,10 +4,10 @@ module fontstash
 fn C.fonsCreateInternal(params &C.FONSparams) &C.FONScontext
 fn C.fonsDeleteInternal(s &C.FONScontext)
 
-fn C.fonsSetErrorCallback(s &C.FONScontext, callback fn (voidptr, int, int), uptr voidptr)
+fn C.fonsSetErrorCallback(s &C.FONScontext, callback fn (voidptr, i32, i32), uptr voidptr)
 
 // Returns current atlas size.
-fn C.fonsGetAtlasSize(s &C.FONScontext, width &int, height &int)
+fn C.fonsGetAtlasSize(s &C.FONScontext, width &i32, height &i32)
 
 // Expands the atlas size.
 fn C.fonsExpandAtlas(s &C.FONScontext, width i32, height i32) i32
@@ -46,8 +46,8 @@ fn C.fonsTextIterInit(s &C.FONScontext, iter &C.FONStextIter, x f32, y f32, str 
 fn C.fonsTextIterNext(s &C.FONScontext, iter &C.FONStextIter, quad &C.FONSquad) i32
 
 // Pull texture changes
-fn C.fonsGetTextureData(s &C.FONScontext, width &int, height &int) &char
-fn C.fonsValidateTexture(s &C.FONScontext, dirty &int) i32
+fn C.fonsGetTextureData(s &C.FONScontext, width &i32, height &i32) &char
+fn C.fonsValidateTexture(s &C.FONScontext, dirty &i32) i32
 
 // Draws the stash texture for debugging
 fn C.fonsDrawDebug(s &C.FONScontext, x f32, y f32)

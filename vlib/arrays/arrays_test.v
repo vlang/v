@@ -71,6 +71,17 @@ fn test_merge() {
 	assert merge[int](d, b) == b
 }
 
+fn test_merge_desc() {
+	a := [7, 5, 5, 3, 1]
+	b := [8, 6, 5, 4, 2]
+	c := []int{}
+	d := []int{}
+	assert merge_desc[int](a, b) == [8, 7, 6, 5, 5, 5, 4, 3, 2, 1]
+	assert merge_desc[int](c, d) == []
+	assert merge_desc[int](a, c) == a
+	assert merge_desc[int](d, b) == b
+}
+
 fn test_append() {
 	a := [1, 3, 5, 5, 7]
 	b := [2, 4, 4, 5, 6, 8]
@@ -402,6 +413,16 @@ fn test_copy() {
 	// check longer dst
 	assert copy(mut b, [8, 9]) == 2
 	assert b == [8, 9, 3, 7]
+}
+
+fn test_copy_overlapping_managed_elements() {
+	mut right := ['a', 'b', 'c', 'd']
+	assert copy(mut right[1..], right[..3]) == 3
+	assert right == ['a', 'a', 'b', 'c']
+
+	mut left := ['a', 'b', 'c', 'd']
+	assert copy(mut left[..3], left[1..]) == 3
+	assert left == ['b', 'c', 'd', 'd']
 }
 
 fn test_can_copy_bits() {

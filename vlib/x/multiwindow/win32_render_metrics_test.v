@@ -18,6 +18,25 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			backend.pixel_to_logical_rect(id, 1, 2, 3, 4) or { return err.msg() }
 			return ''
 		}
+
+		fn assert_win32_render_target_unowned_for_test(backend &Win32Backend, record &Win32WindowRecord) {
+			assert backend.device == unsafe { nil }
+			assert backend.device_ticket == 0
+			assert backend.device_context == unsafe { nil }
+			assert backend.device_context_ticket == 0
+			assert backend.factory == unsafe { nil }
+			assert backend.factory_ticket == 0
+			assert record.swapchain == unsafe { nil }
+			assert record.swapchain_ticket == 0
+			assert record.pending_backbuffer == unsafe { nil }
+			assert record.pending_backbuffer_ticket == 0
+			assert record.render_view == unsafe { nil }
+			assert record.render_view_ticket == 0
+			assert record.depth_texture == unsafe { nil }
+			assert record.depth_texture_ticket == 0
+			assert record.depth_stencil_view == unsafe { nil }
+			assert record.depth_stencil_view_ticket == 0
+		}
 	}
 }
 
@@ -229,5 +248,93 @@ fn test_win32_observed_framebuffer_change_does_not_advance_pending_resize() {
 		assert backend.windows[0].render_target_generation == generation
 		assert backend.windows[0].framebuffer_width == 640
 		assert backend.windows[0].framebuffer_height == 480
+	}
+}
+
+fn test_win32_uninitialized_renderer_preserves_pending_resize() {
+	$if windows && sokol_d3d11 ? && (gg_multiwindow ? || x_multiwindow_render ?) {
+		id := WindowId{
+			app_instance: 1
+			slot:         0
+			generation:   1
+		}
+		mut native_window_sentinel := 0
+		record := &Win32WindowRecord{
+			id:                       id
+			hwnd:                     voidptr(&native_window_sentinel)
+			framebuffer_width:        320
+			framebuffer_height:       240
+			render_resize_pending:    false
+			render_target_generation: 7
+		}
+		mut backend := Win32Backend{
+			render_health: .uninitialized
+			windows:       [record]
+		}
+		C.v_multiwindow_test_win32_configure_render_fixture(640, 480, 1, 0, 96, 1)
+		defer {
+			C.v_multiwindow_test_win32_reset_render_fixture()
+		}
+
+		initial_generation := record.render_target_generation
+		assert !record.render_resize_pending
+		assert record.framebuffer_width == 320
+		assert record.framebuffer_height == 240
+		assert initial_generation == 7
+		assert initial_generation != 0
+		assert backend.render_sequence == 0
+		assert backend.render_health == .uninitialized
+		assert_win32_render_target_unowned_for_test(&backend, record)
+		expected_generation := initial_generation + 1
+		initial_sequence := backend.render_sequence
+		first_updates := backend.collect_render_updates()!
+		assert first_updates.len == 1
+		first := first_updates[0]
+		assert first.window == id
+		assert first.sequence == initial_sequence + 1
+		assert !first.ready_credit
+		assert first.block_reason == .resize_pending
+		assert first.target.target_identity == expected_generation
+		first_record := backend.windows[0]
+		assert first_record.render_resize_pending
+		assert first_record.render_target_generation == expected_generation
+		assert first_record.framebuffer_width == 640
+		assert first_record.framebuffer_height == 480
+		assert backend.render_sequence == first.sequence
+		assert backend.render_health == .uninitialized
+		assert_win32_render_target_unowned_for_test(&backend, first_record)
+
+		second_updates := backend.collect_render_updates()!
+		assert second_updates.len == 1
+		second := second_updates[0]
+		assert second.window == id
+		assert second.sequence == first.sequence + 1
+		assert !second.ready_credit
+		assert second.block_reason == .resize_pending
+		assert second.target.target_identity == expected_generation
+		second_record := backend.windows[0]
+		assert second_record.render_resize_pending
+		assert second_record.render_target_generation == expected_generation
+		assert second_record.framebuffer_width == first_record.framebuffer_width
+		assert second_record.framebuffer_height == first_record.framebuffer_height
+		assert backend.render_sequence == second.sequence
+		assert backend.render_health == .uninitialized
+		assert_win32_render_target_unowned_for_test(&backend, second_record)
+
+		sequence_before_ready := backend.render_sequence
+		backend.render_health = .ready
+		if _ := backend.collect_render_updates() {
+			assert false
+		} else {
+			assert err.msg() == err_renderer_unsupported
+		}
+		after_ready_failure := backend.windows[0]
+		assert backend.render_sequence == sequence_before_ready
+		assert backend.render_health == .ready
+		assert after_ready_failure.render_resize_pending
+		assert after_ready_failure.render_target_generation == expected_generation
+		assert after_ready_failure.framebuffer_width == second_record.framebuffer_width
+		assert after_ready_failure.framebuffer_height == second_record.framebuffer_height
+		assert_win32_render_target_unowned_for_test(&backend, after_ready_failure)
 	}
 }

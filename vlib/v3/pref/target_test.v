@@ -127,6 +127,10 @@ fn test_c_compiler_comptime_flags_use_effective_compiler() {
 	prefs.backend = 'arm64'
 	assert comptime_flag_value(prefs, 'tinyc')
 	assert !comptime_flag_value(prefs, 'gcc')
+	prefs.backend = 'fastc'
+	assert comptime_flag_value(prefs, 'tinyc')
+	prefs.ccompiler = 'gcc'
+	assert !comptime_flag_value(prefs, 'tinyc')
 }
 
 fn test_source_selection_uses_target_os_and_arch() {

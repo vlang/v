@@ -636,14 +636,14 @@ fn main() {
 }
 ')!
 
-	c_cmd := '${test_vexe} -enable-globals -gc boehm -skip-unused -o - ${os.quoted_path(source_path)}'
+	c_cmd := '${test_vexe} -old-compiler -enable-globals -gc boehm -skip-unused -o - ${os.quoted_path(source_path)}'
 	c_res := os.execute(c_cmd)
 	assert c_res.exit_code == 0, '${c_cmd}\n${c_res.output}'
 	generated := c_res.output.replace('\r\n', '\n')
 	assert !generated.contains('builtin__memdup_uncollectable')
 	if generated.contains('sizeof(closure__ClosureLiveInfo)') {
 		assert_v3_closure_context_codegen(generated)
-		compile_cmd := '${test_vexe} -enable-globals -gc none -skip-unused -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
+		compile_cmd := '${test_vexe} -old-compiler -enable-globals -gc none -skip-unused -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
 		compile_res := os.execute(compile_cmd)
 		assert compile_res.exit_code == 0, '${compile_cmd}\n${compile_res.output}'
 		run_res := os.execute(os.quoted_path(exe_path))
@@ -962,7 +962,7 @@ fn main() {
 	assert go_fn.contains('/*spawn (thread) */') || go_fn.contains('/*go (coroutine) */')
 	assert !go_fn.contains('builtin__closure__closure_try_destroy((voidptr)h);')
 
-	compile_cmd := '${test_vexe} -enable-globals -gc none -skip-unused -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
+	compile_cmd := '${test_vexe} -old-compiler -enable-globals -gc none -skip-unused -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
 	compile_res := os.execute(compile_cmd)
 	assert compile_res.exit_code == 0, '${compile_cmd}\n${compile_res.output}'
 	run_res := os.execute(os.quoted_path(exe_path))

@@ -62,13 +62,12 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 
 	// out_0.c
 	out0 := '//out0\n' + result.out_str[..result.out_fn_start_pos[0]]
-	os.write_file('${tmp_dir}/out_0.c', '#include "out.h"\n' + out0 + '\n//X:\n' + result.out0_str) or {
+	os.write_file('${tmp_dir}/out_0.c', '#define V_PARALLEL_CC\n#define V_PARALLEL_CC_OUT_0\n#include "out.h"\n' + out0 + '\n//X:\n' + result.out0_str) or {
 		panic(err)
 	}
 
 	// out_x.c
-	os.write_file('${tmp_dir}/out_x.c', '#include "out.h"\n\n' + result.extern_str + '\n' +
-		result.out_str[result.out_fn_start_pos.last()..]) or { panic(err) }
+	os.write_file('${tmp_dir}/out_x.c', '#define V_PARALLEL_CC\n#include "out.h"\n\n' + result.extern_str + '\n' + result.out_str[result.out_fn_start_pos.last()..]) or { panic(err) }
 
 	mut prev_fn_pos := 0
 	mut out_files := []os.File{len: c_files}
@@ -80,7 +79,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 		out_files[i] = os.create(fname) or { panic(err) }
 
 		// Common .c file code
-		out_files[i].writeln('#include "out.h"\n') or { panic(err) }
+		out_files[i].writeln('#define V_PARALLEL_CC\n#include "out.h"\n') or { panic(err) }
 		out_files[i].writeln(result.extern_str) or { panic(err) }
 	}
 
@@ -139,8 +138,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 		}
 	}
 	scompile_args_for_linker := compile_args.filter(it != '-x objective-c').join(' ')
-	compile_args = parallel_cc_compile_driver_args(compile_args, b.has_pkgconfig_pthread(),
-		b.ccoptions.cc, b.pref.ccompiler_type)
+	compile_args = parallel_cc_compile_driver_args(compile_args, b.has_pkgconfig_pthread(), b.ccoptions.cc, b.pref.ccompiler_type)
 	scompile_args := compile_args.join(' ')
 	slinker_args := linker_args.map(parallel_cc_shell_safe_linker_arg(it)).join(' ')
 
@@ -158,13 +156,12 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	sw := time.new_stopwatch()
 	mut pp := pool.new_pool_processor(callback: build_parallel_o_cb)
 	pp.set_max_jobs(util.nr_jobs)
-	pp.work_on_pointers(unsafe { cmds.pointers() })
+	// PoolProcessor stores erased item pointers internally, so avoid a generic wrapper here.
+	unsafe { pp.work_on_pointers(cmds.pointers()) }
 	for result_ptr in pp.get_result_pointers() {
-		x := unsafe { &os.Result(result_ptr) }
-		failed += if x.exit_code == 0 { 0 } else { 1 }
+		failed += if isnil(result_ptr) { 0 } else { 1 }
 	}
-	eprint_time(sw,
-		'C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands, failed: ${failed}')
+	eprint_time(sw, 'C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands, failed: ${failed}')
 	if failed > 0 {
 		return error_with_code('failed parallel C compilation', failed)
 	}
@@ -201,13 +198,16 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 }
 
 fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, _wid int) voidptr {
-	cmd := unsafe { *(&string(p.get_item_ptr(idx))) }
+	cmd := p.get_item[string](idx)
 	sw := time.new_stopwatch()
 	res := os.execute(cmd)
 	eprint_result_time(sw, 'cc_cmd', cmd, res)
-	return voidptr(&os.Result{
-		...res
-	})
+	// The caller only needs success/failure. Returning a sentinel avoids keeping
+	// pointers to worker-local os.Result values after the workers have exited.
+	if res.exit_code == 0 {
+		return pool.no_result
+	}
+	return unsafe { voidptr(1) }
 }
 
 fn eprint_result_time(sw time.StopWatch, label string, cmd string, res os.Result) {

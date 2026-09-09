@@ -26,8 +26,8 @@ struct S24 {
 
 // Pair8 is 8 bytes with only 4 byte alignment (no field needs 8 byte alignment).
 struct Pair8 {
-	a int
-	b int
+	a i32
+	b i32
 }
 
 // Padded8 is 8 bytes and contains padding: a u8 followed by 3 padding bytes, then a u32.
@@ -191,11 +191,11 @@ fn test_push_pair8_low_alignment() {
 	assert sizeof(Pair8) == 8
 	mut a := []Pair8{}
 	for i in 0 .. 200 {
-		a << Pair8{i, i * 3}
+		a << Pair8{i32(i), i32(i * 3)}
 	}
 	for i in 0 .. 200 {
-		assert a[i].a == i
-		assert a[i].b == i * 3
+		assert a[i].a == i32(i)
+		assert a[i].b == i32(i * 3)
 	}
 }
 

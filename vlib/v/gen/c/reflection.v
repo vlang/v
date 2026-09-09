@@ -98,8 +98,9 @@ fn (g &Gen) gen_attrs_array(attrs []ast.Attr) string {
 	}
 	mut items := []string{cap: attrs.len}
 	for attr in attrs {
-		items << '((${type_name}){.name=_S("${cescape_nonascii(util.smart_quote(attr.name, false))}"),.has_arg=${attr.has_arg},.arg=_S("${cescape_nonascii(util.smart_quote(attr.arg,
-			false))}"),.kind=${int(attr.kind)}})'
+		items << '((${type_name}){.name=_S("${cescape_nonascii(util.smart_quote(attr.name, false,
+			attr.name_opaque_pos))}"),.has_arg=${attr.has_arg},.arg=_S("${cescape_nonascii(util.smart_quote(attr.arg,
+			false, attr.arg_opaque_pos))}"),.kind=${int(attr.kind)}})'
 	}
 	mut out := 'builtin__new_array_from_c_array(${attrs.len},${attrs.len},sizeof(${type_name}),'
 	out += '_MOV((${type_name}[${attrs.len}]){'

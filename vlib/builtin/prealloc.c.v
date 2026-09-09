@@ -9,10 +9,10 @@ $if !freestanding && !vinix {
 	}
 }
 
-fn C.v_prealloc_atomic_add_i32(ptr &int, delta int) int
-fn C.v_prealloc_atomic_load_i32(ptr &int) int
-fn C.v_prealloc_atomic_store_i32(ptr &int, val int) int
-fn C.v_prealloc_atomic_cas_i32(ptr &int, expected int, desired int) int
+fn C.v_prealloc_atomic_add_i32(ptr &i32, delta int) int
+fn C.v_prealloc_atomic_load_i32(ptr &i32) int
+fn C.v_prealloc_atomic_store_i32(ptr &i32, val int) int
+fn C.v_prealloc_atomic_cas_i32(ptr &i32, expected int, desired int) int
 fn C.v_prealloc_atomic_add_i64(ptr &i64, delta i64) i64
 fn C.v_prealloc_atomic_load_i64(ptr &i64) i64
 
@@ -115,17 +115,20 @@ mut:
 @[heap]
 struct VPreallocScope {
 mut:
-	previous       &VMemoryBlock = 0
-	first          &VMemoryBlock = 0
-	min_address    usize
-	max_address    usize
-	ranges         &VPreallocRange = 0
-	ranges_len     int
-	ranges_cap     int
-	refs           int
-	free_requested int
-	abandoned      int
-	finalized      int
+	previous    &VMemoryBlock = 0
+	first       &VMemoryBlock = 0
+	min_address usize
+	max_address usize
+	ranges      &VPreallocRange = 0
+	ranges_len  int
+	ranges_cap  int
+	// Accessed through the C `_i32` atomics (`&scope.refs` etc.) as 4-byte ints; keep
+	// them i32 so the pointer passed to the atomic matches the C `int32_t*` and the
+	// atomic operates on the real shared field (not a bridged temporary).
+	refs           i32
+	free_requested i32
+	abandoned      i32
+	finalized      i32
 }
 
 @[unsafe]

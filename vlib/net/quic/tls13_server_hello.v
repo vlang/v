@@ -78,7 +78,7 @@ pub fn parse_extension_list(buf []u8) ![]TlsExtension {
 		}
 		seen[typ] = true
 		extensions << TlsExtension{
-			typ:  typ
+			typ: typ
 			data: buf[cursor..cursor + length].clone()
 		}
 		cursor += length
@@ -189,8 +189,7 @@ const hello_retry_request_allowed = [ext_supported_versions, ext_key_share, ext_
 fn reject_unsolicited_extensions(extensions []TlsExtension, allowed []u16, context string) ! {
 	for e in extensions {
 		if e.typ !in allowed {
-			return error_with_code('quic: ${context} contains extension 0x${e.typ:04x}, which this client did not offer or which RFC 8446 §4.2 does not permit here',
-				int(tls_alert_to_quic_error(.unsupported_extension)))
+			return error_with_code('quic: ${context} contains extension 0x${e.typ:04x}, which this client did not offer or which RFC 8446 §4.2 does not permit here', int(tls_alert_to_quic_error(.unsupported_extension)))
 		}
 	}
 }
@@ -266,11 +265,11 @@ pub fn parse_server_hello(body []u8) !ServerHelloMessage {
 			cookie = parse_cookie_extension(cookie_ext.data)!
 		}
 		return ParsedHelloRetryRequest{
-			cipher_suite:     cipher_suite
+			cipher_suite: cipher_suite
 			selected_version: selected_version
-			selected_group:   selected_group
-			cookie:           cookie
-			extensions:       extensions
+			selected_group: selected_group
+			cookie: cookie
+			extensions: extensions
 		}
 	}
 
@@ -293,12 +292,12 @@ pub fn parse_server_hello(body []u8) !ServerHelloMessage {
 	}
 
 	return ParsedServerHello{
-		random:                 random
-		cipher_suite:           cipher_suite
-		selected_version:       selected_version
-		key_share_group:        key_share_group
+		random: random
+		cipher_suite: cipher_suite
+		selected_version: selected_version
+		key_share_group: key_share_group
 		key_share_key_exchange: ks_ext.data[4..].clone()
-		extensions:             extensions
+		extensions: extensions
 	}
 }
 
@@ -343,8 +342,7 @@ pub fn parse_encrypted_extensions(body []u8) ![]TlsExtension {
 	}
 	extensions := parse_extension_list(body[2..])!
 	if _ := find_extension(extensions, ext_early_data) {
-		return error_with_code('quic: EncryptedExtensions must not contain early_data (0-RTT is not offered)',
-			int(tls_alert_to_quic_error(.unsupported_extension)))
+		return error_with_code('quic: EncryptedExtensions must not contain early_data (0-RTT is not offered)', int(tls_alert_to_quic_error(.unsupported_extension)))
 	}
 	if sn_ext := find_extension(extensions, ext_server_name) {
 		// RFC 6066 §3: "the server SHALL include an extension of type
@@ -387,8 +385,7 @@ pub fn parse_encrypted_extensions(body []u8) ![]TlsExtension {
 	}
 	for e in extensions {
 		if e.typ !in encrypted_extensions_allowed {
-			return error_with_code('quic: EncryptedExtensions contains extension 0x${e.typ:04x}, which this client did not offer or which RFC 8446 §4.2 does not permit here',
-				int(tls_alert_to_quic_error(.unsupported_extension)))
+			return error_with_code('quic: EncryptedExtensions contains extension 0x${e.typ:04x}, which this client did not offer or which RFC 8446 §4.2 does not permit here', int(tls_alert_to_quic_error(.unsupported_extension)))
 		}
 	}
 	return extensions

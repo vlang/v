@@ -17,13 +17,15 @@ fn (mut app App) run_managed(config RunConfig) ! {
 	has_app_frame := config.frame_fn != unsafe { nil }
 	has_events := config.event_fn != unsafe { nil }
 	has_input := config.input_fn != unsafe { nil }
+	has_services := config.window_service_fn != unsafe { nil }
+	has_readback := config.readback_fn != unsafe { nil }
 	has_window_frames := app.refresh_has_window_frames(has_app_frame)!
 	has_window_initializers := app.render_runtime.has_pending_window_initializers()
 	has_app_resources := config.app_resource_init_fn != unsafe { nil }
 		|| config.app_resource_frame_fn != unsafe { nil }
 		|| config.app_resource_cleanup_fn != unsafe { nil }
 	if !has_app_frame && !has_window_frames && !has_window_initializers && !has_events && !has_input
-		&& !has_app_resources {
+		&& !has_services && !has_readback && !has_app_resources {
 		return error(err_multiwindow_nil_run_fn)
 	}
 	if (has_app_frame || has_window_frames || has_window_initializers || has_app_resources)
@@ -37,7 +39,9 @@ fn (mut app App) run_managed(config RunConfig) ! {
 	app.legacy_render_mode = has_app_frame
 	mut errors := []string{}
 	app.run_accepted_managed(config, has_app_frame, has_window_frames, has_window_initializers,
-		has_events, has_input, has_app_resources) or { errors << err.msg() }
+		has_events, has_input, has_services, has_readback, has_app_resources) or {
+		errors << err.msg()
+	}
 	app.stop_now() or { errors << err.msg() }
 	app.legacy_render_mode = false
 	if app.terminal_error != '' {
@@ -57,14 +61,15 @@ fn (app &App) refresh_has_window_frames(has_app_frame bool) !bool {
 	return has_window_frames
 }
 
-fn (mut app App) run_accepted_managed(config RunConfig, has_app_frame bool, initial_has_window_frames bool, initial_has_window_initializers bool, has_events bool, has_input bool, has_app_resources bool) ! {
+fn (mut app App) run_accepted_managed(config RunConfig, has_app_frame bool, initial_has_window_frames bool, initial_has_window_initializers bool, has_events bool, has_input bool, has_services bool, has_readback bool, has_app_resources bool) ! {
 	mut has_window_frames := initial_has_window_frames
 	mut has_window_initializers := initial_has_window_initializers
 	mut render_initialized := false
 	mut logical_only_batch_done := false
 	for app.core.status() == .running {
 		polled_events := app.poll_events()!
-		mut dispatched := app.dispatch_managed_events(config.event_fn, config.input_fn)!
+		mut dispatched := app.dispatch_managed_events(config.event_fn, config.input_fn,
+			config.window_service_fn, config.readback_fn)!
 		if app.core.status() != .running {
 			break
 		}
@@ -97,7 +102,8 @@ fn (mut app App) run_accepted_managed(config RunConfig, has_app_frame bool, init
 		if app.core.status() != .running {
 			break
 		}
-		dispatched += app.dispatch_managed_events(config.event_fn, config.input_fn)!
+		dispatched += app.dispatch_managed_events(config.event_fn, config.input_fn,
+			config.window_service_fn, config.readback_fn)!
 		if app.core.status() != .running {
 			break
 		}
@@ -135,8 +141,8 @@ fn (mut app App) run_accepted_managed(config RunConfig, has_app_frame bool, init
 		}
 		has_window_frames = app.refresh_has_window_frames(has_app_frame)!
 		if logical_only_batch_done && !has_app_frame && !has_window_frames && !has_events
-			&& !has_input && config.app_resource_frame_fn == unsafe { nil }
-			&& app.window_ids()!.len == 0 {
+			&& !has_input && !has_services && !has_readback
+			&& config.app_resource_frame_fn == unsafe { nil } && app.window_ids()!.len == 0 {
 			app.stop()!
 			break
 		}
@@ -146,11 +152,11 @@ fn (mut app App) run_accepted_managed(config RunConfig, has_app_frame bool, init
 	}
 }
 
-fn (mut app App) dispatch_managed_events(event_fn AppEventFn, input_fn AppInputFn) !int {
+fn (mut app App) dispatch_managed_events(event_fn AppEventFn, input_fn AppInputFn, service_fn WindowServiceFn, readback_fn WindowReadbackFn) !int {
 	app_ptr := unsafe { voidptr(&app) }
-	callback := fn [app_ptr, event_fn, input_fn] (event multiwindow.QueuedEvent) !bool {
+	callback := fn [app_ptr, event_fn, input_fn, service_fn, readback_fn] (event multiwindow.QueuedEvent) !bool {
 		mut facade := unsafe { &App(app_ptr) }
-		facade.dispatch_one_managed_event(event, event_fn, input_fn)!
+		facade.dispatch_one_managed_event(event, event_fn, input_fn, service_fn, readback_fn)!
 		return !facade.render_runtime.has_deferred_transitions()
 	}
 	mut dispatched := 0
@@ -169,7 +175,7 @@ fn (mut app App) dispatch_managed_events(event_fn AppEventFn, input_fn AppInputF
 	return dispatched
 }
 
-fn (mut app App) dispatch_one_managed_event(event multiwindow.QueuedEvent, event_fn AppEventFn, input_fn AppInputFn) ! {
+fn (mut app App) dispatch_one_managed_event(event multiwindow.QueuedEvent, event_fn AppEventFn, input_fn AppInputFn, service_fn WindowServiceFn, readback_fn WindowReadbackFn) ! {
 	match event.kind {
 		.lifecycle {
 			window_event := window_event_from_core(event.lifecycle)
@@ -200,6 +206,32 @@ fn (mut app App) dispatch_one_managed_event(event multiwindow.QueuedEvent, event
 				}
 			}
 		}
+		.service {
+			if service_fn != unsafe { nil } {
+				app.render_runtime.begin_user_callback()
+				mut callback_error := IError(none)
+				service_fn(window_service_event_from_core(event.service), mut app) or {
+					callback_error = err
+				}
+				app.render_runtime.end_user_callback()
+				if callback_error !is none {
+					return callback_error
+				}
+			}
+		}
+		.readback {
+			if readback_fn != unsafe { nil } {
+				app.render_runtime.begin_user_callback()
+				mut callback_error := IError(none)
+				readback_fn(window_readback_result_from_core(event.readback), mut app) or {
+					callback_error = err
+				}
+				app.render_runtime.end_user_callback()
+				if callback_error !is none {
+					return callback_error
+				}
+			}
+		}
 	}
 }
 
@@ -221,20 +253,50 @@ fn (mut app App) run_render_batch(legacy bool, frame_fn AppFrameFn) !int {
 	}
 	outcome := if legacy {
 		app.core.with_legacy_render_batch(callback) or {
+			batch_error := err.msg()
+			mut errors := [batch_error]
+			app.fail_managed_window_captures_for_batch(app.active_batch_epoch, batch_error) or {
+				errors << err.msg()
+			}
+			$if linux {
+				$if x_multiwindow_x11 ? || sokol_wayland ? {
+					app.fail_linux_gl_image_readbacks_for_batch(app.active_batch_epoch, batch_error) or {
+						errors << err.msg()
+					}
+				}
+			}
 			app.latch_renderer_terminal_failure_if_unusable()
 			app.render_runtime.abort_active_batch()
 			app.clear_active_batch_state()
-			return err
+			return error(errors.join('; '))
 		}
 	} else {
 		app.core.with_scheduled_render_batch(callback) or {
+			batch_error := err.msg()
+			mut errors := [batch_error]
+			app.fail_managed_window_captures_for_batch(app.active_batch_epoch, batch_error) or {
+				errors << err.msg()
+			}
+			$if linux {
+				$if x_multiwindow_x11 ? || sokol_wayland ? {
+					app.fail_linux_gl_image_readbacks_for_batch(app.active_batch_epoch, batch_error) or {
+						errors << err.msg()
+					}
+				}
+			}
 			app.latch_renderer_terminal_failure_if_unusable()
 			app.render_runtime.abort_active_batch()
 			app.clear_active_batch_state()
-			return err
+			return error(errors.join('; '))
 		}
 	}
 	mut terminal_errors := []string{}
+	app.finish_managed_window_captures(outcome) or { terminal_errors << err.msg() }
+	$if linux {
+		$if x_multiwindow_x11 ? || sokol_wayland ? {
+			app.finish_linux_gl_image_readbacks(outcome) or { terminal_errors << err.msg() }
+		}
+	}
 	sokol_available := app.core.renderer_device_available_for_gg()
 	app.render_runtime.finish_batch(outcome.batch_epoch, outcome.committed, sokol_available) or {
 		terminal_errors << err.msg()
@@ -418,6 +480,8 @@ fn (mut app App) invoke_window_frame(id WindowId, snapshot multiwindow.RenderWin
 		WindowContext{}
 	}
 	if context.lease_epoch != 0 {
+		app.bind_managed_window_capture_attempts(id, info.submitted_frame + 1,
+			app.active_batch_epoch)
 		app.render_runtime.begin_user_callback()
 		callback(mut context) or { errors << err }
 		app.render_runtime.end_user_callback()
@@ -445,6 +509,8 @@ fn (mut app App) invoke_window_frame(id WindowId, snapshot multiwindow.RenderWin
 		finish_frame:    context.lease_epoch != 0
 		target_attached: true
 	}, errors)!
+	app.stage_managed_window_captures(id, info.submitted_frame + 1,
+		info.metrics.framebuffer_size.height)!
 }
 
 fn (mut app App) draw_window_managed(id WindowId, draw WindowDrawFn) ! {
@@ -477,6 +543,8 @@ fn (mut app App) draw_window_managed(id WindowId, draw WindowDrawFn) ! {
 	}
 	mut pass_epoch := u64(0)
 	if context.lease_epoch != 0 {
+		app.bind_managed_window_capture_attempts(id, info.submitted_frame + 1,
+			app.active_batch_epoch)
 		pass_epoch = app.render_runtime.begin_pass(id, context.lease_epoch, true, true, target_key) or {
 			errors << err
 			u64(0)
@@ -530,22 +598,46 @@ fn (mut app App) draw_window_managed(id WindowId, draw WindowDrawFn) ! {
 		target_attached: true
 		sgl_flushed:     sgl_flushed
 	}, errors)!
+	app.stage_managed_window_captures(id, info.submitted_frame + 1,
+		info.metrics.framebuffer_size.height)!
 }
 
 fn (mut app App) destroy_window_managed(id WindowId, reason WindowCleanupReason) ! {
 	app.ensure_initialized()!
 	app.assert_owner_thread() or { return error(err_multiwindow_render_owner_thread) }
 	app.core.ensure_event_admission_for_gg()!
-	if app.render_runtime.defer_destroy_in_callback(id)! {
+	if !app.window_exists(id) {
+		return app.core.destroy_window(id.core)
+	}
+	core_order := app.core.window_destroy_order(id.core)!
+	mut order := []WindowId{cap: core_order.len}
+	for core_id in core_order {
+		order << window_id_from_core(core_id)
+	}
+	if app.render_runtime.admit_destroy_order(order, reason)! {
 		return
 	}
-	app.destroy_window_now(id, reason)!
-	app.flush_deferred_transitions()!
+	mut errors := []IError{}
+	for window in order {
+		app.destroy_window_now(window, reason) or {
+			errors << err
+			if app.window_exists(window) {
+				break
+			}
+		}
+	}
+	app.flush_deferred_transitions() or { errors << err }
+	if errors.len > 0 {
+		return aggregate_managed_ierror(err_multiwindow_render_cleanup_failed, errors)
+	}
 }
 
 fn (mut app App) destroy_window_now(id WindowId, reason WindowCleanupReason) ! {
 	if !app.window_exists(id) {
 		return app.core.destroy_window(id.core)
+	}
+	if message := app.render_runtime.take_internal_fault(.teardown_prepare) {
+		return error(message)
 	}
 	ticket := app.core.prepare_window_destroy(id.core)!
 	app.render_runtime.begin_destroy(id, reason) or {
@@ -571,6 +663,7 @@ fn (mut app App) finish_sealed_window_destroy(ticket multiwindow.WindowDestroyTi
 		app.run_window_cleanup_terminal(id, reason, final_snapshot) or { errors << err.msg() }
 	}
 	app.core.finish_window_destroy(ticket, errors) or { errors << err.msg() }
+	app.discard_window_capture_requests(id)
 	if errors.len > 0 {
 		return error('${err_multiwindow_render_cleanup_failed}: ${unique_managed_errors(errors).join('; ')}')
 	}
@@ -726,7 +819,7 @@ fn (mut app App) stop_now() ! {
 	}
 	app.render_runtime.begin_stop()
 	app.consume_backend_teardowns() or { errors << err.msg() }
-	ids := app.core.window_ids() or {
+	ids := app.core.live_window_ids_for_stop_for_gg() or {
 		errors << err.msg()
 		[]multiwindow.WindowId{}
 	}
@@ -943,10 +1036,21 @@ fn (mut app App) apply_deferred_transitions(transitions MultiWindowDeferredTrans
 		app.stop_now()!
 		return
 	}
-	for id in transitions.windows {
+	mut errors := []IError{}
+	for index, id in transitions.windows {
 		if app.window_exists(id) {
-			app.destroy_window_now(id, .requested)!
+			app.destroy_window_now(id, .requested) or {
+				errors << err
+				if app.window_exists(id) {
+					app.render_runtime.restore_deferred_destroy_order(transitions.windows[index..],
+						.requested) or { errors << err }
+					break
+				}
+			}
 		}
+	}
+	if errors.len > 0 {
+		return aggregate_managed_ierror(err_multiwindow_render_cleanup_failed, errors)
 	}
 }
 

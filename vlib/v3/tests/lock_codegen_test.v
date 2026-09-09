@@ -65,7 +65,7 @@ fn lock_codegen_fn_fragment(c_code string, name string) string {
 }
 
 fn lock_codegen_counter_fn_fragment(c_code string, name string, return_type string) string {
-	start := c_code.index('\n${return_type} ${name}(Counter* c) {') or { return '' }
+	start := c_code.index('\n${return_type} ${name}(main__Counter* c) {') or { return '' }
 	rest := c_code[start + 1..]
 	body_start := rest.index(') {') or { return rest }
 	after_body_start := rest[body_start + 3..]
@@ -430,9 +430,8 @@ fn main() {
 ')
 	assert c_code.contains('struct __shared__int {'), c_code
 	assert c_code.contains('\tint val;'), c_code
-	assert c_code.contains('struct Box_int {'), c_code
-	assert c_code.contains('\t__shared__int* item;'), c_code
-	assert !c_code.contains('\tint item;'), c_code
+	assert c_code.contains('struct main__Box_int {\n\t__shared__int* item;'), c_code
+	assert !c_code.contains('struct main__Box_int {\n\tint item;'), c_code
 	assert !c_code.contains('__shared__T'), c_code
 	assert c_code.contains('b->item->val'), c_code
 }
@@ -455,4 +454,81 @@ fn main() {
 	assert c_code.contains('\t__shared__Optional* a;'), c_code
 	assert c_code.contains('\t__shared__Optional_string* b;'), c_code
 	assert !c_code.contains('struct __shared__Optional {\n\tsync__RwMutex mtx;\n\tOptional_string val;'), c_code
+}
+
+fn test_shared_map_field_stringification_reads_payload() {
+	c_code := lock_codegen_gen_c_sources('shared_map_field_stringification', {
+		'main.v':         'module main
+
+import binary
+
+struct SharedFieldStruct {
+	other int
+}
+
+fn main() {
+	println(binary.SharedFieldStruct{})
+}
+'
+		'binary/types.v': 'module binary
+
+pub struct SharedFieldStruct {
+pub mut:
+	values shared map[string]string
+}
+'
+	})
+	assert c_code.contains('.values->val, 1, 1, 0)'), c_code
+}
+
+fn test_shared_field_fallback_disambiguates_plain_homonym() {
+	c_code := lock_codegen_gen_c_sources('shared_field_plain_homonym', {
+		'main.v':          'module main
+
+import guarded
+import plain
+
+fn main() {
+	guarded_record := guarded.Record{}
+	plain_record := plain.Record{}
+	println(guarded_record)
+	println(plain_record)
+}
+'
+		'guarded/types.v': 'module guarded
+
+pub struct Record {
+pub mut:
+	values shared map[string]string
+}
+'
+		'plain/types.v':   'module plain
+
+pub struct Record {
+pub:
+	values map[string]string
+}
+'
+	})
+	assert c_code.contains('v3_map_str(guarded_record.values->val, 1, 1, 0)'), c_code
+	assert c_code.contains('v3_map_str(plain_record.values, 1, 1, 0)'), c_code
+	assert !c_code.contains('v3_map_str(plain_record.values->val,'), c_code
+}
+
+fn test_array_of_shared_append_boxes_payload() {
+	c_code := lock_codegen_gen_c('array_of_shared_append', 'struct Item {
+	value int
+}
+
+fn main() {
+	mut items := []shared Item{}
+	item := Item{
+		value: 7
+	}
+	items << item
+}
+')
+	assert c_code.contains('array_push(&items, &(__shared__main__main__Item*[]){'), c_code
+	assert c_code.contains('__dup__shared__main__main__Item'), c_code
+	assert !c_code.contains('main__Item __arr_val_0 = item;\n\tarray_push(&items, &__arr_val_0);'), c_code
 }

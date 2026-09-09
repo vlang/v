@@ -1,0 +1,12 @@
+vlib/v/parser/tests/embed_file_as_returned_branch_value.vv:15:9: error: undefined ident: `missing_symbol`
+   13 |     data := load(true)
+   14 |     assert data.path.len > 0
+   15 |     assert missing_symbol == 0
+      |            ~~~~~~~~~~~~~~
+   16 | }
+vlib/v/parser/tests/embed_file_as_returned_branch_value.vv:15:9: error: assert can be used only with `bool` expressions, but found `void` instead
+   13 |     data := load(true)
+   14 |     assert data.path.len > 0
+   15 |     assert missing_symbol == 0
+      |            ~~~~~~~~~~~~~~~~~~~
+   16 | }

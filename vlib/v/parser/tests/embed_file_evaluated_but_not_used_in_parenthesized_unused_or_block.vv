@@ -1,0 +1,12 @@
+import v.embed_file
+
+fn maybe_file() ?embed_file.EmbedFileData {
+	return none
+}
+
+fn main() {
+	(maybe_file() or {
+		// fallback value
+		$embed_file(@FILE)
+	})
+}

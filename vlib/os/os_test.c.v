@@ -1107,7 +1107,8 @@ fn test_execute() {
 	defer {
 		os.rm(print0script) or {}
 	}
-	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(print0script)}')
+	result :=
+		os.execute('${os.quoted_path(@VEXE)} -old-compiler run ${os.quoted_path(print0script)}')
 	hexresult := result.output.hex()
 	// println('exit_code: ${result.exit_code}')
 	// println('output: |${result.output}|')

@@ -4,6 +4,73 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 	import sokol.gfx
 }
 
+const service_appkit_abi_version = u32(1)
+const service_appkit_clipboard_max_bytes = 16 * 1024 * 1024
+const service_appkit_max_monitors = 256
+const service_appkit_monitor_name_max_bytes = 4096
+const service_appkit_result_ok = 1
+const service_appkit_result_unavailable = 0
+const service_appkit_result_failed = -1
+const service_appkit_result_capacity = -2
+const service_appkit_result_indeterminate = -3
+const service_appkit_readback_ready = 1
+const service_appkit_readback_failed = 3
+
+struct AppKitServiceRawWindowState {
+	mapping           int
+	visibility        int
+	active            int
+	focused           int
+	minimized         int
+	maximized         int
+	fullscreen        int
+	mouse_locked      int
+	position_known    int
+	x                 int
+	y                 int
+	monitor_native_id u64
+	scale             f32
+}
+
+struct AppKitServiceQueuedSnapshot {
+	valid              bool
+	kind               int
+	operation          int
+	state              AppKitServiceRawWindowState
+	window_width       int
+	window_height      int
+	framebuffer_width  int
+	framebuffer_height int
+}
+
+struct AppKitServiceRawMonitor {
+	native_id   u64
+	name        string
+	x           int
+	y           int
+	width       int
+	height      int
+	work_x      int
+	work_y      int
+	work_width  int
+	work_height int
+	scale       f32
+	primary     int
+}
+
+struct AppKitServiceMonitorRecord {
+mut:
+	native_id  u64
+	slot       int
+	generation u32
+	available  bool
+}
+
+struct AppKitServiceMonitorPlan {
+	records  []AppKitServiceMonitorRecord
+	monitors []ServiceMonitorInfo
+}
+
 $if darwin {
 	#flag darwin -fobjc-arc
 	#flag darwin -framework Cocoa
@@ -18,32 +85,59 @@ $if darwin {
 	@[typedef]
 	struct C.VMultiwindowAppKitQueuedEvent {
 	mut:
-		sequence           u64
-		event_kind         int
-		lifecycle_kind     int
-		input_kind         int
-		key_code           int
-		char_code          u32
-		key_repeat         int
-		modifiers          u32
-		mouse_button       int
-		mouse_x            f32
-		mouse_y            f32
-		mouse_dx           f32
-		mouse_dy           f32
-		scroll_x           f32
-		scroll_y           f32
-		window_width       int
-		window_height      int
-		framebuffer_width  int
-		framebuffer_height int
-		dropped_file_count int
-		dropped_files      &&char = unsafe { nil }
-		touch_count        int
-		touch_ids          [8]u64
-		touch_x            [8]f32
-		touch_y            [8]f32
-		touch_changed      [8]int
+		sequence                  u64
+		event_kind                int
+		lifecycle_kind            int
+		input_kind                int
+		key_code                  int
+		char_code                 u32
+		key_repeat                int
+		modifiers                 u32
+		mouse_button              int
+		mouse_x                   f32
+		mouse_y                   f32
+		mouse_dx                  f32
+		mouse_dy                  f32
+		scroll_x                  f32
+		scroll_y                  f32
+		window_width              int
+		window_height             int
+		framebuffer_width         int
+		framebuffer_height        int
+		service_snapshot_valid    int
+		service_kind              int
+		service_operation         int
+		service_mapping           int
+		service_visibility        int
+		service_active            int
+		service_focused           int
+		service_minimized         int
+		service_maximized         int
+		service_fullscreen        int
+		service_mouse_locked      int
+		service_position_known    int
+		service_x                 int
+		service_y                 int
+		service_monitor_native_id u64
+		service_scale             f32
+		dropped_file_count        int
+		dropped_files             &&char = unsafe { nil }
+		touch_count               int
+		touch_ids                 [8]u64
+		touch_x                   [8]f32
+		touch_y                   [8]f32
+		touch_changed             [8]int
+	}
+
+	$if gg_multiwindow ? || x_multiwindow_render ? {
+		@[typedef]
+		struct C.sg_mtl_image_info {
+		mut:
+			tex         [2]voidptr
+			active_slot int
+		}
+
+		fn C.sg_mtl_query_image_info(image gfx.Image) C.sg_mtl_image_info
 	}
 
 	fn C.v_multiwindow_appkit_is_main_thread() int
@@ -72,6 +166,52 @@ $if darwin {
 	fn C.v_multiwindow_appkit_render_snapshot(state voidptr, out_visible &int, out_miniaturized &int, out_occluded &int, out_width &int, out_height &int, out_framebuffer_width &int, out_framebuffer_height &int, out_scale &f32) int
 	fn C.v_multiwindow_appkit_logical_to_pixel_rect(state voidptr, x f32, y f32, width f32, height f32, out_x &int, out_y &int, out_width &int, out_height &int) int
 	fn C.v_multiwindow_appkit_pixel_to_logical_rect(state voidptr, x int, y int, width int, height int, out_x &f32, out_y &f32, out_width &f32, out_height &f32) int
+
+	// Package-2 AppKit service ABI v1. All calls are made on the AppKit main
+	// thread. General return values are 1 success/data, 0 unavailable/no data,
+	// and negative native failure. Clipboard operations additionally return -2
+	// for capacity and -3 when a replacement cannot be rolled back. Capability
+	// returns 0 unsupported, 1 available, or 2 conditional.
+	// Operation is 0..16 in ServiceOperation declaration order.
+	// State ordinals are mapping 0 unknown/1 unmapped/2 mapped; visibility
+	// 0 unknown/1 hidden/2 visible/3 occluded; observed bool 0 unknown/1 off/2 on.
+	// Titlebar appearance is 0 system/1 light/2 dark. Readback status is 1 ready
+	// or 3 failed; native cancellation never publishes a terminal. The ABI version is 1.
+	fn C.v_multiwindow_appkit_service_abi_version() u32
+	fn C.v_multiwindow_appkit_service_capability(state voidptr, operation int, renderer_ready int) int
+	fn C.v_multiwindow_appkit_service_window_state(state voidptr, out_mapping &int, out_visibility &int, out_active &int, out_focused &int, out_minimized &int, out_maximized &int, out_fullscreen &int, out_mouse_locked &int, out_position_known &int, out_x &int, out_y &int, out_monitor_native_id &u64, out_scale &f32) int
+	fn C.v_multiwindow_appkit_service_show_window(state voidptr) int
+	fn C.v_multiwindow_appkit_service_hide_window(state voidptr) int
+	fn C.v_multiwindow_appkit_service_focus_window(state voidptr) int
+	fn C.v_multiwindow_appkit_service_raise_window(state voidptr) int
+	fn C.v_multiwindow_appkit_service_set_window_position(state voidptr, x int, y int) int
+	fn C.v_multiwindow_appkit_service_minimize_window(state voidptr) int
+	fn C.v_multiwindow_appkit_service_maximize_window(state voidptr) int
+	fn C.v_multiwindow_appkit_service_restore_window(state voidptr) int
+	fn C.v_multiwindow_appkit_service_set_fullscreen(state voidptr, enabled int) int
+	fn C.v_multiwindow_appkit_service_monitor_revision() u64
+	fn C.v_multiwindow_appkit_service_monitor_count() int
+	fn C.v_multiwindow_appkit_service_monitor_info(index int, out_native_id &u64, out_x &int, out_y &int, out_width &int, out_height &int, out_work_x &int, out_work_y &int, out_work_width &int, out_work_height &int, out_scale &f32, out_primary &int, out_name_length &usize) int
+	fn C.v_multiwindow_appkit_service_copy_monitor_name(index int, out_name &char, capacity usize) int
+	fn C.v_multiwindow_appkit_service_set_clipboard_text(state voidptr, text &char, text_length usize) int
+	fn C.v_multiwindow_appkit_service_clipboard_text_length(state voidptr, out_length &usize) int
+	fn C.v_multiwindow_appkit_service_copy_clipboard_text(state voidptr, out_text &char, capacity usize) int
+	fn C.v_multiwindow_appkit_service_set_owner(state voidptr, owner_state voidptr, modal int) int
+	fn C.v_multiwindow_appkit_service_clear_owner(state voidptr) int
+	fn C.v_multiwindow_appkit_service_native_window(state voidptr) voidptr
+	fn C.v_multiwindow_appkit_service_set_mouse_lock(state voidptr, enabled int) int
+	fn C.v_multiwindow_appkit_service_set_titlebar_appearance(state voidptr, appearance int) int
+	fn C.v_multiwindow_appkit_service_detach_accessibility(state voidptr) int
+	fn C.v_multiwindow_appkit_service_arm_offscreen_readback_pass(state voidptr, texture voidptr, pass_serial u64, producing_frame u64) int
+	fn C.v_multiwindow_appkit_service_stage_window_readback(state voidptr, request u64, x int, y int, width int, height int, producing_frame u64) int
+	fn C.v_multiwindow_appkit_service_stage_image_readback(state voidptr, texture voidptr, request u64, x int, y int, width int, height int, producing_frame u64) int
+	fn C.v_multiwindow_appkit_service_resolve_readbacks_after_submit(state voidptr, submitted_frame u64, submission_succeeded int) int
+	fn C.v_multiwindow_appkit_service_take_readback_result(state voidptr, out_request &u64, out_status &int, out_width &int, out_height &int, out_stride &int, out_submitted_frame &u64, out_byte_length &usize) int
+	fn C.v_multiwindow_appkit_service_copy_readback_pixels(state voidptr, request u64, out_pixels &u8, capacity usize) int
+	fn C.v_multiwindow_appkit_service_release_readback_result(state voidptr, request u64) int
+	fn C.v_multiwindow_appkit_service_cancel_readback(state voidptr, request u64) int
+	fn C.v_multiwindow_appkit_service_cancel_all_readbacks(state voidptr) int
+	fn C.v_multiwindow_appkit_service_release_window_services(state voidptr) int
 }
 
 struct AppKitNativeQueuedEvent {
@@ -103,7 +243,9 @@ enum AppKitWindowDrawableReleaseMode {
 
 @[heap; markused]
 struct AppKitWindowRecord {
-	id WindowId
+	id    WindowId
+	owner ?WindowId
+	modal bool
 mut:
 	state                    voidptr
 	state_ticket             u64
@@ -118,6 +260,11 @@ mut:
 	active_drawable          voidptr
 	active_drawable_ticket   u64
 	frame_active             bool
+	services_released        bool
+	service_state_observed   bool
+	observed_minimized       bool
+	observed_maximized       bool
+	observed_fullscreen      bool
 }
 
 struct AppKitBackend {
@@ -142,10 +289,1055 @@ mut:
 	pending_start_device          AppKitPendingStartDevice
 	pending_window_state          AppKitPendingWindowState
 	windows                       []AppKitWindowRecord
+	service_monitor_revision      u64
+	service_monitors              []AppKitServiceMonitorRecord
+	monitor_failures_for_test     int
+	readback_hook_rearm_required  bool
 }
 
 fn new_appkit_backend() AppKitBackend {
 	return AppKitBackend{}
+}
+
+fn (backend &AppKitBackend) cursor_support(shape CursorShape) ServiceSupportLevel {
+	_ = backend
+	return match shape {
+		.resize_all, .ne_resize, .nw_resize, .se_resize, .sw_resize, .nesw_resize, .nwse_resize {
+			.conditional
+		}
+		else {
+			.available
+		}
+	}
+}
+
+fn appkit_service_support_from_native(value int) ServiceSupportLevel {
+	return match value {
+		1 { .available }
+		2 { .conditional }
+		else { .unsupported }
+	}
+}
+
+fn appkit_service_mapping_from_native(value int) ServiceMappingState {
+	return match value {
+		1 { .unmapped }
+		2 { .mapped }
+		else { .unknown }
+	}
+}
+
+fn appkit_service_visibility_from_native(value int) ServiceVisibilityState {
+	return match value {
+		1 { .hidden }
+		2 { .visible }
+		3 { .occluded }
+		else { .unknown }
+	}
+}
+
+fn appkit_service_observed_bool_from_native(value int) ServiceObservedBool {
+	return match value {
+		1 { .off }
+		2 { .on }
+		else { .unknown }
+	}
+}
+
+fn appkit_service_capability_from_native(operation ServiceOperation, native_support int, renderer_ready bool) ServiceOperationCapability {
+	if operation == .portal_parent
+		|| (operation in [.image_readback, .window_capture] && !renderer_ready) {
+		return ServiceOperationCapability{}
+	}
+	support := appkit_service_support_from_native(native_support)
+	if support == .unsupported {
+		return ServiceOperationCapability{}
+	}
+	return ServiceOperationCapability{
+		support:          support
+		asynchronous:     operation in [.focus, .raise, .position, .minimize, .maximize, .restore,
+			.fullscreen, .clipboard_read, .clipboard_write, .image_readback, .window_capture]
+		state_observable: operation in [.show, .hide, .focus, .raise, .position, .minimize, .maximize,
+			.restore, .fullscreen, .mouse_lock]
+	}
+}
+
+fn appkit_service_monitor_id_for_native(records []AppKitServiceMonitorRecord, native_id u64, app_instance u64) []ServiceMonitorId {
+	if native_id == 0 {
+		return []ServiceMonitorId{}
+	}
+	for record in records {
+		if record.available && record.native_id == native_id {
+			return [
+				ServiceMonitorId{
+					app_instance: app_instance
+					slot:         record.slot
+					generation:   record.generation
+				},
+			]
+		}
+	}
+	return []ServiceMonitorId{}
+}
+
+fn appkit_service_window_state_from_raw(raw AppKitServiceRawWindowState, monitors []AppKitServiceMonitorRecord, app_instance u64) ServiceWindowState {
+	return ServiceWindowState{
+		mapping:                     appkit_service_mapping_from_native(raw.mapping)
+		visibility:                  appkit_service_visibility_from_native(raw.visibility)
+		active:                      appkit_service_observed_bool_from_native(raw.active)
+		focused:                     appkit_service_observed_bool_from_native(raw.focused)
+		minimized:                   appkit_service_observed_bool_from_native(raw.minimized)
+		maximized:                   appkit_service_observed_bool_from_native(raw.maximized)
+		fullscreen:                  appkit_service_observed_bool_from_native(raw.fullscreen)
+		mouse_locked:                appkit_service_observed_bool_from_native(raw.mouse_locked)
+		position:                    ServicePosition{
+			known: raw.position_known == 1
+			x:     raw.x
+			y:     raw.y
+		}
+		monitor_ids:                 appkit_service_monitor_id_for_native(monitors,
+			raw.monitor_native_id, app_instance)
+		monitor_membership_observed: true
+	}
+}
+
+fn appkit_service_operation_from_native(value int) ?ServiceOperation {
+	return match value {
+		0 { ServiceOperation.show }
+		1 { ServiceOperation.hide }
+		2 { ServiceOperation.focus }
+		3 { ServiceOperation.raise }
+		4 { ServiceOperation.position }
+		5 { ServiceOperation.minimize }
+		6 { ServiceOperation.maximize }
+		7 { ServiceOperation.restore }
+		8 { ServiceOperation.fullscreen }
+		9 { ServiceOperation.clipboard_read }
+		10 { ServiceOperation.clipboard_write }
+		11 { ServiceOperation.portal_parent }
+		12 { ServiceOperation.native_borrow }
+		13 { ServiceOperation.mouse_lock }
+		14 { ServiceOperation.titlebar_appearance }
+		15 { ServiceOperation.image_readback }
+		16 { ServiceOperation.window_capture }
+		else { none }
+	}
+}
+
+fn appkit_service_monitor_info(raw AppKitServiceRawMonitor, record AppKitServiceMonitorRecord, app_instance u64) ServiceMonitorInfo {
+	return ServiceMonitorInfo{
+		native_key: ServiceMonitorNativeKey{
+			kind:    .appkit_display
+			numeric: raw.native_id
+		}
+		id:         ServiceMonitorId{
+			app_instance: app_instance
+			slot:         record.slot
+			generation:   record.generation
+		}
+		name:       raw.name
+		geometry:   ServiceKnownRect{
+			known: raw.width > 0 && raw.height > 0
+			value: ServiceRect{
+				x:      raw.x
+				y:      raw.y
+				width:  raw.width
+				height: raw.height
+			}
+		}
+		work_area:  ServiceKnownRect{
+			known: raw.work_width > 0 && raw.work_height > 0
+			value: ServiceRect{
+				x:      raw.work_x
+				y:      raw.work_y
+				width:  raw.work_width
+				height: raw.work_height
+			}
+		}
+		scale:      ServiceKnownScale{
+			known: raw.scale > 0
+			value: raw.scale
+		}
+		primary:    appkit_service_observed_bool_from_native(raw.primary)
+		available:  true
+	}
+}
+
+fn appkit_reconcile_service_monitors(mut records []AppKitServiceMonitorRecord, snapshot []AppKitServiceRawMonitor, app_instance u64) []ServiceMonitorInfo {
+	mut seen := []bool{len: records.len}
+	mut slots := []int{len: snapshot.len, init: -1}
+	mut monitors := []ServiceMonitorInfo{cap: snapshot.len}
+	for snapshot_index, raw in snapshot {
+		if raw.native_id == 0 {
+			continue
+		}
+		for index, record in records {
+			if record.native_id == raw.native_id && record.available && !seen[index] {
+				slots[snapshot_index] = index
+				seen[index] = true
+				break
+			}
+		}
+	}
+	for snapshot_index, raw in snapshot {
+		if slots[snapshot_index] >= 0 || raw.native_id == 0 {
+			continue
+		}
+		for index, record in records {
+			if record.native_id == raw.native_id && !record.available && !seen[index]
+				&& record.generation < max_u32 {
+				slots[snapshot_index] = index
+				seen[index] = true
+				break
+			}
+		}
+	}
+	for snapshot_index, raw in snapshot {
+		if slots[snapshot_index] >= 0 || raw.native_id == 0 {
+			continue
+		}
+		for index, record in records {
+			if !record.available && !seen[index] && record.generation < max_u32 {
+				slots[snapshot_index] = index
+				seen[index] = true
+				break
+			}
+		}
+	}
+	for snapshot_index, raw in snapshot {
+		if raw.native_id == 0 {
+			continue
+		}
+		mut slot := slots[snapshot_index]
+		if slot < 0 {
+			slot = records.len
+			records << AppKitServiceMonitorRecord{
+				native_id:  raw.native_id
+				slot:       slot
+				generation: 1
+				available:  true
+			}
+			seen << true
+		} else {
+			generation := if records[slot].available {
+				records[slot].generation
+			} else {
+				records[slot].generation + 1
+			}
+			records[slot] = AppKitServiceMonitorRecord{
+				native_id:  raw.native_id
+				slot:       slot
+				generation: generation
+				available:  true
+			}
+		}
+		monitors << appkit_service_monitor_info(raw, records[slot], app_instance)
+	}
+	for index, record in records {
+		if index < seen.len && !seen[index] && record.available {
+			records[index].available = false
+		}
+	}
+	return monitors
+}
+
+fn appkit_service_raw_monitor_snapshot_valid(snapshot []AppKitServiceRawMonitor) bool {
+	for index, raw in snapshot {
+		if raw.native_id == 0 {
+			return false
+		}
+		for previous in 0 .. index {
+			if snapshot[previous].native_id == raw.native_id {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+fn appkit_plan_service_monitors(records []AppKitServiceMonitorRecord, snapshot []AppKitServiceRawMonitor, app_instance u64) !AppKitServiceMonitorPlan {
+	if !appkit_service_raw_monitor_snapshot_valid(snapshot) {
+		return error(err_capability_unsupported)
+	}
+	mut staged_records := records.clone()
+	monitors := appkit_reconcile_service_monitors(mut staged_records, snapshot, app_instance)
+	if !service_monitor_snapshot_identity_valid(monitors, .appkit, app_instance) {
+		return error(err_capability_unsupported)
+	}
+	return AppKitServiceMonitorPlan{
+		records:  staged_records
+		monitors: monitors
+	}
+}
+
+fn appkit_clipboard_length_is_valid(length usize) bool {
+	return length <= usize(service_appkit_clipboard_max_bytes)
+}
+
+fn appkit_require_clipboard_result(status int) ! {
+	match status {
+		service_appkit_result_ok { return }
+		service_appkit_result_capacity { return error(err_clipboard_capacity) }
+		else { return error(err_capability_unsupported) }
+	}
+}
+
+fn appkit_hide_requires_rollback(status int) bool {
+	return status == service_appkit_result_failed
+}
+
+fn appkit_owner_native_state(owner WindowId, records []AppKitWindowRecord) !voidptr {
+	for record in records {
+		if record.id == owner {
+			if record.state == unsafe { nil } || record.services_released {
+				return error(err_capability_unsupported)
+			}
+			return record.state
+		}
+	}
+	return error(err_window_not_found)
+}
+
+fn appkit_native_window_borrow_from_pointer(native_window voidptr) !BackendNativeWindowBorrow {
+	if native_window == unsafe { nil } {
+		return error(err_capability_unsupported)
+	}
+	return BackendNativeWindowBorrow{
+		backend: .appkit
+		primary: native_window
+	}
+}
+
+fn appkit_titlebar_appearance_code(appearance ServiceTitlebarAppearance) int {
+	return match appearance {
+		.system { 0 }
+		.light { 1 }
+		.dark { 2 }
+	}
+}
+
+@[markused]
+fn appkit_service_events_from_observation(record AppKitWindowRecord, input_kind InputEventKind, state ServiceWindowState, scale f32) []QueuedEvent {
+	if input_kind == .resized {
+		metrics_available := record.width > 0 && record.height > 0 && record.framebuffer_width > 0
+			&& record.framebuffer_height > 0 && scale > 0
+		return [
+			queued_service_event(ServiceEvent{
+				kind:    .metrics
+				window:  record.id
+				state:   state
+				metrics: RenderMetricsSnapshot{
+					logical_width:        f32(record.width)
+					logical_height:       f32(record.height)
+					framebuffer_width:    record.framebuffer_width
+					framebuffer_height:   record.framebuffer_height
+					dpi_scale:            scale
+					metrics_available:    metrics_available
+					conversion_available: metrics_available
+				}
+			}),
+		]
+	}
+	operation := match input_kind {
+		.focused, .unfocused { ServiceOperation.focus }
+		.iconified { ServiceOperation.minimize }
+		.restored { ServiceOperation.restore }
+		else { return []QueuedEvent{} }
+	}
+	return [
+		queued_service_event(ServiceEvent{
+			kind:      .state
+			window:    record.id
+			state:     state
+			operation: operation
+		}),
+	]
+}
+
+@[markused]
+fn appkit_service_events_from_snapshot(record AppKitWindowRecord, snapshot AppKitServiceQueuedSnapshot, monitors []AppKitServiceMonitorRecord, app_instance u64) []QueuedEvent {
+	if !snapshot.valid {
+		return []QueuedEvent{}
+	}
+	state := appkit_service_window_state_from_raw(snapshot.state, monitors, app_instance)
+	if snapshot.kind == 2 {
+		metrics_available := snapshot.window_width > 0 && snapshot.window_height > 0
+			&& snapshot.framebuffer_width > 0 && snapshot.framebuffer_height > 0
+			&& snapshot.state.scale > 0
+		return [
+			queued_service_event(ServiceEvent{
+				kind:    .metrics
+				window:  record.id
+				state:   state
+				metrics: RenderMetricsSnapshot{
+					logical_width:        f32(snapshot.window_width)
+					logical_height:       f32(snapshot.window_height)
+					framebuffer_width:    snapshot.framebuffer_width
+					framebuffer_height:   snapshot.framebuffer_height
+					dpi_scale:            snapshot.state.scale
+					metrics_available:    metrics_available
+					conversion_available: metrics_available
+				}
+			}),
+		]
+	}
+	if snapshot.kind != 1 {
+		return []QueuedEvent{}
+	}
+	operation := appkit_service_operation_from_native(snapshot.operation) or {
+		return []QueuedEvent{}
+	}
+	return [
+		queued_service_event(ServiceEvent{
+			kind:      .state
+			window:    record.id
+			state:     state
+			operation: operation
+		}),
+	]
+}
+
+@[markused]
+fn appkit_service_transition_operations(record AppKitWindowRecord, state ServiceWindowState) []ServiceOperation {
+	if !record.service_state_observed {
+		return []ServiceOperation{}
+	}
+	mut operations := []ServiceOperation{}
+	if state.minimized != .unknown && record.observed_minimized != (state.minimized == .on) {
+		operations << if state.minimized == .on {
+			ServiceOperation.minimize
+		} else {
+			ServiceOperation.restore
+		}
+	}
+	if state.maximized != .unknown && record.observed_maximized != (state.maximized == .on) {
+		operation := if state.maximized == .on {
+			ServiceOperation.maximize
+		} else {
+			ServiceOperation.restore
+		}
+		if operation != .restore || ServiceOperation.restore !in operations {
+			operations << operation
+		}
+	}
+	if state.fullscreen != .unknown && record.observed_fullscreen != (state.fullscreen == .on) {
+		operation := if state.fullscreen == .on {
+			ServiceOperation.fullscreen
+		} else {
+			ServiceOperation.restore
+		}
+		if operation != .restore || ServiceOperation.restore !in operations {
+			operations << operation
+		}
+	}
+	return operations
+}
+
+$if darwin {
+	@[markused]
+	fn appkit_record_observed_service_state(mut record AppKitWindowRecord, state ServiceWindowState) {
+		if state.minimized != .unknown {
+			record.observed_minimized = state.minimized == .on
+		}
+		if state.maximized != .unknown {
+			record.observed_maximized = state.maximized == .on
+		}
+		if state.fullscreen != .unknown {
+			record.observed_fullscreen = state.fullscreen == .on
+		}
+		record.service_state_observed = state.minimized != .unknown || state.maximized != .unknown
+			|| state.fullscreen != .unknown || record.service_state_observed
+	}
+} $else {
+	fn appkit_record_observed_service_state(mut record AppKitWindowRecord, state ServiceWindowState) {
+		if state.minimized != .unknown {
+			record.observed_minimized = state.minimized == .on
+		}
+		if state.maximized != .unknown {
+			record.observed_maximized = state.maximized == .on
+		}
+		if state.fullscreen != .unknown {
+			record.observed_fullscreen = state.fullscreen == .on
+		}
+		record.service_state_observed = state.minimized != .unknown || state.maximized != .unknown
+			|| state.fullscreen != .unknown || record.service_state_observed
+	}
+}
+
+@[markused]
+fn appkit_append_unique_state_transition(mut events []QueuedEvent, window WindowId, state ServiceWindowState, operation ServiceOperation) {
+	for event in events {
+		if event.kind == .service && event.service.kind == .state
+			&& event.service.operation == operation {
+			return
+		}
+	}
+	events << queued_service_event(ServiceEvent{
+		kind:      .state
+		window:    window
+		state:     state
+		operation: operation
+	})
+}
+
+fn appkit_complete_window_service_release(mut record AppKitWindowRecord) bool {
+	if record.services_released {
+		return false
+	}
+	record.services_released = true
+	return true
+}
+
+$if darwin {
+	@[markused]
+	fn (backend &AppKitBackend) service_bridge_ready() bool {
+		return backend.started
+			&& C.v_multiwindow_appkit_service_abi_version() == service_appkit_abi_version
+	}
+} $else {
+	fn (backend &AppKitBackend) service_bridge_ready() bool {
+		_ = backend
+		return false
+	}
+}
+
+fn (backend &AppKitBackend) ensure_service_bridge(id WindowId) !int {
+	$if darwin {
+		if backend.native_operations == unsafe { nil }
+			|| !backend.native_operations.owner_thread_is_current()
+			|| C.v_multiwindow_appkit_is_main_thread() == 0 {
+			return error(err_owner_thread_required)
+		}
+		index := backend.window_record_index(id) or { return error(err_window_not_found) }
+		if !backend.service_bridge_ready() || backend.windows[index].state == unsafe { nil }
+			|| backend.windows[index].services_released {
+			return error(err_capability_unsupported)
+		}
+		return index
+	} $else {
+		_ = id
+		return error(err_backend_unsupported)
+	}
+}
+
+fn (backend &AppKitBackend) service_operation_capability(id WindowId, operation ServiceOperation) ServiceOperationCapability {
+	$if darwin {
+		if !backend.service_bridge_ready() {
+			return ServiceOperationCapability{}
+		}
+		index := backend.window_record_index(id) or { return ServiceOperationCapability{} }
+		record := backend.windows[index]
+		if record.state == unsafe { nil } || record.services_released {
+			return ServiceOperationCapability{}
+		}
+		if operation in [.image_readback, .window_capture] && backend.readback_hook_rearm_required {
+			return ServiceOperationCapability{}
+		}
+		native_support := C.v_multiwindow_appkit_service_capability(record.state, int(operation),
+			appkit_bool_to_int(backend.renderer_ready()))
+		return appkit_service_capability_from_native(operation, native_support,
+			backend.renderer_ready())
+	} $else {
+		_ = backend
+		_ = id
+		_ = operation
+		return ServiceOperationCapability{}
+	}
+}
+
+$if darwin {
+	@[markused]
+	fn (backend &AppKitBackend) service_raw_window_state(index int) !AppKitServiceRawWindowState {
+		if index < 0 || index >= backend.windows.len {
+			return error(err_window_not_found)
+		}
+		mut raw := AppKitServiceRawWindowState{}
+		if C.v_multiwindow_appkit_service_window_state(backend.windows[index].state, &raw.mapping,
+			&raw.visibility, &raw.active, &raw.focused, &raw.minimized, &raw.maximized,
+			&raw.fullscreen, &raw.mouse_locked, &raw.position_known, &raw.x, &raw.y,
+			&raw.monitor_native_id, &raw.scale) <= 0 {
+			return error(err_capability_unsupported)
+		}
+		return raw
+	}
+} $else {
+	fn (backend &AppKitBackend) service_raw_window_state(index int) !AppKitServiceRawWindowState {
+		_ = index
+		return error(err_backend_unsupported)
+	}
+}
+
+fn (backend &AppKitBackend) service_window_state(id WindowId) !ServiceWindowState {
+	index := backend.ensure_service_bridge(id)!
+	raw := backend.service_raw_window_state(index)!
+	app_instance := if backend.native_operations == unsafe { nil } {
+		id.app_instance
+	} else {
+		backend.native_operations.app_identity
+	}
+	return appkit_service_window_state_from_raw(raw, backend.service_monitors, app_instance)
+}
+
+fn (mut backend AppKitBackend) service_show_window(id WindowId) !ServiceWindowState {
+	index := backend.ensure_service_bridge(id)!
+	$if darwin {
+		if C.v_multiwindow_appkit_service_show_window(backend.windows[index].state) <= 0 {
+			return error(err_capability_unsupported)
+		}
+	}
+	return backend.service_window_state(id)!
+}
+
+fn (mut backend AppKitBackend) service_hide_window(id WindowId) !ServiceWindowState {
+	index := backend.ensure_service_bridge(id)!
+	$if darwin {
+		status := C.v_multiwindow_appkit_service_hide_window(backend.windows[index].state)
+		if appkit_hide_requires_rollback(status) {
+			if C.v_multiwindow_appkit_service_show_window(backend.windows[index].state) != service_appkit_result_ok {
+				return error(err_capability_unsupported)
+			}
+			return error(err_capability_unsupported)
+		}
+		if status != service_appkit_result_ok {
+			return error(err_capability_unsupported)
+		}
+	}
+	return backend.service_window_state(id)!
+}
+
+fn (mut backend AppKitBackend) service_focus_window(id WindowId) !ServiceWindowState {
+	index := backend.ensure_service_bridge(id)!
+	$if darwin {
+		if C.v_multiwindow_appkit_service_focus_window(backend.windows[index].state) <= 0 {
+			return error(err_capability_unsupported)
+		}
+	}
+	return backend.service_window_state(id)!
+}
+
+fn (mut backend AppKitBackend) service_raise_window(id WindowId) !ServiceWindowState {
+	index := backend.ensure_service_bridge(id)!
+	$if darwin {
+		if C.v_multiwindow_appkit_service_raise_window(backend.windows[index].state) <= 0 {
+			return error(err_capability_unsupported)
+		}
+	}
+	return backend.service_window_state(id)!
+}
+
+fn (mut backend AppKitBackend) service_set_window_position(id WindowId, x int, y int) !ServiceWindowState {
+	index := backend.ensure_service_bridge(id)!
+	$if darwin {
+		if C.v_multiwindow_appkit_service_set_window_position(backend.windows[index].state, x, y) <= 0 {
+			return error(err_capability_unsupported)
+		}
+	}
+	return backend.service_window_state(id)!
+}
+
+fn (mut backend AppKitBackend) service_minimize_window(id WindowId) !ServiceWindowState {
+	index := backend.ensure_service_bridge(id)!
+	$if darwin {
+		if C.v_multiwindow_appkit_service_minimize_window(backend.windows[index].state) <= 0 {
+			return error(err_capability_unsupported)
+		}
+	}
+	return ServiceWindowState{}
+}
+
+fn (mut backend AppKitBackend) service_maximize_window(id WindowId) !ServiceWindowState {
+	index := backend.ensure_service_bridge(id)!
+	$if darwin {
+		if C.v_multiwindow_appkit_service_maximize_window(backend.windows[index].state) <= 0 {
+			return error(err_capability_unsupported)
+		}
+	}
+	return ServiceWindowState{}
+}
+
+fn (mut backend AppKitBackend) service_restore_window(id WindowId) !ServiceWindowState {
+	index := backend.ensure_service_bridge(id)!
+	$if darwin {
+		if C.v_multiwindow_appkit_service_restore_window(backend.windows[index].state) <= 0 {
+			return error(err_capability_unsupported)
+		}
+	}
+	return ServiceWindowState{}
+}
+
+fn (mut backend AppKitBackend) service_set_fullscreen(id WindowId, enabled bool) !ServiceWindowState {
+	index := backend.ensure_service_bridge(id)!
+	$if darwin {
+		if C.v_multiwindow_appkit_service_set_fullscreen(backend.windows[index].state,
+			appkit_bool_to_int(enabled)) <= 0 {
+			return error(err_capability_unsupported)
+		}
+	}
+	return ServiceWindowState{}
+}
+
+fn (mut backend AppKitBackend) service_set_mouse_lock(id WindowId, enabled bool) !ServiceWindowState {
+	index := backend.ensure_service_bridge(id)!
+	$if darwin {
+		if C.v_multiwindow_appkit_service_set_mouse_lock(backend.windows[index].state,
+			appkit_bool_to_int(enabled)) <= 0 {
+			return error(err_capability_unsupported)
+		}
+	}
+	return backend.service_window_state(id)!
+}
+
+fn (backend &AppKitBackend) service_native_window_borrow(id WindowId) !BackendNativeWindowBorrow {
+	index := backend.ensure_service_bridge(id)!
+	$if darwin {
+		return appkit_native_window_borrow_from_pointer(C.v_multiwindow_appkit_service_native_window(backend.windows[index].state))!
+	}
+	return error(err_backend_unsupported)
+}
+
+fn (mut backend AppKitBackend) service_monitor_snapshot(app_instance u64) ![]ServiceMonitorInfo {
+	$if darwin {
+		if !backend.service_bridge_ready() {
+			return error(err_capability_unsupported)
+		}
+		$if test {
+			if backend.monitor_failures_for_test > 0 {
+				backend.monitor_failures_for_test--
+				return error(err_capability_unsupported)
+			}
+		}
+		count := C.v_multiwindow_appkit_service_monitor_count()
+		if count < 0 || count > service_appkit_max_monitors {
+			return error(err_capability_unsupported)
+		}
+		mut snapshot := []AppKitServiceRawMonitor{cap: count}
+		for index in 0 .. count {
+			mut raw := AppKitServiceRawMonitor{}
+			mut name_length := usize(0)
+			if C.v_multiwindow_appkit_service_monitor_info(index, &raw.native_id, &raw.x, &raw.y, &raw.width, &raw.height, &raw.work_x, &raw.work_y, &raw.work_width, &raw.work_height, &raw.scale, &raw.primary, &name_length) <= 0
+				|| name_length > usize(service_appkit_monitor_name_max_bytes) {
+				return error(err_capability_unsupported)
+			}
+			mut monitor_name := 'AppKit display ${raw.native_id}'
+			if name_length > 0 {
+				mut name := []u8{len: int(name_length) + 1}
+				if C.v_multiwindow_appkit_service_copy_monitor_name(index,
+					unsafe { &char(name.data) }, name.len) <= 0 {
+					return error(err_capability_unsupported)
+				}
+				monitor_name = name[..int(name_length)].bytestr()
+			}
+			snapshot << AppKitServiceRawMonitor{
+				...raw
+				name: monitor_name
+			}
+		}
+		plan := appkit_plan_service_monitors(backend.service_monitors, snapshot, app_instance)!
+		backend.service_monitors = plan.records
+		backend.service_monitor_revision = C.v_multiwindow_appkit_service_monitor_revision()
+		return plan.monitors
+	} $else {
+		_ = app_instance
+		return error(err_backend_unsupported)
+	}
+}
+
+fn (mut backend AppKitBackend) service_set_clipboard_text(id WindowId, request ServiceRequestId, text string) !BackendClipboardStart {
+	index := backend.ensure_service_bridge(id)!
+	_ = request
+	if !appkit_clipboard_length_is_valid(usize(text.len)) {
+		return error(err_clipboard_capacity)
+	}
+	$if darwin {
+		status := C.v_multiwindow_appkit_service_set_clipboard_text(backend.windows[index].state,
+			&char(text.str), usize(text.len))
+		if status == service_appkit_result_indeterminate {
+			return BackendClipboardStart{
+				completed: true
+				status:    .failed
+				error:     err_capability_unsupported
+			}
+		}
+		appkit_require_clipboard_result(status)!
+	}
+	return BackendClipboardStart{
+		completed: true
+		text:      text.clone()
+	}
+}
+
+fn (mut backend AppKitBackend) service_request_clipboard_text(id WindowId, request ServiceRequestId) !BackendClipboardStart {
+	index := backend.ensure_service_bridge(id)!
+	_ = request
+	$if darwin {
+		mut text_length := usize(0)
+		length_status := C.v_multiwindow_appkit_service_clipboard_text_length(backend.windows[index].state,
+			&text_length)
+		appkit_require_clipboard_result(length_status)!
+		if !appkit_clipboard_length_is_valid(text_length) {
+			return error(err_clipboard_capacity)
+		}
+		if text_length == 0 {
+			return BackendClipboardStart{
+				completed: true
+			}
+		}
+		mut text := []u8{len: int(text_length) + 1}
+		copy_status := C.v_multiwindow_appkit_service_copy_clipboard_text(backend.windows[index].state,
+			unsafe { &char(text.data) }, text.len)
+		appkit_require_clipboard_result(copy_status)!
+		return BackendClipboardStart{
+			completed: true
+			text:      text[..int(text_length)].bytestr()
+		}
+	}
+	return error(err_backend_unsupported)
+}
+
+fn (mut backend AppKitBackend) service_set_titlebar_appearance(id WindowId, appearance ServiceTitlebarAppearance) ! {
+	index := backend.ensure_service_bridge(id)!
+	$if darwin {
+		if C.v_multiwindow_appkit_service_set_titlebar_appearance(backend.windows[index].state,
+			appkit_titlebar_appearance_code(appearance)) <= 0 {
+			return error(err_capability_unsupported)
+		}
+		return
+	}
+	return error(err_backend_unsupported)
+}
+
+$if gg_multiwindow ? || x_multiwindow_render ? {
+	fn appkit_service_image_texture(image_id u32) voidptr {
+		$if darwin {
+			$if darwin_sokol_glcore33 ? {
+				_ = image_id
+				return unsafe { nil }
+			} $else {
+				if image_id == 0 || gfx.query_backend() != .metal_macos {
+					return unsafe { nil }
+				}
+				info := C.sg_mtl_query_image_info(gfx.Image{
+					id: image_id
+				})
+				if info.active_slot < 0 || info.active_slot >= info.tex.len {
+					return unsafe { nil }
+				}
+				return info.tex[info.active_slot]
+			}
+		} $else {
+			_ = image_id
+			return unsafe { nil }
+		}
+	}
+} $else {
+	fn appkit_service_image_texture(image_id u32) voidptr {
+		_ = image_id
+		return unsafe { nil }
+	}
+}
+
+fn (mut backend AppKitBackend) service_stage_window_readback(readback ServiceReadbackId, x int, y int, width int, height int, producing_frame u64) ! {
+	if backend.readback_hook_rearm_required {
+		return error(err_capability_unsupported)
+	}
+	index := backend.ensure_service_bridge(readback.window)!
+	$if darwin {
+		if C.v_multiwindow_appkit_service_stage_window_readback(backend.windows[index].state,
+			readback.serial, x, y, width, height, producing_frame) != service_appkit_result_ok {
+			return error(err_capability_unsupported)
+		}
+		return
+	}
+	return error(err_backend_unsupported)
+}
+
+fn (mut backend AppKitBackend) service_stage_image_readback(readback ServiceReadbackId, image_id u32, x int, y int, width int, height int, producing_frame u64) ! {
+	if backend.readback_hook_rearm_required {
+		return error(err_capability_unsupported)
+	}
+	index := backend.ensure_service_bridge(readback.window)!
+	texture := appkit_service_image_texture(image_id)
+	if texture == unsafe { nil } {
+		return error(err_capability_unsupported)
+	}
+	$if darwin {
+		if C.v_multiwindow_appkit_service_stage_image_readback(backend.windows[index].state,
+			texture, readback.serial, x, y, width, height, producing_frame) != service_appkit_result_ok {
+			return error(err_capability_unsupported)
+		}
+		return
+	}
+	return error(err_backend_unsupported)
+}
+
+fn (mut backend AppKitBackend) service_arm_image_readback_pass(id WindowId, image_id u32, pass_serial u64, producing_frame u64) ! {
+	if backend.readback_hook_rearm_required {
+		return error(err_capability_unsupported)
+	}
+	index := backend.ensure_service_bridge(id)!
+	texture := appkit_service_image_texture(image_id)
+	if texture == unsafe { nil } {
+		return error(err_capability_unsupported)
+	}
+	$if darwin {
+		if C.v_multiwindow_appkit_service_arm_offscreen_readback_pass(backend.windows[index].state,
+			texture, pass_serial, producing_frame) != service_appkit_result_ok {
+			return error(err_capability_unsupported)
+		}
+		return
+	}
+	return error(err_backend_unsupported)
+}
+
+fn (mut backend AppKitBackend) service_resolve_readbacks_after_submit(id WindowId, submitted_frame u64, submission_succeeded bool) ! {
+	if backend.readback_hook_rearm_required {
+		return error(err_capability_unsupported)
+	}
+	index := backend.ensure_service_bridge(id)!
+	$if darwin {
+		status := C.v_multiwindow_appkit_service_resolve_readbacks_after_submit(backend.windows[index].state,
+			submitted_frame, appkit_bool_to_int(submission_succeeded))
+		if status < service_appkit_result_unavailable {
+			return error(err_capability_unsupported)
+		}
+		return
+	}
+	return error(err_backend_unsupported)
+}
+
+fn (mut backend AppKitBackend) service_cancel_readback(readback ServiceReadbackId) ! {
+	index := backend.ensure_service_bridge(readback.window)!
+	$if darwin {
+		status := C.v_multiwindow_appkit_service_cancel_readback(backend.windows[index].state,
+			readback.serial)
+		if status < service_appkit_result_unavailable {
+			return error(err_readback_invalid)
+		}
+		return
+	}
+	return error(err_backend_unsupported)
+}
+
+fn appkit_backend_readback_result(id ServiceReadbackId, status int, submitted_frame u64, width int, height int, stride int, pixels []u8, copied bool) BackendReadbackResult {
+	valid_ready := status == service_appkit_readback_ready && copied && submitted_frame != 0
+		&& width > 0 && height > 0 && stride >= width * 4
+		&& u64(stride) * u64(height) == u64(pixels.len)
+	if valid_ready {
+		return BackendReadbackResult{
+			id:              id
+			status:          .ready
+			submitted_frame: submitted_frame
+			width:           width
+			height:          height
+			stride:          stride
+			pixels_rgba8:    pixels
+		}
+	}
+	return BackendReadbackResult{
+		id:              id
+		status:          .failed
+		submitted_frame: submitted_frame
+		error:           err_readback_invalid
+	}
+}
+
+fn appkit_backend_finalize_readback_release(result BackendReadbackResult, released bool) BackendReadbackResult {
+	if released {
+		return result
+	}
+	return BackendReadbackResult{
+		...result
+		status:       .failed
+		width:        0
+		height:       0
+		stride:       0
+		pixels_rgba8: []u8{}
+		error:        err_readback_invalid
+	}
+}
+
+fn (mut backend AppKitBackend) service_take_readback_results() ![]BackendReadbackResult {
+	mut results := []BackendReadbackResult{}
+	if backend.readback_hook_rearm_required {
+		return results
+	}
+	$if darwin {
+		if backend.native_operations == unsafe { nil }
+			|| !backend.native_operations.owner_thread_is_current()
+			|| C.v_multiwindow_appkit_is_main_thread() == 0 {
+			return error(err_owner_thread_required)
+		}
+		for record in backend.windows {
+			if record.state == unsafe { nil } || record.services_released {
+				continue
+			}
+			for {
+				mut request := u64(0)
+				mut status := 0
+				mut width := 0
+				mut height := 0
+				mut stride := 0
+				mut submitted_frame := u64(0)
+				mut byte_length := usize(0)
+				take_status := C.v_multiwindow_appkit_service_take_readback_result(record.state,
+					&request, &status, &width, &height, &stride, &submitted_frame, &byte_length)
+				if take_status == service_appkit_result_unavailable {
+					break
+				}
+				if take_status != service_appkit_result_ok || request == 0 {
+					return error(err_readback_invalid)
+				}
+				id := ServiceReadbackId{
+					app_instance: record.id.app_instance
+					serial:       request
+					window:       record.id
+				}
+				mut pixels := []u8{}
+				mut copied := false
+				if status == service_appkit_readback_ready && width > 0 && height > 0
+					&& stride >= width * 4 && byte_length == usize(stride) * usize(height)
+					&& byte_length <= usize(0x7fffffff) {
+					pixels = []u8{len: int(byte_length)}
+					if C.v_multiwindow_appkit_service_copy_readback_pixels(record.state, request,
+						pixels.data, byte_length) == service_appkit_result_ok {
+						copied = true
+					}
+				}
+				mut result := appkit_backend_readback_result(id, status, submitted_frame, width,
+					height, stride, pixels, copied)
+				released := C.v_multiwindow_appkit_service_release_readback_result(record.state,
+					request) == service_appkit_result_ok
+				result = appkit_backend_finalize_readback_release(result, released)
+				if !released {
+					_ = C.v_multiwindow_appkit_service_cancel_readback(record.state, request)
+					backend.poll_error = merge_backend_errors(backend.poll_error,
+						err_readback_invalid)
+				}
+				results << result
+			}
+		}
+		return results
+	}
+	return results
+}
+
+fn (mut backend AppKitBackend) queued_readback_events() ![]QueuedEvent {
+	results := backend.service_take_readback_results()!
+	mut events := []QueuedEvent{cap: results.len}
+	for result in results {
+		events << queued_readback_event(ServiceReadbackResult{
+			id:              result.id
+			window:          result.id.window
+			status:          result.status
+			submitted_frame: result.submitted_frame
+			width:           result.width
+			height:          result.height
+			stride:          result.stride
+			pixels_rgba8:    result.pixels_rgba8
+			error:           result.error
+		})
+	}
+	return events
 }
 
 fn appkit_metal_supported() bool {
@@ -191,6 +1383,7 @@ fn (backend &AppKitBackend) capabilities_for_renderer(renderer_ready bool) Capab
 		owner_queue:        true
 		explicit_swapchain: appkit_metal_supported() && renderer_ready
 		metal:              appkit_metal_supported() && renderer_ready
+		readback:           appkit_metal_supported() && renderer_ready
 		input_events:       true
 		mouse_events:       true
 		keyboard_events:    true
@@ -305,6 +1498,8 @@ fn (mut backend AppKitBackend) init_renderer() ! {
 	$if darwin {
 		backend.prevalidate_start_attempt()!
 		if backend.renderer_ready() {
+			// gfx.shutdown clears the Sokol hook while the AppKit device remains alive.
+			backend.rearm_readback_hook_for_device(backend.device)!
 			return
 		}
 		if !backend.started {
@@ -320,6 +1515,7 @@ fn (mut backend AppKitBackend) init_renderer() ! {
 			backend.release_pending_start_device()
 			return error(err_appkit_metal_device_failed)
 		}
+		backend.readback_hook_rearm_required = false
 		return
 	} $else {
 		return error(err_backend_unsupported)
@@ -504,40 +1700,99 @@ fn (mut backend AppKitBackend) release_pending_start_device() {
 	}
 }
 
-fn (mut backend AppKitBackend) configure_existing_windows_for_device(device voidptr) ! {
+fn (mut backend AppKitBackend) configure_window_for_device(record AppKitWindowRecord, device voidptr) ! {
 	$if darwin {
 		if device == unsafe { nil } || backend.render_health.blocks_graphics() {
 			return error(err_appkit_metal_device_failed)
 		}
-		for record in backend.windows {
-			if record.state == unsafe { nil } || record.state_ticket == 0 {
-				return error(err_appkit_metal_device_failed)
-			}
-			seed := NativeOperationSeed{
-				presence_mask:     native_context_has_window | native_context_has_target_generation | native_context_has_target_identity
-				call_site:         .renderer_start
-				scope:             .window_target
-				window:            record.id
-				target_generation: record.render_target_generation
-				target_identity:   native_identity(record.state)
-			}
-			mut ordinals := backend.native_operations.reserve_renderer_attempt_ordinals(1) or {
-				return error(err_render_native_renderer_unavailable)
-			}
-			context := ordinals.materialize(backend.native_operations, .metal, .window_configure, seed) or {
-				return error(err_render_native_renderer_unavailable)
-			}
-			raw := C.v_multiwindow_appkit_configure_window_device(record.state, device)
-			result := backend.accept_metal_identity_result(context, raw,
-				native_identity(record.state), native_identity(device),
-				err_appkit_metal_device_failed)
-			if !result.succeeded() || backend.render_health.blocks_graphics() {
-				return error(err_appkit_metal_device_failed)
-			}
+		if record.state == unsafe { nil } || record.state_ticket == 0 {
+			return error(err_appkit_metal_device_failed)
+		}
+		seed := NativeOperationSeed{
+			presence_mask:     native_context_has_window | native_context_has_target_generation | native_context_has_target_identity
+			call_site:         .renderer_start
+			scope:             .window_target
+			window:            record.id
+			target_generation: record.render_target_generation
+			target_identity:   native_identity(record.state)
+		}
+		mut ordinals := backend.native_operations.reserve_renderer_attempt_ordinals(1) or {
+			return error(err_render_native_renderer_unavailable)
+		}
+		context := ordinals.materialize(backend.native_operations, .metal, .window_configure, seed) or {
+			return error(err_render_native_renderer_unavailable)
+		}
+		raw := C.v_multiwindow_appkit_configure_window_device(record.state, device)
+		result := backend.accept_metal_identity_result(context, raw, native_identity(record.state),
+			native_identity(device), err_appkit_metal_device_failed)
+		if !result.succeeded() || backend.render_health.blocks_graphics() {
+			return error(err_appkit_metal_device_failed)
 		}
 		return
 	} $else {
+		_ = record
 		_ = device
+		return error(err_backend_unsupported)
+	}
+}
+
+fn (mut backend AppKitBackend) configure_existing_windows_for_device(device voidptr) ! {
+	for record in backend.windows {
+		backend.configure_window_for_device(record, device)!
+	}
+}
+
+fn (mut backend AppKitBackend) invalidate_readback_hook_generation() {
+	if backend.readback_hook_rearm_required {
+		return
+	}
+	backend.readback_hook_rearm_required = true
+	$if darwin && sokol_metal ? {
+		for record in backend.windows {
+			if record.state == unsafe { nil } || record.services_released {
+				continue
+			}
+			if C.v_multiwindow_appkit_service_cancel_all_readbacks(record.state) < service_appkit_result_unavailable {
+				backend.poll_error = merge_backend_errors(backend.poll_error, err_readback_invalid)
+			}
+		}
+	}
+}
+
+fn (mut backend AppKitBackend) rearm_readback_hook_for_device(device voidptr) ! {
+	if !backend.readback_hook_rearm_required {
+		return
+	}
+	$if darwin && sokol_metal ? {
+		for record in backend.windows {
+			if record.services_released {
+				continue
+			}
+			backend.configure_window_for_device(record, device)!
+			backend.readback_hook_rearm_required = false
+			return
+		}
+	}
+	backend.readback_hook_rearm_required = false
+}
+
+fn (mut backend AppKitBackend) configure_window_owner_relation(id WindowId, config WindowConfig) ! {
+	if config.owner == none && !config.modal {
+		return
+	}
+	$if darwin {
+		index := backend.ensure_service_bridge(id)!
+		mut owner_state := unsafe { nil }
+		if owner := config.owner {
+			owner_state = appkit_owner_native_state(owner, backend.windows)!
+		}
+		if C.v_multiwindow_appkit_service_set_owner(backend.windows[index].state, owner_state,
+			appkit_bool_to_int(config.modal)) <= 0 {
+			return error(err_capability_unsupported)
+		}
+		return
+	} $else {
+		_ = id
 		return error(err_backend_unsupported)
 	}
 }
@@ -612,6 +1867,8 @@ fn (mut backend AppKitBackend) create_window(id WindowId, config WindowConfig) !
 		}
 		backend.windows << AppKitWindowRecord{
 			id:                 id
+			owner:              config.owner
+			modal:              config.modal
 			state:              pending.state
 			state_ticket:       pending.state_ticket
 			width:              width
@@ -620,6 +1877,23 @@ fn (mut backend AppKitBackend) create_window(id WindowId, config WindowConfig) !
 			framebuffer_height: framebuffer_height
 		}
 		backend.pending_window_state = AppKitPendingWindowState{}
+		if backend.readback_hook_rearm_required && backend.renderer_ready() {
+			backend.readback_hook_rearm_required = false
+		}
+		backend.configure_window_owner_relation(id, config) or {
+			backend.finish_window_teardown(id) or {}
+			return err
+		}
+		if backend.service_bridge_ready() {
+			index := backend.window_record_index(id) or { -1 }
+			if index >= 0 {
+				if raw_state := backend.service_raw_window_state(index) {
+					service_state := appkit_service_window_state_from_raw(raw_state,
+						backend.service_monitors, id.app_instance)
+					appkit_record_observed_service_state(mut backend.windows[index], service_state)
+				}
+			}
+		}
 		return WindowSize{
 			width:  width
 			height: height
@@ -653,14 +1927,14 @@ fn (mut backend AppKitBackend) finish_window_teardown(id WindowId) ! {
 				return error(err_appkit_application_failed)
 			}
 		}
-		mut record := &backend.windows[index]
-		released := backend.release_window_resources(mut record, NativeOperationSeed{
+		seed := NativeOperationSeed{
 			presence_mask:     native_context_has_window | native_context_has_target_generation
 			call_site:         .shutdown_release
 			scope:             .window_target
-			window:            record.id
-			target_generation: record.render_target_generation
-		})
+			window:            backend.windows[index].id
+			target_generation: backend.windows[index].render_target_generation
+		}
+		released := backend.release_window_resources(mut backend.windows[index], seed)
 		if !released {
 			return error(err_appkit_destroy_window_failed)
 		}
@@ -765,6 +2039,34 @@ $if darwin {
 	}
 
 	@[markused]
+	fn appkit_service_snapshot_from_native(native_event C.VMultiwindowAppKitQueuedEvent) AppKitServiceQueuedSnapshot {
+		return AppKitServiceQueuedSnapshot{
+			valid:              native_event.service_snapshot_valid == 1
+			kind:               native_event.service_kind
+			operation:          native_event.service_operation
+			state:              AppKitServiceRawWindowState{
+				mapping:           native_event.service_mapping
+				visibility:        native_event.service_visibility
+				active:            native_event.service_active
+				focused:           native_event.service_focused
+				minimized:         native_event.service_minimized
+				maximized:         native_event.service_maximized
+				fullscreen:        native_event.service_fullscreen
+				mouse_locked:      native_event.service_mouse_locked
+				position_known:    native_event.service_position_known
+				x:                 native_event.service_x
+				y:                 native_event.service_y
+				monitor_native_id: native_event.service_monitor_native_id
+				scale:             native_event.service_scale
+			}
+			window_width:       native_event.window_width
+			window_height:      native_event.window_height
+			framebuffer_width:  native_event.framebuffer_width
+			framebuffer_height: native_event.framebuffer_height
+		}
+	}
+
+	@[markused]
 	fn appkit_queued_event_from_native(record AppKitWindowRecord, native_event C.VMultiwindowAppKitQueuedEvent) ?QueuedEvent {
 		if native_event.event_kind == 1 {
 			kind := match native_event.lifecycle_kind {
@@ -852,11 +2154,16 @@ fn (mut backend AppKitBackend) set_window_cursor(id WindowId, shape CursorShape)
 
 fn (mut backend AppKitBackend) poll_queued_events() ![]QueuedEvent {
 	mut native_events := []AppKitNativeQueuedEvent{}
+	mut pending_monitor_events := []QueuedEvent{}
 	$if darwin {
-		if !backend.started || backend.render_health.blocks_graphics() {
+		if !backend.started {
 			return []QueuedEvent{}
 		}
+		if backend.render_health.blocks_graphics() {
+			return backend.queued_readback_events()!
+		}
 		C.v_multiwindow_appkit_poll_events()
+		pending_monitor_events = backend.monitor_change_event()!
 		mut i := 0
 		for i < backend.windows.len {
 			record := backend.windows[i]
@@ -883,25 +2190,148 @@ fn (mut backend AppKitBackend) poll_queued_events() ![]QueuedEvent {
 					backend.windows[i].framebuffer_width = native_event.framebuffer_width
 					backend.windows[i].framebuffer_height = native_event.framebuffer_height
 				}
-				event := appkit_queued_event_from_native(record, native_event) or {
-					C.v_multiwindow_appkit_release_queued_event_resources(&native_event)
-					continue
+				primary_event := appkit_queued_event_from_native(record, native_event)
+				service_events := backend.observed_service_events(i, native_event) or {
+					[]QueuedEvent{}
 				}
 				C.v_multiwindow_appkit_release_queued_event_resources(&native_event)
-				native_events << AppKitNativeQueuedEvent{
-					sequence: native_event.sequence
-					event:    event
+				if event := primary_event {
+					native_events << AppKitNativeQueuedEvent{
+						sequence: native_event.sequence
+						event:    event
+					}
+				}
+				for service_event in service_events {
+					native_events << AppKitNativeQueuedEvent{
+						sequence: native_event.sequence
+						event:    service_event
+					}
 				}
 			}
 			i++
 		}
 	}
 	appkit_sort_native_events(mut native_events)
-	mut events := []QueuedEvent{cap: native_events.len}
+	mut events := []QueuedEvent{cap: native_events.len + 1}
+	mut monitor_emitted := false
 	for native_event in native_events {
+		if !monitor_emitted && appkit_service_event_depends_on_monitor_snapshot(native_event.event) {
+			if pending_monitor_events.len > 0 {
+				events << pending_monitor_events[0]
+				monitor_emitted = true
+			}
+		}
+		if appkit_service_metrics_event_already_queued(events, native_event.event) {
+			continue
+		}
 		events << native_event.event
 	}
+	if !monitor_emitted && pending_monitor_events.len > 0 {
+		events << pending_monitor_events[0]
+	}
+	events << backend.queued_readback_events()!
 	return events
+}
+
+$if darwin {
+	@[markused]
+	fn (mut backend AppKitBackend) observed_service_events(index int, native_event C.VMultiwindowAppKitQueuedEvent) ![]QueuedEvent {
+		if !backend.service_bridge_ready() || index < 0 || index >= backend.windows.len {
+			return []QueuedEvent{}
+		}
+		app_instance := if backend.native_operations == unsafe { nil } {
+			backend.windows[index].id.app_instance
+		} else {
+			backend.native_operations.app_identity
+		}
+		snapshot := appkit_service_snapshot_from_native(native_event)
+		if snapshot.valid {
+			mut events := appkit_service_events_from_snapshot(backend.windows[index], snapshot,
+				backend.service_monitors, app_instance)
+			state := appkit_service_window_state_from_raw(snapshot.state, backend.service_monitors,
+				app_instance)
+			for operation in appkit_service_transition_operations(backend.windows[index], state) {
+				appkit_append_unique_state_transition(mut events, backend.windows[index].id, state,
+					operation)
+			}
+			appkit_record_observed_service_state(mut backend.windows[index], state)
+			return events
+		}
+		if native_event.event_kind != 2 {
+			return []QueuedEvent{}
+		}
+		input_kind := appkit_input_kind(native_event.input_kind)
+		if input_kind !in [.focused, .unfocused, .iconified, .restored, .resized] {
+			return []QueuedEvent{}
+		}
+		raw := backend.service_raw_window_state(index)!
+		state := appkit_service_window_state_from_raw(raw, backend.service_monitors, app_instance)
+		mut events := appkit_service_events_from_observation(backend.windows[index], input_kind,
+			state, raw.scale)
+		for operation in appkit_service_transition_operations(backend.windows[index], state) {
+			appkit_append_unique_state_transition(mut events, backend.windows[index].id, state,
+				operation)
+		}
+		appkit_record_observed_service_state(mut backend.windows[index], state)
+		return events
+	}
+}
+
+fn appkit_service_event_depends_on_monitor_snapshot(event QueuedEvent) bool {
+	return event.kind == .service && event.service.kind in [.state, .metrics]
+		&& service_window_state_observes_monitor_membership(event.service.state)
+}
+
+fn appkit_service_metrics_event_already_queued(events []QueuedEvent, candidate QueuedEvent) bool {
+	if candidate.kind != .service || candidate.service.kind != .metrics {
+		return false
+	}
+	for event in events {
+		if event.kind == .service && event.service.kind == .metrics
+			&& event.service.window == candidate.service.window
+			&& event.service.state == candidate.service.state
+			&& event.service.metrics == candidate.service.metrics {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut backend AppKitBackend) monitor_change_event() ![]QueuedEvent {
+	$if darwin {
+		if !backend.service_bridge_ready() {
+			return []QueuedEvent{}
+		}
+		revision := C.v_multiwindow_appkit_service_monitor_revision()
+		if revision == 0 || revision == backend.service_monitor_revision {
+			return []QueuedEvent{}
+		}
+		app_instance := if backend.native_operations == unsafe { nil } {
+			u64(0)
+		} else {
+			backend.native_operations.app_identity
+		}
+		if app_instance == 0 {
+			return []QueuedEvent{}
+		}
+		monitors := backend.service_monitor_snapshot(app_instance)!
+		return [
+			queued_service_event(ServiceEvent{
+				kind:     .monitor
+				monitor:  if monitors.len > 0 {
+					monitors[0]
+				} else {
+					ServiceMonitorInfo{
+						id: ServiceMonitorId{
+							app_instance: app_instance
+						}
+					}
+				}
+				monitors: monitors
+			}),
+		]
+	}
+	return []QueuedEvent{}
 }
 
 fn (mut backend AppKitBackend) take_poll_error() string {
@@ -960,14 +2390,14 @@ fn (mut backend AppKitBackend) stop() ! {
 		}
 		mut window_index := 0
 		for window_index < backend.windows.len {
-			mut record := &backend.windows[window_index]
-			released := backend.release_window_resources(mut record, NativeOperationSeed{
+			seed := NativeOperationSeed{
 				presence_mask:     native_context_has_window | native_context_has_target_generation
 				call_site:         .shutdown_release
 				scope:             .window_target
-				window:            record.id
-				target_generation: record.render_target_generation
-			})
+				window:            backend.windows[window_index].id
+				target_generation: backend.windows[window_index].render_target_generation
+			}
+			released := backend.release_window_resources(mut backend.windows[window_index], seed)
 			if !released {
 				append_appkit_stop_error(mut errors, err_appkit_destroy_window_failed)
 				window_index++
@@ -1521,7 +2951,7 @@ fn appkit_pending_start_device_is_empty(pending AppKitPendingStartDevice) bool {
 	return pending.value == unsafe { nil } && pending.transaction.ticket_id == 0
 }
 
-fn (mut backend AppKitBackend) release_window_drawable_lifetime(mut record &AppKitWindowRecord, mode AppKitWindowDrawableReleaseMode, error_text string) bool {
+fn (mut backend AppKitBackend) release_window_drawable_lifetime(mut record AppKitWindowRecord, mode AppKitWindowDrawableReleaseMode, error_text string) bool {
 	if appkit_lifetime_pair_is_empty(record.active_drawable, record.active_drawable_ticket) {
 		if mode == .close_frame {
 			record.frame_active = false
@@ -1586,8 +3016,7 @@ fn (mut backend AppKitBackend) release_active_frames_lifetime() bool {
 	$if darwin {
 		mut all_retired := true
 		for i in 0 .. backend.windows.len {
-			mut record := &backend.windows[i]
-			if !backend.release_window_drawable_lifetime(mut record, .close_frame,
+			if !backend.release_window_drawable_lifetime(mut backend.windows[i], .close_frame,
 				err_appkit_metal_drawable_failed) {
 				all_retired = false
 			}
@@ -1648,7 +3077,7 @@ fn (mut backend AppKitBackend) release_pending_window_state_lifetime() bool {
 	return true
 }
 
-fn (mut backend AppKitBackend) prepare_window_native_destroy(mut record &AppKitWindowRecord, seed NativeOperationSeed) bool {
+fn (mut backend AppKitBackend) prepare_window_native_destroy(mut record AppKitWindowRecord, seed NativeOperationSeed) bool {
 	$if darwin {
 		if record.native_destroyed {
 			return true
@@ -1691,8 +3120,11 @@ fn (mut backend AppKitBackend) prepare_window_native_destroy(mut record &AppKitW
 	}
 }
 
-fn (mut backend AppKitBackend) release_window_resources(mut record &AppKitWindowRecord, seed NativeOperationSeed) bool {
+fn (mut backend AppKitBackend) release_window_resources(mut record AppKitWindowRecord, seed NativeOperationSeed) bool {
 	$if darwin {
+		if !backend.release_window_services(mut record) {
+			return false
+		}
 		if !backend.release_window_drawable_lifetime(mut record, .close_frame,
 			err_appkit_metal_drawable_failed) {
 			return false
@@ -1718,6 +3150,41 @@ fn (mut backend AppKitBackend) release_window_resources(mut record &AppKitWindow
 		_ = backend
 		_ = record
 		_ = seed
+		return false
+	}
+}
+
+fn (mut backend AppKitBackend) release_window_services(mut record AppKitWindowRecord) bool {
+	if record.services_released {
+		return true
+	}
+	if record.state == unsafe { nil } {
+		record.services_released = true
+		return true
+	}
+	$if darwin {
+		if backend.native_operations == unsafe { nil }
+			|| !backend.native_operations.owner_thread_is_current()
+			|| C.v_multiwindow_appkit_is_main_thread() == 0 {
+			return false
+		}
+		if C.v_multiwindow_appkit_service_abi_version() != service_appkit_abi_version {
+			if record.owner != none || record.modal {
+				return false
+			}
+			record.services_released = true
+			return true
+		}
+		if C.v_multiwindow_appkit_service_cancel_all_readbacks(record.state) < 0
+			|| C.v_multiwindow_appkit_service_set_mouse_lock(record.state, 0) <= 0
+			|| C.v_multiwindow_appkit_service_detach_accessibility(record.state) <= 0
+			|| C.v_multiwindow_appkit_service_clear_owner(record.state) <= 0
+			|| C.v_multiwindow_appkit_service_release_window_services(record.state) <= 0 {
+			return false
+		}
+		record.services_released = true
+		return true
+	} $else {
 		return false
 	}
 }
@@ -1848,14 +3315,14 @@ fn (mut backend AppKitBackend) release_renderer_lifetime() bool {
 			scope:     .batch
 		})
 		for i in 0 .. backend.windows.len {
-			mut record := &backend.windows[i]
-			_ = backend.release_window_resources(mut record, NativeOperationSeed{
+			seed := NativeOperationSeed{
 				presence_mask:     native_context_has_window | native_context_has_target_generation
 				call_site:         .shutdown_release
 				scope:             .window_target
-				window:            record.id
-				target_generation: record.render_target_generation
-			})
+				window:            backend.windows[i].id
+				target_generation: backend.windows[i].render_target_generation
+			}
+			_ = backend.release_window_resources(mut backend.windows[i], seed)
 		}
 		_ = backend.release_pending_window_state_lifetime()
 		_ = backend.release_anchor_state_lifetime(NativeOperationSeed{

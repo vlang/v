@@ -28,6 +28,7 @@ a.out
 /v.c
 /v.*.c
 /v.c.out
+/v1_fallback
 /v_old
 /vdbg
 /vold
@@ -164,6 +165,9 @@ autofuzz.log
 # ignore common file names for bugs/reproductions
 bug*
 issue*
+!thirdparty/tccbin_automation/schemas/issue-projection.schema.json
+!thirdparty/tccbin_automation/tests/fixtures/issue-projection.schema-fixture.json
+!thirdparty/tccbin_automation/tests/fixtures/issue-ledger.dark.json
 
 # ignore cmd2/v stuff
 .claude/

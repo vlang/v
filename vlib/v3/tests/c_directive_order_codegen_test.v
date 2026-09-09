@@ -50,7 +50,7 @@ fn main() {}
 	directive_order_write_file(root, 'sokol/c/sokol_gfx.h', '')
 	directive_order_write_file(root, 'sokol/f/f.v', 'module f
 
-import sokol.c as _
+import sokol.gfx as _
 
 #define SOKOL_FONTSTASH_IMPL
 #include "util/sokol_fontstash.h"
@@ -58,6 +58,10 @@ import sokol.c as _
 #ifdef KEEP_DUPLICATE_INCLUDE
 #include "sokol_gfx.h"
 #endif
+')
+	directive_order_write_file(root, 'sokol/gfx/gfx.v', 'module gfx
+
+import sokol.c as _
 ')
 	directive_order_write_file(root, 'sokol/f/util/sokol_fontstash.h', '')
 	directive_order_write_file(root, 'sokol/f/sokol_gfx.h', '')
@@ -1090,7 +1094,7 @@ fn test_header_declared_prototypes_are_not_redeclared() {
 fn test_inlined_headers_are_emitted_before_type_declarations() {
 	c_code := directive_order_gen_c_struct_field_after_header(directive_order_build_v3())
 	header_idx := directive_order_index(c_code, '} FieldThing;')
-	wrap_idx := directive_order_index(c_code, 'struct Wrap {')
+	wrap_idx := directive_order_index(c_code, 'struct main__Wrap {')
 	assert header_idx >= 0, c_code
 	assert wrap_idx >= 0, c_code
 	assert header_idx < wrap_idx, c_code
@@ -1219,7 +1223,7 @@ fn test_mach_headers_are_emitted_headerlessly() {
 	assert c_code.contains('#define MACH_TASK_BASIC_INFO_COUNT 12'), c_code
 	assert c_code.contains('#define TASK_BASIC_INFO 18'), c_code
 	assert c_code.contains('typedef struct mach_timebase_info_data_t { u32 numer; u32 denom; } mach_timebase_info_data_t;'), c_code
-	assert c_code.contains('void mach_timebase_info('), c_code
+	assert c_code.contains('int mach_timebase_info('), c_code
 }
 
 fn test_inferred_mach_headers_are_target_guarded() {
