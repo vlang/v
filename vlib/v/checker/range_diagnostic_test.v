@@ -50,3 +50,22 @@ fn test_ignore_overflow_range_bound_is_folded() {
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('empty range: `1 .. 0` will never execute'), result.output
 }
+
+fn test_translated_range_arithmetic_uses_c_promotions() {
+	root := os.join_path(os.vtmp_dir(), 'range_translated_arithmetic_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	body := 'fn main() {\n\tmut entered := false\n\tfor _ in u8(1) .. u8(255) + u8(1) {\n\t\tentered = true\n\t\tbreak\n\t}\n\tassert entered\n}\n'
+	flag_program := os.join_path(root, 'flag.v')
+	os.write_file(flag_program, body) or { panic(err) }
+	flag_result :=
+		os.execute('${range_diagnostic_vexe} -w -translated run ${os.quoted_path(flag_program)}')
+	assert flag_result.exit_code == 0, flag_result.output
+	file_program := os.join_path(root, 'file.v')
+	os.write_file(file_program, '@[translated]\nmodule main\n\n${body}') or { panic(err) }
+	file_result := os.execute('${range_diagnostic_vexe} -w run ${os.quoted_path(file_program)}')
+	assert file_result.exit_code == 0, file_result.output
+}

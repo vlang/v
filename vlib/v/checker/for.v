@@ -526,6 +526,11 @@ fn (mut c Checker) range_expr_has_checked_arithmetic(expr ast.Expr, ignore_direc
 }
 
 fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, low_type ast.Type, val_type ast.Type, high_type ast.Type) {
+	translated_has_distinct_arithmetic := c.pref.translated || c.file.is_translated
+	if translated_has_distinct_arithmetic
+		&& (!range_expr_is_plain_integer_literal(low) || !range_expr_is_plain_integer_literal(high)) {
+		return
+	}
 	backend_has_distinct_range_conversions := c.pref.backend == .wasm || c.pref.backend.is_js()
 	unaliased_low_type := c.table.fully_unaliased_type(low_type).clear_flags()
 	unaliased_high_type := c.table.fully_unaliased_type(high_type).clear_flags()
