@@ -750,6 +750,21 @@ fn test_sign_response_preserves_unassigned_three_digit_status() {
 	}
 }
 
+fn test_sign_response_rejects_out_of_range_status_without_mutation() {
+	mut resp := http.Response{
+		status_code: 700
+	}
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_response(mut resp, key, components: ['@status'], created: 1) {
+		assert false, 'an out-of-range wire status must not be signed as a different code'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert resp.status_code == 700
+	assert !resp.header.contains_custom('Signature-Input')
+	assert !resp.header.contains_custom('Signature')
+}
+
 fn test_sign_response_includes_generated_content_length() {
 	mut resp := http.Response{
 		body: 'hello'
@@ -878,7 +893,7 @@ fn test_sign_response_preflights_both_signature_header_slots() {
 fn test_response_components_do_not_invent_content_length() {
 	c := response_components(http.Response{
 		body: 'hello'
-	})
+	})!
 	if _ := c.component_value('content-length') {
 		assert false, 'an absent response Content-Length must remain absent'
 	} else {

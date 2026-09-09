@@ -147,6 +147,7 @@ pub:
 // it preserves any pre-existing Signature-Input / Signature values
 // and defaults `created` to the current time. The default component profile
 // additionally requires and covers Content-Digest when the response has a body.
+// Nonzero status codes outside the HTTP 100...599 range are rejected.
 pub fn sign_response(mut resp http.Response, key Key, opts SignResponseOptions) ! {
 	ensure_signature_label_available(resp.header, opts.label)!
 	mut comps := opts.components.clone()
@@ -166,7 +167,7 @@ pub fn sign_response(mut resp http.Response, key Key, opts SignResponseOptions) 
 	adds_content_length := comps.any(it.to_lower() == 'content-length')
 		&& !resp.header.contains(.content_length)
 	ensure_signature_header_capacity(resp.header, if adds_content_length { 1 } else { 0 })!
-	mut c := response_components(resp)
+	mut c := response_components(resp)!
 	if adds_content_length {
 		// Sign the value that will be inserted only after signing succeeds, so
 		// an error cannot leave the unsigned response mutated.
@@ -206,7 +207,7 @@ pub:
 // requires @status coverage, plus content-digest for a body, unless
 // `required_components` is set explicitly.
 pub fn verify_response(resp http.Response, key Key, opts VerifyResponseOptions) ! {
-	c := response_components(resp)
+	c := response_components(resp)!
 	sig_input := merged_dict_field(resp.header, 'Signature-Input') or {
 		return MalformedMessage{
 			reason: 'response has no Signature-Input header'
@@ -517,14 +518,13 @@ fn transport_authority(url urllib.URL) string {
 	return '${host}:${port}'
 }
 
-fn response_components(resp http.Response) Components {
-	wire_status := if resp.status_code >= 100 && resp.status_code <= 599 {
-		resp.status_code
-	} else if resp.status_code == 0 {
-		200
-	} else {
-		500
+fn response_components(resp http.Response) !Components {
+	if resp.status_code != 0 && (resp.status_code < 100 || resp.status_code > 599) {
+		return MalformedMessage{
+			reason: 'response status code ${resp.status_code} is outside 100...599'
+		}
 	}
+	wire_status := if resp.status_code == 0 { 200 } else { resp.status_code }
 	mut c := Components{
 		status: wire_status
 	}
