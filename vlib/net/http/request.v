@@ -322,13 +322,13 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, data
 	return error('http.request.method_and_url_to_response: unsupported scheme: "${scheme}"')
 }
 
-fn (req &Request) build_request_headers(method Method, host_name string, port int, path string) string {
+fn (req &Request) build_request_headers(method Method, host_name string, port int, path string) !string {
 	default_port := if port == 443 { 443 } else { 80 }
 	return req.build_request_headers_with(method, host_name, port, default_port, path, req.data,
 		req.header)
 }
 
-fn (req &Request) build_request_headers_with(method Method, host_name string, port int, default_port int, path string, data string, header Header) string {
+fn (req &Request) build_request_headers_with(method Method, host_name string, port int, default_port int, path string, data string, header Header) !string {
 	return req.build_request_headers_opts(method, host_name, port, default_port, path, data,
 		header, true)
 }
@@ -338,7 +338,10 @@ fn (req &Request) build_request_headers_with(method Method, host_name string, po
 // one-shot behavior); the pooled keep-alive path passes false and emits no
 // Connection header, leaving the HTTP/1.1 default (keep-alive) in effect and
 // respecting any Connection header the caller set themselves.
-fn (req &Request) build_request_headers_opts(method Method, host_name string, port int, default_port int, path string, data string, header Header, connection_close bool) string {
+fn (req &Request) build_request_headers_opts(method Method, host_name string, port int, default_port int, path string, data string, header Header, connection_close bool) !string {
+	if method == .trace && data != '' {
+		return error('net.http: TRACE requests must not carry a body')
+	}
 	mut sb := strings.new_builder(4096)
 	version := if req.version == .unknown { Version.v1_1 } else { req.version }
 	sb.write_string(method.str())
@@ -416,7 +419,7 @@ fn (req &Request) build_request_cookies_header_with_header(header Header) string
 
 fn (req &Request) http_do(host string, method Method, path string, data string, header Header) !Response {
 	host_name, port := net.split_address(host)!
-	s := req.build_request_headers_with(method, host_name, port, 80, path, data, header)
+	s := req.build_request_headers_with(method, host_name, port, 80, path, data, header)!
 	mut client := net.dial_tcp(host)!
 	client.set_read_timeout(req.read_timeout)
 	client.set_write_timeout(req.write_timeout)

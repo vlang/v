@@ -155,7 +155,7 @@ fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Req
 	}
 	default_port := if host.scheme == 'https' { 443 } else { 80 }
 	s := req.build_request_headers_with(method, host_name, port, default_port, proxy_request_target(host,
-		port, path), data, header)
+		port, path), data, header)!
 	if host.scheme == 'https' {
 		mut client := pr.ssl_dial('${host_name}:${port}')!
 
@@ -167,7 +167,7 @@ fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Req
 			// return response_text
 		} $else {
 			return req.do_request(req.build_request_headers_with(method, host_name, port,
-				default_port, path, data, header), mut client)!
+				default_port, path, data, header)!, mut client)!
 		}
 	} else if host.scheme == 'http' {
 		mut client := pr.dial('${host_name}:${port}')!

@@ -810,6 +810,21 @@ fn test_outgoing_trace_components_do_not_synthesize_content_length() {
 	}
 }
 
+fn test_sign_request_rejects_trace_body() {
+	mut req := http.Request{
+		method: .trace
+		url:    'https://example.com/'
+		data:   'body'
+	}
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_request(mut req, key, components: ['@method'], created: 1) {
+		assert false, 'TRACE request bodies cannot be sent safely'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !req.header.contains_custom('Signature')
+}
+
 fn test_sign_response_rejects_existing_label() {
 	mut resp := http.Response{
 		status_code: 200
