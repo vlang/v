@@ -2734,18 +2734,10 @@ fn (tc &TypeChecker) resolve_insert_path(target string, file string) string {
 
 fn checker_vmod_root_for_file(file string) string {
 	mut dir := if file.len > 0 { os.dir(file) } else { os.getwd() }
-	original := dir
-	for {
-		if os.exists(os.join_path_single(dir, 'v.mod')) {
-			return os.real_path(dir)
-		}
-		parent := os.dir(dir)
-		if parent == dir || parent.len == 0 {
-			return os.real_path(original)
-		}
-		dir = parent
+	if dir.len == 0 {
+		dir = os.getwd()
 	}
-	return os.real_path(original)
+	return util.nearest_vmod_root(file) or { os.real_path(dir) }
 }
 
 fn checker_flag_include_dir(raw string) ?string {

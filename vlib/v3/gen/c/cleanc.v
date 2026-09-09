@@ -9948,17 +9948,7 @@ fn c_vmod_root_for_file(source_file string) string {
 	if dir.len == 0 {
 		dir = os.getwd()
 	}
-	for {
-		if os.exists(os.join_path(dir, 'v.mod')) {
-			return os.real_path(dir)
-		}
-		parent := os.dir(dir)
-		if parent == dir || parent.len == 0 {
-			return os.real_path(dir)
-		}
-		dir = parent
-	}
-	return os.real_path(dir)
+	return util.nearest_vmod_root(source_file) or { os.real_path(dir) }
 }
 
 fn c_pkgconfig_flags(raw string) []string {
