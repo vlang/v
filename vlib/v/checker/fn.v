@@ -71,6 +71,23 @@ fn (mut c Checker) record_receiver_mut_argument(param ast.Param, arg ast.CallArg
 	}
 }
 
+fn (mut c Checker) record_receiver_method_call(left ast.Expr, called_name string) {
+	if called_name == '' || c.table.cur_fn == unsafe { nil } || !c.table.cur_fn.is_method
+		|| !c.table.cur_fn.rec_mut {
+		return
+	}
+	mut left_expr := left
+	left_expr = left_expr.remove_par()
+	if left_expr is ast.Ident && left_expr.name == c.table.cur_fn.receiver.name {
+		mut receiver_sym := c.table.sym(c.table.cur_fn.receiver.typ)
+		method_idx := c.table.cur_fn.method_idx
+		if method_idx >= 0 && method_idx < receiver_sym.methods.len
+			&& called_name !in receiver_sym.methods[method_idx].receiver_method_calls {
+			receiver_sym.methods[method_idx].receiver_method_calls << called_name
+		}
+	}
+}
+
 fn (mut c Checker) check_os_raw_io_call(node &ast.CallExpr, func &ast.Fn, concrete_types []ast.Type, arg_offset int) {
 	if func.mod != 'os' || !func.is_method {
 		return

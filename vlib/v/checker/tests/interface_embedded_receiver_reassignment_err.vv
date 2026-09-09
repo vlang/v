@@ -53,6 +53,14 @@ fn (mut node Node) replace_through_closure(next Node) {
 	replace()
 }
 
+fn (mut node Node) replace_through_comptime_method(next Node) {
+	$for method in Node.methods {
+		if method.name == 'replace' {
+			node.$method(next)
+		}
+	}
+}
+
 interface Element {
 	Node
 }
@@ -70,4 +78,5 @@ fn main() {
 	element.replace_through_function(Node(Item{}))
 	element.expose_receiver_address()
 	element.replace_through_closure(Node(Item{}))
+	element.replace_through_comptime_method(Node(Item{}))
 }

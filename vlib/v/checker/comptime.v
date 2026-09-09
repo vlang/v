@@ -609,6 +609,9 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		}
 		c.check_comptime_method_call_args(mut node)
 		c.markused_comptimecall(mut node)
+		if c.comptime.comptime_for_method != unsafe { nil } {
+			c.record_receiver_method_call(node.left, c.comptime.comptime_for_method.name)
+		}
 		c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
 		return c.type_resolver.get_type(node)
 	}
@@ -672,6 +675,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		c.error('could not find method `${method_name}`', node.method_pos)
 		return ast.void_type
 	}
+	c.record_receiver_method_call(node.left, f.name)
 	c.mark_fn_decl_as_referenced(f.fkey())
 	c.markused_comptime_call(true, '${int(left_type)}.${method_name}')
 	node.result_type = f.return_type
