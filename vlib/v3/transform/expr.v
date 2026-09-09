@@ -2112,7 +2112,7 @@ fn (mut t Transformer) transform_optional_wrapper_index_expr(id flat.NodeId, nod
 		t.smartcast_stack = remaining_smartcasts
 	}
 	transformed := t.transform_index_expr(id, node)
-	t.smartcast_stack = saved_smartcasts
+	t.smartcast_stack = t.non_invalidated_smartcasts(saved_smartcasts)
 	return t.mark_optional_wrapper_expr(transformed, raw_type)
 }
 
