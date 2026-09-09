@@ -1,0 +1,5 @@
+struct Test {
+	bar []byte
+}
+
+fn main() {}

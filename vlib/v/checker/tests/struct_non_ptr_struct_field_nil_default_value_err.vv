@@ -1,0 +1,11 @@
+struct Context {}
+
+struct Game {
+mut:
+	gg        Context = unsafe { nil }
+	something int
+}
+
+fn main() {
+	_ := &Game{}
+}

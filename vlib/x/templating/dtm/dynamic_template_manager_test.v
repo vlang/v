@@ -1,5 +1,3 @@
-// vtest retry: 3
-// vtest flaky: true
 module dtm
 
 import os
@@ -10,8 +8,13 @@ const temp_html_fp = 'temp.html'
 const temp_html_n = 'temp'
 const vtmp_dir = os.vtmp_dir()
 
+fn dtm_test_root_dir() string {
+	return os.join_path(vtmp_dir, '${temp_dtm_dir}_${os.getpid()}')
+}
+
 fn testsuite_begin() {
-	temp_folder := os.join_path(vtmp_dir, temp_dtm_dir)
+	temp_folder := dtm_test_root_dir()
+	os.rmdir_all(temp_folder) or {}
 	os.mkdir_all(temp_folder)!
 
 	templates_path := os.join_path(temp_folder, temp_templates_dir)
@@ -157,7 +160,7 @@ fn test_check_tmpl_and_placeholders_size() {
 }
 
 fn test_chandler_prevent_cache_duplicate_request() {
-	dtmi := init_dtm(false, 0)
+	mut dtmi := init_dtm(false, 0)
 	temp_html_file := os.join_path(dtmi.template_folder, temp_html_fp)
 
 	lock dtmi.template_caches {
@@ -242,8 +245,7 @@ fn test_chandler_remaining_cache_template_used() {
 			need_to_delete:           true
 		}
 	}
-	mut can_delete := dtmi.chandler_remaining_cache_template_used(CacheRequest.update,
-		3, 3)
+	mut can_delete := dtmi.chandler_remaining_cache_template_used(CacheRequest.update, 3, 3)
 	assert can_delete == true
 	can_delete = dtmi.chandler_remaining_cache_template_used(CacheRequest.update, 2, 2)
 	assert can_delete == false
@@ -255,7 +257,7 @@ fn test_chandler_remaining_cache_template_used() {
 
 fn test_parse_tmpl_file() {
 	mut dtmi := init_dtm(false, 0)
-	temp_folder := os.join_path(vtmp_dir, temp_dtm_dir)
+	temp_folder := dtm_test_root_dir()
 	templates_path := os.join_path(temp_folder, temp_templates_dir)
 	temp_html_file := os.join_path(templates_path, temp_html_fp)
 
@@ -271,7 +273,8 @@ fn test_parse_tmpl_file() {
 fn test_check_if_cache_delay_iscorrect() {
 	check_if_cache_delay_iscorrect(i64(300 * 1000000), temp_html_n) or { assert false }
 
-	check_if_cache_delay_iscorrect(i64(-100), temp_html_n) or { assert true }
+	check_if_cache_delay_iscorrect(i64(-100), temp_html_n) or { return }
+	assert false
 }
 
 fn test_cache_request_route() {
@@ -286,45 +289,45 @@ fn test_cache_request_route() {
 	mut current_content_checksum := 'checksumtest2'
 
 	mut request_type, _ := dtmi.cache_request_route(is_cache_exist, cache_delay_expiration,
-		last_template_mod, test_current_template_mod, cache_del_exp, gen_at, get_current_unix_micro_timestamp(),
-		content_checksum, current_content_checksum)
+		last_template_mod, test_current_template_mod, cache_del_exp, gen_at,
+		get_current_unix_micro_timestamp(), content_checksum, current_content_checksum)
 
 	assert request_type == CacheRequest.update
 
 	current_content_checksum = 'checksumtest1'
 
 	request_type, _ = dtmi.cache_request_route(is_cache_exist, cache_delay_expiration,
-		last_template_mod, test_current_template_mod, cache_del_exp, gen_at, get_current_unix_micro_timestamp(),
-		content_checksum, current_content_checksum)
+		last_template_mod, test_current_template_mod, cache_del_exp, gen_at,
+		get_current_unix_micro_timestamp(), content_checksum, current_content_checksum)
 
 	assert request_type == CacheRequest.cached
 
 	gen_at = (last_template_mod - 500)
 
 	request_type, _ = dtmi.cache_request_route(is_cache_exist, cache_delay_expiration,
-		last_template_mod, test_current_template_mod, cache_del_exp, gen_at, get_current_unix_micro_timestamp(),
-		content_checksum, current_content_checksum)
+		last_template_mod, test_current_template_mod, cache_del_exp, gen_at,
+		get_current_unix_micro_timestamp(), content_checksum, current_content_checksum)
 
 	assert request_type == CacheRequest.exp_update
 
 	is_cache_exist = false
 
 	request_type, _ = dtmi.cache_request_route(is_cache_exist, cache_delay_expiration,
-		last_template_mod, test_current_template_mod, cache_del_exp, gen_at, get_current_unix_micro_timestamp(),
-		content_checksum, current_content_checksum)
+		last_template_mod, test_current_template_mod, cache_del_exp, gen_at,
+		get_current_unix_micro_timestamp(), content_checksum, current_content_checksum)
 
 	assert request_type == CacheRequest.new
 }
 
 fn testsuite_end() {
-	temp_folder := os.join_path(vtmp_dir, temp_dtm_dir)
+	temp_folder := dtm_test_root_dir()
 	os.rmdir_all(temp_folder) or {}
 }
 
 // Utilities function :
 
 fn init_dtm(b bool, m int) &DynamicTemplateManager {
-	temp_folder := os.join_path(vtmp_dir, temp_dtm_dir)
+	temp_folder := dtm_test_root_dir()
 	templates_path := os.join_path(temp_folder, temp_templates_dir)
 
 	init_params := DynamicTemplateManagerInitialisationParams{

@@ -3,7 +3,7 @@ mut:
 	next() ?T
 }
 
-fn (mut it Iter[T]) collect[T]() []T {
+fn (mut it Iter[T]) collect() []T {
 	mut data := []T{}
 	for {
 		val := it.next() or { break }

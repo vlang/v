@@ -1,0 +1,17 @@
+import db.sqlite
+
+struct Foo {
+	id   int @[primary; serial]
+	name struct {
+		id    int @[primary; serial]
+		first string
+		last  string
+	}
+}
+
+fn main() {
+	db := sqlite.connect(':memory:')!
+	sql db {
+		create table Foo
+	}!
+}

@@ -76,7 +76,8 @@ fn main() {
 		os.write_file(os.join_path(tmp_folder, '${i}.txt'), '${i}\n${i}\n')!
 	}
 
-	out, ecode, er = exec("find ${os.quoted_path(tmp_folder)} ; sleep 0.1; find ${os.quoted_path(tmp_folder)} ; echo '******'")
+	out, ecode, er =
+		exec("find ${os.quoted_path(tmp_folder)} ; sleep 0.1; find ${os.quoted_path(tmp_folder)} ; echo '******'")
 	assert out.ends_with('******\n')
 	assert er == ''
 

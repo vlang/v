@@ -1,0 +1,6 @@
+vlib/v/checker/tests/test_invalid_name.vv:1:1: error: invalid test file name `test_invalid_name.vv`
+    1 | module custom
+      | ~~~~~~~~~~~~~
+    2 | 
+    3 | fn test_result() {
+Details: Test files should have names ending with `_test.v`.

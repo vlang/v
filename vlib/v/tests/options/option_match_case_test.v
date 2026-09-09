@@ -9,6 +9,7 @@ fn test_main() {
 			none
 		}
 	}
+
 	assert v? == 'b'
 }
 

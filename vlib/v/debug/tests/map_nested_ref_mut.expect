@@ -1,0 +1,9 @@
+#!/usr/bin/env expect
+source "common.tcl"
+
+expect "Break on *main* main in ${test_file}:9\r\n"
+expect "${test_file}:9 vdbg> "
+send "p connection\n"
+expect "connection = * (&net.TcpConn)"
+send "q\n"
+expect eof

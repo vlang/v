@@ -276,6 +276,10 @@ fn scan_v(mut files []string, path string) ! {
 			continue
 		}
 		if os.is_file(p) {
+			if i == 'arc_d_ownership.v' {
+				// This file uses V3-only lifetime syntax.
+				continue
+			}
 			if i.ends_with('.v') && !i.contains_any_substr(['_test.', 'test_', 'tests_']) {
 				files << p
 			}
@@ -313,6 +317,13 @@ fn test_parse_with_silent() {
 
 fn test_parse_with_stdout() {
 	println(@LOCATION)
+	$if windows {
+		// On Windows with TCC, parsing in stdout mode can crash due to
+		// exit() being called inside the parser on parse errors, which
+		// corrupts memory under TCC's runtime.
+		eprintln('> skipping stdout mode parsing test on Windows')
+		return
+	}
 	parse(.stdout)!
 }
 
@@ -476,4 +487,23 @@ x end_comment'
 	assert table.vls_info['enum_main.MyEnum.y'].doc.trim_space() == 'y comment line1
 y comment line2
 y end_comment'
+}
+
+fn test_no_closure_auto_import_for_field_names() {
+	vpref := &pref.Preferences{}
+	for field_name in ast.builtin_array_generic_methods {
+		source := 'struct Sample {
+mut:
+	${field_name} u32
+}
+
+fn use_field(mut sample Sample) {
+	_ = sample.${field_name}
+	sample.${field_name}++
+}
+'
+		mut table := ast.new_table()
+		prog := parse_text(source, '', mut table, .skip_comments, vpref)
+		assert 'builtin.closure' !in prog.auto_imports
+	}
 }

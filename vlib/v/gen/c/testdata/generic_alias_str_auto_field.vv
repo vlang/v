@@ -1,0 +1,31 @@
+struct GenericAliasStrBox[T] {
+	val T
+}
+
+type GenericAliasStrIntBox = GenericAliasStrBox[int]
+type GenericAliasStrNestedIntBox = GenericAliasStrIntBox
+
+struct GenericAliasStrContainer {
+	b      GenericAliasStrIntBox
+	nested GenericAliasStrNestedIntBox
+}
+
+fn (b GenericAliasStrIntBox) str[T]() string {
+	return 'alias generic str'
+}
+
+fn (b GenericAliasStrNestedIntBox) str[T]() string {
+	return 'nested alias generic str'
+}
+
+fn main() {
+	c := GenericAliasStrContainer{
+		b:      GenericAliasStrIntBox{
+			val: 1
+		}
+		nested: GenericAliasStrNestedIntBox{
+			val: 2
+		}
+	}
+	println(c)
+}

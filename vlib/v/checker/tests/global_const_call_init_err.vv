@@ -1,0 +1,12 @@
+@[has_globals]
+module main
+
+fn make_value() int {
+	return 123
+}
+
+__global const bad = make_value()
+
+fn main() {
+	assert bad == 123
+}

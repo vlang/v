@@ -4,4 +4,3 @@ mut age := 20; println(get_info(age)); age = 45; println(get_info(age))
 ===output===
 young
 old
-

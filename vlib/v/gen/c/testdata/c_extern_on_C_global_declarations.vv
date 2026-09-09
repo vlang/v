@@ -3,10 +3,8 @@ module main
 
 #include "@DIR/c_file_for_c_extern.c"
 
-// These could be macros, but without the @[c_extern] tag, they should still work.
+// C.stdout and C.stderr are now declared in builtin/cfns.c.v as `&C.FILE`.
 // V should treat their type as `&C.FILE`, and *NOT* as the default `int` type for C names.
-__global C.stdout &C.FILE
-__global C.stderr &C.FILE
 
 // This should generate: `i16 My_non_extern_C_global = -9876;` . Note the lack of `extern `.
 __global C.My_non_extern_C_global = i16(-9876)

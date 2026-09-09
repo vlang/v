@@ -1,0 +1,69 @@
+// vtest vflags: -gc boehm
+const issue_27329_kind_false = 0
+const issue_27329_kind_true = 1
+const issue_27329_kind_len = 2
+
+struct Issue27329Object {
+	kind    int
+	ival    int
+	len_val int
+	child   &Issue27329Object
+}
+
+fn (obj &Issue27329Object) truthy() bool {
+	return if obj.kind == issue_27329_kind_true {
+		true
+	} else if obj.kind == issue_27329_kind_len {
+		obj.len_val > 0
+	} else {
+		false
+	}
+}
+
+fn issue_27329_objects() []&Issue27329Object {
+	return [
+		&Issue27329Object{
+			kind:    issue_27329_kind_false
+			ival:    0
+			len_val: 0
+			child:   unsafe { nil }
+		},
+		&Issue27329Object{
+			kind:    issue_27329_kind_true
+			ival:    1
+			len_val: 0
+			child:   unsafe { nil }
+		},
+		&Issue27329Object{
+			kind:    issue_27329_kind_len
+			ival:    2
+			len_val: 3
+			child:   unsafe { nil }
+		},
+	]
+}
+
+fn issue_27329_nested() &Issue27329Object {
+	return &Issue27329Object{
+		kind:    issue_27329_kind_len
+		ival:    7
+		len_val: 1
+		child:   &Issue27329Object{
+			kind:    issue_27329_kind_false
+			ival:    8
+			len_val: 0
+			child:   unsafe { nil }
+		}
+	}
+}
+
+fn main() {
+	objects := issue_27329_objects()
+	nested := issue_27329_nested()
+	assert !objects[0].truthy()
+	assert objects[1].truthy()
+	assert objects[2].truthy()
+	assert nested.truthy()
+	assert !nested.child.truthy()
+	println('ok')
+}

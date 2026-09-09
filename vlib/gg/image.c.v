@@ -12,17 +12,26 @@ import sokol.sgl
 @[heap; markused]
 pub struct Image {
 pub mut:
-	id          int
-	width       int
-	height      int
-	nr_channels int
-	ok          bool
-	data        voidptr
-	ext         string
-	simg_ok     bool
-	simg        gfx.Image
-	ssmp        gfx.Sampler
-	path        string
+	id             int
+	width          int
+	height         int
+	nr_channels    int
+	nr_mipmaps     int
+	ok             bool
+	data           voidptr
+	ext            string
+	simg_ok        bool
+	simg           gfx.Image
+	ssmp           gfx.Sampler
+	path           string
+	texture_filter TextureFilter = .linear
+}
+
+@[params]
+pub struct ImageConfig {
+pub:
+	texture_filter ?TextureFilter
+	max_mipmaps    int = 1 // a value below 1 means as many as possible
 }
 
 // destroy GPU resources associated with the image
@@ -37,12 +46,18 @@ fn (image &Image) destroy() {
 	}
 }
 
+// create_image_with_filter creates an `Image` from `file` with the requested texture filter.
+@[deprecated: 'use Context.create_image instead']
+pub fn (mut ctx Context) create_image_with_filter(file string, texture_filter TextureFilter) !Image {
+	return ctx.create_image(file, texture_filter: texture_filter)!
+}
+
 // create_image creates an `Image` from `file`.
-pub fn (mut ctx Context) create_image(file string) !Image {
+pub fn (mut ctx Context) create_image(file string, cfg ImageConfig) !Image {
 	if !os.exists(file) {
 		$if android {
 			image_data := os.read_apk_asset(file)!
-			mut image := ctx.create_image_from_byte_array(image_data)!
+			mut image := ctx.create_image_from_byte_array(image_data, cfg)!
 
 			image.path = file
 
@@ -51,14 +66,11 @@ pub fn (mut ctx Context) create_image(file string) !Image {
 			return error('image file "${file}" not found')
 		}
 	}
-
 	$if macos {
 		if ctx.native_rendering {
-			// return C.darwin_create_image(file)
 			mut img := C.darwin_create_image(file)
+			img.texture_filter = cfg.texture_filter or { ctx.config.texture_filter }
 
-			// println('created macos image: ${img.path} w=${img.width}')
-			// C.printf('p = %p\n', img.data)
 			img.id = ctx.image_cache.len
 			unsafe {
 				ctx.image_cache << img
@@ -67,31 +79,74 @@ pub fn (mut ctx Context) create_image(file string) !Image {
 		}
 	}
 
-	if !gfx.is_valid() {
-		// Sokol is not initialized yet, add stbi object to a queue/cache
-		// ctx.image_queue << file
-		stb_img := stbi.load(file)!
-		img := Image{
-			width:       stb_img.width
-			height:      stb_img.height
-			nr_channels: stb_img.nr_channels
-			ok:          false
-			data:        stb_img.data
-			ext:         stb_img.ext
-			path:        file
-			id:          ctx.image_cache.len
-		}
-		unsafe {
-			ctx.image_cache << img
-		}
-		return img
-	}
-	mut img := create_image(file)
+	mut img := load_image(file)!
 	img.id = ctx.image_cache.len
+	img.texture_filter = cfg.texture_filter or { ctx.config.texture_filter }
 	unsafe {
 		ctx.image_cache << img
 	}
+	if gfx.is_valid() {
+		img.init_sokol_image()
+	}
 	return img
+}
+
+// adapted from https://github.com/floooh/sokol/issues/102#issuecomment-2926566603
+fn sokol_mipmap(mut simg_desc gfx.ImageDesc, max_mipmaps int) {
+	mut levels := 0
+	mut size := 0
+	width := simg_desc.width
+	height := simg_desc.height
+	mipmaps := if max_mipmaps < gfx.sg_max_mipmaps && max_mipmaps > 0 {
+		max_mipmaps
+	} else {
+		gfx.sg_max_mipmaps
+	}
+	for i in 1 .. mipmaps {
+		w := width >> i
+		h := height >> i
+		if w < 1 || h < 1 { break
+		 }
+		size += w * h * 4 // 4 = img.nr_channels
+		levels++
+	}
+	// use unsafe to access the data because we have to anyway
+	mut target := unsafe { malloc(size) }
+	mut src_width := width
+	mut src_height := height
+	for level in 1 .. levels {
+		src := &u8(simg_desc.data.subimage[0][level - 1].ptr)
+		target_width := src_width / 2
+		target_height := src_height / 2
+		for x in 0 .. target_width {
+			for y in 0 .. target_height {
+				// channels RGBA
+				chans := 4
+				for ch in 0 .. 4 {
+					// avererage colors in a 2x2 square over the source image where (x*2|y*2) is the lower left corner
+					mut color := 0
+					sx := x * 2
+					sy := y * 2
+					color += unsafe { src[(sx + src_width * sy) * chans + ch] }
+					color += unsafe { src[(sx + src_width * (sy + 1)) * chans + ch] }
+					color += unsafe { src[((sx + 1) + src_width * (sy + 1)) * chans + ch] }
+					color += unsafe { src[((sx + 1) + src_width * sy) * chans + ch] }
+					color /= 4
+					unsafe {
+						target[(x + y * target_width) * chans + ch] = u8(color)
+					}
+				}
+			}
+		}
+		src_width = target_width
+		src_height = target_height
+		simg_desc.data.subimage[0][level].ptr = target
+		simg_desc.data.subimage[0][level].size = usize(target_width * target_height * 4)
+		unsafe {
+			target += target_width * target_height * 4
+		}
+	}
+	simg_desc.num_mipmaps = levels
 }
 
 // init_sokol_image initializes this `Image` for use with the
@@ -99,9 +154,8 @@ pub fn (mut ctx Context) create_image(file string) !Image {
 pub fn (mut img Image) init_sokol_image() &Image {
 	// println('\n init sokol image ${img.path} ok=${img.simg_ok}')
 	mut img_desc := gfx.ImageDesc{
-		width:       img.width
-		height:      img.height
-		num_mipmaps: 0
+		width:  img.width
+		height: img.height
 		// wrap_u: .clamp_to_edge // XTODO SAMPLER
 		// wrap_v: .clamp_to_edge
 		label:         &char(img.path.str)
@@ -124,13 +178,17 @@ pub fn (mut img Image) init_sokol_image() &Image {
 		ptr:  img.data
 		size: img_size
 	}
+	sokol_mipmap(mut img_desc, img.nr_mipmaps)
+	img.nr_mipmaps = img_desc.num_mipmaps
 	img.simg = gfx.make_image(&img_desc)
+	gfx_filter := img.texture_filter.gfx_filter()
 
 	mut smp_desc := gfx.SamplerDesc{
-		min_filter: .linear
-		mag_filter: .linear
-		wrap_u:     .clamp_to_edge
-		wrap_v:     .clamp_to_edge
+		min_filter:    gfx_filter
+		mag_filter:    gfx_filter
+		mipmap_filter: .linear
+		wrap_u:        .clamp_to_edge
+		wrap_v:        .clamp_to_edge
 	}
 
 	img.ssmp = gfx.make_sampler(&smp_desc)
@@ -216,36 +274,24 @@ pub fn (mut ctx Context) create_image_with_size(file string, width int, height i
 	if !gfx.is_valid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
 		// ctx.image_queue << file
-		stb_img := stbi.load(file) or { return Image{} }
-		img := Image{
-			width:       width
-			height:      height
-			nr_channels: stb_img.nr_channels
-			ok:          false
-			data:        stb_img.data
-			ext:         stb_img.ext
-			path:        file
-			id:          ctx.image_cache.len
-		}
+		mut img := load_image(file) or { return Image{} }
+		img.texture_filter = ctx.config.texture_filter
+		img.width = width
+		img.height = height
+		img.ok = false
+		img.id = ctx.image_cache.len
 		ctx.image_cache << img
 		return img
 	}
-	mut img := create_image(file)
-	img.id = ctx.image_cache.len
-	ctx.image_cache << img
-	return img
+	return ctx.create_image(file) or { Image{} }
 }
 
-// create_image creates an `Image` from `file`.
-//
-// TODO: remove this
-fn create_image(file string) Image {
+fn load_image(file string) !Image {
 	if !os.exists(file) {
-		println('gg.create_image(): file not found: ${file}')
-		return Image{} // none
+		return error('image file "${file}" not found')
 	}
-	stb_img := stbi.load(file) or { return Image{} }
-	mut img := Image{
+	stb_img := stbi.load(file)!
+	return Image{
 		width:       stb_img.width
 		height:      stb_img.height
 		nr_channels: stb_img.nr_channels
@@ -254,35 +300,49 @@ fn create_image(file string) Image {
 		ext:         stb_img.ext
 		path:        file
 	}
-	img.init_sokol_image()
-	return img
 }
 
 // create_image_from_memory creates an `Image` from the
 // memory buffer `buf` of size `bufsize`.
 //
 // See also: create_image_from_byte_array
-pub fn (mut ctx Context) create_image_from_memory(buf &u8, bufsize int) !Image {
+pub fn (mut ctx Context) create_image_from_memory(buf &u8, bufsize int, cfg ImageConfig) !Image {
 	stb_img := stbi.load_from_memory(buf, bufsize)!
 	mut img := Image{
-		width:       stb_img.width
-		height:      stb_img.height
-		nr_channels: stb_img.nr_channels
-		ok:          stb_img.ok
-		data:        stb_img.data
-		ext:         stb_img.ext
-		id:          ctx.image_cache.len
+		width:          stb_img.width
+		height:         stb_img.height
+		nr_channels:    stb_img.nr_channels
+		ok:             stb_img.ok
+		data:           stb_img.data
+		ext:            stb_img.ext
+		id:             ctx.image_cache.len
+		texture_filter: cfg.texture_filter or { ctx.config.texture_filter }
+	}
+	if gfx.is_valid() {
+		img.init_sokol_image()
 	}
 	ctx.image_cache << img
 	return img
+}
+
+// create_image_from_memory_with_filter creates an `Image` from `buf` with the requested texture filter.
+@[deprecated: 'use Context.create_image_from_memory instead']
+pub fn (mut ctx Context) create_image_from_memory_with_filter(buf &u8, bufsize int, texture_filter TextureFilter) !Image {
+	return ctx.create_image_from_memory(buf, bufsize, texture_filter: texture_filter)
 }
 
 // create_image_from_byte_array creates an `Image` from the
 // byte array `b`.
 //
 // See also: create_image_from_memory
-pub fn (mut ctx Context) create_image_from_byte_array(b []u8) !Image {
-	return ctx.create_image_from_memory(b.data, b.len)
+pub fn (mut ctx Context) create_image_from_byte_array(b []u8, cfg ImageConfig) !Image {
+	return ctx.create_image_from_memory(b.data, b.len, cfg)
+}
+
+// create_image_from_byte_array_with_filter creates an `Image` from `b` with the requested texture filter.
+@[deprecated: 'use Context.create_image_from_byte_array instead']
+pub fn (mut ctx Context) create_image_from_byte_array_with_filter(b []u8, texture_filter TextureFilter) !Image {
+	return ctx.create_image_from_memory(b.data, b.len, texture_filter: texture_filter)
 }
 
 pub struct StreamingImageConfig {
@@ -294,6 +354,13 @@ pub:
 	mag_filter   gfx.Filter      = .linear
 	num_mipmaps  int             = 1
 	num_slices   int             = 1
+}
+
+fn (filter TextureFilter) gfx_filter() gfx.Filter {
+	return match filter {
+		.linear { .linear }
+		.nearest { .nearest }
+	}
 }
 
 // draw_image_with_config takes in a config that details how the
@@ -342,8 +409,8 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 				} else {
 					config.img_rect.height
 				}
-				C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height), width,
-					height, img)
+				C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height), width, height,
+					img)
 				return
 			}
 		}

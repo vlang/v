@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module urllib
 
-struct QueryValue {
+pub struct QueryValue {
 pub mut:
 	key   string
 	value string

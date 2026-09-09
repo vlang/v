@@ -144,15 +144,15 @@ pub fn log_gamma(x f64) f64 {
 // log_gamma_sign returns the natural logarithm and sign (-1 or +1) of Gamma(x)
 pub fn log_gamma_sign(a f64) (f64, int) {
 	mut x := a
-	mut sign := 1
+	mut sgn := 1
 	if is_nan(x) {
-		return x, sign
+		return x, sgn
 	}
 	if is_inf(x, 1) {
-		return x, sign
+		return x, sgn
 	}
 	if x == 0.0 {
-		return inf(1), sign
+		return inf(1), sgn
 	}
 	mut neg := false
 	if x < 0 {
@@ -161,28 +161,28 @@ pub fn log_gamma_sign(a f64) (f64, int) {
 	}
 	if x < exp2(-70) { // if |x| < 2**-70, return -log(|x|)
 		if neg {
-			sign = -1
+			sgn = -1
 		}
-		return -log(x), sign
+		return -log(x), sgn
 	}
 	mut nadj := 0.0
 	if neg {
 		if x >= exp2(52) { // the constant is 0x4330000000000000 ~4.5036e+15
 			// x| >= 2**52, must be -integer
-			return inf(1), sign
+			return inf(1), sgn
 		}
 		t := sin_pi(x)
 		if t == 0 {
-			return inf(1), sign
+			return inf(1), sgn
 		}
 		nadj = log(pi / abs(t * x))
 		if t < 0 {
-			sign = -1
+			sgn = -1
 		}
 	}
 	mut lgamma := 0.0
 	if x == 1 || x == 2 { // purge off 1 and 2
-		return 0.0, sign
+		return 0.0, sgn
 	} else if x < 2 { // use lgamma(x) = lgamma(x+1) - log(x)
 		ymin := 1.461632144968362245
 		tc := 1.46163214496836224576e+00 // 0x3FF762D86356BE3F
@@ -215,41 +215,41 @@ pub fn log_gamma_sign(a f64) (f64, int) {
 		}
 		if i == 0 {
 			z := y * y
-			gamma_p1 := lgamma_a[0] + z * (lgamma_a[2] + z * (lgamma_a[4] + z * (lgamma_a[6] +
-				z * (lgamma_a[8] + z * lgamma_a[10]))))
-			gamma_p2 := z * (lgamma_a[1] + z * (lgamma_a[3] + z * (lgamma_a[5] + z * (lgamma_a[7] +
-				z * (lgamma_a[9] + z * lgamma_a[11])))))
+			gamma_p1 := lgamma_a[0] +
+				z * (lgamma_a[2] + z * (lgamma_a[4] + z * (lgamma_a[6] + z * (lgamma_a[8] + z * lgamma_a[10]))))
+			gamma_p2 := z * (lgamma_a[1] +
+				z * (lgamma_a[3] + z * (lgamma_a[5] + z * (lgamma_a[7] + z * (lgamma_a[9] + z * lgamma_a[11])))))
 			p := y * gamma_p1 + gamma_p2
 			lgamma += (p - 0.5 * y)
 		} else if i == 1 {
 			z := y * y
 			w := z * y
-			gamma_p1 := lgamma_t[0] + w * (lgamma_t[3] + w * (lgamma_t[6] + w * (lgamma_t[9] +
-				w * lgamma_t[12]))) // parallel comp
-			gamma_p2 := lgamma_t[1] + w * (lgamma_t[4] + w * (lgamma_t[7] + w * (lgamma_t[10] +
-				w * lgamma_t[13])))
-			gamma_p3 := lgamma_t[2] + w * (lgamma_t[5] + w * (lgamma_t[8] + w * (lgamma_t[11] +
-				w * lgamma_t[14])))
+			gamma_p1 := lgamma_t[0] +
+				w * (lgamma_t[3] + w * (lgamma_t[6] + w * (lgamma_t[9] + w * lgamma_t[12]))) // parallel comp
+			gamma_p2 := lgamma_t[1] +
+				w * (lgamma_t[4] + w * (lgamma_t[7] + w * (lgamma_t[10] + w * lgamma_t[13])))
+			gamma_p3 := lgamma_t[2] +
+				w * (lgamma_t[5] + w * (lgamma_t[8] + w * (lgamma_t[11] + w * lgamma_t[14])))
 			tf := -1.21486290535849611461e-01 // 0xBFBF19B9BCC38A42
 			// tt := -(tail of tf)
 			tt := -3.63867699703950536541e-18 // 0xBC50C7CAA48A971F
 			p := z * gamma_p1 - (tt - w * (gamma_p2 + y * gamma_p3))
 			lgamma += (tf + p)
 		} else if i == 2 {
-			gamma_p1 := y * (lgamma_u[0] + y * (lgamma_u[1] + y * (lgamma_u[2] + y * (lgamma_u[3] +
-				y * (lgamma_u[4] + y * lgamma_u[5])))))
-			gamma_p2 := 1.0 + y * (lgamma_v[1] + y * (lgamma_v[2] + y * (lgamma_v[3] +
-				y * (lgamma_v[4] + y * lgamma_v[5]))))
+			gamma_p1 := y * (lgamma_u[0] +
+				y * (lgamma_u[1] + y * (lgamma_u[2] + y * (lgamma_u[3] + y * (lgamma_u[4] + y * lgamma_u[5])))))
+			gamma_p2 := 1.0 +
+				y * (lgamma_v[1] + y * (lgamma_v[2] + y * (lgamma_v[3] + y * (lgamma_v[4] + y * lgamma_v[5]))))
 			lgamma += (-0.5 * y + gamma_p1 / gamma_p2)
 		}
 	} else if x < 8 { // 2 <= x < 8
 		i := int(x)
 		y := x - f64(i)
-		tmp23456 := lgamma_s[2] + y * (lgamma_s[3] + y * (lgamma_s[4] + y * (lgamma_s[5] +
-			y * lgamma_s[6])))
+		tmp23456 := lgamma_s[2] +
+			y * (lgamma_s[3] + y * (lgamma_s[4] + y * (lgamma_s[5] + y * lgamma_s[6])))
 		p := y * (lgamma_s[0] + y * (lgamma_s[1] + y * tmp23456))
-		tmpr23456 := lgamma_r[2] + y * (lgamma_r[3] + y * (lgamma_r[4] + y * (lgamma_r[5] +
-			y * lgamma_r[6])))
+		tmpr23456 := lgamma_r[2] +
+			y * (lgamma_r[3] + y * (lgamma_r[4] + y * (lgamma_r[5] + y * lgamma_r[6])))
 		q := 1.0 + y * (lgamma_r[1] + y * tmpr23456)
 		lgamma = 0.5 * y + p / q
 		mut z := 1.0 // lgamma(1+s) = log(s) + lgamma(s)
@@ -283,8 +283,8 @@ pub fn log_gamma_sign(a f64) (f64, int) {
 		t := log(x)
 		z := 1.0 / x
 		y := z * z
-		w := lgamma_w[0] + z * (lgamma_w[1] + y * (lgamma_w[2] + y * (lgamma_w[3] +
-			y * (lgamma_w[4] + y * (lgamma_w[5] + y * lgamma_w[6])))))
+		w := lgamma_w[0] +
+			z * (lgamma_w[1] + y * (lgamma_w[2] + y * (lgamma_w[3] + y * (lgamma_w[4] + y * (lgamma_w[5] + y * lgamma_w[6])))))
 		lgamma = (x - 0.5) * (t - 1.0) + w
 	} else { // 2**58 <= x <= Inf
 		lgamma = x * (log(x) - 1.0)
@@ -292,7 +292,7 @@ pub fn log_gamma_sign(a f64) (f64, int) {
 	if neg {
 		lgamma = nadj - lgamma
 	}
-	return lgamma, sign
+	return lgamma, sgn
 }
 
 // sin_pi(x) is a helper function for negative x

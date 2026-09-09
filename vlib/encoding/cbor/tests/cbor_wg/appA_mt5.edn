@@ -1,0 +1,31 @@
+{
+  "title": "mt5",
+  "description": "Maps, from RFC 8949 appendix A",
+  "tests": [
+    {
+      "description": "Empty Map",
+      "encoded": h'a0',
+      "decoded": {},
+    },
+    {
+      "description": "Map with integer keys",
+      "encoded": h'a201020304',
+      "decoded": {1: 2, 3: 4},
+    },
+    {
+      "description": "Array nested in Map with string keys",
+      "encoded": h'a26161016162820203',
+      "decoded": {"a": 1, "b": [2, 3]},
+    },
+    {
+      "description": "Map nested in array",
+      "encoded": h'826161a161626163',
+      "decoded": ["a", {"b": "c"}],
+    },
+    {
+      "description": "Map with more keys",
+      "encoded": h'a56161614161626142616361436164614461656145',
+      "decoded": {"a": "A", "b": "B", "c": "C", "d": "D", "e": "E"},
+    },
+  ],
+}

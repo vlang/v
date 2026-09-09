@@ -84,16 +84,14 @@ fn (mut ws Client) read_payload(frame &Frame) ![]u8 {
 	if frame.payload_len == 0 {
 		return []u8{}
 	}
-	mut buffer := []u8{cap: frame.payload_len}
-	mut read_buf := [1]u8{}
+	mut buffer := []u8{len: frame.payload_len}
 	mut bytes_read := 0
 	for bytes_read < frame.payload_len {
-		len := ws.socket_read_ptr(&read_buf[0], 1)!
-		if len != 1 {
+		n := ws.socket_read_ptr(unsafe { &buffer[bytes_read] }, frame.payload_len - bytes_read)!
+		if n <= 0 {
 			return error('expected read all message, got zero')
 		}
-		bytes_read += len
-		buffer << read_buf[0]
+		bytes_read += n
 	}
 	if bytes_read != frame.payload_len {
 		return error('failed to read payload')
@@ -216,8 +214,7 @@ pub fn (mut ws Client) parse_frame_header() !Frame {
 	for ws.get_state() == .open {
 		read_bytes := ws.socket_read_ptr(&rbuff[0], 1)!
 		if read_bytes == 0 {
-			// this is probably a timeout or close
-			continue
+			return error('websocket peer closed connection')
 		}
 		buffer[bytes_read] = rbuff[0]
 		bytes_read++

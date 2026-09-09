@@ -1,0 +1,6 @@
+vlib/v/checker/tests/use_byte_instead_of_u8_array_type_err.vv:2:8: error: byte is deprecated, use u8 instead
+    1 | struct Test {
+    2 |     bar []byte
+      |           ~~~~
+    3 | }
+    4 |

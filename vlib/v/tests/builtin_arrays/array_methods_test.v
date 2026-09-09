@@ -56,6 +56,7 @@ fn test_array_contains_method_with_interface() {
 		}
 		else {}
 	}
+
 	assert false
 }
 
@@ -71,6 +72,7 @@ fn test_string_eq_method_with_interface() {
 		}
 		else {}
 	}
+
 	assert false
 }
 

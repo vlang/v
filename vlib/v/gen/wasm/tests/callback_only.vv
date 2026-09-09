@@ -1,0 +1,11 @@
+// This module declares an indirect call (`f(x)` in `apply`) but never takes a
+// concrete function as a value, so `fn_value_indices` stays empty. The indirect
+// function table must still be emitted, otherwise the `call_indirect` references
+// a table that does not exist and the module fails to validate.
+pub fn apply(f fn (int) int, x int) int {
+	return f(x)
+}
+
+fn main() {
+	println('ok')
+}

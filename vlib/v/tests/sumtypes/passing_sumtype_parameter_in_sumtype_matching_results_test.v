@@ -20,6 +20,7 @@ fn test_passing_sumtype_parameter_in_sumtype_matching_results() {
 		}
 		f32 {}
 	}
+
 	println(ret)
 	assert ret == 22
 }

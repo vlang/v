@@ -10,5 +10,6 @@ fn test_match_branch_with_array_expression() {
 		[]&MyStructA { '[]&MyStructA' }
 		[]&MyStructB { '[]&MyStructB' }
 	}
+
 	assert ret == '[]&MyStructA'
 }

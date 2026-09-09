@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_call_method_mut_pointer_err.vv:17:20: error: cannot use `&Context` as `&&Context` in argument 1 to `App.index`
+   15 |     $for method in App.methods {
+   16 |         if method.name == 'index' {
+   17 |             app.$method(mut user_context)
+      |                             ~~~~~~~~~~~~
+   18 |         }
+   19 |     }

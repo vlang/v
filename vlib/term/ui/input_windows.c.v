@@ -52,12 +52,14 @@ pub fn init(cfg Config) &Context {
 	}
 
 	// enable extended input flags (see https://stackoverflow.com/a/46802726)
-	// 0x80 == C.ENABLE_EXTENDED_FLAGS
-	if !C.SetConsoleMode(stdin_handle, 0x80) {
-		panic('could not set raw input mode')
+	mut input_mode := u32(C.ENABLE_EXTENDED_FLAGS) | u32(C.ENABLE_WINDOW_INPUT)
+	if ctx.cfg.mouse_enabled {
+		input_mode |= u32(C.ENABLE_MOUSE_INPUT)
 	}
-	// enable window and mouse input events.
-	if !C.SetConsoleMode(stdin_handle, C.ENABLE_WINDOW_INPUT | C.ENABLE_MOUSE_INPUT) {
+	// enable window input and optionally mouse input events.
+	// set all flags in a single call, since each SetConsoleMode call replaces
+	// the previous input mode completely, instead of extending it.
+	if !C.SetConsoleMode(stdin_handle, input_mode) {
 		panic('could not set raw input mode')
 	}
 	// store the current title, so restore_terminal_state can get it back
@@ -126,6 +128,18 @@ pub fn (mut ctx Context) run() ! {
 	}
 }
 
+// key_code_for_char maps the character of a key event that did not match
+// any of the known virtual key codes to a KeyCode.
+fn key_code_for_char(e C.KEY_EVENT_RECORD) KeyCode {
+	// non-ASCII characters (e.g. from CJK IME input) have no ASCII
+	// representation; mapping their low byte to a KeyCode would
+	// produce fake control keys like .escape
+	if unsafe { e.uChar.UnicodeChar } > 0x7F {
+		return KeyCode.null
+	}
+	return unsafe { KeyCode(e.uChar.AsciiChar) }
+}
+
 fn (mut ctx Context) parse_events() {
 	nr_events := u32(0)
 	if !C.GetNumberOfConsoleInputEvents(ctx.stdin_handle, &nr_events) {
@@ -146,11 +160,6 @@ fn (mut ctx Context) parse_events() {
 				e := unsafe { ctx.read_buf[i].Event.KeyEvent }
 				ch := e.wVirtualKeyCode
 				ascii := unsafe { e.uChar.AsciiChar }
-				if e.bKeyDown == 0 {
-					continue
-				}
-				// we don't handle key_up events because they don't exist on linux...
-				// see: https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
 				code := match int(ch) {
 					C.VK_BACK { KeyCode.backspace }
 					C.VK_RETURN { KeyCode.enter }
@@ -169,7 +178,7 @@ fn (mut ctx Context) parse_events() {
 					91...93 { KeyCode.null } // special keys
 					96...105 { unsafe { KeyCode(ch - 48) } } // numpad numbers
 					112...135 { unsafe { KeyCode(ch + 178) } } // f1 - f24
-					else { unsafe { KeyCode(ascii) } }
+					else { key_code_for_char(e) }
 				}
 
 				mut modifiers := unsafe { Modifiers(0) }
@@ -183,16 +192,28 @@ fn (mut ctx Context) parse_events() {
 					modifiers.set(.shift)
 				}
 
-				mut event := &Event{
-					typ:       .key_down
-					modifiers: modifiers
-					code:      code
-					ascii:     ascii
-					width:     int(e.dwControlKeyState)
-					height:    int(e.wVirtualKeyCode)
-					utf8:      unsafe { e.uChar.UnicodeChar.str() }
+				event_type := if e.bKeyDown == 0 {
+					EventType.key_up
+				} else {
+					EventType.key_down
 				}
-				ctx.event(event)
+				repeat_count := if event_type == .key_down && e.wRepeatCount > 0 {
+					int(e.wRepeatCount)
+				} else {
+					1
+				}
+				for _ in 0 .. repeat_count {
+					mut event := &Event{
+						typ:       event_type
+						modifiers: modifiers
+						code:      code
+						ascii:     ascii
+						width:     int(e.dwControlKeyState)
+						height:    int(e.wVirtualKeyCode)
+						utf8:      unsafe { e.uChar.UnicodeChar.str() }
+					}
+					ctx.event(event)
+				}
 			}
 			C.MOUSE_EVENT {
 				e := unsafe { ctx.read_buf[i].Event.MouseEvent }
@@ -221,6 +242,7 @@ fn (mut ctx Context) parse_events() {
 							2 { MouseButton.right }
 							else { MouseButton.middle }
 						}
+
 						typ := if e.dwButtonState == 0 {
 							if ctx.mouse_down != .unknown {
 								button = ctx.mouse_down
@@ -273,6 +295,7 @@ fn (mut ctx Context) parse_events() {
 							2 { MouseButton.right }
 							else { MouseButton.middle }
 						}
+
 						ctx.mouse_down = button
 						ctx.event(&Event{
 							typ:       .mouse_down

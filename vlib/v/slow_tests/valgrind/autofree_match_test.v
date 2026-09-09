@@ -1,25 +1,25 @@
 // vtest vflags: -autofree
 // vtest build: !sanitize-address-gcc && !sanitize-address-clang
 
-type Tree[T] = Empty | Node[T]
+type Tree = Empty | Node
 
 struct Empty {}
 
-struct Node[T] {
-	value T
-	left  Tree[T]
-	right Tree[T]
+struct Node {
+	value int
+	left  Tree
+	right Tree
 }
 
-fn (tree Tree[T]) delete[T](x T) Tree[T] {
+fn (tree Tree) delete(x int) Tree {
 	return match tree {
 		Empty {
 			tree
 		}
-		Node[T] {
+		Node {
 			if tree.left !is Empty && tree.right !is Empty {
 				if x < tree.value {
-					Node[T]{
+					Node{
 						...tree
 						left: tree.left.delete(x)
 					}
@@ -34,7 +34,7 @@ fn (tree Tree[T]) delete[T](x T) Tree[T] {
 }
 
 fn test_autofree_match() {
-	mut tree := Tree[int](Empty{})
+	mut tree := Tree(Empty{})
 	tree = tree.delete(5)
 	assert tree is Empty
 }

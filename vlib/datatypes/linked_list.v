@@ -60,16 +60,16 @@ pub fn (list LinkedList[T]) index(idx int) !T {
 
 // push adds an element to the end of the linked list
 pub fn (mut list LinkedList[T]) push(item T) {
-	new_node := &ListNode[T]{
+	created := &ListNode[T]{
 		data: item
 	}
 	if list.is_empty() {
 		// first node case
-		list.head = new_node
+		list.head = created
 	} else {
-		list.tail.next = new_node
+		list.tail.next = created
 	}
-	list.tail = new_node
+	list.tail = created
 	list.len += 1
 }
 
@@ -129,27 +129,27 @@ pub fn (mut list LinkedList[T]) insert(idx int, item T) ! {
 		list.push(item)
 		return
 	}
-	mut new_node := &ListNode[T]{
+	mut created := &ListNode[T]{
 		data: item
 	}
 	if list.is_empty() {
-		list.head = new_node
-		list.tail = new_node
+		list.head = created
+		list.tail = created
 	} else {
 		mut node := list.head
 
 		if idx == 0 {
 			// first node case
-			new_node.next = node
-			list.head = new_node
+			created.next = node
+			list.head = created
 		} else {
 			for i := 0; i < idx - 1; i++ {
 				node = node.next
 			}
-			new_node.next = node.next
-			node.next = new_node
-			if isnil(new_node.next) {
-				list.tail = new_node
+			created.next = node.next
+			node.next = created
+			if isnil(created.next) {
+				list.tail = created
 			}
 		}
 	}

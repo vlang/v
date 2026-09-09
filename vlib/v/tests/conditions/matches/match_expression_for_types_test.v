@@ -19,6 +19,7 @@ fn test_match_expression_on_sumtype_ordinary_branch() {
 			'unknown'
 		}
 	}
+
 	assert res == 'a string'
 	assert c == 1
 }
@@ -38,6 +39,7 @@ fn test_match_expression_on_sumtype_else() {
 			'unknown'
 		}
 	}
+
 	assert res == 'unknown'
 	assert c == 3
 }
@@ -59,6 +61,7 @@ fn test_match_expression_on_sumtype_full() {
 			'a string'
 		}
 	}
+
 	assert res == 'an integer'
 	assert c == 1
 }

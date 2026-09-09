@@ -19,7 +19,6 @@ pub mut:
 	fname              string
 	use_color          bool
 	use_relative_paths bool
-	all_assertsions    []&VAssertMetaInfo
 mut:
 	file_test_info   VTestFileMetaInfo
 	fn_test_info     VTestFnMetaInfo
@@ -39,13 +38,13 @@ fn new_normal_test_runner() &TestRunner {
 			'absolute' { false }
 			else { true }
 		}
+
 		return tr
 	}
 }
 
 fn (mut runner NormalTestRunner) free() {
 	unsafe {
-		runner.all_assertsions.free()
 		runner.fname.free()
 		runner.fn_test_info.free()
 		runner.file_test_info.free()
@@ -60,9 +59,6 @@ fn normalise_fname(name string) string {
 }
 
 fn (mut runner NormalTestRunner) start(_ntests int) {
-	unsafe {
-		runner.all_assertsions = []&VAssertMetaInfo{cap: 1000}
-	}
 }
 
 fn (mut runner NormalTestRunner) finish() {
@@ -110,10 +106,9 @@ fn (mut runner NormalTestRunner) fn_error(line_nr int, file string, _mod string,
 	}
 }
 
-fn (mut runner NormalTestRunner) assert_pass(i &VAssertMetaInfo) {
+fn (mut runner NormalTestRunner) assert_pass(_ &VAssertMetaInfo) {
 	runner.total_assert_passes++
 	runner.fn_assert_passes++
-	runner.all_assertsions << i
 }
 
 fn (mut runner NormalTestRunner) assert_fail(i &VAssertMetaInfo) {
@@ -179,5 +174,4 @@ fn (mut runner NormalTestRunner) assert_fail(i &VAssertMetaInfo) {
 		eprintln('${mtitle} ${mvalue}')
 	}
 	eprintln('')
-	runner.all_assertsions << i
 }

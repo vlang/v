@@ -72,7 +72,7 @@ fn (mut app App) move_food() {
 }
 
 // events
-fn on_keydown(key gg.KeyCode, mod gg.Modifier, mut app App) {
+fn on_keydown(key gg.KeyCode, _ gg.Modifier, mut app App) {
 	match key {
 		.w, .up {
 			if app.last_dir != .down {
@@ -140,8 +140,8 @@ fn on_frame(mut app App) {
 	}
 	// drawing snake
 	for pos in app.snake {
-		app.gg.draw_rect(tile_size * pos.x, tile_size * pos.y + top_height, tile_size,
-			tile_size, gg.blue)
+		app.gg.draw_rect(tile_size * pos.x, tile_size * pos.y + top_height, tile_size, tile_size,
+			gg.blue)
 	}
 
 	// drawing food

@@ -1,3 +1,10 @@
+vlib/v/checker/tests/option_fn_err.vv:7:11: notice: unused parameter: `v`
+    5 | }
+    6 | 
+    7 | fn bar[T](v T) ?T {
+      |           ^
+    8 |     return none
+    9 | }
 vlib/v/checker/tests/option_fn_err.vv:32:16: error: cannot use `?int` as `int`, it must be unwrapped first in argument 1 to `twice`
    30 |     foo()
    31 |     _ := bar(0)
@@ -61,11 +68,11 @@ vlib/v/checker/tests/option_fn_err.vv:56:20: error: cannot use unwrapped Option 
       |                       ~~~~~~
    57 |     // index
    58 |     println(arr[bar(0)])
-vlib/v/checker/tests/option_fn_err.vv:58:13: error: cannot use Option or Result as index (array type `[]int`)
+vlib/v/checker/tests/option_fn_err.vv:58:14: error: cannot use Option or Result as index (array type `[]int`)
    56 |     _ := [1]int{init: bar(0)}
    57 |     // index
    58 |     println(arr[bar(0)])
-      |                ~~~~~~~~
+      |                 ~~~~~~
    59 |     // array builtin methods
    60 |     arr.insert(0, bar(0))
 vlib/v/checker/tests/option_fn_err.vv:60:16: error: cannot use `?int` as `voidptr`, it must be unwrapped first in argument 2 to `[]int.insert`

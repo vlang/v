@@ -32,10 +32,9 @@ fn test_typeof_in_comptime_for_in_fields() {
 fn encode_struct[T](val T) []string {
 	mut out := []string{}
 	$for field in T.fields {
-		value := val.$(field.name)
 		out << field.name
-		out << typeof(value).idx.str()
-		out << typeof(value).name
+		out << typeof(val.$(field.name)).idx.str()
+		out << typeof(val.$(field.name)).name
 	}
 	return out
 }

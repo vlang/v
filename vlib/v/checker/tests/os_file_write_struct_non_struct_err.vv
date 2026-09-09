@@ -1,0 +1,24 @@
+import os
+
+struct MyStruct {
+	val i32
+}
+
+struct SomeOtherStruct {
+	val i32
+}
+
+type MySumType = MyStruct | SomeOtherStruct
+
+interface MyInterface {
+	val i32
+}
+
+fn main() {
+	mut file := os.create('/tmp/os_file_write_struct_non_struct_err.bin') or { panic(err) }
+	p := MyStruct{val: 1}
+	sum_value := MySumType(p)
+	iface_value := MyInterface(p)
+	file.write_struct(sum_value) or { panic(err) }
+	file.write_struct_at(iface_value, 0) or { panic(err) }
+}

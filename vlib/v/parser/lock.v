@@ -5,8 +5,15 @@ import v.ast
 fn (mut p Parser) lock_expr() ast.LockExpr {
 	// TODO: Handle aliasing sync
 	p.register_auto_import('sync')
+	lock_expr_is_used := p.lock_expr_value_is_used()
+	prev_lock_expr_scope_depth := p.lock_expr_scope_depth
+	prev_lock_expr_is_used := p.lock_expr_is_used
 	p.open_scope()
+	p.lock_expr_scope_depth = p.opened_scopes
+	p.lock_expr_is_used = lock_expr_is_used
 	defer {
+		p.lock_expr_scope_depth = prev_lock_expr_scope_depth
+		p.lock_expr_is_used = prev_lock_expr_is_used
 		p.close_scope()
 	}
 	mut pos := p.tok.pos()
@@ -16,6 +23,10 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 		is_rlock := p.tok.kind == .key_rlock
 		if !is_rlock && p.tok.kind != .key_lock {
 			p.unexpected(expecting: 'one or more shared variable names')
+			return ast.LockExpr{
+				pos:   pos
+				scope: p.scope
+			}
 		}
 		p.next()
 		if p.tok.kind == .lcbr {
@@ -27,7 +38,7 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 			p.inside_lock_exprs = false
 			for e in exprs {
 				if !e.is_lockable() {
-					p.error_with_pos('`${e}` cannot be locked - only `x`, `x.y` or `x.$(y)` are supported',
+					p.error_with_pos('`${e}` cannot be locked - only `x`, `x.y`, `x.$(y)` or `x[i]` are supported',
 						e.pos())
 				}
 				lockeds << e

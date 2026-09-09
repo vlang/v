@@ -1,0 +1,11 @@
+struct Int {
+	val int
+}
+
+fn test() {
+	for x in [Int{}, Int{5}, Int{val: 6}] {
+		println(x.val)
+	}
+	a := [Int{val: 1}, Int{val: 2}]
+	println(a)
+}

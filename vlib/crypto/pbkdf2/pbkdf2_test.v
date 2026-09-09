@@ -65,7 +65,8 @@ const cases = [
 fn test_sha224() {
 	for c in cases {
 		expected_result := hex.decode(c.sha224)!
-		key := pbkdf2.key(c.password.bytes(), c.salt.bytes(), c.count, c.key_length, sha256.new224())!
+		key := pbkdf2.key(c.password.bytes(), c.salt.bytes(), c.count, c.key_length,
+			sha256.new224())!
 		assert key == expected_result, 'failed ${c.name}'
 	}
 }
@@ -81,7 +82,8 @@ fn test_sha256() {
 fn test_sha384() {
 	for c in cases {
 		expected_result := hex.decode(c.sha384)!
-		key := pbkdf2.key(c.password.bytes(), c.salt.bytes(), c.count, c.key_length, sha512.new384())!
+		key := pbkdf2.key(c.password.bytes(), c.salt.bytes(), c.count, c.key_length,
+			sha512.new384())!
 		assert key == expected_result, 'failed ${c.name}'
 	}
 }

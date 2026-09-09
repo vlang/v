@@ -1,0 +1,8 @@
+// vtest vflags: -enable-globals -shared
+
+fn C.gc_enable(enable bool) bool
+
+fn main() {
+	_ = C.gc_enable(true)
+	gc_enable()
+}

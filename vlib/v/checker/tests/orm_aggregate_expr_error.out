@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_aggregate_expr_error.vv:11:18: error: ORM aggregate functions only support a single field name argument
+    9 |     db := sqlite.connect(':memory:')!
+   10 |     _ := sql db {
+   11 |         select sum(age + 1) from User
+      |                        ^
+   12 |     }!
+   13 | }

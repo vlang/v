@@ -1,0 +1,7 @@
+vlib/v/scanner/tests/string_interpolation_missing_rcbr_err.vv:4:23: error: expected `}` to close string interpolation
+    2 |
+    3 | fn main() {
+    4 |     broken := '${foo()' + '${bar})'
+      |                       ^
+    5 |     _ = '\t${broken}'
+    6 | }

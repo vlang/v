@@ -277,6 +277,8 @@ fn (mut g JsGen) gen_array_sort(node ast.CallExpr) {
 	g.array_sort_fn[compare_fn] = true
 
 	g.definitions.writeln('function ${compare_fn}(a,b) {')
+	g.definitions.writeln('\ta = new \$ref(a);')
+	g.definitions.writeln('\tb = new \$ref(b);')
 	c_condition := if comparison_type.sym.has_method('<') {
 		'${g.styp(comparison_type.typ)}__lt(${left_expr}, ${right_expr})'
 	} else if comparison_type.unaliased_sym.has_method('<') {

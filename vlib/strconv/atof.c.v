@@ -146,6 +146,10 @@ fn parser(s string) (ParserState, PrepNumber) {
 
 	// read mantissa
 	for i < s.len && s[i].is_digit() {
+		if pn.mantissa == 0 && s[i] == c_zero {
+			i++
+			continue
+		}
 		// println("${i} => ${s[i]}")
 		if digx < digits {
 			pn.mantissa *= 10
@@ -161,6 +165,11 @@ fn parser(s string) (ParserState, PrepNumber) {
 	if i < s.len && s[i] == `.` {
 		i++
 		for i < s.len && s[i].is_digit() {
+			if pn.mantissa == 0 && s[i] == c_zero {
+				pn.exponent--
+				i++
+				continue
+			}
 			if digx < digits {
 				pn.mantissa *= 10
 				pn.mantissa += u64(s[i] - c_zero)
@@ -460,5 +469,6 @@ pub fn atof64(s string, param AtoF64Param) !f64 {
 			return error('not a number')
 		}
 	}
+
 	return unsafe { res.f }
 }

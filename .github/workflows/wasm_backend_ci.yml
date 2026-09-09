@@ -2,6 +2,8 @@ name: wasm backend CI
 
 on:
   push:
+    branches:
+      - master
     paths:
       - 'cmd/tools/builders/**.v'
       - 'vlib/builtin/**.v'
@@ -59,14 +61,14 @@ jobs:
     env:
       VTEST_ONLY: wasm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build V
         if: runner.os != 'Windows'
         run: make -j4
       - name: Build V (Windows)
         if: runner.os == 'Windows'
-        run: ./make.bat
+        run: ./makev.bat
 
       - name: Install WABT to get wasm-decompile
         if: runner.os != 'Windows'

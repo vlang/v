@@ -3,6 +3,14 @@ module builtin
 @[typedef]
 pub struct C.FILE {}
 
+// Virtual C globals that are available through libc or generated C headers.
+__global C.errno int
+__global C.stdin &C.FILE
+__global C.stdout &C.FILE
+__global C.stderr &C.FILE
+__global C.environ &&char
+__global C._wyp &u64
+
 // <string.h>
 fn C.memcpy(dest voidptr, const_src voidptr, n usize) voidptr
 
@@ -30,6 +38,9 @@ fn C.realloc(a voidptr, b usize) voidptr
 fn C.free(ptr voidptr)
 
 fn C.mmap(addr_length voidptr, length usize, prot i32, flags i32, fd i32, offset isize) voidptr
+
+// C.munmap releases a memory mapping created by C.mmap.
+fn C.munmap(addr_length voidptr, len usize) i32
 fn C.mprotect(addr_length voidptr, len usize, prot i32) i32
 
 fn C.aligned_alloc(align usize, size usize) voidptr
@@ -43,8 +54,12 @@ fn C._aligned_offset_realloc(voidptr, size isize, align isize, offset isize) voi
 fn C._aligned_msize(voidptr, align isize, offset isize) isize
 fn C._aligned_recalloc(voidptr, num isize, size isize, align isize) voidptr
 
-fn C.VirtualAlloc(voidptr, isize, u32, u32) voidptr
-fn C.VirtualProtect(voidptr, isize, u32, &u32) bool
+$if windows {
+	type C.DWORD = u32
+
+	fn C.VirtualAlloc(voidptr, isize, u32, u32) voidptr
+	fn C.VirtualProtect(voidptr, isize, C.DWORD, &C.DWORD) bool
+}
 
 @[noreturn; trusted]
 fn C.exit(code i32)
@@ -89,7 +104,11 @@ fn C.fputs(msg &char, fstream &C.FILE) i32
 fn C.fflush(fstream &C.FILE) i32
 
 // TODO: define args in these functions
-fn C.fseek(stream &C.FILE, offset i32, whence i32) i32
+$if windows {
+	fn C.fseek(stream &C.FILE, offset i32, whence i32) i32
+} $else {
+	fn C.fseek(stream &C.FILE, offset isize, whence i32) i32
+}
 
 fn C.fopen(filename &char, mode &char) &C.FILE
 
@@ -108,6 +127,7 @@ fn C.close(fd i32) i32
 
 fn C.strrchr(s &char, c i32) &char
 fn C.strchr(s &char, c i32) &char
+fn C.strstr(const_haystack &char, const_needle &char) &char
 
 // process execution, os.process:
 @[trusted]
@@ -265,10 +285,10 @@ fn C.isatty(fd i32) i32
 
 fn C.syscall(number i32, va ...voidptr) i32
 
-fn C.sysctl(name &int, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen usize) i32
+fn C.sysctl(name &i32, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen usize) i32
 
 @[trusted]
-fn C._fileno(i32) i32
+fn C._fileno(&C.FILE) i32
 
 pub type C.intptr_t = voidptr
 
@@ -284,7 +304,13 @@ fn C.CreateFile(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurit
 fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32,
 	dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
-fn C.GetFinalPathNameByHandleW(hFile voidptr, lpFilePath &u16, nSize u32, dwFlags u32) u32
+$if windows {
+	// The TCC-only declaration is guarded with `#ifdef __TINYC__` in the
+	// header, so it survives cross compilation; GCC/MSVC use the SDK header.
+	#insert "@VEXEROOT/vlib/builtin/cfns_windows_tcc.h"
+
+	fn C.GetFinalPathNameByHandleW(hFile voidptr, lpFilePath &u16, nSize u32, dwFlags u32) u32
+}
 
 fn C.CreatePipe(hReadPipe &voidptr, hWritePipe &voidptr, lpPipeAttributes voidptr, nSize u32) bool
 
@@ -333,9 +359,6 @@ fn C.SetConsoleMode(voidptr, u32) bool
 
 fn C.GetConsoleMode(voidptr, &u32) bool
 
-@[trusted]
-fn C.GetCurrentProcessId() u32
-
 // fn C.setbuf()
 fn C.setbuf(voidptr, &char)
 
@@ -375,7 +398,7 @@ fn C.ReadConsole(in_input_handle voidptr, out_buffer voidptr, in_chars_to_read u
 
 fn C.WriteConsole() voidptr
 
-fn C.WriteFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten &u32, lpOverlapped voidptr) bool
+fn C.WriteFile(hFile voidptr, lpBuffer &u8, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten &u32, lpOverlapped voidptr) bool
 
 fn C._wchdir(dirname &u16) i32
 
@@ -421,7 +444,7 @@ fn C.WSAGetLastError() i32
 
 fn C.closesocket(i32) i32
 
-fn C.vschannel_init(&C.TlsContext)
+fn C.vschannel_init(&C.TlsContext, C.BOOL)
 
 fn C.request(&C.TlsContext, i32, &u16, &u8, u32, &&u8, fn (voidptr, isize) voidptr) i32
 
@@ -452,18 +475,27 @@ fn C.CreateSemaphore(voidptr, i32, i32, voidptr) voidptr
 
 fn C.ReleaseSemaphore(voidptr, i32, voidptr) voidptr
 
-fn C.InitializeSRWLock(voidptr)
-
-fn C.AcquireSRWLockShared(voidptr)
-
-fn C.AcquireSRWLockExclusive(voidptr)
-
-fn C.ReleaseSRWLockShared(voidptr)
-
-fn C.ReleaseSRWLockExclusive(voidptr)
+$if windows {
+	fn C.InitializeSRWLock(voidptr)
+	fn C.AcquireSRWLockShared(voidptr)
+	fn C.AcquireSRWLockExclusive(voidptr)
+	fn C.ReleaseSRWLockShared(voidptr)
+	fn C.ReleaseSRWLockExclusive(voidptr)
+}
 
 // pthread.h
 fn C.pthread_self() usize
+
+fn C.pthread_create(thread voidptr, attr voidptr, start_routine voidptr, arg voidptr) i32
+
+fn C.pthread_join(thread voidptr, retval voidptr) i32
+
+fn C.pthread_attr_init(attr voidptr) i32
+
+fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) i32
+
+fn C.pthread_attr_destroy(attr voidptr) i32
+
 fn C.pthread_mutex_init(voidptr, voidptr) i32
 
 fn C.pthread_mutex_lock(voidptr) i32
@@ -535,9 +567,17 @@ fn C.write(fd i32, buf voidptr, count usize) i32
 fn C.close(fd i32) i32
 
 // pipes
-fn C.pipe(pipefds &int) i32
+fn C.pipe(pipefds &i32) i32
 
 fn C.dup2(oldfd i32, newfd i32) i32
+
+fn C.fcntl(fd i32, cmd i32, arg ...voidptr) i32
+
+fn C.execlp(file &char, arg &char, va ...voidptr) i32
+
+fn C._exit(code i32)
+
+fn C.signal(sig i32, handler voidptr) voidptr
 
 // used by gl, stbi, freetype
 fn C.glTexImage2D()
@@ -549,35 +589,37 @@ fn C.WrappedNSLog(str &u8)
 @[trusted]
 fn C.abs(number i32) i32
 
-fn C.GetDiskFreeSpaceExA(const_path &char, free_bytes_available_to_caller &u64, total_number_of_bytes &u64, total_number_of_free_bytes &u64) bool
+$if windows {
+	fn C.GetDiskFreeSpaceExA(const_path &char, free_bytes_available_to_caller &u64, total_number_of_bytes &u64, total_number_of_free_bytes &u64) bool
 
-fn C.GetNativeSystemInfo(voidptr)
+	fn C.GetNativeSystemInfo(voidptr)
 
-fn C.sysconf(name i32) i32
+	// C.SYSTEM_INFO contains information about the current computer system. This includes the architecture and type of the processor, the number of processors in the system, the page size, and other such information.
+	@[typedef]
+	pub struct C.SYSTEM_INFO {
+		// workaround: v doesn't support a truely C anon union/struct here
+		// union {
+		dwOemId u32
+		// struct {
+		wProcessorArchitecture u16
+		wReserved              u16
+		//	}
+		//}
+		dwPageSize                  u32
+		lpMinimumApplicationAddress voidptr
+		lpMaximumApplicationAddress voidptr
+		dwActiveProcessorMask       u32
+		dwNumberOfProcessors        u32
+		dwProcessorType             u32
+		dwAllocationGranularity     u32
+		wProcessorLevel             u16
+		wProcessorRevision          u16
+	}
 
-// C.SYSTEM_INFO contains information about the current computer system. This includes the architecture and type of the processor, the number of processors in the system, the page size, and other such information.
-@[typedef]
-pub struct C.SYSTEM_INFO {
-	// workaround: v doesn't support a truely C anon union/struct here
-	// union {
-	dwOemId u32
-	// struct {
-	wProcessorArchitecture u16
-	wReserved              u16
-	//	}
-	//}
-	dwPageSize                  u32
-	lpMinimumApplicationAddress voidptr
-	lpMaximumApplicationAddress voidptr
-	dwActiveProcessorMask       u32
-	dwNumberOfProcessors        u32
-	dwProcessorType             u32
-	dwAllocationGranularity     u32
-	wProcessorLevel             u16
-	wProcessorRevision          u16
+	fn C.GetSystemInfo(&C.SYSTEM_INFO)
+
+	@[typedef]
+	pub struct C.SRWLOCK {}
 }
 
-fn C.GetSystemInfo(&C.SYSTEM_INFO)
-
-@[typedef]
-pub struct C.SRWLOCK {}
+fn C.sysconf(name i32) i32

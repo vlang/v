@@ -47,7 +47,7 @@ pub fn (node &FnDecl) modname() string {
 // it is used in table.used_fns and v.markused.
 pub fn (node &FnDecl) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver.typ)}.${node.name}'
+		return fkey_from_receiver_type(node.receiver.typ, node.name)
 	}
 	return node.name
 }
@@ -60,16 +60,24 @@ pub fn (node &StructField) sfkey() string {
 
 pub fn (node &Fn) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver_type)}.${node.name}'
+		return fkey_from_receiver_type(node.receiver_type, node.name)
 	}
 	return node.name
 }
 
 pub fn (node &CallExpr) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver_type)}.${node.name}'
+		return fkey_from_receiver_type(node.receiver_type, node.name)
 	}
 	return node.name
+}
+
+fn fkey_from_receiver_type(receiver_type Type, name string) string {
+	mut builder := strings.new_builder(name.len + 24)
+	builder.write_string(int(receiver_type).str())
+	builder.write_u8(`.`)
+	builder.write_string(name)
+	return builder.str()
 }
 
 // These methods are used only by vfmt, vdoc, and for debugging.
@@ -118,7 +126,11 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 			f.write_string(node.receiver.typ.share().str() + ' ')
 			styp = styp[1..] // remove &
 		}
-		f.write_string(node.receiver.name + ' ')
+		is_type_only_receiver := node.receiver.name == '_' && node.receiver.type_pos.len > 0
+			&& node.receiver.pos.pos == node.receiver.type_pos.pos
+		if !is_type_only_receiver {
+			f.write_string(node.receiver.name + ' ')
+		}
 		styp = util.no_cur_mod(styp, cur_mod)
 		if t.new_int_fmt_fix && styp == 'int' {
 			styp = 'i32'
@@ -138,7 +150,7 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 		name = name.after('__static__')
 	}
 	f.write_string(name)
-	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
+	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<=', '[]', '[]='] {
 		f.write_string(' ')
 	}
 	t.stringify_fn_after_name(node, mut f, cur_mod, m2a)
@@ -221,15 +233,24 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		} else {
 			mut s := t.type_to_str(param_typ.clear_flag(.shared_f))
 			if param.is_mut {
-				if s.starts_with('&') && ((!param_sym.is_number() && param_sym.kind != .bool)
+				// The parser lowers `mut` params by adding one level of indirection
+				// (`mut x T` => `&T`). vfmt must strip only that parser-added `&`, not a
+				// `&` the user wrote explicitly (`mut x &T`). `orig_typ` is the type as
+				// written, before mut lowering, so a larger `nr_muls` on the lowered type
+				// means the parser added the `&` that we are allowed to drop.
+				parser_added_ref := param.orig_typ == 0
+					|| param_typ.nr_muls() > param.orig_typ.nr_muls()
+				if s.starts_with('&') && parser_added_ref
+					&& ((!param_sym.is_number() && param_sym.kind != .bool)
 					|| node.language != .v
 					|| (param_typ.is_ptr() && param_sym.kind == .struct)) {
 					s = s[1..]
-				} else if param_typ.is_ptr() && param_sym.kind == .struct && !s.contains('[') {
+				} else if parser_added_ref && param_typ.is_ptr() && param_sym.kind == .struct
+					&& !s.contains('[') {
 					s = t.type_to_str(param_typ.clear_flag(.shared_f).deref())
 				}
 			}
-			s = util.no_cur_mod(s, cur_mod)
+			s = shorten_full_name_based_on_cur_mod(s, cur_mod)
 			s = shorten_full_name_based_on_aliases(s, m2a)
 			if !is_type_only {
 				f.write_string(' ')
@@ -254,7 +275,7 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		} else {
 			node.return_type
 		}
-		sreturn_type := util.no_cur_mod(t.type_to_str(return_type), cur_mod)
+		sreturn_type := shorten_full_name_based_on_cur_mod(t.type_to_str(return_type), cur_mod)
 		short_sreturn_type := shorten_full_name_based_on_aliases(sreturn_type, m2a)
 		f.write_string(' ${short_sreturn_type}')
 	}
@@ -292,6 +313,39 @@ struct StringifyModReplacement {
 	mod    string
 	alias  string
 	weight int
+}
+
+fn is_qualified_name_boundary(c u8) bool {
+	return !(c.is_letter() || c.is_digit() || c == `_` || c == `.`)
+}
+
+fn replace_qualified_name_based_on_alias(input string, mod string, alias string) string {
+	if mod.len == 0 || !input.contains(mod) {
+		return input
+	}
+	mut start := 0
+	mut changed := false
+	mut sb := strings.new_builder(input.len)
+	for {
+		idx := input.index_after(mod, start) or { break }
+		end := idx + mod.len
+		before_ok := idx == 0 || is_qualified_name_boundary(input[idx - 1])
+		after_ok := end == input.len || input[end] == `.` || is_qualified_name_boundary(input[end])
+		if before_ok && after_ok {
+			sb.write_string(input[start..idx])
+			sb.write_string(alias)
+			start = end
+			changed = true
+			continue
+		}
+		sb.write_string(input[start..end])
+		start = end
+	}
+	if !changed {
+		return input
+	}
+	sb.write_string(input[start..])
+	return sb.str()
 }
 
 fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) string {
@@ -341,30 +395,54 @@ fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) strin
 		// r.mod: `v.token` | r.alias: `xyz` | res: `v.token.Abc`                -> `xyz.Abc`
 		// r.mod: `v.ast`   | r.alias: `ast` | res: `v.ast.AliasTypeDecl`        -> `ast.AliasTypeDecl`
 		// r.mod: `v.ast`   | r.alias: `ast` | res: `[]v.ast.InterfaceEmbedding` -> `[]ast.InterfaceEmbedding`
-		res = res.replace(r.mod, r.alias)
+		res = replace_qualified_name_based_on_alias(res, r.mod, r.alias)
 	}
 	return res
+}
+
+fn shorten_full_name_based_on_cur_mod(input string, cur_mod string) string {
+	if cur_mod == '' || !input.contains('${cur_mod}.') {
+		return input
+	}
+	pattern := '${cur_mod}.'
+	mut out := strings.new_builder(input.len)
+	for i := 0; i < input.len; i++ {
+		if input[i..].starts_with(pattern)
+			&& (i == 0 || input[i - 1] in [` `, `(`, `[`, `,`, `|`, `&`, `?`, `!`, `:`]) {
+			i += pattern.len - 1
+			continue
+		}
+		out.write_u8(input[i])
+	}
+	return out.str()
 }
 
 // This method creates the format specifier (including the colon) or an empty
 // string if none is needed. For example, '${z:8.3f} ${a:-20} ${a>b+2}'
 pub fn (lit &StringInterLiteral) get_fspec(i int) string {
 	mut res := []string{}
+	has_dynamic_width := i < lit.fwidth_exprs.len && lit.fwidth_exprs[i] !is EmptyExpr
+	has_dynamic_precision := i < lit.precision_exprs.len && lit.precision_exprs[i] !is EmptyExpr
 	needs_fspec := lit.need_fmts[i] || lit.pluss[i]
-		|| (lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0
-		|| lit.precisions[i] != 987698
+		|| (lit.fills[i] && (lit.fwidths[i] >= 0 || has_dynamic_width))
+		|| lit.fwidths[i] != 0 || lit.precisions[i] != 987698 || has_dynamic_width
+		|| has_dynamic_precision
 	if needs_fspec {
 		res << ':'
 		if lit.pluss[i] {
 			res << '+'
 		}
-		if lit.fills[i] && lit.fwidths[i] >= 0 {
+		if lit.fills[i] && (lit.fwidths[i] >= 0 || has_dynamic_width) {
 			res << '0'
 		}
-		if lit.fwidths[i] != 0 {
+		if has_dynamic_width {
+			res << '(${lit.fwidth_exprs[i].str()})'
+		} else if lit.fwidths[i] != 0 {
 			res << '${lit.fwidths[i]}'
 		}
-		if lit.precisions[i] != 987698 {
+		if has_dynamic_precision {
+			res << '.(${lit.precision_exprs[i].str()})'
+		} else if lit.precisions[i] != 987698 {
 			res << '.${lit.precisions[i]}'
 		}
 		if lit.need_fmts[i] {
@@ -412,7 +490,11 @@ pub fn (x Expr) str() string {
 			if x.has_init {
 				fields << 'init: ${x.init_expr.str()}'
 			}
-			typ_str := global_table.type_to_str(x.elem_type)
+			typ_str := if x.elem_type_expr !is EmptyExpr {
+				x.elem_type_expr.str()
+			} else {
+				global_table.type_to_str(x.elem_type)
+			}
 			if fields.len > 0 {
 				if x.is_fixed {
 					return '${x.exprs.str()}${typ_str}{${fields.join(', ')}}'
@@ -422,6 +504,13 @@ pub fn (x Expr) str() string {
 			} else {
 				if x.is_fixed {
 					return '${x.exprs.str()}${typ_str}{}'
+				} else if x.exprs.len == 0 && typ_str != '' {
+					return '[]${typ_str}{}'
+				} else if x.has_update_expr {
+					if x.exprs.len == 0 {
+						return '[...${x.update_expr}]'
+					}
+					return '[...${x.update_expr}, ${x.exprs.map(it.str()).join(', ')}]'
 				} else {
 					return x.exprs.str()
 				}
@@ -532,7 +621,8 @@ pub fn (x Expr) str() string {
 			return parts.join('')
 		}
 		IndexExpr {
-			return '${x.left.str()}[${x.index.str()}]'
+			parts := if x.indices.len > 0 { x.indices } else { [x.index] }
+			return '${x.left.str()}[${parts.map(it.str()).join(', ')}]'
 		}
 		InfixExpr {
 			return '${x.left.str()} ${x.op.str()} ${x.right.str()}'
@@ -657,7 +747,16 @@ pub fn (x Expr) str() string {
 			return s + ' := ' + x.expr.str()
 		}
 		StructInit {
-			sname := global_table.sym(x.typ).name
+			sname := if x.typ_expr !is EmptyExpr && x.typ == 0 {
+				x.typ_expr.str()
+			} else {
+				idx := x.typ.idx()
+				if idx > 0 && idx < global_table.type_symbols.len {
+					global_table.type_symbols[idx].name
+				} else {
+					'unknown'
+				}
+			}
 			return '${sname}{....}'
 		}
 		ArrayDecompose {
@@ -690,7 +789,11 @@ pub fn (x Expr) str() string {
 		SqlExpr {
 			return 'ast.SqlExpr'
 		}
+		SqlQueryDataExpr {
+			return 'ast.SqlQueryDataExpr'
+		}
 	}
+
 	return '[unhandled expr type ${x.type_name()}]'
 }
 

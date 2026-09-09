@@ -1,0 +1,32 @@
+#!/usr/bin/env sh
+set -eu
+
+script_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
+repo_root=$(CDPATH= cd "$script_dir/../../../.." && pwd)
+cd "$repo_root"
+
+if [ ! -x ./v ]; then
+	echo "x.executor benchmarks must be run from a V checkout with local ./v" >&2
+	exit 1
+fi
+
+tmp_root=$(mktemp -d "${TMPDIR:-/tmp}/xexecutor-benchmark.XXXXXX")
+cleanup() {
+	rm -rf "$tmp_root"
+}
+trap cleanup EXIT INT TERM
+
+vtmp="$tmp_root/vtmp"
+vcache="$tmp_root/vcache"
+out="$tmp_root/out/executor_benchmark"
+mkdir -p "$vtmp" "$vcache" "$(dirname "$out")"
+
+echo "Running x.executor benchmark with isolated VTMP and VCACHE."
+echo "Tune sizes with XEXECUTOR_BENCH_* environment variables."
+echo "See vlib/x/executor/benchmarks/README.md for the full list."
+
+if command -v timeout >/dev/null 2>&1; then
+	timeout 180s env VTMP="$vtmp" VCACHE="$vcache" ./v -prod -o "$out" run vlib/x/executor/benchmarks/executor_benchmark.v
+else
+	env VTMP="$vtmp" VCACHE="$vcache" ./v -prod -o "$out" run vlib/x/executor/benchmarks/executor_benchmark.v
+fi

@@ -1,3 +1,10 @@
+vlib/v/checker/tests/method_wrong_arg_type.vv:23:16: notice: unused parameter: `p`
+   21 | }
+   22 | 
+   23 | fn (s Sss) ptr(p &Sss) {}
+      |                ^
+   24 | 
+   25 | fn ptr_arg() {
 vlib/v/checker/tests/method_wrong_arg_type.vv:20:9: error: cannot use `MyEnum` as `string` in argument 1 to `Sss.info`
    18 |     e := MyEnum.x
    19 |     s := Sss{}

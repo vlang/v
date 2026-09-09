@@ -1,5 +1,5 @@
 vlib/v/checker/tests/for_in_mut_string.vv:19:6: error: string type is immutable, it cannot be changed
-   17 |
+   17 | 
    18 | fn wrap_text(mut gv Grid) {
    19 |     for mut ch in gv.header {
       |         ~~~
@@ -7,7 +7,7 @@ vlib/v/checker/tests/for_in_mut_string.vv:19:6: error: string type is immutable,
    21 |     }
 vlib/v/checker/tests/for_in_mut_string.vv:23:6: error: string type is immutable, it cannot be changed
    21 |     }
-   22 |
+   22 | 
    23 |     for mut letter in 'abc' {
       |         ~~~
    24 |         bit := letter - 1

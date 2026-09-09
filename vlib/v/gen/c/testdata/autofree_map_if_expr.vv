@@ -1,0 +1,90 @@
+// vtest vflags: -autofree
+
+fn mark(s string) string {
+	return s + '!'
+}
+
+fn accepts(s string) bool {
+	return s.len > 0
+}
+
+fn side_effect() string {
+	println('side effect called')
+	return 'x'
+}
+
+fn main() {
+	suffix := 'tcc/lib/libgc.dylib'
+	flags := ['"thirdparty/tcc/lib/libgc.dylib"', 'other'].map(if it.ends_with(suffix + '"')
+		&& it.starts_with('"') {
+		'"/tmp/libgc.dylib"'
+	} else {
+		it
+	})
+	println(flags)
+	branch_flags := ['a', 'b'].map(if it == 'a' {
+		mark(it + 'x')
+	} else {
+		it
+	})
+	println(branch_flags)
+	anon_flags := ['ax', 'b'].map(fn (it string) string {
+		suffix := 'x'
+		if it.ends_with(suffix + '') {
+			return mark(it)
+		}
+		return it
+	})
+	println(anon_flags)
+	anon_short_flags := ['a'].map(fn (it string) string {
+		if true && accepts(it + '') {
+			return mark(it)
+		}
+		return it
+	})
+	println(anon_short_flags)
+	nested_suffix := '!'
+	nested_flags := [['a'], ['b']].map(it.map(fn [nested_suffix] (s string) string {
+		return mark(s + nested_suffix)
+	})[0])
+	println(nested_flags)
+	needle := 'x'
+	nested_any_flags := [['ax'], ['b']].map(if it.any(it.ends_with(needle + '')) {
+		'hit'
+	} else {
+		'miss'
+	})
+	println(nested_any_flags)
+	nested_filter_counts := [['ax'], ['b']].map(it.filter(it.ends_with(needle + '')).len)
+	println(nested_filter_counts)
+	nested_counts := [['ax'], ['b']].map(it.count(it.ends_with(needle + '')))
+	println(nested_counts)
+	nested_all_flags := [['ax'], ['b']].map(it.all(it.ends_with(needle + '')))
+	println(nested_all_flags)
+	short_flags := ['a'].map(if false && accepts(side_effect() + '') {
+		'bad'
+	} else {
+		it
+	})
+	println(short_flags)
+	evaluated_short_flags := ['a'].map(if true && accepts(it + '') {
+		mark(it)
+	} else {
+		it
+	})
+	println(evaluated_short_flags)
+	receiver_short_flags := ['a'].map(if false && (side_effect() + '').starts_with('x') {
+		'bad'
+	} else {
+		it
+	})
+	println(receiver_short_flags)
+	evaluated_receiver_flags := ['a'].map(if true && (it + '').starts_with('a') {
+		mark(it)
+	} else {
+		it
+	})
+	println(evaluated_receiver_flags)
+	// This regression only needs the generated C to compile.
+	exit(0)
+}

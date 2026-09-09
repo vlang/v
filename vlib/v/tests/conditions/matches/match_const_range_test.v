@@ -46,6 +46,7 @@ fn test_match_expr_int_const_ranges() {
 			6...end_2 { 3 }
 			else { 4 }
 		}
+
 		results << result
 	}
 	assert results == [4, 1, 1, 1, 2, 2, 3, 3, 3, 4]
@@ -60,6 +61,7 @@ fn test_match_expr_rune_const_ranges() {
 			`f`...end_2_rune { 3 }
 			else { 4 }
 		}
+
 		results << result
 	}
 	assert results == [1, 1, 1, 2, 2, 3, 3, 3, 3, 4, 4]

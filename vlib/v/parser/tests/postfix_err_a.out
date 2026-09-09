@@ -18,3 +18,8 @@ vlib/v/parser/tests/postfix_err_a.vv:9:9: warning: `--` operator can only be use
     9 |     _ = a[x--]
       |            ~~
    10 | }
+vlib/v/parser/tests/postfix_err_a.vv:1:6: notice: unused parameter: `i`
+    1 | fn f(i int) {}
+      |      ^
+    2 | 
+    3 | fn test_postfix() {

@@ -1,5 +1,0 @@
-vlib/v/parser/tests/comptime_vweb_without_import_vweb_err.vv:2:2: error: `$vweb` cannot be used without importing vweb
-    1 | fn main() {
-    2 |     $vweb.html('index.html')
-      |     ~~~~~
-    3 | }

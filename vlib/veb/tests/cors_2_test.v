@@ -1,10 +1,11 @@
+// vtest build: !windows // fasthttp.Server.run is not implemented on windows yet
 import veb
 import net.http
 import os
 import time
 
 const port = 13012
-const localserver = 'http://localhost:${port}'
+const localserver = 'http://127.0.0.1:${port}'
 const exit_after = time.second * 10
 const allowed_origin = 'https://vlang.io'
 const cors_options = veb.CorsOptions{
@@ -46,7 +47,7 @@ fn testsuite_begin() {
 	mut app := &App{}
 	app.use(veb.cors[Context](cors_options))
 
-	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2)
+	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
 	// app startup time
 	_ := <-app.started
 }
@@ -75,11 +76,11 @@ fn test_preflight() {
 	assert x.status() == .ok
 	assert x.body == 'ok'
 
-	assert x.header.get(.access_control_allow_origin)! == allowed_origin
+	assert x.header.get(.access_control_allow_origin)? == allowed_origin
 	if _ := x.header.get(.access_control_allow_credentials) {
 		assert false, 'Access-Control-Allow-Credentials should not be present the value is `false`'
 	}
-	assert x.header.get(.access_control_allow_methods)! == 'GET, HEAD'
+	assert x.header.get(.access_control_allow_methods)? == 'GET, HEAD'
 }
 
 fn test_invalid_origin() {

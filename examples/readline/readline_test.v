@@ -14,11 +14,13 @@ fn test_password_input() {
 
 	send_a := 'a'
 	expect_a := 'got 97' // readline output for `a`
-	a_res := os.execute('${os.join_path(expect_tests_path, 'readline_from_expect_arg.expect')} ${send_a} "${expect_a}"')
+	a_res :=
+		os.execute('${os.join_path(expect_tests_path, 'readline_from_expect_arg.expect')} ${send_a} "${expect_a}"')
 	assert a_res.exit_code == 0, a_res.output
 
 	send_b := 'b'
-	b_res := os.execute('${os.join_path(expect_tests_path, 'readline_from_expect_arg.expect')} ${send_b} "${expect_a}"')
+	b_res :=
+		os.execute('${os.join_path(expect_tests_path, 'readline_from_expect_arg.expect')} ${send_b} "${expect_a}"')
 	assert b_res.exit_code == 1, b_res.output
 	assert b_res.output.contains('got 98')
 }

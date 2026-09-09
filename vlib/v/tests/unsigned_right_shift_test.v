@@ -41,3 +41,15 @@ fn test_unsigned_right_shift_assignment() {
 		assert z == answer_u32
 	}
 }
+
+fn oversized_unsigned_shift_count() u64 {
+	return u64(64)
+}
+
+fn test_unsigned_right_shift_oversized_count() {
+	shift := oversized_unsigned_shift_count()
+	assert u64(1) >>> shift == u64(0)
+	mut x := u64(1)
+	x >>>= shift
+	assert x == u64(0)
+}

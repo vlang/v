@@ -1,0 +1,22 @@
+import db.sqlite
+
+struct User {
+	id    string @[primary]
+	email ?string
+}
+
+struct UserReq {
+	email ?string
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:')!
+	req := UserReq{
+		email: 'admin@admin.com'
+	}
+	sql db {
+		update User set email = fn [req] () string {
+		return if req.email != '' { 'nickname_1' } else { 'nickname_0' }
+	}() where id == '1'
+	}!
+}

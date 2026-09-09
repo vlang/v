@@ -1,0 +1,3 @@
+return builtin__int_str(n);
+builtin__string_plus_many(3, _MOV((string[3]){prefix, builtin__int_str(n), suffix}))
+builtin__string_plus_many(4, _MOV((string[4]){_S("n="), builtin__int_str(n), _S(":"), suffix}))

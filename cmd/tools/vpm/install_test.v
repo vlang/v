@@ -63,6 +63,19 @@ fn test_install_from_git_url() {
 	assert res.output.contains('Installed `webview`'), res.output
 }
 
+fn test_install_from_git_url_uses_registered_package_name() {
+	mut res := cmd_ok(@LOCATION, '${vexe} install https://github.com/nedpals/v-args')
+	assert res.output.contains('Installing `nedpals.args`'), res.output
+	assert res.output.contains('Installed `nedpals.args`'), res.output
+	mut manifest := get_vmod(os.join_path('nedpals', 'args'))
+	assert manifest.name == 'nedpals.args'
+
+	res = cmd_ok(@LOCATION, '${vexe} install https://github.com/nedpals/v-args')
+	assert res.output.contains('Updating module `nedpals.args`'), res.output
+	manifest = get_vmod(os.join_path('nedpals', 'args'))
+	assert manifest.name == 'nedpals.args'
+}
+
 fn test_install_already_existent() {
 	mut res := cmd_ok(@LOCATION, '${vexe} install https://github.com/vlang/markdown')
 	assert res.output.contains('Updating module `markdown`'), res.output
@@ -92,14 +105,12 @@ fn test_install_once() {
 	assert manifest.name == 'pcre'
 	assert manifest.description == 'A simple regex library for V.'
 	// Ensure the before installed markdown module wasn't modified.
-	assert md_last_modified == os.file_last_mod_unix(os.join_path(test_path, 'markdown',
-		'v.mod'))
+	assert md_last_modified == os.file_last_mod_unix(os.join_path(test_path, 'markdown', 'v.mod'))
 
 	// Try installing two modules that are both already installed.
 	res = cmd_ok(@LOCATION, install_cmd)
 	assert res.output.contains('All modules are already installed.'), res.output
-	assert md_last_modified == os.file_last_mod_unix(os.join_path(test_path, 'markdown',
-		'v.mod'))
+	assert md_last_modified == os.file_last_mod_unix(os.join_path(test_path, 'markdown', 'v.mod'))
 }
 
 fn test_missing_repo_name_in_url() {
@@ -123,14 +134,20 @@ fn test_install_potentially_conflicting() {
 	mut manifest := get_vmod('ui')
 	assert manifest.name == 'ui'
 	res = os.execute('${vexe} install https://github.com/isaiahpatton/ui')
-	assert res.output.contains('Installed `iui`')
-	manifest = get_vmod('iui')
+	// The VPM registry maps `github.com/isaiahPatton/ui` (whose manifest is
+	// named `iui`) to the registered name `IsaiahPatton.iui`, so the install
+	// now uses the registered name and the publisher-prefixed path.
+	assert res.output.contains('Installed `IsaiahPatton.iui`'), res.output
+	manifest = get_vmod(os.join_path('isaiahpatton', 'iui'))
 	assert manifest.name == 'iui'
 }
 
 fn test_get_installed_version() {
 	test_project_path := os.join_path(test_path, 'test_project')
-	mut res := cmd_ok(@LOCATION, 'git init ${test_project_path}')
+	// Force the initial branch name; CI ships with git's traditional `master`
+	// default, but newer git installs (and many dev machines) default to
+	// `main`, which makes the `git branch -D master` step below fail.
+	mut res := cmd_ok(@LOCATION, 'git init -b master ${test_project_path}')
 	os.chdir(test_project_path)!
 	if os.execute('git config user.name').exit_code == 1 {
 		os.execute_or_exit('git config user.email "ci@vlang.io"')
@@ -148,7 +165,8 @@ fn test_get_installed_version() {
 
 	// Create a tag -> latests commit and tag are at the same state,
 	// but it should not be treated as a version installation, when there is another head branch.
-	res = cmd_ok(@LOCATION, 'git tag v0.1.0 -m "some tag message"') // note: without a tag message, git will try to start an editor when you run this test locally, which will block
+	res =
+		cmd_ok(@LOCATION, 'git tag v0.1.0 -m "some tag message"') // note: without a tag message, git will try to start an editor when you run this test locally, which will block
 	mod.is_installed = false
 	mod.get_installed()
 	assert mod.is_installed
@@ -182,7 +200,8 @@ fn test_install_from_hg_url() ! {
 
 	println('> writing .hg/hgrc to the new mercurial repo ...')
 	os.mkdir_all(os.join_path(test_module_path, '.hg'))!
-	os.write_file(os.join_path(test_module_path, '.hg/hgrc'), '[ui]\nusername = v_ci <v_ci@example.net>\nverbose = False\n')!
+	os.write_file(os.join_path(test_module_path, '.hg/hgrc'),
+		'[ui]\nusername = v_ci <v_ci@example.net>\nverbose = False\n')!
 	println('> writing .hg/hgrc done.')
 
 	mut p, mut port := test_utils.hg_serve(hg_path, test_module_path, 2000)

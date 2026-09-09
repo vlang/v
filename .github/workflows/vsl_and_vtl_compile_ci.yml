@@ -2,7 +2,10 @@ name: VSL and VTL
 
 on:
   push:
+    branches:
+      - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/vsl_and_vtl_compile_ci.yml'
@@ -10,6 +13,7 @@ on:
       - 'cmd/tools/vrepl.v'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/vsl_and_vtl_compile_ci.yml'
@@ -27,11 +31,23 @@ jobs:
         os: [ubuntu-24.04, macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       VFLAGS: -no-parallel
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
+      - name: Cache apt packages
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/cache-apt-packages-action
+      - name: Cache Homebrew downloads
+        if: runner.os == 'macOS'
+        uses: actions/cache@v6
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ matrix.os }}-vsl-${{ hashFiles('.github/workflows/vsl_and_vtl_compile_ci.yml') }}
+          restore-keys: |
+            brew-${{ matrix.os }}-vsl-
+            brew-${{ matrix.os }}-
       - name: Build V
         id: build
         run: make && sudo ./v symlink
@@ -42,16 +58,24 @@ jobs:
           v retry -- sudo apt -qq update
           v retry -- sudo apt -qq install \
             libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev \
-            opencl-headers libxcursor-dev libxi-dev libxrandr-dev libhdf5-cpp-103-1t64 libhdf5-dev libhdf5-mpi-dev hdf5-tools
+            opencl-headers libvulkan-dev libxcursor-dev libxi-dev libxrandr-dev \
+            libhdf5-cpp-103-1t64 libhdf5-dev libhdf5-mpi-dev hdf5-tools
           else
             v retry brew install coreutils hdf5 open-mpi openblas lapack opencl-headers
           fi
       - name: Install vsl
         run: v retry -- v install vsl
+      - name: Skip optional Vulkan examples on macOS
+        if: runner.os == 'macOS'
+        run: |
+          for file in "$HOME"/.vmodules/vsl/examples/*vulkan*/*.v; do
+            [ -e "$file" ] || continue
+            mv "$file" "${file%.v}_not_ci.v"
+          done
       - name: Test with Pure V Backend
         run: ~/.vmodules/vsl/bin/test
       - name: Test with Pure V Backend and Pure V Math
-        run: ~/.vmodules/vsl/bin/test --use-cblas
+        run: ~/.vmodules/vsl/bin/test --use-cblas --skip-examples
 
   vtl-compiles:
     strategy:
@@ -62,11 +86,24 @@ jobs:
     timeout-minutes: 25
     env:
       VFLAGS: -no-parallel
+      VJOBS: 1
       # Fixes complaints about $TERM not being set when running the vtl test script
       # (a warning on Linux, but an error on macOS).
       TERM: xterm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
+      - name: Cache apt packages
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/cache-apt-packages-action
+      - name: Cache Homebrew downloads
+        if: runner.os == 'macOS'
+        uses: actions/cache@v6
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ matrix.os }}-vtl-${{ hashFiles('.github/workflows/vsl_and_vtl_compile_ci.yml') }}
+          restore-keys: |
+            brew-${{ matrix.os }}-vtl-
+            brew-${{ matrix.os }}-
       - name: Build V
         id: build
         run: make && sudo ./v symlink
@@ -83,6 +120,13 @@ jobs:
           v retry v install vsl
       - name: Install vtl
         run: v retry v install vtl
+      - name: Skip optional Vulkan examples on macOS
+        if: runner.os == 'macOS'
+        run: |
+          for file in "$HOME"/.vmodules/vtl/examples/*vulkan*/*.v; do
+            [ -e "$file" ] || continue
+            mv "$file" "${file%.v}_not_ci.v"
+          done
       - name: Test with Pure V Backend
         run: ~/.vmodules/vtl/bin/test
       - name: Test with Pure V Backend and Pure V Math

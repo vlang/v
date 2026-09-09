@@ -71,7 +71,7 @@ fn test_asm_generic() {
 }
 
 fn generic_asm[T](var &T) T {
-	mut ret := T(14)
+	mut ret := unsafe { T(14) }
 	unsafe {
 		asm volatile arm64 {
 			ldr x0, [var]

@@ -1,5 +1,6 @@
 module net
 
+import io
 import time
 import strings
 
@@ -31,6 +32,12 @@ pub mut:
 	read_timeout   time.Duration
 	write_timeout  time.Duration
 	is_blocking    bool = true
+	// last_write_sent is the exact number of bytes the most recent write_ptr
+	// call sent, valid even when it then returned an error (send() is
+	// byte-accurate), so a caller can tell a zero-byte failure — 0, safe to
+	// replay — from a partial write. (The TLS backends expose the same field but
+	// use -1 for the indeterminate case they cannot prove; plain TCP never does.)
+	last_write_sent int
 }
 
 // dial_tcp will try to create a new TcpConn to the given address.
@@ -138,27 +145,25 @@ pub fn (mut c TcpConn) close() ! {
 // read_ptr reads data from the tcp connection to the given buffer. It reads at most `len` bytes.
 // It returns the number of actually read bytes, which can vary between 0 to `len`.
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
-	mut should_ewouldblock := false
-	mut res := $if is_coroutine ? {
-		C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
+	mut res := 0
+	mut ecode := 0
+	$if is_coroutine ? {
+		res = C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
+		ecode = error_code()
 	} $else {
-		// The new socket returned by accept() behaves differently in blocking mode and needs special treatment.
-		mut has_data := true
 		if c.is_blocking {
-			if ok := select(c.sock.handle, .read, 1) {
-				has_data = ok
-			} else {
-				false
-			}
-		}
-		if has_data {
-			C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
+			// Honor read deadlines/timeouts first, then use a normal blocking recv.
+			// This avoids transient EAGAIN-style reads on newly accepted sockets.
+			c.wait_for_read()!
+			res = C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
 		} else {
-			should_ewouldblock = true
-			-1
+			res = C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
 		}
+		ecode = error_code()
 	}
-	ecode := error_code()
+	if res == 0 {
+		return io.Eof{}
+	}
 	if res > 0 {
 		$if trace_tcp ? {
 			eprintln(
@@ -172,17 +177,23 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 		return res
 	}
-	code := if should_ewouldblock { int(error_ewouldblock) } else { ecode }
-	if code in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
+	if ecode in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 		c.wait_for_read()!
 		res = $if is_coroutine ? {
 			C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
 		} $else {
-			C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
+			if c.is_blocking {
+				C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
+			} else {
+				C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
+			}
+		}
+		if res == 0 {
+			return io.Eof{}
 		}
 		$if trace_tcp ? {
 			eprintln(
-				'<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} | code: ${code} |\n' +
+				'<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} | code: ${ecode} |\n' +
 				unsafe { buf_ptr.vstring_with_len(len) })
 		}
 		$if trace_tcp_data_read ? {
@@ -194,7 +205,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 		return socket_error(res)
 	} else {
-		wrap_error(code)!
+		wrap_error(ecode)!
 	}
 	return error('none')
 }
@@ -228,6 +239,7 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 			'>>> TcpConn.write_ptr | data.len: ${len:6} | hex: ${unsafe { b.vbytes(len) }.hex()} | data: ' +
 			unsafe { b.vstring_with_len(len) })
 	}
+	c.last_write_sent = 0
 	unsafe {
 		mut ptr_base := &u8(b)
 		mut total_sent := 0
@@ -255,6 +267,7 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 				}
 			}
 			total_sent += sent
+			c.last_write_sent = total_sent
 		}
 		return total_sent
 	}
@@ -366,6 +379,46 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 	if family !in [.ip, .ip6] {
 		return error('listen_tcp only supports ip and ip6')
 	}
+	return listen_tcp_with_family(family, saddr, options) or {
+		if should_fallback_to_ipv4_listener(family, saddr, options, err.code()) {
+			fallback_saddr := ipv4_fallback_listen_addr(saddr) or { return err }
+			return listen_tcp_with_family(.ip, fallback_saddr, options)
+		}
+		return err
+	}
+}
+
+fn should_fallback_to_ipv4_listener(family AddrFamily, saddr string, options ListenOptions, err_code int) bool {
+	// Treat an unspecified IPv6 listener as "dual stack if available, otherwise IPv4 only".
+	if family != .ip6 || !options.dualstack {
+		return false
+	}
+	if !is_unspecified_ip6_listen_addr(saddr) {
+		return false
+	}
+	return is_ipv6_unavailable_error(err_code)
+}
+
+fn is_unspecified_ip6_listen_addr(saddr string) bool {
+	address, _ := split_address(saddr) or { return false }
+	return address in ['', '::']
+}
+
+fn is_ipv6_unavailable_error(err_code int) bool {
+	$if windows {
+		return err_code in [int(WsaError.wsaeafnosupport), int(WsaError.wsaeprotonosupport),
+			int(WsaError.wsaeaddrnotavail)]
+	} $else {
+		return err_code in [C.EAFNOSUPPORT, C.EPROTONOSUPPORT, C.EADDRNOTAVAIL]
+	}
+}
+
+fn ipv4_fallback_listen_addr(saddr string) !string {
+	_, port := split_address(saddr)!
+	return ':${port}'
+}
+
+fn listen_tcp_with_family(family AddrFamily, saddr string, options ListenOptions) !&TcpListener {
 	mut s := new_tcp_socket(family) or { return error('${err.msg()}; could not create new socket') }
 	s.set_dualstack(options.dualstack) or {}
 
@@ -393,7 +446,8 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 	}
 
 	$if !net_nonblocking_sockets ? {
-		socket_error_message(res, 'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
+		socket_error_message(res,
+			'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
 		return &TcpListener(unsafe { nil }) // for compiler passed
 	} $else {
 		// non-blocking sockets may also not succeed immediately when they listen() and need to check the status and take action accordingly.
@@ -406,7 +460,8 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 					break
 				}
 			} else {
-				socket_error_message(res, 'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
+				socket_error_message(res,
+					'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
 				break // for compiler passed
 			}
 		}
@@ -440,7 +495,7 @@ pub fn (mut l TcpListener) accept() !&TcpConn {
 // The intention of this API, is to have a more efficient way to accept
 // connections, that are later processed by a thread pool, while the main
 // thread remains active, so that it can accept other connections.
-// See also vlib/vweb/vweb.v .
+// See also vlib/veb/veb.v .
 //
 // If you do not need that, just call `.accept()!` instead, which will call
 // `.set_sock()!` for you.
@@ -515,7 +570,7 @@ pub fn (c &TcpListener) addr() !Addr {
 	return c.sock.address()
 }
 
-struct TcpSocket {
+pub struct TcpSocket {
 	Socket
 }
 
@@ -524,9 +579,9 @@ struct TcpSocket {
 @[noinline]
 pub fn new_tcp_socket(family AddrFamily) !TcpSocket {
 	handle := $if is_coroutine ? {
-		socket_error(C.photon_socket(family, SocketType.tcp, 0))!
+		socket_error(C.photon_socket(i32(family), i32(SocketType.tcp), 0))!
 	} $else {
-		socket_error(C.socket(family, SocketType.tcp, 0))!
+		socket_error(C.socket(i32(family), i32(SocketType.tcp), 0))!
 	}
 	mut s := TcpSocket{
 		handle: handle
@@ -540,7 +595,7 @@ pub fn new_tcp_socket(family AddrFamily) !TcpSocket {
 	// use the non-blocking socket option instead please :)
 
 	// Some options need to be set before the connection is established, otherwise they will not work.
-	s.set_default_options()!
+	s.set_default_options(family)!
 
 	// Set the desired "blocking/non-blocking" mode before the connection is established,
 	// and do not change it once the connection is successful.
@@ -561,7 +616,8 @@ fn tcp_socket_from_handle(sockfd int) !TcpSocket {
 	s.set_dualstack(true) or {
 		// Not ipv6, we dont care
 	}
-	s.set_default_options()!
+	addr := addr_from_socket_handle(sockfd)
+	s.set_default_options(addr.family())!
 
 	return s
 }
@@ -578,7 +634,8 @@ pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
 }
 
 fn (mut s TcpSocket) set_option(level int, opt int, value int) ! {
-	socket_error(C.setsockopt(s.handle, level, opt, &value, sizeof(int)))!
+	v := i32(value) // C socket options are 4-byte `int`; pass i32 storage (sizeof 4)
+	socket_error(C.setsockopt(s.handle, level, opt, &v, sizeof(v)))!
 }
 
 pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {
@@ -602,7 +659,7 @@ pub fn (mut s TcpSocket) set_dualstack(on bool) ! {
 	s.set_option(C.IPPROTO_IPV6, int(SocketOption.ipv6_only), x)!
 }
 
-fn (mut s TcpSocket) set_default_options() ! {
+fn (mut s TcpSocket) set_default_options(af AddrFamily) ! {
 	s.set_option_int(.reuse_addr, 1)!
 
 	// At the socket level to ignore the exception signal (usually SIGNPIPE).
@@ -613,7 +670,9 @@ fn (mut s TcpSocket) set_default_options() ! {
 	}
 
 	// Enable the NODELAY option by default.
-	s.set_option(C.IPPROTO_TCP, C.TCP_NODELAY, 1)!
+	if af != .unix {
+		s.set_option(C.IPPROTO_TCP, C.TCP_NODELAY, 1)!
+	}
 }
 
 // bind a local rddress for TcpSocket
@@ -663,7 +722,7 @@ fn (mut s TcpSocket) connect(a Addr) ! {
 			// unsuccessfully (SO_ERROR is one of the usual error codes  listed  here,
 			// ex‐ plaining the reason for the failure).
 			write_result := select(s.handle, .write, connect_timeout)!
-			err := 0
+			err := i32(0) // SO_ERROR is a C `int`; i32 storage keeps &err int* and sizeof 4
 			len := sizeof(err)
 			xyz := C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
 			if xyz == 0 && err == 0 {

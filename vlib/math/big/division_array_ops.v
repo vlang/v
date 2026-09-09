@@ -59,8 +59,8 @@ fn knuth_divide_array_by_array(operand_a []u64, operand_b []u64, mut quotient []
 		u_j_n_1 := u[j + n - 1]
 		u_j_n_2 := u[j + n - 2]
 
-		mut qhat, mut rhat := bits.div_64(u_j_n >> (64 - digit_bits), (u_j_n << digit_bits) | u_j_n_1,
-			v_n_1)
+		mut qhat, mut rhat := bits.div_64(u_j_n >> (64 - digit_bits),
+			(u_j_n << digit_bits) | u_j_n_1, v_n_1)
 		mut x1, mut x2 := bits.mul_64(qhat, v_n_2)
 		x2 = x2 & max_digit
 		x1 = (x1 << (64 - digit_bits)) | (x2 >> digit_bits)

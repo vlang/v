@@ -23,5 +23,6 @@ fn test_main() {
 			return
 		}
 	}
+
 	assert false
 }

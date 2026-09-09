@@ -215,6 +215,9 @@ fn lorem_build_markov(tokens []string, order int) map[string][]string {
 	mut model := map[string][]string{}
 	for i in 0 .. tokens.len - order {
 		key := tokens[i..i + order].join('\u0001')
+		if key !in model {
+			model[key] = []string{}
+		}
 		model[key] << tokens[i + order]
 	}
 	return model

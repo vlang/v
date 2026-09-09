@@ -32,20 +32,23 @@ fn test_if_compilation_with_custom_cflags_works_numbers_composed_arithmetic() {
 	assert C.CNUMBERS6 == 123123
 }
 
-#flag -DFNAME0=$d('A1','"printf"')
-#flag -DFNAME1=$d('A1','"print')$d('A2','f"')
-#flag -DFNAME2=$d('A1', 'print')$d('A2','f')
-#flag -DFNAME3=$d('A1','prin' )$d('A2','tf')
-#flag -DFNAME4=$d('A1', 'pri' )$d('A2','ntf')
-#flag -DFNAME5=$d('A1', 'pr' )$d('A2','intf') ##
+@[export: 'check_dflags_fn']
+pub fn check_dflags_fn() {}
+
+#flag -DFNAME0=$d('A1','"check_dflags_fn"')
+#flag -DFNAME1=$d('A1','"check_d')$d('A2','flags_fn"')
+#flag -DFNAME2=$d('A1', 'check_d')$d('A2','flags_fn')
+#flag -DFNAME3=$d('A1','check_dfl' )$d('A2','ags_fn')
+#flag -DFNAME4=$d('A1', 'check_dfla' )$d('A2','gs_fn')
+#flag -DFNAME5=$d('A1', 'check_dflag' )$d('A2','s_fn') ##
 
 fn test_custom_flags_with_composed_strings() {
-	assert voidptr(C.FNAME0) == voidptr(C.printf)
-	assert voidptr(C.FNAME1) == voidptr(C.printf)
-	assert voidptr(C.FNAME2) == voidptr(C.printf)
-	assert voidptr(C.FNAME3) == voidptr(C.printf)
-	assert voidptr(C.FNAME4) == voidptr(C.printf)
-	assert voidptr(C.FNAME5) == voidptr(C.printf)
+	assert voidptr(C.FNAME0) == voidptr(C.check_dflags_fn)
+	assert voidptr(C.FNAME1) == voidptr(C.check_dflags_fn)
+	assert voidptr(C.FNAME2) == voidptr(C.check_dflags_fn)
+	assert voidptr(C.FNAME3) == voidptr(C.check_dflags_fn)
+	assert voidptr(C.FNAME4) == voidptr(C.check_dflags_fn)
+	assert voidptr(C.FNAME5) == voidptr(C.check_dflags_fn)
 }
 
 #flag -DCMIXED1=$d('A1','mixed')_$d('A2',1)

@@ -1,0 +1,7 @@
+fn read_f64() !f64 {
+	return error('oops')
+}
+
+fn main() {
+	_ := int(read_f64() or { 'bad' })
+}

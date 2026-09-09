@@ -1,7 +1,6 @@
 module sokol
 
 import sokol.c as _
-import sokol.f as _
 
 /* pub enum Key {
 	up     = C.SAPP_KEYCODE_UP

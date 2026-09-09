@@ -132,7 +132,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	buf[i] = 0
 
 	return unsafe {
-		tos(&u8(&buf[0]), i)
+		tos(memdup(&buf[0], i + 1), i)
 	}
 }
 
@@ -207,8 +207,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 				// Same as min(e2 + (^mm & 1), pow5Factor64(mm)) >= q
 				// <=> e2 + (^mm & 1) >= q && pow5Factor64(mm) >= q
 				// <=> true && pow5Factor64(mm) >= q, since e2 >= q.
-				vm_is_trailing_zeros = multiple_of_power_of_five_64(mv - 1 - mm_shift,
-					q)
+				vm_is_trailing_zeros = multiple_of_power_of_five_64(mv - 1 - mm_shift, q)
 			} else if multiple_of_power_of_five_64(mv + 2, q) {
 				vp--
 			}

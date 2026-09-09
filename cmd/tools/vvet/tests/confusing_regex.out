@@ -1,0 +1,2 @@
+cmd/tools/vvet/tests/confusing_regex.vv:4: warning: Confusing regex `|` in `foo|bar`: V regex applies `|` to adjacent tokens, not whole branches. Use `(foo)|(bar)` if you intended alternation.
+cmd/tools/vvet/tests/confusing_regex.vv:6: warning: Confusing regex `|` in `zip|zap`: V regex applies `|` to adjacent tokens, not whole branches. Use `(zip)|(zap)` if you intended alternation.

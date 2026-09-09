@@ -1,0 +1,7 @@
+const x = $if duplicate_enum_value_check ? { 1 } $else { 2 }
+const y = $if duplicate_enum_value_check ? { 3 } $else { 2 }
+
+enum Foo {
+	foo = x
+	bar = y
+}

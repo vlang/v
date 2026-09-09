@@ -1,3 +1,7 @@
 fn main() {
 	print('a'), print('b')
 }
+
+fn return_if_with_void_value(x bool) (voidptr, int) {
+	return if x { print('a'), 1 } else { voidptr(0), 2 }
+}

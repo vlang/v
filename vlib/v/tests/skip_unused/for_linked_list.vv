@@ -12,7 +12,7 @@ mut:
 }
 
 pub fn (mut l LinkedList) push(value int) {
-	mut new_node := &Node{
+	mut node := &Node{
 		value: value
 	}
 
@@ -22,10 +22,10 @@ pub fn (mut l LinkedList) push(value int) {
 				head = head_next
 			}
 		}
-		head.next = new_node
-		new_node.prev = head
+		head.next = node
+		node.prev = head
 	} else {
-		l.head = new_node
+		l.head = node
 	}
 }
 

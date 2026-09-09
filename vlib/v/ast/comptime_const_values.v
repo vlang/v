@@ -1,6 +1,8 @@
 module ast
 
-pub type ComptTimeConstValue = EmptyExpr
+pub struct EmptyComptimeConstValue {}
+
+pub type ComptTimeConstValue = EmptyComptimeConstValue
 	| f32
 	| f64
 	| i16
@@ -60,8 +62,9 @@ pub fn (val ComptTimeConstValue) voidptr() ?voidptr {
 		u8, u16, u32, u64 { return voidptr(u64(val)) }
 		rune { return voidptr(u64(val)) }
 		voidptr { return val }
-		string, EmptyExpr, f32, f64 {}
+		string, EmptyComptimeConstValue, f32, f64 {}
 	}
+
 	return none
 }
 
@@ -115,8 +118,9 @@ pub fn (val ComptTimeConstValue) i64() ?i64 {
 		voidptr {
 			return i64(val)
 		}
-		EmptyExpr {}
+		EmptyComptimeConstValue {}
 	}
+
 	return none
 }
 
@@ -203,9 +207,12 @@ pub fn (val ComptTimeConstValue) u64() ?u64 {
 		voidptr {
 			return u64(val)
 		}
-		rune {}
-		EmptyExpr {}
+		rune {
+			return u64(val)
+		}
+		EmptyComptimeConstValue {}
 	}
+
 	return none
 }
 
@@ -256,8 +263,9 @@ pub fn (val ComptTimeConstValue) f64() ?f64 {
 		}
 		voidptr {}
 		rune {}
-		EmptyExpr {}
+		EmptyComptimeConstValue {}
 	}
+
 	return none
 }
 
@@ -306,13 +314,14 @@ pub fn (val ComptTimeConstValue) string() ?string {
 		voidptr {
 			return ptr_str(val)
 		}
-		EmptyExpr {}
+		EmptyComptimeConstValue {}
 	}
+
 	return none
 }
 
 pub fn (obj ConstField) comptime_expr_value() ?ComptTimeConstValue {
-	if obj.comptime_expr_value !is EmptyExpr {
+	if obj.comptime_expr_value !is EmptyComptimeConstValue {
 		return obj.comptime_expr_value
 	}
 	return none

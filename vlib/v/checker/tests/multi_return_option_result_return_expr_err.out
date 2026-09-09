@@ -1,0 +1,21 @@
+vlib/v/checker/tests/multi_return_option_result_return_expr_err.vv:10:9: error: cannot use `?int` as type `int` in return argument
+    8 |
+    9 | fn return_if_with_option_value(x bool) (int, int) {
+   10 |     return if x { maybe_int(), 1 } else { 2, 2 }
+      |            ~~
+   11 | }
+   12 |
+vlib/v/checker/tests/multi_return_option_result_return_expr_err.vv:15:10: error: return type mismatch, it should be `(int, int)`, but it is instead `(!int, int literal)`
+   13 | fn return_match_with_result_value(x bool) (int, int) {
+   14 |     return match x {
+   15 |         true { result_int(), 1 }
+      |                ~~~~~~~~~~
+   16 |         else { 2, 2 }
+   17 |     }
+vlib/v/checker/tests/multi_return_option_result_return_expr_err.vv:14:9: error: cannot use `!int` as type `int` in return argument
+   12 |
+   13 | fn return_match_with_result_value(x bool) (int, int) {
+   14 |     return match x {
+      |            ~~~~~~~~~
+   15 |         true { result_int(), 1 }
+   16 |         else { 2, 2 }

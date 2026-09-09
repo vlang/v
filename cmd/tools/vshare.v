@@ -2,17 +2,9 @@ module main
 
 import net.http
 import os
-import clipboard
-import json
-
-struct Response {
-	hash  string
-	error string
-}
+import vshare
 
 fn main() {
-	mut cb := clipboard.new()
-
 	if os.args.len < 3 {
 		eprintln('Please provide a file')
 		exit(1)
@@ -37,12 +29,20 @@ fn main() {
 
 	share := http.post_form('https://play.vlang.io/share', {
 		'code': content
-	})!
+	}) or {
+		eprintln('Failed to share code: ${err.msg()}')
+		exit(1)
+	}
 
-	response := json.decode(Response, share.body)!
-	url := 'https://play.vlang.io/p/${response.hash}'
+	url := vshare.share_url_from_response(share.status_code, share.body) or {
+		eprintln(err.msg())
+		exit(1)
+	}
 
-	cb.copy(url)
 	println(url)
-	println('Copied URL to clipboard.')
+	if vshare.copy_to_clipboard(url) {
+		println('Copied URL to clipboard.')
+	} else {
+		println('Clipboard copy unavailable. Copy the URL manually.')
+	}
 }

@@ -33,3 +33,14 @@ typedef struct Bar {
 typedef struct TestAlias {
     int a;
 };
+
+///
+
+typedef struct MyRefStruct MyRefStruct;
+struct MyRefStruct {
+    char* format;
+    char* name;
+    void** children;
+    void (*release)(struct MyRefStruct*);
+    void* private_data;
+};

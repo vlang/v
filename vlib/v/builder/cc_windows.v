@@ -10,6 +10,14 @@ pub fn (mut v Builder) find_win_cc() ! {
 	$if !windows {
 		return
 	}
+	if v.pref.ccompiler_set_by_flag && v.pref.ccompiler != 'msvc' {
+		if !ccompiler_is_available(v.pref.ccompiler) {
+			return error('C compiler `${v.pref.ccompiler}` was requested with `-cc`, but was not found.')
+		}
+		v.pref.ccompiler_type = pref.cc_from_string(v.pref.ccompiler)
+		v.pref.normalize_gc_defaults_for_resolved_ccompiler()
+		return
+	}
 	cmd_version := '${v.quote_compiler_name(v.pref.ccompiler)} -v'
 	ccompiler_version_res := os.execute(cmd_version)
 	if ccompiler_version_res.exit_code != 0 {
@@ -32,13 +40,16 @@ pub fn (mut v Builder) find_win_cc() ! {
 				}
 				v.pref.ccompiler = thirdparty_tcc
 				v.pref.ccompiler_type = .tinyc
+				v.pref.normalize_gc_defaults_for_resolved_ccompiler()
 				return
 			}
 			v.cached_msvc = msvc
 		}
 		v.pref.ccompiler = 'msvc'
 		v.pref.ccompiler_type = .msvc
+		v.pref.normalize_gc_defaults_for_resolved_ccompiler()
 		return
 	}
 	v.pref.ccompiler_type = pref.cc_from_string(v.pref.ccompiler)
+	v.pref.normalize_gc_defaults_for_resolved_ccompiler()
 }

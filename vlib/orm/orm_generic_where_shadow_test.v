@@ -1,4 +1,5 @@
 // vtest build: present_sqlite3? && !sanitize-memory-clang
+// vtest vflags: -prod
 // Tests for generic ORM with WHERE clause variable shadowing field names.
 // This tests the fix for the bug where `select from T where status == status`
 // (where `status` is both a field name and a local variable) was incorrectly

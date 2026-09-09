@@ -1,3 +1,4 @@
+// vtest build: !windows // fasthttp.Server.run is not implemented on windows yet
 import os
 import veb
 import time
@@ -19,6 +20,10 @@ pub struct App {
 
 pub fn (mut app App) before_accept_loop() {
 	app.started <- true
+}
+
+pub fn (mut app App) index(mut ctx Context) veb.Result {
+	return ctx.text('Hello V!')
 }
 
 type AliasApp = App
@@ -48,6 +53,11 @@ fn test_aliased_app_compiles_and_starts() {
 fn test_static_root() {
 	x := http.get('http://127.0.0.1:${app_port}/')!
 	eprintln('>>>> http request was sent and received')
-	assert x.status() == .not_found
-	assert x.body == '404 Not Found'
+	assert x.status() == .ok
+	assert x.body == 'index success'
+}
+
+@['/'; get]
+fn (mut app AliasApp) index(mut ctx AliasContext) veb.Result {
+	return ctx.text('index success')
 }

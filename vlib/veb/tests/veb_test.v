@@ -1,7 +1,8 @@
-// vtest build: !sanitized_job?
+// vtest retry: 3
+// vtest build: !sanitized_job? && !windows // !windows: fasthttp.Server.run not implemented yet
 import os
 import time
-import x.json2 as json
+import json2 as json
 import net
 import net.http
 import io
@@ -14,7 +15,6 @@ const vexe = os.getenv('VEXE')
 const veb_logfile = os.getenv('VEB_LOGFILE')
 const vroot = os.dir(vexe)
 const serverexe = os.join_path(os.cache_dir(), 'veb_test_server.exe')
-const serverexe_new = os.join_path(os.cache_dir(), 'veb_test_server_new_veb.exe')
 const tcp_r_timeout = 10 * time.second
 const tcp_w_timeout = 10 * time.second
 
@@ -24,23 +24,14 @@ fn testsuite_begin() {
 	if os.exists(serverexe) {
 		os.rm(serverexe) or {}
 	}
-	if os.exists(serverexe_new) {
-		os.rm(serverexe_new) or {}
-	}
 }
 
 fn test_simple_veb_app_can_be_compiled() {
 	// did_server_compile := os.system('${os.quoted_path(vexe)} -g -o ${os.quoted_path(serverexe)} vlib/veb/tests/veb_test_server.v')
-	did_server_compile := os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} vlib/veb/tests/veb_test_server.v')
+	did_server_compile :=
+		os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} vlib/veb/tests/veb_test_server.v')
 	assert did_server_compile == 0
 	assert os.exists(serverexe)
-}
-
-fn test_new_veb_app_can_be_compiled() {
-	// Ensure the new fasthttp backend builds successfully.
-	did_server_compile := os.system('${os.quoted_path(vexe)} -d new_veb -o ${os.quoted_path(serverexe_new)} vlib/veb/tests/veb_test_server.v')
-	assert did_server_compile == 0
-	assert os.exists(serverexe_new)
 }
 
 fn test_a_simple_veb_app_runs_in_the_background() {
@@ -137,16 +128,24 @@ fn test_a_simple_tcp_client_html_page() {
 // net.http client based tests follow:
 fn assert_common_http_headers(x http.Response) ! {
 	assert x.status() == .ok
-	assert x.header.get(.server)! == 'veb'
-	assert x.header.get(.content_length)!.int() > 0
+	assert x.header.get(.server) or { '' } == 'veb'
+	assert (x.header.get(.content_length) or { '0' }).int() > 0
 }
 
 fn test_http_client_index() {
 	x := http.get('http://${localserver}/') or { panic(err) }
 	assert_common_http_headers(x)!
-	assert x.header.get(.content_type)! == 'text/plain'
+	assert x.header.get(.content_type)? == 'text/plain'
 	assert x.body == 'Welcome to veb'
-	assert x.header.get(.connection)! == 'close'
+	// The default http client keeps connections alive (it no longer sends
+	// `Connection: close`), so veb must not answer with a close either.
+	if conn_header := x.header.get(.connection) {
+		assert conn_header != 'close'
+	}
+	// Opting out of connection reuse restores the historical behavior
+	// end-to-end: the client sends `Connection: close` and veb honors it.
+	y := http.fetch(url: 'http://${localserver}/', disable_connection_reuse: true) or { panic(err) }
+	assert y.header.get(.connection)? == 'close'
 }
 
 fn test_http_client_404() {
@@ -166,14 +165,14 @@ fn test_http_client_404() {
 fn test_http_client_simple() {
 	x := http.get('http://${localserver}/simple') or { panic(err) }
 	assert_common_http_headers(x)!
-	assert x.header.get(.content_type)! == 'text/plain'
+	assert x.header.get(.content_type)? == 'text/plain'
 	assert x.body == 'A simple result'
 }
 
 fn test_http_client_html_page() {
 	x := http.get('http://${localserver}/html_page') or { panic(err) }
 	assert_common_http_headers(x)!
-	assert x.header.get(.content_type)! == 'text/html'
+	assert x.header.get(.content_type)? == 'text/html'
 	assert x.body == '<h1>ok</h1>'
 }
 
@@ -215,7 +214,7 @@ fn test_http_client_json_post() {
 	$if debug_net_socket_client ? {
 		eprintln('/json_echo endpoint response: ${x}')
 	}
-	assert x.header.get(.content_type)! == 'application/json'
+	assert x.header.get(.content_type)? == 'application/json'
 	assert x.body == json_for_ouser
 	nuser := json.decode[User](x.body) or { User{} }
 	assert '${ouser}' == '${nuser}'
@@ -224,7 +223,7 @@ fn test_http_client_json_post() {
 	$if debug_net_socket_client ? {
 		eprintln('/json endpoint response: ${x}')
 	}
-	assert x.header.get(.content_type)! == 'application/json'
+	assert x.header.get(.content_type)? == 'application/json'
 	assert x.body == json_for_ouser
 	nuser2 := json.decode[User](x.body) or { User{} }
 	assert '${ouser}' == '${nuser2}'
@@ -305,7 +304,7 @@ fn test_empty_response_body_has_content_length() {
 
 	mut x := req.do()!
 	assert x.status() == .ok
-	assert x.header.get(.content_length)! == '0'
+	assert x.header.get(.content_length)? == '0'
 }
 
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {

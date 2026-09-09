@@ -42,6 +42,7 @@ CC=$CC CFLAGS="-Os -mtune=generic -fPIC" LDFLAGS="-Os -fPIC" ./configure \
 	--enable-shared=yes \
 	--enable-single-obj-compilation \
 	--enable-gc-debug \
+	--enable-thread-local-alloc \
 	--enable-large-config \
 	--enable-cplusplus \
 	--with-libatomic-ops=check \

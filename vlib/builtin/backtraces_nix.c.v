@@ -31,35 +31,170 @@ fn print_backtrace_skipping_top_frames_bsd(skipframes int) bool {
 				eprintln('C.backtrace returned less than 2 frames')
 				return false
 			}
-			C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
+			$if detailed_backtraces ? {
+				nr_actual_frames := nr_ptrs - skipframes
+				csymbols := C.backtrace_symbols(voidptr(&buffer[skipframes]), nr_actual_frames)
+				atos_lines := bsd_backtrace_resolve_atos(&buffer[skipframes], nr_actual_frames)
+				for i in 0 .. nr_actual_frames {
+					sframe := unsafe { tos2(&u8(csymbols[i])) }
+					mut file_line := ''
+					if i < atos_lines.len {
+						file_line = atos_lines[i]
+					}
+					// macOS format: `0   main   0x00000001047232f8 veb__run_T_main__App_main__Context + 356`
+					symbol_start := sframe.index('0x') or { -1 }
+					if symbol_start < 0 {
+						continue
+					}
+					rest := sframe[symbol_start..]
+					space_after_addr := rest.index(' ') or { -1 }
+					if space_after_addr < 0 {
+						continue
+					}
+					symbol_and_offset := rest[space_after_addr + 1..]
+					plus_pos := symbol_and_offset.index(' + ') or { -1 }
+					mut raw_symbol := symbol_and_offset
+					if plus_pos >= 0 {
+						raw_symbol = symbol_and_offset[..plus_pos]
+					}
+					// Skip C runtime frames that are not V functions:
+					if raw_symbol in ['main', 'start', '_main'] {
+						continue
+					}
+					mut demangled := ''
+					if plus_pos >= 0 {
+						demangled = demangle_v_symbol(raw_symbol) + symbol_and_offset[plus_pos..]
+					} else {
+						demangled = demangle_v_symbol(raw_symbol)
+					}
+					if file_line.len > 0 {
+						eprint(file_line)
+						eprint_space_padding(file_line, 45)
+						eprint(' | ')
+						eprintln(demangled)
+					} else {
+						eprintln(demangled)
+					}
+				}
+				if nr_actual_frames > 0 {
+					unsafe { C.free(csymbols) }
+				}
+			} $else {
+				C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
+			}
 		}
 		return true
 	}
 }
 
+// bsd_backtrace_resolve_atos uses macOS `atos` to resolve addresses to file:line info.
+// Returns an array of file:line strings (one per frame). Empty string if unresolved.
+@[direct_array_access]
+fn bsd_backtrace_resolve_atos(buffer &voidptr, nr_frames int) []string {
+	$if macos {
+		exe_name := backtrace_current_executable_name()
+		if exe_name.len == 0 {
+			return []string{}
+		}
+		base_addr := voidptr(C._dyld_get_image_header(0))
+		if base_addr == unsafe { nil } {
+			return []string{}
+		}
+		// Build single atos command with all addresses for efficiency:
+		mut cmd := 'atos --fullPath -o "' + exe_name + '" -l ' + ptr_str(base_addr)
+		for i in 0 .. nr_frames {
+			cmd += ' ' + ptr_str(unsafe { buffer[i] })
+		}
+		f := C.popen(&char(cmd.str), c'r')
+		if f == unsafe { nil } {
+			return []string{}
+		}
+		buf := [4096]u8{}
+		mut lines := []string{cap: nr_frames}
+		unsafe {
+			bp := &u8(&buf[0])
+			for C.fgets(&char(bp), 4096, f) != 0 {
+				line := tos(bp, vstrlen(bp)).trim_chars(' \t\n\r', .trim_both)
+				// atos output format: `func_name (in binary) (file.v:42)`
+				// Extract the last parenthesized (file:line) part:
+				paren_pos := line.index_last_('(')
+				if paren_pos >= 0 {
+					file_part := line[paren_pos + 1..]
+					end_paren := file_part.index_last_(')')
+					if end_paren >= 0 {
+						file_line := file_part[..end_paren]
+						if file_line.contains(':') && !file_line.starts_with('in ')
+							&& !file_line.contains('.tmp.c:') {
+							lines << file_line
+							continue
+						}
+					}
+				}
+				lines << ''
+			}
+		}
+		C.pclose(f)
+		return lines
+	}
+	return []string{}
+}
+
 fn C.tcc_backtrace(fmt &char) i32
+
+fn backtrace_current_executable_name() string {
+	args := arguments()
+	if args.len == 0 {
+		return ''
+	}
+	return args[0]
+}
+
+fn backtrace_addr2line_executable(executable string, current_executable_name string) string {
+	if executable.len == 0 {
+		return '/proc/self/exe'
+	}
+	if executable.contains('/') {
+		return executable
+	}
+	if current_executable_name.len > 0
+		&& executable.all_after_last('/') == current_executable_name.all_after_last('/') {
+		return '/proc/self/exe'
+	}
+	return executable
+}
+
+fn backtrace_shell_quote(s string) string {
+	mut quoted := "'"
+	for i in 0 .. s.len {
+		if s[i] == `'` {
+			quoted += "'\\''"
+		} else {
+			quoted += s[i].ascii_str()
+		}
+	}
+	return quoted + "'"
+}
+
 @[direct_array_access]
 fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	$if android {
 		eprintln('On Android no backtrace is available.')
 		return false
 	}
-	$if !glibc {
-		eprintln('backtrace_symbols is missing => printing backtraces is not available.')
-		eprintln('Some libc implementations like musl simply do not provide it.')
-		return false
-	}
-	$if native {
-		eprintln('native backend does not support backtraces yet.')
-		return false
-	} $else $if no_backtrace ? {
+	$if no_backtrace ? {
 		return false
 	} $else {
 		$if linux && !freestanding {
-			$if tinyc {
-				C.tcc_backtrace(c'Backtrace')
+			$if !glibc {
+				$if tinyc {
+					C.tcc_backtrace(c'Backtrace')
+				} $else {
+					eprintln('backtrace_symbols is missing => printing backtraces is not available.')
+					eprintln('Some libc implementations like musl simply do not provide it.')
+				}
 				return false
 			} $else {
+				current_executable_name := backtrace_current_executable_name()
 				buffer := [100]voidptr{}
 				nr_ptrs := C.backtrace(&buffer[0], 100)
 				if nr_ptrs < 2 {
@@ -72,9 +207,12 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 				for i in 0 .. nr_actual_frames {
 					sframe := unsafe { tos2(&u8(csymbols[i])) }
 					executable := sframe.all_before('(')
+					addr2line_executable := backtrace_addr2line_executable(executable,
+						current_executable_name)
 					addr := sframe.all_after('[').all_before(']')
 					beforeaddr := sframe.all_before('[')
-					cmd := 'addr2line -e ' + executable + ' ' + addr
+					cmd := 'addr2line -e ' + backtrace_shell_quote(addr2line_executable) + ' ' +
+						backtrace_shell_quote(addr)
 					// taken from os, to avoid depending on the os module inside builtin.v
 					f := C.popen(&char(cmd.str), c'r')
 					if f == unsafe { nil } {
@@ -84,7 +222,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 					buf := [1000]u8{}
 					mut output := ''
 					unsafe {
-						bp := &buf[0]
+						bp := &u8(&buf[0])
 						for C.fgets(&char(bp), 1000, f) != 0 {
 							output += tos(bp, vstrlen(bp))
 						}
@@ -106,7 +244,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 					eprint(' | ')
 					eprint(addr)
 					eprint(' | ')
-					eprintln(beforeaddr)
+					eprintln(demangle_backtrace_sym(beforeaddr))
 				}
 				if nr_actual_frames > 0 {
 					unsafe { C.free(csymbols) }

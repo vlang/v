@@ -35,6 +35,7 @@ fn test_comptime_for_in_enum_values() {
 				assert item.value == .bar
 			}
 		}
+
 		if item.value == .foo {
 			println('foo>> item: ${item.name}')
 			assert item.value == .foo

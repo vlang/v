@@ -49,6 +49,8 @@ const default_slangs = [
 ]
 
 const shdc_version = shdc_full_hash[0..8]
+const shdc_download_attempts = 4
+const shdc_download_retry_delay_ms = 2000
 const shdc_urls = {
 	'windows': 'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/win32/sokol-shdc.exe'
 	'macos':   'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/osx/sokol-shdc'
@@ -87,7 +89,8 @@ fn main() {
 		show_help:    fp.bool('help', `h`, false, 'Show this help text.')
 		force_update: fp.bool('force-update', `u`, false, 'Force update of the sokol-shdc tool.')
 		verbose:      fp.bool('verbose', `v`, false, 'Be verbose about the tools progress.')
-		slangs:       fp.string_multi('slang', `l`, 'Shader dialects to generate code for. Default is all.\n                            Available dialects: ${supported_slangs}')
+		slangs:       fp.string_multi('slang', `l`,
+			'Shader dialects to generate code for. Default is all.\n                            Available dialects: ${supported_slangs}')
 	}
 	if opt.show_help {
 		println(fp.usage())
@@ -247,8 +250,7 @@ fn ensure_external_tools(opt Options) ! {
 		if is_shdc_available {
 			eprintln(' file path: ${shdc_exe}')
 			eprintln(' file size: ${os.file_size(shdc_exe)}')
-			eprintln(' file time: ${time.unix_microsecond(os.file_last_mod_unix(shdc_exe),
-				0)}')
+			eprintln(' file time: ${time.unix_microsecond(os.file_last_mod_unix(shdc_exe), 0)}')
 		}
 	}
 	if is_shdc_available && is_shdc_executable {
@@ -291,8 +293,10 @@ fn download_shdc(opt Options) ! {
 	if opt.verbose {
 		eprintln('${tool_name} downloading sokol-shdc from ${download_url}')
 	}
-	http.download_file(download_url, dtmp_path) or {
-		os.rm(dtmp_path)!
+	download_shdc_file(download_url, dtmp_path, opt) or {
+		if os.exists(dtmp_path) {
+			os.rm(dtmp_path)!
+		}
 		return error('${tool_name} failed to download sokol-shdc needed for shader compiling: ${err}')
 	}
 	// Make it executable
@@ -301,4 +305,24 @@ fn download_shdc(opt Options) ! {
 	os.mv(dtmp_path, shdc_exe)!
 	// Update internal version file
 	os.write_file(shdc_version_file, shdc_version)!
+}
+
+fn download_shdc_file(download_url string, dtmp_path string, opt Options) ! {
+	for attempt in 0 .. shdc_download_attempts {
+		http.download_file(download_url, dtmp_path) or {
+			if os.exists(dtmp_path) {
+				os.rm(dtmp_path) or {}
+			}
+			if attempt + 1 < shdc_download_attempts {
+				if opt.verbose {
+					eprintln('${tool_name} download attempt ${attempt + 1}/${shdc_download_attempts} failed: ${err}')
+				}
+				time.sleep(shdc_download_retry_delay_ms * time.millisecond)
+				continue
+			}
+			return err
+		}
+		return
+	}
+	return error('download was not attempted')
 }

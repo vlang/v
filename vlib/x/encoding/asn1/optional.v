@@ -48,7 +48,7 @@ pub fn (opt Optional) encode() ![]u8 {
 	return opt.encode_with_rule(.der)!
 }
 
-fn (opt Optional) encode_with_rule(rule EncodingRule) ![]u8 {
+fn (opt Optional) encode_with_rule(_rule EncodingRule) ![]u8 {
 	if opt.present {
 		// elem := opt.into_element()!
 		return encode_with_rule(opt, .der)!

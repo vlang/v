@@ -1,0 +1,6 @@
+calloc(_t
+__v_boehm_collect_keepalive_
+GC_disable();
+GC_add_roots(_t
+GC_enable();
+GC_remove_roots(_t

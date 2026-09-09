@@ -1,3 +1,8 @@
+vlib/v/checker/tests/assign_fn_call_on_left_side_err.vv:1:8: notice: unused parameter: `s`
+    1 | fn foo(s string) int {
+      |        ^
+    2 |     return 1
+    3 | }
 vlib/v/checker/tests/assign_fn_call_on_left_side_err.vv:6:2: error: cannot call function `foo()` on the left side of an assignment
     4 | 
     5 | fn main() {

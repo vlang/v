@@ -227,10 +227,10 @@ pub fn erf(a f64) f64 {
 	if is_inf(x, -1) {
 		return f64(-1)
 	}
-	mut sign := false
+	mut neg := false
 	if x < 0 {
 		x = -x
-		sign = true
+		neg = true
 	}
 	if x < 0.84375 { // |x| < 0.84375
 		mut temp := 0.0
@@ -247,7 +247,7 @@ pub fn erf(a f64) f64 {
 			y := r / s_
 			temp = x + x * y
 		}
-		if sign {
+		if neg {
 			return -temp
 		}
 		return temp
@@ -256,13 +256,13 @@ pub fn erf(a f64) f64 {
 		s_ := x - 1
 		p := pa0 + s_ * (pa1 + s_ * (pa2 + s_ * (pa3 + s_ * (pa4 + s_ * (pa5 + s_ * pa6)))))
 		q := 1.0 + s_ * (qa1 + s_ * (qa2 + s_ * (qa3 + s_ * (qa4 + s_ * (qa5 + s_ * qa6)))))
-		if sign {
+		if neg {
 			return -erx - p / q
 		}
 		return erx + p / q
 	}
 	if x >= 6 { // inf > |x| >= 6
-		if sign {
+		if neg {
 			return -1
 		}
 		return 1.0
@@ -283,7 +283,7 @@ pub fn erf(a f64) f64 {
 	}
 	z := f64_from_bits(f64_bits(x) & 0xffffffff00000000) // pseudo-single (20-bit) precision x
 	r_ := exp(-z * z - 0.5625) * exp((z - x) * (z + x) + r / s)
-	if sign {
+	if neg {
 		return r_ / x - 1.0
 	}
 	return 1.0 - r_ / x
@@ -308,10 +308,10 @@ pub fn erfc(a f64) f64 {
 	if is_inf(x, -1) {
 		return 2.0
 	}
-	mut sign := false
+	mut neg := false
 	if x < 0 {
 		x = -x
-		sign = true
+		neg = true
 	}
 	if x < 0.84375 { // |x| < 0.84375
 		mut temp := 0.0
@@ -328,7 +328,7 @@ pub fn erfc(a f64) f64 {
 				temp = 0.5 + (x * y + (x - 0.5))
 			}
 		}
-		if sign {
+		if neg {
 			return 1.0 + temp
 		}
 		return 1.0 - temp
@@ -337,7 +337,7 @@ pub fn erfc(a f64) f64 {
 		s_ := x - 1
 		p := pa0 + s_ * (pa1 + s_ * (pa2 + s_ * (pa3 + s_ * (pa4 + s_ * (pa5 + s_ * pa6)))))
 		q := 1.0 + s_ * (qa1 + s_ * (qa2 + s_ * (qa3 + s_ * (qa4 + s_ * (qa5 + s_ * qa6)))))
-		if sign {
+		if neg {
 			return 1.0 + erx + p / q
 		}
 		return 1.0 - erx - p / q
@@ -352,7 +352,7 @@ pub fn erfc(a f64) f64 {
 			tmp282 := sa4 + s_ * (sa5 + s_ * (sa6 + s_ * (sa7 + s_ * sa8)))
 			s = 1.0 + s_ * (sa1 + s_ * (sa2 + s_ * (sa3 + s_ * tmp282)))
 		} else { // |x| >= 1 / 0.35 ~ 2.857143
-			if sign && x > 6 {
+			if neg && x > 6 {
 				return 2.0 // x < -6
 			}
 			tmp291 := rb3 + s_ * (rb4 + s_ * (rb5 + s_ * rb6))
@@ -362,12 +362,12 @@ pub fn erfc(a f64) f64 {
 		}
 		z := f64_from_bits(f64_bits(x) & 0xffffffff00000000) // pseudo-single (20-bit) precision x
 		r_ := exp(-z * z - 0.5625) * exp((z - x) * (z + x) + r / s)
-		if sign {
+		if neg {
 			return 2.0 - r_ / x
 		}
 		return r_ / x
 	}
-	if sign {
+	if neg {
 		return 2.0
 	}
 	return 0.0

@@ -176,6 +176,15 @@ fn on_close_cb_3(mut cli websocket.Client, code int, reason string, mut res Webs
 	res.nr_closes++
 }
 
+fn test_close_unconnected_client_returns_error() ! {
+	mut client := websocket.new_client('ws://localhost:30004')!
+	client.close(1000, 'closing connection') or {
+		assert err.msg() == 'Socket already closed: 1000'
+		return
+	}
+	assert false, 'closing an unconnected client should return an error'
+}
+
 fn test_on_close_when_client_closing_connection() ! {
 	mut ws := websocket.new_server(.ip, 30004, '')
 	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws)
@@ -189,4 +198,27 @@ fn test_on_close_when_client_closing_connection() ! {
 	client.close(1000, 'closing connection')!
 	time.sleep(1000 * time.millisecond)
 	assert test_results.nr_closes == 1
+}
+
+fn attached_fail_cb(mut sc websocket.ServerClient) ! {
+	return error('attached hook failure')
+}
+
+fn client_close_ignore_cb(mut cli websocket.Client, code int, reason string) ! {}
+
+fn test_on_attached_error_does_not_leak_client() ! {
+	mut ws := websocket.new_server(.ip, 30005, '')
+	ws.on_attached(attached_fail_cb)
+	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws)
+
+	mut client := websocket.new_client('ws://localhost:30005')!
+	client.on_close(client_close_ignore_cb)
+	client.connect()!
+	spawn client.listen()
+	time.sleep(500 * time.millisecond)
+
+	client_count := rlock ws.server_state {
+		ws.server_state.clients.len
+	}
+	assert client_count == 0
 }

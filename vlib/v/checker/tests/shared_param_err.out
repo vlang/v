@@ -1,3 +1,10 @@
+vlib/v/checker/tests/shared_param_err.vv:7:27: notice: unused parameter: `c`
+    5 | }
+    6 | 
+    7 | fn (shared b St) g(shared c St) {
+      |                           ^
+    8 |     lock b {
+    9 |         b.x = 100
 vlib/v/checker/tests/shared_param_err.vv:23:12: error: method `g` parameter `c` is `shared`, so use `shared a` instead
    21 |         x: 10
    22 |     }

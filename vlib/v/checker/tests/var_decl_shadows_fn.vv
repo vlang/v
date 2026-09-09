@@ -1,0 +1,9 @@
+pub fn shadowed() int {
+	return 42
+}
+
+fn main() {
+	shadowed := 5
+	println(shadowed)
+	_ = shadowed
+}

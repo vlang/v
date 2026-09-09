@@ -51,7 +51,7 @@ fn should_escape(c u8, mode EncodingMode) bool {
 		// we could possibly allow, and parse will reject them if we
 		// escape them (because hosts can`t use %-encoding for
 		// ASCII bytes).
-		if c in [`!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `[`, `]`, `<`, `>`,
+		if c in [`!`, `$`, `&`, `'`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `[`, `]`, `<`, `>`,
 			`"`] {
 			return false
 		}
@@ -104,6 +104,7 @@ fn should_escape(c u8, mode EncodingMode) bool {
 		}
 		else {}
 	}
+
 	if mode == .encode_fragment {
 		// RFC 3986 §2.2 allows not escaping sub-delims. A subset of sub-delims are
 		// included in reserved from RFC 2396 §2.2. The remaining sub-delims do not
@@ -202,7 +203,7 @@ fn unescape(s_ string, mode EncodingMode) !string {
 			else {
 				if (mode == .encode_host || mode == .encode_zone) && s[i] < 0x80
 					&& should_escape(s[i], mode) {
-					error(error_msg('unescape: invalid character in host name', s[i..i + 1]))
+					return error(error_msg('unescape: invalid character in host name', s[i..i + 1]))
 				}
 				i++
 			}
@@ -358,7 +359,7 @@ fn user_password(username string, password string) Userinfo {
 // password details for a URL. An existing Userinfo value is guaranteed
 // to have a username set (potentially empty, as allowed by RFC 2396),
 // and optionally a password.
-struct Userinfo {
+pub struct Userinfo {
 pub:
 	username     string
 	password     string
@@ -409,8 +410,8 @@ fn split_by_scheme(rawurl string) ![]string {
 }
 
 fn get_scheme(rawurl string) !string {
-	split := split_by_scheme(rawurl) or { return err.msg() }
-	return split[0]
+	parts := split_by_scheme(rawurl) or { return err.msg() }
+	return parts[0]
 }
 
 // split slices s into two substrings separated by the first occurrence of
@@ -449,12 +450,12 @@ pub fn parse(rawurl string) !URL {
 	return url
 }
 
-// parse_request_uri parses rawurl into a URL structure. It assumes that
-// rawurl was received in an HTTP request, so the rawurl is interpreted
-// only as an absolute URI or an absolute path.
+// parse_request_uri parses rawurl into a URL structure for an HTTP request.
+// It accepts only absolute URIs or absolute paths and preserves leading `//`
+// sequences as part of the path for request targets.
 // The string rawurl is assumed not to have a #fragment suffix.
 // (Web browsers strip #fragment before sending the URL to a web server.)
-fn parse_request_uri(rawurl string) !URL {
+pub fn parse_request_uri(rawurl string) !URL {
 	return parse_url(rawurl, true)
 }
 
@@ -574,8 +575,7 @@ fn parse_host(host string) !string {
 		}
 		mut colon_port := host[i + 1..]
 		if !valid_optional_port(colon_port) {
-			return error(error_msg('parse_host: invalid port ${colon_port} after host ',
-				''))
+			return error(error_msg('parse_host: invalid port ${colon_port} after host ', ''))
 		}
 		// RFC 6874 defines that %25 (%-encoded percent) introduces
 		// the zone identifier, and the zone identifier can use basically
@@ -594,8 +594,7 @@ fn parse_host(host string) !string {
 		if i != -1 {
 			colon_port := host[i..]
 			if !valid_optional_port(colon_port) {
-				return error(error_msg('parse_host: invalid port ${colon_port} after host ',
-					''))
+				return error(error_msg('parse_host: invalid port ${colon_port} after host ', ''))
 			}
 		}
 	}
@@ -714,13 +713,13 @@ pub fn (u URL) str() string {
 	if u.opaque != '' {
 		buf.write_string(u.opaque)
 	} else {
-		user := u.user or { Userinfo{} }
-		if u.scheme != '' || u.host != '' || !user.empty() {
-			if u.host != '' || u.path != '' || !user.empty() {
+		userinfo := u.user or { Userinfo{} }
+		if u.scheme != '' || u.host != '' || !userinfo.empty() {
+			if u.host != '' || u.path != '' || !userinfo.empty() {
 				buf.write_string('//')
 			}
-			if !user.empty() {
-				buf.write_string(user.str())
+			if !userinfo.empty() {
+				buf.write_string(userinfo.str())
 				buf.write_string('@')
 			}
 			if u.host != '' {
@@ -1026,7 +1025,7 @@ pub fn valid_userinfo(s string) bool {
 			continue
 		}
 		match r {
-			`-`, `.`, `_`, `:`, `~`, `!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `%`,
+			`-`, `.`, `_`, `:`, `~`, `!`, `$`, `&`, `'`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `%`,
 			`@` {
 				continue
 			}

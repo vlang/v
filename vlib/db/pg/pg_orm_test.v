@@ -36,11 +36,89 @@ struct TestDefaultAttribute {
 	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
 }
 
+struct TestInsertDefaultValues {
+	id      int    @[primary; sql: serial]
+	example string @[default: '']
+}
+
 @[comment: 'This is a table comment']
 struct TestCommentAttribute {
 	id         string @[primary; sql: serial]
 	name       string @[comment: 'real user name']
 	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+}
+
+@[table: 'test_small_int_types']
+struct TestSmallIntTypes {
+mut:
+	id     int @[primary; sql: serial]
+	status u8
+	delta  i8
+}
+
+// Regression test for https://github.com/vlang/v/issues/27986:
+// `u8`/`i8` fields are declared as SMALLINT by pg_type_from_v(), so they have to
+// be bound as int2 as well. Binding them as PostgreSQL's internal `"char"` type
+// made every insert fail with `column "status" is of type smallint but
+// expression is of type "char"`.
+fn test_pg_orm_u8_i8_are_bound_as_smallint() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working postgres server running on localhost.')
+		return
+	}
+	mut db := pg.connect(
+		host:     'localhost'
+		user:     'postgres'
+		password: '12345678'
+		dbname:   'postgres'
+	) or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+	sql db {
+		drop table TestSmallIntTypes
+	} or {}
+	sql db {
+		create table TestSmallIntTypes
+	}!
+
+	samples := [
+		TestSmallIntTypes{
+			status: 0
+			delta:  0
+		},
+		TestSmallIntTypes{
+			status: 255
+			delta:  -1
+		},
+		TestSmallIntTypes{
+			status: 200
+			delta:  -128
+		},
+		TestSmallIntTypes{
+			status: 1
+			delta:  127
+		},
+	]
+	for sample in samples {
+		sql db {
+			insert sample into TestSmallIntTypes
+		}!
+	}
+
+	rows := sql db {
+		select from TestSmallIntTypes order by id
+	}!
+	assert rows.len == samples.len
+	for i, row in rows {
+		assert row.status == samples[i].status
+		assert row.delta == samples[i].delta
+	}
+
+	sql db {
+		drop table TestSmallIntTypes
+	}!
 }
 
 fn test_pg_orm() {
@@ -59,6 +137,7 @@ fn test_pg_orm() {
 	defer {
 		db.close() or {}
 	}
+	db.exec('create extension if not exists pgcrypto') or { panic(err) }
 	table := orm.Table{
 		name: 'Test'
 	}
@@ -110,17 +189,17 @@ fn test_pg_orm() {
 	}) or { panic(err) }
 
 	res := db.select(orm.SelectConfig{
-		table:      table
-		is_count:   false
-		has_where:  true
-		has_order:  false
-		order:      ''
-		order_type: .asc
-		has_limit:  false
-		primary:    'id'
-		has_offset: false
-		fields:     ['id', 'name', 'age']
-		types:      [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
+		table:          table
+		aggregate_kind: .none
+		has_where:      true
+		has_order:      false
+		order:          ''
+		order_type:     .asc
+		has_limit:      false
+		primary:        'id'
+		has_offset:     false
+		fields:         ['id', 'name', 'age']
+		types:          [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
 	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
 		data:   [orm.Primitive('Louis'), orm.Primitive(101)]
@@ -162,7 +241,7 @@ fn test_pg_orm() {
 	mut result_custom_sql := db.exec("
 		SELECT DATA_TYPE
 		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_NAME = 'TestCustomSqlType'
+		WHERE TABLE_NAME = 'testcustomsqltype'
 		ORDER BY ORDINAL_POSITION
 	") or {
 		println(err)
@@ -226,7 +305,7 @@ fn test_pg_orm() {
 	mut result_defaults := db.exec("
 		SELECT column_default
 		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_NAME = 'TestDefaultAttribute'
+		WHERE TABLE_NAME = 'testdefaultattribute'
 		ORDER BY ORDINAL_POSITION
 	") or {
 		println(err)
@@ -243,6 +322,31 @@ fn test_pg_orm() {
 	}!
 	assert ['gen_random_uuid()', '', 'CURRENT_TIMESTAMP'] == information_schema_defaults_results
 
+	/** test inserting only default values
+	*/
+	sql db {
+		create table TestInsertDefaultValues
+	}!
+
+	model_default_values := TestInsertDefaultValues{
+		example: ''
+	}
+
+	sql db {
+		insert model_default_values into TestInsertDefaultValues
+	}!
+
+	inserted_default_values := sql db {
+		select from TestInsertDefaultValues
+	}!
+
+	sql db {
+		drop table TestInsertDefaultValues
+	}!
+
+	assert inserted_default_values.len == 1
+	assert inserted_default_values[0].example == ''
+
 	/** test comment attribute
 	*/
 	sql db {
@@ -256,7 +360,7 @@ fn test_pg_orm() {
 		FROM pg_attribute a
 		JOIN pg_class c ON c.oid = a.attrelid
 		JOIN pg_namespace n ON n.oid = c.relnamespace
-		WHERE c.relname = 'TestCommentAttribute' 
+		WHERE c.relname = 'testcommentattribute' 
 		AND n.nspname = 'public'
 		AND a.attnum > 0
 		AND NOT a.attisdropped
@@ -273,7 +377,7 @@ fn test_pg_orm() {
 		obj_description(pc.oid) AS table_comment
 		FROM pg_class pc
 		JOIN pg_namespace pn ON pn.oid = pc.relnamespace
-		WHERE pc.relkind = 'r' AND pc.relname = 'TestCommentAttribute'
+		WHERE pc.relkind = 'r' AND pc.relname = 'testcommentattribute'
 		ORDER BY schema_name, table_name
 	") or {
 		println(err)

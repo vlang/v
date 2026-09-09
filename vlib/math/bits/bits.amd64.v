@@ -72,7 +72,7 @@ pub fn mul_add_64(x u64, y u64, z u64) (u64, u64) {
 pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	mut y := y1
 	if y == 0 {
-		panic(overflow_error)
+		panic(divide_error)
 	}
 	if y <= hi {
 		panic(overflow_error)

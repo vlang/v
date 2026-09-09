@@ -1,23 +1,60 @@
 import os
 
 const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
+const symlink_usage = 'usage: v symlink [directory]'
+
+struct SymlinkOptions {
+	link_dir  string
+	github_ci bool
+}
 
 fn main() {
 	at_exit(|| os.rmdir_all(os.vtmp_dir()) or {}) or {}
-	if os.args.len > 2 {
-		if '-githubci' in os.args {
-			// TODO: [AFTER 2024-09-31] remove `-githubci` flag and function and only print usage and exit(1) .
-			if os.getenv('GITHUB_JOB') != '' {
-				println('::warning::Use `v symlink` instead of `v symlink -githubci`')
-			}
-			setup_symlink_github()
-			return
-		} else {
-			println('usage: v symlink')
-			exit(1)
+	options := parse_symlink_options(os.args[1..]) or {
+		println(symlink_usage)
+		exit(1)
+	}
+	if options.github_ci {
+		setup_symlink_github()
+		return
+	}
+	setup_symlink(options.link_dir)
+}
+
+fn parse_symlink_options(raw_args []string) !SymlinkOptions {
+	args := trim_symlink_command(raw_args)
+	if args.len == 0 {
+		return SymlinkOptions{}
+	}
+	if args == ['-githubci'] {
+		// TODO: [AFTER 2024-09-31] remove `-githubci` flag and function and only print usage and exit(1) .
+		if os.getenv('GITHUB_JOB') != '' {
+			println('::warning::Use `v symlink` instead of `v symlink -githubci`')
+		}
+		return SymlinkOptions{
+			github_ci: true
 		}
 	}
-	setup_symlink()
+	if args.len == 1 {
+		return SymlinkOptions{
+			link_dir: args[0]
+		}
+	}
+	return error(symlink_usage)
+}
+
+fn trim_symlink_command(raw_args []string) []string {
+	if raw_args.len > 0 && raw_args[0] == 'symlink' {
+		return raw_args[1..]
+	}
+	return raw_args
+}
+
+fn normalized_link_dir(custom_link_dir string) string {
+	if custom_link_dir != '' {
+		return os.expand_tilde_to_home(custom_link_dir)
+	}
+	return default_link_dir()
 }
 
 fn setup_symlink_github() {

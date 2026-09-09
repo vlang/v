@@ -47,14 +47,19 @@ pub fn (mut b BufferedWriter) flush() ! {
 	if b.buffered() == 0 {
 		return
 	}
-
-	n := b.wr.write(b.buf[0..b.n])!
-	if n < b.n {
-		return error('Writer accepted less bytes than expected without returning any explicit error.')
+	mut written := 0
+	for written < b.n {
+		n := b.wr.write(b.buf[written..b.n]) or {
+			b.shift_unwritten_to_front(written)
+			return err
+		}
+		if n <= 0 || n > b.n - written {
+			b.shift_unwritten_to_front(written)
+			return error('writer returned an invalid number of bytes while flushing')
+		}
+		written += n
 	}
-
 	b.n = 0
-	return
 }
 
 // available returns the amount of available space left in the buffer.
@@ -62,26 +67,39 @@ pub fn (b BufferedWriter) available() int {
 	return b.buf.len - b.n
 }
 
+fn (mut b BufferedWriter) shift_unwritten_to_front(written int) {
+	if written <= 0 {
+		return
+	}
+	remaining := b.n - written
+	if remaining <= 0 {
+		b.n = 0
+		return
+	}
+	copy(mut b.buf[..remaining], b.buf[written..b.n])
+	b.n = remaining
+}
+
 // write writes `src` in the buffer, flushing it to the underlying writer as needed, and returns the
 // number of bytes written.
 pub fn (mut b BufferedWriter) write(src []u8) !int {
-	mut p := src.clone()
-	mut nn := 0
-	for p.len > b.available() {
-		mut n := 0
-		if b.buffered() == 0 {
-			n = b.wr.write(p)!
-		} else {
-			n = copy(mut b.buf[b.n..], p)
-			b.n += n
+	mut written := 0
+	for written < src.len {
+		remaining := src.len - written
+		if b.buffered() == 0 && remaining > b.available() {
+			n := b.wr.write(src[written..])!
+			if n <= 0 || n > remaining {
+				return error('writer returned an invalid number of bytes while writing')
+			}
+			written += n
+			continue
+		}
+		n := copy(mut b.buf[b.n..], src[written..])
+		b.n += n
+		written += n
+		if b.available() == 0 {
 			b.flush()!
 		}
-		nn += n
-		p = p[n..].clone()
 	}
-
-	n := copy(mut b.buf[b.n..], p)
-	b.n += n
-	nn += n
-	return nn
+	return written
 }

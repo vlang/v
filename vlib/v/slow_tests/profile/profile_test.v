@@ -56,7 +56,9 @@ fn test_v_profile_works_when_interrupted() {
 	assert p.status == .closed
 	eprintln('> reading profile_content from ${program_profile} ...')
 	profile_content := os.read_file(program_profile)!
-	assert profile_content.contains('str_intp')
+	// V1 routes this fixed-width interpolation through `str_intp`, while V3
+	// lowers it to `int.str` plus its generated zero-padding helper.
+	assert profile_content.contains('str_intp') || profile_content.contains('int__str')
 	assert profile_content.contains('println')
 	assert profile_content.contains('time__sleep')
 	assert profile_content.contains('main__main')
@@ -128,7 +130,8 @@ fn validate_output(fn_name string, vopts string, fsource string, expected map[st
 	println('> validating ${fn_name} with: `v ${vopts} -profile - run ${fsource}`')
 	os.chdir(vroot) or {}
 	program_source := os.join_path(vroot, fsource)
-	res := os.execute('${os.quoted_path(vexe)} ${vopts} -profile - run ${os.quoted_path(program_source)}')
+	res :=
+		os.execute('${os.quoted_path(vexe)} ${vopts} -profile - run ${os.quoted_path(program_source)}')
 	assert res.exit_code == 0
 	assert res.output.len > 0
 	res_lines := res.output.split_into_lines()

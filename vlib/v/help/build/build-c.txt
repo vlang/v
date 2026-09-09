@@ -11,7 +11,28 @@ see also `v help build`.
       Change the C compiler V invokes to the specified compiler.
       The C compiler is required to support C99.
       Officially supported/tested C compilers include:
-      `clang`, `gcc`, `tcc`, `mingw-w64` and `msvc`.
+      `clang`, `gcc`, `tcc` (also accepted as `tinyc`), `mingw-w64` and `msvc`.
+
+   -old-compiler
+      On macOS and Linux the experimental V3 compiler (vlib/v3) is the default;
+      `-old-compiler` bypasses it and compiles with the established compiler in
+      vlib/v. V already falls back to this compiler automatically when V3 cannot
+      build an eligible program, and (unless V_C_ERROR_BUG_REPORT_DISABLED=1 is
+      set) normally reports the failure to https://bugs.vlang.io so the gap can
+      be fixed: the V version, target and build options, plus a bounded snippet
+      of the failing V source when one is available (always a strict subset,
+      never the whole file). An internal V3 error on a short program or a
+      directory build such as `v .` submits metadata only. If the input selected
+      for a source excerpt changes after V3 parses it, that report also submits
+      metadata only, rather than source V3 did not parse. Before submitting, the
+      stable compiler verifies that it parsed the same bytes for every captured
+      project input; otherwise no fallback report is submitted. An unchanged input
+      mapped from a generated-C error can still include a strict-subset excerpt.
+      Inline-assembly fallbacks and reports that cannot fit safely through the
+      retry environment are notice-only; test compilations and GitHub CI also
+      submit no report to the default endpoint. An explicitly configured custom
+      bug report URL remains active in CI. See `v help build` for the full
+      description of the default.
 
    -cflags <flag>
       Pass the provided flag as is to the C compiler.
@@ -58,8 +79,21 @@ see also `v help build`.
       When set to `windows` V will generate a `wWinMain` main function,
       even when you are not compiling `gg` apps.
 
+   -icon <path>
+   --icon=<path>
+   -seticon <path>
+      Embed the provided `.ico` or `.png` file as the icon of the generated
+      Windows executable. Use it only when V is producing a Windows `.exe`.
+
    -showcc
       Prints the C command that is used to build the program.
+
+   -generate-c-project <directory>
+      Generate a C project folder with:
+      * the generated `<target>.c` source file;
+      * `build.sh`, `build.bat`, `Makefile` and `build_command.txt`.
+      The generated build command prefers source files (`.c`, `.cpp`, `.S`) over
+      cached `.o` files when V can find the corresponding source on disk.
 
    -freestanding
       Build the executable without dependency on libc.
@@ -88,14 +122,14 @@ see also `v help build`.
          @[export: 'calloc']
          __calloc(nmemb usize, size usize) &C.void
             Like malloc, but sets all the bytes to `0` first.
-         memcpy(dest &C.void, src &C.void, n usize) &C.void
+         memcpy(dest &C.void, const_src &C.void, n usize) &C.void
             Moves n bytes from dest to src, and returns dest
-         memmove(dest &C.void, src &C.void, n usize) &C.void
+         memmove(dest &C.void, const_src &C.void, n usize) &C.void
             Like memcpy, but guaranteed to work if dest and src overlap.
-         memcmp(a &C.void, b &C.void, n usize) int
+         memcmp(const_a &C.void, const_b &C.void, n usize) int
             Compare two buffers of length n. If a and b are equal, return 0.
             Otherwise, return the difference between the first different letter.
-         strlen(s &C.void) usize
+         strlen(const_s &char) usize
             Returns the amount of bytes until the first `0`, starting at s
          memset(s &C.void, c int, n usize) &C.void
             Sets n bytes starting at s to c (c is casted to a char)
@@ -158,16 +192,23 @@ see also `v help build`.
 
    -m32, -m64
       Whether 32-bit or 64-bit machine code will be generated.
+      On x86 C backend builds, `-m32` also selects the i386 target unless you
+      already passed an explicit `-arch`, so `$if i386 {}` and `*.i386.v`
+      files follow the same target width.
       NB: if you need to produce 32-bit code, *and* you are cross compiling
       to another OS, you may need to also set the environment variable
-      VCROSS_COMPILER_NAME, in order to override the default cross compiler,
+      VCROSS_COMPILER_NAME or pass `-cc your-compiler` for a one-off override,
+      in order to override the default cross compiler,
       that V will use (`x86_64-w64-mingw32-gcc` for targeting Windows, and
       `clang` for targeting Linux from other operating systems).
+      Note: the bundled Linux cross-compilation sysroot currently contains
+      x86_64 runtime files only, so `-os linux -arch arm64` is not supported yet.
 
-   -macosx-version-min 10.7
-      Only relevant on macos. It will be passed as -mmacosx-version-min=10.7 to
-      the C backend compiler clang . It is 10.7 on macos by default. If you
-      pass `-macosx-version-min 0`, then that flag will not be passed at all.
+   -macosx-version-min 11.0
+      Only relevant on macos. It will be passed as -mmacosx-version-min=11.0 to
+      the C backend compiler clang . By default V does not pass any
+      -mmacosx-version-min flag, so you can also control it directly with
+      -cflags. Pass `-macosx-version-min 0` to keep that default.
 
    -sanitize
       Pass flags related to sanitization to the C compiler.
@@ -180,6 +221,8 @@ see also `v help build`.
       Tell V to compile an .o object file instead of an executable.
       This is useful if you plan to create a module, that will be later linked to a
       larger program, potentially written in another language.
+      The flag can also be combined with `-o file.c`, to generate C source that can be
+      compiled and linked together with other `-is_o` generated V units.
       Note: this option currently works with gcc/clang/tcc, but not msvc.
       Note: use either -no-skip-unused or tag the functions you expect to be publicly
       usable in the .o file with `@[markused]` . Adding `-gc none` may be also needed,
@@ -210,6 +253,25 @@ see also `v help build`.
       Note: the garbage collector is complementary to -autofree. The Boehm garbage
       collector is conservative, and it may affect program speed if it does many small
       allocations in a loop.
+
+      V enables Boehm thread-local allocation by default for better allocation
+      scaling on multi-threaded programs. It can increase RSS in long-running
+      services because each thread keeps local small-object free lists.
+
+      Boehm reads these environment variables during GC_INIT(), so they can be
+      set per run before the collector starts, without rebuilding the V program:
+        GC_MAXIMUM_HEAP_SIZE  Cap the heap size in bytes.
+        GC_FREE_SPACE_DIVISOR Higher values collect more often and can reduce
+                              spare heap; lower values favor throughput.
+        GC_MARKERS            Set the number of parallel marker threads.
+
+      To compile V's bundled source copy of Boehm without thread-local
+      allocation, use `-d no_gc_thread_local_alloc`. This keeps GC_THREADS
+      enabled, but skips THREAD_LOCAL_ALLOC. Since this requires compiling the
+      bundled libgc source, V uses the platform C compiler by default instead
+      of bundled TCC. An explicit `-cc` still wins. The option does not change
+      a system libgc selected with `-d dynamic_boehm`; use a system libgc built
+      without thread-local allocation for that case.
 
       The option `-gc boehm_leak` is intended for leak detection in
       manual memory management. The function `gc_check_leaks()`
@@ -299,6 +361,15 @@ see also `v help build`.
    -show-c-output
       Prints the output, that your C compiler produced, while compiling your program.
 
+   -bug-report-url url
+      Override where automatic C compiler bug reports are submitted.
+      Useful with `v bug-report --host localhost --port 8080` for local testing.
+      The report includes both the failing generated C line and the V source line
+      that produced it (V code is regenerated with `#line` info if needed to map it).
+      Automatic reports to bugs.vlang.io are skipped when running in GitHub CI;
+      an explicitly configured custom endpoint remains active.
+      Set V_C_ERROR_BUG_REPORT_DISABLED=1 to disable automatic report submission.
+
    -dump-c-flags file.txt
       Write all C flags into `file.txt`, one flag per line.
       If `file.txt` is `-`, write to stdout instead.
@@ -364,8 +435,10 @@ see also `v help build`.
 
    -thread-stack-size 4194304
       Set the thread stack size to 4MB. Use multiples of 4096.
-      The default is 8MB, which is enough for compiling V programs, with deeply
-      nested expressions (~40 levels).
+      The default is 8MB on 64-bit targets and 2MB on 32-bit targets.
+      8MB is enough for compiling V programs, with deeply nested
+      expressions (~40 levels), while 32-bit targets use a smaller default
+      to reduce per-thread memory usage.
       It may need to be increased, if you are getting stack overflow errors for
       deeply recursive programs like some of the stages of the V compiler itself,
       that use relatively few threads.

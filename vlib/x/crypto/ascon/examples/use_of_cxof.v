@@ -12,8 +12,10 @@ fn main() {
 
 	// expected output generated from the tool, with 32, 64 dan 75-bytes output
 	digest32 := hex.decode('d71492b816b1ac27f53f9c13be45c1d2d0530b8dde7fde8d34cb563f79b3d3d3')!
-	digest64 := hex.decode('d71492b816b1ac27f53f9c13be45c1d2d0530b8dde7fde8d34cb563f79b3d3d3601d03474ec6fe1f6b8dc5dd79bea20aff4c95ca3549202b1aaeb9e66b5df398')!
-	digest75 := hex.decode('d71492b816b1ac27f53f9c13be45c1d2d0530b8dde7fde8d34cb563f79b3d3d3601d03474ec6fe1f6b8dc5dd79bea20aff4c95ca3549202b1aaeb9e66b5df3985a88fd8bce0f9570962321')!
+	digest64 :=
+		hex.decode('d71492b816b1ac27f53f9c13be45c1d2d0530b8dde7fde8d34cb563f79b3d3d3601d03474ec6fe1f6b8dc5dd79bea20aff4c95ca3549202b1aaeb9e66b5df398')!
+	digest75 :=
+		hex.decode('d71492b816b1ac27f53f9c13be45c1d2d0530b8dde7fde8d34cb563f79b3d3d3601d03474ec6fe1f6b8dc5dd79bea20aff4c95ca3549202b1aaeb9e66b5df3985a88fd8bce0f9570962321')!
 
 	out32 := ascon.cxof128(msg, 32, cs)!
 	out64 := ascon.cxof128(msg, 64, cs)!

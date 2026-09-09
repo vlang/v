@@ -32,6 +32,7 @@ pub enum GarbageCollectionMode {
 	boehm_full_opt // full garbage collection mode
 	boehm_incr_opt // incremental garbage collection mode
 	boehm_leak     // leak detection mode (makes `gc_check_leaks()` work)
+	vgc            // V GC: concurrent tri-color mark-and-sweep (translated from Go's runtime GC)
 }
 
 pub enum OutputMode {
@@ -55,12 +56,10 @@ pub enum Subsystem {
 
 pub enum Backend {
 	c               // The (default) C backend
-	golang          // Go backend
-	interpret       // Interpret the ast
+	interpret       // Removed V1 interpreter backend; kept for compatibility diagnostics.
 	js_node         // The JavaScript NodeJS backend
 	js_browser      // The JavaScript browser backend
 	js_freestanding // The JavaScript freestanding backend
-	native          // The Native backend
 	wasm            // The WebAssembly backend
 }
 
@@ -82,6 +81,11 @@ pub enum CompilerType {
 	cplusplus
 }
 
+pub enum PkgConfigMode {
+	dynamic
+	static_
+}
+
 pub const supported_test_runners = ['normal', 'simple', 'tap', 'dump', 'teamcity']
 
 @[heap; minify]
@@ -90,6 +94,7 @@ pub mut:
 	os                  OS // the OS to compile for
 	backend             Backend
 	backend_set_by_flag bool // true when the compiler receives `-b`/`-backend`
+	is_fastc            bool // true when the final `-b`/`-backend` option selects fastc
 	build_mode          BuildMode
 	arch                Arch
 	output_mode         OutputMode = .stdout
@@ -119,8 +124,9 @@ pub mut:
 	show_asserts       bool // `VTEST_SHOW_ASSERTS=1 v file_test.v` will show details about the asserts done by a test file. Also activated for `-stats` and `-show-asserts`.
 	show_timings       bool // show how much time each compiler stage took
 	is_fmt             bool
+	is_vdoc            bool
 	is_vet             bool
-	is_vweb            bool // skip _ var warning in templates
+	is_template        bool // skip _ var warning in templates
 	is_ios_simulator   bool
 	is_apk             bool     // build as Android .apk format
 	is_help            bool     // -h, -help or --help was passed
@@ -146,28 +152,38 @@ pub mut:
 	sanitize               bool // use Clang's new "-fsanitize" option
 	sourcemap              bool // JS Backend: -sourcemap will create a source map - default false
 	sourcemap_inline       bool = true // JS Backend: -sourcemap-inline will embed the source map in the generated JaaScript file -  currently default true only implemented
-	sourcemap_src_included bool   // JS Backend: -sourcemap-src-included includes V source code in source map -  default false
-	show_cc                bool   // -showcc, print cc command
-	show_c_output          bool   // -show-c-output, print all cc output even if the code was compiled correctly
-	show_callgraph         bool   // -show-callgraph, print the program callgraph, in a Graphviz DOT format to stdout
-	show_depgraph          bool   // -show-depgraph, print the program module dependency graph, in a Graphviz DOT format to stdout
-	show_unused_params     bool   // NOTE: temporary until making it a default.
+	sourcemap_src_included bool // JS Backend: -sourcemap-src-included includes V source code in source map -  default false
+	show_cc                bool // -showcc, print cc command
+	show_c_output          bool // -show-c-output, print all cc output even if the code was compiled correctly
+	show_callgraph         bool // -show-callgraph, print the program callgraph, in a Graphviz DOT format to stdout
+	show_depgraph          bool // -show-depgraph, print the program module dependency graph, in a Graphviz DOT format to stdout
+	show_unused_params     bool = true // regular function params should report as unused by default.
+	old_compiler           bool // `-old-compiler` - bypass experimental compiler dispatchers.
+	new_compiler           bool // `-new-compiler` - force the experimental V3 compiler and disable the V1 fallback.
+	// Internal V3->V1 retry flag: retain the digest of each source from the exact
+	// scanner bytes so fallback reporting can confirm that both compilers saw the
+	// same inputs. Ordinary compilations leave this off and pay no hashing cost.
+	capture_source_digests bool
+	c_error_bug_report_url string // `-bug-report-url url` - override the automatic C compiler bug report endpoint.
 	dump_c_flags           string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler in `file.txt`, one C flag/value per line.
 	dump_modules           string // `-dump-modules modules.txt` - let V store all V modules, that were used by the compiled program in `modules.txt`, one module per line.
 	dump_files             string // `-dump-files files.txt` - let V store all V or .template file paths, that were used by the compiled program in `files.txt`, one path per line.
 	dump_defines           string // `-dump-defines defines.txt` - let V store all the defines that affect the current program and their values, one define per line + `,` + its value.
+	generate_c_project     string // `-generate-c-project path` - generate a portable C project folder with the generated C file and build scripts.
 	use_cache              bool   // when set, use cached modules to speed up subsequent compilations, at the cost of slower initial ones (while the modules are cached)
 	retry_compilation      bool = true // retry the compilation with another C compiler, if tcc fails.
 	use_os_system_to_run   bool // when set, use os.system() to run the produced executable, instead of os.new_process; works around segfaults on macos, that may happen when xcode is updated
 	macosx_version_min     string = '0' // relevant only for macos and ios targets
 	// TODO: Convert this into a []string
-	cflags  string // Additional options which will be passed to the C compiler *before* other options.
-	ldflags string // Additional options which will be passed to the C compiler *after* everything else.
+	cflags         string        // Additional options which will be passed to the C compiler *before* other options.
+	ldflags        string        // Additional options which will be passed to the C compiler *after* everything else.
+	pkgconfig_mode PkgConfigMode // Static only for an exact `-static` C compiler argument on GNU-compatible compilers.
 	// For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
 	// You could pass several -cflags XXX arguments. They will be merged with each other.
 	// You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
 	m64                       bool         // true = generate 64-bit code, defaults to x64
 	ccompiler                 string       // the name of the C compiler used
+	ccompiler_set_by_flag     bool         // true when the compiler receives `-cc`
 	ccompiler_type            CompilerType // the type of the C compiler used
 	cppcompiler               string       // the name of the CPP compiler used
 	third_party_option        string
@@ -182,26 +198,28 @@ pub mut:
 	trace_fns   []string // when set, tracing will be done only for functions, whose names match the listed patterns.
 	compress    bool     // when set, use `upx` to compress the generated executable
 	// generating_vh    bool
-	no_builtin       bool   // Skip adding the `builtin` module implicitly. The generated C code may not compile.
-	enable_globals   bool   // allow __global for low level code
-	is_bare          bool   // set by -freestanding
-	bare_builtin_dir string // Set by -bare-builtin-dir xyz/ . The xyz/ module should contain implementations of malloc, memset, etc, that are used by the rest of V's `builtin` module. That option is only useful with -freestanding (i.e. when is_bare is true).
-	no_preludes      bool   // Prevents V from generating preludes in resulting .c files
-	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
-	no_closures      bool   // Produce a compile time error, if a closure was generated for any reason (an implicit receiver method was stored, or an explicit `fn [captured]()`).
-	cmain            string // The name of the generated C main function. Useful with framework like code, that uses macros to re-define `main`, like SDL2 does. When set, V will always generate `int THE_NAME(int ___argc, char** ___argv){`, *no matter* the platform.
-	lookup_path      []string
-	output_cross_c   bool // true, when the user passed `-os cross` or `-cross`
-	output_es5       bool
-	prealloc         bool
-	vroot            string
-	vlib             string   // absolute path to the vlib/ folder
-	vmodules_paths   []string // absolute paths to the vmodules folders, by default ['/home/user/.vmodules'], can be overridden by setting VMODULES
-	out_name_c       string   // full os.real_path to the generated .tmp.c file; set by builder.
-	out_name         string
-	path             string // Path to file/folder to compile
-	line_info        string // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
-	linfo            LineInfo
+	no_builtin                  bool   // Skip adding the `builtin` module implicitly. The generated C code may not compile.
+	enable_globals              bool   // allow __global for low level code
+	disable_explicit_mutability bool   // allow ordinary variables to be mutated without explicit `mut` annotations
+	is_bare                     bool   // set by -freestanding
+	bare_builtin_dir            string // Set by -bare-builtin-dir xyz/ . The xyz/ module should contain implementations of malloc, memset, etc, that are used by the rest of V's `builtin` module. That option is only useful with -freestanding (i.e. when is_bare is true).
+	no_preludes                 bool   // Prevents V from generating preludes in resulting .c files
+	custom_prelude              string // Contents of custom V prelude that will be prepended before code in resulting .c files
+	no_closures                 bool   // Produce a compile time error, if a closure was generated for any reason (an implicit receiver method was stored, or an explicit `fn [captured]()`).
+	cmain                       string // The name of the generated C main function. Useful with framework like code, that uses macros to re-define `main`, like SDL2 does. When set, V will always generate `int THE_NAME(int ___argc, char** ___argv){`, *no matter* the platform.
+	lookup_path                 []string
+	output_cross_c              bool // true, when the user passed `-os cross` or `-cross`
+	output_es5                  bool
+	prealloc                    bool
+	vroot                       string
+	vlib                        string   // absolute path to the vlib/ folder
+	vmodules_paths              []string // absolute paths to the vmodules folders, by default ['/home/user/.vmodules'], can be overridden by setting VMODULES
+	out_name_c                  string   // full os.real_path to the generated .tmp.c file; set by builder.
+	out_name                    string
+	out_name_is_dir             bool   // true when `-o`/`-output` was passed with a trailing path separator
+	path                        string // Path to file/folder to compile
+	line_info                   string // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
+	linfo                       LineInfo
 
 	run_only  []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
 	exclude   []string // glob patterns for excluding .v files from the list of .v files that otherwise would have been used for a compilation, example: `-exclude @vlib/math/*.c.v`
@@ -241,6 +259,7 @@ pub mut:
 	build_options       []string    // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
 	gc_mode             GarbageCollectionMode = .unknown // .no_gc, .boehm, .boehm_leak, ...
+	gc_set_by_flag      bool              // true when the compiler receives `-gc`
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
 	message_limit       int = 200 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
@@ -248,7 +267,8 @@ pub mut:
 	fast_math           bool // -fast-math will pass either -ffast-math or /fp:fast (for msvc) to the C backend
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
-	thread_stack_size                     int = 8388608 // Change with `-thread-stack-size 4194304`. Note: on macos it was 524288, which is too small for more complex programs with many nested callexprs.
+	thread_stack_size                     int = 8388608 // Change with `-thread-stack-size 4194304`. The final default is adjusted in fill_with_defaults() based on the target architecture.
+	thread_stack_size_set_by_flag         bool
 	// wasm settings:
 	wasm_stack_top    int = 1024 + (16 * 1024) // stack size for webassembly backend
 	wasm_validate     bool // validate webassembly code, by calling `wasm-validate`
@@ -259,10 +279,40 @@ pub mut:
 	relaxed_gcc14 bool = true // turn on the generated pragmas, that make gcc versions > 14 a lot less pedantic. The default is to have those pragmas in the generated C output, so that gcc-14 can be used on Arch etc.
 	//
 	subsystem          Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
+	icon_path          string    // Windows executable icon file (.ico or .png)
 	is_vls             bool
 	json_errors        bool // -json-errors, for VLS and other tools
 	new_transform      bool // temporary for the new transformer
 	new_generic_solver bool
+}
+
+// ensure_coroutines_runtime downloads and exposes the photon runtime used by `import coroutines`.
+pub fn ensure_coroutines_runtime() ! {
+	$if macos || linux {
+		arch := $if arm64 { 'arm64' } $else { 'amd64' }
+		vexe := vexe_path()
+		vroot := os.dir(vexe)
+		so_path := os.join_path(vroot, 'thirdparty', 'photon', 'photonwrapper.so')
+		so_url := 'https://raw.githubusercontent.com/vlang/photonbin/master/photonwrapper_${os.user_os()}_${arch}.so'
+		if !os.exists(so_path) {
+			println('coroutines .so not found, downloading...')
+			res := os.execute('${os.quoted_path(vexe)} download -o "${so_path}" "${so_url}"')
+			if res.exit_code != 0 || !os.exists(so_path) {
+				return error('coroutines .so could not be downloaded with `v download`. Download ${so_url}, place it in ${so_path} then try again.')
+			}
+			println('done!')
+		}
+		$if macos {
+			dyld_fallback_paths := os.getenv('DYLD_FALLBACK_LIBRARY_PATH')
+			so_dir := os.dir(so_path)
+			if !dyld_fallback_paths.contains(so_dir) {
+				env := [dyld_fallback_paths, so_dir].filter(it.len != 0).join(':')
+				os.setenv('DYLD_FALLBACK_LIBRARY_PATH', env, true)
+			}
+		}
+	} $else {
+		return error('coroutines only work on macOS & Linux for now')
+	}
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -283,7 +333,7 @@ fn detect_musl(mut res Preferences) {
 @[noreturn]
 fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_name string, extension string,
 	content string) {
-	tmp_file_path := rand.ulid()
+	tmp_file_path := os.join_path(os.vtmp_dir(), rand.ulid())
 	mut tmp_exe_file_path := res.out_name
 	mut output_option := ''
 	if tmp_exe_file_path == '' {
@@ -312,7 +362,106 @@ fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_nam
 	exit(tmp_result)
 }
 
+fn inline_icon_option_value(arg string) ?string {
+	for prefix in ['-icon=', '--icon=', '-seticon=', '--seticon='] {
+		if arg.starts_with(prefix) {
+			return arg[prefix.len..]
+		}
+	}
+	return none
+}
+
+fn set_icon_path(mut res Preferences, raw_path string, option_name string) {
+	if raw_path == '' {
+		eprintln_exit('missing value for `${option_name}`')
+	}
+	res.icon_path = os.real_path(raw_path)
+	res.build_options << '-icon "${res.icon_path}"'
+}
+
+const internal_v_commands = [
+	'run',
+	'crun',
+	'build',
+	'build-module',
+	'help',
+	'version',
+	'new',
+	'init',
+	'install',
+	'link',
+	'list',
+	'outdated',
+	'remove',
+	'search',
+	'show',
+	'unlink',
+	'update',
+	'upgrade',
+	'vlib-docs',
+	'translate',
+]
+
+fn has_following_positional_arg(args []string, start int) bool {
+	for idx := start; idx < args.len; idx++ {
+		if !args[idx].starts_with('-') {
+			return true
+		}
+	}
+	return false
+}
+
+fn optional_arg_value(args []string, idx int, command string, known_external_commands []string, def string) (string, bool) {
+	next := args[idx + 1] or { return def, false }
+	if next == '-' {
+		return next, true
+	}
+	if next.starts_with('-') {
+		return def, false
+	}
+	if command == ''
+		&& (next in known_external_commands || next in internal_v_commands || next.ends_with('.v')
+		|| next.ends_with('.vsh') || os.is_dir(next)
+		|| !has_following_positional_arg(args, idx + 2)) {
+		return def, false
+	}
+	return next, true
+}
+
 pub fn parse_args_and_show_errors(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
+	prefs, command, _ := parse_args_impl(known_external_commands, args, show_output, false)
+	return prefs, command
+}
+
+// parse_args_for_launcher works like parse_args_and_show_errors, but once a known external command
+// (tool) is recognized, every argument after it is left for that tool, instead of being interpreted
+// as a V compiler option here. It is meant for the top level `v` launcher in cmd/v, which forwards
+// the original os.args on to the tool verbatim. Do NOT use it when you actually need the V
+// preferences that follow the command name, for example `v fmt -translated file.v`; see vlang/v#28114.
+pub fn parse_args_for_launcher(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
+	prefs, command, _ := parse_args_impl(known_external_commands, args, show_output, true)
+	return prefs, command
+}
+
+// parse_args_for_launcher_with_command_index also returns the exact command token index.
+pub fn parse_args_for_launcher_with_command_index(known_external_commands []string, args []string, show_output bool) (&Preferences, string, int) {
+	return parse_args_impl(known_external_commands, args, show_output, true)
+}
+
+// option_may_consume_value reports whether an option can consume the following argument.
+pub fn option_may_consume_value(option string) bool {
+	return option in ['-wasm-stack-top', '-arch', '-assert', '-e', '-subsystem', '-icon', '--icon',
+		'-seticon', '--seticon', '-gc', '-print_autofree_vars_in_fn', '-trace-fns', '-prof',
+		'-profile', '-cov', '-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude',
+		'-file-list', '-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files',
+		'-dump-defines', '-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags',
+		'-ldflags', '-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
+		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend',
+		'-compile-backend', '--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude',
+		'-raw-vsh-tmp-prefix', '-cmain', '-line-info']
+}
+
+fn parse_args_impl(known_external_commands []string, args []string, show_output bool, pass_external_command_args bool) (&Preferences, string, int) {
 	mut res := &Preferences{}
 	detect_musl(mut res)
 	$if x64 {
@@ -332,8 +481,21 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 
 	mut no_skip_unused := false
 	mut command, mut command_idx := '', 0
+	mut build_vsh_source := false
+	mut new_compiler_set_by_flag := false
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
+		if pass_external_command_args && command_idx < i && command in known_external_commands {
+			// The command is a known external tool, e.g. `missdoc` in `v missdoc -e main`.
+			// Everything after it belongs to that tool, so do not interpret flags like `-e`
+			// as V compiler options here; the launcher (cmd/v) forwards the original os.args
+			// on to the tool verbatim.
+			continue
+		}
+		if inline_icon_path := inline_icon_option_value(arg) {
+			set_icon_path(mut res, inline_icon_path, arg.all_before('='))
+			continue
+		}
 		match arg {
 			'--' {
 				break
@@ -378,6 +540,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						exit(1)
 					}
 				}
+
 				i++
 			}
 			'-show-timings' {
@@ -415,6 +578,28 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					command = 'version'
 				}
 			}
+			'-eval', '--eval' {
+				eprintln_exit('The eval backend has been removed.')
+			}
+			'-ownership' {
+				// Passed through to the V3 ownership compiler by cmd/v.
+			}
+			'-old-compiler' {
+				res.old_compiler = true
+			}
+			'-new-compiler' {
+				res.new_compiler = true
+				new_compiler_set_by_flag = true
+			}
+			'-selfhost' {
+				// Passed through to the embedded V3 driver for FastC compiler builds.
+			}
+			'-checker-fixture', '-macos-v3-compat-c99' {
+				// Passed through to the embedded V3 diagnostic fixture runner.
+			}
+			'-no-memory-limit', '--no-memory-limit' {
+				// Passed through to V3 dispatchers by cmd/v.
+			}
 			'-progress' {
 				// processed by testing tools in cmd/tools/modules/testing/common.v
 			}
@@ -450,7 +635,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-subsystem' {
 				subsystem := cmdline.option(args[i..], '-subsystem', '')
-				res.subsystem = Subsystem.from(subsystem) or {
+				res.subsystem = Subsystem.from_string(subsystem) or {
 					mut valid := []string{}
 					$for x in Subsystem.values {
 						valid << x.name
@@ -461,8 +646,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				i++
 			}
+			'-icon', '--icon', '-seticon', '--seticon' {
+				set_icon_path(mut res, cmdline.option(args[i..], arg, ''), arg)
+				i++
+			}
 			'-gc' {
 				gc_mode := cmdline.option(args[i..], '-gc', '')
+				res.gc_set_by_flag = true
 				match gc_mode {
 					'none' {
 						res.gc_mode = .no_gc
@@ -500,6 +690,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						res.parse_define('gcboehm')
 						res.parse_define('gcboehm_leak')
 					}
+					'vgc' {
+						res.gc_mode = .vgc
+						res.parse_define('vgc')
+					}
 					else {
 						eprintln('unknown garbage collection mode `-gc ${gc_mode}`, supported modes are:`')
 						eprintln('  `-gc boehm` ............ default GC-mode (currently `boehm_full_opt`)')
@@ -508,10 +702,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						eprintln('  `-gc boehm_full_opt` ... optimized classic full collection')
 						eprintln('  `-gc boehm_incr_opt` ... optimized incremental collection')
 						eprintln('  `-gc boehm_leak` ....... leak detection (for debugging)')
+						eprintln('  `-gc vgc` .............. V GC (concurrent tri-color mark-and-sweep)')
 						eprintln('  `-gc none` ............. no garbage collection')
 						exit(1)
 					}
 				}
+
+				effective_gc_mode := if gc_mode == '' { 'boehm' } else { gc_mode }
+				res.build_options << '${arg} ${effective_gc_mode}'
 				i++
 			}
 			'-g', '-debug' {
@@ -554,20 +752,29 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-live' {
 				res.is_livemain = true
+				res.compile_defines << 'livemain'
+				res.compile_defines_all << 'livemain'
 			}
 			'-sharedlive' {
 				res.is_liveshared = true
 				res.is_shared = true
+				res.compile_defines << 'sharedlive'
+				res.compile_defines_all << 'sharedlive'
 			}
 			'-shared' {
 				res.is_shared = true
 			}
 			'--enable-globals' {
-				eprintln_cond(show_output && !res.is_quiet, '`--enable-globals` flag is deprecated, please use `-enable-globals` instead')
+				eprintln_cond(show_output && !res.is_quiet,
+					'`--enable-globals` flag is deprecated, please use `-enable-globals` instead')
 				res.enable_globals = true
 			}
 			'-enable-globals' {
 				res.enable_globals = true
+			}
+			'--disable-explicit-mutability', '-disable-explicit-mutability' {
+				res.disable_explicit_mutability = true
+				res.build_options << arg
 			}
 			'-autofree' {
 				res.autofree = true
@@ -620,6 +827,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-no-retry-compilation' {
 				res.retry_compilation = false
+				res.build_options << arg
 			}
 			'-musl' {
 				res.is_musl = true
@@ -652,10 +860,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.relaxed_gcc14 = false
 			}
 			'-prof', '-profile' {
-				res.profile_file = cmdline.option(args[i..], arg, '-')
+				profile_file, profile_file_consumed := optional_arg_value(args, i, command,
+					known_external_commands, '-')
+				res.profile_file = profile_file
 				res.is_prof = true
 				res.build_options << '${arg} ${res.profile_file}'
-				i++
+				if profile_file_consumed {
+					i++
+				}
 			}
 			'-cov', '-coverage' {
 				res.coverage_dir = cmdline.option(args[i..], arg, '-')
@@ -707,6 +919,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-m32', '-m64' {
 				res.m64 = arg[2] == `6`
 				res.cflags += ' ${arg}'
+				res.build_options << arg
+				if arg == '-m32' && res.arch == ._auto {
+					res.arch = .i386
+				}
 			}
 			'-color' {
 				res.use_color = .always
@@ -726,8 +942,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-show-depgraph' {
 				res.show_depgraph = true
 			}
+			'-bug-report-url' {
+				res.c_error_bug_report_url = cmdline.option(args[i..], arg, '')
+				i++
+			}
 			'-run-only' {
-				res.run_only = cmdline.option(args[i..], arg, os.getenv('VTEST_ONLY_FN')).split_any(',')
+				res.run_only =
+					cmdline.option(args[i..], arg, os.getenv('VTEST_ONLY_FN')).split_any(',')
 				i++
 			}
 			'-exclude' {
@@ -759,6 +980,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.dump_defines = cmdline.option(args[i..], arg, '-')
 				i++
 			}
+			'-generate-c-project' {
+				res.generate_c_project = cmdline.option(args[i..], arg, '')
+				if res.generate_c_project == '' {
+					eprintln_exit('Missing output directory after `-generate-c-project`.')
+				}
+				i++
+			}
 			'-experimental' {
 				res.experimental = true
 			}
@@ -783,6 +1011,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-prealloc' {
 				res.prealloc = true
+				if !res.gc_set_by_flag {
+					res.gc_mode = .no_gc
+				}
 				res.build_options << arg
 			}
 			'-no-parallel' {
@@ -795,11 +1026,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << arg
 			}
 			'-native' {
-				res.backend = .native
-				res.build_options << arg
+				eprintln_exit('The native backend has been removed.')
 			}
 			'-interpret' {
-				res.backend = .interpret
+				eprintln_exit('The eval backend has been removed.')
 			}
 			'-W' {
 				res.warns_are_errors = true
@@ -840,7 +1070,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				run_http_argument := 'import net.http.file; file.serve()'
 				mut new_args := args.filter(it != '-http')
 				new_args << ['-e', run_http_argument]
-				eprintln_cond(show_output && !res.is_quiet, "Note: use `v -e '${run_http_argument}'`, if you want to customise the http server options.")
+				eprintln_cond(show_output && !res.is_quiet,
+					"Note: use `v -e '${run_http_argument}'`, if you want to customise the http server options.")
 				run_code_in_tmp_vfile_and_exit(new_args, mut res, '-e', 'vsh', run_http_argument)
 			}
 			'-cross' {
@@ -894,11 +1125,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				i++
 			}
 			'-thread-stack-size' {
-				res.thread_stack_size = cmdline.option(args[i..], arg, res.thread_stack_size.str()).int()
+				res.thread_stack_size =
+					cmdline.option(args[i..], arg, res.thread_stack_size.str()).int()
+				res.thread_stack_size_set_by_flag = true
 				i++
 			}
 			'-cc' {
 				res.ccompiler = cmdline.option(args[i..], '-cc', 'cc')
+				res.ccompiler_set_by_flag = true
 				res.build_options << '${arg} "${res.ccompiler}"'
 				i++
 			}
@@ -907,12 +1141,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				i++
 			}
 			'-checker-match-exhaustive-cutoff-limit' {
-				res.checker_match_exhaustive_cutoff_limit = cmdline.option(args[i..],
-					arg, '10').int()
+				res.checker_match_exhaustive_cutoff_limit =
+					cmdline.option(args[i..], arg, '10').int()
 				i++
 			}
 			'-o', '-output' {
-				res.out_name = cmdline.option(args[i..], arg, '')
+				raw_out_name := cmdline.option(args[i..], arg, '')
+				res.out_name_is_dir = raw_out_name.ends_with('/') || raw_out_name.ends_with('\\')
+				res.out_name = raw_out_name
 				if !os.is_abs_path(res.out_name) {
 					res.out_name = os.join_path(os.getwd(), res.out_name)
 				}
@@ -923,9 +1159,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-b', '-backend' {
 				sbackend := cmdline.option(args[i..], arg, 'c')
+				res.is_fastc = sbackend == 'fastc'
 				res.build_options << '${arg} ${sbackend}'
 				b := backend_from_string(sbackend) or {
-					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, native, wasm')
+					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, fastc, js, js_node, js_browser, js_freestanding, wasm')
 				}
 				if b == .wasm {
 					res.compile_defines << 'wasm'
@@ -986,43 +1223,30 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-use-coroutines' {
 				res.use_coroutines = true
-				$if macos || linux {
-					arch := $if arm64 { 'arm64' } $else { 'amd64' }
-					vexe := vexe_path()
-					vroot := os.dir(vexe)
-					so_path := os.join_path(vroot, 'thirdparty', 'photon', 'photonwrapper.so')
-					so_url := 'https://raw.githubusercontent.com/vlang/photonbin/master/photonwrapper_${os.user_os()}_${arch}.so'
-					if !os.exists(so_path) {
-						println('coroutines .so not found, downloading...')
-						os.execute_opt('${os.quoted_path(vexe)} download -o "${so_path}" "${so_url}"') or {
-							panic('coroutines .so could not be downloaded with `v download`. Download ${so_url}, place it in ${so_path} then try again.')
-						}
-						println('done!')
-					}
-					res.compile_defines << 'is_coroutine'
-					res.compile_defines_all << 'is_coroutine'
-					$if macos {
-						dyld_fallback_paths := os.getenv('DYLD_FALLBACK_LIBRARY_PATH')
-						so_dir := os.dir(so_path)
-						if !dyld_fallback_paths.contains(so_dir) {
-							env := [dyld_fallback_paths, so_dir].filter(it.len != 0).join(':')
-							os.setenv('DYLD_FALLBACK_LIBRARY_PATH', env, true)
-						}
-					}
-				} $else {
-					eprintln_exit('coroutines only work on macOS & Linux for now')
-				}
+				ensure_coroutines_runtime() or { eprintln_exit(err.msg()) }
+				res.compile_defines << 'is_coroutine'
+				res.compile_defines_all << 'is_coroutine'
 			}
 			'-new-generic-solver' {
 				res.new_generic_solver = true
 			}
 			else {
 				if command == 'build' && is_source_file(arg) {
+					if arg.ends_with('.vsh') {
+						command, command_idx = arg, i
+						build_vsh_source = true
+						res.skip_running = true
+						continue
+					}
 					eprintln_exit('Use `v ${arg}` instead.')
 				}
 				if is_source_file(arg) && arg.ends_with('.vsh') {
 					// store for future iterations
 					res.is_vsh = true
+				}
+				if arg.starts_with('-d') && arg.len > 2 {
+					res.parse_define(arg[2..])
+					continue
 				}
 				if !arg.starts_with('-') {
 					if command == '' {
@@ -1030,7 +1254,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						if res.is_eval_argument || command in ['run', 'crun', 'watch'] {
 							break
 						}
-					} else if is_source_file(command) && is_source_file(arg)
+					} else if is_source_file(command) && is_source_file(arg) && !res.is_vsh
 						&& command !in known_external_commands && res.raw_vsh_tmp_prefix == '' {
 						eprintln_exit('Too many targets. Specify just one target: <target.v|target_directory>.')
 					}
@@ -1061,11 +1285,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		if res.trace_fns.len == 0 {
 			res.trace_fns << '*'
 		}
-		for mut fpattern in res.trace_fns {
+		for i, fpattern in res.trace_fns {
 			if fpattern.contains('*') {
 				continue
 			}
-			fpattern = '*${fpattern}*'
+			res.trace_fns[i] = '*${fpattern}*'
 		}
 	}
 	if command == 'crun' {
@@ -1095,8 +1319,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	}
 
 	if command == 'run' && res.is_prod && os.is_atty(1) > 0 {
-		eprintln_cond(show_output && !res.is_quiet, "Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
-		eprintln_cond(show_output && !res.is_quiet, 'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
+		eprintln_cond(show_output && !res.is_quiet,
+			"Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
+		eprintln_cond(show_output && !res.is_quiet,
+			'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
 	}
 	if res.os in [.browser, .wasi] && res.backend != .wasm {
 		eprintln_exit('OS `${res.os}` forbidden for backends other than wasm')
@@ -1132,16 +1358,19 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
 			&& os.is_file(res.path + '.v') {
-			eprintln_cond(show_output && !res.is_quiet, 'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
+			eprintln_cond(show_output && !res.is_quiet,
+				'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
 			res.path += '.v'
 		}
 	} else if is_source_file(command) {
 		res.path = command
 	}
 	if !res.is_bare && res.bare_builtin_dir != '' {
-		eprintln_cond(show_output && !res.is_quiet, '`-bare-builtin-dir` must be used with `-freestanding`')
+		eprintln_cond(show_output && !res.is_quiet,
+			'`-bare-builtin-dir` must be used with `-freestanding`')
 	}
-	if command.ends_with('.vsh') || (res.raw_vsh_tmp_prefix != '' && !res.is_run) {
+	if !build_vsh_source
+		&& (command.ends_with('.vsh') || (res.raw_vsh_tmp_prefix != '' && !res.is_run)) {
 		// `v build.vsh gcc` is the same as `v run build.vsh gcc`,
 		// i.e. compiling, then running the script, passing the args
 		// after it to the script:
@@ -1149,17 +1378,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.path = command
 		res.run_args = command_args
 	} else if command == 'interpret' {
-		res.backend = .interpret
-		res.path = command_args[0] or { eprintln_exit('v interpret: no v files listed') }
-		if res.path != '' {
-			must_exist(res.path)
-			if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
-				&& os.is_file(res.path + '.v') {
-				eprintln_cond(show_output && !res.is_quiet, 'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
-				res.path += '.v'
-			}
-		}
-		res.run_args = command_args[1..]
+		eprintln_exit('The eval backend has been removed.')
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
@@ -1198,7 +1417,16 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	}
 	res.build_options = m.keys()
 	// eprintln('>> res.build_options: ${res.build_options}')
+	// FastC belongs to the embedded V3 driver, but both `fastc` and `c` use
+	// Backend.c while cmd/v parses the command line. Only the final backend
+	// option should select V3 implicitly; an explicit -new-compiler remains an
+	// independent request.
+	res.new_compiler = new_compiler_set_by_flag || res.is_fastc
 	res.fill_with_defaults()
+	if res.generate_c_project != '' {
+		// The generated C project should not depend on cached V module objects.
+		res.use_cache = false
+	}
 	if res.backend == .c {
 		res.skip_unused = res.build_mode != .build_module
 		if no_skip_unused {
@@ -1206,7 +1434,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		}
 	}
 
-	return res, command
+	return res, command, command_idx
 }
 
 @[noreturn]
@@ -1247,14 +1475,14 @@ pub fn backend_from_string(s string) !Backend {
 	// TODO: unify the "different js backend" options into a single `-b js`
 	// + a separate option, to choose the wanted JS output.
 	return match s {
-		'c' { .c }
-		'interpret' { .interpret }
+		'c', 'fastc' { .c }
+		'eval', 'interpret' { eprintln_exit('The eval backend has been removed.') }
 		'js', 'js_node' { .js_node }
 		'js_browser' { .js_browser }
 		'js_freestanding' { .js_freestanding }
 		'wasm' { .wasm }
-		'native' { .native }
-		'go' { .golang }
+		'native' { eprintln_exit('The native backend has been removed.') }
+		'go', 'golang' { eprintln_exit('The Go backend has been removed.') }
 		else { error('Unknown backend type ${s}') }
 	}
 }
@@ -1266,14 +1494,31 @@ pub fn cc_from_string(s string) CompilerType {
 	}
 	cc := os.file_name(s).to_lower_ascii()
 	return match true {
-		cc.contains('tcc') || cc.contains('tinyc') { .tinyc }
-		cc.contains('gcc') { .gcc }
-		cc.contains('clang') { .clang }
-		cc.contains('emcc') { .emcc }
-		cc.contains('msvc') { .msvc }
-		cc.contains('mingw') { .mingw }
-		cc.contains('++') { .cplusplus }
-		else { .gcc }
+		cc.contains('tcc') || cc.contains('tinyc') || cc.contains('tinygcc')
+			|| cc.contains('tiny_gcc') || cc.contains('tiny-gcc') {
+			.tinyc
+		}
+		cc.contains('gcc') {
+			.gcc
+		}
+		cc.contains('clang') {
+			.clang
+		}
+		cc.contains('emcc') {
+			.emcc
+		}
+		cc == 'cl' || cc == 'cl.exe' || cc.contains('msvc') {
+			.msvc
+		}
+		cc.contains('mingw') {
+			.mingw
+		}
+		cc.contains('++') {
+			.cplusplus
+		}
+		else {
+			.gcc
+		}
 	}
 }
 

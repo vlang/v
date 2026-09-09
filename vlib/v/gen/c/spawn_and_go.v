@@ -11,12 +11,37 @@ enum SpawnGoMode {
 	go_
 }
 
+fn (mut g Gen) mark_spawn_arg_option_or_result_type(typ ast.Type) {
+	if typ.has_flag(.option) {
+		_, base := g.option_type_name(typ)
+		if base !in g.spawn_arg_options {
+			g.spawn_arg_options << base
+		}
+	} else if typ.has_flag(.result) {
+		_, base := g.result_type_name(typ)
+		if base !in g.spawn_arg_results {
+			g.spawn_arg_results << base
+		}
+	}
+}
+
 fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	if node.call_expr.should_be_skipped {
 		return
 	}
-	is_spawn := mode == .spawn_
-	is_go := mode == .go_
+	mut is_spawn := mode == .spawn_
+	mut is_go := mode == .go_
+	if is_go && node.is_expr {
+		// A `go expr` whose handle is used as a value (e.g. `h := go f()` or
+		// `obj.field = go f()`) needs a real, joinable thread handle. The photon
+		// coroutine wrapper (`photon_thread_create*`) returns void and exposes no
+		// such handle, so fall back to the regular `spawn` (pthread) path here,
+		// which declares and assigns the `thread_<tmp>` handle that is read back
+		// as the expression's value. Plain statement form `go f()` (no handle
+		// used) keeps using the photon work-pool path below.
+		is_spawn = true
+		is_go = false
+	}
 	if is_spawn {
 		g.writeln('/*spawn (thread) */')
 	} else {
@@ -50,8 +75,8 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		}
 	} else if mut expr.left is ast.AnonFn {
 		if expr.left.inherited_vars.len > 0 {
-			fn_var := g.fn_var_signature(ast.void_type, expr.left.decl.return_type, expr.left.decl.params.map(it.typ),
-				tmp_fn)
+			fn_var := g.fn_var_signature(ast.void_type, expr.left.decl.return_type,
+				expr.left.decl.params.map(it.typ), tmp_fn)
 			g.write('\t${fn_var} = ')
 			g.gen_anon_fn(mut expr.left)
 			g.writeln(';')
@@ -74,6 +99,14 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			use_tmp_fn_var = true
 		}
 	}
+	// When inside a generic function, differentiate wrapper struct names
+	// per concrete type instantiation so each gets its own typed struct/wrapper.
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+		generic_suffix := g.generic_fn_name(g.cur_concrete_types, '')
+		if generic_suffix != '' && !name.ends_with(generic_suffix) {
+			name = g.generic_fn_name(g.cur_concrete_types, name)
+		}
+	}
 	name = util.no_dots(name)
 	g.empty_line = true
 	g.writeln('// start go')
@@ -81,7 +114,12 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	wrapper_fn_name := name + '_thread_wrapper'
 	arg_tmp_var := 'arg_' + tmp
 	if is_spawn {
-		g.writeln('${wrapper_struct_name} *${arg_tmp_var} = (${wrapper_struct_name} *) builtin___v_malloc(sizeof(thread_arg_${name}));')
+		if g.pref.prealloc {
+			g.writeln('${wrapper_struct_name} *${arg_tmp_var} = (${wrapper_struct_name} *) malloc(sizeof(thread_arg_${name}));')
+			g.writeln('if (${arg_tmp_var} == NULL) builtin___v_panic(_S("thread argument allocation failed"));')
+		} else {
+			g.writeln('${wrapper_struct_name} *${arg_tmp_var} = (${wrapper_struct_name} *) builtin___v_malloc(sizeof(thread_arg_${name}));')
+		}
 	} else if is_go {
 		g.writeln('${wrapper_struct_name} ${arg_tmp_var};')
 	}
@@ -115,14 +153,77 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		g.writeln(';')
 	}
 	for i, arg in expr.args {
-		g.write('${arg_tmp_var}${dot}arg${i + 1} = ')
-		g.expr(arg.expr)
-		g.writeln(';')
+		arg_field := '${arg_tmp_var}${dot}arg${i + 1}'
+		arg_type := g.unwrap_generic(g.recheck_concrete_type(arg.typ))
+		expected_type := if i < expr.expected_arg_types.len {
+			g.unwrap_generic(expr.expected_arg_types[i])
+		} else {
+			arg_type
+		}
+		// e.g. `spawn obj.f(none)` (or `spawn obj.f(v)`) where `f` takes an `?T`
+		// parameter: the argument must be wrapped into the option type of the
+		// parameter, otherwise the packed thread argument keeps the bare `none`/value
+		// type and the generated C fails to compile (see issue #28079).
+		coerce_to_option := expected_type.has_flag(.option) && !arg_type.has_flag(.option)
+		if !coerce_to_option && !arg_type.is_ptr() && !arg_type.has_option_or_result()
+			&& g.table.final_sym(arg_type).kind == .array_fixed {
+			g.write('memcpy(${arg_field}, ')
+			g.expr(arg.expr)
+			g.writeln(', sizeof(${arg_field}));')
+		} else {
+			g.write('${arg_field} = ')
+			if coerce_to_option {
+				g.expr_with_opt(arg.expr, arg_type, expected_type)
+			} else if arg_type.has_option_or_result() {
+				old_inside_opt_or_res := g.inside_opt_or_res
+				g.inside_opt_or_res = true
+				g.expr(arg.expr)
+				g.inside_opt_or_res = old_inside_opt_or_res
+			} else {
+				g.expr(arg.expr)
+			}
+			g.writeln(';')
+		}
 	}
-	call_ret_type := g.unwrap_generic(node.call_expr.return_type)
+	if is_spawn && g.pref.prealloc {
+		g.writeln('${arg_tmp_var}->prealloc_scope = builtin__prealloc_scope_retain_current();')
+	}
+	call_ret_type := if expr.is_fn_var && g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+		&& g.cur_fn.generic_names.len > 0 {
+		// In generic contexts, node.call_expr.return_type may be stale from
+		// a previous instantiation. Look up the original fn param from the table
+		// and resolve through convert_generic_type.
+		mut resolved_ret := g.unwrap_generic(node.call_expr.return_type)
+		cur_fn_name := g.cur_fn.fkey()
+		orig_fn := g.table.find_fn(cur_fn_name) or { ast.Fn{} }
+		for param in orig_fn.params {
+			if param.name == expr.name {
+				if param.typ.has_flag(.generic) || g.type_has_unresolved_generic_parts(param.typ) {
+					mut muttable := unsafe { &ast.Table(g.table) }
+					if resolved_type := muttable.convert_generic_type(param.typ,
+						orig_fn.generic_names, g.cur_concrete_types)
+					{
+						fn_sym := g.table.sym(resolved_type)
+						if fn_sym.info is ast.FnType {
+							resolved_ret = fn_sym.info.func.return_type
+						}
+					}
+				}
+				break
+			}
+		}
+		resolved_ret
+	} else {
+		g.unwrap_generic(node.call_expr.return_type)
+	}
 	s_ret_typ := g.styp(g.unwrap_generic(call_ret_type))
 	if g.pref.os == .windows && call_ret_type != ast.void_type {
-		g.writeln('${arg_tmp_var}->ret_ptr = (void *) builtin___v_malloc(sizeof(${s_ret_typ}));')
+		if g.pref.prealloc {
+			g.writeln('${arg_tmp_var}->ret_ptr = (void *) malloc(sizeof(${s_ret_typ}));')
+			g.writeln('if (${arg_tmp_var}->ret_ptr == NULL) builtin___v_panic(_S("thread return allocation failed"));')
+		} else {
+			g.writeln('${arg_tmp_var}->ret_ptr = (void *) builtin___v_malloc(sizeof(${s_ret_typ}));')
+		}
 	}
 	gohandle_name := g.gen_gohandle_name(call_ret_type)
 	if is_spawn {
@@ -183,17 +284,42 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		g.type_definitions.writeln('\ntypedef struct ${wrapper_struct_name} {')
 		mut fn_var := ''
 		mut wrapper_return_type := call_ret_type
+		mut resolved_fn_params := []ast.Param{}
 		if node.call_expr.is_fn_var {
-			fn_sym := g.table.sym(node.call_expr.fn_var_type)
+			mut fn_var_type := node.call_expr.fn_var_type
+			// In generic contexts, fn_var_type may be stale from the last checker pass.
+			// Look up the original fn parameter from the table to get the generic fn type,
+			// then resolve it through convert_generic_type.
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+				&& g.cur_fn.generic_names.len > 0 {
+				cur_fn_name := g.cur_fn.fkey()
+				orig_fn := g.table.find_fn(cur_fn_name) or { ast.Fn{} }
+				for param in orig_fn.params {
+					if param.name == expr.name {
+						if param.typ.has_flag(.generic)
+							|| g.type_has_unresolved_generic_parts(param.typ) {
+							mut muttable := unsafe { &ast.Table(g.table) }
+							if resolved := muttable.convert_generic_type(param.typ,
+								orig_fn.generic_names, g.cur_concrete_types)
+							{
+								fn_var_type = resolved
+							}
+						}
+						break
+					}
+				}
+			}
+			fn_sym := g.table.sym(fn_var_type)
 			info := fn_sym.info as ast.FnType
+			resolved_fn_params = info.func.params.clone()
 			wrapper_return_type = info.func.return_type
-			fn_var = g.fn_var_signature(ast.void_type, wrapper_return_type, info.func.params.map(it.typ),
-				'fn')
+			fn_var = g.fn_var_signature(ast.void_type, wrapper_return_type,
+				info.func.params.map(it.typ), 'fn')
 		} else if node.call_expr.left is ast.AnonFn {
 			f := node.call_expr.left.decl
 			wrapper_return_type = f.return_type
-			fn_var = g.fn_var_signature(ast.void_type, wrapper_return_type, f.params.map(it.typ),
-				'fn')
+			fn_var =
+				g.fn_var_signature(ast.void_type, wrapper_return_type, f.params.map(it.typ), 'fn')
 		} else {
 			if node.call_expr.is_method {
 				rec_sym := g.table.sym(g.unwrap_generic(node.call_expr.receiver_type))
@@ -205,8 +331,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 					mut arg_types := f.params.map(it.typ)
 					arg_types = arg_types.map(muttable.convert_generic_type(it, f.generic_names,
 						node.call_expr.concrete_types) or { it })
-					fn_var = g.fn_var_signature(ast.void_type, return_type, arg_types,
-						'fn')
+					fn_var = g.fn_var_signature(ast.void_type, return_type, arg_types, 'fn')
 				}
 			} else {
 				if f := g.table.find_fn(node.call_expr.name) {
@@ -230,8 +355,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 							}
 						}
 					}
-					fn_var = g.fn_var_signature(ast.void_type, return_type, arg_types,
-						'fn')
+					fn_var = g.fn_var_signature(ast.void_type, return_type, arg_types, 'fn')
 				}
 			}
 		}
@@ -246,15 +370,51 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		}
 		need_return_ptr := g.pref.os == .windows && wrapper_return_type != ast.void_type
 		for i, arg in expr.args {
-			arg_sym := g.table.sym(arg.typ)
+			mut arg_typ := arg.typ
+			// For fn var and AnonFn calls in generic contexts, use the declared
+			// parameter types instead of argument expression types, since the
+			// AST arg types may be stale from a previous generic instantiation.
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				if expr.left is ast.AnonFn {
+					anon := expr.left as ast.AnonFn
+					f := anon.decl
+					if i < f.params.len {
+						arg_typ = g.unwrap_generic(f.params[i].typ)
+					}
+				} else if expr.is_fn_var && resolved_fn_params.len > 0 {
+					if i < resolved_fn_params.len {
+						arg_typ = resolved_fn_params[i].typ
+					}
+				} else {
+					resolved_arg_typ := g.unwrap_generic(arg_typ)
+					if resolved_arg_typ != 0 {
+						arg_typ = resolved_arg_typ
+					}
+				}
+			}
+			arg_sym := g.table.sym(arg_typ)
 			if arg_sym.info is ast.FnType {
-				sig := g.fn_var_signature(arg.typ, arg_sym.info.func.return_type, arg_sym.info.func.params.map(it.typ),
-					'arg${i + 1}')
+				sig := g.fn_var_signature(arg_typ, arg_sym.info.func.return_type,
+					arg_sym.info.func.params.map(it.typ), 'arg${i + 1}')
 				g.type_definitions.writeln('\t' + sig + ';')
 			} else {
-				styp := g.styp(arg.typ)
+				// Keep the wrapper field type in sync with the coercion done when
+				// packing the argument: an `?T` parameter given a bare `none`/value
+				// must be stored as the option type, not as `none` (see #28079).
+				mut field_typ := arg_typ
+				if i < expr.expected_arg_types.len {
+					expected_typ := g.unwrap_generic(expr.expected_arg_types[i])
+					if expected_typ.has_flag(.option) && !arg_typ.has_flag(.option) {
+						field_typ = expected_typ
+					}
+				}
+				g.mark_spawn_arg_option_or_result_type(field_typ)
+				styp := g.styp(field_typ)
 				g.type_definitions.writeln('\t${styp} arg${i + 1};')
 			}
+		}
+		if is_spawn && g.pref.prealloc {
+			g.type_definitions.writeln('\tvoid* prealloc_scope;')
 		}
 		if need_return_ptr {
 			g.type_definitions.writeln('\tvoid* ret_ptr;')
@@ -263,11 +423,19 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		thread_ret_type := if g.pref.os == .windows { 'u32' } else { 'void*' }
 		g.waiter_fn_definitions.writeln('${g.static_non_parallel}${thread_ret_type} ${wrapper_fn_name}(${wrapper_struct_name} *arg);')
 		g.gowrappers.writeln('${thread_ret_type} ${wrapper_fn_name}(${wrapper_struct_name} *arg) {')
+		if is_spawn && g.pref.prealloc && wrapper_return_type == ast.void_type {
+			g.gowrappers.writeln('\tvoid* thread_prealloc_scope = builtin__prealloc_scope_begin();')
+		}
 		if wrapper_return_type != ast.void_type {
 			if g.pref.os == .windows {
 				g.gowrappers.write_string('\t*((${wrapper_s_ret_typ}*)(arg->ret_ptr)) = ')
 			} else {
-				g.gowrappers.writeln('\t${wrapper_s_ret_typ}* ret_ptr = (${wrapper_s_ret_typ}*) builtin___v_malloc(sizeof(${wrapper_s_ret_typ}));')
+				if g.pref.prealloc {
+					g.gowrappers.writeln('\t${wrapper_s_ret_typ}* ret_ptr = (${wrapper_s_ret_typ}*) malloc(sizeof(${wrapper_s_ret_typ}));')
+					g.gowrappers.writeln('\tif (ret_ptr == NULL) builtin___v_panic(_S("thread return allocation failed"));')
+				} else {
+					g.gowrappers.writeln('\t${wrapper_s_ret_typ}* ret_ptr = (${wrapper_s_ret_typ}*) builtin___v_malloc(sizeof(${wrapper_s_ret_typ}));')
+				}
 				$if tinyc && arm64 {
 					g.gowrappers.write_string('\t${wrapper_s_ret_typ} tcc_bug_tmp_var = ')
 				} $else {
@@ -284,11 +452,10 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				&& (typ_sym.info as ast.Interface).defines_method(expr.name) {
 				rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 				receiver_type_name := util.no_dots(rec_cc_type)
-				g.gowrappers.write_string2('${c_name(receiver_type_name)}_name_table[',
-					'arg->arg0')
+				g.gowrappers.write_string2('((struct _${c_name(receiver_type_name)}_interface_methods*)', 'arg->arg0')
 				dot_or_ptr := g.dot_or_ptr(unwrapped_rec_type)
 				mname := c_name(expr.name)
-				g.gowrappers.write_string2('${dot_or_ptr}_typ]._method_${mname}(', 'arg->arg0')
+				g.gowrappers.write_string2('${dot_or_ptr}_typ)->_method_${mname}(', 'arg->arg0')
 				g.gowrappers.write_string('${dot_or_ptr}_object')
 			} else if typ_sym.kind == .struct && expr.is_field {
 				g.gowrappers.write_string('arg->arg0')
@@ -366,8 +533,21 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				g.gowrappers.writeln('\t*ret_ptr = tcc_bug_tmp_var;')
 			}
 		}
+		if is_spawn && g.pref.prealloc {
+			if wrapper_return_type == ast.void_type {
+				g.gowrappers.writeln('\tbuiltin__prealloc_scope_end(thread_prealloc_scope);')
+			}
+			g.gowrappers.writeln('\tbuiltin__prealloc_scope_release(arg->prealloc_scope);')
+		}
 		if is_spawn {
-			g.gowrappers.writeln('\tbuiltin___v_free(arg);')
+			if g.pref.prealloc {
+				g.gowrappers.writeln('\tfree(arg);')
+			} else {
+				g.gowrappers.writeln('\tbuiltin___v_free(arg);')
+			}
+		}
+		if is_spawn && g.pref.prealloc && wrapper_return_type == ast.void_type {
+			g.gowrappers.writeln('\tbuiltin__prealloc_thread_cleanup();')
 		}
 		if g.pref.os != .windows && wrapper_return_type != ast.void_type {
 			g.gowrappers.writeln('\treturn ret_ptr;')
@@ -456,7 +636,11 @@ fn (mut g Gen) create_waiter_handler(call_ret_type ast.Type, s_ret_typ string, g
 	}
 	if call_ret_type != ast.void_type {
 		g.gowrappers.writeln('\t${s_ret_typ} ret = *ret_ptr;')
-		g.gowrappers.writeln('\tbuiltin___v_free(ret_ptr);')
+		if g.pref.prealloc {
+			g.gowrappers.writeln('\tfree(ret_ptr);')
+		} else {
+			g.gowrappers.writeln('\tbuiltin___v_free(ret_ptr);')
+		}
 		g.gowrappers.writeln('\treturn ret;')
 	}
 	g.gowrappers.writeln('}')

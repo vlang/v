@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_update_anon_fn_option_infix_err.vv:19:17: error: `?string` cannot be used as `string`, unwrap the option first
+   17 |     sql db {
+   18 |         update User set email = fn [req] () string {
+   19 |         return if req.email != '' { 'nickname_1' } else { 'nickname_0' }
+      |                       ~~~~~
+   20 |     }() where id == '1'
+   21 |     }!

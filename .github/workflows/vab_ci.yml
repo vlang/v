@@ -3,8 +3,11 @@ name: vab CI
 on:
   workflow_call:
   push:
+    branches:
+      - master
     paths:
       - 'vlib/**'
+      - '!vlib/v3/**'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - '**/vab_ci.yml'
@@ -12,6 +15,7 @@ on:
   pull_request:
     paths:
       - 'vlib/**'
+      - '!vlib/v3/**'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - '**/vab_ci.yml'
@@ -28,12 +32,12 @@ jobs:
     env:
       VAB_FLAGS: --api 30 --build-tools 29.0.0 -v 3
     steps:
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
           java-version: 11
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build V
         run: make -j4 && ./v symlink
 
@@ -68,7 +72,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build V
         run: make -j4 && ./v symlink
 

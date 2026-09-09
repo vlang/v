@@ -57,6 +57,7 @@ Key Architectural Features and Optimizations:
 
 module pcre
 
+import strconv
 import strings
 
 /******************************************************************************
@@ -243,8 +244,7 @@ pub fn compile(pattern string) !Regex {
 	initial_flags := Flags{false, false, false}
 
 	// Phase 1: AST Parsing
-	nodes, _, final_group_count := parse_nodes(pattern, 0, `\0`, 0, initial_flags, mut
-		group_map)!
+	nodes, _, final_group_count := parse_nodes(pattern, 0, `\0`, 0, initial_flags, mut group_map)!
 
 	root := Node{
 		typ:   .group
@@ -637,19 +637,36 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 				if pos < pattern.len && pattern[pos] == `?` {
 					pos++
 					if pos < pattern.len && pattern[pos] in [`i`, `m`, `s`] {
-						for pos < pattern.len && pattern[pos] != `)` {
+						mut scoped_flags := current_flags
+						for pos < pattern.len && pattern[pos] in [`i`, `m`, `s`] {
 							match pattern[pos] {
-								`i` { current_flags.ignore_case = true }
-								`m` { current_flags.multiline = true }
-								`s` { current_flags.dot_all = true }
+								`i` { scoped_flags.ignore_case = true }
+								`m` { scoped_flags.multiline = true }
+								`s` { scoped_flags.dot_all = true }
 								else {}
 							}
+
 							pos++
 						}
-						if pos < pattern.len {
+						if pos < pattern.len && pattern[pos] == `:` {
+							cap = false
 							pos++
+							sub, new_p, new_c := parse_nodes(pattern, pos, `)`, group_counter,
+								scoped_flags, mut group_map)!
+							pos = new_p
+							group_counter = new_c
+							parsed_nodes << Node{
+								typ:                 .group
+								nodes:               sub
+								group_capture_index: -1
+							}
+						} else {
+							current_flags = scoped_flags
+							if pos < pattern.len && pattern[pos] == `)` {
+								pos++
+							}
+							continue
 						}
-						continue
 					} else if pos < pattern.len && pattern[pos] == `:` {
 						cap = false
 						pos++
@@ -664,25 +681,30 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 							return error('Unclosed named group')
 						}
 						name := pattern[pos..end]
+						if name in group_map {
+							return error('Duplicate named group: ${name}')
+						}
 						idx = group_counter
 						group_map[name] = idx
 						pos = end + 1
 					}
 				}
-				if cap {
-					if idx == -1 {
-						idx = group_counter
+				if parsed_nodes.len == 0 {
+					if cap {
+						if idx == -1 {
+							idx = group_counter
+						}
+						group_counter++
 					}
-					group_counter++
-				}
-				sub, new_p, new_c := parse_nodes(pattern, pos, `)`, group_counter, current_flags, mut
-					group_map)!
-				pos = new_p
-				group_counter = new_c
-				parsed_nodes << Node{
-					typ:                 .group
-					nodes:               sub
-					group_capture_index: idx
+					sub, new_p, new_c := parse_nodes(pattern, pos, `)`, group_counter,
+						current_flags, mut group_map)!
+					pos = new_p
+					group_counter = new_c
+					parsed_nodes << Node{
+						typ:                 .group
+						nodes:               sub
+						group_capture_index: idx
+					}
 				}
 			}
 			`[` {
@@ -754,6 +776,27 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 							typ: .non_whitespace
 						}
 					}
+					`n` {
+						parsed_nodes << Node{
+							typ:         .chr
+							chr:         `\n`
+							ignore_case: current_flags.ignore_case
+						}
+					}
+					`r` {
+						parsed_nodes << Node{
+							typ:         .chr
+							chr:         `\r`
+							ignore_case: current_flags.ignore_case
+						}
+					}
+					`t` {
+						parsed_nodes << Node{
+							typ:         .chr
+							chr:         `\t`
+							ignore_case: current_flags.ignore_case
+						}
+					}
 					`b` {
 						parsed_nodes << Node{
 							typ: .word_boundary
@@ -772,6 +815,38 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 					`A` {
 						parsed_nodes << Node{
 							typ: .uppercase_char
+						}
+					}
+					`x` {
+						// \xHH - two hex digits decode to a character
+						if pos + 2 > pattern.len {
+							return error('\\x requires exactly 2 hex digits')
+						}
+						hex_str := pattern[pos..pos + 2]
+						val := strconv.parse_uint(hex_str, 16, 32) or {
+							return error('Invalid hex escape \\x${hex_str}')
+						}
+						pos += 2
+						parsed_nodes << Node{
+							typ:         .chr
+							chr:         rune(val)
+							ignore_case: current_flags.ignore_case
+						}
+					}
+					`X` {
+						// \XHHHH - four hex digits decode to a Unicode codepoint
+						if pos + 4 > pattern.len {
+							return error('\\X requires exactly 4 hex digits')
+						}
+						hex_str := pattern[pos..pos + 4]
+						val := strconv.parse_uint(hex_str, 16, 32) or {
+							return error('Invalid hex escape \\X${hex_str}')
+						}
+						pos += 4
+						parsed_nodes << Node{
+							typ:         .chr
+							chr:         rune(val)
+							ignore_case: current_flags.ignore_case
 						}
 					}
 					else {
@@ -822,11 +897,15 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 						} else {
 							min
 						}
+						if min < 0 || (max != -1 && max < min) {
+							return error('Invalid quantifier range {${min},${max}}')
+						}
 						q = Quantifier{min, max, true}
 						pos = end + 1
 					}
 					else {}
 				}
+
 				if pos < pattern.len && pattern[pos] == `?` {
 					q.greedy = false
 					pos++
@@ -1026,7 +1105,7 @@ fn (r &Regex) vm_match(text string, start_pos int, mut m Machine) ?Match {
 				.split {
 					if stack_ptr + frame_size >= stack_max {
 						new_size := stack_max * 2
-						if new_size > 1_000_000 {
+						if new_size > r.max_stack_depth {
 							goto backtrack
 						}
 						m.stack.grow_len(new_size)
@@ -1090,6 +1169,7 @@ fn (r &Regex) vm_match(text string, start_pos int, mut m Machine) ?Match {
 					}
 				}
 			}
+
 			continue
 
 			backtrack:
@@ -1181,7 +1261,13 @@ pub fn (r &Regex) find_all(text string) []Match {
 		}
 		if res := r.vm_match(text, i, mut m) {
 			matches << res
-			i = if res.end > i { res.end } else { i + 1 }
+			if res.end > i {
+				i = res.end
+			} else {
+				// Empty match: advance by one full rune to avoid infinite loop
+				_, rune_len := read_rune_at(text.str, text.len, i)
+				i += if rune_len > 0 { rune_len } else { 1 }
+			}
 		} else {
 			i++
 		}

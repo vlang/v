@@ -1,0 +1,9 @@
+fn fail() !string {
+	return error('boom')
+}
+
+fn main() {
+	err := ?string('test')
+	println(err or { 'fallback' })
+	_ := fail() or { err.msg() }
+}

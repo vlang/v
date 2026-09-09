@@ -12,7 +12,8 @@ Here is a very simple example of usage:
 import encoding.csv
 
 fn main() {
-	mut csvr := csv.csv_sequential_reader(file_path: 'big2.csv', end_line_len: csv.endline_crlf_len)!
+	mut csvr :=
+		csv.csv_sequential_reader(file_path: 'big2.csv', end_line_len: csv.endline_crlf_len)!
 	for csvr.has_data() > 1 {
 		println(csvr.get_next_row()!)
 	}

@@ -34,7 +34,7 @@ fn write_page_header(mut sb strings.Builder, uri_path string) {
 	sb.writeln('<body>')
 }
 
-fn write_page_footer(mut sb strings.Builder, uri_path string) {
+fn write_page_footer(mut sb strings.Builder, _uri_path string) {
 	// html boilerplate for the footer
 	sb.writeln('</body>')
 	sb.writeln('</html>')

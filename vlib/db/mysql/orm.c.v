@@ -1,19 +1,21 @@
 module mysql
 
 import orm
+import strconv
 import time
 
 // select is used internally by V's ORM for processing `SELECT ` queries.
 pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
-	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
+	where_with_tenant := orm.apply_tenant_filter(config.table, where)
+	query := orm.orm_select_gen(config, '`', false, '?', 0, where_with_tenant)
 	mut result := [][]orm.Primitive{}
 	mut stmt := db.init_stmt(query)
 	stmt.prepare()!
 
-	mysql_stmt_bind_query_data(mut stmt, where)!
+	mysql_stmt_bind_query_data(mut stmt, where_with_tenant)!
 	mysql_stmt_bind_query_data(mut stmt, data)!
 
-	if data.data.len > 0 || where.data.len > 0 {
+	if data.data.len > 0 || where_with_tenant.data.len > 0 {
 		stmt.bind_params()!
 	}
 
@@ -42,8 +44,8 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 			.type_time, .type_date, .type_datetime, .type_time2, .type_datetime2, .type_timestamp {
 				data_pointers << unsafe { malloc(sizeof(C.MYSQL_TIME)) }
 			}
-			.type_string, .type_var_string, .type_blob, .type_tiny_blob, .type_medium_blob,
-			.type_long_blob {
+			.type_decimal, .type_newdecimal, .type_string, .type_var_string, .type_blob,
+			.type_tiny_blob, .type_medium_blob, .type_long_blob {
 				// Memory will be allocated later dynamically depending on the length of the value.
 				data_pointers << &u8(unsafe { nil })
 			}
@@ -53,13 +55,13 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 		}
 	}
 
-	mut lengths := []u32{len: int(num_fields), init: 0}
-	mut is_null := []bool{len: int(num_fields)}
-	stmt.bind_res(fields, data_pointers, lengths, is_null, num_fields)
+	mut lengths := []C.v_mysql_ulong{len: int(num_fields), init: 0}
+	mut is_null := []C.v_mysql_bool{len: int(num_fields)}
+	stmt.bind_res_abi(fields, data_pointers, lengths, is_null, num_fields)
 
 	mut types := config.types.clone()
 	mut field_types := []FieldType{}
-	if config.is_count {
+	if config.aggregate_kind == .count {
 		types = [orm.type_idx['u64']]
 	}
 
@@ -73,8 +75,11 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 		field_types << field_type
 
 		match field_type {
-			.type_string, .type_var_string, .type_blob, .type_tiny_blob, .type_medium_blob,
-			.type_long_blob {
+			.type_decimal, .type_newdecimal, .type_string, .type_var_string, .type_blob,
+			.type_tiny_blob, .type_medium_blob, .type_long_blob {
+				if field_type in [.type_decimal, .type_newdecimal] {
+					mysql_bind.buffer_type = C.MYSQL_TYPE_STRING
+				}
 				string_binds_map[i] = mysql_bind
 			}
 			.type_long {
@@ -83,7 +88,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 			.type_time, .type_date, .type_datetime, .type_timestamp {
 				// FIXME: Allocate memory for blobs dynamically.
 				mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
-				mysql_bind.buffer_length = FieldType.type_blob.get_len()
+				mysql_bind.buffer_length = usize(FieldType.type_blob.get_len())
 			}
 			else {}
 		}
@@ -113,7 +118,17 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 			stmt.fetch_column(bind, index)!
 		}
 
-		result << data_pointers_to_primitives(is_null, data_pointers, types, field_types)!
+		mut row := data_pointers_to_primitives(is_null, data_pointers, types, field_types)!
+		if config.aggregate_kind == .count && row.len > 0 {
+			count_value := row[0]
+			row[0] = match count_value {
+				u64 { orm.Primitive(int(count_value)) }
+				i64 { orm.Primitive(int(count_value)) }
+				int { count_value }
+				else { count_value }
+			}
+		}
+		result << row
 	}
 
 	stmt.close()!
@@ -126,29 +141,36 @@ pub fn (db DB) insert(table orm.Table, data orm.QueryData) ! {
 	mut converted_primitive_array := db.convert_query_data_to_primitives(table.name, data)!
 
 	converted_primitive_data := orm.QueryData{
-		fields: data.fields
-		data:   converted_primitive_array
-		types:  []
-		kinds:  []
-		is_and: []
+		fields:      data.fields
+		data:        converted_primitive_array
+		types:       data.types
+		parentheses: data.parentheses
+		kinds:       data.kinds
+		auto_fields: data.auto_fields
+		is_and:      data.is_and
+		batch_rows:  data.batch_rows
+		batch_key:   data.batch_key
 	}
 
-	query, converted_data := orm.orm_stmt_gen(.default, table, '`', .insert, false, '?',
-		1, converted_primitive_data, orm.QueryData{})
+	query, converted_data := orm.orm_stmt_gen(.default, table, '`', .insert, false, '?', 1,
+		converted_primitive_data, orm.QueryData{})
 	mysql_stmt_worker(db, query, converted_data, orm.QueryData{})!
 }
 
 // update is used internally by V's ORM for processing `UPDATE ` queries
 pub fn (db DB) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
-	query, _ := orm.orm_stmt_gen(.default, table, '`', .update, false, '?', 1, data, where)
-	mysql_stmt_worker(db, query, data, where)!
+	where_with_tenant := orm.apply_tenant_filter(table, where)
+	query, _ := orm.orm_stmt_gen(.default, table, '`', .update, false, '?', 1, data,
+		where_with_tenant)
+	mysql_stmt_worker(db, query, data, where_with_tenant)!
 }
 
 // delete is used internally by V's ORM for processing `DELETE ` queries
 pub fn (db DB) delete(table orm.Table, where orm.QueryData) ! {
+	where_with_tenant := orm.apply_tenant_filter(table, where)
 	query, _ := orm.orm_stmt_gen(.default, table, '`', .delete, false, '?', 1, orm.QueryData{},
-		where)
-	mysql_stmt_worker(db, query, orm.QueryData{}, where)!
+		where_with_tenant)
+	mysql_stmt_worker(db, query, orm.QueryData{}, where_with_tenant)!
 }
 
 // last_id is used internally by V's ORM for post-processing `INSERT ` queries
@@ -161,8 +183,9 @@ pub fn (db DB) last_id() int {
 
 // create is used internally by V's ORM for processing table creation queries (DDL)
 pub fn (db DB) create(table orm.Table, fields []orm.TableField) ! {
-	query := orm.orm_table_gen(.mysql, table, '`', true, 0, fields, mysql_type_from_v,
-		false) or { return err }
+	query := orm.orm_table_gen(.mysql, table, '`', true, 0, fields, mysql_type_from_v, false) or {
+		return err
+	}
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
@@ -170,6 +193,66 @@ pub fn (db DB) create(table orm.Table, fields []orm.TableField) ! {
 pub fn (db DB) drop(table orm.Table) ! {
 	query := 'DROP TABLE `${table.name}`;'
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
+}
+
+// execute runs a raw SQL query and returns result rows as driver-agnostic orm.Row values,
+// with column names populated from the result metadata.
+pub fn (db DB) execute(query string) ![]orm.Row {
+	mut guard := db.acquire_connection_guard()!
+	defer {
+		guard.release()
+	}
+	if C.mysql_query(guard.conn, query.str) != 0 {
+		throw_mysql_error_for_conn(guard.conn)!
+	}
+
+	result := C.mysql_store_result(guard.conn)
+	if result == unsafe { nil } {
+		if get_errno(guard.conn) != 0 {
+			throw_mysql_error_for_conn(guard.conn)!
+		}
+		return []orm.Row{}
+	} else {
+		res := Result{result}
+		defer { unsafe { res.free() } }
+		fields := res.fields()
+		mut names := []string{}
+		for f in fields {
+			names << f.name
+		}
+		rows := res.rows()
+		return rows.map(orm.Row{ vals: it.vals, names: names })
+	}
+}
+
+// orm_begin starts a transaction for ORM helpers.
+pub fn (mut db DB) orm_begin() ! {
+	db.begin()!
+}
+
+// orm_commit commits a transaction for ORM helpers.
+pub fn (mut db DB) orm_commit() ! {
+	db.commit()!
+}
+
+// orm_rollback rolls back a transaction for ORM helpers.
+pub fn (mut db DB) orm_rollback() ! {
+	db.rollback()!
+}
+
+// orm_savepoint creates a savepoint for ORM helpers.
+pub fn (mut db DB) orm_savepoint(name string) ! {
+	db.savepoint(name)!
+}
+
+// orm_rollback_to rolls back to a savepoint for ORM helpers.
+pub fn (mut db DB) orm_rollback_to(name string) ! {
+	db.rollback_to(name)!
+}
+
+// orm_release_savepoint releases a savepoint for ORM helpers.
+pub fn (mut db DB) orm_release_savepoint(name string) ! {
+	db.release_savepoint(name)!
 }
 
 // mysql_stmt_worker executes the `query` with the provided `data` and `where` parameters
@@ -194,6 +277,12 @@ fn mysql_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryDat
 fn mysql_stmt_bind_query_data(mut stmt Stmt, d orm.QueryData) ! {
 	for data in d.data {
 		stmt_bind_primitive(mut stmt, data)
+	}
+}
+
+fn stmt_bind_array[T](mut stmt Stmt, data []T) {
+	for element in data {
+		stmt_bind_primitive(mut stmt, orm.Primitive(element))
 	}
 }
 
@@ -247,21 +336,67 @@ fn stmt_bind_primitive(mut stmt Stmt, data orm.Primitive) {
 			stmt.bind_null()
 		}
 		[]orm.Primitive {
-			for element in data {
-				stmt_bind_primitive(mut stmt, element)
-			}
+			stmt_bind_array(mut stmt, data)
+		}
+		[]bool {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]f32 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]f64 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]i16 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]i64 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]i8 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]int {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]string {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]time.Time {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]u16 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]u32 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]u64 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]u8 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]orm.InfixType {
+			stmt_bind_array(mut stmt, data)
 		}
 	}
 }
 
 // data_pointers_to_primitives returns an array of `Primitive`
 // cast from `data_pointers` using `types`.
-fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int, field_types []FieldType) ![]orm.Primitive {
+fn data_pointers_to_primitives(is_null []C.v_mysql_bool, data_pointers []&u8, types []int, field_types []FieldType) ![]orm.Primitive {
 	mut result := []orm.Primitive{}
 
 	for i, data in data_pointers {
 		mut primitive := orm.Primitive(0)
-		if !is_null[i] {
+		if is_null[i] == 0 {
+			if field_types[i] in [.type_decimal, .type_newdecimal] {
+				decimal_value := unsafe { cstring_to_vstring(&char(data)) }
+				primitive = decimal_string_to_primitive(decimal_value, types[i])!
+				result << primitive
+				continue
+			}
 			match types[i] {
 				orm.type_idx['i8'] {
 					primitive = *(unsafe { &i8(data) })
@@ -269,7 +404,18 @@ fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int,
 				orm.type_idx['i16'] {
 					primitive = *(unsafe { &i16(data) })
 				}
-				orm.type_idx['int'], orm.serial {
+				orm.type_idx['int'] {
+					$if new_int ? && x64 {
+						primitive = match field_types[i] {
+							.type_long { orm.Primitive(int(*(unsafe { &i32(data) }))) }
+							.type_longlong { orm.Primitive(int(*(unsafe { &i64(data) }))) }
+							else { return error('Unsupported MySQL field type ${field_types[i]} for V int') }
+						}
+					} $else {
+						primitive = *(unsafe { &int(data) })
+					}
+				}
+				orm.serial {
 					primitive = *(unsafe { &int(data) })
 				}
 				orm.type_idx['i64'] {
@@ -302,7 +448,7 @@ fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int,
 				orm.time_ {
 					match field_types[i] {
 						.type_long {
-							timestamp := *(unsafe { &int(data) })
+							timestamp := int(*(unsafe { &i32(data) }))
 							primitive = time.unix(timestamp)
 						}
 						.type_datetime, .type_timestamp {
@@ -327,6 +473,44 @@ fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int,
 	return result
 }
 
+fn decimal_string_to_primitive(value string, typ int) !orm.Primitive {
+	return match typ {
+		orm.type_idx['i8'] {
+			orm.Primitive(strconv.atoi8(value)!)
+		}
+		orm.type_idx['i16'] {
+			orm.Primitive(strconv.atoi16(value)!)
+		}
+		orm.type_idx['int'], orm.serial {
+			orm.Primitive(strconv.atoi(value)!)
+		}
+		orm.type_idx['i64'], orm.enum_ {
+			orm.Primitive(strconv.atoi64(value)!)
+		}
+		orm.type_idx['u8'] {
+			orm.Primitive(strconv.atou8(value)!)
+		}
+		orm.type_idx['u16'] {
+			orm.Primitive(strconv.atou16(value)!)
+		}
+		orm.type_idx['u32'] {
+			orm.Primitive(strconv.atou32(value)!)
+		}
+		orm.type_idx['u64'] {
+			orm.Primitive(strconv.atou64(value)!)
+		}
+		orm.type_idx['f32'] {
+			orm.Primitive(f32(strconv.atof64(value)!))
+		}
+		orm.type_idx['f64'] {
+			orm.Primitive(strconv.atof64(value)!)
+		}
+		else {
+			return error('Unknown decimal target type ${typ}')
+		}
+	}
+}
+
 // mysql_type_from_v converts the V type to the corresponding MySQL type.
 fn mysql_type_from_v(typ int) !string {
 	sql_type := match typ {
@@ -336,7 +520,14 @@ fn mysql_type_from_v(typ int) !string {
 		orm.type_idx['i16'], orm.type_idx['u16'] {
 			'SMALLINT'
 		}
-		orm.type_idx['int'], orm.type_idx['u32'], orm.time_ {
+		orm.type_idx['int'] {
+			$if new_int ? && x64 {
+				'BIGINT'
+			} $else {
+				'INT'
+			}
+		}
+		orm.type_idx['u32'], orm.time_ {
 			'INT'
 		}
 		orm.type_idx['i64'], orm.type_idx['u64'], orm.enum_ {
@@ -370,16 +561,20 @@ fn mysql_type_from_v(typ int) !string {
 fn (db DB) convert_query_data_to_primitives(table string, data orm.QueryData) ![]orm.Primitive {
 	mut column_type_map := db.get_table_column_type_map(table)!
 	mut converted_data := []orm.Primitive{}
+	if data.fields.len == 0 {
+		return converted_data
+	}
 
-	for i, field in data.fields {
-		if data.data[i].type_name() == 'time.Time' {
+	for i, primitive in data.data {
+		field := data.fields[i % data.fields.len]
+		if primitive.type_name() == 'time.Time' {
 			if column_type_map[field] in ['datetime', 'timestamp'] {
-				converted_data << orm.Primitive((data.data[i] as time.Time).str())
+				converted_data << orm.Primitive((primitive as time.Time).str())
 			} else {
-				converted_data << data.data[i]
+				converted_data << primitive
 			}
 		} else {
-			converted_data << data.data[i]
+			converted_data << primitive
 		}
 	}
 
@@ -392,8 +587,6 @@ fn (db DB) get_table_column_type_map(table string) !map[string]string {
 	data_type_query := "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${table}'"
 	mut column_type_map := map[string]string{}
 	results := db.query(data_type_query)!
-
-	db.use_result()
 
 	for row in results.rows() {
 		column_type_map[row.vals[0]] = row.vals[1]

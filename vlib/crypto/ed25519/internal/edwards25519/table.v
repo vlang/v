@@ -1,6 +1,6 @@
 module edwards25519
 
-import crypto.internal.subtle
+import crypto.subtle
 
 // A precomputed lookup table for fixed-base, constant-time scalar muls.
 struct AffineLookupTable {

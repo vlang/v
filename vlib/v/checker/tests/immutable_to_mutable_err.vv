@@ -5,6 +5,11 @@ pub mut:
 	foo []int = [1, 2, 3]
 }
 
+struct TestAlias {
+mut:
+	list []string
+}
+
 fn main() {
 	arr := [1, 2, 3] // declared as immutable!
 	mut arr_mut := if true { arr } else { []int{} }
@@ -26,6 +31,12 @@ fn main() {
 	mut arr_mut4 := a.bar
 	arr_mut4[0] = 999
 	assert a.bar == [1, 2, 3]
+
+	s := TestAlias{
+		list: ['aaa']
+	}
+	mut s2 := s
+	s2.list[0] = 'bbb'
 
 	_ := a.bar
 }

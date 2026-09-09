@@ -1,0 +1,34 @@
+struct Context {
+	ok bool
+}
+
+type Handler[T] = fn (mut T) bool
+
+@[params]
+struct Options[T] {
+	handler Handler[T] @[required]
+}
+
+struct Middleware[T] {}
+
+fn (mut m Middleware[T]) use(options Options[T]) {}
+
+struct App {
+	Middleware[Context]
+mut:
+	hits int
+}
+
+fn create_options(mut app App) Options[Context] {
+	return Options[Context]{
+		handler: fn [mut app] (mut ctx Context) bool {
+			app.hits++
+			return ctx.ok
+		}
+	}
+}
+
+fn main() {
+	mut app := &App{}
+	app.use(handler: create_options(mut app))
+}

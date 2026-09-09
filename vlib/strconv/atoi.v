@@ -190,11 +190,15 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 	// TODO: check should u64(bit_size-1) be size of int (32)?
 	cutoff := u64(1) << u64(bit_size - 1)
 	if !neg && un >= cutoff {
-		// return error('parse_int: range error ${s0}')
+		if error_on_high_digit {
+			return error('common_parse_int: integer overflow ${_s}')
+		}
 		return i64(cutoff - u64(1))
 	}
 	if neg && un > cutoff {
-		// return error('parse_int: range error ${s0}')
+		if error_on_high_digit {
+			return error('common_parse_int: integer overflow ${_s}')
+		}
 		return -i64(cutoff)
 	}
 	return if neg { -i64(un) } else { i64(un) }
@@ -213,7 +217,7 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 // correspond to int, int8, int16, int32, and int64.
 // If bitSize is below 0 or above 64, an error is returned.
 pub fn parse_int(_s string, base int, _bit_size int) !i64 {
-	return common_parse_int(_s, base, _bit_size, true, true)
+	return common_parse_int(_s, base, _bit_size, true, false)
 }
 
 // atoi_common_check perform basics check on string to parse:

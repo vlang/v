@@ -22,6 +22,7 @@ fn set_value(operand Operand, val2 &Value) {
 			panic('ERR')
 		}
 	}
+
 	assert val1.str() == val2.str()
 }
 

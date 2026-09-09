@@ -167,6 +167,7 @@ fn (mut am AssetManager) minify_and_cache(asset_type AssetType, file_path string
 		.js { minify_js(txt) }
 		else { '' }
 	}
+
 	os.write_file(output_path, minified)!
 
 	am.cached_file_names << output_file

@@ -79,10 +79,14 @@ pub fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 		ast.Enum {
 			return g.get_wasm_type(ts.info.typ)
 		}
+		ast.FnType {
+			return wasm.ValType.i32_t // index into the indirect function table
+		}
 		else {}
 	}
 
-	g.w_error("get_wasm_type: unreachable type '${*g.table.sym(typ)}' ${ts.info}")
+	g.v_error('the wasm backend does not support type `${g.table.type_to_str(typ)}` yet',
+		g.current_pos)
 }
 
 pub fn (mut g Gen) infix_param_type(typ ast.Type, op token.Kind) {
@@ -91,8 +95,8 @@ pub fn (mut g Gen) infix_param_type(typ ast.Type, op token.Kind) {
 			g.handle_string_operation(op)
 		}
 		else {
-			eprintln(*g.table.sym(typ))
-			panic('unimplemented infix operation for type')
+			g.v_error('the wasm backend does not support `${op}` for type `${g.table.type_to_str(typ)}` yet',
+				g.current_pos)
 		}
 	}
 }
@@ -149,7 +153,7 @@ fn (mut g Gen) emit_comparison_op(wasm_typ wasm.NumType, typ ast.Type, op token.
 	}
 }
 
-fn (mut g Gen) emit_bitwise_op(wasm_typ wasm.NumType, typ ast.Type, op token.Kind) {
+fn (mut g Gen) emit_bitwise_op(wasm_typ wasm.NumType, _typ ast.Type, op token.Kind) {
 	match op {
 		.xor { g.func.b_xor(wasm_typ) }
 		.pipe { g.func.b_or(wasm_typ) }

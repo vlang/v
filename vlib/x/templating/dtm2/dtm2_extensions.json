@@ -1,0 +1,4 @@
+{
+	"html": [".html", ".htm", ".xml"],
+	"text": [".txt", ".text"]
+}

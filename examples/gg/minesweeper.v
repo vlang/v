@@ -108,6 +108,7 @@ fn on_event(e &gg.Event, mut g Game) {
 			.r { g.restart() }
 			else {}
 		}
+
 		return
 	}
 	if g.game_over {

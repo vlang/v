@@ -1,4 +1,3 @@
-// vtest build: !sanitize-address-clang-without-gc
 struct FooParams[K, V] {
 	k  K
 	v  V

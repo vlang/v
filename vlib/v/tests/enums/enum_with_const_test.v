@@ -14,6 +14,7 @@ fn test_enum_with_const() {
 		.b { 'b' }
 		.c { 'c' }
 	}
+
 	println(ret)
 	assert ret == 'a'
 }

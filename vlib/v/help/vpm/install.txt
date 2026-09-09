@@ -12,5 +12,7 @@ Options:
   --help, -h   Prints the help menu
   --once       Only install the package if it was not previously installed
   -v           Print more details about the performed operation.
+  -m, --mirror Adds a fallback vpm mirror for package metadata and download count requests.
+               Can be given multiple times. Official vpm servers are still tried first.
   -server-url  When doing network operations, use this vpm server.
                Can be given multiple times.

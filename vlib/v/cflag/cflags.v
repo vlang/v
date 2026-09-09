@@ -82,6 +82,9 @@ pub fn (cf &CFlag) format() ?string {
 	// convert to absolute path
 	if cf.name == '-I' || cf.name == '-L' || value.ends_with('.o') {
 		value = '"' + os.real_path(value) + '"'
+		if cf.name in ['-I', '-L'] {
+			return '${cf.name}${value}'.trim_space()
+		}
 	}
 	return '${cf.name} ${value}'.trim_space()
 }
@@ -145,7 +148,17 @@ pub fn (cflags []CFlag) defines_others_libs() ([]string, []string, []string) {
 			libs << copt
 			continue
 		}
-		if copt.ends_with('.a') {
+		if copt.ends_with('.a') || copt.ends_with('.so') || copt.ends_with('.dylib')
+			|| copt.ends_with('.dll') || copt.ends_with('.lib') {
+			windows_import_libs := split_bare_windows_import_libs(copt)
+			if windows_import_libs.len > 0 {
+				libs << windows_import_libs.map(windows_import_lib_to_link_flag(it))
+				continue
+			}
+			if is_bare_windows_import_lib(copt) {
+				libs << windows_import_lib_to_link_flag(copt)
+				continue
+			}
 			libs << '"${copt}"'
 			continue
 		}
@@ -166,6 +179,104 @@ pub fn (cflags []CFlag) defines_others_libs() ([]string, []string, []string) {
 		others << copt
 	}
 	return uniq_non_empty(defines), uniq_non_empty(others), uniq_non_empty(libs)
+}
+
+fn split_bare_windows_import_libs(value string) []string {
+	parts := split_quoted_flags(value)
+	if parts.len < 2 {
+		return []string{}
+	}
+	for part in parts {
+		if !is_bare_windows_import_lib(part) {
+			return []string{}
+		}
+	}
+	return parts
+}
+
+fn is_bare_windows_import_lib(value string) bool {
+	lib := value.trim_space()
+	return lib.len > '.lib'.len && lib.to_lower().ends_with('.lib') && !lib.contains('/')
+		&& !lib.contains('\\') && !lib.contains(':') && !lib.contains(' ') && !lib.contains('\t')
+}
+
+fn windows_import_lib_to_link_flag(value string) string {
+	lib := value.trim_space()
+	return '-l${lib[..lib.len - '.lib'.len]}'
+}
+
+struct QuotedFlagPart {
+	value string
+	raw   string
+}
+
+// windows_import_lib_link_args formats one C flag as ordered GNU linker arguments,
+// translating bare import-library names while retaining quoted direct paths.
+pub fn (cf &CFlag) windows_import_lib_link_args() []string {
+	parts := split_quoted_flag_parts(cf.value)
+	if parts.len == 0 {
+		formatted := cf.format() or { return []string{} }
+		return [formatted]
+	}
+	mut args := []string{cap: parts.len}
+	mut first_extra := 0
+	if cf.name != '' {
+		first := CFlag{
+			mod:   cf.mod
+			os:    cf.os
+			name:  cf.name
+			value: parts[0].value
+		}
+		formatted := first.format() or { return []string{} }
+		args << formatted
+		first_extra = 1
+	}
+	for part in parts[first_extra..] {
+		if !part.value.starts_with('-') && is_bare_windows_import_lib(part.value) {
+			args << windows_import_lib_to_link_flag(part.value)
+		} else {
+			args << part.raw
+		}
+	}
+	return args
+}
+
+fn split_quoted_flags(value string) []string {
+	return split_quoted_flag_parts(value).map(it.value)
+}
+
+fn split_quoted_flag_parts(value string) []QuotedFlagPart {
+	mut parts := []QuotedFlagPart{}
+	mut buf := []u8{}
+	mut raw := []u8{}
+	mut in_quote := false
+	for ch in value {
+		if ch == `"` {
+			in_quote = !in_quote
+			raw << ch
+			continue
+		}
+		if !in_quote && ch in [` `, `\t`] {
+			if buf.len > 0 {
+				parts << QuotedFlagPart{
+					value: buf.bytestr()
+					raw:   raw.bytestr()
+				}
+				buf = []u8{}
+			}
+			raw = []u8{}
+			continue
+		}
+		buf << ch
+		raw << ch
+	}
+	if buf.len > 0 {
+		parts << QuotedFlagPart{
+			value: buf.bytestr()
+			raw:   raw.bytestr()
+		}
+	}
+	return parts
 }
 
 fn uniq_non_empty(args []string) []string {

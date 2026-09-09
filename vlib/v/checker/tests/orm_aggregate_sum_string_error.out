@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_aggregate_sum_string_error.vv:10:7: error: ORM: `sum` aggregate requires a numeric field
+    8 | fn main() {
+    9 |     db := sqlite.connect(':memory:')!
+   10 |     _ := sql db {
+      |          ~~~~~~~~
+   11 |         select sum(name) from User
+   12 |     }!

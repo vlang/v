@@ -1,0 +1,26 @@
+// Regression test for issue #18320.
+struct CustomStruct {
+pub:
+	a int
+	b string
+}
+
+interface BaseInterface {
+	a int
+}
+
+fn callback[T](ctx BaseInterface, cb fn (T)) {
+	$if T is BaseInterface {
+		cb(ctx)
+	}
+}
+
+fn main() {
+	custom := CustomStruct{
+		a: 5
+		b: 'test'
+	}
+	callback(custom, fn (ctx CustomStruct) {
+		println(ctx)
+	})
+}

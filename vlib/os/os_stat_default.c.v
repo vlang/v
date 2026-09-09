@@ -12,14 +12,14 @@ pub fn stat(path string) !Stat {
 			return error_posix()
 		}
 		return Stat{
-			dev:   s.st_dev
+			dev:   u64(s.st_dev)
 			inode: s.st_ino
 			nlink: s.st_nlink
 			mode:  s.st_mode
 			uid:   s.st_uid
 			gid:   s.st_gid
-			rdev:  s.st_rdev
-			size:  s.st_size
+			rdev:  u64(s.st_rdev)
+			size:  u64(s.st_size)
 			atime: s.st_atime
 			mtime: s.st_mtime
 			ctime: s.st_ctime
@@ -37,14 +37,14 @@ pub fn lstat(path string) !Stat {
 			return error_posix()
 		}
 		return Stat{
-			dev:   s.st_dev
+			dev:   u64(s.st_dev)
 			inode: s.st_ino
 			nlink: s.st_nlink
 			mode:  s.st_mode
 			uid:   s.st_uid
 			gid:   s.st_gid
-			rdev:  s.st_rdev
-			size:  s.st_size
+			rdev:  u64(s.st_rdev)
+			size:  u64(s.st_size)
 			atime: s.st_atime
 			mtime: s.st_mtime
 			ctime: s.st_ctime

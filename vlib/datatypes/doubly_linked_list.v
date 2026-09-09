@@ -53,34 +53,34 @@ pub fn (list DoublyLinkedList[T]) last() !T {
 
 // push_back adds an element to the end of the linked list
 pub fn (mut list DoublyLinkedList[T]) push_back(item T) {
-	mut new_node := &DoublyListNode[T]{
+	mut created := &DoublyListNode[T]{
 		data: item
 	}
 	if list.is_empty() {
 		// first node case
-		list.head = new_node
-		list.tail = new_node
+		list.head = created
+		list.tail = created
 	} else {
-		list.tail.next = new_node
-		new_node.prev = list.tail
-		list.tail = new_node
+		list.tail.next = created
+		created.prev = list.tail
+		list.tail = created
 	}
 	list.len += 1
 }
 
 // push_front adds an element to the beginning of the linked list
 pub fn (mut list DoublyLinkedList[T]) push_front(item T) {
-	mut new_node := &DoublyListNode[T]{
+	mut created := &DoublyListNode[T]{
 		data: item
 	}
 	if list.is_empty() {
 		// first node case
-		list.head = new_node
-		list.tail = new_node
+		list.head = created
+		list.tail = created
 	} else {
-		list.head.prev = new_node
-		new_node.next = list.head
-		list.head = new_node
+		list.head.prev = created
+		created.next = list.head
+		list.head = created
 	}
 	list.len += 1
 }

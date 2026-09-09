@@ -1,0 +1,18 @@
+fn maybe_int() ?int {
+	return 1
+}
+
+fn result_int() !int {
+	return 1
+}
+
+fn return_if_with_option_value(x bool) (int, int) {
+	return if x { maybe_int(), 1 } else { 2, 2 }
+}
+
+fn return_match_with_result_value(x bool) (int, int) {
+	return match x {
+		true { result_int(), 1 }
+		else { 2, 2 }
+	}
+}

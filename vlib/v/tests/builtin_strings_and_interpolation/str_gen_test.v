@@ -261,10 +261,24 @@ fn generic_fn_str[T](p T) string {
 	return p.str()
 }
 
+fn generic_fn_println[T](p T) string {
+	println(p)
+	return typeof(p).name
+}
+
 fn test_generic_auto_str() {
 	s := ForGeneric{}
 	assert generic_fn_interpolation(s) == 'ForGeneric{}'
 	assert generic_fn_str(s) == 'ForGeneric{}'
+}
+
+fn test_generic_pointer_auto_str_for_println() {
+	s := ForGeneric{}
+	assert generic_fn_println(&s) == '&ForGeneric'
+	p1 := &s
+	p2 := &p1
+	p3 := &p2
+	assert generic_fn_println(p3) == '&&&ForGeneric'
 }
 
 type Alias1 = int

@@ -24,5 +24,6 @@ fn test_match() {
 		5 { ['Big', '5x5']! }
 		else { ['Large', '6x6']! }
 	}
+
 	assert w.str() == "['Large', '6x6']"
 }

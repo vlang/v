@@ -19,7 +19,6 @@ fn main() {
 		init_userdata_cb:  init
 		frame_userdata_cb: frame
 		window_title:      &char(title.str)
-		html5_canvas_name: &char(title.str)
 	}
 	sapp.run(&desc)
 }

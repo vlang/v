@@ -1,3 +1,5 @@
+import time
+
 interface MyInterface {
 	foo() string
 }
@@ -8,6 +10,7 @@ pub mut:
 }
 
 struct MyImplementor {
+mut:
 	num int
 }
 
@@ -47,6 +50,44 @@ fn test_shared_interface_lock_2() {
 	lock s.fooer {
 		assert s.fooer.foo() == 'Hello World (1, 2, testing)!'
 	}
+}
+
+fn test_shared_interface_lock_blocks_the_original_shared_value() {
+	shared imp := MyImplementor{
+		num: 6
+	}
+	s := MyStruct{
+		fooer: imp
+	}
+	ready := chan bool{}
+	proceed := chan bool{}
+	done := chan bool{}
+	task := spawn modify_shared_interface_impl(shared imp, ready, proceed, done)
+	_ := <-ready
+	lock s.fooer {
+		proceed <- true
+		select {
+			_ := <-done {
+				assert false, 'shared interface value was modified before the field lock was released'
+			}
+			20 * time.millisecond {}
+		}
+		assert s.fooer.foo() == 'Hello World 6!'
+	}
+	_ := <-done
+	task.wait()
+	lock s.fooer {
+		assert s.fooer.foo() == 'Hello World 7!'
+	}
+}
+
+fn modify_shared_interface_impl(shared x MyImplementor, ready chan bool, proceed chan bool, done chan bool) {
+	ready <- true
+	_ := <-proceed
+	lock x {
+		x.num++
+	}
+	done <- true
 }
 
 // TODO: Fix modifying shared interface value

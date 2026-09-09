@@ -3,7 +3,6 @@ import time
 import term
 import v.util.version
 import runtime
-import encoding.iconv
 
 struct App {
 mut:
@@ -94,9 +93,6 @@ fn (mut a App) collect_info() {
 		)
 		p := a.parse(wmic_info, '=')
 		mut caption, mut build_number, mut os_arch := p['caption'], p['buildnumber'], p['osarchitecture']
-		caption = iconv.encoding_to_vstring(caption.bytes(), 'ANSI') or { caption }
-		build_number = iconv.encoding_to_vstring(build_number.bytes(), 'ANSI') or { build_number }
-		os_arch = iconv.encoding_to_vstring(os_arch.bytes(), 'ANSI') or { os_arch }
 		os_details = '${caption} ${build_number} ${os_arch}'
 	} else {
 		ouname := os.uname()

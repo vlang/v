@@ -16,17 +16,24 @@ vlib/v/checker/tests/fn_var.vv:4:5: error: cannot assign to `p`: expected `&fn (
       |     ^
     5 | _ = p
     6 | i := 0
-vlib/v/checker/tests/fn_var.vv:9:10: error: undefined ident: `i`
+vlib/v/checker/tests/fn_var.vv:9:10: error: `i` must be explicitly listed as inherited variable to be used inside a closure
     7 | println(i)
     8 | f = fn (mut a []int) {
     9 |     println(i)
       |             ^
    10 | }
+Details: use `fn [i] () {` instead of `fn () {`
 vlib/v/checker/tests/fn_var.vv:9:2: error: `println` can not print void expressions
     7 | println(i)
     8 | f = fn (mut a []int) {
     9 |     println(i)
       |     ~~~~~~~~~~
+   10 | }
+vlib/v/checker/tests/fn_var.vv:9:10: error: undefined ident: `i`
+    7 | println(i)
+    8 | f = fn (mut a []int) {
+    9 |     println(i)
+      |             ^
    10 | }
 vlib/v/checker/tests/fn_var.vv:8:5: error: cannot assign to `f`: expected `fn (int) u8`, not `fn (mut []int)`
     6 | i := 0

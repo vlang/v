@@ -1,0 +1,63 @@
+struct Tree {
+	child map[string]TreeNode
+}
+
+struct TreeNode {
+	tree Tree
+}
+
+struct EnumStmt {
+	name string
+}
+
+struct BasicValueStmt {
+	value string
+}
+
+enum NameCase {
+	snake_case
+}
+
+enum NameKind {
+	other
+	field
+}
+
+struct VAST {}
+
+fn (v VAST) extract_const_or_enum(tree Tree, enum_stmt EnumStmt, already_defined bool) EnumStmt {
+	return enum_stmt
+}
+
+fn (v VAST) get_name(tree Tree, name_case NameCase, name_kind NameKind) string {
+	return ''
+}
+
+fn (v VAST) get_type(tree Tree) string {
+	return ''
+}
+
+fn main() {
+	tree := Tree{}
+	decl := TreeNode{}
+	field_name := TreeNode{}
+	field := TreeNode{}
+	mut v := VAST{}
+	enum_stmt := EnumStmt{}
+	mut values := map[string]BasicValueStmt{}
+	if true {
+		if true {
+			if true {
+				if true {
+					enum_stmt = v.extract_const_or_enum(decl.tree, enum_stmt,
+						enum_stmt.name.len > 0)
+					mut imp_name :=
+						v.get_name(tree.child['Path'].tree, .snake_case, .other)#[1..-1].replace('/', '.')
+					values[v.get_name(field_name.tree, .snake_case, .field)] =
+						BasicValueStmt{v.get_type(field.tree)}
+					println(imp_name)
+				}
+			}
+		}
+	}
+}

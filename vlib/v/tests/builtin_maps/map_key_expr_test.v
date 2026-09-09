@@ -25,3 +25,12 @@ fn test_method_call() {
 	assert m2[Enum.a.str()] == 'first'
 	assert m2[Enum.b.str()] == 'second'
 }
+
+fn test_parenthesized_comparison_key() {
+	a := 1
+	b := 1
+	m3 := {
+		(a == b).str(): 'same'
+	}
+	assert m3['true'] == 'same'
+}

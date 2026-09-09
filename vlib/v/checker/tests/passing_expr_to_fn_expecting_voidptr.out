@@ -1,3 +1,13 @@
+vlib/v/checker/tests/passing_expr_to_fn_expecting_voidptr.vv:1:13: notice: unused parameter: `s`
+    1 | fn myprintf(s string, x voidptr) {
+      |             ^
+    2 | }
+    3 |
+vlib/v/checker/tests/passing_expr_to_fn_expecting_voidptr.vv:1:23: notice: unused parameter: `x`
+    1 | fn myprintf(s string, x voidptr) {
+      |                       ^
+    2 | }
+    3 |
 vlib/v/checker/tests/passing_expr_to_fn_expecting_voidptr.vv:4:23: error: expression cannot be passed as `voidptr`
     2 | }
     3 | 

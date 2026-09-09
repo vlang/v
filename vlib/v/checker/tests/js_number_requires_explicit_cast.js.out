@@ -1,0 +1,6 @@
+vlib/v/checker/tests/js_number_requires_explicit_cast.vv:7:4: error: cannot use `int` as `JS.Number` without an explicit cast (e.g. `JS.Number(value)`)
+    5 | fn main() {
+    6 |     d := 1
+    7 |     x(d)
+      |       ^
+    8 | }

@@ -1,7 +1,7 @@
 import net.http
 import os
 import rand
-import x.json2 as json
+import json2 as json
 
 struct Weather {
 	lang   string

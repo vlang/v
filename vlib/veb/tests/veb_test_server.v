@@ -17,6 +17,8 @@ pub fn (mut ctx ServerContext) not_found() veb.Result {
 }
 
 pub struct ServerApp {
+mut:
+	server        &veb.Server = unsafe { nil }
 	port          int
 	timeout       int
 	global_config Config
@@ -58,8 +60,10 @@ fn main() {
 	)!
 }
 
-// pub fn (mut app ServerApp) init_server() {
-//}
+// init_server stores the veb server handle when lifecycle control is available.
+pub fn (mut app ServerApp) init_server(server &veb.Server) {
+	app.server = server
+}
 
 pub fn (mut app ServerApp) index(mut ctx ServerContext) veb.Result {
 	assert app.global_config.max_ping == 50

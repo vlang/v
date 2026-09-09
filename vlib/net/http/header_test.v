@@ -83,7 +83,7 @@ fn test_delete_header() {
 	mut r := new_request(.get, '', '')
 	r.header.set(.authorization, 'foo')
 	r.header.delete(.authorization)
-	assert r.header.get(.authorization)! == ''
+	assert r.header.get(.authorization)? == ''
 }
 
 fn test_custom_header() {
@@ -123,9 +123,9 @@ fn test_contains_custom() {
 fn test_get_custom() {
 	mut h := new_header()
 	h.add_custom('Hello', 'world')!
-	assert h.get_custom('hello')! == 'world'
-	assert h.get_custom('HELLO')! == 'world'
-	assert h.get_custom('Hello', exact: true)! == 'world'
+	assert h.get_custom('hello')? == 'world'
+	assert h.get_custom('HELLO')? == 'world'
+	assert h.get_custom('Hello', exact: true)? == 'world'
 	if _ := h.get_custom('hello', exact: true) {
 		// should be none
 		assert false
@@ -311,12 +311,12 @@ fn test_header_from_map() {
 
 fn test_custom_header_from_map() {
 	h := new_custom_header_from_map({
-		'Server': 'VWeb'
+		'Server': 'Veb'
 		'foo':    'bar'
 	})!
 	assert h.contains_custom('server')
 	assert h.contains_custom('foo')
-	assert h.get_custom('server') or { '' } == 'VWeb'
+	assert h.get_custom('server') or { '' } == 'Veb'
 	assert h.get_custom('foo') or { '' } == 'bar'
 }
 
@@ -326,7 +326,7 @@ fn test_header_join() {
 		CommonHeader.expires: 'yesterday'
 	})
 	h2 := new_custom_header_from_map({
-		'Server': 'VWeb'
+		'Server': 'Veb'
 		'foo':    'bar'
 	})!
 	h3 := h1.join(h2)

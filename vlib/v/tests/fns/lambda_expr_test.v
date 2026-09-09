@@ -54,3 +54,28 @@ fn f4(g fn (int) string) {
 fn test_params_has_blank_ident() {
 	f4(|_| 'hello')
 }
+
+fn test_lambda_expr_can_omit_unused_callback_params() {
+	assert f1(|| 4) == 4
+	assert f2(|x| x + 4) == 14
+}
+
+struct LambdaData {
+	value int
+}
+
+fn compare_lambda_data(compare fn (&LambdaData, &LambdaData) bool, a &LambdaData, b &LambdaData) bool {
+	return compare(a, b)
+}
+
+fn test_inferred_lambda_reference_parameters_compare_values() {
+	a := LambdaData{}
+	b := LambdaData{}
+	c := LambdaData{
+		value: 1
+	}
+	assert compare_lambda_data(|x, y| x == y, a, b)
+	assert !compare_lambda_data(|x, y| x != y, a, b)
+	assert !compare_lambda_data(|x, y| x == y, a, c)
+	assert compare_lambda_data(|x, y| x != y, a, c)
+}

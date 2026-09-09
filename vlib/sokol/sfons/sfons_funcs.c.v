@@ -19,7 +19,7 @@ pub:
 	allocator C.sfons_allocator_t // optional memory allocation overrides
 }
 
-fn C.sfons_create(desc &C.sfons_desc_t) &fontstash.Context
+fn C.sfons_create(const_desc &C.sfons_desc_t) &fontstash.Context
 fn C.sfons_destroy(ctx &fontstash.Context)
 fn C.sfons_flush(ctx &fontstash.Context)
 

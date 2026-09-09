@@ -231,10 +231,11 @@ pub:
 	resized_fn FNEvent   = unsafe { nil }
 	scroll_fn  FNEvent   = unsafe { nil }
 	// wait_events       bool // set this to true for UIs, to save power
-	fullscreen    bool
-	scale         f32 = 1.0
-	sample_count  int
-	swap_interval int = 1 // 1 = 60fps, 2 = 30fps etc. The preferred swap interval (ignored on some platforms)
+	fullscreen     bool
+	scale          f32 = 1.0
+	sample_count   int
+	texture_filter TextureFilter = .linear
+	swap_interval  int           = 1 // 1 = 60fps, 2 = 30fps etc. Ignored by the JS backend; frame pacing follows requestAnimationFrame.
 	// ved needs this
 	// init_text bool
 	font_path             string
@@ -467,8 +468,8 @@ pub fn (mut ctx Context) end() {
 pub fn (mut ctx Context) draw_line(x1 f32, y1 f32, x2 f32, y2 f32, c Color) {
 	ctx.context.beginPath()
 	ctx.context.strokeStyle = c.to_css_string().str
-	ctx.context.moveTo(x1, y1)
-	ctx.context.lineTo(x2, y2)
+	ctx.context.moveTo(JS.Number(x1), JS.Number(y1))
+	ctx.context.lineTo(JS.Number(x2), JS.Number(y2))
 	ctx.context.stroke()
 	ctx.context.closePath()
 }
@@ -479,13 +480,14 @@ pub fn (mut ctx Context) quit() {
 pub fn (mut ctx Context) draw_rect(x f32, y f32, w f32, h f32, c Color) {
 	ctx.context.beginPath()
 	ctx.context.fillStyle = c.to_css_string().str
-	ctx.context.fillRect(x, y, w, h)
+	ctx.context.fillRect(JS.Number(x), JS.Number(y), JS.Number(w), JS.Number(h))
 	ctx.context.closePath()
 }
 
 fn gg_animation_frame_fn(mut g Context) {
 	g.frame++
-	g.context.clearRect(0, 0, g.config.width, g.config.height)
+	g.context.clearRect(JS.Number(0), JS.Number(0), JS.Number(g.config.width),
+		JS.Number(g.config.height))
 	// todo(playXE): handle events
 
 	if !isnil(g.config.frame_fn) {
@@ -519,10 +521,11 @@ fn (mut g Context) handle_mouse_event(event JS.MouseEvent, typ DOMEventType) Eve
 			e.mouse_button = .invalid
 		}
 	}
-	e.mouse_x = int(event.offsetX)
-	e.mouse_y = int(event.offsetY)
-	e.mouse_dx = int(event.movementX)
-	e.mouse_dy = int(event.movementY)
+
+	e.mouse_x = f32(event.offsetX)
+	e.mouse_y = f32(event.offsetY)
+	e.mouse_dx = f32(event.movementX)
+	e.mouse_dy = f32(event.movementY)
 	bitplace := int(event.button)
 	g.mbtn_mask |= u8(1 << bitplace)
 	// g.mouse_buttons = MouseButtons(g.mbtn_mask)

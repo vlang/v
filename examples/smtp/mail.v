@@ -19,7 +19,7 @@ fn main() {
 	to := os.input('To: ')
 	subject := os.input('Subject: ')
 	body := os.input('Body: ')
-	client_cfg := smtp.Client{
+	client_cfg := smtp.Config{
 		server:   mailserver
 		from:     from
 		port:     mailport

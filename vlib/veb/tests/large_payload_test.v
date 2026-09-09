@@ -1,4 +1,5 @@
 // vtest retry: 3
+// vtest build: !windows // fasthttp.Server.run is not implemented on windows yet
 import veb
 import net.http
 import time
@@ -44,16 +45,16 @@ fn testsuite_begin() {
 		assert true == false, 'timeout reached!'
 		exit(1)
 	}()
-
 	mut app := &App{}
-	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
+
 	// app startup time
+	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
 	_ := <-app.started
 }
 
 fn test_large_request_body() {
 	// string of a's of 8.96mb send over the connection
-	// veb reads a maximum of 4096KB per picoev loop cycle
+	// veb reads a maximum of 4096KB per read cycle
 	// this test tests if veb is able to do multiple of these
 	// cycles and updates the response body each cycle
 	mut buf := []u8{len: veb.max_read * 10, init: `a`}
@@ -72,24 +73,24 @@ fn test_large_request_header() {
 	str := buf.bytestr()
 	// make 1 header longer than vebs max read limit
 	mut x := http.fetch(http.FetchConfig{
-		url:    localserver
+		url: localserver
 		header: http.new_custom_header_from_map({
 			'X-Overflow-Header': str
 		})!
 	})!
 
-	assert x.status() == .request_entity_too_large
+	assert x.status() == .request_header_fields_too_large
 }
 
 fn test_bigger_content_length() {
 	data := '123456789'
 	mut x := http.fetch(http.FetchConfig{
 		method: .post
-		url:    '${localserver}/post_request'
+		url: '${localserver}/post_request'
 		header: http.new_header_from_map({
 			.content_length: '10'
 		})
-		data:   data
+		data: data
 	})!
 
 	// Content-length is larger than the data sent, so the request should timeout
@@ -100,15 +101,21 @@ fn test_smaller_content_length() {
 	data := '123456789'
 	mut x := http.fetch(http.FetchConfig{
 		method: .post
-		url:    '${localserver}/post_request'
+		url: '${localserver}/post_request'
 		header: http.new_header_from_map({
 			.content_length: '5'
 		})
-		data:   data
+		data: data
 	})!
 
-	assert x.status() == .bad_request
-	assert x.body == 'Mismatch of body length and Content-Length header'
+	// The fasthttp backend frames requests by their exact declared length
+	// (RFC 9112 §6): the body is exactly Content-Length bytes and any surplus
+	// bytes begin the next request on the connection. So the handler sees the
+	// first 5 bytes ('12345') and echoes them back with 200 OK, instead of the
+	// whole 9-byte payload. Trimming to Content-Length also closes the classic
+	// request-smuggling gap where a longer body was absorbed into one request.
+	assert x.status() == .ok
+	assert x.body == '12345'
 }
 
 fn test_sendfile() {
@@ -118,6 +125,23 @@ fn test_sendfile() {
 	x := http.get('${localserver}/file')!
 
 	assert x.body.len == veb.max_write * 10
+}
+
+// Regression test for https://github.com/vlang/v/issues/27080:
+// sendfile() returned EAGAIN once the kernel send buffer filled and
+// the server gave up after 3 tight-loop retries. With proper poll()
+// based waiting, files larger than the socket send buffer must still
+// transfer in full.
+fn test_sendfile_large_payload() {
+	// 8 MiB is well above the typical SO_SNDBUF (~200 KiB on Linux),
+	// so a single sendfile() call cannot drain the whole file.
+	size := 8 * 1024 * 1024
+	mut buf := []u8{len: size, init: `b`}
+	os.write_file(tmp_file, buf.bytestr())!
+
+	x := http.get('${localserver}/file')!
+
+	assert x.body.len == size
 }
 
 fn testsuite_end() {

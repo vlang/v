@@ -1,0 +1,5 @@
+vlib/v/checker/tests/use_byte_instead_of_u8_array_param_err.vv:1:20: error: byte is deprecated, use u8 instead
+    1 | fn takes_bytes(_ []byte) {}
+      |                    ~~~~
+    2 | 
+    3 | fn main() {}

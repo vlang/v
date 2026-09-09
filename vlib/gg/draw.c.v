@@ -75,7 +75,7 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c Color) {
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
-	sgl.begin_line_strip()
+	sgl.begin_lines()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
 	sgl.end()
@@ -181,6 +181,16 @@ pub fn (ctx &Context) draw_convex_poly(points []f32, c Color) {
 	sgl.end()
 }
 
+@[inline]
+fn rect_empty_screen_bounds(scale f32, x f32, y f32, w f32, h f32) (f32, f32, f32, f32) {
+	// Keep the outline inside pixels so the top-left corner stays aligned and the
+	// border renders consistently across different OpenGL implementations.
+	toffset := f32(0.1)
+	boffset := f32(-0.1)
+	return toffset + x * scale, toffset + y * scale, boffset + (x + w) * scale, boffset +
+		(y + h) * scale
+}
+
 // draw_rect_empty draws the outline of a rectangle.
 // `x`,`y` is the top-left corner of the rectangle.
 // `w` is the width, `h` is the height and `c` is the color of the outline.
@@ -191,16 +201,7 @@ pub fn (ctx &Context) draw_rect_empty(x f32, y f32, w f32, h f32, c Color) {
 		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
-	// The small offsets here, are to make sure, that the start and end points will be
-	// inside pixels, and not on their borders. That in turn, makes it much more likely
-	// that different OpenGL implementations will render them identically, for example
-	// Mesa, with `LIBGL_ALWAYS_SOFTWARE=1` renders the same as HD4000.
-	mut toffset := f32(0.1)
-	mut boffset := f32(-0.1)
-	tleft_x := toffset + x * ctx.scale
-	tleft_y := toffset + y * ctx.scale
-	bright_x := boffset + (x + w) * ctx.scale
-	bright_y := boffset + (y + h) * ctx.scale
+	tleft_x, tleft_y, bright_x, bright_y := rect_empty_screen_bounds(ctx.scale, x, y, w, h)
 	sgl.begin_lines() // more predictable, compared to sgl.begin_line_strip, at the price of more vertexes send
 	// top:
 	sgl.v2f(tleft_x, tleft_y)
@@ -225,16 +226,7 @@ pub fn (ctx &Context) draw_rect_empty(x f32, y f32, w f32, h f32, c Color) {
 // Note: it is much more efficient to draw lots of empty rectangles one after the other,
 // without filled rectangles between them, than to draw a mix.
 pub fn (ctx &Context) draw_rect_empty_no_context(x f32, y f32, w f32, h f32, c Color) {
-	// The small offsets here, are to make sure, that the start and end points will be
-	// inside pixels, and not on their borders. That in turn, makes it much more likely
-	// that different OpenGL implementations will render them identically, for example
-	// Mesa, with `LIBGL_ALWAYS_SOFTWARE=1` renders the same as HD4000.
-	mut toffset := f32(0.1)
-	mut boffset := f32(-0.1)
-	tleft_x := toffset + x * ctx.scale
-	tleft_y := toffset + y * ctx.scale
-	bright_x := boffset + (x + w) * ctx.scale
-	bright_y := boffset + (y + h) * ctx.scale
+	tleft_x, tleft_y, bright_x, bright_y := rect_empty_screen_bounds(ctx.scale, x, y, w, h)
 	// Note: the following line is deliberately commented, compare to draw_rect_empty/5;
 	// sgl.begin_lines() // more predictable, compared to sgl.begin_line_strip, at the price of more vertexes send
 	sgl.c4b(c.r, c.g, c.b, c.a)
@@ -504,6 +496,190 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 	}
 }
 
+// draw_rounded_rect_border  draws a rounded rectangle with a border using the given parameters.
+// when border width < 1 or the color is transparent, draws a borderless filled rounded rectangle.
+// when the background is transparent, draws a hollow rounded rectangle with only a border.
+// `x`,`y` is the top-left corner of the rectangle.
+// `w` is the width, `h` is the height.
+// `r` is the radius of the corner-rounding in pixels.
+// `border_w` is the width of the border,This implementation uses the mainstream inner border scheme (extending inward).
+// `border_c` is the color of the border.
+// `bg` is the background or fill color of the rounded rectangle,supporting transparent colors.
+pub fn (ctx &Context) draw_rounded_rect_border(x f32, y f32, w f32, h f32, r f32, border_w f32, border_c Color, bg Color) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+
+	mut new_r := r
+	if r < 1 {
+		new_r = 0
+	}
+	if w >= h && r > h / 2 {
+		new_r = h / 2
+	} else if r > w / 2 {
+		new_r = w / 2
+	}
+
+	mut bw := border_w
+	if border_w < 1 {
+		bw = 0
+	}
+	if w >= h && border_w > h / 2 {
+		bw = h / 2
+	} else if border_w > w / 2 {
+		bw = w / 2
+	}
+
+	sx := x * ctx.scale // start point x
+	sy := y * ctx.scale
+	width := w * ctx.scale
+	height := h * ctx.scale
+	new_r = new_r * ctx.scale
+	bw = bw * ctx.scale
+
+	// draw background
+	ctx.draw_rounded_rect_filled(x, y, w, h, r, bg)
+
+	// draw border
+	if bw == 0 || border_c.a == 0 {
+		return
+	}
+	if border_c.a != 255 {
+		sgl.load_pipeline(ctx.pipeline.alpha)
+	}
+	sgl.c4b(border_c.r, border_c.g, border_c.b, border_c.a)
+
+	// circle center coordinates
+	ltx := sx + new_r
+	lty := sy + new_r
+	rtx := sx + width - new_r
+	rty := sy + new_r
+	rbx := sx + width - new_r
+	rby := sy + height - new_r
+	lbx := sx + new_r
+	lby := sy + height - new_r
+
+	offset := math.abs(bw - new_r)
+	mut rad := f32(0)
+	mut dx := f32(0)
+	mut dy := f32(0)
+
+	sgl.begin_triangle_strip()
+
+	if new_r == 0 {
+		// top
+		sgl.v2f(ltx, lty)
+		sgl.v2f(ltx + offset, lty + offset)
+		sgl.v2f(rtx, rty)
+		sgl.v2f(rtx - offset, rty + offset)
+		// right
+		sgl.v2f(rbx, rby)
+		sgl.v2f(rbx - offset, rby - offset)
+		// bottom
+		sgl.v2f(lbx, lby)
+		sgl.v2f(lbx + offset, lby - offset)
+		// left
+		sgl.v2f(ltx, lty)
+		sgl.v2f(ltx + offset, lty + offset)
+		sgl.end()
+		return
+	}
+
+	if bw < new_r {
+		// left top
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.cosf(rad)
+			dy = new_r * math.sinf(rad)
+			sgl.v2f(ltx - dx, lty - dy)
+			dx = offset * math.cosf(rad)
+			dy = offset * math.sinf(rad)
+			sgl.v2f(ltx - dx, lty - dy)
+		}
+
+		// right top
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.sinf(rad)
+			dy = new_r * math.cosf(rad)
+			sgl.v2f(rtx + dx, rty - dy)
+			dx = offset * math.sinf(rad)
+			dy = offset * math.cosf(rad)
+			sgl.v2f(rtx + dx, rty - dy)
+		}
+		// right bottom
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.cosf(rad)
+			dy = new_r * math.sinf(rad)
+			sgl.v2f(rbx + dx, rby + dy)
+			dx = offset * math.cosf(rad)
+			dy = offset * math.sinf(rad)
+			sgl.v2f(rbx + dx, rby + dy)
+		}
+		// left bottom
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.sinf(rad)
+			dy = new_r * math.cosf(rad)
+			sgl.v2f(lbx - dx, lby + dy)
+			dx = offset * math.sinf(rad)
+			dy = offset * math.cosf(rad)
+			sgl.v2f(lbx - dx, lby + dy)
+		}
+		// close
+		sgl.v2f(ltx - new_r, lty)
+		sgl.v2f(ltx - offset, lty)
+	} else {
+		// left top
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.cosf(rad)
+			dy = new_r * math.sinf(rad)
+			sgl.v2f(ltx - dx, lty - dy)
+			dx = offset * math.cosf(rad)
+			dy = offset * math.sinf(rad)
+			sgl.v2f(ltx + offset, lty + offset)
+		}
+
+		// right top
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.sinf(rad)
+			dy = new_r * math.cosf(rad)
+			sgl.v2f(rtx + dx, rty - dy)
+			dx = offset * math.sinf(rad)
+			dy = offset * math.cosf(rad)
+			sgl.v2f(rtx - offset, rty + offset)
+		}
+		// right bottom
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.cosf(rad)
+			dy = new_r * math.sinf(rad)
+			sgl.v2f(rbx + dx, rby + dy)
+			dx = offset * math.cosf(rad)
+			dy = offset * math.sinf(rad)
+			sgl.v2f(rbx - offset, rby - offset)
+		}
+		// left bottom
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.sinf(rad)
+			dy = new_r * math.cosf(rad)
+			sgl.v2f(lbx - dx, lby + dy)
+			dx = offset * math.sinf(rad)
+			dy = offset * math.cosf(rad)
+			sgl.v2f(lbx + offset, lby - offset)
+		}
+		// close
+		sgl.v2f(ltx - new_r, lty)
+		sgl.v2f(ltx + offset, lty + offset)
+	}
+
+	sgl.end()
+}
+
 // draw_triangle_empty draws the outline of a triangle.
 // `x`,`y` defines the first point
 // `x2`,`y2` defines the second point
@@ -582,8 +758,7 @@ fn radius_to_segments(r f32) int {
 pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c Color) {
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_circle_empty(x - radius + 1, ctx.height - (y + radius + 3),
-				radius, c)
+			C.darwin_draw_circle_empty(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
 			return
 		}
 	}
@@ -617,8 +792,7 @@ pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c Color) {
 pub fn (ctx &Context) draw_circle_filled(x f32, y f32, radius f32, c Color) {
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius,
-				c)
+			C.darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
 			return
 		}
 	}
@@ -680,8 +854,7 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, radius int, segments int, c
 
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius,
-				c)
+			C.darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius, c)
 			return
 		}
 	}
@@ -1063,10 +1236,10 @@ pub fn (ctx &Context) draw_ellipse_thick_rotate(x f32, y f32, rw f32, rh f32, th
 		xfactor := math.sinf(f32(math.radians(i)))
 		yfactor := math.cosf(f32(math.radians(i)))
 
-		sgl.v2f(x + xfactor * (rw - th / 2) * cos_rot - yfactor * (rh - th / 2) * sin_rot,
-			y + yfactor * (rh - th / 2) * cos_rot + xfactor * (rw - th / 2) * sin_rot)
-		sgl.v2f(x + xfactor * (rw + th / 2) * cos_rot - yfactor * (rh + th / 2) * sin_rot,
-			y + yfactor * (rh + th / 2) * cos_rot + xfactor * (rw + th / 2) * sin_rot)
+		sgl.v2f(x + xfactor * (rw - th / 2) * cos_rot - yfactor * (rh - th / 2) * sin_rot, y +
+			yfactor * (rh - th / 2) * cos_rot + xfactor * (rw - th / 2) * sin_rot)
+		sgl.v2f(x + xfactor * (rw + th / 2) * cos_rot - yfactor * (rh + th / 2) * sin_rot, y +
+			yfactor * (rh + th / 2) * cos_rot + xfactor * (rw + th / 2) * sin_rot)
 	}
 	sgl.v2f(x - (rh - th / 2) * sin_rot, y + (rh - th / 2) * cos_rot)
 	sgl.v2f(x - (rh + th / 2) * sin_rot, y + (rh + th / 2) * cos_rot)

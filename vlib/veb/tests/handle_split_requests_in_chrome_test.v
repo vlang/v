@@ -1,8 +1,9 @@
+// vtest build: !windows // fasthttp.Server.run is not implemented on windows yet
 import log
 import veb
 import time
 import net
-import x.json2
+import json2
 import net.http
 
 const port = 31228

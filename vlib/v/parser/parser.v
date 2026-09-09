@@ -11,6 +11,7 @@ import v.util
 import v.errors
 import os
 import hash.fnv1a
+import crypto.sha256
 import strings
 
 @[minify]
@@ -25,103 +26,120 @@ mut:
 	unique_prefix     string       // a hash of p.file_path, used for making anon fn generation unique
 	file_backend_mode ast.Language // .c for .c.v|.c.vv|.c.vsh files; .js for .js.v files, .amd64/.rv32/other arches for .amd64.v/.rv32.v/etc. files, .v otherwise.
 	// see comment in parse_file
-	tok                      token.Token
-	prev_tok                 token.Token
-	peek_tok                 token.Token
-	language                 ast.Language
-	fn_language              ast.Language // .c for `fn C.abcd()` declarations
-	struct_language          ast.Language // for `struct C.abcd{ embedded struct/union }` declarations
-	expr_level               int          // prevent too deep recursions for pathological programs
-	inside_vlib_file         bool         // true for all vlib/ files
-	inside_test_file         bool         // when inside _test.v or _test.vv file
-	inside_if                bool
-	inside_comptime_if       bool
-	inside_if_expr           bool
-	inside_if_cond           bool
-	inside_ct_if_expr        bool
-	inside_or_expr           bool
-	inside_for               bool
-	inside_for_expr          bool
-	inside_fn                bool // true even with implicit main
-	inside_fn_return         bool
-	inside_fn_concrete_type  bool // parsing fn_name[concrete_type]() call expr
-	inside_call_args         bool // true inside f(  ....  )
-	inside_unsafe_fn         bool
-	inside_str_interp        bool
-	inside_array_lit         bool
-	inside_in_array          bool
-	inside_infix             bool
-	inside_assign_rhs        bool // rhs assignment
-	inside_match             bool // to separate `match A { }` from `Struct{}`
-	inside_select            bool // to allow `ch <- Struct{} {` inside `select`
-	inside_match_case        bool // to separate `match_expr { }` from `Struct{}`
-	inside_match_body        bool // to fix eval not used TODO
-	inside_ct_match          bool
-	inside_ct_match_case     bool
-	inside_ct_match_body     bool
-	inside_unsafe            bool
-	inside_sum_type          bool // to prevent parsing inline sum type again
-	inside_asm_template      bool
-	inside_asm               bool
-	inside_defer             bool
-	defer_mode               ast.DeferMode
-	inside_generic_params    bool // indicates if parsing between `<` and `>` of a method/function
-	inside_receiver_param    bool // indicates if parsing the receiver parameter inside the first `(` and `)` of a method
-	inside_struct_field_decl bool
-	inside_struct_attr_decl  bool
-	inside_map_init          bool
-	inside_orm               bool
-	inside_chan_decl         bool
-	inside_attr_decl         bool
-	inside_lock_exprs        bool
-	array_dim                int               // array dim parsing level
-	fixed_array_dim          int               // fixed array dim parsing level
-	or_is_handled            bool              // ignore `or` in this expression
-	builtin_mod              bool              // are we in the `builtin` module?
-	mod                      string            // current module name
-	is_manualfree            bool              // true when `@[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
-	has_globals              bool              // `@[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
-	is_generated             bool              // `@[generated] module abc` - turn off compiler notices for that single .v file __only__.
-	is_translated            bool              // `@[translated] module abc` - mark a file as translated, to relax some compiler checks for translated code.
-	attrs                    []ast.Attr        // attributes before next decl stmt
-	expr_mod                 string            // for constructing full type names in parse_type()
-	last_enum_name           string            // saves the last enum name on an array initialization
-	last_enum_mod            string            // saves the last enum mod name on an array initialization
-	imports                  map[string]string // alias => mod_name
-	ast_imports              []ast.Import      // mod_names
-	used_imports             []string
-	auto_imports             []string // imports, the user does not need to specify
-	implied_imports          []string // ​imports that the user's code uses but omitted to import explicitly, used by `vfmt`
-	imported_symbols         map[string]string
-	imported_symbols_used    map[string]bool
-	imported_symbols_trie    token.KeywordsMatcherTrie
-	is_amp                   bool // for generating the right code for `&Foo{}`
-	returns                  bool
-	is_stmt_ident            bool // true while the beginning of a statement is an ident/selector
-	expecting_type           bool // `is Type`, expecting type
-	expecting_value          bool = true // true where a node value will be used
-	cur_fn_name              string
-	cur_fn_scope             &ast.Scope = unsafe { nil }
-	label_names              []string
-	name_error               bool // indicates if the token is not a name or the name is on another line
-	n_asm                    int  // controls assembly labels
-	global_labels            []string
-	comptime_if_cond         bool
-	defer_vars               []ast.Ident
-	should_abort             bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
-	codegen_text             string
-	anon_struct_decl         ast.StructDecl
-	init_generic_types       []ast.Type
-	if_cond_comments         []ast.Comment
-	left_comments            []ast.Comment
-	script_mode              bool
-	script_mode_start_token  token.Token
-	generic_type_level       int  // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
-	main_already_defined     bool // TODO move to checker
-	is_vls                   bool
-	is_vls_skip_file         bool // in `vls` mode, skip parse and check for unrelated files, such as `vlib`
-	inside_import_section    bool
-	cur_comments             []ast.Comment // comments between other stmts
+	tok                         token.Token
+	prev_tok                    token.Token
+	peek_tok                    token.Token
+	language                    ast.Language
+	fn_language                 ast.Language // .c for `fn C.abcd()` declarations
+	struct_language             ast.Language // for `struct C.abcd{ embedded struct/union }` declarations
+	expr_level                  int          // prevent too deep recursions for pathological programs
+	inside_vlib_file            bool         // true for all vlib/ files
+	inside_test_file            bool         // when inside _test.v or _test.vv file
+	inside_if                   bool
+	inside_comptime_if          bool
+	inside_if_expr              bool
+	inside_if_cond              bool
+	inside_ct_if_expr           bool
+	inside_or_expr              bool
+	or_expr_scope_depth         int
+	or_expr_is_used             bool
+	inside_for                  bool
+	inside_for_expr             bool
+	inside_fn                   bool // true even with implicit main
+	inside_fn_return            bool
+	inside_fn_param             bool // true while parsing function parameter types
+	inside_fn_concrete_type     bool // parsing fn_name[concrete_type]() call expr
+	inside_call_args            bool // true inside f(  ....  )
+	call_args_trailing_comma    bool // set by call_args(): the last parsed argument list ended with a trailing comma before `)`
+	inside_unsafe_fn            bool
+	inside_str_interp           bool
+	inside_array_lit            bool
+	inside_array_init_type_expr bool // parsing `[]typeof(expr){}` element type expression
+	inside_in_array             bool
+	inside_infix                bool
+	inside_assign_rhs           bool // rhs assignment
+	inside_return_expr          bool
+	return_expr_scope_depth     int
+	inside_match                bool // to separate `match A { }` from `Struct{}`
+	inside_select               bool // to allow `ch <- Struct{} {` inside `select`
+	inside_match_case           bool // to separate `match_expr { }` from `Struct{}`
+	inside_match_body           bool // to fix eval not used TODO
+	inside_expr_branch          bool
+	expr_branch_scope_depth     int
+	inside_ct_match             bool
+	inside_ct_match_case        bool
+	inside_ct_match_body        bool
+	inside_unsafe               bool
+	unsafe_expr_scope_depth     int
+	unsafe_expr_is_used         bool
+	inside_sum_type             bool // to prevent parsing inline sum type again
+	inside_asm_template         bool
+	inside_asm                  bool
+	inside_defer                bool
+	defer_mode                  ast.DeferMode
+	inside_generic_params       bool // indicates if parsing between `<` and `>` of a method/function
+	inside_receiver_param       bool // indicates if parsing the receiver parameter inside the first `(` and `)` of a method
+	inside_struct_field_decl    bool
+	inside_struct_attr_decl     bool
+	inside_map_init             bool
+	inside_orm                  bool
+	inside_chan_decl            bool
+	inside_attr_decl            bool
+	inside_lock_exprs           bool
+	lock_expr_scope_depth       int
+	lock_expr_is_used           bool
+	array_dim                   int               // array dim parsing level
+	fixed_array_dim             int               // fixed array dim parsing level
+	allow_auto_fixed_array_size bool              // allow `[..]` while parsing fixed array literal types
+	or_is_handled               bool              // ignore `or` in this expression
+	builtin_mod                 bool              // are we in the `builtin` module?
+	mod                         string            // current module name
+	is_manualfree               bool              // true when `@[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
+	has_globals                 bool              // `@[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
+	is_generated                bool              // `@[generated] module abc` - turn off compiler notices for that single .v file __only__.
+	is_translated               bool              // `@[translated] module abc` - mark a file as translated, to relax some compiler checks for translated code.
+	attrs                       []ast.Attr        // attributes before next decl stmt
+	expr_mod                    string            // for constructing full type names in parse_type()
+	last_enum_name              string            // saves the last enum name on an array initialization
+	last_enum_mod               string            // saves the last enum mod name on an array initialization
+	imports                     map[string]string // alias => mod_name
+	ast_imports                 []ast.Import      // mod_names
+	used_imports                []string
+	auto_imports                []string // imports, the user does not need to specify
+	implied_imports             []string // ​imports that the user's code uses but omitted to import explicitly, used by `vfmt`
+	imported_symbols            map[string]string
+	imported_symbols_used       map[string]bool
+	imported_symbols_trie       token.KeywordsMatcherTrie
+	is_amp                      bool // for generating the right code for `&Foo{}`
+	returns                     bool
+	is_stmt_ident               bool // true while the beginning of a statement is an ident/selector
+	expecting_type              bool // `is Type`, expecting type
+	expecting_value             bool = true // true where a node value will be used
+	parenthesized_expr_is_used  bool = true // true when the current parenthesized expression value is used
+	cur_fn_name                 string
+	cur_fn_scope                &ast.Scope = unsafe { nil }
+	label_names                 []string
+	name_error                  bool // indicates if the token is not a name or the name is on another line
+	n_asm                       int  // controls assembly labels
+	global_labels               []string
+	comptime_if_cond            bool
+	defer_vars                  []ast.Ident
+	should_abort                bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
+	codegen_text                string
+	anon_struct_decl            ast.StructDecl
+	init_generic_types          []ast.Type
+	consume_init_generic_types  bool
+	if_cond_comments            []ast.Comment
+	left_comments               []ast.Comment
+	script_mode                 bool
+	script_mode_start_token     token.Token
+	pending_top_stmts           []ast.Stmt
+	generic_type_level          int  // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
+	main_already_defined        bool // TODO move to checker
+	is_vls                      bool
+	is_vls_skip_file            bool // in `vls` mode, skip parse and check for unrelated files, such as `vlib`
+	inside_import_section       bool
+	cur_comments                []ast.Comment // comments between other stmts
 pub mut:
 	scanner &scanner.Scanner = unsafe { nil }
 	table   &ast.Table       = unsafe { nil }
@@ -171,12 +189,17 @@ pub fn parse_comptime(tmpl_path string, text string, mut table ast.Table, pref_ 
 	$if trace_parse_comptime ? {
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
+	pref_copy := *pref_
+	comptime_pref := &pref.Preferences{
+		...pref_copy
+		output_mode: .silent
+	}
 	mut p := Parser{
 		content:   .comptime
 		file_path: tmpl_path
-		scanner:   scanner.new_scanner(text, .skip_comments, pref_)
+		scanner:   scanner.new_scanner(text, .skip_comments, comptime_pref)
 		table:     table
-		pref:      pref_
+		pref:      comptime_pref
 		scope:     scope
 		errors:    []errors.Error{}
 		warnings:  []errors.Warning{}
@@ -227,14 +250,13 @@ fn (mut p Parser) free_scanner() {
 	}
 }
 
-const normalised_working_folder = (os.real_path(os.getwd()) + os.path_separator).replace('\\',
-	'/')
+const normalised_working_folder = (os.real_path(os.getwd()) + os.path_separator).replace('\\', '/')
 
 pub fn (mut p Parser) set_path(path string) {
 	p.file_path = path
 	p.file_base = os.base(path)
-	p.file_display_path = os.real_path(p.file_path).replace_once(normalised_working_folder,
-		'').replace('\\', '/')
+	p.file_display_path =
+		os.real_path(p.file_path).replace_once(normalised_working_folder, '').replace('\\', '/')
 	p.inside_vlib_file = os.dir(path).contains('vlib')
 	p.inside_test_file = p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv')
 		|| p.file_base.all_before_last('.v').all_before_last('.').ends_with('_test')
@@ -354,13 +376,18 @@ pub fn (mut p Parser) parse() &ast.File {
 		break
 	}
 	for {
-		if p.tok.kind == .eof {
-			if !p.is_vls_skip_file {
-				p.check_unused_imports()
-			}
+		if p.tok.kind == .eof && p.pending_top_stmts.len == 0 {
+			// Imported module files are discovered after the initial parse pass,
+			// so unused import warnings are emitted later by the builder.
 			break
 		}
-		stmt := p.top_stmt()
+		stmt := if p.pending_top_stmts.len > 0 {
+			pending := p.pending_top_stmts[0]
+			p.pending_top_stmts.delete(0)
+			pending
+		} else {
+			p.top_stmt()
+		}
 		// clear the attributes after each statement
 		if !(stmt is ast.ExprStmt && stmt.expr is ast.Comment) {
 			p.attrs = []
@@ -414,6 +441,11 @@ pub fn (mut p Parser) parse() &ast.File {
 		global_labels:         p.global_labels
 		template_paths:        p.template_paths
 		unique_prefix:         p.unique_prefix
+		source_digest:         if p.pref.capture_source_digests {
+			sha256.hexhash(p.scanner.text)
+		} else {
+			''
+		}
 	}
 	$if trace_parse_file_path_and_mod ? {
 		eprintln('>> ast.File, tokens: ${ast_file.nr_tokens:5}, mname: ${ast_file.mod.name:20}, sname: ${ast_file.mod.short_name:11}, path: ${p.file_display_path}')
@@ -426,12 +458,18 @@ pub fn parse_files(paths []string, mut table ast.Table, pref_ &pref.Preferences)
 	$if time_parsing ? {
 		timers.should_print = true
 	}
+	stop_after_first_error := pref_.fatal_errors
+		|| (pref_.output_mode == .stdout && !pref_.check_only && !pref_.is_vls)
 	unsafe {
 		mut files := []&ast.File{cap: paths.len}
 		for path in paths {
 			timers.start('parse_file ${path}')
-			files << parse_file(path, mut table, .skip_comments, pref_)
+			file := parse_file(path, mut table, .skip_comments, pref_)
+			files << file
 			timers.show('parse_file ${path}')
+			if stop_after_first_error && file.errors.len > 0 {
+				break
+			}
 		}
 		handle_codegen_for_multiple_files(mut files)
 		return files
@@ -556,6 +594,18 @@ fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	return stmts
 }
 
+fn (mut p Parser) parse_branch_block_no_scope(is_expr bool) []ast.Stmt {
+	old_inside_expr_branch := p.inside_expr_branch
+	old_expr_branch_scope_depth := p.expr_branch_scope_depth
+	defer {
+		p.inside_expr_branch = old_inside_expr_branch
+		p.expr_branch_scope_depth = old_expr_branch_scope_depth
+	}
+	p.inside_expr_branch = is_expr
+	p.expr_branch_scope_depth = p.opened_scopes
+	return p.parse_block_no_scope(false)
+}
+
 fn (mut p Parser) mark_last_call_return_as_used(mut last_stmt ast.Stmt) {
 	match mut last_stmt {
 		ast.ExprStmt {
@@ -593,22 +643,25 @@ fn (mut p Parser) mark_last_call_return_as_used(mut last_stmt ast.Stmt) {
 					// last stmt has infix expr with CallExpr: foo()? + 'a'
 					mut left_expr := last_stmt.expr.left
 					for {
+						mut next_left_expr := ast.Expr(ast.EmptyExpr{})
 						if mut left_expr is ast.InfixExpr {
 							if left_expr.or_block.stmts.len > 0 {
 								mut or_block_last_stmt := left_expr.or_block.stmts.last()
 								p.mark_last_call_return_as_used(mut or_block_last_stmt)
 							}
-							left_expr = left_expr.left
-							continue
-						}
-						if mut left_expr is ast.CallExpr {
+							next_left_expr = left_expr.left
+						} else if mut left_expr is ast.CallExpr {
 							left_expr.is_return_used = true
 							if left_expr.or_block.stmts.len > 0 {
 								mut or_block_last_stmt := left_expr.or_block.stmts.last()
 								p.mark_last_call_return_as_used(mut or_block_last_stmt)
 							}
+							break
+						} else {
+							break
 						}
-						break
+						left_expr = next_left_expr
+						continue
 					}
 				}
 				ast.ComptimeCall, ast.ComptimeSelector, ast.PrefixExpr, ast.SelectorExpr {
@@ -645,6 +698,21 @@ fn (mut p Parser) check(expected token.Kind) {
 			s = '`${s}`'
 		}
 		p.unexpected(expecting: s)
+	}
+}
+
+// recover_until_closing_rcbr skips the remaining contents of a `{ ... }` block after
+// the opening `{` has already been consumed, leaving the parser positioned after the
+// matching closing brace or at EOF.
+fn (mut p Parser) recover_until_closing_rcbr() {
+	mut brace_level := 1
+	for p.tok.kind != .eof && brace_level > 0 {
+		if p.tok.kind == .lcbr {
+			brace_level++
+		} else if p.tok.kind == .rcbr {
+			brace_level--
+		}
+		p.next()
 	}
 }
 
@@ -789,38 +857,45 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 						return p.other_stmts(comptime_for_stmt)
 					}
 					.key_if {
+						inside_top_level_comptime := p.is_in_top_level_comptime(p.inside_assign_rhs)
 						if_expr := p.if_expr(true, false)
 						cur_stmt := ast.ExprStmt{
 							expr: if_expr
 							pos:  if_expr.pos
 						}
-						if p.pref.is_fmt || comptime_if_expr_contains_top_stmt(if_expr) {
+						if p.pref.is_fmt || inside_top_level_comptime
+							|| comptime_if_expr_contains_top_stmt(if_expr) {
 							return cur_stmt
 						} else {
 							return p.other_stmts(cur_stmt)
 						}
 					}
 					.key_match {
+						inside_top_level_comptime := p.is_in_top_level_comptime(p.inside_assign_rhs)
 						mut pos := p.tok.pos()
 						expr := p.match_expr(true, false)
 						pos.update_last_line(p.prev_tok.line_nr)
-						return ast.ExprStmt{
+						cur_stmt := ast.ExprStmt{
 							expr: expr
 							pos:  pos
+						}
+						if p.pref.is_fmt || inside_top_level_comptime
+							|| comptime_match_expr_contains_top_stmt(expr) {
+							return cur_stmt
+						} else {
+							return p.other_stmts(cur_stmt)
 						}
 					}
 					.name {
 						// handles $dbg directly without registering token
 						if p.peek_tok.lit == 'dbg' {
+							if p.pref.is_script && !p.pref.is_test
+								&& !p.is_in_top_level_comptime(p.inside_assign_rhs) {
+								return p.other_stmts(ast.empty_stmt)
+							}
 							return p.dbg_stmt()
 						} else {
-							mut pos := p.tok.pos()
-							expr := p.expr(0)
-							pos.update_last_line(p.prev_tok.line_nr)
-							return ast.ExprStmt{
-								expr: expr
-								pos:  pos
-							}
+							return p.dollar_name_expr_stmt(true)
 						}
 					}
 					else {
@@ -854,6 +929,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.other_stmts(ast.empty_stmt)
 			}
 		}
+
 		// clear `cur_comments` after each statement, except a comment stmt
 		if !keep_cur_comments && p.pref.is_vls {
 			p.cur_comments.clear()
@@ -869,26 +945,52 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 
 fn comptime_if_expr_contains_top_stmt(if_expr ast.IfExpr) bool {
 	for branch in if_expr.branches {
-		for stmt in branch.stmts {
-			if stmt is ast.ExprStmt {
-				if stmt.expr is ast.IfExpr {
-					if !comptime_if_expr_contains_top_stmt(stmt.expr) {
-						return false
-					}
-				} else if stmt.expr is ast.CallExpr {
+		if !comptime_stmts_contain_top_stmt(branch.stmts) {
+			return false
+		}
+	}
+	return true
+}
+
+fn comptime_match_expr_contains_top_stmt(match_expr ast.MatchExpr) bool {
+	for branch in match_expr.branches {
+		if !comptime_stmts_contain_top_stmt(branch.stmts) {
+			return false
+		}
+	}
+	return true
+}
+
+fn comptime_stmts_contain_top_stmt(stmts []ast.Stmt) bool {
+	for stmt in stmts {
+		if stmt is ast.ExprStmt {
+			if stmt.expr is ast.IfExpr {
+				if !comptime_if_expr_contains_top_stmt(stmt.expr) {
 					return false
 				}
-			} else if stmt is ast.AssignStmt {
+			} else if stmt.expr is ast.MatchExpr {
+				if !comptime_match_expr_contains_top_stmt(stmt.expr) {
+					return false
+				}
+			} else if stmt.expr is ast.CallExpr {
 				return false
-			} else if stmt is ast.HashStmt {
-				return true
 			}
+		} else if stmt is ast.AssignStmt {
+			return false
+		} else if stmt is ast.DebuggerStmt {
+			return false
+		} else if stmt is ast.HashStmt {
+			continue
 		}
 	}
 	return true
 }
 
 fn (mut p Parser) other_stmts(cur_stmt ast.Stmt) ast.Stmt {
+	old_inside_fn := p.inside_fn
+	old_cur_fn_name := p.cur_fn_name
+	old_cur_fn_scope := p.cur_fn_scope
+	old_label_names := p.label_names.clone()
 	p.inside_fn = true
 	if p.pref.is_script && !p.pref.is_test {
 		p.script_mode = true
@@ -900,32 +1002,140 @@ fn (mut p Parser) other_stmts(cur_stmt ast.Stmt) ast.Stmt {
 
 		p.open_scope()
 		p.cur_fn_name = 'main.main'
-		mut stmts := []ast.Stmt{}
+		p.cur_fn_scope = p.scope
+		main_scope := p.scope
+		mut top_stmts := []ast.Stmt{}
+		mut main_stmts := []ast.Stmt{}
 		if cur_stmt != ast.empty_stmt {
-			stmts << cur_stmt
+			main_stmts << cur_stmt
 		}
 		for p.tok.kind != .eof {
-			stmts << p.stmt(false)
+			stmt := p.stmt(false)
+			if stmt is ast.FnDecl {
+				top_stmts << stmt
+				continue
+			}
+			main_stmts << stmt
 		}
+		main_label_names := p.label_names.clone()
 		p.close_scope()
 
 		p.script_mode = false
-		return ast.FnDecl{
+		p.inside_fn = old_inside_fn
+		p.cur_fn_name = old_cur_fn_name
+		p.cur_fn_scope = old_cur_fn_scope
+		p.label_names = old_label_names
+		main_fn := ast.FnDecl{
 			name:        'main.main'
 			short_name:  'main'
 			mod:         'main'
 			is_main:     true
-			stmts:       stmts
+			stmts:       main_stmts
 			file:        p.file_path
 			return_type: ast.void_type
-			scope:       p.scope
-			label_names: p.label_names
+			scope:       main_scope
+			label_names: main_label_names
 		}
+		if top_stmts.len == 0 {
+			return main_fn
+		}
+		p.pending_top_stmts << top_stmts
+		p.pending_top_stmts << ast.Stmt(main_fn)
+		first := p.pending_top_stmts[0]
+		p.pending_top_stmts.delete(0)
+		return first
 	} else if p.pref.is_fmt || p.pref.is_vet {
-		return p.stmt(false)
+		stmt := p.stmt(false)
+		p.inside_fn = old_inside_fn
+		p.cur_fn_name = old_cur_fn_name
+		p.cur_fn_scope = old_cur_fn_scope
+		p.label_names = old_label_names
+		return stmt
 	} else {
-		return p.error('bad top level statement ' + p.tok.str())
+		err := p.error('bad top level statement ' + p.tok.str())
+		p.inside_fn = old_inside_fn
+		p.cur_fn_name = old_cur_fn_name
+		p.cur_fn_scope = old_cur_fn_scope
+		p.label_names = old_label_names
+		return err
 	}
+}
+
+fn (p &Parser) relative_token(offset int) token.Token {
+	return match offset {
+		0 { p.tok }
+		1 { p.peek_tok }
+		else { p.peek_token(offset) }
+	}
+}
+
+fn (p &Parser) next_non_comment_token_offset(offset int) int {
+	mut current_offset := offset
+	for p.relative_token(current_offset).kind == .comment {
+		current_offset++
+	}
+	return current_offset
+}
+
+fn (p &Parser) is_script_receiver_method_decl_start() bool {
+	mut fn_offset := 0
+	if p.tok.kind == .key_pub {
+		if p.peek_tok.kind != .key_fn {
+			return false
+		}
+		fn_offset = 1
+	} else if p.tok.kind != .key_fn {
+		return false
+	}
+	if p.relative_token(fn_offset + 1).kind != .lpar {
+		return false
+	}
+	mut offset := fn_offset + 2
+	mut paren_level := 1
+	for paren_level > 0 {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.lpar {
+				paren_level++
+			}
+			.rpar {
+				paren_level--
+			}
+			.eof {
+				return false
+			}
+			else {}
+		}
+
+		offset++
+	}
+	name_tok := p.relative_token(offset)
+	next_after_name := p.relative_token(offset + 1)
+	return name_tok.kind == .name && next_after_name.kind in [.lpar, .lsbr]
+}
+
+fn (mut p Parser) script_fn_decl() ast.FnDecl {
+	main_scope := p.scope
+	file_scope := if main_scope.parent != unsafe { nil } { main_scope.parent } else { main_scope }
+	old_script_mode := p.script_mode
+	old_inside_fn := p.inside_fn
+	old_cur_fn_name := p.cur_fn_name
+	old_cur_fn_scope := p.cur_fn_scope
+	old_label_names := p.label_names.clone()
+	p.script_mode = false
+	p.inside_fn = false
+	p.cur_fn_name = ''
+	p.cur_fn_scope = unsafe { nil }
+	p.scope = file_scope
+	defer {
+		p.script_mode = old_script_mode
+		p.inside_fn = old_inside_fn
+		p.cur_fn_name = old_cur_fn_name
+		p.cur_fn_scope = old_cur_fn_scope
+		p.label_names = old_label_names
+		p.scope = main_scope
+	}
+	return p.fn_decl()
 }
 
 // TODO: [if vfmt]
@@ -1030,9 +1240,28 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 			}
 		}
+		.at, .lsbr {
+			is_stmt_attr := if p.tok.kind == .at {
+				p.peek_tok.kind == .lsbr
+			} else {
+				p.is_attributes()
+			}
+			if p.script_mode && is_stmt_attr {
+				attr_pos := p.tok.pos()
+				p.attributes()
+				if token.is_decl(p.tok.kind) {
+					stmt := p.stmt(is_top_level)
+					p.attrs = []
+					return stmt
+				}
+				p.attrs = []
+				return p.error_with_pos('attributes can only be used before declarations', attr_pos)
+			}
+			return p.parse_multi_expr(is_top_level)
+		}
 		.name {
 			if p.peek_tok.kind == .name && p.tok.lit == 'sql' {
-				return p.sql_stmt()
+				return p.sql_stmt_or_expr()
 			}
 			if p.peek_tok.kind == .colon {
 				// `label:`
@@ -1101,7 +1330,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			match p.peek_tok.kind {
 				.key_if {
 					mut pos := p.tok.pos()
-					expr := p.if_expr(true, false)
+					expr := p.if_expr(true, p.comptime_stmt_is_expr_branch_result())
 					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
 						expr: expr
@@ -1113,7 +1342,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 				.key_match {
 					mut pos := p.tok.pos()
-					expr := p.match_expr(true, false)
+					expr := p.match_expr(true, p.comptime_stmt_is_expr_branch_result())
 					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
 						expr: expr
@@ -1125,13 +1354,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					if p.peek_tok.lit == 'dbg' {
 						return p.dbg_stmt()
 					} else {
-						mut pos := p.tok.pos()
-						expr := p.expr(0)
-						pos.update_last_line(p.prev_tok.line_nr)
-						return ast.ExprStmt{
-							expr: expr
-							pos:  pos
-						}
+						return p.dollar_name_expr_stmt(is_top_level)
 					}
 				}
 				else {
@@ -1173,6 +1396,14 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				extra = p.expr(0)
 				// dump(extra)
 				extra_pos = extra_pos.extend(p.tok.pos())
+			} else if p.tok.line_nr == p.prev_tok.line_nr + p.prev_tok.lit.count('\n')
+				&& p.tok.kind !in [.comment, .semicolon, .rcbr, .eof, .key_return, .key_break, .key_continue] {
+				line_nr := p.tok.line_nr
+				err := p.unexpected(got: p.tok.str(), expecting: '`,`')
+				for p.tok.kind != .eof && p.tok.line_nr == line_nr {
+					p.next()
+				}
+				return err
 			}
 			return ast.AssertStmt{
 				expr:      expr
@@ -1196,10 +1427,10 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 							defer_mode = .function
 						}
 						else {
-							return p.error_with_pos('unknown `defer` mode: `${mode}`',
-								mode_pos)
+							return p.error_with_pos('unknown `defer` mode: `${mode}`', mode_pos)
 						}
 					}
+
 					p.check(.rpar)
 				}
 				p.inside_defer = true
@@ -1242,6 +1473,18 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				pos:  spos
 			}
 		}
+		.key_pub {
+			if p.script_mode && p.is_script_receiver_method_decl_start() {
+				return p.script_fn_decl()
+			}
+			return p.parse_multi_expr(is_top_level)
+		}
+		.key_fn {
+			if p.script_mode && p.is_script_receiver_method_decl_start() {
+				return p.script_fn_decl()
+			}
+			return p.parse_multi_expr(is_top_level)
+		}
 		.key_const {
 			return p.error_with_pos('const can only be defined at the top level (outside of functions)',
 				p.tok.pos())
@@ -1273,6 +1516,22 @@ fn (mut p Parser) dbg_stmt() ast.DebuggerStmt {
 	}
 }
 
+fn (mut p Parser) dollar_name_expr_stmt(is_top_level bool) ast.Stmt {
+	mut pos := p.tok.pos()
+	expr := p.expr(0)
+	pos.update_last_line(p.prev_tok.line_nr)
+	is_expr_branch_result_end := p.is_expr_branch_result_end()
+	if p.should_check_unused_exprs(.dollar) && (is_top_level || !is_expr_branch_result_end)
+		&& !p.expr_can_be_unused_stmt(expr) {
+		return p.error_with_pos('expression evaluated but not used', expr.pos())
+	}
+	return ast.ExprStmt{
+		expr:    expr
+		pos:     pos
+		is_expr: is_expr_branch_result_end
+	}
+}
+
 fn (mut p Parser) semicolon_stmt() ast.SemicolonStmt {
 	pos := p.tok.pos()
 	p.check(.semicolon)
@@ -1294,6 +1553,1393 @@ fn (mut p Parser) expr_list(expect_value bool) []ast.Expr {
 		}
 	}
 	return exprs
+}
+
+fn (p &Parser) should_check_unused_exprs(tok_kind token.Kind) bool {
+	return !p.pref.translated && !p.is_translated && !p.pref.is_fmt && !p.pref.is_vet
+		&& tok_kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select]
+}
+
+fn (p &Parser) expr_can_be_unused_stmt(expr ast.Expr) bool {
+	return match expr {
+		ast.CallExpr, ast.PostfixExpr, ast.DumpExpr {
+			true
+		}
+		ast.ParExpr {
+			p.expr_can_be_unused_stmt(expr.expr)
+		}
+		ast.SelectorExpr {
+			!p.expr_contains_embed_file_value(expr)
+		}
+		ast.ComptimeCall {
+			expr.kind != .embed_file
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (p &Parser) expr_contains_embed_file_value(expr ast.Expr) bool {
+	match expr {
+		ast.ComptimeCall {
+			if expr.kind == .embed_file {
+				return true
+			}
+			if p.expr_contains_embed_file_value(expr.left)
+				|| p.or_block_contains_embed_file_value(expr.or_block) {
+				return true
+			}
+			for arg in expr.args {
+				if p.expr_contains_embed_file_value(arg.expr) {
+					return true
+				}
+			}
+		}
+		ast.Ident {
+			return p.or_block_contains_embed_file_value(expr.or_expr)
+		}
+		ast.IfGuardExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.ParExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.SelectorExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+				|| p.or_block_contains_embed_file_value(expr.or_block)
+		}
+		ast.ComptimeSelector {
+			return p.expr_contains_embed_file_value(expr.left)
+				|| p.expr_contains_embed_file_value(expr.field_expr)
+				|| p.or_block_contains_embed_file_value(expr.or_block)
+		}
+		ast.CallExpr {
+			if p.expr_contains_embed_file_value(expr.left)
+				|| p.or_block_contains_embed_file_value(expr.or_block) {
+				return true
+			}
+			for arg in expr.args {
+				if p.expr_contains_embed_file_value(arg.expr) {
+					return true
+				}
+			}
+		}
+		ast.InfixExpr {
+			return p.expr_contains_embed_file_value(expr.left)
+				|| p.expr_contains_embed_file_value(expr.right)
+				|| p.or_block_contains_embed_file_value(expr.or_block)
+		}
+		ast.PrefixExpr {
+			return p.expr_contains_embed_file_value(expr.right)
+				|| p.or_block_contains_embed_file_value(expr.or_block)
+		}
+		ast.PostfixExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.IndexExpr {
+			if p.expr_contains_embed_file_value(expr.left)
+				|| p.expr_contains_embed_file_value(expr.index)
+				|| p.or_block_contains_embed_file_value(expr.or_expr) {
+				return true
+			}
+			for index_expr in expr.indices {
+				if p.expr_contains_embed_file_value(index_expr) {
+					return true
+				}
+			}
+		}
+		ast.CastExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+				|| (expr.has_arg && p.expr_contains_embed_file_value(expr.arg))
+		}
+		ast.AsCast {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.SizeOf {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.IsRefType {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.TypeOf {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.AnonFn {
+			return p.stmts_contain_embed_file_value(expr.decl.stmts)
+		}
+		ast.LambdaExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.ChanInit {
+			return expr.has_cap && p.expr_contains_embed_file_value(expr.cap_expr)
+		}
+		ast.ArrayInit {
+			if p.expr_contains_embed_file_value(expr.len_expr)
+				|| p.expr_contains_embed_file_value(expr.cap_expr)
+				|| p.expr_contains_embed_file_value(expr.init_expr)
+				|| p.expr_contains_embed_file_value(expr.elem_type_expr)
+				|| p.expr_contains_embed_file_value(expr.update_expr) {
+				return true
+			}
+			for array_expr in expr.exprs {
+				if p.expr_contains_embed_file_value(array_expr) {
+					return true
+				}
+			}
+		}
+		ast.ArrayDecompose {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.MapInit {
+			if expr.has_update_expr && p.expr_contains_embed_file_value(expr.update_expr) {
+				return true
+			}
+			for key_expr in expr.keys {
+				if p.expr_contains_embed_file_value(key_expr) {
+					return true
+				}
+			}
+			for val_expr in expr.vals {
+				if p.expr_contains_embed_file_value(val_expr) {
+					return true
+				}
+			}
+		}
+		ast.StructInit {
+			if p.expr_contains_embed_file_value(expr.typ_expr)
+				|| (expr.has_update_expr && p.expr_contains_embed_file_value(expr.update_expr)) {
+				return true
+			}
+			for init_field in expr.init_fields {
+				if p.expr_contains_embed_file_value(init_field.expr) {
+					return true
+				}
+			}
+		}
+		ast.StringInterLiteral {
+			for inter_expr in expr.exprs {
+				if p.expr_contains_embed_file_value(inter_expr) {
+					return true
+				}
+			}
+			for fwidth_expr in expr.fwidth_exprs {
+				if p.expr_contains_embed_file_value(fwidth_expr) {
+					return true
+				}
+			}
+			for precision_expr in expr.precision_exprs {
+				if p.expr_contains_embed_file_value(precision_expr) {
+					return true
+				}
+			}
+		}
+		ast.RangeExpr {
+			return p.expr_contains_embed_file_value(expr.low)
+				|| p.expr_contains_embed_file_value(expr.high)
+		}
+		ast.UnsafeExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.LockExpr {
+			return p.stmts_contain_embed_file_value(expr.stmts)
+		}
+		ast.OrExpr {
+			return p.or_block_contains_embed_file_value(expr)
+		}
+		ast.IfExpr {
+			if !expr.is_expr && !expr.force_expr {
+				return false
+			}
+			if expr.is_comptime {
+				return p.comptime_if_expr_contains_embed_file_value(expr)
+			}
+			for branch in expr.branches {
+				if p.expr_contains_embed_file_value(branch.cond)
+					|| p.stmts_contain_embed_file_value(branch.stmts) {
+					return true
+				}
+			}
+		}
+		ast.MatchExpr {
+			if !expr.is_expr {
+				return false
+			}
+			if expr.is_comptime {
+				return p.comptime_match_expr_contains_embed_file_value(expr)
+			}
+			if p.expr_contains_embed_file_value(expr.cond) {
+				return true
+			}
+			for branch in expr.branches {
+				for branch_expr in branch.exprs {
+					if p.expr_contains_embed_file_value(branch_expr) {
+						return true
+					}
+				}
+				if p.stmts_contain_embed_file_value(branch.stmts) {
+					return true
+				}
+			}
+		}
+		ast.SelectExpr {
+			for branch in expr.branches {
+				if p.stmt_contains_embed_file_value(branch.stmt)
+					|| p.stmts_contain_embed_file_value(branch.stmts) {
+					return true
+				}
+			}
+		}
+		ast.ConcatExpr {
+			for concat_expr in expr.vals {
+				if p.expr_contains_embed_file_value(concat_expr) {
+					return true
+				}
+			}
+		}
+		ast.Likely {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.DumpExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.SpawnExpr {
+			return p.expr_contains_embed_file_value(ast.Expr(expr.call_expr))
+		}
+		ast.GoExpr {
+			return p.expr_contains_embed_file_value(ast.Expr(expr.call_expr))
+		}
+		ast.SqlExpr {
+			if p.expr_contains_embed_file_value(expr.db_expr)
+				|| p.expr_contains_embed_file_value(expr.where_expr)
+				|| p.expr_contains_embed_file_value(expr.order_expr)
+				|| p.expr_contains_embed_file_value(expr.limit_expr)
+				|| p.expr_contains_embed_file_value(expr.offset_expr)
+				|| p.or_block_contains_embed_file_value(expr.or_expr) {
+				return true
+			}
+			for _, sub_expr in expr.sub_structs {
+				if p.expr_contains_embed_file_value(ast.Expr(sub_expr)) {
+					return true
+				}
+			}
+			for join in expr.joins {
+				if p.expr_contains_embed_file_value(join.on_expr) {
+					return true
+				}
+			}
+		}
+		ast.SqlQueryDataExpr {
+			return p.sql_query_data_items_contain_embed_file_value(expr.items)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (p &Parser) comptime_match_expr_contains_embed_file_value(expr ast.MatchExpr) bool {
+	if p.expr_contains_embed_file_value(expr.cond) {
+		return true
+	}
+	cond_value := p.comptime_match_value_for_embed_scan(expr.cond) or {
+		return p.match_expr_branches_contain_embed_file_value(expr.branches)
+	}
+	mut found_branch := false
+	for branch in expr.branches {
+		for branch_expr in branch.exprs {
+			if p.expr_contains_embed_file_value(branch_expr) {
+				return true
+			}
+		}
+		if branch.is_else {
+			if found_branch {
+				return false
+			}
+			return p.stmts_contain_embed_file_value(branch.stmts)
+		}
+		if found_branch {
+			continue
+		}
+		mut has_unknown_case := false
+		mut branch_matches := false
+		for branch_expr in branch.exprs {
+			branch_value := p.comptime_match_value_for_embed_scan(branch_expr) or {
+				has_unknown_case = true
+				continue
+			}
+			if branch_value == cond_value {
+				branch_matches = true
+				break
+			}
+		}
+		if branch_matches {
+			if p.stmts_contain_embed_file_value(branch.stmts) {
+				return true
+			}
+			found_branch = true
+		} else if has_unknown_case && p.stmts_contain_embed_file_value(branch.stmts) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (p &Parser) match_expr_branches_contain_embed_file_value(branches []ast.MatchBranch) bool {
+	for branch in branches {
+		for branch_expr in branch.exprs {
+			if p.expr_contains_embed_file_value(branch_expr) {
+				return true
+			}
+		}
+		if p.stmts_contain_embed_file_value(branch.stmts) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (p &Parser) comptime_match_value_for_embed_scan(expr ast.Expr) ?string {
+	return p.comptime_match_value_for_embed_scan_with_depth(expr, 0)
+}
+
+fn (p &Parser) comptime_match_value_for_embed_scan_with_depth(expr ast.Expr, depth int) ?string {
+	if depth > 8 {
+		return none
+	}
+	match expr {
+		ast.StringLiteral {
+			return 'string:${expr.val}'
+		}
+		ast.IntegerLiteral {
+			return 'int:${expr.val}'
+		}
+		ast.BoolLiteral {
+			return 'bool:${expr.val}'
+		}
+		ast.AtExpr {
+			value := p.comptime_if_string_value_for_embed_scan(expr) or { return none }
+			return 'string:${value}'
+		}
+		ast.Ident {
+			return p.comptime_match_ident_value_for_embed_scan(expr, depth)
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (p &Parser) comptime_match_ident_value_for_embed_scan(expr ast.Ident, depth int) ?string {
+	if imported_name := p.imported_symbols[expr.name] {
+		if const_field := p.table.global_scope.find_const(imported_name) {
+			return p.comptime_match_const_value_for_embed_scan(const_field, depth)
+		}
+	}
+	if const_field := p.table.global_scope.find_const(expr.name) {
+		return p.comptime_match_const_value_for_embed_scan(const_field, depth)
+	}
+	if const_field := p.table.global_scope.find_const('${expr.mod}.${expr.name}') {
+		return p.comptime_match_const_value_for_embed_scan(const_field, depth)
+	}
+	if const_field := p.table.global_scope.find_const('${p.mod}.${expr.name}') {
+		return p.comptime_match_const_value_for_embed_scan(const_field, depth)
+	}
+	return none
+}
+
+fn (p &Parser) comptime_match_const_value_for_embed_scan(field &ast.ConstField, depth int) ?string {
+	return p.comptime_match_value_for_embed_scan_with_depth(field.expr, depth + 1)
+}
+
+enum ComptimeIfEmbedScanValue {
+	unknown
+	disabled
+	enabled
+}
+
+fn (p &Parser) comptime_if_expr_contains_embed_file_value(expr ast.IfExpr) bool {
+	mut found_branch := false
+	for branch in expr.branches {
+		if branch.cond is ast.EmptyExpr || branch.cond is ast.NodeError {
+			if found_branch {
+				return false
+			}
+			return p.stmts_contain_embed_file_value(branch.stmts)
+		}
+		cond_value := p.comptime_if_cond_value_for_embed_scan(branch.cond)
+		match cond_value {
+			.enabled {
+				if !found_branch && p.stmts_contain_embed_file_value(branch.stmts) {
+					return true
+				}
+				found_branch = true
+			}
+			.disabled {}
+			.unknown {
+				if !found_branch && (p.expr_contains_embed_file_value(branch.cond)
+					|| p.stmts_contain_embed_file_value(branch.stmts)) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (p &Parser) comptime_if_cond_value_for_embed_scan(cond ast.Expr) ComptimeIfEmbedScanValue {
+	match cond {
+		ast.BoolLiteral {
+			return comptime_if_embed_scan_bool_value(cond.val)
+		}
+		ast.ParExpr {
+			return p.comptime_if_cond_value_for_embed_scan(cond.expr)
+		}
+		ast.PrefixExpr {
+			if cond.op != .not {
+				return .unknown
+			}
+			return comptime_if_embed_scan_negate(p.comptime_if_cond_value_for_embed_scan(cond.right))
+		}
+		ast.PostfixExpr {
+			if cond.op == .question && cond.expr is ast.Ident {
+				return comptime_if_embed_scan_bool_value((cond.expr as ast.Ident).name in p.pref.compile_defines)
+			}
+		}
+		ast.InfixExpr {
+			return p.comptime_if_infix_cond_value_for_embed_scan(cond)
+		}
+		ast.Ident {
+			cname := cond.name
+			if cname in ast.valid_comptime_not_user_defined {
+				if cname == 'threads' {
+					return .unknown
+				}
+				return comptime_if_embed_scan_bool_value(ast.eval_comptime_not_user_defined_ident(cname,
+					p.pref) or { return .unknown })
+			}
+		}
+		else {}
+	}
+
+	return .unknown
+}
+
+fn (p &Parser) comptime_if_infix_cond_value_for_embed_scan(cond ast.InfixExpr) ComptimeIfEmbedScanValue {
+	match cond.op {
+		.and, .logical_or {
+			left := p.comptime_if_cond_value_for_embed_scan(cond.left)
+			right := p.comptime_if_cond_value_for_embed_scan(cond.right)
+			if cond.op == .and {
+				if left == .disabled || right == .disabled {
+					return .disabled
+				}
+				if left == .enabled && right == .enabled {
+					return .enabled
+				}
+				return .unknown
+			}
+			if left == .enabled || right == .enabled {
+				return .enabled
+			}
+			if left == .disabled && right == .disabled {
+				return .disabled
+			}
+			return .unknown
+		}
+		.eq, .ne {
+			left := p.comptime_if_string_value_for_embed_scan(cond.left) or { return .unknown }
+			right := p.comptime_if_string_value_for_embed_scan(cond.right) or { return .unknown }
+			return comptime_if_embed_scan_bool_value(if cond.op == .eq {
+				left == right
+			} else {
+				left != right
+			})
+		}
+		else {
+			return .unknown
+		}
+	}
+}
+
+fn (p &Parser) comptime_if_string_value_for_embed_scan(expr ast.Expr) ?string {
+	match expr {
+		ast.StringLiteral {
+			return expr.val
+		}
+		ast.AtExpr {
+			match expr.kind {
+				.mod_name { return p.mod }
+				.os { return pref.get_host_os().lower() }
+				.ccompiler { return p.pref.ccompiler_type.str() }
+				.backend { return p.pref.backend.str() }
+				.platform { return p.pref.arch.str() }
+				else { return none }
+			}
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn comptime_if_embed_scan_bool_value(value bool) ComptimeIfEmbedScanValue {
+	return if value { .enabled } else { .disabled }
+}
+
+fn comptime_if_embed_scan_negate(value ComptimeIfEmbedScanValue) ComptimeIfEmbedScanValue {
+	match value {
+		.enabled { return .disabled }
+		.disabled { return .enabled }
+		.unknown { return .unknown }
+	}
+}
+
+fn (p &Parser) sql_query_data_items_contain_embed_file_value(items []ast.SqlQueryDataItem) bool {
+	for item in items {
+		match item {
+			ast.SqlQueryDataLeaf {
+				if p.expr_contains_embed_file_value(item.expr) {
+					return true
+				}
+			}
+			ast.SqlQueryDataIf {
+				for branch in item.branches {
+					if p.expr_contains_embed_file_value(branch.cond)
+						|| p.sql_query_data_items_contain_embed_file_value(branch.items) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (p &Parser) or_block_contains_embed_file_value(or_block ast.OrExpr) bool {
+	return p.stmts_contain_embed_file_value(or_block.stmts)
+}
+
+fn (p &Parser) stmts_contain_embed_file_value(stmts []ast.Stmt) bool {
+	for stmt in stmts {
+		if p.stmt_contains_embed_file_value(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (p &Parser) stmt_contains_embed_file_value(stmt ast.Stmt) bool {
+	match stmt {
+		ast.ExprStmt {
+			return p.stmt_expr_contains_embed_file_value(stmt.expr)
+		}
+		ast.Block {
+			return p.stmts_contain_embed_file_value(stmt.stmts)
+		}
+		ast.ComptimeFor {
+			return p.stmts_contain_embed_file_value(stmt.stmts)
+		}
+		ast.ForStmt {
+			return (!stmt.is_inf && p.expr_contains_embed_file_value(stmt.cond))
+				|| p.stmts_contain_embed_file_value(stmt.stmts)
+		}
+		ast.ForInStmt {
+			return p.expr_contains_embed_file_value(stmt.cond)
+				|| (stmt.is_range && p.expr_contains_embed_file_value(stmt.high))
+				|| p.stmts_contain_embed_file_value(stmt.stmts)
+		}
+		ast.ForCStmt {
+			return (stmt.has_init && p.stmt_contains_embed_file_value(stmt.init))
+				|| (stmt.has_cond && p.expr_contains_embed_file_value(stmt.cond))
+				|| (stmt.has_inc && p.stmt_contains_embed_file_value(stmt.inc))
+				|| p.stmts_contain_embed_file_value(stmt.stmts)
+		}
+		ast.Return {
+			for return_expr in stmt.exprs {
+				if p.expr_contains_embed_file_value(return_expr) {
+					return true
+				}
+			}
+		}
+		ast.AssignStmt {
+			for right_expr in stmt.right {
+				if p.expr_contains_embed_file_value(right_expr) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (p &Parser) stmt_expr_contains_embed_file_value(expr ast.Expr) bool {
+	match expr {
+		ast.IfExpr {
+			for branch in expr.branches {
+				if p.expr_contains_embed_file_value(branch.cond)
+					|| p.stmts_contain_embed_file_value(branch.stmts) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.MatchExpr {
+			if p.expr_contains_embed_file_value(expr.cond) {
+				return true
+			}
+			for branch in expr.branches {
+				for branch_expr in branch.exprs {
+					if p.expr_contains_embed_file_value(branch_expr) {
+						return true
+					}
+				}
+				if p.stmts_contain_embed_file_value(branch.stmts) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return p.expr_contains_embed_file_value(expr)
+		}
+	}
+}
+
+fn (p &Parser) is_current_expr_branch_scope() bool {
+	return p.inside_expr_branch && p.opened_scopes == p.expr_branch_scope_depth
+}
+
+fn (p &Parser) is_current_or_expr_scope() bool {
+	return p.inside_or_expr && p.opened_scopes == p.or_expr_scope_depth
+}
+
+fn (p &Parser) is_current_unsafe_expr_scope() bool {
+	return p.inside_unsafe && p.unsafe_expr_is_used && p.opened_scopes == p.unsafe_expr_scope_depth
+}
+
+fn (p &Parser) is_current_lock_expr_scope() bool {
+	return p.lock_expr_is_used && p.opened_scopes == p.lock_expr_scope_depth
+}
+
+fn (p &Parser) is_current_value_result_scope() bool {
+	return p.is_current_expr_branch_scope()
+		|| (p.is_current_or_expr_scope() && p.or_expr_is_used)
+		|| p.is_current_unsafe_expr_scope() || p.is_current_lock_expr_scope()
+}
+
+fn (p &Parser) current_expr_is_value_result_stmt() bool {
+	if !p.is_current_value_result_scope() {
+		return false
+	}
+	next_offset := match p.tok.kind {
+		.key_if {
+			p.current_if_expr_next_non_comment_offset(0)
+		}
+		.key_match {
+			p.current_match_expr_next_non_comment_offset(0)
+		}
+		.dollar {
+			match p.peek_tok.kind {
+				.key_if { p.current_if_expr_next_non_comment_offset(1) }
+				.key_match { p.current_match_expr_next_non_comment_offset(1) }
+				else { -1 }
+			}
+		}
+		.lpar {
+			p.current_parenthesized_expr_next_non_comment_offset(0)
+		}
+		else {
+			-1
+		}
+	}
+
+	if next_offset < 0 {
+		return false
+	}
+	return p.result_token_is_value_continuation(next_offset)
+		|| p.result_is_followed_by_postfix_call(next_offset)
+		|| p.result_is_followed_by_postfix_value_result(next_offset)
+}
+
+fn (p &Parser) is_current_return_expr_scope() bool {
+	return p.inside_return_expr && p.opened_scopes == p.return_expr_scope_depth
+}
+
+fn (p &Parser) current_if_expr_next_non_comment_offset(start_offset int) int {
+	mut offset := start_offset
+	mut brace_depth := 0
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return -1
+			}
+			.key_orelse {
+				or_block_end_offset := p.current_or_block_end_offset(offset)
+				if or_block_end_offset >= 0 {
+					offset = or_block_end_offset
+				}
+			}
+			.key_if, .key_match {
+				if brace_depth == 0 {
+					condition_branch_end_offset := p.current_condition_branch_expr_end_offset(offset,
+						start_offset)
+					if condition_branch_end_offset >= 0 {
+						offset = condition_branch_end_offset - 1
+					}
+				}
+			}
+			.lcbr {
+				if brace_depth == 0 {
+					condition_block_end_offset := p.current_condition_braced_expr_end_offset(offset)
+					if condition_block_end_offset >= 0 {
+						offset = condition_block_end_offset
+					} else {
+						brace_depth++
+					}
+				} else {
+					brace_depth++
+				}
+			}
+			.rcbr {
+				if brace_depth == 0 {
+					return -1
+				}
+				brace_depth--
+				if brace_depth == 0 {
+					next_offset := p.next_non_comment_token_offset(offset + 1)
+					next_tok := p.relative_token(next_offset)
+					if next_tok.kind == .key_else {
+						offset = next_offset
+					} else if next_tok.kind == .dollar
+						&& p.relative_token(next_offset + 1).kind == .key_else {
+						offset = next_offset + 1
+					} else {
+						return next_offset
+					}
+				}
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return -1
+}
+
+fn (p &Parser) current_match_expr_next_non_comment_offset(start_offset int) int {
+	mut offset := start_offset
+	mut brace_depth := 0
+	mut found_lcbr := false
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return -1
+			}
+			.key_orelse {
+				or_block_end_offset := p.current_or_block_end_offset(offset)
+				if or_block_end_offset >= 0 {
+					offset = or_block_end_offset
+				}
+			}
+			.key_if, .key_match {
+				if !found_lcbr {
+					condition_branch_end_offset := p.current_condition_branch_expr_end_offset(offset,
+						start_offset)
+					if condition_branch_end_offset >= 0 {
+						offset = condition_branch_end_offset - 1
+					}
+				}
+			}
+			.lcbr {
+				if !found_lcbr {
+					condition_block_end_offset := p.current_condition_braced_expr_end_offset(offset)
+					if condition_block_end_offset >= 0 {
+						offset = condition_block_end_offset
+					} else {
+						found_lcbr = true
+						brace_depth++
+					}
+				} else {
+					brace_depth++
+				}
+			}
+			.rcbr {
+				if !found_lcbr || brace_depth == 0 {
+					return -1
+				}
+				brace_depth--
+				if brace_depth == 0 {
+					return p.next_non_comment_token_offset(offset + 1)
+				}
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return -1
+}
+
+fn (p &Parser) current_condition_branch_expr_end_offset(offset int, start_offset int) int {
+	if offset == start_offset || p.current_condition_branch_follows_else(offset) {
+		return -1
+	}
+	return match p.relative_token(offset).kind {
+		.key_if { p.current_if_expr_next_non_comment_offset(offset) }
+		.key_match { p.current_match_expr_next_non_comment_offset(offset) }
+		else { -1 }
+	}
+}
+
+fn (p &Parser) current_condition_branch_follows_else(offset int) bool {
+	prev_offset := p.previous_non_comment_token_offset(offset)
+	if prev_offset < 0 {
+		return false
+	}
+	prev_kind := p.relative_token(prev_offset).kind
+	if prev_kind == .key_else {
+		return true
+	}
+	if prev_kind != .dollar {
+		return false
+	}
+	prev_prev_offset := p.previous_non_comment_token_offset(prev_offset)
+	return prev_prev_offset >= 0 && p.relative_token(prev_prev_offset).kind == .key_else
+}
+
+fn (p &Parser) previous_non_comment_token_offset(offset int) int {
+	mut current_offset := offset - 1
+	for current_offset >= 0 {
+		tok := p.relative_token(current_offset)
+		if tok.kind != .comment {
+			return current_offset
+		}
+		current_offset--
+	}
+	return -1
+}
+
+fn (p &Parser) current_condition_braced_expr_end_offset(start_offset int) int {
+	if p.relative_token(start_offset).kind != .lcbr {
+		return -1
+	}
+	end_offset := p.current_brace_block_end_offset(start_offset)
+	if end_offset < 0 {
+		return -1
+	}
+	next_offset := p.next_non_comment_token_offset(end_offset + 1)
+	next_kind := p.relative_token(next_offset).kind
+	prev_tok := p.relative_token(start_offset - 1)
+	tok := p.relative_token(start_offset)
+	opens_literal := tok.is_next_to(prev_tok)
+		|| prev_tok.kind in [.key_if, .key_match, .key_select, .key_unsafe, .lpar, .lsbr, .comma]
+		|| prev_tok.kind.precedence() > 0
+	if opens_literal && next_kind == .lcbr {
+		return end_offset
+	}
+	if p.current_brace_opens_anon_fn_body(start_offset)
+		&& next_kind in [.lpar, .rpar, .rsbr, .rcbr, .comma] {
+		return end_offset
+	}
+	if p.current_brace_opens_lock_expr_body(start_offset) {
+		return end_offset
+	}
+	if p.current_brace_opens_sql_expr_body(start_offset) {
+		return end_offset
+	}
+	if opens_literal
+		&& (next_kind in [.dot, .lsbr, .nilsbr, .lpar, .rpar, .rsbr, .comma, .key_orelse]
+		|| next_kind.precedence() > 0) {
+		return end_offset
+	}
+	return -1
+}
+
+fn (p &Parser) current_brace_opens_anon_fn_body(start_offset int) bool {
+	mut offset := start_offset - 1
+	for offset >= 0 {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.key_fn {
+				return true
+			}
+			.lcbr, .rcbr, .key_if, .key_match, .key_else, .key_orelse, .semicolon {
+				return false
+			}
+			else {}
+		}
+
+		offset--
+	}
+	return false
+}
+
+fn (p &Parser) current_brace_opens_sql_expr_body(start_offset int) bool {
+	mut offset := start_offset - 1
+	mut paren_depth := 0
+	mut square_depth := 0
+	for offset >= 0 {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.rpar {
+				paren_depth++
+			}
+			.lpar {
+				if paren_depth > 0 {
+					paren_depth--
+				} else {
+					return false
+				}
+			}
+			.rsbr {
+				square_depth++
+			}
+			.lsbr {
+				if square_depth > 0 {
+					square_depth--
+				} else {
+					return false
+				}
+			}
+			.name {
+				if paren_depth == 0 && square_depth == 0 && tok.lit == 'sql' {
+					return p.current_sql_prefix_has_db_expr(offset, start_offset)
+				}
+			}
+			.lcbr, .rcbr, .key_if, .key_match, .key_else, .key_orelse, .semicolon {
+				if paren_depth == 0 && square_depth == 0 {
+					return false
+				}
+			}
+			else {}
+		}
+
+		offset--
+	}
+	return false
+}
+
+fn (p &Parser) current_sql_prefix_has_db_expr(sql_offset int, body_start_offset int) bool {
+	next_offset := p.next_non_comment_token_offset(sql_offset + 1)
+	if next_offset >= body_start_offset {
+		return false
+	}
+	sql_tok := p.relative_token(sql_offset)
+	next_tok := p.relative_token(next_offset)
+	return !sql_tok.is_next_to(next_tok) && next_tok.kind in [.name, .lpar]
+}
+
+fn (p &Parser) current_brace_opens_lock_expr_body(start_offset int) bool {
+	mut offset := start_offset - 1
+	for offset >= 0 {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.key_lock, .key_rlock {
+				return true
+			}
+			.lcbr, .rcbr, .key_if, .key_match, .key_else, .key_orelse, .semicolon {
+				return false
+			}
+			else {}
+		}
+
+		offset--
+	}
+	return false
+}
+
+fn (p &Parser) current_or_block_end_offset(start_offset int) int {
+	if p.relative_token(start_offset).kind != .key_orelse {
+		return -1
+	}
+	block_start_offset := p.next_non_comment_token_offset(start_offset + 1)
+	if p.relative_token(block_start_offset).kind != .lcbr {
+		return -1
+	}
+	return p.current_brace_block_end_offset(block_start_offset)
+}
+
+fn (p &Parser) current_brace_block_end_offset(start_offset int) int {
+	if p.relative_token(start_offset).kind != .lcbr {
+		return -1
+	}
+	mut offset := start_offset
+	mut brace_depth := 0
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return -1
+			}
+			.lcbr {
+				brace_depth++
+			}
+			.rcbr {
+				if brace_depth == 0 {
+					return -1
+				}
+				brace_depth--
+				if brace_depth == 0 {
+					return offset
+				}
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return -1
+}
+
+fn (p &Parser) current_parenthesized_expr_next_non_comment_offset(start_offset int) int {
+	mut offset := start_offset
+	mut paren_depth := 0
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return -1
+			}
+			.lpar {
+				paren_depth++
+			}
+			.rpar {
+				if paren_depth == 0 {
+					return -1
+				}
+				paren_depth--
+				if paren_depth == 0 {
+					return p.next_non_comment_token_offset(offset + 1)
+				}
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return -1
+}
+
+fn (p &Parser) current_unsafe_expr_next_non_comment_offset(start_offset int) int {
+	if p.relative_token(start_offset).kind != .key_unsafe {
+		return -1
+	}
+	block_start_offset := p.next_non_comment_token_offset(start_offset + 1)
+	if p.relative_token(block_start_offset).kind != .lcbr {
+		return -1
+	}
+	block_end_offset := p.current_brace_block_end_offset(block_start_offset)
+	if block_end_offset < 0 {
+		return -1
+	}
+	return p.next_non_comment_token_offset(block_end_offset + 1)
+}
+
+fn (p &Parser) current_lock_expr_next_non_comment_offset(start_offset int) int {
+	if p.relative_token(start_offset).kind !in [.key_lock, .key_rlock] {
+		return -1
+	}
+	mut offset := p.next_non_comment_token_offset(start_offset + 1)
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return -1
+			}
+			.lcbr {
+				block_end_offset := p.current_brace_block_end_offset(offset)
+				if block_end_offset < 0 {
+					return -1
+				}
+				return p.next_non_comment_token_offset(block_end_offset + 1)
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return -1
+}
+
+fn (p &Parser) current_or_block_next_non_comment_offset() int {
+	if p.tok.kind != .key_orelse {
+		return -1
+	}
+	mut offset := 0
+	mut brace_depth := 0
+	mut found_lcbr := false
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return -1
+			}
+			.lcbr {
+				found_lcbr = true
+				brace_depth++
+			}
+			.rcbr {
+				if !found_lcbr || brace_depth == 0 {
+					return -1
+				}
+				brace_depth--
+				if brace_depth == 0 {
+					return p.next_non_comment_token_offset(offset + 1)
+				}
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return -1
+}
+
+fn (p &Parser) result_is_followed_by_postfix_call(next_offset int) bool {
+	offset := p.result_postfix_chain_next_non_comment_offset(next_offset)
+	if offset < 0 {
+		return false
+	}
+	tok := p.relative_token(offset)
+	if tok.kind != .lpar {
+		return false
+	}
+	prev_offset := p.previous_non_comment_token_offset(offset)
+	return prev_offset >= 0 && tok.line_nr == p.relative_token(prev_offset).line_nr
+}
+
+fn (p &Parser) result_is_followed_by_postfix_value_result(next_offset int) bool {
+	offset := p.result_postfix_chain_next_non_comment_offset(next_offset)
+	if offset < 0 {
+		return false
+	}
+	return p.result_token_is_value_continuation(offset)
+}
+
+fn (p &Parser) result_token_is_value_continuation(offset int) bool {
+	if offset < 0 {
+		return false
+	}
+	tok := p.relative_token(offset)
+	if tok.kind in [.lsbr, .nilsbr] {
+		return p.result_continuation_is_same_line(offset)
+	}
+	if tok.kind.precedence() > 0 {
+		if tok.kind in [.minus, .amp, .mul, .arrow, .key_as, .key_in, .key_is] {
+			return p.result_continuation_is_same_line(offset)
+		}
+		return true
+	}
+	return tok.kind in [.comma, .rcbr, .key_orelse]
+}
+
+fn (p &Parser) result_continuation_is_same_line(offset int) bool {
+	prev_offset := p.previous_non_comment_token_offset(offset)
+	if prev_offset < 0 {
+		return false
+	}
+	prev_tok := p.relative_token(prev_offset)
+	tok := p.relative_token(offset)
+	return tok.line_nr == prev_tok.line_nr
+		|| (prev_tok.kind == .string && tok.line_nr == prev_tok.line_nr + prev_tok.lit.count('\n'))
+}
+
+fn (p &Parser) result_postfix_chain_next_non_comment_offset(next_offset int) int {
+	if next_offset < 0 {
+		return -1
+	}
+	mut offset := next_offset
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.rpar {
+				offset = p.next_non_comment_token_offset(offset + 1)
+			}
+			.dot {
+				field_offset := p.next_non_comment_token_offset(offset + 1)
+				if p.relative_token(field_offset).kind == .eof {
+					return -1
+				}
+				offset = p.next_non_comment_token_offset(field_offset + 1)
+			}
+			.lsbr, .nilsbr {
+				if !p.result_continuation_is_same_line(offset) {
+					return offset
+				}
+				bracket_end_offset := p.current_square_block_end_offset(offset)
+				if bracket_end_offset < 0 {
+					return -1
+				}
+				offset = p.next_non_comment_token_offset(bracket_end_offset + 1)
+			}
+			.question, .not {
+				if !p.result_continuation_is_same_line(offset) {
+					return offset
+				}
+				offset = p.next_non_comment_token_offset(offset + 1)
+			}
+			else {
+				return offset
+			}
+		}
+	}
+	return -1
+}
+
+fn (p &Parser) current_square_block_end_offset(start_offset int) int {
+	if p.relative_token(start_offset).kind !in [.lsbr, .nilsbr] {
+		return -1
+	}
+	mut offset := start_offset
+	mut bracket_depth := 0
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return -1
+			}
+			.lsbr, .nilsbr {
+				bracket_depth++
+			}
+			.rsbr {
+				if bracket_depth == 0 {
+					return -1
+				}
+				bracket_depth--
+				if bracket_depth == 0 {
+					return offset
+				}
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return -1
+}
+
+fn (p &Parser) expecting_consumed_value() bool {
+	return p.expecting_value && (p.parenthesized_expr_is_used || p.inside_call_args)
+}
+
+fn (p &Parser) or_block_value_is_used() bool {
+	if p.expecting_consumed_value() {
+		return true
+	}
+	next_offset := p.current_or_block_next_non_comment_offset()
+	if p.result_is_followed_by_postfix_call(next_offset) {
+		return true
+	}
+	if !p.parenthesized_expr_is_used || !p.is_current_value_result_scope() {
+		return false
+	}
+	return p.result_token_is_value_continuation(next_offset)
+		|| p.result_is_followed_by_postfix_value_result(next_offset)
+}
+
+fn (p &Parser) lock_expr_value_is_used() bool {
+	if p.expecting_consumed_value() || p.prev_tok.kind.is_assign() {
+		return true
+	}
+	next_offset := p.current_lock_expr_next_non_comment_offset(0)
+	if next_offset < 0 {
+		return false
+	}
+	if p.result_is_followed_by_postfix_call(next_offset) {
+		return true
+	}
+	return p.is_current_value_result_scope() && (p.result_token_is_value_continuation(next_offset)
+		|| p.result_is_followed_by_postfix_value_result(next_offset))
+}
+
+fn (p &Parser) unsafe_stmt_value_is_used() bool {
+	if p.prev_tok.kind.is_assign() {
+		return true
+	}
+	next_offset := p.current_unsafe_expr_next_non_comment_offset(0)
+	if next_offset < 0 {
+		return false
+	}
+	if p.result_is_followed_by_postfix_call(next_offset) {
+		return true
+	}
+	return p.is_current_value_result_scope() && (p.result_token_is_value_continuation(next_offset)
+		|| p.result_is_followed_by_postfix_value_result(next_offset))
+}
+
+fn (p &Parser) is_current_unsafe_expr_result_end() bool {
+	if !p.is_current_unsafe_expr_scope() {
+		return false
+	}
+	if p.tok.kind == .rcbr {
+		return true
+	}
+	if p.tok.kind == .comment {
+		next_offset := p.next_non_comment_token_offset(1)
+		return p.relative_token(next_offset).kind == .rcbr
+	}
+	return false
+}
+
+fn (p &Parser) comptime_stmt_is_expr_branch_result() bool {
+	if !p.is_current_value_result_scope() {
+		return false
+	}
+	mut offset := 0
+	mut brace_depth := 0
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return false
+			}
+			.lcbr {
+				brace_depth++
+			}
+			.rcbr {
+				if brace_depth == 0 {
+					return false
+				}
+				brace_depth--
+				if brace_depth == 0 {
+					next_offset := p.next_non_comment_token_offset(offset + 1)
+					next_tok := p.relative_token(next_offset)
+					if next_tok.kind == .dollar
+						&& p.relative_token(next_offset + 1).kind == .key_else {
+						offset = next_offset + 1
+					} else {
+						return next_tok.kind == .rcbr
+					}
+				}
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return false
+}
+
+fn (p &Parser) is_expr_branch_result_end() bool {
+	if p.is_current_unsafe_expr_result_end() {
+		return true
+	}
+	if !p.is_current_value_result_scope() {
+		return false
+	}
+	if p.tok.kind == .rcbr {
+		return true
+	}
+	if p.tok.kind == .comment {
+		next_offset := p.next_non_comment_token_offset(1)
+		return p.relative_token(next_offset).kind == .rcbr
+	}
+	return false
 }
 
 @[direct_array_access]
@@ -1326,11 +2972,12 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// TODO: remove translated
 	if p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left)
-	} else if !p.pref.translated && !p.is_translated && !p.pref.is_fmt && !p.pref.is_vet
-		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] {
+	} else if p.should_check_unused_exprs(tok.kind) {
 		for node in left {
-			if (is_top_level || p.tok.kind !in [.comment, .rcbr])
-				&& node !in [ast.CallExpr, ast.PostfixExpr, ast.ComptimeCall, ast.SelectorExpr, ast.DumpExpr] {
+			has_embed_file_value := p.expr_contains_embed_file_value(node)
+			if (is_top_level || p.tok.kind !in [.comment, .rcbr]
+				|| (has_embed_file_value && !p.is_expr_branch_result_end()))
+				&& !p.expr_can_be_unused_stmt(node) {
 				is_complex_infix_expr := node is ast.InfixExpr
 					&& node.op in [.left_shift, .right_shift, .unsigned_right_shift, .arrow]
 				if !is_complex_infix_expr && !p.is_vls {
@@ -1406,7 +3053,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 			scope:    p.scope
 		}
 	}
-	is_following_concrete_types := p.is_following_concrete_types()
+	is_following_concrete_types := !p.scope.known_var(name) && p.is_following_concrete_types()
 	mut concrete_types := []ast.Type{}
 	if p.expr_mod.len > 0 {
 		name = '${p.expr_mod}.${name}'
@@ -1439,12 +3086,21 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 		}
 		else {
 			if p.tok.kind == .dot {
-				if var := p.scope.find_var(name) { var.typ } else { 0 }
+				obj := p.scope.find_ptr(name)
+				if obj != unsafe { nil } {
+					match obj {
+						ast.Var { obj.typ }
+						else { 0 }
+					}
+				} else {
+					0
+				}
 			} else {
 				0
 			}
 		}
 	}
+
 	return ast.Ident{
 		tok_kind:       p.tok.kind
 		kind:           .unresolved
@@ -1494,6 +3150,13 @@ fn (mut p Parser) alias_array_type() ast.Type {
 	return ast.void_type
 }
 
+fn (p &Parser) is_known_non_placeholder_type(name string) bool {
+	if idx := p.table.type_idxs[name] {
+		return p.table.sym(ast.idx_to_type(idx)).kind != .placeholder
+	}
+	return false
+}
+
 @[direct_array_access]
 fn (mut p Parser) name_expr() ast.Expr {
 	prev_tok_kind := p.prev_tok.kind
@@ -1526,6 +3189,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		'WASM' { ast.Language.wasm }
 		else { ast.Language.v }
 	}
+
 	if language != .v {
 		p.check_for_impure_v(language, p.tok.pos())
 	}
@@ -1550,11 +3214,6 @@ fn (mut p Parser) name_expr() ast.Expr {
 				pos = pos.extend(p.tok.pos())
 				p.next()
 			} else {
-				if p.pref.is_fmt {
-					map_init := p.map_init()
-					p.check(.rcbr)
-					return map_init
-				}
 				p.error('`}` expected; explicit `map` initialization does not support parameters')
 			}
 		}
@@ -1610,6 +3269,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 					return p.error('wrong field `${key}`, expecting `cap`')
 				}
 			}
+
 			last_pos = p.tok.pos()
 			p.check(.rcbr)
 		}
@@ -1669,9 +3329,11 @@ fn (mut p Parser) name_expr() ast.Expr {
 					p.add_defer_var(ident)
 					return node
 				}
+				// prepend the full import
+				mod = p.imports[p.tok.lit]
+			} else if p.mod.all_after_last('.') == p.tok.lit {
+				mod = p.mod
 			}
-			// prepend the full import
-			mod = p.imports[p.tok.lit]
 		}
 		line_nr := p.tok.line_nr
 		p.next()
@@ -1710,11 +3372,9 @@ fn (mut p Parser) name_expr() ast.Expr {
 		&& p.peek_token(2).kind == .rsbr && (p.peek_token(4).kind == .lpar
 		|| p.peek_token(6).kind == .lpar)) {
 		// ?[]foo(), ?[1]foo, foo(), foo<int>() or type() cast
-		mut original_name := if is_array {
-			p.peek_token(if is_fixed_array { 3 } else { 2 }).lit
-		} else {
-			p.tok.lit
-		}
+		mut original_name := if is_array { p.peek_token(if is_fixed_array { 3 } else { 2 }).lit
+		 } else { p.tok.lit
+		 }
 		if is_fixed_array && p.peek_token(4).kind == .dot {
 			mod = original_name
 			original_name = p.peek_token(5).lit
@@ -1735,8 +3395,8 @@ fn (mut p Parser) name_expr() ast.Expr {
 		if (is_option || p.peek_tok.kind in [.lsbr, .lpar]) && (is_mod_cast
 			|| is_c_pointer_cast || is_c_type_cast || is_js_cast || is_generic_cast
 			|| (language == .v && name != '' && (is_capital_after_last_dot
-			|| name[0].is_capital()
-			|| (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs))))) {
+			|| name[0].is_capital() || (!known_var && (p.is_known_non_placeholder_type(name)
+			|| p.is_known_non_placeholder_type(name_w_mod)))))) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO: handle C.stat()
 			start_pos := p.tok.pos()
@@ -1787,18 +3447,23 @@ fn (mut p Parser) name_expr() ast.Expr {
 			} else {
 				node = p.call_expr(language, mod)
 				if p.tok.kind == .lpar && p.prev_tok.line_nr == p.tok.line_nr {
+					left_pos := node.pos()
 					p.next()
-					pos := p.tok.pos()
+					lpar_line := p.prev_tok.pos().line_nr
 					args := p.call_args()
+					args_trailing_comma := p.call_args_trailing_comma
 					p.check(.rpar)
+					rpar_pos := p.prev_tok.pos()
 					or_block := p.gen_or_block()
 					node = ast.CallExpr{
-						left:           node
-						args:           args
-						pos:            pos
-						scope:          p.scope
-						or_block:       or_block
-						is_return_used: p.expecting_value
+						left:                   node
+						args:                   args
+						args_start_on_new_line: call_args_are_multiline(lpar_line,
+							args_trailing_comma, args)
+						pos:                    left_pos.extend(rpar_pos)
+						scope:                  p.scope
+						or_block:               or_block
+						is_return_used:         p.expecting_value
 					}
 				}
 			}
@@ -1836,6 +3501,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 				'indirections' { ast.GenericKindField.indirections }
 				else { ast.GenericKindField.unknown }
 			}
+
 			pos.extend(p.tok.pos())
 			return ast.SelectorExpr{
 				expr:        ast.Ident{
@@ -1861,16 +3527,26 @@ fn (mut p Parser) name_expr() ast.Expr {
 		// `anon_fn := Foo.bar` assign static method
 		if !known_var && lit0_is_capital && p.peek_tok.kind == .dot && language == .v
 			&& p.peek_token(2).kind == .name {
-			if func := p.table.find_fn(p.prepend_mod(p.tok.lit) + '__static__' + p.peek_token(2).lit) {
-				fn_type := ast.new_type(p.table.find_or_register_fn_type(func, false,
-					true))
+			type_name := p.tok.lit
+			mut full_type_name := ''
+			if mod != '' {
+				full_type_name = '${mod}.${type_name}'
+			} else if type_name in p.imported_symbols {
+				full_type_name = p.imported_symbols[type_name]
+			} else {
+				full_type_name = p.prepend_mod(type_name)
+			}
+			static_fn_name := full_type_name + '__static__' + p.peek_token(2).lit
+			if static_fn_name in p.table.fns {
+				func := unsafe { p.table.fns[static_fn_name] }
+				fn_type := ast.new_type(p.table.find_or_register_fn_type(func, false, true))
 				pos := p.tok.pos()
-				typ_name := p.check_name()
+				p.check_name()
 				p.check(.dot)
 				field_name := p.check_name()
 				pos.extend(p.tok.pos())
 				return ast.Ident{
-					name:  p.prepend_mod(typ_name) + '__static__' + field_name
+					name:  full_type_name + '__static__' + field_name
 					mod:   p.mod
 					kind:  .function
 					info:  ast.IdentFn{
@@ -1955,14 +3631,21 @@ enum OrBlockErrVarMode {
 
 fn (mut p Parser) or_block(err_var_mode OrBlockErrVarMode) ([]ast.Stmt, token.Pos, &ast.Scope) {
 	was_inside_or_expr := p.inside_or_expr
+	was_or_expr_scope_depth := p.or_expr_scope_depth
+	was_or_expr_is_used := p.or_expr_is_used
+	or_expr_is_used := p.or_block_value_is_used()
 	defer {
 		p.inside_or_expr = was_inside_or_expr
+		p.or_expr_scope_depth = was_or_expr_scope_depth
+		p.or_expr_is_used = was_or_expr_is_used
 	}
 	p.inside_or_expr = true
 
 	mut pos := p.tok.pos()
 	p.next()
 	p.open_scope()
+	p.or_expr_scope_depth = p.opened_scopes
+	p.or_expr_is_used = or_expr_is_used
 	or_scope := p.scope
 	defer {
 		p.close_scope()
@@ -1984,157 +3667,55 @@ fn (mut p Parser) or_block(err_var_mode OrBlockErrVarMode) ([]ast.Stmt, token.Po
 	return stmts, pos, or_scope
 }
 
+fn (mut p Parser) index_expr_part(is_gated bool) ast.Expr {
+	part_start_pos := p.tok.pos()
+	if p.tok.kind == .dotdot {
+		p.next()
+		mut high := ast.empty_expr
+		mut has_high := false
+		if p.tok.kind !in [.comma, .rsbr] {
+			high = p.expr(0)
+			has_high = true
+		}
+		return ast.RangeExpr{
+			low:      ast.empty_expr
+			high:     high
+			has_high: has_high
+			pos:      part_start_pos.extend(p.prev_tok.pos())
+			is_gated: is_gated
+		}
+	}
+	expr := p.expr(0)
+	if p.tok.kind != .dotdot {
+		return expr
+	}
+	p.next()
+	mut high := ast.empty_expr
+	mut has_high := false
+	if p.tok.kind !in [.comma, .rsbr] {
+		high = p.expr(0)
+		has_high = true
+	}
+	return ast.RangeExpr{
+		low:      expr
+		high:     high
+		has_low:  true
+		has_high: has_high
+		pos:      part_start_pos.extend(p.prev_tok.pos())
+		is_gated: is_gated
+	}
+}
+
 fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	// left == `a` in `a[0]`
 	start_pos := p.tok.pos()
 	p.next() // [
-	mut has_low := true
-	if p.tok.kind == .dotdot {
-		has_low = false
-		// [..end]
+	mut indices := []ast.Expr{}
+	indices << p.index_expr_part(is_gated)
+	for p.tok.kind == .comma && p.tok.pos().line_nr == start_pos.line_nr {
 		p.next()
-		mut high := ast.empty_expr
-		mut has_high := false
-		if p.tok.kind != .rsbr {
-			high = p.expr(0)
-			has_high = true
-		}
-
-		pos_high := start_pos.extend(p.tok.pos())
-		p.check(.rsbr)
-		mut or_kind_high := ast.OrKind.absent
-		mut or_stmts_high := []ast.Stmt{}
-		mut or_pos_high := token.Pos{}
-		mut or_scope := ast.empty_scope
-
-		if !p.or_is_handled {
-			// a[..end] or {...}
-			if p.tok.kind == .key_orelse {
-				or_stmts_high, or_pos_high, or_scope = p.or_block(.no_err_var)
-				return ast.IndexExpr{
-					left:     left
-					pos:      pos_high
-					index:    ast.RangeExpr{
-						low:      ast.empty_expr
-						high:     high
-						has_high: has_high
-						pos:      pos_high
-						is_gated: is_gated
-					}
-					or_expr:  ast.OrExpr{
-						kind:  .block
-						stmts: or_stmts_high
-						pos:   or_pos_high
-						scope: or_scope
-					}
-					is_gated: is_gated
-				}
-			}
-			// `a[start..end]!`
-			if p.tok.kind == .not {
-				or_pos_high = p.tok.pos()
-				or_kind_high = .propagate_result
-				or_scope = p.scope
-				p.next()
-			} else if p.tok.kind == .question {
-				p.error_with_pos('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
-					p.tok.pos())
-			}
-		}
-
-		return ast.IndexExpr{
-			left:     left
-			pos:      pos_high
-			index:    ast.RangeExpr{
-				low:      ast.empty_expr
-				high:     high
-				has_high: has_high
-				pos:      pos_high
-				is_gated: is_gated
-			}
-			or_expr:  ast.OrExpr{
-				kind:  or_kind_high
-				stmts: or_stmts_high
-				scope: or_scope
-				pos:   or_pos_high
-			}
-			is_gated: is_gated
-		}
+		indices << p.index_expr_part(is_gated)
 	}
-	expr := p.expr(0) // `[expr]` or  `[expr..`
-	mut has_high := false
-
-	if p.tok.kind == .dotdot {
-		// either [start..end] or [start..]
-		p.next()
-		mut high := ast.empty_expr
-		if p.tok.kind != .rsbr {
-			has_high = true
-			high = p.expr(0)
-		}
-		pos_low := start_pos.extend(p.tok.pos())
-		p.check(.rsbr)
-		mut or_kind_low := ast.OrKind.absent
-		mut or_stmts_low := []ast.Stmt{}
-		mut or_pos_low := token.Pos{}
-		mut or_scope := ast.empty_scope
-		if !p.or_is_handled {
-			// a[start..end] or {...}
-			if p.tok.kind == .key_orelse {
-				or_stmts_low, or_pos_low, or_scope = p.or_block(.no_err_var)
-				return ast.IndexExpr{
-					left:     left
-					pos:      pos_low
-					index:    ast.RangeExpr{
-						low:      expr
-						high:     high
-						has_high: has_high
-						has_low:  has_low
-						pos:      pos_low
-						is_gated: is_gated
-					}
-					or_expr:  ast.OrExpr{
-						kind:  .block
-						stmts: or_stmts_low
-						pos:   or_pos_low
-						scope: or_scope
-					}
-					is_gated: is_gated
-				}
-			}
-			// `a[start..end]!`
-			if p.tok.kind == .not {
-				or_pos_low = p.tok.pos()
-				or_kind_low = .propagate_result
-				or_scope = p.scope
-				p.next()
-			} else if p.tok.kind == .question {
-				p.error_with_pos('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
-					p.tok.pos())
-			}
-		}
-
-		return ast.IndexExpr{
-			left:     left
-			pos:      pos_low
-			index:    ast.RangeExpr{
-				low:      expr
-				high:     high
-				has_high: has_high
-				has_low:  has_low
-				pos:      pos_low
-				is_gated: is_gated
-			}
-			or_expr:  ast.OrExpr{
-				kind:  or_kind_low
-				stmts: or_stmts_low
-				scope: or_scope
-				pos:   or_pos_low
-			}
-			is_gated: is_gated
-		}
-	}
-	// [expr]
 	pos := start_pos.extend(p.tok.pos())
 	p.check(.rsbr)
 	mut or_kind := ast.OrKind.absent
@@ -2147,7 +3728,8 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			or_stmts, or_pos, or_scope = p.or_block(.no_err_var)
 			return ast.IndexExpr{
 				left:     left
-				index:    expr
+				index:    indices[0]
+				indices:  indices
 				pos:      pos
 				or_expr:  ast.OrExpr{
 					kind:  .block
@@ -2171,7 +3753,8 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	}
 	return ast.IndexExpr{
 		left:     left
-		index:    expr
+		index:    indices[0]
+		indices:  indices
 		pos:      pos
 		or_expr:  ast.OrExpr{
 			kind:  or_kind
@@ -2181,6 +3764,17 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		}
 		is_gated: is_gated
 	}
+}
+
+@[inline]
+fn (p &Parser) implicit_mutability_enabled() bool {
+	return p.pref.disable_explicit_mutability
+		&& (!p.inside_vlib_file || p.file_path.ends_with('.vv'))
+}
+
+@[inline]
+fn (p &Parser) scope_var_is_mut(is_mut bool) bool {
+	return is_mut || p.implicit_mutability_enabled()
 }
 
 fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
@@ -2203,8 +3797,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		}
 	}
 	mut field_name := ''
-	// check if the name is on the same line as the dot
-	if p.prev_tok.pos().line_nr == name_pos.line_nr || p.tok.kind != .name {
+	dot_line := p.prev_tok.pos().line_nr
+	// check if the name is on the same line as the dot, or the dot
+	// is on the same line as the expression before (trailing dot for chaining)
+	if dot_line == name_pos.line_nr || prev_line == dot_line || p.tok.kind != .name {
 		if p.is_vls && p.tok.kind != .name {
 			if p.tok.kind in [.rpar, .rcbr] {
 				// Simplify the dot expression for VLS, so that the parser doesn't error
@@ -2219,7 +3815,8 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	} else {
 		p.name_error = true
 	}
-	if ast.builtin_array_generic_methods_matcher.matches(field_name) {
+	if ast.builtin_array_generic_methods_matcher.matches(field_name) && (p.tok.kind == .lpar
+		|| is_generic_call || (p.tok.kind == .not && p.peek_tok.kind == .lpar)) {
 		if p.file_backend_mode == .v || p.file_backend_mode == .c {
 			p.register_auto_import('builtin.closure')
 		}
@@ -2250,41 +3847,51 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	}
 	if p.tok.kind == .lpar {
 		p.next()
+		lpar_line := p.prev_tok.pos().line_nr
 		args := p.call_args()
+		args_trailing_comma := p.call_args_trailing_comma
 		p.check(.rpar)
 		or_block := p.gen_or_block()
 		end_pos := p.prev_tok.pos()
 		pos := name_pos.extend(end_pos)
+		if field_name == 'to_fixed_size' && left is ast.ArrayInit && args.len == 0
+			&& or_block.kind == .absent {
+			left_array := left as ast.ArrayInit
+			if left_array.is_fixed {
+				return left_array
+			}
+			if left_array.exprs.len > 0 {
+				return ast.ArrayInit{
+					...left_array
+					is_fixed:           true
+					has_val:            true
+					from_to_fixed_size: true
+					pos:                left_array.pos.extend(end_pos)
+				}
+			}
+		}
 		comments := p.eat_comments(same_line: true)
 		mut left_node := unsafe { left }
 		if mut left_node is ast.CallExpr {
 			left_node.is_return_used = true
 		}
-		if p.pref.is_fmt {
-			if mut left_node is ast.Ident {
-				// `time.now()` without `time imported` is processed as a method call with `time` being
-				// a `left_node` expression. Import `time` automatically.
-				// TODO: fetch all available modules
-				if left_node.name in ['time', 'os', 'strings', 'math', 'json', 'base64']
-					&& !left_node.scope.known_var(left_node.name) {
-					p.register_implied_import(left_node.name)
-				}
-			}
-		}
+		p.maybe_register_implied_vlib_import(left)
 		mcall_expr := ast.CallExpr{
-			left:              left
-			name:              field_name
-			kind:              p.call_kind(field_name)
-			args:              args
-			name_pos:          name_pos
-			pos:               pos
-			is_method:         true
-			concrete_types:    concrete_types
-			concrete_list_pos: concrete_list_pos
-			or_block:          or_block
-			scope:             p.scope
-			comments:          comments
-			is_return_used:    p.expecting_value
+			left:                   left
+			name:                   field_name
+			kind:                   p.call_kind(field_name)
+			args:                   args
+			args_start_on_new_line: call_args_are_multiline(lpar_line, args_trailing_comma, args)
+			name_pos:               name_pos
+			pos:                    pos
+			is_method:              true
+			concrete_types:         concrete_types
+			concrete_list_pos:      concrete_list_pos
+			raw_concrete_types:     concrete_types
+			or_block:               or_block
+			scope:                  p.scope
+			comments:               comments
+			is_return_used:         p.expecting_value
 		}
 		return mcall_expr
 	}
@@ -2338,7 +3945,41 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	if mut left_node is ast.CallExpr {
 		left_node.is_return_used = true
 	}
+	p.maybe_register_implied_vlib_import(left)
 	return sel_expr
+}
+
+fn (p &Parser) vfmt_vlib_path() string {
+	if p.pref.vlib != '' {
+		return p.pref.vlib
+	}
+	return os.join_path(os.dir(pref.vexe_path()), 'vlib')
+}
+
+fn (mut p Parser) maybe_register_implied_vlib_import(left ast.Expr) {
+	if !p.pref.is_fmt || left !is ast.Ident {
+		return
+	}
+	left_node := left as ast.Ident
+	if left_node.name == '' || left_node.name in p.imports
+		|| left_node.name == p.mod.all_after_last('.')
+		|| left_node.name == p.cur_fn_name.all_after_last('.')
+		|| left_node.scope.known_var(left_node.name) {
+		return
+	}
+	for _, imported_mod in p.imports {
+		if imported_mod == left_node.name || imported_mod.all_after_last('.') == left_node.name {
+			// The module is already imported, potentially under an alias, so this is not a missing import.
+			return
+		}
+	}
+	if left_node.name in p.imported_symbols {
+		return
+	}
+	// vfmt can infer a missing import when the selector prefix matches a top-level vlib module.
+	if os.is_dir(os.join_path(p.vfmt_vlib_path(), left_node.name)) {
+		p.register_implied_import(left_node.name)
+	}
 }
 
 fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
@@ -2427,24 +4068,29 @@ fn (mut p Parser) string_expr() ast.Expr {
 	mut pos := p.tok.pos()
 	pos.last_line = pos.line_nr + val.count('\n')
 	if p.peek_tok.kind != .str_dollar {
+		val_opaque_pos := p.scanner.string_opaque_pos[p.tok.tidx]
 		p.next()
 		node = ast.StringLiteral{
-			val:      val
-			is_raw:   is_raw
-			language: match true {
+			val:        val
+			is_raw:     is_raw
+			language:   match true {
 				is_cstr { ast.Language.c }
 				is_js_str { ast.Language.js }
 				else { ast.Language.v }
 			}
-			pos:      pos
+			pos:        pos
+			opaque_pos: val_opaque_pos
 		}
 		return node
 	}
 	mut exprs := []ast.Expr{}
 	mut vals := []string{}
+	mut vals_opaque_pos := [][]int{}
 	mut has_fmts := []bool{}
 	mut fwidths := []int{}
 	mut precisions := []int{}
+	mut fwidth_exprs := []ast.Expr{}
+	mut precision_exprs := []ast.Expr{}
 	mut visible_pluss := []bool{}
 	mut fills := []bool{}
 	mut fmts := []u8{}
@@ -2453,6 +4099,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	p.inside_str_interp = true
 	for p.tok.kind == .string {
 		vals << p.tok.lit
+		vals_opaque_pos << p.scanner.string_opaque_pos[p.tok.tidx]
 		p.next()
 		if p.tok.kind != .str_dollar {
 			break
@@ -2462,8 +4109,10 @@ fn (mut p Parser) string_expr() ast.Expr {
 		mut has_fmt := false
 		mut fwidth := 0
 		mut fwidthneg := false
+		mut fwidth_expr := ast.empty_expr
 		// 987698 is a magic default value, unlikely to be present in user input. Note: 0 is valid precision
 		mut precision := 987698
+		mut precision_expr := ast.empty_expr
 		mut visible_plus := false
 		mut fill := false
 		mut fmt := `_` // placeholder
@@ -2479,18 +4128,44 @@ fn (mut p Parser) string_expr() ast.Expr {
 			}
 			// ${num:2d}
 			if p.tok.kind == .number {
-				fields := p.tok.lit.split('.')
-				if fields[0].len > 0 && fields[0][0] == `0` {
+				if p.peek_tok.kind == .lpar && p.tok.lit == '0' {
 					fill = true
+					p.next()
+					fwidth_expr = p.string_inter_format_expr()
+				} else {
+					fields := p.tok.lit.split('.')
+					if fields[0].len > 0 && fields[0][0] == `0` {
+						fill = true
+					}
+					fwidth = fields[0].int()
+					if fwidthneg {
+						fwidth = -fwidth
+					}
+					if fields.len > 1 {
+						precision = fields[1].int()
+					}
+					p.next()
 				}
-				fwidth = fields[0].int()
-				if fwidthneg {
-					fwidth = -fwidth
-				}
-				if fields.len > 1 {
-					precision = fields[1].int()
-				}
+			} else if p.tok.kind == .lpar {
+				fwidth_expr = p.string_inter_format_expr()
+			}
+			if fwidthneg && fwidth_expr !is ast.EmptyExpr {
+				fwidth_expr = ast.Expr(ast.PrefixExpr{
+					op:    .minus
+					pos:   fwidth_expr.pos()
+					right: fwidth_expr
+				})
+			}
+			if p.tok.kind == .dot {
 				p.next()
+				if p.tok.kind == .number {
+					precision = p.tok.lit.int()
+					p.next()
+				} else if p.tok.kind == .lpar {
+					precision_expr = p.string_inter_format_expr()
+				} else {
+					return p.error('precision specification should be a number or `(expression)`')
+				}
 			}
 			if p.tok.kind == .name {
 				if p.tok.lit.len == 1 {
@@ -2503,8 +4178,10 @@ fn (mut p Parser) string_expr() ast.Expr {
 			}
 		}
 		fwidths << fwidth
-		has_fmts << has_fmt
+		fwidth_exprs << fwidth_expr
+		has_fmts << (has_fmt && fmt != `_`)
 		precisions << precision
+		precision_exprs << precision_expr
 		visible_pluss << visible_plus
 		fmts << fmt
 		fills << fill
@@ -2512,20 +4189,31 @@ fn (mut p Parser) string_expr() ast.Expr {
 	}
 	pos = pos.extend(p.prev_tok.pos())
 	node = ast.StringInterLiteral{
-		vals:       vals
-		exprs:      exprs
-		need_fmts:  has_fmts
-		fwidths:    fwidths
-		precisions: precisions
-		pluss:      visible_pluss
-		fills:      fills
-		fmts:       fmts
-		fmt_poss:   fposs
-		pos:        pos
+		vals:            vals
+		opaque_pos:      vals_opaque_pos
+		exprs:           exprs
+		has_fmts:        has_fmts.clone()
+		need_fmts:       has_fmts
+		fwidths:         fwidths
+		fwidth_exprs:    fwidth_exprs
+		precisions:      precisions
+		precision_exprs: precision_exprs
+		pluss:           visible_pluss
+		fills:           fills
+		fmts:            fmts
+		fmt_poss:        fposs
+		pos:             pos
 	}
 	// need_fmts: prelimery - until checker finds out if really needed
 	p.inside_str_interp = false
 	return node
+}
+
+fn (mut p Parser) string_inter_format_expr() ast.Expr {
+	p.check(.lpar)
+	expr := p.expr(0)
+	p.check(.rpar)
+	return expr
 }
 
 fn (mut p Parser) parse_number_literal() ast.Expr {
@@ -2615,6 +4303,17 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		full_name := if is_virtual_c_const { name } else { p.prepend_mod(name) }
 		if p.tok.kind == .comma {
 			p.error_with_pos('const declaration do not support multiple assign yet', p.tok.pos())
+			if is_block {
+				for p.tok.kind !in [.eof, .rpar] {
+					p.next()
+				}
+			} else {
+				line_nr := p.tok.line_nr
+				for p.tok.kind != .eof && p.tok.line_nr == line_nr {
+					p.next()
+				}
+			}
+			break
 		}
 		// Allow for `const x := 123`, and for `const x = 123` too.
 		// Supporting `const x := 123` in addition to `const x = 123`, makes extracting local variables to constants
@@ -2722,9 +4421,15 @@ fn (mut p Parser) return_stmt() ast.Return {
 	}
 	// return exprs
 	old_assign_rhs := p.inside_assign_rhs
+	old_inside_return_expr := p.inside_return_expr
+	old_return_expr_scope_depth := p.return_expr_scope_depth
 	p.inside_assign_rhs = true
+	p.inside_return_expr = true
+	p.return_expr_scope_depth = p.opened_scopes
 	exprs := p.expr_list(true)
 	p.inside_assign_rhs = old_assign_rhs
+	p.inside_return_expr = old_inside_return_expr
+	p.return_expr_scope_depth = old_return_expr_scope_depth
 	end_pos := exprs.last().pos()
 	return ast.Return{
 		scope:    p.scope
@@ -2773,8 +4478,19 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	mut comments := []ast.Comment{}
 	for {
 		comments = p.eat_comments()
-		is_volatile := p.tok.kind == .key_volatile
-		if is_volatile {
+		mut is_volatile := false
+		mut is_const := false
+		for p.tok.kind in [.key_const, .key_volatile] {
+			match p.tok.kind {
+				.key_const {
+					is_const = true
+				}
+				.key_volatile {
+					is_volatile = true
+				}
+				else {}
+			}
+
 			p.next()
 		}
 		if is_block && p.tok.kind == .eof {
@@ -2838,6 +4554,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			comments:    comments
 			is_markused: is_markused
 			is_volatile: is_volatile
+			is_const:    is_const
 			is_exported: is_exported
 			is_weak:     is_weak
 			is_hidden:   is_hidden
@@ -2904,11 +4621,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.next()
 	}
 	p.check(.key_type)
-	mut comments_before_key_type := if p.pref.is_vls {
-		p.cur_comments.clone()
-	} else {
-		[]
-	}
+	mut comments_before_key_type := if p.pref.is_vls { p.cur_comments.clone() } else { [] }
 	end_pos := p.tok.pos()
 	decl_pos := start_pos.extend(end_pos)
 	name_pos := p.tok.pos()
@@ -2936,8 +4649,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 	}
 	if p.is_imported_symbol(name) {
-		p.error_with_pos('cannot register alias `${name}`, this type was already imported',
-			end_pos)
+		p.error_with_pos('cannot register alias `${name}`, this type was already imported', end_pos)
 		return ast.AliasTypeDecl{}
 	}
 	mut sum_variants := []ast.TypeNode{}
@@ -3074,7 +4786,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	if idx == pidx {
 		type_alias_pos := sum_variants[0].pos
-		p.error_with_pos('a type alias can not refer to itself: ${name}', decl_pos.extend(type_alias_pos))
+		p.error_with_pos('a type alias can not refer to itself: ${name}',
+			decl_pos.extend(type_alias_pos))
 		return ast.AliasTypeDecl{}
 	}
 	comments = sum_variants[0].end_comments.clone()
@@ -3187,6 +4900,7 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 }
 
 fn (mut p Parser) unsafe_stmt() ast.Stmt {
+	unsafe_expr_is_used := p.unsafe_stmt_value_is_used()
 	mut pos := p.tok.pos()
 	p.next()
 	if p.tok.kind != .lcbr {
@@ -3194,13 +4908,21 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	}
 	p.next()
 	if p.inside_unsafe && !p.inside_defer {
-		return p.error_with_pos('already inside `unsafe` block', pos)
+		err := p.error_with_pos('already inside `unsafe` block', pos)
+		p.recover_until_closing_rcbr()
+		return err
 	}
+	was_unsafe_expr_scope_depth := p.unsafe_expr_scope_depth
+	was_unsafe_expr_is_used := p.unsafe_expr_is_used
 	p.inside_unsafe = true
 	p.open_scope() // needed in case of `unsafe {stmt}`
+	p.unsafe_expr_scope_depth = p.opened_scopes
+	p.unsafe_expr_is_used = unsafe_expr_is_used
 	sc := p.scope
 	defer {
 		p.inside_unsafe = false
+		p.unsafe_expr_scope_depth = was_unsafe_expr_scope_depth
+		p.unsafe_expr_is_used = was_unsafe_expr_is_used
 		p.close_scope()
 	}
 	if p.tok.kind == .rcbr {
@@ -3234,6 +4956,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		}
 	}
 	// unsafe {stmts}
+	p.unsafe_expr_is_used = false
 	mut stmts := [stmt]
 	for p.tok.kind != .rcbr {
 		stmts << p.stmt(false)
@@ -3303,6 +5026,7 @@ fn (mut p Parser) skip_scope() {
 			.eof { break }
 			else {}
 		}
+
 		if br_cnt == 0 {
 			break
 		}

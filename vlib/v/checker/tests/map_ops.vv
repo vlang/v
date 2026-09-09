@@ -3,4 +3,9 @@ fn test_map() {
 	_ = m[`!`]
 	m['hi'] = 8
 	m[&m] += 4
+	a := 10
+	ptr := &a
+	mut n := map[int]int{}
+	n[ptr] = 1
+	_ = ptr in n
 }

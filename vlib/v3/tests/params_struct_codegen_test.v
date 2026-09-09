@@ -1,0 +1,226 @@
+import os
+
+const vexe = @VEXE
+const tests_dir = os.dir(@FILE)
+const v3_dir = os.dir(tests_dir)
+const vlib_dir = os.dir(v3_dir)
+const v3_src = os.join_path(v3_dir, 'v3.v')
+const params_struct_v3_bin = os.join_path(os.temp_dir(), 'v3_params_struct_codegen_test_${os.getpid()}')
+
+fn testsuite_begin() {
+	os.rm(params_struct_v3_bin) or {}
+}
+
+// build_v3 builds v3 data for v3 tests.
+fn build_v3() string {
+	if os.is_executable(params_struct_v3_bin) {
+		return params_struct_v3_bin
+	}
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${params_struct_v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+	return params_struct_v3_bin
+}
+
+// run_good supports run good handling for v3 tests.
+fn run_good(v3_bin string, name string, source string) string {
+	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(src, source) or { panic(err) }
+	bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed')
+
+	run := os.execute(bin)
+	assert run.exit_code == 0
+	return run.output.trim_space()
+}
+
+// A `@[params]` struct argument can be supplied as trailing `key: value` call args.
+// Regression: the args used to be dropped, generating `make(1, )` (empty arg, trailing comma).
+fn test_params_struct_call_args_codegen() {
+	v3_bin := build_v3()
+	source := "@[params]\nstruct Cfg {\n\ta int\n\tb string\n\tc bool\n}\n\nfn make(x int, cfg Cfg) string {\n\treturn '\${x}|\${cfg.a}|\${cfg.b}|\${cfg.c}'\n}\n\nfn main() {\n\tprintln(make(1, a: 10, b: 'hi', c: true))\n\tprintln(make(2, b: 'yo'))\n\tprintln(make(3, Cfg{a: 5, b: 'z', c: true}))\n}\n"
+	out := run_good(v3_bin, 'params_struct_codegen_input', source)
+	assert out == '1|10|hi|true\n2|0|yo|false\n3|5|z|true'
+}
+
+// The standard-library call that originally exposed the bug:
+// `strconv.atof64(s, allow_extra_chars: true)` reachable via `string.f64()`.
+// Previously this generated `strconv__atof64(s, )` (dropped param, trailing comma),
+// which failed C compilation. We only assert it compiles and runs here; atof64's
+// numeric accuracy is covered elsewhere.
+fn test_string_f64_params_struct_codegen() {
+	v3_bin := build_v3()
+	source := "fn main() {\n\tprintln('\${'3.0'.f64() > 0.0}')\n\tprintln('\${'2.0'.f32() > 0.0}')\n}\n"
+	out := run_good(v3_bin, 'string_f64_params_input', source)
+	assert out == 'true\ntrue'
+}
+
+fn test_pool_config_params_struct_can_be_omitted() {
+	v3_bin := build_v3()
+	source := "@[params]\nstruct PoolConfig {\n\tmax_open int\n}\n\nfn open_pool(name string, cfg PoolConfig) string {\n\treturn '\${name}|\${cfg.max_open}'\n}\n\nfn main() {\n\tprintln(open_pool('db'))\n\tprintln(open_pool('db', max_open: 4))\n}\n"
+	out := run_good(v3_bin, 'pool_config_params_input', source)
+	assert out == 'db|0\ndb|4'
+}
+
+fn test_params_fields_belong_to_params_struct() {
+	v3_bin := build_v3()
+	project_dir := os.join_path(os.temp_dir(), 'v3_params_field_owner_project')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(os.join_path(project_dir, 'fixture')) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'main.v'), "module main\n\nimport fixture\n\nstruct CliOptions {\n\truntime_profile string\n}\n\nfn main() {\n\topts := CliOptions{runtime_profile: 'node'}\n\tctx := &fixture.Context{}\n\tprintln(fixture.compile(ctx, 'entry', runtime_profile: opts.runtime_profile, retries: 3))\n}\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(project_dir, 'fixture', 'fixture.v'), "module fixture\n\npub struct Context {\npub:\n\tretries string\nmut:\n\truntime_profile string\n}\n\n@[params]\npub struct Options {\npub:\n\truntime_profile string\n\tretries         int\n}\n\npub fn compile(ctx &Context, path string, options Options) string {\n\t_ = ctx\n\treturn '\${path}:\${options.runtime_profile}:\${options.retries}'\n}\n") or {
+		panic(err)
+	}
+	bin := os.join_path(os.temp_dir(), 'v3_params_field_owner')
+	compile := os.execute('${v3_bin} ${os.join_path(project_dir, 'main.v')} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'entry:node:3'
+}
+
+fn test_interface_field_in_params_struct_codegen() {
+	v3_bin := build_v3()
+	source := 'interface Reader {\n\tread(mut buf []u8) !int\n}\n\nstruct Conn {}\n\nfn (c Conn) read(mut buf []u8) !int {\n\treturn 0\n}\n\nstruct Config {\n\treader Reader\n\tcap int\n}\n\nfn make(cfg Config) int {\n\treturn cfg.cap\n}\n\nfn main() {\n\tprintln(make(reader: Conn{}, cap: 8))\n}\n'
+	out := run_good(v3_bin, 'params_interface_field_input', source)
+	assert out == '8'
+}
+
+fn test_interface_array_field_in_params_struct_uses_expected_element_type() {
+	v3_bin := build_v3()
+	source := 'interface Widget {
+	kind() string
+}
+
+struct TextBox {}
+struct Label {}
+struct Button {}
+
+fn (TextBox) kind() string { return "textbox" }
+fn (Label) kind() string { return "label" }
+fn (Button) kind() string { return "button" }
+
+@[params]
+struct RowConfig {
+	children []Widget
+}
+
+fn row(config RowConfig) string {
+	mut kinds := []string{}
+	for child in config.children {
+		kinds << child.kind()
+	}
+	return kinds.join(",")
+}
+
+fn main() {
+	println(row(children: [TextBox{}, Label{}, Button{}]))
+}
+'
+	out := run_good(v3_bin, 'params_interface_array_field_input', source)
+	assert out == 'textbox,label,button'
+}
+
+fn test_collapsed_struct_call_feature_matrix() {
+	v3_bin := build_v3()
+	source := 'enum Mode {
+	fast
+	slow
+}
+
+struct Embedded {
+	embedded int
+}
+
+struct Plain {
+	Embedded
+	n int
+}
+
+type PlainAlias = Plain
+
+fn default_mode() Mode {
+	return .slow
+}
+
+@[params]
+struct Params {
+	n    int
+	mode Mode = default_mode()
+}
+
+type ParamsAlias = Params
+
+struct GenericParams[T] {
+	value T
+}
+
+struct Builder {
+	prefix string
+}
+
+fn plain(value Plain) string {
+	return "plain:\${value.n}:\${value.embedded}"
+}
+
+fn alias_plain(value PlainAlias) string {
+	return "alias:\${value.n}"
+}
+
+fn params(prefix string, value Params) string {
+	return "\${prefix}:\${value.n}:\${value.mode}"
+}
+
+fn alias_params(value ParamsAlias) string {
+	return "alias-params:\${value.n}:\${value.mode}"
+}
+
+fn pointer_params(value &Params) string {
+	return "pointer:\${value.n}:\${value.mode}"
+}
+
+fn generic_params[T](value GenericParams[T]) T {
+	return value.value
+}
+
+fn (builder Builder) make(value Plain) string {
+	return builder.prefix + int_str(value.n)
+}
+
+fn total(values ...Plain) int {
+	return values[0].n + values[0].embedded
+}
+
+fn call_with(callback fn (Plain) string) string {
+	return callback(n: 9)
+}
+
+fn main() {
+	println(plain(n: 1, embedded: 11))
+	println(alias_plain(n: 2))
+	println(params("params", n: 3, mode: .fast))
+	println(alias_params(n: 4))
+	println(alias_params())
+	println(pointer_params(n: 5, mode: .fast))
+	println(pointer_params())
+	println(int_str(generic_params[int](value: 6)))
+	println(int_str(generic_params(value: 7)))
+	println(Builder{prefix: "method:"}.make(n: 8))
+	println(int_str(total(n: 10, embedded: 20)))
+	println(call_with(plain))
+}
+'
+	out := run_good(v3_bin, 'collapsed_struct_call_feature_matrix', source)
+	assert out == 'plain:1:11\nalias:2\nparams:3:fast\nalias-params:4:slow\nalias-params:0:slow\npointer:5:fast\npointer:0:slow\n6\n7\nmethod:8\n30\nplain:9:0'
+}
+
+fn test_fixed_array_field_struct_init_codegen() {
+	v3_bin := build_v3()
+	source := "struct Item {\n\tx int\n}\n\nstruct Header {\nmut:\n\tdata [2]Item\n\tcur_pos int\n}\n\nstruct Uniforms {\n\tlights [2][4]f32\n}\n\nfn row() [4]f32 {\n\treturn [f32(1.1), 1.2, 1.3, 1.4]!\n}\n\nfn main() {\n\tmut h := Header{}\n\th.data[0] = Item{x: 4}\n\th.data[1] = Item{x: 9}\n\th.cur_pos = 2\n\tcombined := Header{\n\t\tdata: h.data\n\t\tcur_pos: h.cur_pos\n\t}\n\tprintln('\${combined.cur_pos}|\${combined.data[0].x}|\${combined.data[1].x}')\n\tmixed := Uniforms{\n\t\tlights: [\n\t\t\trow(),\n\t\t\t[f32(2.1), 2.2]!,\n\t\t]!\n\t}\n\tassert mixed.lights[0][0] == f32(1.1)\n\tassert mixed.lights[1][0] == f32(2.1)\n\tassert mixed.lights[1][1] == f32(2.2)\n\tassert mixed.lights[1][2] == 0\n\tassert mixed.lights[1][3] == 0\n}\n"
+	out := run_good(v3_bin, 'fixed_array_field_struct_init_input', source)
+	assert out == '2|4|9'
+}

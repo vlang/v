@@ -3,7 +3,7 @@ This command adds a symlink for the V compiler executable.
 Usage:
   v symlink [OPTIONS]
 
-Note that on Unix systems this command requires write permissions to
-/usr/local/bin to work.
+On Unix systems this command creates a symlink in /usr/local/bin. If that
+is not writable, it falls back to ~/.local/bin without requiring sudo.
 
 For GitHub Actions, the option -githubci needs to be specified.

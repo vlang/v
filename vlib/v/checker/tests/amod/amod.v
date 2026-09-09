@@ -19,3 +19,14 @@ pub struct FooParams {
 }
 
 pub fn foo(opts FooParams) {}
+
+struct PrivateFoo {
+pub:
+	bar int
+}
+
+pub fn new_private_foo(bar int) PrivateFoo {
+	return PrivateFoo{
+		bar: bar
+	}
+}

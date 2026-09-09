@@ -15,7 +15,9 @@ pub fn on_call(fname string) {
 	unsafe {
 		$if windows {
 			tid = C.GetCurrentThreadId()
-		} $else $if linux {
+		} $else $if no_gettid ? {
+			tid = u32(C.pthread_self())
+		} $else $if linux && !musl ? {
 			tid = C.gettid()
 		} $else {
 			tid = u32(C.pthread_self())

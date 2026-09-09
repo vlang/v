@@ -111,6 +111,7 @@ fn (mut fdr Finder) search_for_matches() {
 		.regexp { '${na}' }
 		else { '.*${sy}${sp}${na}${sp}.*' } // struct, enum, interface
 	}
+
 	// dump(query)
 	for file in files_to_search {
 		fdr.search_within_file(file, query)
@@ -140,6 +141,7 @@ fn (mut fdr Finder) search_within_file(file string, query string) {
 				}
 			}
 		}
+
 		if re.matches_string(line) && (const_found || line.contains('const')) {
 			words := line.split(' ').filter(it != '').map(it.trim('\t'))
 			match fdr.visib {
@@ -155,6 +157,7 @@ fn (mut fdr Finder) search_within_file(file string, query string) {
 					}
 				}
 			}
+
 			match fdr.mutab {
 				.any {}
 				.yes {
@@ -168,6 +171,7 @@ fn (mut fdr Finder) search_within_file(file string, query string) {
 					}
 				}
 			}
+
 			fdr.matches << Match{file, n_line, words.join(' ').trim(' {')}
 		}
 		if line.starts_with(')') && fdr.symbol == .const {

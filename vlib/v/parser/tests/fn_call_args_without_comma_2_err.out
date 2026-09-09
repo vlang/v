@@ -1,7 +1,0 @@
-vlib/v/parser/tests/fn_call_args_without_comma_2_err.vv:8:3: error: unexpected number `23`, expecting `,`
-    6 |     greet(
-    7 |         17
-    8 |         23
-      |         ~~
-    9 |     )
-   10 | }

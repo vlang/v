@@ -132,9 +132,9 @@ fn create_fingerprint(mut prng rand.PRNG, env_key_string string) string {
 }
 
 fn hash(input string) string {
-	mut hash := sha3.new512() or { panic(err) }
-	hash.write(input.bytes()) or { panic(err) }
-	hash_digest := hash.checksum()
+	mut h := sha3.new512() or { panic(err) }
+	h.write(input.bytes()) or { panic(err) }
+	hash_digest := h.checksum()
 
 	// Drop the first character because it will bias
 	// the histogram to the left.

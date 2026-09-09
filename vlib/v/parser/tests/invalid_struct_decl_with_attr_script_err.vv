@@ -1,0 +1,6 @@
+test_var = 'Test'
+
+@[table: 'users']
+struct User {
+	name string
+}

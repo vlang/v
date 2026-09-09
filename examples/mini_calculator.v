@@ -51,6 +51,7 @@ fn expr_to_rev_pol(expr string) ![]string {
 					return error('err: invalid character `${op}`')
 				}
 			}
+
 			pos++
 		}
 	}

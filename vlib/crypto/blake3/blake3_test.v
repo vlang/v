@@ -9,7 +9,7 @@
 module blake3
 
 import encoding.hex
-import json
+import json2 as json
 import os
 
 struct TestObject {
@@ -29,7 +29,7 @@ struct TestVectors {
 const object_string = os.read_file(os.real_path(os.join_path(os.dir(@FILE), 'testdata',
 	'test_vectors.json'))) or { panic(err) }
 
-const test_object = json.decode(TestObject, object_string) or { panic(err) }
+const test_object = json.decode[TestObject](object_string) or { panic(err) }
 
 const data_segment = []u8{len: 251, cap: 251, init: u8(index)}
 
@@ -49,7 +49,7 @@ fn test_run_test_vectors() {
 			return
 		}
 
-		hash_d.write(data[..case.input_len]) or {
+		hash_d.write(data[..int(case.input_len)]) or {
 			assert false, 'hash_d.write error: ${err}'
 			return
 		}
@@ -64,7 +64,7 @@ fn test_run_test_vectors() {
 
 		for i in [u64(16), 20, 24, 28, 32, 48, 64, 72, 96] {
 			if hash_bytes.len > i {
-				assert hash_d.checksum(i) == hash_bytes[..i], 'hash failed output length ${i}'
+				assert hash_d.checksum(i) == hash_bytes[..int(i)], 'hash failed output length ${i}'
 			}
 		}
 
@@ -77,7 +77,7 @@ fn test_run_test_vectors() {
 			return
 		}
 
-		keyed_hash_d.write(data[..case.input_len]) or {
+		keyed_hash_d.write(data[..int(case.input_len)]) or {
 			assert false, 'keyed_hash_d.write error: ${err}'
 			return
 		}
@@ -92,7 +92,7 @@ fn test_run_test_vectors() {
 
 		for i in [u64(16), 20, 24, 28, 32, 48, 64, 72, 96] {
 			if keyed_hash_bytes.len > i {
-				assert keyed_hash_d.checksum(i) == keyed_hash_bytes[..i], 'keyed hash failed output length ${i}'
+				assert keyed_hash_d.checksum(i) == keyed_hash_bytes[..int(i)], 'keyed hash failed output length ${i}'
 			}
 		}
 
@@ -104,7 +104,7 @@ fn test_run_test_vectors() {
 			return
 		}
 
-		derive_key_hash_d.write(data[..case.input_len]) or {
+		derive_key_hash_d.write(data[..int(case.input_len)]) or {
 			assert false, 'derive_key_hash_d.write error: ${err}'
 			return
 		}
@@ -119,7 +119,7 @@ fn test_run_test_vectors() {
 
 		for i in [u64(16), 20, 24, 28, 32, 48, 64, 72, 96] {
 			if derive_key_hash_bytes.len > i {
-				assert derive_key_hash_d.checksum(i) == derive_key_hash_bytes[..i], 'derive key hash failed output length ${i}'
+				assert derive_key_hash_d.checksum(i) == derive_key_hash_bytes[..int(i)], 'derive key hash failed output length ${i}'
 			}
 		}
 

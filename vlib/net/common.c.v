@@ -48,7 +48,7 @@ pub fn shutdown(handle int, config ShutdownConfig) int {
 			write_result := select_deadline(handle, .write, time.now().add(connect_timeout)) or {
 				false
 			}
-			err := 0
+			err := i32(0) // SO_ERROR is a C `int`; use i32 storage so &err is int* and sizeof is 4
 			len := sizeof(err)
 			xyz := C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
 			if xyz == 0 && err == 0 {
@@ -86,7 +86,7 @@ pub fn close(handle int) ! {
 		if (is_windows && ecode == int(error_ewouldblock)) || (!is_windows && res == -1
 			&& ecode in [int(error_einprogress), int(error_eagain), C.EINTR]) {
 			write_result := select_deadline(handle, .write, time.now().add(connect_timeout))!
-			err := 0
+			err := i32(0) // SO_ERROR is a C `int`; use i32 storage so &err is int* and sizeof is 4
 			len := sizeof(err)
 			xyz := C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
 			if xyz == 0 && err == 0 {
@@ -112,31 +112,36 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 	C.FD_ZERO(&set)
 	C.FD_SET(handle, &set)
 
-	seconds := timeout / time.second
-	microseconds := time.Duration(timeout - (seconds * time.second)).microseconds()
-
-	mut tt := C.timeval{
-		tv_sec:  u64(seconds)
-		tv_usec: u64(microseconds)
-	}
-
-	mut timeval_timeout := &tt
-
-	// infinite timeout is signaled by passing null as the timeout to
-	// select
+	// infinite timeout is signaled by passing null as the timeout to select.
 	if timeout == infinite_timeout {
-		timeval_timeout = &C.timeval(unsafe { nil })
-	}
-
-	match test {
-		.read {
-			socket_error(C.select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
+		match test {
+			.read {
+				socket_error(C.select(handle + 1, &set, C.NULL, C.NULL, &C.timeval(unsafe { nil })))!
+			}
+			.write {
+				socket_error(C.select(handle + 1, C.NULL, &set, C.NULL, &C.timeval(unsafe { nil })))!
+			}
+			.except {
+				socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, &C.timeval(unsafe { nil })))!
+			}
 		}
-		.write {
-			socket_error(C.select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
+	} else {
+		seconds := timeout / time.second
+		microseconds := time.Duration(timeout - (seconds * time.second)).microseconds()
+		tt := C.timeval{
+			tv_sec:  u64(seconds)
+			tv_usec: u64(microseconds)
 		}
-		.except {
-			socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
+		match test {
+			.read {
+				socket_error(C.select(handle + 1, &set, C.NULL, C.NULL, &tt))!
+			}
+			.write {
+				socket_error(C.select(handle + 1, C.NULL, &set, C.NULL, &tt))!
+			}
+			.except {
+				socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, &tt))!
+			}
 		}
 	}
 
@@ -148,7 +153,7 @@ fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 	// if we have a 0 deadline here then the timeout that was passed was infinite...
 	infinite := deadline.unix() == 0
 	for infinite || time.now() <= deadline {
-		timeout := if infinite { infinite_timeout } else { deadline - time.now() }
+		timeout := time.Duration(if infinite { infinite_timeout } else { deadline - time.now() })
 		ready := select(handle, test, timeout) or {
 			if err.code() == C.EINTR {
 				// errno is 4, Spurious wakeup from signal, keep waiting

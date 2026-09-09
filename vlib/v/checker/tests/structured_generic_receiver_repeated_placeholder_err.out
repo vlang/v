@@ -1,0 +1,6 @@
+vlib/v/checker/tests/structured_generic_receiver_repeated_placeholder_err.vv:17:4: error: unknown method or field: `ReceiverPatternExpect.same_value`
+   15 |             'one': 1
+   16 |         }
+   17 |     }.same_value('one', 'fallback')
+      |       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   18 | }

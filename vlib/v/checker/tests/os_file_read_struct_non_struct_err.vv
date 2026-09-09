@@ -1,0 +1,23 @@
+import os
+
+struct MyStruct {
+	val i32
+}
+
+struct SomeOtherStruct {
+	val i32
+}
+
+type MySumType = MyStruct | SomeOtherStruct
+
+interface MyInterface {
+	val i32
+}
+
+fn main() {
+	mut file := os.create('/tmp/os_file_read_struct_non_struct_err.bin') or { panic(err) }
+	mut sum_value := MySumType(MyStruct{val: 1})
+	mut iface_value := MyInterface(MyStruct{val: 1})
+	file.read_struct(mut sum_value) or { panic(err) }
+	file.read_struct_at[MyInterface](mut iface_value, 0) or { panic(err) }
+}

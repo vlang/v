@@ -12,8 +12,8 @@ pub fn (ctx &Context) draw_cubic_bezier_recursive(points []f32, c Color) {
 	if points.len < 8 {
 		return
 	}
-	ctx.draw_cubic_bezier_recursive_scalar(points[0], points[1], points[2], points[3],
-		points[4], points[5], points[6], points[7], c)
+	ctx.draw_cubic_bezier_recursive_scalar(points[0], points[1], points[2], points[3], points[4],
+		points[5], points[6], points[7], c)
 }
 
 // draw_cubic_bezier_recursive_scalar is the same as `draw_cubic_bezier_recursive`, except that the `points` are given

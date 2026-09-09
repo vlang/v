@@ -1,0 +1,6 @@
+vlib/v/checker/tests/fn_signature_alias_payload_mismatch_err.vv:19:7: error: casting a function value from one function signature, to another function signature, should be done inside `unsafe{}` blocks
+   17 |     // Without `unsafe`, this must error: `fn () ![]Token` is *not* assignable
+   18 |     // to `fn () !Tokens` even though the payloads have the same layout.
+   19 |     _ := ReturnsTokens(returns_array_of_token)
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   20 | }

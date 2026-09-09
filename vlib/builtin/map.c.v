@@ -18,19 +18,9 @@ fn fast_string_eq(a string, b string) bool {
 }
 
 fn map_hash_string(pkey voidptr) u64 {
-	key := *unsafe { &string(pkey) }
-	$if native {
-		// Native backend: use FNV-1a hash instead of C.wyhash
-		// (C.wyhash requires wyhash.h which is C-only)
-		mut hash := u64(14695981039346656037)
-		for i := 0; i < key.len; i++ {
-			hash = (hash ^ u64(unsafe { key.str[i] })) * u64(1099511628211)
-		}
-		return hash
-	} $else {
-		// XTODO remove voidptr cast once virtual C.consts can be declared
-		return C.wyhash(key.str, u64(key.len), 0, &u64(voidptr(C._wyp)))
-	}
+	key := unsafe { &string(pkey) }
+	// XTODO remove voidptr cast once virtual C.consts can be declared
+	return C.wyhash(key.str, u64(key.len), 0, &u64(voidptr(C._wyp)))
 }
 
 fn map_hash_int_1(pkey voidptr) u64 {
@@ -131,10 +121,15 @@ fn (mut d DenseArray) zeros_to_end() {
 		d.deletes = 0
 		// TODO: reallocate instead as more deletes are likely
 		free(d.all_deleted)
+		d.all_deleted = nil
 	}
 	d.len = count
 	old_cap := d.cap
-	d.cap = if count < 8 { 8 } else { count }
+	if count < 8 {
+		d.cap = 8
+	} else {
+		d.cap = count
+	}
 	unsafe {
 		d.values = realloc_data(d.values, d.value_bytes * old_cap, d.value_bytes * d.cap)
 		d.keys = realloc_data(d.keys, d.key_bytes * old_cap, d.key_bytes * d.cap)

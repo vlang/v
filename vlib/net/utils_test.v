@@ -29,3 +29,19 @@ fn test_resolve_port_without_brackets() {
 	assert x.len > 0
 	assert x[0].port()! == 48872
 }
+
+fn test_resolve_invalid_host_reports_getaddrinfo_error() {
+	if _ := net.resolve_addrs_fuzzy('definitely-not-a-real-hostname-for-v-tests.invalid:12345',
+		.tcp)
+	{
+		assert false
+	} else {
+		msg := err.msg()
+		$if windows {
+			assert msg.len > 0
+		} $else {
+			assert msg.starts_with('net: getaddrinfo failed:')
+			assert !msg.contains('socket error')
+		}
+	}
+}

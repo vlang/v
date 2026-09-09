@@ -2748,22 +2748,25 @@ static int x509_inet_pton_ipv6(const char *src, void *dst)
             if (*p == '\0') {
                 break;
             } else if (*p == '.') {
-                /* Don't accept IPv4 too early or late */
-                if ((nonzero_groups == 0 && zero_group_start == -1) ||
+                /* Don't accept IPv4 too early or late:
+                 * - The first 6 nonzero groups must be 16 bit pieces of address delimited by ':'
+                 * - This might be fully or partially represented with compressed syntax (a zero
+                 *   group "::")
+                 */
+                if ((nonzero_groups < 6 && zero_group_start == -1) ||
                     nonzero_groups >= 7) {
                     break;
                 }
 
-                /* Walk back to prior ':', then parse as IPv4-mapped */
-                int steps = 4;
+                /* Walk back to prior ':', then parse as IPv4-mapped.
+                 * At this point nonzero_groups == 6 or zero_group_start >= 0. Either way we have a
+                 * ':' before the current position and still inside the buffer. Thus it is safe to
+                 * search back for that ':' without any further checks.
+                 */
                 do {
                     p--;
-                    steps--;
-                } while (*p != ':' && steps > 0);
+                } while (*p != ':');
 
-                if (*p != ':') {
-                    break;
-                }
                 p++;
                 nonzero_groups--;
                 if (x509_inet_pton_ipv4((const char *) p,

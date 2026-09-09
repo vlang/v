@@ -16,6 +16,12 @@ pub mut:
 	duration time.Duration
 
 	owns_socket bool
+	// last_write_sent reports the most recent write_ptr's progress for retry
+	// decisions: 0 = provably nothing was sent (safe to replay), or -1 = the
+	// count is indeterminate because a failed/retryable write may have already
+	// flushed complete records to the peer (TLS cannot prove zero). On full
+	// success it equals the bytes written.
+	last_write_sent int
 }
 
 @[params]
@@ -27,6 +33,8 @@ pub:
 	validate bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
 
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
+
+	alpn_protocols []string // the list of ALPN protocols to advertise, e.g. ['h2', 'http/1.1']; empty means no ALPN extension is sent
 }
 
 // new_ssl_conn instance an new SSLCon struct
@@ -51,9 +59,37 @@ enum Select {
 	except
 }
 
+fn ssl_timeout_deadline(timeout time.Duration) time.Time {
+	if timeout <= 0 || timeout == net.infinite_timeout {
+		return time.unix(0)
+	}
+	return time.now().add(timeout)
+}
+
+fn ssl_remaining_timeout(deadline time.Time) time.Duration {
+	if deadline.unix() == 0 {
+		return net.infinite_timeout
+	}
+	return deadline - time.now()
+}
+
 // close closes the ssl connection and does cleanup
 pub fn (mut s SSLConn) close() ! {
 	s.shutdown()!
+}
+
+// negotiated_alpn returns the ALPN protocol selected during the TLS
+// handshake (e.g. 'h2' or 'http/1.1'), or an empty string if no protocol
+// was negotiated.
+pub fn (s &SSLConn) negotiated_alpn() string {
+	mut data := &u8(unsafe { nil })
+	mut length := u32(0)
+	C.v_net_openssl_get0_alpn_selected(voidptr(s.ssl), voidptr(&data), &length)
+	if length == 0 || data == unsafe { nil } {
+		return ''
+	}
+	// data points into OpenSSL-owned memory and is not NUL-terminated; copy it.
+	return unsafe { data.vbytes(int(length)).bytestr() }
 }
 
 // shutdown closes the ssl connection and does cleanup
@@ -62,37 +98,55 @@ pub fn (mut s SSLConn) shutdown() ! {
 		eprintln(@METHOD)
 	}
 
-	if s.ssl != 0 {
-		deadline := time.now().add(s.duration)
-		for {
-			mut res := C.SSL_shutdown(voidptr(s.ssl))
+	if s.ssl != unsafe { nil } {
+		deadline := ssl_timeout_deadline(s.duration)
+		mut shutdown_done := false
+
+		for !shutdown_done {
+			// Clear the thread's OpenSSL error queue so ssl_error()/SSL_get_error()
+			// below reflect only this call and not a stale entry from an earlier
+			// operation, which could be misread as a fatal SSL_ERROR_SSL.
+			C.ERR_clear_error()
+			res := C.SSL_shutdown(voidptr(s.ssl))
 			if res == 1 {
+				shutdown_done = true
 				break
 			}
 
-			err_res := ssl_error(res, s.ssl) or {
-				break // We break to free rest of resources
+			// res == 0 means our close_notify was sent, but the peer's has not
+			// been received yet, so another SSL_shutdown() call is needed to
+			// finish the bidirectional shutdown; res < 0 signals an error or a
+			// retryable condition. In both cases SSL_get_error() tells us whether
+			// the socket must first become readable/writable before retrying.
+			// Routing res == 0 through ssl_error() instead of looping immediately
+			// avoids busy-spinning on non-blocking sockets.
+			err_res := ssl_error(res, s.ssl) or { break }
+
+			match err_res {
+				.ssl_error_want_read {
+					s.wait_for_read(ssl_remaining_timeout(deadline)) or { break }
+				}
+				.ssl_error_want_write {
+					s.wait_for_write(ssl_remaining_timeout(deadline)) or { break }
+				}
+				else {
+					break
+				}
 			}
-			if err_res == .ssl_error_want_read {
-				s.wait_for_read(deadline - time.now())!
-				continue
-			} else if err_res == .ssl_error_want_write {
-				s.wait_for_write(deadline - time.now())!
-				continue
-			}
-			if s.ssl != 0 {
-				unsafe { C.SSL_free(voidptr(s.ssl)) }
-			}
-			if s.sslctx != 0 {
-				C.SSL_CTX_free(s.sslctx)
-			}
-			return error('net.openssl Could not connect using SSL. (${err_res}),err')
 		}
-		C.SSL_free(voidptr(s.ssl))
+
+		// Always free SSL object first.
+		if s.ssl != unsafe { nil } {
+			unsafe { C.SSL_free(voidptr(s.ssl)) }
+			s.ssl = unsafe { nil }
+		}
 	}
-	if s.sslctx != 0 {
+
+	if s.sslctx != unsafe { nil } {
 		C.SSL_CTX_free(s.sslctx)
+		s.sslctx = unsafe { nil }
 	}
+
 	if s.owns_socket {
 		net.shutdown(s.handle)
 		net.close(s.handle)!
@@ -103,14 +157,18 @@ fn (mut s SSLConn) init() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
+	if s.config.validate && C.v_net_openssl_has_x509_identity_checks() != 1 {
+		return error('net.openssl SSLConn.init, certificate identity validation requires OpenSSL 1.0.2 or newer')
+	}
 	s.sslctx = unsafe { C.SSL_CTX_new(C.SSLv23_client_method()) }
 	if s.sslctx == 0 {
 		return error('net.openssl Could not get ssl context')
 	}
 
 	if s.config.validate {
+		C.SSL_CTX_set_verify(s.sslctx, C.SSL_VERIFY_PEER, unsafe { nil })
 		C.SSL_CTX_set_verify_depth(s.sslctx, 4)
-		C.SSL_CTX_set_options(s.sslctx, C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3 | C.SSL_OP_NO_COMPRESSION)
+		C.SSL_CTX_set_options(s.sslctx, C.SSL_OP_NO_COMPRESSION)
 	}
 
 	s.ssl = unsafe { &C.SSL(C.SSL_new(s.sslctx)) }
@@ -119,6 +177,25 @@ fn (mut s SSLConn) init() ! {
 	}
 
 	mut res := 0
+
+	// Advertise ALPN protocols (e.g. ['h2', 'http/1.1']) when requested.
+	// OpenSSL expects the length-prefixed wire format: each protocol is a
+	// single length byte followed by that many bytes of protocol name.
+	if s.config.alpn_protocols.len > 0 {
+		mut wire := []u8{cap: 64}
+		for proto in s.config.alpn_protocols {
+			if proto.len == 0 || proto.len > 255 {
+				return error('net.openssl SSLConn.init, invalid ALPN protocol "${proto}"')
+			}
+			wire << u8(proto.len)
+			wire << proto.bytes()
+		}
+		// Returns 0 on success (opposite of most OpenSSL calls); non-zero also
+		// means ALPN is unavailable on OpenSSL versions older than 1.0.2.
+		if C.v_net_openssl_set_alpn_protos(voidptr(s.ssl), wire.data, u32(wire.len)) != 0 {
+			return error('net.openssl SSLConn.init, failed to set ALPN protocols (requires OpenSSL >= 1.0.2)')
+		}
+	}
 
 	if s.config.validate {
 		mut verify := s.config.verify
@@ -140,14 +217,19 @@ fn (mut s SSLConn) init() ! {
 			}
 		}
 		if s.config.verify != '' {
-			res = C.SSL_CTX_load_verify_locations(voidptr(s.sslctx), &char(verify.str),
-				0)
+			res = C.SSL_CTX_load_verify_locations(voidptr(s.sslctx), &char(verify.str), 0)
 			if s.config.validate && res != 1 {
 				return error('net.openssl SSLConn.init, SSL_CTX_load_verify_locations failed')
 			}
+		} else {
+			res = C.SSL_CTX_set_default_verify_paths(s.sslctx)
+			if res != 1 {
+				return error('net.openssl SSLConn.init, SSL_CTX_set_default_verify_paths failed')
+			}
 		}
 		if s.config.cert != '' {
-			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str), C.SSL_FILETYPE_PEM)
+			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str),
+				C.SSL_FILETYPE_PEM)
 			if s.config.validate && res != 1 {
 				return error('net.openssl SSLConn.init, SSL_CTX_use_certificate_file failed, res: ${res}')
 			}
@@ -173,6 +255,20 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} hostname: ${hostname}')
 	}
+	mut connected := false
+	defer {
+		if !connected {
+			if s.ssl != 0 {
+				unsafe { C.SSL_free(voidptr(s.ssl)) }
+				s.ssl = unsafe { nil }
+			}
+			if s.sslctx != 0 {
+				C.SSL_CTX_free(s.sslctx)
+				s.sslctx = unsafe { nil }
+			}
+			s.handle = 0
+		}
+	}
 	s.handle = tcp_conn.sock.handle
 	s.duration = tcp_conn.read_timeout()
 	mut res := C.SSL_set_tlsext_host_name(voidptr(s.ssl), voidptr(hostname.str))
@@ -183,6 +279,31 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 		return error('net.openssl SSLConn.connect, could not assign ssl to socket.')
 	}
 	s.complete_connect()!
+	s.verify_hostname(hostname)!
+	connected = true
+}
+
+fn (s &SSLConn) verify_hostname(hostname string) ! {
+	if !s.config.validate {
+		return
+	}
+	cert := C.v_net_openssl_get1_peer_certificate(s.ssl)
+	if cert == unsafe { nil } {
+		return error('net.openssl SSLConn.verify_hostname, the peer sent no certificate')
+	}
+	defer {
+		C.X509_free(cert)
+	}
+	ip_result := C.v_net_openssl_x509_check_ip_asc(cert, &char(hostname.str), 0)
+	verified := if ip_result == -2 {
+		C.v_net_openssl_x509_check_host(cert, &char(hostname.str), usize(hostname.len), 0,
+			unsafe { nil }) == 1
+	} else {
+		ip_result == 1
+	}
+	if !verified {
+		return error('net.openssl SSLConn.verify_hostname, the certificate is not valid for `${hostname}`')
+	}
 }
 
 // dial opens an ssl connection on hostname:port
@@ -190,9 +311,26 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} hostname: ${hostname} | port: ${port}')
 	}
-	s.owns_socket = true
 	mut tcp_conn := net.dial_tcp('${hostname}:${port}') or { return err }
+	mut connected := false
+	defer {
+		if !connected {
+			tcp_conn.close() or {}
+			if s.ssl != 0 {
+				unsafe { C.SSL_free(voidptr(s.ssl)) }
+				s.ssl = unsafe { nil }
+			}
+			if s.sslctx != 0 {
+				C.SSL_CTX_free(s.sslctx)
+				s.sslctx = unsafe { nil }
+			}
+			s.handle = 0
+			s.owns_socket = false
+		}
+	}
+	s.owns_socket = true
 	s.connect(mut tcp_conn, hostname) or { return err }
+	connected = true
 }
 
 fn (mut s SSLConn) complete_connect() ! {
@@ -200,8 +338,10 @@ fn (mut s SSLConn) complete_connect() ! {
 		eprintln(@METHOD)
 	}
 
-	deadline := time.now().add(s.duration)
+	deadline := ssl_timeout_deadline(s.duration)
 	for {
+		// Clear the error queue so SSL_get_error() reflects only this call.
+		C.ERR_clear_error()
 		mut res := C.SSL_connect(voidptr(s.ssl))
 		if res == 1 {
 			break
@@ -209,11 +349,11 @@ fn (mut s SSLConn) complete_connect() ! {
 
 		err_res := ssl_error(res, s.ssl)!
 		if err_res == .ssl_error_want_read {
-			s.wait_for_read(deadline - time.now())!
+			s.wait_for_read(ssl_remaining_timeout(deadline))!
 			continue
 		}
 		if err_res == .ssl_error_want_write {
-			s.wait_for_write(deadline - time.now())!
+			s.wait_for_write(ssl_remaining_timeout(deadline))!
 			continue
 		}
 		return error('net.openssl SSLConn.complete_connect, could not connect using SSL. (${err_res}),err')
@@ -222,6 +362,8 @@ fn (mut s SSLConn) complete_connect() ! {
 	if s.config.validate {
 		mut pcert := &C.X509(unsafe { nil })
 		for {
+			// Clear the error queue so SSL_get_error() reflects only this call.
+			C.ERR_clear_error()
 			mut res := C.SSL_do_handshake(voidptr(s.ssl))
 			if res == 1 {
 				break
@@ -229,19 +371,15 @@ fn (mut s SSLConn) complete_connect() ! {
 
 			err_res := ssl_error(res, s.ssl)!
 			if err_res == .ssl_error_want_read {
-				s.wait_for_read(deadline - time.now())!
+				s.wait_for_read(ssl_remaining_timeout(deadline))!
 				continue
 			} else if err_res == .ssl_error_want_write {
-				s.wait_for_write(deadline - time.now())!
+				s.wait_for_write(ssl_remaining_timeout(deadline))!
 				continue
 			}
 			return error('net.openssl SSLConn.complete_connect, could not validate SSL certificate. (${err_res}),err')
 		}
-		$if openbsd {
-			pcert = C.SSL_get_peer_certificate(voidptr(s.ssl))
-		} $else {
-			pcert = C.SSL_get1_peer_certificate(voidptr(s.ssl))
-		}
+		pcert = C.v_net_openssl_get1_peer_certificate(s.ssl)
 		defer {
 			if pcert != 0 {
 				C.X509_free(pcert)
@@ -252,6 +390,17 @@ fn (mut s SSLConn) complete_connect() ! {
 			return error('net.openssl SSLConn.complete_connect, failed SSL handshake (OpenSSL SSL_get_verify_result = ${res})')
 		}
 	}
+}
+
+// read_timeout returns the current SSL read timeout.
+pub fn (s &SSLConn) read_timeout() time.Duration {
+	return s.duration
+}
+
+// set_read_timeout sets the read timeout used for subsequent SSL reads.
+// A value of 0, or net.infinite_timeout means "wait forever".
+pub fn (mut s SSLConn) set_read_timeout(timeout time.Duration) {
+	s.duration = timeout
 }
 
 // addr retrieves the local ip address and port number for this connection
@@ -274,9 +423,11 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 		}
 	}
 
-	deadline := time.now().add(s.duration)
+	deadline := ssl_timeout_deadline(s.duration)
 	// s.wait_for_read(deadline - time.now())!
 	for {
+		// Clear the error queue so SSL_get_error() reflects only this call.
+		C.ERR_clear_error()
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)
 		if res > 0 {
 			return res
@@ -289,7 +440,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 			err_res := ssl_error(res, s.ssl)!
 			match err_res {
 				.ssl_error_want_read {
-					s.wait_for_read(deadline - time.now()) or {
+					s.wait_for_read(ssl_remaining_timeout(deadline)) or {
 						$if trace_ssl ? {
 							eprintln('${@METHOD} ---> res: ${err} .ssl_error_want_read')
 						}
@@ -297,7 +448,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 					}
 				}
 				.ssl_error_want_write {
-					s.wait_for_write(deadline - time.now()) or {
+					s.wait_for_write(ssl_remaining_timeout(deadline)) or {
 						$if trace_ssl ? {
 							eprintln('${@METHOD} ---> res: ${err} .ssl_error_want_write')
 						}
@@ -340,20 +491,29 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 		}
 	}
 
-	deadline := time.now().add(s.duration)
+	s.last_write_sent = 0
+	deadline := ssl_timeout_deadline(s.duration)
 	unsafe {
 		mut ptr_base := bytes
 		for total_sent < len {
 			ptr := ptr_base + total_sent
 			remaining := len - total_sent
+			// Clear the error queue so SSL_get_error() reflects only this call.
+			C.ERR_clear_error()
 			mut sent := C.SSL_write(voidptr(s.ssl), ptr, remaining)
 			if sent <= 0 {
+				// SSL_write did not fully complete: OpenSSL may already have
+				// flushed one or more complete records (which the peer can
+				// decrypt and act on) before returning a retryable error, so the
+				// sent count is no longer provable. Mark it indeterminate; a
+				// later full success below resets it to the exact length.
+				s.last_write_sent = -1
 				err_res := ssl_error(sent, s.ssl)!
 				if err_res == .ssl_error_want_read {
-					s.wait_for_read(deadline - time.now())!
+					s.wait_for_read(ssl_remaining_timeout(deadline))!
 					continue
 				} else if err_res == .ssl_error_want_write {
-					s.wait_for_write(deadline - time.now())!
+					s.wait_for_write(ssl_remaining_timeout(deadline))!
 					continue
 				} else if err_res == .ssl_error_zero_return {
 					$if trace_ssl ? {
@@ -368,6 +528,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 					int(err_res))
 			}
 			total_sent += sent
+			s.last_write_sent = total_sent
 		}
 	}
 	return total_sent
@@ -395,9 +556,10 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 	C.FD_ZERO(&set)
 	C.FD_SET(handle, &set)
 
-	deadline := time.now().add(timeout)
-	mut remaining_time := timeout.milliseconds()
-	for remaining_time > 0 {
+	is_infinite := timeout <= 0 || timeout == net.infinite_timeout
+	deadline := ssl_timeout_deadline(timeout)
+	mut remaining_time := if is_infinite { i64(0) } else { timeout.milliseconds() }
+	for is_infinite || remaining_time > 0 {
 		seconds := remaining_time / 1000
 		microseconds := (remaining_time % 1000) * 1000
 
@@ -405,7 +567,7 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 			tv_sec:  u64(seconds)
 			tv_usec: u64(microseconds)
 		}
-		timeval_timeout := if timeout < 0 {
+		timeval_timeout := if is_infinite {
 			&C.timeval(unsafe { nil })
 		} else {
 			&tt
@@ -423,10 +585,13 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 				res = net.socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
 			}
 		}
+
 		if res < 0 {
 			if C.errno == C.EINTR {
 				// errno is 4, Spurious wakeup from signal, keep waiting
-				remaining_time = (deadline - time.now()).milliseconds()
+				if !is_infinite {
+					remaining_time = ssl_remaining_timeout(deadline).milliseconds()
+				}
 				continue
 			}
 			cerr := C.errno
@@ -455,12 +620,18 @@ fn wait_for(handle int, what Select, timeout time.Duration) ! {
 	return net.err_timed_out
 }
 
-// wait_for_write waits for a write io operation to be available
-fn (mut s SSLConn) wait_for_write(timeout time.Duration) ! {
+// wait_for_write waits for a write io operation to be available. Pure
+// raw-socket select() on s.handle — never touches the TLS context, so it is
+// safe to call without holding any lock that guards concurrent access to the
+// context itself (see h2_pooled_transport.v).
+pub fn (mut s SSLConn) wait_for_write(timeout time.Duration) ! {
 	return wait_for(s.handle, .write, timeout)
 }
 
-// wait_for_read waits for a read io operation to be available
-fn (mut s SSLConn) wait_for_read(timeout time.Duration) ! {
+// wait_for_read waits for a read io operation to be available. Pure
+// raw-socket select() on s.handle — never touches the TLS context, so it is
+// safe to call without holding any lock that guards concurrent access to the
+// context itself (see h2_pooled_transport.v).
+pub fn (mut s SSLConn) wait_for_read(timeout time.Duration) ! {
 	return wait_for(s.handle, .read, timeout)
 }

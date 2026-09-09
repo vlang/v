@@ -28,7 +28,8 @@ fn main() {
 	mut n := 0
 	for start := 0; start < original.len; {
 		gc_collect()
-		idx := original.index_after_(separator, start + separator.len) // ensure that we advance each time
+		idx :=
+			original.index_after_(separator, start + separator.len) // ensure that we advance each time
 		if idx < 0 {
 			write_chunk(n, min_size, original, start, original.len)
 			break

@@ -5,3 +5,10 @@ vlib/v/checker/tests/match_generic_case_err.vv:16:4: error: return type mismatch
       |             ^
    17 |         }
    18 |         else {
+vlib/v/checker/tests/match_generic_case_err.vv:13:17: error: cannot use `int` as `string` in argument 1 to `strconv.atoi`
+   11 |     return match typeof(v).name {
+   12 |         'string' {
+   13 |             strconv.atoi(v) or { 0 }
+      |                          ^
+   14 |         }
+   15 |         'int' {

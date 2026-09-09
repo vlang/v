@@ -33,6 +33,10 @@ brew install postgresql
 brew services start postgresql
 ```
 
+On newer Homebrew setups the formula and service name may be versioned
+instead, for example `postgresql@18`. Use the exact name reported by
+`brew info postgresql`.
+
 ### MacOSX (MacPorts)
 
 ```
@@ -65,6 +69,9 @@ after following all instructions. Create the `pg` folder yourself if it does not
 │       postgres_ext.h
 │
 └───win64
+    ├───mingw
+    │       libpq.dll.a
+    │
     └───msvc
             libpq.lib
 ```
@@ -92,8 +99,18 @@ Any program that wants to use postgres client functionality require these DLLs f
 - libssl-3-x64.dll
 - libwinpthread-1.dll
 
-If you want to compile with MSVC, you will need to copy `C:/Program Files/PostgreSQL/<version>/bin/libpq.lib`
-into the `@VEXEROOT/thirdparty/pg/win64/msvc` directory.
+If you want to compile with MSVC, copy
+`C:/Program Files/PostgreSQL/<version>/bin/libpq.lib` into the
+`@VEXEROOT/thirdparty/pg/win64/msvc` directory.
+
+GCC and TCC cannot use the MSVC import library. For these compilers, copy a MinGW-compatible
+`libpq.dll.a` into `@VEXEROOT/thirdparty/pg/win64/mingw`. You can install one with the MSYS2
+`mingw-w64-x86_64-postgresql` package, or generate it from `libpq.dll` with `gendef` and `dlltool`:
+
+```powershell
+gendef "C:/Program Files/PostgreSQL/<version>/bin/libpq.dll"
+dlltool -d libpq.def -l libpq.dll.a -D libpq.dll
+```
 
 Navigate to `C:/Program Files/PostgreSQL/<version>/include`. There you will find the files:
 - `libpq-fe.h`
@@ -116,6 +133,96 @@ Read this section to learn how to install and connect to PostgreSQL
 [*Linux*](https://www.postgresqltutorial.com/postgresql-getting-started/install-postgresql-linux);
 [*macOS*](https://www.postgresqltutorial.com/postgresql-getting-started/install-postgresql-macos).
 
+When you use `pg.connect(pg.Config{ ... })`, empty `Config` fields are omitted from the
+generated libpq connection string. That lets libpq defaults, `PGPASSWORD`, and `.pgpass`
+apply when you do not set those fields in code.
+
+`pg.Config` also exposes libpq SSL/TLS connection keywords:
+
+```v ignore
+mut db := pg.connect(pg.Config{
+	host:     'db.example.com'
+	user:     'app'
+	password: 'secret'
+	dbname:   'prod'
+	ssl_mode: .verify_full
+	ssl_ca:   '/etc/ssl/certs/root-ca.pem'
+	ssl_cert: '/etc/ssl/certs/client.pem'
+	ssl_key:  '/etc/ssl/private/client.key'
+})!
+```
+
+The SSL fields map to libpq's `sslmode`, `sslcert`, `sslkey`, `sslrootcert`, and
+`sslcrl` connection parameters.
+
+## Thread Safety & Connection Pool
+
+`pg.connect()` returns a `&DB` that is safe to share across V threads. Internally
+`DB` holds a pool of `Conn` objects (one libpq `PGconn*` each); every method on
+`DB` transparently checks a `Conn` out of the pool for the duration of the call
+and returns it when done. This matches Go's `database/sql.DB` model.
+
+```v ignore
+mut db := pg.connect(pg.Config{ ... })!
+defer { db.close() or {} }
+
+// Pool defaults: unlimited open conns, 2 idle conns kept warm, no lifetime cap.
+// Tune them like Go:
+db.set_max_open_conns(50)
+db.set_max_idle_conns(10)
+db.set_conn_max_lifetime(30 * time.minute)
+```
+
+For operations that must run on the **same physical connection** — LISTEN/NOTIFY,
+session-scoped prepared statements, manual transactions — pin a conn with
+`db.conn()` or open a transaction with `db.begin()`:
+
+```v ignore
+// Pinned connection: returned to the pool when conn.close() is called.
+mut c := db.conn()!
+defer { c.close() or {} }
+c.listen('my_channel')!
+
+// Transaction: the conn is pinned for the lifetime of the Tx and released on
+// commit() or rollback().
+mut tx := db.begin()!
+tx.exec('UPDATE accounts SET balance = balance - 100 WHERE id = 1')!
+tx.exec('UPDATE accounts SET balance = balance + 100 WHERE id = 2')!
+tx.commit()!
+```
+
+If you need to manage pooling outside `db.pg`, use `pg.connect_direct()` to open one
+physical connection without the built-in pool:
+
+```v ignore
+mut conn := pg.connect_direct(pg.Config{ host: 'localhost', dbname: 'app' })!
+defer { conn.close() or {} }
+
+rows := conn.exec('select 1')!
+```
+
+## Result Column Metadata
+
+Queries made with `exec_result()`, `exec_param_many_result()`, or
+`exec_prepared_result()` return a `pg.Result` whose `fields` array contains the
+libpq metadata for each result column:
+
+```v oksyntax
+import db.pg
+
+fn show_columns(conn &pg.Conn) ! {
+	result := conn.exec_result('select 1::int4 as id, 3.14::numeric(10, 2) as amount')!
+	for field in result.fields {
+		println('${field.name}: oid=${field.type_oid}, modifier=${field.type_modifier}')
+	}
+}
+```
+
+Each `pg.Field` preserves the type OID, type modifier, fixed size, result format,
+source table OID, and source table column number reported by libpq. Type OIDs for
+user-defined types are database-specific. PostgreSQL can resolve a type OID and
+modifier to its display name with `pg_catalog.format_type(oid, modifier)`.
+
 ## Using Parameterized Queries
 
 Parameterized queries (exec_param, etc.) in V require the use of the following syntax: ($n).
@@ -127,6 +234,19 @@ db.exec_param_many('INSERT INTO users (username, password) VALUES ($1, $2)', ['t
 db.exec_param('SELECT * FROM users WHERE username = ($1) limit 1', 'tom')!
 ```
 
+When an operation cannot use parameters, `escape_literal` returns a complete quoted PostgreSQL
+literal using libpq's connection-aware escaping:
+
+```v ignore
+mut conn := db.conn()!
+defer { conn.close() or {} }
+value := conn.escape_literal("O'Reilly")!
+row := conn.exec_one('INSERT INTO authors (name) VALUES (${value}) RETURNING id')!
+```
+
+Escaping and execution must use the same connection because escaping depends on its settings.
+Prefer parameterized queries whenever possible. Do not add quotes around the returned value.
+
 ## Using LISTEN/NOTIFY
 
 PostgreSQL's LISTEN/NOTIFY mechanism allows you to build event-driven applications. One
@@ -135,33 +255,40 @@ channel will receive them.
 
 ### Basic Usage
 
+LISTEN/NOTIFY is session-scoped, so you must pin a `Conn` from the pool —
+calling `db.listen()` would only listen on whichever pooled conn happens to
+serve that one call.
+
 ```v ignore
 import db.pg
 
 fn main() {
-	db := pg.connect(pg.Config{ user: 'postgres', password: 'password', dbname: 'mydb' })!
+	mut db := pg.connect(pg.Config{ user: 'postgres', password: 'password', dbname: 'mydb' })!
 	defer { db.close() or {} }
 
+	mut c := db.conn()!
+	defer { c.close() or {} }
+
 	// Start listening on a channel
-	db.listen('my_channel')!
+	c.listen('my_channel')!
 
 	// From another connection or session, send a notification
-	db.notify('my_channel', 'Hello, World!')!
+	c.notify('my_channel', 'Hello, World!')!
 
 	// Process incoming data from the server
-	db.consume_input()!
+	c.consume_input()!
 
 	// Check for notifications
-	if notification := db.get_notification() {
+	if notification := c.get_notification() {
 		println('Received notification on channel: ${notification.channel}')
 		println('Payload: ${notification.payload}')
 		println('From server process: ${notification.pid}')
 	}
 
 	// Stop listening
-	db.unlisten('my_channel')!
+	c.unlisten('my_channel')!
 	// Or unlisten from all channels
-	db.unlisten_all()!
+	c.unlisten_all()!
 }
 ```
 
@@ -174,20 +301,23 @@ import db.pg
 import time
 
 fn main() {
-	db := pg.connect(pg.Config{ user: 'postgres', password: 'password', dbname: 'mydb' })!
+	mut db := pg.connect(pg.Config{ user: 'postgres', password: 'password', dbname: 'mydb' })!
 	defer { db.close() or {} }
 
-	db.listen('events')!
+	mut c := db.conn()!
+	defer { c.close() or {} }
+
+	c.listen('events')!
 
 	// Get socket fd for polling (useful with select/epoll)
-	socket_fd := db.socket()
+	socket_fd := c.socket()
 	println('Socket FD: ${socket_fd}')
 
 	// Simple polling loop
 	for {
-		db.consume_input()!
+		c.consume_input()!
 		for {
-			notification := db.get_notification() or { break }
+			notification := c.get_notification() or { break }
 			println('Event: ${notification.channel} - ${notification.payload}')
 		}
 		time.sleep(100 * time.millisecond)

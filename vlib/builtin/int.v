@@ -140,10 +140,15 @@ pub fn (n u16) str() string {
 	return int(n).str_l(6)
 }
 
+// str returns the value of the `i32` as a `string`.
+// Example: assert i32(-32769).str() == '-32769'
 pub fn (n i32) str() string {
 	return int(n).str_l(11)
 }
 
+// hex_full returns the value of the `int` as a *full* 8-digit hexadecimal `string`.
+// Example: assert int(20).hex_full() == '00000014'
+// Example: assert int(-20).hex_full() == 'ffffffec'
 pub fn (nn int) hex_full() string {
 	return u64_to_hex(u64(nn), 8)
 }
@@ -177,10 +182,10 @@ pub fn (nn u32) str() string {
 			n1 := n / u32(100)
 			d = ((n - (n1 * u32(100))) << u32(1))
 			n = n1
-			buf[index] = digit_pairs[d]
+			buf[index] = digit_pairs[int(d)]
 			index--
 			d++
-			buf[index] = digit_pairs[d]
+			buf[index] = digit_pairs[int(d)]
 			index--
 		}
 		index++
@@ -231,10 +236,10 @@ fn impl_i64_to_string(nn i64) string {
 			n1 := n / i64(100)
 			d = (u32(n - (n1 * i64(100))) << i64(1))
 			n = n1
-			buf[index] = digit_pairs[d]
+			buf[index] = digit_pairs[int(d)]
 			index--
 			d++
-			buf[index] = digit_pairs[d]
+			buf[index] = digit_pairs[int(d)]
 			index--
 		}
 		index++
@@ -272,10 +277,10 @@ pub fn (nn u64) str() string {
 			n1 := n / 100
 			d = ((n - (n1 * 100)) << 1)
 			n = n1
-			buf[index] = digit_pairs[d]
+			buf[index] = digit_pairs[int(d)]
 			index--
 			d++
-			buf[index] = digit_pairs[d]
+			buf[index] = digit_pairs[int(d)]
 			index--
 		}
 		index++
@@ -441,55 +446,74 @@ pub fn (nn i64) hex() string {
 
 // hex returns the value of the `int_literal` as a hexadecimal `string`.
 // Note that the output is ***not*** zero padded.
+// Example: assert 255.hex() == 'ff'
 pub fn (nn int_literal) hex() string {
 	return u64(nn).hex()
 }
 
-// hex returns the value of the `voidptr` as a hexadecimal `string`.
-// Note that the output is ***not*** zero padded.
+// str returns the value of the `voidptr` as a '0x'-prefixed hexadecimal `string`.
+// Note that the output after '0x' is ***not*** zero padded.
 pub fn (nn voidptr) str() string {
 	return '0x' + u64(nn).hex()
 }
 
-// hex returns the value of the `byteptr` as a hexadecimal `string`.
-// Note that the output is ***not*** zero padded.
-// pub fn (nn byteptr) str() string {
+// str returns the value of the `byteptr` as a '0x'-prefixed hexadecimal `string`.
+// Note that the output after '0x' is ***not*** zero padded.
 pub fn (nn byteptr) str() string {
 	return '0x' + u64(nn).hex()
 }
 
+// str returns the value of the `charptr` as a '0x'-prefixed hexadecimal `string`.
+// Note that the output after '0x' is ***not*** zero padded.
 pub fn (nn charptr) str() string {
 	return '0x' + u64(nn).hex()
 }
 
+// hex_full returns the value of the `u8` as a *full* 2-digit hexadecimal `string`.
+// Example: assert u8(5).hex_full() == '05'
 pub fn (nn u8) hex_full() string {
 	return u64_to_hex(u64(nn), 2)
 }
 
+// hex_full returns the value of the `i8` as a *full* 2-digit hexadecimal `string`.
+// Example: assert i8(-5).hex_full() == 'fb'
 pub fn (nn i8) hex_full() string {
 	return u64_to_hex(u64(nn), 2)
 }
 
+// hex_full returns the value of the `u16` as a *full* 4-digit hexadecimal `string`.
+// Example: assert u16(5).hex_full() == '0005'
 pub fn (nn u16) hex_full() string {
 	return u64_to_hex(u64(nn), 4)
 }
 
+// hex_full returns the value of the `i16` as a *full* 4-digit hexadecimal `string`.
+// Example: assert i16(-5).hex_full() == 'fffb'
 pub fn (nn i16) hex_full() string {
 	return u64_to_hex(u64(nn), 4)
 }
 
+// hex_full returns the value of the `u32` as a *full* 8-digit hexadecimal `string`.
+// Example: assert u32(5).hex_full() == '00000005'
 pub fn (nn u32) hex_full() string {
 	return u64_to_hex(u64(nn), 8)
 }
 
+// hex_full returns the value of the `i64` as a *full* 16-digit hexadecimal `string`.
+// Example: assert i64(-5).hex_full() == 'fffffffffffffffb'
 pub fn (nn i64) hex_full() string {
 	return u64_to_hex(u64(nn), 16)
 }
 
+// hex_full returns the value of the `voidptr` as a *full* 16-digit hexadecimal `string`.
+// Note that the output has ***no*** '0x' prefix, unlike `voidptr.str()`.
+// Example: assert voidptr(255).hex_full() == '00000000000000ff'
 pub fn (nn voidptr) hex_full() string {
 	return u64_to_hex(u64(nn), 16)
 }
 
+// hex_full returns the value of the `int_literal` as a *full* 16-digit hexadecimal `string`.
+// Example: assert 255.hex_full() == '00000000000000ff'
 pub fn (nn int_literal) hex_full() string {
 	return u64_to_hex(u64(nn), 16)
 }
@@ -564,6 +588,7 @@ pub fn (b u8) str_escaped() string {
 			yy
 		}
 	}
+
 	return str
 }
 

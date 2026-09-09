@@ -1,0 +1,6 @@
+vlib/v/checker/tests/append_fixed_array_to_empty_interface_array_err.vv:5:12: error: cannot append `[2]int` to `[]Any`
+    3 | fn main() {
+    4 |     mut values := []Any{}
+    5 |     values << [7, 8]!
+      |               ~~~~~~~
+    6 | }

@@ -1,0 +1,1 @@
+[vlib/v/tests/skip_unused/dump_multi_return.vv:8] pair(): (3.14, 'hello')

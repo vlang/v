@@ -17,6 +17,7 @@ fn test_main() {
 		}
 		Assign {}
 	}
+
 	if mut command_arr_el_ptr is Call {
 		assert command_arr_el_ptr.text == 'foo'
 	} else {

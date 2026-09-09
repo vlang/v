@@ -4,6 +4,7 @@ module util
 // 2022-01-30 that already does handle v.mod lookup properly, stopping at .git folders, supporting `.v.mod.stop` etc.
 import os
 import v.pref
+import v.vmod
 
 @[if trace_util_qualify ?]
 fn trace_qualify(callfn string, mod string, file_path string, kind_res string, result string, detail string) {
@@ -25,17 +26,31 @@ pub fn qualify_import(pref_ &pref.Preferences, mod string, file_path string) str
 	mod_paths << os.vmodules_paths()
 	mod_path := mod.replace('.', os.path_separator)
 	for search_path in mod_paths {
+		if alias_mod := resolve_module_alias_from_search_path(pref_, search_path, mod) {
+			trace_qualify(@FN, mod, file_path, 'import_alias', alias_mod, search_path)
+			return alias_mod
+		}
 		try_path := os.join_path_single(search_path, mod_path)
 		if os.is_dir(try_path) {
-			if m1 := mod_path_to_full_name(pref_, mod, try_path) {
+			if m1 := import_path_to_full_name(pref_, mod, try_path) {
 				trace_qualify(@FN, mod, file_path, 'import_res 1', m1, try_path)
 				// >  qualify_import: term | file_path: /v/vls/server/diagnostics.v | => import_res 1: term  ; /v/cleanv/vlib/term
 				return m1
 			}
 		}
 	}
-	if m1 := mod_path_to_full_name(pref_, mod, file_path) {
-		trace_qualify(@FN, mod, file_path, 'import_res 2', m1, file_path)
+	// Use absolute file_path so mod_path_to_full_name can walk up to find v.mod
+	abs_file_path := if os.is_abs_path(file_path) {
+		file_path
+	} else {
+		os.join_path_single(os.getwd(), file_path)
+	}
+	if alias_mod := resolve_module_alias_from_importer_path(pref_, abs_file_path, mod) {
+		trace_qualify(@FN, mod, file_path, 'import_alias', alias_mod, abs_file_path)
+		return alias_mod
+	}
+	if m1 := import_path_to_full_name(pref_, mod, abs_file_path) {
+		trace_qualify(@FN, mod, file_path, 'import_res 2', m1, abs_file_path)
 		// >  qualify_module: analyzer           | file_path: /v/vls/analyzer/store.v  | =>   module_res 2: analyzer           ; clean_file_path - getwd == mod
 		// >  qualify_import: analyzer.depgraph  | file_path: /v/vls/analyzer/store.v  | =>   import_res 2: analyzer.depgraph  ; /v/vls/analyzer/store.v
 		// >  qualify_import: tree_sitter        | file_path: /v/vls/analyzer/store.v  | =>   import_res 2: tree_sitter        ; /v/vls/analyzer/store.v
@@ -51,6 +66,108 @@ pub fn qualify_import(pref_ &pref.Preferences, mod string, file_path string) str
 	return mod
 }
 
+// resolve_module_alias_from_search_path resolves `@[alias: 'path'] module name`
+// declarations stored in `alias.v`. An alias applies to its submodules too, so an
+// alias from `old.name` to `new_name` also maps `old.name.sub` to `new_name.sub`.
+fn resolve_module_alias_from_search_path(pref_ &pref.Preferences, search_path string, mod string) ?string {
+	parts := mod.split('.')
+	for part_count := parts.len; part_count > 0; part_count-- {
+		alias_dir := os.join_path_single(search_path, parts[..part_count].join(os.path_separator))
+		alias_file := os.join_path(alias_dir, 'alias.v')
+		if !os.is_file(alias_file) {
+			continue
+		}
+		source := os.read_file(alias_file) or { continue }
+		target_value := module_alias_target_from_source(source) or { continue }
+		mut target_dir := target_value
+		if target_dir.contains('@VMODROOT') {
+			target_dir = resolve_vmodroot(target_dir, alias_dir) or { continue }
+		}
+		if !os.is_abs_path(target_dir) {
+			target_dir = os.join_path(alias_dir, target_dir)
+		}
+		target_dir = os.real_path(target_dir)
+		if !os.is_dir(target_dir) {
+			continue
+		}
+		target_base := os.base(target_dir)
+		mut target_mod := import_path_to_full_name(pref_, target_base, target_dir) or {
+			target_base
+		}
+		if part_count < parts.len {
+			tail_parts := parts[part_count..]
+			target_subdir := os.join_path_single(target_dir, tail_parts.join(os.path_separator))
+			if !os.is_dir(target_subdir) {
+				continue
+			}
+			target_mod += '.' + tail_parts.join('.')
+		}
+		if target_mod != mod {
+			return target_mod
+		}
+	}
+	return none
+}
+
+fn resolve_module_alias_from_importer_path(pref_ &pref.Preferences, file_path string, mod string) ?string {
+	mut current_dir := os.dir(file_path)
+	for {
+		if alias_mod := resolve_module_alias_from_search_path(pref_, current_dir, mod) {
+			return alias_mod
+		}
+		modules_dir := os.join_path(current_dir, 'modules')
+		if alias_mod := resolve_module_alias_from_search_path(pref_, modules_dir, mod) {
+			return alias_mod
+		}
+		if os.is_file(os.join_path(current_dir, 'v.mod')) {
+			break
+		}
+		parent_dir := os.dir(current_dir)
+		if parent_dir == current_dir {
+			break
+		}
+		current_dir = parent_dir
+	}
+	return none
+}
+
+// module_alias_target_from_source reads the deliberately small alias module header.
+// Keeping aliases in a conventional `alias.v` file avoids opening every source file
+// of every imported module while resolving imports.
+fn module_alias_target_from_source(source string) ?string {
+	marker := '@[alias'
+	marker_pos := source.index(marker) or { return none }
+	mut rest := source[marker_pos + marker.len..].trim_space()
+	if !rest.starts_with(':') {
+		return none
+	}
+	rest = rest[1..].trim_space()
+	if rest.len < 2 || rest[0] !in [`'`, `"`] {
+		return none
+	}
+	quote := rest[0]
+	mut end := 1
+	for end < rest.len && rest[end] != quote {
+		end++
+	}
+	if end >= rest.len {
+		return none
+	}
+	target := rest[1..end]
+	if target == '' {
+		return none
+	}
+	rest = rest[end + 1..].trim_space()
+	if !rest.starts_with(']') {
+		return none
+	}
+	rest = rest[1..].trim_space()
+	if !rest.starts_with('module ') {
+		return none
+	}
+	return target
+}
+
 // 2022-01-30 qualify_module - used by V's parser to find the full module name
 // 2022-01-30 i.e. when parsing `module textscanner`, inside vlib/strings/textscanner/textscanner.v
 // 2022-01-30 it will return `strings.textscanner`
@@ -62,6 +179,12 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 		return mod
 	}
 	clean_file_path := file_path.all_before_last(os.path_separator)
+	// Use absolute path so mod_path_to_full_name can walk up to find v.mod
+	abs_clean_file_path := if os.is_abs_path(clean_file_path) {
+		clean_file_path
+	} else {
+		os.join_path_single(os.getwd(), clean_file_path)
+	}
 	// relative module (relative to working directory)
 	// TODO: find most stable solution & test with -usecache
 	//
@@ -70,22 +193,23 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 	// TODO: 2022-01-30: The lookup should be relative to the folder, in which the current file is,
 	// TODO: 2022-01-30: *NOT* to the working folder of the compiler, which can change easily.
 	if clean_file_path.replace(os.getwd() + os.path_separator, '') == mod {
-		trace_qualify(@FN, mod, file_path, 'module_res 2', mod, 'clean_file_path - getwd == mod, clean_file_path: ${clean_file_path}')
+		if m1 := mod_path_to_full_name(pref_, mod, abs_clean_file_path) {
+			if m1 != mod {
+				trace_qualify(@FN, mod, file_path, 'module_res 2', m1,
+					'clean_file_path - getwd == mod, m1 == f(${abs_clean_file_path})')
+				return m1
+			}
+		}
+		trace_qualify(@FN, mod, file_path, 'module_res 2', mod,
+			'clean_file_path - getwd == mod, clean_file_path: ${clean_file_path}')
 		return mod
 	}
-	if m1 := mod_path_to_full_name(pref_, mod, clean_file_path) {
-		trace_qualify(@FN, mod, file_path, 'module_res 3', m1, 'm1 == f(${clean_file_path})')
-		// >  qualify_module: net  | file_path: /v/cleanv/vlib/net/util.v     | =>   module_res 3: net     ; m1 == f(/v/cleanv/vlib/net)
-		// >  qualify_module: term | file_path: /v/cleanv/vlib/term/control.v | =>   module_res 3: term    ; m1 == f(/v/cleanv/vlib/term)
-		// >  qualify_module: log  | file_path: /v/vls/lsp/log/log.v          | =>   module_res 3: lsp.log ; m1 == f(/v/vls/lsp/log)
-
-		// zzz BUG: when ../v.mod exists above V root folder:
-		// zzz >  qualify_module: help | file_path: /v/cleanv/cmd/v/help/help.v   | =>   module_res 3: v.cmd.v.help  ; m1 == f(/v/cleanv/cmd/v/help)
+	if m1 := mod_path_to_full_name(pref_, mod, abs_clean_file_path) {
+		trace_qualify(@FN, mod, file_path, 'module_res 3', m1, 'm1 == f(${abs_clean_file_path})')
 		return m1
 	}
-	// zzzzzzz WORKING, when there is NO ../v.mod:
-	// zzzzzzz >  qualify_module: help | file_path: /v/cleanv/cmd/v/help/help.v   | =>   module_res 4: help          ; ---, clean_file_path: /v/cleanv/cmd/v/help
-	trace_qualify(@FN, mod, file_path, 'module_res 4', mod, '---, clean_file_path: ${clean_file_path}')
+	trace_qualify(@FN, mod, file_path, 'module_res 4', mod,
+		'---, clean_file_path: ${clean_file_path}')
 	return mod
 }
 
@@ -102,6 +226,14 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 // 2022-01-30 it leads to path differences, and the / version on windows triggers a module lookip bug,
 // 2022-01-30 leading to completely different errors)
 fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !string {
+	return mod_path_to_full_name_with_options(pref_, mod, path, false)
+}
+
+fn import_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !string {
+	return mod_path_to_full_name_with_options(pref_, mod, path, true)
+}
+
+fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path string, allow_shorter_name bool) !string {
 	// TODO: explore using `pref.lookup_path` & `os.vmodules_paths()`
 	// absolute paths instead of 'vlib' & '.vmodules'
 	mut vmod_folders := ['vlib', '.vmodules', 'modules']
@@ -119,6 +251,13 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 			break
 		}
 	}
+	// Anchor the module-name boundary to the v.mod that contains the
+	// current compilation (`pref_.path`). Without this, a nested v.mod
+	// inside the project (e.g. a vendored sub-project at `dep/v.mod`)
+	// would shrink the qualified name: files at `dep/mymod` would become
+	// `mymod` instead of `dep.mymod`, breaking `import dep.mymod` from
+	// the outer project. See issue #27138.
+	pref_project_root := if in_vmod_path { '' } else { project_root_vmod_folder(pref_) }
 	path_parts := path.split(os.path_separator)
 	mod_path := mod.replace('.', os.path_separator)
 	// go back through each parent in path_parts and join with `mod_path` to see the dir exists
@@ -133,13 +272,29 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 					path_part := path_parts[j]
 					// we reached a vmod folder
 					if path_part in vmod_folders {
-						mod_full_name := try_path.split(os.path_separator)[j + 1..].join('.')
+						mod_full_name := normalize_base_url_mod_name(try_path.split(os.path_separator)[
+							j + 1..].join('.'), try_path)
 						return mod_full_name
 					}
 				}
 				// not in one of the `vmod_folders` so work backwards through each parent
 				// looking for for a `v.mod` file and break at the first path without it
 			} else {
+				if pref_project_root != '' {
+					real_try_path := os.real_path(try_path)
+					prefix := pref_project_root + os.path_separator
+					if real_try_path.starts_with(prefix) {
+						relative_parts := real_try_path.all_after(prefix).split(os.path_separator)
+						mod_full_name := normalize_base_url_mod_name(relative_parts.join('.'),
+							try_path)
+						if !allow_shorter_name && mod_full_name.len < mod.len {
+							return mod
+						}
+						if !module_name_has_empty_part(mod_full_name) {
+							return mod_full_name
+						}
+					}
+				}
 				mut try_path_parts := try_path.split(os.path_separator)
 				// last index in try_path_parts that contains a `v.mod`
 				mut last_v_mod := -1
@@ -151,25 +306,126 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 						if 'v.mod' in ls
 							&& (try_path_parts.len > i && try_path_parts[i] != 'v' && 'vlib' !in ls) {
 							last_v_mod = j
+							break
 						}
 						continue
 					}
 					break
 				}
 				if last_v_mod > -1 {
-					mod_full_name := try_path_parts[last_v_mod..].join('.')
-					return if mod_full_name.len < mod.len { mod } else { mod_full_name }
+					mod_full_name := normalize_base_url_mod_name(try_path_parts[last_v_mod..].join('.'),
+						try_path)
+					if !allow_shorter_name && mod_full_name.len < mod.len {
+						return mod
+					}
+					if !module_name_has_empty_part(mod_full_name) {
+						return mod_full_name
+					}
 				}
 			}
 		}
 	}
-	if os.is_abs_path(pref_.path) && os.is_abs_path(path) && os.is_dir(path) { // && path.contains(mod )
-		rel_mod_path := path.replace(pref_.path.all_before_last(os.path_separator) +
+	if os.is_abs_path(path) && os.is_dir(path) { // && path.contains(mod )
+		abs_pref_path := if os.is_abs_path(pref_.path) {
+			pref_.path
+		} else {
+			os.join_path_single(os.getwd(), pref_.path)
+		}
+		rel_mod_path := path.replace(abs_pref_path.all_before_last(os.path_separator) +
 			os.path_separator, '')
 		if rel_mod_path != path {
-			full_mod_name := rel_mod_path.replace(os.path_separator, '.')
-			return full_mod_name
+			mod_full_name :=
+				normalize_base_url_mod_name(rel_mod_path.replace(os.path_separator, '.'), path)
+			// A file that sits directly in the project root maps to `path` ending in
+			// `/.`, so `rel_mod_path` becomes `.` and yields an empty/dotted module
+			// name. That is not a valid qualified name (it later produces `module `
+			// with no name for parser codegen, see issue #28074), so fall through to
+			// the caller's fallback, which keeps the declared module name.
+			if !module_name_has_empty_part(mod_full_name) {
+				return mod_full_name
+			}
 		}
 	}
 	return error('module not found')
+}
+
+fn module_name_has_empty_part(name string) bool {
+	if name == '' {
+		return true
+	}
+	for part in name.split('.') {
+		if part == '' {
+			return true
+		}
+	}
+	return false
+}
+
+// project_root_vmod_folder returns the absolute folder of the closest
+// enclosing v.mod for the current compilation (`pref_.path`). Module-name
+// qualification uses this as the boundary so a nested v.mod inside the
+// project does not silently rename its sub-modules.
+fn project_root_vmod_folder(pref_ &pref.Preferences) string {
+	if pref_.path == '' {
+		return ''
+	}
+	abs_pref_path := if os.is_abs_path(pref_.path) {
+		pref_.path
+	} else {
+		os.join_path_single(os.getwd(), pref_.path)
+	}
+	start := if os.is_dir(abs_pref_path) { abs_pref_path } else { os.dir(abs_pref_path) }
+	if start == '' {
+		return ''
+	}
+	mut cfolder := os.real_path(start)
+	for {
+		if os.is_file(os.join_path(cfolder, 'v.mod')) {
+			return cfolder
+		}
+		parent := os.dir(cfolder)
+		if parent == cfolder || parent == '' {
+			return ''
+		}
+		cfolder = parent
+	}
+	return ''
+}
+
+// normalize_base_url_mod_name strips the `base_url` prefix from `mod_full_name`
+// when the module lives in a folder configured via v.mod's `base_url`. Without
+// this, a module rooted at `<pkg>/source/feature` would be named `pkg.source.feature`
+// instead of `pkg.feature`. The implicit `src/` fallback is intentionally gone.
+fn normalize_base_url_mod_name(mod_full_name string, path string) string {
+	real_path := os.real_path(path)
+	mut mcache := vmod.get_cache()
+	vmod_file_location := mcache.get_by_folder(real_path)
+	if vmod_file_location.vmod_file == '' {
+		return mod_full_name
+	}
+	vmod_prefix := vmod_file_location.vmod_folder + os.path_separator
+	if !real_path.starts_with(vmod_prefix) {
+		return mod_full_name
+	}
+	manifest := vmod.from_file(vmod_file_location.vmod_file) or { return mod_full_name }
+	if manifest.base_url == '' {
+		return mod_full_name
+	}
+	base_parts := os.norm_path(manifest.base_url).split(os.path_separator).filter(it.len > 0
+		&& it != '.')
+	if base_parts.len == 0 {
+		return mod_full_name
+	}
+	rel_path := real_path.all_after(vmod_prefix)
+	rel_parts := rel_path.split(os.path_separator)
+	if rel_parts.len < base_parts.len || rel_parts[..base_parts.len] != base_parts {
+		return mod_full_name
+	}
+	full_parts := mod_full_name.split('.')
+	if rel_parts.len > full_parts.len {
+		return mod_full_name
+	}
+	mut normalized_parts := full_parts[..full_parts.len - rel_parts.len].clone()
+	normalized_parts << rel_parts[base_parts.len..]
+	return normalized_parts.join('.')
 }

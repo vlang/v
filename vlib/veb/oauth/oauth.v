@@ -1,7 +1,7 @@
 module oauth
 
-import json
 import net.http
+import json2 as json
 
 pub enum TokenPostType {
 	form

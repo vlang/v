@@ -1,0 +1,13 @@
+// vtest vflags: -os windows
+
+module main
+
+$if windows {
+	@[export: 'v_markused_comptime_block_dependency']
+	@[markused]
+	fn markused_comptime_block_dependency(path &char) string {
+		return unsafe { tos_clone(&u8(path)) }
+	}
+}
+
+fn main() {}

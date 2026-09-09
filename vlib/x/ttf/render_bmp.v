@@ -494,7 +494,7 @@ pub fn (mut bmp BitMap) get_chars_bbox(in_string string) []int {
 			continue
 		}
 		// manage unicode chars like latin greek etc
-		c_len := ((0xe5000000 >> ((chr >> 3) & 0x1e)) & 3) + 1
+		c_len := int(((u32(0xe5000000) >> ((chr >> 3) & 0x1e)) & 3) + 1)
 		if c_len > 1 {
 			tmp_char := utf8.get_rune(in_string, i)
 			// dprintln("tmp_char: ${tmp_char.hex()}")
@@ -526,8 +526,8 @@ pub fn (mut bmp BitMap) get_chars_bbox(in_string string) []int {
 		bmp.ch_matrix[1] = bmp.tr_matrix[1] * bmp.scale * bmp.scale_x
 		bmp.ch_matrix[3] = bmp.tr_matrix[3] * -bmp.scale * bmp.scale_y
 		bmp.ch_matrix[4] = bmp.tr_matrix[4] * -bmp.scale * bmp.scale_y
-		bmp.ch_matrix[6] = int(x1)
-		bmp.ch_matrix[7] = int(y1)
+		bmp.ch_matrix[6] = f32(x1)
+		bmp.ch_matrix[7] = f32(y1)
 
 		// x_min, x_max, y_min, y_max := bmp.tf.read_glyph_dim(c_index)
 		x_min, x_max, _, _ := bmp.tf.read_glyph_dim(c_index)
@@ -566,7 +566,7 @@ pub fn (mut bmp BitMap) get_bbox(in_string string) (int, int) {
 			continue
 		}
 		// manage unicode chars like latin greek etc
-		c_len := ((0xe5000000 >> ((chr >> 3) & 0x1e)) & 3) + 1
+		c_len := int(((u32(0xe5000000) >> ((chr >> 3) & 0x1e)) & 3) + 1)
 		if c_len > 1 {
 			tmp_char := utf8.get_rune(in_string, i)
 			// dprintln("tmp_char: ${tmp_char.hex()}")
@@ -597,8 +597,8 @@ pub fn (mut bmp BitMap) get_bbox(in_string string) (int, int) {
 		bmp.ch_matrix[1] = bmp.tr_matrix[1] * bmp.scale * bmp.scale_x
 		bmp.ch_matrix[3] = bmp.tr_matrix[3] * -bmp.scale * bmp.scale_y
 		bmp.ch_matrix[4] = bmp.tr_matrix[4] * -bmp.scale * bmp.scale_y
-		bmp.ch_matrix[6] = int(x1)
-		bmp.ch_matrix[7] = int(y1)
+		bmp.ch_matrix[6] = f32(x1)
+		bmp.ch_matrix[7] = f32(y1)
 
 		x_min, x_max, _, _ := bmp.tf.read_glyph_dim(c_index)
 		// x_min := 1
@@ -630,8 +630,8 @@ fn (mut bmp BitMap) draw_notdef_glyph(in_x int, in_w int) {
 	bmp.ch_matrix[1] = bmp.tr_matrix[1] * bmp.scale * bmp.scale_x
 	bmp.ch_matrix[3] = bmp.tr_matrix[3] * -bmp.scale * bmp.scale_y
 	bmp.ch_matrix[4] = bmp.tr_matrix[4] * -bmp.scale * bmp.scale_y
-	bmp.ch_matrix[6] = int(x1)
-	bmp.ch_matrix[7] = int(y1)
+	bmp.ch_matrix[6] = f32(x1)
+	bmp.ch_matrix[7] = f32(y1)
 	x, y := bmp.trf_ch(p)
 
 	y_h := math.abs(bmp.tf.y_max - bmp.tf.y_min) * bmp.scale * 0.5
@@ -663,7 +663,7 @@ pub fn (mut bmp BitMap) draw_text(in_string string) (int, int) {
 			continue
 		}
 		// manage unicode chars like latin greek etc
-		c_len := ((0xe5000000 >> ((chr >> 3) & 0x1e)) & 3) + 1
+		c_len := int(((u32(0xe5000000) >> ((chr >> 3) & 0x1e)) & 3) + 1)
 		if c_len > 1 {
 			tmp_char := utf8.get_rune(in_string, i)
 			// dprintln("tmp_char: ${tmp_char.hex()}")
@@ -697,8 +697,8 @@ pub fn (mut bmp BitMap) draw_text(in_string string) (int, int) {
 		bmp.ch_matrix[1] = bmp.tr_matrix[1] * bmp.scale * bmp.scale_x
 		bmp.ch_matrix[3] = bmp.tr_matrix[3] * -bmp.scale * bmp.scale_y
 		bmp.ch_matrix[4] = bmp.tr_matrix[4] * -bmp.scale * bmp.scale_y
-		bmp.ch_matrix[6] = int(x1)
-		bmp.ch_matrix[7] = int(y1)
+		bmp.ch_matrix[6] = f32(x1)
+		bmp.ch_matrix[7] = f32(y1)
 
 		x_min, x_max := bmp.draw_glyph(c_index)
 		// x_min := 1
@@ -789,8 +789,8 @@ pub fn (mut bmp BitMap) draw_glyph(index u16) (int, int) {
 
 				// bmp.line(x0, y0, (prev.x + point.x)/2, (prev.y + point.y)/2, color2)
 				// bmp.quadratic(x0, y0, (prev.x + point.x)/2, (prev.y + point.y)/2, prev.x, prev.y, color2)
-				bmp.quadratic(x0, y0, (prev.x + point.x) / 2, (prev.y + point.y) / 2,
-					prev.x, prev.y, color)
+				bmp.quadratic(x0, y0, (prev.x + point.x) / 2, (prev.y + point.y) / 2, prev.x,
+					prev.y, color)
 				x0 = (prev.x + point.x) / 2
 				y0 = (prev.y + point.y) / 2
 			}
@@ -817,8 +817,8 @@ pub fn (mut bmp BitMap) draw_glyph(index u16) (int, int) {
 
 					// bmp.line(x0, y0, start_point.x, start_point.y, u32(0x00FF0000)
 					// u32(0xFF000000))
-					bmp.quadratic(x0, y0, start_point.x, start_point.y, (point.x + start_point.x) / 2,
-						(point.y + start_point.y) / 2, color)
+					bmp.quadratic(x0, y0, start_point.x, start_point.y,
+						(point.x + start_point.x) / 2, (point.y + start_point.y) / 2, color)
 				}
 			} else {
 				// last point not in a curve

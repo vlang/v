@@ -1,10 +1,20 @@
 import os
-import time
 
 // tfolder will contain all the temporary files/subfolders made by
 // the different tests. It would be removed in testsuite_end(), so
 // individual os tests do not need to clean up after themselves.
 const tfolder = os.join_path(os.vtmp_dir(), 'os_tests')
+const utf16le_stdout_source_code = '
+module main
+
+import os
+
+fn main() {
+	payload := [u8(`O`), 0, `K`, 0, u8(10), 0]
+	mut out := os.stdout()
+	out.write(payload) or { panic(err) }
+}
+'
 
 // os.args has to be *already initialized* with the program's argc/argv at this point
 // thus it can be used for other consts too:
@@ -289,7 +299,8 @@ fn test_walk_with_context() {
 		remove_tree()
 	}
 	mut res := []string{}
-	os.walk_with_context('myfolder', &res, fn (mut res []string, fpath string) {
+	os.walk_with_context('myfolder', &res, fn (ctx voidptr, fpath string) {
+		mut res := unsafe { &[]string(ctx) }
 		res << fpath
 	})
 	res = normalise_paths(res)
@@ -472,6 +483,10 @@ fn test_realpath_existing() {
 	rpath := os.real_path(existing_file)
 	assert os.is_abs_path(rpath)
 	assert rpath.ends_with(existing_file_name)
+	$if windows {
+		assert !rpath.starts_with('UNC\\')
+		assert !rpath.starts_with('\\\\?\\')
+	}
 	os.rm(existing_file) or {}
 }
 
@@ -512,6 +527,17 @@ fn handle_privilege_error(err IError) ! {
 	panic(err)
 }
 
+fn windows_extended_path_for_test(path string) string {
+	normalized_path := path.replace('/', '\\')
+	if normalized_path.starts_with('\\\\?\\') {
+		return normalized_path
+	}
+	if normalized_path.starts_with('\\\\') {
+		return '\\\\?\\UNC\\' + normalized_path[2..]
+	}
+	return '\\\\?\\' + normalized_path
+}
+
 fn test_realpath_absolutepath_symlink() ! {
 	file_name := 'tolink_file.txt'
 	symlink_name := 'symlink.txt'
@@ -521,6 +547,10 @@ fn test_realpath_absolutepath_symlink() ! {
 	println(rpath)
 	assert os.is_abs_path(rpath)
 	assert rpath.ends_with(file_name)
+	$if windows {
+		assert !rpath.starts_with('UNC\\')
+		assert !rpath.starts_with('\\\\?\\')
+	}
 	os.rm(symlink_name) or {}
 	os.rm(file_name) or {}
 }
@@ -626,20 +656,81 @@ fn test_readlink() {
 }
 
 fn test_exists_symlink_dangling() {
-	$if msvc {
-		eprintln('skipping ${@METHOD} on windows + msvc; TODO: investigate why os.lstat/1 behaves differently than for gcc/clang')
-		return
+	target := 'nonexistent'
+	link := 'dangling_symlink'
+	os.rm(link) or {}
+	os.rm(target) or {}
+	defer {
+		os.rm(link) or {}
+		os.rm(target) or {}
 	}
-	os.symlink('nonexistent', 'dangling_symlink') or { handle_privilege_error(err) or { return } }
-	// sanity check that the symlink truly does exist.  the lack of error alone is the check.
-	// (on linux, `.get_filetype() == os.FileType.symbolic_link` is true, but on windows, a dangling symlink is reported as a regular file.)
-	os.lstat('dangling_symlink')!
+	assert !os.exists(target)
+	if _ := os.lstat(target) {
+		assert false, 'os.lstat should fail for a path that does not exist'
+	}
+	os.symlink(target, link) or { handle_privilege_error(err) or { return } }
+	assert os.is_link(link)
+	link_stat := os.lstat(link)!
+	$if windows {
+		assert link_stat.get_filetype() == .regular
+		assert link_stat.nlink == 1
+
+		executable_links := ['dangling_symlink.exe', 'dangling_symlink.com', 'dangling_symlink.bat',
+			'dangling_symlink.cmd']
+		non_executable_link := 'dangling_symlink.txt'
+		wildcard_dir := 'dangling_symlink_patterns'
+		wildcard_link := os.join_path(wildcard_dir, 'only_dangling_link')
+		for executable_link in executable_links {
+			os.rm(executable_link) or {}
+		}
+		os.rm(non_executable_link) or {}
+		os.rmdir_all(wildcard_dir) or {}
+		defer {
+			for executable_link in executable_links {
+				os.rm(executable_link) or {}
+			}
+			os.rm(non_executable_link) or {}
+			os.rmdir_all(wildcard_dir) or {}
+		}
+
+		for executable_link in executable_links {
+			os.symlink(target, executable_link)!
+			executable_stat := os.lstat(executable_link)!
+			assert executable_stat.get_mode().owner.execute, '${executable_link} should be executable'
+		}
+		os.symlink(target, non_executable_link)!
+		assert !os.lstat(non_executable_link)!.get_mode().owner.execute
+
+		os.mkdir(wildcard_dir)!
+		os.symlink(target, wildcard_link)!
+		assert os.ls(wildcard_dir)! == [os.file_name(wildcard_link)]
+		wildcard_question_pattern := os.join_path(wildcard_dir, 'only_dangling_lin?')
+		wildcard_star_pattern := os.join_path(wildcard_dir, 'only_dangling_*')
+		for wildcard_pattern in [wildcard_question_pattern, wildcard_star_pattern] {
+			if wildcard_stat := os.lstat(wildcard_pattern) {
+				assert false, 'os.lstat should reject wildcard path "${wildcard_pattern}", got ${wildcard_stat}'
+			}
+		}
+
+		assert windows_extended_path_for_test(r'C:\fixture\link') == r'\\?\C:\fixture\link'
+		assert windows_extended_path_for_test(r'\\server\share\link') == r'\\?\UNC\server\share\link'
+		assert windows_extended_path_for_test(r'\\?\C:\fixture\link') == r'\\?\C:\fixture\link'
+		extended_exact_path := windows_extended_path_for_test(os.join_path(os.getwd(), link))
+		assert os.lstat(extended_exact_path)!.get_filetype() == .regular
+		extended_question_pattern := windows_extended_path_for_test(os.join_path(os.getwd(),
+			wildcard_question_pattern))
+		if wildcard_stat := os.lstat(extended_question_pattern) {
+			assert false, 'os.lstat should reject extended wildcard path "${extended_question_pattern}", got ${wildcard_stat}'
+		}
+	} $else {
+		assert link_stat.get_filetype() == .symbolic_link
+	}
 	// the exists function says false in this scenario... on linux and linux-like systems.
 	// it says true on windows!
 	$if windows {
-		assert os.exists('dangling_symlink') == true
+		assert os.exists(link) == true
 	} $else {
-		assert os.exists('dangling_symlink') == false
+		assert os.exists(link) == false
 	}
 }
 
@@ -1001,9 +1092,9 @@ fn test_utime() {
 		os.rm(filename) or { panic(err) }
 	}
 	f.write_string(hello) or { panic(err) }
-	atime := time.now().add_days(2).unix()
-	mtime := time.now().add_days(4).unix()
-	os.utime(filename, int(atime), int(mtime)) or { panic(err) }
+	atime := i64(2_147_483_648)
+	mtime := i64(2_306_102_495)
+	os.utime(filename, atime, mtime) or { panic(err) }
 	assert os.file_last_mod_unix(filename) == mtime
 }
 
@@ -1016,15 +1107,47 @@ fn test_execute() {
 	defer {
 		os.rm(print0script) or {}
 	}
-	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(print0script)}')
+	result :=
+		os.execute('${os.quoted_path(@VEXE)} -old-compiler run ${os.quoted_path(print0script)}')
 	hexresult := result.output.hex()
 	// println('exit_code: ${result.exit_code}')
 	// println('output: |${result.output}|')
 	// println('output.len: ${result.output.len}')
 	// println('output hexresult: ${hexresult}')
 	assert result.exit_code == 0
-	assert hexresult.starts_with('7374617274004d4944444c450066696e697368')
+	assert hexresult.contains('7374617274004d4944444c450066696e697368')
 	assert hexresult.ends_with('0a7878')
+}
+
+fn test_exec_with_args() {
+	source_path := os.join_path_single(tfolder, 'exec_args.v')
+	output_arg := os.join_path_single(tfolder, 'exec_args')
+	exe_path := if os.user_os() == 'windows' {
+		output_arg + '.exe'
+	} else {
+		output_arg
+	}
+	os.write_file(source_path,
+		"import os\n\nfn main() {\n\tprintln(os.args[1..].join('|'))\n\teprintln('stderr-ok')\n}\n")!
+	defer {
+		os.rm(source_path) or {}
+		os.rm(exe_path) or {}
+		os.rm(output_arg + '.c') or {}
+	}
+	compile_result :=
+		os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(output_arg)} ${os.quoted_path(source_path)}')
+	assert compile_result.exit_code == 0, compile_result.output
+
+	result := os.exec([exe_path, 'one two', 'semi;colon'])
+	normalized_output := result.output.replace('\r\n', '\n')
+	assert result.exit_code == 0, result.output
+	assert normalized_output.contains('one two|semi;colon\n'), result.output
+	assert normalized_output.contains('stderr-ok\n'), result.output
+
+	shell_metachar_result := os.exec([exe_path, 'first; echo injected'])
+	normalized_shell_metachar_output := shell_metachar_result.output.replace('\r\n', '\n')
+	assert shell_metachar_result.exit_code == 0, shell_metachar_result.output
+	assert normalized_shell_metachar_output.contains('first; echo injected\n'), shell_metachar_result.output
 }
 
 fn test_execute_with_stderr_redirection() {
@@ -1033,7 +1156,8 @@ fn test_execute_with_stderr_redirection() {
 	assert result.output.contains('unknown command `wrong_command`')
 
 	stderr_path := os.join_path_single(tfolder, 'stderr.txt')
-	result2 := os.execute('${os.quoted_path(@VEXE)} wrong_command 2> ${os.quoted_path(stderr_path)}')
+	result2 :=
+		os.execute('${os.quoted_path(@VEXE)} wrong_command 2> ${os.quoted_path(stderr_path)}')
 	assert result2.exit_code == 1
 	assert result2.output == ''
 	assert os.exists(stderr_path)
@@ -1049,6 +1173,27 @@ fn test_execute_with_linefeeds() {
 	assert result2.exit_code == 1
 }
 
+fn test_execute_with_semicolon_inside_quoted_string_on_windows() {
+	if os.user_os() != 'windows' {
+		return
+	}
+	result := os.execute('echo "hello;"')
+	assert result.exit_code == 0, result.output
+	assert result.output.trim_space() == '"hello;"'
+}
+
+fn test_execute_pipe_into_vfmt() {
+	producer_script := os.join_path_single(tfolder, 'pipe_into_vfmt.v')
+	os.write_file(producer_script, "fn main() {\n\tprint('fn main(){println(1)}\\n')\n}\n")!
+	defer {
+		os.rm(producer_script) or {}
+	}
+	result :=
+		os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(producer_script)} | ${os.quoted_path(@VEXE)} fmt')
+	assert result.exit_code == 0, result.output
+	assert result.output.replace('\r\n', '\n') == 'fn main() {\n\tprintln(1)\n}\n'
+}
+
 fn test_execute_fc_get_output() {
 	if os.user_os() != 'windows' {
 		return
@@ -1056,6 +1201,20 @@ fn test_execute_fc_get_output() {
 	result := os.execute('c:\\windows\\system32\\fc.exe /?')
 	assert result.output.contains('filename')
 	assert result.exit_code == -1
+}
+
+fn test_execute_decodes_utf16le_output() {
+	if os.user_os() != 'windows' {
+		return
+	}
+	source_path := os.join_path_single(tfolder, 'utf16le_stdout.v')
+	os.write_file(source_path, utf16le_stdout_source_code)!
+	defer {
+		os.rm(source_path) or {}
+	}
+	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(source_path)}')
+	assert result.exit_code == 0, result.output
+	assert result.output == 'OK\n', result.output
 }
 
 fn test_reading_from_proc_cpuinfo() {

@@ -1,17 +1,78 @@
+#include <stdint.h>
 #include <Cocoa/Cocoa.h>
 
+static uint32_t gg_color_key(gg__Color c) {
+	return ((uint32_t)c.r)
+		| ((uint32_t)c.g << 8)
+		| ((uint32_t)c.b << 16)
+		| ((uint32_t)c.a << 24);
+}
+
+static CGFloat gg_color_channel(uint8_t value) {
+	return (CGFloat)value / 255.0;
+}
+
+static NSMutableDictionary<NSNumber*, NSColor*>* g_ns_color_cache = nil;
+static NSMutableDictionary<NSNumber*, id>* g_cg_color_cache = nil;
+
 NSColor* nscolor(gg__Color c) {
-	float red = (float)c.r / 255.0f;
-	float green = (float)c.g / 255.0f;
-	float blue = (float)c.b / 255.0f;
-	return [NSColor colorWithDeviceRed:red green:green blue:blue alpha:1.0f];
+	if (g_ns_color_cache == nil) {
+		g_ns_color_cache = [[NSMutableDictionary alloc] init];
+	}
+	NSNumber* key = @(gg_color_key(c));
+	NSColor* cached = [g_ns_color_cache objectForKey:key];
+	if (cached != nil) {
+		return cached;
+	}
+	NSColor* color = [NSColor colorWithDeviceRed:gg_color_channel(c.r)
+		green:gg_color_channel(c.g)
+		blue:gg_color_channel(c.b)
+		alpha:gg_color_channel(c.a)];
+	[g_ns_color_cache setObject:color forKey:key];
+	return color;
+}
+
+static CGColorRef cgcolor(gg__Color c) {
+	if (g_cg_color_cache == nil) {
+		g_cg_color_cache = [[NSMutableDictionary alloc] init];
+	}
+	NSNumber* key = @(gg_color_key(c));
+	id cached = [g_cg_color_cache objectForKey:key];
+	if (cached != nil) {
+		return (__bridge CGColorRef)cached;
+	}
+	CGColorRef color = CGColorCreateGenericRGB(gg_color_channel(c.r),
+		gg_color_channel(c.g),
+		gg_color_channel(c.b),
+		gg_color_channel(c.a));
+	[g_cg_color_cache setObject:(__bridge id)color forKey:key];
+	CGColorRelease(color);
+	return (__bridge CGColorRef)[g_cg_color_cache objectForKey:key];
+}
+
+static CGContextRef current_cg_context() {
+	NSGraphicsContext* context = [NSGraphicsContext currentContext];
+	if (context == nil) {
+		return NULL;
+	}
+	return [context CGContext];
+}
+
+CFStringRef cfstring(string s) {
+	return CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+	                                     (const UInt8*)s.str,
+	                                     s.len,
+	                                     kCFStringEncodingUTF8,
+	                                     false,
+	                                     kCFAllocatorNull);
 }
 
 NSString* nsstring(string s) {
-	return [[NSString alloc] initWithBytesNoCopy:s.str
-	                                      length:s.len
-	                                    encoding:NSUTF8StringEncoding
-	                                freeWhenDone:false];
+	CFStringRef cf = cfstring(s);
+	if (cf == nil) {
+		return @"";
+	}
+	return CFBridgingRelease(cf);
 }
 
 gg__Size gg_get_screen_size() {
@@ -58,10 +119,71 @@ gg__Size gg_get_screen_size() {
 	return res;
 }
 
-void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
-	NSFont* font = [NSFont userFontOfSize:0]; // cfg.size];
+void gg_macos_resize_window(void *window_ptr, int width, int height) {
+	if (window_ptr == nil || width <= 0 || height <= 0) {
+		return;
+	}
+	NSWindow *window = (__bridge NSWindow *)window_ptr;
+	[window setContentSize:NSMakeSize((CGFloat)width, (CGFloat)height)];
+}
+
+void gg_macos_set_window_resizable(void *window_ptr, bool resizable) {
+	if (window_ptr == nil) {
+		return;
+	}
+	NSWindow *window = (__bridge NSWindow *)window_ptr;
+	NSWindowStyleMask style = [window styleMask];
+	if (resizable) {
+		style |= NSWindowStyleMaskResizable;
+	} else {
+		style &= ~NSWindowStyleMaskResizable;
+	}
+	[window setStyleMask:style];
+}
+
+// When non-zero, every string is drawn in a monospace font regardless of the
+// per-call cfg.mono flag. Lets an app switch the whole UI to a fixed-width font
+// so text widths can be computed as char_count * advance (no CoreText layout).
+// Default 0 => behaviour unchanged for every other gg app.
+int g_gg_force_mono = 0;
+void gg_set_force_mono(int on) { g_gg_force_mono = on; }
+
+// Cache of the (font + color) attribute dictionaries passed to -drawAtPoint:.
+// darwin_draw_string is called once per text run, every frame; building a fresh
+// NSFont (font lookup), NSColor, and NSDictionary on each call was pure ObjC
+// churn (CPU + autorelease-pool pressure). The set of distinct (size, style,
+// color) combinations a UI actually uses is tiny (a few sizes × a theme palette),
+// so we memoize the finished attribute dict. Keyed on everything that changes the
+// dict — color rgba, size, bold, mono, and the global
+// force-mono flag. The dictionary retains each cached attr dict (ARC), so they
+// persist for the process; bounded by the number of distinct combinations.
+static NSMutableDictionary<NSNumber*, NSDictionary*>* g_text_attr_cache = nil;
+
+static NSDictionary* darwin_text_attrs(gg__TextCfg cfg) {
+	uint64_t key = ((uint64_t)cfg.color.r)
+		| ((uint64_t)cfg.color.g << 8)
+		| ((uint64_t)cfg.color.b << 16)
+		| ((uint64_t)cfg.color.a << 24)
+		| (((uint64_t)cfg.size & 0xFFFF) << 32)
+		| ((uint64_t)(cfg.bold ? 1 : 0) << 48)
+		| ((uint64_t)(cfg.mono ? 1 : 0) << 49)
+		| ((uint64_t)(g_gg_force_mono ? 1 : 0) << 50);
+	if (g_text_attr_cache == nil) {
+		g_text_attr_cache = [[NSMutableDictionary alloc] init];
+	}
+	NSNumber* k = @(key);
+	NSDictionary* cached = [g_text_attr_cache objectForKey:k];
+	if (cached != nil) {
+		return cached;
+	}
+
+	NSFont* font = [NSFont userFontOfSize:cfg.size];
 	// # NSFont*    font = [NSFont fontWithName:@"Roboto Mono" size:cfg.size];
-	if (cfg.mono) {
+	if (g_gg_force_mono) {
+		// Global monospace mode: requested size minus 1, kept in sync with the
+		// app-side width metric (see fuse_text_width / mono_char_advance).
+		font = [NSFont fontWithName:@"Menlo" size:cfg.size - 1];
+	} else if (cfg.mono) {
 		// # font = [NSFont fontWithName:@"Roboto Mono" size:cfg.size];
 		font = [NSFont fontWithName:@"Menlo" size:cfg.size - 5];
 	}
@@ -74,48 +196,113 @@ void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
 		// NSParagraphStyleAttributeName: paragraphStyle,
 		NSFontAttributeName : font,
 	};
-	[nsstring(s) drawAtPoint:NSMakePoint(x, y - 15) withAttributes:attr];
+	[g_text_attr_cache setObject:attr forKey:k];
+	return attr;
 }
 
-int darwin_text_width(string s) {
+void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
+	NSDictionary* attr = darwin_text_attrs(cfg);
+	CFStringRef cf = cfstring(s);
+	if (cf == nil) {
+		return;
+	}
+	NSString* n = (__bridge NSString*)cf;
+	[n drawAtPoint:NSMakePoint(x, y - 15) withAttributes:attr];
+	CFRelease(cf);
+}
+
+// Attributes used by darwin_text_width. Must match what darwin_draw_string
+// uses for default-size text (gg TextCfg.size defaults to 16): measuring with
+// nil attributes used 12pt Helvetica, so every measured width came out ~25%
+// short of what was actually drawn, and any layout built from per-chunk
+// text_width calls (absolutely positioned text runs) overlapped on screen.
+static NSDictionary* darwin_measure_attrs(void) {
+	static NSDictionary* attrs = nil;
+	static NSDictionary* attrs_mono = nil;
+	if (g_gg_force_mono) {
+		if (attrs_mono == nil) {
+			// Keep in sync with darwin_text_attrs: force-mono draws Menlo at size - 1.
+			attrs_mono = [@{ NSFontAttributeName : [NSFont fontWithName:@"Menlo" size:15] } copy];
+		}
+		return attrs_mono;
+	}
+	if (attrs == nil) {
+		attrs = [@{ NSFontAttributeName : [NSFont userFontOfSize:16] } copy];
+	}
+	return attrs;
+}
+
+static int darwin_text_width_with_attrs(string s, NSDictionary* attrs) {
 	// println('text_width "${s}" len=${s.len}')
 	NSString* n = @"";
+	CFStringRef cf = nil;
 	if (s.len == 1) {
 		// println('len=1')
 		n = [NSString stringWithFormat:@"%c", s.str[0]];
 	} else {
-		n = nsstring(s);
+		cf = cfstring(s);
+		if (cf == nil) {
+			return 0;
+		}
+		n = (__bridge NSString*)cf;
 	}
-	/*
-	# if (!defaultFont){
-	# defaultFont = [NSFont userFontOfSize: ui__DEFAULT_FONT_SIZE];
-	# }
-	# NSDictionary *attrs = @{
-	# NSFontAttributeName: defaultFont,
-	# };
-	*/
-	NSSize size = [n sizeWithAttributes:nil];
+	NSSize size = [n sizeWithAttributes:attrs];
+	if (cf != nil) {
+		CFRelease(cf);
+	}
 	// # printf("!!!%f\n", ceil(size.width));
 	return (int)(ceil(size.width));
 }
 
+int darwin_text_width(string s) {
+	return darwin_text_width_with_attrs(s, darwin_measure_attrs());
+}
+
+int darwin_text_width_with_cfg(string s, gg__TextCfg cfg) {
+	return darwin_text_width_with_attrs(s, darwin_text_attrs(cfg));
+}
+
 void darwin_draw_rect(float x, float y, float width, float height, gg__Color c) {
-	NSColor* color = nscolor(c);
-	NSRect rect = NSMakeRect(x, y, width, height);
-	[color setFill];
-	NSRectFill(rect);
+	if (width <= 0 || height <= 0) {
+		return;
+	}
+	CGContextRef context = current_cg_context();
+	if (context == NULL) {
+		return;
+	}
+	CGContextSetFillColorWithColor(context, cgcolor(c));
+	CGContextFillRect(context, CGRectMake(x, y, width, height));
+}
+
+static void mark_view_tree_needs_display(NSView *view) {
+	if (view == nil) {
+		return;
+	}
+	[view setNeedsDisplay:YES];
+	for (NSView *subview in [view subviews]) {
+		mark_view_tree_needs_display(subview);
+	}
 }
 
 void darwin_window_refresh() {
-	//[g_view setNeedsDisplay:YES];
-	// update UI on the main thread TODO separate fn
-
 	dispatch_async(dispatch_get_main_queue(), ^{
-	  [g_view setNeedsDisplay:YES];
+		NSWindow *window = [NSApp mainWindow];
+		if (window == nil) {
+			window = [NSApp keyWindow];
+		}
+		if (window == nil) {
+			return;
+		}
+		NSView *contentView = [window contentView];
+		if (contentView == nil) {
+			return;
+		}
+		mark_view_tree_needs_display(contentView);
+		[window displayIfNeeded];
 	});
 
 	// puts("refresh");
-	//[g_view drawRect:NSMakeRect(0,0,2000,2000)];
+	//[[NSApp mainWindow].contentView drawRect:NSMakeRect(0,0,2000,2000)];
 	//[[NSGraphicsContext currentContext] flushGraphics];
 }
 
@@ -143,25 +330,28 @@ void darwin_draw_image(float x, float y, float w, float h, gg__Image* img) {
 }
 
 void darwin_draw_circle(float x, float y, float d, gg__Color color) {
-	NSColor* c = nscolor(color);
-	NSRect rect = NSMakeRect(x, y, d * 2, d * 2);
-	NSBezierPath* circlePath = [NSBezierPath bezierPath];
-	[circlePath appendBezierPathWithOvalInRect:rect];
-	[c setFill];
-	// [circlePath stroke];
-	[circlePath fill];
-	// NSRectFill(rect);
+	if (d <= 0) {
+		return;
+	}
+	CGContextRef context = current_cg_context();
+	if (context == NULL) {
+		return;
+	}
+	CGContextSetFillColorWithColor(context, cgcolor(color));
+	CGContextFillEllipseInRect(context, CGRectMake(x, y, d * 2, d * 2));
 }
 
 void darwin_draw_circle_empty(float x, float y, float d, gg__Color color) {
-	NSColor* outlineColor = nscolor(color);
-	CGFloat outlineWidth = 1.0; //2.0;
-
-	NSRect rect = NSMakeRect(x, y, d * 2, d * 2);
-	NSBezierPath* circlePath = [NSBezierPath bezierPath];
-	[circlePath appendBezierPathWithOvalInRect:rect];
-
-	[outlineColor setStroke];
-	[circlePath setLineWidth:outlineWidth];
-	[circlePath stroke];
+	if (d <= 0) {
+		return;
+	}
+	CGContextRef context = current_cg_context();
+	if (context == NULL) {
+		return;
+	}
+	CGContextSaveGState(context);
+	CGContextSetStrokeColorWithColor(context, cgcolor(color));
+	CGContextSetLineWidth(context, 1.0);
+	CGContextStrokeEllipseInRect(context, CGRectMake(x, y, d * 2, d * 2));
+	CGContextRestoreGState(context);
 }

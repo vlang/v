@@ -2,10 +2,12 @@ name: json encoder benchmark CI
 
 on:
   push:
+    branches:
+      - master
     paths:
-      - 'vlib/x/json2/**' # Trigger on changes in this folder
-      - '!vlib/x/json2/strict/**' # Ignore
-      - '!vlib/x/json2/tests/**' # Ignore
+      - 'vlib/json2/**' # Trigger on changes in this folder
+      - '!vlib/json2/strict/**' # Ignore
+      - '!vlib/json2/tests/**' # Ignore
 
 jobs:
   json-encode-benchmark:
@@ -14,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Build V
         run: make -j4 && ./v symlink

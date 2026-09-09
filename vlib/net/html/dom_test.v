@@ -84,3 +84,13 @@ fn test_search_by_class() {
 	assert shuffled_class_tags.len == 1
 	assert shuffled_class_tags[0].attributes['class'] == 'complex-0 complex-1 complex-2'
 }
+
+fn test_unmatched_close_tag_is_ignored() {
+	content := '<!doctype html><html><body><div><a href="#">x</a></a></div><article class="news-post">hello</article></body></html>'
+	mut dom := parse(content)
+	by_attr := dom.get_tags_by_attribute_value('class', 'news-post')
+	by_class := dom.get_tags_by_class_name('news-post')
+	assert by_attr.len == 1
+	assert by_class.len == 1
+	assert by_class[0].name == 'article'
+}

@@ -85,9 +85,41 @@ pub fn merge[T](a []T, b []T) []T {
 	mut ia := 0
 	mut ib := 0
 	mut j := 0
-	// TODO: efficient approach to merge_desc where: a[ia] >= b[ib]
 	for ia < a.len && ib < b.len {
 		if a[ia] <= b[ib] {
+			m[j] = a[ia]
+			ia++
+		} else {
+			m[j] = b[ib]
+			ib++
+		}
+		j++
+	}
+	// a leftovers
+	for ia < a.len {
+		m[j] = a[ia]
+		ia++
+		j++
+	}
+	// b leftovers
+	for ib < b.len {
+		m[j] = b[ib]
+		ib++
+		j++
+	}
+	return m
+}
+
+// merge_desc merges two sorted arrays (descending) and maintains sorted order.
+// Example: arrays.merge_desc([7, 5, 3, 1], [8, 6, 4, 2]) // => [8, 7, 6, 5, 4, 3, 2, 1]
+@[direct_array_access]
+pub fn merge_desc[T](a []T, b []T) []T {
+	mut m := []T{len: a.len + b.len}
+	mut ia := 0
+	mut ib := 0
+	mut j := 0
+	for ia < a.len && ib < b.len {
+		if a[ia] >= b[ib] {
 			m[j] = a[ia]
 			ia++
 		} else {
@@ -190,39 +222,39 @@ pub fn chunk_while[T](a []T, predicate fn (before T, after T) bool) [][]T {
 		return []
 	}
 	mut chunks := [][]T{}
-	mut chunk := [a[0]]
+	mut current := [a[0]]
 	mut i := 0
 	for i = 1; i < a.len; i++ {
-		// eprintln('> i: ${i} | a[i]: ${a[i]} | predicate: ${predicate(a[i-1], a[i]):10} | chunk: ${chunk}')
 		if predicate(a[i - 1], a[i]) {
-			chunk << a[i]
+			current << a[i]
 			continue
 		}
-		if chunk.len > 0 {
-			chunks << chunk
+		if current.len > 0 {
+			chunks << current
 		}
-		chunk = [a[i]]
+		current = [a[i]]
 	}
-	if chunk.len > 0 {
-		chunks << chunk
+	if current.len > 0 {
+		chunks << current
 	}
 	return chunks
 }
 
+// WindowAttribute configures the windows produced by arrays.window.
 pub struct WindowAttribute {
 pub:
-	size int
-	step int = 1
+	size int // number of elements in each window; must be positive
+	step int = 1 // amount added to the starting index after each window; must be positive
 }
 
-// get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array.
-// - `size` - snapshot size
-// - `step` - gap size between each snapshot, default is 1.
+// window returns fixed-size windows over `array`.
+// Each window starts `attr.step` positions after the previous window.
+// It returns an empty array when the input or attributes cannot produce a window.
 //
 // Example: arrays.window([1, 2, 3, 4], size: 2) // => [[1, 2], [2, 3], [3, 4]]
 // Example: arrays.window([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], size: 3, step: 2) // => [[1, 2, 3], [3, 4, 5], [5, 6, 7], [7, 8, 9]]
 pub fn window[T](array []T, attr WindowAttribute) [][]T {
-	if array.len == 0 {
+	if array.len == 0 || attr.size <= 0 || attr.step <= 0 || attr.size > array.len {
 		return [][]T{}
 	}
 	// allocate snapshot array
@@ -322,18 +354,19 @@ pub fn filter_indexed[T](array []T, predicate fn (idx int, elem T) bool) []T {
 // assert r == 5
 // ```
 pub fn fold[T, R](array []T, init R, fold_op fn (acc R, elem T) R) R {
-	mut value := R{}
 	$if R is $array {
-		value = init.clone()
+		mut value := init.clone()
+		for e in array {
+			value = fold_op(value, e)
+		}
+		return value
 	} $else {
-		value = init
+		mut value := init
+		for e in array {
+			value = fold_op(value, e)
+		}
+		return value
 	}
-
-	for e in array {
-		value = fold_op(value, e)
-	}
-
-	return value
 }
 
 // fold_indexed sets `acc = init`, then successively calls `acc = fold_op(idx, acc, elem)` for each element in `array`.
@@ -519,7 +552,7 @@ pub fn binary_search[T](array []T, target T) !int {
 pub fn rotate_left[T](mut array []T, mid int) {
 	assert mid <= array.len && mid >= 0
 	k := array.len - mid
-	p := &T(array.data)
+	p := unsafe { &T(array.data) }
 	unsafe {
 		ptr_rotate[T](mid, &T(usize(voidptr(p)) + usize(sizeof(T)) * usize(mid)), k)
 	}
@@ -538,7 +571,7 @@ pub fn rotate_left[T](mut array []T, mid int) {
 pub fn rotate_right[T](mut array []T, k int) {
 	assert k <= array.len && k >= 0
 	mid := array.len - k
-	p := &T(array.data)
+	p := unsafe { &T(array.data) }
 	unsafe {
 		ptr_rotate[T](mid, &T(usize(voidptr(p)) + usize(sizeof(T)) * usize(mid)), k)
 	}
@@ -664,21 +697,31 @@ fn swap_nonoverlapping[T](x_ &T, y_ &T, count int) {
 
 // copy copies the `src` array elements to the `dst` array.
 // The number of the elements copied is the minimum of the length of both arrays.
+// The `src` and `dst` arrays may overlap.
 // Returns the number of elements copied.
 pub fn copy[T](mut dst []T, src []T) int {
-	min := if dst.len < src.len { dst.len } else { src.len }
-	if min <= 0 {
+	min_len := if dst.len < src.len { dst.len } else { src.len }
+	if min_len <= 0 {
 		return 0
 	}
 	if can_copy_bits[T]() {
-		blen := min * isize(sizeof(T))
+		blen := min_len * isize(sizeof(T))
 		unsafe { vmemmove(&T(dst.data), src.data, blen) }
 	} else {
-		for i in 0 .. min {
-			dst[i] = src[i]
+		dst_start := unsafe { usize(dst.data) }
+		src_start := unsafe { usize(src.data) }
+		copy_bytes := usize(min_len) * usize(sizeof(T))
+		if dst_start > src_start && dst_start - src_start < copy_bytes {
+			for i := min_len - 1; i >= 0; i-- {
+				dst[i] = src[i]
+			}
+		} else {
+			for i in 0 .. min_len {
+				dst[i] = src[i]
+			}
 		}
 	}
-	return min
+	return min_len
 }
 
 // can_copy_bits determines if T can be copied using `memcpy`.

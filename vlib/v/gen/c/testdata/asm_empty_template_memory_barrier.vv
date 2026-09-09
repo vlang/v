@@ -1,0 +1,5 @@
+fn main() {
+	asm volatile amd64 {
+		; ; ; memory
+	}
+}

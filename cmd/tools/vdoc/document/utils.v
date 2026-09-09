@@ -23,9 +23,10 @@ pub fn ast_comment_to_doc_comment(ast_node ast.Comment) DocComment {
 		text:     text
 		is_multi: ast_node.is_multi
 		pos:      token.Pos{
-			line_nr: ast_node.pos.line_nr
-			col:     0 // ast_node.pos.pos - ast_node.text.len
-			len:     text.len
+			line_nr:   ast_node.pos.line_nr
+			last_line: ast_node.pos.last_line
+			col:       0 // ast_node.pos.pos - ast_node.text.len
+			len:       text.len
 		}
 	}
 }
@@ -45,6 +46,9 @@ pub fn ast_comments_to_doc_comments(ast_nodes []ast.Comment) []DocComment {
 pub fn merge_doc_comments(comments []DocComment) string {
 	if comments.len == 0 {
 		return ''
+	}
+	if raw_markdown := merge_raw_markdown_comments(comments) {
+		return raw_markdown
 	}
 	mut doc_comments := []string{}
 	for i := comments.len - 1; i >= 0; i-- {
@@ -92,6 +96,14 @@ pub fn merge_doc_comments(comments []DocComment) string {
 				next_on_newline = true
 				continue
 			}
+			if l.starts_with('>') {
+				if !last_ends_with_lb {
+					comment += '\n'
+				}
+				comment += l + '\n'
+				next_on_newline = true
+				continue
+			}
 			is_list := l.len > 1 && ((l[1] == ` ` && l[0] in [`-`, `*`, `+`])
 				|| (l.len > 2 && l[2] == ` ` && l[1] == `.` && l[0].is_digit()))
 			line_before_spaces := l.before(' ')
@@ -133,6 +145,20 @@ pub fn merge_doc_comments(comments []DocComment) string {
 		}
 	}
 	return comment
+}
+
+fn merge_raw_markdown_comments(comments []DocComment) ?string {
+	if !comments.all(it.is_readme) {
+		return none
+	}
+	mut raw_markdown := []string{}
+	for i := comments.len - 1; i >= 0; i-- {
+		if comments[i].is_multi {
+			continue
+		}
+		raw_markdown << comments[i].text.trim_left('\x01')
+	}
+	return raw_markdown.reverse().join('\n')
 }
 
 // stmt_signature returns the signature of a given `ast.Stmt` node.
@@ -177,6 +203,41 @@ pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
 			return ''
 		}
 	}
+}
+
+// stmt_doc_anchor_line returns the source line that a statement's documentation
+// comment is expected to sit directly above. Attributes are parsed and consumed
+// before the declaration itself, so `stmt.pos` points at the declaration keyword,
+// *below* any attribute lines. When the statement carries attributes, the doc
+// comment is above the topmost attribute, so its line is used instead.
+fn stmt_doc_anchor_line(stmt ast.Stmt) int {
+	return match stmt {
+		ast.ConstDecl, ast.EnumDecl, ast.FnDecl, ast.GlobalDecl, ast.InterfaceDecl, ast.StructDecl {
+			attrs_first_line(stmt.attrs, stmt.pos.line_nr)
+		}
+		ast.TypeDecl {
+			match stmt {
+				ast.AliasTypeDecl, ast.FnTypeDecl, ast.SumTypeDecl {
+					attrs_first_line(stmt.attrs, stmt.pos.line_nr)
+				}
+			}
+		}
+		else {
+			stmt.pos.line_nr
+		}
+	}
+}
+
+// attrs_first_line returns the topmost source line among `attrs`, or
+// `default_line` when there are no positioned attributes.
+fn attrs_first_line(attrs []ast.Attr, default_line int) int {
+	mut anchor := default_line
+	for a in attrs {
+		if a.pos.line_nr > 0 && a.pos.line_nr < anchor {
+			anchor = a.pos.line_nr
+		}
+	}
+	return anchor
 }
 
 // stmt_pub returns a boolean if a given `ast.Stmt` node

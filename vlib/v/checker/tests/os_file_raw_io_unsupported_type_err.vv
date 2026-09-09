@@ -1,0 +1,19 @@
+import os
+
+struct Options {
+	command string
+	bins    []int
+}
+
+fn main() {
+	mut f := os.open_file('structwritefile', 'w') or { panic(err) }
+	opts := Options{
+		command: 'explore'
+		bins:    [2, 16]
+	}
+	f.write_struct(opts) or { panic(err) }
+	f.write_raw(opts) or { panic(err) }
+	mut read_opts := Options{}
+	f.read_struct(mut read_opts) or { panic(err) }
+	_ = f.read_raw[Options]() or { panic(err) }
+}

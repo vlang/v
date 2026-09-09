@@ -64,6 +64,11 @@ fn parse_rfc2822(s string) !Time
 fn parse_rfc3339(s string) !Time
 ```
 
+`time.new(...)` validates the provided fields before calculating the Unix timestamp.
+Omitted `month` and `day` values default to `1`, and out-of-range values panic.
+Use `t.is_zero()` to check whether a `time.Time` is still its zero value before formatting or
+serializing it.
+
 Another very useful feature of the `time` module is the stop watch,
 for when you want to measure short time periods, elapsed while you
 executed other tasks. [See](https://play.vlang.io/?query=f6c008bc34):
@@ -79,5 +84,22 @@ fn main() {
 	sw := time.new_stopwatch()
 	do_something()
 	println('Note: do_something() took: ${sw.elapsed().milliseconds()} ms')
+}
+```
+
+Use a timer when a wait needs to participate in a `select`:
+
+```v
+import time
+
+timer := time.new_timer(500 * time.millisecond)
+defer {
+	timer.stop()
+}
+select {
+	fired_at := <-timer.c {
+		println('timer fired at ${fired_at}')
+	}
+	// another channel can be handled here
 }
 ```

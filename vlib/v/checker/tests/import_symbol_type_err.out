@@ -10,12 +10,6 @@ Did you mean `crypto.Hash`?
     4 |     println(Coin{})
       |             ~~~~~~
     5 | }
-vlib/v/checker/tests/import_symbol_type_err.vv:4:10: error: unknown struct: crypto.Coin
-    2 | 
-    3 | fn main() {
-    4 |     println(Coin{})
-      |             ~~~~~~
-    5 | }
 vlib/v/checker/tests/import_symbol_type_err.vv:4:2: error: `println` can not print void expressions
     2 | 
     3 | fn main() {

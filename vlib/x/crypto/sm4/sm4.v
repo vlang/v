@@ -452,5 +452,6 @@ pub fn (c &SM4Cipher) crypt_cbc(iv []u8, input []u8, mut output []u8) ![]u8 {
 			}
 		}
 	}
+
 	return iv_buf[..]
 }

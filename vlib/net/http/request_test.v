@@ -1,6 +1,9 @@
 // vtest build: !windows
 import net.http
+import net.urllib
+import net
 import io
+import time
 
 struct StringReader {
 	text string
@@ -56,7 +59,8 @@ fn test_parse_request_two_header_values() {
 }
 
 fn test_parse_request_body() {
-	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2: b\r\nContent-Length: 4\r\n\r\nbodyabc')
+	mut reader_ :=
+		reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2: b\r\nContent-Length: 4\r\n\r\nbodyabc')
 	req := http.parse_request(mut reader_) or { panic('did not parse: ${err}') }
 	assert req.data == 'body'
 }
@@ -67,6 +71,31 @@ fn test_parse_request_line() {
 	}
 	assert method == .get
 	assert target.str() == '/target'
+	assert version == .v1_1
+}
+
+fn test_parse_request_uri_with_consecutive_slashes() {
+	url := urllib.parse_request_uri('//another.html') or { panic('did not parse: ${err}') }
+	assert url.host == ''
+	assert url.path == '//another.html'
+	assert url.str() == '//another.html'
+
+	absolute := urllib.parse_request_uri('http://localhost:8080//another.html') or {
+		panic('did not parse: ${err}')
+	}
+	assert absolute.host == 'localhost:8080'
+	assert absolute.path == '//another.html'
+	assert absolute.str() == 'http://localhost:8080//another.html'
+}
+
+fn test_parse_request_line_with_consecutive_slashes() {
+	method, target, version := http.parse_request_line('GET //another.html HTTP/1.1') or {
+		panic('did not parse: ${err}')
+	}
+	assert method == .get
+	assert target.host == ''
+	assert target.path == '//another.html'
+	assert target.str() == '//another.html'
 	assert version == .v1_1
 }
 
@@ -298,4 +327,94 @@ fn test_parse_request_head_str_multiple_same_header() {
 	assert req.method == .get
 	assert req.host == 'example.com'
 	assert req.header.custom_values('Set-Cookie') == ['session=abc', 'user=xyz']
+}
+
+fn test_get_does_not_wait_for_timeout_when_content_length_is_complete() {
+	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := listener.addr()!.port()!
+	t := spawn fn (mut listener net.TcpListener) {
+		mut conn := listener.accept() or {
+			listener.close() or {}
+			return
+		}
+		defer {
+			conn.close() or {}
+			listener.close() or {}
+		}
+
+		mut request_buf := []u8{len: 2048}
+		_ = conn.read(mut request_buf) or { return }
+		response := 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nok'
+		conn.write(response.bytes()) or { return }
+
+		conn.set_read_timeout(5 * time.second)
+		mut drain_buf := []u8{len: 128}
+		for {
+			n := conn.read(mut drain_buf) or { break }
+			if n <= 0 {
+				break
+			}
+		}
+	}(mut listener)
+
+	mut req := http.new_request(.get, 'http://127.0.0.1:${port}', '')
+	req.read_timeout = 2 * time.second
+	start := time.now()
+	res := req.do()!
+	elapsed := time.since(start)
+	t.wait()
+
+	assert res.status() == .ok
+	assert res.body == 'ok'
+	assert elapsed < time.second
+}
+
+fn test_prepare_uses_fetch_config_timeouts() {
+	req := http.prepare(
+		url:           'http://example.com'
+		read_timeout:  123 * time.millisecond
+		write_timeout: 456 * time.millisecond
+	)!
+	assert req.read_timeout == 123 * time.millisecond
+	assert req.write_timeout == 456 * time.millisecond
+}
+
+fn test_get_does_not_wait_for_timeout_when_chunked_body_is_complete() {
+	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := listener.addr()!.port()!
+	t := spawn fn (mut listener net.TcpListener) {
+		mut conn := listener.accept() or {
+			listener.close() or {}
+			return
+		}
+		defer {
+			conn.close() or {}
+			listener.close() or {}
+		}
+
+		mut request_buf := []u8{len: 2048}
+		_ = conn.read(mut request_buf) or { return }
+		response := 'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n2\r\nok\r\n0\r\n\r\n'
+		conn.write(response.bytes()) or { return }
+
+		conn.set_read_timeout(5 * time.second)
+		mut drain_buf := []u8{len: 128}
+		for {
+			n := conn.read(mut drain_buf) or { break }
+			if n <= 0 {
+				break
+			}
+		}
+	}(mut listener)
+
+	mut req := http.new_request(.get, 'http://127.0.0.1:${port}', '')
+	req.read_timeout = 2 * time.second
+	start := time.now()
+	res := req.do()!
+	elapsed := time.since(start)
+	t.wait()
+
+	assert res.status() == .ok
+	assert res.body == 'ok'
+	assert elapsed < time.second
 }

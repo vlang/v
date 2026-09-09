@@ -99,8 +99,7 @@ pub fn (mut rng XOROS128PPRNG) block_size() int {
 	return 64
 }
 
-// free should be called when the generator is no longer needed
+// free should be called when the generator is no longer needed.
 @[unsafe]
 pub fn (mut rng XOROS128PPRNG) free() {
-	unsafe { free(rng) }
 }

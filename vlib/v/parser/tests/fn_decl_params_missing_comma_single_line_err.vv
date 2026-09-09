@@ -1,0 +1,1 @@
+fn greet(salutation string name string) {}

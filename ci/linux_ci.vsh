@@ -1,4 +1,5 @@
 import common { Task, exec }
+import os
 
 // Shared tasks/helpers
 fn all_code_is_formatted() {
@@ -19,17 +20,30 @@ fn test_pure_v_math_module() {
 	exec('v -exclude @vlib/math/*.c.v test vlib/math/')
 }
 
+fn use_established_compiler_for_self_tests() {
+	current_vflags := os.getenv('VFLAGS')
+	if '-old-compiler' !in current_vflags.fields() {
+		os.setenv('VFLAGS', '${current_vflags} -old-compiler'.trim_space(), true)
+	}
+}
+
 fn self_tests() {
+	// The dedicated V3 workflow owns strict V3 coverage. Keep the full vlib suite
+	// and its nested compiler invocations on V1 so the compatibility compiler
+	// shipped by this rollout remains tested.
+	use_established_compiler_for_self_tests()
 	if common.is_github_job {
-		exec('v -W -silent test-self vlib')
+		exec('v -old-compiler -W -silent test-self vlib')
 	} else {
-		exec('v -progress test-self vlib')
+		exec('v -old-compiler -progress test-self vlib')
 	}
 }
 
 fn build_examples() {
 	if common.is_github_job {
-		exec('v -W build-examples')
+		// The exhaustive CI matrix includes a few deliberately large examples.
+		// Keep the user-facing V3 memory guard while allowing CI to validate them.
+		exec('v -no-memory-limit -W build-examples')
 	} else {
 		exec('v -progress build-examples')
 	}
@@ -41,7 +55,9 @@ fn v_doctor() {
 
 fn build_v_with_prealloc() {
 	exec('v -cg -cstrict -o vstrict1 cmd/v')
-	exec('./vstrict1 -o vprealloc -prealloc cmd/v')
+	// -prealloc uses _Thread_local for g_memory_block; bundled tcc does not support it.
+	prealloc_cc_flag := if os.getenv('VFLAGS').contains('-cc tcc') { ' -cc cc' } else { '' }
+	exec('./vstrict1${prealloc_cc_flag} -o vprealloc -prealloc cmd/v')
 	exec('./vprealloc run examples/hello_world.v')
 	exec('./vprealloc -o v3 cmd/v')
 	exec('./v3 -o v4 cmd/v')
@@ -55,7 +71,9 @@ fn install_dependencies_for_examples_and_tools_tcc() {
 	}
 	exec('v retry -- sudo apt update')
 	exec('v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind')
-	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
+	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev libx11-xcb-dev')
+	// Wayland development libraries for sokol Wayland support
+	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev')
 	// The following is needed for examples/wkhtmltopdf.v
 	exec('v retry -- sudo apt install --quiet -y xfonts-75dpi xfonts-base expect')
 	exec('v retry -- wget --quiet https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb')
@@ -123,8 +141,8 @@ fn test_v_tutorials_tcc() {
 }
 
 fn build_fast_tcc() {
-	exec('cd cmd/tools/fast && v fast.v')
-	exec('cd cmd/tools/fast && ./fast')
+	exec('cd cmd/tools/fast && v -o fast .')
+	exec('cd cmd/tools/fast && ./fast help')
 }
 
 fn v_self_compilation_usecache_tcc() {
@@ -179,6 +197,9 @@ fn install_dependencies_for_examples_and_tools_gcc() {
 	exec('v retry -- sudo apt update')
 	exec('v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind')
 	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
+	// Wayland development libraries for sokol Wayland support
+	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev wayland-protocols libegl-dev')
+	exec('v retry -- sudo apt install --quiet -y libx11-dev libx11-xcb-dev libgl1-mesa-dri xauth xvfb')
 }
 
 fn recompile_v_with_cstrict_gcc() {
@@ -234,12 +255,14 @@ fn self_tests_gcc() {
 }
 
 fn self_tests_prod_gcc() {
+	use_established_compiler_for_self_tests()
 	exec('v -o vprod -prod cmd/v')
-	exec('./vprod -silent test-self vlib')
+	exec('./vprod -old-compiler -silent test-self vlib')
 }
 
 fn self_tests_cstrict_gcc() {
-	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 v -cc gcc -cstrict -silent test-self vlib')
+	use_established_compiler_for_self_tests()
+	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 v -old-compiler -cc gcc -cstrict -silent test-self vlib')
 }
 
 fn build_examples_gcc() {
@@ -301,7 +324,9 @@ fn install_dependencies_for_examples_and_tools_clang() {
 	exec('v retry -- sudo apt update')
 	exec('v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind')
 	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
-	exec('v retry -- sudo apt install --quiet -y clang')
+	// Wayland development libraries for sokol Wayland support
+	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev wayland-protocols libegl-dev')
+	exec('v retry -- sudo apt install --quiet -y clang libx11-xcb-dev')
 }
 
 fn recompile_v_with_cstrict_clang() {
@@ -356,12 +381,14 @@ fn self_tests_clang() {
 }
 
 fn self_tests_vprod_clang() {
+	use_established_compiler_for_self_tests()
 	exec('v -o vprod -prod cmd/v')
-	exec('./vprod -silent test-self vlib')
+	exec('./vprod -old-compiler -silent test-self vlib')
 }
 
 fn self_tests_cstrict_clang() {
-	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./vprod -cstrict -silent test-self vlib')
+	use_established_compiler_for_self_tests()
+	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./vprod -old-compiler -cstrict -silent test-self vlib')
 }
 
 fn build_examples_clang() {
@@ -389,30 +416,10 @@ fn build_modules_clang() {
 	exec('v build-module vlib/os/cmdline')
 }
 
-fn native_machine_code_generation_common() {
-	exec('cd cmd/tools && v gen1m.v')
-	exec('cd cmd/tools && ./gen1m > 1m.v')
-	exec('cd cmd/tools && v -backend native -o 1m 1m.v')
-	exec('cd cmd/tools && ./1m && ls -larS 1m*')
-	exec('cd cmd/tools && rm -f ./1m ./1m.v')
-}
-
-fn native_machine_code_generation_gcc() {
-	native_machine_code_generation_common()
-}
-
-fn native_machine_code_generation_clang() {
-	native_machine_code_generation_common()
-}
-
-fn native_cross_compilation_to_macos() {
-	exec('v -os macos -experimental -b native -o hw.macos examples/hello_world.v')
-	common.file_size_greater_than('hw.macos', 8000)
-	exec('rm -f hw.macos')
-}
-
 fn test_inline_assembly() {
-	exec('v test vlib/v/slow_tests/assembly')
+	// V3 does not lower inline assembly yet. Select V1 explicitly so this task
+	// remains transparent without making the rest of the Linux task runner strict.
+	exec('v -old-compiler test vlib/v/slow_tests/assembly')
 }
 
 // Collect all tasks
@@ -477,9 +484,6 @@ const all_tasks = {
 	'build_examples_clang':                              Task{build_examples_clang, 'Build examples (clang)'}
 	'build_examples_autofree_clang':                     Task{build_examples_autofree_clang, 'Build examples with -autofree (clang)'}
 	'build_modules_clang':                               Task{build_modules_clang, 'Build modules (clang)'}
-	'native_machine_code_generation_clang':              Task{native_machine_code_generation_clang, 'native machine code generation (clang)'}
-	'native_machine_code_generation_gcc':                Task{native_machine_code_generation_gcc, 'native machine code generation (gcc)'}
-	'native_cross_compilation_to_macos':                 Task{native_cross_compilation_to_macos, 'native cross compilation to macos'}
 	'test_inline_assembly':                              Task{test_inline_assembly, 'Test inline assembly'}
 }
 

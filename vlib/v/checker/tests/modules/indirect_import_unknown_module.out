@@ -1,0 +1,7 @@
+vlib/v/checker/tests/modules/indirect_import_unknown_module/main.v:7:7: error: unknown module `m2`
+    5 | fn main() {
+    6 |     // vfmt off
+    7 |     m1.f(m2.Struct{})
+      |          ~~
+    8 |     // vfmt on
+    9 | }

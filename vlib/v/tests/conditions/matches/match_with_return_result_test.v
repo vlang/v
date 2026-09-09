@@ -1,4 +1,4 @@
-import x.json2
+import json2
 
 fn maybe_map_map[T, U, X, Y](m map[T]U, f fn (T, U) !(X, Y)) !map[X]Y {
 	mut r := map[X]Y{}
@@ -39,8 +39,7 @@ fn Resolved.parse(j json2.Any) !Resolved {
 		map[string]json2.Any {
 			return Resolved{
 				users: if m := j['users'] {
-					maybe_map_map[string, json2.Any, Snowflake, User](m as map[string]json2.Any,
-						fn (k string, v json2.Any) !(Snowflake, User) {
+					maybe_map_map[string, json2.Any, Snowflake, User](m as map[string]json2.Any, fn (k string, v json2.Any) !(Snowflake, User) {
 						return Snowflake(k.int()), User.parse(v)!
 					})!
 				} else {

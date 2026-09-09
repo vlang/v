@@ -1,0 +1,11 @@
+vlib/v/checker/tests/run/json_encode_generic_interface.vv:1:1: warning: module `json` has been deprecated; `json` will be removed soon; use the pure V `json2` module instead
+    1 | import json
+      | ~~~~~~~~~~~
+    2 |
+    3 | interface Interface {}
+vlib/v/checker/tests/run/json_encode_generic_interface.vv:10:22: cgen error: json: Interface is not struct
+    8 | 
+    9 | fn main() {
+   10 |     println(json.encode(Result[Interface]{}))
+      |                         ~~~~~~~~~~~~~~~~~~~
+   11 | }

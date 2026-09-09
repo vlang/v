@@ -193,3 +193,16 @@ Footer content'
 		fields:      unsafe { field_docs }
 	)! == doc5
 }
+
+struct DocTestXDoc {
+	dim int @[xdoc: 'dimensions, one of: 1, 2, 3.']
+}
+
+fn test_to_doc_with_xdoc_containing_colon() {
+	expected := '
+Options:
+  --dim <int>               dimensions, one of: 1, 2, 3.'
+
+	help := flag.to_doc[DocTestXDoc]()!
+	assert help == expected
+}

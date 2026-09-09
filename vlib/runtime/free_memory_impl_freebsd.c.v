@@ -1,6 +1,6 @@
 module runtime
 
-fn C.sysctlnametomib(name charptr, mib &int, len &usize) i32
+fn C.sysctlnametomib(name charptr, mib &i32, len &usize) i32
 
 fn free_memory_impl() !usize {
 	$if cross ? {
@@ -13,7 +13,7 @@ fn free_memory_impl() !usize {
 			if page_size == usize(-1) {
 				return error('free_memory: `C.sysconf()` return error code = ${c_errno_1}')
 			}
-			mut mib := [4]int{}
+			mut mib := [4]i32{} // C `int` mib buffer (sysctl name array)
 			mut len := usize(4)
 			retval_2 := unsafe {
 				C.sysctlnametomib(c'vm.stats.vm.v_free_count', &mib[0], &len)
@@ -22,7 +22,7 @@ fn free_memory_impl() !usize {
 			if retval_2 == -1 {
 				return error('free_memory: `C.sysctlnametomib()` return error code = ${c_errno_2}')
 			}
-			mut free_pages := int(0)
+			mut free_pages := i32(0) // sysctl writes a 4-byte C int (bufsize 4)
 			bufsize := usize(4)
 			retval_3 := unsafe {
 				C.sysctl(&mib[0], mib.len, &free_pages, &bufsize, 0, 0)

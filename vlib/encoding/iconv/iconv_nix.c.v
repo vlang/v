@@ -33,6 +33,7 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 		'UTF32BE' { src_encoding = 'UTF-32BE' }
 		else {}
 	}
+
 	match dst_encoding {
 		'UTF16LE' { dst_encoding = 'UTF-16LE' }
 		'UTF16BE' { dst_encoding = 'UTF-16BE' }

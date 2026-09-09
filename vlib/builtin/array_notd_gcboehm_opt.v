@@ -4,6 +4,15 @@
 
 module builtin
 
+// these are needed for calls inside `$if gcboehm_opt ? { ... }` in array.v
+fn alloc_array_data_noscan(total_size u64) voidptr {
+	return alloc_array_data(total_size)
+}
+
+fn alloc_array_data_noscan_uninit(total_size u64) voidptr {
+	return alloc_array_data_uninit(total_size)
+}
+
 // this is needed in `string.v`
 fn __new_array_noscan(mylen int, cap int, elm_size int) array {
 	return __new_array(mylen, cap, elm_size)

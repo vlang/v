@@ -1,0 +1,8 @@
+fn main() {
+	base := [1, 2]
+	a := [...base, // keep
+		3,
+		4,
+	]
+	println(a)
+}

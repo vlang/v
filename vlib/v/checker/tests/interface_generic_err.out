@@ -14,8 +14,3 @@ vlib/v/checker/tests/interface_generic_err.vv:8:8: error: could not infer generi
     7 | what := What{}
     8 | why := Why(what)
       |        ~~~~~~~~~
-vlib/v/checker/tests/interface_generic_err.vv:8:8: error: `What` does not implement interface `Why`, cannot cast `What` to interface `Why`
-    6 | // no segfault without generic
-    7 | what := What{}
-    8 | why := Why(what)
-      |        ~~~~~~~~~

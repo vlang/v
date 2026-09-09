@@ -117,6 +117,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 			`'` { 2 }
 			else { 0 }
 		}
+
 		if parser.lexical_attributes.open_code { // verify if open_code is complete and handle string code
 			parser.lexical_attributes.lexeme_builder.write_u8(chr)
 			if parser.lexical_attributes.open_string > 0

@@ -1,0 +1,26 @@
+module main
+
+@[heap]
+struct JoshTree[T] {
+	primary_key int
+	value       T
+mut:
+	leaf &Node[T]
+}
+
+struct Empty {}
+
+type Node[T] = Empty | JoshTree[T]
+
+fn get_leaf[T](node &Node[T]) &JoshTree[T] {
+	return unsafe { &JoshTree[T](node) }
+}
+
+fn main() {
+	root := Node[int](JoshTree[int]{
+		primary_key: 1
+		value:       10
+	})
+	leaf := get_leaf[int](&root)
+	println(leaf.value)
+}

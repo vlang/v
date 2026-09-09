@@ -27,5 +27,5 @@ pub fn sum64_string(key string, seed u64) u64 {
 // sum64 returns a hash given a byte array `key` and a `seed`.
 @[inline]
 pub fn sum64(key []u8, seed u64) u64 {
-	return wyhash_c(&u8(key.data), u64(key.len), seed)
+	return wyhash_c(key.data, u64(key.len), seed)
 }

@@ -1,3 +1,17 @@
+vlib/v/checker/tests/return_static_name.vv:12:23: notice: unused parameter: `bytes`
+   10 | }
+   11 | 
+   12 | fn Boolean.from_bytes(bytes []u8) !Boolean {
+      |                       ~~~~~
+   13 |     return Boolean{}
+   14 | }
+vlib/v/checker/tests/return_static_name.vv:16:24: notice: unused parameter: `bytes`
+   14 | }
+   15 | 
+   16 | fn Boolean.from_bytes1(bytes []u8) ?Boolean {
+      |                        ~~~~~
+   17 |     return Boolean{}
+   18 | }
 vlib/v/checker/tests/return_static_name.vv:29:9: error: `?` is not needed, use `return Boolean.from_bytes1()`
    27 | 
    28 | fn parse_universal_primitive1(content []u8) ?Element {

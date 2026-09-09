@@ -1,7 +1,7 @@
 // Regression test for https://github.com/vlang/v/issues/XXXXX
 // Comptime $else branch with map literal init should not cause
 // a panic in the markused walker when the branch is skipped.
-import x.json2
+import json2
 
 pub enum AppError {
 	invalid_method
@@ -23,8 +23,8 @@ pub fn fire_call[T](mut app T, method_name string, message map[string]json2.Any)
 			$if method.return_type is string {
 				return app.$method(message)
 			} $else {
-				return new_error_detail_with_details(.invalid_method, 'Method should return string',
-					{
+				return new_error_detail_with_details(.invalid_method,
+					'Method should return string', {
 					'method':      method_name
 					'return_type': method.return_type
 				})

@@ -5,6 +5,7 @@ import v.ast
 import strings
 
 pub const reset_dbg_line = '#line 999999999'
+pub const generated_c_debug_path = '<generated C>'
 
 pub fn (mut g Gen) gen_c_main() {
 	if !g.has_main {
@@ -41,10 +42,33 @@ fn (mut g Gen) gen_vlines_reset() {
 		// At this point, the v files are transpiled.
 		// The rest is auto generated code, which will not have
 		// different .v source file/line numbers.
-		g.vlines_path = util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
+		g.vlines_path = if g.pref.os == .macos && g.pref.building_v && g.pref.is_debug {
+			generated_c_debug_path
+		} else {
+			util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
+		}
 		g.writeln2('', '// Reset the C file/line numbers')
 		g.writeln2('${reset_dbg_line} "${g.vlines_path}"', '')
 	}
+}
+
+fn (mut g Gen) gen_windows_stdio_setup(force_console bool) {
+	g.writeln('\tBOOL con_valid = FALSE;')
+	if force_console {
+		g.writeln('\tcon_valid = AllocConsole();')
+	} else {
+		g.writeln('\tcon_valid = AttachConsole(ATTACH_PARENT_PROCESS);')
+	}
+	g.writeln('\tFILE* res_fp = 0;')
+	g.writeln('\terrno_t err;')
+	g.writeln('\tif (con_valid) {')
+	g.writeln('\t\terr = freopen_s(&res_fp, "CON", "w", stdout);')
+	g.writeln('\t\terr = freopen_s(&res_fp, "CON", "w", stderr);')
+	g.writeln('\t} else {')
+	g.writeln('\t\terr = freopen_s(&res_fp, "NUL", "w", stdout);')
+	g.writeln('\t\terr = freopen_s(&res_fp, "NUL", "w", stderr);')
+	g.writeln('\t}')
+	g.writeln('\t(void)err;')
 }
 
 pub fn fix_reset_dbg_line(src strings.Builder, out_file string) strings.Builder {
@@ -108,23 +132,7 @@ fn (mut g Gen) gen_c_main_function_only_header() {
 			g.writeln('\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')
 			g.writeln('\tint ___argc;')
 			g.writeln('\twchar_t** ___argv = CommandLineToArgvW(full_cmd_line, &___argc);')
-
-			g.writeln('\tBOOL con_valid = FALSE;')
-			if g.force_main_console {
-				g.writeln('\tcon_valid = AllocConsole();')
-			} else {
-				g.writeln('\tcon_valid = AttachConsole(ATTACH_PARENT_PROCESS);')
-			}
-			g.writeln('\tFILE* res_fp = 0;')
-			g.writeln('\terrno_t err;')
-			g.writeln('\tif (con_valid) {')
-			g.writeln('\t\terr = freopen_s(&res_fp, "CON", "w", stdout);')
-			g.writeln('\t\terr = freopen_s(&res_fp, "CON", "w", stderr);')
-			g.writeln('\t} else {')
-			g.writeln('\t\terr = freopen_s(&res_fp, "NUL", "w", stdout);')
-			g.writeln('\t\terr = freopen_s(&res_fp, "NUL", "w", stderr);')
-			g.writeln('\t}')
-			g.writeln('\t(void)err;')
+			g.gen_windows_stdio_setup(g.force_main_console)
 
 			return
 		}
@@ -148,23 +156,77 @@ fn (mut g Gen) gen_c_main_function_header() {
 	}
 }
 
+fn (mut g Gen) gen_boehm_gc_init() {
+	g.writeln('#if defined(_VGCBOEHM)')
+	if g.pref.gc_mode == .boehm_leak {
+		g.writeln('\tGC_set_find_leak(1);')
+	}
+	if g.pref.os == .linux && !g.pref.no_builtin {
+		g.writeln('\tbool __v_gc_debugger_workaround = builtin__gc_prepare_for_debugger_init();')
+	}
+	g.writeln('\tGC_set_pages_executable(0);')
+	if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+		// Let the heap grow to roughly the live set before collecting, instead of
+		// keeping it small. A smaller divisor means rarer stop-the-world pauses;
+		// with thread-local allocation those pauses (not the allocator lock) are
+		// what serializes worker threads on allocation-heavy multithreaded servers
+		// (issue #27555). Emitted before GC_INIT(), so a user `GC_FREE_SPACE_DIVISOR`
+		// env var still wins and memory-constrained programs can raise it again.
+		g.writeln('\tGC_set_free_space_divisor(1);')
+	}
+	if g.pref.use_coroutines {
+		g.writeln('\tGC_allow_register_threads();')
+	}
+	g.writeln('\tGC_INIT();')
+	// Register V's array data header displacement so Boehm always recognises
+	// the interior pointer kept in `array.data` (which is offset by
+	// `array_data_header_size()` bytes from the GC allocation start).
+	g.writeln('\tGC_register_displacement(sizeof(void*));')
+	if g.pref.os == .linux && !g.pref.no_builtin {
+		g.writeln('\tbuiltin__gc_restore_roots_after_debugger_init(__v_gc_debugger_workaround);')
+	}
+	if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
+		g.writeln('\tGC_enable_incremental();')
+	}
+	g.writeln('#endif')
+}
+
+fn (mut g Gen) gen_shared_library_boehm_init() {
+	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
+		return
+	}
+	g.writeln('#if defined(_VGCBOEHM)')
+	// macOS hardened runtime denies PROT_READ|PROT_WRITE|PROT_EXEC mappings from
+	// non-codesigned dylibs, so libgc must not request executable pages. The
+	// equivalent restriction applies to Windows DLLs.
+	g.writeln('\tGC_set_pages_executable(0);')
+	if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+		// See gen_boehm_gc_init: rarer stop-the-world pauses for the opt modes,
+		// overridable via the `GC_FREE_SPACE_DIVISOR` env var (issue #27555).
+		// Only tune when this library is the one bringing up the collector. If the
+		// host process already initialized Boehm, the local GC_INIT() below is a
+		// no-op that will not re-read the env var, so setting the divisor here would
+		// silently override the host's process-wide value (and its env override).
+		g.writeln('\tif (!GC_is_init_called()) {')
+		g.writeln('\t\tGC_set_free_space_divisor(1);')
+		g.writeln('\t}')
+	}
+	g.writeln('\tGC_INIT();')
+	g.writeln('\tGC_register_displacement(sizeof(void*));')
+	g.writeln('#endif')
+}
+
+fn (g &Gen) has_user_defined_windows_dll_main() bool {
+	return 'DllMain' in g.export_funcs
+}
+
 fn (mut g Gen) gen_c_main_header() {
 	g.gen_c_main_function_header()
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
-		g.writeln('#if defined(_VGCBOEHM)')
-		if g.pref.gc_mode == .boehm_leak {
-			g.writeln('\tGC_set_find_leak(1);')
-		}
-		g.writeln('\tGC_set_pages_executable(0);')
-		if g.pref.use_coroutines {
-			g.writeln('\tGC_allow_register_threads();')
-		}
-		g.writeln('\tGC_INIT();')
-
-		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
-			g.writeln('\tGC_enable_incremental();')
-		}
-		g.writeln('#endif')
+		g.gen_boehm_gc_init()
+	}
+	if g.pref.gc_mode == .vgc {
+		g.writeln('\tbuiltin__vgc_init();')
 	}
 	if !g.pref.no_builtin {
 		g.writeln('\t_vinit(___argc, (voidptr)___argv);')
@@ -210,15 +272,10 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 	g.gen_c_main_trace_calls_hook()
 
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
-		g.writeln('#if defined(_VGCBOEHM)')
-		if g.pref.gc_mode == .boehm_leak {
-			g.writeln('\tGC_set_find_leak(1);')
-		}
-		g.writeln2('\tGC_set_pages_executable(0);', '\tGC_INIT();')
-		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
-			g.writeln('\tGC_enable_incremental();')
-		}
-		g.writeln('#endif')
+		g.gen_boehm_gc_init()
+	}
+	if g.pref.gc_mode == .vgc {
+		g.writeln('\tbuiltin__vgc_init();')
 	}
 	if !g.pref.no_builtin {
 		g.writeln('\t_vinit(argc, (voidptr)argv);')
@@ -252,8 +309,8 @@ pub fn (mut g Gen) gen_failing_error_propagation_for_test_fn(or_block ast.OrExpr
 	g.write_defer_stmts_when_needed(or_block.scope, true, or_block.pos)
 	paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 	dot_or_ptr := if cvar_name in g.tmp_var_ptr { '->' } else { '.' }
-	err_msg := 'IError_name_table[${cvar_name}${dot_or_ptr}err._typ]._method_msg(${cvar_name}${dot_or_ptr}err._object)'
-	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, ${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"), ${err_msg} );')
+	err_msg := '((struct _IError_interface_methods*)${cvar_name}${dot_or_ptr}err._typ)->_method_msg(${cvar_name}${dot_or_ptr}err._object)'
+	g.writeln('\t((struct _main__TestRunner_interface_methods*)test_runner._typ)->_method_fn_error(test_runner._object, ${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"), ${err_msg} );')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
@@ -264,8 +321,8 @@ pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, 
 	g.write_defer_stmts_when_needed(return_stmt.scope, true, return_stmt.pos)
 	paline, pafile, pamod, pafn := g.panic_debug_info(return_stmt.pos)
 	dot_or_ptr := if cvar_name in g.tmp_var_ptr { '->' } else { '.' }
-	err_msg := 'IError_name_table[${cvar_name}${dot_or_ptr}err._typ]._method_msg(${cvar_name}${dot_or_ptr}err._object)'
-	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, ${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"), ${err_msg} );')
+	err_msg := '((struct _IError_interface_methods*)${cvar_name}${dot_or_ptr}err._typ)->_method_msg(${cvar_name}${dot_or_ptr}err._object)'
+	g.writeln('\t((struct _main__TestRunner_interface_methods*)test_runner._typ)->_method_fn_error(test_runner._object, ${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"), ${err_msg} );')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
@@ -292,19 +349,10 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	g.writeln('')
 	g.gen_c_main_function_header()
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
-		g.writeln('#if defined(_VGCBOEHM)')
-		if g.pref.gc_mode == .boehm_leak {
-			g.writeln('\tGC_set_find_leak(1);')
-		}
-		g.writeln('\tGC_set_pages_executable(0);')
-		if g.pref.use_coroutines {
-			g.writeln('\tGC_allow_register_threads();')
-		}
-		g.writeln('\tGC_INIT();')
-		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
-			g.writeln('\tGC_enable_incremental();')
-		}
-		g.writeln('#endif')
+		g.gen_boehm_gc_init()
+	}
+	if g.pref.gc_mode == .vgc {
+		g.writeln('\tbuiltin__vgc_init();')
 	}
 	g.writeln('\tmain__vtest_init();')
 	if !g.pref.no_builtin {
@@ -312,13 +360,28 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	}
 	g.gen_c_main_profile_hook()
 
-	mut all_tfuncs := g.get_all_test_function_names()
+	mut before_each_fn := ''
+	mut after_each_fn := ''
+	for tname in g.test_function_names {
+		short_tname := if tname.contains('.') { tname.all_after_last('.') } else { tname }
+		if short_tname == 'before_each' {
+			before_each_fn = util.no_dots(tname)
+			continue
+		}
+		if short_tname == 'after_each' {
+			after_each_fn = util.no_dots(tname)
+		}
+	}
+	mut all_tfuncs := []string{}
+	for tname in g.get_all_test_function_names() {
+		all_tfuncs << tname
+	}
 	all_tfuncs = g.filter_only_matching_fn_names(all_tfuncs)
 	g.writeln('\tstring v_test_file = ${ctoslit(g.pref.path)};')
 	if g.pref.show_asserts {
 		g.writeln('\tmain__BenchedTests bt = main__start_testing(${all_tfuncs.len}, v_test_file);')
 	}
-	g.writeln2('', '\tstruct _main__TestRunner_interface_methods _vtrunner = main__TestRunner_name_table[test_runner._typ];')
+	g.writeln2('', '\tstruct _main__TestRunner_interface_methods _vtrunner = *(struct _main__TestRunner_interface_methods*)test_runner._typ;')
 	g.writeln2('\tvoid * _vtobj = test_runner._object;', '')
 	g.writeln('\tmain__VTestFileMetaInfo_free(test_runner.file_test_info);')
 	g.writeln('\t*(test_runner.file_test_info) = main__vtest_new_filemetainfo(v_test_file, ${all_tfuncs.len});')
@@ -326,6 +389,8 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	for tnumber, tname in all_tfuncs {
 		tcname := util.no_dots(tname)
 		testfn := unsafe { g.table.fns[tname] }
+		short_tname := if tname.contains('.') { tname.all_after_last('.') } else { tname }
+		is_test_fn := short_tname.starts_with('test_')
 		lnum := testfn.pos.line_nr + 1
 		g.writeln('\tmain__VTestFnMetaInfo_free(test_runner.fn_test_info);')
 		g.writeln('\tstring tcname_${tnumber} = _S("${tcname}");')
@@ -333,18 +398,36 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		g.writeln('\tstring tcfile_${tnumber} = ${ctoslit(testfn.file)};')
 		g.writeln('\t*(test_runner.fn_test_info) = main__vtest_new_metainfo(tcname_${tnumber}, tcmod_${tnumber}, tcfile_${tnumber}, ${lnum});')
 		g.writeln('\t_vtrunner._method_fn_start(_vtobj);')
+		g.writeln('\tbool failed_${tnumber} = false;')
+		if g.pref.show_asserts {
+			// `longjmp` makes non-volatile automatic locals modified after `setjmp`
+			// indeterminate. Initialize the benchmark step first so `bt` remains valid
+			// when testing_step_end reads it after a failed assertion.
+			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, tcname_${tnumber});')
+		}
 		g.writeln('\tif (!setjmp(g_jump_buffer)) {')
 		//
-		if g.pref.show_asserts {
-			g.writeln('\t\tmain__BenchedTests_testing_step_start(&bt, tcname_${tnumber});')
+		if is_test_fn && before_each_fn != '' {
+			g.writeln('\t\t${before_each_fn}();')
 		}
 		g.writeln('\t\t${tcname}();')
-		g.writeln('\t\t_vtrunner._method_fn_pass(_vtobj);')
 		//
 		g.writeln('\t}else{')
 		//
-		g.writeln('\t\t_vtrunner._method_fn_fail(_vtobj);')
+		g.writeln('\t\tfailed_${tnumber} = true;')
 		//
+		g.writeln('\t}')
+		if is_test_fn && after_each_fn != '' {
+			g.writeln('\tif (!setjmp(g_jump_buffer)) {')
+			g.writeln('\t\t${after_each_fn}();')
+			g.writeln('\t}else{')
+			g.writeln('\t\tfailed_${tnumber} = true;')
+			g.writeln('\t}')
+		}
+		g.writeln('\tif (failed_${tnumber}) {')
+		g.writeln('\t\t_vtrunner._method_fn_fail(_vtobj);')
+		g.writeln('\t}else{')
+		g.writeln('\t\t_vtrunner._method_fn_pass(_vtobj);')
 		g.writeln('\t}')
 		if g.pref.show_asserts {
 			g.writeln('\tmain__BenchedTests_testing_step_end(&bt);')
@@ -375,9 +458,10 @@ pub fn (mut g Gen) filter_only_matching_fn_names(fnames []string) []string {
 			res << tname
 			continue
 		}
+		short_tname := if tname.contains('.') { tname.all_after_last('.') } else { tname }
 		mut is_matching := false
 		for fn_glob_pattern in g.pref.run_only {
-			if tname.match_glob(fn_glob_pattern) {
+			if tname.match_glob(fn_glob_pattern) || short_tname.match_glob(fn_glob_pattern) {
 				is_matching = true
 				break
 			}
@@ -403,10 +487,6 @@ pub fn (mut g Gen) gen_dll_main() {
 	g.writeln('VV_EXP BOOL DllMain(HINSTANCE hinst,DWORD fdwReason,LPVOID lpvReserved) {
 	switch (fdwReason) {
 		case DLL_PROCESS_ATTACH : {
-#if defined(_VGCBOEHM)
-			GC_set_pages_executable(0);
-			GC_INIT();
-#endif
 			_vinit_caller();
 			break;
 		}

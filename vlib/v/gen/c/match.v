@@ -6,16 +6,27 @@ module c
 import v.ast
 import v.util
 
+fn (g &Gen) match_cond_can_use_directly(cond ast.Expr) bool {
+	return (cond in [ast.Ident, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral]
+		&& (cond !is ast.Ident || (cond is ast.Ident && cond.or_expr.kind == .absent)))
+		|| (cond is ast.SelectorExpr && cond.or_block.kind == .absent && (cond.expr !is ast.CallExpr
+		|| (cond.expr as ast.CallExpr).or_block.kind == .absent))
+}
+
 fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
-	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
+	resolved_return_type := g.infer_match_expr_type(node)
+	if node.is_expr && resolved_return_type != ast.void_type && resolved_return_type != 0 {
 		if g.inside_struct_init {
 			return true
 		}
-		if g.table.sym(node.return_type).kind in [.sum_type, .multi_return]
-			|| node.return_type.has_option_or_result() {
+		if g.table.sym(resolved_return_type).kind in [.sum_type, .interface, .multi_return]
+			|| resolved_return_type.has_option_or_result() {
 			return true
 		}
 		if g.table.final_sym(node.cond_type).kind == .enum && node.branches.len > 5 {
+			return true
+		}
+		if !g.match_cond_can_use_directly(node.cond) {
 			return true
 		}
 		if g.need_tmp_var_in_expr(node.cond) {
@@ -50,8 +61,23 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.writeln('// match 0')
 		return
 	}
+	resolved_return_type := g.infer_match_expr_type(node)
 	need_tmp_var := g.need_tmp_var_in_match(node)
-	is_expr := (node.is_expr && node.return_type != ast.void_type) || g.inside_ternary > 0
+	is_expr := (node.is_expr && resolved_return_type != ast.void_type) || g.inside_ternary > 0
+
+	// When the tmp var is a fn-returned fixed array, it is a wrapper struct whose data
+	// lives in a `.ret_arr` member. Flag it so every branch writes through `.ret_arr`,
+	// even ones whose own expr type lacks the `is_fn_ret` flag (e.g. a fixed array
+	// literal mixed with a function call returning the same fixed array type).
+	prev_if_match_tmp_is_fn_ret_arr := g.if_match_tmp_is_fn_ret_arr
+	// Mirror the wrapper-struct check used when emitting the tmp var below, so every
+	// branch agrees with how the result is finally read.
+	ret_arr_sym := g.table.sym(g.unwrap_generic(g.recheck_concrete_type(resolved_return_type)))
+	g.if_match_tmp_is_fn_ret_arr = need_tmp_var && ret_arr_sym.info is ast.ArrayFixed
+		&& ret_arr_sym.info.is_fn_ret
+	defer {
+		g.if_match_tmp_is_fn_ret_arr = prev_if_match_tmp_is_fn_ret_arr
+	}
 
 	mut cond_var := ''
 	mut tmp_var := ''
@@ -60,13 +86,13 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.inside_ternary++
 	}
 	if is_expr {
-		if node.return_type.has_flag(.option) {
+		if resolved_return_type.has_flag(.option) {
 			old := g.inside_match_option
 			defer(fn) {
 				g.inside_match_option = old
 			}
 			g.inside_match_option = true
-		} else if node.return_type.has_flag(.result) {
+		} else if resolved_return_type.has_flag(.result) {
 			old := g.inside_match_result
 			defer(fn) {
 				g.inside_match_result = old
@@ -74,11 +100,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			g.inside_match_result = true
 		}
 	}
-	if (node.cond in [ast.Ident, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral]
-		&& (node.cond !is ast.Ident || (node.cond is ast.Ident
-		&& node.cond.or_expr.kind == .absent))) || (node.cond is ast.SelectorExpr
-		&& node.cond.or_block.kind == .absent && (node.cond.expr !is ast.CallExpr
-		|| (node.cond.expr as ast.CallExpr).or_block.kind == .absent)) {
+	if g.match_cond_can_use_directly(node.cond) {
 		cond_var = g.expr_string(node.cond)
 	} else {
 		line := if is_expr {
@@ -99,18 +121,18 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		cur_line = g.go_before_last_stmt().trim_left(' \t')
 		tmp_var = g.new_tmp_var()
 		mut func_decl := ''
-		ret_final_sym := g.table.final_sym(node.return_type)
-		if !node.return_type.has_option_or_result() && ret_final_sym.kind == .function {
+		ret_final_sym := g.table.final_sym(resolved_return_type)
+		if !resolved_return_type.has_option_or_result() && ret_final_sym.kind == .function {
 			if ret_final_sym.info is ast.FnType {
 				def := g.fn_var_signature(ast.void_type, ret_final_sym.info.func.return_type,
 					ret_final_sym.info.func.params.map(it.typ), tmp_var)
-				func_decl = '${def} = &${g.styp(node.return_type)};'
+				func_decl = '${def} = &${g.styp(resolved_return_type)};'
 			}
 		}
 		if func_decl != '' {
 			g.writeln(func_decl) // func, anon func declaration
 		} else {
-			g.writeln('${g.styp(node.return_type)} ${tmp_var} = ${g.type_default(node.return_type)};')
+			g.writeln('${g.styp(resolved_return_type)} ${tmp_var} = ${g.type_default(resolved_return_type)};')
 		}
 		g.empty_line = true
 		if g.infix_left_var_name.len > 0 {
@@ -124,9 +146,10 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.write('(')
 	}
 	if node.is_sum_type {
-		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
+		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var, resolved_return_type)
 	} else {
 		cond_fsym := g.table.final_sym(node.cond_type)
+		enum_is_multi_allowed := cond_fsym.info is ast.Enum && cond_fsym.info.is_multi_allowed
 		mut can_be_a_switch := true
 		all_branches: for branch in node.branches {
 			for expr in branch.exprs {
@@ -145,14 +168,14 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		}
 		// eprintln('> can_be_a_switch: ${can_be_a_switch}')
 		if can_be_a_switch && !is_expr && g.loop_depth == 0 && g.fn_decl != unsafe { nil }
-			&& cond_fsym.is_int() {
-			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)
+			&& cond_fsym.is_int() && !enum_is_multi_allowed {
+			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym, resolved_return_type)
 		} else if cond_fsym.kind == .enum && g.loop_depth == 0 && node.branches.len > 5
-			&& g.fn_decl != unsafe { nil } {
+			&& g.fn_decl != unsafe { nil } && !enum_is_multi_allowed {
 			// do not optimize while in top-level
-			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)
+			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym, resolved_return_type)
 		} else {
-			g.match_expr_classic(node, is_expr, cond_var, tmp_var)
+			g.match_expr_classic(node, is_expr, cond_var, tmp_var, resolved_return_type)
 		}
 	}
 	g.set_current_pos_as_last_stmt_pos()
@@ -166,7 +189,14 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 	g.write(cur_line)
 	if need_tmp_var {
-		g.write(tmp_var)
+		resolved_sym := g.table.sym(g.unwrap_generic(g.recheck_concrete_type(resolved_return_type)))
+		tmp_is_return_fixed_array := resolved_sym.info is ast.ArrayFixed
+			&& resolved_sym.info.is_fn_ret
+		if tmp_is_return_fixed_array {
+			g.write('${tmp_var}.ret_arr')
+		} else {
+			g.write(tmp_var)
+		}
 	}
 	if is_expr && !need_tmp_var {
 		g.write(')')
@@ -174,16 +204,64 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 }
 
-fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
+fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, resolved_return_type ast.Type) {
 	dot_or_ptr := g.dot_or_ptr(node.cond_type)
 	use_ternary := is_expr && tmp_var == ''
-	cond_sym := g.table.sym(node.cond_type)
+	cond_sym := g.table.final_sym(node.cond_type)
+	// Tracks the runtime type tags already handled by earlier arms of this match.
+	// With alias/runtime-tag matching, a variant and an alias of it (e.g. `u8` and
+	// `type EmptyExpr = u8`, both variants of the same sumtype) expand to the same
+	// set of tags, so distinct arms can produce identical `_typ == ...` conditions.
+	// Emitting both yields a duplicated `else if` condition (a -Wduplicated-cond
+	// error under -cstrict) and the later arm is unreachable anyway, so drop the
+	// already-covered tags and skip an arm once nothing fresh remains.
+	mut seen_tag_idxs := map[string]bool{}
 	for j, branch in node.branches {
 		mut sumtype_index := 0
 		// iterates through all types in sumtype branches
 		for {
 			g.aggregate_type_idx = sumtype_index
 			is_last := j == node.branches.len - 1 && sumtype_index == branch.exprs.len - 1
+			mut has_branch_type := false
+			mut had_old_branch_type := false
+			mut old_branch_type := ast.Type(0)
+			mut branch_type := ast.Type(0)
+			if cond_sym.kind == .sum_type && sumtype_index < branch.exprs.len {
+				branch_expr := unsafe { &branch.exprs[sumtype_index] }
+				if branch_expr is ast.TypeNode {
+					branch_type = branch_expr.typ
+				}
+			}
+			mut sumtype_fresh_idx_exprs := []string{}
+			if !branch.is_else && cond_sym.kind == .sum_type && sumtype_index < branch.exprs.len {
+				ce := unsafe { &branch.exprs[sumtype_index] }
+				if ce is ast.TypeNode {
+					variant_type := g.unwrap_generic(g.recheck_concrete_type(ce.typ))
+					all_idx_exprs := g.type_idx_exprs_for_types(g.matching_sumtype_match_branch_variant_types(node.cond_type,
+						variant_type))
+					if use_ternary {
+						// Ternary `?:` chains cannot drop an arm, so keep every tag.
+						sumtype_fresh_idx_exprs = all_idx_exprs.clone()
+					} else {
+						for idx_expr in all_idx_exprs {
+							if idx_expr !in seen_tag_idxs {
+								sumtype_fresh_idx_exprs << idx_expr
+							}
+						}
+						if sumtype_fresh_idx_exprs.len == 0 {
+							// every tag of this arm is already handled above: unreachable, skip it
+							sumtype_index++
+							if branch.exprs.len == 0 || sumtype_index == branch.exprs.len {
+								break
+							}
+							continue
+						}
+						for idx_expr in sumtype_fresh_idx_exprs {
+							seen_tag_idxs[idx_expr] = true
+						}
+					}
+				}
+			}
 			if branch.is_else || (use_ternary && is_last) {
 				if use_ternary {
 					// TODO: too many branches. maybe separate ?: matches
@@ -211,31 +289,32 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write_v_source_line_info(branch)
 					g.write('if (')
 				}
-				need_deref := node.cond_type.nr_muls() > 1
-				if need_deref {
-					g.write2('(', '*'.repeat(node.cond_type.nr_muls() - 1))
-				}
-				g.write(cond_var)
-				if need_deref {
-					g.write(')')
-				}
 				cur_expr := unsafe { &branch.exprs[sumtype_index] }
+				cond_expr := if node.cond_type.nr_muls() > 1 {
+					'(${'*'.repeat(node.cond_type.nr_muls() - 1)}${cond_var})'
+				} else {
+					cond_var
+				}
+				tag_expr := if cond_sym.kind == .interface {
+					'_V_INTERFACE_TYPE_INDEX(${cond_expr}${dot_or_ptr}_typ)'
+				} else {
+					'${cond_expr}${dot_or_ptr}_typ'
+				}
 				if cond_sym.kind == .sum_type {
-					if cur_expr is ast.TypeNode {
-						g.type_resolver.update_ct_type(cond_var, cur_expr.typ)
-					}
-					g.write('${dot_or_ptr}_typ == ')
 					if cur_expr is ast.None {
-						g.write('${ast.none_type.idx()} /* none */')
+						g.write('${tag_expr} == ${ast.none_type.idx()} /* none */')
+					} else if cur_expr is ast.TypeNode {
+						g.write_type_tag_condition(tag_expr, '==', sumtype_fresh_idx_exprs)
 					} else {
+						g.write('${tag_expr} == ')
 						g.expr(cur_expr)
 					}
 				} else if cond_sym.kind == .interface {
 					if cur_expr is ast.TypeNode {
-						branch_sym := g.table.sym(g.unwrap_generic(cur_expr.typ))
-						g.write('${dot_or_ptr}_typ == _${cond_sym.cname}_${branch_sym.cname}_index')
+						g.write_type_tag_condition(tag_expr, '==', g.matching_interface_variant_index_exprs(cond_sym,
+							cur_expr.typ))
 					} else if cur_expr is ast.None && cond_sym.idx == ast.error_type_idx {
-						g.write('${dot_or_ptr}_typ == _IError_None___index')
+						g.write('${tag_expr} == _IError_None___index')
 					}
 				}
 				if use_ternary {
@@ -244,8 +323,18 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.writeln(') {')
 				}
 			}
-			if is_expr && tmp_var.len > 0 && g.table.sym(node.return_type).kind == .sum_type {
-				g.expected_cast_type = node.return_type
+			if branch_type != 0 {
+				has_branch_type = true
+				if old_type := g.type_resolver.type_map[cond_var] {
+					had_old_branch_type = true
+					old_branch_type = old_type
+				}
+				g.type_resolver.update_ct_type(cond_var, branch_type)
+				g.clear_type_resolution_caches()
+			}
+			if is_expr && tmp_var.len > 0
+				&& g.table.sym(resolved_return_type).kind in [.sum_type, .interface] {
+				g.expected_cast_type = resolved_return_type
 			}
 			inside_interface_deref_old := g.inside_interface_deref
 			if is_expr && branch.stmts.len > 0 {
@@ -266,6 +355,14 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 			g.write_defer_stmts(branch.scope, false, node.pos)
 			g.inside_interface_deref = inside_interface_deref_old
 			g.expected_cast_type = 0
+			if has_branch_type {
+				if had_old_branch_type {
+					g.type_resolver.update_ct_type(cond_var, old_branch_type)
+				} else {
+					g.type_resolver.type_map.delete(cond_var)
+				}
+				g.clear_type_resolution_caches()
+			}
 			if g.inside_ternary == 0 {
 				g.writeln('}')
 				g.set_current_pos_as_last_stmt_pos()
@@ -280,7 +377,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 	}
 }
 
-fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, cond_fsym ast.TypeSymbol) {
+fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, cond_fsym ast.TypeSymbol, resolved_return_type ast.Type) {
 	node_cond_type_unsigned := node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
 
 	covered_enum_cap := if cond_fsym.info is ast.Enum { cond_fsym.info.vals.len } else { 0 }
@@ -353,8 +450,9 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 			}
 		}
 		g.writeln('{')
-		if is_expr && tmp_var.len > 0 && g.table.sym(node.return_type).kind == .sum_type {
-			g.expected_cast_type = node.return_type
+		if is_expr && tmp_var.len > 0
+			&& g.table.sym(resolved_return_type).kind in [.sum_type, .interface] {
+			g.expected_cast_type = resolved_return_type
 		}
 		ends_with_return := g.stmts_with_tmp_var(branch.stmts, tmp_var)
 		g.expected_cast_type = 0
@@ -430,7 +528,7 @@ fn (mut g Gen) should_check_low_bound_in_range_expr(expr ast.RangeExpr, node_con
 	return should_check_low_bound
 }
 
-fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
+fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, resolved_return_type ast.Type) {
 	node_cond_type_unsigned := node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
 	type_sym := g.table.final_sym(node.cond_type)
 	use_ternary := is_expr && tmp_var == ''
@@ -510,15 +608,16 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					}
 					.string {
 						if expr is ast.StringLiteral {
-							slit := cescape_nonascii(util.smart_quote(expr.val, expr.is_raw))
+							slit := cescape_nonascii(util.smart_quote(expr.val, expr.is_raw,
+								expr.opaque_pos))
 							if node.cond_type.is_ptr() {
 								g.write('_SLIT_EQ(${cond_var}->str, ${cond_var}->len, "${slit}")')
 							} else {
 								g.write('_SLIT_EQ(${cond_var}.str, ${cond_var}.len, "${slit}")')
 							}
 						} else {
-							ptr_str := if node.cond_type.is_ptr() { '*' } else { '' }
-							g.write('builtin__fast_string_eq(${ptr_str}${cond_var}, ')
+							deref := if node.cond_type.is_ptr() { '*' } else { '' }
+							g.write('builtin__fast_string_eq(${deref}${cond_var}, ')
 							g.expr(expr)
 							g.write(')')
 						}
@@ -562,8 +661,9 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				g.writeln(') {')
 			}
 		}
-		if is_expr && tmp_var.len > 0 && g.table.sym(node.return_type).kind == .sum_type {
-			g.expected_cast_type = node.return_type
+		if is_expr && tmp_var.len > 0
+			&& g.table.sym(resolved_return_type).kind in [.sum_type, .interface] {
+			g.expected_cast_type = resolved_return_type
 		}
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
 		g.write_defer_stmts(branch.scope, false, node.pos)

@@ -17,8 +17,8 @@ pub struct C.MYSQL_FIELD {
 	db               &u8 // Name of the database that the field comes from
 	catalog          &u8 // Catalog for table
 	def              &u8 // Default value (set by `mysql_list_fields`)
-	length           int // Width of column (create length)
-	max_length       int // Max width for selected set
+	length           u64 // Width of column (create length)
+	max_length       u64 // Max width for selected set
 	name_length      u32
 	org_name_length  u32
 	table_length     u32
@@ -35,6 +35,12 @@ pub struct C.MYSQL_FIELD {
 // C.mysql_init allocates or initializes a MYSQL object suitable for `mysql_real_connect()`.
 fn C.mysql_init(mysql &C.MYSQL) &C.MYSQL
 
+// C.mysql_thread_init initializes thread-local client state for threads using the MySQL C API.
+fn C.mysql_thread_init() bool
+
+// C.mysql_thread_end finalizes thread-local client state for threads using the MySQL C API.
+fn C.mysql_thread_end()
+
 // C.mysql_real_connect attempts to establish a connection to a MySQL server running on `host`.
 fn C.mysql_real_connect(mysql &C.MYSQL, host &char, user &char, passwd &char, db &char, port u32, unix_socket &char,
 	client_flag ConnectionFlag) &C.MYSQL
@@ -44,7 +50,7 @@ fn C.mysql_query(mysql &C.MYSQL, const_q charptr) i32
 
 // C.mysql_use_result initiates a result set retrieval but does not actually read
 // the result set into the client like `mysql_store_result()` does.
-fn C.mysql_use_result(mysql &C.MYSQL)
+fn C.mysql_use_result(mysql &C.MYSQL) &C.MYSQL_RES
 
 // C.mysql_real_query executes the SQL statement pointed to by `stmt_str`,
 // a string length bytes long.
@@ -104,8 +110,23 @@ fn C.mysql_ping(mysql &C.MYSQL) i32
 // It is a synchronous function.
 fn C.mysql_store_result(mysql &C.MYSQL) &C.MYSQL_RES
 
+// C.mysql_more_results returns `true` if more result sets are available from the
+// previously executed multi-statement query.
+fn C.mysql_more_results(mysql &C.MYSQL) bool
+
+// C.mysql_next_result advances to the next result set of a multi-statement query.
+// Returns `0` on success when another result set is available, `-1` when there
+// are no more result sets, and a positive value if an error occurred.
+fn C.mysql_next_result(mysql &C.MYSQL) i32
+
 // C.mysql_fetch_row retrieves the next row of a result set.
 fn C.mysql_fetch_row(res &C.MYSQL_RES) &charptr
+
+fn C.v_mysql_fetch_column_length(res &C.MYSQL_RES, column u32) u64
+fn C.v_mysql_lengths_new(count u32) voidptr
+fn C.v_mysql_lengths_free(lengths voidptr)
+fn C.v_mysql_length_at(lengths voidptr, column u32) u64
+fn C.v_mysql_bind_set_length_at(bind &C.MYSQL_BIND, lengths voidptr, column u32)
 
 // C.mysql_fetch_fields returns an array of all `MYSQL_FIELD` structures for a result set.
 // Each structure provides the field definition for one column of the result set.

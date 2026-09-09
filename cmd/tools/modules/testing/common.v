@@ -2,6 +2,7 @@ module testing
 
 import os
 import os.cmdline
+import semver
 import time
 import term
 import benchmark
@@ -33,9 +34,13 @@ pub const show_longest_by_runtime = os.getenv('VTEST_SHOW_LONGEST_BY_RUNTIME').i
 pub const show_longest_by_comptime = os.getenv('VTEST_SHOW_LONGEST_BY_COMPTIME').int()
 pub const show_longest_by_totaltime = os.getenv('VTEST_SHOW_LONGEST_BY_TOTALTIME').int()
 
+pub const is_ci = os.getenv('CI') != '' || os.getenv('GITHUB_JOB') != ''
+
 pub const hide_skips = os.getenv('VTEST_HIDE_SKIP') == '1'
+	|| (is_ci && os.getenv('VTEST_HIDE_SKIP') != '0')
 
 pub const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
+	|| (is_ci && os.getenv('VTEST_HIDE_OK') != '0')
 
 pub const fail_fast = os.getenv('VTEST_FAIL_FAST') == '1'
 
@@ -72,8 +77,186 @@ pub const separator = '-'.repeat(max_header_len) + '\n'
 
 pub const max_compilation_retries = get_max_compilation_retries()
 
+const c_error_bug_report_disabled_env = 'V_C_ERROR_BUG_REPORT_DISABLED'
+// Each worker compiles a separate test program, so bound automatic parallelism
+// by a conservative memory budget. VJOBS remains an explicit override.
+const test_job_memory_budget = u64(8) * 1024 * 1024 * 1024
+const max_automatic_test_jobs = 4
+
 fn get_max_compilation_retries() int {
 	return os.getenv_opt('VTEST_MAX_COMPILATION_RETRIES') or { '3' }.int()
+}
+
+fn automatic_test_jobs(cpu_jobs int, total_memory u64, configured_jobs int) int {
+	if configured_jobs > 0 {
+		return configured_jobs
+	}
+	mut jobs := if cpu_jobs > 0 { cpu_jobs } else { 1 }
+	mut memory_jobs := int(total_memory / test_job_memory_budget)
+	if memory_jobs < 1 {
+		memory_jobs = 1
+	}
+	if jobs > memory_jobs {
+		jobs = memory_jobs
+	}
+	if jobs > max_automatic_test_jobs {
+		jobs = max_automatic_test_jobs
+	}
+	return jobs
+}
+
+fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
+	mut v2_path := ''
+	mut v1_memory_path := ''
+	for line in cgroups.split_into_lines() {
+		first_separator := line.index(':') or { continue }
+		second_separator := line.index_after(':', first_separator + 1) or { continue }
+		controllers := line[first_separator + 1..second_separator]
+		cgroup_path := line[second_separator + 1..]
+		if controllers == '' {
+			v2_path = cgroup_path
+		} else if 'memory' in controllers.split(',') {
+			v1_memory_path = cgroup_path
+		}
+	}
+	if v1_memory_path != '' {
+		if limit := cgroup_memory_limit_for_hierarchy(mountinfo, v1_memory_path, 'cgroup',
+			'memory.limit_in_bytes')
+		{
+			return limit
+		}
+	}
+	if v2_path != '' {
+		return cgroup_memory_limit_for_hierarchy(mountinfo, v2_path, 'cgroup2', 'memory.max')
+	}
+	return error('no cgroup memory limit found')
+}
+
+fn cgroup_memory_limit_for_hierarchy(mountinfo string, cgroup_path string, fs_type string, limit_file string) !u64 {
+	for line in mountinfo.split_into_lines() {
+		parts := line.split(' - ')
+		if parts.len != 2 {
+			continue
+		}
+		mount_parts := parts[0].fields()
+		fs_parts := parts[1].fields()
+		if mount_parts.len < 5 || fs_parts.len < 3 {
+			continue
+		}
+		mount_root := decode_mountinfo_path(mount_parts[3])
+		mount_point := decode_mountinfo_path(mount_parts[4])
+		if fs_parts[0] != fs_type || (fs_type == 'cgroup' && 'memory' !in fs_parts[2].split(',')) {
+			continue
+		}
+		if limit := cgroup_memory_limit_in_hierarchy(mount_root, mount_point, cgroup_path,
+			limit_file)
+		{
+			return limit
+		}
+	}
+	return error('no cgroup memory limit found')
+}
+
+fn decode_mountinfo_path(path string) string {
+	mut result := strings.new_builder(path.len)
+	mut i := 0
+	for i < path.len {
+		if path[i] == `\\` && i + 3 < path.len && path[i + 1] >= `0` && path[i + 1] <= `7`
+			&& path[i + 2] >= `0` && path[i + 2] <= `7` && path[i + 3] >= `0` && path[i + 3] <= `7` {
+			value := (path[i + 1] - `0`) * 64 + (path[i + 2] - `0`) * 8 + path[i + 3] - `0`
+			result.write_u8(value)
+			i += 4
+			continue
+		}
+		result.write_u8(path[i])
+		i++
+	}
+	return result.str()
+}
+
+fn cgroup_memory_limit_in_hierarchy(mount_root string, mount_point string, cgroup_path string, limit_file string) !u64 {
+	mut relative_path := cgroup_path.trim_left('/')
+	trimmed_root := mount_root.trim_right('/')
+	if trimmed_root != '' {
+		if cgroup_path == trimmed_root {
+			relative_path = ''
+		} else if cgroup_path.starts_with(trimmed_root + '/') {
+			relative_path = cgroup_path[trimmed_root.len..].trim_left('/')
+		}
+		// Otherwise cgroup_path is relative to a cgroup namespace rooted at
+		// mount_root, so relative_path already maps from the visible mount point.
+	}
+	mut current_path := os.join_path(mount_point, relative_path)
+	mut memory_limit := u64(0)
+	for {
+		if content := os.read_file(os.join_path(current_path, limit_file)) {
+			if limit := cgroup_memory_limit_value(content) {
+				if memory_limit == 0 || limit < memory_limit {
+					memory_limit = limit
+				}
+			}
+		}
+		if current_path == mount_point {
+			break
+		}
+		parent_path := os.dir(current_path)
+		if parent_path == current_path || !parent_path.starts_with(mount_point) {
+			break
+		}
+		current_path = parent_path
+	}
+	if memory_limit == 0 {
+		return error('cgroup memory limit is unlimited')
+	}
+	return memory_limit
+}
+
+fn cgroup_memory_limit_value(content string) !u64 {
+	value := content.trim_space()
+	if value == '' || value == 'max' {
+		return error('cgroup memory limit is unlimited')
+	}
+	limit := value.u64()
+	if limit == 0 {
+		return error('invalid cgroup memory limit')
+	}
+	return limit
+}
+
+fn effective_test_memory(physical_memory u64, cgroup_memory_limit u64) u64 {
+	if cgroup_memory_limit > 0 && cgroup_memory_limit < physical_memory {
+		return cgroup_memory_limit
+	}
+	return physical_memory
+}
+
+fn test_runner_memory() !u64 {
+	physical_memory := u64(runtime.total_memory()!)
+	$if linux {
+		cgroup_memory_limit := cgroup_memory_limit_from_contents(os.read_file('/proc/self/cgroup')!,
+			os.read_file('/proc/self/mountinfo')!) or { return physical_memory }
+		return effective_test_memory(physical_memory, cgroup_memory_limit)
+	}
+	return physical_memory
+}
+
+fn test_session_jobs(will_compile bool, cpu_jobs int, total_memory u64, configured_jobs int) int {
+	if !will_compile {
+		return cpu_jobs
+	}
+	return automatic_test_jobs(cpu_jobs, total_memory, configured_jobs)
+}
+
+fn test_runner_jobs(will_compile bool) int {
+	cpu_jobs := runtime.nr_jobs()
+	if !will_compile {
+		return test_session_jobs(false, cpu_jobs, 0, 0)
+	}
+	configured_jobs := os.getenv('VJOBS').int()
+	total_memory := test_runner_memory() or {
+		return test_session_jobs(true, cpu_jobs, 0, configured_jobs)
+	}
+	return test_session_jobs(true, cpu_jobs, total_memory, configured_jobs)
 }
 
 fn get_fail_retry_delay_ms() time.Duration {
@@ -115,6 +298,7 @@ pub struct TestSession {
 pub mut:
 	files         []string
 	skip_files    []string
+	will_compile  bool
 	vexe          string
 	vroot         string
 	vtmp_dir      string
@@ -138,12 +322,62 @@ pub mut:
 
 	build_environment build_constraint.Environment // see the documentation in v.build_constraint
 	custom_defines    []string                     // for adding custom defines, known only to the individual runners
+mut:
+	benchmark_mu &sync.Mutex = sync.new_mutex()
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
 	lock ts.failed_cmds {
 		ts.failed_cmds << cmd
 	}
+}
+
+fn (mut ts TestSession) benchmark_step() {
+	ts.benchmark_mu.lock()
+	defer {
+		ts.benchmark_mu.unlock()
+	}
+	ts.benchmark.step()
+}
+
+fn (mut ts TestSession) benchmark_step_restart() {
+	ts.benchmark_mu.lock()
+	defer {
+		ts.benchmark_mu.unlock()
+	}
+	ts.benchmark.step_restart()
+}
+
+fn (mut ts TestSession) benchmark_fail() {
+	ts.benchmark_mu.lock()
+	defer {
+		ts.benchmark_mu.unlock()
+	}
+	ts.benchmark.fail()
+}
+
+fn (mut ts TestSession) benchmark_ok() {
+	ts.benchmark_mu.lock()
+	defer {
+		ts.benchmark_mu.unlock()
+	}
+	ts.benchmark.ok()
+}
+
+fn (mut ts TestSession) benchmark_skip() {
+	ts.benchmark_mu.lock()
+	defer {
+		ts.benchmark_mu.unlock()
+	}
+	ts.benchmark.skip()
+}
+
+fn (mut ts TestSession) benchmark_stop() {
+	ts.benchmark_mu.lock()
+	defer {
+		ts.benchmark_mu.unlock()
+	}
+	ts.benchmark.stop()
 }
 
 pub fn (mut ts TestSession) show_list_of_failed_tests() {
@@ -198,10 +432,24 @@ pub fn (mut ts TestSession) print_messages() {
 		// first sent *all events* to the output reporter, so it can then process them however it wants:
 		ts.reporter.report(ts.nmessage_idx, rmessage)
 
-		if rmessage.kind in [.cmd_begin, .cmd_end, .compile_begin, .compile_end] {
+		if rmessage.kind in [.cmd_begin, .cmd_end, .compile_begin] {
 			// The following events, are sent before the test framework has determined,
 			// what the full completion status is. They can also be repeated multiple times,
 			// for tests that are flaky and need repeating.
+			continue
+		}
+		if rmessage.kind == .compile_end {
+			if rmessage.message.trim_space().len == 0 {
+				continue
+			}
+			if ts.progress_mode {
+				ts.reporter.update_last_line_and_move_to_next(ts.nmessage_idx, '')
+			}
+			if rmessage.message.ends_with('\n') {
+				eprint(rmessage.message)
+			} else {
+				eprintln(rmessage.message)
+			}
 			continue
 		}
 		if rmessage.kind == .sentinel {
@@ -210,6 +458,20 @@ pub fn (mut ts TestSession) print_messages() {
 				ts.reporter.report_stop()
 			}
 			return
+		}
+		if rmessage.kind in [.stats_output, .stats_error] {
+			mut msg := rmessage.message
+			if msg != '' && !msg.ends_with('\n') {
+				msg += '\n'
+			}
+			if rmessage.kind == .stats_error {
+				eprint(msg)
+				flush_stderr()
+			} else {
+				print(msg)
+				flush_stdout()
+			}
+			continue
 		}
 		if rmessage.kind != .info {
 			// info events can also be repeated, and should be ignored when determining
@@ -267,8 +529,24 @@ pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
 	return os.system(cmd)
 }
 
+fn should_retry_execution(result os.Result) bool {
+	output := result.output.trim_space()
+	return output.len == 0 || output.starts_with('exec failed')
+		|| (output.starts_with('exec(') && output.ends_with(') failed'))
+}
+
+fn add_automatic_execution_retry(mut details TestDetails, result os.Result) {
+	if should_retry_execution(result) {
+		// Empty output and process-start failures can both be transient under load on CI runners.
+		details.retry++
+	}
+}
+
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
+	os.setenv(c_error_bug_report_disabled_env, '1', true)
 	mut skip_files := []string{}
+	vexe := pref.vexe_path()
+	vroot := os.dir(vexe)
 	if will_compile {
 		if runner_os != 'Linux' || !github_job.starts_with('tcc-') {
 			if !os.exists('/usr/local/include/wkhtmltox/pdf.h') {
@@ -276,16 +554,18 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			}
 		}
 	}
+	if os.user_os() == 'windows' {
+		skip_files << windows_disabled_fasthttp_veb_tests(vroot)
+	}
 	skip_files = skip_files.map(os.abs_path)
 	vargs := _vargs.replace('-progress', '')
-	vexe := pref.vexe_path()
-	vroot := os.dir(vexe)
 	hash := '${sync.thread_id().hex()}_${rand.ulid()}'
 	new_vtmp_dir := setup_new_vtmp_folder(hash)
 	if term.can_show_color_on_stderr() {
 		os.setenv('VCOLORS', 'always', true)
 	}
 	mut ts := TestSession{
+		will_compile:  will_compile
 		vexe:          vexe
 		vroot:         vroot
 		skip_files:    skip_files
@@ -307,12 +587,36 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	return ts
 }
 
+fn windows_disabled_fasthttp_veb_tests(vroot string) []string {
+	mut files := []string{}
+	for dir in [
+		os.join_path(vroot, 'vlib', 'fasthttp'),
+		os.join_path(vroot, 'vlib', 'veb'),
+	] {
+		if !os.is_dir(dir) {
+			continue
+		}
+		os.walk(dir, fn [mut files] (path string) {
+			if path.ends_with('_test.v') || path.ends_with('_test.c.v')
+				|| path.ends_with('_test.js.v') {
+				files << path
+			}
+		})
+	}
+	session_app_test := os.join_path(vroot, 'vlib', 'x', 'sessions', 'tests', 'session_app_test.v')
+	if os.exists(session_app_test) {
+		files << session_app_test
+	}
+	return files
+}
+
 fn (mut ts TestSession) handle_test_runner_option() {
 	test_runner := cmdline.option(os.args, '-test-runner', 'normal')
 	if test_runner !in pref.supported_test_runners {
 		eprintln('v test: `-test-runner ${test_runner}` is not using one of the supported test runners: ${pref.supported_test_runners_list()}')
 	}
-	test_runner_implementation_file := os.join_path(ts.vroot, 'cmd/tools/modules/testing/output_${test_runner}.v')
+	test_runner_implementation_file := os.join_path(ts.vroot,
+		'cmd/tools/modules/testing/output_${test_runner}.v')
 	if !os.exists(test_runner_implementation_file) {
 		eprintln('v test: using `-test-runner ${test_runner}` needs ${test_runner_implementation_file} to exist, and contain a valid testing.Reporter implementation for that runner. See `cmd/tools/modules/testing/output_dump.v` for an example.')
 		exit(1)
@@ -379,12 +683,15 @@ pub fn (mut ts TestSession) test() {
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	mut njobs := runtime.nr_jobs()
+	mut njobs := test_runner_jobs(ts.will_compile)
 	if remaining_files.len < njobs {
 		njobs = remaining_files.len
 	}
 	ts.benchmark.njobs = njobs
-	mut pool_of_test_runners := pool.new_pool_processor(callback: worker_trunner)
+	mut pool_of_test_runners := pool.new_pool_processor(
+		callback: worker_trunner
+		maxjobs:  njobs
+	)
 	// ensure that the nmessages queue/channel, has enough capacity for handling many messages across threads, without blocking
 	ts.nmessages = chan LogMessage{cap: 10000}
 	ts.nmessage_idx = 0
@@ -397,7 +704,7 @@ pub fn (mut ts TestSession) test() {
 	// all the testing happens here:
 	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
 
-	ts.benchmark.stop()
+	ts.benchmark_stop()
 	ts.append_message(.sentinel, '', MessageThreadContext{ flow_id: '-1' }) // send the sentinel
 	printing_thread.wait()
 	ts.reporter.worker_threads_finish(mut ts)
@@ -433,7 +740,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.njobs = ts.benchmark.njobs
 	abs_path := os.real_path(p.get_item[string](idx))
 	mut relative_file := abs_path
-	mut cmd_options := vflags.tokenize_to_args(ts.vargs) // make sure that `'-W -silent'` becomes `['-W', '-silent']`, while keeping quoted spaces intact
+	mut cmd_options :=
+		vflags.tokenize_to_args(ts.vargs) // make sure that `'-W -silent'` becomes `['-W', '-silent']`, while keeping quoted spaces intact
 	mut run_js := false
 
 	is_fmt := ts.vargs.contains('fmt')
@@ -518,9 +826,13 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.show_stats {
 		skip_running = ''
 	}
-	reproduce_cmd := '${os.quoted_path(ts.vexe)} ${reproduce_options.join(' ')} ${os.quoted_path(file)}'
 	compile_options := cmd_options.filter(it != '-silent')
-	cmd := '${os.quoted_path(ts.vexe)} ${skip_running} ${compile_options.join(' ')} ${os.quoted_path(file)}'
+	mut compile_vexe := ts.vexe
+	mut compile_args := '${skip_running} ${compile_options.join(' ')}'
+	mut reproduce_vexe := ts.vexe
+	mut reproduce_args := reproduce_options.join(' ')
+	reproduce_cmd := '${os.quoted_path(reproduce_vexe)} ${reproduce_args} ${os.quoted_path(file)}'
+	cmd := '${os.quoted_path(compile_vexe)} ${compile_args} ${os.quoted_path(file)}'
 	run_cmd := if run_js {
 		'node ${os.quoted_path(generated_binary_fpath)}'
 	} else {
@@ -539,10 +851,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 	}
 
-	ts.benchmark.step()
+	ts.benchmark_step()
 	tls_bench.step()
 	if produces_file_output && !ts.build_tools && (!should_be_built || abs_path in ts.skip_files) {
-		ts.benchmark.skip()
+		ts.benchmark_skip()
 		tls_bench.skip()
 		if !hide_skips {
 			ts.append_message(.skip, tls_bench.step_message_with_label_and_duration(benchmark.b_skip,
@@ -558,27 +870,33 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		ts.append_message(.cmd_begin, cmd, mtc)
 		d_cmd := time.new_stopwatch()
 		mut res := ts.execute(cmd, mtc)
-		if res.exit_code != 0 {
-			eprintln(res.output)
-		} else {
-			println(res.output)
-		}
 		mut status := res.exit_code
+		if res.output != '' {
+			output_kind := if status == 0 { MessageKind.stats_output } else { .stats_error }
+			ts.append_message(output_kind, res.output, mtc)
+		}
 
 		cmd_duration = d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
 		if status != 0 {
+			add_automatic_execution_retry(mut details, res)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry := 1; retry <= details.retry; retry++ {
 				if !details.hide_retries {
-					ts.append_message(.info, '  [stats]        retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
+					ts.append_message(.info,
+						'  [stats]        retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
 						mtc)
 				}
 				os.setenv('VTEST_RETRY', '${retry}', true)
 				ts.append_message(.cmd_begin, cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				status = ts.system(cmd, mtc)
+				retry_res := ts.execute(cmd, mtc)
+				status = retry_res.exit_code
+				if retry_res.output != '' {
+					output_kind := if status == 0 { MessageKind.stats_output } else { .stats_error }
+					ts.append_message(output_kind, retry_res.output, mtc)
+				}
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
@@ -590,7 +908,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				time.sleep(fail_retry_delay_ms)
 			}
 			if details.flaky && !fail_flaky {
-				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .\ncmd: ${cmd}',
+				ts.append_message(.info,
+					'   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .\ncmd: ${cmd}',
 					mtc)
 				unsafe {
 					goto test_passed_system
@@ -600,15 +919,14 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			if res.output.contains(': error: ') {
 				ts.append_message(.cannot_compile, 'Cannot compile file ${file}', mtc)
 			}
-			ts.benchmark.fail()
+			ts.benchmark_fail()
 			tls_bench.fail()
 			ts.add_failed_cmd(reproduce_cmd)
 			return pool.no_result
 		}
 	} else {
 		if show_start {
-			ts.append_message(.info, '                 starting ${relative_file} ...',
-				mtc)
+			ts.append_message(.info, '                 starting ${relative_file} ...', mtc)
 		}
 		ts.append_message(.compile_begin, cmd, mtc)
 		compile_d_cmd := time.new_stopwatch()
@@ -622,10 +940,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 			random_sleep_ms(50, 100 * cretry)
 		}
-		ts.append_message_with_duration(.compile_end, compile_r.output, compile_cmd_duration,
-			mtc)
+		ts.append_message_with_duration(.compile_end, compile_r.output, compile_cmd_duration, mtc)
 		if compile_r.exit_code != 0 {
-			ts.benchmark.fail()
+			ts.benchmark_fail()
 			tls_bench.fail()
 			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
 				'${normalised_relative_file}\n>> compilation failed:\n${compile_r.output}',
@@ -636,7 +953,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			return pool.no_result
 		}
 		tls_bench.step_restart()
-		ts.benchmark.step_restart()
+		ts.benchmark_step_restart()
 		if ts.exec_mode == .compile {
 			unsafe {
 				goto test_passed_execute
@@ -655,10 +972,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		if r.exit_code != 0 {
 			mut trimmed_output := r.output.trim_space()
-			if trimmed_output.len == 0 {
-				// retry running at least 1 more time, to avoid CI false positives as much as possible
-				details.retry++
-			}
+			add_automatic_execution_retry(mut details, r)
 			if details.retry != 0 {
 				failure_output.write_string(separator)
 				failure_output.writeln(' retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
@@ -667,7 +981,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry = 1; retry <= details.retry; retry++ {
 				if !details.hide_retries {
-					ts.append_message(.info, '                 retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
+					ts.append_message(.info,
+						'                 retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
 						mtc)
 				}
 				os.setenv('VTEST_RETRY', '${retry}', true)
@@ -694,13 +1009,14 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				for line in full_failure_output.split_into_lines() {
 					ts.append_message(.info, '>>>>>> ${line}', mtc)
 				}
-				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .\n    comp_cmd: ${cmd}\n     run_cmd: ${run_cmd}',
+				ts.append_message(.info,
+					'   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .\n    comp_cmd: ${cmd}\n     run_cmd: ${run_cmd}',
 					mtc)
 				unsafe {
 					goto test_passed_execute
 				}
 			}
-			ts.benchmark.fail()
+			ts.benchmark_fail()
 			tls_bench.fail()
 			cmd_duration = d_cmd.elapsed() - (fail_retry_delay_ms * details.retry)
 			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
@@ -713,7 +1029,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	test_passed_system:
 	test_passed_execute:
-	ts.benchmark.ok()
+	ts.benchmark_ok()
 	tls_bench.ok()
 	if !hide_oks {
 		ts.append_message_with_duration(.ok, tls_bench.step_message_with_label_and_duration(benchmark.b_ok,
@@ -916,7 +1232,7 @@ pub fn header(msg string) {
 	flush_stdout()
 }
 
-fn random_sleep_ms(min_ms int, random_add_ms int) {
+fn random_sleep_ms(_ int, _ int) {
 	time.sleep((50 + rand.intn(50) or { 0 }) * time.millisecond)
 }
 
@@ -930,7 +1246,7 @@ fn get_max_header_len() int {
 }
 
 fn check_openssl_present() bool {
-	if github_job.ends_with('-windows') {
+	if github_job != '' && os.user_os() == 'windows' {
 		// TODO: investigate the https://github.com/vlang/v/actions/runs/18590919000/job/53005499130 failure in more details
 		return false
 	}
@@ -943,13 +1259,37 @@ fn check_openssl_present() bool {
 	}
 }
 
+fn check_modern_openssl_present() bool {
+	if !is_openssl_present {
+		return false
+	}
+	mut version_cmd := 'openssl version'
+	$if openbsd {
+		version_cmd = 'eopenssl35 version'
+	}
+	res := os.execute(version_cmd)
+	if res.exit_code != 0 {
+		return false
+	}
+	line := res.output.trim_space()
+	if !line.starts_with('OpenSSL ') {
+		return false
+	}
+	version := semver.coerce(line) or { return false }
+	return version.satisfies('>=3.5.0')
+}
+
 pub const is_openssl_present = check_openssl_present()
+pub const is_modern_openssl_present = check_modern_openssl_present()
 
 // is_started_mysqld is true, when the test runner determines that there is a running mysql server
 pub const is_started_mysqld = find_started_process('mysqld') or { '' }
 
 // is_started_postgres is true, when the test runner determines that there is a running postgres server
 pub const is_started_postgres = find_started_process('postgres') or { '' }
+
+// is_started_mssql is true, when the test runner determines that there is a running sql server
+pub const is_started_mssql = find_started_process('sqlservr') or { '' }
 
 // is_started_redis is true, when the test runner determines that there is a running redis server
 pub const is_started_redis = find_started_process('redis-server') or { '' }
@@ -965,6 +1305,9 @@ pub fn (mut ts TestSession) setup_build_environment() {
 	}
 	if is_started_postgres != '' {
 		defines << 'started_postgres'
+	}
+	if is_started_mssql != '' {
+		defines << 'started_mssql'
 	}
 	if is_started_redis != '' {
 		defines << 'started_redis'
@@ -986,6 +1329,9 @@ pub fn (mut ts TestSession) setup_build_environment() {
 	}
 	if is_openssl_present {
 		defines << 'present_openssl'
+	}
+	if is_modern_openssl_present {
+		defines << 'has_modern_openssl'
 	}
 
 	// detect the linux distribution as well when possible:

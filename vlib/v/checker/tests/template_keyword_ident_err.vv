@@ -1,0 +1,18 @@
+module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct Application {}
+
+pub fn (mut app Application) index() veb.Result {
+	return $veb.html('templates/template_keyword_ident_err.html')
+}
+
+fn main() {
+	mut app := &Application{}
+	veb.run[Application, Context](mut app, 8080)
+}

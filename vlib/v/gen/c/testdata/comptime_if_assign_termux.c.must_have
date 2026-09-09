@@ -1,0 +1,4 @@
+#if 0
+#elif 1
+_t1 = _const_main__termux_default_paths;
+Array_string default_paths = _t1;

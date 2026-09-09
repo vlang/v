@@ -45,11 +45,11 @@ pub fn parse(str string) !StopAfter {
 
 fn main() {
 	assert parse('0s')! == StopAfter{}
-	assert parse('10s')! == StopAfter{10 * time.second, .time}
-	assert parse('10m')! == StopAfter{10 * time.minute, .time}
-	assert parse('10h')! == StopAfter{10 * time.hour, .time}
-	assert parse('10d')! == StopAfter{10 * time.hour * 24, .time}
-	assert parse('10t')! == StopAfter{10, .tx}
+	assert parse('10s')! == StopAfter{f64(10 * time.second), .time}
+	assert parse('10m')! == StopAfter{f64(10 * time.minute), .time}
+	assert parse('10h')! == StopAfter{f64(10 * time.hour), .time}
+	assert parse('10d')! == StopAfter{f64(10 * time.hour * 24), .time}
+	assert parse('10t')! == StopAfter{f64(10), .tx}
 	assert parse('10x') or { err } == StopAfter{}
 	assert StopAfter{} == parse('10x') or { err }
 }

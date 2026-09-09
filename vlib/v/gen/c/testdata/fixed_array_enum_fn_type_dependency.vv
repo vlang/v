@@ -1,0 +1,9 @@
+// vtest vflags: -shared
+module fixedarr
+
+enum FlagBits {
+	dsntmatter
+}
+
+@[markused]
+pub type Callback = fn (voidptr, [2]FlagBits)

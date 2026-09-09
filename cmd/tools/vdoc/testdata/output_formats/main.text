@@ -1,7 +1,8 @@
 module main
     ## Description
     
-    This is an example of a an .md file, used for adding more rich text documentation in a project or module.
+    This is an example of a an .md file, used for adding more rich text
+    documentation in a project or module.
     
     This is a [link](https://vlang.io/) to the main V site.
     
@@ -187,6 +188,7 @@ module main
     ```
     
     The End.
+    
 
 const omega = 3 // should be first
 const alpha = 5 // should be in the middle

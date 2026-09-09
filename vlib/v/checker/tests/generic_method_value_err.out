@@ -1,0 +1,14 @@
+vlib/v/checker/tests/generic_method_value_err.vv:25:17: error: cannot use `TCount(4).take_part` as a generic function value
+   23 | 
+   24 | fn main() {
+   25 |     _ = [TCount(4).take_part]
+      |                    ~~~~~~~~~
+   26 |     f := TCount(4).print_part
+   27 |     _ = f
+vlib/v/checker/tests/generic_method_value_err.vv:26:17: error: cannot use `TCount(4).print_part` as a generic function value
+   24 | fn main() {
+   25 |     _ = [TCount(4).take_part]
+   26 |     f := TCount(4).print_part
+      |                    ~~~~~~~~~~
+   27 |     _ = f
+   28 | }

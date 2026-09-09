@@ -7,11 +7,10 @@ mut:
 
 fn (e &Encoder) encode_struct[U](val U) ! {
 	$for field in U.fields {
-		value := val.$(field.name)
 		$if field.typ is $struct {
-			e.encode_struct(value)!
+			e.encode_struct(val.$(field.name))!
 		} $else $if field.typ is $map {
-			e.encode_map(value)!
+			e.encode_map(val.$(field.name))!
 		}
 	}
 }

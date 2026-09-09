@@ -112,6 +112,41 @@ pub fn (s &Scope) find_var(name string) ?&Var {
 	return none
 }
 
+// find_var_decl returns the nearest declaration variable named `name`, walking
+// the parent scope chain and skipping synthetic smartcast vars introduced by
+// `if x is T`/`match` branches. Use this when a promotion such as auto-heap must
+// be recorded on the variable that codegen emits as the declaration, not on a
+// smartcast copy living in an inner branch scope.
+//
+// Only true synthetic copies are skipped: those are registered as separate
+// scope objects carrying both a non-empty `smartcasts` list and a non-zero
+// `orig_type` (the pre-smartcast type). A real declaration that is smartcast in
+// place keeps `orig_type == 0` (e.g. an option var unwrapped by
+// `if x == none { continue }` via `update_smartcasts`), so it is returned
+// rather than skipped.
+pub fn (s &Scope) find_var_decl(name string) ?&Var {
+	if _unlikely_(s == unsafe { nil }) {
+		return none
+	}
+	for sc := unsafe { s }; true; sc = sc.parent {
+		pobj := unsafe { &sc.objects[name] or { nil } }
+		if pobj != unsafe { nil } {
+			match pobj {
+				Var {
+					if pobj.smartcasts.len == 0 || pobj.orig_type == 0 {
+						return &pobj
+					}
+				}
+				else {}
+			}
+		}
+		if sc.dont_lookup_parent() {
+			break
+		}
+	}
+	return none
+}
+
 pub fn (s &Scope) find_global(name string) ?&GlobalField {
 	obj := s.find_ptr(name)
 	if _likely_(obj != unsafe { nil }) {
@@ -186,14 +221,17 @@ pub fn (mut s Scope) update_smartcasts(name string, typ Type, is_unwrapped bool)
 	}
 }
 
+pub fn (mut s Scope) reset_smartcasts(name string) {
+	mut obj := unsafe { s.objects[name] }
+	if mut obj is Var {
+		obj.smartcasts = []
+		obj.is_unwrapped = false
+	}
+}
+
 // selector_expr:  name.field_name
 pub fn (mut s Scope) register_struct_field(name string, field ScopeStructField) {
 	k := '${name}.${field.name}'
-	if f := s.struct_fields[k] {
-		if f.struct_type == field.struct_type {
-			return
-		}
-	}
 	s.struct_fields[k] = field
 }
 
@@ -322,5 +360,5 @@ pub fn (mut sc Scope) mark_var_as_used(varname string) bool {
 }
 
 pub fn (sc &Scope) str() string {
-	return sc.show(0, 0)
+	return sc.show(0, 3)
 }

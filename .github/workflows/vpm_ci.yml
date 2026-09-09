@@ -2,6 +2,8 @@ name: VPM CI
 
 on:
   push:
+    branches:
+      - master
     paths:
       - '**/vpm_ci.yml'
       - '**/cmd/tools/vpm/**'
@@ -22,7 +24,7 @@ jobs:
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           path: vlang
       - name: Show git version
@@ -32,9 +34,9 @@ jobs:
         run: cd vlang && make -j4 && ./v doctor
       - name: Build V (Windows)
         if: runner.os == 'Windows'
-        run: cd vlang && ./make.bat && ./v doctor
+        run: cd vlang && ./makev.bat && ./v doctor
       - name: Cache V
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: vlang
           key: ${{ runner.os }}-${{ github.sha }}
@@ -62,7 +64,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Restore V cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: vlang
           key: ${{ runner.os }}-${{ github.sha }}

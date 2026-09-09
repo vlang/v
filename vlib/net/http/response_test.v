@@ -1,5 +1,9 @@
 module http
 
+import compress.brotli
+import compress.gzip
+import compress.zlib
+
 fn test_response_bytestr_1() {
 	resp := new_response(
 		status: .ok
@@ -41,7 +45,32 @@ fn test_parse_response() {
 	assert x.status_code == 200
 	assert x.status_msg == 'OK'
 	assert x.header.contains(.content_length)
-	assert x.header.get(.content_length)! == '3'
+	assert x.header.get(.content_length)? == '3'
+	assert x.body == 'Foo'
+}
+
+fn test_parse_response_without_reason_phrase() {
+	// RFC 9112 §4: the reason-phrase is optional, and some servers omit the
+	// trailing SP before it as well (`HTTP/1.1 200`).
+	content := 'HTTP/1.1 200\r\nContent-Length: 3\r\n\r\nFoo'
+	x := parse_response(content)!
+	assert x.http_version == '1.1'
+	assert x.status_code == 200
+	assert x.status_msg == ''
+	assert x.header.contains(.content_length)
+	assert x.header.get(.content_length)? == '3'
+	assert x.body == 'Foo'
+}
+
+fn test_parse_response_with_empty_reason_phrase() {
+	// trailing SP present, but the reason phrase itself is empty
+	content := 'HTTP/1.1 200 \r\nContent-Length: 3\r\n\r\nFoo'
+	x := parse_response(content)!
+	assert x.http_version == '1.1'
+	assert x.status_code == 200
+	assert x.status_msg == ''
+	assert x.header.contains(.content_length)
+	assert x.header.get(.content_length)? == '3'
 	assert x.body == 'Foo'
 }
 
@@ -53,7 +82,7 @@ fn test_parse_response_with_cookies() {
 	assert x.status_code == 200
 	assert x.status_msg == 'OK'
 	assert x.header.contains(.content_length)
-	assert x.header.get(.content_length)! == '3'
+	assert x.header.get(.content_length)? == '3'
 	assert x.body == 'Foo'
 	response_cookie := x.cookies()
 	assert response_cookie[0].str() == 'id=${cookie_id}'
@@ -66,7 +95,7 @@ fn test_parse_response_with_cookies() {
 	assert x.status_code == 200
 	assert x.status_msg == 'OK'
 	assert x.header.contains(.content_length)
-	assert x.header.get(.content_length)! == '3'
+	assert x.header.get(.content_length)? == '3'
 	assert x.body == 'Foo'
 	response_cookie_base64 := x.cookies()
 	assert response_cookie_base64[0].str().split(';')[0] == 'enctoken=${cookie_base64}'
@@ -78,4 +107,81 @@ fn test_parse_response_with_weird_cookie() {
 	mut xx := parse_response(content_weird)!
 	weird_cookie := xx.cookies()
 	assert weird_cookie[0].str() == 'a=b'
+}
+
+fn test_parse_response_with_gzip_content_encoding() {
+	expected_body := '{"a": 1}'
+	compressed_body := gzip.compress(expected_body.bytes())!
+	content :=
+		'HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: ${compressed_body.len}\r\n\r\n' +
+		compressed_body.bytestr()
+	resp := parse_response(content)!
+	assert resp.body == expected_body
+}
+
+fn test_parse_response_with_deflate_content_encoding() {
+	expected_body := '{"a": 1}'
+	compressed_body := zlib.compress(expected_body.bytes())!
+	content :=
+		'HTTP/1.1 200 OK\r\nContent-Encoding: deflate\r\nContent-Length: ${compressed_body.len}\r\n\r\n' +
+		compressed_body.bytestr()
+	resp := parse_response(content)!
+	assert resp.body == expected_body
+}
+
+fn test_parse_response_with_brotli_content_encoding() {
+	if !brotli.is_available() {
+		eprintln('skipping Brotli HTTP response test; libbrotli is not available')
+		return
+	}
+	expected_body := '{"a": 1}'
+	compressed_body := brotli.compress(expected_body.bytes(), mode: .text)!
+	content :=
+		'HTTP/1.1 200 OK\r\nContent-Encoding: br\r\nContent-Length: ${compressed_body.len}\r\n\r\n' +
+		compressed_body.bytestr()
+	resp := parse_response(content)!
+	assert resp.body == expected_body
+}
+
+fn test_parse_response_with_chunked_and_gzip_content_encoding() {
+	expected_body := '{"a": 1}'
+	compressed_body := gzip.compress(expected_body.bytes())!
+	chunked_body := '${compressed_body.len:x}\r\n' + compressed_body.bytestr() + '\r\n0\r\n\r\n'
+	content := 'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Encoding: gzip\r\n\r\n' +
+		chunked_body
+	resp := parse_response(content)!
+	assert resp.body == expected_body
+}
+
+fn test_vschannel_error_message_formats_non_wsa_errors() {
+	assert vschannel_error_message(-2146893052) == '0x80090304'
+	assert vschannel_error_message(42) == '42'
+}
+
+fn test_vschannel_error_message_formats_windows_wsa_errors() {
+	$if windows {
+		assert vschannel_error_message(11001) == '(11001) wsahost_not_found'
+	}
+}
+
+fn test_vschannel_request_error_normalizes_connect_failures() {
+	err := vschannel_request_error(vschannel_sec_e_internal_error)
+	assert err.msg() == vschannel_connect_failed_msg
+	assert err.code() == vschannel_sec_e_internal_error
+}
+
+fn test_vschannel_request_error_keeps_other_codes() {
+	err := vschannel_request_error(42)
+	assert err.msg() == 'http: vschannel request failed: 42'
+	assert err.code() == 42
+}
+
+fn test_vschannel_parse_response_normalizes_connect_failure_output() {
+	vschannel_parse_response('Error 10057 sending data to server (1)\nError performing handshake',
+		0) or {
+		assert err.msg() == vschannel_connect_failed_msg
+		assert err.code() == 0
+		return
+	}
+	assert false
 }

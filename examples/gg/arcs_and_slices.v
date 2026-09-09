@@ -117,9 +117,12 @@ fn on_frame(mut app App) {
 
 	y += 150
 	app.gg.draw_text_def(10, y + 20, 'Use arrow keys to increase/decrease number of segments.')
-	app.gg.draw_text_def(10, y + 36, 'Use the mouse to adjust the start/end angles, in radians. Mouse position (0,0) is at the top-left of the window.')
-	app.gg.draw_text_def(10, y + 52, 'Note: because y=0 is at the top of the screen and not the bottom, angle=0 is at the bottom of an arc, not the top!')
-	app.gg.draw_text_def(10, y + 68, 'Compared to a graph, where y=0 is at the bottom, arcs therefore appear y-flipped.')
+	app.gg.draw_text_def(10, y + 36,
+		'Use the mouse to adjust the start/end angles, in radians. Mouse position (0,0) is at the top-left of the window.')
+	app.gg.draw_text_def(10, y + 52,
+		'Note: because y=0 is at the top of the screen and not the bottom, angle=0 is at the bottom of an arc, not the top!')
+	app.gg.draw_text_def(10, y + 68,
+		'Compared to a graph, where y=0 is at the bottom, arcs therefore appear y-flipped.')
 
 	app.gg.end()
 }

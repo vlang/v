@@ -142,8 +142,7 @@ fn on_frame(data voidptr) {
 	}
 
 	// Draw paddles
-	app.ctx.draw_rounded_rect_filled(20, app.p1_y, app.paddle_width, app.paddle_height,
-		5, color_p1)
+	app.ctx.draw_rounded_rect_filled(20, app.p1_y, app.paddle_width, app.paddle_height, 5, color_p1)
 	app.ctx.draw_rounded_rect_filled(f32(app.width) - 20 - app.paddle_width, app.p2_y,
 		app.paddle_width, app.paddle_height, 5, color_p2)
 
@@ -198,7 +197,8 @@ fn on_frame(data voidptr) {
 			align: .center
 		)
 	} else {
-		app.ctx.draw_text(app.width / 2, app.height - 25, 'SPACE: Pause | W/S: P1 | UP/DOWN: P2 | R: Reset',
+		app.ctx.draw_text(app.width / 2, app.height - 25,
+			'SPACE: Pause | W/S: P1 | UP/DOWN: P2 | R: Reset',
 			size:  16
 			color: color_text_dim
 			align: .center

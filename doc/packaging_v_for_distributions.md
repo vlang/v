@@ -51,7 +51,7 @@ version of V, and then advises the user to install V from source if he wants to 
 
 5) The V source repo contains sizable folders like `.git/` and `thirdparty/tcc/.git/` which will
 not be needed by users of packages (they are not useful if `v up` is disabled,
-as recommended previously). Some other files, such as `Makefile`, `make.bat`, and `GNUmakefile`
+as recommended previously). Some other files, such as `Makefile`, `makev.bat`, and `GNUmakefile`
 will not be used either, so they can also be safely removed.
 
 Depending on how stripped you want your package, you can remove the examples/ folder as well.
@@ -106,7 +106,7 @@ echo "Alternatively, if you do want a more recent V version, just clone V from s
 echo "then follow the instructions here: https://github.com/vlang/v#installing-v-from-source')" >> cmd/tools/vself.v
 
 v -prod -o v cmd/v                            ## build V itself with -prod
-./v -prod build-tools                         ## build all tools with -prod too
+./v build-tools                               ## build all tools (NB: do *not* pass -prod here; some large tools, like c_builder.v, can exhaust memory during the -prod LTO C compile)
 touch ./cmd/tools/.disable_autorecompilation  ## tell V to not try to recompile any tool anymore
 
 ### Cleanup folders that would not be needed inside a package,

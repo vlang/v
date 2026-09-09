@@ -1,0 +1,13 @@
+import db.sqlite
+
+struct User {
+	id   int @[primary]
+	name string
+}
+
+fn main() {
+	db := sqlite.connect(':memory:')!
+	_ := sql db {
+		select sum(name) from User
+	}!
+}

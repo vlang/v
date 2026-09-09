@@ -158,7 +158,7 @@ pub fn (mut ws WebhookServer) index() {
 // gen webhook
 pub fn (mut ws WebhookServer) genhook() veb.Result {
 	// request data
-	// println(ws.vweb.req.data)
+	// println(ws.req.data)
 	// TODO: parse request. json or urlencoded
 	// json.decode or net.urllib.parse
 	ws.gen_vc.generate()
@@ -230,8 +230,10 @@ fn (mut gen_vc GenVC) generate() {
 	gen_vc.cmd_exec('git clone --filter=blob:none https://${git_repo_v} ${git_repo_dir_v}')
 	gen_vc.cmd_exec('git clone --filter=blob:none https://${git_repo_vc} ${git_repo_dir_vc}')
 	// get output of git log -1 (last commit)
-	git_log_v := gen_vc.cmd_exec('git -C ${git_repo_dir_v} log -1 --format="commit %H%nDate: %ci%nDate Unix: %ct%nSubject: %s"')
-	git_log_vc := gen_vc.cmd_exec('git -C ${git_repo_dir_vc} log -1 --format="Commit %H%nDate: %ci%nDate Unix: %ct%nSubject: %s"')
+	git_log_v :=
+		gen_vc.cmd_exec('git -C ${git_repo_dir_v} log -1 --format="commit %H%nDate: %ci%nDate Unix: %ct%nSubject: %s"')
+	git_log_vc :=
+		gen_vc.cmd_exec('git -C ${git_repo_dir_vc} log -1 --format="Commit %H%nDate: %ci%nDate Unix: %ct%nSubject: %s"')
 	// date of last commit in each repo
 	ts_v := git_log_v.find_between('Date:', '\n').trim_space()
 	ts_vc := git_log_vc.find_between('Date:', '\n').trim_space()
@@ -246,8 +248,7 @@ fn (mut gen_vc GenVC) generate() {
 	last_commit_hash_v := git_log_v.find_between('commit', '\n').trim_space()
 	last_commit_hash_v_short := last_commit_hash_v[..7]
 	// subject
-	last_commit_subject := git_log_v.find_between('Subject:', '\n').trim_space().replace("'",
-		'"')
+	last_commit_subject := git_log_v.find_between('Subject:', '\n').trim_space().replace("'", '"')
 	// log some info
 	gen_vc.logger.debug('last commit time (${git_repo_v}): ' + last_commit_time_v.format_ss())
 	gen_vc.logger.debug('last commit time (${git_repo_vc}): ' + last_commit_time_vc.format_ss())

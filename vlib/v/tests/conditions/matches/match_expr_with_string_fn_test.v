@@ -5,6 +5,7 @@ fn test_match_expr_with_string_fn() {
 		'fn' { 2 }
 		else { 0 }
 	}
+
 	println(ret)
 	assert ret == 1
 }

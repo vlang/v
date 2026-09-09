@@ -137,6 +137,7 @@ pub fn random_list(cfg []string) []string {
 			return p_list
 		}
 	}
+
 	return p_list
 }
 

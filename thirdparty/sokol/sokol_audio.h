@@ -729,6 +729,8 @@ inline void saudio_setup(const saudio_desc& desc) { return saudio_setup(&desc); 
     #define CONST_VTABLE
     #endif
     #include <mmdeviceapi.h>
+    /* TCC's audioclient.h may miss these transitive audio format/channel mask definitions. */
+    #include <mmreg.h>
     #include <audioclient.h>
     static const IID _saudio_IID_IAudioClient                               = { 0x1cb9ad4c, 0xdbfa, 0x4c32, {0xb1, 0x78, 0xc2, 0xf5, 0x68, 0xa7, 0x03, 0xb2} };
     static const IID _saudio_IID_IMMDeviceEnumerator                        = { 0xa95664d2, 0x9614, 0x4f35, {0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6} };

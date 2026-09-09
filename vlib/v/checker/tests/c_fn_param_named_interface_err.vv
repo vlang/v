@@ -1,0 +1,10 @@
+pub struct C.wl_interface {}
+
+pub struct C.wl_registry {}
+
+fn C.wl_registry_bind(wl_registry &C.wl_registry, name u32, interface &C.wl_interface, version u32) voidptr
+
+fn main() {
+	registry := C.wl_registry{}
+	C.wl_registry_bind(&registry, u32(0), u32(0))
+}

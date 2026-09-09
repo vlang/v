@@ -7,7 +7,7 @@ const zero_point = Point{fe_zero, fe_zero, fe_zero, fe_zero}
 fn test_invalid_encodings() {
 	// An invalid point, that also happens to have y > p.
 	invalid := 'efffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f'
-	inv_bytes := hex.decode(invalid) or { panic(err) }
+	inv_bytes := hex.decode(invalid) or { []u8{} }
 	mut p := new_generator_point()
 
 	out := p.set_bytes(inv_bytes) or { zero_point }
@@ -96,11 +96,11 @@ fn test_non_canonical_points() {
 		// t.Run(tt.name, func(t *testing.T) {
 		// p1, err := new(Point).SetBytes(decodeHex(tt.encoding))
 		mut p1 := Point{}
-		p1.set_bytes(hex.decode(tt.encoding)!)!
+		p1.set_bytes(hex.decode(tt.encoding) or { []u8{} })!
 
 		// p2, err := new(Point).SetBytes(decodeHex(tt.canonical))
 		mut p2 := Point{}
-		p2.set_bytes(hex.decode(tt.canonical)!)!
+		p2.set_bytes(hex.decode(tt.canonical) or { []u8{} })!
 
 		assert p1.equal(p2) == 1
 		assert p1.bytes() == p2.bytes()

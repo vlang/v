@@ -46,6 +46,32 @@ fn test_utf8_util() {
 	assert utf8.get_rune(c, 6) == `🚀` // 4 bytes
 }
 
+fn test_get_rune_invalid_utf8() {
+	replacement := rune(0xfffd)
+	invalid := [u8(0xc1), 0xa1, `-`, 0xed, 0xa0, 0x80, `-`, 0xc3].bytestr()
+	assert utf8.get_rune(invalid, 0) == replacement
+	assert utf8.get_rune(invalid, 1) == replacement
+	assert utf8.get_rune(invalid, 2) == `-`
+	assert utf8.get_rune(invalid, 3) == replacement
+	assert utf8.get_rune(invalid, 4) == replacement
+	assert utf8.get_rune(invalid, 5) == replacement
+	assert utf8.get_rune(invalid, 6) == `-`
+	assert utf8.get_rune(invalid, 7) == replacement
+}
+
+fn test_invalid_utf8_indexing_advances_one_byte() {
+	replacement := rune(0xfffd).str()
+	invalid := [u8(0xf5), `a`].bytestr()
+	assert utf8.get_rune(invalid, 0) == rune(0xfffd)
+	assert utf8.get_rune(invalid, 1) == `a`
+	assert utf8.len(invalid) == 2
+	assert utf8.raw_index(invalid, 0) == replacement
+	assert utf8.raw_index(invalid, 1) == 'a'
+	assert utf8.reverse(invalid) == 'a' + replacement
+	assert utf8.to_upper(invalid) == [u8(0xf5), `A`].bytestr()
+	assert utf8.to_lower([u8(0xf5), `A`].bytestr()) == invalid
+}
+
 fn test_raw_indexing() {
 	a := '我是V Lang!'
 

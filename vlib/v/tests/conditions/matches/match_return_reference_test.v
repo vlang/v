@@ -9,6 +9,7 @@ fn test_assign_ref_from_match() {
 			unsafe { nil }
 		}
 	}
+
 	assert var != unsafe { nil }
 }
 

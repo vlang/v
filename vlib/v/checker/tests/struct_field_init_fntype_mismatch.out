@@ -1,3 +1,10 @@
+vlib/v/checker/tests/struct_field_init_fntype_mismatch.vv:9:8: notice: unused parameter: `f`
+    7 | }
+    8 | 
+    9 | fn foo(f &Foo) {}
+      |        ^
+   10 | 
+   11 | fn main() {
 vlib/v/checker/tests/struct_field_init_fntype_mismatch.vv:13:3: error: cannot assign to field `foo_fn`: expected `fn (mut Foo)`, not `fn (&Foo)`
    11 | fn main() {
    12 |     srv := Server{

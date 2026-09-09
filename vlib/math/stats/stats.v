@@ -104,13 +104,13 @@ pub fn mode[T](data []T) T {
 	for v in data {
 		freqs << freq(data, v)
 	}
-	mut max := 0
+	mut max_idx := 0
 	for i := 0; i < freqs.len; i++ {
-		if freqs[i] > freqs[max] {
-			max = i
+		if freqs[i] > freqs[max_idx] {
+			max_idx = i
 		}
 	}
-	return data[max]
+	return data[max_idx]
 }
 
 // rms, Root Mean Square, calculates the sqrt of the mean of the squares of the given input array
@@ -295,11 +295,11 @@ pub fn tss_mean[T](data []T, mean T) T {
 	if data.len == 0 {
 		return T(0)
 	}
-	mut tss := T(0)
+	mut sum_sq := T(0)
 	for v in data {
-		tss += T((v - mean) * (v - mean))
+		sum_sq += T((v - mean) * (v - mean))
 	}
-	return tss
+	return sum_sq
 }
 
 // min finds the minimum value from the dataset
@@ -307,13 +307,13 @@ pub fn min[T](data []T) T {
 	if data.len == 0 {
 		return T(0)
 	}
-	mut min := data[0]
+	mut lo := data[0]
 	for v in data {
-		if v < min {
-			min = v
+		if v < lo {
+			lo = v
 		}
 	}
-	return min
+	return lo
 }
 
 // max finds the maximum value from the dataset
@@ -321,13 +321,13 @@ pub fn max[T](data []T) T {
 	if data.len == 0 {
 		return T(0)
 	}
-	mut max := data[0]
+	mut hi := data[0]
 	for v in data {
-		if v > max {
-			max = v
+		if v > hi {
+			hi = v
 		}
 	}
-	return max
+	return hi
 }
 
 // minmax finds the minimum and maximum value from the dataset
@@ -335,17 +335,17 @@ pub fn minmax[T](data []T) (T, T) {
 	if data.len == 0 {
 		return T(0), T(0)
 	}
-	mut max := data[0]
-	mut min := data[0]
+	mut hi := data[0]
+	mut lo := data[0]
 	for v in data[1..] {
-		if v > max {
-			max = v
+		if v > hi {
+			hi = v
 		}
-		if v < min {
-			min = v
+		if v < lo {
+			lo = v
 		}
 	}
-	return min, max
+	return lo, hi
 }
 
 // min_index finds the first index of the minimum value
@@ -353,15 +353,15 @@ pub fn min_index[T](data []T) int {
 	if data.len == 0 {
 		return 0
 	}
-	mut min := data[0]
-	mut min_index := 0
+	mut lo := data[0]
+	mut lo_idx := 0
 	for i, v in data {
-		if v < min {
-			min = v
-			min_index = i
+		if v < lo {
+			lo = v
+			lo_idx = i
 		}
 	}
-	return min_index
+	return lo_idx
 }
 
 // max_index finds the first index of the maximum value
@@ -369,15 +369,15 @@ pub fn max_index[T](data []T) int {
 	if data.len == 0 {
 		return 0
 	}
-	mut max := data[0]
-	mut max_index := 0
+	mut hi := data[0]
+	mut hi_idx := 0
 	for i, v in data {
-		if v > max {
-			max = v
-			max_index = i
+		if v > hi {
+			hi = v
+			hi_idx = i
 		}
 	}
-	return max_index
+	return hi_idx
 }
 
 // minmax_index finds the first index of the minimum and maximum value
@@ -385,21 +385,21 @@ pub fn minmax_index[T](data []T) (int, int) {
 	if data.len == 0 {
 		return 0, 0
 	}
-	mut min := data[0]
-	mut max := data[0]
-	mut min_index := 0
-	mut max_index := 0
+	mut lo := data[0]
+	mut hi := data[0]
+	mut lo_idx := 0
+	mut hi_idx := 0
 	for i, v in data {
-		if v < min {
-			min = v
-			min_index = i
+		if v < lo {
+			lo = v
+			lo_idx = i
 		}
-		if v > max {
-			max = v
-			max_index = i
+		if v > hi {
+			hi = v
+			hi_idx = i
 		}
 	}
-	return min_index, max_index
+	return lo_idx, hi_idx
 }
 
 // range calculates the difference between the min and max
@@ -410,8 +410,8 @@ pub fn range[T](data []T) T {
 	if data.len == 0 {
 		return T(0)
 	}
-	min, max := minmax[T](data)
-	return max - min
+	lo, hi := minmax[T](data)
+	return hi - lo
 }
 
 // covariance calculates directional association between datasets
@@ -430,13 +430,13 @@ pub fn covariance_mean[T](data1 []T, data2 []T, mean1 T, mean2 T) T {
 	if n == 0 {
 		return T(0)
 	}
-	mut covariance := T(0)
+	mut cov := T(0)
 	for i in 0 .. n {
 		delta1 := data1[i] - mean1
 		delta2 := data2[i] - mean2
-		covariance += T((delta1 * delta2 - covariance) / (T(i) + T(1)))
+		cov += T((delta1 * delta2 - cov) / (T(i) + T(1)))
 	}
-	return covariance
+	return cov
 }
 
 // lag1_autocorrelation_mean calculates the correlation between values that are one time period apart
@@ -509,7 +509,7 @@ pub fn skew_mean_stddev[T](data []T, mean T, sd T) T {
 	if data.len == 0 {
 		return T(0)
 	}
-	mut skew := T(0) // find the sum of the cubed deviations, normalized by the sd.
+	mut total := T(0) // find the sum of the cubed deviations, normalized by the sd.
 	/*
 	we use a recurrence relation to stably update a running value so
          * there aren't any large sums that can overflow
@@ -517,9 +517,9 @@ pub fn skew_mean_stddev[T](data []T, mean T, sd T) T {
 	for i, v in data {
 		x := (v - mean) / sd
 		x3 := x * x * x
-		skew += T((x3 - skew) / (T(i) + T(1)))
+		total += T((x3 - total) / (T(i) + T(1)))
 	}
-	return skew
+	return total
 }
 
 // quantile calculates quantile points

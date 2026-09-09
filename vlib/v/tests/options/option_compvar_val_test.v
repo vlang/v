@@ -25,6 +25,7 @@ fn encode_struct[T](val T) map[string][]string {
 	mut out := map[string][]string{}
 	$if T is $struct {
 		$for field in T.fields {
+			out[field.name] = []string{}
 			value := val.$(field.name)
 			$if field.typ is ?int {
 				// work if comment lines 27 and 28

@@ -199,7 +199,8 @@ fn test_sequence_add_encode_integer() ! {
 }
 
 fn test_sequence_integer_bigint() ! {
-	inp := big.integer_from_string('84885164052257330097714121751630835360966663883732297726369399')!
+	inp :=
+		big.integer_from_string('84885164052257330097714121751630835360966663883732297726369399')!
 	mut seq := Sequence.new()!
 
 	o1 := Integer.from_bigint(inp)

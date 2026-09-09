@@ -1,0 +1,5 @@
+Name: oracle-duplicate-right-74
+Description: Right public duplicate-fragment provider
+Version: 1.0.0
+Libs: -loracle_duplicate_shared -loracle_duplicate_right
+Cflags: -DORACLE_DUPLICATE_SHARED -DORACLE_DUPLICATE_RIGHT

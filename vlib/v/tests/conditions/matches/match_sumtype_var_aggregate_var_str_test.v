@@ -9,6 +9,7 @@ fn test_match_sumtype_var_aggregate_print_var() {
 			f1.str()
 		}
 	}
+
 	assert ret1 == '-17'
 
 	f2 := Bug(i64(-18))
@@ -19,5 +20,6 @@ fn test_match_sumtype_var_aggregate_print_var() {
 			'${f2}'
 		}
 	}
+
 	assert ret2 == '-18'
 }

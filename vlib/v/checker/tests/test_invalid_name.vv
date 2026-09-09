@@ -1,0 +1,5 @@
+module custom
+
+fn test_result() {
+	println('whatever')
+}

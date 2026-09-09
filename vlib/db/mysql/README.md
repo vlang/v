@@ -8,12 +8,12 @@ MySQL or MariaDB database servers.
 To run the mysql module tests, or if you want to just experiment, you can use the following
 command to start a development version of MySQL using docker:
 ```sh
-docker run -p 3306:3306 --name some-mysql -e MYSQL_ALLOW_EMPTY_PASSWORD=1 -e MYSQL_ROOT_PASSWORD= -d mysql:latest
+docker run -p 3306:3306 --name some-mysql -e MYSQL_ROOT_PASSWORD=12345678 -d mysql:latest
 ```
-The above command will start a server instance without any password for its root account,
+The above command will start a server instance with the root password `12345678`,
 available to mysql client connections, on tcp port 3306.
 
-You can test that it works by doing: `mysql -uroot -h127.0.0.1` .
+You can test that it works by doing: `mysql -uroot -p12345678 -h127.0.0.1` .
 You should see a mysql shell (use `exit` to end the mysql client session).
 
 Use `docker container stop some-mysql` to stop the server.
@@ -28,19 +28,19 @@ For FreeBSD, you need to install the `mariadb118-client` package.
 
 For OpenBSD, you need to install the `mariadb-client` package.
 
-For Windows, install [the installer](https://dev.mysql.com/downloads/installer/) ,
-then copy the `include` and `lib` folders to `<V install directory>\thirdparty\mysql`.
+For Windows, install [the installer](https://dev.mysql.com/downloads/installer/) or extract the
+ZIP package, then copy the `include`, `lib`, and `bin` folders to
+`<V install directory>\thirdparty\mysql`.
 
 ### Troubleshooting
 
-If you encounter weird errors (your program just exits right away, without
-printing any messages, even though you have `println('hi')` statements in your
-`fn main()`), when trying to run a program that does `import db.mysql` on windows, you
-may need to copy the .dll file: `thirdparty/mysql/lib/libmysql.dll`, into the folder
-of the executable too (it should be right next to the .exe file).
+If a program that imports `db.mysql` exits right away on Windows before
+`fn main()` prints anything, Windows usually could not load `libmysql.dll`.
+Make sure that `thirdparty/mysql/bin` and `thirdparty/mysql/lib` are on `PATH`.
+If you still need a workaround, copy `libmysql.dll` next to the produced `.exe`.
 
-This is a temporary workaround, until we have a more permanent solution, or at least
-more user friendly errors for that situation.
+One common sign of this problem is the process exit code `-1073741515`
+(`0xC0000135`).
 
 ## Basic Usage
 
@@ -67,6 +67,93 @@ for row in rows {
 // Close the connection if needed
 db.close()
 ```
+
+## Streaming Results
+
+Use `query_stream()` to read a large result directly from the server in bounded batches:
+
+```v oksyntax
+import db.mysql
+
+fn stream_users(db &mysql.DB) ! {
+	mut stream := db.query_stream('select id, name from users order by id')!
+	defer {
+		stream.close()
+	}
+	for {
+		rows := stream.next_batch(1000)!
+		if rows.len == 0 {
+			break
+		}
+		for row in rows {
+			println(row.vals)
+		}
+	}
+}
+```
+
+Parameterized queries can be streamed with `prepare_stream()`:
+
+```v oksyntax
+import db.mysql
+
+fn stream_users_after(db &mysql.DB, id int) ! {
+	mut stmt := db.prepare_stream('select id, name from users where id > ? order by id')!
+	defer {
+		stmt.close()
+	}
+	stmt.execute([id.str()])!
+	rows := stmt.next_batch(1000)!
+	println(rows)
+}
+```
+
+A stream exclusively holds its MySQL connection until it is exhausted or closed. Consume and
+close it on the thread that created it. Existing `query()` and prepared statement APIs continue
+to return materialized results. Stream batches contain `NullableRow` values, where `val_opt()`
+and the raw `vals` array preserve SQL NULL as `none`. The `val()` and `values()` compatibility
+helpers flatten NULL to an empty string. For multi-statement queries, `query_stream()` exposes the
+first result and discards later results when the stream is exhausted or closed, keeping the
+connection reusable. Use `exec_multi()` when every result is needed.
+
+Copied stream handles refer to the same cursor and share its lifecycle state. Closing any copy
+closes the cursor for all copies, and subsequent `close()` calls are safe.
+
+The legacy `use_result()` method is retained for compatibility and only discards a pending
+result. Use `query_stream()` to read unbuffered rows.
+
+`Result.fields()` and `StreamResult.fields()` expose the server's column metadata. The `length`
+and `max_length` values are unsigned 64-bit integers so large MySQL column widths are preserved.
+
+## Concurrent Usage
+
+Sharing one `mysql.DB` across threads now serializes connection-level queries safely.
+
+For concurrent servers, prefer `mysql.new_connection_pool(...)` so requests do not share the same
+session and transaction state on one connection.
+
+## Bulk loading with `LOAD DATA LOCAL INFILE`
+
+libmysqlclient 8.x disables client side `LOAD DATA LOCAL INFILE` by default. Set
+`local_infile` so `connect()` enables it before the handshake - it also turns on the
+`.client_local_files` capability, which the statement needs:
+
+```v oksyntax
+import db.mysql
+
+config := mysql.Config{
+	host:         '127.0.0.1'
+	username:     'root'
+	password:     '12345678'
+	dbname:       'mysql'
+	local_infile: true
+}
+
+mut db := mysql.connect(config)!
+db.exec_none("load data local infile '/tmp/users.csv' into table users fields terminated by ','")
+```
+
+The server has to allow it as well (`local_infile=ON`).
 
 ## Transaction
 

@@ -1,0 +1,35 @@
+module main
+
+struct Issue26997Inner {
+	value int
+}
+
+struct Issue26997WrapperA {
+mut:
+	a &u16 = unsafe { nil }
+}
+
+struct Issue26997WrapperB {
+mut:
+	b &Issue26997Inner = unsafe { nil }
+}
+
+fn issue26997_fill[T](mut x T) {
+	$for field in T.fields {
+		$if field.indirections == 1 {
+			p := $new(field.typ.pointee_type)
+			x.$(field.name) = p
+		}
+	}
+}
+
+fn main() {
+	mut a := Issue26997WrapperA{}
+	mut b := Issue26997WrapperB{}
+	issue26997_fill(mut a)
+	issue26997_fill(mut b)
+	unsafe {
+		_ = *a.a
+		_ = b.b.value
+	}
+}

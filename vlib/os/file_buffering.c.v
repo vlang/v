@@ -26,7 +26,7 @@ pub fn (mut f File) setvbuf(buffer &char, mode FileBufferMode, size usize) int {
 // Unlike File.setvbuf, it allows you to pass an existing V []u8 array directly.
 // Note: f.set_buffer() may be used only after opening a file stream, and before any other operations have been performed on it.
 pub fn (mut f File) set_buffer(mut buffer []u8, mode FileBufferMode) int {
-	return unsafe { f.setvbuf(&char(buffer.data), mode, usize(buffer.len)) }
+	return unsafe { f.setvbuf(buffer.data, mode, usize(buffer.len)) }
 }
 
 // set_line_buffered sets the file buffering mode to FileBufferMode.line_buffered.

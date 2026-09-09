@@ -1,0 +1,6 @@
+vlib/v/checker/tests/strict_map_index_err.vv:8:7: error: `@[strict_map_index]` requires handling missing map keys with `or {}` or `if value := map[key] {}`
+    6 |         'abc': 'xyz'
+    7 |     }
+    8 |     _ = m['missing']
+      |          ~~~~~~~~~~~
+    9 | }

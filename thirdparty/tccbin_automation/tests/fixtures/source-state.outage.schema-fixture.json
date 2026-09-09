@@ -1,0 +1,23 @@
+{
+  "schema_version": 2,
+  "generation": 4,
+  "source_id": "tinycc-mob",
+  "canonical_url": "https://repo.or.cz/tinycc.git",
+  "ref": "mob",
+  "status": "source_unreachable",
+  "resolved_sha": null,
+  "source_fingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+  "last_attempt_at": "2026-08-02T03:47:00Z",
+  "mode": "upstream-recovery-daily",
+  "originating_run_id": 100,
+  "waiting_consumers": [
+    "2222222222222222222222222222222222222222222222222222222222222222"
+  ],
+  "operation_count": 0,
+  "operation_chain_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+  "operation_window": {
+    "start_count": 0,
+    "anchor_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+    "entries": []
+  }
+}

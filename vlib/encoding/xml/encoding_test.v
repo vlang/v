@@ -177,3 +177,29 @@ fn test_doc() {
 		assert doc.pretty_str('\t') == values[i]
 	}
 }
+
+fn test_large_doc_str() {
+	depth := 1500
+	payload := '0123456789abcdef'.repeat(16)
+	mut node := xml.XMLNode{
+		name: 'leaf'
+	}
+	for i in 0 .. depth {
+		node = xml.XMLNode{
+			name:     'n${i}'
+			children: [
+				payload,
+				node,
+			]
+		}
+	}
+	doc := xml.XMLDocument{
+		root: node
+	}
+
+	rendered := doc.str()
+	assert rendered.starts_with('<?xml version="1.0" encoding="UTF-8"?>\n<n${depth - 1}>')
+	assert rendered.contains('<leaf/>')
+	assert rendered.ends_with('</n${depth - 1}>')
+	assert rendered.len > 5_000_000
+}

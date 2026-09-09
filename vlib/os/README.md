@@ -4,6 +4,17 @@
 command line arguments, reading/writing files, listing folders,
 handling processes etc.
 
+On Windows, `os.data_dir()` uses `%LocalAppData%` for user-specific
+application data.
+
+### Running commands
+
+Use `os.exec(['program', 'arg 1', 'arg 2'])` when the command and its arguments
+are already separate values. It runs the program directly and does not invoke a
+shell, so spaces and shell metacharacters inside arguments are passed literally.
+
+Use `os.execute('command string')` only when shell syntax is intended.
+
 ---
 
 ### Security advice related to TOCTOU attacks

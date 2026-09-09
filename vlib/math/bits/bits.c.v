@@ -8,7 +8,6 @@ fn C.__builtin_clzll(x u64) i32
 fn C.__lzcnt(x u32) i32
 fn C.__lzcnt64(x u64) i32
 
-// --- LeadingZeros ---
 // leading_zeros_8 returns the number of leading zero bits in x; the result is 8 for x == 0.
 @[inline]
 pub fn leading_zeros_8(x u8) int {
@@ -16,9 +15,9 @@ pub fn leading_zeros_8(x u8) int {
 		return 8
 	}
 	$if msvc {
-		return C.__lzcnt(x) - 24
+		return C.__lzcnt(u32(x)) - 24
 	} $else $if !tinyc {
-		return C.__builtin_clz(x) - 24
+		return C.__builtin_clz(u32(x)) - 24
 	}
 	return leading_zeros_8_default(x)
 }
@@ -30,9 +29,9 @@ pub fn leading_zeros_16(x u16) int {
 		return 16
 	}
 	$if msvc {
-		return C.__lzcnt(x) - 16
+		return C.__lzcnt(u32(x)) - 16
 	} $else $if !tinyc {
-		return C.__builtin_clz(x) - 16
+		return C.__builtin_clz(u32(x)) - 16
 	}
 	return leading_zeros_16_default(x)
 }
@@ -70,7 +69,6 @@ fn C.__builtin_ctzll(x u64) i32
 fn C._BitScanForward(pos &int, x u32) u8
 fn C._BitScanForward64(pos &int, x u64) u8
 
-// --- TrailingZeros ---
 // trailing_zeros_8 returns the number of trailing zero bits in x; the result is 8 for x == 0.
 @[inline]
 pub fn trailing_zeros_8(x u8) int {
@@ -79,10 +77,10 @@ pub fn trailing_zeros_8(x u8) int {
 	}
 	$if msvc {
 		mut pos := 0
-		_ := C._BitScanForward(&pos, x)
+		_ := C._BitScanForward(&pos, u32(x))
 		return pos
 	} $else $if !tinyc {
-		return C.__builtin_ctz(x)
+		return C.__builtin_ctz(u32(x))
 	}
 	return trailing_zeros_8_default(x)
 }
@@ -95,10 +93,10 @@ pub fn trailing_zeros_16(x u16) int {
 	}
 	$if msvc {
 		mut pos := 0
-		_ := C._BitScanForward(&pos, x)
+		_ := C._BitScanForward(&pos, u32(x))
 		return pos
 	} $else $if !tinyc {
-		return C.__builtin_ctz(x)
+		return C.__builtin_ctz(u32(x))
 	}
 	return trailing_zeros_16_default(x)
 }
@@ -140,14 +138,13 @@ fn C.__builtin_popcountll(x u64) i32
 fn C.__popcnt(x u32) i32
 fn C.__popcnt64(x u64) i32
 
-// --- OnesCount ---
 // ones_count_8 returns the number of one bits ("population count") in x.
 @[inline]
 pub fn ones_count_8(x u8) int {
 	$if msvc {
-		return C.__popcnt(x)
+		return C.__popcnt(u32(x))
 	} $else $if !tinyc {
-		return C.__builtin_popcount(x)
+		return C.__builtin_popcount(u32(x))
 	}
 	return ones_count_8_default(x)
 }
@@ -156,9 +153,9 @@ pub fn ones_count_8(x u8) int {
 @[inline]
 pub fn ones_count_16(x u16) int {
 	$if msvc {
-		return C.__popcnt(x)
+		return C.__popcnt(u32(x))
 	} $else $if !tinyc {
-		return C.__builtin_popcount(x)
+		return C.__builtin_popcount(u32(x))
 	}
 	return ones_count_16_default(x)
 }

@@ -1,0 +1,16 @@
+import sync.pool
+
+struct Foo {
+	page string
+}
+
+fn main() {
+	_ := pool.new_pool_processor(
+		callback: fn (mut pp pool.PoolProcessor, idx int, wid int) []Foo {
+			_ = wid
+			return [Foo{
+				page: pp.get_item[int](idx).str()
+			}]
+		}
+	)
+}

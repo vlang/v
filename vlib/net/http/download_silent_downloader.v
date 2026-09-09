@@ -25,4 +25,7 @@ pub fn (mut d SilentStreamingDownloader) on_chunk(request &Request, chunk []u8, 
 // on_finish is called once at the end of the download.
 pub fn (mut d SilentStreamingDownloader) on_finish(request &Request, response &Response) ! {
 	d.f.close()
+	if response.status_code == 0 && d.path.len > 0 {
+		os.rm(d.path) or {}
+	}
 }

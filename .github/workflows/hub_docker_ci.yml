@@ -23,7 +23,7 @@ jobs:
         os: [debian, alpine]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           repository: 'vlang/docker'
 
@@ -31,10 +31,10 @@ jobs:
         uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to hub.docker.com
-        uses: docker/login-action@v4
+        uses: docker/login-action@v4.6.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
@@ -53,7 +53,7 @@ jobs:
             echo 'TAGS=thevlang/vlang:${{ matrix.os }}' >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         name: Build and deploy v image
         with:
           builder: gh-builder
@@ -66,7 +66,7 @@ jobs:
           ## cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache
           ## cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache,mode=max
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         name: Build and deploy developer build
         with:
           builder: gh-builder

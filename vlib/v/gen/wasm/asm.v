@@ -172,6 +172,7 @@ pub fn (mut g Gen) asm_literal_arg(node ast.AsmTemplate) {
 				panic('unreachable')
 			}
 		}
+
 		return
 	}
 
@@ -184,7 +185,7 @@ pub fn (mut g Gen) asm_literal_arg(node ast.AsmTemplate) {
 			}
 		}
 		ast.CharLiteral {
-			u32(arg.val.runes()[0]).str() // there is a better way.
+			u32(ast.char_literal_rune_value(arg.val) or { panic('unreachable') }).str()
 		}
 		ast.IntegerLiteral {
 			arg.val

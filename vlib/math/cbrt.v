@@ -31,10 +31,10 @@ pub fn cbrt(a f64) f64 {
 	if x == 0.0 || is_nan(x) || is_inf(x, 0) {
 		return x
 	}
-	mut sign := false
+	mut neg := false
 	if x < 0 {
 		x = -x
-		sign = true
+		neg = true
 	}
 	// rough cbrt to 5 bits
 	mut t := f64_from_bits(f64_bits(x) / u64(3) + (u64(b1) << 32))
@@ -57,7 +57,7 @@ pub fn cbrt(a f64) f64 {
 	r = (r - t) / (w + r) // r-s is exact
 	t = t + t * r
 	// restore the sign bit
-	if sign {
+	if neg {
 		t = -t
 	}
 	return t

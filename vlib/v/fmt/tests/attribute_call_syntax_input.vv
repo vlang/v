@@ -1,0 +1,5 @@
+@[xml(name: 'foo', prefix: 'f', namespace: 'https://example.com/xmlns/foo')]
+struct Foo {}
+
+@[deprecated(msg: 'use bar() instead', after: '2026-06-01')]
+fn foo() {}

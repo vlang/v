@@ -1,0 +1,9 @@
+struct Foo {
+	x string
+	y string
+}
+
+fn main() {
+	foo := &Foo{'x', 'y'}
+	println(foo.x + foo.y)
+}

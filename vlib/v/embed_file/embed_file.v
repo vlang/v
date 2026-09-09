@@ -6,6 +6,7 @@ pub struct EmbedFileData {
 	compression_type string
 mut:
 	compressed        &u8 = unsafe { nil }
+	compressed_len    int
 	uncompressed      &u8 = unsafe { nil }
 	free_compressed   bool
 	free_uncompressed bool
@@ -59,7 +60,7 @@ pub fn (mut ed EmbedFileData) data() &u8 {
 		decoder := g_embed_file_decoders.decoders[ed.compression_type] or {
 			panic('EmbedFileData error: unknown compression of "${ed.path}": "${ed.compression_type}"')
 		}
-		compressed := unsafe { ed.compressed.vbytes(ed.len) }
+		compressed := unsafe { ed.compressed.vbytes(ed.compressed_len) }
 		decompressed := decoder.decompress(compressed) or {
 			panic('EmbedFileData error: decompression of "${ed.path}" failed: ${err}')
 		}

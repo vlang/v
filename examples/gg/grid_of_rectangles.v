@@ -13,7 +13,6 @@ const cmax_y = 81
 const cs = 10
 
 const c_fg = gg.rgb(20, 30, 255)
-const c_em = gg.rgb(255, 50, 0)
 
 fn main() {
 	mut app := &App{}
@@ -64,7 +63,8 @@ fn frame(app &App) {
 		for y in 0 .. cmax_y {
 			for x in 0 .. cmax_x {
 				cy, cx := y * cs, x * cs
-				app.gg.draw_rect_empty_no_context(cx + 2, cy + 2, cs - 3, cs - 3, c_em)
+				app.gg.draw_rect_empty_no_context(cx + 2, cy + 2, cs - 3, cs - 3,
+					gg.rgb(255, 50, 0))
 			}
 		}
 		sgl.end()

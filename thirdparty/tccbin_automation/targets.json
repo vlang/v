@@ -1,0 +1,220 @@
+{
+  "contract_version": 1,
+  "known_bundle_branches": [
+    "thirdparty-freebsd-aarch64",
+    "thirdparty-freebsd-amd64",
+    "thirdparty-freebsd-arm64",
+    "thirdparty-linux-aarch64",
+    "thirdparty-linux-amd64",
+    "thirdparty-linux-arm",
+    "thirdparty-linux-arm64",
+    "thirdparty-linux-riscv64",
+    "thirdparty-linuxmusl-aarch64",
+    "thirdparty-linuxmusl-amd64",
+    "thirdparty-linuxmusl-arm64",
+    "thirdparty-macos-amd64",
+    "thirdparty-macos-arm64",
+    "thirdparty-openbsd-amd64",
+    "thirdparty-windows-amd64",
+    "thirdparty-windows-i386"
+  ],
+  "managed_ci_targets": [
+    {
+      "id": "freebsd-amd64",
+      "os": "freebsd",
+      "abi": "elf",
+      "architecture": "amd64",
+      "branch": "thirdparty-freebsd-amd64",
+      "native_workflow": ".github/workflows/build-and-test.yml",
+      "publish_unlock_variable": "TCCBIN_FREEBSD_AMD64_PUBLISH_UNLOCKED",
+      "affected_targets": ["freebsd-amd64"],
+      "legacy_onboarding": {
+        "base_sha": "fdf5cdfea6ea84612e068bc3bea433dbba263404",
+        "policy_path": null,
+        "policy_sha256": null
+      },
+      "managed_baseline_activation": {
+        "base_sha": "e71cda6242e88e47312ca9bfc4548b0579636e0c",
+        "base_tree": "9438879ad9906e970d45bafacf6ce2cc63ae4c53",
+        "parent_sha": "fdf5cdfea6ea84612e068bc3bea433dbba263404",
+        "base_manifest_sha256": "a9c2f15451a7e94261c6dd4d9e47cc3965414a2179d04af5902dffc9471a4db3",
+        "base_contract_repository": "vlang/v",
+        "base_contract_sha": "7545e515b434cd399333d43659238427d72e22e7",
+        "policy_path": null,
+        "policy_sha256": null
+      },
+      "toolchain_profile": {
+        "profile_id": null,
+        "profile_path": null,
+        "profile_sha256": null
+      }
+    },
+    {
+      "id": "linux-amd64",
+      "os": "linux",
+      "abi": "glibc",
+      "architecture": "amd64",
+      "branch": "thirdparty-linux-amd64",
+      "native_workflow": ".github/workflows/build-and-test.yml",
+      "publish_unlock_variable": "TCCBIN_LINUX_AMD64_PUBLISH_UNLOCKED",
+      "affected_targets": ["linux-amd64"],
+      "legacy_onboarding": {
+        "base_sha": "ece46f06fbe6eb701d52442f11dd59c48d166cae",
+        "policy_path": null,
+        "policy_sha256": null
+      },
+      "managed_baseline_activation": {
+        "base_sha": "d6e7ac1b1bcc98aed734a6ecbfa8509f24606c74",
+        "base_tree": "22851c0f356fefcb63718ce63d50a870150a491c",
+        "parent_sha": "ece46f06fbe6eb701d52442f11dd59c48d166cae",
+        "base_manifest_sha256": "bcdce1bea1facb24175229a16dc6e8a2c4210aafc05f0526b2728dc060223ed4",
+        "base_contract_repository": "vlang/v",
+        "base_contract_sha": "7545e515b434cd399333d43659238427d72e22e7",
+        "policy_path": null,
+        "policy_sha256": null
+      },
+      "toolchain_profile": {
+        "profile_id": null,
+        "profile_path": null,
+        "profile_sha256": null
+      }
+    },
+    {
+      "id": "macos-amd64",
+      "os": "macos",
+      "abi": "darwin",
+      "architecture": "amd64",
+      "branch": "thirdparty-macos-amd64",
+      "native_workflow": ".github/workflows/build-and-test.yml",
+      "publish_unlock_variable": "TCCBIN_MACOS_AMD64_PUBLISH_UNLOCKED",
+      "affected_targets": ["macos-amd64"],
+      "legacy_onboarding": {
+        "base_sha": "da8ac5a4369accc67c485191d02535d77718a1c8",
+        "policy_path": null,
+        "policy_sha256": null
+      },
+      "managed_baseline_activation": {
+        "base_sha": "199fa78395ca413aac23d02ec69cc5e7b1d805a2",
+        "base_tree": "db67711bfeb33be63dbc8eb03ecdddc2e127cc8c",
+        "parent_sha": "da8ac5a4369accc67c485191d02535d77718a1c8",
+        "base_manifest_sha256": "09dc54928f4690cfee7fd113de93f36479a40cabd10eeb3ee416a3175b42270a",
+        "base_contract_repository": "vlang/v",
+        "base_contract_sha": "7545e515b434cd399333d43659238427d72e22e7",
+        "policy_path": null,
+        "policy_sha256": null
+      },
+      "toolchain_profile": {
+        "profile_id": null,
+        "profile_path": null,
+        "profile_sha256": null
+      }
+    },
+    {
+      "id": "macos-arm64",
+      "os": "macos",
+      "abi": "darwin",
+      "architecture": "arm64",
+      "branch": "thirdparty-macos-arm64",
+      "native_workflow": ".github/workflows/build-and-test.yml",
+      "publish_unlock_variable": "TCCBIN_MACOS_ARM64_PUBLISH_UNLOCKED",
+      "affected_targets": ["macos-arm64"],
+      "legacy_onboarding": {
+        "base_sha": "274abd2466a14861b75e5b91fd946ad27d114499",
+        "policy_path": null,
+        "policy_sha256": null
+      },
+      "managed_baseline_activation": {
+        "base_sha": "1d0ad0ecf70a91a1df64cebf215e683b1d5aedb5",
+        "base_tree": "96af5121f065310ba9168e3e2dc61adf340e2738",
+        "parent_sha": "274abd2466a14861b75e5b91fd946ad27d114499",
+        "base_manifest_sha256": "be45aaee1e65cc1ed2ee6bd2f121d72cbc248887ffa3d57f4b6d59cb6ea73525",
+        "base_contract_repository": "vlang/v",
+        "base_contract_sha": "7545e515b434cd399333d43659238427d72e22e7",
+        "policy_path": null,
+        "policy_sha256": null
+      },
+      "toolchain_profile": {
+        "profile_id": null,
+        "profile_path": null,
+        "profile_sha256": null
+      }
+    },
+    {
+      "id": "openbsd-amd64",
+      "os": "openbsd",
+      "abi": "elf",
+      "architecture": "amd64",
+      "branch": "thirdparty-openbsd-amd64",
+      "native_workflow": ".github/workflows/build-and-test.yml",
+      "publish_unlock_variable": "TCCBIN_OPENBSD_AMD64_PUBLISH_UNLOCKED",
+      "affected_targets": ["openbsd-amd64"],
+      "legacy_onboarding": {
+        "base_sha": "45230fde96c17fff4baf37deb55e90803c043063",
+        "policy_path": null,
+        "policy_sha256": null
+      },
+      "managed_baseline_activation": {
+        "base_sha": "8c7d96c75ea8548f007432d70f1ae33cccd81838",
+        "base_tree": "f75c4862711184c4c191a73e6f996eb421bd37b4",
+        "parent_sha": "45230fde96c17fff4baf37deb55e90803c043063",
+        "base_manifest_sha256": "873b62af697ba25f0abe5887ba05972a93bd48990233853b362bed6cb9137699",
+        "base_contract_repository": "vlang/v",
+        "base_contract_sha": "7545e515b434cd399333d43659238427d72e22e7",
+        "policy_path": null,
+        "policy_sha256": null
+      },
+      "toolchain_profile": {
+        "profile_id": null,
+        "profile_path": null,
+        "profile_sha256": null
+      }
+    },
+    {
+      "id": "windows-amd64",
+      "os": "windows",
+      "abi": "ucrt-pe",
+      "architecture": "amd64",
+      "branch": "thirdparty-windows-amd64",
+      "native_workflow": ".github/workflows/build-and-test.yml",
+      "publish_unlock_variable": "TCCBIN_WINDOWS_AMD64_PUBLISH_UNLOCKED",
+      "affected_targets": ["windows-amd64"],
+      "legacy_onboarding": {
+        "base_sha": "f7c7199bb87fda8b80b31fefa470b2efc952326b",
+        "policy_path": null,
+        "policy_sha256": null
+      },
+      "managed_baseline_activation": {
+        "base_sha": "86ae5844b8b56071b21ae3aa138b247d5eb9ddd9",
+        "base_tree": "818d7794ebdf41de60e5679d485e3a5d49272171",
+        "parent_sha": "f7c7199bb87fda8b80b31fefa470b2efc952326b",
+        "base_manifest_sha256": "b5728124ecf8dc01e4f16cf4188411d6f633bb57997ef36df2dc5fd182e8535a",
+        "base_contract_repository": "vlang/v",
+        "base_contract_sha": "7545e515b434cd399333d43659238427d72e22e7",
+        "policy_path": null,
+        "policy_sha256": null
+      },
+      "toolchain_profile": {
+        "profile_id": null,
+        "profile_path": null,
+        "profile_sha256": null
+      }
+    }
+  ],
+  "opaque_acceptances": [
+    {
+      "id": "windows-amd64-openlibm-v1",
+      "target_id": "windows-amd64",
+      "path": "lib/openlibm.o",
+      "type": "file",
+      "git_mode": "100644",
+      "sha256": "9a11e182e1f6b522030d1b8685666147de0ebb562b9d02cce189690fd07cb7db",
+      "format": "ELF64 little-endian",
+      "object_type": "ET_REL",
+      "machine": "EM_X86_64",
+      "os_abi": "System V",
+      "role": "legacy-math-runtime",
+      "required_probe_id": "opaque-openlibm",
+      "architectures": ["x64"]
+    }
+  ]
+}

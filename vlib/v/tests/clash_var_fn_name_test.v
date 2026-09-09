@@ -1,4 +1,4 @@
-fn func(rune_bytes []byte) string {
+fn func(rune_bytes []u8) string {
 	return rune_bytes.str()
 }
 

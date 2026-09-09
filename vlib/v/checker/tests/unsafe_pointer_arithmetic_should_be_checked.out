@@ -26,3 +26,31 @@ vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:12:6: warnin
       |         ~~~~~
    13 |     _ := q
    14 |     _ := v
+vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:23:11: warning: pointer arithmetic is only allowed in `unsafe` blocks
+   21 | fn test_struct_ptr_infix() {
+   22 |     v := Foo{}
+   23 |     mut q := &v - 1
+      |              ~~~~~~
+   24 |     q = q + 3
+   25 |     _ := q
+vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:24:6: warning: pointer arithmetic is only allowed in `unsafe` blocks
+   22 |     v := Foo{}
+   23 |     mut q := &v - 1
+   24 |     q = q + 3
+      |         ~~~~~
+   25 |     _ := q
+   26 |     _ := v
+vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:32:11: warning: pointer arithmetic is only allowed in `unsafe` blocks
+   30 |     v := Foo{}
+   31 |     p := &v
+   32 |     mut q := &p - 1
+      |              ~~~~~~
+   33 |     q = q + 3
+   34 |     _ := q
+vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:33:6: warning: pointer arithmetic is only allowed in `unsafe` blocks
+   31 |     p := &v
+   32 |     mut q := &p - 1
+   33 |     q = q + 3
+      |         ~~~~~
+   34 |     _ := q
+   35 |     _ := p

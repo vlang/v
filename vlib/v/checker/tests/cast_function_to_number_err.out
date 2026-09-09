@@ -1,0 +1,6 @@
+vlib/v/checker/tests/cast_function_to_number_err.vv:9:10: error: cannot cast function `a.magnitude` to `f64`
+    7 | fn main() {
+    8 |     a := VecLike{}
+    9 |     println(f64(a.magnitude))
+      |             ~~~~~~~~~~~~~~~~
+   10 | }

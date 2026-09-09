@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import json
 
 struct Json2 {
@@ -7,6 +8,16 @@ struct Json2 {
 struct Json {
 	Json2
 	test f64
+}
+
+struct Article {
+	title       string
+	description string
+}
+
+struct ArticlePlus {
+	Article
+	perex string
 }
 
 fn test_main() {
@@ -24,4 +35,23 @@ fn test_main() {
 	data_json := json.encode(data)
 	dump(data_json)
 	assert data_json == str
+}
+
+fn test_encode_array_of_embedded_structs() {
+	list_of_object := [
+		ArticlePlus{
+			title:       'One good title'
+			description: 'this is the first'
+		},
+		ArticlePlus{
+			title:       'Other good title'
+			description: 'more one'
+		},
+		ArticlePlus{
+			title:       'Other good title'
+			description: 'more one'
+			perex:       'good perex'
+		},
+	]
+	assert json.encode(list_of_object) == '[{"title":"One good title","description":"this is the first","perex":""},{"title":"Other good title","description":"more one","perex":""},{"title":"Other good title","description":"more one","perex":"good perex"}]'
 }

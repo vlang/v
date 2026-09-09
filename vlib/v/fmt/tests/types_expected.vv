@@ -11,6 +11,12 @@ pub type Callback = ConnectedCallback // connected callback
 	| DisconnectedCallback // disconnected callback
 	| LoggedOffCallback // logged off callback
 
+type SumResp = string
+	| int
+	// | f64
+	| map[string]int
+	| map[string]bool
+
 struct ConnectedCallback {}
 
 struct DisconnectedCallback {}

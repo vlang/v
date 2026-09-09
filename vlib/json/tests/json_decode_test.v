@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import json
 
 struct TestTwin {
@@ -14,7 +15,7 @@ mut:
 fn test_json_decode_fails_to_decode_unrecognised_array_of_dicts() {
 	data := '[{"twins":[{"id":123,"seed":"abcde","pubkey":"xyzasd"},{"id":456,"seed":"dfgdfgdfgd","pubkey":"skjldskljh45sdf"}]}]'
 	json.decode(TestTwins, data) or {
-		assert err.msg() == "expected field 'twins' is missing"
+		assert err.msg().starts_with('Json element is not an object:')
 		return
 	}
 	assert false
@@ -43,6 +44,44 @@ fn test_decode_u64() {
 	m := json.decode(Mount, data)!
 	assert m.size == 10737418240
 	// println(m)
+}
+
+fn test_decode_large_u64_from_decimal_json() {
+	cases := [
+		u64(9007199254740991),
+		u64(9007199254740992),
+		u64(9007199254740993),
+		u64(9223372036854775807),
+		u64(9223372036854775808),
+		u64(9223372036854775809),
+		u64(18446744073709551614),
+		u64(18446744073709551615),
+	]
+	for want in cases {
+		got := json.decode([]u64, '[${want}]')!
+		assert got.len == 1
+		assert got[0] == want
+	}
+}
+
+fn test_encode_decode_large_u64_roundtrip() {
+	cases := [
+		u64(9007199254740991),
+		u64(9007199254740992),
+		u64(9007199254740993),
+		u64(9223372036854775807),
+		u64(9223372036854775808),
+		u64(9223372036854775809),
+		u64(18446744073709551614),
+		u64(18446744073709551615),
+	]
+	for want in cases {
+		encoded := json.encode([want])
+		assert encoded == '[${want}]'
+		got := json.decode([]u64, encoded)!
+		assert got.len == 1
+		assert got[0] == want
+	}
 }
 
 //

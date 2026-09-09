@@ -30,7 +30,8 @@ fn main() {
 	words_per_sentence := fp.int('words', `w`, 10, 'Words per sentence [default: 10]')
 	sentences_per_paragraph := fp.int('sentences', `s`, 5, 'Sentences per paragraph [default: 5]')
 	paragraphs := fp.int('paragraphs', `p`, 3, 'Paragraph count [default: 3]')
-	corpus_name := fp.string('corpus', `c`, 'lorem', 'Corpus name (lorem, poe, darwin, bard) [default: lorem]')
+	corpus_name := fp.string('corpus', `c`, 'lorem',
+		'Corpus name (lorem, poe, darwin, bard) [default: lorem]')
 	seed_text := fp.string('seed', `S`, '', 'Seed phrase (random if omitted)')
 	mut rng_seed := fp.int('rngseed', `r`, 0, 'RNG seed (0 = random)')
 

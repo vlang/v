@@ -1,0 +1,10 @@
+type Byte = u8
+type ByteString = string
+
+fn (a Byte) + (b Byte) ByteString {
+	return ByteString('x')
+}
+
+fn (a Byte) - (b Byte) string {
+	return 'y'
+}

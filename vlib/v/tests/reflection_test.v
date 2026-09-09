@@ -29,7 +29,15 @@ fn test_module_existing() {
 }
 
 fn test_func_attribute() {
-	assert reflection.get_funcs().filter(it.name == 'test3')[0].is_variadic == false
+	func := reflection.get_funcs().filter(it.name == 'test3')[0]
+	assert func.is_variadic == false
+	assert func.attrs == [
+		VAttribute{
+			name: 'noreturn'
+			kind: .plain
+		},
+	]
+	assert reflection.get_funcs().filter(it.name == 'test2')[0].attrs.len == 0
 }
 
 fn test_func_name() {

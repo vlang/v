@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import json
 
 enum Foo {
@@ -13,11 +14,11 @@ fn test_comptime() {
 	$for f in Foo.values {
 		println(f)
 		if f.value == Foo.yay {
-			assert f.attrs[0] == 'json: A'
+			assert f.attrs[0] == "json: 'A'"
 			assert f.attrs[1] == 'yay'
 		}
 		if f.value == Foo.foo {
-			assert f.attrs[1] == 'json: B'
+			assert f.attrs[1] == "json: 'B'"
 			assert f.attrs[0] == 'foo'
 		}
 	}

@@ -19,9 +19,11 @@ pub fn (c Color) hex() string {
 
 // Synchronized Updates spec, designed to avoid tearing during renders
 // https://gitlab.com/gnachman/iterm2/-/wikis/synchronized-updates-spec
-const bsu = '\x1bP=1s\x1b\\'
+// The alternate `CSI ? 2026 h/l` sequences are preferred when no parameters
+// are passed, since they are correctly interpreted by terminals like screen.
+const bsu = '\x1b[?2026h'
 
-const esu = '\x1bP=2s\x1b\\'
+const esu = '\x1b[?2026l'
 
 // write puts the string `s` into the print buffer.
 @[inline]
@@ -32,16 +34,33 @@ pub fn (mut ctx Context) write(s string) {
 	unsafe { ctx.print_buf.push_many(s.str, s.len) }
 }
 
-// flush displays the accumulated print buffer to the screen.
+// write_to_stdout writes a string to stdout.
+// On Windows, V's standard output path is used, since it converts UTF-8
+// to UTF-16 for consoles, where the code page may not be UTF-8.
 @[inline]
+fn write_to_stdout(s string) {
+	$if windows {
+		print(s)
+		return
+	}
+	C.write(1, s.str, s.len)
+}
+
+// flush displays the accumulated print buffer to the screen.
+@[inline; manualfree]
 pub fn (mut ctx Context) flush() {
 	// TODO: Diff the previous frame against this one, and only render things that changed?
+	if ctx.print_buf.len == 0 {
+		return
+	}
+	// tos() borrows the print buffer; @[manualfree] stops -autofree
+	// from freeing the borrowed string after flush returns.
 	if !ctx.enable_su {
-		C.write(1, ctx.print_buf.data, ctx.print_buf.len)
+		write_to_stdout(unsafe { tos(ctx.print_buf.data, ctx.print_buf.len) })
 	} else {
-		C.write(1, bsu.str, bsu.len)
-		C.write(1, ctx.print_buf.data, ctx.print_buf.len)
-		C.write(1, esu.str, esu.len)
+		write_to_stdout(bsu)
+		write_to_stdout(unsafe { tos(ctx.print_buf.data, ctx.print_buf.len) })
+		write_to_stdout(esu)
 	}
 	ctx.print_buf.clear()
 }
@@ -75,8 +94,10 @@ pub fn (mut ctx Context) hide_cursor() {
 pub fn (mut ctx Context) set_color(c Color) {
 	if ctx.enable_rgb {
 		ctx.write('\x1b[38;2;${int(c.r)};${int(c.g)};${int(c.b)}m')
-	} else {
+	} else if ctx.enable_ansi256 {
 		ctx.write('\x1b[38;5;${rgb2ansi(c.r, c.g, c.b)}m')
+	} else {
+		ctx.write('\x1b[${30 + rgb2basic_ansi(c.r, c.g, c.b)}m')
 	}
 }
 
@@ -85,8 +106,10 @@ pub fn (mut ctx Context) set_color(c Color) {
 pub fn (mut ctx Context) set_bg_color(c Color) {
 	if ctx.enable_rgb {
 		ctx.write('\x1b[48;2;${int(c.r)};${int(c.g)};${int(c.b)}m')
-	} else {
+	} else if ctx.enable_ansi256 {
 		ctx.write('\x1b[48;5;${rgb2ansi(c.r, c.g, c.b)}m')
+	} else {
+		ctx.write('\x1b[${40 + rgb2basic_ansi(c.r, c.g, c.b)}m')
 	}
 }
 
@@ -117,8 +140,28 @@ pub fn (mut ctx Context) clear() {
 // set_window_title sets the string `s` as the window title.
 @[inline]
 pub fn (mut ctx Context) set_window_title(s string) {
+	if !ctx.supports_window_title {
+		return
+	}
 	print('\x1b]0;${s}\x07')
 	flush_stdout()
+}
+
+fn rgb2basic_ansi(r int, g int, b int) int {
+	mut best_index := 0
+	mut best_distance := -1
+	for i in 0 .. 8 {
+		ref := color_table[i]
+		dr := r - int((ref >> 16) & 0xff)
+		dg := g - int((ref >> 8) & 0xff)
+		db := b - int(ref & 0xff)
+		distance := dr * dr + dg * dg + db * db
+		if best_distance == -1 || distance < best_distance {
+			best_distance = distance
+			best_index = i
+		}
+	}
+	return best_index
 }
 
 // draw_point draws a point at position `x`,`y`.

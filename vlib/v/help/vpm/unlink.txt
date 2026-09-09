@@ -1,0 +1,10 @@
+Remove the current project's symlink from VMODULES.
+
+Usage:
+  v unlink
+
+The command looks for `v.mod` in the current directory and its parent directories.
+The `name` field in `v.mod` determines which symlink is removed from VMODULES.
+
+Options:
+  --help, -h   Prints the help menu.

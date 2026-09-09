@@ -12,6 +12,15 @@ fn (p &Parser) known_import(mod string) bool {
 	return mod in p.imports
 }
 
+fn (p &Parser) import_alias_for_mod(mod string) ?string {
+	for alias, imported_mod in p.imports {
+		if imported_mod == mod {
+			return alias
+		}
+	}
+	return none
+}
+
 fn (p &Parser) prepend_mod(name string) string {
 	// println('prepend_mod() name=${name} p.mod=${p.mod} expr_mod=${p.expr_mod}')
 	if p.expr_mod != '' {
@@ -34,16 +43,15 @@ fn (mut p Parser) register_used_import(alias string) {
 }
 
 fn (mut p Parser) register_used_import_for_symbol_name(sym_name string) {
-	short_import_name := sym_name.all_before_last('.').all_after_last('.')
+	mod_name := sym_name.all_before_last('.')
+	short_import_name := mod_name.all_after_last('.')
 	short_symbol_name := sym_name.all_after_last('.')
 	if p.is_imported_symbol(short_symbol_name) {
 		p.imported_symbols_used[short_symbol_name] = true
 	}
-	for alias, mod in p.imports {
-		if mod == short_import_name {
-			p.register_used_import(alias)
-			return
-		}
+	if alias := p.import_alias_for_mod(mod_name) {
+		p.register_used_import(alias)
+		return
 	}
 	p.register_used_import(short_import_name)
 }
@@ -174,6 +182,14 @@ fn (mut p Parser) module_decl() ast.Module {
 				'has_globals' {
 					p.has_globals = true
 				}
+				'strict_map_index' {}
+				'alias' {
+					if !ma.has_arg || ma.kind != .string || ma.arg == '' {
+						p.error_with_pos('module attribute `alias` expects a non-empty path string',
+							ma.pos)
+						return mod_node
+					}
+				}
 				'translated' {
 					p.is_translated = true
 				}
@@ -204,20 +220,20 @@ fn (mut p Parser) import_stmt() ast.Import {
 		p.error_with_pos('`import()` has been deprecated, use `import x` instead', pos)
 		return import_node
 	}
-	mut source_name := p.check_name()
-	if source_name == '' {
+	mut src_name := p.check_name()
+	if src_name == '' {
 		p.error_with_pos('import name can not be empty', pos)
 		return import_node
 	}
 	mut mod_name_arr := []string{}
-	mod_name_arr << source_name
+	mod_name_arr << src_name
 	if import_pos.line_nr != pos.line_nr {
 		p.error_with_pos('`import` statements must be a single line', pos)
 		return import_node
 	}
 	mut mod_alias := mod_name_arr[0]
 	import_node = ast.Import{
-		source_name: source_name
+		source_name: src_name
 		pos:         import_pos.extend(pos)
 		mod_pos:     pos
 		alias_pos:   pos
@@ -237,19 +253,19 @@ fn (mut p Parser) import_stmt() ast.Import {
 		mod_name_arr << submod_name
 		mod_alias = submod_name
 		pos = pos.extend(submod_pos)
-		source_name = mod_name_arr.join('.')
+		src_name = mod_name_arr.join('.')
 		import_node = ast.Import{
-			source_name: source_name
+			source_name: src_name
 			pos:         import_pos.extend(pos)
 			mod_pos:     pos
 			alias_pos:   submod_pos
-			mod:         util.qualify_import(p.pref, source_name, p.file_path)
+			mod:         util.qualify_import(p.pref, src_name, p.file_path)
 			alias:       mod_alias
 		}
 	}
 	if mod_name_arr.len == 1 {
 		import_node = ast.Import{
-			source_name: source_name
+			source_name: src_name
 			pos:         import_node.pos
 			mod_pos:     import_node.mod_pos
 			alias_pos:   import_node.alias_pos
@@ -268,7 +284,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 			return import_node
 		}
 		import_node = ast.Import{
-			source_name: source_name
+			source_name: src_name
 			pos:         import_node.pos.extend(alias_pos)
 			mod_pos:     import_node.mod_pos
 			alias_pos:   alias_pos
@@ -282,14 +298,14 @@ fn (mut p Parser) import_stmt() ast.Import {
 		initial_syms_pos = initial_syms_pos.extend(p.tok.pos())
 		import_node = ast.Import{
 			...import_node
-			source_name: source_name
+			source_name: src_name
 			syms_pos:    initial_syms_pos
 			pos:         import_node.pos.extend(initial_syms_pos)
 		}
 	}
 	pos_t := p.tok.pos()
 	if import_pos.line_nr == pos_t.line_nr {
-		if p.tok.kind !in [.lcbr, .eof, .comment, .semicolon, .key_import] {
+		if p.tok.kind !in [.lcbr, .rcbr, .eof, .comment, .semicolon, .key_import] {
 			p.error_with_pos('cannot import multiple modules at a time', pos_t)
 			return import_node
 		}
@@ -316,16 +332,14 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 		return
 	}
 	if p.tok.kind != .name { // not a valid inner name
-		p.error_with_pos('import syntax error, please specify a valid fn or type name',
-			pos_t)
+		p.error_with_pos('import syntax error, please specify a valid fn or type name', pos_t)
 		return
 	}
 	for p.tok.kind == .name {
 		pos := p.tok.pos()
 		alias := p.check_name()
-		if p.is_imported_symbol(alias) {
-			p.error_with_pos('cannot register symbol `${alias}`, it was already imported',
-				pos)
+		if p.is_imported_symbol(alias) && !(p.pref.is_fmt && p.inside_ct_if_expr) {
+			p.error_with_pos('cannot register symbol `${alias}`, it was already imported', pos)
 			return
 		}
 		p.imported_symbols[alias] = parent.mod + '.' + alias
@@ -350,7 +364,7 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 	p.next()
 }
 
-fn (mut p Parser) rebuild_imported_symbols_matcher(name string) {
+fn (mut p Parser) rebuild_imported_symbols_matcher(_ string) {
 	p.imported_symbols_trie = token.new_keywords_matcher_from_array_trie(p.imported_symbols.keys())
 }
 

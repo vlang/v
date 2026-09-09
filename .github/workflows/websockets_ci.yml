@@ -2,7 +2,10 @@ name: Websockets CI
 
 on:
   push:
+    branches:
+      - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/websockets_ci.yml'
@@ -10,6 +13,7 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/websockets_ci.yml'
@@ -27,7 +31,8 @@ jobs:
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
         run: |
           echo "$VFLAGS"

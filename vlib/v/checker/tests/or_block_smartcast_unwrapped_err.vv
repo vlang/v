@@ -1,0 +1,14 @@
+fn valid_name(name ?string) ! {
+	if name == none {
+		return
+	}
+	name_ := name or { '' }.trim_space()
+	println(name_)
+}
+
+fn propagate_name(name ?string) ?string {
+	if name == none {
+		return none
+	}
+	return name?
+}

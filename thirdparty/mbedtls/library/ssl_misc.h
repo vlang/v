@@ -1351,14 +1351,14 @@ static inline void mbedtls_ssl_handshake_set_state(mbedtls_ssl_context *ssl,
                                                    mbedtls_ssl_states state)
 {
     MBEDTLS_SSL_DEBUG_MSG(3, ("handshake state: %d (%s) -> %d (%s)",
-                              ssl->state, mbedtls_ssl_states_str(ssl->state),
+                              ssl->state, mbedtls_ssl_states_str((mbedtls_ssl_states) ssl->state),
                               (int) state, mbedtls_ssl_states_str(state)));
     ssl->state = (int) state;
 }
 
 static inline void mbedtls_ssl_handshake_increment_state(mbedtls_ssl_context *ssl)
 {
-    mbedtls_ssl_handshake_set_state(ssl, ssl->state + 1);
+    mbedtls_ssl_handshake_set_state(ssl, (mbedtls_ssl_states) (ssl->state + 1));
 }
 
 MBEDTLS_CHECK_RETURN_CRITICAL

@@ -1,0 +1,6 @@
+Name: oracle-duplicate-root-74
+Description: Public duplicate-fragment oracle root
+Version: 1.0.0
+Requires: oracle-duplicate-left-74 oracle-duplicate-right-74
+Libs: -loracle_duplicate_root
+Cflags: -DORACLE_DUPLICATE_ROOT

@@ -6,3 +6,12 @@ fn test_main() {
 	}
 	assert true
 }
+
+fn test_select_accepts_duration_timeout() {
+	v := chan int{}
+	select {
+		_ := <-v {}
+		time.millisecond {}
+	}
+	assert true
+}

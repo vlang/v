@@ -1,0 +1,8 @@
+vlib/v/checker/tests/shared_receiver_mut_interface_err.vv:16:19: error: `Input` incorrectly implements method `event` of interface `Handler`: expected `mut Handler`, not `mut shared Input` for parameter 0
+   14 | fn main() {
+   15 |     mut input := Input{}
+   16 |     take_handler(mut input)
+      |                      ~~~~~
+   17 | }
+Details: main.Handler has `fn event(mut x main.Handler)`
+         main.Input has `fn event(mut input shared main.Input)`

@@ -1,3 +1,17 @@
+vlib/v/checker/tests/generic_fn_generic_name_unresolved_err.vv:3:12: notice: unused parameter: `arg`
+    1 | module main
+    2 | 
+    3 | fn func[T](arg string, val T) int {
+      |            ~~~
+    4 |     return 2
+    5 | }
+vlib/v/checker/tests/generic_fn_generic_name_unresolved_err.vv:3:24: notice: unused parameter: `val`
+    1 | module main
+    2 | 
+    3 | fn func[T](arg string, val T) int {
+      |                        ~~~
+    4 |     return 2
+    5 | }
 vlib/v/checker/tests/generic_fn_generic_name_unresolved_err.vv:8:7: error: a generic fn with generic types, cannot be used outside of another generic fn
     6 | 
     7 | fn main() {

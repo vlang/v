@@ -1,0 +1,14 @@
+vlib/v/checker/tests/interface_method_fn_type_alias_callconv_mismatch_err.vv:20:7: error: `CdeclProvider` incorrectly implements method `callback` of interface `CallbackProvider`: expected return type `fn (int) int`
+   18 |
+   19 | fn main() {
+   20 |     _ := CallbackProvider(CdeclProvider{})
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   21 | }
+Details: main.CallbackProvider has `fn callback(x main.CallbackProvider) fn (int) int`
+         main.CdeclProvider has `fn callback(_ main.CdeclProvider) fn (int) int`
+vlib/v/checker/tests/interface_method_fn_type_alias_callconv_mismatch_err.vv:20:7: error: `CdeclProvider` does not implement interface `CallbackProvider`, cannot cast `CdeclProvider` to interface `CallbackProvider`
+   18 |
+   19 | fn main() {
+   20 |     _ := CallbackProvider(CdeclProvider{})
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   21 | }

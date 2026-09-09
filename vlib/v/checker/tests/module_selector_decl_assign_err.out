@@ -1,0 +1,7 @@
+vlib/v/checker/tests/module_selector_decl_assign_err.vv:4:5: error: non-name `os.args` on left side of `:=`
+    2 | 
+    3 | fn main() {
+    4 |     os.args := []string{}
+      |        ~~~~
+    5 |     println(os.args)
+    6 | }

@@ -6,7 +6,7 @@
  * The Elliptic Curve Diffie-Hellman (ECDH) protocol is an anonymous
  * key agreement protocol allowing two parties to establish a shared
  * secret over an insecure channel. Each party must have an
- * elliptic-curve public–private key pair.
+ * elliptic-curve public private key pair.
  *
  * For more information, see <em>NIST SP 800-56A Rev. 2: Recommendation for
  * Pair-Wise Key Establishment Schemes Using Discrete Logarithm

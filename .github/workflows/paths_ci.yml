@@ -3,7 +3,10 @@ name: Path Testing CI
 on:
   workflow_dispatch:
   push:
+    branches:
+      - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/paths_ci.yml'
@@ -11,6 +14,7 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/paths_ci.yml'
@@ -26,7 +30,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           path: '你好 my $path, @с интервали'
@@ -54,7 +58,7 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           path: '你好 my $path, @с интервали'
           persist-credentials: false
@@ -94,7 +98,7 @@ jobs:
     ####### D:\a\v\v\你好 my $path, @с интервали: No such file or directory
     ## and that happens even for gcc builds, not just tcc ones
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           path: 'path with some $punctuation, and some spaces'
           persist-credentials: false
@@ -104,7 +108,7 @@ jobs:
           dir
           cd 'path with some $punctuation, and some spaces'
           dir
-          .\make.bat -tcc
+          .\makev.bat -tcc
       - name: v doctor
         run: |
           cd 'path with some $punctuation, and some spaces'

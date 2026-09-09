@@ -16,6 +16,7 @@ fn test_main() {
 			[]?int { assert i == 4, '4. ${f.name} is ${type_name}' }
 			else {}
 		}
+
 		i++
 	}
 }

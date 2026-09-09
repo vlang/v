@@ -27,3 +27,22 @@ fn test_static_vars_in_unsafe_blocks() {
 	assert f() == 2
 	dump(f()) // 3
 }
+
+@[unsafe]
+fn next_fib() int {
+	mut static fibs := []int{}
+	if fibs.len == 0 {
+		fibs << 1
+		fibs << 1
+	} else {
+		fibs << fibs[fibs.len - 1] + fibs[fibs.len - 2]
+	}
+	return fibs[fibs.len - 1]
+}
+
+fn test_static_vars_with_array_initializers() {
+	assert unsafe { next_fib() } == 1
+	assert unsafe { next_fib() } == 2
+	assert unsafe { next_fib() } == 3
+	assert unsafe { next_fib() } == 5
+}

@@ -11,7 +11,8 @@ fn test_strip_margins_no_tabs() {
 }
 
 fn test_strip_margins_text_before() {
-	text_before := ['There is text', 'before the delimiter', 'that should be removed as well'].join('\n')
+	text_before :=
+		['There is text', 'before the delimiter', 'that should be removed as well'].join('\n')
 	text_before_stripped := 'There is text
 	f lasj  asldfj j lksjdf |before the delimiter
 	Which is removed hello  |that should be removed as well'.strip_margin()
@@ -67,7 +68,8 @@ fn test_strip_margins_multiple_blank_lines() {
 }
 
 fn test_strip_margins_end_newline() {
-	end_with_newline := ['This line will end with a newline', 'Something cool or something.', ''].join('\n')
+	end_with_newline :=
+		['This line will end with a newline', 'Something cool or something.', ''].join('\n')
 	end_with_newline_stripped := 'This line will end with a newline
 	                             |Something cool or something.
 
@@ -76,14 +78,16 @@ fn test_strip_margins_end_newline() {
 }
 
 fn test_strip_margins_space_delimiter() {
-	space_delimiter := ['Using a white-space char will', 'revert back to default behavior.'].join('\n')
+	space_delimiter :=
+		['Using a white-space char will', 'revert back to default behavior.'].join('\n')
 	space_delimiter_stripped := 'Using a white-space char will
 		|revert back to default behavior.'.strip_margin_custom(`\n`)
 	assert space_delimiter == space_delimiter_stripped
 }
 
 fn test_strip_margins_crlf() {
-	crlf := ["This string's line endings have CR as well as LFs.", 'This should pass', 'Definitely'].join('\r\n')
+	crlf :=
+		["This string's line endings have CR as well as LFs.", 'This should pass', 'Definitely'].join('\r\n')
 	crlf_stripped := "This string's line endings have CR as well as LFs.\r
 	                 |This should pass\r
 					 |Definitely".strip_margin()

@@ -31,17 +31,640 @@ fn test_version_flag() {
 	v_verbose_cmd_res := os.execute_opt('${vexe} -v run ${example_path}')!.output
 	assert v_verbose_cmd_res != v_ver_cmd_res
 	assert v_verbose_cmd_res.contains('v.pref.lookup_path:')
+		|| v_verbose_cmd_res.contains('Running macOS V3 compiler in process:')
 
 	v_verbose_cmd_with_additional_args_res := os.execute_opt('${vexe} -g -v run ${example_path}')!.output
 	assert v_verbose_cmd_with_additional_args_res != v_ver_cmd_res
 	assert v_verbose_cmd_with_additional_args_res.contains('v.pref.lookup_path:')
 }
 
+fn test_cross_compile_keeps_explicit_cc() {
+	target_os := if pref.get_host_os() == .linux { 'macos' } else { 'linux' }
+	custom_cc := 'cosmocc'
+
+	first, _ := pref.parse_args_and_show_errors(['help'], ['', '-cc', custom_cc, '-os', target_os],
+		false)
+	assert first.ccompiler_set_by_flag
+	assert first.ccompiler == custom_cc
+
+	second, _ := pref.parse_args_and_show_errors(['help'],
+		['', '-os', target_os, '-cc', custom_cc], false)
+	assert second.ccompiler_set_by_flag
+	assert second.ccompiler == custom_cc
+}
+
+fn test_vexe_path_normalizes_relative_env_path() {
+	old_wd := os.getwd()
+	old_vexe := os.getenv_opt('VEXE')
+	test_root := os.join_path(os.vtmp_dir(), 'pref_vexe_path_relative_env_test')
+	os.rmdir_all(test_root) or {}
+	os.mkdir_all(test_root)!
+	fake_vexe := os.join_path(test_root, 'v')
+	os.write_file(fake_vexe, '')!
+	defer {
+		os.chdir(old_wd) or {}
+		if vexe_env := old_vexe {
+			os.setenv('VEXE', vexe_env, true)
+		} else {
+			os.unsetenv('VEXE')
+		}
+		os.rmdir_all(test_root) or {}
+	}
+	os.chdir(test_root)!
+	os.setenv('VEXE', './v', true)
+	expected_vexe := os.real_path(fake_vexe)
+	assert pref.vexe_path() == expected_vexe
+	assert os.getenv('VEXE') == expected_vexe
+}
+
+fn test_mac_is_alias_for_macos() {
+	os_kind := pref.os_from_string('mac') or {
+		assert false, err.msg()
+		return
+	}
+	assert os_kind == .macos
+	assert pref.OS.macos.is_target_of('mac')
+	assert !pref.OS.linux.is_target_of('mac')
+}
+
+fn test_bsd_target_matches_macos_and_bsd_systems() {
+	for os_kind in [pref.OS.macos, .freebsd, .openbsd, .netbsd, .dragonfly] {
+		assert os_kind.is_target_of('bsd')
+	}
+	assert !pref.OS.linux.is_target_of('bsd')
+	assert !pref.OS.windows.is_target_of('bsd')
+}
+
+fn test_disable_explicit_mutability_flag() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['-disable-explicit-mutability', target], false)
+	assert prefs.disable_explicit_mutability
+	assert prefs.build_options.contains('-disable-explicit-mutability')
+
+	prefs2, _ := pref.parse_args_and_show_errors([], ['--disable-explicit-mutability', target],
+		false)
+	assert prefs2.disable_explicit_mutability
+	assert prefs2.build_options.contains('--disable-explicit-mutability')
+}
+
+fn test_profile_flag_does_not_consume_direct_compile_target() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-profile', target], false)
+	assert command == target
+	assert prefs.path == target
+	assert prefs.is_prof
+	assert prefs.profile_file == '-'
+}
+
+fn test_profile_flag_does_not_consume_run_command() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-profile', 'run', target], false)
+	assert command == 'run'
+	assert prefs.path == target
+	assert prefs.is_run
+	assert prefs.is_prof
+	assert prefs.profile_file == '-'
+}
+
+fn test_profile_flag_still_accepts_explicit_output_file() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-profile', 'profile.txt', target],
+		false)
+	assert command == target
+	assert prefs.path == target
+	assert prefs.is_prof
+	assert prefs.profile_file == 'profile.txt'
+}
+
+fn test_launcher_leaves_flags_after_a_known_external_command_for_the_tool() {
+	// Regression test for https://github.com/vlang/v/issues/28114 :
+	// `v missdoc -e main` must not treat `-e` as V's own eval-argument flag.
+	// In launcher mode, everything after a known external command belongs to that tool.
+	prefs, command := pref.parse_args_for_launcher(['missdoc'], ['missdoc', '-r', '-e', 'main',
+		'.'], false)
+	assert command == 'missdoc'
+	assert !prefs.is_eval_argument
+	assert prefs.eval_argument == ''
+}
+
+fn test_launcher_reports_external_command_index() {
+	_, command, command_idx := pref.parse_args_for_launcher_with_command_index([
+		'self',
+	], ['-exclude', 'x2', 'self', '-o', 'vnew'], false)
+	assert command == 'self'
+	assert command_idx == 2
+	assert pref.option_may_consume_value('-exclude')
+	assert pref.option_may_consume_value('-profile')
+	assert !pref.option_may_consume_value('-g')
+}
+
+fn test_non_launcher_parse_keeps_v_flags_after_the_command() {
+	// vfmt and similar tools recognize their own command name (`fmt`), but still rely on the
+	// general V preference flags that follow it. The default parser (non-launcher mode) must
+	// keep interpreting them, so passthrough stays scoped to the `v` launcher; see the review of
+	// vlang/v#28114.
+	translated, cmd1 := pref.parse_args_and_show_errors(['fmt'],
+		['fmt', '-translated', 'generated.v'], false)
+	assert cmd1 == 'fmt'
+	assert translated.translated
+
+	crossos, cmd2 := pref.parse_args_and_show_errors(['fmt'], ['fmt', '-os', 'linux', 'source.v'],
+		false)
+	assert cmd2 == 'fmt'
+	assert crossos.os == .linux
+}
+
+fn new_wasm_preferences() pref.Preferences {
+	return pref.Preferences{
+		backend: .wasm
+		os:      .browser
+		arch:    .wasm32
+	}
+}
+
+fn new_c_preferences() pref.Preferences {
+	return pref.Preferences{
+		backend: .c
+		os:      .linux
+		arch:    .amd64
+	}
+}
+
+fn test_c_backend_filters_backend_specific_files() {
+	prefs := new_c_preferences()
+	dir := os.join_path(os.vtmp_dir(), 'c_backend_filters')
+	filtered := prefs.should_compile_filtered_files(dir, [
+		'mod.c.v',
+		'mod.js.v',
+		'mod.v',
+		'mod.wasm.v',
+	])
+	assert filtered == [
+		os.join_path(dir, 'mod.c.v'),
+		os.join_path(dir, 'mod.v'),
+	]
+}
+
+fn test_c_backend_skips_modules_with_only_non_c_variants() {
+	prefs := new_c_preferences()
+	filtered := prefs.should_compile_filtered_files('sus', ['sus.js.v', 'sus.wasm.v'])
+	assert filtered.len == 0
+}
+
+fn test_wasm_backend_filters_backend_specific_files() {
+	prefs := new_wasm_preferences()
+	dir := os.join_path(os.vtmp_dir(), 'wasm_backend_filters')
+	filtered := prefs.should_compile_filtered_files(dir, [
+		'mod.c.v',
+		'mod.js.v',
+		'mod.v',
+		'mod.wasm.v',
+	])
+	assert filtered == [
+		os.join_path(dir, 'mod.v'),
+		os.join_path(dir, 'mod.wasm.v'),
+	]
+}
+
+fn test_wasm_backend_skips_modules_with_only_c_and_js_variants() {
+	prefs := new_wasm_preferences()
+	filtered := prefs.should_compile_filtered_files('sus', ['sus.c.v', 'sus.js.v'])
+	assert filtered.len == 0
+}
+
+fn filtered_file_names_for_os(os_kind pref.OS, files []string) []string {
+	prefs := pref.Preferences{
+		os: os_kind
+	}
+	dir := os.join_path(os.vtmp_dir(), 'environment_specific_files')
+	mut res := []string{}
+	for file in prefs.should_compile_filtered_files(dir, files) {
+		res << os.base(file)
+	}
+	return res
+}
+
+fn test_bsd_specific_files_are_filtered_by_target_os() {
+	for os_kind in [pref.OS.macos, .freebsd, .openbsd, .netbsd, .dragonfly] {
+		assert filtered_file_names_for_os(os_kind, ['mod_bsd.c.v', 'mod_bsd.v']) == [
+			'mod_bsd.c.v',
+			'mod_bsd.v',
+		]
+	}
+	assert filtered_file_names_for_os(.linux, ['mod_bsd.c.v', 'mod_bsd.v']).len == 0
+	assert filtered_file_names_for_os(.windows, ['mod_bsd.c.v', 'mod_bsd.v']).len == 0
+}
+
+fn test_bsd_specific_files_prefer_more_specific_variants() {
+	mut files := [
+		'main.v',
+		'something_default.c.v',
+		'something_windows.c.v',
+	]
+	assert filtered_file_names_for_os(.freebsd, files) == ['main.v', 'something_default.c.v']
+
+	files << 'something_nix.c.v'
+	assert filtered_file_names_for_os(.freebsd, files) == ['main.v', 'something_nix.c.v']
+
+	files << 'something_bsd.c.v'
+	assert filtered_file_names_for_os(.freebsd, files) == ['main.v', 'something_bsd.c.v']
+
+	files << 'something_freebsd.c.v'
+	assert filtered_file_names_for_os(.freebsd, files) == ['main.v', 'something_freebsd.c.v']
+}
+
+fn test_bsd_specific_files_prefer_darwin_on_macos() {
+	files := [
+		'main.v',
+		'something_nix.c.v',
+		'something_bsd.v',
+		'something_darwin.v',
+	]
+	assert filtered_file_names_for_os(.macos, files) == ['main.v', 'something_darwin.v']
+}
+
+fn test_explicit_gc_mode_is_forwarded_to_build_module() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	for gc_mode in ['none', 'boehm', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt',
+		'boehm_leak'] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['-usecache', '-gc', gc_mode, target],
+			false)
+		assert prefs.build_options.contains('-gc ${gc_mode}')
+	}
+}
+
+fn issue74_cache_path_for_ldflags(ldflags string) (string, pref.PkgConfigMode) {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	mut args := ['-cc', 'gcc']
+	if ldflags != '' {
+		args << ['-ldflags', ldflags]
+	}
+	args << target
+	mut prefs, _ := pref.parse_args_and_show_errors([], args, false)
+	path := prefs.cache_manager.mod_postfix_with_key2cpath('issue74-cache-salt', '.o',
+		'same-source')
+	return path, prefs.pkgconfig_mode
+}
+
+fn test_pkgconfig_mode_salts_cache_without_salt_for_all_ldflags() {
+	cache_root := os.join_path(os.vtmp_dir(), 'issue74_pkgconfig_mode_cache_${os.getpid()}')
+	old_cache := os.getenv_opt('VCACHE')
+	os.setenv('VCACHE', cache_root, true)
+	defer {
+		if cache := old_cache {
+			os.setenv('VCACHE', cache, true)
+		} else {
+			os.unsetenv('VCACHE')
+		}
+		os.rmdir_all(cache_root) or {}
+	}
+
+	dynamic_path, dynamic_mode := issue74_cache_path_for_ldflags('')
+	dynamic_link_path, dynamic_link_mode := issue74_cache_path_for_ldflags('-Wl,--as-needed')
+	static_path, static_mode := issue74_cache_path_for_ldflags('-static')
+	static_link_path, static_link_mode := issue74_cache_path_for_ldflags('-static -Wl,--as-needed')
+
+	assert dynamic_mode == .dynamic
+	assert dynamic_link_mode == .dynamic
+	assert static_mode == .static_
+	assert static_link_mode == .static_
+	assert dynamic_path == dynamic_link_path
+	assert static_path == static_link_path
+	assert dynamic_path != static_path
+}
+
+fn test_v_compiler_targets_default_to_no_gc() {
+	for target in [
+		os.join_path(vroot, 'cmd', 'v'),
+		os.join_path(vroot, 'cmd', 'v') + os.path_separator,
+		os.join_path(vroot, 'cmd', 'v', 'v.v'),
+		os.join_path(vroot, 'cmd', 'tools', 'vfmt.v'),
+	] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', target], false)
+		assert prefs.gc_mode == .no_gc
+		assert prefs.build_options.join(' ').contains('-gc none')
+	}
+}
+
+fn test_v_compiler_targets_keep_explicit_gc_selection() {
+	target := os.join_path(vroot, 'cmd', 'v', 'v.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'boehm', target], false)
+	assert prefs.gc_mode == .boehm_full_opt
+	assert prefs.build_options.contains('-gc boehm')
+}
+
+fn test_cross_compile_defaults_windows_to_the_cross_compiler_arch() {
+	if pref.get_host_os() == .windows {
+		return
+	}
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-os', 'windows', target], false)
+	assert prefs.arch == .amd64
+	assert prefs.ccompiler == 'x86_64-w64-mingw32-gcc'
+}
+
+fn test_cross_compile_windows_m32_uses_i386_arch_and_compiler() {
+	if pref.get_host_os() == .windows {
+		return
+	}
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-os', 'windows', '-m32', target], false)
+	assert !prefs.m64
+	assert prefs.arch == .i386
+	assert prefs.ccompiler == 'i686-w64-mingw32-gcc'
+	assert prefs.build_options.contains('-m32')
+}
+
+fn test_cross_compile_defaults_linux_to_amd64() {
+	if pref.get_host_os() == .linux {
+		return
+	}
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-os', 'linux', target], false)
+	assert prefs.arch == .amd64
+	assert prefs.ccompiler == 'clang'
+}
+
+fn test_cross_compile_infers_android_arch_from_vcross_compiler_name() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	old_cross_compiler := os.getenv('VCROSS_COMPILER_NAME')
+	defer {
+		os.setenv('VCROSS_COMPILER_NAME', old_cross_compiler, true)
+	}
+	for compiler_name, expected_arch in {
+		'aarch64-linux-android21-clang':    pref.Arch.arm64
+		'armv7a-linux-androideabi21-clang': pref.Arch.arm32
+		'i686-linux-android21-clang':       pref.Arch.i386
+		'x86_64-linux-android21-clang':     pref.Arch.amd64
+	} {
+		os.setenv('VCROSS_COMPILER_NAME', compiler_name, true)
+		prefs, _ := pref.parse_args_and_show_errors([], ['', '-os', 'android', target], false)
+		assert prefs.arch == expected_arch
+		assert prefs.ccompiler == compiler_name
+	}
+}
+
+fn test_musl_still_defaults_to_boehm_gc() {
+	// Regression test for https://github.com/vlang/v/issues/27090 .
+	// Alpine/musl programs must keep the boehm GC by default; otherwise
+	// long-running allocations grow without bound (see the issue's repro).
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-musl', target], false)
+	assert prefs.is_musl
+	assert prefs.gc_mode == .boehm_full_opt
+}
+
+fn test_prealloc_defaults_to_no_gc() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-prealloc', target], false)
+	assert prefs.prealloc
+	assert prefs.gc_mode == .no_gc
+}
+
+fn test_macos_and_linux_v_compiler_target_defaults_to_prealloc() {
+	if pref.get_host_os() !in [.macos, .linux] {
+		return
+	}
+	for target in [os.join_path(vroot, 'cmd', 'v'), os.join_path(vroot, 'vlib', 'v3', 'v3.v')] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', target], false)
+		assert prefs.building_v
+		assert prefs.prealloc
+		assert prefs.gc_mode == .no_gc
+	}
+}
+
+fn test_linux_explicit_tinyc_v_compiler_target_skips_prealloc() {
+	if pref.get_host_os() != .linux {
+		return
+	}
+	target := os.join_path(vroot, 'cmd', 'v')
+	for compiler in ['tcc', 'tinyc'] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', '-cc', compiler, target], false)
+		assert prefs.building_v
+		assert prefs.ccompiler_type == .tinyc
+		assert !prefs.prealloc
+		assert '-prealloc' !in prefs.build_options
+	}
+}
+
+fn test_macos_explicit_tinyc_v_compiler_target_keeps_prealloc() {
+	if pref.get_host_os() != .macos {
+		return
+	}
+	target := os.join_path(vroot, 'cmd', 'v')
+	for compiler in ['tcc', 'tinyc'] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', '-cc', compiler, target], false)
+		assert prefs.building_v
+		assert prefs.ccompiler_type == .tinyc
+		assert prefs.prealloc
+		assert '-prealloc' in prefs.build_options
+	}
+}
+
+fn test_prealloc_overrides_explicit_gc_selection() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'boehm', '-prealloc', target],
+		false)
+	assert prefs.prealloc
+	assert prefs.gc_mode == .no_gc
+	assert 'gcboehm' !in prefs.compile_defines
+	assert prefs.build_options.join(' ').contains('-gc none')
+}
+
+fn test_no_gc_thread_local_alloc_prefers_source_bundled_boehm() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-d', 'no_gc_thread_local_alloc', target],
+		false)
+	assert prefs.gc_mode == .boehm_full_opt
+	assert 'no_gc_thread_local_alloc' in prefs.compile_defines_all
+	assert 'use_bundled_libgc' in prefs.compile_defines_all
+	assert !prefs.ccompiler.contains('tcc')
+	assert prefs.build_options.contains('-d use_bundled_libgc')
+}
+
+fn test_no_gc_thread_local_alloc_does_not_force_boehm_with_gc_none() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'none', '-d',
+		'no_gc_thread_local_alloc', target], false)
+	assert prefs.gc_mode == .no_gc
+	assert 'no_gc_thread_local_alloc' in prefs.compile_defines_all
+	assert 'use_bundled_libgc' !in prefs.compile_defines_all
+}
+
+fn test_no_gc_thread_local_alloc_keeps_explicit_dynamic_boehm() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-d', 'dynamic_boehm', '-d',
+		'no_gc_thread_local_alloc', target], false)
+	assert prefs.gc_mode == .boehm_full_opt
+	assert 'dynamic_boehm' in prefs.compile_defines_all
+	assert 'use_bundled_libgc' !in prefs.compile_defines_all
+}
+
+fn stale_windows_gc_prefs(gc_set_by_flag bool) pref.Preferences {
+	mut prefs := pref.Preferences{
+		os:                  .windows
+		ccompiler_type:      .msvc
+		gc_mode:             .boehm_full_opt
+		gc_set_by_flag:      gc_set_by_flag
+		compile_defines:     ['gcboehm', 'gcboehm_full', 'gcboehm_opt', 'custom']
+		compile_defines_all: ['gcboehm', 'gcboehm_full', 'gcboehm_opt', 'custom']
+		compile_values:      map[string]string{}
+		build_options:       ['-prod', '-d gcboehm', '-d gcboehm_full', '-d gcboehm_opt']
+	}
+	prefs.compile_values['gcboehm'] = 'true'
+	prefs.compile_values['gcboehm_full'] = 'true'
+	prefs.compile_values['gcboehm_opt'] = 'true'
+	prefs.compile_values['custom'] = 'true'
+	return prefs
+}
+
+fn test_windows_msvc_gc_defaults_are_cleared_after_compiler_resolution() {
+	mut prefs := stale_windows_gc_prefs(false)
+
+	prefs.normalize_gc_defaults_for_resolved_ccompiler()
+
+	assert prefs.gc_mode == .no_gc
+	assert prefs.build_options == ['-prod', '-gc', 'none']
+	assert prefs.compile_defines == ['custom']
+	assert prefs.compile_defines_all == ['custom']
+	assert prefs.compile_values == {
+		'custom': 'true'
+	}
+}
+
+fn test_windows_msvc_gc_defaults_keep_explicit_gc_selection() {
+	mut prefs := stale_windows_gc_prefs(true)
+	prefs.build_options = ['-prod', '-gc', 'boehm', '-d gcboehm', '-d gcboehm_full', '-d gcboehm_opt']
+
+	prefs.normalize_gc_defaults_for_resolved_ccompiler()
+
+	assert prefs.gc_mode == .boehm_full_opt
+	assert prefs.build_options == ['-prod', '-gc', 'boehm', '-d gcboehm', '-d gcboehm_full',
+		'-d gcboehm_opt']
+	assert prefs.compile_defines == ['gcboehm', 'gcboehm_full', 'gcboehm_opt', 'custom']
+	assert prefs.compile_defines_all == ['gcboehm', 'gcboehm_full', 'gcboehm_opt', 'custom']
+	assert prefs.compile_values == {
+		'custom':       'true'
+		'gcboehm':      'true'
+		'gcboehm_full': 'true'
+		'gcboehm_opt':  'true'
+	}
+}
+
+fn test_m32_sets_i386_arch_when_not_explicitly_set() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-m32', target], false)
+	assert !prefs.m64
+	assert prefs.arch == .i386
+	assert prefs.build_options.contains('-m32')
+}
+
+fn test_m32_does_not_override_explicit_arch() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-arch', 'amd64', '-m32', target], false)
+	assert !prefs.m64
+	assert prefs.arch == .amd64
+	assert prefs.build_options.contains('-m32')
+}
+
+fn test_v3_memory_limit_passthrough_flags_are_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	for flag in ['-no-memory-limit', '--no-memory-limit'] {
+		prefs, command := pref.parse_args_and_show_errors([], [flag, target], false)
+		assert command == target
+		assert flag !in prefs.build_options
+	}
+}
+
+fn test_old_compiler_flag_is_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-old-compiler', target], false)
+	assert command == target
+	assert prefs.old_compiler
+	assert '-old-compiler' !in prefs.build_options
+}
+
+fn test_new_compiler_flag_is_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-new-compiler', target], false)
+	assert command == target
+	assert prefs.new_compiler
+	assert !prefs.old_compiler
+	assert '-new-compiler' !in prefs.build_options
+}
+
+fn test_fastc_backend_selects_v3_driver() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'fastc', target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert prefs.backend_set_by_flag
+	assert prefs.is_fastc
+	assert prefs.new_compiler
+	assert prefs.build_options.contains('-b fastc')
+}
+
+fn test_later_backend_overrides_fastc_v3_selection() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'fastc', '-b', 'c', target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert !prefs.is_fastc
+	assert !prefs.new_compiler
+}
+
+fn test_final_fastc_backend_selects_v3_driver() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'c', '-b', 'fastc', target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert prefs.is_fastc
+	assert prefs.new_compiler
+}
+
+fn test_explicit_new_compiler_survives_backend_override() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-new-compiler', '-b', 'fastc', '-b',
+		'c', target], false)
+	assert command == target
+	assert !prefs.is_fastc
+	assert prefs.new_compiler
+}
+
+fn test_repeated_backend_flags_preserve_final_fastc_selection() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'fastc', '-b', 'c', '-b', 'fastc',
+		target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert prefs.is_fastc
+	assert prefs.new_compiler
+}
+
+fn test_v3_checker_fixture_flag_is_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	for flag in ['-checker-fixture', '-macos-v3-compat-c99'] {
+		prefs, command := pref.parse_args_and_show_errors([], [flag, target], false)
+		assert command == target
+		assert flag !in prefs.build_options
+	}
+}
+
+fn test_compact_boolean_define_is_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-dfeature', target], false)
+	assert command == target
+	assert prefs.compile_values['feature'] == 'true'
+	assert 'feature' in prefs.compile_defines
+	assert prefs.build_options.contains('-d feature')
+}
+
 fn test_v_cmds_and_flags() {
 	build_cmd_res := os.execute('${vexe} build ${vroot}/examples/hello_world.v')
 	assert build_cmd_res.output.trim_space() == 'Use `v ${vroot}/examples/hello_world.v` instead.'
 
-	too_many_targets_res := os.execute('${vexe} ${vroot}/examples/hello_world.v ${vroot}/examples/fizz_buzz.v')
+	too_many_targets_res :=
+		os.execute('${vexe} ${vroot}/examples/hello_world.v ${vroot}/examples/fizz_buzz.v')
 	assert too_many_targets_res.output.trim_space() == 'Too many targets. Specify just one target: <target.v|target_directory>.'
 
 	unknown_arg_res := os.execute('${vexe} -xyz')
@@ -50,11 +673,74 @@ fn test_v_cmds_and_flags() {
 	unknown_arg_for_cmd_res := os.execute('${vexe} build-module -xyz ${vroot}/vlib/math')
 	assert unknown_arg_for_cmd_res.output.trim_space() == 'Unknown argument `-xyz` for command `build-module`'
 
+	unsupported_skip_builtin_res :=
+		os.execute('${vexe} --skip-builtin ${vroot}/examples/hello_world.v')
+	assert unsupported_skip_builtin_res.exit_code == 1
+	assert unsupported_skip_builtin_res.output.trim_space() == 'Unknown argument `--skip-builtin`'
+
+	unsupported_hooks_res := os.execute('${vexe} -fhooks output ${vroot}/examples/hello_world.v')
+	assert unsupported_hooks_res.exit_code == 1
+	assert unsupported_hooks_res.output.trim_space() == 'Unknown argument `-fhooks`'
+
+	unsupported_os_none_res := os.execute('${vexe} -os none ${vroot}/examples/hello_world.v')
+	assert unsupported_os_none_res.exit_code == 1
+	assert unsupported_os_none_res.output.trim_space() == 'unknown operating system target `none`'
+
+	eval_removed_message := 'The eval backend has been removed.'
+	eval_flag_res := os.execute('${vexe} -eval ${vroot}/examples/hello_world.v')
+	assert eval_flag_res.exit_code == 1
+	assert eval_flag_res.output.trim_space() == eval_removed_message
+
+	eval_backend_res := os.execute('${vexe} -backend eval ${vroot}/examples/hello_world.v')
+	assert eval_backend_res.exit_code == 1
+	assert eval_backend_res.output.trim_space() == eval_removed_message
+
+	interpret_flag_res := os.execute('${vexe} -interpret ${vroot}/examples/hello_world.v')
+	assert interpret_flag_res.exit_code == 1
+	assert interpret_flag_res.output.trim_space() == eval_removed_message
+
+	interpret_command_res := os.execute('${vexe} interpret ${vroot}/examples/hello_world.v')
+	assert interpret_command_res.exit_code == 1
+	assert interpret_command_res.output.trim_space() == eval_removed_message
+
 	no_run_files_res := os.execute('${vexe} run')
 	assert no_run_files_res.output.trim_space() == 'v run: no v files listed'
 
 	no_bm_files_res := os.execute('${vexe} build-module')
 	assert no_bm_files_res.output.trim_space() == 'v build-module: no module specified'
+}
+
+fn test_build_command_compiles_vsh_without_running_it() {
+	test_dir := os.join_path(os.vtmp_dir(), 'v_pref_build_vsh_${os.getpid()}')
+	os.rmdir_all(test_dir) or {}
+	os.mkdir_all(test_dir)!
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	script_path := os.join_path(test_dir, 'build_only.vsh')
+	marker_path := os.join_path(test_dir, 'marker.txt')
+	mut exe_path := os.join_path(test_dir, 'build_only')
+	$if windows {
+		exe_path += '.exe'
+	}
+	os.write_file(script_path, "import os
+
+fn main() {
+	marker_path := os.join_path(@DIR, 'marker.txt')
+	os.write_file(marker_path, 'ran') or { panic(err) }
+	println('ran')
+}
+")!
+	build_res := os.execute('${os.quoted_path(vexe)} -silent build ${os.quoted_path(script_path)}')
+	assert build_res.exit_code == 0, build_res.output
+	assert build_res.output == ''
+	assert !os.exists(marker_path)
+	assert os.is_file(exe_path)
+
+	run_res := os.execute(os.quoted_path(exe_path))
+	assert run_res.exit_code == 0, run_res.output
+	assert run_res.output.trim_space() == 'ran'
+	assert os.read_file(marker_path)! == 'ran'
 }
 
 const tfile = os.join_path(os.vtmp_dir(), 'unknown_options_output.c')
@@ -63,13 +749,15 @@ fn test_unknown_option_flags_no_run() {
 	os.chdir(os.dir(@VEXE))!
 	os.rm(tfile) or {}
 
-	res1 := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(tfile)} examples/hello_world.v --an-unknown-option')
+	res1 :=
+		os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(tfile)} examples/hello_world.v --an-unknown-option')
 	assert res1.exit_code == 1, res1.output
 	assert res1.output.starts_with('Unknown argument')
 	assert res1.output.contains('--an-unknown-option')
 	assert !os.exists(tfile)
 
-	res2 := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(tfile)} --an-unknown-option examples/hello_world.v')
+	res2 :=
+		os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(tfile)} --an-unknown-option examples/hello_world.v')
 	assert res2.exit_code == 1, res2.output
 	assert res2.output.starts_with('Unknown argument')
 	assert res2.output.contains('--an-unknown-option')
@@ -77,20 +765,192 @@ fn test_unknown_option_flags_no_run() {
 }
 
 fn test_unknown_option_flags_with_run() {
-	res_run_o := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(tfile)} run examples/hello_world.v --an-unknown-option')
+	res_run_o :=
+		os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(tfile)} run examples/hello_world.v --an-unknown-option')
 	assert res_run_o.exit_code == 0, res_run_o.output
 	assert res_run_o.output == '' // because of -o, there should not be an actual run, since compilation stopped after generating the .c file
 	assert os.exists(tfile)
 	os.rm(tfile) or {}
 
-	res_run_no_o_unknown_before_run := os.execute('${os.quoted_path(@VEXE)} --an-unknown-option run examples/hello_world.v ')
+	res_run_no_o_unknown_before_run :=
+		os.execute('${os.quoted_path(@VEXE)} --an-unknown-option run examples/hello_world.v ')
 	assert res_run_no_o_unknown_before_run.exit_code == 1, res_run_no_o_unknown_before_run.output
 	assert res_run_no_o_unknown_before_run.output.starts_with('Unknown argument')
 	assert res_run_no_o_unknown_before_run.output.contains('--an-unknown-option')
 	assert !os.exists(tfile)
 
-	res_run_no_o := os.execute('${os.quoted_path(@VEXE)} run examples/hello_world.v --an-unknown-option')
+	res_run_no_o :=
+		os.execute('${os.quoted_path(@VEXE)} run examples/hello_world.v --an-unknown-option')
 	assert res_run_no_o.exit_code == 0, res_run_no_o.output
 	assert res_run_no_o.output.trim_space() == 'Hello, World!'
 	assert !os.exists(tfile)
+}
+
+fn test_missing_explicit_ccompiler_reports_error() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	missing_cc := 'missing_compiler_17126_for_pref_test'
+	output := os.join_path(os.vtmp_dir(), 'missing_explicit_ccompiler_output')
+	mut expected_output := output
+	$if windows {
+		expected_output += '.exe'
+	}
+	os.rm(expected_output) or {}
+	res :=
+		os.execute('${os.quoted_path(@VEXE)} -cc ${missing_cc} -o ${os.quoted_path(output)} ${os.quoted_path(target)}')
+	assert res.exit_code != 0
+	assert res.output.contains(missing_cc), res.output
+	assert res.output.to_lower().contains('not found') || res.output.to_lower().contains('missing'), res.output
+
+	assert !os.exists(expected_output)
+}
+
+fn test_generate_c_project_flag_parsing() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['-generate-c-project', 'cproj', target], false)
+	assert prefs.generate_c_project == 'cproj'
+	assert prefs.use_cache == false
+}
+
+fn test_generate_c_project_creates_build_files() {
+	output_dir := os.join_path(os.vtmp_dir(), 'v_generate_c_project_json')
+	os.rmdir_all(output_dir) or {}
+	defer {
+		os.rmdir_all(output_dir) or {}
+	}
+	target := os.join_path(vroot, 'examples', 'json.v')
+	cmd := '${os.quoted_path(vexe)} -generate-c-project ${os.quoted_path(output_dir)} ${os.quoted_path(target)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, res.output
+	for rel_path in ['json.c', 'build_command.txt', 'build.sh', 'build.bat', 'Makefile'] {
+		assert os.is_file(os.join_path(output_dir, rel_path))
+	}
+	build_command := os.read_file(os.join_path(output_dir, 'build_command.txt')) or { panic(err) }
+	generated_c_path := os.join_path(output_dir, 'json.c')
+	normalized_build_command := normalized_build_path(build_command)
+	assert normalized_build_command.contains(normalized_build_path(generated_c_path))
+		|| normalized_build_command.contains(normalized_build_path(os.short_path(generated_c_path)))
+	assert !build_command.contains('cJSON.c')
+	assert !build_command.contains('.tmp.c')
+	assert !build_command.contains('.module.')
+}
+
+fn normalized_build_path(path string) string {
+	mut normalized := path.replace('\\', '/')
+	for normalized.contains('//') {
+		normalized = normalized.replace('//', '/')
+	}
+	return normalized
+}
+
+fn test_output_flag_accepts_directory_path() {
+	output_dir := os.join_path(os.vtmp_dir(), 'v_output_flag_directory')
+	os.rmdir_all(output_dir) or {}
+	defer {
+		os.rmdir_all(output_dir) or {}
+	}
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	output_arg := output_dir + os.path_separator
+	res :=
+		os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(output_arg)} ${os.quoted_path(target)}')
+	assert res.exit_code == 0, res.output
+	assert os.is_dir(output_dir)
+	mut expected_output := os.join_path(output_dir, 'hello_world')
+	$if windows {
+		expected_output += '.exe'
+	}
+	assert os.is_file(expected_output)
+}
+
+fn test_tcc_shared_builds_disable_backtraces() {
+	mut shared_prefs := &pref.Preferences{
+		path:      'libfoo.v'
+		is_shared: true
+		ccompiler: 'tinyc'
+	}
+	shared_prefs.fill_with_defaults()
+	assert 'no_backtrace' in shared_prefs.compile_defines_all
+
+	mut regular_prefs := &pref.Preferences{
+		path:                  'main.v'
+		os:                    .linux
+		arch:                  .amd64
+		ccompiler:             'tinyc'
+		ccompiler_set_by_flag: true
+	}
+	regular_prefs.fill_with_defaults()
+	assert 'no_backtrace' !in regular_prefs.compile_defines_all
+}
+
+fn test_macos_arm64_tcc_builds_disable_backtraces() {
+	mut prefs := &pref.Preferences{
+		path:                  'main.v'
+		os:                    .macos
+		arch:                  .arm64
+		ccompiler:             'tinyc'
+		ccompiler_set_by_flag: true
+	}
+	prefs.fill_with_defaults()
+	assert 'no_backtrace' in prefs.compile_defines_all
+	assert prefs.build_options.contains('-d no_backtrace')
+}
+
+fn test_bsd_tinyc_defaults_to_openssl() {
+	mut bsd_tinyc_prefs := &pref.Preferences{
+		path:                  'main.v'
+		os:                    .freebsd
+		ccompiler:             'tinyc'
+		ccompiler_set_by_flag: true
+	}
+	bsd_tinyc_prefs.fill_with_defaults()
+	assert 'use_openssl' in bsd_tinyc_prefs.compile_defines
+	assert 'use_openssl' in bsd_tinyc_prefs.compile_defines_all
+
+	mut bsd_clang_prefs := &pref.Preferences{
+		path:      'main.v'
+		os:        .freebsd
+		ccompiler: 'clang'
+	}
+	bsd_clang_prefs.fill_with_defaults()
+	assert 'use_openssl' !in bsd_clang_prefs.compile_defines_all
+}
+
+fn test_late_resolved_tcc_shared_builds_disable_backtraces() {
+	mut shared_prefs := &pref.Preferences{
+		path:      'libfoo.v'
+		is_shared: true
+		ccompiler: 'gcc'
+	}
+	shared_prefs.fill_with_defaults()
+	assert 'no_backtrace' !in shared_prefs.compile_defines_all
+
+	shared_prefs.ccompiler_type = .tinyc
+	shared_prefs.normalize_gc_defaults_for_resolved_ccompiler()
+
+	assert 'no_backtrace' in shared_prefs.compile_defines_all
+	assert shared_prefs.build_options.contains('-d no_backtrace')
+}
+
+fn test_wayland_only_linux_session_surfaces_a_v_error_for_gg() {
+	if os.user_os() == 'windows' {
+		return
+	}
+	pid := os.getpid()
+	test_dir := os.join_path(os.vtmp_dir(), 'v_issue_18030_gg_wayland_${pid}')
+	source_path := os.join_path(test_dir, 'main.v')
+	exe_path := os.join_path(test_dir, 'app')
+	source := 'import gg as _\n\nfn main() {}\n'
+	os.mkdir_all(test_dir) or { panic(err) }
+	os.write_file(source_path, source) or { panic(err) }
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	cmd := 'DISPLAY= WAYLAND_DISPLAY=wayland-0 XDG_SESSION_TYPE=wayland ${os.quoted_path(vexe)} -os linux -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	output := res.output.replace('\r', '')
+	if res.exit_code == 0 {
+		eprintln('> failed command: ${cmd}')
+	}
+	assert res.exit_code != 0
+	assert output.contains('Wayland-only Linux session without `-d sokol_wayland`')
+	assert !output.contains('C error. This should never happen.')
 }

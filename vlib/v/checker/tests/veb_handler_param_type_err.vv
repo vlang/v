@@ -1,0 +1,19 @@
+module main
+
+import veb
+
+struct Params {
+	offset int
+}
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+fn main() {}
+
+pub fn (app &App) index(mut ctx Context, params Params) veb.Result {
+	return veb.no_result()
+}

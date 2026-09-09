@@ -17,6 +17,7 @@ fn enc[T](item T) string {
 			'i64', 'u64' { 16 }
 			else { return '' }
 		}
+
 		return u64_to_hex(u64(item), len)
 	} $else $if T is $array {
 		mut hex := ''

@@ -1,5 +1,5 @@
 // fixes https://github.com/vlang/v/issues/11564, test is copied from the code by https://github.com/ken0x0a and formatted
-import x.json2
+import json2
 
 struct SA {}
 
@@ -20,7 +20,8 @@ fn test_init_multiple_branches() {
 		t: m['t'] or { 0 }.bool()
 		s: if a := m['a'] {
 			println('a => ${a}')
-			b := return_option(a)? // Fails only if the expr in this line has or_block (or_block kind (.propagation or .block) doesn't matter)
+			b :=
+				return_option(a)? // Fails only if the expr in this line has or_block (or_block kind (.propagation or .block) doesn't matter)
 			b
 		} else {
 			map[string]Sum{}

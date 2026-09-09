@@ -1,0 +1,11 @@
+vlib/v/checker/tests/chained_alias_cycle_err.vv:1:14: error: alias `Alpha` forms a cycle through `Beta`
+    1 | type Alpha = Beta
+      |              ~~~~
+    2 | type Beta = Alpha
+    3 |
+vlib/v/checker/tests/chained_alias_cycle_err.vv:2:13: error: alias `Beta` forms a cycle through `Alpha`
+    1 | type Alpha = Beta
+    2 | type Beta = Alpha
+      |             ~~~~~
+    3 |
+    4 | fn main() {

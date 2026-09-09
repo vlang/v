@@ -63,4 +63,11 @@ fn main() {
 
 	ret = debug.callstack(0)
 	assert ret == none
+	assert fn_test_unnamed_fn_var(fn (a int, b int) bool {
+		return a < b
+	})
+}
+
+fn fn_test_unnamed_fn_var(cb fn (int, int) bool) bool {
+	return cb(1, 2)
 }

@@ -57,11 +57,11 @@ fn test_install_dependencies_in_module_dir() {
 	assert res.output.contains('Detected v.mod file inside the project directory. Using it...'), res.output
 	expect_installing(@LOCATION, res.output, 'markdown')
 	expect_installing(@LOCATION, res.output, 'pcre')
-	expect_installing(@LOCATION, res.output, 'vtray')
+	expect_installing(@LOCATION, res.output, 'spytheman.vtray')
 
 	assert get_mod_name(os.join_path(test_path, 'markdown', 'v.mod')) == 'markdown'
 	assert get_mod_name(os.join_path(test_path, 'pcre', 'v.mod')) == 'pcre'
-	assert get_mod_name(os.join_path(test_path, 'vtray', 'v.mod')) == 'vtray'
+	assert get_mod_name(os.join_path(test_path, 'spytheman', 'vtray', 'v.mod')) == 'vtray'
 	res = cmd_ok(@LOCATION, '${v} install --once')
 	assert res.output.contains('All modules are already installed.'), res.output
 }
@@ -69,10 +69,11 @@ fn test_install_dependencies_in_module_dir() {
 fn test_resolve_external_dependencies_during_module_install() {
 	res := cmd_ok(@LOCATION, '${v} install -v https://github.com/ttytm/emoji-mart-desktop')
 	assert res.output.contains('Found 2 dependencies'), res.output
-	expect_installing(@LOCATION, res.output, 'webview')
+	expect_installing(@LOCATION, res.output, 'ttytm.webview')
 	expect_installing(@LOCATION, res.output, 'miniaudio')
-	// The external dependencies should have been installed to `<vmodules_dir>/<dependency_name>`
-	assert get_mod_name(os.join_path(test_path, 'webview', 'v.mod')) == 'webview'
+	// `ttytm.webview` is a registered VPM module, so it lands in `<vmodules_dir>/ttytm/webview`.
+	// `miniaudio` is unregistered, so it lands in `<vmodules_dir>/miniaudio`.
+	assert get_mod_name(os.join_path(test_path, 'ttytm', 'webview', 'v.mod')) == 'webview'
 	assert get_mod_name(os.join_path(test_path, 'miniaudio', 'v.mod')) == 'miniaudio'
 }
 

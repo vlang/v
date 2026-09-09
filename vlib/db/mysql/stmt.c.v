@@ -1,5 +1,8 @@
 module mysql
 
+type C.v_mysql_ulong = usize
+type C.v_mysql_bool = i8
+
 @[typedef]
 pub struct C.MYSQL_STMT {
 	mysql   &C.MYSQL
@@ -11,9 +14,9 @@ pub struct C.MYSQL_BIND {
 mut:
 	buffer_type   int
 	buffer        voidptr
-	buffer_length u32
-	length        &u32
-	is_null       &bool
+	buffer_length C.v_mysql_ulong
+	length        &C.v_mysql_ulong
+	is_null       &C.v_mysql_bool
 }
 
 const mysql_type_decimal = C.MYSQL_TYPE_DECIMAL
@@ -45,14 +48,17 @@ const mysql_type_var_string = C.MYSQL_TYPE_VAR_STRING
 const mysql_type_string = C.MYSQL_TYPE_STRING
 const mysql_type_geometry = C.MYSQL_TYPE_GEOMETRY
 const mysql_no_data = C.MYSQL_NO_DATA
+const mysql_data_truncated = C.MYSQL_DATA_TRUNCATED
 
 fn C.mysql_stmt_init(&C.MYSQL) &C.MYSQL_STMT
 fn C.mysql_stmt_prepare(&C.MYSQL_STMT, const_query charptr, u32) i32
+fn C.mysql_stmt_param_count(&C.MYSQL_STMT) u64
 fn C.mysql_stmt_bind_param(&C.MYSQL_STMT, &C.MYSQL_BIND) bool
 fn C.mysql_stmt_execute(&C.MYSQL_STMT) i32
 fn C.mysql_stmt_close(&C.MYSQL_STMT) bool
 fn C.mysql_stmt_free_result(&C.MYSQL_STMT) bool
 fn C.mysql_stmt_error(&C.MYSQL_STMT) &char
+fn C.mysql_stmt_errno(&C.MYSQL_STMT) i32
 fn C.mysql_stmt_result_metadata(&C.MYSQL_STMT) &C.MYSQL_RES
 
 fn C.mysql_stmt_field_count(&C.MYSQL_STMT) u16
@@ -66,8 +72,13 @@ pub struct Stmt {
 	stmt  &C.MYSQL_STMT = &C.MYSQL_STMT(unsafe { nil })
 	query string
 mut:
-	binds []C.MYSQL_BIND
-	res   []C.MYSQL_BIND
+	binds            []C.MYSQL_BIND
+	res              []C.MYSQL_BIND
+	auto_res_lengths []C.v_mysql_ulong
+	auto_res_is_null []C.v_mysql_bool
+	compat_lengths   &u32  = unsafe { nil }
+	compat_is_null   &bool = unsafe { nil }
+	compat_res_count int
 }
 
 // str returns a text representation of the given mysql statement `s`.
@@ -142,12 +153,22 @@ pub fn (stmt Stmt) fetch_fields(res &C.MYSQL_RES) &C.MYSQL_FIELD {
 // See https://dev.mysql.com/doc/c-api/5.7/en/mysql-stmt-fetch.html
 pub fn (stmt Stmt) fetch_stmt() !int {
 	result := C.mysql_stmt_fetch(stmt.stmt)
+	stmt.copy_compat_result_values()
 
 	if result !in [0, 100] && stmt.get_error_msg() != '' {
 		return stmt.error(result)
 	}
 
 	return result
+}
+
+fn (stmt &Stmt) copy_compat_result_values() {
+	for i in 0 .. stmt.compat_res_count {
+		unsafe {
+			stmt.compat_lengths[i] = u32(stmt.auto_res_lengths[i])
+			stmt.compat_is_null[i] = stmt.auto_res_is_null[i] != 0
+		}
+	}
 }
 
 // close disposes the prepared `stmt`. The statement becomes invalid, and should not be used anymore after this call.
@@ -164,12 +185,23 @@ pub fn (stmt Stmt) close() ! {
 }
 
 fn (stmt Stmt) get_error_msg() string {
-	return unsafe { cstring_to_vstring(&char(C.mysql_stmt_error(stmt.stmt))) }
+	return get_stmt_error_msg(stmt.stmt)
 }
 
-// error returns a proper V error with a human readable description, given the error code returned by MySQL
-pub fn (stmt Stmt) error(code int) IError {
+fn (stmt Stmt) get_error_code() int {
+	return get_stmt_errno(stmt.stmt)
+}
+
+// error returns a proper V error with a human readable description,
+// given the fallback status code returned by the MySQL statement API.
+pub fn (stmt Stmt) error(fallback_code int) IError {
 	msg := stmt.get_error_msg()
+	stmt_code := stmt.get_error_code()
+	code := if stmt_code != 0 {
+		stmt_code
+	} else {
+		fallback_code
+	}
 
 	return &SQLError{
 		msg:  '${msg} (${code}) (${stmt.query})'
@@ -213,7 +245,11 @@ pub fn (mut stmt Stmt) bind_u16(b &u16) {
 
 // bind_int binds a single int value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_int(b &int) {
-	stmt.bind(mysql_type_long, b, 0)
+	$if new_int ? && x64 {
+		stmt.bind(mysql_type_longlong, b, 0)
+	} $else {
+		stmt.bind(mysql_type_long, b, 0)
+	}
 }
 
 // bind_u32 binds a single u32 value to the statement `stmt`
@@ -261,7 +297,7 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 	stmt.binds << C.MYSQL_BIND{
 		buffer_type:   typ
 		buffer:        buffer
-		buffer_length: buf_len
+		buffer_length: usize(buf_len)
 		length:        0
 		is_null:       0
 	}
@@ -269,6 +305,35 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 
 // bind_res will store one result in the statement `stmt`
 pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []u32, is_null []bool, num_fields int) {
+	count := if num_fields > 0 { num_fields } else { 0 }
+	stmt.auto_res_lengths = []C.v_mysql_ulong{len: count}
+	stmt.auto_res_is_null = []C.v_mysql_bool{len: count}
+	stmt.compat_res_count = int_min(count, int_min(lengths.len, is_null.len))
+	stmt.compat_lengths = unsafe { nil }
+	stmt.compat_is_null = unsafe { nil }
+	if stmt.compat_res_count > 0 {
+		stmt.compat_lengths = unsafe { &lengths[0] }
+		stmt.compat_is_null = unsafe { &is_null[0] }
+	}
+	stmt.bind_res_abi_arrays(fields, dataptr, stmt.auto_res_lengths, stmt.auto_res_is_null,
+		num_fields)
+}
+
+fn (mut stmt Stmt) bind_res_abi(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []C.v_mysql_ulong, is_null []C.v_mysql_bool, num_fields int) {
+	stmt.auto_res_lengths = []C.v_mysql_ulong{}
+	stmt.auto_res_is_null = []C.v_mysql_bool{}
+	stmt.compat_lengths = unsafe { nil }
+	stmt.compat_is_null = unsafe { nil }
+	stmt.compat_res_count = 0
+	stmt.bind_res_abi_arrays(fields, dataptr, lengths, is_null, num_fields)
+}
+
+fn (mut stmt Stmt) bind_res_abi_arrays(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []C.v_mysql_ulong, is_null []C.v_mysql_bool, num_fields int) {
+	if num_fields <= 0 {
+		stmt.res = []C.MYSQL_BIND{}
+		return
+	}
+	stmt.res = []C.MYSQL_BIND{cap: num_fields}
 	for i in 0 .. num_fields {
 		stmt.res << C.MYSQL_BIND{
 			buffer_type: unsafe { fields[i].type }
@@ -279,9 +344,35 @@ pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []
 	}
 }
 
+fn (mut stmt Stmt) ensure_default_result_binds() {
+	if stmt.res.len > 0 {
+		return
+	}
+	num_fields := int(stmt.get_field_count())
+	if num_fields <= 0 {
+		return
+	}
+	stmt.auto_res_lengths = []C.v_mysql_ulong{len: num_fields}
+	stmt.auto_res_is_null = []C.v_mysql_bool{len: num_fields}
+	stmt.res = []C.MYSQL_BIND{cap: num_fields}
+	for i in 0 .. num_fields {
+		stmt.res << C.MYSQL_BIND{
+			buffer_type:   mysql_type_string
+			buffer:        0
+			buffer_length: 0
+			length:        unsafe { &stmt.auto_res_lengths[i] }
+			is_null:       unsafe { &stmt.auto_res_is_null[i] }
+		}
+	}
+}
+
 // bind_result_buffer binds one result value, by calling mysql_stmt_bind_result .
 // See https://dev.mysql.com/doc/c-api/8.0/en/mysql-stmt-bind-result.html
 pub fn (mut stmt Stmt) bind_result_buffer() ! {
+	stmt.ensure_default_result_binds()
+	if stmt.res.len == 0 {
+		return
+	}
 	result := C.mysql_stmt_bind_result(stmt.stmt, unsafe { &C.MYSQL_BIND(stmt.res.data) })
 
 	if result && stmt.get_error_msg() != '' {

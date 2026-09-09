@@ -5,10 +5,3 @@ vlib/v/checker/tests/generic_closure_fn_decl_err_b.vv:13:2: error: generic closu
       |     ~~~~~~~~~~~~~~~~~~~
    14 |         my_plugin.on_update()
    15 |     }()
-vlib/v/checker/tests/generic_closure_fn_decl_err_b.vv:14:13: error: unknown method or field: `T.on_update`
-   12 | 
-   13 |     fn [my_plugin] () {
-   14 |         my_plugin.on_update()
-      |                   ~~~~~~~~~~~
-   15 |     }()
-   16 | }

@@ -1,0 +1,5 @@
+fn main() {
+	// vfmt off
+	num := 4 // some comment
+	// vfmt on
+}

@@ -5,3 +5,10 @@ vlib/v/checker/tests/assign_immutable_reference_var_err.vv:8:11: notice: `x` is 
       |              ^
     9 |     m.value = 42
    10 | }
+vlib/v/checker/tests/assign_immutable_reference_var_err.vv:9:4: error: `m.value` aliases mutable data from an immutable value
+    7 | fn y(x &Foo) {
+    8 |     mut m := x
+    9 |     m.value = 42
+      |       ~~~~~
+   10 | }
+   11 |

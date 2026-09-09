@@ -467,3 +467,17 @@ vlib/v/checker/tests/always_true_false_branch.vv:196:3: notice: match is always 
       |         ~~~
   197 |             'cc'
   198 |         }
+vlib/v/checker/tests/always_true_false_branch.vv:5:23: warning: self-comparison in `if` condition is always true; following branches may be unreachable
+    3 | fn main() {
+    4 |     x := 1
+    5 |     if_always_true := if x == x {
+      |                          ~~~~~~
+    6 |         1
+    7 |     } else if true {
+vlib/v/checker/tests/always_true_false_branch.vv:134:3: warning: self-comparison match branch is always true; following branches may be unreachable
+  132 | 
+  133 |     match_always_true_var := match x {
+  134 |         x {
+      |         ^
+  135 |             'haha'
+  136 |         }

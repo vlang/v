@@ -10,7 +10,7 @@ fn solaris_now() Time {
 	C.clock_gettime(C.CLOCK_REALTIME, &ts)
 	loc_tm := C.tm{}
 	C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
-	return convert_ctime(loc_tm, int(ts.tv_nsec))
+	return convert_ctime_with_unix(loc_tm, int(ts.tv_nsec), i64(ts.tv_sec) + i64(loc_tm.tm_gmtoff))
 }
 
 fn solaris_utc() Time {

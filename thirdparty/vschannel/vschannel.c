@@ -1,6 +1,55 @@
 #include <vschannel.h>
 #include <sspi.h>
 
+// ALPN (RFC 7301) compatibility shim. Older toolchain headers (notably the
+// ones bundled with tcc) predate the SChannel ALPN additions, so the structs,
+// enums and constants below are missing there. Define them ourselves when the
+// SDK headers did not. SECPKG_ATTR_APPLICATION_PROTOCOL guards the schannel.h
+// types; SECBUFFER_APPLICATION_PROTOCOLS guards the sspi.h buffer constant.
+#ifndef ANYSIZE_ARRAY
+#define ANYSIZE_ARRAY 1
+#endif
+
+#ifndef SECPKG_ATTR_APPLICATION_PROTOCOL
+#define SECPKG_ATTR_APPLICATION_PROTOCOL 35
+
+typedef enum _SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT {
+	SecApplicationProtocolNegotiationExt_None,
+	SecApplicationProtocolNegotiationExt_NPN,
+	SecApplicationProtocolNegotiationExt_ALPN
+} SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT, *PSEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT;
+
+typedef struct _SEC_APPLICATION_PROTOCOL_LIST {
+	SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT ProtoNegoExt;
+	unsigned short ProtocolListSize;
+	unsigned char ProtocolList[ANYSIZE_ARRAY];
+} SEC_APPLICATION_PROTOCOL_LIST, *PSEC_APPLICATION_PROTOCOL_LIST;
+
+typedef struct _SEC_APPLICATION_PROTOCOLS {
+	unsigned long ProtocolListsSize;
+	SEC_APPLICATION_PROTOCOL_LIST ProtocolLists[ANYSIZE_ARRAY];
+} SEC_APPLICATION_PROTOCOLS, *PSEC_APPLICATION_PROTOCOLS;
+
+typedef enum _SEC_APPLICATION_PROTOCOL_NEGOTIATION_STATUS {
+	SecApplicationProtocolNegotiationStatus_None,
+	SecApplicationProtocolNegotiationStatus_Success,
+	SecApplicationProtocolNegotiationStatus_SelectedClientOnly
+} SEC_APPLICATION_PROTOCOL_NEGOTIATION_STATUS, *PSEC_APPLICATION_PROTOCOL_NEGOTIATION_STATUS;
+
+#define MAX_PROTOCOL_ID_SIZE 0xff
+
+typedef struct _SecPkgContext_ApplicationProtocol {
+	SEC_APPLICATION_PROTOCOL_NEGOTIATION_STATUS ProtoNegoStatus;
+	SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT ProtoNegoExt;
+	unsigned char ProtocolIdSize;
+	unsigned char ProtocolId[MAX_PROTOCOL_ID_SIZE];
+} SecPkgContext_ApplicationProtocol, *PSecPkgContext_ApplicationProtocol;
+#endif // SECPKG_ATTR_APPLICATION_PROTOCOL
+
+#ifndef SECBUFFER_APPLICATION_PROTOCOLS
+#define SECBUFFER_APPLICATION_PROTOCOLS 18
+#endif
+
 // Proxy
 WCHAR *  psz_proxy_server  = L"proxy";
 INT     i_proxy_port      = 80;
@@ -24,19 +73,161 @@ struct TlsContext {
 	CredHandle             h_client_creds;
 	CtxtHandle             h_context;
 	PCCERT_CONTEXT         p_pemote_cert_context;
+	INT                    last_error_code;
+	BOOL                   validate_server_certificate;
 	BOOL                   creds_initialized;
 	BOOL                   context_initialized;
+	// ALPN protocol list to advertise, in the standard ALPN wire format (each
+	// name 1-byte length-prefixed), e.g. "\x02h2\x08http/1.1". alpn_wire_len == 0
+	// means "do not advertise ALPN".
+	unsigned char          alpn_wire[256];
+	unsigned long          alpn_wire_len;
+	// Negotiated application protocol name (e.g. "h2"); negotiated_alpn_len == 0
+	// when the server selected none.
+	char                   negotiated_alpn[256];
+	unsigned long          negotiated_alpn_len;
+	// Streaming transport state, used by the keep-the-connection-open path
+	// (vschannel_h2_connect / vschannel_write / vschannel_read) that backs the
+	// HTTP/2 driver. The one-shot request() path does not touch these.
+	SecPkgContext_StreamSizes stream_sizes;     // cached TLS record sizes
+	BOOL                   stream_sizes_valid;
+	// Ciphertext staging buffer: bytes recv()'d from the socket that have not yet
+	// been decrypted into a full record (SEC_E_INCOMPLETE_MESSAGE) plus any
+	// trailing SECBUFFER_EXTRA from the last DecryptMessage.
+	unsigned char         *recv_buf;
+	unsigned long          recv_buf_cap;
+	unsigned long          recv_buf_len;
+	// Decrypted plaintext carryover: a single DecryptMessage can yield more
+	// application bytes than the caller's read buffer can hold, so the remainder
+	// is stashed here and drained on the next vschannel_read().
+	unsigned char         *plain_buf;
+	unsigned long          plain_buf_cap;
+	unsigned long          plain_buf_len;       // valid decrypted bytes
+	unsigned long          plain_buf_off;       // bytes already returned to caller
+	// Reusable encryption buffer for vschannel_write(): one full record
+	// (header + max message + trailer). Cached so the HTTP/2 driver's many small
+	// writes do not LocalAlloc/LocalFree on every call.
+	unsigned char         *send_buf;
+	unsigned long          send_buf_cap;
+	BOOL                   stream_eof;          // close_notify / context expired seen
 };
 
 TlsContext new_tls_context() {
 	return (struct TlsContext) {
 		.cert_store            = NULL,
+		.last_error_code       = 0,
 		.socket                = INVALID_SOCKET,
+		.validate_server_certificate = TRUE,
 		.creds_initialized     = FALSE,
 		.context_initialized   = FALSE,
-		.p_pemote_cert_context = NULL
+		.p_pemote_cert_context = NULL,
+		.alpn_wire_len         = 0,
+		.negotiated_alpn_len   = 0,
+		.stream_sizes_valid    = FALSE,
+		.recv_buf              = NULL,
+		.recv_buf_cap          = 0,
+		.recv_buf_len          = 0,
+		.plain_buf             = NULL,
+		.plain_buf_cap         = 0,
+		.plain_buf_len         = 0,
+		.plain_buf_off         = 0,
+		.send_buf              = NULL,
+		.send_buf_cap          = 0,
+		.stream_eof            = FALSE
 	};
 };
+
+// vschannel_alpn_supported reports whether this Windows version's SChannel
+// supports client-side ALPN, which was introduced in Windows 8.1 / Server
+// 2012 R2 (version 6.3). On older versions, passing a
+// SECBUFFER_APPLICATION_PROTOCOLS input buffer into the handshake can fail it
+// outright, so callers should skip ALPN (and HTTP/2) entirely there. Uses
+// RtlGetVersion because GetVersionEx lies on manifest-less binaries from
+// Windows 8.1 onwards.
+INT vschannel_alpn_supported() {
+	static INT cached = -1;
+	if (cached < 0) {
+		typedef LONG (WINAPI *RtlGetVersionFn)(OSVERSIONINFOW *);
+		OSVERSIONINFOW vi;
+		RtlGetVersionFn get_version = (RtlGetVersionFn)GetProcAddress(
+				GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
+		INT supported = 0;
+		if (get_version != NULL) {
+			ZeroMemory(&vi, sizeof(vi));
+			vi.dwOSVersionInfoSize = sizeof(vi);
+			if (get_version(&vi) == 0
+					&& (vi.dwMajorVersion > 6
+						|| (vi.dwMajorVersion == 6 && vi.dwMinorVersion >= 3))) {
+				supported = 1;
+			}
+		}
+		cached = supported;
+	}
+	return cached;
+}
+
+// vschannel_set_alpn configures the ALPN protocol list to advertise during the
+// next handshake. `wire` is the standard ALPN wire format (each protocol name
+// preceded by a 1-byte length), e.g. "\x02h2\x08http/1.1". Passing len == 0
+// disables ALPN advertisement.
+void vschannel_set_alpn(TlsContext *tls_ctx, const char *wire, INT len) {
+	if (len < 0) {
+		len = 0;
+	}
+	if (len > (INT)sizeof(tls_ctx->alpn_wire)) {
+		len = (INT)sizeof(tls_ctx->alpn_wire);
+	}
+	if (len > 0) {
+		memcpy(tls_ctx->alpn_wire, wire, (size_t)len);
+	}
+	tls_ctx->alpn_wire_len = (unsigned long)len;
+}
+
+// vschannel_get_alpn copies the protocol the server selected via ALPN (e.g.
+// "h2") into `out` and returns its length, or 0 if none was negotiated.
+INT vschannel_get_alpn(TlsContext *tls_ctx, char *out, INT out_cap) {
+	unsigned long n = tls_ctx->negotiated_alpn_len;
+	if (out_cap < 0) {
+		out_cap = 0;
+	}
+	if (n > (unsigned long)out_cap) {
+		n = (unsigned long)out_cap;
+	}
+	if (n > 0) {
+		memcpy(out, tls_ctx->negotiated_alpn, (size_t)n);
+	}
+	return (INT)n;
+}
+
+// vschannel_capture_alpn queries the negotiated ALPN protocol from a completed
+// handshake and stores it on the context for vschannel_get_alpn().
+static void vschannel_capture_alpn(TlsContext *tls_ctx) {
+	SecPkgContext_ApplicationProtocol appproto;
+	SECURITY_STATUS st;
+
+	tls_ctx->negotiated_alpn_len = 0;
+	st = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context,
+			SECPKG_ATTR_APPLICATION_PROTOCOL, &appproto);
+	if (st == SEC_E_OK
+			&& appproto.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success
+			&& appproto.ProtocolIdSize > 0
+			&& appproto.ProtocolIdSize <= sizeof(tls_ctx->negotiated_alpn)) {
+		memcpy(tls_ctx->negotiated_alpn, appproto.ProtocolId, appproto.ProtocolIdSize);
+		tls_ctx->negotiated_alpn_len = appproto.ProtocolIdSize;
+	}
+}
+
+static void vschannel_clear_last_error(TlsContext *tls_ctx) {
+	tls_ctx->last_error_code = 0;
+}
+
+static void vschannel_set_last_error(TlsContext *tls_ctx, INT err_code) {
+	tls_ctx->last_error_code = err_code;
+}
+
+static INT vschannel_last_error(TlsContext *tls_ctx) {
+	return tls_ctx->last_error_code;
+}
 
 void vschannel_cleanup(TlsContext *tls_ctx) {
 	// Free the server certificate context.
@@ -68,10 +259,33 @@ void vschannel_cleanup(TlsContext *tls_ctx) {
 		CertCloseStore(tls_ctx->cert_store, 0);
 		tls_ctx->cert_store = NULL;
 	}
+
+	// Free streaming-transport buffers.
+	if(tls_ctx->recv_buf) {
+		LocalFree(tls_ctx->recv_buf);
+		tls_ctx->recv_buf = NULL;
+	}
+	tls_ctx->recv_buf_cap = 0;
+	tls_ctx->recv_buf_len = 0;
+	if(tls_ctx->plain_buf) {
+		LocalFree(tls_ctx->plain_buf);
+		tls_ctx->plain_buf = NULL;
+	}
+	tls_ctx->plain_buf_cap = 0;
+	tls_ctx->plain_buf_len = 0;
+	tls_ctx->plain_buf_off = 0;
+	if(tls_ctx->send_buf) {
+		LocalFree(tls_ctx->send_buf);
+		tls_ctx->send_buf = NULL;
+	}
+	tls_ctx->send_buf_cap = 0;
+	tls_ctx->stream_sizes_valid = FALSE;
+	tls_ctx->stream_eof = FALSE;
 }
 
-void vschannel_init(TlsContext *tls_ctx) {
+void vschannel_init(TlsContext *tls_ctx, BOOL validate_server_certificate) {
 	tls_ctx->sspi = InitSecurityInterface();
+	tls_ctx->validate_server_certificate = validate_server_certificate;
 
 	if(tls_ctx->sspi == NULL) {
 		wprintf(L"Error 0x%x reading security interface.\n",
@@ -87,76 +301,102 @@ void vschannel_init(TlsContext *tls_ctx) {
 	tls_ctx->creds_initialized = TRUE;
 }
 
-INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_len, CHAR **out, vschannel_allocator afn)
-{
-	SecBuffer  ExtraData;
+// vschannel_open_and_handshake performs the connection setup shared by
+// request(), vschannel_alpn_probe() and vschannel_h2_connect(): connect to
+// host:iport, run the TLS handshake (advertising any configured ALPN), record
+// the negotiated protocol, and — when verify_cert is set — validate the server
+// certificate. On success the connection is left open (context_initialized) and,
+// when pExtraData is non-NULL, it receives any application bytes the handshake
+// bundled with its final flight (the caller then owns pExtraData->pvBuffer and
+// must LocalFree it). On failure it records the error, frees any bundled extra,
+// tears the connection down, and returns a non-zero SECURITY_STATUS. A connect
+// failure already set last_error via connect_to_server.
+static SECURITY_STATUS vschannel_open_and_handshake(TlsContext *tls_ctx, INT iport, LPWSTR host, BOOL verify_cert, SecBuffer *pExtraData) {
+	SecBuffer       local_extra;
+	SecBuffer      *extra = pExtraData ? pExtraData : &local_extra;
 	SECURITY_STATUS Status;
 
-	INT i;
-	INT iOption;
-	PCHAR pszOption;
-
-	INT resp_length = 0;
+	extra->pvBuffer = NULL;
+	extra->cbBuffer = 0;
 
 	protocol = SP_PROT_TLS1_2_CLIENT;
-
 	port_number = iport;
+	vschannel_clear_last_error(tls_ctx);
 
-	// Connect to server.
 	if(connect_to_server(tls_ctx, host, port_number)) {
-		wprintf(L"Error connecting to server\n");
 		vschannel_cleanup(tls_ctx);
-		return resp_length;
+		return SEC_E_INTERNAL_ERROR;
 	}
 
-	// Perform handshake
-	if(perform_client_handshake(tls_ctx, host, &ExtraData)) {
-		wprintf(L"Error performing handshake\n");
-		vschannel_cleanup(tls_ctx);
-		return resp_length;
+	Status = perform_client_handshake(tls_ctx, host, extra);
+	if(Status != SEC_E_OK) {
+		vschannel_set_last_error(tls_ctx, Status);
+		goto fail;
 	}
 	tls_ctx->context_initialized = TRUE;
 
-	// Authenticate server's credentials.
+	// Record the ALPN protocol the server selected (if any).
+	vschannel_capture_alpn(tls_ctx);
 
-	// Get server's certificate.
-	Status = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context,
-											 SECPKG_ATTR_REMOTE_CERT_CONTEXT,
-											 (PVOID)&tls_ctx->p_pemote_cert_context);
-	if(Status != SEC_E_OK) {
-		wprintf(L"Error 0x%x querying remote certificate\n", Status);
-		vschannel_cleanup(tls_ctx);
-		return resp_length;
+	if(verify_cert) {
+		// Get and validate the server's certificate.
+		Status = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context,
+				SECPKG_ATTR_REMOTE_CERT_CONTEXT, (PVOID)&tls_ctx->p_pemote_cert_context);
+		if(Status != SEC_E_OK) {
+			vschannel_set_last_error(tls_ctx, Status);
+			goto fail;
+		}
+		Status = verify_server_certificate(tls_ctx->p_pemote_cert_context, host, 0);
+		if(Status != SEC_E_OK) {
+			// Could not authenticate the server (possible MITM): abort.
+			vschannel_set_last_error(tls_ctx, Status);
+			goto fail;
+		}
+		CertFreeCertificateContext(tls_ctx->p_pemote_cert_context);
+		tls_ctx->p_pemote_cert_context = NULL;
 	}
 
-	// Attempt to validate server certificate.
-	Status = verify_server_certificate(tls_ctx->p_pemote_cert_context, host,0);
-	if(Status) {
-		// The server certificate did not validate correctly. At this
-		// point, we cannot tell if we are connecting to the correct 
-		// server, or if we are connecting to a "man in the middle" 
-		// attack server.
+	// If the caller does not want the bundled application data, drop it.
+	if(pExtraData == NULL && local_extra.pvBuffer != NULL) {
+		LocalFree(local_extra.pvBuffer);
+	}
+	return SEC_E_OK;
 
-		// It is therefore best if we abort the connection.
+fail:
+	if(extra->pvBuffer != NULL) {
+		LocalFree(extra->pvBuffer);
+		extra->pvBuffer = NULL;
+	}
+	vschannel_cleanup(tls_ctx);
+	return Status;
+}
 
-		wprintf(L"Error 0x%x authenticating server credentials!\n", Status);
-		vschannel_cleanup(tls_ctx);
+INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_len, CHAR **out, vschannel_allocator afn)
+{
+	SECURITY_STATUS Status;
+	INT resp_length = 0;
+
+	// Connect + handshake (+ cert validation when enabled). request() does not
+	// consume handshake-bundled application data (HTTP/1.1 servers do not send
+	// before the request), so pass NULL to have it dropped.
+	if(vschannel_open_and_handshake(tls_ctx, iport, host,
+			tls_ctx->validate_server_certificate, NULL) != SEC_E_OK) {
 		return resp_length;
 	}
-
-	// Free the server certificate context.
-	CertFreeCertificateContext(tls_ctx->p_pemote_cert_context);
-	tls_ctx->p_pemote_cert_context = NULL;
 
 	// Request from server
-	if(https_make_request(tls_ctx, req, req_len, out, &resp_length, afn)) {
+	Status = https_make_request(tls_ctx, req, req_len, out, &resp_length, afn);
+	if(Status) {
+		vschannel_set_last_error(tls_ctx, Status);
 		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
 	
 	// Send a close_notify alert to the server and
 	// close down the connection.
-	if(disconnect_from_server(tls_ctx)) {
+	Status = disconnect_from_server(tls_ctx);
+	if(Status) {
+		vschannel_set_last_error(tls_ctx, Status);
 		wprintf(L"Error disconnecting from server\n");
 		vschannel_cleanup(tls_ctx);
 		return resp_length;
@@ -165,6 +405,417 @@ INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_le
 	tls_ctx->socket = INVALID_SOCKET;
 
 	return resp_length;
+}
+
+// vschannel_request_on_open runs a one-shot HTTP/1.1 request over a connection
+// that vschannel_h2_connect() already opened and handshaked, then closes it.
+// It is the HTTP/1.1 fallback used when a server, asked for ALPN `h2`, does not
+// select it: rather than reconnect, we reuse the open connection. Returns the
+// response length (see request()).
+INT vschannel_request_on_open(TlsContext *tls_ctx, CHAR *req, DWORD req_len, CHAR **out, vschannel_allocator afn) {
+	SECURITY_STATUS Status;
+	INT resp_length = 0;
+
+	Status = https_make_request(tls_ctx, req, req_len, out, &resp_length, afn);
+	if(Status) {
+		vschannel_set_last_error(tls_ctx, Status);
+		vschannel_cleanup(tls_ctx);
+		return resp_length;
+	}
+
+	Status = disconnect_from_server(tls_ctx);
+	if(Status) {
+		vschannel_set_last_error(tls_ctx, Status);
+		vschannel_cleanup(tls_ctx);
+		return resp_length;
+	}
+	tls_ctx->context_initialized = FALSE;
+	tls_ctx->socket = INVALID_SOCKET;
+
+	return resp_length;
+}
+
+// vschannel_alpn_probe connects to host:iport, performs the TLS handshake while
+// advertising whatever ALPN list was configured via vschannel_set_alpn(),
+// captures the protocol the server selected into `out` (up to out_cap bytes),
+// and disconnects without sending an application request. Returns the
+// negotiated protocol length (0 = handshake succeeded but no protocol selected),
+// or -1 on connect/handshake failure (see vschannel_last_error). Intended for
+// tests and capability checks, since request() only speaks HTTP/1.1.
+INT vschannel_alpn_probe(TlsContext *tls_ctx, INT iport, LPWSTR host, char *out, INT out_cap) {
+	// Probe only: handshake (no cert validation, no application data) then close.
+	if(vschannel_open_and_handshake(tls_ctx, iport, host, FALSE, NULL) != SEC_E_OK) {
+		return -1;
+	}
+
+	disconnect_from_server(tls_ctx);
+	tls_ctx->context_initialized = FALSE;
+	tls_ctx->socket = INVALID_SOCKET;
+
+	return vschannel_get_alpn(tls_ctx, out, out_cap);
+}
+
+// ---------------------------------------------------------------------------
+// Streaming transport (keep the TLS connection open and exchange raw bytes).
+//
+// request() above is a one-shot: connect, handshake, send the whole HTTP/1.1
+// request, read the whole response, disconnect. An HTTP/2 driver instead needs
+// a long-lived, byte-oriented transport. The functions below expose exactly
+// that: vschannel_h2_connect() opens the connection (handshake + cert check)
+// and leaves it open, vschannel_write()/vschannel_read() move application bytes
+// across it, and vschannel_h2_close() shuts it down. They reuse the same SSPI
+// primitives as request()/https_make_request(), but keep the encrypt/decrypt
+// state on the TlsContext so reads can span calls.
+// ---------------------------------------------------------------------------
+
+// vschannel_ensure_stream_state caches the negotiated TLS record sizes and
+// allocates the ciphertext/plaintext working buffers, once per connection.
+static SECURITY_STATUS vschannel_ensure_stream_state(TlsContext *tls_ctx) {
+	if(tls_ctx->stream_sizes_valid) {
+		return SEC_E_OK;
+	}
+	SECURITY_STATUS scRet = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context,
+			SECPKG_ATTR_STREAM_SIZES, &tls_ctx->stream_sizes);
+	if(scRet != SEC_E_OK) {
+		return scRet;
+	}
+	// One full wire record: header + max plaintext + trailer. recv() never needs
+	// more than this buffered to complete a single record; trailing bytes of the
+	// next record are carried as SECBUFFER_EXTRA.
+	tls_ctx->recv_buf_cap = tls_ctx->stream_sizes.cbHeader
+			+ tls_ctx->stream_sizes.cbMaximumMessage + tls_ctx->stream_sizes.cbTrailer;
+	tls_ctx->recv_buf = (unsigned char *)LocalAlloc(LPTR, tls_ctx->recv_buf_cap);
+	// One record decrypts to at most cbMaximumMessage plaintext bytes.
+	tls_ctx->plain_buf_cap = tls_ctx->stream_sizes.cbMaximumMessage;
+	tls_ctx->plain_buf = (unsigned char *)LocalAlloc(LPTR, tls_ctx->plain_buf_cap);
+	// Reusable send buffer: one full outgoing record.
+	tls_ctx->send_buf_cap = tls_ctx->recv_buf_cap;
+	tls_ctx->send_buf = (unsigned char *)LocalAlloc(LPTR, tls_ctx->send_buf_cap);
+	if(tls_ctx->recv_buf == NULL || tls_ctx->plain_buf == NULL || tls_ctx->send_buf == NULL) {
+		return SEC_E_INTERNAL_ERROR;
+	}
+	tls_ctx->recv_buf_len = 0;
+	tls_ctx->plain_buf_len = 0;
+	tls_ctx->plain_buf_off = 0;
+	tls_ctx->stream_sizes_valid = TRUE;
+	return SEC_E_OK;
+}
+
+// vschannel_h2_connect connects to host:iport, performs the TLS handshake while
+// advertising whatever ALPN list was set via vschannel_set_alpn(), validates the
+// server certificate (when enabled), and leaves the connection open for
+// vschannel_write()/vschannel_read(). Returns 0 on success, non-zero on failure
+// (see vschannel_last_error). The negotiated protocol is available afterwards
+// via vschannel_get_alpn().
+INT vschannel_h2_connect(TlsContext *tls_ctx, INT iport, LPWSTR host) {
+	SecBuffer       ExtraData;
+	SECURITY_STATUS Status;
+
+	// Connect + handshake + cert validation (when enabled). Unlike the one-shot
+	// paths, keep the handshake-bundled application data: for HTTP/2 it is the
+	// server's first record (SETTINGS), needed below.
+	if(vschannel_open_and_handshake(tls_ctx, iport, host,
+			tls_ctx->validate_server_certificate, &ExtraData) != SEC_E_OK) {
+		return -1;
+	}
+
+	Status = vschannel_ensure_stream_state(tls_ctx);
+	if(Status != SEC_E_OK) {
+		vschannel_set_last_error(tls_ctx, Status);
+		if(ExtraData.pvBuffer != NULL) {
+			LocalFree(ExtraData.pvBuffer);
+		}
+		vschannel_cleanup(tls_ctx);
+		return -1;
+	}
+
+	// The final handshake flight often arrives in the same TCP segment as the
+	// server's first application record (for HTTP/2, the SETTINGS frame), which
+	// the handshake hands back as SECBUFFER_EXTRA. Those bytes are already off
+	// the socket, so they must be carried into the read buffer; otherwise the
+	// first vschannel_read() would skip them and H2Conn would desync. Grow the
+	// staging buffer if the bundled data exceeds one record.
+	if(ExtraData.pvBuffer != NULL) {
+		if(ExtraData.cbBuffer > 0) {
+			if(ExtraData.cbBuffer > tls_ctx->recv_buf_cap) {
+				unsigned char *grown = (unsigned char *)LocalAlloc(LPTR, ExtraData.cbBuffer);
+				if(grown != NULL) {
+					LocalFree(tls_ctx->recv_buf);
+					tls_ctx->recv_buf = grown;
+					tls_ctx->recv_buf_cap = ExtraData.cbBuffer;
+				}
+			}
+			if(ExtraData.cbBuffer <= tls_ctx->recv_buf_cap) {
+				MoveMemory(tls_ctx->recv_buf, ExtraData.pvBuffer, ExtraData.cbBuffer);
+				tls_ctx->recv_buf_len = ExtraData.cbBuffer;
+			}
+		}
+		LocalFree(ExtraData.pvBuffer);
+	}
+
+	return 0;
+}
+
+// vschannel_set_io_timeouts bounds how long vschannel_read()/vschannel_write()
+// may block in recv()/send() on the underlying socket. Independent Winsock
+// socket options, set once after connecting and never touched again -- unlike
+// mbedTLS/OpenSSL's shared read-timeout duration field (reused for both
+// directions' internal retry loops), SO_RCVTIMEO and SO_SNDTIMEO are separate
+// knobs, so no widen-then-restore dance is needed around individual calls. A
+// timed-out recv()/send() returns SOCKET_ERROR with WSAGetLastError() ==
+// WSAETIMEDOUT, exactly like any other socket error -- callers distinguish it
+// via vschannel_last_error() after a negative return, same as every other
+// vschannel_read()/vschannel_write() failure.
+void vschannel_set_io_timeouts(TlsContext *tls_ctx, DWORD recv_timeout_ms, DWORD send_timeout_ms) {
+	setsockopt(tls_ctx->socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&recv_timeout_ms, sizeof(recv_timeout_ms));
+	setsockopt(tls_ctx->socket, SOL_SOCKET, SO_SNDTIMEO, (const char *)&send_timeout_ms, sizeof(send_timeout_ms));
+}
+
+// vschannel_wait_writable waits up to timeout_ms for the underlying socket to
+// become writable. Pure raw-socket select() -- never touches TLS/SSPI state --
+// so it is safe to call without holding any lock that guards concurrent
+// access to the TLS context itself. Returns 1 if writable, 0 on timeout, -1 on
+// error.
+INT vschannel_wait_writable(TlsContext *tls_ctx, INT timeout_ms) {
+	fd_set write_set;
+	struct timeval tv;
+	FD_ZERO(&write_set);
+	FD_SET(tls_ctx->socket, &write_set);
+	tv.tv_sec = timeout_ms / 1000;
+	tv.tv_usec = (timeout_ms % 1000) * 1000;
+	int n = select(0, NULL, &write_set, NULL, &tv);
+	if(n == SOCKET_ERROR) {
+		return -1;
+	}
+	return n > 0 ? 1 : 0;
+}
+
+// vschannel_write encrypts and sends `len` application bytes over the open
+// connection, chunked to the negotiated maximum record size. Returns the number
+// of bytes consumed (== len) on success, or -1 on error.
+INT vschannel_write(TlsContext *tls_ctx, const char *buf, INT len) {
+	SecBufferDesc Message;
+	SecBuffer     Buffers[4];
+	SECURITY_STATUS scRet;
+	PBYTE  io;
+	DWORD  off;
+	INT    cbData;
+
+	if(len <= 0) {
+		return 0;
+	}
+	if(vschannel_ensure_stream_state(tls_ctx) != SEC_E_OK) {
+		return -1;
+	}
+
+	// Reuse the per-context send buffer (one full record) rather than allocating
+	// on every write; the HTTP/2 driver issues many small writes per request.
+	io = (PBYTE)tls_ctx->send_buf;
+
+	off = 0;
+	while(off < (DWORD)len) {
+		DWORD chunk = (DWORD)len - off;
+		if(chunk > tls_ctx->stream_sizes.cbMaximumMessage) {
+			chunk = tls_ctx->stream_sizes.cbMaximumMessage;
+		}
+		memcpy(io + tls_ctx->stream_sizes.cbHeader, buf + off, chunk);
+
+		Buffers[0].pvBuffer   = io;
+		Buffers[0].cbBuffer   = tls_ctx->stream_sizes.cbHeader;
+		Buffers[0].BufferType = SECBUFFER_STREAM_HEADER;
+		Buffers[1].pvBuffer   = io + tls_ctx->stream_sizes.cbHeader;
+		Buffers[1].cbBuffer   = chunk;
+		Buffers[1].BufferType = SECBUFFER_DATA;
+		Buffers[2].pvBuffer   = io + tls_ctx->stream_sizes.cbHeader + chunk;
+		Buffers[2].cbBuffer   = tls_ctx->stream_sizes.cbTrailer;
+		Buffers[2].BufferType = SECBUFFER_STREAM_TRAILER;
+		Buffers[3].BufferType = SECBUFFER_EMPTY;
+
+		Message.ulVersion = SECBUFFER_VERSION;
+		Message.cBuffers  = 4;
+		Message.pBuffers  = Buffers;
+
+		scRet = tls_ctx->sspi->EncryptMessage(&tls_ctx->h_context, 0, &Message, 0);
+		if(FAILED(scRet)) {
+			vschannel_set_last_error(tls_ctx, scRet);
+			return -1;
+		}
+
+		DWORD to_send = Buffers[0].cbBuffer + Buffers[1].cbBuffer + Buffers[2].cbBuffer;
+		DWORD sent = 0;
+		while(sent < to_send) {
+			cbData = send(tls_ctx->socket, (char*)io + sent, (int)(to_send - sent), 0);
+			if(cbData == SOCKET_ERROR || cbData == 0) {
+				vschannel_set_last_error(tls_ctx, WSAGetLastError());
+				return -1;
+			}
+			sent += (DWORD)cbData;
+		}
+		off += chunk;
+	}
+
+	return len;
+}
+
+// vschannel_read returns up to `cap` decrypted application bytes from the open
+// connection. It returns the number of bytes written into `buf` (> 0), 0 at
+// end of stream (close_notify / context expired / peer closed the socket), or
+// -1 on error. Leftover decrypted plaintext that did not fit in `buf`, and
+// ciphertext that did not yet form a complete record, are carried on the
+// TlsContext across calls.
+INT vschannel_read(TlsContext *tls_ctx, char *buf, INT cap) {
+	SecBufferDesc Message;
+	SecBuffer     Buffers[4];
+	SecBuffer     ExtraBuffer;
+	SecBuffer    *pDataBuffer;
+	SecBuffer    *pExtraBuffer;
+	SECURITY_STATUS scRet;
+	INT cbData;
+	int i;
+
+	if(cap <= 0) {
+		return 0;
+	}
+	if(vschannel_ensure_stream_state(tls_ctx) != SEC_E_OK) {
+		return -1;
+	}
+
+	// 1. Serve leftover decrypted plaintext from a previous record first.
+	if(tls_ctx->plain_buf_off < tls_ctx->plain_buf_len) {
+		DWORD avail = tls_ctx->plain_buf_len - tls_ctx->plain_buf_off;
+		DWORD n = avail < (DWORD)cap ? avail : (DWORD)cap;
+		memcpy(buf, tls_ctx->plain_buf + tls_ctx->plain_buf_off, n);
+		tls_ctx->plain_buf_off += n;
+		return (INT)n;
+	}
+
+	if(tls_ctx->stream_eof) {
+		return 0;
+	}
+
+	for(;;) {
+		// Try to decrypt whatever ciphertext we have buffered.
+		if(tls_ctx->recv_buf_len > 0) {
+			Buffers[0].pvBuffer   = tls_ctx->recv_buf;
+			Buffers[0].cbBuffer   = tls_ctx->recv_buf_len;
+			Buffers[0].BufferType = SECBUFFER_DATA;
+			Buffers[1].BufferType = SECBUFFER_EMPTY;
+			Buffers[2].BufferType = SECBUFFER_EMPTY;
+			Buffers[3].BufferType = SECBUFFER_EMPTY;
+
+			Message.ulVersion = SECBUFFER_VERSION;
+			Message.cBuffers  = 4;
+			Message.pBuffers  = Buffers;
+
+			scRet = tls_ctx->sspi->DecryptMessage(&tls_ctx->h_context, &Message, 0, NULL);
+
+			if(scRet == SEC_E_OK || scRet == SEC_I_RENEGOTIATE || scRet == SEC_I_CONTEXT_EXPIRED) {
+				pDataBuffer  = NULL;
+				pExtraBuffer = NULL;
+				for(i = 1; i < 4; i++) {
+					if(pDataBuffer == NULL && Buffers[i].BufferType == SECBUFFER_DATA) {
+						pDataBuffer = &Buffers[i];
+					}
+					if(pExtraBuffer == NULL && Buffers[i].BufferType == SECBUFFER_EXTRA) {
+						pExtraBuffer = &Buffers[i];
+					}
+				}
+
+				// Copy out decrypted application data: as much as fits in the
+				// caller's buffer, the rest into the plaintext carryover. Both
+				// reads happen before the SECBUFFER_EXTRA move below, since the
+				// data buffer points inside recv_buf.
+				INT produced = 0;
+				if(pDataBuffer && pDataBuffer->cbBuffer > 0) {
+					DWORD data_len = pDataBuffer->cbBuffer;
+					DWORD n = data_len < (DWORD)cap ? data_len : (DWORD)cap;
+					memcpy(buf, pDataBuffer->pvBuffer, n);
+					produced = (INT)n;
+					DWORD rest = data_len - n;
+					if(rest > 0) {
+						memcpy(tls_ctx->plain_buf, (unsigned char*)pDataBuffer->pvBuffer + n, rest);
+						tls_ctx->plain_buf_len = rest;
+						tls_ctx->plain_buf_off = 0;
+					}
+				}
+
+				// Carry trailing ciphertext (start of the next record) to the
+				// front of recv_buf for the next decrypt.
+				if(pExtraBuffer) {
+					MoveMemory(tls_ctx->recv_buf, pExtraBuffer->pvBuffer, pExtraBuffer->cbBuffer);
+					tls_ctx->recv_buf_len = pExtraBuffer->cbBuffer;
+				} else {
+					tls_ctx->recv_buf_len = 0;
+				}
+
+				if(scRet == SEC_I_RENEGOTIATE) {
+					// The server requested a new handshake. Run it, then carry any
+					// extra data it left behind and keep reading.
+					SECURITY_STATUS rh = client_handshake_loop(tls_ctx, FALSE, &ExtraBuffer);
+					if(rh != SEC_E_OK) {
+						vschannel_set_last_error(tls_ctx, rh);
+						return -1;
+					}
+					if(ExtraBuffer.pvBuffer) {
+						if(ExtraBuffer.cbBuffer <= tls_ctx->recv_buf_cap) {
+							MoveMemory(tls_ctx->recv_buf, ExtraBuffer.pvBuffer, ExtraBuffer.cbBuffer);
+							tls_ctx->recv_buf_len = ExtraBuffer.cbBuffer;
+						}
+						LocalFree(ExtraBuffer.pvBuffer);
+					}
+				} else if(scRet == SEC_I_CONTEXT_EXPIRED) {
+					// Graceful close_notify from the server.
+					tls_ctx->stream_eof = TRUE;
+					if(produced > 0) {
+						return produced;
+					}
+					return 0;
+				}
+
+				if(produced > 0) {
+					return produced;
+				}
+				// A record with no application data (e.g. a session ticket or a
+				// renegotiation). Keep going.
+				continue;
+			} else if(scRet == SEC_E_INCOMPLETE_MESSAGE) {
+				// Need more bytes to complete the current record: fall through to
+				// recv() more ciphertext.
+			} else {
+				vschannel_set_last_error(tls_ctx, scRet);
+				return -1;
+			}
+		}
+
+		// Receive more ciphertext.
+		if(tls_ctx->recv_buf_len >= tls_ctx->recv_buf_cap) {
+			// Should not happen: a single record fits in recv_buf_cap.
+			vschannel_set_last_error(tls_ctx, SEC_E_INTERNAL_ERROR);
+			return -1;
+		}
+		cbData = recv(tls_ctx->socket, (char*)tls_ctx->recv_buf + tls_ctx->recv_buf_len,
+				(int)(tls_ctx->recv_buf_cap - tls_ctx->recv_buf_len), 0);
+		if(cbData == SOCKET_ERROR) {
+			vschannel_set_last_error(tls_ctx, WSAGetLastError());
+			return -1;
+		}
+		if(cbData == 0) {
+			// Peer closed the socket. Any buffered bytes are an incomplete record.
+			tls_ctx->stream_eof = TRUE;
+			return 0;
+		}
+		tls_ctx->recv_buf_len += (DWORD)cbData;
+	}
+}
+
+// vschannel_h2_close sends a close_notify alert and tears down the connection.
+void vschannel_h2_close(TlsContext *tls_ctx) {
+	if(tls_ctx->context_initialized) {
+		disconnect_from_server(tls_ctx);
+		tls_ctx->context_initialized = FALSE;
+		tls_ctx->socket = INVALID_SOCKET;
+	}
+	vschannel_cleanup(tls_ctx);
 }
 
 
@@ -217,15 +868,10 @@ static SECURITY_STATUS create_credentials(TlsContext *tls_ctx) {
 	}
 
 	tls_ctx->schannel_cred.dwFlags |= SCH_CRED_NO_DEFAULT_CREDS;
+	tls_ctx->schannel_cred.dwFlags |= SCH_CRED_MANUAL_CRED_VALIDATION;
 
-	// The SCH_CRED_MANUAL_CRED_VALIDATION flag is specified because
-	// this sample verifies the server certificate manually. 
-	// Applications that expect to run on WinNT, Win9x, or WinME 
-	// should specify this flag and also manually verify the server
-	// certificate. Applications running on newer versions of Windows can
-	// leave off this flag, in which case the InitializeSecurityContext
-	// function will validate the server certificate automatically.
-	// tls_ctx->schannel_cred.dwFlags |= SCH_CRED_MANUAL_CRED_VALIDATION;
+	// Keep certificate validation under the caller's control. The validated
+	// path runs explicit hostname/chain validation after the handshake.
 
 	// Create an SSPI credential.
 
@@ -272,8 +918,9 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 
 	Socket = socket(PF_INET, SOCK_STREAM, 0);
 	if(Socket == INVALID_SOCKET) {
-		wprintf(L"Error %d creating socket\n", WSAGetLastError());
-		return WSAGetLastError();
+		INT err_code = WSAGetLastError();
+		vschannel_set_last_error(tls_ctx, err_code);
+		return err_code;
 	}
 
 	LPWSTR connect_name = use_proxy ? psz_proxy_server : host;
@@ -282,13 +929,11 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 	int res = wsprintf(service_name, L"%d", port_number);
 
 	if(WSAConnectByNameW(Socket,connect_name, service_name, &local_address_length, 
-		&local_address, &remote_address_length, &remote_address, &tv, NULL) == SOCKET_ERROR) {
-		wprintf(L"Error %d connecting to \"%s\" (%s)\n", 
-			WSAGetLastError(),
-			connect_name, 
-			service_name);
+		&local_address, &remote_address_length, &remote_address, &tv, NULL) == FALSE) {
+		INT err_code = WSAGetLastError();
+		vschannel_set_last_error(tls_ctx, err_code);
 		closesocket(Socket);
-		return WSAGetLastError();
+		return err_code;
 	}
 
 	if(use_proxy) {
@@ -305,15 +950,17 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 
 		// Send message to proxy server
 		if(send(Socket, pbMessage, cbMessage, 0) == SOCKET_ERROR) {
-			wprintf(L"Error %d sending message to proxy!\n", WSAGetLastError());
-			return WSAGetLastError();
+			INT err_code = WSAGetLastError();
+			vschannel_set_last_error(tls_ctx, err_code);
+			return err_code;
 		}
 
 		// Receive message from proxy server
 		cbMessage = recv(Socket, pbMessage, 200, 0);
 		if(cbMessage == SOCKET_ERROR) {
-			wprintf(L"Error %d receiving message from proxy\n", WSAGetLastError());
-			return WSAGetLastError();
+			INT err_code = WSAGetLastError();
+			vschannel_set_last_error(tls_ctx, err_code);
+			return err_code;
 		}
 
 		// this sample is limited but in normal use it 
@@ -431,6 +1078,38 @@ static SECURITY_STATUS perform_client_handshake(TlsContext *tls_ctx, WCHAR *host
 				  ISC_REQ_STREAM;
 
 	//
+	//  Optionally advertise ALPN protocols in the ClientHello. SChannel takes
+	//  this as a SECBUFFER_APPLICATION_PROTOCOLS input buffer holding a
+	//  SEC_APPLICATION_PROTOCOLS record. The backing store is a 4-byte-aligned
+	//  unsigned long array so the struct cast is well aligned on every compiler.
+	//
+	SecBuffer      InBuffers[1];
+	SecBufferDesc  InBuffer;
+	SecBufferDesc *pInput = NULL;
+	unsigned long  alpn_store[80]; // 320 bytes; alpn_wire is at most 256
+	if (tls_ctx->alpn_wire_len > 0) {
+		SEC_APPLICATION_PROTOCOLS     *protos = (SEC_APPLICATION_PROTOCOLS *)alpn_store;
+		SEC_APPLICATION_PROTOCOL_LIST *list   = &protos->ProtocolLists[0];
+		unsigned long wlen = tls_ctx->alpn_wire_len;
+
+		list->ProtoNegoExt     = SecApplicationProtocolNegotiationExt_ALPN;
+		list->ProtocolListSize = (unsigned short)wlen;
+		memcpy(list->ProtocolList, tls_ctx->alpn_wire, (size_t)wlen);
+		protos->ProtocolListsSize =
+			(unsigned long)(FIELD_OFFSET(SEC_APPLICATION_PROTOCOL_LIST, ProtocolList) + wlen);
+
+		InBuffers[0].pvBuffer   = protos;
+		InBuffers[0].cbBuffer   =
+			(unsigned long)(FIELD_OFFSET(SEC_APPLICATION_PROTOCOLS, ProtocolLists) + protos->ProtocolListsSize);
+		InBuffers[0].BufferType = SECBUFFER_APPLICATION_PROTOCOLS;
+
+		InBuffer.cBuffers  = 1;
+		InBuffer.pBuffers  = InBuffers;
+		InBuffer.ulVersion = SECBUFFER_VERSION;
+		pInput = &InBuffer;
+	}
+
+	//
 	//  Initiate a ClientHello message and generate a token.
 	//
 
@@ -449,7 +1128,7 @@ static SECURITY_STATUS perform_client_handshake(TlsContext *tls_ctx, WCHAR *host
 					dwSSPIFlags,
 					0,
 					SECURITY_NATIVE_DREP,
-					NULL,
+					pInput,
 					0,
 					&tls_ctx->h_context,
 					&OutBuffer,
@@ -711,6 +1390,267 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 }
 
 
+// ---------------------------------------------------------------------------
+// One-shot HTTP/1.1 response-completion detection (https_make_request).
+//
+// A keep-alive peer is free to leave the connection open indefinitely after
+// responding (HTTP/1.1's default), so waiting for the peer to close the
+// socket (or send a TLS close_notify) is not a valid completion signal on
+// its own -- a compliant server that never does either would hang the
+// client forever (vlang/v#27705). These helpers let the read loop below
+// recognize a complete response from its own framing (Content-Length, or a
+// fully-received chunked body) and stop as soon as it has arrived, without
+// waiting on the peer. Deliberately conservative throughout: anything that
+// cannot be confidently parsed reports "incomplete", falling back to the
+// existing read-until-close/read-until-context-expired behavior, which
+// remains correct in every case -- these helpers only ever add an EARLIER
+// stopping point, never a different one.
+
+// http_ci_equal reports whether buf[0..len) case-insensitively equals name
+// (an ASCII literal of length name_len) -- HTTP header names and the
+// "chunked" token are always ASCII.
+static BOOL http_ci_equal(const CHAR *buf, int len, const CHAR *name, int name_len) {
+	if(len != name_len) {
+		return FALSE;
+	}
+	for(int i = 0; i < len; i++) {
+		CHAR a = buf[i];
+		CHAR b = name[i];
+		if(a >= 'A' && a <= 'Z') a = a - 'A' + 'a';
+		if(b >= 'A' && b <= 'Z') b = b - 'A' + 'a';
+		if(a != b) {
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+
+// http_has_transfer_coding reports whether the Transfer-Encoding value
+// buf[0..len) contains `coding` as a real comma-separated transfer-coding
+// token (any ";parameters" suffix stripped, OWS trimmed, ASCII
+// case-insensitive) -- deliberately matching net.http's own
+// parse_response/has_header_token semantics, so this C-level framing
+// decision and the V-level chunked-decode decision can never disagree. A
+// substring match is NOT sufficient: an extension coding merely CONTAINING
+// the word (e.g. "xchunked") must fall back to read-until-close framing,
+// not have chunk framing applied to a body whose raw bytes might
+// accidentally look like a complete chunked message.
+static BOOL http_has_transfer_coding(const CHAR *buf, int len, const CHAR *coding, int coding_len) {
+	int start = 0;
+	for(int i = 0; i <= len; i++) {
+		if(i == len || buf[i] == ',') {
+			int tok_start = start;
+			int tok_end = i;
+			for(int j = tok_start; j < tok_end; j++) {
+				if(buf[j] == ';') {
+					tok_end = j;
+					break;
+				}
+			}
+			while(tok_start < tok_end && (buf[tok_start] == ' ' || buf[tok_start] == '\t')) {
+				tok_start++;
+			}
+			while(tok_end > tok_start && (buf[tok_end - 1] == ' ' || buf[tok_end - 1] == '\t')) {
+				tok_end--;
+			}
+			if(http_ci_equal(buf + tok_start, tok_end - tok_start, coding, coding_len)) {
+				return TRUE;
+			}
+			start = i + 1;
+		}
+	}
+	return FALSE;
+}
+
+// http_find_header case-insensitively locates a "<name>: value" line within
+// buf[0..headers_end) (the response's header block) and returns a pointer to
+// the value (spaces/tabs trimmed on BOTH sides -- RFC 7230's field-value
+// grammar allows OWS before and after, and real servers do emit e.g.
+// "Content-Length: 27 " with trailing whitespace), with its length in
+// *out_len. Returns NULL if the header is not present.
+static const CHAR* http_find_header(const CHAR *buf, int headers_end, const CHAR *name, int name_len, int *out_len) {
+	int i = 0;
+	while(i < headers_end) {
+		int line_end = -1;
+		for(int j = i; j + 1 < headers_end; j++) {
+			if(buf[j] == '\r' && buf[j + 1] == '\n') {
+				line_end = j;
+				break;
+			}
+		}
+		if(line_end < 0) {
+			break;
+		}
+		if(line_end - i > name_len && buf[i + name_len] == ':'
+				&& http_ci_equal(buf + i, name_len, name, name_len)) {
+			const CHAR *val = buf + i + name_len + 1;
+			int val_len = line_end - (i + name_len + 1);
+			while(val_len > 0 && (*val == ' ' || *val == '\t')) {
+				val++;
+				val_len--;
+			}
+			while(val_len > 0 && (val[val_len - 1] == ' ' || val[val_len - 1] == '\t')) {
+				val_len--;
+			}
+			*out_len = val_len;
+			return val;
+		}
+		i = line_end + 2;
+	}
+	return NULL;
+}
+
+// http_parse_decimal/http_parse_hex reject a value that would overflow
+// `long` (Windows' LLP64 model keeps `long` 32-bit even in 64-bit builds)
+// rather than let the multiply-add silently wrap into a small or negative
+// number: http_response_complete compares this value against a byte count
+// to decide whether the full response has arrived, so a wrapped length
+// could make it signal "complete" after only a few real bytes -- a
+// truncation bug strictly worse than the hang this file fixes. No
+// legitimate response from this one-shot client's callers is anywhere
+// close to this bound.
+#define HTTP_MAX_PARSED_LENGTH 0x3FFFFFFFL
+
+// http_parse_decimal parses buf[0..len) as an unsigned decimal integer,
+// rejecting anything that is not entirely digits -- a lenient parse that
+// silently accepts trailing garbage is not a trustworthy length signal.
+static BOOL http_parse_decimal(const CHAR *buf, int len, long *out) {
+	if(len <= 0) {
+		return FALSE;
+	}
+	long value = 0;
+	for(int i = 0; i < len; i++) {
+		if(buf[i] < '0' || buf[i] > '9') {
+			return FALSE;
+		}
+		int digit = buf[i] - '0';
+		if(value > (HTTP_MAX_PARSED_LENGTH - digit) / 10) {
+			return FALSE;
+		}
+		value = value * 10 + digit;
+	}
+	*out = value;
+	return TRUE;
+}
+
+// http_parse_hex parses a chunk-size line's leading hex digits, stopping at
+// the first non-hex-digit byte (permitting a ";extension" suffix per
+// RFC 7230 4.1.1, read past but not interpreted here). Requires at least one
+// hex digit.
+static BOOL http_parse_hex(const CHAR *buf, int len, long *out) {
+	int i = 0;
+	long value = 0;
+	while(i < len) {
+		CHAR c = buf[i];
+		int digit;
+		if(c >= '0' && c <= '9') {
+			digit = c - '0';
+		} else if(c >= 'a' && c <= 'f') {
+			digit = c - 'a' + 10;
+		} else if(c >= 'A' && c <= 'F') {
+			digit = c - 'A' + 10;
+		} else {
+			break;
+		}
+		if(value > (HTTP_MAX_PARSED_LENGTH - digit) / 16) {
+			return FALSE;
+		}
+		value = value * 16 + digit;
+		i++;
+	}
+	if(i == 0) {
+		return FALSE;
+	}
+	*out = value;
+	return TRUE;
+}
+
+// http_chunked_body_complete reports whether buf[0..len) -- the bytes
+// immediately following the response headers -- contains a complete
+// chunked-encoded body: every chunk present through the terminating
+// zero-size chunk and its (possibly empty) trailer section (RFC 7230 4.1).
+static BOOL http_chunked_body_complete(const CHAR *buf, int len) {
+	int pos = 0;
+	BOOL in_trailers = FALSE;
+	while(TRUE) {
+		int line_end = -1;
+		for(int i = pos; i + 1 < len; i++) {
+			if(buf[i] == '\r' && buf[i + 1] == '\n') {
+				line_end = i;
+				break;
+			}
+		}
+		if(line_end < 0) {
+			return FALSE; // line not fully received yet
+		}
+		if(in_trailers) {
+			if(line_end == pos) {
+				return TRUE; // empty line: end of the trailer section
+			}
+			pos = line_end + 2;
+			continue;
+		}
+		long chunk_size = 0;
+		if(!http_parse_hex(buf + pos, line_end - pos, &chunk_size)) {
+			return FALSE; // not a valid chunk-size line -- do not trust it
+		}
+		int data_start = line_end + 2;
+		if(chunk_size == 0) {
+			in_trailers = TRUE;
+			pos = data_start;
+			continue;
+		}
+		long data_end = (long)data_start + chunk_size;
+		if(data_end + 1 >= (long)len) {
+			return FALSE; // chunk data + trailing CRLF not fully received yet
+		}
+		pos = (int)(data_end + 2);
+	}
+}
+
+// http_response_complete inspects the response bytes accumulated so far
+// (buf[0..len)) and reports whether they already contain one complete HTTP
+// response. Only Content-Length and chunked Transfer-Encoding are
+// understood; a response framed neither way (or with a malformed length)
+// reports incomplete, so the caller keeps reading until the peer closes —
+// identical to this function's behavior before these helpers existed.
+static BOOL http_response_complete(const CHAR *buf, int len) {
+	int headers_end = -1;
+	for(int i = 0; i + 3 < len; i++) {
+		if(buf[i] == '\r' && buf[i + 1] == '\n' && buf[i + 2] == '\r' && buf[i + 3] == '\n') {
+			headers_end = i + 4;
+			break;
+		}
+	}
+	if(headers_end < 0) {
+		return FALSE;
+	}
+
+	int te_len = 0;
+	const CHAR *te = http_find_header(buf, headers_end, "Transfer-Encoding", 17, &te_len);
+	if(te != NULL) {
+		// RFC 7230 3.3.3: Transfer-Encoding, when present, overrides
+		// Content-Length. Only a real `chunked` transfer-coding token is
+		// understood here; anything else falls back to the existing
+		// (always-correct) read-until-close behavior.
+		if(http_has_transfer_coding(te, te_len, "chunked", 7)) {
+			return http_chunked_body_complete(buf + headers_end, len - headers_end);
+		}
+		return FALSE;
+	}
+
+	int cl_len = 0;
+	const CHAR *cl = http_find_header(buf, headers_end, "Content-Length", 14, &cl_len);
+	if(cl == NULL) {
+		return FALSE; // no length-framing header: must read until the peer closes
+	}
+	long content_length = 0;
+	if(!http_parse_decimal(cl, cl_len, &content_length)) {
+		return FALSE; // not a clean digit string -- do not trust it
+	}
+	return (long)(len - headers_end) >= content_length;
+}
+
 static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD req_len, CHAR **out, int *length, vschannel_allocator afn) {
 	SecPkgContext_StreamSizes Sizes;
 	SECURITY_STATUS scRet;
@@ -786,6 +1726,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 		scRet = tls_ctx->sspi->EncryptMessage(&tls_ctx->h_context, 0, &Message, 0);
 		if(FAILED(scRet)) {
 			wprintf(L"Error 0x%x returned by EncryptMessage\n", scRet);
+			LocalFree(pbIoBuffer);
 			return scRet;
 		}
 
@@ -797,6 +1738,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 			if(cbData == SOCKET_ERROR || cbData == 0) {
 				wprintf(L"Error %d sending data to server (3)\n", WSAGetLastError());
 				tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
+				LocalFree(pbIoBuffer);
 				return SEC_E_INTERNAL_ERROR;
 			}
 			sent += (DWORD)cbData;
@@ -822,6 +1764,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 				if(cbIoBuffer) {
 					wprintf(L"Server unexpectedly disconnected\n");
 					scRet = SEC_E_INTERNAL_ERROR;
+					LocalFree(pbIoBuffer);
 					return scRet;
 				}
 				else {
@@ -865,6 +1808,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 			scRet != SEC_I_CONTEXT_EXPIRED)
 		{
 			wprintf(L"Error 0x%x returned by DecryptMessage\n", scRet);
+			LocalFree(pbIoBuffer);
 			return scRet;
 		}
 
@@ -889,6 +1833,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 			CHAR *a = afn(*out, required_length);
 			if( a == NULL ) {
 				scRet = SEC_E_INTERNAL_ERROR;
+				LocalFree(pbIoBuffer);
 				return scRet;
 			}
 			*out = a;
@@ -897,7 +1842,15 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 		// Copy the decrypted data to our output buffer
 		memcpy(*out+*length, pDataBuffer->pvBuffer, (int)pDataBuffer->cbBuffer);
 		*length += (int)pDataBuffer->cbBuffer;
-		
+
+		// Stop as soon as the response itself is fully framed (see
+		// http_response_complete's doc comment) rather than waiting for the
+		// peer to close the connection or send a TLS close_notify -- a
+		// keep-alive peer may do neither for a long time (vlang/v#27705).
+		if(http_response_complete(*out, *length)) {
+			return SEC_E_OK;
+		}
+
 		// Move any "extra" data to the input buffer.
 		if(pExtraBuffer) {
 			MoveMemory(pbIoBuffer, pExtraBuffer->pvBuffer, pExtraBuffer->cbBuffer);
@@ -912,6 +1865,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 			// The server wants to perform another handshake sequence.
 			scRet = client_handshake_loop(tls_ctx, FALSE, &ExtraBuffer);
 			if(scRet != SEC_E_OK) {
+				LocalFree(pbIoBuffer);
 				return scRet;
 			}
 
@@ -920,10 +1874,12 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 			{
 				MoveMemory(pbIoBuffer, ExtraBuffer.pvBuffer, ExtraBuffer.cbBuffer);
 				cbIoBuffer = ExtraBuffer.cbBuffer;
+				LocalFree(ExtraBuffer.pvBuffer);
 			}
 		}
 	}
 
+	LocalFree(pbIoBuffer);
 	return SEC_E_OK;
 }
 
@@ -963,7 +1919,13 @@ static DWORD verify_server_certificate( PCCERT_CONTEXT  pServerCert, LPWSTR host
 	ChainPara.RequestedUsage.Usage.cUsageIdentifier     = cUsages;
 	ChainPara.RequestedUsage.Usage.rgpszUsageIdentifier = rgszUsages;
 
-	if(!CertGetCertificateChain(NULL, pServerCert, NULL, pServerCert->hCertStore, &ChainPara, 0, NULL, &pChainContext)) {
+	// Best-effort TLS revocation check: detect a positively revoked leaf
+	// certificate, but let policy evaluation ignore unknown/offline status.
+	if(!CertGetCertificateChain(NULL, pServerCert, NULL, pServerCert->hCertStore, &ChainPara,
+		CERT_CHAIN_CACHE_END_CERT |
+		CERT_CHAIN_REVOCATION_CHECK_END_CERT |
+		CERT_CHAIN_REVOCATION_ACCUMULATIVE_TIMEOUT,
+		NULL, &pChainContext)) {
 		Status = GetLastError();
 		wprintf(L"Error 0x%x returned by CertGetCertificateChain!\n", Status);
 		goto cleanup;
@@ -978,6 +1940,7 @@ static DWORD verify_server_certificate( PCCERT_CONTEXT  pServerCert, LPWSTR host
 
 	memset(&PolicyPara, 0, sizeof(PolicyPara));
 	PolicyPara.cbSize            = sizeof(PolicyPara);
+	PolicyPara.dwFlags           = CERT_CHAIN_POLICY_IGNORE_ALL_REV_UNKNOWN_FLAGS;
 	PolicyPara.pvExtraPolicyPara = &polHttps;
 
 	memset(&PolicyStatus, 0, sizeof(PolicyStatus));

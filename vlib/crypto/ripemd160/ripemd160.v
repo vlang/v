@@ -125,9 +125,9 @@ pub fn (d0 &Digest) sum(inp []u8) []u8 {
 	mut tmp := []u8{len: 64}
 	tmp[0] = 0x80
 	if tc % 64 < 56 {
-		d.write(tmp[0..56 - tc % 64]) or { panic(err) }
+		d.write(tmp[0..int(56 - tc % 64)]) or { panic(err) }
 	} else {
-		d.write(tmp[0..64 + 56 - tc % 64]) or { panic(err) }
+		d.write(tmp[0..int(64 + 56 - tc % 64)]) or { panic(err) }
 	}
 
 	// Length in bits.

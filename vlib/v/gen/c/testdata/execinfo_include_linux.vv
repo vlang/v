@@ -1,0 +1,2 @@
+// vtest vflags: -os linux
+fn main() {}

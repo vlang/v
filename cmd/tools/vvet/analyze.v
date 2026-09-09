@@ -29,11 +29,13 @@ const long_fns_cutoff = os.getenv_opt('VET_LONG_FNS_CUTOFF') or { '300' }.int()
 
 struct VetAnalyze {
 mut:
-	repeated_expr_cutoff  shared map[string]int // repeated code cutoff	
-	repeated_expr         shared map[string]map[string]map[string][]token.Pos // repeated exprs in fn scope
-	potential_non_inlined shared map[string]map[string]token.Pos              // fns might be inlined
-	call_counter          shared map[string]int // fn call counter
-	cur_fn                ast.FnDecl            // current fn declaration
+	repeated_expr_cutoff     shared map[string]int // repeated code cutoff	
+	repeated_expr            shared map[string]map[string]map[string][]token.Pos // repeated exprs in fn scope
+	potential_non_inlined    shared map[string]map[string]token.Pos              // fns might be inlined
+	call_counter             shared map[string]int  // fn call counter
+	unqualified_call_counter shared map[string]int  // calls keyed by `<caller module>.<bare name>`
+	declared_fns             shared map[string]bool // all function declarations, keyed by fkey
+	cur_fn                   ast.FnDecl             // current fn declaration
 }
 
 // stmt checks for repeated code in statements
@@ -42,8 +44,8 @@ fn (mut vt VetAnalyze) stmt(vet &Vet, stmt ast.Stmt) {
 		ast.AssignStmt {
 			if stmt.op == .plus_assign {
 				if stmt.right[0] in [ast.StringLiteral, ast.StringInterLiteral] {
-					vt.save_expr(stringconcat_cutoff, '${stmt.left[0].str()} += ${stmt.right[0].str()}',
-						vet.file, stmt.pos)
+					vt.save_expr(stringconcat_cutoff,
+						'${stmt.left[0].str()} += ${stmt.right[0].str()}', vet.file, stmt.pos)
 				}
 			}
 		}
@@ -54,6 +56,15 @@ fn (mut vt VetAnalyze) stmt(vet &Vet, stmt ast.Stmt) {
 // save_expr registers a repeated code occurrence
 fn (mut vt VetAnalyze) save_expr(cutoff int, expr string, file string, pos token.Pos) {
 	lock vt.repeated_expr {
+		if vt.cur_fn.name !in vt.repeated_expr {
+			vt.repeated_expr[vt.cur_fn.name] = map[string]map[string][]token.Pos{}
+		}
+		if expr !in vt.repeated_expr[vt.cur_fn.name] {
+			vt.repeated_expr[vt.cur_fn.name][expr] = map[string][]token.Pos{}
+		}
+		if file !in vt.repeated_expr[vt.cur_fn.name][expr] {
+			vt.repeated_expr[vt.cur_fn.name][expr][file] = []token.Pos{}
+		}
 		vt.repeated_expr[vt.cur_fn.name][expr][file] << pos
 	}
 	lock vt.repeated_expr_cutoff {
@@ -93,14 +104,28 @@ fn (mut vt VetAnalyze) expr(vet &Vet, expr ast.Expr) {
 						vt.call_counter['${int(vt.cur_fn.receiver.typ)}.${expr.name}']++
 					}
 				}
-				vt.save_expr(callexpr_cutoff, '${left_str}.${expr.name}(${expr.args.map(it.str()).join(', ')})',
-					vet.file, expr.pos)
+				vt.save_expr(callexpr_cutoff,
+					'${left_str}.${expr.name}(${expr.args.map(it.str()).join(', ')})', vet.file,
+					expr.pos)
 			} else {
 				lock vt.call_counter {
-					vt.call_counter[expr.name]++
+					fn_name := if expr.name.contains('.') || expr.mod == 'builtin' {
+						expr.name
+					} else {
+						'${expr.mod}.${expr.name}'
+					}
+					vt.call_counter[fn_name]++
 				}
-				vt.save_expr(callexpr_cutoff, '${expr.name}(${expr.args.map(it.str()).join(', ')})',
-					vet.file, expr.pos)
+				if !expr.name.contains('.') {
+					// Keep the caller module so builtin fallback calls can later be
+					// distinguished from calls shadowed by a same-module function.
+					caller_fn_name := '${expr.mod}.${expr.name}'
+					lock vt.unqualified_call_counter {
+						vt.unqualified_call_counter[caller_fn_name]++
+					}
+				}
+				vt.save_expr(callexpr_cutoff,
+					'${expr.name}(${expr.args.map(it.str()).join(', ')})', vet.file, expr.pos)
 			}
 		}
 		ast.AsCast {
@@ -130,12 +155,16 @@ fn (mut vt VetAnalyze) long_or_empty_fns(mut vet Vet, fn_decl ast.FnDecl) {
 
 // potential_non_inlined checks for potential fns to be inlined
 fn (mut vt VetAnalyze) potential_non_inlined(mut vet Vet, fn_decl ast.FnDecl) {
+	fn_key := fn_decl.fkey()
+	lock vt.declared_fns {
+		vt.declared_fns[fn_key] = true
+	}
 	nr_lines := fn_decl.end_pos.line_nr - fn_decl.pos.line_nr - 2
 	if nr_lines < short_fns_cutoff {
 		attr := fn_decl.attrs.find_first('inline')
 		if attr == none {
 			lock vt.potential_non_inlined {
-				vt.potential_non_inlined[fn_decl.fkey()][vet.file] = fn_decl.pos
+				vt.potential_non_inlined[fn_key][vet.file] = fn_decl.pos
 			}
 		}
 	}
@@ -153,7 +182,8 @@ fn (mut vt VetAnalyze) vet_repeated_code(mut vet Vet) {
 				}
 				for file, info_pos in info {
 					for k, pos in info_pos {
-						vet.notice_with_file(file, '${expr} occurs ${k + 1}/${occurrences} times in ${scope_name}.',
+						vet.notice_with_file(file,
+							'${expr} occurs ${k + 1}/${occurrences} times in ${scope_name}.',
 							pos.line_nr, .repeated_code)
 					}
 				}
@@ -164,13 +194,33 @@ fn (mut vt VetAnalyze) vet_repeated_code(mut vet Vet) {
 
 // vet_inlining_fn reports possible fn to be inlined
 fn (mut vt VetAnalyze) vet_inlining_fn(mut vet Vet) {
+	mut declared_fns := map[string]bool{}
+	rlock vt.declared_fns {
+		declared_fns = vt.declared_fns.clone()
+	}
+	mut unqualified_calls := map[string]int{}
+	rlock vt.unqualified_call_counter {
+		unqualified_calls = vt.unqualified_call_counter.clone()
+	}
+	mut builtin_calls := map[string]int{}
+	for caller_fn_name, count in unqualified_calls {
+		caller_mod := caller_fn_name.all_before_last('.')
+		if caller_mod == 'builtin' || caller_fn_name !in declared_fns {
+			builtin_calls[caller_fn_name.all_after_last('.')] += count
+		}
+	}
 	for fn_name, info in vt.potential_non_inlined {
 		for file, pos in info {
-			calls := vt.call_counter[fn_name] or { 0 }
+			calls := if fn_name.contains('.') {
+				vt.call_counter[fn_name] or { 0 }
+			} else {
+				builtin_calls[fn_name] or { 0 }
+			}
 			if calls < fns_call_cutoff {
 				continue
 			}
-			vet.notice_with_file(file, '${fn_name.all_after('.')} fn might be inlined (possibly called at least ${calls} times)',
+			vet.notice_with_file(file,
+				'${fn_name.all_after('.')} fn might be inlined (possibly called at least ${calls} times)',
 				pos.line_nr, .inline_fn)
 		}
 	}

@@ -8,17 +8,19 @@ fn test_c_struct_fields_are_pub() {
 		height:       512
 		flags:        0
 		userPtr:      unsafe { nil }
-		renderCreate: fn (uptr voidptr, width int, height int) int {
+		renderCreate: fn (uptr voidptr, width i32, height i32) i32 {
 			return 1
 		}
-		renderResize: fn (uptr voidptr, width int, height int) int {
+		renderResize: fn (uptr voidptr, width i32, height i32) i32 {
 			return 1
 		}
-		renderUpdate: fn (uptr voidptr, rect &int, data &u8) {}
-		renderDraw:   fn (uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts int) {}
+		renderUpdate: fn (uptr voidptr, rect &i32, data &u8) {}
+		renderDraw:   fn (uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts i32) {}
 		renderDelete: fn (uptr voidptr) {}
 	}
 
 	context := fontstash.create_internal(params)
-	assert context.str() == 'fontstash.Context(C.FONScontext{})'
+	// After porting sfons/fontstash to V, C.FONScontext now has public fields
+	// so the string representation shows the fields instead of being empty
+	assert context.str().starts_with('fontstash.Context(C.FONScontext{')
 }

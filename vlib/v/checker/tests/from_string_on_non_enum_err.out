@@ -1,3 +1,10 @@
+vlib/v/checker/tests/from_string_on_non_enum_err.vv:9:20: notice: unused parameter: `a`
+    7 | }
+    8 | 
+    9 | fn Bar.from_string(a string) {}
+      |                    ^
+   10 | 
+   11 | fn main() {
 vlib/v/checker/tests/from_string_on_non_enum_err.vv:12:2: error: expected enum, but `Foo` is struct
    10 | 
    11 | fn main() {

@@ -2,13 +2,18 @@ module closure
 
 $if !freestanding && !vinix {
 	#include <sys/mman.h>
+	#insert "@VEXEROOT/vlib/builtin/closure/closure_once_nix.h"
+
+	fn C.v_closure_init_once(ClosureInitFn)
 }
 
-@[typedef]
-pub struct C.pthread_mutex_t {}
-
 struct ClosureMutex {
-	closure_mtx C.pthread_mutex_t
+	closure_mtx [128]u8
+}
+
+@[inline]
+fn closure_mtx_ptr_platform() voidptr {
+	return unsafe { voidptr(&g_closure.closure_mtx[0]) }
 }
 
 @[inline]
@@ -23,8 +28,8 @@ fn closure_alloc_platform() &u8 {
 	} $else {
 		// Main OS environments use mmap to get aligned pages
 		p = unsafe {
-			C.mmap(0, g_closure.v_page_size * 2, C.PROT_READ | C.PROT_WRITE, C.MAP_ANONYMOUS | C.MAP_PRIVATE,
-				-1, 0)
+			C.mmap(0, g_closure.v_page_size * 2, C.PROT_READ | C.PROT_WRITE,
+				C.MAP_ANONYMOUS | C.MAP_PRIVATE, -1, 0)
 		}
 		if p == &u8(C.MAP_FAILED) {
 			return unsafe { nil }
@@ -65,20 +70,39 @@ fn get_page_size_platform() int {
 @[inline]
 fn closure_mtx_lock_init_platform() {
 	$if !freestanding || vinix {
-		C.pthread_mutex_init(&g_closure.closure_mtx, 0)
+		C.pthread_mutex_init(closure_mtx_ptr_platform(), 0)
 	}
 }
 
 @[inline]
 fn closure_mtx_lock_platform() {
 	$if !freestanding || vinix {
-		C.pthread_mutex_lock(&g_closure.closure_mtx)
+		C.pthread_mutex_lock(closure_mtx_ptr_platform())
 	}
 }
 
 @[inline]
 fn closure_mtx_unlock_platform() {
 	$if !freestanding || vinix {
-		C.pthread_mutex_unlock(&g_closure.closure_mtx)
+		C.pthread_mutex_unlock(closure_mtx_ptr_platform())
+	}
+}
+
+@[inline]
+fn closure_current_thread_id_platform() u64 {
+	$if !freestanding {
+		return u64(C.pthread_self())
+	}
+	return u64(0)
+}
+
+@[inline]
+fn closure_init_once_platform() {
+	$if freestanding || vinix {
+		if isnil(g_closure.closure_ptr) {
+			closure_init_body()
+		}
+	} $else {
+		C.v_closure_init_once(closure_init_body)
 	}
 }

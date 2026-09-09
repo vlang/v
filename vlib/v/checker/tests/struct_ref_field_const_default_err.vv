@@ -1,0 +1,12 @@
+struct Tag {
+	name string
+}
+
+const null_tag = Tag{}
+
+struct Thing {
+pub:
+	a int
+pub mut:
+	tag &Tag = null_tag
+}

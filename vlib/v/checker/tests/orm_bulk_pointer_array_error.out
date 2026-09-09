@@ -1,0 +1,14 @@
+vlib/v/checker/tests/orm_bulk_pointer_array_error.vv:26:10: error: ORM: bulk insert currently supports only arrays of `BulkPointerUser` values
+   24 |     update_users := [&update_user]
+   25 |     sql db {
+   26 |         insert insert_users into BulkPointerUser
+      |                ~~~~~~~~~~~~
+   27 |         update BulkPointerUpdateUser set name = update_users.name where id == update_users.id
+   28 |     }!
+vlib/v/checker/tests/orm_bulk_pointer_array_error.vv:27:73: error: ORM: bulk update currently supports only arrays of `BulkPointerUpdateUser` values
+   25 |     sql db {
+   26 |         insert insert_users into BulkPointerUser
+   27 |         update BulkPointerUpdateUser set name = update_users.name where id == update_users.id
+      |                                                                               ~~~~~~~~~~~~
+   28 |     }!
+   29 | }

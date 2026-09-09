@@ -1,17 +1,21 @@
 module zlib
 
-import compress as compr
+import compress.deflate
 
-// compresses an array of bytes using zlib and returns the compressed bytes in a new array
-// Example: b := 'abcdefgh'.repeat(1000).bytes(); cmpr := zlib.compress(b)!; assert cmpr.len < b.len; dc := zlib.decompress(cmpr)!; assert b == dc
+// compress compresses data using the zlib container format.
 pub fn compress(data []u8) ![]u8 {
-	// flags = TDEFL_WRITE_ZLIB_HEADER (0x01000)
-	return compr.compress(data, 0x01000)
+	return deflate.compress_zlib(data)
 }
 
-// decompresses an array of bytes using zlib and returns the decompressed bytes in a new array
-// Example: b := 'abcdefgh'.repeat(1000).bytes(); cmpr := zlib.compress(b)!; assert cmpr.len < b.len; dc := zlib.decompress(cmpr)!; assert b == dc
+// decompress decompresses zlib-compressed data.
 pub fn decompress(data []u8) ![]u8 {
-	// flags = TINFL_FLAG_PARSE_ZLIB_HEADER (0x1)
-	return compr.decompress(data, 0x1)
+	return deflate.decompress_zlib(data)
+}
+
+// decompress_with_callback decompresses a zlib stream (RFC 1950) using a callback for chunked delivery.
+// The callback receives chunks of decompressed data and should return the chunk length to continue, or 0 to abort.
+// Returns the total decompressed length.
+pub fn decompress_with_callback(data []u8, cb deflate.ChunkCallback, userdata voidptr) !int {
+	deflate.validate_zlib_header(data)!
+	return deflate.decompress_with_callback(data, cb, userdata)
 }

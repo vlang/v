@@ -91,7 +91,7 @@ with lots of functions and types, and you don't want to manually type their defi
 
 For this C2V has a wrapper mode.
 
-We have a simple file `usersapi.h`. By running `v translate -wrapper usersapi.c` 
+We have a simple file `usersapi.h`. By running `v translate wrapper usersapi.c`
 we get `usersapi.v` with just the function definitions. Function bodies are skipped.
 
 ```c

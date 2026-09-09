@@ -35,9 +35,9 @@ V supports the following commands:
 
 * Commonly Used Utilities:
   run                          Compile and run a V program. Delete the
-                               executable after the run.
-  crun                         Compile and run a V program without deleting the
-                               executable.
+                               executable if V created it for this run.
+  crun                         Compile and run a V program, keeping the
+                               executable for reuse.
                                If you run the same program a second time,
                                without changing the source files,
                                V will just run the executable, without
@@ -62,14 +62,17 @@ V supports the following commands:
 * Installation Management Utilities:
   symlink                      Create a symbolic link for V.
   up                           Run the V self-updater.
-  self [-prod]                 Run the V self-compiler, use -prod to optimize
-                               compilation.
+  self [-prod | -b fastc]      Run the V self-compiler. Use -prod to optimize
+                               C builds; FastC self-builds do not support it.
   version                      Print the version text and exits.
 
 * Package Management Utilities:
   install                      Install a module from VPM.
+  link                         Symlink the current project into VMODULES.
   remove                       Remove a module that was installed from VPM.
   search                       Search for a module from VPM.
+  unlink                       Remove the symlink for the current project
+                               from VMODULES.
   update                       Update an installed module from VPM.
   upgrade                      Upgrade all the outdated modules.
   list                         List all installed modules.
@@ -83,5 +86,5 @@ Use "v help other" to see less frequently used commands.
 Use "v help topics" to see a list of all known help topics.
 
 Note: Help is required to write more help topics.
-Only build, new, init, doc, fmt, vet, run, test, watch, search, install, 
-remove, update, bin2v, check-md are properly documented currently.
+Only build, new, init, doc, fmt, vet, run, test, watch, search, install,
+link, remove, unlink, update, bin2v, check-md are properly documented currently.

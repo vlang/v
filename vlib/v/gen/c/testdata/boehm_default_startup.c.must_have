@@ -1,0 +1,2 @@
+GC_set_free_space_divisor(1);
+GC_INIT();

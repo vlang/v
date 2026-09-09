@@ -57,7 +57,7 @@ Be careful, if you introduce a breaking change and rebuild V, you will no longer
 be able to use V to build itself. So it's a good idea to make a backup copy of a
 working compiler executable.
 
-But don't worry, you can always simply run `make` (or `make.bat`), it will
+But don't worry, you can always simply run `make` (or `makev.bat`), it will
 download the C version of the compiler and rebuild it from scratch.
 
 The architecture of the compiler is very simple and has three distinct steps:
@@ -323,7 +323,7 @@ a copy of the compiler rather than replacing it with `v self`.
 | `debug_codegen`                   | Prints automatically generated V code during the scanning phase                                                     |
 | `debug_interface_table`           | Prints generated interfaces during C generation                                                                     |
 | `debug_interface_type_implements` | Prints debug information when checking that a type implements in interface                                          |
-| `print_vweb_template_expansions`  | Prints vweb compiled HTML files                                                                                     |
+| `print_veb_template_expansions`   | Prints veb compiled HTML files                                                                                      |
 | `time_checking`                   | Prints the time spent checking files and other related information                                                  |
 | `time_parsing`                    | Prints the time spent parsing files and other related information                                                   |
 |                                   |                                                                                                                     |

@@ -1,0 +1,14 @@
+// vtest vflags: -gc none -os termux
+fn host_arch() string {
+	$if linux {
+		return 'linux-x86_64'
+	} $else $if termux {
+		return 'linux-aarch64'
+	} $else {
+		return 'unknown'
+	}
+}
+
+fn main() {
+	println(host_arch())
+}

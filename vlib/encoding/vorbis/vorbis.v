@@ -48,8 +48,7 @@ pub fn decode_memory(ptr &u8, len i32) !DecodedSong {
 		path: ':memory:'
 	}
 	unsafe {
-		size := C.stb_vorbis_decode_memory(ptr, len, &res.channels, &res.sample_rate,
-			&res.data)
+		size := C.stb_vorbis_decode_memory(ptr, len, &res.channels, &res.sample_rate, &res.data)
 		if size == -1 {
 			return error('could not decode ogg/vorbis memory block')
 		}

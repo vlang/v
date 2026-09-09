@@ -3,7 +3,10 @@ name: CI FreeBSD
 on:
   workflow_dispatch:
   push:
+    branches:
+      - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - 'cmd/tools/**'
@@ -11,13 +14,65 @@ on:
       - '!ci/freebsd_ci.vsh'
       - '!cmd/tools/builders/**.v'
   pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - 'cmd/tools/**'
-      - '!**/freebsd_ci.yml'
-      - '!ci/freebsd_ci.vsh'
-      - '!cmd/tools/builders/**.v'
+    paths:
+      - 'cmd/v/**'
+      - 'cmd/tools/builders/**.v'
+      # cmd/tools essentials synced with cmd/tools/vtest-self.v:essential_list
+      - 'cmd/tools/vvet/**'
+      - 'cmd/tools/vdoc/**'
+      # vlib essentials synced with cmd/tools/vtest-self.v:essential_list
+      - 'vlib/arrays/**'
+      - 'vlib/bitfield/**'
+      - 'vlib/builtin/**'
+      - 'vlib/cli/**'
+      - 'vlib/crypto/md5/**'
+      - 'vlib/dl/**'
+      - 'vlib/encoding/**'
+      - 'vlib/flag/**'
+      - 'vlib/hash/**'
+      - 'vlib/io/**'
+      - 'vlib/json/**'
+      - 'vlib/json2/**'
+      - 'vlib/math/**'
+      - 'vlib/net/**'
+      - 'vlib/os/**'
+      - 'vlib/rand/**'
+      - 'vlib/runtime/**'
+      - 'vlib/semver/**'
+      - 'vlib/strconv/**'
+      - 'vlib/strings/**'
+      - 'vlib/sync/**'
+      - 'vlib/time/**'
+      - 'vlib/toml/**'
+      - 'vlib/v/**'
+      # build-examples / DB / Sokol deps exercised by ci/freebsd_ci.vsh
+      - 'examples/**'
+      - 'vlib/compress/**'
+      - 'vlib/crypto/rand/**'
+      - 'vlib/db/**'
+      - 'vlib/fontstash/**'
+      - 'vlib/gg/**'
+      - 'vlib/gx/**'
+      - 'vlib/picoev/**'
+      - 'vlib/sokol/**'
+      - 'vlib/term/**'
+      - 'vlib/veb/**'
+      - 'thirdparty/**'
+      - 'vc/**'
+      - 'v.mod'
+      - 'ci/freebsd_ci.vsh'
+      - 'ci/common/**'
+      - 'GNUmakefile'
+      - 'Makefile'
+      - '.github/problem-matchers/**'
+      # Negated patterns MUST stay after all positive patterns (GitHub path-filter ordering).
+      - '!**.md'
+      - '!**.yml'
+      - '.github/workflows/freebsd_ci.yml'
+
+concurrency:
+  group: freebsd-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
 
 ### See https://github.com/cross-platform-actions/action
 ### for a description of the used fields here
@@ -27,100 +82,121 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
-      - name: Tests on FreeBSD with tcc
-        id: tests-freebsd-tcc
-        uses: cross-platform-actions/action@v0.32.0
+      - uses: actions/checkout@v7
+
+      - name: Start FreeBSD VM for tcc
+        id: vm-freebsd-tcc
+        uses: cross-platform-actions/action@v1.5.0
         with:
           operating_system: freebsd
-          version: '15.0'
+          version: '15.1'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
-          run: |
-            sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
-            # Install DB packages needed to build examples
-            sudo pkg install -y mariadb118-client postgresql18-client
-            # Install packages needed by Sokol to build examples
-            sudo pkg install -y alsa-lib libglvnd libXi libXcursor
-            # Mandatory: hostname not set in VM => some tests fail
-            sudo hostname -s freebsd-ci
-            echo "### OS infos"
-            uname -a
-            git config --global --add safe.directory .
-            echo "### Build V"
-            gmake
-            sudo ./v symlink
-            export VTEST_SHOW_LONGEST_BY_RUNTIME=3
-            export VTEST_SHOW_LONGEST_BY_COMPTIME=3
-            export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
-            export VFLAGS='-cc tcc -no-retry-compilation'
-            ./v run ci/freebsd_ci.vsh all
+
+      - name: Tests on FreeBSD with tcc
+        id: tests-freebsd-tcc
+        shell: cpa.sh {0}
+        run: |
+          sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
+          # Install DB packages needed to build examples
+          sudo pkg install -y mariadb118-client postgresql18-client
+          # Install packages needed by Sokol to build examples
+          sudo pkg install -y alsa-lib libglvnd libXi libXcursor
+          # Mandatory: hostname not set in VM => some tests fail
+          sudo hostname -s freebsd-ci
+          echo "::group::OS infos"
+          uname -a
+          echo "::endgroup::"
+          echo "::group::Build V"
+          git config --global --add safe.directory .
+          gmake
+          sudo ./v symlink
+          export VTEST_SHOW_LONGEST_BY_RUNTIME=3
+          export VTEST_SHOW_LONGEST_BY_COMPTIME=3
+          export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
+          export VFLAGS='-cc tcc -no-retry-compilation'
+          echo "::endgroup::"
+          ./v run ci/freebsd_ci.vsh all
 
   clang-freebsd:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
-      - name: Tests on FreeBSD with clang
-        id: tests-freebsd-clang
-        uses: cross-platform-actions/action@v0.32.0
+      - uses: actions/checkout@v7
+
+      - name: Start FreeBSD VM for clang
+        id: vm-freebsd-clang
+        uses: cross-platform-actions/action@v1.5.0
         with:
           operating_system: freebsd
-          version: '15.0'
+          version: '15.1'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
-          run: |
-            sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
-            # Install DB packages needed to build examples
-            sudo pkg install -y mariadb118-client postgresql18-client
-            # Install packages needed by Sokol to build examples
-            sudo pkg install -y alsa-lib libglvnd libXi libXcursor
-            # Mandatory: hostname not set in VM => some tests fail
-            sudo hostname -s freebsd-ci
-            echo "### OS infos"
-            uname -a
-            git config --global --add safe.directory .
-            echo "### Build V"
-            gmake
-            sudo ./v symlink
-            export VTEST_SHOW_LONGEST_BY_RUNTIME=3
-            export VTEST_SHOW_LONGEST_BY_COMPTIME=3
-            export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
-            export VFLAGS='-cc clang'
-            ./v run ci/freebsd_ci.vsh all
+
+      - name: Tests on FreeBSD with clang
+        id: tests-freebsd-clang
+        shell: cpa.sh {0}
+        run: |
+          sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
+          # Install DB packages needed to build examples
+          sudo pkg install -y mariadb118-client postgresql18-client
+          # Install packages needed by Sokol to build examples
+          sudo pkg install -y alsa-lib libglvnd libXi libXcursor
+          # Mandatory: hostname not set in VM => some tests fail
+          sudo hostname -s freebsd-ci
+          echo "::group::OS infos"
+          uname -a
+          echo "::endgroup::"
+          echo "::group::Build V"
+          git config --global --add safe.directory .
+          gmake
+          sudo ./v symlink
+          export VTEST_SHOW_LONGEST_BY_RUNTIME=3
+          export VTEST_SHOW_LONGEST_BY_COMPTIME=3
+          export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
+          export VFLAGS='-cc clang'
+          echo "::endgroup::"
+          ./v run ci/freebsd_ci.vsh all
 
   gcc-freebsd:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
-      - name: Tests on FreeBSD with gcc
-        id: tests-freebsd-gcc
-        uses: cross-platform-actions/action@v0.32.0
+      - uses: actions/checkout@v7
+
+      - name: Start FreeBSD VM for gcc
+        id: vm-freebsd-gcc
+        uses: cross-platform-actions/action@v1.5.0
         with:
           operating_system: freebsd
-          version: '15.0'
+          version: '15.1'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
-          run: |
-            sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv gcc
-            # Install DB packages needed to build examples
-            sudo pkg install -y mariadb118-client postgresql18-client
-            # Install packages needed by Sokol to build examples
-            sudo pkg install -y alsa-lib libglvnd libXi libXcursor
-            # Mandatory: hostname not set in VM => some tests fail
-            sudo hostname -s freebsd-ci
-            echo "### OS infos"
-            uname -a
-            git config --global --add safe.directory .
-            echo "### Build V"
-            gmake
-            sudo ./v symlink
-            export VTEST_SHOW_LONGEST_BY_RUNTIME=3
-            export VTEST_SHOW_LONGEST_BY_COMPTIME=3
-            export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
-            export VFLAGS='-cc gcc'
-            ./v run ci/freebsd_ci.vsh all
+
+      - name: Tests on FreeBSD with gcc
+        id: tests-freebsd-gcc
+        shell: cpa.sh {0}
+        run: |
+          sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv gcc
+          # Install DB packages needed to build examples
+          sudo pkg install -y mariadb118-client postgresql18-client
+          # Install packages needed by Sokol to build examples
+          sudo pkg install -y alsa-lib libglvnd libXi libXcursor
+          # Mandatory: hostname not set in VM => some tests fail
+          sudo hostname -s freebsd-ci
+          echo "::group::OS infos"
+          uname -a
+          echo "::endgroup::"
+          echo "::group::Build V"
+          git config --global --add safe.directory .
+          gmake
+          sudo ./v symlink
+          export VTEST_SHOW_LONGEST_BY_RUNTIME=3
+          export VTEST_SHOW_LONGEST_BY_COMPTIME=3
+          export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
+          export VFLAGS='-cc gcc'
+          echo "::endgroup::"
+          ./v run ci/freebsd_ci.vsh all

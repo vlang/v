@@ -226,16 +226,16 @@ fn test_absdev() {
 	// Tests were also verified on Wolfram Alpha
 	mut data := [10.0, 4.45, 5.9, 2.7]
 	mut o := stats.absdev(data)
-	assert o == 2.187500048428774
-	assert math.alike(o, 2.187500048428774)
+	assert o == 2.1875
+	assert math.alike(o, 2.1875)
 	data = [-3.0, 67.31, 4.4, 1.89]
 	o = stats.absdev(data)
-	assert o == 24.829999923706055
-	assert math.alike(o, 24.829999923706055)
+	assert o == 24.830000000000002
+	assert math.alike(o, 24.830000000000002)
 	data = [12.0, 7.88, 76.122, 54.83]
 	o = stats.absdev(data)
-	assert o == 27.76800012588501
-	assert math.alike(o, 27.76800012588501)
+	assert o == 27.768
+	assert math.alike(o, 27.768)
 
 	// test for int, i64, f32 array
 	assert stats.absdev[int]([1, 2, 3, 1]) == 0

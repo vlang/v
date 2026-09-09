@@ -8,7 +8,6 @@
 // Last updated: August 2015
 module sha3
 
-import encoding.binary
 import math.bits
 
 // when the state is 1600 bits, a lane is 64 bits
@@ -18,6 +17,29 @@ type Lane = u64
 struct State {
 mut:
 	a [5][5]Lane
+}
+
+@[direct_array_access; inline]
+fn read_u64_le_at(b []u8, offset int) u64 {
+	_ = b[offset]
+	_ = b[offset + 7]
+	return u64(b[offset]) | (u64(b[offset + 1]) << 8) | (u64(b[offset + 2]) << 16) | (u64(b[
+		offset + 3]) << 24) | (u64(b[offset + 4]) << 32) | (u64(b[offset + 5]) << 40) | (u64(b[
+		offset + 6]) << 48) | (u64(b[offset + 7]) << 56)
+}
+
+@[direct_array_access; inline]
+fn put_u64_le_at(mut b []u8, value u64, offset int) {
+	_ = b[offset]
+	_ = b[offset + 7]
+	b[offset] = u8(value)
+	b[offset + 1] = u8(value >> 8)
+	b[offset + 2] = u8(value >> 16)
+	b[offset + 3] = u8(value >> 24)
+	b[offset + 4] = u8(value >> 32)
+	b[offset + 5] = u8(value >> 40)
+	b[offset + 6] = u8(value >> 48)
+	b[offset + 7] = u8(value >> 56)
 }
 
 // to_bytes converts the state into a byte array
@@ -35,9 +57,7 @@ fn (s State) to_bytes() []u8 {
 
 	for y in 0 .. 5 {
 		for x in 0 .. 5 {
-			unsafe {
-				binary.little_endian_put_u64_at(mut byte_array, s.a[x][y], index)
-			}
+			put_u64_le_at(mut byte_array, s.a[x][y], index)
 			index += 8
 		}
 	}
@@ -57,7 +77,7 @@ fn (mut s State) from_bytes(byte_array []u8) {
 
 	for y in 0 .. 5 {
 		for x in 0 .. 5 {
-			s.a[x][y] = binary.little_endian_u64_at(byte_array, index)
+			s.a[x][y] = read_u64_le_at(byte_array, index)
 			index += 8
 		}
 	}
@@ -79,7 +99,7 @@ fn (mut s State) xor_bytes(byte_array []u8, rate int) {
 
 	for y in 0 .. 5 {
 		for x in 0 .. 5 {
-			s.a[x][y] ^= binary.little_endian_u64_at(byte_array, index)
+			s.a[x][y] ^= read_u64_le_at(byte_array, index)
 			index += 8
 
 			if index >= rate {
@@ -175,12 +195,3 @@ const iota_round_constants = [u64(0x0000000000000001), 0x0000000000008082, 0x800
 	0x8000000000008003, 0x8000000000008002, 0x8000000000000080, 0x000000000000800a,
 	0x800000008000000a, 0x8000000080008081, 0x8000000000008080, 0x0000000080000001,
 	0x8000000080008008]
-
-fn (s State) str() string {
-	mut output := '\n             y = 0            y = 1            y = 2            y = 3            y = 4\n'
-	for x in 0 .. 5 {
-		output += 'x = ${x}: ${s.a[x][0]:016x} ${s.a[x][1]:016x} ${s.a[x][2]:016x} ${s.a[x][3]:016x} ${s.a[x][4]:016x}\n'
-	}
-
-	return output
-}

@@ -6,12 +6,25 @@ module fmt
 import os
 import strings
 import v.ast
+import v.ast.walker
 import v.util
 import v.pref
 
 const break_points = [0, 35, 60, 85, 93, 100]! // when to break a line depending on the penalty
 const max_len = break_points[break_points.len - 1]
 const bs = '\\'
+
+fn call_arg_spread_str(arg ast.CallArg) string {
+	return match arg.expr {
+		ast.ArrayDecompose {
+			decompose := arg.expr as ast.ArrayDecompose
+			'...${decompose.expr.str()}'
+		}
+		else {
+			arg.str()
+		}
+	}
+}
 
 @[minify]
 pub struct Fmt {
@@ -39,6 +52,7 @@ pub mut:
 	has_import_stmt          bool
 	use_short_fn_args        bool
 	single_line_fields       bool // should struct fields be on a single line
+	expand_call_args         bool // one-shot: the next call_args() keeps each argument on its own line
 	in_lambda_depth          int
 	inside_const             bool
 	inside_unsafe            bool
@@ -54,6 +68,11 @@ pub mut:
 	source_text              string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
 	global_processed_imports []string
 	branch_processed_imports []string
+	has_json2_import         bool // the file has a top-level `json2` import; used when migrating `import json`
+	json2_prefix             string = 'json2' // local name of `json2` at call sites (its alias, if imported as one)
+	keep_json_unmigrated     bool // the file has a json call the migration cannot rewrite losslessly (`encode_pretty`, or a `decode` with a commented type arg); its json usage is left as-is (see process_file_imports)
+	migrate_json_calls       bool // the file actually imports the legacy `json` module and it is being migrated, so `json.encode`/`json.decode` calls should be rewritten (guards against `import json2 as json`, whose json2 calls carry the same call kind)
+	migrate_json2            bool // opt-in master switch for the json->json2 migration (FmtOptions.migrate_json2); when false, plain `v fmt` leaves all json usage untouched
 	is_translated_module     bool // @[translated]
 	is_c_function            bool // C.func(...)
 }
@@ -61,7 +80,8 @@ pub mut:
 @[params]
 pub struct FmtOptions {
 pub:
-	source_text string
+	source_text   string
+	migrate_json2 bool // opt in to rewriting deprecated `json` module usage to `json2`; off by default so plain `v fmt` never changes json semantics
 }
 
 pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
@@ -73,6 +93,7 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 		out:      strings.new_builder(1000)
 	}
 	f.source_text = options.source_text
+	f.migrate_json2 = options.migrate_json2
 	f.process_file_imports(file)
 	// Compensate for indent increase of toplevel stmts done in `f.stmts()`.
 	f.indent--
@@ -114,9 +135,6 @@ pub fn (f &Fmt) type_to_str_using_aliases(typ ast.Type, import_aliases map[strin
 	if s.contains('Result') {
 		println('${s}')
 	}
-	if s.starts_with('x.vweb') {
-		s = s.replace_once('x.vweb.', 'veb.')
-	}
 	return s
 }
 
@@ -138,12 +156,352 @@ fn (f &Fmt) type_to_str(typ ast.Type) string {
 	return f.table.type_to_str(typ)
 }
 
+// JsonMigrateBlock is the state for file_blocks_json_migration.
+struct JsonMigrateBlock {
+	json2_prefix string
+mut:
+	blocked bool
+}
+
+// json_encoded_field_name returns the JSON key a struct field serialises to, or '' when the
+// field is not encoded (`@[skip]` / `@[json: '-']`).
+fn json_encoded_field_name(field ast.StructField) string {
+	for attr in field.attrs {
+		if attr.name == 'skip' {
+			return ''
+		}
+		if attr.name == 'json' {
+			return if attr.arg == '-' { '' } else { attr.arg }
+		}
+	}
+	return field.name
+}
+
+// file_has_embedded_field_collision reports whether the file declares a struct whose
+// flattened JSON fields — its own fields plus those of embedded structs, recursively —
+// contain a duplicate key. Legacy json emits colliding embedded fields under their original
+// names (producing duplicate keys), while json2 disambiguates them with `Outer.field`
+// prefixes, so migrating `json.encode(Bar{})` changes the serialized payload. Keep such
+// files on legacy json.
+fn (f &Fmt) file_has_embedded_field_collision(file &ast.File) bool {
+	for stmt in file.stmts {
+		if stmt !is ast.StructDecl {
+			continue
+		}
+		sym := f.table.find_sym((stmt as ast.StructDecl).name) or { continue }
+		if sym.info !is ast.Struct || (sym.info as ast.Struct).embeds.len == 0 {
+			continue
+		}
+		mut seen := map[string]bool{}
+		for field in f.table.struct_fields(sym) {
+			if field.is_embed {
+				continue
+			}
+			name := json_encoded_field_name(field)
+			if name == '' {
+				continue
+			}
+			if name in seen {
+				return true
+			}
+			seen[name] = true
+		}
+	}
+	return false
+}
+
+// file_blocks_json_migration reports two mechanical reasons a straight json->json2 rewrite
+// would break or lose source, beyond the import-level checks in process_file_imports:
+//   - the file declares an identifier named like the migrated qualifier `json2` — a
+//     parameter, function/const/global, `:=` local, a `for`/`$for` loop binder, an if-guard
+//     variable or a lambda parameter. Adding `import json2` and rewriting calls to
+//     `json2.x` would then either duplicate an imported symbol (rejected by the checker) or
+//     bind the call to that shadowing local instead of the module.
+//   - a `json.decode` call has a comment on its type argument; migration formats only the
+//     type expression inside `[]`, which would drop that user comment.
+fn (f &Fmt) file_blocks_json_migration(file &ast.File) bool {
+	mut s := JsonMigrateBlock{
+		json2_prefix: f.json2_prefix
+	}
+	walker.inspect(file, &s, json_migrate_block_visit)
+	return s.blocked
+}
+
+// assign_decl_shadows reports whether a `:=` declaration binds the name `n`.
+fn assign_decl_shadows(assign ast.AssignStmt, n string) bool {
+	if assign.op != .decl_assign {
+		return false
+	}
+	for lx in assign.left {
+		if lx is ast.Ident && lx.name == n {
+			return true
+		}
+	}
+	return false
+}
+
+fn json_migrate_block_visit(node &ast.Node, data voidptr) bool {
+	mut s := unsafe { &JsonMigrateBlock(data) }
+	if s.blocked {
+		return false
+	}
+	p := s.json2_prefix
+	if node is ast.Expr && node is ast.CallExpr {
+		call := node as ast.CallExpr
+		if call.kind == .json_decode && call.args.len >= 1 && call.args[0].comments.len > 0 {
+			s.blocked = true
+		}
+	} else if node is ast.Expr && node is ast.Ident {
+		// A legacy json function used as a *value* (`[1, 2].map(json.encode)`, `g :=
+		// json.decode`) is a plain qualified identifier, not a CallExpr, so it never reaches
+		// the call migration — yet imp_stmt_str would still rewrite `import json` to
+		// `import json2`, leaving the reference unresolved. Keep such files on legacy json.
+		// (A `json.encode(x)` call is a CallExpr with a resolved kind, not a bare Ident, so
+		// real calls still migrate.)
+		if (node as ast.Ident).name in ['json.encode', 'json.decode', 'json.encode_pretty'] {
+			s.blocked = true
+		}
+	} else if node is ast.Expr && node is ast.SelectorExpr {
+		// The same reference can also appear as a `json.encode` selector.
+		sel := node as ast.SelectorExpr
+		if sel.expr is ast.Ident
+			&& (sel.expr as ast.Ident).name == 'json' && sel.field_name in ['encode', 'decode', 'encode_pretty'] {
+			s.blocked = true
+		}
+	} else if node is ast.Stmt && node is ast.FnDecl {
+		decl := node as ast.FnDecl
+		if decl.name.all_after_last('.') == p || decl.receiver.name == p
+			|| decl.params.any(it.name == p) {
+			s.blocked = true
+		}
+	} else if node is ast.Stmt && node is ast.ConstDecl {
+		for field in (node as ast.ConstDecl).fields {
+			if field.name.all_after_last('.') == p {
+				s.blocked = true
+			}
+		}
+	} else if node is ast.Stmt && node is ast.GlobalDecl {
+		for field in (node as ast.GlobalDecl).fields {
+			if field.name == p {
+				s.blocked = true
+			}
+		}
+	} else if node is ast.Stmt && node is ast.AssignStmt {
+		if assign_decl_shadows(node as ast.AssignStmt, p) {
+			s.blocked = true
+		}
+	} else if node is ast.Stmt && node is ast.ForStmt {
+		// The `for <cond> {}` condition is a loop-header expr outside children().
+		forstmt := node as ast.ForStmt
+		if !forstmt.is_inf {
+			walker.inspect(forstmt.cond, data, json_migrate_block_visit)
+		}
+	} else if node is ast.Stmt && node is ast.ForInStmt {
+		// `for json2 in users {}` / `for k, json2 in m {}` — binders live on the node.
+		fin := node as ast.ForInStmt
+		if fin.key_var == p || fin.val_var == p {
+			s.blocked = true
+		}
+		// The iterable and the range high are loop-header exprs outside children().
+		walker.inspect(fin.cond, data, json_migrate_block_visit)
+		if fin.is_range {
+			walker.inspect(fin.high, data, json_migrate_block_visit)
+		}
+	} else if node is ast.Stmt && node is ast.ComptimeFor {
+		// `$for json2 in T.fields {}`
+		if (node as ast.ComptimeFor).val_var == p {
+			s.blocked = true
+		}
+	} else if node is ast.Stmt && node is ast.ForCStmt {
+		// The init/cond/inc of a C-style for are loop-header fields outside children().
+		forc := node as ast.ForCStmt
+		if forc.has_init {
+			if forc.init is ast.AssignStmt && assign_decl_shadows(forc.init as ast.AssignStmt, p) {
+				s.blocked = true
+			}
+			walker.inspect(forc.init, data, json_migrate_block_visit)
+		}
+		if forc.has_cond {
+			walker.inspect(forc.cond, data, json_migrate_block_visit)
+		}
+		if forc.has_inc {
+			walker.inspect(forc.inc, data, json_migrate_block_visit)
+		}
+	} else if node is ast.Expr && node is ast.IfExpr {
+		// An `if json2 := opt() {}` guard is in the branch condition, which
+		// IfBranch.children() does not expose, so sub-walk each condition.
+		for branch in (node as ast.IfExpr).branches {
+			walker.inspect(branch.cond, data, json_migrate_block_visit)
+		}
+	} else if node is ast.Expr && node is ast.IfGuardExpr {
+		if (node as ast.IfGuardExpr).vars.any(it.name == p) {
+			s.blocked = true
+		}
+	} else if node is ast.Expr && node is ast.LambdaExpr {
+		// `|json2| json.encode(json2)`
+		if (node as ast.LambdaExpr).params.any(it.name == p) {
+			s.blocked = true
+		}
+	}
+	return true
+}
+
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	mut sb := strings.new_builder(128)
 	for imp in file.implied_imports {
 		sb.writeln('import ${imp}')
 	}
 	f.implied_import_str = sb.str()
+
+	// The json->json2 migration is opt-in (FmtOptions.migrate_json2, the `-migrate-json2`
+	// vfmt flag). When it is off, plain `v fmt` must leave all json usage untouched, so skip
+	// the whole detection block — no import rewrite, no call rewrite, no scanning I/O.
+	if f.migrate_json2 {
+		// Detect an existing top-level `json2` import, which the json->json2 migration
+		// reuses instead of emitting a duplicate `import json2` (see import_stmt). The
+		// migrated call sites are rewritten with that import's local name (its alias if
+		// `import json2 as x`, else `json2`), so they stay in scope and idempotent.
+		// Only top-level imports qualify: a branch-local (`$if { import json2 }`) one is
+		// nested inside a comptime-if statement rather than being a direct file.stmt, so
+		// it is not picked up here and a top-level `import json2` is emitted instead.
+		mut json2_alias_is_blank := false
+		mut toplevel_json2_positions := []int{}
+		mut toplevel_json_positions := []int{}
+		for stmt in file.stmts {
+			if stmt is ast.Import && stmt.source_name == 'json' {
+				toplevel_json_positions << stmt.pos.pos
+			}
+			if stmt is ast.Import && stmt.source_name == 'json2' {
+				toplevel_json2_positions << stmt.pos.pos
+				if !f.has_json2_import && !json2_alias_is_blank {
+					if stmt.alias == '_' {
+						// `import json2 as _` only silences unused-import warnings; `_` is not a
+						// usable qualifier and does not bring `json2` into scope, and a second
+						// plain `import json2` would be a duplicate import. So there is no way
+						// to emit valid `json2.x` calls — leave the file's json usage unmigrated.
+						json2_alias_is_blank = true
+					} else {
+						f.has_json2_import = true
+						f.json2_prefix = if stmt.alias != '' {
+							stmt.alias
+						} else {
+							stmt.source_name.all_after_last('.')
+						}
+					}
+				}
+			}
+		}
+		// A `json2` import inside a top-level `$if` branch is present in file.imports but
+		// is not a direct file.stmt (it is nested in a comptime-if). Migrating `import
+		// json` would add a plain top-level `import json2`, which then coexists with the
+		// branch import and trips the checker's duplicate-module error. The vfmt dedup
+		// cannot be relied on: a selective/aliased branch import has a different formatted
+		// string, and even a plain branch import emitted *before* the top-level one goes
+		// to branch_processed_imports (not global_processed_imports), so the later
+		// top-level import is not deduped. So leave the file unmigrated whenever any
+		// branch-local json2 import is present.
+		mut has_branch_local_json2 := false
+		for imp in file.imports {
+			if imp.source_name == 'json2' && imp.pos.pos !in toplevel_json2_positions {
+				has_branch_local_json2 = true
+				break
+			}
+		}
+		// A `json` import inside a top-level `$if` branch has the same problem: migrating it
+		// emits `import json2` into branch_processed_imports, which is not deduped against a
+		// top-level migrated `import json2` in global_processed_imports (e.g. a distinct
+		// top-level `import json as old` plus a branch `import json { encode }` both become
+		// `import json2`). Leave the file unmigrated when a branch-local json import exists.
+		mut has_branch_local_json := false
+		for imp in file.imports {
+			if imp.source_name == 'json' && imp.pos.pos !in toplevel_json_positions {
+				has_branch_local_json = true
+				break
+			}
+		}
+		// The migrated qualifier (f.json2_prefix) must be free. If another module is
+		// imported under that local name — e.g. `import rand as json2` — adding
+		// `import json2` and rewriting calls to `json2.x` would create two imports with
+		// the same alias (the checker's duplicate-import check compares aliases), and the
+		// calls would resolve to the wrong module. Leave the file unmigrated in that case.
+		mut json2_name_taken := false
+		for imp in file.imports {
+			if imp.source_name != 'json2' && imp.alias == f.json2_prefix {
+				json2_name_taken = true
+				break
+			}
+		}
+		// When the file already has a `json2` import, the migrated `import json` is dropped
+		// (merged) rather than rewritten. That drop path only re-emits the import's
+		// next_comments, so a same-line comment on the import (e.g. `import json // note`)
+		// would be lost. Leave such a file unmigrated so the comment is preserved.
+		mut json_import_has_line_comment := false
+		if f.has_json2_import {
+			for imp in file.imports {
+				if imp.source_name == 'json' && imp.comments.len > 0 {
+					json_import_has_line_comment = true
+					break
+				}
+			}
+		}
+		// Some `json` usage cannot be rewritten to `json2` without changing or losing
+		// source (see file_has_unmigratable_json_usage): `json.encode_pretty`, a
+		// `json.decode` with comments on its type argument, or a struct field whose JSON
+		// shape differs between the modules (`time.Time`, `@[raw]`). When the file has any
+		// such usage, leave its whole `json` usage unmigrated (see call_expr /
+		// imp_stmt_str), so calls and the `import json` stay byte-identical. Only scan
+		// when the file actually imports `json`, to avoid walking unrelated files.
+		// `file.imports` includes branch-local (`$if { import json }`) imports, so those
+		// are covered too — otherwise vfmt could migrate the branch import to `json2`
+		// while leaving an unmigrated `json.*` call behind.
+		// `json` can be present only in file.implied_imports when vfmt auto-adds a missing
+		// import. That path is left unmigrated: vfmt would emit the implied import verbatim
+		// (not through imp_stmt_str), and whether a `json.encode` there even rewrites
+		// depends on if `json` resolved as a module, so migrating risks an import/call
+		// mismatch. Treat implied json as a reason to keep the file's json usage as-is.
+		implied_json := 'json' in file.implied_imports
+		mut imports_json := implied_json
+		// An aliased legacy import (`import json as old`) qualifies its calls as
+		// `old.encode(...)`. Whether the parser tags those as the literal `json.encode`
+		// call kind that call_expr migrates depends on the alias being resolved to the
+		// canonical module, which is not guaranteed in every parse context — so migrating
+		// could drop the `old` alias (imp_stmt_str emits plain `import json2`) while
+		// leaving `old.encode(...)` behind. Leave such files unmigrated.
+		mut has_aliased_json_import := false
+		for imp in file.imports {
+			if imp.source_name == 'json' {
+				imports_json = true
+				if imp.alias != 'json' {
+					has_aliased_json_import = true
+				}
+			}
+		}
+		// Importing `json2` into a file whose own module is `json2` is rejected by the
+		// checker (cannot import a module into a module with the same name), so the
+		// qualifier is effectively taken — leave such a file unmigrated.
+		cur_module_is_json2 := file.mod.name == 'json2'
+		// The migration is mechanical: json2 has encode/decode/encode_pretty, so any file
+		// selected for migration (a non-test `.v` file, decided by file name in the vfmt
+		// tool) has its json usage rewritten unconditionally. The only reasons to keep a
+		// file's json usage are mechanical — cases where a straight rewrite would not compile
+		// or would drop source (a duplicate/aliased/self json2 import, a blank `as _`
+		// qualifier, a lost import comment); semantic differences between the modules are not
+		// preserved.
+		if imports_json {
+			f.keep_json_unmigrated = implied_json || json2_alias_is_blank || has_branch_local_json2
+				|| has_branch_local_json || has_aliased_json_import || json2_name_taken
+				|| json_import_has_line_comment || cur_module_is_json2
+				|| f.file_blocks_json_migration(file) || f.file_has_embedded_field_collision(file)
+		}
+		// Only rewrite `json.encode`/`json.decode` calls when the file actually imports the
+		// legacy `json` module and it is being migrated. The parser tags a call by its literal
+		// qualifier name, so a file using `import json2 as json` has its already-json2 calls
+		// (`json.decode[User](s)`) tagged with the same `.json_decode`/`.json_encode` kind;
+		// migrating those would corrupt them (e.g. `json.decode[User](s)` → `json.decode[s]()`,
+		// since json2_migrate_call reads the type from the legacy first argument). An implied
+		// json import keeps the file unmigrated, so it is excluded via keep_json_unmigrated.
+		f.migrate_json_calls = imports_json && !f.keep_json_unmigrated
+	}
 
 	for imp in file.imports {
 		f.mod2alias[imp.mod] = imp.alias
@@ -259,6 +617,11 @@ fn (mut f Fmt) write_generic_types(gtypes []ast.Type) {
 pub fn (mut f Fmt) set_current_module_name(cmodname string) {
 	f.cur_mod = cmodname
 	f.table.cmod_prefix = cmodname + '.'
+	// Drop type_to_str strings that were memoized before the module context was
+	// known (during parsing `cmod_prefix` is still empty), so that types of the
+	// current module are not left with a stale `mod.` prefix when a `fn` typed
+	// field signature is rebuilt later on (issue #27475).
+	f.table.invalidate_type_to_str_cache()
 }
 
 fn (f &Fmt) get_modname_prefix(mname string) (string, string) {
@@ -334,6 +697,16 @@ pub fn (mut f Fmt) import_stmt(imp ast.Import) {
 		// Skip hidden imports like preludes.
 		return
 	}
+	if imp.source_name == 'json' && f.has_json2_import && !f.keep_json_unmigrated {
+		// Migrating deprecated `import json` to `import json2`, but the file already
+		// has a top-level `json2` import (possibly with symbols or an alias, e.g.
+		// `import json2 { Any }` or `import json2 as j2`). Drop the migrated import
+		// so it merges into the existing one; the rewritten call sites use that
+		// import's local name (f.json2_prefix), so they stay in scope. Emitting a
+		// second `import json2` would be rejected by the checker as already imported.
+		f.import_comments(imp.next_comments)
+		return
+	}
 	imp_stmt := f.imp_stmt_str(imp)
 	if imp_stmt in f.global_processed_imports
 		|| (f.inside_comptime_if && imp_stmt in f.branch_processed_imports) {
@@ -347,7 +720,8 @@ pub fn (mut f Fmt) import_stmt(imp ast.Import) {
 		f.global_processed_imports << imp_stmt
 	}
 	if !f.format_state.is_vfmt_on {
-		original_imp_line := f.get_source_lines()#[imp.pos.line_nr..imp.pos.last_line + 1].join('\n')
+		original_imp_line :=
+			f.get_source_lines()#[imp.pos.line_nr..imp.pos.last_line + 1].join('\n')
 		// Same line comments(`imp.comments`) are included in the `original_imp_line`.
 		f.writeln(original_imp_line)
 		f.import_comments(imp.next_comments)
@@ -360,6 +734,19 @@ pub fn (mut f Fmt) import_stmt(imp ast.Import) {
 }
 
 pub fn (f &Fmt) imp_stmt_str(imp ast.Import) string {
+	// The `json` module is deprecated; migrate any `import json` form to a plain
+	// `import json2`, to match the call rewriting done in json2_migrate_call.
+	// This also covers aliased imports (`import json as x`) and selective imports
+	// (`import json { decode }`): the alias/symbols are dropped, since json's whole
+	// public API (decode/encode/encode_pretty) is rewritten to qualified `json2.x`
+	// calls, so nothing needs to be brought into scope unqualified anymore.
+	// Exception: a file with a json call the migration can't rewrite losslessly is
+	// left unmigrated (see process_file_imports), so its `import json` is kept as-is.
+	// migrate_json_calls is `imports_json && !keep_json_unmigrated`, and is false unless the
+	// opt-in migration is enabled — so plain `v fmt` leaves `import json` untouched.
+	if imp.source_name == 'json' && f.migrate_json_calls {
+		return 'json2'
+	}
 	// Format / remove unused selective import symbols
 	// E.g.: `import foo { Foo }` || `import foo as f { Foo }`
 	has_alias := imp.alias != imp.source_name.all_after_last('.')
@@ -418,12 +805,18 @@ fn (f &Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node)
 				return node !is ast.Import
 			}
 			ast.ConstDecl {
-				if node !is ast.ConstDecl && !(node is ast.ExprStmt && node.expr is ast.Comment) {
+				mut is_comment_expr_stmt := false
+				if node is ast.ExprStmt {
+					expr_stmt := node
+					is_comment_expr_stmt = expr_stmt.expr is ast.Comment
+				}
+				if node !is ast.ConstDecl && !is_comment_expr_stmt {
 					return true
 				}
 			}
 			else {}
 		}
+
 		match node {
 			// Attributes are not respected in the stmts position, so this requires manual checking
 			ast.StructDecl, ast.EnumDecl, ast.FnDecl {
@@ -453,6 +846,7 @@ pub fn (mut f Fmt) node_str(node ast.Node) string {
 		ast.Expr { f.expr(node) }
 		else { panic('´f.node_str()´ is not implemented for ${node}.') }
 	}
+
 	str := f.out.after(pos)
 	f.out.go_back_to(pos)
 	f.empty_line = was_empty_line
@@ -735,6 +1129,9 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 		ast.SqlExpr {
 			f.sql_expr(node)
 		}
+		ast.SqlQueryDataExpr {
+			f.sql_query_data_expr(node)
+		}
 		ast.StringLiteral {
 			f.string_literal(node)
 		}
@@ -782,7 +1179,7 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 
 fn expr_is_single_line(expr ast.Expr) bool {
 	match expr {
-		ast.Comment, ast.IfExpr, ast.MapInit, ast.MatchExpr {
+		ast.Comment, ast.IfExpr, ast.MapInit, ast.MatchExpr, ast.SqlQueryDataExpr {
 			return false
 		}
 		ast.AnonFn {
@@ -823,7 +1220,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 				stmt := expr.stmts[0]
 				if stmt is ast.ExprStmt && stmt.expr is ast.CallExpr
 					&& (stmt.expr as ast.CallExpr).comments.len > 0 {
-					if comment := stmt.expr.comments[0] {
+					if comment := (stmt.expr as ast.CallExpr).comments[0] {
 						if !comment.is_multi {
 							return false
 						}
@@ -835,7 +1232,17 @@ fn expr_is_single_line(expr ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return true
+}
+
+fn (mut f Fmt) write_expr_list(exprs []ast.Expr) {
+	for i, expr in exprs {
+		f.expr(expr)
+		if i < exprs.len - 1 {
+			f.write(', ')
+		}
+	}
 }
 
 //=== Specific Stmt methods ===//
@@ -861,10 +1268,23 @@ pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 	}
 	f.is_assign = true
 	f.write(' ${node.op.str()} ')
-	for i, val in node.right {
-		f.expr(val)
-		if i < node.right.len - 1 {
-			f.write(', ')
+	right_start_pos := f.out.len
+	right_start_len := f.line_len
+	can_wrap_rhs := node.right.len == 1 && node.right[0] in [ast.CallExpr, ast.StructInit]
+	f.write_expr_list(node.right)
+	if can_wrap_rhs && !f.single_line_if && f.line_len > max_len {
+		right_str := f.out.after(right_start_pos)
+		if !right_str.contains('\n') {
+			f.out.go_back_to(right_start_pos)
+			f.line_len = right_start_len
+			if f.out.last() == ` ` {
+				f.out.go_back(1)
+				f.line_len--
+			}
+			f.writeln('')
+			f.indent++
+			f.write_expr_list(node.right)
+			f.indent--
 		}
 	}
 	if node.attr.name != '' {
@@ -898,12 +1318,13 @@ pub fn (mut f Fmt) branch_stmt(node ast.BranchStmt) {
 }
 
 pub fn (mut f Fmt) comptime_for(node ast.ComptimeFor) {
-	typ := if node.typ != ast.void_type {
-		f.no_cur_mod(f.type_to_str_using_aliases(node.typ, f.mod2alias))
+	f.write('\$for ${node.val_var} in ')
+	if node.typ != ast.void_type {
+		f.write(f.no_cur_mod(f.type_to_str_using_aliases(node.typ, f.mod2alias)))
 	} else {
-		(node.expr as ast.Ident).name
+		f.expr(node.expr)
 	}
-	f.write('\$for ${node.val_var} in ${typ}.${node.kind.str()} {')
+	f.write('.${node.kind.str()} {')
 	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
 		f.stmts(node.stmts)
@@ -1045,7 +1466,8 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 		attrs_len := inline_attrs_len(field.attrs)
 		if field.attrs.len > 0 {
 			if field.has_expr {
-				attr_align.add_info(field.expr.str().len + 2, field.pos.line_nr, field.has_break_line)
+				attr_align.add_info(field.expr.str().len + 2, field.pos.line_nr,
+					field.has_break_line)
 			} else {
 				attr_align.add_info(field.name.len, field.pos.line_nr, field.has_break_line)
 			}
@@ -1054,7 +1476,8 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 			if field.attrs.len > 0 {
 				comment_align.add_info(attrs_len, field.pos.line_nr, field.has_break_line)
 			} else if field.has_expr {
-				comment_align.add_info(field.expr.str().len + 2, field.pos.line_nr, field.has_break_line)
+				comment_align.add_info(field.expr.str().len + 2, field.pos.line_nr,
+					field.has_break_line)
 			} else {
 				comment_align.add_info(field.name.len, field.pos.line_nr, field.has_break_line)
 			}
@@ -1088,7 +1511,8 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 			if field.attrs.len > 0 {
 				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) - attrs_len + 1))
 			} else if field.has_expr {
-				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) - field.expr.str().len - 1))
+				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) - field.expr.str().len -
+					1))
 			} else {
 				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) - field.name.len + 1))
 			}
@@ -1190,7 +1614,8 @@ pub fn (mut f Fmt) for_c_stmt(node ast.ForCStmt) {
 	}
 	init_comments := node.comments.filter(it.pos.pos < node.init.pos.pos)
 	cond_comments := node.comments[init_comments.len..].filter(it.pos.pos < node.cond.pos().pos)
-	inc_comments := node.comments[(init_comments.len + cond_comments.len)..].filter(it.pos.pos < node.inc.pos.pos)
+	inc_comments :=
+		node.comments[(init_comments.len + cond_comments.len)..].filter(it.pos.pos < node.inc.pos.pos)
 	after_inc_comments := node.comments[(init_comments.len + cond_comments.len + inc_comments.len)..]
 	f.write('for ')
 	if node.has_init {
@@ -1316,6 +1741,9 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 	}
 	for field in node.fields {
 		f.comments(field.comments, same_line: true)
+		if field.is_const {
+			f.write('const ')
+		}
 		if field.is_volatile {
 			f.write('volatile ')
 		}
@@ -1411,7 +1839,8 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		end_comments := method.comments.filter(it.pos.pos > method.pos.pos)
 		if end_comments.len > 0 {
 			f.table.new_int_fmt_fix = f.table.new_int && (f.is_translated_module || f.is_c_function)
-			method_str := f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false).all_after_first('fn ')
+			method_str :=
+				f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false).all_after_first('fn ')
 			f.table.new_int_fmt_fix = false
 			method_comment_align.add_info(method_str.len, method.pos.line_nr, method.has_break_line)
 		}
@@ -1479,7 +1908,8 @@ pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut type_align 
 						if prev_state != AlignState.has_attributes {
 							comment_align.add_new_info(attrs_len, comment.pos.line_nr)
 						} else {
-							comment_align.add_info(attrs_len, comment.pos.line_nr, field.has_break_line)
+							comment_align.add_info(attrs_len, comment.pos.line_nr,
+								field.has_break_line)
 						}
 						prev_state = AlignState.has_attributes
 					} else if field.has_default_expr {
@@ -1487,15 +1917,16 @@ pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut type_align 
 							comment_align.add_new_info(field.default_expr.str().len + 2,
 								comment.pos.line_nr)
 						} else {
-							comment_align.add_info(field.default_expr.str().len + 2, comment.pos.line_nr,
-								field.has_break_line)
+							comment_align.add_info(field.default_expr.str().len + 2,
+								comment.pos.line_nr, field.has_break_line)
 						}
 						prev_state = AlignState.has_default_expression
 					} else {
 						if prev_state != AlignState.has_everything {
 							comment_align.add_new_info(ft.len, comment.pos.line_nr)
 						} else {
-							comment_align.add_info(ft.len, comment.pos.line_nr, field.has_break_line)
+							comment_align.add_info(ft.len, comment.pos.line_nr,
+								field.has_break_line)
 						}
 						prev_state = AlignState.has_everything
 					}
@@ -1554,7 +1985,8 @@ pub fn (mut f Fmt) interface_method(method ast.FnDecl, mut comment_align FieldAl
 	}
 	f.write('\t')
 	f.table.new_int_fmt_fix = f.table.new_int && (f.is_translated_module || f.is_c_function)
-	method_str := f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false).all_after_first('fn ')
+	method_str :=
+		f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false).all_after_first('fn ')
 	f.table.new_int_fmt_fix = false
 	f.write(method_str)
 	if end_comments.len > 0 {
@@ -1634,21 +2066,60 @@ pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
 		.insert {
 			f.writeln('insert ${node.object_var} into ${table_name}')
 		}
+		.upsert {
+			f.writeln('upsert ${node.object_var} into ${table_name}')
+		}
 		.update {
-			f.write('update ${table_name} set ')
-			for i, col in node.updated_columns {
-				f.write('${col} = ')
-				f.expr(node.update_exprs[i])
-				if i < node.updated_columns.len - 1 {
-					f.write(', ')
-				} else {
-					f.write(' ')
+			if node.is_dynamic {
+				f.write('dynamic update ${table_name} set ')
+				f.expr(node.update_data_expr)
+				f.write(' ')
+				f.write('where ')
+				f.expr(node.where_expr)
+				f.writeln('')
+			} else {
+				mut has_multiline_update_expr := false
+				for expr in node.update_exprs {
+					if f.node_str(expr).contains('\n') {
+						has_multiline_update_expr = true
+						break
+					}
 				}
-				f.wrap_long_line(3, true)
+				if has_multiline_update_expr {
+					f.writeln('update ${table_name} set')
+					// SQL block lines use a manual extra tab, so nested update values need two
+					// formatter indent levels to stay visually nested.
+					f.indent += 2
+					for i, col in node.updated_columns {
+						f.write('${col} = ')
+						f.expr(node.update_exprs[i])
+						if i < node.updated_columns.len - 1 {
+							f.write(',')
+						}
+						f.writeln('')
+					}
+					f.indent -= 2
+				} else {
+					f.write('update ${table_name} set ')
+					for i, col in node.updated_columns {
+						f.write('${col} = ')
+						f.expr(node.update_exprs[i])
+						if i < node.updated_columns.len - 1 {
+							f.write(', ')
+						} else {
+							f.write(' ')
+						}
+						f.wrap_long_line(3, true)
+					}
+				}
+				if has_multiline_update_expr {
+					f.write('\twhere ')
+				} else {
+					f.write('where ')
+				}
+				f.expr(node.where_expr)
+				f.writeln('')
 			}
-			f.write('where ')
-			f.expr(node.where_expr)
-			f.writeln('')
 		}
 		.delete {
 			f.write('delete from ${table_name} where ')
@@ -1670,6 +2141,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 		ast.FnTypeDecl { f.fn_type_decl(node) }
 		ast.SumTypeDecl { f.sum_type_decl(node) }
 	}
+
 	f.writeln('')
 }
 
@@ -1756,6 +2228,28 @@ struct Variant {
 	id   int
 }
 
+fn (mut f Fmt) sum_type_variant_comments(variant ast.TypeNode) {
+	if variant.end_comments.len == 0 {
+		return
+	}
+	mut same_line_comments := []ast.Comment{}
+	mut follow_up_comments := []ast.Comment{}
+	for comment in variant.end_comments {
+		if comment.pos.line_nr == variant.pos.last_line {
+			same_line_comments << comment
+		} else {
+			follow_up_comments << comment
+		}
+	}
+	if same_line_comments.len > 0 {
+		f.comments(same_line_comments, has_nl: false)
+	}
+	if follow_up_comments.len > 0 {
+		f.writeln('')
+		f.comments(follow_up_comments, has_nl: false, level: .indent)
+	}
+}
+
 pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	f.attrs(node.attrs)
 	start_pos := f.out.len
@@ -1795,7 +2289,7 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 		}
 		f.write(variant.name)
 		if node.variants[variant.id].end_comments.len > 0 && is_multiline {
-			f.comments(node.variants[variant.id].end_comments, has_nl: false)
+			f.sum_type_variant_comments(node.variants[variant.id])
 		}
 	}
 	if !is_multiline {
@@ -1813,13 +2307,19 @@ pub fn (mut f Fmt) array_decompose(node ast.ArrayDecompose) {
 }
 
 pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
+	typed_fixed_literal := node.is_fixed && node.has_val && node.typ != 0
+		&& node.typ != ast.void_type
 	if node.is_fixed && node.is_option {
 		f.write('?')
 	}
-	if node.exprs.len == 0 && node.typ != 0 && node.typ != ast.void_type {
+	if node.exprs.len == 0 && ((node.typ != 0 && node.typ != ast.void_type)
+		|| node.elem_type_expr !is ast.EmptyExpr) {
 		// `x := []string{}`
 		if node.alias_type != ast.void_type {
 			f.write(f.type_to_str_using_aliases(node.alias_type, f.mod2alias))
+		} else if node.elem_type_expr !is ast.EmptyExpr {
+			f.write('[]')
+			f.expr(node.elem_type_expr)
 		} else {
 			f.write(f.type_to_str_using_aliases(node.typ, f.mod2alias))
 		}
@@ -1848,6 +2348,14 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		f.write('}')
 		return
 	}
+	if typed_fixed_literal && f.array_init_depth == 0 {
+		fixed_literal_type := if node.literal_typ != ast.void_type {
+			node.literal_typ
+		} else {
+			node.typ.clear_option_and_result()
+		}
+		f.write(f.type_to_str_using_aliases(fixed_literal_type, f.mod2alias))
+	}
 	// `[1,2,3]`
 	f.write('[')
 	mut inc_indent := false
@@ -1856,6 +2364,26 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 	if node.pre_cmnts.len > 0 {
 		if node.pre_cmnts[0].pos.line_nr > last_line_nr {
 			f.writeln('')
+		}
+	}
+	if node.has_update_expr {
+		f.write('...')
+		f.expr(node.update_expr)
+		if node.exprs.len > 0 {
+			f.write(',')
+		}
+		if node.update_expr_comments.len > 0 {
+			f.write(' ')
+			f.comments(node.update_expr_comments,
+				prev_line: node.update_expr_pos.last_line
+				has_nl:    false
+			)
+			last_line_nr = node.update_expr_comments.last().pos.last_line
+		} else {
+			last_line_nr = node.update_expr_pos.last_line
+		}
+		if node.exprs.len > 0 && node.update_expr_comments.len == 0 {
+			f.write(' ')
 		}
 	}
 	for i, c in node.pre_cmnts {
@@ -1943,7 +2471,17 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 			if !is_new_line && i > 0 {
 				f.write(' ')
 			}
+			// When the array stays on a single source line, keep nested
+			// struct inits on a single line too (instead of expanding their
+			// named fields onto multiple lines).
+			keep_struct_inline := !line_break && expr is ast.StructInit
+				&& expr.pos.line_nr == expr.pos.last_line && expr.pre_comments.len == 0
+			old_single_line_fields := f.single_line_fields
+			if keep_struct_inline {
+				f.single_line_fields = true
+			}
 			f.expr(expr)
+			f.single_line_fields = old_single_line_fields
 		}
 		mut last_comment_was_inline := false
 		mut has_comments := node.ecmnts[i].len > 0
@@ -2008,7 +2546,14 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 	// `[100]u8`
 	if node.is_fixed {
 		if node.has_val {
-			f.write('!')
+			if typed_fixed_literal {
+				return
+			}
+			if node.from_to_fixed_size {
+				f.write('.to_fixed_size()')
+			} else {
+				f.write('!')
+			}
 			return
 		}
 		f.write(f.type_to_str_using_aliases(node.elem_type, f.mod2alias))
@@ -2045,7 +2590,7 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 	f.write(node.name)
 }
 
-fn (mut f Fmt) write_static_method(name string, short_name string) {
+fn (mut f Fmt) write_static_method(_name string, short_name string) {
 	if short_name.contains('.') {
 		indx := short_name.index_('.') + 1
 		f.write(short_name[0..indx] + short_name[indx..].replace('__static__', '.').capitalize())
@@ -2055,6 +2600,17 @@ fn (mut f Fmt) write_static_method(name string, short_name string) {
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
+	// The `json` module is deprecated in favour of the pure V `json2` module, which has
+	// matching encode/decode/encode_pretty. vfmt migrates its calls automatically:
+	//   json.decode(T, s)     => json2.decode[T](s)
+	//   json.encode(x)        => json2.encode(x, escape_unicode: true)
+	//   json.encode_pretty(x) => json2.encode_pretty(x)
+	// Migration is gated by f.migrate_json_calls (a non-test file that imports the legacy
+	// `json` module; see process_file_imports).
+	if node.kind in [.json_decode, .json_encode, .json_encode_pretty] && f.migrate_json_calls {
+		f.json2_migrate_call(node)
+		return
+	}
 	mut is_method_newline := false
 	if node.is_method {
 		if ast.builtin_array_generic_methods_no_sort_matcher.matches(node.name) {
@@ -2078,6 +2634,8 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			name := f.short_module(node.name)
 			if node.is_static_method {
 				f.write_static_method(node.name, name)
+			} else if node.is_paren_wrapped_call {
+				f.write('(${name})')
 			} else {
 				f.write(name)
 			}
@@ -2092,6 +2650,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	}
 	f.write_generic_call_if_require(node)
 	f.write('(')
+	f.expand_call_args = node.args_start_on_new_line
 	f.call_args(node.args)
 	f.write(')')
 	f.or_expr(node.or_block)
@@ -2101,21 +2660,78 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	}
 }
 
+// json2_migrate_call rewrites a call to the deprecated `json` module into the
+// equivalent call to the pure V `json2` module (see call_expr for the mapping).
+// The `json2` prefix follows f.json2_prefix, so an existing `import json2 as x`
+// is respected and the output stays in scope and idempotent.
+fn (mut f Fmt) json2_migrate_call(node ast.CallExpr) {
+	j2 := f.json2_prefix
+	match node.kind {
+		.json_decode {
+			// json.decode(T, s) => json2.decode[T](s)
+			// The first argument is the target type; the rest are forwarded.
+			// Guard against malformed calls, since vfmt runs on unchecked ASTs.
+			// A call whose type argument carries comments is never migrated (the file
+			// is left unmigrated, see file_has_unmigratable_json_call), because a
+			// comment inside the generic bracket cannot be re-parsed by vfmt.
+			if node.args.len >= 1 {
+				f.write('${j2}.decode[')
+				f.expr(node.args[0].expr)
+				f.write('](')
+				f.call_args(node.args[1..])
+				f.write(')')
+			} else {
+				f.write('${j2}.decode()')
+			}
+		}
+		.json_encode {
+			// json.encode(x) => json2.encode(x, escape_unicode: true)
+			// Legacy json.encode escapes non-ASCII as `\uXXXX`, while json2 defaults
+			// `escape_unicode` to false (raw unicode); pass it explicitly so the
+			// migrated call produces the exact same bytes for Unicode fields.
+			f.write('${j2}.encode(')
+			f.call_args(node.args)
+			if node.args.len > 0 {
+				f.write(', escape_unicode: true')
+			}
+			f.write(')')
+		}
+		.json_encode_pretty {
+			// json.encode_pretty(x) => json2.encode(x, prettify: true, escape_unicode: true).
+			// json2's own encode_pretty wrapper is deprecated in favour of the prettify
+			// option; escape_unicode matches legacy json's `\uXXXX` escaping (json2 defaults
+			// it to false), the same as the plain encode branch.
+			f.write('${j2}.encode(')
+			f.call_args(node.args)
+			if node.args.len > 0 {
+				f.write(', prettify: true, escape_unicode: true')
+			}
+			f.write(')')
+		}
+		else {}
+	}
+
+	f.or_expr(node.or_block)
+	f.comments(node.comments, has_nl: false)
+}
+
 fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 	if node.concrete_types.len > 0 {
 		f.write('[')
 		for i, concrete_type in node.concrete_types {
-			mut name := f.type_to_str_using_aliases(concrete_type, f.mod2alias)
 			tsym := f.table.sym(concrete_type)
-			if tsym.language != .js && !tsym.name.starts_with('JS.') {
-				name = f.short_module(name)
-			} else if tsym.language == .js && !tsym.name.starts_with('JS.') {
-				name = 'JS.' + name
+			if !f.write_anon_struct_type(concrete_type) {
+				mut name := f.type_to_str_using_aliases(concrete_type, f.mod2alias)
+				if tsym.language != .js && !tsym.name.starts_with('JS.') {
+					name = f.short_module(name)
+				} else if tsym.language == .js && !tsym.name.starts_with('JS.') {
+					name = 'JS.' + name
+				}
+				if tsym.language == .c {
+					name = 'C.' + name
+				}
+				f.write(name)
 			}
-			if tsym.language == .c {
-				name = 'C.' + name
-			}
-			f.write(name)
 			if i != node.concrete_types.len - 1 {
 				f.write(', ')
 			}
@@ -2129,16 +2745,34 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 	old_short_arg_state := f.use_short_fn_args
 	f.single_line_fields = true
 	f.use_short_fn_args = false
+	// When the user starts a call's arguments on a line after `(` and ends them with a
+	// trailing comma, vfmt keeps the call expanded (#27909). Like gofmt, it preserves
+	// the source line grouping: arguments the user placed on the same line stay
+	// together, the rest go on their own line, and a trailing comma is written before
+	// the closing `)`. The trailing comma is the explicit opt-in — vfmt never emits one
+	// otherwise, so already-formatted calls are left untouched. The trailing short-struct
+	// syntax `f(a, b, c: 1)` has its own multiline layout (use_short_fn_args below), so
+	// it is left untouched.
+	last_is_short_struct := args.len > 0 && args.last().expr is ast.StructInit
+		&& (args.last().expr as ast.StructInit).typ == ast.void_type
+	expand := f.expand_call_args && args.len > 0 && !last_is_short_struct
+	f.expand_call_args = false
 	defer {
 		f.single_line_fields = old_single_line_fields_state
 		f.use_short_fn_args = old_short_arg_state
+	}
+	if expand {
+		f.writeln('')
+		f.indent++
 	}
 	for i, arg in args {
 		pre_comments := arg.comments.filter(it.pos.pos < arg.expr.pos().pos)
 		post_comments := arg.comments[pre_comments.len..]
 		if pre_comments.len > 0 {
 			f.comments(pre_comments)
-			f.write(' ')
+			if !expand {
+				f.write(' ')
+			}
 		}
 		if i == args.len - 1 && arg.expr is ast.StructInit {
 			if arg.expr.typ == ast.void_type {
@@ -2148,17 +2782,42 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 		if arg.is_mut {
 			f.write(arg.share.str() + ' ')
 		}
-		if i > 0 && !f.single_line_if && !f.use_short_fn_args {
-			f.wrap_long_line(3, true)
+		if !expand && i > 0 && !f.single_line_if && !f.use_short_fn_args
+			&& arg.expr !is ast.StructInit {
+			arg_str := f.node_str(arg.expr)
+			tail_len := if i < args.len - 1 { 2 } else { 1 }
+			is_tiny_last_assign_arg := f.is_assign && i == args.len - 1 && arg_str.len <= 4
+			if !is_tiny_last_assign_arg && !arg_str.contains('\n')
+				&& f.line_len + arg_str.len + tail_len > max_len {
+				f.wrap_long_line(0, true)
+			}
 		}
 		f.expr(arg.expr)
-		if post_comments.len > 0 {
-			f.comments(post_comments)
-			f.write(' ')
+		if expand {
+			f.write(',')
+			if post_comments.len > 0 {
+				f.comments(post_comments, same_line: true, has_nl: false)
+			}
+			// Preserve the source line grouping: keep the next argument on this line
+			// if the user wrote them together, otherwise start a new line. The last
+			// argument always ends the line, so the closing `)` lands on its own line.
+			if i == args.len - 1 || args[i + 1].pos.line_nr > arg.pos.last_line {
+				f.writeln('')
+			} else {
+				f.write(' ')
+			}
+		} else {
+			if post_comments.len > 0 {
+				f.comments(post_comments)
+				f.write(' ')
+			}
+			if i < args.len - 1 {
+				f.write(', ')
+			}
 		}
-		if i < args.len - 1 {
-			f.write(', ')
-		}
+	}
+	if expand {
+		f.indent--
 	}
 }
 
@@ -2211,22 +2870,14 @@ pub fn (mut f Fmt) chan_init(mut node ast.ChanInit) {
 }
 
 pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
-	if node.is_vweb {
+	if node.is_template {
 		if node.kind == .html {
 			if node.args.len == 1 && node.args[0].expr is ast.StringLiteral {
-				if node.is_veb {
-					f.write('\$veb.html(')
-				} else {
-					f.write('\$vweb.html(')
-				}
+				f.write('\$veb.html(')
 				f.expr(node.args[0].expr)
 				f.write(')')
 			} else {
-				if node.is_veb {
-					f.write('\$veb.html()')
-				} else {
-					f.write('\$vweb.html()')
-				}
+				f.write('\$veb.html()')
 			}
 		} else {
 			f.write('\$tmpl(')
@@ -2274,15 +2925,16 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 					f.write('\$res()')
 				}
 			}
+			node.kind in [.zero, .new] {
+				f.write('\$${node.method_name}(')
+				f.expr(node.args[0].expr)
+				f.write(')')
+			}
 			else {
 				inner_args := if node.args_var != '' {
 					node.args_var
 				} else {
-					node.args.map(if it.expr is ast.ArrayDecompose {
-						'...${it.expr.expr.str()}'
-					} else {
-						it.str()
-					}).join(', ')
+					node.args.map(call_arg_spread_str).join(', ')
 				}
 				method_expr := if node.has_parens {
 					'(${node.method_name}(${inner_args}))'
@@ -2370,8 +3022,10 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		if node.concrete_types.len > 0 {
 			f.write('[')
 			for i, concrete_type in node.concrete_types {
-				typ_name := f.type_to_str_using_aliases(concrete_type, f.mod2alias)
-				f.write(typ_name)
+				if !f.write_anon_struct_type(concrete_type) {
+					typ_name := f.type_to_str_using_aliases(concrete_type, f.mod2alias)
+					f.write(typ_name)
+				}
 				if i != node.concrete_types.len - 1 {
 					f.write(', ')
 				}
@@ -2389,11 +3043,12 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	dollar := if node.is_comptime { '$' } else { '' }
 	f.inside_comptime_if = node.is_comptime
-	mut is_ternary := node.branches.len == 2 && node.has_else
-		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
-		&& (node.is_expr || f.is_assign || f.inside_const || f.is_struct_init
-		|| f.single_line_fields)
-	f.single_line_if = is_ternary
+	mut keep_single_line := node.branches.len == 1 && branch_is_single_line(node.branches[0])
+	is_ternary := node.branches.len == 2 && node.has_else && branch_is_single_line(node.branches[0])
+		&& branch_is_single_line(node.branches[1]) && (node.is_expr || f.is_assign
+		|| f.inside_const || f.is_struct_init || f.single_line_fields)
+	keep_single_line = keep_single_line || is_ternary
+	f.single_line_if = keep_single_line
 	start_pos := f.out.len
 	start_len := f.line_len
 	for {
@@ -2417,7 +3072,8 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 			if i < node.branches.len - 1 || !node.has_else {
 				f.write('${dollar}if ')
 				cur_pos := f.out.len
-				pre_comments := branch.comments[sum_len..].filter(it.pos.pos < branch.cond.pos().pos)
+				pre_comments :=
+					branch.comments[sum_len..].filter(it.pos.pos < branch.cond.pos().pos)
 				sum_len += pre_comments.len
 				post_comments := branch.comments[sum_len..]
 				if pre_comments.len > 0 {
@@ -2439,20 +3095,18 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 				}
 			}
 			f.write('{')
-			if is_ternary {
+			if keep_single_line {
 				f.write(' ')
 			} else {
 				f.writeln('')
 			}
 			f.stmts(branch.stmts)
-			if is_ternary {
+			if keep_single_line {
 				f.write(' ')
 			}
 		}
-		// When a single line if is really long, write it again as multiline,
-		// except it is part of an InfixExpr.
-		if is_ternary && f.line_len > max_len && !f.buffering {
-			is_ternary = false
+		if keep_single_line && f.line_len > max_len && !f.buffering {
+			keep_single_line = false
 			f.single_line_if = false
 			f.out.go_back_to(start_pos)
 			f.line_len = start_len
@@ -2465,11 +3119,19 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	f.single_line_if = false
 	f.inside_comptime_if = false
 	if node.post_comments.len > 0 {
-		f.writeln('')
-		f.comments(node.post_comments,
-			has_nl:    false
-			prev_line: node.branches.last().body_pos.last_line
-		)
+		if keep_single_line {
+			f.comments(node.post_comments,
+				has_nl:    false
+				same_line: true
+				prev_line: node.branches.last().body_pos.last_line
+			)
+		} else {
+			f.writeln('')
+			f.comments(node.post_comments,
+				has_nl:    false
+				prev_line: node.branches.last().body_pos.last_line
+			)
+		}
 	}
 }
 
@@ -2479,6 +3141,44 @@ fn branch_is_single_line(b ast.IfBranch) bool {
 		return true
 	}
 	return false
+}
+
+fn sql_query_data_item_is_single_line(item ast.SqlQueryDataItem) bool {
+	return match item {
+		ast.SqlQueryDataLeaf {
+			item.pre_comments.len == 0 && item.end_comments.len == 0
+				&& item.pos.line_nr == item.pos.last_line && expr_is_single_line(item.expr)
+		}
+		ast.SqlQueryDataIf {
+			false
+		}
+	}
+}
+
+fn sql_query_data_branch_is_single_line(branch ast.SqlQueryDataBranch) bool {
+	return branch.end_comments.len == 0 && branch.pos.line_nr == branch.pos.last_line
+		&& branch.items.len == 1 && sql_query_data_item_is_single_line(branch.items[0])
+}
+
+fn sql_query_data_item_pre_comments(item ast.SqlQueryDataItem) []ast.Comment {
+	return match item {
+		ast.SqlQueryDataLeaf { item.pre_comments }
+		ast.SqlQueryDataIf { item.pre_comments }
+	}
+}
+
+fn sql_query_data_item_end_comments(item ast.SqlQueryDataItem) []ast.Comment {
+	return match item {
+		ast.SqlQueryDataLeaf { item.end_comments }
+		ast.SqlQueryDataIf { item.end_comments }
+	}
+}
+
+fn sql_query_data_item_last_line(item ast.SqlQueryDataItem) int {
+	return match item {
+		ast.SqlQueryDataLeaf { item.pos.last_line }
+		ast.SqlQueryDataIf { item.pos.last_line }
+	}
 }
 
 pub fn (mut f Fmt) if_guard_expr(node ast.IfGuardExpr) {
@@ -2497,15 +3197,19 @@ pub fn (mut f Fmt) if_guard_expr(node ast.IfGuardExpr) {
 
 pub fn (mut f Fmt) index_expr(node ast.IndexExpr) {
 	f.expr(node.left)
-	if node.index is ast.RangeExpr {
-		if node.index.is_gated {
-			f.write('#')
-		}
+	if node.is_gated {
+		f.write('#')
 	}
 	last_index_expr_state := f.is_index_expr
 	f.is_index_expr = true
 	f.write('[')
-	f.expr(node.index)
+	parts := if node.indices.len > 0 { node.indices } else { [node.index] }
+	for i, part in parts {
+		if i > 0 {
+			f.write(', ')
+		}
+		f.expr(part)
+	}
 	f.write(']')
 	f.is_index_expr = last_index_expr_state
 	if node.or_expr.kind != .absent {
@@ -2515,7 +3219,9 @@ pub fn (mut f Fmt) index_expr(node ast.IndexExpr) {
 
 pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	buffering_save := f.buffering
-	if !f.buffering && node.op in [.logical_or, .and, .plus] {
+	is_wrappable_additive_minus := node.op == .minus
+		&& (is_additive_infix(node.left) || is_additive_infix(node.right))
+	if !f.buffering && (node.op in [.logical_or, .and, .plus] || is_wrappable_additive_minus) {
 		f.buffering = true
 	}
 	is_assign_save := f.is_assign
@@ -2588,7 +3294,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int, is_cond bool) {
 	cut_span := f.out.len - start_pos
 	infix_str := f.out.cut_last(cut_span)
-	if !infix_str.contains_any_substr(['&&', '||', '+']) {
+	if !infix_str.contains_any_substr(['&&', '||', '+', '-']) {
 		f.write(infix_str)
 		return
 	}
@@ -2598,6 +3304,13 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int, is_cond bool) {
 	}
 	conditions, penalties := split_up_infix(infix_str, false, is_cond)
 	f.write_splitted_infix(conditions, penalties, false, is_cond)
+}
+
+fn is_additive_infix(expr ast.Expr) bool {
+	return match expr {
+		ast.InfixExpr { expr.op in [.plus, .minus] }
+		else { false }
+	}
 }
 
 fn split_up_infix(infix_str string, ignore_paren bool, is_cond_infix bool) ([]string, []int) {
@@ -2617,11 +3330,15 @@ fn split_up_infix(infix_str string, ignore_paren bool, is_cond_infix bool) ([]st
 				conditions << '${p} '
 				ind++
 			}
-		} else if !is_cond_infix && p == '+' {
-			penalties << 5
-			conditions[ind] += '${p} '
-			conditions << ''
-			ind++
+		} else if !is_cond_infix && p in ['+', '-'] {
+			if inside_paren {
+				conditions[ind] += '${p} '
+			} else {
+				penalties << 5
+				conditions[ind] += '${p} '
+				conditions << ''
+				ind++
+			}
 		} else {
 			conditions[ind] += '${p} '
 			if ignore_paren {
@@ -2839,8 +3556,9 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool, is_comptim
 
 pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 	dollar := if node.is_comptime { '$' } else { '' }
+	cond, cond_or_expr := match_cond_with_trailing_or_expr(node.cond)
 	f.write('${dollar}match ')
-	f.expr(node.cond)
+	f.expr(cond)
 	f.writeln(' {')
 	f.indent++
 	f.comments(node.comments)
@@ -2871,6 +3589,63 @@ pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 	}
 	f.indent--
 	f.write('}')
+	f.or_expr(cond_or_expr)
+}
+
+fn match_cond_with_trailing_or_expr(expr ast.Expr) (ast.Expr, ast.OrExpr) {
+	match expr {
+		ast.CallExpr {
+			if expr.or_block.kind == .block {
+				mut cond := expr
+				or_expr := cond.or_block
+				cond.or_block = ast.OrExpr{}
+				return ast.Expr(cond), or_expr
+			}
+		}
+		ast.Ident {
+			if expr.or_expr.kind == .block {
+				mut cond := expr
+				or_expr := cond.or_expr
+				cond.or_expr = ast.OrExpr{}
+				return ast.Expr(cond), or_expr
+			}
+		}
+		ast.IndexExpr {
+			if expr.or_expr.kind == .block {
+				mut cond := expr
+				or_expr := cond.or_expr
+				cond.or_expr = ast.OrExpr{}
+				return ast.Expr(cond), or_expr
+			}
+		}
+		ast.ParExpr {
+			cond, or_expr := match_cond_with_trailing_or_expr(expr.expr)
+			if or_expr.kind == .block {
+				mut par_expr := expr
+				par_expr.expr = cond
+				return ast.Expr(par_expr), or_expr
+			}
+		}
+		ast.PrefixExpr {
+			if expr.op == .arrow && expr.or_block.kind == .block {
+				mut cond := expr
+				or_expr := cond.or_block
+				cond.or_block = ast.OrExpr{}
+				return ast.Expr(cond), or_expr
+			}
+		}
+		ast.SelectorExpr {
+			if expr.or_block.kind == .block {
+				mut cond := expr
+				or_expr := cond.or_block
+				cond.or_block = ast.OrExpr{}
+				return ast.Expr(cond), or_expr
+			}
+		}
+		else {}
+	}
+
+	return expr, ast.OrExpr{}
 }
 
 pub fn (mut f Fmt) offset_of(node ast.OffsetOf) {
@@ -2965,6 +3740,7 @@ pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
 					.not_is { f.write(' is ') }
 					else {}
 				}
+
 				f.expr(node.right.expr.right)
 				return
 			}
@@ -3001,6 +3777,7 @@ pub fn (mut f Fmt) select_expr(node ast.SelectExpr) {
 				ast.ExprStmt { f.expr(branch.stmt.expr) }
 				else { f.stmt(branch.stmt) }
 			}
+
 			f.single_line_if = false
 			f.write(' {')
 		}
@@ -3078,10 +3855,14 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	f.write('sql ')
 	f.expr(node.db_expr)
 	f.writeln(' {')
+	f.write('\t')
+	if node.is_dynamic {
+		f.write('dynamic ')
+	}
 	if node.is_insert {
-		f.write('\tinsert ')
+		f.write('insert ')
 	} else {
-		f.write('\tselect ')
+		f.write('select ')
 	}
 	if node.has_distinct {
 		f.write('distinct ')
@@ -3091,8 +3872,23 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	if !table_name.starts_with('C.') && !table_name.starts_with('JS.') {
 		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO: f.type_to_str?
 	}
-	if node.is_count {
-		f.write('count ')
+	if node.aggregate_kind != .none {
+		match node.aggregate_kind {
+			.count {
+				f.write('count ')
+			}
+			.sum, .avg, .min, .max {
+				f.write('${node.aggregate_kind}(${node.aggregate_field}) ')
+			}
+			.none {}
+		}
+	} else if node.requested_fields.len > 0 {
+		for i, requested_field in node.requested_fields {
+			f.write(requested_field.name)
+			if i < node.requested_fields.len - 1 {
+				f.write(', ')
+			}
+		}
 	} else {
 		for i, fd in node.fields {
 			f.write(fd.name)
@@ -3100,6 +3896,9 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 				f.write(', ')
 			}
 		}
+	}
+	if node.aggregate_kind == .none && (node.requested_fields.len > 0 || node.fields.len > 0) {
+		f.write(' ')
 	}
 	if node.is_insert {
 		f.write('${node.inserted_var} into ${table_name}')
@@ -3116,6 +3915,7 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 			.right { f.write('right join ') }
 			.full_outer { f.write('full outer join ') }
 		}
+
 		join_sym := f.table.sym(join.table_expr.typ)
 		mut join_table_name := join_sym.name
 		if !join_table_name.starts_with('C.') && !join_table_name.starts_with('JS.') {
@@ -3146,6 +3946,100 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	f.writeln('')
 	f.write('}')
 	f.or_expr(node.or_expr)
+}
+
+pub fn (mut f Fmt) sql_query_data_expr(node ast.SqlQueryDataExpr) {
+	if node.items.len == 0 && node.end_comments.len == 0 {
+		f.write('{}')
+		return
+	}
+	f.writeln('{')
+	f.indent++
+	f.sql_query_data_items(node.items, node.end_comments)
+	f.indent--
+	f.write('}')
+}
+
+fn (mut f Fmt) sql_query_data_items(items []ast.SqlQueryDataItem, end_comments []ast.Comment) {
+	for idx, item in items {
+		f.sql_query_data_comment_lines(sql_query_data_item_pre_comments(item))
+		f.sql_query_data_item(item)
+		if idx < items.len - 1 || end_comments.len > 0 {
+			f.write(',')
+		}
+		item_end_comments := sql_query_data_item_end_comments(item)
+		if item_end_comments.len > 0 {
+			if item_end_comments[0].pos.line_nr == sql_query_data_item_last_line(item) {
+				f.comments(item_end_comments, same_line: true, has_nl: true, level: .keep)
+			} else {
+				f.writeln('')
+				f.sql_query_data_comment_lines(item_end_comments)
+			}
+		} else {
+			f.writeln('')
+		}
+	}
+	f.sql_query_data_comment_lines(end_comments)
+}
+
+fn (mut f Fmt) sql_query_data_comment_lines(comments []ast.Comment) {
+	for comment in comments {
+		f.comment(comment)
+		f.writeln('')
+	}
+}
+
+fn (mut f Fmt) sql_query_data_item(item ast.SqlQueryDataItem) {
+	match item {
+		ast.SqlQueryDataLeaf {
+			f.expr(item.expr)
+		}
+		ast.SqlQueryDataIf {
+			for idx, branch in item.branches {
+				if idx == 0 {
+					f.write('if ')
+					f.expr(branch.cond)
+					f.write(' ')
+				} else if branch.cond is ast.EmptyExpr {
+					f.write('else ')
+				} else {
+					f.write('else if ')
+					f.expr(branch.cond)
+					f.write(' ')
+				}
+				f.sql_query_data_branch_items(branch.items, branch.end_comments,
+					sql_query_data_branch_is_single_line(branch))
+				if idx < item.branches.len - 1 {
+					f.write(' ')
+				}
+			}
+		}
+	}
+}
+
+fn (mut f Fmt) sql_query_data_branch_items(items []ast.SqlQueryDataItem, end_comments []ast.Comment, keep_single_line bool) {
+	if items.len == 0 && end_comments.len == 0 {
+		f.write('{}')
+		return
+	}
+	if keep_single_line {
+		start_pos := f.out.len
+		start_len := f.line_len
+		f.write('{ ')
+		f.sql_query_data_item(items[0])
+		f.write(' }')
+		if !f.out.after(start_pos).contains('\n') && f.line_len <= max_len {
+			return
+		}
+		f.out.go_back_to(start_pos)
+		f.line_len = start_len
+		f.empty_line = start_len == 0
+	}
+	f.writeln('{')
+	f.indent++
+	f.sql_query_data_items(items, end_comments)
+	f.indent--
+	f.write('}')
 }
 
 pub fn (mut f Fmt) char_literal(node ast.CharLiteral) {
@@ -3235,8 +4129,7 @@ pub fn (mut f Fmt) type_expr(node ast.TypeNode) {
 	if node.stmt == ast.empty_stmt {
 		f.write(f.type_to_str_using_aliases(node.typ, f.mod2alias))
 	} else {
-		f.struct_decl(ast.StructDecl{ fields: (node.stmt as ast.StructDecl).fields },
-			true)
+		f.struct_decl(ast.StructDecl{ fields: (node.stmt as ast.StructDecl).fields }, true)
 	}
 }
 

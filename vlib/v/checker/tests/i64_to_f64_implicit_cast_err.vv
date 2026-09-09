@@ -1,0 +1,14 @@
+fn takes_f64(value f64) {}
+
+fn returns_f64() f64 {
+	value := i64(9_223_372_036_854_775_000)
+	return value
+}
+
+fn main() {
+	value := i64(9_223_372_036_854_775_000)
+	mut result := f64(0)
+	result = value
+	takes_f64(value)
+	_ = result
+}

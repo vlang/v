@@ -1,0 +1,5 @@
+import hunam6.voak.foo
+
+fn main() {
+	assert foo.hello() == 'hello'
+}

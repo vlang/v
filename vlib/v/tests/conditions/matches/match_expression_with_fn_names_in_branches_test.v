@@ -38,6 +38,7 @@ pub fn new_context(cfg Config) fn (&Note, f32, f32) f32 {
 		.sine { sine }
 		.sawtooth { sawtooth }
 	}
+
 	return next_fn
 }
 

@@ -1,0 +1,6 @@
+// This reproduces a false positive in the old `.contains('.m')` check:
+// neither the inserted header nor the define value is an Objective-C `.m` import.
+#insert "@DIR/hash_stmt_dot_m_false_positive.m.h"
+#define DOT_M_DEFINE_OK "tmp/project.m/value.h"
+
+fn main() {}

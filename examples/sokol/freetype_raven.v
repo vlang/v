@@ -81,7 +81,6 @@ fn main() {
 		init_userdata_cb:  init
 		frame_userdata_cb: frame
 		window_title:      &char(title.str)
-		html5_canvas_name: &char(title.str)
 		width:             600
 		height:            700
 		high_dpi:          true
@@ -137,12 +136,4 @@ fn (mut state AppState) render_font() {
 		dy += lh
 	}
 	sfons.flush(fons)
-}
-
-fn line(sx f32, sy f32, ex f32, ey f32) {
-	sgl.begin_lines()
-	sgl.c4b(255, 255, 0, 128)
-	sgl.v2f(sx, sy)
-	sgl.v2f(ex, ey)
-	sgl.end()
 }

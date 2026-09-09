@@ -13,3 +13,18 @@ fn test_if_expr_of_multi_stmts() {
 	}
 	assert ret == 10
 }
+
+fn test_if_expr_of_multi_stmts_returning_anon_fn() {
+	condition := true
+	f := if condition {
+		println('f')
+		fn (value string) string {
+			return 'left:${value}'
+		}
+	} else {
+		fn (value string) string {
+			return 'right:${value}'
+		}
+	}
+	assert f('x') == 'left:x'
+}

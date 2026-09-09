@@ -1,11 +1,8 @@
-`v watch` collects all .v files needed for a compilation
-
-Usage:
-  v watch [--clear] [--ignore .db] [--add /path/to/a/file.v] [other V options] [run] program.v
-
 `v watch` collects all .v files needed for a compilation, then when
 any of the .v source files change, it re-runs the compilation.
 
+Usage:
+  v watch [--clear] [--ignore .db] [--add /path/to/a/file.v] [other V options] [run] program.v
 
 Options:
   -s, --silent           Be more silent; do not print the watch timestamp
@@ -19,8 +16,8 @@ Options:
                          and the `feature.v` file.
 
   -i, --ignore <string>  Ignore files having these extensions (separated by ,)
-                         Useful with `v watch -ignore=.db run vwebserver.v`,
-                         if your `vwebserver` writes to an sqlite.db file in
+                         Useful with `v watch -ignore=.db run vebserver.v`,
+                         if your `vebserver` writes to an sqlite.db file in
                          the same folder.
 
   -o, --only-watch <string>
@@ -35,6 +32,7 @@ Options:
   --after <string>       A command to execute *after* each re-run.
                          Example: --after 'rm -rf /tmp/v/'
 
-You can also customise the timeout, after `v watch` will re-start a monitored
-program automatically, even if it was not changed by setting the environment
-variable VWATCH_TIMEOUT (in seconds). By default, it is 5 min. (300 seconds).
+You can also customise the timeout, after which `v watch` will re-start a
+monitored program automatically, even if it was not changed by setting the
+environment variable VWATCH_TIMEOUT (in seconds). By default, it is 5 min
+(300 seconds).

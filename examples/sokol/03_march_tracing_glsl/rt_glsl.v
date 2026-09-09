@@ -245,8 +245,7 @@ fn vec4(x f32, y f32, z f32, w f32) m4.Vec4 {
 
 fn calc_tr_matrices(w f32, h f32, rx f32, ry f32, in_scale f32) m4.Mat4 {
 	proj := m4.perspective(60, w / h, 0.01, 10.0)
-	view := m4.look_at(vec4(f32(0.0), 0, 6, 0), vec4(f32(0), 0, 0, 0), vec4(f32(0), 1,
-		0, 0))
+	view := m4.look_at(vec4(f32(0.0), 0, 6, 0), vec4(f32(0), 0, 0, 0), vec4(f32(0), 1, 0, 0))
 	view_proj := view * proj
 
 	rxm := m4.rotate(m4.rad(rx), vec4(f32(1), 0, 0, 0))

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_arithmetic_err.vv:6:31: error: `?f64` cannot be used as `f64`, unwrap the option first
+    4 | 
+    5 | fn (f Foo) bar(m map[rune]f64) f64 {
+    6 |     return m[`x`] or { 0.0 } * f.value
+      |                                  ~~~~~
+    7 | }
+    8 |

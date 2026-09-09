@@ -1,0 +1,4 @@
+main__Client_on_T_main__Ready(client, _S("ready"), main__on_ready);
+main__Client_on_T_main__Message(client, _S("message_create"), main__on_message);
+client->ready_callback = handler;
+client->message_callback = handler;

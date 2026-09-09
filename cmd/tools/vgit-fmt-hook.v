@@ -4,7 +4,6 @@ import crypto.sha256
 const vexe = os.getenv_opt('VEXE') or { panic('missing VEXE env variable') }
 const vroot = os.to_slash(os.real_path(os.dir(vexe)))
 const horiginal = os.to_slash(os.join_path(vroot, 'cmd/tools/git_pre_commit_hook.vsh'))
-const shoriginal = os.join_path(os.vtmp_dir(), 'git_pre_commit_hook.sh')
 
 fn get_hook_target(git_folder string) string {
 	return os.to_slash(os.join_path(git_folder, 'hooks/pre-commit'))
@@ -15,6 +14,7 @@ fn main() {
 	// to run cmd/tools/git_pre_commit_hook.vsh
 	// TODO: detect other OS (BusyBox) without support for 'env -S'
 	$if openbsd {
+		shoriginal := os.join_path(os.vtmp_dir(), 'git_pre_commit_hook.sh')
 		os.write_file(shoriginal, '#!/bin/sh\nv run ${horiginal}') or {
 			eprintln('unable to write shell script ${shoriginal}')
 			exit(1)
@@ -55,6 +55,7 @@ fn cmd_install(htarget string) {
 	}
 	println('> Installing the newest version of ${horiginal} over ${htarget} ...')
 	$if openbsd {
+		shoriginal := os.join_path(os.vtmp_dir(), 'git_pre_commit_hook.sh')
 		os.cp(shoriginal, htarget) or { err_exit('failed to copy to ${htarget}') }
 	} $else {
 		os.cp(horiginal, htarget) or { err_exit('failed to copy to ${htarget}') }
@@ -76,6 +77,7 @@ fn cmd_remove(htarget string) {
 fn report_status(htarget string, show_instructions bool) bool {
 	mut original := ''
 	$if openbsd {
+		shoriginal := os.join_path(os.vtmp_dir(), 'git_pre_commit_hook.sh')
 		original = shoriginal
 	} $else {
 		original = horiginal

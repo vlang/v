@@ -92,14 +92,14 @@ mut:
 fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 	cap := 8
 	return DenseArray{
-		key_bytes:   key_bytes
+		key_bytes: key_bytes
 		value_bytes: value_bytes
-		cap:         cap
-		len:         0
-		deletes:     0
+		cap: cap
+		len: 0
+		deletes: 0
 		all_deleted: unsafe { nil }
-		keys:        unsafe { malloc(__at_least_one(u64(cap) * u64(key_bytes))) }
-		values:      unsafe { malloc(__at_least_one(u64(cap) * u64(value_bytes))) }
+		keys: unsafe { malloc(__at_least_one(u64(cap) * u64(key_bytes))) }
+		values: unsafe { malloc(__at_least_one(u64(cap) * u64(value_bytes))) }
 	}
 }
 
@@ -117,6 +117,44 @@ fn (d &DenseArray) value(i int) voidptr {
 @[inline]
 fn (d &DenseArray) has_index(i int) bool {
 	return d.deletes == 0 || unsafe { d.all_deleted[i] } == 0
+}
+
+@[inline]
+fn (mut d DenseArray) trim_deleted_tail() {
+	if d.deletes == 0 {
+		return
+	}
+	for d.len > 0 && unsafe { d.all_deleted[d.len - 1] } != 0 {
+		unsafe {
+			d.all_deleted[d.len - 1] = 0
+		}
+		d.deletes--
+		d.len--
+	}
+	if d.deletes == 0 {
+		unsafe {
+			free(d.all_deleted)
+			d.all_deleted = nil
+		}
+	}
+}
+
+fn (mut d DenseArray) reserve(n int) {
+	if n <= d.cap {
+		return
+	}
+	old_cap := d.cap
+	old_key_size := d.key_bytes * old_cap
+	old_value_size := d.value_bytes * old_cap
+	d.cap = n
+	unsafe {
+		d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
+		d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
+		if d.deletes != 0 {
+			d.all_deleted = realloc_data(d.all_deleted, old_cap, d.cap)
+			vmemset(voidptr(d.all_deleted + d.len), 0, d.cap - d.len)
+		}
+	}
 }
 
 // Make space to append an element and return index
@@ -228,7 +266,7 @@ fn map_map_eq(a map, b map) bool {
 		}
 		va := a.key_values.value(i)
 		vb := b.get(k, va)
-		if unsafe { C.memcmp(va, vb, a.value_bytes) } != 0 {
+		if unsafe { vmemcmp(va, vb, a.value_bytes) } != 0 {
 			return false
 		}
 	}
@@ -242,7 +280,7 @@ fn map_clone_string(dest voidptr, pkey voidptr) {
 		cloned := s.clone()
 		// Use memcpy for native backend compatibility
 		// (*&string(dest)) = cloned doesn't reliably store full struct
-		C.memcpy(dest, voidptr(&cloned), sizeof(string))
+		vmemcpy(dest, voidptr(&cloned), sizeof(string))
 	}
 }
 
@@ -286,25 +324,27 @@ fn map_free_nop(_ voidptr) {
 }
 
 fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
-	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > int(sizeof(voidptr))
-	return map{
-		key_bytes:       key_bytes
-		value_bytes:     value_bytes
-		even_index:      init_even_index
+	// Keep this as a local before returning it. Alpine's x86_64 TCC can leave fields
+	// uninitialized when this large nested struct is returned as a compound literal.
+	result := map{
+		key_bytes: key_bytes
+		value_bytes: value_bytes
+		even_index: init_even_index
 		cached_hashbits: max_cached_hashbits
-		shift:           init_log_capicity
-		key_values:      new_dense_array(key_bytes, value_bytes)
-		metas:           unsafe { &u32(vcalloc_noscan(metasize)) }
-		extra_metas:     extra_metas_inc
-		len:             0
+		shift: init_log_capicity
+		key_values: DenseArray{ key_bytes: key_bytes, value_bytes: value_bytes }
+		metas: unsafe { nil }
+		extra_metas: extra_metas_inc
+		len: 0
 		has_string_keys: has_string_keys
-		hash_fn:         hash_fn
-		key_eq_fn:       key_eq_fn
-		clone_fn:        clone_fn
-		free_fn:         free_fn
+		hash_fn: hash_fn
+		key_eq_fn: key_eq_fn
+		clone_fn: clone_fn
+		free_fn: free_fn
 	}
+	return result
 }
 
 fn new_map_init(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int,
@@ -352,6 +392,9 @@ pub fn (mut m map) move() map {
 // It does it by setting the map length to `0`
 // Example: mut m := {'abc': 'xyz', 'def': 'aaa'}; m.clear(); assert m.len == 0
 pub fn (mut m map) clear() {
+	if m.metas == unsafe { nil } {
+		return
+	}
 	unsafe {
 		if m.key_values.all_deleted != 0 {
 			free(m.key_values.all_deleted)
@@ -370,6 +413,14 @@ pub fn (mut m map) clear() {
 
 @[inline]
 fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
+	if voidptr(m.hash_fn) == unsafe { nil } {
+		unsafe {
+			p := &u64(m)
+			prev2 := (&u64(usize(m) - usize(16)))[0]
+			prev1 := (&u64(usize(m) - usize(8)))[0]
+			panic('map.hash_fn is nil map_ptr=${usize(m)} key_bytes=${m.key_bytes} value_bytes=${m.value_bytes} even_index=${m.even_index} shift=${m.shift} metas=${usize(m.metas)} prev2=${prev2} prev1=${prev1} w0=${p[0]} w1=${p[1]} w2=${p[2]} w3=${p[3]} w4=${p[4]} w5=${p[5]} w6=${p[6]} w7=${p[7]} hash_fn=${usize(voidptr(m.hash_fn))}')
+		}
+	}
 	hash := m.hash_fn(pkey)
 	index := hash & m.even_index
 	meta := ((hash >> m.shift) & hash_mask) | probe_inc
@@ -424,10 +475,9 @@ fn (mut m map) ensure_extra_metas_grow() {
 	m.extra_metas += extra_metas_inc
 	mem_size := (m.even_index + 2 + m.extra_metas)
 	unsafe {
-		x := realloc_data(&u8(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
+		x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
 		m.metas = &u32(x)
-		// Use explicit byte arithmetic: cast to &u8 to avoid pointer scaling issues
-		vmemset(&u8(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0, int(sizeof(u32) * extra_metas_inc))
+		vmemset(byteptr(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0, int(sizeof(u32) * extra_metas_inc))
 	}
 }
 
@@ -439,10 +489,9 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.even_index + 2 + m.extra_metas)
 		unsafe {
-			x := realloc_data(&u8(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
+			x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
 			m.metas = &u32(x)
-			// Use explicit byte arithmetic: cast to &u8 to avoid pointer scaling issues
-			vmemset(&u8(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0, int(sizeof(u32) * extra_metas_inc))
+			vmemset(byteptr(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0, int(sizeof(u32) * extra_metas_inc))
 		}
 		// Should almost never happen
 		if probe_count == 252 {
@@ -455,6 +504,12 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 // not equivalent to the key of any other element already in the container.
 // If the key already exists, its value is changed to the value of the new element.
 fn (mut m map) set(key voidptr, value voidptr) {
+	if m.metas == unsafe { nil } {
+		// Most compiler bookkeeping maps remain empty. Allocate backing storage
+		// only on the first insertion or an explicit reservation.
+		m.key_values = new_dense_array(m.key_bytes, m.value_bytes)
+		m.metas = unsafe { &u32(vcalloc_noscan(sizeof(u32) * (m.even_index + 2 + m.extra_metas))) }
+	}
 	// Integer-based load factor check: equivalent to (2*len)/even_index > 0.8
 	// which simplifies to 5*len > 2*even_index (avoids float ops broken in ARM64 backend)
 	if u32(5) * u32(m.len) > u32(2) * m.even_index {
@@ -481,7 +536,7 @@ fn (mut m map) set(key voidptr, value voidptr) {
 		pkey := m.key_values.key(kv_index)
 		pvalue := m.key_values.value(kv_index)
 		m.clone_fn(pkey, key)
-		vmemcpy(&u8(pvalue), value, m.value_bytes)
+		vmemcpy(pvalue, value, m.value_bytes)
 	}
 	m.meta_greater(index, meta, u32(kv_index))
 	m.len++
@@ -509,14 +564,13 @@ fn (mut m map) expand() {
 // the max_load_factor in an operation.
 fn (mut m map) rehash() {
 	meta_bytes := sizeof(u32) * (m.even_index + 2 + m.extra_metas)
-	m.reserve(meta_bytes)
+	m.reserve_metas(meta_bytes)
 }
 
-// reserve memory for the map meta data.
-pub fn (mut m map) reserve(meta_bytes u32) {
+fn (mut m map) reserve_metas(meta_bytes u32) {
 	unsafe {
 		// TODO: use realloc_data here too
-		x := v_realloc(&u8(m.metas), int(meta_bytes))
+		x := v_realloc(byteptr(m.metas), int(meta_bytes))
 		m.metas = &u32(x)
 		vmemset(m.metas, 0, int(meta_bytes))
 	}
@@ -528,6 +582,45 @@ pub fn (mut m map) reserve(meta_bytes u32) {
 		mut index, mut meta := m.key_to_index(pkey)
 		index, meta = m.meta_less(index, meta)
 		m.meta_greater(index, meta, u32(i))
+	}
+}
+
+// reserve ensures that the map can store at least `n` entries without rehashing.
+pub fn (mut m map) reserve(n u32) {
+	if m.len == 0 {
+		old_index := m.even_index
+		for u64(n) * 5 > u64(m.even_index) * 2 {
+			m.even_index = ((m.even_index + 2) << 1) - 2
+			if m.cached_hashbits == 0 {
+				m.shift += max_cached_hashbits
+				m.cached_hashbits = max_cached_hashbits
+			} else {
+				m.cached_hashbits--
+			}
+		}
+		if m.even_index != old_index || (n > 0 && m.metas == unsafe { nil }) {
+			// Empty maps have no entries to rehash. Allocate the final metadata
+			// table once instead of zeroing every intermediate doubled table.
+			meta_bytes := sizeof(u32) * (m.even_index + 2 + m.extra_metas)
+			unsafe {
+				free(m.metas)
+				m.metas = &u32(vcalloc_noscan(meta_bytes))
+			}
+		}
+	} else {
+		for u64(n) * 5 > u64(m.even_index) * 2 {
+			m.expand()
+		}
+	}
+	dense_cap := u64(n) + u64(m.key_values.deletes)
+	if dense_cap > u64(max_int) {
+		panic('map.reserve: max_int will be exceeded')
+	}
+	// DenseArray's geometric growth starts at eight slots.
+	if dense_cap > 0 && dense_cap < 8 {
+		m.key_values.reserve(8)
+	} else {
+		m.key_values.reserve(int(dense_cap))
 	}
 }
 
@@ -558,6 +651,9 @@ fn (mut m map) cached_rehash(old_cap u32) {
 // does not exist in the map, it's added to the map along with the zero/default value.
 // If the key exists, its respective value is returned.
 fn (mut m map) get_and_set(key voidptr, zero voidptr) voidptr {
+	if m.metas == unsafe { nil } {
+		m.set(key, zero)
+	}
 	for {
 		mut index, mut meta := m.key_to_index(key)
 		for {
@@ -634,6 +730,31 @@ fn (m &map) get_check(key voidptr) voidptr {
 	return 0
 }
 
+// If `key` matches the key of an element in the container,
+// the method returns a reference to the stored key.
+// If not, a zero pointer is returned.
+fn (m &map) get_key_check(key voidptr) voidptr {
+	if m.len == 0 {
+		return 0
+	}
+	mut index, mut meta := m.key_to_index(key)
+	for {
+		if meta == unsafe { m.metas[index] } {
+			kv_index := int(unsafe { m.metas[index + 1] })
+			pkey := unsafe { m.key_values.key(kv_index) }
+			if m.key_eq_fn(key, pkey) {
+				return unsafe { &u8(pkey) }
+			}
+		}
+		index += 2
+		meta += probe_inc
+		if meta > unsafe { m.metas[index] } {
+			break
+		}
+	}
+	return 0
+}
+
 // Checks whether a particular key exists in the map.
 fn (m &map) exists(key voidptr) bool {
 	if m.len == 0 {
@@ -659,6 +780,11 @@ fn (m &map) exists(key voidptr) bool {
 
 @[inline]
 fn (mut d DenseArray) delete(i int) {
+	if i == d.len - 1 {
+		d.len--
+		d.trim_deleted_tail()
+		return
+	}
 	if d.deletes == 0 {
 		d.all_deleted = vcalloc(d.cap) // sets to 0
 	}
@@ -671,6 +797,9 @@ fn (mut d DenseArray) delete(i int) {
 // delete removes the mapping of a particular key from the map.
 @[unsafe]
 pub fn (mut m map) delete(key voidptr) {
+	if m.len == 0 {
+		return
+	}
 	mut index, mut meta := m.key_to_index(key)
 	index, meta = m.meta_less(index, meta)
 	// Perform backwards shifting
@@ -738,6 +867,9 @@ pub fn (m &map) keys() array {
 // values returns all values in the map.
 pub fn (m &map) values() array {
 	mut values := __new_array(m.len, 0, m.value_bytes)
+	if m.len == 0 {
+		return values
+	}
 	mut item := unsafe { &u8(values.data) }
 
 	if m.key_values.deletes == 0 {
@@ -764,14 +896,14 @@ pub fn (m &map) values() array {
 @[unsafe]
 fn (d &DenseArray) clone() DenseArray {
 	res := DenseArray{
-		key_bytes:   d.key_bytes
+		key_bytes: d.key_bytes
 		value_bytes: d.value_bytes
-		cap:         d.cap
-		len:         d.len
-		deletes:     d.deletes
+		cap: d.cap
+		len: d.len
+		deletes: d.deletes
 		all_deleted: unsafe { nil }
-		values:      unsafe { nil }
-		keys:        unsafe { nil }
+		values: unsafe { nil }
+		keys: unsafe { nil }
 	}
 	unsafe {
 		if d.deletes != 0 {
@@ -786,22 +918,25 @@ fn (d &DenseArray) clone() DenseArray {
 // clone returns a clone of the `map`.
 @[unsafe]
 pub fn (m &map) clone() map {
+	if m.metas == unsafe { nil } {
+		return new_map(m.key_bytes, m.value_bytes, m.hash_fn, m.key_eq_fn, m.clone_fn, m.free_fn)
+	}
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
 	res := map{
-		key_bytes:       m.key_bytes
-		value_bytes:     m.value_bytes
-		even_index:      m.even_index
+		key_bytes: m.key_bytes
+		value_bytes: m.value_bytes
+		even_index: m.even_index
 		cached_hashbits: m.cached_hashbits
-		shift:           m.shift
-		key_values:      unsafe { m.key_values.clone() }
-		metas:           unsafe { &u32(malloc_noscan(metasize)) }
-		extra_metas:     m.extra_metas
-		len:             m.len
+		shift: m.shift
+		key_values: unsafe { m.key_values.clone() }
+		metas: unsafe { &u32(malloc_noscan(metasize)) }
+		extra_metas: m.extra_metas
+		len: m.len
 		has_string_keys: m.has_string_keys
-		hash_fn:         m.hash_fn
-		key_eq_fn:       m.key_eq_fn
-		clone_fn:        m.clone_fn
-		free_fn:         m.free_fn
+		hash_fn: m.hash_fn
+		key_eq_fn: m.key_eq_fn
+		clone_fn: m.clone_fn
+		free_fn: m.free_fn
 	}
 	unsafe { vmemcpy(res.metas, m.metas, metasize) }
 	if !m.has_string_keys {
@@ -863,5 +998,14 @@ pub fn (m &map) free() {
 		m.key_eq_fn = nil
 		m.clone_fn = nil
 		m.free_fn = nil
+		m.key_values.cap = 0
+		m.key_values.len = 0
+		m.key_values.deletes = 0
+		m.even_index = 0
+		m.cached_hashbits = 0
+		m.shift = 0
+		m.extra_metas = 0
+		m.has_string_keys = false
+		m.len = 0
 	}
 }

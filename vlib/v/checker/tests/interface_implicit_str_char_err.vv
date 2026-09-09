@@ -1,0 +1,11 @@
+interface Stringy {
+	str() string
+}
+
+fn take(v Stringy) {
+	_ = v
+}
+
+fn main() {
+	take(char(91))
+}

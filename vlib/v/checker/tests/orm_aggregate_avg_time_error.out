@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_aggregate_avg_time_error.vv:11:7: error: ORM: `avg` aggregate requires a numeric field
+    9 | fn main() {
+   10 |     db := sqlite.connect(':memory:')!
+   11 |     _ := sql db {
+      |          ~~~~~~~~
+   12 |         select avg(created) from Event
+   13 |     }!

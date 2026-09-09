@@ -3,7 +3,7 @@ fn mul(a i64, unsigned u32) f64 {
 
 	one *= 2 / unsigned
 
-	return one
+	return f64(one)
 }
 
 fn typ(a int) i64 {

@@ -1,0 +1,7 @@
+// vtest vflags: -no-builtin
+@[markused]
+pub fn error() {
+	print(c'\n')
+}
+
+pub fn print(fmt voidptr, ...) {}

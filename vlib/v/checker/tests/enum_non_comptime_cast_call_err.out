@@ -1,0 +1,7 @@
+vlib/v/checker/tests/enum_non_comptime_cast_call_err.vv:6:8: error: the default value for an enum has to be an integer
+    4 | 
+    5 | enum Color {
+    6 |     red = int(get_value(1, 2, 3, 4))
+      |           ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    7 | }
+    8 |

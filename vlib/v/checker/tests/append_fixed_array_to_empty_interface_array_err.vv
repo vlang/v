@@ -1,0 +1,6 @@
+interface Any {}
+
+fn main() {
+	mut values := []Any{}
+	values << [7, 8]!
+}

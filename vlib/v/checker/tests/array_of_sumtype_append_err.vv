@@ -4,8 +4,13 @@ struct BarA {}
 
 struct BarB {}
 
+fn produce_bar_a_array() []BarA {
+	return [BarA{}]
+}
+
 fn main() {
 	mut bar := []Bar{}
 	bar << ['hey']
 	bar << 'hey'
+	bar << produce_bar_a_array()
 }

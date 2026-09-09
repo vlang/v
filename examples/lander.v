@@ -52,6 +52,7 @@ fn (l Lander) land(w World) {
 			l.open_parachutes(1)
 		}
 	}
+
 	println('landed')
 }
 

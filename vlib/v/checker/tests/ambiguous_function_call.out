@@ -1,3 +1,10 @@
+vlib/v/checker/tests/ambiguous_function_call.vv:6:2: notice: variable `foo2` shadows a function declaration
+    4 |
+    5 | fn foo2() {
+    6 |     foo2 := 1
+      |     ~~~~
+    7 |     foo2(foo2)
+    8 | }
 vlib/v/checker/tests/ambiguous_function_call.vv:2:2: error: ambiguous call to: `foo1`, may refer to fn `foo1` or variable `foo1`
     1 | fn foo1(foo1 int) {
     2 |     foo1(foo1 + 1)

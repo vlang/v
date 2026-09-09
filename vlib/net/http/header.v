@@ -358,6 +358,26 @@ pub:
 	value string
 }
 
+@[inline]
+fn header_lower_ascii_byte(b u8) u8 {
+	if b >= `A` && b <= `Z` {
+		return b + 32
+	}
+	return b
+}
+
+fn header_key_eq(a string, b string) bool {
+	if a.len != b.len {
+		return false
+	}
+	for i in 0 .. a.len {
+		if header_lower_ascii_byte(a[i]) != header_lower_ascii_byte(b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 // Create a new Header object
 pub fn new_header(kvs ...HeaderConfig) Header {
 	mut h := Header{
@@ -497,7 +517,7 @@ pub fn (h Header) contains(key CommonHeader) bool {
 	}
 	key_str := key.str()
 	for i := 0; i < h.cur_pos; i++ {
-		if h.data[i].key == key_str {
+		if header_key_eq(h.data[i].key, key_str) {
 			return true
 		}
 	}
@@ -522,10 +542,9 @@ pub fn (h Header) contains_custom(key string, flags HeaderQueryConfig) bool {
 		}
 		return false
 	} else {
-		lower_key := key.to_lower()
 		for i := 0; i < h.cur_pos; i++ {
 			kv := h.data[i]
-			if kv.key.to_lower() == lower_key {
+			if header_key_eq(kv.key, key) {
 				return true
 			}
 		}
@@ -535,13 +554,13 @@ pub fn (h Header) contains_custom(key string, flags HeaderQueryConfig) bool {
 
 // get gets the first value for the CommonHeader, or none if the key
 // does not exist.
-pub fn (h Header) get(key CommonHeader) !string {
+pub fn (h Header) get(key CommonHeader) ?string {
 	return h.get_custom(key.str())
 }
 
 // get_custom gets the first value for the custom header, or none if
 // the key does not exist.
-pub fn (h Header) get_custom(key string, flags HeaderQueryConfig) !string {
+pub fn (h Header) get_custom(key string, flags HeaderQueryConfig) ?string {
 	if flags.exact {
 		for i := 0; i < h.cur_pos; i++ {
 			// for kv in h.data {
@@ -552,16 +571,15 @@ pub fn (h Header) get_custom(key string, flags HeaderQueryConfig) !string {
 			}
 		}
 	} else {
-		lower_key := key.to_lower()
 		// for kv in h.data {
 		for i := 0; i < h.cur_pos; i++ {
 			kv := h.data[i]
-			if kv.key.to_lower() == lower_key {
+			if header_key_eq(kv.key, key) {
 				return kv.value
 			}
 		}
 	}
-	return error('none')
+	return none
 }
 
 // starting_with gets the first header starting with key, or none if
@@ -595,10 +613,9 @@ pub fn (h Header) custom_values(key string, flags HeaderQueryConfig) []string {
 		}
 		return res
 	} else {
-		lower_key := key.to_lower()
 		for i := 0; i < h.cur_pos; i++ {
 			kv := h.data[i]
-			if kv.key.to_lower() == lower_key && kv.value != '' { // empty value means a deleted header
+			if header_key_eq(kv.key, key) && kv.value != '' { // empty value means a deleted header
 				res << kv.value
 			}
 		}

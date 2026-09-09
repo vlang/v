@@ -1,14 +1,21 @@
 module os
 
-import strings
-
 #include <dirent.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/utsname.h>
 #include <sys/types.h>
 #include <sys/statvfs.h>
+#include <sys/wait.h>
 #include <utime.h>
+#insert "@VEXEROOT/vlib/os/execute_capture_nix.h"
+
+// short_path is a Windows-only helper that returns the DOS 8.3 short path.
+// On non-Windows platforms it simply returns the given path unchanged,
+// so that callers guarded by `$if windows { ... }` type-check on other targets.
+pub fn short_path(path string) string {
+	return path
+}
 
 // path_separator is the platform specific separator string, used between the folders and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
 pub const path_separator = '/'
@@ -51,11 +58,11 @@ fn C.uname(name &C.utsname) i32
 
 fn C.symlink(&char, &char) i32
 
-fn C.readlink(&char, &char, i32) i32
+fn C.readlink(&char, &char, usize) i32
 
 fn C.link(&char, &char) i32
 
-fn C.gethostname(&char, i32) i32
+fn C.gethostname(&char, usize) i32
 
 // Note: not available on Android fn C.getlogin_r(&char, int) int
 fn C.getlogin() &char
@@ -65,6 +72,10 @@ fn C.getppid() i32
 fn C.getgid() i32
 
 fn C.getegid() i32
+
+fn C.v_os_execute_capture_start(cmd &char, child_pid &int, read_fd &int) int
+
+fn C.v_os_exec_capture_start(argv &&char, child_pid &int, read_fd &int) int
 
 enum GlobMatch {
 	exact
@@ -142,6 +153,7 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 				f.contains(pat)
 			}
 		}
+
 		if hit {
 			if is_dir(fpath) {
 				subdirs << fpath
@@ -201,7 +213,7 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 
 // utime changes the access and modification times of the inode specified by path.
 // It returns POSIX error message, if it can not do so.
-pub fn utime(path string, actime int, modtime int) ! {
+pub fn utime(path string, actime i64, modtime i64) ! {
 	u := C.utimbuf{actime, modtime}
 	if C.utime(&char(path.str), &u) != 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
@@ -282,13 +294,13 @@ pub fn ls(path string) ![]string {
 		return error('ls() expects a folder, not an empty string')
 	}
 	mut res := []string{cap: 50}
-	dir := unsafe { C.opendir(&char(path.str)) }
-	if isnil(dir) {
+	dir_ptr := unsafe { C.opendir(&char(path.str)) }
+	if isnil(dir_ptr) {
 		return error_posix(msg: 'ls() couldnt open dir "${path}"')
 	}
 	mut ent := &C.dirent(unsafe { nil })
 	for {
-		ent = C.readdir(dir)
+		ent = C.readdir(dir_ptr)
 		if isnil(ent) {
 			break
 		}
@@ -302,7 +314,7 @@ pub fn ls(path string) ![]string {
 			// vfmt on
 		}
 	}
-	C.closedir(dir)
+	C.closedir(dir_ptr)
 	return res
 }
 
@@ -319,37 +331,82 @@ pub fn mkdir(path string, params MkdirParams) ! {
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
-@[manualfree]
 pub fn execute(cmd string) Result {
-	pcmd := 'exec 2>&1;${cmd}'
-	defer {
-		unsafe { pcmd.free() }
-	}
-	f := vpopen(pcmd)
-	if isnil(f) {
+	mut pid := 0
+	mut read_fd := -1
+	v_os_execute_lock()
+	rc := C.v_os_execute_capture_start(&char(cmd.str), &pid, &read_fd)
+	v_os_execute_unlock()
+	if rc != 0 {
 		return Result{
 			exit_code: -1
 			output:    'exec("${cmd}") failed'
 		}
 	}
-	fd := fileno(f)
-	mut res := strings.new_builder(1024)
-	defer {
-		unsafe { res.free() }
-	}
-	buf := [4096]u8{}
-	unsafe {
-		pbuf := &buf[0]
-		for {
-			len := int(C.read(fd, pbuf, 4096))
-			if len == 0 {
-				break
-			}
-			res.write_ptr(pbuf, len)
+	soutput := fd_slurp(read_fd).join('')
+	fd_close(read_fd)
+	mut status := 0
+	for {
+		C.errno = 0
+		if C.waitpid(pid, &status, 0) != -1 {
+			break
+		}
+		if C.errno == C.EINTR {
+			continue
+		}
+		return Result{
+			exit_code: -1
+			output:    soutput
 		}
 	}
-	soutput := res.str()
-	exit_code := vpclose(f)
+	exit_code, _ := posix_wait4_to_exit_status(status)
+	return Result{
+		exit_code: exit_code
+		output:    soutput
+	}
+}
+
+// exec starts the specified command with arguments, waits for it to complete, and returns its output.
+pub fn exec(args []string) Result {
+	if args.len == 0 {
+		return Result{
+			exit_code: -1
+			output:    'exec requires at least one argument'
+		}
+	}
+	mut cargs := []&char{cap: args.len + 1}
+	for arg in args {
+		cargs << &char(arg.str)
+	}
+	cargs << &char(unsafe { nil })
+	mut pid := 0
+	mut read_fd := -1
+	v_os_execute_lock()
+	rc := C.v_os_exec_capture_start(cargs.data, &pid, &read_fd)
+	v_os_execute_unlock()
+	if rc != 0 {
+		return Result{
+			exit_code: -1
+			output:    'exec("${args[0]}") failed'
+		}
+	}
+	soutput := fd_slurp(read_fd).join('')
+	fd_close(read_fd)
+	mut status := 0
+	for {
+		C.errno = 0
+		if C.waitpid(pid, &status, 0) != -1 {
+			break
+		}
+		if C.errno == C.EINTR {
+			continue
+		}
+		return Result{
+			exit_code: -1
+			output:    soutput
+		}
+	}
+	exit_code, _ := posix_wait4_to_exit_status(status)
 	return Result{
 		exit_code: exit_code
 		output:    soutput
@@ -410,7 +467,10 @@ pub fn readlink(path string) !string {
 			return last_error()
 		}
 		if res2 < size {
-			return unsafe { tos(&u8(&buf2[0]), res2) }
+			unsafe {
+				buf2[res2] = 0
+				return cstring_to_vstring(buf2)
+			}
 		}
 		unsafe { free(buf2) } // and then loop around to try again with a larger one.
 	}
@@ -437,8 +497,10 @@ pub fn (mut f File) close() {
 		return
 	}
 	f.is_opened = false
-	C.fflush(f.cfile)
-	C.fclose(f.cfile)
+	cfile := f.cfile
+	f.cfile = unsafe { nil }
+	C.fflush(cfile)
+	C.fclose(cfile)
 }
 
 fn C.mkstemp(stemplate &u8) i32
@@ -513,6 +575,7 @@ pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 		true { new_mode |= mode }
 		false { new_mode &= (0o7777 - mode) }
 	}
+
 	C.chmod(&char(path_s.str), int(new_mode))
 }
 

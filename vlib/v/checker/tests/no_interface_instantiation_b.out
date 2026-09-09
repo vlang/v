@@ -1,3 +1,10 @@
+vlib/v/checker/tests/no_interface_instantiation_b.vv:3:10: notice: unused parameter: `s`
+    1 | interface Speaker {}
+    2 | 
+    3 | fn my_fn(s Speaker) {}
+      |          ^
+    4 | 
+    5 | fn main() {
 vlib/v/checker/tests/no_interface_instantiation_b.vv:6:2: error: expected 1 argument, but got 0
     4 | 
     5 | fn main() {

@@ -31,3 +31,50 @@ fn test_generic_struct_to_string() {
 	println(ret)
 	assert ret.contains('data: 234')
 }
+
+@[heap]
+struct RefNode[T] {
+pub mut:
+	value T
+}
+
+struct RefList[T] {
+pub mut:
+	node ?&RefNode[T]
+}
+
+fn (mut l RefList[T]) add(value T) {
+	l.node = &RefNode[T]{
+		value: value
+	}
+}
+
+fn (l RefList[T]) array() []T {
+	mut a := []T{}
+	mut n := l.node or { return a }
+	a << n.value
+	return a
+}
+
+@[heap]
+struct ReferencedValue {
+	n int
+}
+
+fn test_generic_struct_to_string_with_reference_values() {
+	mut list := RefList[&ReferencedValue]{}
+	list.add(&ReferencedValue{
+		n: 5
+	})
+	assert list.array()[0].n == 5
+	assert '${list}' == 'RefList[&ReferencedValue]{
+    node: &Option(RefNode[&ReferencedValue]{
+        value: &ReferencedValue{
+            n: 5
+        }
+    })
+}'
+	assert '${list.array()}' == '[&ReferencedValue{
+    n: 5
+}]'
+}

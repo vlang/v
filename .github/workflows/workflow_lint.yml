@@ -8,17 +8,23 @@ name: Workflow Lint
 
 on:
   push:
+    branches:
+      - master
     paths:
       - '**.yml'
   pull_request:
     paths:
       - '**.yml'
 
+concurrency:
+  group: workflow-lint-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-yml-workflows:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Verify formatting
         uses: creyD/prettier_action@v4.6
         with:

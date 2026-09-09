@@ -1,5 +1,5 @@
 // vtest build: !solaris
-import json
+import json2 as json
 import picoev
 import picohttpparser
 

@@ -60,7 +60,8 @@ fn main() {
 	assert output2 == [u8(0xa5), 0x03, 0x02, 0x01, 0x20]
 
 	// You can decode (deserialize) back the bytes into Element.
-	el := asn1.decode_with_options([u8(0xa5), 0x03, 0x02, 0x01, 0x20], 'context_specific:5;explicit;inner:2')!
+	el := asn1.decode_with_options([u8(0xa5), 0x03, 0x02, 0x01, 0x20],
+		'context_specific:5;explicit;inner:2')!
 
 	// el is an Element, turn it into underlying object
 	int_el := el.into_object[asn1.Integer]()!

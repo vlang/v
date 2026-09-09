@@ -37,7 +37,8 @@ struct User {
 
 fn main() {
 	mut app := &App{
-		db: pg.connect(host: 'localhost', user: 'postgres', password: '', dbname: 'postgres')!
+		// Use your actual local PostgreSQL password here.
+		db: pg.connect(host: 'localhost', user: 'postgres', password: 'password', dbname: 'postgres')!
 	}
 	app.auth = auth.new(app.db)
 	veb.run[App, Context](mut app, port)
@@ -86,6 +87,9 @@ pub fn (mut app App) find_user_by_name(name string) ?User {
 	return User{}
 }
 ```
+
+On macOS, Postgres.app rejects passwordless `trust` connections from unknown
+processes. Use a real password in the example above instead of `password: ''`.
 
 ## Security considerations
 

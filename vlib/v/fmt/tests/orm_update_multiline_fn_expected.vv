@@ -1,0 +1,25 @@
+import db.sqlite
+
+struct User {
+	id     string
+	name   ?string
+	status u8
+	hide   u8
+}
+
+fn update(mut db sqlite.DB) {
+	req_status := true
+	req_hide := false
+
+	sql db {
+		update User set
+			name = 'Jengro',
+			status = fn [req_status] () u8 {
+				return if req_status { u8(1) } else { u8(0) }
+			}(),
+			hide = fn [req_hide] () u8 {
+				return if req_hide { u8(1) } else { u8(0) }
+			}()
+		where id == '100'
+	}
+}

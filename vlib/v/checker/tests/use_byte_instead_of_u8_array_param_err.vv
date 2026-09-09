@@ -1,0 +1,3 @@
+fn takes_bytes(_ []byte) {}
+
+fn main() {}

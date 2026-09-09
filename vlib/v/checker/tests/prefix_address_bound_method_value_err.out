@@ -1,0 +1,5 @@
+vlib/v/checker/tests/prefix_address_bound_method_value_err.vv:8:6: error: cannot take the address of m.value
+    6 |
+    7 | m := MethodValueAddress{}
+    8 | _ := &m.value
+      |      ^

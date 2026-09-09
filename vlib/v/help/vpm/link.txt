@@ -1,0 +1,10 @@
+Symlink the current project into VMODULES.
+
+Usage:
+  v link
+
+The command looks for `v.mod` in the current directory and its parent directories.
+The `name` field in `v.mod` determines the destination inside VMODULES.
+
+Options:
+  --help, -h   Prints the help menu.

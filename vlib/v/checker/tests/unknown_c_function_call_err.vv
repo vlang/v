@@ -1,0 +1,3 @@
+fn main() {
+	C.bad_fn()
+}

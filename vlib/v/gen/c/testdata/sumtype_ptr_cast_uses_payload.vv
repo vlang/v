@@ -1,0 +1,28 @@
+module main
+
+@[typedef]
+struct C.uiControl {}
+
+@[typedef]
+struct C.uiLabel {}
+
+@[typedef]
+struct C.uiBox {}
+
+fn C.uiNewBox() &C.uiBox
+
+fn C.uiConsume(x &C.uiControl)
+
+type Control = C.uiLabel | C.uiBox
+
+@[unsafe]
+fn use_control(c &Control) {
+	C.uiConsume(&C.uiControl(c))
+}
+
+fn main() {
+	box := C.uiNewBox()
+	unsafe {
+		use_control(box)
+	}
+}

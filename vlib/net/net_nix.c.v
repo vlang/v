@@ -20,7 +20,7 @@ pub fn error_code() int {
 fn init() {
 }
 
-pub const msg_nosignal = 0x4000
+pub const msg_nosignal = C.MSG_NOSIGNAL
 pub const msg_dontwait = C.MSG_DONTWAIT
 
 pub const error_ewouldblock = int(C.EWOULDBLOCK)

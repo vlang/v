@@ -4,6 +4,7 @@ on:
   workflow_call:
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/vinix_ci.yml'
@@ -12,6 +13,7 @@ on:
     branches:
       - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/vinix_ci.yml'
@@ -26,7 +28,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build V
         run: make -j4 && ./v symlink
 
@@ -37,7 +39,7 @@ jobs:
           v retry -- sudo apt install build-essential -y
 
       - name: Clone current Vinix
-        run: v retry -- git clone --depth=1 https://github.com/vlang/vinix.git
+        run: v retry -- git clone --depth=1 --branch master https://github.com/vlang/vinix.git
 
       - name: Download Vinix kernel dependencies
         run: cd vinix/kernel && v retry -- ./get-deps

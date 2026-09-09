@@ -1,0 +1,61 @@
+{
+  "subject": {
+    "consumer_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "consumer_kind": "initial_adopt_current",
+    "intent_or_operation_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "target_id": "linux-amd64",
+    "subject_generation": 1,
+    "initial_run_mode": "original_push",
+    "remediation_trigger": null,
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "tree": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "original_ref": "tccbin-candidate/linux-amd64/1111111111111111111111111111111111111111111111111111111111111111",
+    "input_fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+    "artifact_fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
+    "manifest_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+    "digests": [
+      {
+        "path": "tcc.exe",
+        "sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+      }
+    ]
+  },
+  "subject_hash": "d92d02fd9ab49678ad2957e36da68e91db51a3e7a42de837e3c0693b2b38f8fd",
+  "subject_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "subject_generation": 1,
+  "repository": "vlang/tccbin",
+  "workflow_id": 2001,
+  "workflow_path": ".github/workflows/build-and-test.yml",
+  "original_actor": "tccbin-publisher[bot]",
+  "original_actor_integration_id": 5001,
+  "rerun_triggering_actor": "tccbin-gate-dispatcher[bot]",
+  "rerun_triggering_integration_id": 5002,
+  "expected_ledger_generation": 1,
+  "active_gate_epoch": 0,
+  "gate_epochs": [
+    {
+      "epoch": 0,
+      "reason": "original_push",
+      "expected_ref": "tccbin-candidate/linux-amd64/1111111111111111111111111111111111111111111111111111111111111111",
+      "trigger_id": null,
+      "state": "open_unselected",
+      "selected_run_id": null,
+      "selected_run_attempt": null,
+      "selected_check_suite_id": null,
+      "conclusion": null,
+      "opened_at": "2026-08-02T00:00:00Z",
+      "closed_at": null,
+      "source_recovery_operation_id": null
+    }
+  ],
+  "gate_runs": [],
+  "ack_operation_ids": [],
+  "completion_operation_ids": [],
+  "epoch_close_operation_ids": [],
+  "selected_run_id": null,
+  "selected_run_attempt": null,
+  "selected_check_suite_id": null,
+  "selected_conclusion": null,
+  "infra_retry_count": 0,
+  "source_recovery_operation_id": null
+}

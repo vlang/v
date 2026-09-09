@@ -1,0 +1,2 @@
+direct: @lang['test_entry']
+paren: @(lang['test_entry'])

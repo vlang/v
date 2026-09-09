@@ -18,6 +18,17 @@ struct VCastTypeIndexName {
 // will be filled in cgen
 __global as_cast_type_indexes []VCastTypeIndexName
 
+// SliceIndex describes one overloaded `[]` index or slice part.
+pub struct SliceIndex {
+pub:
+	is_range bool
+	value    int
+	low      int
+	high     int
+	has_low  bool
+	has_high bool
+}
+
 @[direct_array_access]
 fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	if obj_type != expected_type {
@@ -34,4 +45,14 @@ fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 		panic('as cast: cannot cast `' + obj_name + '` to `' + expected_name + '`')
 	}
 	return obj
+}
+
+@[inline]
+fn __v2_flag_has_int(receiver int, flag int) bool {
+	return (receiver & flag) != 0
+}
+
+@[inline]
+fn __v2_flag_all_int(receiver int, flags int) bool {
+	return (receiver & flags) == flags
 }

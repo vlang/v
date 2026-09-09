@@ -108,7 +108,7 @@ fn OctetString.from_bytes(src []u8) !OctetString {
 }
 
 // UTILITY for OCTETSTRING
-fn valid_octet_string(s string) bool {
+fn valid_octet_string(_s string) bool {
 	// just return true
 	return true
 }

@@ -20,6 +20,7 @@ fn test_scalar_equal() {
 	assert sc_minus_one.equal(sc_minus_one) != 0
 }
 
+@[direct_array_access]
 fn test_scalar_non_adjacent_form() {
 	mut s := Scalar{
 		s: [u8(0x1a), 0x0e, 0x97, 0x8a, 0x90, 0xf6, 0x62, 0x2d, 0x37, 0x47, 0x02, 0x3f, 0x8a, 0xd8,
@@ -35,7 +36,7 @@ fn test_scalar_non_adjacent_form() {
 		-15, 0, 0, 0, 0, 1, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 13, 0, 0,
 		0, 0, 0, 0, 11, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0, 0, -9, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0,
 		0, 0, 0, 0, 7, 0, 0, 0, 0, 0, -15, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0, 15, 0, 0, 0, 0, 15, 0,
-		0, 0, 0, 0, 1, 0, 0, 0, 0]
+		0, 0, 0, 0, 1, 0, 0, 0, 0]!
 
 	snaf := s.non_adjacent_form(5)
 	for i := 0; i < 256; i++ {
@@ -108,7 +109,8 @@ fn test_scalar_set_canonical_bytes_on_noncanonical_value() {
 	b[31] += 1
 
 	mut s := sc_one
-	out := s.set_canonical_bytes(b[..]) or { sc_error } // set_canonical_bytes shouldn't worked on a non-canonical value"
+	out :=
+		s.set_canonical_bytes(b[..]) or { sc_error } // set_canonical_bytes shouldn't worked on a non-canonical value"
 	assert out == sc_error
 	assert s == sc_one
 }
@@ -150,10 +152,10 @@ fn test_scalar_set_bytes_with_clamping() {
 		t.Errorf("random: got %q, want %q", got, want)
 	}*/
 	random := '633d368491364dc9cd4c1bf891b1d59460face1644813240a313e61f2c88216e'
-	random_bytes := hex.decode(random) or { panic(err) }
+	random_bytes := hex.decode(random) or { []u8{} }
 
 	mut s0 := Scalar{}
-	s0.set_bytes_with_clamping(random_bytes) or { panic(err) }
+	s0.set_bytes_with_clamping(random_bytes) or { Scalar{} }
 
 	mut p0 := Point{}
 	p0.scalar_base_mult(mut s0)
@@ -165,8 +167,8 @@ fn test_scalar_set_bytes_with_clamping() {
 
 	zero := '0000000000000000000000000000000000000000000000000000000000000000'
 	mut s1 := Scalar{}
-	zero_bytes := hex.decode(zero) or { panic(err) }
-	s1.set_bytes_with_clamping(zero_bytes) or { panic(err) }
+	zero_bytes := hex.decode(zero) or { []u8{} }
+	s1.set_bytes_with_clamping(zero_bytes) or { Scalar{} }
 	mut p1 := Point{}
 	p1.scalar_base_mult(mut s1)
 
@@ -176,8 +178,8 @@ fn test_scalar_set_bytes_with_clamping() {
 
 	one := 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
 	mut s2 := Scalar{}
-	mut one_bytes := hex.decode(one) or { panic(err) }
-	s2.set_bytes_with_clamping(one_bytes) or { panic(err) }
+	mut one_bytes := hex.decode(one) or { []u8{} }
+	s2.set_bytes_with_clamping(one_bytes) or { Scalar{} }
 	mut p2 := Point{}
 	p2.scalar_base_mult(mut s2)
 

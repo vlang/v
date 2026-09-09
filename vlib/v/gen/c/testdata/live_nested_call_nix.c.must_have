@@ -1,0 +1,10 @@
+pthread_once_t live_fn_mutex_once = PTHREAD_ONCE_INIT;
+pthread_mutexattr_settype(&live_fn_mutex_attr, PTHREAD_MUTEX_RECURSIVE);
+pthread_mutex_t* v_live_fn_mutex_ptr(void) {
+return (pthread_mutex_t*)live_info->live_fn_mutex;
+pthread_once(&live_fn_mutex_once, v_init_live_mutex);
+pthread_mutex_t* live_fn_mutex_ptr = v_live_fn_mutex_ptr();
+pthread_mutex_lock(live_fn_mutex_ptr);
+pthread_mutex_unlock(live_fn_mutex_ptr);
+void* live_fn_mutex_addr = v_live_fn_mutex_ptr();
+live_fn_mutex_addr,

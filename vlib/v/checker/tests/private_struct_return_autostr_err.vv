@@ -1,0 +1,6 @@
+import v.checker.tests.amod
+
+fn main() {
+	a := amod.new_private_foo(1)
+	dump(a)
+}

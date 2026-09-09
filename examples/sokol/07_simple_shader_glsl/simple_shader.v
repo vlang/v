@@ -10,7 +10,7 @@ import sokol.gfx
 // Use `v shader` or `sokol-shdc` to generate the necessary `.h` file
 // Using `v shader -v .` in this directory will show some additional
 // info - and what you should include to make things work.
-#include "@VMODROOT/simple_shader.h" # # It should be generated with `v shader .`
+#include "@VMODROOT/simple_shader.h" # It should be generated with `v shader .`
 
 // simple_shader_desc is a C function declaration defined by
 // the `@program` entry in the `simple_shader.glsl` shader file.
@@ -60,7 +60,6 @@ fn (mut a App) run() {
 		init_userdata_cb:    init
 		frame_userdata_cb:   frame
 		window_title:        &char(title.str)
-		html5_canvas_name:   &char(title.str)
 		cleanup_userdata_cb: cleanup
 		sample_count:        4 // Enables MSAA (Multisample anti-aliasing) x4 on rendered output, this can be omitted.
 	}

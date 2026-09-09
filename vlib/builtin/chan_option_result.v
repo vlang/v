@@ -13,13 +13,14 @@ The real implementation is in `vlib/sync/channels.v`
 */
 
 // close closes the channel for further push transactions.
-// closed channels cannot be pushed to, however they can be popped
-// from as long as there is still objects available in the channel buffer.
-pub fn (ch chan) close() {}
+// closed channels cannot be pushed to, and after the buffer is drained
+// `<-ch or {}` and `<-ch?` use `err` or default to `channel closed`.
+pub fn (ch chan) close(err ...IError) {}
 
 // try_pop returns `ChanState.success` if an object is popped from the channel.
 // try_pop effectively pops from the channel without waiting for objects to become available.
 // Both the test and pop transaction is done atomically.
+// Pass the destination as `mut`: `ch.try_pop(mut value)`, not `ch.try_pop(&value)`.
 pub fn (ch chan) try_pop(obj voidptr) ChanState {
 	return .success
 }
@@ -53,22 +54,27 @@ fn _result_ok(data voidptr, mut res _result, size int) {
 	}
 }
 
+fn _result_clone(current &_result, mut res _result, size int) {
+	unsafe {
+		*res = _result{
+			is_error: current.is_error
+			err:      current.err
+		}
+		// use err to get the end of ResultBase and then memcpy into it
+		vmemcpy(&u8(&res.err) + sizeof(IError), &u8(&current.err) + sizeof(IError), size)
+	}
+}
+
 // str returns the message of IError.
 pub fn (err IError) str() string {
-	return match err {
-		None__ {
-			'none'
-		}
-		Error {
-			err.msg()
-		}
-		MessageError {
-			(*err).str()
-		}
-		else {
-			'${err.type_name()}: ${err.msg()}'
-		}
+	if err is None__ {
+		return 'none'
 	}
+	c := err.code()
+	if c > 0 {
+		return err.msg() + '; code: ' + c.str()
+	}
+	return err.msg()
 }
 
 // Error is the empty default implementation of `IError`.
@@ -138,6 +144,17 @@ pub fn error_with_code(message string, code int) IError {
 	}
 }
 
+// error_sentinel is a reusable, allocation-free `IError` for hot "not found"/stateless
+// error paths. Unlike `error('...')`, which heap-allocates a fresh `MessageError` on every
+// call, `error_sentinel` is a single cached const (mirroring how `none` works for `?T`),
+// so `return error_sentinel` from a `!T` function avoids the per-call allocation.
+// Use it when the caller discards the error (e.g. `x() or { ... }`) and the specific
+// message is not needed; its `.msg()` is just `'error'`.
+// Example: fn find(x int) !int { if x < 0 { return error_sentinel } return x }
+pub const error_sentinel = IError(&MessageError{
+	msg: 'error'
+})
+
 // Option is the base of V's internal option return system.
 struct Option {
 	state u8 // 0 - ok; 2 - none; 1 - ?
@@ -181,9 +198,15 @@ fn _option_clone(current &_option, mut option _option, size int) {
 			err:   current.err
 		}
 		// use err to get the end of OptionBase and then memcpy into it
-		vmemcpy(&u8(&option.err) + sizeof(IError), &u8(&current.err) + sizeof(IError),
-			size)
+		vmemcpy(&u8(&option.err) + sizeof(IError), &u8(&current.err) + sizeof(IError), size)
 	}
+}
+
+@[markused]
+fn _result_ok_markused() {
+	mut res := _result{}
+	// Keep _result_ok emitted for code that constructs Result directly.
+	_result_ok(unsafe { nil }, mut res, 0)
 }
 
 //

@@ -185,3 +185,13 @@ fn test_windows_volume() {
 		assert windows_volume('/') == ''
 	}
 }
+
+fn test_trim_extended_length_path_prefix() {
+	$if windows {
+		assert trim_extended_length_path_prefix(r'\\?\C:\path\to\file.v') == r'C:\path\to\file.v'
+		assert trim_extended_length_path_prefix(r'\\?\UNC\host\share\file.v') == r'\\host\share\file.v'
+		assert trim_extended_length_path_prefix(r'\\?\Volume{01234567-89ab-cdef-0123-456789abcdef}\file.v') == r'\\?\Volume{01234567-89ab-cdef-0123-456789abcdef}\file.v'
+		assert trim_extended_length_path_prefix(r'C:\path\to\file.v') == r'C:\path\to\file.v'
+		assert trim_extended_length_path_prefix('') == ''
+	}
+}

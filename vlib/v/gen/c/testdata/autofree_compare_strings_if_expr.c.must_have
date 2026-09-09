@@ -1,0 +1,4 @@
+builtin__compare_strings(/*autofree arg*/(voidptr)&_arg_expr_compare_strings_1_
+builtin__compare_strings(ADDR(string, builtin__string_to_lower(a)), ADDR(string, builtin__string_to_lower(b)))
+string _arg_expr_main_right_pad_end_1_
+right_pad_end(/*autofree arg*/_arg_expr_main_right_pad_end_1_

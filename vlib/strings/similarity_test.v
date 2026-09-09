@@ -48,6 +48,8 @@ fn test_jaro_similarity() {
 	assert strings.jaro_similarity('MARTHA', 'MARHTA') == 0.9444444444444445
 	assert strings.jaro_similarity('DIXON', 'DICKSONX') == 0.7666666666666666
 	assert strings.jaro_similarity('JELLYFISH', 'SMELLYFISH') == 0.8962962962962964
+	assert strings.jaro_similarity('a', 'a') == 1
+	assert strings.jaro_similarity('a', 'b') == 0
 }
 
 fn test_jaro_winkler_similarity() {
@@ -60,4 +62,5 @@ fn test_jaro_winkler_similarity() {
 	assert strings.jaro_winkler_similarity('accomodate', 'accompanist') == 0.8672727272727273
 	assert strings.jaro_winkler_similarity('untill', 'huntsville') == 0.8666666666666667
 	assert strings.jaro_winkler_similarity('wich', 'wichita') == 0.9142857142857143
+	assert strings.jaro_winkler_similarity('a', 'a') == 1
 }

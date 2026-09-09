@@ -14,6 +14,7 @@ fn test_match_with_comptime_if_expr_in_branch() {
 			'nothing to say'
 		}
 	}
+
 	println(x)
 	assert true
 }

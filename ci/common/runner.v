@@ -7,11 +7,22 @@ import time
 
 // exec is a helper function, to execute commands and exit early, if they fail.
 pub fn exec(command string) {
-	log.info('cmd: ${command}')
-	result := os.system(command)
+	cmd := resolve_v_command(command)
+	log.info('cmd: ${cmd}')
+	result := os.system(cmd)
 	if result != 0 {
 		exit(result)
 	}
+}
+
+// resolve_v_command ensures that commands starting with `v ` use the V from @VEXEROOT,
+// not a potentially different V found via PATH.
+fn resolve_v_command(command string) string {
+	if command.starts_with('v ') {
+		vexe := os.getenv_opt('V_CI_VEXE') or { os.join_path_single(@VEXEROOT, 'v') }
+		return os.quoted_path(vexe) + command[1..]
+	}
+	return command
 }
 
 // unset is a helper function to unset a specific env variable.
@@ -37,7 +48,10 @@ pub fn file_size_greater_than(fpath string, min_fsize u64) {
 	}
 }
 
-const self_command = 'v ' +
+const self_command =
+	os.quoted_path(os.getenv_opt('V_CI_VEXE') or {
+	os.join_path_single(@VEXEROOT, 'v')
+}) + ' ' +
 	os.real_path(os.executable()).replace_once(os.real_path(@VEXEROOT), '').trim_left('/\\') +
 	'.vsh'
 
@@ -72,8 +86,23 @@ pub fn run(all_tasks map[string]Task) {
 	task_name := os.args[1]
 	if task_name == 'all' {
 		log.info(term.colorize(term.green, 'Run everything...'))
+		mut failed_tasks := []string{}
 		for tname, t in all_tasks {
-			t.run(tname)
+			cmd := '${self_command} ${tname}'
+			log.info('Start ${term.colorize(term.yellow, t.label)}, cmd: `${cmd}`')
+			start := time.now()
+			result := os.system(cmd)
+			dt := time.now() - start
+			if result != 0 {
+				log.error('FAILED ${term.colorize(term.red, t.label)} in ${dt.milliseconds()} ms, cmd: `${cmd}`')
+				failed_tasks << tname
+			} else {
+				log.info('Finished ${term.colorize(term.yellow, t.label)} in ${dt.milliseconds()} ms, cmd: `${cmd}`')
+			}
+		}
+		if failed_tasks.len > 0 {
+			log.error('${failed_tasks.len} task(s) failed: ${failed_tasks}')
+			exit(1)
 		}
 		exit(0)
 	}

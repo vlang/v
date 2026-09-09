@@ -15,7 +15,6 @@ import gg
 import math
 
 const player_size = 8
-const player_move_delta = 10
 const map_x_size = 8
 const map_y_size = 8
 const map_square = 64
@@ -79,8 +78,8 @@ fn draw_map_2d(app App) {
 	for y := 0; y < map_y_size; y++ {
 		for x := 0; x < map_x_size; x++ {
 			color := if app.map[y * map_x_size + x] == 1 { gg.white } else { gg.black }
-			app.ctx.draw_rect_filled(x * map_square, y * map_square, map_square - 1, map_square - 1,
-				color)
+			app.ctx.draw_rect_filled(x * map_square, y * map_square, map_square - 1,
+				map_square - 1, color)
 		}
 	}
 }
@@ -215,6 +214,7 @@ fn draw_rays_and_walls(app App) {
 		wall_height := math.min((map_square * max_wall_height) / distance, max_wall_height)
 		wall_offset := max_wall_height / 2 - wall_height / 2
 		app.ctx.draw_line_with_config(step * line_thickeness + offset_3d_view, wall_offset,
+
 			step * line_thickeness + offset_3d_view, wall_offset + wall_height, gg.PenConfig{
 			color:     color
 			thickness: line_thickeness

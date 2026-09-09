@@ -48,9 +48,7 @@ fn test_decode_http_request_invalid_request() {
 }
 
 fn test_decode_http_request_with_headers_and_body() {
-	raw := 'POST /submit HTTP/1.1\r\n' + 'Host: localhost\r\n' +
-		'Content-Type: application/json\r\n' + 'Content-Length: 18\r\n' + '\r\n' +
-		'{"status": "ok"}'
+	raw := 'POST /submit HTTP/1.1\r\n' + 'Host: localhost\r\n' + 'Content-Type: application/json\r\n' + 'Content-Length: 18\r\n' + '\r\n' + '{"status": "ok"}'
 
 	buffer := raw.bytes()
 	req := decode_http_request(buffer) or { panic(err) }
@@ -76,6 +74,14 @@ fn test_decode_http_request_no_body() {
 	assert req.body.len == 0
 }
 
+fn test_decode_http_request_uses_framer_offsets_for_bare_lf_headers() {
+	buffer := 'POST /mixed HTTP/1.1\r\nHost: example.com\nContent-Length: 4\n\ntest'.bytes()
+	req := decode_http_request(buffer) or { panic(err) }
+
+	assert req.header_fields.to_string(req.buffer) == 'Host: example.com\nContent-Length: 4'
+	assert req.body.to_string(req.buffer) == 'test'
+}
+
 fn test_decode_http_request_malformed_no_double_crlf() {
 	// Request that never finishes headers
 	buffer := 'GET / HTTP/1.1\r\nHost: example.com\r\n'.bytes()
@@ -85,4 +91,43 @@ fn test_decode_http_request_malformed_no_double_crlf() {
 	// body should be empty and headers go to the end.
 	assert req.body.len == 0
 	assert req.header_fields.to_string(req.buffer) == 'Host: example.com'
+}
+
+fn test_has_complete_body_without_body() {
+	buffer := 'GET / HTTP/1.1\r\nHost: example.com\r\n\r\n'.bytes()
+	assert has_complete_body(buffer.data, buffer.len)
+}
+
+fn test_has_complete_body_with_incomplete_content_length() {
+	buffer := 'POST /upload HTTP/1.1\r\nHost: example.com\r\nContent-Length: 5\r\n\r\n123'.bytes()
+	assert !has_complete_body(buffer.data, buffer.len)
+}
+
+fn test_has_complete_body_with_complete_content_length() {
+	buffer := 'POST /upload HTTP/1.1\r\nHost: example.com\r\nContent-Length: 5\r\n\r\n12345'.bytes()
+	assert has_complete_body(buffer.data, buffer.len)
+}
+
+fn test_has_complete_body_with_incomplete_chunked_body() {
+	buffer :=
+		'POST /upload HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n'.bytes()
+	assert !has_complete_body(buffer.data, buffer.len)
+}
+
+fn test_has_complete_body_with_complete_chunked_body() {
+	buffer :=
+		'POST /upload HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n'.bytes()
+	assert has_complete_body(buffer.data, buffer.len)
+}
+
+fn test_has_complete_body_with_incomplete_chunk_data_containing_terminator_bytes() {
+	buffer :=
+		'POST /upload HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n20\r\nabc\r\n0\r\n\r\n'.bytes()
+	assert !has_complete_body(buffer.data, buffer.len)
+}
+
+fn test_has_complete_body_with_complete_chunk_data_containing_terminator_bytes() {
+	buffer :=
+		'POST /upload HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\nd\r\nabc\r\n0\r\n\r\ndef\r\n0\r\n\r\n'.bytes()
+	assert has_complete_body(buffer.data, buffer.len)
 }

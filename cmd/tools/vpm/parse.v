@@ -23,6 +23,8 @@ struct Parser {
 mut:
 	modules              map[string]Module
 	checked_settings_vcs bool
+	search_modules       []string
+	search_loaded        bool
 	errors               int
 }
 
@@ -31,12 +33,13 @@ enum ModuleKind {
 	https
 	http
 	ssh
+	local
 }
 
-fn parse_query(query []string) []Module {
+fn parse_query(query []string, mut selector VpmInstallServerSelector) []Module {
 	mut p := Parser{}
 	for m in query {
-		p.parse_module(m)
+		p.parse_module(m, mut selector)
 	}
 	if p.errors > 0 && p.errors == query.len {
 		exit(1)
@@ -44,13 +47,45 @@ fn parse_query(query []string) []Module {
 	return p.modules.values()
 }
 
-fn (mut p Parser) parse_module(m string) {
+fn (mut p Parser) lookup_registered_name_for_url(manifest_name string, ident string, mut selector VpmInstallServerSelector) ?string {
+	if manifest_name == '' || manifest_name.contains('.') {
+		return none
+	}
+	expected_url := normalize_repo_lookup_url(ident) or { return none }
+	if !p.search_loaded {
+		p.search_modules = get_all_modules_for_search_with_selector(mut selector) or {
+			vpm_log(@FILE_LINE, @FN, 'failed to load the VPM search index for `${ident}`: ${err}')
+			p.search_loaded = true
+			return none
+		}
+		p.search_loaded = true
+	}
+	target_name := normalize_mod_path(manifest_name)
+	for registered_name in p.search_modules {
+		if normalize_mod_path(registered_name.all_after_last('.')) != target_name {
+			continue
+		}
+		info := get_mod_vpm_info_with_selector(registered_name, mut selector) or {
+			vpm_log(@FILE_LINE, @FN, 'failed to retrieve metadata for `${registered_name}`: ${err}')
+			continue
+		}
+		registered_url := normalize_repo_lookup_url(info.url) or { continue }
+		if registered_url == expected_url {
+			return info.name
+		}
+	}
+	return none
+}
+
+fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) {
 	kind := match true {
 		m.starts_with('https://') { ModuleKind.https }
 		m.starts_with('git@') { ModuleKind.ssh }
 		m.starts_with('http://') { ModuleKind.http }
+		is_local_repository(m) { ModuleKind.local }
 		else { ModuleKind.registered }
 	}
+
 	ident, version := if kind == .ssh {
 		if m.count('@') > 1 {
 			m.all_before_last('@'), m.all_after_last('@')
@@ -65,6 +100,7 @@ fn (mut p Parser) parse_module(m string) {
 		.ssh { ident.replace(':', '/') + at_version(version) }
 		else { ident.all_after('//').trim_string_right('.git') + at_version(version) }
 	}
+
 	if key in p.modules {
 		return
 	}
@@ -111,20 +147,30 @@ fn (mut p Parser) parse_module(m string) {
 			p.errors++
 			return
 		}
-		mod_path := normalize_mod_path(os.join_path(if kind == .http { publisher } else { '' },
-			manifest.name))
+		// Reuse the registered VPM name when a direct VCS URL points to the same repository.
+		registered_name := if kind in [.https, .ssh] {
+			p.lookup_registered_name_for_url(manifest.name, ident, mut selector) or { '' }
+		} else {
+			''
+		}
+		final_name := if registered_name != '' { registered_name } else { manifest.name }
+		mod_path := if registered_name != '' {
+			normalize_mod_path(final_name.replace('.', os.path_separator))
+		} else {
+			direct_install_mod_path(if kind == .http { publisher } else { '' }, manifest.name)
+		}
 		Module{
-			name:         manifest.name
+			name:         final_name
 			url:          ident
 			version:      version
-			install_path: os.real_path(os.join_path(settings.vmodules_path, mod_path))
+			install_path: os.abs_path(os.join_path(settings.vmodules_path, mod_path))
 			is_external:  true
 			tmp_path:     tmp_path
 			manifest:     manifest
 		}
 	} else {
 		// VPM registered module.
-		info := get_mod_vpm_info(ident) or {
+		info := get_mod_vpm_info_with_selector(ident, mut selector) or {
 			vpm_error('failed to retrieve metadata for `${ident}`.', details: err.msg())
 			p.errors++
 			return
@@ -176,7 +222,7 @@ fn (mut p Parser) parse_module(m string) {
 			url:          info.url
 			version:      version
 			vcs:          vcs
-			install_path: os.real_path(os.join_path(settings.vmodules_path, mod_path))
+			install_path: os.abs_path(os.join_path(settings.vmodules_path, mod_path))
 			tmp_path:     tmp_path
 			manifest:     manifest
 		}
@@ -187,12 +233,52 @@ fn (mut p Parser) parse_module(m string) {
 	if mod.manifest.dependencies.len > 0 {
 		verbose_println('Found ${mod.manifest.dependencies.len} dependencies for `${mod.name}`: ${mod.manifest.dependencies}.')
 		for d in mod.manifest.dependencies {
-			p.parse_module(d)
+			p.parse_module(d, mut selector)
 		}
 	}
 }
 
+fn is_local_repository(query string) bool {
+	if query.starts_with('file://') {
+		return true
+	}
+	mut path_candidates := [query]
+	if !query.starts_with('git@') {
+		ident, _ := query.rsplit_once('@') or { query, '' }
+		if ident != query {
+			path_candidates << ident
+		}
+	}
+	for candidate in path_candidates {
+		path := os.expand_tilde_to_home(candidate)
+		if os.is_abs_path(path) || path.starts_with('./') || path.starts_with('../')
+			|| path.starts_with('~/') {
+			return true
+		}
+		if os.exists(path) {
+			// A bare relative name like `vsl` is ambiguous: it might be a
+			// registered VPM module, or a like-named local directory in the
+			// caller's cwd. If the candidate resolves to a path inside
+			// `settings.vmodules_path`, it is just a previously installed
+			// module shadowing the registered name — don't treat it as a
+			// local repository. This keeps `v install vsl@<tag>` working when
+			// cwd happens to be the vmodules directory (the test setup for
+			// versioned installs does exactly this).
+			abs_path := os.real_path(path)
+			vmodules_real := os.real_path(settings.vmodules_path)
+			if abs_path.starts_with(vmodules_real + os.path_separator) || abs_path == vmodules_real {
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut m Module) get_installed() {
+	if m.url != '' && !m.existing_checkout_matches_source() {
+		return
+	}
 	refs := os.execute_opt('git ls-remote --refs ${m.install_path}') or { return }
 	vpm_log(@FILE_LINE, @FN, 'refs: ${refs}')
 	m.is_installed = true
@@ -211,6 +297,38 @@ fn (mut m Module) get_installed() {
 			m.installed_version = tag
 		}
 	}
+}
+
+fn (m Module) existing_checkout_matches_source() bool {
+	if !os.is_dir(m.install_path) {
+		return false
+	}
+	vcs := m.vcs or { settings.vcs }
+	existing_url := match vcs {
+		.git {
+			result := os.execute_opt('git -C ${os.quoted_path(m.install_path)} remote get-url origin') or {
+				return false
+			}
+			result.output.trim_space()
+		}
+		.hg {
+			result := os.execute_opt('hg -R ${os.quoted_path(m.install_path)} paths default') or {
+				return false
+			}
+			result.output.trim_space()
+		}
+	}
+	return normalized_clone_source(existing_url) == normalized_clone_source(m.url)
+}
+
+fn normalized_clone_source(raw_source string) string {
+	raw := raw_source.trim_space()
+	local_path := os.expand_tilde_to_home(raw.trim_string_left('file://'))
+	if raw.starts_with('file://') || os.is_abs_path(local_path) || raw.starts_with('./')
+		|| raw.starts_with('../') || raw.starts_with('~/') || os.exists(local_path) {
+		return 'file://' + os.real_path(local_path)
+	}
+	return normalize_clone_source_url(raw) or { raw.trim_string_right('.git') }
 }
 
 fn get_tmp_path(relative_path string) !string {

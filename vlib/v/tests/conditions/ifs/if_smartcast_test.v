@@ -28,6 +28,21 @@ fn test_mutable() {
 	}
 }
 
+fn test_mut_smartcast_reassign_same_variant() {
+	mut x := Xya(1)
+	if mut x is int {
+		x = 3
+		assert x == 3
+	} else {
+		assert false
+	}
+	if x is int {
+		assert x == 3
+	} else {
+		assert false
+	}
+}
+
 fn test_nested_if_smartcast() {
 	x := Alphabet(Abc{'test'})
 	y := Alphabet(Xyz{'foo'})
@@ -192,8 +207,9 @@ fn gen(_ Expr) CTempVarExpr {
 
 fn test_reassign_from_function_with_parameter_selector() {
 	mut f := ExprWrapper{Expr(CallExpr{})}
-	if f.expr is CallExpr {
-		f.expr = gen(f.expr)
+	expr := f.expr
+	if expr is CallExpr {
+		f.expr = gen(expr)
 	}
 }
 
@@ -307,5 +323,22 @@ fn test_nested_pointer_smartcast() {
 		if a is Foo1 {
 			assert a.a == 3
 		}
+	}
+}
+
+struct RefVariantType {
+	value int
+}
+
+type RefSmartcastSum = RefVariantType | int
+
+fn test_reference_sumtype_variant_smartcast() {
+	sum_ref := &RefSmartcastSum(RefVariantType{
+		value: 7
+	})
+	if sum_ref is &RefVariantType {
+		assert sum_ref.value == 7
+	} else {
+		assert false
 	}
 }

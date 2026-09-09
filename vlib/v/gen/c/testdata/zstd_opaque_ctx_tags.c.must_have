@@ -1,0 +1,4 @@
+struct ZSTD_CCtx_s* ctx;
+struct ZSTD_DCtx_s* ctx;
+struct ZSTD_CCtx_s* ctx = ZSTD_createCCtx();
+struct ZSTD_DCtx_s* ctx = ZSTD_createDCtx();

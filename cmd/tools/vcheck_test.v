@@ -87,8 +87,8 @@ fn test_check_md_respects_vcheckignore_glob_in_scanned_dir() {
 	write_text_file(os.join_path(repo_dir, 'doc', 'plans', 'keep3.md'), '# keep\n')!
 	write_text_file(os.join_path(repo_dir, 'doc', 'plans', '.vcheckignore'), 'ignored*.md\n')!
 
-	res := run_in_dir(repo_dir, '${os.quoted_path(vexe)} check-md -hide-warnings -silent doc/plans',
-		true)!
+	res := run_in_dir(repo_dir,
+		'${os.quoted_path(vexe)} check-md -hide-warnings -silent doc/plans', true)!
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('SKIP: doc/plans/ignored1.md'), res.output
 	assert res.output.contains('SKIP: doc/plans/ignored2.md'), res.output
@@ -119,8 +119,8 @@ fn test_check_md_respects_vcheckignore_anchored_pattern() {
 	write_text_file(os.join_path(repo_dir, 'docs', 'keep.md'), '# keep\n')!
 	write_text_file(os.join_path(repo_dir, 'docs', '.vcheckignore'), '/root_only.md\n')!
 
-	res := run_in_dir(repo_dir, '${os.quoted_path(vexe)} check-md -hide-warnings -silent docs',
-		true)!
+	res :=
+		run_in_dir(repo_dir, '${os.quoted_path(vexe)} check-md -hide-warnings -silent docs', true)!
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('SKIP: docs/root_only.md'), res.output
 	assert res.output.contains('from docs/.vcheckignore: /root_only.md'), res.output
@@ -150,8 +150,8 @@ fn test_check_md_respects_vcheckignore_anchored_directory_pattern() {
 	write_text_file(os.join_path(repo_dir, 'docs', 'keep.md'), '# keep\n')!
 	write_text_file(os.join_path(repo_dir, 'docs', '.vcheckignore'), '/sub/\n')!
 
-	res := run_in_dir(repo_dir, '${os.quoted_path(vexe)} check-md -hide-warnings -silent docs',
-		true)!
+	res :=
+		run_in_dir(repo_dir, '${os.quoted_path(vexe)} check-md -hide-warnings -silent docs', true)!
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('SKIP: docs/sub/ignored.md'), res.output
 	assert res.output.contains('from docs/.vcheckignore: /sub/'), res.output
@@ -181,8 +181,8 @@ fn test_check_md_respects_vcheckignore_non_anchored_directory_pattern() {
 	write_text_file(os.join_path(repo_dir, 'docs', 'keep.md'), '# keep\n')!
 	write_text_file(os.join_path(repo_dir, 'docs', '.vcheckignore'), 'sub/\n')!
 
-	res := run_in_dir(repo_dir, '${os.quoted_path(vexe)} check-md -hide-warnings -silent docs',
-		true)!
+	res :=
+		run_in_dir(repo_dir, '${os.quoted_path(vexe)} check-md -hide-warnings -silent docs', true)!
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('SKIP: docs/sub/ignored1.md'), res.output
 	assert res.output.contains('SKIP: docs/nested/sub/ignored2.md'), res.output
@@ -212,8 +212,7 @@ fn test_check_md_respects_vcheckignore_anchored_directory_glob_pattern() {
 	write_text_file(os.join_path(repo_dir, 'other', 'keep.md'), '# keep\n')!
 	write_text_file(os.join_path(repo_dir, '.vcheckignore'), '/docs-*/\n')!
 
-	res := run_in_dir(repo_dir, '${os.quoted_path(vexe)} check-md -hide-warnings -silent .',
-		true)!
+	res := run_in_dir(repo_dir, '${os.quoted_path(vexe)} check-md -hide-warnings -silent .', true)!
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('SKIP: docs-a/sub/ignored1.md'), res.output
 	assert res.output.contains('SKIP: docs-b/sub/ignored2.md'), res.output
@@ -242,10 +241,11 @@ fn test_check_md_respects_vcheckignore_comments_and_blank_lines() {
 	write_text_file(os.join_path(repo_dir, 'docs', 'ignored.md'), '# ignored\n')!
 	write_text_file(os.join_path(repo_dir, 'docs', 'ignored2.md'), '# ignored2\n')!
 	write_text_file(os.join_path(repo_dir, 'docs', 'keep.md'), '# keep\n')!
-	write_text_file(os.join_path(repo_dir, 'docs', '.vcheckignore'), '# comment\n\nignored.md # inline comment\nignored2.md\n')!
+	write_text_file(os.join_path(repo_dir, 'docs', '.vcheckignore'),
+		'# comment\n\nignored.md # inline comment\nignored2.md\n')!
 
-	res := run_in_dir(repo_dir, '${os.quoted_path(vexe)} check-md -hide-warnings -silent docs',
-		true)!
+	res :=
+		run_in_dir(repo_dir, '${os.quoted_path(vexe)} check-md -hide-warnings -silent docs', true)!
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('SKIP: docs/ignored.md'), res.output
 	assert res.output.contains('SKIP: docs/ignored2.md'), res.output
@@ -275,8 +275,8 @@ fn test_check_md_file_argument_does_not_use_vcheckignore_directory_filtering() {
 	write_text_file(os.join_path(repo_dir, 'docs', 'ignored.md'), '# ignored by dir scan\n')!
 	write_text_file(os.join_path(repo_dir, 'docs', '.vcheckignore'), 'ignored.md\n')!
 
-	res := run_in_dir(repo_dir, '${os.quoted_path(vexe)} check-md -hide-warnings -silent docs/ignored.md',
-		true)!
+	res := run_in_dir(repo_dir,
+		'${os.quoted_path(vexe)} check-md -hide-warnings -silent docs/ignored.md', true)!
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('SKIP: docs/ignored.md'), res.output
 	assert res.output.contains('> Found: 1 .md files.'), res.output
@@ -303,7 +303,8 @@ fn test_check_md_uses_scanned_dir_repo_root_for_vcheckignore() {
 	os.execute_or_exit('${os.quoted_path(git_exe)} init ${os.quoted_path(repo_b)}')
 
 	write_text_file(os.join_path(base_dir, '.vcheckignore'), 'outside*.md\n')!
-	write_text_file(os.join_path(repo_b, 'docs', 'outside1.md'), '# outside but should not be skipped\n')!
+	write_text_file(os.join_path(repo_b, 'docs', 'outside1.md'),
+		'# outside but should not be skipped\n')!
 	write_text_file(os.join_path(repo_b, 'docs', 'keep1.md'), '# keep\n')!
 
 	res := run_in_dir(repo_a, '${os.quoted_path(vexe)} check-md -hide-warnings -silent ${os.quoted_path(os.join_path(repo_b,
@@ -336,8 +337,8 @@ fn test_check_md_multiple_directories_accumulate_skipped_count() {
 	write_text_file(os.join_path(repo_dir, 'notes', 'keep.md'), '# keep\n')!
 	write_text_file(os.join_path(repo_dir, '.vcheckignore'), 'docs/ignored.md\nnotes/ignored.md\n')!
 
-	res := run_in_dir(repo_dir, '${os.quoted_path(vexe)} check-md -hide-warnings -silent docs notes',
-		true)!
+	res := run_in_dir(repo_dir,
+		'${os.quoted_path(vexe)} check-md -hide-warnings -silent docs notes', true)!
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('SKIP: docs/ignored.md'), res.output
 	assert res.output.contains('SKIP: notes/ignored.md'), res.output

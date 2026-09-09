@@ -35,3 +35,15 @@ fn test_channel_array_mut() {
 	sem.wait()
 	assert t == 100 + num_iterations
 }
+
+fn test_channel_close_with_error_propagates_after_buffer_drain() {
+	ch := chan i64{cap: 1}
+	ch <- i64(7)
+	ch.close(error('async failure'))
+	assert <-ch == i64(7)
+	_ := get_val_from_chan(ch) or {
+		assert err.msg() == 'async failure'
+		return
+	}
+	assert false
+}

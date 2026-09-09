@@ -1,0 +1,13 @@
+vlib/v/checker/tests/generics_ref_array_arg_mismatch.vv:22:27: error: cannot use `[]&MyStruct[f64]` as `[]MyStruct[f64]` in argument 1 to `do_it_wrong`
+   20 |     }
+   21 |     a := [&m]
+   22 |     println(do_it_wrong[f64](a))
+      |                              ^
+   23 |     println(Box[f64]{}.do_it_wrong(a))
+   24 | }
+vlib/v/checker/tests/generics_ref_array_arg_mismatch.vv:23:33: error: cannot use `[]&MyStruct[f64]` as `[]MyStruct[f64]` in argument 1 to `Box[f64].do_it_wrong`
+   21 |     a := [&m]
+   22 |     println(do_it_wrong[f64](a))
+   23 |     println(Box[f64]{}.do_it_wrong(a))
+      |                                    ^
+   24 | }

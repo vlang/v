@@ -24,6 +24,7 @@ fn test_wasm_when_decompiled_must_have() {
 	vv_files_loop: for vv_file in vv_files {
 		bench.step()
 		must_have_path := vv_file.replace('.vv', '.wasm.must_have')
+		must_not_have_path := vv_file.replace('.vv', '.wasm.must_not_have')
 		vv_file_name := os.file_name(vv_file).replace('.vv', '')
 		full_vv_path := os.real_path(vv_file).replace(os.path_separator, '/')
 		relative_vv_path := full_vv_path.replace(vroot + '/', '')
@@ -75,6 +76,27 @@ fn test_wasm_when_decompiled_must_have() {
 		}
 		if failed_patterns.len > 0 {
 			eprintln('> failed match patterns: ${failed_patterns.len}')
+			bench.fail()
+			continue
+		}
+
+		// Optional `.wasm.must_not_have` companion: each non-empty line is a
+		// pattern that must NOT appear in the decompiled output (negative assertion).
+		forbidden_lines := os.read_lines(must_not_have_path) or { [] }
+		mut forbidden_patterns := []string{}
+		for idx_forbidden_line, fline in forbidden_lines {
+			if fline == '' {
+				continue
+			}
+			if does_line_match_one_of_generated_lines(fline, generated_wasm_lines) {
+				forbidden_patterns << fline
+				eprintln('${must_not_have_path}:${idx_forbidden_line + 1}: forbidden match error:')
+				eprintln('`${cmd_decompile}` unexpectedly produced a forbidden line:')
+				eprintln(term.colorize(term.red, fline))
+			}
+		}
+		if forbidden_patterns.len > 0 {
+			eprintln('> forbidden match patterns: ${forbidden_patterns.len}')
 			bench.fail()
 			continue
 		}

@@ -1,0 +1,2 @@
+#define DOT_M_INSERT_OK 1
+#define DOT_M_DEFINE_OK "tmp/project.m/value.h"

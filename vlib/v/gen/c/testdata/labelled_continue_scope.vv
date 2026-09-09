@@ -1,0 +1,78 @@
+fn range_loop() {
+	range_outer: for i in 0 .. 2 {
+		for j in 0 .. 2 {
+			if i < 2 && j == 1 {
+				continue range_outer
+			}
+		}
+		issue_19973_range_var := 'issue-19973'
+		for k in 0 .. 2 {
+			if k == 1 {
+				println(issue_19973_range_var)
+				continue range_outer
+			}
+		}
+	}
+}
+
+fn cond_loop() {
+	mut i := 0
+	cond_outer: for i < 2 {
+		for j in 0 .. 2 {
+			if i < 2 && j == 1 {
+				i++
+				continue cond_outer
+			}
+		}
+		issue_19973_cond_var := 'issue-19973'
+		for k in 0 .. 2 {
+			if k == 1 {
+				i++
+				println(issue_19973_cond_var)
+				continue cond_outer
+			}
+		}
+		i++
+	}
+}
+
+fn c_loop() {
+	c_outer: for i := 0; i < 2; i++ {
+		for j := 0; j < 2; j++ {
+			if i < 2 && j == 1 {
+				continue c_outer
+			}
+		}
+		issue_19973_c_var := 'issue-19973'
+		for k := 0; k < 2; k++ {
+			if k == 1 {
+				println(issue_19973_c_var)
+				continue c_outer
+			}
+		}
+	}
+}
+
+fn c_multi_loop() {
+	c_multi_outer: for i, j := 0, 0; i < 2; i++, j++ {
+		for k in 0 .. 2 {
+			if i + j < 3 && k == 1 {
+				continue c_multi_outer
+			}
+		}
+		issue_19973_c_multi_var := 'issue-19973'
+		for k in 0 .. 2 {
+			if j >= 0 && k == 1 {
+				println(issue_19973_c_multi_var)
+				continue c_multi_outer
+			}
+		}
+	}
+}
+
+fn main() {
+	range_loop()
+	cond_loop()
+	c_loop()
+	c_multi_loop()
+}

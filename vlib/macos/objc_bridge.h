@@ -1,0 +1,317 @@
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#ifdef __TINYC__
+typedef void* id;
+typedef void* Class;
+typedef void* SEL;
+typedef void* IMP;
+typedef void Protocol;
+typedef void* Ivar;
+typedef uintptr_t objc_AssociationPolicy;
+
+id objc_getClass(const char*);
+Protocol* objc_getProtocol(const char*);
+SEL sel_registerName(const char*);
+Class objc_allocateClassPair(Class, const char*, size_t);
+void objc_registerClassPair(Class);
+bool class_addMethod(Class, SEL, IMP, const char*);
+bool class_addIvar(Class, const char*, size_t, uint8_t, const char*);
+bool class_addProtocol(Class, Protocol*);
+void objc_setAssociatedObject(id, const void*, id, objc_AssociationPolicy);
+id objc_getAssociatedObject(id, const void*);
+Class object_getClass(id);
+Ivar class_getInstanceVariable(Class, const char*);
+ptrdiff_t ivar_getOffset(Ivar);
+void objc_msgSend(void);
+
+#define __bridge
+#else
+#include <objc/message.h>
+#include <objc/runtime.h>
+#endif
+
+typedef struct macos_rect {
+	double x;
+	double y;
+	double width;
+	double height;
+} macos_rect;
+
+typedef struct macos_point {
+	double x;
+	double y;
+} macos_point;
+
+typedef struct macos_range {
+	uint64_t location;
+	uint64_t length;
+} macos_range;
+
+static inline void* macos_objc_get_class(const char* name) {
+	return (__bridge void*)objc_getClass(name);
+}
+
+static inline void* macos_objc_get_protocol(const char* name) {
+	return (__bridge void*)objc_getProtocol(name);
+}
+
+static inline void* macos_sel_register_name(const char* name) {
+	return (void*)sel_registerName(name);
+}
+
+static inline void* macos_objc_allocate_class_pair(void* superclass, const char* name, size_t extra_bytes) {
+	return (__bridge void*)objc_allocateClassPair((__bridge Class)superclass, name, extra_bytes);
+}
+
+static inline void macos_objc_register_class_pair(void* cls) {
+	objc_registerClassPair((__bridge Class)cls);
+}
+
+static inline bool macos_class_add_method(void* cls, void* name, void* imp, const char* types) {
+	return class_addMethod((__bridge Class)cls, (SEL)name, (IMP)imp, types);
+}
+
+static inline bool macos_class_add_ivar(void* cls, const char* name, size_t size, uint8_t alignment, const char* types) {
+	return class_addIvar((__bridge Class)cls, name, size, alignment, types);
+}
+
+static inline bool macos_class_add_protocol(void* cls, void* protocol) {
+	return class_addProtocol((__bridge Class)cls, (__bridge Protocol*)protocol);
+}
+
+static inline void macos_set_associated_object(void* obj, const void* key, void* value, uintptr_t policy) {
+	objc_setAssociatedObject((__bridge id)obj, key, (__bridge id)value, (objc_AssociationPolicy)policy);
+}
+
+static inline void* macos_get_associated_object(void* obj, const void* key) {
+	return (__bridge void*)objc_getAssociatedObject((__bridge id)obj, key);
+}
+
+static inline void macos_objc_set_ptr_ivar(void* obj, const char* name, void* value) {
+	if (obj == NULL) {
+		return;
+	}
+	Ivar ivar = class_getInstanceVariable(object_getClass((__bridge id)obj), name);
+	if (ivar == NULL) {
+		return;
+	}
+	ptrdiff_t offset = ivar_getOffset(ivar);
+	*(void**)(((char*)obj) + offset) = value;
+}
+
+static inline void* macos_objc_get_ptr_ivar(void* obj, const char* name) {
+	if (obj == NULL) {
+		return NULL;
+	}
+	Ivar ivar = class_getInstanceVariable(object_getClass((__bridge id)obj), name);
+	if (ivar == NULL) {
+		return NULL;
+	}
+	ptrdiff_t offset = ivar_getOffset(ivar);
+	return *(void**)(((char*)obj) + offset);
+}
+
+static inline void* macos_objc_msg_id0(void* obj, void* sel) {
+	return ((void* (*)(void*, void*))objc_msgSend)(obj, sel);
+}
+
+static inline void* macos_objc_msg_id1(void* obj, void* sel, void* a0) {
+	return ((void* (*)(void*, void*, void*))objc_msgSend)(obj, sel, a0);
+}
+
+static inline void* macos_objc_msg_id2(void* obj, void* sel, void* a0, void* a1) {
+	return ((void* (*)(void*, void*, void*, void*))objc_msgSend)(obj, sel, a0, a1);
+}
+
+static inline void* macos_objc_msg_id3(void* obj, void* sel, void* a0, void* a1, void* a2) {
+	return ((void* (*)(void*, void*, void*, void*, void*))objc_msgSend)(obj, sel, a0, a1, a2);
+}
+
+static inline void* macos_objc_msg_id4(void* obj, void* sel, void* a0, void* a1, void* a2, void* a3) {
+	return ((void* (*)(void*, void*, void*, void*, void*, void*))objc_msgSend)(obj, sel, a0, a1, a2, a3);
+}
+
+static inline void* macos_objc_msg_id_rect(void* obj, void* sel, macos_rect rect) {
+	return ((void* (*)(void*, void*, macos_rect))objc_msgSend)(obj, sel, rect);
+}
+
+static inline void* macos_objc_msg_id_rect_bool(void* obj, void* sel, macos_rect rect, bool a1) {
+	return ((void* (*)(void*, void*, macos_rect, bool))objc_msgSend)(obj, sel, rect, a1);
+}
+
+static inline void* macos_objc_msg_id_rect_obj(void* obj, void* sel, macos_rect rect, void* a1) {
+	return ((void* (*)(void*, void*, macos_rect, void*))objc_msgSend)(obj, sel, rect, a1);
+}
+
+static inline void* macos_objc_msg_id_rect_u64_u64_bool(void* obj, void* sel, macos_rect rect, unsigned long long a1, unsigned long long a2, bool a3) {
+	return ((void* (*)(void*, void*, macos_rect, unsigned long long, unsigned long long, bool))objc_msgSend)(obj, sel, rect, a1, a2, a3);
+}
+
+static inline void* macos_objc_msg_id_obj_u64_bool(void* obj, void* sel, void* a0, unsigned long long a1, bool a2) {
+	return ((void* (*)(void*, void*, void*, unsigned long long, bool))objc_msgSend)(obj, sel, a0, a1, a2);
+}
+
+static inline void* macos_objc_msg_id_obj_sel_obj(void* obj, void* sel, void* a0, void* a1, void* a2) {
+	return ((void* (*)(void*, void*, void*, void*, void*))objc_msgSend)(obj, sel, a0, a1, a2);
+}
+
+static inline void* macos_objc_msg_id_f64(void* obj, void* sel, double a0) {
+	return ((void* (*)(void*, void*, double))objc_msgSend)(obj, sel, a0);
+}
+
+static inline void* macos_objc_msg_id_u64(void* obj, void* sel, unsigned long long a0) {
+	return ((void* (*)(void*, void*, unsigned long long))objc_msgSend)(obj, sel, a0);
+}
+
+static inline void* macos_objc_msg_id_four_f64(void* obj, void* sel, double a0, double a1, double a2, double a3) {
+	return ((void* (*)(void*, void*, double, double, double, double))objc_msgSend)(obj, sel, a0, a1, a2, a3);
+}
+
+static inline void* macos_objc_msg_id_id_f64(void* obj, void* sel, void* a0, double a1) {
+	return ((void* (*)(void*, void*, void*, double))objc_msgSend)(obj, sel, a0, a1);
+}
+
+static inline void* macos_objc_msg_id_id_u64(void* obj, void* sel, void* a0, unsigned long long a1) {
+	return ((void* (*)(void*, void*, void*, unsigned long long))objc_msgSend)(obj, sel, a0, a1);
+}
+
+static inline void* macos_objc_msg_id_id_u64_i64_f64(void* obj, void* sel, void* a0, unsigned long long a1, long long a2, double a3) {
+	return ((void* (*)(void*, void*, void*, unsigned long long, long long, double))objc_msgSend)(obj, sel, a0, a1, a2, a3);
+}
+
+static inline void* macos_objc_msg_id_u64_id(void* obj, void* sel, unsigned long long a0, void* a1) {
+	return ((void* (*)(void*, void*, unsigned long long, void*))objc_msgSend)(obj, sel, a0, a1);
+}
+
+static inline void* macos_objc_msg_id_u64_range_ptr(void* obj, void* sel, unsigned long long a0, macos_range* range) {
+	return ((void* (*)(void*, void*, unsigned long long, macos_range*))objc_msgSend)(obj, sel, a0, range);
+}
+
+static inline void* macos_objc_msg_id_id_u64_range_ptr(void* obj, void* sel, void* a0, unsigned long long a1, macos_range* range) {
+	return ((void* (*)(void*, void*, void*, unsigned long long, macos_range*))objc_msgSend)(obj, sel, a0, a1, range);
+}
+
+static inline void* macos_objc_msg_id_range(void* obj, void* sel, macos_range range) {
+	return ((void* (*)(void*, void*, macos_range))objc_msgSend)(obj, sel, range);
+}
+
+static inline unsigned long long macos_objc_msg_u64_id(void* obj, void* sel, void* a0) {
+	return ((unsigned long long (*)(void*, void*, void*))objc_msgSend)(obj, sel, a0);
+}
+
+static inline bool macos_objc_msg_bool_id_bool(void* obj, void* sel, void* a0, bool a1) {
+	return ((bool (*)(void*, void*, void*, bool))objc_msgSend)(obj, sel, a0, a1);
+}
+
+static inline bool macos_objc_msg_bool_sel_id_id(void* obj, void* sel, void* a0, void* a1, void* a2) {
+	return ((bool (*)(void*, void*, void*, void*, void*))objc_msgSend)(obj, sel, a0, a1, a2);
+}
+
+static inline macos_range macos_objc_msg_range(void* obj, void* sel) {
+	return ((macos_range (*)(void*, void*))objc_msgSend)(obj, sel);
+}
+
+static inline macos_point macos_objc_msg_point(void* obj, void* sel) {
+	return ((macos_point (*)(void*, void*))objc_msgSend)(obj, sel);
+}
+
+static inline macos_point macos_objc_msg_point_point_id(void* obj, void* sel, macos_point point, void* a1) {
+	return ((macos_point (*)(void*, void*, macos_point, void*))objc_msgSend)(obj, sel, point, a1);
+}
+
+static inline void macos_objc_msg_void0(void* obj, void* sel) {
+	((void (*)(void*, void*))objc_msgSend)(obj, sel);
+}
+
+static inline void macos_objc_msg_void1(void* obj, void* sel, void* a0) {
+	((void (*)(void*, void*, void*))objc_msgSend)(obj, sel, a0);
+}
+
+static inline void macos_objc_msg_void2(void* obj, void* sel, void* a0, void* a1) {
+	((void (*)(void*, void*, void*, void*))objc_msgSend)(obj, sel, a0, a1);
+}
+
+static inline void macos_objc_msg_void3(void* obj, void* sel, void* a0, void* a1, void* a2) {
+	((void (*)(void*, void*, void*, void*, void*))objc_msgSend)(obj, sel, a0, a1, a2);
+}
+
+static inline void macos_objc_msg_void_bool(void* obj, void* sel, bool a0) {
+	((void (*)(void*, void*, bool))objc_msgSend)(obj, sel, a0);
+}
+
+static inline void macos_objc_msg_void_i64(void* obj, void* sel, long long a0) {
+	((void (*)(void*, void*, long long))objc_msgSend)(obj, sel, a0);
+}
+
+static inline void macos_objc_msg_void_u64(void* obj, void* sel, unsigned long long a0) {
+	((void (*)(void*, void*, unsigned long long))objc_msgSend)(obj, sel, a0);
+}
+
+static inline void macos_objc_msg_void_f64(void* obj, void* sel, double a0) {
+	((void (*)(void*, void*, double))objc_msgSend)(obj, sel, a0);
+}
+
+static inline void macos_objc_msg_void_rect(void* obj, void* sel, macos_rect rect) {
+	((void (*)(void*, void*, macos_rect))objc_msgSend)(obj, sel, rect);
+}
+
+static inline void macos_objc_msg_void_rect_bool_bool(void* obj, void* sel, macos_rect rect, bool a1, bool a2) {
+	((void (*)(void*, void*, macos_rect, bool, bool))objc_msgSend)(obj, sel, rect, a1, a2);
+}
+
+static inline void macos_objc_msg_void_id_i64_id(void* obj, void* sel, void* a0, long long a1, void* a2) {
+	((void (*)(void*, void*, void*, long long, void*))objc_msgSend)(obj, sel, a0, a1, a2);
+}
+
+static inline void macos_objc_msg_void_id_range(void* obj, void* sel, void* a0, macos_range range) {
+	((void (*)(void*, void*, void*, macos_range))objc_msgSend)(obj, sel, a0, range);
+}
+
+static inline void macos_objc_msg_void_id_id_range(void* obj, void* sel, void* a0, void* a1, macos_range range) {
+	((void (*)(void*, void*, void*, void*, macos_range))objc_msgSend)(obj, sel, a0, a1, range);
+}
+
+static inline void macos_objc_msg_void_range(void* obj, void* sel, macos_range range) {
+	((void (*)(void*, void*, macos_range))objc_msgSend)(obj, sel, range);
+}
+
+static inline void macos_objc_msg_void_rect_id(void* obj, void* sel, macos_rect rect, void* a1) {
+	((void (*)(void*, void*, macos_rect, void*))objc_msgSend)(obj, sel, rect, a1);
+}
+
+static inline void macos_objc_msg_void_point(void* obj, void* sel, macos_point point) {
+	((void (*)(void*, void*, macos_point))objc_msgSend)(obj, sel, point);
+}
+
+static inline void macos_objc_msg_void_id_sel_id_id(void* obj, void* sel, void* a0, void* a1, void* a2, void* a3) {
+	((void (*)(void*, void*, void*, void*, void*, void*))objc_msgSend)(obj, sel, a0, a1, a2, a3);
+}
+
+static inline void macos_objc_msg_void_sel_id_bool(void* obj, void* sel, void* a0, void* a1, bool a2) {
+	((void (*)(void*, void*, void*, void*, bool))objc_msgSend)(obj, sel, a0, a1, a2);
+}
+
+static inline bool macos_objc_msg_bool0(void* obj, void* sel) {
+	return ((bool (*)(void*, void*))objc_msgSend)(obj, sel);
+}
+
+static inline bool macos_objc_msg_bool1(void* obj, void* sel, void* a0) {
+	return ((bool (*)(void*, void*, void*))objc_msgSend)(obj, sel, a0);
+}
+
+static inline long long macos_objc_msg_i64(void* obj, void* sel) {
+	return ((long long (*)(void*, void*))objc_msgSend)(obj, sel);
+}
+
+static inline unsigned long long macos_objc_msg_u64(void* obj, void* sel) {
+	return ((unsigned long long (*)(void*, void*))objc_msgSend)(obj, sel);
+}
+
+static inline double macos_objc_msg_f64(void* obj, void* sel) {
+	return ((double (*)(void*, void*))objc_msgSend)(obj, sel);
+}
+
+static inline macos_rect macos_objc_msg_rect(void* obj, void* sel) {
+	return ((macos_rect (*)(void*, void*))objc_msgSend)(obj, sel);
+}

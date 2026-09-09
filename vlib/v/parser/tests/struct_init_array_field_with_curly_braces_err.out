@@ -1,0 +1,7 @@
+vlib/v/parser/tests/struct_init_array_field_with_curly_braces_err.vv:13:9: error: cannot use `{}` for array field `foos`; use `[]` instead
+   11 | fn main() {
+   12 |     _ := Bar{
+   13 |         foos: {
+      |               ^
+   14 |             new_foo()
+   15 |             new_foo()

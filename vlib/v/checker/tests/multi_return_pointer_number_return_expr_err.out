@@ -1,0 +1,13 @@
+vlib/v/checker/tests/multi_return_pointer_number_return_expr_err.vv:2:9: error: fn `return_if_with_number_to_pointer` expects you to return a reference type `voidptr`, but you are returning `u64` instead
+    1 | fn return_if_with_number_to_pointer(x bool, n u64) (voidptr, int) {
+    2 |     return if x { n, 1 } else { (unsafe { voidptr(1) }), 2 }
+      |            ~~
+    3 | }
+    4 |
+vlib/v/checker/tests/multi_return_pointer_number_return_expr_err.vv:6:9: error: fn `return_match_with_number_to_pointer` expects you to return a reference type `voidptr`, but you are returning `u64` instead
+    4 |
+    5 | fn return_match_with_number_to_pointer(x bool, n u64) (voidptr, int) {
+    6 |     return match x {
+      |            ~~~~~~~~~
+    7 |         true { n, 1 }
+    8 |         else { (unsafe { voidptr(1) }), 2 }

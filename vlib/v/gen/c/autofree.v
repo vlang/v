@@ -6,8 +6,12 @@ module c
 import strings
 import v.ast
 
+fn (g &Gen) needs_scope_cleanup() bool {
+	return g.is_autofree || g.pref.gc_mode == .boehm_leak
+}
+
 fn (mut g Gen) autofree_scope_vars(pos int, line_nr int, free_parent_scopes bool) {
-	if !g.is_autofree {
+	if !g.needs_scope_cleanup() {
 		return
 	}
 	// g.writeln('// afsv pos=${pos} line_nr=${line_nr} freeparent_scopes=${free_parent_scopes}')
@@ -15,7 +19,7 @@ fn (mut g Gen) autofree_scope_vars(pos int, line_nr int, free_parent_scopes bool
 }
 
 fn (mut g Gen) autofree_scope_vars_stop(pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
-	if !g.is_autofree {
+	if !g.needs_scope_cleanup() {
 		return
 	}
 	if g.is_builtin_mod {
@@ -84,6 +88,11 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 					g.trace_autofree('// skipping inherited var "${obj.name}"')
 					continue
 				}
+				if obj.name in g.for_c_init_autofree_keep_vars {
+					g.print_autofree_var(obj, 'ForC init')
+					g.trace_autofree('// skipping ForC init var "${obj.name}"')
+					continue
+				}
 				// if var.typ == 0 {
 				// // TODO: why 0?
 				// continue
@@ -148,13 +157,20 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 		// eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
 	}
 	// }
-	mut free_fn := g.styp(v.typ.set_nr_muls(0).clear_option_and_result()) + '_free'
+	base_typ := v.typ.set_nr_muls(0).clear_option_and_result()
+	if g.type_has_unresolved_generic_parts(base_typ) {
+		g.print_autofree_var(v, 'unresolved generic type')
+		return
+	}
+	mut free_fn := g.styp(base_typ) + '_free'
 	if sym.kind == .array {
-		if sym.has_method('free') {
-			g.autofree_var_call(free_fn, v)
-			return
-		}
-		g.autofree_var_call('builtin__array_free', v)
+		free_fn = g.get_free_method(base_typ)
+		g.autofree_var_call(free_fn, v)
+		return
+	}
+	if sym.kind == .map {
+		free_fn = g.get_free_method(base_typ)
+		g.autofree_var_call(free_fn, v)
 		return
 	}
 	if sym.kind == .string {
@@ -179,6 +195,7 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 				*/
 			}
 		}
+
 		g.autofree_var_call('builtin__string_free', v)
 		return
 	}
@@ -212,7 +229,7 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	if g.is_builtin_mod {
 		return
 	}
-	if !g.is_autofree {
+	if !g.needs_scope_cleanup() {
 		return
 	}
 	// if v.is_autofree_tmp && !g.doing_autofree_tmp {
@@ -224,6 +241,9 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	}
 	mut af := strings.new_builder(128)
 	if v.typ.is_ptr() && v.typ.idx() != ast.u8_type_idx {
+		if !v.is_auto_heap && !g.table.sym(v.typ).has_method('free') {
+			return
+		}
 		af.write_string('\t')
 		if v.typ.share() == .shared_t {
 			af.write_string(free_fn_name.replace_each(['__shared__', '']))
@@ -278,4 +298,71 @@ fn (mut g Gen) detect_used_var_on_return(expr ast.Expr) {
 		}
 		else {}
 	}
+}
+
+fn selector_root_name(expr ast.SelectorExpr) ?string {
+	mut root_expr := expr.expr
+	for root_expr is ast.SelectorExpr {
+		root_expr = root_expr.expr
+	}
+	if root_expr is ast.Ident {
+		return root_expr.name
+	}
+	return none
+}
+
+fn (mut g Gen) selector_return_preserves_owner(expr ast.SelectorExpr) bool {
+	if expr.typ == 0 {
+		return false
+	}
+	if expr.typ.is_any_kind_of_pointer() {
+		return true
+	}
+	base_typ := expr.typ.set_nr_muls(0).clear_option_and_result()
+	if base_typ == 0 || g.type_has_unresolved_generic_parts(base_typ) {
+		return false
+	}
+	unwrapped_typ := g.unwrap_generic(base_typ)
+	sym := g.table.sym(unwrapped_typ)
+	if sym.has_method('free') {
+		return true
+	}
+	unaliased_typ :=
+		g.table.fully_unaliased_type(unwrapped_typ).set_nr_muls(0).clear_option_and_result()
+	if unaliased_typ == 0 || g.type_has_unresolved_generic_parts(unaliased_typ) {
+		return false
+	}
+	final_sym := g.table.final_sym(unaliased_typ)
+	return final_sym.kind in [.array, .map, .string, .struct, .sum_type, .interface]
+		|| final_sym.has_method('free')
+}
+
+fn (mut g Gen) collect_returned_var_names(expr ast.Expr, mut names map[string]bool, mut selector_owner_names map[string]bool) {
+	match expr {
+		ast.Ident {
+			names[expr.name] = true
+		}
+		ast.SelectorExpr {
+			if g.selector_return_preserves_owner(expr) {
+				if root_name := selector_root_name(expr) {
+					selector_owner_names[root_name] = true
+				}
+			}
+		}
+		ast.StructInit {
+			for field_expr in expr.init_fields {
+				g.collect_returned_var_names(field_expr.expr, mut names, mut selector_owner_names)
+			}
+		}
+		else {}
+	}
+}
+
+fn (mut g Gen) returned_var_names_from_return(node ast.Return) (map[string]bool, map[string]bool) {
+	mut names := map[string]bool{}
+	mut selector_owner_names := map[string]bool{}
+	for expr in node.exprs {
+		g.collect_returned_var_names(expr, mut names, mut selector_owner_names)
+	}
+	return names, selector_owner_names
 }

@@ -15,6 +15,34 @@ then run `./myfile -param1 abcde` and exit with its exit code".
 
 When compiling packages, V ignores files that end in '_test.v'.
 
+The default compiler:
+  On macOS and Linux, `v` compiles with the experimental V3 compiler (vlib/v3)
+  by default. When V3 cannot yet build an eligible program, V automatically falls
+  back to the established compiler in vlib/v, so builds keep working. Unless the
+  environment variable V_C_ERROR_BUG_REPORT_DISABLED=1 is set, a reportable
+  fallback also sends the V version, target, and build options to
+  https://bugs.vlang.io, plus a bounded snippet of the failing V source when one
+  is available. Any snippet is a strict subset and the whole file is never
+  uploaded. An internal V3 compiler error on a short program or a directory build
+  such as `v .` submits metadata only. If the input selected for a source excerpt
+  changes after V3 parses it, that report also submits metadata only, rather than
+  source V3 did not parse. Before submitting, the stable compiler verifies that
+  it parsed the same bytes for every captured project input; otherwise no fallback
+  report is submitted. An unchanged input mapped from a generated-C error can still
+  upload a strict-subset excerpt of it, even for a short file.
+  Inline-assembly fallbacks and reports that cannot fit safely through the retry
+  environment are notice-only; test compilations and GitHub CI also submit no
+  report to the default endpoint. A custom fallback URL set with
+  V_C_ERROR_BUG_REPORT_URL remains active in CI. The -bug-report-url option
+  selects the established compiler and configures only its reports. Pass
+  `-old-compiler` (see `v help build-c`) to always use the established compiler
+  and skip the V3 attempt and its fallback reporting. The established compiler
+  can still report its own eligible generated-C failures; set
+  V_C_ERROR_BUG_REPORT_DISABLED=1 to disable all such submissions.
+
+Use `v build script.vsh` to compile a `.vsh` script without running it.
+`v -skip-running script.vsh` works too.
+
 When compiling a single main package, V writes the resulting executable to an output file
 named after the build target. ('v abc.v' and 'v abc/' both write either 'abc' or 'abc.exe')
 The '.exe' suffix is added automatically, when writing a Windows executable.
@@ -22,6 +50,8 @@ By default, the executable is stored in the same directory as the compiled sourc
 
 The -o flag forces V to write the resulting executable or object to the output file or directory,
 instead of the default behavior described in the last two paragraphs.
+If the output ends with a path separator, it is treated as an output directory and
+V will infer the filename from the target, creating the directory if needed.
 
 You can put common options inside an environment variable named VFLAGS, so that
 you don't have to repeat them.
@@ -38,9 +68,9 @@ NB: the build flags are shared with the run command too:
     Specifies the backend that will be used for building the executable.
     Current list of supported backends:
     * `c` (default)       - V outputs C source code, which is then passed to a C compiler.
+    * `fastc`             - V parses supported source directly to C without an AST; available only
+                            on macOS and Linux hosts in V builds that embed V3.
     * `go`                - V outputs Go source code, which is then passed to a Go compiler.
-    * `interpret`         - V will interpret the V program directly, instead of compiling it first.
-	                        Same as `v interpret file.v`.
     * `js`                - V outputs JS source code which can be passed to NodeJS to be ran.
     * `js_browser`        - V outputs JS source code ready for the browser.
     * `js_node`           - V outputs JS source code to run with nodejs.
@@ -65,6 +95,7 @@ NB: the build flags are shared with the run command too:
   -o <output>, -output <output>
     Force V to output the executable in a specific location
     (relative to the current working directory if not absolute).
+    If <output> ends with a path separator, V treats it as a directory.
 
   -obf, -obfuscate
       Turn on obfuscation for the code being built. Currently only renames symbols.
@@ -80,6 +111,8 @@ NB: the build flags are shared with the run command too:
     Using these, you can arrange for very flexible search orders for you project, for example:
       -path "/v/my_project_private_modules|@vlib|@vmodules"
     By default, -path is just "@vlib|@vmodules" .
+    Project-local module lookup is resolved from the compiled target/importing file,
+    not from the shell current working directory.
 
   -exclude
     Specify an exclude pattern that will be applied as a filter over the full paths of the .v
@@ -129,6 +162,10 @@ NB: the build flags are shared with the run command too:
     extensively (like `math.big`), without constantly edititing their source code to remove/add
     the tag. Note: this option overrides -no-bounds-checking .
 
+  -disable-explicit-mutability, --disable-explicit-mutability
+    Allow ordinary variables and mutable call arguments in user code to omit explicit `mut`.
+    `mut`/`shared`/`atomic` in function and method signatures remain unchanged.
+
   -prof, -profile <file.txt>
     Compile the executable with all functions profiled.
     The profile results will be stored in `file.txt`.
@@ -170,7 +207,7 @@ NB: the build flags are shared with the run command too:
 
   -message-limit <limit>
     The maximum amount of warnings / errors / notices, that will be accumulated (defaults to 200).
-    The parser and checker, will return prematurely, once this limit has been reached.
+    The compiler may stop accumulating additional diagnostics, once this limit has been reached.
     Setting this to a negative value like -1, will disable the limit.
     Setting this to 0, will stop showing errors, but the compiler will still exit with a non zero
     exit code, if there are any.

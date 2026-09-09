@@ -1,0 +1,20 @@
+import time
+
+struct Foo {
+	x int
+}
+
+fn bad_struct_init() {
+	d := time.second
+	_ := Foo{
+		x: d
+	}
+}
+
+fn bad_struct_init_direct() {
+	_ := Foo{
+		x: time.second
+	}
+}
+
+fn main() {}

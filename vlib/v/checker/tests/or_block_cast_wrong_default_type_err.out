@@ -1,0 +1,6 @@
+vlib/v/checker/tests/or_block_cast_wrong_default_type_err.vv:6:27: error: wrong return type `string` in the `or {}` block, expected `f64`
+    4 |
+    5 | fn main() {
+    6 |     _ := int(read_f64() or { 'bad' })
+      |                              ~~~~~
+    7 | }

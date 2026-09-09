@@ -341,6 +341,13 @@ fn test_parse_int() {
 	}
 }
 
+fn test_common_parse_int_error_on_high_digit() {
+	assert strconv.common_parse_int('9223372036854775808', 0, 64, false, true) or { 1 } == 1
+	assert strconv.common_parse_int('-9223372036854775809', 0, 64, false, true) or { 1 } == 1
+	assert strconv.common_parse_int('9223372036854775808', 0, 64, false, false) or { 1 } == max_i64
+	assert strconv.common_parse_int('-9223372036854775809', 0, 64, false, false) or { 1 } == min_i64
+}
+
 fn test_common_parse_uint2() {
 	mut result, mut error := strconv.common_parse_uint2('1', 10, 8)
 	assert result == 1

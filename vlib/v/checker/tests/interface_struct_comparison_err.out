@@ -1,0 +1,14 @@
+vlib/v/checker/tests/interface_struct_comparison_err.vv:22:30: error: `?IGameObject` cannot be used as `GameObject`, unwrap the option first
+   20 | fn (mut gameobject GameObject) collision(mut o IGameObject) {
+   21 |     _ = o
+   22 |     if gameobject != gameobject.owner {
+      |                                 ~~~~~
+   23 |         eprintln('Collision')
+   24 |     }
+vlib/v/checker/tests/interface_struct_comparison_err.vv:22:5: error: infix expr: cannot use `IGameObject` (right expression) as `GameObject`
+   20 | fn (mut gameobject GameObject) collision(mut o IGameObject) {
+   21 |     _ = o
+   22 |     if gameobject != gameobject.owner {
+      |        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   23 |         eprintln('Collision')
+   24 |     }

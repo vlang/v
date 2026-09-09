@@ -27,14 +27,16 @@ fn test_output() {
 			should_sort: false
 		)
 		fails += check_output('${vexe} doc -comments ${qpath}', '${path_no_ext}.comments.out')
-		fails += check_output('${vexe} doc -readme -comments ${qpath}', '${path_no_ext}.readme.comments.out')
+		fails += check_output('${vexe} doc -readme -comments ${qpath}',
+			'${path_no_ext}.readme.comments.out')
 		// test the main 3 different formats:
 		program_dir := os.quoted_path(if os.is_dir(path) { path } else { os.dir(path) })
 		for fmt in ['html', 'ansi', 'text'] {
 			fails += check_output('${vexe} doc -no-timestamp -f ${fmt} -o - -html-only-contents -readme -comments ${program_dir}',
 				'${path_no_ext}.${fmt}')
 		}
-		fails += check_output('${vexe} doc -no-timestamp -f md -o - ${program_dir}', '${path_no_ext}.md')
+		fails += check_output('${vexe} doc -no-timestamp -f md -o - ${program_dir}',
+			'${path_no_ext}.md')
 		if fails == 0 {
 			println(term.green('OK'))
 		} else {
@@ -70,6 +72,9 @@ fn test_out_path() {
 	test_path := os.join_path(os.vtmp_dir(), 'vdoc_test_${rand.ulid()}')
 	test_mod_path := os.join_path(test_path, small_pure_v_vlib_module)
 	os.mkdir_all(test_path)!
+	// Sentinel v.mod so that vdoc's get_parent_mod() stops climbing here instead of
+	// picking up stray .v files in ancestor tmp dirs (e.g. /private/tmp on macOS).
+	os.write_file(os.join_path(test_path, 'v.mod'), "Module { name: 'vdoc_test' }\n")!
 	defer {
 		os.chdir(vroot) or {}
 		os.rmdir_all(test_path) or {}
@@ -80,7 +85,7 @@ fn test_out_path() {
 
 	// Relative input with default output path.
 	os.execute_opt('${vexe} doc -f html -m ${small_pure_v_vlib_module}')!
-	output_path := os.join_path(mod_path, '_docs', '${small_pure_v_vlib_module}.html')
+	output_path := os.join_path(test_mod_path, '_docs', '${small_pure_v_vlib_module}.html')
 	assert os.exists(output_path), output_path
 
 	// Custom out path (no `_docs` subdir).

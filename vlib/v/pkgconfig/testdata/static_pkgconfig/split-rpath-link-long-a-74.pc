@@ -1,0 +1,4 @@
+Name: split-rpath-link-long-a-74
+Description: First split GNU long rpath-link operand
+Version: 1.0.0
+Libs: -Wl,--rpath-link -Wl,/tmp

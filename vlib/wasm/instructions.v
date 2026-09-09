@@ -1016,6 +1016,7 @@ pub fn (mut func Function) load(typ NumType, align int, offset int) {
 		.f32_t { func.code << 0x2A } // f32.load
 		.f64_t { func.code << 0x2B } // f64.load
 	}
+
 	func.u32(u32(align))
 	func.u32(u32(offset))
 }
@@ -1042,6 +1043,7 @@ pub fn (mut func Function) load8(typ NumType, is_signed bool, align int, offset 
 		}
 		else {}
 	}
+
 	func.u32(u32(align))
 	func.u32(u32(offset))
 }
@@ -1068,6 +1070,7 @@ pub fn (mut func Function) load16(typ NumType, is_signed bool, align int, offset
 		}
 		else {}
 	}
+
 	func.u32(u32(align))
 	func.u32(u32(offset))
 }
@@ -1093,6 +1096,7 @@ pub fn (mut func Function) store(typ NumType, align int, offset int) {
 		.f32_t { func.code << 0x38 } // f32.store
 		.f64_t { func.code << 0x39 } // f64.store
 	}
+
 	func.u32(u32(align))
 	func.u32(u32(offset))
 }
@@ -1107,6 +1111,7 @@ pub fn (mut func Function) store8(typ NumType, align int, offset int) {
 		.i64_t { func.code << 0x3C } // i64.store8
 		else {}
 	}
+
 	func.u32(u32(align))
 	func.u32(u32(offset))
 }
@@ -1121,6 +1126,7 @@ pub fn (mut func Function) store16(typ NumType, align int, offset int) {
 		.i64_t { func.code << 0x3D } // i64.store16
 		else {}
 	}
+
 	func.u32(u32(align))
 	func.u32(u32(offset))
 }
@@ -1212,4 +1218,57 @@ pub fn (mut func Function) ref_func_import(mod string, name string) {
 		name: name
 		pos:  func.code.len
 	})
+}
+
+// call_indirect calls a function from table `tableidx` whose type is `typeidx`.
+// The function index to call is popped from the stack as an i32.
+// Obtain `typeidx` from `Module.new_functype`.
+// WebAssembly instruction: `call_indirect`.
+pub fn (mut func Function) call_indirect(typeidx TypeIndex, tableidx TableIndex) {
+	func.code << 0x11 // call_indirect
+	func.u32(u32(typeidx))
+	func.u32(u32(tableidx))
+}
+
+// table_get places the reference at the index (popped from the stack) of table
+// `tableidx` onto the stack.
+// WebAssembly instruction: `table.get`.
+pub fn (mut func Function) table_get(tableidx TableIndex) {
+	func.code << 0x25 // table.get
+	func.u32(u32(tableidx))
+}
+
+// table_set stores a reference (popped from the stack) at the index (popped from
+// the stack) of table `tableidx`.
+// WebAssembly instruction: `table.set`.
+pub fn (mut func Function) table_set(tableidx TableIndex) {
+	func.code << 0x26 // table.set
+	func.u32(u32(tableidx))
+}
+
+// table_size places the current size of table `tableidx` on the stack as an i32.
+// WebAssembly instruction: `table.size`.
+pub fn (mut func Function) table_size(tableidx TableIndex) {
+	func.code << 0xFC
+	func.code << 0x10 // table.size
+	func.u32(u32(tableidx))
+}
+
+// table_grow grows table `tableidx` by `n` entries (popped from the stack),
+// filling them with an init reference (popped from the stack). It places the
+// previous size on the stack as an i32, or -1 on failure.
+// WebAssembly instruction: `table.grow`.
+pub fn (mut func Function) table_grow(tableidx TableIndex) {
+	func.code << 0xFC
+	func.code << 0x0F // table.grow
+	func.u32(u32(tableidx))
+}
+
+// table_fill fills a range of table `tableidx` with a reference. It pops the
+// count, the init reference, and the start index from the stack.
+// WebAssembly instruction: `table.fill`.
+pub fn (mut func Function) table_fill(tableidx TableIndex) {
+	func.code << 0xFC
+	func.code << 0x11 // table.fill
+	func.u32(u32(tableidx))
 }

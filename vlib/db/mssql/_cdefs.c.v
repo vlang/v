@@ -1,5 +1,19 @@
 module mssql
 
+type C.SQLCHAR = u8
+type C.SQLHDBC = voidptr
+type C.SQLHENV = voidptr
+type C.SQLHANDLE = voidptr
+type C.SQLHSTMT = voidptr
+type C.SQLHWND = voidptr
+type C.SQLINTEGER = int
+type C.SQLLEN = isize
+type C.SQLPOINTER = voidptr
+type C.SQLRETURN = i16
+type C.SQLSMALLINT = i16
+type C.SQLULEN = usize
+type C.SQLUSMALLINT = u16
+
 fn C.SQLAllocHandle(handle_type C.SQLSMALLINT, input_handle C.SQLHANDLE, output_handle &C.SQLHANDLE) C.SQLRETURN
 
 fn C.SQLSetEnvAttr(environment_handle C.SQLHENV, attribute C.SQLINTEGER, value C.SQLPOINTER, string_length C.SQLINTEGER) C.SQLRETURN
@@ -18,6 +32,10 @@ fn C.SQLExecDirect(statement_handle C.SQLHSTMT, statement_text &C.SQLCHAR, text_
 
 fn C.SQLBindCol(statement_handle C.SQLHSTMT, column_number C.SQLUSMALLINT, target_type C.SQLSMALLINT, target_value C.SQLPOINTER,
 	buffer_length C.SQLLEN, str_len_or_ind &C.SQLLEN) C.SQLRETURN
+
+fn C.SQLDescribeCol(statement_handle C.SQLHSTMT, column_number C.SQLUSMALLINT, column_name &C.SQLCHAR,
+	buffer_length C.SQLSMALLINT, name_length &C.SQLSMALLINT, data_type &C.SQLSMALLINT,
+	column_size &C.SQLULEN, decimal_digits &C.SQLSMALLINT, nullable &C.SQLSMALLINT) C.SQLRETURN
 
 fn C.SQLFetch(statement_handle C.SQLHSTMT) C.SQLRETURN
 

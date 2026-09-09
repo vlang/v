@@ -130,3 +130,69 @@ fn test_defer_fn_with_inner_var() {
 		}
 	}
 }
+
+fn test_scoped_defer_can_use_inner_var_declared_in_loop() {
+	mut values := []int{}
+	for i := 0; i < 3; i++ {
+		defer {
+			j := i
+			values << j
+		}
+	}
+	assert values == [0, 1, 2]
+}
+
+fn test_labeled_continue_in_target_loop_runs_target_defer_once() {
+	mut values := []int{}
+	outer: for i in 0 .. 2 {
+		defer {
+			values << 10 + i
+		}
+		continue outer
+	}
+	assert values == [10, 11]
+}
+
+fn test_labeled_continue_runs_target_loop_defer_once() {
+	mut values := []int{}
+	outer: for i in 0 .. 2 {
+		defer {
+			values << 10 + i
+		}
+		if i == 0 {
+			continue outer
+		}
+		{
+			defer {
+				values << 20 + i
+			}
+			continue outer
+		}
+	}
+	assert values == [10, 21, 11]
+}
+
+fn test_labeled_continue_in_multi_for_c_runs_target_defer_once() {
+	mut values := []int{}
+	outer: for i, j := 0, 0; i < 2; i++ {
+		_ = j
+		defer {
+			values << 10 + i
+		}
+		continue outer
+	}
+	assert values == [10, 11]
+}
+
+fn test_labeled_continue_does_not_run_unreached_target_defer() {
+	mut values := []int{}
+	outer: for i in 0 .. 2 {
+		if i == 0 {
+			continue outer
+		}
+		defer {
+			values << 10 + i
+		}
+	}
+	assert values == [11]
+}

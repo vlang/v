@@ -62,8 +62,8 @@ fn xatan(x f64) f64 {
 	xatan_q3 := 4.853903996359136964868e+02
 	xatan_q4 := 1.945506571482613964425e+02
 	mut z := x * x
-	z = z * ((((xatan_p0 * z + xatan_p1) * z + xatan_p2) * z + xatan_p3) * z + xatan_p4) / (((((z +
-		xatan_q0) * z + xatan_q1) * z + xatan_q2) * z + xatan_q3) * z + xatan_q4)
+	z = z * ((((xatan_p0 * z + xatan_p1) * z + xatan_p2) * z + xatan_p3) * z + xatan_p4) / (
+		((((z + xatan_q0) * z + xatan_q1) * z + xatan_q2) * z + xatan_q3) * z + xatan_q4)
 	z = x * z + x
 	return z
 }
@@ -175,10 +175,10 @@ pub fn asin(x_ f64) f64 {
 	if x == 0.0 {
 		return x // special case
 	}
-	mut sign := false
+	mut neg := false
 	if x < 0.0 {
 		x = -x
-		sign = true
+		neg = true
 	}
 	if x > 1.0 {
 		return nan() // special case
@@ -189,7 +189,7 @@ pub fn asin(x_ f64) f64 {
 	} else {
 		temp = satan(x / temp)
 	}
-	if sign {
+	if neg {
 		temp = -temp
 	}
 	return temp

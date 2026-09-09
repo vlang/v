@@ -13,8 +13,12 @@ fn test_fn_array_direct_call() {
 		return false
 	}
 
-	println(fs.array_of_fn[0](1, &Placeholder{ name: 'Bob' }, 'Builder'))
-	assert fs.array_of_fn[0](1, &Placeholder{ name: 'Bob' }, 'Builder') == false
+	println(fs.array_of_fn[0](1, &Placeholder{
+		name: 'Bob'
+	}, 'Builder'))
+	assert fs.array_of_fn[0](1, &Placeholder{
+		name: 'Bob'
+	}, 'Builder') == false
 }
 
 fn test_fn_map_direct_call() {
@@ -30,4 +34,12 @@ fn test_fn_map_direct_call() {
 	println(a['bbb']())
 	assert a['aaa']() == 'aaa'
 	assert a['bbb']() == 'bbb'
+}
+
+fn add(a int, b int) int {
+	return a + b
+}
+
+fn test_parenthesized_fn_direct_call() {
+	assert (add)(2, 4) == 6
 }

@@ -3,6 +3,7 @@ module szip
 import os
 
 #flag -I @VEXEROOT/thirdparty/zip
+#define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
 #include "zip.c"
 
 @[params]
@@ -52,7 +53,7 @@ fn C.zip_entries_total(&Zip) i32
 
 fn C.zip_extract(&char, &char, Fn_on_extract_entry, voidptr) i32
 
-fn cb_zip_extract(filename &&char, arg &&char) int {
+fn cb_zip_extract(_filename &&char, _arg &&char) int {
 	return 0
 }
 
@@ -268,7 +269,8 @@ pub fn zip_folder(folder string, zip_file string, opt ZipFolderOptions) ! {
 	// get list of files from directory
 	path := folder.trim_right(os.path_separator)
 	mut files := []string{}
-	os.walk_with_context(path, &files, fn (mut files []string, file string) {
+	os.walk_with_context(path, &files, fn (ctx voidptr, file string) {
+		mut files := unsafe { &[]string(ctx) }
 		files << file
 	})
 

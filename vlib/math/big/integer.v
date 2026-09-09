@@ -705,17 +705,17 @@ pub fn (mut a Integer) set_bit(i u32, value bool) {
 		return
 	}
 
-	mut copy := a.digits.clone()
+	mut cloned := a.digits.clone()
 
 	if value {
-		copy[target_index] |= u64(1) << offset
+		cloned[target_index] |= u64(1) << offset
 	} else {
-		copy[target_index] &= ~(u64(1) << offset)
+		cloned[target_index] &= ~(u64(1) << offset)
 	}
 
 	a = Integer{
 		signum: a.signum
-		digits: copy
+		digits: cloned
 	}
 }
 

@@ -96,6 +96,7 @@ pub fn (mut u Untar) read_single_block(block []u8) !ReadResult {
 			u.read_long_path()
 		}
 	}
+
 	return if u.read.stop_early {
 		.stop_early
 	} else {

@@ -5,6 +5,7 @@ on:
     paths:
       - 'vlib/**.v'
       - 'vlib/**.md'
+      - '!vlib/v3/**'
       - 'cmd/tools/vdoc/**.v'
       - 'cmd/tools/vdoc/theme/**.js'
       - 'cmd/tools/vdoc/theme/**.css'
@@ -12,9 +13,12 @@ on:
       - 'cmd/tools/vdoc/theme/**.html'
       - '**/module_docs_ci.yml'
   push:
+    branches:
+      - master
     paths:
       - 'vlib/**.v'
       - 'vlib/**.md'
+      - '!vlib/v3/**'
       - 'cmd/tools/vdoc/**.v'
       - 'cmd/tools/vdoc/theme/**.js'
       - 'cmd/tools/vdoc/theme/**.css'
@@ -33,7 +37,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Update packages, before running apt install
@@ -43,7 +48,7 @@ jobs:
           libsodium-dev libasound2-dev libssl-dev \
           sqlite3 libsqlite3-dev libfreetype6-dev \
           libx11-dev libxi-dev freeglut3-dev \
-          libgl1-mesa-dri libxcursor-dev libgl-dev libxrandr-dev
+          libgl1-mesa-dri libxcursor-dev libgl-dev libxrandr-dev libegl-dev
       - name: Install markdown from vpm
         run: v retry -- v install markdown
       - name: Test v doc

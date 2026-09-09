@@ -1,0 +1,7 @@
+vlib/v/checker/tests/arrow_op_newline_stmt_err.vv:7:2: error: expression evaluated but not used
+    5 |         ch <- false
+    6 |     }
+    7 |     <-ch
+      |     ~~
+    8 | }
+    9 |

@@ -13,7 +13,45 @@ to create a destination buffer of the correct size to receive the decrypted data
 
 The implementations here are loosely based on [Go's crypto package](https://pkg.go.dev/crypto).
 
+Use `crypto.rand.bytes(n)` to allocate `n` cryptographically secure random bytes, or
+`crypto.rand.read(mut buffer)` to fill an existing buffer. Both APIs use the operating
+system's cryptographically secure random source and can return an error. The separate
+`rand` module provides faster, seedable pseudorandom generators for non-security-sensitive uses.
+
 ## Examples
+
+### Prime generation
+
+Use `crypto.rand.prime(bits)` to generate an odd prime with exactly `bits` bits. Its two
+highest bits are set, so multiplying two primes of the same size produces a `2 * bits`-bit
+RSA modulus. `crypto.rand.safe_prime(bits)` additionally requires `(p - 1) / 2` to be prime
+and is considerably slower. Both functions use the operating system's cryptographically
+secure random source and can return an error.
+
+```v
+import crypto.rand
+
+fn main() {
+	p := rand.prime(256)!
+	safe := rand.safe_prime(256)!
+	assert p.bit_len() == 256
+	assert safe.bit_len() == 256
+}
+```
+
+### Constant-time comparisons
+
+Use `crypto.subtle` for low-level helpers whose running time does not depend on secret data:
+
+```v
+import crypto.subtle
+
+fn main() {
+	expected := [u8(1), 2, 3]
+	actual := [u8(1), 2, 3]
+	assert subtle.constant_time_compare(expected, actual) == 1
+}
+```
 
 ### AES
 
@@ -30,7 +68,7 @@ fn main() {
 	mut data := 'THIS IS THE DATA'.bytes()
 
 	println('generating cipher')
-	cipher := aes.new_cipher(key)
+	cipher := aes.new_cipher(key)!
 
 	println('performing encryption')
 	mut encrypted := []u8{len: aes.block_size}
@@ -52,7 +90,7 @@ fn main() {
 import crypto.hmac
 import crypto.sha256
 import encoding.base64
-import json
+import json2
 import time
 
 struct JwtHeader {
@@ -80,25 +118,119 @@ fn main() {
 }
 
 fn make_token(secret string) string {
-	header := base64.url_encode(json.encode(JwtHeader{'HS256', 'JWT'}).bytes())
-	payload := base64.url_encode(json.encode(JwtPayload{'1234567890', 'John Doe', 1516239022}).bytes())
-	signature := base64.url_encode(hmac.new(secret.bytes(), '${header}.${payload}'.bytes(),
-		sha256.sum, sha256.block_size))
+	header := base64.url_encode(
+		json2.encode(JwtHeader{'HS256', 'JWT'}, escape_unicode: true).bytes(),
+	)
+	payload := base64.url_encode(json2.encode(JwtPayload{'1234567890', 'John Doe', 1516239022},
+		escape_unicode: true
+	).bytes())
+	signature := base64.url_encode(
+		hmac.new(secret.bytes(), '${header}.${payload}'.bytes(), sha256.sum, sha256.block_size),
+	)
 	jwt := '${header}.${payload}.${signature}'
 	return jwt
 }
 
 fn auth_verify(secret string, token string) bool {
 	token_split := token.split('.')
-	signature_mirror := hmac.new(secret.bytes(), '${token_split[0]}.${token_split[1]}'.bytes(),
-		sha256.sum, sha256.block_size)
+	signature_mirror := hmac.new(
+		secret.bytes(),
+		'${token_split[0]}.${token_split[1]}'.bytes(),
+		sha256.sum,
+		sha256.block_size,
+	)
 	signature_from_token := base64.url_decode(token_split[2])
 	return hmac.equal(signature_from_token, signature_mirror)
 }
 
 fn decode_payload(token string) !JwtPayload {
 	token_split := token.split('.')
-	payload := json.decode(JwtPayload, base64.url_decode_str(token_split[1]))!
+	payload := json2.decode[JwtPayload](base64.url_decode_str(token_split[1]))!
 	return payload
+}
+```
+
+### HKDF
+
+```v
+import crypto.hkdf
+import crypto.sha256
+
+fn main() {
+	secret := 'shared secret'.bytes()
+	salt := 'salt'.bytes()
+	info := 'session keys'
+	key := hkdf.key(sha256.new, secret, salt, info, 32)!
+	assert key.len == 32
+}
+```
+
+### Argon2 Password Hashing
+
+```v
+import crypto.argon2
+
+fn main() {
+	hash := argon2.generate_from_password('correct horse battery staple'.bytes())!
+	println(hash)
+
+	argon2.compare_hash_and_password('correct horse battery staple'.bytes(), hash.bytes())!
+}
+```
+
+### bcrypt Password Hashing
+
+```v
+import crypto.bcrypt
+
+fn main() {
+	password := 'correct horse battery staple'.bytes()
+	hash := bcrypt.generate_from_password(password, bcrypt.default_cost)!
+	println(hash)
+
+	bcrypt.compare_hash_and_password(password, hash.bytes())!
+}
+```
+
+### scrypt
+
+`scrypt` is a memory-hard key derivation function (RFC 7914). `n` must be a power of two.
+For password storage OWASP recommends at least `(n: 2^17, r: 8, p: 1)` (or `(n: 2^14, r: 8, p: 5)`);
+tune the parameters for your hardware. Smaller values such as `(n: 16384, r: 8, p: 1)` are only a
+low-cost interactive/demo profile, not a password-storage profile.
+
+```v
+import crypto.rand
+import crypto.scrypt
+
+fn main() {
+	password := 'correct horse battery staple'.bytes()
+	// generate and persist a unique random salt per password
+	salt := rand.bytes(16)!
+	// tune the work factor for your deployment (OWASP suggests n >= 2^17 for password storage)
+	key := scrypt.scrypt(password, salt, 131072, 8, 1, 32)!
+	assert key.len == 32
+}
+```
+
+### PBKDF2
+
+`pbkdf2` derives a key from a password (RFC 8018). For password storage prefer a
+memory-hard function such as `argon2` or `scrypt`; if you must use PBKDF2, use a high
+iteration count and tune it for your hardware. OWASP currently recommends at least
+600_000 iterations for PBKDF2-HMAC-SHA256.
+
+```v
+import crypto.pbkdf2
+import crypto.rand
+import crypto.sha256
+
+fn main() {
+	password := 'correct horse battery staple'.bytes()
+	// generate and persist a unique random salt per password
+	salt := rand.bytes(16)!
+	// tune the iteration count for your deployment (OWASP suggests 600_000+ for SHA-256)
+	key := pbkdf2.key(password, salt, 600_000, 32, sha256.new())!
+	assert key.len == 32
 }
 ```

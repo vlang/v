@@ -6,14 +6,14 @@ fn version_flag(with_abbrev bool) Flag {
 		flag:        .bool
 		name:        'version'
 		abbrev:      sabbrev
-		description: 'Prints version information.'
+		description: 'Print version information'
 	}
 }
 
 fn version_cmd() Command {
 	return Command{
 		name:        'version'
-		description: 'Prints version information.'
+		description: 'Print version information'
 		execute:     print_version_for_command
 	}
 }
@@ -22,8 +22,8 @@ fn print_version_for_command(cmd Command) ! {
 	if cmd.args.len > 0 {
 		for sub_cmd in cmd.commands {
 			if sub_cmd.name == cmd.args[0] {
-				version_cmd := unsafe { &sub_cmd }
-				print(version_cmd.version())
+				target := unsafe { &sub_cmd }
+				print(target.version())
 				return
 			}
 		}

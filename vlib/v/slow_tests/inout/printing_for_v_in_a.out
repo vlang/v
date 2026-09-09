@@ -2,10 +2,7 @@
 98
 99
 abc
-&23
-&77
-abc
-> k: abc | v: &xyz
-> k: def | v: &jkl
+true
+true
 abc
 abc

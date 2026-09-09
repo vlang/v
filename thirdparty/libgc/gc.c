@@ -31,6 +31,15 @@
  * file).
  */
 
+/*
+ * V note: the bundled libgc must be compiled with `-DALL_INTERIOR_POINTERS=1`
+ * (set in `vlib/builtin/builtin_d_gcboehm.c.v`). Without it, the conservative
+ * collector misses interior pointers into GC-allocated buffers — sumtype
+ * payloads referenced via offset (e.g. `toml.ast_to_any`, `yaml.Any.to_json`)
+ * get reclaimed mid-walk and `-gc boehm` builds crash with `signal 11`.
+ * Keep this requirement in sync when re-amalgamating from bdwgc.
+ */
+
 #define GC_SINGLE_OBJ_BUILD
 
 #ifndef __cplusplus

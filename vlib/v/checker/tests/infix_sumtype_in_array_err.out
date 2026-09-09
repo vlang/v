@@ -1,7 +1,0 @@
-vlib/v/checker/tests/infix_sumtype_in_array_err.vv:15:7: error: left operand to `in` does not match the array element type: expected `rune`, not `RuneAliasOrOtherType`
-   13 |     match x {
-   14 |         RuneAlias {
-   15 |             if x in whitespace {
-      |                ~~~~~~~~~~~~~~~
-   16 |                 // doing `if x as RuneAlias in whitespace` here
-   17 |                 // works but it should be doing that automatically

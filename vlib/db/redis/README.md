@@ -141,6 +141,9 @@ defer {
 }
 ```
 
+`redis.DB` also implements `pool.ConnectionPoolable`, so it can be used
+directly with `vlib/pool` connection pools.
+
 ## Performance Tips
 
 1. **Reuse Connections**: Maintain connections instead of creating new ones

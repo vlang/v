@@ -1,0 +1,8 @@
+fn b() {}
+
+fn c() {}
+
+fn main() {
+	mut x := [main, b, c]
+	x.sort(a > b)
+}

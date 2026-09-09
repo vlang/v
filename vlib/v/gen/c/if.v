@@ -4,6 +4,115 @@
 module c
 
 import v.ast
+import v.token
+
+// write_option_wrapper_if_assignment_smartcast handles an option variable that
+// carries an assignment smartcast (recorded when a non-option value was assigned
+// to it earlier in its scope). In that state g.expr() would emit the unwrapped
+// `.data` access, but contexts that need the option wrapper itself (e.g. an
+// `if x := opt { }` guard) must use the variable name directly. Returns true if
+// it wrote the wrapper name; false means the caller should fall back to g.expr().
+fn (mut g Gen) write_option_wrapper_if_assignment_smartcast(expr ast.Expr) bool {
+	if expr is ast.Ident {
+		mut is_assignment_smartcast := false
+		if expr.obj is ast.Var && expr.obj.is_assignment_smartcast {
+			is_assignment_smartcast = true
+		} else if g.file != unsafe { nil } {
+			scope := g.file.scope.innermost(expr.pos.pos)
+			if scope != unsafe { nil } {
+				if v := scope.find_var(expr.name) {
+					is_assignment_smartcast = v.is_assignment_smartcast
+				}
+			}
+		}
+		if !is_assignment_smartcast {
+			return false
+		}
+		name := c_name(expr.name)
+		if expr.is_auto_heap() {
+			g.write('(*${name})')
+		} else {
+			g.write(name)
+		}
+		return true
+	}
+	return false
+}
+
+fn (mut g Gen) resolved_if_guard_expr_type(expr ast.Expr, default_type ast.Type) ast.Type {
+	if expr is ast.IndexExpr {
+		left_type := g.resolved_map_type_from_expr(expr.left, expr.left_type)
+		left_sym := g.table.final_sym(g.unwrap_generic(left_type))
+		if left_sym.kind == .map {
+			map_info := left_sym.map_info()
+			_, mut value_type := g.resolved_map_key_value_types(left_type, map_info.key_type,
+				map_info.value_type)
+			if default_type.has_flag(.option) && !value_type.has_flag(.option) {
+				value_type = value_type.set_flag(.option)
+			} else if default_type.has_flag(.result) && !value_type.has_flag(.result) {
+				value_type = value_type.set_flag(.result)
+			}
+			return value_type
+		}
+	}
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+		// In generic functions default_type may be stale: the checker overwrites
+		// it on each instantiation pass. Re-resolve it from the guard expression.
+		resolved := g.resolved_expr_type(expr, default_type)
+		if resolved != 0 && resolved != ast.void_type && !resolved.has_flag(.generic)
+			&& !g.type_has_unresolved_generic_parts(resolved) {
+			mut typ := g.unwrap_generic(resolved)
+			if default_type.has_flag(.option) && !typ.has_flag(.option) {
+				typ = typ.set_flag(.option)
+			} else if default_type.has_flag(.result) && !typ.has_flag(.result) {
+				typ = typ.set_flag(.result)
+			}
+			return typ
+		}
+	}
+	return g.unwrap_generic(g.recheck_concrete_type(default_type))
+}
+
+fn (mut g Gen) if_guard_var_needs_gc_pin(scope &ast.Scope, name string) bool {
+	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
+		return false
+	}
+	if name == '_' {
+		return false
+	}
+	if v := scope.find_var(name) {
+		return v.is_auto_heap || v.typ.is_any_kind_of_pointer() || g.contains_ptr(v.typ)
+	}
+	return false
+}
+
+fn (g &Gen) if_guard_else_uses_err(node ast.IfExpr, branch_idx int) bool {
+	if !node.has_else || branch_idx != node.branches.len - 2 {
+		return false
+	}
+	else_branch := node.branches[branch_idx + 1]
+	if err_var := else_branch.scope.find_var('err') {
+		return err_var.is_used
+	}
+	return false
+}
+
+fn (mut g Gen) write_if_guard_gc_pin(scope &ast.Scope, name string, cvar_name string) {
+	if g.inside_veb_tmpl {
+		return
+	}
+	if g.if_guard_var_needs_gc_pin(scope, name) {
+		g.writeln('\tGC_reachable_here(&${cvar_name});')
+	}
+}
+
+fn (mut g Gen) if_guard_error_cleanup(cvar_name string, expr_type ast.Type) {
+	if expr_type.has_flag(.option) {
+		g.writeln('\tif (${cvar_name}.state == 2 && ${cvar_name}.err._object != _const_none__._object) { builtin___v_free(${cvar_name}.err._object); }')
+	} else if expr_type.has_flag(.result) {
+		g.writeln('\tif (${cvar_name}.is_error && ${cvar_name}.err._object != _const_none__._object) { builtin___v_free(${cvar_name}.err._object); }')
+	}
+}
 
 fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 	if node.is_expr && (g.inside_ternary == 0 || g.is_assign_lhs) {
@@ -14,7 +123,7 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 			if branch.stmts.len > 1 {
 				return true
 			}
-			if g.need_tmp_var_in_expr(branch.cond) {
+			if g.if_expr_part_needs_tmp(branch.cond) {
 				return true
 			}
 			if branch.stmts.len == 1 {
@@ -23,12 +132,395 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 					if stmt.expr is ast.ArrayInit && stmt.expr.is_fixed {
 						return true
 					}
-					if g.need_tmp_var_in_expr(stmt.expr) {
+					if g.if_expr_part_needs_tmp(stmt.expr) {
 						return true
 					}
 				} else if branch.stmts[0] is ast.Return {
 					return true
 				} else if branch.stmts[0] is ast.BranchStmt {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// &Struct{...} can lower to local pre-statements, so it cannot stay inside C's `?:` operands.
+fn (mut g Gen) if_expr_part_needs_tmp(expr ast.Expr) bool {
+	return g.need_tmp_var_in_expr(expr) || expr_contains_addr_of_struct_init(expr)
+}
+
+fn expr_is_struct_init(expr ast.Expr) bool {
+	match expr {
+		ast.StructInit {
+			return true
+		}
+		ast.ParExpr {
+			return expr_is_struct_init(expr.expr)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn exprs_contain_addr_of_struct_init(exprs []ast.Expr) bool {
+	for expr in exprs {
+		if expr_contains_addr_of_struct_init(expr) {
+			return true
+		}
+	}
+	return false
+}
+
+fn call_args_contain_addr_of_struct_init(args []ast.CallArg) bool {
+	for arg in args {
+		if expr_contains_addr_of_struct_init(arg.expr) {
+			return true
+		}
+	}
+	return false
+}
+
+fn stmts_contain_addr_of_struct_init(stmts []ast.Stmt) bool {
+	for stmt in stmts {
+		if stmt_contains_addr_of_struct_init(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+fn if_branches_contain_addr_of_struct_init(branches []ast.IfBranch) bool {
+	for branch in branches {
+		if expr_contains_addr_of_struct_init(branch.cond)
+			|| stmts_contain_addr_of_struct_init(branch.stmts) {
+			return true
+		}
+	}
+	return false
+}
+
+fn match_branches_contain_addr_of_struct_init(branches []ast.MatchBranch) bool {
+	for branch in branches {
+		if exprs_contain_addr_of_struct_init(branch.exprs)
+			|| stmts_contain_addr_of_struct_init(branch.stmts) {
+			return true
+		}
+	}
+	return false
+}
+
+fn select_branches_contain_addr_of_struct_init(branches []ast.SelectBranch) bool {
+	for branch in branches {
+		if stmt_contains_addr_of_struct_init(branch.stmt)
+			|| stmts_contain_addr_of_struct_init(branch.stmts) {
+			return true
+		}
+	}
+	return false
+}
+
+fn or_expr_contains_addr_of_struct_init(expr ast.OrExpr) bool {
+	return stmts_contain_addr_of_struct_init(expr.stmts)
+}
+
+fn stmt_contains_addr_of_struct_init(stmt ast.Stmt) bool {
+	match stmt {
+		ast.AssertStmt {
+			return expr_contains_addr_of_struct_init(stmt.expr)
+				|| expr_contains_addr_of_struct_init(stmt.extra)
+		}
+		ast.AssignStmt {
+			return exprs_contain_addr_of_struct_init(stmt.left)
+				|| exprs_contain_addr_of_struct_init(stmt.right)
+		}
+		ast.Block {
+			return stmts_contain_addr_of_struct_init(stmt.stmts)
+		}
+		ast.ComptimeFor {
+			return expr_contains_addr_of_struct_init(stmt.expr)
+				|| stmts_contain_addr_of_struct_init(stmt.stmts)
+		}
+		ast.ConstDecl {
+			for field in stmt.fields {
+				if expr_contains_addr_of_struct_init(field.expr) {
+					return true
+				}
+			}
+		}
+		ast.DeferStmt {
+			return stmts_contain_addr_of_struct_init(stmt.stmts)
+		}
+		ast.EnumDecl {
+			for field in stmt.fields {
+				if expr_contains_addr_of_struct_init(field.expr) {
+					return true
+				}
+			}
+		}
+		ast.ExprStmt {
+			return expr_contains_addr_of_struct_init(stmt.expr)
+		}
+		ast.ForCStmt {
+			return stmt_contains_addr_of_struct_init(stmt.init)
+				|| expr_contains_addr_of_struct_init(stmt.cond)
+				|| stmt_contains_addr_of_struct_init(stmt.inc)
+				|| stmts_contain_addr_of_struct_init(stmt.stmts)
+		}
+		ast.ForInStmt {
+			return expr_contains_addr_of_struct_init(stmt.cond)
+				|| expr_contains_addr_of_struct_init(stmt.high)
+				|| stmts_contain_addr_of_struct_init(stmt.stmts)
+		}
+		ast.ForStmt {
+			return expr_contains_addr_of_struct_init(stmt.cond)
+				|| stmts_contain_addr_of_struct_init(stmt.stmts)
+		}
+		ast.GlobalDecl {
+			for field in stmt.fields {
+				if expr_contains_addr_of_struct_init(field.expr) {
+					return true
+				}
+			}
+		}
+		ast.Return {
+			return exprs_contain_addr_of_struct_init(stmt.exprs)
+		}
+		ast.SqlStmt {
+			if expr_contains_addr_of_struct_init(stmt.db_expr)
+				|| or_expr_contains_addr_of_struct_init(stmt.or_expr) {
+				return true
+			}
+			for line in stmt.lines {
+				if expr_contains_addr_of_struct_init(line.where_expr)
+					|| expr_contains_addr_of_struct_init(line.update_data_expr)
+					|| exprs_contain_addr_of_struct_init(line.update_exprs) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn expr_contains_addr_of_struct_init(expr ast.Expr) bool {
+	match expr {
+		ast.ArrayDecompose {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.ArrayInit {
+			if expr_contains_addr_of_struct_init(expr.len_expr) {
+				return true
+			}
+			if expr_contains_addr_of_struct_init(expr.cap_expr) {
+				return true
+			}
+			if expr_contains_addr_of_struct_init(expr.init_expr) {
+				return true
+			}
+			if expr_contains_addr_of_struct_init(expr.elem_type_expr) {
+				return true
+			}
+			if expr_contains_addr_of_struct_init(expr.update_expr) {
+				return true
+			}
+			return exprs_contain_addr_of_struct_init(expr.exprs)
+		}
+		ast.AsCast {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.Assoc {
+			return exprs_contain_addr_of_struct_init(expr.exprs)
+		}
+		ast.CallExpr {
+			if expr_contains_addr_of_struct_init(expr.left) {
+				return true
+			}
+			if call_args_contain_addr_of_struct_init(expr.args) {
+				return true
+			}
+			return or_expr_contains_addr_of_struct_init(expr.or_block)
+		}
+		ast.CastExpr {
+			return expr_contains_addr_of_struct_init(expr.expr)
+				|| expr_contains_addr_of_struct_init(expr.arg)
+		}
+		ast.ChanInit {
+			return expr_contains_addr_of_struct_init(expr.cap_expr)
+		}
+		ast.ComptimeCall {
+			if expr_contains_addr_of_struct_init(expr.left)
+				|| call_args_contain_addr_of_struct_init(expr.args) {
+				return true
+			}
+			return or_expr_contains_addr_of_struct_init(expr.or_block)
+		}
+		ast.ComptimeSelector {
+			return expr_contains_addr_of_struct_init(expr.left)
+				|| expr_contains_addr_of_struct_init(expr.field_expr)
+				|| or_expr_contains_addr_of_struct_init(expr.or_block)
+		}
+		ast.ConcatExpr {
+			return exprs_contain_addr_of_struct_init(expr.vals)
+		}
+		ast.DumpExpr {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.GoExpr {
+			return expr_contains_addr_of_struct_init(ast.Expr(expr.call_expr))
+		}
+		ast.IfExpr {
+			return expr_contains_addr_of_struct_init(expr.left)
+				|| if_branches_contain_addr_of_struct_init(expr.branches)
+		}
+		ast.IfGuardExpr {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.IndexExpr {
+			if expr_contains_addr_of_struct_init(expr.left) {
+				return true
+			}
+			if expr_contains_addr_of_struct_init(expr.index) {
+				return true
+			}
+			if exprs_contain_addr_of_struct_init(expr.indices) {
+				return true
+			}
+			return or_expr_contains_addr_of_struct_init(expr.or_expr)
+		}
+		ast.InfixExpr {
+			if expr_contains_addr_of_struct_init(expr.left) {
+				return true
+			}
+			return expr_contains_addr_of_struct_init(expr.right)
+				|| or_expr_contains_addr_of_struct_init(expr.or_block)
+		}
+		ast.IsRefType {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.Likely {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.LockExpr {
+			return exprs_contain_addr_of_struct_init(expr.lockeds)
+				|| stmts_contain_addr_of_struct_init(expr.stmts)
+		}
+		ast.MapInit {
+			if exprs_contain_addr_of_struct_init(expr.keys) {
+				return true
+			}
+			if exprs_contain_addr_of_struct_init(expr.vals) {
+				return true
+			}
+			return expr_contains_addr_of_struct_init(expr.update_expr)
+		}
+		ast.MatchExpr {
+			return expr_contains_addr_of_struct_init(expr.cond)
+				|| match_branches_contain_addr_of_struct_init(expr.branches)
+		}
+		ast.OrExpr {
+			return or_expr_contains_addr_of_struct_init(expr)
+		}
+		ast.ParExpr {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.PostfixExpr {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.PrefixExpr {
+			if expr.op == .amp && expr_is_struct_init(expr.right) {
+				return true
+			}
+			return expr_contains_addr_of_struct_init(expr.right)
+		}
+		ast.RangeExpr {
+			return expr_contains_addr_of_struct_init(expr.low)
+				|| expr_contains_addr_of_struct_init(expr.high)
+		}
+		ast.SelectExpr {
+			return select_branches_contain_addr_of_struct_init(expr.branches)
+		}
+		ast.SelectorExpr {
+			return expr_contains_addr_of_struct_init(expr.expr)
+				|| or_expr_contains_addr_of_struct_init(expr.or_block)
+		}
+		ast.SizeOf {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.SpawnExpr {
+			return expr_contains_addr_of_struct_init(ast.Expr(expr.call_expr))
+		}
+		ast.SqlExpr {
+			if expr_contains_addr_of_struct_init(expr.db_expr)
+				|| expr_contains_addr_of_struct_init(expr.where_expr)
+				|| expr_contains_addr_of_struct_init(expr.order_expr)
+				|| expr_contains_addr_of_struct_init(expr.limit_expr)
+				|| expr_contains_addr_of_struct_init(expr.offset_expr)
+				|| or_expr_contains_addr_of_struct_init(expr.or_expr) {
+				return true
+			}
+			for _, sub_expr in expr.sub_structs {
+				if expr_contains_addr_of_struct_init(ast.Expr(sub_expr)) {
+					return true
+				}
+			}
+			for join in expr.joins {
+				if expr_contains_addr_of_struct_init(join.on_expr) {
+					return true
+				}
+			}
+		}
+		ast.SqlQueryDataExpr {
+			return sql_query_data_items_contain_addr_of_struct_init(expr.items)
+		}
+		ast.StringInterLiteral {
+			if exprs_contain_addr_of_struct_init(expr.exprs) {
+				return true
+			}
+			if exprs_contain_addr_of_struct_init(expr.fwidth_exprs) {
+				return true
+			}
+			return exprs_contain_addr_of_struct_init(expr.precision_exprs)
+		}
+		ast.StructInit {
+			if expr_contains_addr_of_struct_init(expr.typ_expr) {
+				return true
+			}
+			if expr_contains_addr_of_struct_init(expr.update_expr) {
+				return true
+			}
+			for init_field in expr.init_fields {
+				if expr_contains_addr_of_struct_init(init_field.expr) {
+					return true
+				}
+			}
+		}
+		ast.UnsafeExpr {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn sql_query_data_items_contain_addr_of_struct_init(items []ast.SqlQueryDataItem) bool {
+	for item in items {
+		match item {
+			ast.SqlQueryDataIf {
+				for branch in item.branches {
+					if expr_contains_addr_of_struct_init(branch.cond)
+						|| sql_query_data_items_contain_addr_of_struct_init(branch.items) {
+						return true
+					}
+				}
+			}
+			ast.SqlQueryDataLeaf {
+				if expr_contains_addr_of_struct_init(item.expr) {
 					return true
 				}
 			}
@@ -43,6 +535,16 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 	}
 	match expr {
 		ast.ArrayInit {
+			elem_type := g.unwrap_generic(expr.elem_type)
+			elem_kind := if elem_type != 0 {
+				g.table.final_sym(elem_type).kind
+			} else {
+				ast.Kind.placeholder
+			}
+			if expr.has_index || (expr.has_len && (g.struct_has_array_or_map_field(elem_type)
+				|| (elem_kind in [.array, .map] && !expr.has_init))) {
+				return true
+			}
 			if g.need_tmp_var_in_expr(expr.len_expr) {
 				return true
 			}
@@ -57,6 +559,9 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 					return true
 				}
 			}
+		}
+		ast.AsCast {
+			return true
 		}
 		ast.CallExpr {
 			if expr.is_method {
@@ -73,6 +578,9 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 				return true
 			}
 			for arg in expr.args {
+				if arg.expr is ast.ArrayDecompose {
+					return true
+				}
 				if g.need_tmp_var_in_expr(arg.expr) {
 					return true
 				}
@@ -106,6 +614,9 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			if expr.or_expr.kind != .absent {
 				return true
 			}
+			if g.need_tmp_var_in_expr(expr.left) {
+				return true
+			}
 			if g.need_tmp_var_in_expr(expr.index) {
 				return true
 			}
@@ -116,6 +627,25 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			}
 			if g.need_tmp_var_in_expr(expr.right) {
 				return true
+			}
+			if expr.op in [.eq, .ne] && g.type_is_option_or_option_alias(expr.left_type)
+				&& g.type_is_option_or_option_alias(expr.right_type) {
+				return true
+			}
+			// struct pointer equality comparisons may hoist temp vars
+			// (via gen_struct_pointer_eq_op) which breaks short-circuit
+			// evaluation when used on the right side of `&&` after an
+			// `is` check. Detect this so that infix_expr_and_or_op uses
+			// its safe short-circuit pattern instead.
+			if expr.op in [.eq, .ne] {
+				if (expr.left_type.is_ptr() && !expr.left.is_lvalue())
+					|| (expr.right_type.is_ptr() && !expr.right.is_lvalue()) {
+					left_sym := g.table.sym(expr.left_type)
+					right_sym := g.table.sym(expr.right_type)
+					if left_sym.kind == .struct || right_sym.kind == .struct {
+						return true
+					}
+				}
 			}
 		}
 		ast.MapInit {
@@ -164,15 +694,26 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			sym := g.table.sym(expr.typ)
 			return sym.info is ast.Struct && sym.info.has_option
 		}
+		ast.SqlExpr {
+			return true
+		}
+		ast.SpawnExpr, ast.GoExpr {
+			// `spawn`/`go` lower to statement-level setup (arg struct alloc,
+			// pthread_create, ...) that cannot live inside a C ternary operand,
+			// so an if/match expression branch that is a spawn must use the
+			// tmp-var form instead of the ternary form. See issue #27485.
+			return true
+		}
 		else {}
 	}
+
 	return false
 }
 
 fn (mut g Gen) needs_conds_order(node ast.IfExpr) bool {
 	if node.branches.len > 1 {
 		for branch in node.branches {
-			if g.need_tmp_var_in_expr(branch.cond) {
+			if g.if_expr_part_needs_tmp(branch.cond) {
 				return true
 			}
 		}
@@ -186,6 +727,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if use_outer_tmp {
 		g.outer_tmp_var = ''
 	}
+	resolved_node_typ := g.infer_if_expr_type(node)
 
 	// For simple if expressions we can use C's `?:`
 	// `if x > 0 { 1 } else { 2 }` => `(x > 0)? (1) : (2)`
@@ -198,7 +740,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	tmp := if use_outer_tmp {
 		// Use the tmp var from outer context (e.g. from stmts_with_tmp_var)
 		saved_outer_tmp_var
-	} else if g.inside_if_option || (node.typ != ast.void_type && needs_tmp_var) {
+	} else if g.inside_if_option || (resolved_node_typ != ast.void_type && needs_tmp_var) {
 		g.new_tmp_var()
 	} else {
 		''
@@ -210,9 +752,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if needs_tmp_var {
 		exit_label = g.new_tmp_var()
 		node_typ := if g.inside_or_block {
-			node.typ.clear_option_and_result()
+			resolved_node_typ.clear_option_and_result()
 		} else {
-			node.typ
+			resolved_node_typ
 		}
 		// For generic functions, if the if-expression's type was set to a concrete type
 		// by the checker but we're generating a different generic instance, we need to
@@ -222,7 +764,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			// Try to unwrap generic, and if that doesn't work, check if we should use
 			// the function's return type
 			unwrapped := g.unwrap_generic(node_typ)
-			if unwrapped == node_typ && g.cur_fn.return_type.has_flag(.generic) {
+			if g.inside_return_expr && !g.inside_struct_init && unwrapped == node_typ
+				&& g.cur_fn.return_type.has_flag(.generic) {
 				// The node type didn't unwrap, but the function return type is generic
 				// Get the unwrapped function return type for this instance
 				mut fn_ret_typ := g.unwrap_generic(g.cur_fn.return_type)
@@ -247,11 +790,22 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		} else {
 			g.unwrap_generic(node_typ)
 		}
+		resolved_sym := g.table.final_sym(resolved_typ)
 		mut styp := g.styp(resolved_typ)
+		// When the tmp var is a fn-returned fixed array, it is a wrapper struct whose
+		// data lives in a `.ret_arr` member. Flag it so every branch writes through
+		// `.ret_arr`, even ones whose own expr type lacks the `is_fn_ret` flag (e.g. a
+		// fixed array literal mixed with a function call: `if c { fa() } else { [1]! }`).
+		prev_if_match_tmp_is_fn_ret_arr := g.if_match_tmp_is_fn_ret_arr
+		g.if_match_tmp_is_fn_ret_arr = resolved_sym.info is ast.ArrayFixed
+			&& resolved_sym.info.is_fn_ret
+		defer(fn) {
+			g.if_match_tmp_is_fn_ret_arr = prev_if_match_tmp_is_fn_ret_arr
+		}
 		if (g.inside_if_option || node_typ.has_flag(.option)) && !g.inside_or_block {
 			raw_state = g.inside_if_option
-			if node.typ != ast.void_type {
-				g.last_if_option_type = node.typ
+			if resolved_node_typ != ast.void_type {
+				g.last_if_option_type = resolved_node_typ
 				defer(fn) {
 					g.last_if_option_type = tmp_if_option_type
 				}
@@ -278,13 +832,21 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		g.empty_line = true
 		if tmp != '' && !use_outer_tmp {
 			// Only declare the tmp var if it's not from outer context
-			if node.typ == ast.void_type && g.last_if_option_type != 0 {
+			mut declared_tmp := false
+			if resolved_node_typ == ast.void_type && g.last_if_option_type != 0 {
 				// nested if on return stmt
 				g.write2(g.styp(g.unwrap_generic(g.last_if_option_type)), ' ')
+			} else if resolved_sym.kind == .function && resolved_sym.info is ast.FnType {
+				param_types := resolved_sym.info.func.params.map(it.typ)
+				g.writeln('${g.fn_var_signature(resolved_typ, resolved_sym.info.func.return_type,
+					param_types, tmp)}; /* if prepend */')
+				declared_tmp = true
 			} else {
 				g.write('${styp} ')
 			}
-			g.writeln('${tmp}; /* if prepend */')
+			if !declared_tmp {
+				g.writeln('${tmp}; /* if prepend */')
+			}
 			g.set_current_pos_as_last_stmt_pos()
 		}
 		if g.infix_left_var_name.len > 0 {
@@ -304,9 +866,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write(' ? ')
 			}
 			prev_expected_cast_type := g.expected_cast_type
-			if node.is_expr
-				&& (g.table.sym(node.typ).kind == .sum_type || node.typ.has_flag(.shared_f)) {
-				g.expected_cast_type = node.typ
+			if node.is_expr && (g.table.sym(resolved_node_typ).kind == .sum_type
+				|| resolved_node_typ.has_flag(.shared_f)) {
+				g.expected_cast_type = resolved_node_typ
 			}
 			g.stmts(branch.stmts)
 			g.expected_cast_type = prev_expected_cast_type
@@ -321,6 +883,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	mut is_guard := false
 	mut guard_idx := 0
 	mut guard_vars := []string{}
+	mut guard_expr_types := []ast.Type{len: node.branches.len}
+	mut guard_else_uses_err := []bool{len: node.branches.len}
+	mut guard_owns_error := []bool{len: node.branches.len}
 	for i, branch in node.branches {
 		cond := branch.cond
 		if cond is ast.IfGuardExpr {
@@ -329,22 +894,37 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				guard_vars = []string{len: node.branches.len}
 			}
 			guard_idx = i // saves the last if guard index
+			guard_else_uses_err[i] = g.if_guard_else_uses_err(node, i)
+			guard_owns_error[i] = cond.expr is ast.IndexExpr
 			if cond.expr !in [ast.IndexExpr, ast.PrefixExpr] {
 				var_name := g.new_tmp_var()
 				guard_vars[i] = var_name
-				cond_expr_type := if cond.expr is ast.CallExpr && cond.expr.is_static_method
-					&& cond.expr.left_type.has_flag(.generic) {
-					g.resolve_return_type(cond.expr)
+				cond_expr_type := if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
+					&& cond.expr is ast.CallExpr {
+					resolved := g.resolve_return_type(cond.expr)
+					if resolved != ast.void_type && !resolved.has_flag(.generic) {
+						if cond.expr_type.has_flag(.option) && !resolved.has_flag(.option) {
+							resolved.set_flag(.option)
+						} else if cond.expr_type.has_flag(.result) && !resolved.has_flag(.result) {
+							resolved.set_flag(.result)
+						} else {
+							resolved
+						}
+					} else {
+						cond.expr_type
+					}
+				} else if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+					g.resolved_if_guard_expr_type(cond.expr, cond.expr_type)
 				} else {
 					cond.expr_type
 				}
-				g.writeln('${g.styp(g.unwrap_generic(cond_expr_type))} ${var_name};')
+				g.writeln('${g.styp(g.unwrap_generic(cond_expr_type))} ${var_name} = {0};')
 			} else if cond.expr is ast.IndexExpr {
 				value_type := g.table.value_type(g.unwrap_generic(cond.expr.left_type))
 				if value_type.has_flag(.option) {
 					var_name := g.new_tmp_var()
 					guard_vars[i] = var_name
-					g.writeln('${g.styp(value_type)} ${var_name};')
+					g.writeln('${g.styp(value_type)} ${var_name} = {0};')
 				} else {
 					guard_vars[i] = ''
 				}
@@ -354,11 +934,20 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 	}
 	mut branch_cond_var_names := []string{}
+	mut tmp_var_scope_count := 0
 	for i, branch in node.branches {
 		is_else := i == node.branches.len - 1 && node.has_else
 		if i > 0 {
 			if needs_tmp_var {
 				g.writeln('};')
+				// Open a new scope so that any variables generated by the next
+				// branch's condition evaluation (e.g. from `.any()` or `.all()`)
+				// are inside a block that the previous branch's `goto` skips over
+				// entirely, preventing gcc's -Wjump-misses-init with -cstrict.
+				if !is_else {
+					g.writeln('{')
+					tmp_var_scope_count++
+				}
 				g.set_current_pos_as_last_stmt_pos()
 			} else {
 				g.write('} else ')
@@ -369,58 +958,113 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.writeln('{')
 			// define `err` for the last branch after a `if val := opt {...}' guard
 			if is_guard && guard_idx == i - 1 {
-				if err_var := branch.scope.find_var('err') {
-					if err_var.is_used {
-						cvar_name := guard_vars[guard_idx]
-						g.writeln('\tIError err = ${cvar_name}.err;')
+				cvar_name := guard_vars[guard_idx]
+				if guard_else_uses_err[guard_idx] {
+					if err_var := branch.scope.find_var('err') {
+						if err_var.is_used {
+							g.writeln('\tIError err = ${cvar_name}.err;')
+						}
 					}
+				} else if guard_owns_error[guard_idx] && guard_expr_types[guard_idx] != 0 {
+					g.if_guard_error_cleanup(cvar_name, guard_expr_types[guard_idx])
 				}
 			}
 		} else if branch.cond is ast.IfGuardExpr {
+			previous_index_error_pos := g.discarded_index_error_pos
+			g.discarded_index_error_pos = token.Pos{}
+			if !guard_else_uses_err[i] && branch.cond.expr is ast.IndexExpr {
+				// Only the guard's outer lookup discards its error. Nested index
+				// expressions can still expose their own error in an or block.
+				g.discarded_index_error_pos = branch.cond.expr.pos
+			}
 			mut var_name := guard_vars[i]
 			mut short_opt := false
 			g.left_is_opt = true
+			// Resolve the expression type in generic context
+			mut guard_expr_type := branch.cond.expr_type
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				if branch.cond.expr is ast.CallExpr {
+					resolved := g.resolve_return_type(branch.cond.expr)
+					if resolved != ast.void_type && !resolved.has_flag(.generic) {
+						guard_expr_type = if branch.cond.expr_type.has_flag(.option)
+							&& !resolved.has_flag(.option) {
+							resolved.set_flag(.option)
+						} else if branch.cond.expr_type.has_flag(.result)
+							&& !resolved.has_flag(.result) {
+							resolved.set_flag(.result)
+						} else {
+							resolved
+						}
+					}
+				} else {
+					resolved := g.resolved_if_guard_expr_type(branch.cond.expr, guard_expr_type)
+					if resolved != ast.void_type {
+						guard_expr_type = resolved
+					}
+				}
+			}
+			guard_expr_types[i] = guard_expr_type
 			if var_name == '' {
 				short_opt = true // we don't need a further tmp, so use the one we'll get later
 				var_name = g.new_tmp_var()
 				guard_vars[i] = var_name // for `else`
 				g.tmp_count--
-				if branch.cond.expr_type.has_flag(.option) {
+				if guard_expr_type.has_flag(.option) {
 					g.writeln('if (${var_name}.state == 0) {')
-				} else if branch.cond.expr_type.has_flag(.result) {
+				} else if guard_expr_type.has_flag(.result) {
 					g.writeln('if (!${var_name}.is_error) {')
 				}
 			} else {
 				g.write('if (${var_name} = ')
-				g.expr(branch.cond.expr)
-				if branch.cond.expr_type.has_flag(.option) {
-					dot_or_ptr := if !branch.cond.expr_type.has_flag(.option_mut_param_t) {
+				if !(guard_expr_type.has_flag(.option)
+					&& g.write_option_wrapper_if_assignment_smartcast(branch.cond.expr)) {
+					g.expr(branch.cond.expr)
+				}
+				if guard_expr_type.has_flag(.option) {
+					dot_or_ptr := if !guard_expr_type.has_flag(.option_mut_param_t) {
 						'.'
 					} else {
 						'-> '
 					}
 					g.writeln(', ${var_name}${dot_or_ptr}state == 0) {')
-				} else if branch.cond.expr_type.has_flag(.result) {
+				} else if guard_expr_type.has_flag(.result) {
 					g.writeln(', !${var_name}.is_error) {')
 				}
 			}
 			if short_opt || branch.cond.vars.len > 1 || branch.cond.vars[0].name != '_' {
-				base_type := g.base_type(branch.cond.expr_type)
+				base_type := g.base_type(guard_expr_type)
 				if short_opt {
 					cond_var_name := if branch.cond.vars[0].name == '_' {
 						'_dummy_${g.tmp_count + 1}'
 					} else {
 						branch.cond.vars[0].name
 					}
+					mut short_opt_is_auto_heap := false
+					if branch.stmts.len > 0 {
+						scope := g.file.scope.innermost(ast.Node(branch.stmts.last()).pos().pos)
+						if v := scope.find_var(branch.cond.vars[0].name) {
+							short_opt_is_auto_heap = v.is_auto_heap
+						}
+					}
 					if g.table.sym(branch.cond.expr_type).kind == .array_fixed {
 						g.writeln('\t${base_type} ${cond_var_name} = {0};')
 						g.write('\tmemcpy((${base_type}*)${cond_var_name}, &')
 						g.expr(branch.cond.expr)
 						g.writeln(', sizeof(${base_type}));')
+						g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+							cond_var_name)
+					} else if short_opt_is_auto_heap {
+						g.write('\t${base_type}* ${cond_var_name} = HEAP(${base_type}, ')
+						g.expr(branch.cond.expr)
+						g.writeln(');')
+						g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+							cond_var_name)
 					} else {
 						g.write('\t${base_type} ${cond_var_name} = ')
 						g.expr(branch.cond.expr)
 						g.writeln(';')
+						g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+							cond_var_name)
 					}
 				} else {
 					mut is_auto_heap := false
@@ -432,32 +1076,51 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					}
 					if branch.cond.vars.len == 1 {
 						left_var_name := c_name(branch.cond.vars[0].name)
-						if is_auto_heap {
-							g.writeln('\t${base_type}* ${left_var_name} = HEAP(${base_type}, *(${base_type}*)${var_name}.data);')
+						dot_or_ptr := if !branch.cond.expr_type.has_flag(.option_mut_param_t) {
+							'.'
+						} else {
+							'-> '
+						}
+						guard_typ :=
+							g.unwrap_generic(branch.cond.expr_type.clear_option_and_result())
+						guard_is_heap_obj := g.table.final_sym(guard_typ).is_heap()
+							&& !guard_typ.is_ptr()
+						if guard_is_heap_obj {
+							g.writeln('\t${base_type}* ${left_var_name} = (${base_type}*)${var_name}${dot_or_ptr}data;')
+							g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+								left_var_name)
+						} else if is_auto_heap {
+							// Non-heap structs still need a dedicated heap copy when the guard value escapes.
+							// `@[heap]` structs already live behind the option data pointer and must not be copied.
+							g.writeln('\t${base_type}* ${left_var_name} = HEAP(${base_type}, *(${base_type}*)${var_name}${dot_or_ptr}data);')
+							g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+								left_var_name)
 						} else if base_type.starts_with('Array_fixed') {
 							g.writeln('\t${base_type} ${left_var_name} = {0};')
 							g.writeln('memcpy(${left_var_name}, (${base_type}*)${var_name}.data, sizeof(${base_type}));')
+							g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+								left_var_name)
 						} else {
-							dot_or_ptr := if !branch.cond.expr_type.has_flag(.option_mut_param_t) {
-								'.'
-							} else {
-								'-> '
-							}
 							expr_sym := g.table.sym(branch.cond.expr_type)
 							if expr_sym.info is ast.FnType {
-								g.write_fntype_decl(left_var_name, expr_sym.info, branch.cond.expr_type.nr_muls())
-								if branch.cond.expr_type.nr_muls() == 0 {
+								g.write_fntype_decl(left_var_name, expr_sym.info,
+									guard_expr_type.nr_muls())
+								if guard_expr_type.nr_muls() == 0 {
 									g.writeln(' = *(${base_type}*)${var_name}${dot_or_ptr}data;')
 								} else {
 									g.writeln(' = (${base_type}*)${var_name}${dot_or_ptr}data;')
 								}
+								g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+									left_var_name)
 							} else {
 								g.write('\t${base_type} ${left_var_name}')
 								g.writeln(' = *(${base_type}*)${var_name}${dot_or_ptr}data;')
+								g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+									left_var_name)
 							}
 						}
 					} else if branch.cond.vars.len > 1 {
-						sym := g.table.sym(branch.cond.expr_type)
+						sym := g.table.sym(guard_expr_type)
 						if sym.info is ast.MultiReturn {
 							if sym.info.types.len == branch.cond.vars.len {
 								for vi, var in branch.cond.vars {
@@ -468,8 +1131,12 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 									left_var_name := c_name(var.name)
 									if is_auto_heap {
 										g.writeln('\t${var_typ}* ${left_var_name} = (HEAP(${base_type}, *(${base_type}*)${var_name}.data).arg${vi});')
+										g.write_if_guard_gc_pin(branch.scope, var.name,
+											left_var_name)
 									} else {
 										g.writeln('\t${var_typ} ${left_var_name} = (*(${base_type}*)${var_name}.data).arg${vi};')
+										g.write_if_guard_gc_pin(branch.scope, var.name,
+											left_var_name)
 									}
 								}
 							}
@@ -477,6 +1144,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					}
 				}
 			}
+			g.discarded_index_error_pos = previous_index_error_pos
 		} else {
 			if i == 0 && node.branches.len > 1 && !needs_tmp_var && needs_conds_order {
 				cond_var_name := g.new_tmp_var()
@@ -538,12 +1206,18 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		if needs_tmp_var {
 			prev_expected_cast_type := g.expected_cast_type
-			if node.is_expr
-				&& (g.table.sym(node.typ).kind == .sum_type || node.typ.has_flag(.shared_f)) {
-				g.expected_cast_type = node.typ
+			if node.is_expr && (g.table.sym(resolved_node_typ).kind == .sum_type
+				|| resolved_node_typ.has_flag(.shared_f)) {
+				g.expected_cast_type = resolved_node_typ
 			}
+			// A containing if/match expression can suppress statement positions while
+			// emitting this if as its final expression. Its branches and branch defers
+			// still need their own positions so option/result preludes stay in scope.
+			prev_skip_stmt_pos := g.skip_stmt_pos
+			g.skip_stmt_pos = false
 			g.stmts_with_tmp_var(branch.stmts, tmp)
 			g.write_defer_stmts(branch.scope, false, node.pos)
+			g.skip_stmt_pos = prev_skip_stmt_pos
 			g.expected_cast_type = prev_expected_cast_type
 			if !is_else
 				&& (branch.stmts.len > 0 && branch.stmts.last() !in [ast.Return, ast.BranchStmt]) {
@@ -563,7 +1237,22 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.set_current_pos_as_last_stmt_pos()
 		}
 	}
+	for i, var_name in guard_vars {
+		if var_name == '' || guard_expr_types[i] == 0 || guard_else_uses_err[i]
+			|| !guard_owns_error[i] {
+			continue
+		}
+		if node.has_else && i == node.branches.len - 2 {
+			continue
+		}
+		g.if_guard_error_cleanup(var_name, guard_expr_types[i])
+	}
 	if needs_tmp_var {
+		// Close the extra scopes opened between branches to isolate
+		// condition-evaluation variables from earlier branches' gotos.
+		for _ in 0 .. tmp_var_scope_count {
+			g.writeln('}')
+		}
 		if g.infix_left_var_name.len > 0 {
 			g.indent--
 			g.writeln('}')
@@ -571,6 +1260,12 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		g.empty_line = false
 		g.writeln('\t${exit_label}: {};')
 		g.set_current_pos_as_last_stmt_pos()
-		g.write('${cur_line}${tmp}')
+		// A fn-returned fixed array tmp var is a wrapper struct; read its data through
+		// `.ret_arr` (mirrors how match exprs emit the tmp var, see match.v).
+		if g.if_match_tmp_is_fn_ret_arr or { false } {
+			g.write('${cur_line}${tmp}.ret_arr')
+		} else {
+			g.write('${cur_line}${tmp}')
+		}
 	}
 }

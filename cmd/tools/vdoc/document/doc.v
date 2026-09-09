@@ -154,6 +154,7 @@ pub fn new_vdoc_preferences() &pref.Preferences {
 	mut pref_ := &pref.Preferences{
 		enable_globals: true
 		is_fmt:         true
+		is_vdoc:        true
 	}
 	pref_.fill_with_defaults()
 	return pref_
@@ -245,11 +246,7 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 				}
 			}
 			for sa in stmt.attrs {
-				node.attrs[sa.name] = if sa.has_at {
-					'@[${sa.str()}]'
-				} else {
-					'[${sa.str()}]'
-				}
+				node.attrs[sa.name] = if sa.has_at { '@[${sa.str()}]' } else { '[${sa.str()}]' }
 				node.tags << node.attrs[sa.name]
 			}
 		}
@@ -275,11 +272,7 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 				}
 			}
 			for sa in stmt.attrs {
-				node.attrs[sa.name] = if sa.has_at {
-					'@[${sa.str()}]'
-				} else {
-					'[${sa.str()}]'
-				}
+				node.attrs[sa.name] = if sa.has_at { '@[${sa.str()}]' } else { '[${sa.str()}]' }
 				node.tags << node.attrs[sa.name]
 			}
 		}
@@ -327,6 +320,7 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 			return error('invalid stmt type to document')
 		}
 	}
+
 	included := node.name in d.filter_symbol_names || node.parent_name in d.filter_symbol_names
 	if d.filter_symbol_names.len != 0 && !included {
 		return error('not included in the list of symbol names')
@@ -350,12 +344,27 @@ pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 		}
 	}
 	mut preceding_comments := []DocComment{}
+	mut collect_post_module_comments := false
+	mut post_module_comments := []DocComment{}
 	// mut imports_section := true
 	for sidx, mut stmt in file_ast.stmts {
 		if mut stmt is ast.ExprStmt {
 			// Collect comments
 			if mut stmt.expr is ast.Comment {
-				preceding_comments << ast_comment_to_doc_comment(stmt.expr)
+				comment := ast_comment_to_doc_comment(stmt.expr)
+				if collect_post_module_comments {
+					post_module_comments << comment
+				} else {
+					preceding_comments << comment
+				}
+				continue
+			} else if stmt.expr is ast.IfExpr && stmt.expr.is_comptime {
+				comments := ast_comments_to_doc_comments(stmt.expr.post_comments)
+				if collect_post_module_comments {
+					post_module_comments << comments
+				} else {
+					preceding_comments << comments
+				}
 				continue
 			}
 		}
@@ -366,14 +375,43 @@ pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 			}
 			// the previous comments were probably a copyright/license one
 			module_comment := merge_doc_comments(preceding_comments)
-			if !d.is_vlib && !module_comment.starts_with('Copyright (c)') {
-				if module_comment == '' {
-					continue
-				}
+			if !d.is_vlib && !module_comment.starts_with('Copyright (c)') && module_comment != '' {
 				d.head.comments << preceding_comments
 			}
 			preceding_comments = []
+			collect_post_module_comments = true
 			continue
+		}
+		if collect_post_module_comments {
+			if post_module_comments.len > 0 {
+				// Attributes are consumed before the declaration, so anchor the
+				// adjacency checks on the first attribute line when present.
+				stmt_line := stmt_doc_anchor_line(stmt)
+				last_post_module_comment := post_module_comments[post_module_comments.len - 1]
+				if stmt is ast.Import || last_post_module_comment.pos.last_line + 1 < stmt_line {
+					// None of the comments are directly above the following statement,
+					// so treat all of them as the module's overview comment.
+					d.head.comments << post_module_comments
+				} else {
+					// The comments directly above the following statement (with no
+					// blank line separating them) document that statement, while an
+					// earlier block, separated by a blank line, is the module overview.
+					mut split_idx := post_module_comments.len
+					mut next_line := stmt_line
+					for split_idx > 0 {
+						cmt := post_module_comments[split_idx - 1]
+						if cmt.pos.last_line + 1 < next_line {
+							break
+						}
+						next_line = cmt.pos.line_nr
+						split_idx--
+					}
+					d.head.comments << post_module_comments[..split_idx]
+					preceding_comments << post_module_comments[split_idx..]
+				}
+				post_module_comments = []
+			}
+			collect_post_module_comments = false
 		}
 		if last_import_stmt_idx > 0 && sidx == last_import_stmt_idx {
 			// the accumulated comments were interspersed before/between the imports;
@@ -415,6 +453,9 @@ pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 		} else {
 			contents[node.name] = node
 		}
+	}
+	if collect_post_module_comments && post_module_comments.len > 0 {
+		d.head.comments << post_module_comments
 	}
 	d.fmt.mod2alias = map[string]string{}
 	if contents[''].kind != .const_group {
@@ -474,6 +515,11 @@ pub fn (mut d Doc) generate() ! {
 		}
 		file_asts << parser.parse_file(file_path, mut d.table, comments_mode, d.prefs)
 	}
+	mut generated_file_asts := []&ast.File{}
+	parser.append_codegen_files(mut generated_file_asts)
+	for generated_file_ast in generated_file_asts {
+		file_asts << *generated_file_ast
+	}
 	return d.file_asts(mut file_asts)
 }
 
@@ -489,9 +535,12 @@ pub fn (mut d Doc) file_asts(mut file_asts []ast.File) ! {
 		}
 		if d.with_head && i == 0 {
 			mut module_name := file_ast.mod.name
-			// if module_name != 'main' && d.parent_mod_name.len > 0 {
-			// 	module_name = d.parent_mod_name + '.' + module_name
-			// }
+			if module_name != file_ast.mod.short_name
+				&& !module_name.ends_with('.${file_ast.mod.short_name}') {
+				// qualify_module resolved by path instead of module name,
+				// use the short name from the source
+				module_name = file_ast.mod.short_name
+			}
 			d.head = DocNode{
 				name:    module_name
 				content: 'module ${module_name}'

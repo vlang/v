@@ -1,0 +1,14 @@
+fn named_result_cb(n int) !int {
+	return n
+}
+
+fn main() {
+	cb := fn (n int) !int {
+		return n
+	}
+	_ = [1, 2, 3].map(fn (n int) !int {
+		return n
+	})
+	_ = [1, 2, 3].map(named_result_cb)
+	_ = [1, 2, 3].map(cb)
+}

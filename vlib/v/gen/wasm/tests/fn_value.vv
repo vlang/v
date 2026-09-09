@@ -1,0 +1,90 @@
+type Callback = fn (int) int
+
+fn add1(x int) int {
+	return x + 1
+}
+
+fn double(x int) int {
+	return x * 2
+}
+
+struct Box {
+	op fn (int) int @[required]
+}
+
+fn apply(f fn (int) int, x int) int {
+	return f(x)
+}
+
+// apply_cb takes a function-type *alias* parameter, which must be unwrapped to
+// its underlying fn type for the indirect call.
+fn apply_cb(f Callback, x int) int {
+	return f(x)
+}
+
+// a fn-typed const, called through the const name
+const cb = add1
+
+// make_cb returns a function value, so `make_cb()(x)` is an expression callee
+fn make_cb() fn (int) int {
+	return double
+}
+
+// logged_box / logged_arg make the evaluation order observable: the callee
+// (the receiver) must be evaluated before the argument.
+fn logged_box() Box {
+	println('callee')
+	return Box{
+		op: add1
+	}
+}
+
+fn logged_arg() int {
+	println('arg')
+	return 100
+}
+
+fn main() {
+	// a top-level fn taken as a local fn value, then called through the value
+	f := add1
+	println(f(10)) // 11
+
+	// a fn value stored in a struct field, called through the field
+	b := Box{
+		op: double
+	}
+	println(b.op(20)) // 40
+
+	// a top-level fn passed as a fn-typed argument and called indirectly
+	println(apply(add1, 41)) // 42
+
+	// a non-capturing anonymous function as a value
+	h := fn (x int) int {
+		return x * x
+	}
+	println(h(7)) // 49
+
+	// reassign a fn value and call again (dynamic dispatch through the table)
+	mut g := add1
+	println(g(0)) // 1
+	g = double
+	println(g(50)) // 100
+
+	// a fn-typed const, called through the const name
+	println(cb(99)) // 100
+
+	// an expression callee that evaluates to a function value
+	println(make_cb()(5)) // 10
+
+	// the callee is evaluated before the argument: prints `callee`, then `arg`
+	println(logged_box().op(logged_arg())) // 101
+
+	// function type alias as a value: passed as a param, and cast into a local
+	println(apply_cb(add1, 5)) // 6
+	ac := Callback(double)
+	println(ac(6)) // 12
+
+	// a real function value must be distinct from `nil` (table slot 0 is reserved)
+	nf := add1
+	println(unsafe { nf == nil }) // false
+}

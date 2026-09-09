@@ -77,10 +77,12 @@ fn test_bf_and_not_or_xor() {
 	bf_not := bitfield.bf_not(bf_and)
 	output2 := bitfield.bf_and(bf_or, bf_not)
 	mut result := 1
+	i = 0
 	for i < len {
 		if output1.get_bit(i) != output2.get_bit(i) {
 			result = 0
 		}
+		i++
 	}
 	assert result == 1
 }
@@ -135,7 +137,8 @@ fn test_pop_count() {
 }
 
 fn test_pop_count2() {
-	b := bitfield.from_str('011000110110110000010001000011010011011111011110101001010011011010001100001001101111111011010011')
+	b :=
+		bitfield.from_str('011000110110110000010001000011010011011111011110101001010011011010001100001001101111111011010011')
 	assert b.pop_count() == 50
 }
 
@@ -145,7 +148,7 @@ fn test_hamming() {
 	mut input1 := bitfield.new(len)
 	mut input2 := bitfield.new(len)
 	for i in 0 .. len {
-		match rand.intn(4) or { 0 } {
+		match rand.intn(4) {
 			0, 1 {
 				input1.set_bit(i)
 				count++
@@ -159,7 +162,7 @@ fn test_hamming() {
 				input2.set_bit(i)
 			}
 			else {}
-		}
+		} or { 0 }
 	}
 	assert count == bitfield.hamming(input1, input2)
 }
@@ -376,4 +379,71 @@ fn test_bf_shift() {
 	bf_large_right := bf.shift_right(100)
 	assert bf_large_left.str() == '0000000000000000'
 	assert bf_large_right.str() == '0000000000000000'
+}
+
+// Regression test: zero-length slice must not panic (reported via slice(i,i) and pos(new(0))).
+fn test_zero_length_slice_and_pos() {
+	// slice(i, i) on a non-empty bitfield must return an empty bitfield
+	bf := bitfield.from_str('101')
+	empty := bf.slice(1, 1)
+	assert empty.get_size() == 0
+	assert empty.str() == ''
+
+	// pos with a zero-length needle on a non-empty bitfield must not panic
+	needle := bitfield.new(0)
+	pos := bf.pos(needle)
+	// empty needle matches at position 0 by convention
+	assert pos == 0
+
+	// pos on a zero-length bitfield with a zero-length needle must not panic
+	empty_bf := bitfield.new(0)
+	assert empty_bf.pos(needle) == 0
+}
+
+fn test_string_bitfield_to_bytes() {
+	str := 'Hello, world!'
+	b_from_str := str.bytes()
+	bf := bitfield.from_bytes(b_from_str)
+	b_from_bf := bf.bytes()
+	assert b_from_bf == b_from_str
+}
+
+fn test_bytes_bitfield_to_bytes() {
+	mut expected := []u8{}
+	mut bf := bitfield.from_bytes(expected)
+	mut b_from_bf := bf.bytes()
+	assert b_from_bf == expected
+
+	expected << 0x01
+	bf = bitfield.from_bytes(expected)
+	b_from_bf = bf.bytes()
+	assert b_from_bf == expected
+
+	expected = [u8(0xff)]
+	bf = bitfield.from_bytes(expected)
+	b_from_bf = bf.bytes()
+	assert b_from_bf == expected
+
+	expected = [u8(0x80)]
+	bf = bitfield.from_bytes(expected)
+	b_from_bf = bf.bytes()
+	assert b_from_bf == expected
+
+	expected = [u8(0x0f)]
+	bf = bitfield.from_bytes(expected)
+	b_from_bf = bf.bytes()
+	assert b_from_bf == expected
+
+	expected = [u8(0xf0)]
+	bf = bitfield.from_bytes(expected)
+	b_from_bf = bf.bytes()
+	assert b_from_bf == expected
+}
+
+fn test_unaligned_bitfield_to_bytes() {
+	expected := [u8(0x00), 0x00, 0x00, 0x00, 0b10000000]
+	mut bf := bitfield.new(33)
+	bf.set_bit(32)
+	b_from_bf := bf.bytes()
+	assert b_from_bf == expected
 }

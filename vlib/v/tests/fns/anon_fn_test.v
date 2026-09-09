@@ -54,3 +54,25 @@ fn test_spawn_anon_fn_with_closure_parameters_and_mut_ref_parameters() {
 	}(mut s)
 	assert t.wait() == 1
 }
+
+struct CallbackEvent {}
+
+fn call_event_handler(cb fn (CallbackEvent) bool) bool {
+	return cb(CallbackEvent{})
+}
+
+fn call_two_arg_handler(cb fn (CallbackEvent, int) int) int {
+	return cb(CallbackEvent{}, 7)
+}
+
+fn test_anon_fn_can_omit_all_unused_callback_params() {
+	assert call_event_handler(fn () bool {
+		return true
+	})
+}
+
+fn test_anon_fn_can_omit_trailing_callback_params() {
+	assert call_two_arg_handler(fn (_ CallbackEvent) int {
+		return 42
+	}) == 42
+}

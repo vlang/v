@@ -37,6 +37,7 @@ fn get_test_file_contents(file string) string {
 		'test2.css' { '.two {\n\tcolor: #996633;\n}\n' }
 		else { 'wibble\n' }
 	}
+
 	return contents
 }
 

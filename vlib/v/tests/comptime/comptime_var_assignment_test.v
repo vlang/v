@@ -12,7 +12,7 @@ fn encode_struct[T](val T) []string {
 		$if field.is_option {
 			gg := value ?
 			println(gg)
-			out << '${value}'
+			out << '${gg}'
 		} $else {
 			gg := value
 			println(gg)

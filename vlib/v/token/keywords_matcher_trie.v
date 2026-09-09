@@ -56,7 +56,7 @@ pub fn (km &KeywordsMatcherTrie) matches(word string) bool {
 
 // add_word adds the given word to the KeywordsMatcherTrie instance. It associates a non
 // negative integer value to it, so later `find` could return the value, when it succeeds.
-@[direct_array_access]
+@[direct_array_access; markused]
 pub fn (mut km KeywordsMatcherTrie) add_word(word string, value int) {
 	wlen := word.len
 	if km.max_len < wlen {
@@ -99,6 +99,22 @@ pub fn new_keywords_matcher_trie[T](kw_map map[string]T) KeywordsMatcherTrie {
 	return km
 }
 
+fn new_keyword_kind_matcher_trie(kw_map map[string]Kind) KeywordsMatcherTrie {
+	mut km := KeywordsMatcherTrie.new(10)
+	for k, v in kw_map {
+		km.add_word(k, int(v))
+	}
+	return km
+}
+
+fn new_keyword_int_matcher_trie(kw_map map[string]int) KeywordsMatcherTrie {
+	mut km := KeywordsMatcherTrie.new(10)
+	for k, v in kw_map {
+		km.add_word(k, v)
+	}
+	return km
+}
+
 // new_keywords_matcher_from_array_trie creates a new KeywordsMatcherTrie instance from a given array
 // of strings. The values for the strings, that `find` will return, will be the indexes in that array.
 pub fn new_keywords_matcher_from_array_trie(names []string) KeywordsMatcherTrie {
@@ -106,7 +122,7 @@ pub fn new_keywords_matcher_from_array_trie(names []string) KeywordsMatcherTrie 
 	for i, name in names {
 		m[name] = i
 	}
-	return new_keywords_matcher_trie[int](m)
+	return new_keyword_int_matcher_trie(m)
 }
 
 //
@@ -135,7 +151,7 @@ pub fn (node &TrieNode) show(level int) {
 
 // add_word adds another `word` and `value` pair into the trie, starting from `node` (recursively).
 // `word_idx` is just used as an accumulator, and starts from 0 at the root of the tree.
-@[direct_array_access]
+@[direct_array_access; markused]
 pub fn (mut node TrieNode) add_word(word string, value int, word_idx int) {
 	if word_idx < 0 || word_idx >= word.len {
 		node.value = value

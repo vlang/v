@@ -8,12 +8,7 @@ fn abc(a Any) {
 	}
 	if a is []u8 {
 		for x in a {
-			println(x)
-		}
-	}
-	if a is map[string]string {
-		for k, v in a {
-			println('> k: ${k} | v: ${v}')
+			println('${x}' == '${voidptr(x)}')
 		}
 	}
 	println(@FN)
@@ -22,9 +17,5 @@ fn abc(a Any) {
 fn main() {
 	abc('abc')
 	abc([u8(23), 77])
-	abc({
-		'abc': 'xyz'
-		'def': 'jkl'
-	})
 	abc(123)
 }

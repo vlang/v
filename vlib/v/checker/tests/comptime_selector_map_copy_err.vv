@@ -1,0 +1,20 @@
+struct Item {
+	values map[string]string
+}
+
+fn process[T](val T) {
+	$for field in T.fields {
+		$if field.unaliased_typ is map[string]string {
+			values := val.$(field.name)
+			_ = values
+		}
+	}
+}
+
+fn main() {
+	process(Item{
+		values: {
+			'a': 'b'
+		}
+	})
+}

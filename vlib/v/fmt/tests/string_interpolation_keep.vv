@@ -5,11 +5,15 @@ fn main() {
 	i := 123
 	a := 'abc'
 	b := 'xyz'
+	width := 8
+	precision := 3
 	e := 'a: ${a} b: ${b} i: ${i}'
 	d := 'a: ${a:5s} b: ${b:-5s} i: ${i:20d}'
+	g := '${a:(width)} ${i:0(width)d} ${f64(i):(width).(precision)f}'
 	f := 'a byte string'.bytes()
 	println('a: ${a} ${b} xxx')
 	eprintln('e: ${e}')
+	eprintln('g: ${g}')
 	_ = ' ${foo.method(bar).str()} '
 	println('(${some_struct.@type}, ${some_struct.y})')
 	_ := 'CastExpr ${int(d.e).str()}'

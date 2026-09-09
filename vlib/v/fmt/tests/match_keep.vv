@@ -16,6 +16,7 @@ fn branches_are_struct_inits() {
 	match 'a' {
 		'b' { SpamStruct{} }
 	}
+
 	match 'a' {
 		'b' {
 			SpamStruct{
@@ -23,6 +24,7 @@ fn branches_are_struct_inits() {
 			}
 		}
 	}
+
 	match 'a' {
 		'b' {
 			SpamStruct{
@@ -36,6 +38,7 @@ fn branches_are_call_exprs_with_or_blocks() {
 	match 'a' {
 		'b' { foo() or { panic(err) } }
 	}
+
 	match 'a' {
 		'b' {
 			foo() or {
@@ -44,6 +47,7 @@ fn branches_are_call_exprs_with_or_blocks() {
 			}
 		}
 	}
+
 	match 'a' {
 		'b' {
 			foo() or {
@@ -66,6 +70,7 @@ fn keep_branch_linebreaks() {
 		}
 		else {}
 	}
+
 	match a {
 		// first comment
 		10 { println('10') }

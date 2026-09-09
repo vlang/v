@@ -21,6 +21,7 @@ fn (t &Type) match_ref_receiver_against_zero_struct_value() bool {
 		}
 		else {}
 	}
+
 	return false
 }
 

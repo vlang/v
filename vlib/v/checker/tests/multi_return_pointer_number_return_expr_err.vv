@@ -1,0 +1,10 @@
+fn return_if_with_number_to_pointer(x bool, n u64) (voidptr, int) {
+	return if x { n, 1 } else { (unsafe { voidptr(1) }), 2 }
+}
+
+fn return_match_with_number_to_pointer(x bool, n u64) (voidptr, int) {
+	return match x {
+		true { n, 1 }
+		else { (unsafe { voidptr(1) }), 2 }
+	}
+}

@@ -281,6 +281,7 @@ fn test_atou64() {
 	ko := [
 		'18446744073709551616', // Overflow by one
 		'+184467440214748364773709551615', // Large overflow .
+		'430943843908439083411', // Overflow that wraps without falling under oldx (issue #27102).
 	]
 
 	for v in ko {

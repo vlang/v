@@ -1,0 +1,3 @@
+void* _typ;
+._typ = &main__Plugin_name_table[_main__Plugin_main__MyPlugin_index],
+((struct _main__Plugin_interface_methods*)(plugin._typ))->_method_print_msg(plugin._object)

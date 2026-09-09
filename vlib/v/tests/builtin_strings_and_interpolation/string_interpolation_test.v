@@ -31,6 +31,27 @@ fn test_formatted_string_interpolation() {
 	assert si__left == '23        '
 }
 
+fn test_dynamic_format_widths() {
+	width := 10
+	left_width := -10
+	zero_width := 5
+	sign_width := 6
+	name := 'abc'
+	num := 42
+	assert '>${name:(width)}<' == '>       abc<'
+	assert '>${name:(left_width)}<' == '>abc       <'
+	assert '>${name:(-width)}<' == '>abc       <'
+	assert '${num:0(zero_width)d}' == '00042'
+	assert '${num:+(sign_width)d}' == '   +42'
+}
+
+fn test_dynamic_format_precision() {
+	width := 8
+	precision := 3
+	value := 12.34567
+	assert '>${value:(width).(precision)f}<' == '>  12.346<'
+}
+
 fn test_escape_dollar_in_string() {
 	i := 42
 	assert '(${i})' == '(42)'
@@ -46,6 +67,13 @@ fn test_escape_dollar_in_string() {
 	assert !'(\\\\${i})'.contains('i') && '(\\\\${i})'.contains('42')
 		&& '(\\\\${i})'.contains('\\\\')
 	assert i == 42
+}
+
+fn test_dollar_sign_is_literal_without_braces() {
+	b := 10
+	text := 'a$b'
+	assert text == 'a$b'
+	assert b == 10
 }
 
 fn test_implicit_str() {
@@ -128,6 +156,27 @@ fn test_inttypes_string_interpolation() {
 	}
 }
 
+fn int_ref_mut_string(mut n &int) string {
+	return '${n}'
+}
+
+fn int_ref_string(n &int) string {
+	return '${n}'
+}
+
+fn test_int_ref_string_interpolation() {
+	mut count := 10
+	count_ref := &count
+	// `mut &int` params are auto-dereferenced, so they still interpolate as the value
+	assert int_ref_mut_string(mut &count) == '10'
+	// a plain reference to a scalar interpolates as its address (Go `%v` semantics)
+	assert int_ref_string(&count) == '${voidptr(count_ref)}'
+	assert '${count_ref}' == '${voidptr(count_ref)}'
+	assert '${&count}' == '${voidptr(count_ref)}'
+	// an explicit format specifier still applies to the pointed-to value
+	assert '${count_ref:x}' == 'a'
+}
+
 fn test_utf8_string_interpolation() {
 	a := 'à-côté'
 	st := 'Sträßle'
@@ -146,6 +195,14 @@ fn test_utf8_string_interpolation() {
 	assert ':${m2:7}:${d:-15}:' == ': Москва́:Antonín Dvořák :'
 	g := 'Πελοπόννησος'
 	assert '>${g:-13}<' == '>Πελοπόννησος <'
+}
+
+fn test_utf8_string_interpolation_uses_grapheme_clusters() {
+	assert '>${'\u006E\u0303':10}<' == '>         ñ<'
+	assert '>${'\U0001F3F3\uFE0F\u200D\U0001F308':10}<' == '>        🏳️‍🌈<'
+	assert '>${'ห์':10}<' == '>         ห์<'
+	assert '>${'ปีเตอร์':10}<' == '>     ปีเตอร์<'
+	assert '>${'👩🏽‍💻':10}<' == '>        👩🏽‍💻<'
 }
 
 struct Sss {
@@ -241,4 +298,10 @@ fn test_float_exponent_sign() {
 	assert '${a:6.1e}' == '1.2e+09'
 	assert '${a:6.2e}' == '1.23e+09'
 	assert '${a:6.5e}' == '1.23457e+09'
+}
+
+const float_literal_zero_for_interpolation = 0.0
+
+fn test_const_float_literal_string_interpolation() {
+	assert '${float_literal_zero_for_interpolation}' == '0.0'
 }

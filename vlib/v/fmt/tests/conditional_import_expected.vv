@@ -1,0 +1,7 @@
+module main
+
+$if linux {
+	import math { max }
+} $else $if windows {
+	import arrays { max }
+}

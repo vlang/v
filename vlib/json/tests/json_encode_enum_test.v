@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import json
 
 @[json_as_number]
@@ -75,7 +76,8 @@ fn test_encode_direct_enum() {
 }
 
 fn test_encode_alias_and_sumtype() {
-	assert json.decode(TestStruct, '{"test":["one","one"],"test2":"two","test3": "one", "test4": "two", "test5":4}')! == TestStruct{
+	assert json.decode(TestStruct,
+		'{"test":["one","one"],"test2":"two","test3": "one", "test4": "two", "test5":4}')! == TestStruct{
 		test:  [.one, .one]
 		test2: .two
 		test3: TestAlias(.one)

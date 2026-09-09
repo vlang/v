@@ -3,6 +3,21 @@
 // that can be found in the LICENSE file.
 module wasm
 
+// Memory contract for the native WebAssembly backend
+// ---------------------------------------------------
+// `-b wasm` selects `-gc none` automatically (every non-C backend defaults to
+// no_gc in v.pref.default), and autofree is off by default. Crucially, autofree
+// code generation lives only in the C backend (v/gen/c/autofree.v); this backend
+// never sees frontend-inserted free/drop calls, so the AST it lowers is "natural".
+//
+// Today the only memory mechanism is the shadow stack (__vsp, grows down).
+// `g.func.drop()` calls in this backend are WebAssembly operand-stack drops, not
+// memory frees. There is no malloc/free/GC.
+//
+// This invariant is load-bearing: a future manual allocator (__v_alloc/__v_free)
+// and explicit dispose() will be the sole heap-management entry points, and must
+// not collide with frontend-inserted frees. The no-frontend-free property is
+// regression-guarded by tests_decompile/no_frontend_free_under_wasm.vv.
 import wasm
 import v.ast
 import v.gen.wasm.serialise
@@ -188,6 +203,7 @@ pub fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 			g.w_error('new_local: type `${*ts}` (${ts.info.type_name()}) is not a supported local type')
 		}
 	}
+
 	g.local_vars << v
 	return v
 }
@@ -199,7 +215,7 @@ pub fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) 
 			return wasm.constexpr_value(int(init.val))
 		}
 		ast.CharLiteral {
-			return wasm.constexpr_value(int(init.val.runes()[0]))
+			return wasm.constexpr_value(int(ast.char_literal_rune_value(init.val)?))
 		}
 		ast.FloatLiteral {
 			if typ == ast.f32_type {
@@ -238,6 +254,7 @@ pub fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) 
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -289,8 +306,8 @@ pub fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_glob
 			typ:        typ
 			is_address: is_address
 			is_global:  true
-			g_idx:      g.mod.new_global(g.dbg_type_name(name, typ), false, g.get_wasm_type_int_literal(typ),
-				is_mut, cexpr)
+			g_idx:      g.mod.new_global(g.dbg_type_name(name, typ), false,
+				g.get_wasm_type_int_literal(typ), is_mut, cexpr)
 		}
 	}
 
@@ -312,8 +329,13 @@ pub fn (g &Gen) is_pure_type(typ ast.Type) bool {
 		ast.Enum {
 			return g.is_pure_type(ts.info.typ)
 		}
+		ast.FnType {
+			// a function value is an i32 index into the indirect function table
+			return true
+		}
 		else {}
 	}
+
 	return false
 }
 
@@ -869,6 +891,31 @@ pub fn (mut g Gen) make_vinit() {
 pub fn (mut g Gen) housekeeping() {
 	g.make_vinit()
 
+	// Compile any pending non-capturing anonymous functions (their bodies may
+	// reference further anon fns, so loop until the queue drains), then declare
+	// and populate the indirect function table used by `call_indirect`.
+	for g.pending_anon_fns.len > 0 {
+		g.fn_decl(g.pending_anon_fns.pop())
+	}
+	// Declare the indirect function table whenever a `call_indirect` was emitted,
+	// even if no function value was registered (e.g. a module that only consumes a
+	// callback), otherwise the emitted `call_indirect` references a table that does
+	// not exist and the module fails to validate.
+	if g.uses_call_indirect || g.fn_value_indices.len > 0 {
+		// names[i] holds the function for table slot `i + 1`; slot 0 is the
+		// reserved null/trap slot (left as `ref.null func`).
+		mut names := []string{len: g.fn_value_indices.len}
+		for name, idx in g.fn_value_indices {
+			names[idx - 1] = name
+		}
+		// +1 for the reserved null slot at index 0
+		t :=
+			g.mod.assign_table('__indirect_function_table', false, .funcref_t, u32(names.len + 1), none)
+		if names.len > 0 {
+			g.mod.new_active_element(t, 1, names)
+		}
+	}
+
 	heap_base := calc_align(g.data_base + g.pool.buf.len, 16) // 16?
 	page_boundary := calc_align(g.data_base + g.pool.buf.len, 64 * 1024)
 	preallocated_pages := page_boundary / (64 * 1024)
@@ -888,8 +935,7 @@ pub fn (mut g Gen) housekeeping() {
 			mut buf := g.pool.buf.clone()
 
 			for reloc in g.pool.relocs {
-				binary.little_endian_put_u32_at(mut buf, u32(g.data_base + reloc.offset),
-					reloc.pos)
+				binary.little_endian_put_u32_at(mut buf, u32(g.data_base + reloc.offset), reloc.pos)
 			}
 			g.mod.new_data_segment(none, g.data_base, buf)
 		}
@@ -898,7 +944,7 @@ pub fn (mut g Gen) housekeeping() {
 		g.mod.assign_global_init(hp, wasm.constexpr_value(heap_base))
 	}
 
-	if g.pref.os == .wasi {
+	if g.pref.os == .wasi && !g.pref.is_shared {
 		mut fn_start := g.mod.new_function('_start', [], [])
 		{
 			fn_start.call('_vinit')

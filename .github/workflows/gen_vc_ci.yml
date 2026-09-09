@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.vv'
       - '**.out'
       - '**.md'
@@ -12,7 +13,10 @@ on:
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
   push:
+    branches:
+      - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.vv'
       - '**.out'
       - '**.md'
@@ -20,6 +24,9 @@ on:
       - '!**/gen_vc_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
+
+permissions:
+  contents: read
 
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
@@ -32,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build V
         run: make -j4
       - name: Regenerate v.c and v_win.c
@@ -48,14 +55,20 @@ jobs:
 
           rm -rf vc/v.c vc/v_win.c
           ./v -o vc/v.c     -cross               cmd/v
-          ./v -o vc/v_win.c -os windows -cc msvc cmd/v
+          ./v -o vc/v_win.c -cross -os windows -cc msvc cmd/v
 
           sed -i "1s/^/#define V_COMMIT_HASH \"$COMMIT_HASH\"\n/" vc/v.c
           sed -i "1s/^/#define V_COMMIT_HASH \"$COMMIT_HASH\"\n/" vc/v_win.c
 
-          # do some sanity checks for the generated v.c file:
+          # do some sanity checks for the generated v.c/v_win.c files. `-cross` makes `$if cross ?`
+          # (and the `?`-guarded v1_fallback/musl branches that key off it, e.g. in
+          # cmd/v/macos_v3_driver_notd_cross.v) resolve statically instead of compiling out empty,
+          # which is what lets GNUmakefile later recompile these snapshots with
+          # -DCUSTOM_DEFINE_v1_fallback to build v1$(EXE_EXT).
           grep 'Turned ON custom defines: no_backtrace,cross'  vc/v.c
           grep '#define CUSTOM_DEFINE_cross' vc/v.c
+          grep 'Turned ON custom defines: no_backtrace,cross'  vc/v_win.c
+          grep '#define CUSTOM_DEFINE_cross' vc/v_win.c
 
           # ensure the generated C files for the compiler, are over 5000 lines long, as a safety measure
           [ "$(wc -l < vc/v.c)" -gt 5000 ]
@@ -70,4 +83,21 @@ jobs:
 
       - name: Deploy
         if: github.event_name == 'push' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
-        run: git -C vc push || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Two pushes can regenerate in parallel and finish out of order. Publishing the
+          # older commit's C then rewinds vc to a compiler that predates master, and the
+          # Windows CI jobs, which bootstrap from vc/v_win.c, fail until the next run.
+          # Only deploy when this commit is ahead of what vc already holds.
+          COMMIT_HASH="$(git rev-parse HEAD)"
+          ./v retry -- git -C vc fetch --depth=1 origin master
+          published="$(git -C vc log -1 --pretty='%s' FETCH_HEAD | sed -n 's/^\[v:master\] \([0-9a-f]\{7,40\}\) .*/\1/p')"
+          if [ -n "$published" ] && [ "$published" != "$COMMIT_HASH" ]; then
+            status="$(gh api "repos/${{ github.repository }}/compare/${published}...${COMMIT_HASH}" --jq '.status' || echo unknown)"
+            if [ "$status" != "ahead" ]; then
+              echo "vc already holds ${published}; ${COMMIT_HASH} is '${status}' relative to it, so it is not published"
+              exit 0
+            fi
+          fi
+          git -C vc push || true

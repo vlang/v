@@ -17,7 +17,8 @@ fn test_print_watched_files_in_silent_mode__used_by_vwatch() {
 }
 
 fn check_parsing_files_in_folder(folder string, options string) {
-	println(term.colorize(term.magenta, '> checking .vv files in folder: `${folder}`, with `${options}` ...'))
+	println(term.colorize(term.magenta,
+		'> checking .vv files in folder: `${folder}`, with `${options}` ...'))
 	files := os.walk_ext(os.join_path(vroot, folder), '.vv')
 	for f in files {
 		cmd := '${os.quoted_path(vexe)} ${options} ${os.quoted_path(f)}'

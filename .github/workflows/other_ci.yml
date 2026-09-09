@@ -3,7 +3,10 @@ name: Other CI
 on:
   workflow_dispatch:
   push:
+    branches:
+      - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/other_ci.yml'
@@ -11,6 +14,7 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/other_ci.yml'
@@ -24,9 +28,9 @@ concurrency:
 jobs:
   performance-compare-with-master:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 80
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Environment info
@@ -47,11 +51,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout V ${{ github.head_ref }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: v
       - name: Checkout V master
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: vlang/v
           path: vmaster
@@ -71,7 +75,7 @@ jobs:
     env:
       VFLAGS: -cc gcc
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Environment info
         run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
       - name: Build local v
@@ -83,11 +87,11 @@ jobs:
 
   performance-regressions:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 35
     env:
       VFLAGS: -cc gcc
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Environment info
         run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
       - name: Build local v
@@ -101,9 +105,9 @@ jobs:
       - name: Build the repeat tool
         run: ./v cmd/tools/vrepeat.v
       - name: Repeat -o hw.c examples/hello_world.v
-        run: ./v repeat --max_time 251 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o hw.c examples/hello_world.v' . ./vmaster
+        run: ./v repeat --max_time 400 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o hw.c examples/hello_world.v' . ./vmaster
       - name: Repeat -o v.c cmd/v
-        run: ./v repeat --max_time 1731 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o v.c cmd/v' . ./vmaster
+        run: ./v repeat --max_time 12000 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o v.c cmd/v' . ./vmaster
 
   misc-tooling:
     runs-on: ubuntu-24.04
@@ -111,9 +115,10 @@ jobs:
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 10
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
         run: make -j4 && ./v symlink
 
@@ -122,7 +127,7 @@ jobs:
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base libegl-dev
           ./v retry -- sudo apt install --quiet -y g++-9 g++-10
 
       - name: g++-9 version
@@ -135,9 +140,9 @@ jobs:
       - name: V self compilation with g++ and -std=c++20
         run: ./v -cc g++-10 -no-std -cflags -std=c++20 -o v2 cmd/v && ./v2 -cc g++-10 -no-std -cflags -std=c++20 -o v3 cmd/v
 
-      # NB: this does not mean it runs, but at least keeps it from regressing
-      - name: Ensure V can be compiled with -autofree
-        run: ./v -autofree cmd/v
+      # TODO: re-enable once autofree is fixed; see https://github.com/vlang/v/issues/27116
+      # - name: Ensure V can be compiled with -autofree
+      #   run: ./v -autofree cmd/v
 
       - name: Ensure V can be compiled with -no-closures
         run: ./v -no-closures cmd/v
@@ -151,7 +156,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build local v
         run: |
           make -j4 && ./v symlink

@@ -4,6 +4,7 @@ import os
 import time
 import v.util
 import v.builder
+import v.pref
 import sync.pool
 import v.gen.c
 
@@ -11,6 +12,38 @@ const cc_compiler = os.getenv_opt('CC') or { 'cc' }
 const cc_ldflags = os.getenv_opt('LDFLAGS') or { '' }
 const cc_cflags = os.getenv_opt('CFLAGS') or { '' }
 const cc_cflags_opt = os.getenv_opt('CFLAGS_OPT') or { '' } // '-O3' }
+
+fn parallel_cc_compiler_path(b &builder.Builder) string {
+	if b.pref.ccompiler != '' {
+		return b.pref.ccompiler
+	}
+	return cc_compiler
+}
+
+fn parallel_cc_uses_tcc(cc_kind builder.CC, ccompiler string) bool {
+	if cc_kind == .tcc {
+		return true
+	}
+	normalized := ccompiler.replace('\\', '/').to_lower()
+	return normalized == 'tcc' || normalized.ends_with('/tcc') || normalized.ends_with('/tcc.exe')
+		|| normalized.contains('/thirdparty/tcc/')
+}
+
+fn parallel_cc_shell_safe_linker_arg(arg string) string {
+	if arg in ['-Wl,-(', '-Wl,-)'] {
+		return os.quoted_path(arg)
+	}
+	return arg
+}
+
+fn parallel_cc_compile_driver_args(compile_args []string, pkgconfig_pthread bool, cc_kind builder.CC, compiler_type pref.CompilerType) []string {
+	mut projected := compile_args.clone()
+	if pkgconfig_pthread && (cc_kind in [.gcc, .clang] || compiler_type == .cplusplus)
+		&& !projected.any(pref.contains_exact_cflag_token(it, '-pthread')) {
+		projected << '-pthread'
+	}
+	return projected
+}
 
 fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	tmp_dir := os.vtmp_dir()
@@ -29,13 +62,12 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 
 	// out_0.c
 	out0 := '//out0\n' + result.out_str[..result.out_fn_start_pos[0]]
-	os.write_file('${tmp_dir}/out_0.c', '#include "out.h"\n' + out0 + '\n//X:\n' + result.out0_str) or {
+	os.write_file('${tmp_dir}/out_0.c', '#define V_PARALLEL_CC\n#define V_PARALLEL_CC_OUT_0\n#include "out.h"\n' + out0 + '\n//X:\n' + result.out0_str) or {
 		panic(err)
 	}
 
 	// out_x.c
-	os.write_file('${tmp_dir}/out_x.c', '#include "out.h"\n\n' + result.extern_str + '\n' +
-		result.out_str[result.out_fn_start_pos.last()..]) or { panic(err) }
+	os.write_file('${tmp_dir}/out_x.c', '#define V_PARALLEL_CC\n#include "out.h"\n\n' + result.extern_str + '\n' + result.out_str[result.out_fn_start_pos.last()..]) or { panic(err) }
 
 	mut prev_fn_pos := 0
 	mut out_files := []os.File{len: c_files}
@@ -47,7 +79,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 		out_files[i] = os.create(fname) or { panic(err) }
 
 		// Common .c file code
-		out_files[i].writeln('#include "out.h"\n') or { panic(err) }
+		out_files[i].writeln('#define V_PARALLEL_CC\n#include "out.h"\n') or { panic(err) }
 		out_files[i].writeln(result.extern_str) or { panic(err) }
 	}
 
@@ -69,22 +101,46 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 		out_files[i].close()
 	}
 
-	mut cc_path := cc_compiler
-	explicit_cc_flag_passed := b.pref.build_options.any(it.starts_with('-cc '))
-	if explicit_cc_flag_passed {
-		// do not guess, just use the user's preference
-		cc_path = b.pref.ccompiler
-	}
-	cc := os.quoted_path(cc_path)
+	cc := b.quote_compiler_name(parallel_cc_compiler_path(b))
 	mut compile_args := b.get_compile_args()
 	mut linker_args := b.get_linker_args()
-	if !explicit_cc_flag_passed {
-		compile_args = compile_args.filter(it != '-bt25')
-		linker_args = linker_args.filter(it != '-bt25')
+	if parallel_cc_uses_tcc(b.ccoptions.cc, parallel_cc_compiler_path(b)) {
+		// vlang/tcc can have its runtime objects under `${vroot}/thirdparty/tcc/lib/tcc/`
+		// or directly under `${vroot}/thirdparty/tcc/lib/`, while its system headers
+		// can be under that install dir or `${vroot}/thirdparty/tcc/include/`.
+		// `-B` controls tcc's include search (`${B}/include`) and `-L` adds a library search path,
+		// so pass absolute paths for both. This lets tcc find them regardless of the cwd from
+		// which v was invoked, without affecting how user-supplied relative flags are resolved.
+		tcc_root_dir := os.join_path(@VEXEROOT, 'thirdparty', 'tcc')
+		tcc_lib_dir := os.join_path(tcc_root_dir, 'lib')
+		tcc_nested_dir := os.join_path(tcc_lib_dir, 'tcc')
+		tcc_install_dir := if os.is_dir(tcc_nested_dir) { tcc_nested_dir } else { tcc_lib_dir }
+		if os.is_dir(tcc_install_dir) {
+			tcc_b_arg := '-B${b.tcc_quoted_path(tcc_install_dir)}'
+			tcc_l_arg := '-L${b.tcc_quoted_path(tcc_install_dir)}'
+			compile_args << tcc_b_arg
+			mut tcc_include_dirs := [
+				os.join_path(tcc_install_dir, 'include'),
+				os.join_path(tcc_install_dir, 'include', 'winapi'),
+				os.join_path(tcc_root_dir, 'include'),
+				os.join_path(tcc_root_dir, 'include', 'winapi'),
+			]
+			for tcc_include_dir in tcc_include_dirs {
+				if os.is_dir(tcc_include_dir) {
+					tcc_include_arg := '-I${b.tcc_quoted_path(tcc_include_dir)}'
+					if tcc_include_arg !in compile_args {
+						compile_args << tcc_include_arg
+					}
+				}
+			}
+			linker_args << tcc_b_arg
+			linker_args << tcc_l_arg
+		}
 	}
-	scompile_args := compile_args.join(' ')
-	slinker_args := linker_args.join(' ')
 	scompile_args_for_linker := compile_args.filter(it != '-x objective-c').join(' ')
+	compile_args = parallel_cc_compile_driver_args(compile_args, b.has_pkgconfig_pthread(), b.ccoptions.cc, b.pref.ccompiler_type)
+	scompile_args := compile_args.join(' ')
+	slinker_args := linker_args.map(parallel_cc_shell_safe_linker_arg(it)).join(' ')
 
 	mut o_postfixes := ['0', 'x']
 	mut cmds := []string{}
@@ -92,15 +148,18 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 		o_postfixes << (i + 1).str()
 	}
 	for postfix in o_postfixes {
-		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} ${scompile_args} -w -o ${tmp_dir}/out_${postfix}.o -c ${tmp_dir}/out_${postfix}.c'
+		out_o := os.quoted_path('${tmp_dir}/out_${postfix}.o')
+		out_c := os.quoted_path('${tmp_dir}/out_${postfix}.c')
+		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} ${scompile_args} -w -o ${out_o} -c ${out_c}'
 	}
 	mut failed := 0
 	sw := time.new_stopwatch()
 	mut pp := pool.new_pool_processor(callback: build_parallel_o_cb)
 	pp.set_max_jobs(util.nr_jobs)
-	pp.work_on_items(cmds)
-	for x in pp.get_results[os.Result]() {
-		failed += if x.exit_code == 0 { 0 } else { 1 }
+	// PoolProcessor stores erased item pointers internally, so avoid a generic wrapper here.
+	unsafe { pp.work_on_pointers(cmds.pointers()) }
+	for result_ptr in pp.get_result_pointers() {
+		failed += if isnil(result_ptr) { 0 } else { 1 }
 	}
 	eprint_time(sw, 'C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands, failed: ${failed}')
 	if failed > 0 {
@@ -130,19 +189,25 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
 	eprint_result_time(sw_link, 'link_cmd', link_cmd, link_res)
-	if link_res.exit_code != 0 {
+	// tcc reports duplicate symbol errors via stderr and an executable still gets emitted with exit code 0,
+	// so detect that pattern and treat it as a link failure too.
+	link_failed_with_tcc_dup := b.ccoptions.cc == .tcc && link_res.output.contains('defined twice')
+	if link_res.exit_code != 0 || link_failed_with_tcc_dup {
 		return error_with_code('failed to link after parallel C compilation', 1)
 	}
 }
 
-fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, _wid int) &os.Result {
+fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, _wid int) voidptr {
 	cmd := p.get_item[string](idx)
 	sw := time.new_stopwatch()
 	res := os.execute(cmd)
 	eprint_result_time(sw, 'cc_cmd', cmd, res)
-	return &os.Result{
-		...res
+	// The caller only needs success/failure. Returning a sentinel avoids keeping
+	// pointers to worker-local os.Result values after the workers have exited.
+	if res.exit_code == 0 {
+		return pool.no_result
 	}
+	return unsafe { voidptr(1) }
 }
 
 fn eprint_result_time(sw time.StopWatch, label string, cmd string, res os.Result) {

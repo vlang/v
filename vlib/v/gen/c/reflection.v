@@ -26,7 +26,7 @@ fn (mut g Gen) gen_reflection_strings() {
 // gen_empty_array generates code for empty array
 @[inline]
 fn (g &Gen) gen_empty_array(type_name string) string {
-	return 'builtin____new_array_with_default(0, 0, sizeof(${type_name}), 0)'
+	return '((array){.data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(${type_name})})'
 }
 
 // gen_functionarg_array generates the code for functionarg argument
@@ -37,7 +37,8 @@ fn (g &Gen) gen_functionarg_array(type_name string, node ast.Fn) string {
 	}
 	mut out := 'builtin__new_array_from_c_array(${node.params.len},${node.params.len},sizeof(${type_name}),'
 	out += '_MOV((${type_name}[${node.params.len}]){'
-	out += node.params.map('((${type_name}){.name=_S("${it.name}"),.typ=${int(it.typ)},.is_mut=${it.is_mut}})').join(',')
+	out +=
+		node.params.map('((${type_name}){.name=_S("${it.name}"),.typ=${int(it.typ)},.is_mut=${it.is_mut}})').join(',')
 	out += '}))'
 	return out
 }
@@ -72,7 +73,8 @@ fn (mut g Gen) gen_reflection_fn(node ast.Fn) string {
 	arg_str += '.is_variadic=${node.is_variadic},'
 	arg_str += '.return_typ=${int(node.return_type)},'
 	arg_str += '.receiver_typ=${int(node.receiver_type)},'
-	arg_str += '.is_pub=${node.is_pub}'
+	arg_str += '.is_pub=${node.is_pub},'
+	arg_str += '.attrs=${g.gen_attrs_array(node.attrs)}'
 	arg_str += '})'
 	return arg_str
 }
@@ -87,19 +89,22 @@ fn (mut g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 	return '(${cprefix}TypeSymbol){.name=_S("${name}"),.mod=_S("${tsym.mod}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=${cprefix}VLanguage__${tsym.language},.kind=${cprefix}VKind__${kind_name},.info=${info},.methods=${methods}}'
 }
 
-// gen_attrs_array generates C code for []Attr
+// gen_attrs_array generates C code for []VAttribute
 @[inline]
 fn (g &Gen) gen_attrs_array(attrs []ast.Attr) string {
+	type_name := 'VAttribute'
 	if attrs.len == 0 {
-		return g.gen_empty_array('string')
+		return g.gen_empty_array(type_name)
 	}
-	mut out := 'builtin__new_array_from_c_array(${attrs.len},${attrs.len},sizeof(string),'
-	out += '_MOV((string[${attrs.len}]){'
-	out += attrs.map(if it.has_arg {
-		'_S("${it.name}=${escape_quotes(it.arg)}")'
-	} else {
-		'_S("${it.name}")'
-	}).join(',')
+	mut items := []string{cap: attrs.len}
+	for attr in attrs {
+		items << '((${type_name}){.name=_S("${cescape_nonascii(util.smart_quote(attr.name, false,
+			attr.name_opaque_pos))}"),.has_arg=${attr.has_arg},.arg=_S("${cescape_nonascii(util.smart_quote(attr.arg,
+			false, attr.arg_opaque_pos))}"),.kind=${int(attr.kind)}})'
+	}
+	mut out := 'builtin__new_array_from_c_array(${attrs.len},${attrs.len},sizeof(${type_name}),'
+	out += '_MOV((${type_name}[${attrs.len}]){'
+	out += items.join(',')
 	out += '}))'
 	return out
 }
@@ -112,7 +117,8 @@ fn (g &Gen) gen_fields_array(fields []ast.StructField) string {
 	}
 	mut out := 'builtin__new_array_from_c_array(${fields.len},${fields.len},sizeof(${cprefix}StructField),'
 	out += '_MOV((${cprefix}StructField[${fields.len}]){'
-	out += fields.map('((${cprefix}StructField){.name=_S("${it.name}"),.typ=${int(it.typ)},.attrs=${g.gen_attrs_array(it.attrs)},.is_pub=${it.is_pub},.is_mut=${it.is_mut}})').join(',')
+	out +=
+		fields.map('((${cprefix}StructField){.name=_S("${it.name}"),.typ=${int(it.typ)},.attrs=${g.gen_attrs_array(it.attrs)},.is_pub=${it.is_pub},.is_mut=${it.is_mut}})').join(',')
 	out += '}))'
 	return out
 }

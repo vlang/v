@@ -30,6 +30,5 @@ fn test_check() {
 	mut sb := Writer{}
 
 	mut string_initialized_with_reference := 'ads'
-	e.encode_value(StructTypePointer[string]{ val: &string_initialized_with_reference }, mut
-		sb) or {}
+	e.encode_value(StructTypePointer[string]{ val: &string_initialized_with_reference }, mut sb) or {}
 }

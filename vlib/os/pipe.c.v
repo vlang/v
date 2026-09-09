@@ -2,7 +2,7 @@ module os
 
 fn C._dup(fd i32) i32
 fn C._dup2(fd1 i32, fd2 i32) i32
-fn C._pipe(fds &int, size u32, mode i32) i32
+fn C._pipe(fds &i32, size u32, mode i32) i32
 fn C.dup(fd i32) i32
 
 const fd_stdout = $if windows { 1 } $else { C.STDOUT_FILENO }
@@ -30,7 +30,10 @@ pub mut:
 
 // pipe creates a new pipe for inter-process communication
 pub fn pipe() !Pipe {
-	mut fds := [2]int{}
+	// The kernel writes two C `int` file descriptors; back them with `i32` so the
+	// storage matches the C ABI (a V `[2]int` is two 64-bit slots and would be
+	// written out of bounds now that `int` is 64-bit).
+	mut fds := [2]i32{}
 	$if windows {
 		if C._pipe(&fds[0], 0, 0) == -1 {
 			return error('Failed to create pipe')
@@ -42,8 +45,8 @@ pub fn pipe() !Pipe {
 	}
 
 	return Pipe{
-		read_fd:  fds[0]
-		write_fd: fds[1]
+		read_fd:  int(fds[0])
+		write_fd: int(fds[1])
 	}
 }
 
@@ -141,6 +144,9 @@ pub fn stdio_capture() !IOCapture {
 	mut pipe_stdout := pipe()!
 	mut pipe_stderr := pipe()!
 
+	flush_stdout()
+	flush_stderr()
+
 	// Save original file descriptors
 	c.original_stdout_fd = fd_dup(fd_stdout)
 	c.original_stderr_fd = fd_dup(fd_stderr)
@@ -176,6 +182,9 @@ pub fn stdio_capture() !IOCapture {
 // stop restores the original stdout and stderr streams
 // This should be called to resume normal console output
 pub fn (mut c IOCapture) stop() {
+	flush_stdout()
+	flush_stderr()
+
 	// Restore original stdout
 	if c.original_stdout_fd != -1 {
 		fd_dup2(c.original_stdout_fd, fd_stdout)

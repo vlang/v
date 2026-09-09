@@ -1,0 +1,7 @@
+vlib/v/checker/tests/veb_context_param_mutability.vv:11:25: error: veb app method `index` must declare context parameter `ctx` as mutable, e.g. `mut ctx Context`
+    9 | pub struct App {}
+   10 | 
+   11 | pub fn (app &App) index(ctx Context) veb.Result {
+      |                         ~~~
+   12 |     return veb.no_result()
+   13 | }

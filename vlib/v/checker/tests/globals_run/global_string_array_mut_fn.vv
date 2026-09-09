@@ -1,0 +1,19 @@
+__global (
+	s []string
+)
+
+fn add_string(mut ss []string) {
+	ss << 'bb'
+}
+
+fn main() {
+	mut t := []string{}
+	s << 'aa'
+	t << '1'
+	add_string(mut s)
+	add_string(mut t)
+	println(s)
+	println(t)
+	assert s == ['aa', 'bb']
+	assert t == ['1', 'bb']
+}

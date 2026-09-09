@@ -1,0 +1,20 @@
+type Abc = int | string
+
+fn plain_value_ref_comparison() {
+	value := 1
+	reference := &value
+	_ = value == reference
+}
+
+fn sumtype_value_ref_comparison() {
+	b := 1
+	a := Abc(b)
+	match a {
+		int {
+			_ = a == &b
+		}
+		else {}
+	}
+}
+
+fn main() {}

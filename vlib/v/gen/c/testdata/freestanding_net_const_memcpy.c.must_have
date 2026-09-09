@@ -1,0 +1,6 @@
+void *memcpy(void *dest, const void *src, size_t n);
+void *memmove(void *dest, const void *src, size_t n);
+VV_EXP voidptr memcpy(voidptr dest, const void* const_src, usize n);
+VV_EXP usize strlen(const void* const_s);
+VV_EXP voidptr memmove(voidptr dest, const void* const_src, usize n);
+VV_EXP int memcmp(const void* const_a, const void* const_b, usize n);

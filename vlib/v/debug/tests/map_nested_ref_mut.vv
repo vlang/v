@@ -1,0 +1,12 @@
+import net
+
+fn main() {
+	mut con_list := map[string]map[string]&net.TcpConn{}
+	con_list['foo'] = {
+		'bar': &net.TcpConn{}
+	}
+	for _, mut connection in unsafe { con_list['foo'] } {
+		$dbg;
+		dump(connection)
+	}
+}

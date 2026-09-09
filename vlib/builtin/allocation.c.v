@@ -15,7 +15,7 @@ fn _memory_panic(fname string, size isize) {
 	// Note: do not use string interpolation here at all, since string interpolation itself allocates
 	eprint(fname)
 	eprint('(')
-	$if freestanding || vinix {
+	$if freestanding || vinix || v2_native_windows_pe_minimal ? {
 		eprint('size') // TODO: use something more informative here
 	} $else {
 		C.fprintf(C.stderr, c'%p', voidptr(size))
@@ -28,6 +28,33 @@ fn _memory_panic(fname string, size isize) {
 }
 
 __global total_m = i64(0)
+
+// Opt-in heap allocation hooks, enabled with `-d track_heap`. When the flag is
+// set, every heap allocation calls `vheap_alloc(ptr, size)` and every free calls
+// `vheap_free(ptr)`; link an external profiler / leak tracker that implements
+// them to observe live allocations at runtime. The `@[if track_heap ?]` attribute
+// compiles the hooks to no-ops (zero cost) when the flag is off.
+//
+// track_heap models *manual* memory management (`-gc none`): the free hook only
+// fires on the manual-free path, so under a GC the collector reclaims blocks with
+// no matching hook and they would be reported as permanently live. Reject that
+// combination at C compile time rather than emit misleading stats. The guard is
+// emitted as C preprocessor code so `-cross` can still preserve conditional C.
+#insert "@VEXEROOT/vlib/builtin/track_heap_checks.h"
+
+fn C.vheap_alloc(p voidptr, n u64)
+fn C.vheap_free(p voidptr)
+
+@[if track_heap ?]
+fn _ht_alloc(p &u8, n isize) {
+	C.vheap_alloc(p, u64(n))
+}
+
+@[if track_heap ?]
+fn _ht_free(p voidptr) {
+	C.vheap_free(p)
+}
+
 // malloc dynamically allocates a `n` bytes block of memory on the heap.
 // malloc returns a `byteptr` pointing to the memory address of the allocated space.
 // unlike the `calloc` family of functions - malloc will not zero the memory block.
@@ -46,6 +73,10 @@ pub fn malloc(n isize) &u8 {
 	mut res := &u8(unsafe { nil })
 	$if prealloc {
 		return unsafe { prealloc_malloc(n) }
+	} $else $if vgc ? {
+		unsafe {
+			res = &u8(vgc_malloc(usize(n)))
+		}
 	} $else $if gcboehm ? {
 		unsafe {
 			res = C.GC_MALLOC(n)
@@ -73,6 +104,7 @@ pub fn malloc(n isize) &u8 {
 		// when the calling code wrongly relies on it being zeroed.
 		unsafe { C.memset(res, 0x4D, n) }
 	}
+	_ht_alloc(res, n)
 	return res
 }
 
@@ -87,10 +119,12 @@ pub fn malloc_noscan(n isize) &u8 {
 		_memory_panic(@FN, n)
 	}
 	mut res := &u8(unsafe { nil })
-	$if native {
-		res = unsafe { C.malloc(n) }
-	} $else $if prealloc {
+	$if prealloc {
 		return unsafe { prealloc_malloc(n) }
+	} $else $if vgc ? {
+		unsafe {
+			res = &u8(vgc_malloc_noscan(usize(n)))
+		}
 	} $else $if gcboehm ? {
 		$if gcboehm_opt ? {
 			unsafe {
@@ -122,7 +156,34 @@ pub fn malloc_noscan(n isize) &u8 {
 		// when the calling code wrongly relies on it being zeroed.
 		unsafe { C.memset(res, 0x4D, n) }
 	}
+	_ht_alloc(res, n)
 	return res
+}
+
+@[unsafe]
+fn malloc_uninit(n isize) &u8 {
+	if n < 0 {
+		_memory_panic(@FN, n)
+	} else if n == 0 {
+		return &u8(unsafe { nil })
+	}
+	$if vgc ? {
+		return unsafe { &u8(vgc_malloc_typed_opts(usize(n), 0, 0, false)) }
+	}
+	return malloc(n)
+}
+
+@[unsafe]
+fn malloc_noscan_uninit(n isize) &u8 {
+	if n < 0 {
+		_memory_panic(@FN, n)
+	} else if n == 0 {
+		return &u8(unsafe { nil })
+	}
+	$if vgc ? {
+		return unsafe { &u8(vgc_malloc_noscan_opts(usize(n), false)) }
+	}
+	return malloc_noscan(n)
 }
 
 @[inline]
@@ -151,6 +212,10 @@ pub fn malloc_uncollectable(n isize) &u8 {
 	mut res := &u8(unsafe { nil })
 	$if prealloc {
 		return unsafe { prealloc_malloc(n) }
+	} $else $if vgc ? {
+		unsafe {
+			res = &u8(vgc_malloc(usize(n)))
+		}
 	} $else $if gcboehm ? {
 		unsafe {
 			res = C.GC_MALLOC_UNCOLLECTABLE(n)
@@ -176,6 +241,7 @@ pub fn malloc_uncollectable(n isize) &u8 {
 		// when the calling code wrongly relies on it being zeroed.
 		unsafe { C.memset(res, 0x4D, n) }
 	}
+	_ht_alloc(res, n)
 	return res
 }
 
@@ -195,6 +261,8 @@ pub fn v_realloc(b &u8, n isize) &u8 {
 			C.memcpy(new_ptr, b, n)
 		}
 		return new_ptr
+	} $else $if vgc ? {
+		new_ptr = unsafe { &u8(vgc_realloc(b, usize(n))) }
 	} $else $if gcboehm ? {
 		new_ptr = unsafe { C.GC_REALLOC(b, n) }
 	} $else {
@@ -211,6 +279,13 @@ pub fn v_realloc(b &u8, n isize) &u8 {
 	if new_ptr == 0 {
 		_memory_panic(@FN, n)
 	}
+	// realloc(nil, …) means "allocate", not "free then allocate" (the stbi
+	// STBI_REALLOC path forwards null `b` here), so only report a free when there
+	// was a real prior block — mirrors the nil guard in free().
+	if b != unsafe { nil } {
+		_ht_free(b)
+	}
+	_ht_alloc(new_ptr, n)
 	return new_ptr
 }
 
@@ -249,7 +324,9 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 		}
 	}
 	mut nptr := &u8(unsafe { nil })
-	$if gcboehm ? {
+	$if vgc ? {
+		nptr = unsafe { &u8(vgc_realloc(old_data, usize(new_size))) }
+	} $else $if gcboehm ? {
 		nptr = unsafe { C.GC_REALLOC(old_data, new_size) }
 	} $else {
 		$if windows {
@@ -265,6 +342,11 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 	if nptr == 0 {
 		_memory_panic(@FN, isize(new_size))
 	}
+	// realloc(nil, …) means "allocate"; don't report a free with no prior block.
+	if old_data != unsafe { nil } {
+		_ht_free(old_data)
+	}
+	_ht_alloc(nptr, isize(new_size))
 	return nptr
 }
 
@@ -283,8 +365,8 @@ pub fn vcalloc(n isize) &u8 {
 	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
-	} $else $if native {
-		return unsafe { C.calloc(1, n) }
+	} $else $if vgc ? {
+		return unsafe { &u8(vgc_calloc(usize(n))) }
 	} $else $if gcboehm ? {
 		return unsafe { &u8(C.GC_MALLOC(n)) }
 	} $else {
@@ -297,9 +379,12 @@ pub fn vcalloc(n isize) &u8 {
 			if ptr != &u8(unsafe { nil }) {
 				unsafe { C.memset(ptr, 0, n) }
 			}
+			_ht_alloc(ptr, n)
 			return ptr
 		} $else {
-			return unsafe { C.calloc(1, n) }
+			r := unsafe { C.calloc(1, n) }
+			_ht_alloc(r, n)
+			return r
 		}
 	}
 	return &u8(unsafe { nil }) // not reached, TODO: remove when V's checker is improved
@@ -314,6 +399,11 @@ pub fn vcalloc_noscan(n isize) &u8 {
 	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
+	} $else $if vgc ? {
+		if n < 0 {
+			_memory_panic(@FN, n)
+		}
+		return unsafe { &u8(vgc_calloc(usize(n))) }
 	} $else $if gcboehm ? {
 		if n < 0 {
 			_memory_panic(@FN, n)
@@ -350,8 +440,28 @@ pub fn free(ptr voidptr) {
 		}
 		return
 	}
+	// `none__` is a process-wide singleton IError used by option/results to
+	// represent "no error object". Self-hosted builds can still route that
+	// sentinel through explicit cleanup paths under `-gc none`, so ignore it.
+	none_err := &C.IError(&none__)
+	if ptr == none_err._object {
+		return
+	}
+	// `error_sentinel` is likewise a cached, non-owning singleton IError (see
+	// chan_option_result.v). Under `-autofree`, const cleanup frees every IError
+	// const's boxed object, and the sentinel can also be copied/re-exported
+	// (`const my_err = error_sentinel`), so guard its shared object here to avoid
+	// a double free / dangling singleton, exactly as for `none__` above.
+	sentinel_err := &C.IError(&error_sentinel)
+	if ptr == sentinel_err._object {
+		return
+	}
 	$if prealloc {
 		return
+	} $else $if vgc ? {
+		// VGC: explicit free is optional (GC will collect unreachable objects).
+		// But hint the allocator for faster reuse.
+		vgc_free(ptr)
 	} $else $if gcboehm ? {
 		// It is generally better to leave it to Boehm's gc to free things.
 		// Calling C.GC_FREE(ptr) was tried initially, but does not work
@@ -362,6 +472,10 @@ pub fn free(ptr voidptr) {
 			unsafe { C.GC_FREE(ptr) }
 		}
 	} $else {
+		// Manual memory management: this is the only path that actually returns
+		// the block to the C allocator, and it mirrors where _ht_alloc fires, so
+		// report the free here (after the nil / none__ / nop / GC guards above).
+		_ht_free(ptr)
 		$if windows {
 			// Warning! On windows, we always use _aligned_free to free memory.
 			unsafe { C._aligned_free(ptr) }
@@ -382,6 +496,9 @@ pub fn memdup(src voidptr, sz isize) voidptr {
 	if sz == 0 {
 		return vcalloc(1)
 	}
+	$if vgc ? {
+		return vgc_memdup(src, sz)
+	}
 	unsafe {
 		mem := malloc(sz)
 		return C.memcpy(mem, src, sz)
@@ -395,6 +512,9 @@ pub fn memdup_noscan(src voidptr, sz isize) voidptr {
 	}
 	if sz == 0 {
 		return vcalloc_noscan(1)
+	}
+	$if vgc ? {
+		return vgc_memdup_noscan(src, sz)
 	}
 	unsafe {
 		mem := malloc_noscan(sz)
@@ -474,6 +594,10 @@ pub fn memdup_align(src voidptr, sz isize, align isize) voidptr {
 		// when the calling code wrongly relies on it being zeroed.
 		unsafe { C.memset(res, 0x4D, n) }
 	}
+	// memdup_align allocates directly via aligned_alloc / _aligned_malloc, so
+	// report it like malloc does; otherwise the later free() of an aligned heap
+	// literal (HEAP_align) would emit vheap_free for an untracked pointer.
+	_ht_alloc(res, n)
 	return C.memcpy(res, src, sz)
 }
 
@@ -489,7 +613,16 @@ pub:
 
 // gc_heap_usage returns the info about heap usage.
 pub fn gc_heap_usage() GCHeapUsage {
-	$if gcboehm ? {
+	$if vgc ? {
+		heap_size, free_bytes, total_bytes, unmapped, bytes_since := vgc_heap_usage()
+		return GCHeapUsage{
+			heap_size:      heap_size
+			free_bytes:     free_bytes
+			total_bytes:    total_bytes
+			unmapped_bytes: unmapped
+			bytes_since_gc: bytes_since
+		}
+	} $else $if gcboehm ? {
 		mut res := GCHeapUsage{}
 		C.GC_get_heap_usage_safe(&res.heap_size, &res.free_bytes, &res.unmapped_bytes,
 			&res.bytes_since_gc, &res.total_bytes)
@@ -501,7 +634,9 @@ pub fn gc_heap_usage() GCHeapUsage {
 
 // gc_memory_use returns the total memory use in bytes by all allocated blocks.
 pub fn gc_memory_use() usize {
-	$if gcboehm ? {
+	$if vgc ? {
+		return vgc_memory_use()
+	} $else $if gcboehm ? {
 		return C.GC_get_memory_use()
 	} $else {
 		return 0

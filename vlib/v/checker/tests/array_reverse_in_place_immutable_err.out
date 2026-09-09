@@ -1,0 +1,6 @@
+vlib/v/checker/tests/array_reverse_in_place_immutable_err.vv:3:2: error: `a` is immutable, declare it with `mut` to make it mutable
+    1 | fn main() {
+    2 |     a := [1, 2, 3]
+    3 |     a.reverse_in_place()
+      |     ^
+    4 | }

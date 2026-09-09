@@ -80,12 +80,14 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 		// we need the following, otherwise --grep= below would find a93ef6e, which does include 5b7a1e8 in the commit message ... 🤦‍♂️
 		partial_hash = '5b7a1e84a4d283071d12cb86dc17aeda9b5306a8'
 	}
-	vcbefore_subject_match := scripting.run('git rev-list HEAD -n1 --timestamp --grep=${partial_hash} ')
+	vcbefore_subject_match :=
+		scripting.run('git rev-list HEAD -n1 --timestamp --grep=${partial_hash} ')
 	scripting.verbose_trace(@FN, 'vcbefore_subject_match: ${vcbefore_subject_match}')
 	if vcbefore_subject_match.len > 3 {
 		_, vccommit = line_to_timestamp_and_commit(vcbefore_subject_match)
 	} else {
-		scripting.verbose_trace(@FN, 'the v commit did not match anything in the vc log; try --timestamp instead.')
+		scripting.verbose_trace(@FN,
+			'the v commit did not match anything in the vc log; try --timestamp instead.')
 		vcbefore := scripting.run('git rev-list HEAD -n1 --timestamp --before=${v_timestamp} ')
 		_, vccommit = line_to_timestamp_and_commit(vcbefore)
 	}
@@ -170,7 +172,8 @@ pub mut:
 
 pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	vgit_context.vexename = if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	vgit_context.vexepath = os.real_path(os.join_path_single(vgit_context.path_v, vgit_context.vexename))
+	vgit_context.vexepath = os.real_path(os.join_path_single(vgit_context.path_v,
+		vgit_context.vexename))
 	if os.is_dir(vgit_context.path_v) && os.is_executable(vgit_context.vexepath)
 		&& !vgit_context.show_vccommit {
 		// already compiled, no need to compile that specific v executable again
@@ -253,11 +256,15 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 		if vgit_context.commit_v__ts >= 1699341818 && !vgit_context.cc.contains('msvc') {
 			c_flags += '-lws2_32'
 		}
-		command_for_building_v_from_c_source = c(vgit_context.cc, '${vc_v_cpermissive_flags} ${c_flags} -o cv.exe "${vc_source_file_location}" ${c_ldflags}')
-		command_for_selfbuilding = c('.\\cv.exe', '${vc_v_bootstrap_flags} -cflags "${vc_v_cpermissive_flags}" -o ${vgit_context.vexename} {SOURCE}')
+		command_for_building_v_from_c_source = c(vgit_context.cc,
+			'${vc_v_cpermissive_flags} ${c_flags} -o cv.exe "${vc_source_file_location}" ${c_ldflags}')
+		command_for_selfbuilding = c('.\\cv.exe',
+			'${vc_v_bootstrap_flags} -cflags "${vc_v_cpermissive_flags}" -o ${vgit_context.vexename} {SOURCE}')
 	} else {
-		command_for_building_v_from_c_source = c(vgit_context.cc, '${vc_v_cpermissive_flags} ${c_flags} -o cv "${vc_source_file_location}" ${c_ldflags}')
-		command_for_selfbuilding = c('./cv', '${vc_v_bootstrap_flags} -cflags "${vc_v_cpermissive_flags}" -o ${vgit_context.vexename} {SOURCE}')
+		command_for_building_v_from_c_source = c(vgit_context.cc,
+			'${vc_v_cpermissive_flags} ${c_flags} -o cv "${vc_source_file_location}" ${c_ldflags}')
+		command_for_selfbuilding = c('./cv',
+			'${vc_v_bootstrap_flags} -cflags "${vc_v_cpermissive_flags}" -o ${vgit_context.vexename} {SOURCE}')
 	}
 
 	scripting.run(command_for_building_v_from_c_source)
@@ -282,8 +289,10 @@ pub mut:
 }
 
 pub fn add_common_tool_options(mut context VGitOptions, mut fp flag.FlagParser) []string {
-	context.workdir = os.real_path(fp.string('workdir', `w`, context.workdir, 'A writable base folder. Default: ${context.workdir}'))
-	context.v_repo_url = fp.string('vrepo', 0, context.v_repo_url, 'The url of the V repository. You can clone it locally too. See also --vcrepo below.')
+	context.workdir = os.real_path(fp.string('workdir', `w`, context.workdir,
+		'A writable base folder. Default: ${context.workdir}'))
+	context.v_repo_url = fp.string('vrepo', 0, context.v_repo_url,
+		'The url of the V repository. You can clone it locally too. See also --vcrepo below.')
 	context.vc_repo_url = fp.string('vcrepo', 0, context.vc_repo_url, 'The url of the vc repository. You can clone it
 ${flag.space}beforehand, and then just give the local folder
 ${flag.space}path here. That will eliminate the network ops

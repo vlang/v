@@ -17,14 +17,10 @@ fn vpm_update(query []string) {
 	if settings.is_help {
 		help.print_and_exit('update')
 	}
-	idents := if query.len == 0 {
-		get_installed_modules()
-	} else {
-		query.clone()
-	}
+	idents := if query.len == 0 { get_installed_modules() } else { query.clone() }
 	mut pp := pool.new_pool_processor(callback: update_module)
 	ctx := UpdateSession{idents}
-	pp.set_shared_context(ctx)
+	pp.set_shared_context(&ctx)
 	pp.work_on_items(idents)
 	mut errors := 0
 	for res in pp.get_results[UpdateResult]() {
@@ -38,14 +34,17 @@ fn vpm_update(query []string) {
 	}
 }
 
-fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &UpdateResult {
+fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 	ident := pp.get_item[string](idx)
-	// Usually, the module `ident`ifier. `get_name_from_url` is only relevant for `v update <module_url>`.
-	name := get_name_from_url(ident) or { ident }
 	install_path := get_path_of_existing_module(ident) or {
-		vpm_error('failed to find path for `${name}`.', verbose: true)
+		fallback_name := get_name_from_url(ident) or { ident }
+		vpm_error('failed to find path for `${fallback_name}`.', verbose: true)
 		return &UpdateResult{}
 	}
+	// Derive the canonical module name from the install path so URL-based
+	// updates report the registered name (e.g. `spytheman.vtray` for
+	// `<vmodules>/spytheman/vtray`) instead of the bare URL-derived `vtray`.
+	name := import_path_of(install_path)
 	vcs := vcs_used_in_dir(install_path) or {
 		vpm_error('failed to find version control system for `${name}`.', verbose: true)
 		return &UpdateResult{}
@@ -69,7 +68,7 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &UpdateResult {
 		println('Updated module `${ident}`.')
 	}
 	// Don't bail if the download count increment has failed.
-	increment_module_download_count(name) or { vpm_error(err.msg(), verbose: true) }
+	increment_module_download_count(name, '') or { vpm_error(err.msg(), verbose: true) }
 	ctx := unsafe { &UpdateSession(pp.get_shared_context()) }
 	vpm_log(@FILE_LINE, @FN, 'ident: ${ident}; ctx: ${ctx}')
 	resolve_dependencies(get_manifest(install_path), ctx.idents)

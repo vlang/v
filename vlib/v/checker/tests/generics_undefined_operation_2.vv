@@ -20,7 +20,7 @@ pub fn create_iheap[T](capacity int) &IHeap[T] {
 
 fn (mut h IHeap[T]) percolateup(hl u64, mut element T) {
 	mut hole := hl
-	for hole > 1 && element < h.array[hole / 2] {
+	for hole > 1 && element < h.array[int(hole / 2)] {
 		// ^ Notice that '<' was not defined
 		println("didnt define '<' for the INode")
 		hole /= 2

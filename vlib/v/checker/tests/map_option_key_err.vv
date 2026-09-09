@@ -1,0 +1,10 @@
+import rand.cuid2
+
+fn main() {
+	mut m := map[string]int{}
+	mut c := cuid2.new()
+	key := c.next()
+	_ = m[c.next()]
+	m[c.next()] = 1
+	m[key]++
+}

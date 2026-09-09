@@ -28,7 +28,7 @@ sequence in big endian, we get `0x12345678`.
 
 For generic `T` data encoding/decoding, you can use `encode_binary[T]()` and `decode_binary[T]()`:
 
-```v
+```v oksyntax
 module main
 
 import encoding.binary
@@ -85,5 +85,58 @@ fn main() {
 
 	c.f_u32 = u32(1024)
 	assert a == c
+}
+```
+
+For Go-style fixed-size stream I/O, you can use `read()`, `write()`, and `size()` with
+`binary.little_endian` or `binary.big_endian`:
+
+```v
+module main
+
+import encoding.binary
+import io
+
+struct Header {
+	version u16
+	flags   u16
+	length  u32
+}
+
+struct Buffer {
+mut:
+	data []u8
+	pos  int
+}
+
+fn (mut b Buffer) read(mut out []u8) !int {
+	if b.pos >= b.data.len {
+		return io.Eof{}
+	}
+	n := if out.len < b.data.len - b.pos { out.len } else { b.data.len - b.pos }
+	copy(mut out[..n], b.data[b.pos..b.pos + n])
+	b.pos += n
+	return n
+}
+
+fn (mut b Buffer) write(src []u8) !int {
+	b.data << src
+	return src.len
+}
+
+fn main() {
+	header := Header{
+		version: 1
+		flags:   2
+		length:  32
+	}
+	mut buf := Buffer{}
+	binary.write(mut buf, binary.big_endian, header)!
+	assert binary.size(header) == 8
+
+	buf.pos = 0
+	mut decoded := Header{}
+	binary.read(mut buf, binary.big_endian, mut decoded)!
+	assert decoded == header
 }
 ```

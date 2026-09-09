@@ -199,7 +199,9 @@ pub fn fxx_to_str_l_parse(s string) string {
 	}
 
 	res[r_i] = 0
-	return unsafe { tos(res.data, r_i) }
+	tmp_res := unsafe { tos(res.data, r_i).clone() }
+	unsafe { res.free() }
+	return tmp_res
 }
 
 // fxx_to_str_l_parse_with_dot returns a `string` in decimal notation converted from a
@@ -333,5 +335,7 @@ pub fn fxx_to_str_l_parse_with_dot(s string) string {
 	}
 
 	res[r_i] = 0
-	return unsafe { tos(res.data, r_i) }
+	tmp_res := unsafe { tos(res.data, r_i).clone() }
+	unsafe { res.free() }
+	return tmp_res
 }

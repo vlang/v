@@ -2,7 +2,10 @@ name: Cross CI
 
 on:
   push:
+    branches:
+      - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/cross_ci.yml'
@@ -10,6 +13,7 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/cross_ci.yml'
@@ -27,9 +31,16 @@ jobs:
     env:
       VFLAGS: -cc clang
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 10
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-cross-macos-${{ hashFiles('.github/workflows/cross_ci.yml') }}
+          restore-keys: |
+            brew-cross-macos-
       - name: Build V
         run: make -j4 && ./v symlink
 
@@ -46,6 +57,17 @@ jobs:
           ./v -os linux cmd/v
           # TODO: fix this: ./v -os linux examples/2048/2048.v
 
+      - name: Cross-compilation of veb app to Linux with -d use_openssl
+        run: ./v -d use_openssl -os linux examples/veb/veb_example.v
+
+      - name: Cross-compilation of vlang/gitly to Linux with -d use_openssl
+        run: |
+          ./v retry -- ./v install markdown
+          ./v retry -- ./v install pcre
+          ./v retry -- git clone --depth 1 https://github.com/vlang/gitly /tmp/gitly
+          ./v -d use_openssl -os linux /tmp/gitly
+          file /tmp/gitly/gitly
+
       - name: Cross-compilation to Windows
         run: |
           ./v -os windows cmd/v
@@ -57,9 +79,10 @@ jobs:
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 10
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
         run: make -j4 && ./v symlink
 
@@ -85,7 +108,7 @@ jobs:
       - name: v_win.c can be compiled and run with -os windows
         run: |
           ./v -cc msvc -os windows -o /tmp/v_win.c cmd/v
-          x86_64-w64-mingw32-gcc /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe -lws2_32
+          x86_64-w64-mingw32-gcc /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe -lws2_32 -Wl,-stack=33554432
           ls -lart v_from_vc.exe
           wine ./v_from_vc.exe version
 
@@ -104,12 +127,12 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build
         run: |
           echo %VFLAGS%
           echo $VFLAGS
-          .\make.bat -msvc
+          .\makev.bat -msvc
       - name: TODO v_win.c can be compiled and run with -os windows
         run: |
           .\v.exe -os windows -cc msvc -showcc -o v2.exe cmd\v

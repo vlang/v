@@ -1,0 +1,38 @@
+fn parse(ch u8) ! {
+	match ch {
+		` `, `\t`, `\n`, 10 {
+			// consume blanks
+		}
+		`<` {
+			println('open')
+		}
+		else {
+			return error('root invalid char')
+		}
+	}
+}
+
+fn parse_cast(ch u8) ! {
+	match ch {
+		`\n`, u8(10) {
+			println('line feed')
+		}
+		else {
+			return error('root invalid char')
+		}
+	}
+}
+
+fn parse_high_byte(ch u8) {
+	match ch {
+		`\xff` {}
+		255 {}
+		else {}
+	}
+}
+
+fn main() {
+	parse(`<`)!
+	parse_cast(`\n`)!
+	parse_high_byte(255)
+}

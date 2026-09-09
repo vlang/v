@@ -1,0 +1,20 @@
+vlib/v/checker/tests/templates/template_keyword_ident_err.html:1:30: error: invalid expression: unexpected keyword `import`
+    1 | @import 'example'
+      |                  ^
+called from vlib/v/checker/tests/template_keyword_ident_err.vv:12:9
+   10 | 
+   11 | pub fn (mut app Application) index() veb.Result {
+   12 |     return $veb.html('templates/template_keyword_ident_err.html')
+      |            ^
+   13 | }
+   14 | 
+vlib/v/checker/tests/templates/template_keyword_ident_err.html:1:30: error: expression does not return a value (veb action: index)
+    1 | @import 'example'
+      |                  ^
+called from vlib/v/checker/tests/template_keyword_ident_err.vv:12:9
+   10 | 
+   11 | pub fn (mut app Application) index() veb.Result {
+   12 |     return $veb.html('templates/template_keyword_ident_err.html')
+      |            ^
+   13 | }
+   14 | 

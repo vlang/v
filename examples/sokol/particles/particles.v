@@ -57,7 +57,6 @@ fn (mut a App) run() {
 		frame_userdata_cb:   frame
 		event_userdata_cb:   event
 		window_title:        &char(title.str)
-		html5_canvas_name:   &char(title.str)
 		cleanup_userdata_cb: cleanup
 	}
 	sapp.run(&desc)

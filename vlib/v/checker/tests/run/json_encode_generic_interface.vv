@@ -1,0 +1,11 @@
+import json
+
+interface Interface {}
+
+struct Result[T] {
+	data []T
+}
+
+fn main() {
+	println(json.encode(Result[Interface]{}))
+}

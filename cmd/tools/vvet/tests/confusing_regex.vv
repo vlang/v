@@ -1,0 +1,7 @@
+import regex
+
+fn main() {
+	_ := regex.regex_opt(r'foo|bar') or { panic(err) }
+	mut re := regex.new()
+	re.compile_opt(r'zip|zap') or { panic(err) }
+}

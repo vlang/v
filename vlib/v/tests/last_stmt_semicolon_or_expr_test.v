@@ -9,3 +9,13 @@ fn test_main() {
 	// vfmt on
 	println('x=${x}')
 }
+
+fn return_zero_with_trailing_semicolon() int {
+	// vfmt off
+	return 0;
+	// vfmt on
+}
+
+fn test_return_with_trailing_semicolon() {
+	assert return_zero_with_trailing_semicolon() == 0
+}

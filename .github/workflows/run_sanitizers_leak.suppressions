@@ -1,5 +1,8 @@
-# websocket tests
+# websocket/ssl tests
 leak:mbedtls_ssl_setup
+leak:mbedtls_ssl_tls13_compute_application_transform
+leak:rsa_alloc_wrap
+leak:mbedtls_pk_parse
 
 # sqlite tests
 leak:*sqlite*

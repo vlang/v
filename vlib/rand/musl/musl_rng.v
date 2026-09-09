@@ -90,8 +90,7 @@ pub fn (mut rng MuslRNG) block_size() int {
 	return 32
 }
 
-// free should be called when the generator is no longer needed
+// free should be called when the generator is no longer needed.
 @[unsafe]
 pub fn (mut rng MuslRNG) free() {
-	unsafe { free(rng) }
 }

@@ -1,0 +1,11 @@
+// Regression: redeclaring a C alias must not set the alias TypeSymbol's
+// language to .c. If it does, the C backend emits the raw C name instead of
+// the `C__Name` cname for any later use of the alias.
+
+type C.RedeclareLong = int
+type C.RedeclareLong = int
+
+@[markused]
+fn use_redeclare_long(x C.RedeclareLong) C.RedeclareLong {
+	return x
+}

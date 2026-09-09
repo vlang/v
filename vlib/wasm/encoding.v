@@ -63,15 +63,17 @@ fn push_f64(mut buf []u8, v f64) {
 	buf << u8(rv >> u32(56))
 }
 
+fn (mod &Module) get_local_func_idx(name string) int {
+	ftt := mod.functions[name] or { panic('function ${name} does not exist') }
+	return ftt.idx + mod.fn_imports.len
+}
+
 fn (mod &Module) get_function_idx(patch CallPatch) int {
 	mut idx := -1
 
 	match patch {
 		FunctionCallPatch {
-			ftt := mod.functions[patch.name] or {
-				panic('called function ${patch.name} does not exist')
-			}
-			idx = ftt.idx + mod.fn_imports.len
+			idx = mod.get_local_func_idx(patch.name)
 		}
 		ImportCallPatch {
 			for fnidx, c in mod.fn_imports {
@@ -102,6 +104,7 @@ fn (mut mod Module) patch(ft Function) {
 				idx = mod.global_imports.len + patch.idx
 			}
 		}
+
 		mod.buf << ft.code[ptr..patch.pos]
 		mod.u32(u32(idx))
 		ptr = patch.pos
@@ -182,6 +185,26 @@ pub fn (mut mod Module) compile() []u8 {
 		}
 		mod.end_section(tpatch)
 	}
+	// https://webassembly.github.io/spec/core/binary/modules.html#table-section
+	//
+	if mod.tables.len > 0 {
+		tpatch := mod.start_section(.table_section)
+		{
+			mod.u32(u32(mod.tables.len))
+			for tbl in mod.tables {
+				mod.buf << u8(tbl.reftype)
+				if max := tbl.max {
+					mod.buf << 0x01 // limit, max present
+					mod.u32(tbl.min)
+					mod.u32(max)
+				} else {
+					mod.buf << 0x00 // limit, max not present
+					mod.u32(tbl.min)
+				}
+			}
+		}
+		mod.end_section(tpatch)
+	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#binary-memsec
 	//
 	if memory := mod.memory {
@@ -248,6 +271,15 @@ pub fn (mut mod Module) compile() []u8 {
 					mod.u32(0)
 				}
 			}
+			for tblidx, tbl in mod.tables {
+				if !tbl.export {
+					continue
+				}
+				lsz++
+				mod.name(tbl.name)
+				mod.buf << 0x01 // table
+				mod.u32(u32(tblidx))
+			}
 			for idx, gbl in mod.globals {
 				if !gbl.export {
 					continue
@@ -268,6 +300,49 @@ pub fn (mut mod Module) compile() []u8 {
 		tpatch := mod.start_section(.start_section)
 		{
 			mod.u32(u32(ftt.idx + mod.fn_imports.len))
+		}
+		mod.end_section(tpatch)
+	}
+	// https://webassembly.github.io/spec/core/binary/modules.html#element-section
+	//
+	if mod.elements.len > 0 {
+		tpatch := mod.start_section(.element_section)
+		{
+			mod.u32(u32(mod.elements.len))
+			for el in mod.elements {
+				match el.mode {
+					.active {
+						if el.tableidx == 0 {
+							mod.buf << 0x00 // active, table 0, vec(funcidx)
+							// offset constant expression
+							mod.buf << 0x41 // i32.const
+							mod.buf << leb128.encode_i32(i32(el.offset))
+							mod.buf << 0x0B // END expression opcode
+						} else {
+							mod.buf << 0x02 // active, explicit tableidx + elemkind
+							mod.u32(u32(el.tableidx))
+							mod.buf << 0x41 // i32.const
+							mod.buf << leb128.encode_i32(i32(el.offset))
+							mod.buf << 0x0B // END expression opcode
+							mod.buf << 0x00 // elemkind: funcref
+						}
+					}
+					.declarative {
+						mod.buf << 0x03 // declarative + elemkind
+						mod.buf << 0x00 // elemkind: funcref
+					}
+					.passive {
+						mod.buf << 0x01 // passive + elemkind
+						mod.buf << 0x00 // elemkind: funcref
+					}
+				}
+
+				// vec(funcidx)
+				mod.u32(u32(el.funcs.len))
+				for fnname in el.funcs {
+					mod.u32(u32(mod.get_local_func_idx(fnname)))
+				}
+			}
 		}
 		mod.end_section(tpatch)
 	}

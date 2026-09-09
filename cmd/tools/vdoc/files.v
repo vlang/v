@@ -88,6 +88,9 @@ fn IgnoreRules.get(path string) IgnoreRules {
 				// `/a` should ignore `/a` but not `/b/a`. While `a` should ignore `/a` and `/b/a`.
 				res.paths[os.join_path(p, rule.trim_left('/'))] = true
 			} else {
+				if p !in res.patterns {
+					res.patterns[p] = []string{}
+				}
 				res.patterns[p] << rule
 			}
 		}

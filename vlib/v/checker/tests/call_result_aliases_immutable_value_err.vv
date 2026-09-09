@@ -1,0 +1,25 @@
+@[heap]
+struct User {
+mut:
+	name string
+}
+
+fn id(arr []int) []int {
+	return arr[1..2]
+}
+
+fn rere(a &User) &User {
+	return a
+}
+
+fn main() {
+	arr := [1, 2, 3, 4, 5]
+	mut s := id(arr)
+	s[0] = 0
+	id(arr)[0] = 0
+
+	ja := User{
+		name: 'foo'
+	}
+	rere(ja).name = 'bar'
+}

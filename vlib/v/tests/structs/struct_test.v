@@ -120,7 +120,8 @@ fn test_at() {
 
 fn test_reserved_keywords() {
 	// Make sure we can initialize them correctly using full syntax.
-	rk_holder := ReservedKeywords{0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3}
+	rk_holder :=
+		ReservedKeywords{0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3}
 	// Test a few as it'll take too long to test all. If it's initialized
 	// correctly, other fields are also probably valid.
 	assert rk_holder.unix == 5
@@ -243,6 +244,30 @@ fn test_fixed_field() {
 	//}
 }
 */
+struct C.issue24102_child {
+	x int
+}
+
+struct C.issue24102_parent {
+	count int
+	Child C.issue24102_child
+}
+
+fn test_plain_c_struct_definition_with_nested_selector_and_str() {
+	parent := C.issue24102_parent{
+		count: 3
+		Child: C.issue24102_child{
+			x: 7
+		}
+	}
+	assert parent.count == 3
+	assert parent.Child.x == 7
+	rendered := '${parent}'
+	assert rendered.contains('count: 3')
+	assert rendered.contains('Child:')
+	assert rendered.contains('x: 7')
+}
+
 @[params]
 struct Config {
 mut:

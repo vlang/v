@@ -1,0 +1,7 @@
+vlib/v/checker/tests/var_decl_shadows_fn.vv:6:2: notice: variable `shadowed` shadows a function declaration
+    4 |
+    5 | fn main() {
+    6 |     shadowed := 5
+      |     ~~~~~~~~
+    7 |     println(shadowed)
+    8 |     _ = shadowed

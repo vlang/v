@@ -13,6 +13,7 @@ fn test_match_expr_with_empty_array_init() {
 			[]
 		}
 	}
+
 	println(names)
 	assert names == ['Peter', 'Bob']
 }

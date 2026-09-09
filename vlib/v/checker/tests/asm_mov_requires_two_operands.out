@@ -1,0 +1,7 @@
+vlib/v/checker/tests/asm_mov_requires_two_operands.vv:3:3: error: asm instruction `mov` expects 2 operands, but got 0
+    1 | fn main() {
+    2 |     asm amd64 {
+    3 |         mov
+      |         ~~~
+    4 |     }
+    5 | }

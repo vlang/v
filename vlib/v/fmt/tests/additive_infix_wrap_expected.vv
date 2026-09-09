@@ -1,0 +1,11 @@
+fn main() {
+	long_var_name := 0
+
+	x := long_var_name + long_var_name + long_var_name + long_var_name + long_var_name +
+		long_var_name + long_var_name
+
+	y := long_var_name + long_var_name + long_var_name + long_var_name + long_var_name -
+		long_var_name - long_var_name
+
+	println(x + y)
+}

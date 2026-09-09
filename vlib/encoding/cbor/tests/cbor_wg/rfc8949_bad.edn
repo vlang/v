@@ -1,0 +1,197 @@
+{
+  "title": "bad",
+  "description": "Inputs that should fail for RFC 8949",
+  "fail": true,
+  "tests": [
+    {
+      "description": "Missing the next byte for mt0 ai 24",
+      "encoded": h'18',
+    },
+    {
+      "description": "Missing the next 2 bytes for mt0 ai 25",
+      "encoded": h'19',
+    },
+    {
+      "description": "Missing the next 1 byte for mt0 ai 25",
+      "encoded": h'1900',
+    },
+    {
+      "description": "Missing the next 4 bytes for mt0 ai 26",
+      "encoded": h'1a',
+    },
+    {
+      "description": "Missing the next 3 bytes for mt0 ai 26",
+      "encoded": h'1a00',
+    },
+    {
+      "description": "Missing the next 2 bytes for mt0 ai 26",
+      "encoded": h'1a0000',
+    },
+    {
+      "description": "Missing the next byte for mt0 ai 26",
+      "encoded": h'1a000000',
+    },
+    {
+      "description": "Missing the next 4 bytes for mt0 ai 27",
+      "encoded": h'1b000000',
+    },
+    {
+      "description": "Invalid AI: 28",
+      "encoded": h'1c',
+    },
+    {
+      "description": "Invalid AI: 29",
+      "encoded": h'1d',
+    },
+    {
+      "description": "Invalid AI: 30",
+      "encoded": h'1e',
+    },
+    {
+      "description": "Invalid streaming AI: 28",
+      "encoded": h'fc',
+    },
+    {
+      "description": "Invalid streaming AI: 29",
+      "encoded": h'fd',
+    },
+    {
+      "description": "Invalid streaming AI: 30",
+      "encoded": h'fe',
+    },
+    {
+      "description": "bytes: Only 3 bytes, not 4",
+      "encoded": h'44010203',
+    },
+    {
+      "description": "bytes: Indeterminate bytestring with nothing",
+      "encoded": h'5f',
+    },
+    {
+      "description": "bytes: Indeterminate bytestring includes a non-bytes chunk",
+      "encoded": h'5f01ff',
+    },
+    {
+      "description": "utf8: Only 3 bytes, not 4",
+      "encoded": h'64494554',
+    },
+    {
+      "description": "utf8: Length 20 only has 4 bytes",
+      "encoded": h'7432303133',
+    },
+    {
+      "description": "utf8: Indeterminate string includes a non-string chunk",
+      "encoded": h'7f01ff',
+    },
+    {
+      "description": "utf8: no BREAK",
+      "encoded": h'7f657374726561646d696e',
+    },
+    {
+      "description": "utf8: invalid utf8",
+      "encoded": h'62c0ae',
+    },
+    {
+      "description": "array: missing item",
+      "encoded": h'81',
+    },
+    {
+      "description": "array: missing second item",
+      "encoded": h'8201',
+    },
+    {
+      "description": "array: nested missing item",
+      "encoded": h'8181818181',
+    },
+    {
+      "description": "array: deeply-nested missing item",
+      "encoded": h'8181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181',
+    },
+    {
+      "description": "array: invalid item",
+      "encoded": h'81FE',
+    },
+    {
+      "description": "array: indeterminate without end",
+      "encoded": h'9f',
+    },
+    {
+      "description": "array: indeterminate with an item, without end",
+      "encoded": h'9f01',
+    },
+    {
+      "description": "array: streamed containing invalid",
+      "encoded": h'9fFEff',
+    },
+    {
+      "description": "array: unexpected BREAK",
+      "encoded": h'91ff',
+    },
+    {
+      "description": "map: expected key",
+      "encoded": h'a1',
+    },
+    {
+      "description": "map: invalid key",
+      "encoded": h'a1fe01',
+    },
+    {
+      "description": "map: missing value",
+      "encoded": h'a16161',
+    },
+    {
+      "description": "map: invalid value",
+      "encoded": h'a16161fe',
+    },
+    {
+      "description": "map: 1 key expecting 2",
+      "encoded": h'a20102',
+    },
+    {
+      "description": "map: streaming no BREAK",
+      "encoded": h'bf',
+    },
+    {
+      "description": "map: streaming, odd number of items",
+      "encoded": h'bf000103ff',
+    },
+    {
+      "description": "map: streaming missing value",
+      "encoded": h'bf6161',
+    },
+    {
+      "description": "map: streaming with item, missing BREAK",
+      "encoded": h'bf616101',
+    },
+    {
+      "description": "map: streaming with invalid key",
+      "encoded": h'bfFE01',
+    },
+    {
+      "description": "map: streaming with invalid value",
+      "encoded": h'bf01FE',
+    },
+    {
+      "description": "map: unexpected BREAK in key",
+      "encoded": h'a1ff',
+    },
+    {
+      "description": "map: unexpected BREAK in value",
+      "encoded": h'a100ff',
+    },
+    {
+      "description": "unexpected BREAK",
+      "encoded": h'ff',
+    },
+    {
+      "description": "date: unexpected object instead of offset",
+      "encoded": h'c1a1616100',
+    },
+    {
+      "description": "date: unexpected object instead of string",
+      "encoded": h'c0a1616100',
+    },
+
+
+  ],
+}

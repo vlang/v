@@ -1784,9 +1784,10 @@ GC_API int GC_CALL GC_invoke_finalizers(void);
  * associated external resource is still in use.
  * The function is sometimes called to keep some object alive.
  */
-#if defined(__GNUC__) && !defined(__INTEL_COMPILER) \
-    && !(defined(__APPLE__) && defined(__arm__) && defined(__TINYC__))
-/* TCC (as of v0.9.28rc) does not support asm on macOS/arm. */
+#if defined(__GNUC__) && !defined(__INTEL_COMPILER)                       \
+    && !(defined(__APPLE__) && (defined(__arm__) || defined(__aarch64__)) \
+         && defined(__TINYC__))
+/* TCC (as of v0.9.28rc) does not support asm on macOS/arm (32 or 64 bit). */
 #  if defined(__CHERI_PURE_CAPABILITY__) || defined(__TINYC__)
 #    define GC_reachable_here(ptr) \
       __asm__ __volatile__(" " : : "g"(ptr) : "memory")

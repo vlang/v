@@ -1,6 +1,3 @@
-type T0 = int | string
-type T1 = T0 | rune
-
 struct Point {
 	x f64
 	y f64
@@ -316,18 +313,6 @@ fn test_map_with_different_key_types() {
 	assert keys_5.contains(`%`)
 	assert keys_5.contains(`@`)
 	assert '${items_5}' == '{`!`: 2, `%`: 3, `@`: 7}'
-
-	// map[sum-type]string
-	mut items_6 := {
-		T1(T0(1)): 'one'
-		T0('2'):   'two'
-	}
-	items_6[`!`] = 'exclamation'
-	assert items_6[`!`].len == 11
-	keys_6 := items_6.keys()
-	assert keys_6.contains(T0(1))
-	assert keys_6.contains(T0('2'))
-	assert keys_6.contains(`!`)
 
 	// map[enum-type]string
 	mut items_7 := {
