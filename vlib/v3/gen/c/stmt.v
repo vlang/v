@@ -5,6 +5,7 @@ import strings
 import v3.flat
 import v3.gen.c.naming
 import v3.types
+import v3.util
 
 const direct_optional_forward_return_value = '__direct_optional_forward'
 const optional_success_return_value = '__optional_success_return'
@@ -3067,13 +3068,13 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 			g.writeln('"${template}"')
 			continue
 		}
-		lowered := if block.is_intel {
+		mut lowered := if block.is_intel {
 			lower_c_inline_asm_intel_template(template, aliases, is_extended)
 		} else {
 			lower_c_inline_asm_template(template, block.arch, aliases, is_extended)
 		}
 		if block.is_goto {
-			lowered = g.lower_c_inline_asm_goto_labels(lowered, block.labels)
+			lowered = g.lower_c_inline_asm_goto_branch_label(template, lowered, block.arch, aliases, block.labels)
 		}
 		g.writeln('"${c_escape(lowered + '\n\t')}"')
 	}
@@ -3290,28 +3291,46 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 	}
 }
 
-fn (mut g FlatGen) lower_c_inline_asm_goto_labels(template string, labels []string) string {
-	mut result := strings.new_builder(template.len)
-	mut i := 0
-	for i < template.len {
-		if !c_inline_asm_ident_start(template[i]) {
-			result.write_u8(template[i])
-			i++
-			continue
-		}
-		start := i
-		i++
-		for i < template.len && c_inline_asm_ident_char(template[i]) {
-			i++
-		}
-		word := template[start..i]
-		if word in labels && (i == template.len || template[i] != `:`) {
-			result.write_string('%l[${g.user_goto_c_label(word)}]')
-		} else {
-			result.write_string(word)
-		}
+fn (mut g FlatGen) lower_c_inline_asm_goto_branch_label(source string, lowered string, arch string, aliases map[string]bool, labels []string) string {
+	line := source.trim_space()
+	mut split := 0
+	for split < line.len && !line[split].is_space() {
+		split++
 	}
-	return result.str()
+	instruction := line[..split]
+	operands := split_c_inline_asm_operands(line[split..].trim_space())
+	label_index := c_inline_asm_goto_branch_label_operand_index(instruction, arch, operands.len)
+	if label_index < 0 {
+		return lowered
+	}
+	label := operands[label_index].trim_space()
+	if label !in labels || aliases[label] || label in util.asm_register_names(arch) {
+		return lowered
+	}
+	lowered_split := lowered.index_u8(` `)
+	if lowered_split < 0 {
+		return lowered
+	}
+	mut lowered_operands := split_c_inline_asm_operands(lowered[lowered_split + 1..])
+	if lowered_operands.len != operands.len {
+		return lowered
+	}
+	lowered_operands[label_index] = '%l[${g.user_goto_c_label(label)}]'
+	return lowered[..lowered_split + 1] + lowered_operands.join(', ')
+}
+
+fn c_inline_asm_goto_branch_label_operand_index(instruction string, arch string, operand_count int) int {
+	if operand_count == 0 {
+		return -1
+	}
+	if is_c_inline_asm_x86_arch(arch) {
+		return if instruction.starts_with('call') || instruction.starts_with('j') { 0 } else { -1 }
+	}
+	if arch in ['arm64', 'aarch64'] && (instruction == 'b' || instruction == 'bl'
+		|| instruction.starts_with('b.') || instruction.starts_with('cb') || instruction.starts_with('tb')) {
+		return operand_count - 1
+	}
+	return -1
 }
 
 // parse_c_inline_asm_raw_templates returns the verbatim text of every double-quoted

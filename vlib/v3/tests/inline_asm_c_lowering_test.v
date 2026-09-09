@@ -306,10 +306,27 @@ fn test_asm_goto_reaches_c_lowering() {
 }
 ')
 	assert generate.exit_code == 0, generate.output
+	assert !generate.output.contains('label `over` defined and not used'), generate.output
 	assert c_source.contains('__asm__ goto ('), c_source
 	assert c_source.contains('"mov %%gs:(16), %%rax\\n\\t"'), c_source
 	assert c_source.contains('"jne %l[__v_user_goto_0]\\n\\t"'), c_source
 	assert c_source.contains(': __v_user_goto_0'), c_source
+}
+
+fn test_asm_goto_does_not_rewrite_non_branch_label_names() {
+	generate, c_source := generate_inline_asm_c('goto_register_label_program', 'fn main() {
+	asm goto amd64 {
+		mov rax, rax
+		jmp rax
+		; ; ; ; rax
+	}
+	rax:
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"mov %%rax, %%rax\\n\\t"'), c_source
+	assert c_source.contains('"jmp *%%rax\\n\\t"'), c_source
+	assert !c_source.contains('%l['), c_source
 }
 
 fn generate_inline_asm_c(name string, source string) (os.Result, string) {

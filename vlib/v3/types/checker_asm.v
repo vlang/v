@@ -101,6 +101,27 @@ fn (mut tc TypeChecker) check_inline_asm_block(id flat.NodeId, node flat.Node, s
 	}
 }
 
+fn inline_asm_goto_labels(source string) []string {
+	block := inline_asm_mask_comments(source)
+	open := inline_asm_index_of(block, 0, block.len, `{`) or { return [] }
+	close := inline_asm_last_index_of(block, open, block.len, `}`) or { return [] }
+	header := util.parse_inline_asm_header(block[..open])
+	if !header.is_goto {
+		return []
+	}
+	sections := inline_asm_section_ranges(block, open + 1, close)
+	if sections.len <= 4 {
+		return []
+	}
+	mut labels := []string{}
+	for label in inline_asm_words(block, sections[4]) {
+		if label.text !in labels {
+			labels << label.text
+		}
+	}
+	return labels
+}
+
 fn (mut tc TypeChecker) check_inline_asm_output_lvalue(id flat.NodeId) {
 	if !tc.expr_can_take_address(id) {
 		tc.record_error_at(.assignment_mismatch, 'inline assembly output must be an lvalue', id, tc.a.node(id).pos)
