@@ -1091,6 +1091,9 @@ fn (mut c Checker) eval_comptime_fn_call_expr_with_locals(node ast.CallExpr, nle
 		return none
 	}
 	fn_decl := c.find_comptime_eval_fn_decl(func) or { return none }
+	if !c.comptime_eval_checked_fns[fn_decl.name] {
+		return none
+	}
 	if c.comptime_eval_fn_decl_has_error(fn_decl) {
 		return none
 	}
@@ -1139,31 +1142,47 @@ fn (mut c Checker) convert_comptime_const_value(value ast.ComptTimeConstValue, t
 	return value
 }
 
+fn (mut c Checker) comptime_float_fits_int(float_value f64, typ ast.Type) bool {
+	size, _ := c.table.type_size(typ)
+	mut min_value := 0.0
+	mut max_value := 18446744073709551616.0
+	if typ.is_signed() {
+		match size {
+			1 {
+				min_value = -128.0
+				max_value = 128.0
+			}
+			2 {
+				min_value = -32768.0
+				max_value = 32768.0
+			}
+			4 {
+				min_value = -2147483648.0
+				max_value = 2147483648.0
+			}
+			else {
+				min_value = -9223372036854775808.0
+				max_value = 9223372036854775808.0
+			}
+		}
+	} else {
+		match size {
+			1 { max_value = 256.0 }
+			2 { max_value = 65536.0 }
+			4 { max_value = 4294967296.0 }
+			else {}
+		}
+	}
+	return float_value >= min_value && float_value < max_value
+}
+
 fn (mut c Checker) eval_comptime_const_cast_value(value ast.ComptTimeConstValue, typ ast.Type) ?ast.ComptTimeConstValue {
 	cast_typ := c.table.fully_unaliased_type(typ).clear_flags()
 	if cast_typ.is_pure_int() {
-		if cast_typ.is_signed() && (value is f32 || value is f64) {
-			// Out-of-range float-to-signed conversions are target/compiler dependent.
+		if cast_typ != ast.u64_type && (value is f32 || value is f64) {
+			// Out-of-range direct C float-to-integer conversions are target/compiler dependent.
 			float_value := value.f64()?
-			size, _ := c.table.type_size(cast_typ)
-			mut min_value := -9223372036854775808.0
-			mut max_value := 9223372036854775808.0
-			match size {
-				1 {
-					min_value = -128.0
-					max_value = 128.0
-				}
-				2 {
-					min_value = -32768.0
-					max_value = 32768.0
-				}
-				4 {
-					min_value = -2147483648.0
-					max_value = 2147483648.0
-				}
-				else {}
-			}
-			if !(float_value >= min_value && float_value < max_value) {
+			if !c.comptime_float_fits_int(float_value, cast_typ) {
 				return none
 			}
 		}

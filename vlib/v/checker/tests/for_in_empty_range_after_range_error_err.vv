@@ -137,6 +137,11 @@ fn main() {
 	for i in narrow_float_to_int(4294967295.0) .. int(0.0 - 1.0) {
 		println(i)
 	}
+
+	// Out-of-range float-to-narrow-unsigned casts are also target dependent.
+	for i in u32(1) .. u32(4294967296.0) {
+		println(i)
+	}
 }
 
 type OverloadedRangeBound = u8

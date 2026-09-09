@@ -1,0 +1,10 @@
+fn main() {
+	for i in 2 .. invalid_forward_range_high() {
+		println(i)
+	}
+}
+
+@[comptime]
+fn invalid_forward_range_high() int {
+	return 1.5
+}

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/for_in_empty_range_forward_comptime_fn_err.vv:9:9: error: cannot use `float literal` as type `int` in return argument
+    7 | @[comptime]
+    8 | fn invalid_forward_range_high() int {
+    9 |     return 1.5
+      |            ~~~
+   10 | }
