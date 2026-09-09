@@ -403,7 +403,8 @@ fn source_file_module_name(path string) ?string {
 	if name_start == name_end {
 		return none
 	}
-	return source[name_start..name_end]
+	name := source[name_start..name_end]
+	return if name.starts_with('@') { name[1..] } else { name }
 }
 
 fn skip_source_space_and_comments(source string, pos int) ?int {

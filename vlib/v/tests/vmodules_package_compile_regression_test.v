@@ -425,3 +425,26 @@ fn test_issue_27281_marker_bounded_symlinked_module_root_keeps_logical_name() {
 		os.execute('${os.quoted_path(issue_20147_vexe)} -shared -check ${os.quoted_path(logical_foo_dir)}')
 	assert res.exit_code == 0, res.output
 }
+
+fn test_issue_27281_marker_bounded_escaped_keyword_module_keeps_prefix() {
+	workspace := os.join_path(os.vtmp_dir(), 'issue_27281_escaped_keyword_module')
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	project_dir := os.join_path(workspace, 'project')
+	type_dir := os.join_path(project_dir, 'type')
+	bar_dir := os.join_path(type_dir, 'bar')
+	os.rmdir_all(workspace) or {}
+	os.mkdir_all(bar_dir) or { panic(err) }
+	type_test_source :=
+		['module @type', '', 'import @type.bar', '', 'fn test_nested_module_name() {', "\tassert bar.module_name() == 'type.bar'", '}'].join_lines() +
+		'\n'
+	bar_source :=
+		['module bar', '', 'pub fn module_name() string {', '\treturn @MOD', '}'].join_lines() +
+		'\n'
+	issue_20147_write_file(os.join_path(project_dir, '.v.mod.stop'), '')
+	issue_20147_write_file(os.join_path(type_dir, 'type_test.v'), type_test_source)
+	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'), bar_source)
+	res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(type_dir)}')
+	assert res.exit_code == 0, res.output
+}
