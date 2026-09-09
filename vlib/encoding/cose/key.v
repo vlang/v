@@ -614,6 +614,11 @@ fn (k Key) validate_okp_widths() ! {
 		if d.len != 32 {
 			return error('cose: Ed25519 private seed d must be 32 bytes, got ${d.len}')
 		}
+		if x := k.x {
+			if !ed25519_key_pair_matches(x, d) {
+				return error('cose: Ed25519 public key x does not match private seed d')
+			}
+		}
 	}
 }
 

@@ -15,6 +15,10 @@ struct EcParams {
 	coord_size int
 }
 
+fn ed25519_key_pair_matches(x []u8, d []u8) bool {
+	return ed25519.new_key_from_seed(d).public_key().equal(x)
+}
+
 // ec_params_for returns the curve / NID / coordinate size for an ECDSA
 // COSE algorithm. Errors out for non-ECDSA algorithms.
 fn ec_params_for(alg Algorithm) !EcParams {
