@@ -483,6 +483,13 @@ fn range_expr_is_plain_integer_literal(expr ast.Expr) bool {
 	}
 }
 
+fn range_value_fits_int(value ast.ComptTimeConstValue) bool {
+	if _ := value.int() {
+		return true
+	}
+	return false
+}
+
 fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, low_type ast.Type, val_type ast.Type, high_type ast.Type) {
 	backend_has_distinct_range_conversions := c.pref.backend == .wasm || c.pref.backend.is_js()
 	unaliased_low_type := c.table.fully_unaliased_type(low_type).clear_flags()
@@ -501,6 +508,10 @@ fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, low_type a
 	assignment_type := if val_type == ast.int_literal_type { ast.int_type } else { val_type }
 	if evaluated_low := c.eval_comptime_const_expr(low, 0) {
 		if evaluated_high := c.eval_comptime_const_expr(high, 0) {
+			if backend_has_distinct_range_conversions
+				&& (!range_value_fits_int(evaluated_low) || !range_value_fits_int(evaluated_high)) {
+				return
+			}
 			assigned_low := c.eval_comptime_const_cast_value(evaluated_low, assignment_type) or {
 				return
 			}
