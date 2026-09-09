@@ -1007,7 +1007,14 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 			|| t.infix_operand_requests_pointer_identity(rhs_id) {
 			// A user-defined equality operator takes precedence over the identity
 			// semantics requested by reference parameters or explicit addresses.
-			if call_info := t.struct_operator_call_info(lhs_struct, node.op) {
+			mut operator_type := lhs_struct
+			mut is_alias_operator := false
+			if alias_type := t.operator_alias_type_for_operand(lhs_id, node.op) {
+				operator_type = alias_type
+				is_alias_operator = true
+			}
+			if call_info := t.struct_operator_call_info_for_operand(operator_type, node.op,
+				is_alias_operator) {
 				if t.is_disabled_fn_name(call_info.name) {
 					return t.make_bool_literal(node.op == .ne)
 				}

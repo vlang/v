@@ -42,6 +42,13 @@ fn reference_aliases_are_equal(a DataRef, b DataRef) bool {
 	return a == b
 }
 
+fn captured_references_are_equal(a &Data, b &Data) bool {
+	compare := fn [a, b] () bool {
+		return a == b
+	}
+	return compare()
+}
+
 fn test_reference_parameters_compare_addresses() {
 	a := Data{}
 	b := Data{}
@@ -51,6 +58,8 @@ fn test_reference_parameters_compare_addresses() {
 	assert parenthesized_references_are_equal(a, a)
 	assert !reference_aliases_are_equal(&a, &b)
 	assert reference_aliases_are_equal(&a, &a)
+	assert !captured_references_are_equal(a, b)
+	assert captured_references_are_equal(a, a)
 
 	compare := fn (left &Data, right &Data) bool {
 		return left == right

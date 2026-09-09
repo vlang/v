@@ -51,6 +51,33 @@ fn test_eq_operator_with_reference_operands() {
 	assert false
 }
 
+struct AliasFoo {
+	id    int
+	value int
+}
+
+type AliasFooEquality = AliasFoo
+
+fn (a AliasFooEquality) == (b AliasFooEquality) bool {
+	return a.id == b.id
+}
+
+fn alias_foo_references_are_equal(a &AliasFooEquality, b &AliasFooEquality) bool {
+	return a == b
+}
+
+fn test_alias_eq_operator_with_reference_operands() {
+	a := AliasFooEquality{
+		id:    1
+		value: 4
+	}
+	b := AliasFooEquality{
+		id:    1
+		value: 9
+	}
+	assert alias_foo_references_are_equal(&a, &b)
+}
+
 struct Sum {
 	value int
 }
