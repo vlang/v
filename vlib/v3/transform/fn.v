@@ -12591,7 +12591,7 @@ fn (mut t Transformer) fn_literal_container_modes_compatible_seen(arg_id flat.No
 		}
 		return if handled { true } else { none }
 	}
-	if node.kind == .prefix && node.value == '...' && node.children_count == 1 {
+	if node.kind == .prefix && node.value in ['...', 'shared'] && node.children_count == 1 {
 		return t.fn_literal_container_modes_compatible_seen(t.a.child(&node, 0), expected_type, mut
 			seen)
 	}
@@ -13126,6 +13126,12 @@ fn (mut t Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, 
 			}
 			return
 		}
+		.prefix {
+			if node.value in ['...', 'shared'] && node.children_count == 1 {
+				t.collect_fn_literal_source_type_texts(t.a.child(&node, 0), mut result, mut seen)
+			}
+			return
+		}
 		.cast_expr {
 			if node.children_count == 1 && t.fn_literal_cast_target_contains_callback(node.value) {
 				t.collect_fn_literal_source_type_texts(t.a.child(&node, 0), mut result, mut seen)
@@ -13443,6 +13449,9 @@ fn (t &Transformer) callback_lvalue_root_name(id flat.NodeId) ?string {
 		return node.value
 	}
 	if node.kind in [.selector, .index, .paren] && node.children_count > 0 {
+		return t.callback_lvalue_root_name(t.a.child(&node, 0))
+	}
+	if node.kind == .prefix && node.value in ['...', 'shared'] && node.children_count == 1 {
 		return t.callback_lvalue_root_name(t.a.child(&node, 0))
 	}
 	return none

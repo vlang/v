@@ -2225,6 +2225,16 @@ fn test_callback_mut_arguments_invalidate_prior_provenance() {
 	assert matching == 'true'
 }
 
+fn test_callback_shared_arguments_preserve_c_abi_modes() {
+	v3_bin := build_v3()
+	matching := run_good(v3_bin, 'good_callback_struct_passed_shared_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler ConstHandler\n}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](shared options Options) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tshared options := Options{\n\t\thandler: ConstHandler(const_handler)\n\t}\n\treturn consume[int](shared options)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert matching == 'true'
+	run_bad(v3_bin, 'bad_callback_struct_passed_shared_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler PlainHandler\n}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](shared options Options) {}\nfn startup[T]() {\n\tshared options := Options{\n\t\thandler: ConstHandler(const_handler)\n\t}\n\tconsume[int](shared options)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+}
+
 fn test_callback_container_clear_kills_element_provenance() {
 	v3_bin := build_v3()
 	matching := run_good(v3_bin, 'good_callback_containers_cleared_in_generic',
