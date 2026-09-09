@@ -235,6 +235,9 @@ fn main() {
 	pointer_element.replace_through_indexed_method(PointerNode(Item{}))
 	_ = pointer_element.return_pointer_array_infix()
 	_ = pointer_element.return_pointer_helper_alias()
+	_ = pointer_element.return_pointer_callback()
+	pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
+	pointer_element.spawn_local_pointer_callback()
 }
 
 fn replace_pointer_node(node &PointerNode, next PointerNode) {
@@ -414,4 +417,26 @@ fn identity_pointer_node(node &PointerNode) &PointerNode {
 fn (node &PointerNode) return_pointer_helper_alias() &PointerNode {
 	alias := identity_pointer_node(node)
 	return alias
+}
+
+fn (node &PointerNode) return_pointer_callback() fn () string {
+	return fn [node] () string {
+		return node.name
+	}
+}
+
+fn (node &PointerNode) replace_through_local_pointer_callback(next PointerNode) {
+	callback := fn [node, next] () {
+		unsafe {
+			*node = next
+		}
+	}
+	callback()
+}
+
+fn (node &PointerNode) spawn_local_pointer_callback() {
+	callback := fn [node] () {
+		println(node.name)
+	}
+	spawn callback()
 }

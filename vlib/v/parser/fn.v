@@ -44,8 +44,18 @@ mut:
 	captured_mut        bool
 	method_calls        []string
 	receiver_aliases    []ast.ReceiverAlias
+	receiver_closures   []ReceiverClosureAlias
+	local_closure_pos   []int
 	preferences         &pref.Preferences = unsafe { nil }
 	has_go_statements   bool
+}
+
+struct ReceiverClosureAlias {
+	name      string
+	var_pos   int
+	start_pos int
+mut:
+	end_pos int
 }
 
 fn contains_receiver_reference(expr ast.Expr, name string) bool {
@@ -228,6 +238,46 @@ fn receiver_alias_index(ident ast.Ident, aliases []ast.ReceiverAlias) int {
 	return -1
 }
 
+fn receiver_closure_alias_index(ident ast.Ident, closures []ReceiverClosureAlias) int {
+	var_pos := receiver_ident_var_pos(ident)
+	for i, closure in closures {
+		if closure.name == ident.name && closure.var_pos == var_pos
+			&& ident.pos.pos >= closure.start_pos
+			&& (closure.end_pos == 0 || ident.pos.pos < closure.end_pos) {
+			return i
+		}
+	}
+	return -1
+}
+
+fn call_invokes_receiver_closure(call ast.CallExpr, closures []ReceiverClosureAlias) bool {
+	for closure in closures {
+		if closure.name != call.name || call.pos.pos < closure.start_pos
+			|| (closure.end_pos > 0 && call.pos.pos >= closure.end_pos) {
+			continue
+		}
+		if call.scope != unsafe { nil } {
+			if variable := call.scope.find_var(call.name) {
+				if variable.pos.pos == closure.var_pos {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn expr_is_receiver_closure(expr ast.Expr, closures []ReceiverClosureAlias) bool {
+	reduced := expr.remove_par()
+	return reduced is ast.Ident && receiver_closure_alias_index(reduced, closures) >= 0
+}
+
+fn anon_fn_captures_receiver(anon_fn ast.AnonFn, name string, aliases []ast.ReceiverAlias) bool {
+	mut captured_names := [name]
+	captured_names << aliases.filter(it.end_pos == 0).map(it.name)
+	return anon_fn.inherited_vars.any(it.name in captured_names)
+}
+
 fn can_end_receiver_alias(ident ast.Ident, alias ast.ReceiverAlias) bool {
 	return ident.scope != unsafe { nil } && ident.scope.start_pos == alias.scope_start
 		&& ident.scope.end_pos == alias.scope_end
@@ -365,6 +415,55 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 						} else {
 							ast.empty_expr
 						}
+						reduced_right := right.remove_par()
+						right_is_receiver_closure := expr_is_receiver_closure(reduced_right,
+							info.receiver_closures)
+						right_captures_receiver := reduced_right is ast.AnonFn
+							&& anon_fn_captures_receiver(reduced_right, name, info.receiver_aliases)
+						mut closure_alias_idx := -1
+						if left is ast.Ident {
+							closure_alias_idx = receiver_closure_alias_index(left,
+								info.receiver_closures)
+						}
+						if closure_alias_idx >= 0 && left is ast.Ident {
+							left_ident := left as ast.Ident
+							info.receiver_closures[closure_alias_idx].end_pos = left_ident.pos.pos
+						}
+						if right_captures_receiver {
+							receiver_closure := reduced_right as ast.AnonFn
+							if left is ast.Ident && left.name !in [name, '_']
+								&& receiver_ident_var_pos(left) >= 0
+								&& receiver_ident_is_local(left) {
+								info.receiver_closures << ReceiverClosureAlias{
+									name:      left.name
+									var_pos:   receiver_ident_var_pos(left)
+									start_pos: left.pos.pos
+								}
+								info.local_closure_pos << receiver_closure.decl.pos.pos
+							} else if left !is ast.Ident {
+								info.address_taken = true
+							} else {
+								left_ident := left as ast.Ident
+								if left_ident.name != '_' {
+									info.address_taken = true
+								}
+							}
+						} else if right_is_receiver_closure {
+							if left is ast.Ident && left.name == '_' {
+								continue
+							}
+							if left is ast.Ident && left.name != name
+								&& receiver_ident_var_pos(left) >= 0
+								&& receiver_ident_is_local(left) {
+								info.receiver_closures << ReceiverClosureAlias{
+									name:      left.name
+									var_pos:   receiver_ident_var_pos(left)
+									start_pos: left.pos.pos
+								}
+							} else {
+								info.address_taken = true
+							}
+						}
 						mut alias_idx := -1
 						if left is ast.Ident {
 							alias_idx = receiver_alias_index(left, info.receiver_aliases)
@@ -403,6 +502,9 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 							}
 							continue
 						}
+						if has_receiver && left is ast.Ident && left.name == '_' {
+							continue
+						}
 						if has_receiver {
 							info.address_taken = true
 						}
@@ -428,9 +530,11 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 					}
 				}
 			}
-			if info.receiver_is_ptr && node is ast.Return
-				&& node.exprs.any(contains_receiver_or_alias(it, name, info.receiver_aliases)) {
-				info.address_taken = true
+			if info.receiver_is_ptr && node is ast.Return {
+				if node.exprs.any(contains_receiver_or_alias(it, name, info.receiver_aliases))
+					|| node.exprs.any(expr_is_receiver_closure(it, info.receiver_closures)) {
+					info.address_taken = true
+				}
 			}
 			// Visit statement payloads that are not exposed by Node.children().
 			if node is ast.AssertStmt && node.extra !is ast.EmptyExpr {
@@ -496,7 +600,13 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 						info.captured_mut = true
 					} else if info.receiver_is_ptr && !info.receiver_is_mut
 						&& node.inherited_vars.any(it.name in receiver_names) {
-						info.address_taken = true
+						if node.decl.pos.pos in info.local_closure_pos {
+							for stmt in node.decl.stmts {
+								scan_receiver_reassignment(stmt, name, mut info)
+							}
+						} else {
+							info.address_taken = true
+						}
 					} else if node.inherited_vars.any(it.name == name) {
 						for stmt in node.decl.stmts {
 							scan_receiver_reassignment(stmt, name, mut info)
@@ -524,6 +634,10 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 						info.method_calls << node.name
 					}
 					for arg in node.args {
+						if info.receiver_is_ptr
+							&& expr_is_receiver_closure(arg.expr, info.receiver_closures) {
+							info.address_taken = true
+						}
 						mut arg_expr := arg.expr
 						arg_expr = arg_expr.remove_par()
 						if arg.is_mut && arg_expr is ast.Ident && arg_expr.name == name {
@@ -556,14 +670,16 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 				}
 				ast.GoExpr {
 					if info.receiver_is_ptr
-						&& async_call_uses_receiver(node.call_expr, name, info.receiver_aliases) {
+						&& (async_call_uses_receiver(node.call_expr, name, info.receiver_aliases)
+						|| call_invokes_receiver_closure(node.call_expr, info.receiver_closures)) {
 						info.address_taken = true
 					}
 					scan_receiver_reassignment(node.call_expr, name, mut info)
 				}
 				ast.SpawnExpr {
 					if info.receiver_is_ptr
-						&& async_call_uses_receiver(node.call_expr, name, info.receiver_aliases) {
+						&& (async_call_uses_receiver(node.call_expr, name, info.receiver_aliases)
+						|| call_invokes_receiver_closure(node.call_expr, info.receiver_closures)) {
 						info.address_taken = true
 					}
 					scan_receiver_reassignment(node.call_expr, name, mut info)

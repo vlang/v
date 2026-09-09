@@ -82,7 +82,7 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:198:10: err
       |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   199 |     element.replace_through_pointer_closure(Node(Item{}))
   200 |     element.replace_through_pointer_method(Node(Item{}))
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:199:10: error: cannot call pointer-receiver method `Node.replace_through_pointer_closure` through embedded interface `Element` because its receiver address escapes and can be used to replace it
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:199:10: error: cannot call pointer-receiver method `Node.replace_through_pointer_closure` through embedded interface `Element` because it can replace its receiver
   197 |     element.replace_through_pointer(Node(Item{}))
   198 |     element.replace_through_dereferenced_pointer(Node(Item{}))
   199 |     element.replace_through_pointer_closure(Node(Item{}))
@@ -228,7 +228,28 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:236:22: err
   236 |     _ = pointer_element.return_pointer_array_infix()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   237 |     _ = pointer_element.return_pointer_helper_alias()
-  238 | }
+  238 |     _ = pointer_element.return_pointer_callback()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:238:22: error: cannot call pointer-receiver method `PointerNode.return_pointer_callback` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  236 |     _ = pointer_element.return_pointer_array_infix()
+  237 |     _ = pointer_element.return_pointer_helper_alias()
+  238 |     _ = pointer_element.return_pointer_callback()
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~
+  239 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
+  240 |     pointer_element.spawn_local_pointer_callback()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:239:18: error: cannot call pointer-receiver method `PointerNode.replace_through_local_pointer_callback` through embedded interface `PointerElement` because it can replace its receiver
+  237 |     _ = pointer_element.return_pointer_helper_alias()
+  238 |     _ = pointer_element.return_pointer_callback()
+  239 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  240 |     pointer_element.spawn_local_pointer_callback()
+  241 | }
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:240:18: error: cannot call pointer-receiver method `PointerNode.spawn_local_pointer_callback` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  238 |     _ = pointer_element.return_pointer_callback()
+  239 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
+  240 |     pointer_element.spawn_local_pointer_callback()
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  241 | }
+  242 |
 vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:215:18: error: cannot call pointer-receiver method `PointerNode.pass_local_holder_value` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
   213 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
   214 |     pointer_element.pass_local_holder_mut()
@@ -304,5 +325,5 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:237:22: err
   236 |     _ = pointer_element.return_pointer_array_infix()
   237 |     _ = pointer_element.return_pointer_helper_alias()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  238 | }
-  239 |
+  238 |     _ = pointer_element.return_pointer_callback()
+  239 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
