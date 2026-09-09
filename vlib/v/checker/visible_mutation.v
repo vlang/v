@@ -77,22 +77,42 @@ fn (mut c Checker) fn_pointer_param_may_escape_or_mutate(func ast.Fn, param_idx 
 	if fn_decl == unsafe { nil } || param_idx >= fn_decl.params.len {
 		return true
 	}
-	param_name := fn_decl.params[param_idx].name
+	mut aliases := [fn_decl.params[param_idx].name]
 	for stmt in fn_decl.stmts {
-		if c.node_captures_or_stores_pointer_param(stmt, param_name, fn_decl.params[param_idx].typ) {
+		if c.node_captures_or_stores_pointer_param(stmt, fn_decl.params[param_idx].typ, mut aliases) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (mut c Checker) node_captures_or_stores_pointer_param(node ast.Node, name string, typ ast.Type) bool {
+fn (mut c Checker) expr_references_pointer_param(expr ast.Expr, typ ast.Type, aliases []string) bool {
+	return aliases.any(is_visible_root_mutation(c.expr_mutation_visibility(expr, it, typ)))
+}
+
+fn (mut c Checker) ident_is_local_pointer_alias(ident ast.Ident) bool {
+	if ident.obj is ast.Var {
+		return !ident.obj.is_arg && !ident.obj.is_static && !ident.obj.is_inherited
+			&& (ident.obj.typ.is_any_kind_of_pointer()
+			|| c.table.unaliased_type(ident.obj.typ).is_any_kind_of_pointer())
+	}
+	if ident.scope != unsafe { nil } {
+		if variable := ident.scope.find_var(ident.name) {
+			return !variable.is_arg && !variable.is_static && !variable.is_inherited
+				&& (variable.typ.is_any_kind_of_pointer()
+				|| c.table.unaliased_type(variable.typ).is_any_kind_of_pointer())
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) node_captures_or_stores_pointer_param(node ast.Node, typ ast.Type, mut aliases []string) bool {
 	match node {
 		ast.Expr {
-			if node is ast.AnonFn && node.inherited_vars.any(it.name == name) {
-				return true
+			if node is ast.AnonFn {
+				return node.inherited_vars.any(it.name in aliases)
 			}
-			if node is ast.CallExpr && c.call_escapes_pointer_param(node, name, typ) {
+			if node is ast.CallExpr && c.call_escapes_pointer_param(node, typ, aliases) {
 				return true
 			}
 		}
@@ -100,16 +120,39 @@ fn (mut c Checker) node_captures_or_stores_pointer_param(node ast.Node, name str
 			if node is ast.FnDecl {
 				return false
 			}
-			if node is ast.Return && node.exprs.any(c.return_expr_contains_pointer_param(it, name)) {
+			if node is ast.Return
+				&& node.exprs.any(c.return_expr_contains_pointer_param(it, aliases)) {
 				return true
 			}
 			if node is ast.AssignStmt {
 				for i, right in node.right {
-					if !is_visible_root_mutation(c.expr_mutation_visibility(right, name, typ)) {
+					left := if i < node.left.len {
+						node.left[i].remove_par()
+					} else {
+						ast.empty_expr
+					}
+					if c.expr_references_pointer_param(left, typ, aliases) {
+						if left is ast.Ident {
+							continue
+						}
+						return true
+					}
+					if !c.expr_references_pointer_param(right, typ, aliases) {
 						continue
 					}
-					if i >= node.left.len
-						|| !is_visible_root_mutation(c.expr_mutation_visibility(node.left[i], name, typ)) {
+					right_type := if i < node.right_types.len {
+						node.right_types[i]
+					} else {
+						ast.no_type
+					}
+					if !c.type_may_share_mutable_storage(right_type) {
+						continue
+					}
+					if left is ast.Ident && c.ident_is_local_pointer_alias(left) {
+						if left.name !in aliases {
+							aliases << left.name
+						}
+					} else {
 						return true
 					}
 				}
@@ -119,29 +162,28 @@ fn (mut c Checker) node_captures_or_stores_pointer_param(node ast.Node, name str
 	}
 
 	for child in node.children() {
-		if c.node_captures_or_stores_pointer_param(child, name, typ) {
+		if c.node_captures_or_stores_pointer_param(child, typ, mut aliases) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (mut c Checker) call_escapes_pointer_param(node ast.CallExpr, name string, typ ast.Type) bool {
+fn (mut c Checker) call_escapes_pointer_param(node ast.CallExpr, typ ast.Type, aliases []string) bool {
 	called_fn := c.find_called_fn(node) or {
-		if node.is_method
-			&& is_visible_root_mutation(c.expr_mutation_visibility(node.left, name, typ)) {
+		if node.is_method && c.expr_references_pointer_param(node.left, typ, aliases) {
 			return true
 		}
-		return node.args.any(is_visible_root_mutation(c.expr_mutation_visibility(it.expr, name, typ)))
+		return node.args.any(c.expr_references_pointer_param(it.expr, typ, aliases))
 	}
 	if node.is_method && called_fn.params.len > 0
 		&& called_fn.params[0].typ.is_any_kind_of_pointer()
-		&& is_visible_root_mutation(c.expr_mutation_visibility(node.left, name, typ))
+		&& c.expr_references_pointer_param(node.left, typ, aliases)
 		&& c.fn_pointer_param_may_escape_or_mutate(called_fn, 0) {
 		return true
 	}
 	for i, arg in node.args {
-		if !is_visible_root_mutation(c.expr_mutation_visibility(arg.expr, name, typ)) {
+		if !c.expr_references_pointer_param(arg.expr, typ, aliases) {
 			continue
 		}
 		param_idx := c.call_arg_param_index(called_fn, i)
@@ -156,51 +198,51 @@ fn (mut c Checker) call_escapes_pointer_param(node ast.CallExpr, name string, ty
 	return false
 }
 
-fn (mut c Checker) return_expr_contains_pointer_param(expr ast.Expr, name string) bool {
+fn (mut c Checker) return_expr_contains_pointer_param(expr ast.Expr, aliases []string) bool {
 	reduced := expr.remove_par()
 	return match reduced {
 		ast.Ident {
-			reduced.name == name
+			reduced.name in aliases
 		}
 		ast.CastExpr {
-			c.return_expr_contains_pointer_param(reduced.expr, name)
-				|| (reduced.has_arg && c.return_expr_contains_pointer_param(reduced.arg, name))
+			c.return_expr_contains_pointer_param(reduced.expr, aliases)
+				|| (reduced.has_arg && c.return_expr_contains_pointer_param(reduced.arg, aliases))
 		}
 		ast.AsCast {
-			c.return_expr_contains_pointer_param(reduced.expr, name)
+			c.return_expr_contains_pointer_param(reduced.expr, aliases)
 		}
 		ast.UnsafeExpr {
-			c.return_expr_contains_pointer_param(reduced.expr, name)
+			c.return_expr_contains_pointer_param(reduced.expr, aliases)
 		}
 		ast.IfExpr {
-			reduced.branches.any(c.stmts_return_pointer_param(it.stmts, name))
+			reduced.branches.any(c.stmts_return_pointer_param(it.stmts, aliases))
 		}
 		ast.MatchExpr {
-			reduced.branches.any(c.stmts_return_pointer_param(it.stmts, name))
+			reduced.branches.any(c.stmts_return_pointer_param(it.stmts, aliases))
 		}
 		ast.ArrayInit {
-			reduced.exprs.any(c.return_expr_contains_pointer_param(it, name))
+			reduced.exprs.any(c.return_expr_contains_pointer_param(it, aliases))
 				|| (reduced.has_update_expr
-				&& c.return_expr_contains_pointer_param(reduced.update_expr, name))
+				&& c.return_expr_contains_pointer_param(reduced.update_expr, aliases))
 		}
 		ast.MapInit {
-			reduced.keys.any(c.return_expr_contains_pointer_param(it, name))
-				|| reduced.vals.any(c.return_expr_contains_pointer_param(it, name))
+			reduced.keys.any(c.return_expr_contains_pointer_param(it, aliases))
+				|| reduced.vals.any(c.return_expr_contains_pointer_param(it, aliases))
 				|| (reduced.has_update_expr
-				&& c.return_expr_contains_pointer_param(reduced.update_expr, name))
+				&& c.return_expr_contains_pointer_param(reduced.update_expr, aliases))
 		}
 		ast.StructInit {
-			reduced.init_fields.any(c.return_expr_contains_pointer_param(it.expr, name))
+			reduced.init_fields.any(c.return_expr_contains_pointer_param(it.expr, aliases))
 				|| (reduced.has_update_expr
-				&& c.return_expr_contains_pointer_param(reduced.update_expr, name))
+				&& c.return_expr_contains_pointer_param(reduced.update_expr, aliases))
 		}
 		ast.SelectorExpr {
 			c.type_may_share_mutable_storage(reduced.typ)
-				&& c.return_expr_contains_pointer_param(reduced.expr, name)
+				&& c.return_expr_contains_pointer_param(reduced.expr, aliases)
 		}
 		ast.IndexExpr {
 			c.type_may_share_mutable_storage(reduced.typ)
-				&& c.return_expr_contains_pointer_param(reduced.left, name)
+				&& c.return_expr_contains_pointer_param(reduced.left, aliases)
 		}
 		else {
 			false
@@ -208,17 +250,17 @@ fn (mut c Checker) return_expr_contains_pointer_param(expr ast.Expr, name string
 	}
 }
 
-fn (mut c Checker) stmts_return_pointer_param(stmts []ast.Stmt, name string) bool {
+fn (mut c Checker) stmts_return_pointer_param(stmts []ast.Stmt, aliases []string) bool {
 	if stmts.len == 0 {
 		return false
 	}
 	last_stmt := stmts.last()
 	return match last_stmt {
 		ast.ExprStmt {
-			c.return_expr_contains_pointer_param(last_stmt.expr, name)
+			c.return_expr_contains_pointer_param(last_stmt.expr, aliases)
 		}
 		ast.Return {
-			last_stmt.exprs.any(c.return_expr_contains_pointer_param(it, name))
+			last_stmt.exprs.any(c.return_expr_contains_pointer_param(it, aliases))
 		}
 		else {
 			false
