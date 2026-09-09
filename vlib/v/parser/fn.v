@@ -35,6 +35,7 @@ fn type_method_name_pos(sym &ast.TypeSymbol, name string, fallback token.Pos) to
 
 struct ReceiverReassignmentInfo {
 	receiver_is_ptr bool
+	receiver_is_mut bool
 mut:
 	directly_reassigned bool
 	passed_mut          bool
@@ -270,8 +271,13 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 		ast.Expr {
 			match node {
 				ast.AnonFn {
+					mut receiver_names := [name]
+					receiver_names << info.receiver_aliases
 					if node.inherited_vars.any(it.name == name && it.is_mut) {
 						info.captured_mut = true
+					} else if info.receiver_is_ptr && !info.receiver_is_mut
+						&& node.inherited_vars.any(it.name in receiver_names) {
+						info.address_taken = true
 					} else if node.inherited_vars.any(it.name == name) {
 						for stmt in node.decl.stmts {
 							scan_receiver_reassignment(stmt, name, mut info)
@@ -1483,6 +1489,7 @@ run them via `v file.v` instead',
 	if is_method && (rec.is_mut || rec.typ.is_ptr()) && type_sym_method_idx < type_sym.methods.len {
 		mut receiver_info := ReceiverReassignmentInfo{
 			receiver_is_ptr: rec.typ.is_ptr()
+			receiver_is_mut: rec.is_mut
 		}
 		for stmt in stmts {
 			scan_receiver_reassignment(stmt, rec.name, mut receiver_info)

@@ -90,7 +90,9 @@ fn (node &Node) replace_through_pointer_argument(next Node) {
 	replace_pointer_argument(node, next)
 }
 
-interface PointerNode {}
+interface PointerNode {
+	name string
+}
 
 interface PointerElement {
 	PointerNode
@@ -123,11 +125,19 @@ fn (node &PointerNode) publish_pointer_receiver(ch chan &PointerNode) {
 	ch <- node
 }
 
+fn (node &PointerNode) capture_pointer_receiver() fn () string {
+	return fn [node] () string {
+		return node.name
+	}
+}
+
 interface Element {
 	Node
 }
 
-struct Item {}
+struct Item {
+	name string
+}
 
 fn main() {
 	mut element := Element(Item{})
@@ -152,4 +162,6 @@ fn main() {
 	pointer_element.pass_pointer_receiver_as_voidptr()
 	ch := chan &PointerNode{cap: 1}
 	pointer_element.publish_pointer_receiver(ch)
+	reader := pointer_element.capture_pointer_receiver()
+	_ = reader()
 }
