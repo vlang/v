@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
+import math
 import os
 import v.ast
 import v.pref
@@ -60,6 +61,10 @@ fn comptime_power_u64(base u64, exponent i64) u64 {
 		exp >>= 1
 	}
 	return value
+}
+
+fn comptime_power_f64(base f64, exponent f64) f64 {
+	return math.pow(base, exponent)
 }
 
 fn comptime_compare_i64_values(op token.Kind, left i64, right i64) ?bool {
@@ -1091,10 +1096,10 @@ fn (mut c Checker) eval_comptime_fn_call_expr_with_locals(node ast.CallExpr, nle
 		return none
 	}
 	fn_decl := c.find_comptime_eval_fn_decl(func) or { return none }
-	if !c.comptime_eval_checked_fns[fn_decl.name] {
+	if c.comptime_eval_for_range && !c.comptime_eval_checked_fns[fn_decl.name] {
 		return none
 	}
-	if c.comptime_eval_fn_decl_has_error(fn_decl) {
+	if c.comptime_eval_for_range && c.comptime_eval_fn_decl_has_error(fn_decl) {
 		return none
 	}
 	mut local_args := map[string]ast.ComptTimeConstValue{}
@@ -1396,9 +1401,12 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 								}
 							}
 							.power {
-								// pow/powf results can vary between the host and target C math
-								// libraries, so do not use them for compile-time diagnostics.
-								return none
+								if c.comptime_eval_for_range {
+									// pow/powf results can vary between the host and target C math
+									// libraries, so do not use them for empty-range diagnostics.
+									return none
+								}
+								result = comptime_power_f64(lf, rf)
 							}
 							else {
 								return none

@@ -86,6 +86,7 @@ pub mut:
 	const_deps                  []string
 	const_eval_stack            []string // names of constants currently being recursively resolved (to break cycles via anon fn bodies)
 	comptime_eval_checked_fns   map[string]bool
+	comptime_eval_for_range     bool
 	const_names                 []string
 	global_names                []string
 	locked_names                []string // vars that are currently locked

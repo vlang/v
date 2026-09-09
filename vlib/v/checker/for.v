@@ -475,6 +475,11 @@ fn (mut c Checker) range_comparison_type(left_expr ast.Expr, left_type ast.Type,
 }
 
 fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, val_type ast.Type, high_type ast.Type) {
+	was_evaluating_range := c.comptime_eval_for_range
+	c.comptime_eval_for_range = true
+	defer {
+		c.comptime_eval_for_range = was_evaluating_range
+	}
 	assignment_type := if val_type == ast.int_literal_type { ast.int_type } else { val_type }
 	if evaluated_low := c.eval_comptime_const_expr(low, 0) {
 		if evaluated_high := c.eval_comptime_const_expr(high, 0) {
