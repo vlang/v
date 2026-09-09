@@ -217,6 +217,7 @@ mut:
 	pending_stmts                   []flat.NodeId
 	smartcast_stack                 []SmartcastContext
 	invalidated_smartcasts          map[string]bool
+	smartcast_invalidation_events   []string
 	in_call_callee                  bool
 	in_monomorphize_scan            bool
 	validating_generic_spec         bool
@@ -3826,6 +3827,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.fixed_array_param_values = map[string]bool{}
 	w.smartcast_stack = []SmartcastContext{}
 	w.invalidated_smartcasts = map[string]bool{}
+	w.smartcast_invalidation_events = []string{}
 	w.pending_stmts = []flat.NodeId{}
 	w.pointer_value_lvalues = map[string]bool{}
 	w.pointer_value_rvalues = map[string]bool{}
@@ -3949,6 +3951,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.fixed_array_param_values = map[string]bool{}
 	w.smartcast_stack = []SmartcastContext{}
 	w.invalidated_smartcasts = map[string]bool{}
+	w.smartcast_invalidation_events = []string{}
 	w.pending_stmts = []flat.NodeId{}
 	w.pointer_value_lvalues = map[string]bool{}
 	w.pointer_value_rvalues = map[string]bool{}
@@ -8718,6 +8721,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.cur_fn_variadic_param = ''
 	t.smartcast_stack.clear()
 	t.invalidated_smartcasts.clear()
+	t.smartcast_invalidation_events.clear()
 	// Collect param types
 	mut param_idx := 0
 	mut source_mut_params := []string{}
@@ -8880,6 +8884,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	}
 	t.smartcast_stack.clear()
 	t.invalidated_smartcasts.clear()
+	t.smartcast_invalidation_events.clear()
 	t.cur_fn_is_generic = old_is_generic
 	t.cur_fn_manualfree = old_manualfree
 	t.cur_fn_receiver_name = old_receiver_name
@@ -9097,13 +9102,19 @@ pub fn (mut t Transformer) transform_stmts(ids []flat.NodeId) []flat.NodeId {
 }
 
 fn (t &Transformer) non_invalidated_smartcasts(contexts []SmartcastContext) []SmartcastContext {
-	return t.non_invalidated_smartcasts_for(t.invalidated_smartcasts, contexts)
-}
-
-fn (t &Transformer) non_invalidated_smartcasts_for(invalidated map[string]bool, contexts []SmartcastContext) []SmartcastContext {
 	mut keep := []SmartcastContext{cap: contexts.len}
 	for sc in contexts {
-		if !t.smartcast_context_invalidated_for(invalidated, sc.expr_name) {
+		if !t.smartcast_context_invalidated(sc.expr_name) {
+			keep << sc
+		}
+	}
+	return keep
+}
+
+fn (t &Transformer) non_invalidated_smartcasts_since(event_start int, contexts []SmartcastContext) []SmartcastContext {
+	mut keep := []SmartcastContext{cap: contexts.len}
+	for sc in contexts {
+		if !t.smartcast_context_invalidated_since(event_start, sc.expr_name) {
 			keep << sc
 		}
 	}
@@ -9111,14 +9122,24 @@ fn (t &Transformer) non_invalidated_smartcasts_for(invalidated map[string]bool, 
 }
 
 fn (t &Transformer) smartcast_context_invalidated(expr_name string) bool {
-	return t.smartcast_context_invalidated_for(t.invalidated_smartcasts, expr_name)
-}
-
-fn (t &Transformer) smartcast_context_invalidated_for(invalidated map[string]bool, expr_name string) bool {
-	if expr_name.len == 0 || invalidated.len == 0 {
+	if expr_name.len == 0 || t.invalidated_smartcasts.len == 0 {
 		return false
 	}
-	for key, _ in invalidated {
+	for key, _ in t.invalidated_smartcasts {
+		if expr_name == key || expr_name.starts_with('${key}.') {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) smartcast_context_invalidated_since(event_start int, expr_name string) bool {
+	if expr_name.len == 0 || event_start >= t.smartcast_invalidation_events.len {
+		return false
+	}
+	start := if event_start < 0 { 0 } else { event_start }
+	for i in start .. t.smartcast_invalidation_events.len {
+		key := t.smartcast_invalidation_events[i]
 		if expr_name == key || expr_name.starts_with('${key}.') {
 			return true
 		}
@@ -12037,6 +12058,7 @@ fn (mut t Transformer) invalidate_smartcast_for_lvalue(id flat.NodeId) {
 	if key.len == 0 || t.smartcast_stack.len == 0 {
 		return
 	}
+	t.smartcast_invalidation_events << key
 	t.invalidated_smartcasts[key] = true
 	prefix := '${key}.'
 	mut keep := []SmartcastContext{cap: t.smartcast_stack.len}
