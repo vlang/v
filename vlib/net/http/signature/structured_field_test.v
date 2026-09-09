@@ -270,6 +270,23 @@ fn test_dictionary_parsers_reject_trailing_commas() {
 	}
 }
 
+fn test_dictionary_parsers_reject_htab_at_member_boundaries() {
+	for input in ['\tsig1=("@method")', 'sig1=("@method"),\tsig2=("@path")', 'sig1=("@method")\t'] {
+		if _ := parse_signature_input(input) {
+			assert false, 'Signature-Input dictionary whitespace must be SP only'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+	for input in ['\tsig1=:YQ==:', 'sig1=:YQ==:,\tsig2=:Yg==:', 'sig1=:YQ==:\t'] {
+		if _ := parse_signature(input) {
+			assert false, 'Signature dictionary whitespace must be SP only'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+}
+
 fn test_parse_signature_rejects_invalid_base64() {
 	for value in ['!', 'YQ=', 'YQ===', 'Y=Q=', 'Zh=='] {
 		if _ := parse_signature('sig1=:${value}:') {

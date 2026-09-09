@@ -49,6 +49,11 @@ pub:
 // when the request has a body.
 pub fn sign_request(mut req http.Request, key Key, opts SignRequestOptions) ! {
 	ensure_signature_label_available(req.header, opts.label)!
+	if req.method == .trace && req.data != '' {
+		return MalformedMessage{
+			reason: 'TRACE requests must not carry a body'
+		}
+	}
 	c := request_components(req, opts.scheme, .outgoing)!
 	mut comps := opts.components.clone()
 	if comps.len == 0 {

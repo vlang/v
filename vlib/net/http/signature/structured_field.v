@@ -290,7 +290,7 @@ fn (mut p SfParser) peek() u8 {
 }
 
 fn (mut p SfParser) skip_sp() {
-	for p.pos < p.src.len && (p.src[p.pos] == ` ` || p.src[p.pos] == `\t`) {
+	for p.pos < p.src.len && p.src[p.pos] == ` ` {
 		p.pos++
 	}
 }

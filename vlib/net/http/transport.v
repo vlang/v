@@ -637,7 +637,7 @@ fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host
 	}
 	default_port := if scheme == 'https' { 443 } else { 80 }
 	raw := req.build_request_headers_opts(method, host, port, default_port, path, data, header,
-		false)
+		false)!
 	$if trace_http_request ? {
 		eprint('> ')
 		eprint(raw)
