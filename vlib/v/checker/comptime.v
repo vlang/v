@@ -1464,6 +1464,10 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 						right))
 				}
 				if promoted_type.is_pure_float() {
+					if c.comptime_eval_for_range && c.pref.nofloat {
+						// -nofloat lowers each floating operand to an integer before evaluating it.
+						return none
+					}
 					left_f := left.f64()
 					right_f := right.f64()
 
