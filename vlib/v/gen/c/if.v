@@ -599,6 +599,19 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 				}
 			}
 		}
+		ast.ComptimeCall {
+			if g.need_tmp_var_in_expr(expr.left) {
+				return true
+			}
+			for arg in expr.args {
+				if arg.expr is ast.ArrayDecompose {
+					return true
+				}
+				if g.need_tmp_var_in_expr(arg.expr) {
+					return true
+				}
+			}
+		}
 		ast.DumpExpr {
 			return g.need_tmp_var_in_expr(expr.expr)
 		}

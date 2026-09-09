@@ -216,6 +216,12 @@ fn (mut counter OptionRefCounter) next() int {
 	return 0
 }
 
+struct OptionRefComptimeCallTarget {}
+
+fn (target OptionRefComptimeCallTarget) accepts_string(value string) bool {
+	return value == ''
+}
+
 fn test_string_interpolation_reference_to_option_value() {
 	assert option_ref_string(?int(42)) == '&Option(42)'
 	assert option_ref_string(?int(none)) == '&Option(&nil)'
@@ -270,6 +276,18 @@ fn test_unsafe_option_reference_string_interpolation_is_not_hoisted_from_short_c
 	options := [?string('value')]
 	mut counter := OptionRefCounter{}
 	assert !(false && unsafe { '${&options[counter.next()]}' == '' })
+	assert counter.calls == 0
+}
+
+fn test_comptime_call_option_reference_string_interpolation_is_not_hoisted_from_short_circuit() {
+	target := OptionRefComptimeCallTarget{}
+	options := [?string('value')]
+	mut counter := OptionRefCounter{}
+	$for method in OptionRefComptimeCallTarget.methods {
+		if method.name == 'accepts_string' {
+			assert !(false && target.$method('${&options[counter.next()]}'))
+		}
+	}
 	assert counter.calls == 0
 }
 
