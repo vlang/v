@@ -72,6 +72,25 @@ fn check_okp_key(key Key) ! {
 	}
 }
 
+fn check_ec_public_coordinates(priv ecdsa.PrivateKey, params EcParams, key Key) ! {
+	x := key.x or { return error('cose: EC2 private key missing x') }
+	y := key.y or { return error('cose: EC2 private key missing y') }
+	if x.len > params.coord_size || y.len > params.coord_size {
+		return error('cose: EC2 public coordinates exceed curve size')
+	}
+	mut advertised := []u8{len: 1 + 2 * params.coord_size}
+	advertised[0] = 0x04
+	copy(mut advertised[1 + params.coord_size - x.len..1 + params.coord_size], x)
+	copy(mut advertised[1 + 2 * params.coord_size - y.len..], y)
+	derived_public := priv.public_key()!
+	defer {
+		derived_public.free()
+	}
+	if derived_public.uncompressed_bytes()! != advertised {
+		return error('cose: EC2 public coordinates x/y do not match private scalar d')
+	}
+}
+
 // sign_with_key signs `to_be_signed` with `key`, producing a COSE-format
 // signature (`R || S` for ECDSA, raw 64 bytes for Ed25519). The
 // algorithm comes from `alg` rather than from the key so callers can
@@ -99,6 +118,7 @@ fn sign_with_key(alg Algorithm, key Key, to_be_signed []u8) ![]u8 {
 			defer {
 				priv.free()
 			}
+			check_ec_public_coordinates(priv, params, key)!
 			der := priv.sign(to_be_signed, ecdsa.SignerOpts{})!
 			return der_to_raw(der, params.coord_size)!
 		}

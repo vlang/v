@@ -185,6 +185,8 @@ fn test_key_decode_rejects_duplicate_labels() {
 	for encoded in [
 		hex.decode('a301040104205820' + '11'.repeat(32))!,
 		hex.decode('a40104617800617801205820' + '11'.repeat(32))!,
+		hex.decode('a401040305180307205820' + '11'.repeat(32))!,
+		hex.decode('a4010461780078017801205820' + '11'.repeat(32))!,
 	] {
 		if _ := Key.decode(encoded) {
 			assert false, 'duplicate COSE_Key labels must be rejected'

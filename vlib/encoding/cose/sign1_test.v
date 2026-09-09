@@ -274,6 +274,21 @@ fn test_sign1_rejects_ed25519_public_key_mismatching_seed() {
 	}
 }
 
+fn test_sign1_rejects_ec_public_coordinates_mismatching_scalar() {
+	mut x := base64.url_decode(ecdsa_p256_x_b64u)
+	y := base64.url_decode(ecdsa_p256_y_b64u)
+	d := base64.url_decode(ecdsa_p256_d_b64u)
+	x[0] ^= 1
+	key := Key.ec2_private(.p_256, x, y, d)
+	mut hp := Headers{}
+	hp.algorithm = .es256
+	if _ := sign1('payload'.bytes(), key, protected: hp) {
+		assert false, 'EC2 x/y must correspond to d'
+	} else {
+		assert err.msg().contains('do not match private scalar')
+	}
+}
+
 fn test_sign1_decodes_indefinite_length_outer_array() {
 	mut p := cbor.new_packer(cbor.EncodeOpts{})
 	p.pack_array_indef()!

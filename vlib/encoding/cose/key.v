@@ -232,13 +232,28 @@ pub fn Key.decode(data []u8) !Key {
 
 	mut out := Key{}
 	mut found_kty := false
+	mut seen_int_labels := []i64{}
+	mut seen_text_labels := []string{}
 	for pair in m.pairs {
-		int_key := pair.key.as_int() or {
-			// Text labels for keys are private use; we silently ignore
-			// them on decode rather than failing — they don't affect
-			// crypto operations.
+		if text_key := pair.key.as_string() {
+			if text_key in seen_text_labels {
+				return MalformedMessage{
+					reason: 'duplicate COSE_Key label "${text_key}"'
+				}
+			}
+			seen_text_labels << text_key
 			continue
 		}
+		int_key := pair.key.as_int() or {
+			// Other private-use key types do not affect crypto operations.
+			continue
+		}
+		if int_key in seen_int_labels {
+			return MalformedMessage{
+				reason: 'duplicate COSE_Key label ${int_key}'
+			}
+		}
+		seen_int_labels << int_key
 		match int_key {
 			key_label_kty {
 				code := pair.value.as_int() or {
