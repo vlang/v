@@ -317,7 +317,7 @@ fn normalize_server_response(mut resp Response, req Request) {
 		if resp.status_msg == '' {
 			resp.status_msg = status.str()
 		}
-	} else if resp.status_code == 0 && resp.status_msg == '' {
+	} else if resp.status_code == 0 {
 		resp.set_status(.ok)
 	} else {
 		resp.set_status(.internal_server_error)

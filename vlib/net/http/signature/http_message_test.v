@@ -466,7 +466,9 @@ fn test_sign_response_and_verify() {
 }
 
 fn test_sign_response_normalizes_zero_status_to_wire_ok() {
-	mut resp := http.Response{}
+	mut resp := http.Response{
+		status_msg: 'custom reason without a status'
+	}
 	key := Key.hmac_sha256(test_secret.bytes())!
 	sign_response(mut resp, key, components: ['@status'], created: 1)!
 	received := http.Response{

@@ -240,6 +240,12 @@ fn (mut p SfParser) skip_sp() {
 	}
 }
 
+fn (mut p SfParser) skip_inner_list_sp() {
+	for p.pos < p.src.len && p.src[p.pos] == ` ` {
+		p.pos++
+	}
+}
+
 fn (mut p SfParser) expect(c u8) ! {
 	if p.pos >= p.src.len || p.src[p.pos] != c {
 		return error('expected "${rune(c)}"')
@@ -292,7 +298,7 @@ fn (mut p SfParser) parse_inner_list() ![]string {
 				reason: 'inner-list items must be separated by a space at offset ${p.pos}'
 			}
 		}
-		p.skip_sp()
+		p.skip_inner_list_sp()
 		if p.done() {
 			return MalformedMessage{
 				reason: 'unterminated inner list'

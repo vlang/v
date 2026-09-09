@@ -426,7 +426,7 @@ fn transport_authority(url urllib.URL) string {
 fn response_components(resp http.Response) Components {
 	wire_status := if resp.status_code >= 100 && resp.status_code <= 599 {
 		resp.status_code
-	} else if resp.status_code == 0 && resp.status_msg == '' {
+	} else if resp.status_code == 0 {
 		200
 	} else {
 		500

@@ -13,6 +13,15 @@ fn test_normalize_server_response_preserves_unassigned_three_digit_status() {
 	assert resp.status_msg == 'Unassigned'
 }
 
+fn test_normalize_server_response_defaults_zero_status_despite_reason_phrase() {
+	mut resp := Response{
+		status_msg: 'custom reason without a status'
+	}
+	normalize_server_response(mut resp, Request{})
+	assert resp.status_code == 200
+	assert resp.status_msg == 'OK'
+}
+
 fn test_response_bytestr_1() {
 	resp := new_response(
 		status: .ok

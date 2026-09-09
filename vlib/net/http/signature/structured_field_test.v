@@ -116,6 +116,14 @@ fn test_parse_signature_input_requires_inner_list_whitespace() {
 	}
 }
 
+fn test_parse_signature_input_rejects_inner_list_tab_padding() {
+	if _ := parse_signature_input('sig1=(\t"@method")') {
+		assert false, 'inner-list padding must use SP, not HTAB'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
 fn test_parse_signature_input_rejects_unsupported_component_parameters() {
 	if _ := parse_signature_input('sig1=("example-dict";key="a")') {
 		assert false, 'unsupported covered-component parameters must not be discarded'
