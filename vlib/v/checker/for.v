@@ -483,8 +483,34 @@ fn range_expr_is_plain_integer_literal(expr ast.Expr) bool {
 	}
 }
 
-fn range_value_fits_int(value ast.ComptTimeConstValue) bool {
-	if _ := value.int() {
+fn comptime_integer_value_str(value ast.ComptTimeConstValue) ?string {
+	return match value {
+		i8, i16, i32, i64, u8, u16, u32, u64 { value.str() }
+		else { none }
+	}
+}
+
+fn (mut c Checker) check_for_empty_backend_literal_range(low ast.Expr, high ast.Expr, low_value ast.ComptTimeConstValue, high_value ast.ComptTimeConstValue) bool {
+	if c.pref.backend == .wasm {
+		// WASM lowers untyped range bounds to i64.
+		low_i := raw_int_bits(low_value) or { return false }
+		high_i := raw_int_bits(high_value) or { return false }
+		if low_i >= high_i {
+			c.error('empty range: `${low_i} .. ${high_i}` will never execute',
+				low.pos().extend(high.pos()))
+		}
+		return true
+	}
+	if c.pref.backend.is_js() {
+		// JavaScript compares integer literals as Number values.
+		low_f := low_value.f64() or { return false }
+		high_f := high_value.f64() or { return false }
+		if low_f >= high_f {
+			low_str := comptime_integer_value_str(low_value) or { return false }
+			high_str := comptime_integer_value_str(high_value) or { return false }
+			c.error('empty range: `${low_str} .. ${high_str}` will never execute',
+				low.pos().extend(high.pos()))
+		}
 		return true
 	}
 	return false
@@ -554,7 +580,7 @@ fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, low_type a
 	if evaluated_low := c.eval_comptime_const_expr(low, 0) {
 		if evaluated_high := c.eval_comptime_const_expr(high, 0) {
 			if backend_has_distinct_range_conversions
-				&& (!range_value_fits_int(evaluated_low) || !range_value_fits_int(evaluated_high)) {
+				&& c.check_for_empty_backend_literal_range(low, high, evaluated_low, evaluated_high) {
 				return
 			}
 			assigned_low := c.eval_comptime_const_cast_value(evaluated_low, assignment_type) or {
