@@ -3614,7 +3614,7 @@ fn (mut t Transformer) lift_fn_literal_for_fn_param(_id flat.NodeId, node flat.N
 				kind: .param
 				value: param.value
 				typ: param_type_name
-				op: if param_type_name.starts_with('&') { .amp } else { param.op }
+				op: param.op
 				is_mut: param.is_mut
 			})
 		}
@@ -3625,7 +3625,7 @@ fn (mut t Transformer) lift_fn_literal_for_fn_param(_id flat.NodeId, node flat.N
 			kind: .param
 			value: '_unused_${i}'
 			typ: param_type_name
-			op: if param_type_name.starts_with('&') { .amp } else { .none }
+			op: .none
 		})
 	}
 	children << body_ids
@@ -11089,7 +11089,8 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			resolved_param_type := t.normalize_type_alias(param.typ)
 			t.set_var_type_with_raw(param.value, resolved_param_type, param.typ)
 			// An immutable `.amp` parameter was inferred for a pipe lambda and retains
-			// the source language's auto-dereferenced value semantics.
+			// the source language's auto-dereferenced value semantics. Adapted function
+			// literals preserve their source parameter operator instead.
 			if !param.is_mut && param.op != .amp && resolved_param_type.starts_with('&') {
 				t.mark_var_as_ref_param(param.value)
 			}

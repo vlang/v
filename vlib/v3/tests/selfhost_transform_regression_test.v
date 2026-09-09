@@ -342,6 +342,38 @@ fn main() {
 	assert out == 'posts'
 }
 
+// A generic fn literal with explicit reference parameters keeps pointer identity after its
+// parameters are specialized to the concrete callback signature. Only inferred pipe-lambda
+// pointer parameters use auto-dereferenced value equality.
+fn test_generic_fn_literal_reference_params_keep_identity() {
+	out := selfhost_regression_run('generic_fn_literal_reference_identity', 'struct Data {
+	value int
+}
+
+fn compare_data(compare fn (&Data, &Data) bool, a &Data, b &Data) bool {
+	return compare(a, b)
+}
+
+fn main() {
+	a := Data{}
+	b := Data{}
+	println(compare_data(fn [T](x &T, y &T) bool {
+		return x == y
+	}, a, b))
+	println(compare_data(fn [T](x &T, y &T) bool {
+		return x != y
+	}, a, b))
+	println(compare_data(fn [T](x &T, y &T) bool {
+		return x == y
+	}, a, a))
+	println(compare_data(fn [T](x &T, y &T) bool {
+		return x != y
+	}, a, a))
+}
+')
+	assert out.split_into_lines() == ['false', 'true', 'true', 'false']
+}
+
 // Only `for k, mut v in m` binds the map value by reference. A container that is merely a map
 // reference (`m &map[string]bool`) still binds a plain value copy, so the binding must not be
 // typed `&V` — that made every use of it emit a dereference of a non-pointer local.
