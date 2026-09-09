@@ -151,6 +151,15 @@ fn test_verify_mac0_rejects_detached_override_of_attached_payload() {
 	} else {
 		assert err.msg().contains('does not match the attached message payload')
 	}
+	mut uncomputed := Mac0Message{
+		protected: hp
+		payload:   'attached'.bytes()
+	}
+	if _ := uncomputed.compute(key, 'other'.bytes(), []u8{}) {
+		assert false, 'low-level MAC computation must not override an attached payload'
+	} else {
+		assert err.msg().contains('does not match the attached message payload')
+	}
 }
 
 fn test_mac0_rejects_undersized_hmac_keys() {

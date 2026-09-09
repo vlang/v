@@ -69,10 +69,10 @@ pub fn sign1(payload []u8, key Key, opts Sign1Options) ![]u8 {
 		unprotected: opts.unprotected
 		payload:     payload
 	}
-	msg.sign(key, signed_bytes, opts.external_aad)!
 	if opts.detached_payload != none {
 		msg.payload = none
 	}
+	msg.sign(key, signed_bytes, opts.external_aad)!
 	return msg.encode(!opts.untagged)!
 }
 
@@ -93,6 +93,7 @@ pub fn verify1(message []u8, key Key, opts Verify1Options) ![]u8 {
 // the signature; the caller is expected to have set the algorithm in
 // `protected` before calling.
 pub fn (mut m Sign1Message) sign(key Key, payload []u8, external_aad []u8) ! {
+	check_payload_matches_attached(m.payload, payload)!
 	check_protected_headers(m.protected, m.unprotected)!
 	alg := m.protected.algorithm or {
 		return error('cose: Sign1Message.sign requires protected.algorithm to be set')
@@ -111,7 +112,7 @@ pub fn (mut m Sign1Message) sign(key Key, payload []u8, external_aad []u8) ! {
 // algorithm in the unprotected bucket is accepted only when the key's
 // `alg` constraint binds it to the same value.
 pub fn (m Sign1Message) verify(key Key, payload []u8, external_aad []u8) ! {
-	check_verification_payload(m.payload, payload)!
+	check_payload_matches_attached(m.payload, payload)!
 	check_decoded_protected_unchanged(m.raw_protected, m.protected, 'Sign1')!
 	check_protected_headers(m.protected, m.unprotected)!
 	alg := verification_algorithm(m.protected, m.unprotected, key, 'Sign1')!

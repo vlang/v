@@ -500,6 +500,16 @@ pub fn Key.decode(data []u8) !Key {
 				}
 			}
 			out.validate_curve_type()!
+			if crv := out.crv {
+				width := ec2_coordinate_width(crv)!
+				x := out.x or { return error('unreachable') }
+				y := out.y or { return error('unreachable') }
+				if x.len != width || y.len != width {
+					return MalformedMessage{
+						reason: 'EC2 x and y must each be ${width} bytes for curve ${crv}'
+					}
+				}
+			}
 		}
 		.okp {
 			if !out.has_curve() || (out.x == none && out.d == none) {
@@ -551,12 +561,7 @@ fn (k Key) validate_curve_type() ! {
 
 fn (k Key) padded_ec2_coordinate(coordinate []u8) ![]u8 {
 	crv := k.crv or { return coordinate }
-	width := match crv {
-		.p_256 { 32 }
-		.p_384 { 48 }
-		.p_521 { 66 }
-		else { return error('cose: EC2 key cannot use curve ${crv}') }
-	}
+	width := ec2_coordinate_width(crv)!
 	if coordinate.len > width {
 		return error('cose: EC2 coordinate exceeds curve size')
 	}
@@ -566,6 +571,15 @@ fn (k Key) padded_ec2_coordinate(coordinate []u8) ![]u8 {
 	mut padded := []u8{len: width}
 	copy(mut padded[width - coordinate.len..], coordinate)
 	return padded
+}
+
+fn ec2_coordinate_width(crv Curve) !int {
+	return match crv {
+		.p_256 { 32 }
+		.p_384 { 48 }
+		.p_521 { 66 }
+		else { return error('cose: EC2 key cannot use curve ${crv}') }
+	}
 }
 
 // check_algorithm allows keys without an algorithm restriction, enforces a

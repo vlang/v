@@ -22,7 +22,7 @@ fn payload_for_verification(attached ?[]u8, detached ?[]u8, option_name string) 
 	}
 }
 
-fn check_verification_payload(attached ?[]u8, supplied []u8) ! {
+fn check_payload_matches_attached(attached ?[]u8, supplied []u8) ! {
 	if payload := attached {
 		if supplied != payload {
 			return MalformedMessage{

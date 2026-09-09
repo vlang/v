@@ -45,15 +45,15 @@ pub fn mac0(payload []u8, key Key, opts Mac0Options) ![]u8 {
 		unprotected: opts.unprotected
 		payload:     payload
 	}
+	if opts.detached_payload != none {
+		msg.payload = none
+	}
 	pl := if dp := opts.detached_payload {
 		dp
 	} else {
 		payload
 	}
 	msg.compute(key, pl, opts.external_aad)!
-	if opts.detached_payload != none {
-		msg.payload = none
-	}
 	return msg.encode(!opts.untagged)!
 }
 
@@ -69,6 +69,7 @@ pub fn verify_mac0(message []u8, key Key, opts VerifyMac0Options) ![]u8 {
 
 // compute computes the MAC tag and stores it in `tag`.
 pub fn (mut m Mac0Message) compute(key Key, payload []u8, external_aad []u8) ! {
+	check_payload_matches_attached(m.payload, payload)!
 	check_protected_headers(m.protected, m.unprotected)!
 	alg := m.protected.algorithm or {
 		return error('cose: Mac0Message.compute requires protected.algorithm to be set')
@@ -84,7 +85,7 @@ pub fn (mut m Mac0Message) compute(key Key, payload []u8, external_aad []u8) ! {
 
 // verify recomputes the MAC tag and checks it against the stored one.
 pub fn (m Mac0Message) verify(key Key, payload []u8, external_aad []u8) ! {
-	check_verification_payload(m.payload, payload)!
+	check_payload_matches_attached(m.payload, payload)!
 	check_decoded_protected_unchanged(m.raw_protected, m.protected, 'Mac0')!
 	check_protected_headers(m.protected, m.unprotected)!
 	alg := verification_algorithm(m.protected, m.unprotected, key, 'Mac0')!

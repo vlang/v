@@ -304,6 +304,15 @@ fn test_verify1_rejects_detached_override_of_attached_payload() {
 	} else {
 		assert err.msg().contains('does not match the attached message payload')
 	}
+	mut unsigned := Sign1Message{
+		protected: hp
+		payload:   'attached'.bytes()
+	}
+	if _ := unsigned.sign(Key.okp_private(.ed25519, x, d), 'other'.bytes(), []u8{}) {
+		assert false, 'low-level signing must not override an attached payload'
+	} else {
+		assert err.msg().contains('does not match the attached message payload')
+	}
 }
 
 fn test_sign1_untagged_roundtrip() {
@@ -456,6 +465,19 @@ fn test_key_encode_pads_ec2_coordinates_to_curve_width() {
 		assert y.len == width
 		assert x#[-1] == 1
 		assert y#[-1] == 2
+	}
+}
+
+fn test_key_decode_rejects_non_fixed_width_ec2_coordinates() {
+	for encoded in [
+		hex.decode('a40102200121581f' + '11'.repeat(31) + '225820' + '22'.repeat(32))!,
+		hex.decode('a401022001215820' + '11'.repeat(32) + '22581f' + '22'.repeat(31))!,
+	] {
+		if _ := Key.decode(encoded) {
+			assert false, 'decoded EC2 coordinates must use their fixed curve width'
+		} else {
+			assert err.msg().contains('must each be 32 bytes')
+		}
 	}
 }
 
