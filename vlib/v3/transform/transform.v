@@ -9097,9 +9097,13 @@ pub fn (mut t Transformer) transform_stmts(ids []flat.NodeId) []flat.NodeId {
 }
 
 fn (t &Transformer) non_invalidated_smartcasts(contexts []SmartcastContext) []SmartcastContext {
+	return t.non_invalidated_smartcasts_for(t.invalidated_smartcasts, contexts)
+}
+
+fn (t &Transformer) non_invalidated_smartcasts_for(invalidated map[string]bool, contexts []SmartcastContext) []SmartcastContext {
 	mut keep := []SmartcastContext{cap: contexts.len}
 	for sc in contexts {
-		if !t.smartcast_context_invalidated(sc.expr_name) {
+		if !t.smartcast_context_invalidated_for(invalidated, sc.expr_name) {
 			keep << sc
 		}
 	}
@@ -9107,10 +9111,14 @@ fn (t &Transformer) non_invalidated_smartcasts(contexts []SmartcastContext) []Sm
 }
 
 fn (t &Transformer) smartcast_context_invalidated(expr_name string) bool {
-	if expr_name.len == 0 || t.invalidated_smartcasts.len == 0 {
+	return t.smartcast_context_invalidated_for(t.invalidated_smartcasts, expr_name)
+}
+
+fn (t &Transformer) smartcast_context_invalidated_for(invalidated map[string]bool, expr_name string) bool {
+	if expr_name.len == 0 || invalidated.len == 0 {
 		return false
 	}
-	for key, _ in t.invalidated_smartcasts {
+	for key, _ in invalidated {
 		if expr_name == key || expr_name.starts_with('${key}.') {
 			return true
 		}

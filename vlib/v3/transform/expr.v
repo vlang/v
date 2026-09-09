@@ -2101,6 +2101,7 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 fn (mut t Transformer) transform_optional_wrapper_index_expr(id flat.NodeId, node flat.Node, raw_type string) flat.NodeId {
 	key := t.expr_key(id)
 	saved_smartcasts := t.smartcast_stack.clone()
+	saved_invalidated_smartcasts := t.invalidated_smartcasts.clone()
 	if key.len > 0 {
 		mut remaining_smartcasts := []SmartcastContext{cap: saved_smartcasts.len}
 		for smartcast in saved_smartcasts {
@@ -2112,7 +2113,13 @@ fn (mut t Transformer) transform_optional_wrapper_index_expr(id flat.NodeId, nod
 		t.smartcast_stack = remaining_smartcasts
 	}
 	transformed := t.transform_index_expr(id, node)
-	t.smartcast_stack = t.non_invalidated_smartcasts(saved_smartcasts)
+	mut index_invalidated_smartcasts := map[string]bool{}
+	for invalidated_key, invalidated in t.invalidated_smartcasts {
+		if invalidated && !(saved_invalidated_smartcasts[invalidated_key] or { false }) {
+			index_invalidated_smartcasts[invalidated_key] = true
+		}
+	}
+	t.smartcast_stack = t.non_invalidated_smartcasts_for(index_invalidated_smartcasts, saved_smartcasts)
 	return t.mark_optional_wrapper_expr(transformed, raw_type)
 }
 
