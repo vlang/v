@@ -311,6 +311,19 @@ fn test_outgoing_request_components_include_generated_fields() {
 	assert c.component_value('cookie')! == 'sid=abc; theme=dark'
 }
 
+fn test_incoming_http2_request_components_semicolon_combine_cookie_fields() {
+	mut req := http.Request{
+		method:  .get
+		url:     '/'
+		host:    'example.com'
+		version: .v2_0
+	}
+	req.header.add_custom('cookie', 'a=1')!
+	req.header.add_custom('cookie', 'b=2')!
+	c := request_components(req, 'https', .incoming)!
+	assert c.component_value('cookie')! == 'a=1; b=2'
+}
+
 fn test_sign_request_rejects_control_bytes_in_parameters() {
 	mut req := build_request('https://example.com/')
 	key := Key.hmac_sha256(test_secret.bytes())!
@@ -461,6 +474,24 @@ fn test_sign_response_normalizes_zero_status_to_wire_ok() {
 		status_code: 200
 	}
 	verify_response(received, key)!
+}
+
+fn test_sign_response_preserves_unassigned_three_digit_status() {
+	mut resp := http.Response{
+		status_code: 299
+	}
+	key := Key.hmac_sha256(test_secret.bytes())!
+	sign_response(mut resp, key, components: ['@status'], created: 1)!
+	verify_response(resp, key)!
+	tampered := http.Response{
+		...resp
+		status_code: 250
+	}
+	if _ := verify_response(tampered, key) {
+		assert false, 'the signature must bind the actual unassigned status code'
+	} else {
+		assert err is VerificationFailed
+	}
 }
 
 fn test_sign_response_includes_generated_content_length() {

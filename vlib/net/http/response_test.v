@@ -4,6 +4,15 @@ import compress.brotli
 import compress.gzip
 import compress.zlib
 
+fn test_normalize_server_response_preserves_unassigned_three_digit_status() {
+	mut resp := Response{
+		status_code: 299
+	}
+	normalize_server_response(mut resp, Request{})
+	assert resp.status_code == 299
+	assert resp.status_msg == 'Unassigned'
+}
+
 fn test_response_bytestr_1() {
 	resp := new_response(
 		status: .ok

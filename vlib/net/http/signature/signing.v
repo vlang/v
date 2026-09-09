@@ -82,6 +82,9 @@ fn ed25519_sign(base []u8, seed []u8) ![]u8 {
 }
 
 fn ed25519_verify(base []u8, sig []u8, key Key) !bool {
+	if sig.len != ed25519.signature_size {
+		return false
+	}
 	expected_size := if key.is_private { ed25519.seed_size } else { ed25519.public_key_size }
 	if key.bytes.len != expected_size {
 		kind := if key.is_private { 'seed' } else { 'public key' }

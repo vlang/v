@@ -5,6 +5,8 @@
 // built from raw coordinates.
 module signature
 
+import crypto.ed25519
+
 const rfc_ed25519_public_pem = '-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAJrQLj5P/89iXES9+vFgrIy29clF9CC/oPPsw3c5D0bs=
 -----END PUBLIC KEY-----'
@@ -195,6 +197,15 @@ fn test_verify_rejects_invalid_ed25519_private_seed_length() {
 		assert false, 'verification must reject an invalid private seed without panicking'
 	} else {
 		assert err is MalformedMessage
+	}
+}
+
+fn test_verify_rejects_invalid_ed25519_signature_length() {
+	key := Key.ed25519_public([]u8{len: ed25519.public_key_size})
+	if _ := verify_base('base'.bytes(), []u8{}, key, 'sig1') {
+		assert false, 'verification must reject an invalid Ed25519 signature length without panicking'
+	} else {
+		assert err is VerificationFailed
 	}
 }
 

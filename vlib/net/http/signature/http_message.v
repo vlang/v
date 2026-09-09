@@ -390,6 +390,12 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 			c.fields[k.to_lower()] = values
 		}
 	}
+	if mode == .incoming && req.version == .v2_0 {
+		cookie_values := req.header.custom_values('Cookie')
+		if cookie_values.len > 0 {
+			c.fields['cookie'] = [cookie_values.map(it.trim_space()).join('; ')]
+		}
+	}
 	if mode == .outgoing {
 		if !req.header.contains(.host) {
 			c.fields['host'] = [transport_authority(parsed)]
@@ -418,8 +424,7 @@ fn transport_authority(url urllib.URL) string {
 }
 
 fn response_components(resp http.Response) Components {
-	status := http.status_from_int(resp.status_code)
-	wire_status := if status.is_valid() {
+	wire_status := if resp.status_code >= 100 && resp.status_code <= 599 {
 		resp.status_code
 	} else if resp.status_code == 0 && resp.status_msg == '' {
 		200
