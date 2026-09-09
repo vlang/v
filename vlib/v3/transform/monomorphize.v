@@ -4531,6 +4531,9 @@ fn (t &Transformer) qualify_specialized_signature_type_text(typ string, decl Gen
 	if selective := t.selective_signature_type_symbol(decl.file, clean) {
 		return selective
 	}
+	if t.generic_arg_module_owns_type(clean, decl.module) {
+		return '${decl.module}.${clean}'
+	}
 	return clean
 }
 

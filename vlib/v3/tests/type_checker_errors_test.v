@@ -2108,6 +2108,16 @@ fn test_fn_literal_container_callback_modes_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_struct_literal_const_fn_param_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler PlainHandler\n}\nfn apply[T](options Options) {}\nfn startup[T]() {\n\tapply[int](Options{\n\t\thandler: fn (const_event &C.native_event) {}\n\t})\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	positional_matching := run_good(v3_bin,
+		'good_positional_struct_literal_const_fn_param_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler ConstHandler\n}\nfn apply[T](options Options) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\treturn apply[int](Options{fn (const_event &C.native_event) {}})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert positional_matching == 'true'
+	run_bad(v3_bin, 'bad_positional_struct_literal_const_fn_param_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler PlainHandler\n}\nfn apply[T](options Options) {}\nfn startup[T]() {\n\tapply[int](Options{fn (const_event &C.native_event) {}})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	run_bad(v3_bin, 'bad_struct_literal_outer_type_in_generic',
+		'struct Foo {}\nstruct Receiver {}\nfn (r Receiver) take(value int) {}\nfn invoke[T](receiver T) {\n\treceiver.take(Foo{})\n}\nfn main() {\n\tinvoke(Receiver{})\n}\n',
+		'cannot use')
 }
 
 fn test_fn_literal_callback_alias_lookup_uses_declaration_module() {
@@ -2150,6 +2160,16 @@ fn test_fn_literal_callback_alias_lookup_uses_declaration_module() {
 		'm/m.v':     'module m\n\nimport dep as d\n\npub struct Router {}\npub fn (mut r Router) accept(handler fn (const_event &d.Event)) bool {\n\treturn true\n}\n'
 	}, 'main.v')
 	assert direct_aliased_import == 'true'
+	local_param_type := run_good_project(v3_bin,
+		'good_imported_generic_callback_qualifies_declaration_local_param', {
+		'main.v': 'module main\n\nimport m\n\nstruct Event {}\nfn startup[T]() bool {\n\treturn m.apply[int](fn (const_event &m.Event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n'
+		'm/m.v':  'module m\n\npub struct Event {}\npub fn apply[T](callback fn (const_event &Event)) bool {\n\treturn true\n}\n'
+	}, 'main.v')
+	assert local_param_type == 'true'
+	run_bad_project(v3_bin, 'bad_imported_generic_callback_rejects_caller_local_param_homonym', {
+		'main.v': 'module main\n\nimport m\n\nstruct Event {}\nfn startup[T]() {\n\tm.apply[int](fn (const_event &Event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n'
+		'm/m.v':  'module m\n\npub struct Event {}\npub fn apply[T](callback fn (const_event &Event)) {}\n'
+	}, 'main.v', 'cannot use')
 	field_selective_import := run_good_project(v3_bin,
 		'good_callback_field_resolves_selective_import_in_declaration_file', {
 		'main.v':    'module main\n\nimport dep\nimport m\n\nfn startup[T](service T) bool {\n\treturn service.open(handler: fn (const_event &dep.Event) {})\n}\nfn main() {\n\tprintln(startup(m.Service{}).str())\n}\n'

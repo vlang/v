@@ -12354,15 +12354,32 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	if expected_type.contains('unknown') {
 		return true
 	}
+	mut handled_container_modes := false
 	if container_compatible := t.fn_literal_container_modes_compatible(arg_id, expected_type) {
-		return container_compatible
+		handled_container_modes = true
+		if !container_compatible {
+			return false
+		}
 	}
-	if !t.fn_literal_c_abi_signature_compatible(arg_id, expected_type) {
+	if !handled_container_modes && !t.fn_literal_c_abi_signature_compatible(arg_id, expected_type) {
 		return false
 	}
 	actual := t.normalize_type_alias(actual_type)
 	expected := t.normalize_type_alias(expected_type)
-	source_fn_types := t.fn_literal_source_type_texts(arg_id)
+	if handled_container_modes {
+		actual_shape :=
+			t.normalize_fn_signature_component_aliases(actual_type, 0).replace('shared ', '').replace('const&', '&').replace('const &', '&')
+		expected_shape :=
+			t.normalize_fn_signature_component_aliases(expected_type, 0).replace('shared ', '').replace('const&', '&').replace('const &', '&')
+		if actual_shape == expected_shape {
+			return true
+		}
+	}
+	source_fn_types := if handled_container_modes {
+		[]string{}
+	} else {
+		t.fn_literal_source_type_texts(arg_id)
+	}
 	mut every_source_type_exact := source_fn_types.len > 0
 	for source_fn_type in source_fn_types {
 		mut mode_expected := expected
@@ -12580,13 +12597,21 @@ fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId,
 	}
 	if node.kind == .struct_init {
 		struct_type := if node.value.len > 0 { node.value } else { source_expected }
+		info := t.lookup_struct_info(struct_type) or { StructInfo{} }
 		for i in 0 .. node.children_count {
 			field := t.a.child_node(&node, i)
 			if field.kind != .field_init || field.children_count == 0 {
 				continue
 			}
-			field_type := t.lookup_struct_field_type(struct_type, field.value) or { continue }
-			source_field_type := t.lookup_struct_field_source_type(struct_type, field.value) or {
+			field_name := if field.value.len > 0 {
+				field.value
+			} else if i < info.fields.len {
+				info.fields[i].name
+			} else {
+				continue
+			}
+			field_type := t.lookup_struct_field_type(struct_type, field_name) or { continue }
+			source_field_type := t.lookup_struct_field_source_type(struct_type, field_name) or {
 				field_type
 			}
 			expected_field_type := t.fn_type_with_compatible_source_modes(source_field_type,
