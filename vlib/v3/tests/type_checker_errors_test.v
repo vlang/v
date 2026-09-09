@@ -2061,6 +2061,12 @@ fn test_fn_literal_optional_promotion_and_interface_cast_modes_inside_generic_fn
 	run_bad(v3_bin, 'bad_callback_shaped_cast_const_fn_literal_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tr.accept(PlainHandler(fn (const_event &C.native_event) {}))\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	container_cast := run_good(v3_bin, 'good_callback_container_alias_cast_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\ntype Handlers = []ConstHandler\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handlers Handlers) bool {\n\treturn handlers.len == 1\n}\nfn startup[T]() bool {\n\tr := Router{}\n\treturn r.accept(Handlers([fn (const_event &C.native_event) {}]))\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert container_cast == 'true'
+	run_bad(v3_bin, 'bad_callback_container_alias_cast_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype Handlers = []PlainHandler\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handlers Handlers) {}\nfn startup[T]() {\n\tr := Router{}\n\tr.accept(Handlers([fn (const_event &C.native_event) {}]))\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 }
 
 fn test_fn_literal_lock_expr_callback_modes_inside_generic_fn() {

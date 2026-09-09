@@ -12551,6 +12551,10 @@ fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId,
 	if node.kind == .postfix && node.children_count == 1 {
 		return t.fn_literal_container_modes_compatible(t.a.child(&node, 0), expected_type)
 	}
+	if node.kind == .cast_expr && node.children_count == 1
+		&& t.fn_literal_cast_target_contains_callback(node.value) {
+		return t.fn_literal_container_modes_compatible(t.a.child(&node, 0), node.value)
+	}
 	source_expected := expected_type.trim_space()
 	normalized_expected := t.normalize_type_alias(source_expected)
 	if node.kind in [.array_literal, .array_init] {
@@ -12774,7 +12778,7 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 			return
 		}
 		.cast_expr {
-			if node.children_count == 1 && t.fn_literal_cast_target_is_callback_shaped(node.value) {
+			if node.children_count == 1 && t.fn_literal_cast_target_contains_callback(node.value) {
 				t.collect_fn_literal_source_type_texts(t.a.child(&node, 0), mut result)
 			}
 			return
@@ -12816,17 +12820,19 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 	result << 'fn (${params.join(', ')})${ret}'
 }
 
-fn (t &Transformer) fn_literal_cast_target_is_callback_shaped(type_name string) bool {
+fn (t &Transformer) fn_literal_cast_target_contains_callback(type_name string) bool {
 	mut clean := type_name.trim_space()
 	for clean.starts_with('?') || clean.starts_with('!') {
 		clean = clean[1..].trim_space()
 	}
-	if t.is_fn_pointer_type_name(t.normalize_type_alias(clean)) {
+	normalized := t.normalize_fn_signature_component_aliases(clean, 0)
+	if normalized.contains('fn(') || normalized.contains('fn (') {
 		return true
 	}
 	if t.is_sum_type_name(clean) {
 		for variant in t.sum_type_variants_for_index(clean) {
-			if t.is_fn_pointer_type_name(t.normalize_type_alias(variant)) {
+			normalized_variant := t.normalize_fn_signature_component_aliases(variant, 0)
+			if normalized_variant.contains('fn(') || normalized_variant.contains('fn (') {
 				return true
 			}
 		}
