@@ -2107,6 +2107,15 @@ fn test_callback_identifier_c_abi_modes_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_callback_array_append_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](handlers []PlainHandler) {}\nfn startup[T]() {\n\tmut handlers := [PlainHandler(plain_handler)]\n\thandlers << ConstHandler(const_handler)\n\tconsume[int](handlers)\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	mutator_matching := run_good(v3_bin, 'good_callback_array_mutator_calls_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](handlers []ConstHandler) bool {\n\treturn handlers.len == 3\n}\nfn startup[T]() bool {\n\tmut handlers := [ConstHandler(const_handler)]\n\thandlers.prepend(ConstHandler(const_handler))\n\thandlers.insert(1, ConstHandler(const_handler))\n\treturn consume[int](handlers)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert mutator_matching == 'true'
+	run_bad(v3_bin, 'bad_callback_array_prepend_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](handlers []PlainHandler) {}\nfn startup[T]() {\n\tmut handlers := [PlainHandler(plain_handler)]\n\thandlers.prepend(ConstHandler(const_handler))\n\tconsume[int](handlers)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	run_bad(v3_bin, 'bad_callback_array_insert_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](handlers []PlainHandler) {}\nfn startup[T]() {\n\tmut handlers := [PlainHandler(plain_handler)]\n\thandlers.insert(0, ConstHandler(const_handler))\n\tconsume[int](handlers)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 }
 
 fn test_fn_literal_nested_named_callback_param_matches_alias_inside_generic_fn() {

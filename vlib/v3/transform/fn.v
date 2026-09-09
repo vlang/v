@@ -12654,6 +12654,17 @@ fn (mut t Transformer) fn_literal_container_modes_compatible_seen(arg_id flat.No
 		}
 		return t.fn_literal_container_element_mode_compatible(rhs_id, element_expected)
 	}
+	if value_id := t.callback_array_mutation_value_id(arg_id) {
+		if compatible := t.fn_literal_container_modes_compatible_seen(value_id, expected_type, mut
+			seen)
+		{
+			return compatible
+		}
+		element_expected := t.callback_container_source_element_type(expected_type) or {
+			return none
+		}
+		return t.fn_literal_container_element_mode_compatible(value_id, element_expected)
+	}
 	mut source_expected := expected_type.trim_space()
 	for source_expected.starts_with('?') || source_expected.starts_with('!') {
 		source_expected = source_expected[1..].trim_space()
@@ -13555,6 +13566,12 @@ fn (t &Transformer) callback_local_reaching_rhs_ids(name string, before_id flat.
 				}
 				continue
 			}
+			if call_id := t.callback_array_mutation_call_targets_name(stmt_id, name) {
+				if call_id !in reaching {
+					reaching << call_id
+				}
+				continue
+			}
 			if definite_rhs_ids := t.callback_definite_assignment_rhs_ids(stmt_id, name) {
 				reaching = definite_rhs_ids.clone()
 				continue
@@ -13611,6 +13628,12 @@ fn (t &Transformer) collect_callback_nested_assignment_rhs_ids(id flat.NodeId, n
 	if t.callback_array_append_targets_name(id, name) {
 		if id !in result {
 			result << id
+		}
+		return
+	}
+	if call_id := t.callback_array_mutation_call_targets_name(id, name) {
+		if call_id !in result {
+			result << call_id
 		}
 		return
 	}
@@ -13828,6 +13851,60 @@ fn (t &Transformer) callback_array_append_targets_name(id flat.NodeId, name stri
 		return false
 	}
 	return t.callback_lvalue_base_is_ident(t.a.child(&node, 0), name)
+}
+
+fn (t &Transformer) callback_array_mutation_call_targets_name(id flat.NodeId, name string) ?flat.NodeId {
+	if name.len == 0 || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.expr_stmt, .paren] && node.children_count == 1 {
+		return t.callback_array_mutation_call_targets_name(t.a.child(&node, 0), name)
+	}
+	if node.kind != .call || node.children_count == 0 {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0
+		|| !t.callback_lvalue_base_is_ident(t.a.child(callee, 0), name) {
+		return none
+	}
+	if _ := t.callback_array_mutation_value_id(id) {
+		return id
+	}
+	return none
+}
+
+fn (t &Transformer) callback_array_mutation_value_id(id flat.NodeId) ?flat.NodeId {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .call || node.children_count < 2 {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0
+		|| callee.value !in ['prepend', 'insert'] {
+		return none
+	}
+	base_id := t.a.child(callee, 0)
+	mut base_type := t.normalize_type_alias(t.node_type(base_id)).trim_space()
+	for base_type.starts_with('&') || base_type.starts_with('shared ') {
+		base_type = if base_type.starts_with('shared ') {
+			base_type[7..].trim_space()
+		} else {
+			base_type[1..].trim_space()
+		}
+	}
+	if !base_type.starts_with('[]') {
+		return none
+	}
+	value_index := if callee.value == 'insert' { 2 } else { 1 }
+	if value_index >= int(node.children_count) {
+		return none
+	}
+	return t.a.child(&node, value_index)
 }
 
 fn (t &Transformer) callback_lvalue_base_is_ident(id flat.NodeId, name string) bool {
