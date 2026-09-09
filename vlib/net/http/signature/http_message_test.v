@@ -51,8 +51,8 @@ fn test_sign_and_verify_request_ed25519_roundtrip() {
 
 fn test_sign_and_verify_request_ecdsa_p256_roundtrip() {
 	x, y, d := p256_test_key()
-	priv_key := Key.ecdsa_p256_private(x, y, d).with_keyid('p256-key')
-	pub_key := Key.ecdsa_p256_public(x, y)
+	priv_key := Key.ecdsa_p256_private(x, y, d)!.with_keyid('p256-key')
+	pub_key := Key.ecdsa_p256_public(x, y)!
 	mut req := build_request('https://example.com/api?id=42')
 	sign_request(mut req, priv_key,
 		components: ['@method', '@target-uri', '@path', '@query', 'content-type']
@@ -75,8 +75,8 @@ fn test_sign_and_verify_request_ecdsa_p384_roundtrip() {
 	x := pub_bytes[1..49]
 	y := pub_bytes[49..97]
 	d := priv_obj.bytes()!
-	priv_key := Key.ecdsa_p384_private(x, y, d).with_keyid('p384-key')
-	pub_key := Key.ecdsa_p384_public(x, y)
+	priv_key := Key.ecdsa_p384_private(x, y, d)!.with_keyid('p384-key')
+	pub_key := Key.ecdsa_p384_public(x, y)!
 	mut req := build_request('https://example.com/foo')
 	sign_request(mut req, priv_key,
 		components: ['@method', '@target-uri']
@@ -202,16 +202,46 @@ fn test_origin_form_uses_explicit_scheme() {
 
 fn test_request_components_preserve_escaped_path() {
 	req := build_request('https://example.com/files/a%2Fb?download=1')
-	c := request_components(req, 'https')!
+	c := request_components(req, 'https', .outgoing)!
 	assert c.component_value('@path')! == '/files/a%2Fb'
 	assert c.component_value('@request-target')! == '/files/a%2Fb?download=1'
 }
 
 fn test_request_components_normalize_empty_absolute_path() {
 	req := build_request('https://example.com')
-	c := request_components(req, 'https')!
+	c := request_components(req, 'https', .outgoing)!
 	assert c.component_value('@target-uri')! == 'https://example.com/'
 	assert c.component_value('@request-target')! == '/'
+}
+
+fn test_outgoing_request_components_match_transmitted_query() {
+	req := build_request('https://example.com/search?q=a%20b&flag=&bare')
+	c := request_components(req, 'https', .outgoing)!
+	assert c.component_value('@target-uri')! == 'https://example.com/search?q=a+b&flag&bare'
+	assert c.component_value('@request-target')! == '/search?q=a+b&flag&bare'
+	assert c.component_value('@query')! == '?q=a+b&flag&bare'
+}
+
+fn test_incoming_request_components_preserve_absolute_form() {
+	req := build_request('http://example.com/search?q=a+b')
+	c := request_components(req, 'http', .incoming)!
+	assert c.component_value('@request-target')! == 'http://example.com/search?q=a+b'
+}
+
+fn test_outgoing_proxy_request_components_use_absolute_form() {
+	proxy := http.new_http_proxy('http://localhost:8080')!
+	mut req := build_request('http://example.com/search?q=a%20b')
+	req.proxy = proxy
+	c := request_components(req, 'http', .outgoing)!
+	assert c.component_value('@request-target')! == 'http://example.com/search?q=a+b'
+}
+
+fn test_outgoing_request_components_match_repeated_header_serialization() {
+	mut req := build_request('https://example.com/')
+	req.header.add_custom('Accept', 'text/html')!
+	req.header.add_custom('Accept', 'application/json')!
+	c := request_components(req, 'https', .outgoing)!
+	assert c.component_value('accept')! == 'text/html; application/json'
 }
 
 fn test_sign_request_rejects_control_bytes_in_parameters() {
@@ -270,7 +300,7 @@ fn test_sign_response_and_verify() {
 
 fn test_alg_param_must_match_key_algorithm() {
 	x, y, d := p256_test_key()
-	priv := Key.ecdsa_p256_private(x, y, d)
+	priv := Key.ecdsa_p256_private(x, y, d)!
 	c := Components{
 		method:     'GET'
 		target_uri: 'https://example.com/'

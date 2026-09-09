@@ -45,7 +45,7 @@ pub:
 // RFC 9421 §7.2.1 RECOMMENDS the parameter for replay protection.
 // Pass an explicit `created: 0` only if you know you don't want it.
 pub fn sign_request(mut req http.Request, key Key, opts SignRequestOptions) ! {
-	c := request_components(req, opts.scheme)!
+	c := request_components(req, opts.scheme, .outgoing)!
 	mut comps := opts.components.clone()
 	if comps.len == 0 {
 		comps = default_request_components(req)
@@ -86,7 +86,7 @@ pub:
 // one is checked. If `opts.now_unix > 0`, the `expires` parameter is
 // also enforced.
 pub fn verify_request(req http.Request, key Key, opts VerifyRequestOptions) ! {
-	c := request_components(req, opts.scheme)!
+	c := request_components(req, opts.scheme, .incoming)!
 	sig_input := merged_dict_field(req.header, 'Signature-Input') or {
 		return MalformedMessage{
 			reason: 'request has no Signature-Input header'
@@ -203,14 +203,16 @@ fn merged_dict_field(h http.Header, name string) ?string {
 	return values.join(', ')
 }
 
+enum RequestComponentsMode {
+	outgoing
+	incoming
+}
+
 // request_components extracts the derived-component values from an
-// http.Request. `default_scheme` is used when `req.url` is in
-// origin-form (e.g. `/foo?bar=1`, as produced by `http.parse_request*`
-// for inbound HTTP/1.1 messages); in that case `@target-uri` is
-// reconstructed as `<scheme>://<authority><url>` per RFC 9110 §7.1.
-// If `req.url` is not a valid URL we surface a typed error rather
-// than silently dropping components that depend on it.
-fn request_components(req http.Request, default_scheme string) !Components {
+// http.Request. Outgoing values match net.http's request-line and header
+// serialization, while incoming values preserve the parsed request target.
+// `default_scheme` reconstructs `@target-uri` for origin-form input.
+fn request_components(req http.Request, default_scheme string, mode RequestComponentsMode) !Components {
 	parsed := urllib.parse(req.url) or {
 		return MalformedMessage{
 			reason: 'request url "${req.url}" is not a valid URL: ${err.msg()}'
@@ -226,9 +228,30 @@ fn request_components(req http.Request, default_scheme string) !Components {
 		method: req.method.str()
 	}
 	is_origin_form := req.url.starts_with('/')
-	request_target := parsed.request_uri()
-	c.target_uri = if authority != '' && scheme != '' && (is_origin_form || parsed.host != '') {
-		'${scheme}://${authority}${request_target}'
+	escaped_path := parsed.escaped_path()
+	incoming_path := if escaped_path != '' { escaped_path } else { '/' }
+	// Keep this in sync with Request.method_and_url_to_response: it removes
+	// duplicate leading slashes and re-encodes query values before sending.
+	transport_path := '/' + escaped_path.trim_left('/')
+	transport_query := parsed.query().encode()
+	origin_target := if transport_query != '' {
+		'${transport_path}?${transport_query}'
+	} else {
+		transport_path
+	}
+	request_target := if mode == .outgoing {
+		if !isnil(req.proxy) && parsed.scheme == 'http' {
+			'${scheme}://${transport_authority(parsed)}${origin_target}'
+		} else {
+			origin_target
+		}
+	} else {
+		req.url
+	}
+	c.target_uri = if mode == .outgoing && parsed.host != '' {
+		'${scheme}://${transport_authority(parsed)}${origin_target}'
+	} else if is_origin_form && authority != '' && scheme != '' {
+		'${scheme}://${authority}${req.url}'
 	} else {
 		req.url
 	}
@@ -238,21 +261,29 @@ fn request_components(req http.Request, default_scheme string) !Components {
 	if scheme != '' {
 		c.scheme = scheme
 	}
-	escaped_path := parsed.escaped_path()
-	if escaped_path != '' {
-		c.path = escaped_path
-	} else {
-		c.path = '/'
-	}
-	c.query = if parsed.raw_query != '' { '?' + parsed.raw_query } else { '?' }
+	c.path = if mode == .outgoing { transport_path } else { incoming_path }
+	query := if mode == .outgoing { transport_query } else { parsed.raw_query }
+	c.query = if query != '' { '?' + query } else { '?' }
 	c.request_target = request_target
 	for k in req.header.keys() {
 		values := req.header.custom_values(k)
 		if values.len > 0 {
-			c.fields[k.to_lower()] = values
+			// HTTP/1.x emits repeated custom header values on one field line,
+			// separated with `; `. Sign that exact serialized representation.
+			c.fields[k.to_lower()] = if mode == .outgoing { [
+					values.join('; ')] } else { values }
 		}
 	}
 	return c
+}
+
+fn transport_authority(url urllib.URL) string {
+	hostname := url.hostname()
+	port := url.port().int()
+	if port == 0 || (url.scheme == 'http' && port == 80) || (url.scheme == 'https' && port == 443) {
+		return hostname
+	}
+	return '${hostname}:${port}'
 }
 
 fn response_components(resp http.Response) Components {

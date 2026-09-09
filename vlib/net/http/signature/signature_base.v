@@ -105,14 +105,17 @@ pub fn serialize_signature_params(p SignatureParams) !string {
 
 // signature_input_value returns the full Signature-Input value for
 // `label`, ready to be put into the header `Signature-Input: <…>`.
-// Invalid Structured Field string bytes return `MalformedMessage`.
+// Invalid labels or Structured Field string bytes return `MalformedMessage`.
 pub fn signature_input_value(label string, p SignatureParams) !string {
+	check_label(label)!
 	return label + '=' + serialize_signature_params(p)!
 }
 
 // signature_header_value returns the full Signature value for `label`,
-// ready to be put into the header `Signature: <…>`.
-pub fn signature_header_value(label string, sig []u8) string {
+// ready to be put into the header `Signature: <…>`. Invalid labels return
+// `MalformedMessage`.
+pub fn signature_header_value(label string, sig []u8) !string {
+	check_label(label)!
 	return label + '=' + encode_byte_sequence(sig)
 }
 

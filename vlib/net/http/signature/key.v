@@ -60,38 +60,43 @@ pub fn Key.ed25519_public(x []u8) Key {
 
 // Key.ecdsa_p256_private wraps an ECDSA P-256 private key as raw
 // (x, y, d) coordinates. Each coordinate is zero-padded to 32 bytes
-// (the curve byte size).
-pub fn Key.ecdsa_p256_private(x []u8, y []u8, d []u8) Key {
+// (the curve byte size). Oversized coordinates return `MalformedMessage`.
+pub fn Key.ecdsa_p256_private(x []u8, y []u8, d []u8) !Key {
 	return Key{
 		algorithm:  .ecdsa_p256_sha256
 		is_private: true
-		bytes:      concat3(x, y, d)
+		bytes:      concat3(pad_left(x, 32)!, pad_left(y, 32)!, pad_left(d, 32)!)
 	}
 }
 
-// Key.ecdsa_p256_public wraps an ECDSA P-256 public key as raw (x, y).
-pub fn Key.ecdsa_p256_public(x []u8, y []u8) Key {
+// Key.ecdsa_p256_public wraps an ECDSA P-256 public key as raw (x, y),
+// zero-padding each coordinate to 32 bytes. Oversized coordinates return
+// `MalformedMessage`.
+pub fn Key.ecdsa_p256_public(x []u8, y []u8) !Key {
 	return Key{
 		algorithm: .ecdsa_p256_sha256
-		bytes:     concat3(x, y, []u8{})
+		bytes:     concat3(pad_left(x, 32)!, pad_left(y, 32)!, []u8{})
 	}
 }
 
 // Key.ecdsa_p384_private wraps an ECDSA P-384 private key as raw
 // (x, y, d) coordinates. Each coordinate is zero-padded to 48 bytes.
-pub fn Key.ecdsa_p384_private(x []u8, y []u8, d []u8) Key {
+// Oversized coordinates return `MalformedMessage`.
+pub fn Key.ecdsa_p384_private(x []u8, y []u8, d []u8) !Key {
 	return Key{
 		algorithm:  .ecdsa_p384_sha384
 		is_private: true
-		bytes:      concat3(x, y, d)
+		bytes:      concat3(pad_left(x, 48)!, pad_left(y, 48)!, pad_left(d, 48)!)
 	}
 }
 
-// Key.ecdsa_p384_public wraps an ECDSA P-384 public key as raw (x, y).
-pub fn Key.ecdsa_p384_public(x []u8, y []u8) Key {
+// Key.ecdsa_p384_public wraps an ECDSA P-384 public key as raw (x, y),
+// zero-padding each coordinate to 48 bytes. Oversized coordinates return
+// `MalformedMessage`.
+pub fn Key.ecdsa_p384_public(x []u8, y []u8) !Key {
 	return Key{
 		algorithm: .ecdsa_p384_sha384
-		bytes:     concat3(x, y, []u8{})
+		bytes:     concat3(pad_left(x, 48)!, pad_left(y, 48)!, []u8{})
 	}
 }
 
@@ -261,23 +266,19 @@ fn ecdsa_key_from_xy_d(xy []u8, d []u8, is_priv bool) !Key {
 	coord := (xy.len - 1) / 2
 	x := xy[1..1 + coord]
 	y := xy[1 + coord..1 + coord * 2]
-	// `ecdsa.PrivateKey.bytes()` returns the scalar in minimal-length form
-	// (no leading zeros), so we pad it to the curve byte size; the wire
-	// layout that `ecdsa_sign` expects is fixed-width.
-	priv_d := if is_priv { pad_left(d, coord)! } else { d }
 	return match coord {
 		32 {
 			if is_priv {
-				Key.ecdsa_p256_private(x, y, priv_d)
+				Key.ecdsa_p256_private(x, y, d)!
 			} else {
-				Key.ecdsa_p256_public(x, y)
+				Key.ecdsa_p256_public(x, y)!
 			}
 		}
 		48 {
 			if is_priv {
-				Key.ecdsa_p384_private(x, y, priv_d)
+				Key.ecdsa_p384_private(x, y, d)!
 			} else {
-				Key.ecdsa_p384_public(x, y)
+				Key.ecdsa_p384_public(x, y)!
 			}
 		}
 		else {
@@ -294,7 +295,7 @@ fn pad_left(b []u8, width int) ![]u8 {
 	}
 	if b.len > width {
 		return MalformedMessage{
-			reason: 'ECDSA scalar wider (${b.len}) than curve coordinate size (${width})'
+			reason: 'ECDSA value wider (${b.len}) than curve coordinate size (${width})'
 		}
 	}
 	mut out := []u8{len: width}

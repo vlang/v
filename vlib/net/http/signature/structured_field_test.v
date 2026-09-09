@@ -126,8 +126,24 @@ fn test_verify_accepts_non_canonical_param_order() {
 	base := '"@method": POST\n"@signature-params": ("@method");keyid="k1";created=42'
 	sig := sign_base(base.bytes(), key)!
 	sig_input := 'sig1=("@method");keyid="k1";created=42'
-	sig_header := signature_header_value('sig1', sig)
+	sig_header := signature_header_value('sig1', sig)!
 	verify(c, sig_input, sig_header, 'sig1', key)!
+}
+
+fn test_public_header_serializers_reject_invalid_labels() {
+	p := SignatureParams{
+		components: ['@method']
+	}
+	if _ := signature_input_value('safe\r\nInjected', p) {
+		assert false, 'Signature-Input labels must use the Structured Field key grammar'
+	} else {
+		assert err is MalformedMessage
+	}
+	if _ := signature_header_value('safe\r\nInjected', 'signature'.bytes()) {
+		assert false, 'Signature labels must use the Structured Field key grammar'
+	} else {
+		assert err is MalformedMessage
+	}
 }
 
 fn test_signature_base_string_rejects_duplicate_components() {

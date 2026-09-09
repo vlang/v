@@ -142,6 +142,23 @@ fn test_pad_left_pads_to_width_and_rejects_overflow() {
 	}
 }
 
+fn test_raw_ecdsa_constructors_pad_coordinates() {
+	p256 := Key.ecdsa_p256_private([u8(1)], [u8(2)], [u8(3)])!
+	assert p256.bytes.len == 96
+	assert p256.bytes[31] == 1
+	assert p256.bytes[63] == 2
+	assert p256.bytes[95] == 3
+	p384 := Key.ecdsa_p384_public([u8(1)], [u8(2)])!
+	assert p384.bytes.len == 96
+	assert p384.bytes[47] == 1
+	assert p384.bytes[95] == 2
+	if _ := Key.ecdsa_p256_public([]u8{len: 33}, [u8(1)]) {
+		assert false, 'raw constructors must reject oversized coordinates'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
 fn test_from_pem_rejects_garbage() {
 	if _ := Key.from_pem('not a PEM block') {
 		assert false, 'must reject non-PEM input'

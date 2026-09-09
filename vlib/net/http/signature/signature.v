@@ -56,7 +56,7 @@ pub fn sign(c Components, p SignatureParams, key Key, label string) !SignedHeade
 	sig := sign_base(base.bytes(), key)!
 	return SignedHeaders{
 		signature_input: signature_input_value(label, p2)!
-		signature:       signature_header_value(label, sig)
+		signature:       signature_header_value(label, sig)!
 	}
 }
 

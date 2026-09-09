@@ -117,7 +117,7 @@ fn test_b25_hmac_sha256_matches_rfc() {
 fn test_b24_ecdsa_p256_verify_rfc_signature() {
 	x := b64u_decode('qIVYZVLCrPZHGHjP17CTW0_-D9Lfw0EkjqF7xB4FivA')
 	y := b64u_decode('Mc4nN9LTDOBhfoUeg8Ye9WedFRhnZXZJA12Qp0zZ6F0')
-	pub_key := Key.ecdsa_p256_public(x, y)
+	pub_key := Key.ecdsa_p256_public(x, y)!
 	c := b24_components()
 	verify(c,
 		'sig-b24=("@status" "content-type" "content-digest" "content-length");created=1618884473;keyid="test-key-ecc-p256"',
@@ -129,8 +129,8 @@ fn test_b24_ecdsa_p256_sign_verify_roundtrip() {
 	x := b64u_decode('qIVYZVLCrPZHGHjP17CTW0_-D9Lfw0EkjqF7xB4FivA')
 	y := b64u_decode('Mc4nN9LTDOBhfoUeg8Ye9WedFRhnZXZJA12Qp0zZ6F0')
 	d := b64u_decode('UpuF81l-kOxbjf7T4mNSv0r5tN67Gim7rnf6EFpcYDs')
-	priv := Key.ecdsa_p256_private(x, y, d)
-	pub_key := Key.ecdsa_p256_public(x, y)
+	priv := Key.ecdsa_p256_private(x, y, d)!
+	pub_key := Key.ecdsa_p256_public(x, y)!
 	c := b24_components()
 	p := SignatureParams{
 		components: ['@status', 'content-type', 'content-digest', 'content-length']
