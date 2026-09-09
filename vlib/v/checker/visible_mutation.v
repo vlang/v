@@ -98,6 +98,9 @@ fn (mut c Checker) node_captures_or_stores_pointer_param(node ast.Node, name str
 			if node is ast.FnDecl {
 				return false
 			}
+			if node is ast.Return && node.exprs.any(c.return_expr_contains_pointer_param(it, name)) {
+				return true
+			}
 			if node is ast.AssignStmt {
 				for i, right in node.right {
 					if !is_visible_root_mutation(c.expr_mutation_visibility(right, name, typ)) {
@@ -119,6 +122,76 @@ fn (mut c Checker) node_captures_or_stores_pointer_param(node ast.Node, name str
 		}
 	}
 	return false
+}
+
+fn (mut c Checker) return_expr_contains_pointer_param(expr ast.Expr, name string) bool {
+	reduced := expr.remove_par()
+	return match reduced {
+		ast.Ident {
+			reduced.name == name
+		}
+		ast.CastExpr {
+			c.return_expr_contains_pointer_param(reduced.expr, name)
+				|| (reduced.has_arg && c.return_expr_contains_pointer_param(reduced.arg, name))
+		}
+		ast.AsCast {
+			c.return_expr_contains_pointer_param(reduced.expr, name)
+		}
+		ast.UnsafeExpr {
+			c.return_expr_contains_pointer_param(reduced.expr, name)
+		}
+		ast.IfExpr {
+			reduced.branches.any(c.stmts_return_pointer_param(it.stmts, name))
+		}
+		ast.MatchExpr {
+			reduced.branches.any(c.stmts_return_pointer_param(it.stmts, name))
+		}
+		ast.ArrayInit {
+			reduced.exprs.any(c.return_expr_contains_pointer_param(it, name))
+				|| (reduced.has_update_expr
+				&& c.return_expr_contains_pointer_param(reduced.update_expr, name))
+		}
+		ast.MapInit {
+			reduced.keys.any(c.return_expr_contains_pointer_param(it, name))
+				|| reduced.vals.any(c.return_expr_contains_pointer_param(it, name))
+				|| (reduced.has_update_expr
+				&& c.return_expr_contains_pointer_param(reduced.update_expr, name))
+		}
+		ast.StructInit {
+			reduced.init_fields.any(c.return_expr_contains_pointer_param(it.expr, name))
+				|| (reduced.has_update_expr
+				&& c.return_expr_contains_pointer_param(reduced.update_expr, name))
+		}
+		ast.SelectorExpr {
+			c.type_may_share_mutable_storage(reduced.typ)
+				&& c.return_expr_contains_pointer_param(reduced.expr, name)
+		}
+		ast.IndexExpr {
+			c.type_may_share_mutable_storage(reduced.typ)
+				&& c.return_expr_contains_pointer_param(reduced.left, name)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut c Checker) stmts_return_pointer_param(stmts []ast.Stmt, name string) bool {
+	if stmts.len == 0 {
+		return false
+	}
+	last_stmt := stmts.last()
+	return match last_stmt {
+		ast.ExprStmt {
+			c.return_expr_contains_pointer_param(last_stmt.expr, name)
+		}
+		ast.Return {
+			last_stmt.exprs.any(c.return_expr_contains_pointer_param(it, name))
+		}
+		else {
+			false
+		}
+	}
 }
 
 fn (mut c Checker) stmt_has_visible_mutation(stmt ast.Stmt, root_name string, root_type ast.Type) bool {

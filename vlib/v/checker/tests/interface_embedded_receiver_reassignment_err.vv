@@ -224,6 +224,7 @@ fn main() {
 	bound_reader := pointer_element.return_bound_read_method()
 	_ = bound_reader()
 	_ = pointer_element.return_or_pointer_receiver()
+	_ = pointer_element.return_pointer_holder_through_helper()
 	pointer_element.spawn_pointer_read()
 }
 
@@ -299,4 +300,14 @@ fn maybe_pointer_node() ?&PointerNode {
 
 fn (node &PointerNode) return_or_pointer_receiver() &PointerNode {
 	return maybe_pointer_node() or { node }
+}
+
+fn (node &PointerNode) return_pointer_holder_through_helper() PointerHolder {
+	return wrap_pointer_node(node)
+}
+
+fn wrap_pointer_node(node &PointerNode) PointerHolder {
+	return PointerHolder{
+		node: node
+	}
 }
