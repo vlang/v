@@ -12633,6 +12633,18 @@ fn (mut t Transformer) fn_literal_container_modes_compatible_seen(arg_id flat.No
 			expected_type) or { return none }
 		return t.fn_literal_container_element_mode_compatible(t.a.child(&node, 1), value_expected)
 	}
+	if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
+		rhs_id := t.a.child(&node, 1)
+		if compatible := t.fn_literal_container_modes_compatible_seen(rhs_id, expected_type, mut
+			seen)
+		{
+			return compatible
+		}
+		element_expected := t.callback_container_source_element_type(expected_type) or {
+			return none
+		}
+		return t.fn_literal_container_element_mode_compatible(rhs_id, element_expected)
+	}
 	mut source_expected := expected_type.trim_space()
 	for source_expected.starts_with('?') || source_expected.starts_with('!') {
 		source_expected = source_expected[1..].trim_space()
@@ -12817,7 +12829,11 @@ fn (t &Transformer) callback_index_assignment_expected_type(lhs_id flat.NodeId, 
 	} else {
 		expected_type
 	}
-	mut container := t.callback_source_alias_expansion(base_expected, 0).trim_space()
+	return t.callback_container_source_element_type(base_expected)
+}
+
+fn (t &Transformer) callback_container_source_element_type(container_type string) ?string {
+	mut container := t.callback_source_alias_expansion(container_type, 0).trim_space()
 	for container.starts_with('?') || container.starts_with('!') || container.starts_with('&')
 		|| container.starts_with('shared ') {
 		container = if container.starts_with('shared ') {
@@ -13123,6 +13139,10 @@ fn (t &Transformer) callback_local_reaching_rhs_ids(name string, before_id flat.
 				}
 				continue
 			}
+			if definite_rhs_ids := t.callback_definite_assignment_rhs_ids(stmt_id, name) {
+				reaching = definite_rhs_ids.clone()
+				continue
+			}
 			mut nested := []flat.NodeId{}
 			t.collect_callback_nested_assignment_rhs_ids(stmt_id, name, mut nested)
 			for rhs_id in nested {
@@ -13166,6 +13186,12 @@ fn (t &Transformer) collect_callback_nested_assignment_rhs_ids(id flat.NodeId, n
 		}
 		return
 	}
+	if t.callback_array_append_targets_name(id, name) {
+		if id !in result {
+			result << id
+		}
+		return
+	}
 	if node.kind == .assign && node.op == .assign {
 		if rhs_ids := t.callback_direct_assignment_rhs_ids(node, name) {
 			for rhs_id in rhs_ids {
@@ -13195,6 +13221,95 @@ fn (t &Transformer) collect_callback_nested_assignment_rhs_ids(id flat.NodeId, n
 	}
 }
 
+fn (t &Transformer) callback_definite_assignment_rhs_ids(id flat.NodeId, name string) ?[]flat.NodeId {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .assign {
+		if rhs_ids := t.callback_direct_assignment_rhs_ids(node, name) {
+			return rhs_ids
+		}
+	}
+	if node.kind == .if_expr {
+		if node.children_count != 3 {
+			return none
+		}
+		then_rhs := t.callback_definite_assignment_rhs_ids(t.a.child(&node, 1), name) or {
+			return none
+		}
+		else_rhs := t.callback_definite_assignment_rhs_ids(t.a.child(&node, 2), name) or {
+			return none
+		}
+		mut result := then_rhs.clone()
+		for rhs_id in else_rhs {
+			if rhs_id !in result {
+				result << rhs_id
+			}
+		}
+		return result
+	}
+	if node.kind == .match_stmt {
+		if node.children_count < 2 {
+			return none
+		}
+		// Invalid non-exhaustive matches have already been rejected by the type checker.
+		mut result := []flat.NodeId{}
+		for i in 1 .. node.children_count {
+			branch := t.a.child(&node, i)
+			branch_rhs := t.callback_definite_assignment_rhs_ids(branch, name) or { return none }
+			for rhs_id in branch_rhs {
+				if rhs_id !in result {
+					result << rhs_id
+				}
+			}
+		}
+		return if result.len > 0 { result } else { none }
+	}
+	if node.kind !in [.block, .match_branch] {
+		return none
+	}
+	start := if node.kind == .match_branch && node.value != 'else' { node.value.int() } else { 0 }
+	mut result := []flat.NodeId{}
+	mut assigned := false
+	mut name_shadowed := false
+	for i in start .. node.children_count {
+		child_id := t.a.child(&node, i)
+		child := t.a.nodes[int(child_id)]
+		if child.kind == .decl_assign {
+			if _ := t.callback_direct_assignment_rhs_ids(child, name) {
+				name_shadowed = true
+			}
+			continue
+		}
+		if name_shadowed {
+			continue
+		}
+		if child.kind == .assign {
+			if rhs_ids := t.callback_direct_assignment_rhs_ids(child, name) {
+				result = rhs_ids.clone()
+				assigned = true
+				continue
+			}
+		}
+		if rhs_ids := t.callback_definite_assignment_rhs_ids(child_id, name) {
+			result = rhs_ids.clone()
+			assigned = true
+			continue
+		}
+		if assigned {
+			mut nested := []flat.NodeId{}
+			t.collect_callback_nested_assignment_rhs_ids(child_id, name, mut nested)
+			for rhs_id in nested {
+				if rhs_id !in result {
+					result << rhs_id
+				}
+			}
+		}
+	}
+	return if assigned { result } else { none }
+}
+
 fn (t &Transformer) callback_index_assignment_targets_name(id flat.NodeId, name string) bool {
 	if name.len == 0 || int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
@@ -13203,10 +13318,21 @@ fn (t &Transformer) callback_index_assignment_targets_name(id flat.NodeId, name 
 	if node.kind != .index_assign || node.op != .assign || node.children_count == 0 {
 		return false
 	}
-	return t.callback_index_base_is_ident(t.a.child(&node, 0), name)
+	return t.callback_lvalue_base_is_ident(t.a.child(&node, 0), name)
 }
 
-fn (t &Transformer) callback_index_base_is_ident(id flat.NodeId, name string) bool {
+fn (t &Transformer) callback_array_append_targets_name(id flat.NodeId, name string) bool {
+	if name.len == 0 || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .infix || node.op != .left_shift || node.children_count < 2 {
+		return false
+	}
+	return t.callback_lvalue_base_is_ident(t.a.child(&node, 0), name)
+}
+
+fn (t &Transformer) callback_lvalue_base_is_ident(id flat.NodeId, name string) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
@@ -13215,10 +13341,10 @@ fn (t &Transformer) callback_index_base_is_ident(id flat.NodeId, name string) bo
 		return node.value == name
 	}
 	if node.kind == .index && node.children_count > 0 {
-		return t.callback_index_base_is_ident(t.a.child(&node, 0), name)
+		return t.callback_lvalue_base_is_ident(t.a.child(&node, 0), name)
 	}
 	if node.kind == .paren && node.children_count == 1 {
-		return t.callback_index_base_is_ident(t.a.child(&node, 0), name)
+		return t.callback_lvalue_base_is_ident(t.a.child(&node, 0), name)
 	}
 	return false
 }
