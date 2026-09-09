@@ -36,6 +36,22 @@ struct CInlineAsmBlock {
 fn gen_map_index_lvalue(mut g FlatGen, node flat.Node, base_id flat.NodeId, map_type types.Map, base_is_pointer bool) {
 	c_key := g.map_key_temp_c_type(map_type.key_type)
 	c_val := g.tc.c_type(map_type.value_type)
+	if default_init_unalias_type(map_type.value_type) is types.Map {
+		map_tmp := g.tmp_name()
+		key_tmp := g.tmp_name()
+		value_tmp := g.tmp_name()
+		g.write('(*({ map* ${map_tmp} = ')
+		if !base_is_pointer {
+			g.write('&')
+		}
+		g.gen_expr(base_id)
+		g.write('; void* ${key_tmp} = &(${c_key}[]){')
+		g.gen_expr(g.a.child(&node, 1))
+		g.write('}; void* ${value_tmp} = map__get_check(${map_tmp}, ${key_tmp}); if (!${value_tmp}) { ${value_tmp} = map__get_or_set(${map_tmp}, ${key_tmp}, ')
+		g.gen_default_value_addr_for_type(map_type.value_type)
+		g.write('); } (${c_val}*)${value_tmp}; }))')
+		return
+	}
 	g.write('(*(${c_val}*)map__get_or_set(')
 	if !base_is_pointer {
 		g.write('&')

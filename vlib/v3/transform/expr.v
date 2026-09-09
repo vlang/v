@@ -3322,6 +3322,11 @@ fn (t &Transformer) map_value_needs_element_eq(value_type string) bool {
 		return false
 	}
 	clean := t.membership_container_type(value_type)
+	// Float equality is semantic: +0.0 and -0.0 compare equal even though their
+	// representations differ, so the raw map equality helper cannot compare them.
+	if clean in ['f32', 'f64'] {
+		return true
+	}
 	if t.is_fixed_array_type(clean) {
 		return true
 	}
@@ -3452,24 +3457,21 @@ fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, r
 	lhs_value := t.stable_transformed_expr_for_reuse(lhs, map_type, 'map_eq_lhs')
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, map_type, 'map_eq_rhs')
 	result_name := t.new_temp('map_eq')
-	zero_name := t.new_temp('map_eq_zero')
 	key_name := t.new_temp('map_eq_key')
 	lhs_val_name := t.new_temp('map_eq_val')
 	len_eq := t.make_infix(.eq, t.make_selector(lhs_value, 'len', 'int'), t.make_selector(rhs_value,
 		'len', 'int'))
 	t.pending_stmts << t.make_decl_assign_typed(result_name, len_eq, 'bool')
-	t.pending_stmts << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(value_type),
-		value_type)
 	t.set_var_type(key_name, t.map_key_storage_type(key_type))
 	t.set_var_type(lhs_val_name, value_type)
 	key_ident := t.make_ident(key_name)
 	val_ident := t.make_ident(lhs_val_name)
 	rhs_exists := t.make_map_exists_expr(rhs_value, map_type, key_name)
-	rhs_val := t.make_map_get_expr(rhs_value, map_type, key_name, zero_name, value_type)
+	mut body := []flat.NodeId{}
+	rhs_val := t.make_map_lookup_value(rhs_value, map_type, key_name, value_type, mut body)
 	pending_start := t.pending_stmts.len
-	value_eq := t.make_membership_eq_expr_with_seen(t.make_ident(lhs_val_name), rhs_val,
-		value_type, seen)
-	mut body := t.pending_stmts[pending_start..].clone()
+	value_eq := t.make_membership_eq_expr_with_seen(t.make_ident(lhs_val_name), rhs_val, value_type, seen)
+	body << t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	missing := t.make_prefix(.not, t.make_paren(rhs_exists))
 	value_diff := t.make_prefix(.not, t.make_paren(value_eq))

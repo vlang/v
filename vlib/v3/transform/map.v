@@ -1732,6 +1732,32 @@ fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type string,
 	return result
 }
 
+// make_map_lookup_value builds a map lookup and appends its setup. Map defaults
+// allocate their runtime header, so map-valued lookups construct one only for a missing key.
+fn (mut t Transformer) make_map_lookup_value(map_expr flat.NodeId, base_type string, key_name string, value_type string, mut prelude []flat.NodeId) flat.NodeId {
+	if t.clean_map_type(value_type).starts_with('map[') {
+		ptr_name := t.new_temp('map_value_ptr')
+		prelude << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr, base_type, key_name), 'voidptr')
+		clean_value_type := t.normalize_type_alias(value_type)
+		found := t.make_prefix(.mul, t.make_cast('&${clean_value_type}', t.make_ident(ptr_name), '&${clean_value_type}'))
+		cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
+		then_block := t.make_block([t.make_expr_stmt(found)])
+		else_block := t.make_block([
+			t.make_expr_stmt(t.zero_value_for_type(value_type)),
+		])
+		value := t.make_if(cond, then_block, else_block)
+		t.set_node_typ(int(value), value_type)
+		// Nested indexing needs an addressable map base. Materializing the lazy
+		// conditional also keeps the checked pointer from escaping its setup.
+		result_name := t.new_temp('map_value')
+		prelude << t.make_decl_assign_typed(result_name, value, value_type)
+		return t.make_ident(result_name)
+	}
+	zero_name := t.new_temp('map_zero')
+	prelude << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(value_type), value_type)
+	return t.make_map_get_expr(map_expr, base_type, key_name, zero_name, value_type)
+}
+
 fn (t &Transformer) fixed_array_type_contains_map(typ string) bool {
 	clean := t.normalize_type_alias(typ).trim_space()
 	if clean.starts_with('map[') {
@@ -1912,10 +1938,7 @@ fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) 
 		}
 		return result
 	}
-	zero_name := t.new_temp('map_zero')
-	t.pending_stmts << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(value_type),
-		value_type)
-	value := t.make_map_get_expr(map_expr, base_type, key_name, zero_name, value_type)
+	value := t.make_map_lookup_value(map_expr, base_type, key_name, value_type, mut t.pending_stmts)
 	if cleanup_key || source_is_owned_temporary {
 		result_name := t.new_temp('map_index_value')
 		t.pending_stmts << t.make_decl_assign_typed(result_name, value, value_type)
@@ -2838,11 +2861,8 @@ fn map_compound_to_infix_op(op flat.Op) ?flat.Op {
 
 // load_map_index_current reads load map index current input for transform.
 fn (mut t Transformer) load_map_index_current(info MapIndexInfo, map_expr flat.NodeId, key_name string, mut result []flat.NodeId) string {
-	zero_name := t.new_temp('map_zero')
 	current_name := t.new_temp('map_val')
-	result << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(info.value_type),
-		info.value_type)
-	get_expr := t.make_map_get_expr(map_expr, info.base_type, key_name, zero_name, info.value_type)
+	get_expr := t.make_map_lookup_value(map_expr, info.base_type, key_name, info.value_type, mut result)
 	result << t.make_decl_assign_typed(current_name, get_expr, info.value_type)
 	return current_name
 }

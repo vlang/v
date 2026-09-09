@@ -8523,7 +8523,6 @@ fn (mut t Transformer) lower_typed_map_str(map_expr flat.NodeId, map_type string
 	keys_name := t.new_temp('map_str_keys')
 	idx_name := t.new_temp('map_str_idx')
 	key_name := t.new_temp('map_str_key')
-	zero_name := t.new_temp('map_str_zero')
 	value_name := t.new_temp('map_str_value')
 	key_kind := t.map_str_kind_for_type(key_type)
 	value_kind := t.map_str_kind_for_type(value_type)
@@ -8537,12 +8536,10 @@ fn (mut t Transformer) lower_typed_map_str(map_expr flat.NodeId, map_type string
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	key_expr := t.array_get_value(t.make_ident(keys_name), t.make_ident(idx_name), key_storage_type)
 	key_decl := t.make_decl_assign_typed(key_name, key_expr, key_storage_type)
-	zero_decl := t.make_decl_assign_typed(zero_name, t.zero_value_for_type(value_type), value_type)
-	value_expr := t.make_map_get_expr(base, map_type, key_name, zero_name, value_type)
-	value_decl := t.make_decl_assign_typed(value_name, value_expr, value_type)
 	mut loop_body := []flat.NodeId{}
 	loop_body << key_decl
-	loop_body << zero_decl
+	value_expr := t.make_map_lookup_value(base, map_type, key_name, value_type, mut loop_body)
+	value_decl := t.make_decl_assign_typed(value_name, value_expr, value_type)
 	loop_body << value_decl
 	sep_cond := t.make_infix(.gt, t.make_ident(idx_name), t.make_int_literal(0))
 	sep_stmt := t.append_string(result_name, t.make_string_literal(', '))

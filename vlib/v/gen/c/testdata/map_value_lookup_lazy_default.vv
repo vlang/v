@@ -1,0 +1,22 @@
+// vtest vflags: -old-compiler
+
+fn read_present(values map[string]map[string]int) int {
+	return values['present'].len
+}
+
+fn set_nested(mut values map[string]map[string]int) {
+	values['created']['answer'] = 42
+}
+
+fn main() {
+	mut values := {
+		'present': {
+			'answer': 7
+		}
+	}
+	for _ in 0 .. 100 {
+		assert read_present(values) == 1
+	}
+	set_nested(mut values)
+	assert values['created']['answer'] == 42
+}
