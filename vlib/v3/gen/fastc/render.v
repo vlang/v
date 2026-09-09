@@ -110,8 +110,9 @@ fn (g &Parser) render_map_expression(tokens []FastcExpressionToken) ?FastcRender
 		// The Option temp uses the reserved `__vf_` prefix, NOT a plain name like `lookup`: a
 		// source variable of that name used in the key (`m[lookup]`) would otherwise be shadowed by
 		// this declaration and read uninitialized inside its own initializer.
+		missing_value := g.map_lookup_missing_value_expression(lookup.typ)
 		return FastcRenderedExpression{
-			source: '({ Option __vf_ml = (${lookup.source}); __vf_ml.state ? (${lookup.typ}){0} : *((${lookup.typ} *)__vf_ml.data); })'
+			source: '({ Option __vf_ml = (${lookup.source}); __vf_ml.state ? ${missing_value} : *((${lookup.typ} *)__vf_ml.data); })'
 			typ: lookup.typ
 		}
 	}
@@ -206,8 +207,9 @@ fn (g &Parser) render_map_expression(tokens []FastcExpressionToken) ?FastcRender
 		global_key := fastc_global_key(g.module_name, tokens[0].lit)
 		map_source := g.globals[global_key] or { tokens[0].lit }
 		map_address := if map_type.ends_with('*') { map_source } else { '&${map_source}' }
+		missing_value := g.map_lookup_missing_value_expression(value_type)
 		return FastcRenderedExpression{
-			source: '({ ${key_type} __vf_k = (${key_source}); ${value_type} __vf_map_zero = (${value_type}){0}; *((${value_type} *)builtin__map_get((map *)${map_address}, &__vf_k, &__vf_map_zero)); })'
+			source: '({ ${key_type} __vf_k = (${key_source}); ${value_type} *__vf_map_value = (${value_type} *)builtin__map_get_check((map *)${map_address}, &__vf_k); __vf_map_value == NULL ? ${missing_value} : *__vf_map_value; })'
 			typ: value_type
 		}
 	}
@@ -3957,6 +3959,23 @@ fn (g &Parser) map_runtime_functions(key_type string) (string, string, string, s
 		resolved_type = if g.enum_flags[enum_key] { 'u64' } else { 'int' }
 	}
 	return fastc_map_runtime_functions(resolved_type, g.prefs.target.pointer_bits)
+}
+
+// map_lookup_missing_value_expression gives map values a usable empty runtime header and uses
+// the ordinary C zero value for every other lookup value type.
+fn (g &Parser) map_lookup_missing_value_expression(value_type string) string {
+	zero := '(${value_type}){0}'
+	normalized := fastc_normalize_inferred_type(value_type)
+	if normalized.ends_with('*') {
+		return zero
+	}
+	map_type := g.underlying_alias_type(normalized)
+	if map_type.ends_with('*') {
+		return zero
+	}
+	key_type, nested_value_type := g.map_key_value_types(map_type) or { return zero }
+	hash_fn, eq_fn, clone_fn, free_fn := g.map_runtime_functions(key_type)
+	return '(${value_type})builtin__new_map(sizeof(${fastc_runtime_c_type(key_type)}), sizeof(${fastc_runtime_c_type(nested_value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn})'
 }
 
 fn (g &Parser) render_explicit_generic_call_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
