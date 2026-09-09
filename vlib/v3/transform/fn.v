@@ -11088,7 +11088,9 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			t.pointer_value_rvalues.delete(param.value)
 			resolved_param_type := t.normalize_type_alias(param.typ)
 			t.set_var_type_with_raw(param.value, resolved_param_type, param.typ)
-			if !param.is_mut && resolved_param_type.starts_with('&') {
+			// An immutable `.amp` parameter was inferred for a pipe lambda and retains
+			// the source language's auto-dereferenced value semantics.
+			if !param.is_mut && param.op != .amp && resolved_param_type.starts_with('&') {
 				t.mark_var_as_ref_param(param.value)
 			}
 			if t.is_fixed_array_type(param.typ) {
