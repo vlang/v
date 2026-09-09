@@ -143,6 +143,7 @@ pub fn Key.symmetric(k []u8) Key {
 
 // encode returns the canonical CBOR encoding of the COSE_Key.
 pub fn (k Key) encode() ![]u8 {
+	k.validate_curve_type()!
 	mut pairs := []cbor.MapPair{cap: 8}
 	pairs << cbor.MapPair{
 		key:   cbor.new_int(key_label_kty)
@@ -233,9 +234,10 @@ pub fn (k Key) encode() ![]u8 {
 				value: curve_value
 			}
 			if x := k.x {
+				encoded_x := if k.kty == .ec2 { k.padded_ec2_coordinate(x)! } else { x }
 				pairs << cbor.MapPair{
 					key:   cbor.new_int(key_label_x)
-					value: cbor.new_bytes(x)
+					value: cbor.new_bytes(encoded_x)
 				}
 			} else if k.kty == .ec2 || k.d == none {
 				return error('cose: ${k.kty} key missing x parameter')
@@ -244,7 +246,7 @@ pub fn (k Key) encode() ![]u8 {
 				y := k.y or { return error('cose: EC2 key missing y parameter') }
 				pairs << cbor.MapPair{
 					key:   cbor.new_int(key_label_y)
-					value: cbor.new_bytes(y)
+					value: cbor.new_bytes(k.padded_ec2_coordinate(y)!)
 				}
 			}
 			if d := k.d {
@@ -497,6 +499,7 @@ pub fn Key.decode(data []u8) !Key {
 					reason: 'EC2 COSE_Key requires crv, x, and y parameters'
 				}
 			}
+			out.validate_curve_type()!
 		}
 		.okp {
 			if !out.has_curve() || (out.x == none && out.d == none) {
@@ -504,6 +507,7 @@ pub fn Key.decode(data []u8) !Key {
 					reason: 'OKP COSE_Key requires crv and x or d parameters'
 				}
 			}
+			out.validate_curve_type()!
 		}
 		.rsa {}
 	}
@@ -526,6 +530,42 @@ fn (k Key) encoded_curve() !cbor.Value {
 		return cbor.new_text(raw_curve_text)
 	}
 	return error('cose: ${k.kty} key missing crv parameter')
+}
+
+fn (k Key) validate_curve_type() ! {
+	crv := k.crv or { return }
+	match k.kty {
+		.ec2 {
+			if crv == .ed25519 {
+				return error('cose: EC2 key cannot use curve ${crv}')
+			}
+		}
+		.okp {
+			if crv != .ed25519 {
+				return error('cose: OKP key cannot use curve ${crv}')
+			}
+		}
+		else {}
+	}
+}
+
+fn (k Key) padded_ec2_coordinate(coordinate []u8) ![]u8 {
+	crv := k.crv or { return coordinate }
+	width := match crv {
+		.p_256 { 32 }
+		.p_384 { 48 }
+		.p_521 { 66 }
+		else { return error('cose: EC2 key cannot use curve ${crv}') }
+	}
+	if coordinate.len > width {
+		return error('cose: EC2 coordinate exceeds curve size')
+	}
+	if coordinate.len == width {
+		return coordinate
+	}
+	mut padded := []u8{len: width}
+	copy(mut padded[width - coordinate.len..], coordinate)
+	return padded
 }
 
 // check_algorithm allows keys without an algorithm restriction, enforces a

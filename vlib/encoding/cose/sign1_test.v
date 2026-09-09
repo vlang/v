@@ -412,6 +412,46 @@ fn test_key_decode_rejects_incomplete_asymmetric_keys() {
 	}
 }
 
+fn test_key_rejects_curve_incompatible_with_key_type() {
+	for key in [
+		Key.ec2_public(.ed25519, []u8{len: 32}, []u8{len: 32}),
+		Key.okp_public(.p_256, []u8{len: 32}),
+	] {
+		if _ := key.encode() {
+			assert false, 'known curves from another key family must be rejected'
+		} else {
+			assert err.msg().contains('key cannot use curve')
+		}
+	}
+	for encoded in [
+		hex.decode('a401022006215820' + '11'.repeat(32) + '225820' + '22'.repeat(32))!,
+		hex.decode('a301012001215820' + '11'.repeat(32))!,
+	] {
+		if _ := Key.decode(encoded) {
+			assert false, 'decoded keys must reject curves from another key family'
+		} else {
+			assert err.msg().contains('key cannot use curve')
+		}
+	}
+}
+
+fn test_key_encode_pads_ec2_coordinates_to_curve_width() {
+	for curve, width in {
+		Curve.p_256: 32
+		Curve.p_384: 48
+		Curve.p_521: 66
+	} {
+		key := Key.ec2_public(curve, [u8(1)], [u8(2)])
+		decoded := Key.decode(key.encode()!)!
+		x := decoded.x or { panic('missing x') }
+		y := decoded.y or { panic('missing y') }
+		assert x.len == width
+		assert y.len == width
+		assert x#[-1] == 1
+		assert y#[-1] == 2
+	}
+}
+
 fn test_sign1_decodes_indefinite_length_outer_array() {
 	mut p := cbor.new_packer(cbor.EncodeOpts{})
 	p.pack_array_indef()!
