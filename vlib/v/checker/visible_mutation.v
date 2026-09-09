@@ -386,6 +386,12 @@ fn (mut c Checker) expr_mutation_visibility(expr ast.Expr, root_name string, roo
 	if current is ast.CastExpr {
 		return c.expr_mutation_visibility(current.expr, root_name, root_type)
 	}
+	if current is ast.AsCast {
+		return c.expr_mutation_visibility(current.expr, root_name, root_type)
+	}
+	if current is ast.UnsafeExpr {
+		return c.expr_mutation_visibility(current.expr, root_name, root_type)
+	}
 	if current is ast.CallExpr {
 		if current.is_method {
 			return c.expr_mutation_visibility(current.left, root_name, root_type)

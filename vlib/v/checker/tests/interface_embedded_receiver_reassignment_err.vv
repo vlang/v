@@ -226,6 +226,7 @@ fn main() {
 	_ = pointer_element.return_or_pointer_receiver()
 	_ = pointer_element.return_pointer_holder_through_helper()
 	pointer_element.pass_nested_pointer_helper()
+	pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
 	pointer_element.spawn_pointer_read()
 }
 
@@ -309,7 +310,7 @@ fn (node &PointerNode) return_pointer_holder_through_helper() PointerHolder {
 
 fn wrap_pointer_node(node &PointerNode) PointerHolder {
 	return PointerHolder{
-		node: node
+		node: unsafe { node }
 	}
 }
 
@@ -331,4 +332,15 @@ fn forward_pointer_reader(node &PointerNode, mut holder PointerReaderHolder) {
 fn (node &PointerNode) pass_nested_pointer_helper() {
 	mut holder := PointerReaderHolder{}
 	forward_pointer_reader(node, mut holder)
+}
+
+fn replace_pointer_alias_helper(node &PointerNode, next PointerNode) {
+	alias := unsafe { node }
+	unsafe {
+		*alias = next
+	}
+}
+
+fn (node &PointerNode) pass_pointer_alias_helper(next PointerNode) {
+	replace_pointer_alias_helper(node, next)
 }

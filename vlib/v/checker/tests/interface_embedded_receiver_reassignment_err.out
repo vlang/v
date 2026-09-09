@@ -194,20 +194,13 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:226:22: err
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   227 |     _ = pointer_element.return_pointer_holder_through_helper()
   228 |     pointer_element.pass_nested_pointer_helper()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:229:18: error: cannot call pointer-receiver method `PointerNode.spawn_pointer_read` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  227 |     _ = pointer_element.return_pointer_holder_through_helper()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:230:18: error: cannot call pointer-receiver method `PointerNode.spawn_pointer_read` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
   228 |     pointer_element.pass_nested_pointer_helper()
-  229 |     pointer_element.spawn_pointer_read()
+  229 |     pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
+  230 |     pointer_element.spawn_pointer_read()
       |                     ~~~~~~~~~~~~~~~~~~~~
-  230 | }
-  231 |
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:312:9: error: `node` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider wrapping the `PointerNode` object in a `struct` declared as `@[heap]`.
-  310 | fn wrap_pointer_node(node &PointerNode) PointerHolder {
-  311 |     return PointerHolder{
-  312 |         node: node
-      |               ~~~~
-  313 |     }
-  314 | }
+  231 | }
+  232 |
 vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:215:18: error: cannot call pointer-receiver method `PointerNode.pass_local_holder_value` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
   213 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
   214 |     pointer_element.pass_local_holder_mut()
@@ -249,11 +242,18 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:227:22: err
   227 |     _ = pointer_element.return_pointer_holder_through_helper()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   228 |     pointer_element.pass_nested_pointer_helper()
-  229 |     pointer_element.spawn_pointer_read()
+  229 |     pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
 vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:228:18: error: cannot call pointer-receiver method `PointerNode.pass_nested_pointer_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
   226 |     _ = pointer_element.return_or_pointer_receiver()
   227 |     _ = pointer_element.return_pointer_holder_through_helper()
   228 |     pointer_element.pass_nested_pointer_helper()
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  229 |     pointer_element.spawn_pointer_read()
-  230 | }
+  229 |     pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
+  230 |     pointer_element.spawn_pointer_read()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:229:18: error: cannot call pointer-receiver method `PointerNode.pass_pointer_alias_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  227 |     _ = pointer_element.return_pointer_holder_through_helper()
+  228 |     pointer_element.pass_nested_pointer_helper()
+  229 |     pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  230 |     pointer_element.spawn_pointer_read()
+  231 | }
