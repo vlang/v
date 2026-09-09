@@ -12551,6 +12551,10 @@ fn (mut t Transformer) fn_literal_c_abi_signature_compatible(arg_id flat.NodeId,
 }
 
 fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId, expected_type string) ?bool {
+	if t.fn_literal_cast_target_contains_callback(expected_type)
+		&& t.callback_reaching_provenance_invalidated(arg_id) {
+		return false
+	}
 	mut seen := map[int]bool{}
 	return t.fn_literal_container_modes_compatible_seen(arg_id, expected_type, mut seen)
 }
@@ -12607,6 +12611,10 @@ fn (mut t Transformer) fn_literal_container_modes_compatible_seen(arg_id flat.No
 	if node.kind == .index && node.value == 'range' && node.children_count > 0 {
 		return t.fn_literal_container_modes_compatible_seen(t.a.child(&node, 0), expected_type, mut
 			seen)
+	}
+	// A clear call in the reaching set denotes a known-empty callback container.
+	if _ := t.callback_container_clear_call_receiver(arg_id) {
+		return true
 	}
 	if node.kind == .ident && t.fn_literal_cast_target_contains_callback(expected_type) {
 		mut handled := false
@@ -13440,6 +13448,17 @@ fn (t &Transformer) callback_lvalue_root_name(id flat.NodeId) ?string {
 	return none
 }
 
+fn (t &Transformer) callback_reaching_provenance_invalidated(id flat.NodeId) bool {
+	root_name := t.callback_lvalue_root_name(id) or { return false }
+	for source_id in t.callback_local_reaching_rhs_ids(root_name, id) {
+		// The original mut argument node is an opaque write marker in the reaching set.
+		if int(source_id) >= 0 && int(source_id) < t.a.nodes.len && t.a.nodes[int(source_id)].is_mut {
+			return true
+		}
+	}
+	return false
+}
+
 fn (t &Transformer) callback_member_lvalues_may_alias(access_id flat.NodeId, lhs_id flat.NodeId) bool {
 	access_key := t.expr_key(access_id)
 	lhs_key := t.expr_key(lhs_id)
@@ -13593,6 +13612,10 @@ fn (t &Transformer) callback_local_reaching_rhs_ids(name string, before_id flat.
 				}
 				continue
 			}
+			if replacement_id := t.callback_provenance_replacement_for_name(stmt_id, name) {
+				reaching = [replacement_id]
+				continue
+			}
 			if call_id := t.callback_array_mutation_call_targets_name(stmt_id, name) {
 				if call_id !in reaching {
 					reaching << call_id
@@ -13657,6 +13680,12 @@ fn (t &Transformer) collect_callback_nested_assignment_rhs_ids(id flat.NodeId, n
 	if t.callback_array_append_targets_name(id, name) {
 		if id !in result {
 			result << id
+		}
+		return
+	}
+	if replacement_id := t.callback_provenance_replacement_for_name(id, name) {
+		if replacement_id !in result {
+			result << replacement_id
 		}
 		return
 	}
@@ -13738,6 +13767,9 @@ fn (t &Transformer) callback_definite_assignment_rhs_ids(id flat.NodeId, name st
 		return none
 	}
 	node := t.a.nodes[int(id)]
+	if replacement_id := t.callback_provenance_replacement_for_name(id, name) {
+		return [replacement_id]
+	}
 	if node.kind == .assign {
 		if rhs_ids := t.callback_direct_assignment_rhs_ids(node, name) {
 			return rhs_ids
@@ -13816,6 +13848,11 @@ fn (t &Transformer) callback_sequence_definite_assignment_rhs_ids(node flat.Node
 		flow := t.callback_node_flow_to_use(child_id, use_id)
 		if flow == .exits_away_from_use {
 			break
+		}
+		if replacement_id := t.callback_provenance_replacement_for_name(child_id, name) {
+			result = [replacement_id]
+			assigned = true
+			continue
 		}
 		if child.kind == .assign {
 			if rhs_ids := t.callback_direct_assignment_rhs_ids(child, name) {
@@ -14014,6 +14051,77 @@ fn (t &Transformer) callback_array_mutation_call_targets_name(id flat.NodeId, na
 	}
 	if _ := t.callback_array_mutation_value_id(id) {
 		return id
+	}
+	return none
+}
+
+fn (t &Transformer) callback_provenance_replacement_for_name(id flat.NodeId, name string) ?flat.NodeId {
+	if clear_id := t.callback_container_clear_call_targets_name(id, name) {
+		return clear_id
+	}
+	if mut_arg_id := t.callback_mut_argument_for_name(id, name) {
+		return mut_arg_id
+	}
+	return none
+}
+
+fn (t &Transformer) callback_container_clear_call_receiver(id flat.NodeId) ?flat.NodeId {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.expr_stmt, .paren] && node.children_count == 1 {
+		return t.callback_container_clear_call_receiver(t.a.child(&node, 0))
+	}
+	if node.kind != .call || node.children_count != 1 {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.value != 'clear' || callee.children_count == 0 {
+		return none
+	}
+	receiver_id := t.a.child(callee, 0)
+	if !t.callback_source_type_is_container(t.node_type(receiver_id)) {
+		return none
+	}
+	return receiver_id
+}
+
+fn (t &Transformer) callback_container_clear_call_targets_name(id flat.NodeId, name string) ?flat.NodeId {
+	receiver_id := t.callback_container_clear_call_receiver(id) or { return none }
+	mut base_id := receiver_id
+	mut receiver := t.a.nodes[int(base_id)]
+	for receiver.kind == .paren && receiver.children_count == 1 {
+		base_id = t.a.child(&receiver, 0)
+		receiver = t.a.nodes[int(base_id)]
+	}
+	if receiver.kind != .ident || receiver.value != name {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.expr_stmt, .paren] && node.children_count == 1 {
+		return t.callback_container_clear_call_targets_name(t.a.child(&node, 0), name)
+	}
+	return id
+}
+
+fn (t &Transformer) callback_mut_argument_for_name(id flat.NodeId, name string) ?flat.NodeId {
+	if name.len == 0 || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.expr_stmt, .paren] && node.children_count == 1 {
+		return t.callback_mut_argument_for_name(t.a.child(&node, 0), name)
+	}
+	if node.kind != .call || node.children_count < 2 {
+		return none
+	}
+	for i in 1 .. node.children_count {
+		arg_id := t.a.child(&node, i)
+		arg := t.a.nodes[int(arg_id)]
+		if arg.is_mut && t.callback_lvalue_base_is_ident(arg_id, name) {
+			return arg_id
+		}
 	}
 	return none
 }

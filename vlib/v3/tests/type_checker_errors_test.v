@@ -2215,6 +2215,26 @@ fn test_callback_array_mutations_reach_index_projections() {
 		'cannot use')
 }
 
+fn test_callback_mut_arguments_invalidate_prior_provenance() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_callback_struct_rewritten_by_mut_helper_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\nmut:\n\thandler PlainHandler\n}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn rewrite(mut options Options) {\n\toptions.handler = ConstHandler(const_handler)\n}\nfn consume[T](options Options) {}\nfn startup[T]() {\n\tmut options := Options{\n\t\thandler: PlainHandler(plain_handler)\n\t}\n\trewrite(mut options)\n\tconsume[int](options)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	matching := run_good(v3_bin, 'good_callback_mut_helper_then_full_overwrite_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\nmut:\n\thandler PlainHandler\n}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn rewrite[T](mut options Options) {\n\toptions.handler = ConstHandler(const_handler)\n}\nfn consume[T](options Options) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut options := Options{\n\t\thandler: PlainHandler(plain_handler)\n\t}\n\trewrite[int](mut options)\n\toptions = Options{\n\t\thandler: PlainHandler(plain_handler)\n\t}\n\treturn consume[int](options)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert matching == 'true'
+}
+
+fn test_callback_container_clear_kills_element_provenance() {
+	v3_bin := build_v3()
+	matching := run_good(v3_bin, 'good_callback_containers_cleared_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn const_handler(const_event &C.native_event) {}\nfn consume_array[T](handlers []PlainHandler) bool {\n\treturn handlers.len == 0\n}\nfn consume_map[T](handlers map[string]PlainHandler) bool {\n\treturn handlers.len == 0\n}\nfn startup[T]() bool {\n\tmut array_handlers := [ConstHandler(const_handler)]\n\tarray_handlers.clear()\n\tmut map_handlers := {"event": ConstHandler(const_handler)}\n\tmap_handlers.clear()\n\treturn consume_array[int](array_handlers) && consume_map[int](map_handlers)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert matching == 'true'
+	run_bad(v3_bin, 'bad_callback_array_appended_after_clear_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](handlers []PlainHandler) {}\nfn startup[T]() {\n\tmut handlers := [ConstHandler(const_handler)]\n\thandlers.clear()\n\thandlers << ConstHandler(const_handler)\n\tconsume[int](handlers)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+}
+
 fn test_fn_literal_nested_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	v3_bin := build_v3()
 	matching := run_good(v3_bin, 'good_nested_const_fn_literal_alias_in_generic',
