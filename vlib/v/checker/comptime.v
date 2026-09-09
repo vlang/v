@@ -1140,6 +1140,36 @@ fn (mut c Checker) eval_comptime_infix_method(method ast.Fn, left ast.ComptTimeC
 	return c.eval_comptime_fn_decl_value_with_locals(fn_decl, nlevel + 1, local_args)
 }
 
+fn comptime_const_value_type(value ast.ComptTimeConstValue) ast.Type {
+	return match value {
+		i8 { ast.i8_type }
+		i16 { ast.i16_type }
+		i32 { ast.i32_type }
+		i64 { ast.i64_type }
+		u8 { ast.u8_type }
+		u16 { ast.u16_type }
+		u32 { ast.u32_type }
+		u64 { ast.u64_type }
+		f32 { ast.f32_type }
+		f64 { ast.f64_type }
+		rune { ast.rune_type }
+		string { ast.string_type }
+		voidptr { ast.voidptr_type }
+		ast.EmptyComptimeConstValue { ast.void_type }
+	}
+}
+
+fn (mut c Checker) comptime_const_expr_type(expr ast.Expr, value ast.ComptTimeConstValue) ast.Type {
+	return match expr {
+		ast.IntegerLiteral { ast.int_literal_type }
+		ast.FloatLiteral { ast.float_literal_type }
+		ast.CastExpr { c.table.fully_unaliased_type(expr.typ).clear_flags() }
+		ast.ParExpr { c.comptime_const_expr_type(expr.expr, value) }
+		ast.PrefixExpr { c.comptime_const_expr_type(expr.right, value) }
+		else { comptime_const_value_type(value) }
+	}
+}
+
 // raw_int_bits returns the raw 64-bit pattern of any integer-typed ComptTimeConstValue,
 // unlike val.i64()/val.u64() it never rejects a value just because it doesn't
 // independently fit as signed/unsigned - e.g. a `u64` value bigger than max_i64 is
@@ -1392,7 +1422,13 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 				// the generated code does (e.g. `u8(255) + u8(1)` wraps to `0`) and lets
 				// mixed int/float combinations (e.g. `i32(1) + f32(1.5)`) be handled
 				// without enumerating every possible pair of types.
-				promoted_type := c.table.fully_unaliased_type(expr.promoted_type).clear_flags()
+				mut promoted_type := c.table.fully_unaliased_type(expr.promoted_type).clear_flags()
+				if promoted_type == ast.void_type {
+					// Forward operator bodies have not been checked yet, so their nested
+					// infix expressions do not have a promoted type assigned.
+					promoted_type = c.promote(c.comptime_const_expr_type(expr.left, left), c.comptime_const_expr_type(expr.right,
+						right))
+				}
 				if promoted_type.is_pure_float() {
 					left_f := left.f64()
 					right_f := right.f64()

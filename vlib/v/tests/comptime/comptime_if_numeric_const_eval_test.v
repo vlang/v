@@ -62,3 +62,17 @@ fn test_right_operand_overload_is_not_used_in_comptime_if() {
 	}
 	assert value == 1
 }
+
+fn test_forward_overloaded_numeric_operation_in_comptime_if() {
+	mut value := 0
+	$if ForwardComptimeAddend(1) + ForwardComptimeAddend(1) == ForwardComptimeAddend(2) {
+		value = 1
+	}
+	assert value == 1
+}
+
+type ForwardComptimeAddend = u8
+
+fn (a ForwardComptimeAddend) + (b ForwardComptimeAddend) ForwardComptimeAddend {
+	return ForwardComptimeAddend(u8(a) + u8(b))
+}
