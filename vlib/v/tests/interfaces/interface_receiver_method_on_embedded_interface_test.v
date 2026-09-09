@@ -42,6 +42,10 @@ fn (node &Node) read_field_through_pointer_alias_helper() string {
 	return read_node_name_through_alias(node)
 }
 
+fn (node &Node) read_field_through_forward_helper() string {
+	return read_node_name_declared_later(node)
+}
+
 fn (node &Node) inspect_through_generic_helper() int {
 	return inspect_value(node)
 }
@@ -210,6 +214,11 @@ fn test_read_only_pointer_receiver_alias_helper_does_not_escape() {
 	assert element.read_field_through_pointer_alias_helper() == 'body'
 }
 
+fn test_forward_pointer_receiver_helper_does_not_escape() {
+	element := new_element()
+	assert element.read_field_through_forward_helper() == 'body'
+}
+
 fn test_generic_pointer_receiver_helper_does_not_escape() {
 	element := new_element()
 	assert element.inspect_through_generic_helper() == 1
@@ -268,6 +277,10 @@ fn test_loop_condition_receiver_method_on_embedded_interface() {
 		iterations++
 	}
 	assert counter.calls == 4
+}
+
+fn read_node_name_declared_later(node &Node) string {
+	return node.name
 }
 
 fn test_shared_receiver_method_on_embedded_interface() {

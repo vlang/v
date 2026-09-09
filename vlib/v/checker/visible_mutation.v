@@ -73,8 +73,12 @@ fn (mut c Checker) fn_param_may_replace_or_escape(func ast.Fn, param_idx int, pa
 		&& !c.table.unaliased_type(param_type).is_any_kind_of_pointer()) {
 		return true
 	}
-	if func.source_fn == unsafe { nil } || func.no_body || func.language != .v {
+	if func.no_body || func.language != .v {
 		return true
+	}
+	if func.source_fn == unsafe { nil } {
+		// The final pending-call pass rechecks same-build helpers after their bodies are available.
+		return false
 	}
 	key := '${func.fkey()}|${param_idx}|${param_type}'
 	if key in seen {
