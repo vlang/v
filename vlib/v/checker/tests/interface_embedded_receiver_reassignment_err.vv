@@ -143,6 +143,29 @@ fn (node &PointerNode) pass_alias_before_rebinding(other &PointerNode) {
 	alias = unsafe { other }
 }
 
+fn (node &PointerNode) pass_alias_after_conditional_rebinding(other &PointerNode, rebind bool) {
+	mut alias := unsafe { node }
+	if rebind {
+		alias = unsafe { other }
+	}
+	retain_void_pointer(voidptr(alias))
+}
+
+fn replace_in_pointer_holder(mut holder PointerHolder) {
+	unsafe {
+		*holder.node = PointerNode(Item{
+			name: 'replaced'
+		})
+	}
+}
+
+fn (node &PointerNode) pass_local_holder_mut() {
+	mut holder := PointerHolder{
+		node: unsafe { node }
+	}
+	replace_in_pointer_holder(mut holder)
+}
+
 fn (node &PointerNode) read_pointer_name() string {
 	return node.name
 }
@@ -187,5 +210,7 @@ fn main() {
 	_ = reader()
 	other := PointerNode(Item{})
 	pointer_element.pass_alias_before_rebinding(&other)
+	pointer_element.pass_alias_after_conditional_rebinding(&other, true)
+	pointer_element.pass_local_holder_mut()
 	pointer_element.spawn_pointer_read()
 }

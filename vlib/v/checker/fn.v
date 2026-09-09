@@ -87,10 +87,7 @@ fn receiver_pointer_argument(expr ast.Expr, receiver_name string) bool {
 	}
 }
 
-fn receiver_pointer_alias_argument(expr ast.Expr, alias ast.ReceiverAlias) bool {
-	if !alias.is_pointer {
-		return false
-	}
+fn receiver_alias_argument(expr ast.Expr, alias ast.ReceiverAlias) bool {
 	pos := expr.pos().pos
 	if pos < alias.start_pos || (alias.end_pos > 0 && pos >= alias.end_pos) {
 		return false
@@ -111,13 +108,13 @@ fn receiver_pointer_alias_argument(expr ast.Expr, alias ast.ReceiverAlias) bool 
 			reduced.name == alias.name && var_pos == alias.var_pos
 		}
 		ast.CastExpr {
-			receiver_pointer_alias_argument(reduced.expr, alias)
+			receiver_alias_argument(reduced.expr, alias)
 		}
 		ast.AsCast {
-			receiver_pointer_alias_argument(reduced.expr, alias)
+			receiver_alias_argument(reduced.expr, alias)
 		}
 		ast.UnsafeExpr {
-			receiver_pointer_alias_argument(reduced.expr, alias)
+			receiver_alias_argument(reduced.expr, alias)
 		}
 		ast.PrefixExpr {
 			if reduced.op == .mul {
@@ -125,9 +122,9 @@ fn receiver_pointer_alias_argument(expr ast.Expr, alias ast.ReceiverAlias) bool 
 			} else if reduced.op == .amp {
 				right := reduced.right.remove_par()
 				if right is ast.PrefixExpr && right.op == .mul {
-					receiver_pointer_alias_argument(right.right, alias)
+					receiver_alias_argument(right.right, alias)
 				} else {
-					receiver_pointer_alias_argument(right, alias)
+					receiver_alias_argument(right, alias)
 				}
 			} else {
 				false
@@ -137,6 +134,10 @@ fn receiver_pointer_alias_argument(expr ast.Expr, alias ast.ReceiverAlias) bool 
 			false
 		}
 	}
+}
+
+fn receiver_pointer_alias_argument(expr ast.Expr, alias ast.ReceiverAlias) bool {
+	return alias.is_pointer && receiver_alias_argument(expr, alias)
 }
 
 fn receiver_method_target(expr ast.Expr, receiver_name string, aliases []ast.ReceiverAlias) bool {
@@ -164,13 +165,20 @@ fn (mut c Checker) record_receiver_argument(param ast.Param, arg ast.CallArg) {
 	}
 	receiver_name := c.table.cur_fn.receiver.name
 	aliases := receiver_sym.methods[method_idx].receiver_aliases
-	arg_is_receiver := receiver_pointer_argument(arg.expr, receiver_name)
+	arg_is_receiver_pointer := receiver_pointer_argument(arg.expr, receiver_name)
 		|| aliases.any(receiver_pointer_alias_argument(arg.expr, it))
-	if arg_is_receiver {
+	if arg_is_receiver_pointer {
 		if param.is_mut && arg.is_mut {
 			receiver_sym.methods[method_idx].receiver_passed_mut = true
 		} else if c.table.cur_fn.receiver.typ.is_ptr() && (param.typ.is_any_kind_of_pointer()
 			|| c.table.unaliased_type(param.typ).is_any_kind_of_pointer()) {
+			receiver_sym.methods[method_idx].receiver_address_taken = true
+		}
+	} else if aliases.any(!it.is_pointer && receiver_alias_argument(arg.expr, it)) {
+		if param.is_mut && arg.is_mut {
+			receiver_sym.methods[method_idx].receiver_passed_mut = true
+		} else if param.typ.is_any_kind_of_pointer()
+			|| c.table.unaliased_type(param.typ).is_any_kind_of_pointer() {
 			receiver_sym.methods[method_idx].receiver_address_taken = true
 		}
 	}

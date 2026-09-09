@@ -701,11 +701,13 @@ pub:
 
 pub struct ReceiverAlias {
 pub:
-	name       string
-	var_pos    int
-	start_pos  int
-	end_pos    int
-	is_pointer bool
+	name        string
+	var_pos     int
+	start_pos   int
+	end_pos     int
+	scope_start int
+	scope_end   int
+	is_pointer  bool
 }
 
 @[minify]

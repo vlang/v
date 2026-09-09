@@ -198,6 +198,11 @@ fn receiver_alias_index(ident ast.Ident, aliases []ast.ReceiverAlias) int {
 	return -1
 }
 
+fn can_end_receiver_alias(ident ast.Ident, alias ast.ReceiverAlias) bool {
+	return ident.scope != unsafe { nil } && ident.scope.start_pos == alias.scope_start
+		&& ident.scope.end_pos == alias.scope_end
+}
+
 fn is_receiver_method_target(expr ast.Expr, name string, aliases []ast.ReceiverAlias) bool {
 	reduced := expr.remove_par()
 	if is_receiver_pointer_alias(reduced, name, aliases) {
@@ -275,7 +280,8 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 						if has_receiver && left is ast.Ident && left.name !in [name, '_']
 							&& receiver_ident_var_pos(left) >= 0 {
 							if alias_idx < 0
-								|| info.receiver_aliases[alias_idx].is_pointer != is_pointer_alias {
+								|| (info.receiver_aliases[alias_idx].is_pointer != is_pointer_alias
+								&& can_end_receiver_alias(left, info.receiver_aliases[alias_idx])) {
 								if alias_idx >= 0 {
 									info.receiver_aliases[alias_idx] = ast.ReceiverAlias{
 										...info.receiver_aliases[alias_idx]
@@ -283,10 +289,20 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 									}
 								}
 								info.receiver_aliases << ast.ReceiverAlias{
-									name:       left.name
-									var_pos:    receiver_ident_var_pos(left)
-									start_pos:  left.pos.pos
-									is_pointer: is_pointer_alias
+									name:        left.name
+									var_pos:     receiver_ident_var_pos(left)
+									start_pos:   left.pos.pos
+									scope_start: if left.scope != unsafe { nil } {
+										left.scope.start_pos
+									} else {
+										-1
+									}
+									scope_end:   if left.scope != unsafe { nil } {
+										left.scope.end_pos
+									} else {
+										-1
+									}
+									is_pointer:  is_pointer_alias
 								}
 							}
 							continue
@@ -294,10 +310,11 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 						if has_receiver {
 							info.address_taken = true
 						}
-						if alias_idx >= 0 {
+						if alias_idx >= 0 && left is ast.Ident
+							&& can_end_receiver_alias(left, info.receiver_aliases[alias_idx]) {
 							info.receiver_aliases[alias_idx] = ast.ReceiverAlias{
 								...info.receiver_aliases[alias_idx]
-								end_pos: left.pos().pos
+								end_pos: left.pos.pos
 							}
 						}
 					}
