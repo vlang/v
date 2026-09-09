@@ -1393,6 +1393,53 @@ fn main() {
 	assert_driver_cli_failure(v3_bin, ['-d', 'feature', '-silent', '-no-parallel', invalid_source], 'i64 literal expected, found "true"')
 }
 
+fn test_driver_finds_parent_vmod_and_git_from_relative_input() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_parent_vmod_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	project := os.join_path(root, 'project')
+	work_dir := os.join_path(project, 'nested')
+	support_dir := os.join_path(project, 'support')
+	git_refs := os.join_path(project, '.git', 'refs', 'heads')
+	os.mkdir_all(work_dir) or { panic(err) }
+	os.mkdir_all(support_dir) or { panic(err) }
+	os.mkdir_all(git_refs) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'parent_vmod' }\n")!
+	os.write_file(os.join_path(project, '.git', 'HEAD'), 'ref: refs/heads/main\n')!
+	os.write_file(os.join_path(git_refs, 'main'), '0123456789abcdef0123456789abcdef01234567\n')!
+	os.write_file(os.join_path(project, 'api.h'), '#ifndef V3_PARENT_VMOD_API_H\n#define V3_PARENT_VMOD_API_H\nstatic inline int parent_answer(void) { return 42; }\n#endif\n')!
+	os.write_file(os.join_path(work_dir, 'main.c.v'), 'module main
+
+import support
+
+#flag -I @VMODROOT
+#include "api.h"
+
+fn C.parent_answer() int
+
+fn main() {
+	println(@VMODROOT)
+	println(@VMODHASH)
+	println(support.answer() + C.parent_answer())
+}
+')!
+	os.write_file(os.join_path(support_dir, 'support.v'), 'module support
+
+pub fn answer() int {
+	return 42
+}
+')!
+	output := os.join_path(root, 'parent_vmod')
+	compile := cmdexec.run_in(v3_bin, ['-silent', '-no-parallel', '-o', output, 'main.c.v'], work_dir)
+	assert compile.exit_code == 0, compile.output
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == '${os.real_path(project)}\n0123456\n84\n', run.output
+}
+
 fn test_delegated_driver_preserves_invoking_vroot() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_invoking_vroot_${os.getpid()}')
 	os.rmdir_all(root) or {}

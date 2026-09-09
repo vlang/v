@@ -713,18 +713,7 @@ fn vmod_root_for_file(path string) string {
 	if dir.len == 0 {
 		dir = os.getwd()
 	}
-	original_dir := dir
-	for {
-		if os.exists(os.join_path(dir, 'v.mod')) {
-			return dir
-		}
-		parent := os.dir(dir)
-		if parent == dir || parent.len == 0 {
-			return original_dir
-		}
-		dir = parent
-	}
-	return dir
+	return util.nearest_vmod_root(path) or { os.real_path(dir) }
 }
 
 fn vmod_hash_for_file(path string) !string {

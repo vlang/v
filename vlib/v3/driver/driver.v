@@ -22,6 +22,7 @@ import v3.tempname
 import v3.token as v3token
 import v3.transform
 import v3.types
+import v3.util
 import v3.workers
 import v.build_constraint
 import v.vmod
@@ -14135,18 +14136,7 @@ fn project_root_for_files(files []string) string {
 }
 
 fn nearest_vmod_root_for_file(path string) string {
-	mut dir := if os.is_dir(path) { path } else { os.dir(path) }
-	for _ in 0 .. 32 {
-		if os.exists(os.join_path_single(dir, 'v.mod')) {
-			return dir
-		}
-		parent := os.dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	return ''
+	return util.nearest_vmod_root(path) or { '' }
 }
 
 // resolve_vroot_for_input resolves the V repo root for the compiler being built.
