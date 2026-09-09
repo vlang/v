@@ -724,6 +724,16 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 					return true
 				}
 			}
+			for e in expr.fwidth_exprs {
+				if g.need_tmp_var_in_expr(e) {
+					return true
+				}
+			}
+			for e in expr.precision_exprs {
+				if g.need_tmp_var_in_expr(e) {
+					return true
+				}
+			}
 		}
 		ast.StructInit {
 			if g.need_tmp_var_in_expr(expr.update_expr) {

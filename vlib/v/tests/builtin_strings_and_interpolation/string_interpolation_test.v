@@ -231,6 +231,15 @@ fn (container OptionRefIndexContainer) [] (index int) ?string {
 	return none
 }
 
+struct OptionRefHolder {
+	direct ?int
+	maybe  MaybeInt
+}
+
+fn make_option_ref_holder() OptionRefHolder {
+	return OptionRefHolder{}
+}
+
 fn accepts_option_ref_slice(values []string) bool {
 	return values.len == 0
 }
@@ -263,6 +272,10 @@ fn test_string_interpolation_reference_to_option_value() {
 fn test_string_interpolation_reference_to_overloaded_option_index() {
 	container := OptionRefIndexContainer{}
 	assert '${&container[0]}' == "&Option('value')"
+}
+
+fn test_string_interpolation_reference_to_non_lvalue_option_selector() {
+	assert '${&make_option_ref_holder().maybe}' == '&Option(none)'
 }
 
 fn test_string_interpolation_reference_to_option_value_is_evaluated_lazily() {
@@ -342,6 +355,13 @@ fn test_array_spread_option_reference_string_interpolation_is_not_hoisted_from_s
 	options := [?string('value')]
 	mut counter := OptionRefCounter{}
 	assert !(false && accepts_option_ref_strings([...['${&options[counter.next()]}']]))
+	assert counter.calls == 0
+}
+
+fn test_dynamic_format_option_reference_string_interpolation_is_not_hoisted_from_short_circuit() {
+	options := [?string('value')]
+	mut counter := OptionRefCounter{}
+	assert !(false && '${0:('${&options[counter.next()]}'.len)d}' == '')
 	assert counter.calls == 0
 }
 

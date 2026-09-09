@@ -240,7 +240,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		if expr.op == .amp && unaliased_right_type.has_flag(.option) {
 			right_expr := expr.right.remove_par()
 			option_payload_ref_tmp = match right_expr {
-				ast.Ident, ast.SelectorExpr { true }
+				ast.Ident { true }
+				ast.SelectorExpr { right_expr.expr.is_lvalue() }
 				ast.IndexExpr { !right_expr.is_index_operator && right_expr.left.is_lvalue() }
 				else { false }
 			}
