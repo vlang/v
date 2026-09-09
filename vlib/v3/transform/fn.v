@@ -14073,7 +14073,10 @@ fn (mut t Transformer) callback_index_source_element_type(node flat.Node) ?strin
 	if node.children_count == 0 {
 		return none
 	}
-	base_id := t.a.child(&node, 0)
+	return t.callback_expr_source_container_element_type(t.a.child(&node, 0))
+}
+
+fn (mut t Transformer) callback_expr_source_container_element_type(base_id flat.NodeId) ?string {
 	mut container_type := t.raw_var_type_for_expr(base_id) or { '' }
 	if container_type.len == 0 {
 		base := t.a.nodes[int(base_id)]
@@ -14084,24 +14087,19 @@ fn (mut t Transformer) callback_index_source_element_type(node flat.Node) ?strin
 	if container_type.len == 0 {
 		container_type = t.node_type(base_id)
 	}
-	container_type = t.callback_source_alias_expansion(container_type, 0).trim_space()
-	for container_type.starts_with('&') || container_type.starts_with('shared ') {
-		container_type = if container_type.starts_with('&') {
-			container_type[1..].trim_space()
-		} else {
-			container_type[7..].trim_space()
+	return t.callback_container_source_element_type(container_type)
+}
+
+fn (mut t Transformer) callback_array_accessor_source_element_type(call_id flat.NodeId, callee flat.Node) ?string {
+	if callee.children_count == 0 || callee.value !in ['first', 'last', 'pop', 'pop_left'] {
+		return none
+	}
+	if !isnil(t.tc) {
+		if _ := t.tc.resolved_call_name(call_id) {
+			return none
 		}
 	}
-	if container_type.starts_with('[]') {
-		return container_type[2..].trim_space()
-	}
-	if t.is_fixed_array_type(container_type) {
-		return fixed_array_elem_type(container_type)
-	}
-	if container_type.starts_with('map[') {
-		return t.map_value_type(container_type)
-	}
-	return none
+	return t.callback_expr_source_container_element_type(t.a.child(&callee, 0))
 }
 
 fn (mut t Transformer) callback_call_source_return_type(id flat.NodeId, node flat.Node) ?string {
@@ -14121,6 +14119,9 @@ fn (mut t Transformer) callback_call_source_return_type(id flat.NodeId, node fla
 			if return_type := fn_type_return_type_text(local_type) {
 				return t.callback_source_return_expansion(return_type)
 			}
+		}
+		if source_type := t.callback_array_accessor_source_element_type(id, callee) {
+			return source_type
 		}
 	}
 	generic_return := t.raw_generic_call_return_type(id, node)
