@@ -157,8 +157,7 @@ fn sqlite_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryDa
 fn sqlite_stmt_binder(stmt Stmt, d orm.QueryData, query string, mut c StmtBindCounter) ! {
 	mut kind_index := 0
 	for data in d.data {
-		for kind_index < d.kinds.len
-			&& d.kinds[kind_index] in [.is_null, .is_not_null, .exists_open, .exists_close] {
+		for kind_index < d.kinds.len && d.kinds[kind_index] in [.is_null, .is_not_null] {
 			kind_index++
 		}
 		array_operator := kind_index < d.kinds.len && d.kinds[kind_index] in [.in, .not_in]!

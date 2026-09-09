@@ -584,77 +584,55 @@ struct User {
 	only_names := qb.select('name')!.query()!
 ```
 
-Function Call queries do not load `@[fkey]` array relationships unless requested with `include`.
-`then_include` continues from the last included relationship; call `include` again to start
-another path from the root:
+Function Call queries load relationships only when explicitly requested with `include`.
+This applies to array and singular relationships, including optional relationships.
+This changes the previous implicit-loading behavior of `orm.new_query[T]`; callers that
+need related records must now request them. The SQL-like API retains implicit loading.
+
+`include` starts a direct relationship path; `then_include` extends the last path:
 
 ```v ignore
-@[table: 'parents']
-struct Parent {
-	id       int     @[primary]
-	children []Child @[fkey: 'parent_id']
-}
-
-struct Child {
-	id        int       @[primary]
-	parent_id int
-	grandkids []Grandkid @[fkey: 'child_id']
-}
-
-parents := qb
+parents := orm.new_query[Parent](db)
+rows := parents
 	.include('children')!
 	.then_include('grandkids')!
+	.then_include('toys')!
 	.query()!
 ```
 
-`include` decides which relationships are returned; `where` decides which rows are returned.
-The two are independent, so a relationship can be filtered on without being loaded:
+Start another `include` for independent paths or siblings. Shared paths are loaded once:
 
 ```v ignore
-// parents that have a matching grandkid, returning no relationship at all
-parents := qb
-	.where('children.grandkids.name = ?', 'grandkid')!
-	.query()!
-```
-
-A `where` field prefixed by a relationship path filters the root query through a correlated
-`EXISTS`, and — when that relationship is also included — filters the rows loaded for it.
-A path may be any chain of `@[fkey]` relationships, and after `include` or `then_include` the
-name of the last included relationship also works as a short form:
-
-```v ignore
-parents := qb
+rows := parents
 	.include('children')!
 	.then_include('grandkids')!
-	.where('name = ? && grandkids.name != ?', 'parent', 'excluded')!
+	.include('children')!
+	.then_include('grandkids2')!
+	.include('profile')!
 	.query()!
 ```
 
-Every term of one `where` call must be satisfied by the same related row, while separate
-calls may match different rows:
+Each argument is a direct relationship field name, not a dotted path or query alias.
+Existing `@[sql]` field names are accepted; an exact V field name takes precedence.
+Each complete path is validated before it is saved, even when the database is empty.
+Invalid paths return an error without replacing the previous valid path.
 
-```v ignore
-// one grandkid named `grandkid` that owns a toy named `ball`
-qb.where('children.grandkids.name = ? && children.grandkids.toys.name = ?', 'grandkid', 'ball')!
+`query()` and `reset()` clear include paths and the last-path cursor, including after a
+query error. Call `include()` again before using `then_include()` on a reused builder.
 
-// a grandkid named `grandkid`, and a toy named `ball` under any grandkid
-qb.where('children.grandkids.name = ?', 'grandkid')!.where('children.grandkids.toys.name = ?', 'ball')!
-```
+Inclusion only populates related fields; it does not filter or multiply root rows.
+`where()` and `or_where()` filter the root entity. Relationship-qualified filters such as
+`where('children.name = ?', 'Bob')` are not supported. Inclusion does not add relation
+predicates to `update`, `delete`, or `insert`.
 
-Root and relationship predicates combine freely with `&&` and `||`; a root branch still
-matches a row whose relationship branch does not:
+Partial selections fetch omitted relationship lookup keys internally without populating
+unselected scalar fields in the result. With `distinct()`, select those keys explicitly:
+adding hidden keys could otherwise change the number of distinct results.
 
-```v ignore
-qb.where('name = ? || children.name = ?', 'parent', 'child')!
-```
-
-Two sibling relationships combined with `&&` in a single call are rejected, since no single
-related row can satisfy both; filter them in separate `where` calls instead.
-
-`update` and `delete` accept relationship predicates and apply them as the same `EXISTS`.
-`insert` and `insert_many` reject them, because they ignore `where` entirely.
-
-The SQL-like API keeps its existing implicit relationship loading behavior.
+Loading still uses the ORM's existing per-record queries, not batched eager loading.
+For N parents with a valid key and one included collection, this typically means 1+N
+SELECTs. Nested paths add queries for their loaded records. Unrequested relationships
+do not issue queries; batching is a separate optimization.
 
 8. Update records​​ (note: `update()` must be placed last):
 
