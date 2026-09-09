@@ -474,12 +474,24 @@ fn (mut c Checker) range_comparison_type(left_expr ast.Expr, left_type ast.Type,
 	return c.range_promoted_integer_type(left, right)
 }
 
+fn range_expr_has_arithmetic(expr ast.Expr) bool {
+	return match expr {
+		ast.InfixExpr { true }
+		ast.ParExpr { range_expr_has_arithmetic(expr.expr) }
+		ast.CastExpr { range_expr_has_arithmetic(expr.expr) }
+		ast.PrefixExpr { range_expr_has_arithmetic(expr.right) }
+		else { false }
+	}
+}
+
 fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, low_type ast.Type, val_type ast.Type, high_type ast.Type) {
 	backend_has_distinct_range_conversions := c.pref.backend == .wasm || c.pref.backend.is_js()
 	unaliased_low_type := c.table.fully_unaliased_type(low_type).clear_flags()
 	unaliased_high_type := c.table.fully_unaliased_type(high_type).clear_flags()
-	if backend_has_distinct_range_conversions && unaliased_low_type != unaliased_high_type {
-		// Mixed bound types are converted differently by the WASM and JavaScript backends.
+	backend_sensitive_bounds := unaliased_low_type != unaliased_high_type
+		|| range_expr_has_arithmetic(low) || range_expr_has_arithmetic(high)
+	if backend_has_distinct_range_conversions && backend_sensitive_bounds {
+		// Mixed types and arithmetic are converted differently by WASM and JavaScript.
 		return
 	}
 	was_evaluating_range := c.comptime_eval_for_range
