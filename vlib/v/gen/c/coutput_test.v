@@ -283,6 +283,9 @@ fn test_addressable_map_fallback_does_not_allocate_carrier() {
 	ensure_compilation_succeeded(compilation, cmd)
 	assert !generated_c_uses_v3_codegen(compilation.output)
 	assert compilation.output.contains('Map_string_main__Entry _t')
+	assert compilation.output.contains('*ADDR(Map_string_main__Entry, ({')
+	assert compilation.output.contains('*((Map_string_main__Entry*)')
+	assert !compilation.output.contains('} (Map_string_main__Entry*)')
 	assert !compilation.output.contains('builtin__memdup(ADDR(Map_string_main__Entry')
 }
 

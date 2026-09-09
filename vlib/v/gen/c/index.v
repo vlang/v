@@ -1017,8 +1017,11 @@ fn (mut g Gen) gen_map_value_lookup(node ast.IndexExpr, key_type ast.Type, val_t
 	map_tmp := g.new_tmp_var()
 	key_tmp := g.new_tmp_var()
 	value_tmp := g.new_tmp_var()
-	if insert_if_missing || addressable {
+	if insert_if_missing {
 		g.write('(*({ map* ${map_tmp} = (map*)')
+	} else if addressable {
+		// The outer ADDR carrier keeps the copied value alive after the statement expression ends.
+		g.write('(*ADDR(${val_type_str}, ({ map* ${map_tmp} = (map*)')
 	} else {
 		g.write('({ map* ${map_tmp} = (map*)')
 	}
@@ -1036,18 +1039,19 @@ fn (mut g Gen) gen_map_value_lookup(node ast.IndexExpr, key_type ast.Type, val_t
 		if !left_is_ptr || left_is_shared {
 			g.write('ADDR(map, ')
 			g.expr(node.left)
+			if left_is_shared {
+				// Project the shared value before ADDR closes so it receives a map expression.
+				if left_is_ptr {
+					g.write('->val')
+				} else {
+					g.write('.val')
+				}
+			}
 			g.write(')')
 		} else {
 			g.write('(')
 			g.expr(node.left)
 			g.write(')')
-		}
-		if left_is_shared {
-			if left_is_ptr {
-				g.write('->val')
-			} else {
-				g.write('.val')
-			}
 		}
 	}
 	g.write('; void* ${key_tmp} = ')
@@ -1061,7 +1065,7 @@ fn (mut g Gen) gen_map_value_lookup(node ast.IndexExpr, key_type ast.Type, val_t
 		g.write('if (!${value_tmp}) { ${value_tmp} = builtin__map_get_and_set(${map_tmp}, ${key_tmp}, &(${val_type_str}[]){ ${zero} }); } (${val_type_str}*)${value_tmp}; }))')
 	} else if addressable {
 		zero_tmp := g.new_tmp_var()
-		g.write('${val_type_str} ${zero_tmp}; if (!${value_tmp}) { ${zero_tmp} = ${zero}; ${value_tmp} = &${zero_tmp}; } (${val_type_str}*)${value_tmp}; }))')
+		g.write('${val_type_str} ${zero_tmp}; if (!${value_tmp}) { ${zero_tmp} = ${zero}; ${value_tmp} = &${zero_tmp}; } *((${val_type_str}*)${value_tmp}); })))')
 	} else {
 		g.write('${value_tmp} ? *((${val_type_str}*)${value_tmp}) : ${zero}; })')
 	}
