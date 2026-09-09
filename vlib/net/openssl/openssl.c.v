@@ -1,6 +1,6 @@
 module openssl
 
-#define OPENSSL_API_COMPAT 0x30000000L
+#define OPENSSL_API_COMPAT 0x10100000L
 
 // On Linux, prefer a locally built openssl, because it is
 // much more likely for it to be newer, than the system
@@ -44,6 +44,7 @@ $if $pkgconfig('openssl') {
 #include <openssl/rand.h> # Please install OpenSSL development headers
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/x509v3.h>
 #insert "@VEXEROOT/vlib/net/openssl/openssl_compat.h"
 
 @[typedef]
@@ -103,6 +104,10 @@ fn C.SSL_CTX_set_options(ctx &C.SSL_CTX, options i32)
 
 fn C.SSL_CTX_set_verify_depth(s &C.SSL_CTX, depth i32)
 
+fn C.SSL_CTX_set_verify(ctx &C.SSL_CTX, mode int, verify_callback voidptr)
+
+fn C.SSL_CTX_set_default_verify_paths(ctx &C.SSL_CTX) int
+
 fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, const_file &char, const_ca_path &char) i32
 
 fn C.SSL_CTX_free(ctx &C.SSL_CTX)
@@ -123,7 +128,13 @@ fn C.SSL_set_cipher_list(ctx &C.SSL, str &char) i32
 
 fn C.v_net_openssl_get1_peer_certificate(ssl &C.SSL) &C.X509
 
+fn C.v_net_openssl_has_x509_identity_checks() int
+
 fn C.X509_free(const_cert &C.X509)
+
+fn C.v_net_openssl_x509_check_host(const_cert &C.X509, const_name &char, name_len usize, flags u32, peer_name &&char) int
+
+fn C.v_net_openssl_x509_check_ip_asc(const_cert &C.X509, const_ip_asc &char, flags u32) int
 
 fn C.ERR_clear_error()
 

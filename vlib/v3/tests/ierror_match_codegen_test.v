@@ -617,7 +617,7 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_box_input')
 	compile := os.execute('${v3_bin} ${mod_src} -b c -o ${bin}')
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return'), compile.output
+	assert compile.output.contains('cannot use `&fakebox.FalseError` as type `!int`'), compile.output
 	assert compile.output.contains('fakebox.FalseError')
 		|| compile.output.contains('fakebox.FalseMessageError'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output

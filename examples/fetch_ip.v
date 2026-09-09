@@ -1,4 +1,4 @@
-import json
+import json2 as json
 import net.http
 
 struct IpInfo {
@@ -34,7 +34,7 @@ resp := http.fetch(
 	eprintln('failed to fetch data from the server, error: ${err}')
 	exit(1)
 }
-ip_info := json.decode(IpInfo, resp.body) or {
+ip_info := json.decode[IpInfo](resp.body) or {
 	println('failed to decode the json data returned by the server, error: ${err}')
 	exit(2)
 }

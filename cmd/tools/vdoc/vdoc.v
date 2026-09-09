@@ -8,7 +8,7 @@ import runtime
 import document as doc
 import v.vmod
 import v.util
-import json
+import json2
 import term
 
 struct Readme {
@@ -67,7 +67,7 @@ fn (vd &VDoc) gen_json(d doc.Doc) string {
 		jw.write_string('"description":"${escape(comments)}",')
 	}
 	jw.write_string('"contents":')
-	jw.write_string(json.encode(d.contents.keys().map(d.contents[it])))
+	jw.write_string(json2.encode(d.contents.keys().map(d.contents[it])))
 	jw.write_string(',"generator":"vdoc","time_generated":"${d.time_generated.str()}"}')
 	return jw.str()
 }

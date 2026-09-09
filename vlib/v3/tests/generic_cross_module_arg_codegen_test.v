@@ -9,7 +9,9 @@ const generic_cross_v3_src = os.join_path(generic_cross_v3_dir, 'v3.v')
 fn generic_cross_build_v3() string {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_cross_module_arg_test_${pid}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${generic_cross_vexe} -gc none -path "${generic_cross_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${generic_cross_v3_src}')
 	assert build.exit_code == 0, build.output
@@ -48,6 +50,15 @@ fn test_imported_generic_arg_uses_qualified_local_type_in_specialized_signature(
 		'main.v':      'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
 	})
 	assert out == '7'
+}
+
+fn test_imported_generic_application_arg_keeps_caller_base_module() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_cross_module_application_arg', {
+		'wrap/wrap.v': 'module wrap\n\npub struct Wrapper[T] {\npub:\n\tvalues []T\n}\n\npub fn make[T]() Wrapper[T] {\n\treturn Wrapper[T]{}\n}\n'
+		'main.v':      'module main\n\nimport wrap\n\nstruct User {\n\tn int\n}\n\nstruct Box[T] {\n\tvalue T\n}\n\nfn main() {\n\twrapped := wrap.make[Box[User]]()\n\tprintln(int_str(wrapped.values.len))\n}\n'
+	})
+	assert out == '0'
 }
 
 fn test_nested_generic_return_infers_outer_static_method_arg() {
@@ -130,6 +141,15 @@ fn test_generic_struct_interface_dispatch_emits_required_methods() {
 	assert out == '29'
 }
 
+fn test_generic_interface_result_call_keeps_specialized_symbol_and_wrapper() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_interface_result_call', {
+		'store/store.v': 'module store\n\npub interface Store[T] {\nmut:\n\tget() !T\n}\n\npub struct Sessions[T] {\npub mut:\n\tstore Store[T]\n}\n\npub fn (mut sessions Sessions[T]) get[X](_ X) !T {\n\treturn sessions.store.get()!\n}\n'
+		'main.v':        'module main\n\nimport store\n\nstruct User {\n\tname string\n}\n\nstruct MemoryStore {}\n\nfn (mut memory MemoryStore) get() !User {\n\t_ = memory\n\treturn User{\n\t\tname: "ok"\n\t}\n}\n\nfn main() {\n\tmut sessions := store.Sessions[User]{\n\t\tstore: MemoryStore{}\n\t}\n\tprintln(sessions.get(0)!.name)\n}\n'
+	})
+	assert out == 'ok'
+}
+
 fn test_generic_comptime_if_uses_interface_implementation() {
 	v3_bin := generic_cross_build_v3()
 	out := generic_cross_run_project(v3_bin, 'generic_comptime_interface_impl', {
@@ -148,6 +168,15 @@ fn test_interface_generated_generic_method_body_preserves_cross_module_arg_type(
 		'main.v':      'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
 	})
 	assert out == '31'
+}
+
+fn test_generic_receiver_boxes_lifetime_struct_for_interface_dispatch() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_receiver_lifetime_interface_dispatch', {
+		'sink/sink.v': "module sink\n\npub interface Sink {\nmut:\n\tbegin() !bool\n\tmatched[^b](event &Event[^b]) !bool\n}\n\npub struct Event[^b] {\npub:\n\ttext &^b string\n}\n\npub struct Box[^p, ^s, W] {\n\tpath &^p string\n\ttag &^s int\n\tvalue W\nmut:\n\tcount int\n}\n\npub fn (mut b Box[^p, ^s, W]) begin[^p, ^s]() !bool {\n\tb.count++\n\treturn true\n}\n\npub fn (mut b Box[^p, ^s, W]) matched[^b, ^p, ^s](event &Event[^b]) !bool {\n\tb.count += event.text.len\n\treturn true\n}\n\npub fn use_sink(mut value Sink) !int {\n\tif !value.begin()! {\n\t\treturn 0\n\t}\n\ttext := 'ok'\n\tevent := Event{\n\t\ttext: &text\n\t}\n\tif !value.matched(&event)! {\n\t\treturn 0\n\t}\n\treturn 43\n}\n\npub struct Driver[W] {\npub:\n\tvalue W\n}\n\npub fn (mut driver Driver[W]) run[^p, ^s](path &^p string, tag &^s int) !int {\n\tmut boxed := Box[^p, ^s, W]{\n\t\tpath: path\n\t\ttag: tag\n\t\tvalue: driver.value\n\t}\n\treturn use_sink(&boxed)\n}\n"
+		'main.v':      "module main\n\nimport sink\n\nstruct Local {}\n\nfn main() {\n\tpath := 'x'\n\ttag := 1\n\tmut driver := sink.Driver[Local]{\n\t\tvalue: Local{}\n\t}\n\tprintln(int_str(driver.run(&path, &tag) or { 0 }))\n}\n"
+	})
+	assert out == '43'
 }
 
 fn test_generated_generic_body_late_transforms_lifetime_helper() {

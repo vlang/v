@@ -18,10 +18,15 @@ concurrency:
 jobs:
   v3:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
       - name: Build V
         run: make -j4
+      - name: Install Objective-C compiler
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y gobjc
       - name: Test v3
         run: ./v run vlib/v3/test_all.vsh

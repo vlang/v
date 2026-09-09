@@ -6,9 +6,21 @@ const selective_import_v3_dir = os.dir(selective_import_tests_dir)
 const selective_import_vlib_dir = os.dir(selective_import_v3_dir)
 const selective_import_v3_src = os.join_path(selective_import_v3_dir, 'v3.v')
 
+fn selective_import_setup_v3_cache() {
+	cache_dir := os.join_path(os.temp_dir(), 'v3_selective_import_cache_${os.getpid()}')
+	if os.getenv('V3CACHE') == cache_dir {
+		return
+	}
+	os.rmdir_all(cache_dir) or {}
+	os.setenv('V3CACHE', cache_dir, true)
+}
+
 fn selective_import_build_v3() string {
+	selective_import_setup_v3_cache()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_selective_import_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${selective_import_vexe} -gc none -path "${selective_import_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${selective_import_v3_src}')
 	assert build.exit_code == 0, build.output
@@ -64,7 +76,7 @@ fn selective_import_compile_run_with_extra(v3_bin string, name string, main_src 
 
 fn selective_import_compile_run_root(v3_bin string, root string) (string, string) {
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
@@ -84,7 +96,7 @@ fn selective_import_compile_bad_with_extra(v3_bin string, name string, main_src 
 
 fn selective_import_compile_bad_root(v3_bin string, name string, root string) string {
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), compile.output
 	return compile.output
@@ -238,7 +250,7 @@ fn main() {
 	json2_output, json2_generated := selective_import_compile_run_with_extra(v3_bin,
 		'json2_decode', 'module main
 
-import x.json2
+import json2
 
 struct Config {
 	value int
@@ -249,7 +261,7 @@ fn main() {
 	println(int_str(cfg.value))
 }
 ', {
-		'x/json2/decode.v': 'module json2
+		'json2/decode.v': 'module json2
 
 pub struct DecoderOptions {}
 
@@ -281,13 +293,13 @@ fn main() {
 ', {
 		'b.v':             'module main
 
-import x.json2 as json
+import json2 as json
 
 const imported_value = json.Any{
 	value: 41
 }
 '
-		'x/json2/json2.v': 'module json2
+		'json2/json2.v':   'module json2
 
 pub struct Any {
 pub:
@@ -330,7 +342,7 @@ fn test_json2_encode_pure_v_is_specialized() {
 	output, generated := selective_import_compile_run_with_extra(v3_bin,
 		'json2_encode_specialized', 'module main
 
-import x.json2
+import json2
 
 struct User {
 	name string
@@ -340,7 +352,7 @@ fn main() {
 	println(json2.encode(User{name: "x"}, json2.EncoderOptions{}))
 }
 ', {
-		'x/json2/encode.v': 'module json2
+		'json2/encode.v': 'module json2
 
 pub struct EncoderOptions {}
 
@@ -501,12 +513,12 @@ pub:
 '
 	})
 	assert output == '10'
-	assert generated.contains('geometry__Point worker__make_point_T_v_int(int x)'), generated
-	assert generated.contains('int worker__take_point_T_v_int(geometry__Point p, int x)'), generated
-	assert !generated.contains('\nPoint worker__make_point_T_v_int(int x)'), generated
-	assert !generated.contains('\npixels__Point worker__make_point_T_v_int(int x)'), generated
-	assert !generated.contains('\nint worker__take_point_T_v_int(Point p, int x)'), generated
-	assert !generated.contains('\nint worker__take_point_T_v_int(pixels__Point p, int x)'), generated
+	assert generated.contains('geometry__Point worker__make_point_T_v_int(i64 x)'), generated
+	assert generated.contains('i64 worker__take_point_T_v_int(geometry__Point p, i64 x)'), generated
+	assert !generated.contains('\nPoint worker__make_point_T_v_int(i64 x)'), generated
+	assert !generated.contains('\npixels__Point worker__make_point_T_v_int(i64 x)'), generated
+	assert !generated.contains('\ni64 worker__take_point_T_v_int(Point p, i64 x)'), generated
+	assert !generated.contains('\ni64 worker__take_point_T_v_int(pixels__Point p, i64 x)'), generated
 }
 
 fn test_selective_import_symbol_can_be_used_as_function_value() {
@@ -523,7 +535,7 @@ fn main() {
 	assert output == '5'
 	assert generated.contains('mymodules__add_xy'), generated
 	assert generated.contains('f(2, 3)'), generated
-	assert !generated.contains('int f = mymodules__add_xy'), generated
+	assert !generated.contains('i64 f = mymodules__add_xy'), generated
 }
 
 fn test_selective_import_function_value_roots_exact_symbol_with_imported_homonym() {
@@ -671,7 +683,7 @@ fn main() {
 }
 ')
 	assert output == '6'
-	assert generated.contains('int add_xy(int x, int y)'), generated
+	assert generated.contains('i64 add_xy(i64 x, i64 y)'), generated
 	assert generated.contains('int__str(add_xy(2, 3))'), generated
 	assert !generated.contains('int__str(mymodules__add_xy(2, 3))'), generated
 }
@@ -700,10 +712,10 @@ pub fn value() string {
 '
 	})
 	assert output == '7\nfoo'
-	assert generated.contains('int value(void);'), generated
+	assert generated.contains('i64 value(void);'), generated
 	assert generated.contains('string foo__value(void);'), generated
 	assert generated.contains('string foo__value(void) {'), generated
-	assert !generated.contains('int foo__value(void);'), generated
+	assert !generated.contains('i64 foo__value(void);'), generated
 }
 
 fn test_module_local_error_method_signature_uses_module_key() {
@@ -894,9 +906,9 @@ fn main() {
 ',
 		extra)
 	assert output == '7'
-	assert generated.contains('int box__Box_int__combine(box__Box_int b, types__Thing thing)'), generated
-	assert !generated.contains('int box__Box_int__combine(box__Box_int b, box__Thing thing)'), generated
-	assert !generated.contains('int box__Box_int__combine(box__Box_int b, other__Thing thing)'), generated
+	assert generated.contains('i64 box__Box_int__combine(box__Box_int b, types__Thing thing)'), generated
+	assert !generated.contains('i64 box__Box_int__combine(box__Box_int b, box__Thing thing)'), generated
+	assert !generated.contains('i64 box__Box_int__combine(box__Box_int b, other__Thing thing)'), generated
 }
 
 fn test_selective_import_resolves_alias_collision() {
@@ -937,10 +949,79 @@ fn main() {
 ',
 		selective_import_type_collision_modules())
 	assert output == 'on'
-	assert generated.contains('return mode == 7;'), generated
-	assert generated.contains('is_on(7)'), generated
-	assert !generated.contains('return mode == 70;'), generated
-	assert !generated.contains('is_on(70)'), generated
+	assert generated.contains('return mode == geometry__Mode__on;'), generated
+	assert generated.contains('is_on(geometry__Mode__on)'), generated
+	assert !generated.contains('return mode == pixels__Mode__on;'), generated
+	assert !generated.contains('is_on(pixels__Mode__on)'), generated
+}
+
+fn test_selective_import_enum_from_uses_selected_type() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'enum_from', 'module main
+
+import geometry { Mode }
+import pixels
+
+fn main() {
+	mode := Mode.from(8) or { panic(err) }
+	println(mode)
+	string_mode := Mode.from("on") or { panic(err) }
+	println(string_mode)
+}
+',
+		selective_import_type_collision_modules())
+	assert output == 'off\non'
+	assert !generated.contains('unknown__from'), generated
+}
+
+fn test_module_qualified_enum_from_uses_imported_type() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'qualified_enum_from', 'module main
+
+import colors
+
+fn main() {
+	numeric := colors.Color.from(1) or { panic(err) }
+	println(numeric)
+	text := colors.Color.from("red") or { panic(err) }
+	println(text)
+}
+', {
+		'colors/colors.v': 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+'
+	})
+	assert output == 'blue\nred'
+	assert !generated.contains('unknown__from'), generated
+}
+
+fn test_selective_imported_enum_alias_from_string() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'enum_alias_from_string', 'module main
+
+import colors { Hue }
+
+fn main() {
+	value := Hue.from("blue") or { panic(err) }
+	println(value)
+}
+', {
+		'colors/colors.v': 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+
+pub type Hue = Color
+'
+	})
+	assert output == 'blue'
+	assert !generated.contains('unknown__from'), generated
 }
 
 fn test_selective_import_resolves_flag_enum_collision() {
@@ -957,8 +1038,8 @@ fn main() {
 ',
 		selective_import_type_collision_modules())
 	assert output == '3'
-	assert generated.contains('int m = 1 | 2;'), generated
-	assert !generated.contains('int m = 1 | 4;'), generated
+	assert generated.contains('i64 m = 1 | 2;'), generated
+	assert !generated.contains('i64 m = 1 | 4;'), generated
 	assert !generated.contains('Perm.a'), generated
 }
 

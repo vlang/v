@@ -7,7 +7,7 @@ import net
 import net.http
 import os
 import time
-import x.json2 as json
+import json2 as json
 
 enum ContextReturnType {
 	normal

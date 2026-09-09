@@ -31,6 +31,7 @@ fn test_version_flag() {
 	v_verbose_cmd_res := os.execute_opt('${vexe} -v run ${example_path}')!.output
 	assert v_verbose_cmd_res != v_ver_cmd_res
 	assert v_verbose_cmd_res.contains('v.pref.lookup_path:')
+		|| v_verbose_cmd_res.contains('Running macOS V3 compiler in process:')
 
 	v_verbose_cmd_with_additional_args_res := os.execute_opt('${vexe} -g -v run ${example_path}')!.output
 	assert v_verbose_cmd_with_additional_args_res != v_ver_cmd_res
@@ -50,34 +51,6 @@ fn test_cross_compile_keeps_explicit_cc() {
 		['', '-os', target_os, '-cc', custom_cc], false)
 	assert second.ccompiler_set_by_flag
 	assert second.ccompiler == custom_cc
-}
-
-fn test_v2_only_flags_are_forwarded_by_v1_wrapper() {
-	target := os.join_path(vroot, 'examples', 'hello_world.v')
-	prefs, command := pref.parse_args_and_show_errors(['help'], [
-		'',
-		'-v2',
-		'-freestanding',
-		'-os',
-		'none',
-		'--skip-builtin',
-		'--skip-type-check',
-		'--debug',
-		'--showcc',
-		'--stats',
-		'-print-parsed-files',
-		'--profile-alloc',
-		'--single-backend',
-		'-O0',
-		'-fhooks',
-		'output,panic,alloc',
-		target,
-	], false)
-	assert command == target
-	assert prefs.use_v2
-	assert prefs.is_bare
-	assert prefs.build_options.contains('-os none')
-	assert prefs.build_options.contains('-fhooks output,panic,alloc')
 }
 
 fn test_vexe_path_normalizes_relative_env_path() {
@@ -161,6 +134,44 @@ fn test_profile_flag_still_accepts_explicit_output_file() {
 	assert prefs.path == target
 	assert prefs.is_prof
 	assert prefs.profile_file == 'profile.txt'
+}
+
+fn test_launcher_leaves_flags_after_a_known_external_command_for_the_tool() {
+	// Regression test for https://github.com/vlang/v/issues/28114 :
+	// `v missdoc -e main` must not treat `-e` as V's own eval-argument flag.
+	// In launcher mode, everything after a known external command belongs to that tool.
+	prefs, command := pref.parse_args_for_launcher(['missdoc'], ['missdoc', '-r', '-e', 'main',
+		'.'], false)
+	assert command == 'missdoc'
+	assert !prefs.is_eval_argument
+	assert prefs.eval_argument == ''
+}
+
+fn test_launcher_reports_external_command_index() {
+	_, command, command_idx := pref.parse_args_for_launcher_with_command_index([
+		'self',
+	], ['-exclude', 'x2', 'self', '-o', 'vnew'], false)
+	assert command == 'self'
+	assert command_idx == 2
+	assert pref.option_may_consume_value('-exclude')
+	assert pref.option_may_consume_value('-profile')
+	assert !pref.option_may_consume_value('-g')
+}
+
+fn test_non_launcher_parse_keeps_v_flags_after_the_command() {
+	// vfmt and similar tools recognize their own command name (`fmt`), but still rely on the
+	// general V preference flags that follow it. The default parser (non-launcher mode) must
+	// keep interpreting them, so passthrough stays scoped to the `v` launcher; see the review of
+	// vlang/v#28114.
+	translated, cmd1 := pref.parse_args_and_show_errors(['fmt'],
+		['fmt', '-translated', 'generated.v'], false)
+	assert cmd1 == 'fmt'
+	assert translated.translated
+
+	crossos, cmd2 := pref.parse_args_and_show_errors(['fmt'], ['fmt', '-os', 'linux', 'source.v'],
+		false)
+	assert cmd2 == 'fmt'
+	assert crossos.os == .linux
 }
 
 fn new_wasm_preferences() pref.Preferences {
@@ -282,14 +293,51 @@ fn test_explicit_gc_mode_is_forwarded_to_build_module() {
 	}
 }
 
+fn issue74_cache_path_for_ldflags(ldflags string) (string, pref.PkgConfigMode) {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	mut args := ['-cc', 'gcc']
+	if ldflags != '' {
+		args << ['-ldflags', ldflags]
+	}
+	args << target
+	mut prefs, _ := pref.parse_args_and_show_errors([], args, false)
+	path := prefs.cache_manager.mod_postfix_with_key2cpath('issue74-cache-salt', '.o',
+		'same-source')
+	return path, prefs.pkgconfig_mode
+}
+
+fn test_pkgconfig_mode_salts_cache_without_salt_for_all_ldflags() {
+	cache_root := os.join_path(os.vtmp_dir(), 'issue74_pkgconfig_mode_cache_${os.getpid()}')
+	old_cache := os.getenv_opt('VCACHE')
+	os.setenv('VCACHE', cache_root, true)
+	defer {
+		if cache := old_cache {
+			os.setenv('VCACHE', cache, true)
+		} else {
+			os.unsetenv('VCACHE')
+		}
+		os.rmdir_all(cache_root) or {}
+	}
+
+	dynamic_path, dynamic_mode := issue74_cache_path_for_ldflags('')
+	dynamic_link_path, dynamic_link_mode := issue74_cache_path_for_ldflags('-Wl,--as-needed')
+	static_path, static_mode := issue74_cache_path_for_ldflags('-static')
+	static_link_path, static_link_mode := issue74_cache_path_for_ldflags('-static -Wl,--as-needed')
+
+	assert dynamic_mode == .dynamic
+	assert dynamic_link_mode == .dynamic
+	assert static_mode == .static_
+	assert static_link_mode == .static_
+	assert dynamic_path == dynamic_link_path
+	assert static_path == static_link_path
+	assert dynamic_path != static_path
+}
+
 fn test_v_compiler_targets_default_to_no_gc() {
 	for target in [
 		os.join_path(vroot, 'cmd', 'v'),
 		os.join_path(vroot, 'cmd', 'v') + os.path_separator,
 		os.join_path(vroot, 'cmd', 'v', 'v.v'),
-		os.join_path(vroot, 'cmd', 'v2'),
-		os.join_path(vroot, 'cmd', 'v2') + os.path_separator,
-		os.join_path(vroot, 'cmd', 'v2', 'v2.v'),
 		os.join_path(vroot, 'cmd', 'tools', 'vfmt.v'),
 	] {
 		prefs, _ := pref.parse_args_and_show_errors([], ['', target], false)
@@ -299,7 +347,7 @@ fn test_v_compiler_targets_default_to_no_gc() {
 }
 
 fn test_v_compiler_targets_keep_explicit_gc_selection() {
-	target := os.join_path(vroot, 'cmd', 'v2', 'v2.v')
+	target := os.join_path(vroot, 'cmd', 'v', 'v.v')
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'boehm', target], false)
 	assert prefs.gc_mode == .boehm_full_opt
 	assert prefs.build_options.contains('-gc boehm')
@@ -371,6 +419,46 @@ fn test_prealloc_defaults_to_no_gc() {
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-prealloc', target], false)
 	assert prefs.prealloc
 	assert prefs.gc_mode == .no_gc
+}
+
+fn test_macos_and_linux_v_compiler_target_defaults_to_prealloc() {
+	if pref.get_host_os() !in [.macos, .linux] {
+		return
+	}
+	for target in [os.join_path(vroot, 'cmd', 'v'), os.join_path(vroot, 'vlib', 'v3', 'v3.v')] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', target], false)
+		assert prefs.building_v
+		assert prefs.prealloc
+		assert prefs.gc_mode == .no_gc
+	}
+}
+
+fn test_linux_explicit_tinyc_v_compiler_target_skips_prealloc() {
+	if pref.get_host_os() != .linux {
+		return
+	}
+	target := os.join_path(vroot, 'cmd', 'v')
+	for compiler in ['tcc', 'tinyc'] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', '-cc', compiler, target], false)
+		assert prefs.building_v
+		assert prefs.ccompiler_type == .tinyc
+		assert !prefs.prealloc
+		assert '-prealloc' !in prefs.build_options
+	}
+}
+
+fn test_macos_explicit_tinyc_v_compiler_target_keeps_prealloc() {
+	if pref.get_host_os() != .macos {
+		return
+	}
+	target := os.join_path(vroot, 'cmd', 'v')
+	for compiler in ['tcc', 'tinyc'] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', '-cc', compiler, target], false)
+		assert prefs.building_v
+		assert prefs.ccompiler_type == .tinyc
+		assert prefs.prealloc
+		assert '-prealloc' in prefs.build_options
+	}
 }
 
 fn test_prealloc_overrides_explicit_gc_selection() {
@@ -479,6 +567,98 @@ fn test_m32_does_not_override_explicit_arch() {
 	assert prefs.build_options.contains('-m32')
 }
 
+fn test_v3_memory_limit_passthrough_flags_are_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	for flag in ['-no-memory-limit', '--no-memory-limit'] {
+		prefs, command := pref.parse_args_and_show_errors([], [flag, target], false)
+		assert command == target
+		assert flag !in prefs.build_options
+	}
+}
+
+fn test_old_compiler_flag_is_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-old-compiler', target], false)
+	assert command == target
+	assert prefs.old_compiler
+	assert '-old-compiler' !in prefs.build_options
+}
+
+fn test_new_compiler_flag_is_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-new-compiler', target], false)
+	assert command == target
+	assert prefs.new_compiler
+	assert !prefs.old_compiler
+	assert '-new-compiler' !in prefs.build_options
+}
+
+fn test_fastc_backend_selects_v3_driver() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'fastc', target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert prefs.backend_set_by_flag
+	assert prefs.is_fastc
+	assert prefs.new_compiler
+	assert prefs.build_options.contains('-b fastc')
+}
+
+fn test_later_backend_overrides_fastc_v3_selection() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'fastc', '-b', 'c', target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert !prefs.is_fastc
+	assert !prefs.new_compiler
+}
+
+fn test_final_fastc_backend_selects_v3_driver() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'c', '-b', 'fastc', target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert prefs.is_fastc
+	assert prefs.new_compiler
+}
+
+fn test_explicit_new_compiler_survives_backend_override() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-new-compiler', '-b', 'fastc', '-b',
+		'c', target], false)
+	assert command == target
+	assert !prefs.is_fastc
+	assert prefs.new_compiler
+}
+
+fn test_repeated_backend_flags_preserve_final_fastc_selection() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'fastc', '-b', 'c', '-b', 'fastc',
+		target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert prefs.is_fastc
+	assert prefs.new_compiler
+}
+
+fn test_v3_checker_fixture_flag_is_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	for flag in ['-checker-fixture', '-macos-v3-compat-c99'] {
+		prefs, command := pref.parse_args_and_show_errors([], [flag, target], false)
+		assert command == target
+		assert flag !in prefs.build_options
+	}
+}
+
+fn test_compact_boolean_define_is_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-dfeature', target], false)
+	assert command == target
+	assert prefs.compile_values['feature'] == 'true'
+	assert 'feature' in prefs.compile_defines
+	assert prefs.build_options.contains('-d feature')
+}
+
 fn test_v_cmds_and_flags() {
 	build_cmd_res := os.execute('${vexe} build ${vroot}/examples/hello_world.v')
 	assert build_cmd_res.output.trim_space() == 'Use `v ${vroot}/examples/hello_world.v` instead.'
@@ -493,30 +673,20 @@ fn test_v_cmds_and_flags() {
 	unknown_arg_for_cmd_res := os.execute('${vexe} build-module -xyz ${vroot}/vlib/math')
 	assert unknown_arg_for_cmd_res.output.trim_space() == 'Unknown argument `-xyz` for command `build-module`'
 
-	v2_only_flag_without_v2_res :=
+	unsupported_skip_builtin_res :=
 		os.execute('${vexe} --skip-builtin ${vroot}/examples/hello_world.v')
-	assert v2_only_flag_without_v2_res.exit_code == 1
-	assert v2_only_flag_without_v2_res.output.trim_space() == 'Unknown argument `--skip-builtin`'
+	assert unsupported_skip_builtin_res.exit_code == 1
+	assert unsupported_skip_builtin_res.output.trim_space() == 'Unknown argument `--skip-builtin`'
 
-	v2_hooks_without_v2_res := os.execute('${vexe} -fhooks output ${vroot}/examples/hello_world.v')
-	assert v2_hooks_without_v2_res.exit_code == 1
-	assert v2_hooks_without_v2_res.output.trim_space() == 'Unknown argument `-fhooks`'
+	unsupported_hooks_res := os.execute('${vexe} -fhooks output ${vroot}/examples/hello_world.v')
+	assert unsupported_hooks_res.exit_code == 1
+	assert unsupported_hooks_res.output.trim_space() == 'Unknown argument `-fhooks`'
 
-	v2_os_none_without_v2_res := os.execute('${vexe} -os none ${vroot}/examples/hello_world.v')
-	assert v2_os_none_without_v2_res.exit_code == 1
-	assert v2_os_none_without_v2_res.output.trim_space() == 'unknown operating system target `none`'
+	unsupported_os_none_res := os.execute('${vexe} -os none ${vroot}/examples/hello_world.v')
+	assert unsupported_os_none_res.exit_code == 1
+	assert unsupported_os_none_res.output.trim_space() == 'unknown operating system target `none`'
 
-	late_v2_skip_builtin_res :=
-		os.execute('${vexe} --skip-builtin run ${vroot}/examples/hello_world.v -v2')
-	assert late_v2_skip_builtin_res.exit_code == 1
-	assert late_v2_skip_builtin_res.output.trim_space() == 'Unknown argument `--skip-builtin`'
-
-	late_v2_hooks_res :=
-		os.execute('${vexe} -fhooks output run ${vroot}/examples/hello_world.v -v2')
-	assert late_v2_hooks_res.exit_code == 1
-	assert late_v2_hooks_res.output.trim_space() == 'Unknown argument `-fhooks`'
-
-	eval_removed_message := 'use v -v2 -eval file.v'
+	eval_removed_message := 'The eval backend has been removed.'
 	eval_flag_res := os.execute('${vexe} -eval ${vroot}/examples/hello_world.v')
 	assert eval_flag_res.exit_code == 1
 	assert eval_flag_res.output.trim_space() == eval_removed_message
@@ -659,7 +829,7 @@ fn test_generate_c_project_creates_build_files() {
 	normalized_build_command := normalized_build_path(build_command)
 	assert normalized_build_command.contains(normalized_build_path(generated_c_path))
 		|| normalized_build_command.contains(normalized_build_path(os.short_path(generated_c_path)))
-	assert build_command.contains('cJSON.c')
+	assert !build_command.contains('cJSON.c')
 	assert !build_command.contains('.tmp.c')
 	assert !build_command.contains('.module.')
 }
@@ -701,11 +871,27 @@ fn test_tcc_shared_builds_disable_backtraces() {
 	assert 'no_backtrace' in shared_prefs.compile_defines_all
 
 	mut regular_prefs := &pref.Preferences{
-		path:      'main.v'
-		ccompiler: 'tinyc'
+		path:                  'main.v'
+		os:                    .linux
+		arch:                  .amd64
+		ccompiler:             'tinyc'
+		ccompiler_set_by_flag: true
 	}
 	regular_prefs.fill_with_defaults()
 	assert 'no_backtrace' !in regular_prefs.compile_defines_all
+}
+
+fn test_macos_arm64_tcc_builds_disable_backtraces() {
+	mut prefs := &pref.Preferences{
+		path:                  'main.v'
+		os:                    .macos
+		arch:                  .arm64
+		ccompiler:             'tinyc'
+		ccompiler_set_by_flag: true
+	}
+	prefs.fill_with_defaults()
+	assert 'no_backtrace' in prefs.compile_defines_all
+	assert prefs.build_options.contains('-d no_backtrace')
 }
 
 fn test_bsd_tinyc_defaults_to_openssl() {

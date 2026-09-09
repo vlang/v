@@ -1,4 +1,4 @@
-import x.json2
+import json2
 
 pub fn maybe_map[T, X](a []T, f fn (T) !X) ![]X {
 	mut r := []X{cap: a.len}

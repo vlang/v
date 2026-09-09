@@ -1,7 +1,7 @@
 // vtest build: started_mysqld?
 module mysql
 
-import json
+import json2 as json
 
 struct MysqlErrorPayload {
 	data string

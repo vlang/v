@@ -2,7 +2,7 @@
 // vtest build: !sanitized_job? && !windows // !windows: fasthttp.Server.run not implemented yet
 import os
 import time
-import x.json2 as json
+import json2 as json
 import net
 import net.http
 import io

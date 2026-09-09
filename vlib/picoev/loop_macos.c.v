@@ -6,18 +6,16 @@ module picoev
 
 fn C.kevent(i32, changelist voidptr, nchanges i32, eventlist voidptr, nevents i32, timeout &C.timespec) i32
 fn C.kqueue() i32
-fn C.EV_SET(kev voidptr, ident i32, filter i16, flags u16, fflags u32, data voidptr, udata voidptr)
+fn C.EV_SET(kev voidptr, ident usize, filter i16, flags u16, fflags u32, data isize, udata voidptr)
 
 pub struct C.kevent {
 pub mut:
-	ident int
-	// uintptr_t
+	ident  usize
 	filter i16
 	flags  u16
 	fflags u32
-	data   voidptr
-	// intptr_t
-	udata voidptr
+	data   isize
+	udata  voidptr
 }
 
 @[heap]
@@ -60,7 +58,7 @@ pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
 	}
 	filter = i16(filter)
 
-	C.EV_SET(&pv.loop.changelist[index], pv.loop.changed_fds, filter, operation, 0, 0, 0)
+	C.EV_SET(&pv.loop.changelist[index], usize(pv.loop.changed_fds), filter, operation, 0, 0, 0)
 }
 
 // backend_build uses the lower 8 bits to store the old events and the higher 8

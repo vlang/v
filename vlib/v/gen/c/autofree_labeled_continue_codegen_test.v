@@ -22,7 +22,7 @@ fn function_window(source string, signature string) string {
 }
 
 fn test_labeled_loop_cleanup_codegen_order() {
-	cmd := '${test_vexe} -autofree -o - ${os.quoted_path(autofree_labeled_continue_testdata)}'
+	cmd := '${test_vexe} -old-compiler -autofree -o - ${os.quoted_path(autofree_labeled_continue_testdata)}'
 	res := os.execute(cmd)
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated := res.output
@@ -45,7 +45,7 @@ fn test_labeled_loop_cleanup_codegen_order() {
 	assert defer_pos < free_pos
 
 	labeled_break_fn := function_window(generated, 'void main__labeled_break_cleanup_order(void) {')
-	labeled_break_goto_pos := labeled_break_fn.index('goto break_outer__break;') or {
+	labeled_break_goto_pos := labeled_break_fn.index('goto __v_user_goto_0__break;') or {
 		assert false, labeled_break_fn
 		return
 	}
@@ -81,7 +81,7 @@ fn test_labeled_loop_cleanup_codegen_order() {
 	assert labeled_break_target_free_pos < labeled_break_goto_pos
 
 	break_fn := function_window(generated, 'void main__for_c_labeled_break(void) {')
-	break_label_pos := break_fn.index('outer__break: {}') or {
+	break_label_pos := break_fn.index('__v_user_goto_0__break: {}') or {
 		assert false, break_fn
 		return
 	}
@@ -101,7 +101,7 @@ fn test_labeled_loop_cleanup_codegen_order() {
 		assert false, nested_continue_fn
 		return
 	}
-	nested_continue_goto_pos := nested_continue_fn.index('goto outer__continue_entry;') or {
+	nested_continue_goto_pos := nested_continue_fn.index('goto __v_user_goto_0__continue_entry;') or {
 		assert false, nested_continue_fn
 		return
 	}
@@ -126,7 +126,7 @@ fn test_labeled_loop_cleanup_codegen_order() {
 		assert false, nested_break_fn
 		return
 	}
-	nested_break_goto_pos := nested_break_fn.index('goto break_outer__break;') or {
+	nested_break_goto_pos := nested_break_fn.index('goto __v_user_goto_0__break;') or {
 		assert false, nested_break_fn
 		return
 	}

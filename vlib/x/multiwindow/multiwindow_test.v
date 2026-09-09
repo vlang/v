@@ -1,10 +1,6 @@
 module multiwindow
 
 import os
-
-$if gg_multiwindow ? || x_multiwindow_render ? {
-	import sokol.gfx
-}
 import time
 
 fn test_window_id_generation_rejects_stale_after_slot_reuse() {
@@ -21,12 +17,12 @@ fn test_window_id_generation_rejects_stale_after_slot_reuse() {
 	assert second.slot == first.slot
 	assert second.generation == first.generation + 1
 
-	app.destroy_window(first) or {
+	app.window_status(first) or {
 		assert err.msg() == err_stale_window
 		app.stop()!
 		return
 	}
-	assert false, 'destroy_window accepted a stale WindowId'
+	assert false, 'window_status accepted a stale WindowId after slot reuse'
 }
 
 fn test_destroy_child_keeps_app_and_other_windows_alive() {
@@ -388,7 +384,7 @@ fn test_input_event_default_mouse_button_is_invalid() {
 	assert source.contains('mouse_button       int = input_event_invalid_mouse_button')
 }
 
-fn test_drain_input_events_does_not_consume_lifecycle_events() {
+fn test_specialized_input_drain_does_not_overtake_lifecycle_events() {
 	mut app := new_app()!
 	win := app.create_window(title: 'Lifecycle remains')!
 
@@ -401,14 +397,16 @@ fn test_drain_input_events_does_not_consume_lifecycle_events() {
 
 	assert app.poll_events()! == 1
 	input_events := app.drain_input_events()!
-	assert input_events.len == 1
-	assert input_events[0].kind == .mouse_move
-	assert input_events[0].window_id == win
+	assert input_events.len == 0
 
 	lifecycle_events := app.drain_events()!
 	assert lifecycle_events.len == 1
 	assert lifecycle_events[0].kind == .window_created
 	assert lifecycle_events[0].window_id == win
+	remaining_input := app.drain_input_events()!
+	assert remaining_input.len == 1
+	assert remaining_input[0].kind == .mouse_move
+	assert remaining_input[0].window_id == win
 	assert app.drain_events()!.len == 0
 	assert app.drain_input_events()!.len == 0
 	app.stop()!
@@ -509,11 +507,17 @@ fn test_owner_queue_runs_jobs_and_rejects_destroyed_window_work() {
 
 	app.destroy_window(win)!
 	app.post(fn [win] (mut queued_app App) ! {
-		queued_app.destroy_window(win)!
+		queued_app.set_window_title(win, 'Destroyed queued window')!
 	})!
 	app.drain_pending(1) or {
 		assert err.msg() == err_stale_window
-		app.stop()!
+		mut stop_rejected := false
+		app.stop() or {
+			assert err.msg() == '${err_render_terminal_aggregate}: ${err_stale_window}'
+			stop_rejected = true
+		}
+		assert stop_rejected
+		assert app.status() == .stopped
 		return
 	}
 	assert false, 'queued work accepted a destroyed WindowId'
@@ -609,34 +613,51 @@ fn test_invalid_app_and_window_config_are_rejected() {
 	assert false, 'create_window accepted zero width'
 }
 
-fn test_new_app_starts_backend_on_stable_app_backend_before_owner_queue_source_guard() {
-	source := multiwindow_source_file('app.v')
-	body :=
-		source.all_after('pub fn new_app(config Config) !&App {').all_before('// status reports')
+fn assert_ownerless_modal_rejected_without_side_effects(mut app App, visible bool) {
+	windows_len := app.windows.len
+	native_windows_len := app.backend.mock.windows.len
+	service_windows_len := app.services.windows.len
+	render_windows_len := app.render_runtime.windows.len
+	events_len := app.events.len
+	next_delivery_token := app.next_event_delivery_token
 
-	assert body.contains('mut app := &App{')
-	assert body.contains('app.backend.start(config.require_renderer)!')
-	assert body.contains('mut owner := executor.new(queue_size: config.queue_size) or {')
-	assert body.contains('app.backend.stop() or {}')
-	assert body.contains('app.owner = owner')
-	assert !body.contains('\n\tbackend.start(config.require_renderer)!')
-	assert_source_order(body, 'mut app := &App{', 'app.backend.start(config.require_renderer)!')
-	assert_source_order(body, 'app.backend.start(config.require_renderer)!',
-		'mut owner := executor.new(queue_size: config.queue_size) or {')
-	owner_failure_body := body.all_after('mut owner := executor.new(queue_size: config.queue_size) or {')
-		.all_before('app.owner = owner')
-	assert_source_order(owner_failure_body, 'app.backend.stop() or {}', 'return err')
-	assert_source_order(body, 'mut owner := executor.new(queue_size: config.queue_size) or {',
-		'app.owner = owner')
+	app.create_window(
+		title:   'ownerless modal'
+		modal:   true
+		visible: visible
+	) or {
+		assert err.msg() == err_owner_relation_invalid
+		assert app.windows.len == windows_len
+		assert app.backend.mock.windows.len == native_windows_len
+		assert app.services.windows.len == service_windows_len
+		assert app.render_runtime.windows.len == render_windows_len
+		assert app.events.len == events_len
+		assert app.next_event_delivery_token == next_delivery_token
+		return
+	}
+	assert false, 'create_window accepted an ownerless modal window'
+}
+
+fn test_ownerless_modal_config_is_rejected_before_visible_or_hidden_allocation() {
+	mut app := new_app()!
+	assert_ownerless_modal_rejected_without_side_effects(mut app, true)
+	assert_ownerless_modal_rejected_without_side_effects(mut app, false)
+	app.stop()!
 }
 
 fn test_unknown_and_stale_window_ids_are_rejected() {
 	mut app := new_app()!
 	unknown := WindowId{
-		slot:       42
-		generation: 1
+		app_instance: app.instance_id()
+		slot:         42
+		generation:   1
 	}
-	app.destroy_window(unknown) or { assert err.msg() == err_window_not_found }
+	mut unknown_destroy_rejected := false
+	app.destroy_window(unknown) or {
+		assert err.msg() == err_window_not_found
+		unknown_destroy_rejected = true
+	}
+	assert unknown_destroy_rejected
 
 	first := app.create_window(title: 'First')!
 	app.destroy_window(first)!
@@ -795,8 +816,9 @@ fn test_window_info_and_mutation_validate_window_ids() {
 	assert rejected_destroyed_resize
 
 	unknown := WindowId{
-		slot:       99
-		generation: 1
+		app_instance: app.instance_id()
+		slot:         99
+		generation:   1
 	}
 	mut rejected_unknown_info := false
 	app.window_info(unknown) or {
@@ -824,25 +846,36 @@ fn test_capabilities_for_backend_uses_backend_seam_without_app() {
 	assert caps.focus_events
 	assert caps.drop_events
 	assert caps.touch_events
+	assert caps.readback
 }
 
-fn test_mock_render_seam_reports_renderer_unsupported() {
+fn test_mock_opaque_renderer_start_reports_renderer_unsupported() {
 	$if gg_multiwindow ? || x_multiwindow_render ? {
 		mut app := new_app()!
-		win := app.create_window(title: 'No renderer')!
-		mut rejected_environment := false
-		app.render_environment(win) or {
+		mut rejected_first_start := false
+		app.start_renderer(RendererConfig{}) or {
 			assert err.msg() == err_renderer_unsupported
-			rejected_environment = true
+			rejected_first_start = true
 		}
-		assert rejected_environment
-		mut rejected_begin := false
-		app.begin_render(win) or {
+		assert rejected_first_start
+		assert app.render_runtime.renderer_terminal == ''
+		assert app.render_bridge == unsafe { nil }
+
+		mut rejected_second_start := false
+		app.start_renderer(RendererConfig{}) or {
 			assert err.msg() == err_renderer_unsupported
-			rejected_begin = true
+			rejected_second_start = true
 		}
-		assert rejected_begin
+		assert rejected_second_start
+		assert app.render_runtime.renderer_terminal == ''
+		assert app.render_bridge == unsafe { nil }
+
 		app.stop()!
+		assert app.render_runtime.renderer_terminal == ''
+		assert app.render_bridge == unsafe { nil }
+		app.stop()!
+		assert app.render_runtime.renderer_terminal == ''
+		assert app.render_bridge == unsafe { nil }
 	} $else {
 		return
 	}
@@ -984,6 +1017,7 @@ fn test_capabilities_for_config_render_required_prefers_x11_over_wayland() {
 					assert caps.native
 					assert caps.explicit_swapchain
 					assert caps.metal
+					assert caps.readback
 					assert_appkit_input_capabilities(caps)
 				}
 			} $else {
@@ -1394,13 +1428,17 @@ fn test_win32_render_capabilities_probe_d3d_on_windows_only() {
 	}
 }
 
-fn test_win32_d3d11_present_status_mapping_treats_occluded_as_nonfatal() {
-	win32_d3d11_check_present_status(0)!
-	win32_d3d11_check_present_status(4)!
-	assert_win32_d3d11_present_status_error(2, err_win32_d3d_device_removed)
-	assert_win32_d3d11_present_status_error(3, err_win32_d3d_device_reset)
-	assert_win32_d3d11_present_status_error(1, err_win32_d3d_present_failed)
-	assert_win32_d3d11_present_status_error(99, err_win32_d3d_present_failed)
+$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if windows && sokol_d3d11 ? {
+		fn test_win32_d3d11_present_hresult_mapping_treats_occluded_as_nonfatal() {
+			assert_win32_d3d11_present_disposition(0, .ok)
+			assert_win32_d3d11_present_disposition(i64(u32(0x087a0001)), .not_presented)
+			assert_win32_d3d11_present_disposition(i64(u32(0x887a0005)), .renderer_lost)
+			assert_win32_d3d11_present_disposition(i64(u32(0x887a0007)), .renderer_lost)
+			assert_win32_d3d11_present_disposition(i64(u32(0x80004005)), .operation_failed)
+			assert_win32_d3d11_present_disposition(i64(u32(0x80070057)), .operation_failed)
+		}
+	}
 }
 
 fn test_win32_min_size_plumbing_is_present() {
@@ -1424,8 +1462,14 @@ fn test_win32_input_events_are_queued_and_capability_scoped_source_guard() {
 	backend_source := multiwindow_source_file('backend.v')
 	win32_backend_source := multiwindow_source_file('win32_backend.c.v')
 	win32_helper_source := multiwindow_source_file('win32_backend_helpers.h')
+	backend_poll_body :=
+		backend_source.all_after('fn (mut backend Backend) poll_queued_events() ![]QueuedEvent').all_before('fn (mut backend Backend) event_sequence_terminal_error')
+	compact_backend_poll_body :=
+		backend_poll_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	compact_win32_backend_source :=
+		win32_backend_source.replace(' ', '').replace('\t', '').replace('\n', '')
 
-	assert backend_source.contains('.win32 {\n\t\t\treturn backend.win32.poll_queued_events()!')
+	assert compact_backend_poll_body.contains('.win32{backend.win32.poll_queued_events()!}')
 	assert win32_backend_source.contains('struct Win32NativeQueuedEvent')
 	assert win32_backend_source.contains('queued_events')
 	assert win32_backend_source.contains('[]Win32NativeQueuedEvent')
@@ -1449,8 +1493,8 @@ fn test_win32_input_events_are_queued_and_capability_scoped_source_guard() {
 	assert win32_backend_source.contains('focus_events:       true')
 	assert win32_backend_source.contains('drop_events:        true')
 	assert win32_backend_source.contains('touch_events:       true')
-	assert win32_backend_source.contains('pending_dropped_files  []string')
-	assert win32_backend_source.contains('dropped_files:      record.pending_dropped_files.clone()')
+	assert compact_win32_backend_source.contains('pending_dropped_files[]string')
+	assert compact_win32_backend_source.contains('dropped_files:record.pending_dropped_files.clone()')
 	assert win32_backend_source.contains('.files_dropped')
 	assert win32_backend_source.contains('InputEventKind.clipboard_pasted')
 	assert win32_backend_source.contains('InputEventKind.touches_began')
@@ -1461,9 +1505,10 @@ fn test_win32_input_events_are_queued_and_capability_scoped_source_guard() {
 	assert win32_backend_source.contains('fn win32_window_drop_file')
 	assert win32_backend_source.contains('fn win32_window_drop_end')
 	assert win32_backend_source.contains('fn win32_window_touch_event')
-	assert win32_backend_source.contains('tos_clone(&u8(path))')
+	assert win32_backend_source.contains('clone_native_path(path)')
+	assert !win32_backend_source.contains('tos_clone(&u8(path))')
 	assert !win32_backend_source.contains('cstring_to_vstring(path)')
-	assert win32_backend_source.contains('iconified              bool')
+	assert compact_win32_backend_source.contains('iconifiedbool')
 	assert win32_backend_source.contains('12 { InputEventKind.iconified }')
 	assert win32_backend_source.contains('13 { InputEventKind.restored }')
 	assert win32_backend_source.contains('if record.iconified')
@@ -1591,6 +1636,143 @@ fn test_win32_input_events_are_queued_and_capability_scoped_source_guard() {
 	assert !win32_helper_source[syskey_up_start..char_start].contains('return 0;')
 }
 
+fn test_win32_focus_cleanup_and_zero_window_monitor_refresh_source_guard() {
+	backend_source := multiwindow_source_file('win32_backend.c.v')
+	service_source := multiwindow_source_file('win32_service_backend.c.v')
+	service_api_source := multiwindow_source_file('service_api.v')
+	event_delivery_source := multiwindow_source_file('event_delivery.v')
+	native_source := multiwindow_source_file('win32_service_native.h')
+	helper_source := multiwindow_source_file('win32_backend_helpers.h')
+	capability_body :=
+		service_source.all_after('fn (backend &Win32Backend) service_operation_capability').all_before('fn (backend &Win32Backend) service_window_state')
+	assert capability_body.contains('C.v_multiwindow_win32_service_fullscreen_known')
+	assert capability_body.contains('.fullscreen, .restore')
+	fullscreen_capability_body :=
+		capability_body.all_after('.fullscreen, .restore {').all_before('.maximize {')
+	assert_source_order(fullscreen_capability_body, 'support:', 'if fullscreen_known')
+	assert fullscreen_capability_body.contains('state_observable: true')
+	assert native_source.contains('v_multiwindow_win32_service_fullscreen_known')
+	clipboard_body :=
+		service_source.all_after('fn (mut backend Win32Backend) collect_clipboard_events').all_before('fn (mut backend Win32Backend) purge_clipboard_window')
+	assert_source_order(clipboard_body, 'if status == win32_clipboard_attempt_retry {',
+		'now_ns := backend.clipboard_now_ns()')
+	assert_source_order(clipboard_body, 'now_ns := backend.clipboard_now_ns()',
+		"backend.finish_clipboard_head(.failed, '', err_clipboard_timeout)")
+	kill_focus_body :=
+		helper_source.all_after('case WM_KILLFOCUS:').all_before('case WM_SETCURSOR:')
+	assert_source_order(kill_focus_body, 'v_multiwindow_win32_window_focus_lost(data);',
+		'V_MULTIWINDOW_WIN32_INPUT_UNFOCUSED')
+	assert backend_source.contains('mouse_focus_cleanup_pending  bool')
+	assert backend_source.contains('mouse_focus_cleanup_reported bool')
+	focus_callback_body :=
+		backend_source.all_after('fn win32_window_focus_lost(data voidptr)').all_before("@[export: 'v_multiwindow_win32_window_raw_mouse_event']")
+	assert focus_callback_body.contains('record.mouse_focus_cleanup_pending')
+	assert focus_callback_body.contains('record.mouse_focus_cleanup_reported')
+	assert_source_order(focus_callback_body, 'record.mouse_focus_cleanup_pending',
+		'C.v_multiwindow_win32_service_focus_lost')
+	focus_retry_body :=
+		backend_source.all_after('if record.mouse_focus_cleanup_pending').all_before('if record.raw_input_failed')
+	assert focus_retry_body.contains('C.v_multiwindow_win32_service_focus_lost')
+	assert focus_retry_body.contains('backend.record_native_input_release_error')
+	assert focus_retry_body.contains('backend.resolve_native_input_release_error')
+	assert native_source.contains('return v_multiwindow_win32_service_mouse_cleanup(')
+	poll_body :=
+		backend_source.all_after('fn (mut backend Win32Backend) poll_queued_events').all_before('fn (mut backend Win32Backend) take_poll_error')
+	assert_source_order(poll_body, 'if record.mouse_focus_cleanup_pending',
+		'backend.collect_service_refresh_events()!')
+
+	repository_dir := os.dir(os.dir(os.dir(@DIR)))
+	w3_runner := os.read_file(os.join_path(repository_dir, '.github', 'workflows',
+		'run_multiwindow_win32_w3_green.ps1')) or { panic(err) }
+	assert w3_runner.count('test_win32_zero_window_monitor_snapshot_equality_uses_all_public_fields') == 1
+	assert w3_runner.contains('schema=package2-win32-w3-green-surface-v1')
+	assert w3_runner.contains('[string]$ExpectedCompositeSha256')
+	assert w3_runner.contains('[string]$ExpectedRunnerSha256')
+
+	create_body :=
+		backend_source.all_after('fn (mut backend Win32Backend) create_window').all_before('fn (mut backend Win32Backend) set_window_title')
+	assert_source_order(create_body, 'if backend.windows.len == 0 {',
+		'backend.windows << &Win32WindowRecord{')
+	assert create_body.contains('backend.refresh_service_monitors_before_first_window()!')
+	assert create_body.contains('backend.service_monitor_pending_records')
+	assert create_body.contains('&& staged_monitor_ids.len == 0')
+	assert service_source.contains('fn win32_service_raw_monitor_snapshots_equal')
+	assert service_source.contains('right_indices[monitor.native_id]')
+	assert service_source.contains('monitor.work_height != other.work_height')
+	assert service_source.contains('monitor.dpi != other.dpi')
+	assert service_source.contains('monitor.primary != other.primary')
+	precreate_refresh_body :=
+		service_source.all_after('fn (mut backend Win32Backend) refresh_service_monitors_before_first_window').all_before('fn win32_service_monitor_ids_equal')
+	assert precreate_refresh_body.contains('backend.service_monitor_pending_records = plan.records.clone()')
+	assert precreate_refresh_body.contains('backend.service_monitor_pending_raw = raw.clone()')
+	assert !precreate_refresh_body.contains('backend.service_monitors = plan.records')
+	assert !precreate_refresh_body.contains('backend.service_monitor_raw = raw.clone()')
+	assert_source_order(precreate_refresh_body,
+		'win32_service_raw_monitor_snapshots_equal(backend.service_monitor_raw, raw)',
+		'backend.service_monitor_pending_sequence != 0')
+	assert_source_order(precreate_refresh_body,
+		'win32_service_raw_monitor_snapshots_equal(backend.service_monitor_raw, raw)',
+		'backend.clear_pending_service_monitor_refresh()')
+	refresh_body :=
+		service_source.all_after('fn (mut backend Win32Backend) collect_service_refresh_events').all_before('fn (mut backend Win32Backend) service_show_window')
+	assert_source_order(refresh_body, 'if backend.service_monitor_pending_sequence != 0 {',
+		'if backend.windows.len == 0 {')
+	pending_body :=
+		refresh_body.all_after('if backend.service_monitor_pending_sequence != 0 {').all_before('if backend.windows.len == 0 {')
+	assert pending_body.contains('return events')
+	pending_net_zero_body :=
+		pending_body.all_after('if win32_service_raw_monitor_snapshots_equal(backend.service_monitor_raw, latest_raw) {').all_before('} else {')
+	assert pending_net_zero_body.contains('suppress_net_zero_monitor = true')
+	assert !pending_net_zero_body.contains('backend.clear_pending_service_monitor_refresh()')
+	assert !pending_net_zero_body.contains('return events')
+	assert_source_order(pending_body,
+		'win32_service_raw_monitor_snapshots_equal(backend.service_monitor_raw, latest_raw)',
+		'backend.clear_pending_service_monitor_refresh()')
+	assert_source_order(pending_body, 'win32_service_monitor_event(app_instance, staged_monitors)',
+		'mut observations := []Win32ServiceRefreshObservation')
+	assert_source_order(pending_body,
+		'backend.service_metrics_observation(index, staged_records) or {',
+		'backend.service_monitors = staged_records')
+	assert_source_order(pending_body, 'backend.service_monitors = staged_records',
+		'record.service_monitor_ids = observation.monitor_ids.clone()')
+	assert_source_order(pending_body, 'latest_raw := win32_service_raw_monitor_snapshot() or {',
+		'backend.service_monitors = staged_records')
+	assert_source_order(pending_body, 'latest_plan := win32_plan_service_monitors',
+		'backend.service_metrics_observation(index, staged_records) or {')
+	pending_commit_tail :=
+		pending_body.all_after('record.service_monitor_ids = observation.monitor_ids.clone()')
+	assert pending_commit_tail.contains('backend.clear_pending_service_monitor_refresh()')
+	display_refresh_body :=
+		refresh_body.all_after('if display_sequence != 0 {').all_before('mut pending_indices := []int{}')
+	assert display_refresh_body.contains('raw_changed := !win32_service_raw_monitor_snapshots_equal')
+	assert display_refresh_body.contains('emit_monitor := raw_changed || !suppress_net_zero_monitor')
+	display_monitor_body :=
+		display_refresh_body.all_after('if emit_monitor {').all_before('mut observations := []Win32ServiceRefreshObservation')
+	assert display_monitor_body.contains('win32_service_monitor_event(app_instance, monitors)')
+	assert_source_order(display_refresh_body,
+		'mut observations := []Win32ServiceRefreshObservation',
+		'backend.service_monitor_poll_dirty = false')
+	assert_source_order(display_refresh_body,
+		'record.service_monitor_ids = observation.monitor_ids.clone()',
+		'backend.clear_pending_service_monitor_refresh()')
+	assert refresh_body.contains('backend.service_monitor_poll_dirty = true')
+	query_body :=
+		service_api_source.all_after('pub fn (app &App) service_window_state').all_before('// service_monitor_ids returns')
+	assert query_body.contains('service_window_state_with_registered_monitor_membership')
+	publish_body :=
+		service_api_source.all_after('fn (mut app App) publish_native_state').all_before('fn service_window_state_has_observation')
+	assert_source_order(publish_body, 'service_window_state_with_registered_monitor_membership',
+		'merge_service_window_state')
+	accept_body :=
+		event_delivery_source.all_after('mut sequenced := service_event_with_sequence').all_before('app.enqueue_reserved_event_locked(queued_service_event(sequenced)')
+	assert accept_body.count('service_window_state_with_registered_monitor_membership') == 2
+	assert_source_order(accept_body, 'if event.kind == .state {',
+		'service_window_state_with_registered_monitor_membership')
+	metrics_body := accept_body.all_after('} else if event.kind == .metrics {')
+	assert_source_order(metrics_body, 'service_window_state_with_registered_monitor_membership',
+		'merge_service_window_state')
+}
+
 fn test_win32_runtime_resize_clamps_to_min_size_when_available() {
 	$if windows {
 		mut app := new_app(backend: .win32)!
@@ -1629,6 +1811,7 @@ fn test_appkit_capabilities_for_backend_are_platform_scoped() {
 		assert caps.owner_queue
 		assert !caps.explicit_swapchain
 		assert caps.metal == false
+		assert !caps.readback
 		assert_appkit_input_capabilities(caps)
 	} $else {
 		capabilities_for_backend(.appkit) or {
@@ -1639,15 +1822,14 @@ fn test_appkit_capabilities_for_backend_are_platform_scoped() {
 	}
 }
 
-fn test_appkit_metal_renderer_is_disabled_for_darwin_glcore_source_guard() {
-	source := multiwindow_source_file('appkit_backend.c.v')
-	assert source.contains('fn appkit_metal_supported() bool')
-	assert source.contains('$if darwin_sokol_glcore33 ? {')
-	assert source.contains('return error(err_renderer_unsupported)')
-	assert source.contains('explicit_swapchain: appkit_metal_supported() && backend.renderer_ready()')
-	assert source.contains('metal:              appkit_metal_supported() && backend.renderer_ready()')
-	assert_source_order(source, 'if require_renderer {', 'if !appkit_metal_supported()')
-	assert_source_order(source, 'if !appkit_metal_supported()', 'backend.init_renderer()!')
+fn test_appkit_readback_capability_requires_ready_metal_renderer() {
+	backend := AppKitBackend{}
+	rendererless := backend.capabilities_for_renderer(false)
+	assert !rendererless.readback
+	assert !rendererless.metal
+	ready := backend.capabilities_for_renderer(true)
+	assert ready.readback == appkit_metal_supported()
+	assert ready.readback == ready.metal
 }
 
 fn test_appkit_sharedlive_source_excludes_objc_implementation() {
@@ -1659,20 +1841,89 @@ fn test_appkit_sharedlive_source_excludes_objc_implementation() {
 		'#include "@VMODROOT/vlib/x/multiwindow/appkit_backend.m"')
 }
 
+fn test_appkit_monitor_refresh_precedes_native_observation_conversion_source_guard() {
+	source := multiwindow_source_file('appkit_backend.c.v')
+	poll_body :=
+		source.all_after('fn (mut backend AppKitBackend) poll_queued_events() ![]QueuedEvent').all_before('$if darwin {\n\t@[markused]')
+	assert poll_body.contains('pending_monitor_events = backend.monitor_change_event()!')
+	assert_source_order(poll_body, 'pending_monitor_events = backend.monitor_change_event()!',
+		'for i < backend.windows.len')
+	emission_body := poll_body.all_after('for native_event in native_events {')
+	assert_source_order(emission_body,
+		'appkit_service_event_depends_on_monitor_snapshot(native_event.event)',
+		'events << native_event.event')
+	monitor_body :=
+		source.all_after('fn (mut backend AppKitBackend) monitor_change_event() ![]QueuedEvent').all_before('fn (mut backend AppKitBackend) take_poll_error')
+	assert monitor_body.contains('backend.service_monitor_snapshot(app_instance)!')
+	snapshot_body :=
+		source.all_after('fn (mut backend AppKitBackend) service_monitor_snapshot(app_instance u64) ![]ServiceMonitorInfo').all_before('fn (mut backend AppKitBackend) service_set_clipboard_text')
+	assert snapshot_body.contains('backend.monitor_failures_for_test')
+}
+
+fn appkit_service_v_declaration_names(source string) []string {
+	marker := 'fn C.v_multiwindow_appkit_service_'
+	mut names := []string{}
+	for line in source.split_into_lines() {
+		declaration := line.trim_space()
+		if !declaration.starts_with(marker) {
+			continue
+		}
+		open_parenthesis := declaration.index('(') or { continue }
+		names << declaration['fn C.'.len..open_parenthesis]
+	}
+	names.sort()
+	return names
+}
+
+fn appkit_header_prototype_names(header string) []string {
+	prefix := 'v_multiwindow_appkit_'
+	mut names := []string{}
+	for statement in header.split(';') {
+		name_start := statement.index(prefix) or { continue }
+		candidate := statement[name_start..]
+		open_parenthesis := candidate.index('(') or { continue }
+		names << candidate[..open_parenthesis].trim_space()
+	}
+	names.sort()
+	return names
+}
+
 fn test_appkit_prototype_header_is_c_only_and_shared_with_implementation() {
+	backend := multiwindow_source_file('appkit_backend.c.v')
 	header := multiwindow_source_file('appkit_backend_helpers.h')
 	implementation := multiwindow_source_file('appkit_backend.m')
+	service_declarations := appkit_service_v_declaration_names(backend)
+	header_prototypes := appkit_header_prototype_names(header)
+	service_prototypes := header_prototypes.filter(it.starts_with('v_multiwindow_appkit_service_'))
+	render_prototypes := [
+		'v_multiwindow_appkit_logical_to_pixel_rect',
+		'v_multiwindow_appkit_pixel_to_logical_rect',
+		'v_multiwindow_appkit_render_snapshot',
+	]
+	render_header_prototypes := header_prototypes.filter(it in render_prototypes)
 
 	assert header.contains('int v_multiwindow_appkit_is_main_thread(void);')
-	assert header.contains('int v_multiwindow_appkit_create_window(void *device_ptr, const char *title')
-	assert header.contains('int v_multiwindow_appkit_resize_window(void *state_ptr, int width, int height')
-	assert header.contains('int v_multiwindow_appkit_begin_frame(void *state_ptr, void *device_ptr')
-	assert header.contains('void v_multiwindow_appkit_end_frame(void *state_ptr);')
-	assert header.contains('void v_multiwindow_appkit_abort_frame(void *state_ptr);')
+	assert header.contains('VMultiwindowNativePrimitive v_multiwindow_appkit_create_window(void *device_ptr, const char *title, int width, int height, int min_width, int min_height, int resizable, int visible, int high_dpi, int borderless, int fullscreen, int *out_width, int *out_height, int *out_framebuffer_width, int *out_framebuffer_height);')
+	assert header.contains('int v_multiwindow_appkit_resize_window(void *state_ptr, int width, int height, int *out_width, int *out_height, int *out_framebuffer_width, int *out_framebuffer_height);')
+	assert header.contains('VMultiwindowNativePrimitive v_multiwindow_appkit_begin_frame(void *state_ptr, void *device_ptr);')
+	assert header.contains('VMultiwindowNativePrimitive v_multiwindow_appkit_end_frame(void *state_ptr, void *drawable_ptr);')
+	assert header.contains('VMultiwindowNativePrimitive v_multiwindow_appkit_abort_frame(void *state_ptr, void *drawable_ptr);')
+	assert !header.contains('int v_multiwindow_appkit_create_window(')
+	assert !header.contains('int v_multiwindow_appkit_begin_frame(')
+	assert !header.contains('void v_multiwindow_appkit_end_frame(void *state_ptr);')
+	assert !header.contains('void v_multiwindow_appkit_abort_frame(void *state_ptr);')
 	assert !header.contains('@interface')
 	assert !header.contains('@implementation')
 	assert !header.contains('VMultiwindowAppKitWindowState')
 	assert !header.contains('NSWindow')
+	assert service_declarations.len == 35
+	assert service_prototypes.len == service_declarations.len
+	assert service_prototypes == service_declarations
+	assert service_declarations.len + render_prototypes.len == 38
+	for prototype in render_prototypes {
+		assert backend.contains('fn C.${prototype}(')
+	}
+	assert render_header_prototypes == render_prototypes
 
 	assert implementation.contains('#include "appkit_backend_helpers.h"')
 	assert_source_order(implementation, '#include <stdint.h>',
@@ -1705,7 +1956,7 @@ pub fn appkit_sharedlive_probe() {
 }
 '
 		os.write_file(source_path, source)!
-		cmd := '${os.quoted_path(@VEXE)} -nocolor -cc clang -sharedlive -shared -o ${os.quoted_path(dylib_path)} ${os.quoted_path(source_path)}'
+		cmd := '${os.quoted_path(@VEXE)} -nocolor -cc clang -d gg_multiwindow -d sokol_metal -sharedlive -shared -o ${os.quoted_path(dylib_path)} ${os.quoted_path(source_path)}'
 		build_res := os.execute(cmd)
 		assert build_res.exit_code == 0, 'appkit sharedlive build failed
 command: ${cmd}
@@ -1738,8 +1989,12 @@ fn test_appkit_input_events_are_queued_and_capability_scoped_source_guard() {
 	appkit_backend_source := multiwindow_source_file('appkit_backend.c.v')
 	appkit_header_source := multiwindow_source_file('appkit_backend_helpers.h')
 	appkit_impl_source := multiwindow_source_file('appkit_backend.m')
+	backend_poll_body :=
+		backend_source.all_after('fn (mut backend Backend) poll_queued_events() ![]QueuedEvent').all_before('fn (mut backend Backend) event_sequence_terminal_error')
+	compact_backend_poll_body :=
+		backend_poll_body.replace(' ', '').replace('\t', '').replace('\n', '')
 
-	assert backend_source.contains('.appkit {\n\t\t\treturn backend.appkit.poll_queued_events()!')
+	assert compact_backend_poll_body.contains('.appkit{backend.appkit.poll_queued_events()!}')
 	assert appkit_backend_source.contains('struct AppKitNativeQueuedEvent')
 	assert appkit_backend_source.contains('fn (mut backend AppKitBackend) poll_queued_events() ![]QueuedEvent')
 	assert appkit_backend_source.contains('appkit_sort_native_events(mut native_events)')
@@ -1769,7 +2024,8 @@ fn test_appkit_input_events_are_queued_and_capability_scoped_source_guard() {
 	assert appkit_backend_source.contains('num_touches:        touch_count')
 	assert appkit_backend_source.contains('touches:            touches')
 	assert appkit_backend_source.contains('fn appkit_dropped_files_from_native')
-	assert appkit_backend_source.contains('tos_clone(&u8(path))')
+	assert appkit_backend_source.contains('clone_native_path(path)')
+	assert !appkit_backend_source.contains('tos_clone(&u8(path))')
 	assert !appkit_backend_source.contains('cstring_to_vstring(path)')
 	assert !appkit_backend_source.contains('fn appkit_touch_count')
 	assert !appkit_backend_source.contains('fn appkit_touches_from_native')
@@ -1917,13 +2173,96 @@ fn test_appkit_input_events_are_queued_and_capability_scoped_source_guard() {
 
 fn test_appkit_macos_cgen_emits_record_and_literal_input_mapping() {
 	c_source := multiwindow_emit_macos_multiwindow_test_c()
-	assert_source_order(c_source,
-		'typedef struct x__multiwindow__AppKitWindowRecord x__multiwindow__AppKitWindowRecord;',
-		'VV_LOC _option_x__multiwindow__QueuedEvent x__multiwindow__appkit_queued_event_from_native(')
-	assert_source_order(c_source, 'struct x__multiwindow__AppKitWindowRecord {',
-		'VV_LOC _option_x__multiwindow__QueuedEvent x__multiwindow__appkit_queued_event_from_native(')
-	forbidden_const_prefix := '_const_x__multiwindow__' + 'appkit_'
-	assert !c_source.contains(forbidden_const_prefix)
+	leaked_display_field := ['Dis', 'play* display;'].join('')
+	leaked_probe_type := ['VMultiwindowX11', 'ReadbackProbe'].join('')
+	assert !c_source.contains(leaked_display_field)
+	assert !c_source.contains('Optional_${leaked_probe_type}')
+	assert !c_source.contains('_option_C__${leaked_probe_type}')
+	v1_typedef := 'typedef struct x__multiwindow__AppKitWindowRecord x__multiwindow__AppKitWindowRecord;'
+	v1_struct := 'struct x__multiwindow__AppKitWindowRecord {'
+	v1_mapping := 'VV_LOC _option_x__multiwindow__QueuedEvent x__multiwindow__appkit_queued_event_from_native('
+	v3_typedef := 'typedef struct multiwindow__AppKitWindowRecord multiwindow__AppKitWindowRecord;'
+	v3_struct := 'struct multiwindow__AppKitWindowRecord {'
+	v3_mapping := 'Optional_multiwindow__QueuedEvent multiwindow__appkit_queued_event_from_native('
+	c_lines := c_source.split_into_lines()
+	mut v1_typedef_indices := []int{}
+	mut v1_struct_indices := []int{}
+	mut v1_prototype_indices := []int{}
+	mut v1_definition_indices := []int{}
+	mut v1_mapping_line_count := 0
+	mut v3_typedef_indices := []int{}
+	mut v3_struct_indices := []int{}
+	mut v3_prototype_indices := []int{}
+	mut v3_definition_indices := []int{}
+	mut v3_mapping_line_count := 0
+	for line_index, line in c_lines {
+		trimmed := line.trim_space()
+		if trimmed == v1_typedef {
+			v1_typedef_indices << line_index
+		}
+		if trimmed == v1_struct {
+			v1_struct_indices << line_index
+		}
+		if trimmed.starts_with(v1_mapping) {
+			v1_mapping_line_count++
+			if trimmed.ends_with(';') {
+				v1_prototype_indices << line_index
+			}
+			if trimmed.ends_with('{') {
+				v1_definition_indices << line_index
+			}
+		}
+		if trimmed == v3_typedef {
+			v3_typedef_indices << line_index
+		}
+		if trimmed == v3_struct {
+			v3_struct_indices << line_index
+		}
+		if trimmed.starts_with(v3_mapping) {
+			v3_mapping_line_count++
+			if trimmed.ends_with(';') {
+				v3_prototype_indices << line_index
+			}
+			if trimmed.ends_with('{') {
+				v3_definition_indices << line_index
+			}
+		}
+		if trimmed.starts_with('#define ') || trimmed.starts_with('static ')
+			|| trimmed.starts_with('string ') || trimmed.starts_with('const ')
+			|| trimmed.starts_with('enum ') {
+			declaration := trimmed.all_before('=')
+			assert !declaration.contains('_const_x__multiwindow__appkit_')
+			assert !declaration.contains('_const_multiwindow__appkit_')
+		}
+	}
+	v1_exact := v1_typedef_indices.len == 1 && v1_struct_indices.len == 1
+		&& v1_prototype_indices.len == 1 && v1_definition_indices.len == 1
+		&& v1_mapping_line_count == 2
+	v3_exact := v3_typedef_indices.len == 2 && v3_struct_indices.len == 1
+		&& v3_prototype_indices.len == 1 && v3_definition_indices.len == 1
+		&& v3_mapping_line_count == 2
+	assert v1_exact != v3_exact
+	if v1_exact {
+		assert v3_typedef_indices.len == 0
+		assert v3_struct_indices.len == 0
+		assert v3_prototype_indices.len == 0
+		assert v3_definition_indices.len == 0
+		assert v3_mapping_line_count == 0
+		assert v1_prototype_indices[0] < v1_definition_indices[0]
+		assert v1_typedef_indices[0] < v1_prototype_indices[0]
+		assert v1_struct_indices[0] < v1_definition_indices[0]
+	} else {
+		assert v1_typedef_indices.len == 0
+		assert v1_struct_indices.len == 0
+		assert v1_prototype_indices.len == 0
+		assert v1_definition_indices.len == 0
+		assert v1_mapping_line_count == 0
+		assert v3_typedef_indices[0] < v3_typedef_indices[1]
+		assert v3_prototype_indices[0] < v3_definition_indices[0]
+		assert v3_typedef_indices[0] < v3_prototype_indices[0]
+		assert v3_typedef_indices[1] < v3_prototype_indices[0]
+		assert v3_struct_indices[0] < v3_definition_indices[0]
+	}
 }
 
 fn test_appkit_create_destroy_on_darwin() {
@@ -1966,69 +2305,6 @@ fn test_appkit_title_and_resize_on_darwin() {
 	}
 }
 
-fn test_appkit_render_begin_abort_and_end_on_darwin_when_metal_is_available() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
-		$if darwin {
-			$if darwin_sokol_glcore33 ? {
-				capabilities_for_backend_with_renderer(.appkit, true) or {
-					assert err.msg() == err_renderer_unsupported
-					return
-				}
-				assert false, 'appkit render smoke succeeded with darwin_sokol_glcore33'
-				return
-			}
-			render_caps := capabilities_for_backend_with_renderer(.appkit, true) or {
-				if err.msg() == err_appkit_metal_device_failed {
-					eprintln('skip appkit render smoke: Metal device is unavailable')
-					return
-				}
-				assert false, 'unexpected appkit render capability error: ${err.msg()}'
-				return
-			}
-			assert render_caps.backend == .appkit
-			assert render_caps.native
-			assert render_caps.explicit_swapchain
-			assert render_caps.metal
-
-			mut app := new_app(backend: .appkit, require_renderer: true)!
-			win := app.create_window(
-				title:  'V x.multiwindow AppKit Metal render'
-				width:  128
-				height: 96
-			)!
-			app.poll_events()!
-			env := app.render_environment(win)!
-			assert env.defaults.color_format == gfx.PixelFormat.bgra8
-			assert env.defaults.depth_format == gfx.PixelFormat.depth_stencil
-			assert env.defaults.sample_count == 1
-			assert env.metal.device != unsafe { nil }
-
-			aborted_frame := app.begin_render(win)!
-			assert aborted_frame.window_id == win
-			assert aborted_frame.swapchain.width > 0
-			assert aborted_frame.swapchain.height > 0
-			assert aborted_frame.swapchain.color_format == gfx.PixelFormat.bgra8
-			assert aborted_frame.swapchain.depth_format == gfx.PixelFormat.depth_stencil
-			assert aborted_frame.swapchain.metal.current_drawable != unsafe { nil }
-			assert aborted_frame.swapchain.metal.depth_stencil_texture != unsafe { nil }
-			app.abort_render(aborted_frame)!
-
-			frame := app.begin_render(win)!
-			assert frame.window_id == win
-			assert frame.swapchain.width > 0
-			assert frame.swapchain.height > 0
-			assert frame.swapchain.color_format == gfx.PixelFormat.bgra8
-			assert frame.swapchain.depth_format == gfx.PixelFormat.depth_stencil
-			assert frame.swapchain.metal.current_drawable != unsafe { nil }
-			assert frame.swapchain.metal.depth_stencil_texture != unsafe { nil }
-			app.end_render(frame)!
-			app.stop()!
-		}
-	} $else {
-		return
-	}
-}
-
 fn test_x11_capabilities_for_backend_do_not_require_display_on_linux() {
 	$if linux {
 		$if !x_multiwindow_x11 ? {
@@ -2054,58 +2330,6 @@ fn test_x11_capabilities_for_backend_do_not_require_display_on_linux() {
 			return
 		}
 		assert false, 'x11 capabilities succeeded on an unsupported OS'
-	}
-}
-
-fn test_x11_render_smoke_when_display_is_available() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
-		$if linux {
-			$if !x_multiwindow_x11 ? {
-				new_app(backend: .x11, require_renderer: true) or {
-					assert err.msg() == err_backend_unsupported
-					return
-				}
-				assert false, 'x11 render app creation succeeded without -d x_multiwindow_x11'
-				return
-			}
-			if os.getenv('DISPLAY') == '' {
-				eprintln('skip x11 render smoke: DISPLAY is not set')
-				return
-			}
-			mut app := new_app(backend: .x11, require_renderer: true) or {
-				if err.msg() == err_x11_open_display_failed {
-					eprintln('skip x11 render smoke: DISPLAY could not be opened')
-					return
-				}
-				panic(err.msg())
-			}
-			caps := app.capabilities()
-			assert caps.explicit_swapchain
-			assert caps.gl
-			win := app.create_window(title: 'V x.multiwindow X11 render', width: 160, height: 96)!
-			env := app.render_environment(win)!
-			assert env.defaults.color_format == gfx.PixelFormat.rgba8
-			assert env.defaults.depth_format == gfx.PixelFormat.depth_stencil
-			assert env.defaults.sample_count == 1
-			frame := app.begin_render(win)!
-			assert frame.window_id == win
-			assert frame.swapchain.width == 160
-			assert frame.swapchain.height == 96
-			assert frame.swapchain.sample_count == 1
-			assert frame.swapchain.color_format == gfx.PixelFormat.rgba8
-			assert frame.swapchain.depth_format == gfx.PixelFormat.depth_stencil
-			assert frame.swapchain.gl.framebuffer == 0
-			app.end_render(frame)!
-			app.stop()!
-		} $else {
-			new_app(backend: .x11, require_renderer: true) or {
-				assert err.msg() == err_backend_unsupported
-				return
-			}
-			assert false, 'x11 render app creation succeeded on an unsupported OS'
-		}
-	} $else {
-		return
 	}
 }
 
@@ -2207,20 +2431,46 @@ fn test_x11_native_handle_aliases_follow_xlib_unsigned_long_source_guard() {
 
 fn test_x11_backend_native_deps_are_flag_gated_source_guard() {
 	source := multiwindow_source_file('x11_backend.c.v')
-	assert source.contains('$if linux && x_multiwindow_x11 ? {\n\t#flag linux -lX11')
-	assert source.contains('#flag linux -lEGL')
-	assert source.contains('#flag linux -lGL')
+	guarded_native_deps :=
+		source.all_after('$if linux && x_multiwindow_x11 ? {').all_before('\n}\n\nconst x11_client_message')
+	assert guarded_native_deps.contains('#flag linux -lX11-xcb')
+	assert guarded_native_deps.split_into_lines().count(it == '\t#flag linux -lX11') == 1
+	assert guarded_native_deps.contains('#flag linux -lxcb')
+	assert guarded_native_deps.contains('#flag linux -lEGL')
+	assert guarded_native_deps.contains('#flag linux -lGL')
+	assert source.count('#flag linux -lX11-xcb') == 1
+	assert source.split_into_lines().count(it == '\t#flag linux -lX11') == 1
+	assert source.count('#flag linux -lxcb') == 1
+	assert source.count('#flag linux -lEGL') == 1
+	assert source.count('#flag linux -lGL') == 1
 	assert source.contains('$if gg_multiwindow ? || x_multiwindow_render ? {\n\timport sokol.gfx')
-	assert_source_order(source, '$if linux && x_multiwindow_x11 ? {\n\t#flag linux -lX11',
-		'#include <X11/Xlib.h>')
+	assert guarded_native_deps.contains('\t#flag linux -lX11-xcb\n\t#flag linux -lX11\n')
+	assert_source_order(guarded_native_deps, '#flag linux -lX11', '#include <X11/Xlib.h>')
+}
+
+fn test_x11_c_interop_types_are_native_flag_gated_source_guard() {
+	source := multiwindow_source_file('x11_backend.c.v')
+	native_declarations :=
+		source.all_after('struct X11ReadbackProbe {').all_after('$if linux && x_multiwindow_x11 ? {').all_before('\n}\n\nstruct X11WindowRecord')
+	assert source.count('struct C.Display {}') == 1
+	assert source.count('struct C.VMultiwindowX11ReadbackProbe {') == 1
+	assert native_declarations.contains('struct C.Display {}')
+	assert native_declarations.contains('struct C.VMultiwindowX11ReadbackProbe {')
+	assert source.contains('display                                      voidptr')
+	assert source.contains('!X11ReadbackProbe {')
+	assert !source.contains('!C.VMultiwindowX11ReadbackProbe {')
 }
 
 fn test_x11_input_support_queues_key_char_and_focus_source_guard() {
 	backend_source := multiwindow_source_file('backend.v')
 	x11_backend_source := multiwindow_source_file('x11_backend.c.v')
 	x11_helper_source := multiwindow_source_file('x11_egl_backend_helpers.h')
+	backend_poll_body :=
+		backend_source.all_after('fn (mut backend Backend) poll_queued_events() ![]QueuedEvent').all_before('fn (mut backend Backend) event_sequence_terminal_error')
+	compact_backend_poll_body :=
+		backend_poll_body.replace(' ', '').replace('\t', '').replace('\n', '')
 
-	assert backend_source.contains('.x11 {\n\t\t\treturn backend.x11.poll_queued_events()!')
+	assert compact_backend_poll_body.contains('.x11{backend.x11.poll_queued_events()!}')
 	assert x11_backend_source.contains('input_events:       true')
 	assert x11_backend_source.contains('mouse_events:       true')
 	assert x11_backend_source.contains('keyboard_events:    true')
@@ -2249,6 +2499,16 @@ fn test_x11_input_support_queues_key_char_and_focus_source_guard() {
 	assert x11_backend_source.contains('C.XChangeProperty')
 	assert x11_backend_source.contains('C.XConvertSelection')
 	assert x11_backend_source.contains('C.XSendEvent')
+	assert x11_backend_source.contains('#flag linux -lxcb')
+	assert x11_helper_source.contains('#include <xcb/xcb.h>')
+	assert x11_helper_source.contains('#include <X11/Xlib-xcb.h>')
+	assert x11_helper_source.contains('XGetXCBConnection(display)')
+	assert !x11_helper_source.contains('XSetEventQueueOwner')
+	assert x11_helper_source.contains('xcb_connect(display_name, NULL)')
+	assert x11_helper_source.contains('xcb_send_event_checked')
+	assert x11_helper_source.contains('xcb_request_check')
+	assert x11_helper_source.contains('xcb_disconnect(connection)')
+	assert !x11_helper_source.contains('XSetErrorHandler')
 	assert x11_backend_source.contains('C.XFilterEvent(&event, X11NativeWindow(0))')
 	assert_source_order(x11_backend_source, 'C.XNextEvent(backend.display, &event)',
 		'C.XFilterEvent(&event, X11NativeWindow(0))')
@@ -2259,10 +2519,11 @@ fn test_x11_input_support_queues_key_char_and_focus_source_guard() {
 	assert x11_backend_source.contains('send_xdnd_status')
 	assert x11_backend_source.contains('send_xdnd_finished')
 	assert x11_backend_source.contains('.files_dropped')
-	assert x11_backend_source.contains('dropped_files_from_uri_list(payload)')
+	assert x11_backend_source.contains('dropped_files_from_uri_list(drop.data.bytestr())')
 	assert x11_backend_source.contains('const x11_xdnd_max_payload_bytes = 1024 * 1024')
 	assert x11_backend_source.contains('const x11_xdnd_max_payload_units = (x11_xdnd_max_payload_bytes + 3) / 4')
 	assert x11_backend_source.contains('const x11_xdnd_max_type_atoms = 64')
+	assert x11_backend_source.contains('const x11_xdnd_timeout_ns = i64(2_000_000_000)')
 	assert x11_backend_source.contains('fn (mut backend X11Backend) poll_queued_events')
 	assert x11_backend_source.contains('queued_input_event')
 	assert x11_backend_source.contains('C.v_multiwindow_x11_is_notify_grab_or_ungrab')
@@ -2292,38 +2553,70 @@ fn test_x11_input_support_queues_key_char_and_focus_source_guard() {
 	assert x11_backend_source.contains('return x11_signed_16(packed >> 16), x11_signed_16(packed)')
 	assert x11_backend_source.contains('fn x11_signed_16(value u32) int')
 	xdnd_selection_body :=
-		x11_backend_source.all_after('fn (mut backend X11Backend) queued_xdnd_selection_events').all_before('fn (mut backend X11Backend) xdnd_format_from_type_list')
-	xdnd_reject_body :=
-		xdnd_selection_body.all_after('if !valid_payload {').all_before('payload :=')
+		x11_backend_source.all_after('fn (mut backend X11Backend) queued_xdnd_selection_events').all_before('fn (mut backend X11Backend) queued_xdnd_property_events')
+	xdnd_property_body :=
+		x11_backend_source.all_after('fn (mut backend X11Backend) queued_xdnd_property_events').all_before('fn (mut backend X11Backend) begin_xdnd_incremental')
 	assert xdnd_selection_body.contains('status := C.XGetWindowProperty')
 	assert xdnd_selection_body.contains('X11NativeLong(x11_xdnd_max_payload_units)')
 	assert !xdnd_selection_body.contains('X11NativeLong(0x7fffffff)')
-	assert xdnd_selection_body.contains('status == x11_success')
+	assert xdnd_selection_body.contains('0, X11NativeAtom(0), &actual_type')
+	assert xdnd_selection_body.contains('actual_type == backend.clipboard_incr')
+	assert xdnd_selection_body.contains('actual_format == 32')
+	assert xdnd_selection_body.contains('item_count == X11NativeULong(1)')
+	assert xdnd_selection_body.contains('advertised > u64(x11_xdnd_max_payload_bytes)') == false
+	assert xdnd_selection_body.contains('backend.begin_xdnd_incremental(advertised)')
+	assert_source_order(xdnd_selection_body, 'backend.begin_xdnd_incremental(advertised)',
+		'backend.delete_xdnd_property_if_live(drop.requestor, drop.property)')
 	assert xdnd_selection_body.contains('actual_type == backend.text_uri_list')
 	assert xdnd_selection_body.contains('actual_format == 8')
 	assert xdnd_selection_body.contains('bytes_after == X11NativeULong(0)')
 	assert xdnd_selection_body.contains('item_count <= X11NativeULong(x11_xdnd_max_payload_bytes)')
-	assert xdnd_reject_body.contains('C.XFree(data)')
-	assert xdnd_reject_body.contains('backend.send_xdnd_finished(requestor, false)')
-	assert xdnd_reject_body.contains('backend.clear_xdnd_state()')
-	assert xdnd_reject_body.contains('return events')
-	assert_source_order(xdnd_selection_body, 'if !valid_payload {',
-		'dropped_files_from_uri_list(payload)')
+	assert xdnd_selection_body.contains('backend.delete_xdnd_property_if_live(drop.requestor, drop.property)')
+	assert xdnd_property_body.contains('property_state != x11_property_new_value')
+	assert xdnd_property_body.contains('requestor != backend.xdnd_drop_state.requestor')
+	assert xdnd_property_body.contains('property != backend.xdnd_drop_state.property')
+	assert xdnd_property_body.contains('X11NativeLong(x11_xdnd_max_payload_units), 0, X11NativeAtom(0)')
+	assert xdnd_property_body.contains('actual_type == backend.text_uri_list')
+	assert xdnd_property_body.contains('actual_format == 8')
+	assert xdnd_property_body.contains('bytes_after == X11NativeULong(0)')
+	assert xdnd_property_body.contains('return backend.finish_xdnd_payload()')
+	assert_source_order(xdnd_property_body,
+		'events := backend.accept_xdnd_incremental_chunk(payload)',
+		'if backend.xdnd_drop_state.active {')
+	assert x11_backend_source.contains('remaining := x11_xdnd_max_payload_bytes - backend.xdnd_drop_state.data.len')
+	assert x11_backend_source.contains('backend.xdnd_drop_state.deadline_ns = vtime.sys_mono_now() + x11_xdnd_timeout_ns')
+	assert !xdnd_property_body.contains('reserved_bytes')
+	xdnd_poll_body :=
+		x11_backend_source.all_after('fn (mut backend X11Backend) poll_queued_events').all_before('fn (backend &X11Backend) input_event_from_record')
+	assert_source_order(xdnd_poll_body, 'events << backend.queued_xdnd_property_events(&event)',
+		'backend.expire_xdnd_drop(vtime.sys_mono_now())')
+	assert x11_backend_source.contains('backend.purge_xdnd_window(id, native_window)')
+	assert x11_backend_source.contains('backend.cancel_xdnd_drop()')
+	xdnd_payload_body :=
+		x11_backend_source.all_after('fn (mut backend X11Backend) finish_xdnd_payload').all_before('fn (mut backend X11Backend) xdnd_format_from_type_list')
+	assert_source_order(xdnd_payload_body, 'backend.delete_xdnd_property_and_sync_if_live',
+		'backend.finish_xdnd_drop_with_cleanup')
+	xdnd_finish_body :=
+		x11_backend_source.all_after('fn (mut backend X11Backend) finish_xdnd_drop_with_cleanup').all_before('fn (mut backend X11Backend) cancel_xdnd_drop')
+	assert_source_order(xdnd_finish_body, 'backend.send_xdnd_finished_to',
+		'backend.delete_xdnd_property_if_live')
 	xdnd_type_list_body :=
 		x11_backend_source.all_after('fn (mut backend X11Backend) xdnd_format_from_type_list').all_before('fn (backend &X11Backend) send_xdnd_status')
-	xdnd_type_list_reject_body :=
-		xdnd_type_list_body.all_after('if !valid_type_list {').all_before('mut result := X11NativeAtom(0)')
-	assert xdnd_type_list_body.contains('status := C.XGetWindowProperty')
-	assert xdnd_type_list_body.contains('X11NativeLong(x11_xdnd_max_type_atoms)')
-	assert !xdnd_type_list_body.contains('X11NativeLong(0x7fffffff)')
-	assert xdnd_type_list_body.contains('status == x11_success')
-	assert xdnd_type_list_body.contains('actual_type == X11NativeAtom(4)')
-	assert xdnd_type_list_body.contains('actual_format == 32')
-	assert xdnd_type_list_body.contains('bytes_after == X11NativeULong(0)')
-	assert xdnd_type_list_body.contains('formats != unsafe { nil }')
-	assert xdnd_type_list_body.contains('item_count <= X11NativeULong(x11_xdnd_max_type_atoms)')
-	assert xdnd_type_list_reject_body.contains('C.XFree(formats)')
-	assert xdnd_type_list_reject_body.contains('return X11NativeAtom(0)')
+	assert xdnd_type_list_body.contains('C.v_multiwindow_x11_checked_property_has_atom')
+	assert xdnd_type_list_body.contains('u32(x11_xdnd_max_type_atoms)')
+	assert !xdnd_type_list_body.contains('C.XGetWindowProperty')
+	assert !xdnd_type_list_body.contains('C.XFree')
+	x11_helpers_source := multiwindow_source_file('x11_egl_backend_helpers.h')
+	checked_atom_body :=
+		x11_helpers_source.all_after('static inline int v_multiwindow_x11_checked_property_has_atom').all_before('static inline int v_multiwindow_x11_send_event_checked')
+	assert checked_atom_body.contains('xcb_get_property(connection, 0,')
+	assert checked_atom_body.contains('xcb_get_property_reply(connection, cookie, &error)')
+	assert checked_atom_body.contains('error == NULL')
+	assert checked_atom_body.contains('reply->type == XCB_ATOM_ATOM')
+	assert checked_atom_body.contains('reply->format == 32')
+	assert checked_atom_body.contains('reply->bytes_after == 0')
+	assert checked_atom_body.contains('reply->value_len <= max_atoms')
+	assert checked_atom_body.contains('atoms[i] == (xcb_atom_t)expected')
 	key_press_body :=
 		x11_backend_source.all_after('fn (mut backend X11Backend) queued_key_press_event').all_before('fn (mut backend X11Backend) queued_key_release_event')
 	assert !key_press_body.contains('if key_code == 0 {\n\t\t\treturn events\n\t\t}')
@@ -2362,20 +2655,20 @@ fn test_x11_input_support_queues_key_char_and_focus_source_guard() {
 	assert x11_backend_source.contains('.iconified')
 	assert x11_backend_source.contains('x11_normal_state')
 	assert x11_backend_source.contains('.restored')
-	assert x11_backend_source.contains('fn (backend &X11Backend) window_state(window X11NativeWindow) int')
-	assert x11_backend_source.contains('C.XGetWindowProperty')
-	assert x11_backend_source.contains('C.XFree')
+	assert x11_backend_source.contains('fn (backend &X11Backend) window_state(window X11NativeWindow) ?int')
 	window_state_body :=
-		x11_backend_source.all_after('fn (backend &X11Backend) window_state(window X11NativeWindow) int').all_before('fn (mut backend X11Backend) announce_xdnd_for_window')
-	assert window_state_body.contains('mut state := &X11NativeLong(unsafe { nil })')
-	assert window_state_body.contains('status := C.XGetWindowProperty')
-	assert window_state_body.contains('status == x11_success')
-	assert window_state_body.contains('actual_type == backend.wm_state')
-	assert window_state_body.contains('actual_format == 32')
-	assert window_state_body.contains('item_count >= X11NativeULong(2)')
-	assert window_state_body.contains('state != unsafe { nil }')
-	assert window_state_body.contains('state_value := unsafe { state[0] }')
-	assert !window_state_body.contains('*(&u32(state))')
+		x11_backend_source.all_after('fn (backend &X11Backend) window_state(window X11NativeWindow) ?int').all_before('fn (mut backend X11Backend) announce_xdnd_for_window')
+	assert window_state_body.contains('C.v_multiwindow_x11_checked_wm_state')
+	assert window_state_body.contains('return none')
+	assert !window_state_body.contains('C.XGetWindowProperty')
+	checked_wm_state_body :=
+		x11_helper_source.all_after('static inline int v_multiwindow_x11_checked_wm_state').all_before('static inline int v_multiwindow_x11_send_event_checked')
+	for required in ['xcb_get_property_reply', 'xcb_generic_error_t', 'xcb_connection_has_error',
+		'reply->type == (xcb_atom_t)wm_state', 'reply->format == 32', '2U * sizeof(uint32_t)',
+		'free(reply)', 'free(error)'] {
+		assert checked_wm_state_body.contains(required), 'missing checked WM_STATE invariant `${required}`'
+	}
+	assert !checked_wm_state_body.contains('XGetWindowProperty')
 
 	for required_mask in ['StructureNotifyMask', 'KeyPressMask', 'KeyReleaseMask',
 		'PointerMotionMask', 'ButtonPressMask', 'ButtonReleaseMask', 'FocusChangeMask',
@@ -2424,6 +2717,104 @@ fn test_x11_input_support_queues_key_char_and_focus_source_guard() {
 	assert !x11_helper_source.contains('v_multiwindow_x11_keysym_to_unicode')
 }
 
+fn test_x11_clipboard_conversion_and_root_monitor_refresh_source_guard() {
+	source := multiwindow_source_file('x11_backend.c.v')
+	helper := multiwindow_source_file('x11_egl_backend_helpers.h')
+	assert helper.contains('v_multiwindow_x11_create_clipboard_requestor')
+	assert helper.contains('InputOnly, CopyFromParent, CWEventMask, &attributes')
+	start_body :=
+		source.all_after('fn (mut backend X11Backend) start_next_clipboard_read').all_before('fn (backend &X11Backend) service_window_readback')
+	assert_source_order(start_body, 'C.v_multiwindow_x11_create_clipboard_requestor',
+		'C.XConvertSelection')
+	reply_body :=
+		source.all_after('fn (mut backend X11Backend) handle_clipboard_selection_request').all_before('fn (mut backend X11Backend) queued_clipboard_selection_events')
+	assert reply_body.contains('v_multiwindow_x11_checked_change_property')
+	assert reply_body.contains('v_multiwindow_x11_checked_selection_notify')
+	assert reply_body.contains('v_multiwindow_x11_checked_barrier')
+	assert reply_body.contains('drain_checked_clipboard_transfer_events_with_limit')
+	assert reply_body.contains('clipboard_transfer_queue')
+	assert reply_body.contains('queue == .checked')
+	assert_source_order(reply_body, 'v_multiwindow_x11_checked_barrier', 'if pair_active {')
+	assert_source_order(reply_body, 'v_multiwindow_x11_checked_barrier',
+		'pair_active := backend.clipboard_transfers.any')
+	assert_source_order(reply_body, 'if pair_active {', 'mut response_property')
+	assert !reply_body.contains('C.XChangeProperty')
+	assert !reply_body.contains('v_multiwindow_x11_select_property_changes')
+	assert !reply_body.contains('v_multiwindow_x11_send_selection_notify')
+	advance_body :=
+		source.all_after('fn (mut backend X11Backend) advance_clipboard_transfer').all_before('fn (mut backend X11Backend) drain_checked_clipboard_transfer_events')
+	assert advance_body.contains('transfer.queue != queue')
+	assert advance_body.contains('v_multiwindow_x11_checked_change_property')
+	assert !advance_body.contains('C.XChangeProperty')
+	assert helper.contains('xcb_change_property_checked')
+	assert helper.contains('xcb_send_event_checked')
+	assert helper.contains('xcb_change_window_attributes_checked')
+	assert helper.contains('xcb_poll_for_event')
+	assert helper.contains('xcb_get_input_focus_reply')
+	selection_body :=
+		source.all_after('fn (mut backend X11Backend) queued_clipboard_selection_events').all_before('fn (mut backend X11Backend) queued_clipboard_property_events')
+	assert selection_body.contains('selection != backend.clipboard || target != backend.clipboard_utf8')
+	assert selection_body.contains('requestor != read.requestor')
+	assert selection_body.contains('property != read.property')
+	property_read_body :=
+		source.all_after('fn (mut backend X11Backend) queued_clipboard_property_events').all_before('fn (backend &X11Backend) clipboard_read_terminal_event')
+	assert !property_read_body.contains('next_len > reserved')
+	assert property_read_body.contains('clipboard_incremental_reservation_after_chunk')
+	assert_source_order(property_read_body, 'clipboard_incremental_reservation_after_chunk',
+		'backend.clipboard_reads[0].data <<')
+	finish_body :=
+		source.all_after('fn (mut backend X11Backend) finish_clipboard_read').all_before('fn (mut backend X11Backend) clear_clipboard_state')
+	assert_source_order(finish_body, 'backend.destroy_clipboard_requestor(read.requestor)',
+		'events << backend.start_queued_clipboard_reads()')
+	assert finish_body.contains("events << backend.clipboard_read_terminal_event(failed, .failed, '', start_error)")
+	purge_body :=
+		source.all_after('fn (mut backend X11Backend) purge_clipboard_window').all_before('fn (mut backend X11Backend) advance_clipboard_transfer')
+	assert purge_body.contains('backend.pending_clipboard_terminal_events << backend.start_queued_clipboard_reads()')
+	assert !purge_body.contains('backend.start_next_clipboard_read() or {}')
+
+	selection_clear_body :=
+		source.all_after('x11_selection_clear {').all_before('x11_selection_notify {')
+	assert selection_clear_body.contains('C.XGetSelectionOwner(backend.display, backend.clipboard)')
+	assert selection_clear_body.contains('owner != backend.clipboard_owner_window')
+	assert source.contains("backend.net_workarea = C.XInternAtom(display, c'_NET_WORKAREA', 0)")
+	assert source.contains("backend.net_current_desktop = C.XInternAtom(display, c'_NET_CURRENT_DESKTOP', 0)")
+	intersection_body :=
+		source.all_after('fn x11_intersect_monitor_work_area').all_before('fn (mut backend X11Backend) service_monitor_snapshot')
+	assert intersection_body.contains('i64(monitor.x) + i64(monitor.width)')
+	assert intersection_body.contains('i64(work_area.x) + i64(work_area.width)')
+	assert intersection_body.contains('i64(monitor.y) + i64(monitor.height)')
+	assert intersection_body.contains('i64(work_area.y) + i64(work_area.height)')
+	property_body := source.all_after('x11_property_notify {').all_before('x11_selection_clear {')
+	assert property_body.contains('property == backend.net_workarea')
+	assert property_body.contains('property == backend.net_current_desktop')
+	assert property_body.contains('backend.monitor_snapshot_dirty = true')
+	poll_body :=
+		source.all_after('fn (mut backend X11Backend) poll_queued_events').all_before('fn (backend &X11Backend) input_event_from_record')
+	assert poll_body.contains('backend.drain_checked_clipboard_transfer_events()')
+	assert_source_order(poll_body, 'if backend.monitor_snapshot_dirty {',
+		'events << backend.expire_clipboard_operations')
+	assert poll_body.contains('backend.queued_randr_monitor_events() or { []QueuedEvent{} }')
+	configure_body := poll_body.all_after('x11_configure_notify {').all_before('x11_map_notify {')
+	assert configure_body.contains('backend.recenter_locked_pointer(index, true)')
+	assert configure_body.contains('mouse_lock_center_x != width / 2')
+	assert configure_body.contains('mouse_lock_center_y != height / 2')
+	assert_source_order(configure_body, '!backend.recenter_locked_pointer(index, true)',
+		'backend.release_mouse_lock(index)')
+	assert_source_order(configure_body, 'backend.release_mouse_lock(index)',
+		'backend.queued_service_state_event(index, .mouse_lock)')
+	motion_body :=
+		source.all_after('fn (mut backend X11Backend) queued_mouse_position_event').all_before('fn (mut backend X11Backend) update_mouse_position')
+	assert motion_body.contains('backend.recenter_locked_pointer(index, false)')
+	assert !motion_body.contains('mut ignored_x := 0')
+	assert_source_order(motion_body, 'backend.recenter_locked_pointer(index, false)',
+		'backend.release_mouse_lock(index)')
+	recenter_body :=
+		source.all_after('fn (mut backend X11Backend) recenter_locked_pointer').all_before('fn (mut backend X11Backend) release_mouse_lock')
+	assert recenter_body.contains('mouse_lock_center_x = center_x')
+	assert recenter_body.contains('mouse_lock_center_y = center_y')
+	assert recenter_body.contains('if clear_delta {')
+}
+
 fn test_x11_config_hints_are_applied_before_mapping() {
 	x11_backend_source := multiwindow_source_file('x11_backend.c.v')
 	x11_helper_source := multiwindow_source_file('x11_egl_backend_helpers.h')
@@ -2438,7 +2829,10 @@ fn test_x11_config_hints_are_applied_before_mapping() {
 		'fn (mut backend X11Backend) resize_window', 'C.XSync(backend.display, 0)',
 		'C.v_multiwindow_x11_get_window_size')
 	assert_source_order(x11_backend_source, 'if C.v_multiwindow_x11_apply_config_hints',
-		'C.XMapWindow(backend.display, window)')
+		'C.XMapWindow(backend.display, backend.pending_window.window)')
+	assert_source_order_after_marker(x11_backend_source,
+		'fn (mut backend X11Backend) create_window', 'backend.pending_window = X11WindowRecord{',
+		'C.XSelectInput(backend.display, backend.pending_window.window')
 	assert x11_helper_source.contains('XSizeHints')
 	assert x11_helper_source.contains('XWindowAttributes')
 	assert x11_helper_source.contains('XGetWindowAttributes')
@@ -2449,6 +2843,323 @@ fn test_x11_config_hints_are_applied_before_mapping() {
 	assert x11_helper_source.contains('MWM_HINTS_DECORATIONS')
 	assert x11_helper_source.contains('_NET_WM_STATE')
 	assert x11_helper_source.contains('_NET_WM_STATE_FULLSCREEN')
+}
+
+fn test_x11_stale_window_snapshots_use_only_checked_xcb_requests() {
+	helpers := multiwindow_source_file('x11_egl_backend_helpers.h')
+	shared_connection_body :=
+		helpers.all_after('v_multiwindow_x11_shared_connection(Display *display)').all_before('static inline int v_multiwindow_x11_shared_connection_usable')
+	assert shared_connection_body.contains('XGetXCBConnection(display)')
+	assert shared_connection_body.contains('xcb_connection_has_error(connection)')
+	assert !helpers.contains('XSetEventQueueOwner')
+	snapshot :=
+		helpers.all_after('v_multiwindow_x11_checked_window_snapshot').all_before('static inline int v_multiwindow_x11_send_event_checked')
+	for required in ['xcb_get_window_attributes_reply', 'xcb_get_geometry_reply',
+		'xcb_generic_error_t', 'xcb_connection_has_error'] {
+		assert snapshot.contains(required), 'missing checked XCB window snapshot `${required}`'
+	}
+	query :=
+		helpers.all_after('v_multiwindow_x11_query_service_state').all_before('static inline int v_multiwindow_x11_send_net_wm_state')
+	for required in ['v_multiwindow_x11_checked_window_snapshot', 'xcb_get_input_focus_reply',
+		'xcb_translate_coordinates_reply', 'xcb_get_property_reply', 'xcb_generic_error_t',
+		'xcb_connection_has_error'] {
+		assert query.contains(required), 'missing checked XCB service-state query `${required}`'
+	}
+	for forbidden in ['XGetWindowAttributes', 'XGetInputFocus', 'XTranslateCoordinates',
+		'XGetWindowProperty', 'XInternAtom', 'XSetErrorHandler'] {
+		assert !query.contains(forbidden), 'unsafe Xlib call `${forbidden}` remains in service-state query'
+	}
+	wm_state :=
+		helpers.all_after('v_multiwindow_x11_checked_wm_state').all_before('static inline int v_multiwindow_x11_send_event_checked')
+	for required in ['xcb_get_property_reply', 'xcb_generic_error_t', 'xcb_connection_has_error'] {
+		assert wm_state.contains(required), 'missing checked XCB WM_STATE query `${required}`'
+	}
+	assert !wm_state.contains('XGetWindowProperty')
+	readback :=
+		helpers.all_after('v_multiwindow_x11_readback_rgba8').all_before('#ifdef V_MULTIWINDOW_NATIVE_PROOF_TEST')
+	for required in ['xcb_get_image_reply', 'xcb_generic_error_t', 'xcb_connection_has_error',
+		'XGetVisualInfo', 'XCreateImage', 'XGetPixel', 'image->data = NULL', 'XDestroyImage'] {
+		assert readback.contains(required), 'missing checked XCB readback `${required}`'
+	}
+	for forbidden in ['XGetWindowAttributes', 'XGetImage', 'XSetErrorHandler'] {
+		assert !readback.contains(forbidden), 'unsafe Xlib call `${forbidden}` remains in readback'
+	}
+	probe :=
+		helpers.all_after('v_multiwindow_x11_readback_probe').all_before('static inline int v_multiwindow_x11_owner_modal_matches')
+	size :=
+		helpers.all_after('v_multiwindow_x11_get_window_size').all_before('static inline unsigned long v_multiwindow_x11_create_egl_window')
+	render := helpers.all_after('v_multiwindow_x11_render_snapshot').all_before('#endif')
+	for body in [probe, size, render] {
+		assert body.contains('v_multiwindow_x11_checked_window_snapshot')
+		assert !body.contains('XGetWindowAttributes')
+	}
+	mouse_lock :=
+		helpers.all_after('v_multiwindow_x11_acquire_mouse_lock_checked').all_before('static inline int v_multiwindow_x11_center_pointer_checked')
+	for required in ['v_multiwindow_x11_shared_connection', 'xcb_grab_pointer_reply',
+		'v_multiwindow_x11_checked_window_snapshot', 'xcb_warp_pointer_checked',
+		'xcb_ungrab_pointer_checked', 'v_multiwindow_x11_checked_void_request_ok'] {
+		assert mouse_lock.contains(required), 'missing checked same-client mouse-lock `${required}`'
+	}
+	for forbidden in ['XGrabPointer', 'XGetWindowAttributes', 'XWarpPointer', 'XSetErrorHandler'] {
+		assert !mouse_lock.contains(forbidden), 'unsafe Xlib mouse-lock call `${forbidden}` remains'
+	}
+	recenter :=
+		helpers.all_after('v_multiwindow_x11_center_pointer_checked').all_before('static inline int v_multiwindow_x11_set_selection_owner_checked')
+	for required in ['v_multiwindow_x11_checked_window_snapshot', 'xcb_warp_pointer_checked',
+		'v_multiwindow_x11_checked_void_request_ok'] {
+		assert recenter.contains(required), 'missing checked same-client recenter `${required}`'
+	}
+	clipboard_owner :=
+		helpers.all_after('v_multiwindow_x11_set_selection_owner_checked').all_before('#ifdef V_MULTIWINDOW_NATIVE_PROOF_TEST')
+	for required in ['xcb_set_selection_owner_checked', 'v_multiwindow_x11_checked_void_request_ok',
+		'xcb_get_selection_owner_reply'] {
+		assert clipboard_owner.contains(required), 'missing checked same-client clipboard owner `${required}`'
+	}
+	for forbidden in ['XSetSelectionOwner', 'XGetSelectionOwner', 'XSetErrorHandler'] {
+		assert !clipboard_owner.contains(forbidden), 'unsafe Xlib clipboard-owner call `${forbidden}` remains'
+	}
+	x11_backend := multiwindow_source_file('x11_backend.c.v')
+	window_state :=
+		x11_backend.all_after('fn (backend &X11Backend) window_state').all_before('fn (mut backend X11Backend) announce_xdnd_for_window')
+	assert window_state.contains('v_multiwindow_x11_checked_wm_state')
+	assert !window_state.contains('XGetWindowProperty')
+	property_notify :=
+		x11_backend.all_after('x11_property_notify {').all_before('x11_selection_request {')
+	compact_property_notify := property_notify.replace_each(['\n', '', '\r', '', '\t', '', ' ',
+		''])
+	assert compact_property_notify.contains('backend.window_state(backend.windows[index].window)or{continue}')
+	assert compact_property_notify.contains('backend.queued_observed_state_transitions(index,property)or{continue}')
+	unmap_notify := x11_backend.all_after('x11_unmap_notify {').all_before('x11_destroy_notify {')
+	compact_unmap_notify := unmap_notify.replace_each(['\n', '', '\r', '', '\t', '', ' ', ''])
+	assert compact_unmap_notify.contains('backend.queued_service_state_event(index,.hide)or{continue}')
+	poll_body :=
+		x11_backend.all_after('fn (mut backend X11Backend) poll_queued_events').all_before('fn (backend &X11Backend) input_event_from_record')
+	compact_poll_body := poll_body.replace_each(['\n', '', '\r', '', '\t', '', ' ', ''])
+	for operation in ['.mouse_lock', '.show', '.hide'] {
+		assert compact_poll_body.contains('backend.queued_service_state_event(index,${operation})or{continue}'), 'missing fail-closed event-loop observation `${operation}`'
+	}
+	assert compact_poll_body.count('backend.queued_service_state_event(index,.focus)or{continue}') == 2
+}
+
+fn test_x11_window_capture_capability_requires_a_positive_viewable_native_extent() {
+	source := multiwindow_source_file('x11_backend.c.v')
+	body := source.all_after('fn (backend &X11Backend) service_window_capture_available')
+		.all_before('fn (backend &X11Backend) service_operation_capability')
+	assert body.contains('C.v_multiwindow_x11_readback_probe(')
+	assert body.contains('probe.attributes_available != 0')
+	assert body.contains('probe.map_state == 2')
+	assert body.contains('probe.actual_width > 0')
+	assert body.contains('probe.actual_height > 0')
+}
+
+fn test_win32_clipboard_read_budget_survives_native_terminal_until_core_delivery() {
+	mut backend := Win32Backend{}
+	request := ServiceRequestId{
+		app_instance: 1
+		serial:       1
+	}
+	window := WindowId{
+		app_instance: 1
+		slot:         0
+		generation:   1
+	}
+	backend.admit_clipboard_request(request, window, voidptr(usize(1)), .clipboard_read, []u16{})!
+	assert backend.clipboard_pending.len == 1
+	assert backend.clipboard_pending_bytes == usize(win32_clipboard_max_pending_bytes)
+
+	event := backend.finish_clipboard_head(.ready, 'tiny read', '')
+	assert backend.clipboard_pending.len == 0
+	assert event.event.service.clipboard.id == request
+	assert event.event.service.clipboard.status == .ready
+	assert backend.clipboard_pending_bytes == usize('tiny read'.len + 1)
+	assert backend.clipboard_retained.len == 1
+	assert !backend.clipboard_retained[0].claimed_by_app
+	mismatched := ServiceEvent{
+		...event.event.service
+		clipboard: ServiceClipboardResult{
+			...event.event.service.clipboard
+			window: WindowId{
+				...window
+				generation: 2
+			}
+		}
+	}
+	backend.claim_clipboard_terminal_storage(mismatched)
+	backend.discard_unclaimed_clipboard_terminal_storage(mismatched)
+	assert backend.clipboard_pending_bytes == usize('tiny read'.len + 1)
+	assert !backend.clipboard_retained[0].claimed_by_app
+
+	backend.claim_clipboard_terminal_storage(event.event.service)
+	assert backend.clipboard_retained.len == 1
+	assert backend.clipboard_retained[0].claimed_by_app
+	backend.purge_clipboard_window(window)
+	assert backend.clipboard_pending_bytes == usize('tiny read'.len + 1)
+	backend.discard_unclaimed_clipboard_terminal_storage(event.event.service)
+	assert backend.clipboard_pending_bytes == usize('tiny read'.len + 1)
+	assert backend.clipboard_retained.len == 1
+	backend.release_claimed_clipboard_terminal_storage(event.event.service)
+	assert backend.clipboard_pending_bytes == 0
+	assert backend.clipboard_retained.len == 0
+	backend.release_claimed_clipboard_terminal_storage(event.event.service)
+	assert backend.clipboard_pending_bytes == 0
+
+	second_request := ServiceRequestId{
+		app_instance: 1
+		serial:       2
+	}
+	backend.admit_clipboard_request(second_request, window, voidptr(usize(1)), .clipboard_read,
+		[]u16{})!
+	rejected := backend.finish_clipboard_head(.ready, 'rejected read', '')
+	assert backend.clipboard_pending_bytes == usize('rejected read'.len + 1)
+	backend.discard_unclaimed_clipboard_terminal_storage(rejected.event.service)
+	assert backend.clipboard_pending_bytes == 0
+	assert backend.clipboard_retained.len == 0
+	backend.discard_unclaimed_clipboard_terminal_storage(rejected.event.service)
+	assert backend.clipboard_pending_bytes == 0
+}
+
+fn test_win32_clipboard_retained_storage_hooks_wrap_backend_acceptance_and_delivery() {
+	backend_source := multiwindow_source_file('service_backend.v')
+	delivery_source := multiwindow_source_file('event_delivery.v')
+	assert backend_source.contains('backend.win32.claim_clipboard_terminal_storage(event)')
+	assert backend_source.contains('backend.win32.discard_unclaimed_clipboard_terminal_storage(event)')
+	assert backend_source.contains('backend.win32.release_claimed_clipboard_terminal_storage(event)')
+	assert_source_order_after_marker(delivery_source, '.service {',
+		'app.accept_backend_service_event_locked(event.service, delivery_token)',
+		'app.backend.claim_service_event_storage(event.service)')
+	assert_source_order_after_marker(delivery_source, '.service {', '} else {',
+		'app.backend.discard_unaccepted_service_event_storage(event.service)')
+	assert_source_order_after_marker(delivery_source,
+		'fn (mut app App) complete_queued_delivery_locked',
+		'app.event_deliveries.delete(event.delivery_token)',
+		'app.backend.release_delivered_service_event_storage(event.service)')
+}
+
+fn test_x11_clipboard_retained_storage_hooks_are_window_exact_and_idempotent() {
+	request := ServiceRequestId{
+		app_instance: 1
+		serial:       9
+	}
+	window := WindowId{
+		app_instance: 1
+		slot:         2
+		generation:   3
+	}
+	other_window := WindowId{
+		...window
+		slot: 4
+	}
+	event := ServiceEvent{
+		kind:      .clipboard
+		window:    window
+		operation: .clipboard_read
+		clipboard: ServiceClipboardResult{
+			id:     request
+			window: window
+			status: .ready
+			text:   'retained'
+		}
+	}
+	mut backend := Backend{
+		kind: .x11
+		x11:  X11Backend{
+			clipboard_retained: [
+				X11ClipboardRetainedCharge{
+					request: request
+					window:  window
+					bytes:   x11_clipboard_max_pending_bytes
+				},
+			]
+		}
+	}
+	assert backend.x11.clipboard_pending_bytes() == u64(x11_clipboard_max_pending_bytes)
+	assert backend.x11.clipboard_can_reserve(0)
+	assert !backend.x11.clipboard_can_reserve(1)
+	backend.claim_service_event_storage(ServiceEvent{
+		...event
+		clipboard: ServiceClipboardResult{
+			...event.clipboard
+			window: other_window
+		}
+	})
+	assert !backend.x11.clipboard_retained[0].claimed_by_app
+	backend.claim_service_event_storage(event)
+	assert backend.x11.clipboard_retained[0].claimed_by_app
+	backend.discard_unaccepted_service_event_storage(event)
+	assert backend.x11.clipboard_retained.len == 1
+	backend.release_delivered_service_event_storage(event)
+	assert backend.x11.clipboard_retained.len == 0
+	backend.release_delivered_service_event_storage(event)
+	assert backend.x11.clipboard_retained.len == 0
+
+	backend.x11.clipboard_retained << X11ClipboardRetainedCharge{
+		request: request
+		window:  window
+		bytes:   7
+	}
+	backend.discard_unaccepted_service_event_storage(ServiceEvent{
+		...event
+		window: other_window
+	})
+	assert backend.x11.clipboard_retained.len == 1
+	backend.discard_unaccepted_service_event_storage(event)
+	assert backend.x11.clipboard_retained.len == 0
+	backend.discard_unaccepted_service_event_storage(event)
+	assert backend.x11.clipboard_retained.len == 0
+}
+
+fn test_x11_clipboard_ready_storage_replacement_is_subtractive_and_bounded() {
+	maximum := x11_clipboard_max_pending_bytes
+	assert x11_clipboard_ready_storage_fits(u64(maximum), maximum, maximum)
+	assert x11_clipboard_ready_storage_fits(u64(maximum), 1, 1)
+	assert x11_clipboard_ready_storage_fits(u64(maximum), 0, 0)
+	assert !x11_clipboard_ready_storage_fits(0, 1, 0)
+	assert !x11_clipboard_ready_storage_fits(u64(maximum) + 1, 0, 0)
+	assert !x11_clipboard_ready_storage_fits(u64(maximum), 0, 1)
+	assert !x11_clipboard_ready_storage_fits(u64(maximum), maximum, maximum + 1)
+	assert !x11_clipboard_ready_storage_fits(u64(maximum), -1, 0)
+	assert !x11_clipboard_ready_storage_fits(u64(maximum), 0, -1)
+}
+
+fn test_gg_unbound_capture_reconciliation_is_terminal_before_facade_removal() {
+	vlib_dir := os.dir(os.dir(@DIR))
+	render_source := os.read_file(os.join_path(vlib_dir, 'gg',
+		'multiwindow_render_impl_d_gg_multiwindow.v')) or { panic(err) }
+	gg_source := os.read_file(os.join_path(vlib_dir, 'gg', 'multiwindow_d_gg_multiwindow.v')) or {
+		panic(err)
+	}
+	reconcile_body := render_source.all_after('fn (mut app App) reconcile_unbound_managed_window_captures()')
+		.all_before('fn (mut app App) request_window_capture_redraw')
+	blocked_body := render_source.all_after('fn unbound_managed_window_capture_is_permanently_blocked')
+		.all_before('fn (mut app App) reconcile_unbound_managed_window_captures()')
+	assert reconcile_body.contains('capture.attempt_batch_epoch != 0')
+	assert blocked_body.contains('capture_block_reason_prevents_future_frame(snapshot.block_reason)')
+	assert reconcile_body.contains('unbound_managed_window_capture_is_permanently_blocked(producer, snapshot)')
+	assert_source_order(reconcile_body, 'app.core.service_fail_window_readback(capture.id,',
+		'app.pending_window_captures.delete(index)')
+	poll_body :=
+		gg_source.all_after('pub fn (mut app App) poll_events()').all_before('pub fn (mut app App) drain_input_events()')
+	assert_source_order(poll_body, 'app.core.poll_events()!', 'app.consume_backend_teardowns()!')
+	assert_source_order(poll_body, 'app.consume_backend_teardowns()!',
+		'app.reconcile_unbound_managed_window_captures()!')
+}
+
+fn test_wayland_output_scale_is_staged_until_done_before_member_refresh() {
+	wayland_source := multiwindow_source_file('wayland_backend.c.v')
+	scale_body :=
+		wayland_source.all_after('fn wayland_output_scale(').all_before("@[export: 'v_multiwindow_wayland_output_name']")
+	done_body :=
+		wayland_source.all_after('fn wayland_output_done(').all_before("@[export: 'v_multiwindow_wayland_output_scale']")
+	refresh_body := wayland_source.all_after('fn (mut backend WaylandBackend) refresh_windows_for_output_scale')
+		.all_before('fn (backend &WaylandBackend) transport_can_marshal')
+	assert scale_body.contains('record.pending_scale = factor')
+	assert !scale_body.contains('record.scale = factor')
+	assert_source_order(done_body, 'record.scale = record.pending_scale',
+		'record.publish_output_if_ready()')
+	assert_source_order(done_body, 'record.publish_output_if_ready()',
+		'backend.refresh_windows_for_output_scale(record.slot)')
+	assert refresh_body.contains('slot in backend.windows[index].output_slots')
+	assert refresh_body.contains('backend.refresh_window_output_scale(index)')
 }
 
 fn test_wayland_capabilities_for_backend_do_not_require_display_on_linux() {
@@ -2480,28 +3191,229 @@ fn test_wayland_capabilities_for_backend_do_not_require_display_on_linux() {
 	}
 }
 
-fn test_wayland_hidden_windows_are_rejected_before_mapping() {
+fn test_wayland_hidden_windows_are_created_for_later_mapping() {
 	wayland_source := multiwindow_source_file('wayland_backend.c.v')
-	assert wayland_source.contains('if !config.visible')
-	assert wayland_source.contains('return error(err_capability_unsupported)')
-	assert_source_order_after_marker(wayland_source,
-		'fn (mut backend WaylandBackend) create_window', 'if !config.visible',
-		'surface := C.wl_compositor_create_surface')
-	assert_source_order_after_marker(wayland_source,
-		'fn (mut backend WaylandBackend) create_window', 'if !config.visible',
-		'C.wl_surface_commit(surface)')
-	assert_source_order_after_marker(wayland_source,
-		'fn (mut backend WaylandBackend) create_window', 'if !config.visible',
-		'C.wl_display_roundtrip(display)')
+	create_window_body :=
+		wayland_source.all_after('fn (mut backend WaylandBackend) create_window').all_before('fn (mut backend WaylandBackend) destroy_window')
+	compact_create_window_body := create_window_body.replace(' ', '').replace('\t', '')
+	assert compact_create_window_body.contains('requested_visible:config.visible')
+	assert create_window_body.contains('else if !config.visible')
+	assert_source_order(create_window_body, 'else if !config.visible',
+		'record.enqueue_service_state(.hide)')
+	assert wayland_source.contains('fn (mut backend WaylandBackend) service_show_window')
+	assert wayland_source.contains('fn (mut backend WaylandBackend) service_hide_window')
+	assert wayland_source.contains('C.v_multiwindow_wayland_unmap_surface')
+	assert_source_order(create_window_body, 'backend.prepare_create_transport_plan(',
+		'C.wl_compositor_create_surface(compositor)')
+	assert_source_order(create_window_body, 'lifecycle_flush_attempt = transport.take()',
+		'C.wl_compositor_create_surface(compositor)')
+	create_transport_body := wayland_source.all_after('fn (mut backend WaylandBackend) prepare_create_transport_plan')
+		.all_before('fn (mut backend WaylandBackend) prepare_cleanup_transport_plan')
+	assert create_transport_body.contains('operation_count := if prepare_lifecycle_buffer { 4 } else { 3 }')
+	assert_source_order(create_transport_body, 'reserve_ordinals(u64(operation_count) * u64(2))',
+		'materialize_prepared_wayland_transport(prepare_seed')
+	assert_source_order(create_transport_body,
+		'lifecycle_seed := wayland_window_operation_seed(id, 1, .display_transport)',
+		'materialize_prepared_wayland_transport(lifecycle_seed')
+	assert_source_order(create_window_body, 'C.wl_surface_commit(surface)',
+		'backend.finish_prepared_service_request(flush_attempt)')
+	assert_source_order(create_window_body,
+		'backend.finish_prepared_service_request(flush_attempt)',
+		'backend.finish_prepared_service_request(roundtrip_attempt)')
+	assert_source_order(create_window_body,
+		'backend.finish_prepared_service_request(roundtrip_attempt)',
+		'backend.finish_prepared_service_request(ack_flush_attempt)')
+	assert_source_order(create_window_body,
+		'backend.finish_prepared_service_request(ack_flush_attempt)',
+		'backend.ensure_lifecycle_buffer_with_prepared_transport(index, lifecycle_flush_attempt)')
+	lifecycle_error_body :=
+		create_window_body.all_after('backend.ensure_lifecycle_buffer_with_prepared_transport(index, lifecycle_flush_attempt) or {')
+	assert_source_order(lifecycle_error_body, 'backend.destroy_window_slot(index)',
+		'backend.consume_prepared_service_cleanup(lifecycle_flush_attempt)')
+	assert !create_window_body.contains('backend.attempt_wayland_flush(')
+	assert !create_window_body.contains('backend.attempt_wayland_roundtrip(')
+	show_body := wayland_source.all_after('fn (mut backend WaylandBackend) service_show_window')
+		.all_before('fn (mut backend WaylandBackend) service_hide_window')
+	hide_body := wayland_source.all_after('fn (mut backend WaylandBackend) service_hide_window')
+		.all_before('fn (mut backend WaylandBackend) service_minimize_window')
+	assert show_body.contains('backend.drain_hidden_window_before_show(mut transport)!')
+	assert show_body.contains('backend.prepare_window_show_handshake(index, mut transport, requested_maximized,')
+	compact_show_body :=
+		show_body.replace_each(['\r', '', '\n', '', '\t', '', ' ', '']).replace(',]', ']')
+	assert_source_order(compact_show_body,
+		'backend.prepare_service_transport_plan(seed,[.display_roundtrip,.display_flush,.display_roundtrip,.display_flush,.display_roundtrip,.display_flush,.display_roundtrip,.display_flush])!',
+		'backend.drain_hidden_window_before_show(muttransport)!')
+	assert_source_order(show_body, 'backend.drain_hidden_window_before_show(mut transport)!',
+		'backend.prepare_window_show_handshake(index, mut transport, requested_maximized,')
+	assert !show_body.contains('requested_visible = true')
+	show_handshake_body := wayland_source.all_after('fn (mut backend WaylandBackend) prepare_window_show_handshake')
+		.all_before('fn (mut backend WaylandBackend) reapply_parent_to_live_children')
+	assert show_handshake_body.count('run_window_show_handshake_boundary(index, mut transport, true)') == 1
+	assert show_handshake_body.count('run_window_show_handshake_boundary(index, mut transport, false)') == 2
+	assert !show_handshake_body.contains('time.sleep')
+	assert !show_handshake_body.contains('\n\tfor ')
+	assert !show_handshake_body.contains('\n\twhile ')
+	assert !show_handshake_body.contains('pending_egl_resize = false')
+	assert_source_order(show_handshake_body, 'backend.replay_window_toplevel_attributes(index)',
+		'backend.request_window_show_probe(index, first_axis, first_enabled)')
+	assert_source_order(show_handshake_body,
+		'backend.request_window_show_probe(index, first_axis, first_enabled)',
+		'backend.run_window_show_handshake_boundary(index, mut transport, true)')
+	assert_source_order(show_handshake_body,
+		'backend.run_window_show_handshake_boundary(index, mut transport, true)',
+		'backend.request_window_show_final_intents(index, maximized, fullscreen)')
+	final_show_section :=
+		show_handshake_body.all_after('backend.request_window_show_final_intents(index, maximized, fullscreen)')
+	assert final_show_section.count('backend.run_window_show_handshake_boundary(index, mut transport, false)') == 1
+	assert_source_order(final_show_section,
+		'backend.run_window_show_handshake_boundary(index, mut transport, false)',
+		'backend.finish_window_show_handshake(index, mut transport, maximized, fullscreen)')
+	show_boundary_body := wayland_source.all_after('fn (mut backend WaylandBackend) run_window_show_handshake_boundary')
+		.all_before('fn (mut backend WaylandBackend) ack_window_show_configure')
+	assert_source_order(show_boundary_body, 'if commit {',
+		'backend.commit_window_show_handshake(index)')
+	assert_source_order(show_boundary_body, 'backend.commit_window_show_handshake(index)',
+		'backend.execute_prepared_service_transport(flush_attempt)')
+	assert_source_order(show_boundary_body,
+		'backend.execute_prepared_service_transport(flush_attempt)',
+		'backend.execute_prepared_service_transport(roundtrip_attempt)')
+	assert !show_boundary_body.contains('backend.attempt_wayland_')
+	assert show_boundary_body.count('commit_window_show_handshake(index)') == 1
+	finish_show_body := wayland_source.all_after('fn (mut backend WaylandBackend) finish_window_show_handshake')
+		.all_before('fn (mut backend WaylandBackend) prepare_window_show_handshake')
+	assert_source_order(finish_show_body, 'flush_attempt = transport.take()',
+		'backend.ack_window_show_configure(index, false)')
+	assert_source_order(finish_show_body, 'backend.ack_window_show_configure(index, false)',
+		'backend.flush_window_show_ack(flush_attempt)!')
+	assert_source_order(finish_show_body, 'backend.flush_window_show_ack(flush_attempt)!',
+		'record.configured = true')
+	assert_source_order(finish_show_body, 'record.configured = true',
+		'record.requested_visible = true')
+	configure_callback_body := wayland_source.all_after('fn wayland_xdg_surface_configure')
+		.all_before('fn wayland_xdg_toplevel_configure')
+	show_configure_branch := configure_callback_body.all_after('if record.show_handshake_active {')
+		.all_before('if record.hide_barrier_active {')
+	assert show_configure_branch.contains('record.show_configure_serial = serial')
+	assert show_configure_branch.contains('record.show_configure_received = true')
+	assert show_configure_branch.contains('if record.pending_service_state_valid {')
+	assert !show_configure_branch.contains('record.show_configure_state_valid = record.pending_service_state_valid')
+	assert !show_configure_branch.contains('xdg_surface_ack_configure')
+	show_ack_body := wayland_source.all_after('fn (mut backend WaylandBackend) ack_window_show_configure')
+		.all_before('fn (mut backend WaylandBackend) abort_window_show_handshake')
+	assert show_ack_body.contains('if !record.show_configure_received {')
+	assert !show_ack_body.contains('show_configure_serial == 0')
+	native_show_ack_body := show_ack_body.all_after('if backend.transport_can_marshal()')
+	assert_source_order(native_show_ack_body, 'xdg_surface_ack_configure',
+		'record.show_configure_received = false')
+	hidden_configure_branch := configure_callback_body.all_after('if !record.requested_visible {')
+	assert hidden_configure_branch.contains('xdg_surface_ack_configure')
+	assert hide_body.contains('backend.execute_prepared_wayland_hide_barrier(barrier_attempt)')
+	assert !hide_body.contains('attempt_wayland_roundtrip')
+	assert_source_order(hide_body,
+		'mut barrier_transport := backend.prepare_service_transport_plan(seed,',
+		'hide_barrier_active = true')
+	assert_source_order(hide_body,
+		'backend.execute_prepared_wayland_hide_barrier(barrier_attempt)',
+		'backend.release_window_render_target_for_hide(index)')
+	assert_source_order(hide_body, 'backend.release_window_render_target_for_hide(index)',
+		'requested_visible = false')
+	assert_source_order(hide_body, 'requested_visible = false',
+		'C.v_multiwindow_wayland_unmap_surface')
+	assert_source_order(hide_body, 'C.v_multiwindow_wayland_unmap_surface',
+		'backend.finish_prepared_service_request(flush_attempt)')
+	hide_target_body := wayland_source.all_after('fn (mut backend WaylandBackend) release_window_render_target_for_hide')
+		.all_before('fn (mut backend WaylandBackend) service_hide_window')
+	assert_source_order(hide_target_body, 'backend.make_renderer_anchor_current(.anchor_prepare)',
+		'backend.destroy_frame_callback_lifetime(mut record)')
+	assert_source_order(hide_target_body, 'backend.destroy_frame_callback_lifetime(mut record)',
+		'backend.release_egl_surface_ticket(record.egl_surface_ticket, old_surface)')
+	actual_hide_release_body :=
+		hide_target_body.all_after('release := backend.release_egl_surface_ticket(record.egl_surface_ticket, old_surface)')
+	assert actual_hide_release_body.contains('if !release.claimed || !release.terminal {')
+	assert_source_order(actual_hide_release_body, 'if !release.claimed || !release.terminal {',
+		'record.egl_surface = unsafe { nil }')
+	assert_source_order(actual_hide_release_body, 'record.egl_surface = unsafe { nil }',
+		'exhaust_backend_target_generation(old_generation)')
+	assert !hide_target_body.contains('destroy_wl_egl_window_lifetime')
+	assert !hide_target_body.contains('pending_egl_resize = false')
+	assert !hide_body.contains('pending_egl_resize = false')
+	abort_show_body := wayland_source.all_after('fn (mut backend WaylandBackend) abort_window_show_handshake')
+		.all_before('fn (mut backend WaylandBackend) flush_window_show_ack')
+	assert !abort_show_body.contains('pending_egl_resize = false')
+	apply_configure_body := wayland_source.all_after('fn (mut backend WaylandBackend) apply_pending_configure')
+		.all_before('fn (mut backend WaylandBackend) ensure_window_render_target')
+	assert_source_order(apply_configure_body, 'C.v_multiwindow_wayland_egl_resize_window',
+		'record.pending_egl_resize = false')
+	hide_barrier_body := wayland_source.all_after('fn (mut backend WaylandBackend) execute_prepared_wayland_hide_barrier')
+		.all_before('fn (mut backend WaylandBackend) abandon_renderer_ownership')
+	assert hide_barrier_body.contains('backend.execute_prepared_service_transport(attempt)')
+	replay_body := wayland_source.all_after('fn (mut backend WaylandBackend) replay_window_toplevel_attributes(index int)')
+		.all_before('fn (mut backend WaylandBackend) request_window_show_probe')
+	for replay_attribute in ['record.title', 'record.app_id', 'record.owner_id', 'record.min_width',
+		'record.max_width', 'record.request_server_decoration', 'record.requested_maximized',
+		'record.requested_fullscreen'] {
+		assert replay_body.contains(replay_attribute)
+	}
+	for replay_operation in ['C.v_multiwindow_wayland_xdg_toplevel_set_maximized',
+		'C.v_multiwindow_wayland_xdg_toplevel_unset_maximized',
+		'C.v_multiwindow_wayland_xdg_toplevel_set_fullscreen',
+		'C.v_multiwindow_wayland_xdg_toplevel_unset_fullscreen'] {
+		assert replay_body.contains(replay_operation)
+	}
+	wayland_test_source := multiwindow_source_file('service_native_wayland_test.v')
+	remap_test_body := wayland_test_source.all_after('fn test_wayland_hidden_window_remaps_through_fresh_xdg_configure_cycle()')
+		.all_before('fn test_wayland_unavailable_window_controls_are_not_advertised()')
+	second_remap_body := remap_test_body.all_after('app.service_hide_window(window)!')
+	assert second_remap_body.count('app.service_show_window(window)!') == 1
+	assert second_remap_body.count('attempt_wayland_roundtrip(') == 0
+	assert second_remap_body.count('_ = app.poll_events()!') == 2
+	assert second_remap_body.count('second_show :=') == 1
+	assert_source_order(second_remap_body, 'app.service_show_window(window)!',
+		'assert app.backend.wayland.windows[index].configured')
+	assert_source_order(second_remap_body, 'assert app.backend.wayland.windows[index].configured',
+		'_ = app.poll_events()!')
+	assert_source_order(second_remap_body, '_ = app.poll_events()!', 'second_show :=')
+	assert wayland_source.contains('reapply_parent_to_live_children_on_first_map')
+	assert wayland_source.contains('if was_mapped {')
+	end_render_body := wayland_source.all_after('fn (mut backend WaylandBackend) end_render(frame RenderFrame)')
+		.all_before('fn (mut backend WaylandBackend) ensure_lifecycle_buffers()')
+	assert_source_order(end_render_body, 'reserve_ordinals(9)',
+		'C.v_multiwindow_wayland_surface_frame')
+	assert_source_order(end_render_body, 'swap_context := swap_ordinals.materialize',
+		'C.v_multiwindow_wayland_surface_frame')
+	assert_source_order(end_render_body, 'materialize_prepared_wayland_transport(frame_seed',
+		'C.v_multiwindow_wayland_surface_frame')
+	assert_source_order(end_render_body, 'C.v_multiwindow_linux_egl_swap_buffers',
+		'backend.reapply_parent_to_live_children_on_first_map')
+	final_end_render :=
+		end_render_body.all_after('backend.reapply_parent_to_live_children_on_first_map')
+	assert final_end_render.contains('backend.execute_prepared_wayland_transport(flush_attempt)')
+	assert !end_render_body.contains('backend.attempt_wayland_flush(frame_seed)')
+	lifecycle_body := wayland_source.all_after('fn (mut backend WaylandBackend) ensure_lifecycle_buffer(index int)')
+		.all_before('fn (mut record WaylandWindowRecord) release_fallback_buffer')
+	assert lifecycle_body.contains('record.fallback_buffer_for_extent(width, height)')
+	assert_source_order(lifecycle_body,
+		'record.fallback_buffers.len >= wayland_max_fallback_buffers',
+		'backend.prepare_service_transport_plan(')
+	assert_source_order(lifecycle_body, 'backend.prepare_service_transport_plan(',
+		'C.v_multiwindow_wayland_create_shm_buffer')
+	assert_source_order(lifecycle_body, 'C.v_multiwindow_wayland_attach_buffer',
+		'backend.reapply_parent_to_live_children_on_first_map')
+	assert_source_order(lifecycle_body, 'backend.reapply_parent_to_live_children_on_first_map',
+		'backend.finish_prepared_service_request(flush_attempt)')
+	assert !lifecycle_body.contains('backend.attempt_wayland_flush')
 }
 
 fn test_wayland_initial_size_is_clamped_before_mapping() {
 	wayland_source := multiwindow_source_file('wayland_backend.c.v')
+	create_window_body :=
+		wayland_source.all_after('fn (mut backend WaylandBackend) create_window').all_before('fn (mut backend WaylandBackend) destroy_window')
+	compact_create_window_body := create_window_body.replace(' ', '').replace('\t', '')
 	assert wayland_source.contains('actual_size := window_size_for_config(config, config.width, config.height)')
-	assert wayland_source.contains('width:        actual_size.width')
-	assert wayland_source.contains('height:       actual_size.height')
-	assert wayland_source.contains('min_width:    record_min_width')
-	assert wayland_source.contains('min_height:   record_min_height')
+	assert compact_create_window_body.contains('width:actual_size.width')
+	assert compact_create_window_body.contains('height:actual_size.height')
+	assert compact_create_window_body.contains('min_width:record_min_width')
+	assert compact_create_window_body.contains('min_height:record_min_height')
 	assert wayland_source.contains('width = window_extent_for_minimum(width, record.min_width)')
 	assert wayland_source.contains('height = window_extent_for_minimum(height, record.min_height)')
 	assert wayland_source.contains('C.v_multiwindow_wayland_xdg_toplevel_set_min_size(xdg_toplevel, i32(actual_size.width),')
@@ -2510,74 +3422,8 @@ fn test_wayland_initial_size_is_clamped_before_mapping() {
 		'fn (mut backend WaylandBackend) create_window',
 		'actual_size := window_size_for_config(config, config.width, config.height)',
 		'mut record := &WaylandWindowRecord')
-	assert_source_order_after_marker(wayland_source,
-		'fn (mut backend WaylandBackend) create_window', 'width:        actual_size.width',
+	assert_source_order(compact_create_window_body, 'width:actual_size.width',
 		'C.wl_surface_commit(surface)')
-}
-
-fn test_wayland_lifecycle_windows_attach_shm_buffer_source_guard() {
-	wayland_source := multiwindow_source_file('wayland_backend.c.v')
-	wayland_helper_source := multiwindow_source_file('wayland_backend_helpers.h')
-	create_window_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) create_window').all_before('fn (mut backend WaylandBackend) destroy_window')
-	poll_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) poll_queued_events').all_before('fn (mut record WaylandWindowRecord) enqueue_native_event')
-	lifecycle_buffer_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) ensure_lifecycle_buffer').all_before('fn (mut backend WaylandBackend) close_connection')
-	release_buffer_body :=
-		wayland_source.all_after('fn (mut record WaylandWindowRecord) release_fallback_buffer').all_before('fn (mut backend WaylandBackend) close_connection')
-
-	assert wayland_source.contains('shm                          voidptr')
-	assert wayland_source.contains('fallback_buffers')
-	assert wayland_source.contains('fallback_current_buffer')
-	assert wayland_source.contains('const wayland_max_fallback_buffers = 3')
-	assert wayland_source.contains('C.v_multiwindow_wayland_bind_shm')
-	assert wayland_source.contains('fn (mut backend WaylandBackend) ensure_lifecycle_buffer')
-	assert wayland_source.contains('C.v_multiwindow_wayland_create_shm_buffer')
-	assert wayland_source.contains('C.v_multiwindow_wayland_attach_buffer')
-	assert wayland_source.contains('C.v_multiwindow_wayland_add_buffer_listener')
-	assert wayland_source.contains('C.v_multiwindow_wayland_buffer_destroy')
-	assert wayland_source.contains("@[export: 'v_multiwindow_wayland_buffer_release']")
-	assert wayland_source.contains('fn (mut record WaylandWindowRecord) release_fallback_buffer')
-	assert lifecycle_buffer_body.contains('record := backend.windows[index]')
-	assert lifecycle_buffer_body.contains('if record.fallback_buffer_width == width && record.fallback_buffer_height == height {')
-	assert !lifecycle_buffer_body.contains('&& record.fallback_current_buffer != unsafe { nil }')
-	assert lifecycle_buffer_body.contains('record.fallback_buffers.len >= wayland_max_fallback_buffers')
-	assert lifecycle_buffer_body.contains('C.v_multiwindow_wayland_add_buffer_listener')
-	assert lifecycle_buffer_body.contains('backend.windows[index].fallback_buffers << buffer')
-	assert lifecycle_buffer_body.contains('backend.windows[index].fallback_current_buffer = buffer')
-	assert lifecycle_buffer_body.contains('backend.windows[index].fallback_buffer_width = width')
-	assert lifecycle_buffer_body.contains('backend.windows[index].fallback_buffer_height = height')
-	assert !lifecycle_buffer_body.contains('mut record := backend.windows[index]')
-	assert !lifecycle_buffer_body.contains('record.fallback_buffers << buffer')
-	assert !lifecycle_buffer_body.contains('record.fallback_buffer_width = width')
-	assert !lifecycle_buffer_body.contains('record.fallback_buffer_height = height')
-	assert lifecycle_buffer_body.contains('record.fallback_buffers.delete(i)')
-	assert release_buffer_body.contains('record.fallback_current_buffer = unsafe { nil }')
-	assert !release_buffer_body.contains('record.fallback_buffer_width = 0')
-	assert !release_buffer_body.contains('record.fallback_buffer_height = 0')
-	assert_source_order(lifecycle_buffer_body, 'C.v_multiwindow_wayland_add_buffer_listener',
-		'C.v_multiwindow_wayland_attach_buffer')
-	assert create_window_body.contains('if !backend.renderer_ready()')
-	assert create_window_body.contains('backend.ensure_lifecycle_buffer(index) or {')
-	assert_source_order(create_window_body, 'C.wl_display_roundtrip(display)',
-		'backend.ensure_lifecycle_buffer(index)')
-	assert_source_order(create_window_body, 'backend.ensure_lifecycle_buffer(index)',
-		'return WindowSize')
-	assert poll_body.contains('backend.ensure_lifecycle_buffers()!')
-	assert_source_order(poll_body, 'backend.dispatch_pending_nonblocking()!',
-		'backend.ensure_lifecycle_buffers()!')
-	assert_source_order(poll_body, 'backend.ensure_lifecycle_buffers()!',
-		'backend.drain_pending_data_offer_drop()')
-
-	for required_helper in ['v_multiwindow_wayland_create_shm_buffer', 'wl_shm_create_pool',
-		'wl_shm_pool_create_buffer', 'WL_SHM_FORMAT_XRGB8888', 'v_multiwindow_wayland_attach_buffer',
-		'wl_buffer_listener', 'wl_buffer_add_listener',
-		'v_multiwindow_wayland_buffer_release_trampoline',
-		'v_multiwindow_wayland_add_buffer_listener', 'wl_surface_attach', 'wl_surface_damage',
-		'wl_surface_commit', 'v_multiwindow_wayland_buffer_destroy'] {
-		assert wayland_helper_source.contains(required_helper)
-	}
 }
 
 fn test_wayland_server_side_decorations_are_requested_source_guard() {
@@ -2587,7 +3433,8 @@ fn test_wayland_server_side_decorations_are_requested_source_guard() {
 	create_window_body :=
 		wayland_source.all_after('fn (mut backend WaylandBackend) create_window').all_before('fn (mut backend WaylandBackend) destroy_window')
 	destroy_window_record_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) destroy_window_record').all_before('fn (mut backend WaylandBackend) ensure_data_device')
+		wayland_source.all_after('fn (mut backend WaylandBackend) destroy_window_record').all_before('fn (mut backend WaylandBackend) destroy_window_slot')
+	compact_wayland_source := wayland_source.replace(' ', '').replace('\t', '')
 	decoration_configure_body :=
 		wayland_source.all_after("@[export: 'v_multiwindow_wayland_xdg_toplevel_decoration_configure']").all_before("@[export: 'v_multiwindow_wayland_seat_capabilities']")
 	decorated_window_body :=
@@ -2608,7 +3455,7 @@ fn test_wayland_server_side_decorations_are_requested_source_guard() {
 	assert wayland_source.contains('toplevel_decoration')
 	assert wayland_source.contains('toplevel_decoration_configured bool')
 	assert wayland_source.contains('toplevel_decoration_mode')
-	assert wayland_source.contains('decoration_manager           voidptr')
+	assert compact_wayland_source.contains('decoration_managervoidptr')
 	assert wayland_source.contains('C.v_multiwindow_wayland_bind_xdg_decoration_manager')
 	assert wayland_source.contains("C.strcmp(iface, c'zxdg_decoration_manager_v1') == 0")
 	assert wayland_source.contains('backend.destroy_xdg_decoration_manager()')
@@ -2654,31 +3501,6 @@ fn test_wayland_server_side_decorations_are_requested_source_guard() {
 	assert server_side_decoration_body.contains('wayland_xdg_toplevel_decoration_mode_server_side')
 	assert client_side_decoration_body.contains('record.toplevel_decoration == unsafe { nil }')
 	assert client_side_decoration_body.contains('wayland_xdg_toplevel_decoration_mode_client_side')
-}
-
-fn test_interactive_move_resize_core_source_guard() {
-	types_source := multiwindow_source_file('types.v')
-	app_source := multiwindow_source_file('app.v')
-	backend_source := multiwindow_source_file('backend.v')
-	move_backend_body :=
-		backend_source.all_after('fn (mut backend Backend) begin_window_move').all_before('fn (mut backend Backend) begin_window_resize')
-	resize_backend_body :=
-		backend_source.all_after('fn (mut backend Backend) begin_window_resize').all_before('fn (mut backend Backend) poll_events')
-
-	assert types_source.contains('pub enum WindowResizeEdge {')
-	for edge_name in ['top', 'bottom', 'left', 'right', 'top_left', 'top_right', 'bottom_left',
-		'bottom_right'] {
-		assert types_source.contains('\t${edge_name}')
-	}
-	assert types_source.contains('interactive_move_resize bool')
-	assert types_source.contains('native_decorations      bool')
-	assert app_source.contains('pub fn (mut app App) begin_window_move(id WindowId) !')
-	assert app_source.contains('pub fn (mut app App) begin_window_resize(id WindowId, edge WindowResizeEdge) !')
-	assert app_source.contains('if !app.windows[index].config.resizable')
-	assert move_backend_body.contains('.wayland { backend.wayland.begin_window_move(id)! }')
-	assert move_backend_body.contains('else { return error(err_capability_unsupported) }')
-	assert resize_backend_body.contains('.wayland { backend.wayland.begin_window_resize(id, edge)! }')
-	assert resize_backend_body.contains('else { return error(err_capability_unsupported) }')
 }
 
 fn test_cursor_shape_core_source_guard() {
@@ -2762,7 +3584,12 @@ fn test_cursor_shape_core_source_guard() {
 	assert wayland_cursor_body.contains('C.v_multiwindow_wayland_cursor_shape_device_set_shape')
 	assert wayland_cursor_body.contains('backend.pointer_enter_serial')
 	assert wayland_cursor_body.contains('wayland_cursor_shape_for_shape(shape)')
-	assert wayland_cursor_body.contains('C.wl_display_flush(display)')
+	assert_source_order(wayland_cursor_body, 'backend.prepare_service_transport_plan(',
+		'C.v_multiwindow_wayland_cursor_shape_device_set_shape')
+	assert_source_order(wayland_cursor_body,
+		'C.v_multiwindow_wayland_cursor_shape_device_set_shape',
+		'backend.finish_prepared_service_request(flush_attempt)')
+	assert !wayland_cursor_body.contains('backend.attempt_wayland_flush(')
 	assert wayland_cursor_body.contains('return error(err_capability_unsupported)')
 	assert wayland_cursor_shape_mapping_body.contains('.pointer { wayland_cursor_shape_pointer }')
 	assert wayland_cursor_shape_mapping_body.contains('.move { wayland_cursor_shape_move }')
@@ -2811,70 +3638,14 @@ fn test_cursor_shape_core_source_guard() {
 	assert appkit_objc_source.contains('[NSCursor resizeUpDownCursor]')
 }
 
-fn test_wayland_interactive_move_resize_source_guard() {
+fn test_wayland_interactive_move_resize_forbidden_paths_are_absent() {
+	backend_source := multiwindow_source_file('backend.v')
 	wayland_source := multiwindow_source_file('wayland_backend.c.v')
 	wayland_helper_source := multiwindow_source_file('wayland_backend_helpers.h')
 	decoration_private_source := multiwindow_source_file('wayland_xdg_decoration_private.c')
-	pointer_button_body :=
-		wayland_source.all_after("@[export: 'v_multiwindow_wayland_pointer_button']").all_before("@[export: 'v_multiwindow_wayland_pointer_axis']")
-	keyboard_key_body :=
-		wayland_source.all_after("@[export: 'v_multiwindow_wayland_keyboard_key']").all_before("@[export: 'v_multiwindow_wayland_keyboard_modifiers']")
-	touch_down_body :=
-		wayland_source.all_after("@[export: 'v_multiwindow_wayland_touch_down']").all_before("@[export: 'v_multiwindow_wayland_touch_up']")
-	resize_window_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) resize_window').all_before('fn (mut backend WaylandBackend) begin_window_move')
-	begin_move_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) begin_window_move').all_before('fn (mut backend WaylandBackend) begin_window_resize')
-	begin_resize_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) begin_window_resize').all_before('fn (mut backend WaylandBackend) poll_events')
-	edge_mapping_body :=
-		wayland_source.all_after('fn wayland_resize_edge(edge WindowResizeEdge) u32').all_before('fn wayland_is_clipboard_paste')
 
-	assert wayland_helper_source.contains('#define XDG_TOPLEVEL_MOVE 5')
-	assert wayland_helper_source.contains('#define XDG_TOPLEVEL_RESIZE 6')
-	assert wayland_helper_source.contains('v_multiwindow_wayland_xdg_toplevel_move')
-	assert wayland_helper_source.contains('v_multiwindow_wayland_xdg_toplevel_resize')
-	assert wayland_helper_source.contains('XDG_TOPLEVEL_MOVE')
-	assert wayland_helper_source.contains('XDG_TOPLEVEL_RESIZE')
-	for edge_constant in ['XDG_TOPLEVEL_RESIZE_EDGE_TOP', 'XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM',
-		'XDG_TOPLEVEL_RESIZE_EDGE_LEFT', 'XDG_TOPLEVEL_RESIZE_EDGE_RIGHT',
-		'XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT', 'XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT',
-		'XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT', 'XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT'] {
-		assert wayland_helper_source.contains(edge_constant)
-	}
-
-	assert edge_mapping_body.contains('.top { wayland_xdg_toplevel_resize_edge_top }')
-	assert edge_mapping_body.contains('.bottom { wayland_xdg_toplevel_resize_edge_bottom }')
-	assert edge_mapping_body.contains('.left { wayland_xdg_toplevel_resize_edge_left }')
-	assert edge_mapping_body.contains('.right { wayland_xdg_toplevel_resize_edge_right }')
-	assert edge_mapping_body.contains('.top_left { wayland_xdg_toplevel_resize_edge_top_left }')
-	assert edge_mapping_body.contains('.top_right { wayland_xdg_toplevel_resize_edge_top_right }')
-	assert edge_mapping_body.contains('.bottom_left { wayland_xdg_toplevel_resize_edge_bottom_left }')
-	assert edge_mapping_body.contains('.bottom_right { wayland_xdg_toplevel_resize_edge_bottom_right }')
-
-	assert !pointer_button_body.contains('_ = serial')
-	assert !pointer_button_body.contains('mut record := backend.windows[index]')
-	assert pointer_button_body.contains('backend.windows[index].store_user_action_serial(serial, backend.poll_generation)')
-	assert !keyboard_key_body.contains('_ = serial')
-	assert !keyboard_key_body.contains('mut record := backend.windows[index]')
-	assert keyboard_key_body.contains('backend.windows[index].store_user_action_serial(serial, backend.poll_generation)')
-	assert !touch_down_body.contains('_ = serial')
-	assert !touch_down_body.contains('mut record := backend.windows[index]')
-	assert touch_down_body.contains('backend.windows[index].store_user_action_serial(serial, backend.poll_generation)')
-	assert !begin_move_body.contains('mut record := backend.windows[index]')
-	assert !begin_resize_body.contains('mut record := backend.windows[index]')
-	assert begin_move_body.contains('serial := backend.windows[index].take_user_action_serial(backend.poll_generation) or {')
-	assert begin_resize_body.contains('serial := backend.windows[index].take_user_action_serial(backend.poll_generation) or {')
-	assert wayland_source.contains('fn (mut record WaylandWindowRecord) take_user_action_serial')
-	assert wayland_source.contains('fn (mut backend WaylandBackend) expire_user_action_serials')
-	assert wayland_source.contains('backend.poll_generation++')
-	assert wayland_source.contains('interactive_move_resize: backend.can_begin_interactive_move_resize()')
-	assert wayland_source.contains('native_decorations:      backend.has_server_side_decorated_window()')
-	assert !wayland_source.contains('native_decorations:      backend.decoration_manager != unsafe { nil }')
-
-	assert resize_window_body.contains('return error(err_capability_unsupported)')
-	assert begin_resize_body.contains('if !backend.windows[index].resizable')
-	assert begin_resize_body.contains('C.v_multiwindow_wayland_xdg_toplevel_resize')
+	assert !backend_source.contains('fn (mut backend Backend) poll_events()')
+	assert !wayland_source.contains('fn (mut backend WaylandBackend) poll_events()')
 
 	for forbidden in ['gtk_shell1', 'xdg_toplevel_drag_manager_v1'] {
 		assert !wayland_source.contains(forbidden)
@@ -2883,20 +3654,120 @@ fn test_wayland_interactive_move_resize_source_guard() {
 	}
 }
 
+fn test_wayland_user_action_serial_is_one_shot_and_poll_generation_scoped() {
+	mut record := WaylandWindowRecord{}
+	record.store_user_action_serial(41, 7)
+	first := record.take_user_action_serial(7) or {
+		assert false, 'current-generation user-action serial was unavailable'
+		return
+	}
+	assert first == 41
+	assert !record.user_action_serial_valid
+	assert record.user_action_serial == 0
+	assert record.user_action_poll == 0
+	if replayed := record.take_user_action_serial(7) {
+		assert false, 'one-shot user-action serial replayed as ${replayed}'
+	}
+
+	record.store_user_action_serial(42, 8)
+	if stale := record.take_user_action_serial(9) {
+		assert false, 'stale-generation user-action serial was accepted as ${stale}'
+	}
+	assert !record.user_action_serial_valid
+	if resurrected := record.take_user_action_serial(8) {
+		assert false, 'rejected user-action serial was retained as ${resurrected}'
+	}
+}
+
+fn test_wayland_poll_path_advances_user_action_generation() {
+	if os.getenv('VGG_MULTIWINDOW_RUNTIME_PROBES') != '1'
+		|| os.getenv('VGG_MULTIWINDOW_RUNTIME_BACKEND') != 'wayland' {
+		return
+	}
+	$if linux && sokol_wayland ? {
+		mut app := new_app(backend: .wayland)!
+		defer {
+			app.stop() or {
+				assert false, 'failed to stop Wayland poll-generation probe app: ${err.msg()}'
+			}
+		}
+		old_window := app.create_window(title: 'Wayland old serial', width: 160, height: 120)!
+		current_window := app.create_window(
+			title:  'Wayland current serial'
+			width:  160
+			height: 120
+		)!
+		old_index := app.backend.wayland.window_record_index(old_window) or {
+			assert false, 'old Wayland poll-generation window record was not retained'
+			return
+		}
+		current_index := app.backend.wayland.window_record_index(current_window) or {
+			assert false, 'current Wayland poll-generation window record was not retained'
+			return
+		}
+		generation_before := app.backend.wayland.poll_generation
+
+		app.poll_events()!
+
+		generation_after := app.backend.wayland.poll_generation
+		assert generation_after == generation_before + 1
+		app.backend.wayland.windows[old_index].store_user_action_serial(61, generation_before)
+		app.backend.wayland.windows[current_index].store_user_action_serial(62, generation_after)
+		app.backend.wayland.expire_user_action_serials()
+
+		assert !app.backend.wayland.windows[old_index].user_action_serial_valid
+		assert app.backend.wayland.windows[old_index].user_action_serial == 0
+		assert app.backend.wayland.windows[old_index].user_action_poll == 0
+		assert app.backend.wayland.windows[current_index].user_action_serial_valid
+		assert app.backend.wayland.windows[current_index].user_action_serial == 62
+		assert app.backend.wayland.windows[current_index].user_action_poll == generation_after
+		retained := app.backend.wayland.windows[current_index].take_user_action_serial(generation_after) or {
+			assert false, 'current poll-generation serial was expired'
+			return
+		}
+		assert retained == 62
+		if replayed := app.backend.wayland.windows[current_index].take_user_action_serial(generation_after) {
+			assert false, 'current poll-generation serial replayed as ${replayed}'
+		}
+		if stale := app.backend.wayland.windows[old_index].take_user_action_serial(generation_after) {
+			assert false, 'expired poll-generation serial remained consumable as ${stale}'
+		}
+	} $else {
+		assert false, 'forced Wayland runtime serial probe requires linux and -d sokol_wayland'
+	}
+}
+
+fn test_wayland_resize_edges_map_to_xdg_toplevel_values() {
+	edges := [WindowResizeEdge.top, .bottom, .left, .right, .top_left, .top_right, .bottom_left,
+		.bottom_right]
+	expected := [u32(1), 2, 4, 8, 5, 9, 6, 10]
+	assert edges.len == expected.len
+	for index, edge in edges {
+		assert wayland_resize_edge(edge) == expected[index]
+	}
+
+	// Native xdg_toplevel move/resize delivery and display flushing remain mandatory
+	// runtime-lane proofs; source layout is not evidence for those operations.
+}
+
 fn test_wayland_input_support_is_queued_with_xkb_text_and_touch_source_guard() {
 	backend_source := multiwindow_source_file('backend.v')
 	wayland_source := multiwindow_source_file('wayland_backend.c.v')
 	wayland_helper_source := multiwindow_source_file('wayland_backend_helpers.h')
+	compact_wayland_source := wayland_source.replace(' ', '').replace('\t', '').replace('\n', '')
 	capabilities_body :=
 		wayland_source.all_after('fn (backend &WaylandBackend) capabilities() Capabilities').all_before('fn (backend &WaylandBackend) can_deliver_drop_events')
+	backend_poll_body :=
+		backend_source.all_after('fn (mut backend Backend) poll_queued_events() ![]QueuedEvent').all_before('fn (mut backend Backend) event_sequence_terminal_error')
+	compact_backend_poll_body :=
+		backend_poll_body.replace(' ', '').replace('\t', '').replace('\n', '')
 
-	assert backend_source.contains('.wayland {\n\t\t\treturn backend.wayland.poll_queued_events()!')
+	assert compact_backend_poll_body.contains('.wayland{backend.wayland.poll_queued_events()!}')
 	assert wayland_source.contains('fn (mut backend WaylandBackend) poll_queued_events() ![]QueuedEvent')
 	assert wayland_source.contains('pending_events')
 	assert wayland_source.contains('[]QueuedEvent')
 	assert wayland_source.contains('queued_lifecycle_event')
 	assert wayland_source.contains('queued_input_event')
-	assert wayland_source.contains('events := backend.poll_queued_events()!')
 	assert !wayland_source.contains('resize_event_pending')
 	assert !wayland_source.contains('close_requested         bool')
 	assert !wayland_source.contains('mut close_requested_windows := []WindowId{}')
@@ -2933,6 +3804,8 @@ fn test_wayland_input_support_is_queued_with_xkb_text_and_touch_source_guard() {
 		wayland_source.all_after('fn (mut backend WaylandBackend) start_key_repeat').all_before('fn (mut backend WaylandBackend) stop_key_repeat')
 	poll_body :=
 		wayland_source.all_after('fn (mut backend WaylandBackend) poll_queued_events() ![]QueuedEvent').all_before('fn (mut record WaylandWindowRecord) enqueue_native_event')
+	compact_poll_body := poll_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert compact_poll_body.count('for_,mutrecordinbackend.windows{fornative_eventinrecord.pending_events{native_events<<native_event}record.pending_events.clear()}') == 2
 	keyboard_leave_body :=
 		wayland_source.all_after("@[export: 'v_multiwindow_wayland_keyboard_leave']").all_before("@[export: 'v_multiwindow_wayland_keyboard_keymap']")
 	clear_keys_down_body :=
@@ -2959,11 +3832,11 @@ fn test_wayland_input_support_is_queued_with_xkb_text_and_touch_source_guard() {
 	assert key_repeats_body.contains('if backend.xkb_keymap == unsafe { nil }')
 	assert key_repeats_body.contains('C.xkb_keymap_key_repeats(unsafe { &C.xkb_keymap(backend.xkb_keymap) }')
 	assert key_repeats_body.contains('raw_key) != 0')
-	for repeat_field in ['keyboard_repeat_rate         int', 'keyboard_repeat_delay        int',
-		'keyboard_repeat_active       bool', 'keyboard_repeat_raw_key      u32',
-		'keyboard_repeat_key_code     int', 'keyboard_repeat_window       WindowId',
-		'keyboard_repeat_next_ns      u64', 'keyboard_repeat_interval_ns  u64'] {
-		assert wayland_source.contains(repeat_field)
+	for repeat_field in ['keyboard_repeat_rateint', 'keyboard_repeat_delayint',
+		'keyboard_repeat_activebool', 'keyboard_repeat_raw_keyu32', 'keyboard_repeat_key_codeint',
+		'keyboard_repeat_windowWindowId', 'keyboard_repeat_next_nsu64',
+		'keyboard_repeat_interval_nsu64'] {
+		assert compact_wayland_source.contains(repeat_field)
 	}
 	assert !wayland_source.contains('keyboard_repeat_modifiers')
 	assert !wayland_source.contains('keyboard_repeat_char_code')
@@ -3051,10 +3924,36 @@ fn test_wayland_input_support_is_queued_with_xkb_text_and_touch_source_guard() {
 	assert wayland_source.contains('pending_drop_poll_cycle_expired')
 	assert wayland_source.contains('C.v_multiwindow_wayland_fd_set_nonblocking')
 	assert wayland_source.contains('C.v_multiwindow_wayland_read_would_block')
-	assert wayland_source.contains('C.poll(&poll_fd, u64(1), 0)')
+	assert wayland_source.contains('pending_drop_poll_once')
+	assert wayland_source.contains('pending_drop_read_once')
+	assert wayland_source.contains('return C.poll(unsafe { &C.pollfd(poll_fd) }, u64(1), 0)')
 	assert wayland_source.contains('for _ in 0 .. wayland_data_offer_max_read_chunks')
 	assert wayland_source.contains('backend.drain_pending_data_offer_drop()')
-	assert_source_order(wayland_source, 'backend.dispatch_pending_nonblocking()!',
+	assert_source_order(poll_body, 'dispatch := backend.dispatch_pending_nonblocking()',
+		'if !dispatch.succeeded()')
+	assert_source_order(poll_body, 'if !dispatch.succeeded()',
+		'deferred_error = backend.cleanup_after_fatal_dispatch(dispatch)')
+	assert_source_order(poll_body,
+		'deferred_error = backend.cleanup_after_fatal_dispatch(dispatch)',
+		'backend.drain_clipboard_read()')
+	dispatch_cleanup_body :=
+		wayland_source.all_after('fn (mut backend WaylandBackend) cleanup_after_fatal_dispatch').all_before('fn (mut backend WaylandBackend) poll_queued_events')
+	assert dispatch_cleanup_body.contains('backend.render_health.blocks_graphics()')
+	assert dispatch_cleanup_body.contains('backend.transport_can_marshal()')
+	assert dispatch_cleanup_body.contains("backend.finish_clipboard_read(.failed, '', message)")
+	assert dispatch_cleanup_body.contains('backend.fail_nonterminal_portal_exports(message)')
+	assert dispatch_cleanup_body.contains('backend.close_all_clipboard_sends()')
+	assert dispatch_cleanup_body.contains('backend.clear_data_offer(true)')
+	dispatch_message_body :=
+		wayland_source.all_after('fn wayland_dispatch_failure_message').all_before('fn (mut backend WaylandBackend) fail_nonterminal_portal_exports')
+	assert dispatch_message_body.contains('err_wayland_dispatch_failed')
+	portal_failure_body :=
+		wayland_source.all_after('fn (mut backend WaylandBackend) fail_nonterminal_portal_exports').all_before('fn (mut backend WaylandBackend) cleanup_after_fatal_dispatch')
+	assert portal_failure_body.contains('if portal.terminal')
+	assert portal_failure_body.contains('status: .failed')
+	assert portal_failure_body.contains('backend.destroy_portal_export_at(index, !backend.transport_can_marshal())')
+	assert_source_order(poll_body,
+		'deferred_error = backend.cleanup_after_fatal_dispatch(dispatch)',
 		'backend.drain_pending_data_offer_drop()')
 	assert wayland_source.contains('.files_dropped')
 	assert wayland_source.contains('dropped_files_from_uri_list(payload)')
@@ -3070,7 +3969,7 @@ fn test_wayland_input_support_is_queued_with_xkb_text_and_touch_source_guard() {
 	assert drop_callback_body.contains('backend.data_offer_allows_finish()')
 	assert drop_callback_body.contains('backend.begin_pending_data_offer_drop()')
 	expire_body := wayland_source.all_after('fn (mut backend WaylandBackend) pending_drop_poll_cycle_expired() bool')
-		.all_before('fn (mut backend WaylandBackend) drain_pending_data_offer_drop()')
+		.all_before('fn (mut backend WaylandBackend) pending_drop_poll_once')
 	assert expire_body.contains('backend.pending_drop_poll_cycles++')
 	assert expire_body.contains('wayland_data_offer_max_pending_poll_cycles')
 	assert !expire_body.contains('v_multiwindow_wayland_data_offer_finish')
@@ -3079,8 +3978,11 @@ fn test_wayland_input_support_is_queued_with_xkb_text_and_touch_source_guard() {
 		.all_before('fn (mut backend WaylandBackend) finish_pending_data_offer_drop()')
 	assert drain_body.contains('if backend.pending_drop_poll_cycle_expired() {')
 	assert drain_body.contains('backend.clear_data_offer(true)')
-	assert_source_order(drain_body, 'backend.pending_drop_poll_cycle_expired()',
-		'C.poll(&poll_fd, u64(1), 0)')
+	assert drain_body.contains('!read_interrupted && backend.pending_drop_poll_cycle_expired()')
+	assert_source_order(drain_body, 'poll_result := backend.pending_drop_poll_once',
+		'if poll_result == 0')
+	assert_source_order(drain_body, 'if poll_result == 0',
+		'backend.pending_drop_poll_cycle_expired()')
 	finish_body := wayland_source.all_after('fn (mut backend WaylandBackend) finish_pending_data_offer_drop()')
 		.all_before('fn (mut backend WaylandBackend) destroy_data_device()')
 	assert_source_order(finish_body, 'backend.pending_drop_allows_finish()',
@@ -3179,6 +4081,23 @@ fn test_wayland_registry_global_remove_and_optional_callbacks_are_guarded_source
 	assert has_compositor_name
 	assert has_wm_base_name
 	assert has_seat_name
+	wm_base_listener_registration :=
+		wayland_source.all_after('wm_base := unsafe { &C.xdg_wm_base(backend.wm_base) }').all_before('if backend.seat != unsafe { nil }')
+	assert wm_base_listener_registration.contains('C.v_multiwindow_wayland_add_xdg_wm_base_listener')
+	assert wm_base_listener_registration.contains('backend.registry_listener_data()')
+	assert !wm_base_listener_registration.contains('unsafe { nil }')
+
+	ping_body :=
+		wayland_source.all_after('fn wayland_xdg_wm_base_ping').all_before("@[export: 'v_multiwindow_wayland_xdg_surface_configure']")
+	ping_after_nil_guard := ping_body.all_after('if data == unsafe { nil }')
+	assert ping_after_nil_guard.all_before('backend := unsafe { &WaylandBackend(data) }').contains('return')
+	ping_after_backend :=
+		ping_after_nil_guard.all_after('backend := unsafe { &WaylandBackend(data) }')
+	ping_after_transport_guard :=
+		ping_after_backend.all_after('if !backend.transport_can_marshal()')
+	assert ping_after_transport_guard.all_before('C.v_multiwindow_wayland_xdg_wm_base_pong').contains('return')
+	assert ping_body.count('C.v_multiwindow_wayland_xdg_wm_base_pong') == 1
+	assert ping_after_transport_guard.contains('C.v_multiwindow_wayland_xdg_wm_base_pong(unsafe { &C.xdg_wm_base(wm_base) }, serial)')
 
 	global_remove_body :=
 		wayland_source.all_after('fn wayland_registry_handle_global_remove').all_before("@[export: 'v_multiwindow_wayland_xdg_wm_base_ping']")
@@ -3192,30 +4111,6 @@ fn test_wayland_registry_global_remove_and_optional_callbacks_are_guarded_source
 	assert wm_base_remove_body.contains('backend.wm_base_name = 0')
 	assert wm_base_remove_body.contains('backend.destroy_removed_wm_base_if_unused()')
 	assert !wm_base_remove_body.contains('C.v_multiwindow_wayland_xdg_wm_base_destroy')
-	if wm_base_remove_body.contains('backend.wm_base = unsafe { nil }') {
-		assert_source_order(wm_base_remove_body, 'backend.destroy_removed_wm_base_if_unused()',
-			'backend.wm_base = unsafe { nil }')
-	}
-	removed_wm_base_cleanup_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) destroy_removed_wm_base_if_unused()').all_before('fn (mut backend WaylandBackend) destroy_seat_devices')
-	assert removed_wm_base_cleanup_body.contains('backend.wm_base_name != 0')
-	assert removed_wm_base_cleanup_body.contains('backend.wm_base == unsafe { nil }')
-	assert removed_wm_base_cleanup_body.contains('backend.windows.len != 0')
-	assert removed_wm_base_cleanup_body.contains('C.v_multiwindow_wayland_xdg_wm_base_destroy')
-	assert removed_wm_base_cleanup_body.contains('backend.wm_base = unsafe { nil }')
-		|| removed_wm_base_cleanup_body.contains('return true')
-	assert_source_order(removed_wm_base_cleanup_body, 'backend.windows.len != 0',
-		'C.v_multiwindow_wayland_xdg_wm_base_destroy')
-	destroy_window_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) destroy_window').all_before('fn (mut backend WaylandBackend) set_window_title')
-	assert_source_order(destroy_window_body, 'backend.windows.delete(index)',
-		'backend.destroy_removed_wm_base_if_unused()')
-	close_connection_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) close_connection').all_before('fn (mut backend WaylandBackend) destroy_removed_wm_base_if_unused')
-	assert_source_order(close_connection_body, 'for backend.windows.len > 0',
-		'backend.destroy_removed_wm_base_if_unused()')
-	assert_source_order(close_connection_body, 'backend.destroy_removed_wm_base_if_unused()',
-		'if backend.wm_base != unsafe { nil }')
 	compositor_remove_body := global_remove_body.all_after('name == backend.compositor_name')
 	assert compositor_remove_body.contains('backend.compositor_name = 0')
 	assert compositor_remove_body.contains('backend.compositor = unsafe { nil }')
@@ -3293,6 +4188,7 @@ fn test_default_x_multiwindow_mock_build_does_not_link_x11_egl_or_gl() {
 	$if linux {
 		output := multiwindow_dump_c_flags('no_x11_deps', '')
 		assert !output.contains('-lX11')
+		assert !output.contains('-lxcb')
 		assert !output.contains('-lEGL')
 		assert !output.contains('-lGL')
 		assert !output.contains('x11_egl_backend_helpers.h')
@@ -3305,6 +4201,7 @@ fn test_x11_enabled_build_links_x11_egl_and_gl() {
 	$if linux && x_multiwindow_x11 ? {
 		output := multiwindow_dump_c_flags('with_x11_deps', '-d x_multiwindow_x11')
 		assert output.contains('-lX11')
+		assert output.contains('-lxcb')
 		assert output.contains('-lEGL')
 		assert output.contains('-lGL')
 	} $else {
@@ -3330,59 +4227,6 @@ fn test_gg_import_only_windows_build_keeps_win32_callback_record_declaration() {
 	assert c_source.contains('struct x__multiwindow__Win32WindowRecord {')
 	assert_source_order(c_source, 'struct x__multiwindow__Win32WindowRecord {',
 		'VV_LOC void x__multiwindow__win32_window_close_requested(voidptr data, u64 sequence)')
-}
-
-fn test_wayland_render_smoke_when_display_is_available() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
-		$if linux {
-			$if !sokol_wayland ? {
-				new_app(backend: .wayland, require_renderer: true) or {
-					assert err.msg() == err_backend_unsupported
-					return
-				}
-				assert false, 'wayland render app creation succeeded without -d sokol_wayland'
-				return
-			}
-			if os.getenv('WAYLAND_DISPLAY') == '' {
-				eprintln('skip wayland render smoke: WAYLAND_DISPLAY is not set')
-				return
-			}
-			mut app := new_app(backend: .wayland, require_renderer: true) or {
-				if err.msg() == err_wayland_connect_failed {
-					eprintln('skip wayland render smoke: Wayland display connection failed')
-					return
-				}
-				panic(err.msg())
-			}
-			caps := app.capabilities()
-			assert caps.explicit_swapchain
-			assert caps.gl
-			win :=
-				app.create_window(title: 'V x.multiwindow Wayland render', width: 160, height: 96)!
-			env := app.render_environment(win)!
-			assert env.defaults.color_format == gfx.PixelFormat.rgba8
-			assert env.defaults.depth_format == gfx.PixelFormat.depth_stencil
-			assert env.defaults.sample_count == 1
-			frame := app.begin_render(win)!
-			assert frame.window_id == win
-			assert frame.swapchain.width > 0
-			assert frame.swapchain.height > 0
-			assert frame.swapchain.sample_count == 1
-			assert frame.swapchain.color_format == gfx.PixelFormat.rgba8
-			assert frame.swapchain.depth_format == gfx.PixelFormat.depth_stencil
-			assert frame.swapchain.gl.framebuffer == 0
-			app.end_render(frame)!
-			app.stop()!
-		} $else {
-			new_app(backend: .wayland, require_renderer: true) or {
-				assert err.msg() == err_backend_unsupported
-				return
-			}
-			assert false, 'wayland render app creation succeeded on an unsupported OS'
-		}
-	} $else {
-		return
-	}
 }
 
 fn test_wayland_runtime_create_destroy_when_display_is_available() {
@@ -3781,6 +4625,32 @@ fn multiwindow_source_file(name string) string {
 	return os.read_file(os.join_path(@DIR, name)) or { panic(err) }
 }
 
+fn test_wayland_renderer_anchor_secondary_architecture_source_guard() {
+	runtime_source := multiwindow_source_file('wayland_render_runtime.c.v')
+	marker := 'fn (mut backend WaylandBackend) create_private_renderer_anchor'
+	assert runtime_source.contains(marker)
+	anchor_body :=
+		runtime_source.all_after(marker).all_before('fn (mut backend WaylandBackend) create_renderer_anchor')
+	// Native proof tests establish acquisition, rollback, ownership, and release order.
+	for forbidden in ['wl_surface_commit', 'xdg_', 'display_flush', 'frame_callback', 'swap_buffers',
+		'WindowId'] {
+		assert !anchor_body.contains(forbidden)
+	}
+
+	egl_source := multiwindow_source_file('linux_egl_native_helpers.h')
+	wayland_config :=
+		egl_source.all_after('v_multiwindow_linux_egl_choose_wayland_config').all_before('v_multiwindow_linux_egl_get_native_visual')
+	for required in ['EGL_WINDOW_BIT', 'EGL_OPENGL_BIT', 'EGL_RED_SIZE, 8', 'EGL_GREEN_SIZE, 8',
+		'EGL_BLUE_SIZE, 8', 'EGL_ALPHA_SIZE, 8', 'EGL_DEPTH_SIZE, 24', 'EGL_STENCIL_SIZE, 8',
+		'EGL_SAMPLE_BUFFERS, 0', 'EGL_SAMPLES, 0', 'eglGetConfigAttrib'] {
+		assert wayland_config.contains(required)
+	}
+	assert !wayland_config.contains('EGL_PBUFFER_BIT')
+	x11_config :=
+		egl_source.all_after('v_multiwindow_linux_egl_choose_config').all_before('v_multiwindow_linux_egl_choose_wayland_config')
+	assert x11_config.contains('EGL_WINDOW_BIT | EGL_PBUFFER_BIT')
+}
+
 fn assert_source_order(source string, before string, after string) {
 	before_index := source.index(before) or {
 		assert false, 'source does not contain `${before}`'
@@ -3802,12 +4672,26 @@ fn assert_source_order_after_marker(source string, marker string, before string,
 	assert_source_order(section, before, after)
 }
 
-fn assert_win32_d3d11_present_status_error(status int, expected string) {
-	win32_d3d11_check_present_status(status) or {
-		assert err.msg() == expected
-		return
+$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if windows && sokol_d3d11 ? {
+		fn assert_win32_d3d11_present_disposition(hresult i64, expected NativeRenderDisposition) {
+			context := NativeOperationContext{
+				domain:    .dxgi
+				operation: .present
+				scope:     .window_target
+			}
+			evidence := NativePrimitiveEvidence{
+				valid_mask:   native_valid_return_value
+				return_value: hresult
+			}
+			result := native_result_from_dxgi(context, NativePrimitiveCapture{
+				actual:    evidence
+				effective: evidence
+			}, .none)
+			assert result.disposition == expected
+			assert u32(result.native_code) == u32(hresult)
+		}
 	}
-	assert false, 'D3D11 Present status ${status} did not fail with ${expected}'
 }
 
 fn assert_no_bool_signal(signal chan bool, message string) {
@@ -3884,4 +4768,474 @@ fn set_graphical_env(display string, wayland_display string) {
 	} else {
 		os.setenv('WAYLAND_DISPLAY', wayland_display, true)
 	}
+}
+
+fn monitor_registry_test_info(app_instance u64, key ServiceMonitorNativeKey, slot int, generation u32, available bool, name string) ServiceMonitorInfo {
+	return ServiceMonitorInfo{
+		native_key: key
+		id:         ServiceMonitorId{
+			app_instance: app_instance
+			slot:         slot
+			generation:   generation
+		}
+		name:       name
+		available:  available
+	}
+}
+
+fn assert_monitor_reconcile_rejected_without_mutation(mut registry ServiceRegistry, snapshot []ServiceMonitorInfo, sequence u64) {
+	before := registry.monitors.clone()
+	registry.reconcile_monitor_snapshot(snapshot, sequence) or {
+		assert registry.monitors == before
+		return
+	}
+	assert false, 'invalid monitor snapshot was accepted'
+}
+
+fn test_service_monitor_registry_accepts_sparse_backend_ids_and_replug() {
+	instance := u64(610)
+	key := ServiceMonitorNativeKey{
+		kind:    .appkit_display
+		numeric: 501
+	}
+	initial := monitor_registry_test_info(instance, key, 5, 4, true, 'sparse')
+	mut registry := new_service_registry(instance, .appkit)
+	registry.replace_monitors([initial])
+	assert registry.monitors.len == 1
+	assert registry.monitor_index(initial.id)! == 0
+
+	registry.reconcile_monitor_snapshot([], 2) or { panic('valid sparse removal was rejected') }
+	assert registry.monitors.len == 1
+	assert !registry.monitors[0].available
+	replugged := monitor_registry_test_info(instance, key, 5, 5, true, 'sparse-replugged')
+	available := registry.reconcile_monitor_snapshot([replugged], 3) or {
+		panic('valid sparse replug was rejected')
+	}
+	assert available.len == 1
+	assert available[0].id == replugged.id
+	assert registry.monitor_index(replugged.id)! == 0
+	mut stale_rejected := false
+	_ = registry.monitor_index(initial.id) or {
+		stale_rejected = err.msg() == err_service_request_stale
+		-1
+	}
+	assert stale_rejected
+}
+
+fn test_service_window_state_monitor_membership_is_registered_all_or_nothing() {
+	app_instance := u64(614)
+	available := monitor_registry_test_info(app_instance, ServiceMonitorNativeKey{
+		kind:    .wayland_global
+		numeric: 1001
+	}, 0, 1, true, 'available')
+	unavailable := monitor_registry_test_info(app_instance, ServiceMonitorNativeKey{
+		kind:    .wayland_global
+		numeric: 1002
+	}, 1, 1, false, 'unavailable')
+	current := service_window_state_with_observed_monitor_membership(ServiceWindowState{
+		focused:     .off
+		monitor_ids: [available.id]
+	})
+	mixed := service_window_state_with_registered_monitor_membership(ServiceWindowState{
+		focused:                     .on
+		monitor_ids:                 [available.id, unavailable.id]
+		monitor_membership_observed: true
+	}, [available, unavailable])
+	assert mixed.focused == .on
+	assert mixed.monitor_ids.len == 0
+	assert !service_window_state_observes_monitor_membership(mixed)
+	merged := merge_service_window_state(current, mixed)
+	assert merged.focused == .on
+	assert merged.monitor_ids == current.monitor_ids
+	assert service_window_state_observes_monitor_membership(merged)
+	missing := service_window_state_with_registered_monitor_membership(ServiceWindowState{
+		monitor_ids: [available.id, ServiceMonitorId{
+			app_instance: app_instance
+			slot:         9
+			generation:   1
+		}]
+	}, [available, unavailable])
+	assert missing.monitor_ids.len == 0
+	assert !service_window_state_observes_monitor_membership(missing)
+
+	known_empty := service_window_state_with_registered_monitor_membership(ServiceWindowState{
+		monitor_membership_observed: true
+	}, [available, unavailable])
+	assert service_window_state_observes_monitor_membership(known_empty)
+	assert known_empty.monitor_ids.len == 0
+	valid := service_window_state_with_registered_monitor_membership(ServiceWindowState{
+		monitor_ids: [available.id]
+	}, [available, unavailable])
+	assert valid.monitor_ids == [available.id]
+	assert service_window_state_observes_monitor_membership(valid)
+	unknown := service_window_state_with_registered_monitor_membership(ServiceWindowState{
+		focused: .on
+	}, [available, unavailable])
+	assert unknown.focused == .on
+	assert !service_window_state_observes_monitor_membership(unknown)
+}
+
+fn test_service_monitor_registry_rejects_identity_and_transition_errors_atomically() {
+	instance := u64(611)
+	key := ServiceMonitorNativeKey{
+		kind:    .wayland_global
+		numeric: 701
+	}
+	initial := monitor_registry_test_info(instance, key, 5, 3, true, 'valid')
+	mut registry := new_service_registry(instance, .wayland)
+	registry.replace_monitors([initial])
+
+	wrong_app := monitor_registry_test_info(instance + 1, key, 5, 3, true, 'wrong-app')
+	assert_monitor_reconcile_rejected_without_mutation(mut registry, [wrong_app], 2)
+	wrong_kind := monitor_registry_test_info(instance, ServiceMonitorNativeKey{
+		kind:    .x11_atom
+		numeric: 701
+	}, 5, 3, true, 'wrong-kind')
+	assert_monitor_reconcile_rejected_without_mutation(mut registry, [wrong_kind], 3)
+	invalid_key := monitor_registry_test_info(instance, ServiceMonitorNativeKey{
+		kind: .wayland_global
+	}, 5, 3, true, 'invalid-key')
+	assert_monitor_reconcile_rejected_without_mutation(mut registry, [invalid_key], 4)
+	duplicate_key := monitor_registry_test_info(instance, key, 6, 1, true, 'duplicate-key')
+	assert_monitor_reconcile_rejected_without_mutation(mut registry, [initial, duplicate_key], 5)
+	duplicate_id := monitor_registry_test_info(instance, ServiceMonitorNativeKey{
+		kind:    .wayland_global
+		numeric: 702
+	}, 5, 3, true, 'duplicate-id')
+	assert_monitor_reconcile_rejected_without_mutation(mut registry, [initial, duplicate_id], 6)
+	wrong_active_generation := monitor_registry_test_info(instance, key, 5, 4, true,
+		'wrong-active-generation')
+	assert_monitor_reconcile_rejected_without_mutation(mut registry, [
+		wrong_active_generation,
+	], 7)
+
+	registry.reconcile_monitor_snapshot([], 8) or { panic('valid removal was rejected') }
+	wrong_replug_generation := monitor_registry_test_info(instance, key, 5, 5, true,
+		'wrong-replug-generation')
+	assert_monitor_reconcile_rejected_without_mutation(mut registry, [
+		wrong_replug_generation,
+	], 9)
+
+	before_replace := registry.monitors.clone()
+	registry.replace_monitors([wrong_kind])
+	assert registry.monitors == before_replace
+}
+
+fn test_service_monitor_registry_validates_backend_plan_for_reorder_and_exhaustion() {
+	instance := u64(612)
+	key_a := ServiceMonitorNativeKey{
+		kind:    .wayland_global
+		numeric: 801
+	}
+	key_b := ServiceMonitorNativeKey{
+		kind:    .wayland_global
+		numeric: 802
+	}
+	key_c := ServiceMonitorNativeKey{
+		kind:    .wayland_global
+		numeric: 803
+	}
+	mut registry := new_service_registry(instance, .wayland)
+	registry.replace_monitors([
+		monitor_registry_test_info(instance, key_a, 0, max_u32, false, 'A'),
+		monitor_registry_test_info(instance, key_b, 1, 9, false, 'B'),
+	])
+	stale_b := registry.monitors[1].id
+	available := registry.reconcile_monitor_snapshot([
+		monitor_registry_test_info(instance, key_a, 1, 10, true, 'A-reappeared'),
+		monitor_registry_test_info(instance, key_c, 2, 1, true, 'C'),
+	], 2) or { panic('valid max-generation backend plan was rejected') }
+	assert available.len == 2
+	assert registry.monitors[0].id.generation == max_u32
+	assert !registry.monitors[0].available
+	assert registry.monitor_index(ServiceMonitorId{
+		app_instance: instance
+		slot:         1
+		generation:   10
+	})! == 1
+	assert registry.monitor_index(ServiceMonitorId{
+		app_instance: instance
+		slot:         2
+		generation:   1
+	})! == 2
+	mut stale_rejected := false
+	_ = registry.monitor_index(stale_b) or {
+		stale_rejected = err.msg() == err_service_request_stale
+		-1
+	}
+	assert stale_rejected
+
+	appkit_instance := u64(613)
+	appkit_a := ServiceMonitorNativeKey{
+		kind:    .appkit_display
+		numeric: 901
+	}
+	appkit_b := ServiceMonitorNativeKey{
+		kind:    .appkit_display
+		numeric: 902
+	}
+	appkit_c := ServiceMonitorNativeKey{
+		kind:    .appkit_display
+		numeric: 903
+	}
+	mut appkit_registry := new_service_registry(appkit_instance, .appkit)
+	appkit_registry.replace_monitors([
+		monitor_registry_test_info(appkit_instance, appkit_a, 0, 4, false, 'duplicate-name'),
+		monitor_registry_test_info(appkit_instance, appkit_b, 1, 9, false, 'duplicate-name'),
+	])
+	appkit_registry.reconcile_monitor_snapshot([
+		monitor_registry_test_info(appkit_instance, appkit_c, 1, 10, true, 'duplicate-name'),
+		monitor_registry_test_info(appkit_instance, appkit_a, 0, 5, true, 'duplicate-name'),
+	], 2) or { panic('valid [C,A] backend plan was rejected') }
+	assert appkit_registry.monitors[0].native_key == appkit_a
+	assert appkit_registry.monitors[0].id.generation == 5
+	assert appkit_registry.monitors[1].native_key == appkit_c
+	assert appkit_registry.monitors[1].id.generation == 10
+
+	mut exhausted_registry := new_service_registry(u64(618), .wayland)
+	exhausted_key := ServiceMonitorNativeKey{
+		kind:    .wayland_global
+		numeric: 904
+	}
+	exhausted_registry.replace_monitors([
+		monitor_registry_test_info(618, exhausted_key, 0, max_u32, false, 'exhausted'),
+	])
+	assert_monitor_reconcile_rejected_without_mutation(mut exhausted_registry, [
+		monitor_registry_test_info(618, exhausted_key, 7, 99, true, 'invalid-generation'),
+	], 2)
+	mut appkit_empty_registry := new_service_registry(u64(619), .appkit)
+	assert_monitor_reconcile_rejected_without_mutation(mut appkit_empty_registry, [
+		monitor_registry_test_info(619, ServiceMonitorNativeKey{
+			kind:    .appkit_display
+			numeric: 905
+		}, 8, 99, true, 'invalid-new-appkit-generation'),
+	], 3)
+	appended := exhausted_registry.reconcile_monitor_snapshot([
+		monitor_registry_test_info(618, exhausted_key, 7, 1, true, 'fresh-generation'),
+	], 4) or { panic('known exhausted key with fresh generation was rejected') }
+	assert appended.len == 1
+	assert appended[0].id == ServiceMonitorId{
+		app_instance: 618
+		slot:         7
+		generation:   1
+	}
+}
+
+fn test_service_monitor_backend_plans_are_validated_before_commit() {
+	appkit_records := [
+		AppKitServiceMonitorRecord{
+			native_id:  11
+			slot:       0
+			generation: 4
+			available:  false
+		},
+		AppKitServiceMonitorRecord{
+			native_id:  22
+			slot:       1
+			generation: 9
+			available:  false
+		},
+	]
+	appkit_plan := appkit_plan_service_monitors(appkit_records, [
+		AppKitServiceRawMonitor{
+			native_id: 33
+			name:      'duplicate-name'
+		},
+		AppKitServiceRawMonitor{
+			native_id: 11
+			name:      'duplicate-name'
+		},
+	], 614)!
+	assert appkit_records[0].native_id == 11
+	assert !appkit_records[0].available
+	assert appkit_plan.monitors[0].id == ServiceMonitorId{
+		app_instance: 614
+		slot:         1
+		generation:   10
+	}
+	assert appkit_plan.monitors[1].id == ServiceMonitorId{
+		app_instance: 614
+		slot:         0
+		generation:   5
+	}
+	mut appkit_invalid_rejected := false
+	_ := appkit_plan_service_monitors(appkit_records, [
+		AppKitServiceRawMonitor{
+			native_id: 44
+		},
+		AppKitServiceRawMonitor{
+			native_id: 44
+		},
+	], 614) or {
+		appkit_invalid_rejected = true
+		assert appkit_records[0].native_id == 11
+		assert !appkit_records[0].available
+		AppKitServiceMonitorPlan{}
+	}
+	assert appkit_invalid_rejected, 'invalid AppKit duplicate native-key plan was accepted'
+
+	win32_records := [
+		Win32ServiceMonitorRecord{
+			native_id:  51
+			name:       'A'
+			slot:       0
+			generation: max_u32
+			available:  false
+		},
+		Win32ServiceMonitorRecord{
+			native_id:  52
+			name:       'B'
+			slot:       1
+			generation: 9
+			available:  false
+		},
+	]
+	win32_plan := win32_plan_service_monitors(win32_records, [
+		Win32ServiceRawMonitor{
+			native_id: 61
+			name:      'A'
+		},
+		Win32ServiceRawMonitor{
+			native_id: 62
+			name:      'C'
+		},
+	], 615)!
+	assert win32_records[0].generation == max_u32
+	assert !win32_records[0].available
+	assert win32_plan.monitors[0].id == ServiceMonitorId{
+		app_instance: 615
+		slot:         1
+		generation:   10
+	}
+	assert win32_plan.monitors[1].id == ServiceMonitorId{
+		app_instance: 615
+		slot:         2
+		generation:   1
+	}
+	mut win32_invalid_rejected := false
+	_ := win32_plan_service_monitors(win32_records, [
+		Win32ServiceRawMonitor{
+			native_id: 63
+			name:      'duplicate-device'
+		},
+		Win32ServiceRawMonitor{
+			native_id: 64
+			name:      'duplicate-device'
+		},
+	], 615) or {
+		win32_invalid_rejected = true
+		assert win32_records[0].generation == max_u32
+		assert !win32_records[0].available
+		Win32ServiceMonitorPlan{}
+	}
+	assert win32_invalid_rejected, 'invalid Win32 duplicate native-key plan was accepted'
+}
+
+fn test_wayland_monitor_snapshot_rejects_duplicate_native_identity() {
+	mut backend := WaylandBackend{
+		started: true
+		outputs: [
+			&WaylandOutputRecord{
+				slot:        0
+				global_name: 71
+			},
+			&WaylandOutputRecord{
+				slot:        1
+				global_name: 71
+			},
+		]
+	}
+	backend.service_monitor_snapshot(616) or {
+		assert backend.outputs[0].global_name == 71
+		assert backend.outputs[1].global_name == 71
+		return
+	}
+	assert false, 'invalid Wayland duplicate native-key snapshot was accepted'
+}
+
+fn test_wayland_cold_sparse_snapshot_accepts_backend_generation_for_unseen_slot() {
+	instance := u64(617)
+	mut outputs := []&WaylandOutputRecord{}
+	for slot in 0 .. 5 {
+		outputs << &WaylandOutputRecord{
+			slot:        slot
+			global_name: u32(100 + slot)
+			generation:  1
+			available:   false
+		}
+	}
+	outputs << &WaylandOutputRecord{
+		slot:        5
+		global_name: 105
+		generation:  1
+		available:   true
+	}
+	mut backend := WaylandBackend{
+		started: true
+		outputs: outputs
+	}
+	cold := backend.service_monitor_snapshot(instance)!
+	assert cold.len == 1
+	assert cold[0].id.slot == 5
+	key_b := cold[0].native_key
+	assert key_b == ServiceMonitorNativeKey{
+		kind:    .wayland_global
+		numeric: 105
+	}
+	mut registry := new_service_registry(instance, .wayland)
+	registry.replace_monitors(cold)
+	assert registry.monitor_index(cold[0].id)! == 0
+
+	backend.outputs[0].global_name = 200
+	backend.outputs[0].generation = 2
+	backend.outputs[0].available = true
+	updated := backend.service_monitor_snapshot(instance)!
+	assert updated.len == 2
+	assert updated[0].id == ServiceMonitorId{
+		app_instance: instance
+		slot:         0
+		generation:   2
+	}
+	key_c := updated[0].native_key
+	assert key_c == ServiceMonitorNativeKey{
+		kind:    .wayland_global
+		numeric: 200
+	}
+	assert key_c != key_b
+	assert updated[1].native_key == key_b
+	assert updated[1].id == cold[0].id
+	rejected := [updated[0],
+		monitor_registry_test_info(instance, key_b, 5, 2, true, 'wrong-active-generation')]
+	assert_monitor_reconcile_rejected_without_mutation(mut registry, rejected, 2)
+	available := registry.reconcile_monitor_snapshot(updated, 3) or {
+		panic('valid cold-sparse Wayland backend plan was rejected')
+	}
+	assert available.len == 2
+	assert registry.monitor_index(updated[0].id)! == 1
+	assert registry.monitor_index(cold[0].id)! == 0
+	assert registry.monitors[0].native_key == key_b
+	assert registry.monitors[1].native_key == key_c
+}
+
+fn test_invalid_monitor_service_event_does_not_mutate_registry_or_queue() {
+	mut app := new_app()!
+	defer {
+		app.stop() or {}
+	}
+	before_monitors := app.services.monitors.clone()
+	before_events := app.events.clone()
+	invalid := monitor_registry_test_info(app.instance_id, ServiceMonitorNativeKey{
+		kind:    .appkit_display
+		numeric: 1001
+	}, 0, 1, true, 'wrong-backend')
+	app.state_mutex.lock()
+	accepted := app.accept_backend_service_event_locked(ServiceEvent{
+		kind:     .monitor
+		monitor:  invalid
+		monitors: [invalid]
+	}, 1)
+	app.state_mutex.unlock()
+	assert !accepted.accepted
+	assert app.services.monitors == before_monitors
+	assert app.events == before_events
 }

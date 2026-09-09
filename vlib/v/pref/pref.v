@@ -81,6 +81,11 @@ pub enum CompilerType {
 	cplusplus
 }
 
+pub enum PkgConfigMode {
+	dynamic
+	static_
+}
+
 pub const supported_test_runners = ['normal', 'simple', 'tap', 'dump', 'teamcity']
 
 @[heap; minify]
@@ -89,12 +94,12 @@ pub mut:
 	os                  OS // the OS to compile for
 	backend             Backend
 	backend_set_by_flag bool // true when the compiler receives `-b`/`-backend`
+	is_fastc            bool // true when the final `-b`/`-backend` option selects fastc
 	build_mode          BuildMode
 	arch                Arch
 	output_mode         OutputMode = .stdout
 	// verbosity           VerboseLevel
 	is_verbose bool
-	use_v2     bool
 	// nofmt            bool   // disable vfmt
 	is_glibc           bool   // if GLIBC will be linked
 	is_musl            bool   // if MUSL will be linked
@@ -153,6 +158,12 @@ pub mut:
 	show_callgraph         bool // -show-callgraph, print the program callgraph, in a Graphviz DOT format to stdout
 	show_depgraph          bool // -show-depgraph, print the program module dependency graph, in a Graphviz DOT format to stdout
 	show_unused_params     bool = true // regular function params should report as unused by default.
+	old_compiler           bool // `-old-compiler` - bypass experimental compiler dispatchers.
+	new_compiler           bool // `-new-compiler` - force the experimental V3 compiler and disable the V1 fallback.
+	// Internal V3->V1 retry flag: retain the digest of each source from the exact
+	// scanner bytes so fallback reporting can confirm that both compilers saw the
+	// same inputs. Ordinary compilations leave this off and pay no hashing cost.
+	capture_source_digests bool
 	c_error_bug_report_url string // `-bug-report-url url` - override the automatic C compiler bug report endpoint.
 	dump_c_flags           string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler in `file.txt`, one C flag/value per line.
 	dump_modules           string // `-dump-modules modules.txt` - let V store all V modules, that were used by the compiled program in `modules.txt`, one module per line.
@@ -164,8 +175,9 @@ pub mut:
 	use_os_system_to_run   bool // when set, use os.system() to run the produced executable, instead of os.new_process; works around segfaults on macos, that may happen when xcode is updated
 	macosx_version_min     string = '0' // relevant only for macos and ios targets
 	// TODO: Convert this into a []string
-	cflags  string // Additional options which will be passed to the C compiler *before* other options.
-	ldflags string // Additional options which will be passed to the C compiler *after* everything else.
+	cflags         string        // Additional options which will be passed to the C compiler *before* other options.
+	ldflags        string        // Additional options which will be passed to the C compiler *after* everything else.
+	pkgconfig_mode PkgConfigMode // Static only for an exact `-static` C compiler argument on GNU-compatible compilers.
 	// For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
 	// You could pass several -cflags XXX arguments. They will be merged with each other.
 	// You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
@@ -359,86 +371,6 @@ fn inline_icon_option_value(arg string) ?string {
 	return none
 }
 
-fn is_v2_passthrough_bool_flag(arg string) bool {
-	return arg in [
-		'--debug',
-		'--verbose',
-		'--skip-genv',
-		'--skip-builtin',
-		'--skip-imports',
-		'--skip-type-check',
-		'--no-parallel',
-		'--nocache',
-		'--nomarkused',
-		'-nomarkused',
-		'--showcc',
-		'--stats',
-		'-print-parsed-files',
-		'--print-parsed-files',
-		'--profile-alloc',
-		'-profile-alloc',
-		'--shared',
-		'-O0',
-		'--single-backend',
-		'-single-backend',
-		'--freestanding',
-		'-no-mos-tiny',
-	]
-}
-
-fn v2_delegation_option_takes_value(arg string) bool {
-	return arg in [
-		'-arch',
-		'-assert',
-		'-b',
-		'-backend',
-		'-cc',
-		'-cflags',
-		'-d',
-		'-define',
-		'-fhooks',
-		'-gc',
-		'-hot-fn',
-		'-message-limit',
-		'-o',
-		'-output',
-		'-os',
-		'-printfn',
-		'-thread-stack-size',
-	]
-}
-
-fn v2_compile_delegation_requested(args []string, known_external_commands []string) bool {
-	mut saw_v2 := false
-	for i := 0; i < args.len; i++ {
-		arg := args[i]
-		if arg == '' {
-			continue
-		}
-		if arg == '--' {
-			return false
-		}
-		if arg == '-v2' {
-			saw_v2 = true
-			continue
-		}
-		if arg.starts_with('-') {
-			if v2_delegation_option_takes_value(arg) {
-				i++
-			}
-			continue
-		}
-		if !saw_v2 {
-			return false
-		}
-		if arg in internal_v_commands || arg in known_external_commands {
-			return false
-		}
-		return is_source_file(arg) || os.exists(arg)
-	}
-	return false
-}
-
 fn set_icon_path(mut res Preferences, raw_path string, option_name string) {
 	if raw_path == '' {
 		eprintln_exit('missing value for `${option_name}`')
@@ -497,8 +429,40 @@ fn optional_arg_value(args []string, idx int, command string, known_external_com
 }
 
 pub fn parse_args_and_show_errors(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
+	prefs, command, _ := parse_args_impl(known_external_commands, args, show_output, false)
+	return prefs, command
+}
+
+// parse_args_for_launcher works like parse_args_and_show_errors, but once a known external command
+// (tool) is recognized, every argument after it is left for that tool, instead of being interpreted
+// as a V compiler option here. It is meant for the top level `v` launcher in cmd/v, which forwards
+// the original os.args on to the tool verbatim. Do NOT use it when you actually need the V
+// preferences that follow the command name, for example `v fmt -translated file.v`; see vlang/v#28114.
+pub fn parse_args_for_launcher(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
+	prefs, command, _ := parse_args_impl(known_external_commands, args, show_output, true)
+	return prefs, command
+}
+
+// parse_args_for_launcher_with_command_index also returns the exact command token index.
+pub fn parse_args_for_launcher_with_command_index(known_external_commands []string, args []string, show_output bool) (&Preferences, string, int) {
+	return parse_args_impl(known_external_commands, args, show_output, true)
+}
+
+// option_may_consume_value reports whether an option can consume the following argument.
+pub fn option_may_consume_value(option string) bool {
+	return option in ['-wasm-stack-top', '-arch', '-assert', '-e', '-subsystem', '-icon', '--icon',
+		'-seticon', '--seticon', '-gc', '-print_autofree_vars_in_fn', '-trace-fns', '-prof',
+		'-profile', '-cov', '-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude',
+		'-file-list', '-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files',
+		'-dump-defines', '-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags',
+		'-ldflags', '-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
+		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend',
+		'-compile-backend', '--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude',
+		'-raw-vsh-tmp-prefix', '-cmain', '-line-info']
+}
+
+fn parse_args_impl(known_external_commands []string, args []string, show_output bool, pass_external_command_args bool) (&Preferences, string, int) {
 	mut res := &Preferences{}
-	v2_passthrough_allowed := v2_compile_delegation_requested(args, known_external_commands)
 	detect_musl(mut res)
 	$if x64 {
 		res.m64 = true // follow V model by default
@@ -518,19 +482,18 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	mut no_skip_unused := false
 	mut command, mut command_idx := '', 0
 	mut build_vsh_source := false
+	mut new_compiler_set_by_flag := false
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
+		if pass_external_command_args && command_idx < i && command in known_external_commands {
+			// The command is a known external tool, e.g. `missdoc` in `v missdoc -e main`.
+			// Everything after it belongs to that tool, so do not interpret flags like `-e`
+			// as V compiler options here; the launcher (cmd/v) forwards the original os.args
+			// on to the tool verbatim.
+			continue
+		}
 		if inline_icon_path := inline_icon_option_value(arg) {
 			set_icon_path(mut res, inline_icon_path, arg.all_before('='))
-			continue
-		}
-		if v2_passthrough_allowed && is_v2_passthrough_bool_flag(arg) {
-			continue
-		}
-		if v2_passthrough_allowed && arg == '-fhooks' {
-			value := cmdline.option(args[i..], arg, '')
-			res.build_options << '${arg} ${value}'
-			i++
 			continue
 		}
 		match arg {
@@ -615,18 +578,27 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					command = 'version'
 				}
 			}
-			'-v2' {
-				if command == '' {
-					res.use_v2 = true
-				}
-			}
 			'-eval', '--eval' {
-				if !v2_passthrough_allowed {
-					eprintln_exit('use v -v2 -eval file.v')
-				}
+				eprintln_exit('The eval backend has been removed.')
 			}
 			'-ownership' {
-				// Passed through to v2 compiler for ownership checking
+				// Passed through to the V3 ownership compiler by cmd/v.
+			}
+			'-old-compiler' {
+				res.old_compiler = true
+			}
+			'-new-compiler' {
+				res.new_compiler = true
+				new_compiler_set_by_flag = true
+			}
+			'-selfhost' {
+				// Passed through to the embedded V3 driver for FastC compiler builds.
+			}
+			'-checker-fixture', '-macos-v3-compat-c99' {
+				// Passed through to the embedded V3 diagnostic fixture runner.
+			}
+			'-no-memory-limit', '--no-memory-limit' {
+				// Passed through to V3 dispatchers by cmd/v.
 			}
 			'-progress' {
 				// processed by testing tools in cmd/tools/modules/testing/common.v
@@ -1054,10 +1026,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << arg
 			}
 			'-native' {
-				eprintln_exit('The native backend has been removed. Use `v -v2 -b arm64` or `v -v2 -b x64` instead.')
+				eprintln_exit('The native backend has been removed.')
 			}
 			'-interpret' {
-				eprintln_exit('use v -v2 -eval file.v')
+				eprintln_exit('The eval backend has been removed.')
 			}
 			'-W' {
 				res.warns_are_errors = true
@@ -1112,10 +1084,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				target_os_kind := os_from_string(target_os) or {
 					if target_os == 'cross' {
 						res.output_cross_c = true
-						continue
-					}
-					if v2_passthrough_allowed && target_os == 'none' {
-						res.build_options << '${arg} ${target_os}'
 						continue
 					}
 					eprintln_exit('unknown operating system target `${target_os}`')
@@ -1191,15 +1159,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-b', '-backend' {
 				sbackend := cmdline.option(args[i..], arg, 'c')
+				res.is_fastc = sbackend == 'fastc'
 				res.build_options << '${arg} ${sbackend}'
-				if v2_passthrough_allowed
-					&& sbackend in ['eval', 'cleanc', 'c', 'v', 'arm64', 'x64'] {
-					res.backend_set_by_flag = true
-					i++
-					continue
-				}
 				b := backend_from_string(sbackend) or {
-					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, js, js_node, js_browser, js_freestanding, wasm, arm64, x64')
+					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, fastc, js, js_node, js_browser, js_freestanding, wasm')
 				}
 				if b == .wasm {
 					res.compile_defines << 'wasm'
@@ -1280,6 +1243,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				if is_source_file(arg) && arg.ends_with('.vsh') {
 					// store for future iterations
 					res.is_vsh = true
+				}
+				if arg.starts_with('-d') && arg.len > 2 {
+					res.parse_define(arg[2..])
+					continue
 				}
 				if !arg.starts_with('-') {
 					if command == '' {
@@ -1411,7 +1378,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.path = command
 		res.run_args = command_args
 	} else if command == 'interpret' {
-		eprintln_exit('use v -v2 -eval file.v')
+		eprintln_exit('The eval backend has been removed.')
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
@@ -1450,6 +1417,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	}
 	res.build_options = m.keys()
 	// eprintln('>> res.build_options: ${res.build_options}')
+	// FastC belongs to the embedded V3 driver, but both `fastc` and `c` use
+	// Backend.c while cmd/v parses the command line. Only the final backend
+	// option should select V3 implicitly; an explicit -new-compiler remains an
+	// independent request.
+	res.new_compiler = new_compiler_set_by_flag || res.is_fastc
 	res.fill_with_defaults()
 	if res.generate_c_project != '' {
 		// The generated C project should not depend on cached V module objects.
@@ -1462,7 +1434,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		}
 	}
 
-	return res, command
+	return res, command, command_idx
 }
 
 @[noreturn]
@@ -1503,14 +1475,14 @@ pub fn backend_from_string(s string) !Backend {
 	// TODO: unify the "different js backend" options into a single `-b js`
 	// + a separate option, to choose the wanted JS output.
 	return match s {
-		'c' { .c }
-		'eval', 'interpret' { eprintln_exit('use v -v2 -eval file.v') }
+		'c', 'fastc' { .c }
+		'eval', 'interpret' { eprintln_exit('The eval backend has been removed.') }
 		'js', 'js_node' { .js_node }
 		'js_browser' { .js_browser }
 		'js_freestanding' { .js_freestanding }
 		'wasm' { .wasm }
-		'native' { eprintln_exit('The native backend has been removed. Use `v -v2 -b arm64` or `v -v2 -b x64` instead.') }
-		'go', 'golang' { eprintln_exit('The Go backend has been removed. Use `v -v2 -b golang` instead.') }
+		'native' { eprintln_exit('The native backend has been removed.') }
+		'go', 'golang' { eprintln_exit('The Go backend has been removed.') }
 		else { error('Unknown backend type ${s}') }
 	}
 }

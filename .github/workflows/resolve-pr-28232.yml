@@ -1,0 +1,37 @@
+name: Diagnose PR 28232 merge conflict
+
+on:
+  push:
+    branches:
+      - fix-master-ci-batch-2-current
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix-master-ci-batch-2-current
+          fetch-depth: 0
+      - name: Show exact merge conflicts
+        shell: bash
+        run: |
+          set -uo pipefail
+          git fetch origin master
+          git merge --no-commit --no-ff origin/master
+          merge_status=$?
+          echo "merge_status=${merge_status}"
+          conflicts="$(git diff --name-only --diff-filter=U)"
+          echo '--- conflicted paths ---'
+          printf '%s\n' "$conflicts"
+          echo '--- conflict diffs ---'
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            echo "===== ${path} ====="
+            git diff --cc --unified=80 -- "$path" || true
+          done <<< "$conflicts"
+          git merge --abort || true
+          exit 0

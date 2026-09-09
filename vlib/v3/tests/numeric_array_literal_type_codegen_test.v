@@ -75,6 +75,13 @@ fn main() {
 	}
 	assert hsum > f32(2.99) && hsum < f32(3.01)
 
+	deep := [f32(2.0), ((((((((((((((((((((1.0))))))))))))))))))))]
+	mut deep_sum := f32(0)
+	for deep_value in deep {
+		deep_sum += deep_value
+	}
+	assert deep_sum == f32(3.0)
+
 	ds := [1.0, 2.0]
 	mut dsum := 0.0
 	for d in ds {
@@ -132,8 +139,8 @@ fn add_all[T](items []T) T {
 	c_compact := numeric_array_literal_compact_c(c_code)
 	assert c_compact.contains('array_new(sizeof(double),0,6)'), c_code
 	assert c_code.contains('double x = *(double*)(array_get(xs,'), c_code
-	assert c_compact.contains('array_new(sizeof(int),0,3)'), c_code
-	assert !c_code.contains('int x = *(int*)(array_get(xs,'), c_code
+	assert c_compact.contains('new_array_from_c_array(3,3,sizeof(i64)'), c_code
+	assert !c_code.contains('i64 x = *(i64*)(array_get(xs,'), c_code
 	assert c_compact.contains('array_new(sizeof(float),0,2)'), c_code
 	assert c_code.contains('float z = *(float*)(array_get(zs,'), c_code
 	assert c_code.contains('float w = *(float*)(array_get(ws,'), c_code
@@ -141,6 +148,7 @@ fn add_all[T](items []T) T {
 	assert c_code.contains('float f = *(float*)(array_get(fs,'), c_code
 	assert c_code.contains('float g = *(float*)(array_get(gs,'), c_code
 	assert c_code.contains('float h = *(float*)(array_get(hs,'), c_code
+	assert c_code.contains('float deep_value = *(float*)(array_get(deep,'), c_code
 	assert c_code.contains('double d = *(double*)(array_get(ds,'), c_code
 	assert c_code.contains('double e = *(double*)(array_get(es,'), c_code
 	assert c_code.contains('add_all_T_MyAlias'), c_code

@@ -11,11 +11,20 @@ enum RootMutationVisibility {
 
 @[inline]
 fn is_visible_root_mutation(vis RootMutationVisibility) bool {
-	return vis in [.direct, .public_path]
+	return is_root_mutation(vis, false)
 }
 
-fn (mut c Checker) visible_param_mutation_cache_key(func ast.Fn, param_idx int) string {
-	return '${func.fkey()}|${param_idx}'
+@[inline]
+fn is_root_mutation(vis RootMutationVisibility, include_private bool) bool {
+	return vis in [.direct, .public_path] || (include_private && vis == .private_path)
+}
+
+fn (mut c Checker) param_mutation_cache_key(func ast.Fn, param_idx int, include_private bool) string {
+	return '${if include_private {
+		'all'
+	} else {
+		'visible'
+	}}|${func.fkey()}|${param_idx}'
 }
 
 fn is_builtin_array_reverse_in_place(func ast.Fn) bool {
@@ -24,6 +33,10 @@ fn is_builtin_array_reverse_in_place(func ast.Fn) bool {
 }
 
 fn (mut c Checker) fn_has_visible_mutation_for_param(func ast.Fn, param_idx int) bool {
+	return c.fn_has_root_mutation_for_param(func, param_idx, false)
+}
+
+fn (mut c Checker) fn_has_root_mutation_for_param(func ast.Fn, param_idx int, include_private bool) bool {
 	if param_idx < 0 || param_idx >= func.params.len || !func.params[param_idx].is_mut {
 		return false
 	}
@@ -31,7 +44,7 @@ fn (mut c Checker) fn_has_visible_mutation_for_param(func ast.Fn, param_idx int)
 		// Its body mutates elements through private array storage, which is not otherwise visible.
 		return true
 	}
-	cache_key := c.visible_param_mutation_cache_key(func, param_idx)
+	cache_key := c.param_mutation_cache_key(func, param_idx, include_private)
 	if cache_key in c.visible_param_mutation_cache {
 		return c.visible_param_mutation_cache[cache_key]
 	}
@@ -48,90 +61,92 @@ fn (mut c Checker) fn_has_visible_mutation_for_param(func ast.Fn, param_idx int)
 		return true
 	}
 	c.visible_param_mutation_in_progress[cache_key] = true
-	res := c.fn_decl_has_visible_mutation_for_param(fn_decl, param_idx)
+	res := c.fn_decl_has_root_mutation_for_param(fn_decl, param_idx, include_private)
 	c.visible_param_mutation_in_progress.delete(cache_key)
 	c.visible_param_mutation_cache[cache_key] = res
 	return res
 }
 
-fn (mut c Checker) fn_decl_has_visible_mutation_for_param(fn_decl &ast.FnDecl, param_idx int) bool {
+fn (mut c Checker) fn_decl_has_root_mutation_for_param(fn_decl &ast.FnDecl, param_idx int, include_private bool) bool {
 	if param_idx < 0 || param_idx >= fn_decl.params.len || !fn_decl.params[param_idx].is_mut {
 		return false
 	}
 	root_name := fn_decl.params[param_idx].name
 	root_type := fn_decl.params[param_idx].typ
 	for stmt in fn_decl.stmts {
-		if c.stmt_has_visible_mutation(stmt, root_name, root_type) {
+		if c.stmt_has_root_mutation(stmt, root_name, root_type, include_private) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (mut c Checker) stmt_has_visible_mutation(stmt ast.Stmt, root_name string, root_type ast.Type) bool {
+fn (mut c Checker) stmt_has_root_mutation(stmt ast.Stmt, root_name string, root_type ast.Type, include_private bool) bool {
 	match stmt {
 		ast.FnDecl {
 			return false
 		}
 		ast.ExprStmt {
-			return c.expr_has_visible_mutation(stmt.expr, root_name, root_type)
+			return c.expr_has_root_mutation(stmt.expr, root_name, root_type, include_private)
 		}
 		ast.AssignStmt {
 			for left_expr in stmt.left {
-				if is_visible_root_mutation(c.expr_mutation_visibility(left_expr, root_name,
-					root_type))
+				if is_root_mutation(c.expr_mutation_visibility(left_expr, root_name, root_type),
+					include_private)
 				{
 					return true
 				}
 			}
-			if c.assign_stmt_aliases_visible_state(stmt, root_name, root_type) {
+			if c.assign_stmt_aliases_mutable_state(stmt, root_name, root_type, include_private) {
 				return true
 			}
 		}
 		else {}
 	}
 
-	return c.node_children_have_visible_mutation(ast.Node(stmt), root_name, root_type)
+	return c.node_children_have_root_mutation(ast.Node(stmt), root_name, root_type, include_private)
 }
 
-fn (mut c Checker) expr_has_visible_mutation(expr ast.Expr, root_name string, root_type ast.Type) bool {
+fn (mut c Checker) expr_has_root_mutation(expr ast.Expr, root_name string, root_type ast.Type, include_private bool) bool {
 	match expr {
 		ast.AnonFn, ast.LambdaExpr {
 			return false
 		}
 		ast.CallExpr {
-			if c.call_has_visible_root_mutation(expr, root_name, root_type) {
+			if c.call_has_root_mutation(expr, root_name, root_type, include_private) {
 				return true
 			}
 		}
 		ast.PrefixExpr {
 			if expr.op == .amp
-				&& is_visible_root_mutation(c.expr_mutation_visibility(expr.right, root_name, root_type)) {
+				&& is_root_mutation(c.expr_mutation_visibility(expr.right, root_name, root_type), include_private) {
 				return true
 			}
 		}
 		ast.PostfixExpr {
-			if is_visible_root_mutation(c.expr_mutation_visibility(expr.expr, root_name, root_type)) {
+			if is_root_mutation(c.expr_mutation_visibility(expr.expr, root_name, root_type),
+				include_private)
+			{
 				return true
 			}
 		}
 		ast.InfixExpr {
 			if expr.op == .left_shift
-				&& is_visible_root_mutation(c.expr_mutation_visibility(expr.left, root_name, root_type)) {
+				&& is_root_mutation(c.expr_mutation_visibility(expr.left, root_name, root_type), include_private) {
 				return true
 			}
 		}
 		else {}
 	}
 
-	return c.node_children_have_visible_mutation(ast.Node(expr), root_name, root_type)
+	return c.node_children_have_root_mutation(ast.Node(expr), root_name, root_type, include_private)
 }
 
-fn (mut c Checker) node_children_have_visible_mutation(node ast.Node, root_name string, root_type ast.Type) bool {
+fn (mut c Checker) node_children_have_root_mutation(node ast.Node, root_name string, root_type ast.Type, include_private bool) bool {
 	for child in node.children() {
 		match child {
 			ast.Expr {
-				if c.expr_has_visible_mutation(child, root_name, root_type) {
+				if c.expr_has_root_mutation(child, root_name, root_type, include_private) {
 					return true
 				}
 			}
@@ -139,43 +154,43 @@ fn (mut c Checker) node_children_have_visible_mutation(node ast.Node, root_name 
 				if child is ast.FnDecl {
 					continue
 				}
-				if c.stmt_has_visible_mutation(child, root_name, root_type) {
+				if c.stmt_has_root_mutation(child, root_name, root_type, include_private) {
 					return true
 				}
 			}
 			ast.CallArg {
-				if c.expr_has_visible_mutation(child.expr, root_name, root_type) {
+				if c.expr_has_root_mutation(child.expr, root_name, root_type, include_private) {
 					return true
 				}
 			}
 			ast.IfBranch {
-				if c.expr_has_visible_mutation(child.cond, root_name, root_type) {
+				if c.expr_has_root_mutation(child.cond, root_name, root_type, include_private) {
 					return true
 				}
 				for stmt in child.stmts {
-					if c.stmt_has_visible_mutation(stmt, root_name, root_type) {
+					if c.stmt_has_root_mutation(stmt, root_name, root_type, include_private) {
 						return true
 					}
 				}
 			}
 			ast.MatchBranch {
 				for branch_expr in child.exprs {
-					if c.expr_has_visible_mutation(branch_expr, root_name, root_type) {
+					if c.expr_has_root_mutation(branch_expr, root_name, root_type, include_private) {
 						return true
 					}
 				}
 				for stmt in child.stmts {
-					if c.stmt_has_visible_mutation(stmt, root_name, root_type) {
+					if c.stmt_has_root_mutation(stmt, root_name, root_type, include_private) {
 						return true
 					}
 				}
 			}
 			ast.SelectBranch {
-				if c.stmt_has_visible_mutation(child.stmt, root_name, root_type) {
+				if c.stmt_has_root_mutation(child.stmt, root_name, root_type, include_private) {
 					return true
 				}
 				for stmt in child.stmts {
-					if c.stmt_has_visible_mutation(stmt, root_name, root_type) {
+					if c.stmt_has_root_mutation(stmt, root_name, root_type, include_private) {
 						return true
 					}
 				}
@@ -231,6 +246,10 @@ fn (mut c Checker) expr_mutation_visibility(expr ast.Expr, root_name string, roo
 }
 
 fn (mut c Checker) call_has_visible_root_mutation(node ast.CallExpr, root_name string, root_type ast.Type) bool {
+	return c.call_has_root_mutation(node, root_name, root_type, false)
+}
+
+fn (mut c Checker) call_has_root_mutation(node ast.CallExpr, root_name string, root_type ast.Type, include_private bool) bool {
 	mut called_fn := ast.Fn{}
 	mut has_called_fn := false
 	if func := c.find_called_fn(node) {
@@ -243,24 +262,29 @@ fn (mut c Checker) call_has_visible_root_mutation(node ast.CallExpr, root_name s
 			if called_fn.params.len > 0 && called_fn.params[0].is_mut {
 				match left_vis {
 					.direct {
-						if c.fn_has_visible_mutation_for_param(called_fn, 0) {
+						if c.fn_has_root_mutation_for_param(called_fn, 0, include_private) {
 							return true
 						}
 					}
 					.public_path {
 						return true
 					}
+					.private_path {
+						if include_private {
+							return true
+						}
+					}
 					else {}
 				}
 			}
-		} else if is_visible_root_mutation(left_vis) {
+		} else if is_root_mutation(left_vis, include_private) {
 			return true
 		}
 	}
 	if !has_called_fn {
 		for arg in node.args {
 			if arg.is_mut
-				&& is_visible_root_mutation(c.expr_mutation_visibility(arg.expr, root_name, root_type)) {
+				&& is_root_mutation(c.expr_mutation_visibility(arg.expr, root_name, root_type), include_private) {
 				return true
 			}
 		}
@@ -273,7 +297,7 @@ fn (mut c Checker) call_has_visible_root_mutation(node ast.CallExpr, root_name s
 		param_idx := c.call_arg_param_index(called_fn, i)
 		arg_vis := c.expr_mutation_visibility(arg.expr, root_name, root_type)
 		if param_idx < 0 || param_idx >= called_fn.params.len {
-			if is_visible_root_mutation(arg_vis) {
+			if is_root_mutation(arg_vis, include_private) {
 				return true
 			}
 			continue
@@ -283,12 +307,17 @@ fn (mut c Checker) call_has_visible_root_mutation(node ast.CallExpr, root_name s
 		}
 		match arg_vis {
 			.direct {
-				if c.fn_has_visible_mutation_for_param(called_fn, param_idx) {
+				if c.fn_has_root_mutation_for_param(called_fn, param_idx, include_private) {
 					return true
 				}
 			}
 			.public_path {
 				return true
+			}
+			.private_path {
+				if include_private {
+					return true
+				}
 			}
 			else {}
 		}
@@ -331,14 +360,14 @@ fn (c &Checker) call_arg_param_index(func ast.Fn, arg_idx int) int {
 	return param_idx
 }
 
-fn (mut c Checker) assign_stmt_aliases_visible_state(node ast.AssignStmt, root_name string, root_type ast.Type) bool {
+fn (mut c Checker) assign_stmt_aliases_mutable_state(node ast.AssignStmt, root_name string, root_type ast.Type, include_private bool) bool {
 	mut pair_count := node.left.len
 	if node.right.len < pair_count {
 		pair_count = node.right.len
 	}
 	for i in 0 .. pair_count {
 		right_vis := c.expr_mutation_visibility(node.right[i], root_name, root_type)
-		if !is_visible_root_mutation(right_vis) {
+		if !is_root_mutation(right_vis, include_private) {
 			continue
 		}
 		right_type := if i < node.right_types.len {
@@ -359,6 +388,11 @@ fn (mut c Checker) assign_stmt_aliases_visible_state(node ast.AssignStmt, root_n
 }
 
 fn (mut c Checker) type_may_share_mutable_storage(typ ast.Type) bool {
+	mut seen := map[int]bool{}
+	return c.type_may_share_mutable_storage_seen(typ, mut seen)
+}
+
+fn (mut c Checker) type_may_share_mutable_storage_seen(typ ast.Type, mut seen map[int]bool) bool {
 	if typ == 0 || typ == ast.no_type {
 		return false
 	}
@@ -366,5 +400,54 @@ fn (mut c Checker) type_may_share_mutable_storage(typ ast.Type) bool {
 	if unwrapped.is_any_kind_of_pointer() || unwrapped.has_flag(.shared_f) {
 		return true
 	}
-	return c.table.final_sym(unwrapped).kind in [.array, .map, .chan, .interface, .thread, .function]
+	sym := c.table.final_sym(unwrapped)
+	if sym.kind in [.array, .map, .chan, .interface, .thread, .function] {
+		return true
+	}
+	if unwrapped.idx() in seen {
+		return false
+	}
+	seen[unwrapped.idx()] = true
+	match sym.info {
+		ast.Struct {
+			for field in sym.info.fields {
+				if c.type_may_share_mutable_storage_seen(field.typ, mut seen) {
+					return true
+				}
+			}
+			for embed in sym.info.embeds {
+				if c.type_may_share_mutable_storage_seen(embed, mut seen) {
+					return true
+				}
+			}
+		}
+		ast.ArrayFixed {
+			return c.type_may_share_mutable_storage_seen(sym.info.elem_type, mut seen)
+		}
+		ast.SumType {
+			for variant in sym.info.variants {
+				if c.type_may_share_mutable_storage_seen(variant, mut seen) {
+					return true
+				}
+			}
+		}
+		ast.Aggregate {
+			for aggregate_type in sym.info.types {
+				if c.type_may_share_mutable_storage_seen(aggregate_type, mut seen) {
+					return true
+				}
+			}
+		}
+		ast.GenericInst {
+			for concrete_type in sym.info.concrete_types {
+				if c.type_may_share_mutable_storage_seen(concrete_type, mut seen) {
+					return true
+				}
+			}
+			return c.type_may_share_mutable_storage_seen(ast.new_type(sym.info.parent_idx), mut
+				seen)
+		}
+		else {}
+	}
+	return false
 }

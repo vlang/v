@@ -99,8 +99,30 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				high_pos)
 		}
 
+		// Check for empty hardcoded integer ranges (e.g., 4 .. 2)
+		if node.cond is ast.IntegerLiteral && node.high is ast.IntegerLiteral {
+			low_val := node.cond.val.i64()
+			high_val := node.high.val.i64()
+
+			if low_val >= high_val {
+				c.error('empty range: `${node.cond.val} .. ${node.high.val}` will never execute',
+					cond_pos.extend(high_pos))
+			}
+		}
+
 		if high_type in [ast.int_type, ast.int_literal_type] {
 			node.val_type = typ
+
+			if narrow_max := narrow_int_type_max(typ_idx) {
+				if high_const := c.eval_comptime_const_expr(node.high, 0) {
+					if high_val := high_const.u64() {
+						if high_val > u64(narrow_max) {
+							c.error('`high` value `${high_val}` does not fit in the range value type `${c.table.type_to_str(typ)}` (max `${narrow_max}`); the loop variable would overflow and the loop would never terminate',
+								cond_pos.extend(high_pos))
+						}
+					}
+				}
+			}
 		} else {
 			node.val_type = high_type
 		}
@@ -273,7 +295,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			} else if sym.kind == .aggregate&& (sym.info as ast.Aggregate).types.all(c.table.type_kind(it) in [.array, .array_fixed, .string, .map]) {
 				value_type = c.table.value_type((sym.info as ast.Aggregate).types[0])
 			}
-			if value_type == ast.void_type || typ.has_flag(.result) {
+			cannot_index_option_map_expr := !is_comptime && typ.has_flag(.option)
+				&& sym.kind == .map && node.cond !is ast.Ident
+			if value_type == ast.void_type || typ.has_flag(.result) || cannot_index_option_map_expr {
 				if typ != ast.void_type {
 					c.error('for in: cannot index `${c.table.type_to_str(typ)}`', node.cond.pos())
 				}
@@ -367,5 +391,23 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	c.in_for_count--
 	if c.smartcast_mut_pos != token.Pos{} {
 		c.smartcast_mut_pos = token.Pos{}
+	}
+}
+
+// narrow_int_type_max returns the maximum value representable by a fixed-width
+// integer type that is narrower than `int`/`i64`/`u64`, or none if `typ_idx`
+// is not one of those narrow types (or is not an integer type at all).
+// This is used to detect `for x in low .. high` loops where `high` is a
+// compile-time constant that does not fit in the (narrower) type of `low`,
+// which would make the loop variable wrap around and the loop never terminate.
+fn narrow_int_type_max(typ_idx int) ?i64 {
+	return match typ_idx {
+		ast.i8_type_idx { i64(max_i8) }
+		ast.i16_type_idx { i64(max_i16) }
+		ast.i32_type_idx { i64(max_i32) }
+		ast.u8_type_idx { i64(max_u8) }
+		ast.u16_type_idx { i64(max_u16) }
+		ast.u32_type_idx { i64(max_u32) }
+		else { none }
 	}
 }

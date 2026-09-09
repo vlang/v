@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lane-result.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "probe_id",
+    "lane_id",
+    "required",
+    "status",
+    "expected_count",
+    "evidence_sha256",
+    "fallback_used",
+    "object_linked",
+    "consumer_group"
+  ],
+  "properties": {
+    "probe_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._\\-]+$"},
+    "lane_id": {
+      "oneOf": [
+        {"$ref": "common.schema.json#/$defs/normal_lane_id"},
+        {"const": "expected=0"}
+      ]
+    },
+    "required": {"type": "boolean"},
+    "status": {
+      "type": "string",
+      "enum": ["passed", "failed", "blocked"]
+    },
+    "expected_count": {"type": "integer", "minimum": 0, "maximum": 1024},
+    "evidence_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "fallback_used": {"type": "boolean"},
+    "object_linked": {"type": "boolean"},
+    "consumer_group": {
+      "type": "string",
+      "enum": ["none", "math", "json", "stbi", "vorbis", "fontstash"]
+    }
+  }
+}

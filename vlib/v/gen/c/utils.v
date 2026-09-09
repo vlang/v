@@ -1640,7 +1640,8 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 							struct_init_typ_str := expr.obj.expr.typ_str.all_after_last('.')
 							idx := generic_names.index(struct_init_typ_str)
 							if idx >= 0 && idx < g.cur_concrete_types.len {
-								return g.cur_concrete_types[idx]
+								return generic_struct_init_type(g.cur_concrete_types[idx],
+									expr.obj.expr.typ)
 							}
 						}
 						return scope_type
@@ -1980,7 +1981,7 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 				short_name := expr.typ_str.all_after_last('.')
 				idx := generic_names.index(short_name)
 				if idx >= 0 && idx < g.cur_concrete_types.len {
-					return g.cur_concrete_types[idx]
+					return generic_struct_init_type(g.cur_concrete_types[idx], expr.typ)
 				}
 			}
 			// In generic contexts, use generic_typ to allow resolution via
@@ -2081,6 +2082,17 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 		return g.unwrap_generic(resolved)
 	}
 	return g.unwrap_generic(default_typ)
+}
+
+fn generic_struct_init_type(concrete_type ast.Type, generic_type ast.Type) ast.Type {
+	mut resolved_type := concrete_type.clear_flag(.generic)
+	if generic_type.has_flag(.option) {
+		resolved_type = resolved_type.set_flag(.option)
+	}
+	if generic_type.has_flag(.result) {
+		resolved_type = resolved_type.set_flag(.result)
+	}
+	return resolved_type
 }
 
 struct Type {

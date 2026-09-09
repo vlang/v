@@ -18,7 +18,7 @@ Options:
                             By default, VEXE will be set to "", to allow for measuring different V executables. Use this option to override it
   -n, --newline             Use \n, do not overwrite the last line. Produces more output, but easier to diagnose.
   -O, --output              Show command stdout/stderr in the progress indicator for each command. Note: slower, for verbose commands.
-  -v, --verbose             Be more verbose.
+  -v, --verbose             Print each command, its exit code, and its output.
   -m, --max_time <int>      Fail with exit code 2, when first cmd takes above M milliseconds (regression). Default: 60000
   -f, --fail_percent <int>  Fail with exit code 3, when first cmd is X% slower than the rest (regression). Default: 100000
   -t, --template <string>   Command template. {T} will be substituted with the current command. Default: {T}. 

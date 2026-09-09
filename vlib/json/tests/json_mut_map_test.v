@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import json
 
 fn q_and_a(mut db_json map[string][]string) {

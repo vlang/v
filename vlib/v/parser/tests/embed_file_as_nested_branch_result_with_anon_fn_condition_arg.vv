@@ -1,0 +1,39 @@
+fn accepts_last(_ fn () bool) bool {
+	return true
+}
+
+fn accepts_first(_ fn () bool, _ int) bool {
+	return true
+}
+
+fn main() {
+	mut sink := 0
+	ok := true
+	fallback := $embed_file(@FILE)
+	last_arg := if ok {
+		if accepts_last(fn () bool {
+			return true
+		}) {
+			$embed_file(@FILE)
+		} else {
+			fallback
+		}
+	} else {
+		fallback
+	}
+	first_arg := if ok {
+		if accepts_first(fn () bool {
+			return true
+		}, 1) {
+			$embed_file(@FILE)
+		} else {
+			fallback
+		}
+	} else {
+		fallback
+	}
+	assert last_arg.path.len > 0
+	assert first_arg.path.len > 0
+	assert sink == 0
+	sink = missing_symbol
+}

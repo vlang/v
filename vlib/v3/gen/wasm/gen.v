@@ -165,6 +165,11 @@ pub fn (mut g Gen) gen() {
 	mut start_idx := -1
 	if g.has_main {
 		start_idx = g.emit_start()
+	} else {
+		// Shared wasm modules still need their module init functions to run on
+		// instantiation, but must not expose the executable `_start` entry.
+		start_idx = g.emit_start()
+		g.mod.set_start(start_idx)
 	}
 
 	// 5. exports + memory sizing + data. WASM export names must be unique, so
@@ -174,7 +179,7 @@ pub fn (mut g Gen) gen() {
 	used_exports['memory'] = true
 	used_exports['_start'] = true
 	for f in user_fns {
-		ename := export_fn_name(f.module, f.name)
+		ename := g.explicit_export_fn_name(f) or { export_fn_name(f.module, f.name) }
 		if ename in used_exports {
 			g.warn('not exporting ${f.name}: export name `${ename}` is already in use')
 			continue
@@ -182,7 +187,7 @@ pub fn (mut g Gen) gen() {
 		used_exports[ename] = true
 		g.mod.add_export(ename, export_func, g.fn_index[qualified_fn_key(f.module, f.name)])
 	}
-	if start_idx >= 0 {
+	if g.has_main && start_idx >= 0 {
 		g.mod.add_export('_start', export_func, start_idx)
 	}
 	if g.data_pool.len > 0 {
@@ -239,7 +244,7 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 				if i < g.a.user_code_start {
 					continue
 				}
-				if node.generic_params.len > 0 || node.value == '' {
+				if node.generic_params().len > 0 || node.value == '' {
 					continue
 				}
 				// Prefer the import path (distinguishes same-leaf modules); fall
@@ -273,7 +278,7 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 	mut work := []string{}
 	for key in order {
 		f := candidates[key]
-		if f.module == '' || f.module == 'main' {
+		if f.module == '' || f.module == 'main' || g.explicit_export_fn_name(f) != none {
 			reached[key] = true
 			work << key
 		}
@@ -2552,6 +2557,18 @@ fn export_fn_name(mod string, name string) string {
 	return '${mod.replace('.', '__')}__${name}'
 }
 
+fn (g &Gen) explicit_export_fn_name(f FnInfo) ?string {
+	if f.module == '' || f.module == 'main' {
+		return g.a.export_fn_names[f.name] or { none }
+	}
+	for key in ['${f.module}.${f.name}', '${f.module.all_after_last('.')}.${f.name}'] {
+		if export_name := g.a.export_fn_names[key] {
+			return export_name
+		}
+	}
+	return none
+}
+
 // unalias resolves a (possibly chained) numeric type alias to its base type so
 // scalar aliases like `type Byte = u8` classify as their underlying type.
 fn unalias(t types.Type) types.Type {
@@ -2609,11 +2626,15 @@ fn compound_to_op(op flat.Op) flat.Op {
 		.left_shift_assign { flat.Op.left_shift }
 		.right_shift_assign { flat.Op.right_shift }
 		.right_shift_unsigned_assign { flat.Op.right_shift_unsigned }
+		.power_assign { panic('power assignment reached the V3 wasm backend') }
 		else { flat.Op.plus }
 	}
 }
 
 fn arith_op(op flat.Op, w WType, signed bool) u8 {
+	if op == .power {
+		panic('power expression reached the V3 wasm backend')
+	}
 	match w {
 		.i64 {
 			return match op {

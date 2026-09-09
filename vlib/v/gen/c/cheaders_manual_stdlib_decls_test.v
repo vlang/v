@@ -22,7 +22,7 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);'), generated_c
 
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL vsnprintf(char *str, size_t size, const char *format, va_list ap);'), generated_c
-	assert generated_c.contains('#if defined(_WIN32) || defined(_WIN64)\nV_CRT_LINKAGE int V_CRT_CALL _fileno(FILE *stream);\nV_CRT_LINKAGE FILE * V_CRT_CALL _wfopen(const unsigned short *filename, const unsigned short *mode);\nV_CRT_LINKAGE int V_CRT_CALL _wremove(const unsigned short *path);\nV_CRT_LINKAGE void * V_CRT_CALL _aligned_malloc(size_t size, size_t alignment);\nV_CRT_LINKAGE void * V_CRT_CALL _aligned_realloc(void *memory, size_t size, size_t alignment);\nV_CRT_LINKAGE void V_CRT_CALL _aligned_free(void *memory);\nV_CRT_LINKAGE unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);\nV_CRT_LINKAGE int V_CRT_CALL _wputenv(const unsigned short *envstring);\n#endif'), generated_c
+	assert generated_c.contains('#if defined(_WIN32) || defined(_WIN64)\nV_CRT_STDIO_LINKAGE int V_CRT_CALL _fseeki64(FILE *stream, i64 offset, int whence);\nV_CRT_LINKAGE int V_CRT_CALL fgetpos(FILE *stream, i64 *pos);\nV_CRT_STDIO_LINKAGE int V_CRT_CALL _fileno(FILE *stream);\nV_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _wfopen(const unsigned short *filename, const unsigned short *mode);\nV_CRT_STDIO_LINKAGE int V_CRT_CALL freopen_s(FILE **new_stream, const char *filename, const char *mode, FILE *stream);\nV_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _wfreopen(const unsigned short *filename, const unsigned short *mode, FILE *stream);\nV_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _wpopen(const unsigned short *command, const unsigned short *mode);\nV_CRT_STDIO_LINKAGE int V_CRT_CALL _pclose(FILE *stream);\nV_CRT_STDIO_LINKAGE int V_CRT_CALL _wremove(const unsigned short *path);\nV_CRT_LINKAGE void * V_CRT_CALL _aligned_malloc(size_t size, size_t alignment);\nV_CRT_LINKAGE void * V_CRT_CALL _aligned_realloc(void *memory, size_t size, size_t alignment);\nV_CRT_LINKAGE void V_CRT_CALL _aligned_free(void *memory);\nV_CRT_LINKAGE unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);\nV_CRT_LINKAGE int V_CRT_CALL _wputenv(const unsigned short *envstring);\n#endif'), generated_c
 
 	assert generated_c.contains('V_CRT_LINKAGE void V_CRT_CALL perror(const char *str);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL mkstemp(char *stemplate);'), generated_c
@@ -40,6 +40,45 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('#define stdout (__acrt_iob_func(1))'), generated_c
 	assert generated_c.contains('#if (defined(_MSC_VER) && !defined(__clang__)) || defined(__cplusplus)\n// Under C++ (g++/clang++), let libc declare FILE/stdio/string/stdlib to keep\n// noexcept specifiers consistent'), generated_c
 	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n\t#define V_CRT_LINKAGE __declspec(dllimport)\n\t#define V_CRT_CALL VCALLCONV(cdecl)\n#else\n\t#define V_CRT_LINKAGE\n\t#define V_CRT_CALL\n#endif'), generated_c
+	assert generated_c.contains('#if (defined(__MINGW32__) || defined(__MINGW64__)) && defined(__V_GCC__)\n\t#define V_CRT_STDIO_LINKAGE __attribute__((dllimport))\n#else\n\t#define V_CRT_STDIO_LINKAGE V_CRT_LINKAGE\n#endif'), generated_c
+	crt_stdio_linkage_decls :=
+		generated_c.split_into_lines().filter(it.starts_with('V_CRT_STDIO_LINKAGE '))
+	assert crt_stdio_linkage_decls == [
+		'V_CRT_STDIO_LINKAGE FILE * V_CRT_CALL popen(const char *command, const char *mode);',
+		'V_CRT_STDIO_LINKAGE int V_CRT_CALL pclose(FILE *stream);',
+		'V_CRT_STDIO_LINKAGE int V_CRT_CALL _fseeki64(FILE *stream, i64 offset, int whence);',
+		'V_CRT_STDIO_LINKAGE int V_CRT_CALL _fileno(FILE *stream);',
+		'V_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _wfopen(const unsigned short *filename, const unsigned short *mode);',
+		'V_CRT_STDIO_LINKAGE int V_CRT_CALL freopen_s(FILE **new_stream, const char *filename, const char *mode, FILE *stream);',
+		'V_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _wfreopen(const unsigned short *filename, const unsigned short *mode, FILE *stream);',
+		'V_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _wpopen(const unsigned short *command, const unsigned short *mode);',
+		'V_CRT_STDIO_LINKAGE int V_CRT_CALL _pclose(FILE *stream);',
+		'V_CRT_STDIO_LINKAGE int V_CRT_CALL _wremove(const unsigned short *path);',
+	], crt_stdio_linkage_decls.str()
+	assert !generated_c.contains('V_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _popen('), generated_c
+	assert !generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _wremove('), generated_c
+	for declaration in [
+		'V_CRT_LINKAGE FILE * V_CRT_CALL fdopen(int fd, const char *mode);',
+		'V_CRT_LINKAGE int V_CRT_CALL fileno(FILE *stream);',
+		'V_CRT_LINKAGE int V_CRT_CALL atexit(void (*cb)(void));',
+		'V_CRT_LINKAGE int V_CRT_CALL mkstemp(char *stemplate);',
+		'V_CRT_LINKAGE void * V_CRT_CALL aligned_alloc(size_t alignment, size_t size);',
+		'V_CRT_LINKAGE int V_CRT_CALL posix_memalign(void **memptr, size_t alignment, size_t size);',
+		'V_CRT_LINKAGE int V_CRT_CALL setenv(const char *name, const char *value, int overwrite);',
+		'V_CRT_LINKAGE int V_CRT_CALL unsetenv(const char *name);',
+		'V_CRT_LINKAGE char * V_CRT_CALL realpath(const char *path, char *resolved_path);',
+		'V_CRT_LINKAGE isize V_CRT_CALL getline(char **lineptr, size_t *n, FILE *stream);',
+		'V_CRT_LINKAGE int V_CRT_CALL fgetpos(FILE *stream, i64 *pos);',
+		'V_CRT_LINKAGE void * V_CRT_CALL _aligned_malloc(size_t size, size_t alignment);',
+		'V_CRT_LINKAGE void * V_CRT_CALL _aligned_realloc(void *memory, size_t size, size_t alignment);',
+		'V_CRT_LINKAGE void V_CRT_CALL _aligned_free(void *memory);',
+		'V_CRT_LINKAGE unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);',
+		'V_CRT_LINKAGE int V_CRT_CALL _wputenv(const unsigned short *envstring);',
+	] {
+		assert generated_c.contains(declaration), declaration
+		assert !generated_c.contains(declaration.replace('V_CRT_LINKAGE', 'V_CRT_STDIO_LINKAGE')), declaration
+	}
+	assert generated_c.contains('#undef V_CRT_STDIO_LINKAGE\n#undef V_CRT_LINKAGE\n#undef V_CRT_CALL'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE void * V_CRT_CALL _aligned_malloc(size_t size, size_t alignment);'), generated_c
@@ -300,4 +339,18 @@ fn test_c_prelude_ctype_decls_do_not_conflict_with_later_ctype_includes() {
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -cc clang -show-c-output -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
 	res := os.execute(cmd)
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
+}
+
+fn test_c_prelude_defines_l_tmpnam_on_glibc_without_including_stdio() {
+	// Regression test for https://github.com/vlang/v/issues/28108 :
+	// V does not #include <stdio.h> in its prelude. glibc only defines L_tmpnam while <stdio.h>
+	// is being processed, and uses it in the `tmpnam` prototype, so a <stdio.h> pulled in later by
+	// a module header (sqlite3.h, gc.h, ...) would fail with `L_tmpnam undeclared`. The prelude
+	// therefore defines L_tmpnam itself, on the glibc path, without adding an include.
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o - ${os.quoted_path(cheaders_manual_stdlib_varargs_source)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+	generated_c := res.output.replace('\r\n', '\n')
+	assert generated_c.contains('#if defined(__GLIBC__) || defined(__GNU_LIBRARY__)'), generated_c
+	assert generated_c.contains('#ifndef L_tmpnam\n#define L_tmpnam 20\n#endif'), generated_c
 }

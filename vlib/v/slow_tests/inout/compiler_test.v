@@ -29,18 +29,23 @@ fn test_all() {
 	dir := 'vlib/v/slow_tests/inout'
 	mut files := os.ls(dir) or { panic(err) }
 	files.sort()
-	tests := files.filter(it.ends_with('.vv') || it.ends_with('.vsh'))
+	tests := files.filter(it.ends_with('.vv') || it.ends_with('.vsh') || it.ends_with('.v3.v'))
 	if tests.len == 0 {
 		println('no compiler tests found')
 		assert false
 	}
 	paths := vtest.filter_vtest_only(tests, basepath: dir)
-	println('Found ${paths.len} .vv/.vsh files in ${dir} ...')
+	println('Found ${paths.len} .vv/.vsh/.v3.v files in ${dir} ...')
 	for idx, path in paths {
 		vprint('${idx + 1:3}/${paths.len:-3} ${path} ')
 		fname := os.file_name(path)
 		if fname in skip_files {
 			vprintln(term.bright_yellow('SKIP'))
+			total_skips++
+			continue
+		}
+		if fname.ends_with('.v3.v') && os.user_os() != 'macos' {
+			vprintln(term.bright_yellow('SKIP on non-macOS'))
 			total_skips++
 			continue
 		}
@@ -81,9 +86,12 @@ fn test_all() {
 		// println(res.output)
 		// println('============')
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
-		mut expected := os.read_file(program.replace('.vv', '').replace('.vsh', '') + '.out') or {
-			panic(err)
+		expected_path := if program.ends_with('.v3.v') {
+			program.trim_string_right('.v3.v') + '.out'
+		} else {
+			program.replace('.vv', '').replace('.vsh', '') + '.out'
 		}
+		mut expected := os.read_file(expected_path) or { panic(err) }
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		if expected.contains('================ V panic ================') {
 			// panic include backtraces and absolute file paths, so can't do char by char comparison

@@ -1,0 +1,17 @@
+struct None {}
+
+type Maybe[T] = None | T
+
+fn some[T](value T) Maybe[T] {
+	return Maybe[T](value)
+}
+
+fn unwrap[T](value Maybe[T]) T {
+	return value as T
+}
+
+fn main() {
+	value := 7
+	ptr := unwrap[&int](some[&int](&value))
+	assert *ptr == 7
+}

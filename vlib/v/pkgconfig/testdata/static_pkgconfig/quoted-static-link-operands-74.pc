@@ -1,0 +1,5 @@
+Name: quoted-static-link-operands-74
+Description: Quoted public and private direct link operands
+Version: 1.0.0
+Libs: "/issue74/double  space/libissue74_public.a"
+Libs.private: "/issue74/comma, space/libissue74_private.a"

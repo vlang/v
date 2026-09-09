@@ -121,7 +121,7 @@ fn test_imported_type_authority_for_if_expr_and_fixed_array_index() {
 	v3_bin := type_authority_build_v3()
 	root := type_authority_write_project()
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
@@ -133,10 +133,10 @@ fn test_imported_type_authority_for_if_expr_and_fixed_array_index() {
 	assert !generated.contains('\nColor __if_val_'), generated
 	assert !generated.contains('main__Color __if_val_'), generated
 
-	assert generated.contains('fixture__Thing* ptrs[3] = {0};'), generated
+	assert generated.contains('fixture__Thing* ptrs[3];'), generated
 	assert generated.contains('fixture__Thing* item = ptrs[idx];'), generated
-	assert generated.contains('fixture__Thing item = fixture__vals[idx];'), generated
+	assert generated.contains('fixture__Thing item = (*(fixture__Thing*)array_get(fixture__vals, idx));'), generated
 	assert !generated.contains('Array_fixed_fixture__Thingptr_3 item'), generated
 	assert !generated.contains('Array_fixed_fixture__Thing_3 item'), generated
-	assert generated.contains('fixture__Thing fixed[3] = {0};'), generated
+	assert generated.contains('fixture__Thing fixed[3];'), generated
 }

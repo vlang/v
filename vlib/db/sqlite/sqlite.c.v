@@ -228,7 +228,7 @@ pub fn (mut db DB) close() ! {
 // Only for V ORM
 fn get_int_from_stmt(stmt &C.sqlite3_stmt) int {
 	x := C.sqlite3_step(stmt)
-	if x != C.SQLITE_OK && x != C.SQLITE_DONE {
+	if x != sqlite_ok && x != sqlite_done {
 		C.puts(C.sqlite3_errstr(x))
 	}
 	res := C.sqlite3_column_int(stmt, 0)

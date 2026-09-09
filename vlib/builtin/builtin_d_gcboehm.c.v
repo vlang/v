@@ -74,18 +74,16 @@ $if dynamic_boehm ? {
 			$if !use_bundled_libgc ? {
 				$if macos {
 					$if tinyc {
-						$if arm64 {
-							// tcc on macOS arm64 can leave the bundled GC archive symbols unresolved.
+						$if arm64 || amd64 {
+							// tcc can leave bundled static GC archive symbols unresolved on macOS 64-bit.
 							#flag @VEXEROOT/thirdparty/tcc/lib/libgc.dylib
 							#flag -Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"
 						} $else {
-							// macOS amd64 tccbin only ships libgc.a (no .dylib).
+							// Retain the bundled static archive fallback on other architectures.
 							#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
 						}
 					} $else {
-						#flag -L@VEXEROOT/thirdparty/tcc/lib
-						#flag -lgc
-						#flag -Xlinker -rpath -Xlinker "@VEXEROOT/thirdparty/tcc/lib"
+						#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
 					}
 				} $else {
 					$if musl ? {

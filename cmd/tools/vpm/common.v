@@ -4,7 +4,7 @@ import os
 import net.http
 import net.urllib
 import v.vmod
-import json
+import json2
 import term
 import time
 
@@ -140,7 +140,7 @@ fn get_mod_vpm_info_with_selector(name string, mut selector VpmInstallServerSele
 			errors << s.trim_space().limit(100) + '...'
 			continue
 		}
-		mod := json.decode(ModuleVpmInfo, s) or {
+		mod := json2.decode[ModuleVpmInfo](s) or {
 			errors << 'Skipping module `${name}`, since its information is not in json format.'
 			continue
 		}
@@ -228,6 +228,22 @@ fn get_name_from_url(raw_url string) !string {
 
 fn normalize_mod_path(path string) string {
 	return path.replace('-', '_').to_lower()
+}
+
+// Derive the import path of an installed module from its location relative to
+// `vmodules`. E.g. `<vmodules>/spytheman/vtray` -> `spytheman.vtray`.
+// Normalize both sides via `real_path` so macOS's `/tmp` -> `/private/tmp`
+// resolution doesn't leave the prefix unstripped.
+fn import_path_of(install_path string) string {
+	return import_path_relative_to(install_path, settings.vmodules_path)
+}
+
+fn import_path_relative_to(install_path string, vmodules_path string) string {
+	vmodules_real := os.real_path(vmodules_path)
+	install_path_real := os.real_path(install_path)
+	rel_install_path :=
+		install_path_real.trim_string_left(vmodules_real).trim_left(os.path_separator)
+	return rel_install_path.replace(os.path_separator, '.')
 }
 
 fn get_all_modules_for_search() []string {
@@ -319,28 +335,84 @@ fn normalize_repo_lookup_url(raw_url string) !string {
 	return '${host}/${path}'
 }
 
-fn get_installed_modules() []string {
-	dirs := os.ls(settings.vmodules_path) or { return [] }
-	mut modules := []string{}
-	for dir in dirs {
-		adir := os.join_path(settings.vmodules_path, dir)
-		if dir in excluded_dirs || !os.is_dir(adir) {
-			continue
-		}
-		if os.exists(os.join_path(adir, 'v.mod')) && os.exists(os.join_path(adir, '.git', 'config')) {
-			// an official vlang module with a short module name, like `vsl`, `ui` or `markdown`
-			modules << dir
-			continue
-		}
-		author := dir
-		mods := os.ls(adir) or { continue }
-		for m in mods {
-			vcs_used_in_dir(os.join_path(adir, m)) or { continue }
-			modules << '${author}.${m}'
-		}
+fn normalize_clone_source_url(raw_url string) !string {
+	normalized_url := if raw_url.starts_with('git@') {
+		'ssh://' + raw_url['git@'.len..].replace(':', '/')
+	} else {
+		raw_url
 	}
+	url := urllib.parse(normalized_url) or {
+		return error('failed to parse module URL `${raw_url}`.')
+	}
+	host := url.hostname().trim_space().to_lower()
+	port := url.port()
+	raw_path := url.path.trim_space().trim_right('/').trim_left('/').trim_string_right('.git')
+	path := if host == 'github.com' { raw_path.to_lower() } else { raw_path }
+	if host == '' || path == '' {
+		return error('failed to normalize module URL `${raw_url}`.')
+	}
+	authority := if port == '' { host } else { '${host}:${port}' }
+	return '${authority}/${path}'
+}
+
+fn get_installed_modules() []string {
+	return get_installed_modules_in(settings.vmodules_path)
+}
+
+fn get_installed_modules_in(vmodules_path string) []string {
+	mut modules := []string{}
+	mut visited := map[string]bool{}
+	collect_installed_modules(vmodules_path, '', true, mut modules, mut visited)
 	verbose_println_more(@FILE_LINE, @FN, 'found modules: ${modules}')
 	return modules
+}
+
+fn collect_installed_modules(path string, prefix string, is_root bool, mut modules []string, mut visited map[string]bool) {
+	real_path := os.real_path(path)
+	if real_path in visited {
+		return
+	}
+	visited[real_path] = true
+	dirs := os.ls(path) or { return }
+	for dir in dirs {
+		module_path := os.join_path(path, dir)
+		if (is_root && dir in excluded_dirs) || !os.is_dir(module_path) {
+			continue
+		}
+		module_name := if prefix == '' { dir } else { '${prefix}.${dir}' }
+		if vcs := vcs_used_in_dir(module_path) {
+			if os.is_file(os.join_path(module_path, 'v.mod'))
+				|| is_manifestless_registered_checkout(module_path, module_name, vcs) {
+				modules << module_name
+			}
+			continue
+		}
+		collect_installed_modules(module_path, module_name, false, mut modules, mut visited)
+	}
+}
+
+fn is_manifestless_registered_checkout(module_path string, module_name string, vcs VCS) bool {
+	parts := module_name.split('.')
+	if parts.len != 2 {
+		return false
+	}
+	remote := match vcs {
+		.git {
+			result := os.execute_opt('git -C ${os.quoted_path(module_path)} remote get-url origin') or {
+				return false
+			}
+			result.output.trim_space()
+		}
+		.hg {
+			result := os.execute_opt('hg -R ${os.quoted_path(module_path)} paths default') or {
+				return false
+			}
+			result.output.trim_space()
+		}
+	}
+	publisher, _ := get_ident_from_url(remote) or { return false }
+	remote_owner := publisher.split('/')[0]
+	return normalize_mod_path(remote_owner) == normalize_mod_path(parts[0])
 }
 
 fn get_path_of_existing_module(mod_name string) ?string {
@@ -352,9 +424,7 @@ fn get_path_of_existing_module(mod_name string) ?string {
 	if is_url {
 		publisher, name := get_ident_from_url(mod_name) or { '', '' }
 		if publisher != '' && name != '' {
-			rel_path := normalize_mod_path(os.join_path(publisher, name))
-			path := os.real_path(os.join_path(settings.vmodules_path, rel_path))
-			if os.exists(path) && os.is_dir(path) {
+			if path := get_path_of_existing_url_module(settings.vmodules_path, publisher, name) {
 				verbose_println_more(@FILE_LINE, @FN, 'mod_name: ${mod_name}, found path: ${path}')
 				return path
 			}
@@ -373,6 +443,35 @@ fn get_path_of_existing_module(mod_name string) ?string {
 	}
 	verbose_println_more(@FILE_LINE, @FN, 'mod_name: ${mod_name}, found path: ${path}')
 	return path
+}
+
+fn direct_install_mod_path(publisher string, manifest_name string) string {
+	return normalize_mod_path(os.join_path(publisher.replace('.', os.path_separator), manifest_name.replace('.',
+		os.path_separator)))
+}
+
+fn get_path_of_existing_url_module(vmodules_path string, publisher string, name string) ?string {
+	new_path := direct_install_mod_path(publisher, name)
+	legacy_path := normalize_mod_path(os.join_path(publisher, name))
+	for rel_path in [new_path, legacy_path] {
+		path := os.real_path(os.join_path(vmodules_path, rel_path))
+		if os.exists(path) && os.is_dir(path) {
+			return path
+		}
+	}
+	return none
+}
+
+fn cleanup_empty_module_parent_dirs(module_path string) {
+	vmodules_path := real_path_with_missing_suffix(settings.vmodules_path)
+	mut parent := real_path_with_missing_suffix(os.dir(module_path))
+	for path_is_below(parent, vmodules_path) && parent != os.dir(parent) {
+		if !os.is_dir(parent) || !os.is_dir_empty(parent) {
+			break
+		}
+		os.rmdir(parent) or { break }
+		parent = os.dir(parent)
+	}
 }
 
 fn get_working_server_url() string {

@@ -1,0 +1,143 @@
+fn test_receiver_index_move_is_not_cloned() {
+	mut entries := PayloadMap(map[string]Payload{})
+	entries["item"] = Payload{
+		values: ["moved"]
+	}
+	entries.to_owned(entries["item"])
+}
+
+fn test_direct_receiver_field_clone_is_retained() {
+	holder := Holder{
+		left: Payload{
+			values: ["retained"]
+		}
+		right: Payload{
+			values: ["other"]
+		}
+	}
+	assert holder.accept(holder.left) == "retained"
+	assert holder.left.values[0] == "retained"
+}
+
+fn test_variadic_receiver_field_clone_is_retained() {
+	holder := Holder{
+		left: Payload{
+			values: ["retained"]
+		}
+		right: Payload{
+			values: ["other"]
+		}
+	}
+	assert holder.consume(holder.left) == "retained"
+	assert holder.left.values[0] == "retained"
+}
+
+fn test_free_variadic_borrowed_projection_is_cloned(holder &Holder) {
+	assert consume_payloads(holder.left) == "left"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_borrowed_interface_argument_is_cloned(holder &Holder) {
+	assert consume_payload_reader(holder.left) == "left"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_disjoint_receiver_fields_are_not_cloned() {
+	mut clones := 0
+	pair := ObservedPair{
+		left: ObservedPayload{
+			values: ["left"]
+			clones: &clones
+		}
+		right: ObservedPayload{
+			values: ["right"]
+			clones: &clones
+		}
+	}
+	assert pair.left.accept(pair.right) == "right"
+	assert clones == 0
+	assert pair.left.values[0] == "left"
+}
+
+fn test_borrowed_fixed_array_conversions_are_cloned() {
+	holder := &FixedHolder{
+		items: [Payload{
+			values: ["original"]
+		}]!
+	}
+	mut copied := DynamicCopy{
+		items: holder.items
+	}
+	mut copied_item := copied.items[0]
+	copied_item.values[0] = "struct copy"
+	assert holder.items[0].values[0] == "original"
+
+	mut returned := get_fixed_items(holder)
+	mut returned_item := returned[0]
+	returned_item.values[0] = "return copy"
+	assert holder.items[0].values[0] == "original"
+
+	consume_fixed_items(holder.items)
+	assert holder.items[0].values[0] == "original"
+
+	consume_fixed_entries(holder.items)
+	assert holder.items[0].values[0] == "original"
+}
+
+fn test_borrowed_dynamic_array_conversion_is_cloned() {
+	holder := &DynamicHolder{
+		items: [Payload{
+			values: ["original"]
+		}]
+	}
+	consume_fixed_entries(holder.items)
+	assert holder.items[0].values[0] == "original"
+}
+
+fn test_pointer_backed_index_read_is_cloned() {
+	holder := &DynamicHolder{
+		items: [Payload{
+			values: ["original"]
+		}]
+	}
+	mut copied := holder.items[0]
+	copied.values[0] = "copy"
+	assert holder.items[0].values[0] == "original"
+}
+
+fn test_borrowed_channel_send_is_cloned(holder &Holder) {
+	ch := chan Payload{cap: 1}
+	ch <- holder.left
+	mut received := <-ch
+	received.values[0] = "channel copy"
+	assert holder.left.values[0] == "left"
+
+	handled_ch := chan Payload{cap: 1}
+	handled_ch <- holder.right or { panic(err) }
+	mut handled := <-handled_ch
+	handled.values[0] = "handled channel copy"
+	assert holder.right.values[0] == "right"
+}
+
+fn main() {
+	holder := &Holder{
+		left: Payload{
+			values: ["left"]
+		}
+		right: Payload{
+			values: ["right"]
+		}
+	}
+	assert holder.accept(holder.left) == "left"
+	assert holder.accept_entry(holder.left) == "left"
+	test_receiver_index_move_is_not_cloned()
+	test_direct_receiver_field_clone_is_retained()
+	test_variadic_receiver_field_clone_is_retained()
+	test_free_variadic_borrowed_projection_is_cloned(holder)
+	test_borrowed_interface_argument_is_cloned(holder)
+	test_disjoint_receiver_fields_are_not_cloned()
+	test_borrowed_fixed_array_conversions_are_cloned()
+	test_borrowed_dynamic_array_conversion_is_cloned()
+	test_pointer_backed_index_read_is_cloned()
+	test_borrowed_channel_send_is_cloned(holder)
+}

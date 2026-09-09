@@ -295,7 +295,11 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				} else {
 					cond_var
 				}
-				tag_expr := '${cond_expr}${dot_or_ptr}_typ'
+				tag_expr := if cond_sym.kind == .interface {
+					'_V_INTERFACE_TYPE_INDEX(${cond_expr}${dot_or_ptr}_typ)'
+				} else {
+					'${cond_expr}${dot_or_ptr}_typ'
+				}
 				if cond_sym.kind == .sum_type {
 					if cur_expr is ast.None {
 						g.write('${tag_expr} == ${ast.none_type.idx()} /* none */')
@@ -604,7 +608,8 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					}
 					.string {
 						if expr is ast.StringLiteral {
-							slit := cescape_nonascii(util.smart_quote(expr.val, expr.is_raw))
+							slit := cescape_nonascii(util.smart_quote(expr.val, expr.is_raw,
+								expr.opaque_pos))
 							if node.cond_type.is_ptr() {
 								g.write('_SLIT_EQ(${cond_var}->str, ${cond_var}->len, "${slit}")')
 							} else {

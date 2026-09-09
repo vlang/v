@@ -44,21 +44,7 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 	return r
 }
 
-// read fufills the Reader interface.
-pub fn (mut r BufferedReader) read(mut buf []u8) !int {
-	if buf.len == 0 {
-		return 0
-	}
-	if r.end_of_stream {
-		return Eof{}
-	}
-	// read data out of the buffer if we dont have any
-	if r.needs_fill() {
-		if !r.fill_buffer() {
-			// end of stream
-			return Eof{}
-		}
-	}
+fn (mut r BufferedReader) copy_unread(mut buf []u8) !int {
 	read := copy(mut buf, r.buf[r.offset..r.len])
 	if read == 0 {
 		return NotExpected{
@@ -69,6 +55,94 @@ pub fn (mut r BufferedReader) read(mut buf []u8) !int {
 	r.offset += read
 	r.total_read += read
 	return read
+}
+
+// read fufills the Reader interface.
+pub fn (mut r BufferedReader) read(mut buf []u8) !int {
+	if buf.len == 0 {
+		return 0
+	}
+
+	if r.end_of_stream {
+		if r.offset < r.len {
+			return r.copy_unread(mut buf)
+		}
+		return Eof{}
+	}
+
+	// read data out of the buffer if we dont have any
+	if r.needs_fill() {
+		if !r.fill_buffer() {
+			// end of stream
+			return Eof{}
+		}
+	}
+	return r.copy_unread(mut buf)
+}
+
+// fill buffer but keep unread data
+fn (mut r BufferedReader) fill_buffer_keep_unread() ! {
+	if r.end_of_stream {
+		return Eof{}
+	}
+
+	// shift unread bytes to front
+	r.len = r.len - r.offset
+	for i := 0; i < r.len; i++ {
+		r.buf[i] = r.buf[r.offset + i]
+	}
+	r.offset = 0
+
+	for r.len < r.buf.len {
+		read := r.reader.read(mut r.buf[r.len..]) or {
+			r.end_of_stream = true
+			return Eof{}
+		}
+
+		if read == 0 {
+			r.fails++
+			if r.fails >= r.mfails {
+				r.end_of_stream = true
+				return Eof{}
+			}
+		} else {
+			r.fails = 0
+			r.len += read
+		}
+	}
+}
+
+// peek reads n bytes without advancing the cursor.
+// returns Eof if reached the end of the stream.
+// returns an error if n < 0.
+// returns an array with less than n bytes if n > capacity.
+pub fn (mut r BufferedReader) peek(n int) ![]u8 {
+	if n < 0 {
+		return error('cannot peek a negative number of bytes')
+	}
+
+	if r.needs_fill() { // has no unread bytes
+		if r.end_of_stream {
+			return Eof{}
+		}
+
+		if !r.fill_buffer() {
+			return Eof{}
+		}
+	}
+
+	// enough data in buffer
+	if n <= r.len - r.offset {
+		return r.buf[r.offset..r.offset + n].clone()
+	}
+
+	r.fill_buffer_keep_unread() or { return r.buf[r.offset..r.len].clone() }
+
+	// asking for more bytes than buffer contains after refill
+	if n > r.len {
+		return r.buf[r.offset..r.len].clone()
+	}
+	return r.buf[r.offset..r.offset + n].clone()
 }
 
 // free deallocates the memory for a buffered reader's internal buffer.
@@ -125,7 +199,7 @@ pub fn (r BufferedReader) end_of_stream() bool {
 // With the default delimiter `\n`, both `\n` and `\r\n` line endings are
 // accepted, and neither terminator byte is included in the returned string.
 pub fn (mut r BufferedReader) read_line(config BufferedReadLineConfig) !string {
-	if r.end_of_stream {
+	if r.end_of_stream && r.offset == r.len {
 		return Eof{}
 	}
 	mut line := []u8{}
