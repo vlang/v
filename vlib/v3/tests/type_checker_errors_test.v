@@ -1965,6 +1965,24 @@ fn test_callback_identifier_c_abi_modes_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_callback_factory_result_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn make_handler() ConstHandler {\n\treturn fn (const_event &C.native_event) {}\n}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tr.accept(make_handler())\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	field_matching := run_good(v3_bin, 'good_callback_struct_field_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler ConstHandler\n}\nstruct Router {}\nfn (r Router) accept(callback ConstHandler) bool {\n\treturn true\n}\nfn startup[T](options Options) bool {\n\tr := Router{}\n\treturn r.accept(options.handler)\n}\nfn main() {\n\tprintln(startup[int](Options{handler: fn (const_event &C.native_event) {}}).str())\n}\n')
+	assert field_matching == 'true'
+	run_bad(v3_bin, 'bad_callback_struct_field_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler ConstHandler\n}\nstruct Router {}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T](options Options) {\n\tr := Router{}\n\tr.accept(options.handler)\n}\nfn main() {\n\tstartup[int](Options{handler: fn (const_event &C.native_event) {}})\n}\n',
+		'cannot use')
+	reassigned_matching := run_good(v3_bin, 'good_reassigned_callback_local_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tr := Router{}\n\tmut callback := ConstHandler(const_handler)\n\tcallback = PlainHandler(plain_handler)\n\treturn r.accept(callback)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert reassigned_matching == 'true'
+	run_bad(v3_bin, 'bad_reassigned_callback_local_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tmut callback := PlainHandler(plain_handler)\n\tcallback = ConstHandler(const_handler)\n\tr.accept(callback)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	indexed_matching := run_good(v3_bin, 'good_indexed_callback_param_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(callback ConstHandler) bool {\n\treturn true\n}\nfn startup[T](callbacks []ConstHandler) bool {\n\tr := Router{}\n\treturn r.accept(callbacks[0])\n}\nfn main() {\n\tprintln(startup[int]([fn (const_event &C.native_event) {}]).str())\n}\n')
+	assert indexed_matching == 'true'
+	run_bad(v3_bin, 'bad_indexed_callback_param_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T](callbacks []ConstHandler) {\n\tr := Router{}\n\tr.accept(callbacks[0])\n}\nfn main() {\n\tstartup[int]([fn (const_event &C.native_event) {}])\n}\n',
+		'cannot use')
 }
 
 fn test_fn_literal_nested_named_callback_param_matches_alias_inside_generic_fn() {
@@ -2272,6 +2290,18 @@ fn test_fn_literal_callback_alias_lookup_uses_declaration_module() {
 		'm/m.v':     'module m\n\nimport dep as d\n\n@[params]\npub struct Options {\npub:\n\thandler fn (const_event &d.Event)\n}\npub struct Service {}\npub fn (s Service) open(opts Options) bool {\n\treturn true\n}\n'
 	}, 'main.v')
 	assert field_aliased_import == 'true'
+	run_bad_project(v3_bin, 'bad_imported_callback_factory_uses_declaration_file', {
+		'main.v':    'module main\n\nimport dep\nimport m\n\ntype ConstHandler = fn (event &dep.Event)\ntype PlainHandler = fn (event &dep.Event)\nstruct Router {}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tr.accept(m.make_handler())\n}\nfn main() {\n\tstartup[int]()\n}\n'
+		'dep/dep.v': 'module dep\n\npub struct Event {}\npub type ConstHandler = fn (const_event &Event)\n'
+		'm/m.v':     'module m\n\nimport dep { ConstHandler, Event }\n\npub fn make_handler() ConstHandler {\n\treturn fn (const_event &Event) {}\n}\n'
+	}, 'main.v', 'cannot use')
+	imported_factory_matching := run_good_project(v3_bin,
+		'good_imported_callback_factory_uses_declaration_file', {
+		'main.v':    'module main\n\nimport dep\nimport m\n\ntype PlainHandler = fn (const_event &dep.Event)\nstruct Router {}\nfn (r Router) accept(callback dep.PlainHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tr := Router{}\n\treturn r.accept(m.make_handler())\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n'
+		'dep/dep.v': 'module dep\n\npub struct Event {}\npub type PlainHandler = fn (event &Event)\n'
+		'm/m.v':     'module m\n\nimport dep { Event, PlainHandler }\n\npub fn make_handler() PlainHandler {\n\treturn fn (event &Event) {}\n}\n'
+	}, 'main.v')
+	assert imported_factory_matching == 'true'
 }
 
 fn test_fn_literal_nested_shared_callback_param_matches_alias_inside_generic_fn() {

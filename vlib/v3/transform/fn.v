@@ -12829,6 +12829,15 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 			}
 			return
 		}
+		.index {
+			if !t.fn_literal_cast_target_contains_callback(t.node_type(arg_id)) {
+				return
+			}
+			if source_type := t.callback_index_source_element_type(node) {
+				result << source_type
+			}
+			return
+		}
 		.block, .match_branch, .lock_expr {
 			if node.children_count > 0 {
 				t.collect_fn_literal_source_type_texts(t.a.child(&node, node.children_count - 1), mut
@@ -12874,8 +12883,15 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 			return
 		}
 		.selector {
-			if isnil(t.tc) || node.children_count == 0 || !t.tc.expr_is_method_value(arg_id)
+			if node.children_count == 0
 				|| !t.fn_literal_cast_target_contains_callback(t.node_type(arg_id)) {
+				return
+			}
+			if source_type := t.raw_selector_field_type(arg_id) {
+				result << t.callback_source_alias_expansion(source_type, 0)
+				return
+			}
+			if isnil(t.tc) || !t.tc.expr_is_method_value(arg_id) {
 				return
 			}
 			method_name := t.resolve_receiver_method_name(t.a.child(&node, 0), node.value)
@@ -12943,7 +12959,7 @@ fn (t &Transformer) callback_local_decl_rhs(name string, before_id flat.NodeId) 
 				continue
 			}
 			decl := t.a.nodes[child_id]
-			if decl.kind != .decl_assign {
+			if decl.kind !in [.decl_assign, .assign] || (decl.kind == .assign && decl.op != .assign) {
 				continue
 			}
 			for j := 0; j + 1 < decl.children_count; j += 2 {
@@ -12988,6 +13004,41 @@ fn (t &Transformer) named_callback_source_type(name string) ?string {
 	return t.callback_decl_source_type(name, false)
 }
 
+fn (t &Transformer) callback_index_source_element_type(node flat.Node) ?string {
+	if node.children_count == 0 {
+		return none
+	}
+	base_id := t.a.child(&node, 0)
+	mut container_type := t.raw_var_type_for_expr(base_id) or { '' }
+	if container_type.len == 0 {
+		base := t.a.nodes[int(base_id)]
+		if base.kind == .call {
+			container_type = t.callback_call_source_return_type(base_id, base) or { '' }
+		}
+	}
+	if container_type.len == 0 {
+		container_type = t.node_type(base_id)
+	}
+	container_type = t.callback_source_alias_expansion(container_type, 0).trim_space()
+	for container_type.starts_with('&') || container_type.starts_with('shared ') {
+		container_type = if container_type.starts_with('&') {
+			container_type[1..].trim_space()
+		} else {
+			container_type[7..].trim_space()
+		}
+	}
+	if container_type.starts_with('[]') {
+		return container_type[2..].trim_space()
+	}
+	if t.is_fixed_array_type(container_type) {
+		return fixed_array_elem_type(container_type)
+	}
+	if container_type.starts_with('map[') {
+		return t.map_value_type(container_type)
+	}
+	return none
+}
+
 fn (t &Transformer) callback_call_source_return_type(id flat.NodeId, node flat.Node) ?string {
 	if node.children_count == 0 {
 		return none
@@ -13027,8 +13078,9 @@ fn (t &Transformer) callback_call_source_return_type(id flat.NodeId, node flat.N
 		for candidate in candidates {
 			if raw_return := t.tc.fn_ret_type_texts[candidate] {
 				module_name := t.tc.fn_type_modules[candidate] or { t.current_source_module() }
-				return t.callback_source_return_expansion(t.decl_param_type_in_module(raw_return,
-					module_name))
+				file_name := t.tc.fn_type_files[candidate] or { '' }
+				return t.callback_source_return_expansion(t.decl_param_type_in_file(raw_return,
+					module_name, file_name))
 			}
 		}
 	}
