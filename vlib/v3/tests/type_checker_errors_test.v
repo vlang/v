@@ -1925,6 +1925,15 @@ fn test_fn_literal_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_parenthesized_const_fn_literal_plain_alias_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler PlainHandler) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept((fn (const_event &C.native_event) {}))\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	dumped := run_good(v3_bin, 'good_dumped_const_fn_literal_alias_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler ConstHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut r := Router{}\n\treturn r.accept(dump(fn (const_event &C.native_event) {}))\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert dumped.ends_with('true')
+	run_bad(v3_bin, 'bad_dumped_const_fn_literal_plain_alias_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (mut r Router) accept(handler PlainHandler) {}\nfn startup[T]() {\n\tmut r := Router{}\n\tr.accept(dump(fn (const_event &C.native_event) {}))\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	run_bad(v3_bin, 'bad_dumped_struct_callback_field_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler PlainHandler\n}\nfn apply[T](options Options) {}\nfn startup[T]() {\n\tapply[int](dump(Options{\n\t\thandler: fn (const_event &C.native_event) {}\n\t}))\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 }
 
 fn test_callback_identifier_c_abi_modes_inside_generic_fn() {
@@ -1983,6 +1992,20 @@ fn test_callback_identifier_c_abi_modes_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_indexed_callback_param_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T](callbacks []ConstHandler) {\n\tr := Router{}\n\tr.accept(callbacks[0])\n}\nfn main() {\n\tstartup[int]([fn (const_event &C.native_event) {}])\n}\n',
 		'cannot use')
+	selected_field_matching := run_good(v3_bin,
+		'good_reassigned_selected_callback_field_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\nmut:\n\thandler PlainHandler\n}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tr := Router{}\n\tmut options := Options{\n\t\thandler: ConstHandler(const_handler)\n\t}\n\toptions.handler = PlainHandler(plain_handler)\n\treturn r.accept(options.handler)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert selected_field_matching == 'true'
+	run_bad(v3_bin, 'bad_reassigned_selected_callback_field_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\nmut:\n\thandler PlainHandler\n}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tmut options := Options{\n\t\thandler: PlainHandler(plain_handler)\n\t}\n\toptions.handler = ConstHandler(const_handler)\n\tr.accept(options.handler)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	selected_index_matching := run_good(v3_bin,
+		'good_reassigned_selected_callback_index_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tr := Router{}\n\tmut callbacks := [ConstHandler(const_handler)]\n\tcallbacks[0] = PlainHandler(plain_handler)\n\treturn r.accept(callbacks[0])\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert selected_index_matching == 'true'
+	run_bad(v3_bin, 'bad_reassigned_selected_callback_index_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tmut callbacks := [PlainHandler(plain_handler)]\n\tcallbacks[0] = ConstHandler(const_handler)\n\tr.accept(callbacks[0])\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 	control_flow_matching := run_good(v3_bin, 'good_control_flow_reassigned_callback_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tr := Router{}\n\tmut callback := PlainHandler(plain_handler)\n\tif true {\n\t\tcallback = PlainHandler(plain_handler)\n\t}\n\tmatch 1 {\n\t\t1 { callback = PlainHandler(plain_handler) }\n\t\telse {}\n\t}\n\tfor _ in 0 .. 1 {\n\t\tcallback = PlainHandler(plain_handler)\n\t}\n\treturn r.accept(callback)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	assert control_flow_matching == 'true'
@@ -2023,6 +2046,12 @@ fn test_callback_identifier_c_abi_modes_inside_generic_fn() {
 	assert as_matching == 'true'
 	run_bad(v3_bin, 'bad_as_callback_alias_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\ntype Value = ConstHandler | int\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T](value Value) {\n\tr := Router{}\n\tr.accept(value as ConstHandler)\n}\nfn main() {\n\tstartup[int](ConstHandler(fn (const_event &C.native_event) {}))\n}\n',
+		'cannot use')
+	container_as_matching := run_good(v3_bin, 'good_as_callback_container_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\ntype ConstHandlers = []ConstHandler\ntype Value = ConstHandlers | int\nstruct C.native_event {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](handlers ConstHandlers) bool {\n\treturn handlers.len == 1\n}\nfn startup[T](value Value) bool {\n\treturn consume[int](value as ConstHandlers)\n}\nfn main() {\n\thandlers := ConstHandlers([ConstHandler(const_handler)])\n\tprintln(startup[int](Value(handlers)).str())\n}\n')
+	assert container_as_matching == 'true'
+	run_bad(v3_bin, 'bad_as_callback_container_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\ntype ConstHandlers = []ConstHandler\ntype Value = ConstHandlers | int\nstruct C.native_event {}\nfn consume[T](handlers []PlainHandler) {}\nfn startup[T](value Value) {\n\tconsume[int](value as ConstHandlers)\n}\nfn main() {\n\tstartup[int](Value(ConstHandlers{}))\n}\n',
 		'cannot use')
 	local_containers_matching := run_good(v3_bin, 'good_local_callback_containers_in_generic',
 		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn consume_array[T](handlers []ConstHandler) bool {\n\treturn handlers.len == 1\n}\nfn consume_map[T](handlers map[string]ConstHandler) bool {\n\treturn handlers.len == 1\n}\nfn startup[T]() bool {\n\tarray_handlers := [fn (const_event &C.native_event) {}]\n\tmap_handlers := {"event": fn (const_event &C.native_event) {}}\n\treturn consume_array[int](array_handlers) && consume_map[int](map_handlers)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
@@ -2309,6 +2338,18 @@ fn test_fn_literal_container_callback_modes_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_struct_literal_const_fn_param_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler PlainHandler\n}\nfn apply[T](options Options) {}\nfn startup[T]() {\n\tapply[int](Options{\n\t\thandler: fn (const_event &C.native_event) {}\n\t})\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	assoc_matching := run_good(v3_bin, 'good_struct_update_const_fn_param_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\tfirst ConstHandler\n\tsecond ConstHandler\n}\nfn apply[T](options Options) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tbase := Options{\n\t\tfirst: fn (const_event &C.native_event) {}\n\t\tsecond: fn (const_event &C.native_event) {}\n\t}\n\treturn apply[int](Options{\n\t\t...base\n\t\tsecond: fn (const_event &C.native_event) {}\n\t})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert assoc_matching == 'true'
+	run_bad(v3_bin, 'bad_struct_update_override_const_fn_param_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler PlainHandler\n}\nfn apply[T](options Options) {}\nfn startup[T]() {\n\tbase := Options{\n\t\thandler: fn (event &C.native_event) {}\n\t}\n\tapply[int](Options{\n\t\t...base\n\t\thandler: fn (const_event &C.native_event) {}\n\t})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	run_bad(v3_bin, 'bad_struct_update_base_const_fn_param_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\tfirst PlainHandler\n\tsecond PlainHandler\n}\nfn apply[T](options Options) {}\nfn startup[T]() {\n\tbase := Options{\n\t\tfirst: fn (const_event &C.native_event) {}\n\t\tsecond: fn (event &C.native_event) {}\n\t}\n\tapply[int](Options{\n\t\t...base\n\t\tsecond: fn (event &C.native_event) {}\n\t})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	overridden_base := run_good(v3_bin, 'good_struct_update_ignores_overridden_base_callback',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler PlainHandler\n}\nfn apply[T](options Options) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tbase := Options{\n\t\thandler: fn (const_event &C.native_event) {}\n\t}\n\treturn apply[int](Options{\n\t\t...base\n\t\thandler: fn (event &C.native_event) {}\n\t})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert overridden_base == 'true'
 	positional_matching := run_good(v3_bin,
 		'good_positional_struct_literal_const_fn_param_in_generic',
 		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler ConstHandler\n}\nfn apply[T](options Options) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\treturn apply[int](Options{fn (const_event &C.native_event) {}})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')

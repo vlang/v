@@ -12564,7 +12564,7 @@ fn (mut t Transformer) fn_literal_container_modes_compatible_seen(arg_id flat.No
 	}
 	seen[int(arg_id)] = true
 	node := t.a.nodes[int(arg_id)]
-	if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
+	if node.kind in [.paren, .expr_stmt, .dump_expr] && node.children_count == 1 {
 		return t.fn_literal_container_modes_compatible_seen(t.a.child(&node, 0), expected_type, mut
 			seen)
 	}
@@ -12599,6 +12599,10 @@ fn (mut t Transformer) fn_literal_container_modes_compatible_seen(arg_id flat.No
 		&& t.fn_literal_cast_target_contains_callback(node.value) {
 		return t.fn_literal_container_modes_compatible_seen(t.a.child(&node, 0), node.value, mut
 			seen)
+	}
+	if node.kind == .as_expr && t.callback_source_type_is_container(node.value)
+		&& t.callback_source_type_is_container(expected_type) {
+		return t.callback_container_source_types_compatible(node.value, expected_type)
 	}
 	if node.kind == .ident && t.fn_literal_cast_target_contains_callback(expected_type) {
 		mut handled := false
@@ -12707,28 +12711,27 @@ fn (mut t Transformer) fn_literal_container_modes_compatible_seen(arg_id flat.No
 	}
 	if node.kind == .struct_init {
 		struct_type := if node.value.len > 0 { node.value } else { source_expected }
-		info := t.lookup_struct_info(struct_type) or { StructInfo{} }
-		for i in 0 .. node.children_count {
+		return t.fn_literal_struct_fields_modes_compatible(node, struct_type, 0, map[string]bool{})
+	}
+	if node.kind == .assoc {
+		struct_type := if node.value.len > 0 { node.value } else { source_expected }
+		mut overridden := map[string]bool{}
+		for i in 1 .. node.children_count {
 			field := t.a.child_node(&node, i)
-			if field.kind != .field_init || field.children_count == 0 {
-				continue
+			if field.kind == .field_init && field.value.len > 0 {
+				overridden[field.value] = true
 			}
-			field_name := if field.value.len > 0 {
-				field.value
-			} else if i < info.fields.len {
-				info.fields[i].name
-			} else {
-				continue
-			}
-			field_type := t.lookup_struct_field_type(struct_type, field_name) or { continue }
-			source_field_type := t.lookup_struct_field_source_type(struct_type, field_name) or {
-				field_type
-			}
-			expected_field_type := t.fn_type_with_compatible_source_modes(source_field_type,
-				field_type)
-			if !t.fn_literal_container_element_mode_compatible(t.a.child(field, 0),
-				expected_field_type) {
-				return false
+		}
+		if !t.fn_literal_struct_fields_modes_compatible(node, struct_type, 1, map[string]bool{}) {
+			return false
+		}
+		if node.children_count > 0 {
+			if compatible := t.fn_literal_struct_base_modes_compatible_seen(t.a.child(&node, 0),
+				struct_type, overridden, mut seen)
+			{
+				if !compatible {
+					return false
+				}
 			}
 		}
 		return true
@@ -12761,6 +12764,114 @@ fn (mut t Transformer) fn_literal_container_modes_compatible_seen(arg_id flat.No
 				return false
 			}
 			i += 2
+		}
+		return true
+	}
+	return none
+}
+
+fn (mut t Transformer) fn_literal_struct_fields_modes_compatible(node flat.Node, struct_type string, start int, ignored map[string]bool) bool {
+	info := t.lookup_struct_info(struct_type) or { StructInfo{} }
+	for i in start .. node.children_count {
+		field := t.a.child_node(&node, i)
+		if field.kind != .field_init || field.children_count == 0 {
+			continue
+		}
+		field_index := i - start
+		field_name := if field.value.len > 0 {
+			field.value
+		} else if field_index < info.fields.len {
+			info.fields[field_index].name
+		} else {
+			continue
+		}
+		if ignored[field_name] {
+			continue
+		}
+		field_type := t.lookup_struct_field_type(struct_type, field_name) or { continue }
+		source_field_type := t.lookup_struct_field_source_type(struct_type, field_name) or {
+			field_type
+		}
+		expected_field_type := t.fn_type_with_compatible_source_modes(source_field_type, field_type)
+		if !t.fn_literal_container_element_mode_compatible(t.a.child(field, 0), expected_field_type) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut t Transformer) fn_literal_struct_base_modes_compatible_seen(arg_id flat.NodeId, struct_type string, ignored map[string]bool, mut seen map[int]bool) ?bool {
+	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len || seen[int(arg_id)] {
+		return none
+	}
+	seen[int(arg_id)] = true
+	node := t.a.nodes[int(arg_id)]
+	if node.kind in [.paren, .expr_stmt, .dump_expr] && node.children_count == 1 {
+		return t.fn_literal_struct_base_modes_compatible_seen(t.a.child(&node, 0), struct_type,
+			ignored, mut seen)
+	}
+	if node.kind in [.block, .match_branch, .lock_expr] && node.children_count > 0 {
+		return t.fn_literal_struct_base_modes_compatible_seen(t.a.child(&node,
+			node.children_count - 1), struct_type, ignored, mut seen)
+	}
+	if node.kind in [.if_expr, .match_stmt, .or_expr] {
+		mut handled := false
+		start := if node.kind == .or_expr { 0 } else { 1 }
+		for i in start .. node.children_count {
+			if compatible := t.fn_literal_struct_base_modes_compatible_seen(t.a.child(&node, i),
+				struct_type, ignored, mut seen)
+			{
+				handled = true
+				if !compatible {
+					return false
+				}
+			}
+		}
+		return if handled { true } else { none }
+	}
+	if node.kind == .cast_expr && node.children_count == 1
+		&& t.fn_literal_cast_target_contains_callback(node.value) {
+		cast_type := if node.value.len > 0 { node.value } else { struct_type }
+		return t.fn_literal_struct_base_modes_compatible_seen(t.a.child(&node, 0), cast_type,
+			ignored, mut seen)
+	}
+	if node.kind == .ident {
+		mut handled := false
+		for rhs_id in t.callback_local_reaching_rhs_ids(node.value, arg_id) {
+			if compatible := t.fn_literal_struct_base_modes_compatible_seen(rhs_id, struct_type,
+				ignored, mut seen)
+			{
+				handled = true
+				if !compatible {
+					return false
+				}
+			}
+		}
+		return if handled { true } else { none }
+	}
+	if node.kind == .struct_init {
+		base_type := if node.value.len > 0 { node.value } else { struct_type }
+		return t.fn_literal_struct_fields_modes_compatible(node, base_type, 0, ignored)
+	}
+	if node.kind == .assoc {
+		assoc_type := if node.value.len > 0 { node.value } else { struct_type }
+		if !t.fn_literal_struct_fields_modes_compatible(node, assoc_type, 1, ignored) {
+			return false
+		}
+		mut inherited_ignored := ignored.clone()
+		for i in 1 .. node.children_count {
+			field := t.a.child_node(&node, i)
+			if field.kind == .field_init && field.value.len > 0 {
+				inherited_ignored[field.value] = true
+			}
+		}
+		if node.children_count == 0 {
+			return true
+		}
+		if compatible := t.fn_literal_struct_base_modes_compatible_seen(t.a.child(&node, 0),
+			assoc_type, inherited_ignored, mut seen)
+		{
+			return compatible
 		}
 		return true
 	}
@@ -12980,7 +13091,7 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 	seen[int(arg_id)] = true
 	node := t.a.nodes[int(arg_id)]
 	match node.kind {
-		.paren, .expr_stmt {
+		.paren, .expr_stmt, .dump_expr {
 			if node.children_count == 1 {
 				t.collect_fn_literal_source_type_texts(t.a.child(&node, 0), mut result, mut seen)
 			}
@@ -13009,6 +13120,11 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 		}
 		.index {
 			if !t.fn_literal_cast_target_contains_callback(t.node_type(arg_id)) {
+				return
+			}
+			before := result.len
+			t.collect_callback_member_reaching_source_type_texts(arg_id, mut result, mut seen)
+			if result.len > before {
 				return
 			}
 			if source_type := t.callback_index_source_element_type(node) {
@@ -13065,6 +13181,11 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 				|| !t.fn_literal_cast_target_contains_callback(t.node_type(arg_id)) {
 				return
 			}
+			before := result.len
+			t.collect_callback_member_reaching_source_type_texts(arg_id, mut result, mut seen)
+			if result.len > before {
+				return
+			}
 			if source_type := t.raw_selector_field_type(arg_id) {
 				result << t.callback_source_alias_expansion(source_type, 0)
 				return
@@ -13094,6 +13215,281 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 	}
 	ret := if node.typ.len > 0 && node.typ != 'void' { ' ${node.typ}' } else { '' }
 	result << 'fn (${params.join(', ')})${ret}'
+}
+
+fn (t &Transformer) collect_callback_member_reaching_source_type_texts(arg_id flat.NodeId, mut result []string, mut seen map[int]bool) {
+	root_name := t.callback_lvalue_root_name(arg_id) or { return }
+	result_start := result.len
+	for source_id in t.callback_local_reaching_rhs_ids(root_name, arg_id) {
+		if int(source_id) < 0 || int(source_id) >= t.a.nodes.len {
+			continue
+		}
+		source := t.a.nodes[int(source_id)]
+		if source.kind in [.index_assign, .selector_assign] && source.op == .assign
+			&& source.children_count >= 2 {
+			lhs_id := t.a.child(&source, 0)
+			if t.callback_member_lvalues_may_alias(arg_id, lhs_id) {
+				if t.callback_member_lvalues_exact(arg_id, lhs_id)
+					&& t.callback_assignment_definitely_precedes_use(source_id, arg_id) {
+					result.trim(result_start)
+				}
+				t.collect_fn_literal_source_type_texts(t.a.child(&source, 1), mut result, mut seen)
+			}
+			continue
+		}
+		mut projected := []flat.NodeId{}
+		mut projected_seen := map[string]bool{}
+		t.collect_callback_projected_member_source_ids(source_id, arg_id, mut projected, mut
+			projected_seen)
+		for projected_id in projected {
+			t.collect_fn_literal_source_type_texts(projected_id, mut result, mut seen)
+		}
+	}
+}
+
+fn (t &Transformer) collect_callback_projected_member_source_ids(source_id flat.NodeId, access_id flat.NodeId, mut result []flat.NodeId, mut seen map[string]bool) {
+	if int(source_id) < 0 || int(source_id) >= t.a.nodes.len || int(access_id) < 0
+		|| int(access_id) >= t.a.nodes.len {
+		return
+	}
+	key := '${int(source_id)}:${int(access_id)}'
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	access := t.a.nodes[int(access_id)]
+	if access.kind == .ident {
+		if source_id !in result {
+			result << source_id
+		}
+		return
+	}
+	if access.kind == .paren && access.children_count == 1 {
+		t.collect_callback_projected_member_source_ids(source_id, t.a.child(&access, 0), mut
+			result, mut seen)
+		return
+	}
+	if access.kind !in [.selector, .index] || access.children_count == 0 {
+		return
+	}
+	mut base_sources := []flat.NodeId{}
+	t.collect_callback_projected_member_source_ids(source_id, t.a.child(&access, 0), mut
+		base_sources, mut seen)
+	for base_source_id in base_sources {
+		t.collect_callback_projected_one_step_source_ids(base_source_id, access_id, mut result, mut
+			seen)
+	}
+}
+
+fn (t &Transformer) collect_callback_projected_one_step_source_ids(source_id flat.NodeId, access_id flat.NodeId, mut result []flat.NodeId, mut seen map[string]bool) {
+	if int(source_id) < 0 || int(source_id) >= t.a.nodes.len || int(access_id) < 0
+		|| int(access_id) >= t.a.nodes.len {
+		return
+	}
+	key := 'step:${int(source_id)}:${int(access_id)}'
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	source := t.a.nodes[int(source_id)]
+	access := t.a.nodes[int(access_id)]
+	if source.kind in [.paren, .expr_stmt, .dump_expr, .cast_expr, .as_expr]
+		&& source.children_count == 1 {
+		t.collect_callback_projected_one_step_source_ids(t.a.child(&source, 0), access_id, mut
+			result, mut seen)
+		return
+	}
+	if source.kind in [.block, .match_branch, .lock_expr] && source.children_count > 0 {
+		t.collect_callback_projected_one_step_source_ids(t.a.child(&source,
+			source.children_count - 1), access_id, mut result, mut seen)
+		return
+	}
+	if source.kind in [.if_expr, .match_stmt, .or_expr] {
+		start := if source.kind == .or_expr { 0 } else { 1 }
+		for i in start .. source.children_count {
+			t.collect_callback_projected_one_step_source_ids(t.a.child(&source, i), access_id, mut
+				result, mut seen)
+		}
+		return
+	}
+	if source.kind == .ident {
+		for rhs_id in t.callback_local_reaching_rhs_ids(source.value, source_id) {
+			t.collect_callback_projected_one_step_source_ids(rhs_id, access_id, mut result, mut
+				seen)
+		}
+		return
+	}
+	if access.kind == .selector {
+		if source.kind == .assoc && source.children_count > 0 {
+			for i in 1 .. source.children_count {
+				field := t.a.child_node(&source, i)
+				if field.kind == .field_init && field.value == access.value
+					&& field.children_count > 0 {
+					result << t.a.child(field, 0)
+					return
+				}
+			}
+			t.collect_callback_projected_one_step_source_ids(t.a.child(&source, 0), access_id, mut
+				result, mut seen)
+			return
+		}
+		if source.kind == .struct_init {
+			info := t.lookup_struct_info(source.value) or { StructInfo{} }
+			for i in 0 .. source.children_count {
+				field := t.a.child_node(&source, i)
+				field_name := if field.value.len > 0 {
+					field.value
+				} else if i < info.fields.len {
+					info.fields[i].name
+				} else {
+					continue
+				}
+				if field.kind == .field_init && field_name == access.value
+					&& field.children_count > 0 {
+					result << t.a.child(field, 0)
+				}
+			}
+		}
+		return
+	}
+	if access.kind != .index {
+		return
+	}
+	if source.kind == .array_literal {
+		index := t.callback_static_index_value(access)
+		if index >= 0 && index < int(source.children_count) {
+			result << t.a.child(&source, index)
+			return
+		}
+		for i in 0 .. source.children_count {
+			child_id := t.a.child(&source, i)
+			child := t.a.nodes[int(child_id)]
+			if child.kind != .prefix || child.value != '...' {
+				result << child_id
+			}
+		}
+		return
+	}
+	if source.kind == .array_init {
+		for i in 0 .. source.children_count {
+			field := t.a.child_node(&source, i)
+			if field.kind == .field_init && field.value == 'init' && field.children_count > 0 {
+				result << t.a.child(field, 0)
+			}
+		}
+		return
+	}
+	if source.kind == .map_init {
+		mut i := 1
+		for i < source.children_count {
+			result << t.a.child(&source, i)
+			i += 2
+		}
+	}
+}
+
+fn (t &Transformer) callback_lvalue_root_name(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident {
+		return node.value
+	}
+	if node.kind in [.selector, .index, .paren] && node.children_count > 0 {
+		return t.callback_lvalue_root_name(t.a.child(&node, 0))
+	}
+	return none
+}
+
+fn (t &Transformer) callback_member_lvalues_may_alias(access_id flat.NodeId, lhs_id flat.NodeId) bool {
+	access_key := t.expr_key(access_id)
+	lhs_key := t.expr_key(lhs_id)
+	if access_key.len > 0 && access_key == lhs_key {
+		return true
+	}
+	if int(access_id) < 0 || int(access_id) >= t.a.nodes.len || int(lhs_id) < 0
+		|| int(lhs_id) >= t.a.nodes.len {
+		return false
+	}
+	access := t.a.nodes[int(access_id)]
+	lhs := t.a.nodes[int(lhs_id)]
+	if access.kind != .index || lhs.kind != .index || access.children_count < 2
+		|| lhs.children_count < 2
+		|| t.expr_key(t.a.child(&access, 0)) != t.expr_key(t.a.child(&lhs, 0)) {
+		return false
+	}
+	access_index := t.a.child_node(&access, 1)
+	lhs_index := t.a.child_node(&lhs, 1)
+	if access_index.kind in [.int_literal, .string_literal, .char_literal, .enum_val]
+		&& lhs_index.kind in [.int_literal, .string_literal, .char_literal, .enum_val] {
+		return access_index.kind == lhs_index.kind && access_index.value == lhs_index.value
+	}
+	return true
+}
+
+fn (t &Transformer) callback_member_lvalues_exact(access_id flat.NodeId, lhs_id flat.NodeId) bool {
+	if int(access_id) < 0 || int(access_id) >= t.a.nodes.len || int(lhs_id) < 0
+		|| int(lhs_id) >= t.a.nodes.len {
+		return false
+	}
+	access := t.a.nodes[int(access_id)]
+	lhs := t.a.nodes[int(lhs_id)]
+	if access.kind == .paren && access.children_count == 1 {
+		return t.callback_member_lvalues_exact(t.a.child(&access, 0), lhs_id)
+	}
+	if lhs.kind == .paren && lhs.children_count == 1 {
+		return t.callback_member_lvalues_exact(access_id, t.a.child(&lhs, 0))
+	}
+	if access.kind != lhs.kind {
+		return false
+	}
+	if access.kind == .ident {
+		return access.value == lhs.value
+	}
+	if access.kind == .selector && access.children_count > 0 && lhs.children_count > 0 {
+		return access.value == lhs.value
+			&& t.callback_member_lvalues_exact(t.a.child(&access, 0), t.a.child(&lhs, 0))
+	}
+	if access.kind == .index && access.children_count >= 2 && lhs.children_count >= 2 {
+		access_index := t.a.child_node(&access, 1)
+		lhs_index := t.a.child_node(&lhs, 1)
+		return access_index.kind in [.int_literal, .string_literal, .char_literal, .enum_val]
+			&& lhs_index.kind == access_index.kind && lhs_index.value == access_index.value
+			&& t.callback_member_lvalues_exact(t.a.child(&access, 0), t.a.child(&lhs, 0))
+	}
+	return false
+}
+
+fn (t &Transformer) callback_assignment_definitely_precedes_use(assignment_id flat.NodeId, use_id flat.NodeId) bool {
+	assignment_source := t.callback_source_node_id(assignment_id) or { return false }
+	mut cursor := t.callback_source_node_id(use_id) or { return false }
+	assignment_parent := t.source_parent_id(assignment_source)
+	if assignment_parent < 0 {
+		return false
+	}
+	for _ in 0 .. t.source_parent_ids.len {
+		parent_id := t.source_parent_id(cursor)
+		if parent_id < 0 {
+			return false
+		}
+		if parent_id == assignment_parent {
+			return true
+		}
+		cursor = parent_id
+	}
+	return false
+}
+
+fn (t &Transformer) callback_static_index_value(node flat.Node) int {
+	if node.children_count < 2 {
+		return -1
+	}
+	index := t.a.child_node(&node, 1)
+	if index.kind != .int_literal {
+		return -1
+	}
+	return index.value.int()
 }
 
 fn (t &Transformer) callback_local_reaching_rhs_ids(name string, before_id flat.NodeId) []flat.NodeId {
