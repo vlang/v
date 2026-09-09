@@ -65,6 +65,20 @@ fn main() {
 	assert c_code.contains('take((Optional_i64){.ok = true, .value = 1})'), c_code
 }
 
+fn test_optional_reference_string_interpolation_preserves_wrapper() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'optional_reference_string_interpolation', "fn stringify(value ?int) string {
+	return '\${&value}'
+}
+
+fn main() {
+	println(stringify(?int(42)))
+	println(stringify(?int(none)))
+}
+")
+	assert out == '&Option(42)\n&Option(&nil)'
+}
+
 fn test_optional_params_field_inside_result_function_keeps_field_wrapper() {
 	v3_bin := build_v3()
 	source := 'enum Filter {

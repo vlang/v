@@ -4940,10 +4940,16 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		return t.wrap_string_conversion(arr, '[]${elem_type}')
 	}
 	if t.is_optional_type_name(clean_typ) {
-		optional_str := t.wrap_optional_string_conversion(expr, clean_typ)
+		mut optional_expr := expr
 		if is_ref {
-			return t.string_plus(t.make_string_literal('&'), optional_str)
+			expr_node := t.a.nodes[int(expr)]
+			if expr_node.kind == .prefix && expr_node.op == .amp && expr_node.children_count == 1 {
+				// `&option` prints an address prefix around the option value. The option
+				// conversion itself must still read the wrapper, rather than its C address.
+				optional_expr = t.a.child(&expr_node, 0)
+			}
 		}
+		optional_str := t.wrap_optional_string_conversion(optional_expr, clean_typ, is_ref)
 		return optional_str
 	}
 	if clean_typ.len == 0 || clean_typ == 'unknown' {
@@ -8667,7 +8673,7 @@ fn (t &Transformer) map_str_fixed_len_for_type(typ string) int {
 }
 
 // wrap_optional_string_conversion transforms wrap optional string conversion data for transform.
-fn (mut t Transformer) wrap_optional_string_conversion(expr flat.NodeId, typ string) flat.NodeId {
+fn (mut t Transformer) wrap_optional_string_conversion(expr flat.NodeId, typ string, is_ref bool) flat.NodeId {
 	opt_type := t.qualify_optional_type(typ)
 	mut value_type := t.optional_base_type(opt_type)
 	if value_type.len == 0 || value_type == 'void' {
@@ -8677,8 +8683,11 @@ fn (mut t Transformer) wrap_optional_string_conversion(expr flat.NodeId, typ str
 	res_name := t.new_temp('opt_str_text')
 	t.pending_stmts << t.make_decl_assign_typed(opt_name, t.transform_optional_wrapper_expr(expr), opt_type)
 	pointer_payload := value_type.starts_with('&')
-	option_prefix := if pointer_payload { '&Option(' } else { 'Option(' }
+	option_prefix := if pointer_payload || is_ref { '&Option(' } else { 'Option(' }
 	t.pending_stmts << t.make_decl_assign_typed(res_name, t.make_string_literal('${option_prefix}none)'), 'string')
+	if is_ref {
+		t.pending_stmts << t.make_assign(t.make_ident(res_name), t.make_string_literal('${option_prefix}&nil)'))
+	}
 	value := t.make_selector(t.make_ident(opt_name), 'value', value_type)
 	display_value := if pointer_payload {
 		deref := t.make_prefix(.mul, value)
