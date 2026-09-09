@@ -5333,12 +5333,18 @@ fn (mut g FlatGen) emit_interface_struct(name string) {
 	g.emit_struct_option_typedefs(iface_fields)
 	cn := g.cname(name)
 	g.writeln('struct ${cn} {')
-	// Keep the common interface header ABI-compatible with the regular C backend.
-	// `_object` either owns a boxed concrete value or borrows a concrete pointer.
+	// Keep the common interface payload in the first word. `_object` either owns
+	// a boxed concrete value or borrows a concrete pointer.
 	g.writeln('\tvoid* _object;')
-	g.writeln('\tint _typ;')
-	g.writeln('\tvoid* _methods;')
-	g.writeln('\tbool _object_is_boxed;')
+	// The tag and ownership flag share the second pointer-sized word. The
+	// pointer member fixes the union's size and alignment on every target.
+	g.writeln('\tunion {')
+	g.writeln('\t\tvoid* _interface_meta;')
+	g.writeln('\t\tstruct {')
+	g.writeln('\t\t\tu32 _typ : 31;')
+	g.writeln('\t\t\tu32 _object_is_boxed : 1;')
+	g.writeln('\t\t};')
+	g.writeln('\t};')
 	if g.is_ierror_type_name(name) {
 		g.writeln('\tstring message;')
 		g.writeln('\tint code;')

@@ -196,7 +196,7 @@ pub fn exercise() {
 	assert os.exists(generated_c_path)
 	generated_c := os.read_file(generated_c_path)!
 	assert generated_c.contains('extern const u32 _maker__MyInterface_maker__MyImplementor_index;')
-	assert generated_c.contains('if (x->val._typ == _maker__MyInterface_maker__MyImplementor_index) {')
+	assert generated_c.contains('if (_V_INTERFACE_TYPE_INDEX(x->val._typ) == _maker__MyInterface_maker__MyImplementor_index) {')
 	assert !generated_c.contains('enum { _maker__MyInterface_maker__MyImplementor_index_enum =')
 	assert !generated_c.contains('case _maker__MyInterface_maker__MyImplementor_index_enum:')
 }

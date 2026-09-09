@@ -214,7 +214,7 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 	}
 	// A conversion into a boxed sum type (`Expr(EmptyExpr(0))`) is a box, not a C cast: the
 	// concrete variant value is stored behind `_object` with its own type id. Casting the
-	// variant straight to the `{_object,_typ,_methods}` struct is invalid C, and matters for
+	// variant straight to the `{_object,_typ}` struct is invalid C, and matters for
 	// primitive-alias variants (`type EmptyExpr = u8`) that cannot be reinterpret-cast at all.
 	if g.selfhost && !fastc_is_pointer_type(c_type) && fastc_trim_pointer_suffix(c_type) in g.sum_types {
 		inner_type := g.infer_expression_type(inner_tokens) or { '' }
@@ -234,7 +234,7 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 				fastc_box_expression(variant, boxed_inner)
 			}
 			return FastcRenderedExpression{
-				source: '(${c_type}){._object=${object}, ._typ=__v_typeid_${variant}, ._methods=NULL}'
+				source: '(${c_type}){._object=${object}, ._typ=__v_typeid_${variant}}'
 				typ: c_type
 			}
 		}

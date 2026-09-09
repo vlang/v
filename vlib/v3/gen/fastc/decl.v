@@ -1003,7 +1003,7 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 			// A variant literal (`value Primitive = Null{}`) defaulting a sum-type or
 			// interface field must be boxed into the field's representation, mirroring
 			// the assignment/argument paths; a bare `(Variant){}` is not assignable to a
-			// boxed `{_object,_typ,_methods}` field.
+			// boxed `{_object,_typ}` field.
 			default_actual_type := gen.last_expression_type
 			if gen.should_box_variant(field.typ, default_actual_type) {
 				field.default_value = gen.interface_value_expression(field.typ, default_actual_type, field.default_value)
@@ -2810,7 +2810,7 @@ fn fastc_emit_interface_declaration(mut scan scanner.Scanner, source_file FastcS
 		return error('fastc parser does not support interface `${name}` body in ${source_file.path}')
 	}
 	tok = fastc_skip_balanced_tokens(mut scan, tok, .lcbr, .rcbr)!
-	out.writeln('struct ${c_name} { void *_object; u32 _typ; void *_methods; };')
+	out.writeln('struct ${c_name} { void *_object; uintptr_t _typ; };')
 	out.writeln('')
 	return tok
 }
@@ -2873,9 +2873,8 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 		}
 		// A sum type is lowered to the same boxed representation as an interface, so
 		// construction (variant boxing) and `match` (dispatch on `_typ`) reuse the
-		// interface machinery. The `_methods` slot is unused but keeps the layout
-		// identical so `interface_value_expression` applies unchanged.
-		out.writeln('typedef struct { void *_object; u32 _typ; void *_methods; } ${c_name};')
+		// interface machinery.
+		out.writeln('typedef struct { void *_object; uintptr_t _typ; } ${c_name};')
 		sum_types[c_name] = true
 	} else if fastc_primitive_c_type(name) == none && declared_kinds[key] == .alias_ {
 		out.writeln('typedef ${base} ${c_name};')

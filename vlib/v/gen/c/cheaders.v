@@ -1055,6 +1055,9 @@ typedef int64_t float_literal;
 typedef unsigned char* byteptr;
 typedef void* voidptr;
 typedef char* charptr;
+static inline u32 _V_INTERFACE_TYPE_INDEX(const void* type_table) {
+	return type_table == 0 ? 0U : *(const u32*)type_table;
+}
 typedef u8 array_fixed_byte_300 [300];
 typedef struct sync__Channel* chan;
 #ifndef CUSTOM_DEFINE_no_bool

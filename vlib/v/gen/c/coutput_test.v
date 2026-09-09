@@ -343,8 +343,8 @@ fn test_main_error_propagation_panic_branches_do_not_fall_through() {
 		return
 	}
 	for panic_call in [
-		'builtin__panic_result_not_set(IError_name_table[',
-		'builtin__panic_option_not_set( IError_name_table[',
+		'builtin__panic_result_not_set(((struct _IError_interface_methods*)',
+		'builtin__panic_option_not_set( ((struct _IError_interface_methods*)',
 	] {
 		assert compilation.output.contains(panic_call)
 		branch_tail := compilation.output.all_after(panic_call).all_before('}')

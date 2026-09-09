@@ -452,10 +452,10 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				&& (typ_sym.info as ast.Interface).defines_method(expr.name) {
 				rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 				receiver_type_name := util.no_dots(rec_cc_type)
-				g.gowrappers.write_string2('${c_name(receiver_type_name)}_name_table[', 'arg->arg0')
+				g.gowrappers.write_string2('((struct _${c_name(receiver_type_name)}_interface_methods*)', 'arg->arg0')
 				dot_or_ptr := g.dot_or_ptr(unwrapped_rec_type)
 				mname := c_name(expr.name)
-				g.gowrappers.write_string2('${dot_or_ptr}_typ]._method_${mname}(', 'arg->arg0')
+				g.gowrappers.write_string2('${dot_or_ptr}_typ)->_method_${mname}(', 'arg->arg0')
 				g.gowrappers.write_string('${dot_or_ptr}_object')
 			} else if typ_sym.kind == .struct && expr.is_field {
 				g.gowrappers.write_string('arg->arg0')

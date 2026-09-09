@@ -1145,7 +1145,7 @@ struct FastcTypeDeclarations {
 	// order. Used to unroll `$for x in Enum.values { ... }`.
 	enum_field_names map[string][]string
 	// Declared C names of sum types (`type X = A | B`). They share the boxed
-	// `{void*_object; u32 _typ;}` layout with interfaces; construction boxes a
+	// `{void*_object; uintptr_t _typ;}` layout with interfaces; construction boxes a
 	// variant and `match` dispatches on `_typ`.
 	sum_types map[string]bool
 	// Declared variants per sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`
