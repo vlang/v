@@ -248,6 +248,51 @@ fn test_issue_27281_boundary_rejects_unrelated_parent_module() {
 	assert res.output.contains('cannot import module "foo" (not found)'), res.output
 }
 
+fn test_issue_27281_test_lookup_rejects_sibling_above_boundary() {
+	workspace := issue_27281_boundary_workspace('test_lookup_sibling')
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	project := os.join_path(workspace, 'project')
+	foo_dir := os.join_path(project, 'foo')
+	bar_dir := os.join_path(project, 'bar')
+	os.rmdir_all(workspace) or {}
+	os.mkdir_all(foo_dir) or { panic(err) }
+	os.mkdir_all(bar_dir) or { panic(err) }
+	issue_20147_write_file(os.join_path(foo_dir, '.v.mod.stop'), '')
+	issue_20147_write_file(os.join_path(foo_dir, 'foo.v'), 'module foo\n')
+	issue_20147_write_file(os.join_path(foo_dir, 'foo_test.v'),
+		['module foo_test', '', 'import bar', '', 'fn test_bar_is_not_visible() {', '\tassert bar.present', '}'].join_lines() +
+		'\n')
+	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'),
+
+		['module bar', '', 'pub const present = true'].join_lines() + '\n')
+	res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(foo_dir)}')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('cannot import module "bar" (not found)'), res.output
+}
+
+fn test_issue_27281_external_only_test_directory_keeps_module_prefix() {
+	workspace := issue_27281_boundary_workspace('external_only_test')
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	project := os.join_path(workspace, 'project')
+	foo_dir := os.join_path(project, 'foo')
+	bar_dir := os.join_path(foo_dir, 'bar')
+	os.rmdir_all(workspace) or {}
+	os.mkdir_all(bar_dir) or { panic(err) }
+	issue_20147_write_file(os.join_path(project, '.v.mod.stop'), '')
+	issue_20147_write_file(os.join_path(foo_dir, 'foo_test.v'),
+		['module foo_test', '', 'import foo.bar', '', 'fn test_nested_module_name() {', "\tassert bar.module_name() == 'foo.bar'", '}'].join_lines() +
+		'\n')
+	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'),
+		['module bar', '', 'pub fn module_name() string {', '\treturn @MOD', '}'].join_lines() +
+		'\n')
+	res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(foo_dir)}')
+	assert res.exit_code == 0, res.output
+}
+
 fn issue_27281_base_url_workspace() string {
 	return os.join_path(os.vtmp_dir(), 'issue_27281_uppercase_base_url')
 }

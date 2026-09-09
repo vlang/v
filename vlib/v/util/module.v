@@ -303,11 +303,17 @@ fn compilation_path_is_module_root(pref_ &pref.Preferences, path string) bool {
 				return true
 			}
 		}
-		return false
+		// An external test module can be the only source at the module root.
+		return pref_.is_test
 	}
 	entries := os.ls(path) or { return false }
 	for source_path in active_module_source_files(pref_, path, entries, pref_.is_test) {
-		if source_file_module_name(source_path) or { '' } == expected_module {
+		source_module := source_file_module_name(source_path) or { continue }
+		if source_module == expected_module {
+			return true
+		}
+		if pref_.is_test && source_module == '${expected_module}_test' {
+			_ := test_source_filter_alias(os.base(source_path)) or { continue }
 			return true
 		}
 	}

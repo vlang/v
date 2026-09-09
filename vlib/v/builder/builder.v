@@ -940,6 +940,21 @@ fn folder_has_module_search_boundary(folder string) bool {
 	return '.v.mod.stop' in entries || '.git' in entries || '.hg' in entries || '.svn' in entries
 }
 
+fn module_search_boundary_folder(path string) string {
+	mut folder := if os.is_dir(path) { path } else { os.dir(path) }
+	for {
+		if folder_has_module_search_boundary(folder) {
+			return comparable_real_path(folder)
+		}
+		parent := os.dir(folder)
+		if parent == folder || parent == '' {
+			return ''
+		}
+		folder = parent
+	}
+	return ''
+}
+
 fn candidate_vmod_matches_import(candidate_path string, mod string) bool {
 	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(candidate_path)
@@ -956,6 +971,12 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 	// support @VEXEROOT/v.mod relative paths:
 	mut mcache := vmod.get_cache()
 	resolved_fpath := os.real_path(fpath)
+	module_search_boundary := module_search_boundary_folder(resolved_fpath)
+	test_parent_lookup := if b.pref.is_test {
+		comparable_real_path(os.dir(b.compiled_dir))
+	} else {
+		''
+	}
 	vmod_file_location := mcache.get_by_file(resolved_fpath)
 	// Anchor the importer to the OUTERMOST enclosing `v.mod`, not the nearest
 	// one. A file at `<project>/modules/<name>/file.v` carries the vendored
@@ -1012,6 +1033,14 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
 		if found_path := find_module_path_from_search_root(search_path, mod) {
+			if test_parent_lookup != '' && comparable_real_path(search_path) == test_parent_lookup
+				&& module_search_boundary != ''
+				&& !path_is_at_or_inside(comparable_real_path(found_path), module_search_boundary) {
+				if b.pref.is_verbose {
+					println('  << skipped ${found_path} (outside the test project boundary) .')
+				}
+				continue
+			}
 			if b.candidate_belongs_to_foreign_project(found_path, importer_vmod_folder, mod) {
 				if b.pref.is_verbose {
 					println('  << skipped ${found_path} (belongs to a different v.mod project) .')
