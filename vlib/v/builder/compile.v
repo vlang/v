@@ -51,18 +51,44 @@ fn compile_with_optional_external_c_error_report(pref_ &pref.Preferences, backen
 		}
 	}
 	mut pref_ref := unsafe { pref_ }
+	if failed := report {
+		// Hash only retry inputs, from the scanner's exact bytes. This lets the stable
+		// build prove it compiled the same sources before reporting a V3-only failure.
+		pref_ref.capture_source_digests = failed.input_digests_complete
+	}
 	resolve_ccompiler_type_and_pkgconfig_mode(mut pref_ref)
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref_)
 	if b.should_rebuild() {
 		b.rebuild(backend_cb)
 	}
+	// Confirm the established compiler accepted the program before consuming the
+	// fallback report. With `-check-syntax`, an invalid program makes the backend
+	// callback return normally (it only stops after the parser), so exit_on_invalid_syntax
+	// is what turns that into a failure. Consuming the report earlier would submit a bug
+	// claiming the stable compiler built a program it actually rejected — both compilers
+	// failed. On exit(1) here the at_exit cleanup registered above drops the staged report.
+	b.exit_on_invalid_syntax()
 	if failed := report {
 		// Do this before run_compiled_executable_and_exit: successful builds and run
 		// commands exit there, so the caller cannot reliably submit the report later.
-		consume_external_c_error_bug_report(pref_, failed)
+		match b.v3_fallback_input_status(failed) {
+			.unchanged {
+				consume_external_c_error_bug_report(pref_, failed)
+			}
+			.unavailable {
+				// V3 failed before it could stage a complete parser manifest. The stable
+				// build succeeded, so preserve the documented fallback notice, but do not
+				// submit an unverified V3-only failure report.
+				print_v3_fallback_notice('', false, false, false)
+			}
+			.changed {
+				// The stable compiler succeeded, but not from the exact source snapshot V3
+				// parsed. Do not classify or upload this as a V3-only failure. The staged
+				// report is simply left unconsumed, so the at_exit cleanup drops it silently.
+			}
+		}
 	}
-	b.exit_on_invalid_syntax()
 	// running does not require the parsers anymore
 	unsafe { b.myfree() }
 	b.run_compiled_executable_and_exit()
@@ -355,6 +381,108 @@ pub fn (v Builder) get_builtin_files() []string {
 	verror('`builtin/` not included on module lookup path.\nDid you forget to add vlib to the path? (Use @vlib for default vlib)')
 }
 
+fn test_file_has_module_declaration(content string) bool {
+	mut i := 0
+	for i < content.len {
+		c := content[i]
+		if c in [` `, `\t`, `\n`, `\r`] {
+			i++
+			continue
+		}
+		if c == `#` && i + 1 < content.len && content[i + 1] == `!` {
+			for i < content.len && content[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if c == `/` && i + 1 < content.len && content[i + 1] == `/` {
+			for i < content.len && content[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if c == `/` && i + 1 < content.len && content[i + 1] == `*` {
+			i += 2
+			for i + 1 < content.len && !(content[i] == `*` && content[i + 1] == `/`) {
+				i++
+			}
+			if i + 1 >= content.len {
+				return false
+			}
+			i += 2
+			continue
+		}
+		if c == `[` || (c == `@` && i + 1 < content.len && content[i + 1] == `[`) {
+			attribute_start := if c == `@` { i + 1 } else { i }
+			i = test_file_attribute_end(content, attribute_start)
+			if i < 0 {
+				return false
+			}
+			continue
+		}
+		if !content[i..].starts_with('module') || i + 6 >= content.len {
+			return false
+		}
+		return content[i + 6] in [` `, `\t`]
+	}
+	return false
+}
+
+fn test_file_attribute_end(content string, start int) int {
+	mut depth := 0
+	mut quote := u8(0)
+	mut quote_is_raw := false
+	mut i := start
+	for i < content.len {
+		c := content[i]
+		if quote != 0 {
+			if !quote_is_raw && c == `\\` {
+				i += 2
+				continue
+			}
+			if c == quote {
+				quote = 0
+				quote_is_raw = false
+			}
+			i++
+			continue
+		}
+		if c == `'` || c == `"` {
+			quote = c
+			quote_is_raw = i > 0 && content[i - 1] == `r`
+			i++
+			continue
+		}
+		if c == `/` && i + 1 < content.len && content[i + 1] == `/` {
+			for i < content.len && content[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if c == `/` && i + 1 < content.len && content[i + 1] == `*` {
+			i += 2
+			for i + 1 < content.len && !(content[i] == `*` && content[i + 1] == `/`) {
+				i++
+			}
+			if i + 1 >= content.len {
+				return -1
+			}
+			i += 2
+			continue
+		}
+		if c == `[` {
+			depth++
+		} else if c == `]` {
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		}
+		i++
+	}
+	return -1
+}
+
 pub fn (v &Builder) get_user_files() []string {
 	if v.pref.path in ['vlib/builtin', 'vlib/strconv', 'vlib/strings', 'vlib/hash']
 		|| v.pref.path.ends_with('vlib/builtin') {
@@ -424,19 +552,7 @@ pub fn (v &Builder) get_user_files() []string {
 	mut is_internal_module_test := false
 	if is_test {
 		tcontent := util.read_file(dir) or { verror('${dir} does not exist') }
-		slines := tcontent.split_into_lines()
-		for sline in slines {
-			line := sline.trim_space()
-			if line.len > 2 {
-				if line[0] == `/` && line[1] == `/` {
-					continue
-				}
-				if line.starts_with('module ') {
-					is_internal_module_test = true
-					break
-				}
-			}
-		}
+		is_internal_module_test = test_file_has_module_declaration(tcontent)
 	}
 	if is_internal_module_test {
 		// v volt/slack_test.v: compile all .v files to get the environment

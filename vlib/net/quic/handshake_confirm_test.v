@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_handshake_completion_state_starts_all_false() {

@@ -2,6 +2,10 @@ module naming
 
 import strings
 
+// Keep this marker synchronized with v3.flat's static type-method name codec.
+const static_type_method_name_marker = '@static@'
+const internal_symbol_c_prefix = '__v3_internal_symbol_'
+
 // reserved_words is a set (not a list) so `name in reserved_words` is an O(1)
 // hash lookup. c_name() runs on every emitted identifier, so a linear scan here
 // is costly.
@@ -115,6 +119,9 @@ const libc_collisions = {
 
 // c_name returns the C identifier used for a V symbol or type name.
 pub fn c_name(name string) string {
+	if name.contains(static_type_method_name_marker) {
+		return static_type_method_c_name(name)
+	}
 	if name.starts_with('C.') {
 		if name[2..].contains('.') {
 			return sanitize(name)
@@ -135,13 +142,39 @@ pub fn c_name(name string) string {
 		return 'v_exit'
 	}
 	n := sanitize(name)
+	mut result := n
 	if n in reserved_words || n in libc_collisions || is_string_literal_symbol(n) {
 		if name.contains('@') {
-			return '_v_${n}'
+			result = '_v_${n}'
+		} else {
+			result = 'v_${n}'
 		}
-		return 'v_${n}'
 	}
-	return n
+	// Keep the C namespace reserved for internal symbols disjoint from every
+	// spelling that a source-level name can sanitize to.
+	if result.starts_with(internal_symbol_c_prefix) {
+		return '${internal_symbol_c_prefix}source_${result}'
+	}
+	return result
+}
+
+// c_name_needs_internal_namespace reports names that cannot use cgen's direct
+// identifier fast paths because c_name applies the internal-symbol partition.
+pub fn c_name_needs_internal_namespace(name string) bool {
+	return name.contains(static_type_method_name_marker)
+		|| name.starts_with(internal_symbol_c_prefix)
+}
+
+fn static_type_method_c_name(name string) string {
+	hex := '0123456789abcdef'
+	mut b := strings.new_builder(internal_symbol_c_prefix.len + 7 + name.len * 2)
+	b.write_string(internal_symbol_c_prefix)
+	b.write_string('static_')
+	for c in name.bytes() {
+		b.write_u8(hex[c >> 4])
+		b.write_u8(hex[c & 15])
+	}
+	return b.str()
 }
 
 fn is_string_literal_symbol(name string) bool {
@@ -158,6 +191,7 @@ fn is_string_literal_symbol(name string) bool {
 
 // sanitize converts a V symbol or type spelling into a C identifier spelling
 // without applying reserved-word or libc collision prefixes.
+@[direct_array_access]
 pub fn sanitize(name string) string {
 	mut dot_count := 0
 	for i in 0 .. name.len {
@@ -173,20 +207,25 @@ pub fn sanitize(name string) string {
 	if dot_count == 0 {
 		return name
 	}
-	mut out := []u8{len: name.len + dot_count}
+	out_len := name.len + dot_count
+	// The returned string owns a standalone allocation, not managed array storage.
+	mut out := unsafe { malloc_noscan(out_len + 1) }
 	mut dst := 0
 	for i in 0 .. name.len {
 		c := name[i]
 		if c == `.` {
-			out[dst] = `_`
-			out[dst + 1] = `_`
+			unsafe {
+				out[dst] = `_`
+				out[dst + 1] = `_`
+			}
 			dst += 2
 		} else {
-			out[dst] = c
+			unsafe { out[dst] = c }
 			dst++
 		}
 	}
-	return out.bytestr()
+	unsafe { out[out_len] = 0 }
+	return unsafe { tos(out, out_len) }
 }
 
 fn sanitize_complex(name string) string {

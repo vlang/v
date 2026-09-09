@@ -27,7 +27,7 @@ fn stream_result_from_guard(mut guard MySQLConnectionGuard) !StreamResult {
 	return StreamResult{
 		state: &StreamResultState{
 			result: result
-			guard:  guard
+			guard: guard
 			fields: fields_from_result(result)
 		}
 	}
@@ -109,8 +109,7 @@ pub fn (mut r StreamResult) next_batch(size int) ![]NullableRow {
 			if unsafe { row_data[i] == nil } {
 				row.vals << none
 			} else {
-				length := checked_stream_value_length(C.v_mysql_fetch_column_length(state.result,
-					u32(i))) or {
+				length := checked_stream_value_length(C.v_mysql_fetch_column_length(state.result, u32(i))) or {
 					state.close()
 					return err
 				}
@@ -162,7 +161,7 @@ mut:
 	guard    MySQLConnectionGuard
 	fields   []Field
 	lengths  voidptr
-	is_null  []bool
+	is_null  []C.v_mysql_bool
 	binds    []C.MYSQL_BIND
 	executed bool
 	closed   bool
@@ -186,7 +185,7 @@ pub fn (db &DB) prepare_stream(query string) !StreamStmt {
 	}
 	return StreamStmt{
 		state: &StreamStmtState{
-			stmt:  stmt
+			stmt: stmt
 			guard: guard
 		}
 	}
@@ -212,8 +211,8 @@ pub fn (mut stmt StreamStmt) execute(params []string) ! {
 	mut params_bind := []C.MYSQL_BIND{cap: params.len}
 	for param in params {
 		params_bind << C.MYSQL_BIND{
-			buffer_type:   mysql_type_string
-			buffer:        param.str
+			buffer_type: mysql_type_string
+			buffer: param.str
 			buffer_length: u32(param.len)
 		}
 	}
@@ -242,12 +241,12 @@ pub fn (mut stmt StreamStmt) execute(params []string) ! {
 		state.close()
 		return error('db.mysql: failed to allocate stream result lengths')
 	}
-	state.is_null = []bool{len: num_fields}
+	state.is_null = []C.v_mysql_bool{len: num_fields}
 	state.binds = []C.MYSQL_BIND{cap: num_fields}
 	for i in 0 .. num_fields {
 		state.binds << C.MYSQL_BIND{
 			buffer_type: mysql_type_string
-			is_null:     unsafe { &state.is_null[i] }
+			is_null: unsafe { &state.is_null[i] }
 		}
 	}
 	for i in 0 .. num_fields {
@@ -300,7 +299,7 @@ pub fn (mut stmt StreamStmt) next_batch(size int) ![]NullableRow {
 			vals: []?string{cap: state.fields.len}
 		}
 		for i in 0 .. state.fields.len {
-			if state.is_null[i] {
+			if state.is_null[i] != 0 {
 				row.vals << none
 				continue
 			}
@@ -318,10 +317,10 @@ pub fn (mut stmt StreamStmt) next_batch(size int) ![]NullableRow {
 				return error('db.mysql: failed to allocate streamed column data')
 			}
 			mut column_bind := C.MYSQL_BIND{
-				buffer_type:   mysql_type_string
-				buffer:        data
+				buffer_type: mysql_type_string
+				buffer: data
 				buffer_length: u32(length)
-				is_null:       unsafe { &state.is_null[i] }
+				is_null: unsafe { &state.is_null[i] }
 			}
 			C.v_mysql_bind_set_length_at(&column_bind, state.lengths, u32(i))
 			column_code := C.mysql_stmt_fetch_column(state.stmt, &column_bind, i, 0)

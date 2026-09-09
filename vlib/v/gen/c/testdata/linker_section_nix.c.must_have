@@ -1,1 +1,3 @@
 VV_LOC void main__test(void) __attribute__ ((section ("foo")));
+VV_LOC void main__test_opaque_section(void) __attribute__ ((section ("A\\nB")));
+__attribute__ ((section ("C\\nD"))) opaque_section_global

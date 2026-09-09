@@ -380,7 +380,7 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 	// registration's victim. The victim may come from either pool: a budget
 	// already filled entirely by idle h1 connections must still be freeable
 	// here, not just when h2_conns itself has another idle entry.
-	mut evicted := t.evict_oldest_idle_locked(key)
+	mut evicted := t.evict_oldest_idle_locked(key, '')
 	t.mu.unlock()
 
 	call.mu.lock()
@@ -394,6 +394,10 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 	}
 	if evicted.h1 != unsafe { nil } {
 		evicted.h1.close_conn()
+	}
+	if evicted.h3 != unsafe { nil } {
+		evicted.h3.shutdown_when_idle()
+		evicted.h3.release()
 	}
 	if evicted.h2 != unsafe { nil } {
 		evicted.h2.shutdown_when_idle()

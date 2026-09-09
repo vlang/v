@@ -4,6 +4,7 @@ module gg
 // Compile with `-d gg_multiwindow`; this test exercises the opt-in facade.
 import os
 import time
+import sokol.gfx
 import sokol.sapp
 import x.multiwindow
 import gg.testdata.multiwindow_probe_watchdog
@@ -25,6 +26,7 @@ fn test_multiwindow_new_app_reports_core_capabilities() {
 	assert caps.focus_events
 	assert caps.drop_events
 	assert caps.touch_events
+	assert caps.readback
 	assert !caps.cursor_shapes
 	assert !caps.interactive_move_resize
 	assert !caps.native_decorations
@@ -305,6 +307,8 @@ fn test_multiwindow_x11_capabilities_match_new_app_render_policy() {
 	assert caps.multi_window == app_caps.multi_window
 	assert caps.owner_queue == app_caps.owner_queue
 	assert caps.explicit_swapchain == app_caps.explicit_swapchain
+	assert caps.readback
+	assert app_caps.readback
 	assert caps.x11 == app_caps.x11
 	assert caps.gl == app_caps.gl
 
@@ -347,6 +351,636 @@ fn test_multiwindow_x11_runtime_create_destroy_when_display_is_available() {
 			return
 		}
 		assert false, 'x11 app creation succeeded on an unsupported OS'
+	}
+}
+
+struct X11OffscreenReadbackTestState {
+mut:
+	image                    WindowImageId
+	attachments              WindowAttachmentsId
+	readback                 WindowReadbackId
+	expected_submitted_frame u64
+	pending_after_request    bool
+	requested                bool
+}
+
+struct X11OffscreenReadbackFailureTestState {
+mut:
+	image       WindowImageId
+	attachments WindowAttachmentsId
+	readback    WindowReadbackId
+	batch_epoch u64
+	requested   bool
+}
+
+fn test_multiwindow_x11_public_readback_capability_requires_renderer_authority() {
+	$if linux && x_multiwindow_x11 ? {
+		if os.getenv('DISPLAY') == '' {
+			return
+		}
+		mut app := new_app(backend: .x11, require_renderer: false) or { return }
+		window := app.create_window(
+			title:  'V gg.App X11 readback capability without renderer'
+			width:  32
+			height: 24
+		)!
+		capabilities := app.window_readback_capabilities(window)!
+		assert !capabilities.offscreen_image
+		assert capabilities.window_capture
+		app.stop()!
+	}
+}
+
+fn test_multiwindow_x11_public_managed_offscreen_readback_when_display_is_available() {
+	$if linux && x_multiwindow_x11 ? {
+		if os.getenv('DISPLAY') == '' {
+			eprintln('skip gg x11 offscreen readback test: DISPLAY is not set')
+			return
+		}
+		mut app := new_app(backend: .x11, require_renderer: true) or {
+			if err.msg() == 'multiwindow: x11 open display failed' {
+				eprintln('skip gg x11 offscreen readback test: DISPLAY could not be opened')
+				return
+			}
+			panic(err.msg())
+		}
+		results := chan WindowReadbackResult{cap: 1}
+		mut state := &X11OffscreenReadbackTestState{}
+		window := app.create_window(
+			title:       'V gg.App X11 offscreen readback'
+			width:       48
+			height:      48
+			redraw_mode: .continuous
+			init_fn:     fn [mut state] (mut context WindowInitContext) ! {
+				context.with_resources(fn [mut state] (mut resources WindowResourceContext) ! {
+					state.image = resources.make_image(&gfx.ImageDesc{
+						render_target: true
+						width:         4
+						height:        4
+						pixel_format:  .rgba8
+						sample_count:  1
+					})!
+					state.attachments = resources.make_attachments(WindowAttachmentsConfig{
+						colors: [state.image]
+					})!
+				})!
+			}
+			frame_fn:    fn [mut state] (mut context WindowContext) ! {
+				if state.requested {
+					return
+				}
+				state.requested = true
+				context.with_offscreen_sgl(WindowOffscreenPassConfig{
+					attachments: state.attachments
+					action:      gfx.create_clear_pass_action(0, 0, 0, 1)
+				}, fn (mut drawing WindowSglContext) ! {
+					drawing.defaults()
+					drawing.matrix_mode_projection()
+					drawing.load_identity()
+					drawing.ortho(0, 4, 4, 0, -1, 1)
+					drawing.begin_quads()
+					drawing.v2f_c4b(0, 0, 255, 0, 0, 255)
+					drawing.v2f_c4b(2, 0, 255, 0, 0, 255)
+					drawing.v2f_c4b(2, 2, 255, 0, 0, 255)
+					drawing.v2f_c4b(0, 2, 255, 0, 0, 255)
+					drawing.v2f_c4b(2, 0, 0, 255, 0, 255)
+					drawing.v2f_c4b(4, 0, 0, 255, 0, 255)
+					drawing.v2f_c4b(4, 1, 0, 255, 0, 255)
+					drawing.v2f_c4b(2, 1, 0, 255, 0, 255)
+					drawing.v2f_c4b(2, 1, 255, 255, 0, 255)
+					drawing.v2f_c4b(4, 1, 255, 255, 0, 255)
+					drawing.v2f_c4b(4, 2, 255, 255, 0, 255)
+					drawing.v2f_c4b(2, 2, 255, 255, 0, 255)
+					drawing.v2f_c4b(0, 2, 0, 0, 255, 255)
+					drawing.v2f_c4b(2, 2, 0, 0, 255, 255)
+					drawing.v2f_c4b(2, 4, 0, 0, 255, 255)
+					drawing.v2f_c4b(0, 4, 0, 0, 255, 255)
+					drawing.v2f_c4b(2, 2, 255, 255, 255, 255)
+					drawing.v2f_c4b(4, 2, 255, 255, 255, 255)
+					drawing.v2f_c4b(4, 4, 255, 255, 255, 255)
+					drawing.v2f_c4b(2, 4, 255, 255, 255, 255)
+					drawing.end()
+				})!
+				state.expected_submitted_frame = context.info.submitted_frame + 1
+				state.readback = context.request_image_readback(state.image, WindowReadbackConfig{
+					rect: WindowPixelRect{
+						x:      2
+						y:      0
+						width:  2
+						height: 2
+					}
+				})!
+				state.pending_after_request =
+					context.app.pending_image_readbacks.any(window_readback_id_from_core(it.id) == state.readback)
+			}
+			cleanup_fn:  fn [mut state] (mut context WindowCleanupContext) ! {
+				context.with_resources(fn [mut state] (mut resources WindowResourceContext) ! {
+					resources.retire_attachments(state.attachments)!
+					resources.retire_image(state.image)!
+				})!
+			}
+		)!
+		capabilities := app.window_readback_capabilities(window)!
+		assert capabilities.offscreen_image
+		assert !capabilities.window_capture
+		app.run(
+			readback_fn: fn [results] (result WindowReadbackResult, mut app App) ! {
+				results <- result
+				app.stop()!
+			}
+		)!
+		result := <-results
+		assert result.id == state.readback
+		assert result.window == window
+		assert result.status == .ready
+		assert state.pending_after_request
+		assert result.submitted_frame == state.expected_submitted_frame
+		assert result.width == 2
+		assert result.height == 2
+		assert result.stride == 8
+		assert result.pixels_rgba8.len == 16
+		for offset in [0, 4] {
+			assert result.pixels_rgba8[offset] == 0
+			assert result.pixels_rgba8[offset + 1] == 255
+			assert result.pixels_rgba8[offset + 2] == 0
+			assert result.pixels_rgba8[offset + 3] == 255
+		}
+		for offset in [8, 12] {
+			assert result.pixels_rgba8[offset] == 255
+			assert result.pixels_rgba8[offset + 1] == 255
+			assert result.pixels_rgba8[offset + 2] == 0
+			assert result.pixels_rgba8[offset + 3] == 255
+		}
+	} $else {
+		return
+	}
+}
+
+fn test_multiwindow_x11_failed_offscreen_readback_batch_is_terminal_exactly_once() {
+	$if linux && x_multiwindow_x11 ? {
+		if os.getenv('DISPLAY') == '' {
+			return
+		}
+		mut app := new_app(backend: .x11, require_renderer: true) or { return }
+		mut state := &X11OffscreenReadbackFailureTestState{}
+		window := app.create_window(
+			title:       'V gg.App X11 failed offscreen readback'
+			width:       48
+			height:      48
+			redraw_mode: .continuous
+			init_fn:     fn [mut state] (mut context WindowInitContext) ! {
+				context.with_resources(fn [mut state] (mut resources WindowResourceContext) ! {
+					state.image = resources.make_image(&gfx.ImageDesc{
+						render_target: true
+						width:         4
+						height:        4
+						pixel_format:  .rgba8
+						sample_count:  1
+					})!
+					state.attachments = resources.make_attachments(WindowAttachmentsConfig{
+						colors: [state.image]
+					})!
+				})!
+			}
+			frame_fn:    fn [mut state] (mut context WindowContext) ! {
+				if state.requested {
+					return
+				}
+				state.requested = true
+				context.with_offscreen_sgl(WindowOffscreenPassConfig{
+					attachments: state.attachments
+					action:      gfx.create_clear_pass_action(1, 0, 0, 1)
+				}, fn (mut drawing WindowSglContext) ! {
+					drawing.defaults()
+				})!
+				state.batch_epoch = context.app.active_batch_epoch
+				state.readback =
+					context.request_image_readback(state.image, WindowReadbackConfig{})!
+				assert context.app.pending_image_readbacks.any(window_readback_id_from_core(it.id) == state.readback)
+				return error('injected failure before X11 offscreen submission')
+			}
+			cleanup_fn:  fn [mut state] (mut context WindowCleanupContext) ! {
+				context.with_resources(fn [mut state] (mut resources WindowResourceContext) ! {
+					resources.retire_attachments(state.attachments)!
+					resources.retire_image(state.image)!
+				})!
+			}
+		)!
+		mut run_error := ''
+		app.run() or { run_error = err.msg() }
+		assert run_error.contains('injected failure before X11 offscreen submission')
+		core_results := app.core.drain_readback_events()!
+		assert core_results.len == 1
+		result := window_readback_result_from_core(core_results[0])
+		assert result.id == state.readback
+		assert result.window == window
+		assert result.status == .failed
+		assert result.submitted_frame == 0
+		assert result.pixels_rgba8.len == 0
+		assert result.error.contains('injected failure before X11 offscreen submission')
+		assert app.pending_image_readbacks.len == 0
+		app.fail_linux_gl_image_readbacks_for_batch(state.batch_epoch,
+			'injected failure before X11 offscreen submission')!
+		assert app.core.drain_readback_events()!.len == 0
+		app.stop() or {
+			assert err.msg().contains('injected failure before X11 offscreen submission')
+		}
+		assert app.core.drain_readback_events()!.len == 0
+	}
+}
+
+struct X11WindowCaptureTestState {
+mut:
+	window                   WindowId
+	frames                   int
+	requested                int
+	completed                int
+	readback                 WindowReadbackId
+	expected_submitted_frame u64
+	outstanding              bool
+	post_pending             bool
+}
+
+fn x11_window_capture_test_color(frame u64, x int, y int) Color {
+	quadrant := if y < 2 {
+		if x < 2 { 0 } else { 1 }
+	} else {
+		if x < 2 { 2 } else { 3 }
+	}
+	if frame % 2 == 0 {
+		return match quadrant {
+			0 {
+				Color{
+					r: 255
+				}
+			}
+			1 {
+				Color{
+					g: 255
+				}
+			}
+			2 {
+				Color{
+					b: 255
+				}
+			}
+			else {
+				Color{
+					r: 255
+					g: 255
+				}
+			}
+		}
+	}
+	return match quadrant {
+		0 {
+			Color{
+				g: 255
+				b: 255
+			}
+		}
+		1 {
+			Color{
+				r: 255
+				b: 255
+			}
+		}
+		2 {
+			Color{
+				r: 255
+				g: 255
+				b: 255
+			}
+		}
+		else {
+			Color{
+				r: 255
+				g: 128
+			}
+		}
+	}
+}
+
+fn x11_window_capture_test_quad(mut drawing WindowSglContext, x0 f32, y0 f32, x1 f32, y1 f32, color Color) {
+	drawing.v2f_c4b(x0, y0, color.r, color.g, color.b, color.a)
+	drawing.v2f_c4b(x1, y0, color.r, color.g, color.b, color.a)
+	drawing.v2f_c4b(x1, y1, color.r, color.g, color.b, color.a)
+	drawing.v2f_c4b(x0, y1, color.r, color.g, color.b, color.a)
+}
+
+fn x11_window_capture_test_draw(mut context WindowContext, frame u64) ! {
+	context.with_swapchain_sgl(gfx.create_clear_pass_action(0, 0, 0, 1), fn [frame] (mut drawing WindowSglContext) ! {
+		drawing.defaults()
+		drawing.matrix_mode_projection()
+		drawing.load_identity()
+		drawing.ortho(0, 64, 48, 0, -1, 1)
+		drawing.begin_quads()
+		x11_window_capture_test_quad(mut drawing, 8, 6, 10, 8, x11_window_capture_test_color(frame,
+			0, 0))
+		x11_window_capture_test_quad(mut drawing, 10, 6, 12, 8, x11_window_capture_test_color(frame,
+			3, 0))
+		x11_window_capture_test_quad(mut drawing, 8, 8, 10, 10, x11_window_capture_test_color(frame,
+			0, 3))
+		x11_window_capture_test_quad(mut drawing, 10, 8, 12, 10, x11_window_capture_test_color(frame,
+			3, 3))
+		drawing.end()
+	})!
+}
+
+fn x11_window_capture_test_request(mut app App, window WindowId, mut state X11WindowCaptureTestState, submitted_frame u64) ! {
+	assert app.window_operation_capability(window, .window_capture)!.support == .available
+	assert app.window_readback_capabilities(window)!.window_capture
+	state.expected_submitted_frame = submitted_frame + 1
+	state.readback = app.request_window_capture(window, WindowReadbackConfig{
+		rect: WindowPixelRect{
+			x:      8
+			y:      6
+			width:  4
+			height: 4
+		}
+	})!
+	state.requested++
+	state.outstanding = true
+}
+
+fn run_x11_public_window_capture_test(external bool) ! {
+	$if linux && x_multiwindow_x11 ? {
+		if os.getenv('DISPLAY') == '' {
+			eprintln('skip gg x11 window capture test: DISPLAY is not set')
+			return
+		}
+		mut app := new_app(backend: .x11, require_renderer: true) or {
+			if err.msg() == 'multiwindow: x11 open display failed' {
+				eprintln('skip gg x11 window capture test: DISPLAY could not be opened')
+				return
+			}
+			return err
+		}
+		mut state := &X11WindowCaptureTestState{}
+		state.window = app.create_window(
+			title:       'V gg.App X11 public window capture'
+			width:       64
+			height:      48
+			high_dpi:    false
+			redraw_mode: .continuous
+			frame_fn:    fn [external, mut state] (mut context WindowContext) ! {
+				state.frames++
+				info := context.frame_info()
+				if !external && !state.outstanding && state.requested < 20 {
+					mut callback_app := context.app
+					x11_window_capture_test_request(mut callback_app, info.window, mut state,
+						info.submitted_frame)!
+				}
+				x11_window_capture_test_draw(mut context, info.submitted_frame + 1)!
+				if external && !state.outstanding && !state.post_pending && state.requested < 20 {
+					state.post_pending = true
+					mut callback_app := context.app
+					callback_app.post(fn [mut state] (mut queued_app App) ! {
+						metrics := queued_app.window_metrics(state.window)!
+						x11_window_capture_test_request(mut queued_app, state.window, mut state,
+							metrics.submitted_frame)!
+						state.post_pending = false
+					})!
+				}
+				if state.frames > 80 && state.completed < 20 {
+					return error('x11 managed capture did not complete')
+				}
+			}
+		)!
+		capabilities := app.window_readback_capabilities(state.window)!
+		assert !capabilities.window_capture
+		app.run(
+			readback_fn: fn [mut state] (result WindowReadbackResult, mut callback_app App) ! {
+				assert result.id == state.readback
+				assert result.window == state.window
+				assert result.status == .ready
+				assert result.submitted_frame == state.expected_submitted_frame
+				assert result.width == 4
+				assert result.height == 4
+				assert result.stride == 16
+				assert result.pixels_rgba8.len == 64
+				for y in 0 .. 4 {
+					for x in 0 .. 4 {
+						expected := x11_window_capture_test_color(result.submitted_frame, x, y)
+						offset := y * result.stride + x * 4
+						assert result.pixels_rgba8[offset] == expected.r
+						assert result.pixels_rgba8[offset + 1] == expected.g
+						assert result.pixels_rgba8[offset + 2] == expected.b
+						assert result.pixels_rgba8[offset + 3] == expected.a
+					}
+				}
+				state.completed++
+				state.outstanding = false
+				if state.completed == 20 {
+					callback_app.stop()!
+				}
+			}
+		)!
+		assert state.requested == 20
+		assert state.completed == 20
+	}
+}
+
+fn test_multiwindow_x11_public_window_capture_delivers_region_through_readback_fn() {
+	run_x11_public_window_capture_test(false)!
+}
+
+fn test_multiwindow_x11_external_window_capture_waits_for_target_frame() {
+	run_x11_public_window_capture_test(true)!
+}
+
+struct X11CaptureAdmissionProof {
+mut:
+	frame_hits    int
+	rejection     string
+	pending_count int
+	readback_hits int
+}
+
+struct X11LegacyCaptureProducerProof {
+mut:
+	frame_hits    int
+	drawn_hits    int
+	show_sent     bool
+	service_hits  int
+	rejection     string
+	pending_count int
+	dirty_before  u64
+	dirty_after   u64
+	readback_hits int
+}
+
+fn test_multiwindow_x11_window_capture_rejects_nonproducers_before_admission() ! {
+	$if linux && x_multiwindow_x11 ? {
+		if os.getenv('DISPLAY') == '' {
+			eprintln('skip gg x11 capture producer admission test: DISPLAY is not set')
+			return
+		}
+		mut app := new_app(backend: .x11, require_renderer: true) or {
+			if err.msg() == 'multiwindow: x11 open display failed' {
+				return
+			}
+			return err
+		}
+		init_only := app.create_window(
+			title:   'capture init-only rejection'
+			init_fn: fn (mut context WindowInitContext) ! {
+				_ = context
+			}
+		)!
+		resource_only := app.create_window(title: 'capture resource-only rejection')!
+		hidden := app.create_window(
+			title:    'capture hidden-unconfigured rejection'
+			visible:  false
+			frame_fn: fn (mut context WindowContext) ! {
+				_ = context
+			}
+		)!
+		assert app.drain_window_queued_events()!.len == 3
+		for window in [init_only, resource_only, hidden] {
+			mut rejected := false
+			app.request_window_capture(window, WindowReadbackConfig{}) or {
+				assert err.msg() == err_multiwindow_render_readback_unsupported
+				rejected = true
+			}
+			assert rejected
+		}
+		assert app.pending_window_captures.len == 0
+		assert app.pending_image_readbacks.len == 0
+		assert app.drain_window_queued_events()!.len == 0
+		app.stop()!
+	}
+}
+
+fn test_multiwindow_x11_capture_redraw_failure_does_not_admit_pending_readback() ! {
+	$if linux && x_multiwindow_x11 ? {
+		if os.getenv('DISPLAY') == '' {
+			eprintln('skip gg x11 capture redraw failure test: DISPLAY is not set')
+			return
+		}
+		mut proof := &X11CaptureAdmissionProof{}
+		mut app := new_app(backend: .x11, require_renderer: true) or {
+			if err.msg() == 'multiwindow: x11 open display failed' {
+				return
+			}
+			return err
+		}
+		failure := 'injected x11 capture redraw failure'
+		_ = app.create_window(
+			title:       'capture redraw failure'
+			width:       64
+			height:      48
+			high_dpi:    false
+			redraw_mode: .continuous
+			frame_fn:    fn [failure, mut proof] (mut context WindowContext) ! {
+				proof.frame_hits++
+				context.with_swapchain(gfx.create_clear_pass_action(0, 0, 0, 1), fn (mut pass WindowPassContext) ! {
+					_ = pass
+				})!
+				if proof.frame_hits == 1 {
+					mut callback_app := context.app
+					callback_app.render_runtime.set_internal_fault(.capture_request_redraw, 0,
+						failure)!
+					callback_app.request_window_capture(context.window_id(), WindowReadbackConfig{}) or {
+						proof.rejection = err.msg()
+					}
+					proof.pending_count = callback_app.pending_window_captures.len
+					callback_app.stop()!
+				}
+			}
+		)!
+		app.run(
+			readback_fn: fn [mut proof] (result WindowReadbackResult, mut callback_app App) ! {
+				_ = result
+				proof.readback_hits++
+				callback_app.stop()!
+			}
+		)!
+		assert proof.frame_hits == 1
+		assert proof.rejection == failure
+		assert proof.pending_count == 0
+		assert proof.readback_hits == 0
+		assert app.pending_window_captures.len == 0
+		assert app.core.drain_readback_events()!.len == 0
+	}
+}
+
+fn test_multiwindow_x11_legacy_global_frame_is_not_an_off_frame_window_capture_producer() ! {
+	$if linux && x_multiwindow_x11 ? {
+		if os.getenv('DISPLAY') == '' {
+			eprintln('skip gg x11 legacy capture producer test: DISPLAY is not set')
+			return
+		}
+		mut proof := &X11LegacyCaptureProducerProof{}
+		mut app := new_app(backend: .x11, require_renderer: true) or {
+			if err.msg() == 'multiwindow: x11 open display failed' {
+				return
+			}
+			return err
+		}
+		drawn := app.create_window(
+			title:    'legacy capture drawn'
+			width:    64
+			height:   48
+			high_dpi: false
+		)!
+		omitted := app.create_window(
+			title:    'legacy capture omitted'
+			width:    64
+			height:   48
+			high_dpi: false
+		)!
+		app.run(
+			frame_fn:          fn [drawn, omitted, mut proof] (mut callback_app App) ! {
+				proof.frame_hits++
+				callback_app.draw_window(drawn, fn [mut proof] (mut window WindowContext) ! {
+					proof.drawn_hits++
+					window.draw_rect_filled(0, 0, 8, 8, Color{
+						r: 255
+						a: 255
+					})
+				})!
+				if !proof.show_sent {
+					proof.show_sent = true
+					callback_app.show_window(omitted)!
+				}
+			}
+			window_service_fn: fn [omitted, mut proof] (event WindowServiceEvent, mut callback_app App) ! {
+				if event.window != omitted || event.kind != .state || event.operation != .show {
+					return
+				}
+				if !proof.show_sent || proof.frame_hits == 0 {
+					return
+				}
+				proof.service_hits++
+				assert !callback_app.app_frame_active
+				assert callback_app.window_operation_capability(omitted, .window_capture)!.support == .unsupported
+				assert !callback_app.window_readback_capabilities(omitted)!.window_capture
+				proof.dirty_before = callback_app.core.render_window_snapshot(omitted.core)!.dirty_epoch
+				callback_app.request_window_capture(omitted, WindowReadbackConfig{}) or {
+					proof.rejection = err.msg()
+				}
+				proof.dirty_after = callback_app.core.render_window_snapshot(omitted.core)!.dirty_epoch
+				proof.pending_count = callback_app.pending_window_captures.len
+				callback_app.stop()!
+			}
+			readback_fn:       fn [mut proof] (result WindowReadbackResult, mut callback_app App) ! {
+				_ = result
+				proof.readback_hits++
+				callback_app.stop()!
+			}
+		)!
+		assert proof.frame_hits == 1
+		assert proof.drawn_hits == 1
+		assert proof.show_sent
+		assert proof.service_hits == 1
+		assert proof.rejection == err_multiwindow_render_readback_unsupported
+		assert proof.pending_count == 0
+		assert proof.dirty_after == proof.dirty_before
+		assert proof.readback_hits == 0
+		assert app.pending_window_captures.len == 0
+		assert app.pending_image_readbacks.len == 0
+		assert app.core.drain_readback_events()!.len == 0
 	}
 }
 

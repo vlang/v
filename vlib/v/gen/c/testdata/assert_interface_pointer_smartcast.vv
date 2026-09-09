@@ -1,0 +1,24 @@
+struct PointerSmartcastError {
+	Error
+pub:
+	reason string
+}
+
+fn (err &PointerSmartcastError) msg() string {
+	return err.reason
+}
+
+fn fail_with_pointer_error() ! {
+	return &PointerSmartcastError{
+		reason: 'boom'
+	}
+}
+
+fn main() {
+	fail_with_pointer_error() or {
+		assert err is &PointerSmartcastError
+		assert err.reason == 'boom'
+		return
+	}
+	assert false
+}

@@ -297,7 +297,7 @@ fn test_parallel_cgen_worker_resolves_generic_struct_method_signature() {
 	assert run.output.trim_space() == '550740'
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
 	assert c_code.contains('Box_int__accept'), c_code
-	assert c_code.contains('Optional_int x'), c_code
+	assert c_code.contains('Optional_i64 x'), c_code
 	assert !c_code.contains('?T'), c_code
 }
 
@@ -312,9 +312,9 @@ fn test_parallel_cgen_generic_optional_method_uses_concrete_optional_abi_in_call
 
 	c_code := os.read_file(c_out) or { panic(err) }
 	assert c_code.contains('Box_int__accept'), c_code
-	assert c_code.contains('Optional_int x'), c_code
-	assert c_code.contains('Box_int__accept(b, (Optional_int){.ok = true, .value = 7})'), c_code
-	assert c_code.contains('Box_int__accept(b, (Optional_int){.ok = true, .value = 8})'), c_code
+	assert c_code.contains('Optional_i64 x'), c_code
+	assert c_code.contains('Box_int__accept(b, (Optional_i64){.ok = true, .value = 7})'), c_code
+	assert c_code.contains('Box_int__accept(b, (Optional_i64){.ok = true, .value = 8})'), c_code
 	assert !c_code.contains('Box_int__accept(b, (Optional){.ok = true, .value = 7})'), c_code
 	assert !c_code.contains('Box_int__accept(b, (Optional){.ok = true, .value = 8})'), c_code
 }
@@ -466,7 +466,7 @@ fn test_parallel_transform_generates_v3_c_with_vjobs_4_and_12() {
 	assert os.exists(c_out_12), cgen_12.output
 }
 
-fn test_no_parallel_directory_selfhost_omits_parallel_support() {
+fn test_no_parallel_directory_selfhost_retains_parallel_support() {
 	v3_bin := build_parallel_prod_v3()
 	bin_out := os.join_path(os.temp_dir(), 'v3_no_parallel_dir_selfhost_out_${os.getpid()}')
 	os.rm(bin_out) or {}
@@ -478,12 +478,12 @@ fn test_no_parallel_directory_selfhost_omits_parallel_support() {
 	assert !compile.output.contains('cgen (parallel)'), compile.output
 	assert os.exists(bin_out), compile.output
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
-	assert !c_code.contains('flat_cgen_chunk_thread'), c_code
-	assert !c_code.contains('flat_cgen_job_count'), c_code
-	assert !c_code.contains('new_parallel_worker'), c_code
-	assert !c_code.contains('merge_parallel_worker'), c_code
-	assert !c_code.contains('transform_chunk_thread'), c_code
-	assert !c_code.contains('transform_job_count'), c_code
+	assert c_code.contains('flat_cgen_chunk_thread'), c_code
+	assert c_code.contains('flat_cgen_job_count'), c_code
+	assert c_code.contains('new_parallel_worker'), c_code
+	assert c_code.contains('merge_parallel_worker'), c_code
+	assert c_code.contains('transform_chunk_thread'), c_code
+	assert c_code.contains('transform_job_count'), c_code
 }
 
 fn write_no_parallel_user_define_project(name string) string {

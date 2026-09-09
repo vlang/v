@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_parse_frame_padding_collapses_run() {
@@ -102,15 +101,15 @@ fn test_ack_frame_gap_math_matches_hand_derived_example() {
 	ranges := [
 		AckRange{
 			smallest: 8
-			largest:  10
+			largest: 10
 		},
 		AckRange{
 			smallest: 4
-			largest:  5
+			largest: 5
 		},
 		AckRange{
 			smallest: 1
-			largest:  1
+			largest: 1
 		},
 	]
 	encoded := encode_ack_frame(ranges, 0, none)!
@@ -136,7 +135,7 @@ fn test_ack_frame_round_trip_single_range() {
 	ranges := [
 		AckRange{
 			smallest: 100
-			largest:  105
+			largest: 105
 		},
 	]
 	encoded := encode_ack_frame(ranges, 7, none)!
@@ -156,16 +155,17 @@ fn test_ack_frame_with_ecn_counts_round_trip() {
 	ranges := [
 		AckRange{
 			smallest: 0
-			largest:  0
+			largest: 0
 		},
 	]
 	ecn := EcnCounts{
-		ect0:   3
-		ect1:   0
+		ect0: 3
+		ect1: 0
 		ecn_ce: 1
 	}
 	encoded := encode_ack_frame(ranges, 0, ecn)!
 	assert encoded[0] == 0x03 // ACK-with-ECN frame type
+
 	frame, _ := parse_frame(encoded)!
 	match frame {
 		AckFrame {
@@ -191,11 +191,11 @@ fn test_encode_ack_frame_rejects_improperly_separated_ranges() {
 	bad_ranges := [
 		AckRange{
 			smallest: 5
-			largest:  10
+			largest: 10
 		},
 		AckRange{
 			smallest: 1
-			largest:  4
+			largest: 4
 		},
 	]
 	encode_ack_frame(bad_ranges, 0, none) or {
@@ -222,7 +222,7 @@ fn test_encode_ack_frame_rejects_range_with_largest_less_than_smallest() {
 	bad_ranges := [
 		AckRange{
 			smallest: 10
-			largest:  5
+			largest: 5
 		},
 	]
 	encode_ack_frame(bad_ranges, 0, none) or {
@@ -414,11 +414,11 @@ fn test_encode_ack_frame_rejects_endpoint_exceeding_varint_max() {
 	bad_ranges := [
 		AckRange{
 			smallest: 100
-			largest:  200
+			largest: 200
 		},
 		AckRange{
 			smallest: max_u64 - 1
-			largest:  max_u64 - 1
+			largest: max_u64 - 1
 		},
 	]
 	encode_ack_frame(bad_ranges, 0, none) or {

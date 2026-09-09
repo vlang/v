@@ -1,6 +1,7 @@
 module modulecache
 
 import os
+import crypto.sha256
 
 fn test_cached_relative_flag_paths_preserve_path_selection_expressions() {
 	base_dir := os.join_path(os.vtmp_dir(), 'v3_modulecache_flags')
@@ -24,6 +25,60 @@ fn test_native_declaration_api_macro_definition_is_not_localized() {
 	assert declarations.contains('LIB_API_DECL void exported(void) {')
 	assert !declarations.contains('static LIB_API_DECL void exported(void) {')
 	assert declarations.contains('static int helper(void) {')
+}
+
+fn test_declaration_header_keeps_macro_static_inline_function() {
+	source := '#ifdef _MSC_VER
+#define V_TEST_STATIC_INLINE static __inline
+#else
+#define V_TEST_STATIC_INLINE static inline
+#endif
+V_TEST_STATIC_INLINE int local_helper(void) {
+	return 42;
+}
+int external_helper(void) {
+	return local_helper();
+}
+'
+	header := declaration_header(source)
+	assert header.contains('V_TEST_STATIC_INLINE int local_helper(void) {')
+	assert header.contains('return 42;')
+	assert header.contains('int external_helper(void);')
+	assert !header.contains('return local_helper();')
+}
+
+fn test_replicated_function_static_storage_detection() {
+	assert c_source_replicated_function_has_static_storage('static inline int next_value(void) {
+	static int state = 0;
+	return ++state;
+}
+')
+	assert c_source_replicated_function_has_static_storage('#define LOCAL_STORAGE static
+static inline int next_value(void) {
+	LOCAL_STORAGE int state = 0;
+	return ++state;
+}
+')
+	assert c_source_replicated_function_has_static_storage('extern "C" { static inline int next_value(void) { static int state; return ++state; } }
+')
+	assert c_source_replicated_function_has_static_storage('#define DEF(name) \\
+	static inline int name(void) { \\
+		static int state; \\
+		return ++state; \\
+	}
+DEF(next_value)
+')
+	assert !c_source_replicated_function_has_static_storage('int next_value(void) {
+	static int state = 0;
+	return ++state;
+}
+')
+	assert !c_source_replicated_function_has_static_storage('static inline int next_value(void) {
+	// static int comment_state;
+	const char *text = "static int string_state";
+	return text[0];
+}
+')
 }
 
 fn test_cached_file_line_uses_source_file_name() {
@@ -108,6 +163,12 @@ fn test_source_typedef_identifiers_ignore_comments_and_parse_declarators() {
 	assert !identifiers['MacroOnly']
 	assert !identifiers['MacroArgument']
 	assert !identifiers['StringOnly']
+}
+
+fn test_source_typedef_identifiers_resume_after_macro_decorated_function() {
+	source := 'SOKOL_API_IMPL void draw(void) { if (1) { while (0) {} } }\ntypedef unsigned AfterBody;\n'
+	identifiers := c_source_typedef_identifiers(source)
+	assert identifiers['AfterBody']
 }
 
 fn test_static_variable_identifiers_ignore_asm_labels() {
@@ -301,9 +362,11 @@ fn test_macro_identifiers_referencing_static_helpers() {
 }
 
 fn test_source_signature_cache_content_requires_stable_metadata() {
+	expected_digest := 'a'.repeat(sha256.size * 2)
 	details := SourceSignatureDetails{
-		signature:  'content-signature'
+		signature: 'content-signature'
 		validation: ['env=NAME\tvalue']
+		source_digests: [expected_digest]
 	}
 	if _ := source_signature_cache_content('before', 'after', details) {
 		assert false, 'changed metadata must prevent source signature caching'
@@ -317,8 +380,203 @@ fn test_source_signature_cache_content_requires_stable_metadata() {
 		return
 	}
 	assert content.contains('metadata=stable\n')
+	assert content.contains('digest=${expected_digest}\n')
 	assert content.contains('source=content-signature\n')
 	assert content.ends_with('complete=1\n')
+}
+
+fn test_cached_source_signature_keeps_per_file_sha256_digests() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_source_digests_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	first_path := os.join_path(root, 'first.v')
+	second_path := os.join_path(root, 'second.v')
+	first_source := 'module sample\n\npub fn first() {}\n'
+	second_source := 'module sample\n\npub fn second() {}\n'
+	os.write_file(first_path, first_source)!
+	os.write_file(second_path, second_source)!
+	cache_dir := os.join_path(root, 'cache')
+	details := cached_source_signature_details_with_build_values(cache_dir, 'digests', [
+		second_path,
+		first_path,
+	], '', '')
+	assert details.signature.len > 0
+	assert details.source_digests == [sha256.hexhash(first_source), sha256.hexhash(second_source)]
+	// The metadata-valid fast path must restore the same per-file digests without
+	// dropping them from the cache validity result.
+	cached := cached_source_signature_details_with_build_values(cache_dir, 'digests', [
+		second_path,
+		first_path,
+	], '', '')
+	assert cached.signature == details.signature
+	assert cached.source_digests == details.source_digests
+}
+
+fn test_cached_source_signature_tracks_vml_inputs() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_vml_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	vml := os.join_path(root, 'form.vml')
+	os.write_file(source, "module main\n\nfn build() { _ = \$vml('form.vml') }\n")!
+	os.write_file(vml, 'Label { text: "A" }')!
+	cache_dir := os.join_path(root, 'cache')
+
+	first := cached_source_signature(cache_dir, 'vml', [source])
+	assert first.len > 0
+	assert source_signature_details([source], '', '').cacheable
+	os.write_file(vml, 'Label { text: "Changed" }')!
+	second := cached_source_signature(cache_dir, 'vml', [source])
+	assert second.len > 0
+	assert second != first
+	ignored_paths, ignored_lookups, ignored_candidates, ignored_unresolved := compile_time_vml_paths('// \$vml(\'ignored.vml\')\nconst s = "\$vml(\'also_ignored.vml\')"', source)
+	assert ignored_paths.len == 0
+	assert ignored_lookups.len == 0
+	assert ignored_candidates.len == 0
+	assert !ignored_unresolved
+
+	os.write_file(source, "module main\n\nconst form_path = 'form.vml'\nfn build() { _ = \$vml(form_path) }\n")!
+	before_cache_entries := os.ls(cache_dir)!.len
+	dynamic := cached_source_signature_details_with_build_values(cache_dir, 'dynamic-vml', [
+		source,
+	], '', '')
+	assert dynamic.signature.len > 0
+	assert !dynamic.cacheable
+	assert os.ls(cache_dir)!.len == before_cache_entries
+	dynamic_paths, dynamic_lookups, dynamic_candidates, dynamic_unresolved := compile_time_vml_paths(os.read_file(source)!, source)
+	assert dynamic_paths.len == 0
+	assert dynamic_lookups.len == 0
+	assert dynamic_candidates.len == 0
+	assert dynamic_unresolved
+	concat_paths, concat_lookups, concat_candidates, concat_unresolved := compile_time_vml_paths("fn build() { _ = \$vml(template_dir + '/form.vml') }", source)
+	assert concat_paths.len == 0
+	assert concat_lookups.len == 0
+	assert concat_candidates.len == 0
+	assert concat_unresolved
+	os.write_file(os.join_path(root, 'form'), 'not the selected template')!
+	os.write_file(source, "module main\n\nfn build() { _ = \$vml('form' + '.vml') }\n")!
+	literal_concat := source_signature_details([source], '', '')
+	assert literal_concat.signature.len > 0
+	assert !literal_concat.cacheable
+	literal_paths, literal_lookups, literal_candidates, literal_unresolved := compile_time_vml_paths(os.read_file(source)!, source)
+	assert literal_paths.len == 0
+	assert literal_lookups.len == 0
+	assert literal_candidates.len == 0
+	assert literal_unresolved
+	manager := Manager{
+		dir: os.join_path(root, 'module-cache')
+		enabled: true
+		salt: 'dynamic-vml-test'
+	}
+	manager.write_header('dynamic_vml', [source], '// generated header')!
+	if _ := manager.valid_header('dynamic_vml', [source]) {
+		assert false, 'an unresolved compile-time VML path must disable cache reuse'
+	}
+}
+
+fn test_vml_signature_scanner_preserves_raw_paths() {
+	call := r'$' + r"vml(r'C:\views\form.vml')"
+	raw_path, next_pos, ok, is_raw := signature_string_call_arg(call, 4)
+	assert ok
+	assert is_raw
+	assert next_pos == call.len
+	assert raw_path == r'C:\views\form.vml'
+
+	target, expected_candidates := resolve_signature_vml_path(raw_path, @FILE)
+	paths, lookups, candidates, unresolved := compile_time_vml_paths(call, @FILE)
+	assert paths == [os.real_path(target)]
+	assert lookups == [target]
+	assert candidates == expected_candidates.map(os.real_path(it))
+	assert !unresolved
+
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_vml_raw_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	relative_call := r'$' + r"vml(r'views\form.vml')"
+	os.write_file(source, 'module main\n\nfn build() { _ = ' + relative_call + ' }\n')!
+	vml_path, _ := resolve_signature_vml_path(r'views\form.vml', source)
+	os.mkdir_all(os.dir(vml_path))!
+	os.write_file(vml_path, 'Label { text: "Raw" }')!
+	cache_dir := os.join_path(root, 'cache')
+	first := cached_source_signature(cache_dir, 'vml-raw', [source])
+	assert first.len > 0
+	assert source_signature_details([source], '', '').cacheable
+	assert cached_source_signature(cache_dir, 'vml-raw', [source]) == first
+}
+
+fn test_cached_source_signature_tracks_shadowing_vml_paths() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_vml_shadow_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'templates')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	direct_vml := os.join_path(root, 'form.vml')
+	direct_candidate := os.join_path(os.real_path(root), 'form.vml')
+	template_vml := os.join_path(root, 'templates', 'form.vml')
+	os.write_file(source, "module main\n\nfn build() { _ = \$vml('form.vml') }\n")!
+	os.write_file(template_vml, 'Label { text: "Template" }')!
+	cache_dir := os.join_path(root, 'cache')
+
+	first := cached_source_signature(cache_dir, 'vml-shadow', [source])
+	assert first.len > 0
+	paths, lookups, candidates, unresolved := compile_time_vml_paths(os.read_file(source)!, source)
+	assert paths == [os.real_path(template_vml)]
+	assert lookups == [os.join_path(os.real_path(root), 'templates', 'form.vml')]
+	assert candidates == [direct_candidate]
+	assert !unresolved
+	details := source_signature_details([source], '', '')
+	assert details.validation.any(it == 'vmlcandidate=${direct_candidate}\tmissing')
+
+	os.write_file(direct_vml, 'Label { text: "Direct" }')!
+	second := cached_source_signature(cache_dir, 'vml-shadow', [source])
+	assert second.len > 0
+	assert second != first
+	shadowing_paths, shadowing_lookups, shadowing_candidates, _ := compile_time_vml_paths(os.read_file(source)!, source)
+	assert shadowing_paths == [os.real_path(direct_vml)]
+	assert shadowing_lookups == [direct_candidate]
+	assert shadowing_candidates.len == 0
+}
+
+fn test_cached_source_signature_tracks_vml_symlink_target() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_vml_symlink_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	first_target := os.join_path(root, 'first.vml')
+	second_target := os.join_path(root, 'second.vml')
+	vml_link := os.join_path(root, 'form.vml')
+	os.write_file(source, "module main\n\nfn build() { _ = \$vml('form.vml') }\n")!
+	os.write_file(first_target, 'Label { text: "First" }')!
+	os.write_file(second_target, 'Label { text: "Second" }')!
+	os.symlink(first_target, vml_link) or { return }
+	cache_dir := os.join_path(root, 'cache')
+
+	first := cached_source_signature(cache_dir, 'vml-symlink', [source])
+	assert first.len > 0
+	lookup_path := os.join_path(os.real_path(root), 'form.vml')
+	details := source_signature_details([source], '', '')
+	assert details.validation.any(it.starts_with('vmllookup=${lookup_path}\t${os.real_path(first_target)}\t'))
+
+	os.rm(vml_link)!
+	os.symlink(second_target, vml_link)!
+	second := cached_source_signature(cache_dir, 'vml-symlink', [source])
+	assert second.len > 0
+	assert second != first
 }
 
 fn test_version_pseudo_signature_ignores_build_clock() {
@@ -346,9 +604,9 @@ fn test_source_uses_pseudo_in_quoted_compile_time_paths() {
 	assert source_uses_pseudo('module m\n\n#include "@VMODROOT/header.h"', roots)
 	assert source_uses_pseudo('module m\n\n#flag -I "@VMODROOT/include"', roots)
 	assert source_uses_pseudo('module m\n\nconst p = \$embed_file(r"@VROOT/x")', roots)
+	assert source_uses_pseudo("module m\n\nconst p = \$tmpl('@VMODROOT' + '/x.html')", roots)
 	// a pseudo after a string containing `//` must still be seen
-	assert source_uses_pseudo("module m\n\nconst u = 'http://x' + \$embed_file('@VMODROOT/y')",
-		roots)
+	assert source_uses_pseudo("module m\n\nconst u = 'http://x' + \$embed_file('@VMODROOT/y')", roots)
 	// comments stay inert
 	assert !source_uses_pseudo('module m\n\n// mentions @VMODROOT only in a comment', roots)
 	assert !source_uses_pseudo("module m\n\nconst s = 'plain text'", roots)
@@ -365,16 +623,12 @@ fn test_source_uses_pseudo_in_quoted_compile_time_paths() {
 	assert source_uses_pseudo('module m\n\npub const build_hash = @VHASH', build)
 	assert source_uses_pseudo('module m\n\npub const current_hash = @VCURRENTHASH', build)
 	assert source_uses_pseudo(r"module m\n\npub const stamp = 'built ${@BUILD_TIMESTAMP}'", build)
-	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'literal @BUILD_TIMESTAMP ${1}'",
-		build)
+	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'literal @BUILD_TIMESTAMP ${1}'", build)
 	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'built \${@BUILD_TIMESTAMP}'", build)
 	assert !source_uses_pseudo(r"module m\n\npub const stamp = r'built ${@BUILD_TIMESTAMP}'", build)
-	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'built ${/* @BUILD_TIMESTAMP */ 1}'",
-		build)
-	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'built ${'@BUILD_TIMESTAMP'}'",
-		build)
-	assert source_uses_pseudo(r"module m\n\npub const stamp = 'built ${if ok { @BUILD_TIMESTAMP } else { 0 }}'",
-		build)
+	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'built ${/* @BUILD_TIMESTAMP */ 1}'", build)
+	assert !source_uses_pseudo(r"module m\n\npub const stamp = 'built ${'@BUILD_TIMESTAMP'}'", build)
+	assert source_uses_pseudo(r"module m\n\npub const stamp = 'built ${if ok { @BUILD_TIMESTAMP } else { 0 }}'", build)
 	assert source_uses_pseudo(r"module m\n\npub const root = 'root ${@VMODROOT}'", roots)
 }
 

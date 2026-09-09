@@ -112,6 +112,192 @@ fn test_repro_closure_follows_references() {
 	}
 	assert order == [0, 1, 2]
 	assert 3 !in order
+	// The unrelated decl is excluded, so the closure is a strict subset: the
+	// reproducer keeps it (order.len < decls.len).
+	assert order.len < decls.len
+}
+
+fn test_repro_closure_reaching_every_decl_signals_whole_program() {
+	// When the closure reaches every declaration, order.len == decls.len. The
+	// reproducer treats that as whole-program coverage and gives up, so a short
+	// all-referenced program is never uploaded whole (PR #28131 review).
+	decls := [
+		ReproDecl{
+			names:  ['main']
+			source: 'fn main() { helper(Thing{}) }'
+		},
+		ReproDecl{
+			names:  ['helper']
+			source: 'fn helper(t Thing) {}'
+		},
+		ReproDecl{
+			names:  ['Thing']
+			source: 'struct Thing {}'
+		},
+	]
+	name_to_decl := {
+		'main':   [0]
+		'helper': [1]
+		'Thing':  [2]
+	}
+	order := repro_closure(decls, name_to_decl, [0]) or {
+		assert false, 'closure returned none'
+		return
+	}
+	assert order.len == decls.len
+	// every declaration belongs to one file (file_id 0), so that file is fully covered
+	assert repro_covers_any_whole_file(decls, []ReproImport{}, []ReproHash{}, []ReproImport{},
+		order)
+}
+
+fn test_repro_covers_any_whole_file_tracks_per_file_coverage() {
+	// main.v (file 0) has a single declaration; helpers.v (file 1) has two. The
+	// closure includes main (file 0 complete) and one helper (file 1 partial), so
+	// order.len < decls.len yet file 0 is fully covered — reject the whole reproducer
+	// rather than upload all of main.v (PR #28131 review).
+	two_file := [
+		ReproDecl{
+			names:   ['main']
+			source:  'fn main() { helper() }'
+			file_id: 0
+		},
+		ReproDecl{
+			names:   ['helper']
+			source:  'fn helper() {}'
+			file_id: 1
+		},
+		ReproDecl{
+			names:   ['unrelated']
+			source:  'fn unrelated() {}'
+			file_id: 1
+		},
+	]
+	assert repro_covers_any_whole_file(two_file, []ReproImport{}, []ReproHash{}, []ReproImport{}, [
+		0,
+		1,
+	])
+	// No single file is fully covered here (one of two declarations from each file),
+	// so the reproducer is a strict subset and is kept.
+	partial := [
+		ReproDecl{
+			names:   ['main']
+			source:  'fn main() { helper() }'
+			file_id: 0
+		},
+		ReproDecl{
+			names:   ['aux']
+			source:  'fn aux() {}'
+			file_id: 0
+		},
+		ReproDecl{
+			names:   ['helper']
+			source:  'fn helper() {}'
+			file_id: 1
+		},
+		ReproDecl{
+			names:   ['unrelated']
+			source:  'fn unrelated() {}'
+			file_id: 1
+		},
+	]
+	assert !repro_covers_any_whole_file(partial, []ReproImport{}, []ReproHash{}, []ReproImport{}, [
+		0,
+		2,
+	])
+}
+
+fn test_repro_covers_any_whole_file_counts_hash_only_files() {
+	// main.v (file 0) has two declarations; a declaration-free `.c.v` companion (file 1)
+	// contributes only `#flag` directives. The hash loop emits every directive from file
+	// 1 regardless of which declarations are kept, so file 1 is always reconstructed
+	// whole. Even when only some of file 0's declarations are in the closure, the
+	// reproducer must be rejected rather than upload all of the hash-only file
+	// (PR #28131 review).
+	decls := [
+		ReproDecl{
+			names:   ['main']
+			source:  'fn main() { helper() }'
+			file_id: 0
+		},
+		ReproDecl{
+			names:   ['helper']
+			source:  'fn helper() {}'
+			file_id: 0
+		},
+	]
+	hashes := [
+		ReproHash{
+			source:  '#flag -DSECRET=hunter2'
+			file_id: 1
+		},
+		ReproHash{
+			source:  '#flag -lsecretlib'
+			file_id: 1
+		},
+	]
+	// Only `main` from file 0 is retained (file 0 partial), but file 1's every hash
+	// directive is emitted, so file 1 is wholly covered.
+	assert repro_covers_any_whole_file(decls, []ReproImport{}, hashes, []ReproImport{}, [
+		0,
+	])
+	// Without the hash-only companion, the same partial closure is a strict subset.
+	assert !repro_covers_any_whole_file(decls, []ReproImport{}, []ReproHash{}, []ReproImport{}, [
+		0,
+	])
+	// A file carrying both declarations and hashes is only whole-covered when every one
+	// of its declarations is also included (its hashes are always emitted).
+	mixed_decls := [
+		ReproDecl{
+			names:   ['main']
+			source:  'fn main() { helper() }'
+			file_id: 0
+		},
+		ReproDecl{
+			names:   ['helper']
+			source:  'fn helper() {}'
+			file_id: 0
+		},
+	]
+	mixed_hashes := [
+		ReproHash{
+			source:  '#flag -lm'
+			file_id: 0
+		},
+	]
+	assert !repro_covers_any_whole_file(mixed_decls, []ReproImport{}, mixed_hashes,
+		[]ReproImport{}, [0])
+	assert repro_covers_any_whole_file(mixed_decls, []ReproImport{}, mixed_hashes, []ReproImport{}, [
+		0,
+		1,
+	])
+}
+
+fn test_repro_covers_any_whole_file_counts_import_only_files() {
+	decls := [
+		ReproDecl{
+			names:   ['main']
+			source:  'fn main() {}'
+			file_id: 0
+		},
+		ReproDecl{
+			names:   ['unused']
+			source:  'fn unused() {}'
+			file_id: 0
+		},
+	]
+	imports := [
+		ReproImport{
+			source:      'import private.telemetry as _'
+			mod:         'private.telemetry'
+			triggers:    ['_']
+			side_effect: true
+			file_id:     1
+		},
+	]
+	assert repro_covers_any_whole_file(decls, imports, []ReproHash{}, imports, [0])
+	assert !repro_covers_any_whole_file(decls, imports, []ReproHash{}, []ReproImport{}, [
+		0,
+	])
 }
 
 fn test_repro_closure_seeds_from_main_for_reachability() {

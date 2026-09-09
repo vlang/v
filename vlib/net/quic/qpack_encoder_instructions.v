@@ -100,12 +100,12 @@ pub fn decode_qpack_encoder_instruction(buf []u8) !QpackDecodedEncoderInstructio
 		}
 		return QpackDecodedEncoderInstruction{
 			has_instruction: true
-			instr:           QpackEncoderInstruction(QpackInsertWithNameRef{
-				is_static:  is_static
+			instr: QpackEncoderInstruction(QpackInsertWithNameRef{
+				is_static: is_static
 				name_index: name_index
-				value:      value
+				value: value
 			})
-			consumed:        idx_len + val_len
+			consumed: idx_len + val_len
 		}
 	}
 	if first & 0x40 != 0 {
@@ -123,11 +123,11 @@ pub fn decode_qpack_encoder_instruction(buf []u8) !QpackDecodedEncoderInstructio
 		}
 		return QpackDecodedEncoderInstruction{
 			has_instruction: true
-			instr:           QpackEncoderInstruction(QpackInsertWithLiteralName{
-				name:  name
+			instr: QpackEncoderInstruction(QpackInsertWithLiteralName{
+				name: name
 				value: value
 			})
-			consumed:        name_len + val_len
+			consumed: name_len + val_len
 		}
 	}
 	if first & 0x20 != 0 {
@@ -139,10 +139,10 @@ pub fn decode_qpack_encoder_instruction(buf []u8) !QpackDecodedEncoderInstructio
 		}
 		return QpackDecodedEncoderInstruction{
 			has_instruction: true
-			instr:           QpackEncoderInstruction(QpackSetDynamicTableCapacity{
+			instr: QpackEncoderInstruction(QpackSetDynamicTableCapacity{
 				capacity: capacity
 			})
-			consumed:        len
+			consumed: len
 		}
 	}
 	rel_index, len := decode_prefixed_int(buf, 5) or {
@@ -153,10 +153,10 @@ pub fn decode_qpack_encoder_instruction(buf []u8) !QpackDecodedEncoderInstructio
 	}
 	return QpackDecodedEncoderInstruction{
 		has_instruction: true
-		instr:           QpackEncoderInstruction(QpackDuplicate{
+		instr: QpackEncoderInstruction(QpackDuplicate{
 			rel_index: rel_index
 		})
-		consumed:        len
+		consumed: len
 	}
 }
 

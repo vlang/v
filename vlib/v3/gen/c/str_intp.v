@@ -367,13 +367,13 @@ fn (mut g FlatGen) string_literals_from(start int) {
 		for s in literals {
 			i := g.str_lit_ids[s]
 			escaped := c_escape(s)
-			g.writeln('static string _str_${i} = {"${escaped}", ${s.len}, 1};')
+			g.writeln('static const string _str_${i} = {"${escaped}", ${s.len}, 1};')
 		}
 	} else {
 		for i := start; i < g.str_lits.len; i++ {
 			s := g.str_lits[i]
 			escaped := c_escape(s)
-			g.writeln('string _str_${i} = {"${escaped}", ${s.len}, 1};')
+			g.writeln('static const string _str_${i} = {"${escaped}", ${s.len}, 1};')
 		}
 	}
 	if g.str_lits.len > start {
@@ -383,8 +383,8 @@ fn (mut g FlatGen) string_literals_from(start int) {
 
 // intern_string supports intern string handling for FlatGen.
 fn (mut g FlatGen) intern_string(s string) int {
-	if s in g.str_lit_ids {
-		return g.str_lit_ids[s]
+	if id := g.str_lit_ids[s] {
+		return id
 	}
 	if g.str_lits_shared {
 		g.str_lits = g.str_lits.clone()

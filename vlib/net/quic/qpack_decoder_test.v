@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_decoder_apply_encoder_instruction_returns_not_applied_on_partial_buffer() {

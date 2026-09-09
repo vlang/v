@@ -1,0 +1,6 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_anon_fn_for_return.vv:2:2: error: expression evaluated but not used
+    1 | fn main() {
+    2 |     '' == fn () string {
+      |     ~~~~~~~~~~~~~~~~~~~~
+    3 |         for _ in 0 .. 1 {
+    4 |             return $embed_file(@FILE).path

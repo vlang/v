@@ -95,13 +95,11 @@ pub fn (mut s H3ControlStreamState) note_frame(frame H3Frame) ! {
 	if !s.seen_first_frame {
 		s.seen_first_frame = true
 		if !is_settings {
-			return error_with_code("h3: control stream's first frame was not SETTINGS",
-				int(H3ErrorCode.missing_settings))
+			return error_with_code("h3: control stream's first frame was not SETTINGS", int(H3ErrorCode.missing_settings))
 		}
 		return
 	}
 	if is_settings {
-		return error_with_code('h3: received a second SETTINGS frame on a control stream',
-			int(H3ErrorCode.frame_unexpected))
+		return error_with_code('h3: received a second SETTINGS frame on a control stream', int(H3ErrorCode.frame_unexpected))
 	}
 }

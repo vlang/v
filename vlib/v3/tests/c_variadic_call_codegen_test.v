@@ -68,7 +68,7 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_c_variadic_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.execute('${v3_bin} -enable-globals ${src} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
@@ -86,7 +86,12 @@ fn main() {
 	assert generated.contains('printf("plain\\n");'), generated
 	assert generated.contains('printf("name=%s count=%d\\n", "ok", 7);'), generated
 	assert generated.contains('fprintf(stderr, "err=%d\\n", 9);'), generated
-	assert generated.contains('sscanf("12 34", "%d %d", &a, &b);'), generated
+	// `&a`/`&b` are addresses of V `int`s (i64). Passing them straight to scanf's
+	// `%d` (which writes only 4 bytes) would leave the high bytes stale, so each is
+	// bridged through a temporary C `int` with copy-back; scanf receives the temp's
+	// address rather than `&a`/`&b` directly.
+	assert generated.contains('sscanf("12 34", "%d %d", &_cabi_out_val_'), generated
+	assert !generated.contains('sscanf("12 34", "%d %d", &a, &b);'), generated
 	assert generated.contains('__varargs_'), generated
 }
 
@@ -116,7 +121,7 @@ fn main() {
 	assert run.output.trim_space() == '2', run.output
 
 	generated := os.read_file(bin + '.c') or { panic(err) }
-	assert generated.contains('int __vararg_storage_'), generated
+	assert generated.contains('i64 __vararg_storage_'), generated
 	assert generated.contains('double __vararg_storage_'), generated
 	assert !generated.contains('Small __vararg_storage_'), generated
 	assert !generated.contains('Floaty __vararg_storage_'), generated

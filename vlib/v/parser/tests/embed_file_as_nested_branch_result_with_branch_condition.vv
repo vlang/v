@@ -1,0 +1,63 @@
+fn yes() bool {
+	return true
+}
+
+fn zero() int {
+	return 0
+}
+
+fn id_bool(value bool) bool {
+	return value
+}
+
+fn id_int(value int) int {
+	return value
+}
+
+fn main() {
+	fallback := $embed_file(@FILE)
+	embedded_if_with_if_cond := if yes() {
+		if id_bool(if yes() { true } else { false }) {
+			$embed_file(@FILE)
+		} else {
+			fallback
+		}
+	} else {
+		fallback
+	}
+	embedded_if_with_match_cond := if yes() {
+		if id_bool(match zero() {
+			0 { true }
+			else { false }
+		}) {
+			$embed_file(@FILE)
+		} else {
+			fallback
+		}
+	} else {
+		fallback
+	}
+	embedded_match_with_if_cond := if yes() {
+		match id_int(if yes() { 0 } else { 1 }) {
+			0 { $embed_file(@FILE) }
+			else { fallback }
+		}
+	} else {
+		fallback
+	}
+	embedded_match_with_match_cond := if yes() {
+		match id_int(match zero() {
+			0 { 0 }
+			else { 1 }
+		}) {
+			0 { $embed_file(@FILE) }
+			else { fallback }
+		}
+	} else {
+		fallback
+	}
+	assert embedded_if_with_if_cond.len > 0
+	assert embedded_if_with_match_cond.len > 0
+	assert embedded_match_with_if_cond.len > 0
+	assert embedded_match_with_match_cond.len > 0
+}

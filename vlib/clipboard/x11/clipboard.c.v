@@ -37,7 +37,7 @@ type Time = u64
 pub struct C.XSelectionEvent {
 pub mut:
 	type      int
-	display   voidptr
+	display   &C.Display = unsafe { nil }
 	requestor Window
 	selection Atom
 	target    Atom
@@ -55,7 +55,7 @@ pub mut:
 @[typedef]
 pub struct C.XSelectionRequestEvent {
 pub mut:
-	display   voidptr
+	display   &C.Display = unsafe { nil }
 	owner     Window
 	requestor Window
 	selection Atom

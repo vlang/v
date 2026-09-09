@@ -132,7 +132,7 @@ pub fn decode_field_section_prefix(buf []u8, total_inserts u64, max_table_capaci
 	base := decode_base(sign, delta_base, req_insert_count)!
 	prefix := QpackFieldSectionPrefix{
 		required_insert_count: req_insert_count
-		base:                  base
+		base: base
 	}
 	return prefix, ric_len + delta_len
 }
@@ -181,23 +181,23 @@ pub fn decode_qpack_field_line(buf []u8, base u64, dynamic_table &QpackDynamicTa
 		if is_static {
 			e := qpack_static_lookup(int(index))!
 			return QpackDecodedFieldLine{
-				line:             QpackFieldLine{
-					name:  e.name
+				line: QpackFieldLine{
+					name: e.name
 					value: e.value
 				}
 				referenced_index: none
-				consumed:         len
+				consumed: len
 			}
 		}
 		abs := dynamic_table.resolve_relative_from_base(index, base)!
 		e := dynamic_table.get(abs)!
 		return QpackDecodedFieldLine{
-			line:             QpackFieldLine{
-				name:  e.name
+			line: QpackFieldLine{
+				name: e.name
 				value: e.value
 			}
 			referenced_index: u64(abs)
-			consumed:         len
+			consumed: len
 		}
 	}
 	if first & 0x40 != 0 {
@@ -209,25 +209,25 @@ pub fn decode_qpack_field_line(buf []u8, base u64, dynamic_table &QpackDynamicTa
 		if is_static {
 			e := qpack_static_lookup(int(name_index))!
 			return QpackDecodedFieldLine{
-				line:             QpackFieldLine{
-					name:        e.name
-					value:       value
+				line: QpackFieldLine{
+					name: e.name
+					value: value
 					never_index: never_index
 				}
 				referenced_index: none
-				consumed:         idx_len + val_len
+				consumed: idx_len + val_len
 			}
 		}
 		abs := dynamic_table.resolve_relative_from_base(name_index, base)!
 		e := dynamic_table.get(abs)!
 		return QpackDecodedFieldLine{
-			line:             QpackFieldLine{
-				name:        e.name
-				value:       value
+			line: QpackFieldLine{
+				name: e.name
+				value: value
 				never_index: never_index
 			}
 			referenced_index: u64(abs)
-			consumed:         idx_len + val_len
+			consumed: idx_len + val_len
 		}
 	}
 	if first & 0x20 != 0 {
@@ -236,13 +236,13 @@ pub fn decode_qpack_field_line(buf []u8, base u64, dynamic_table &QpackDynamicTa
 		name, _, name_len := decode_prefixed_string(buf, 3)!
 		value, _, val_len := decode_prefixed_string(buf[name_len..], 7)!
 		return QpackDecodedFieldLine{
-			line:             QpackFieldLine{
-				name:        name
-				value:       value
+			line: QpackFieldLine{
+				name: name
+				value: value
 				never_index: never_index
 			}
 			referenced_index: none
-			consumed:         name_len + val_len
+			consumed: name_len + val_len
 		}
 	}
 	if first & 0x10 != 0 {
@@ -251,12 +251,12 @@ pub fn decode_qpack_field_line(buf []u8, base u64, dynamic_table &QpackDynamicTa
 		abs := dynamic_table.resolve_post_base(index, base)!
 		e := dynamic_table.get(abs)!
 		return QpackDecodedFieldLine{
-			line:             QpackFieldLine{
-				name:  e.name
+			line: QpackFieldLine{
+				name: e.name
 				value: e.value
 			}
 			referenced_index: u64(abs)
-			consumed:         len
+			consumed: len
 		}
 	}
 	// Literal Field Line with Post-Base Name Reference (§4.5.5): 0000 N NameIdx(3+)
@@ -266,13 +266,13 @@ pub fn decode_qpack_field_line(buf []u8, base u64, dynamic_table &QpackDynamicTa
 	abs := dynamic_table.resolve_post_base(name_index, base)!
 	e := dynamic_table.get(abs)!
 	return QpackDecodedFieldLine{
-		line:             QpackFieldLine{
-			name:        e.name
-			value:       value
+		line: QpackFieldLine{
+			name: e.name
+			value: value
 			never_index: never_index
 		}
 		referenced_index: u64(abs)
-		consumed:         idx_len + val_len
+		consumed: idx_len + val_len
 	}
 }
 

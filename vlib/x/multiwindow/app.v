@@ -40,6 +40,10 @@ mut:
 	stop_terminal               string
 	pending_stop_errors         []string
 	stop_native_retry_passes    u8
+	services                    ServiceRegistry
+	native_borrow_depth         int
+	deferred_native_windows     []WindowId
+	deferred_native_stop        bool
 	internal_fault              InternalFaultPlan
 	state_mutex                 &sync.Mutex        = sync.new_mutex()
 	fault_mutex                 &sync.Mutex        = sync.new_mutex()
@@ -53,6 +57,7 @@ pub fn new_app(config Config) !&App {
 	}
 	instance_id := allocate_app_instance_id()!
 	mut backend := new_backend(config.backend, config.require_renderer)!
+	backend.configure_app(config)
 	mut app := &App{
 		config:           config
 		instance_id:      instance_id
@@ -64,6 +69,7 @@ pub fn new_app(config Config) !&App {
 		window_finished:  map[string]bool{}
 		window_terminal:  map[string]string{}
 		event_deliveries: map[u64]EventDeliveryState{}
+		services:         new_service_registry(instance_id, backend.kind)
 	}
 	app_lifetime_token := app.take_native_app_lifetime_token()!
 	trace_token := app.begin_renderer_fault_trace_attempt()!
@@ -73,6 +79,9 @@ pub fn new_app(config Config) !&App {
 	app.backend.start(config.require_renderer) or {
 		app.owner.stop()
 		return err
+	}
+	if monitors := app.backend.service_monitor_snapshot(instance_id) {
+		app.services.replace_monitors(monitors)
 	}
 	return app
 }
@@ -111,6 +120,18 @@ pub fn (mut app App) create_window(config WindowConfig) !WindowId {
 	app.ensure_event_admission_open_locked() or {
 		app.state_mutex.unlock()
 		return err
+	}
+	app.services.validate_owner(config.owner) or {
+		app.state_mutex.unlock()
+		return err
+	}
+	if owner := config.owner {
+		owner_slot := app.windows[owner.slot]
+		if owner_slot.id != owner || owner_slot.status != .alive
+			|| owner_slot.destroy_stage != .none {
+			app.state_mutex.unlock()
+			return error(err_stale_window)
+		}
 	}
 	if app.render_bridge != unsafe { nil } && config.sample_count != 1 {
 		app.state_mutex.unlock()
@@ -158,6 +179,7 @@ pub fn (mut app App) create_window(config WindowConfig) !WindowId {
 		app.backend.finish_window_teardown(id) or {}
 		return err
 	}
+	app.services.register_window(id, config, actual_size, app.backend.kind == .mock)
 	app.enqueue_reserved_event_locked(queued_lifecycle_event(Event{
 		kind:      .window_created
 		window_id: id
@@ -168,9 +190,23 @@ pub fn (mut app App) create_window(config WindowConfig) !WindowId {
 	return id
 }
 
-// destroy_window destroys one live window. The app remains alive when any window,
-// including the last one, is destroyed.
+// destroy_window destroys a live window and all of its owned descendants in
+// child-first order. The App remains alive even when the final window is destroyed.
 pub fn (mut app App) destroy_window(id WindowId) ! {
+	app.assert_owner_thread()!
+	if app.window_destroy_finished(id) {
+		return app.return_window_terminal(id)
+	}
+	if app.defer_native_destroy(id)! {
+		return
+	}
+	order := app.window_destroy_order(id)!
+	for window in order {
+		app.destroy_window_single(window)!
+	}
+}
+
+fn (mut app App) destroy_window_single(id WindowId) ! {
 	if app.window_destroy_finished(id) {
 		return app.return_window_terminal(id)
 	}
@@ -180,6 +216,18 @@ pub fn (mut app App) destroy_window(id WindowId) ! {
 		return err
 	}
 	app.finish_window_destroy(ticket, []string{})!
+}
+
+// window_destroy_order returns a generation-checked child-first owner cascade.
+pub fn (app &App) window_destroy_order(id WindowId) ![]WindowId {
+	app.assert_owner_thread()!
+	app.state_mutex.lock()
+	defer {
+		app.state_mutex.unlock()
+	}
+	app.ensure_running_locked()!
+	app.live_window_index(id)!
+	return app.services.child_first_order(id)!
 }
 
 // set_window_title updates the native title and then the authoritative App state.
@@ -340,7 +388,7 @@ pub fn (app &App) window_status(id WindowId) !WindowStatus {
 	return slot.status
 }
 
-// drain_events returns and clears pending lifecycle events.
+// drain_events consumes only the contiguous lifecycle prefix of the canonical queue.
 pub fn (mut app App) drain_events() ![]Event {
 	app.assert_owner_thread()!
 	app.state_mutex.lock()
@@ -353,8 +401,8 @@ pub fn (mut app App) drain_events() ![]Event {
 	return app.drain_lifecycle_events_locked()!
 }
 
-// drain_input_events returns and clears pending input events without consuming
-// lifecycle events.
+// drain_input_events consumes only the contiguous input prefix of the canonical
+// queue. It never skips lifecycle, service, or readback events.
 pub fn (mut app App) drain_input_events() ![]InputEvent {
 	app.assert_owner_thread()!
 	app.state_mutex.lock()
@@ -367,8 +415,8 @@ pub fn (mut app App) drain_input_events() ![]InputEvent {
 	return app.drain_input_events_locked()!
 }
 
-// drain_queued_events returns and clears pending lifecycle/input events in the
-// exact order accepted by App.
+// drain_queued_events consumes lifecycle, input, service, and readback events in
+// the exact global order accepted by App.
 pub fn (mut app App) drain_queued_events() ![]QueuedEvent {
 	app.assert_owner_thread()!
 	app.state_mutex.lock()
@@ -401,7 +449,8 @@ pub fn (mut app App) drain_queued_events() ![]QueuedEvent {
 	return events
 }
 
-// poll_events lets the backend route native lifecycle and input events into App events.
+// poll_events lets the backend route all native lifecycle, input, service, and
+// readback events into the canonical App queue.
 pub fn (mut app App) poll_events() !int {
 	app.assert_owner_thread()!
 	app.state_mutex.lock()
@@ -468,23 +517,12 @@ pub fn (mut app App) poll_events() !int {
 fn (mut app App) drain_lifecycle_events_locked() ![]Event {
 	mut lifecycle_events := []Event{cap: app.events.len}
 	mut delivered_events := []QueuedEvent{cap: app.events.len}
-	mut remaining_events := []QueuedEvent{cap: app.events.len}
-	mut blocked := false
 	for event in app.events {
-		if blocked || app.queued_event_blocked_by_teardown_locked(event) {
-			blocked = true
-			remaining_events << event
-			continue
+		if app.queued_event_blocked_by_teardown_locked(event) || event.kind != .lifecycle {
+			break
 		}
-		match event.kind {
-			.lifecycle {
-				lifecycle_events << event.lifecycle
-				delivered_events << event
-			}
-			.input {
-				remaining_events << event
-			}
-		}
+		lifecycle_events << event.lifecycle
+		delivered_events << event
 	}
 	for event in delivered_events {
 		app.validate_queued_delivery_locked(event)!
@@ -492,7 +530,7 @@ fn (mut app App) drain_lifecycle_events_locked() ![]Event {
 	for event in delivered_events {
 		app.complete_queued_delivery_locked(event)
 	}
-	app.events = remaining_events
+	app.events = app.events[delivered_events.len..].clone()
 	app.release_terminal_delivery_storage_locked()
 	return lifecycle_events
 }
@@ -500,23 +538,12 @@ fn (mut app App) drain_lifecycle_events_locked() ![]Event {
 fn (mut app App) drain_input_events_locked() ![]InputEvent {
 	mut input_events := []InputEvent{cap: app.events.len}
 	mut delivered_events := []QueuedEvent{cap: app.events.len}
-	mut remaining_events := []QueuedEvent{cap: app.events.len}
-	mut blocked := false
 	for event in app.events {
-		if blocked || app.queued_event_blocked_by_teardown_locked(event) {
-			blocked = true
-			remaining_events << event
-			continue
+		if app.queued_event_blocked_by_teardown_locked(event) || event.kind != .input {
+			break
 		}
-		match event.kind {
-			.lifecycle {
-				remaining_events << event
-			}
-			.input {
-				input_events << event.input
-				delivered_events << event
-			}
-		}
+		input_events << event.input
+		delivered_events << event
 	}
 	for event in delivered_events {
 		app.validate_queued_delivery_locked(event)!
@@ -524,7 +551,7 @@ fn (mut app App) drain_input_events_locked() ![]InputEvent {
 	for event in delivered_events {
 		app.complete_queued_delivery_locked(event)
 	}
-	app.events = remaining_events
+	app.events = app.events[delivered_events.len..].clone()
 	app.release_terminal_delivery_storage_locked()
 	return input_events
 }
@@ -542,10 +569,22 @@ fn (app &App) queued_event_blocked_by_teardown_locked(event QueuedEvent) bool {
 }
 
 fn (app &App) backend_event_generation_valid_locked(event QueuedEvent) bool {
-	id := if event.kind == .lifecycle {
-		event.lifecycle.window_id
-	} else {
-		event.input.window_id
+	if event.kind == .service && event.service.kind == .monitor {
+		if event.service.monitors.len > 0 {
+			for monitor in event.service.monitors {
+				if monitor.id.app_instance != app.instance_id {
+					return false
+				}
+			}
+			return true
+		}
+		return event.service.monitor.id.app_instance == app.instance_id
+	}
+	id := match event.kind {
+		.lifecycle { event.lifecycle.window_id }
+		.input { event.input.window_id }
+		.service { event.service.window }
+		.readback { event.readback.window }
 	}
 	if id.app_instance != app.instance_id || id.slot < 0 || id.slot >= app.windows.len {
 		return false
@@ -796,6 +835,9 @@ pub fn (mut app App) drain_pending(max_jobs int) !int {
 // to run them after stop().
 pub fn (mut app App) stop() ! {
 	app.assert_owner_thread()!
+	if app.defer_native_stop() {
+		return
+	}
 	if app.status == .stopped {
 		return app.return_stop_terminal()
 	}
@@ -808,22 +850,26 @@ pub fn (mut app App) stop() ! {
 		return
 	}
 	mut errors := []string{}
-	for destroy_ticket in app.prepared_window_tickets_for_stop() {
-		app.seal_window_destroy(destroy_ticket) or {
+	ids := app.window_ids_for_ordered_stop() or {
+		errors << err.msg()
+		[]WindowId{}
+	}
+	for id in ids {
+		stage, existing_ticket := app.window_destroy_state_for_stop(id) or {
 			errors << err.msg()
-			app.rollback_window_destroy(destroy_ticket) or { errors << err.msg() }
 			continue
 		}
-		app.finish_window_destroy(destroy_ticket, []string{}) or { errors << err.msg() }
-	}
-	for destroy_ticket in app.sealed_window_tickets_for_stop() {
-		app.finish_window_destroy(destroy_ticket, []string{}) or { errors << err.msg() }
-	}
-	ids := app.live_window_ids_for_stop()
-	for id in ids {
-		mut destroy_ticket := app.prepare_window_destroy_for_stop(id) or {
-			errors << err.msg()
+		if stage == .sealed {
+			app.finish_window_destroy(existing_ticket, []string{}) or { errors << err.msg() }
 			continue
+		}
+		mut destroy_ticket := if stage == .prepared {
+			existing_ticket
+		} else {
+			app.prepare_window_destroy_for_stop(id) or {
+				errors << err.msg()
+				continue
+			}
 		}
 		mut sealed := false
 		for attempt in 0 .. 2 {
@@ -847,7 +893,11 @@ pub fn (mut app App) stop() ! {
 		}
 		app.finish_window_destroy(destroy_ticket, []string{}) or { errors << err.msg() }
 	}
-	for destroy_ticket in app.seal_remaining_windows_terminal_for_stop() {
+	terminal_tickets := app.seal_remaining_windows_terminal_for_stop() or {
+		errors << err.msg()
+		[]WindowDestroyTicket{}
+	}
+	for destroy_ticket in terminal_tickets {
 		app.finish_window_destroy(destroy_ticket, []string{}) or { errors << err.msg() }
 	}
 	app.shutdown_render_bridge_for_stop() or { errors << err.msg() }
@@ -892,6 +942,9 @@ fn validate_window_config(config WindowConfig) ! {
 	if config.sample_count <= 0 {
 		return error(err_render_sample_count_invalid)
 	}
+	if config.modal && config.owner == none {
+		return error(err_owner_relation_invalid)
+	}
 }
 
 fn validate_window_size(width int, height int) ! {
@@ -914,6 +967,8 @@ fn window_config_with_title(config WindowConfig, title string) WindowConfig {
 		fullscreen:      config.fullscreen
 		sample_count:    config.sample_count
 		redraw_mode:     config.redraw_mode
+		owner:           config.owner
+		modal:           config.modal
 		render_workload: config.render_workload
 	}
 }
@@ -932,6 +987,8 @@ fn window_config_with_size(config WindowConfig, width int, height int) WindowCon
 		fullscreen:      config.fullscreen
 		sample_count:    config.sample_count
 		redraw_mode:     config.redraw_mode
+		owner:           config.owner
+		modal:           config.modal
 		render_workload: config.render_workload
 	}
 }

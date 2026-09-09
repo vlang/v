@@ -115,7 +115,7 @@ pub fn (c &RawConn) read_ptr(buf_ptr &u8, len int) !(int, Addr) {
 			Ip6: Ip6{}
 		}
 	}
-	addr_len := sizeof(Addr)
+	addr_len := u32(sizeof(Addr))
 	mut res := wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
 		&addr_len))!
 	if res > 0 {
@@ -220,20 +220,21 @@ pub fn (c &RawConn) protocol() Protocol {
 
 // set_option_bool sets a boolean socket option.
 pub fn (mut s RawSocket) set_option_bool(opt SocketOption, value bool) ! {
-	x := int(value)
-	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(int)))!
+	x := i32(value) // C socket options are 4-byte `int`; i32 storage keeps sizeof 4
+	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(x)))!
 }
 
 // set_option_int sets an integer socket option.
 pub fn (mut s RawSocket) set_option_int(opt SocketOption, value int) ! {
-	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &value, sizeof(int)))!
+	x := i32(value)
+	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(x)))!
 }
 
 // set_ip_header_included enables or disables the IP_HDRINCL option.
 // When enabled, the user must provide the complete IP header.
 pub fn (mut s RawSocket) set_ip_header_included(on bool) ! {
-	x := int(on)
-	socket_error(C.setsockopt(s.handle, C.IPPROTO_IP, C.IP_HDRINCL, &x, sizeof(int)))!
+	x := i32(on) // C socket options are 4-byte `int`; i32 storage keeps sizeof 4
+	socket_error(C.setsockopt(s.handle, C.IPPROTO_IP, C.IP_HDRINCL, &x, sizeof(x)))!
 }
 
 // close shuts down and closes the socket.

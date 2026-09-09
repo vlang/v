@@ -1,0 +1,504 @@
+enum IntelNarrow as u8 {
+	value
+}
+
+fn intel_sub(a int, b int) int {
+	mut res := 0
+	asm amd64 intel {
+		mov eax, a
+		mov res, eax
+		; +r (res)
+		; r (a)
+		  r (b)
+	}
+	return res
+}
+
+fn intel_shift(value int) int {
+	mut result := value
+	asm amd64 intel {
+		sar result, 1
+		; +r (result)
+	}
+	return result
+}
+
+fn intel_literal() {
+	asm amd64 intel {
+		mov rax, one
+		; ; r (1) as one
+	}
+}
+
+fn intel_hard_register(value i64) {
+	asm amd64 intel {
+		mov eax, value
+		; ; r (value)
+	}
+}
+
+fn intel_uppercase_hard_register(value i64) {
+	asm amd64 intel {
+		MOV eax, value
+		; ; r (value)
+	}
+}
+
+fn intel_bit_test_hard_register(index i64) {
+	asm amd64 intel {
+		bt eax, index
+		; ; r (index)
+	}
+}
+
+fn intel_double_shift_hard_register(value i64) {
+	asm amd64 intel {
+		shld eax, value, 1
+		; ; r (value)
+	}
+}
+
+fn intel_bmi_hard_register(left i64, right i64) {
+	asm amd64 intel {
+		andn eax, left, right
+		; ; r (left)
+		  r (right)
+	}
+}
+
+fn intel_narrow_enum(value IntelNarrow) {
+	asm amd64 intel {
+		mov rax, value
+		; ; r (value)
+	}
+}
+
+fn intel_encoding_prefix_hard_register(value i64) {
+	asm amd64 intel {
+		rex add eax, value
+		; ; r (value)
+	}
+}
+
+fn intel_size_suffix_hard_register(value i64) {
+	asm amd64 intel {
+		addq eax, value
+		; ; r (value)
+	}
+}
+
+fn intel_narrow_size_suffix(value i64) {
+	asm amd64 intel {
+		addl rax, value
+		; ; r (value)
+	}
+}
+
+fn intel_crc32_hard_register(value i64) {
+	asm amd64 intel {
+		crc32 eax, value
+		; ; r (value)
+	}
+}
+
+fn intel_address_hard_register(base i64) {
+	asm amd64 intel {
+		mov rax, [eax * 4 + base]
+		; ; r (base)
+	}
+}
+
+fn intel_crc32_dword_source(checksum i64) {
+	mut result := checksum
+	asm amd64 intel {
+		crc32 result, eax
+		; +r (result)
+		; ; rax
+	}
+}
+
+fn intel_double_shift_bad_count(value i64) {
+	mut result := value
+	asm amd64 intel {
+		shld result, value, eax
+		; +r (result)
+		; r (value)
+		; rax
+	}
+}
+
+fn intel_cmov_size_suffix(value i64) {
+	asm amd64 intel {
+		cmovzl rax, value
+		; ; r (value)
+	}
+}
+
+fn intel_address_hard_displacement(base i64) {
+	asm amd64 intel {
+		mov rax, [base * 4 + eax]
+		; ; r (base)
+	}
+}
+
+fn intel_rip_relative_named_displacement(offset i64) {
+	mut result := i64(0)
+	asm amd64 intel {
+		mov result, [rip + offset]
+		; =r (result)
+		; r (offset)
+	}
+}
+
+fn intel_signed_compare(left int, right int) {
+	asm amd64 intel {
+		cmp left, right
+		; ; r (left)
+		  r (right)
+		; cc
+	}
+}
+
+fn intel_signed_test(value int) {
+	asm amd64 intel {
+		test value, value
+		; ; r (value)
+		; cc
+	}
+}
+
+enum IntelSignedNarrow as i8 {
+	negative = -1
+	positive = 1
+}
+
+fn intel_signed_enum_compare(left IntelSignedNarrow, right IntelSignedNarrow) {
+	asm amd64 intel {
+		cmp left, right
+		; ; r (left)
+		  r (right)
+		; cc
+	}
+}
+
+fn intel_named_shift_count(count i64) {
+	asm amd64 intel {
+		shl rax, count
+		; ; r (count)
+		; rax
+		  cc
+	}
+}
+
+fn intel_extension_move_named_sources(value i64) {
+	mut zero_extended := i64(0)
+	mut sign_extended := i64(0)
+	mut sign_extended_dword := i64(0)
+	asm amd64 intel {
+		movzx zero_extended, value
+		movsx sign_extended, value
+		movsxd sign_extended_dword, value
+		; =r (zero_extended)
+		  =r (sign_extended)
+		  =r (sign_extended_dword)
+		; r (value)
+	}
+}
+
+fn intel_gnu_extension_move_named_sources(value i64) {
+	mut zero_extended := i64(0)
+	mut sign_extended := i64(0)
+	asm amd64 intel {
+		movzbq zero_extended, value
+		movswq sign_extended, value
+		; =r (zero_extended)
+		  =r (sign_extended)
+		; r (value)
+	}
+}
+
+fn intel_gnu_extension_move_widths(value i64) {
+	mut result := i64(0)
+	asm amd64 intel {
+		movzbq result, ax
+		movswq result, al
+		movzbl result, al
+		; =r (result)
+		; r (value)
+	}
+}
+
+fn intel_extension_move_address_sources(base &u8) {
+	mut zero_extended := i64(0)
+	mut sign_extended := i64(0)
+	asm amd64 intel {
+		movzx zero_extended, [base]
+		movsx sign_extended, [base]
+		; =r (zero_extended)
+		  =r (sign_extended)
+		; r (base)
+	}
+}
+
+fn intel_narrow_implicit_arithmetic(value int) {
+	asm amd64 intel {
+		div value
+		idiv value
+		mul value
+		imul value
+		; ; r (value)
+		; rax
+		  rdx
+		  cc
+	}
+}
+
+fn intel_implicit_arithmetic_address(base &u64) {
+	asm amd64 intel {
+		div [base]
+		idiv [base]
+		mul [base]
+		imul [base]
+		; ; r (base)
+		; rax
+		  rdx
+		  cc
+	}
+}
+
+fn intel_three_register_address(base &u8, index i64, displacement i64) {
+	asm amd64 intel {
+		mov al, [base + index + displacement]
+		; ; r (base)
+		  r (index)
+		  r (displacement)
+		; al
+	}
+}
+
+fn intel_signed_narrow_address(base &u8, index int) {
+	asm amd64 intel {
+		mov al, [base + index + 0]
+		; ; r (base)
+		  r (index)
+		; al
+	}
+}
+
+fn intel_narrow_arithmetic_flags(value int) {
+	mut result := value
+	asm amd64 intel {
+		add result, 1
+		jmp flags_ready
+		xor rax, rax
+	flags_ready:
+		seto al
+		; +r (result)
+		; ; rax
+		  cc
+	}
+}
+
+fn intel_narrow_arithmetic_carry_survives_inc(value int) {
+	mut result := value
+	asm amd64 intel {
+		add result, 1
+		inc eax
+		setc al
+		; +r (result)
+		; ; rax
+		  cc
+	}
+}
+
+fn intel_narrow_arithmetic_carry_flows_through_cmc(value u32) {
+	mut result := value
+	asm amd64 intel {
+		add result, 1
+		cmc
+		setc al
+		; +r (result)
+		; ; rax
+		  cc
+	}
+}
+
+fn intel_narrow_arithmetic_carry_across_jrcxz(value u32) {
+	mut result := value
+	asm amd64 intel {
+		add result, 1
+		jrcxz flags_ready
+		xor eax, eax
+	flags_ready:
+		setc al
+		; +r (result)
+		; ; rax
+		  rcx
+		  cc
+	}
+}
+
+fn intel_signed_narrow_wide_sources(increment int) {
+	mut result := i64(1)
+	asm amd64 intel {
+		mov result, increment
+		add result, increment
+		; +r (result)
+		; r (increment)
+		; cc
+	}
+}
+
+fn intel_narrow_arithmetic_flags_survive_masked_zero_shift(value u32) {
+	mut result := value
+	asm amd64 intel {
+		add result, 1
+		shl rax, 64
+		setc al
+		; +r (result)
+		; ; rax
+		  cc
+	}
+}
+
+fn intel_crc32_memory_source(base &u16, checksum u64) u64 {
+	mut result := checksum
+	asm amd64 intel {
+		crc32 result, [base]
+		crc32w result, [base]
+		; +r (result)
+		; r (base)
+	}
+	return result
+}
+
+fn intel_lzcnt_narrow_source(value u32) i64 {
+	mut result := i64(0)
+	asm amd64 intel {
+		lzcnt result, value
+		; =r (result)
+		; r (value)
+	}
+	return result
+}
+
+fn intel_shld_narrow_data(value u32, source u32) u32 {
+	mut result := value
+	asm amd64 intel {
+		shld result, source, 1
+		; +r (result)
+		; r (source)
+	}
+	return result
+}
+
+fn intel_rorx_narrow_source(value u32) i64 {
+	mut result := i64(0)
+	asm amd64 intel {
+		rorx result, value, 1
+		; =r (result)
+		; r (value)
+	}
+	return result
+}
+
+fn intel_rorx_named_count(value i64, count i64) i64 {
+	mut result := i64(0)
+	asm amd64 intel {
+		rorx result, value, count
+		; =r (result)
+		; r (value)
+		  r (count)
+	}
+	return result
+}
+
+fn intel_crc32_narrow_source(value u32, checksum u64) u64 {
+	mut result := checksum
+	asm amd64 intel {
+		crc32 result, value
+		; +r (result)
+		; r (value)
+	}
+	return result
+}
+
+fn intel_movbe_narrow_load(base &u32) u32 {
+	mut result := u32(0)
+	asm amd64 intel {
+		movbe result, [base]
+		; =r (result)
+		; r (base)
+	}
+	return result
+}
+
+fn intel_narrow_bit_test(value u32) {
+	asm amd64 intel {
+		bt value, 40
+		; ; r (value)
+		; cc
+	}
+}
+
+fn intel_narrow_bswap(value u32) u32 {
+	mut result := value
+	asm amd64 intel {
+		bswap result
+		; +r (result)
+	}
+	return result
+}
+
+fn intel_mulx_narrow_source(value u32) {
+	mut high := i64(0)
+	mut low := i64(0)
+	asm amd64 intel {
+		mulx high, low, value
+		; =r (high)
+		  =r (low)
+		; r (value)
+		; rdx
+	}
+}
+
+fn intel_vsib_vector_index(base &i32) {
+	asm amd64 intel {
+		vpgatherdd xmm1, [base + xmm2 * 4 + 0], xmm3
+		; ; r (base)
+		; xmm1
+		  xmm2
+		  xmm3
+	}
+}
+
+fn intel_label_alias_collisions(value i64) {
+	asm amd64 intel {
+	local_width_label:
+		add eax, local_width_label
+		.global global_width_label
+	global_width_label:
+		add eax, global_width_label
+		; ; r (value) as local_width_label
+		  r (value) as global_width_label
+		; eax
+	}
+}
+
+asm amd64 {
+	.global file_width_label
+file_width_label:
+	nop
+}
+
+fn intel_file_label_alias_collision(value i64) {
+	asm amd64 intel {
+		mov eax, file_width_label
+		; ; r (value) as file_width_label
+		; eax
+	}
+}
+
+fn main() {
+	println(intel_sub(50, 8))
+}

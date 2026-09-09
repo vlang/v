@@ -64,6 +64,63 @@ fn main() {
 		'field `foo` does not exist')
 }
 
+fn test_optional_assignment_keeps_wrapper_and_qualified_optional_cast_is_known() {
+	v3_bin := checker_assignment_build_v3()
+	out := checker_assignment_run_good(v3_bin, 'optional_assignment_and_qualified_cast', 'import time
+
+type Values = []int
+
+struct Holder {
+	value  ?time.Time
+	values ?Values
+}
+
+fn main() {
+	mut first := ?int(none)
+	mut second := ?int(none)
+	first = 1
+	second = 2
+	assert first? == 1
+	assert second? == 2
+	copy := first
+	assert copy? == first?
+	holder := Holder{}
+	casted := holder.value as ?time.Time
+	assert casted == none
+	if holder.values != none {
+		assert holder.values ?.str() == "Values([])"
+	}
+	mut absent := ?map[string]string{}
+	fallback := {
+		"foo": "bar"
+	}
+	chosen := if absent != none { absent.clone() } else { fallback }
+	assert absent == none
+	assert chosen.len == 1
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
+fn test_enum_alias_cast_contextualizes_short_enum_value() {
+	v3_bin := checker_assignment_build_v3()
+	out := checker_assignment_run_good(v3_bin, 'enum_alias_short_value_cast', 'enum Number {
+	one = 1
+	two
+}
+
+type NumberAlias = Number
+
+fn main() {
+	value := NumberAlias(.two)
+	assert value == .two
+	println(value)
+}
+')
+	assert out == 'two'
+}
+
 fn test_container_stored_capturing_fn_literals() {
 	v3_bin := checker_assignment_build_v3()
 	alias_out := checker_assignment_run_good(v3_bin, 'append_alias_capturing_fn_literal', 'fn main() {

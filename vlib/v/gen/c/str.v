@@ -6,7 +6,7 @@ import v.ast
 import v.util
 
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
-	escaped_val := cescape_nonascii(util.smart_quote(node.val, node.is_raw))
+	escaped_val := cescape_nonascii(util.smart_quote(node.val, node.is_raw, node.opaque_pos))
 	if node.language == .c {
 		g.write(cescaped_string_literal(escaped_val))
 	} else {
@@ -89,7 +89,8 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 	g.writeln('// sb inter opt')
 	is_nl := call_expr.name == 'writeln'
 	for i, val in node.vals {
-		escaped_val := cescape_nonascii(util.smart_quote(val, false))
+		val_opaque_pos := if i < node.opaque_pos.len { node.opaque_pos[i] } else { []int{} }
+		escaped_val := cescape_nonascii(util.smart_quote(val, false, val_opaque_pos))
 		g.write('strings__Builder_write_string(&')
 		g.expr(call_expr.left)
 		g.write2(', _S("', escaped_val)
@@ -358,6 +359,15 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		} else {
 			g.get_str_fn(exp_typ)
 		}
+		use_auto_struct_root_guard := sym.kind == .struct && !sym_has_str_method
+			&& !sym.is_c_struct() && !typ.has_option_or_result() && mut_arg_option_type == 0
+			&& (is_ptr || expr.is_lvalue())
+		effective_str_fn_name := if use_auto_struct_root_guard {
+			guarded_auto_str_fn_name(str_fn_name)
+		} else {
+			str_fn_name
+		}
+		effective_str_method_expects_ptr := str_method_expects_ptr || use_auto_struct_root_guard
 		temp_var_needed := expr is ast.CallExpr
 			&& (expr.return_type.is_ptr() || g.table.sym(expr.return_type).is_c_struct())
 		mut tmp_var := ''
@@ -410,8 +420,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write(') ? _S("nil") : ')
 			}
 		}
-		g.write2(str_fn_name, '(')
-		if str_method_expects_ptr && (!is_ptr || is_ptr_alias_with_str) {
+		g.write2(effective_str_fn_name, '(')
+		if effective_str_method_expects_ptr && (!is_ptr || is_ptr_alias_with_str) {
 			if is_dump_expr || (g.pref.ccompiler_type != .tinyc && expr is ast.CallExpr) {
 				g.write('ADDR(${g.styp(typ)}, ')
 				defer(fn) {
@@ -428,8 +438,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			} else {
 				g.write('*(${g.styp(typ)}*)&')
 			}
-		} else if !str_method_expects_ptr && !is_shared && ((is_ptr && !is_ptr_alias_with_str)
-			|| is_var_mut) {
+		} else if !effective_str_method_expects_ptr && !is_shared
+			&& ((is_ptr && !is_ptr_alias_with_str) || is_var_mut) {
 			if sym.is_c_struct() {
 				g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 			} else {

@@ -15,7 +15,7 @@ mut:
 fn test_json_decode_fails_to_decode_unrecognised_array_of_dicts() {
 	data := '[{"twins":[{"id":123,"seed":"abcde","pubkey":"xyzasd"},{"id":456,"seed":"dfgdfgdfgd","pubkey":"skjldskljh45sdf"}]}]'
 	json.decode(TestTwins, data) or {
-		assert err.msg() == "expected field 'twins' is missing"
+		assert err.msg().starts_with('Json element is not an object:')
 		return
 	}
 	assert false

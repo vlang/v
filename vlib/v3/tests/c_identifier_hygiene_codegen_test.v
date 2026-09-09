@@ -124,16 +124,16 @@ fn main() {
 	assert !c_code.contains('->unix'), c_code
 	assert !c_code.contains('#define block_size'), c_code
 	assert c_code.contains('i64 v_unix'), c_code
-	assert c_code.contains('int _v_true'), c_code
-	assert c_code.contains('int _v_false'), c_code
-	assert c_code.contains('int v_stdin'), c_code
-	assert c_code.contains('int v_stderr'), c_code
-	assert c_code.contains('int v_stdout'), c_code
-	assert c_code.contains('int v_access(int x)'), c_code
-	assert c_code.contains('int v_read(void)'), c_code
-	assert c_code.contains('int v_close(void)'), c_code
-	assert c_code.contains('int v_fabs(int x)'), c_code
-	assert c_code.contains('int v_typeof'), c_code
+	assert c_code.contains('i64 _v_true'), c_code
+	assert c_code.contains('i64 _v_false'), c_code
+	assert c_code.contains('i64 v_stdin'), c_code
+	assert c_code.contains('i64 v_stderr'), c_code
+	assert c_code.contains('i64 v_stdout'), c_code
+	assert c_code.contains('i64 v_access(i64 x)'), c_code
+	assert c_code.contains('i64 v_read(void)'), c_code
+	assert c_code.contains('i64 v_close(void)'), c_code
+	assert c_code.contains('i64 v_fabs(i64 x)'), c_code
+	assert c_code.contains('i64 v_typeof'), c_code
 	assert c_code.contains('Kind___v_asm'), c_code
 	assert c_code.contains('.v_unix'), c_code
 	assert c_code.contains('->v_unix'), c_code

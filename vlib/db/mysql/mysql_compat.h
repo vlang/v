@@ -33,3 +33,17 @@ static inline void v_mysql_bind_set_length_at(MYSQL_BIND *bind, void *lengths,
 	unsigned int column) {
 	bind->length = &((unsigned long *)lengths)[column];
 }
+
+// MYSQL_BIND uses unsigned long for buffer sizes on every connector, while
+// its null indicator is my_bool on MariaDB/older MySQL and bool on MySQL 8.
+// Name those native pointee types so V-owned result buffers have the exact C
+// element width instead of assuming u32/_Bool.
+typedef unsigned long v_mysql_ulong;
+#if defined(MARIADB_BASE_VERSION) || defined(MARIADB_VERSION_ID) || \
+	defined(MARIADB_PACKAGE_VERSION_ID) || defined(LIBMARIADB)
+typedef my_bool v_mysql_bool;
+#elif defined(MYSQL_VERSION_ID) && MYSQL_VERSION_ID >= 80000
+typedef bool v_mysql_bool;
+#else
+typedef my_bool v_mysql_bool;
+#endif

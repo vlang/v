@@ -22,7 +22,7 @@ pub mut:
 	fast_name_lens   [32]u16
 	fast_indexes     [32]u32
 	fast_generations [32]u32
-	generations      []int
+	generations      []i32
 	storage_keys     []string
 	next_generation  int
 	lifetime         int
@@ -30,7 +30,7 @@ pub mut:
 
 pub struct ScopeBindingOwner {
 	scope       &Scope = unsafe { nil }
-	index       int    = -1
+	index       int = -1
 	generation  int
 	lifetime    int
 	name        string
@@ -45,7 +45,11 @@ fn scope_name_bit(name string) u64 {
 
 @[inline]
 fn scope_fast_slot(name string) int {
-	return int(((u64(voidptr(name.str)) >> 4) ^ u64(name.len)) & 31)
+	// Identical identifiers often come from different source allocations.
+	if name.len == 0 {
+		return 0
+	}
+	return int((u32(name[0]) * 11 + u32(name[name.len - 1]) * 2 + u32(name.len) * 3) & 31)
 }
 
 @[direct_array_access; inline]
@@ -53,8 +57,9 @@ fn (s &Scope) own_binding_index(name string) ?int {
 	if s.fast_lookup {
 		slot := scope_fast_slot(name)
 		if s.fast_generations[slot] == s.fast_generation
-			&& s.fast_name_ptrs[slot] == voidptr(name.str)
-			&& s.fast_name_lens[slot] == u16(name.len) {
+			&& s.fast_name_lens[slot] == name.len
+			&& (s.fast_name_ptrs[slot] == voidptr(name.str)
+				|| s.names[int(s.fast_indexes[slot])] == name) {
 			return int(s.fast_indexes[slot])
 		}
 	}
@@ -80,8 +85,8 @@ fn (mut s Scope) remember_fast_binding(name string, index int) {
 pub fn new_scope(parent &Scope) &Scope {
 	unsafe {
 		return &Scope{
-			parent:          parent
-			fast_lookup:     os.getenv('V3_NO_SCOPE_DIRECT') == ''
+			parent: parent
+			fast_lookup: os.getenv('V3_NO_SCOPE_DIRECT') == ''
 			fast_generation: 1
 		}
 	}
@@ -161,10 +166,10 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 			}
 			if i := scope.own_binding_index(name) {
 				return ScopeBindingOwner{
-					scope:       scope
-					index:       i
-					lifetime:    scope.lifetime
-					name:        name
+					scope: scope
+					index: i
+					lifetime: scope.lifetime
+					name: name
 					storage_key: scope.storage_keys[i]
 				}
 			}
@@ -175,10 +180,10 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 	for i := s.names.len - 1; i >= 0; i-- {
 		if s.names[i] == name {
 			return ScopeBindingOwner{
-				scope:       s
-				index:       i
-				generation:  s.generations[i]
-				lifetime:    s.lifetime
+				scope: s
+				index: i
+				generation: s.generations[i]
+				lifetime: s.lifetime
 				storage_key: s.storage_keys[i]
 			}
 		}
@@ -277,10 +282,10 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 			s.types[i] = typ
 			s.remember_fast_binding(name, i)
 			return ScopeBindingOwner{
-				scope:       s
-				index:       i
-				lifetime:    s.lifetime
-				name:        name
+				scope: s
+				index: i
+				lifetime: s.lifetime
+				name: name
 				storage_key: s.storage_keys[i]
 			}
 		}
@@ -293,10 +298,10 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 		storage_key := scope_binding_storage_key(s, s.lifetime, index, 0)
 		s.storage_keys << storage_key
 		return ScopeBindingOwner{
-			scope:       s
-			index:       index
-			lifetime:    s.lifetime
-			name:        name
+			scope: s
+			index: index
+			lifetime: s.lifetime
+			name: name
 			storage_key: storage_key
 		}
 	}
@@ -308,10 +313,10 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 			storage_key := scope_binding_storage_key(s, s.lifetime, i, s.generations[i])
 			s.storage_keys[i] = storage_key
 			return ScopeBindingOwner{
-				scope:       s
-				index:       i
-				generation:  s.generations[i]
-				lifetime:    s.lifetime
+				scope: s
+				index: i
+				generation: s.generations[i]
+				lifetime: s.lifetime
 				storage_key: storage_key
 			}
 		}
@@ -324,10 +329,10 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 	storage_key := scope_binding_storage_key(s, s.lifetime, index, s.next_generation)
 	s.storage_keys << storage_key
 	return ScopeBindingOwner{
-		scope:       s
-		index:       index
-		generation:  s.next_generation
-		lifetime:    s.lifetime
+		scope: s
+		index: index
+		generation: s.next_generation
+		lifetime: s.lifetime
 		storage_key: storage_key
 	}
 }

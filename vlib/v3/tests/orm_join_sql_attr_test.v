@@ -17,10 +17,15 @@ fn orm_join_sql_attr_build_v3() string {
 }
 
 fn orm_join_sql_attr_run(v3_bin string, name string, src string) string {
-	src_path := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+	root := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src_path := os.join_path(root, 'main.v')
 	os.write_file(src_path, src) or { panic(err) }
-	bin_path := os.join_path(os.temp_dir(), 'v3_${name}_program_${os.getpid()}')
-	os.rm(bin_path) or {}
+	bin_path := os.join_path(root, 'program')
 	compile := os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin_path)
@@ -29,10 +34,15 @@ fn orm_join_sql_attr_run(v3_bin string, name string, src string) string {
 }
 
 fn orm_join_sql_attr_compile(v3_bin string, name string, src string) os.Result {
-	src_path := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
+	root := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src_path := os.join_path(root, 'main.v')
 	os.write_file(src_path, src) or { panic(err) }
-	bin_path := os.join_path(os.temp_dir(), 'v3_${name}_program_${os.getpid()}')
-	os.rm(bin_path) or {}
+	bin_path := os.join_path(root, 'program')
 	return os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
 }
 
@@ -57,6 +67,111 @@ fn orm_join_sql_attr_run_project(v3_bin string, name string, files map[string]st
 	run := os.execute(bin_path)
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
+}
+
+fn test_v3_orm_update_function_call_value() {
+	v3_bin := orm_join_sql_attr_build_v3()
+	out := orm_join_sql_attr_run(v3_bin, 'orm_update_function_call_value', "import db.sqlite
+import encoding.html
+
+// `Table` intentionally collides with orm.Table. The generic specialization
+// must retain this main-module type while lowering the query.
+struct Table {
+	id int @[primary]
+	name string
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+
+	sql db {
+		create table Table
+	}!
+
+	user := Table{
+		id: 1
+		name: '<Ada>'
+	}
+	sql db {
+		insert user into Table
+	}!
+
+	sql db {
+		update Table set name = html.escape(user.name) where id == user.id
+	}!
+	rows := sql db {
+		select from Table where id == 1
+	}!
+	assert rows.len == 1
+	assert rows[0].name == '&lt;Ada&gt;'
+}
+")
+	assert out == ''
+}
+
+fn test_v3_orm_update_call_selector_and_cast_semantics() {
+	v3_bin := orm_join_sql_attr_build_v3()
+	out := orm_join_sql_attr_run(v3_bin, 'orm_update_call_selector_and_cast_semantics', "import db.sqlite
+
+struct User {
+	id int @[primary]
+	name string
+}
+
+fn User.decorate(value string) string {
+	return 'static:\${value}'
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+
+	sql db {
+		create table User
+	}!
+
+	user := User{
+		id: 1
+		name: '<Ada>'
+	}
+	sql db {
+		insert user into User
+	}!
+
+	sql db {
+		update User set name = user.name.substr(1, 4) where id == user.id
+	}!
+	method_rows := sql db {
+		select from User where id == user.id
+	}!
+	assert method_rows.len == 1
+	assert method_rows[0].name == 'Ada'
+
+	sql db {
+		update User set name = User.decorate(user.name) where id == user.id
+	}!
+	static_rows := sql db {
+		select from User where id == user.id
+	}!
+	assert static_rows.len == 1
+	assert static_rows[0].name == 'static:<Ada>'
+
+	sql db {
+		update User set name = string(user.name) where id == user.id
+	}!
+	cast_rows := sql db {
+		select from User where id == user.id
+	}!
+	assert cast_rows.len == 1
+	assert cast_rows[0].name == '<Ada>'
+}
+")
+	assert out == ''
 }
 
 fn test_v3_static_where_and_join_sql_attribute_regressions() {

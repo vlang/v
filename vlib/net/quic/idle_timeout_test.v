@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 import time
@@ -67,11 +66,13 @@ fn test_idle_timeout_state_reset_asymmetry() {
 	// very next sentence).
 	s.note_packet_received(ms1400)
 	assert !s.is_idle(timeout, ms1500, 0) // now measured from ms1400
+
 	assert s.is_idle(timeout, ms2500, 0)
 
 	// ANY send restarts the timer, ack-eliciting or not.
 	s.note_packet_sent(ms2400)
 	assert !s.is_idle(timeout, ms2500, 0) // now measured from ms2400
+
 	assert s.is_idle(timeout, ms3500, 0)
 }
 

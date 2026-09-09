@@ -9,7 +9,9 @@ const generic_cross_v3_src = os.join_path(generic_cross_v3_dir, 'v3.v')
 fn generic_cross_build_v3() string {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_cross_module_arg_test_${pid}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${generic_cross_vexe} -gc none -path "${generic_cross_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${generic_cross_v3_src}')
 	assert build.exit_code == 0, build.output
@@ -137,6 +139,15 @@ fn test_generic_struct_interface_dispatch_emits_required_methods() {
 		'main.v':      'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
 	})
 	assert out == '29'
+}
+
+fn test_generic_interface_result_call_keeps_specialized_symbol_and_wrapper() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_interface_result_call', {
+		'store/store.v': 'module store\n\npub interface Store[T] {\nmut:\n\tget() !T\n}\n\npub struct Sessions[T] {\npub mut:\n\tstore Store[T]\n}\n\npub fn (mut sessions Sessions[T]) get[X](_ X) !T {\n\treturn sessions.store.get()!\n}\n'
+		'main.v':        'module main\n\nimport store\n\nstruct User {\n\tname string\n}\n\nstruct MemoryStore {}\n\nfn (mut memory MemoryStore) get() !User {\n\t_ = memory\n\treturn User{\n\t\tname: "ok"\n\t}\n}\n\nfn main() {\n\tmut sessions := store.Sessions[User]{\n\t\tstore: MemoryStore{}\n\t}\n\tprintln(sessions.get(0)!.name)\n}\n'
+	})
+	assert out == 'ok'
 }
 
 fn test_generic_comptime_if_uses_interface_implementation() {

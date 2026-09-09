@@ -126,7 +126,11 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 			f.write_string(node.receiver.typ.share().str() + ' ')
 			styp = styp[1..] // remove &
 		}
-		f.write_string(node.receiver.name + ' ')
+		is_type_only_receiver := node.receiver.name == '_' && node.receiver.type_pos.len > 0
+			&& node.receiver.pos.pos == node.receiver.type_pos.pos
+		if !is_type_only_receiver {
+			f.write_string(node.receiver.name + ' ')
+		}
 		styp = util.no_cur_mod(styp, cur_mod)
 		if t.new_int_fmt_fix && styp == 'int' {
 			styp = 'i32'

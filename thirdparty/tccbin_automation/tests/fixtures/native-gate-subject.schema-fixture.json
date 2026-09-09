@@ -1,0 +1,21 @@
+{
+  "consumer_id": "1111111111111111111111111111111111111111111111111111111111111111",
+  "consumer_kind": "initial_adopt_current",
+  "intent_or_operation_id": "1111111111111111111111111111111111111111111111111111111111111111",
+  "target_id": "linux-amd64",
+  "subject_generation": 1,
+  "initial_run_mode": "original_push",
+  "remediation_trigger": null,
+  "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "tree": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "original_ref": "tccbin-candidate/linux-amd64/1111111111111111111111111111111111111111111111111111111111111111",
+  "input_fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+  "artifact_fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
+  "manifest_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+  "digests": [
+    {
+      "path": "tcc.exe",
+      "sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+    }
+  ]
+}

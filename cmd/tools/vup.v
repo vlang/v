@@ -70,7 +70,11 @@ fn main() {
 		eprintln('Try running `${get_make_cmd_name()}` .')
 		exit(1)
 	}
-	app.recompile_vup()
+	if !app.recompile_vup() {
+		app.show_current_v_version()
+		eprintln('`v up` failed. Run `cd ${os.quoted_path(app.vroot)} && ${v_upstream_pull_command()} && ${get_make_cmd_name()}` to finish updating V.')
+		exit(1)
+	}
 	app.show_current_v_version()
 }
 
@@ -133,15 +137,26 @@ fn (app App) recompile_v() bool {
 		return app.make(vself)
 	}
 
-	self_result := os.execute(vself)
-	if self_result.exit_code == 0 {
-		println(self_result.output.trim_space())
+	// Let `v self` inherit stdio instead of buffering all of its output. Rebuilding
+	// a V3-enabled compiler can take several seconds, and hiding the initial status
+	// makes `v up` appear to hang after TCC. On Windows the default `os.Process`
+	// launch does not wire inherited standard handles into STARTUPINFO, while
+	// `os.system` does preserve redirected stdout and stderr through `_wsystem`.
+	mut self_exit_code := -1
+	$if windows {
+		self_exit_code = os.system(vself)
+	} $else {
+		mut self_process := os.new_process(vexe_path)
+		self_process.set_args(if app.is_prod { ['-prod', 'self'] } else { ['self'] })
+		self_process.wait()
+		self_exit_code = self_process.code
+		self_process.close()
+	}
+	if self_exit_code == 0 {
 		println('> Done recompiling.')
 		return true
-	} else {
-		println('> `${vself}` failed, running `make`...')
-		app.vprintln(self_result.output.trim_space())
 	}
+	println('> `${vself}` failed, running `make`...')
 	return app.make(vself)
 }
 
