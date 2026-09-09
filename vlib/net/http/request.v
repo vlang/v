@@ -446,7 +446,7 @@ fn (req &Request) build_request_headers_opts(method Method, host_name string, po
 		}
 		// RFC 9110 §5.2 combines repeated field lines with a comma. This also
 		// keeps HTTP/1.x serialization consistent with the HTTP/2 path.
-		val := header.custom_values(key).join(', ')
+		val := header.custom_values(key).map(it.trim_space()).join(', ')
 		sb.write_string(key)
 		sb.write_string(': ')
 		sb.write_string(val)

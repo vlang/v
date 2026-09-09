@@ -18,6 +18,14 @@ fn test_build_request_headers_comma_combines_repeated_fields() {
 	assert headers.contains('Accept: text/html, application/json\r\n')
 }
 
+fn test_build_request_headers_trims_repeated_fields_before_combining() {
+	mut req := Request{}
+	req.header.add_custom('X-Foo', ' a ')!
+	req.header.add_custom('X-Foo', ' b ')!
+	headers := req.build_request_headers(.get, 'localhost', 80, '/')
+	assert headers.contains('X-Foo: a, b\r\n')
+}
+
 fn test_build_request_headers_semicolon_combines_case_insensitive_cookie_fields() {
 	mut req := Request{}
 	req.header.add_custom('cookie', 'a=1')!

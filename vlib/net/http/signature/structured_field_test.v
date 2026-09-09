@@ -108,6 +108,14 @@ fn test_parse_signature_input_rejects_unsupported_component_parameters() {
 	}
 }
 
+fn test_parse_signature_input_rejects_duplicate_signature_parameters() {
+	if _ := parse_signature_input('sig1=("@method");expires=1;expires=9999999999') {
+		assert false, 'duplicate signature parameters must be rejected'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
 fn test_parse_signature_input_multiple_entries() {
 	src := 'sig-a=("@method");created=1, sig-b=("date" "@authority");keyid="k"'
 	entries := parse_signature_input(src)!

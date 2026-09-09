@@ -306,6 +306,11 @@ fn (mut p SfParser) parse_params() !map[string]ParamValue {
 		p.pos++
 		p.skip_sp()
 		name := p.parse_key()!
+		if name in m {
+			return MalformedMessage{
+				reason: 'duplicate signature parameter "${name}"'
+			}
+		}
 		mut value := ParamValue(true)
 		if p.pos < p.src.len && p.src[p.pos] == `=` {
 			p.pos++
