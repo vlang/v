@@ -32,3 +32,19 @@ fn test_overloaded_numeric_operation_in_comptime_if() {
 	}
 	assert value == 1
 }
+
+type ComptimeSubtractingAddend = i16
+
+fn (a ComptimeSubtractingAddend) + (b ComptimeSubtractingAddend) ComptimeSubtractingAddend {
+	return a - b
+}
+
+fn test_overloaded_numeric_operation_result_in_comptime_if() {
+	mut value := 0
+	$if ComptimeSubtractingAddend(1) + ComptimeSubtractingAddend(1) == ComptimeSubtractingAddend(2) {
+		value = 1
+	} $else {
+		value = 2
+	}
+	assert value == 2
+}

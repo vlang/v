@@ -490,25 +490,28 @@ fn range_value_fits_int(value ast.ComptTimeConstValue) bool {
 	return false
 }
 
-fn (mut c Checker) range_expr_has_checked_arithmetic(expr ast.Expr) bool {
+fn (mut c Checker) range_expr_has_checked_arithmetic(expr ast.Expr, ignore_direct bool) bool {
 	return match expr {
 		ast.InfixExpr {
-			(expr.op in [.plus, .minus, .mul] && expr.left_type.is_int())
-				|| c.range_expr_has_checked_arithmetic(expr.left)
-				|| c.range_expr_has_checked_arithmetic(expr.right)
+			has_overload := c.find_comptime_eval_infix_method(expr) != none
+
+			(expr.op in [.plus, .minus, .mul]
+				&& (has_overload || (!ignore_direct && expr.left_type.is_int())))
+				|| c.range_expr_has_checked_arithmetic(expr.left, ignore_direct)
+				|| c.range_expr_has_checked_arithmetic(expr.right, ignore_direct)
 		}
 		ast.ParExpr {
-			c.range_expr_has_checked_arithmetic(expr.expr)
+			c.range_expr_has_checked_arithmetic(expr.expr, ignore_direct)
 		}
 		ast.CastExpr {
-			c.range_expr_has_checked_arithmetic(expr.expr)
+			c.range_expr_has_checked_arithmetic(expr.expr, ignore_direct)
 		}
 		ast.PrefixExpr {
-			c.range_expr_has_checked_arithmetic(expr.right)
+			c.range_expr_has_checked_arithmetic(expr.right, ignore_direct)
 		}
 		ast.Ident {
 			if expr.obj is ast.ConstField {
-				c.range_expr_has_checked_arithmetic(expr.obj.expr)
+				c.range_expr_has_checked_arithmetic(expr.obj.expr, ignore_direct)
 			} else {
 				false
 			}
@@ -533,8 +536,8 @@ fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, low_type a
 		return
 	}
 	ignore_overflow := c.table.cur_fn != unsafe { nil } && c.table.cur_fn.is_ignore_overflow
-	if c.pref.is_check_overflow && !ignore_overflow
-		&& (c.range_expr_has_checked_arithmetic(low) || c.range_expr_has_checked_arithmetic(high)) {
+	if c.pref.is_check_overflow && (c.range_expr_has_checked_arithmetic(low, ignore_overflow)
+		|| c.range_expr_has_checked_arithmetic(high, ignore_overflow)) {
 		return
 	}
 	was_evaluating_range := c.comptime_eval_for_range

@@ -1111,6 +1111,41 @@ fn (mut c Checker) eval_comptime_fn_call_expr_with_locals(node ast.CallExpr, nle
 	return c.eval_comptime_fn_decl_value_with_locals(fn_decl, nlevel + 1, local_args)
 }
 
+fn (c &Checker) find_comptime_eval_infix_method(expr ast.InfixExpr) ?ast.Fn {
+	method_name := expr.op.str()
+	left_sym := c.table.sym(expr.left_type)
+	if !left_sym.is_builtin() {
+		if method := left_sym.find_method_with_generic_parent(method_name) {
+			return method
+		}
+	}
+	right_sym := c.table.sym(expr.right_type)
+	if !right_sym.is_builtin() {
+		if method := right_sym.find_method_with_generic_parent(method_name) {
+			return method
+		}
+	}
+	return none
+}
+
+fn (mut c Checker) eval_comptime_infix_method(method ast.Fn, left ast.ComptTimeConstValue, right ast.ComptTimeConstValue, nlevel int) ?ast.ComptTimeConstValue {
+	if !method.is_method || method.is_variadic || method.is_c_variadic || method.no_body
+		|| method.generic_names.len > 0 || method.params.len != 2 {
+		return none
+	}
+	fn_decl := c.find_comptime_eval_fn_decl(method) or { return none }
+	if c.comptime_eval_for_range && (!c.comptime_eval_checked_fns[fn_decl.name]
+		|| c.comptime_eval_fn_decl_has_error(fn_decl)) {
+		return none
+	}
+	mut local_args := map[string]ast.ComptTimeConstValue{}
+	local_args[fn_decl.params[0].name] =
+		c.convert_comptime_const_value(left, fn_decl.params[0].typ)?
+	local_args[fn_decl.params[1].name] = c.convert_comptime_const_value(right,
+		fn_decl.params[1].typ)?
+	return c.eval_comptime_fn_decl_value_with_locals(fn_decl, nlevel + 1, local_args)
+}
+
 // raw_int_bits returns the raw 64-bit pattern of any integer-typed ComptTimeConstValue,
 // unlike val.i64()/val.u64() it never rejects a value just because it doesn't
 // independently fit as signed/unsigned - e.g. a `u64` value bigger than max_i64 is
@@ -1326,14 +1361,6 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 			return c.eval_comptime_fn_call_expr_with_locals(expr, nlevel, local_values)
 		}
 		ast.InfixExpr {
-			left_sym := c.table.sym(expr.left_type)
-			right_sym := c.table.sym(expr.right_type)
-			if c.comptime_eval_for_range && ((!left_sym.is_builtin()
-				&& left_sym.has_method_with_generic_parent(expr.op.str()))
-				|| (!right_sym.is_builtin()
-				&& right_sym.has_method_with_generic_parent(expr.op.str()))) {
-				return none
-			}
 			left := c.eval_comptime_const_expr_with_locals(expr.left, nlevel + 1, local_values)?
 			saved_expected_type := c.expected_type
 			if expr.left is ast.EnumVal {
@@ -1353,6 +1380,9 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 			}
 			right := c.eval_comptime_const_expr_with_locals(expr.right, nlevel + 1, local_values)?
 			c.expected_type = saved_expected_type
+			if method := c.find_comptime_eval_infix_method(expr) {
+				return c.eval_comptime_infix_method(method, left, right, nlevel)
+			}
 			if left is string && right is string {
 				match expr.op {
 					.plus {
