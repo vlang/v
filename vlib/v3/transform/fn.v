@@ -13202,6 +13202,24 @@ fn (t &Transformer) collect_callback_nested_assignment_rhs_ids(id flat.NodeId, n
 			return
 		}
 	}
+	if node.kind == .if_expr {
+		for i in 1 .. node.children_count {
+			branch_id := t.a.child(&node, i)
+			if !t.callback_node_definitely_terminates(branch_id) {
+				t.collect_callback_nested_assignment_rhs_ids(branch_id, name, mut result)
+			}
+		}
+		return
+	}
+	if node.kind == .match_stmt {
+		for i in 1 .. node.children_count {
+			branch_id := t.a.child(&node, i)
+			if !t.callback_node_definitely_terminates(branch_id) {
+				t.collect_callback_nested_assignment_rhs_ids(branch_id, name, mut result)
+			}
+		}
+		return
+	}
 	mut name_shadowed := false
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
@@ -13235,19 +13253,22 @@ fn (t &Transformer) callback_definite_assignment_rhs_ids(id flat.NodeId, name st
 		if node.children_count != 3 {
 			return none
 		}
-		then_rhs := t.callback_definite_assignment_rhs_ids(t.a.child(&node, 1), name) or {
-			return none
-		}
-		else_rhs := t.callback_definite_assignment_rhs_ids(t.a.child(&node, 2), name) or {
-			return none
-		}
-		mut result := then_rhs.clone()
-		for rhs_id in else_rhs {
-			if rhs_id !in result {
-				result << rhs_id
+		mut result := []flat.NodeId{}
+		mut has_fallthrough := false
+		for branch_idx in [1, 2] {
+			branch_id := t.a.child(&node, branch_idx)
+			if t.callback_node_definitely_terminates(branch_id) {
+				continue
+			}
+			has_fallthrough = true
+			branch_rhs := t.callback_definite_assignment_rhs_ids(branch_id, name) or { return none }
+			for rhs_id in branch_rhs {
+				if rhs_id !in result {
+					result << rhs_id
+				}
 			}
 		}
-		return result
+		return if has_fallthrough { result } else { none }
 	}
 	if node.kind == .match_stmt {
 		if node.children_count < 2 {
@@ -13255,8 +13276,13 @@ fn (t &Transformer) callback_definite_assignment_rhs_ids(id flat.NodeId, name st
 		}
 		// Invalid non-exhaustive matches have already been rejected by the type checker.
 		mut result := []flat.NodeId{}
+		mut has_fallthrough := false
 		for i in 1 .. node.children_count {
 			branch := t.a.child(&node, i)
+			if t.callback_node_definitely_terminates(branch) {
+				continue
+			}
+			has_fallthrough = true
 			branch_rhs := t.callback_definite_assignment_rhs_ids(branch, name) or { return none }
 			for rhs_id in branch_rhs {
 				if rhs_id !in result {
@@ -13264,7 +13290,7 @@ fn (t &Transformer) callback_definite_assignment_rhs_ids(id flat.NodeId, name st
 				}
 			}
 		}
-		return if result.len > 0 { result } else { none }
+		return if has_fallthrough { result } else { none }
 	}
 	if node.kind !in [.block, .match_branch] {
 		return none
@@ -13284,6 +13310,9 @@ fn (t &Transformer) callback_definite_assignment_rhs_ids(id flat.NodeId, name st
 		}
 		if name_shadowed {
 			continue
+		}
+		if t.callback_node_definitely_terminates(child_id) {
+			break
 		}
 		if child.kind == .assign {
 			if rhs_ids := t.callback_direct_assignment_rhs_ids(child, name) {
@@ -13308,6 +13337,42 @@ fn (t &Transformer) callback_definite_assignment_rhs_ids(id flat.NodeId, name st
 		}
 	}
 	return if assigned { result } else { none }
+}
+
+fn (t &Transformer) callback_node_definitely_terminates(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .return_stmt {
+		return true
+	}
+	if node.kind in [.block, .match_branch] {
+		start := if node.kind == .match_branch && node.value != 'else' {
+			node.value.int()
+		} else {
+			0
+		}
+		for i in start .. node.children_count {
+			if t.callback_node_definitely_terminates(t.a.child(&node, i)) {
+				return true
+			}
+		}
+		return false
+	}
+	if node.kind == .if_expr && node.children_count == 3 {
+		return t.callback_node_definitely_terminates(t.a.child(&node, 1))
+			&& t.callback_node_definitely_terminates(t.a.child(&node, 2))
+	}
+	if node.kind == .match_stmt && node.children_count >= 2 {
+		for i in 1 .. node.children_count {
+			if !t.callback_node_definitely_terminates(t.a.child(&node, i)) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 fn (t &Transformer) callback_index_assignment_targets_name(id flat.NodeId, name string) bool {
@@ -13585,20 +13650,60 @@ fn (t &Transformer) callback_source_alias_expansion(type_name string, depth int)
 }
 
 fn (t &Transformer) fn_literal_cast_target_contains_callback(type_name string) bool {
+	mut seen := map[string]bool{}
+	return t.type_contains_callback(type_name, mut seen)
+}
+
+fn (t &Transformer) type_contains_callback(type_name string, mut seen map[string]bool) bool {
 	mut clean := type_name.trim_space()
-	for clean.starts_with('?') || clean.starts_with('!') {
-		clean = clean[1..].trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	for clean.starts_with('?') || clean.starts_with('!') || clean.starts_with('&')
+		|| clean.starts_with('shared ') {
+		clean = if clean.starts_with('shared ') {
+			clean[7..].trim_space()
+		} else {
+			clean[1..].trim_space()
+		}
 	}
 	normalized := t.normalize_fn_signature_component_aliases(clean, 0)
 	if normalized.contains('fn(') || normalized.contains('fn (') {
 		return true
 	}
+	if seen[clean] {
+		return false
+	}
+	seen[clean] = true
+	if clean.starts_with('[]') {
+		return t.type_contains_callback(clean[2..], mut seen)
+	}
+	if clean.starts_with('...') {
+		return t.type_contains_callback(clean[3..], mut seen)
+	}
+	if t.is_fixed_array_type(clean) {
+		return t.type_contains_callback(fixed_array_elem_type(clean), mut seen)
+	}
+	if clean.starts_with('map[') {
+		return t.type_contains_callback(t.map_key_type(clean), mut seen)
+			|| t.type_contains_callback(t.map_value_type(clean), mut seen)
+	}
 	if t.is_sum_type_name(clean) {
 		for variant in t.sum_type_variants_for_index(clean) {
-			normalized_variant := t.normalize_fn_signature_component_aliases(variant, 0)
-			if normalized_variant.contains('fn(') || normalized_variant.contains('fn (') {
+			if t.type_contains_callback(variant, mut seen) {
 				return true
 			}
+		}
+	}
+	expanded := t.callback_source_alias_expansion(clean, 0)
+	if expanded != clean {
+		return t.type_contains_callback(expanded, mut seen)
+	}
+	info := t.lookup_struct_info(clean) or { return false }
+	for field in info.fields {
+		field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
+		if t.type_contains_callback(field_type, mut seen) {
+			return true
 		}
 	}
 	return false

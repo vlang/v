@@ -2006,6 +2006,18 @@ fn test_callback_identifier_c_abi_modes_inside_generic_fn() {
 		'good_exhaustive_match_reassigned_callback_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) bool {\n\treturn true\n}\nfn startup[T](flag bool) bool {\n\tr := Router{}\n\tmut callback := ConstHandler(const_handler)\n\tmatch flag {\n\t\ttrue { callback = PlainHandler(plain_handler) }\n\t\telse { callback = PlainHandler(plain_handler) }\n\t}\n\treturn r.accept(callback)\n}\nfn main() {\n\tprintln(startup[int](true).str())\n}\n')
 	assert exhaustive_match_matching == 'true'
+	terminating_if_matching := run_good(v3_bin,
+		'good_terminating_if_branch_callback_assignment_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) bool {\n\treturn true\n}\nfn startup[T](flag bool) bool {\n\tr := Router{}\n\tmut callback := PlainHandler(plain_handler)\n\tif flag {\n\t\tcallback = ConstHandler(const_handler)\n\t\treturn true\n\t} else {\n\t\tcallback = PlainHandler(plain_handler)\n\t}\n\treturn r.accept(callback)\n}\nfn main() {\n\tprintln(startup[int](false).str())\n}\n')
+	assert terminating_if_matching == 'true'
+	terminating_partial_if_matching := run_good(v3_bin,
+		'good_terminating_partial_if_callback_assignment_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) bool {\n\treturn true\n}\nfn startup[T](flag bool) bool {\n\tr := Router{}\n\tmut callback := PlainHandler(plain_handler)\n\tif flag {\n\t\tcallback = ConstHandler(const_handler)\n\t\treturn true\n\t}\n\treturn r.accept(callback)\n}\nfn main() {\n\tprintln(startup[int](false).str())\n}\n')
+	assert terminating_partial_if_matching == 'true'
+	terminating_match_matching := run_good(v3_bin,
+		'good_terminating_match_branch_callback_assignment_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) bool {\n\treturn true\n}\nfn startup[T](flag bool) bool {\n\tr := Router{}\n\tmut callback := PlainHandler(plain_handler)\n\tmatch flag {\n\t\ttrue {\n\t\t\tcallback = ConstHandler(const_handler)\n\t\t\treturn true\n\t\t}\n\t\telse { callback = PlainHandler(plain_handler) }\n\t}\n\treturn r.accept(callback)\n}\nfn main() {\n\tprintln(startup[int](false).str())\n}\n')
+	assert terminating_match_matching == 'true'
 	as_matching := run_good(v3_bin, 'good_as_callback_alias_in_generic',
 		'type ConstHandler = fn (const_event &C.native_event)\ntype Value = ConstHandler | int\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(callback ConstHandler) bool {\n\treturn true\n}\nfn startup[T](value Value) bool {\n\tr := Router{}\n\treturn r.accept(value as ConstHandler)\n}\nfn main() {\n\tprintln(startup[int](ConstHandler(fn (const_event &C.native_event) {})).str())\n}\n')
 	assert as_matching == 'true'
@@ -2020,6 +2032,12 @@ fn test_callback_identifier_c_abi_modes_inside_generic_fn() {
 		'cannot use')
 	run_bad(v3_bin, 'bad_local_callback_map_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nfn consume[T](handlers map[string]PlainHandler) {}\nfn startup[T]() {\n\thandlers := {"event": fn (const_event &C.native_event) {}}\n\tconsume[int](handlers)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	local_struct_matching := run_good(v3_bin, 'good_local_callback_struct_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler ConstHandler\n}\nfn consume[T](options Options) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\toptions := Options{\n\t\thandler: fn (const_event &C.native_event) {}\n\t}\n\treturn consume[int](options)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert local_struct_matching == 'true'
+	run_bad(v3_bin, 'bad_local_callback_struct_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler PlainHandler\n}\nfn consume[T](options Options) {}\nfn startup[T]() {\n\toptions := Options{\n\t\thandler: fn (const_event &C.native_event) {}\n\t}\n\tconsume[int](options)\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
 	container_param_matching := run_good(v3_bin, 'good_callback_container_param_in_generic',
 		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn consume[T](handlers []ConstHandler) bool {\n\treturn handlers.len == 1\n}\nfn forward[T](handlers []ConstHandler) bool {\n\treturn consume[int](handlers)\n}\nfn main() {\n\tprintln(forward[int]([fn (const_event &C.native_event) {}]).str())\n}\n')
