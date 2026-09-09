@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_comptime_call_receiver.vv:5:3: error: expression evaluated but not used
+    3 | fn main() {
+    4 |     $for method in embed_file.EmbedFileData.methods {
+    5 |         '' == $embed_file(@FILE).$method()
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    6 |     }
+    7 | }

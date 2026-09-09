@@ -90,9 +90,11 @@ fn (mut app App) silence() {
 	}
 }
 
-fn audio_callback(mut soundbuffer &f32, num_frames int, num_channels int, mut app App) {
+fn audio_callback(mut soundbuffer &f32, num_frames i32, num_channels i32, mut app App) {
+	frame_count := int(num_frames)
+	channel_count := int(num_channels)
 	lock app.notes {
-		for frame in 0 .. num_frames {
+		for frame in 0 .. frame_count {
 			mut sample := f32(0.0)
 			for mut note in app.notes {
 				if note.amplitude <= 0 {
@@ -108,8 +110,13 @@ fn audio_callback(mut soundbuffer &f32, num_frames int, num_channels int, mut ap
 				}
 				note.amplitude -= c_note_decay
 			}
-			for ch in 0 .. num_channels {
-				soundbuffer[frame * num_channels + ch] = sample
+			for ch in 0 .. channel_count {
+				// The sokol audio callback guarantees `soundbuffer` points to at least
+				// `num_frames * num_channels` writable samples, so this index
+				// (`frame < num_frames`, `ch < num_channels`) is always in bounds.
+				unsafe {
+					soundbuffer[frame * channel_count + ch] = sample
+				}
 			}
 		}
 	}

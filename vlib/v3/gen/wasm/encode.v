@@ -66,6 +66,7 @@ mut:
 	globals  []Global
 	mem_min  int = 2
 	n_import int
+	start    int = -1
 }
 
 pub fn Module.new() &Module {
@@ -139,6 +140,11 @@ pub fn (mut m Module) add_data(offset int, bytes []u8) {
 
 pub fn (mut m Module) set_mem_min(pages int) {
 	m.mem_min = pages
+}
+
+// set_start selects the zero-argument function run when the module is instantiated.
+pub fn (mut m Module) set_start(index int) {
+	m.start = index
 }
 
 // ---- LEB128 ----
@@ -279,6 +285,13 @@ pub fn (m &Module) compile() []u8 {
 		leb_u(mut esec, u64(e.index))
 	}
 	section(mut out, 0x07, esec)
+
+	// start section (8)
+	if m.start >= 0 {
+		mut ssec := []u8{}
+		leb_u(mut ssec, u64(m.start))
+		section(mut out, 0x08, ssec)
+	}
 
 	// code section (10)
 	mut csec := []u8{}

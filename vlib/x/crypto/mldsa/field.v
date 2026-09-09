@@ -5,7 +5,7 @@
 // Ported to V from Go's crypto/internal/fips140/mldsa.
 module mldsa
 
-import crypto.internal.subtle
+import crypto.subtle
 
 // s. 2.3, appendix a
 const q = u32(8380417) // 2^23 - 2^13 + 1

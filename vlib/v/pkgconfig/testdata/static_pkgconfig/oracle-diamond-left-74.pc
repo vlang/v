@@ -1,0 +1,6 @@
+Name: oracle-diamond-left-74
+Description: Left public diamond consumer
+Version: 1.0.0
+Requires: oracle-diamond-common-74
+Libs: -loracle_diamond_left
+Cflags: -DORACLE_DIAMOND_LEFT

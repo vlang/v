@@ -16,29 +16,29 @@ fn test_detect_vroot_from_binary_path() {
 	assert detect_vroot_from(v3_bin) == vroot
 }
 
-fn test_vlib_module_path_maps_temporary_v2_directory() {
-	expected := os.join_path('v2_toberemoved', 'ast')
-	assert vlib_module_path('v2.ast') == expected
-	assert vlib_module_path('v.ast') == os.join_path('v', 'ast')
-}
-
-fn test_get_module_path_prefers_project_v2_module_over_vlib_compatibility_path() {
-	root := os.join_path(os.vtmp_dir(), 'v3_pref_v2_module_${os.getpid()}')
-	project := os.join_path(root, 'project')
-	local_module := os.join_path(project, 'v2', 'foo')
-	compat_module := os.join_path(root, 'vlib', 'v2_toberemoved', 'foo')
-	os.mkdir_all(local_module) or { panic(err) }
-	os.mkdir_all(compat_module) or { panic(err) }
+fn test_get_module_path_resolves_alias_and_submodule() {
+	root := os.join_path(os.temp_dir(), 'v3_pref_module_alias_${os.getpid()}')
+	os.rmdir_all(root) or {}
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	os.write_file(os.join_path(local_module, 'foo.v'), 'module foo') or { panic(err) }
-	os.write_file(os.join_path(compat_module, 'foo.v'), 'module foo') or { panic(err) }
-	prefs := Preferences{
-		vroot: root
+	modules_dir := os.join_path_single(root, 'modules')
+	canonical_dir := os.join_path_single(modules_dir, 'canonical')
+	os.mkdir_all(os.join_path_single(canonical_dir, 'sub')) or { panic(err) }
+	os.mkdir_all(os.join_path_single(modules_dir, 'legacy')) or { panic(err) }
+	os.write_file(os.join_path_single(root, 'v.mod'), "Module { name: 'alias_test' }\n") or {
+		panic(err)
 	}
-	importing_file := os.join_path(project, 'main.v')
-	assert prefs.get_module_path('v2.foo', importing_file) == local_module
-	os.rmdir_all(os.join_path(project, 'v2')) or { panic(err) }
-	assert prefs.get_module_path('v2.foo', importing_file) == compat_module
+	os.write_file(os.join_path_single(canonical_dir, 'canonical.v'), 'module canonical\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(canonical_dir, 'sub', 'sub.v'), 'module sub\n') or { panic(err) }
+	os.write_file(os.join_path(modules_dir, 'legacy', 'alias.v'),
+		"@[alias: '@VMODROOT/modules/canonical'] module legacy\n") or { panic(err) }
+	main_file := os.join_path_single(root, 'main.v')
+	os.write_file(main_file, 'module main\n') or { panic(err) }
+	prefs := new_preferences()
+	assert prefs.get_module_path('modules.legacy', main_file) == os.real_path(canonical_dir)
+	assert prefs.get_module_path('modules.legacy.sub', main_file) == os.real_path(os.join_path_single(canonical_dir,
+		'sub'))
 }

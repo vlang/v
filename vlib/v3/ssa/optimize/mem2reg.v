@@ -3,17 +3,18 @@ module optimize
 import v3.ssa
 
 // --- Mem2Reg (promote allocas to SSA values + phi nodes) ---
-// Flat arrays indexed by value_id / block_id. Phi predecessor operands store
-// raw block ids, matching the rest of the v3 SSA (and the arm64 backend's
-// emit_phi_edge_copies, which reads operand[odd] as a block id).
+// Phi predecessor operands store raw block ids, matching the rest of the v3
+// SSA (and the arm64 backend's emit_phi_edge_copies). Per-alloca analysis data
+// uses compact slots so one small promotable set does not allocate by the
+// module's complete value namespace.
 struct Mem2RegCtx {
 mut:
-	defs           [][]int // alloc_id -> blocks storing to it
-	uses           [][]int // alloc_id -> blocks loading from it
-	phi_placements [][]int // block_id -> alloc_ids needing a phi here
-	phi_vals       [][]int // block_id -> parallel phi value ids
-	stacks         [][]int // alloc_id -> reaching-definition stack
-	is_promotable  []bool
+	alloc_ids      []int       // compact slot -> alloca value id
+	alloc_slots    map[int]int // alloca value id -> compact slot
+	defs           [][]int     // compact slot -> blocks storing to it
+	phi_placements [][]int     // block_id -> compact slots needing a phi here
+	phi_vals       [][]int     // block_id -> parallel phi value ids
+	stacks         [][]int     // compact slot -> reaching-definition stack
 	phi_blocks     []int
 }
 
@@ -27,27 +28,17 @@ fn array2d_append(mut arr [][]int, idx int, val int) {
 // promote_memory_to_register promotes scalar allocas to SSA registers, inserting
 // phi nodes at dominance frontiers and renaming load/store chains.
 fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
-	n_values := m.values.len
 	n_blocks := m.blocks.len
-
-	mut ctx := Mem2RegCtx{
-		defs:           [][]int{len: n_values}
-		uses:           [][]int{len: n_values}
-		phi_placements: [][]int{len: n_blocks}
-		phi_vals:       [][]int{len: n_blocks}
-		stacks:         [][]int{len: n_values}
-		is_promotable:  []bool{len: n_values}
-		phi_blocks:     []int{}
-	}
-
 	mut df := [][]int{len: n_blocks}
 	mut df_blocks := []int{}
-	mut visited := []bool{len: n_blocks}
-	mut has_phi := []bool{len: n_blocks}
+	mut visited_stamp := []int{len: n_blocks}
+	mut has_phi_stamp := []int{len: n_blocks}
+	mut stamp := 0
 
 	for fi in 0 .. m.funcs.len {
 		mut promotable := []int{}
 		func := m.funcs[fi]
+		// First assign a compact slot to every promotable alloca.
 		for blk_id in func.blocks {
 			blk := m.blocks[blk_id]
 			for val_id in blk.instrs {
@@ -59,18 +50,42 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 				if instr.op == .alloca {
 					if is_promotable(m, val_id) {
 						promotable << val_id
-						ctx.is_promotable[val_id] = true
 					}
 				}
-				if instr.op == .store {
-					ptr := instr.operands[1]
-					if ptr < n_values && blk_id !in ctx.defs[ptr] {
-						array2d_append(mut ctx.defs, ptr, blk_id)
-					}
-				} else if instr.op == .load {
-					ptr := instr.operands[0]
-					if ptr < n_values && blk_id !in ctx.uses[ptr] {
-						array2d_append(mut ctx.uses, ptr, blk_id)
+			}
+		}
+		if promotable.len == 0 {
+			continue
+		}
+		mut ctx := Mem2RegCtx{
+			alloc_ids:      promotable
+			alloc_slots:    map[int]int{}
+			defs:           [][]int{len: promotable.len}
+			phi_placements: [][]int{len: n_blocks}
+			phi_vals:       [][]int{len: n_blocks}
+			stacks:         [][]int{len: promotable.len}
+			phi_blocks:     []int{}
+		}
+		for slot, alloc_id in promotable {
+			ctx.alloc_slots[alloc_id] = slot
+		}
+		// Collect definition blocks without linear duplicate scans. Instructions
+		// from one block are contiguous, so one last-block stamp per slot suffices.
+		mut last_def_block := []int{len: promotable.len, init: -1}
+		for blk_id in func.blocks {
+			for val_id in m.blocks[blk_id].instrs {
+				val := m.values[val_id]
+				if val.kind != .instruction {
+					continue
+				}
+				instr := m.instrs[val.index]
+				if instr.op != .store || instr.operands.len < 2 {
+					continue
+				}
+				if slot := ctx.alloc_slots[instr.operands[1]] {
+					if last_def_block[slot] != blk_id {
+						array2d_append(mut ctx.defs, slot, blk_id)
+						last_def_block[slot] = blk_id
 					}
 				}
 			}
@@ -79,42 +94,35 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 		compute_dominance_frontier_flat(m, fi, &dom, cfg, mut df, mut df_blocks)
 
 		// Insert phis at iterated dominance frontiers of each promotable alloca.
-		for alloc_id in promotable {
-			mut worklist := ctx.defs[alloc_id].clone()
-			mut visited_list := []int{}
-			mut has_phi_list := []int{}
+		for slot in 0 .. promotable.len {
+			stamp++
+			mut worklist := ctx.defs[slot].clone()
 			for worklist.len > 0 {
 				b := worklist.pop()
 				if b < 0 || b >= n_blocks {
 					continue
 				}
 				for d in df[b] {
-					if !has_phi[d] {
-						array2d_append(mut ctx.phi_placements, d, alloc_id)
-						if d !in ctx.phi_blocks {
+					if has_phi_stamp[d] != stamp {
+						first_phi_in_block := ctx.phi_placements[d].len == 0
+						array2d_append(mut ctx.phi_placements, d, slot)
+						if first_phi_in_block {
 							ctx.phi_blocks << d
 						}
-						has_phi[d] = true
-						has_phi_list << d
-						if !visited[d] {
-							visited[d] = true
-							visited_list << d
+						has_phi_stamp[d] = stamp
+						if visited_stamp[d] != stamp {
+							visited_stamp[d] = stamp
 							worklist << d
 						}
 					}
 				}
 			}
-			for d in visited_list {
-				visited[d] = false
-			}
-			for d in has_phi_list {
-				has_phi[d] = false
-			}
 		}
 
 		// Materialize the phi instructions (empty operands, filled during rename).
 		for blk_id in ctx.phi_blocks {
-			for alloc_id in ctx.phi_placements[blk_id] {
+			for slot in ctx.phi_placements[blk_id] {
+				alloc_id := ctx.alloc_ids[slot]
 				alloc_val := m.values[alloc_id]
 				alloc_typ := m.type_store.types[alloc_val.typ]
 				typ := alloc_typ.elem_type
@@ -130,19 +138,6 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 		if func.blocks.len > 0 {
 			rename_blocks(mut m, func.blocks[0], mut ctx, dom, cfg)
 		}
-
-		// Reset per-function state.
-		for alloc_id in promotable {
-			ctx.defs[alloc_id] = []
-			ctx.uses[alloc_id] = []
-			ctx.stacks[alloc_id] = []
-			ctx.is_promotable[alloc_id] = false
-		}
-		for pb in ctx.phi_blocks {
-			ctx.phi_placements[pb] = []
-			ctx.phi_vals[pb] = []
-		}
-		ctx.phi_blocks = []
 		for d in df_blocks {
 			df[d] = []
 		}
@@ -204,6 +199,7 @@ fn is_promotable(m &ssa.Module, alloc_id int) bool {
 // compute_dominance_frontier_flat supports compute dominance frontier flat handling for optimize.
 fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cfg &CfgData, mut df [][]int, mut df_blocks []int) {
 	func := m.funcs[func_idx]
+	mut last_frontier_target := []int{len: m.blocks.len, init: -1}
 	for blk_id in func.blocks {
 		if blk_id < 0 || blk_id >= m.blocks.len {
 			continue
@@ -217,9 +213,11 @@ fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cf
 					if runner < 0 || runner >= m.blocks.len {
 						break
 					}
-					if blk_id !in df[runner] {
+					if last_frontier_target[runner] != blk_id {
+						first_frontier_for_block := df[runner].len == 0
 						array2d_append(mut df, runner, blk_id)
-						if runner !in df_blocks {
+						last_frontier_target[runner] = blk_id
+						if first_frontier_for_block {
 							df_blocks << runner
 						}
 					}
@@ -270,64 +268,73 @@ fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo
 			if blk_id < ctx.phi_placements.len && ctx.phi_placements[blk_id].len > 0 {
 				n_phi := ctx.phi_placements[blk_id].len
 				for pai in 0 .. n_phi {
-					alloc_id := ctx.phi_placements[blk_id][pai]
+					slot := ctx.phi_placements[blk_id][pai]
 					if pai < ctx.phi_vals[blk_id].len {
 						phi_val_id := ctx.phi_vals[blk_id][pai]
-						mut new_stack := ctx.stacks[alloc_id].clone()
-						new_stack << phi_val_id
-						ctx.stacks[alloc_id] = new_stack
+						array2d_append(mut ctx.stacks, slot, phi_val_id)
 						mut wf := work[fi]
-						wf.pushed_allocs << alloc_id
+						wf.pushed_allocs << slot
 						work[fi] = wf
 					}
 				}
 			}
 
-			// 2. Process instructions: rewrite loads, record store values, nop them.
-			mut instrs_to_nop := []int{}
+			// 2. Process instructions and compact the block once. Removed memory
+			// operations become unreachable value tombstones instead of pretending
+			// to be empty bitcasts.
 			blk2 := m.blocks[blk_id]
+			mut kept_instrs := []ssa.ValueID{cap: blk2.instrs.len}
 			for val_id in blk2.instrs {
 				val := m.values[val_id]
 				if val.kind != .instruction {
+					kept_instrs << val_id
 					continue
 				}
 				instr := m.instrs[val.index]
+				mut remove := false
 				if instr.op == .store {
-					ptr := instr.operands[1]
-					if ptr < ctx.is_promotable.len && ctx.is_promotable[ptr] {
-						mut new_stack := ctx.stacks[ptr].clone()
-						new_stack << instr.operands[0]
-						ctx.stacks[ptr] = new_stack
-						mut wf := work[fi]
-						wf.pushed_allocs << ptr
-						work[fi] = wf
-						instrs_to_nop << val_id
+					if instr.operands.len >= 2 {
+						if slot := ctx.alloc_slots[instr.operands[1]] {
+							array2d_append(mut ctx.stacks, slot, instr.operands[0])
+							mut wf := work[fi]
+							wf.pushed_allocs << slot
+							work[fi] = wf
+							remove = true
+						}
 					}
 				} else if instr.op == .load {
-					ptr := instr.operands[0]
-					if ptr < ctx.is_promotable.len && ctx.is_promotable[ptr] {
-						stack := ctx.stacks[ptr]
-						mut repl := 0
-						if stack.len > 0 {
-							repl = stack.last()
-						} else {
-							repl = m.get_or_add_const(val.typ, 'undef')
+					if instr.operands.len > 0 {
+						if slot := ctx.alloc_slots[instr.operands[0]] {
+							stack := ctx.stacks[slot]
+							mut repl := 0
+							if stack.len > 0 {
+								repl = stack.last()
+							} else {
+								repl = m.get_or_add_const(val.typ, 'undef')
+							}
+							m.replace_uses(val_id, repl)
+							remove = true
 						}
-						m.replace_uses(val_id, repl)
-						instrs_to_nop << val_id
 					}
 				} else if instr.op == .alloca {
-					if val_id < ctx.is_promotable.len && ctx.is_promotable[val_id] {
-						instrs_to_nop << val_id
+					if _ := ctx.alloc_slots[val_id] {
+						remove = true
 					}
 				}
+				if remove {
+					m.detach_instruction_uses(val_id)
+					mut dead := m.values[val_id]
+					dead.kind = .unknown
+					dead.uses = []ssa.ValueID{}
+					m.values[val_id] = dead
+				} else {
+					kept_instrs << val_id
+				}
 			}
-			for vid in instrs_to_nop {
-				vid_val := m.values[vid]
-				mut nop_instr := m.instrs[vid_val.index]
-				nop_instr.op = .bitcast
-				nop_instr.operands = []
-				m.instrs[vid_val.index] = nop_instr
+			if kept_instrs.len != blk2.instrs.len {
+				mut compacted := m.blocks[blk_id]
+				compacted.instrs = kept_instrs
+				m.blocks[blk_id] = compacted
 			}
 
 			// 3. Fill phi operands in CFG successors (raw block id as predecessor).
@@ -335,18 +342,18 @@ fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo
 				if succ_id < ctx.phi_placements.len && ctx.phi_placements[succ_id].len > 0 {
 					n_succ_phi := ctx.phi_placements[succ_id].len
 					for spai in 0 .. n_succ_phi {
-						alloc_id := ctx.phi_placements[succ_id][spai]
+						slot := ctx.phi_placements[succ_id][spai]
 						if spai < ctx.phi_vals[succ_id].len {
 							vid := ctx.phi_vals[succ_id][spai]
-							phi_v := m.values[vid]
-							phi_val := if ctx.stacks[alloc_id].len > 0 {
-								ctx.stacks[alloc_id].last()
+							phi_val := if ctx.stacks[slot].len > 0 {
+								ctx.stacks[slot].last()
 							} else {
+								alloc_id := ctx.alloc_ids[slot]
 								alloc_v := m.values[alloc_id]
 								alloc_typ := m.type_store.types[alloc_v.typ]
 								m.get_or_add_const(alloc_typ.elem_type, 'undef')
 							}
-							m.append_phi_operands(phi_v.index, phi_val, blk_id)
+							m.append_phi_operands(vid, phi_val, blk_id)
 						}
 					}
 				}
@@ -366,13 +373,13 @@ fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo
 			}
 		} else {
 			// 5. Pop reaching definitions pushed in this block.
-			pushed := work[fi].pushed_allocs.clone()
-			work.pop()
-			for i := pushed.len - 1; i >= 0; i-- {
-				mut s := ctx.stacks[pushed[i]].clone()
+			for i := work[fi].pushed_allocs.len - 1; i >= 0; i-- {
+				slot := work[fi].pushed_allocs[i]
+				mut s := ctx.stacks[slot]
 				s.pop()
-				ctx.stacks[pushed[i]] = s
+				ctx.stacks[slot] = s
 			}
+			work.pop()
 		}
 	}
 }

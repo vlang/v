@@ -6,6 +6,11 @@
 #include <string.h>
 #include <unistd.h>
 
+#if defined(__TINYC__)
+extern int __data_start[] __attribute__((weak));
+extern int data_start[] __attribute__((weak));
+extern int _end[] __attribute__((weak));
+#else
 #pragma weak __data_start
 #pragma weak data_start
 #pragma weak _end
@@ -13,6 +18,7 @@
 extern int __data_start[];
 extern int data_start[];
 extern int _end[];
+#endif
 
 static inline int v__gc_can_register_main_data_roots_linux(void) {
 	void* data_start_ptr = __data_start != NULL ? (void*)__data_start : (void*)data_start;

@@ -82,6 +82,21 @@ fn test_string_from_wide2() {
 	}
 }
 
+fn test_wtf8_roundtrips_unpaired_windows_surrogates() {
+	wide := [u16(`a`), 0xd800, u16(`b`), 0xdc00, 0xd83d, 0xde00]
+	encoded := unsafe { wtf8_from_wide(wide.data, wide.len) }
+	assert encoded.bytes() == [u8(`a`), 0xed, 0xa0, 0x80, u8(`b`), 0xed, 0xb0, 0x80, 0xf0, 0x9f,
+		0x98, 0x80]
+	decoded := wtf8_to_wide(encoded)
+	unsafe {
+		for i, unit in wide {
+			assert decoded[i] == unit
+		}
+		assert decoded[wide.len] == 0
+		free(decoded)
+	}
+}
+
 fn test_reverse_cyrillic_with_string_from_wide() {
 	s := 'Проба'
 	ws := s.to_wide()

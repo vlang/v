@@ -1,0 +1,844 @@
+type Num = u8 | u16
+
+fn (n Num) str() string {
+	return match n {
+		u8 { n.str() }
+		else { n.str() }
+	}
+}
+
+type Val = int | string
+
+fn (v Val) str() string {
+	return (v).str()
+}
+
+struct Foo {}
+
+fn (f &Foo) str() string {
+	return (*f).str()
+}
+
+struct Bar {}
+
+fn (b &Bar) str() string {
+	return (*(b)).str()
+}
+
+struct Baz {}
+
+fn (z Baz) str() string {
+	return (&z).str()
+}
+
+struct Qux {}
+
+fn (q Qux) str() string {
+	return (*(&q)).str()
+}
+
+type Alias = []int
+
+fn (a Alias) str() string {
+	return Alias(a).str()
+}
+
+struct MutSelf {
+mut:
+	x int
+}
+
+fn (mut m MutSelf) str() string {
+	return m.str()
+}
+
+struct AliasedRecv {}
+
+fn (f AliasedRecv) str() string {
+	alias := f
+	return alias.str()
+}
+
+interface Stringer {
+	str() string
+}
+
+struct ViaIface {}
+
+fn (f ViaIface) str() string {
+	return Stringer(f).str()
+}
+
+struct MultiHop {}
+
+fn (f MultiHop) str() string {
+	a := f
+	b := a
+	return b.str()
+}
+
+struct ParenInit {}
+
+fn (f ParenInit) str() string {
+	alias := (f)
+	return alias.str()
+}
+
+struct CondMut {
+mut:
+	remaining int
+}
+
+fn (n CondMut) str() string {
+	mut next := n
+	if n.remaining > 1 {
+		next.remaining--
+	}
+	return next.str()
+}
+
+struct AddrAlias {}
+
+fn (f AddrAlias) str() string {
+	alias := &f
+	return alias.str()
+}
+
+struct DerefAlias {}
+
+fn (f &DerefAlias) str() string {
+	alias := *f
+	return alias.str()
+}
+
+struct UnsafeDirect {}
+
+fn (f UnsafeDirect) str() string {
+	return unsafe { f }.str()
+}
+
+struct UnsafeAlias {}
+
+fn (f UnsafeAlias) str() string {
+	alias := unsafe { f }
+	return alias.str()
+}
+
+struct DumpDirect {}
+
+fn (f DumpDirect) str() string {
+	return dump(f).str()
+}
+
+struct DumpAlias {}
+
+fn (f DumpAlias) str() string {
+	alias := dump(f)
+	return alias.str()
+}
+
+struct AsCastRecv {}
+
+fn (f AsCastRecv) str() string {
+	return (Stringer(f) as AsCastRecv).str()
+}
+
+struct Reassigned {}
+
+fn (f Reassigned) str() string {
+	mut alias := Reassigned{}
+	alias = f
+	return alias.str()
+}
+
+struct MutableAlias {}
+
+fn (f MutableAlias) str() string {
+	mut alias := f
+	return alias.str()
+}
+
+struct AsCastAlias {}
+
+fn (f AsCastAlias) str() string {
+	alias := Stringer(f) as AsCastAlias
+	return alias.str()
+}
+
+struct BranchReassigned {
+	recurse bool
+}
+
+fn (f BranchReassigned) str() string {
+	mut alias := BranchReassigned{}
+	if f.recurse {
+		alias = f
+		return alias.str()
+	}
+	return ''
+}
+
+struct Progressing {
+mut:
+	remaining int
+}
+
+fn (mut n Progressing) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	n.remaining--
+	return n.str()
+}
+
+struct AliasProgress {
+mut:
+	remaining int
+}
+
+fn (n AliasProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	next.remaining--
+	return next.str()
+}
+
+struct BranchProgress {
+mut:
+	remaining int
+}
+
+fn (n BranchProgress) str() string {
+	if n.remaining > 0 {
+		mut next := n
+		next.remaining--
+		return next.str()
+	}
+	return ''
+}
+
+struct NewValueProgress {
+mut:
+	remaining int
+}
+
+fn (n NewValueProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := NewValueProgress{
+		remaining: n.remaining
+	}
+	next.remaining--
+	return next.str()
+}
+
+struct ReassignedOther {}
+
+fn (f ReassignedOther) str() string {
+	mut alias := f
+	alias = ReassignedOther{}
+	return alias.str()
+}
+
+struct ShortCircuitMutation {
+pub mut:
+	stop bool
+}
+
+fn replace_short_circuit(mut n ShortCircuitMutation) bool {
+	n.stop = true
+	return true
+}
+
+fn (n ShortCircuitMutation) str() string {
+	mut alias := n
+	if n.stop || replace_short_circuit(mut alias) {}
+	return alias.str()
+}
+
+struct ShortCircuitLeftProgress {
+pub mut:
+	stop bool
+}
+
+fn replace_short_circuit_left(mut n ShortCircuitLeftProgress) bool {
+	n.stop = true
+	return true
+}
+
+fn (n ShortCircuitLeftProgress) str() string {
+	mut next := n
+	if replace_short_circuit_left(mut next) || n.stop {}
+	return next.str()
+}
+
+struct ExhaustiveIfProgress {
+mut:
+	remaining int
+}
+
+fn (n ExhaustiveIfProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	if n.remaining % 2 == 0 {
+		next.remaining--
+	} else {
+		next.remaining--
+	}
+	return next.str()
+}
+
+struct ExhaustiveMatchProgress {
+mut:
+	remaining int
+}
+
+fn (n ExhaustiveMatchProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	match n.remaining % 2 {
+		0 { next.remaining-- }
+		else { next.remaining-- }
+	}
+	return next.str()
+}
+
+struct ExhaustiveBoolMatchProgress {
+mut:
+	remaining int
+}
+
+fn (n ExhaustiveBoolMatchProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	match n.remaining % 2 == 0 {
+		true { next.remaining-- }
+		false { next.remaining-- }
+	}
+	return next.str()
+}
+
+struct PrivateMutatorProgress {
+mut:
+	remaining int
+}
+
+fn (mut n PrivateMutatorProgress) decrement() {
+	n.remaining--
+}
+
+fn (n PrivateMutatorProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	next.decrement()
+	return next.str()
+}
+
+struct ExhaustiveIfReceiverAssignment {
+	recurse bool
+}
+
+fn (f ExhaustiveIfReceiverAssignment) str() string {
+	mut alias := ExhaustiveIfReceiverAssignment{}
+	if f.recurse {
+		alias = f
+	} else {
+		alias = f
+	}
+	return alias.str()
+}
+
+struct ExhaustiveMatchReceiverAssignment {
+	recurse bool
+}
+
+fn (f ExhaustiveMatchReceiverAssignment) str() string {
+	mut alias := ExhaustiveMatchReceiverAssignment{}
+	match f.recurse {
+		true { alias = f }
+		false { alias = f }
+	}
+	return alias.str()
+}
+
+type ReboundSourceList = []int
+
+fn (mut x ReboundSourceList) str() string {
+	mut alias := x
+	x = ReboundSourceList([1])
+	x[0]--
+	return alias.str()
+}
+
+type SharedStorageProgress = []int
+
+fn (mut x SharedStorageProgress) str() string {
+	if x.len == 0 || x[0] == 0 {
+		return ''
+	}
+	mut alias := x
+	x[0]--
+	return alias.str()
+}
+
+type MutatedThenReboundList = []int
+
+fn (mut x MutatedThenReboundList) str() string {
+	if x.len == 0 || x[0] == 0 {
+		return ''
+	}
+	mut alias := x
+	x[0]--
+	x = MutatedThenReboundList([0])
+	return alias.str()
+}
+
+type ReboundSourceMap = map[string]int
+
+fn (mut x ReboundSourceMap) str() string {
+	mut alias := x
+	x = ReboundSourceMap({
+		'value': 1
+	})
+	x['value']--
+	return alias.str()
+}
+
+type SharedMapStorageProgress = map[string]int
+
+fn (mut x SharedMapStorageProgress) str() string {
+	if x['value'] == 0 {
+		return ''
+	}
+	mut alias := x
+	x['value']--
+	return alias.str()
+}
+
+type HelperReboundSourceList = []int
+
+fn rebind_list_source(mut source HelperReboundSourceList) {
+	source = HelperReboundSourceList([1])
+}
+
+fn (x HelperReboundSourceList) str() string {
+	mut source := unsafe { x }
+	alias := source
+	rebind_list_source(mut source)
+	return alias.str()
+}
+
+type HelperReboundSourceMap = map[string]int
+
+fn rebind_map_source(mut source HelperReboundSourceMap) {
+	source = HelperReboundSourceMap({
+		'value': 1
+	})
+}
+
+fn (x HelperReboundSourceMap) str() string {
+	mut source := unsafe { x }
+	alias := source
+	rebind_map_source(mut source)
+	return alias.str()
+}
+
+type HelperSharedStorageProgress = []int
+
+fn decrement_list_storage(mut source HelperSharedStorageProgress) {
+	source[0]--
+}
+
+fn (x HelperSharedStorageProgress) str() string {
+	if x.len == 0 || x[0] == 0 {
+		return ''
+	}
+	mut source := unsafe { x }
+	alias := source
+	decrement_list_storage(mut source)
+	return alias.str()
+}
+
+type ConditionalSharedStorageProgress = []int
+
+fn (x ConditionalSharedStorageProgress) str() string {
+	if x.len == 0 || x[0] == 0 {
+		return ''
+	}
+	mut source := unsafe { x }
+	alias := if source.len > 0 { source } else { source }
+	source[0]--
+	return alias.str()
+}
+
+type ConditionalSharedMapStorageProgress = map[string]int
+
+fn (x ConditionalSharedMapStorageProgress) str() string {
+	if x['value'] == 0 {
+		return ''
+	}
+	mut source := unsafe { x }
+	alias := if source['value'] > 0 { source } else { source }
+	source['value']--
+	return alias.str()
+}
+
+struct SelectedComptimeReceiverAssignment {}
+
+fn (f SelectedComptimeReceiverAssignment) str() string {
+	mut alias := SelectedComptimeReceiverAssignment{}
+	$if true {
+		alias = f
+	}
+	return alias.str()
+}
+
+struct SelectedComptimeProgress {
+mut:
+	remaining int
+}
+
+fn (n SelectedComptimeProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	$if true {
+		next.remaining--
+	}
+	return next.str()
+}
+
+struct ReachableIfBranchProgress {
+mut:
+	remaining int
+}
+
+fn (n ReachableIfBranchProgress) str() string {
+	mut next := n
+	if n.remaining > 0 {
+		next.remaining--
+	} else {
+		return ''
+	}
+	return next.str()
+}
+
+struct ReachableMatchBranchProgress {
+mut:
+	remaining int
+}
+
+fn (n ReachableMatchBranchProgress) str() string {
+	mut next := n
+	match n.remaining {
+		0 { return '' }
+		else { next.remaining-- }
+	}
+	return next.str()
+}
+
+struct NoElseReceiverAssignment {
+	recurse bool
+}
+
+fn (f NoElseReceiverAssignment) str() string {
+	if !f.recurse {
+		return ''
+	}
+	mut alias := NoElseReceiverAssignment{}
+	if f.recurse {
+		alias = f
+	}
+	return alias.str()
+}
+
+struct ConditionalMutatorNoProgress {
+mut:
+	remaining int
+}
+
+fn (mut n ConditionalMutatorNoProgress) maybe_decrement() {
+	if n.remaining > 1 {
+		n.remaining--
+	}
+}
+
+fn (n ConditionalMutatorNoProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	next.maybe_decrement()
+	return next.str()
+}
+
+struct ExhaustiveMutatorCallProgress {
+mut:
+	remaining int
+}
+
+fn (mut n ExhaustiveMutatorCallProgress) decrement() {
+	if n.remaining % 2 == 0 {
+		n.remaining--
+	} else {
+		n.remaining--
+	}
+}
+
+fn (n ExhaustiveMutatorCallProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	next.decrement()
+	return next.str()
+}
+
+struct UnconditionalUnsafeBlockProgress {
+mut:
+	remaining int
+}
+
+fn (n UnconditionalUnsafeBlockProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	unsafe {
+		next.remaining--
+	}
+	return next.str()
+}
+
+struct MatchSubjectProgress {
+mut:
+	remaining int
+}
+
+fn decrement_match_subject(mut n MatchSubjectProgress) int {
+	n.remaining--
+	return n.remaining
+}
+
+fn (n MatchSubjectProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut next := n
+	match decrement_match_subject(mut next) {
+		0 { return '' }
+		else { return next.str() }
+	}
+}
+
+struct NestedSharedStorageProgress {
+mut:
+	items []int
+}
+
+@[unsafe]
+fn (n NestedSharedStorageProgress) str() string {
+	if n.items.len == 0 || n.items[0] == 0 {
+		return ''
+	}
+	mut source := n
+	alias := source
+	source.items[0]--
+	return alias.str()
+}
+
+struct ConditionalIfReceiverSource {
+	flag bool
+}
+
+fn (f ConditionalIfReceiverSource) str() string {
+	alias := if f.flag { f } else { f }
+	return alias.str()
+}
+
+struct ConditionalMatchReceiverSource {
+	flag bool
+}
+
+fn (f ConditionalMatchReceiverSource) str() string {
+	alias := match f.flag {
+		true { f }
+		false { f }
+	}
+	return alias.str()
+}
+
+struct ScalarOnlyAggregateMutation {
+mut:
+	counter int
+	items   []int
+}
+
+@[unsafe]
+fn (s ScalarOnlyAggregateMutation) str() string {
+	mut source := s
+	alias := source
+	source.counter--
+	return alias.str()
+}
+
+struct ConditionalInitializerProgress {
+mut:
+	remaining int
+}
+
+fn (n ConditionalInitializerProgress) str() string {
+	mut source := n
+	alias := if source.remaining > 0 {
+		source.remaining--
+		source
+	} else {
+		return ''
+	}
+	return alias.str()
+}
+
+struct MatchInitializerProgress {
+mut:
+	remaining int
+}
+
+fn (n MatchInitializerProgress) str() string {
+	mut source := n
+	alias := match source.remaining {
+		0 {
+			return ''
+		}
+		else {
+			source.remaining--
+			source
+		}
+	}
+	return alias.str()
+}
+
+struct ConditionalMixedInitializerProgress {
+	take_copy bool
+mut:
+	remaining int
+}
+
+fn (n ConditionalMixedInitializerProgress) str() string {
+	if n.remaining == 0 {
+		return ''
+	}
+	mut source := n
+	alias := if n.take_copy {
+		source.remaining--
+		source
+	} else {
+		ConditionalMixedInitializerProgress{}
+	}
+	return alias.str()
+}
+
+struct NoOpFieldAssignment {
+mut:
+	remaining int
+}
+
+fn (n NoOpFieldAssignment) str() string {
+	mut alias := n
+	alias.remaining = alias.remaining
+	return alias.str()
+}
+
+struct NoOpHelperAssignment {
+mut:
+	remaining int
+}
+
+fn (mut n NoOpHelperAssignment) keep() {
+	n.remaining = n.remaining
+}
+
+fn (n NoOpHelperAssignment) str() string {
+	mut alias := n
+	alias.keep()
+	return alias.str()
+}
+
+interface Labelled {
+	name string
+}
+
+fn (l Labelled) str() string {
+	return 'Labelled(${l.name})'
+}
+
+struct IfaceExt {
+	name string
+}
+
+fn (f IfaceExt) str() string {
+	return Labelled(f).str()
+}
+
+fn main() {
+	println(Num(u16(0)))
+	println(Val(0))
+	println(Foo{})
+	println(Bar{})
+	println(Baz{})
+	println(Qux{})
+	println(Alias([1]))
+	mut ms := MutSelf{}
+	println(ms)
+	println(AliasedRecv{})
+	println(ViaIface{})
+	println(MultiHop{})
+	println(ParenInit{})
+	println(CondMut{})
+	println(AddrAlias{})
+	println(DerefAlias{})
+	println(UnsafeDirect{})
+	println(UnsafeAlias{})
+	println(DumpDirect{})
+	println(DumpAlias{})
+	println(AsCastRecv{})
+	println(Reassigned{})
+	println(MutableAlias{})
+	println(AsCastAlias{})
+	println(BranchReassigned{})
+	println(ShortCircuitMutation{})
+	println(ExhaustiveIfReceiverAssignment{})
+	println(ExhaustiveMatchReceiverAssignment{})
+	mut rebound_source := ReboundSourceList([0])
+	println(rebound_source)
+	mut rebound_map_source := ReboundSourceMap({
+		'value': 0
+	})
+	println(rebound_map_source)
+	helper_rebound_source := HelperReboundSourceList([0])
+	println(helper_rebound_source)
+	helper_rebound_map_source := HelperReboundSourceMap({
+		'value': 0
+	})
+	println(helper_rebound_map_source)
+	println(SelectedComptimeReceiverAssignment{})
+	println(NoElseReceiverAssignment{ recurse: true })
+	println(ConditionalMutatorNoProgress{ remaining: 1 })
+	println(ConditionalIfReceiverSource{})
+	println(ConditionalMatchReceiverSource{})
+	println(ScalarOnlyAggregateMutation{})
+	println(NoOpFieldAssignment{})
+	println(NoOpHelperAssignment{})
+	println(IfaceExt{ name: 'test' })
+}

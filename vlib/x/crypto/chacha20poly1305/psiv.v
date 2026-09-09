@@ -11,7 +11,7 @@ module chacha20poly1305
 
 import crypto.cipher
 import encoding.binary
-import crypto.internal.subtle
+import crypto.subtle
 import x.crypto.chacha20
 import x.crypto.poly1305
 

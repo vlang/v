@@ -1,0 +1,7 @@
+vlib/v/checker/tests/asm_intel_memory_constraint.vv:5:7: error: constraint `m` is not supported for operands in structured `intel` assembly; use a register-only `r` constraint or a `raw` template with explicit operand modifiers
+    3 |     asm amd64 intel {
+    4 |         mov eax, value
+    5 |         ; ; m (value)
+      |             ~~~~~~~~~
+    6 |     }
+    7 | }

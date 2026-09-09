@@ -16,7 +16,6 @@ import net.http
 import runtime
 import crypto.sha256
 import time
-import json
 
 enum UpdateSource {
 	github_releases
@@ -425,7 +424,7 @@ fn (upd VlsUpdater) cli_error(err IError) {
 			print_backtrace()
 		}
 		.json {
-			print('{"error":{"message":${json.encode(err.msg())},"code":"${err.code()}","details":${json.encode(upd.error_details(err).trim_space())}}}')
+			print('{"error":{"message":${json2.encode(err.msg())},"code":"${err.code()}","details":${json2.encode(upd.error_details(err).trim_space())}}}')
 			flush_stdout()
 		}
 		.silent {}

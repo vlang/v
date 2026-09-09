@@ -13,7 +13,7 @@ fn test_usage() {
 
 	// Non-secret salt, optional (can be empty).
 	// Recommended: hash-length random value.
-	salt := rand.read(sha256.new().size())!
+	salt := rand.bytes(sha256.new().size())!
 
 	// Non-secret context info prefix, optional (can be empty).
 	info_prefix := 'hkdf example'

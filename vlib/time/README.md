@@ -86,3 +86,20 @@ fn main() {
 	println('Note: do_something() took: ${sw.elapsed().milliseconds()} ms')
 }
 ```
+
+Use a timer when a wait needs to participate in a `select`:
+
+```v
+import time
+
+timer := time.new_timer(500 * time.millisecond)
+defer {
+	timer.stop()
+}
+select {
+	fired_at := <-timer.c {
+		println('timer fired at ${fired_at}')
+	}
+	// another channel can be handled here
+}
+```

@@ -5,3 +5,10 @@ vlib/v/checker/tests/for_in_index_option.vv:4:17: error: for in: cannot index `!
       |                    ~~~~~~~
     5 |         println(file)
     6 |     }
+vlib/v/checker/tests/for_in_index_option.vv:7:18: error: for in: cannot index `?map[string]int`
+    5 |         println(file)
+    6 |     }
+    7 |     for _, value in maybe_values(true) {
+      |                     ~~~~~~~~~~~~~~~~~~
+    8 |         println(value)
+    9 |     }

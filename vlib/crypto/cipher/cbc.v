@@ -9,7 +9,7 @@
 // NOTE this will be moved to crypto.cipher interface (joe-c)
 module cipher
 
-import crypto.internal.subtle
+import crypto.subtle
 
 struct Cbc {
 mut:

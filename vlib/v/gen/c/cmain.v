@@ -5,6 +5,7 @@ import v.ast
 import strings
 
 pub const reset_dbg_line = '#line 999999999'
+pub const generated_c_debug_path = '<generated C>'
 
 pub fn (mut g Gen) gen_c_main() {
 	if !g.has_main {
@@ -41,7 +42,11 @@ fn (mut g Gen) gen_vlines_reset() {
 		// At this point, the v files are transpiled.
 		// The rest is auto generated code, which will not have
 		// different .v source file/line numbers.
-		g.vlines_path = util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
+		g.vlines_path = if g.pref.os == .macos && g.pref.building_v && g.pref.is_debug {
+			generated_c_debug_path
+		} else {
+			util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
+		}
 		g.writeln2('', '// Reset the C file/line numbers')
 		g.writeln2('${reset_dbg_line} "${g.vlines_path}"', '')
 	}
@@ -304,8 +309,8 @@ pub fn (mut g Gen) gen_failing_error_propagation_for_test_fn(or_block ast.OrExpr
 	g.write_defer_stmts_when_needed(or_block.scope, true, or_block.pos)
 	paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 	dot_or_ptr := if cvar_name in g.tmp_var_ptr { '->' } else { '.' }
-	err_msg := 'IError_name_table[${cvar_name}${dot_or_ptr}err._typ]._method_msg(${cvar_name}${dot_or_ptr}err._object)'
-	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, ${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"), ${err_msg} );')
+	err_msg := '((struct _IError_interface_methods*)${cvar_name}${dot_or_ptr}err._typ)->_method_msg(${cvar_name}${dot_or_ptr}err._object)'
+	g.writeln('\t((struct _main__TestRunner_interface_methods*)test_runner._typ)->_method_fn_error(test_runner._object, ${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"), ${err_msg} );')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
@@ -316,8 +321,8 @@ pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, 
 	g.write_defer_stmts_when_needed(return_stmt.scope, true, return_stmt.pos)
 	paline, pafile, pamod, pafn := g.panic_debug_info(return_stmt.pos)
 	dot_or_ptr := if cvar_name in g.tmp_var_ptr { '->' } else { '.' }
-	err_msg := 'IError_name_table[${cvar_name}${dot_or_ptr}err._typ]._method_msg(${cvar_name}${dot_or_ptr}err._object)'
-	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, ${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"), ${err_msg} );')
+	err_msg := '((struct _IError_interface_methods*)${cvar_name}${dot_or_ptr}err._typ)->_method_msg(${cvar_name}${dot_or_ptr}err._object)'
+	g.writeln('\t((struct _main__TestRunner_interface_methods*)test_runner._typ)->_method_fn_error(test_runner._object, ${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"), ${err_msg} );')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
@@ -376,8 +381,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	if g.pref.show_asserts {
 		g.writeln('\tmain__BenchedTests bt = main__start_testing(${all_tfuncs.len}, v_test_file);')
 	}
-	g.writeln2('',
-		'\tstruct _main__TestRunner_interface_methods _vtrunner = main__TestRunner_name_table[test_runner._typ];')
+	g.writeln2('', '\tstruct _main__TestRunner_interface_methods _vtrunner = *(struct _main__TestRunner_interface_methods*)test_runner._typ;')
 	g.writeln2('\tvoid * _vtobj = test_runner._object;', '')
 	g.writeln('\tmain__VTestFileMetaInfo_free(test_runner.file_test_info);')
 	g.writeln('\t*(test_runner.file_test_info) = main__vtest_new_filemetainfo(v_test_file, ${all_tfuncs.len});')
@@ -395,11 +399,14 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		g.writeln('\t*(test_runner.fn_test_info) = main__vtest_new_metainfo(tcname_${tnumber}, tcmod_${tnumber}, tcfile_${tnumber}, ${lnum});')
 		g.writeln('\t_vtrunner._method_fn_start(_vtobj);')
 		g.writeln('\tbool failed_${tnumber} = false;')
+		if g.pref.show_asserts {
+			// `longjmp` makes non-volatile automatic locals modified after `setjmp`
+			// indeterminate. Initialize the benchmark step first so `bt` remains valid
+			// when testing_step_end reads it after a failed assertion.
+			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, tcname_${tnumber});')
+		}
 		g.writeln('\tif (!setjmp(g_jump_buffer)) {')
 		//
-		if g.pref.show_asserts {
-			g.writeln('\t\tmain__BenchedTests_testing_step_start(&bt, tcname_${tnumber});')
-		}
 		if is_test_fn && before_each_fn != '' {
 			g.writeln('\t\t${before_each_fn}();')
 		}

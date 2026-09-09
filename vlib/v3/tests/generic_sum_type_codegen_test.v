@@ -379,7 +379,8 @@ fn main() {}
 	os.rm(bin) or {}
 	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return') || compile.output.contains('incompatible'), compile.output
+	assert compile.output.contains('cannot use `Node[string]` as type `Tree[int]`')
+		|| compile.output.contains('cannot return') || compile.output.contains('incompatible'), compile.output
 
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
@@ -654,7 +655,7 @@ type Tree[T] = Empty | foo.Node[T]
 
 fn value(tree Tree[int]) int {
 	return match tree {
-		foo.Node { tree.value }
+		foo.Node[int] { tree.value }
 		Empty { 0 }
 	}
 }
@@ -682,9 +683,9 @@ struct Box[T] {
 	value T
 }
 
-type S = Box[int] | Box[string]
+type BoxSum = Box[int] | Box[string]
 
-fn score(s S) int {
+fn score(s BoxSum) int {
 	return match s {
 		Box[int] { 10 + s.value }
 		Box[string] { 100 + s.value.len }
@@ -692,7 +693,7 @@ fn score(s S) int {
 }
 
 fn main() {
-	s := S(Box[string]{
+	s := BoxSum(Box[string]{
 		value: "ok"
 	})
 	assert s is Box[string]
@@ -701,7 +702,7 @@ fn main() {
 	assert b.value == "ok"
 	assert score(s) == 102
 
-	i := S(Box[int]{
+	i := BoxSum(Box[int]{
 		value: 7
 	})
 	assert i is Box[int]

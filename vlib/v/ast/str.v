@@ -126,7 +126,11 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 			f.write_string(node.receiver.typ.share().str() + ' ')
 			styp = styp[1..] // remove &
 		}
-		f.write_string(node.receiver.name + ' ')
+		is_type_only_receiver := node.receiver.name == '_' && node.receiver.type_pos.len > 0
+			&& node.receiver.pos.pos == node.receiver.type_pos.pos
+		if !is_type_only_receiver {
+			f.write_string(node.receiver.name + ' ')
+		}
 		styp = util.no_cur_mod(styp, cur_mod)
 		if t.new_int_fmt_fix && styp == 'int' {
 			styp = 'i32'
@@ -229,11 +233,20 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		} else {
 			mut s := t.type_to_str(param_typ.clear_flag(.shared_f))
 			if param.is_mut {
-				if s.starts_with('&') && ((!param_sym.is_number() && param_sym.kind != .bool)
+				// The parser lowers `mut` params by adding one level of indirection
+				// (`mut x T` => `&T`). vfmt must strip only that parser-added `&`, not a
+				// `&` the user wrote explicitly (`mut x &T`). `orig_typ` is the type as
+				// written, before mut lowering, so a larger `nr_muls` on the lowered type
+				// means the parser added the `&` that we are allowed to drop.
+				parser_added_ref := param.orig_typ == 0
+					|| param_typ.nr_muls() > param.orig_typ.nr_muls()
+				if s.starts_with('&') && parser_added_ref
+					&& ((!param_sym.is_number() && param_sym.kind != .bool)
 					|| node.language != .v
 					|| (param_typ.is_ptr() && param_sym.kind == .struct)) {
 					s = s[1..]
-				} else if param_typ.is_ptr() && param_sym.kind == .struct && !s.contains('[') {
+				} else if parser_added_ref && param_typ.is_ptr() && param_sym.kind == .struct
+					&& !s.contains('[') {
 					s = t.type_to_str(param_typ.clear_flag(.shared_f).deref())
 				}
 			}

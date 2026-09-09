@@ -1169,6 +1169,8 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 		}
 	}
 	if left_value_sym.kind == .interface {
+		is_empty_interface := left_value_sym.info is ast.Interface
+			&& left_value_sym.info.methods.len == 0 && left_value_sym.info.fields.len == 0
 		if right is ast.ArrayInit && right.is_fixed {
 			c.error('cannot append `${right_sym.name}` to `${left_sym.name}`', right_pos)
 			return ast.void_type
@@ -1177,7 +1179,7 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 			left_value_type)
 		if right_is_interface_value {
 			if !right_type.is_any_kind_of_pointer() && !c.inside_unsafe
-				&& right_sym.kind != .interface {
+				&& right_sym.kind != .interface && !is_empty_interface {
 				c.mark_as_referenced(mut &node.right, true)
 			}
 		} else if right_final_sym.kind == .array {
@@ -1187,7 +1189,7 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 			// []Animal << Cat
 			if c.type_implements(right_type, left_value_type, right_pos) {
 				if !right_type.is_any_kind_of_pointer() && !c.inside_unsafe
-					&& right_sym.kind != .interface {
+					&& right_sym.kind != .interface && !is_empty_interface {
 					c.mark_as_referenced(mut &node.right, true)
 				}
 			}

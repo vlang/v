@@ -1,0 +1,7 @@
+Name: static-private-74
+Description: Synthetic private dependency for static pkg-config regression coverage
+Version: 1.0.0
+Libs: -lissue74_private
+Libs.private: -lissue74_private_private
+Cflags: -DISSUE74_PRIVATE
+Cflags.private: -DISSUE74_PRIVATE_PRIVATE

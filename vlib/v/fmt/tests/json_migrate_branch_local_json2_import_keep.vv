@@ -1,0 +1,19 @@
+module main
+
+import json
+
+// A `json2` import inside a top-level `$if` branch would collide with the plain
+// `import json2` the migration adds (the checker reports a duplicate module import,
+// and vfmt's dedup does not cover the branch/top-level ordering), so the file's json
+// usage is left unmigrated.
+$if linux {
+	import json2
+}
+
+fn dump_json(x int) string {
+	return json.encode(x)
+}
+
+fn main() {
+	println(dump_json(42))
+}

@@ -44,10 +44,9 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 			} else if g.gen_map_str_expr(expr_id, typ) {
 				// emitted by gen_map_str_expr
 			} else if g.is_ierror_type_name(typ_name) {
-				// IError may resolve as Interface/Alias/Struct depending on context; match by
-				// name and interpolate its `.message` (mirrors the transformer's IError path).
-				g.gen_string_interp_child_expr(expr_id)
-				g.write('.message')
+				// IError may resolve as Interface/Alias/Struct depending on context. Dispatch
+				// through msg() so boxed MessageError values do not depend on the legacy cache.
+				g.gen_ierror_dynamic_method_expr(expr_id, typ, 'msg')
 			} else if typ is types.Primitive {
 				prim_name := types.Type(typ).name()
 				g.write('${g.cname('${prim_name}.str')}(')
@@ -58,7 +57,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.Enum {
-				g.write('${g.cname(typ.name)}__autostr(')
+				g.write('${g.enum_autostr_c_name(typ.name)}__autostr(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.Interface {
@@ -174,9 +173,14 @@ fn is_string_interp_unsigned_int_type(name string) bool {
 	return name in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize']
 }
 
+fn is_string_interp_char_code_type(name string) bool {
+	return is_string_interp_signed_int_type(name) || is_string_interp_unsigned_int_type(name)
+		|| name == 'rune'
+}
+
 fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, typ types.Type, format string) bool {
 	f := parse_string_interp_format(format)
-	type_name := string_interp_type_name(typ)
+	type_name := string_interp_type_name(g.value_unalias_type(typ))
 	left := if f.left { 1 } else { 0 }
 	// An unsigned-backed enum must format as unsigned so values >= 1<<63 are not
 	// rendered as negative; consult the enum backing type like the transformer does.
@@ -184,6 +188,18 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 		enum_storage_c_type_is_unsigned(g.enum_storage_c_type(typ))
 	} else {
 		false
+	}
+	if is_string_interp_char_code_type(type_name) && f.verb == `c` {
+		if f.width > 1 {
+			g.write('v3_string_pad(')
+		}
+		g.write('rune__str((u32)(')
+		g.gen_string_interp_child_expr(child_id)
+		g.write('))')
+		if f.width > 1 {
+			g.write(', ${f.width}, ${left})')
+		}
+		return true
 	}
 	if (is_string_interp_signed_int_type(type_name) || is_string_interp_unsigned_int_type(type_name)
 		|| typ is types.Enum) && f.verb in [`b`, `o`, `x`, `X`] {
@@ -226,7 +242,7 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 		} else if f.width > 0 {
 			g.write('v3_string_pad(')
 		}
-		g.write('${g.cname(typ.name)}__autostr(')
+		g.write('${g.enum_autostr_c_name(typ.name)}__autostr(')
 		g.gen_string_interp_child_expr(child_id)
 		g.write(')')
 		if f.zero && f.width > 0 {
@@ -345,10 +361,20 @@ fn (mut g FlatGen) string_literals() {
 // anything interned later (worker novelties, the synthetic main) is emitted
 // as a supplement after the joins — per-id definitions are order-independent.
 fn (mut g FlatGen) string_literals_from(start int) {
-	for i := start; i < g.str_lits.len; i++ {
-		s := g.str_lits[i]
-		escaped := c_escape(s)
-		g.writeln('string _str_${i} = {"${escaped}", ${s.len}, 1};')
+	if g.cache_split {
+		mut literals := g.str_lits[start..].clone()
+		literals.sort()
+		for s in literals {
+			i := g.str_lit_ids[s]
+			escaped := c_escape(s)
+			g.writeln('static const string _str_${i} = {"${escaped}", ${s.len}, 1};')
+		}
+	} else {
+		for i := start; i < g.str_lits.len; i++ {
+			s := g.str_lits[i]
+			escaped := c_escape(s)
+			g.writeln('static const string _str_${i} = {"${escaped}", ${s.len}, 1};')
+		}
 	}
 	if g.str_lits.len > start {
 		g.writeln('')
@@ -357,8 +383,13 @@ fn (mut g FlatGen) string_literals_from(start int) {
 
 // intern_string supports intern string handling for FlatGen.
 fn (mut g FlatGen) intern_string(s string) int {
-	if s in g.str_lit_ids {
-		return g.str_lit_ids[s]
+	if id := g.str_lit_ids[s] {
+		return id
+	}
+	if g.str_lits_shared {
+		g.str_lits = g.str_lits.clone()
+		g.str_lit_ids = g.str_lit_ids.clone()
+		g.str_lits_shared = false
 	}
 	id := g.str_lits.len
 	g.str_lits << s

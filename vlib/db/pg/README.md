@@ -69,6 +69,9 @@ after following all instructions. Create the `pg` folder yourself if it does not
 │       postgres_ext.h
 │
 └───win64
+    ├───mingw
+    │       libpq.dll.a
+    │
     └───msvc
             libpq.lib
 ```
@@ -96,8 +99,18 @@ Any program that wants to use postgres client functionality require these DLLs f
 - libssl-3-x64.dll
 - libwinpthread-1.dll
 
-If you want to compile with MSVC, you will need to copy `C:/Program Files/PostgreSQL/<version>/bin/libpq.lib`
-into the `@VEXEROOT/thirdparty/pg/win64/msvc` directory.
+If you want to compile with MSVC, copy
+`C:/Program Files/PostgreSQL/<version>/bin/libpq.lib` into the
+`@VEXEROOT/thirdparty/pg/win64/msvc` directory.
+
+GCC and TCC cannot use the MSVC import library. For these compilers, copy a MinGW-compatible
+`libpq.dll.a` into `@VEXEROOT/thirdparty/pg/win64/mingw`. You can install one with the MSYS2
+`mingw-w64-x86_64-postgresql` package, or generate it from `libpq.dll` with `gendef` and `dlltool`:
+
+```powershell
+gendef "C:/Program Files/PostgreSQL/<version>/bin/libpq.dll"
+dlltool -d libpq.def -l libpq.dll.a -D libpq.dll
+```
 
 Navigate to `C:/Program Files/PostgreSQL/<version>/include`. There you will find the files:
 - `libpq-fe.h`
@@ -188,6 +201,28 @@ defer { conn.close() or {} }
 rows := conn.exec('select 1')!
 ```
 
+## Result Column Metadata
+
+Queries made with `exec_result()`, `exec_param_many_result()`, or
+`exec_prepared_result()` return a `pg.Result` whose `fields` array contains the
+libpq metadata for each result column:
+
+```v oksyntax
+import db.pg
+
+fn show_columns(conn &pg.Conn) ! {
+	result := conn.exec_result('select 1::int4 as id, 3.14::numeric(10, 2) as amount')!
+	for field in result.fields {
+		println('${field.name}: oid=${field.type_oid}, modifier=${field.type_modifier}')
+	}
+}
+```
+
+Each `pg.Field` preserves the type OID, type modifier, fixed size, result format,
+source table OID, and source table column number reported by libpq. Type OIDs for
+user-defined types are database-specific. PostgreSQL can resolve a type OID and
+modifier to its display name with `pg_catalog.format_type(oid, modifier)`.
+
 ## Using Parameterized Queries
 
 Parameterized queries (exec_param, etc.) in V require the use of the following syntax: ($n).
@@ -198,6 +233,19 @@ The number following the $ specifies which parameter from the argument array to 
 db.exec_param_many('INSERT INTO users (username, password) VALUES ($1, $2)', ['tom', 'securePassword'])!
 db.exec_param('SELECT * FROM users WHERE username = ($1) limit 1', 'tom')!
 ```
+
+When an operation cannot use parameters, `escape_literal` returns a complete quoted PostgreSQL
+literal using libpq's connection-aware escaping:
+
+```v ignore
+mut conn := db.conn()!
+defer { conn.close() or {} }
+value := conn.escape_literal("O'Reilly")!
+row := conn.exec_one('INSERT INTO authors (name) VALUES (${value}) RETURNING id')!
+```
+
+Escaping and execution must use the same connection because escaping depends on its settings.
+Prefer parameterized queries whenever possible. Do not add quotes around the returned value.
 
 ## Using LISTEN/NOTIFY
 

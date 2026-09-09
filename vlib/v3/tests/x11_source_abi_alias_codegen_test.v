@@ -25,6 +25,8 @@ typedef unsigned long NativeAtom;
 typedef unsigned long NativeKeySym;
 typedef unsigned long NativeULong;
 typedef unsigned long NativeWindow;
+typedef long NativeTime;
+static inline void take_time(NativeTime* value) { (void)value; }
 #endif
 ') or {
 		panic(err)
@@ -37,6 +39,7 @@ pub type Atom = C.NativeAtom
 pub type KeySym = C.NativeKeySym
 pub type NativeULong = C.NativeULong
 pub type Window = C.NativeWindow
+type C.NativeTime = i64
 pub type LocalId = u64
 
 @[typedef]
@@ -48,6 +51,7 @@ struct C.XKeyEvent {}
 fn C.XLookupString(event &C.XKeyEvent, buf &char, buf_len int, keysym &KeySym, status voidptr) int
 fn C.XSetWMProtocols(display &C.Display, window Window, protocols &Atom, count int) int
 fn C.XGetWindowProperty(display &C.Display, window Window, property Atom, offset i64, length i64, delete int, req_type Atom, actual &Atom, actual_format &int, count &NativeULong, bytes &NativeULong, prop &&u8) int
+fn C.take_time(value &C.NativeTime)
 
 fn helper(display &C.Display, window Window, value &&u8) usize {
 	mut actual_type := Atom(0)
@@ -68,10 +72,12 @@ fn main() {
 	mut protocols := [1]Atom{}
 	protocols[0] = Atom(1)
 	window := Window(0)
-	C.XSetWMProtocols(display, window, &protocols[0], 1)
+	C.XSetWMProtocols(display, window, unsafe { &protocols[0] }, 1)
 	mut value := &u8(unsafe { nil })
 	count := helper(display, window, &&u8(&value))
 	mut local_id := LocalId(9)
+	mut native_time := i64(0)
+	C.take_time(voidptr(&native_time))
 	score := int(count) + int(local_id)
 	println(int_str(score))
 }
@@ -99,6 +105,7 @@ fn test_c_typedef_aliases_are_preserved_for_x11_abi_shapes() {
 	assert compact.contains('XLookupString(&event,NULL,0,&keysym,NULL);'), c_code
 	assert compact.contains('XSetWMProtocols(display,window,&protocols[0],1);'), c_code
 	assert compact.contains('XGetWindowProperty(display,window,property,0,1,0,property,&actual_type,&actual_format,&item_count,&bytes_after,value);'), c_code
+	assert compact.contains('take_time((NativeTime*)(void*)(&native_time));'), c_code
 
 	assert !compact.contains('u64keysym'), c_code
 	assert !compact.contains('u64protocols[1]'), c_code

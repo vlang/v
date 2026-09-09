@@ -4,7 +4,8 @@ fn test_main() {
 
 	mut asu8 := unsafe { &u8(malloc(size_of_u16)) }
 
-	asu8 = &[myu16]! // look this
+	data := [myu16]!
+	asu8 = unsafe { &u8(&data) }
 
 	$if little_endian {
 		assert unsafe { asu8.vbytes(int(size_of_u16)) } == [u8(50), 0]

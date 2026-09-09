@@ -105,6 +105,19 @@ fn test_existing_vsh_executable_uses_cache_until_source_is_newer() {
 	assert warm_cache_res.exit_code == 0, warm_cache_res.output
 	assert warm_cache_res.output.trim_space() == 'Hello from cached vsh'
 
+	replacement_source := os.join_path(project_dir, 'replacement.v')
+	os.write_file(replacement_source, "fn main() {
+	println('foreign executable')
+}
+")!
+	replacement_res :=
+		os.execute('${os.quoted_path(vexe)} -old-compiler -o ${os.quoted_path(executable)} ${os.quoted_path(replacement_source)}')
+	assert replacement_res.exit_code == 0, replacement_res.output
+	assert os.execute(os.quoted_path(executable)).output.trim_space() == 'foreign executable'
+	rebound_cache_res := os.execute(cmd)
+	assert rebound_cache_res.exit_code == 0, rebound_cache_res.output
+	assert rebound_cache_res.output.trim_space() == 'Hello from cached vsh'
+
 	cache_stamp := os.file_last_mod_unix(executable) + 3600
 	os.utime(executable, cache_stamp, cache_stamp)!
 
@@ -255,6 +268,83 @@ pub struct Client {}
 	assert !res.output.contains('cannot register struct')
 }
 
+fn test_standalone_test_ignores_embedded_module_declarations() {
+	workspace := os.join_path(test_path, 'standalone_test_embedded_module')
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	os.mkdir_all(workspace)!
+	os.write_file(os.join_path(workspace, 'fixture_test.v'), "const fixture = 'first
+module main
+last'
+
+fn test_fixture() {
+	assert fixture.contains('module main')
+}
+")!
+	for name in ['first', 'second'] {
+		os.write_file(os.join_path(workspace, '${name}.v'), 'module main
+
+struct Context {}
+')!
+	}
+
+	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace,
+		'fixture_test.v'))}')
+	assert res.exit_code == 0, res.output
+}
+
+fn test_internal_module_test_accepts_module_after_closed_block_comment() {
+	workspace := os.join_path(test_path, 'internal_test_module_after_block_comment')
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	os.mkdir_all(workspace)!
+	os.write_file(os.join_path(workspace, 'fixture_test.v'), '/* license */ module sample
+
+fn test_helper() {
+	assert helper() == 1
+}
+')!
+	os.write_file(os.join_path(workspace, 'helper.v'), 'module sample
+
+fn helper() int {
+	return 1
+}
+')!
+
+	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace,
+		'fixture_test.v'))}')
+	assert res.exit_code == 0, res.output
+}
+
+fn test_internal_module_test_accepts_module_after_attribute() {
+	workspace := os.join_path(test_path, 'internal_test_module_after_attribute')
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	os.mkdir_all(workspace)!
+	os.write_file(os.join_path(workspace, 'fixture_test.v'), '@[has_globals]
+module sample
+
+__global observed = helper()
+
+fn test_helper() {
+	assert observed == 1
+}
+')!
+	os.write_file(os.join_path(workspace, 'helper.v'), 'module sample
+
+fn helper() int {
+	return 1
+}
+')!
+
+	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace,
+		'fixture_test.v'))}')
+	assert res.exit_code == 0, res.output
+}
+
 fn test_duplicate_resolved_import_path_still_validates_module_name() {
 	$if windows {
 		return
@@ -394,7 +484,7 @@ fn test_missing_library_is_reported_without_compiler_bug_hint() {
 	src_file := os.join_path('missing_library', 'main.v')
 	os.write_file(src_file, '#flag -l${lib_name}\nfn main() {}\n')!
 
-	res := os.execute('${os.quoted_path(vexe)} ${os.quoted_path(src_file)}')
+	res := os.execute('${os.quoted_path(vexe)} -old-compiler ${os.quoted_path(src_file)}')
 	normalized_output := res.output.replace('\r\n', '\n')
 
 	assert res.exit_code != 0

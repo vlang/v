@@ -1,0 +1,7 @@
+vlib/v/checker/tests/nontranslated_c_string_fixed_char_array_struct_init_err.vv:7:3: error: cannot assign to field `name`: expected `[4]i8`, not `&u8`
+    5 | fn main() {
+    6 |     _ := FixedName{
+    7 |         name: c'abcd'
+      |         ~~~~~~~~~~~~~
+    8 |     }
+    9 | }

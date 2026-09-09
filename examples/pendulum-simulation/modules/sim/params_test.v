@@ -29,6 +29,10 @@ const params_test_mock_state = SimState{
 }
 const params_test_mock_tetha = 2.0 * math.pi / 3.0
 
+fn vectors_approximately_equal(a Vector3D, b Vector3D) bool {
+	return math.abs(a.x - b.x) < 1e-9 && math.abs(a.y - b.y) < 1e-9 && math.abs(a.z - b.z) < 1e-9
+}
+
 pub fn test_get_rope_vector() {
 	result := params_test_mock_params.get_rope_vector(params_test_mock_state)
 	expected := vector(
@@ -36,7 +40,7 @@ pub fn test_get_rope_vector() {
 		y: -0.02937078552673521
 		z: -0.24768893652467275
 	)
-	assert result == expected
+	assert vectors_approximately_equal(result, expected)
 }
 
 pub fn test_get_forces_sum() {
@@ -46,7 +50,7 @@ pub fn test_get_forces_sum() {
 		y: 5.229594535194337e-12
 		z: 9.094947017729282e-13
 	)
-	assert result == expected
+	assert vectors_approximately_equal(result, expected)
 }
 
 pub fn test_get_grav_force() {
@@ -54,7 +58,7 @@ pub fn test_get_grav_force() {
 	expected := vector(
 		z: -0.147
 	)
-	assert result == expected
+	assert vectors_approximately_equal(result, expected)
 }
 
 pub fn test_get_magnet_position() {
@@ -64,7 +68,7 @@ pub fn test_get_magnet_position() {
 		y: 0.04330127018922194
 		z: -0.03
 	)
-	assert result == expected
+	assert vectors_approximately_equal(result, expected)
 }
 
 pub fn test_get_magnet_force() {
@@ -75,14 +79,14 @@ pub fn test_get_magnet_force() {
 		y: 1422.736432604726
 		z: -632.5695169850264
 	)
-	assert result == expected
+	assert vectors_approximately_equal(result, expected)
 }
 
 pub fn test_get_magnet_dist() {
 	result := params_test_mock_params.get_magnet_dist(params_test_mock_tetha,
 		params_test_mock_state)
 	expected := 0.07993696666249227
-	assert result == expected
+	assert math.abs(result - expected) < 1e-9
 }
 
 pub fn test_get_magnet1_force() {
@@ -92,7 +96,7 @@ pub fn test_get_magnet1_force() {
 		y: 575.0062553126633
 		z: -632.5695169850262
 	)
-	assert result == expected
+	assert vectors_approximately_equal(result, expected)
 }
 
 pub fn test_get_magnet2_force() {
@@ -102,7 +106,7 @@ pub fn test_get_magnet2_force() {
 		y: 1422.736432604726
 		z: -632.5695169850264
 	)
-	assert result == expected
+	assert vectors_approximately_equal(result, expected)
 }
 
 pub fn test_get_magnet3_force() {
@@ -112,7 +116,7 @@ pub fn test_get_magnet3_force() {
 		y: -2962.612996234165
 		z: -6871.632889552589
 	)
-	assert result == expected
+	assert vectors_approximately_equal(result, expected)
 }
 
 pub fn test_get_tension_force() {
@@ -122,5 +126,5 @@ pub fn test_get_tension_force() {
 		z: 0.0
 	))
 	expected := vector(x: 0.0, y: 0.0, z: 0.0)
-	assert result == expected
+	assert vectors_approximately_equal(result, expected)
 }

@@ -100,15 +100,18 @@ mut:
 	cb                ChunkCallback = unsafe { nil }
 }
 
-fn c_cb_for_decompress_mem(buf &char, len int, pdcbd voidptr) int {
+// miniz invokes this callback with C `int` arguments/return values. Keep the C ABI
+// explicitly i32 and convert to platform-width V `int` only at the public callback.
+fn c_cb_for_decompress_mem(buf &char, len i32, pdcbd voidptr) i32 {
 	mut cbdata := unsafe { &DecompressionCallBackData(pdcbd) }
-	if cbdata.cb(unsafe { voidptr(buf).vbytes(len) }, cbdata.userdata) == len {
-		cbdata.decompressed_size += u64(len)
+	vlen := int(len)
+	if cbdata.cb(unsafe { voidptr(buf).vbytes(vlen) }, cbdata.userdata) == vlen {
+		cbdata.decompressed_size += u64(vlen)
 		return 1 // continue decompressing
 	}
 	return 0 // stop decompressing
 }
 
-type DecompressCallback = fn (const_buffer voidptr, len int, userdata voidptr) int
+type DecompressCallback = fn (const_buffer voidptr, len i32, userdata voidptr) i32
 
 fn C.tinfl_decompress_mem_to_callback(const_input_buffer voidptr, psize &usize, put_buf_cb DecompressCallback, userdata voidptr, flags i32) i32

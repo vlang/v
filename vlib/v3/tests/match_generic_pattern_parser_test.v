@@ -294,7 +294,7 @@ fn bad() Tree[int] {
 
 fn main() {}
 ',
-		'cannot return `Node[string]` as `Tree[int]`')
+		'cannot use `Node[string]` as type `Tree[int]` in return argument')
 }
 
 fn test_generic_sum_type_checker_rejects_non_variant_pattern() {
@@ -312,7 +312,7 @@ fn bad(tree Tree[int]) int {
 
 fn main() {}
 ',
-		'`Other[int]` is not a variant of sum type `Tree[int]`')
+		'`Tree[int]` has no variant `Other[int]`.')
 }
 
 fn test_generic_sum_type_checker_accepts_qualified_generic_variant_pattern() {

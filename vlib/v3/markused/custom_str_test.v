@@ -67,7 +67,9 @@ fn parse_checked_prelude_user_source(name string, prelude_rel string, prelude_so
 // build_v3_bin builds v3 bin data for v3 tests.
 fn build_v3_bin(name string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_${name}')
-	build := os.execute('${custom_str_vexe} -o ${v3_bin} ${custom_str_v3_src}')
+	// v3.v guards against being built with a garbage collector (see the `$if gcboehm`
+	// `$compile_error` blocks at its top), so this sub-build must pass `-gc none`.
+	build := os.execute('${custom_str_vexe} -gc none -o ${v3_bin} ${custom_str_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -205,8 +207,7 @@ pub fn maybe_box() ?Box {
 
 // test_string_interpolation_seeds_imported_enum_str_method validates this v3 regression case.
 fn test_string_interpolation_seeds_imported_enum_str_method() {
-	a, tc := parse_checked_two_file_source('imported_enum_interp_str',
-		imported_enum_main_source('_ := "\${c}"'), 'colors/colors.v', imported_enum_module_source())
+	a, tc := parse_checked_two_file_source('imported_enum_interp_str', imported_enum_main_source('_ := "\${c}"'), 'colors/colors.v', imported_enum_module_source())
 	mut used := mark_used(a, tc)
 	assert used['colors.Color.str']
 }
@@ -214,18 +215,26 @@ fn test_string_interpolation_seeds_imported_enum_str_method() {
 // test_optional_string_interpolation_seeds_imported_enum_str_method
 // validates this v3 regression case.
 fn test_optional_string_interpolation_seeds_imported_enum_str_method() {
-	a, tc := parse_checked_two_file_source('imported_optional_enum_interp_str',
-		imported_optional_enum_main_source('_ := "\${maybe_color()}"'), 'colors/colors.v',
-		imported_enum_module_source())
+	a, tc := parse_checked_two_file_source('imported_optional_enum_interp_str', imported_optional_enum_main_source('_ := "\${maybe_color()}"'), 'colors/colors.v', imported_enum_module_source())
 	mut used := mark_used(a, tc)
 	assert used['colors.Color.str']
 }
 
+fn test_string_interpolation_seeds_imported_enum_autostr_helper() {
+	a, tc := parse_checked_two_file_source('imported_enum_interp_autostr', imported_enum_main_source('_ := "\${c}"'), 'colors/colors.v', 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+')
+	used := mark_used(a, tc)
+	assert used['colors__Color__autostr']
+}
+
 // test_imported_operator_infix_seeds_operator_methods validates this v3 regression case.
 fn test_imported_operator_infix_seeds_operator_methods() {
-	a, tc := parse_checked_two_file_source('imported_operator_infix',
-		imported_operator_main_source(imported_operator_usage_source()), 'vectors/vectors.v',
-		imported_operator_module_source())
+	a, tc := parse_checked_two_file_source('imported_operator_infix', imported_operator_main_source(imported_operator_usage_source()), 'vectors/vectors.v', imported_operator_module_source())
 	mut used := mark_used(a, tc)
 	assert used['vectors.Vec.+']
 	assert used['vectors.Vec.<']
@@ -253,8 +262,7 @@ fn main() {
 	_ := colors.Color.red
 }
 '
-	a, tc := parse_checked_two_file_source('flag_enum_string_plus', main_src, 'colors/colors.v',
-		imported_enum_module_source())
+	a, tc := parse_checked_two_file_source('flag_enum_string_plus', main_src, 'colors/colors.v', imported_enum_module_source())
 	mut used := mark_used(a, tc)
 	assert used['string__plus']
 }
@@ -270,25 +278,41 @@ fn main() {
 	println(ch)
 }
 '
-	a, tc := parse_checked_two_file_source('channel_auto_str_helpers', main_src,
-		'support/support.v', 'module support\n\npub const capacity = 1\n')
+	a, tc := parse_checked_two_file_source('channel_auto_str_helpers', main_src, 'support/support.v', 'module support\n\npub const capacity = 1\n')
 	mut used := mark_used(a, tc)
 	assert used['string__plus']
 	assert used['int__str']
 }
 
+fn test_channel_send_or_seeds_transform_helpers() {
+	main_src := '
+module main
+
+import support
+
+fn main() {
+	mut ch := chan int{cap: support.capacity}
+	ch <- 7 or { return }
+}
+'
+	mut a, mut tc := parse_checked_two_file_source('channel_send_or_helpers', main_src, 'support/support.v', 'module support\n\npub const capacity = 1\n')
+	mut used := mark_used(a, tc)
+	assert used['sync.Channel.try_push_priv']
+	assert used['sync.Channel.closed_error']
+	used = transform.transform_with_used(mut a, tc, used)
+	assert used['sync__Channel__try_push_priv']
+	assert used['sync__Channel__closed_error']
+}
+
 // test_optional_struct_zero_seeds_imported_default_helper validates this v3 regression case.
 fn test_optional_struct_zero_seeds_imported_default_helper() {
-	a, tc := parse_checked_two_file_source('imported_struct_default_or',
-		imported_struct_default_main_source('box := defaults.maybe_box() or { return }\n\t_ := box'),
-		'defaults/defaults.v', imported_struct_default_module_source())
+	a, tc := parse_checked_two_file_source('imported_struct_default_or', imported_struct_default_main_source('box := defaults.maybe_box() or { return }\n\t_ := box'), 'defaults/defaults.v', imported_struct_default_module_source())
 	mut used := mark_used(a, tc)
 	assert used['defaults.default_value']
 }
 
 fn test_prelude_global_initializer_seeds_calls_and_c_externs() {
-	mut a, mut tc := parse_checked_prelude_user_source('prelude_global_initializer',
-		'hidden/hidden.c.v', 'module hidden
+	mut a, mut tc := parse_checked_prelude_user_source('prelude_global_initializer', 'hidden/hidden.c.v', 'module hidden
 
 fn C.hidden_external() int
 
@@ -317,8 +341,7 @@ fn main() {}
 // test_string_interpolation_lowers_to_imported_enum_str_after_used_filter_transform
 // validates this v3 regression case.
 fn test_string_interpolation_lowers_to_imported_enum_str_after_used_filter_transform() {
-	mut a, mut tc := parse_checked_two_file_source('imported_enum_interp_str_cgen',
-		imported_enum_main_source('_ := "\${c}"'), 'colors/colors.v', imported_enum_module_source())
+	mut a, mut tc := parse_checked_two_file_source('imported_enum_interp_str_cgen', imported_enum_main_source('_ := "\${c}"'), 'colors/colors.v', imported_enum_module_source())
 	mut used := mark_used(a, tc)
 	assert used['colors.Color.str']
 	used = transform.transform_with_used(mut a, tc, used)
@@ -327,15 +350,13 @@ fn test_string_interpolation_lowers_to_imported_enum_str_after_used_filter_trans
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('colors__Color__str(')
+	assert c_code.contains('colors__Color_str(')
 }
 
 // test_imported_operator_infix_lowers_after_used_filter_transform
 // validates this v3 regression case.
 fn test_imported_operator_infix_lowers_after_used_filter_transform() {
-	mut a, mut tc := parse_checked_two_file_source('imported_operator_infix_cgen',
-		imported_operator_main_source(imported_operator_usage_source()), 'vectors/vectors.v',
-		imported_operator_module_source())
+	mut a, mut tc := parse_checked_two_file_source('imported_operator_infix_cgen', imported_operator_main_source(imported_operator_usage_source()), 'vectors/vectors.v', imported_operator_module_source())
 	mut used := mark_used(a, tc)
 	assert used['vectors.Vec.+']
 	assert used['vectors.Vec.<']
@@ -352,9 +373,7 @@ fn test_imported_operator_infix_lowers_after_used_filter_transform() {
 // test_optional_struct_zero_lowers_to_imported_default_after_used_filter_transform
 // validates this v3 regression case.
 fn test_optional_struct_zero_lowers_to_imported_default_after_used_filter_transform() {
-	mut a, mut tc := parse_checked_two_file_source('imported_struct_default_or_cgen',
-		imported_struct_default_main_source('box := defaults.maybe_box() or { return }\n\t_ := box'),
-		'defaults/defaults.v', imported_struct_default_module_source())
+	mut a, mut tc := parse_checked_two_file_source('imported_struct_default_or_cgen', imported_struct_default_main_source('box := defaults.maybe_box() or { return }\n\t_ := box'), 'defaults/defaults.v', imported_struct_default_module_source())
 	mut used := mark_used(a, tc)
 	assert used['defaults.default_value']
 	used = transform.transform_with_used(mut a, tc, used)
@@ -369,9 +388,7 @@ fn test_optional_struct_zero_lowers_to_imported_default_after_used_filter_transf
 // test_optional_string_interpolation_lowers_to_imported_enum_str_after_used_filter_transform
 // validates this v3 regression case.
 fn test_optional_string_interpolation_lowers_to_imported_enum_str_after_used_filter_transform() {
-	mut a, mut tc := parse_checked_two_file_source('imported_optional_enum_interp_str_cgen',
-		imported_optional_enum_main_source('_ := "\${maybe_color()}"'), 'colors/colors.v',
-		imported_enum_module_source())
+	mut a, mut tc := parse_checked_two_file_source('imported_optional_enum_interp_str_cgen', imported_optional_enum_main_source('_ := "\${maybe_color()}"'), 'colors/colors.v', imported_enum_module_source())
 	mut used := mark_used(a, tc)
 	assert used['colors.Color.str']
 	used = transform.transform_with_used(mut a, tc, used)
@@ -380,7 +397,7 @@ fn test_optional_string_interpolation_lowers_to_imported_enum_str_after_used_fil
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('colors__Color__str(')
+	assert c_code.contains('colors__Color_str(')
 }
 
 // test_imported_enum_print_compile_keeps_str_method validates this v3 regression case.
@@ -412,8 +429,7 @@ fn test_imported_operator_compile_keeps_operator_methods() {
 		os.rmdir_all(root) or { panic(err) }
 	}
 	os.mkdir_all(os.join_path(root, 'vectors')) or { panic(err) }
-	os.write_file(os.join_path(root, 'main.v'),
-		imported_operator_main_source(imported_operator_usage_source())) or { panic(err) }
+	os.write_file(os.join_path(root, 'main.v'), imported_operator_main_source(imported_operator_usage_source())) or { panic(err) }
 	os.write_file(os.join_path(root, 'vectors/vectors.v'), imported_operator_module_source()) or {
 		panic(err)
 	}
@@ -432,12 +448,10 @@ fn test_optional_struct_zero_compile_keeps_imported_default_helper() {
 		os.rmdir_all(root) or { panic(err) }
 	}
 	os.mkdir_all(os.join_path(root, 'defaults')) or { panic(err) }
-	os.write_file(os.join_path(root, 'main.v'),
-		imported_struct_default_main_source('box := defaults.maybe_box() or { return }\n\t_ := box')) or {
+	os.write_file(os.join_path(root, 'main.v'), imported_struct_default_main_source('box := defaults.maybe_box() or { return }\n\t_ := box')) or {
 		panic(err)
 	}
-	os.write_file(os.join_path(root, 'defaults/defaults.v'),
-		imported_struct_default_module_source()) or { panic(err) }
+	os.write_file(os.join_path(root, 'defaults/defaults.v'), imported_struct_default_module_source()) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_struct_default_or_input_bin')
 	compile := os.execute('${v3_bin} -o ${bin} ${root}')
 	assert compile.exit_code == 0, compile.output
@@ -453,12 +467,34 @@ fn test_imported_optional_enum_interpolation_compile_keeps_str_method() {
 		os.rmdir_all(root) or { panic(err) }
 	}
 	os.mkdir_all(os.join_path(root, 'colors')) or { panic(err) }
-	os.write_file(os.join_path(root, 'main.v'),
-		imported_optional_enum_main_source('_ := "\${maybe_color()}"')) or { panic(err) }
+	os.write_file(os.join_path(root, 'main.v'), imported_optional_enum_main_source('_ := "\${maybe_color()}"')) or { panic(err) }
 	os.write_file(os.join_path(root, 'colors/colors.v'), imported_enum_module_source()) or {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_optional_enum_interp_input_bin')
+	compile := os.execute('${v3_bin} -o ${bin} ${root}')
+	assert compile.exit_code == 0, compile.output
+}
+
+fn test_imported_enum_direct_str_compile_keeps_autostr_helper() {
+	v3_bin := build_v3_bin('imported_enum_direct_autostr_test')
+
+	root := os.join_path(os.temp_dir(), 'v3_markused_imported_enum_direct_autostr_input')
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(os.join_path(root, 'colors')) or { panic(err) }
+	os.write_file(os.join_path(root, 'main.v'), imported_enum_main_source('_ := c.str()')) or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'colors/colors.v'), 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+') or { panic(err) }
+	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_enum_direct_autostr_input_bin')
 	compile := os.execute('${v3_bin} -o ${bin} ${root}')
 	assert compile.exit_code == 0, compile.output
 }

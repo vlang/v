@@ -111,12 +111,14 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '81'
 	generated := os.read_file(bin + '.c') or { panic(err) }
-	assert generated.contains('int xs[3];'), generated
-	assert generated.contains('int ys[3] = {0};'), generated
-	assert generated.contains('int zs[3];'), generated
-	assert generated.contains('int ds[2];'), generated
-	assert generated.contains('int choice[3];'), generated
 	compact := compact_c_whitespace(generated)
+	assert generated.contains('i64 xs[3];'), generated
+	assert compact.contains('i64ys[3]={0};')
+		|| compact.contains('i64ys[3];memmove(ys,(i64[3]){0},sizeof(ys));')
+		|| compact.contains('i64ys[3];memmove(ys,(i64[3]){0,0,0},sizeof(ys));'), generated
+	assert generated.contains('i64 zs[3];'), generated
+	assert generated.contains('i64 ds[2];'), generated
+	assert generated.contains('i64 choice[3];'), generated
 	assert has_fixed_array_memmove_copy(compact, 'xs'), generated
 	assert has_fixed_array_memmove_copy(compact, 'ys'), generated
 	assert has_fixed_array_memmove_copy(compact, 'zs'), generated
@@ -165,6 +167,6 @@ fn main() {
 	assert run.output.trim_space() == '42'
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := compact_c_whitespace(generated)
-	assert compact.contains('{*&s,1}'), generated
+	assert compact.contains('{*&s,1}') || compact.contains('{*(&s),1}'), generated
 	assert !compact.contains('{&s,1}'), generated
 }

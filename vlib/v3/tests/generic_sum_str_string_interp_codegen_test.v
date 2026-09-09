@@ -26,7 +26,7 @@ struct Some[T] {
 	value T
 }
 
-fn (m Maybe[T]) str() string {
+fn (m Maybe[T]) str[T]() string {
 	return 'maybe'
 }
 
@@ -57,4 +57,17 @@ fn main() {
 	assert generated.contains('Maybe_int__str'), generated
 	assert !generated.contains(' = x;'), generated
 	assert !generated.contains('Maybe_T__str'), generated
+}
+
+fn test_monomorphization_synthesizes_late_auto_str_helpers() {
+	v3_bin := generic_sum_str_build_v3()
+	src := os.join_path(generic_sum_str_vlib_dir, 'toml', 'tests', 'reflect_test.v')
+	bin := os.join_path(os.temp_dir(), 'v3_late_auto_str_test_${os.getpid()}')
+	os.rm(bin) or {}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
 }

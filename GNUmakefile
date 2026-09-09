@@ -6,10 +6,18 @@ TMPDIR ?= /tmp
 VROOT  ?= .
 VC     ?= ./vc
 VEXE   ?= ./v
+V1_FALLBACK_EXE := $(dir $(VEXE))v1_fallback
+# Portable VC snapshots do not embed V3. Keep their v1 executable on the full
+# compatibility compiler path even when the generated C is built on macOS/Linux.
+VC_BOOTSTRAP_DEFINE := -DCUSTOM_DEFINE_v1_fallback
 VCREPO ?= https://github.com/vlang/vc
 TCCREPO ?= https://github.com/vlang/tccbin
 LEGACYREPO ?= https://github.com/macports/macports-legacy-support
 GIT ?= git
+# Command-line variables are exported automatically.  Keep GIT as literal data
+# until platform detection decides whether the Linux selector will consume it.
+override V_GIT_LITERAL := $(value GIT)
+unexport GIT
 
 VCFILE := v.c
 TMPTCC := $(VROOT)/thirdparty/tcc
@@ -17,9 +25,8 @@ LEGACYLIBS := $(VROOT)/thirdparty/legacy
 TMPLEGACY := $(LEGACYLIBS)/source
 TCCOS := unknown
 TCCARCH := unknown
-HAS_GIT := $(shell command -v $(GIT) >/dev/null 2>&1 && echo 1 || echo 0)
-GITCLEANPULL := $(GIT) clean -xf && $(GIT) pull --rebase --quiet
-GITFASTCLONE := $(GIT) clone --filter=blob:none --quiet
+LINUX_TCC_SELECTOR := $(VROOT)/cmd/tools/select_linux_tcc.sh
+GIT_ARGV_RUNNER := $(VROOT)/cmd/tools/git_argv.sh
 
 #### Platform detections and overrides:
 _SYS := $(shell uname 2>/dev/null || echo Unknown)
@@ -29,6 +36,10 @@ _SYS := $(patsubst MINGW%,MinGW,$(_SYS))
 ifneq ($(filter $(_SYS),MSYS MinGW),)
 WIN32 := 1
 EXE_EXT := .exe
+# vc/v.c is generated with `-cross` targeting the host OS that ran gen_vc_ci.yml
+# (Linux), so it only guards *nix headers/APIs, not Windows. The dedicated
+# `-os windows` snapshot lives in vc/v_win.c; that is the one Windows needs.
+VCFILE := v_win.c
 # GNU make defaults CC to `cc`, but mingw32-make installations often only
 # provide `gcc`. Switch only the implicit default and preserve explicit CC=...
 ifneq ($(filter $(origin CC),default file),)
@@ -40,6 +51,7 @@ endif
 
 ifeq ($(_SYS),Linux)
 LINUX := 1
+V1_FALLBACK_BUILD := 1
 TCCOS := linux
 ifneq ($(shell ldd --version 2>&1 | grep -i musl),)
 TCCOS := linuxmusl
@@ -48,6 +60,7 @@ endif
 
 ifeq ($(_SYS),Darwin)
 MAC := 1
+V1_FALLBACK_BUILD := 1
 TCCOS := macos
 ifeq ($(shell expr $(shell uname -r | cut -d. -f1) \<= 16), 1)
 LEGACY := 1
@@ -80,6 +93,7 @@ endif
 ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
+undefine V1_FALLBACK_BUILD
 TCCOS := android
 ifneq ($(wildcard $(PREFIX)/lib/libexecinfo.*),)
 LDFLAGS += -lexecinfo
@@ -109,6 +123,18 @@ endif
 endif
 endif
 endif
+
+ifeq ($(TCCOS),linux)
+override GIT := $(V_GIT_LITERAL)
+export GIT
+# GNU Make before 4.4 does not export make variables to $(shell ...).
+# Linux recipes validate and execute custom GIT argv at recipe execution time.
+else
+export GIT
+HAS_GIT := $(shell command -v $(GIT) >/dev/null 2>&1 && echo 1 || echo 0)
+endif
+GITCLEANPULL := $(GIT) clean -xf && $(GIT) pull --rebase --quiet
+GITFASTCLONE := $(GIT) clone --filter=blob:none --quiet
 
 TCCBUILDSCRIPT = $(VROOT)/thirdparty/build_scripts/thirdparty-$(TCCOS)-$(TCCARCH)_tcc.sh
 
@@ -141,6 +167,10 @@ ifneq ($(BOOTSTRAP_VC_UNSAFE_OPTFLAGS),)
 endif
 endif
 endif
+# A vc snapshot may use the lean V3 dispatcher when its generated C is built
+# on a Unix-like host. Keep the temporary v1 on the full compatibility path so
+# it can create v2 before either the embedded V3 driver or v1_fallback exists.
+BOOTSTRAP_VC_CC_CFLAGS += -DCUSTOM_DEFINE_v1_fallback
 BOOTSTRAP_TCC_REQUESTED := $(or $(findstring -cc tcc,$(strip $(VFLAGS))),$(findstring -cc=tcc,$(strip $(VFLAGS))))
 BOOTSTRAP_CCOMPILER_VFLAG :=
 BOOTSTRAP_VC_CCOMPILER_VFLAG :=
@@ -185,25 +215,28 @@ BOOTSTRAP_VFLAGS := $(BOOTSTRAP_CCOMPILER_VFLAG) $(if $(strip $(BOOTSTRAP_CFLAGS
 
 all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
-	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
+	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
 	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
 	./v2$(EXE_EXT) -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	$(RM) v1$(EXE_EXT)
 	$(RM) v2$(EXE_EXT)
 else
 ifdef LEGACY
-	$(MAKE) -C $(TMPLEGACY) CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)'
-	$(MAKE) -C $(TMPLEGACY) PREFIX=$(realpath $(LEGACYLIBS)) CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)' install
+	'$(MAKE)' -C $(TMPLEGACY) CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)'
+	'$(MAKE)' -C $(TMPLEGACY) PREFIX=$(realpath $(LEGACYLIBS)) CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)' install
 	rm -rf $(TMPLEGACY)
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
-	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) -std=c99 -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
+	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
 ifdef NETBSD
 	paxctl +m v1$(EXE_EXT)
 endif
 	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
 ifdef NETBSD
 	paxctl +m v2$(EXE_EXT)
+endif
+ifdef V1_FALLBACK_BUILD
+	./v1$(EXE_EXT) -no-parallel -d v1_fallback -o $(V1_FALLBACK_EXE) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
 endif
 	./v2$(EXE_EXT) -nocache -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 ifdef NETBSD
@@ -225,10 +258,19 @@ rebuild: clean all
 
 ifndef local
 latest_vc: $(VC)/.git/config
+ifeq ($(TCCOS),linux)
+	@if bash '$(GIT_ARGV_RUNNER)' check > /dev/null 2>&1; then \
+		bash '$(GIT_ARGV_RUNNER)' run -C '$(VC)' clean -xf \
+			&& bash '$(GIT_ARGV_RUNNER)' run -C '$(VC)' pull --rebase --quiet; \
+	else \
+		echo "git not found; using existing $(VC)/$(VCFILE)"; \
+	fi
+else
 ifeq ($(HAS_GIT),1)
 	cd $(VC) && $(GITCLEANPULL)
 else
 	@echo "git not found; using existing $(VC)/$(VCFILE)"
+endif
 endif
 else
 latest_vc:
@@ -239,6 +281,11 @@ check_for_working_tcc:
 	@$(TMPTCC)/tcc.exe --version > /dev/null 2> /dev/null || echo "The executable '$(TMPTCC)/tcc.exe' does not work."
 
 fresh_vc:
+ifeq ($(TCCOS),linux)
+	@bash '$(GIT_ARGV_RUNNER)' check
+	rm -rf $(VC)
+	@bash '$(GIT_ARGV_RUNNER)' run clone --filter=blob:none --quiet '$(VCREPO)' '$(VC)'
+else
 	rm -rf $(VC)
 ifeq ($(HAS_GIT),1)
 	$(GITFASTCLONE) $(VCREPO) $(VC)
@@ -246,9 +293,18 @@ else
 	@echo "git is required to clone $(VCREPO) into $(VC)"
 	@exit 1
 endif
+endif
 
 ifndef local
+ifeq ($(TCCOS),linux)
+latest_tcc:
+else
 latest_tcc: $(TMPTCC)/.git/config
+endif
+ifeq ($(TCCOS),linux)
+	@TMPDIR='$(TMPDIR)' VFLAGS='$(VFLAGS)' \
+		bash '$(LINUX_TCC_SELECTOR)' latest '$(TMPTCC)' '$(TCCREPO)' '$(TCCARCH)' '$(VROOT)'
+else
 ifeq ($(HAS_GIT),1)
 ifdef WIN32
 	@if [ -f "$(TMPTCC)/lib/advapi32.def" ]; then \
@@ -266,36 +322,48 @@ endif
 else
 	@echo "git not found; skipping update of $(TMPTCC)"
 endif
+endif
 ifneq (,$(wildcard ./tcc.exe))
-	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
+	@'$(MAKE)' --quiet check_for_working_tcc 2> /dev/null
 endif
 
 else
 latest_tcc:
 	@echo "Using local tcc"
-	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
+	@'$(MAKE)' --quiet check_for_working_tcc 2> /dev/null
 endif
 
 # Rebuild the bundled TCC in-place from upstream tinycc, while preserving the
 # V-specific libgc/openlibm files already stored in $(TMPTCC).
 latest_tcc_source: $(TMPTCC)/.git/config
-ifeq ($(HAS_GIT),1)
+ifeq ($(TCCOS),linux)
+	@bash '$(GIT_ARGV_RUNNER)' check
+else
+ifneq ($(HAS_GIT),1)
+	@echo "git is required to bootstrap $(TMPTCC) before rebuilding it from source"
+	@exit 1
+endif
+endif
 ifneq (,$(wildcard $(TCCBUILDSCRIPT)))
+ifeq ($(TCCOS),linux)
+	@GIT_ARGV_RUNNER='$(GIT_ARGV_RUNNER)' TCC_FOLDER='$(TMPTCC)' $(if $(strip $(TCC_COMMIT)),TCC_COMMIT='$(TCC_COMMIT)') CC='$(CC)' bash '$(TCCBUILDSCRIPT)'
+else
 	@TCC_FOLDER='$(TMPTCC)' $(if $(strip $(TCC_COMMIT)),TCC_COMMIT='$(TCC_COMMIT)') CC='$(CC)' bash '$(TCCBUILDSCRIPT)'
-	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
+endif
+	@'$(MAKE)' --quiet check_for_working_tcc 2> /dev/null
 else
 	@echo 'No upstream TinyCC build script is available for thirdparty-$(TCCOS)-$(TCCARCH).'
 	@echo 'Use `make latest_tcc` to refresh the prebuilt bundle from $(TCCREPO).'
-	@exit 1
-endif
-else
-	@echo "git is required to bootstrap $(TMPTCC) before rebuilding it from source"
 	@exit 1
 endif
 
 fresh_tcc:
 	rm -rf $(TMPTCC)
 ifndef local
+ifeq ($(TCCOS),linux)
+	@TMPDIR='$(TMPDIR)' VFLAGS='$(VFLAGS)' \
+		bash '$(LINUX_TCC_SELECTOR)' fresh '$(TMPTCC)' '$(TCCREPO)' '$(TCCARCH)' '$(VROOT)'
+else
 ifeq ($(HAS_GIT),1)
 	@set -e; \
 	branches="$$( $(GIT) ls-remote --heads $(TCCREPO) 2> /dev/null | awk '{sub("refs/heads/","",$$2); print $$2}' || true )"; \
@@ -322,33 +390,38 @@ ifeq ($(HAS_GIT),1)
 			done; \
 		fi; \
 		if ! "$(TMPTCC)/tcc.exe" --version > /dev/null 2> /dev/null; then \
-			if [ "$$fallback_branch" != '' ] && [ "$$fallback_branch" != "$$selected_branch" ] \
-				&& printf '%s\n' "$$branches" | grep -Fx "$$fallback_branch" > /dev/null; then \
-				echo "Pre-built TCC bundle $$selected_branch did not run; retrying with $$fallback_branch."; \
-				rm -rf "$(TMPTCC)"; \
-				$(GITFASTCLONE) --branch "$$fallback_branch" $(TCCREPO) "$(TMPTCC)"; \
-			fi; \
-			$(MAKE) --quiet check_for_working_tcc 2> /dev/null; \
+			echo "Pre-built TCC bundle $$selected_branch did not run; V will use the system compiler: $(CC)"; \
+			'$(MAKE)' --quiet check_for_working_tcc 2> /dev/null; \
 		else \
-			$(MAKE) --quiet check_for_working_tcc 2> /dev/null; \
+			'$(MAKE)' --quiet check_for_working_tcc 2> /dev/null; \
 		fi; \
 	fi
 else
 	@echo "git is required to clone $(TCCREPO)"
 	@exit 1
 endif
+endif
 else
 	@echo "Using local tccbin"
-	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
+	@'$(MAKE)' --quiet check_for_working_tcc 2> /dev/null
 endif
 
 ifndef local
 latest_legacy: $(TMPLEGACY)/.git/config
 ifdef LEGACY
+ifeq ($(TCCOS),linux)
+	@if bash '$(GIT_ARGV_RUNNER)' check > /dev/null 2>&1; then \
+		bash '$(GIT_ARGV_RUNNER)' run -C '$(TMPLEGACY)' clean -xf \
+			&& bash '$(GIT_ARGV_RUNNER)' run -C '$(TMPLEGACY)' pull --rebase --quiet; \
+	else \
+		echo "git not found; using existing $(TMPLEGACY)"; \
+	fi
+else
 ifeq ($(HAS_GIT),1)
 	cd $(TMPLEGACY) && $(GITCLEANPULL)
 else
 	@echo "git not found; using existing $(TMPLEGACY)"
+endif
 endif
 endif
 else
@@ -359,24 +432,45 @@ endif
 endif
 
 fresh_legacy:
+ifeq ($(TCCOS),linux)
+	@bash '$(GIT_ARGV_RUNNER)' check
+	rm -rf $(LEGACYLIBS)
+	@bash '$(GIT_ARGV_RUNNER)' run clone --filter=blob:none --quiet '$(LEGACYREPO)' '$(TMPLEGACY)'
+else
 	rm -rf $(LEGACYLIBS)
 ifeq ($(HAS_GIT),1)
 	$(GITFASTCLONE) $(LEGACYREPO) $(TMPLEGACY)
 else
-	@echo "git is required to clone $(LEGACYREPO)"
+	@echo "git is required to download legacy support sources ($(LEGACYREPO))"
 	@exit 1
+endif
 endif
 
 $(TMPTCC)/.git/config:
+ifeq ($(TCCOS),linux)
+	@bash '$(GIT_ARGV_RUNNER)' check
+	'$(MAKE)' fresh_tcc
+else
 ifeq ($(HAS_GIT),1)
-	$(MAKE) fresh_tcc
+	'$(MAKE)' fresh_tcc
 else
 	@echo "git not found; skipping bootstrap of $(TMPTCC), system compiler $(CC) will be used"
 endif
+endif
 
 $(VC)/.git/config:
+ifeq ($(TCCOS),linux)
+	@if bash '$(GIT_ARGV_RUNNER)' check > /dev/null 2>&1; then \
+		'$(MAKE)' fresh_vc; \
+	elif [ -f "$(VC)/$(VCFILE)" ]; then \
+		echo "git not found; using existing $(VC)/$(VCFILE)"; \
+	else \
+		echo "git is required to download $(VC)/$(VCFILE). Install git or provide the file manually."; \
+		exit 1; \
+	fi
+else
 ifeq ($(HAS_GIT),1)
-	$(MAKE) fresh_vc
+	'$(MAKE)' fresh_vc
 else
 	@if [ -f "$(VC)/$(VCFILE)" ]; then \
 		echo "git not found; using existing $(VC)/$(VCFILE)"; \
@@ -385,11 +479,22 @@ else
 		exit 1; \
 	fi
 endif
+endif
 
 $(TMPLEGACY)/.git/config:
 ifdef LEGACY
+ifeq ($(TCCOS),linux)
+	@if bash '$(GIT_ARGV_RUNNER)' check > /dev/null 2>&1; then \
+		'$(MAKE)' fresh_legacy; \
+	elif [ -d "$(TMPLEGACY)" ]; then \
+		echo "git not found; using existing $(TMPLEGACY)"; \
+	else \
+		echo "git is required to download legacy support sources ($(LEGACYREPO))"; \
+		exit 1; \
+	fi
+else
 ifeq ($(HAS_GIT),1)
-	$(MAKE) fresh_legacy
+	'$(MAKE)' fresh_legacy
 else
 	@if [ -d "$(TMPLEGACY)" ]; then \
 		echo "git not found; using existing $(TMPLEGACY)"; \
@@ -399,9 +504,10 @@ else
 	fi
 endif
 endif
+endif
 
 asan:
-	$(MAKE) all CFLAGS='-fsanitize=address,undefined'
+	'$(MAKE)' all CFLAGS='-fsanitize=address,undefined'
 
 selfcompile:
 	$(VEXE)$(EXE_EXT) -cg -o v cmd/v

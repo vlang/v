@@ -158,6 +158,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		c.inside_recheck = old_recheck
 	}
 	for i, mut right in node.right {
+		// early check: if right-side has more values than left-side for a declaration
+		// (e.g. `x := a, b` — comma not valid in expression), produce a clear error
+		// and exit before any out-of-bounds access on node.left
+		if is_decl && i >= node.left.len {
+			c.error('unexpected `,` in expression, use `;` or a new line to separate statements',
+				right.pos())
+			return
+		}
 		if right in [ast.ArrayInit, ast.CallExpr, ast.ComptimeCall, ast.DumpExpr, ast.IfExpr,
 			ast.LockExpr, ast.MapInit, ast.MatchExpr, ast.ParExpr, ast.SelectorExpr, ast.StructInit] {
 			if right in [ast.ArrayInit, ast.IfExpr, ast.MapInit, ast.MatchExpr, ast.StructInit]
@@ -890,8 +898,15 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			&& !left.is_blank_ident() && right_is_lvalue
 			&& (!right_type.is_ptr() || (right is ast.Ident && assign_expr_is_auto_deref(right))) {
 			// Do not allow `a = b`
-			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
-				right.pos())
+			if expr_is_or_unwrapped(right) {
+				// `x := stored_map or { ... }` is still a map copy, so the guard applies
+				// (see #27867), but `.clone()` has to be applied to the whole or-expression.
+				c.error('cannot copy map: unwrapping a map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)',
+					right.pos())
+			} else {
+				c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
+					right.pos())
+			}
 		}
 		if is_assign && !c.inside_unsafe && !left.is_blank_ident()
 			&& c.is_nocopy_struct(left_type_unwrapped) && c.is_nocopy_struct(right_type_unwrapped)
@@ -1386,5 +1401,18 @@ fn (mut c Checker) change_flags_if_comptime_expr(mut left ast.Ident, right ast.E
 				left.obj.typ = c.comptime.comptime_for_field_type.clear_flag(.option)
 			}
 		}
+	}
+}
+
+// expr_is_or_unwrapped reports whether `expr` was unwrapped in place with an `or {}` block.
+fn expr_is_or_unwrapped(expr ast.Expr) bool {
+	return match expr {
+		ast.SelectorExpr { expr.or_block.kind == .block }
+		ast.CallExpr { expr.or_block.kind == .block }
+		ast.Ident { expr.or_expr.kind == .block }
+		ast.IndexExpr { expr.or_expr.kind == .block }
+		ast.PrefixExpr { expr.or_block.kind == .block }
+		ast.ParExpr { expr_is_or_unwrapped(expr.expr) }
+		else { false }
 	}
 }

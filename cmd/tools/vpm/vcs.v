@@ -84,7 +84,8 @@ fn (vcs &VCS) is_executable() ! {
 
 fn vcs_used_in_dir(dir string) ?VCS {
 	for vcs, info in vcs_info {
-		if os.is_dir(os.real_path(os.join_path(dir, info.dir))) {
+		vcs_path := os.real_path(os.join_path(dir, info.dir))
+		if os.is_dir(vcs_path) || (vcs == .git && os.is_file(vcs_path)) {
 			return vcs
 		}
 	}

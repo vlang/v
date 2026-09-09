@@ -1,6 +1,8 @@
 module c
 
+import os
 import v3.flat
+import v3.pref
 import v3.types
 
 // test_c_name_sanitize_operator_overloads validates this v3 regression case.
@@ -9,6 +11,8 @@ fn test_c_name_sanitize_operator_overloads() {
 	assert c_name('Point.<=') == 'Point__le'
 	assert c_name('Point.>') == 'Point__gt'
 	assert c_name('Point.>=') == 'Point__ge'
+	assert c_name('Point.[]') == 'Point__op_index'
+	assert c_name('Point.[]=') == 'Point__op_index_set'
 }
 
 fn test_c_name_sanitize_escaped_keywords() {
@@ -17,9 +21,273 @@ fn test_c_name_sanitize_escaped_keywords() {
 	assert c_name('Kind.@asm') == 'Kind___v_asm'
 }
 
+fn test_c_name_pre_sanitized_classifier() {
+	assert c_name_is_pre_sanitized('main__run')
+	assert c_name_is_pre_sanitized('foo__Bar__method')
+	assert !c_name_is_pre_sanitized('send')
+	assert !c_name_is_pre_sanitized('C.printf')
+	assert !c_name_is_pre_sanitized('foo__bar-baz')
+	assert !c_name_is_pre_sanitized('_str_1')
+}
+
+fn test_cached_cname_fast_paths_match_canonical_naming() {
+	mut g := FlatGen.new()
+	for name in ['run', 'int', 'send', 'malloc', 'int_str', 'exit', '_str_42', '_str_value',
+		'main.run', 'foo.Bar.method', 'C.printf', 'C.SSL_CTX.str', 'Point.<=', 'pkg.Box[int].value',
+		'int@static@tag', '__v3_internal_symbol_source'] {
+		assert g.cname(name) == c_name(name)
+	}
+}
+
+fn test_c_name_sanitizes_compound_generic_type_arguments() {
+	name :=
+		c_name('json2.StructKeyDecodeResult[fn(&mbedtls.SSLListener, string) !&mbedtls.SSLCerts]')
+	assert name.bytes().all((it >= `a` && it <= `z`) || (it >= `A` && it <= `Z`)
+		|| (it >= `0` && it <= `9`) || it == `_`)
+}
+
 fn test_c_name_libc_collision_abs() {
 	assert c_name('abs') == 'v_abs'
+	assert c_name('send') == 'v_send'
 	assert c_name('C.abs') == 'abs'
+	assert c_name('printf') == 'v_printf'
+	assert c_name('C.printf') == 'printf'
+	assert c_name('C.send') == 'send'
+	assert c_name('index') == 'v_index'
+	assert c_name('log') == 'v_log'
+	assert c_name('C.index') == 'index'
+	assert c_name('C.log') == 'log'
+}
+
+fn test_c_name_preserves_c_receiver_method_namespace() {
+	assert c_name('C.SSL_CTX.str') == 'C__SSL_CTX__str'
+}
+
+fn test_struct_init_main_type_lock_matches_only_a_type_component() {
+	assert struct_init_has_main_type_lock('main.Context')
+	assert struct_init_has_main_type_lock('other.Box[map[other.Key]main.Context]')
+	assert !struct_init_has_main_type_lock('domain.Context')
+	assert !struct_init_has_main_type_lock('some.main.Context')
+}
+
+fn test_struct_init_main_alias_target_keeps_declaration_scope() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Context'] = []types.StructField{}
+	tc.struct_modules['Context'] = 'main'
+	tc.structs['veb.Context'] = []types.StructField{}
+	tc.struct_modules['veb.Context'] = 'veb'
+	tc.type_aliases['AliasContext'] = 'Context'
+	tc.type_alias_modules['AliasContext'] = 'main'
+	tc.cur_module = 'veb'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+
+	assert g.struct_type_alias_target('main.AliasContext') or { '' } == 'main.Context'
+}
+
+fn test_c_name_generated_string_symbol_collision() {
+	assert c_name('_str_1') == 'v__str_1'
+	assert c_name('_str_002') == 'v__str_002'
+	assert c_name('_str_value') == '_str_value'
+	assert c_name('C._str_3') == '_str_3'
+}
+
+fn test_direct_call_uses_custom_enum_method_symbol() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.enum_names['token.Kind'] = true
+	tc.cur_module = 'ast'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	assert g.direct_call_name('token.Kind.str') == 'token__Kind_str'
+	assert g.direct_call_name_for_call(flat.empty_node, 'token.Kind.str') == 'token__Kind_str'
+	tc.enum_names['ast.Kind'] = true
+	assert g.direct_call_name('Kind.str') == 'Kind_str'
+}
+
+fn test_direct_call_does_not_prefix_synthetic_helper_with_owner_module() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'ast'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.non_generic_fn_names_by_module['ast\x01__v3_autostr_ast__Comment'] = true
+	g.non_generic_fn_names_by_module['ast\x01__v3_default_clone_json2__Any'] = true
+
+	assert g.direct_call_name_for_call(flat.empty_node, '__v3_autostr_ast__Comment') == '__v3_autostr_ast__Comment'
+	assert g.direct_call_name_for_call(flat.empty_node, 'ast.__v3_autostr_ast__Comment') == '__v3_autostr_ast__Comment'
+	assert g.direct_call_name_for_call(flat.empty_node, '__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
+	assert g.direct_call_name_for_call(flat.empty_node, 'ast.__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
+	assert g.fn_c_name_in_module('main', '__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
+}
+
+fn test_main_function_is_prefixed_when_preserved_c_header_owns_typedef_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.inlined_c_typedef_names['sqlite3'] = true
+
+	assert g.fn_c_name_in_module('main', 'sqlite3') == 'main__sqlite3'
+	assert g.main_runtime_shadow_fn_c_name('main', 'sqlite3') or { '' } == 'main__sqlite3'
+	assert g.fn_c_name_in_module('database', 'sqlite3') == 'database__sqlite3'
+}
+
+fn test_main_function_is_prefixed_when_declared_c_type_owns_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.structs['C.sqlite3'] = []types.StructField{}
+
+	assert g.fn_c_name_in_module('main', 'sqlite3') == 'main__sqlite3'
+	assert g.main_runtime_shadow_fn_c_name('main', 'sqlite3') or { '' } == 'main__sqlite3'
+	assert g.fn_c_name_in_module('database', 'sqlite3') == 'database__sqlite3'
+}
+
+fn test_collect_cache_native_c_symbols_only_records_type_declarations() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.structs['C.HeaderTag'] = []types.StructField{}
+	tc.structs['C.HeaderAlias'] = []types.StructField{}
+	tc.structs['C.HeaderEnum'] = []types.StructField{}
+	tc.structs['C.HeaderScalar'] = []types.StructField{}
+	tc.structs['C.HeaderOther'] = []types.StructField{}
+	tc.structs['C.CommentOnly'] = []types.StructField{}
+	tc.structs['C.StringOnly'] = []types.StructField{}
+	tc.structs['C.UnrelatedOpaque'] = []types.StructField{}
+	tc.structs['C.HEADER_ENUM_VALUE'] = []types.StructField{}
+	tc.structs['C.BOOL'] = []types.StructField{}
+
+	g.collect_cache_native_c_symbols('// typedef int CommentOnly;\n"typedef int StringOnly;";\nint f(int UnrelatedOpaque);\ntypedef struct HeaderTag { int field_name; } HeaderAlias;\nenum HeaderEnum { HEADER_ENUM_VALUE };\ntypedef int HeaderScalar, HeaderOther;')
+
+	assert g.cache_native_c_symbols['HeaderTag']
+	assert g.cache_native_c_symbols['HeaderAlias']
+	assert g.cache_native_c_symbols['HeaderEnum']
+	assert g.cache_native_c_symbols['HeaderScalar']
+	assert g.cache_native_c_symbols['HeaderOther']
+	assert !g.cache_native_c_symbols['CommentOnly']
+	assert !g.cache_native_c_symbols['StringOnly']
+	assert !g.cache_native_c_symbols['UnrelatedOpaque']
+	assert g.cache_native_c_symbols['HEADER_ENUM_VALUE']
+	assert !g.cache_native_c_symbols['field_name']
+	assert g.skip_builtin_struct('C.HeaderScalar')
+	assert !g.skip_builtin_struct('C.UnrelatedOpaque')
+	g.inlined_c_typedef_names['BOOL'] = true
+	assert g.skip_builtin_struct('C.BOOL')
+}
+
+fn test_collect_cache_native_c_symbols_records_sokol_enum_constants() {
+	mut g := FlatGen.new()
+	header := os.read_file(os.join_path(@VEXEROOT, 'thirdparty', 'sokol', 'sokol_app.h')) or {
+		panic(err)
+	}
+	g.collect_cache_native_c_symbols(header)
+	assert g.cache_native_c_symbols['SAPP_MOUSECURSOR_DEFAULT']
+}
+
+fn test_voidptr_method_value_arg_does_not_panic_for_alias_to_voidptr() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	alias_to_voidptr := types.Type(types.Alias{
+		name: 'Data'
+		base_type: types.Type(types.Pointer{
+			base_type: types.Type(types.void_)
+		})
+	})
+	assert !g.voidptr_method_value_arg(flat.empty_node, alias_to_voidptr)
+}
+
+fn test_same_named_user_context_does_not_route_to_embedded_framework_context() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.cur_module = 'veb'
+	tc.structs['main.Context'] = [
+		types.StructField{
+			name: 'veb.Context'
+			typ: types.Type(types.Struct{
+				name: 'veb.Context'
+			})
+			is_embed: true
+		},
+	]
+
+	base := types.Type(types.Struct{
+		name: 'main.Context'
+	})
+	expected := types.Type(types.Struct{
+		name: 'Context'
+	})
+	assert g.embedded_receiver_path_for_expected(base, expected) == none
+	assert g.emitted_method_belongs_to_receiver(base, 'before_request', 'Context__before_request')
+	assert !g.emitted_method_belongs_to_receiver(base, 'before_request', 'veb__Context__before_request')
+}
+
+fn test_array_receiver_method_is_not_reselected_as_generic() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.generic_method_candidates[generic_method_candidate_key('jsonrpc', 'encode_batch')] = [
+		GenericMethodCandidate{
+			name: 'jsonrpc.[]Request.encode_batch'
+			ret: types.Type(types.string_)
+		},
+	]
+
+	assert g.specialized_generic_method_name_for_call_with_arg_count(flat.empty_node, 'jsonrpc.[]Response.encode_batch', -1) == none
+}
+
+fn test_context_lookup_cache_tracks_source_file_imports() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.file_imports['one.v\nkind'] = 'first.token'
+	tc.file_imports['two.v\nkind'] = 'second.token'
+	tc.enum_names['first.token.Kind'] = true
+	tc.enum_names['second.token.Kind'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.cur_file = 'one.v'
+	assert g.import_alias_module('kind')? == 'first.token'
+	assert g.enum_selector_base_name('kind.Kind')? == 'first.token.Kind'
+	tc.cur_file = 'two.v'
+	assert g.import_alias_module('kind')? == 'second.token'
+	assert g.enum_selector_base_name('kind.Kind')? == 'second.token.Kind'
+}
+
+fn test_transformed_module_call_namespace_arguments() {
+	mut a := flat.FlatAst.new()
+	mut g := FlatGen.new()
+	g.a = &a
+	callee := a.add_val(.ident, 'net.flags.read')
+	for name in ['net.flags', 'flags', 'net.flags.flags', 'other.flags', 'lags', 'net.flagsxflags'] {
+		arg := a.add_val(.ident, name)
+		start := a.begin_children()
+		a.add_child(callee)
+		a.add_child(arg)
+		call := flat.Node{ kind: .call, children_start: start, children_count: 2 }
+		expected := if name in ['net.flags', 'flags', 'net.flags.flags'] { 2 } else { 1 }
+		assert g.target_module_call_arg_start('net.flags.read', call) == expected, name
+		a.nodes[int(arg)].kind = .string_literal
+		assert g.target_module_call_arg_start('net.flags.read', call) == 1
+	}
 }
 
 fn test_cgen_flattened_generic_receiver_short_variants() {
@@ -41,12 +309,26 @@ fn test_cgen_typeof_display_canonicalizes_fixed_array_generic_args() {
 	assert typeof_display_type_name('Box[int][3]') == '[3]Box[int]'
 	fixed_maps := types.Type(types.ArrayFixed{
 		elem_type: types.Type(types.Map{
-			key_type:   types.Type(types.String{})
+			key_type: types.Type(types.String{})
 			value_type: types.Type(types.int_)
 		})
-		len:       3
+		len: 3
 	})
 	assert typeof_display_resolved_type_name(fixed_maps) == '[3]map[string]int'
+}
+
+fn test_fixed_array_typedef_allows_opaque_pointer_elements() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.tc = &tc
+	opaque := types.Type(types.Struct{
+		name: 'C.Foo'
+	})
+	assert g.fixed_array_type_has_unknown_struct(opaque)
+	assert !g.fixed_array_type_has_unknown_struct(types.Type(types.Pointer{
+		base_type: opaque
+	}))
 }
 
 fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
@@ -57,6 +339,39 @@ fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
 	mut g := FlatGen.new()
 	g.tc = &tc
 	assert g.sum_type_index('tast.Value', 'b.tast.Target') == 0
+}
+
+fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut used := {
+		'main': true
+	}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.used_fns = &used
+	assert g.should_emit_fn_node_in_module_known(flat.Node{
+		kind: .fn_decl
+		value: 'FlatGen.sum_type_index'
+	}, 'c', 'interface.v', 'c__FlatGen__sum_type_index', false)
+	assert !g.should_emit_fn_node_in_module_known(flat.Node{
+		kind: .fn_decl
+		value: 'Transformer.sum_type_index'
+	}, 'transform', 'sum.v', 'transform__Transformer__sum_type_index', false)
+}
+
+fn test_typeof_type_index_fallback_uses_matching_sum_variant() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.sum_types['main.Value'] = ['main.Foo', 'main.Bar']
+	tc.sum_types['main.Other'] = ['main.Baz', 'main.Qux']
+	mut g := FlatGen.new()
+	g.tc = &tc
+	assert g.type_index_for_type_name('Foo') == 1
+	assert g.type_index_for_type_name('Bar') == 2
+	assert g.type_index_for_type_name('Qux') == 2
+	assert g.type_index_for_type_name('NotVariant') == 0
 }
 
 fn test_fn_decl_variadic_resolves_alias_before_short_fallback() {
@@ -74,10 +389,273 @@ fn test_fn_decl_variadic_resolves_alias_before_short_fallback() {
 }
 
 fn test_guarded_preamble_externs_keep_explicit_declarations() {
-	g := FlatGen.new()
+	mut g := FlatGen.new()
 	assert g.should_emit_c_extern_decl('fseeko')
 	assert g.should_emit_c_extern_decl('ftello')
 	assert g.should_emit_c_extern_decl('mkdir')
 	assert g.should_emit_c_extern_decl('chmod')
 	assert g.should_emit_c_extern_decl('symlink')
+	assert g.should_emit_c_extern_decl('request')
+	g.c_directives << CDirective{
+		text: '#include <math.h>'
+	}
+	for name in ['accept', 'accept4', 'bind', 'chdir', 'execve', 'getuid', 'gmtime_r', 'ioctl',
+		'pthread_rwlockattr_destroy', 'pthread_sigmask', 'rmdir', 'sigtimedwait', 'syscall'] {
+		assert !g.should_emit_c_extern_decl(name)
+	}
+}
+
+fn test_preinclude_uses_system_libc_preamble() {
+	mut g := FlatGen.new()
+	g.preinclude_directives << '#include <X11/Xlib.h>'
+	assert g.c_directives_use_system_libc()
+}
+
+fn test_system_libc_preamble_identifies_glibc_before_manual_stdio_declarations() {
+	mut g := FlatGen.new()
+	g.c_directives << CDirective{
+		text: '#include <math.h>'
+	}
+	g.preamble()
+	preamble := g.sb.str()
+	features := preamble.index('#include <features.h>') or { -1 }
+	manual_stdio := preamble.index('// c_headers') or { -1 }
+	assert features >= 0
+	assert manual_stdio >= 0
+	assert features < manual_stdio
+}
+
+fn test_header_backed_c_declarations_skip_generated_prototypes() {
+	source := '/project/user.v'
+	header_source := '/project/bindings.c.v'
+
+	// A `fn C.` declaration in a file that includes a header is already declared by
+	// that header; a generated prototype would only conflict with it.
+	mut g := FlatGen.new()
+	g.note_c_include_directive('bindings', header_source)
+	assert !g.should_emit_c_extern_decl_from_file('mbedtls_ssl_write', header_source, 'bindings')
+
+	// A file that links a C source or object ships no header, so it keeps its
+	// prototype, and so does a module that only links a C library.
+	mut linked := FlatGen.new()
+	linked.note_c_flag_directive('bindings', header_source, '@VMODROOT/helper.o')
+	assert linked.should_emit_c_extern_decl_from_file('helper_fn', header_source, 'bindings')
+
+	mut lib_only := FlatGen.new()
+	lib_only.note_c_flag_directive('bindings', source, '-lfoo')
+	assert lib_only.should_emit_c_extern_decl_from_file('foo_open', source, 'bindings')
+	lib_only.note_c_include_directive('bindings', '/project/other.c.v')
+	assert !lib_only.should_emit_c_extern_decl_from_file('foo_open', source, 'bindings')
+
+	// Nothing links and nothing includes: the symbol has to come from somewhere else,
+	// so V3 stays out of the way, exactly like the V1 backend.
+	mut bare := FlatGen.new()
+	assert !bare.should_emit_c_extern_decl_from_file('unrelated_api', source, 'main')
+}
+
+fn test_apple_framework_include_does_not_match_x11() {
+	assert c_is_apple_framework_include('<Cocoa/Cocoa.h>')
+	assert c_is_apple_framework_include('<CoreFoundation/CFString.h>')
+	assert !c_is_apple_framework_include('<X11/Xlib.h>')
+	assert !c_is_apple_framework_include('<sys/ptrace.h>')
+}
+
+fn test_objective_c_header_detection() {
+	assert c_header_text_needs_objective_c('#import <Cocoa/Cocoa.h>\n')
+	assert c_header_text_needs_objective_c('@interface AppDelegate : NSObject\n@end\n')
+	assert c_header_text_needs_objective_c('@class ForwardDeclaredClass;\n')
+	assert c_header_text_needs_objective_c('@protocol ForwardDeclaredProtocol;\n')
+	assert c_header_text_needs_objective_c('id value = @"Objective-C string";\n')
+	assert c_header_text_needs_objective_c('static inline id<NSCopying> copy(id<NSCopying> value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline id identity(id obj) { return obj; }\n')
+	assert c_header_text_needs_objective_c('static inline instancetype identity(instancetype obj) { return obj; }\n')
+	assert c_header_text_needs_objective_c('static inline Class identity(Class value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline SEL identity(SEL value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline Protocol *identity(Protocol *value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline NSArray<NSString *> *copy_names(NSArray<NSString *> *value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline NSObject<NSCopying> *copy(NSObject<NSCopying> *value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline id answer(void) { return @42; }\n')
+	assert c_header_text_needs_objective_c('static inline id answer(void) { return @YES; }\n')
+	assert c_header_text_needs_objective_c('static inline id answer(void) { return @[]; }\n')
+	assert c_header_text_needs_objective_c('static inline id answer(void) { return @{}; }\n')
+	assert c_header_text_needs_objective_c('static inline id answer(int value) { return @(value); }\n')
+	assert c_header_text_needs_objective_c('id value = (__bridge id)pointer;\n')
+	assert c_header_text_needs_objective_c('void *value = (__bridge_retained void *)pointer;\n')
+	assert c_header_text_needs_objective_c('Object value = (__bridge_transfer Object)pointer;\n')
+	assert c_header_text_needs_objective_c('typedef struct objc_class *Class; static __strong Class identity(__strong Class value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static __weak Class weak_value; __autoreleasing Class *out_value; __unsafe_unretained Class unsafe_value;\n')
+	assert c_header_text_needs_objective_c('static __kindof Class identity(__kindof Class value) { return value; }\n')
+	assert c_header_text_needs_objective_c('static inline id helper(id obj) { return [obj description]; }\n')
+	assert c_header_text_needs_objective_c('static inline void *identity(void *value) { return (id)value; }\n')
+	assert c_header_text_needs_objective_c('static inline void *identity(void *value) { return (Class *)value; }\n')
+	assert c_header_text_needs_objective_c('static inline void *identity(void *value) { return (const id)value; }\n')
+	assert c_header_text_needs_objective_c('static inline void *identity(void *value) { return (const volatile Class *)value; }\n')
+	assert !c_header_text_needs_objective_c('static inline int helper(int *values, int i) { return values[i]; }\nint table[4] = {[0] = 1};\n[[gnu::unused]] static int state;\n// [obj description] @42\nconst char *message = "[obj description] @42";\n')
+	assert !c_header_text_needs_objective_c('static inline int id(int obj) { return obj; }\n')
+	assert !c_header_text_needs_objective_c('typedef unsigned id; static inline id identity(id value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('typedef void *Class; static inline Class identity(Class value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('typedef unsigned SEL; static inline SEL identity(SEL value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('typedef void *Protocol; static inline Protocol identity(Protocol value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('struct Class { int value; }; union id { int value; }; enum SEL { sel_value }; struct Protocol { int value; }; union instancetype { int value; };\nstatic struct Class class_identity(struct Class value) { return value; }\nstatic union id id_identity(union id value) { return value; }\nstatic enum SEL sel_identity(enum SEL value) { return value; }\nstatic struct Protocol protocol_identity(struct Protocol value) { return value; }\nstatic union instancetype instance_identity(union instancetype value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('#define id unsigned\n#define Class unsigned\n#define SEL unsigned\n#define Protocol unsigned\n#define instancetype unsigned\nid id_value; Class class_value; SEL selector_value; Protocol protocol_value; instancetype instance_value;\n')
+	assert !c_header_text_needs_objective_c('#define id unsigned\nstatic inline void *identity(void *value) { return (const id)value; }\n')
+	assert !c_header_text_needs_objective_c('static int id; static inline int consume(int value) { return value; } static inline int use(void) { return consume(id) + 1; }\n')
+	assert c_header_text_needs_objective_c('#define id unsigned\n#undef id\nstatic inline void *identity(void *value) { return (id)value; }\n')
+	assert c_header_text_needs_objective_c('static inline void *identity(void *value) { return (id)value; }\n#define id unsigned\n')
+	assert c_header_text_needs_objective_c('#define id(value) value\nstatic inline id identity(id value) { return value; }\n')
+	assert c_header_text_needs_objective_c('#if 0\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('#if __has_attribute(aligned)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('#if __has_attribute(__packed__)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert c_header_text_needs_objective_c('#if __has_attribute(definitely_nonexistent_codex_attribute)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert c_header_text_needs_objective_c('#define __has_attribute(x) 0\n#if __has_attribute(aligned)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('#define __has_attribute(x) 1\n#if __has_attribute(definitely_nonexistent_codex_attribute)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('#if __has_attribute(aligned) == 1\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('#if !__has_attribute(definitely_nonexistent_codex_attribute)\ntypedef unsigned id;\n#endif\nstatic inline id identity(id value) { return value; }\n')
+	assert c_header_text_needs_objective_c('#define IGNORE(...)\nIGNORE(typedef unsigned id);\nstatic inline id identity(id value) { return value; }\n')
+	assert !c_header_text_needs_objective_c('#define __bridge\nvoid *value = (__bridge void *)pointer;\n')
+	assert !c_header_text_needs_objective_c('#define __bridge_retained\nvoid *value = (__bridge_retained void *)pointer;\n')
+	assert !c_header_text_needs_objective_c('#define __bridge_transfer\nvoid *value = (__bridge_transfer void *)pointer;\n')
+	assert !c_header_text_needs_objective_c('#define __strong\n#define __weak\n#define __autoreleasing\n#define __unsafe_unretained\n#define __kindof\n__strong void *strong_value;\n__weak void *weak_value;\n__autoreleasing void **out_value;\n__unsafe_unretained void *unsafe_value;\n__kindof void *kind_value;\n')
+	assert !c_header_text_needs_objective_c_for_target('__strong void *value;\n', [
+		'-D__strong',
+	], false, pref.host_target())
+	assert c_header_text_needs_objective_c('#define __bridge\n#undef __bridge\nid value = (__bridge id)pointer;\n')
+	assert c_header_text_needs_objective_c('#define __bridge(value) value\nid value = (__bridge id)pointer;\n')
+	assert !c_header_text_needs_objective_c('#include <CoreFoundation/CFString.h>\n')
+	assert !c_header_text_needs_objective_c('#include <X11/Xlib.h>\n')
+	assert !c_header_text_needs_objective_c('// @interface CommentOnly\n/* @implementation CommentOnly\nid value = (__bridge id)pointer;\n#import <Cocoa/Cocoa.h>\n*/\nconst char *description = "@interface string only";\nconst char *cast = "__bridge";\n')
+	assert !c_header_text_needs_objective_c('#if 0\n@interface Disabled\n@end\nid value = (__bridge id)pointer;\n#import <Cocoa/Cocoa.h>\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 0 // disabled\n@interface DisabledByLineComment\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 0 /* disabled */\n@interface DisabledByBlockComment\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 0L\n@interface DisabledByLongZero\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 0x0ULL\n@interface DisabledByHexZero\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c("#if '\\0'\n@interface DisabledByNullCharacter\n@end\n#endif\n")
+	assert c_header_text_needs_objective_c("#if 'A'\n@interface EnabledByCharacter\n@end\n#endif\n")
+	assert !c_header_text_needs_objective_c("#if 'a' - 'a'\n@interface DisabledByCharacterArithmetic\n@end\n#endif\n")
+	assert !c_header_text_needs_objective_c('#if 0 == 1\nstatic inline id disabled(id obj) { return [obj description]; }\n#endif\n')
+	assert c_header_text_needs_objective_c('#if 2 >= 1\nstatic inline id enabled(id obj) { return [obj description]; }\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 1 - 1\nstatic inline id disabled(id obj) { return [obj description]; }\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 2 * 3 - 6\nstatic inline id disabled(id obj) { return [obj description]; }\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 0 ? 1 : 0\n@interface DisabledByConditional\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 1 || 0 ? 0 : 0\n@interface DisabledByConditionalPrecedence\n@end\n#endif\n')
+	assert c_header_text_needs_objective_c('#if 0 ? 0 : 1\n@interface EnabledByConditional\n@end\n#endif\n')
+	assert c_header_text_needs_objective_c('#if (5 - 1) / 2\nstatic inline id enabled(id obj) { return [obj description]; }\n#endif\n')
+	assert !c_header_text_needs_objective_c('#define ONE 1\n#if ONE - 1\n@class DisabledByMacroArithmetic;\n#endif\n')
+	assert !c_header_text_needs_objective_c('#define FOO 1\n#if defined(FOO) - 1\n@class DisabledByDefinedArithmetic;\n#endif\n')
+	assert c_header_text_needs_objective_c('#if 2 + 2 == 4\n@class EnabledByArithmeticComparison;\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if (1 & 0)\n@class DisabledByBitwiseAnd;\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if (0 | 0)\n@class DisabledByBitwiseOr;\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if (1 ^ 1)\n@class DisabledByBitwiseXor;\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if (1 << 3) - 8\n@class DisabledByLeftShift;\n#endif\n')
+	assert c_header_text_needs_objective_c('#if (8 >> 2) == 2\n@class EnabledByRightShift;\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if 0 & 1 == 0\n@class DisabledByBitwiseComparisonPrecedence;\n#endif\n')
+	assert c_header_text_needs_objective_c('#if 1 // enabled\n@interface EnabledByLineComment\n@end\n#endif\n')
+	assert c_header_text_needs_objective_c('#if 1UL\n@interface EnabledByLongOne\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#ifdef __OBJC__\n@implementation Disabled\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if defined(__OBJC__) && __has_feature(objc_arc)\n@implementation Disabled\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if __has_feature(objc_arc) && defined(__OBJC__)\n@implementation Disabled\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c('#if defined(FEATURE) && \\\ndefined(__OBJC__)\n@interface DisabledByContinuedGuard\n@end\n#endif\n')
+	assert !c_header_text_needs_objective_c_for_target('#if FEATURE\n@interface Disabled\n@end\n#endif\n', [
+		'-DFEATURE=0',
+	], false, pref.host_target())
+	assert c_header_text_needs_objective_c_for_target('#if FEATURE\n@interface Enabled\n@end\n#endif\n', [
+		'-DFEATURE=1',
+	], false, pref.host_target())
+	assert !c_header_text_needs_objective_c_for_target('#if FEATURE\n@class DisabledByChainedFlag;\n#endif\n', [
+		'-DOFF=0',
+		'-DFEATURE=OFF',
+	], false, pref.host_target())
+	assert !c_header_text_needs_objective_c('#define OFF 0\n#define FEATURE OFF\n#if FEATURE\n@protocol DisabledByChainedDirective;\n#endif\n')
+	assert c_header_text_needs_objective_c('#define ON 1\n#define FEATURE ON\n#if FEATURE\n@class EnabledByChainedDirective;\n#endif\n')
+	assert c_header_text_needs_objective_c('#define FIRST SECOND\n#define SECOND FIRST\n#if FIRST\n@class ConservativelyEnabledByMacroCycle;\n#endif\n')
+	assert !c_header_text_needs_objective_c_for_target('#if !defined(FEATURE)\n@interface Disabled\n@end\n#endif\n', [
+		'-DFEATURE(x)=x',
+	], false, pref.host_target())
+	linux := pref.target_from('linux', 'amd64') or { panic(err) }
+	private_platform_header := '#if defined(__APPLE__)\n#define _LIB_MACOS 1\n#elif defined(__linux__)\n#define _LIB_LINUX 1\n#endif\n#if defined(_LIB_MACOS)\n@interface MacOnly\n@end\n#endif\n'
+	assert !c_header_text_needs_objective_c_for_target(private_platform_header, []string{}, false, linux)
+	assert c_header_text_needs_objective_c_for_target(private_platform_header, [
+		'-D_LIB_MACOS=1',
+	], false, linux)
+	assert c_header_text_needs_objective_c('#if 0\n@interface Disabled\n@end\n#else\n@interface Enabled\n@end\n#endif\n')
+	assert c_header_text_needs_objective_c('#ifdef COMPILER_MACRO\n@interface PossiblyEnabled\n@end\n#endif\n')
+}
+
+fn test_sokol_header_does_not_select_objective_c_on_linux() {
+	linux := pref.target_from('linux', 'amd64') or { panic(err) }
+	header := os.join_path(@VEXEROOT, 'thirdparty', 'sokol', 'sokol_app.h')
+	assert !cache_native_input_path_needs_objective_c(header, [
+		'-DSOKOL_GLCORE',
+		'-USOKOL_D3D11',
+		'-USOKOL_GLES3',
+		'-USOKOL_METAL',
+		'-USOKOL_VULKAN',
+		'-USOKOL_WGPU',
+		'-DSOKOL_NO_ENTRY',
+	], false, linux)
+}
+
+fn test_specialized_generic_abi_name_does_not_classify_array_receivers() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	assert g.name_uses_specialized_generic_abi('pick[int]')
+	assert !g.name_uses_specialized_generic_abi('cli.[]Flag.get_int')
+	assert !g.name_uses_specialized_generic_abi('[]Flag.get_int')
+}
+
+// test_scratch_lookup_caches_keep_batch_entries_out_of_the_generator covers the
+// crash where a `forward_decls` batch memoized a struct C type into the master's
+// cache: both the key and the map node were owned by the batch's scratch arena,
+// so the next batch's lookup compared against freed memory.
+fn test_scratch_lookup_caches_keep_batch_entries_out_of_the_generator() {
+	mut g := FlatGen.new()
+	own_unique_struct_ct_cache := g.unique_struct_ct_cache
+	own_struct_cname_cache := g.struct_cname_cache
+	own_generic_app_cache := g.generic_app_cache
+	own_import_type_cache := g.import_type_cache
+	saved := g.begin_scratch_lookup_caches()
+	assert voidptr(g.unique_struct_ct_cache) != voidptr(own_unique_struct_ct_cache)
+	assert voidptr(g.struct_cname_cache) != voidptr(own_struct_cname_cache)
+	assert voidptr(g.generic_app_cache) != voidptr(own_generic_app_cache)
+	assert voidptr(g.import_type_cache) != voidptr(own_import_type_cache)
+	// The frozen entries stay readable through the overlay's base.
+	assert voidptr(g.generic_app_cache.base) == voidptr(own_generic_app_cache)
+	g.unique_struct_ct_cache.put('Batch', 'main__Batch')
+	g.param_types_cache['batch'] = [types.Type(types.void_)]
+	g.import_type_cache.unqualified_texts['Batch'] = 'main.Batch'
+	mut batch_file := g.import_type_cache.for_file('batch.v')
+	batch_file.texts['Batch'] = 'main.Batch'
+	batch_file.parsed['Batch'] = types.Type(types.void_)
+	g.restore_scratch_lookup_caches(saved)
+	assert voidptr(g.unique_struct_ct_cache) == voidptr(own_unique_struct_ct_cache)
+	assert voidptr(g.struct_cname_cache) == voidptr(own_struct_cname_cache)
+	assert voidptr(g.generic_app_cache) == voidptr(own_generic_app_cache)
+	assert voidptr(g.import_type_cache) == voidptr(own_import_type_cache)
+	assert g.unique_struct_ct_cache.get('Batch') == none
+	assert 'batch' !in g.param_types_cache
+	// The per-file child cache the batch created is dropped with it.
+	assert g.import_type_cache.unqualified_texts.len == 0
+	assert g.import_type_cache.by_file.len == 0
+	assert isnil(g.import_type_cache.last)
+}
+
+// test_scratch_lookup_caches_leave_disabled_caches_disabled keeps the swap about
+// where entries are written, never about whether a generator memoizes at all.
+fn test_scratch_lookup_caches_leave_disabled_caches_disabled() {
+	mut g := FlatGen.new()
+	g.import_type_cache = unsafe { nil }
+	assert isnil(g.local_typedef_shadow_facts)
+	assert isnil(g.struct_decl_pref_cache)
+	saved := g.begin_scratch_lookup_caches()
+	assert isnil(g.local_typedef_shadow_facts)
+	assert isnil(g.struct_decl_pref_cache)
+	assert isnil(g.import_type_cache)
+	assert !isnil(g.mut_recv_facts)
+	g.restore_scratch_lookup_caches(saved)
+	assert isnil(g.local_typedef_shadow_facts)
+	assert isnil(g.struct_decl_pref_cache)
+	assert isnil(g.import_type_cache)
 }

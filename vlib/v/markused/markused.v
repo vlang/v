@@ -365,6 +365,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 fn all_global_decl_in_stmts(stmts []ast.Stmt, mut all_fns map[string]ast.FnDecl, mut all_consts map[string]ast.ConstField, mut all_globals map[string]ast.GlobalField, mut all_decltypes map[string]ast.TypeDecl, mut all_structs map[string]ast.StructDecl) {
 	for node in stmts {
 		match node {
+			ast.Block {
+				all_global_decl_in_stmts(node.stmts, mut all_fns, mut all_consts, mut all_globals, mut
+					all_decltypes, mut all_structs)
+			}
 			ast.FnDecl {
 				fkey := node.fkey()
 				if fkey !in all_fns || !node.no_body {

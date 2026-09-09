@@ -51,6 +51,36 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	} else {
 		p.next()
 	}
+	mut is_raw := false
+	mut is_intel := false
+	for p.tok.kind == .name && p.tok.lit in ['raw', 'intel'] {
+		modifier_pos := p.tok.pos()
+		match p.tok.lit {
+			'raw' {
+				if is_raw {
+					p.error_with_pos('duplicate `raw` assembly modifier', modifier_pos)
+				}
+				is_raw = true
+			}
+			'intel' {
+				if is_intel {
+					p.error_with_pos('duplicate `intel` assembly modifier', modifier_pos)
+				}
+				is_intel = true
+			}
+			else {}
+		}
+		p.next()
+	}
+	if is_intel && arch !in [.amd64, .i386] && !p.pref.is_fmt {
+		p.error('the `intel` assembly modifier is only supported for i386 and amd64')
+	}
+	if is_raw && p.pref.backend != .c && !p.pref.is_fmt {
+		p.error('the `raw` assembly modifier is only supported by the C backend')
+	}
+	if is_intel && p.pref.backend != .c && !p.pref.is_fmt {
+		p.error('the `intel` assembly modifier is only supported by the C backend')
+	}
 
 	p.check_for_impure_v(ast.pref_arch_to_table_language(arch), p.prev_tok.pos())
 
@@ -67,7 +97,31 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	// x86: https://www.felixcloutier.com/x86/
 	// arm: https://developer.arm.com/documentation/dui0068/b/arm-instruction-reference
 	mut templates := []ast.AsmTemplate{}
-	for p.tok.kind !in [.semicolon, .rcbr, .eof] {
+	if is_raw {
+		for p.tok.kind !in [.semicolon, .rcbr, .eof] {
+			template_pos := p.tok.pos()
+			if p.tok.kind != .string {
+				p.error('raw assembly templates must contain only double-quoted string literals')
+				break
+			}
+			if p.tok.pos < 0 || p.tok.pos >= p.scanner.text.len
+				|| p.scanner.text[p.tok.pos] != `"` {
+				p.error('raw assembly templates must use double-quoted string literals')
+			}
+			raw_template := p.tok.lit
+			p.next()
+			mut comments := []ast.Comment{}
+			for p.tok.kind == .comment {
+				comments << p.comment()
+			}
+			templates << ast.AsmTemplate{
+				raw_template: raw_template
+				comments: comments
+				pos: template_pos.extend(p.prev_tok.pos())
+			}
+		}
+	}
+	for !is_raw && p.tok.kind !in [.semicolon, .rcbr, .eof] {
 		template_pos := p.tok.pos()
 		mut name := ''
 		mut comments := []ast.Comment{}
@@ -90,7 +144,8 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 			if p.tok.kind == .key_lock && arch in [.i386, .amd64] {
 				p.next()
 
-				has_suffix := p.tok.lit[p.tok.lit.len - 1] in [`b`, `w`, `l`, `q`]
+				has_suffix := p.tok.lit.len > 0
+					&& p.tok.lit[p.tok.lit.len - 1] in [`b`, `w`, `l`, `q`]
 				if !(p.tok.lit in allowed_lock_prefix_ins
 					|| (has_suffix && p.tok.lit[0..p.tok.lit.len - 1] in allowed_lock_prefix_ins)) {
 					p.error('The lock prefix cannot be used on this instruction')
@@ -252,6 +307,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 						name: p.tok.lit
 						typ: 0
 						size: -1
+						pos: p.tok.pos()
 					}
 					p.next()
 
@@ -594,7 +650,22 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 		pos := p.tok.pos()
 
 		mut constraint := ''
-		if p.tok.kind == .lpar {
+		mut alias := ''
+		if p.tok.kind == .lsbr {
+			p.next()
+			alias = p.check_name()
+			p.check(.rsbr)
+			if p.tok.kind != .string {
+				p.error('quoted assembly constraint expected after `[${alias}]`')
+				return []
+			}
+			constraint = p.tok.lit
+			p.next()
+			if output && !constraint.starts_with('=') && !constraint.starts_with('+') {
+				p.error_with_pos('Output constraint must starts with `=` or `+`', pos)
+				return []
+			}
+		} else if p.tok.kind == .lpar {
 			constraint = if output { '+r' } else { 'r' } // default constraint, though vfmt fmts to `+r` and `r`
 		} else {
 			// https://gcc.gnu.org/onlinedocs/gcc/Modifiers.html
@@ -652,12 +723,11 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 			return []
 		}
 		expr = next_expr
-		mut alias := ''
-		if p.tok.kind == .key_as {
+		if alias == '' && p.tok.kind == .key_as {
 			p.next()
 			alias = p.tok.lit
 			p.check(.name)
-		} else if mut expr is ast.Ident {
+		} else if alias == '' && mut expr is ast.Ident {
 			alias = expr.name
 		}
 		// for constraints like `a`, no alias is needed, it is referred to as rcx

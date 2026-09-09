@@ -513,10 +513,10 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	} else if !typ.has_option_or_result() && typ_sym.kind == .interface
 		&& (typ_sym.info as ast.Interface).defines_method('str') {
 		rec_type_name := util.no_dots(g.cc_type(typ, false))
-		g.write('${c_name(rec_type_name)}_name_table[')
+		g.write('((struct _${c_name(rec_type_name)}_interface_methods*)')
 		g.expr(expr)
 		dot := if typ.is_ptr() { '->' } else { '.' }
-		g.write('${dot}_typ]._method_str(')
+		g.write('${dot}_typ)->_method_str(')
 		g.expr(expr)
 		g.write2('${dot}_object', ')')
 	} else if fmt == `s` || typ.has_flag(.variadic) {
@@ -775,7 +775,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	g.write2('builtin__str_intp(', node_.vals.len.str())
 	g.write(', _MOV((StrIntpData[]){')
 	for i, val in node_.vals {
-		mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
+		val_opaque_pos := if i < node_.opaque_pos.len { node_.opaque_pos[i] } else { []int{} }
+		mut escaped_val := cescape_nonascii(util.smart_quote(val, false, val_opaque_pos))
 		escaped_val = escaped_val.replace('\0', '\\0')
 
 		if escaped_val.len > 0 {
@@ -948,7 +949,8 @@ fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts
 			if written_parts > 0 {
 				g.write(', ')
 			}
-			mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
+			val_opaque_pos := if i < node.opaque_pos.len { node.opaque_pos[i] } else { []int{} }
+			mut escaped_val := cescape_nonascii(util.smart_quote(val, false, val_opaque_pos))
 			escaped_val = escaped_val.replace('\0', '\\0')
 			g.write2('_S("', escaped_val)
 			g.write('")')

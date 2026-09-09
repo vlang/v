@@ -62,6 +62,168 @@ fn compile_and_run_flags(v3_bin string, name string, suffix string, src string, 
 	return os.execute(bin_path)
 }
 
+fn compile_and_run_with_stats(v3_bin string, name string, suffix string, src string) os.Result {
+	src_path := write_source(name, suffix, src)
+	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
+	return os.execute('${v3_bin} -stats ${src_path} -b c -o ${bin_path}')
+}
+
+fn test_v3_test_file_harness_formats_propagation_paths_safely() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	run := compile_and_run(v3_bin, 'harness_propagation_%s_path', '_test.v', "fn test_failure() ! {
+	return error('bad result')
+}
+")
+	assert run.exit_code != 0
+	assert run.output.contains('v3_harness_propagation_%s_path_test.v')
+	assert run.output.contains('fn test_failure failed propagation with error: bad result')
+}
+
+fn test_v3_test_body_formats_propagation_paths_safely() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	run := compile_and_run(v3_bin, 'body_propagation_%s_path', '_test.v', "fn fail() ! {
+	return error('bad result')
+}
+
+fn test_failure() {
+	fail()!
+}
+")
+	assert run.exit_code != 0
+	assert run.output.contains('v3_body_propagation_%s_path_test.v')
+	assert run.output.contains('fn test_failure failed propagation with error: bad result')
+}
+
+fn test_v3_test_file_harness_measures_stats_durations() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	run := compile_and_run_with_stats(v3_bin, 'harness_stats_duration', '_test.v', 'import time
+
+fn test_wait() {
+	time.sleep(25 * time.millisecond)
+}
+')
+	assert run.exit_code == 0, run.output
+	status_line := run.output.split_into_lines().filter(it.contains('main.test_wait()'))[0]
+	assert !status_line.contains('0.000 ms'), run.output
+	summary_line := run.output.split_into_lines().filter(it.contains('Summary for running V tests'))[0]
+	assert !summary_line.contains('Elapsed time: 0 ms.'), run.output
+	assert !summary_line.contains('Elapsed time: 0.000 ms.'), run.output
+}
+
+fn test_v3_assertion_operands_run_once_and_stats_count_executed_assertions() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	failing_run := compile_and_run(v3_bin, 'assert_operand_once', '_test.v', '
+fn test_operand_once() {
+	mut values := [1]
+	assert values.pop() == 0
+}
+')
+	assert failing_run.exit_code != 0
+	assert failing_run.output.contains('left value: values.pop() = 1'), failing_run.output
+
+	stats_run := compile_and_run_with_stats(v3_bin, 'assert_runtime_count', '_test.v', 'fn helper() {
+	assert true
+}
+
+fn test_runtime_assertion_count() {
+	for _ in 0 .. 3 {
+		assert true
+	}
+	helper()
+	if false {
+		assert false
+	}
+}
+')
+	assert stats_run.exit_code == 0, stats_run.output
+	status_line := stats_run.output.split_into_lines().filter(it.contains('main.test_runtime_assertion_count()'))[0]
+	assert status_line.contains('4 asserts |'), stats_run.output
+}
+
+fn test_v3_failing_assert_in_defer_emits_each_cleanup_once() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	run := compile_and_run(v3_bin, 'assert_defer_cleanup_once', '_test.v', "fn test_deferred_assertion() {
+	defer {
+		println('earlier defer')
+	}
+	defer {
+		assert false, 'deferred failure'
+	}
+	defer {
+		println('later defer')
+	}
+}
+")
+	assert run.exit_code != 0
+	assert run.output.contains('deferred failure'), run.output
+	assert run.output.count('earlier defer') == 1, run.output
+	assert run.output.count('later defer') == 1, run.output
+}
+
+fn test_v3_failing_assert_in_function_defer_emits_each_cleanup_once() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	run := compile_and_run(v3_bin, 'assert_function_defer_cleanup_once', '_test.v', "fn test_deferred_assertion() {
+	{
+		defer(fn) {
+			println('earlier function defer')
+		}
+		defer(fn) {
+			assert false, 'function deferred failure'
+		}
+		defer(fn) {
+			println('later function defer')
+		}
+	}
+}
+")
+	assert run.exit_code != 0
+	assert run.output.contains('function deferred failure'), run.output
+	assert run.output.count('earlier function defer') == 1, run.output
+	assert run.output.count('later function defer') == 1, run.output
+}
+
 fn compile_project_and_run(v3_bin string, name string, files map[string]string) (os.Result, string) {
 	root := write_project(name, files)
 	return compile_project_root_and_run(v3_bin, name, root)
@@ -89,6 +251,38 @@ fn compile_expect_failure_flags(v3_bin string, name string, suffix string, src s
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !os.exists(c_path), '${name}: generated C despite harness input failure'
 	return compile
+}
+
+fn test_v3_test_run_only_matches_declared_module() {
+	outer_run_only := os.getenv_opt('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if value := outer_run_only {
+			os.setenv('VTEST_ONLY_FN', value, true)
+		} else {
+			os.unsetenv('VTEST_ONLY_FN')
+		}
+	}
+	v3_bin := build_v3()
+	source := "module sample
+
+fn test_one() {
+	println('one')
+}
+
+fn test_two() {
+	println('two')
+}
+"
+	cli_run := compile_and_run_flags(v3_bin, 'harness_module_run_only_cli', '_test.v', source,
+		'-run-only sample.test_one')
+	assert cli_run.exit_code == 0, cli_run.output
+	assert cli_run.output.trim_space() == 'one', cli_run.output
+
+	os.setenv('VTEST_ONLY_FN', 'sample.test_two', true)
+	env_run := compile_and_run(v3_bin, 'harness_module_run_only_env', '_test.v', source)
+	assert env_run.exit_code == 0, env_run.output
+	assert env_run.output.trim_space() == 'two', env_run.output
 }
 
 fn test_v3_generates_minimal_test_file_harness() {
@@ -156,7 +350,7 @@ fn test_result() ! {
 }
 ")
 	assert result_fail.exit_code != 0
-	assert result_fail.output.contains('test failed: test_fail')
+	assert result_fail.output.contains('fn test_fail failed propagation with error:'), result_fail.output
 
 	result_fail_cleanup := compile_and_run(v3_bin, 'harness_result_fail_cleanup', '_test.v', "fn testsuite_end() {
 	println('end')
@@ -171,7 +365,7 @@ fn test_fail() ! {
 }
 ")
 	assert result_fail_cleanup.exit_code != 0
-	assert result_fail_cleanup.output.contains('test failed: test_fail')
+	assert result_fail_cleanup.output.contains('fn test_fail failed propagation with error:'), result_fail_cleanup.output
 	assert result_fail_cleanup.output.contains('after')
 	assert result_fail_cleanup.output.contains('end')
 
@@ -180,7 +374,7 @@ fn test_fail() ! {
 }
 ')
 	assert option_fail.exit_code != 0
-	assert option_fail.output.contains('test failed: test_fail')
+	assert option_fail.output.contains('fn test_fail failed propagation with error:'), option_fail.output
 
 	option_fail_cleanup := compile_and_run(v3_bin, 'harness_option_fail_cleanup', '_test.v', "fn testsuite_end() {
 	println('end')
@@ -195,7 +389,7 @@ fn test_fail() ? {
 }
 ")
 	assert option_fail_cleanup.exit_code != 0
-	assert option_fail_cleanup.output.contains('test failed: test_fail')
+	assert option_fail_cleanup.output.contains('fn test_fail failed propagation with error:'), option_fail_cleanup.output
 	assert option_fail_cleanup.output.contains('after')
 	assert option_fail_cleanup.output.contains('end')
 
@@ -204,7 +398,7 @@ fn test_fail() ? {
 }
 ')
 	assert assert_fail.exit_code != 0
-	assert assert_fail.output.contains('assert failed')
+	assert assert_fail.output.contains('Assertion failed'), assert_fail.output
 
 	invalid_param := compile_expect_failure(v3_bin, 'harness_invalid_param', '_test.v', 'fn test_bad(i int) {
 }
@@ -231,12 +425,15 @@ fn test_one() {
 	assert same_module.exit_code == 0, same_module.output
 	assert same_module.output.trim_space() == 'sample test', same_module.output
 
-	non_main := compile_expect_failure(v3_bin, 'harness_non_main_module', '_test.c.v', 'module sample
+	backend_qualified_module := compile_and_run(v3_bin, 'harness_backend_qualified_module',
+		'_test.c.v', "module sample
 
 fn test_one() {
+	println('backend-qualified test')
 }
-')
-	assert non_main.output.contains('no runnable tests'), non_main.output
+")
+	assert backend_qualified_module.exit_code == 0, backend_qualified_module.output
+	assert backend_qualified_module.output.trim_space() == 'backend-qualified test', backend_qualified_module.output
 
 	result_hook := compile_expect_failure(v3_bin, 'harness_result_hook', '_test.v', 'fn before_each() ! {
 	return
@@ -268,8 +465,144 @@ fn test_one() {
 	println('lonely')
 }
 ")
-	assert !ordinary_c.contains('int main('), ordinary_c
+	assert ordinary_c.contains('int main('), ordinary_c
 	assert !ordinary_c.contains('test_lonely();'), ordinary_c
+}
+
+fn test_v3_wrapped_assertion_failures_return_to_harness() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	wrapped_assert_fail := compile_and_run(v3_bin, 'harness_wrapped_assert_fail', '_test.v', "fn after_each() {
+	println('after')
+}
+
+fn testsuite_end() {
+	println('end')
+}
+
+fn test_result_assert_fail() ! {
+	println('result')
+	assert false
+}
+
+fn test_option_assert_fail() ? {
+	println('option')
+	assert false
+}
+
+fn test_after_failures() {
+	println('next')
+}
+")
+	assert wrapped_assert_fail.exit_code != 0
+	assert wrapped_assert_fail.output.contains('result')
+	assert wrapped_assert_fail.output.contains('option')
+	assert wrapped_assert_fail.output.contains('next')
+	assert wrapped_assert_fail.output.count('after') == 3
+	assert wrapped_assert_fail.output.contains('end')
+}
+
+fn test_v3_test_hook_assertion_failures_return_to_harness() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	helper_fail := compile_and_run_with_stats(v3_bin, 'harness_helper_assert_fail', '_test.v', "fn fail_helper() {
+	println('HELPER_MARKER')
+	assert false
+}
+
+fn after_each() {
+	println('AFTER_MARKER')
+}
+
+fn testsuite_end() {
+	println('END_MARKER')
+}
+
+fn test_one() {
+	fail_helper()
+	println('UNREACHABLE_MARKER')
+}
+
+fn test_two() {
+	println('NEXT_MARKER')
+}
+")
+	assert helper_fail.exit_code != 0
+	assert helper_fail.output.contains('HELPER_MARKER'), helper_fail.output
+	assert !helper_fail.output.contains('UNREACHABLE_MARKER'), helper_fail.output
+	assert helper_fail.output.contains('NEXT_MARKER'), helper_fail.output
+	assert helper_fail.output.count('AFTER_MARKER') == 2, helper_fail.output
+	assert helper_fail.output.contains('END_MARKER'), helper_fail.output
+	assert helper_fail.output.contains('1 failed, 1 passed, 2 total'), helper_fail.output
+
+	before_fail := compile_and_run_with_stats(v3_bin, 'harness_before_each_assert_fail', '_test.v', "fn fail_before_helper() {
+	assert false
+}
+
+fn before_each() {
+	println('BEFORE_MARKER')
+	fail_before_helper()
+}
+
+fn after_each() {
+	println('AFTER_MARKER')
+}
+
+fn testsuite_end() {
+	println('END_MARKER')
+}
+
+fn test_one() {
+	println('TEST_ONE_MARKER')
+}
+
+fn test_two() {
+	println('TEST_TWO_MARKER')
+}
+")
+	assert before_fail.exit_code != 0
+	assert before_fail.output.count('BEFORE_MARKER') == 2, before_fail.output
+	assert before_fail.output.count('AFTER_MARKER') == 2, before_fail.output
+	assert !before_fail.output.contains('TEST_ONE_MARKER'), before_fail.output
+	assert !before_fail.output.contains('TEST_TWO_MARKER'), before_fail.output
+	assert before_fail.output.contains('END_MARKER'), before_fail.output
+	assert before_fail.output.contains('2 failed, 0 passed, 2 total'), before_fail.output
+
+	after_fail := compile_and_run_with_stats(v3_bin, 'harness_after_each_assert_fail', '_test.v', "fn after_each() {
+	println('AFTER_MARKER')
+	assert false
+}
+
+fn testsuite_end() {
+	println('END_MARKER')
+}
+
+fn test_one() {
+	println('TEST_ONE_MARKER')
+}
+
+fn test_two() {
+	println('TEST_TWO_MARKER')
+}
+")
+	assert after_fail.exit_code != 0
+	assert after_fail.output.count('AFTER_MARKER') == 2, after_fail.output
+	assert after_fail.output.contains('TEST_ONE_MARKER'), after_fail.output
+	assert after_fail.output.contains('TEST_TWO_MARKER'), after_fail.output
+	assert after_fail.output.contains('END_MARKER'), after_fail.output
+	assert after_fail.output.contains('2 failed, 0 passed, 2 total'), after_fail.output
 }
 
 fn test_v3_test_file_harness_rejects_top_level_stmt() {

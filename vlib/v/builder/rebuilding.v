@@ -11,7 +11,7 @@ import v.pref
 import v.vcache
 import runtime
 
-const crun_cache_format_version = 'crun_cache_v2'
+const crun_cache_format_version = 'crun_cache_v3'
 
 pub fn (mut b Builder) rebuild_modules() {
 	if !b.pref.use_cache || b.pref.build_mode == .build_module {
@@ -269,10 +269,7 @@ fn (mut b Builder) handle_usecache(vexe string) {
 }
 
 pub fn (mut b Builder) should_rebuild() bool {
-	mut exe_name := b.pref.out_name
-	$if windows {
-		exe_name += '.exe'
-	}
+	exe_name := crun_executable_path(b.pref.out_name)
 	if !os.is_file(exe_name) {
 		return true
 	}
@@ -304,6 +301,10 @@ pub fn (mut b Builder) should_rebuild() bool {
 	// always rebuild, when the compilation options changed between 2 sequential cruns:
 	sbuild_options := cm.load('.build_options', '.crun') or { return true }
 	if sbuild_options != b.crun_build_options_signature() {
+		return true
+	}
+	sexecutable := cm.load('.executable', '.crun') or { return true }
+	if sexecutable != crun_executable_signature(exe_name) {
 		return true
 	}
 	sdependencies := cm.load('.dependencies', '.crun') or {
@@ -343,6 +344,8 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 		dependency_files := b.crun_dependency_files()
 		cm.save('.dependencies', '.crun', dependency_files.join('\n')) or {}
 		cm.save('.build_options', '.crun', b.crun_build_options_signature()) or {}
+		cm.save('.executable', '.crun',
+			crun_executable_signature(crun_executable_path(b.pref.out_name))) or {}
 	}
 	mut timers := util.get_timers()
 	timers.show_remaining()
@@ -394,6 +397,20 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 		used_cgen_threads := if b.pref.no_parallel { 1 } else { runtime.nr_jobs() }
 		println('compilation took: ${scompilation_time_ms} ms, compilation speed: ${svlines_per_second} vlines/s, cgen threads: ${used_cgen_threads}')
 	}
+}
+
+fn crun_executable_path(out_name string) string {
+	$if windows {
+		if !out_name.ends_with('.exe') {
+			return out_name + '.exe'
+		}
+	}
+	return out_name
+}
+
+fn crun_executable_signature(path string) string {
+	content := os.read_bytes(path) or { return '' }
+	return hash.sum64(content, 7).hex_full()
 }
 
 fn (b &Builder) crun_build_options_signature() string {

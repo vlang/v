@@ -106,7 +106,7 @@ echo "Alternatively, if you do want a more recent V version, just clone V from s
 echo "then follow the instructions here: https://github.com/vlang/v#installing-v-from-source')" >> cmd/tools/vself.v
 
 v -prod -o v cmd/v                            ## build V itself with -prod
-./v -prod build-tools                         ## build all tools with -prod too
+./v build-tools                               ## build all tools (NB: do *not* pass -prod here; some large tools, like c_builder.v, can exhaust memory during the -prod LTO C compile)
 touch ./cmd/tools/.disable_autorecompilation  ## tell V to not try to recompile any tool anymore
 
 ### Cleanup folders that would not be needed inside a package,

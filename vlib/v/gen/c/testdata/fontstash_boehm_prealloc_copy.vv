@@ -1,0 +1,7 @@
+// vtest vflags: -d prealloc -gc boehm
+import fontstash
+
+fn main() {
+	context := &fontstash.Context(unsafe { nil })
+	_ := context.add_font_mem('font', []u8{}, true)
+}

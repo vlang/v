@@ -1,0 +1,3 @@
+fn with_unregistered_ref(mut p &Foo) {
+	println(p.x)
+}

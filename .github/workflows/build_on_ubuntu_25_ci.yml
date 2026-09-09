@@ -21,6 +21,10 @@ on:
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
 
+concurrency:
+  group: ubuntu-25-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ubuntu-25-gcc-14-2-build:
     runs-on: ubuntu-latest

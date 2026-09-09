@@ -1955,8 +1955,12 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 						continue
 					}
 					for i, ct in concrete_type_list {
-						if ct == resolved_left_type && w.cur_fn_concrete_types[i] != ct {
-							resolved_left_type = w.cur_fn_concrete_types[i]
+						// compare by idx: the stale type may differ in nr_muls
+						// (e.g. `for mut item in items` makes it a reference)
+						if ct.idx() == resolved_left_type.idx()
+							&& w.cur_fn_concrete_types[i].idx() != ct.idx() {
+							resolved_left_type =
+								w.cur_fn_concrete_types[i].set_nr_muls(resolved_left_type.nr_muls())
 							break
 						}
 					}
@@ -2045,7 +2049,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		}
 	}
 	if node.is_method {
-		resolved_fkey, resolved_receiver := w.resolve_method_call_fkey(node)
+		resolved_fkey, resolved_receiver := w.resolve_method_call_fkey(node, resolved_left_type)
 		if resolved_fkey != '' {
 			fn_name = resolved_fkey
 			receiver_typ = resolved_receiver
@@ -2346,8 +2350,14 @@ fn (w &Walker) method_decl_fkey(method ast.Fn) (string, ast.Type) {
 	return method.fkey(), method.receiver_type
 }
 
-fn (mut w Walker) resolve_method_call_fkey(node ast.CallExpr) (string, ast.Type) {
+fn (mut w Walker) resolve_method_call_fkey(node ast.CallExpr, resolved_left_type ast.Type) (string, ast.Type) {
 	mut candidate_types := []ast.Type{}
+	// Prefer the re-resolved left type: inside generic functions the AST types
+	// are stale (they reflect the last checked instantiation, not the current one).
+	if resolved_left_type != 0 && resolved_left_type != node.left_type
+		&& !resolved_left_type.has_flag(.generic) {
+		candidate_types << resolved_left_type
+	}
 	if node.left is ast.Ident && node.left.obj is ast.Var {
 		resolved_current_type := w.resolve_current_specialized_var_type(node.left.name)
 		if resolved_current_type != 0 && resolved_current_type !in candidate_types {

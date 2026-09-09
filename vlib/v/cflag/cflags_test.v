@@ -39,3 +39,11 @@ fn test_defines_others_libs_keeps_direct_windows_import_lib_paths() {
 	].defines_others_libs()
 	assert libs == ['"${direct_path}"']
 }
+
+fn test_windows_import_lib_link_args_preserves_quoted_paths_and_converts_mixed_case_names() {
+	direct_path := 'C:/Program Files/Windows Kits/10/Lib/Version.LiB'
+	args := CFlag{
+		value: '"${direct_path}" Version.lib Advapi32.LIB'
+	}.windows_import_lib_link_args()
+	assert args == ['"${direct_path}"', '-lVersion', '-lAdvapi32']
+}

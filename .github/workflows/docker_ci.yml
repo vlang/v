@@ -98,6 +98,15 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: Add dependencies
         run: apt install libsqlite3-dev
+      - name: Build musl-native OpenSSL
+        run: |
+          wget -q https://github.com/openssl/openssl/releases/download/openssl-3.5.4/openssl-3.5.4.tar.gz -O /tmp/openssl-3.5.4.tar.gz
+          echo '967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99  /tmp/openssl-3.5.4.tar.gz' | sha256sum --check --strict
+          tar -C /tmp -xf /tmp/openssl-3.5.4.tar.gz
+          cd /tmp/openssl-3.5.4
+          CC=musl-gcc ./Configure linux-x86_64 no-shared no-tests no-secure-memory no-afalgeng --prefix=/usr/local --libdir=lib64 --openssldir=/usr/local/ssl
+          make -j"$(nproc)"
+          make install_sw
       - name: All code is formatted
         run: ./v -silent test-cleancode
       - name: Test V fixed tests

@@ -4,6 +4,7 @@
 module c
 
 import v.ast
+import v.token
 
 // write_option_wrapper_if_assignment_smartcast handles an option variable that
 // carries an assignment smartcast (recorded when a non-option value was assigned
@@ -52,6 +53,21 @@ fn (mut g Gen) resolved_if_guard_expr_type(expr ast.Expr, default_type ast.Type)
 				value_type = value_type.set_flag(.result)
 			}
 			return value_type
+		}
+	}
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+		// In generic functions default_type may be stale: the checker overwrites
+		// it on each instantiation pass. Re-resolve it from the guard expression.
+		resolved := g.resolved_expr_type(expr, default_type)
+		if resolved != 0 && resolved != ast.void_type && !resolved.has_flag(.generic)
+			&& !g.type_has_unresolved_generic_parts(resolved) {
+			mut typ := g.unwrap_generic(resolved)
+			if default_type.has_flag(.option) && !typ.has_flag(.option) {
+				typ = typ.set_flag(.option)
+			} else if default_type.has_flag(.result) && !typ.has_flag(.result) {
+				typ = typ.set_flag(.result)
+			}
+			return typ
 		}
 	}
 	return g.unwrap_generic(g.recheck_concrete_type(default_type))
@@ -612,6 +628,10 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			if g.need_tmp_var_in_expr(expr.right) {
 				return true
 			}
+			if expr.op in [.eq, .ne] && g.type_is_option_or_option_alias(expr.left_type)
+				&& g.type_is_option_or_option_alias(expr.right_type) {
+				return true
+			}
 			// struct pointer equality comparisons may hoist temp vars
 			// (via gen_struct_pointer_eq_op) which breaks short-circuit
 			// evaluation when used on the right side of `&&` after an
@@ -893,6 +913,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					} else {
 						cond.expr_type
 					}
+				} else if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+					g.resolved_if_guard_expr_type(cond.expr, cond.expr_type)
 				} else {
 					cond.expr_type
 				}
@@ -948,6 +970,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				}
 			}
 		} else if branch.cond is ast.IfGuardExpr {
+			previous_index_error_pos := g.discarded_index_error_pos
+			g.discarded_index_error_pos = token.Pos{}
+			if !guard_else_uses_err[i] && branch.cond.expr is ast.IndexExpr {
+				// Only the guard's outer lookup discards its error. Nested index
+				// expressions can still expose their own error in an or block.
+				g.discarded_index_error_pos = branch.cond.expr.pos
+			}
 			mut var_name := guard_vars[i]
 			mut short_opt := false
 			g.left_is_opt = true
@@ -1115,6 +1144,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					}
 				}
 			}
+			g.discarded_index_error_pos = previous_index_error_pos
 		} else {
 			if i == 0 && node.branches.len > 1 && !needs_tmp_var && needs_conds_order {
 				cond_var_name := g.new_tmp_var()
@@ -1180,8 +1210,14 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				|| resolved_node_typ.has_flag(.shared_f)) {
 				g.expected_cast_type = resolved_node_typ
 			}
+			// A containing if/match expression can suppress statement positions while
+			// emitting this if as its final expression. Its branches and branch defers
+			// still need their own positions so option/result preludes stay in scope.
+			prev_skip_stmt_pos := g.skip_stmt_pos
+			g.skip_stmt_pos = false
 			g.stmts_with_tmp_var(branch.stmts, tmp)
 			g.write_defer_stmts(branch.scope, false, node.pos)
+			g.skip_stmt_pos = prev_skip_stmt_pos
 			g.expected_cast_type = prev_expected_cast_type
 			if !is_else
 				&& (branch.stmts.len > 0 && branch.stmts.last() !in [ast.Return, ast.BranchStmt]) {
