@@ -7587,14 +7587,30 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 		g.write('*(${g.cc_type(expected_type, false)}*)&')
 	} else if arg.expr is ast.Ident {
 		if arg.expr.obj is ast.Var {
-			if arg.expr.obj.is_arg && arg.expr.obj.is_mut && !arg.is_mut && arg_typ.is_ptr()
-				&& !expected_type.is_any_kind_of_pointer() {
+			if arg.expr.obj.is_arg && arg.expr.obj.is_mut && !arg.is_mut && arg_typ.is_ptr() {
+				// A `mut` parameter referenced by value is its dereference: one level
+				// of indirection is taken off to get the current value, in V as well.
+				// The existing branch below handles value arguments (non-pointer
+				// expected type); a pointer expected type that equals exactly one
+				// deref of the mut parameter (e.g. `mut o voidptr` passed to
+				// `C.f(o voidptr)`) must also take that level off, otherwise the C
+				// side receives the address of the parameter slot instead of the value.
 				unwrapped_expected := g.unwrap_generic(g.recheck_concrete_type(expected_type))
 				nr_derefs := arg_typ.nr_muls()
-				if nr_derefs > 0 && unwrapped_expected == g.unwrap_generic(arg_typ.set_nr_muls(0)) {
-					g.write('${'*'.repeat(nr_derefs)}')
-					g.expr(ast.Expr(arg.expr))
-					return
+				if nr_derefs > 0 {
+					want_value := !expected_type.is_any_kind_of_pointer()
+						&& unwrapped_expected == g.unwrap_generic(arg_typ.set_nr_muls(0))
+					want_ptr_target := expected_type.is_any_kind_of_pointer() && nr_derefs >= 2
+						&& unwrapped_expected == g.unwrap_generic(arg_typ.set_nr_muls(nr_derefs - 1))
+					if want_value {
+						g.write('${'*'.repeat(nr_derefs)}')
+						g.expr(ast.Expr(arg.expr))
+						return
+					} else if want_ptr_target {
+						g.write('*')
+						g.expr(ast.Expr(arg.expr))
+						return
+					}
 				}
 			}
 		} else if arg.expr.kind == .constant && arg_typ.is_ptr()
