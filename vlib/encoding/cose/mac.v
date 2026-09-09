@@ -89,6 +89,7 @@ pub fn mac(payload []u8, key Key, opts MacOptions) ![]u8 {
 	alg := opts.protected.algorithm or {
 		return error('cose: COSE_Mac requires protected.algorithm to be set')
 	}
+	check_protected_headers(opts.protected, opts.unprotected)!
 
 	signed_bytes := opts.detached_payload or { payload }
 	body_protected := opts.protected.encode_protected()!
@@ -99,6 +100,7 @@ pub fn mac(payload []u8, key Key, opts MacOptions) ![]u8 {
 	// (struct copy + per-recipient header normalisation).
 	mut recipients := []Recipient{cap: opts.recipients.len}
 	for src in opts.recipients {
+		check_protected_headers(src.protected, src.unprotected)!
 		mut new_unprotected := src.unprotected
 		has_direct := check_direct_recipient(src, false)!
 		if !has_direct {

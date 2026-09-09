@@ -23,6 +23,17 @@ const ecdsa_sig01_message = 'D28445A201260300A1044231315454686973206973207468652
 
 const sample_text = 'This is the content.'
 
+fn sign1_unchecked(payload []u8, key Key, protected Headers, unprotected Headers) ![]u8 {
+	body_protected := protected.encode_protected()!
+	tbs := sig_structure_sign1(body_protected, []u8{}, payload)
+	return Sign1Message{
+		protected:   protected
+		unprotected: unprotected
+		payload:     payload
+		signature:   sign_with_key(.eddsa, key, tbs)!
+	}.encode(true)!
+}
+
 fn test_sign1_eddsa_matches_reference_vector() {
 	// EdDSA is deterministic, so we can match the reference bytes-exact.
 	d := hex.decode(eddsa_d_hex)!
@@ -117,7 +128,7 @@ fn test_verify1_rejects_unknown_critical_label() {
 	mut hp := Headers{}
 	hp.algorithm = .eddsa
 	hp.critical = [i64(99)]
-	signed := sign1('payload'.bytes(), priv_key, protected: hp)!
+	signed := sign1_unchecked('payload'.bytes(), priv_key, hp, Headers{})!
 	if _ := verify1(signed, pub_key) {
 		assert false, 'must reject unknown crit label'
 	} else {
@@ -150,7 +161,7 @@ fn test_verify1_rejects_critical_in_unprotected_header() {
 	hp.algorithm = .eddsa
 	mut hu := Headers{}
 	hu.critical = [i64(1)]
-	signed := sign1('payload'.bytes(), priv_key, protected: hp, unprotected: hu)!
+	signed := sign1_unchecked('payload'.bytes(), priv_key, hp, hu)!
 	if _ := verify1(signed, pub_key) {
 		assert false, 'crit in unprotected headers must be rejected'
 	} else {
@@ -169,7 +180,7 @@ fn test_verify1_rejects_critical_label_missing_from_protected_header() {
 	hp.critical = [i64(4)]
 	mut hu := Headers{}
 	hu.kid = 'kid-1'.bytes()
-	signed := sign1('payload'.bytes(), priv_key, protected: hp, unprotected: hu)!
+	signed := sign1_unchecked('payload'.bytes(), priv_key, hp, hu)!
 	if _ := verify1(signed, pub_key) {
 		assert false, 'crit labels must be present in protected headers'
 	} else {
@@ -192,6 +203,44 @@ fn test_sign1_rejects_key_alg_mismatch() {
 	} else {
 		assert err is AlgorithmMismatch
 	}
+}
+
+fn test_sign1_rejects_invalid_header_buckets_on_creation() {
+	x := hex.decode(eddsa_x_hex)!
+	d := hex.decode(eddsa_d_hex)!
+	key := Key.okp_private(.ed25519, x, d)
+	mut protected := Headers{}
+	protected.algorithm = .eddsa
+	for unprotected in [
+		Headers{
+			algorithm: .eddsa
+		},
+		Headers{
+			critical: [i64(1)]
+		},
+	] {
+		if _ := sign1('payload'.bytes(), key,
+			protected:   protected
+			unprotected: unprotected
+		) {
+			assert false, 'message creation must reject invalid header buckets'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+}
+
+fn test_sign1_decode_preserves_text_algorithm() {
+	mut p := cbor.new_packer(cbor.EncodeOpts{})
+	p.pack_array_header(4)
+	p.pack_bytes(hex.decode('a10163666f6f')!)
+	p.pack_value(Headers{}.to_value())!
+	p.pack_null()
+	p.pack_bytes([]u8{})
+	msg := Sign1Message.decode(p.bytes())!
+	assert msg.protected.algorithm == none
+	assert msg.protected.extra_int_labels.len == 1
+	assert msg.protected.extra_int_labels[0].value.as_string() == ?string('foo')
 }
 
 fn test_sign1_external_aad_changes_signature() {

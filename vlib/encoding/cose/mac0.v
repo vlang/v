@@ -76,6 +76,7 @@ pub fn verify_mac0(message []u8, key Key, opts VerifyMac0Options) ![]u8 {
 
 // compute computes the MAC tag and stores it in `tag`.
 pub fn (mut m Mac0Message) compute(key Key, payload []u8, external_aad []u8) ! {
+	check_protected_headers(m.protected, m.unprotected)!
 	alg := m.protected.algorithm or {
 		return error('cose: Mac0Message.compute requires protected.algorithm to be set')
 	}

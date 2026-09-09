@@ -70,10 +70,12 @@ pub fn sign(payload []u8, signers []Signer, opts SignOptions) ![]u8 {
 		return error('cose: COSE_Sign requires at least one signer')
 	}
 	signed_bytes := opts.detached_payload or { payload }
+	check_protected_headers(opts.protected, opts.unprotected)!
 	body_protected := opts.protected.encode_protected()!
 
 	mut entries := []Signature{cap: signers.len}
 	for s in signers {
+		check_protected_headers(s.protected, s.unprotected)!
 		alg := s.protected.algorithm or {
 			return error('cose: each signer must declare an algorithm in protected headers')
 		}

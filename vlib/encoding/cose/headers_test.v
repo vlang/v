@@ -109,6 +109,29 @@ fn test_unknown_alg_falls_back_to_extra_label() {
 	assert parsed.extra_int_labels[0].label == 1
 }
 
+fn test_text_algorithm_falls_back_to_extra_label() {
+	parsed := parse_protected(hex.decode('a10163666f6f')!)!
+	assert parsed.algorithm == none
+	assert parsed.extra_int_labels.len == 1
+	assert parsed.extra_int_labels[0].label == 1
+	assert parsed.extra_int_labels[0].value.as_string() == ?string('foo')
+}
+
+fn test_rejects_numeric_content_type_above_coap_range() {
+	if _ := parse_protected(hex.decode('a1031a00010000')!) {
+		assert false, 'numeric content types above 65535 must be rejected'
+	} else {
+		assert err.msg().contains('content type exceeds 65535')
+	}
+	if _ := check_protected_headers(Headers{
+		content_type_int: u64(65536)
+	}, Headers{}) {
+		assert false, 'message creation must reject out-of-range content types'
+	} else {
+		assert err.msg().contains('content type exceeds 65535')
+	}
+}
+
 fn test_parse_rejects_duplicate_int_labels() {
 	// map with duplicate alg labels: {1: -7, 1: -8}
 	dup := hex.decode('A201260127')!

@@ -247,26 +247,32 @@ fn parse_headers_value(v cbor.Value) !Headers {
 				h.decoded_int_labels << int_key
 				match int_key {
 					label_alg {
-						code := pair.value.as_int() or {
-							return MalformedMessage{
-								reason: 'alg label has non-integer value'
+						if code := pair.value.as_int() {
+							// Don't hard-fail when the algorithm isn't one
+							// of the IANA values we model: it might be a
+							// recipient routing marker (e.g. direct = -6
+							// in COSE_Mac), or an algorithm we just don't
+							// support yet. Surface it as an extra label
+							// so the rest of the message can still be
+							// inspected; high-level sign/verify routines
+							// will return a clear error if the algorithm
+							// is needed and unknown.
+							if alg := algorithm_from_int(code) {
+								h.algorithm = alg
+							} else {
+								h.extra_int_labels << HeaderEntry{
+									label: label_alg
+									value: pair.value
+								}
 							}
-						}
-						// Don't hard-fail when the algorithm isn't one
-						// of the IANA values we model: it might be a
-						// recipient routing marker (e.g. direct = -6
-						// in COSE_Mac), or an algorithm we just don't
-						// support yet. Surface it as an extra label
-						// so the rest of the message can still be
-						// inspected; high-level sign/verify routines
-						// will return a clear error if the algorithm
-						// is needed and unknown.
-						if alg := algorithm_from_int(code) {
-							h.algorithm = alg
-						} else {
+						} else if pair.value.as_string() != none {
 							h.extra_int_labels << HeaderEntry{
 								label: label_alg
 								value: pair.value
+							}
+						} else {
+							return MalformedMessage{
+								reason: 'alg label is neither int nor tstr'
 							}
 						}
 					}
@@ -299,6 +305,11 @@ fn parse_headers_value(v cbor.Value) !Headers {
 					}
 					label_content_type {
 						if u := pair.value.as_uint() {
+							if u > 65535 {
+								return MalformedMessage{
+									reason: 'numeric content type exceeds 65535 (RFC 9052 §3.1)'
+								}
+							}
 							h.content_type_int = u
 						} else if s := pair.value.as_string() {
 							h.content_type_text = s
@@ -378,6 +389,8 @@ pub fn parse_protected(data []u8) !Headers {
 // and every label listed in `crit` must also be present in the protected
 // bucket.
 fn check_protected_headers(protected Headers, unprotected Headers) ! {
+	check_header_values(protected)!
+	check_header_values(unprotected)!
 	for label in int_header_labels(protected) {
 		if has_int_label(unprotected, label) {
 			return MalformedMessage{
@@ -409,6 +422,16 @@ fn check_protected_headers(protected Headers, unprotected Headers) ! {
 		if !has_text_label(protected, label) {
 			return MalformedMessage{
 				reason: 'crit lists label "${label}", but it is not present in protected headers (RFC 9052 §3.1)'
+			}
+		}
+	}
+}
+
+fn check_header_values(h Headers) ! {
+	if content_type := h.content_type_int {
+		if content_type > 65535 {
+			return MalformedMessage{
+				reason: 'numeric content type exceeds 65535 (RFC 9052 §3.1)'
 			}
 		}
 	}

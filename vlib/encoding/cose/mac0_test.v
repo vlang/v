@@ -170,6 +170,22 @@ fn test_mac0_enforces_key_operations() {
 	}
 }
 
+fn test_mac0_rejects_invalid_header_buckets_on_creation() {
+	key := Key.symmetric([]u8{len: 32, init: 1})
+	mut protected := Headers{}
+	protected.algorithm = .hmac_256_256
+	if _ := mac0('payload'.bytes(), key,
+		protected: protected
+		unprotected: Headers{
+			algorithm: .hmac_256_256
+		}
+	) {
+		assert false, 'MAC creation must reject duplicate header labels across buckets'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
 fn test_unknown_decoded_key_algorithm_remains_constrained() {
 	encoded := hex.decode('a30104031903e8205820' + '11'.repeat(32))!
 	key := Key.decode(encoded)!
