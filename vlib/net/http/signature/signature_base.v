@@ -32,7 +32,9 @@ pub mut:
 // primitive. RFC 9421 §2.5 step 7 forbids duplicate covered components
 // (the verifier rejects them), so we enforce that here too.
 pub fn signature_base_string(c Components, p SignatureParams) !string {
-	return build_signature_base(c, p.components, serialize_signature_params(p)!)!
+	mut normalized := p
+	normalized.components = normalize_component_names(p.components)
+	return build_signature_base(c, normalized.components, serialize_signature_params(normalized)!)!
 }
 
 // build_signature_base is the shared core. Both `signature_base_string`
@@ -100,7 +102,11 @@ pub fn serialize_signature_params(p SignatureParams) !string {
 			value: v
 		}
 	}
-	return serialize_inner_list(p.components)! + serialize_params(pairs)!
+	return serialize_inner_list(normalize_component_names(p.components))! + serialize_params(pairs)!
+}
+
+fn normalize_component_names(components []string) []string {
+	return components.map(if it.starts_with('@') { it } else { it.to_lower() })
 }
 
 // signature_input_value returns the full Signature-Input value for

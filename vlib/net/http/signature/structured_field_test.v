@@ -147,7 +147,7 @@ fn test_verify_accepts_non_canonical_param_order() {
 	c := Components{
 		method: 'POST'
 	}
-	key := Key.hmac_sha256('shared-secret'.bytes())
+	key := Key.hmac_sha256('shared-secret'.bytes())!
 	// Hand-build the base with keyid first, sign it, then verify
 	// using the same wire order.
 	base := '"@method": POST\n"@signature-params": ("@method");keyid="k1";created=42'
@@ -196,6 +196,30 @@ fn test_signature_base_string_rejects_duplicate_components() {
 	} else {
 		assert err is MalformedMessage
 		assert err.msg().contains('duplicate')
+	}
+}
+
+fn test_signature_base_string_normalizes_field_component_names() {
+	c := Components{
+		fields: {
+			'content-type': ['application/json']
+		}
+	}
+	p := SignatureParams{
+		components: ['Content-Type']
+	}
+	base := signature_base_string(c, p)!
+	assert base.starts_with('"content-type": application/json\n')
+	assert base.ends_with('"@signature-params": ("content-type")')
+	assert serialize_signature_params(p)! == '("content-type")'
+
+	duplicate := SignatureParams{
+		components: ['Content-Type', 'content-type']
+	}
+	if _ := signature_base_string(c, duplicate) {
+		assert false, 'component names that collide after normalization must be rejected'
+	} else {
+		assert err is MalformedMessage
 	}
 }
 

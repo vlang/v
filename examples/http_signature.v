@@ -56,8 +56,8 @@ fn demo_sign_and_verify_request() ! {
 // over the same message under a different label, and the backend
 // verifies both independently.
 fn demo_two_signatures() ! {
-	client_key := signature.Key.hmac_sha256('client-shared-secret'.bytes()).with_keyid('client')
-	proxy_key := signature.Key.hmac_sha256('proxy-shared-secret'.bytes()).with_keyid('proxy')
+	client_key := signature.Key.hmac_sha256('client-shared-secret'.bytes())!.with_keyid('client')
+	proxy_key := signature.Key.hmac_sha256('proxy-shared-secret'.bytes())!.with_keyid('proxy')
 
 	mut req := http.Request{
 		method: .get

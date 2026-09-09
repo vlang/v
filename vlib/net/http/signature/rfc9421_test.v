@@ -92,7 +92,7 @@ fn b26_params() SignatureParams {
 fn test_b25_hmac_sha256_matches_rfc() {
 	secret :=
 		base64.decode('uzvJfB4u3N0Jy4T7NZ75MDVcr8zSTInedJtkgcu46YW4XByzNJjxBdtjUkdJPBtbmHhIDi6pcl8jsasjlTMtDQ==')
-	key := Key.hmac_sha256(secret)
+	key := Key.hmac_sha256(secret)!
 	c := Components{
 		authority: 'example.com'
 		fields:    {

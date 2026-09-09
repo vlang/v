@@ -25,7 +25,7 @@ fn build_request(url string) http.Request {
 
 fn test_sign_and_verify_request_hmac_roundtrip() {
 	mut req := build_request('https://example.com/foo?bar=1')
-	key := Key.hmac_sha256(test_secret.bytes()).with_keyid('shared-key')
+	key := Key.hmac_sha256(test_secret.bytes())!.with_keyid('shared-key')
 	sign_request(mut req, key,
 		components: ['@method', '@target-uri', '@authority', 'date', 'content-type']
 		created:    1618884473
@@ -87,8 +87,8 @@ fn test_sign_and_verify_request_ecdsa_p384_roundtrip() {
 
 fn test_verify_request_rejects_wrong_key() {
 	mut req := build_request('https://example.com/foo')
-	good := Key.hmac_sha256('secret-A'.bytes())
-	bad := Key.hmac_sha256('secret-B'.bytes())
+	good := Key.hmac_sha256('secret-A'.bytes())!
+	bad := Key.hmac_sha256('secret-B'.bytes())!
 	sign_request(mut req, good, components: ['@method', '@target-uri'], created: 1)!
 	if _ := verify_request(req, bad) {
 		assert false, 'wrong key must not verify'
@@ -99,7 +99,7 @@ fn test_verify_request_rejects_wrong_key() {
 
 fn test_verify_request_rejects_tampered_target_uri() {
 	mut req := build_request('https://example.com/foo')
-	key := Key.hmac_sha256(test_secret.bytes())
+	key := Key.hmac_sha256(test_secret.bytes())!
 	sign_request(mut req, key, components: ['@method', '@target-uri'], created: 1)!
 	// Mutate the URL after signing - the verifier rebuilds the
 	// signature base from the (now-tampered) request and must fail.
@@ -113,7 +113,7 @@ fn test_verify_request_rejects_tampered_target_uri() {
 
 fn test_verify_request_rejects_missing_signature_header() {
 	mut req := build_request('https://example.com/foo')
-	key := Key.hmac_sha256(test_secret.bytes())
+	key := Key.hmac_sha256(test_secret.bytes())!
 	sign_request(mut req, key, components: ['@method'], created: 1)!
 	req.header.delete_custom('Signature')
 	if _ := verify_request(req, key) {
@@ -126,7 +126,7 @@ fn test_verify_request_rejects_missing_signature_header() {
 
 fn test_verify_request_rejects_expired_signature() {
 	mut req := build_request('https://example.com/foo')
-	key := Key.hmac_sha256(test_secret.bytes())
+	key := Key.hmac_sha256(test_secret.bytes())!
 	sign_request(mut req, key,
 		components: ['@method']
 		created:    1000
@@ -152,7 +152,7 @@ fn test_origin_form_request_target_uri_reconstructed() {
 		url:    'https://example.com/foo?bar=1'
 	}
 	signing_req.header.add_custom('Host', 'example.com')!
-	key := Key.hmac_sha256(test_secret.bytes())
+	key := Key.hmac_sha256(test_secret.bytes())!
 	sign_request(mut signing_req, key,
 		components: ['@method', '@target-uri']
 		created:    1
@@ -180,7 +180,7 @@ fn test_origin_form_uses_explicit_scheme() {
 		url:    'http://api.example.com/v1/items'
 	}
 	signing_req.header.add_custom('Host', 'api.example.com')!
-	key := Key.hmac_sha256(test_secret.bytes())
+	key := Key.hmac_sha256(test_secret.bytes())!
 	sign_request(mut signing_req, key,
 		components: ['@method', '@target-uri']
 		created:    1
@@ -236,6 +236,18 @@ fn test_outgoing_proxy_request_components_use_absolute_form() {
 	assert c.component_value('@request-target')! == 'http://example.com/search?q=a+b'
 }
 
+fn test_outgoing_proxy_request_components_preserve_url_authority() {
+	proxy := http.new_http_proxy('http://localhost:8080')!
+	mut req := build_request('http://origin.example:80/search')
+	req.proxy = proxy
+	req.header.set(.host, 'virtual.example')
+	c := request_components(req, 'http', .outgoing)!
+	assert c.component_value('@authority')! == 'origin.example'
+	assert c.component_value('@target-uri')! == 'http://origin.example/search'
+	assert c.component_value('@request-target')! == 'http://origin.example/search'
+	assert c.component_value('host')! == 'virtual.example'
+}
+
 fn test_outgoing_request_components_use_host_override() {
 	mut req := build_request('https://origin.example/path')
 	req.header.set(.host, 'virtual.example')
@@ -273,7 +285,7 @@ fn test_outgoing_request_components_include_generated_fields() {
 
 fn test_sign_request_rejects_control_bytes_in_parameters() {
 	mut req := build_request('https://example.com/')
-	key := Key.hmac_sha256(test_secret.bytes())
+	key := Key.hmac_sha256(test_secret.bytes())!
 	if _ := sign_request(mut req, key,
 		components: ['@method']
 		keyid:      'safe\r\nInjected: true'
@@ -307,8 +319,8 @@ fn test_append_dict_header_preserves_all_existing_field_lines() {
 
 fn test_sign_two_signatures_coexist() {
 	mut req := build_request('https://example.com/foo')
-	k1 := Key.hmac_sha256('one'.bytes())
-	k2 := Key.hmac_sha256('two'.bytes())
+	k1 := Key.hmac_sha256('one'.bytes())!
+	k2 := Key.hmac_sha256('two'.bytes())!
 	sign_request(mut req, k1, components: ['@method'], label: 'sig-a', created: 1)!
 	sign_request(mut req, k2, components: ['@target-uri'], label: 'sig-b', created: 2)!
 	verify_request(req, k1, label: 'sig-a')!
@@ -326,7 +338,7 @@ fn test_sign_response_and_verify() {
 	}
 	resp.header.add_custom('Content-Type', 'application/json')!
 	resp.header.add_custom('Content-Length', '23')!
-	key := Key.hmac_sha256(test_secret.bytes())
+	key := Key.hmac_sha256(test_secret.bytes())!
 	sign_response(mut resp, key,
 		components: ['@status', 'content-type', 'content-length']
 		created:    1
@@ -336,7 +348,7 @@ fn test_sign_response_and_verify() {
 
 fn test_sign_response_normalizes_zero_status_to_wire_ok() {
 	mut resp := http.Response{}
-	key := Key.hmac_sha256(test_secret.bytes())
+	key := Key.hmac_sha256(test_secret.bytes())!
 	sign_response(mut resp, key, components: ['@status'], created: 1)!
 	received := http.Response{
 		...resp
@@ -367,7 +379,7 @@ fn test_label_validation_rejects_empty_and_uppercase() {
 	p := SignatureParams{
 		components: ['@method']
 	}
-	key := Key.hmac_sha256('k'.bytes())
+	key := Key.hmac_sha256('k'.bytes())!
 	c := Components{
 		method: 'GET'
 	}

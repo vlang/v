@@ -173,6 +173,22 @@ fn test_raw_ecdsa_constructors_pad_coordinates() {
 	}
 }
 
+fn test_hmac_rejects_empty_secret() {
+	if _ := Key.hmac_sha256([]u8{}) {
+		assert false, 'empty HMAC secrets must be rejected'
+	} else {
+		assert err is MalformedMessage
+	}
+	key := Key{
+		algorithm: .hmac_sha256
+	}
+	if _ := sign_base('base'.bytes(), key) {
+		assert false, 'directly constructed empty HMAC keys must not sign'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
 fn test_from_pem_rejects_garbage() {
 	if _ := Key.from_pem('not a PEM block') {
 		assert false, 'must reject non-PEM input'

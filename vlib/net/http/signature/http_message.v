@@ -218,18 +218,22 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 			reason: 'request url "${req.url}" is not a valid URL: ${err.msg()}'
 		}
 	}
+	uses_absolute_form := mode == .outgoing && !isnil(req.proxy) && parsed.scheme == 'http'
 	mut authority := if parsed.host != '' {
 		parsed.host
 	} else {
 		req.host
 	}
 	if mode == .outgoing {
-		if host := req.header.get(.host) {
-			if host != '' {
-				authority = host
-			}
-		} else if parsed.host != '' {
+		if parsed.host != '' {
 			authority = transport_authority(parsed)
+		}
+		if !uses_absolute_form {
+			if host := req.header.get(.host) {
+				if host != '' {
+					authority = host
+				}
+			}
 		}
 	}
 	scheme := if parsed.scheme != '' { parsed.scheme } else { default_scheme }
@@ -249,7 +253,7 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 		transport_path
 	}
 	request_target := if mode == .outgoing {
-		if !isnil(req.proxy) && parsed.scheme == 'http' {
+		if uses_absolute_form {
 			'${scheme}://${transport_authority(parsed)}${origin_target}'
 		} else {
 			origin_target
@@ -281,7 +285,9 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 		}
 	}
 	if mode == .outgoing {
-		c.fields['host'] = [authority]
+		if !req.header.contains(.host) {
+			c.fields['host'] = [transport_authority(parsed)]
+		}
 		if !req.header.contains(.user_agent) {
 			c.fields['user-agent'] = [req.user_agent]
 		}

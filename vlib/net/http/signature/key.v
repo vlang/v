@@ -33,7 +33,12 @@ pub:
 // Key.hmac_sha256 builds a symmetric key for the hmac-sha256 algorithm.
 // `secret` must not be empty. RFC 9421 §3.3.3 recommends at least
 // 256 bits of entropy.
-pub fn Key.hmac_sha256(secret []u8) Key {
+pub fn Key.hmac_sha256(secret []u8) !Key {
+	if secret.len == 0 {
+		return MalformedMessage{
+			reason: 'HMAC secret cannot be empty'
+		}
+	}
 	return Key{
 		algorithm: .hmac_sha256
 		bytes:     secret

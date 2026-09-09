@@ -20,6 +20,7 @@ const ec_p384_size = 48
 // sign_base computes the signature of `base` using `key`.
 // Returns the raw signature bytes (not yet base64-encoded).
 fn sign_base(base []u8, key Key) ![]u8 {
+	validate_hmac_key(key)!
 	if !key.is_private && !key.algorithm.is_mac() {
 		return MalformedMessage{
 			reason: 'sign requires a private key for ${key.algorithm.name()}'
@@ -38,6 +39,7 @@ fn sign_base(base []u8, key Key) ![]u8 {
 // callers can distinguish "signature invalid" from "verification
 // machinery itself failed".
 fn verify_base(base []u8, signature []u8, key Key, label string) ! {
+	validate_hmac_key(key)!
 	ok := match key.algorithm {
 		.hmac_sha256 {
 			expected := hmac.new(key.bytes, base, sha256.sum, sha256.block_size)
@@ -57,6 +59,14 @@ fn verify_base(base []u8, signature []u8, key Key, label string) ! {
 	if !ok {
 		return VerificationFailed{
 			label: label
+		}
+	}
+}
+
+fn validate_hmac_key(key Key) ! {
+	if key.algorithm == .hmac_sha256 && key.bytes.len == 0 {
+		return MalformedMessage{
+			reason: 'HMAC secret cannot be empty'
 		}
 	}
 }
