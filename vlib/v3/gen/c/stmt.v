@@ -689,6 +689,22 @@ fn (g &FlatGen) goto_target_lock_scopes(label string) []int {
 	return g.goto_label_lock_scopes[label] or { []int{} }
 }
 
+fn (g &FlatGen) asm_goto_targets_stay_in_lock_scope(labels []string) bool {
+	active_scopes := g.active_lock_scope_ids()
+	for label in labels {
+		target_scopes := g.goto_target_lock_scopes(label)
+		if target_scopes.len != active_scopes.len {
+			return false
+		}
+		for i, target_scope in target_scopes {
+			if active_scopes[i] != target_scope {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 fn (mut g FlatGen) gen_goto_lock_leaves(label string) bool {
 	target_scopes := g.goto_target_lock_scopes(label)
 	active_scopes := g.active_lock_scope_ids()
@@ -3036,6 +3052,10 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 		&& block.clobbered.len == 0 && !block.is_volatile {
 		return
 	}
+	if block.is_goto && !g.asm_goto_targets_stay_in_lock_scope(block.labels) {
+		g.writeln('#error asm goto into or out of a lock scope is not supported')
+		return
+	}
 	mut aliases := map[string]bool{}
 	for io in block.output {
 		if io.alias.len > 0 {
@@ -3065,7 +3085,12 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 	}
 	for template in block.templates {
 		if block.is_raw {
-			g.writeln('"${template}"')
+			raw_template := if block.is_goto {
+				g.lower_c_inline_asm_goto_raw_labels(template, block.labels)
+			} else {
+				template
+			}
+			g.writeln('"${raw_template}"')
 			continue
 		}
 		mut lowered := if block.is_intel {
@@ -3319,12 +3344,25 @@ fn (mut g FlatGen) lower_c_inline_asm_goto_branch_label(source string, lowered s
 	return lowered[..lowered_split + 1] + lowered_operands.join(', ')
 }
 
+fn (mut g FlatGen) lower_c_inline_asm_goto_raw_labels(template string, labels []string) string {
+	mut lowered := template
+	for label in labels {
+		lowered = lowered.replace('%l[${label}]', '%l[${g.user_goto_c_label(label)}]')
+	}
+	return lowered
+}
+
 fn c_inline_asm_goto_branch_label_operand_index(instruction string, arch string, operand_count int) int {
 	if operand_count == 0 {
 		return -1
 	}
 	if is_c_inline_asm_x86_arch(arch) {
-		return if instruction.starts_with('call') || instruction.starts_with('j') { 0 } else { -1 }
+		return if instruction.starts_with('call') || instruction.starts_with('j')
+			|| instruction in ['loop', 'loope', 'loopne', 'loopz', 'loopnz'] {
+			0
+		} else {
+			-1
+		}
 	}
 	if arch in ['arm64', 'aarch64'] && (instruction == 'b' || instruction == 'bl'
 		|| instruction.starts_with('b.') || instruction.starts_with('cb') || instruction.starts_with('tb')) {
