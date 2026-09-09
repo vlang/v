@@ -144,6 +144,7 @@ pub fn Key.symmetric(k []u8) Key {
 // encode returns the canonical CBOR encoding of the COSE_Key.
 pub fn (k Key) encode() ![]u8 {
 	k.validate_curve_type()!
+	k.validate_algorithm_compatibility()!
 	k.validate_ec2_private_width()!
 	k.validate_okp_widths()!
 	mut pairs := []cbor.MapPair{cap: 8}
@@ -527,6 +528,7 @@ pub fn Key.decode(data []u8) !Key {
 			return error('cose: RSA keys are not supported in this module version')
 		}
 	}
+	out.validate_algorithm_compatibility()!
 
 	return out
 }
@@ -562,6 +564,36 @@ fn (k Key) validate_curve_type() ! {
 			}
 		}
 		else {}
+	}
+}
+
+fn (k Key) validate_algorithm_compatibility() ! {
+	alg := k.alg or { return }
+	compatible := match k.kty {
+		.symmetric { alg.is_mac() }
+		.ec2 {
+			if crv := k.crv {
+				match alg {
+					.es256 { crv == .p_256 }
+					.es384 { crv == .p_384 }
+					.es512 { crv == .p_521 }
+					else { false }
+				}
+			} else {
+				false
+			}
+		}
+		.okp {
+			if crv := k.crv {
+				alg == .eddsa && crv == .ed25519
+			} else {
+				false
+			}
+		}
+		.rsa { false }
+	}
+	if !compatible {
+		return error('cose: algorithm ${alg.name()} is incompatible with kty=${k.kty} and crv=${k.crv}')
 	}
 }
 

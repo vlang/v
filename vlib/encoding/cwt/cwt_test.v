@@ -297,3 +297,18 @@ fn test_claims_set_accepts_integral_float_numeric_date() {
 	claims := ClaimsSet.decode(hex.decode('a104fb3ff0000000000000')!)!
 	assert claims.exp == ?i64(1)
 }
+
+fn test_claims_set_rejects_nonfinite_and_out_of_range_numeric_dates() {
+	for encoded in [
+		hex.decode('a104f97c00')!,
+		hex.decode('a104f9fc00')!,
+		hex.decode('a104f97e00')!,
+		hex.decode('a104fb43e0000000000000')!,
+	] {
+		if _ := ClaimsSet.decode(encoded) {
+			assert false, 'NumericDate float must be finite and fit in i64'
+		} else {
+			assert err.msg().contains('outside the i64 range')
+		}
+	}
+}

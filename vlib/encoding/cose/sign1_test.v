@@ -528,6 +528,30 @@ fn test_key_decode_rejects_unsupported_rsa_keys() {
 	}
 }
 
+fn test_key_codec_rejects_incompatible_algorithm_constraints() {
+	mut symmetric := Key.symmetric([]u8{len: 32})
+	symmetric.alg = .es256
+	mut ec2 := Key.ec2_public(.p_384, []u8{len: 48}, []u8{len: 48})
+	ec2.alg = .es256
+	for key in [symmetric, ec2] {
+		if _ := key.encode() {
+			assert false, 'algorithm constraint must match the key family and curve'
+		} else {
+			assert err.msg().contains('is incompatible')
+		}
+	}
+	for encoded in [
+		hex.decode('a301040326205820' + '11'.repeat(32))!,
+		hex.decode('a5010203262002215830' + '11'.repeat(48) + '225830' + '22'.repeat(48))!,
+	] {
+		if _ := Key.decode(encoded) {
+			assert false, 'decoded algorithm constraint must match key family and curve'
+		} else {
+			assert err.msg().contains('is incompatible')
+		}
+	}
+}
+
 fn test_sign1_decodes_indefinite_length_outer_array() {
 	mut p := cbor.new_packer(cbor.EncodeOpts{})
 	p.pack_array_indef()!

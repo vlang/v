@@ -4,6 +4,7 @@
 module cwt
 
 import encoding.cbor
+import math
 
 // Standard claim labels from RFC 8392 §3, table 1, and the IANA "CBOR
 // Web Token (CWT) Claims" registry.
@@ -230,6 +231,9 @@ fn decode_numeric_date(v cbor.Value) !i64 {
 		return i
 	}
 	if f := v.as_float() {
+		if math.is_nan(f) || math.is_inf(f, 0) || f < f64(min_i64) || f >= -f64(min_i64) {
+			return error('cwt: NumericDate float is outside the i64 range')
+		}
 		i := i64(f)
 		if f != f64(i) {
 			return error('cwt: fractional NumericDate cannot be represented as whole seconds')
