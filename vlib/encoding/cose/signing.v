@@ -111,11 +111,10 @@ fn sign_with_key(alg Algorithm, key Key, to_be_signed []u8) ![]u8 {
 			if x.len != ed25519.public_key_size {
 				return error('cose: Ed25519 public key must be ${ed25519.public_key_size} bytes, got ${x.len}')
 			}
-			// vlib/crypto/ed25519 expects the 64-byte (seed || public-key)
-			// concatenation as PrivateKey.
-			mut full := []u8{cap: ed25519.private_key_size}
-			full << d
-			full << x
+			full := ed25519.new_key_from_seed(d)
+			if !full.public_key().equal(x) {
+				return error('cose: Ed25519 public key x does not match private seed d')
+			}
 			return ed25519.sign(full, to_be_signed)!
 		}
 		else {

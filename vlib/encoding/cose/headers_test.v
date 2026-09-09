@@ -193,3 +193,14 @@ fn test_preserves_text_labels_in_crit_for_validation() {
 		assert err.msg().contains('crit lists unknown label "app"')
 	}
 }
+
+fn test_crit_rejects_its_own_label() {
+	protected := Headers{
+		critical: [i64(2)]
+	}
+	if _ := check_protected_headers(protected, Headers{}) {
+		assert false, 'crit must not list label 2 itself'
+	} else {
+		assert err.msg().contains('crit must not list itself')
+	}
+}

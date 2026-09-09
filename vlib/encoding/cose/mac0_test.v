@@ -194,6 +194,15 @@ fn test_key_decode_rejects_duplicate_labels() {
 	}
 }
 
+fn test_key_decode_rejects_present_empty_key_ops() {
+	encoded := hex.decode('a301040480205820' + '11'.repeat(32))!
+	if _ := Key.decode(encoded) {
+		assert false, 'a present key_ops array must not be empty'
+	} else {
+		assert err.msg().contains('key_ops array must not be empty')
+	}
+}
+
 fn test_mac0_decodes_indefinite_length_outer_array() {
 	mut p := cbor.new_packer(cbor.EncodeOpts{})
 	p.pack_array_indef()!

@@ -293,6 +293,11 @@ pub fn Key.decode(data []u8) !Key {
 						reason: 'key_ops is not array'
 					}
 				}
+				if items.len == 0 {
+					return MalformedMessage{
+						reason: 'key_ops array must not be empty'
+					}
+				}
 				mut ops := []KeyOp{cap: items.len}
 				for it in items {
 					n := it.as_int() or {

@@ -262,6 +262,18 @@ fn test_sign1_enforces_key_operations() {
 	}
 }
 
+fn test_sign1_rejects_ed25519_public_key_mismatching_seed() {
+	d := hex.decode(eddsa_d_hex)!
+	key := Key.okp_private(.ed25519, []u8{len: 32}, d)
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	if _ := sign1('payload'.bytes(), key, protected: hp) {
+		assert false, 'Ed25519 x must correspond to d'
+	} else {
+		assert err.msg().contains('does not match private seed')
+	}
+}
+
 fn test_sign1_decodes_indefinite_length_outer_array() {
 	mut p := cbor.new_packer(cbor.EncodeOpts{})
 	p.pack_array_indef()!

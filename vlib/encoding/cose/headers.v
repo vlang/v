@@ -422,7 +422,12 @@ fn check_protected_headers(protected Headers, unprotected Headers) ! {
 // security-critical.
 fn check_critical(h Headers) ! {
 	for label in h.critical {
-		if label !in [label_alg, label_crit, label_content_type, label_kid, label_iv,
+		if label == label_crit {
+			return MalformedMessage{
+				reason: 'crit must not list itself (RFC 9052 §3.1)'
+			}
+		}
+		if label !in [label_alg, label_content_type, label_kid, label_iv,
 			label_partial_iv] {
 			return MalformedMessage{
 				reason: 'crit lists unknown label ${label} (RFC 9052 §3.1)'
