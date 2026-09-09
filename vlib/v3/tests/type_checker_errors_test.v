@@ -2039,6 +2039,15 @@ fn test_callback_identifier_c_abi_modes_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_local_callback_struct_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler PlainHandler\n}\nfn consume[T](options Options) {}\nfn startup[T]() {\n\toptions := Options{\n\t\thandler: fn (const_event &C.native_event) {}\n\t}\n\tconsume[int](options)\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	local_struct_write_matching := run_good(v3_bin, 'good_local_callback_struct_write_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler ConstHandler\n}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](options Options) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut options := Options{\n\t\thandler: ConstHandler(const_handler)\n\t}\n\toptions.handler = ConstHandler(const_handler)\n\treturn consume[int](options)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert local_struct_write_matching == 'true'
+	run_bad(v3_bin, 'bad_local_callback_struct_write_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler PlainHandler\n}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](options Options) {}\nfn startup[T]() {\n\tmut options := Options{\n\t\thandler: PlainHandler(plain_handler)\n\t}\n\toptions.handler = ConstHandler(const_handler)\n\tconsume[int](options)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	run_bad(v3_bin, 'bad_local_callback_struct_index_write_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandlers []PlainHandler\n}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](options Options) {}\nfn startup[T]() {\n\tmut options := Options{\n\t\thandlers: [PlainHandler(plain_handler)]\n\t}\n\toptions.handlers[0] = ConstHandler(const_handler)\n\tconsume[int](options)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 	container_param_matching := run_good(v3_bin, 'good_callback_container_param_in_generic',
 		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn consume[T](handlers []ConstHandler) bool {\n\treturn handlers.len == 1\n}\nfn forward[T](handlers []ConstHandler) bool {\n\treturn consume[int](handlers)\n}\nfn main() {\n\tprintln(forward[int]([fn (const_event &C.native_event) {}]).str())\n}\n')
 	assert container_param_matching == 'true'

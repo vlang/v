@@ -12628,19 +12628,24 @@ fn (mut t Transformer) fn_literal_container_modes_compatible_seen(arg_id flat.No
 			}
 		}
 	}
-	if node.kind == .index_assign && node.op == .assign && node.children_count >= 2 {
-		value_expected := t.callback_index_assignment_expected_type(t.a.child(&node, 0),
-			expected_type) or { return none }
+	if node.kind in [.index_assign, .selector_assign] && node.op == .assign
+		&& node.children_count >= 2 {
+		value_expected := t.callback_lvalue_expected_type(t.a.child(&node, 0), expected_type) or {
+			return none
+		}
 		return t.fn_literal_container_element_mode_compatible(t.a.child(&node, 1), value_expected)
 	}
 	if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
+		container_expected := t.callback_lvalue_expected_type(t.a.child(&node, 0), expected_type) or {
+			expected_type
+		}
 		rhs_id := t.a.child(&node, 1)
-		if compatible := t.fn_literal_container_modes_compatible_seen(rhs_id, expected_type, mut
+		if compatible := t.fn_literal_container_modes_compatible_seen(rhs_id, container_expected, mut
 			seen)
 		{
 			return compatible
 		}
-		element_expected := t.callback_container_source_element_type(expected_type) or {
+		element_expected := t.callback_container_source_element_type(container_expected) or {
 			return none
 		}
 		return t.fn_literal_container_element_mode_compatible(rhs_id, element_expected)
@@ -12814,22 +12819,31 @@ fn (t &Transformer) callback_source_type_is_container(type_name string) bool {
 		|| t.is_fixed_array_type(expanded)
 }
 
-fn (t &Transformer) callback_index_assignment_expected_type(lhs_id flat.NodeId, expected_type string) ?string {
+fn (t &Transformer) callback_lvalue_expected_type(lhs_id flat.NodeId, expected_type string) ?string {
 	if int(lhs_id) < 0 || int(lhs_id) >= t.a.nodes.len {
 		return none
 	}
 	lhs := t.a.nodes[int(lhs_id)]
-	if lhs.kind != .index || lhs.children_count == 0 {
+	if lhs.kind == .ident {
+		return expected_type
+	}
+	if lhs.kind == .paren && lhs.children_count == 1 {
+		return t.callback_lvalue_expected_type(t.a.child(&lhs, 0), expected_type)
+	}
+	if lhs.kind !in [.index, .selector] || lhs.children_count == 0 {
 		return none
 	}
-	base_id := t.a.child(&lhs, 0)
-	base := t.a.nodes[int(base_id)]
-	base_expected := if base.kind == .index {
-		t.callback_index_assignment_expected_type(base_id, expected_type) or { return none }
-	} else {
-		expected_type
+	base_expected := t.callback_lvalue_expected_type(t.a.child(&lhs, 0), expected_type) or {
+		return none
 	}
-	return t.callback_container_source_element_type(base_expected)
+	if lhs.kind == .index {
+		return t.callback_container_source_element_type(base_expected)
+	}
+	field_type := t.lookup_struct_field_type(base_expected, lhs.value) or { return none }
+	source_field_type := t.lookup_struct_field_source_type(base_expected, lhs.value) or {
+		field_type
+	}
+	return t.fn_type_with_compatible_source_modes(source_field_type, field_type)
 }
 
 fn (t &Transformer) callback_container_source_element_type(container_type string) ?string {
@@ -13139,6 +13153,12 @@ fn (t &Transformer) callback_local_reaching_rhs_ids(name string, before_id flat.
 				}
 				continue
 			}
+			if t.callback_selector_assignment_targets_name(stmt_id, name) {
+				if stmt_id !in reaching {
+					reaching << stmt_id
+				}
+				continue
+			}
 			if definite_rhs_ids := t.callback_definite_assignment_rhs_ids(stmt_id, name) {
 				reaching = definite_rhs_ids.clone()
 				continue
@@ -13181,6 +13201,12 @@ fn (t &Transformer) collect_callback_nested_assignment_rhs_ids(id flat.NodeId, n
 		return
 	}
 	if t.callback_index_assignment_targets_name(id, name) {
+		if id !in result {
+			result << id
+		}
+		return
+	}
+	if t.callback_selector_assignment_targets_name(id, name) {
 		if id !in result {
 			result << id
 		}
@@ -13386,6 +13412,17 @@ fn (t &Transformer) callback_index_assignment_targets_name(id flat.NodeId, name 
 	return t.callback_lvalue_base_is_ident(t.a.child(&node, 0), name)
 }
 
+fn (t &Transformer) callback_selector_assignment_targets_name(id flat.NodeId, name string) bool {
+	if name.len == 0 || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .selector_assign || node.op != .assign || node.children_count == 0 {
+		return false
+	}
+	return t.callback_lvalue_base_is_ident(t.a.child(&node, 0), name)
+}
+
 fn (t &Transformer) callback_array_append_targets_name(id flat.NodeId, name string) bool {
 	if name.len == 0 || int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
@@ -13405,7 +13442,7 @@ fn (t &Transformer) callback_lvalue_base_is_ident(id flat.NodeId, name string) b
 	if node.kind == .ident {
 		return node.value == name
 	}
-	if node.kind == .index && node.children_count > 0 {
+	if node.kind in [.index, .selector] && node.children_count > 0 {
 		return t.callback_lvalue_base_is_ident(t.a.child(&node, 0), name)
 	}
 	if node.kind == .paren && node.children_count == 1 {
