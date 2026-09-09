@@ -3,6 +3,7 @@
 module cose
 
 import encoding.base64
+import encoding.cbor
 import encoding.hex
 
 // HMAC-enc-01.json from cose-wg/Examples (Unlicense): HS256 mac0,
@@ -132,4 +133,63 @@ fn test_mac0_detached_payload() {
 	assert msg.payload == none
 	got := verify_mac0(signed, key, detached_payload: 'remote'.bytes())!
 	assert got == 'remote'.bytes()
+}
+
+fn test_mac0_rejects_undersized_hmac_keys() {
+	algorithms := [Algorithm.hmac_256_64, .hmac_256_256, .hmac_384_384, .hmac_512_512]
+	undersized := [31, 31, 47, 63]
+	for i, alg in algorithms {
+		mut hp := Headers{}
+		hp.algorithm = alg
+		if _ := mac0('payload'.bytes(), Key.symmetric([]u8{len: undersized[i]}), protected: hp) {
+			assert false, '${alg.name()} must reject an undersized key'
+		} else {
+			assert err.msg().contains('key of at least')
+		}
+	}
+}
+
+fn test_mac0_enforces_key_operations() {
+	mut hp := Headers{}
+	hp.algorithm = .hmac_256_256
+	mut create_key := Key.symmetric([]u8{len: 32, init: 1})
+	create_key.key_ops = [.mac_verify]
+	if _ := mac0('payload'.bytes(), create_key, protected: hp) {
+		assert false, 'key_ops without mac_create must reject MAC creation'
+	} else {
+		assert err.msg().contains('key_ops')
+	}
+
+	signed := mac0('payload'.bytes(), Key.symmetric([]u8{len: 32, init: 1}), protected: hp)!
+	mut verify_key := Key.symmetric([]u8{len: 32, init: 1})
+	verify_key.key_ops = [.mac_create]
+	if _ := verify_mac0(signed, verify_key) {
+		assert false, 'key_ops without mac_verify must reject MAC verification'
+	} else {
+		assert err.msg().contains('key_ops')
+	}
+}
+
+fn test_unknown_decoded_key_algorithm_remains_constrained() {
+	encoded := hex.decode('a30104031903e8205820' + '11'.repeat(32))!
+	key := Key.decode(encoded)!
+	roundtripped := Key.decode(key.encode()!)!
+	if _ := compute_mac(.hmac_256_256, roundtripped, 'payload'.bytes()) {
+		assert false, 'an unsupported decoded algorithm must not become unconstrained'
+	} else {
+		assert err.msg().contains('unsupported algorithm 1000')
+	}
+}
+
+fn test_mac0_decodes_indefinite_length_outer_array() {
+	mut p := cbor.new_packer(cbor.EncodeOpts{})
+	p.pack_array_indef()!
+	p.pack_bytes([]u8{})
+	p.pack_value(Headers{}.to_value())!
+	p.pack_null()
+	p.pack_bytes([u8(1)])
+	p.pack_break()!
+	msg := Mac0Message.decode(p.bytes())!
+	assert msg.payload == none
+	assert msg.tag == [u8(1)]
 }

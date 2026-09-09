@@ -130,3 +130,49 @@ fn test_parse_rejects_duplicate_text_labels() {
 		assert err.msg().contains('duplicate header label "x"')
 	}
 }
+
+fn test_rejects_labels_repeated_across_header_buckets() {
+	mut protected := Headers{}
+	protected.algorithm = .es256
+	mut unprotected := Headers{}
+	unprotected.algorithm = .es256
+	if _ := check_protected_headers(protected, unprotected) {
+		assert false, 'integer labels must not appear in both header buckets'
+	} else {
+		assert err.msg().contains('both protected and unprotected')
+	}
+
+	protected = Headers{
+		extra_text_labels: [
+			TextHeaderEntry{
+				label: 'app'
+				value: cbor.new_int(1)
+			},
+		]
+	}
+	unprotected = Headers{
+		extra_text_labels: [
+			TextHeaderEntry{
+				label: 'app'
+				value: cbor.new_int(2)
+			},
+		]
+	}
+	if _ := check_protected_headers(protected, unprotected) {
+		assert false, 'text labels must not appear in both header buckets'
+	} else {
+		assert err.msg().contains('both protected and unprotected')
+	}
+}
+
+fn test_rejects_present_empty_crit_repeated_across_header_buckets() {
+	// The empty arrays cannot be inferred from Headers.critical.len, so
+	// decoding must preserve the fact that label 2 was present.
+	protected := parse_protected(hex.decode('a10280')!)!
+	unprotected := parse_headers_map(hex.decode('a10280')!)!
+	if _ := check_protected_headers(protected, unprotected) {
+		assert false, 'present empty crit labels must not occur in both buckets'
+	} else {
+		assert err.msg().contains('header label 2')
+	}
+}

@@ -10,24 +10,31 @@ import crypto.sha512
 // compute_mac returns the MAC tag (already truncated for HMAC 256/64)
 // for `data` under `alg` using the symmetric `key`.
 fn compute_mac(alg Algorithm, key Key, data []u8) ![]u8 {
+	return compute_mac_for_operation(alg, key, data, .mac_create)!
+}
+
+fn compute_mac_for_operation(alg Algorithm, key Key, data []u8, operation KeyOp) ![]u8 {
 	if !alg.is_mac() {
 		return UnsupportedAlgorithm{
 			algorithm: alg
 			context:   'MAC'
 		}
 	}
-	if key_alg := key.alg {
-		if key_alg != alg {
-			return AlgorithmMismatch{
-				expected: key_alg
-				got:      alg
-			}
-		}
-	}
+	key.check_algorithm(alg)!
+	key.check_operation(operation)!
 	if key.kty != .symmetric {
 		return error('cose: ${alg.name()} requires kty=Symmetric, got ${key.kty}')
 	}
 	k := key.k or { return error('cose: symmetric key missing k') }
+	minimum_key_size := match alg {
+		.hmac_256_64, .hmac_256_256 { 32 }
+		.hmac_384_384 { 48 }
+		.hmac_512_512 { 64 }
+		else { 0 }
+	}
+	if k.len < minimum_key_size {
+		return error('cose: ${alg.name()} requires a key of at least ${minimum_key_size} bytes, got ${k.len}')
+	}
 
 	tag := match alg {
 		.hmac_256_64, .hmac_256_256 {
@@ -60,7 +67,7 @@ fn compute_mac(alg Algorithm, key Key, data []u8) ![]u8 {
 // mac_verify checks that `tag` matches the MAC of `data` under `alg`
 // and `key`, using a constant-time comparison.
 fn mac_verify(alg Algorithm, key Key, data []u8, tag []u8) ! {
-	expected := compute_mac(alg, key, data)!
+	expected := compute_mac_for_operation(alg, key, data, .mac_verify)!
 	if !hmac.equal(expected, tag) {
 		return VerificationFailed{
 			algorithm: alg

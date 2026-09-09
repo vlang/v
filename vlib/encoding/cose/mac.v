@@ -217,7 +217,7 @@ pub fn MacMessage.decode(data []u8) !MacMessage {
 		}
 	}
 	header_count := u.unpack_array_header()!
-	if header_count != 5 {
+	if header_count != -1 && header_count != 5 {
 		return MalformedMessage{
 			reason: 'Mac array must have 5 elements, got ${header_count}'
 		}
@@ -235,7 +235,7 @@ pub fn MacMessage.decode(data []u8) !MacMessage {
 	tag := u.unpack_bytes()!
 
 	recipients_count := u.unpack_array_header()!
-	if recipients_count <= 0 {
+	if recipients_count == 0 {
 		return MalformedMessage{
 			reason: 'Mac requires at least one recipient, got ${recipients_count}'
 		}
@@ -245,9 +245,19 @@ pub fn MacMessage.decode(data []u8) !MacMessage {
 			reason: 'Mac claims ${recipients_count} recipients (over ${max_recipients}-entry sanity cap)'
 		}
 	}
-	mut recipients := []Recipient{cap: int(recipients_count)}
-	for _ in 0 .. recipients_count {
-		if u.unpack_array_header()! != 3 {
+	mut recipients := []Recipient{cap: if recipients_count == -1 { 1 } else { int(recipients_count) }}
+	for recipients_count == -1 || recipients.len < recipients_count {
+		if recipients_count == -1 && u.peek_break() {
+			u.expect_break()!
+			break
+		}
+		if recipients.len >= max_recipients {
+			return MalformedMessage{
+				reason: 'Mac has more than ${max_recipients} recipients'
+			}
+		}
+		recipient_header_count := u.unpack_array_header()!
+		if recipient_header_count != -1 && recipient_header_count != 3 {
 			return MalformedMessage{
 				reason: 'COSE_recipient array must have 3 elements'
 			}
@@ -256,12 +266,23 @@ pub fn MacMessage.decode(data []u8) !MacMessage {
 		r_protected := parse_protected(r_raw_protected)!
 		r_unprotected := parse_headers_value(u.unpack_value()!)!
 		ek := u.unpack_bytes()!
+		if recipient_header_count == -1 {
+			u.expect_break()!
+		}
 		recipients << Recipient{
 			protected:     r_protected
 			unprotected:   r_unprotected
 			encrypted_key: ek
 			raw_protected: r_raw_protected
 		}
+	}
+	if recipients.len == 0 {
+		return MalformedMessage{
+			reason: 'Mac requires at least one recipient, got 0'
+		}
+	}
+	if header_count == -1 {
+		u.expect_break()!
 	}
 	if !u.done() {
 		return MalformedMessage{

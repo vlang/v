@@ -85,14 +85,8 @@ fn sign_with_key(alg Algorithm, key Key, to_be_signed []u8) ![]u8 {
 			context:   'signing'
 		}
 	}
-	if key_alg := key.alg {
-		if key_alg != alg {
-			return AlgorithmMismatch{
-				expected: key_alg
-				got:      alg
-			}
-		}
-	}
+	key.check_algorithm(alg)!
+	key.check_operation(.sign)!
 	d := key.d or { return error('cose: signing requires a private key (missing d)') }
 
 	match alg {
@@ -143,14 +137,8 @@ fn verify_with_key(alg Algorithm, key Key, to_be_signed []u8, signature []u8) ! 
 			context:   'signature verification'
 		}
 	}
-	if key_alg := key.alg {
-		if key_alg != alg {
-			return AlgorithmMismatch{
-				expected: key_alg
-				got:      alg
-			}
-		}
-	}
+	key.check_algorithm(alg)!
+	key.check_operation(.verify)!
 	match alg {
 		.es256, .es384, .es512 {
 			params := check_ec_key(alg, key)!

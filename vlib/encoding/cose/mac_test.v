@@ -2,6 +2,7 @@
 module cose
 
 import encoding.base64
+import encoding.cbor
 
 fn test_mac_direct_recipient_roundtrip() {
 	k := base64.url_decode('hJtXIZ2uSN5kbQfbtTNWbpdmhkV8FJG-Onbc6mxCcYg')
@@ -87,4 +88,25 @@ fn test_mac_recipient_alg_direct_auto_added() {
 		}
 	}
 	assert found_direct
+}
+
+fn test_mac_decodes_indefinite_length_arrays() {
+	mut p := cbor.new_packer(cbor.EncodeOpts{})
+	p.pack_array_indef()!
+	p.pack_bytes([]u8{})
+	p.pack_value(Headers{}.to_value())!
+	p.pack_null()
+	p.pack_bytes([u8(1)])
+	p.pack_array_indef()!
+	p.pack_array_indef()!
+	p.pack_bytes([]u8{})
+	p.pack_value(Headers{}.to_value())!
+	p.pack_bytes([]u8{})
+	p.pack_break()!
+	p.pack_break()!
+	p.pack_break()!
+	msg := MacMessage.decode(p.bytes())!
+	assert msg.payload == none
+	assert msg.tag == [u8(1)]
+	assert msg.recipients.len == 1
 }

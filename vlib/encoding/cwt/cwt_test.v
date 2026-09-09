@@ -199,3 +199,32 @@ fn test_extra_int_claim_preserved_on_roundtrip() {
 	assert parsed.extra_int_claims.len == 1
 	assert parsed.extra_int_claims[0].label == 100
 }
+
+fn test_claims_set_rejects_duplicate_labels() {
+	for encoded in [
+		hex.decode('a2016161016162')!,
+		hex.decode('a2617800617801')!,
+	] {
+		if _ := ClaimsSet.decode(encoded) {
+			assert false, 'duplicate claim labels must be rejected'
+		} else {
+			assert err.msg().contains('duplicate claim label')
+		}
+	}
+}
+
+fn test_claims_set_rejects_fractional_numeric_date() {
+	// {4: 1.5}; the ClaimsSet i64 model cannot retain the fraction.
+	encoded := hex.decode('a104fb3ff8000000000000')!
+	if _ := ClaimsSet.decode(encoded) {
+		assert false, 'fractional NumericDate must not be truncated'
+	} else {
+		assert err.msg().contains('fractional NumericDate')
+	}
+}
+
+fn test_claims_set_accepts_integral_float_numeric_date() {
+	// {4: 1.0}
+	claims := ClaimsSet.decode(hex.decode('a104fb3ff0000000000000')!)!
+	assert claims.exp == ?i64(1)
+}

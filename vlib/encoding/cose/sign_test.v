@@ -2,6 +2,7 @@
 module cose
 
 import encoding.base64
+import encoding.cbor
 import encoding.hex
 
 const sign_p256_x = 'usWxHK2PmfnHKwXPS54m0kTcGJ90UiglWiGahtagnv8'
@@ -107,4 +108,24 @@ fn test_sign_verify_wrong_signer_fails() {
 	} else {
 		assert err is VerificationFailed
 	}
+}
+
+fn test_sign_decodes_indefinite_length_arrays() {
+	mut p := cbor.new_packer(cbor.EncodeOpts{})
+	p.pack_array_indef()!
+	p.pack_bytes([]u8{})
+	p.pack_value(Headers{}.to_value())!
+	p.pack_null()
+	p.pack_array_indef()!
+	p.pack_array_indef()!
+	p.pack_bytes([]u8{})
+	p.pack_value(Headers{}.to_value())!
+	p.pack_bytes([u8(1)])
+	p.pack_break()!
+	p.pack_break()!
+	p.pack_break()!
+	msg := SignMessage.decode(p.bytes())!
+	assert msg.payload == none
+	assert msg.signatures.len == 1
+	assert msg.signatures[0].signature == [u8(1)]
 }

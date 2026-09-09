@@ -100,8 +100,9 @@ Application-specific claims go into `extra_int_claims` /
 ## Time handling
 
 `exp`, `nbf` and `iat` are decoded into `i64` Unix seconds. Encoded
-output uses the integer form of NumericDate (RFC 8392 §3); the
-fractional form (CBOR float) is accepted on decode for interop.
+output uses the integer form of NumericDate (RFC 8392 §3). Integral
+CBOR floats are accepted on decode; fractional values are rejected
+because the claims model stores only whole seconds.
 
 `validate_time(now_unix i64)` does the standard `nbf` ≤ `now` < `exp`
 check and returns a `ClaimExpired` or `ClaimNotYetValid` typed error.

@@ -178,7 +178,7 @@ pub fn Sign1Message.decode(data []u8) !Sign1Message {
 		}
 	}
 	header_count := u.unpack_array_header()!
-	if header_count != 4 {
+	if header_count != -1 && header_count != 4 {
 		return MalformedMessage{
 			reason: 'Sign1 array must have 4 elements, got ${header_count}'
 		}
@@ -194,6 +194,9 @@ pub fn Sign1Message.decode(data []u8) !Sign1Message {
 		payload = u.unpack_bytes()!
 	}
 	signature := u.unpack_bytes()!
+	if header_count == -1 {
+		u.expect_break()!
+	}
 	if !u.done() {
 		return MalformedMessage{
 			reason: 'trailing bytes after Sign1'

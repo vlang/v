@@ -76,6 +76,12 @@ pub mut:
 
 	// Symmetric:
 	k ?[]u8
+
+mut:
+	// raw_algorithm preserves an unsupported label-3 value read from a
+	// COSE_Key.  It prevents a decoded constrained key from silently being
+	// treated as unconstrained while still allowing it to round-trip.
+	raw_algorithm ?i64
 }
 
 // Key.ec2_private builds an EC2 private key from raw coordinates and
@@ -146,6 +152,11 @@ pub fn (k Key) encode() ![]u8 {
 		pairs << cbor.MapPair{
 			key:   cbor.new_int(key_label_alg)
 			value: cbor.new_int(i64(alg))
+		}
+	} else if raw_algorithm := k.raw_algorithm {
+		pairs << cbor.MapPair{
+			key:   cbor.new_int(key_label_alg)
+			value: cbor.new_int(raw_algorithm)
 		}
 	}
 	if k.key_ops.len > 0 {
@@ -270,11 +281,10 @@ pub fn Key.decode(data []u8) !Key {
 						reason: 'alg is not int'
 					}
 				}
-				// Lenient: an unknown algorithm leaves `alg` as `none`
-				// so the rest of the key (kid, public material, …)
-				// remains usable. Symmetric with the Headers parser.
 				if alg := algorithm_from_int(code) {
 					out.alg = alg
+				} else {
+					out.raw_algorithm = code
 				}
 			}
 			key_label_key_ops {
@@ -420,4 +430,27 @@ pub fn Key.decode(data []u8) !Key {
 	}
 
 	return out
+}
+
+// check_algorithm allows keys without an algorithm restriction, enforces a
+// supported restriction, and rejects unsupported restrictions preserved by
+// Key.decode.
+fn (k Key) check_algorithm(alg Algorithm) ! {
+	if key_alg := k.alg {
+		if key_alg != alg {
+			return AlgorithmMismatch{
+				expected: key_alg
+				got:      alg
+			}
+		}
+	} else if raw_algorithm := k.raw_algorithm {
+		return error('cose: key constrains use to unsupported algorithm ${raw_algorithm}')
+	}
+}
+
+// check_operation enforces a non-empty key_ops restriction.
+fn (k Key) check_operation(required KeyOp) ! {
+	if k.key_ops.len > 0 && required !in k.key_ops {
+		return error('cose: key_ops does not permit ${required}')
+	}
 }

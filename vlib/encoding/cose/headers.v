@@ -61,6 +61,12 @@ pub mut:
 	extra_int_labels []HeaderEntry
 	// extra_text_labels carries text-labelled parameters (private use).
 	extra_text_labels []TextHeaderEntry
+
+mut:
+	// decoded labels retain presence information that typed fields cannot
+	// express, such as a present-but-empty crit array.
+	decoded_int_labels  []i64
+	decoded_text_labels []string
 }
 
 // HeaderEntry is one (int label, value) pair. The value is held as a
@@ -235,6 +241,7 @@ fn parse_headers_value(v cbor.Value) !Headers {
 					}
 				}
 				seen_int_labels << int_key
+				h.decoded_int_labels << int_key
 				match int_key {
 					label_alg {
 						code := pair.value.as_int() or {
@@ -326,6 +333,7 @@ fn parse_headers_value(v cbor.Value) !Headers {
 					}
 				}
 				seen_text_labels << str_key
+				h.decoded_text_labels << str_key
 				h.extra_text_labels << TextHeaderEntry{
 					label: str_key
 					value: pair.value
@@ -357,6 +365,20 @@ pub fn parse_protected(data []u8) !Headers {
 // and every label listed in `crit` must also be present in the protected
 // bucket.
 fn check_protected_headers(protected Headers, unprotected Headers) ! {
+	for label in int_header_labels(protected) {
+		if has_int_label(unprotected, label) {
+			return MalformedMessage{
+				reason: 'header label ${label} appears in both protected and unprotected buckets (RFC 9052 §3)'
+			}
+		}
+	}
+	for label in text_header_labels(protected) {
+		if has_text_label(unprotected, label) {
+			return MalformedMessage{
+				reason: 'header label "${label}" appears in both protected and unprotected buckets (RFC 9052 §3)'
+			}
+		}
+	}
 	if unprotected.critical.len > 0 {
 		return MalformedMessage{
 			reason: 'crit label must be in protected headers (RFC 9052 §3.1)'
@@ -392,6 +414,9 @@ fn check_critical(h Headers) ! {
 // has_int_label reports whether `h` already declares the given integer
 // label, either via a typed well-known field or via `extra_int_labels`.
 fn has_int_label(h Headers, label i64) bool {
+	if label in h.decoded_int_labels {
+		return true
+	}
 	match label {
 		label_alg {
 			if h.algorithm != none {
@@ -432,4 +457,42 @@ fn has_int_label(h Headers, label i64) bool {
 		}
 	}
 	return false
+}
+
+fn int_header_labels(h Headers) []i64 {
+	mut labels := h.decoded_int_labels.clone()
+	for label in [label_alg, label_crit, label_content_type, label_kid, label_iv,
+		label_partial_iv] {
+		if has_int_label(h, label) && label !in labels {
+			labels << label
+		}
+	}
+	for entry in h.extra_int_labels {
+		if entry.label !in labels {
+			labels << entry.label
+		}
+	}
+	return labels
+}
+
+fn has_text_label(h Headers, label string) bool {
+	if label in h.decoded_text_labels {
+		return true
+	}
+	for entry in h.extra_text_labels {
+		if entry.label == label {
+			return true
+		}
+	}
+	return false
+}
+
+fn text_header_labels(h Headers) []string {
+	mut labels := h.decoded_text_labels.clone()
+	for entry in h.extra_text_labels {
+		if entry.label !in labels {
+			labels << entry.label
+		}
+	}
+	return labels
 }

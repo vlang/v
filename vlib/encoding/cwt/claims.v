@@ -20,10 +20,9 @@ const claim_cti = i64(7)
 pub const tag_cwt = u64(61)
 
 // ClaimsSet is the V representation of a CWT Claims Set (RFC 8392 §3).
-// Time-valued claims (`exp`, `nbf`, `iat`) are stored as Unix seconds
-// (i64). RFC 8392 also allows fractional NumericDate via CBOR floats;
-// the encoder always emits the integer form (what every real-world
-// deployment uses) but the decoder accepts both.
+// Time-valued claims (`exp`, `nbf`, `iat`) are stored as whole Unix
+// seconds (i64). RFC 8392 also allows fractional NumericDate via CBOR
+// floats; the decoder accepts only floats that represent whole seconds.
 pub struct ClaimsSet {
 pub mut:
 	iss ?string
@@ -139,8 +138,14 @@ pub fn ClaimsSet.decode(data []u8) !ClaimsSet {
 		return error('cwt: claims set is not a CBOR map')
 	}
 	mut c := ClaimsSet{}
+	mut seen_int_claims := []i64{}
+	mut seen_text_claims := []string{}
 	for pair in m.pairs {
 		if int_key := pair.key.as_int() {
+			if int_key in seen_int_claims {
+				return error('cwt: duplicate claim label ${int_key}')
+			}
+			seen_int_claims << int_key
 			match int_key {
 				claim_iss {
 					c.iss = pair.value.as_string() or { return error('cwt: iss is not text') }
@@ -184,6 +189,10 @@ pub fn ClaimsSet.decode(data []u8) !ClaimsSet {
 				}
 			}
 		} else if str_key := pair.key.as_string() {
+			if str_key in seen_text_claims {
+				return error('cwt: duplicate claim label "${str_key}"')
+			}
+			seen_text_claims << str_key
 			c.extra_text_claims << TextClaimEntry{
 				label: str_key
 				value: pair.value
@@ -195,14 +204,18 @@ pub fn ClaimsSet.decode(data []u8) !ClaimsSet {
 	return c
 }
 
-// decode_numeric_date accepts the integer or float forms of NumericDate
-// (RFC 8392 §3) and returns Unix seconds as i64.
+// decode_numeric_date accepts integers and integral floats, returning whole
+// Unix seconds as i64. Fractional values cannot be represented without loss.
 fn decode_numeric_date(v cbor.Value) !i64 {
 	if i := v.as_int() {
 		return i
 	}
 	if f := v.as_float() {
-		return i64(f)
+		i := i64(f)
+		if f != f64(i) {
+			return error('cwt: fractional NumericDate cannot be represented as whole seconds')
+		}
+		return i
 	}
 	return error('cwt: NumericDate is neither integer nor float')
 }

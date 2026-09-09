@@ -200,7 +200,7 @@ pub fn SignMessage.decode(data []u8) !SignMessage {
 		}
 	}
 	header_count := u.unpack_array_header()!
-	if header_count != 4 {
+	if header_count != -1 && header_count != 4 {
 		return MalformedMessage{
 			reason: 'Sign array must have 4 elements, got ${header_count}'
 		}
@@ -217,7 +217,7 @@ pub fn SignMessage.decode(data []u8) !SignMessage {
 	}
 
 	signers_count := u.unpack_array_header()!
-	if signers_count <= 0 {
+	if signers_count == 0 {
 		return MalformedMessage{
 			reason: 'Sign requires at least one signature, got ${signers_count}'
 		}
@@ -227,9 +227,19 @@ pub fn SignMessage.decode(data []u8) !SignMessage {
 			reason: 'Sign claims ${signers_count} signatures (over ${max_signers}-entry sanity cap)'
 		}
 	}
-	mut signatures := []Signature{cap: int(signers_count)}
-	for _ in 0 .. signers_count {
-		if u.unpack_array_header()! != 3 {
+	mut signatures := []Signature{cap: if signers_count == -1 { 1 } else { int(signers_count) }}
+	for signers_count == -1 || signatures.len < signers_count {
+		if signers_count == -1 && u.peek_break() {
+			u.expect_break()!
+			break
+		}
+		if signatures.len >= max_signers {
+			return MalformedMessage{
+				reason: 'Sign has more than ${max_signers} signatures'
+			}
+		}
+		signer_header_count := u.unpack_array_header()!
+		if signer_header_count != -1 && signer_header_count != 3 {
 			return MalformedMessage{
 				reason: 'COSE_Signature array must have 3 elements'
 			}
@@ -241,12 +251,23 @@ pub fn SignMessage.decode(data []u8) !SignMessage {
 		s_protected := parse_protected(s_raw_protected)!
 		s_unprotected := parse_headers_value(u.unpack_value()!)!
 		sig := u.unpack_bytes()!
+		if signer_header_count == -1 {
+			u.expect_break()!
+		}
 		signatures << Signature{
 			protected:     s_protected
 			unprotected:   s_unprotected
 			signature:     sig
 			raw_protected: s_raw_protected
 		}
+	}
+	if signatures.len == 0 {
+		return MalformedMessage{
+			reason: 'Sign requires at least one signature, got 0'
+		}
+	}
+	if header_count == -1 {
+		u.expect_break()!
 	}
 	if !u.done() {
 		return MalformedMessage{

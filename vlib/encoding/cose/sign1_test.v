@@ -7,6 +7,7 @@
 module cose
 
 import encoding.base64
+import encoding.cbor
 import encoding.hex
 
 // EdDSA ed25519-sig-01 from cose-wg/Examples (Unlicense).
@@ -236,4 +237,40 @@ fn test_sign1_untagged_roundtrip() {
 	assert signed[0] == 0x84
 	got := verify1(signed, pub_key)!
 	assert got == 'payload'.bytes()
+}
+
+fn test_sign1_enforces_key_operations() {
+	x := hex.decode(eddsa_x_hex)!
+	d := hex.decode(eddsa_d_hex)!
+	mut signing_key := Key.okp_private(.ed25519, x, d)
+	signing_key.key_ops = [.verify]
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	if _ := sign1('payload'.bytes(), signing_key, protected: hp) {
+		assert false, 'key_ops without sign must reject signing'
+	} else {
+		assert err.msg().contains('key_ops')
+	}
+
+	signed := sign1('payload'.bytes(), Key.okp_private(.ed25519, x, d), protected: hp)!
+	mut verification_key := Key.okp_public(.ed25519, x)
+	verification_key.key_ops = [.sign]
+	if _ := verify1(signed, verification_key) {
+		assert false, 'key_ops without verify must reject verification'
+	} else {
+		assert err.msg().contains('key_ops')
+	}
+}
+
+fn test_sign1_decodes_indefinite_length_outer_array() {
+	mut p := cbor.new_packer(cbor.EncodeOpts{})
+	p.pack_array_indef()!
+	p.pack_bytes([]u8{})
+	p.pack_value(Headers{}.to_value())!
+	p.pack_null()
+	p.pack_bytes([u8(1)])
+	p.pack_break()!
+	msg := Sign1Message.decode(p.bytes())!
+	assert msg.payload == none
+	assert msg.signature == [u8(1)]
 }
