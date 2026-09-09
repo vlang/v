@@ -357,6 +357,17 @@ fn test_sign1_rejects_ed25519_public_key_mismatching_seed() {
 	key := Key.okp_private(.ed25519, []u8{len: 32}, d)
 	mut hp := Headers{}
 	hp.algorithm = .eddsa
+	if _ := key.encode() {
+		assert false, 'the key codec must reject inconsistent Ed25519 x/d material'
+	} else {
+		assert err.msg().contains('does not match private seed')
+	}
+	encoded := hex.decode('a401012006215820' + '00'.repeat(32) + '235820' + eddsa_d_hex)!
+	if _ := Key.decode(encoded) {
+		assert false, 'key decoding must reject inconsistent Ed25519 x/d material'
+	} else {
+		assert err.msg().contains('does not match private seed')
+	}
 	if _ := sign1('payload'.bytes(), key, protected: hp) {
 		assert false, 'Ed25519 x must correspond to d'
 	} else {
