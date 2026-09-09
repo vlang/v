@@ -70,3 +70,12 @@ fn test_indexed_lvalue_addresses_compare_addresses() {
 	assert &items[0] != &items[1]
 	assert &items[0] == &items[0]
 }
+
+fn test_dereferenced_lvalue_addresses_compare_addresses() {
+	a := Data{}
+	b := Data{}
+	p := &a
+	q := &b
+	assert &*p != &*q
+	assert &*p == &*p
+}

@@ -1053,6 +1053,13 @@ fn (t &Transformer) source_expr_is_plain_lvalue(id flat.NodeId) bool {
 	if node.kind == .ident {
 		return node.value.len > 0
 	}
+	if node.kind == .prefix {
+		if node.op != .mul || node.children_count != 1 {
+			return false
+		}
+		child_id := t.source_expr_child(id, node, 0) or { return false }
+		return t.source_expr_is_plain_lvalue(child_id)
+	}
 	if node.kind !in [.selector, .index, .paren] || node.children_count == 0 {
 		return false
 	}
