@@ -351,7 +351,7 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 		if !uses_absolute_form {
 			if host := req.header.get(.host) {
 				if host != '' {
-					authority = host
+					authority = host.trim_space()
 				}
 			}
 		}

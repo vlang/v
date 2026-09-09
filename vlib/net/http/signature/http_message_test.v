@@ -223,6 +223,15 @@ fn test_outgoing_request_components_match_transmitted_query() {
 	assert c.component_value('@query')! == '?q=a+b&flag&bare'
 }
 
+fn test_outgoing_request_components_trim_explicit_host_for_derived_values() {
+	mut req := build_request('https://url.example/path')
+	req.enable_http2 = false
+	req.header.set(.host, ' example.com ')
+	c := request_components(req, 'https', .outgoing)!
+	assert c.component_value('@authority')! == 'example.com'
+	assert c.component_value('@target-uri')! == 'https://example.com/path'
+}
+
 fn test_incoming_request_components_preserve_absolute_form() {
 	req := build_request('http://example.com/search?q=a+b')
 	c := request_components(req, 'http', .incoming)!
