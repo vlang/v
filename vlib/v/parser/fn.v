@@ -335,11 +335,9 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 					reduced := left.remove_par()
 					if reduced is ast.Ident && reduced.name == name {
 						info.directly_reassigned = true
-					} else if reduced is ast.PrefixExpr && reduced.op == .mul {
-						dereferenced := reduced.right.remove_par()
-						if dereferenced is ast.Ident && dereferenced.name == name {
-							info.directly_reassigned = true
-						}
+					} else if reduced is ast.PrefixExpr && reduced.op == .mul
+						&& is_receiver_pointer_alias(reduced.right, name, info.receiver_aliases) {
+						info.directly_reassigned = true
 					} else if reduced is ast.IndexExpr
 						&& is_receiver_pointer_alias(reduced.left, name, info.receiver_aliases) {
 						info.directly_reassigned = true

@@ -172,21 +172,28 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:219:18: err
   219 |     pointer_element.append_to_pointer_array(mut saved)
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   220 |     pointer_element.replace_through_pointer_index(PointerNode(Item{}))
-  221 |     bound_reader := pointer_element.return_bound_read_method()
+  221 |     pointer_element.replace_through_pointer_alias(PointerNode(Item{}))
 vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:220:18: error: cannot call pointer-receiver method `PointerNode.replace_through_pointer_index` through embedded interface `PointerElement` because it can replace its receiver
   218 |     mut saved := []&PointerNode{cap: 1}
   219 |     pointer_element.append_to_pointer_array(mut saved)
   220 |     pointer_element.replace_through_pointer_index(PointerNode(Item{}))
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  221 |     bound_reader := pointer_element.return_bound_read_method()
-  222 |     _ = bound_reader()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:223:18: error: cannot call pointer-receiver method `PointerNode.spawn_pointer_read` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  221 |     bound_reader := pointer_element.return_bound_read_method()
-  222 |     _ = bound_reader()
-  223 |     pointer_element.spawn_pointer_read()
+  221 |     pointer_element.replace_through_pointer_alias(PointerNode(Item{}))
+  222 |     bound_reader := pointer_element.return_bound_read_method()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:221:18: error: cannot call pointer-receiver method `PointerNode.replace_through_pointer_alias` through embedded interface `PointerElement` because it can replace its receiver
+  219 |     pointer_element.append_to_pointer_array(mut saved)
+  220 |     pointer_element.replace_through_pointer_index(PointerNode(Item{}))
+  221 |     pointer_element.replace_through_pointer_alias(PointerNode(Item{}))
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  222 |     bound_reader := pointer_element.return_bound_read_method()
+  223 |     _ = bound_reader()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:224:18: error: cannot call pointer-receiver method `PointerNode.spawn_pointer_read` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  222 |     bound_reader := pointer_element.return_bound_read_method()
+  223 |     _ = bound_reader()
+  224 |     pointer_element.spawn_pointer_read()
       |                     ~~~~~~~~~~~~~~~~~~~~
-  224 | }
-  225 |
+  225 | }
+  226 |
 vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:215:18: error: cannot call pointer-receiver method `PointerNode.pass_conditional_pointer` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
   213 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
   214 |     pointer_element.pass_local_holder_mut()
@@ -201,10 +208,10 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:216:18: err
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   217 |     _ = pointer_element.return_pointer_array()
   218 |     mut saved := []&PointerNode{cap: 1}
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:221:34: error: cannot call pointer-receiver method `PointerNode.return_bound_read_method` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
-  219 |     pointer_element.append_to_pointer_array(mut saved)
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:222:34: error: cannot call pointer-receiver method `PointerNode.return_bound_read_method` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
   220 |     pointer_element.replace_through_pointer_index(PointerNode(Item{}))
-  221 |     bound_reader := pointer_element.return_bound_read_method()
+  221 |     pointer_element.replace_through_pointer_alias(PointerNode(Item{}))
+  222 |     bound_reader := pointer_element.return_bound_read_method()
       |                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~
-  222 |     _ = bound_reader()
-  223 |     pointer_element.spawn_pointer_read()
+  223 |     _ = bound_reader()
+  224 |     pointer_element.spawn_pointer_read()
