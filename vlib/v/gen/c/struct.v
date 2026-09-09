@@ -40,9 +40,13 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 
 		g.write(s)
 	}
-	unalised_typ := g.table.unaliased_type(base_node_typ)
-	styp := if g.table.sym(unalised_typ).language == .v {
-		g.styp(unalised_typ).replace('*', '')
+	unaliased_typ := g.table.unaliased_type(base_node_typ)
+	styp := if base_node_typ.has_option_or_result() {
+		// unaliased_type() drops option/result. For `?Arr{}` (Arr = [N]T) that would
+		// make the option tmp use the wrong C type (plain fixed array).
+		g.styp(base_node_typ)
+	} else if g.table.sym(unaliased_typ).language == .v {
+		g.styp(unaliased_typ).replace('*', '')
 	} else {
 		g.styp(base_node_typ)
 	}

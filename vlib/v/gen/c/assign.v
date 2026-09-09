@@ -1408,7 +1408,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			ast.SelectorExpr,
 			ast.Ident,
 			ast.CallExpr,
-		])) && !((g.pref.translated || g.file.is_translated) && unaliased_left_sym.kind != .array_fixed)
+		]) || (val is ast.StructInit && !is_decl && !blank_assign)) && !((g.pref.translated
+			|| g.file.is_translated) && unaliased_left_sym.kind != .array_fixed)
 		g.is_assign_lhs = true
 		g.assign_op = node.op
 
@@ -1500,6 +1501,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.writeln(';}')
 			}
 		} else if node.op == .assign && !is_boxed_fixed_array_val
+			&& !(left is ast.IndexExpr && left.is_index_operator)
 			&& (is_fixed_array_init || is_fixed_array_var || (unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr)) {
 			// Fixed arrays
 			if unaliased_left_sym.kind != .array_fixed && unaliased_right_sym.kind == .array_fixed && (g.pref.translated || g.file.is_translated) {
@@ -1509,12 +1511,47 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.expr(left)
 				g.write(' = ')
 				g.expr(val)
-			} else if is_fixed_array_init && var_type.has_flag(.option) {
-				g.expr(left)
-				g.write(' = ')
-				g.expr_with_opt(val, val_type, var_type)
-			} else if unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr {
-				if var_type.has_flag(.option) {
+			} else if var_type.has_flag(.option) {
+				resolved_val_type := g.resolved_expr_type(val, val_type)
+				actual_val_type := if resolved_val_type != 0 {
+					g.unwrap_generic(g.recheck_concrete_type(resolved_val_type))
+				} else {
+					val_type
+				}
+				if left is ast.IndexExpr {
+					// Materialize the complete option before generating an indexed LHS.
+					// Array setters are emitted as an open `array_set(...)` call, so
+					// expr_with_tmp_var() cannot safely pull the partial line aside.
+					g.is_assign_lhs = false
+					tmp_var := g.new_tmp_var()
+					g.expr_with_tmp_var(val, actual_val_type, var_type, tmp_var, false)
+					left_container_type := g.unwrap_generic(g.recheck_concrete_type(left.left_type))
+					left_container_sym := g.table.final_sym(left_container_type)
+					if left_container_sym.kind == .array {
+						// The checked array getter returns the element storage, allowing the
+						// already wrapped option to be assigned without opening array_set().
+						g.is_assign_lhs = false
+						g.expr(left)
+						g.write(' = ${tmp_var}')
+					} else {
+						g.is_assign_lhs = true
+						g.expr(left)
+						g.write(' = ${tmp_var}')
+					}
+					g.is_assign_lhs = false
+				} else if is_fixed_array_init || val is ast.StructInit
+					|| actual_val_type.has_flag(.option) {
+					// `val` is either an inline literal that needs
+					// constructing in place (`Arr{}`, `[N]T{...}!`), or it
+					// already produces a full, matching option struct
+					// (`?Arr{}`, `?Arr(none)`, or a plain ident/call/cast of
+					// option type).
+					g.expr(left)
+					g.write(' = ')
+					g.expr_with_opt(val, actual_val_type, var_type)
+				} else {
+					// `val` produces a plain (non-option) fixed array
+					// value: Ident, CallExpr, SelectorExpr, CastExpr, etc.
 					g.expr(left)
 					g.writeln('.state = 0;')
 					g.write('memcpy(')
@@ -1522,17 +1559,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.write('.data, ')
 					g.expr(val)
 					g.writeln(', sizeof(${g.styp(var_type.clear_flag(.option))}));')
-				} else {
-					g.write('memcpy(')
-					g.expr(left)
-					g.write(', ')
-					g.expr(val)
-					g.writeln(', sizeof(${g.styp(var_type)}));')
 				}
-			} else if is_fixed_array_var && var_type.has_flag(.option) {
+			} else if unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr {
+				g.write('memcpy(')
 				g.expr(left)
-				g.write(' = ')
-				g.expr_with_opt(val, val_type, var_type)
+				g.write(', ')
+				g.expr(val)
+				g.writeln(', sizeof(${g.styp(var_type)}));')
 			} else {
 				arr_typ := styp.trim('*')
 				old_is_assign_lhs := g.is_assign_lhs
