@@ -504,6 +504,30 @@ fn test_key_codec_rejects_invalid_ed25519_widths() {
 	}
 }
 
+fn test_key_codec_rejects_invalid_ec2_private_scalar_width() {
+	key := Key.ec2_private(.p_256, []u8{len: 32}, []u8{len: 32}, [u8(1)])
+	if _ := key.encode() {
+		assert false, 'EC2 private scalar must use the curve width'
+	} else {
+		assert err.msg().contains('private scalar d must be 32 bytes')
+	}
+	encoded := hex.decode('a501022001215820' + '11'.repeat(32) + '225820' + '22'.repeat(32) +
+		'234101')!
+	if _ := Key.decode(encoded) {
+		assert false, 'decoded EC2 private scalar must use the curve width'
+	} else {
+		assert err.msg().contains('private scalar d must be 32 bytes')
+	}
+}
+
+fn test_key_decode_rejects_unsupported_rsa_keys() {
+	if _ := Key.decode(hex.decode('a10103')!) {
+		assert false, 'unsupported RSA keys must not decode after discarding their parameters'
+	} else {
+		assert err.msg().contains('RSA keys are not supported')
+	}
+}
+
 fn test_sign1_decodes_indefinite_length_outer_array() {
 	mut p := cbor.new_packer(cbor.EncodeOpts{})
 	p.pack_array_indef()!

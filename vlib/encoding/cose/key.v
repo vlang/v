@@ -144,6 +144,7 @@ pub fn Key.symmetric(k []u8) Key {
 // encode returns the canonical CBOR encoding of the COSE_Key.
 pub fn (k Key) encode() ![]u8 {
 	k.validate_curve_type()!
+	k.validate_ec2_private_width()!
 	k.validate_okp_widths()!
 	mut pairs := []cbor.MapPair{cap: 8}
 	pairs << cbor.MapPair{
@@ -501,6 +502,7 @@ pub fn Key.decode(data []u8) !Key {
 				}
 			}
 			out.validate_curve_type()!
+			out.validate_ec2_private_width()!
 			if crv := out.crv {
 				width := ec2_coordinate_width(crv)!
 				x := out.x or { return error('unreachable') }
@@ -521,7 +523,9 @@ pub fn Key.decode(data []u8) !Key {
 			out.validate_curve_type()!
 			out.validate_okp_widths()!
 		}
-		.rsa {}
+		.rsa {
+			return error('cose: RSA keys are not supported in this module version')
+		}
 	}
 
 	return out
@@ -577,6 +581,19 @@ fn (k Key) validate_okp_widths() ! {
 	if d := k.d {
 		if d.len != 32 {
 			return error('cose: Ed25519 private seed d must be 32 bytes, got ${d.len}')
+		}
+	}
+}
+
+fn (k Key) validate_ec2_private_width() ! {
+	if k.kty != .ec2 {
+		return
+	}
+	crv := k.crv or { return }
+	if d := k.d {
+		width := ec2_coordinate_width(crv)!
+		if d.len != width {
+			return error('cose: EC2 private scalar d must be ${width} bytes for curve ${crv}, got ${d.len}')
 		}
 	}
 }
