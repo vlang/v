@@ -841,6 +841,37 @@ fn test_h2_server_trailers_only_response_is_single_frame() {
 	assert fields.any(it.name == 'grpc-message' && it.value == 'not found')
 }
 
+struct MixedCaseResponseHeaderHandler {}
+
+fn (mut h MixedCaseResponseHeaderHandler) handle(req Request) Response {
+	mut headers := new_header()
+	headers.add_custom('X-Foo', 'a') or {}
+	headers.add_custom('x-foo', 'b') or {}
+	return Response{
+		status_code: 200
+		header:      headers
+	}
+}
+
+fn test_h2_server_deduplicates_response_header_name_casing() {
+	mut client_end, mut server_end := new_pipe()
+	mut handler_iface := Handler(MixedCaseResponseHeaderHandler{})
+	spawn fn [mut server_end, mut handler_iface] () {
+		mut transport := H2Transport(server_end)
+		serve_h2_conn(mut transport, mut handler_iface) or {}
+	}()
+
+	mut conn := new_h2_conn(client_end)
+	resp := conn.do(H2ClientRequest{ authority: 'h.example' }) or {
+		assert false, 'client do() failed: ${err}'
+		return
+	}
+	values := resp.headers.filter(it.name == 'x-foo')
+	assert values.len == 2
+	assert values[0].value == 'a'
+	assert values[1].value == 'b'
+}
+
 struct FilteredTrailerHandler {}
 
 fn (mut h FilteredTrailerHandler) handle(req Request) Response {

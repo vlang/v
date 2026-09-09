@@ -83,7 +83,19 @@ fn test_delete_header() {
 	mut r := new_request(.get, '', '')
 	r.header.set(.authorization, 'foo')
 	r.header.delete(.authorization)
-	assert r.header.get(.authorization)? == ''
+	if _ := r.header.get(.authorization) {
+		assert false, 'a deleted header must be absent'
+	}
+}
+
+fn test_render_omits_deleted_header_slots() {
+	mut h := new_header()
+	h.add_custom('X-Test', 'first')!
+	h.add_custom('X-Test', 'second')!
+	h.delete_custom('X-Test')
+	assert h.render(HeaderRenderConfig{}) == ''
+	h.add_custom('X-Empty', '')!
+	assert h.render(HeaderRenderConfig{}) == 'X-Empty: \r\n'
 }
 
 fn test_custom_header() {
@@ -95,6 +107,7 @@ fn test_custom_header() {
 	assert h.custom_values('ABC') == ['dEf', 'GhI']
 	assert h.custom_values('abc') == ['dEf', 'GhI']
 	assert h.keys() == ['AbC', 'aBc']
+	assert h.unique_keys() == ['AbC']
 	h.delete_custom('AbC')
 	h.delete_custom('aBc')
 

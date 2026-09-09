@@ -954,7 +954,7 @@ fn (mut c H2ServerConn) build_request(s &H2ServerStream) !Request {
 fn (mut c H2ServerConn) send_response(stream_id u32, resp Response, mut handler Handler) ! {
 	status := if resp.status_code == 0 { 200 } else { resp.status_code }
 	mut fields := [H2HeaderField{':status', status.str()}]
-	for key in resp.header.keys() {
+	for key in resp.header.unique_keys() {
 		lkey := key.to_lower()
 		// Drop hop-by-hop headers; HTTP/2 forbids them (RFC 9113 §8.2.2).
 		if lkey in h2_conn_specific_headers {

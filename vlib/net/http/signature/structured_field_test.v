@@ -1,0 +1,489 @@
+// vtest build: present_openssl? && !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
+// Tests for the small RFC 8941 subset implemented in
+// `structured_field.v`. We don't test general SF parsing - only what
+// HTTP signatures actually use - and pin the output bytes that
+// matter for interop.
+module signature
+
+fn test_serialize_inner_list_quotes_each_item() {
+	got := serialize_inner_list(['@method', 'date', '@path'])!
+	assert got == '("@method" "date" "@path")'
+}
+
+fn test_serialize_inner_list_handles_empty() {
+	assert serialize_inner_list([]string{})! == '()'
+}
+
+fn test_serialize_params_keeps_input_order() {
+	pairs := [
+		ParamPair{
+			name:  'created'
+			value: i64(1)
+		},
+		ParamPair{
+			name:  'keyid'
+			value: 'k1'
+		},
+	]
+	got := serialize_params(pairs)!
+	assert got == ';created=1;keyid="k1"'
+}
+
+fn test_serialize_params_escapes_quotes_in_strings() {
+	pairs := [
+		ParamPair{
+			name:  'tag'
+			value: 'has"quote'
+		},
+	]
+	assert serialize_params(pairs)! == ';tag="has\\"quote"'
+}
+
+fn test_serialize_params_emits_boolean_short_form() {
+	pairs := [
+		ParamPair{
+			name:  'flag'
+			value: true
+		},
+		ParamPair{
+			name:  'other'
+			value: false
+		},
+	]
+	assert serialize_params(pairs)! == ';flag=?1;other=?0'
+}
+
+fn test_serialize_params_rejects_out_of_range_integers() {
+	for value in [i64(1_000_000_000_000_000), i64(-1_000_000_000_000_000)] {
+		if _ := serialize_params([
+			ParamPair{
+				name:  'created'
+				value: value
+			},
+		])
+		{
+			assert false, 'Structured Field integers are limited to 15 digits'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+}
+
+fn test_serialize_params_rejects_control_bytes() {
+	pairs := [
+		ParamPair{
+			name:  'keyid'
+			value: 'safe\r\nInjected: true'
+		},
+	]
+	if _ := serialize_params(pairs) {
+		assert false, 'control bytes must not be serialized into a Structured Field string'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_serialize_params_rejects_invalid_names() {
+	pairs := [
+		ParamPair{
+			name:  'safe\r\nInjected'
+			value: true
+		},
+	]
+	if _ := serialize_params(pairs) {
+		assert false, 'parameter names must use the Structured Field key grammar'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_parse_signature_input_single_entry() {
+	src := 'sig1=("@method" "host");created=1618884473;keyid="my-key"'
+	entries := parse_signature_input(src)!
+	assert entries.len == 1
+	e := entries[0]
+	assert e.label == 'sig1'
+	assert e.components == ['@method', 'host']
+	assert e.params['created'] or { ParamValue(i64(0)) } == ParamValue(i64(1618884473))
+	assert e.params['keyid'] or { ParamValue('') } == ParamValue('my-key')
+}
+
+fn test_parse_signature_input_requires_inner_list_whitespace() {
+	if _ := parse_signature_input('sig1=("@method""host")') {
+		assert false, 'inner-list items must be separated by SP'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_parse_signature_input_rejects_inner_list_tab_padding() {
+	if _ := parse_signature_input('sig1=(\t"@method")') {
+		assert false, 'inner-list padding must use SP, not HTAB'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_parse_signature_input_rejects_unsupported_component_parameters() {
+	if _ := parse_signature_input('sig1=("example-dict";key="a")') {
+		assert false, 'unsupported covered-component parameters must not be discarded'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_parse_signature_input_rejects_duplicate_signature_parameters() {
+	if _ := parse_signature_input('sig1=("@method");expires=1;expires=9999999999') {
+		assert false, 'duplicate signature parameters must be rejected'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_parse_signature_input_rejects_whitespace_after_parameter_delimiter() {
+	for value in ['sig1=("@method"); created=1', 'sig1=("@method");\tcreated=1'] {
+		if _ := parse_signature_input(value) {
+			assert false, 'a parameter key must immediately follow its semicolon'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+}
+
+fn test_parse_signature_input_accepts_extension_bare_item_types() {
+	src := 'sig1=("@method");token=alpha/one;bytes=:YQ==:;decimal=1.25'
+	entries := parse_signature_input(src)!
+	assert entries.len == 1
+	for name in ['token', 'bytes', 'decimal'] {
+		value := entries[0].params[name] or { panic('missing extension parameter ${name}') }
+		assert value is ExtensionParamValue
+	}
+	assert entries[0].signature_params_value == '("@method");token=alpha/one;bytes=:YQ==:;decimal=1.25'
+}
+
+fn test_verify_accepts_extension_signature_parameters() {
+	c := Components{
+		method: 'GET'
+	}
+	key := Key.hmac_sha256('shared-secret'.bytes())!
+	params := '("@method");token=alpha/one;bytes=:YQ==:;decimal=1.25'
+	base := '"@method": GET\n"@signature-params": ${params}'
+	sig := sign_base(base.bytes(), key)!
+	verify(c, 'sig1=${params}', signature_header_value('sig1', sig)!, 'sig1', key)!
+}
+
+fn test_serialize_extension_signature_parameter() {
+	got := serialize_params([
+		ParamPair{
+			name:  'ext'
+			value: ExtensionParamValue{
+				raw: 'alpha/one'
+			}
+		},
+	])!
+	assert got == ';ext=alpha/one'
+}
+
+fn test_parse_signature_input_rejects_out_of_range_integers() {
+	for value in ['1000000000000000', '-1000000000000000'] {
+		if _ := parse_signature_input('sig1=("@method");created=${value}') {
+			assert false, 'parsed Structured Field integers are limited to 15 digits'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+}
+
+fn test_parse_signature_input_rejects_invalid_string_bytes() {
+	for value in ['bad\rvalue', 'bad\x7fvalue', 'café'] {
+		if _ := parse_signature_input('sig1=("@method");keyid="${value}"') {
+			assert false, 'Structured Field strings must contain only SP and visible ASCII bytes'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+}
+
+fn test_sign_and_verify_reject_invalid_signature_time_order() {
+	c := Components{
+		method: 'GET'
+	}
+	key := Key.hmac_sha256('shared-secret'.bytes())!
+	p := SignatureParams{
+		components: ['@method']
+		created:    2
+		expires:    2
+	}
+	if _ := sign(c, p, key, 'sig1') {
+		assert false, 'expires must be later than created when signing'
+	} else {
+		assert err is MalformedMessage
+	}
+	if _ := verify(c, 'sig1=("@method");created=2;expires=1', 'sig1=:AA==:', 'sig1', key) {
+		assert false, 'expires must be later than created when verifying'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_parse_signature_input_multiple_entries() {
+	src := 'sig-a=("@method");created=1, sig-b=("date" "@authority");keyid="k"'
+	entries := parse_signature_input(src)!
+	assert entries.len == 2
+	assert entries[0].label == 'sig-a'
+	assert entries[0].components == ['@method']
+	assert entries[1].label == 'sig-b'
+	assert entries[1].components == ['date', '@authority']
+}
+
+fn test_parsers_reject_duplicate_labels() {
+	if _ := parse_signature_input('sig1=("@method"), sig1=("@path")') {
+		assert false, 'Signature-Input must reject duplicate dictionary labels'
+	} else {
+		assert err is MalformedMessage
+	}
+	if _ := parse_signature('sig1=:YQ==:, sig1=:Yg==:') {
+		assert false, 'Signature must reject duplicate dictionary labels'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_parse_signature_returns_decoded_bytes() {
+	src := 'sig1=:cGF5bG9hZA==:'
+	parsed := parse_signature(src)!
+	assert parsed.len == 1
+	bytes := parsed['sig1'] or { []u8{} }
+	assert bytes.bytestr() == 'payload'
+}
+
+fn test_dictionary_parsers_reject_trailing_commas() {
+	if _ := parse_signature_input('sig1=("@method"), ') {
+		assert false, 'Signature-Input must reject a trailing dictionary comma'
+	} else {
+		assert err is MalformedMessage
+	}
+	if _ := parse_signature('sig1=:YQ==:, ') {
+		assert false, 'Signature must reject a trailing dictionary comma'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_parse_signature_rejects_invalid_base64() {
+	for value in ['!', 'YQ=', 'YQ===', 'Y=Q=', 'Zh=='] {
+		if _ := parse_signature('sig1=:${value}:') {
+			assert false, 'Signature must reject invalid or non-canonical base64 "${value}"'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+}
+
+fn test_parse_signature_input_rejects_uppercase_label() {
+	if _ := parse_signature_input('Sig1=()') {
+		assert false, 'uppercase label must be rejected by SF parser'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_parse_signature_input_rejects_uppercase_http_field_component() {
+	if _ := parse_signature_input('sig1=("Content-Type")') {
+		assert false, 'HTTP field component identifiers must be lowercase'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_parse_signature_input_preserves_signature_params_value() {
+	src := 'sig1=("@method");created=1618884473;keyid="my-key"'
+	entries := parse_signature_input(src)!
+	// The verifier replays this verbatim into the signature base so
+	// it MUST equal the input substring (including the inner list).
+	assert entries[0].signature_params_value == '("@method");created=1618884473;keyid="my-key"'
+}
+
+fn test_verify_accepts_non_canonical_param_order() {
+	// External signers might emit `;keyid=...;created=...` (keyid
+	// before created). Our re-canonicalised order is the opposite, so
+	// without the verbatim replay the bases would differ. Use HMAC so
+	// we can synthesise a wire signature ourselves.
+	c := Components{
+		method: 'POST'
+	}
+	key := Key.hmac_sha256('shared-secret'.bytes())!
+	// Hand-build the base with keyid first, sign it, then verify
+	// using the same wire order.
+	base := '"@method": POST\n"@signature-params": ("@method");keyid="k1";created=42'
+	sig := sign_base(base.bytes(), key)!
+	sig_input := 'sig1=("@method");keyid="k1";created=42'
+	sig_header := signature_header_value('sig1', sig)!
+	verify(c, sig_input, sig_header, 'sig1', key)!
+}
+
+fn test_public_header_serializers_reject_invalid_labels() {
+	p := SignatureParams{
+		components: ['@method']
+	}
+	if _ := signature_input_value('safe\r\nInjected', p) {
+		assert false, 'Signature-Input labels must use the Structured Field key grammar'
+	} else {
+		assert err is MalformedMessage
+	}
+	if _ := signature_header_value('safe\r\nInjected', 'signature'.bytes()) {
+		assert false, 'Signature labels must use the Structured Field key grammar'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_public_header_serializers_accept_dotted_labels() {
+	p := SignatureParams{
+		components: ['@method']
+	}
+	assert signature_input_value('sig.v1', p)! == 'sig.v1=("@method")'
+	assert signature_header_value('sig.v1', 'signature'.bytes())!.starts_with('sig.v1=:')
+}
+
+fn test_verify_rejects_non_integer_expires() {
+	c := Components{
+		method: 'GET'
+	}
+	key := Key.hmac_sha256('shared-secret'.bytes())!
+	if _ := verify(c, 'sig1=("@method");expires="1"', 'sig1=:AA==:', 'sig1', key,
+		now_unix: 2
+	)
+	{
+		assert false, 'expires must be an Integer'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_signature_base_string_rejects_duplicate_components() {
+	c := Components{
+		method: 'GET'
+		fields: {
+			'host': ['example.com']
+		}
+	}
+	p := SignatureParams{
+		components: ['@method', '@method']
+	}
+	if _ := signature_base_string(c, p) {
+		assert false, 'duplicate components must error'
+	} else {
+		assert err is MalformedMessage
+		assert err.msg().contains('duplicate')
+	}
+}
+
+fn test_signature_base_string_normalizes_field_component_names() {
+	c := Components{
+		fields: {
+			'content-type': ['application/json']
+		}
+	}
+	p := SignatureParams{
+		components: ['Content-Type']
+	}
+	base := signature_base_string(c, p)!
+	assert base.starts_with('"content-type": application/json\n')
+	assert base.ends_with('"@signature-params": ("content-type")')
+	assert serialize_signature_params(p)! == '("content-type")'
+
+	duplicate := SignatureParams{
+		components: ['Content-Type', 'content-type']
+	}
+	if _ := signature_base_string(c, duplicate) {
+		assert false, 'component names that collide after normalization must be rejected'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_signature_base_string_errors_on_missing_field() {
+	c := Components{
+		method: 'GET'
+	}
+	p := SignatureParams{
+		components: ['@method', 'date']
+	}
+	if _ := signature_base_string(c, p) {
+		assert false, 'missing component must error'
+	} else {
+		assert err is MalformedMessage
+		assert err.msg().contains('"date"')
+	}
+}
+
+fn test_components_lowercases_field_names_and_adds_in_order() {
+	mut c := Components{}
+	c.add_field('Accept', 'text/html')
+	c.add_field('accept', 'application/json')
+	values := c.fields['accept']
+	assert values.len == 2
+	assert values[0] == 'text/html'
+	assert values[1] == 'application/json'
+}
+
+fn test_field_value_joins_multi_value_with_comma_space() {
+	c := Components{
+		fields: {
+			'accept': ['text/html', 'application/json']
+		}
+	}
+	p := SignatureParams{
+		components: ['accept']
+	}
+	got := signature_base_string(c, p)!
+	assert got.starts_with('"accept": text/html, application/json\n')
+}
+
+fn test_field_value_trims_ows() {
+	c := Components{
+		fields: {
+			'foo': ['  hello   ', '\tworld\t']
+		}
+	}
+	p := SignatureParams{
+		components: ['foo']
+	}
+	got := signature_base_string(c, p)!
+	assert got.starts_with('"foo": hello, world\n')
+}
+
+fn test_query_with_leading_question_mark_is_preserved() {
+	c := Components{
+		query: '?a=1'
+	}
+	p := SignatureParams{
+		components: ['@query']
+	}
+	got := signature_base_string(c, p)!
+	assert got.starts_with('"@query": ?a=1\n')
+}
+
+fn test_empty_query_emits_single_question_mark() {
+	c := Components{
+		query: ''
+	}
+	p := SignatureParams{
+		components: ['@query']
+	}
+	got := signature_base_string(c, p)!
+	// RFC 9421 §2.2.7: empty query is the single character "?".
+	assert got.starts_with('"@query": ?\n')
+}
+
+fn test_authority_is_lowercased() {
+	c := Components{
+		authority: 'EXAMPLE.com'
+	}
+	p := SignatureParams{
+		components: ['@authority']
+	}
+	got := signature_base_string(c, p)!
+	assert got.starts_with('"@authority": example.com\n')
+}

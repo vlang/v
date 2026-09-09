@@ -1,0 +1,31 @@
+{
+   "title": "RFC 9421 §B.2.6 — Signing a Request Using ed25519",
+   "input": {
+      "method": "POST",
+      "path": "/foo",
+      "authority": "example.com",
+      "fields": {
+         "date": "Tue, 20 Apr 2021 02:07:55 GMT",
+         "content-type": "application/json",
+         "content-length": "18"
+      },
+      "components": ["date", "@method", "@path", "@authority", "content-type", "content-length"],
+      "params": {
+         "created": 1618884473,
+         "keyid": "test-key-ed25519"
+      },
+      "label": "sig-b26",
+      "key": {
+         "alg": "ed25519",
+         "d_b64u": "n4Ni-HpISpVObnQMW0wOhCKROaIKqKtW_2ZYb2p9KcU",
+         "x_b64u": "JrQLj5P_89iXES9-vFgrIy29clF9CC_oPPsw3c5D0bs"
+      }
+   },
+   "intermediates": {
+      "signature_base": "\"date\": Tue, 20 Apr 2021 02:07:55 GMT\n\"@method\": POST\n\"@path\": /foo\n\"@authority\": example.com\n\"content-type\": application/json\n\"content-length\": 18\n\"@signature-params\": (\"date\" \"@method\" \"@path\" \"@authority\" \"content-type\" \"content-length\");created=1618884473;keyid=\"test-key-ed25519\""
+   },
+   "output": {
+      "signature_input": "sig-b26=(\"date\" \"@method\" \"@path\" \"@authority\" \"content-type\" \"content-length\");created=1618884473;keyid=\"test-key-ed25519\"",
+      "signature": "sig-b26=:wqcAqbmYJ2ji2glfAMaRy4gruYYnx2nEFN2HN6jrnDnQCK1u02Gb04v9EDgwUPiu4A0w6vuQv5lIp5WPpBKRCw==:"
+   }
+}

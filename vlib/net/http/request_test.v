@@ -51,6 +51,12 @@ fn test_parse_request_two_headers() {
 	assert req.header.custom_values('Test2') == ['B']
 }
 
+fn test_parse_request_preserves_present_empty_header() {
+	mut reader_ := reader('GET / HTTP/1.1\r\nHost: example.com\r\nX-Empty:\r\n\r\n')
+	req := http.parse_request(mut reader_) or { panic('did not parse: ${err}') }
+	assert req.header.custom_values('X-Empty') == ['']
+}
+
 fn test_parse_request_two_header_values() {
 	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a; b\r\nTest2: c\r\nTest2: d\r\n\r\n')
 	req := http.parse_request(mut reader_) or { panic('did not parse: ${err}') }
@@ -285,6 +291,11 @@ fn test_parse_request_head_str_post_with_headers() {
 	assert req.version == .v1_1
 	assert req.host == 'test.com'
 	assert req.header.custom_values('Content-Type') == ['application/json']
+}
+
+fn test_parse_request_head_str_preserves_present_empty_header() {
+	req := http.parse_request_head_str('GET / HTTP/1.1\r\nHost: example.com\r\nX-Empty:\r\n\r\n')!
+	assert req.header.custom_values('X-Empty') == ['']
 }
 
 fn test_parse_request_head_str_post_with_headers_and_body() {

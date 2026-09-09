@@ -27,6 +27,19 @@ fn test_to_h2_request_lowercases_and_keeps_custom_headers() {
 	h2req := req.to_h2_request(.get, 'h.example', '/', '', h)
 	assert h2req.headers.any(it.name == 'accept' && it.value == 'application/json')
 	assert h2req.headers.any(it.name == 'content-type' && it.value == 'text/plain')
+	assert h2req.headers.any(it.name == 'content-length' && it.value == '0')
+}
+
+fn test_to_h2_request_deduplicates_header_name_casing() {
+	mut h := new_header()
+	h.add_custom('X-Foo', 'a')!
+	h.add_custom('x-foo', 'b')!
+	req := Request{}
+	h2req := req.to_h2_request(.get, 'h.example', '/', '', h)
+	values := h2req.headers.filter(it.name == 'x-foo')
+	assert values.len == 2
+	assert values[0].value == 'a'
+	assert values[1].value == 'b'
 }
 
 fn test_to_h2_request_strips_hop_by_hop_and_host() {
@@ -71,6 +84,16 @@ fn test_to_h2_request_collapses_cookies() {
 	// Both the request cookie map and the Cookie header value are present.
 	assert cookie[0].value.contains('sid=abc')
 	assert cookie[0].value.contains('a=1')
+}
+
+fn test_to_h2_request_preserves_present_empty_cookie_field() {
+	mut h := new_header()
+	h.add(.cookie, '')
+	req := Request{}
+	h2req := req.to_h2_request(.get, 'h.example', '/', '', h)
+	cookie := h2req.headers.filter(it.name == 'cookie')
+	assert cookie.len == 1
+	assert cookie[0].value == ''
 }
 
 fn test_h2_response_to_http() {

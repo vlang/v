@@ -9,3 +9,44 @@ fn test_build_request_headers_with_empty_body_adds_content_length_zero() {
 	headers := req.build_request_headers(.post, 'localhost', 80, '/')
 	assert headers.contains('Content-Length: 0\r\n')
 }
+
+fn test_build_request_headers_comma_combines_repeated_fields() {
+	mut req := Request{}
+	req.header.add_custom('Accept', 'text/html')!
+	req.header.add_custom('Accept', 'application/json')!
+	headers := req.build_request_headers(.get, 'localhost', 80, '/')
+	assert headers.contains('Accept: text/html, application/json\r\n')
+}
+
+fn test_build_request_headers_trims_repeated_fields_before_combining() {
+	mut req := Request{}
+	req.header.add_custom('X-Foo', ' a ')!
+	req.header.add_custom('X-Foo', ' b ')!
+	headers := req.build_request_headers(.get, 'localhost', 80, '/')
+	assert headers.contains('X-Foo: a, b\r\n')
+}
+
+fn test_build_request_headers_semicolon_combines_case_insensitive_cookie_fields() {
+	mut req := Request{}
+	req.header.add_custom('cookie', 'a=1')!
+	req.header.add_custom('cookie', 'b=2')!
+	headers := req.build_request_headers(.get, 'localhost', 80, '/')
+	assert headers.count('Cookie:') == 1
+	assert headers.contains('Cookie: a=1; b=2\r\n')
+}
+
+fn test_build_request_headers_preserves_present_empty_cookie_field() {
+	mut req := Request{}
+	req.header.add_custom('Cookie', '')!
+	headers := req.build_request_headers(.get, 'localhost', 80, '/')
+	assert headers.contains('Cookie: \r\n')
+}
+
+fn test_build_request_headers_deduplicates_header_name_casing() {
+	mut req := Request{}
+	req.header.add_custom('X-Foo', 'a')!
+	req.header.add_custom('x-foo', 'b')!
+	headers := req.build_request_headers(.get, 'localhost', 80, '/')
+	assert headers.count('X-Foo:') == 1
+	assert headers.contains('X-Foo: a, b\r\n')
+}

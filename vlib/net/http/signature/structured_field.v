@@ -1,0 +1,572 @@
+// Minimal Structured Field Values (RFC 8941) helpers, scoped to what
+// the Signature-Input and Signature header fields actually use:
+//
+//   Signature-Input: <label>=(<inner-list>);<params>, <label2>=...
+//   Signature:       <label>=:<base64-bytes>:, <label2>=...
+//
+// We deliberately avoid a full RFC 8941 implementation — every
+// production-quality SF parser is a few hundred lines of dispatch and
+// edge-case handling, and 95% of that surface is unused here. If we
+// later need general SF support, factor this into a sibling module.
+module signature
+
+import encoding.base64
+
+const sf_integer_max = i64(999_999_999_999_999)
+
+// ExtensionParamValue preserves a valid RFC 8941 bare item whose type is not
+// used by a registered RFC 9421 signature parameter.
+pub struct ExtensionParamValue {
+pub:
+	raw string
+}
+
+// ParamValue is the typed value of a signature parameter. RFC 9421 §2.3
+// defines the registered parameters as either Integer (`created`,
+// `expires`) or String (`keyid`, `nonce`, `tag`, `alg`). Boolean and valid
+// extension bare items are retained for application-defined parameters.
+pub type ParamValue = ExtensionParamValue | bool | i64 | string
+
+// SignatureEntry is one (label, covered-components, parameters) tuple
+// parsed out of a Signature-Input header. The raw
+// `signature_params_value` is preserved verbatim - the verifier
+// re-emits these exact bytes into the signature base, which is what
+// the signer signed. Re-serialising from the parsed params would
+// introduce ordering ambiguity (RFC 8941 doesn't pin a canonical map
+// order) and break verification of signatures produced by other
+// stacks.
+pub struct SignatureEntry {
+pub:
+	label                  string
+	components             []string
+	params                 map[string]ParamValue
+	signature_params_value string
+}
+
+// serialize_params formats the named parameters in RFC 8941 §3.1.2 form,
+// in the order they were inserted into the map. RFC 9421 does not
+// constrain the order of parameters, but our output mirrors `pairs` so
+// callers control the wire layout. It returns `MalformedMessage` when a
+// parameter name or string value violates the RFC 8941 grammar.
+pub fn serialize_params(pairs []ParamPair) !string {
+	mut sb := []string{cap: pairs.len * 2}
+	for pair in pairs {
+		check_sf_key(pair.name, 'parameter name')!
+		sb << ';'
+		sb << pair.name
+		sb << '='
+		match pair.value {
+			i64 {
+				validate_sf_integer(pair.value)!
+				sb << pair.value.str()
+			}
+			string {
+				sb << '"' + escape_string(pair.value)! + '"'
+			}
+			bool {
+				sb << if pair.value { '?1' } else { '?0' }
+			}
+			ExtensionParamValue {
+				validate_extension_param_value(pair.value.raw)!
+				sb << pair.value.raw
+			}
+		}
+	}
+	return sb.join('')
+}
+
+// ParamPair is one parameter for `serialize_params`. We use a slice of
+// these instead of a map because parameter order matters on the wire
+// (it doesn't change verification - the verifier reparses - but it
+// makes generated headers deterministic and diff-friendly).
+pub struct ParamPair {
+pub:
+	name  string
+	value ParamValue
+}
+
+// serialize_inner_list returns the canonical Inner List form (parens
+// around space-separated quoted-string items) for the covered
+// components list. Each component name is emitted as a quoted string;
+// invalid Structured Field string bytes return `MalformedMessage`.
+pub fn serialize_inner_list(items []string) !string {
+	mut parts := []string{cap: items.len}
+	for it in items {
+		parts << '"' + escape_string(it)! + '"'
+	}
+	return '(' + parts.join(' ') + ')'
+}
+
+// escape_string applies the RFC 8941 §3.3.3 quoted-string escape rules
+// (backslash and double-quote are the only escape-required characters).
+fn escape_string(s string) !string {
+	for c in s {
+		if c < 0x20 || c > 0x7e {
+			return MalformedMessage{
+				reason: 'Structured Field string contains invalid byte ${c}'
+			}
+		}
+	}
+	if !s.contains('\\') && !s.contains('"') {
+		return s
+	}
+	mut out := []u8{cap: s.len + 4}
+	for c in s {
+		if c == `\\` || c == `"` {
+			out << `\\`
+		}
+		out << c
+	}
+	return out.bytestr()
+}
+
+fn validate_sf_integer(value i64) ! {
+	if value < -sf_integer_max || value > sf_integer_max {
+		return MalformedMessage{
+			reason: 'Structured Field integer ${value} exceeds the 15-digit range'
+		}
+	}
+}
+
+fn validate_extension_param_value(raw string) ! {
+	mut p := SfParser{
+		src: raw
+	}
+	p.parse_bare_item()!
+	if !p.done() {
+		return MalformedMessage{
+			reason: 'extension parameter is not a single Structured Field bare item'
+		}
+	}
+}
+
+// parse_signature_input parses one Signature-Input header value into a
+// list of entries (one per labelled signature). The grammar follows
+// RFC 9421 §4.1 / §4.2 and RFC 8941 §3.2.
+pub fn parse_signature_input(input string) ![]SignatureEntry {
+	mut p := SfParser{
+		src: input
+		pos: 0
+	}
+	mut entries := []SignatureEntry{}
+	for {
+		p.skip_sp()
+		if p.done() {
+			break
+		}
+		label := p.parse_key()!
+		if entries.any(it.label == label) {
+			return MalformedMessage{
+				reason: 'Signature-Input contains duplicate label "${label}"'
+			}
+		}
+		p.expect(`=`) or {
+			return MalformedMessage{
+				reason: 'Signature-Input: expected "=" after label "${label}"'
+			}
+		}
+		value_start := p.pos
+		components := p.parse_inner_list()!
+		params := p.parse_params()!
+		value_end := p.pos
+		entries << SignatureEntry{
+			label:                  label
+			components:             components
+			params:                 params
+			signature_params_value: p.src[value_start..value_end]
+		}
+		p.skip_sp()
+		if p.done() {
+			break
+		}
+		p.expect(`,`) or {
+			return MalformedMessage{
+				reason: 'Signature-Input: expected "," between entries near offset ${p.pos}'
+			}
+		}
+		p.skip_sp()
+		if p.done() {
+			return MalformedMessage{
+				reason: 'Signature-Input: expected an entry after ","'
+			}
+		}
+	}
+	return entries
+}
+
+// parse_signature parses a Signature header value into a label →
+// signature-bytes map. Each value in the source is a `:base64:` byte
+// sequence per RFC 8941 §3.3.5.
+pub fn parse_signature(input string) !map[string][]u8 {
+	mut p := SfParser{
+		src: input
+		pos: 0
+	}
+	mut out := map[string][]u8{}
+	for {
+		p.skip_sp()
+		if p.done() {
+			break
+		}
+		label := p.parse_key()!
+		if label in out {
+			return MalformedMessage{
+				reason: 'Signature contains duplicate label "${label}"'
+			}
+		}
+		p.expect(`=`) or {
+			return MalformedMessage{
+				reason: 'Signature: expected "=" after label "${label}"'
+			}
+		}
+		bytes := p.parse_byte_sequence()!
+		out[label] = bytes
+		p.skip_sp()
+		if p.done() {
+			break
+		}
+		p.expect(`,`) or {
+			return MalformedMessage{
+				reason: 'Signature: expected "," between entries near offset ${p.pos}'
+			}
+		}
+		p.skip_sp()
+		if p.done() {
+			return MalformedMessage{
+				reason: 'Signature: expected an entry after ","'
+			}
+		}
+	}
+	return out
+}
+
+// SfParser is a tiny hand-written cursor over a Structured Field byte
+// string. Dedicated to the small subset of RFC 8941 we use - keeping
+// the state on the struct lets us return precise positions in errors.
+struct SfParser {
+	src string
+mut:
+	pos int
+}
+
+fn (mut p SfParser) done() bool {
+	return p.pos >= p.src.len
+}
+
+fn (mut p SfParser) peek() u8 {
+	return if p.pos < p.src.len { p.src[p.pos] } else { 0 }
+}
+
+fn (mut p SfParser) skip_sp() {
+	for p.pos < p.src.len && (p.src[p.pos] == ` ` || p.src[p.pos] == `\t`) {
+		p.pos++
+	}
+}
+
+fn (mut p SfParser) skip_inner_list_sp() {
+	for p.pos < p.src.len && p.src[p.pos] == ` ` {
+		p.pos++
+	}
+}
+
+fn (mut p SfParser) expect(c u8) ! {
+	if p.pos >= p.src.len || p.src[p.pos] != c {
+		return error('expected "${rune(c)}"')
+	}
+	p.pos++
+}
+
+// parse_key parses a Dictionary key (RFC 8941 §3.2 + §3.1.2). Per
+// RFC 9421 §2.3, signature labels are the same lexical form.
+fn (mut p SfParser) parse_key() !string {
+	if p.done() {
+		return MalformedMessage{
+			reason: 'unexpected end of input expecting key'
+		}
+	}
+	c := p.peek()
+	if !(c == `*` || (c >= `a` && c <= `z`)) {
+		return MalformedMessage{
+			reason: 'invalid key start byte 0x${c.hex()} at offset ${p.pos}'
+		}
+	}
+	start := p.pos
+	for p.pos < p.src.len {
+		ch := p.src[p.pos]
+		if (ch >= `a` && ch <= `z`) || (ch >= `0` && ch <= `9`) || ch == `_`
+			|| ch == `-` || ch == `.` || ch == `*` {
+			p.pos++
+		} else {
+			break
+		}
+	}
+	return p.src[start..p.pos]
+}
+
+fn (mut p SfParser) parse_inner_list() ![]string {
+	p.expect(`(`) or {
+		return MalformedMessage{
+			reason: 'expected "(" starting inner list at offset ${p.pos}'
+		}
+	}
+	mut items := []string{}
+	for {
+		if p.done() {
+			return MalformedMessage{
+				reason: 'unterminated inner list'
+			}
+		}
+		if items.len > 0 && p.peek() != `)` && p.peek() != ` ` {
+			return MalformedMessage{
+				reason: 'inner-list items must be separated by a space at offset ${p.pos}'
+			}
+		}
+		p.skip_inner_list_sp()
+		if p.done() {
+			return MalformedMessage{
+				reason: 'unterminated inner list'
+			}
+		}
+		if p.peek() == `)` {
+			p.pos++
+			return items
+		}
+		item := p.parse_string()!
+		if !item.starts_with('@') && item != item.to_lower() {
+			return MalformedMessage{
+				reason: 'HTTP field component identifier "${item}" must be lowercase'
+			}
+		}
+		items << item
+		if p.pos < p.src.len && p.src[p.pos] == `;` {
+			return MalformedMessage{
+				reason: 'covered-component parameters are not supported at offset ${p.pos}'
+			}
+		}
+	}
+	return items
+}
+
+// parse_params consumes `;name=value` pairs starting at the current
+// position and returns them as a name-keyed map. Callers that need
+// the original wire-ordered serialisation must work from the raw
+// substring rather than this map (RFC 8941 doesn't pin a canonical
+// re-emission order).
+fn (mut p SfParser) parse_params() !map[string]ParamValue {
+	mut m := map[string]ParamValue{}
+	for p.pos < p.src.len && p.src[p.pos] == `;` {
+		p.pos++
+		name := p.parse_key()!
+		if name in m {
+			return MalformedMessage{
+				reason: 'duplicate signature parameter "${name}"'
+			}
+		}
+		mut value := ParamValue(true)
+		if p.pos < p.src.len && p.src[p.pos] == `=` {
+			p.pos++
+			value = p.parse_bare_item()!
+		}
+		m[name] = value
+	}
+	return m
+}
+
+fn (mut p SfParser) parse_bare_item() !ParamValue {
+	if p.done() {
+		return MalformedMessage{
+			reason: 'unexpected end of input'
+		}
+	}
+	c := p.peek()
+	if c == `"` {
+		return ParamValue(p.parse_string()!)
+	}
+	if c == `?` {
+		p.pos++
+		if p.pos >= p.src.len {
+			return MalformedMessage{
+				reason: 'truncated boolean literal'
+			}
+		}
+		b := p.src[p.pos]
+		if b != `0` && b != `1` {
+			return MalformedMessage{
+				reason: 'invalid boolean literal "?${rune(b)}"'
+			}
+		}
+		p.pos++
+		return ParamValue(b == `1`)
+	}
+	if c == `:` {
+		start := p.pos
+		p.parse_byte_sequence()!
+		return ParamValue(ExtensionParamValue{
+			raw: p.src[start..p.pos]
+		})
+	}
+	if c == `-` || (c >= `0` && c <= `9`) {
+		return p.parse_number()!
+	}
+	if (c >= `A` && c <= `Z`) || (c >= `a` && c <= `z`) || c == `*` {
+		return ParamValue(ExtensionParamValue{
+			raw: p.parse_token()!
+		})
+	}
+	return MalformedMessage{
+		reason: 'invalid bare item byte 0x${c.hex()} at offset ${p.pos}'
+	}
+}
+
+fn (mut p SfParser) parse_token() !string {
+	start := p.pos
+	for p.pos < p.src.len {
+		c := p.src[p.pos]
+		if (c >= `A` && c <= `Z`) || (c >= `a` && c <= `z`) || (c >= `0` && c <= `9`)
+			|| c == 0x60
+			|| c in [`!`, `#`, `$`, `%`, `&`, `'`, `*`, `+`, `-`, `.`, `^`, `_`, `|`, `~`, `:`, `/`] {
+			p.pos++
+		} else {
+			break
+		}
+	}
+	return p.src[start..p.pos]
+}
+
+fn (mut p SfParser) parse_string() !string {
+	p.expect(`"`) or {
+		return MalformedMessage{
+			reason: 'expected quoted string at offset ${p.pos}'
+		}
+	}
+	mut out := []u8{}
+	for p.pos < p.src.len {
+		c := p.src[p.pos]
+		if c < 0x20 || c > 0x7e {
+			return MalformedMessage{
+				reason: 'Structured Field string contains invalid byte ${c} at offset ${p.pos}'
+			}
+		}
+		if c == `"` {
+			p.pos++
+			return out.bytestr()
+		}
+		if c == `\\` {
+			p.pos++
+			if p.pos >= p.src.len {
+				return MalformedMessage{
+					reason: 'truncated escape sequence in string'
+				}
+			}
+			n := p.src[p.pos]
+			if n != `\\` && n != `"` {
+				return MalformedMessage{
+					reason: 'invalid escape "\\${rune(n)}" in string'
+				}
+			}
+			out << n
+			p.pos++
+			continue
+		}
+		out << c
+		p.pos++
+	}
+	return MalformedMessage{
+		reason: 'unterminated string'
+	}
+}
+
+fn (mut p SfParser) parse_number() !ParamValue {
+	start := p.pos
+	if p.pos < p.src.len && p.src[p.pos] == `-` {
+		p.pos++
+	}
+	digits_start := p.pos
+	for p.pos < p.src.len && p.src[p.pos] >= `0` && p.src[p.pos] <= `9` {
+		p.pos++
+	}
+	if p.pos == digits_start {
+		return MalformedMessage{
+			reason: 'integer literal with no digits at offset ${start}'
+		}
+	}
+	if p.pos < p.src.len && p.src[p.pos] == `.` {
+		if p.pos - digits_start > 12 {
+			return MalformedMessage{
+				reason: 'Structured Field decimal exceeds the 12-digit integer range at offset ${start}'
+			}
+		}
+		p.pos++
+		fraction_start := p.pos
+		for p.pos < p.src.len && p.src[p.pos] >= `0` && p.src[p.pos] <= `9` {
+			p.pos++
+		}
+		if p.pos == fraction_start || p.pos - fraction_start > 3 {
+			return MalformedMessage{
+				reason: 'Structured Field decimal must have one to three fractional digits at offset ${start}'
+			}
+		}
+		return ParamValue(ExtensionParamValue{
+			raw: p.src[start..p.pos]
+		})
+	}
+	if p.pos - digits_start > 15 {
+		return MalformedMessage{
+			reason: 'Structured Field integer exceeds the 15-digit range at offset ${start}'
+		}
+	}
+	value := p.src[start..p.pos].i64()
+	validate_sf_integer(value)!
+	return ParamValue(value)
+}
+
+fn (mut p SfParser) parse_byte_sequence() ![]u8 {
+	p.expect(`:`) or {
+		return MalformedMessage{
+			reason: 'expected ":" starting byte sequence at offset ${p.pos}'
+		}
+	}
+	start := p.pos
+	for p.pos < p.src.len && p.src[p.pos] != `:` {
+		p.pos++
+	}
+	if p.pos >= p.src.len {
+		return MalformedMessage{
+			reason: 'unterminated byte sequence'
+		}
+	}
+	encoded := p.src[start..p.pos]
+	p.pos++ // closing ':'
+	if encoded.len % 4 != 0 {
+		return MalformedMessage{
+			reason: 'byte sequence is not canonically padded base64'
+		}
+	}
+	for i, c in encoded {
+		is_base64 := (c >= `A` && c <= `Z`) || (c >= `a` && c <= `z`)
+			|| (c >= `0` && c <= `9`) || c == `+` || c == `/`
+		if !is_base64 && c != `=` {
+			return MalformedMessage{
+				reason: 'invalid base64 character at offset ${start + i}'
+			}
+		}
+		if c == `=` && (i < encoded.len - 2 || (i == encoded.len - 2 && encoded[i + 1] != `=`)) {
+			return MalformedMessage{
+				reason: 'invalid base64 padding in byte sequence'
+			}
+		}
+	}
+	decoded := base64.decode(encoded)
+	if base64.encode(decoded) != encoded {
+		return MalformedMessage{
+			reason: 'byte sequence is not canonical base64'
+		}
+	}
+	return decoded
+}
+
+// encode_byte_sequence produces the wire form `:base64:` used inside
+// the Signature header.
+pub fn encode_byte_sequence(bytes []u8) string {
+	return ':' + base64.encode(bytes) + ':'
+}
