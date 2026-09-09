@@ -53,8 +53,7 @@ pub fn (e &UnsupportedAlgorithm) msg() string {
 
 // SignatureExpired is returned by verification helpers when the
 // signature's `expires` parameter is at or before the verification
-// time. Callers that don't want this check can pass their own time
-// reference (or use the lower-level `verify` that does no time check).
+// time. Callers that don't want this check can leave `now_unix` at zero.
 pub struct SignatureExpired {
 	Error
 pub:
@@ -65,4 +64,18 @@ pub:
 // msg formats a SignatureExpired for `IError.msg()`.
 pub fn (e &SignatureExpired) msg() string {
 	return 'http.signature: signature expired (expires=${e.expires}, now=${e.now})'
+}
+
+// SignatureNotYetValid is returned by verification helpers when the
+// signature's `created` parameter is later than the verification time.
+pub struct SignatureNotYetValid {
+	Error
+pub:
+	created i64
+	now     i64
+}
+
+// msg formats a SignatureNotYetValid for `IError.msg()`.
+pub fn (e &SignatureNotYetValid) msg() string {
+	return 'http.signature: signature is not yet valid (created=${e.created}, now=${e.now})'
 }

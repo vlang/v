@@ -65,8 +65,8 @@ pub fn sign(c Components, p SignatureParams, key Key, label string) !SignedHeade
 	}
 }
 
-// VerifyOptions tweaks `verify`. `now_unix` enables the optional
-// `expires` parameter check (any value > 0 turns it on), and
+// VerifyOptions tweaks `verify`. `now_unix` enables `created` and optional
+// `expires` time checks (any value > 0 turns them on), and
 // `required_components` enforces an application coverage policy.
 @[params]
 pub struct VerifyOptions {
@@ -82,9 +82,10 @@ pub:
 // `label` selects which signature to check when several are present.
 // Pass an empty string to verify the only signature - the call fails
 // with `MalformedMessage` if zero or more than one is found. When
-// `opts.now_unix > 0` the `expires` parameter is also enforced. The
-// low-level API requires callers to set `required_components` when the
-// result is used for authorization; the HTTP wrappers provide safe defaults.
+// `opts.now_unix > 0`, `created` and the optional `expires` parameter are
+// also enforced. The low-level API requires callers to set
+// `required_components` when the result is used for authorization; the HTTP
+// wrappers provide safe defaults.
 pub fn verify(c Components, sig_input_header string, signature_header string, label string, key Key, opts VerifyOptions) ! {
 	entries := parse_signature_input(sig_input_header)!
 	signatures := parse_signature(signature_header)!
@@ -114,6 +115,14 @@ pub fn verify(c Components, sig_input_header string, signature_header string, la
 	base := signature_base_from_entry(c, entry)!
 	verify_base(base.bytes(), sig, key, wanted)!
 	if opts.now_unix > 0 {
+		if created_v := entry.params['created'] {
+			if created_v is i64 && created_v > opts.now_unix {
+				return SignatureNotYetValid{
+					created: created_v
+					now:     opts.now_unix
+				}
+			}
+		}
 		if exp_v := entry.params['expires'] {
 			if exp_v is i64 && opts.now_unix >= exp_v {
 				return SignatureExpired{

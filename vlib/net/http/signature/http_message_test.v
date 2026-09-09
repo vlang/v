@@ -144,6 +144,19 @@ fn test_verify_request_rejects_expired_signature() {
 	verify_request(req, key, required_components: ['@method'])!
 }
 
+fn test_verify_request_rejects_signature_created_in_future() {
+	mut req := build_request('https://example.com/foo')
+	key := Key.hmac_sha256(test_secret.bytes())!
+	sign_request(mut req, key, components: ['@method'], created: 2000)!
+	if _ := verify_request(req, key, now_unix: 1000, required_components: ['@method']) {
+		assert false, 'a signature created after now_unix must be rejected'
+	} else {
+		assert err is SignatureNotYetValid
+	}
+	// Time validation remains opt-in.
+	verify_request(req, key, required_components: ['@method'])!
+}
+
 fn test_verify_request_requires_safe_default_component_coverage() {
 	mut req := build_request('https://example.com/foo')
 	key := Key.hmac_sha256(test_secret.bytes())!
@@ -467,6 +480,19 @@ fn test_sign_request_rejects_existing_label_without_mutation() {
 	assert req.header.custom_values('Signature') == signature_before
 }
 
+fn test_sign_request_rejects_empty_existing_signature_input() {
+	mut req := build_request('https://example.com/foo')
+	req.header.add_custom('Signature-Input', '')!
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_request(mut req, key, components: ['@method'], created: 1) {
+		assert false, 'an empty existing Signature-Input dictionary must be rejected'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert req.header.custom_values('Signature-Input') == ['']
+	assert !req.header.contains_custom('Signature')
+}
+
 fn test_sign_request_rejects_http2_removed_covered_field() {
 	mut req := build_request('https://example.com/foo')
 	req.header.set(.connection, 'keep-alive')
@@ -676,6 +702,21 @@ fn test_sign_response_rejects_existing_label() {
 	} else {
 		assert err is MalformedMessage
 	}
+}
+
+fn test_sign_response_rejects_empty_existing_signature() {
+	mut resp := http.Response{
+		status_code: 200
+	}
+	resp.header.add_custom('Signature', '')!
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_response(mut resp, key, created: 1) {
+		assert false, 'an empty existing Signature dictionary must be rejected'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert resp.header.custom_values('Signature') == ['']
+	assert !resp.header.contains_custom('Signature-Input')
 }
 
 fn test_sign_response_rejects_self_referential_signature_field_without_mutation() {

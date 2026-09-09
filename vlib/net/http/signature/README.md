@@ -36,8 +36,9 @@ that `openssl genpkey` and friends produce. The raw-coordinate
 constructors (`Key.ed25519_private(seed)`, `Key.ecdsa_p256_public(x,
 y)`, …) are still available when you have JWK-style key material.
 
-The `now_unix` option enforces the optional `expires` parameter; pass
-`0` (the default) to skip the expiry check.
+The `now_unix` option rejects signatures created after the supplied time and
+enforces the optional `expires` parameter; pass `0` (the default) to skip time
+validation.
 
 `verify_request` requires `@method`, `@target-uri`, and `@authority` by
 default, while `verify_response` requires `@status`. Applications using a

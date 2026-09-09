@@ -249,6 +249,11 @@ fn merged_dict_field(h http.Header, name string) ?string {
 fn ensure_signature_label_available(h http.Header, label string) ! {
 	check_label(label)!
 	if input := merged_dict_field(h, 'Signature-Input') {
+		if input.trim_space() == '' {
+			return MalformedMessage{
+				reason: 'existing Signature-Input dictionary is empty'
+			}
+		}
 		entries := parse_signature_input(input)!
 		if entries.any(it.label == label) {
 			return MalformedMessage{
@@ -257,6 +262,11 @@ fn ensure_signature_label_available(h http.Header, label string) ! {
 		}
 	}
 	if signatures := merged_dict_field(h, 'Signature') {
+		if signatures.trim_space() == '' {
+			return MalformedMessage{
+				reason: 'existing Signature dictionary is empty'
+			}
+		}
 		parsed := parse_signature(signatures)!
 		if label in parsed {
 			return MalformedMessage{
