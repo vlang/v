@@ -12488,7 +12488,9 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		return true
 	}
 	if expected.starts_with('?') {
-		if actual == expected[1..] || t.specialized_expr_is_none(arg_id) {
+		if actual == expected[1..]
+			|| t.normalize_fn_signature_component_aliases(actual, 0) == t.normalize_fn_signature_component_aliases(expected[1..], 0)
+			|| t.specialized_expr_is_none(arg_id) {
 			return true
 		}
 	}
@@ -12664,14 +12666,19 @@ fn (mut t Transformer) fn_literal_container_element_mode_compatible(id flat.Node
 
 fn (t &Transformer) fn_literal_source_c_abi_signature_compatible(actual_text string, expected_type string) bool {
 	actual_abi := t.tc.c_abi_fn_signature_for_type_text(actual_text)
-	if t.is_sum_type_name(expected_type) {
+	abi_expected_type := if expected_type.starts_with('?') {
+		expected_type[1..]
+	} else {
+		expected_type
+	}
+	if t.is_sum_type_name(abi_expected_type) {
 		if compatible := t.fn_literal_sum_variant_c_abi_compatible(actual_text, actual_abi,
-			expected_type)
+			abi_expected_type)
 		{
 			return compatible
 		}
 	}
-	expected_abi := t.tc.c_abi_fn_signature_for_type_text(expected_type)
+	expected_abi := t.tc.c_abi_fn_signature_for_type_text(abi_expected_type)
 	if actual_abi == none && expected_abi == none {
 		return true
 	}
@@ -12760,8 +12767,14 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 	}
 	node := t.a.nodes[int(arg_id)]
 	match node.kind {
-		.paren, .cast_expr, .expr_stmt {
+		.paren, .expr_stmt {
 			if node.children_count == 1 {
+				t.collect_fn_literal_source_type_texts(t.a.child(&node, 0), mut result)
+			}
+			return
+		}
+		.cast_expr {
+			if node.children_count == 1 && t.fn_literal_cast_target_is_callback_shaped(node.value) {
 				t.collect_fn_literal_source_type_texts(t.a.child(&node, 0), mut result)
 			}
 			return
@@ -12801,6 +12814,24 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 	}
 	ret := if node.typ.len > 0 && node.typ != 'void' { ' ${node.typ}' } else { '' }
 	result << 'fn (${params.join(', ')})${ret}'
+}
+
+fn (t &Transformer) fn_literal_cast_target_is_callback_shaped(type_name string) bool {
+	mut clean := type_name.trim_space()
+	for clean.starts_with('?') || clean.starts_with('!') {
+		clean = clean[1..].trim_space()
+	}
+	if t.is_fn_pointer_type_name(t.normalize_type_alias(clean)) {
+		return true
+	}
+	if t.is_sum_type_name(clean) {
+		for variant in t.sum_type_variants_for_index(clean) {
+			if t.is_fn_pointer_type_name(t.normalize_type_alias(variant)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 struct SpecializedIntLiteral {

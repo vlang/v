@@ -2047,6 +2047,22 @@ fn test_fn_literal_or_expr_callback_modes_inside_generic_fn() {
 		'cannot use')
 }
 
+fn test_fn_literal_optional_promotion_and_interface_cast_modes_inside_generic_fn() {
+	v3_bin := build_v3()
+	matching := run_good(v3_bin, 'good_optional_promoted_const_fn_literal_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler ?ConstHandler) bool {\n\treturn handler != none\n}\nfn startup[T]() bool {\n\tr := Router{}\n\treturn r.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert matching == 'true'
+	run_bad(v3_bin, 'bad_optional_promoted_const_fn_literal_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler ?PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tr.accept(fn (const_event &C.native_event) {})\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	boxed := run_good(v3_bin, 'good_empty_interface_cast_const_fn_literal_in_generic',
+		'interface Any {}\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(value Any) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tr := Router{}\n\treturn r.accept(Any(fn (const_event &C.native_event) {}))\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert boxed == 'true'
+	run_bad(v3_bin, 'bad_callback_shaped_cast_const_fn_literal_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tr.accept(PlainHandler(fn (const_event &C.native_event) {}))\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+}
+
 fn test_fn_literal_lock_expr_callback_modes_inside_generic_fn() {
 	v3_bin := build_v3()
 	matching := run_good(v3_bin, 'good_lock_expr_const_fn_param_in_generic',
