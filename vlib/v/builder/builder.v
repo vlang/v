@@ -972,11 +972,6 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 	mut mcache := vmod.get_cache()
 	resolved_fpath := os.real_path(fpath)
 	module_search_boundary := module_search_boundary_folder(resolved_fpath)
-	test_parent_lookup := if b.pref.is_test {
-		comparable_real_path(os.dir(b.compiled_dir))
-	} else {
-		''
-	}
 	vmod_file_location := mcache.get_by_file(resolved_fpath)
 	// Anchor the importer to the OUTERMOST enclosing `v.mod`, not the nearest
 	// one. A file at `<project>/modules/<name>/file.v` carries the vendored
@@ -1007,14 +1002,22 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 	}
 	mod_path := module_path(mod)
 	mut module_lookup_paths := []string{}
+	mut module_lookup_is_test_parent := []bool{}
 	if b.path_belongs_to_lookup_path(resolved_fpath) {
-		module_lookup_paths << b.pref.lookup_path
+		for lookup_path in b.pref.lookup_path {
+			module_lookup_paths << lookup_path
+			module_lookup_is_test_parent << false
+		}
 	}
 	if vmod_file_location.vmod_file.len != 0
 		&& vmod_file_location.vmod_folder !in b.module_search_paths {
 		module_lookup_paths << vmod_file_location.vmod_folder
+		module_lookup_is_test_parent << false
 	}
-	module_lookup_paths << b.module_search_paths
+	for i, search_path in b.module_search_paths {
+		module_lookup_paths << search_path
+		module_lookup_is_test_parent << (b.pref.is_test && i == 0)
+	}
 	// go up through parents looking for modules a folder.
 	// we need a proper solution that works most of the time. look at vdoc.get_parent_mod
 	if resolved_fpath.contains(os.path_separator + 'modules' + os.path_separator) {
@@ -1022,19 +1025,19 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 		for i := parts.len - 2; i >= 0; i-- {
 			if parts[i] == 'modules' {
 				module_lookup_paths << parts[0..i + 1].join(os.path_separator)
+				module_lookup_is_test_parent << false
 				break
 			}
 		}
 	}
 	mut empty_module_path := ''
-	for search_path in module_lookup_paths {
+	for lookup_index, search_path in module_lookup_paths {
 		try_path := os.join_path(search_path, mod_path)
 		if b.pref.is_verbose {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
 		if found_path := find_module_path_from_search_root(search_path, mod) {
-			if test_parent_lookup != '' && comparable_real_path(search_path) == test_parent_lookup
-				&& module_search_boundary != ''
+			if module_lookup_is_test_parent[lookup_index] && module_search_boundary != ''
 				&& !path_is_at_or_inside(comparable_real_path(found_path), module_search_boundary) {
 				if b.pref.is_verbose {
 					println('  << skipped ${found_path} (outside the test project boundary) .')

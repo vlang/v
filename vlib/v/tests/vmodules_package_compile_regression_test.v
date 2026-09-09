@@ -270,6 +270,11 @@ fn test_issue_27281_test_lookup_rejects_sibling_above_boundary() {
 	res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(foo_dir)}')
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('cannot import module "bar" (not found)'), res.output
+	explicit_lookup := '@vlib|${project}'
+	explicit_test_file := os.join_path(foo_dir, 'foo_test.v')
+	explicit_res :=
+		os.execute("${os.quoted_path(issue_20147_vexe)} -path '${explicit_lookup}' -check ${os.quoted_path(explicit_test_file)}")
+	assert explicit_res.exit_code == 0, explicit_res.output
 }
 
 fn test_issue_27281_external_only_test_directory_keeps_module_prefix() {
