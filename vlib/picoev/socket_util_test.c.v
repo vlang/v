@@ -1,4 +1,4 @@
-// vtest build: macos || freebsd || netbsd || dragonfly
+// vtest build: macos || ios || freebsd || netbsd || dragonfly
 module picoev
 
 #include <sys/socket.h>

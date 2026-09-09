@@ -111,10 +111,14 @@ pub fn (mut r Response) raw(response string) {
 
 fn C.send(sockfd i32, buf voidptr, len usize, flags i32) i32
 
-// Linux and OpenBSD do not provide the SO_NOSIGPIPE socket option used by
-// picoev on macOS and FreeBSD. Suppress SIGPIPE for each send so callers that
-// change the process-wide signal disposition cannot terminate the server.
-const send_flags = $if linux || termux || android || openbsd { int(C.MSG_NOSIGNAL) } $else { 0 }
+// Use per-send protection where picoev cannot configure SO_NOSIGPIPE on the
+// socket. This also protects calls made on worker threads, where changing the
+// process-wide signal disposition is not portable.
+const send_flags = $if windows || macos || ios || freebsd || netbsd || dragonfly {
+	0
+} $else {
+	int(C.MSG_NOSIGNAL)
+}
 
 @[inline]
 pub fn (mut r Response) end() int {

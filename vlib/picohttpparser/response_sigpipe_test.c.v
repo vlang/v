@@ -1,4 +1,4 @@
-// vtest build: linux || termux || android || openbsd
+// vtest build: linux || termux || android || openbsd || solaris || qnx || serenity || haiku || vinix
 module picohttpparser
 
 #include <signal.h>
