@@ -229,6 +229,8 @@ fn main() {
 	pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
 	pointer_element.spawn_pointer_read()
 	_ = pointer_element.return_dumped_pointer_receiver()
+	_ = pointer_element.return_saved_pointer_through_helper()
+	_ = pointer_element.return_or_pointer_through_helper()
 }
 
 fn replace_pointer_node(node &PointerNode, next PointerNode) {
@@ -348,4 +350,22 @@ fn (node &PointerNode) pass_pointer_alias_helper(next PointerNode) {
 
 fn (node &PointerNode) return_dumped_pointer_receiver() &PointerNode {
 	return dump(node)
+}
+
+fn save_pointer_node(node &PointerNode, mut saved []&PointerNode) {
+	saved << node
+}
+
+fn (node &PointerNode) return_saved_pointer_through_helper() []&PointerNode {
+	mut saved := []&PointerNode{}
+	save_pointer_node(node, mut saved)
+	return saved
+}
+
+fn return_or_pointer_node(node &PointerNode) &PointerNode {
+	return maybe_pointer_node() or { node }
+}
+
+fn (node &PointerNode) return_or_pointer_through_helper() &PointerNode {
+	return return_or_pointer_node(node)
 }

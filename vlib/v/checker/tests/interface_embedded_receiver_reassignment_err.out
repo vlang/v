@@ -200,14 +200,14 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:230:18: err
   230 |     pointer_element.spawn_pointer_read()
       |                     ~~~~~~~~~~~~~~~~~~~~
   231 |     _ = pointer_element.return_dumped_pointer_receiver()
-  232 | }
+  232 |     _ = pointer_element.return_saved_pointer_through_helper()
 vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:231:22: error: cannot call pointer-receiver method `PointerNode.return_dumped_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
   229 |     pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
   230 |     pointer_element.spawn_pointer_read()
   231 |     _ = pointer_element.return_dumped_pointer_receiver()
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  232 | }
-  233 |
+  232 |     _ = pointer_element.return_saved_pointer_through_helper()
+  233 |     _ = pointer_element.return_or_pointer_through_helper()
 vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:215:18: error: cannot call pointer-receiver method `PointerNode.pass_local_holder_value` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
   213 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
   214 |     pointer_element.pass_local_holder_mut()
@@ -264,3 +264,17 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:229:18: err
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   230 |     pointer_element.spawn_pointer_read()
   231 |     _ = pointer_element.return_dumped_pointer_receiver()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:232:22: error: cannot call pointer-receiver method `PointerNode.return_saved_pointer_through_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  230 |     pointer_element.spawn_pointer_read()
+  231 |     _ = pointer_element.return_dumped_pointer_receiver()
+  232 |     _ = pointer_element.return_saved_pointer_through_helper()
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  233 |     _ = pointer_element.return_or_pointer_through_helper()
+  234 | }
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:233:22: error: cannot call pointer-receiver method `PointerNode.return_or_pointer_through_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  231 |     _ = pointer_element.return_dumped_pointer_receiver()
+  232 |     _ = pointer_element.return_saved_pointer_through_helper()
+  233 |     _ = pointer_element.return_or_pointer_through_helper()
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  234 | }
+  235 |

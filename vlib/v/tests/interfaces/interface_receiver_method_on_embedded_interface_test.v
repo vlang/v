@@ -27,6 +27,10 @@ fn (mut node Node) replace_only_on_windows(next &Node) {
 	}
 }
 
+fn (node &Node) replace_through_helper_only_on_windows(next &Node) {
+	replace_pointer_only_on_windows(node, next)
+}
+
 fn (node &Node) check() bool {
 	return true
 }
@@ -50,6 +54,10 @@ fn (node &Node) read_field_through_pointer_alias_helper() string {
 
 fn (node &Node) read_field_through_forward_helper() string {
 	return read_node_name_declared_later(node)
+}
+
+fn (node &Node) local_pointer_helper_array_len() int {
+	return local_pointer_array_len(node)
 }
 
 fn (node &Node) inspect_through_generic_helper() int {
@@ -86,6 +94,20 @@ fn inspect_value[T](value T) int {
 fn append_node_child(node &Node, child &Node) {
 	unsafe {
 		node.children << child
+	}
+}
+
+fn local_pointer_array_len(node &Node) int {
+	mut saved := []&Node{}
+	saved << node
+	return saved.len
+}
+
+fn replace_pointer_only_on_windows(node &Node, next &Node) {
+	$if windows {
+		unsafe {
+			*node = *next
+		}
 	}
 }
 
@@ -205,6 +227,14 @@ fn test_inactive_comptime_receiver_replacement_is_ignored() {
 	}
 }
 
+fn test_inactive_comptime_helper_replacement_is_ignored() {
+	$if !windows {
+		element := new_element()
+		element.replace_through_helper_only_on_windows(new_child('replacement'))
+		assert element.name == 'body'
+	}
+}
+
 fn test_non_addressable_receiver_method_on_embedded_interface() {
 	assert new_element().check()
 }
@@ -233,6 +263,11 @@ fn test_read_only_pointer_receiver_alias_helper_does_not_escape() {
 fn test_forward_pointer_receiver_helper_does_not_escape() {
 	element := new_element()
 	assert element.read_field_through_forward_helper() == 'body'
+}
+
+fn test_local_pointer_helper_array_does_not_escape() {
+	element := new_element()
+	assert element.local_pointer_helper_array_len() == 1
 }
 
 fn test_generic_pointer_receiver_helper_does_not_escape() {

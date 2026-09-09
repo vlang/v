@@ -123,6 +123,65 @@ fn (mut c Checker) ident_is_local_pointer_alias(ident ast.Ident) bool {
 	return false
 }
 
+fn (mut c Checker) ident_is_local_mutable_carrier(ident ast.Ident) bool {
+	if ident.obj is ast.Var {
+		return !ident.obj.is_arg && !ident.obj.is_static && !ident.obj.is_inherited
+			&& c.type_may_share_mutable_storage(ident.obj.typ)
+	}
+	if ident.scope != unsafe { nil } {
+		if variable := ident.scope.find_var(ident.name) {
+			return !variable.is_arg && !variable.is_static && !variable.is_inherited
+				&& c.type_may_share_mutable_storage(variable.typ)
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) receiver_helper_comptime_if_cond(expr ast.Expr) ?bool {
+	reduced := expr.remove_par()
+	return match reduced {
+		ast.BoolLiteral {
+			reduced.val
+		}
+		ast.PrefixExpr {
+			if reduced.op != .not {
+				return none
+			}
+			!c.receiver_helper_comptime_if_cond(reduced.right)?
+		}
+		ast.PostfixExpr {
+			if reduced.op != .question || reduced.expr !is ast.Ident {
+				return none
+			}
+			(reduced.expr as ast.Ident).name in c.pref.compile_defines
+		}
+		ast.InfixExpr {
+			if reduced.op !in [.and, .logical_or] {
+				return none
+			}
+			left := c.receiver_helper_comptime_if_cond(reduced.left)?
+			right := c.receiver_helper_comptime_if_cond(reduced.right)?
+			if reduced.op == .and {
+				left && right
+			} else {
+				left || right
+			}
+		}
+		ast.Ident {
+			if reduced.name == 'threads' {
+				return c.table.gostmts > 0
+			}
+			if reduced.name !in ast.valid_comptime_not_user_defined {
+				return none
+			}
+			ast.eval_comptime_not_user_defined_ident(reduced.name, c.pref)?
+		}
+		else {
+			return none
+		}
+	}
+}
+
 fn (mut c Checker) pointer_param_field_target(expr ast.Expr, typ ast.Type, aliases []string) bool {
 	reduced := expr.remove_par()
 	return match reduced {
@@ -151,11 +210,60 @@ fn (mut c Checker) pointer_param_field_target(expr ast.Expr, typ ast.Type, alias
 fn (mut c Checker) node_captures_or_stores_pointer_param(node ast.Node, typ ast.Type, root_is_mut bool, mut aliases []string, mut seen map[string]bool) bool {
 	match node {
 		ast.Expr {
+			if node is ast.IfExpr && node.is_comptime {
+				for branch in node.branches {
+					if branch.cond is ast.EmptyExpr {
+						for stmt in branch.stmts {
+							if c.node_captures_or_stores_pointer_param(stmt, typ, root_is_mut, mut
+								aliases, mut seen)
+							{
+								return true
+							}
+						}
+						return false
+					}
+					is_active := c.receiver_helper_comptime_if_cond(branch.cond) or {
+						for fallback_branch in node.branches {
+							for stmt in fallback_branch.stmts {
+								if c.node_captures_or_stores_pointer_param(stmt, typ, root_is_mut, mut
+									aliases, mut seen)
+								{
+									return true
+								}
+							}
+						}
+						return false
+					}
+					if is_active {
+						for stmt in branch.stmts {
+							if c.node_captures_or_stores_pointer_param(stmt, typ, root_is_mut, mut
+								aliases, mut seen)
+							{
+								return true
+							}
+						}
+						return false
+					}
+				}
+				return false
+			}
 			if node is ast.AnonFn {
 				return node.inherited_vars.any(it.name in aliases)
 			}
 			if node is ast.CallExpr && c.call_escapes_pointer_param(node, typ, aliases, mut seen) {
 				return true
+			}
+			if node is ast.InfixExpr && node.op in [.left_shift, .arrow]
+				&& c.return_expr_contains_pointer_param(node.right, aliases) {
+				left := node.left.remove_par()
+				if node.op == .left_shift && left is ast.Ident
+					&& c.ident_is_local_mutable_carrier(left) {
+					if left.name !in aliases {
+						aliases << left.name
+					}
+				} else {
+					return true
+				}
 			}
 		}
 		ast.Stmt {
@@ -269,6 +377,9 @@ fn (mut c Checker) return_expr_contains_pointer_param(expr ast.Expr, aliases []s
 		}
 		ast.DumpExpr {
 			c.return_expr_contains_pointer_param(reduced.expr, aliases)
+		}
+		ast.CallExpr {
+			c.stmts_return_pointer_param(reduced.or_block.stmts, aliases)
 		}
 		ast.IfExpr {
 			reduced.branches.any(c.stmts_return_pointer_param(it.stmts, aliases))
