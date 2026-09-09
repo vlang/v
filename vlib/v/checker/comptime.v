@@ -1142,6 +1142,31 @@ fn (mut c Checker) convert_comptime_const_value(value ast.ComptTimeConstValue, t
 fn (mut c Checker) eval_comptime_const_cast_value(value ast.ComptTimeConstValue, typ ast.Type) ?ast.ComptTimeConstValue {
 	cast_typ := c.table.fully_unaliased_type(typ).clear_flags()
 	if cast_typ.is_pure_int() {
+		if cast_typ.is_signed() && (value is f32 || value is f64) {
+			// Out-of-range float-to-signed conversions are target/compiler dependent.
+			float_value := value.f64()?
+			size, _ := c.table.type_size(cast_typ)
+			mut min_value := -9223372036854775808.0
+			mut max_value := 9223372036854775808.0
+			match size {
+				1 {
+					min_value = -128.0
+					max_value = 128.0
+				}
+				2 {
+					min_value = -32768.0
+					max_value = 32768.0
+				}
+				4 {
+					min_value = -2147483648.0
+					max_value = 2147483648.0
+				}
+				else {}
+			}
+			if !(float_value >= min_value && float_value < max_value) {
+				return none
+			}
+		}
 		if cast_typ == ast.u64_type && (value is f32 || value is f64) {
 			float_value := value.f64()?
 			if !(float_value >= 0) {

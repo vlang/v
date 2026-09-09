@@ -132,6 +132,11 @@ fn main() {
 	}) {
 		break
 	}
+
+	// Out-of-range float-to-signed casts depend on the target C compiler.
+	for i in narrow_float_to_int(4294967295.0) .. int(0.0 - 1.0) {
+		println(i)
+	}
 }
 
 type OverloadedRangeBound = u8
@@ -153,4 +158,9 @@ fn return_f32() f32 {
 @[comptime]
 fn half_max_u64() u64 {
 	return 18446744073709551615 / 2
+}
+
+@[comptime]
+fn narrow_float_to_int(x f64) int {
+	return int(x)
 }
