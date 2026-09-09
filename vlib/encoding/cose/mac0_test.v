@@ -135,6 +135,18 @@ fn test_mac0_detached_payload() {
 	assert got == 'remote'.bytes()
 }
 
+fn test_verify_mac0_rejects_detached_override_of_attached_payload() {
+	key := Key.symmetric([]u8{len: 32, init: 1})
+	mut hp := Headers{}
+	hp.algorithm = .hmac_256_256
+	maced := mac0('attached'.bytes(), key, protected: hp)!
+	if _ := verify_mac0(maced, key, detached_payload: 'other'.bytes()) {
+		assert false, 'detached input must not override an attached payload'
+	} else {
+		assert err.msg().contains('cannot be used when the message contains an attached payload')
+	}
+}
+
 fn test_mac0_rejects_undersized_hmac_keys() {
 	algorithms := [Algorithm.hmac_256_64, .hmac_256_256, .hmac_384_384, .hmac_512_512]
 	undersized := [15, 31, 47, 63]
@@ -246,6 +258,15 @@ fn test_key_decode_rejects_duplicate_labels() {
 		} else {
 			assert err.msg().contains('duplicate')
 		}
+	}
+}
+
+fn test_key_decode_rejects_non_label_map_keys() {
+	encoded := hex.decode('a30104205820' + '11'.repeat(32) + '410000')!
+	if _ := Key.decode(encoded) {
+		assert false, 'COSE_Key labels must be integers or text strings'
+	} else {
+		assert err.msg().contains('label is neither int nor tstr')
 	}
 }
 

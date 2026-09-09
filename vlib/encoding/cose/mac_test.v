@@ -47,6 +47,11 @@ fn test_mac_direct_recipient_roundtrip() {
 	assert msg.tag.len == 32
 	got := verify_mac(signed, key)!
 	assert got == 'This is the content.'.bytes()
+	if _ := verify_mac(signed, key, detached_payload: 'other'.bytes()) {
+		assert false, 'detached input must not override an attached payload'
+	} else {
+		assert err.msg().contains('cannot be used when the message contains an attached payload')
+	}
 }
 
 fn test_mac_rejects_no_recipients() {

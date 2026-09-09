@@ -48,6 +48,11 @@ fn test_sign_two_signers_roundtrip() {
 	// Verify the EC signer
 	pub_ec := Key.ec2_public(.p_256, x_ec, y_ec)
 	msg.verify(0, pub_ec)!
+	if _ := msg.verify(0, pub_ec, detached_payload: 'other'.bytes()) {
+		assert false, 'detached input must not override an attached payload'
+	} else {
+		assert err.msg().contains('cannot be used when the message contains an attached payload')
+	}
 	// Verify the Ed signer
 	pub_ed := Key.okp_public(.ed25519, x_ed)
 	msg.verify(1, pub_ed)!

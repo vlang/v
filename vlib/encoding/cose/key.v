@@ -295,8 +295,9 @@ pub fn Key.decode(data []u8) !Key {
 			continue
 		}
 		int_key := pair.key.as_int() or {
-			// Other private-use key types do not affect crypto operations.
-			continue
+			return MalformedMessage{
+				reason: 'COSE_Key label is neither int nor tstr'
+			}
 		}
 		if int_key in seen_int_labels {
 			return MalformedMessage{

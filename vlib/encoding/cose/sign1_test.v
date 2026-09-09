@@ -287,6 +287,19 @@ fn test_sign1_detached_payload_omits_payload_in_message() {
 	assert got == 'remote payload'.bytes()
 }
 
+fn test_verify1_rejects_detached_override_of_attached_payload() {
+	d := hex.decode(eddsa_d_hex)!
+	x := hex.decode(eddsa_x_hex)!
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	signed := sign1('attached'.bytes(), Key.okp_private(.ed25519, x, d), protected: hp)!
+	if _ := verify1(signed, Key.okp_public(.ed25519, x), detached_payload: 'other'.bytes()) {
+		assert false, 'detached input must not override an attached payload'
+	} else {
+		assert err.msg().contains('cannot be used when the message contains an attached payload')
+	}
+}
+
 fn test_sign1_untagged_roundtrip() {
 	x := hex.decode(eddsa_x_hex)!
 	d := hex.decode(eddsa_d_hex)!

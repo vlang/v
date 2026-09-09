@@ -152,15 +152,8 @@ pub fn verify_mac(message []u8, key Key, opts VerifyMacOptions) ![]u8 {
 		check_protected_headers(r.protected, r.unprotected)!
 		check_direct_recipient(r, true)!
 	}
-	pl := if dp := opts.detached_payload {
-		dp
-	} else {
-		msg.payload or {
-			return MalformedMessage{
-				reason: 'detached payload requires VerifyMacOptions.detached_payload'
-			}
-		}
-	}
+	pl := payload_for_verification(msg.payload, opts.detached_payload,
+		'VerifyMacOptions.detached_payload')!
 	alg := verification_algorithm(msg.protected, msg.unprotected, key, 'Mac')!
 
 	body_protected := msg.protected_bytes()!

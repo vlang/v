@@ -81,15 +81,8 @@ pub fn sign1(payload []u8, key Key, opts Sign1Options) ![]u8 {
 // payloads, the caller passes the bytes via `opts.detached_payload`.
 pub fn verify1(message []u8, key Key, opts Verify1Options) ![]u8 {
 	msg := Sign1Message.decode(message)!
-	pl := if dp := opts.detached_payload {
-		dp
-	} else {
-		msg.payload or {
-			return MalformedMessage{
-				reason: 'detached payload requires Verify1Options.detached_payload'
-			}
-		}
-	}
+	pl := payload_for_verification(msg.payload, opts.detached_payload,
+		'Verify1Options.detached_payload')!
 	msg.verify(key, pl, opts.external_aad)!
 	return pl
 }

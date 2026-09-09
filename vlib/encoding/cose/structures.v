@@ -6,6 +6,22 @@ module cose
 
 import encoding.cbor
 
+fn payload_for_verification(attached ?[]u8, detached ?[]u8, option_name string) ![]u8 {
+	if supplied := detached {
+		if attached != none {
+			return MalformedMessage{
+				reason: '${option_name} cannot be used when the message contains an attached payload'
+			}
+		}
+		return supplied
+	}
+	return attached or {
+		return MalformedMessage{
+			reason: 'detached payload requires ${option_name}'
+		}
+	}
+}
+
 // sig_structure_sign1 builds the byte stream signed by COSE_Sign1
 // (RFC 9052 §4.4):
 //

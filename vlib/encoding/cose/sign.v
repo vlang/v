@@ -130,15 +130,8 @@ pub fn (m SignMessage) verify(signer_index int, key Key, opts VerifySignOptions)
 	alg := verification_algorithm(entry.protected, entry.unprotected, key,
 		'signer at index ${signer_index}')!
 
-	pl := if dp := opts.detached_payload {
-		dp
-	} else {
-		m.payload or {
-			return MalformedMessage{
-				reason: 'detached payload requires VerifySignOptions.detached_payload'
-			}
-		}
-	}
+	pl := payload_for_verification(m.payload, opts.detached_payload,
+		'VerifySignOptions.detached_payload')!
 	body_protected := m.protected_bytes()!
 	sign_protected := entry.protected_bytes()!
 	tbs := sig_structure_sign(body_protected, sign_protected, opts.external_aad, pl)

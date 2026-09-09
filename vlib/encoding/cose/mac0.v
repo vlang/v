@@ -61,15 +61,8 @@ pub fn mac0(payload []u8, key Key, opts Mac0Options) ![]u8 {
 // against `key`, and returns the payload.
 pub fn verify_mac0(message []u8, key Key, opts VerifyMac0Options) ![]u8 {
 	msg := Mac0Message.decode(message)!
-	pl := if dp := opts.detached_payload {
-		dp
-	} else {
-		msg.payload or {
-			return MalformedMessage{
-				reason: 'detached payload requires VerifyMac0Options.detached_payload'
-			}
-		}
-	}
+	pl := payload_for_verification(msg.payload, opts.detached_payload,
+		'VerifyMac0Options.detached_payload')!
 	msg.verify(key, pl, opts.external_aad)!
 	return pl
 }
