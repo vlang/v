@@ -144,6 +144,12 @@ pub fn parse_signature_input(input string) ![]SignatureEntry {
 				reason: 'Signature-Input: expected "," between entries near offset ${p.pos}'
 			}
 		}
+		p.skip_sp()
+		if p.done() {
+			return MalformedMessage{
+				reason: 'Signature-Input: expected an entry after ","'
+			}
+		}
 	}
 	return entries
 }
@@ -182,6 +188,12 @@ pub fn parse_signature(input string) !map[string][]u8 {
 		p.expect(`,`) or {
 			return MalformedMessage{
 				reason: 'Signature: expected "," between entries near offset ${p.pos}'
+			}
+		}
+		p.skip_sp()
+		if p.done() {
+			return MalformedMessage{
+				reason: 'Signature: expected an entry after ","'
 			}
 		}
 	}
@@ -416,7 +428,32 @@ fn (mut p SfParser) parse_byte_sequence() ![]u8 {
 	}
 	encoded := p.src[start..p.pos]
 	p.pos++ // closing ':'
-	return base64.decode(encoded)
+	if encoded.len % 4 != 0 {
+		return MalformedMessage{
+			reason: 'byte sequence is not canonically padded base64'
+		}
+	}
+	for i, c in encoded {
+		is_base64 := (c >= `A` && c <= `Z`) || (c >= `a` && c <= `z`)
+			|| (c >= `0` && c <= `9`) || c == `+` || c == `/`
+		if !is_base64 && c != `=` {
+			return MalformedMessage{
+				reason: 'invalid base64 character at offset ${start + i}'
+			}
+		}
+		if c == `=` && (i < encoded.len - 2 || (i == encoded.len - 2 && encoded[i + 1] != `=`)) {
+			return MalformedMessage{
+				reason: 'invalid base64 padding in byte sequence'
+			}
+		}
+	}
+	decoded := base64.decode(encoded)
+	if base64.encode(decoded) != encoded {
+		return MalformedMessage{
+			reason: 'byte sequence is not canonical base64'
+		}
+	}
+	return decoded
 }
 
 // encode_byte_sequence produces the wire form `:base64:` used inside

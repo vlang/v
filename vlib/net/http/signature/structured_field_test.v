@@ -131,6 +131,29 @@ fn test_parse_signature_returns_decoded_bytes() {
 	assert bytes.bytestr() == 'payload'
 }
 
+fn test_dictionary_parsers_reject_trailing_commas() {
+	if _ := parse_signature_input('sig1=("@method"), ') {
+		assert false, 'Signature-Input must reject a trailing dictionary comma'
+	} else {
+		assert err is MalformedMessage
+	}
+	if _ := parse_signature('sig1=:YQ==:, ') {
+		assert false, 'Signature must reject a trailing dictionary comma'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_parse_signature_rejects_invalid_base64() {
+	for value in ['!', 'YQ=', 'YQ===', 'Y=Q=', 'Zh=='] {
+		if _ := parse_signature('sig1=:${value}:') {
+			assert false, 'Signature must reject invalid or non-canonical base64 "${value}"'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+}
+
 fn test_parse_signature_input_rejects_uppercase_label() {
 	if _ := parse_signature_input('Sig1=()') {
 		assert false, 'uppercase label must be rejected by SF parser'

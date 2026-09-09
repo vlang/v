@@ -52,6 +52,7 @@ pub fn sign_request(mut req http.Request, key Key, opts SignRequestOptions) ! {
 	if comps.len == 0 {
 		comps = default_request_components(req)
 	}
+	validate_stable_signature_components(comps)!
 	validate_request_component_coverage(req, comps, opts.scheme)!
 	mut alg := ?string(none)
 	if opts.include_alg {
@@ -128,6 +129,7 @@ pub fn sign_response(mut resp http.Response, key Key, opts SignResponseOptions) 
 	if comps.len == 0 {
 		comps = ['@status']
 	}
+	validate_stable_signature_components(comps)!
 	if comps.any(it.to_lower() == 'content-length') && !resp.header.contains(.content_length) {
 		// Insert the field so both HTTP/1.x and HTTP/2 actually transmit the
 		// value covered by the signature.
@@ -233,6 +235,17 @@ fn ensure_signature_label_available(h http.Header, label string) ! {
 	}
 }
 
+fn validate_stable_signature_components(components []string) ! {
+	for component in components {
+		name := component.to_lower()
+		if name in ['signature-input', 'signature'] {
+			return MalformedMessage{
+				reason: 'covered field "${name}" changes when the signature fields are appended'
+			}
+		}
+	}
+}
+
 fn validate_request_component_coverage(req http.Request, components []string, default_scheme string) ! {
 	if !req.enable_http2 {
 		return
@@ -251,6 +264,12 @@ fn validate_request_component_coverage(req http.Request, components []string, de
 		if name in ['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'upgrade'] {
 			return MalformedMessage{
 				reason: 'covered field "${name}" may be removed during HTTP/2 negotiation'
+			}
+		}
+		if name == 'te'
+			&& req.header.custom_values('TE').any(it.trim_space().to_lower() != 'trailers') {
+			return MalformedMessage{
+				reason: 'covered field "te" contains a value that may be removed during HTTP/2 negotiation'
 			}
 		}
 	}

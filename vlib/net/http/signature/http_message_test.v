@@ -368,6 +368,44 @@ fn test_sign_request_rejects_http2_removed_covered_field() {
 	assert !req.header.contains_custom('Signature')
 }
 
+fn test_sign_request_rejects_http2_filtered_te_value() {
+	mut req := build_request('https://example.com/foo')
+	req.header.add_custom('TE', 'gzip')!
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_request(mut req, key, components: ['te'], created: 1) {
+		assert false, 'TE values filtered during possible HTTP/2 negotiation cannot be covered'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !req.header.contains_custom('Signature')
+}
+
+fn test_sign_request_allows_http2_te_trailers() {
+	mut req := build_request('https://example.com/foo')
+	req.header.add_custom('TE', 'trailers')!
+	key := Key.hmac_sha256(test_secret.bytes())!
+	sign_request(mut req, key, components: ['te'], created: 1)!
+	verify_request(req, key)!
+}
+
+fn test_sign_request_rejects_self_referential_signature_field() {
+	mut req := build_request('https://example.com/foo')
+	req.header.add_custom('Signature-Input', 'old=()')!
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_request(mut req, key,
+		components: ['signature-input']
+		label:      'new'
+		created:    1
+	)
+	{
+		assert false, 'a field changed by signing cannot be covered'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert req.header.custom_values('Signature-Input') == ['old=()']
+	assert !req.header.contains_custom('Signature')
+}
+
 fn test_sign_response_and_verify() {
 	mut resp := http.Response{
 		status_code: 200
@@ -416,6 +454,27 @@ fn test_sign_response_rejects_existing_label() {
 	} else {
 		assert err is MalformedMessage
 	}
+}
+
+fn test_sign_response_rejects_self_referential_signature_field_without_mutation() {
+	mut resp := http.Response{
+		status_code: 200
+		body:        'hello'
+	}
+	resp.header.add_custom('Signature', 'old=:b2xk:')!
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_response(mut resp, key,
+		components: ['signature', 'content-length']
+		label:      'new'
+		created:    1
+	)
+	{
+		assert false, 'a field changed by signing cannot be covered'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert resp.header.custom_values('Signature') == ['old=:b2xk:']
+	assert !resp.header.contains(.content_length)
 }
 
 fn test_response_components_do_not_invent_content_length() {
