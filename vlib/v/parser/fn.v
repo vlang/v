@@ -89,6 +89,11 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 					reduced := left.remove_par()
 					if reduced is ast.Ident && reduced.name == name {
 						info.directly_reassigned = true
+					} else if reduced is ast.PrefixExpr && reduced.op == .mul {
+						dereferenced := reduced.right.remove_par()
+						if dereferenced is ast.Ident && dereferenced.name == name {
+							info.directly_reassigned = true
+						}
 					}
 				}
 			}
@@ -124,6 +129,10 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 				ast.AnonFn {
 					if node.inherited_vars.any(it.name == name && it.is_mut) {
 						info.captured_mut = true
+					} else if node.inherited_vars.any(it.name == name) {
+						for stmt in node.decl.stmts {
+							scan_receiver_reassignment(stmt, name, mut info)
+						}
 					}
 					return
 				}
@@ -1226,7 +1235,8 @@ run them via `v file.v` instead',
 			//
 			is_expand_simple_interpolation: is_expand_simple_interpolation
 		}
-		method.receiver_reassignment_unknown = no_body && rec.is_mut && p.file_path.ends_with('.vh')
+		method.receiver_reassignment_unknown = no_body && (rec.is_mut || rec.typ.is_ptr())
+			&& p.file_path.ends_with('.vh')
 		type_sym_method_idx = type_sym.register_method(method)
 		p.table.register_structured_receiver_method(method)
 	} else {
@@ -1322,7 +1332,7 @@ run them via `v file.v` instead',
 		p.inside_fn = false
 	}
 	p.cur_fn_name = keep_fn_name
-	if is_method && rec.is_mut && type_sym_method_idx < type_sym.methods.len {
+	if is_method && (rec.is_mut || rec.typ.is_ptr()) && type_sym_method_idx < type_sym.methods.len {
 		mut receiver_info := ReceiverReassignmentInfo{}
 		for stmt in stmts {
 			scan_receiver_reassignment(stmt, rec.name, mut receiver_info)

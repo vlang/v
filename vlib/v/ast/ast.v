@@ -738,8 +738,8 @@ pub mut:
 	is_conditional      bool     // true for `[if abc]fn(){}`
 	ctdefine_idx        int      // the index of the attribute, containing the compile time define [if mytag]
 	from_embedded_type  Type     // for interface only, fn from the embedded interface
-	receiver_reassigned bool     // the method body can replace its mutable receiver
-	// true for mutable receiver methods loaded from a .vh file, whose body cannot be inspected
+	receiver_reassigned bool     // the method body can replace its mutable or pointer receiver
+	// true for mutable or pointer receiver methods loaded from a .vh file, whose body cannot be inspected
 	receiver_reassignment_unknown bool
 	receiver_passed_mut           bool
 	receiver_address_taken        bool

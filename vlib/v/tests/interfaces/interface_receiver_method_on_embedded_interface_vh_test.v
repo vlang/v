@@ -56,6 +56,27 @@ fn test_mutable_external_interface_receiver_method_from_vh_is_rejected() {
 	assert run_result.output.contains('its body is unavailable and may replace its receiver'), run_result.output
 }
 
+fn test_pointer_external_interface_receiver_method_from_vh_is_rejected() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'pointer_interface_receiver_method_vh_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(os.join_path(root, 'nodes'))!
+	os.write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'pointer_iface_vh'\n}\n")!
+	os.write_file(os.join_path(root, 'nodes', 'nodes.vh'),
+		'module nodes\n\npub interface Node {}\n\npub fn (node &Node) replace(next Node)\n\npub interface Element {\n\tNode\n}\n')!
+	os.write_file(os.join_path(root, 'main.v'),
+		'module main\n\nimport nodes\n\nstruct Item {}\n\nfn main() {\n\tmut element := nodes.Element(Item{})\n\telement.replace(nodes.Node(Item{}))\n}\n')!
+	run_result := run_v_in_dir(root, ['-gc', 'none', '-check', '.'])
+	assert run_result.exit_code == 1, run_result.output
+	assert run_result.output.contains('cannot call pointer-receiver method'), run_result.output
+	assert run_result.output.contains('its body is unavailable and may replace its receiver'), run_result.output
+}
+
 fn test_implicitly_mutable_receiver_argument_is_rejected() {
 	$if windows {
 		return

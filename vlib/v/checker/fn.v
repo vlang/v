@@ -53,8 +53,9 @@ fn (c &Checker) implicit_mut_call_arg(param ast.Param, arg ast.CallArg) ast.Call
 }
 
 fn (mut c Checker) record_receiver_mut_argument(param ast.Param, arg ast.CallArg) {
-	if !param.is_mut || !arg.is_mut || c.table.cur_fn == unsafe { nil } || !c.table.cur_fn.is_method
-		|| !c.table.cur_fn.rec_mut {
+	if !param.is_mut || !arg.is_mut || c.table.cur_fn == unsafe { nil }
+		|| !c.table.cur_fn.is_method
+		|| (!c.table.cur_fn.rec_mut && !c.table.cur_fn.receiver.typ.is_ptr()) {
 		return
 	}
 	mut arg_expr := arg.expr
@@ -72,8 +73,9 @@ fn (mut c Checker) record_receiver_mut_argument(param ast.Param, arg ast.CallArg
 }
 
 fn (mut c Checker) record_receiver_method_call(left ast.Expr, called_name string) {
-	if called_name == '' || c.table.cur_fn == unsafe { nil } || !c.table.cur_fn.is_method
-		|| !c.table.cur_fn.rec_mut {
+	if called_name == '' || c.table.cur_fn == unsafe { nil }
+		|| !c.table.cur_fn.is_method
+		|| (!c.table.cur_fn.rec_mut && !c.table.cur_fn.receiver.typ.is_ptr()) {
 		return
 	}
 	mut left_expr := left
@@ -3122,7 +3124,8 @@ fn (mut c Checker) method_can_replace_receiver(receiver_sym &ast.TypeSymbol, met
 	seen[method_key] = true
 	for called_name in method.receiver_method_calls {
 		called_method := c.table.find_method_with_embeds(receiver_sym, called_name) or { continue }
-		if called_method.params.len > 0 && called_method.params[0].is_mut
+		if called_method.params.len > 0
+			&& (called_method.params[0].is_mut || called_method.params[0].typ.is_ptr())
 			&& c.method_can_replace_receiver(receiver_sym, called_method, mut seen) {
 			return true
 		}
@@ -3154,7 +3157,8 @@ fn (mut c Checker) check_pending_embedded_receiver_calls() {
 		if c.method_can_replace_receiver(receiver_sym, method, mut seen_receiver_methods) {
 			c.change_current_file(pending.file)
 			reason := receiver_replacement_reason(method)
-			c.error('cannot call mutable method `${receiver_sym.name}.${pending.method_name}` through embedded interface `${pending.outer_name}` because ${reason}',
+			method_kind := if method.params[0].is_mut { 'mutable' } else { 'pointer-receiver' }
+			c.error('cannot call ${method_kind} method `${receiver_sym.name}.${pending.method_name}` through embedded interface `${pending.outer_name}` because ${reason}',
 				pending.pos)
 		}
 	}
@@ -3709,7 +3713,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	requires_mut_receiver := method.params[0].is_mut
 		&& (!is_used_outside_receiver_module || c.fn_has_visible_mutation_for_param(method, 0))
 	if is_method_from_embed && left_sym.kind == .interface && rec_sym.kind == .interface
-		&& method.params[0].is_mut {
+		&& (method.params[0].is_mut || method.params[0].typ.is_ptr()) {
 		mut receiver_method := method
 		if current_method := c.table.find_method_with_embeds(rec_sym, method_name) {
 			receiver_method = current_method
@@ -3717,7 +3721,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		mut seen_receiver_methods := map[string]bool{}
 		if c.method_can_replace_receiver(rec_sym, receiver_method, mut seen_receiver_methods) {
 			reason := receiver_replacement_reason(receiver_method)
-			c.error('cannot call mutable method `${rec_sym.name}.${method_name}` through embedded interface `${left_sym.name}` because ${reason}',
+			method_kind := if method.params[0].is_mut { 'mutable' } else { 'pointer-receiver' }
+			c.error('cannot call ${method_kind} method `${rec_sym.name}.${method_name}` through embedded interface `${left_sym.name}` because ${reason}',
 				node.pos)
 		} else if c.file != unsafe { nil }
 			&& !c.pending_embedded_receiver_calls.any(it.file.path == c.file.path

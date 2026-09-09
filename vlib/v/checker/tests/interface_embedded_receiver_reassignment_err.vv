@@ -61,6 +61,25 @@ fn (mut node Node) replace_through_comptime_method(next Node) {
 	}
 }
 
+fn (node &Node) replace_through_pointer(next Node) {
+	unsafe {
+		*node = next
+	}
+}
+
+fn (mut node Node) replace_through_pointer_method(next Node) {
+	node.replace_through_pointer(next)
+}
+
+fn (node &Node) replace_through_pointer_closure(next Node) {
+	replace := fn [node, next] () {
+		unsafe {
+			*node = next
+		}
+	}
+	replace()
+}
+
 interface Element {
 	Node
 }
@@ -79,4 +98,7 @@ fn main() {
 	element.expose_receiver_address()
 	element.replace_through_closure(Node(Item{}))
 	element.replace_through_comptime_method(Node(Item{}))
+	element.replace_through_pointer(Node(Item{}))
+	element.replace_through_pointer_closure(Node(Item{}))
+	element.replace_through_pointer_method(Node(Item{}))
 }
