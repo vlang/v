@@ -4,6 +4,7 @@
 module parser
 
 import v.ast
+import v.pref
 import v.token
 import v.util
 import os
@@ -43,6 +44,7 @@ mut:
 	captured_mut        bool
 	method_calls        []string
 	receiver_aliases    []ast.ReceiverAlias
+	preferences         &pref.Preferences = unsafe { nil }
 }
 
 fn contains_receiver_reference(expr ast.Expr, name string) bool {
@@ -106,6 +108,9 @@ fn contains_receiver_var_reference(expr ast.Expr, name string, var_pos int) bool
 			contains_receiver_var_reference(reduced.expr, name, var_pos)
 		}
 		ast.UnsafeExpr {
+			contains_receiver_var_reference(reduced.expr, name, var_pos)
+		}
+		ast.DumpExpr {
 			contains_receiver_var_reference(reduced.expr, name, var_pos)
 		}
 		ast.CallExpr {
@@ -182,6 +187,9 @@ fn is_receiver_pointer_alias(expr ast.Expr, name string, aliases []ast.ReceiverA
 		ast.UnsafeExpr {
 			is_receiver_pointer_alias(reduced.expr, name, aliases)
 		}
+		ast.DumpExpr {
+			is_receiver_pointer_alias(reduced.expr, name, aliases)
+		}
 		ast.PrefixExpr {
 			if reduced.op == .amp {
 				right := reduced.right.remove_par()
@@ -246,6 +254,48 @@ fn scan_receiver_sql_query_data(items []ast.SqlQueryDataItem, name string, mut i
 					scan_receiver_sql_query_data(branch.items, name, mut info)
 				}
 			}
+		}
+	}
+}
+
+fn receiver_comptime_if_cond(expr ast.Expr, preferences &pref.Preferences) ?bool {
+	reduced := expr.remove_par()
+	return match reduced {
+		ast.BoolLiteral {
+			reduced.val
+		}
+		ast.PrefixExpr {
+			if reduced.op != .not {
+				return none
+			}
+			!receiver_comptime_if_cond(reduced.right, preferences)?
+		}
+		ast.PostfixExpr {
+			if reduced.op != .question || reduced.expr !is ast.Ident {
+				return none
+			}
+			(reduced.expr as ast.Ident).name in preferences.compile_defines
+		}
+		ast.InfixExpr {
+			if reduced.op !in [.and, .logical_or] {
+				return none
+			}
+			left := receiver_comptime_if_cond(reduced.left, preferences)?
+			right := receiver_comptime_if_cond(reduced.right, preferences)?
+			if reduced.op == .and {
+				left && right
+			} else {
+				left || right
+			}
+		}
+		ast.Ident {
+			if reduced.name !in ast.valid_comptime_not_user_defined {
+				return none
+			}
+			ast.eval_comptime_not_user_defined_ident(reduced.name, preferences)?
+		}
+		else {
+			return none
 		}
 	}
 }
@@ -380,6 +430,33 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 		}
 		ast.Expr {
 			match node {
+				ast.IfExpr {
+					if node.is_comptime {
+						for branch in node.branches {
+							if branch.cond is ast.EmptyExpr {
+								for stmt in branch.stmts {
+									scan_receiver_reassignment(stmt, name, mut info)
+								}
+								return
+							}
+							is_active := receiver_comptime_if_cond(branch.cond, info.preferences) or {
+								for fallback_branch in node.branches {
+									for stmt in fallback_branch.stmts {
+										scan_receiver_reassignment(stmt, name, mut info)
+									}
+								}
+								return
+							}
+							if is_active {
+								for stmt in branch.stmts {
+									scan_receiver_reassignment(stmt, name, mut info)
+								}
+								return
+							}
+						}
+						return
+					}
+				}
 				ast.AnonFn {
 					mut receiver_names := [name]
 					receiver_names << info.receiver_aliases.filter(it.end_pos == 0).map(it.name)
@@ -1633,6 +1710,7 @@ run them via `v file.v` instead',
 		mut receiver_info := ReceiverReassignmentInfo{
 			receiver_is_ptr: rec.typ.is_ptr()
 			receiver_is_mut: rec.is_mut
+			preferences:     p.pref
 		}
 		for stmt in stmts {
 			scan_receiver_reassignment(stmt, rec.name, mut receiver_info)

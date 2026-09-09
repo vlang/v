@@ -67,6 +67,9 @@ fn receiver_pointer_argument(expr ast.Expr, receiver_name string) bool {
 		ast.UnsafeExpr {
 			receiver_pointer_argument(reduced.expr, receiver_name)
 		}
+		ast.DumpExpr {
+			receiver_pointer_argument(reduced.expr, receiver_name)
+		}
 		ast.CallExpr {
 			stmts_return_receiver_pointer_argument(reduced.or_block.stmts, receiver_name)
 		}
@@ -141,6 +144,9 @@ fn receiver_alias_argument(expr ast.Expr, alias ast.ReceiverAlias) bool {
 			receiver_alias_argument(reduced.expr, alias)
 		}
 		ast.UnsafeExpr {
+			receiver_alias_argument(reduced.expr, alias)
+		}
+		ast.DumpExpr {
 			receiver_alias_argument(reduced.expr, alias)
 		}
 		ast.CallExpr {

@@ -267,6 +267,9 @@ fn (mut c Checker) return_expr_contains_pointer_param(expr ast.Expr, aliases []s
 		ast.UnsafeExpr {
 			c.return_expr_contains_pointer_param(reduced.expr, aliases)
 		}
+		ast.DumpExpr {
+			c.return_expr_contains_pointer_param(reduced.expr, aliases)
+		}
 		ast.IfExpr {
 			reduced.branches.any(c.stmts_return_pointer_param(it.stmts, aliases))
 		}
@@ -485,6 +488,9 @@ fn (mut c Checker) expr_mutation_visibility(expr ast.Expr, root_name string, roo
 		return c.expr_mutation_visibility(current.expr, root_name, root_type)
 	}
 	if current is ast.UnsafeExpr {
+		return c.expr_mutation_visibility(current.expr, root_name, root_type)
+	}
+	if current is ast.DumpExpr {
 		return c.expr_mutation_visibility(current.expr, root_name, root_type)
 	}
 	if current is ast.CallExpr {

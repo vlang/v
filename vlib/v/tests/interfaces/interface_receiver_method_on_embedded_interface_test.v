@@ -21,6 +21,12 @@ fn (mut node Node) append_child_through_comptime_method(child &Node) {
 	}
 }
 
+fn (mut node Node) replace_only_on_windows(next &Node) {
+	$if windows {
+		node = unsafe { *next }
+	}
+}
+
 fn (node &Node) check() bool {
 	return true
 }
@@ -187,6 +193,16 @@ fn test_field_mutation_through_comptime_receiver_method_on_embedded_interface() 
 
 	assert element.children.len == 1
 	assert element.children[0].name == 'comptime delegated'
+}
+
+fn test_inactive_comptime_receiver_replacement_is_ignored() {
+	$if !windows {
+		mut element := Element(HTMLBodyElement{
+			name: 'body'
+		})
+		element.replace_only_on_windows(new_child('replacement'))
+		assert element.name == 'body'
+	}
 }
 
 fn test_non_addressable_receiver_method_on_embedded_interface() {

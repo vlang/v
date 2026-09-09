@@ -228,6 +228,7 @@ fn main() {
 	pointer_element.pass_nested_pointer_helper()
 	pointer_element.pass_pointer_alias_helper(PointerNode(Item{}))
 	pointer_element.spawn_pointer_read()
+	_ = pointer_element.return_dumped_pointer_receiver()
 }
 
 fn replace_pointer_node(node &PointerNode, next PointerNode) {
@@ -343,4 +344,8 @@ fn replace_pointer_alias_helper(node &PointerNode, next PointerNode) {
 
 fn (node &PointerNode) pass_pointer_alias_helper(next PointerNode) {
 	replace_pointer_alias_helper(node, next)
+}
+
+fn (node &PointerNode) return_dumped_pointer_receiver() &PointerNode {
+	return dump(node)
 }
