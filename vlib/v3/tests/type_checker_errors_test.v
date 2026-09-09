@@ -1927,6 +1927,22 @@ fn test_fn_literal_c_abi_const_mode_matches_alias_inside_generic_fn() {
 		'cannot use')
 }
 
+fn test_callback_identifier_c_abi_modes_inside_generic_fn() {
+	v3_bin := build_v3()
+	local_matching := run_good(v3_bin, 'good_local_const_callback_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler ConstHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tr := Router{}\n\tcallback := fn (const_event &C.native_event) {}\n\treturn r.accept(callback)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert local_matching == 'true'
+	run_bad(v3_bin, 'bad_local_const_callback_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn (r Router) accept(handler PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tcallback := fn (const_event &C.native_event) {}\n\tr.accept(callback)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	named_matching := run_good(v3_bin, 'good_named_const_callback_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn handle(const_event &C.native_event) {}\nfn (r Router) accept(handler ConstHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tr := Router{}\n\treturn r.accept(handle)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert named_matching == 'true'
+	run_bad(v3_bin, 'bad_named_const_callback_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn handle(const_event &C.native_event) {}\nfn (r Router) accept(handler PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tr.accept(handle)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+}
+
 fn test_fn_literal_nested_named_callback_param_matches_alias_inside_generic_fn() {
 	v3_bin := build_v3()
 	matching := run_good(v3_bin, 'good_nested_named_callback_param_in_generic',

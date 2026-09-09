@@ -12790,44 +12790,64 @@ fn (t &Transformer) sum_type_has_source_only_fn_variant(expected_type string) bo
 
 fn (t &Transformer) fn_literal_source_type_texts(arg_id flat.NodeId) []string {
 	mut result := []string{}
-	t.collect_fn_literal_source_type_texts(arg_id, mut result)
+	mut seen := map[int]bool{}
+	t.collect_fn_literal_source_type_texts(arg_id, mut result, mut seen)
 	return result
 }
 
-fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut result []string) {
+fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut result []string, mut seen map[int]bool) {
 	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
 		return
 	}
+	if seen[int(arg_id)] {
+		return
+	}
+	seen[int(arg_id)] = true
 	node := t.a.nodes[int(arg_id)]
 	match node.kind {
 		.paren, .expr_stmt {
 			if node.children_count == 1 {
-				t.collect_fn_literal_source_type_texts(t.a.child(&node, 0), mut result)
+				t.collect_fn_literal_source_type_texts(t.a.child(&node, 0), mut result, mut seen)
 			}
 			return
 		}
 		.cast_expr {
 			if node.children_count == 1 && t.fn_literal_cast_target_contains_callback(node.value) {
-				t.collect_fn_literal_source_type_texts(t.a.child(&node, 0), mut result)
+				t.collect_fn_literal_source_type_texts(t.a.child(&node, 0), mut result, mut seen)
 			}
 			return
 		}
 		.block, .match_branch, .lock_expr {
 			if node.children_count > 0 {
 				t.collect_fn_literal_source_type_texts(t.a.child(&node, node.children_count - 1), mut
-					result)
+					result, mut seen)
 			}
 			return
 		}
 		.if_expr, .match_stmt {
 			for i in 1 .. node.children_count {
-				t.collect_fn_literal_source_type_texts(t.a.child(&node, i), mut result)
+				t.collect_fn_literal_source_type_texts(t.a.child(&node, i), mut result, mut seen)
 			}
 			return
 		}
 		.or_expr {
 			for i in 0 .. node.children_count {
-				t.collect_fn_literal_source_type_texts(t.a.child(&node, i), mut result)
+				t.collect_fn_literal_source_type_texts(t.a.child(&node, i), mut result, mut seen)
+			}
+			return
+		}
+		.ident {
+			if !t.fn_literal_cast_target_contains_callback(t.node_type(arg_id)) {
+				return
+			}
+			before := result.len
+			if rhs_id := t.callback_local_decl_rhs(node.value, arg_id) {
+				t.collect_fn_literal_source_type_texts(rhs_id, mut result, mut seen)
+			}
+			if result.len == before {
+				if source_type := t.named_callback_source_type(node.value) {
+					result << source_type
+				}
 			}
 			return
 		}
@@ -12847,6 +12867,119 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 	}
 	ret := if node.typ.len > 0 && node.typ != 'void' { ' ${node.typ}' } else { '' }
 	result << 'fn (${params.join(', ')})${ret}'
+}
+
+fn (t &Transformer) callback_local_decl_rhs(name string, before_id flat.NodeId) ?flat.NodeId {
+	if name.len == 0 || int(before_id) < 0 || int(before_id) >= t.a.nodes.len {
+		return none
+	}
+	before := t.a.nodes[int(before_id)]
+	if !before.pos.is_valid() {
+		return none
+	}
+	source_before := t.callback_source_node_id(before_id) or { return none }
+	mut path := [source_before]
+	mut cursor := source_before
+	mut found_fn_scope := false
+	for _ in 0 .. t.source_parent_ids.len {
+		parent_id := t.source_parent_id(cursor)
+		if parent_id < 0 {
+			break
+		}
+		path << parent_id
+		parent := t.a.nodes[parent_id]
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			found_fn_scope = true
+			break
+		}
+		cursor = parent_id
+	}
+	if !found_fn_scope {
+		return none
+	}
+	mut best_rhs := flat.empty_node
+	for path_idx := path.len - 1; path_idx > 0; path_idx-- {
+		parent := t.a.nodes[path[path_idx]]
+		next_id := path[path_idx - 1]
+		for i in 0 .. parent.children_count {
+			child_id := int(t.a.child(&parent, i))
+			if child_id == next_id {
+				break
+			}
+			if child_id < 0 || child_id >= t.a.nodes.len {
+				continue
+			}
+			decl := t.a.nodes[child_id]
+			if decl.kind != .decl_assign {
+				continue
+			}
+			for j := 0; j + 1 < decl.children_count; j += 2 {
+				lhs := t.a.child_node(&decl, j)
+				if lhs.kind == .ident && lhs.value == name {
+					best_rhs = t.a.child(&decl, j + 1)
+					break
+				}
+			}
+		}
+	}
+	if best_rhs == flat.empty_node {
+		return none
+	}
+	return best_rhs
+}
+
+fn (t &Transformer) callback_source_node_id(id flat.NodeId) ?int {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if !node.pos.is_valid() {
+		return none
+	}
+	if int(id) < t.source_parent_ids.len && t.source_parent_ids[int(id)] >= 0 {
+		return int(id)
+	}
+	for i in 0 .. t.source_parent_ids.len {
+		candidate := t.a.nodes[i]
+		if candidate.kind != node.kind || candidate.value != node.value
+			|| candidate.pos.id != node.pos.id || candidate.pos.offset != node.pos.offset
+			|| candidate.pos.end != node.pos.end || t.source_parent_ids[i] < 0 {
+			continue
+		}
+		return i
+	}
+	return none
+}
+
+fn (t &Transformer) named_callback_source_type(name string) ?string {
+	if name.len == 0 || t.call_param_types_decl_index.len == 0 {
+		return none
+	}
+	module_name := t.current_source_module()
+	qualified := transform_qualified_fn_name(module_name, name)
+	decl := t.call_param_types_decl_index[qualified] or {
+		t.call_param_types_decl_index[name] or { return none }
+	}
+	if decl.idx < 0 || decl.idx >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[decl.idx]
+	if node.kind != .fn_decl {
+		return none
+	}
+	mut params := []string{}
+	for i in 0 .. node.children_count {
+		param := t.a.child_node(&node, i)
+		if param.kind != .param {
+			continue
+		}
+		mode := if param.is_mut { 'mut ' } else { '' }
+		param_type := t.decl_param_type_in_file(param.typ, decl.module, decl.file)
+		params << '${mode}${param.value} ${param_type}'
+	}
+	ret_type := t.decl_param_type_in_file(node.typ, decl.module, decl.file)
+	ret := if ret_type.len > 0 && ret_type != 'void' { ' ${ret_type}' } else { '' }
+	return 'fn (${params.join(', ')})${ret}'
 }
 
 fn (t &Transformer) fn_literal_cast_target_contains_callback(type_name string) bool {
