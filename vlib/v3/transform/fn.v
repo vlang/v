@@ -12820,6 +12820,12 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 			}
 			return
 		}
+		.as_expr {
+			if t.fn_literal_cast_target_contains_callback(node.value) {
+				result << t.callback_source_alias_expansion(node.value, 0)
+			}
+			return
+		}
 		.call {
 			if !t.fn_literal_cast_target_contains_callback(t.node_type(arg_id)) {
 				return
