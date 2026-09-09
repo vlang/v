@@ -56,10 +56,10 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 
 	p.check(.lcbr)
 	p.scope = &ast.Scope{
-		parent:               unsafe { nil } // you shouldn't be able to reference other variables in assembly blocks
+		parent: unsafe { nil } // you shouldn't be able to reference other variables in assembly blocks
 		detached_from_parent: true
-		start_pos:            p.tok.pos
-		objects:              ast.all_registers(mut p.table, arch) //
+		start_pos: p.tok.pos
+		objects: ast.all_registers(mut p.table, arch) //
 	}
 
 	mut local_labels := []string{}
@@ -224,12 +224,12 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 			}
 		}
 		templates << ast.AsmTemplate{
-			name:         name
-			args:         args
-			comments:     comments
-			is_label:     is_label
+			name: name
+			args: args
+			comments: comments
+			is_label: is_label
 			is_directive: is_directive
-			pos:          template_pos.extend(p.tok.pos())
+			pos: template_pos.extend(p.tok.pos())
 		}
 	}
 	mut scope := p.scope
@@ -250,7 +250,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 				for p.tok.kind == .name {
 					reg := ast.AsmRegister{
 						name: p.tok.lit
-						typ:  0
+						typ: 0
 						size: -1
 					}
 					p.next()
@@ -260,7 +260,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 						comments << p.comment()
 					}
 					clobbered << ast.AsmClobbered{
-						reg:      reg
+						reg: reg
 						comments: comments
 					}
 
@@ -289,20 +289,22 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	scope.end_pos = p.prev_tok.pos
 
 	return ast.AsmStmt{
-		arch:        arch
-		is_goto:     is_goto
+		arch: arch
+		is_goto: is_goto
 		is_volatile: is_volatile
-		templates:   templates
-		output:      output
-		input:       input
-		clobbered:   clobbered
-		pos:         pos.extend(p.prev_tok.pos())
+		is_raw: is_raw
+		is_intel: is_intel
+		templates: templates
+		output: output
+		input: input
+		clobbered: clobbered
+		pos: pos.extend(p.prev_tok.pos())
 		// `asm goto` blocks are always emitted as extended assembly (they need the
 		// label section), even when they have no output/input/clobber operands
-		is_basic:      is_top_level || (!is_goto && output.len + input.len + clobbered.len == 0)
-		scope:         scope
+		is_basic: is_top_level || (!is_goto && output.len + input.len + clobbered.len == 0)
+		scope: scope
 		global_labels: global_labels
-		local_labels:  local_labels
+		local_labels: local_labels
 	}
 }
 
@@ -324,7 +326,7 @@ fn (mut p Parser) reg_or_alias() ast.AsmArg {
 	} else {
 		return ast.AsmAlias{
 			name: p.prev_tok.lit
-			pos:  p.prev_tok.pos()
+			pos: p.prev_tok.pos()
 		}
 	}
 }
@@ -422,7 +424,7 @@ fn (mut p Parser) reg_or_alias() ast.AsmArg {
 fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 	pos := p.tok.pos()
 	p.check(.lsbr)
-	unknown_addressing_mode := 'unknown addressing mode. supported ones are [displacement],	[base], [base + displacement], [index ∗ scale + displacement], [base + index ∗ scale + displacement], [base + index + displacement], [rip + displacement]'
+	unknown_addressing_mode := 'unknown addressing mode. supported ones are [displacement],\t[base], [base + displacement], [index ∗ scale + displacement], [base + index ∗ scale + displacement], [base + index + displacement], [rip + displacement]'
 	// this mess used to look much cleaner before the removal of peek_tok2/3, see above code for cleaner version
 	if p.peek_tok.kind == .rsbr { // [displacement] or [base]
 		if p.tok.kind == .name {
@@ -431,7 +433,7 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			return ast.AsmAddressing{
 				mode: .base
 				base: base
-				pos:  pos.extend(p.prev_tok.pos())
+				pos: pos.extend(p.prev_tok.pos())
 			}
 		} else if p.tok.kind == .number {
 			displacement := if p.tok.kind == .name {
@@ -446,9 +448,9 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			}
 			p.check(.rsbr)
 			return ast.AsmAddressing{
-				mode:         .displacement
+				mode: .displacement
 				displacement: displacement
-				pos:          pos.extend(p.prev_tok.pos())
+				pos: pos.extend(p.prev_tok.pos())
 			}
 		} else {
 			p.error(unknown_addressing_mode)
@@ -471,10 +473,10 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			}
 			p.check(.rsbr)
 			return ast.AsmAddressing{
-				mode:         .rip_plus_displacement
-				base:         rip
+				mode: .rip_plus_displacement
+				base: rip
 				displacement: displacement
-				pos:          pos.extend(p.prev_tok.pos())
+				pos: pos.extend(p.prev_tok.pos())
 			}
 		}
 		base := p.reg_or_alias()
@@ -493,10 +495,10 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 				}
 				p.check(.rsbr)
 				return ast.AsmAddressing{
-					mode:         .base_plus_displacement
-					base:         base
+					mode: .base_plus_displacement
+					base: base
 					displacement: displacement
-					pos:          pos.extend(p.prev_tok.pos())
+					pos: pos.extend(p.prev_tok.pos())
 				}
 			} else {
 				p.error(unknown_addressing_mode)
@@ -520,12 +522,12 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			}
 			p.check(.rsbr)
 			return ast.AsmAddressing{
-				mode:         .base_plus_index_times_scale_plus_displacement
-				base:         base
-				index:        index
-				scale:        scale
+				mode: .base_plus_index_times_scale_plus_displacement
+				base: base
+				index: index
+				scale: scale
 				displacement: displacement
-				pos:          pos.extend(p.prev_tok.pos())
+				pos: pos.extend(p.prev_tok.pos())
 			}
 		} else if p.tok.kind == .plus {
 			p.next()
@@ -541,11 +543,11 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			}
 			p.check(.rsbr)
 			return ast.AsmAddressing{
-				mode:         .base_plus_index_plus_displacement
-				base:         base
-				index:        index
+				mode: .base_plus_index_plus_displacement
+				base: base
+				index: index
 				displacement: displacement
-				pos:          pos.extend(p.prev_tok.pos())
+				pos: pos.extend(p.prev_tok.pos())
 			}
 		}
 	}
@@ -567,11 +569,11 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 		}
 		p.check(.rsbr)
 		return ast.AsmAddressing{
-			mode:         .index_times_scale_plus_displacement
-			index:        index
-			scale:        scale
+			mode: .index_times_scale_plus_displacement
+			index: index
+			scale: scale
 			displacement: displacement
-			pos:          pos.extend(p.prev_tok.pos())
+			pos: pos.extend(p.prev_tok.pos())
 		}
 	}
 	p.error(unknown_addressing_mode)
@@ -665,11 +667,11 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 		}
 
 		res << ast.AsmIO{
-			alias:      alias
+			alias: alias
 			constraint: constraint
-			expr:       expr
-			comments:   comments
-			pos:        pos.extend(p.prev_tok.pos())
+			expr: expr
+			comments: comments
+			pos: pos.extend(p.prev_tok.pos())
 		}
 		p.n_asm++
 		if p.tok.kind in [.semicolon, .rcbr] {

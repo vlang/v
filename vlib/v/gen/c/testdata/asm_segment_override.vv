@@ -23,12 +23,14 @@ fn extended_asm() u64 {
 fn goto_asm() {
 	// `asm goto` blocks are emitted as extended assembly even without any
 	// output/input/clobber operands, so they need the escaped `%%` form too
+	// vfmt off
 	asm goto amd64 {
 		mov rax, gs:[16]
 		cmp rax, 0
 		jne over
 		; ; ; ; over
 	}
+	// vfmt on
 	over:
 }
 
