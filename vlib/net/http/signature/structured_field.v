@@ -286,15 +286,9 @@ fn (mut p SfParser) parse_inner_list() ![]string {
 			return items
 		}
 		items << p.parse_string()!
-		// A list item may itself carry parameters (`;k=v`); RFC 9421's
-		// covered-components list never sets these, but RFC 8941 allows
-		// them so we silently skip them to stay forward-compatible.
-		for p.pos < p.src.len && p.src[p.pos] == `;` {
-			p.pos++
-			p.parse_key()!
-			if p.pos < p.src.len && p.src[p.pos] == `=` {
-				p.pos++
-				p.parse_bare_item()!
+		if p.pos < p.src.len && p.src[p.pos] == `;` {
+			return MalformedMessage{
+				reason: 'covered-component parameters are not supported at offset ${p.pos}'
 			}
 		}
 	}

@@ -100,6 +100,14 @@ fn test_parse_signature_input_requires_inner_list_whitespace() {
 	}
 }
 
+fn test_parse_signature_input_rejects_unsupported_component_parameters() {
+	if _ := parse_signature_input('sig1=("example-dict";key="a")') {
+		assert false, 'unsupported covered-component parameters must not be discarded'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
 fn test_parse_signature_input_multiple_entries() {
 	src := 'sig-a=("@method");created=1, sig-b=("date" "@authority");keyid="k"'
 	entries := parse_signature_input(src)!

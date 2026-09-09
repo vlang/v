@@ -130,6 +130,7 @@ pub fn sign_response(mut resp http.Response, key Key, opts SignResponseOptions) 
 		comps = ['@status']
 	}
 	validate_stable_signature_components(comps)!
+	validate_response_component_coverage(comps)!
 	if comps.any(it.to_lower() == 'content-length') && !resp.header.contains(.content_length) {
 		// Insert the field so both HTTP/1.x and HTTP/2 actually transmit the
 		// value covered by the signature.
@@ -275,6 +276,17 @@ fn validate_request_component_coverage(req http.Request, components []string, de
 	}
 }
 
+fn validate_response_component_coverage(components []string) ! {
+	for component in components {
+		name := component.to_lower()
+		if name in ['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'upgrade'] {
+			return MalformedMessage{
+				reason: 'covered response field "${name}" may be removed by HTTP/2 transport'
+			}
+		}
+	}
+}
+
 enum RequestComponentsMode {
 	outgoing
 	incoming
@@ -285,13 +297,18 @@ enum RequestComponentsMode {
 // serialization, while incoming values preserve the parsed request target.
 // `default_scheme` reconstructs `@target-uri` for origin-form input.
 fn request_components(req http.Request, default_scheme string, mode RequestComponentsMode) !Components {
-	parsed := urllib.parse(req.url) or {
+	is_authority_form := mode == .incoming && req.method == .connect
+	is_asterisk_form := mode == .incoming && req.method == .options && req.url == '*'
+	parse_target := if is_authority_form || is_asterisk_form { '/' } else { req.url }
+	parsed := urllib.parse(parse_target) or {
 		return MalformedMessage{
 			reason: 'request url "${req.url}" is not a valid URL: ${err.msg()}'
 		}
 	}
 	uses_absolute_form := mode == .outgoing && !isnil(req.proxy) && parsed.scheme == 'http'
-	mut authority := if parsed.host != '' {
+	mut authority := if is_authority_form {
+		req.url
+	} else if parsed.host != '' {
 		parsed.host
 	} else {
 		req.host
@@ -308,13 +325,23 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 			}
 		}
 	}
-	scheme := if parsed.scheme != '' { parsed.scheme } else { default_scheme }
+	scheme := if !is_authority_form && !is_asterisk_form && parsed.scheme != '' {
+		parsed.scheme
+	} else {
+		default_scheme
+	}
 	mut c := Components{
 		method: req.method.str()
 	}
 	is_origin_form := req.url.starts_with('/')
 	escaped_path := parsed.escaped_path()
-	incoming_path := if escaped_path != '' { escaped_path } else { '/' }
+	incoming_path := if is_authority_form || is_asterisk_form {
+		'/'
+	} else if escaped_path != '' {
+		escaped_path
+	} else {
+		'/'
+	}
 	// Keep this in sync with Request.method_and_url_to_response: it removes
 	// duplicate leading slashes and re-encodes query values before sending.
 	transport_path := '/' + escaped_path.trim_left('/')
@@ -335,6 +362,8 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 	}
 	c.target_uri = if mode == .outgoing && parsed.host != '' {
 		'${scheme}://${authority}${origin_target}'
+	} else if (is_authority_form || is_asterisk_form) && authority != '' && scheme != '' {
+		'${scheme}://${authority}'
 	} else if is_origin_form && authority != '' && scheme != '' {
 		'${scheme}://${authority}${req.url}'
 	} else {

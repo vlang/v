@@ -229,6 +229,25 @@ fn test_incoming_request_components_preserve_absolute_form() {
 	assert c.component_value('@request-target')! == 'http://example.com/search?q=a+b'
 }
 
+fn test_incoming_connect_reconstructs_target_uri_from_authority_form() {
+	req :=
+		http.parse_request_str('CONNECT tunnel.example:443 HTTP/1.1\r\nHost: ignored.example\r\n\r\n')!
+	c := request_components(req, 'https', .incoming)!
+	assert c.component_value('@target-uri')! == 'https://tunnel.example:443'
+	assert c.component_value('@authority')! == 'tunnel.example'
+	assert c.component_value('@path')! == '/'
+	assert c.component_value('@request-target')! == 'tunnel.example:443'
+}
+
+fn test_incoming_options_asterisk_reconstructs_target_uri_without_path() {
+	req := http.parse_request_str('OPTIONS * HTTP/1.1\r\nHost: example.com:8443\r\n\r\n')!
+	c := request_components(req, 'https', .incoming)!
+	assert c.component_value('@target-uri')! == 'https://example.com:8443'
+	assert c.component_value('@authority')! == 'example.com:8443'
+	assert c.component_value('@path')! == '/'
+	assert c.component_value('@request-target')! == '*'
+}
+
 fn test_outgoing_proxy_request_components_use_absolute_form() {
 	proxy := http.new_http_proxy('http://localhost:8080')!
 	mut req := build_request('http://example.com/search?q=a%20b')
@@ -475,6 +494,20 @@ fn test_sign_response_rejects_self_referential_signature_field_without_mutation(
 	}
 	assert resp.header.custom_values('Signature') == ['old=:b2xk:']
 	assert !resp.header.contains(.content_length)
+}
+
+fn test_sign_response_rejects_http2_removed_covered_field() {
+	mut resp := http.Response{
+		status_code: 200
+	}
+	resp.header.set(.connection, 'keep-alive')
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_response(mut resp, key, components: ['connection'], created: 1) {
+		assert false, 'fields removed by an HTTP/2 response transport cannot be covered'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !resp.header.contains_custom('Signature')
 }
 
 fn test_response_components_do_not_invent_content_length() {
