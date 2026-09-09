@@ -28,8 +28,16 @@ fn C.native_register(fn (voidptr, &u8, usize) i32) i32
 fn C.native_send_int(voidptr, &u8, int) i32
 fn C.native_register_int(fn (voidptr, &u8, int) i32) i32
 
+type NativeConstIntCallback = fn (const_buf &u8, len int) int
+
+fn C.native_register_const_int(NativeConstIntCallback) int
+
 fn v_send(ctx voidptr, buf &u8, len usize) i32 {
 	return i32(len) + i32(unsafe { buf[0] }) + i32(ctx != unsafe { nil })
+}
+
+fn v_send_int(buf &u8, len int) int {
+	return int(unsafe { buf[0] }) + len
 }
 
 fn main() {
@@ -39,6 +47,7 @@ fn main() {
 	println(C.native_register(v_send))
 	println(C.native_register_int(C.native_send_int))
 	println(C.native_register_int((C.native_send_int)))
+	println(C.native_register_const_int(v_send_int))
 }
 ') or { panic(err) }
 	return src
@@ -75,4 +84,10 @@ fn test_c_extern_fn_callback_arg_is_not_cast() {
 	assert compact.contains('native_register_int(native_send_int)'), c_code
 	assert compact.contains('native_register_int((native_send_int))'), c_code
 	assert !compact.contains('__v3_callback_wrap_native_send_int'), c_code
+	// Retained `const_` pointer qualifiers must be merged into the C-extern ABI,
+	// without replacing its C `int` parameter and return widths with V i64.
+	assert c_code.contains('const u8* arg0, int arg1'), c_code
+	assert c_code.contains('static int v_send_int_callback_adapter_'), c_code
+	assert c_code.contains('return (int)(v_send_int((u8*)arg0, (i64)arg1));'), c_code
+	assert compact.contains('native_register_const_int(v_send_int_callback_adapter_'), c_code
 }
