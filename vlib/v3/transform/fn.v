@@ -13581,12 +13581,14 @@ fn (t &Transformer) callback_local_reaching_rhs_ids(name string, before_id flat.
 				}
 				continue
 			}
-			if definite_rhs_ids := t.callback_definite_assignment_rhs_ids(stmt_id, name) {
+			if definite_rhs_ids := t.callback_definite_assignment_rhs_ids(stmt_id, name,
+				source_before)
+			{
 				reaching = definite_rhs_ids.clone()
 				continue
 			}
 			mut nested := []flat.NodeId{}
-			t.collect_callback_nested_assignment_rhs_ids(stmt_id, name, mut nested)
+			t.collect_callback_nested_assignment_rhs_ids(stmt_id, name, source_before, mut nested)
 			for rhs_id in nested {
 				if rhs_id !in reaching {
 					reaching << rhs_id
@@ -13611,7 +13613,7 @@ fn (t &Transformer) callback_direct_assignment_rhs_ids(node flat.Node, name stri
 	return if result.len > 0 { result } else { none }
 }
 
-fn (t &Transformer) collect_callback_nested_assignment_rhs_ids(id flat.NodeId, name string, mut result []flat.NodeId) {
+fn (t &Transformer) collect_callback_nested_assignment_rhs_ids(id flat.NodeId, name string, use_id flat.NodeId, mut result []flat.NodeId) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
@@ -13659,8 +13661,8 @@ fn (t &Transformer) collect_callback_nested_assignment_rhs_ids(id flat.NodeId, n
 	if node.kind == .if_expr {
 		for i in 1 .. node.children_count {
 			branch_id := t.a.child(&node, i)
-			if !t.callback_node_definitely_terminates(branch_id) {
-				t.collect_callback_nested_assignment_rhs_ids(branch_id, name, mut result)
+			if t.callback_node_flow_to_use(branch_id, use_id) != .exits_away_from_use {
+				t.collect_callback_nested_assignment_rhs_ids(branch_id, name, use_id, mut result)
 			}
 		}
 		return
@@ -13668,8 +13670,8 @@ fn (t &Transformer) collect_callback_nested_assignment_rhs_ids(id flat.NodeId, n
 	if node.kind == .match_stmt {
 		for i in 1 .. node.children_count {
 			branch_id := t.a.child(&node, i)
-			if !t.callback_node_definitely_terminates(branch_id) {
-				t.collect_callback_nested_assignment_rhs_ids(branch_id, name, mut result)
+			if t.callback_node_flow_to_use(branch_id, use_id) != .exits_away_from_use {
+				t.collect_callback_nested_assignment_rhs_ids(branch_id, name, use_id, mut result)
 			}
 		}
 		return
@@ -13688,12 +13690,18 @@ fn (t &Transformer) collect_callback_nested_assignment_rhs_ids(id flat.NodeId, n
 			continue
 		}
 		if !name_shadowed {
-			t.collect_callback_nested_assignment_rhs_ids(child_id, name, mut result)
+			flow := t.callback_node_flow_to_use(child_id, use_id)
+			if flow != .exits_away_from_use {
+				t.collect_callback_nested_assignment_rhs_ids(child_id, name, use_id, mut result)
+			}
+			if node.kind in [.block, .match_branch] && flow != .fall_through {
+				break
+			}
 		}
 	}
 }
 
-fn (t &Transformer) callback_definite_assignment_rhs_ids(id flat.NodeId, name string) ?[]flat.NodeId {
+fn (t &Transformer) callback_definite_assignment_rhs_ids(id flat.NodeId, name string, use_id flat.NodeId) ?[]flat.NodeId {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
@@ -13708,21 +13716,23 @@ fn (t &Transformer) callback_definite_assignment_rhs_ids(id flat.NodeId, name st
 			return none
 		}
 		mut result := []flat.NodeId{}
-		mut has_fallthrough := false
+		mut has_reaching_path := false
 		for branch_idx in [1, 2] {
 			branch_id := t.a.child(&node, branch_idx)
-			if t.callback_node_definitely_terminates(branch_id) {
+			if t.callback_node_flow_to_use(branch_id, use_id) == .exits_away_from_use {
 				continue
 			}
-			has_fallthrough = true
-			branch_rhs := t.callback_definite_assignment_rhs_ids(branch_id, name) or { return none }
+			has_reaching_path = true
+			branch_rhs := t.callback_definite_assignment_rhs_ids(branch_id, name, use_id) or {
+				return none
+			}
 			for rhs_id in branch_rhs {
 				if rhs_id !in result {
 					result << rhs_id
 				}
 			}
 		}
-		return if has_fallthrough { result } else { none }
+		return if has_reaching_path { result } else { none }
 	}
 	if node.kind == .match_stmt {
 		if node.children_count < 2 {
@@ -13730,21 +13740,23 @@ fn (t &Transformer) callback_definite_assignment_rhs_ids(id flat.NodeId, name st
 		}
 		// Invalid non-exhaustive matches have already been rejected by the type checker.
 		mut result := []flat.NodeId{}
-		mut has_fallthrough := false
+		mut has_reaching_path := false
 		for i in 1 .. node.children_count {
 			branch := t.a.child(&node, i)
-			if t.callback_node_definitely_terminates(branch) {
+			if t.callback_node_flow_to_use(branch, use_id) == .exits_away_from_use {
 				continue
 			}
-			has_fallthrough = true
-			branch_rhs := t.callback_definite_assignment_rhs_ids(branch, name) or { return none }
+			has_reaching_path = true
+			branch_rhs := t.callback_definite_assignment_rhs_ids(branch, name, use_id) or {
+				return none
+			}
 			for rhs_id in branch_rhs {
 				if rhs_id !in result {
 					result << rhs_id
 				}
 			}
 		}
-		return if has_fallthrough { result } else { none }
+		return if has_reaching_path { result } else { none }
 	}
 	if node.kind !in [.block, .match_branch] {
 		return none
@@ -13765,7 +13777,8 @@ fn (t &Transformer) callback_definite_assignment_rhs_ids(id flat.NodeId, name st
 		if name_shadowed {
 			continue
 		}
-		if t.callback_node_definitely_terminates(child_id) {
+		flow := t.callback_node_flow_to_use(child_id, use_id)
+		if flow == .exits_away_from_use {
 			break
 		}
 		if child.kind == .assign {
@@ -13775,56 +13788,137 @@ fn (t &Transformer) callback_definite_assignment_rhs_ids(id flat.NodeId, name st
 				continue
 			}
 		}
-		if rhs_ids := t.callback_definite_assignment_rhs_ids(child_id, name) {
+		if rhs_ids := t.callback_definite_assignment_rhs_ids(child_id, name, use_id) {
 			result = rhs_ids.clone()
 			assigned = true
-			continue
-		}
-		if assigned {
+		} else if assigned {
 			mut nested := []flat.NodeId{}
-			t.collect_callback_nested_assignment_rhs_ids(child_id, name, mut nested)
+			t.collect_callback_nested_assignment_rhs_ids(child_id, name, use_id, mut nested)
 			for rhs_id in nested {
 				if rhs_id !in result {
 					result << rhs_id
 				}
 			}
 		}
+		if flow != .fall_through {
+			break
+		}
 	}
 	return if assigned { result } else { none }
 }
 
-fn (t &Transformer) callback_node_definitely_terminates(id flat.NodeId) bool {
+// CallbackUseFlow keeps branch-local exits separate from paths that can reach a later use.
+enum CallbackUseFlow {
+	fall_through
+	exits_toward_use
+	exits_away_from_use
+}
+
+fn (t &Transformer) callback_node_flow_to_use(id flat.NodeId, use_id flat.NodeId) CallbackUseFlow {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
-		return false
+		return .fall_through
 	}
 	node := t.a.nodes[int(id)]
-	if t.stmt_tail_exits(id) {
-		return true
-	}
-	if node.kind in [.block, .match_branch] {
-		start := if node.kind == .match_branch && node.value != 'else' {
-			node.value.int()
-		} else {
-			0
+	match node.kind {
+		.return_stmt {
+			return .exits_away_from_use
 		}
-		for i in start .. node.children_count {
-			if t.callback_node_definitely_terminates(t.a.child(&node, i)) {
-				return true
+		.break_stmt, .continue_stmt {
+			return if t.callback_node_is_within_target_loop(use_id, id) {
+				.exits_away_from_use
+			} else {
+				.exits_toward_use
 			}
 		}
-		return false
-	}
-	if node.kind == .if_expr && node.children_count == 3 {
-		return t.callback_node_definitely_terminates(t.a.child(&node, 1))
-			&& t.callback_node_definitely_terminates(t.a.child(&node, 2))
-	}
-	if node.kind == .match_stmt && node.children_count >= 2 {
-		for i in 1 .. node.children_count {
-			if !t.callback_node_definitely_terminates(t.a.child(&node, i)) {
-				return false
+		.expr_stmt {
+			if node.children_count == 0 {
+				return .fall_through
+			}
+			return t.callback_node_flow_to_use(t.a.child(&node, 0), use_id)
+		}
+		.call {
+			return if t.is_noreturn_call(id) { .exits_away_from_use } else { .fall_through }
+		}
+		.block, .match_branch {
+			start := if node.kind == .match_branch && node.value != 'else' {
+				node.value.int()
+			} else {
+				0
+			}
+			for i in start .. node.children_count {
+				flow := t.callback_node_flow_to_use(t.a.child(&node, i), use_id)
+				if flow != .fall_through {
+					return flow
+				}
+			}
+			return .fall_through
+		}
+		.if_expr {
+			if node.children_count != 3 {
+				return .fall_through
+			}
+			left := t.callback_node_flow_to_use(t.a.child(&node, 1), use_id)
+			right := t.callback_node_flow_to_use(t.a.child(&node, 2), use_id)
+			if left == .fall_through || right == .fall_through {
+				return .fall_through
+			}
+			return if left == .exits_toward_use || right == .exits_toward_use {
+				.exits_toward_use
+			} else {
+				.exits_away_from_use
 			}
 		}
-		return true
+		.match_stmt {
+			if node.children_count < 2 {
+				return .fall_through
+			}
+			mut result := CallbackUseFlow.exits_away_from_use
+			for i in 1 .. node.children_count {
+				flow := t.callback_node_flow_to_use(t.a.child(&node, i), use_id)
+				if flow == .fall_through {
+					return .fall_through
+				}
+				if flow == .exits_toward_use {
+					result = .exits_toward_use
+				}
+			}
+			return result
+		}
+		else {
+			return .fall_through
+		}
+	}
+}
+
+fn (t &Transformer) callback_node_is_within_target_loop(id flat.NodeId, exit_id flat.NodeId) bool {
+	mut cursor := int(exit_id)
+	for _ in 0 .. t.a.nodes.len {
+		parent_id := t.source_parent_id(cursor)
+		if parent_id < 0 {
+			return false
+		}
+		parent := t.a.nodes[parent_id]
+		if parent.kind in [.for_stmt, .for_in_stmt] {
+			return t.callback_node_is_within_scope(id, flat.NodeId(parent_id))
+		}
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			return false
+		}
+		cursor = parent_id
+	}
+	return false
+}
+
+fn (t &Transformer) callback_node_is_within_scope(id flat.NodeId, scope_id flat.NodeId) bool {
+	mut cursor := int(id)
+	for _ in 0 .. t.a.nodes.len {
+		if cursor == int(scope_id) {
+			return true
+		}
+		cursor = t.source_parent_id(cursor)
+		if cursor < 0 {
+			return false
+		}
 	}
 	return false
 }
