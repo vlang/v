@@ -1,0 +1,24 @@
+module main
+
+__global (
+	saved_node &GlobalNode
+)
+
+interface GlobalNode {}
+
+interface GlobalElement {
+	GlobalNode
+}
+
+struct GlobalItem {}
+
+fn (node &GlobalNode) save_receiver_globally() {
+	unsafe {
+		saved_node = node
+	}
+}
+
+fn main() {
+	mut element := GlobalElement(GlobalItem{})
+	element.save_receiver_globally()
+}

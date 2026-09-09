@@ -381,6 +381,102 @@ fn receiver_comptime_if_cond(expr ast.Expr, preferences &pref.Preferences, has_g
 	}
 }
 
+fn clone_receiver_reassignment_info(info ReceiverReassignmentInfo) ReceiverReassignmentInfo {
+	return ReceiverReassignmentInfo{
+		receiver_is_ptr:     info.receiver_is_ptr
+		receiver_is_mut:     info.receiver_is_mut
+		directly_reassigned: info.directly_reassigned
+		passed_mut:          info.passed_mut
+		address_taken:       info.address_taken
+		captured_mut:        info.captured_mut
+		method_calls:        info.method_calls.clone()
+		receiver_aliases:    info.receiver_aliases.clone()
+		receiver_closures:   info.receiver_closures.clone()
+		local_closure_pos:   info.local_closure_pos.clone()
+		preferences:         info.preferences
+		has_go_statements:   info.has_go_statements
+	}
+}
+
+fn merge_receiver_branch_info(mut info ReceiverReassignmentInfo, branches []ReceiverReassignmentInfo) {
+	for branch in branches {
+		info.directly_reassigned = info.directly_reassigned || branch.directly_reassigned
+		info.passed_mut = info.passed_mut || branch.passed_mut
+		info.address_taken = info.address_taken || branch.address_taken
+		info.captured_mut = info.captured_mut || branch.captured_mut
+		for called_method in branch.method_calls {
+			if called_method !in info.method_calls {
+				info.method_calls << called_method
+			}
+		}
+		for closure_pos in branch.local_closure_pos {
+			if closure_pos !in info.local_closure_pos {
+				info.local_closure_pos << closure_pos
+			}
+		}
+	}
+
+	mut aliases := []ast.ReceiverAlias{}
+	for branch in branches {
+		for alias in branch.receiver_aliases {
+			if !aliases.any(it.name == alias.name && it.var_pos == alias.var_pos
+				&& it.start_pos == alias.start_pos && it.is_pointer == alias.is_pointer) {
+				aliases << alias
+			}
+		}
+	}
+	for i, alias in aliases {
+		mut is_live := false
+		mut last_end_pos := alias.end_pos
+		for branch in branches {
+			for branch_alias in branch.receiver_aliases {
+				if branch_alias.name == alias.name && branch_alias.var_pos == alias.var_pos
+					&& branch_alias.start_pos == alias.start_pos
+					&& branch_alias.is_pointer == alias.is_pointer {
+					if branch_alias.end_pos == 0 {
+						is_live = true
+					} else if branch_alias.end_pos > last_end_pos {
+						last_end_pos = branch_alias.end_pos
+					}
+				}
+			}
+		}
+		aliases[i] = ast.ReceiverAlias{
+			...alias
+			end_pos: if is_live { 0 } else { last_end_pos }
+		}
+	}
+	info.receiver_aliases = aliases
+
+	mut closures := []ReceiverClosureAlias{}
+	for branch in branches {
+		for closure in branch.receiver_closures {
+			if !closures.any(it.name == closure.name && it.var_pos == closure.var_pos
+				&& it.start_pos == closure.start_pos) {
+				closures << closure
+			}
+		}
+	}
+	for i, closure in closures {
+		mut is_live := false
+		mut last_end_pos := closure.end_pos
+		for branch in branches {
+			for branch_closure in branch.receiver_closures {
+				if branch_closure.name == closure.name && branch_closure.var_pos == closure.var_pos
+					&& branch_closure.start_pos == closure.start_pos {
+					if branch_closure.end_pos == 0 {
+						is_live = true
+					} else if branch_closure.end_pos > last_end_pos {
+						last_end_pos = branch_closure.end_pos
+					}
+				}
+			}
+		}
+		closures[i].end_pos = if is_live { 0 } else { last_end_pos }
+	}
+	info.receiver_closures = closures
+}
+
 fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReassignmentInfo) {
 	match node {
 		ast.Stmt {
@@ -473,7 +569,7 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 						is_pointer_alias := is_receiver_pointer_alias(right, name,
 							info.receiver_aliases)
 						if has_receiver && left is ast.Ident && left.name !in [name, '_']
-							&& receiver_ident_var_pos(left) >= 0 {
+							&& receiver_ident_var_pos(left) >= 0 && receiver_ident_is_local(left) {
 							if alias_idx < 0
 								|| (info.receiver_aliases[alias_idx].is_pointer != is_pointer_alias
 								&& can_end_receiver_alias(left, info.receiver_aliases[alias_idx])) {
@@ -592,6 +688,46 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 						}
 						return
 					}
+					mut baseline := clone_receiver_reassignment_info(info)
+					scan_receiver_reassignment(node.left, name, mut baseline)
+					for branch in node.branches {
+						scan_receiver_reassignment(branch.cond, name, mut baseline)
+					}
+					mut branch_infos := []ReceiverReassignmentInfo{}
+					for branch in node.branches {
+						mut branch_info := clone_receiver_reassignment_info(baseline)
+						for stmt in branch.stmts {
+							scan_receiver_reassignment(stmt, name, mut branch_info)
+						}
+						branch_infos << branch_info
+					}
+					if !node.has_else {
+						branch_infos << clone_receiver_reassignment_info(baseline)
+					}
+					merge_receiver_branch_info(mut info, branch_infos)
+					return
+				}
+				ast.MatchExpr {
+					mut baseline := clone_receiver_reassignment_info(info)
+					scan_receiver_reassignment(node.cond, name, mut baseline)
+					mut branch_infos := []ReceiverReassignmentInfo{}
+					mut has_else := false
+					for branch in node.branches {
+						mut branch_info := clone_receiver_reassignment_info(baseline)
+						for expr in branch.exprs {
+							scan_receiver_reassignment(expr, name, mut branch_info)
+						}
+						for stmt in branch.stmts {
+							scan_receiver_reassignment(stmt, name, mut branch_info)
+						}
+						branch_infos << branch_info
+						has_else = has_else || branch.is_else
+					}
+					if !has_else {
+						branch_infos << clone_receiver_reassignment_info(baseline)
+					}
+					merge_receiver_branch_info(mut info, branch_infos)
+					return
 				}
 				ast.AnonFn {
 					mut receiver_names := [name]

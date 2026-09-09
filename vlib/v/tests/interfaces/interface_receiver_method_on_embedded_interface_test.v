@@ -97,6 +97,16 @@ fn (node &Node) invoke_rebound_local_closure() string {
 	return callback()
 }
 
+fn (node &Node) read_rebound_alias_after_all_branches(first &Node, second &Node, cond bool) string {
+	mut alias := unsafe { node }
+	if cond {
+		alias = unsafe { first }
+	} else {
+		alias = unsafe { second }
+	}
+	return read_node_name(alias)
+}
+
 fn (node &Node) inspect_through_generic_helper() int {
 	return inspect_value(node)
 }
@@ -332,6 +342,8 @@ fn test_local_helper_returned_pointer_alias_does_not_escape() {
 	assert element.read_field_through_local_closure() == 'body'
 	element.discard_receiver()
 	assert element.invoke_rebound_local_closure() == 'safe'
+	assert element.read_rebound_alias_after_all_branches(new_child('first'), new_child('second'),
+		true) == 'first'
 }
 
 fn test_generic_pointer_receiver_helper_does_not_escape() {

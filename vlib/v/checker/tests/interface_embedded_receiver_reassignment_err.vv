@@ -238,6 +238,7 @@ fn main() {
 	_ = pointer_element.return_pointer_callback()
 	pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
 	pointer_element.spawn_local_pointer_callback()
+	pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
 }
 
 fn replace_pointer_node(node &PointerNode, next PointerNode) {
@@ -439,4 +440,15 @@ fn (node &PointerNode) spawn_local_pointer_callback() {
 		println(node.name)
 	}
 	spawn callback()
+}
+
+fn (node &PointerNode) replace_alias_in_alternate_branch(other &PointerNode, next PointerNode, cond bool) {
+	mut alias := unsafe { node }
+	if cond {
+		alias = unsafe { other }
+	} else {
+		unsafe {
+			*alias = next
+		}
+	}
 }

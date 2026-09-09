@@ -242,14 +242,21 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:239:18: err
   239 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   240 |     pointer_element.spawn_local_pointer_callback()
-  241 | }
+  241 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
 vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:240:18: error: cannot call pointer-receiver method `PointerNode.spawn_local_pointer_callback` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
   238 |     _ = pointer_element.return_pointer_callback()
   239 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
   240 |     pointer_element.spawn_local_pointer_callback()
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  241 | }
-  242 |
+  241 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
+  242 | }
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:241:18: error: cannot call pointer-receiver method `PointerNode.replace_alias_in_alternate_branch` through embedded interface `PointerElement` because it can replace its receiver
+  239 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
+  240 |     pointer_element.spawn_local_pointer_callback()
+  241 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  242 | }
+  243 |
 vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:215:18: error: cannot call pointer-receiver method `PointerNode.pass_local_holder_value` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
   213 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
   214 |     pointer_element.pass_local_holder_mut()

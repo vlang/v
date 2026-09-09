@@ -1,0 +1,6 @@
+vlib/v/checker/tests/globals/interface_embedded_receiver_global_escape_err.vv:23:10: error: cannot call pointer-receiver method `GlobalNode.save_receiver_globally` through embedded interface `GlobalElement` because its receiver address escapes and can be used to replace it
+   21 | fn main() {
+   22 |     mut element := GlobalElement(GlobalItem{})
+   23 |     element.save_receiver_globally()
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~
+   24 | }
