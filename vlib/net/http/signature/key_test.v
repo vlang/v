@@ -189,6 +189,15 @@ fn test_hmac_rejects_empty_secret() {
 	}
 }
 
+fn test_verify_rejects_invalid_ed25519_private_seed_length() {
+	key := Key.ed25519_private([u8(1)])
+	if _ := verify_base('base'.bytes(), []u8{len: 64}, key, 'sig1') {
+		assert false, 'verification must reject an invalid private seed without panicking'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
 fn test_from_pem_rejects_garbage() {
 	if _ := Key.from_pem('not a PEM block') {
 		assert false, 'must reject non-PEM input'

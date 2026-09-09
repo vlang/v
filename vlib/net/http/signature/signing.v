@@ -82,6 +82,13 @@ fn ed25519_sign(base []u8, seed []u8) ![]u8 {
 }
 
 fn ed25519_verify(base []u8, sig []u8, key Key) !bool {
+	expected_size := if key.is_private { ed25519.seed_size } else { ed25519.public_key_size }
+	if key.bytes.len != expected_size {
+		kind := if key.is_private { 'seed' } else { 'public key' }
+		return MalformedMessage{
+			reason: 'Ed25519 ${kind} must be ${expected_size} bytes, got ${key.bytes.len}'
+		}
+	}
 	pub_key := if key.is_private {
 		ed25519.new_key_from_seed(key.bytes).public_key()
 	} else {
