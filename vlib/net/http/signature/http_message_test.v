@@ -265,6 +265,19 @@ fn test_outgoing_request_components_trim_explicit_host_for_derived_values() {
 	assert c.component_value('@target-uri')! == 'https://example.com/path'
 }
 
+fn test_sign_request_rejects_empty_explicit_host() {
+	mut req := build_request('https://example.com/path')
+	req.enable_http2 = false
+	req.header.set(.host, '   ')
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_request(mut req, key, created: 1) {
+		assert false, 'an empty Host field suppresses the wire authority'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !req.header.contains_custom('Signature')
+}
+
 fn test_incoming_request_components_trim_host_for_derived_values() {
 	req := http.parse_request_str('GET /path HTTP/1.1\r\nHost: example.com \r\n\r\n')!
 	c := request_components(req, 'https', .incoming)!
@@ -629,6 +642,45 @@ fn test_verify_response_requires_status_coverage_by_default() {
 	verify_response(resp, key, required_components: ['content-type'])!
 }
 
+fn test_response_defaults_require_content_digest_for_body() {
+	mut missing_digest := http.Response{
+		status_code: 200
+		body:        'hello'
+	}
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_response(mut missing_digest, key, created: 1) {
+		assert false, 'default response signing must require a digest for a body'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !missing_digest.header.contains_custom('Signature')
+
+	mut resp := http.Response{
+		status_code: 200
+		body:        'hello'
+	}
+	resp.header.add_custom('Content-Digest', 'sha-256=:digest:')!
+	sign_response(mut resp, key, created: 1)!
+	signature_input := resp.header.get_custom('Signature-Input') or { '' }
+	assert signature_input.contains('"content-digest"')
+	verify_response(resp, key)!
+}
+
+fn test_verify_response_requires_content_digest_coverage_for_body_by_default() {
+	mut resp := http.Response{
+		status_code: 200
+		body:        'hello'
+	}
+	key := Key.hmac_sha256(test_secret.bytes())!
+	sign_response(mut resp, key, components: ['@status'], created: 1)!
+	if _ := verify_response(resp, key) {
+		assert false, 'default response verification must require digest coverage for a body'
+	} else {
+		assert err is MalformedMessage
+	}
+	verify_response(resp, key, required_components: ['@status'])!
+}
+
 fn test_sign_response_normalizes_zero_status_to_wire_ok() {
 	mut resp := http.Response{
 		status_msg: 'custom reason without a status'
@@ -669,7 +721,7 @@ fn test_sign_response_includes_generated_content_length() {
 	assert (resp.header.get(.content_length) or { '' }) == '5'
 	mut received := resp
 	received.status_code = 200
-	verify_response(received, key)!
+	verify_response(received, key, required_components: ['@status', 'content-length'])!
 }
 
 fn test_sign_response_failure_does_not_add_generated_content_length() {

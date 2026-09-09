@@ -135,12 +135,21 @@ pub:
 
 // sign_response signs an HTTP response in place. Like `sign_request`
 // it preserves any pre-existing Signature-Input / Signature values
-// and defaults `created` to the current time.
+// and defaults `created` to the current time. The default component profile
+// additionally requires and covers Content-Digest when the response has a body.
 pub fn sign_response(mut resp http.Response, key Key, opts SignResponseOptions) ! {
 	ensure_signature_label_available(resp.header, opts.label)!
 	mut comps := opts.components.clone()
 	if comps.len == 0 {
 		comps = ['@status']
+		if resp.body != '' {
+			if !resp.header.contains_custom('Content-Digest') {
+				return MalformedMessage{
+					reason: 'default signing of a response body requires a Content-Digest field'
+				}
+			}
+			comps << 'content-digest'
+		}
 	}
 	validate_stable_signature_components(comps)!
 	validate_response_component_coverage(comps)!
@@ -179,12 +188,13 @@ pub struct VerifyResponseOptions {
 pub:
 	label    string
 	now_unix i64
-	// required_components defaults to @status.
+	// required_components defaults to @status, plus content-digest for a body.
 	required_components []string
 }
 
 // verify_response verifies a labelled signature on an HTTP response and
-// requires @status coverage unless `required_components` is set explicitly.
+// requires @status coverage, plus content-digest for a body, unless
+// `required_components` is set explicitly.
 pub fn verify_response(resp http.Response, key Key, opts VerifyResponseOptions) ! {
 	c := response_components(resp)
 	sig_input := merged_dict_field(resp.header, 'Signature-Input') or {
@@ -199,6 +209,8 @@ pub fn verify_response(resp http.Response, key Key, opts VerifyResponseOptions) 
 	}
 	required := if opts.required_components.len > 0 {
 		opts.required_components
+	} else if resp.body != '' {
+		['@status', 'content-digest']
 	} else {
 		['@status']
 	}
@@ -386,10 +398,14 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 			authority = transport_authority(parsed)
 		}
 		if !uses_absolute_form {
-			if host := req.header.get(.host) {
-				if host != '' {
-					authority = host.trim_space()
+			if req.header.contains(.host) {
+				host := (req.header.get(.host) or { '' }).trim_space()
+				if host == '' {
+					return MalformedMessage{
+						reason: 'explicit Host field must not be empty'
+					}
 				}
+				authority = host
 			}
 		}
 	}
