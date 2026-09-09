@@ -2104,7 +2104,7 @@ fn (mut t Transformer) transform_optional_wrapper_index_expr(id flat.NodeId, nod
 	if key.len > 0 {
 		mut remaining_smartcasts := []SmartcastContext{cap: saved_smartcasts.len}
 		for smartcast in saved_smartcasts {
-			if smartcast.expr_name == key && smartcast.sum_type_name == option_unwrap_marker {
+			if smartcast.expr_name == key {
 				continue
 			}
 			remaining_smartcasts << smartcast
