@@ -261,6 +261,11 @@ fn test_dumped_option_reference_string_interpolation_is_not_hoisted_from_if_expr
 	assert result == ''
 }
 
+fn test_likely_option_reference_string_interpolation_is_not_hoisted_from_short_circuit() {
+	options := [?string('value')]
+	assert !(false && _likely_('${&options[1]}' == ''))
+}
+
 fn test_int_ref_string_interpolation() {
 	mut count := 10
 	count_ref := &count
