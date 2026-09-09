@@ -90,6 +90,27 @@ fn (node &Node) replace_through_pointer_argument(next Node) {
 	replace_pointer_argument(node, next)
 }
 
+interface PointerNode {}
+
+interface PointerElement {
+	PointerNode
+}
+
+fn (node &PointerNode) return_pointer_receiver() &PointerNode {
+	return unsafe { node }
+}
+
+struct PointerHolder {
+mut:
+	node &PointerNode = unsafe { nil }
+}
+
+fn (node &PointerNode) store_pointer_receiver(mut holder PointerHolder) {
+	unsafe {
+		holder.node = node
+	}
+}
+
 interface Element {
 	Node
 }
@@ -112,4 +133,8 @@ fn main() {
 	element.replace_through_pointer_closure(Node(Item{}))
 	element.replace_through_pointer_method(Node(Item{}))
 	element.replace_through_pointer_argument(Node(Item{}))
+	mut pointer_element := PointerElement(Item{})
+	_ = pointer_element.return_pointer_receiver()
+	mut holder := PointerHolder{}
+	pointer_element.store_pointer_receiver(mut holder)
 }

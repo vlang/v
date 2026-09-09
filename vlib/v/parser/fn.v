@@ -34,12 +34,81 @@ fn type_method_name_pos(sym &ast.TypeSymbol, name string, fallback token.Pos) to
 }
 
 struct ReceiverReassignmentInfo {
+	receiver_is_ptr bool
 mut:
 	directly_reassigned bool
 	passed_mut          bool
 	address_taken       bool
 	captured_mut        bool
 	method_calls        []string
+}
+
+fn contains_receiver_reference(expr ast.Expr, name string) bool {
+	reduced := expr.remove_par()
+	return match reduced {
+		ast.Ident {
+			reduced.name == name
+		}
+		ast.PrefixExpr {
+			contains_receiver_reference(reduced.right, name)
+		}
+		ast.CastExpr {
+			contains_receiver_reference(reduced.expr, name)
+				|| (reduced.has_arg && contains_receiver_reference(reduced.arg, name))
+		}
+		ast.AsCast {
+			contains_receiver_reference(reduced.expr, name)
+		}
+		ast.UnsafeExpr {
+			contains_receiver_reference(reduced.expr, name)
+		}
+		ast.IfExpr {
+			reduced.branches.any(stmts_return_receiver_reference(it.stmts, name))
+		}
+		ast.MatchExpr {
+			reduced.branches.any(stmts_return_receiver_reference(it.stmts, name))
+		}
+		ast.ArrayDecompose {
+			contains_receiver_reference(reduced.expr, name)
+		}
+		ast.ArrayInit {
+			reduced.exprs.any(contains_receiver_reference(it, name))
+				|| (reduced.has_update_expr
+				&& contains_receiver_reference(reduced.update_expr, name))
+		}
+		ast.MapInit {
+			reduced.keys.any(contains_receiver_reference(it, name))
+				|| reduced.vals.any(contains_receiver_reference(it, name))
+				|| (reduced.has_update_expr
+				&& contains_receiver_reference(reduced.update_expr, name))
+		}
+		ast.StructInit {
+			reduced.init_fields.any(contains_receiver_reference(it.expr, name))
+				|| (reduced.has_update_expr
+				&& contains_receiver_reference(reduced.update_expr, name))
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn stmts_return_receiver_reference(stmts []ast.Stmt, name string) bool {
+	if stmts.len == 0 {
+		return false
+	}
+	last_stmt := stmts.last()
+	return match last_stmt {
+		ast.ExprStmt {
+			contains_receiver_reference(last_stmt.expr, name)
+		}
+		ast.Return {
+			last_stmt.exprs.any(contains_receiver_reference(it, name))
+		}
+		else {
+			false
+		}
+	}
 }
 
 fn scan_receiver_sql_query_data(items []ast.SqlQueryDataItem, name string, mut info ReceiverReassignmentInfo) {
@@ -85,6 +154,9 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 				}
 			}
 			if node is ast.AssignStmt {
+				if info.receiver_is_ptr && node.right.any(contains_receiver_reference(it, name)) {
+					info.address_taken = true
+				}
 				for left in node.left {
 					reduced := left.remove_par()
 					if reduced is ast.Ident && reduced.name == name {
@@ -96,6 +168,10 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 						}
 					}
 				}
+			}
+			if info.receiver_is_ptr && node is ast.Return
+				&& node.exprs.any(contains_receiver_reference(it, name)) {
+				info.address_taken = true
 			}
 			// Visit statement payloads that are not exposed by Node.children().
 			if node is ast.AssertStmt && node.extra !is ast.EmptyExpr {
@@ -1333,7 +1409,9 @@ run them via `v file.v` instead',
 	}
 	p.cur_fn_name = keep_fn_name
 	if is_method && (rec.is_mut || rec.typ.is_ptr()) && type_sym_method_idx < type_sym.methods.len {
-		mut receiver_info := ReceiverReassignmentInfo{}
+		mut receiver_info := ReceiverReassignmentInfo{
+			receiver_is_ptr: rec.typ.is_ptr()
+		}
 		for stmt in stmts {
 			scan_receiver_reassignment(stmt, rec.name, mut receiver_info)
 		}
