@@ -12848,6 +12848,16 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 				t.collect_fn_literal_source_type_texts(rhs_id, mut result, mut seen)
 			}
 			if result.len == before {
+				mut local_type := t.raw_var_type(node.value)
+				if local_type.len == 0 {
+					local_type = t.var_type(node.value)
+				}
+				if local_type.len > 0 {
+					result << t.callback_source_alias_expansion(local_type, 0)
+					return
+				}
+			}
+			if result.len == before {
 				if source_type := t.named_callback_source_type(node.value) {
 					result << source_type
 				}

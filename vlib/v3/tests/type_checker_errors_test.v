@@ -1953,6 +1953,12 @@ fn test_callback_identifier_c_abi_modes_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_callback_container_alias_in_generic',
 		'type PlainHandlers = []fn (event &C.native_event)\nstruct C.native_event {}\nfn accept[T](handlers PlainHandlers) {}\nfn startup[T]() {\n\taccept[int]([fn (const_event &C.native_event) {}])\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	shadowed_param_matching := run_good(v3_bin, 'good_callback_param_shadows_named_fn_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn handler(const_event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) bool {\n\treturn true\n}\nfn startup[T](handler PlainHandler) bool {\n\tr := Router{}\n\treturn r.accept(handler)\n}\nfn main() {\n\tprintln(startup[int](fn (event &C.native_event) {}).str())\n}\n')
+	assert shadowed_param_matching == 'true'
+	run_bad(v3_bin, 'bad_callback_param_shadows_named_fn_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn handler(event &C.native_event) {}\nfn (r Router) accept(callback PlainHandler) {}\nfn startup[T](handler ConstHandler) {\n\tr := Router{}\n\tr.accept(handler)\n}\nfn main() {\n\tstartup[int](fn (const_event &C.native_event) {})\n}\n',
+		'cannot use')
 }
 
 fn test_fn_literal_nested_named_callback_param_matches_alias_inside_generic_fn() {
