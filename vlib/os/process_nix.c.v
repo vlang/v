@@ -27,7 +27,11 @@ fn (p &Process) unix_resolve_filename() !string {
 }
 
 fn (mut p Process) unix_spawn_process() int {
-	mut pipeset := [6]int{}
+	// Each `C.pipe` writes two C `int` file descriptors; back them with `i32` so the
+	// buffer matches the C ABI (a V `[6]int` is six 64-bit slots now that `int` is
+	// 64-bit, so `pipe` would write out of bounds). The fds convert back to `int`
+	// implicitly where they are stored/closed.
+	mut pipeset := [6]i32{}
 	if p.use_stdio_ctl {
 		mut dont_care := 0
 		if !p.has_stdin_path {

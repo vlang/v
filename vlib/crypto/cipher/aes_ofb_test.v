@@ -19,13 +19,13 @@ fn test_aes_ofb() {
 }
 
 fn aes_ofb_en(mut src []u8, key []u8, iv []u8) {
-	block := aes.new_cipher(key)
+	block := aes.new_cipher(key) or { panic(err) }
 	mut mode := cipher.new_ofb(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
 fn aes_ofb_de(mut src []u8, key []u8, iv []u8) {
-	block := aes.new_cipher(key)
+	block := aes.new_cipher(key) or { panic(err) }
 	mut mode := cipher.new_ofb(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }

@@ -63,6 +63,32 @@ pub fn tokenize_c_flag(value string) []string {
 	return tokens
 }
 
+// nearest_vmod_root returns the closest directory containing a v.mod for path.
+pub fn nearest_vmod_root(path string) ?string {
+	mut dir := if path.len == 0 {
+		os.getwd()
+	} else if os.is_dir(path) {
+		path
+	} else {
+		os.dir(path)
+	}
+	if dir.len == 0 {
+		dir = os.getwd()
+	}
+	dir = os.real_path(dir)
+	for dir.len > 0 {
+		if os.is_file(os.join_path_single(dir, 'v.mod')) {
+			return dir
+		}
+		parent := os.dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return none
+}
+
 // githash returns the current seven-character Git commit hash for path.
 pub fn githash(path string) !string {
 	head_file := os.join_path(path, '.git', 'HEAD')

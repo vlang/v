@@ -73,3 +73,20 @@ fn main() {
 	assert run_result.exit_code == 0, run_result.output
 	assert run_result.output.trim_space() == '20', run_result.output
 }
+
+fn test_prealloc_parallel_cc_shares_tls_declaration() {
+	test_dir := os.join_path(os.vtmp_dir(), 'prealloc_parallel_cc_macos_test_${os.getpid()}')
+	os.mkdir_all(test_dir)!
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	source_path := os.join_path(test_dir, 'main.v')
+	executable_path := os.join_path(test_dir, 'prealloc_parallel')
+	os.write_file(source_path, 'fn main() { println(42) }\n')!
+	compile_cmd := '${os.quoted_path(@VEXE)} -message-limit 199 -gc none -prealloc -parallel-cc -o ${os.quoted_path(executable_path)} ${os.quoted_path(source_path)}'
+	compile_result := os.execute(compile_cmd)
+	assert compile_result.exit_code == 0, '${compile_cmd}\n${compile_result.output}'
+	run_result := os.execute(os.quoted_path(executable_path))
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output.trim_space() == '42', run_result.output
+}

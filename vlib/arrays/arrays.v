@@ -85,9 +85,41 @@ pub fn merge[T](a []T, b []T) []T {
 	mut ia := 0
 	mut ib := 0
 	mut j := 0
-	// TODO: efficient approach to merge_desc where: a[ia] >= b[ib]
 	for ia < a.len && ib < b.len {
 		if a[ia] <= b[ib] {
+			m[j] = a[ia]
+			ia++
+		} else {
+			m[j] = b[ib]
+			ib++
+		}
+		j++
+	}
+	// a leftovers
+	for ia < a.len {
+		m[j] = a[ia]
+		ia++
+		j++
+	}
+	// b leftovers
+	for ib < b.len {
+		m[j] = b[ib]
+		ib++
+		j++
+	}
+	return m
+}
+
+// merge_desc merges two sorted arrays (descending) and maintains sorted order.
+// Example: arrays.merge_desc([7, 5, 3, 1], [8, 6, 4, 2]) // => [8, 7, 6, 5, 4, 3, 2, 1]
+@[direct_array_access]
+pub fn merge_desc[T](a []T, b []T) []T {
+	mut m := []T{len: a.len + b.len}
+	mut ia := 0
+	mut ib := 0
+	mut j := 0
+	for ia < a.len && ib < b.len {
+		if a[ia] >= b[ib] {
 			m[j] = a[ia]
 			ia++
 		} else {
@@ -665,6 +697,7 @@ fn swap_nonoverlapping[T](x_ &T, y_ &T, count int) {
 
 // copy copies the `src` array elements to the `dst` array.
 // The number of the elements copied is the minimum of the length of both arrays.
+// The `src` and `dst` arrays may overlap.
 // Returns the number of elements copied.
 pub fn copy[T](mut dst []T, src []T) int {
 	min_len := if dst.len < src.len { dst.len } else { src.len }
@@ -675,8 +708,17 @@ pub fn copy[T](mut dst []T, src []T) int {
 		blen := min_len * isize(sizeof(T))
 		unsafe { vmemmove(&T(dst.data), src.data, blen) }
 	} else {
-		for i in 0 .. min_len {
-			dst[i] = src[i]
+		dst_start := unsafe { usize(dst.data) }
+		src_start := unsafe { usize(src.data) }
+		copy_bytes := usize(min_len) * usize(sizeof(T))
+		if dst_start > src_start && dst_start - src_start < copy_bytes {
+			for i := min_len - 1; i >= 0; i-- {
+				dst[i] = src[i]
+			}
+		} else {
+			for i in 0 .. min_len {
+				dst[i] = src[i]
+			}
 		}
 	}
 	return min_len

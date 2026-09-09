@@ -131,7 +131,7 @@ pub fn parse_long_header(buf []u8) !(QuicLongHeader, int) {
 	dcid_len := int(buf[offset])
 	offset += 1
 	if dcid_len > quic_v1_max_cid_len {
-		return error('long header dcid_len ${dcid_len} exceeds QUIC v1\'s ${quic_v1_max_cid_len}-byte connection-ID limit')
+		return error("long header dcid_len ${dcid_len} exceeds QUIC v1's ${quic_v1_max_cid_len}-byte connection-ID limit")
 	}
 	if offset + dcid_len > buf.len {
 		return error('truncated long header: dcid_len ${dcid_len} exceeds remaining buffer')
@@ -145,7 +145,7 @@ pub fn parse_long_header(buf []u8) !(QuicLongHeader, int) {
 	scid_len := int(buf[offset])
 	offset += 1
 	if scid_len > quic_v1_max_cid_len {
-		return error('long header scid_len ${scid_len} exceeds QUIC v1\'s ${quic_v1_max_cid_len}-byte connection-ID limit')
+		return error("long header scid_len ${scid_len} exceeds QUIC v1's ${quic_v1_max_cid_len}-byte connection-ID limit")
 	}
 	if offset + scid_len > buf.len {
 		return error('truncated long header: scid_len ${scid_len} exceeds remaining buffer')
@@ -174,11 +174,11 @@ pub fn parse_long_header(buf []u8) !(QuicLongHeader, int) {
 		// should use parse_retry_header (retry.v, Phase 4) for the token +
 		// integrity tag that follow.
 		return QuicLongHeader{
-			typ:     typ
+			typ: typ
 			version: version
-			dcid:    dcid
-			scid:    scid
-			token:   token
+			dcid: dcid
+			scid: scid
+			token: token
 		}, offset
 	}
 
@@ -186,12 +186,12 @@ pub fn parse_long_header(buf []u8) !(QuicLongHeader, int) {
 	offset += length_bytes
 
 	return QuicLongHeader{
-		typ:     typ
+		typ: typ
 		version: version
-		dcid:    dcid
-		scid:    scid
-		token:   token
-		length:  length
+		dcid: dcid
+		scid: scid
+		token: token
+		length: length
 	}, offset
 }
 
@@ -253,8 +253,7 @@ pub fn encode_long_header(h QuicLongHeader, reserved_bits u8, pn_length_bits u8)
 	// `h.typ != .retry` guard around the Length varint below), so this
 	// check is scoped the same way.
 	if h.typ != .retry && h.length < u64(pn_length_bits) + 1 {
-		return error('long header Length (${h.length}) must be at least ${u64(pn_length_bits) + 1} bytes to cover the ${
-			pn_length_bits + 1}-byte packet number field it precedes')
+		return error('long header Length (${h.length}) must be at least ${u64(pn_length_bits) + 1} bytes to cover the ${pn_length_bits + 1}-byte packet number field it precedes')
 	}
 
 	type_bits := match h.typ {
@@ -340,10 +339,47 @@ pub fn parse_short_header(buf []u8, dcid_len int) !(QuicShortHeader, int) {
 	// this struct's own doc comment) -- callers must not call this before
 	// that step, same caveat as reserved/pn-length bits.
 	return QuicShortHeader{
-		spin_bit:  buf[0] & 0x20 != 0
+		spin_bit: buf[0] & 0x20 != 0
 		key_phase: buf[0] & 0x04 != 0
-		dcid:      dcid
+		dcid: dcid
 	}, 1 + dcid_len
+}
+
+// encode_short_header serializes a short header's unprotected portion (RFC
+// 9000 §17.3.1), everything up to (but not including) the packet number
+// field -- the caller appends the packet-number bytes separately and
+// applies header protection afterward, exactly mirroring
+// encode_long_header's own two-step convention (see its doc comment for why
+// the packet-number length must be decided before this is called). Unlike
+// a long header, there is no DCID length prefix on the wire (see
+// QuicShortHeader's own doc comment) -- `dcid` is written verbatim.
+pub fn encode_short_header(dcid []u8, spin_bit bool, reserved_bits u8, key_phase bool, pn_length_bits u8) ![]u8 {
+	if reserved_bits > 0x3 {
+		return error('reserved_bits must fit in 2 bits')
+	}
+	if pn_length_bits > 0x3 {
+		return error('pn_length_bits must fit in 2 bits')
+	}
+	if dcid.len > quic_v1_max_cid_len {
+		return error('QUIC v1 connection IDs must not exceed ${quic_v1_max_cid_len} bytes')
+	}
+	// RFC 9000 §17.3.1 first-byte layout (MSB to LSB): Header Form(1)=0,
+	// Fixed Bit(1)=1, Spin Bit(1), Reserved(2), Key Phase(1), Packet Number
+	// Length(2) -- matching header_protection.v's protected_bits_mask/
+	// reserved_bits_mask bit positions for the short-header form exactly.
+	mut first_byte := u8(0x40)
+	if spin_bit {
+		first_byte |= 0x20
+	}
+	first_byte |= reserved_bits << 3
+	if key_phase {
+		first_byte |= 0x04
+	}
+	first_byte |= pn_length_bits
+	mut out := []u8{cap: 1 + dcid.len}
+	out << first_byte
+	out << dcid
+	return out
 }
 
 // QuicVersionNegotiation represents a parsed Version Negotiation packet (RFC
@@ -415,8 +451,8 @@ pub fn parse_version_negotiation(buf []u8) !QuicVersionNegotiation {
 	}
 
 	return QuicVersionNegotiation{
-		dcid:     dcid
-		scid:     scid
+		dcid: dcid
+		scid: scid
 		versions: versions
 	}
 }

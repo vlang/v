@@ -1,0 +1,16 @@
+fn main() {
+	outer := true
+	cond := true
+	_ := if outer {
+		if cond {
+			$embed_file(@FILE)
+		}
+		{
+			'a': 1
+		}
+	} else {
+		{
+			'b': 2
+		}
+	}
+}

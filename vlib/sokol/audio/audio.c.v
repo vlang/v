@@ -43,15 +43,16 @@ $if openbsd {
 // zeroes, so unwritten data will result in audio silence.
 // Example body: unsafe { C.memcpy(buffer, &samples, samples.len * int(sizeof(f32))) }
 // Example body: unsafe { mut b := buffer; for i, sample in samples { b[i] = sample } }
-pub type FNStreamingCB = fn (buffer &f32, num_frames int, num_channels int)
+// Sokol declares both counts as C `int`; keep the callback ABI explicitly i32.
+pub type FNStreamingCB = fn (buffer &f32, num_frames i32, num_channels i32)
 
 // callback function for `stream_userdata_cb` to use in `C.saudio_desc` when calling [audio.setup()](#setup)
 // This function operates the same way as [[FNStreamingCB](#FNStreamingCB)] but it passes customizable `user_data` to the
 // callback. This is the method to use if your audio data is stored in a struct or array. Identify the
 // `user_data` when you call `audio.setup()` and that object will be passed to the callback as the last arg.
 // Note: Sokol's callback functions run in a separate thread.
-// Example: previously_parsed_wavfile_bytes := [f32(0),0,0,0]; mycallback := fn (buffer &f32, num_frames int, num_channels int, mut sb []f32) {}; mut soundbuffer := []f32{}; soundbuffer << previously_parsed_wavfile_bytes; audio.setup(stream_userdata_cb: mycallback, user_data: soundbuffer.data);
-pub type FnStreamingCBWithUserData = fn (buffer &f32, num_frames int, num_channels int, user_data voidptr)
+// Example: previously_parsed_wavfile_bytes := [f32(0),0,0,0]; mycallback := fn (buffer &f32, num_frames i32, num_channels i32, mut sb []f32) {}; mut soundbuffer := []f32{}; soundbuffer << previously_parsed_wavfile_bytes; audio.setup(stream_userdata_cb: mycallback, user_data: soundbuffer.data);
+pub type FnStreamingCBWithUserData = fn (buffer &f32, num_frames i32, num_channels i32, user_data voidptr)
 
 pub fn (x FNStreamingCB) str() string {
 	return '&FNStreamingCB{ ${ptr_str(x)} }'
@@ -90,11 +91,11 @@ pub mut:
 @[params; typedef]
 pub struct C.saudio_desc {
 pub:
-	sample_rate        int
-	num_channels       int
-	buffer_frames      int
-	packet_frames      int
-	num_packets        int
+	sample_rate        i32
+	num_channels       i32
+	buffer_frames      i32
+	packet_frames      i32
+	num_packets        i32
 	stream_cb          FNStreamingCB
 	stream_userdata_cb FnStreamingCBWithUserData
 pub mut:

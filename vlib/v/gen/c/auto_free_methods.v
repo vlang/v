@@ -116,7 +116,7 @@ fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, st
 			continue
 		}
 		if sub_sym.kind == .string {
-			fn_builder.writeln('\tif (it->_typ == _${sym.cname}_${sub_sym.cname}_index) { builtin__string_free(it->_${sub_sym.cname}); return; }')
+			fn_builder.writeln('\tif (_V_INTERFACE_TYPE_INDEX(it->_typ) == _${sym.cname}_${sub_sym.cname}_index) { builtin__string_free(it->_${sub_sym.cname}); return; }')
 			continue
 		}
 		type_styp := g.gen_type_name_for_free_call(typ_)
@@ -129,7 +129,7 @@ fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, st
 		if sub_sym.is_builtin() {
 			free_fn_name = 'builtin__${free_fn_name}'
 		}
-		fn_builder.writeln('\tif (it->_typ == _${sym.cname}_${sub_sym.cname}_index) { ${free_fn_name}(it->_${sub_sym.cname}); return; }')
+		fn_builder.writeln('\tif (_V_INTERFACE_TYPE_INDEX(it->_typ) == _${sym.cname}_${sub_sym.cname}_index) { ${free_fn_name}(it->_${sub_sym.cname}); return; }')
 	}
 	fn_builder.writeln('}')
 }

@@ -36,7 +36,7 @@ pub enum VerticalAlign {
 const initial_text_atlas_size = int($d('gg_text_buff_size', 2048))
 const max_text_atlas_size = 8192
 
-fn expand_atlas_callback(uptr voidptr, error int, _val int) {
+fn expand_atlas_callback(uptr voidptr, error i32, _val i32) {
 	if error != C.FONS_ATLAS_FULL {
 		return
 	}

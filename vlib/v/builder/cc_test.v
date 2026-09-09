@@ -118,6 +118,20 @@ fn test_macos_compile_args_append_macosx_version_min_after_cflags() {
 	]
 }
 
+fn test_macos_clang_cstrict_ignores_trailing_language_reset_warning() {
+	compile_args := macos_compile_args([
+		'-os',
+		'macos',
+		'-cc',
+		'clang',
+		'-cstrict',
+		'-usecache',
+		hello_world_example(),
+	])
+	assert compile_args.contains('-x none')
+	assert compile_args.contains('-Wno-unused-command-line-argument')
+}
+
 fn test_cc_from_string_detects_cl_as_msvc() {
 	assert pref.cc_from_string('cl') == .msvc
 	assert pref.cc_from_string('C:/Program Files/Microsoft Visual Studio/cl.exe') == .msvc
@@ -319,6 +333,17 @@ fn test_linux_cross_target_for_arm64_errors() {
 		assert err.msg().contains('only `-arch amd64`')
 		assert err.msg().contains('linuxroot')
 	}
+}
+
+fn test_linux_cross_compile_include_arg_resolves_sysroot() {
+	sysroot := os.join_path(os.vtmp_dir(), 'cross root', 'linuxroot')
+	sysroot_include := os.join_path(sysroot, 'include')
+	include_arg := linux_cross_compile_include_arg(sysroot)
+	compile_command := 'clang ${include_arg} -c main.c'
+
+	assert include_arg == '-I ${os.quoted_path(sysroot_include)}'
+	assert compile_command.contains(os.quoted_path(sysroot_include))
+	assert !compile_command.contains('\${sysroot}')
 }
 
 fn test_git_symlink_target_path_detects_placeholder_file() {

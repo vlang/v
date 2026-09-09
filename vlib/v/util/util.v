@@ -195,7 +195,11 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			// it is better to always compile them with -g, so that in
 			// case these tools do crash/panic, their backtraces will have
 			// .v line numbers, to ease diagnostic in #bugs and issues.
-			compilation_command += ' -g '
+			// `-gc none` also keeps these small, short-lived tools from gaining a
+			// runtime dependency on `libgc.dylib`/`libgc.so`, which can be missing or
+			// unfound (e.g. a vroot path with spaces) and then make the tool fail to
+			// even start with a dynamic loader error. See #27148.
+			compilation_command += ' -g -gc none '
 		}
 		if tool_name == 'vfmt' {
 			compilation_command += ' -d vfmt '

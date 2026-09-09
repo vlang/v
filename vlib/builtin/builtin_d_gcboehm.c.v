@@ -83,9 +83,7 @@ $if dynamic_boehm ? {
 							#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
 						}
 					} $else {
-						#flag -L@VEXEROOT/thirdparty/tcc/lib
-						#flag -lgc
-						#flag -Xlinker -rpath -Xlinker "@VEXEROOT/thirdparty/tcc/lib"
+						#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
 					}
 				} $else {
 					$if musl ? {

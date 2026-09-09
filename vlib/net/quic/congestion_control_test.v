@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_new_newreno_starts_in_slow_start_with_initial_window() {
@@ -22,11 +21,11 @@ fn test_on_packets_acked_grows_window_fully_in_slow_start() {
 
 	acked := [
 		SentPacketInfo{
-			packet_number:    0
-			time_sent:        1000
-			sent_bytes:       1200
+			packet_number: 0
+			time_sent: 1000
+			sent_bytes: 1200
 			is_ack_eliciting: true
-			in_flight:        true
+			in_flight: true
 		},
 	]
 	c.on_packets_acked(acked)
@@ -38,15 +37,15 @@ fn test_on_packets_acked_grows_window_fully_in_slow_start() {
 fn test_on_packets_acked_grows_window_proportionally_in_congestion_avoidance() {
 	mut c := NewRenoCongestionControl{
 		congestion_window: 12000
-		ssthresh:          6000
+		ssthresh: 6000
 	}
 	acked := [
 		SentPacketInfo{
-			packet_number:    0
-			time_sent:        1000
-			sent_bytes:       1200
+			packet_number: 0
+			time_sent: 1000
+			sent_bytes: 1200
 			is_ack_eliciting: true
-			in_flight:        true
+			in_flight: true
 		},
 	]
 	c.on_packets_acked(acked)
@@ -64,17 +63,17 @@ fn test_on_packets_acked_grows_window_proportionally_in_congestion_avoidance() {
 fn test_slow_start_resumes_after_persistent_congestion_drops_below_ssthresh() {
 	mut c := NewRenoCongestionControl{
 		congestion_window: 2400 // == minimum_window, as if just collapsed
-		ssthresh:          6000 // left over from the triggering congestion event
+		ssthresh: 6000 // left over from the triggering congestion event
 	}
 	assert c.is_in_slow_start()
 
 	acked := [
 		SentPacketInfo{
-			packet_number:    0
-			time_sent:        1000
-			sent_bytes:       1200
+			packet_number: 0
+			time_sent: 1000
+			sent_bytes: 1200
 			is_ack_eliciting: true
-			in_flight:        true
+			in_flight: true
 		},
 	]
 	c.on_packets_acked(acked)
@@ -90,11 +89,11 @@ fn test_on_packets_acked_does_not_grow_window_during_recovery() {
 	// recovery, must not grow cwnd.
 	acked := [
 		SentPacketInfo{
-			packet_number:    0
-			time_sent:        3000
-			sent_bytes:       1200
+			packet_number: 0
+			time_sent: 3000
+			sent_bytes: 1200
 			is_ack_eliciting: true
-			in_flight:        true
+			in_flight: true
 		},
 	]
 	c.on_packets_acked(acked)
@@ -103,11 +102,11 @@ fn test_on_packets_acked_does_not_grow_window_during_recovery() {
 	// Sent AFTER recovery started: a genuinely new packet, does grow cwnd.
 	acked2 := [
 		SentPacketInfo{
-			packet_number:    1
-			time_sent:        6000
-			sent_bytes:       1200
+			packet_number: 1
+			time_sent: 6000
+			sent_bytes: 1200
 			is_ack_eliciting: true
-			in_flight:        true
+			in_flight: true
 		},
 	]
 	c.on_packets_acked(acked2)
@@ -120,17 +119,18 @@ fn test_on_packets_lost_ordinary_loss_halves_window_via_ssthresh() {
 
 	lost := [
 		SentPacketInfo{
-			packet_number:    0
-			time_sent:        1000
-			sent_bytes:       1200
+			packet_number: 0
+			time_sent: 1000
+			sent_bytes: 1200
 			is_ack_eliciting: true
-			in_flight:        true
+			in_flight: true
 		},
 	]
 	c.on_packets_lost(lost, false, 5000)
 
 	assert c.bytes_in_flight == 0
 	assert c.ssthresh or { 0 } == 6000 // initial_window(12000) * 0.5
+
 	assert c.congestion_window == 6000
 	assert c.congestion_recovery_start_time or { 0 } == 5000
 }
@@ -145,11 +145,11 @@ fn test_on_packets_lost_persistent_congestion_collapses_to_minimum_window() {
 
 	lost := [
 		SentPacketInfo{
-			packet_number:    0
-			time_sent:        1000
-			sent_bytes:       1200
+			packet_number: 0
+			time_sent: 1000
+			sent_bytes: 1200
 			is_ack_eliciting: true
-			in_flight:        true
+			in_flight: true
 		},
 	]
 	c.on_packets_lost(lost, true, 5000)
@@ -169,45 +169,48 @@ fn test_single_reaction_per_recovery_episode() {
 
 	first_loss := [
 		SentPacketInfo{
-			packet_number:    0
-			time_sent:        1000
-			sent_bytes:       1200
+			packet_number: 0
+			time_sent: 1000
+			sent_bytes: 1200
 			is_ack_eliciting: true
-			in_flight:        true
+			in_flight: true
 		},
 	]
 	c.on_packets_lost(first_loss, false, 5000)
 	assert c.congestion_window == 6000 // 12000 * 0.5
+
 	assert c.congestion_recovery_start_time or { 0 } == 5000
 
 	// Sent at time 2000, BEFORE the recovery episode started (5000) --
 	// belongs to the same episode, must NOT trigger a second halving.
 	second_loss := [
 		SentPacketInfo{
-			packet_number:    1
-			time_sent:        2000
-			sent_bytes:       1200
+			packet_number: 1
+			time_sent: 2000
+			sent_bytes: 1200
 			is_ack_eliciting: true
-			in_flight:        true
+			in_flight: true
 		},
 	]
 	c.on_packets_lost(second_loss, false, 6000)
 	assert c.congestion_window == 6000 // unchanged: still one reaction
+
 	assert c.congestion_recovery_start_time or { 0 } == 5000 // unchanged
 
 	// Sent at time 7000, AFTER the recovery episode started (5000) -- a
 	// genuinely new loss episode, must react again.
 	third_loss := [
 		SentPacketInfo{
-			packet_number:    2
-			time_sent:        7000
-			sent_bytes:       1200
+			packet_number: 2
+			time_sent: 7000
+			sent_bytes: 1200
 			is_ack_eliciting: true
-			in_flight:        true
+			in_flight: true
 		},
 	]
 	c.on_packets_lost(third_loss, false, 8000)
 	assert c.congestion_window == 3000 // 6000 * 0.5
+
 	assert c.congestion_recovery_start_time or { 0 } == 8000
 }
 

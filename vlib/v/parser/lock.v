@@ -5,8 +5,15 @@ import v.ast
 fn (mut p Parser) lock_expr() ast.LockExpr {
 	// TODO: Handle aliasing sync
 	p.register_auto_import('sync')
+	lock_expr_is_used := p.lock_expr_value_is_used()
+	prev_lock_expr_scope_depth := p.lock_expr_scope_depth
+	prev_lock_expr_is_used := p.lock_expr_is_used
 	p.open_scope()
+	p.lock_expr_scope_depth = p.opened_scopes
+	p.lock_expr_is_used = lock_expr_is_used
 	defer {
+		p.lock_expr_scope_depth = prev_lock_expr_scope_depth
+		p.lock_expr_is_used = prev_lock_expr_is_used
 		p.close_scope()
 	}
 	mut pos := p.tok.pos()

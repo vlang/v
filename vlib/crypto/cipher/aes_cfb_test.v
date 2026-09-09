@@ -17,13 +17,13 @@ fn test_aes_cfb() {
 }
 
 fn aes_cfb_en(mut src []u8, key []u8, iv []u8) {
-	block := aes.new_cipher(key)
+	block := aes.new_cipher(key) or { panic(err) }
 	mut mode := cipher.new_cfb_encrypter(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
 fn aes_cfb_de(mut src []u8, key []u8, iv []u8) {
-	block := aes.new_cipher(key)
+	block := aes.new_cipher(key) or { panic(err) }
 	mut mode := cipher.new_cfb_decrypter(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }

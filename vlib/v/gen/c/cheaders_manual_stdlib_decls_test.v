@@ -340,3 +340,17 @@ fn test_c_prelude_ctype_decls_do_not_conflict_with_later_ctype_includes() {
 	res := os.execute(cmd)
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 }
+
+fn test_c_prelude_defines_l_tmpnam_on_glibc_without_including_stdio() {
+	// Regression test for https://github.com/vlang/v/issues/28108 :
+	// V does not #include <stdio.h> in its prelude. glibc only defines L_tmpnam while <stdio.h>
+	// is being processed, and uses it in the `tmpnam` prototype, so a <stdio.h> pulled in later by
+	// a module header (sqlite3.h, gc.h, ...) would fail with `L_tmpnam undeclared`. The prelude
+	// therefore defines L_tmpnam itself, on the glibc path, without adding an include.
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o - ${os.quoted_path(cheaders_manual_stdlib_varargs_source)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+	generated_c := res.output.replace('\r\n', '\n')
+	assert generated_c.contains('#if defined(__GLIBC__) || defined(__GNU_LIBRARY__)'), generated_c
+	assert generated_c.contains('#ifndef L_tmpnam\n#define L_tmpnam 20\n#endif'), generated_c
+}

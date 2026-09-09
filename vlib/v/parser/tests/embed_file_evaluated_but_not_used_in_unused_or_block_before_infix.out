@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_unused_or_block_before_infix.vv:12:3: error: expression evaluated but not used
+   10 |     maybe_file() or {
+   11 |         // fallback value
+   12 |         $embed_file(@FILE)
+      |         ~~~~~~~~~~~~~~~~~~
+   13 |     } == fallback
+   14 | }

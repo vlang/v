@@ -403,24 +403,28 @@ fn (mut app App) cancel_render_target_claim(index int, lease RenderBatchLease, r
 
 fn (mut app App) complete_render_submission(id WindowId, batch_epoch u64, finalized bool) string {
 	app.state_mutex.lock()
-	defer {
+	index := app.render_window_index_locked(id) or {
 		app.state_mutex.unlock()
+		return err.msg()
 	}
-	index := app.render_window_index_locked(id) or { return err.msg() }
 	mut window := &app.render_runtime.windows[index]
 	if !window.in_frame || window.batch_epoch != batch_epoch {
+		app.state_mutex.unlock()
 		return err_render_attempt_stale
+	}
+	mut resolved_frame := next_nonwrapping_u64(window.submitted_frame) or {
+		window.in_frame = false
+		window.batch_epoch = 0
+		window.lease_epoch = 0
+		app.state_mutex.unlock()
+		return err_render_renderer_failed
 	}
 	if finalized {
 		if window.submitted_frame >= window.frame_serial {
+			app.state_mutex.unlock()
 			return err_render_attempt_stale
 		}
-		window.submitted_frame = next_nonwrapping_u64(window.submitted_frame) or {
-			window.in_frame = false
-			window.batch_epoch = 0
-			window.lease_epoch = 0
-			return err_render_renderer_failed
-		}
+		window.submitted_frame = resolved_frame
 		if window.claimed_dirty_epoch > window.consumed_dirty_epoch {
 			window.consumed_dirty_epoch = window.claimed_dirty_epoch
 		}
@@ -428,6 +432,13 @@ fn (mut app App) complete_render_submission(id WindowId, batch_epoch u64, finali
 	window.in_frame = false
 	window.batch_epoch = 0
 	window.lease_epoch = 0
+	resolve_appkit := app.backend.kind == .appkit
+	app.state_mutex.unlock()
+	if resolve_appkit {
+		app.backend.service_resolve_readbacks_after_submit(id, resolved_frame, finalized) or {
+			return err.msg()
+		}
+	}
 	return ''
 }
 

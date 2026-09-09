@@ -4,7 +4,9 @@ import os
 
 fn execute_without_vflags(cmd string) os.Result {
 	old_vflags := os.getenv_opt('VFLAGS')
-	os.unsetenv('VFLAGS')
+	// These assertions cover flags emitted by the established C builder. Linux
+	// now defaults to V3, so select V1 explicitly after isolating ambient flags.
+	os.setenv('VFLAGS', '-old-compiler', true)
 	res := os.execute(cmd)
 	if vflags := old_vflags {
 		os.setenv('VFLAGS', vflags, true)
@@ -214,6 +216,37 @@ fn test_macos_amd64_tcc_boehm_uses_bundled_libgc_dylib() {
 	}
 	assert res.exit_code == 0, res.output
 	validate_showcc_output(res.output, expected) or { assert false, '${err.msg()}\n${res.output}' }
+	run_res := os.execute(os.quoted_path(exe_path))
+	assert run_res.exit_code == 0, run_res.output
+}
+
+fn test_macos_system_cc_boehm_uses_bundled_static_libgc() {
+	$if !macos {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'builder_gc_flags_system_cc_${os.getpid()}')
+	os.mkdir_all(test_root) or { panic(err) }
+	exe_path := os.join_path(test_root, 'hello_world')
+	source_path := os.join_path(@VEXEROOT, 'examples', 'hello_world.v')
+	archive_path := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib', 'libgc.a')
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	cmd := '${os.quoted_path(@VEXE)} -cc cc -gc boehm -showcc -no-retry-compilation -no-rsp -nocache -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
+	res := execute_without_vflags(cmd)
+	assert res.exit_code == 0, res.output
+	lines := res.output.split_into_lines().filter(it.starts_with(showcc_prefix))
+	assert lines.len == 1, res.output
+	tokens := tokenize_showcc_command(lines[0][showcc_prefix.len..]) or {
+		assert false, '${err.msg()}\n${res.output}'
+		return
+	}
+	assert count_showcc_token(tokens, archive_path) == 1, res.output
+	for token in tokens {
+		assert !token.contains('libgc.dylib'), res.output
+		assert !token.contains('rpath'), res.output
+		assert token != '-lgc', res.output
+	}
 	run_res := os.execute(os.quoted_path(exe_path))
 	assert run_res.exit_code == 0, run_res.output
 }

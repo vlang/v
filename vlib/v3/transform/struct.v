@@ -53,6 +53,18 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 	mut promoted_paths := map[string][]FieldInfo{}
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
+	// Source (child) position of the last field whose value hoists a value branch. A preceding
+	// field value is snapshotted before that field materializes its branch prelude, so struct
+	// fields evaluate in source order — a nested block/`if`/`match` tail otherwise runs its
+	// prelude before the struct initializer while earlier field values stay inline.
+	mut last_hoisting_field := -1
+	for i in 0 .. node.children_count {
+		child := t.a.nodes[int(t.a.child(&node, i))]
+		if child.kind == .field_init && child.children_count > 0
+			&& t.operand_hoists_value_branch(t.a.child(&child, 0)) {
+			last_hoisting_field = i
+		}
+	}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		child := t.a.nodes[int(child_id)]
@@ -108,11 +120,12 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			value_type := t.node_type(val_id)
 			sum_field_type := t.struct_field_sum_type(field_type, info.module)
 			enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
+			fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type)
 			// Check if the value is an enum shorthand and the field type is an enum
 			mut new_val := if val_node.kind == .enum_val && enum_field_type.len > 0 {
 				t.transform_enum_shorthand(val_id, val_node, enum_field_type)
-			} else if field_type.starts_with('[]') && t.is_fixed_array_type(value_type) {
-				t.fixed_array_value_to_array(val_id, value_type, field_type)
+			} else if fixed_to_dynamic {
+				t.fixed_array_value_to_owned_array(val_id, value_type, field_type)
 			} else if sum_field_type.len > 0 {
 				t.wrap_sum_value(val_id, sum_field_type)
 			} else if inferred_sum := t.sum_type_for_field_variant(field_name, val_id, val_node) {
@@ -126,6 +139,18 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			}
 			if sum_field_type.len == 0 && field_type.len > 0 {
 				new_val = t.coerce_transformed_expr_to_type(new_val, val_id, field_type)
+			}
+			if field_type.len > 0 && !fixed_to_dynamic {
+				new_val = t.clone_borrowed_projection(val_id, new_val, field_type)
+			}
+			// Snapshot a preceding field value before a later field hoists its branch prelude,
+			// so this value is read in source order rather than after that prelude.
+			if i < last_hoisting_field && !t.is_pure_constant_expr(new_val) {
+				mut snap_typ := t.node_type(new_val)
+				if snap_typ.len == 0 {
+					snap_typ = field_type
+				}
+				new_val = t.snapshot_transformed_expr_for_reuse(new_val, snap_typ, 'struct_field')
 			}
 			t.drain_pending(mut prelude)
 			if int(child_id) in t.local_closure_field_cleanups {
@@ -668,6 +693,22 @@ fn (mut t Transformer) generic_struct_init_value_type(id flat.NodeId) string {
 	}
 }
 
+fn (mut t Transformer) specialize_struct_default_expr(struct_type string, default_id flat.NodeId) flat.NodeId {
+	base, args, is_generic := generic_app_parts(struct_type)
+	if !is_generic || args.len == 0 {
+		return default_id
+	}
+	params := t.generic_struct_param_names_for_base(base)
+	if params.len == 0 || params.len != args.len {
+		return default_id
+	}
+	old_params := t.active_generic_params.clone()
+	t.active_generic_params = params
+	clone_id := t.clone_generic_node(default_id, args)
+	t.active_generic_params = old_params
+	return clone_id
+}
+
 // add_missing_struct_defaults checks if any fields with default values are missing
 // from the struct initialization. This is a hook point for future default-fill logic.
 // Currently returns the node unchanged because StructInfo does not yet store default values.
@@ -687,6 +728,24 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 			provided[child.value] = true
 		}
 		field_ids << child_id
+	}
+	mut has_missing_default := false
+	for field in info.fields {
+		if field.name !in provided && int(field.default_expr) >= 0 {
+			has_missing_default = true
+			break
+		}
+	}
+	if !has_missing_default {
+		for stmt in prelude {
+			t.pending_stmts << stmt
+		}
+		// The node passes through untouched, but downstream consumers (e.g.
+		// the sum-wrap decision for `return SNull{}`) need its type text.
+		if node.typ.len == 0 && node.value.len > 0 {
+			t.set_node_typ(int(id), node.value)
+		}
+		return id
 	}
 	old_module := t.cur_module
 	// Imported defaults must retain their declaration module while resolving consts, globals,
@@ -720,17 +779,18 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 			continue
 		}
 		field_type := t.lookup_struct_field_type(node.value, field.name) or { field.typ }
-		default_node := t.a.nodes[int(field.default_expr)]
+		default_id := t.specialize_struct_default_expr(node.value, field.default_expr)
+		default_node := t.a.nodes[int(default_id)]
 		enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
 		new_val := if default_node.kind == .enum_val && enum_field_type.len > 0 {
-			t.transform_enum_shorthand(field.default_expr, default_node, enum_field_type)
+			t.transform_enum_shorthand(default_id, default_node, enum_field_type)
 		} else if t.is_sum_type_name(field_type) {
 			// A sum-type field default (e.g. `typ_expr Expr = EmptyExpr{}`) must be
 			// wrapped into the sum, not emitted as the bare variant. wrap_sum_value
 			// is a no-op when the value already is the sum type.
-			t.wrap_sum_value(field.default_expr, field_type)
+			t.wrap_sum_value(default_id, field_type)
 		} else {
-			t.transform_expr_for_type(field.default_expr, field_type)
+			t.transform_expr_for_type(default_id, field_type)
 		}
 		t.drain_pending(mut prelude)
 		fi_start := t.a.children.len
@@ -795,6 +855,13 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 		bare := name['main.'.len..]
 		if bare in t.structs {
 			return t.structs[bare]
+		}
+	}
+	if alias_target := t.alias_target_type_preserving_main_lock(name) {
+		if alias_target != name {
+			if info := t.lookup_struct_info(alias_target) {
+				return info
+			}
 		}
 	}
 	base, args, has_generic_args := generic_app_parts(name)
@@ -1193,16 +1260,20 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		value_type := t.node_type(value_id)
 		enum_field_type := t.enum_type_name_for_expected(field_type, assoc_module)
 		sum_field_type := t.struct_field_sum_type(field_type, assoc_module)
-		value := if value_node.kind == .enum_val && enum_field_type.len > 0 {
+		fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type)
+		mut value := if value_node.kind == .enum_val && enum_field_type.len > 0 {
 			t.transform_enum_shorthand(value_id, value_node, enum_field_type)
-		} else if field_type.starts_with('[]') && t.is_fixed_array_type(value_type) {
-			t.fixed_array_value_to_array(value_id, value_type, field_type)
+		} else if fixed_to_dynamic {
+			t.fixed_array_value_to_owned_array(value_id, value_type, field_type)
 		} else if sum_field_type.len > 0 {
 			t.wrap_sum_value(value_id, sum_field_type)
 		} else if field_type.len > 0 {
 			t.transform_expr_for_type(value_id, field_type)
 		} else {
 			t.transform_expr(value_id)
+		}
+		if field_type.len > 0 && !fixed_to_dynamic {
+			value = t.clone_borrowed_projection(value_id, value, field_type)
 		}
 		t.drain_pending(mut prelude)
 		prelude << t.make_assign(t.make_selector(t.make_ident(tmp_name), field.value, field_type),
@@ -1442,6 +1513,43 @@ fn (mut t Transformer) fixed_array_value_to_array(value_id flat.NodeId, fixed_ty
 	return t.fixed_array_data_to_array(t.transform_expr(value_id), fixed_type, array_type)
 }
 
+// fixed_array_value_to_owned_array converts a fixed-array value whose dynamic destination
+// takes ownership. A borrowed projection keeps its fixed source alive, so clone its elements
+// directly into the dynamic array instead of cloning and dropping a shallow converted array.
+fn (mut t Transformer) fixed_array_value_to_owned_array(value_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
+	if isnil(t.tc) || !t.tc.ownership_expr_is_borrowed_projection(value_id) {
+		return t.fixed_array_value_to_array(value_id, fixed_type, array_type)
+	}
+	elem_type := fixed_array_elem_type(fixed_type)
+	len_expr := t.make_fixed_array_len_expr(fixed_type)
+	source := t.stable_transformed_expr_for_reuse(t.transform_expr(value_id), fixed_type,
+		'borrowed_fixed_array_source')
+	out_name := t.new_temp('borrowed_fixed_array')
+	idx_name := t.new_temp('borrowed_fixed_array_idx')
+	t.pending_stmts << t.make_decl_assign_typed(out_name, t.make_array_new_call(elem_type,
+		t.make_int_literal(0), len_expr), array_type)
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	cond := t.make_infix(.lt, t.make_ident(idx_name), len_expr)
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	source_elem := t.make_index(source, t.make_ident(idx_name), elem_type)
+	pending_start := t.pending_stmts.len
+	cloned_elem := t.make_compiler_default_clone_value(source_elem, elem_type, true)
+	mut body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	value_name := t.new_temp('borrowed_fixed_array_value')
+	body << t.make_decl_assign_typed(value_name, cloned_elem, elem_type)
+	body << t.make_expr_stmt(t.make_call_typed('array_push', [
+		t.make_prefix(.amp, t.make_ident(out_name)),
+		t.make_prefix(.amp, t.make_ident(value_name)),
+	], 'void'))
+	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
+		skip_ownership_drops: true
+	})
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), array_type)
+	return result
+}
+
 fn (mut t Transformer) fixed_array_value_to_array_no_alloc(value_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
 	elem_type := fixed_array_elem_type(fixed_type)
 	len_expr := t.make_fixed_array_len_expr(fixed_type)
@@ -1512,6 +1620,12 @@ fn (mut t Transformer) transform_map_init_expr(id flat.NodeId, node flat.Node) f
 		t.node_type(id)
 	}
 	map_type := t.normalize_type_alias(raw_type)
+	if t.is_optional_type_name(map_type) && node.children_count == 0 {
+		payload_type := t.optional_base_type(map_type)
+		if payload_type.starts_with('map[') {
+			return t.make_optional_none(t.qualify_optional_type(map_type))
+		}
+	}
 	if map_type.starts_with('map[') {
 		mut map_node := node
 		map_node.value = map_type

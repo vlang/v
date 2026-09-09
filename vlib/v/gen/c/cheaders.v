@@ -554,6 +554,18 @@ typedef struct _IO_FILE FILE;
 extern FILE* stdin;
 extern FILE* stdout;
 extern FILE* stderr;
+#if defined(__GLIBC__) || defined(__GNU_LIBRARY__)
+// V declares the stdio functions manually here, instead of including <stdio.h>.
+// glibc defines L_tmpnam only while <stdio.h> is being processed (it sits behind
+// `#ifdef _STDIO_H` in <bits/stdio_lim.h>), and it is the one stdio limit macro that
+// <stdio.h> itself uses in a prototype: char *tmpnam(char[L_tmpnam]). So a <stdio.h>
+// pulled in later by a module header (sqlite3.h, gc.h, ...) can fail with L_tmpnam
+// being undeclared; see vlang/v#28108. Define it here, to the stable glibc value,
+// without adding an include. A later identical redefinition by glibc is a no-op.
+#ifndef L_tmpnam
+#define L_tmpnam 20
+#endif
+#endif
 	#endif
 typedef __builtin_va_list va_list;
 #ifndef va_start
@@ -665,10 +677,31 @@ V_CRT_LINKAGE void * V_CRT_CALL memcpy(void *dest, const void *src, size_t n);
 V_CRT_LINKAGE void * V_CRT_CALL memmove(void *dest, const void *src, size_t n);
 V_CRT_LINKAGE void * V_CRT_CALL memset(void *dest, int ch, size_t n);
 V_CRT_LINKAGE int V_CRT_CALL memcmp(const void *left, const void *right, size_t n);
+// memchr/strchr/strrchr/strstr are the C23 type-generic string functions, and
+// glibc 2.42+ implements them as function-like macros over _Generic, so that a
+// const-qualified argument yields a const-qualified return type. If any include
+// above already pulled in <string.h> (mbedtls/net_sockets.h, netdb.h, dirent.h,
+// ... all do, and gcc 15 defaults to -std=gnu23), the name is already a macro
+// here, and a declaration like
+// `void *memchr(const void *str, int c, size_t n);` expands into the middle of
+// a _Generic expression, which fails to parse:
+// `error: expected identifier or ( before _Generic`.
+// A defined macro also means <string.h> has already declared the real function,
+// so skipping the declaration below loses nothing in that case. The reverse
+// order stays fine as-is: a <string.h> pulled in later by a module header
+// defines the macro after these declarations, which C permits.
+#ifndef memchr
 V_CRT_LINKAGE void * V_CRT_CALL memchr(const void *str, int c, size_t n);
+#endif
+#ifndef strchr
 V_CRT_LINKAGE char * V_CRT_CALL strchr(const char *str, int c);
+#endif
+#ifndef strrchr
 V_CRT_LINKAGE char * V_CRT_CALL strrchr(const char *str, int c);
+#endif
+#ifndef strstr
 V_CRT_LINKAGE char * V_CRT_CALL strstr(const char *haystack, const char *needle);
+#endif
 V_CRT_LINKAGE int V_CRT_CALL fseek(FILE *stream, long offset, int whence);
 V_CRT_LINKAGE isize V_CRT_CALL getline(char **lineptr, size_t *n, FILE *stream);
 #if defined(_WIN32) || defined(_WIN64)
@@ -1022,6 +1055,9 @@ typedef int64_t float_literal;
 typedef unsigned char* byteptr;
 typedef void* voidptr;
 typedef char* charptr;
+static inline u32 _V_INTERFACE_TYPE_INDEX(const void* type_table) {
+	return type_table == 0 ? 0U : *(const u32*)type_table;
+}
 typedef u8 array_fixed_byte_300 [300];
 typedef struct sync__Channel* chan;
 #ifndef CUSTOM_DEFINE_no_bool

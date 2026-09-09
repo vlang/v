@@ -73,8 +73,14 @@ fn (qb_ &QueryBuilder[T]) add_include_path(path []string) {
 	qb.include_paths << path
 }
 
-// new_query create a new query object for struct `T`
+// new_query creates a new query object for struct `T`.
+@[deprecated: 'the Function Call API (orm_fn) will be moved out of the standard library after 2027-08-17; see https://github.com/vlang/v/issues/27001']
+@[deprecated_after: '2027-02-18']
 pub fn new_query[T](conn Connection) &QueryBuilder[T] {
+	return new_query_internal[T](conn)
+}
+
+fn new_query_internal[T](conn Connection) &QueryBuilder[T] {
 	meta := struct_meta[T]()
 	return &QueryBuilder[T]{
 		meta:                  meta
@@ -439,7 +445,7 @@ pub fn (qb_ &QueryBuilder[T]) or_where(condition string, params ...Primitive) !&
 }
 
 fn (qb_ &QueryBuilder[T]) add_where_condition(condition string, params []Primitive, is_and bool) !&QueryBuilder[T] {
-	mut parsed := new_query[T](qb_.conn)
+	mut parsed := new_query_internal[T](qb_.conn)
 	parsed.parse_conditions(condition, normalize_primitive_arguments(params))!
 	mut qb := unsafe { qb_ }
 	start := qb.where.fields.len
@@ -1831,7 +1837,7 @@ fn (qb_ &QueryBuilder[T]) v_sql_drop_and_zero() !int {
 }
 
 fn v_sql_create_table[T](conn Connection, attrs []VAttribute) !int {
-	mut qb := new_query[T](conn)
+	mut qb := new_query_internal[T](conn)
 	for attr in attrs {
 		if attr_name_matches(attr.name, 'table') && attr.has_arg {
 			qb.config.table.name = trim_attr_arg(attr.arg)
@@ -1843,7 +1849,7 @@ fn v_sql_create_table[T](conn Connection, attrs []VAttribute) !int {
 }
 
 fn v_sql_drop_table[T](conn Connection, attrs []VAttribute) !int {
-	mut qb := new_query[T](conn)
+	mut qb := new_query_internal[T](conn)
 	for attr in attrs {
 		if attr_name_matches(attr.name, 'table') && attr.has_arg {
 			qb.config.table.name = trim_attr_arg(attr.arg)
@@ -1944,7 +1950,7 @@ pub fn (qb_ &QueryBuilder[T]) insert_many[T](values []T) !&QueryBuilder[T] {
 
 // save updates all mapped fields in `value` using the struct primary key or `id` field.
 pub fn save[T](conn Connection, value T) ! {
-	mut qb := new_query[T](conn)
+	mut qb := new_query_internal[T](conn)
 	data, where := build_save_query_data[T](qb.meta, qb.config.table.name, value)!
 	qb.conn.update(qb.config.table, data, where)!
 }
@@ -2333,7 +2339,7 @@ fn primitive_for_field[U](value Primitive, field_name string) Primitive {
 }
 
 fn query_relation_one[U](mut conn Connection, key Primitive, mode RelationLoadMode, paths [][]string) !U {
-	mut qb := new_query[U](conn)
+	mut qb := new_query_internal[U](conn)
 	qb.relation_load_mode = mode
 	qb.include_paths = paths
 	primary := find_save_primary_field_name(qb.meta) or { return U{} }
@@ -2352,7 +2358,7 @@ fn query_relation_one_optional_like[U](mut conn Connection, key Primitive, mode 
 	$if U is time.Time {
 		return []U{}
 	} $else $if U is $struct {
-		mut qb := new_query[U](conn)
+		mut qb := new_query_internal[U](conn)
 		qb.relation_load_mode = mode
 		qb.include_paths = paths
 		primary := find_save_primary_field_name(qb.meta) or { return []U{} }
@@ -2368,7 +2374,7 @@ fn query_relation_one_optional_like[U](mut conn Connection, key Primitive, mode 
 }
 
 fn query_relation_array[U](mut conn Connection, key Primitive, fkey string, mode RelationLoadMode, paths [][]string) ![]U {
-	mut qb := new_query[U](conn)
+	mut qb := new_query_internal[U](conn)
 	qb.relation_load_mode = mode
 	qb.include_paths = paths
 	field_key := primitive_for_field[U](key, fkey)
@@ -2396,7 +2402,7 @@ fn query_relation_optional_array_like[U](mut conn Connection, key Primitive, fke
 }
 
 fn insert_relation_one[U](mut conn Connection, value U, initialized_fields []string) !Primitive {
-	mut qb := new_query[U](conn)
+	mut qb := new_query_internal[U](conn)
 	return qb.insert_value_with_fields(value, initialized_fields)!
 }
 
@@ -2765,7 +2771,7 @@ pub fn update_many[T](mut conn Connection, values []T, key_field string, field_n
 	if values.len == 0 {
 		return error('${@FN}(): need at least one record')
 	}
-	mut qb := new_query[T](conn)
+	mut qb := new_query_internal[T](conn)
 
 	// Build the field list from the first value
 	first := fill_data_with_struct[T](values[0], qb.meta)

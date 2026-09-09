@@ -124,16 +124,16 @@ fn main() {
 	assert !c_code.contains('->unix'), c_code
 	assert !c_code.contains('#define block_size'), c_code
 	assert c_code.contains('i64 v_unix'), c_code
-	assert c_code.contains('int _v_true'), c_code
-	assert c_code.contains('int _v_false'), c_code
-	assert c_code.contains('int v_stdin'), c_code
-	assert c_code.contains('int v_stderr'), c_code
-	assert c_code.contains('int v_stdout'), c_code
-	assert c_code.contains('int v_access(int x)'), c_code
-	assert c_code.contains('int v_read(void)'), c_code
-	assert c_code.contains('int v_close(void)'), c_code
-	assert c_code.contains('int v_fabs(int x)'), c_code
-	assert c_code.contains('int v_typeof'), c_code
+	assert c_code.contains('i64 _v_true'), c_code
+	assert c_code.contains('i64 _v_false'), c_code
+	assert c_code.contains('i64 v_stdin'), c_code
+	assert c_code.contains('i64 v_stderr'), c_code
+	assert c_code.contains('i64 v_stdout'), c_code
+	assert c_code.contains('i64 v_access(i64 x)'), c_code
+	assert c_code.contains('i64 v_read(void)'), c_code
+	assert c_code.contains('i64 v_close(void)'), c_code
+	assert c_code.contains('i64 v_fabs(i64 x)'), c_code
+	assert c_code.contains('i64 v_typeof'), c_code
 	assert c_code.contains('Kind___v_asm'), c_code
 	assert c_code.contains('.v_unix'), c_code
 	assert c_code.contains('->v_unix'), c_code
@@ -165,7 +165,7 @@ fn main() {
 	$if macos {
 		objc_src := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_objc_${pid}.m')
 		os.write_file(objc_src,
-			'#include <Cocoa/Cocoa.h>\n\nint v3_point_sum(V3PointUnique p) {\n\treturn p.x + 1;\n}\n') or {
+			'#include <Cocoa/Cocoa.h>\n\nint v3_point_sum(main__V3PointUnique p) {\n\treturn p.x + 1;\n}\n') or {
 			panic(err)
 		}
 		objc_v := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_objc_${pid}.v')
@@ -177,10 +177,10 @@ fn main() {
 		objc_compile := os.execute('${v3_bin} ${objc_v} -b c -o ${objc_bin}')
 		assert objc_compile.exit_code == 0, objc_compile.output
 		objc_code := os.read_file(objc_bin + '.c') or { panic(err) }
-		type_pos := objc_code.index('struct V3PointUnique {') or { -1 }
+		type_pos := objc_code.index('struct main__V3PointUnique {') or { -1 }
 		assert type_pos >= 0, objc_code
 		// Objective-C source bodies are compiled in a separate native unit.
-		assert !objc_code.contains('int v3_point_sum(V3PointUnique p) {'), objc_code
+		assert !objc_code.contains('int v3_point_sum(main__V3PointUnique p) {'), objc_code
 		objc_run := os.execute(objc_bin)
 		assert objc_run.exit_code == 0, objc_run.output
 		assert objc_run.output.trim_space() == '9'

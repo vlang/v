@@ -1,0 +1,7 @@
+vlib/v/checker/tests/asm_unknown_register_suggestion.vv:3:7: error: unknown register `xmm01`; did you mean `xmm1`?
+    1 | fn main() {
+    2 |     asm amd64 {
+    3 |         mov xmm01, xmm1
+      |             ~~~~~
+    4 |     }
+    5 | }

@@ -201,10 +201,21 @@ pub:
 	maximum_streams u64
 }
 
+// HandshakeDoneFrame represents a HANDSHAKE_DONE frame (type 0x1e, RFC 9000
+// §19.20): sent only by a server, only once, to signal handshake
+// confirmation (RFC 9001 §4.1.2) -- carries no fields. A client MUST treat
+// receipt of one as a connection error of type PROTOCOL_VIOLATION (RFC 9000
+// §19.20); parse_frame itself has no connection-role awareness to enforce
+// that, so it is the caller's (Phase 9 QuicConn's) job, same division as
+// every other role-dependent check this module defers (see coalesce.v's
+// analogous note).
+pub struct HandshakeDoneFrame {}
+
 pub type QuicFrame = AckFrame
 	| ConnectionCloseFrame
 	| CryptoFrame
 	| DataBlockedFrame
+	| HandshakeDoneFrame
 	| MaxDataFrame
 	| MaxStreamDataFrame
 	| MaxStreamsFrame
@@ -224,6 +235,7 @@ const frame_type_reset_stream = u64(0x04)
 const frame_type_stop_sending = u64(0x05)
 const frame_type_crypto = u64(0x06)
 const frame_type_stream_base = u64(0x08) // 0x08-0x0f, OFF/LEN/FIN bits in the low 3 bits
+
 const frame_type_max_data = u64(0x10)
 const frame_type_max_stream_data = u64(0x11)
 const frame_type_max_streams_bidi = u64(0x12)
@@ -234,6 +246,7 @@ const frame_type_streams_blocked_bidi = u64(0x16)
 const frame_type_streams_blocked_uni = u64(0x17)
 const frame_type_connection_close_transport = u64(0x1c)
 const frame_type_connection_close_application = u64(0x1d)
+const frame_type_handshake_done = u64(0x1e)
 
 // parse_frame parses exactly one frame from the start of `buf`, returning
 // the frame and the number of bytes consumed. A run of consecutive PADDING
@@ -304,8 +317,11 @@ pub fn parse_frame(buf []u8) !(QuicFrame, int) {
 
 	if typ == frame_type_connection_close_transport
 		|| typ == frame_type_connection_close_application {
-		return parse_connection_close_frame(buf, typ_len,
-			typ == frame_type_connection_close_application)
+		return parse_connection_close_frame(buf, typ_len, typ == frame_type_connection_close_application)
+	}
+
+	if typ == frame_type_handshake_done {
+		return QuicFrame(HandshakeDoneFrame{}), typ_len
 	}
 
 	return error('quic: frame type 0x${typ:02x} is not yet implemented by this module')
@@ -345,7 +361,7 @@ fn parse_ack_frame(buf []u8, start int, has_ecn_counts bool) !(QuicFrame, int) {
 	mut smallest_in_range := largest_acknowledged - first_ack_range
 	ranges << AckRange{
 		smallest: smallest_in_range
-		largest:  largest_in_range
+		largest: largest_in_range
 	}
 
 	for _ in 0 .. ack_range_count {
@@ -363,12 +379,12 @@ fn parse_ack_frame(buf []u8, start int, has_ecn_counts bool) !(QuicFrame, int) {
 		}
 		largest_in_range = smallest_in_range - gap - 2
 		if range_length > largest_in_range {
-			return error('quic: ACK frame: ack range length ${range_length} exceeds the range\'s own largest packet number ${largest_in_range}')
+			return error("quic: ACK frame: ack range length ${range_length} exceeds the range's own largest packet number ${largest_in_range}")
 		}
 		smallest_in_range = largest_in_range - range_length
 		ranges << AckRange{
 			smallest: smallest_in_range
-			largest:  largest_in_range
+			largest: largest_in_range
 		}
 	}
 
@@ -381,17 +397,17 @@ fn parse_ack_frame(buf []u8, start int, has_ecn_counts bool) !(QuicFrame, int) {
 		ecn_ce, ne2 := decode_varint(buf[offset..])!
 		offset += ne2
 		ecn_counts = EcnCounts{
-			ect0:   ect0
-			ect1:   ect1
+			ect0: ect0
+			ect1: ect1
 			ecn_ce: ecn_ce
 		}
 	}
 
 	return QuicFrame(AckFrame{
 		largest_acknowledged: largest_acknowledged
-		ack_delay:            ack_delay
-		ranges:               ranges
-		ecn_counts:           ecn_counts
+		ack_delay: ack_delay
+		ranges: ranges
+		ecn_counts: ecn_counts
 	}), offset
 }
 
@@ -419,7 +435,7 @@ fn parse_crypto_frame(buf []u8, start int) !(QuicFrame, int) {
 	offset += int(length)
 	return QuicFrame(CryptoFrame{
 		offset: crypto_offset
-		data:   data
+		data: data
 	}), offset
 }
 
@@ -432,7 +448,7 @@ fn parse_reset_stream_frame(buf []u8, start int) !(QuicFrame, int) {
 	final_size, n3 := decode_varint(buf[offset..])!
 	offset += n3
 	return QuicFrame(ResetStreamFrame{
-		stream_id:  stream_id
+		stream_id: stream_id
 		error_code: error_code
 		final_size: final_size
 	}), offset
@@ -445,7 +461,7 @@ fn parse_stop_sending_frame(buf []u8, start int) !(QuicFrame, int) {
 	error_code, n2 := decode_varint(buf[offset..])!
 	offset += n2
 	return QuicFrame(StopSendingFrame{
-		stream_id:  stream_id
+		stream_id: stream_id
 		error_code: error_code
 	}), offset
 }
@@ -500,9 +516,9 @@ fn parse_stream_frame(buf []u8, start int, type_byte u8) !(QuicFrame, int) {
 
 	return QuicFrame(StreamFrame{
 		stream_id: stream_id
-		offset:    stream_offset
-		fin:       fin
-		data:      data
+		offset: stream_offset
+		fin: fin
+		data: data
 	}), offset
 }
 
@@ -520,7 +536,7 @@ fn parse_max_stream_data_frame(buf []u8, start int) !(QuicFrame, int) {
 	maximum_stream_data, n2 := decode_varint(buf[offset..])!
 	offset += n2
 	return QuicFrame(MaxStreamDataFrame{
-		stream_id:           stream_id
+		stream_id: stream_id
 		maximum_stream_data: maximum_stream_data
 	}), offset
 }
@@ -536,7 +552,7 @@ fn parse_max_streams_frame(buf []u8, start int, is_uni bool) !(QuicFrame, int) {
 		return error('quic: MAX_STREAMS frame: value ${maximum_streams} exceeds the ${max_initial_max_streams} (2^60) limit (RFC 9000 §4.6)')
 	}
 	return QuicFrame(MaxStreamsFrame{
-		direction:       if is_uni {
+		direction: if is_uni {
 			StreamDirection.unidirectional
 		} else {
 			StreamDirection.bidirectional
@@ -559,7 +575,7 @@ fn parse_stream_data_blocked_frame(buf []u8, start int) !(QuicFrame, int) {
 	maximum_stream_data, n2 := decode_varint(buf[offset..])!
 	offset += n2
 	return QuicFrame(StreamDataBlockedFrame{
-		stream_id:           stream_id
+		stream_id: stream_id
 		maximum_stream_data: maximum_stream_data
 	}), offset
 }
@@ -573,7 +589,7 @@ fn parse_streams_blocked_frame(buf []u8, start int, is_uni bool) !(QuicFrame, in
 		return error('quic: STREAMS_BLOCKED frame: value ${maximum_streams} exceeds the ${max_initial_max_streams} (2^60) limit (RFC 9000 §19.14)')
 	}
 	return QuicFrame(StreamsBlockedFrame{
-		direction:       if is_uni {
+		direction: if is_uni {
 			StreamDirection.unidirectional
 		} else {
 			StreamDirection.bidirectional
@@ -604,9 +620,9 @@ fn parse_connection_close_frame(buf []u8, start int, is_application_error bool) 
 
 	return QuicFrame(ConnectionCloseFrame{
 		is_application_error: is_application_error
-		error_code:           error_code
-		frame_type:           frame_type
-		reason:               reason
+		error_code: error_code
+		frame_type: frame_type
+		reason: reason
 	}), offset
 }
 

@@ -1,0 +1,43 @@
+fn kind() int {
+	return 0
+}
+
+fn main() {
+	mut sink := 0
+	ok := sink == 0
+	fallback := $embed_file(@FILE)
+	path_if := if ok {
+		(if ok {
+			$embed_file(@FILE)
+		} else {
+			fallback
+		}).path
+	} else {
+		''
+	}
+	path_match := if ok {
+		(match kind() {
+			0 {
+				$embed_file(@FILE)
+			}
+			else {
+				fallback
+			}
+		}).path
+	} else {
+		''
+	}
+	indexed_if := if ok {
+		(if ok {
+			[$embed_file(@FILE)]
+		} else {
+			[fallback]
+		})[0].path
+	} else {
+		''
+	}
+	assert path_if.len > 0
+	assert path_match.len > 0
+	assert indexed_if.len > 0
+	sink = missing_symbol
+}

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/asm_unknown_clobber.vv:4:9: error: unknown clobbered register `raxx`; did you mean `rax`?
+    2 |     asm amd64 {
+    3 |         nop
+    4 |         ; ; ; raxx
+      |               ~~~~
+    5 |     }
+    6 | }

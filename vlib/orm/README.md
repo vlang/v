@@ -6,6 +6,17 @@ regardless of the DB driver you decide to use.
 Driver authors using the shared SQL generators can target SQLite, PostgreSQL, MySQL, and
 H2-backed connections with the built-in ORM dialect helpers.
 
+## Deprecation notice: orm_fn
+
+> [!WARNING]
+> The Function Call API (`orm_fn`; `orm.new_query[T]` / `QueryBuilder`) is
+> deprecated and will be removed from the standard library after
+> **2027-08-17**, to be maintained in a separate repository. Prefer the
+> built-in `sql` ORM syntax for new code.
+> Compiler deprecation warnings begin on **2027-02-18**, six months before
+> the removal date; until then the compiler emits a migration notice.
+> See https://github.com/vlang/v/issues/27001 for details.
+
 ## Nullable
 
 For a nullable column, use an option field. If the field is non-option, the column will be defined
@@ -40,8 +51,16 @@ struct Foo {
 - `[sql_type: 'SQL TYPE']` explicitly sets the type in SQL
 - `[sql_select: 'SQL expression']` uses a custom expression in `SELECT` for the field
 - `[default: 'raw_sql']` inserts `raw_sql` verbatim in a "DEFAULT" clause when
-  creating a new table, allowing for SQL functions like `CURRENT_TIME`. For raw strings,
-  surround `raw_sql` with backticks (\`).
+  creating a new table, allowing for SQL functions like `CURRENT_TIME`.
+  A plain string default has to be surrounded with backticks (\`), so that it is
+  emitted as a properly quoted (and escaped) SQL string literal instead:
+  `[default: '\`/dashboard\`']` produces `DEFAULT '/dashboard'`, while
+  `[default: 'CURRENT_TIME']` produces `DEFAULT CURRENT_TIME`.
+  Single quotes are doubled for you. A backslash is kept verbatim, except on
+  MySQL, where a backslash is rejected with an error: its meaning there depends
+  on the server's `NO_BACKSLASH_ESCAPES` sql_mode, which cannot be known while
+  generating the DDL. Use `sql_type` with an explicit `DEFAULT` clause for that
+  case.
 
 - `[fkey: 'parent_id']` sets foreign key for an field which holds an array
 - `[references]` or `[references: 'tablename']` or `[references: 'tablename(field_id)']`
@@ -519,6 +538,16 @@ fn main() {
 ```
 
 ## Function Call API
+
+> [!WARNING]
+> This section documents the deprecated Function Call API (`orm_fn`;
+> `orm.new_query[T]` / `QueryBuilder`). It is deprecated and will be
+> removed from the standard library after **2027-08-17**, to be maintained
+> in a separate repository. Prefer the built-in `sql` ORM syntax for new
+> code. Compiler warnings begin on **2027-02-18**; until then the compiler
+> emits a migration notice. See https://github.com/vlang/v/issues/27001 for
+> details.
+
 You can utilize the `Function Call API` to work with `ORM`. It provides the
 capability to dynamically construct SQL statements. The Function Call API
 supports common operations such as `Create Table`/`Drop Table`/`Insert`/`Delete`/`Update`/`Select`,

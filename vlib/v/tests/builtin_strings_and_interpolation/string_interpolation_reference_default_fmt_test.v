@@ -105,10 +105,12 @@ fn test_scalar_alias_reference_honors_custom_str() {
 fn test_scalar_alias_reference_honors_custom_ptr_str() {
 	label := RefCustomLabel(8)
 	assert '${&label}' == '&RefLabel(8)'
+	assert (&label).str() == 'RefLabel(8)'
 	println(&label)
 
 	p := RefCustomLabelPointer(&label)
 	assert '${p}' == '&RefLabel(8)'
+	assert p.str() == 'RefLabel(8)'
 	println(p)
 }
 

@@ -554,7 +554,17 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			g.add_commas_and_prevent_long_lines(i, info.size)
 		}
 	} else if is_amp {
-		g.write('0')
+		is_empty := if elem_sym.info is ast.Struct {
+			elem_sym.info.is_empty_struct()
+		} else {
+			// covers nested fixed arrays of empty structs
+			elem_sym.is_empty_struct_array()
+		}
+		if is_empty {
+			g.write('E_STRUCT')
+		} else {
+			g.write('0')
+		}
 	} else {
 		if elem_sym.kind == .map {
 			// fixed array for map -- [N]map[key_type]value_type

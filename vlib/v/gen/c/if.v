@@ -4,6 +4,7 @@
 module c
 
 import v.ast
+import v.token
 
 // write_option_wrapper_if_assignment_smartcast handles an option variable that
 // carries an assignment smartcast (recorded when a non-option value was assigned
@@ -627,6 +628,10 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			if g.need_tmp_var_in_expr(expr.right) {
 				return true
 			}
+			if expr.op in [.eq, .ne] && g.type_is_option_or_option_alias(expr.left_type)
+				&& g.type_is_option_or_option_alias(expr.right_type) {
+				return true
+			}
 			// struct pointer equality comparisons may hoist temp vars
 			// (via gen_struct_pointer_eq_op) which breaks short-circuit
 			// evaluation when used on the right side of `&&` after an
@@ -662,6 +667,16 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			return g.need_tmp_var_in_expr(expr.expr)
 		}
 		ast.PrefixExpr {
+			if expr.op == .amp {
+				resolved_right_type := g.unwrap_generic(g.recheck_concrete_type(expr.right_type))
+				if g.table.fully_unaliased_type(resolved_right_type).has_flag(.option) {
+					right_expr := expr.right.remove_par()
+					if right_expr is ast.Ident || right_expr is ast.IndexExpr
+						|| right_expr is ast.SelectorExpr {
+						return true
+					}
+				}
+			}
 			return g.need_tmp_var_in_expr(expr.right)
 		}
 		ast.SelectorExpr {
@@ -965,6 +980,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				}
 			}
 		} else if branch.cond is ast.IfGuardExpr {
+			previous_index_error_pos := g.discarded_index_error_pos
+			g.discarded_index_error_pos = token.Pos{}
+			if !guard_else_uses_err[i] && branch.cond.expr is ast.IndexExpr {
+				// Only the guard's outer lookup discards its error. Nested index
+				// expressions can still expose their own error in an or block.
+				g.discarded_index_error_pos = branch.cond.expr.pos
+			}
 			mut var_name := guard_vars[i]
 			mut short_opt := false
 			g.left_is_opt = true
@@ -1132,6 +1154,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					}
 				}
 			}
+			g.discarded_index_error_pos = previous_index_error_pos
 		} else {
 			if i == 0 && node.branches.len > 1 && !needs_tmp_var && needs_conds_order {
 				cond_var_name := g.new_tmp_var()

@@ -1,3 +1,4 @@
+// vtest vflags: -enable-globals
 module profiler
 
 import os

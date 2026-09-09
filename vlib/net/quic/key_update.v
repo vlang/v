@@ -120,8 +120,8 @@ mut:
 pub fn new_key_update_state(initial_secret []u8) !&KeyUpdateState {
 	keys := derive_packet_protection_keys(initial_secret)!
 	return &KeyUpdateState{
-		current_phase:  false
-		current_keys:   keys
+		current_phase: false
+		current_keys: keys
 		current_secret: initial_secret.clone()
 	}
 }
@@ -131,6 +131,18 @@ pub fn new_key_update_state(initial_secret []u8) !&KeyUpdateState {
 // generation of keys.
 pub fn (s &KeyUpdateState) current_phase_bit() bool {
 	return s.current_phase
+}
+
+// generation reports the ABSOLUTE key generation this side has committed
+// on the READ direction (see KeyResolution.generation's own doc comment
+// for why this is tracked as an absolute counter rather than the
+// period-2 phase bit). Used by the WRITE side (conn.v's
+// sync_write_keys_to_peer_update, RFC 9001 §6.2) to know how many
+// peer-initiated updates this connection's own send keys still need to
+// catch up to -- the read and write generation chains are independent
+// (§6.1), so the write side cannot derive this from its own state alone.
+pub fn (s &KeyUpdateState) generation() int {
+	return s.current_generation
 }
 
 // resolve_read_keys decides which keys to TRY decrypting an incoming
@@ -155,10 +167,10 @@ pub fn (s &KeyUpdateState) current_phase_bit() bool {
 pub fn (s &KeyUpdateState) resolve_read_keys(packet_phase bool, packet_number u64) !KeyResolution {
 	if packet_phase == s.current_phase {
 		return KeyResolution{
-			keys:         s.current_keys
-			secret:       s.current_secret
+			keys: s.current_keys
+			secret: s.current_secret
 			packet_phase: packet_phase
-			generation:   s.current_generation
+			generation: s.current_generation
 		}
 	}
 
@@ -176,11 +188,11 @@ pub fn (s &KeyUpdateState) resolve_read_keys(packet_phase bool, packet_number u6
 		}
 
 		return KeyResolution{
-			keys:              prev
-			secret:            []u8{} // not meaningful for a previous-phase resolution
-			packet_phase:      packet_phase
+			keys: prev
+			secret: []u8{} // not meaningful for a previous-phase resolution
+			packet_phase: packet_phase
 			is_previous_phase: true
-			generation:        s.current_generation - 1
+			generation: s.current_generation - 1
 		}
 	}
 	return s.next_key_resolution(packet_phase)!
@@ -190,11 +202,11 @@ fn (s &KeyUpdateState) next_key_resolution(packet_phase bool) !KeyResolution {
 	next_secret := derive_updated_secret(s.current_secret)!
 	next_keys := derive_updated_packet_protection_keys(next_secret, s.current_keys.hp)!
 	return KeyResolution{
-		keys:          next_keys
-		secret:        next_secret
-		packet_phase:  packet_phase
+		keys: next_keys
+		secret: next_secret
+		packet_phase: packet_phase
 		is_new_update: true
-		generation:    s.current_generation + 1
+		generation: s.current_generation + 1
 	}
 }
 

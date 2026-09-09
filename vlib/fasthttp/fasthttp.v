@@ -9,10 +9,20 @@ import time
 
 const max_thread_pool_size = runtime.nr_cpus()
 const max_connection_size = 65536 // Max events per epoll_wait
+const default_max_request_body_size = 64 * 1024 * 1024
 
 const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const status_444_response = 'HTTP/1.1 444 No Response\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const status_413_response = 'HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+const status_431_response = 'HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+
+fn response_for_frame_error(frame_result int) []u8 {
+	return match frame_result {
+		frame_err_body { status_413_response }
+		frame_err_header { status_431_response }
+		else { tiny_bad_request_response }
+	}
+}
 
 pub struct Slice {
 pub:
@@ -163,13 +173,81 @@ fn (mut resp HttpResponse) take_request_arena() voidptr {
 	return request_arena
 }
 
+// resolve_bind_addr computes the socket address a fasthttp listener binds to.
+//
+// An empty `host` keeps the historical wildcard bind — 0.0.0.0 for .ip and the
+// dual-stack :: for .ip6 — so existing servers are unaffected. A non-empty
+// `host` is resolved (numeric IPv4/IPv6 literals and host names, via
+// getaddrinfo) and bound explicitly; that is what makes `host: '127.0.0.1'`
+// reachable only on loopback instead of on every interface.
+//
+// The resolved address's family can differ from the requested `family` (e.g. an
+// IPv4 literal while `family` is still the default .ip6), so callers must create
+// the listening socket with `addr.family()`, not the originally requested one.
+fn resolve_bind_addr(host string, family net.AddrFamily, port int) !net.Addr {
+	if host == '' {
+		if family == .ip6 {
+			return net.new_ip6(u16(port), [u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]!)
+		}
+		return net.new_ip(u16(port), [u8(0), 0, 0, 0]!)
+	}
+	// A bare IPv6 literal must be bracketed so split_address keeps the whole
+	// address instead of treating the last group as a port.
+	saddr := if host.contains(':') && !host.starts_with('[') {
+		'[${host}]:${port}'
+	} else {
+		'${host}:${port}'
+	}
+	// Prefer the requested family, but fall back to any family, so an IPv4/IPv6
+	// literal that does not match the default family still binds as intended.
+	if addrs := net.resolve_addrs(saddr, family, .tcp) {
+		if addrs.len > 0 {
+			return addrs[0]
+		}
+	}
+	addrs := net.resolve_addrs(saddr, .unspec, .tcp) or {
+		return error('could not resolve listen host `${host}`: ${err}')
+	}
+	if addrs.len == 0 {
+		return error('could not resolve listen host `${host}`')
+	}
+	return addrs[0]
+}
+
+// listen_host_display renders the configured host for the "listening on ..."
+// startup line as a URL host component. An empty host shows the wildcard the
+// socket actually binds (:: for .ip6, 0.0.0.0 for .ip), and any IPv6 literal is
+// bracketed so the resulting URL is valid (e.g. `http://[::1]:3000/`).
+fn listen_host_display(host string, family net.AddrFamily) string {
+	display_host := if host == '' {
+		if family == .ip6 { '::' } else { '0.0.0.0' }
+	} else {
+		host
+	}
+	return if display_host.contains(':') && !display_host.starts_with('[') {
+		'[${display_host}]'
+	} else {
+		display_host
+	}
+}
+
 // ServerConfig bundles the parameters needed to start a fasthttp server.
 pub struct ServerConfig {
 pub:
-	family                  net.AddrFamily = .ip6
-	port                    int            = 3000
-	max_request_buffer_size int            = 8192
-	timeout_in_seconds      int            = 30
+	family net.AddrFamily = .ip6
+	// host is the interface address the listening socket binds to. Empty (the
+	// default) keeps the historical wildcard bind — 0.0.0.0 for .ip and the
+	// dual-stack :: for .ip6 — reachable on every interface. Set it to a
+	// numeric address or host name (e.g. '127.0.0.1') to bind only that
+	// interface. See resolve_bind_addr for the resolution rules.
+	host                    string
+	port                    int = 3000
+	max_request_buffer_size int = 8192
+	// max_request_body_size independently bounds buffered request payload bytes.
+	// Set it to 0 only for trusted deployments that intentionally allow unlimited
+	// in-memory request bodies.
+	max_request_body_size int = default_max_request_body_size
+	timeout_in_seconds    int = 30
 	// handler is the classic contract: it builds and returns a full HttpResponse.
 	// Set exactly ONE of `handler` or `append_handler`.
 	handler   fn (HttpRequest) !HttpResponse = unsafe { nil }
@@ -190,7 +268,7 @@ pub:
 pub struct ShutdownParams {
 pub:
 	timeout         time.Duration = time.infinite
-	retry_period_ms int           = 10
+	retry_period_ms int = 10
 }
 
 // WaitTillRunningParams allows parametrizing the calls to `ServerHandle.wait_till_running()`.

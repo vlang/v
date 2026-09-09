@@ -46,7 +46,7 @@ pub fn new_aes_gcm(key []u8) !&AesGcm {
 	if key.len != 16 && key.len != 24 && key.len != 32 {
 		return error('AES-GCM key must be 16, 24 or 32 bytes, got ${key.len}')
 	}
-	block := new_cipher(key)
+	block := new_cipher(key)!
 	mut h := zero_block.clone()
 	block.encrypt(mut h, zero_block)
 	return &AesGcm{

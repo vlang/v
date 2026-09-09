@@ -87,6 +87,23 @@ fn maybe_number() ?int {
 	return none
 }
 
+fn maybe_int(ok bool) !int {
+	if ok {
+		return 1
+	}
+	return error('failed')
+}
+
+fn direct_forward_before_propagation(use_first bool) !int {
+	if use_first {
+		first := Resource{33}
+		return maybe_int(false)!
+	}
+	later := Resource{34}
+	value := maybe_int(false)!
+	return value + later.id
+}
+
 fn direct_optional_forward() ?int {
 	r := Resource{13}
 	return maybe_number()
@@ -268,6 +285,8 @@ fn main() {
 	explicit_error() or { println(err.msg()) }
 	explicit_none() or { println('none') }
 	direct_optional_forward() or { println('forward none') }
+	direct_forward_before_propagation(true) or { println('first propagation') }
+	direct_forward_before_propagation(false) or { println('later propagation') }
 	if_else_branch_drop(false)
 	println(value_if_branch_drop(true))
 	println(typed_return_if_drop(true, 29))
@@ -295,7 +314,7 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
-	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 13\nforward none\nelse branch\ndrop 14\ndrop 15\n15\ndrop 29\n31\ndrop 30\n32\ndrop 16\n16\nimplicit 18:17\ndrop 17\ndrop 18\ndrop 19\n20\ndrop 32\nconverted none\ndrop 31\n33:34\ndrop 21\ndrop 20\nguard 22\ndrop 22\nmatch 23\ndrop 23\nselect 24\ndrop 24\noptional wrapper\ndrop 25\nfor init 26\ndrop 26\nfor break 27\ndrop 27\nfor labelled break 28\ndrop 28\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
+	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 13\nforward none\ndrop 33\nfirst propagation\ndrop 34\nlater propagation\nelse branch\ndrop 14\ndrop 15\n15\ndrop 29\n31\ndrop 30\n32\ndrop 16\n16\nimplicit 18:17\ndrop 17\ndrop 18\ndrop 19\n20\ndrop 32\nconverted none\ndrop 31\n33:34\ndrop 21\ndrop 20\nguard 22\ndrop 22\nmatch 23\ndrop 23\nselect 24\ndrop 24\noptional wrapper\ndrop 25\nfor init 26\ndrop 26\nfor break 27\ndrop 27\nfor labelled break 28\ndrop 28\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
 }
 
 fn test_drop_codegen_recurses_through_owned_container_elements() {

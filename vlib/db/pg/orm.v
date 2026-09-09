@@ -290,92 +290,106 @@ pub fn (mut tx Tx) orm_release_savepoint(name string) ! {
 
 // ---- utils ----
 
-fn pg_stmt_binder(mut types []u32, mut vals []&char, mut lens []int, mut formats []int, d orm.QueryData) {
+fn pg_stmt_binder(mut types []u32, mut vals []&char, mut lens []i32, mut formats []i32, d orm.QueryData) {
 	for data in d.data {
 		pg_stmt_match(mut types, mut vals, mut lens, mut formats, data)
 	}
 }
 
-fn pg_stmt_match_array[T](mut types []u32, mut vals []&char, mut lens []int, mut formats []int, data []T) {
+fn pg_stmt_match_array[T](mut types []u32, mut vals []&char, mut lens []i32, mut formats []i32, data []T) {
 	for element in data {
 		pg_stmt_match(mut types, mut vals, mut lens, mut formats, orm.Primitive(element))
 	}
 }
 
-fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats []int, data orm.Primitive) {
+fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []i32, mut formats []i32, data orm.Primitive) {
 	match data {
 		bool {
 			types << u32(Oid.t_bool)
 			vals << &char(&data)
-			lens << int(sizeof(bool))
+			lens << i32(sizeof(bool))
 			formats << 1
 		}
 		u8 {
-			types << u32(Oid.t_char)
-			vals << &char(&data)
-			lens << int(sizeof(u8))
+			// `u8` columns are declared as SMALLINT (int2) by pg_type_from_v(), so
+			// they have to be bound as int2 too. Binding them as the internal
+			// `"char"` type (Oid.t_char) makes PostgreSQL reject the statement with
+			// `column ... is of type smallint but expression is of type "char"`.
+			types << u32(Oid.t_int2)
+			num := conv.hton16(u16(data))
+			vals << &char(&num)
+			lens << i32(sizeof(u16))
 			formats << 1
 		}
 		u16 {
 			types << u32(Oid.t_int2)
 			num := conv.hton16(data)
 			vals << &char(&num)
-			lens << int(sizeof(u16))
+			lens << i32(sizeof(u16))
 			formats << 1
 		}
 		u32 {
 			types << u32(Oid.t_int4)
 			num := conv.hton32(data)
 			vals << &char(&num)
-			lens << int(sizeof(u32))
+			lens << i32(sizeof(u32))
 			formats << 1
 		}
 		u64 {
 			types << u32(Oid.t_int8)
 			num := conv.hton64(data)
 			vals << &char(&num)
-			lens << int(sizeof(u64))
+			lens << i32(sizeof(u64))
 			formats << 1
 		}
 		i8 {
-			types << u32(Oid.t_char)
-			vals << &char(&data)
-			lens << int(sizeof(i8))
+			// See the `u8` branch above: `i8` columns are SMALLINT (int2) as well.
+			types << u32(Oid.t_int2)
+			num := conv.hton16(u16(i16(data)))
+			vals << &char(&num)
+			lens << i32(sizeof(i16))
 			formats << 1
 		}
 		i16 {
 			types << u32(Oid.t_int2)
 			num := conv.hton16(u16(data))
 			vals << &char(&num)
-			lens << int(sizeof(i16))
+			lens << i32(sizeof(i16))
 			formats << 1
 		}
 		int {
-			types << u32(Oid.t_int4)
-			num := conv.hton32(u32(data))
-			vals << &char(&num)
-			lens << int(sizeof(int))
+			$if new_int ? && x64 {
+				types << u32(Oid.t_int8)
+				num := conv.hton64(u64(data))
+				vals << &char(&num)
+				lens << i32(sizeof(i64))
+			} $else {
+				types << u32(Oid.t_int4)
+				num := conv.hton32(u32(data))
+				vals << &char(&num)
+				lens << i32(sizeof(i32))
+			}
 			formats << 1
 		}
 		i64 {
 			types << u32(Oid.t_int8)
 			num := conv.hton64(u64(data))
 			vals << &char(&num)
-			lens << int(sizeof(i64))
+			lens << i32(sizeof(i64))
 			formats << 1
 		}
 		f32 {
 			types << u32(Oid.t_float4)
 			num := conv.htonf32(f32(data))
 			vals << &char(&num)
-			lens << int(sizeof(f32))
+			lens << i32(sizeof(f32))
 			formats << 1
 		}
 		f64 {
 			types << u32(Oid.t_float8)
 			num := conv.htonf64(f64(data))
 			vals << &char(&num)
-			lens << int(sizeof(f64))
+			lens << i32(sizeof(f64))
 			formats << 1
 		}
 		string {
@@ -384,7 +398,7 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			// it would do for an untyped literal string.
 			types << u32(0)
 			vals << &char(data.str)
-			lens << data.len
+			lens << i32(data.len)
 			formats << 0
 		}
 		time.Time {
@@ -393,7 +407,7 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			datetime := data.format_ss_micro()
 			types << u32(0)
 			vals << &char(datetime.str)
-			lens << datetime.len
+			lens << i32(datetime.len)
 			formats << 0
 		}
 		orm.InfixType {
@@ -402,7 +416,7 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 		orm.Null {
 			types << u32(0) // we do not know col type, let server infer
 			vals << &char(unsafe { nil }) // NULL pointer indicates NULL
-			lens << int(0) // ignored
+			lens << i32(0) // ignored
 			formats << 0 // ignored
 		}
 		[]orm.Primitive {
@@ -461,7 +475,14 @@ fn pg_type_from_v(typ int) !string {
 		orm.type_idx['bool'] {
 			'BOOLEAN'
 		}
-		orm.type_idx['int'], orm.type_idx['u32'] {
+		orm.type_idx['int'] {
+			$if new_int ? && x64 {
+				'BIGINT'
+			} $else {
+				'INT'
+			}
+		}
+		orm.type_idx['u32'] {
 			'INT'
 		}
 		orm.time_ {
@@ -673,8 +694,10 @@ fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 			}
 			// u8
 			orm.type_idx['u8'] {
-				data := str.i8()
-				return orm.Primitive(*unsafe { &u8(&data) })
+				// `u8` columns are SMALLINT, and are bound as a non negative int2,
+				// so the text PostgreSQL returns spans the full 0..255 range;
+				// parsing it as an i8 would saturate everything above 127.
+				return orm.Primitive(str.u8())
 			}
 			// u16
 			orm.type_idx['u16'] {

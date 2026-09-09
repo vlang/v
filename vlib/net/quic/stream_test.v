@@ -1,4 +1,3 @@
-// vtest build: present_openssl?
 module quic
 
 fn test_stream_id_category_derivation_all_four_combinations() {
@@ -201,6 +200,7 @@ fn test_recv_half_state_transitions_data_then_fin() {
 	assert h.state == .recv
 	h.note_data(0, [u8(1), 2, 3])!
 	assert h.state == .recv // final size still unknown
+
 	h.note_size_known(3)!
 	assert h.state == .data_recvd // all 3 bytes already present
 }
@@ -211,6 +211,7 @@ fn test_recv_half_state_transitions_fin_before_all_data() {
 	}
 	h.note_size_known(5)!
 	assert h.state == .size_known // final size known, but no data yet
+
 	h.note_data(0, [u8(1), 2, 3, 4, 5])!
 	assert h.state == .data_recvd
 }

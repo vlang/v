@@ -25,16 +25,39 @@ struct C.AnonNative {
 	value int
 }
 
+// No header declares these, so `@[c_extern]` asks for the generated prototypes
+// whose parameter lowering this test checks.
+@[c_extern]
 fn C.take_ptr(&C.AnonNative) int
+
+@[c_extern]
 fn C.take_named(stream &C.AnonNative) int
+
+@[c_extern]
 fn C.take_void(voidptr) int
+
+@[c_extern]
 fn C.take_primitive(int, u64) int
+
+@[c_extern]
 fn C.take_multi(&&C.AnonNative) int
+
+@[c_extern]
 fn C.take_mixed(&C.AnonNative, voidptr, int, &&C.AnonNative) int
+
+@[c_extern]
 fn C.take_fn(fn (&C.AnonNative) int) int
+
+@[c_extern]
 fn C.XLookupString(event &C.AnonNative) int
+
+@[c_extern]
 fn C.SSL_new() voidptr
+
+@[c_extern]
 fn C.load_matrix(m [16]f32) int
+
+@[c_extern]
 fn C.width_runes(r []rune) int
 
 fn callback(n &C.AnonNative) int {

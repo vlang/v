@@ -70,8 +70,8 @@ mut:
 	cross_window_rejections        u64
 	destroyed_resource_rejections  u64
 	app_cleanup_calls              u64
-	offscreen_readback_rejections  u64
-	window_capture_rejections      u64
+	offscreen_readback_checks      u64
+	window_capture_checks          u64
 	phase_rejections               u64
 }
 
@@ -259,8 +259,8 @@ fn run_retained_ui_probe() ! {
 	assert state.cross_window_rejections == 1
 	assert state.destroyed_resource_rejections == 1
 	assert state.app_cleanup_calls == 1
-	assert state.offscreen_readback_rejections == 1
-	assert state.window_capture_rejections == 1
+	assert state.offscreen_readback_checks == 1
+	assert state.window_capture_checks == 1
 	assert state.phase_rejections == 3
 	assert validate_retained_ui_stale_app_cleanup_lease(mut state) == ''
 	foreign_cleanup_result := chan string{cap: 1}
@@ -323,17 +323,18 @@ fn draw_retained_ui_probe(mut context gg.WindowContext, accent gg.Color, frames 
 			state.resource_lease = resources
 		})!
 		capabilities := state.app.window_readback_capabilities(info.window)!
-		if capabilities.offscreen_image || capabilities.window_capture {
-			return error('readback capability was advertised without a completion/cancellation probe')
-		}
-		if _ := context.request_image_readback(state.main_readback_image, gg.WindowReadbackConfig{}) {
-			return error('offscreen readback unexpectedly succeeded')
+		if capabilities.offscreen_image {
+			context.request_image_readback(state.main_readback_image, gg.WindowReadbackConfig{})!
 		} else {
-			if err.msg() != retained_ui_readback_unsupported_error {
-				return err
+			if _ := context.request_image_readback(state.main_readback_image, gg.WindowReadbackConfig{}) {
+				return error('offscreen readback unexpectedly succeeded without capability')
+			} else {
+				if err.msg() != retained_ui_readback_unsupported_error {
+					return err
+				}
 			}
-			state.offscreen_readback_rejections++
 		}
+		state.offscreen_readback_checks++
 	}
 	if accept_frame && phase == .initial && info.window == state.tool_window {
 		context.with_resources(fn [mut state] (mut resources gg.WindowResourceContext) ! {
@@ -460,23 +461,26 @@ fn drive_retained_ui_probe(mut app gg.App, main_window gg.WindowId, tool_window 
 	}
 	app.post(fn [main_window, trace_ack, mut state] (mut app gg.App) ! {
 		capabilities := app.window_readback_capabilities(main_window)!
-		if capabilities.offscreen_image || capabilities.window_capture {
-			trace_ack <- 'unexpected readback capability'
-			return
-		}
-		mut rejected := false
-		app.request_window_capture(main_window, gg.WindowReadbackConfig{}) or {
-			if err.msg() != retained_ui_readback_unsupported_error {
+		if capabilities.window_capture {
+			app.request_window_capture(main_window, gg.WindowReadbackConfig{}) or {
 				trace_ack <- err.msg()
 				return
 			}
-			rejected = true
+		} else {
+			mut rejected := false
+			app.request_window_capture(main_window, gg.WindowReadbackConfig{}) or {
+				if err.msg() != retained_ui_readback_unsupported_error {
+					trace_ack <- err.msg()
+					return
+				}
+				rejected = true
+			}
+			if !rejected {
+				trace_ack <- 'window capture unexpectedly succeeded without capability'
+				return
+			}
 		}
-		if !rejected {
-			trace_ack <- 'window capture unexpectedly succeeded'
-			return
-		}
-		state.window_capture_rejections++
+		state.window_capture_checks++
 		trace_ack <- 'readback-ok'
 	}) or {
 		fail_retained_ui_probe(mut app, 'readback validation admission: ${err.msg()}', result)
