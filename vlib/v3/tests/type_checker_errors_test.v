@@ -2136,6 +2136,8 @@ fn test_fn_literal_container_callback_modes_inside_generic_fn() {
 	map_spread_matching := run_good(v3_bin, 'good_map_literal_spread_in_generic',
 		'fn consume[T](items map[int]T) int {\n\treturn 7\n}\nfn main() {\n\tbase := {1: 1}\n\tprintln(consume[int]({...base}))\n}\n')
 	assert map_spread_matching == '7'
+	run_check_good(v3_bin, 'good_callback_map_literal_spread_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn consume[T](handlers map[string]ConstHandler) bool {\n\treturn handlers.len == 1\n}\nfn startup[T]() bool {\n\tbase := {"event": fn (const_event &C.native_event) {}}\n\treturn consume[int]({...base})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	struct_matching := run_good(v3_bin, 'good_struct_literal_const_fn_param_in_generic',
 		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\n\thandler ConstHandler\n}\nfn apply[T](options Options) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\treturn apply[int](Options{\n\t\thandler: fn (const_event &C.native_event) {}\n\t})\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
 	assert struct_matching == 'true'

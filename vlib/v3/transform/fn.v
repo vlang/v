@@ -12657,7 +12657,7 @@ fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId,
 					map_expected) {
 					return false
 				}
-				i++
+				i += 2
 				continue
 			}
 			if i + 1 >= node.children_count
