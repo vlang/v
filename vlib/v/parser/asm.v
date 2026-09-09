@@ -355,7 +355,9 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		input: input
 		clobbered: clobbered
 		pos: pos.extend(p.prev_tok.pos())
-		is_basic: is_top_level || output.len + input.len + clobbered.len == 0
+		// `asm goto` blocks are always emitted as extended assembly (they need the
+		// label section), even when they have no output/input/clobber operands
+		is_basic: is_top_level || (!is_goto && output.len + input.len + clobbered.len == 0)
 		scope: scope
 		global_labels: global_labels
 		local_labels: local_labels

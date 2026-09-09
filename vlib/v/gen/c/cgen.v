@@ -6439,7 +6439,7 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			} else if stmt.arch == .loongarch64 {
 				g.write('\$${arg.name}')
 			} else {
-				if !stmt.is_basic {
+				if !stmt.is_basic || stmt.is_goto {
 					g.write('%') // escape percent with percent in extended assembly
 				}
 				g.write('%${arg.name}')
@@ -6451,7 +6451,10 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 				return
 			}
 			if arg.segment != '' {
-				g.write('%%${arg.segment}:')
+				if !stmt.is_basic || stmt.is_goto {
+					g.write('%') // escape percent with percent in extended assembly
+				}
+				g.write('%${arg.segment}:')
 			}
 			base := arg.base
 			index := arg.index
