@@ -14,11 +14,18 @@ import encoding.base64
 
 const sf_integer_max = i64(999_999_999_999_999)
 
+// ExtensionParamValue preserves a valid RFC 8941 bare item whose type is not
+// used by a registered RFC 9421 signature parameter.
+pub struct ExtensionParamValue {
+pub:
+	raw string
+}
+
 // ParamValue is the typed value of a signature parameter. RFC 9421 §2.3
 // defines the registered parameters as either Integer (`created`,
-// `expires`) or String (`keyid`, `nonce`, `tag`, `alg`). Boolean is
-// included for future-proofing per RFC 8941 §3.1.2.
-pub type ParamValue = i64 | string | bool
+// `expires`) or String (`keyid`, `nonce`, `tag`, `alg`). Boolean and valid
+// extension bare items are retained for application-defined parameters.
+pub type ParamValue = ExtensionParamValue | bool | i64 | string
 
 // SignatureEntry is one (label, covered-components, parameters) tuple
 // parsed out of a Signature-Input header. The raw
@@ -58,6 +65,10 @@ pub fn serialize_params(pairs []ParamPair) !string {
 			}
 			bool {
 				sb << if pair.value { '?1' } else { '?0' }
+			}
+			ExtensionParamValue {
+				validate_extension_param_value(pair.value.raw)!
+				sb << pair.value.raw
 			}
 		}
 	}
@@ -113,6 +124,18 @@ fn validate_sf_integer(value i64) ! {
 	if value < -sf_integer_max || value > sf_integer_max {
 		return MalformedMessage{
 			reason: 'Structured Field integer ${value} exceeds the 15-digit range'
+		}
+	}
+}
+
+fn validate_extension_param_value(raw string) ! {
+	mut p := SfParser{
+		src: raw
+	}
+	p.parse_bare_item()!
+	if !p.done() {
+		return MalformedMessage{
+			reason: 'extension parameter is not a single Structured Field bare item'
 		}
 	}
 }
@@ -369,12 +392,39 @@ fn (mut p SfParser) parse_bare_item() !ParamValue {
 		p.pos++
 		return ParamValue(b == `1`)
 	}
+	if c == `:` {
+		start := p.pos
+		p.parse_byte_sequence()!
+		return ParamValue(ExtensionParamValue{
+			raw: p.src[start..p.pos]
+		})
+	}
 	if c == `-` || (c >= `0` && c <= `9`) {
-		return ParamValue(p.parse_integer()!)
+		return p.parse_number()!
+	}
+	if (c >= `A` && c <= `Z`) || (c >= `a` && c <= `z`) || c == `*` {
+		return ParamValue(ExtensionParamValue{
+			raw: p.parse_token()!
+		})
 	}
 	return MalformedMessage{
-		reason: 'unsupported bare item byte 0x${c.hex()} at offset ${p.pos} (this module models only string/integer/boolean parameter values)'
+		reason: 'invalid bare item byte 0x${c.hex()} at offset ${p.pos}'
 	}
+}
+
+fn (mut p SfParser) parse_token() !string {
+	start := p.pos
+	for p.pos < p.src.len {
+		c := p.src[p.pos]
+		if (c >= `A` && c <= `Z`) || (c >= `a` && c <= `z`) || (c >= `0` && c <= `9`)
+			|| c == 0x60
+			|| c in [`!`, `#`, `$`, `%`, `&`, `'`, `*`, `+`, `-`, `.`, `^`, `_`, `|`, `~`, `:`, `/`] {
+			p.pos++
+		} else {
+			break
+		}
+	}
+	return p.src[start..p.pos]
 }
 
 fn (mut p SfParser) parse_string() !string {
@@ -420,7 +470,7 @@ fn (mut p SfParser) parse_string() !string {
 	}
 }
 
-fn (mut p SfParser) parse_integer() !i64 {
+fn (mut p SfParser) parse_number() !ParamValue {
 	start := p.pos
 	if p.pos < p.src.len && p.src[p.pos] == `-` {
 		p.pos++
@@ -434,6 +484,26 @@ fn (mut p SfParser) parse_integer() !i64 {
 			reason: 'integer literal with no digits at offset ${start}'
 		}
 	}
+	if p.pos < p.src.len && p.src[p.pos] == `.` {
+		if p.pos - digits_start > 12 {
+			return MalformedMessage{
+				reason: 'Structured Field decimal exceeds the 12-digit integer range at offset ${start}'
+			}
+		}
+		p.pos++
+		fraction_start := p.pos
+		for p.pos < p.src.len && p.src[p.pos] >= `0` && p.src[p.pos] <= `9` {
+			p.pos++
+		}
+		if p.pos == fraction_start || p.pos - fraction_start > 3 {
+			return MalformedMessage{
+				reason: 'Structured Field decimal must have one to three fractional digits at offset ${start}'
+			}
+		}
+		return ParamValue(ExtensionParamValue{
+			raw: p.src[start..p.pos]
+		})
+	}
 	if p.pos - digits_start > 15 {
 		return MalformedMessage{
 			reason: 'Structured Field integer exceeds the 15-digit range at offset ${start}'
@@ -441,7 +511,7 @@ fn (mut p SfParser) parse_integer() !i64 {
 	}
 	value := p.src[start..p.pos].i64()
 	validate_sf_integer(value)!
-	return value
+	return ParamValue(value)
 }
 
 fn (mut p SfParser) parse_byte_sequence() ![]u8 {

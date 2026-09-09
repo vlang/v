@@ -150,6 +150,40 @@ fn test_parse_signature_input_rejects_whitespace_after_parameter_delimiter() {
 	}
 }
 
+fn test_parse_signature_input_accepts_extension_bare_item_types() {
+	src := 'sig1=("@method");token=alpha/one;bytes=:YQ==:;decimal=1.25'
+	entries := parse_signature_input(src)!
+	assert entries.len == 1
+	for name in ['token', 'bytes', 'decimal'] {
+		value := entries[0].params[name] or { panic('missing extension parameter ${name}') }
+		assert value is ExtensionParamValue
+	}
+	assert entries[0].signature_params_value == '("@method");token=alpha/one;bytes=:YQ==:;decimal=1.25'
+}
+
+fn test_verify_accepts_extension_signature_parameters() {
+	c := Components{
+		method: 'GET'
+	}
+	key := Key.hmac_sha256('shared-secret'.bytes())!
+	params := '("@method");token=alpha/one;bytes=:YQ==:;decimal=1.25'
+	base := '"@method": GET\n"@signature-params": ${params}'
+	sig := sign_base(base.bytes(), key)!
+	verify(c, 'sig1=${params}', signature_header_value('sig1', sig)!, 'sig1', key)!
+}
+
+fn test_serialize_extension_signature_parameter() {
+	got := serialize_params([
+		ParamPair{
+			name:  'ext'
+			value: ExtensionParamValue{
+				raw: 'alpha/one'
+			}
+		},
+	])!
+	assert got == ';ext=alpha/one'
+}
+
 fn test_parse_signature_input_rejects_out_of_range_integers() {
 	for value in ['1000000000000000', '-1000000000000000'] {
 		if _ := parse_signature_input('sig1=("@method");created=${value}') {

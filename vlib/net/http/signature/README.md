@@ -99,6 +99,11 @@ signature.verify_request(req, key, now_unix: now)!
   separated dictionary) — TLS-terminating proxies and federated
   signing scenarios both rely on this layout.
 
+* **Extension parameters stay covered.** Unknown signature parameters
+  with token, decimal, or byte-sequence values are preserved as
+  `ExtensionParamValue` entries while verification replays their exact
+  wire representation in the signature base.
+
 * **No clock dependency.** Both `created` and the expiry check are
   driven by the caller (`opts.created`, `opts.now_unix`). Signing in
   bulk over historical data, deterministic test runs, and replay

@@ -926,12 +926,10 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 			// Skip space or tab in value name
 			pos++
 		}
-		if pos + 1 < line.len {
-			value := line[pos + 1..]
-			_, _ = key, value
-			// println('key,value=${key},${value}')
-			header.add_custom(key, value)!
-		}
+		value := if pos + 1 < line.len { line[pos + 1..] } else { '' }
+		// Preserve present empty fields; signature verification distinguishes
+		// an empty field value from a missing field.
+		header.add_custom(key, value)!
 		line = reader.read_line()!
 	}
 	// header.coerce(canonicalize: true)
@@ -989,10 +987,8 @@ pub fn parse_request_head_str(s string) !Request {
 			val_start++
 		}
 
-		if val_start < line.len {
-			value := line[val_start..]
-			header.add_custom(key, value)!
-		}
+		value := if val_start < line.len { line[val_start..] } else { '' }
+		header.add_custom(key, value)!
 		line_start = line_end + 1
 	}
 
