@@ -222,7 +222,24 @@ fn (target OptionRefComptimeCallTarget) accepts_string(value string) bool {
 	return value == ''
 }
 
+struct OptionRefIndexContainer {}
+
+fn (container OptionRefIndexContainer) [] (index int) ?string {
+	if index == 0 {
+		return 'value'
+	}
+	return none
+}
+
 fn accepts_option_ref_slice(values []string) bool {
+	return values.len == 0
+}
+
+fn accepts_option_ref_chan(value chan int) bool {
+	return value.cap == 0
+}
+
+fn accepts_option_ref_strings(values []string) bool {
 	return values.len == 0
 }
 
@@ -241,6 +258,11 @@ fn test_string_interpolation_reference_to_option_value() {
 	assert option_generic_ref_string(?int(none)) == '&Option(&nil)'
 	assert option_generic_ref_string(?OptionRefInt(42)) == '&Option(aliased 42)'
 	assert option_alias_ref_in_generic(?int(42), 0) == '&Option(42)'
+}
+
+fn test_string_interpolation_reference_to_overloaded_option_index() {
+	container := OptionRefIndexContainer{}
+	assert '${&container[0]}' == "&Option('value')"
 }
 
 fn test_string_interpolation_reference_to_option_value_is_evaluated_lazily() {
@@ -307,6 +329,20 @@ fn test_slice_bound_option_reference_string_interpolation_is_not_hoisted_from_sh
 	values := ['value']
 	options := [?string('value')]
 	assert !(false && accepts_option_ref_slice(values[0..'${&options[1]}'.len]))
+}
+
+fn test_channel_capacity_option_reference_string_interpolation_is_not_hoisted_from_short_circuit() {
+	options := [?string('value')]
+	mut counter := OptionRefCounter{}
+	assert !(false && accepts_option_ref_chan(chan int{cap: '${&options[counter.next()]}'.len}))
+	assert counter.calls == 0
+}
+
+fn test_array_spread_option_reference_string_interpolation_is_not_hoisted_from_short_circuit() {
+	options := [?string('value')]
+	mut counter := OptionRefCounter{}
+	assert !(false && accepts_option_ref_strings([...['${&options[counter.next()]}']]))
+	assert counter.calls == 0
 }
 
 fn test_int_ref_string_interpolation() {
