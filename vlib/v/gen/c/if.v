@@ -703,6 +703,9 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			}
 			return g.need_tmp_var_in_expr(expr.right)
 		}
+		ast.RangeExpr {
+			return g.need_tmp_var_in_expr(expr.low) || g.need_tmp_var_in_expr(expr.high)
+		}
 		ast.SelectorExpr {
 			if g.need_tmp_var_in_expr(expr.expr) {
 				return true

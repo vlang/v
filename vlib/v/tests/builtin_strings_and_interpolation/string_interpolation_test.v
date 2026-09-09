@@ -222,6 +222,10 @@ fn (target OptionRefComptimeCallTarget) accepts_string(value string) bool {
 	return value == ''
 }
 
+fn accepts_option_ref_slice(values []string) bool {
+	return values.len == 0
+}
+
 fn test_string_interpolation_reference_to_option_value() {
 	assert option_ref_string(?int(42)) == '&Option(42)'
 	assert option_ref_string(?int(none)) == '&Option(&nil)'
@@ -297,6 +301,12 @@ fn test_collection_method_option_reference_string_interpolation_is_not_hoisted_f
 	mut counter := OptionRefCounter{}
 	assert !(false && values.contains('${&options[counter.next()]}'))
 	assert counter.calls == 0
+}
+
+fn test_slice_bound_option_reference_string_interpolation_is_not_hoisted_from_short_circuit() {
+	values := ['value']
+	options := [?string('value')]
+	assert !(false && accepts_option_ref_slice(values[0..'${&options[1]}'.len]))
 }
 
 fn test_int_ref_string_interpolation() {
