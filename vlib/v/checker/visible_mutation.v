@@ -381,6 +381,18 @@ fn (mut c Checker) return_expr_contains_pointer_param(expr ast.Expr, aliases []s
 		ast.DumpExpr {
 			c.return_expr_contains_pointer_param(reduced.expr, aliases)
 		}
+		ast.PrefixExpr {
+			if reduced.op != .amp {
+				false
+			} else {
+				right := reduced.right.remove_par()
+				if right is ast.PrefixExpr && right.op == .mul {
+					c.return_expr_contains_pointer_param(right.right, aliases)
+				} else {
+					c.return_expr_contains_pointer_param(right, aliases)
+				}
+			}
+		}
 		ast.CallExpr {
 			c.stmts_return_pointer_param(reduced.or_block.stmts, aliases)
 		}

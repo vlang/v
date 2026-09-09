@@ -219,6 +219,14 @@ fn is_receiver_pointer_alias(expr ast.Expr, name string, aliases []ast.ReceiverA
 				false
 			}
 		}
+		ast.SelectorExpr {
+			aliases.any(!it.is_pointer && it.end_pos == 0
+				&& contains_receiver_var_reference(reduced.expr, it.name, it.var_pos))
+		}
+		ast.IndexExpr {
+			aliases.any(!it.is_pointer && it.end_pos == 0
+				&& contains_receiver_var_reference(reduced.left, it.name, it.var_pos))
+		}
 		else {
 			false
 		}
@@ -483,25 +491,48 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 			if node is ast.FnDecl {
 				return
 			}
-			if node is ast.ForStmt && !node.is_inf {
-				scan_receiver_reassignment(node.cond, name, mut info)
+			if node is ast.ForStmt {
+				mut baseline := clone_receiver_reassignment_info(info)
+				if !node.is_inf {
+					scan_receiver_reassignment(node.cond, name, mut baseline)
+				}
+				mut iteration := clone_receiver_reassignment_info(baseline)
+				for stmt in node.stmts {
+					scan_receiver_reassignment(stmt, name, mut iteration)
+				}
+				merge_receiver_branch_info(mut info, [baseline, iteration])
+				return
 			}
 			if node is ast.ForInStmt {
-				scan_receiver_reassignment(node.cond, name, mut info)
+				mut baseline := clone_receiver_reassignment_info(info)
+				scan_receiver_reassignment(node.cond, name, mut baseline)
 				if node.is_range {
-					scan_receiver_reassignment(node.high, name, mut info)
+					scan_receiver_reassignment(node.high, name, mut baseline)
 				}
+				mut iteration := clone_receiver_reassignment_info(baseline)
+				for stmt in node.stmts {
+					scan_receiver_reassignment(stmt, name, mut iteration)
+				}
+				merge_receiver_branch_info(mut info, [baseline, iteration])
+				return
 			}
 			if node is ast.ForCStmt {
+				mut baseline := clone_receiver_reassignment_info(info)
 				if node.has_init {
-					scan_receiver_reassignment(node.init, name, mut info)
+					scan_receiver_reassignment(node.init, name, mut baseline)
 				}
 				if node.has_cond {
-					scan_receiver_reassignment(node.cond, name, mut info)
+					scan_receiver_reassignment(node.cond, name, mut baseline)
+				}
+				mut iteration := clone_receiver_reassignment_info(baseline)
+				for stmt in node.stmts {
+					scan_receiver_reassignment(stmt, name, mut iteration)
 				}
 				if node.has_inc {
-					scan_receiver_reassignment(node.inc, name, mut info)
+					scan_receiver_reassignment(node.inc, name, mut iteration)
 				}
+				merge_receiver_branch_info(mut info, [baseline, iteration])
+				return
 			}
 			if node is ast.AssignStmt {
 				if info.receiver_is_ptr {

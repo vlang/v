@@ -239,6 +239,9 @@ fn main() {
 	pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
 	pointer_element.spawn_local_pointer_callback()
 	pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
+	pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
+	pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
+	_ = pointer_element.return_prefixed_pointer_through_helper()
 }
 
 fn replace_pointer_node(node &PointerNode, next PointerNode) {
@@ -451,4 +454,32 @@ fn (node &PointerNode) replace_alias_in_alternate_branch(other &PointerNode, nex
 			*alias = next
 		}
 	}
+}
+
+fn (node &PointerNode) replace_alias_after_optional_loop(other &PointerNode, next PointerNode, run bool) {
+	mut alias := unsafe { node }
+	for run {
+		alias = unsafe { other }
+		break
+	}
+	unsafe {
+		*alias = next
+	}
+}
+
+fn (node &PointerNode) replace_through_local_holder_field(next PointerNode) {
+	holder := PointerHolder{
+		node: unsafe { node }
+	}
+	unsafe {
+		*holder.node = next
+	}
+}
+
+fn return_prefixed_pointer_node(node &PointerNode) &PointerNode {
+	return unsafe { &*node }
+}
+
+fn (node &PointerNode) return_prefixed_pointer_through_helper() &PointerNode {
+	return return_prefixed_pointer_node(node)
 }

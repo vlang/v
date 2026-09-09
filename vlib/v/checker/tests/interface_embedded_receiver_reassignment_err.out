@@ -249,14 +249,28 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:240:18: err
   240 |     pointer_element.spawn_local_pointer_callback()
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   241 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
-  242 | }
+  242 |     pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
 vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:241:18: error: cannot call pointer-receiver method `PointerNode.replace_alias_in_alternate_branch` through embedded interface `PointerElement` because it can replace its receiver
   239 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
   240 |     pointer_element.spawn_local_pointer_callback()
   241 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  242 | }
-  243 |
+  242 |     pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
+  243 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:242:18: error: cannot call pointer-receiver method `PointerNode.replace_alias_after_optional_loop` through embedded interface `PointerElement` because it can replace its receiver
+  240 |     pointer_element.spawn_local_pointer_callback()
+  241 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
+  242 |     pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  243 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
+  244 |     _ = pointer_element.return_prefixed_pointer_through_helper()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:243:18: error: cannot call pointer-receiver method `PointerNode.replace_through_local_holder_field` through embedded interface `PointerElement` because it can replace its receiver
+  241 |     pointer_element.replace_alias_in_alternate_branch(&other, PointerNode(Item{}), false)
+  242 |     pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
+  243 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  244 |     _ = pointer_element.return_prefixed_pointer_through_helper()
+  245 | }
 vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:215:18: error: cannot call pointer-receiver method `PointerNode.pass_local_holder_value` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
   213 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
   214 |     pointer_element.pass_local_holder_mut()
@@ -334,3 +348,10 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:237:22: err
       |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   238 |     _ = pointer_element.return_pointer_callback()
   239 |     pointer_element.replace_through_local_pointer_callback(PointerNode(Item{}))
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:244:22: error: cannot call pointer-receiver method `PointerNode.return_prefixed_pointer_through_helper` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  242 |     pointer_element.replace_alias_after_optional_loop(&other, PointerNode(Item{}), false)
+  243 |     pointer_element.replace_through_local_holder_field(PointerNode(Item{}))
+  244 |     _ = pointer_element.return_prefixed_pointer_through_helper()
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  245 | }
+  246 |
