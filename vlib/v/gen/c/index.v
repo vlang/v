@@ -1060,7 +1060,8 @@ fn (mut g Gen) gen_map_value_lookup(node ast.IndexExpr, key_type ast.Type, val_t
 	if insert_if_missing {
 		g.write('if (!${value_tmp}) { ${value_tmp} = builtin__map_get_and_set(${map_tmp}, ${key_tmp}, &(${val_type_str}[]){ ${zero} }); } (${val_type_str}*)${value_tmp}; }))')
 	} else if addressable {
-		g.write('if (!${value_tmp}) { ${value_tmp} = builtin__memdup(ADDR(${val_type_str}, ${zero}), sizeof(${val_type_str})); } (${val_type_str}*)${value_tmp}; }))')
+		zero_tmp := g.new_tmp_var()
+		g.write('${val_type_str} ${zero_tmp}; if (!${value_tmp}) { ${zero_tmp} = ${zero}; ${value_tmp} = &${zero_tmp}; } (${val_type_str}*)${value_tmp}; }))')
 	} else {
 		g.write('${value_tmp} ? *((${val_type_str}*)${value_tmp}) : ${zero}; })')
 	}
