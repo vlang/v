@@ -66,6 +66,18 @@ fn receiver_ident_var_pos(ident ast.Ident) int {
 	return -1
 }
 
+fn receiver_ident_is_local(ident ast.Ident) bool {
+	if ident.obj is ast.Var {
+		return !ident.obj.is_arg && !ident.obj.is_static && !ident.obj.is_inherited
+	}
+	if ident.scope != unsafe { nil } {
+		if variable := ident.scope.find_var(ident.name) {
+			return !variable.is_arg && !variable.is_static && !variable.is_inherited
+		}
+	}
+	return false
+}
+
 fn contains_receiver_var_reference(expr ast.Expr, name string, var_pos int) bool {
 	reduced := expr.remove_par()
 	return match reduced {
@@ -453,6 +465,31 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 					if info.receiver_is_ptr && node.op == .arrow
 						&& contains_receiver_or_alias(node.right, name, info.receiver_aliases) {
 						info.address_taken = true
+					} else if info.receiver_is_ptr && node.op == .left_shift
+						&& contains_receiver_or_alias(node.right, name, info.receiver_aliases) {
+						left := node.left.remove_par()
+						if left is ast.Ident && left.name !in [name, '_']
+							&& receiver_ident_var_pos(left) >= 0 && receiver_ident_is_local(left) {
+							if receiver_alias_index(left, info.receiver_aliases) < 0 {
+								info.receiver_aliases << ast.ReceiverAlias{
+									name:        left.name
+									var_pos:     receiver_ident_var_pos(left)
+									start_pos:   left.pos.pos
+									scope_start: if left.scope != unsafe { nil } {
+										left.scope.start_pos
+									} else {
+										-1
+									}
+									scope_end:   if left.scope != unsafe { nil } {
+										left.scope.end_pos
+									} else {
+										-1
+									}
+								}
+							}
+						} else {
+							info.address_taken = true
+						}
 					}
 					scan_receiver_reassignment(node.or_block, name, mut info)
 				}

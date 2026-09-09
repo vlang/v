@@ -214,6 +214,9 @@ fn main() {
 	pointer_element.pass_local_holder_mut()
 	pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
 	pointer_element.pass_match_pointer(&other, PointerNode(Item{}), 0)
+	_ = pointer_element.return_pointer_array()
+	mut saved := []&PointerNode{cap: 1}
+	pointer_element.append_to_pointer_array(mut saved)
 	pointer_element.spawn_pointer_read()
 }
 
@@ -232,4 +235,14 @@ fn (node &PointerNode) pass_match_pointer(other &PointerNode, next PointerNode, 
 		0 { node }
 		else { other }
 	}, next)
+}
+
+fn (node &PointerNode) return_pointer_array() []&PointerNode {
+	mut saved := []&PointerNode{}
+	saved << node
+	return saved
+}
+
+fn (node &PointerNode) append_to_pointer_array(mut saved []&PointerNode) {
+	saved << node
 }

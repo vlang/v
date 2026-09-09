@@ -55,6 +55,12 @@ fn (node &Node) read_field_through_local_holder() string {
 	return holder.node.name
 }
 
+fn (node &Node) read_field_through_local_array() string {
+	mut saved := []&Node{}
+	saved << node
+	return saved[0].name
+}
+
 interface Element {
 	Node
 	attributes map[string]string
@@ -163,6 +169,11 @@ fn test_rebound_pointer_receiver_alias_does_not_escape() {
 fn test_local_pointer_receiver_holder_does_not_escape() {
 	element := new_element()
 	assert element.read_field_through_local_holder() == 'body'
+}
+
+fn test_local_pointer_receiver_array_does_not_escape() {
+	element := new_element()
+	assert element.read_field_through_local_array() == 'body'
 }
 
 fn test_smartcast_receiver_method_on_embedded_interface() {
