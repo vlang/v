@@ -35,7 +35,33 @@ fn test_mac_rejects_no_recipients() {
 	if _ := mac('payload'.bytes(), key, protected: hp) {
 		assert false, 'must reject zero recipients'
 	} else {
-		assert err.msg().contains('at least one recipient')
+		assert err.msg().contains('exactly one recipient')
+	}
+}
+
+fn test_mac_direct_mode_rejects_multiple_recipients() {
+	key := Key.symmetric([]u8{len: 32, init: 1})
+	mut hp := Headers{}
+	hp.algorithm = .hmac_256_256
+	if _ := mac('payload'.bytes(), key,
+		protected: hp
+		recipients: [
+			Recipient{},
+			Recipient{},
+		]
+	) {
+		assert false, 'direct mode must reject multiple recipients on creation'
+	} else {
+		assert err.msg().contains('exactly one recipient')
+	}
+
+	signed := mac('payload'.bytes(), key, protected: hp, recipients: [Recipient{}])!
+	mut decoded := MacMessage.decode(signed)!
+	decoded.recipients << decoded.recipients[0]
+	if _ := verify_mac(decoded.encode(true)!, key) {
+		assert false, 'direct mode must reject multiple recipients on verification'
+	} else {
+		assert err.msg().contains('exactly one recipient')
 	}
 }
 

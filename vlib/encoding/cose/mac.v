@@ -83,8 +83,8 @@ pub:
 // drives the MAC computation and the symmetric `key` is the shared
 // secret named by the recipients' `kid`.
 pub fn mac(payload []u8, key Key, opts MacOptions) ![]u8 {
-	if opts.recipients.len == 0 {
-		return error('cose: COSE_Mac requires at least one recipient')
+	if opts.recipients.len != 1 {
+		return error('cose: direct-mode COSE_Mac requires exactly one recipient')
 	}
 	alg := opts.protected.algorithm or {
 		return error('cose: COSE_Mac requires protected.algorithm to be set')
@@ -139,8 +139,16 @@ pub fn mac(payload []u8, key Key, opts MacOptions) ![]u8 {
 // body bucket is accepted only when bound by `key.alg`.
 pub fn verify_mac(message []u8, key Key, opts VerifyMacOptions) ![]u8 {
 	msg := MacMessage.decode(message)!
+	if msg.recipients.len != 1 {
+		return MalformedMessage{
+			reason: 'direct-mode COSE_Mac requires exactly one recipient'
+		}
+	}
+	check_decoded_protected_unchanged(msg.raw_protected, msg.protected, 'Mac body')!
 	check_protected_headers(msg.protected, msg.unprotected)!
-	for r in msg.recipients {
+	for i, r in msg.recipients {
+		check_decoded_protected_unchanged(r.raw_protected, r.protected,
+			'Mac recipient at index ${i}')!
 		check_protected_headers(r.protected, r.unprotected)!
 		check_direct_recipient(r, true)!
 	}

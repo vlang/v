@@ -402,6 +402,13 @@ pub fn parse_protected(data []u8) !Headers {
 fn check_protected_headers(protected Headers, unprotected Headers) ! {
 	check_header_values(protected)!
 	check_header_values(unprotected)!
+	if (has_int_label(protected, label_iv) || has_int_label(unprotected, label_iv))
+		&& (has_int_label(protected, label_partial_iv)
+		|| has_int_label(unprotected, label_partial_iv)) {
+		return MalformedMessage{
+			reason: 'iv and partial iv must not occur in the same security layer (RFC 9052 §3.1)'
+		}
+	}
 	for label in int_header_labels(protected) {
 		if has_int_label(unprotected, label) {
 			return MalformedMessage{
@@ -433,6 +440,17 @@ fn check_protected_headers(protected Headers, unprotected Headers) ! {
 		if !has_text_label(protected, label) {
 			return MalformedMessage{
 				reason: 'crit lists label "${label}", but it is not present in protected headers (RFC 9052 §3.1)'
+			}
+		}
+	}
+}
+
+fn check_decoded_protected_unchanged(raw ?[]u8, current Headers, context string) ! {
+	if received := raw {
+		original := parse_protected(received)!
+		if original.encode_map()! != current.encode_map()! {
+			return MalformedMessage{
+				reason: '${context} protected headers were modified after decoding'
 			}
 		}
 	}

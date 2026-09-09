@@ -132,6 +132,32 @@ fn test_rejects_numeric_content_type_above_coap_range() {
 	}
 }
 
+fn test_rejects_iv_and_partial_iv_in_same_security_layer() {
+	for buckets in [
+		[
+			Headers{
+				iv:         [u8(1)]
+				partial_iv: [u8(2)]
+			},
+			Headers{},
+		],
+		[
+			Headers{
+				iv: [u8(1)]
+			},
+			Headers{
+				partial_iv: [u8(2)]
+			},
+		],
+	] {
+		if _ := check_protected_headers(buckets[0], buckets[1]) {
+			assert false, 'iv and partial iv must be mutually exclusive'
+		} else {
+			assert err.msg().contains('iv and partial iv')
+		}
+	}
+}
+
 fn test_encode_rejects_duplicate_header_labels() {
 	for headers in [
 		Headers{

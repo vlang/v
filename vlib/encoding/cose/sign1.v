@@ -118,6 +118,7 @@ pub fn (mut m Sign1Message) sign(key Key, payload []u8, external_aad []u8) ! {
 // algorithm in the unprotected bucket is accepted only when the key's
 // `alg` constraint binds it to the same value.
 pub fn (m Sign1Message) verify(key Key, payload []u8, external_aad []u8) ! {
+	check_decoded_protected_unchanged(m.raw_protected, m.protected, 'Sign1')!
 	check_protected_headers(m.protected, m.unprotected)!
 	alg := verification_algorithm(m.protected, m.unprotected, key, 'Sign1')!
 

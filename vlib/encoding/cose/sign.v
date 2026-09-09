@@ -119,6 +119,9 @@ pub fn (m SignMessage) verify(signer_index int, key Key, opts VerifySignOptions)
 		return error('cose: signer index ${signer_index} out of range (have ${m.signatures.len})')
 	}
 	entry := m.signatures[signer_index]
+	check_decoded_protected_unchanged(m.raw_protected, m.protected, 'Sign body')!
+	check_decoded_protected_unchanged(entry.raw_protected, entry.protected,
+		'signer at index ${signer_index}')!
 	check_protected_headers(m.protected, m.unprotected)!
 	check_protected_headers(entry.protected, entry.unprotected)!
 	alg := verification_algorithm(entry.protected, entry.unprotected, key,

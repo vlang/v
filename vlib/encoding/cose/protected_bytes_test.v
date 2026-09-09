@@ -77,6 +77,32 @@ fn test_verify_mac0_accepts_non_canonically_encoded_protected_header() {
 	assert verify_mac0(msg, key)! == payload
 }
 
+fn test_verification_rejects_mutated_decoded_protected_headers() {
+	d := hex.decode(nc_eddsa_d_hex)!
+	x := hex.decode(nc_eddsa_x_hex)!
+	priv := Key.okp_private(.ed25519, x, d)
+	pub_key := Key.okp_public(.ed25519, x)
+	payload := nc_text.bytes()
+	mut signed := Sign1Message.decode(build_sign1_with_protected(nc_sign1_protected,
+		payload, priv)!)!
+	signed.protected.kid = 'changed'.bytes()
+	if _ := signed.verify(pub_key, payload, []u8{}) {
+		assert false, 'Sign1 verification must reject a mutated protected view'
+	} else {
+		assert err.msg().contains('modified after decoding')
+	}
+
+	key := Key.symmetric([]u8{len: 32, init: 0x42})
+	mut maced := Mac0Message.decode(build_mac0_with_protected(nc_mac0_protected, payload,
+		key)!)!
+	maced.protected.kid = 'changed'.bytes()
+	if _ := maced.verify(key, payload, []u8{}) {
+		assert false, 'Mac0 verification must reject a mutated protected view'
+	} else {
+		assert err.msg().contains('modified after decoding')
+	}
+}
+
 fn test_sign1_decode_encode_round_trips_non_canonical_protected_bytes() {
 	d := hex.decode(nc_eddsa_d_hex)!
 	x := hex.decode(nc_eddsa_x_hex)!
@@ -209,6 +235,13 @@ fn test_sign_uses_the_received_protected_bytes_for_body_and_signer() {
 	assert decoded.protected_bytes()! == nc_body_protected
 	assert decoded.signatures[0].protected_bytes()! == nc_sign1_protected
 	assert decoded.encode(true)! == msg
+	mut modified := decoded
+	modified.signatures[0].protected.kid = 'changed'.bytes()
+	if _ := modified.verify(0, pub_key) {
+		assert false, 'Sign verification must reject a mutated signer protected view'
+	} else {
+		assert err.msg().contains('modified after decoding')
+	}
 }
 
 fn test_mac_uses_the_received_protected_bytes_for_body_and_recipient() {
