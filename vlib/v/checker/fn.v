@@ -87,7 +87,10 @@ fn receiver_pointer_argument(expr ast.Expr, receiver_name string) bool {
 	}
 }
 
-fn receiver_pointer_alias_argument(expr ast.Expr, alias ast.ReceiverPointerAlias) bool {
+fn receiver_pointer_alias_argument(expr ast.Expr, alias ast.ReceiverAlias) bool {
+	if !alias.is_pointer {
+		return false
+	}
 	pos := expr.pos().pos
 	if pos < alias.start_pos || (alias.end_pos > 0 && pos >= alias.end_pos) {
 		return false
@@ -136,7 +139,7 @@ fn receiver_pointer_alias_argument(expr ast.Expr, alias ast.ReceiverPointerAlias
 	}
 }
 
-fn receiver_method_target(expr ast.Expr, receiver_name string, aliases []ast.ReceiverPointerAlias) bool {
+fn receiver_method_target(expr ast.Expr, receiver_name string, aliases []ast.ReceiverAlias) bool {
 	reduced := expr.remove_par()
 	if receiver_pointer_argument(reduced, receiver_name)
 		|| aliases.any(receiver_pointer_alias_argument(reduced, it)) {
@@ -160,7 +163,7 @@ fn (mut c Checker) record_receiver_argument(param ast.Param, arg ast.CallArg) {
 		return
 	}
 	receiver_name := c.table.cur_fn.receiver.name
-	aliases := receiver_sym.methods[method_idx].receiver_pointer_aliases
+	aliases := receiver_sym.methods[method_idx].receiver_aliases
 	arg_is_receiver := receiver_pointer_argument(arg.expr, receiver_name)
 		|| aliases.any(receiver_pointer_alias_argument(arg.expr, it))
 	if arg_is_receiver {
@@ -184,7 +187,7 @@ fn (mut c Checker) record_receiver_method_call(left ast.Expr, called_name string
 	mut receiver_sym := c.table.sym(c.table.cur_fn.receiver.typ)
 	method_idx := c.table.cur_fn.method_idx
 	if method_idx >= 0 && method_idx < receiver_sym.methods.len
-		&& receiver_method_target(left_expr, c.table.cur_fn.receiver.name, receiver_sym.methods[method_idx].receiver_pointer_aliases)
+		&& receiver_method_target(left_expr, c.table.cur_fn.receiver.name, receiver_sym.methods[method_idx].receiver_aliases)
 		&& called_name !in receiver_sym.methods[method_idx].receiver_method_calls {
 		receiver_sym.methods[method_idx].receiver_method_calls << called_name
 	}

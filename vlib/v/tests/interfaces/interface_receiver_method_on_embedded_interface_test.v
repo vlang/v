@@ -44,6 +44,17 @@ fn (node &Node) read_field_through_rebound_alias(other &Node) string {
 	return read_node_name(alias)
 }
 
+struct LocalNodeHolder {
+	node &Node
+}
+
+fn (node &Node) read_field_through_local_holder() string {
+	holder := LocalNodeHolder{
+		node: unsafe { node }
+	}
+	return holder.node.name
+}
+
 interface Element {
 	Node
 	attributes map[string]string
@@ -147,6 +158,11 @@ fn test_local_pointer_receiver_alias_does_not_escape() {
 fn test_rebound_pointer_receiver_alias_does_not_escape() {
 	element := new_element()
 	assert element.read_field_through_rebound_alias(new_child('other')) == 'other'
+}
+
+fn test_local_pointer_receiver_holder_does_not_escape() {
+	element := new_element()
+	assert element.read_field_through_local_holder() == 'body'
 }
 
 fn test_smartcast_receiver_method_on_embedded_interface() {

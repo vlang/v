@@ -42,7 +42,7 @@ mut:
 	address_taken       bool
 	captured_mut        bool
 	method_calls        []string
-	receiver_aliases    []ast.ReceiverPointerAlias
+	receiver_aliases    []ast.ReceiverAlias
 }
 
 fn contains_receiver_reference(expr ast.Expr, name string) bool {
@@ -145,17 +145,17 @@ fn stmts_return_receiver_var_reference(stmts []ast.Stmt, name string, var_pos in
 	}
 }
 
-fn contains_receiver_or_alias(expr ast.Expr, name string, aliases []ast.ReceiverPointerAlias) bool {
+fn contains_receiver_or_alias(expr ast.Expr, name string, aliases []ast.ReceiverAlias) bool {
 	return contains_receiver_reference(expr, name) || aliases.any(it.end_pos == 0
 		&& contains_receiver_var_reference(expr, it.name, it.var_pos))
 }
 
-fn is_receiver_pointer_alias(expr ast.Expr, name string, aliases []ast.ReceiverPointerAlias) bool {
+fn is_receiver_pointer_alias(expr ast.Expr, name string, aliases []ast.ReceiverAlias) bool {
 	reduced := expr.remove_par()
 	return match reduced {
 		ast.Ident {
-			reduced.name == name || aliases.any(it.end_pos == 0 && reduced.name == it.name
-				&& receiver_ident_var_pos(reduced) == it.var_pos)
+			reduced.name == name || aliases.any(it.end_pos == 0 && it.is_pointer
+				&& reduced.name == it.name && receiver_ident_var_pos(reduced) == it.var_pos)
 		}
 		ast.CastExpr {
 			is_receiver_pointer_alias(reduced.expr, name, aliases)
@@ -185,7 +185,7 @@ fn is_receiver_pointer_alias(expr ast.Expr, name string, aliases []ast.ReceiverP
 	}
 }
 
-fn receiver_pointer_alias_index(ident ast.Ident, aliases []ast.ReceiverPointerAlias) int {
+fn receiver_alias_index(ident ast.Ident, aliases []ast.ReceiverAlias) int {
 	var_pos := receiver_ident_var_pos(ident)
 	if var_pos < 0 {
 		return -1
@@ -198,7 +198,7 @@ fn receiver_pointer_alias_index(ident ast.Ident, aliases []ast.ReceiverPointerAl
 	return -1
 }
 
-fn is_receiver_method_target(expr ast.Expr, name string, aliases []ast.ReceiverPointerAlias) bool {
+fn is_receiver_method_target(expr ast.Expr, name string, aliases []ast.ReceiverAlias) bool {
 	reduced := expr.remove_par()
 	if is_receiver_pointer_alias(reduced, name, aliases) {
 		return true
@@ -207,6 +207,11 @@ fn is_receiver_method_target(expr ast.Expr, name string, aliases []ast.ReceiverP
 		return is_receiver_pointer_alias(reduced.right, name, aliases)
 	}
 	return false
+}
+
+fn async_call_uses_receiver(call ast.CallExpr, name string, aliases []ast.ReceiverAlias) bool {
+	return (call.is_method && is_receiver_method_target(call.left, name, aliases))
+		|| call.args.any(contains_receiver_or_alias(it.expr, name, aliases))
 }
 
 fn scan_receiver_sql_query_data(items []ast.SqlQueryDataItem, name string, mut info ReceiverReassignmentInfo) {
@@ -261,19 +266,27 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 						}
 						mut alias_idx := -1
 						if left is ast.Ident {
-							alias_idx = receiver_pointer_alias_index(left, info.receiver_aliases)
+							alias_idx = receiver_alias_index(left, info.receiver_aliases)
 						}
 						has_receiver := contains_receiver_or_alias(right, name,
 							info.receiver_aliases)
 						is_pointer_alias := is_receiver_pointer_alias(right, name,
 							info.receiver_aliases)
-						if has_receiver && is_pointer_alias && left is ast.Ident
-							&& left.name !in [name, '_'] && receiver_ident_var_pos(left) >= 0 {
-							if alias_idx < 0 {
-								info.receiver_aliases << ast.ReceiverPointerAlias{
-									name:      left.name
-									var_pos:   receiver_ident_var_pos(left)
-									start_pos: left.pos.pos
+						if has_receiver && left is ast.Ident && left.name !in [name, '_']
+							&& receiver_ident_var_pos(left) >= 0 {
+							if alias_idx < 0
+								|| info.receiver_aliases[alias_idx].is_pointer != is_pointer_alias {
+								if alias_idx >= 0 {
+									info.receiver_aliases[alias_idx] = ast.ReceiverAlias{
+										...info.receiver_aliases[alias_idx]
+										end_pos: left.pos.pos
+									}
+								}
+								info.receiver_aliases << ast.ReceiverAlias{
+									name:       left.name
+									var_pos:    receiver_ident_var_pos(left)
+									start_pos:  left.pos.pos
+									is_pointer: is_pointer_alias
 								}
 							}
 							continue
@@ -282,7 +295,7 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 							info.address_taken = true
 						}
 						if alias_idx >= 0 {
-							info.receiver_aliases[alias_idx] = ast.ReceiverPointerAlias{
+							info.receiver_aliases[alias_idx] = ast.ReceiverAlias{
 								...info.receiver_aliases[alias_idx]
 								end_pos: left.pos().pos
 							}
@@ -400,9 +413,17 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 					scan_receiver_reassignment(node.expr, name, mut info)
 				}
 				ast.GoExpr {
+					if info.receiver_is_ptr
+						&& async_call_uses_receiver(node.call_expr, name, info.receiver_aliases) {
+						info.address_taken = true
+					}
 					scan_receiver_reassignment(node.call_expr, name, mut info)
 				}
 				ast.SpawnExpr {
+					if info.receiver_is_ptr
+						&& async_call_uses_receiver(node.call_expr, name, info.receiver_aliases) {
+						info.address_taken = true
+					}
 					scan_receiver_reassignment(node.call_expr, name, mut info)
 				}
 				ast.Ident {
@@ -1563,7 +1584,7 @@ run them via `v file.v` instead',
 		type_sym.methods[type_sym_method_idx].receiver_address_taken = receiver_info.address_taken
 		type_sym.methods[type_sym_method_idx].receiver_captured_mut = receiver_info.captured_mut
 		type_sym.methods[type_sym_method_idx].receiver_method_calls = receiver_info.method_calls
-		type_sym.methods[type_sym_method_idx].receiver_pointer_aliases = receiver_info.receiver_aliases
+		type_sym.methods[type_sym_method_idx].receiver_aliases = receiver_info.receiver_aliases
 	}
 	if !no_body && are_params_type_only {
 		p.error_with_pos('functions with type only params can not have bodies', body_start_pos)

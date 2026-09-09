@@ -143,6 +143,14 @@ fn (node &PointerNode) pass_alias_before_rebinding(other &PointerNode) {
 	alias = unsafe { other }
 }
 
+fn (node &PointerNode) read_pointer_name() string {
+	return node.name
+}
+
+fn (node &PointerNode) spawn_pointer_read() {
+	spawn node.read_pointer_name()
+}
+
 interface Element {
 	Node
 }
@@ -179,4 +187,5 @@ fn main() {
 	_ = reader()
 	other := PointerNode(Item{})
 	pointer_element.pass_alias_before_rebinding(&other)
+	pointer_element.spawn_pointer_read()
 }
