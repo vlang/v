@@ -935,6 +935,11 @@ fn path_is_at_or_inside(candidate string, root string) bool {
 	return candidate == root || candidate.starts_with(root + '/')
 }
 
+fn folder_has_module_search_boundary(folder string) bool {
+	entries := os.ls(folder) or { return false }
+	return '.v.mod.stop' in entries || '.git' in entries || '.hg' in entries || '.svn' in entries
+}
+
 fn candidate_vmod_matches_import(candidate_path string, mod string) bool {
 	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(candidate_path)
@@ -1052,6 +1057,9 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 					println('  << skipped ${found_path} (no .v files) .')
 				}
 			}
+		}
+		if folder_has_module_search_boundary(current_dir) {
+			break
 		}
 		parent_dir := os.dir(current_dir)
 		if parent_dir == current_dir {

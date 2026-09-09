@@ -147,12 +147,24 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 	// would shrink the qualified name: files at `dep/mymod` would become
 	// `mymod` instead of `dep.mymod`, breaking `import dep.mymod` from
 	// the outer project. See issue #27138.
-	pref_project_root := if in_vmod_path { '' } else { project_root_vmod_folder(pref_) }
+	mut pref_project_root := ''
+	mut pref_project_boundary := ''
+	if !in_vmod_path {
+		pref_project_root, pref_project_boundary = project_root_folders(pref_)
+	}
 	path_parts := path.split(os.path_separator)
 	mod_path := mod.replace('.', os.path_separator)
 	// go back through each parent in path_parts and join with `mod_path` to see the dir exists
 	for i := path_parts.len - 1; i > 0; i-- {
-		try_path := os.join_path_single(path_parts[0..i].join(os.path_separator), mod_path)
+		candidate_root := path_parts[0..i].join(os.path_separator)
+		if pref_project_boundary != '' {
+			real_candidate_root := os.real_path(candidate_root)
+			if real_candidate_root != pref_project_boundary
+				&& !real_candidate_root.starts_with(pref_project_boundary + os.path_separator) {
+				break
+			}
+		}
+		try_path := os.join_path_single(candidate_root, mod_path)
 		// found module path
 		if os.is_dir(try_path) {
 			// we know we are in one of the `vmod_folders`
@@ -463,15 +475,13 @@ fn has_vmod_boundary_marker(ls []string) bool {
 	return '.v.mod.stop' in ls || '.git' in ls || '.hg' in ls || '.svn' in ls
 }
 
-// project_root_vmod_folder returns the absolute folder of the closest
-// enclosing v.mod for the current compilation (`pref_.path`). Module-name
-// qualification uses this as the boundary so a nested v.mod inside the
-// project does not silently rename its sub-modules.
-// It also respects `.v.mod.stop` and version-control metadata as project
-// boundaries to prevent walking past the current project's root.
-fn project_root_vmod_folder(pref_ &pref.Preferences) string {
+// project_root_folders returns the closest enclosing v.mod folder or, when
+// there is no v.mod, the nearest project-search boundary for the current
+// compilation (`pref_.path`). Module-name qualification uses these boundaries
+// so nested or unrelated projects do not silently rename modules.
+fn project_root_folders(pref_ &pref.Preferences) (string, string) {
 	if pref_.path == '' {
-		return ''
+		return '', ''
 	}
 	abs_pref_path := if os.is_abs_path(pref_.path) {
 		pref_.path
@@ -480,12 +490,12 @@ fn project_root_vmod_folder(pref_ &pref.Preferences) string {
 	}
 	start := if os.is_dir(abs_pref_path) { abs_pref_path } else { os.dir(abs_pref_path) }
 	if start == '' {
-		return ''
+		return '', ''
 	}
 	mut cfolder := os.real_path(start)
 	for {
 		if os.is_file(os.join_path(cfolder, 'v.mod')) {
-			return cfolder
+			return cfolder, ''
 		}
 		// `.v.mod.stop` and version-control metadata mark project boundaries;
 		// stop walking up to avoid picking up a v.mod from an unrelated parent project
@@ -493,16 +503,16 @@ fn project_root_vmod_folder(pref_ &pref.Preferences) string {
 		// These markers are NOT v.mod roots — they only stop the search.
 		if listing := os.ls(cfolder) {
 			if has_vmod_boundary_marker(listing) {
-				return ''
+				return '', cfolder
 			}
 		}
 		parent := os.dir(cfolder)
 		if parent == cfolder || parent == '' {
-			return ''
+			return '', ''
 		}
 		cfolder = parent
 	}
-	return ''
+	return '', ''
 }
 
 // normalize_base_url_mod_name strips the `base_url` prefix from `mod_full_name`

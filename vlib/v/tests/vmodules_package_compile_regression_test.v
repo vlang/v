@@ -221,6 +221,33 @@ fn test_issue_27281_vmod_stop_marker_stops_fallback_parent_vmod_scan() {
 	issue_27281_assert_boundary_marker_stops_parent_vmod('vmod_stop', '.v.mod.stop', false)
 }
 
+fn test_issue_27281_boundary_rejects_unrelated_parent_module() {
+	workspace := issue_27281_boundary_workspace('unrelated_parent_module')
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	parent := os.join_path(workspace, 'parent')
+	repo := os.join_path(parent, 'repo')
+	parent_foo := os.join_path(parent, 'foo')
+	os.rmdir_all(workspace) or {}
+	os.mkdir_all(repo) or { panic(err) }
+	os.mkdir_all(parent_foo) or { panic(err) }
+	issue_20147_write_file(os.join_path(parent, 'v.mod'),
+
+		['Module {', "\tname: 'parent'", '}'].join_lines() + '\n')
+	issue_20147_write_file(os.join_path(repo, '.v.mod.stop'), '')
+	issue_20147_write_file(os.join_path(repo, 'main.v'),
+		['module main', '', 'import foo', '', 'fn main() {', '\tprintln(foo.value())', '}'].join_lines() +
+		'\n')
+	issue_20147_write_file(os.join_path(parent_foo, 'foo.v'),
+		['module foo', '', "pub fn value() string { return 'unrelated-parent' }"].join_lines() +
+		'\n')
+	main_file := os.join_path(repo, 'main.v')
+	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('cannot import module "foo" (not found)'), res.output
+}
+
 fn issue_27281_base_url_workspace() string {
 	return os.join_path(os.vtmp_dir(), 'issue_27281_uppercase_base_url')
 }
