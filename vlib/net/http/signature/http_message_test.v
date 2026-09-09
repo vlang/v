@@ -341,6 +341,33 @@ fn test_sign_two_signatures_coexist() {
 	}
 }
 
+fn test_sign_request_rejects_existing_label_without_mutation() {
+	mut req := build_request('https://example.com/foo')
+	key := Key.hmac_sha256(test_secret.bytes())!
+	sign_request(mut req, key, components: ['@method'], created: 1)!
+	input_before := req.header.custom_values('Signature-Input')
+	signature_before := req.header.custom_values('Signature')
+	if _ := sign_request(mut req, key, components: ['@path'], created: 2) {
+		assert false, 'an existing signature label must not be appended again'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert req.header.custom_values('Signature-Input') == input_before
+	assert req.header.custom_values('Signature') == signature_before
+}
+
+fn test_sign_request_rejects_http2_removed_covered_field() {
+	mut req := build_request('https://example.com/foo')
+	req.header.set(.connection, 'keep-alive')
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_request(mut req, key, components: ['connection'], created: 1) {
+		assert false, 'fields removed by possible HTTP/2 negotiation cannot be covered'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !req.header.contains_custom('Signature')
+}
+
 fn test_sign_response_and_verify() {
 	mut resp := http.Response{
 		status_code: 200
@@ -376,6 +403,19 @@ fn test_sign_response_includes_generated_content_length() {
 	mut received := resp
 	received.status_code = 200
 	verify_response(received, key)!
+}
+
+fn test_sign_response_rejects_existing_label() {
+	mut resp := http.Response{
+		status_code: 200
+	}
+	key := Key.hmac_sha256(test_secret.bytes())!
+	sign_response(mut resp, key, created: 1)!
+	if _ := sign_response(mut resp, key, created: 2) {
+		assert false, 'an existing response signature label must not be appended again'
+	} else {
+		assert err is MalformedMessage
+	}
 }
 
 fn test_response_components_do_not_invent_content_length() {

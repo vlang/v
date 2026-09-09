@@ -46,11 +46,13 @@ pub:
 // RFC 9421 §7.2.1 RECOMMENDS the parameter for replay protection.
 // Pass an explicit `created: 0` only if you know you don't want it.
 pub fn sign_request(mut req http.Request, key Key, opts SignRequestOptions) ! {
+	ensure_signature_label_available(req.header, opts.label)!
 	c := request_components(req, opts.scheme, .outgoing)!
 	mut comps := opts.components.clone()
 	if comps.len == 0 {
 		comps = default_request_components(req)
 	}
+	validate_request_component_coverage(req, comps, opts.scheme)!
 	mut alg := ?string(none)
 	if opts.include_alg {
 		alg = key.algorithm.name()
@@ -121,6 +123,7 @@ pub:
 // it preserves any pre-existing Signature-Input / Signature values
 // and defaults `created` to the current time.
 pub fn sign_response(mut resp http.Response, key Key, opts SignResponseOptions) ! {
+	ensure_signature_label_available(resp.header, opts.label)!
 	mut comps := opts.components.clone()
 	if comps.len == 0 {
 		comps = ['@status']
@@ -208,6 +211,49 @@ fn merged_dict_field(h http.Header, name string) ?string {
 		return none
 	}
 	return values.join(', ')
+}
+
+fn ensure_signature_label_available(h http.Header, label string) ! {
+	check_label(label)!
+	if input := merged_dict_field(h, 'Signature-Input') {
+		entries := parse_signature_input(input)!
+		if entries.any(it.label == label) {
+			return MalformedMessage{
+				reason: 'signature label "${label}" already exists in Signature-Input'
+			}
+		}
+	}
+	if signatures := merged_dict_field(h, 'Signature') {
+		parsed := parse_signature(signatures)!
+		if label in parsed {
+			return MalformedMessage{
+				reason: 'signature label "${label}" already exists in Signature'
+			}
+		}
+	}
+}
+
+fn validate_request_component_coverage(req http.Request, components []string, default_scheme string) ! {
+	if !req.enable_http2 {
+		return
+	}
+	parsed := urllib.parse(req.url) or {
+		return MalformedMessage{
+			reason: 'request url "${req.url}" is not a valid URL: ${err.msg()}'
+		}
+	}
+	scheme := if parsed.scheme != '' { parsed.scheme } else { default_scheme }
+	if scheme != 'https' {
+		return
+	}
+	for component in components {
+		name := component.to_lower()
+		if name in ['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'upgrade'] {
+			return MalformedMessage{
+				reason: 'covered field "${name}" may be removed during HTTP/2 negotiation'
+			}
+		}
+	}
 }
 
 enum RequestComponentsMode {

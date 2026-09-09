@@ -92,6 +92,14 @@ fn test_parse_signature_input_single_entry() {
 	assert e.params['keyid'] or { ParamValue('') } == ParamValue('my-key')
 }
 
+fn test_parse_signature_input_requires_inner_list_whitespace() {
+	if _ := parse_signature_input('sig1=("@method""host")') {
+		assert false, 'inner-list items must be separated by SP'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
 fn test_parse_signature_input_multiple_entries() {
 	src := 'sig-a=("@method");created=1, sig-b=("date" "@authority");keyid="k"'
 	entries := parse_signature_input(src)!

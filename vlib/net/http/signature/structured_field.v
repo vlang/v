@@ -253,6 +253,16 @@ fn (mut p SfParser) parse_inner_list() ![]string {
 	}
 	mut items := []string{}
 	for {
+		if p.done() {
+			return MalformedMessage{
+				reason: 'unterminated inner list'
+			}
+		}
+		if items.len > 0 && p.peek() != `)` && p.peek() != ` ` {
+			return MalformedMessage{
+				reason: 'inner-list items must be separated by a space at offset ${p.pos}'
+			}
+		}
 		p.skip_sp()
 		if p.done() {
 			return MalformedMessage{
