@@ -151,3 +151,11 @@ fn test_to_h2_request_authority_from_host_header() {
 	assert h2req.authority == 'override.example:8443'
 	assert !h2req.headers.any(it.name == 'host')
 }
+
+fn test_to_h2_request_trims_authority_from_host_header() {
+	mut h := new_header()
+	h.add(.host, ' override.example:8443 ')
+	req := Request{}
+	h2req := req.to_h2_request(.get, 'origin.example', '/', '', h)
+	assert h2req.authority == 'override.example:8443'
+}

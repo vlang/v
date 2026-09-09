@@ -323,6 +323,20 @@ fn test_outgoing_proxy_request_components_use_absolute_form() {
 	assert c.component_value('@request-target')! == 'http://example.com/search?q=a+b'
 }
 
+fn test_sign_proxy_request_rejects_covered_connection_field() {
+	proxy := http.new_http_proxy('http://localhost:8080')!
+	mut req := build_request('http://example.com/')
+	req.proxy = proxy
+	req.header.set(.connection, 'keep-alive')
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_request(mut req, key, components: ['connection'], created: 1) {
+		assert false, 'proxy serialization appends Connection: close'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !req.header.contains_custom('Signature')
+}
+
 fn test_outgoing_proxy_request_components_preserve_url_authority() {
 	proxy := http.new_http_proxy('http://localhost:8080')!
 	mut req := build_request('http://origin.example:80/search')

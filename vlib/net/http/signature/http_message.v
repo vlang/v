@@ -305,9 +305,10 @@ fn validate_stable_signature_components(components []string) ! {
 }
 
 fn validate_request_component_coverage(req http.Request, components []string, default_scheme string) ! {
-	if req.disable_connection_reuse && components.any(it.to_lower() == 'connection') {
+	if (req.disable_connection_reuse || req.proxy != unsafe { nil })
+		&& components.any(it.to_lower() == 'connection') {
 		return MalformedMessage{
-			reason: 'covered field "connection" changes when connection reuse is disabled'
+			reason: 'covered field "connection" changes on a connection-close transport'
 		}
 	}
 	if !req.enable_http2 {

@@ -39,8 +39,9 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 	// path (used for virtual-host / host-override requests).
 	mut auth := authority
 	if host := header.get(.host) {
-		if host != '' {
-			auth = host
+		trimmed_host := host.trim_space()
+		if trimmed_host != '' {
+			auth = trimmed_host
 		}
 	}
 	mut extra := []H2HeaderField{}
