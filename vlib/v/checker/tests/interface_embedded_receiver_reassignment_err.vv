@@ -217,6 +217,9 @@ fn main() {
 	_ = pointer_element.return_pointer_array()
 	mut saved := []&PointerNode{cap: 1}
 	pointer_element.append_to_pointer_array(mut saved)
+	pointer_element.replace_through_pointer_index(PointerNode(Item{}))
+	bound_reader := pointer_element.return_bound_read_method()
+	_ = bound_reader()
 	pointer_element.spawn_pointer_read()
 }
 
@@ -245,4 +248,14 @@ fn (node &PointerNode) return_pointer_array() []&PointerNode {
 
 fn (node &PointerNode) append_to_pointer_array(mut saved []&PointerNode) {
 	saved << node
+}
+
+fn (node &PointerNode) replace_through_pointer_index(next PointerNode) {
+	unsafe {
+		(&[1]PointerNode(node))[0] = next
+	}
+}
+
+fn (node &PointerNode) return_bound_read_method() fn () string {
+	return unsafe { node.read_pointer_name }
 }

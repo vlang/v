@@ -249,6 +249,19 @@ fn (mut c Checker) record_receiver_method_call(left ast.Expr, called_name string
 	}
 }
 
+fn (mut c Checker) record_receiver_method_value(left ast.Expr) {
+	if c.table.cur_fn == unsafe { nil } || !c.table.cur_fn.is_method
+		|| !c.table.cur_fn.receiver.typ.is_ptr() {
+		return
+	}
+	mut receiver_sym := c.table.sym(c.table.cur_fn.receiver.typ)
+	method_idx := c.table.cur_fn.method_idx
+	if method_idx >= 0 && method_idx < receiver_sym.methods.len
+		&& receiver_method_target(left, c.table.cur_fn.receiver.name, receiver_sym.methods[method_idx].receiver_aliases) {
+		receiver_sym.methods[method_idx].receiver_address_taken = true
+	}
+}
+
 fn (mut c Checker) check_os_raw_io_call(node &ast.CallExpr, func &ast.Fn, concrete_types []ast.Type, arg_offset int) {
 	if func.mod != 'os' || !func.is_method {
 		return

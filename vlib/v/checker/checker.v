@@ -3331,6 +3331,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 		method.params = method.params[1..]
 		node.has_hidden_receiver = true
+		c.record_receiver_method_value(node.expr)
 		method.name = ''
 		fn_type := ast.new_type(c.table.find_or_register_fn_type(method, false, true))
 		node.typ = c.unwrap_generic(fn_type)
