@@ -490,6 +490,38 @@ fn range_value_fits_int(value ast.ComptTimeConstValue) bool {
 	return false
 }
 
+fn (mut c Checker) range_expr_has_checked_arithmetic(expr ast.Expr) bool {
+	return match expr {
+		ast.InfixExpr {
+			(expr.op in [.plus, .minus, .mul] && expr.left_type.is_int())
+				|| c.range_expr_has_checked_arithmetic(expr.left)
+				|| c.range_expr_has_checked_arithmetic(expr.right)
+		}
+		ast.ParExpr {
+			c.range_expr_has_checked_arithmetic(expr.expr)
+		}
+		ast.CastExpr {
+			c.range_expr_has_checked_arithmetic(expr.expr)
+		}
+		ast.PrefixExpr {
+			c.range_expr_has_checked_arithmetic(expr.right)
+		}
+		ast.Ident {
+			if expr.obj is ast.ConstField {
+				c.range_expr_has_checked_arithmetic(expr.obj.expr)
+			} else {
+				false
+			}
+		}
+		ast.CallExpr {
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, low_type ast.Type, val_type ast.Type, high_type ast.Type) {
 	backend_has_distinct_range_conversions := c.pref.backend == .wasm || c.pref.backend.is_js()
 	unaliased_low_type := c.table.fully_unaliased_type(low_type).clear_flags()
@@ -498,6 +530,11 @@ fn (mut c Checker) check_for_empty_range(low ast.Expr, high ast.Expr, low_type a
 		|| !range_expr_is_plain_integer_literal(low) || !range_expr_is_plain_integer_literal(high)
 	if backend_has_distinct_range_conversions && backend_sensitive_bounds {
 		// Only plain integer literals have identical conversion semantics on these backends.
+		return
+	}
+	ignore_overflow := c.table.cur_fn != unsafe { nil } && c.table.cur_fn.is_ignore_overflow
+	if c.pref.is_check_overflow && !ignore_overflow
+		&& (c.range_expr_has_checked_arithmetic(low) || c.range_expr_has_checked_arithmetic(high)) {
 		return
 	}
 	was_evaluating_range := c.comptime_eval_for_range

@@ -2357,6 +2357,11 @@ for i in 0 .. 5 {
 `low..high` means an *exclusive* range, which represents all values
 from `low` up to *but not including* `high`.
 
+When both integer bounds can be safely evaluated at compile time, V reports an
+`empty range` error if `low` is not less than `high` after integer conversions.
+This check is skipped when evaluation could differ for the selected backend, or
+when checked arithmetic must keep its runtime overflow behavior.
+
 > [!NOTE]
 > This exclusive range notation and zero-based indexing follow principles of
 logical consistency and error reduction. As Edsger W. Dijkstra outlines in
