@@ -212,6 +212,8 @@ fn main() {
 	pointer_element.pass_alias_before_rebinding(&other)
 	pointer_element.pass_alias_after_conditional_rebinding(&other, true)
 	pointer_element.pass_local_holder_mut()
+	pointer_element.pass_local_holder_value()
+	pointer_element.pass_local_holder_projection()
 	pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
 	pointer_element.pass_match_pointer(&other, PointerNode(Item{}), 0)
 	_ = pointer_element.return_pointer_array()
@@ -266,4 +268,26 @@ fn (node &PointerNode) replace_through_pointer_alias(next PointerNode) {
 
 fn (node &PointerNode) return_bound_read_method() fn () string {
 	return unsafe { node.read_pointer_name }
+}
+
+fn replace_in_pointer_holder_value(holder PointerHolder) {
+	unsafe {
+		*holder.node = PointerNode(Item{
+			name: 'replaced'
+		})
+	}
+}
+
+fn (node &PointerNode) pass_local_holder_value() {
+	holder := PointerHolder{
+		node: unsafe { node }
+	}
+	replace_in_pointer_holder_value(holder)
+}
+
+fn (node &PointerNode) pass_local_holder_projection() {
+	holder := PointerHolder{
+		node: unsafe { node }
+	}
+	replace_pointer_node(holder.node, PointerNode(Item{}))
 }

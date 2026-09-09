@@ -140,6 +140,12 @@ fn receiver_alias_argument(expr ast.Expr, alias ast.ReceiverAlias) bool {
 		ast.UnsafeExpr {
 			receiver_alias_argument(reduced.expr, alias)
 		}
+		ast.SelectorExpr {
+			!alias.is_pointer && receiver_alias_argument(reduced.expr, alias)
+		}
+		ast.IndexExpr {
+			!alias.is_pointer && receiver_alias_argument(reduced.left, alias)
+		}
 		ast.IfExpr {
 			reduced.branches.any(stmts_return_receiver_alias_argument(it.stmts, alias))
 		}
@@ -225,8 +231,7 @@ fn (mut c Checker) record_receiver_argument(param ast.Param, arg ast.CallArg) {
 	} else if aliases.any(!it.is_pointer && receiver_alias_argument(arg.expr, it)) {
 		if param.is_mut && arg.is_mut {
 			receiver_sym.methods[method_idx].receiver_passed_mut = true
-		} else if param.typ.is_any_kind_of_pointer()
-			|| c.table.unaliased_type(param.typ).is_any_kind_of_pointer() {
+		} else {
 			receiver_sym.methods[method_idx].receiver_address_taken = true
 		}
 	}
