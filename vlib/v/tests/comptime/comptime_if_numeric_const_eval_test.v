@@ -96,3 +96,21 @@ fn test_nested_overload_in_forward_overload_comptime_if() {
 fn (a NestedForwardOuterAddend) + (b NestedForwardOuterAddend) NestedForwardOuterAddend {
 	return NestedForwardOuterAddend(NestedForwardInnerAddend(a) + NestedForwardInnerAddend(b) + 1)
 }
+
+type ForwardParameterAddend = u8
+
+fn (a ForwardParameterAddend) - (b ForwardParameterAddend) ForwardParameterAddend {
+	return 0
+}
+
+fn test_parameter_overload_in_forward_overload_comptime_if() {
+	mut value := 0
+	$if ForwardParameterAddend(2) + ForwardParameterAddend(1) == ForwardParameterAddend(0) {
+		value = 1
+	}
+	assert value == 1
+}
+
+fn (a ForwardParameterAddend) + (b ForwardParameterAddend) ForwardParameterAddend {
+	return a - b
+}

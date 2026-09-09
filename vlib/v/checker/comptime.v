@@ -1117,6 +1117,13 @@ fn (mut c Checker) comptime_eval_expr_type(expr ast.Expr) ast.Type {
 		return typ
 	}
 	return match expr {
+		ast.Ident {
+			if variable := expr.scope.find_var(expr.name) {
+				variable.typ
+			} else {
+				ast.void_type
+			}
+		}
 		ast.InfixExpr {
 			if method := c.find_comptime_eval_infix_method(expr) {
 				method.return_type
@@ -1276,6 +1283,10 @@ fn (mut c Checker) comptime_float_fits_int(float_value f64, typ ast.Type) bool {
 
 fn (mut c Checker) eval_comptime_const_cast_value(value ast.ComptTimeConstValue, typ ast.Type) ?ast.ComptTimeConstValue {
 	cast_typ := c.table.fully_unaliased_type(typ).clear_flags()
+	if c.comptime_eval_for_range && c.pref.nofloat && (value is f32 || value is f64) {
+		// -nofloat converts floating values before applying explicit casts.
+		return none
+	}
 	if cast_typ.is_pure_int() {
 		if cast_typ != ast.u64_type && (value is f32 || value is f64) {
 			// Out-of-range direct C float-to-integer conversions are target/compiler dependent.
