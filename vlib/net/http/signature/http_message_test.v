@@ -200,6 +200,23 @@ fn test_origin_form_uses_explicit_scheme() {
 	verify_request(received, key, scheme: 'http')!
 }
 
+fn test_request_components_preserve_escaped_path() {
+	req := build_request('https://example.com/files/a%2Fb?download=1')
+	c := request_components(req, 'https')!
+	assert c.component_value('@path')! == '/files/a%2Fb'
+	assert c.component_value('@request-target')! == '/files/a%2Fb?download=1'
+}
+
+fn test_append_dict_header_preserves_all_existing_field_lines() {
+	mut header := http.Header{}
+	header.add_custom('Signature-Input', 'sig-a=("@method")')!
+	header.add_custom('Signature-Input', 'sig-b=("@path")')!
+	append_dict_header(mut header, 'Signature-Input', 'sig-c=("@authority")')!
+	assert header.custom_values('Signature-Input') == [
+		'sig-a=("@method"), sig-b=("@path"), sig-c=("@authority")',
+	]
+}
+
 fn test_sign_two_signatures_coexist() {
 	mut req := build_request('https://example.com/foo')
 	k1 := Key.hmac_sha256('one'.bytes())

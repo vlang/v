@@ -171,11 +171,25 @@ pub fn verify_response(resp http.Response, key Key, opts VerifyResponseOptions) 
 // `Signature` field as the spec recommends, even when `add_custom`
 // would otherwise create separate field instances.
 fn append_dict_header(mut h http.Header, name string, addition string) ! {
-	existing := h.get_custom(name) or {
+	existing_values := h.custom_values(name)
+	if existing_values.len == 0 {
 		h.add_custom(name, addition)!
 		return
 	}
-	h.set_custom(name, existing + ', ' + addition)!
+	// Collapse all case-insensitive field lines before appending. Keeping the
+	// first spelling lets Header.set_custom reuse that entry after duplicates
+	// have been cleared instead of consuming another fixed-capacity slot.
+	mut matching_keys := []string{}
+	for key in h.keys() {
+		if key.to_lower() == name.to_lower() {
+			matching_keys << key
+		}
+	}
+	for key in matching_keys {
+		h.delete_custom(key)
+	}
+	key := if matching_keys.len > 0 { matching_keys[0] } else { name }
+	h.set_custom(key, existing_values.join(', ') + ', ' + addition)!
 }
 
 // merged_dict_field returns the concatenation of all values of `name`
@@ -223,8 +237,9 @@ fn request_components(req http.Request, default_scheme string) !Components {
 	if scheme != '' {
 		c.scheme = scheme
 	}
-	if parsed.path != '' {
-		c.path = parsed.path
+	escaped_path := parsed.escaped_path()
+	if escaped_path != '' {
+		c.path = escaped_path
 	} else {
 		c.path = '/'
 	}
