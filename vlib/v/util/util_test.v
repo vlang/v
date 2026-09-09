@@ -163,3 +163,16 @@ fn test_qualify_import_stops_at_nearest_vmod_issue_26828() {
 	assert qualify_import(p, 'sub', main_file) == 'sub'
 	assert qualify_import(p, 'sub', 'cli004.v') == 'sub'
 }
+
+fn test_source_file_module_name_skips_legacy_attributes() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'util_legacy_module_attribute_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'foo.v')
+	os.write_file(source_path, '[has_globals]\nmodule foo\n') or { panic(err) }
+
+	module_name := source_file_module_name(source_path) or { '' }
+	assert module_name == 'foo'
+}

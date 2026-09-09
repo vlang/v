@@ -369,8 +369,12 @@ fn source_file_module_name(path string) ?string {
 	}
 	for start < source.len {
 		start = skip_source_space_and_comments(source, start) or { return none }
-		if start + 1 < source.len && source[start] == `@` && source[start + 1] == `[` {
-			start += 2
+		if start >= source.len {
+			return none
+		}
+		if source[start] == `[`
+			|| (start + 1 < source.len && source[start] == `@` && source[start + 1] == `[`) {
+			start += if source[start] == `@` { 2 } else { 1 }
 			mut brackets := 1
 			mut quote := u8(0)
 			for start < source.len && brackets > 0 {
