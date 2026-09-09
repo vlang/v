@@ -202,6 +202,11 @@ fn header_algorithm(h Headers) !RecipientAlgorithm {
 // this module. It returns false for an absent algorithm when creation is
 // allowed to auto-add `direct`.
 fn check_direct_recipient(recipient Recipient, require_algorithm bool) !bool {
+	if recipient.encrypted_key.len != 0 {
+		return MalformedMessage{
+			reason: 'direct COSE_Mac recipient must have an empty encrypted_key'
+		}
+	}
 	protected_alg := header_algorithm(recipient.protected)!
 	unprotected_alg := header_algorithm(recipient.unprotected)!
 	if protected_alg.present && unprotected_alg.present {
@@ -224,11 +229,6 @@ fn check_direct_recipient(recipient Recipient, require_algorithm bool) !bool {
 	if alg != alg_direct {
 		return MalformedMessage{
 			reason: 'unsupported COSE_Mac recipient algorithm ${alg}; only direct (-6) is supported'
-		}
-	}
-	if recipient.encrypted_key.len != 0 {
-		return MalformedMessage{
-			reason: 'direct COSE_Mac recipient must have an empty encrypted_key'
 		}
 	}
 	return true
@@ -265,6 +265,7 @@ pub fn (m MacMessage) encode(tagged bool) ![]u8 {
 	check_protected_headers(m.protected, m.unprotected)!
 	for recipient in m.recipients {
 		check_protected_headers(recipient.protected, recipient.unprotected)!
+		check_direct_recipient(recipient, true)!
 	}
 	body_protected := m.protected_bytes()!
 

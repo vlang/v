@@ -167,6 +167,31 @@ fn test_mac_rejects_non_direct_recipient_algorithm() {
 	}
 }
 
+fn test_mac_rejects_nonempty_direct_encrypted_key() {
+	key := Key.symmetric([]u8{len: 32, init: 1})
+	mut hp := Headers{}
+	hp.algorithm = .hmac_256_256
+	if _ := mac('payload'.bytes(), key,
+		protected:  hp
+		recipients: [Recipient{
+			encrypted_key: [u8(1)]
+		}]
+	) {
+		assert false, 'creation must not discard a supplied encrypted key'
+	} else {
+		assert err.msg().contains('empty encrypted_key')
+	}
+
+	signed := mac('payload'.bytes(), key, protected: hp, recipients: [Recipient{}])!
+	mut msg := MacMessage.decode(signed)!
+	msg.recipients[0].encrypted_key = [u8(1)]
+	if _ := msg.encode(true) {
+		assert false, 'low-level encoding must enforce direct recipient invariants'
+	} else {
+		assert err.msg().contains('empty encrypted_key')
+	}
+}
+
 fn test_verify_mac_requires_direct_recipient_algorithm() {
 	key := Key.symmetric([]u8{len: 32, init: 1})
 	mut hp := Headers{}
@@ -174,7 +199,12 @@ fn test_verify_mac_requires_direct_recipient_algorithm() {
 	signed := mac('payload'.bytes(), key, protected: hp, recipients: [Recipient{}])!
 	mut msg := MacMessage.decode(signed)!
 	msg.recipients[0].unprotected = Headers{}
-	if _ := verify_mac(msg.encode(true)!, key) {
+	if _ := msg.encode(true) {
+		assert false, 'low-level encoding must require direct recipient algorithms'
+	} else {
+		assert err.msg().contains('missing alg = direct')
+	}
+	if _ := verify_mac(encode_mac_unchecked(msg)!, key) {
 		assert false, 'verification must require alg = direct for every recipient'
 	} else {
 		assert err.msg().contains('missing alg = direct')
