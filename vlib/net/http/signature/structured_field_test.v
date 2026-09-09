@@ -296,6 +296,26 @@ fn test_parse_signature_input_rejects_uppercase_http_field_component() {
 	}
 }
 
+fn test_parse_signature_input_rejects_invalid_http_field_components() {
+	for component in ['', 'x y', 'x:y'] {
+		if _ := parse_signature_input('sig1=("${component}")') {
+			assert false, 'invalid HTTP field component identifier "${component}" must be rejected'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+}
+
+fn test_serialize_inner_list_rejects_invalid_http_field_components() {
+	for component in ['', 'x y', 'x:y'] {
+		if _ := serialize_inner_list([component]) {
+			assert false, 'invalid HTTP field component identifier "${component}" must not be serialized'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+}
+
 fn test_parse_signature_input_preserves_signature_params_value() {
 	src := 'sig1=("@method");created=1618884473;keyid="my-key"'
 	entries := parse_signature_input(src)!

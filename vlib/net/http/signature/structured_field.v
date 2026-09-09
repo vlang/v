@@ -88,13 +88,45 @@ pub:
 // serialize_inner_list returns the canonical Inner List form (parens
 // around space-separated quoted-string items) for the covered
 // components list. Each component name is emitted as a quoted string;
-// invalid Structured Field string bytes return `MalformedMessage`.
+// invalid HTTP field names or Structured Field string bytes return
+// `MalformedMessage`.
 pub fn serialize_inner_list(items []string) !string {
 	mut parts := []string{cap: items.len}
 	for it in items {
+		check_component_identifier(it)!
 		parts << '"' + escape_string(it)! + '"'
 	}
 	return '(' + parts.join(' ') + ')'
+}
+
+fn check_component_identifier(name string) ! {
+	if name.starts_with('@') {
+		return
+	}
+	if name == '' {
+		return MalformedMessage{
+			reason: 'HTTP field component identifier must not be empty'
+		}
+	}
+	if name != name.to_lower() {
+		return MalformedMessage{
+			reason: 'HTTP field component identifier "${name}" must be lowercase'
+		}
+	}
+	for c in name {
+		if int(c) >= 128 || !is_http_token(c) {
+			return MalformedMessage{
+				reason: 'HTTP field component identifier "${name}" is not a valid field name'
+			}
+		}
+	}
+}
+
+fn is_http_token(c u8) bool {
+	return match c {
+		33, 35...39, 42, 43, 45, 46, 48...57, 65...90, 94...122, 124, 126 { true }
+		else { false }
+	}
 }
 
 // escape_string applies the RFC 8941 §3.3.3 quoted-string escape rules
@@ -332,11 +364,7 @@ fn (mut p SfParser) parse_inner_list() ![]string {
 			return items
 		}
 		item := p.parse_string()!
-		if !item.starts_with('@') && item != item.to_lower() {
-			return MalformedMessage{
-				reason: 'HTTP field component identifier "${item}" must be lowercase'
-			}
-		}
+		check_component_identifier(item)!
 		items << item
 		if p.pos < p.src.len && p.src[p.pos] == `;` {
 			return MalformedMessage{

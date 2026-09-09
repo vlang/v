@@ -378,6 +378,25 @@ fn test_incoming_http2_request_components_semicolon_combine_cookie_fields() {
 	assert c.component_value('cookie')! == 'a=1; b=2'
 }
 
+fn test_incoming_http2_request_components_exclude_synthesized_host() {
+	mut req := http.Request{
+		method:  .get
+		url:     '/'
+		host:    'example.com'
+		version: .v2_0
+	}
+	// H2ServerConn adds this compatibility field from :authority even though
+	// no Host field was present in the HTTP/2 message.
+	req.header.set(.host, 'example.com')
+	c := request_components(req, 'https', .incoming)!
+	assert c.component_value('@authority')! == 'example.com'
+	if _ := c.component_value('host') {
+		assert false, 'a synthesized HTTP/2 Host field must not be coverable'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
 fn test_sign_request_rejects_control_bytes_in_parameters() {
 	mut req := build_request('https://example.com/')
 	key := Key.hmac_sha256(test_secret.bytes())!

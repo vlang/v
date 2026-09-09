@@ -440,6 +440,10 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 		}
 	}
 	if mode == .incoming && req.version == .v2_0 {
+		// net.http synthesizes Host from :authority for handler compatibility,
+		// without retaining its provenance. Conservatively disallow Host
+		// coverage for incoming HTTP/2; @authority remains available.
+		c.fields.delete('host')
 		cookie_values := req.header.custom_values('Cookie')
 		if cookie_values.len > 0 {
 			c.fields['cookie'] = [cookie_values.map(it.trim_space()).join('; ')]
